@@ -1,0 +1,23 @@
+name: queue cleared on abort
+backend: fake
+steps:
+  - prompt: 长任务
+    hold: true
+  - wait_for:
+      event: run.started
+      timeout_s: 1
+  - steer: 中途转向
+  - follow_up: 后续问题
+  - abort: {}
+  - wait_for:
+      event: run.aborted
+      timeout_s: 1
+  - expect:
+      events:
+        - event: queue.steer_added
+          contains: 中途转向
+        - event: queue.follow_up_added
+          contains: 后续问题
+      queue:
+        steering: []
+        follow_up: []

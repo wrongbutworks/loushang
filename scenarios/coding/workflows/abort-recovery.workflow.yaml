@@ -1,0 +1,25 @@
+name: abort recovery
+backend: fake
+steps:
+  - prompt: 请详细阅读 src/loushang/coding/ui/mode.py 并分析控制流
+    hold: true
+  - wait_for:
+      event: run.started
+      timeout_s: 1
+  - abort: {}
+  - wait_for:
+      event: run.aborted
+      timeout_s: 1
+  - prompt: 你好
+  - expect:
+      events:
+        - event: run.started
+        - event: run.aborted
+        - event: assistant.message
+          contains: 你好
+      not_events:
+        - event: assistant.message
+          contains: 请详细阅读
+      queue:
+        steering: []
+        follow_up: []

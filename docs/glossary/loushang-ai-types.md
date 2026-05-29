@@ -1,0 +1,682 @@
+# Loushang AI Types v0.1
+
+## 1. Scope
+
+本文档定义 `loushang.ai` 的核心类型定义。  
+目标是与 `pi-ai` 保持语义严格对齐，并在表达上做最小限度的 Python 化。
+
+本文档覆盖：
+
+1. `Model` family
+2. `Context` / `Tool` family
+3. `Message` family
+4. `Content` family
+5. `Streaming` family
+6. `Options` family
+7. `Usage` family
+
+本文档不覆盖：
+
+- `Agent`
+- `AgentLoop`
+- `AgentEvent`
+- tool orchestration policy
+- channel boundary protocol
+- provider 实现细节
+
+---
+
+## 2. Design Principles
+
+1. **语义严格对齐 `pi-ai`**  
+   核心对象边界、事件族、消息族与停止原因保持一致。
+
+2. **表达轻度 Python 化**  
+   函数名与字段名使用 `snake_case`，但协议字面值保留 `pi-ai` 语义，例如 `toolCall`、`toolUse`。
+
+3. **值对象优先**  
+   核心协议类型优先建模为稳定值对象，而不是带复杂继承关系的运行对象。
+
+4. **AI 层不下沉 Agent 概念**  
+   `loushang.ai` 只定义模型接入与统一流协议，不承载 agent runtime 生命周期。
+
+5. **先冻结协议，再演进实现**  
+   v0.1 先收敛 public types，后续实现仅在不破坏语义兼容的前提下演进。
+
+---
+
+## 3. Scalar Types
+
+### KnownApi
+
+内建支持的 API 类型集合。
+
+建议保留与 `pi-ai` 对齐的命名风格，例如：
+
+- `openai-completions`
+- `openai-responses`
+- `anthropic-messages`
+- `google-generative-ai`
+
+### Api
+
+模型调用协议类型。
+
+建议定义为：
+
+- `KnownApi | str`
+
+### KnownProvider
+
+内建支持的 provider 类型集合。
+
+例如：
+
+- `openai`
+- `anthropic`
+- `google`
+- `kimi`
+
+### Provider
+
+模型服务提供方类型。
+
+建议定义为：
+
+- `KnownProvider | str`
+
+### ThinkingLevel
+
+统一推理强度等级。
+
+建议值：
+
+- `minimal`
+- `low`
+- `medium`
+- `high`
+- `xhigh`
+
+### CacheRetention
+
+提示缓存保留策略。
+
+建议值：
+
+- `none`
+- `short`
+- `long`
+
+### Transport
+
+传输偏好。
+
+建议值：
+
+- `sse`
+- `websocket`
+- `auto`
+
+### AbortSignalLike
+
+Python 侧的最小取消信号协议。
+
+说明：
+
+- `signal` 字段名保留，以维持与 `pi-ai` 的语义对齐
+- Python 实现不要求复制 JavaScript `AbortSignal`
+- `AbortSignalLike` 只表达“调用是否应被取消”的语义
+- provider 与 streaming 层应在调用前、流式迭代中与结束前检查该信号
+- 一旦检测到取消，应映射为 `aborted` 终止语义，而不是普通异常
+
+建议：
+
+- 将 `AbortSignalLike` 定义为 `loushang.ai` 内部最小协议类型
+- 不在 v0.1 中绑定到具体事件循环或并发库
+
+当前建议的最小语义为：
+
+- `cancelled: bool`
+
+说明：
+
+- `AbortSignalLike` 优先建模为只读取消状态
+- 不要求 `wait()`、不要求 awaitable 接口
+- 不直接绑定 `asyncio.Event`
+- 实现层可以适配 `asyncio.Event` 或其他取消对象
+
+### StopReason
+
+assistant message 停止原因。
+
+建议值：
+
+- `stop`
+- `length`
+- `toolUse`
+- `error`
+- `aborted`
+
+说明：
+
+- `toolUse` 保留 `pi-ai` 语义字面值
+- 不建议改成 `tool_use`
+
+---
+
+## 4. Model Family
+
+### ModelCost
+
+模型定价信息。
+
+建议字段：
+
+- `input`
+- `output`
+- `cache_read`
+- `cache_write`
+
+### Model
+
+统一模型描述对象。
+
+建议字段：
+
+- `id: str`
+- `name: str`
+- `provider: Provider`
+- `endpoint: str`
+- `base_url: str`
+- `reasoning: bool`
+- `input: list[Literal["text", "image"]]`
+- `cost: ModelCost`
+- `context_window: int`
+- `max_tokens: int`
+- `headers: dict[str, str] | None = None`
+- `compat: dict[str, Any] | None = None`
+
+说明：
+
+- `api` 不是 `Model` 的稳定字段；`api` 由 `Endpoint` 提供
+- `Model` 是 `provider + endpoint + model_id` 三元组下的调用句柄
+- `base_url`、`context_window`、`max_tokens` 为 Python 化字段名
+- `compat` 先保留为扩展口，不在 v0.1 中细分 provider-specific compat 类型
+
+### Endpoint
+
+模型服务入口对象。
+
+建议字段：
+
+- `id: str`
+- `provider: Provider`
+- `api: Api`
+- `base_url: str | None`
+- `region: str | None`
+- `lane: str | None`
+
+说明：
+
+- `Endpoint` 是 `api` 的事实来源
+- provider 路由应按 `endpoint.api` 解析
+- 一个 provider 可以有多个 endpoint
+
+---
+
+## 5. Tool and Context Family
+
+### Tool
+
+模型可调用工具定义。
+
+建议字段：
+
+- `name: str`
+- `description: str`
+- `parameters: dict[str, Any]`
+
+说明：
+
+- `parameters` 先表示 schema object
+- v0.1 不绑定具体 schema 技术栈
+
+### Context
+
+一次模型调用的统一上下文。
+
+建议字段：
+
+- `system_prompt: str | None = None`
+- `messages: list[Message]`
+- `tools: list[Tool] | None = None`
+
+说明：
+
+- `Context` 只表达输入上下文
+- `api_key`、`session_id`、`metadata` 等运行选项不进入 `Context`
+
+---
+
+## 6. Content Family
+
+### TextContent
+
+文本内容块。
+
+建议字段：
+
+- `type: Literal["text"] = "text"`
+- `text: str`
+- `text_signature: str | None = None`
+
+### ThinkingContent
+
+思考内容块。
+
+建议字段：
+
+- `type: Literal["thinking"] = "thinking"`
+- `thinking: str`
+- `thinking_signature: str | None = None`
+- `redacted: bool = False`
+
+说明：
+
+- `redacted` 表示内容被安全策略隐藏
+- `thinking_signature` 用于 continuity / opaque payload 传递
+
+### ImageContent
+
+图像内容块。
+
+建议字段：
+
+- `type: Literal["image"] = "image"`
+- `data: str`
+- `mime_type: str`
+
+说明：
+
+- `data` 表示 base64 编码内容
+- `mime_type` 暂不缩窄为固定枚举
+
+### ToolCall
+
+工具调用内容块。
+
+建议字段：
+
+- `type: Literal["toolCall"] = "toolCall"`
+- `id: str`
+- `name: str`
+- `arguments: dict[str, Any]`
+- `thought_signature: str | None = None`
+
+说明：
+
+- 保留 `toolCall` 字面值
+- `arguments` 表示已解析对象，而非 JSON 字符串
+
+### Content Relationship
+
+推荐关系如下：
+
+```text
+Content
+├── TextContent
+├── ThinkingContent
+├── ImageContent
+└── ToolCall
+```
+
+---
+
+## 7. Message Family
+
+### UserMessage
+
+用户输入消息。
+
+建议字段：
+
+- `role: Literal["user"] = "user"`
+- `content: str | list[TextContent | ImageContent]`
+- `timestamp: int`
+
+### AssistantMessage
+
+模型输出消息。
+
+建议字段：
+
+- `role: Literal["assistant"] = "assistant"`
+- `content: list[TextContent | ThinkingContent | ToolCall]`
+- `api: Api`
+- `provider: Provider`
+- `model: str`
+- `response_id: str | None = None`
+- `usage: Usage`
+- `stop_reason: StopReason`
+- `error_message: str | None = None`
+- `timestamp: int`
+
+说明：
+
+- `thinking` 不作为独立顶层字段暴露
+- `thinking` 与 `text`、`toolCall` 一样进入 `content`
+- `thinking_*` 事件中的 `content_index` 应指向 `partial.content` 中真实存在的 thinking block
+
+### ToolResultMessage
+
+工具结果回流消息。
+
+建议字段：
+
+- `role: Literal["toolResult"] = "toolResult"`
+- `tool_call_id: str`
+- `tool_name: str`
+- `content: list[TextContent | ImageContent]`
+- `details: Any | None = None`
+- `is_error: bool`
+- `timestamp: int`
+
+### Message
+
+统一消息联合类型。
+
+建议定义为：
+
+- `UserMessage | AssistantMessage | ToolResultMessage`
+
+### Message Relationship
+
+```text
+Message
+├── UserMessage
+├── AssistantMessage
+└── ToolResultMessage
+```
+
+---
+
+## 8. Usage Family
+
+### UsageCost
+
+用量成本对象。
+
+建议字段：
+
+- `input: float`
+- `output: float`
+- `cache_read: float`
+- `cache_write: float`
+- `total: float`
+
+### Usage
+
+assistant message 用量统计。
+
+建议字段：
+
+- `input: int`
+- `output: int`
+- `cache_read: int`
+- `cache_write: int`
+- `total_tokens: int`
+- `cost: UsageCost`
+
+---
+
+## 9. Options Family
+
+### ThinkingBudgets
+
+推理预算配置。
+
+建议字段：
+
+- `minimal: int | None = None`
+- `low: int | None = None`
+- `medium: int | None = None`
+- `high: int | None = None`
+
+### StreamOptions
+
+统一流式调用基础选项。
+
+建议字段：
+
+- `temperature: float | None = None`
+- `max_tokens: int | None = None`
+- `signal: AbortSignalLike | None = None`
+- `api_key: str | None = None`
+- `transport: Transport | None = None`
+- `cache_retention: CacheRetention | None = None`
+- `session_id: str | None = None`
+- `on_payload: Callable[[Any, Model], Any | None] | None = None`
+- `headers: dict[str, str] | None = None`
+- `max_retry_delay_ms: int | None = None`
+- `metadata: dict[str, Any] | None = None`
+
+说明：
+
+- 保留 `signal` 字段名，但以 Python 协议类型表达取消语义
+- v0.1 不要求与 JavaScript `AbortSignal` 结构逐字段兼容
+- provider 与 streaming 层应在调用前、流式迭代中与收敛结果前检查该信号
+- 检测到取消后，应映射为 `aborted` 协议语义
+
+### SimpleStreamOptions
+
+面向统一入口的简化流式选项。
+
+建议字段：
+
+- 继承 `StreamOptions`
+- `reasoning: ThinkingLevel | None = None`
+- `thinking_budgets: ThinkingBudgets | None = None`
+
+### ProviderStreamOptions
+
+provider 特定流式选项扩展概念。
+
+建议：
+
+- 作为 `StreamOptions` 的扩展方向存在
+- 具体 provider option 类型在 provider 模块中定义
+- 不在 v0.1 中单独细化为稳定根类型
+
+---
+
+## 10. Streaming Family
+
+### AssistantMessageEvent
+
+assistant message 流式事件联合类型。
+
+建议事件族包括：
+
+- `start`
+- `text_start`
+- `text_delta`
+- `text_end`
+- `thinking_start`
+- `thinking_delta`
+- `thinking_end`
+- `toolcall_start`
+- `toolcall_delta`
+- `toolcall_end`
+- `done`
+- `error`
+
+### Event Shapes
+
+建议事件对象按具体事件分拆，而不是建模为单个超大字典对象。
+
+#### StartEvent
+
+- `type = "start"`
+- `partial: AssistantMessage`
+
+#### TextStartEvent
+
+- `type = "text_start"`
+- `content_index: int`
+- `partial: AssistantMessage`
+
+#### TextDeltaEvent
+
+- `type = "text_delta"`
+- `content_index: int`
+- `delta: str`
+- `partial: AssistantMessage`
+
+#### TextEndEvent
+
+- `type = "text_end"`
+- `content_index: int`
+- `content: str`
+- `partial: AssistantMessage`
+
+#### ThinkingStartEvent
+
+- `type = "thinking_start"`
+- `content_index: int`
+- `partial: AssistantMessage`
+
+#### ThinkingDeltaEvent
+
+- `type = "thinking_delta"`
+- `content_index: int`
+- `delta: str`
+- `partial: AssistantMessage`
+
+#### ThinkingEndEvent
+
+- `type = "thinking_end"`
+- `content_index: int`
+- `content: str`
+- `partial: AssistantMessage`
+
+#### ToolCallStartEvent
+
+- `type = "toolcall_start"`
+- `content_index: int`
+- `partial: AssistantMessage`
+
+#### ToolCallDeltaEvent
+
+- `type = "toolcall_delta"`
+- `content_index: int`
+- `delta: str`
+- `partial: AssistantMessage`
+
+#### ToolCallEndEvent
+
+- `type = "toolcall_end"`
+- `content_index: int`
+- `tool_call: ToolCall`
+- `partial: AssistantMessage`
+
+#### DoneEvent
+
+- `type = "done"`
+- `reason: Literal["stop", "length", "toolUse"]`
+- `message: AssistantMessage`
+
+#### ErrorEvent
+
+- `type = "error"`
+- `reason: Literal["aborted", "error"]`
+- `error: AssistantMessage`
+
+### EventStream
+
+`AssistantMessageEventStream` 不在本文档中展开具体实现。  
+它属于带运行行为的 streaming 对象，应在独立模块中定义。
+
+但其公共语义建议冻结为：
+
+- 对外是单一只读 stream 对象
+- 支持异步迭代 `AssistantMessageEvent`
+- 支持 `result()` 收敛为最终 `AssistantMessage`
+- 不将 `push()`、`end()`、writer-side 方法暴露为 public contract
+
+### StreamFunction
+
+标准流式函数签名。
+
+语义要求：
+
+- 输入 `model`、`context`、`options`
+- `await` 后输出 `AssistantMessageEventStream`
+- 失败、中断、终止通过流内事件表达，而不是作为常规异常表达
+
+---
+
+## 11. Type Dependency Direction
+
+建议依赖方向如下：
+
+```text
+Scalar Types
+    ↓
+Content / Usage / Model
+    ↓
+Message
+    ↓
+Tool / Context
+    ↓
+Options
+    ↓
+Streaming Events
+```
+
+更具体地：
+
+- `Content` 不依赖 `Message`
+- `Usage` 不依赖 `Message`
+- `Model` 不依赖 `Message`
+- `AssistantMessage` 依赖 `Content` + `Usage` + `StopReason`
+- `Context` 依赖 `Message` + `Tool`
+- `AssistantMessageEvent` 依赖 `AssistantMessage` + `ToolCall`
+
+---
+
+## 12. Python Representation Guidance
+
+v0.1 建议的 Python 表达方式如下：
+
+- 核心值对象优先使用 `@dataclass(slots=True)`
+- 标量约束优先使用 `Literal` type alias
+- 联合类型优先使用 `A | B | C`
+- 不急于引入复杂继承树
+- 不在 v0.1 中引入 Pydantic 作为 public types 前提
+
+---
+
+## 13. Compatibility Notes
+
+为了保持与 `pi-ai` 的语义兼容，建议遵循：
+
+1. 保留 `toolCall`、`toolUse` 等协议字面值
+2. 允许字段名采用 Python 风格，例如：
+   - `base_url`
+   - `context_window`
+   - `response_id`
+   - `stop_reason`
+3. 保留 `signal` 字段名，但以 Python 协议类型承载取消语义
+4. 不在 AI 层引入 `Agent*` 概念
+5. 不在 v0.1 中扩大职责边界到 tool orchestration 或 boundary protocol
+6. `AssistantMessageEventStream` 的 public contract 保持只读，内部可读写分离
+
+---
+
+## 14. Next Step
+
+在本类型系统基础上，下一步建议继续定义：
+
+1. `AssistantMessageEventStream` 的 Python 形态
+2. `ApiProvider` registry 形态
+3. `stream()` / `complete()` / `stream_simple()` / `complete_simple()` 的 public API 签名

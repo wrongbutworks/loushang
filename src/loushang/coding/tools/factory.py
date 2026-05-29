@@ -1,0 +1,458 @@
+from __future__ import annotations
+
+from dataclasses import dataclass, replace
+from typing import Any, Literal
+
+from loushang.agent.types import AgentTool
+from loushang.coding.diagnostics import DiagnosticsService
+from loushang.coding.exec import ExecService
+from loushang.coding.policy import ApprovalResolver, PolicyEngine
+
+from .bash import BashOperations, BashSpawnHook, BashToolOptions, create_bash_tool_definition
+from .context import ToolContext, ToolContextProvider
+from .edit import EditToolOptions, create_edit_tool_definition
+from .external_tools import (
+    ExternalToolPolicy,
+    ExternalToolDownloader,
+    ExternalToolResolver,
+    GitHubReleaseExternalToolDownloader,
+    external_tool_required_for_policy,
+    normalize_external_tool_policy,
+)
+from .find import FindToolOptions, create_find_tool_definition
+from .grep import GrepToolOptions, create_grep_tool_definition
+from .ls import LsToolOptions, create_ls_tool_definition
+from .operations import (
+    EditOperations,
+    FindOperations,
+    GrepOperations,
+    LsOperations,
+    ReadOperations,
+    ToolOperations,
+    WriteOperations,
+)
+from .read import ReadToolOptions, create_read_tool_definition
+from .types import ToolDefinition
+from .wrapper import wrap_tool_definition
+from .write import WriteToolOptions, create_write_tool_definition
+
+
+ToolName = Literal["read", "bash", "edit", "write", "grep", "find", "ls"]
+Tool = AgentTool[Any]
+ToolDef = ToolDefinition
+ALL_TOOL_NAMES: tuple[ToolName, ...] = ("read", "bash", "edit", "write", "grep", "find", "ls")
+CODING_TOOL_NAMES: tuple[ToolName, ...] = ("read", "bash", "edit", "write")
+READ_ONLY_TOOL_NAMES: tuple[ToolName, ...] = ("read", "grep", "find", "ls")
+allToolNames: set[ToolName] = set(ALL_TOOL_NAMES)
+codingToolNames: set[ToolName] = set(CODING_TOOL_NAMES)
+readOnlyToolNames: set[ToolName] = set(READ_ONLY_TOOL_NAMES)
+
+
+@dataclass(frozen=True)
+class ToolsOptions:
+    read: ReadToolOptions | None = None
+    bash: BashToolOptions | None = None
+    write: WriteToolOptions | None = None
+    edit: EditToolOptions | None = None
+    grep: GrepToolOptions | None = None
+    find: FindToolOptions | None = None
+    ls: LsToolOptions | None = None
+    operations: ToolOperations | None = None
+    read_operations: ReadOperations | None = None
+    ls_operations: LsOperations | None = None
+    find_operations: FindOperations | None = None
+    grep_operations: GrepOperations | None = None
+    write_operations: WriteOperations | None = None
+    edit_operations: EditOperations | None = None
+    policy_engine: PolicyEngine | None = None
+    approval_resolver: ApprovalResolver | None = None
+    exec_service: ExecService | None = None
+    diagnostics_service: DiagnosticsService | None = None
+    bash_operations: BashOperations | None = None
+    command_prefix: str | None = None
+    shell_path: str | None = None
+    spawn_hook: BashSpawnHook | None = None
+    external_tool_resolver: ExternalToolResolver | None = None
+    external_tool_downloader: ExternalToolDownloader | None = None
+    external_tool_policy: ExternalToolPolicy | None = None
+    allow_external_tool_downloads: bool = False
+    require_external_tools: bool = False
+
+
+def create_tool_definition(tool_name: ToolName, *, options: ToolsOptions | None = None) -> ToolDefinition:
+    options = options or ToolsOptions()
+    if tool_name == "read":
+        return create_read_tool_definition(
+            options=options.read,
+            operations=options.read_operations or options.operations,
+            policy_engine=options.policy_engine,
+            approval_resolver=options.approval_resolver,
+        )
+    if tool_name == "bash":
+        return create_bash_tool_definition(
+            options=options.bash,
+            policy_engine=options.policy_engine,
+            exec_service=options.exec_service,
+            diagnostics_service=options.diagnostics_service,
+            operations=options.bash_operations,
+            command_prefix=options.command_prefix,
+            shell_path=options.shell_path,
+            spawn_hook=options.spawn_hook,
+            approval_resolver=options.approval_resolver,
+        )
+    if tool_name == "edit":
+        return create_edit_tool_definition(
+            options=options.edit,
+            operations=options.edit_operations or options.operations,
+            policy_engine=options.policy_engine,
+            approval_resolver=options.approval_resolver,
+        )
+    if tool_name == "write":
+        return create_write_tool_definition(
+            options=options.write,
+            operations=options.write_operations or options.operations,
+            policy_engine=options.policy_engine,
+            approval_resolver=options.approval_resolver,
+        )
+    if tool_name == "grep":
+        return create_grep_tool_definition(
+            options=_grep_options(options),
+            operations=options.grep_operations or options.operations,
+            policy_engine=options.policy_engine,
+            approval_resolver=options.approval_resolver,
+        )
+    if tool_name == "find":
+        return create_find_tool_definition(
+            options=_find_options(options),
+            operations=options.find_operations or options.operations,
+            policy_engine=options.policy_engine,
+            approval_resolver=options.approval_resolver,
+        )
+    if tool_name == "ls":
+        return create_ls_tool_definition(
+            options=options.ls,
+            operations=options.ls_operations or options.operations,
+            policy_engine=options.policy_engine,
+            approval_resolver=options.approval_resolver,
+        )
+    raise ValueError(f"Unknown tool name: {tool_name}")
+
+
+def _find_options(options: ToolsOptions) -> FindToolOptions | None:
+    factory_policy = _external_tool_policy(options)
+    if (
+        factory_policy is None
+        and options.external_tool_resolver is None
+        and options.external_tool_downloader is None
+        and not options.allow_external_tool_downloads
+        and not options.require_external_tools
+    ):
+        return options.find
+    current = options.find or FindToolOptions()
+    policy = current.external_tool_policy or factory_policy
+    return replace(
+        current,
+        external_tool_resolver=current.external_tool_resolver or options.external_tool_resolver,
+        external_tool_downloader=current.external_tool_downloader or _external_tool_downloader(options, policy),
+        external_tool_policy=policy,
+        allow_external_tool_downloads=current.allow_external_tool_downloads or options.allow_external_tool_downloads,
+        require_external_tool=current.require_external_tool
+        or external_tool_required_for_policy(policy, require=options.require_external_tools),
+    )
+
+
+def _grep_options(options: ToolsOptions) -> GrepToolOptions | None:
+    factory_policy = _external_tool_policy(options)
+    if (
+        factory_policy is None
+        and options.external_tool_resolver is None
+        and options.external_tool_downloader is None
+        and not options.allow_external_tool_downloads
+        and not options.require_external_tools
+    ):
+        return options.grep
+    current = options.grep or GrepToolOptions()
+    policy = current.external_tool_policy or factory_policy
+    return replace(
+        current,
+        external_tool_resolver=current.external_tool_resolver or options.external_tool_resolver,
+        external_tool_downloader=current.external_tool_downloader or _external_tool_downloader(options, policy),
+        external_tool_policy=policy,
+        allow_external_tool_downloads=current.allow_external_tool_downloads or options.allow_external_tool_downloads,
+        require_external_tool=current.require_external_tool
+        or external_tool_required_for_policy(policy, require=options.require_external_tools),
+    )
+
+
+def _external_tool_policy(options: ToolsOptions) -> ExternalToolPolicy | None:
+    return normalize_external_tool_policy(
+        options.external_tool_policy,
+        allow_download=options.allow_external_tool_downloads,
+    )
+
+
+def _external_tool_downloader(
+    options: ToolsOptions,
+    policy: ExternalToolPolicy | None,
+) -> ExternalToolDownloader | None:
+    if policy == "never":
+        return None
+    if options.external_tool_downloader is not None:
+        return options.external_tool_downloader
+    if policy in {"auto", "required"} or options.allow_external_tool_downloads:
+        return GitHubReleaseExternalToolDownloader()
+    return None
+
+
+def create_coding_tool_definitions(*, options: ToolsOptions | None = None) -> list[ToolDefinition]:
+    return [create_tool_definition(tool_name, options=options) for tool_name in CODING_TOOL_NAMES]
+
+
+def create_read_only_tool_definitions(*, options: ToolsOptions | None = None) -> list[ToolDefinition]:
+    return [create_tool_definition(tool_name, options=options) for tool_name in READ_ONLY_TOOL_NAMES]
+
+
+def create_all_tool_definitions(*, options: ToolsOptions | None = None) -> dict[ToolName, ToolDefinition]:
+    return {tool_name: create_tool_definition(tool_name, options=options) for tool_name in ALL_TOOL_NAMES}
+
+
+def create_tool(
+    tool_name: ToolName,
+    *,
+    cwd: str | None = None,
+    options: ToolsOptions | None = None,
+    context_provider: ToolContextProvider | None = None,
+    model: object | None = None,
+) -> AgentTool[Any]:
+    return wrap_tool_definition(
+        create_tool_definition(tool_name, options=options),
+        context_provider=_create_context_provider(
+            cwd=cwd,
+            options=options,
+            context_provider=context_provider,
+            model=model,
+        ),
+    )
+
+
+def create_read_tool(
+    cwd: str | None = None,
+    options: ToolsOptions | None = None,
+    *,
+    context_provider: ToolContextProvider | None = None,
+    model: object | None = None,
+) -> AgentTool[Any]:
+    return create_tool("read", cwd=cwd, options=options, context_provider=context_provider, model=model)
+
+
+def create_bash_tool(
+    cwd: str | None = None,
+    options: ToolsOptions | None = None,
+    *,
+    context_provider: ToolContextProvider | None = None,
+    model: object | None = None,
+) -> AgentTool[Any]:
+    return create_tool("bash", cwd=cwd, options=options, context_provider=context_provider, model=model)
+
+
+def create_edit_tool(
+    cwd: str | None = None,
+    options: ToolsOptions | None = None,
+    *,
+    context_provider: ToolContextProvider | None = None,
+    model: object | None = None,
+) -> AgentTool[Any]:
+    return create_tool("edit", cwd=cwd, options=options, context_provider=context_provider, model=model)
+
+
+def create_write_tool(
+    cwd: str | None = None,
+    options: ToolsOptions | None = None,
+    *,
+    context_provider: ToolContextProvider | None = None,
+    model: object | None = None,
+) -> AgentTool[Any]:
+    return create_tool("write", cwd=cwd, options=options, context_provider=context_provider, model=model)
+
+
+def create_grep_tool(
+    cwd: str | None = None,
+    options: ToolsOptions | None = None,
+    *,
+    context_provider: ToolContextProvider | None = None,
+    model: object | None = None,
+) -> AgentTool[Any]:
+    return create_tool("grep", cwd=cwd, options=options, context_provider=context_provider, model=model)
+
+
+def create_find_tool(
+    cwd: str | None = None,
+    options: ToolsOptions | None = None,
+    *,
+    context_provider: ToolContextProvider | None = None,
+    model: object | None = None,
+) -> AgentTool[Any]:
+    return create_tool("find", cwd=cwd, options=options, context_provider=context_provider, model=model)
+
+
+def create_ls_tool(
+    cwd: str | None = None,
+    options: ToolsOptions | None = None,
+    *,
+    context_provider: ToolContextProvider | None = None,
+    model: object | None = None,
+) -> AgentTool[Any]:
+    return create_tool("ls", cwd=cwd, options=options, context_provider=context_provider, model=model)
+
+
+def create_coding_tools(
+    *,
+    cwd: str | None = None,
+    options: ToolsOptions | None = None,
+    context_provider: ToolContextProvider | None = None,
+    model: object | None = None,
+) -> list[AgentTool[Any]]:
+    return [
+        create_tool(tool_name, cwd=cwd, options=options, context_provider=context_provider, model=model)
+        for tool_name in CODING_TOOL_NAMES
+    ]
+
+
+def create_read_only_tools(
+    *,
+    cwd: str | None = None,
+    options: ToolsOptions | None = None,
+    context_provider: ToolContextProvider | None = None,
+    model: object | None = None,
+) -> list[AgentTool[Any]]:
+    return [
+        create_tool(tool_name, cwd=cwd, options=options, context_provider=context_provider, model=model)
+        for tool_name in READ_ONLY_TOOL_NAMES
+    ]
+
+
+def create_all_tools(
+    *,
+    cwd: str | None = None,
+    options: ToolsOptions | None = None,
+    context_provider: ToolContextProvider | None = None,
+    model: object | None = None,
+) -> dict[ToolName, AgentTool[Any]]:
+    return {
+        tool_name: create_tool(tool_name, cwd=cwd, options=options, context_provider=context_provider, model=model)
+        for tool_name in ALL_TOOL_NAMES
+    }
+
+
+def createToolDefinition(
+    tool_name: ToolName,
+    cwd: str | None = None,
+    options: ToolsOptions | None = None,
+) -> ToolDefinition:
+    del cwd
+    return create_tool_definition(tool_name, options=options)
+
+
+def createTool(
+    tool_name: ToolName,
+    cwd: str | None = None,
+    options: ToolsOptions | None = None,
+) -> AgentTool[Any]:
+    return create_tool(tool_name, cwd=cwd, options=options)
+
+
+def createReadTool(cwd: str | None = None, options: ToolsOptions | None = None) -> AgentTool[Any]:
+    return create_read_tool(cwd=cwd, options=options)
+
+
+def createBashTool(cwd: str | None = None, options: ToolsOptions | None = None) -> AgentTool[Any]:
+    return create_bash_tool(cwd=cwd, options=options)
+
+
+def createEditTool(cwd: str | None = None, options: ToolsOptions | None = None) -> AgentTool[Any]:
+    return create_edit_tool(cwd=cwd, options=options)
+
+
+def createWriteTool(cwd: str | None = None, options: ToolsOptions | None = None) -> AgentTool[Any]:
+    return create_write_tool(cwd=cwd, options=options)
+
+
+def createGrepTool(cwd: str | None = None, options: ToolsOptions | None = None) -> AgentTool[Any]:
+    return create_grep_tool(cwd=cwd, options=options)
+
+
+def createFindTool(cwd: str | None = None, options: ToolsOptions | None = None) -> AgentTool[Any]:
+    return create_find_tool(cwd=cwd, options=options)
+
+
+def createLsTool(cwd: str | None = None, options: ToolsOptions | None = None) -> AgentTool[Any]:
+    return create_ls_tool(cwd=cwd, options=options)
+
+
+def createCodingToolDefinitions(
+    cwd: str | None = None,
+    options: ToolsOptions | None = None,
+) -> list[ToolDefinition]:
+    del cwd
+    return create_coding_tool_definitions(options=options)
+
+
+def createReadOnlyToolDefinitions(
+    cwd: str | None = None,
+    options: ToolsOptions | None = None,
+) -> list[ToolDefinition]:
+    del cwd
+    return create_read_only_tool_definitions(options=options)
+
+
+def createAllToolDefinitions(
+    cwd: str | None = None,
+    options: ToolsOptions | None = None,
+) -> dict[ToolName, ToolDefinition]:
+    del cwd
+    return create_all_tool_definitions(options=options)
+
+
+def createCodingTools(
+    cwd: str | None = None,
+    options: ToolsOptions | None = None,
+) -> list[AgentTool[Any]]:
+    return create_coding_tools(cwd=cwd, options=options)
+
+
+def createReadOnlyTools(
+    cwd: str | None = None,
+    options: ToolsOptions | None = None,
+) -> list[AgentTool[Any]]:
+    return create_read_only_tools(cwd=cwd, options=options)
+
+
+def createAllTools(
+    cwd: str | None = None,
+    options: ToolsOptions | None = None,
+) -> dict[ToolName, AgentTool[Any]]:
+    return create_all_tools(cwd=cwd, options=options)
+
+
+def _create_context_provider(
+    *,
+    cwd: str | None,
+    options: ToolsOptions | None,
+    context_provider: ToolContextProvider | None,
+    model: object | None,
+) -> ToolContextProvider | None:
+    if context_provider is not None:
+        return context_provider
+    diagnostics = options.diagnostics_service if options is not None else None
+    if cwd is None and diagnostics is None and model is None:
+        return None
+
+    def _context_provider(*, tool_call_id: str) -> ToolContext:
+        return ToolContext(
+            tool_call_id=tool_call_id,
+            cwd=cwd,
+            diagnostics=diagnostics,
+            model=model,
+        )
+
+    return _context_provider

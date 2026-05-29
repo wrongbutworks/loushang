@@ -1,0 +1,22 @@
+name: steer follow-up mixed
+backend: fake
+steps:
+  - prompt: 正在执行长任务
+    hold: true
+  - wait_for:
+      event: run.started
+      timeout_s: 1
+  - wait: 0.01
+  - steer: 请先调整当前任务方向
+  - follow_up: 下一轮继续回答你好
+  - expect:
+      events:
+        - event: queue.steer_added
+          contains: 请先调整当前任务方向
+        - event: queue.follow_up_added
+          contains: 下一轮继续回答你好
+      queue:
+        steering:
+          - 请先调整当前任务方向
+        follow_up:
+          - 下一轮继续回答你好

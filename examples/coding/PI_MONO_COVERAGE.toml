@@ -1,0 +1,797 @@
+[meta]
+source_project = "pi-mono"
+source_root = "packages/coding-agent/examples"
+target_project = "loushang"
+target_root = "examples/coding"
+status_values = ["covered", "partial", "planned", "deferred", "not_applicable"]
+portability_values = ["portable", "adapted", "deferred", "not_applicable"]
+
+[[pi_example]]
+path = "packages/coding-agent/examples/sdk/01-minimal.ts"
+kind = "sdk"
+topic = "minimal session"
+target_prefix = "sdk"
+status = "covered"
+portability = "portable"
+covered_by = ["legacy-001"]
+gap = ""
+
+[[pi_example]]
+path = "packages/coding-agent/examples/sdk/02-custom-model.ts"
+kind = "sdk"
+topic = "custom model and thinking level"
+target_prefix = "model"
+status = "covered"
+portability = "portable"
+covered_by = ["legacy-002", "legacy-021"]
+gap = "thinking level needs a dedicated observable field in a future model-* script."
+
+[[pi_example]]
+path = "packages/coding-agent/examples/sdk/03-custom-prompt.ts"
+kind = "sdk"
+topic = "custom system prompt"
+target_prefix = "prompt"
+status = "covered"
+portability = "portable"
+covered_by = ["legacy-003"]
+gap = ""
+
+[[pi_example]]
+path = "packages/coding-agent/examples/sdk/04-skills.ts"
+kind = "sdk"
+topic = "discover, filter, or replace skills"
+target_prefix = "skill"
+status = "covered"
+portability = "portable"
+covered_by = ["skill-01"]
+gap = ""
+
+[[pi_example]]
+path = "packages/coding-agent/examples/sdk/05-tools.ts"
+kind = "sdk"
+topic = "built-in tools and custom tools"
+target_prefix = "tools"
+status = "covered"
+portability = "portable"
+covered_by = ["legacy-004", "legacy-005", "legacy-015", "legacy-016", "legacy-ext-03"]
+gap = ""
+
+[[pi_example]]
+path = "packages/coding-agent/examples/sdk/06-extensions.ts"
+kind = "sdk"
+topic = "extensions logging, blocking, and result modification"
+target_prefix = "ext"
+status = "covered"
+portability = "portable"
+covered_by = ["legacy-ext-01", "legacy-ext-04", "legacy-ext-11"]
+gap = ""
+
+[[pi_example]]
+path = "packages/coding-agent/examples/sdk/07-context-files.ts"
+kind = "sdk"
+topic = "AGENTS.md context files"
+target_prefix = "config"
+status = "partial"
+portability = "portable"
+covered_by = []
+gap = "Need dedicated AGENTS/context file load-order example with resolved context output."
+
+[[pi_example]]
+path = "packages/coding-agent/examples/sdk/08-prompt-templates.ts"
+kind = "sdk"
+topic = "file-based prompt templates and slash commands"
+target_prefix = "prompt"
+status = "partial"
+portability = "portable"
+covered_by = ["legacy-003"]
+gap = "Need prompt template expansion and cmd-* routing example."
+
+[[pi_example]]
+path = "packages/coding-agent/examples/sdk/09-api-keys-and-oauth.ts"
+kind = "sdk"
+topic = "API key resolution and OAuth config"
+target_prefix = "provider"
+status = "partial"
+portability = "portable"
+covered_by = ["legacy-017", "legacy-020"]
+gap = "API key path is covered; OAuth provider flow is still planned."
+
+[[pi_example]]
+path = "packages/coding-agent/examples/sdk/10-settings.ts"
+kind = "sdk"
+topic = "settings overrides"
+target_prefix = "config"
+status = "planned"
+portability = "portable"
+covered_by = []
+gap = "Need settings override example for compaction, retry, terminal/output behavior."
+
+[[pi_example]]
+path = "packages/coding-agent/examples/sdk/11-sessions.ts"
+kind = "sdk"
+topic = "in-memory, persistent, continue, list sessions"
+target_prefix = "run"
+status = "covered"
+portability = "portable"
+covered_by = ["legacy-007", "legacy-008", "legacy-019"]
+gap = ""
+
+[[pi_example]]
+path = "packages/coding-agent/examples/sdk/12-full-control.ts"
+kind = "sdk"
+topic = "replace everything, no discovery"
+target_prefix = "sdk"
+status = "partial"
+portability = "portable"
+covered_by = []
+gap = "Need full-control script showing explicit auth, model registry, resources, tools, session manager, and settings manager."
+
+[[pi_example]]
+path = "packages/coding-agent/examples/sdk/13-session-runtime.ts"
+kind = "sdk"
+topic = "runtime-backed session replacement"
+target_prefix = "run"
+status = "partial"
+portability = "portable"
+covered_by = ["legacy-008", "legacy-019"]
+gap = "Need runtime replacement/recreate example when cwd/session changes."
+
+[[pi_example]]
+path = "packages/coding-agent/examples/extensions/permission-gate.ts"
+kind = "extension"
+topic = "confirm dangerous bash commands"
+target_prefix = "tools"
+status = "planned"
+portability = "portable"
+covered_by = []
+gap = "Implement tool_call guard with allow/deny observable output."
+
+[[pi_example]]
+path = "packages/coding-agent/examples/extensions/protected-paths.ts"
+kind = "extension"
+topic = "block writes to protected paths"
+target_prefix = "tools"
+status = "planned"
+portability = "portable"
+covered_by = []
+gap = "Implement write/edit guard for .env, .git, and node_modules paths."
+
+[[pi_example]]
+path = "packages/coding-agent/examples/extensions/confirm-destructive.ts"
+kind = "extension"
+topic = "confirm destructive session actions"
+target_prefix = "run"
+status = "planned"
+portability = "adapted"
+covered_by = []
+gap = "Map clear/switch/fork confirmation to loushang session commands."
+
+[[pi_example]]
+path = "packages/coding-agent/examples/extensions/dirty-repo-guard.ts"
+kind = "extension"
+topic = "prevent session changes with dirty git state"
+target_prefix = "git"
+status = "planned"
+portability = "portable"
+covered_by = []
+gap = "Need offline git status guard example."
+
+[[pi_example]]
+path = "packages/coding-agent/examples/extensions/sandbox/"
+kind = "extension"
+topic = "OS-level sandbox runtime"
+target_prefix = "tools"
+status = "deferred"
+portability = "deferred"
+covered_by = []
+gap = "Depends on loushang sandbox abstraction."
+
+[[pi_example]]
+path = "packages/coding-agent/examples/extensions/todo.ts"
+kind = "extension"
+topic = "todo tool and /todos command with state"
+target_prefix = "cmd"
+status = "partial"
+portability = "portable"
+covered_by = []
+gap = "Need combined custom tool, command, state persistence, and renderer fallback."
+
+[[pi_example]]
+path = "packages/coding-agent/examples/extensions/hello.ts"
+kind = "extension"
+topic = "minimal custom tool"
+target_prefix = "ext"
+status = "covered"
+portability = "portable"
+covered_by = ["legacy-ext-03"]
+gap = ""
+
+[[pi_example]]
+path = "packages/coding-agent/examples/extensions/question.ts"
+kind = "extension"
+topic = "single-question UI select"
+target_prefix = "ui"
+status = "planned"
+portability = "adapted"
+covered_by = []
+gap = "Adapt ctx.ui.select to text/event projection."
+
+[[pi_example]]
+path = "packages/coding-agent/examples/extensions/questionnaire.ts"
+kind = "extension"
+topic = "multi-question UI flow"
+target_prefix = "ui"
+status = "planned"
+portability = "adapted"
+covered_by = []
+gap = "Adapt tabbed UI to sequential prompt/event output."
+
+[[pi_example]]
+path = "packages/coding-agent/examples/extensions/tool-override.ts"
+kind = "extension"
+topic = "override built-in tools"
+target_prefix = "tools"
+status = "partial"
+portability = "portable"
+covered_by = ["legacy-ext-04", "legacy-ext-11"]
+gap = "Need explicit built-in read/bash override example."
+
+[[pi_example]]
+path = "packages/coding-agent/examples/extensions/dynamic-tools.ts"
+kind = "extension"
+topic = "register tools dynamically"
+target_prefix = "tools"
+status = "planned"
+portability = "portable"
+covered_by = []
+gap = "Need session_start and command-triggered dynamic registration example."
+
+[[pi_example]]
+path = "packages/coding-agent/examples/extensions/structured-output.ts"
+kind = "extension"
+topic = "final structured-output tool"
+target_prefix = "tools"
+status = "planned"
+portability = "portable"
+covered_by = []
+gap = "Need tool result with terminate-like behavior or loushang equivalent."
+
+[[pi_example]]
+path = "packages/coding-agent/examples/extensions/built-in-tool-renderer.ts"
+kind = "extension"
+topic = "custom built-in tool rendering"
+target_prefix = "ui"
+status = "deferred"
+portability = "adapted"
+covered_by = []
+gap = "Renderer-specific; first implement text projection contract."
+
+[[pi_example]]
+path = "packages/coding-agent/examples/extensions/minimal-mode.ts"
+kind = "extension"
+topic = "minimal tool rendering"
+target_prefix = "ui"
+status = "deferred"
+portability = "adapted"
+covered_by = []
+gap = "Renderer-specific; can become event projection example later."
+
+[[pi_example]]
+path = "packages/coding-agent/examples/extensions/truncated-tool.ts"
+kind = "extension"
+topic = "truncate large tool output"
+target_prefix = "tools"
+status = "planned"
+portability = "portable"
+covered_by = []
+gap = "Need output truncation with byte/line limits."
+
+[[pi_example]]
+path = "packages/coding-agent/examples/extensions/antigravity-image-gen.ts"
+kind = "extension"
+topic = "image generation tool"
+target_prefix = "tools"
+status = "deferred"
+portability = "deferred"
+covered_by = []
+gap = "External service-specific; defer until media tool boundary exists."
+
+[[pi_example]]
+path = "packages/coding-agent/examples/extensions/ssh.ts"
+kind = "extension"
+topic = "delegate tools to remote machine via SSH"
+target_prefix = "tools"
+status = "deferred"
+portability = "deferred"
+covered_by = []
+gap = "Requires remote tool delegation abstraction."
+
+[[pi_example]]
+path = "packages/coding-agent/examples/extensions/subagent/"
+kind = "extension"
+topic = "specialized subagents"
+target_prefix = "ext"
+status = "deferred"
+portability = "deferred"
+covered_by = []
+gap = "Depends on loushang subagent API shape."
+
+[[pi_example]]
+path = "packages/coding-agent/examples/extensions/preset.ts"
+kind = "extension"
+topic = "named presets via flag and /preset command"
+target_prefix = "cmd"
+status = "planned"
+portability = "portable"
+covered_by = []
+gap = "Need command-backed model/tools/instructions preset example."
+
+[[pi_example]]
+path = "packages/coding-agent/examples/extensions/plan-mode/"
+kind = "extension"
+topic = "read-only plan mode"
+target_prefix = "cmd"
+status = "planned"
+portability = "adapted"
+covered_by = []
+gap = "Need /plan command with read-only toolset and step tracking."
+
+[[pi_example]]
+path = "packages/coding-agent/examples/extensions/tools.ts"
+kind = "extension"
+topic = "interactive /tools command"
+target_prefix = "cmd"
+status = "planned"
+portability = "portable"
+covered_by = []
+gap = "Need command to enable/disable tool groups with persistence."
+
+[[pi_example]]
+path = "packages/coding-agent/examples/extensions/handoff.ts"
+kind = "extension"
+topic = "handoff to focused session"
+target_prefix = "run"
+status = "planned"
+portability = "adapted"
+covered_by = []
+gap = "Need session transfer/export/import story."
+
+[[pi_example]]
+path = "packages/coding-agent/examples/extensions/qna.ts"
+kind = "extension"
+topic = "extract questions into editor"
+target_prefix = "ui"
+status = "planned"
+portability = "adapted"
+covered_by = []
+gap = "Adapt editor injection to prompt suggestion output."
+
+[[pi_example]]
+path = "packages/coding-agent/examples/extensions/status-line.ts"
+kind = "extension"
+topic = "turn progress footer"
+target_prefix = "ui"
+status = "planned"
+portability = "adapted"
+covered_by = []
+gap = "Adapt footer status to event projection."
+
+[[pi_example]]
+path = "packages/coding-agent/examples/extensions/github-issue-autocomplete.ts"
+kind = "extension"
+topic = "GitHub issue autocomplete"
+target_prefix = "cmd"
+status = "deferred"
+portability = "adapted"
+covered_by = []
+gap = "Requires autocomplete provider and gh integration boundary."
+
+[[pi_example]]
+path = "packages/coding-agent/examples/extensions/widget-placement.ts"
+kind = "extension"
+topic = "widgets above and below editor"
+target_prefix = "ui"
+status = "deferred"
+portability = "adapted"
+covered_by = []
+gap = "TUI placement-specific; represent only as UI event projection for now."
+
+[[pi_example]]
+path = "packages/coding-agent/examples/extensions/hidden-thinking-label.ts"
+kind = "extension"
+topic = "custom hidden thinking label"
+target_prefix = "ui"
+status = "planned"
+portability = "adapted"
+covered_by = []
+gap = "Map to thinking event label output."
+
+[[pi_example]]
+path = "packages/coding-agent/examples/extensions/working-indicator.ts"
+kind = "extension"
+topic = "custom streaming working indicator"
+target_prefix = "ui"
+status = "planned"
+portability = "adapted"
+covered_by = []
+gap = "Map to model/tool progress events."
+
+[[pi_example]]
+path = "packages/coding-agent/examples/extensions/model-status.ts"
+kind = "extension"
+topic = "model selection status"
+target_prefix = "ui"
+status = "planned"
+portability = "portable"
+covered_by = []
+gap = "Need model_select hook or equivalent route-change event."
+
+[[pi_example]]
+path = "packages/coding-agent/examples/extensions/snake.ts"
+kind = "extension"
+topic = "game UI extension"
+target_prefix = "ui"
+status = "not_applicable"
+portability = "not_applicable"
+covered_by = []
+gap = "TUI game demonstration; not part of coding examples mainline."
+
+[[pi_example]]
+path = "packages/coding-agent/examples/extensions/tic-tac-toe.ts"
+kind = "extension"
+topic = "game UI with sequential tools"
+target_prefix = "ui"
+status = "not_applicable"
+portability = "not_applicable"
+covered_by = []
+gap = "Game UI demonstration; sequential shared-state tool idea can be covered by tools-*."
+
+[[pi_example]]
+path = "packages/coding-agent/examples/extensions/send-user-message.ts"
+kind = "extension"
+topic = "send user message from extension"
+target_prefix = "interaction"
+status = "planned"
+portability = "portable"
+covered_by = []
+gap = "Need extension-triggered user message injection example."
+
+[[pi_example]]
+path = "packages/coding-agent/examples/extensions/timed-confirm.ts"
+kind = "extension"
+topic = "auto-dismiss confirm/select with AbortSignal"
+target_prefix = "ui"
+status = "planned"
+portability = "adapted"
+covered_by = []
+gap = "Adapt timed confirm to text/event output."
+
+[[pi_example]]
+path = "packages/coding-agent/examples/extensions/rpc-demo.ts"
+kind = "extension"
+topic = "RPC-supported extension UI methods"
+target_prefix = "rpc"
+status = "partial"
+portability = "adapted"
+covered_by = ["legacy-013"]
+gap = "Need dedicated RPC extension UI probe equivalent."
+
+[[pi_example]]
+path = "packages/coding-agent/examples/rpc-extension-ui.ts"
+kind = "rpc"
+topic = "RPC extension UI harness"
+target_prefix = "rpc"
+status = "partial"
+portability = "adapted"
+covered_by = ["legacy-013"]
+gap = "Need companion harness for UI method coverage."
+
+[[pi_example]]
+path = "packages/coding-agent/examples/extensions/modal-editor.ts"
+kind = "extension"
+topic = "custom modal editor"
+target_prefix = "ui"
+status = "not_applicable"
+portability = "not_applicable"
+covered_by = []
+gap = "Editor component implementation is TUI-specific."
+
+[[pi_example]]
+path = "packages/coding-agent/examples/extensions/rainbow-editor.ts"
+kind = "extension"
+topic = "animated custom editor"
+target_prefix = "ui"
+status = "not_applicable"
+portability = "not_applicable"
+covered_by = []
+gap = "Animated editor implementation is TUI-specific."
+
+[[pi_example]]
+path = "packages/coding-agent/examples/extensions/notify.ts"
+kind = "extension"
+topic = "desktop notification"
+target_prefix = "ui"
+status = "deferred"
+portability = "adapted"
+covered_by = []
+gap = "Can be adapted once notification event boundary exists."
+
+[[pi_example]]
+path = "packages/coding-agent/examples/extensions/titlebar-spinner.ts"
+kind = "extension"
+topic = "terminal title spinner"
+target_prefix = "ui"
+status = "not_applicable"
+portability = "not_applicable"
+covered_by = []
+gap = "Terminal title animation is not a coding example concern."
+
+[[pi_example]]
+path = "packages/coding-agent/examples/extensions/summarize.ts"
+kind = "extension"
+topic = "summarize conversation"
+target_prefix = "compaction"
+status = "planned"
+portability = "portable"
+covered_by = []
+gap = "Need summarization command or compaction-adjacent example."
+
+[[pi_example]]
+path = "packages/coding-agent/examples/extensions/custom-footer.ts"
+kind = "extension"
+topic = "custom footer"
+target_prefix = "ui"
+status = "planned"
+portability = "adapted"
+covered_by = []
+gap = "Adapt footer to text/event projection."
+
+[[pi_example]]
+path = "packages/coding-agent/examples/extensions/custom-header.ts"
+kind = "extension"
+topic = "custom header"
+target_prefix = "ui"
+status = "planned"
+portability = "adapted"
+covered_by = []
+gap = "Adapt header to text/event projection."
+
+[[pi_example]]
+path = "packages/coding-agent/examples/extensions/overlay-test.ts"
+kind = "extension"
+topic = "overlay compositing"
+target_prefix = "ui"
+status = "not_applicable"
+portability = "not_applicable"
+covered_by = []
+gap = "Overlay compositing is TUI-specific."
+
+[[pi_example]]
+path = "packages/coding-agent/examples/extensions/overlay-qa-tests.ts"
+kind = "extension"
+topic = "overlay QA"
+target_prefix = "ui"
+status = "not_applicable"
+portability = "not_applicable"
+covered_by = []
+gap = "Overlay QA is TUI-specific."
+
+[[pi_example]]
+path = "packages/coding-agent/examples/extensions/doom-overlay/"
+kind = "extension"
+topic = "real-time DOOM overlay"
+target_prefix = "ui"
+status = "not_applicable"
+portability = "not_applicable"
+covered_by = []
+gap = "Real-time overlay demo is outside coding examples scope."
+
+[[pi_example]]
+path = "packages/coding-agent/examples/extensions/shutdown-command.ts"
+kind = "extension"
+topic = "shutdown command"
+target_prefix = "cmd"
+status = "planned"
+portability = "portable"
+covered_by = []
+gap = "Need /quit or shutdown command example."
+
+[[pi_example]]
+path = "packages/coding-agent/examples/extensions/reload-runtime.ts"
+kind = "extension"
+topic = "reload runtime command and tool"
+target_prefix = "run"
+status = "planned"
+portability = "adapted"
+covered_by = []
+gap = "Need runtime reload/recreate equivalent."
+
+[[pi_example]]
+path = "packages/coding-agent/examples/extensions/interactive-shell.ts"
+kind = "extension"
+topic = "interactive user_bash shell"
+target_prefix = "tools"
+status = "deferred"
+portability = "deferred"
+covered_by = []
+gap = "Requires interactive shell handling boundary."
+
+[[pi_example]]
+path = "packages/coding-agent/examples/extensions/inline-bash.ts"
+kind = "extension"
+topic = "expand inline bash patterns in prompts"
+target_prefix = "prompt"
+status = "planned"
+portability = "portable"
+covered_by = []
+gap = "Need input transform example for !{command} expansion."
+
+[[pi_example]]
+path = "packages/coding-agent/examples/extensions/git-checkpoint.ts"
+kind = "extension"
+topic = "git stash checkpoints"
+target_prefix = "git"
+status = "covered"
+portability = "portable"
+covered_by = ["legacy-024"]
+gap = ""
+
+[[pi_example]]
+path = "packages/coding-agent/examples/extensions/auto-commit-on-exit.ts"
+kind = "extension"
+topic = "auto commit on exit"
+target_prefix = "git"
+status = "planned"
+portability = "portable"
+covered_by = []
+gap = "Need dry-run default and explicit commit opt-in."
+
+[[pi_example]]
+path = "packages/coding-agent/examples/extensions/pirate.ts"
+kind = "extension"
+topic = "dynamic system prompt append"
+target_prefix = "prompt"
+status = "partial"
+portability = "portable"
+covered_by = ["legacy-003"]
+gap = "Need extension-driven system prompt append example."
+
+[[pi_example]]
+path = "packages/coding-agent/examples/extensions/claude-rules.ts"
+kind = "extension"
+topic = "load .claude/rules into system prompt"
+target_prefix = "prompt"
+status = "planned"
+portability = "portable"
+covered_by = []
+gap = "Need rules folder discovery and prompt injection example."
+
+[[pi_example]]
+path = "packages/coding-agent/examples/extensions/custom-compaction.ts"
+kind = "extension"
+topic = "custom compaction"
+target_prefix = "compaction"
+status = "planned"
+portability = "portable"
+covered_by = []
+gap = "Need custom compaction strategy example."
+
+[[pi_example]]
+path = "packages/coding-agent/examples/extensions/trigger-compact.ts"
+kind = "extension"
+topic = "trigger compaction by context usage"
+target_prefix = "compaction"
+status = "planned"
+portability = "portable"
+covered_by = []
+gap = "Need threshold-triggered compaction command example."
+
+[[pi_example]]
+path = "packages/coding-agent/examples/extensions/mac-system-theme.ts"
+kind = "extension"
+topic = "macOS theme sync"
+target_prefix = "ui"
+status = "not_applicable"
+portability = "not_applicable"
+covered_by = []
+gap = "Platform theme sync is outside coding examples scope."
+
+[[pi_example]]
+path = "packages/coding-agent/examples/extensions/dynamic-resources/"
+kind = "extension"
+topic = "discover skills, prompts, and themes"
+target_prefix = "ext"
+status = "covered"
+portability = "portable"
+covered_by = ["legacy-ext-02", "legacy-ext-12"]
+gap = "Theme part is UI-specific and can remain adapted."
+
+[[pi_example]]
+path = "packages/coding-agent/examples/extensions/message-renderer.ts"
+kind = "extension"
+topic = "custom message renderer"
+target_prefix = "ui"
+status = "deferred"
+portability = "adapted"
+covered_by = []
+gap = "Need render hook boundary or text projection equivalent."
+
+[[pi_example]]
+path = "packages/coding-agent/examples/extensions/event-bus.ts"
+kind = "extension"
+topic = "inter-extension event bus"
+target_prefix = "ext"
+status = "planned"
+portability = "portable"
+covered_by = []
+gap = "Need event bus communication example."
+
+[[pi_example]]
+path = "packages/coding-agent/examples/extensions/session-name.ts"
+kind = "extension"
+topic = "session naming"
+target_prefix = "run"
+status = "partial"
+portability = "portable"
+covered_by = ["legacy-012", "legacy-019"]
+gap = "Need extension-set session name example."
+
+[[pi_example]]
+path = "packages/coding-agent/examples/extensions/bookmark.ts"
+kind = "extension"
+topic = "bookmark labels for tree navigation"
+target_prefix = "run"
+status = "planned"
+portability = "adapted"
+covered_by = []
+gap = "Need label/bookmark equivalent if session tree exists."
+
+[[pi_example]]
+path = "packages/coding-agent/examples/extensions/custom-provider-anthropic/"
+kind = "extension"
+topic = "custom Anthropic provider"
+target_prefix = "provider"
+status = "planned"
+portability = "portable"
+covered_by = []
+gap = "Need custom provider with OAuth/streaming example."
+
+[[pi_example]]
+path = "packages/coding-agent/examples/extensions/custom-provider-gitlab-duo/"
+kind = "extension"
+topic = "GitLab Duo provider"
+target_prefix = "provider"
+status = "planned"
+portability = "portable"
+covered_by = []
+gap = "Need proxy provider example or mark external-specific after API review."
+
+[[pi_example]]
+path = "packages/coding-agent/examples/extensions/custom-provider-qwen-cli/"
+kind = "extension"
+topic = "Qwen CLI provider"
+target_prefix = "provider"
+status = "planned"
+portability = "portable"
+covered_by = []
+gap = "Need OAuth device flow/provider example."
+
+[[pi_example]]
+path = "packages/coding-agent/examples/extensions/with-deps/"
+kind = "extension"
+topic = "extension with external dependencies"
+target_prefix = "ext"
+status = "planned"
+portability = "portable"
+covered_by = []
+gap = "Need extension dependency loading example."
+
+[[pi_example]]
+path = "packages/coding-agent/examples/extensions/file-trigger.ts"
+kind = "extension"
+topic = "watch trigger file and inject conversation"
+target_prefix = "ext"
+status = "planned"
+portability = "portable"
+covered_by = []
+gap = "Need file watcher or polling-based injection example."

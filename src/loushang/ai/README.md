@@ -1,0 +1,330 @@
+# `loushang.ai`
+
+`loushang.ai` 是底层 AI SDK，不是 agent 编排层。
+
+它当前负责：
+
+- 模型领域定义与装载
+- provider 请求解析与兼容性处理
+- 统一的消息、工具、流式事件协议
+- auth 解析
+- 不同 provider 的具体调用实现
+
+它当前不负责：
+
+- agent 生命周期
+- 会话管理与恢复
+- 产品级配置聚合
+- HTTP / RPC 服务层
+
+整体分层参考 `pi-mono`，原则是少层次、职责直、不要把中间投影对象过度公开。
+
+## 包结构
+
+### `model/`
+
+模型事实源与运行时索引。
+
+- `domain.py`
+  - 领域对象：`Provider`、`Endpoint`、`Model`
+  - 配套对象：`Auth`、`Capabilities`、`Compat`、`Defaults`、`Pricing`
+- `registry.py`
+  - 运行时查询容器：`ModelRegistry`
+  - 默认入口：`get_default_model_registry()`
+- `loader.py`
+  - 从内置 `models.json` 或显式文件/目录路径装载 registry
+- `models.json`
+  - 内置模型事实源
+
+当前 `model` 包的稳定心智是：
+
+- `domain` 负责定义对象
+- `registry` 负责组织和查询
+- `loader` 只负责初始化装载
+
+### `provider/`
+
+统一 provider 边界层。
+
+- `resolution.py`
+  - 从 `Model + options` 解析 `ResolvedEndpoint` / `ResolvedRequest`
+- `transforms.py`
+  - 通用 provider payload helper
+- `protocol.py`
+  - `ApiProvider` 协议
+- `carrier.py` / `transport.py` / `errors.py`
+  - 通用运行时辅助
+
+`provider/` 负责统一边界，不负责具体厂商实现。
+
+### `providers/`
+
+具体厂商适配层。
+
+- `anthropic.py`
+- `openai_completions.py`
+- `openai_responses.py`
+- `openai_codex_responses.py`
+- `faux.py`
+
+这里负责真正发请求、消费 SDK、映射 raw stream events。
+
+### `context.py` 与 `messages.py`
+
+这两层已经分开：
+
+- `context.py`
+  - 只负责 `Context` 形状整理
+  - 提取 `system_prompt`
+  - 规范化 `tools`
+- `messages.py`
+  - 负责消息规范化
+  - 负责 user content canonicalize
+  - 负责跨 provider assistant message 处理
+
+这个分法直接参考 `pi-mono` 的 `core/messages.ts` 思路。
+
+### `event_stream/`
+
+统一流式输出协议。
+
+- `stream.py`
+  - 通用 `EventStream`
+  - `AssistantMessageEventStream`
+- `assembler.py`
+  - `RawAssembler`
+  - 只负责 raw part -> event / message 拼装
+- `raw_parts.py`
+  - provider 到 assembler 的中间流协议
+
+`assembler.py` 当前不再反查 model registry。pricing enrich 由 provider 传入 pricing 元信息后完成。
+
+### `auth/`
+
+认证与 OAuth 支持。
+
+- `support.py`
+  - auth merge
+  - header material 解析
+  - model auth resolve
+- `facade.py`
+  - OAuth provider 管理入口
+- `registry.py`
+  - OAuth provider registry
+- `oauth.py` / `storage.py` / `types.py`
+  - OAuth 具体支持
+
+### 其它
+
+- `api/`
+  - `stream / complete / stream_simple / complete_simple`
+- `api_registry.py`
+  - API provider registry
+- `pricing.py`
+  - usage cost 计算
+- `tool/`
+  - tool schema、校验、provider-specific tool payload 转换
+- `types.py`
+  - 消息、usage、event 等基础协议
+- `options.py`
+  - options dataclass 定义
+
+## 根包 API
+
+根包 `loushang.ai` 当前仍然提供一个较宽的 SDK 门面，但已经避免在 import 时抢跑初始化默认 registry。
+
+主要导出分为：
+
+### 调用入口
+
+- `stream(...)`
+- `complete(...)`
+- `stream_simple(...)`
+- `complete_simple(...)`
+- `Model.stream(...)`
+- `Model.complete(...)`
+- `Model.stream_simple(...)`
+- `Model.complete_simple(...)`
+
+### 模型访问
+
+- `Model`
+- `get_model(...)`
+- `list_models(...)`
+- `get_providers()`
+
+### provider registry
+
+- `register_api_provider(...)`
+- `get_api_provider(...)`
+- `list_api_providers()`
+- `clear_api_providers()`
+- `reset_api_providers(...)`
+- `register_builtin_ai_providers(...)`
+
+### 基础类型
+
+- `Context`
+- `Message`
+- `UserMessage`
+- `AssistantMessage`
+- `ToolResultMessage`
+- `Tool`
+- `ToolCall`
+- `TextPart`
+- `ImagePart`
+- `ThinkingPart`
+- `Usage`
+- `StopReason`
+- `AssistantMessageEvent`
+- `AssistantMessageEventStream`
+
+### helper
+
+- `normalize_context(...)`
+  - accepts pi-style dict messages, including camelCase assistant/tool-result fields such as `toolCallId`, `thinkingSignature`, `thoughtSignature`, `mimeType`, and `stopReason`
+- `transform_messages(...)`
+  - repairs missing tool results with synthetic error tool results
+  - normalizes tool call ids for provider handoff and applies the same mapping to matching tool results
+  - converts provider-specific thinking blocks to text and removes tool-call thought signatures when crossing provider API boundaries
+- `to_openai_responses_tool_result_input(...)`
+  - preserves image tool results as `input_image` blocks in function-call outputs
+- `to_openai_completions_tool_result_message(...)`
+  - degrades image-only tool results to the pi-style `(see attached image)` placeholder
+- OpenAI concrete providers use the same placeholder when a tool result contains images but the target model cannot accept image input.
+- OpenAI concrete providers remove unpaired Unicode surrogate code points from outgoing payload text, matching pi's provider JSON-safety behavior.
+- Anthropic concrete provider applies the same outgoing text sanitization for system, user, assistant, thinking, and tool-result payload text.
+- `validate_tool_call(...)`
+- `validate_tool_arguments(...)`
+- `normalize_tool_call_id_for_model(...)`
+- `calculate_cost(...)`
+- `models_are_equal(...)`
+
+## Advanced API
+
+以下能力建议从子包进入，不把它们当根包稳定边界：
+
+### `loushang.ai.model`
+
+- `ModelRegistry`
+- `get_default_model_registry()`
+- `Provider`
+- `Endpoint`
+- `Auth`
+- `Capabilities`
+- `Compat`
+- `Defaults`
+- `Pricing`
+
+### `loushang.ai.provider`
+
+- `ResolvedEndpoint`
+- `ResolvedRequest`
+- `resolve_endpoint_for_model(...)`
+- `resolve_request_for_model(...)`
+
+### `loushang.ai.auth`
+
+- `resolve_auth_material(...)`
+- `resolve_auth_for_model(...)`
+- OAuth provider 与 credential 相关接口
+
+## 当前边界约定
+
+### `Model`
+
+`Model` 是上层直接持有和调用的句柄。
+
+它当前承载：
+
+- 基本标识：`id` / `provider` / `endpoint`
+- 能力：`capabilities`
+- 兼容项：`compat`
+- 默认值：`defaults`
+- 价格：`pricing`
+
+其中：
+
+- `capabilities` 表示模型本体能力
+- `defaults` 表示默认请求值
+- `compat` 表示协议兼容项
+
+`Model` 不再独立持有 `api` 事实。
+
+稳定心智是：
+
+- `Provider` 是服务提供方
+- `Endpoint` 是 provider 暴露的具体调用入口
+- `Model` 是该 endpoint 下的可调用模型句柄
+- `api` 属于 `Endpoint`，不是 `Model`
+
+因此：
+
+- 一个 provider 可以有多个 endpoint
+- 一个 endpoint 可以有多个 model
+- 同一个模型名可以在多个 endpoint 下分别出现
+- 每个 `Model` 只通过自己的 `endpoint` 被调用
+
+运行时 provider 路由由 `endpoint.api` 决定。
+
+例如：
+
+- `moonshot:openai-completions:kimi-k2.5`
+- `moonshot:openai-responses:kimi-k2.5`
+- `moonshot:anthropic-messages:kimi-k2.5`
+
+是三个不同的可调用 `Model` 句柄。
+
+### `ResolvedRequest`
+
+`ResolvedRequest` 是进入具体 provider 实现前的请求边界对象。
+
+它负责把：
+
+- `Model`
+- runtime `options`
+- auth / compat / defaults
+
+收敛为 provider 侧可直接消费的请求解析结果。
+
+它当前主要承载：
+
+- `provider`
+- `endpoint`
+- `api`
+- `base_url`
+- `headers`
+- `compat`
+- `defaults`
+- `max_tokens`
+- `reasoning_effort`
+- `temperature`
+
+## 最小调用链
+
+最简单的调用方式是直接从 `Model` 实例发起：
+
+```python
+from loushang.ai import get_model
+
+model = get_model("moonshot", "openai-completions", "kimi-k2.5")
+
+message = await model.complete(
+    {
+        "messages": [
+            {"role": "user", "content": "用一句话介绍 loushang.ai"}
+        ]
+    }
+)
+```
+
+也可以继续使用顶层函数：
+
+```python
+from loushang.ai import complete, get_model
+
+model = get_model("moonshot", "openai-completions", "kimi-k2.5")
+message = await complete(model, {"messages": [{"role": "user", "content": "hi"}]})
+```
+
+默认情况下，调用入口会自动使用默认 provider registry，并在首次调用时自动注册内置 providers。

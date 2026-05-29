@@ -1,0 +1,189 @@
+from __future__ import annotations
+
+import asyncio
+import inspect
+from typing import Any
+
+from loushang.agent.types import AgentToolResult
+from loushang.ai.types import TextPart
+from loushang.coding.tools import ToolContext, ToolDefinition, tool, tool_to_definition, wrap_tool_definition
+
+
+async def _dummy_execute(
+    tool_call_id: str,
+    params: dict[str, Any],
+    signal: object | None = None,
+    on_update: object | None = None,
+) -> AgentToolResult[dict[str, Any]]:
+    del tool_call_id, params, signal, on_update
+    return AgentToolResult(content=[], details={})
+
+
+def _provider(*, tool_call_id: str) -> ToolContext:
+    return ToolContext(tool_call_id=tool_call_id, cwd="/tmp/project")
+
+
+@tool()
+async def greet(name: str) -> str:
+    """Say hello."""
+    return f"hello {name}"
+
+
+@tool(
+    name="salute",
+    label="Salute",
+    description="Offer a formal greeting.",
+    prompt_snippet="- salute: Offer a formal greeting.",
+    prompt_guidelines=["Keep it brief.", "Use a friendly tone."],
+    schema_overrides={},
+)
+async def salute(name: str) -> str:
+    """Offer a formal greeting."""
+    return f"salute {name}"
+
+
+@tool()
+async def show_context(path: str, ctx: ToolContext) -> str:
+    return f"{ctx.cwd}:{path}"
+
+
+@tool()
+async def explicit_result(name: str) -> AgentToolResult[dict[str, str]]:
+    return AgentToolResult(content=[TextPart(type="text", text=name)], details={"name": name})
+
+
+@tool()
+async def plain_value(name: str) -> dict[str, str]:
+    return {"name": name}
+
+
+@tool()
+async def unsupported_value() -> object:
+    return object()
+
+
+@tool()
+async def fail_loudly(name: str) -> str:
+    raise ValueError(f"boom: {name}")
+
+
+def test_tool_to_definition_accepts_tool_definition_passthrough() -> None:
+    definition = ToolDefinition(
+        name="demo",
+        label="Demo",
+        description="demo",
+        parameters={
+            "type": "object",
+            "properties": {},
+            "required": [],
+            "additionalProperties": False,
+        },
+        execute=_dummy_execute,
+    )
+    assert tool_to_definition(definition) is definition
+
+
+def test_tool_to_definition_compiles_decorated_tool_metadata() -> None:
+    definition = tool_to_definition(greet)
+    assert definition.name == "greet"
+    assert definition.description == "Say hello."
+    assert definition.label == "Greet"
+
+
+def test_tool_to_definition_preserves_explicit_decorated_metadata() -> None:
+    definition = tool_to_definition(salute)
+    spec = getattr(salute, "__loushang_tool_spec__")
+    assert definition.name == "salute"
+    assert definition.label == "Salute"
+    assert definition.description == "Offer a formal greeting."
+    assert definition.prompt_snippet == "- salute: Offer a formal greeting."
+    assert definition.prompt_guidelines == ("Keep it brief.", "Use a friendly tone.")
+    assert spec.schema_overrides == {}
+    assert definition.parameters["properties"]["name"]["type"] == "string"
+
+
+def test_tool_to_definition_rejects_duck_typed_tool_like_objects() -> None:
+    class DuckTypedTool:
+        name = "duck"
+        label = "Duck"
+        description = "duck typed tool"
+        parameters: dict[str, object] = {}
+        prepare_arguments = None
+
+        async def execute(self, tool_call_id: str, params: dict[str, object], signal=None, on_update=None):
+            del tool_call_id, params, signal, on_update
+            return AgentToolResult(content=[], details={})
+
+    try:
+        tool_to_definition(DuckTypedTool())
+    except TypeError as exc:
+        assert "decorated tool" in str(exc)
+    else:
+        raise AssertionError("expected duck-typed object to be rejected")
+
+
+def test_decorated_tool_spec_remains_callable() -> None:
+    assert asyncio.run(salute("Ada")) == "salute Ada"
+
+
+def test_decorated_tool_receives_tool_context_from_provider() -> None:
+    definition = tool_to_definition(show_context)
+    tool = wrap_tool_definition(definition, context_provider=_provider)
+
+    result = asyncio.run(tool.execute("call-1", {"path": "README.md"}))
+
+    assert result.content[0].text == "/tmp/project:README.md"
+    assert result.details == "/tmp/project:README.md"
+    assert "ctx" not in definition.parameters["properties"]
+
+
+def test_decorated_tool_passes_through_explicit_agent_tool_result() -> None:
+    definition = tool_to_definition(explicit_result)
+    tool = wrap_tool_definition(definition, context_provider=_provider)
+
+    result = asyncio.run(tool.execute("call-2", {"name": "Ada"}))
+
+    assert result.content[0].text == "Ada"
+    assert result.details == {"name": "Ada"}
+
+
+def test_decorated_tool_normalizes_plain_return_values() -> None:
+    definition = tool_to_definition(plain_value)
+    tool = wrap_tool_definition(definition, context_provider=_provider)
+
+    result = asyncio.run(tool.execute("call-3", {"name": "Ada"}))
+
+    assert result.content[0].text == '{"name": "Ada"}'
+    assert result.details == {"name": "Ada"}
+
+
+def test_decorated_tool_rejects_unsupported_plain_return_values() -> None:
+    definition = tool_to_definition(unsupported_value)
+    tool = wrap_tool_definition(definition, context_provider=_provider)
+
+    try:
+        asyncio.run(tool.execute("call-4", {}))
+    except TypeError as exc:
+        assert "unsupported plain return type" in str(exc)
+    else:
+        raise AssertionError("expected unsupported plain return type to raise TypeError")
+
+
+def test_decorated_tool_exceptions_propagate_to_agent_loop_boundary() -> None:
+    definition = tool_to_definition(fail_loudly)
+    tool = wrap_tool_definition(definition, context_provider=_provider)
+
+    try:
+        asyncio.run(tool.execute("call-5", {"name": "demo"}))
+    except ValueError as exc:
+        assert str(exc) == "boom: demo"
+    else:
+        raise AssertionError("expected decorated tool exception to propagate")
+
+
+def test_tool_decorator_preserves_function_introspection_metadata() -> None:
+    signature = inspect.signature(greet)
+    assert greet.__name__ == "greet"
+    assert greet.__doc__ == "Say hello."
+    assert list(signature.parameters) == ["name"]
+    assert inspect.iscoroutinefunction(greet) is True

@@ -1,0 +1,873 @@
+{
+  "providers": {
+    "moonshot": {
+      "displayName": "Moonshot AI",
+      "website": "https://www.moonshot.ai",
+      "auth": {
+        "kind": "apiKey",
+        "apiKeyEnv": "MOONSHOT_API_KEY",
+        "header": "Authorization",
+        "prefix": "Bearer "
+      },
+      "endpoints": {
+        "openai-completions": {
+          "displayName": "Moonshot Chat Completions",
+          "baseUrl": "https://api.moonshot.cn/v1",
+          "baseUrlEnv": "MOONSHOT_COMPLETIONS_URL",
+          "api": "openai-completions",
+          "docs": "https://platform.moonshot.ai/docs/api/chat",
+          "compat": {
+            "thinkingFormat": "moonshot",
+            "supportsReasoningEffort": false,
+            "supportsDeveloperRole": false
+          },
+          "models": {
+            "kimi-k2.5": {
+              "displayName": "Kimi K2.5",
+              "family": "kimi",
+              "alias": "default-chat",
+              "knowledge": "2025-01",
+              "releaseDate": "2026-01",
+              "lastUpdated": "2026-01",
+              "pricing": {
+                "currency": "CNY",
+                "input": 4,
+                "output": 21,
+                "cacheRead": 0.7,
+                "cacheWrite": 0
+              },
+              "compat": {
+                "supportsUsageInStreaming": true,
+                "supportsStreamReasoningDelta": true,
+                "supportsReasoningEffort": true,
+                "supportsJsonSchemaStructuredOutput": true
+              },
+              "capabilities": {
+                "reasoning": true,
+                "contextWindow": 262144,
+                "maxTokens": 262144,
+                "stream": true,
+                "toolUse": true,
+                "structuredOutput": true,
+                "attachment": false,
+                "temperature": true,
+                "input": [
+                  "text",
+                  "image",
+                  "video"
+                ],
+                "output": [
+                  "text"
+                ]
+              }
+            }
+          }
+        },
+        "anthropic-messages:cn": {
+          "displayName": "Moonshot China Anthropic Messages",
+          "baseUrl": "https://api.moonshot.cn/anthropic",
+          "baseUrlEnv": "MOONSHOT_ANTHROPIC_MESSAGES_URL",
+          "api": "anthropic-messages",
+          "region": "cn",
+          "docs": "https://platform.moonshot.cn/docs/api/chat",
+          "authOverride": {
+            "kind": "apiKey",
+            "apiKeyEnv": "MOONSHOT_API_KEY",
+            "header": "x-api-key",
+            "prefix": "",
+            "extraHeaders": {
+              "anthropic-version": "2023-06-01"
+            }
+          },
+          "compat": {
+            "supportsDeveloperRole": false
+          },
+          "models": {
+            "kimi-k2-thinking": {
+              "displayName": "Kimi K2 Thinking",
+              "family": "kimi-thinking",
+              "alias": "default-thinking",
+              "knowledge": "2024-08",
+              "releaseDate": "2025-11-06",
+              "lastUpdated": "2025-11-06",
+              "pricing": {
+                "currency": "CNY",
+                "input": 4,
+                "output": 16,
+                "cacheRead": 1,
+                "cacheWrite": 0
+              },
+              "compat": {
+                "supportsUsageInStreaming": false,
+                "supportsReasoningEffort": false,
+                "supportsJsonSchemaStructuredOutput": false
+              },
+              "capabilities": {
+                "reasoning": true,
+                "contextWindow": 262144,
+                "maxTokens": 262144,
+                "stream": true,
+                "toolUse": true,
+                "structuredOutput": false,
+                "attachment": false,
+                "temperature": true,
+                "input": [
+                  "text"
+                ],
+                "output": [
+                  "text"
+                ]
+              }
+            },
+            "kimi-k2.5": {
+              "displayName": "Kimi K2.5",
+              "family": "kimi",
+              "alias": "default-chat-cn",
+              "knowledge": "2025-01",
+              "releaseDate": "2026-01",
+              "lastUpdated": "2026-01",
+              "pricing": {
+                "currency": "CNY",
+                "input": 4,
+                "output": 21,
+                "cacheRead": 0.7,
+                "cacheWrite": 0
+              },
+              "compat": {
+                "supportsUsageInStreaming": false,
+                "supportsReasoningEffort": true,
+                "supportsJsonSchemaStructuredOutput": true
+              },
+              "capabilities": {
+                "reasoning": true,
+                "contextWindow": 262144,
+                "maxTokens": 262144,
+                "stream": true,
+                "toolUse": true,
+                "structuredOutput": true,
+                "attachment": false,
+                "temperature": true,
+                "input": [
+                  "text",
+                  "image"
+                ],
+                "output": [
+                  "text"
+                ]
+              }
+            }
+          }
+        },
+        "kimi-code-anthropic": {
+          "displayName": "Kimi Code Anthropic Messages",
+          "baseUrl": "https://api.kimi.com/coding",
+          "baseUrlEnv": "MOONSHOT_ANTHROPIC_MESSAGES_URL",
+          "api": "anthropic-messages",
+          "region": "cn",
+          "lane": "coding",
+          "docs": "https://www.kimi.com/code/docs/en/",
+          "compat": {
+            "supportsDeveloperRole": false
+          },
+          "models": {
+            "kimi-for-coding": {
+              "displayName": "Kimi for Coding",
+              "family": "kimi-coding",
+              "alias": "default-coding",
+              "knowledge": "2025-01",
+              "releaseDate": "2026-01",
+              "lastUpdated": "2026-01",
+              "pricing": {
+                "currency": "CNY",
+                "input": 0,
+                "output": 0,
+                "cacheRead": 0,
+                "cacheWrite": 0
+              },
+              "compat": {
+                "supportsUsageInStreaming": false,
+                "supportsReasoningEffort": false,
+                "supportsJsonSchemaStructuredOutput": true
+              },
+              "capabilities": {
+                "reasoning": true,
+                "contextWindow": 262144,
+                "maxTokens": 32768,
+                "stream": true,
+                "toolUse": true,
+                "structuredOutput": true,
+                "attachment": false,
+                "temperature": true,
+                "input": [
+                  "text"
+                ],
+                "output": [
+                  "text"
+                ]
+              }
+            }
+          }
+        },
+        "openai-completions:cn:coding": {
+          "displayName": "Moonshot China Coding Chat Completions",
+          "baseUrl": "https://api.kimi.com/coding/v1",
+          "baseUrlEnv": "MOONSHOT_CODING_CHAT_URL",
+          "api": "openai-completions",
+          "region": "cn",
+          "lane": "coding",
+          "docs": "https://platform.moonshot.cn/docs/api/chat",
+          "compat": {
+            "thinkingFormat": "moonshot",
+            "supportsReasoningEffort": false,
+            "supportsDeveloperRole": false
+          },
+          "models": {
+            "kimi-for-coding": {
+              "displayName": "Kimi for Coding",
+              "family": "kimi-coding",
+              "alias": "default-coding",
+              "knowledge": "2025-01",
+              "releaseDate": "2026-01",
+              "lastUpdated": "2026-01",
+              "pricing": {
+                "currency": "CNY",
+                "input": 0,
+                "output": 0,
+                "cacheRead": 0,
+                "cacheWrite": 0
+              },
+              "compat": {
+                "supportsUsageInStreaming": false,
+                "supportsReasoningEffort": true,
+                "supportsJsonSchemaStructuredOutput": true
+              },
+              "capabilities": {
+                "reasoning": true,
+                "contextWindow": 262144,
+                "maxTokens": 32768,
+                "stream": true,
+                "toolUse": true,
+                "structuredOutput": true,
+                "attachment": false,
+                "temperature": true,
+                "input": [
+                  "text"
+                ],
+                "output": [
+                  "text"
+                ]
+              }
+            }
+          }
+        }
+      }
+    },
+    "dashscope": {
+      "displayName": "Alibaba Cloud DashScope",
+      "website": "https://dashscope.aliyun.com",
+      "auth": {
+        "kind": "apiKey",
+        "apiKeyEnv": "DASHSCOPE_API_KEY",
+        "header": "Authorization",
+        "prefix": "Bearer "
+      },
+      "endpoints": {
+        "openai-responses": {
+          "displayName": "DashScope Responses (China North 2, Beijing)",
+          "baseUrl": "https://dashscope.aliyuncs.com/compatible-mode/v1",
+          "baseUrlEnv": "DASHSCOPE_CN_RESPONSES_URL",
+          "api": "openai-responses",
+          "region": "cn",
+          "docs": "https://help.aliyun.com/zh/model-studio/",
+          "compat": {
+            "supportsDeveloperRole": true,
+            "providerTransport": "sdk"
+          },
+          "models": {
+            "qwen3.6-plus": {
+              "displayName": "Qwen 3.6 Plus",
+              "family": "qwen-plus",
+              "alias": "qwen-main",
+              "knowledge": "2025-06",
+              "releaseDate": "2025-06-06",
+              "lastUpdated": "2025-06-06",
+              "pricing": {
+                "currency": "CNY",
+                "input": 2,
+                "output": 12,
+                "cacheRead": 0,
+                "cacheWrite": 0
+              },
+              "compat": {
+                "supportsUsageInStreaming": true,
+                "supportsReasoningEffort": false
+              },
+              "capabilities": {
+                "reasoning": true,
+                "contextWindow": 1000000,
+                "maxTokens": 65536,
+                "stream": true,
+                "toolUse": true,
+                "structuredOutput": true,
+                "attachment": true,
+                "temperature": true,
+                "input": [
+                  "text",
+                  "image",
+                  "video"
+                ],
+                "output": [
+                  "text"
+                ]
+              }
+            }
+          }
+        },
+        "openai-responses-sg": {
+          "displayName": "DashScope Responses (Singapore)",
+          "baseUrl": "https://dashscope-intl.aliyuncs.com/compatible-mode/v1",
+          "baseUrlEnv": "DASHSCOPE_SG_RESPONSES_URL",
+          "api": "openai-responses",
+          "region": "sg",
+          "docs": "https://help.aliyun.com/zh/model-studio/",
+          "compat": {
+            "supportsDeveloperRole": true
+          },
+          "models": {
+            "qwen3.6-plus": {
+              "displayName": "Qwen 3.6 Plus",
+              "family": "qwen-plus",
+              "alias": "qwen-main-sg",
+              "knowledge": "2025-06",
+              "releaseDate": "2025-06-06",
+              "lastUpdated": "2025-06-06",
+              "pricing": {
+                "currency": "CNY",
+                "input": 3.7471,
+                "output": 22.4826,
+                "cacheRead": 0,
+                "cacheWrite": 0
+              },
+              "compat": {
+                "supportsUsageInStreaming": true
+              },
+              "capabilities": {
+                "reasoning": true,
+                "contextWindow": 1000000,
+                "maxTokens": 65536,
+                "stream": true,
+                "toolUse": true,
+                "structuredOutput": true,
+                "attachment": true,
+                "temperature": true,
+                "input": [
+                  "text",
+                  "image",
+                  "video"
+                ],
+                "output": [
+                  "text"
+                ]
+              }
+            }
+          }
+        },
+        "openai-responses-us": {
+          "displayName": "DashScope Responses (US, Virginia)",
+          "baseUrl": "https://dashscope-us.aliyuncs.com/compatible-mode/v1",
+          "baseUrlEnv": "DASHSCOPE_US_RESPONSES_URL",
+          "api": "openai-responses",
+          "region": "us",
+          "docs": "https://help.aliyun.com/cn/model-studio/",
+          "compat": {
+            "supportsDeveloperRole": true
+          },
+          "models": {
+            "qwen3.6-plus": {
+              "displayName": "Qwen 3.6 Plus",
+              "family": "qwen-plus",
+              "alias": "qwen-main-us",
+              "knowledge": "2025-06",
+              "releaseDate": "2025-06-06",
+              "lastUpdated": "2025-06-06",
+              "pricing": {
+                "currency": "CNY",
+                "input": 2,
+                "output": 12,
+                "cacheRead": 0,
+                "cacheWrite": 0
+              },
+              "compat": {
+                "supportsUsageInStreaming": true
+              },
+              "capabilities": {
+                "reasoning": true,
+                "contextWindow": 1000000,
+                "maxTokens": 65536,
+                "stream": true,
+                "toolUse": true,
+                "structuredOutput": true,
+                "attachment": true,
+                "temperature": true,
+                "input": [
+                  "text",
+                  "image",
+                  "video"
+                ],
+                "output": [
+                  "text"
+                ]
+              }
+            }
+          }
+        }
+      }
+    },
+    "openai": {
+      "displayName": "OpenAI",
+      "website": "https://platform.openai.com",
+      "auth": {
+        "kind": "apiKey",
+        "apiKeyEnv": "OPENAI_API_KEY",
+        "header": "Authorization",
+        "prefix": "Bearer "
+      },
+      "endpoints": {
+        "openai-responses:global": {
+          "displayName": "OpenAI Responses",
+          "baseUrl": "https://api.openai.com/v1",
+          "baseUrlEnv": "OPENAI_RESPONSES_URL",
+          "api": "openai-responses",
+          "region": "global",
+          "docs": "https://platform.openai.com/docs",
+          "compat": {
+            "supportsDeveloperRole": true
+          },
+          "models": {
+            "gpt-5": {
+              "displayName": "GPT-5",
+              "family": "gpt",
+              "alias": "default-frontier",
+              "knowledge": "2024-09-30",
+              "releaseDate": "2025-08-07",
+              "lastUpdated": "2025-08-07",
+              "pricing": {
+                "currency": "USD",
+                "input": 1.25,
+                "output": 10,
+                "cacheRead": 0.125,
+                "cacheWrite": 0
+              },
+              "compat": {
+                "supportsUsageInStreaming": true,
+                "supportsStreamReasoningDelta": true,
+                "supportsReasoningEffort": true,
+                "supportsJsonSchemaStructuredOutput": true
+              },
+              "capabilities": {
+                "reasoning": true,
+                "contextWindow": 400000,
+                "maxTokens": 128000,
+                "stream": true,
+                "toolUse": true,
+                "structuredOutput": true,
+                "attachment": true,
+                "temperature": false,
+                "input": [
+                  "text",
+                  "image"
+                ],
+                "output": [
+                  "text"
+                ]
+              }
+            }
+          }
+        },
+        "openai-embeddings:global": {
+          "displayName": "OpenAI Embeddings",
+          "baseUrl": "https://api.openai.com/v1",
+          "baseUrlEnv": "OPENAI_EMBEDDINGS_URL",
+          "api": "openai-embeddings",
+          "region": "global",
+          "docs": "https://platform.openai.com/docs",
+          "models": {
+            "text-embedding-3-large": {
+              "displayName": "text-embedding-3-large",
+              "family": "embedding",
+              "alias": "default-embedding",
+              "knowledge": "2024-01-01",
+              "releaseDate": "2024-01-25",
+              "lastUpdated": "2024-01-25",
+              "pricing": {
+                "currency": "USD",
+                "input": 0.13,
+                "output": 0,
+                "cacheRead": 0,
+                "cacheWrite": 0
+              },
+              "capabilities": {
+                "reasoning": false,
+                "contextWindow": 8192,
+                "stream": false,
+                "toolUse": false,
+                "structuredOutput": false,
+                "attachment": false,
+                "temperature": false,
+                "input": [
+                  "text"
+                ],
+                "output": [
+                  "vector"
+                ]
+              }
+            }
+          }
+        }
+      }
+    },
+    "openai-codex": {
+      "displayName": "OpenAI Codex",
+      "website": "https://platform.openai.com/docs/codex",
+      "auth": {
+        "kind": "oauth"
+      },
+      "endpoints": {
+        "openai-codex-responses": {
+          "displayName": "OpenAI Codex ChatGPT Responses",
+          "baseUrl": "https://chatgpt.com/backend-api",
+          "baseUrlEnv": "OPENAI_CODEX_BASE_URL",
+          "api": "openai-codex-responses",
+          "region": "global",
+          "docs": "https://platform.openai.com/docs/codex",
+          "compat": {
+            "supportsDeveloperRole": true,
+            "codexIncludeClientRequestId": true,
+            "codexIncludeConversationId": false,
+            "codexPromptCacheRetention": "in-memory",
+            "codexOriginator": "loushang",
+            "codexUserAgent": "loushang"
+          },
+          "models": {
+            "gpt-5.1": {
+              "displayName": "GPT-5.1",
+              "family": "gpt-codex",
+              "knowledge": "2025-08",
+              "releaseDate": "2025-08-07",
+              "lastUpdated": "2025-08-07",
+              "pricing": {
+                "currency": "USD",
+                "input": 0,
+                "output": 0,
+                "cacheRead": 0,
+                "cacheWrite": 0
+              },
+              "compat": {
+                "supportsUsageInStreaming": true,
+                "supportsReasoningEffort": true
+              },
+              "capabilities": {
+                "reasoning": true,
+                "contextWindow": 400000,
+                "maxTokens": 32768,
+                "stream": true,
+                "toolUse": true,
+                "structuredOutput": true,
+                "attachment": true,
+                "temperature": false,
+                "input": [
+                  "text",
+                  "image"
+                ],
+                "output": [
+                  "text"
+                ]
+              }
+            },
+            "gpt-5.1-codex-max": {
+              "displayName": "GPT-5.1 Codex Max",
+              "family": "gpt-codex",
+              "knowledge": "2025-08",
+              "releaseDate": "2025-08-07",
+              "lastUpdated": "2025-08-07",
+              "pricing": {
+                "currency": "USD",
+                "input": 0,
+                "output": 0,
+                "cacheRead": 0,
+                "cacheWrite": 0
+              },
+              "compat": {
+                "supportsUsageInStreaming": true,
+                "supportsReasoningEffort": true
+              },
+              "capabilities": {
+                "reasoning": true,
+                "contextWindow": 400000,
+                "maxTokens": 32768,
+                "stream": true,
+                "toolUse": true,
+                "structuredOutput": true,
+                "attachment": true,
+                "temperature": false,
+                "input": [
+                  "text",
+                  "image"
+                ],
+                "output": [
+                  "text"
+                ]
+              }
+            },
+            "gpt-5.3-codex": {
+              "displayName": "GPT-5.3 Codex",
+              "family": "gpt-codex",
+              "alias": "default-codex",
+              "knowledge": "2025-08",
+              "releaseDate": "2025-08-07",
+              "lastUpdated": "2025-08-07",
+              "pricing": {
+                "currency": "USD",
+                "input": 0,
+                "output": 0,
+                "cacheRead": 0,
+                "cacheWrite": 0
+              },
+              "compat": {
+                "supportsUsageInStreaming": true,
+                "supportsReasoningEffort": true
+              },
+              "capabilities": {
+                "reasoning": true,
+                "contextWindow": 400000,
+                "maxTokens": 32768,
+                "stream": true,
+                "toolUse": true,
+                "structuredOutput": true,
+                "attachment": true,
+                "temperature": false,
+                "input": [
+                  "text",
+                  "image"
+                ],
+                "output": [
+                  "text"
+                ]
+              }
+            },
+            "gpt-5.2": {
+              "displayName": "GPT-5.2",
+              "family": "gpt-codex",
+              "knowledge": "2025-08",
+              "releaseDate": "2025-08-07",
+              "lastUpdated": "2025-08-07",
+              "pricing": {
+                "currency": "USD",
+                "input": 0,
+                "output": 0,
+                "cacheRead": 0,
+                "cacheWrite": 0
+              },
+              "compat": {
+                "supportsUsageInStreaming": true,
+                "supportsReasoningEffort": true
+              },
+              "capabilities": {
+                "reasoning": true,
+                "contextWindow": 400000,
+                "maxTokens": 32768,
+                "stream": true,
+                "toolUse": true,
+                "structuredOutput": true,
+                "attachment": true,
+                "temperature": false,
+                "input": [
+                  "text",
+                  "image"
+                ],
+                "output": [
+                  "text"
+                ]
+              }
+            },
+            "gpt-5.2-codex": {
+              "displayName": "GPT-5.2 Codex",
+              "family": "gpt-codex",
+              "knowledge": "2025-08",
+              "releaseDate": "2025-08-07",
+              "lastUpdated": "2025-08-07",
+              "pricing": {
+                "currency": "USD",
+                "input": 0,
+                "output": 0,
+                "cacheRead": 0,
+                "cacheWrite": 0
+              },
+              "compat": {
+                "supportsUsageInStreaming": true,
+                "supportsReasoningEffort": true
+              },
+              "capabilities": {
+                "reasoning": true,
+                "contextWindow": 400000,
+                "maxTokens": 32768,
+                "stream": true,
+                "toolUse": true,
+                "structuredOutput": true,
+                "attachment": true,
+                "temperature": false,
+                "input": [
+                  "text",
+                  "image"
+                ],
+                "output": [
+                  "text"
+                ]
+              }
+            },
+            "gpt-5.1-codex-mini": {
+              "displayName": "GPT-5.1 Codex Mini",
+              "family": "gpt-codex-mini",
+              "alias": "codex-mini",
+              "knowledge": "2025-08",
+              "releaseDate": "2025-08-07",
+              "lastUpdated": "2025-08-07",
+              "pricing": {
+                "currency": "USD",
+                "input": 0,
+                "output": 0,
+                "cacheRead": 0,
+                "cacheWrite": 0
+              },
+              "compat": {
+                "supportsUsageInStreaming": true,
+                "supportsReasoningEffort": true
+              },
+              "capabilities": {
+                "reasoning": true,
+                "contextWindow": 400000,
+                "maxTokens": 16384,
+                "stream": true,
+                "toolUse": true,
+                "structuredOutput": true,
+                "attachment": true,
+                "temperature": false,
+                "input": [
+                  "text",
+                  "image"
+                ],
+                "output": [
+                  "text"
+                ]
+              }
+            },
+            "gpt-5.4": {
+              "displayName": "GPT-5.4",
+              "family": "gpt-codex",
+              "knowledge": "2025-08",
+              "releaseDate": "2025-08-07",
+              "lastUpdated": "2025-08-07",
+              "pricing": {
+                "currency": "USD",
+                "input": 0,
+                "output": 0,
+                "cacheRead": 0,
+                "cacheWrite": 0
+              },
+              "compat": {
+                "supportsUsageInStreaming": true,
+                "supportsReasoningEffort": true
+              },
+              "capabilities": {
+                "reasoning": true,
+                "contextWindow": 400000,
+                "maxTokens": 32768,
+                "stream": true,
+                "toolUse": true,
+                "structuredOutput": true,
+                "attachment": true,
+                "temperature": false,
+                "input": [
+                  "text",
+                  "image"
+                ],
+                "output": [
+                  "text"
+                ]
+              }
+            },
+            "gpt-5.4-mini": {
+              "displayName": "GPT-5.4 Mini",
+              "family": "gpt-codex-mini",
+              "knowledge": "2025-08",
+              "releaseDate": "2025-08-07",
+              "lastUpdated": "2025-08-07",
+              "pricing": {
+                "currency": "USD",
+                "input": 0,
+                "output": 0,
+                "cacheRead": 0,
+                "cacheWrite": 0
+              },
+              "compat": {
+                "supportsUsageInStreaming": true,
+                "supportsReasoningEffort": true
+              },
+              "capabilities": {
+                "reasoning": true,
+                "contextWindow": 400000,
+                "maxTokens": 32768,
+                "stream": true,
+                "toolUse": true,
+                "structuredOutput": true,
+                "attachment": true,
+                "temperature": false,
+                "input": [
+                  "text",
+                  "image"
+                ],
+                "output": [
+                  "text"
+                ]
+              }
+            },
+            "gpt-5.3-codex-spark": {
+              "displayName": "GPT-5.3 Codex Spark",
+              "family": "gpt-codex-spark",
+              "knowledge": "2025-08",
+              "releaseDate": "2025-08-07",
+              "lastUpdated": "2025-08-07",
+              "pricing": {
+                "currency": "USD",
+                "input": 0,
+                "output": 0,
+                "cacheRead": 0,
+                "cacheWrite": 0
+              },
+              "compat": {
+                "supportsUsageInStreaming": true,
+                "supportsReasoningEffort": true
+              },
+              "capabilities": {
+                "reasoning": true,
+                "contextWindow": 128000,
+                "maxTokens": 32768,
+                "stream": true,
+                "toolUse": true,
+                "structuredOutput": true,
+                "attachment": false,
+                "temperature": false,
+                "input": [
+                  "text"
+                ],
+                "output": [
+                  "text"
+                ]
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}

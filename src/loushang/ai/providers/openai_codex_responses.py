@@ -1,0 +1,755 @@
+from __future__ import annotations
+
+import asyncio
+import base64
+import json
+from collections.abc import AsyncIterator
+from dataclasses import dataclass
+from types import SimpleNamespace
+from typing import Any
+from uuid import uuid4
+
+from loushang.ai.auth.support import resolve_auth_for_model
+from loushang.ai.context import ensure_normalized_context
+from loushang.ai.event_stream import AssistantMessageEventStream, RawAssembler
+from loushang.ai.model.compat_schema import (
+    CODEX_INCLUDE_CLIENT_REQUEST_ID,
+    CODEX_INCLUDE_CONVERSATION_ID,
+    CODEX_ORIGINATOR,
+    CODEX_PROMPT_CACHE_RETENTION,
+    CODEX_USER_AGENT,
+    compat_bool,
+    compat_str,
+)
+from loushang.ai.options import PairingMode
+from loushang.ai.provider import resolve_request_for_model
+from loushang.ai.provider.cancellation import is_signal_cancelled
+from loushang.ai.provider.errors import provider_error_part
+from loushang.ai.providers.openai_responses_shared import (
+    convert_responses_messages,
+    convert_responses_tools,
+    process_responses_stream,
+)
+from loushang.ai.utils import sanitize_surrogates
+
+
+class OpenAICodexResponsesProvider:
+    api = "openai-codex-responses"
+
+    def __init__(
+        self, *, client: Any | None = None, websocket_cache_ttl_ms: int = 5 * 60 * 1000
+    ) -> None:
+        self._client = client
+        self._websocket_session_cache: dict[str, _CachedWebSocketConnection] = {}
+        self._websocket_cache_ttl_ms = websocket_cache_ttl_ms
+
+    async def stream(self, model, context, options):
+        resolved = resolve_request_for_model(model, options=options)
+        stream = AssistantMessageEventStream()
+        assembler = RawAssembler(
+            stream=stream,
+            api=resolved.api,
+            provider=model.provider_id,
+            model=model.id,
+            pricing=getattr(model, "pricing", None),
+        )
+
+        async def _run() -> None:
+            signal = getattr(options, "signal", None) if options is not None else None
+            if is_signal_cancelled(signal):
+                assembler.feed({"type": "aborted"})
+                return
+            try:
+                async for part in self._stream_raw_parts(model, context, options):
+                    if is_signal_cancelled(signal):
+                        assembler.feed({"type": "aborted"})
+                        return
+                    assembler.feed(part)
+            except Exception as error:
+                assembler.feed(provider_error_part(error, source=self.api))
+
+        stream.attach_task(asyncio.create_task(_run()))
+        return stream
+
+    async def stream_simple(self, model, context, options):
+        return await self.stream(model, context, options)
+
+    async def _stream_raw_parts(self, model, context, options) -> AsyncIterator[dict]:
+        def _pairing_mode() -> PairingMode:
+            if options is None:
+                return "repair"
+            pairing_mode = getattr(options, "pairing_mode", "repair")
+            if pairing_mode == "strict":
+                return "strict"
+            return "repair"
+
+        def _debug(event: str, data: dict | None = None) -> None:
+            trace_cb = getattr(options, "trace", None) if options is not None else None
+            if callable(trace_cb):
+                try:
+                    trace_cb({"type": f"sdk:{event}", **(data or {})})
+                    return
+                except Exception:
+                    pass
+            import os
+
+            if os.getenv("LOUSHANG_DEBUG") == "1":
+                try:
+                    print(f"[sdk:{event}] {data or {}}")
+                except Exception:
+                    pass
+
+        normalized = ensure_normalized_context(
+            context,
+            model=model,
+            pairing_mode=_pairing_mode(),
+        )
+        resolved = resolve_request_for_model(model, options=options)
+        auth_view = resolve_auth_for_model(model, options=options)
+        headers = dict(resolved.headers or auth_view.headers or {})
+        compat = dict(resolved.compat or {})
+
+        api_key = _extract_api_key(headers)
+        account_id = _resolve_account_id(headers, api_key=api_key, auth_view=auth_view)
+        body = _build_request_body(model, normalized, options, compat=compat)
+        url = _resolve_codex_url(resolved.base_url)
+        session_id = getattr(options, "session_id", None)
+        request_headers = _build_sse_headers(
+            headers,
+            api_key=api_key,
+            account_id=account_id,
+            session_id=session_id,
+            compat=compat,
+        )
+        _debug(
+            "client",
+            {
+                "base_url": resolved.base_url,
+                "headers": _redact_headers(request_headers),
+            },
+        )
+        _debug(
+            "payload",
+            {
+                "params": body,
+            },
+        )
+
+        client = self._client or _HttpxCodexClient()
+        try:
+            transport = getattr(options, "transport", None) or "sse"
+            if transport != "sse":
+                websocket_started = False
+                try:
+                    async for part in self._stream_websocket_raw_parts(
+                        client,
+                        _resolve_codex_websocket_url(resolved.base_url),
+                        _build_websocket_headers(
+                            headers,
+                            api_key=api_key,
+                            account_id=account_id,
+                            request_id=session_id or _create_codex_request_id(),
+                            compat=compat,
+                        ),
+                        body,
+                        options,
+                    ):
+                        websocket_started = True
+                        yield part
+                    return
+                except Exception:
+                    if transport == "websocket" or websocket_started:
+                        raise
+            async for part in self._stream_sse_with_retry(
+                client, url, request_headers, body, options, debug_cb=_debug
+            ):
+                yield part
+        except Exception as exc:
+            yield provider_error_part(exc, source=self.api)
+
+    async def _stream_sse_with_retry(
+        self,
+        client,
+        url: str,
+        headers: dict[str, str],
+        body: dict[str, Any],
+        options,
+        *,
+        debug_cb=None,
+    ) -> AsyncIterator[dict]:
+        retries = getattr(options, "retries", None)
+        max_retries = retries if isinstance(retries, int) and retries >= 0 else 3
+        for attempt in range(max_retries + 1):
+            try:
+                async with client.stream(
+                    "POST",
+                    url,
+                    headers=headers,
+                    json=body,
+                    timeout=getattr(options, "timeout", None),
+                ) as response:
+                    status_code = getattr(response, "status_code", 200)
+                    if status_code >= 400:
+                        error_text = await _parse_error_response(response)
+                        if callable(debug_cb):
+                            debug_cb(
+                                "response_error",
+                                {
+                                    "status": status_code,
+                                    "headers": _response_headers(response),
+                                    "message": error_text,
+                                },
+                            )
+                        if attempt < max_retries and _is_retryable_error(
+                            status_code, error_text
+                        ):
+                            await _retry_sleep(attempt, options)
+                            continue
+                        raise RuntimeError(
+                            error_text
+                            or f"Codex request failed with status {status_code}"
+                        )
+                    async for part in process_responses_stream(
+                        _map_codex_events(_parse_sse_lines(response)), options=options
+                    ):
+                        yield part
+                    return
+            except Exception as exc:
+                if attempt < max_retries and _is_retryable_exception(exc):
+                    await _retry_sleep(attempt, options)
+                    continue
+                raise
+
+    async def _stream_websocket_raw_parts(
+        self, client, url: str, headers: dict[str, str], body: dict[str, Any], options
+    ) -> AsyncIterator[dict]:
+        if hasattr(client, "connect_websocket"):
+            session_id = getattr(options, "session_id", None)
+            socket, release = await self._acquire_websocket(
+                client, url, headers, session_id, getattr(options, "timeout", None)
+            )
+            keep_connection = True
+            try:
+                await socket.send({"type": "response.create", **body})
+                async for part in process_responses_stream(
+                    _map_codex_events(_parse_websocket(socket.events())),
+                    options=options,
+                ):
+                    yield part
+            except Exception:
+                keep_connection = False
+                raise
+            finally:
+                await release(keep=keep_connection)
+            return
+        if not hasattr(client, "websocket_stream"):
+            raise RuntimeError("WebSocket transport is not available in this runtime")
+        events = client.websocket_stream(
+            url,
+            headers=headers,
+            json={"type": "response.create", **body},
+            timeout=getattr(options, "timeout", None),
+        )
+        async for part in process_responses_stream(
+            _map_codex_events(_objectify_events(events)), options=options
+        ):
+            yield part
+
+    async def _acquire_websocket(
+        self, client, url: str, headers: dict[str, str], session_id: str | None, timeout
+    ) -> tuple[Any, Any]:
+        if not isinstance(session_id, str) or not session_id:
+            socket = await client.connect_websocket(
+                url, headers=headers, timeout=timeout
+            )
+
+            async def _release(*, keep: bool) -> None:
+                await socket.close(1000, "done" if keep else "error")
+
+            return socket, _release
+
+        cached = self._websocket_session_cache.get(session_id)
+        if cached is not None:
+            if cached.idle_handle is not None:
+                cached.idle_handle.cancel()
+                cached.idle_handle = None
+            if not cached.busy and not cached.closed:
+                cached.busy = True
+
+                async def _release_cached(*, keep: bool) -> None:
+                    if not keep or cached.closed:
+                        await cached.socket.close(1000, "done" if keep else "error")
+                        cached.closed = True
+                        self._websocket_session_cache.pop(session_id, None)
+                        return
+                    cached.busy = False
+                    self._schedule_websocket_expiry(session_id, cached)
+
+                return cached.socket, _release_cached
+            if cached.busy or cached.closed:
+                socket = await client.connect_websocket(
+                    url, headers=headers, timeout=timeout
+                )
+
+                async def _release_busy(*, keep: bool) -> None:
+                    await socket.close(1000, "done" if keep else "error")
+
+                return socket, _release_busy
+
+        socket = await client.connect_websocket(url, headers=headers, timeout=timeout)
+        entry = _CachedWebSocketConnection(
+            socket=socket, busy=True, closed=False, idle_handle=None
+        )
+        self._websocket_session_cache[session_id] = entry
+
+        async def _release_new(*, keep: bool) -> None:
+            if not keep or entry.closed:
+                await entry.socket.close(1000, "done" if keep else "error")
+                entry.closed = True
+                self._websocket_session_cache.pop(session_id, None)
+                return
+            entry.busy = False
+            self._schedule_websocket_expiry(session_id, entry)
+
+        return entry.socket, _release_new
+
+    def _schedule_websocket_expiry(
+        self, session_id: str, entry: "_CachedWebSocketConnection"
+    ) -> None:
+        if entry.idle_handle is not None:
+            entry.idle_handle.cancel()
+        loop = asyncio.get_running_loop()
+
+        def _expire() -> None:
+            if entry.busy or entry.closed:
+                return
+            entry.closed = True
+            self._websocket_session_cache.pop(session_id, None)
+            asyncio.create_task(entry.socket.close(1000, "idle_timeout"))
+
+        entry.idle_handle = loop.call_later(
+            self._websocket_cache_ttl_ms / 1000.0, _expire
+        )
+
+
+def _build_request_body(
+    model,
+    normalized: dict[str, Any],
+    options,
+    *,
+    compat: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    compat = compat or {}
+    input_items = convert_responses_messages(
+        model,
+        {
+            **normalized,
+            "system_prompt": None,
+        },
+        {},
+    )
+    body: dict[str, Any] = {
+        "model": model.id,
+        "store": False,
+        "stream": True,
+        "input": input_items,
+        "instructions": "",
+        "text": {"verbosity": getattr(options, "text_verbosity", None) or "medium"},
+        "include": ["reasoning.encrypted_content"],
+    }
+    system_prompt = normalized.get("system_prompt")
+    if isinstance(system_prompt, str) and system_prompt.strip():
+        body["instructions"] = sanitize_surrogates(system_prompt)
+    if getattr(options, "temperature", None) is not None:
+        body["temperature"] = getattr(options, "temperature")
+    tools = convert_responses_tools(normalized.get("tools"))
+    if isinstance(tools, list) and tools:
+        body["tools"] = tools
+        body["tool_choice"] = "auto"
+        body["parallel_tool_calls"] = True
+    session_id = getattr(options, "session_id", None)
+    if isinstance(session_id, str) and session_id:
+        body["prompt_cache_key"] = session_id
+        prompt_cache_retention = compat_str(
+            compat,
+            CODEX_PROMPT_CACHE_RETENTION,
+        )
+        if isinstance(prompt_cache_retention, str) and prompt_cache_retention:
+            body["prompt_cache_retention"] = prompt_cache_retention
+    reasoning = getattr(options, "reasoning", None)
+    reasoning_summary = getattr(options, "reasoning_summary", None)
+    if reasoning is not None or reasoning_summary is not None:
+        body["reasoning"] = {
+            "effort": _clamp_reasoning_effort(model.id, reasoning or "medium"),
+            "summary": reasoning_summary or "auto",
+        }
+    return body
+
+
+def _clamp_reasoning_effort(model_id: str, effort: str) -> str:
+    identifier = model_id.split("/")[-1]
+    if (
+        identifier.startswith("gpt-5.2")
+        or identifier.startswith("gpt-5.3")
+        or identifier.startswith("gpt-5.4")
+    ) and effort == "minimal":
+        return "low"
+    if identifier == "gpt-5.1" and effort == "xhigh":
+        return "high"
+    if identifier == "gpt-5.1-codex-mini":
+        return "high" if effort in {"high", "xhigh"} else "medium"
+    return effort
+
+
+def _resolve_codex_url(base_url: str | None) -> str:
+    raw = (
+        base_url.strip()
+        if isinstance(base_url, str) and base_url.strip()
+        else "https://chatgpt.com/backend-api"
+    )
+    normalized = raw.rstrip("/")
+    if normalized.endswith("/codex/responses"):
+        return normalized
+    if normalized.endswith("/codex"):
+        return f"{normalized}/responses"
+    return f"{normalized}/codex/responses"
+
+
+def _resolve_codex_websocket_url(base_url: str | None) -> str:
+    url = _resolve_codex_url(base_url)
+    if url.startswith("https://"):
+        return "wss://" + url[len("https://") :]
+    if url.startswith("http://"):
+        return "ws://" + url[len("http://") :]
+    return url
+
+
+def _extract_api_key(headers: dict[str, str]) -> str:
+    auth = headers.get("Authorization") or headers.get("authorization")
+    if isinstance(auth, str) and auth.lower().startswith("bearer "):
+        return auth.split(" ", 1)[1].strip()
+    api_key = headers.get("x-api-key")
+    if isinstance(api_key, str) and api_key:
+        return api_key
+    raise ValueError(
+        "OpenAI Codex provider requires an API key (Authorization: Bearer or x-api-key)"
+    )
+
+
+def _extract_account_id(token: str) -> str:
+    try:
+        parts = token.split(".")
+        if len(parts) != 3:
+            raise ValueError("invalid token")
+        payload = parts[1] + "=" * (-len(parts[1]) % 4)
+        decoded = json.loads(
+            base64.urlsafe_b64decode(payload.encode("ascii")).decode("utf-8")
+        )
+        account_id = decoded.get("https://api.openai.com/auth", {}).get(
+            "chatgpt_account_id"
+        )
+        if not isinstance(account_id, str) or not account_id:
+            raise ValueError("missing account id")
+        return account_id
+    except Exception as exc:
+        raise ValueError("Failed to extract accountId from token") from exc
+
+
+def _resolve_account_id(headers: dict[str, str], *, api_key: str, auth_view) -> str:
+    explicit_account_id = _header_value(headers, "chatgpt-account-id")
+    if explicit_account_id:
+        return explicit_account_id
+
+    auth_headers = getattr(auth_view, "headers", {}) or {}
+    try:
+        if auth_view.account_id and _extract_api_key(auth_headers) == api_key:
+            return auth_view.account_id
+    except ValueError:
+        pass
+    return _extract_account_id(api_key)
+
+
+def _header_value(headers: dict[str, str], name: str) -> str | None:
+    target = name.lower()
+    for key, value in headers.items():
+        if key.lower() == target and value:
+            return value
+    return None
+
+
+def _build_sse_headers(
+    init_headers: dict[str, str],
+    *,
+    api_key: str,
+    account_id: str,
+    session_id: str | None,
+    compat: dict[str, Any] | None = None,
+) -> dict[str, str]:
+    compat = compat or {}
+    headers: dict[str, str] = {}
+    for key, value in init_headers.items():
+        if key.lower() in {"authorization", "x-api-key"}:
+            continue
+        headers[key] = value
+    headers["Authorization"] = f"Bearer {api_key}"
+    headers["chatgpt-account-id"] = account_id
+    originator = compat_str(compat, CODEX_ORIGINATOR, default="loushang")
+    user_agent = compat_str(compat, CODEX_USER_AGENT, default="loushang")
+    headers["originator"] = originator or "loushang"
+    headers["User-Agent"] = user_agent or "loushang"
+    headers["OpenAI-Beta"] = "responses=experimental"
+    headers["accept"] = "text/event-stream"
+    headers["content-type"] = "application/json"
+    if isinstance(session_id, str) and session_id:
+        headers["session_id"] = session_id
+        if compat_bool(compat, CODEX_INCLUDE_CLIENT_REQUEST_ID):
+            headers["x-client-request-id"] = session_id
+        if compat_bool(compat, CODEX_INCLUDE_CONVERSATION_ID):
+            headers["conversation_id"] = session_id
+    return headers
+
+
+def _build_websocket_headers(
+    init_headers: dict[str, str],
+    *,
+    api_key: str,
+    account_id: str,
+    request_id: str,
+    compat: dict[str, Any] | None = None,
+) -> dict[str, str]:
+    compat = compat or {}
+    headers: dict[str, str] = {}
+    for key, value in init_headers.items():
+        if key.lower() in {
+            "authorization",
+            "x-api-key",
+            "accept",
+            "content-type",
+            "openai-beta",
+        }:
+            continue
+        headers[key] = value
+    headers["Authorization"] = f"Bearer {api_key}"
+    headers["chatgpt-account-id"] = account_id
+    originator = compat_str(compat, CODEX_ORIGINATOR, default="loushang")
+    user_agent = compat_str(compat, CODEX_USER_AGENT, default="loushang")
+    headers["originator"] = originator or "loushang"
+    headers["User-Agent"] = user_agent or "loushang"
+    headers["OpenAI-Beta"] = "responses_websockets=2026-02-06"
+    headers["x-client-request-id"] = request_id
+    headers["session_id"] = request_id
+    return headers
+
+
+async def _parse_sse_lines(response) -> AsyncIterator[dict[str, Any]]:
+    buffer: list[str] = []
+    async for line in response.aiter_lines():
+        if line == "":
+            if buffer:
+                data_lines = [
+                    entry[5:].strip() for entry in buffer if entry.startswith("data:")
+                ]
+                data = "\n".join(data_lines).strip()
+                buffer.clear()
+                if data and data != "[DONE]":
+                    yield _objectify(json.loads(data))
+            continue
+        buffer.append(line)
+    if buffer:
+        data_lines = [
+            entry[5:].strip() for entry in buffer if entry.startswith("data:")
+        ]
+        data = "\n".join(data_lines).strip()
+        if data and data != "[DONE]":
+            yield _objectify(json.loads(data))
+
+
+async def _objectify_events(events: AsyncIterator[Any]) -> AsyncIterator[Any]:
+    async for event in events:
+        yield _objectify(event)
+
+
+async def _parse_websocket(events: AsyncIterator[Any]) -> AsyncIterator[Any]:
+    saw_completion = False
+    async for event in events:
+        event_obj = _objectify(event)
+        event_type = getattr(event_obj, "type", None)
+        if event_type in {"response.completed", "response.done", "response.incomplete"}:
+            saw_completion = True
+        yield event_obj
+    if not saw_completion:
+        raise RuntimeError("WebSocket stream closed before response.completed")
+
+
+async def _map_codex_events(
+    events: AsyncIterator[dict[str, Any]],
+) -> AsyncIterator[dict[str, Any]]:
+    async for event in events:
+        event_type = getattr(event, "type", None)
+        if event_type in {"response.done", "response.completed", "response.incomplete"}:
+            response_obj = getattr(event, "response", None)
+            response: dict[str, Any] = {}
+            if response_obj is not None:
+                response = (
+                    response_obj.__dict__.copy()
+                    if hasattr(response_obj, "__dict__")
+                    else dict(response_obj)
+                )
+            status = response.get("status")
+            if status not in {
+                "completed",
+                "incomplete",
+                "failed",
+                "cancelled",
+                "queued",
+                "in_progress",
+            }:
+                response["status"] = None
+            yield _objectify({"type": "response.completed", "response": response})
+            return
+        yield event
+
+
+def _create_codex_request_id() -> str:
+    return f"codex_{uuid4().hex}"
+
+
+async def _retry_sleep(attempt: int, options) -> None:
+    base_delay_ms = 1000 * (2**attempt)
+    max_delay_ms = getattr(options, "max_retry_delay_ms", None)
+    if isinstance(max_delay_ms, int):
+        delay_ms = min(base_delay_ms, max_delay_ms)
+    else:
+        delay_ms = base_delay_ms
+    if delay_ms > 0:
+        await asyncio.sleep(delay_ms / 1000.0)
+
+
+async def _response_text(response) -> str:
+    text_method = getattr(response, "atext", None)
+    if callable(text_method):
+        value = await text_method()
+        return value if isinstance(value, str) else str(value)
+    read_method = getattr(response, "aread", None)
+    if callable(read_method):
+        payload = await read_method()
+        if isinstance(payload, bytes):
+            encoding = getattr(response, "encoding", None) or "utf-8"
+            try:
+                return payload.decode(encoding, errors="replace")
+            except Exception:
+                return payload.decode("utf-8", errors="replace")
+        if isinstance(payload, str):
+            return payload
+    text_attr = getattr(response, "text", None)
+    if isinstance(text_attr, str):
+        return text_attr
+    return ""
+
+
+def _redact_headers(headers: dict[str, str]) -> dict[str, str]:
+    redacted: dict[str, str] = {}
+    for key, value in headers.items():
+        if key.lower() in {"authorization", "x-api-key"}:
+            redacted[key] = "***"
+        else:
+            redacted[key] = value
+    return redacted
+
+
+def _response_headers(response) -> dict[str, str]:
+    headers = getattr(response, "headers", None)
+    if headers is None:
+        return {}
+    try:
+        return dict(headers)
+    except Exception:
+        return {}
+
+
+async def _parse_error_response(response) -> str:
+    raw = await _response_text(response)
+    message = raw or getattr(response, "status_text", "") or "Request failed"
+    try:
+        parsed = json.loads(raw)
+    except Exception:
+        return message
+    if not isinstance(parsed, dict):
+        return message
+    detail = parsed.get("detail")
+    if isinstance(detail, str) and detail.strip():
+        return detail.strip()
+    error = parsed.get("error")
+    if not isinstance(error, dict):
+        return message
+    detail = error.get("message")
+    if isinstance(detail, str) and detail.strip():
+        return detail.strip()
+    code = error.get("code") or error.get("type")
+    if isinstance(code, str) and code.strip():
+        return code.strip()
+    return message
+
+
+def _is_retryable_error(status_code: int, message: str) -> bool:
+    if status_code in {429, 500, 502, 503, 504}:
+        return True
+    text = message.lower()
+    return any(
+        token in text
+        for token in (
+            "rate limit",
+            "overloaded",
+            "service unavailable",
+            "connection refused",
+        )
+    )
+
+
+def _is_retryable_exception(exc: Exception) -> bool:
+    message = str(exc).lower()
+    return any(
+        token in message
+        for token in ("connection", "timeout", "temporarily unavailable")
+    )
+
+
+def _objectify(value: Any) -> Any:
+    if isinstance(value, dict):
+        return SimpleNamespace(**{key: _objectify(item) for key, item in value.items()})
+    if isinstance(value, list):
+        return [_objectify(item) for item in value]
+    return value
+
+
+class _HttpxCodexClient:
+    def __init__(self) -> None:
+        try:
+            import httpx  # type: ignore
+        except Exception as exc:  # pragma: no cover
+            raise RuntimeError(
+                "httpx is required for OpenAI Codex responses. Install via `pip install httpx`"
+            ) from exc
+        self._httpx = httpx
+        self._client = httpx.AsyncClient()
+
+    def stream(
+        self,
+        method: str,
+        url: str,
+        *,
+        headers: dict[str, str],
+        json: dict[str, Any],
+        timeout=None,
+    ):
+        return self._client.stream(
+            method, url, headers=headers, json=json, timeout=timeout
+        )
+
+
+@dataclass
+class _CachedWebSocketConnection:
+    socket: Any
+    busy: bool
+    closed: bool
+    idle_handle: Any | None = None

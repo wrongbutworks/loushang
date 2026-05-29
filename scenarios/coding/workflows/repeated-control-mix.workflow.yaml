@@ -1,0 +1,129 @@
+name: repeated control mix
+backend: fake
+steps:
+  - prompt: 第一轮长任务
+    hold: true
+  - wait_for:
+      event: run.started
+      timeout_s: 1
+  - steer: 第一轮转向一
+  - steer: 第一轮转向二
+  - follow_up: 第一轮后续一
+  - follow_up: 第一轮后续二
+  - expect:
+      events:
+        - event: queue.steer_added
+          contains: 第一轮转向一
+        - event: queue.steer_added
+          contains: 第一轮转向二
+        - event: queue.follow_up_added
+          contains: 第一轮后续一
+        - event: queue.follow_up_added
+          contains: 第一轮后续二
+      queue:
+        steering:
+          - 第一轮转向一
+          - 第一轮转向二
+        follow_up:
+          - 第一轮后续一
+          - 第一轮后续二
+      session_state:
+        runStatus: running
+        pendingMessageCount: 4
+        queue:
+          steering:
+            - 第一轮转向一
+            - 第一轮转向二
+          followUp:
+            - 第一轮后续一
+            - 第一轮后续二
+  - abort: {}
+  - wait_for:
+      event: run.aborted
+      timeout_s: 1
+  - abort: {}
+  - expect:
+      queue:
+        steering: []
+        follow_up: []
+      session_state:
+        runStatus: idle
+        pendingMessageCount: 0
+        queue:
+          steering: []
+          followUp: []
+      session_stats:
+        totalMessages: 1
+        tokens:
+          total: 10
+        latestCompaction:
+      context_usage:
+        messageCount: 1
+        estimatedContextTokens: 10
+  - prompt: 第二轮长任务
+    hold: true
+  - wait_for:
+      event: run.started
+      timeout_s: 1
+  - wait: 0.01
+  - follow_up: 第二轮后续一
+  - steer: 第二轮转向一
+  - steer: 第二轮转向二
+  - follow_up: 第二轮后续二
+  - expect:
+      events:
+        - event: queue.follow_up_added
+          contains: 第二轮后续一
+        - event: queue.steer_added
+          contains: 第二轮转向一
+        - event: queue.steer_added
+          contains: 第二轮转向二
+        - event: queue.follow_up_added
+          contains: 第二轮后续二
+      queue:
+        steering:
+          - 第二轮转向一
+          - 第二轮转向二
+        follow_up:
+          - 第二轮后续一
+          - 第二轮后续二
+      session_state:
+        runStatus: running
+        pendingMessageCount: 4
+        queue:
+          steering:
+            - 第二轮转向一
+            - 第二轮转向二
+          followUp:
+            - 第二轮后续一
+            - 第二轮后续二
+  - abort: {}
+  - expect:
+      queue:
+        steering: []
+        follow_up: []
+      session_state:
+        runStatus: idle
+        pendingMessageCount: 0
+        queue:
+          steering: []
+          followUp: []
+  - prompt: 你好
+  - expect:
+      events:
+        - event: assistant.message
+          contains: 你好
+      not_events:
+        - event: assistant.message
+          contains: 第一轮长任务
+        - event: assistant.message
+          contains: 第二轮长任务
+      queue:
+        steering: []
+        follow_up: []
+      session_state:
+        runStatus: idle
+        pendingMessageCount: 0
+        queue:
+          steering: []
+          followUp: []

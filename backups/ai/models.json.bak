@@ -1,0 +1,398 @@
+{
+  "providers": {
+    "moonshot": {
+      "displayName": "Moonshot AI",
+      "website": "https://www.moonshot.ai",
+      "auth": {
+        "kind": "apiKey",
+        "apiKeyEnv": "MOONSHOT_API_KEY",
+        "header": "Authorization",
+        "prefix": "Bearer "
+      },
+      "endpoints": {
+        "moonshot:openai.completions": {
+          "displayName": "Moonshot Chat Completions",
+          "baseUrl": "https://api.moonshot.cn/v1",
+          "baseUrlEnv": "MOONSHOT_COMPLETIONS_URL",
+          "api": "openai-completions",
+          "docs": "https://platform.moonshot.ai/docs/api/chat",
+          "compat": {
+            "thinkingFormat": "moonshot",
+            "supportsReasoningEffort": false
+          },
+          "models": {
+            "kimi-k2.5": {
+              "displayName": "Kimi K2.5",
+              "family": "kimi",
+              "alias": "default-chat",
+              "supportsReasoning": true,
+              "supportsToolCall": true,
+              "supportsStructuredOutput": true,
+              "supportsAttachment": false,
+              "supportsTemperature": false,
+              "knowledge": "2025-01",
+              "releaseDate": "2026-01",
+              "lastUpdated": "2026-01",
+              "contextWindow": 262144,
+              "maxOutputTokens": 262144,
+              "pricing": {
+                "currency": "CNY",
+                "input": 0.6,
+                "output": 3.0,
+                "cacheRead": 0.1,
+                "cacheWrite": 0.0
+              },
+              "openWeights": false,
+              "supportsStream": true,
+              "supportsStreamUsage": true,
+              "supportsStreamReasoningDelta": true,
+              "supportsReasoningEffort": true,
+              "supportsJsonSchemaStructuredOutput": true,
+              "input": "text,image,video",
+              "output": "text"
+            }
+          },
+          "developerRole": true
+        },
+        "moonshot:anthropic-messages:cn": {
+          "displayName": "Moonshot China Anthropic Messages",
+          "baseUrl": "https://api.moonshot.cn/anthropic",
+          "baseUrlEnv": "MOONSHOT_ANTHROPIC_MESSAGES_URL",
+          "api": "anthropic-messages",
+          "region": "cn",
+          "docs": "https://platform.moonshot.cn/docs/api/chat",
+          "authOverride": {
+            "kind": "apiKey",
+            "apiKeyEnv": "MOONSHOT_API_KEY",
+            "header": "x-api-key",
+            "prefix": "",
+            "extraHeaders": {
+              "anthropic-version": "2023-06-01"
+            }
+          },
+          "models": {
+            "kimi-k2-thinking": {
+              "displayName": "Kimi K2 Thinking",
+              "family": "kimi-thinking",
+              "alias": "default-thinking",
+              "supportsReasoning": true,
+              "supportsToolCall": true,
+              "supportsStructuredOutput": false,
+              "supportsAttachment": false,
+              "supportsTemperature": true,
+              "knowledge": "2024-08",
+              "releaseDate": "2025-11-06",
+              "lastUpdated": "2025-11-06",
+              "openWeights": true,
+              "contextWindow": 262144,
+              "maxOutputTokens": 262144,
+              "pricing": {
+                "currency": "CNY",
+                "input": 0.6,
+                "output": 2.5,
+                "cacheRead": 0.15,
+                "cacheWrite": 0.0
+              },
+              "supportsStream": true,
+              "supportsStreamUsage": false,
+              "supportsReasoningEffort": false,
+              "supportsJsonSchemaStructuredOutput": false,
+              "input": "text",
+              "output": "text"
+            },
+            "kimi-k2.5": {
+              "displayName": "Kimi K2.5",
+              "family": "kimi",
+              "alias": "default-chat-cn",
+              "supportsReasoning": true,
+              "supportsToolCall": true,
+              "supportsStructuredOutput": true,
+              "supportsAttachment": false,
+              "supportsTemperature": false,
+              "knowledge": "2025-01",
+              "releaseDate": "2026-01",
+              "lastUpdated": "2026-01",
+              "contextWindow": 262144,
+              "maxOutputTokens": 262144,
+              "pricing": {
+                "currency": "CNY",
+                "input": 0.6,
+                "output": 3.0,
+                "cacheRead": 0.1,
+                "cacheWrite": 0.0
+              },
+              "openWeights": false,
+              "supportsStream": true,
+              "supportsStreamUsage": false,
+              "supportsReasoningEffort": true,
+              "supportsJsonSchemaStructuredOutput": true,
+              "input": "text,image",
+              "output": "text"
+            }
+          },
+          "developerRole": false
+        },
+        "moonshot:openai-completions:cn:coding": {
+          "displayName": "Moonshot China Coding Chat Completions",
+          "baseUrl": "https://api.kimi.com/coding/v1",
+          "baseUrlEnv": "MOONSHOT_CODING_CHAT_URL",
+          "api": "openai-completions",
+          "region": "cn",
+          "lane": "coding",
+          "docs": "https://platform.moonshot.cn/docs/api/chat",
+          "compat": {
+            "thinkingFormat": "moonshot",
+            "supportsReasoningEffort": false
+          },
+          "models": {
+            "kimi-for-coding": {
+              "displayName": "Kimi for Coding",
+              "family": "kimi-coding",
+              "alias": "default-coding",
+              "supportsReasoning": true,
+              "supportsToolCall": true,
+              "supportsStructuredOutput": true,
+              "supportsAttachment": false,
+              "supportsTemperature": true,
+              "knowledge": "2025-01",
+              "releaseDate": "2026-01",
+              "lastUpdated": "2026-01",
+              "openWeights": false,
+              "contextWindow": 262144,
+              "maxOutputTokens": 32768,
+              "pricing": {
+                "currency": "CNY",
+                "input": 0.0,
+                "output": 0.0,
+                "cacheRead": 0.0,
+                "cacheWrite": 0.0
+              },
+              "supportsStream": true,
+              "supportsStreamUsage": false,
+              "supportsReasoningEffort": true,
+              "supportsJsonSchemaStructuredOutput": true,
+              "input": "text",
+              "output": "text"
+            }
+          },
+          "developerRole": false
+        }
+      }
+    },
+    "dashscope": {
+      "displayName": "Alibaba Cloud DashScope",
+      "website": "https://dashscope.aliyun.com",
+      "auth": {
+        "kind": "apiKey",
+        "apiKeyEnv": "DASHSCOPE_API_KEY",
+        "header": "Authorization",
+        "prefix": "Bearer "
+      },
+      "endpoints": {
+        "dashscope:openai-responses:cn": {
+          "displayName": "DashScope CN Responses",
+          "baseUrl": "https://dashscope.aliyuncs.com/compatible-mode/v1",
+          "baseUrlEnv": "DASHSCOPE_CN_RESPONSES_URL",
+          "api": "openai-responses",
+          "region": "cn",
+          "docs": "https://help.aliyun.com/zh/model-studio/",
+          "models": {
+            "qwen3.6-plus": {
+              "displayName": "Qwen 3.6 Plus",
+              "family": "qwen-plus",
+              "alias": "qwen-main",
+              "supportsReasoning": true,
+              "supportsToolCall": true,
+              "supportsStructuredOutput": true,
+              "supportsAttachment": true,
+              "supportsTemperature": true,
+              "knowledge": "2025-06",
+              "releaseDate": "2025-06-06",
+              "lastUpdated": "2025-06-06",
+              "openWeights": false,
+              "contextWindow": 200000,
+              "maxOutputTokens": 8192,
+              "pricing": {
+                "currency": "CNY",
+                "input": 0.0,
+                "output": 0.0,
+                "cacheRead": 0.0,
+                "cacheWrite": 0.0
+              },
+              "supportsStream": true,
+              "supportsStreamUsage": true,
+              "supportsReasoningEffort": false,
+              "input": "text,image",
+              "output": "text"
+            }
+          },
+          "developerRole": true,
+          "providerTransport": "sdk"
+        },
+        "dashscope:openai-responses:sg": {
+          "displayName": "DashScope SG Responses",
+          "baseUrl": "https://dashscope-intl.aliyuncs.com/compatible-mode/v1",
+          "baseUrlEnv": "DASHSCOPE_SG_RESPONSES_URL",
+          "api": "openai-responses",
+          "region": "sg",
+          "docs": "https://help.aliyun.com/zh/model-studio/",
+          "models": {
+            "qwen3.6-plus": {
+              "displayName": "Qwen 3.6 Plus",
+              "family": "qwen-plus",
+              "alias": "qwen-main-sg",
+              "supportsReasoning": true,
+              "supportsToolCall": true,
+              "supportsStructuredOutput": true,
+              "supportsAttachment": true,
+              "supportsTemperature": true,
+              "knowledge": "2025-06",
+              "releaseDate": "2025-06-06",
+              "lastUpdated": "2025-06-06",
+              "openWeights": false,
+              "contextWindow": 200000,
+              "maxOutputTokens": 8192,
+              "pricing": {
+                "currency": "USD",
+                "input": 0.0,
+                "output": 0.0,
+                "cacheRead": 0.0,
+                "cacheWrite": 0.0
+              },
+              "supportsStream": true,
+              "supportsStreamUsage": true,
+              "input": "text,image",
+              "output": "text"
+            }
+          }
+        },
+        "dashscope:openai-responses:us": {
+          "displayName": "DashScope US Responses",
+          "baseUrl": "https://dashscope-us.aliyuncs.com/compatible-mode/v1",
+          "baseUrlEnv": "DASHSCOPE_US_RESPONSES_URL",
+          "api": "openai-responses",
+          "region": "us",
+          "docs": "https://help.aliyun.com/cn/model-studio/",
+          "models": {
+            "qwen3.6-plus": {
+              "displayName": "Qwen 3.6 Plus",
+              "family": "qwen-plus",
+              "alias": "qwen-main-sg",
+              "supportsReasoning": true,
+              "supportsToolCall": true,
+              "supportsStructuredOutput": true,
+              "supportsAttachment": true,
+              "supportsTemperature": true,
+              "knowledge": "2025-06",
+              "releaseDate": "2025-06-06",
+              "lastUpdated": "2025-06-06",
+              "openWeights": false,
+              "contextWindow": 200000,
+              "maxOutputTokens": 8192,
+              "pricing": {
+                "currency": "USD",
+                "input": 0.0,
+                "output": 0.0,
+                "cacheRead": 0.0,
+                "cacheWrite": 0.0
+              },
+              "supportsStream": true,
+              "supportsStreamUsage": true,
+              "input": "text,image",
+              "output": "text"
+            }
+          }
+        }
+      }
+    },
+    "openai": {
+      "displayName": "OpenAI",
+      "website": "https://platform.openai.com",
+      "auth": {
+        "kind": "apiKey",
+        "apiKeyEnv": "OPENAI_API_KEY",
+        "header": "Authorization",
+        "prefix": "Bearer "
+      },
+      "endpoints": {
+        "openai:openai-responses:global": {
+          "displayName": "OpenAI Responses",
+          "baseUrl": "https://api.openai.com/v1",
+          "baseUrlEnv": "OPENAI_RESPONSES_URL",
+          "api": "openai-responses",
+          "region": "global",
+          "docs": "https:////platform.openai.com/docs",
+          "models": {
+            "gpt-5": {
+              "displayName": "GPT-5",
+              "family": "gpt",
+              "alias": "default-frontier",
+              "supportsReasoning": true,
+              "supportsToolCall": true,
+              "supportsStructuredOutput": true,
+              "supportsAttachment": true,
+              "supportsTemperature": false,
+              "knowledge": "2024-09-30",
+              "releaseDate": "2025-08-07",
+              "lastUpdated": "2025-08-07",
+              "openWeights": false,
+              "contextWindow": 400000,
+              "maxOutputTokens": 128000,
+              "pricing": {
+                "currency": "USD",
+                "input": 0.0,
+                "output": 0.0,
+                "cacheRead": 0.0,
+                "cacheWrite": 0.0
+              },
+              "supportsStream": true,
+              "supportsStreamUsage": true,
+              "supportsStreamReasoningDelta": true,
+              "supportsReasoningEffort": true,
+              "supportsJsonSchemaStructuredOutput": true,
+              "input": "text,image",
+              "output": "text"
+            }
+          },
+          "developerRole": true
+        },
+        "openai:openai.embeddings:global": {
+          "displayName": "OpenAI Embeddings",
+          "baseUrl": "https://api.openai.com/v1",
+          "baseUrlEnv": "OPENAI_EMBEDDINGS_URL",
+          "api": "openai-embeddings",
+          "region": "global",
+          "docs": "https://platform.openai.com/docs",
+          "models": {
+            "text-embedding-3-large": {
+              "displayName": "text-embedding-3-large",
+              "family": "embedding",
+              "alias": "default-embedding",
+              "supportsReasoning": false,
+              "supportsToolCall": false,
+              "supportsStructuredOutput": false,
+              "supportsAttachment": false,
+              "supportsTemperature": false,
+              "knowledge": "2024-01-01",
+              "releaseDate": "2024-01-25",
+              "lastUpdated": "2024-01-25",
+              "openWeights": false,
+              "contextWindow": 8192,
+              "maxOutputTokens": 3072,
+              "pricing": {
+                "currency": "USD",
+                "input": 0.0,
+                "output": 0.0,
+                "cacheRead": 0.0,
+                "cacheWrite": 0.0
+              },
+              "supportsStream": false,
+              "input": "text",
+              "output": "vector"
+            }
+          }
+        }
+      }
+    }
+  }
+}

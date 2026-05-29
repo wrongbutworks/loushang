@@ -1,0 +1,888 @@
+[meta]
+schema_version = "1.0"
+default_compaction_reserve_tokens = 256
+default_compaction_keep_recent_tokens = 256
+
+[profiles.coding_primary]
+provider = "moonshot"
+endpoint = "anthropic-messages"
+model = "kimi-for-coding"
+
+[profiles.coding_tooling]
+provider = "moonshot"
+endpoint = "anthropic-messages"
+model = "kimi-for-coding"
+
+[profiles.openai_frontier]
+provider = "openai"
+endpoint = "openai-responses"
+model = "gpt-5"
+
+[profiles.alt_cn]
+provider = "dashscope"
+endpoint = "openai-responses"
+model = "qwen3.6-plus"
+
+[[example]]
+id = "legacy-001"
+slug = "01_minimal"
+title = "01_minimal.py - custom calculator tool + 最小会话"
+category = "sdk"
+description = "最小在线会话示例，注重自定义工具与最短交互链路。"
+runtime = "online"
+entrypoint = "01_minimal.py"
+model_profile = "coding_primary"
+requires_api_key = true
+tags = ["coding", "sdk", "existing", "starter"]
+
+[[example]]
+id = "legacy-002"
+slug = "02_custom_model"
+title = "02_custom_model.py - 指定 endpoint 的模型切换"
+category = "sdk"
+description = "演示如何切换模型 endpoint（如 openai-completions）并保留原始会话结构。"
+runtime = "online"
+entrypoint = "02_custom_model.py"
+model_profile = "coding_primary"
+requires_api_key = true
+tags = ["coding", "sdk", "model", "existing"]
+
+[[example]]
+id = "legacy-003"
+slug = "03_custom_prompt"
+title = "03_custom_prompt.py - 系统提示词替换"
+category = "system_prompt"
+description = "演示通过 DEFAULT_SYSTEM_PROMPT 覆盖模型系统提示词。"
+runtime = "online"
+entrypoint = "03_custom_prompt.py"
+model_profile = "coding_primary"
+requires_api_key = true
+tags = ["coding", "system_prompt", "existing"]
+
+[[example]]
+id = "legacy-004"
+slug = "04_builtin_bash_tool"
+title = "04_builtin_bash_tool.py - 启用内建 bash 工具"
+category = "toolsets"
+description = "展示启用内建 bash 工具后的基本工具调用能力。"
+runtime = "online"
+entrypoint = "04_builtin_bash_tool.py"
+model_profile = "coding_tooling"
+requires_api_key = true
+tags = ["coding", "toolset", "existing", "bash"]
+
+[[example]]
+id = "legacy-005"
+slug = "05_model_with_builtin_bash"
+title = "05_model_with_builtin_bash.py - 自定义模型 + 内建 bash"
+category = "toolsets"
+description = "将自定义模型与内建 bash 工具组合，验证模型与工具栈协作。"
+runtime = "online"
+entrypoint = "05_model_with_builtin_bash.py"
+model_profile = "coding_tooling"
+requires_api_key = true
+tags = ["coding", "toolset", "existing", "bash"]
+
+[[example]]
+id = "legacy-006"
+slug = "06_nl_with_builtin_bash"
+title = "06_nl_with_builtin_bash.py - 自然语言触发 bash"
+category = "simple_interaction"
+description = "使用自然语言驱动 bash 工具的最小交互示例。"
+runtime = "online"
+entrypoint = "06_nl_with_builtin_bash.py"
+model_profile = "coding_tooling"
+requires_api_key = true
+tags = ["coding", "simple_interaction", "toolset", "existing"]
+
+[[example]]
+id = "legacy-007"
+slug = "07_offline_session_restore"
+title = "07_offline_session_restore.py - 离线会话恢复"
+category = "run"
+description = "无外部模型依赖的离线会话保存/恢复样例。"
+runtime = "offline"
+entrypoint = "07_offline_session_restore.py"
+model_profile = "coding_primary"
+requires_api_key = false
+tags = ["coding", "run", "offline", "existing"]
+
+[[example]]
+id = "legacy-008"
+slug = "08_online_resume_repo_session"
+title = "08_online_resume_repo_session.py - 持久化恢复"
+category = "run"
+description = "在线会话持久化恢复流程（含仓库目录上下文）。"
+runtime = "online"
+entrypoint = "08_online_resume_repo_session.py"
+model_profile = "coding_primary"
+requires_api_key = true
+tags = ["coding", "run", "existing", "resume"]
+
+[[example]]
+id = "legacy-009"
+slug = "09_print_mode_text"
+title = "09_print_mode_text.py - 文本投影"
+category = "run"
+description = "打印模式下的文本投影输出，适合快速观察会话原文。"
+runtime = "online"
+entrypoint = "09_print_mode_text.py"
+model_profile = "coding_primary"
+requires_api_key = true
+tags = ["coding", "run", "existing", "print_mode"]
+
+[[example]]
+id = "legacy-010"
+slug = "10_print_mode_json"
+title = "10_print_mode_json.py - JSON 投影"
+category = "run"
+description = "打印模式下的 JSON 输出，适合脚本下游消费。"
+runtime = "online"
+entrypoint = "10_print_mode_json.py"
+model_profile = "coding_primary"
+requires_api_key = true
+tags = ["coding", "run", "existing", "print_mode"]
+
+[[example]]
+id = "legacy-011"
+slug = "11_cli_commands"
+title = "11_cli_commands.py - CLI 命令面板"
+category = "rpc"
+description = "CLI 命令列表和执行链路的端到端走查。"
+runtime = "offline"
+entrypoint = "11_cli_commands.py"
+model_profile = "coding_primary"
+requires_api_key = false
+tags = ["coding", "rpc", "existing", "cli"]
+
+[[example]]
+id = "legacy-012"
+slug = "12_cli_session_surface"
+title = "12_cli_session_surface.py - CLI 会话管理"
+category = "rpc"
+description = "验证会话命名、列举与导出行为（离线）。"
+runtime = "offline"
+entrypoint = "12_cli_session_surface.py"
+model_profile = "coding_primary"
+requires_api_key = false
+tags = ["coding", "rpc", "existing", "cli"]
+
+[[example]]
+id = "legacy-013"
+slug = "13_rpc_mode_probe"
+title = "13_rpc_mode_probe.py - RPC 能力探针"
+category = "rpc"
+description = "探索 RPC mode 命令列表与状态读取能力。"
+runtime = "offline"
+entrypoint = "13_rpc_mode_probe.py"
+model_profile = "coding_primary"
+requires_api_key = false
+tags = ["coding", "rpc", "existing"]
+
+[[example]]
+id = "legacy-014"
+slug = "14_simple_code_writer"
+title = "14_simple_code_writer.py - NL 写代码"
+category = "step_by_step_coding"
+description = "通过自然语言驱动 bash 自动生成文件的最小编程样例。"
+runtime = "online"
+entrypoint = "14_simple_code_writer.py"
+model_profile = "coding_tooling"
+requires_api_key = true
+tags = ["coding", "step", "existing", "write"]
+
+[[example]]
+id = "legacy-015"
+slug = "15_simple_write_tool"
+title = "15_simple_write_tool.py - write tool 直接写入"
+category = "toolsets"
+description = "仅依赖 write tool 完成简单内容写入的最小模板。"
+runtime = "online"
+entrypoint = "15_simple_write_tool.py"
+model_profile = "coding_tooling"
+requires_api_key = true
+tags = ["coding", "toolset", "existing", "write"]
+
+[[example]]
+id = "legacy-016"
+slug = "16_write_tool_trace"
+title = "16_write_tool_trace.py - write tool trace"
+category = "toolsets"
+description = "打印 write tool 执行过程中的可读性 trace。"
+runtime = "online"
+entrypoint = "16_write_tool_trace.py"
+model_profile = "coding_tooling"
+requires_api_key = true
+tags = ["coding", "toolset", "existing", "trace"]
+
+[[example]]
+id = "legacy-017"
+slug = "17_kimi_env_probe"
+title = "17_kimi_env_probe.py - 模型路由与 key 来源诊断"
+category = "sdk"
+description = "输出模型 catalog 解析结果、鉴权 key 来源、kimi-code endpoint 映射，快速排障。"
+runtime = "offline"
+entrypoint = "17_kimi_env_probe.py"
+model_profile = "coding_primary"
+requires_api_key = false
+tags = ["coding", "sdk", "existing", "debug", "diagnostics"]
+
+[[example]]
+id = "legacy-018"
+slug = "18_kimi_runtime_matrix.py"
+title = "18_kimi_runtime_matrix.py - endpoint 与错误码矩阵"
+category = "sdk"
+description = "离线输出 endpoint->base_url->api->model 映射，附带常见错误码建议。"
+runtime = "offline"
+entrypoint = "18_kimi_runtime_matrix.py"
+model_profile = "coding_primary"
+requires_api_key = false
+tags = ["coding", "sdk", "existing", "offline", "diagnostics", "ops"]
+
+[[example]]
+id = "legacy-019"
+slug = "19_session_store_check.py"
+title = "19_session_store_check.py - .loushang 会话落盘检查"
+category = "run"
+description = "验证 .loushang 下会话落盘、恢复、列表索引是否一致。"
+runtime = "offline"
+entrypoint = "19_session_store_check.py"
+model_profile = "coding_primary"
+requires_api_key = false
+tags = ["coding", "run", "offline", "existing", "session", "persist"]
+
+[[example]]
+id = "legacy-020"
+slug = "20_key_rotation.py"
+title = "20_key_rotation.py - key 切换恢复演练"
+category = "sdk"
+description = "离线演练 401 -> 认证恢复；可选执行 online 最小可重现。"
+runtime = "offline"
+entrypoint = "20_key_rotation.py"
+model_profile = "coding_primary"
+requires_api_key = false
+tags = ["coding", "sdk", "existing", "offline", "auth", "diagnostics", "ops"]
+
+[[example]]
+id = "legacy-021"
+slug = "21_switch_model_route.py"
+title = "21_switch_model_route.py - 模型路由切换演练"
+category = "sdk"
+description = "对多个 endpoint 执行模型切换验证，输出实际落地路由与可切换日志。"
+runtime = "online"
+entrypoint = "21_switch_model_route.py"
+model_profile = "coding_primary"
+requires_api_key = true
+tags = ["coding", "sdk", "existing", "model", "ops", "routing", "online"]
+
+[[example]]
+id = "legacy-022"
+slug = "22_usage_inspect.py"
+title = "22_usage_inspect.py - usage/cost 观测"
+category = "sdk"
+description = "打印会话返回中的 usage 与成本估算，支持离线/在线统一输出。"
+runtime = "online"
+entrypoint = "22_usage_inspect.py"
+model_profile = "coding_primary"
+requires_api_key = true
+tags = ["coding", "sdk", "existing", "usage", "metrics", "diagnostics", "online"]
+
+[[example]]
+id = "legacy-023"
+slug = "23_kimi_weekly_usage_ledger.py"
+title = "23_kimi_weekly_usage_ledger.py - 周用量本地账本"
+category = "sdk"
+description = "调用后记录每次 usage 到本地 ledger，按本周窗口聚合输出累计消耗与剩余比例（可选提供周额度）。"
+runtime = "online"
+entrypoint = "23_kimi_weekly_usage_ledger.py"
+model_profile = "coding_primary"
+requires_api_key = true
+tags = ["coding", "sdk", "existing", "usage", "metrics", "ledger", "ops", "diagnostics", "online"]
+
+[[example]]
+id = "legacy-024"
+slug = "24_git_checkpoint.py"
+title = "24_git_checkpoint.py - git stash checkpoint AgentTool"
+category = "git"
+description = "实现 GitCheckpointTool 作为 AgentTool，离线 mock stream 验证多轮 tool call，可选 live Kimi 驱动。"
+runtime = "offline"
+entrypoint = "24_git_checkpoint.py"
+model_profile = "coding_primary"
+requires_api_key = false
+tags = ["coding", "git", "existing", "tool", "offline", "checkpoint"]
+
+[[example]]
+id = "legacy-025"
+slug = "25_render_tool_events_contract"
+title = "25_render_tool_events_contract.py - rendered tool event 合约"
+category = "ui"
+description = "离线演示 PrintMode JSON 的 renderedToolCall/renderedToolResult 合约字段。"
+runtime = "offline"
+entrypoint = "25_render_tool_events_contract.py"
+model_profile = "coding_primary"
+requires_api_key = false
+tags = ["coding", "ui", "existing", "offline", "render", "tools", "json"]
+
+[[example]]
+id = "skill-01"
+slug = "skill_01_discovery"
+title = "skill_01_discovery.py - skill discovery, filtering, and replacement"
+category = "skill"
+description = "Demonstrates skill discovery from a local skills/ directory, filtering by state/source, and runtime enable/disable replacement."
+runtime = "offline"
+entrypoint = "skill_01_discovery.py"
+model_profile = ""
+requires_api_key = false
+tags = ["skill", "discovery", "filter", "replace", "offline"]
+
+[[example]]
+id = "skill-02"
+slug = "skill_02_advanced"
+title = "skill_02_advanced.py - disable-model-invocation & system prompt injection"
+category = "skill"
+description = "Demonstrates disable-model-invocation filtering (skill excluded from available_skills but still manually callable) and system prompt XML injection."
+runtime = "offline"
+entrypoint = "skill_02_advanced.py"
+model_profile = ""
+requires_api_key = false
+tags = ["skill", "disable-model-invocation", "system-prompt", "offline"]
+
+[[example]]
+id = "skill-03"
+slug = "skill_03_precedence"
+title = "skill_03_precedence.py - source precedence & collision handling"
+category = "skill"
+description = "Demonstrates project_local > external_package precedence and same-precedence collision disabling both identities."
+runtime = "offline"
+entrypoint = "skill_03_precedence.py"
+model_profile = ""
+requires_api_key = false
+tags = ["skill", "precedence", "collision", "source-kind", "offline"]
+
+[[example]]
+id = "skill-04"
+slug = "skill_04_reload"
+title = "skill_04_reload.py - hot reload skills at runtime"
+category = "skill"
+description = "Demonstrates adding a new SKILL.md after initial discovery and reloading skills without restarting the process."
+runtime = "offline"
+entrypoint = "skill_04_reload.py"
+model_profile = ""
+requires_api_key = false
+tags = ["skill", "reload", "hot-reload", "offline"]
+
+[[example]]
+id = "config-01"
+slug = "config_01_resource_layers"
+title = "config_01_resource_layers.py - flat resource architecture precedence"
+category = "config"
+description = "Demonstrates the four-layer resource precedence (project > user > external > built-in) with skill discovery and merge decisions."
+runtime = "offline"
+entrypoint = "config_01_resource_layers.py"
+model_profile = ""
+requires_api_key = false
+tags = ["config", "resource", "precedence", "layers", "offline"]
+
+[[example]]
+id = "legacy-ext-01"
+slug = "extensions/01_lifecycle.py"
+title = "extensions/01_lifecycle.py - 生命周期钩子"
+category = "extensions"
+description = "offline 扩展生命周期（session_start / before_agent_start / shutdown）。"
+runtime = "offline"
+entrypoint = "extensions/01_lifecycle.py"
+model_profile = "coding_primary"
+requires_api_key = false
+tags = ["coding", "extensions", "existing", "lifecycle"]
+
+[[example]]
+id = "legacy-ext-02"
+slug = "extensions/02_dynamic_resources.py"
+title = "extensions/02_dynamic_resources.py - 动态资源"
+category = "extensions"
+description = "演示动态 resource discover 的贡献方式。"
+runtime = "offline"
+entrypoint = "extensions/02_dynamic_resources.py"
+model_profile = "coding_primary"
+requires_api_key = false
+tags = ["coding", "extensions", "existing", "resources"]
+
+[[example]]
+id = "legacy-ext-03"
+slug = "extensions/03_custom_tool.py"
+title = "extensions/03_custom_tool.py - @tool 自定义工具"
+category = "extensions"
+description = "通过 register(api) 与 @tool 注册自定义工具。"
+runtime = "offline"
+entrypoint = "extensions/03_custom_tool.py"
+model_profile = "coding_primary"
+requires_api_key = false
+tags = ["coding", "extensions", "existing", "tool"]
+
+[[example]]
+id = "legacy-ext-04"
+slug = "extensions/04_tool_guard.py"
+title = "extensions/04_tool_guard.py - 工具拦截"
+category = "extensions"
+description = "tool_call 与 tool_result 拦截、监控与改写示例。"
+runtime = "offline"
+entrypoint = "extensions/04_tool_guard.py"
+model_profile = "coding_primary"
+requires_api_key = false
+tags = ["coding", "extensions", "existing", "guard"]
+
+[[example]]
+id = "legacy-ext-11"
+slug = "extensions/11_online_tool_guard.py"
+title = "extensions/11_online_tool_guard.py - 在线工具拦截"
+category = "extensions"
+description = "在线环境下演示工具拦截策略与注入。"
+runtime = "online"
+entrypoint = "extensions/11_online_tool_guard.py"
+model_profile = "coding_primary"
+requires_api_key = true
+tags = ["coding", "extensions", "online", "guard"]
+
+[[example]]
+id = "legacy-ext-12"
+slug = "extensions/12_online_dynamic_resources.py"
+title = "extensions/12_online_dynamic_resources.py - 在线动态资源"
+category = "extensions"
+description = "在线场景下的动态资源与提示词上下文注入。"
+runtime = "online"
+entrypoint = "extensions/12_online_dynamic_resources.py"
+model_profile = "coding_primary"
+requires_api_key = true
+tags = ["coding", "extensions", "online", "resources"]
+
+[[example]]
+id = "legacy-ext-13"
+slug = "extensions/13_online_resume_with_extension.py"
+title = "extensions/13_online_resume_with_extension.py - 在线恢复与扩展"
+category = "extensions"
+description = "在线会话恢复时保留扩展资源状态。"
+runtime = "online"
+entrypoint = "extensions/13_online_resume_with_extension.py"
+model_profile = "coding_primary"
+requires_api_key = true
+tags = ["coding", "extensions", "online", "resume"]
+
+[[series]]
+id_prefix = "sdk"
+category = "sdk"
+count = 20
+runtime = "online"
+model_profile = "coding_primary"
+requires_api_key = true
+tags = ["sdk", "generated", "online"]
+title_template = "SDK 示例 {index:02d} - {topic}"
+description_template = "Generated SDK 示例：{topic}"
+prompt_template = "请用 1 段话说明 {topic} 在 loushang-coding 中的核心作用，并给出一个简化的实现步骤。"
+topics = [
+  "会话构建与生命周期",
+  "模型配置与 profile 解析",
+  "会话状态与元信息持久化",
+  "多会话并发与资源隔离",
+  "内置工具与自定义工具注册",
+  "异常路径与重试策略",
+  "默认系统提示词覆盖策略",
+  "输入输出上下文裁剪与上下文窗口",
+  "工具输出标准化",
+  "文件系统会话根目录策略",
+  "运行时日志与 trace 输出",
+  "超时与取消行为",
+  "RPC 列表与执行边界",
+  "动态模型降级策略",
+  "会话标签与检索",
+  "会话导出前处理",
+  "命令行参数对运行时的影响",
+  "错误码映射与提示规范",
+  "扩展点初始化顺序",
+  "模型兼容性检查"
+]
+
+[[series]]
+id_prefix = "ext"
+category = "extensions"
+count = 22
+runtime = "online"
+model_profile = "coding_primary"
+requires_api_key = true
+tags = ["extensions", "generated", "online"]
+title_template = "扩展 API 示例 {index:02d} - {topic}"
+description_template = "Generated Extension 示例：{topic}"
+prompt_template = "请给出 {topic} 的最小扩展注册方式（register(api)）和安全边界建议。"
+topics = [
+  "register(api) 的最小生命周期",
+  "资源发现与去重策略",
+  "工具装饰器与参数验证",
+  "tool_call 拦截与阻断",
+  "tool_result 脱敏与日志审计",
+  "会话启动注入与清理",
+  "前置输入转换",
+  "后置输出注入",
+  "输入级别权限白名单",
+  "危险命令识别",
+  "多命令协作与冲突控制",
+  "命令参数补全",
+  "命令执行失败重试",
+  "离线与在线行为对齐",
+  "扩展级事件统计",
+  "扩展发现顺序",
+  "跨项目资源映射",
+  "提示词资源版本化",
+  "技能注入与冲突规避",
+  "扩展报错标准化",
+  "安全退出与资源回收",
+  "扩展热更新",
+  "扩展故障隔离"
+]
+
+[[series]]
+id_prefix = "model"
+category = "model"
+count = 10
+runtime = "online"
+model_profile = "coding_primary"
+requires_api_key = true
+tags = ["model", "generated", "online"]
+title_template = "Model 示例 {index:02d} - {topic}"
+description_template = "Generated model 示例：{topic}"
+prompt_template = "请给出 {topic} 在 loushang-coding 中的最小实现步骤，并列出可观测字段。"
+topics = [
+  "provider 与 endpoint 路由优先级",
+  "endpoint 别名与兼容协议映射",
+  "模型名与 catalog 一致性校验",
+  "鉴权来源优先级（token 与环境变量）",
+  "模型调用重试与短路降级",
+  "失败路径（401/403/429）处置",
+  "运行时 model 参数透传（temperature/top_p）",
+  "调用速率窗口与限流对齐",
+  "模型路由与会话恢复行为",
+  "多端点返回一致性对比"
+]
+
+[[series]]
+id_prefix = "provider"
+category = "provider"
+count = 8
+runtime = "online"
+model_profile = "coding_primary"
+requires_api_key = true
+tags = ["provider", "generated", "online"]
+title_template = "Provider 示例 {index:02d} - {topic}"
+description_template = "Generated provider 示例：{topic}"
+prompt_template = "请给出 {topic} 的 provider 生命周期、鉴权、payload 与 streaming 可观测字段。"
+topics = [
+  "自定义 provider 注册生命周期",
+  "provider OAuth 与 API key 双路径",
+  "OpenAI 兼容 provider payload",
+  "Anthropic 兼容 provider payload",
+  "provider streaming 事件映射",
+  "provider 错误码归一化",
+  "provider 与 model catalog 绑定",
+  "provider 健康检查与降级"
+]
+
+[[series]]
+id_prefix = "skill"
+category = "skill"
+count = 10
+runtime = "online"
+model_profile = "coding_primary"
+requires_api_key = true
+tags = ["skill", "generated", "online"]
+title_template = "Skill 示例 {index:02d} - {topic}"
+description_template = "Generated skill 示例：{topic}"
+prompt_template = "请给出 {topic} 在 loushang-coding 中的最小 Skill 示例、触发方式与回退策略。"
+topics = [
+  "技能发现（discover skills）与来源顺序",
+  "按名称或 tag 过滤技能",
+  "自定义技能注册（内建与项目级）",
+  "禁用高风险技能策略",
+  "技能执行失败与重试",
+  "技能命令与扩展命令边界",
+  "技能诊断信息标准化",
+  "技能参数校验与输出 schema",
+  "技能热重载与生效验证",
+  "技能观测日志（入参/出参/错误码）"
+]
+
+[[series]]
+id_prefix = "config"
+category = "config"
+count = 10
+runtime = "online"
+model_profile = "coding_primary"
+requires_api_key = true
+tags = ["config", "generated", "online"]
+title_template = "Config 示例 {index:02d} - {topic}"
+description_template = "Generated config 示例：{topic}"
+prompt_template = "请给出 {topic} 的最小配置变更建议和验证步骤。"
+topics = [
+  "settings.json 与会话隔离配置",
+  "LOUSHANG_EXAMPLES_* 环境变量优先级",
+  "模型目录与 catalog 合并策略",
+  "会话目录（persist）与恢复策略",
+  "扩展目录路径扫描规则",
+  "工具开关与安全阈值配置",
+  "RPC/命令输出格式配置",
+  "模型降级与重试参数",
+  "日志与 trace 统一命名规范",
+  "错误码与退出码策略"
+]
+
+[[series]]
+id_prefix = "run"
+category = "run"
+count = 10
+runtime = "offline"
+requires_api_key = false
+tags = ["run", "generated", "offline"]
+title_template = "run 体系示例 {index:02d} - {topic}"
+description_template = "Generated run 示例：{topic}"
+prompt_template = "请用命令级步骤说明 {topic} 在脚本 runner 中的执行顺序和预期输出。"
+topics = [
+  "按标签筛选脚本执行",
+  "按分类快速分页",
+  "dry-run 预演参数",
+  "单条命令执行失败回滚",
+  "并发执行与串行回退",
+  "错误码映射",
+  "退出码透传规则",
+  "执行日志结构化输出",
+  "参数透传到子脚本",
+  "清单生成与导出"
+]
+
+[[series]]
+id_prefix = "rpc"
+category = "rpc"
+count = 16
+runtime = "offline"
+requires_api_key = false
+tags = ["rpc", "generated", "offline"]
+title_template = "RPC 示例 {index:02d} - {topic}"
+description_template = "Generated RPC 示例：{topic}"
+prompt_template = "请给出 {topic} 的 JSON request / response 建议，并说明最小校验。"
+topics = [
+  "get_commands 调用路径",
+  "set_param 与 get_param 约定",
+  "命令参数类型化序列化",
+  "会话状态读取",
+  "会话恢复探测",
+  "CLI 命令转 RPC 的映射",
+  "并发请求节流",
+  "错误码与重试头",
+  "列表结果分页",
+  "上下文版本号检查",
+  "事件总线与订阅",
+  "诊断命令定义",
+  "诊断结果结构化输出",
+  "参数校验失败提示",
+  "安全命令白名单",
+  "可观测字段清单"
+]
+
+[[series]]
+id_prefix = "cmd"
+category = "command"
+count = 12
+runtime = "offline"
+requires_api_key = false
+tags = ["command", "generated", "offline"]
+title_template = "Command 示例 {index:02d} - {topic}"
+description_template = "Generated command 示例：{topic}"
+prompt_template = "请给出 {topic} 的命令发现、解析、路由与执行结果格式，包含最小输入输出样例。"
+topics = [
+  "slash command 解析优先级",
+  "extension command 注册与发现",
+  "prompt command 展开流程",
+  "skill command 匹配与调用",
+  "同名命令冲突处理",
+  "命令参数 schema 与默认值",
+  "命令执行前置校验",
+  "命令执行结果结构化输出",
+  "命令失败与用户可读错误",
+  "命令权限与禁用列表",
+  "命令列表分组展示",
+  "命令链路可观测事件"
+]
+
+[[series]]
+id_prefix = "interaction"
+category = "simple_interaction"
+count = 10
+runtime = "online"
+model_profile = "coding_primary"
+requires_api_key = true
+tags = ["simple_interaction", "generated", "online"]
+title_template = "简单交互示例 {index:02d} - {topic}"
+description_template = "Generated interaction 示例：{topic}"
+prompt_template = "请给出针对 {topic} 的一句用户交互流程，包括 prompt、steer 与 follow_up 的处理。"
+topics = [
+  "单轮提示词响应",
+  "steer 注入短语",
+  "follow_up 补充上下文",
+  "多轮对齐策略",
+  "用户偏好记忆",
+  "歧义澄清提问",
+  "模型拒绝后的重试策略",
+  "失败降级提示",
+  "并行问题分解",
+  "执行结果确认"
+]
+
+[[series]]
+id_prefix = "prompt"
+category = "system_prompt"
+count = 10
+runtime = "online"
+model_profile = "coding_primary"
+requires_api_key = true
+tags = ["system_prompt", "generated", "online"]
+title_template = "提示词示例 {index:02d} - {topic}"
+description_template = "Generated system_prompt 示例：{topic}"
+prompt_template = "请给出一个可复用的系统提示词片段，重点覆盖 {topic}，并说明注入顺序。"
+topics = [
+  "角色定义与目标约束",
+  "工具可见性边界",
+  "输出格式硬约束",
+  "长度与风格控制",
+  "中文术语统一",
+  "安全策略优先级",
+  "错误处理口径",
+  "会话内一致性维护",
+  "跨脚本提示词继承",
+  "多模型兼容写法"
+]
+
+[[series]]
+id_prefix = "compaction"
+category = "compaction"
+count = 10
+runtime = "offline"
+requires_api_key = false
+tags = ["compaction", "generated", "offline"]
+title_template = "Compaction 示例 {index:02d} - {topic}"
+description_template = "Generated compaction 示例：{topic}"
+prompt_template = "请给出 {topic} 的最小上下文压缩策略。"
+topics = [
+  "窗口长度阈值判断",
+  "retain 最小摘要长度",
+  "保留最近 N 轮策略",
+  "摘要与元数据合并",
+  "短窗口触发测试",
+  "压缩后上下文完整性检查",
+  "上下文溢出回退",
+  "压缩链路指标记录",
+  "长会话分段摘要",
+  "压缩与续写联动"
+]
+short_compaction_reserve_tokens = 256
+short_compaction_keep_recent_tokens = 128
+
+[[series]]
+id_prefix = "ui"
+category = "ui"
+count = 12
+runtime = "offline"
+requires_api_key = false
+tags = ["ui", "generated", "offline"]
+title_template = "UI/Render 示例 {index:02d} - {topic}"
+description_template = "Generated UI/render 示例：{topic}"
+prompt_template = "请把 {topic} 改写为 loushang 可运行的文本/事件投影示例，说明原 pi-mono UI 能力和适配边界。"
+topics = [
+  "status line 事件投影",
+  "header/footer 文本投影",
+  "message renderer 可读输出",
+  "working indicator 事件输出",
+  "hidden thinking label 投影",
+  "widget placement 降级显示",
+  "modal editor 降级交互",
+  "overlay 事件边界",
+  "notification 事件模拟",
+  "model status 变更输出",
+  "question/select UI 降级",
+  "实时游戏 UI 不适用标记"
+]
+
+[[series]]
+id_prefix = "git"
+category = "git"
+count = 6
+runtime = "offline"
+requires_api_key = false
+tags = ["git", "generated", "offline"]
+title_template = "Git 示例 {index:02d} - {topic}"
+description_template = "Generated git 示例：{topic}"
+prompt_template = "请给出 {topic} 的最小 git 状态检查、事件输出和失败回退策略。"
+topics = [
+  "dirty repo guard",
+  "git checkpoint 创建",
+  "checkpoint 恢复提示",
+  "auto commit on exit 策略",
+  "commit message 来源",
+  "git 操作安全白名单"
+]
+
+[[series]]
+id_prefix = "tools"
+category = "toolsets"
+count = 20
+runtime = "online"
+model_profile = "coding_tooling"
+requires_api_key = true
+tags = ["toolset", "generated", "online"]
+title_template = "Tools 示例 {index:02d} - {topic}"
+description_template = "Generated toolset 示例：{topic}"
+prompt_template = "请列出 {topic} 的工具配置要点和禁用列表，给出最小示例参数。"
+topics = [
+  "只读工具集",
+  "只写工具集",
+  "bash 与 write 分离",
+  "工具参数白名单",
+  "工具可见性按会话动态裁剪",
+  "危险命令过滤",
+  "工具调用重试与去重",
+  "工具返回结构校验",
+  "工具执行超时控制",
+  "工具结果可观测字段",
+  "工具链路追踪 ID",
+  "批量工具并发执行",
+  "工具版本兼容验证",
+  "工具参数默认值策略",
+  "工具注册顺序",
+  "空结果行为定义",
+  "工具调用拒绝提示",
+  "工具失败回滚",
+  "按步骤逐层授权",
+  "工具集测试清单"
+]
+
+[[series]]
+id_prefix = "stepwise"
+category = "step_by_step_coding"
+count = 14
+runtime = "offline"
+requires_api_key = false
+tags = ["step_by_step", "generated", "offline"]
+title_template = "Step-by-step 示例 {index:02d} - {topic}"
+description_template = "Generated step_by_step 示例：{topic}"
+prompt_template = "请给出 {topic} 的 5 步命令清单（无渲染）：建目录、建文件、应用变更、验证、回滚。"
+topics = [
+  "创建仓库级配置文件",
+  "生成最小 CLI 入口",
+  "补全类型定义",
+  "引入异常处理",
+  "加入测试脚手架",
+  "写入文档片段",
+  "添加日志与错误码",
+  "新增参数解析",
+  "补齐示例数据",
+  "添加 README 步骤说明",
+  "实现资源清理逻辑",
+  "实现幂等执行逻辑",
+  "添加运行时守卫",
+  "验收与回滚步骤"
+]

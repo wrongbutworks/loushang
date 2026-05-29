@@ -1,0 +1,21 @@
+name: bmi workflow smoke
+steps:
+  - prompt: 请生成一个计算 BMI 的 Python 程序，必须写入当前工作目录下的相对路径 tmp/bmi.py，不要写到 /tmp/bmi.py。
+    timeout_s: 300
+    expect:
+      files_exist:
+        - tmp/bmi.py
+      files_contain:
+        tmp/bmi.py: BMI
+      command:
+        run: python -m py_compile tmp/bmi.py
+        exit_code: 0
+        stderr_not_contains: Traceback
+  - prompt: 请生成一个计算 BMI 的 HTML 程序，必须写入当前工作目录下的相对路径 tmp/bmi.html，不要写到 /tmp/bmi.html。
+    timeout_s: 300
+    expect:
+      files_exist:
+        - tmp/bmi.html
+      files_contain:
+        tmp/bmi.html: BMI
+      no_traceback: true

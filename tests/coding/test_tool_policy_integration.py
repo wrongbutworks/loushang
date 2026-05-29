@@ -1,0 +1,204 @@
+from __future__ import annotations
+
+import asyncio
+
+import pytest
+
+
+def _tool_context_provider(*, cwd: str):
+    from loushang.coding.tools import ToolContext
+
+    def _provider(*, tool_call_id: str) -> ToolContext:
+        return ToolContext(tool_call_id=tool_call_id, cwd=cwd)
+
+    return _provider
+
+
+def test_global_policy_engine_blocks_write_tool_before_mutation(tmp_path) -> None:
+    from loushang.coding.policy import PolicyEngine
+    from loushang.coding.tools import ToolRegistry, register_builtin_tools
+
+    registry = ToolRegistry()
+    register_builtin_tools(registry, policy_engine=PolicyEngine(blocked_tools=["write"]))
+    runtime_tool = registry.materialize_tool("write", context_provider=_tool_context_provider(cwd=str(tmp_path)))
+
+    with pytest.raises(PermissionError) as exc:
+        asyncio.run(runtime_tool.execute("call-write-policy", {"path": "blocked.txt", "content": "blocked"}))
+
+    assert "write" in str(exc.value)
+    assert getattr(exc.value, "tool_result_details", None) == {
+        "tool_name": "write",
+        "cwd": str(tmp_path),
+        "policy_disposition": "deny",
+        "policy_code": "tool_blocked",
+        "policy_reason": "Tool write is blocked by policy",
+        "approval_required": False,
+        "argument_keys": ["content", "path"],
+        "path": str(tmp_path / "blocked.txt"),
+    }
+    assert not (tmp_path / "blocked.txt").exists()
+
+
+def test_global_policy_engine_blocks_bash_by_tool_name(tmp_path) -> None:
+    from loushang.coding.policy import PolicyEngine
+    from loushang.coding.tools import ToolRegistry, register_builtin_tools
+
+    registry = ToolRegistry()
+    register_builtin_tools(registry, policy_engine=PolicyEngine(blocked_tools=["bash"]))
+    runtime_tool = registry.materialize_tool("bash")
+
+    with pytest.raises(PermissionError) as exc:
+        asyncio.run(runtime_tool.execute("call-bash-policy", {"command": "pwd", "cwd": str(tmp_path)}))
+
+    assert "bash" in str(exc.value)
+
+
+def test_default_tool_registration_does_not_enable_policy_by_default(tmp_path) -> None:
+    import asyncio
+
+    from loushang.coding.exec.types import ExecResult
+    from loushang.coding.tools import ToolRegistry, register_builtin_tools
+
+    class RecordingExecService:
+        def __init__(self) -> None:
+            self.requests: list[object] = []
+
+        async def execute(self, request) -> ExecResult:
+            self.requests.append(request)
+            return ExecResult(exit_code=0, stdout="ok", stderr="")
+
+    registry = ToolRegistry()
+    exec_service = RecordingExecService()
+    register_builtin_tools(registry, exec_service=exec_service)
+    runtime_tool = registry.materialize_tool("bash")
+    result = asyncio.run(runtime_tool.execute("call-bash-no-policy", {"command": "printf ok", "cwd": str(tmp_path)}))
+
+    assert result.content[0].text == "ok"
+    assert len(exec_service.requests) == 1
+    assert exec_service.requests[0].command == ("/bin/bash", "-lc", "printf ok")
+
+
+def test_default_approval_resolver_denies_ask_policy_before_write(tmp_path) -> None:
+    from loushang.coding.policy import PolicyEngine
+    from loushang.coding.tools import ToolRegistry, register_builtin_tools
+
+    registry = ToolRegistry()
+    register_builtin_tools(registry, policy_engine=PolicyEngine(ask_tools=["write"]))
+    runtime_tool = registry.materialize_tool("write", context_provider=_tool_context_provider(cwd=str(tmp_path)))
+
+    with pytest.raises(PermissionError) as exc:
+        asyncio.run(runtime_tool.execute("call-write-approval-default", {"path": "needs-approval.txt", "content": "x"}))
+
+    assert "write" in str(exc.value)
+    assert getattr(exc.value, "tool_result_details", None) == {
+        "tool_name": "write",
+        "cwd": str(tmp_path),
+        "policy_disposition": "ask",
+        "policy_code": "tool_requires_approval",
+        "policy_reason": "Tool write requires approval",
+        "approval_required": True,
+        "approval_decision": "deny",
+        "approval_reason": "Tool write requires approval",
+        "argument_keys": ["content", "path"],
+        "path": str(tmp_path / "needs-approval.txt"),
+    }
+    assert not (tmp_path / "needs-approval.txt").exists()
+
+
+def test_sync_approval_resolver_can_allow_ask_policy_for_write(tmp_path) -> None:
+    from loushang.coding.policy import ApprovalDecision, PolicyEngine
+    from loushang.coding.tools import ToolRegistry, register_builtin_tools
+
+    class AllowingResolver:
+        def __init__(self) -> None:
+            self.requests = []
+
+        def resolve(self, request):
+            self.requests.append(request)
+            return ApprovalDecision.allow()
+
+    resolver = AllowingResolver()
+    registry = ToolRegistry()
+    register_builtin_tools(
+        registry,
+        policy_engine=PolicyEngine(ask_tools=["write"]),
+        approval_resolver=resolver,
+    )
+    runtime_tool = registry.materialize_tool("write", context_provider=_tool_context_provider(cwd=str(tmp_path)))
+
+    result = asyncio.run(
+        runtime_tool.execute("call-write-approval-allow", {"path": "approved.txt", "content": "approved"})
+    )
+
+    assert (tmp_path / "approved.txt").read_text(encoding="utf-8") == "approved"
+    assert result.details["operation"] == "create"
+    assert len(resolver.requests) == 1
+    assert resolver.requests[0].tool_name == "write"
+    assert resolver.requests[0].policy_code == "tool_requires_approval"
+    assert "approved.txt" in str(resolver.requests[0].arguments["path"])
+
+
+def test_async_approval_resolver_can_deny_ask_policy_for_write(tmp_path) -> None:
+    from loushang.coding.policy import ApprovalDecision, PolicyEngine
+    from loushang.coding.tools import ToolRegistry, register_builtin_tools
+
+    class DenyingResolver:
+        async def resolve(self, request):
+            return ApprovalDecision.deny(f"denied {request.tool_name}")
+
+    registry = ToolRegistry()
+    register_builtin_tools(
+        registry,
+        policy_engine=PolicyEngine(ask_tools=["write"]),
+        approval_resolver=DenyingResolver(),
+    )
+    runtime_tool = registry.materialize_tool("write", context_provider=_tool_context_provider(cwd=str(tmp_path)))
+
+    with pytest.raises(PermissionError) as exc:
+        asyncio.run(runtime_tool.execute("call-write-approval-deny", {"path": "denied.txt", "content": "denied"}))
+
+    assert str(exc.value) == "denied write"
+    assert getattr(exc.value, "tool_result_details", None) == {
+        "tool_name": "write",
+        "cwd": str(tmp_path),
+        "policy_disposition": "ask",
+        "policy_code": "tool_requires_approval",
+        "policy_reason": "Tool write requires approval",
+        "approval_required": True,
+        "approval_decision": "deny",
+        "approval_reason": "denied write",
+        "argument_keys": ["content", "path"],
+        "path": str(tmp_path / "denied.txt"),
+    }
+    assert not (tmp_path / "denied.txt").exists()
+
+
+def test_headless_approval_resolver_modes_are_stable(tmp_path) -> None:
+    from loushang.coding.policy import HeadlessApprovalResolver, PolicyEngine
+    from loushang.coding.tools import ToolRegistry, register_builtin_tools
+
+    allow_registry = ToolRegistry()
+    register_builtin_tools(
+        allow_registry,
+        policy_engine=PolicyEngine(ask_tools=["write"]),
+        approval_resolver=HeadlessApprovalResolver(mode="allow"),
+    )
+    allow_tool = allow_registry.materialize_tool("write", context_provider=_tool_context_provider(cwd=str(tmp_path)))
+
+    asyncio.run(allow_tool.execute("call-write-headless-allow", {"path": "allowed.txt", "content": "ok"}))
+
+    deny_registry = ToolRegistry()
+    register_builtin_tools(
+        deny_registry,
+        policy_engine=PolicyEngine(ask_tools=["write"]),
+        approval_resolver=HeadlessApprovalResolver(mode="deny", reason="headless deny"),
+    )
+    deny_tool = deny_registry.materialize_tool("write", context_provider=_tool_context_provider(cwd=str(tmp_path)))
+
+    with pytest.raises(PermissionError) as exc:
+        asyncio.run(deny_tool.execute("call-write-headless-deny", {"path": "denied-headless.txt", "content": "x"}))
+
+    assert (tmp_path / "allowed.txt").read_text(encoding="utf-8") == "ok"
+    assert str(exc.value) == "headless deny"
+    assert getattr(exc.value, "tool_result_details", None)["approval_decision"] == "deny"
+    assert not (tmp_path / "denied-headless.txt").exists()

@@ -1,0 +1,305 @@
+from __future__ import annotations
+
+from loushang.tui import (
+    FakeTerminalPort,
+    MarkdownRenderer,
+    PlaybackEvent,
+    PlaybackHarness,
+    RenderConstraints,
+    RenderDiagnostics,
+    TerminalFrame,
+    TerminalOperation,
+    TerminalSize,
+    ThemeResolver,
+)
+
+
+def test_fake_terminal_port_records_successful_and_failed_flushes() -> None:
+    port = FakeTerminalPort(size=TerminalSize(columns=80, rows=24))
+    write = TerminalOperation.write("hello")
+
+    port.flush([write])
+    port.fail_next_flush(RuntimeError("boom"))
+    try:
+        port.flush([TerminalOperation.clear_line()])
+    except RuntimeError as exc:
+        assert str(exc) == "boom"
+    else:
+        raise AssertionError("expected flush failure")
+
+    assert port.size() == TerminalSize(columns=80, rows=24)
+    assert port.flushes == ((write,),)
+    assert port.failed_flushes == ((TerminalOperation.clear_line(),),)
+
+
+def test_fake_terminal_port_can_bound_recorded_history() -> None:
+    port = FakeTerminalPort(
+        size=TerminalSize(columns=80, rows=24),
+        flush_history_limit=1,
+        frame_history_limit=1,
+    )
+
+    port.flush([TerminalOperation.write("first")])
+    port.flush([TerminalOperation.write("second")])
+
+    assert port.flushes == ((TerminalOperation.write("second"),),)
+    assert len(port.frames) == 1
+    assert port.frames[0].serialized_output == "second"
+    assert port.screen.visible_lines[0].startswith("firstsecond")
+
+
+def test_playback_harness_records_diagnostics_for_scripted_events() -> None:
+    def render(event: PlaybackEvent, size: TerminalSize, previous: RenderDiagnostics | None) -> RenderDiagnostics:
+        previous_lines = previous.current_logical_lines if previous is not None else ()
+        text = f"{event.kind}:{event.payload}@{size.columns}x{size.rows}"
+        return RenderDiagnostics(
+            current_logical_lines=(text,),
+            previous_rendered_lines=previous_lines,
+            changed_line_range=(0, 0),
+            logical_cursor_row=0,
+            hardware_cursor_row=0,
+            operations=(TerminalOperation.write(text),),
+        )
+
+    harness = PlaybackHarness(render=render, port=FakeTerminalPort(size=TerminalSize(columns=40, rows=10)))
+
+    steps = harness.play([PlaybackEvent("key", "a"), PlaybackEvent("stream", "chunk")])
+
+    assert [step.event.kind for step in steps] == ["key", "stream"]
+    assert steps[0].diagnostics.current_logical_lines == ("key:a@40x10",)
+    assert steps[1].diagnostics.previous_rendered_lines == ("key:a@40x10",)
+    assert harness.port.flushes == (
+        (TerminalOperation.write("key:a@40x10"),),
+        (TerminalOperation.write("stream:chunk@40x10"),),
+    )
+
+
+def test_playback_harness_resize_event_updates_terminal_size_before_render() -> None:
+    seen_sizes: list[TerminalSize] = []
+
+    def render(event: PlaybackEvent, size: TerminalSize, previous: RenderDiagnostics | None) -> RenderDiagnostics:
+        seen_sizes.append(size)
+        return RenderDiagnostics(
+            current_logical_lines=(event.kind,),
+            previous_rendered_lines=previous.current_logical_lines if previous is not None else (),
+        )
+
+    harness = PlaybackHarness(render=render, port=FakeTerminalPort(size=TerminalSize(columns=80, rows=24)))
+
+    steps = harness.play([PlaybackEvent.resize(columns=100, rows=40)])
+
+    assert seen_sizes == [TerminalSize(columns=100, rows=40)]
+    assert steps[0].size == TerminalSize(columns=100, rows=40)
+
+
+def test_playback_event_input_carries_raw_terminal_input_chunk() -> None:
+    event = PlaybackEvent.input("/model gpt\t")
+
+    assert event.kind == "input"
+    assert event.payload == "/model gpt\t"
+
+
+def test_playback_harness_failed_flush_does_not_advance_successful_diagnostics() -> None:
+    def render(event: PlaybackEvent, size: TerminalSize, previous: RenderDiagnostics | None) -> RenderDiagnostics:
+        previous_lines = previous.current_logical_lines if previous is not None else ()
+        return RenderDiagnostics(
+            current_logical_lines=(str(event.payload),),
+            previous_rendered_lines=previous_lines,
+            operations=(TerminalOperation.write(str(event.payload)),),
+        )
+
+    port = FakeTerminalPort(size=TerminalSize(columns=80, rows=24))
+    harness = PlaybackHarness(render=render, port=port)
+    first = harness.play([PlaybackEvent("product", "first")])
+    port.fail_next_flush(RuntimeError("write failed"))
+    second = harness.play([PlaybackEvent("product", "second")])
+    third = harness.play([PlaybackEvent("product", "third")])
+
+    assert first[0].flush_error is None
+    assert second[0].flush_error == "write failed"
+    assert second[0].diagnostics.previous_rendered_lines == ("first",)
+    assert third[0].diagnostics.previous_rendered_lines == ("first",)
+    assert harness.previous_successful_diagnostics is not None
+    assert harness.previous_successful_diagnostics.current_logical_lines == ("third",)
+
+
+def test_terminal_frame_records_serialized_synchronized_flush_and_screen_snapshots() -> None:
+    port = FakeTerminalPort(size=TerminalSize(columns=8, rows=3))
+
+    frame = port.flush(
+        [
+            TerminalOperation.begin_synchronized_update(),
+            TerminalOperation.write("one"),
+            TerminalOperation.newline(),
+            TerminalOperation.write("two"),
+            TerminalOperation.end_synchronized_update(),
+        ]
+    )
+
+    assert isinstance(frame, TerminalFrame)
+    assert frame.serialized_output == "\x1b[?2026hone\r\ntwo\x1b[?2026l"
+    assert frame.synchronized is True
+    assert frame.clear_scrollback_emitted is False
+    assert frame.screen_before.visible_lines == ("", "", "")
+    assert frame.screen_after.visible_lines == ("one", "two", "")
+    assert frame.screen_after.cursor_row == 1
+    assert frame.screen_after.cursor_column == 3
+
+
+def test_terminal_frame_treats_pi_style_cursor_after_sync_as_synchronized_render() -> None:
+    port = FakeTerminalPort(size=TerminalSize(columns=8, rows=3))
+
+    frame = port.flush(
+        [
+            TerminalOperation.hide_cursor(),
+            TerminalOperation.begin_synchronized_update(),
+            TerminalOperation.write("abc"),
+            TerminalOperation.end_synchronized_update(),
+            TerminalOperation.move_column(column=1),
+            TerminalOperation.show_cursor(),
+        ]
+    )
+
+    assert frame.synchronized is True
+    assert frame.serialized_output == "\x1b[?25l\x1b[?2026habc\x1b[?2026l\x1b[2G\x1b[?25h"
+    assert frame.screen_after.visible_lines[0] == "abc"
+    assert frame.screen_after.cursor_row == 0
+    assert frame.screen_after.cursor_column == 1
+
+
+def test_fake_screen_models_natural_scroll_and_line_rewrite() -> None:
+    port = FakeTerminalPort(size=TerminalSize(columns=4, rows=2))
+
+    port.flush(
+        [
+            TerminalOperation.write("aa"),
+            TerminalOperation.newline(),
+            TerminalOperation.write("bb"),
+            TerminalOperation.newline(),
+            TerminalOperation.write("cc"),
+        ]
+    )
+    assert port.screen.visible_lines == ("bb", "cc")
+    assert port.screen.viewport_top == 1
+
+    port.flush(
+        [
+            TerminalOperation.move_cursor(row=1, column=0),
+            TerminalOperation.clear_line(),
+            TerminalOperation.write("dd"),
+        ]
+    )
+
+    assert port.screen.visible_lines == ("bb", "dd")
+    assert port.screen.cursor_row == 1
+    assert port.screen.cursor_column == 2
+
+
+def test_fake_screen_clears_autowrap_pending_on_cursor_movement() -> None:
+    port = FakeTerminalPort(size=TerminalSize(columns=4, rows=3))
+
+    port.flush(
+        [
+            TerminalOperation.write("abcd"),
+            TerminalOperation.move_relative(lines=1),
+            TerminalOperation.write("Z"),
+        ]
+    )
+
+    assert port.screen.visible_lines == ("abcd", "   Z", "")
+    assert port.screen.cursor_row == 1
+    assert port.screen.cursor_column == 3
+
+
+def test_fake_screen_wraps_before_next_printable_after_full_width_write() -> None:
+    port = FakeTerminalPort(size=TerminalSize(columns=4, rows=3))
+
+    port.flush([TerminalOperation.write("abcdZ")])
+
+    assert port.screen.visible_lines == ("abcd", "Z", "")
+    assert port.screen.cursor_row == 1
+    assert port.screen.cursor_column == 1
+
+
+def test_fake_screen_tracks_sgr_cell_styles_and_resets_them_after_terminal_resets() -> None:
+    port = FakeTerminalPort(size=TerminalSize(columns=20, rows=3))
+
+    port.flush([TerminalOperation.write("\x1b[3;90mthink\x1b[23;39m\ninput")])
+
+    assert port.screen.cell_style(row=0, column=0).italic is True
+    assert port.screen.cell_style(row=0, column=0).foreground == "90"
+    assert port.screen.cell_style(row=1, column=0).italic is False
+    assert port.screen.cell_style(row=1, column=0).foreground is None
+
+
+def test_fake_screen_proves_markdown_heading_underline_does_not_leak_into_following_cells() -> None:
+    theme = ThemeResolver(defaults={"markdown.heading.level1": {"color": "cyan"}})
+    heading = MarkdownRenderer("# Important distinction from `open()`", theme=theme).render(
+        RenderConstraints(width=80, max_height=3)
+    ).lines[0].text
+    port = FakeTerminalPort(size=TerminalSize(columns=80, rows=3))
+
+    port.flush([TerminalOperation.write(heading), TerminalOperation.write(" plain")])
+
+    plain_column = len("Important distinction from open() ")
+    assert port.screen.visible_lines[0].startswith("Important distinction from open() plain")
+    assert port.screen.cell_style(row=0, column=0).underline is True
+    assert port.screen.cell_style(row=0, column=plain_column).underline is False
+
+
+def test_playback_step_asserts_operation_class_and_scrollback_policy() -> None:
+    def render(event: PlaybackEvent, size: TerminalSize, previous: RenderDiagnostics | None) -> RenderDiagnostics:
+        return RenderDiagnostics(
+            current_logical_lines=("resized",),
+            previous_rendered_lines=previous.current_logical_lines if previous is not None else (),
+            operation_class="resize_repaint",
+            width_changed=True,
+            height_changed=True,
+            repaint_kind="resize",
+            clear_scrollback_policy="disabled",
+            operations=(
+                TerminalOperation.begin_synchronized_update(),
+                TerminalOperation.clear_screen(),
+                TerminalOperation.write(f"{size.columns}x{size.rows}"),
+                TerminalOperation.end_synchronized_update(),
+            ),
+        )
+
+    harness = PlaybackHarness(render=render, port=FakeTerminalPort(size=TerminalSize(columns=80, rows=24)))
+
+    step = harness.play([PlaybackEvent.resize(columns=100, rows=30)])[0]
+
+    step.assert_operation_class("resize_repaint")
+    step.assert_no_clear_scrollback()
+    assert step.diagnostics.width_changed is True
+    assert step.diagnostics.height_changed is True
+    assert step.frame is not None
+    assert step.frame.clear_scrollback_emitted is False
+
+
+def test_playback_step_asserts_explicit_clear_scrollback() -> None:
+    def render(event: PlaybackEvent, size: TerminalSize, previous: RenderDiagnostics | None) -> RenderDiagnostics:
+        return RenderDiagnostics(
+            current_logical_lines=("panic repaint",),
+            operation_class="recovery_repaint",
+            repaint_kind="recovery",
+            repaint_reason="explicit-panic-recovery",
+            clear_scrollback_policy="explicit",
+            operations=(
+                TerminalOperation.begin_synchronized_update(),
+                TerminalOperation.clear_screen(),
+                TerminalOperation.clear_scrollback(),
+                TerminalOperation.write("panic repaint"),
+                TerminalOperation.end_synchronized_update(),
+            ),
+        )
+
+    harness = PlaybackHarness(render=render)
+
+    step = harness.play([PlaybackEvent("product", "panic")])[0]
+
+    step.assert_operation_class("recovery_repaint")
+    step.assert_has_clear_scrollback()
+    assert step.diagnostics.clear_scrollback_emitted is True
+    assert step.frame is not None
+    assert step.frame.clear_scrollback_emitted is True
