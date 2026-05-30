@@ -393,6 +393,35 @@ def test_native_coding_tui_resumed_long_transcript_working_timer_uses_bounded_fa
     scenario.assert_visible_contains("Working 0.20s")
 
 
+def test_native_coding_tui_resumed_long_transcript_input_and_timer_share_bounded_update_path() -> None:
+    scenario = NativeTuiScenario(width=100, height=30, now=0.0)
+    app = scenario.app
+    app.replace_transcript_window(
+        build_synthetic_long_transcript_records(turns=180, tail_tool_output_lines=2400),
+        reason="resume",
+    )
+    app.trim_active_transcript_window()
+    app.begin_run(started_at=0.0)
+
+    startup = scenario.render()
+    assert len(startup.diagnostics.current_logical_lines) <= 380
+
+    timer_first = scenario.advance_time(0.2).render()
+    timer_second = scenario.advance_time(0.2).render()
+    input_step = scenario.type_text("x").render()
+    timer_third = scenario.advance_time(0.2).render()
+
+    for step in (timer_first, timer_second, input_step, timer_third):
+        assert len(step.diagnostics.current_logical_lines) <= 380
+        scenario.assert_operation_class(step, "changed_range_update")
+        scenario.assert_no_clear(step)
+
+    scenario.assert_visible_contains("Working 0.20s")
+    scenario.assert_visible_contains("Working 0.40s")
+    scenario.assert_visible_contains("Working 0.60s")
+    scenario.assert_visible_contains("› x")
+
+
 def _app() -> NativeCodingTuiApp:
     return NativeCodingTuiApp(
         model_label="kimi",
