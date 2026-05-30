@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from io import StringIO
 
+from native_tui_playback import NativeTuiScenario
+
 from loushang.coding.ui.native_app import NativeCodingTuiApp
 from loushang.coding.ui.native_input import NativeInputRouter
 from loushang.coding.ui.native_loop import _finish_tui_exit
@@ -332,15 +334,15 @@ def test_native_coding_tui_starts_below_existing_shell_output() -> None:
 
 
 def test_native_coding_tui_renders_pending_steer_and_followup_below_working_line() -> None:
-    app = _app()
-    runtime, port = _runtime(app, width=140, height=16)
+    scenario = NativeTuiScenario(width=140, height=16, now=3.0)
+    app = scenario.app
 
     app.start_prompt("current task", started_at=0.0)
     app.queue_steer("steer now")
     app.queue_followup("next prompt")
-    runtime.render_now()
+    scenario.render()
 
-    visible_lines = tuple(line.rstrip() for line in port.screen.visible_lines)
+    visible_lines = tuple(line.rstrip() for line in scenario.port.screen.visible_lines)
     working_index = next(index for index, line in enumerate(visible_lines) if "Working" in line)
     steer_index = visible_lines.index("• Messages to be submitted after next tool call (press esc to interrupt and send immediately)")
     followup_index = visible_lines.index("• Queued follow-up inputs")
@@ -353,49 +355,42 @@ def test_native_coding_tui_renders_pending_steer_and_followup_below_working_line
 
 
 def test_native_coding_tui_resumed_long_transcript_input_echo_uses_bounded_fake_terminal_update() -> None:
-    app = _app()
+    scenario = NativeTuiScenario(width=100, height=30, now=3.0)
+    app = scenario.app
     app.replace_transcript_window(
         build_synthetic_long_transcript_records(turns=180, tail_tool_output_lines=2400),
         reason="resume",
     )
     app.trim_active_transcript_window()
-    runtime, port = _runtime(app, width=100, height=30)
 
-    first = runtime.render_now()
-    app.composer.set_text("x")
-    step = runtime.render_now()
+    first = scenario.render()
+    step = scenario.type_text("x").render()
 
     assert len(first.diagnostics.current_logical_lines) <= 380
     assert len(step.diagnostics.current_logical_lines) <= 380
-    step.assert_operation_class("changed_range_update")
-    step.assert_no_clear_scrollback()
-    assert TerminalOperation.clear_screen() not in step.diagnostics.operations
-    assert step.frame is not None
-    assert any(line.rstrip() == "› x" for line in port.screen.visible_lines)
+    scenario.assert_operation_class(step, "changed_range_update")
+    scenario.assert_no_clear(step)
+    scenario.assert_visible_contains("› x")
 
 
 def test_native_coding_tui_resumed_long_transcript_working_timer_uses_bounded_fake_terminal_update() -> None:
-    app = _app()
-    app.now = lambda: 0.0
+    scenario = NativeTuiScenario(width=100, height=30, now=0.0)
+    app = scenario.app
     app.replace_transcript_window(
         build_synthetic_long_transcript_records(turns=180, tail_tool_output_lines=2400),
         reason="resume",
     )
     app.trim_active_transcript_window()
     app.begin_run(started_at=0.0)
-    runtime, port = _runtime(app, width=100, height=30)
 
-    first = runtime.render_now()
-    app.now = lambda: 0.2
-    step = runtime.render_now()
+    first = scenario.render()
+    step = scenario.advance_time(0.2).render()
 
     assert len(first.diagnostics.current_logical_lines) <= 380
     assert len(step.diagnostics.current_logical_lines) <= 380
-    step.assert_operation_class("changed_range_update")
-    step.assert_no_clear_scrollback()
-    assert TerminalOperation.clear_screen() not in step.diagnostics.operations
-    assert step.frame is not None
-    assert "Working 0.20s" in _visible_text(port)
+    scenario.assert_operation_class(step, "changed_range_update")
+    scenario.assert_no_clear(step)
+    scenario.assert_visible_contains("Working 0.20s")
 
 
 def _app() -> NativeCodingTuiApp:
