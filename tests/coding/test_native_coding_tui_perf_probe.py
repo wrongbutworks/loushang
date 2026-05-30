@@ -71,6 +71,10 @@ def test_long_transcript_probe_stays_bounded_after_active_window_trim() -> None:
     )
 
     assert app.state.evicted_prefix_record_count > 0
+    assert first_metrics.render_loop_plan_ms < 1_000
+    assert first_metrics.visible_render_ms < 1_000
+    assert second_metrics.render_loop_plan_ms < 1_000
+    assert second_metrics.visible_render_ms < 1_000
     assert first_metrics.render_loop_logical_line_count <= app.active_transcript_line_budget + 60
     assert second_metrics.render_loop_logical_line_count <= app.active_transcript_line_budget + 60
     assert second_metrics.render_loop_operation_class == "changed_range_update"
