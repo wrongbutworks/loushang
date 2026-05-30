@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from collections.abc import Mapping
 from typing import Any
+from uuid import uuid4
 
 from loushang.coding.policy import (
     ApprovalDecision,
@@ -43,16 +44,18 @@ async def enforce_tool_policy(
             ),
         )
     if decision.disposition == "ask":
+        request = ApprovalRequest(
+            tool_name=tool_name,
+            arguments=arguments,
+            cwd=cwd,
+            reason=decision.reason,
+            policy_code=decision.code,
+            policy_decision=decision,
+            action_id=f"policy-{uuid4().hex}",
+        )
         approval = await resolve_approval(
             approval_resolver,
-            ApprovalRequest(
-                tool_name=tool_name,
-                arguments=arguments,
-                cwd=cwd,
-                reason=decision.reason,
-                policy_code=decision.code,
-                policy_decision=decision,
-            ),
+            request,
         )
         if approval.disposition == "allow":
             return
@@ -67,6 +70,7 @@ async def enforce_tool_policy(
                 approval_required=True,
                 approval=approval,
                 approval_reason=message,
+                approval_action_id=request.action_id,
             ),
         )
 
@@ -80,6 +84,7 @@ def _policy_error_details(
     approval_required: bool,
     approval: ApprovalDecision | None = None,
     approval_reason: str | None = None,
+    approval_action_id: str | None = None,
 ) -> dict[str, Any]:
     details: dict[str, Any] = {
         "tool_name": tool_name,
@@ -97,6 +102,8 @@ def _policy_error_details(
         details["approval_decision"] = approval.disposition
     if approval_reason is not None:
         details["approval_reason"] = approval_reason
+    if approval_action_id is not None:
+        details["approval_action_id"] = approval_action_id
     for key in ("path", "file_path", "command"):
         value = arguments.get(key)
         if isinstance(value, str):

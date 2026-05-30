@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from collections.abc import Callable
 from dataclasses import dataclass, field, replace
-from typing import Any, Literal
+from typing import Any, Awaitable, Literal
 
 from loushang.coding.ui.command_list import (
     format_session_commands,
@@ -42,6 +42,7 @@ from loushang.tui import (
     CommandSurface,
     FocusableMixin,
     InfoPanel,
+    ApprovalSurface,
     InputEvent,
     InputIntent,
     RenderConstraints,
@@ -56,8 +57,10 @@ from loushang.tui import (
 from loushang.tui.cell_width import truncate_to_width, wrap_cells
 from loushang.tui.surfaces import SettingsSurface
 
-NativeSurfacePurpose = Literal["info", "model", "command", "settings"]
+NativeSurfacePurpose = Literal["info", "model", "command", "settings", "dialog", "approval"]
 NativeSurfacePresentation = Literal["bottom", "bottom-exclusive"]
+SurfaceEventKind = Literal["surface_submit", "surface_close"]
+SurfaceEventSource = Literal["model", "command", "settings", "dialog", "approval"]
 MODEL_SELECTOR_SELECTED_STYLE = {"color": 33, "bold": True}
 
 
@@ -117,6 +120,13 @@ class NativeSurfaceView(FocusableMixin):
         if event.kind != "mouse" or event.mouse_row is None:
             return event
         return replace(event, mouse_row=event.mouse_row - self._last_content_start_row)
+
+
+@dataclass(frozen=True, slots=True)
+class SurfaceEvent:
+    kind: SurfaceEventKind
+    source: SurfaceEventSource | None = None
+    payload: Any = None
 
 
 @dataclass(slots=True)
@@ -297,9 +307,20 @@ class NativeSurfaceManager:
     app: NativeCodingTuiApp
     session: Any
     status_provider: CodingTuiStatusProvider
+    on_approval: Callable[[dict[str, Any]], Awaitable[None]] | None = None
     set_statusline_visible: Callable[[bool | None], str] | None = None
+    _handlers: dict[SurfaceEventSource, Callable[[Any], Awaitable[None]]] = field(init=False, repr=False)
     _active_overlay_view: NativeSurfaceView | None = None
     _active_overlay_handle: SurfaceHandle | None = None
+
+    def __post_init__(self) -> None:
+        self._handlers = {
+            "model": self._handle_model_submit,
+            "command": self._handle_command_submit,
+            "settings": self._handle_settings_submit,
+            "dialog": self._handle_dialog_submit,
+            "approval": self._handle_approval_submit,
+        }
 
     def is_local_command(self, text: str) -> bool:
         return isinstance(
@@ -349,33 +370,84 @@ class NativeSurfaceManager:
         surface = self._current_surface()
         if not isinstance(surface, NativeSurfaceView):
             return None
-        if intent.kind in {"surface_close", "dialog_cancel"}:
+
+        event = self._normalize_surface_intent(intent, surface)
+        if event is None:
+            return None
+        if event.kind == "surface_close":
             self.close_surface()
             return None
-        if surface.purpose == "model" and intent.kind in {"command", "select"}:
-            try:
-                message = await select_available_model(self.session, query=intent.text)
-            except Exception as error:
-                self.app.set_status(_recoverable_surface_error(error))
-                return None
-            self.close_surface()
-            await self._refresh_model_label()
-            self.app.set_status(message)
+        handler = self._handlers.get(event.source)
+        if handler is None:
             return None
-        if surface.purpose == "command" and intent.kind in {"command", "select"}:
-            command = intent.text.strip()
-            if command:
-                self.app.composer.set_text(command + (" " if " " not in command else ""))
-                self.app.set_status(f"Command selected: {command}")
-            self.close_surface()
-            return None
-        if surface.purpose == "settings" and intent.kind == "setting":
-            updated = self.status_provider.settings_list().toggle(intent.text)
-            self.close_surface()
-            message = self.status_provider.apply_settings(updated)
-            self.app.set_statusline_visible(self.status_provider.is_visible())
-            self.app.set_status(message)
+        await handler(event.payload)
         return None
+
+    def _normalize_surface_intent(self, intent: InputIntent, surface: NativeSurfaceView) -> SurfaceEvent | None:
+        if intent.kind in {"surface_close", "dialog_cancel"}:
+            return SurfaceEvent(kind="surface_close", source=None)
+        if surface.purpose == "model" and intent.kind in {"command", "select"}:
+            return SurfaceEvent(kind="surface_submit", source="model", payload=intent.text)
+        if surface.purpose == "command" and intent.kind in {"command", "select"}:
+            return SurfaceEvent(kind="surface_submit", source="command", payload=intent.text)
+        if surface.purpose == "settings" and intent.kind == "setting":
+            return SurfaceEvent(
+                kind="surface_submit",
+                source="settings",
+                payload={"id": intent.text, "value": intent.note},
+            )
+        if surface.purpose == "dialog" and intent.kind == "dialog_confirm":
+            return SurfaceEvent(kind="surface_submit", source="dialog")
+        if surface.purpose == "approval" and intent.kind in {"approve", "reject"}:
+            action_id = getattr(surface.content, "action_id", None)
+            action = getattr(surface.content, "action", None)
+            return SurfaceEvent(
+                kind="surface_submit",
+                source="approval",
+                payload={
+                    "action_id": action_id,
+                    "action": action,
+                    "approved": intent.kind == "approve",
+                    "raw_note": intent.note or action_id,
+                },
+            )
+        return None
+
+    async def _handle_model_submit(self, payload: str) -> None:
+        try:
+            message = await select_available_model(self.session, query=payload)
+        except Exception as error:
+            self.app.set_status(_recoverable_surface_error(error))
+            return
+        self.close_surface()
+        await self._refresh_model_label()
+        self.app.set_status(message)
+
+    async def _handle_command_submit(self, payload: str) -> None:
+        command = payload.strip()
+        if command:
+            self.app.composer.set_text(command + (" " if " " not in command else ""))
+            self.app.set_status(f"Command selected: {command}")
+        self.close_surface()
+
+    async def _handle_settings_submit(self, payload: dict[str, str]) -> None:
+        updated = self.status_provider.settings_list().toggle(payload["id"])
+        self.close_surface()
+        message = self.status_provider.apply_settings(updated)
+        self.app.set_statusline_visible(self.status_provider.is_visible())
+        self.app.set_status(message)
+
+    async def _handle_dialog_submit(self, _payload: Any | None = None) -> None:
+        self.close_surface()
+
+    async def _handle_approval_submit(self, payload: dict[str, Any] | None = None) -> None:
+        self.close_surface()
+        if payload is not None and payload.get("approved"):
+            self.app.set_status(f"Action confirmed: {payload.get('action')}")
+        elif payload is not None:
+            self.app.set_status("Action rejected")
+        if self.on_approval is not None:
+            await self.on_approval(payload or {})
 
     def close_surface(self) -> None:
         if self._active_overlay_handle is not None:
@@ -453,6 +525,17 @@ class NativeSurfaceManager:
                 title="Settings",
                 purpose="settings",
                 content=surface,
+                footer="",
+                presentation="bottom-exclusive",
+            )
+        )
+
+    def open_approval(self, *, action: str, risk: str = "", action_id: str | None = None) -> None:
+        self._open_surface(
+            NativeSurfaceView(
+                title="Approval",
+                purpose="approval",
+                content=ApprovalSurface(action=action, risk=risk, action_id=action_id),
                 footer="",
                 presentation="bottom-exclusive",
             )

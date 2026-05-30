@@ -527,6 +527,7 @@ class SettingsSurface(SelectionSurface):
 class ApprovalSurface:
     action: str
     risk: str = ""
+    action_id: str | None = None
     focused: bool = False
 
     def focus(self) -> None:
@@ -539,9 +540,9 @@ class ApprovalSurface:
         if event.kind != "key":
             return None
         if event.key == "y":
-            return InputIntent(kind="approve")
+            return InputIntent(kind="approve", note=self.action_id or "")
         if event.key == "n" or event.key in {"esc", "escape"}:
-            return InputIntent(kind="reject")
+            return InputIntent(kind="reject", note=self.action_id or "")
         return None
 
     def render(self, constraints: RenderConstraints) -> RenderResult:

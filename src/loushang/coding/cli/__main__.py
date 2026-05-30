@@ -41,7 +41,9 @@ from loushang.coding.platform.output_guard import stdout_guard
 from loushang.coding.plugin import PluginManager
 from loushang.coding.plugin.lifecycle import is_remote_plugin_source
 from loushang.coding.policy import (
+    InteractiveApprovalResolver,
     HeadlessApprovalResolver,
+    ApprovalResolver,
     PackageSecurityPolicy,
     PolicyEngine,
 )
@@ -88,16 +90,20 @@ def build_builtin_tool_registry(
     *,
     diagnostics_service: object | None = None,
     settings_manager: object | None = None,
+    approval_resolver: ApprovalResolver | None = None,
 ) -> ToolRegistry:
     registry = ToolRegistry()
     tool_settings = _tool_settings_from_settings_manager(settings_manager)
+    resolved_approval_resolver = (
+        approval_resolver if approval_resolver is not None else _approval_resolver_from_tool_settings(tool_settings)
+    )
     get_external_tool_policy = getattr(settings_manager, "get_external_tool_policy", None)
     register_builtin_tools(
         registry,
         diagnostics_service=diagnostics_service,
         external_tool_policy=get_external_tool_policy() if callable(get_external_tool_policy) else None,
         policy_engine=_policy_engine_from_tool_settings(tool_settings),
-        approval_resolver=_approval_resolver_from_tool_settings(tool_settings),
+        approval_resolver=resolved_approval_resolver,
     )
     return registry
 
@@ -262,12 +268,20 @@ async def run_cli(
         )
         if fake_workflow_result is not None:
             return fake_workflow_result
+        settings_manager = getattr(resolved_services, "settings_manager", None)
+        tool_settings = _tool_settings_from_settings_manager(settings_manager)
+        configured_approval_resolver = _approval_resolver_from_tool_settings(tool_settings)
+        use_tui_approval_presenter = configured_approval_resolver is None
+        if configured_approval_resolver is None:
+            configured_approval_resolver = HeadlessApprovalResolver(mode="deny")
+        approval_resolver = InteractiveApprovalResolver(fallback=configured_approval_resolver)
         if runtime_args.no_builtin_tools:
             tool_registry = ToolRegistry()
         else:
             tool_registry = build_builtin_tool_registry(
                 diagnostics_service=getattr(resolved_services, "diagnostics_service", None),
                 settings_manager=getattr(resolved_services, "settings_manager", None),
+                approval_resolver=approval_resolver,
             )
 
     with coding_startup_observability_context(
@@ -296,6 +310,10 @@ async def run_cli(
             return 1
     if session is None:
         return 2
+    if use_tui_approval_presenter:
+        approval_setter = getattr(session, "set_approval_presenter", None)
+        if callable(approval_setter):
+            approval_setter(approval_resolver.set_request_presenter)
     extension_flags = _collect_extension_flags(session)
     args, parse_error_code = _parse_args_for_cli(
         raw_argv,

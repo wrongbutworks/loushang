@@ -90,7 +90,11 @@ def test_default_approval_resolver_denies_ask_policy_before_write(tmp_path) -> N
         asyncio.run(runtime_tool.execute("call-write-approval-default", {"path": "needs-approval.txt", "content": "x"}))
 
     assert "write" in str(exc.value)
-    assert getattr(exc.value, "tool_result_details", None) == {
+    details = getattr(exc.value, "tool_result_details", None)
+    assert details is not None
+    assert "approval_action_id" in details
+    assert details.pop("approval_action_id") is not None
+    assert details == {
         "tool_name": "write",
         "cwd": str(tmp_path),
         "policy_disposition": "ask",
@@ -158,7 +162,11 @@ def test_async_approval_resolver_can_deny_ask_policy_for_write(tmp_path) -> None
         asyncio.run(runtime_tool.execute("call-write-approval-deny", {"path": "denied.txt", "content": "denied"}))
 
     assert str(exc.value) == "denied write"
-    assert getattr(exc.value, "tool_result_details", None) == {
+    details = getattr(exc.value, "tool_result_details", None)
+    assert details is not None
+    assert "approval_action_id" in details
+    assert details.pop("approval_action_id") is not None
+    assert details == {
         "tool_name": "write",
         "cwd": str(tmp_path),
         "policy_disposition": "ask",
@@ -170,6 +178,92 @@ def test_async_approval_resolver_can_deny_ask_policy_for_write(tmp_path) -> None
         "argument_keys": ["content", "path"],
         "path": str(tmp_path / "denied.txt"),
     }
+    assert not (tmp_path / "denied.txt").exists()
+
+
+def test_interactive_approval_resolver_can_allow_ask_policy_for_write(tmp_path) -> None:
+    from loushang.coding.policy import (
+        HeadlessApprovalResolver,
+        InteractiveApprovalResolver,
+        PolicyEngine,
+    )
+    from loushang.coding.tools import ToolRegistry, register_builtin_tools
+
+    presented: dict[str, object] = {}
+    presented_event = asyncio.Event()
+
+    def present_request(payload: dict[str, object]) -> None:
+        presented.update(payload)
+        presented_event.set()
+
+    resolver = InteractiveApprovalResolver(fallback=HeadlessApprovalResolver(mode="deny"))
+    resolver.set_request_presenter(present_request)
+
+    registry = ToolRegistry()
+    register_builtin_tools(
+        registry,
+        policy_engine=PolicyEngine(ask_tools=["write"]),
+        approval_resolver=resolver,
+    )
+    runtime_tool = registry.materialize_tool("write", context_provider=_tool_context_provider(cwd=str(tmp_path)))
+
+    async def run() -> None:
+        execute = asyncio.create_task(
+            runtime_tool.execute("call-write-approval-allow-interactive", {"path": "approved.txt", "content": "ok"})
+        )
+        await presented_event.wait()
+        action_id = presented.get("action_id")
+        assert isinstance(action_id, str)
+        await resolver.handle_result(action_id=action_id, approved=True)
+        await execute
+
+    asyncio.run(run())
+    assert (tmp_path / "approved.txt").read_text(encoding="utf-8") == "ok"
+
+
+def test_interactive_approval_resolver_can_deny_ask_policy_for_write(tmp_path) -> None:
+    from loushang.coding.policy import (
+        HeadlessApprovalResolver,
+        InteractiveApprovalResolver,
+        PolicyEngine,
+    )
+    from loushang.coding.tools import ToolRegistry, register_builtin_tools
+
+    presented: dict[str, object] = {}
+    presented_event = asyncio.Event()
+
+    def present_request(payload: dict[str, object]) -> None:
+        presented.update(payload)
+        presented_event.set()
+
+    resolver = InteractiveApprovalResolver(fallback=HeadlessApprovalResolver(mode="deny"))
+    resolver.set_request_presenter(present_request)
+
+    registry = ToolRegistry()
+    register_builtin_tools(
+        registry,
+        policy_engine=PolicyEngine(ask_tools=["write"]),
+        approval_resolver=resolver,
+    )
+    runtime_tool = registry.materialize_tool("write", context_provider=_tool_context_provider(cwd=str(tmp_path)))
+
+    async def run() -> str:
+        execute = asyncio.create_task(
+            runtime_tool.execute("call-write-approval-deny-interactive", {"path": "denied.txt", "content": "x"})
+        )
+        await presented_event.wait()
+        action_id = presented.get("action_id")
+        assert isinstance(action_id, str)
+        await resolver.handle_result(action_id=action_id, approved=False, reason="interactive reject")
+        try:
+            await execute
+        except PermissionError as exc:
+            return getattr(exc, "tool_result_details", {}).get("approval_action_id", "missing")
+        raise AssertionError("write tool execution should be rejected")
+
+    approval_action_id = asyncio.run(run())
+    assert approval_action_id == presented.get("action_id")
+    assert approval_action_id != "missing"
     assert not (tmp_path / "denied.txt").exists()
 
 

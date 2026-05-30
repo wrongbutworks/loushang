@@ -96,6 +96,12 @@ async def _run_native_interactive_tui(
     completion_provider = await _load_completion_provider(session)
     app.composer.set_completion_provider(completion_provider)
     controller = CodingUiController(runtime=runtime, session=session, verbose=verbose)
+
+    async def _handle_approval(event: dict[str, object]) -> None:
+        sink = getattr(session, "handle_native_approval", None)
+        if callable(sink):
+            await _maybe_await(sink(event))
+
     status_provider = CodingTuiStatusProvider(
         model_label=snapshot.model_label,
         cwd=snapshot.cwd,
@@ -104,7 +110,12 @@ async def _run_native_interactive_tui(
         thinking_level=lambda: thinking_level(session),
         running=lambda: app.state.running or is_running(session),
     )
-    surface_manager = NativeSurfaceManager(app=app, session=session, status_provider=status_provider)
+    surface_manager = NativeSurfaceManager(
+        app=app,
+        session=session,
+        status_provider=status_provider,
+        on_approval=_handle_approval,
+    )
     projector = NativeCodingEventProjector(
         app,
         tool_definition_resolver=_tool_definition_resolver(session),

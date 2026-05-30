@@ -18,6 +18,7 @@ from loushang.ai import (
 from loushang.coding.message import CompactionSummaryMessage
 from loushang.coding.message.entries import SessionContext
 from loushang.coding.types import ModelSelection
+from loushang.coding.ui.native_surfaces import NativeSurfaceManager
 from loushang.tui.transcript import (
     AssistantMessageRecord,
     ContextCompactionRecord,
@@ -267,6 +268,40 @@ def test_run_coding_tui_interactive_native_loop_dispatches_steer_and_followup(mo
     assert exit_code == 0
     assert session.steers == ["steer this"]
     assert session.follow_ups == ["follow this"]
+
+
+def test_run_coding_tui_injects_on_approval_callback(monkeypatch) -> None:
+    from loushang.coding.ui import mode
+
+    session = _Session()
+    captured: dict[str, object] = {}
+
+    class RecordingSurfaceManager(NativeSurfaceManager):
+        def __init__(self, *args: object, **kwargs: object) -> None:
+            captured["on_approval"] = kwargs.get("on_approval")
+            super().__init__(*args, **kwargs)
+
+    async def fake_native_loop(**kwargs: object) -> int:
+        captured["loop_kwargs"] = kwargs
+        return 0
+
+    monkeypatch.setattr(mode, "NativeSurfaceManager", RecordingSurfaceManager)
+    monkeypatch.setattr(mode, "run_native_coding_tui", fake_native_loop)
+
+    exit_code = asyncio.run(
+        mode.run_coding_tui(
+            runtime=object(),
+            session=session,
+            stdin=_TTYStringIO(),
+            stdout=_TTYStringIO(),
+            stderr=StringIO(),
+        )
+    )
+
+    assert exit_code == 0
+    on_approval = captured.get("on_approval")
+    assert callable(on_approval)
+    assert isinstance(captured.get("loop_kwargs"), dict)
 
 
 def test_run_coding_tui_non_interactive_keeps_plain_prompt_loop(monkeypatch) -> None:

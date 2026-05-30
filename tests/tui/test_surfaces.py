@@ -467,6 +467,24 @@ def test_approval_surface_returns_explicit_approval_or_rejection() -> None:
     assert surface.handle_input(InputEvent(kind="key", key="n")) == InputIntent(kind="reject")
 
 
+def test_approval_surface_handle_input_carries_action_id() -> None:
+    surface = ApprovalSurface(action="Delete cache", action_id="cache:delete")
+
+    assert surface.handle_input(InputEvent(kind="key", key="y")) == InputIntent(
+        kind="approve", note="cache:delete"
+    )
+    assert surface.handle_input(InputEvent(kind="key", key="n")) == InputIntent(
+        kind="reject", note="cache:delete"
+    )
+
+
+def test_approval_surface_no_action_id_keeps_empty_note() -> None:
+    surface = ApprovalSurface(action="Delete cache")
+
+    assert surface.handle_input(InputEvent(kind="key", key="y")) == InputIntent(kind="approve", note="")
+    assert surface.handle_input(InputEvent(kind="key", key="n")) == InputIntent(kind="reject", note="")
+
+
 def test_dialog_surface_returns_confirm_cancel_and_escape_close_reasons() -> None:
     surface = DialogSurface(title="Switch model?", message="Unsaved draft remains")
 

@@ -8,7 +8,14 @@ from loushang.coding.types import ModelSelection
 from loushang.coding.ui.native_app import NativeCodingTuiApp
 from loushang.coding.ui.native_surfaces import NativeSurfaceManager, NativeSurfaceView
 from loushang.coding.ui.status_provider import CodingTuiStatusProvider
-from loushang.tui import InputEvent, InputIntent, RenderConstraints, SurfaceHost
+from loushang.tui import (
+    ApprovalSurface,
+    DialogSurface,
+    InputEvent,
+    InputIntent,
+    RenderConstraints,
+    SurfaceHost,
+)
 from loushang.tui.cell_width import strip_control_sequences
 
 
@@ -608,6 +615,103 @@ def test_native_surface_manager_command_surface_inserts_selected_command() -> No
     assert app.composer.value == "/model "
 
 
+def test_native_surface_manager_handles_dialog_surface_confirm() -> None:
+    app = _app()
+    manager = _manager(app, _Session())
+
+    app.active_surface = NativeSurfaceView(
+        title="Confirm",
+        purpose="dialog",
+        content=DialogSurface(title="Confirm", message="Proceed?"),
+        footer="",
+    )
+
+    asyncio.run(manager.handle_surface_intent(InputIntent(kind="dialog_confirm")))
+
+    assert app.active_surface is None
+
+
+def test_native_surface_manager_handles_approval_submit() -> None:
+    app = _app()
+    events: list[dict[str, object]] = []
+
+    async def on_approval(event: dict[str, object]) -> None:
+        events.append(event)
+
+    manager = NativeSurfaceManager(
+        app=app,
+        session=_Session(),
+        status_provider=_status_provider(app),
+        on_approval=on_approval,
+    )
+
+    app.active_surface = NativeSurfaceView(
+        title="Approval",
+        purpose="approval",
+        content=ApprovalSurface(action="delete cache", action_id="clear-cache-01"),
+        footer="",
+    )
+
+    asyncio.run(manager.handle_surface_intent(InputIntent(kind="approve")))
+
+    assert app.active_surface is None
+    assert events == [
+        {
+            "action_id": "clear-cache-01",
+            "action": "delete cache",
+            "approved": True,
+            "raw_note": "clear-cache-01",
+        }
+    ]
+
+
+def test_native_surface_manager_handles_approval_reject() -> None:
+    app = _app()
+    events: list[dict[str, object]] = []
+
+    async def on_approval(event: dict[str, object]) -> None:
+        events.append(event)
+
+    manager = NativeSurfaceManager(
+        app=app,
+        session=_Session(),
+        status_provider=_status_provider(app),
+        on_approval=on_approval,
+    )
+
+    app.active_surface = NativeSurfaceView(
+        title="Approval",
+        purpose="approval",
+        content=ApprovalSurface(action="delete cache", action_id="clear-cache-01"),
+        footer="",
+    )
+
+    asyncio.run(manager.handle_surface_intent(InputIntent(kind="reject")))
+
+    assert app.active_surface is None
+    assert events == [
+        {
+            "action_id": "clear-cache-01",
+            "action": "delete cache",
+            "approved": False,
+            "raw_note": "clear-cache-01",
+        }
+    ]
+
+
+def test_native_surface_manager_ignores_unmapped_surface_intent() -> None:
+    app = _app()
+    manager = _manager(app, _Session())
+
+    asyncio.run(manager.handle_text("/status"))
+    surface = app.active_surface
+    assert surface is not None
+
+    asyncio.run(manager.handle_surface_intent(InputIntent(kind="abort")))
+
+    assert app.active_surface is surface
+
+
 class _Session:
     def __init__(self) -> None:
         self.current_model: object = ModelSelection(provider="moonshot", model_id="kimi-for-coding")
@@ -660,14 +764,18 @@ def _manager(app: NativeCodingTuiApp, session: _Session) -> NativeSurfaceManager
     return NativeSurfaceManager(
         app=app,
         session=session,
-        status_provider=CodingTuiStatusProvider(
-            model_label=app.state.model_label,
-            cwd=app.state.cwd,
-            branch=app.state.branch,
-            session_label=lambda: app.state.session_label,
-            thinking_level=lambda: None,
-            running=lambda: app.state.running,
-        ),
+        status_provider=_status_provider(app),
+    )
+
+
+def _status_provider(app: NativeCodingTuiApp) -> CodingTuiStatusProvider:
+    return CodingTuiStatusProvider(
+        model_label=app.state.model_label,
+        cwd=app.state.cwd,
+        branch=app.state.branch,
+        session_label=lambda: app.state.session_label,
+        thinking_level=lambda: None,
+        running=lambda: app.state.running,
     )
 
 

@@ -34,6 +34,7 @@ from loushang.coding.extensions import (
 from loushang.coding.loader import DefaultResourceLoader, PromptFragmentDescriptor, ResourceBundle, ResourceDiagnostic
 from loushang.ai.types import ImagePart
 from loushang.coding.event import AgentSessionEvent
+from loushang.coding.policy import InteractiveApprovalResolver
 from loushang.coding.message import SessionContext
 from loushang.coding.package.materializer import PackageMaterializer, PackageProgressEvent
 from loushang.coding.platform.footer_data_provider import FooterDataProvider
@@ -105,6 +106,7 @@ class AgentSession:
         oauth_provider_registry: OAuthProviderRegistry | None = None,
         footer_data_provider: FooterDataProvider | None = None,
         exec_service: ExecService | None = None,
+        approval_resolver: InteractiveApprovalResolver | None = None,
     ) -> None:
         self.agent = agent
         self.session_manager = session_manager
@@ -127,6 +129,7 @@ class AgentSession:
         self._extension_ui_context: object | None = None
         self._extension_runtime_host: object | None = None
         self._session_start_event = session_start_event or SessionStartEvent(reason="startup")
+        self._approval_resolver = approval_resolver
         self._diagnostics_bridge = SessionDiagnosticsBridge(
             diagnostics_service=self.diagnostics_service,
             session_manager=self.session_manager,
@@ -397,6 +400,32 @@ class AgentSession:
 
     def get_session_record(self) -> SessionRecord:
         return self.session_manager.get_session_record()
+
+    def set_approval_presenter(
+        self,
+        presenter: Callable[[dict[str, object]], Awaitable[None] | None] | None,
+    ) -> None:
+        if self._approval_resolver is None:
+            return
+        if presenter is None:
+            self._approval_resolver.set_request_presenter(None)
+            return
+        self._approval_resolver.set_request_presenter(presenter)
+
+    async def handle_native_approval(self, event: Mapping[str, object]) -> None:
+        if self._approval_resolver is None:
+            return
+        action_id = event.get("action_id")
+        if not isinstance(action_id, str):
+            return
+        reason = event.get("reason")
+        if reason is not None and not isinstance(reason, str):
+            reason = None
+        await self._approval_resolver.handle_result(
+            action_id=action_id,
+            approved=bool(event.get("approved")),
+            reason=reason,
+        )
 
     def get_model_selection(self) -> ModelSelection | None:
         return self._selection_controller.get_model_selection()
