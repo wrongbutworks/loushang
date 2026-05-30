@@ -593,7 +593,6 @@ def test_native_loop_abort_uses_preexisting_pending_steer_before_running_steer()
     assert steers == ["follow", "预先排队"]
     assert app.state.pending_steers == []
 
-
 def test_remove_running_steers_from_pending_tail_preserves_preexisting_queue() -> None:
     from loushang.coding.ui.native_loop import _remove_running_steers_from_pending_tail
 
@@ -610,6 +609,17 @@ def test_remove_running_steers_from_pending_tail_keeps_running_only_queue() -> N
     _remove_running_steers_from_pending_tail(pending_steers, queued_steers_while_running=("follow",))
 
     assert pending_steers == ["follow"]
+
+
+def test_remove_running_steers_from_pending_tail_removes_matching_suffix() -> None:
+    from loushang.coding.ui.native_loop import _remove_running_steers_from_pending_tail
+
+    pending_steers = ["pre", "follow", "hello"]
+    _remove_running_steers_from_pending_tail(
+        pending_steers, queued_steers_while_running=("follow", "hello")
+    )
+
+    assert pending_steers == ["pre"]
 
 
 def test_run_interrupt_pending_steer_uses_running_steer_when_local_queue_empty() -> None:
