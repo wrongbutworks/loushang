@@ -528,6 +528,121 @@ def test_native_loop_executes_queued_steer_after_running_escape() -> None:
     assert steers == ["follow"]
 
 
+def test_native_loop_ignores_running_steer_duplicate_on_interrupt() -> None:
+    from loushang.coding.ui.native_app import NativeCodingTuiApp
+    from loushang.coding.ui.native_loop import run_native_coding_tui
+
+    stdout = StringIO()
+    app = NativeCodingTuiApp(model_label="kimi", cwd="/repo", branch="main", session_label="abcd", now=_Clock([10.0, 10.5, 11.0]))
+    steers: list[str] = []
+
+    async def handle_prompt(_text: str) -> int | None:
+        await asyncio.Event().wait()
+        return None
+
+    async def handle_steer(text: str) -> int | None:
+        steers.append(text)
+        return None
+
+    result = asyncio.run(
+        run_native_coding_tui(
+            app=app,
+            stdin=StringIO("start\rfollow\x1b"),
+            stdout=stdout,
+            handle_prompt=handle_prompt,
+            handle_steer=handle_steer,
+            on_abort=lambda: None,
+            should_exit=lambda text: text in {"/quit", "/exit"},
+        )
+    )
+
+    assert result == 0
+    assert steers == ["follow"]
+
+
+def test_native_loop_abort_uses_preexisting_pending_steer_before_running_steer() -> None:
+    from loushang.coding.ui.native_app import NativeCodingTuiApp
+    from loushang.coding.ui.native_loop import run_native_coding_tui
+
+    stdout = StringIO()
+    app = NativeCodingTuiApp(model_label="kimi", cwd="/repo", branch="main", session_label="abcd", now=_Clock([10.0, 10.5, 11.0]))
+    app.state.pending_steers.append("预先排队")
+    steers: list[str] = []
+
+    async def handle_prompt(_text: str) -> int | None:
+        await asyncio.Event().wait()
+        return None
+
+    async def handle_steer(text: str) -> int | None:
+        steers.append(text)
+        return None
+
+    result = asyncio.run(
+        run_native_coding_tui(
+            app=app,
+            stdin=StringIO("start\rfollow\x1b"),
+            stdout=stdout,
+            handle_prompt=handle_prompt,
+            handle_steer=handle_steer,
+            on_abort=lambda: None,
+            should_exit=lambda text: text in {"/quit", "/exit"},
+        )
+    )
+
+    assert result == 0
+    assert steers == ["follow", "预先排队"]
+    assert app.state.pending_steers == []
+
+
+def test_remove_running_steers_from_pending_tail_preserves_preexisting_queue() -> None:
+    from loushang.coding.ui.native_loop import _remove_running_steers_from_pending_tail
+
+    pending_steers = ["预先", "follow"]
+    _remove_running_steers_from_pending_tail(pending_steers, queued_steers_while_running=("follow",))
+
+    assert pending_steers == ["预先"]
+
+
+def test_remove_running_steers_from_pending_tail_keeps_running_only_queue() -> None:
+    from loushang.coding.ui.native_loop import _remove_running_steers_from_pending_tail
+
+    pending_steers = ["follow"]
+    _remove_running_steers_from_pending_tail(pending_steers, queued_steers_while_running=("follow",))
+
+    assert pending_steers == ["follow"]
+
+
+def test_run_interrupt_pending_steer_uses_running_steer_when_local_queue_empty() -> None:
+    from loushang.coding.ui.native_app import NativeCodingTuiApp
+    from loushang.coding.ui.native_loop import _run_interrupt_pending_steer
+
+    class _Runtime:
+        def __init__(self) -> None:
+            self.rendered = False
+
+        def render_now(self) -> None:
+            self.rendered = True
+
+    app = NativeCodingTuiApp(model_label="kimi", cwd="/repo", branch="main", session_label="abcd")
+    runs: list[str] = []
+    runtime = _Runtime()
+
+    async def handle_steer(text: str) -> None:
+        runs.append(text)
+
+    asyncio.run(
+        _run_interrupt_pending_steer(
+            app=app,
+            handle_steer=handle_steer,
+            runtime=runtime,
+            queued_steers_while_running=("你好",),
+        )
+    )
+
+    assert runs == ["你好"]
+    assert runtime.rendered
+
+
 def test_native_loop_renders_streaming_updates_without_waiting_for_keyboard() -> None:
     from loushang.coding.ui.native_app import NativeCodingTuiApp
     from loushang.coding.ui.native_loop import run_native_coding_tui

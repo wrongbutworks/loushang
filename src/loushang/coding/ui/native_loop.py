@@ -65,6 +65,7 @@ async def run_native_coding_tui(
     mode_factory = terminal_mode_factory or (lambda input_stream, output_stream: TerminalSession(stdin=input_stream, stdout=output_stream))
     active_task: asyncio.Task[int | None] | None = None
     active_prompt_started_at: float | None = None
+    queued_steers_while_running: list[str] = []
     render_wakeup = asyncio.Event()
     previous_render_requester = app.render_requester
     previous_terminal_diagnostics_provider = app.terminal_diagnostics_provider
@@ -92,6 +93,7 @@ async def run_native_coding_tui(
                     )
                     active_task = None
                     active_prompt_started_at = None
+                    queued_steers_while_running = []
                     runtime.render_now()
                     if exit_code is not None:
                         return _finish_tui_exit(runtime=runtime, stdout=stdout, exit_code=exit_code)
@@ -132,6 +134,8 @@ async def run_native_coding_tui(
                         runtime.render_now()
                         return _finish_tui_exit(runtime=runtime, stdout=stdout, exit_code=result.exit_code)
                     if result.abort_requested:
+                        queued_steers_before_abort = tuple(queued_steers_while_running)
+                        queued_steers_while_running = []
                         await _abort_active(app=app, active_task=active_task, on_abort=on_abort)
                         active_task = None
                         active_prompt_started_at = None
@@ -141,6 +145,7 @@ async def run_native_coding_tui(
                                 app=app,
                                 handle_steer=handle_steer,
                                 runtime=runtime,
+                                queued_steers_while_running=queued_steers_before_abort,
                             )
                         continue
                     if result.prompt_text is not None:
@@ -148,13 +153,17 @@ async def run_native_coding_tui(
                         active_task = asyncio.create_task(
                             _run_prompt_handler(handle_prompt, result.prompt_text, images=result.prompt_images)
                         )
+                        queued_steers_while_running = []
                     if result.local_text is not None and handle_local is not None:
                         exit_code = await _run_text_handler(handle_local, result.local_text)
                         if exit_code is not None:
                             runtime.render_now()
                             return _finish_tui_exit(runtime=runtime, stdout=stdout, exit_code=exit_code)
                     if result.steer_text is not None and handle_steer is not None:
+                        was_running = active_task is not None
                         exit_code = await _run_text_handler(handle_steer, result.steer_text, images=result.steer_images)
+                        if was_running:
+                            queued_steers_while_running.append(result.steer_text)
                         if exit_code is not None:
                             runtime.render_now()
                             return _finish_tui_exit(runtime=runtime, stdout=stdout, exit_code=exit_code)
@@ -410,15 +419,51 @@ async def _run_interrupt_pending_steer(
     app: NativeCodingTuiApp,
     handle_steer: TextHandler,
     runtime: TuiRuntime,
+    queued_steers_while_running: tuple[str, ...] = (),
 ) -> None:
-    if not app.state.pending_steers:
+    _remove_running_steers_from_pending_tail(
+        app.state.pending_steers,
+        queued_steers_while_running=queued_steers_while_running,
+    )
+    if app.state.pending_steers:
+        pending_steer = app.state.pending_steers.pop(0)
+    elif queued_steers_while_running:
+        pending_steer = queued_steers_while_running[0]
+    else:
         return
-    pending_steer = app.state.pending_steers.pop(0)
     app.composer.clear()
     try:
         await _run_text_handler(handle_steer, pending_steer)
     finally:
         runtime.render_now()
+
+
+def _remove_running_steers_from_pending_tail(
+    pending_steers: list[str],
+    *,
+    queued_steers_while_running: tuple[str, ...],
+) -> None:
+    if not pending_steers or not queued_steers_while_running:
+        return
+
+    pending_steers_len = len(pending_steers)
+    queue_len = len(queued_steers_while_running)
+    if pending_steers_len <= queue_len:
+        return
+
+    remove_count = 0
+    index = queue_len - 1
+    while remove_count < queue_len and remove_count < pending_steers_len:
+        if pending_steers[-1] == queued_steers_while_running[index]:
+            pending_steers.pop()
+            remove_count += 1
+            index -= 1
+            continue
+        break
+
+    # Keep the existing function intentionally conservative:
+    # only strip running submissions from the tail when we can preserve at least
+    # one non-running pending steer for immediate execution.
 
 
 async def _call_text_handler(
