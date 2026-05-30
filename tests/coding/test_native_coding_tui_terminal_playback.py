@@ -5,6 +5,7 @@ from io import StringIO
 from loushang.coding.ui.native_app import NativeCodingTuiApp
 from loushang.coding.ui.native_input import NativeInputRouter
 from loushang.coding.ui.native_loop import _finish_tui_exit
+from loushang.coding.ui.perf_probe import build_synthetic_long_transcript_records
 from loushang.tui import (
     CompletionItem,
     CompletionProvider,
@@ -349,6 +350,52 @@ def test_native_coding_tui_renders_pending_steer_and_followup_below_working_line
     assert "  ↳ steer now" in visible_lines
     assert "  ↳ next prompt" in visible_lines
     assert "    alt + ↑ edit last queued message" in visible_lines
+
+
+def test_native_coding_tui_resumed_long_transcript_input_echo_uses_bounded_fake_terminal_update() -> None:
+    app = _app()
+    app.replace_transcript_window(
+        build_synthetic_long_transcript_records(turns=180, tail_tool_output_lines=2400),
+        reason="resume",
+    )
+    app.trim_active_transcript_window()
+    runtime, port = _runtime(app, width=100, height=30)
+
+    first = runtime.render_now()
+    app.composer.set_text("x")
+    step = runtime.render_now()
+
+    assert len(first.diagnostics.current_logical_lines) <= 380
+    assert len(step.diagnostics.current_logical_lines) <= 380
+    step.assert_operation_class("changed_range_update")
+    step.assert_no_clear_scrollback()
+    assert TerminalOperation.clear_screen() not in step.diagnostics.operations
+    assert step.frame is not None
+    assert any(line.rstrip() == "› x" for line in port.screen.visible_lines)
+
+
+def test_native_coding_tui_resumed_long_transcript_working_timer_uses_bounded_fake_terminal_update() -> None:
+    app = _app()
+    app.now = lambda: 0.0
+    app.replace_transcript_window(
+        build_synthetic_long_transcript_records(turns=180, tail_tool_output_lines=2400),
+        reason="resume",
+    )
+    app.trim_active_transcript_window()
+    app.begin_run(started_at=0.0)
+    runtime, port = _runtime(app, width=100, height=30)
+
+    first = runtime.render_now()
+    app.now = lambda: 0.2
+    step = runtime.render_now()
+
+    assert len(first.diagnostics.current_logical_lines) <= 380
+    assert len(step.diagnostics.current_logical_lines) <= 380
+    step.assert_operation_class("changed_range_update")
+    step.assert_no_clear_scrollback()
+    assert TerminalOperation.clear_screen() not in step.diagnostics.operations
+    assert step.frame is not None
+    assert "Working 0.20s" in _visible_text(port)
 
 
 def _app() -> NativeCodingTuiApp:

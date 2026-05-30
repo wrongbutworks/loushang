@@ -19,6 +19,9 @@ from loushang.coding.message import CompactionSummaryMessage
 from loushang.coding.message.entries import SessionContext
 from loushang.coding.types import ModelSelection
 from loushang.coding.ui.native_surfaces import NativeSurfaceManager
+from loushang.coding.ui.perf_probe import characterize_long_transcript_rendering
+from loushang.observability import configure_debug_logging, reset_observability
+from loushang.tui import RenderLoop, TerminalSize
 from loushang.tui.transcript import (
     AssistantMessageRecord,
     ContextCompactionRecord,
@@ -30,6 +33,20 @@ from loushang.tui.transcript import (
 class _TTYStringIO(StringIO):
     def isatty(self) -> bool:
         return True
+
+
+class _RecordingDebugSink:
+    def __init__(self) -> None:
+        self.events = []
+
+    def write_log(self, **_kwargs) -> None:
+        return None
+
+    def write_problem(self, _record) -> None:
+        return None
+
+    def write_debug_event(self, record) -> None:
+        self.events.append(record)
 
 
 class _Session:
@@ -239,6 +256,246 @@ def test_run_coding_tui_interactive_replays_resumed_session_history(monkeypatch)
     assert isinstance(records[3], ContextCompactionRecord)
     assert records[3].summary == "older context summary"
     assert records[3].tokens_before == 128
+
+
+def test_run_coding_tui_interactive_bounds_resumed_long_transcript_render_window(monkeypatch) -> None:
+    from loushang.coding.ui import mode
+
+    session = _Session()
+    usage = Usage(input=1, output=2, cache_read=0, cache_write=0, total_tokens=3, cost={})
+    for turn in range(24):
+        session.context_messages.append(
+            UserMessage(role="user", content=[TextPart(type="text", text=f"question {turn}")], timestamp=float(turn))
+        )
+        line_count = 900 if turn == 23 else 40
+        session.context_messages.append(
+            AssistantMessage(
+                role="assistant",
+                content=[TextPart(type="text", text="\n".join(f"answer {turn} line {line}" for line in range(line_count)))],
+                api="openai",
+                provider="moonshot",
+                model="kimi",
+                response_id=None,
+                usage=usage,
+                stop_reason="stop",
+                error_message=None,
+                timestamp=float(turn) + 0.5,
+            )
+        )
+    captured: dict[str, object] = {}
+
+    async def fake_native_loop(**kwargs):
+        captured.update(kwargs)
+        return 0
+
+    monkeypatch.setattr(mode, "run_native_coding_tui", fake_native_loop)
+
+    exit_code = asyncio.run(
+        mode.run_coding_tui(
+            runtime=object(),
+            session=session,
+            stdin=_TTYStringIO(),
+            stdout=_TTYStringIO(),
+            stderr=StringIO(),
+        )
+    )
+
+    app = captured["app"]
+    render_loop = RenderLoop(screen_root=app)
+    first_metrics = characterize_long_transcript_rendering(
+        app,
+        width=100,
+        height=30,
+        render_loop=render_loop,
+        commit_plan=True,
+    )
+    input_metrics = characterize_long_transcript_rendering(
+        app,
+        width=100,
+        height=30,
+        composer_text="x",
+        render_loop=render_loop,
+        commit_plan=True,
+    )
+
+    assert exit_code == 0
+    assert getattr(app, "state").evicted_prefix_record_count > 0
+    assert first_metrics.render_loop_logical_line_count <= 380
+    assert input_metrics.render_loop_logical_line_count <= 380
+    assert input_metrics.render_loop_operation_class not in {
+        "baseline_repaint",
+        "managed_viewport_repaint",
+        "recovery_repaint",
+        "resize_repaint",
+    }
+
+
+def test_run_coding_tui_interactive_long_transcript_input_frame_does_not_clear_screen(monkeypatch) -> None:
+    from loushang.coding.ui import mode
+
+    session = _Session()
+    usage = Usage(input=1, output=2, cache_read=0, cache_write=0, total_tokens=3, cost={})
+    for turn in range(24):
+        session.context_messages.append(
+            UserMessage(role="user", content=[TextPart(type="text", text=f"question {turn}")], timestamp=float(turn))
+        )
+        session.context_messages.append(
+            AssistantMessage(
+                role="assistant",
+                content=[TextPart(type="text", text="\n".join(f"answer {turn} line {line}" for line in range(80)))],
+                api="openai",
+                provider="moonshot",
+                model="kimi",
+                response_id=None,
+                usage=usage,
+                stop_reason="stop",
+                error_message=None,
+                timestamp=float(turn) + 0.5,
+            )
+        )
+    captured: dict[str, object] = {}
+
+    async def fake_native_loop(**kwargs):
+        captured.update(kwargs)
+        return 0
+
+    monkeypatch.setattr(mode, "run_native_coding_tui", fake_native_loop)
+
+    exit_code = asyncio.run(
+        mode.run_coding_tui(
+            runtime=object(),
+            session=session,
+            stdin=_TTYStringIO(),
+            stdout=_TTYStringIO(),
+            stderr=StringIO(),
+        )
+    )
+
+    app = captured["app"]
+    render_loop = RenderLoop(screen_root=app)
+    size = TerminalSize(columns=100, rows=30)
+    first = render_loop.plan(size)
+    render_loop.commit(first, size=size)
+    app.composer.set_text("x")
+    second = render_loop.plan(size)
+
+    assert exit_code == 0
+    assert second.operation_class == "changed_range_update"
+    assert {operation.kind for operation in second.operations}.isdisjoint({"clear_screen", "clear_scrollback"})
+
+
+def test_run_coding_tui_interactive_long_transcript_working_timer_frame_stays_bounded(monkeypatch) -> None:
+    from loushang.coding.ui import mode
+
+    session = _Session()
+    usage = Usage(input=1, output=2, cache_read=0, cache_write=0, total_tokens=3, cost={})
+    for turn in range(24):
+        session.context_messages.append(
+            UserMessage(role="user", content=[TextPart(type="text", text=f"question {turn}")], timestamp=float(turn))
+        )
+        session.context_messages.append(
+            AssistantMessage(
+                role="assistant",
+                content=[TextPart(type="text", text="\n".join(f"answer {turn} line {line}" for line in range(80)))],
+                api="openai",
+                provider="moonshot",
+                model="kimi",
+                response_id=None,
+                usage=usage,
+                stop_reason="stop",
+                error_message=None,
+                timestamp=float(turn) + 0.5,
+            )
+        )
+    captured: dict[str, object] = {}
+
+    async def fake_native_loop(**kwargs):
+        captured.update(kwargs)
+        return 0
+
+    monkeypatch.setattr(mode, "run_native_coding_tui", fake_native_loop)
+
+    exit_code = asyncio.run(
+        mode.run_coding_tui(
+            runtime=object(),
+            session=session,
+            stdin=_TTYStringIO(),
+            stdout=_TTYStringIO(),
+            stderr=StringIO(),
+        )
+    )
+
+    app = captured["app"]
+    app.now = lambda: 10.0
+    app.begin_run(started_at=10.0)
+    render_loop = RenderLoop(screen_root=app)
+    size = TerminalSize(columns=100, rows=30)
+    first = render_loop.plan(size)
+    render_loop.commit(first, size=size)
+    app.now = lambda: 10.2
+    second = render_loop.plan(size)
+
+    assert exit_code == 0
+    assert len(second.current_logical_lines) <= 380
+    assert second.operation_class == "changed_range_update"
+    assert second.changed_line_range is not None
+    assert second.changed_line_range[0] >= len(second.current_logical_lines) - 8
+    assert {operation.kind for operation in second.operations}.isdisjoint({"clear_screen", "clear_scrollback"})
+
+
+def test_run_coding_tui_interactive_traces_resumed_transcript_window_trim(monkeypatch) -> None:
+    from loushang.coding.ui import mode
+
+    session = _Session()
+    usage = Usage(input=1, output=2, cache_read=0, cache_write=0, total_tokens=3, cost={})
+    for turn in range(24):
+        session.context_messages.append(
+            UserMessage(role="user", content=[TextPart(type="text", text=f"question {turn}")], timestamp=float(turn))
+        )
+        session.context_messages.append(
+            AssistantMessage(
+                role="assistant",
+                content=[TextPart(type="text", text="\n".join(f"answer {turn} line {line}" for line in range(80)))],
+                api="openai",
+                provider="moonshot",
+                model="kimi",
+                response_id=None,
+                usage=usage,
+                stop_reason="stop",
+                error_message=None,
+                timestamp=float(turn) + 0.5,
+            )
+        )
+    sink = _RecordingDebugSink()
+    captured: dict[str, object] = {}
+
+    async def fake_native_loop(**kwargs):
+        captured.update(kwargs)
+        return 0
+
+    monkeypatch.setattr(mode, "run_native_coding_tui", fake_native_loop)
+    reset_observability()
+    configure_debug_logging(debug_sink=sink, debug_scopes=("tui",))
+    try:
+        exit_code = asyncio.run(
+            mode.run_coding_tui(
+                runtime=object(),
+                session=session,
+                stdin=_TTYStringIO(),
+                stdout=_TTYStringIO(),
+                stderr=StringIO(),
+            )
+        )
+    finally:
+        reset_observability()
+
+    event = next(event for event in sink.events if event.scope == "tui" and event.name == "tui.resume_history")
+    app = captured["app"]
+    assert exit_code == 0
+    assert event.data["record_count"] == 48
+    assert event.data["active_record_count"] == len(getattr(app, "state").records)
+    assert event.data["evicted_record_count"] == getattr(app, "state").evicted_prefix_record_count
+    assert event.data["trimmed"] is True
 
 
 def test_run_coding_tui_interactive_native_loop_dispatches_steer_and_followup(monkeypatch) -> None:

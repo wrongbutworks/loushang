@@ -5,6 +5,7 @@ from pathlib import Path
 
 import pytest
 
+from loushang.observability import configure_debug_logging, reset_observability
 from loushang.tui import (
     CURSOR_MARKER,
     FakeTerminalPort,
@@ -39,6 +40,20 @@ class TextRoot:
         return RenderResult.from_text(self.text, constraints=constraints)
 
 
+class RecordingDebugSink:
+    def __init__(self) -> None:
+        self.events = []
+
+    def write_log(self, **_kwargs) -> None:
+        return None
+
+    def write_problem(self, _record) -> None:
+        return None
+
+    def write_debug_event(self, record) -> None:
+        self.events.append(record)
+
+
 def test_first_render_flushes_full_logical_lines_without_clearing_scrollback() -> None:
     runtime = TuiRuntime(
         render_loop=RenderLoop(StaticRoot(("hello", "status"))),
@@ -54,6 +69,29 @@ def test_first_render_flushes_full_logical_lines_without_clearing_scrollback() -
     assert step.frame is not None
     assert step.frame.serialized_output == "\x1b[?2026hhello\r\nstatus\x1b[?2026l"
     assert step.frame.screen_after.visible_lines[:2] == ("hello", "status")
+
+
+def test_runtime_render_now_emits_tui_render_frame_diagnostics() -> None:
+    sink = RecordingDebugSink()
+    reset_observability()
+    configure_debug_logging(debug_sink=sink, debug_scopes=("tui",))
+    try:
+        runtime = TuiRuntime(
+            render_loop=RenderLoop(StaticRoot(("hello", "status"))),
+            terminal=FakeTerminalPort(size=TerminalSize(columns=20, rows=5)),
+        )
+
+        runtime.render_now()
+    finally:
+        reset_observability()
+
+    event = next(event for event in sink.events if event.scope == "tui" and event.name == "render.frame")
+    assert event.data["operation_class"] == "first_render"
+    assert event.data["logical_line_count"] == 2
+    assert event.data["operation_count"] > 0
+    assert event.data["plan_ms"] >= 0
+    assert event.data["flush_ms"] >= 0
+    assert event.data["total_ms"] >= 0
 
 
 def test_fake_terminal_port_implements_terminal_port_boundary() -> None:
