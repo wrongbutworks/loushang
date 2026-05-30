@@ -94,6 +94,27 @@ def test_runtime_render_now_emits_tui_render_frame_diagnostics() -> None:
     assert event.data["total_ms"] >= 0
 
 
+def test_runtime_render_now_does_not_emit_tui_render_frame_when_scope_is_disabled() -> None:
+    sink = RecordingDebugSink()
+    reset_observability()
+    try:
+        configure_debug_logging(debug_sink=sink, debug_scopes=set())
+        runtime = TuiRuntime(
+            render_loop=RenderLoop(StaticRoot(("hello", "status"))),
+            terminal=FakeTerminalPort(size=TerminalSize(columns=20, rows=5)),
+        )
+
+        runtime.render_now()
+
+        assert not sink.events
+
+        configure_debug_logging(debug_sink=sink, debug_scopes={"tui"})
+        runtime.render_now()
+        assert any(event.scope == "tui" and event.name == "render.frame" for event in sink.events)
+    finally:
+        reset_observability()
+
+
 def test_fake_terminal_port_implements_terminal_port_boundary() -> None:
     port = FakeTerminalPort(size=TerminalSize(columns=20, rows=5))
 

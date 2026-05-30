@@ -13,8 +13,8 @@ from .sinks import (
     capture_observability,
     configure_debug_logging,
     configure_observability,
-    is_debug_event_enabled,
     get_problem_store,
+    is_debug_event_enabled,
     reset_observability,
     restore_observability,
 )
