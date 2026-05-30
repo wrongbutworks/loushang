@@ -93,6 +93,14 @@ async def _run_native_interactive_tui(
     history_records = session_history_records(session, tool_definition_resolver=_tool_definition_resolver(session))
     if history_records:
         app.replace_transcript_window(history_records, reason="resume")
+        app.trim_active_transcript_window()
+        _trace(
+            "tui.resume_history",
+            record_count=len(history_records),
+            active_record_count=len(app.state.records),
+            evicted_record_count=app.state.evicted_prefix_record_count,
+            trimmed=app.state.evicted_prefix_record_count > 0,
+        )
     completion_provider = await _load_completion_provider(session)
     app.composer.set_completion_provider(completion_provider)
     controller = CodingUiController(runtime=runtime, session=session, verbose=verbose)

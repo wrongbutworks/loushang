@@ -5,6 +5,7 @@ from collections.abc import Callable
 from dataclasses import dataclass, field
 from typing import Any, cast
 
+from loushang.observability import get_log
 from loushang.tui.framework import ScreenRoot as OverlayScreenRoot
 from loushang.tui.framework import Surface, SurfaceHandle, SurfaceHost
 from loushang.tui.playback import PlaybackEvent, PlaybackStep
@@ -16,6 +17,8 @@ from loushang.tui.scheduler import (
     RenderScheduler,
 )
 from loushang.tui.terminal import TerminalPort
+
+_log = get_log(__name__).bind(component="TuiRuntime")
 
 
 @dataclass(slots=True)
@@ -29,10 +32,15 @@ class TuiRuntime:
     _overlay_host: SurfaceHost | None = field(default=None, init=False, repr=False)
 
     def render_now(self) -> PlaybackStep:
+        render_started = time.perf_counter()
         size = self.terminal.size()
         self._consume_screen_root_baseline_reset()
+        plan_started = time.perf_counter()
         diagnostics = self.render_loop.plan(size)
+        plan_ms = (time.perf_counter() - plan_started) * 1000
+        flush_started = time.perf_counter()
         frame = self.terminal.flush(diagnostics.operations)
+        flush_ms = (time.perf_counter() - flush_started) * 1000
         self.render_loop.commit(diagnostics, size=size)
         self._pending_render_due_ms = None
         rendered_at_ms = self.now_ms()
@@ -45,6 +53,22 @@ class TuiRuntime:
             frame=frame,
         )
         self._step_index += 1
+        changed_start, changed_end = diagnostics.changed_line_range or (None, None)
+        _log.debug_event(
+            "tui",
+            "render.frame",
+            operation_class=diagnostics.operation_class,
+            logical_line_count=len(diagnostics.current_logical_lines),
+            previous_line_count=len(diagnostics.previous_rendered_lines),
+            operation_count=len(diagnostics.operations),
+            changed_start=changed_start,
+            changed_end=changed_end,
+            viewport_top=diagnostics.viewport_top,
+            previous_viewport_top=diagnostics.previous_viewport_top,
+            plan_ms=round(plan_ms, 3),
+            flush_ms=round(flush_ms, 3),
+            total_ms=round((time.perf_counter() - render_started) * 1000, 3),
+        )
         return step
 
     def overlay_host(self) -> SurfaceHost:
