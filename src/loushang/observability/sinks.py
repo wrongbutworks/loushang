@@ -203,6 +203,19 @@ def emit_debug_event(record: DebugEventRecord) -> None:
         _best_effort(trace_sink.write_debug_event, record)
 
 
+def is_debug_event_enabled(scope: str) -> bool:
+    with _lock:
+        debug_sink = _config.debug_sink
+        trace_sink = _config.trace_sink
+        debug_scopes = _config.debug_scopes
+        trace_scopes = _config.trace_scopes
+
+    return (
+        (debug_sink is not None and _scope_matches(debug_scopes, scope))
+        or (trace_sink is not None and _scope_matches(trace_scopes, scope))
+    )
+
+
 def _normalize_scopes(
     scopes: set[str] | frozenset[str] | list[str] | tuple[str, ...] | None,
 ) -> frozenset[str]:

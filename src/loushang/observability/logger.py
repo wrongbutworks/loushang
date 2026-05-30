@@ -11,7 +11,13 @@ from .problem import (
     ProblemSeverity,
     ensure_json_safe_mapping,
 )
-from .sinks import DebugEventRecord, emit_debug_event, emit_log, emit_problem
+from .sinks import (
+    DebugEventRecord,
+    emit_debug_event,
+    emit_log,
+    emit_problem,
+    is_debug_event_enabled,
+)
 
 
 @dataclass(frozen=True)
@@ -101,6 +107,9 @@ class ObservabilityLog:
         )
 
     def debug_event(self, scope: str, name: str, **data: JSONValue) -> None:
+        if not is_debug_event_enabled(scope):
+            return
+
         context = current_context()
         record = DebugEventRecord(
             scope=scope,

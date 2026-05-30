@@ -10,6 +10,7 @@ from loushang.observability import (
     get_log,
     get_problem_store,
     InMemoryProblemStore,
+    is_debug_event_enabled,
     log_context,
     reset_observability,
 )
@@ -221,6 +222,22 @@ def test_debug_sink_does_not_replace_log_when_latest_path_matches_file(tmp_path)
     assert debug_path.is_file()
     assert not debug_path.is_symlink()
     assert "hello" in debug_path.read_text(encoding="utf-8")
+
+
+def test_is_debug_event_enabled_respects_configured_sinks_and_scopes(tmp_path) -> None:
+    debug_path = tmp_path / "debug.log"
+
+    assert not is_debug_event_enabled("tui")
+
+    configure_observability(debug_scopes=set(), trace_scopes=set())
+    assert not is_debug_event_enabled("tui")
+
+    configure_debug_logging(
+        debug_sink=DebugLogSink(debug_path),
+        debug_scopes={"tui"},
+    )
+    assert is_debug_event_enabled("tui")
+    assert not is_debug_event_enabled("provider")
 
 
 def test_debug_sink_includes_timestamp_on_human_log_lines(tmp_path) -> None:
