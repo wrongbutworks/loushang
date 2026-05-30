@@ -136,6 +136,12 @@ async def run_native_coding_tui(
                         active_task = None
                         active_prompt_started_at = None
                         runtime.render_now()
+                        if handle_steer is not None:
+                            await _run_interrupt_pending_steer(
+                                app=app,
+                                handle_steer=handle_steer,
+                                runtime=runtime,
+                            )
                         continue
                     if result.prompt_text is not None:
                         active_prompt_started_at = app.state.active_started_at
@@ -397,6 +403,22 @@ async def _run_text_handler(
 ) -> int | None:
     result = await _call_text_handler(handler, text, images=images)
     return result if isinstance(result, int) else None
+
+
+async def _run_interrupt_pending_steer(
+    *,
+    app: NativeCodingTuiApp,
+    handle_steer: TextHandler,
+    runtime: TuiRuntime,
+) -> None:
+    if not app.state.pending_steers:
+        return
+    pending_steer = app.state.pending_steers.pop(0)
+    app.composer.clear()
+    try:
+        await _run_text_handler(handle_steer, pending_steer)
+    finally:
+        runtime.render_now()
 
 
 async def _call_text_handler(
