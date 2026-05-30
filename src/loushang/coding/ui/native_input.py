@@ -163,6 +163,11 @@ class NativeInputRouter:
     def _abort_or_clear(self) -> NativeInputResult:
         if self.app.state.running:
             return NativeInputResult(abort_requested=True)
+        if self.app.state.pending_steers:
+            pending_steer = self.app.state.pending_steers.pop(0)
+            self.app.composer.clear()
+            self._clear_prompt_attachments()
+            return NativeInputResult(steer_text=pending_steer)
         if self.app.composer.value:
             self.app.composer.clear()
             self._clear_prompt_attachments()

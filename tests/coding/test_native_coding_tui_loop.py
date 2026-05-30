@@ -466,6 +466,35 @@ def test_native_loop_dispatches_steer_and_followup_handlers() -> None:
     assert followups == ["follow"]
 
 
+def test_native_loop_dispatches_pending_steer_from_escape_when_idle() -> None:
+    from loushang.coding.ui.native_app import NativeCodingTuiApp
+    from loushang.coding.ui.native_loop import run_native_coding_tui
+
+    stdout = StringIO()
+    app = NativeCodingTuiApp(model_label="kimi", cwd="/repo", branch="main", session_label="abcd", now=lambda: 10.0)
+    app.state.pending_steers.append("你好")
+    steers: list[str] = []
+
+    async def handle_steer(text: str) -> int | None:
+        steers.append(text)
+        return None
+
+    result = asyncio.run(
+        run_native_coding_tui(
+            app=app,
+            stdin=StringIO("\x1b"),
+            stdout=stdout,
+            handle_prompt=lambda _text: None,
+            handle_steer=handle_steer,
+            on_abort=lambda: None,
+            should_exit=lambda text: text in {"/quit", "/exit"},
+        )
+    )
+
+    assert result == 0
+    assert steers == ["你好"]
+
+
 def test_native_loop_renders_streaming_updates_without_waiting_for_keyboard() -> None:
     from loushang.coding.ui.native_app import NativeCodingTuiApp
     from loushang.coding.ui.native_loop import run_native_coding_tui

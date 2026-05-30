@@ -38,6 +38,36 @@ def test_native_input_router_running_enter_queues_steer() -> None:
     assert app.state.pending_steers == ["请用中文"]
 
 
+def test_native_input_router_idle_escape_submits_pending_steer() -> None:
+    from loushang.coding.ui.native_app import NativeCodingTuiApp
+    from loushang.coding.ui.native_input import NativeInputRouter
+
+    app = NativeCodingTuiApp(model_label="kimi", cwd="/repo", branch="main", session_label="abcd", now=lambda: 12.0)
+    app.state.pending_steers.append("你好")
+
+    result = NativeInputRouter(app, should_exit=lambda text: False).handle(InputEvent(kind="key", key="escape"))
+
+    assert result.prompt_text is None
+    assert result.steer_text == "你好"
+    assert app.state.pending_steers == []
+
+
+def test_native_input_router_idle_interrupt_message_prefers_pending_steer() -> None:
+    from loushang.coding.ui.native_app import NativeCodingTuiApp
+    from loushang.coding.ui.native_input import NativeInputRouter
+
+    app = NativeCodingTuiApp(model_label="kimi", cwd="/repo", branch="main", session_label="abcd", now=lambda: 12.0)
+    app.state.pending_steers.append("你好")
+    app.state.interruption_message = "Conversation interrupted - tell the model what to do differently."
+    app.composer.set_text("草稿")
+
+    result = NativeInputRouter(app, should_exit=lambda text: False).handle(InputEvent(kind="key", key="escape"))
+
+    assert result.steer_text == "你好"
+    assert app.state.pending_steers == []
+    assert app.composer.value == ""
+
+
 def test_native_input_router_running_alt_enter_queues_followup() -> None:
     from loushang.coding.ui.native_app import NativeCodingTuiApp
     from loushang.coding.ui.native_input import NativeInputRouter
