@@ -38,11 +38,11 @@ from loushang.coding.ui.model_list import (
 from loushang.coding.ui.native_app import NativeCodingTuiApp
 from loushang.coding.ui.status_provider import CodingTuiStatusProvider
 from loushang.tui import (
+    ApprovalSurface,
     CommandPalette,
     CommandSurface,
     FocusableMixin,
     InfoPanel,
-    ApprovalSurface,
     InputEvent,
     InputIntent,
     RenderConstraints,
