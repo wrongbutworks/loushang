@@ -751,14 +751,13 @@ def test_native_loop_abort_uses_first_pending_steer_before_running_steer() -> No
 
 
 def test_native_loop_waits_for_abort_settle_before_running_popped_pending_steer() -> None:
-    from native_tui_playback import NativeTuiLoopPlayback
-
     from loushang.coding.ui.controller import CodingUiController
     from loushang.coding.ui.mode import (
         _native_abort_handler,
         _native_prompt_handler,
         _native_text_handler,
     )
+    from loushang.coding.ui.playback import NativeTuiLoopPlayback
 
     playback = NativeTuiLoopPlayback()
     session = _AbortSettlingSession()

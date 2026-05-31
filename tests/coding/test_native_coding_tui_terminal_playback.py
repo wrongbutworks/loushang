@@ -2,12 +2,11 @@ from __future__ import annotations
 
 from io import StringIO
 
-from native_tui_playback import NativeTuiScenario
-
 from loushang.coding.ui.native_app import NativeCodingTuiApp
 from loushang.coding.ui.native_input import NativeInputRouter
 from loushang.coding.ui.native_loop import _finish_tui_exit
 from loushang.coding.ui.perf_probe import build_synthetic_long_transcript_records
+from loushang.coding.ui.playback import NativeTuiScenario
 from loushang.tui import (
     CompletionItem,
     CompletionProvider,

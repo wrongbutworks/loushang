@@ -101,10 +101,16 @@ from loushang.tui.keybindings import (
 )
 from loushang.tui.keyboard_protocol import KeyboardProtocolController
 from loushang.tui.playback import (
+    PLAYBACK_ARTIFACTS_ENV,
+    PlaybackArtifacts,
     PlaybackEvent,
+    PlaybackFrameBudget,
     PlaybackHarness,
+    PlaybackResult,
+    PlaybackScenario,
     PlaybackStep,
     RenderDiagnostics,
+    playback_artifacts_directory_from_env,
 )
 from loushang.tui.render_loop import RenderLoop
 from loushang.tui.runtime import TuiRuntime
@@ -305,9 +311,15 @@ __all__ = [
     "loushang_welcome_theme",
     "MarkdownRenderCache",
     "MarkdownRenderer",
+    "PLAYBACK_ARTIFACTS_ENV",
+    "PlaybackArtifacts",
     "PlaybackEvent",
+    "PlaybackFrameBudget",
     "PlaybackHarness",
+    "PlaybackResult",
+    "PlaybackScenario",
     "PlaybackStep",
+    "playback_artifacts_directory_from_env",
     "PendingQueueView",
     "PendingSection",
     "PathCompletionProvider",

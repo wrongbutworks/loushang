@@ -18,6 +18,7 @@ from loushang.coding.ui.native_loop import (
     _terminal_runtime_wakeup_ms,
 )
 from loushang.coding.ui.native_surfaces import NativeSurfaceManager
+from loushang.coding.ui.playback import NativeTuiInputPlayback
 from loushang.coding.ui.status_provider import CodingTuiStatusProvider
 from loushang.tui import (
     FakeTerminalPort,
@@ -43,7 +44,7 @@ def test_native_tui_playback_applies_model_argument_completion() -> None:
     session = _Session()
     app = _app()
     app.composer.set_completion_provider(asyncio.run(coding_inline_completion_provider(session)))
-    playback = _NativePlayback(app)
+    playback = NativeTuiInputPlayback(app)
 
     steps = playback.play([PlaybackEvent.input("/model gpt\t")])
 
@@ -60,7 +61,7 @@ def test_native_tui_playback_applies_recursive_at_file_completion(tmp_path: Path
     session = _Session(cwd=tmp_path)
     app = _app(cwd=str(tmp_path))
     app.composer.set_completion_provider(asyncio.run(coding_inline_completion_provider(session)))
-    playback = _NativePlayback(app)
+    playback = NativeTuiInputPlayback(app)
 
     steps = playback.play([PlaybackEvent.input("@test\t")])
 
@@ -78,7 +79,7 @@ def test_native_tui_playback_edits_settings_search_with_text_input_cursor() -> N
         ],
         enable_search=True,
     )
-    playback = _NativePlayback(app)
+    playback = NativeTuiInputPlayback(app)
 
     steps = playback.play([PlaybackEvent.input("mo\x1b[Dx")])
 
@@ -111,7 +112,7 @@ def test_tui_playback_renders_auto_terminal_image_and_text_fallback(monkeypatch:
 
 def test_native_tui_playback_resizes_cleanly_after_drain() -> None:
     app = _app()
-    playback = _NativePlayback(app, columns=80, rows=12)
+    playback = NativeTuiInputPlayback(app, columns=80, rows=12)
 
     drained = drain_input(StringIO("stale buffered input"))
     steps = playback.play(
@@ -288,36 +289,6 @@ def test_native_loop_polls_terminal_runtime_fallback() -> None:
 
     assert _poll_terminal_runtime(context) is True
     assert context.poll_calls == 1
-
-
-class _NativePlayback:
-    def __init__(self, app: NativeCodingTuiApp, *, columns: int = 80, rows: int = 12) -> None:
-        self.app = app
-        self.reader = InputReader()
-        self.router = NativeInputRouter(app, should_exit=lambda _text: False)
-        self.render_loop = RenderLoop(app, clear_scrollback_policy="disabled")
-        self.harness = PlaybackHarness(
-            render=self._render,
-            port=FakeTerminalPort(size=TerminalSize(columns=columns, rows=rows)),
-        )
-
-    def play(self, events: list[PlaybackEvent]) -> tuple[PlaybackStep, ...]:
-        return self.harness.play(events)
-
-    def _render(
-        self,
-        event: PlaybackEvent,
-        size: TerminalSize,
-        _previous: RenderDiagnostics | None,
-    ) -> RenderDiagnostics:
-        if event.kind == "input":
-            if not isinstance(event.payload, str):
-                raise TypeError("input playback event payload must be str")
-            for input_event in self.reader.feed(event.payload):
-                self.router.handle(input_event)
-        diagnostics = self.render_loop.plan(size)
-        self.render_loop.commit(diagnostics, size=size)
-        return diagnostics
 
 
 class _NativeInteractivePlayback:
