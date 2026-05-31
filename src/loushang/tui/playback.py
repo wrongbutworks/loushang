@@ -177,6 +177,24 @@ class PlaybackResult:
                     f"step {step.index} emitted {operation_count} operations, expected <= {max_operations}"
                 )
 
+    def assert_max_serialized_output_bytes_per_step(
+        self,
+        max_bytes: int,
+        *,
+        skip_first: bool = False,
+    ) -> None:
+        steps = self.steps[1:] if skip_first else self.steps
+        for step in steps:
+            if step.frame is None:
+                if step.flush_error is not None:
+                    continue
+                raise AssertionError(f"step {step.index} did not record a terminal frame")
+            byte_count = len(step.frame.serialized_output.encode("utf-8"))
+            if byte_count > max_bytes:
+                raise AssertionError(
+                    f"step {step.index} emitted {byte_count} serialized bytes, expected <= {max_bytes}"
+                )
+
     def assert_screen_anchor_stable(
         self,
         anchor: str,
