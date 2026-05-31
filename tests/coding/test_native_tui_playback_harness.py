@@ -11,7 +11,7 @@ from loushang.coding.ui.playback import (
     NativeTuiLoopScenario,
     NativeTuiScenario,
 )
-from loushang.tui import SelectionSurface, SelectItem
+from loushang.tui import PLAYBACK_ARTIFACTS_ENV, SelectionSurface, SelectItem
 
 
 def test_native_tui_scenario_renders_composer_input_without_screen_clear() -> None:
@@ -290,6 +290,23 @@ def test_native_tui_loop_playback_writes_artifacts_when_wrapped_assertion_fails(
     assert (tmp_path / "loop-failures" / "missing-text-raw.txt").exists()
     text = tmp_path / "loop-failures" / "missing-text-text.txt"
     state = tmp_path / "loop-failures" / "missing-text-state.json"
+    assert "› hello" in text.read_text(encoding="utf-8")
+    assert json.loads(state.read_text(encoding="utf-8"))["exit_code"] == 0
+
+
+def test_native_tui_loop_playback_writes_failure_artifacts_to_env_directory(tmp_path) -> None:
+    result = NativeTuiLoopScenario().type_text("hello").enter().end_input().run()
+    artifact_root = tmp_path / "loop-env-artifacts"
+
+    with pytest.raises(AssertionError):
+        with result.write_artifacts_on_failure_from_env(
+            basename="loop-missing-text",
+            env={PLAYBACK_ARTIFACTS_ENV: str(artifact_root)},
+        ):
+            result.assert_text_contains("missing")
+
+    text = artifact_root / "loop-missing-text-text.txt"
+    state = artifact_root / "loop-missing-text-state.json"
     assert "› hello" in text.read_text(encoding="utf-8")
     assert json.loads(state.read_text(encoding="utf-8"))["exit_code"] == 0
 

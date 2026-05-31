@@ -1,7 +1,8 @@
 from __future__ import annotations
 
 import json
-from collections.abc import Callable, Iterable, Iterator
+import os
+from collections.abc import Callable, Iterable, Iterator, Mapping
 from contextlib import contextmanager
 from dataclasses import dataclass, field, replace
 from itertools import zip_longest
@@ -15,6 +16,8 @@ from loushang.tui.terminal import (
     TerminalOperation,
     TerminalSize,
 )
+
+PLAYBACK_ARTIFACTS_ENV = "LOUSHANG_TUI_PLAYBACK_ARTIFACTS"
 
 
 @dataclass(frozen=True, slots=True)
@@ -316,6 +319,21 @@ class PlaybackResult:
             self.write_artifacts(directory, basename=basename, include_frames=include_frames)
             raise
 
+    @contextmanager
+    def write_artifacts_on_failure_from_env(
+        self,
+        *,
+        basename: str = "playback",
+        include_frames: bool = False,
+        env: Mapping[str, str] | None = None,
+    ) -> Iterator[None]:
+        try:
+            yield
+        except Exception:
+            if directory := playback_artifacts_directory_from_env(env):
+                self.write_artifacts(directory, basename=basename, include_frames=include_frames)
+            raise
+
     def _jsonl_row(self, step: PlaybackStep, *, include_frames: bool) -> dict[str, Any]:
         serialized_output = step.frame.serialized_output if step.frame is not None else None
         row = {
@@ -421,6 +439,14 @@ def _changed_visible_line_count(frame: TerminalFrame) -> int:
             fillvalue="",
         )
     )
+
+
+def playback_artifacts_directory_from_env(env: Mapping[str, str] | None = None) -> Path | None:
+    environment = os.environ if env is None else env
+    raw_path = environment.get(PLAYBACK_ARTIFACTS_ENV, "").strip()
+    if not raw_path:
+        return None
+    return Path(raw_path).expanduser()
 
 
 def _event_payload(event: PlaybackEvent) -> dict[str, Any]:

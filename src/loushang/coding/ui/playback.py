@@ -5,7 +5,7 @@ import json
 import os
 import threading
 import time
-from collections.abc import Awaitable, Callable, Iterator
+from collections.abc import Awaitable, Callable, Iterator, Mapping
 from contextlib import contextmanager
 from dataclasses import dataclass, field
 from io import StringIO
@@ -30,6 +30,7 @@ from loushang.tui import (
     TerminalOperation,
     TerminalSize,
     TuiRuntime,
+    playback_artifacts_directory_from_env,
     strip_control_sequences,
 )
 from loushang.tui.transcript import DisplayRecord
@@ -342,6 +343,20 @@ class NativeTuiLoopPlaybackResult:
             yield
         except Exception:
             self.write_artifacts(directory, basename=basename)
+            raise
+
+    @contextmanager
+    def write_artifacts_on_failure_from_env(
+        self,
+        *,
+        basename: str = "native-loop",
+        env: Mapping[str, str] | None = None,
+    ) -> Iterator[None]:
+        try:
+            yield
+        except Exception:
+            if directory := playback_artifacts_directory_from_env(env):
+                self.write_artifacts(directory, basename=basename)
             raise
 
     def _state_payload(self) -> dict[str, Any]:

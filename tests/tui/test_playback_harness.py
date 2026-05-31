@@ -5,6 +5,7 @@ import json
 import pytest
 
 from loushang.tui import (
+    PLAYBACK_ARTIFACTS_ENV,
     FakeTerminalPort,
     MarkdownRenderer,
     PlaybackEvent,
@@ -17,6 +18,7 @@ from loushang.tui import (
     TerminalOperation,
     TerminalSize,
     ThemeResolver,
+    playback_artifacts_directory_from_env,
 )
 
 
@@ -258,6 +260,54 @@ def test_playback_result_does_not_write_artifacts_when_wrapped_assertion_passes(
         result.assert_visible_contains("hello")
 
     assert not (tmp_path / "failures").exists()
+
+
+def test_playback_result_writes_failure_artifacts_to_env_directory(tmp_path) -> None:
+    harness = PlaybackHarness(
+        render=lambda _event, _size, _previous: RenderDiagnostics(
+            current_logical_lines=("hello",),
+            operations=(TerminalOperation.write("hello"),),
+        ),
+        port=FakeTerminalPort(size=TerminalSize(columns=20, rows=5)),
+    )
+    result = PlaybackResult(steps=harness.play([PlaybackEvent.input("hello")]), port=harness.port)
+    artifact_root = tmp_path / "env-artifacts"
+
+    with pytest.raises(AssertionError):
+        with result.write_artifacts_on_failure_from_env(
+            basename="env-missing-text",
+            include_frames=True,
+            env={PLAYBACK_ARTIFACTS_ENV: str(artifact_root)},
+        ):
+            result.assert_visible_contains("missing")
+
+    trace = artifact_root / "env-missing-text.jsonl"
+    screen = artifact_root / "env-missing-text-screen.txt"
+    assert json.loads(trace.read_text(encoding="utf-8"))["serialized_output"] == "hello"
+    assert screen.read_text(encoding="utf-8") == "hello\n\n\n\n"
+
+
+def test_playback_result_skips_env_artifacts_when_env_directory_is_unset(tmp_path) -> None:
+    harness = PlaybackHarness(
+        render=lambda _event, _size, _previous: RenderDiagnostics(
+            current_logical_lines=("hello",),
+            operations=(TerminalOperation.write("hello"),),
+        ),
+        port=FakeTerminalPort(size=TerminalSize(columns=20, rows=5)),
+    )
+    result = PlaybackResult(steps=harness.play([PlaybackEvent.input("hello")]), port=harness.port)
+
+    with pytest.raises(AssertionError):
+        with result.write_artifacts_on_failure_from_env(basename="missing", env={}):
+            result.assert_visible_contains("missing")
+
+    assert not (tmp_path / "missing.jsonl").exists()
+
+
+def test_playback_artifacts_directory_from_env_respects_explicit_empty_env(monkeypatch, tmp_path) -> None:
+    monkeypatch.setenv(PLAYBACK_ARTIFACTS_ENV, str(tmp_path / "ambient"))
+
+    assert playback_artifacts_directory_from_env({}) is None
 
 
 def test_playback_result_asserts_operation_class_budget_after_initial_frame() -> None:
