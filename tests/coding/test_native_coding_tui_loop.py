@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import asyncio
+import os
+import threading
 import time
 from io import StringIO
 from types import SimpleNamespace
@@ -326,11 +328,12 @@ def test_native_loop_escape_closes_model_surface_and_restores_prompt() -> None:
     result = asyncio.run(
         run_native_coding_tui(
             app=app,
-            stdin=_BlockingAfterScriptInput("/model\r\x1b"),
+            stdin=_TimedTtyChunkInput((0.0, "/model\r"), (0.01, "\x1b")),
             stdout=stdout,
             handle_prompt=lambda _text: None,
             handle_local=manager.handle_text,
             handle_surface_intent=manager.handle_surface_intent,
+            terminal_mode_factory=lambda _stdin, _stdout: _NoTerminalMode(),
             on_abort=lambda: None,
             should_exit=lambda text: text in {"/quit", "/exit"},
             is_local_command=manager.is_local_command,
@@ -431,17 +434,21 @@ def test_native_loop_dispatches_steer_and_followup_handlers() -> None:
 
     stdout = StringIO()
     app = NativeCodingTuiApp(model_label="kimi", cwd="/repo", branch="main", session_label="abcd", now=_Clock([10.0, 10.5]))
-    steers: list[str] = []
+    steers: list[tuple[str, str]] = []
     followups: list[str] = []
+    prompts: list[str] = []
 
-    async def handle_prompt(_text: str) -> int | None:
+    async def handle_prompt(text: str) -> int | None:
+        if text != "start":
+            prompts.append(text)
+            return None
         app.begin_assistant()
         app.append_assistant_chunk("still running")
         await asyncio.Event().wait()
         return None
 
     async def handle_steer(text: str) -> int | None:
-        steers.append(text)
+        steers.append(("queue" if app.state.running else "execute", text))
         return None
 
     async def handle_followup(text: str) -> int | None:
@@ -462,7 +469,8 @@ def test_native_loop_dispatches_steer_and_followup_handlers() -> None:
     )
 
     assert result == 0
-    assert steers == ["steer"]
+    assert steers == [("queue", "steer")]
+    assert prompts == ["steer"]
     assert followups == ["follow"]
 
 
@@ -473,6 +481,7 @@ def test_native_loop_dispatches_pending_steer_from_escape_when_idle() -> None:
     stdout = StringIO()
     app = NativeCodingTuiApp(model_label="kimi", cwd="/repo", branch="main", session_label="abcd", now=lambda: 10.0)
     app.state.pending_steers.append("你好")
+    app.composer.set_text("draft")
     steers: list[str] = []
 
     async def handle_steer(text: str) -> int | None:
@@ -493,6 +502,7 @@ def test_native_loop_dispatches_pending_steer_from_escape_when_idle() -> None:
 
     assert result == 0
     assert steers == ["你好"]
+    assert app.composer.value == "draft"
 
 
 def test_native_loop_executes_queued_steer_after_running_escape() -> None:
@@ -502,14 +512,13 @@ def test_native_loop_executes_queued_steer_after_running_escape() -> None:
     stdout = StringIO()
     app = NativeCodingTuiApp(model_label="kimi", cwd="/repo", branch="main", session_label="abcd", now=_Clock([10.0, 10.5, 11.0]))
     app.state.pending_steers.append("follow")
-    steers: list[str] = []
+    prompts: list[str] = []
 
-    async def handle_prompt(_text: str) -> int | None:
+    async def handle_prompt(text: str) -> int | None:
+        if text == "follow":
+            prompts.append(text)
+            return None
         await asyncio.Event().wait()
-        return None
-
-    async def handle_steer(text: str) -> int | None:
-        steers.append(text)
         return None
 
     result = asyncio.run(
@@ -518,7 +527,56 @@ def test_native_loop_executes_queued_steer_after_running_escape() -> None:
             stdin=StringIO("开始\r\x1b"),
             stdout=stdout,
             handle_prompt=handle_prompt,
+            on_abort=lambda: None,
+            should_exit=lambda text: text in {"/quit", "/exit"},
+        )
+    )
+
+    assert result == 0
+    assert prompts == ["follow"]
+
+
+def test_native_loop_executes_queued_steer_after_running_escape_with_delay() -> None:
+    from loushang.coding.ui.native_app import NativeCodingTuiApp
+    from loushang.coding.ui.native_loop import run_native_coding_tui
+
+    stdout = StringIO()
+    app = NativeCodingTuiApp(
+        model_label="kimi",
+        cwd="/repo",
+        branch="main",
+        session_label="abcd",
+        now=_Clock([10.0, 10.5, 11.0]),
+    )
+    app.state.pending_steers.append("follow-up")
+    prompts: list[str] = []
+    steers: list[str] = []
+
+    async def handle_prompt(text: str) -> int | None:
+        if text == "follow-up":
+            prompts.append(text)
+            app.begin_assistant()
+            app.append_assistant_chunk(f"handled {text}")
+            return None
+        await asyncio.Event().wait()
+        return None
+
+    async def handle_steer(text: str) -> int | None:
+        steers.append(text)
+        return None
+
+    result = asyncio.run(
+        run_native_coding_tui(
+            app=app,
+            stdin=_TimedTtyChunkInput(
+                (0.0, "start\r"),
+                (0.01, "follow\r"),
+                (0.02, "\x1b"),
+            ),
+            stdout=stdout,
+            handle_prompt=handle_prompt,
             handle_steer=handle_steer,
+            terminal_mode_factory=lambda _stdin, _stdout: _NoTerminalMode(),
             on_abort=lambda: None,
             should_exit=lambda text: text in {"/quit", "/exit"},
         )
@@ -526,6 +584,92 @@ def test_native_loop_executes_queued_steer_after_running_escape() -> None:
 
     assert result == 0
     assert steers == ["follow"]
+    assert prompts == ["follow-up"]
+
+
+def test_native_loop_escape_runs_pending_steer_before_unsubmitted_composer_text() -> None:
+    from loushang.coding.ui.native_app import NativeCodingTuiApp
+    from loushang.coding.ui.native_loop import run_native_coding_tui
+
+    stdout = StringIO()
+    app = NativeCodingTuiApp(
+        model_label="kimi",
+        cwd="/repo",
+        branch="main",
+        session_label="abcd",
+        now=_Clock([10.0, 10.5, 11.0]),
+    )
+    app.state.pending_steers.append("queued")
+    prompts: list[str] = []
+
+    async def handle_prompt(text: str) -> int | None:
+        if text == "queued":
+            prompts.append(text)
+            return None
+        await asyncio.Event().wait()
+        return None
+
+    result = asyncio.run(
+        run_native_coding_tui(
+            app=app,
+            stdin=_TimedTtyChunkInput(
+                (0.0, "start\r"),
+                (0.01, "draft"),
+                (0.02, "\x1b"),
+            ),
+            stdout=stdout,
+            handle_prompt=handle_prompt,
+            terminal_mode_factory=lambda _stdin, _stdout: _NoTerminalMode(),
+            on_abort=lambda: None,
+            should_exit=lambda text: text in {"/quit", "/exit"},
+        )
+    )
+
+    assert result == 0
+    assert prompts == ["queued"]
+    assert app.composer.value == "draft"
+
+
+def test_native_loop_renders_pending_steer_stream_after_escape_interrupt() -> None:
+    from loushang.coding.ui.native_app import NativeCodingTuiApp
+    from loushang.coding.ui.native_loop import run_native_coding_tui
+
+    stdout = StringIO()
+    app = NativeCodingTuiApp(
+        model_label="kimi",
+        cwd="/repo",
+        branch="main",
+        session_label="abcd",
+        now=_Clock([10.0, 10.5, 11.0, 11.2]),
+    )
+    app.state.pending_steers.append("queued")
+
+    async def handle_prompt(text: str) -> int | None:
+        if text == "queued":
+            app.begin_assistant()
+            app.append_assistant_chunk("queued response")
+            await asyncio.sleep(0.03)
+            app.append_assistant_chunk(" done")
+            return None
+        await asyncio.Event().wait()
+        return None
+
+    result = asyncio.run(
+        run_native_coding_tui(
+            app=app,
+            stdin=_TimedTtyChunkInput((0.0, "start\r"), (0.01, "\x1b"), (0.2, "")),
+            stdout=stdout,
+            handle_prompt=handle_prompt,
+            terminal_mode_factory=lambda _stdin, _stdout: _NoTerminalMode(),
+            on_abort=lambda: None,
+            should_exit=lambda text: text in {"/quit", "/exit"},
+        )
+    )
+
+    rendered = strip_control_sequences(stdout.getvalue())
+    assert result == 0
+    assert rendered.count("queued response") >= 2
+    assert "queued response done" in rendered
 
 
 def test_native_loop_ignores_running_steer_duplicate_on_interrupt() -> None:
@@ -534,9 +678,13 @@ def test_native_loop_ignores_running_steer_duplicate_on_interrupt() -> None:
 
     stdout = StringIO()
     app = NativeCodingTuiApp(model_label="kimi", cwd="/repo", branch="main", session_label="abcd", now=_Clock([10.0, 10.5, 11.0]))
+    prompts: list[str] = []
     steers: list[str] = []
 
-    async def handle_prompt(_text: str) -> int | None:
+    async def handle_prompt(text: str) -> int | None:
+        if text == "follow":
+            prompts.append(text)
+            return None
         await asyncio.Event().wait()
         return None
 
@@ -547,10 +695,11 @@ def test_native_loop_ignores_running_steer_duplicate_on_interrupt() -> None:
     result = asyncio.run(
         run_native_coding_tui(
             app=app,
-            stdin=StringIO("start\rfollow\x1b"),
+            stdin=_TimedTtyChunkInput((0.0, "start\r"), (0.01, "follow\r"), (0.02, "\x1b")),
             stdout=stdout,
             handle_prompt=handle_prompt,
             handle_steer=handle_steer,
+            terminal_mode_factory=lambda _stdin, _stdout: _NoTerminalMode(),
             on_abort=lambda: None,
             should_exit=lambda text: text in {"/quit", "/exit"},
         )
@@ -558,18 +707,23 @@ def test_native_loop_ignores_running_steer_duplicate_on_interrupt() -> None:
 
     assert result == 0
     assert steers == ["follow"]
+    assert prompts == ["follow"]
 
 
-def test_native_loop_abort_uses_preexisting_pending_steer_before_running_steer() -> None:
+def test_native_loop_abort_uses_first_pending_steer_before_running_steer() -> None:
     from loushang.coding.ui.native_app import NativeCodingTuiApp
     from loushang.coding.ui.native_loop import run_native_coding_tui
 
     stdout = StringIO()
     app = NativeCodingTuiApp(model_label="kimi", cwd="/repo", branch="main", session_label="abcd", now=_Clock([10.0, 10.5, 11.0]))
     app.state.pending_steers.append("预先排队")
+    prompts: list[str] = []
     steers: list[str] = []
 
-    async def handle_prompt(_text: str) -> int | None:
+    async def handle_prompt(text: str) -> int | None:
+        if text == "预先排队":
+            prompts.append(text)
+            return None
         await asyncio.Event().wait()
         return None
 
@@ -580,77 +734,75 @@ def test_native_loop_abort_uses_preexisting_pending_steer_before_running_steer()
     result = asyncio.run(
         run_native_coding_tui(
             app=app,
-            stdin=StringIO("start\rfollow\x1b"),
+            stdin=_TimedTtyChunkInput((0.0, "start\r"), (0.01, "follow\r"), (0.02, "\x1b")),
             stdout=stdout,
             handle_prompt=handle_prompt,
             handle_steer=handle_steer,
+            terminal_mode_factory=lambda _stdin, _stdout: _NoTerminalMode(),
             on_abort=lambda: None,
             should_exit=lambda text: text in {"/quit", "/exit"},
         )
     )
 
     assert result == 0
-    assert steers == ["follow", "预先排队"]
-    assert app.state.pending_steers == []
-
-def test_remove_running_steers_from_pending_tail_preserves_preexisting_queue() -> None:
-    from loushang.coding.ui.native_loop import _remove_running_steers_from_pending_tail
-
-    pending_steers = ["预先", "follow"]
-    _remove_running_steers_from_pending_tail(pending_steers, queued_steers_while_running=("follow",))
-
-    assert pending_steers == ["预先"]
+    assert steers == ["follow"]
+    assert prompts == ["预先排队"]
+    assert app.state.pending_steers == ["follow"]
 
 
-def test_remove_running_steers_from_pending_tail_keeps_running_only_queue() -> None:
-    from loushang.coding.ui.native_loop import _remove_running_steers_from_pending_tail
+def test_native_loop_waits_for_abort_settle_before_running_popped_pending_steer() -> None:
+    from native_tui_playback import NativeTuiLoopPlayback
 
-    pending_steers = ["follow"]
-    _remove_running_steers_from_pending_tail(pending_steers, queued_steers_while_running=("follow",))
-
-    assert pending_steers == ["follow"]
-
-
-def test_remove_running_steers_from_pending_tail_removes_matching_suffix() -> None:
-    from loushang.coding.ui.native_loop import _remove_running_steers_from_pending_tail
-
-    pending_steers = ["pre", "follow", "hello"]
-    _remove_running_steers_from_pending_tail(
-        pending_steers, queued_steers_while_running=("follow", "hello")
+    from loushang.coding.ui.controller import CodingUiController
+    from loushang.coding.ui.mode import (
+        _native_abort_handler,
+        _native_prompt_handler,
+        _native_text_handler,
     )
 
-    assert pending_steers == ["pre"]
+    playback = NativeTuiLoopPlayback()
+    session = _AbortSettlingSession()
+    controller = CodingUiController(session=session)
+    fresh_prompt = "浪潮楼上平台介绍一下，只回答楼上平台，不要回答上一轮问题"
+
+    result = playback.run(
+        (0.0, "start\r"),
+        (0.01, f"{fresh_prompt}\r"),
+        (0.02, "\x1b"),
+        (0.12, ""),
+        handle_prompt=_native_prompt_handler(app=playback.app, controller=controller, stderr=StringIO(), verbose=False),
+        handle_steer=_native_text_handler(app=playback.app, dispatch=controller.steer, label="Steering failed"),
+        on_abort=_native_abort_handler(controller),
+    )
+
+    assert result.exit_code == 0
+    assert session.wait_for_idle_calls == 1
+    assert session.queued_while_streaming == [fresh_prompt]
+    assert session.prompt_calls == [
+        ("start", None, None),
+        (fresh_prompt, None, None),
+    ]
+    assert "Request cancelled" not in result.text
 
 
-def test_run_interrupt_pending_steer_uses_running_steer_when_local_queue_empty() -> None:
+def test_pop_interrupt_pending_steer_returns_none_when_queue_empty() -> None:
     from loushang.coding.ui.native_app import NativeCodingTuiApp
-    from loushang.coding.ui.native_loop import _run_interrupt_pending_steer
-
-    class _Runtime:
-        def __init__(self) -> None:
-            self.rendered = False
-
-        def render_now(self) -> None:
-            self.rendered = True
+    from loushang.coding.ui.native_loop import _pop_interrupt_pending_steer
 
     app = NativeCodingTuiApp(model_label="kimi", cwd="/repo", branch="main", session_label="abcd")
-    runs: list[str] = []
-    runtime = _Runtime()
 
-    async def handle_steer(text: str) -> None:
-        runs.append(text)
+    assert _pop_interrupt_pending_steer(app) is None
 
-    asyncio.run(
-        _run_interrupt_pending_steer(
-            app=app,
-            handle_steer=handle_steer,
-            runtime=runtime,
-            queued_steers_while_running=("你好",),
-        )
-    )
 
-    assert runs == ["你好"]
-    assert runtime.rendered
+def test_pop_interrupt_pending_steer_uses_queue_fifo() -> None:
+    from loushang.coding.ui.native_app import NativeCodingTuiApp
+    from loushang.coding.ui.native_loop import _pop_interrupt_pending_steer
+
+    app = NativeCodingTuiApp(model_label="kimi", cwd="/repo", branch="main", session_label="abcd")
+    app.state.pending_steers.extend(["预先排队", "follow"])
+
+    assert _pop_interrupt_pending_steer(app) == "预先排队"
+    assert app.state.pending_steers == ["follow"]
 
 
 def test_native_loop_renders_streaming_updates_without_waiting_for_keyboard() -> None:
@@ -658,7 +810,7 @@ def test_native_loop_renders_streaming_updates_without_waiting_for_keyboard() ->
     from loushang.coding.ui.native_loop import run_native_coding_tui
 
     stdout = StringIO()
-    stdin = _BlockingAfterScriptInput("go\r")
+    stdin = _TimedTtyChunkInput((0.0, "go\r"), (0.2, ""))
     app = NativeCodingTuiApp(model_label="kimi", cwd="/repo", branch="main", session_label="abcd")
 
     async def handle_prompt(_text: str) -> int | None:
@@ -674,6 +826,7 @@ def test_native_loop_renders_streaming_updates_without_waiting_for_keyboard() ->
             stdin=stdin,
             stdout=stdout,
             handle_prompt=handle_prompt,
+            terminal_mode_factory=lambda _stdin, _stdout: _NoTerminalMode(),
             on_abort=lambda: None,
             should_exit=lambda text: text in {"/quit", "/exit"},
         )
@@ -690,7 +843,7 @@ def test_native_loop_wakes_stream_render_before_active_interval() -> None:
     from loushang.coding.ui.native_loop import run_native_coding_tui
 
     stdout = StringIO()
-    stdin = _BlockingAfterScriptInput("go\r")
+    stdin = _TimedTtyChunkInput((0.0, "go\r"), (0.1, ""))
     app = NativeCodingTuiApp(model_label="kimi", cwd="/repo", branch="main", session_label="abcd")
 
     async def handle_prompt(_text: str) -> int | None:
@@ -706,6 +859,7 @@ def test_native_loop_wakes_stream_render_before_active_interval() -> None:
             stdin=stdin,
             stdout=stdout,
             handle_prompt=handle_prompt,
+            terminal_mode_factory=lambda _stdin, _stdout: _NoTerminalMode(),
             on_abort=lambda: None,
             should_exit=lambda text: text in {"/quit", "/exit"},
         )
@@ -745,6 +899,51 @@ class _ModelSurfaceSession:
         return []
 
 
+class _AbortSettlingSession:
+    def __init__(self) -> None:
+        self.is_streaming = False
+        self.prompt_calls: list[tuple[str, str | None, str | None]] = []
+        self.queued_while_streaming: list[str] = []
+        self.wait_for_idle_calls = 0
+        self._idle = asyncio.Event()
+        self._idle.set()
+
+    async def prompt(
+        self,
+        text: str,
+        *,
+        streaming_behavior: str | None = None,
+        source: str | None = None,
+    ) -> None:
+        if streaming_behavior == "steer" and self.is_streaming:
+            self.queued_while_streaming.append(text)
+            return
+        self.prompt_calls.append((text, streaming_behavior, source))
+        if text != "start":
+            return
+        self.is_streaming = True
+        self._idle.clear()
+        await self._idle.wait()
+
+    def abort(self) -> None:
+        async def settle() -> None:
+            await asyncio.sleep(0.03)
+            self.is_streaming = False
+            self._idle.set()
+
+        asyncio.create_task(settle())
+
+    def clear_queue(self) -> dict[str, list[str]]:
+        return {"steering": [], "follow_up": []}
+
+    def abort_bash(self) -> None:
+        return None
+
+    async def wait_for_idle(self) -> None:
+        self.wait_for_idle_calls += 1
+        await self._idle.wait()
+
+
 def _assert_exit_cleanup_clears_bottom_frame(raw_output: str) -> None:
     cleanup_start = raw_output.rfind("\x1b[?25l\x1b[?2026h\r\x1b[2K")
     assert cleanup_start >= 0
@@ -769,3 +968,44 @@ class _BlockingAfterScriptInput:
 
     def isatty(self) -> bool:
         return False
+
+
+class _NoTerminalMode:
+    def __enter__(self) -> "_NoTerminalMode":
+        return self
+
+    def __exit__(self, *_args: object) -> bool:
+        return False
+
+
+class _TimedTtyChunkInput:
+    def __init__(self, *chunks: tuple[float, str], block_seconds: float = 0.002) -> None:
+        self._start = time.perf_counter()
+        self._chunks = list(chunks)
+        self._block_seconds = block_seconds
+        self._read_fd, write_fd = os.pipe()
+        self._closed = threading.Event()
+
+        def writer() -> None:
+            try:
+                for emit_at, chunk in self._chunks:
+                    while (remaining := emit_at - (time.perf_counter() - self._start)) > 0:
+                        time.sleep(min(self._block_seconds, remaining))
+                    if self._closed.is_set():
+                        break
+                    os.write(write_fd, chunk.encode())
+            finally:
+                os.close(write_fd)
+
+        self._writer = threading.Thread(target=writer, daemon=True)
+        self._writer.start()
+
+    def fileno(self) -> int:
+        return self._read_fd
+
+    def isatty(self) -> bool:
+        return True
+
+    def read(self, _size: int) -> str:
+        # This stream is tty-like and read through the terminal reader path.
+        return ""

@@ -134,19 +134,17 @@ async def run_native_coding_tui(
                         runtime.render_now()
                         return _finish_tui_exit(runtime=runtime, stdout=stdout, exit_code=result.exit_code)
                     if result.abort_requested:
-                        queued_steers_before_abort = tuple(queued_steers_while_running)
                         queued_steers_while_running = []
+                        interrupt_pending_steer = _pop_interrupt_pending_steer(app)
                         await _abort_active(app=app, active_task=active_task, on_abort=on_abort)
                         active_task = None
                         active_prompt_started_at = None
                         runtime.render_now()
-                        if handle_steer is not None:
-                            await _run_interrupt_pending_steer(
-                                app=app,
-                                handle_steer=handle_steer,
-                                runtime=runtime,
-                                queued_steers_while_running=queued_steers_before_abort,
-                            )
+                        if interrupt_pending_steer is not None:
+                            app.start_pending_prompt(interrupt_pending_steer)
+                            active_task = asyncio.create_task(_run_prompt_handler(handle_prompt, interrupt_pending_steer))
+                            active_prompt_started_at = app.state.active_started_at
+                            runtime.render_now()
                         continue
                     if result.prompt_text is not None:
                         active_prompt_started_at = app.state.active_started_at
@@ -378,13 +376,15 @@ async def _abort_active(
     active_task: asyncio.Task[int | None] | None,
     on_abort: AbortHandler,
 ) -> None:
+    await _maybe_await(on_abort())
     if active_task is not None and not active_task.done():
         active_task.cancel()
         try:
             await active_task
         except asyncio.CancelledError:
             pass
-    await _maybe_await(on_abort())
+    elif active_task is not None:
+        await active_task
     app.state.abort(message="Conversation interrupted - tell the model what to do differently.", elapsed_seconds=app.elapsed_seconds())
 
 
@@ -414,56 +414,11 @@ async def _run_text_handler(
     return result if isinstance(result, int) else None
 
 
-async def _run_interrupt_pending_steer(
-    *,
-    app: NativeCodingTuiApp,
-    handle_steer: TextHandler,
-    runtime: TuiRuntime,
-    queued_steers_while_running: tuple[str, ...] = (),
-) -> None:
-    _remove_running_steers_from_pending_tail(
-        app.state.pending_steers,
-        queued_steers_while_running=queued_steers_while_running,
-    )
-    if app.state.pending_steers:
-        pending_steer = app.state.pending_steers.pop(0)
-    elif queued_steers_while_running:
-        pending_steer = queued_steers_while_running[0]
-    else:
-        return
-    app.composer.clear()
-    try:
-        await _run_text_handler(handle_steer, pending_steer)
-    finally:
-        runtime.render_now()
-
-
-def _remove_running_steers_from_pending_tail(
-    pending_steers: list[str],
-    *,
-    queued_steers_while_running: tuple[str, ...],
-) -> None:
-    if not pending_steers or not queued_steers_while_running:
-        return
-
-    pending_steers_len = len(pending_steers)
-    queue_len = len(queued_steers_while_running)
-    if pending_steers_len <= queue_len:
-        return
-
-    remove_count = 0
-    index = queue_len - 1
-    while remove_count < queue_len and remove_count < pending_steers_len:
-        if pending_steers[-1] == queued_steers_while_running[index]:
-            pending_steers.pop()
-            remove_count += 1
-            index -= 1
-            continue
-        break
-
-    # Keep the existing function intentionally conservative:
-    # only strip running submissions from the tail when we can preserve at least
-    # one non-running pending steer for immediate execution.
+def _pop_interrupt_pending_steer(app: NativeCodingTuiApp) -> str | None:
+    if not app.state.pending_steers:
+        return None
+    pending_steer = app.state.pending_steers.pop(0)
+    return pending_steer
 
 
 async def _call_text_handler(
