@@ -282,6 +282,28 @@ def test_playback_result_asserts_screen_anchor_row_stability() -> None:
         result.assert_screen_anchor_stable("anchor")
 
 
+def test_playback_result_asserts_synchronized_frames() -> None:
+    frames = iter(
+        (
+            (
+                TerminalOperation.begin_synchronized_update(),
+                TerminalOperation.write("safe"),
+                TerminalOperation.end_synchronized_update(),
+            ),
+            (TerminalOperation.write("unsafe"),),
+        )
+    )
+
+    def render(_event: PlaybackEvent, _size: TerminalSize, _previous: RenderDiagnostics | None) -> RenderDiagnostics:
+        return RenderDiagnostics(current_logical_lines=("frame",), operations=next(frames))
+
+    harness = PlaybackHarness(render=render, port=FakeTerminalPort(size=TerminalSize(columns=20, rows=5)))
+    result = PlaybackResult(steps=harness.play([PlaybackEvent("render"), PlaybackEvent("render")]), port=harness.port)
+
+    with pytest.raises(AssertionError, match="step 1 was not synchronized"):
+        result.assert_synchronized_frames()
+
+
 def test_playback_harness_failed_flush_does_not_advance_successful_diagnostics() -> None:
     def render(event: PlaybackEvent, size: TerminalSize, previous: RenderDiagnostics | None) -> RenderDiagnostics:
         previous_lines = previous.current_logical_lines if previous is not None else ()

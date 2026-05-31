@@ -199,6 +199,16 @@ class PlaybackResult:
                     f"anchor {anchor!r} moved from row {baseline} to row {row} at step {step.index}"
                 )
 
+    def assert_synchronized_frames(self, *, skip_first: bool = False) -> None:
+        steps = self.steps[1:] if skip_first else self.steps
+        for step in steps:
+            if step.frame is None:
+                if step.flush_error is not None:
+                    continue
+                raise AssertionError(f"step {step.index} did not record a terminal frame")
+            if not step.frame.synchronized:
+                raise AssertionError(f"step {step.index} was not synchronized")
+
     def assert_no_clear_screen(self) -> None:
         clear_screen = TerminalOperation.clear_screen()
         clear_scrollback = TerminalOperation.clear_scrollback()
