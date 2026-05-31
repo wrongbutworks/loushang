@@ -298,7 +298,7 @@ def _resume_command_for_session(session: Any) -> str | None:
     resume_ref = _resume_ref_for_session(session)
     if resume_ref is None:
         return None
-    return " ".join(shlex.quote(part) for part in ("loushang", "--tui", "--resume", resume_ref))
+    return " ".join(shlex.quote(part) for part in ("loushang", "--resume", resume_ref))
 
 
 def _resume_ref_for_session(session: Any) -> str | None:

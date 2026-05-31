@@ -194,7 +194,8 @@ def test_run_coding_tui_interactive_prints_resume_hint_on_clean_exit(monkeypatch
 
     assert exit_code == 0
     assert "Resume this session with:" in stdout.getvalue()
-    assert "loushang --tui --resume 254d6156" in stdout.getvalue()
+    assert "loushang --resume 254d6156" in stdout.getvalue()
+    assert "loushang --tui --resume" not in stdout.getvalue()
 
 
 def test_run_coding_tui_interactive_replays_resumed_session_history(monkeypatch) -> None:
