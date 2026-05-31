@@ -414,6 +414,11 @@ class NativeTuiLoopScenario:
         self._chunks.append((self._time, text))
         return self
 
+    def type_chars(self, text: str) -> NativeTuiLoopScenario:
+        for character in text:
+            self._chunks.append((self._time, character))
+        return self
+
     def enter(self) -> NativeTuiLoopScenario:
         return self.key("\r")
 

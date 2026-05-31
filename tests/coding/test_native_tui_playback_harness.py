@@ -278,6 +278,19 @@ def test_native_tui_loop_playback_writes_artifacts_for_manual_inspection(tmp_pat
     }
 
 
+def test_native_tui_loop_scenario_scripts_character_input() -> None:
+    prompts: list[str] = []
+
+    async def handle_prompt(text: str) -> None:
+        prompts.append(text)
+
+    result = NativeTuiLoopScenario().type_chars("hello").enter().end_input().run(handle_prompt=handle_prompt)
+
+    result.assert_exit_code(0)
+    assert prompts == ["hello"]
+    result.assert_text_contains("› hello")
+
+
 def test_native_tui_loop_scenario_drives_escape_pending_steer_flow() -> None:
     scenario = NativeTuiLoopScenario()
     prompts: list[str] = []
