@@ -3,6 +3,7 @@ from __future__ import annotations
 import argparse
 import asyncio
 import inspect
+import json
 import sys
 import time
 from collections.abc import Callable, Sequence
@@ -158,10 +159,15 @@ def run_playback_cli(
         return 2
 
     for result in results:
+        if args.json:
+            continue
         status = "PASS" if result.ok else "FAIL"
         stdout.write(f"{status} {result.name} ({result.elapsed_ms:.1f}ms)\n")
         if result.error:
             stderr.write(f"{result.name}: {result.error}\n")
+    if args.json:
+        stdout.write(json.dumps(_json_summary(results), ensure_ascii=False))
+        stdout.write("\n")
     return 0 if all(result.ok for result in results) else 1
 
 
@@ -178,12 +184,29 @@ def _build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--list", action="store_true", help="List available scenarios.")
     parser.add_argument("--artifacts", help="Directory for manual inspection artifacts.")
     parser.add_argument("--include-frames", action="store_true", help="Include visible frames in JSONL artifacts.")
+    parser.add_argument("--json", action="store_true", help="Write a machine-readable JSON summary to stdout.")
     return parser
 
 
 def _write_scenario_list(suite: NativePlaybackSuite, stdout: TextIO) -> None:
     for scenario in suite.scenarios:
         stdout.write(f"{scenario.name}\t{scenario.description}\n")
+
+
+def _json_summary(results: Sequence[NativePlaybackScenarioResult]) -> dict[str, object]:
+    return {
+        "ok": all(result.ok for result in results),
+        "results": [
+            {
+                "name": result.name,
+                "ok": result.ok,
+                "elapsed_ms": result.elapsed_ms,
+                "artifacts": [str(path) for path in result.artifacts],
+                "error": result.error,
+            }
+            for result in results
+        ],
+    }
 
 
 def _run_completion_tab() -> NativeTuiInputPlaybackResult:

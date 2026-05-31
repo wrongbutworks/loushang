@@ -69,6 +69,32 @@ def test_native_tui_playback_runner_writes_artifacts(tmp_path, capsys) -> None:
     assert "visible_lines" in row
 
 
+def test_native_tui_playback_runner_writes_json_summary(tmp_path, capsys) -> None:
+    exit_code = run_playback_cli(["completion-tab", "--json", "--artifacts", str(tmp_path)])
+
+    captured = capsys.readouterr()
+    payload = json.loads(captured.out)
+    assert exit_code == 0
+    assert captured.err == ""
+    assert payload == {
+        "ok": True,
+        "results": [
+            {
+                "name": "completion-tab",
+                "ok": True,
+                "error": None,
+                "artifacts": [
+                    str(tmp_path / "completion-tab.jsonl"),
+                    str(tmp_path / "completion-tab-screen.txt"),
+                ],
+                "elapsed_ms": payload["results"][0]["elapsed_ms"],
+            }
+        ],
+    }
+    assert payload["results"][0]["elapsed_ms"] >= 0
+    assert "PASS completion-tab" not in captured.out
+
+
 def test_native_tui_playback_runner_writes_artifacts_for_all_default_scenarios(tmp_path, capsys) -> None:
     exit_code = run_playback_cli(["--artifacts", str(tmp_path), "--include-frames"])
 
@@ -117,6 +143,41 @@ def test_native_tui_playback_runner_reports_failed_scenario(tmp_path, capsys) ->
     assert (tmp_path / "forced-failure-error.txt").read_text(encoding="utf-8") == "forced failure\n"
 
 
+def test_native_tui_playback_runner_writes_failed_json_summary(tmp_path, capsys) -> None:
+    def failing_run() -> None:
+        raise AssertionError("forced failure")
+
+    suite = NativePlaybackSuite(
+        (
+            NativePlaybackScenarioSpec(
+                name="forced-failure",
+                description="Fails for runner testing.",
+                run=failing_run,
+            ),
+        )
+    )
+
+    exit_code = run_playback_cli(
+        ["forced-failure", "--json", "--artifacts", str(tmp_path)],
+        suite=suite,
+    )
+
+    captured = capsys.readouterr()
+    payload = json.loads(captured.out)
+    assert exit_code == 1
+    assert captured.err == ""
+    assert payload["ok"] is False
+    assert payload["results"] == [
+        {
+            "name": "forced-failure",
+            "ok": False,
+            "elapsed_ms": payload["results"][0]["elapsed_ms"],
+            "artifacts": [str(tmp_path / "forced-failure-error.txt")],
+            "error": "forced failure",
+        }
+    ]
+
+
 def test_native_tui_playback_runner_module_main_exits(monkeypatch) -> None:
     calls = []
 
@@ -148,3 +209,20 @@ def test_native_tui_playback_runner_main_uses_process_argv(monkeypatch, capsys) 
     captured = capsys.readouterr()
     assert "PASS completion-tab" in captured.out
     assert "long-transcript-input" not in captured.out
+
+
+def test_native_tui_playback_runner_main_can_emit_json(monkeypatch, capsys) -> None:
+    monkeypatch.setattr(sys, "argv", ["playback-runner", "completion-tab", "--json"])
+
+    try:
+        playback_runner.main()
+    except SystemExit as error:
+        assert error.code == 0
+    else:
+        raise AssertionError("main should raise SystemExit")
+
+    captured = capsys.readouterr()
+    payload = json.loads(captured.out)
+    assert payload["ok"] is True
+    assert payload["results"][0]["name"] == "completion-tab"
+    assert "PASS completion-tab" not in captured.out
