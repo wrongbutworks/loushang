@@ -14,9 +14,11 @@ from loushang.coding.ui.perf_probe import build_synthetic_long_transcript_record
 from loushang.coding.ui.playback import (
     NativeTuiInputPlaybackResult,
     NativeTuiInputScenario,
+    NativeTuiLoopPlayback,
     NativeTuiLoopScenario,
 )
 from loushang.tui import PlaybackFrameBudget, SelectionSurface, SelectItem
+from loushang.tui.input import BRACKETED_PASTE_END, BRACKETED_PASTE_START
 
 INTERACTION_FRAME_BUDGET = PlaybackFrameBudget(
     disallowed_operation_classes=("baseline_repaint", "recovery_repaint"),
@@ -421,6 +423,229 @@ def _run_long_transcript_input() -> NativeTuiInputPlaybackResult:
     return result
 
 
+def _run_bracketed_paste_large_marker() -> NativeTuiInputPlaybackResult:
+    pasted = "\n".join(f"line {index}" for index in range(10))
+    result = (
+        NativeTuiInputScenario(width=80, height=12)
+        .render()
+        .key(f"{BRACKETED_PASTE_START}{pasted}{BRACKETED_PASTE_END}")
+        .run()
+    )
+    result.assert_composer_text(pasted)
+    result.assert_visible_contains("[paste #1 +10 lines]")
+    result.assert_no_clear_screen()
+    result.assert_cursor_matches_diagnostics()
+    INTERACTION_FRAME_BUDGET.assert_result(result, skip_first=True)
+    return result
+
+
+def _run_resize_reflow_stable() -> NativeTuiInputPlaybackResult:
+    result = (
+        NativeTuiInputScenario(width=80, height=12)
+        .render()
+        .type_text("resize keeps composer stable")
+        .resize(width=42, height=8)
+        .type_text(" after shrink")
+        .resize(width=100, height=14)
+        .type_text(" after grow")
+        .run()
+    )
+    result.assert_composer_text("resize keeps composer stable after shrink after grow")
+    result.assert_visible_contains("after grow")
+    assert any(step.diagnostics.operation_class == "resize_repaint" for step in result.steps)
+    result.assert_no_clear_scrollback()
+    result.assert_cursor_matches_diagnostics()
+    INTERACTION_FRAME_BUDGET.assert_result(result, skip_first=True)
+    return result
+
+
+def _run_wide_char_input_cursor() -> NativeTuiInputPlaybackResult:
+    result = (
+        NativeTuiInputScenario(width=32, height=10)
+        .render()
+        .type_chars("你好🙂 terminal")
+        .run()
+    )
+    result.assert_composer_text("你好🙂 terminal")
+    result.assert_visible_contains("你好🙂 terminal")
+    result.assert_no_clear_screen()
+    result.assert_cursor_matches_diagnostics()
+    INTERACTION_FRAME_BUDGET.assert_result(result, skip_first=True)
+    return result
+
+
+def _run_keyboard_alt_enter_follow_up() -> NativeTuiInputPlaybackResult:
+    result = (
+        NativeTuiInputScenario(width=80, height=12)
+        .with_running_prompt("active")
+        .render()
+        .type_text("follow-up through raw alt enter")
+        .key("\x1b\r")
+        .run()
+    )
+    assert result.app.state.pending_followups == ["follow-up through raw alt enter"]
+    result.assert_pending_steers()
+    result.assert_composer_text("")
+    result.assert_visible_contains("queued=1 steer=0")
+    result.assert_no_clear_screen()
+    result.assert_cursor_matches_diagnostics()
+    INTERACTION_FRAME_BUDGET.assert_result(result, skip_first=True)
+    return result
+
+
+def _run_keyboard_shift_enter_newline() -> NativeTuiInputPlaybackResult:
+    result = (
+        NativeTuiInputScenario(width=80, height=12)
+        .render()
+        .type_text("first line")
+        .key("\x1b[13;2u")
+        .type_text("second line")
+        .enter()
+        .run()
+    )
+    result.assert_prompt_texts("first line\nsecond line")
+    result.assert_composer_text("")
+    result.assert_visible_contains("› first line")
+    result.assert_no_clear_screen()
+    result.assert_cursor_matches_diagnostics()
+    INTERACTION_FRAME_BUDGET.assert_result(result, skip_first=True)
+    return result
+
+
+def _run_mouse_select_active_surface() -> NativeTuiInputPlaybackResult:
+    surface = SelectionSurface(
+        [
+            SelectItem("First option", value="first"),
+            SelectItem("Second option", value="second"),
+            SelectItem("Third option", value="third"),
+        ],
+        max_visible=3,
+    )
+    result = (
+        NativeTuiInputScenario(width=80, height=12)
+        .with_active_surface(surface)
+        .render()
+        .key("\x1b[<0;1;2M")
+        .enter()
+        .run()
+    )
+    result.assert_surface_intents(("select", "second"))
+    result.assert_composer_text("")
+    result.assert_visible_contains("Second option")
+    result.assert_no_clear_screen()
+    result.assert_cursor_matches_diagnostics()
+    INTERACTION_FRAME_BUDGET.assert_result(result, skip_first=True)
+    return result
+
+
+def _run_terminal_control_response_hidden() -> object:
+    playback = NativeTuiLoopPlayback(width=80, height=12)
+    contexts: list[_RecordingTerminalContext] = []
+    prompts: list[str] = []
+
+    async def handle_prompt(text: str) -> None:
+        prompts.append(text)
+        playback.app.begin_assistant()
+        playback.app.append_assistant_chunk("terminal control response was hidden")
+
+    def terminal_mode_factory(_stdin: object, _stdout: object) -> _RecordingTerminalContext:
+        context = _RecordingTerminalContext()
+        contexts.append(context)
+        return context
+
+    result = playback.run(
+        (0.00, "\x1b[?7u"),
+        (0.01, "\x1b[6;18;9t"),
+        (0.02, "hello"),
+        (0.02, "\r"),
+        (0.04, ""),
+        handle_prompt=handle_prompt,
+        terminal_mode_factory=terminal_mode_factory,
+    )
+    result.assert_exit_code(0)
+    assert prompts == ["hello"]
+    assert contexts
+    assert [(event.signal, event.text) for event in contexts[0].events] == [
+        ("kitty_protocol", "7"),
+        ("cell_size", "18;9"),
+    ]
+    assert "\x1b[?7u" not in result.output
+    assert "\x1b[6;18;9t" not in result.output
+    result.assert_text_not_contains("?7u")
+    result.assert_text_not_contains("18;9")
+    result.assert_text_contains("› hello")
+    result.assert_no_clear_screen()
+    return result
+
+
+def _run_apple_shift_enter_normalized() -> object:
+    playback = NativeTuiLoopPlayback(width=80, height=12)
+    contexts: list[_AppleShiftEnterTerminalContext] = []
+    prompts: list[str] = []
+
+    async def handle_prompt(text: str) -> None:
+        prompts.append(text)
+        playback.app.begin_assistant()
+        playback.app.append_assistant_chunk("apple shift enter inserted a newline")
+
+    def terminal_mode_factory(_stdin: object, _stdout: object) -> _AppleShiftEnterTerminalContext:
+        context = _AppleShiftEnterTerminalContext()
+        contexts.append(context)
+        return context
+
+    result = playback.run(
+        (0.00, "first"),
+        (0.01, "\r"),
+        (0.02, "second"),
+        (0.03, "\r"),
+        (0.05, ""),
+        handle_prompt=handle_prompt,
+        terminal_mode_factory=terminal_mode_factory,
+    )
+    result.assert_exit_code(0)
+    assert prompts == ["first\nsecond"]
+    assert contexts
+    assert contexts[0].return_key_count == 2
+    result.assert_text_contains("› first")
+    result.assert_text_contains("second")
+    result.assert_text_not_contains("[13;2u")
+    result.assert_no_clear_screen()
+    return result
+
+
+class _RecordingTerminalContext:
+    def __init__(self) -> None:
+        self.events: list[object] = []
+
+    def __enter__(self) -> _RecordingTerminalContext:
+        return self
+
+    def __exit__(self, *_args: object) -> bool:
+        return False
+
+    def consume_control_events(self, events: tuple[object, ...]) -> None:
+        self.events.extend(events)
+
+
+class _AppleShiftEnterTerminalContext:
+    def __init__(self) -> None:
+        self.return_key_count = 0
+
+    def __enter__(self) -> _AppleShiftEnterTerminalContext:
+        return self
+
+    def __exit__(self, *_args: object) -> bool:
+        return False
+
+    def normalize_input_chunk(self, data: str) -> str:
+        if data != "\r":
+            return data
+        self.return_key_count += 1
+        if self.return_key_count == 1:
+            return "\x1b[13;2u"
+        return data
+
+
 DEFAULT_SUITE = NativePlaybackSuite(
     (
         NativePlaybackScenarioSpec(
@@ -477,6 +702,46 @@ DEFAULT_SUITE = NativePlaybackSuite(
             name="long-transcript-input",
             description="Echo input after a long transcript using bounded frame updates.",
             run=_run_long_transcript_input,
+        ),
+        NativePlaybackScenarioSpec(
+            name="bracketed-paste-large-marker",
+            description="Render a large bracketed paste as a stable composer marker.",
+            run=_run_bracketed_paste_large_marker,
+        ),
+        NativePlaybackScenarioSpec(
+            name="resize-reflow-stable",
+            description="Keep composer text and cursor stable across terminal resizes.",
+            run=_run_resize_reflow_stable,
+        ),
+        NativePlaybackScenarioSpec(
+            name="wide-char-input-cursor",
+            description="Keep CJK and emoji input cursor diagnostics aligned.",
+            run=_run_wide_char_input_cursor,
+        ),
+        NativePlaybackScenarioSpec(
+            name="keyboard-alt-enter-follow-up",
+            description="Route raw Alt+Enter to follow-up submission while running.",
+            run=_run_keyboard_alt_enter_follow_up,
+        ),
+        NativePlaybackScenarioSpec(
+            name="keyboard-shift-enter-newline",
+            description="Route raw Shift+Enter to composer newline before submission.",
+            run=_run_keyboard_shift_enter_newline,
+        ),
+        NativePlaybackScenarioSpec(
+            name="mouse-select-active-surface",
+            description="Route raw SGR mouse press events to an active selection surface.",
+            run=_run_mouse_select_active_surface,
+        ),
+        NativePlaybackScenarioSpec(
+            name="terminal-control-response-hidden",
+            description="Consume terminal control responses without echoing them as user input.",
+            run=_run_terminal_control_response_hidden,
+        ),
+        NativePlaybackScenarioSpec(
+            name="apple-shift-enter-normalized",
+            description="Normalize Apple Terminal Shift+Enter to a composer newline before submit.",
+            run=_run_apple_shift_enter_normalized,
         ),
     )
 )

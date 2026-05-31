@@ -283,6 +283,14 @@ class RenderLoop:
                 delete_kitty_image_sequences=previous_kitty_delete_sequences,
             )
 
+        render_end = min(last_changed, len(current_lines) - 1)
+        hardware_cursor_row, hardware_cursor_column = _changed_range_hardware_cursor(
+            current_lines=current_lines,
+            previous_lines=previous_lines,
+            render_end=render_end,
+            declared_cursor=result.cursor,
+            size=size,
+        )
         return self._diagnostics(
             current_lines=current_lines,
             previous_lines=previous_lines,
@@ -300,10 +308,10 @@ class RenderLoop:
             ),
             changed_range=changed_range,
             viewport_top=differential_viewport_top,
-            render_end=min(last_changed, len(current_lines) - 1),
+            render_end=render_end,
             cursor=cursor,
-            hardware_cursor_row=result.cursor.row if result.cursor is not None else min(last_changed, len(current_lines) - 1),
-            hardware_cursor_column=cursor.column,
+            hardware_cursor_row=hardware_cursor_row,
+            hardware_cursor_column=hardware_cursor_column,
         )
 
     def _managed_viewport_repaint_diagnostics(
@@ -853,6 +861,24 @@ def _cursor_or_line_end(cursor: CursorDeclaration | None, lines: tuple[str, ...]
     row = max(0, len(lines) - 1)
     column = visible_width(lines[row]) if lines else 0
     return CursorDeclaration(row=row, column=column)
+
+
+def _changed_range_hardware_cursor(
+    *,
+    current_lines: tuple[str, ...],
+    previous_lines: tuple[str, ...],
+    render_end: int,
+    declared_cursor: CursorDeclaration | None,
+    size: TerminalSize,
+) -> tuple[int, int]:
+    if declared_cursor is not None:
+        return declared_cursor.row, declared_cursor.column
+    cleared_extra_lines = max(0, len(previous_lines) - len(current_lines))
+    if cleared_extra_lines:
+        return render_end + cleared_extra_lines, 0
+    if not current_lines:
+        return 0, 0
+    return render_end, min(visible_width(current_lines[render_end]), size.columns - 1)
 
 
 def _should_clear_scrollback(*, policy: ClearScrollbackPolicy, repaint_kind: str) -> bool:

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import termios
 from io import StringIO
 from typing import Any
 
@@ -9,6 +10,11 @@ from loushang.tui.input import (
     BRACKETED_PASTE_START,
     InputEvent,
     InputReader,
+)
+from loushang.tui.keyboard_protocol import (
+    KITTY_QUERY_SEQUENCE,
+    MODIFY_OTHER_KEYS_DISABLE_SEQUENCE,
+    MODIFY_OTHER_KEYS_ENABLE_SEQUENCE,
 )
 from loushang.tui.terminal_input import (
     TerminalInputMode,
@@ -25,6 +31,34 @@ def test_terminal_input_mode_does_not_write_modes_for_non_tty_streams() -> None:
         pass
 
     assert stdout.getvalue() == ""
+
+
+def test_terminal_input_mode_enables_and_restores_tty_modes(monkeypatch: Any) -> None:
+    stdin = _TtyInput()
+    stdout = StringIO()
+    original_attrs = [0, 0, 0, 0, 0, 0, [0] * 32]
+    tcsetattr_calls: list[tuple[int, int, list[Any]]] = []
+
+    monkeypatch.setattr("termios.tcgetattr", lambda fd: original_attrs)
+    monkeypatch.setattr(
+        "termios.tcsetattr",
+        lambda fd, when, attrs: tcsetattr_calls.append((fd, when, attrs)),
+    )
+    monkeypatch.setattr("tty.setcbreak", lambda fd: None)
+    monkeypatch.setattr("loushang.tui.terminal_input.drain_input", lambda *args, **kwargs: "")
+
+    with TerminalInputMode(stdin=stdin, stdout=stdout):
+        pass
+
+    output = stdout.getvalue()
+    assert "\x1b[?2004h" in output
+    assert "\x1b[?1004h" in output
+    assert KITTY_QUERY_SEQUENCE in output
+    assert MODIFY_OTHER_KEYS_ENABLE_SEQUENCE in output
+    assert "\x1b[?2004l" in output
+    assert "\x1b[?1004l" in output
+    assert MODIFY_OTHER_KEYS_DISABLE_SEQUENCE in output
+    assert tcsetattr_calls[-1] == (stdin.fileno(), termios.TCSADRAIN, original_attrs)
 
 
 def test_read_input_chunk_or_render_tick_reads_raw_stringio_escape_without_tail_joining() -> None:
