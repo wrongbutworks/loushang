@@ -346,6 +346,11 @@ class PlaybackScenario:
         self._events.append(PlaybackEvent.input(text))
         return self
 
+    def type_chars(self, text: str) -> Self:
+        for character in text:
+            self._events.append(PlaybackEvent.input(character))
+        return self
+
     def render(self) -> Self:
         self._events.append(PlaybackEvent("render"))
         return self

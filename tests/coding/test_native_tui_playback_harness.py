@@ -198,7 +198,7 @@ def test_native_tui_input_scenario_echoes_input_after_long_transcript_without_re
         NativeTuiInputScenario(width=100, height=18)
         .with_records(build_synthetic_long_transcript_records(turns=40, tail_tool_output_lines=300))
         .render()
-        .type_text("fresh input")
+        .type_chars("fresh input")
         .run()
     )
 

@@ -118,6 +118,16 @@ def test_playback_scenario_scripts_common_terminal_events() -> None:
     )
 
 
+def test_playback_scenario_can_script_character_by_character_input() -> None:
+    scenario = PlaybackScenario().type_chars("abc")
+
+    assert scenario.events == (
+        PlaybackEvent.input("a"),
+        PlaybackEvent.input("b"),
+        PlaybackEvent.input("c"),
+    )
+
+
 def test_playback_result_asserts_visible_text_and_flush_policy() -> None:
     harness = PlaybackHarness(
         render=lambda _event, _size, _previous: RenderDiagnostics(
