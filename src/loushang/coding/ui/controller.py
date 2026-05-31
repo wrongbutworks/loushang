@@ -123,6 +123,9 @@ class CodingUiController:
                 traceback_text=traceback.format_exc() if self.verbose else None,
             )
 
+    async def wait_for_idle(self) -> None:
+        await _call_if_available(self.session, "wait_for_idle")
+
     async def _prompt(self, text: str, images: tuple[ImagePart, ...] | list[ImagePart] | None = None) -> None:
         method = getattr(self.session, "prompt", None)
         if not callable(method):

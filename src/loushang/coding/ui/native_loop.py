@@ -140,8 +140,9 @@ async def run_native_coding_tui(
                         active_task = None
                         active_prompt_started_at = None
                         runtime.render_now()
-                        if interrupt_pending_steer is not None and handle_steer is not None:
-                            active_task = asyncio.create_task(_run_text_handler(handle_steer, interrupt_pending_steer))
+                        if interrupt_pending_steer is not None:
+                            app.start_pending_prompt(interrupt_pending_steer)
+                            active_task = asyncio.create_task(_run_prompt_handler(handle_prompt, interrupt_pending_steer))
                             active_prompt_started_at = app.state.active_started_at
                             runtime.render_now()
                         continue
@@ -375,13 +376,15 @@ async def _abort_active(
     active_task: asyncio.Task[int | None] | None,
     on_abort: AbortHandler,
 ) -> None:
+    await _maybe_await(on_abort())
     if active_task is not None and not active_task.done():
         active_task.cancel()
         try:
             await active_task
         except asyncio.CancelledError:
             pass
-    await _maybe_await(on_abort())
+    elif active_task is not None:
+        await active_task
     app.state.abort(message="Conversation interrupted - tell the model what to do differently.", elapsed_seconds=app.elapsed_seconds())
 
 
@@ -415,7 +418,6 @@ def _pop_interrupt_pending_steer(app: NativeCodingTuiApp) -> str | None:
     if not app.state.pending_steers:
         return None
     pending_steer = app.state.pending_steers.pop(0)
-    app.composer.clear()
     return pending_steer
 
 

@@ -112,6 +112,10 @@ class NativeCodingTuiApp:
         self.composer.add_history(text)
         self.composer.clear()
 
+    def start_pending_prompt(self, text: str, *, started_at: float | None = None) -> None:
+        self.state.start_prompt(text, started_at=self.now() if started_at is None else started_at)
+        self.composer.add_history(text)
+
     def begin_run(self, *, started_at: float | None = None) -> None:
         self.state.begin_run(started_at=self.now() if started_at is None else started_at)
 

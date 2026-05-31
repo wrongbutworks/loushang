@@ -436,8 +436,12 @@ def test_native_loop_dispatches_steer_and_followup_handlers() -> None:
     app = NativeCodingTuiApp(model_label="kimi", cwd="/repo", branch="main", session_label="abcd", now=_Clock([10.0, 10.5]))
     steers: list[tuple[str, str]] = []
     followups: list[str] = []
+    prompts: list[str] = []
 
-    async def handle_prompt(_text: str) -> int | None:
+    async def handle_prompt(text: str) -> int | None:
+        if text != "start":
+            prompts.append(text)
+            return None
         app.begin_assistant()
         app.append_assistant_chunk("still running")
         await asyncio.Event().wait()
@@ -465,7 +469,8 @@ def test_native_loop_dispatches_steer_and_followup_handlers() -> None:
     )
 
     assert result == 0
-    assert steers == [("queue", "steer"), ("execute", "steer")]
+    assert steers == [("queue", "steer")]
+    assert prompts == ["steer"]
     assert followups == ["follow"]
 
 
@@ -476,6 +481,7 @@ def test_native_loop_dispatches_pending_steer_from_escape_when_idle() -> None:
     stdout = StringIO()
     app = NativeCodingTuiApp(model_label="kimi", cwd="/repo", branch="main", session_label="abcd", now=lambda: 10.0)
     app.state.pending_steers.append("你好")
+    app.composer.set_text("draft")
     steers: list[str] = []
 
     async def handle_steer(text: str) -> int | None:
@@ -496,6 +502,7 @@ def test_native_loop_dispatches_pending_steer_from_escape_when_idle() -> None:
 
     assert result == 0
     assert steers == ["你好"]
+    assert app.composer.value == "draft"
 
 
 def test_native_loop_executes_queued_steer_after_running_escape() -> None:
@@ -505,14 +512,13 @@ def test_native_loop_executes_queued_steer_after_running_escape() -> None:
     stdout = StringIO()
     app = NativeCodingTuiApp(model_label="kimi", cwd="/repo", branch="main", session_label="abcd", now=_Clock([10.0, 10.5, 11.0]))
     app.state.pending_steers.append("follow")
-    steers: list[str] = []
+    prompts: list[str] = []
 
-    async def handle_prompt(_text: str) -> int | None:
+    async def handle_prompt(text: str) -> int | None:
+        if text == "follow":
+            prompts.append(text)
+            return None
         await asyncio.Event().wait()
-        return None
-
-    async def handle_steer(text: str) -> int | None:
-        steers.append(text)
         return None
 
     result = asyncio.run(
@@ -521,14 +527,13 @@ def test_native_loop_executes_queued_steer_after_running_escape() -> None:
             stdin=StringIO("开始\r\x1b"),
             stdout=stdout,
             handle_prompt=handle_prompt,
-            handle_steer=handle_steer,
             on_abort=lambda: None,
             should_exit=lambda text: text in {"/quit", "/exit"},
         )
     )
 
     assert result == 0
-    assert steers == ["follow"]
+    assert prompts == ["follow"]
 
 
 def test_native_loop_executes_queued_steer_after_running_escape_with_delay() -> None:
@@ -544,17 +549,20 @@ def test_native_loop_executes_queued_steer_after_running_escape_with_delay() -> 
         now=_Clock([10.0, 10.5, 11.0]),
     )
     app.state.pending_steers.append("follow-up")
-    actions: list[tuple[str, str]] = []
+    prompts: list[str] = []
+    steers: list[str] = []
 
-    async def handle_prompt(_text: str) -> int | None:
+    async def handle_prompt(text: str) -> int | None:
+        if text == "follow-up":
+            prompts.append(text)
+            app.begin_assistant()
+            app.append_assistant_chunk(f"handled {text}")
+            return None
         await asyncio.Event().wait()
         return None
 
     async def handle_steer(text: str) -> int | None:
-        actions.append(("queue" if app.state.running else "execute", text))
-        if not app.state.running:
-            app.begin_assistant()
-            app.append_assistant_chunk(f"handled {text}")
+        steers.append(text)
         return None
 
     result = asyncio.run(
@@ -575,7 +583,8 @@ def test_native_loop_executes_queued_steer_after_running_escape_with_delay() -> 
     )
 
     assert result == 0
-    assert actions == [("queue", "follow"), ("execute", "follow-up")]
+    assert steers == ["follow"]
+    assert prompts == ["follow-up"]
 
 
 def test_native_loop_escape_runs_pending_steer_before_unsubmitted_composer_text() -> None:
@@ -591,14 +600,13 @@ def test_native_loop_escape_runs_pending_steer_before_unsubmitted_composer_text(
         now=_Clock([10.0, 10.5, 11.0]),
     )
     app.state.pending_steers.append("queued")
-    steers: list[str] = []
+    prompts: list[str] = []
 
-    async def handle_prompt(_text: str) -> int | None:
+    async def handle_prompt(text: str) -> int | None:
+        if text == "queued":
+            prompts.append(text)
+            return None
         await asyncio.Event().wait()
-        return None
-
-    async def handle_steer(text: str) -> int | None:
-        steers.append(text)
         return None
 
     result = asyncio.run(
@@ -611,7 +619,6 @@ def test_native_loop_escape_runs_pending_steer_before_unsubmitted_composer_text(
             ),
             stdout=stdout,
             handle_prompt=handle_prompt,
-            handle_steer=handle_steer,
             terminal_mode_factory=lambda _stdin, _stdout: _NoTerminalMode(),
             on_abort=lambda: None,
             should_exit=lambda text: text in {"/quit", "/exit"},
@@ -619,7 +626,8 @@ def test_native_loop_escape_runs_pending_steer_before_unsubmitted_composer_text(
     )
 
     assert result == 0
-    assert steers == ["queued"]
+    assert prompts == ["queued"]
+    assert app.composer.value == "draft"
 
 
 def test_native_loop_renders_pending_steer_stream_after_escape_interrupt() -> None:
@@ -636,16 +644,14 @@ def test_native_loop_renders_pending_steer_stream_after_escape_interrupt() -> No
     )
     app.state.pending_steers.append("queued")
 
-    async def handle_prompt(_text: str) -> int | None:
+    async def handle_prompt(text: str) -> int | None:
+        if text == "queued":
+            app.begin_assistant()
+            app.append_assistant_chunk("queued response")
+            await asyncio.sleep(0.03)
+            app.append_assistant_chunk(" done")
+            return None
         await asyncio.Event().wait()
-        return None
-
-    async def handle_steer(text: str) -> int | None:
-        assert text == "queued"
-        app.begin_assistant()
-        app.append_assistant_chunk("queued response")
-        await asyncio.sleep(0.03)
-        app.append_assistant_chunk(" done")
         return None
 
     result = asyncio.run(
@@ -654,7 +660,6 @@ def test_native_loop_renders_pending_steer_stream_after_escape_interrupt() -> No
             stdin=_TimedTtyChunkInput((0.0, "start\r"), (0.01, "\x1b"), (0.2, "")),
             stdout=stdout,
             handle_prompt=handle_prompt,
-            handle_steer=handle_steer,
             terminal_mode_factory=lambda _stdin, _stdout: _NoTerminalMode(),
             on_abort=lambda: None,
             should_exit=lambda text: text in {"/quit", "/exit"},
@@ -673,14 +678,18 @@ def test_native_loop_ignores_running_steer_duplicate_on_interrupt() -> None:
 
     stdout = StringIO()
     app = NativeCodingTuiApp(model_label="kimi", cwd="/repo", branch="main", session_label="abcd", now=_Clock([10.0, 10.5, 11.0]))
-    actions: list[tuple[str, str]] = []
+    prompts: list[str] = []
+    steers: list[str] = []
 
-    async def handle_prompt(_text: str) -> int | None:
+    async def handle_prompt(text: str) -> int | None:
+        if text == "follow":
+            prompts.append(text)
+            return None
         await asyncio.Event().wait()
         return None
 
     async def handle_steer(text: str) -> int | None:
-        actions.append(("queue" if app.state.running else "execute", text))
+        steers.append(text)
         return None
 
     result = asyncio.run(
@@ -697,7 +706,8 @@ def test_native_loop_ignores_running_steer_duplicate_on_interrupt() -> None:
     )
 
     assert result == 0
-    assert actions == [("queue", "follow"), ("execute", "follow")]
+    assert steers == ["follow"]
+    assert prompts == ["follow"]
 
 
 def test_native_loop_abort_uses_first_pending_steer_before_running_steer() -> None:
@@ -707,14 +717,18 @@ def test_native_loop_abort_uses_first_pending_steer_before_running_steer() -> No
     stdout = StringIO()
     app = NativeCodingTuiApp(model_label="kimi", cwd="/repo", branch="main", session_label="abcd", now=_Clock([10.0, 10.5, 11.0]))
     app.state.pending_steers.append("预先排队")
-    actions: list[tuple[str, str]] = []
+    prompts: list[str] = []
+    steers: list[str] = []
 
-    async def handle_prompt(_text: str) -> int | None:
+    async def handle_prompt(text: str) -> int | None:
+        if text == "预先排队":
+            prompts.append(text)
+            return None
         await asyncio.Event().wait()
         return None
 
     async def handle_steer(text: str) -> int | None:
-        actions.append(("queue" if app.state.running else "execute", text))
+        steers.append(text)
         return None
 
     result = asyncio.run(
@@ -731,8 +745,45 @@ def test_native_loop_abort_uses_first_pending_steer_before_running_steer() -> No
     )
 
     assert result == 0
-    assert actions == [("queue", "follow"), ("execute", "预先排队")]
+    assert steers == ["follow"]
+    assert prompts == ["预先排队"]
     assert app.state.pending_steers == ["follow"]
+
+
+def test_native_loop_waits_for_abort_settle_before_running_popped_pending_steer() -> None:
+    from native_tui_playback import NativeTuiLoopPlayback
+
+    from loushang.coding.ui.controller import CodingUiController
+    from loushang.coding.ui.mode import (
+        _native_abort_handler,
+        _native_prompt_handler,
+        _native_text_handler,
+    )
+
+    playback = NativeTuiLoopPlayback()
+    session = _AbortSettlingSession()
+    controller = CodingUiController(session=session)
+    fresh_prompt = "浪潮楼上平台介绍一下，只回答楼上平台，不要回答上一轮问题"
+
+    result = playback.run(
+        (0.0, "start\r"),
+        (0.01, f"{fresh_prompt}\r"),
+        (0.02, "\x1b"),
+        (0.12, ""),
+        handle_prompt=_native_prompt_handler(app=playback.app, controller=controller, stderr=StringIO(), verbose=False),
+        handle_steer=_native_text_handler(app=playback.app, dispatch=controller.steer, label="Steering failed"),
+        on_abort=_native_abort_handler(controller),
+    )
+
+    assert result.exit_code == 0
+    assert session.wait_for_idle_calls == 1
+    assert session.queued_while_streaming == [fresh_prompt]
+    assert session.prompt_calls == [
+        ("start", None, None),
+        (fresh_prompt, None, None),
+    ]
+    assert "Request cancelled" not in result.text
+
 
 def test_pop_interrupt_pending_steer_returns_none_when_queue_empty() -> None:
     from loushang.coding.ui.native_app import NativeCodingTuiApp
@@ -846,6 +897,51 @@ class _ModelSurfaceSession:
 
     def get_available_model_details(self) -> list[object]:
         return []
+
+
+class _AbortSettlingSession:
+    def __init__(self) -> None:
+        self.is_streaming = False
+        self.prompt_calls: list[tuple[str, str | None, str | None]] = []
+        self.queued_while_streaming: list[str] = []
+        self.wait_for_idle_calls = 0
+        self._idle = asyncio.Event()
+        self._idle.set()
+
+    async def prompt(
+        self,
+        text: str,
+        *,
+        streaming_behavior: str | None = None,
+        source: str | None = None,
+    ) -> None:
+        if streaming_behavior == "steer" and self.is_streaming:
+            self.queued_while_streaming.append(text)
+            return
+        self.prompt_calls.append((text, streaming_behavior, source))
+        if text != "start":
+            return
+        self.is_streaming = True
+        self._idle.clear()
+        await self._idle.wait()
+
+    def abort(self) -> None:
+        async def settle() -> None:
+            await asyncio.sleep(0.03)
+            self.is_streaming = False
+            self._idle.set()
+
+        asyncio.create_task(settle())
+
+    def clear_queue(self) -> dict[str, list[str]]:
+        return {"steering": [], "follow_up": []}
+
+    def abort_bash(self) -> None:
+        return None
+
+    async def wait_for_idle(self) -> None:
+        self.wait_for_idle_calls += 1
+        await self._idle.wait()
 
 
 def _assert_exit_cleanup_clears_bottom_frame(raw_output: str) -> None:
