@@ -208,6 +208,7 @@ def test_native_tui_input_scenario_echoes_input_after_long_transcript_without_re
     result.assert_operation_classes_not_in("baseline_repaint", "recovery_repaint", skip_first=True)
     result.assert_max_operations_per_step(12, skip_first=True)
     result.assert_max_serialized_output_bytes_per_step(2_000, skip_first=True)
+    result.assert_max_changed_visible_lines_per_step(3, skip_first=True)
     result.assert_screen_anchor_stable("›", occurrence="last")
     result.assert_synchronized_frames()
 

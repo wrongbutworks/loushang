@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 from collections.abc import Callable, Iterable
 from dataclasses import dataclass, field, replace
+from itertools import zip_longest
 from pathlib import Path
 from typing import Any, Self
 
@@ -195,6 +196,24 @@ class PlaybackResult:
                     f"step {step.index} emitted {byte_count} serialized bytes, expected <= {max_bytes}"
                 )
 
+    def assert_max_changed_visible_lines_per_step(
+        self,
+        max_changed_lines: int,
+        *,
+        skip_first: bool = False,
+    ) -> None:
+        steps = self.steps[1:] if skip_first else self.steps
+        for step in steps:
+            if step.frame is None:
+                if step.flush_error is not None:
+                    continue
+                raise AssertionError(f"step {step.index} did not record a terminal frame")
+            changed_lines = _changed_visible_line_count(step.frame)
+            if changed_lines > max_changed_lines:
+                raise AssertionError(
+                    f"step {step.index} changed {changed_lines} visible lines, expected <= {max_changed_lines}"
+                )
+
     def assert_screen_anchor_stable(
         self,
         anchor: str,
@@ -301,6 +320,7 @@ class PlaybackResult:
             "operation_count": len(step.diagnostics.operations),
             "operations": [operation.kind for operation in step.diagnostics.operations],
             "serialized_output_bytes": len(serialized_output.encode("utf-8")) if serialized_output is not None else None,
+            "changed_visible_lines": _changed_visible_line_count(step.frame) if step.frame is not None else None,
             "synchronized": step.frame.synchronized if step.frame is not None else None,
             "clear_scrollback_emitted": (
                 step.frame.clear_scrollback_emitted
@@ -370,6 +390,17 @@ def _screen_anchor_row(step: PlaybackStep, anchor: str, *, occurrence: str) -> i
         if anchor in strip_control_sequences(line):
             return row
     return None
+
+
+def _changed_visible_line_count(frame: TerminalFrame) -> int:
+    return sum(
+        strip_control_sequences(before) != strip_control_sequences(after)
+        for before, after in zip_longest(
+            frame.screen_before.visible_lines,
+            frame.screen_after.visible_lines,
+            fillvalue="",
+        )
+    )
 
 
 def _event_payload(event: PlaybackEvent) -> dict[str, Any]:

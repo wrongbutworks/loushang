@@ -165,6 +165,7 @@ def test_playback_result_writes_jsonl_for_manual_inspection(tmp_path) -> None:
             "operation_count": 1,
             "operations": ["write"],
             "serialized_output_bytes": 5,
+            "changed_visible_lines": 1,
             "synchronized": False,
             "clear_scrollback_emitted": False,
             "visible_lines": ["hello", "", "", "", ""],
@@ -270,6 +271,36 @@ def test_playback_result_asserts_max_serialized_output_bytes_per_step() -> None:
 
     with pytest.raises(AssertionError, match="step 1 emitted 40 serialized bytes"):
         result.assert_max_serialized_output_bytes_per_step(20, skip_first=True)
+
+
+def test_playback_result_asserts_max_changed_visible_lines_per_step() -> None:
+    frames = iter(
+        (
+            (
+                TerminalOperation.clear_screen(),
+                TerminalOperation.write("alpha"),
+                TerminalOperation.newline(),
+                TerminalOperation.write("beta"),
+            ),
+            (
+                TerminalOperation.move_cursor(row=0, column=0),
+                TerminalOperation.clear_line(),
+                TerminalOperation.write("ALPHA"),
+                TerminalOperation.newline(),
+                TerminalOperation.clear_line(),
+                TerminalOperation.write("BETA"),
+            ),
+        )
+    )
+
+    def render(_event: PlaybackEvent, _size: TerminalSize, _previous: RenderDiagnostics | None) -> RenderDiagnostics:
+        return RenderDiagnostics(current_logical_lines=("frame",), operations=next(frames))
+
+    harness = PlaybackHarness(render=render, port=FakeTerminalPort(size=TerminalSize(columns=20, rows=5)))
+    result = PlaybackResult(steps=harness.play([PlaybackEvent("render"), PlaybackEvent.input("x")]), port=harness.port)
+
+    with pytest.raises(AssertionError, match="step 1 changed 2 visible lines"):
+        result.assert_max_changed_visible_lines_per_step(1, skip_first=True)
 
 
 def test_playback_result_asserts_screen_anchor_row_stability() -> None:
