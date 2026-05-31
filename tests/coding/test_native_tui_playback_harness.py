@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import asyncio
 
-from native_tui_playback import NativeTuiLoopPlayback, NativeTuiScenario
+from native_tui_playback import NativeTuiLoopScenario, NativeTuiScenario
 
 
 def test_native_tui_scenario_renders_composer_input_without_screen_clear() -> None:
@@ -18,36 +18,148 @@ def test_native_tui_scenario_renders_composer_input_without_screen_clear() -> No
 
 
 def test_native_tui_loop_playback_drives_running_steer_then_escape() -> None:
-    playback = NativeTuiLoopPlayback()
+    scenario = NativeTuiLoopScenario()
     prompts: list[str] = []
     steers: list[tuple[str, str]] = []
 
     async def handle_prompt(text: str) -> None:
         prompts.append(text)
         if text == "change":
-            playback.app.begin_assistant()
-            playback.app.append_assistant_chunk("fresh change")
+            scenario.app.begin_assistant()
+            scenario.app.append_assistant_chunk("fresh change")
             return
-        playback.app.begin_assistant()
-        playback.app.append_assistant_chunk("working")
+        scenario.app.begin_assistant()
+        scenario.app.append_assistant_chunk("working")
         await asyncio.Event().wait()
 
     async def handle_steer(text: str) -> None:
-        steers.append(("queue" if playback.app.state.running else "execute", text))
+        steers.append(("queue" if scenario.app.state.running else "execute", text))
 
-    result = playback.run(
-        (0.0, "go\r"),
-        (0.01, "change\r"),
-        (0.02, "\x1b"),
-        (0.06, ""),
-        handle_prompt=handle_prompt,
-        handle_steer=handle_steer,
+    result = (
+        scenario.type_text("go")
+        .enter()
+        .wait(0.01)
+        .type_text("change")
+        .enter()
+        .wait(0.01)
+        .escape()
+        .wait(0.04)
+        .end_input()
+        .run(handle_prompt=handle_prompt, handle_steer=handle_steer)
     )
 
-    assert result.exit_code == 0
+    result.assert_exit_code(0)
     assert prompts == ["go", "change"]
     assert steers == [("queue", "change")]
-    assert "› go" in result.text
-    assert "› change" in result.text
-    assert "fresh change" in result.text
-    assert "Conversation interrupted" in result.text
+    result.assert_text_contains("› go")
+    result.assert_text_contains("› change")
+    result.assert_text_contains("fresh change")
+    result.assert_text_contains("Conversation interrupted")
+    result.assert_no_clear_screen()
+
+
+def test_native_tui_loop_scenario_drives_escape_pending_steer_flow() -> None:
+    scenario = NativeTuiLoopScenario()
+    prompts: list[str] = []
+    steers: list[str] = []
+
+    async def handle_prompt(text: str) -> None:
+        prompts.append(text)
+        if text == "fresh":
+            scenario.app.begin_assistant()
+            scenario.app.append_assistant_chunk("fresh response")
+            return
+        scenario.app.begin_assistant()
+        scenario.app.append_assistant_chunk("old response")
+        await asyncio.Event().wait()
+
+    async def handle_steer(text: str) -> None:
+        steers.append(text)
+
+    result = (
+        scenario.type_text("old")
+        .enter()
+        .wait(0.01)
+        .type_text("fresh")
+        .enter()
+        .wait(0.01)
+        .escape()
+        .wait(0.04)
+        .end_input()
+        .run(handle_prompt=handle_prompt, handle_steer=handle_steer)
+    )
+
+    result.assert_exit_code(0)
+    result.assert_text_contains("› old")
+    result.assert_text_contains("› fresh")
+    result.assert_text_contains("fresh response")
+    result.assert_text_not_contains("Request cancelled")
+    result.assert_no_clear_screen()
+    result.assert_idle()
+    result.assert_pending_steers()
+    result.assert_composer_text("")
+    assert prompts == ["old", "fresh"]
+    assert steers == ["fresh"]
+
+
+def test_native_tui_loop_scenario_keeps_pending_steer_fifo_on_escape() -> None:
+    scenario = NativeTuiLoopScenario().with_pending_steers("prequeued")
+    prompts: list[str] = []
+    steers: list[str] = []
+
+    async def handle_prompt(text: str) -> None:
+        if text == "prequeued":
+            prompts.append(text)
+            return
+        scenario.app.begin_assistant()
+        scenario.app.append_assistant_chunk("working")
+        await asyncio.Event().wait()
+
+    async def handle_steer(text: str) -> None:
+        steers.append(text)
+
+    result = (
+        scenario.type_text("start")
+        .enter()
+        .wait(0.01)
+        .type_text("running steer")
+        .enter()
+        .wait(0.01)
+        .escape()
+        .wait(0.04)
+        .end_input()
+        .run(handle_prompt=handle_prompt, handle_steer=handle_steer)
+    )
+
+    result.assert_exit_code(0)
+    assert steers == ["running steer"]
+    assert prompts == ["prequeued"]
+    result.assert_pending_steers("running steer")
+
+
+def test_native_tui_loop_scenario_preserves_composer_draft_when_escape_runs_pending_steer() -> None:
+    scenario = NativeTuiLoopScenario().with_pending_steers("queued")
+    prompts: list[str] = []
+
+    async def handle_prompt(text: str) -> None:
+        if text == "queued":
+            prompts.append(text)
+            return
+        await asyncio.Event().wait()
+
+    result = (
+        scenario.type_text("start")
+        .enter()
+        .wait(0.01)
+        .type_text("draft")
+        .wait(0.01)
+        .escape()
+        .wait(0.04)
+        .end_input()
+        .run(handle_prompt=handle_prompt)
+    )
+
+    result.assert_exit_code(0)
+    assert prompts == ["queued"]
+    result.assert_composer_text("draft")
+    result.assert_pending_steers()

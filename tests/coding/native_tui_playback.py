@@ -9,10 +9,15 @@ from dataclasses import dataclass, field
 from io import StringIO
 
 from loushang.coding.ui.native_app import NativeCodingTuiApp
+from loushang.coding.ui.native_input import NativeInputRouter
 from loushang.coding.ui.native_loop import run_native_coding_tui
 from loushang.tui import (
     FakeTerminalPort,
+    InputReader,
+    PlaybackEvent,
+    PlaybackHarness,
     PlaybackStep,
+    RenderDiagnostics,
     RenderLoop,
     TerminalOperation,
     TerminalSize,
@@ -81,6 +86,52 @@ class NativeTuiScenario:
         assert step.frame.screen_after.cursor_column == step.diagnostics.hardware_cursor_column
 
 
+class NativeTuiInputPlayback:
+    def __init__(
+        self,
+        app: NativeCodingTuiApp,
+        *,
+        columns: int = 80,
+        rows: int = 12,
+        should_exit: Callable[[str], bool] | None = None,
+        is_local_command: Callable[[str], bool] | None = None,
+    ) -> None:
+        self.app = app
+        self.reader = InputReader()
+        self.router = NativeInputRouter(
+            app,
+            should_exit=should_exit or (lambda _text: False),
+            is_local_command=is_local_command or (lambda _text: False),
+        )
+        self.render_loop = RenderLoop(app, clear_scrollback_policy="disabled")
+        self.harness = PlaybackHarness(
+            render=self._render,
+            port=FakeTerminalPort(size=TerminalSize(columns=columns, rows=rows)),
+        )
+
+    @property
+    def port(self) -> FakeTerminalPort:
+        return self.harness.port
+
+    def play(self, events: list[PlaybackEvent]) -> tuple[PlaybackStep, ...]:
+        return self.harness.play(events)
+
+    def _render(
+        self,
+        event: PlaybackEvent,
+        size: TerminalSize,
+        _previous: RenderDiagnostics | None,
+    ) -> RenderDiagnostics:
+        if event.kind == "input":
+            if not isinstance(event.payload, str):
+                raise TypeError("input playback event payload must be str")
+            for input_event in self.reader.feed(event.payload):
+                self.router.handle(input_event)
+        diagnostics = self.render_loop.plan(size)
+        self.render_loop.commit(diagnostics, size=size)
+        return diagnostics
+
+
 @dataclass(frozen=True, slots=True)
 class NativeTuiLoopPlaybackResult:
     exit_code: int
@@ -90,6 +141,34 @@ class NativeTuiLoopPlaybackResult:
     @property
     def text(self) -> str:
         return strip_control_sequences(self.output)
+
+    def assert_exit_code(self, expected: int) -> None:
+        assert self.exit_code == expected
+
+    def assert_text_contains(self, expected: str) -> None:
+        assert expected in self.text
+
+    def assert_text_not_contains(self, unexpected: str) -> None:
+        assert unexpected not in self.text
+
+    def assert_idle(self) -> None:
+        assert self.app.state.running is False
+
+    def assert_running(self) -> None:
+        assert self.app.state.running is True
+
+    def assert_pending_steers(self, *expected: str) -> None:
+        assert self.app.state.pending_steers == list(expected)
+
+    def assert_pending_followups(self, *expected: str) -> None:
+        assert self.app.state.pending_followups == list(expected)
+
+    def assert_composer_text(self, expected: str) -> None:
+        assert self.app.composer.value == expected
+
+    def assert_no_clear_screen(self) -> None:
+        assert TerminalOperation.clear_screen().serialize() not in self.output
+        assert TerminalOperation.clear_scrollback().serialize() not in self.output
 
 
 @dataclass(slots=True)
@@ -142,6 +221,75 @@ class NativeTuiLoopPlayback:
             )
         )
         return NativeTuiLoopPlaybackResult(exit_code=exit_code, output=stdout.getvalue(), app=self.app)
+
+
+@dataclass(slots=True)
+class NativeTuiLoopScenario:
+    """Script timed native TUI input without repeating pipe/thread setup in tests."""
+
+    playback: NativeTuiLoopPlayback = field(default_factory=NativeTuiLoopPlayback)
+    _time: float = 0.0
+    _chunks: list[tuple[float, str]] = field(default_factory=list)
+
+    @property
+    def app(self) -> NativeCodingTuiApp:
+        return self.playback.app
+
+    def with_pending_steers(self, *texts: str) -> NativeTuiLoopScenario:
+        for text in texts:
+            self.app.queue_steer(text)
+        return self
+
+    def with_composer_text(self, text: str) -> NativeTuiLoopScenario:
+        self.app.composer.set_text(text)
+        return self
+
+    def type_text(self, text: str) -> NativeTuiLoopScenario:
+        self._chunks.append((self._time, text))
+        return self
+
+    def enter(self) -> NativeTuiLoopScenario:
+        return self.key("\r")
+
+    def escape(self) -> NativeTuiLoopScenario:
+        return self.key("\x1b")
+
+    def ctrl_c(self) -> NativeTuiLoopScenario:
+        return self.key("\x03")
+
+    def key(self, raw: str) -> NativeTuiLoopScenario:
+        self._chunks.append((self._time, raw))
+        return self
+
+    def wait(self, seconds: float) -> NativeTuiLoopScenario:
+        self._time += max(0.0, seconds)
+        return self
+
+    def end_input(self) -> NativeTuiLoopScenario:
+        self._chunks.append((self._time, ""))
+        return self
+
+    def run(
+        self,
+        *,
+        handle_prompt: NativeTuiHandler | None = None,
+        handle_local: NativeTuiHandler | None = None,
+        handle_steer: NativeTuiHandler | None = None,
+        handle_followup: NativeTuiHandler | None = None,
+        on_abort: NativeTuiAbortHandler | None = None,
+        should_exit: Callable[[str], bool] | None = None,
+        is_local_command: Callable[[str], bool] | None = None,
+    ) -> NativeTuiLoopPlaybackResult:
+        return self.playback.run(
+            *self._chunks,
+            handle_prompt=handle_prompt,
+            handle_local=handle_local,
+            handle_steer=handle_steer,
+            handle_followup=handle_followup,
+            on_abort=on_abort,
+            should_exit=should_exit,
+            is_local_command=is_local_command,
+        )
 
 
 class _NoTerminalMode:
