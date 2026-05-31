@@ -212,6 +212,11 @@ class FakeRunner:
         return self.exit_code
 
 
+class TtyStringIO(StringIO):
+    def isatty(self) -> bool:
+        return True
+
+
 def _fake_services(
     session_dir: str | None = None,
     package_roots: tuple[str, ...] = (),
@@ -282,6 +287,14 @@ def test_parse_args_accepts_tui_flag() -> None:
     args = parse_args(["--tui"])
 
     assert args.tui is True
+
+
+def test_parse_args_accepts_no_tui_flag() -> None:
+    from loushang.coding.cli.args import parse_args
+
+    args = parse_args(["--no-tui"])
+
+    assert args.no_tui is True
 
 
 def test_parse_args_accepts_observability_flags() -> None:
@@ -3029,6 +3042,200 @@ def test_run_cli_dispatches_tui_mode(tmp_path) -> None:
     assert tui_runner.calls[0]["stdout"] is stdout
     assert tui_runner.calls[0]["stderr"] is stderr
     assert tui_runner.calls[0]["verbose"] is True
+
+
+def test_run_cli_defaults_to_tui_for_interactive_bare_startup(tmp_path) -> None:
+    from loushang.coding.cli.__main__ import run_cli
+
+    runtime = FakeRuntime(FakeSession("session-1"))
+    tui_runner = FakeRunner()
+    print_runner = FakeRunner()
+    stdout = TtyStringIO()
+    stderr = StringIO()
+
+    exit_code = asyncio.run(
+        run_cli(
+            [],
+            stdin=TtyStringIO(),
+            stdout=stdout,
+            stderr=stderr,
+            cwd=tmp_path,
+            services=_fake_services(),
+            runtime_builder=lambda **kwargs: runtime,
+            tui_runner=tui_runner,
+            print_runner=print_runner,
+        )
+    )
+
+    assert exit_code == 0
+    assert len(tui_runner.calls) == 1
+    assert tui_runner.calls[0]["runtime"] is runtime
+    assert tui_runner.calls[0]["session"] is runtime.get_current_session()
+    assert print_runner.calls == []
+    assert "prompt is required" not in stderr.getvalue()
+
+
+@pytest.mark.parametrize(
+    ("argv", "expected_restore"),
+    [
+        (["--resume", "abcd1234"], "abcd1234"),
+        (["--resume"], "/tmp/latest-session.jsonl"),
+        (["--continue"], "/tmp/latest-session.jsonl"),
+    ],
+)
+def test_run_cli_defaults_to_tui_for_interactive_resume_flows(tmp_path, argv, expected_restore) -> None:
+    from loushang.coding.cli.__main__ import run_cli
+
+    latest_session = SimpleNamespace(session_file=Path("/tmp/latest-session.jsonl"))
+    runtime = FakeRuntime(FakeSession("session-1"), records=[latest_session])
+    tui_runner = FakeRunner()
+    print_runner = FakeRunner()
+
+    exit_code = asyncio.run(
+        run_cli(
+            argv,
+            stdin=TtyStringIO(),
+            stdout=TtyStringIO(),
+            stderr=StringIO(),
+            cwd=tmp_path,
+            services=_fake_services(),
+            runtime_builder=lambda **kwargs: runtime,
+            tui_runner=tui_runner,
+            print_runner=print_runner,
+        )
+    )
+
+    assert exit_code == 0
+    assert runtime.restore_session_calls == [expected_restore]
+    assert len(tui_runner.calls) == 1
+    assert print_runner.calls == []
+
+
+def test_run_cli_no_tui_keeps_interactive_bare_startup_in_text_mode(tmp_path) -> None:
+    from loushang.coding.cli.__main__ import run_cli
+
+    stderr = StringIO()
+
+    exit_code = asyncio.run(
+        run_cli(
+            ["--no-tui"],
+            stdin=TtyStringIO(),
+            stdout=TtyStringIO(),
+            stderr=stderr,
+            cwd=tmp_path,
+            services=_fake_services(),
+            runtime_builder=lambda **kwargs: FakeRuntime(FakeSession("session-1")),
+            tui_runner=FakeRunner(),
+        )
+    )
+
+    assert exit_code == 2
+    assert "prompt is required" in stderr.getvalue()
+
+
+def test_run_cli_keeps_interactive_positional_prompt_out_of_default_tui(tmp_path) -> None:
+    from loushang.coding.cli.__main__ import run_cli
+
+    runtime = FakeRuntime(FakeSession("session-1"))
+    tui_runner = FakeRunner()
+    print_runner = FakeRunner()
+
+    exit_code = asyncio.run(
+        run_cli(
+            ["hello", "world"],
+            stdin=TtyStringIO(),
+            stdout=TtyStringIO(),
+            stderr=StringIO(),
+            cwd=tmp_path,
+            services=_fake_services(),
+            runtime_builder=lambda **kwargs: runtime,
+            tui_runner=tui_runner,
+            print_runner=print_runner,
+        )
+    )
+
+    assert exit_code == 0
+    assert tui_runner.calls == []
+    assert print_runner.calls[0]["user_input"] == "hello world"
+
+
+def test_run_cli_keeps_piped_stdin_out_of_default_tui(tmp_path) -> None:
+    from loushang.coding.cli.__main__ import run_cli
+
+    runtime = FakeRuntime(FakeSession("session-1"))
+    tui_runner = FakeRunner()
+    print_runner = FakeRunner()
+
+    exit_code = asyncio.run(
+        run_cli(
+            [],
+            stdin=StringIO("hello from pipe\n"),
+            stdout=TtyStringIO(),
+            stderr=StringIO(),
+            cwd=tmp_path,
+            services=_fake_services(),
+            runtime_builder=lambda **kwargs: runtime,
+            tui_runner=tui_runner,
+            print_runner=print_runner,
+        )
+    )
+
+    assert exit_code == 0
+    assert tui_runner.calls == []
+    assert print_runner.calls[0]["user_input"] == "hello from pipe"
+
+
+def test_run_cli_keeps_machine_readable_mode_out_of_default_tui(tmp_path) -> None:
+    from loushang.coding.cli.__main__ import run_cli
+
+    runtime = FakeRuntime(FakeSession("session-1"))
+    tui_runner = FakeRunner()
+    print_runner = FakeRunner()
+
+    exit_code = asyncio.run(
+        run_cli(
+            ["--mode", "json", "hello"],
+            stdin=TtyStringIO(),
+            stdout=TtyStringIO(),
+            stderr=StringIO(),
+            cwd=tmp_path,
+            services=_fake_services(),
+            runtime_builder=lambda **kwargs: runtime,
+            tui_runner=tui_runner,
+            print_runner=print_runner,
+        )
+    )
+
+    assert exit_code == 0
+    assert tui_runner.calls == []
+    assert print_runner.calls[0]["output_mode"] == "json"
+
+
+def test_run_cli_keeps_list_commands_out_of_default_tui(tmp_path) -> None:
+    from loushang.coding.cli.__main__ import run_cli
+
+    session = FakeSession("session-1")
+    session.set_commands([{"name": "review", "description": "Run review"}])
+    runtime = FakeRuntime(session)
+    tui_runner = FakeRunner()
+    stdout = TtyStringIO()
+
+    exit_code = asyncio.run(
+        run_cli(
+            ["--list-commands"],
+            stdin=TtyStringIO(),
+            stdout=stdout,
+            stderr=StringIO(),
+            cwd=tmp_path,
+            services=_fake_services(),
+            runtime_builder=lambda **kwargs: runtime,
+            tui_runner=tui_runner,
+        )
+    )
+
+    assert exit_code == 0
+    assert tui_runner.calls == []
+    assert "review" in stdout.getvalue()
 
 
 def test_run_cli_configures_observability_for_tui_debug_trace(tmp_path) -> None:
