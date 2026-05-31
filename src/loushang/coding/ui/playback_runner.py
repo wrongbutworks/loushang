@@ -19,6 +19,17 @@ from loushang.coding.ui.playback import (
 )
 from loushang.tui import PlaybackFrameBudget, SelectionSurface, SelectItem
 from loushang.tui.input import BRACKETED_PASTE_END, BRACKETED_PASTE_START
+from loushang.tui.keyboard_protocol import (
+    KITTY_DISABLE_SEQUENCE,
+    KITTY_ENABLE_FLAGS_SEQUENCE,
+    KITTY_QUERY_SEQUENCE,
+)
+from loushang.tui.terminal_capabilities import TerminalRuntimeCapabilities
+from loushang.tui.terminal_session import (
+    MOUSE_DISABLE_SEQUENCES,
+    MOUSE_ENABLE_SEQUENCES,
+    TerminalSession,
+)
 
 INTERACTION_FRAME_BUDGET = PlaybackFrameBudget(
     disallowed_operation_classes=("baseline_repaint", "recovery_repaint"),
@@ -388,6 +399,39 @@ def _run_escape_pending_steer_preserves_draft() -> object:
     return result
 
 
+def _run_native_loop_ctrl_c_abort_running() -> object:
+    scenario = NativeTuiLoopScenario()
+    prompts: list[str] = []
+    aborts: list[str] = []
+
+    async def handle_prompt(text: str) -> None:
+        prompts.append(text)
+        scenario.app.begin_assistant()
+        scenario.app.append_assistant_chunk("working before ctrl-c")
+        await _never()
+
+    async def on_abort() -> None:
+        aborts.append("abort")
+
+    result = (
+        scenario.type_text("long running")
+        .enter()
+        .wait(0.01)
+        .ctrl_c()
+        .wait(0.04)
+        .end_input()
+        .run(handle_prompt=handle_prompt, on_abort=on_abort)
+    )
+    result.assert_exit_code(0)
+    assert prompts == ["long running"]
+    assert aborts == ["abort"]
+    result.assert_idle()
+    result.assert_text_contains("› long running")
+    result.assert_text_contains("Conversation interrupted")
+    result.assert_no_clear_screen()
+    return result
+
+
 def _run_running_follow_up_queued() -> NativeTuiInputPlaybackResult:
     result = (
         NativeTuiInputScenario(width=80, height=12)
@@ -436,6 +480,34 @@ def _run_bracketed_paste_large_marker() -> NativeTuiInputPlaybackResult:
     result.assert_no_clear_screen()
     result.assert_cursor_matches_diagnostics()
     INTERACTION_FRAME_BUDGET.assert_result(result, skip_first=True)
+    return result
+
+
+def _run_native_loop_split_bracketed_paste() -> object:
+    playback = NativeTuiLoopPlayback(width=80, height=12)
+    pasted = "alpha\nbeta\ngamma"
+    prompts: list[str] = []
+
+    async def handle_prompt(text: str) -> None:
+        prompts.append(text)
+        playback.app.begin_assistant()
+        playback.app.append_assistant_chunk("split paste submitted once")
+
+    result = playback.run(
+        (0.00, BRACKETED_PASTE_START[:3]),
+        (0.01, f"{BRACKETED_PASTE_START[3:]}alpha\n"),
+        (0.02, f"beta\ngamma{BRACKETED_PASTE_END[:3]}"),
+        (0.03, f"{BRACKETED_PASTE_END[3:]}"),
+        (0.04, "\r"),
+        (0.06, ""),
+        handle_prompt=handle_prompt,
+    )
+    result.assert_exit_code(0)
+    assert prompts == [pasted]
+    result.assert_composer_text("")
+    result.assert_text_contains("› alpha")
+    result.assert_text_contains("split paste submitted once")
+    result.assert_no_clear_screen()
     return result
 
 
@@ -578,6 +650,61 @@ def _run_terminal_control_response_hidden() -> object:
     return result
 
 
+def _run_native_loop_terminal_session_cleanup() -> object:
+    playback = NativeTuiLoopPlayback(width=80, height=12)
+    prompts: list[str] = []
+    cleanup_calls: list[str] = []
+    mode = _RecordingTerminalMode(cleanup_calls)
+    capabilities = TerminalRuntimeCapabilities(
+        keyboard_protocol_strategy="kitty_then_modify_other_keys",
+        enable_mouse=True,
+        query_cell_size=True,
+    )
+
+    async def handle_prompt(text: str) -> None:
+        prompts.append(text)
+        playback.app.begin_assistant()
+        playback.app.append_assistant_chunk("terminal session handled cleanup")
+
+    def terminal_mode_factory(stdin: object, stdout: object) -> TerminalSession:
+        return TerminalSession(
+            stdin=stdin,
+            stdout=stdout,
+            capabilities=capabilities,
+            mode_factory=lambda _stdin, _stdout, _capabilities: mode,
+            drain_input_func=_recording_drain(cleanup_calls),
+            now_ms=lambda: 1_000,
+        )
+
+    result = playback.run(
+        (0.00, "\x1b[?7u"),
+        (0.01, "\x1b[6;18;9t"),
+        (0.02, "hello"),
+        (0.03, "\r"),
+        (0.05, ""),
+        handle_prompt=handle_prompt,
+        terminal_mode_factory=terminal_mode_factory,
+    )
+    output = result.output
+    result.assert_exit_code(0)
+    assert prompts == ["hello"]
+    assert cleanup_calls == ["mode:enter", "drain", "mode:exit"]
+    assert KITTY_QUERY_SEQUENCE in output
+    assert KITTY_ENABLE_FLAGS_SEQUENCE in output
+    assert KITTY_DISABLE_SEQUENCE in output
+    assert all(sequence in output for sequence in MOUSE_ENABLE_SEQUENCES)
+    assert all(sequence in output for sequence in MOUSE_DISABLE_SEQUENCES)
+    assert "\x1b[16t" in output
+    assert output.index(KITTY_QUERY_SEQUENCE) < output.index("› hello")
+    assert output.index("terminal session handled cleanup") < output.index(KITTY_DISABLE_SEQUENCE)
+    assert output.index(KITTY_DISABLE_SEQUENCE) < output.index(MOUSE_DISABLE_SEQUENCES[0])
+    result.assert_text_contains("› hello")
+    result.assert_text_not_contains("?7u")
+    result.assert_text_not_contains("18;9")
+    result.assert_no_clear_screen()
+    return result
+
+
 def _run_apple_shift_enter_normalized() -> object:
     playback = NativeTuiLoopPlayback(width=80, height=12)
     contexts: list[_AppleShiftEnterTerminalContext] = []
@@ -646,6 +773,27 @@ class _AppleShiftEnterTerminalContext:
         return data
 
 
+class _RecordingTerminalMode:
+    def __init__(self, calls: list[str]) -> None:
+        self.calls = calls
+
+    def __enter__(self) -> _RecordingTerminalMode:
+        self.calls.append("mode:enter")
+        return self
+
+    def __exit__(self, *_args: object) -> bool:
+        self.calls.append("mode:exit")
+        return False
+
+
+def _recording_drain(calls: list[str]) -> Callable[..., str]:
+    def drain(*_args: object, **_kwargs: object) -> str:
+        calls.append("drain")
+        return ""
+
+    return drain
+
+
 DEFAULT_SUITE = NativePlaybackSuite(
     (
         NativePlaybackScenarioSpec(
@@ -694,6 +842,11 @@ DEFAULT_SUITE = NativePlaybackSuite(
             run=_run_escape_pending_steer_preserves_draft,
         ),
         NativePlaybackScenarioSpec(
+            name="native-loop-ctrl-c-abort-running",
+            description="Abort a running native loop prompt via raw Ctrl-C without clearing the screen.",
+            run=_run_native_loop_ctrl_c_abort_running,
+        ),
+        NativePlaybackScenarioSpec(
             name="running-follow-up-queued",
             description="Queue a follow-up while a prompt is running.",
             run=_run_running_follow_up_queued,
@@ -707,6 +860,11 @@ DEFAULT_SUITE = NativePlaybackSuite(
             name="bracketed-paste-large-marker",
             description="Render a large bracketed paste as a stable composer marker.",
             run=_run_bracketed_paste_large_marker,
+        ),
+        NativePlaybackScenarioSpec(
+            name="native-loop-split-bracketed-paste",
+            description="Keep split native bracketed paste atomic until the end marker arrives.",
+            run=_run_native_loop_split_bracketed_paste,
         ),
         NativePlaybackScenarioSpec(
             name="resize-reflow-stable",
@@ -737,6 +895,11 @@ DEFAULT_SUITE = NativePlaybackSuite(
             name="terminal-control-response-hidden",
             description="Consume terminal control responses without echoing them as user input.",
             run=_run_terminal_control_response_hidden,
+        ),
+        NativePlaybackScenarioSpec(
+            name="native-loop-terminal-session-cleanup",
+            description="Run native loop through TerminalSession startup, control responses, and cleanup.",
+            run=_run_native_loop_terminal_session_cleanup,
         ),
         NativePlaybackScenarioSpec(
             name="apple-shift-enter-normalized",

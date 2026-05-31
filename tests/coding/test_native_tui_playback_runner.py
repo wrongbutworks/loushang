@@ -34,6 +34,9 @@ def test_native_tui_playback_runner_lists_default_scenarios(capsys) -> None:
     assert "terminal-control-response-hidden" in captured.out
     assert "apple-shift-enter-normalized" in captured.out
     assert "mouse-select-active-surface" in captured.out
+    assert "native-loop-split-bracketed-paste" in captured.out
+    assert "native-loop-terminal-session-cleanup" in captured.out
+    assert "native-loop-ctrl-c-abort-running" in captured.out
 
 
 def test_native_tui_playback_runner_runs_named_scenario(capsys) -> None:
