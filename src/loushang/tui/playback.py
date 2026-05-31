@@ -88,6 +88,12 @@ class PlaybackStep:
 PlaybackRender = Callable[[PlaybackEvent, TerminalSize, RenderDiagnostics | None], RenderDiagnostics]
 
 
+@dataclass(frozen=True, slots=True)
+class PlaybackArtifacts:
+    trace: Path
+    screen: Path
+
+
 @dataclass(slots=True)
 class PlaybackHarness:
     render: PlaybackRender
@@ -210,6 +216,21 @@ class PlaybackResult:
             for step in self.steps:
                 stream.write(json.dumps(self._jsonl_row(step, include_frames=include_frames), ensure_ascii=False))
                 stream.write("\n")
+
+    def write_artifacts(
+        self,
+        directory: str | Path,
+        *,
+        basename: str = "playback",
+        include_frames: bool = False,
+    ) -> PlaybackArtifacts:
+        output_dir = Path(directory)
+        output_dir.mkdir(parents=True, exist_ok=True)
+        trace_path = output_dir / f"{basename}.jsonl"
+        screen_path = output_dir / f"{basename}-screen.txt"
+        self.write_jsonl(trace_path, include_frames=include_frames)
+        screen_path.write_text(self.visible_text, encoding="utf-8")
+        return PlaybackArtifacts(trace=trace_path, screen=screen_path)
 
     def _jsonl_row(self, step: PlaybackStep, *, include_frames: bool) -> dict[str, Any]:
         serialized_output = step.frame.serialized_output if step.frame is not None else None

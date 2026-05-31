@@ -101,6 +101,7 @@ from loushang.tui.keybindings import (
 )
 from loushang.tui.keyboard_protocol import KeyboardProtocolController
 from loushang.tui.playback import (
+    PlaybackArtifacts,
     PlaybackEvent,
     PlaybackHarness,
     PlaybackResult,
@@ -307,6 +308,7 @@ __all__ = [
     "loushang_welcome_theme",
     "MarkdownRenderCache",
     "MarkdownRenderer",
+    "PlaybackArtifacts",
     "PlaybackEvent",
     "PlaybackHarness",
     "PlaybackResult",

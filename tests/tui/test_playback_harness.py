@@ -190,6 +190,27 @@ def test_playback_result_can_include_raw_frame_output_in_jsonl(tmp_path) -> None
     assert row["serialized_output"] == "hello"
 
 
+def test_playback_result_writes_trace_and_final_screen_artifacts(tmp_path) -> None:
+    harness = PlaybackHarness(
+        render=lambda _event, _size, _previous: RenderDiagnostics(
+            current_logical_lines=("hello",),
+            operation_class="changed_range_update",
+            operations=(TerminalOperation.write("hello"),),
+        ),
+        port=FakeTerminalPort(size=TerminalSize(columns=20, rows=5)),
+    )
+    result = PlaybackResult(steps=harness.play([PlaybackEvent.input("hello")]), port=harness.port)
+
+    artifacts = result.write_artifacts(tmp_path / "artifacts", basename="long-transcript", include_frames=True)
+
+    assert artifacts.trace == tmp_path / "artifacts" / "long-transcript.jsonl"
+    assert artifacts.screen == tmp_path / "artifacts" / "long-transcript-screen.txt"
+    trace_row = json.loads(artifacts.trace.read_text(encoding="utf-8"))
+    assert trace_row["operation_class"] == "changed_range_update"
+    assert trace_row["serialized_output"] == "hello"
+    assert artifacts.screen.read_text(encoding="utf-8") == "hello\n\n\n\n"
+
+
 def test_playback_result_asserts_operation_class_budget_after_initial_frame() -> None:
     operation_classes = iter(("first_render", "changed_range_update", "baseline_repaint"))
 
