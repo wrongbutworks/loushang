@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import json
 
+import pytest
+
 from loushang.tui import (
     FakeTerminalPort,
     MarkdownRenderer,
@@ -160,7 +162,11 @@ def test_playback_result_writes_jsonl_for_manual_inspection(tmp_path) -> None:
             "hardware_cursor": {"row": 0, "column": 5},
             "flush_succeeded": True,
             "flush_error": None,
+            "operation_count": 1,
             "operations": ["write"],
+            "serialized_output_bytes": 5,
+            "synchronized": False,
+            "clear_scrollback_emitted": False,
             "visible_lines": ["hello", "", "", "", ""],
         }
     ]
@@ -182,6 +188,49 @@ def test_playback_result_can_include_raw_frame_output_in_jsonl(tmp_path) -> None
 
     row = json.loads(path.read_text(encoding="utf-8"))
     assert row["serialized_output"] == "hello"
+
+
+def test_playback_result_asserts_operation_class_budget_after_initial_frame() -> None:
+    operation_classes = iter(("first_render", "changed_range_update", "baseline_repaint"))
+
+    def render(_event: PlaybackEvent, _size: TerminalSize, _previous: RenderDiagnostics | None) -> RenderDiagnostics:
+        return RenderDiagnostics(
+            current_logical_lines=("hello",),
+            operation_class=next(operation_classes),
+            operations=(TerminalOperation.write("hello"),),
+        )
+
+    harness = PlaybackHarness(render=render, port=FakeTerminalPort(size=TerminalSize(columns=20, rows=5)))
+    result = PlaybackResult(
+        steps=harness.play([PlaybackEvent("render"), PlaybackEvent.input("a"), PlaybackEvent.input("b")]),
+        port=harness.port,
+    )
+
+    with pytest.raises(AssertionError, match="baseline_repaint"):
+        result.assert_operation_classes_not_in("baseline_repaint", "recovery_repaint", skip_first=True)
+
+
+def test_playback_result_asserts_max_operations_per_step_after_initial_frame() -> None:
+    operation_batches = iter(
+        (
+            (TerminalOperation.write("initial"), TerminalOperation.newline(), TerminalOperation.write("frame")),
+            (TerminalOperation.write("ok"), TerminalOperation.move_column(column=1)),
+            (TerminalOperation.write("too"), TerminalOperation.newline(), TerminalOperation.write("many")),
+        )
+    )
+
+    def render(_event: PlaybackEvent, _size: TerminalSize, _previous: RenderDiagnostics | None) -> RenderDiagnostics:
+        operations = next(operation_batches)
+        return RenderDiagnostics(current_logical_lines=("hello",), operations=operations)
+
+    harness = PlaybackHarness(render=render, port=FakeTerminalPort(size=TerminalSize(columns=20, rows=5)))
+    result = PlaybackResult(
+        steps=harness.play([PlaybackEvent("render"), PlaybackEvent.input("a"), PlaybackEvent.input("b")]),
+        port=harness.port,
+    )
+
+    with pytest.raises(AssertionError, match="step 2 emitted 3 operations"):
+        result.assert_max_operations_per_step(2, skip_first=True)
 
 
 def test_playback_harness_failed_flush_does_not_advance_successful_diagnostics() -> None:

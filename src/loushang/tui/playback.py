@@ -152,6 +152,25 @@ class PlaybackResult:
         assert self.steps
         assert self.steps[-1].diagnostics.operation_class not in unexpected
 
+    def assert_operation_classes_not_in(self, *unexpected: str, skip_first: bool = False) -> None:
+        unexpected_set = set(unexpected)
+        steps = self.steps[1:] if skip_first else self.steps
+        for step in steps:
+            operation_class = step.diagnostics.operation_class
+            if operation_class in unexpected_set:
+                raise AssertionError(
+                    f"step {step.index} used disallowed operation_class {operation_class!r}"
+                )
+
+    def assert_max_operations_per_step(self, max_operations: int, *, skip_first: bool = False) -> None:
+        steps = self.steps[1:] if skip_first else self.steps
+        for step in steps:
+            operation_count = len(step.diagnostics.operations)
+            if operation_count > max_operations:
+                raise AssertionError(
+                    f"step {step.index} emitted {operation_count} operations, expected <= {max_operations}"
+                )
+
     def assert_no_clear_screen(self) -> None:
         clear_screen = TerminalOperation.clear_screen()
         clear_scrollback = TerminalOperation.clear_scrollback()
@@ -193,6 +212,7 @@ class PlaybackResult:
                 stream.write("\n")
 
     def _jsonl_row(self, step: PlaybackStep, *, include_frames: bool) -> dict[str, Any]:
+        serialized_output = step.frame.serialized_output if step.frame is not None else None
         row = {
             "index": step.index,
             "event": _event_payload(step.event),
@@ -207,11 +227,19 @@ class PlaybackResult:
             },
             "flush_succeeded": step.flush_succeeded,
             "flush_error": step.flush_error,
+            "operation_count": len(step.diagnostics.operations),
             "operations": [operation.kind for operation in step.diagnostics.operations],
+            "serialized_output_bytes": len(serialized_output.encode("utf-8")) if serialized_output is not None else None,
+            "synchronized": step.frame.synchronized if step.frame is not None else None,
+            "clear_scrollback_emitted": (
+                step.frame.clear_scrollback_emitted
+                if step.frame is not None
+                else step.diagnostics.clear_scrollback_emitted
+            ),
             "visible_lines": list(step.frame.screen_after.visible_lines if step.frame is not None else self.port.screen.visible_lines),
         }
         if include_frames:
-            row["serialized_output"] = step.frame.serialized_output if step.frame is not None else None
+            row["serialized_output"] = serialized_output
         return row
 
 

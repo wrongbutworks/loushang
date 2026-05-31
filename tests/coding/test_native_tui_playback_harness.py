@@ -205,7 +205,8 @@ def test_native_tui_input_scenario_echoes_input_after_long_transcript_without_re
     result.assert_composer_text("fresh input")
     result.assert_visible_contains("› fresh input")
     result.assert_no_clear_screen()
-    result.assert_last_operation_class_not_in("first_render", "baseline_repaint", "recovery_repaint")
+    result.assert_operation_classes_not_in("baseline_repaint", "recovery_repaint", skip_first=True)
+    result.assert_max_operations_per_step(12, skip_first=True)
 
 
 def test_native_tui_loop_playback_drives_running_steer_then_escape() -> None:
