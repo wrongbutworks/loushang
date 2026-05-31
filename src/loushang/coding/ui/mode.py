@@ -259,6 +259,7 @@ def _native_text_handler(
 def _native_abort_handler(controller: CodingUiController):
     async def handle() -> None:
         await controller.dispatch(AbortIntent())
+        await controller.wait_for_idle()
 
     return handle
 

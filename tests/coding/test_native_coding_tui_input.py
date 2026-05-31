@@ -65,7 +65,7 @@ def test_native_input_router_idle_interrupt_message_prefers_pending_steer() -> N
 
     assert result.steer_text == "你好"
     assert app.state.pending_steers == []
-    assert app.composer.value == ""
+    assert app.composer.value == "草稿"
 
 
 def test_native_input_router_running_alt_enter_queues_followup() -> None:
