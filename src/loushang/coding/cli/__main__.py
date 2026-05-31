@@ -229,6 +229,9 @@ async def run_cli(
         stdout.write(f"{_package_version()}\n")
         return 0
 
+    if bootstrap_args.tui and bootstrap_args.no_tui:
+        stderr.write("Error: --tui and --no-tui cannot be used together.\n")
+        return 2
     if bootstrap_args.fork and not (
         bootstrap_args.session or bootstrap_args.continue_ or bootstrap_args.resume
     ):

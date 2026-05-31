@@ -1113,6 +1113,27 @@ def test_run_cli_reports_parse_errors_to_provided_stderr(tmp_path) -> None:
     assert "invalid choice" in stderr.getvalue()
 
 
+def test_run_cli_rejects_conflicting_tui_flags(tmp_path) -> None:
+    from loushang.coding.cli.__main__ import run_cli
+
+    stderr = StringIO()
+
+    exit_code = asyncio.run(
+        run_cli(
+            ["--tui", "--no-tui"],
+            stdin=TtyStringIO(),
+            stdout=TtyStringIO(),
+            stderr=stderr,
+            cwd=tmp_path,
+            services=_fake_services(),
+            runtime_builder=lambda **kwargs: pytest.fail("runtime should not be built"),
+        )
+    )
+
+    assert exit_code == 2
+    assert "--tui and --no-tui cannot be used together" in stderr.getvalue()
+
+
 def test_main_uses_process_argv_when_argv_is_omitted(monkeypatch) -> None:
     from loushang.coding.cli.__main__ import main
 
@@ -1132,6 +1153,25 @@ def test_cli_package_lazily_exports_main_and_run_cli() -> None:
 
     assert cli.main
     assert cli.run_cli
+
+
+def test_loushang_tui_entrypoint_forces_tui(monkeypatch) -> None:
+    from loushang.coding.ui import cli as tui_cli
+
+    calls = []
+
+    async def fake_run_cli(argv):
+        calls.append(tuple(argv))
+        return 23
+
+    monkeypatch.setattr(sys, "argv", ["loushang-tui", "--resume", "abcd1234"])
+    monkeypatch.setattr(tui_cli, "run_cli", fake_run_cli)
+
+    with pytest.raises(SystemExit) as error:
+        tui_cli.main()
+
+    assert error.value.code == 23
+    assert calls == [("--tui", "--resume", "abcd1234")]
 
 
 def test_cli_main_handles_keyboard_interrupt(monkeypatch, capsys) -> None:
