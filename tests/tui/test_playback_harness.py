@@ -520,6 +520,32 @@ def test_playback_frame_budget_reports_operation_count_violation() -> None:
         PlaybackFrameBudget(max_operations=3).assert_result(result, skip_first=True)
 
 
+def test_playback_frame_budget_allows_noop_frames_when_requiring_synchronization() -> None:
+    frames = iter(
+        (
+            (
+                TerminalOperation.begin_synchronized_update(),
+                TerminalOperation.write("hello"),
+                TerminalOperation.end_synchronized_update(),
+            ),
+            (),
+        )
+    )
+    operation_classes = iter(("first_render", "noop"))
+
+    def render(_event: PlaybackEvent, _size: TerminalSize, _previous: RenderDiagnostics | None) -> RenderDiagnostics:
+        return RenderDiagnostics(
+            current_logical_lines=("frame",),
+            operation_class=next(operation_classes),
+            operations=next(frames),
+        )
+
+    harness = PlaybackHarness(render=render, port=FakeTerminalPort(size=TerminalSize(columns=20, rows=5)))
+    result = PlaybackResult(steps=harness.play([PlaybackEvent("render"), PlaybackEvent.input("noop")]), port=harness.port)
+
+    PlaybackFrameBudget(require_synchronized=True).assert_result(result, skip_first=True)
+
+
 def test_playback_harness_failed_flush_does_not_advance_successful_diagnostics() -> None:
     def render(event: PlaybackEvent, size: TerminalSize, previous: RenderDiagnostics | None) -> RenderDiagnostics:
         previous_lines = previous.current_logical_lines if previous is not None else ()

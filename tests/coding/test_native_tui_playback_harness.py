@@ -18,6 +18,27 @@ from loushang.tui import (
     SelectItem,
 )
 
+INTERACTION_FRAME_BUDGET = PlaybackFrameBudget(
+    disallowed_operation_classes=("baseline_repaint", "recovery_repaint"),
+    max_operations=32,
+    max_serialized_output_bytes=768,
+    max_changed_visible_lines=8,
+    require_synchronized=True,
+)
+
+LONG_TRANSCRIPT_FRAME_BUDGET = PlaybackFrameBudget(
+    disallowed_operation_classes=("baseline_repaint", "recovery_repaint"),
+    max_operations=12,
+    max_serialized_output_bytes=2_000,
+    max_changed_visible_lines=3,
+    require_synchronized=True,
+)
+
+
+def _assert_interaction_frame_budget(result, basename: str) -> None:
+    with result.write_artifacts_on_failure_from_env(basename=basename, include_frames=True):
+        INTERACTION_FRAME_BUDGET.assert_result(result, skip_first=True)
+
 
 def test_native_tui_scenario_renders_composer_input_without_screen_clear() -> None:
     scenario = NativeTuiScenario(width=80, height=18)
@@ -111,32 +132,38 @@ def test_native_tui_input_scenario_applies_tab_completion_without_screen_clear()
     result = (
         NativeTuiInputScenario(width=80, height=12)
         .with_completion_items("/model", "/models")
+        .render()
         .type_text("/mod")
         .tab()
         .run()
     )
 
-    result.assert_composer_text("/model ")
-    result.assert_visible_contains("› /model")
-    result.assert_no_clear_screen()
-    result.assert_cursor_matches_diagnostics()
+    with result.write_artifacts_on_failure_from_env(basename="native-input-tab-completion", include_frames=True):
+        result.assert_composer_text("/model ")
+        result.assert_visible_contains("› /model")
+        result.assert_no_clear_screen()
+        result.assert_cursor_matches_diagnostics()
+    _assert_interaction_frame_budget(result, "native-input-tab-completion")
 
 
 def test_native_tui_input_scenario_captures_local_command_without_prompt_echo() -> None:
     result = (
         NativeTuiInputScenario(width=80, height=12)
         .with_local_commands("/status")
+        .render()
         .type_text("/status")
         .enter()
         .run()
     )
 
-    result.assert_local_texts("/status")
-    result.assert_prompt_texts()
-    result.assert_composer_text("")
-    result.assert_visible_not_contains("› /status")
-    result.assert_no_clear_screen()
-    result.assert_cursor_matches_diagnostics()
+    with result.write_artifacts_on_failure_from_env(basename="native-input-local-command", include_frames=True):
+        result.assert_local_texts("/status")
+        result.assert_prompt_texts()
+        result.assert_composer_text("")
+        result.assert_visible_not_contains("› /status")
+        result.assert_no_clear_screen()
+        result.assert_cursor_matches_diagnostics()
+    _assert_interaction_frame_budget(result, "native-input-local-command")
 
 
 def test_native_tui_input_scenario_routes_active_surface_before_composer() -> None:
@@ -144,33 +171,39 @@ def test_native_tui_input_scenario_routes_active_surface_before_composer() -> No
         NativeTuiInputScenario(width=80, height=12)
         .with_active_surface(SelectionSurface([SelectItem("Choose me", value="chosen")]))
         .with_composer_text("draft")
+        .render()
         .enter()
         .run()
     )
 
-    result.assert_surface_intents(("select", "chosen"))
-    result.assert_composer_text("draft")
-    result.assert_visible_contains("Choose me")
-    result.assert_no_clear_screen()
-    result.assert_cursor_matches_diagnostics()
+    with result.write_artifacts_on_failure_from_env(basename="native-input-active-surface", include_frames=True):
+        result.assert_surface_intents(("select", "chosen"))
+        result.assert_composer_text("draft")
+        result.assert_visible_contains("Choose me")
+        result.assert_no_clear_screen()
+        result.assert_cursor_matches_diagnostics()
+    _assert_interaction_frame_budget(result, "native-input-active-surface")
 
 
 def test_native_tui_input_scenario_captures_running_steer_without_screen_clear() -> None:
     result = (
         NativeTuiInputScenario(width=80, height=12)
         .with_running_prompt("old")
+        .render()
         .type_text("change")
         .enter()
         .run()
     )
 
-    result.assert_steer_texts("change")
-    result.assert_pending_steers("change")
-    result.assert_composer_text("")
-    result.assert_visible_contains("Messages to be submitted after next tool call")
-    result.assert_visible_contains("change")
-    result.assert_no_clear_screen()
-    result.assert_cursor_matches_diagnostics()
+    with result.write_artifacts_on_failure_from_env(basename="native-input-running-steer", include_frames=True):
+        result.assert_steer_texts("change")
+        result.assert_pending_steers("change")
+        result.assert_composer_text("")
+        result.assert_visible_contains("Messages to be submitted after next tool call")
+        result.assert_visible_contains("change")
+        result.assert_no_clear_screen()
+        result.assert_cursor_matches_diagnostics()
+    _assert_interaction_frame_budget(result, "native-input-running-steer")
 
 
 def test_native_tui_input_scenario_escape_abort_does_not_pop_pending_steer() -> None:
@@ -178,26 +211,31 @@ def test_native_tui_input_scenario_escape_abort_does_not_pop_pending_steer() -> 
         NativeTuiInputScenario(width=80, height=12)
         .with_running_prompt("old")
         .with_pending_steers("queued")
+        .render()
         .escape()
         .run()
     )
 
-    result.assert_abort_requested()
-    result.assert_pending_steers("queued")
-    result.assert_visible_contains("Messages to be submitted after next tool call")
-    result.assert_visible_contains("queued")
-    result.assert_no_clear_screen()
-    result.assert_cursor_matches_diagnostics()
+    with result.write_artifacts_on_failure_from_env(basename="native-input-escape-abort", include_frames=True):
+        result.assert_abort_requested()
+        result.assert_pending_steers("queued")
+        result.assert_visible_contains("Messages to be submitted after next tool call")
+        result.assert_visible_contains("queued")
+        result.assert_no_clear_screen()
+        result.assert_cursor_matches_diagnostics()
+    _assert_interaction_frame_budget(result, "native-input-escape-abort")
 
 
 def test_native_tui_input_scenario_idle_escape_pops_pending_steer() -> None:
-    result = NativeTuiInputScenario(width=80, height=12).with_pending_steers("queued").escape().run()
+    result = NativeTuiInputScenario(width=80, height=12).with_pending_steers("queued").render().escape().run()
 
-    result.assert_steer_texts("queued")
-    result.assert_pending_steers()
-    result.assert_visible_not_contains("Messages to be submitted after next tool call")
-    result.assert_no_clear_screen()
-    result.assert_cursor_matches_diagnostics()
+    with result.write_artifacts_on_failure_from_env(basename="native-input-idle-escape-steer", include_frames=True):
+        result.assert_steer_texts("queued")
+        result.assert_pending_steers()
+        result.assert_visible_not_contains("Messages to be submitted after next tool call")
+        result.assert_no_clear_screen()
+        result.assert_cursor_matches_diagnostics()
+    _assert_interaction_frame_budget(result, "native-input-idle-escape-steer")
 
 
 def test_native_tui_input_scenario_echoes_input_after_long_transcript_without_repaint() -> None:
@@ -209,17 +247,12 @@ def test_native_tui_input_scenario_echoes_input_after_long_transcript_without_re
         .run()
     )
 
-    result.assert_composer_text("fresh input")
-    result.assert_visible_contains("› fresh input")
-    result.assert_no_clear_screen()
-    PlaybackFrameBudget(
-        disallowed_operation_classes=("baseline_repaint", "recovery_repaint"),
-        max_operations=12,
-        max_serialized_output_bytes=2_000,
-        max_changed_visible_lines=3,
-        require_synchronized=True,
-    ).assert_result(result, skip_first=True)
-    result.assert_screen_anchor_stable("›", occurrence="last")
+    with result.write_artifacts_on_failure_from_env(basename="native-input-long-transcript", include_frames=True):
+        result.assert_composer_text("fresh input")
+        result.assert_visible_contains("› fresh input")
+        result.assert_no_clear_screen()
+        LONG_TRANSCRIPT_FRAME_BUDGET.assert_result(result, skip_first=True)
+        result.assert_screen_anchor_stable("›", occurrence="last")
 
 
 def test_native_tui_loop_playback_drives_running_steer_then_escape() -> None:
@@ -253,14 +286,15 @@ def test_native_tui_loop_playback_drives_running_steer_then_escape() -> None:
         .run(handle_prompt=handle_prompt, handle_steer=handle_steer)
     )
 
-    result.assert_exit_code(0)
-    assert prompts == ["go", "change"]
-    assert steers == [("queue", "change")]
-    result.assert_text_contains("› go")
-    result.assert_text_contains("› change")
-    result.assert_text_contains("fresh change")
-    result.assert_text_contains("Conversation interrupted")
-    result.assert_no_clear_screen()
+    with result.write_artifacts_on_failure_from_env(basename="native-loop-running-steer-escape"):
+        result.assert_exit_code(0)
+        assert prompts == ["go", "change"]
+        assert steers == [("queue", "change")]
+        result.assert_text_contains("› go")
+        result.assert_text_contains("› change")
+        result.assert_text_contains("fresh change")
+        result.assert_text_contains("Conversation interrupted")
+        result.assert_no_clear_screen()
 
 
 def test_native_tui_loop_playback_writes_artifacts_for_manual_inspection(tmp_path) -> None:
@@ -362,17 +396,18 @@ def test_native_tui_loop_scenario_drives_escape_pending_steer_flow() -> None:
         .run(handle_prompt=handle_prompt, handle_steer=handle_steer)
     )
 
-    result.assert_exit_code(0)
-    result.assert_text_contains("› old")
-    result.assert_text_contains("› fresh")
-    result.assert_text_contains("fresh response")
-    result.assert_text_not_contains("Request cancelled")
-    result.assert_no_clear_screen()
-    result.assert_idle()
-    result.assert_pending_steers()
-    result.assert_composer_text("")
-    assert prompts == ["old", "fresh"]
-    assert steers == ["fresh"]
+    with result.write_artifacts_on_failure_from_env(basename="native-loop-escape-pending-steer"):
+        result.assert_exit_code(0)
+        result.assert_text_contains("› old")
+        result.assert_text_contains("› fresh")
+        result.assert_text_contains("fresh response")
+        result.assert_text_not_contains("Request cancelled")
+        result.assert_no_clear_screen()
+        result.assert_idle()
+        result.assert_pending_steers()
+        result.assert_composer_text("")
+        assert prompts == ["old", "fresh"]
+        assert steers == ["fresh"]
 
 
 def test_native_tui_loop_scenario_keeps_pending_steer_fifo_on_escape() -> None:
@@ -404,10 +439,11 @@ def test_native_tui_loop_scenario_keeps_pending_steer_fifo_on_escape() -> None:
         .run(handle_prompt=handle_prompt, handle_steer=handle_steer)
     )
 
-    result.assert_exit_code(0)
-    assert steers == ["running steer"]
-    assert prompts == ["prequeued"]
-    result.assert_pending_steers("running steer")
+    with result.write_artifacts_on_failure_from_env(basename="native-loop-escape-pending-fifo"):
+        result.assert_exit_code(0)
+        assert steers == ["running steer"]
+        assert prompts == ["prequeued"]
+        result.assert_pending_steers("running steer")
 
 
 def test_native_tui_loop_scenario_preserves_composer_draft_when_escape_runs_pending_steer() -> None:
@@ -432,7 +468,8 @@ def test_native_tui_loop_scenario_preserves_composer_draft_when_escape_runs_pend
         .run(handle_prompt=handle_prompt)
     )
 
-    result.assert_exit_code(0)
-    assert prompts == ["queued"]
-    result.assert_composer_text("draft")
-    result.assert_pending_steers()
+    with result.write_artifacts_on_failure_from_env(basename="native-loop-escape-preserves-draft"):
+        result.assert_exit_code(0)
+        assert prompts == ["queued"]
+        result.assert_composer_text("draft")
+        result.assert_pending_steers()

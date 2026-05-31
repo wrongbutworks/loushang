@@ -391,7 +391,7 @@ class PlaybackFrameBudget:
                 skip_first=skip_first,
             )
         if self.require_synchronized:
-            result.assert_synchronized_frames(skip_first=skip_first)
+            _assert_synchronized_or_noop_frames(result, skip_first=skip_first)
 
 
 @dataclass(slots=True)
@@ -474,6 +474,27 @@ def playback_artifacts_directory_from_env(env: Mapping[str, str] | None = None) 
     if not raw_path:
         return None
     return Path(raw_path).expanduser()
+
+
+def _assert_synchronized_or_noop_frames(result: PlaybackResult, *, skip_first: bool = False) -> None:
+    steps = result.steps[1:] if skip_first else result.steps
+    for step in steps:
+        if step.frame is None:
+            if step.flush_error is not None:
+                continue
+            raise AssertionError(f"step {step.index} did not record a terminal frame")
+        if step.frame.synchronized or _is_noop_frame(step):
+            continue
+        raise AssertionError(f"step {step.index} was not synchronized")
+
+
+def _is_noop_frame(step: PlaybackStep) -> bool:
+    return (
+        not step.diagnostics.operations
+        and step.frame is not None
+        and step.frame.serialized_output == ""
+        and step.diagnostics.operation_class == "noop"
+    )
 
 
 def _event_payload(event: PlaybackEvent) -> dict[str, Any]:
