@@ -8,6 +8,9 @@ from native_tui_playback import (
     NativeTuiScenario,
 )
 
+from loushang.coding.ui.perf_probe import build_synthetic_long_transcript_records
+from loushang.tui import SelectionSurface, SelectItem
+
 
 def test_native_tui_scenario_renders_composer_input_without_screen_clear() -> None:
     scenario = NativeTuiScenario(width=80, height=18)
@@ -62,6 +65,54 @@ def test_native_tui_input_scenario_captures_prompt_submission_without_screen_cle
     result.assert_cursor_matches_diagnostics()
 
 
+def test_native_tui_input_scenario_applies_tab_completion_without_screen_clear() -> None:
+    result = (
+        NativeTuiInputScenario(width=80, height=12)
+        .with_completion_items("/model", "/models")
+        .type_text("/mod")
+        .tab()
+        .run()
+    )
+
+    result.assert_composer_text("/model ")
+    result.assert_visible_contains("› /model")
+    result.assert_no_clear_screen()
+    result.assert_cursor_matches_diagnostics()
+
+
+def test_native_tui_input_scenario_captures_local_command_without_prompt_echo() -> None:
+    result = (
+        NativeTuiInputScenario(width=80, height=12)
+        .with_local_commands("/status")
+        .type_text("/status")
+        .enter()
+        .run()
+    )
+
+    result.assert_local_texts("/status")
+    result.assert_prompt_texts()
+    result.assert_composer_text("")
+    result.assert_visible_not_contains("› /status")
+    result.assert_no_clear_screen()
+    result.assert_cursor_matches_diagnostics()
+
+
+def test_native_tui_input_scenario_routes_active_surface_before_composer() -> None:
+    result = (
+        NativeTuiInputScenario(width=80, height=12)
+        .with_active_surface(SelectionSurface([SelectItem("Choose me", value="chosen")]))
+        .with_composer_text("draft")
+        .enter()
+        .run()
+    )
+
+    result.assert_surface_intents(("select", "chosen"))
+    result.assert_composer_text("draft")
+    result.assert_visible_contains("Choose me")
+    result.assert_no_clear_screen()
+    result.assert_cursor_matches_diagnostics()
+
+
 def test_native_tui_input_scenario_captures_running_steer_without_screen_clear() -> None:
     result = (
         NativeTuiInputScenario(width=80, height=12)
@@ -105,6 +156,21 @@ def test_native_tui_input_scenario_idle_escape_pops_pending_steer() -> None:
     result.assert_visible_not_contains("Messages to be submitted after next tool call")
     result.assert_no_clear_screen()
     result.assert_cursor_matches_diagnostics()
+
+
+def test_native_tui_input_scenario_echoes_input_after_long_transcript_without_repaint() -> None:
+    result = (
+        NativeTuiInputScenario(width=100, height=18)
+        .with_records(build_synthetic_long_transcript_records(turns=40, tail_tool_output_lines=300))
+        .render()
+        .type_text("fresh input")
+        .run()
+    )
+
+    result.assert_composer_text("fresh input")
+    result.assert_visible_contains("› fresh input")
+    result.assert_no_clear_screen()
+    result.assert_last_operation_class_not_in("first_render", "baseline_repaint", "recovery_repaint")
 
 
 def test_native_tui_loop_playback_drives_running_steer_then_escape() -> None:

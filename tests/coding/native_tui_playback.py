@@ -12,6 +12,8 @@ from loushang.coding.ui.native_app import NativeCodingTuiApp
 from loushang.coding.ui.native_input import NativeInputResult, NativeInputRouter
 from loushang.coding.ui.native_loop import run_native_coding_tui
 from loushang.tui import (
+    CompletionItem,
+    CompletionProvider,
     FakeTerminalPort,
     InputReader,
     PlaybackEvent,
@@ -24,6 +26,7 @@ from loushang.tui import (
     TuiRuntime,
     strip_control_sequences,
 )
+from loushang.tui.transcript import DisplayRecord
 
 NativeTuiHandler = Callable[..., Awaitable[int | None] | int | None]
 NativeTuiAbortHandler = Callable[[], Awaitable[object] | object]
@@ -164,6 +167,16 @@ class NativeTuiInputPlaybackResult:
     def assert_prompt_texts(self, *expected: str) -> None:
         assert [result.prompt_text for result in self.input_results if result.prompt_text is not None] == list(expected)
 
+    def assert_local_texts(self, *expected: str) -> None:
+        assert [result.local_text for result in self.input_results if result.local_text is not None] == list(expected)
+
+    def assert_surface_intents(self, *expected: tuple[str, str]) -> None:
+        assert [
+            (result.surface_intent.kind, result.surface_intent.text)
+            for result in self.input_results
+            if result.surface_intent is not None
+        ] == list(expected)
+
     def assert_steer_texts(self, *expected: str) -> None:
         assert [result.steer_text for result in self.input_results if result.steer_text is not None] == list(expected)
 
@@ -172,6 +185,10 @@ class NativeTuiInputPlaybackResult:
 
     def assert_pending_steers(self, *expected: str) -> None:
         assert self.app.state.pending_steers == list(expected)
+
+    def assert_last_operation_class_not_in(self, *unexpected: str) -> None:
+        assert self.steps
+        assert self.steps[-1].diagnostics.operation_class not in unexpected
 
     def assert_no_clear_screen(self) -> None:
         clear_screen = TerminalOperation.clear_screen()
@@ -197,6 +214,13 @@ class NativeTuiInputPlaybackResult:
             assert step.frame is not None
             assert step.frame.screen_after.cursor_row == step.diagnostics.hardware_cursor_row
             assert step.frame.screen_after.cursor_column == step.diagnostics.hardware_cursor_column
+
+    def assert_last_cursor_matches_diagnostics(self) -> None:
+        assert self.steps
+        step = self.steps[-1]
+        assert step.frame is not None
+        assert step.frame.screen_after.cursor_row == step.diagnostics.hardware_cursor_row
+        assert step.frame.screen_after.cursor_column == step.diagnostics.hardware_cursor_column
 
 
 @dataclass(slots=True)
@@ -231,12 +255,47 @@ class NativeTuiInputScenario:
             self.app.queue_steer(text)
         return self
 
+    def with_active_surface(self, surface: object) -> NativeTuiInputScenario:
+        self.app.active_surface = surface
+        return self
+
+    def with_composer_text(self, text: str) -> NativeTuiInputScenario:
+        self.app.composer.set_text(text)
+        return self
+
+    def with_records(self, records: tuple[DisplayRecord, ...] | list[DisplayRecord]) -> NativeTuiInputScenario:
+        self.app.state.records.extend(records)
+        return self
+
+    def with_completion_items(self, *values: str) -> NativeTuiInputScenario:
+        self.app.composer.set_completion_provider(
+            CompletionProvider(tuple(CompletionItem(value=value) for value in values))
+        )
+        return self
+
+    def with_local_commands(self, *commands: str) -> NativeTuiInputScenario:
+        command_set = set(commands)
+        self.playback = NativeTuiInputPlayback(
+            self.app,
+            columns=self.width,
+            rows=self.height,
+            is_local_command=lambda text: text in command_set,
+        )
+        return self
+
     def type_text(self, text: str) -> NativeTuiInputScenario:
         self._events.append(PlaybackEvent.input(text))
         return self
 
+    def render(self) -> NativeTuiInputScenario:
+        self._events.append(PlaybackEvent("render"))
+        return self
+
     def enter(self) -> NativeTuiInputScenario:
         return self.key("\r")
+
+    def tab(self) -> NativeTuiInputScenario:
+        return self.key("\t")
 
     def escape(self) -> NativeTuiInputScenario:
         return self.key("\x1b")
