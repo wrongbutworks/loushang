@@ -9,6 +9,7 @@ from loushang.tui import (
     FakeTerminalPort,
     MarkdownRenderer,
     PlaybackEvent,
+    PlaybackFrameBudget,
     PlaybackHarness,
     PlaybackResult,
     PlaybackScenario,
@@ -449,6 +450,74 @@ def test_playback_result_asserts_synchronized_frames() -> None:
 
     with pytest.raises(AssertionError, match="step 1 was not synchronized"):
         result.assert_synchronized_frames()
+
+
+def test_playback_frame_budget_asserts_incremental_render_contract() -> None:
+    frames = iter(
+        (
+            (
+                TerminalOperation.begin_synchronized_update(),
+                TerminalOperation.write("hello"),
+                TerminalOperation.end_synchronized_update(),
+            ),
+            (
+                TerminalOperation.begin_synchronized_update(),
+                TerminalOperation.write("!"),
+                TerminalOperation.end_synchronized_update(),
+            ),
+        )
+    )
+    operation_classes = iter(("first_render", "changed_range_update"))
+
+    def render(_event: PlaybackEvent, _size: TerminalSize, _previous: RenderDiagnostics | None) -> RenderDiagnostics:
+        return RenderDiagnostics(
+            current_logical_lines=("frame",),
+            operation_class=next(operation_classes),
+            operations=next(frames),
+        )
+
+    harness = PlaybackHarness(render=render, port=FakeTerminalPort(size=TerminalSize(columns=20, rows=5)))
+    result = PlaybackResult(steps=harness.play([PlaybackEvent("render"), PlaybackEvent.input("!")]), port=harness.port)
+    budget = PlaybackFrameBudget(
+        disallowed_operation_classes=("baseline_repaint", "recovery_repaint"),
+        max_operations=3,
+        max_serialized_output_bytes=32,
+        max_changed_visible_lines=1,
+        require_synchronized=True,
+    )
+
+    budget.assert_result(result, skip_first=True)
+
+
+def test_playback_frame_budget_reports_operation_count_violation() -> None:
+    frames = iter(
+        (
+            (
+                TerminalOperation.begin_synchronized_update(),
+                TerminalOperation.write("hello"),
+                TerminalOperation.end_synchronized_update(),
+            ),
+            (
+                TerminalOperation.begin_synchronized_update(),
+                TerminalOperation.write("too"),
+                TerminalOperation.write("many"),
+                TerminalOperation.end_synchronized_update(),
+            ),
+        )
+    )
+
+    def render(_event: PlaybackEvent, _size: TerminalSize, _previous: RenderDiagnostics | None) -> RenderDiagnostics:
+        return RenderDiagnostics(
+            current_logical_lines=("frame",),
+            operation_class="changed_range_update",
+            operations=next(frames),
+        )
+
+    harness = PlaybackHarness(render=render, port=FakeTerminalPort(size=TerminalSize(columns=20, rows=5)))
+    result = PlaybackResult(steps=harness.play([PlaybackEvent("render"), PlaybackEvent.input("!")]), port=harness.port)
+
+    with pytest.raises(AssertionError, match="step 1 emitted 4 operations"):
+        PlaybackFrameBudget(max_operations=3).assert_result(result, skip_first=True)
 
 
 def test_playback_harness_failed_flush_does_not_advance_successful_diagnostics() -> None:

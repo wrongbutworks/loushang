@@ -367,6 +367,33 @@ class PlaybackResult:
         return row
 
 
+@dataclass(frozen=True, slots=True)
+class PlaybackFrameBudget:
+    disallowed_operation_classes: tuple[str, ...] = ()
+    max_operations: int | None = None
+    max_serialized_output_bytes: int | None = None
+    max_changed_visible_lines: int | None = None
+    require_synchronized: bool = False
+
+    def assert_result(self, result: PlaybackResult, *, skip_first: bool = False) -> None:
+        if self.disallowed_operation_classes:
+            result.assert_operation_classes_not_in(*self.disallowed_operation_classes, skip_first=skip_first)
+        if self.max_operations is not None:
+            result.assert_max_operations_per_step(self.max_operations, skip_first=skip_first)
+        if self.max_serialized_output_bytes is not None:
+            result.assert_max_serialized_output_bytes_per_step(
+                self.max_serialized_output_bytes,
+                skip_first=skip_first,
+            )
+        if self.max_changed_visible_lines is not None:
+            result.assert_max_changed_visible_lines_per_step(
+                self.max_changed_visible_lines,
+                skip_first=skip_first,
+            )
+        if self.require_synchronized:
+            result.assert_synchronized_frames(skip_first=skip_first)
+
+
 @dataclass(slots=True)
 class PlaybackScenario:
     _events: list[PlaybackEvent] = field(default_factory=list, init=False)

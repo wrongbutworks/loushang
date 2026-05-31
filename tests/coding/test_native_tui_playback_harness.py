@@ -11,7 +11,12 @@ from loushang.coding.ui.playback import (
     NativeTuiLoopScenario,
     NativeTuiScenario,
 )
-from loushang.tui import PLAYBACK_ARTIFACTS_ENV, SelectionSurface, SelectItem
+from loushang.tui import (
+    PLAYBACK_ARTIFACTS_ENV,
+    PlaybackFrameBudget,
+    SelectionSurface,
+    SelectItem,
+)
 
 
 def test_native_tui_scenario_renders_composer_input_without_screen_clear() -> None:
@@ -207,12 +212,14 @@ def test_native_tui_input_scenario_echoes_input_after_long_transcript_without_re
     result.assert_composer_text("fresh input")
     result.assert_visible_contains("› fresh input")
     result.assert_no_clear_screen()
-    result.assert_operation_classes_not_in("baseline_repaint", "recovery_repaint", skip_first=True)
-    result.assert_max_operations_per_step(12, skip_first=True)
-    result.assert_max_serialized_output_bytes_per_step(2_000, skip_first=True)
-    result.assert_max_changed_visible_lines_per_step(3, skip_first=True)
+    PlaybackFrameBudget(
+        disallowed_operation_classes=("baseline_repaint", "recovery_repaint"),
+        max_operations=12,
+        max_serialized_output_bytes=2_000,
+        max_changed_visible_lines=3,
+        require_synchronized=True,
+    ).assert_result(result, skip_first=True)
     result.assert_screen_anchor_stable("›", occurrence="last")
-    result.assert_synchronized_frames()
 
 
 def test_native_tui_loop_playback_drives_running_steer_then_escape() -> None:
