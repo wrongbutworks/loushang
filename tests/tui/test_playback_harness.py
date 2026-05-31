@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import json
+
 from loushang.tui import (
     FakeTerminalPort,
     MarkdownRenderer,
@@ -129,6 +131,57 @@ def test_playback_result_asserts_visible_text_and_flush_policy() -> None:
     result.assert_visible_contains("hello")
     result.assert_visible_not_contains("missing")
     result.assert_no_clear_screen()
+
+
+def test_playback_result_writes_jsonl_for_manual_inspection(tmp_path) -> None:
+    harness = PlaybackHarness(
+        render=lambda _event, _size, _previous: RenderDiagnostics(
+            current_logical_lines=("hello",),
+            operation_class="changed_range_update",
+            hardware_cursor_row=0,
+            hardware_cursor_column=5,
+            operations=(TerminalOperation.write("hello"),),
+        ),
+        port=FakeTerminalPort(size=TerminalSize(columns=20, rows=5)),
+    )
+    result = PlaybackResult(steps=harness.play([PlaybackEvent.input("hello")]), port=harness.port)
+    path = tmp_path / "playback.jsonl"
+
+    result.write_jsonl(path)
+
+    rows = [json.loads(line) for line in path.read_text(encoding="utf-8").splitlines()]
+    assert rows == [
+        {
+            "index": 0,
+            "event": {"kind": "input", "payload": "hello"},
+            "size": {"columns": 20, "rows": 5},
+            "operation_class": "changed_range_update",
+            "changed_line_range": None,
+            "hardware_cursor": {"row": 0, "column": 5},
+            "flush_succeeded": True,
+            "flush_error": None,
+            "operations": ["write"],
+            "visible_lines": ["hello", "", "", "", ""],
+        }
+    ]
+    assert "serialized_output" not in rows[0]
+
+
+def test_playback_result_can_include_raw_frame_output_in_jsonl(tmp_path) -> None:
+    harness = PlaybackHarness(
+        render=lambda _event, _size, _previous: RenderDiagnostics(
+            current_logical_lines=("hello",),
+            operations=(TerminalOperation.write("hello"),),
+        ),
+        port=FakeTerminalPort(size=TerminalSize(columns=20, rows=5)),
+    )
+    result = PlaybackResult(steps=harness.play([PlaybackEvent("render")]), port=harness.port)
+    path = tmp_path / "playback.jsonl"
+
+    result.write_jsonl(path, include_frames=True)
+
+    row = json.loads(path.read_text(encoding="utf-8"))
+    assert row["serialized_output"] == "hello"
 
 
 def test_playback_harness_failed_flush_does_not_advance_successful_diagnostics() -> None:

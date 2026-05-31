@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import json
 
 from loushang.coding.ui.perf_probe import build_synthetic_long_transcript_records
 from loushang.coding.ui.playback import (
@@ -62,6 +63,41 @@ def test_native_tui_input_scenario_captures_prompt_submission_without_screen_cle
     result.assert_visible_contains("› hello")
     result.assert_no_clear_screen()
     result.assert_cursor_matches_diagnostics()
+
+
+def test_native_tui_input_scenario_writes_coding_jsonl_for_manual_inspection(tmp_path) -> None:
+    result = (
+        NativeTuiInputScenario(width=80, height=12)
+        .with_running_prompt("old")
+        .type_text("change")
+        .enter()
+        .run()
+    )
+    path = tmp_path / "native-playback.jsonl"
+
+    result.write_jsonl(path)
+
+    rows = [json.loads(line) for line in path.read_text(encoding="utf-8").splitlines()]
+    assert rows[0]["coding"]["composer_text"] == "change"
+    assert rows[0]["coding"]["pending_steers"] == []
+    assert rows[-1]["coding"] == {
+        "composer_text": "",
+        "running": True,
+        "pending_steers": ["change"],
+        "pending_followups": [],
+        "input_results": [
+            {
+                "prompt_text": None,
+                "local_text": None,
+                "steer_text": "change",
+                "followup_text": None,
+                "surface_intent": None,
+                "abort_requested": False,
+                "exit_code": None,
+                "render_requested": True,
+            }
+        ],
+    }
 
 
 def test_native_tui_input_scenario_applies_tab_completion_without_screen_clear() -> None:

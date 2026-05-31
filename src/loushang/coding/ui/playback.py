@@ -7,6 +7,7 @@ import time
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
 from io import StringIO
+from typing import Any
 
 from loushang.coding.ui.native_app import NativeCodingTuiApp
 from loushang.coding.ui.native_input import NativeInputResult, NativeInputRouter
@@ -104,6 +105,8 @@ class NativeTuiInputPlayback:
         self.app = app
         self.reader = InputReader()
         self.input_results: list[NativeInputResult] = []
+        self.step_input_results: list[tuple[NativeInputResult, ...]] = []
+        self.step_coding_states: list[dict[str, Any]] = []
         self.router = NativeInputRouter(
             app,
             should_exit=should_exit or (lambda _text: False),
@@ -128,6 +131,7 @@ class NativeTuiInputPlayback:
         size: TerminalSize,
         _previous: RenderDiagnostics | None,
     ) -> RenderDiagnostics:
+        step_input_results: list[NativeInputResult] = []
         if event.kind == "input":
             if not isinstance(event.payload, str):
                 raise TypeError("input playback event payload must be str")
@@ -136,7 +140,11 @@ class NativeTuiInputPlayback:
             if self.reader.has_pending:
                 input_events.extend(self.reader.flush_pending_batch().app_events)
             for input_event in input_events:
-                self.input_results.append(self.router.handle(input_event))
+                result = self.router.handle(input_event)
+                self.input_results.append(result)
+                step_input_results.append(result)
+        self.step_input_results.append(tuple(step_input_results))
+        self.step_coding_states.append(_coding_state_payload(self.app))
         diagnostics = self.render_loop.plan(size)
         self.render_loop.commit(diagnostics, size=size)
         return diagnostics
@@ -145,6 +153,8 @@ class NativeTuiInputPlayback:
 @dataclass(frozen=True, slots=True)
 class NativeTuiInputPlaybackResult(PlaybackResult):
     input_results: tuple[NativeInputResult, ...]
+    step_input_results: tuple[tuple[NativeInputResult, ...], ...]
+    step_coding_states: tuple[dict[str, Any], ...]
     app: NativeCodingTuiApp
 
     def assert_composer_text(self, expected: str) -> None:
@@ -171,6 +181,20 @@ class NativeTuiInputPlaybackResult(PlaybackResult):
 
     def assert_pending_steers(self, *expected: str) -> None:
         assert self.app.state.pending_steers == list(expected)
+
+    def _jsonl_row(self, step: PlaybackStep, *, include_frames: bool) -> dict[str, Any]:
+        row = PlaybackResult._jsonl_row(self, step, include_frames=include_frames)
+        step_input_results = self.step_input_results[step.index] if step.index < len(self.step_input_results) else ()
+        coding_state = (
+            self.step_coding_states[step.index]
+            if step.index < len(self.step_coding_states)
+            else _coding_state_payload(self.app)
+        )
+        row["coding"] = {
+            **coding_state,
+            "input_results": [_input_result_payload(result) for result in step_input_results],
+        }
+        return row
 
 
 @dataclass(slots=True)
@@ -237,6 +261,8 @@ class NativeTuiInputScenario(PlaybackScenario):
             steps=self.playback.play(self.events),
             port=self.playback.port,
             input_results=tuple(self.playback.input_results),
+            step_input_results=tuple(self.playback.step_input_results),
+            step_coding_states=tuple(self.playback.step_coding_states),
             app=self.app,
         )
 
@@ -438,3 +464,31 @@ class _TimedTtyChunkInput:
 
     def read(self, _size: int) -> str:
         return ""
+
+
+def _input_result_payload(result: NativeInputResult) -> dict[str, Any]:
+    return {
+        "prompt_text": result.prompt_text,
+        "local_text": result.local_text,
+        "steer_text": result.steer_text,
+        "followup_text": result.followup_text,
+        "surface_intent": _surface_intent_payload(result),
+        "abort_requested": result.abort_requested,
+        "exit_code": result.exit_code,
+        "render_requested": result.render_requested,
+    }
+
+
+def _surface_intent_payload(result: NativeInputResult) -> dict[str, str] | None:
+    if result.surface_intent is None:
+        return None
+    return {"kind": result.surface_intent.kind, "text": result.surface_intent.text}
+
+
+def _coding_state_payload(app: NativeCodingTuiApp) -> dict[str, Any]:
+    return {
+        "composer_text": app.composer.value,
+        "running": app.state.running,
+        "pending_steers": list(app.state.pending_steers),
+        "pending_followups": list(app.state.pending_followups),
+    }

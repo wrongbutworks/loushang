@@ -1,7 +1,9 @@
 from __future__ import annotations
 
+import json
 from collections.abc import Callable, Iterable
 from dataclasses import dataclass, field, replace
+from pathlib import Path
 from typing import Any, Self
 
 from loushang.tui.cell_width import strip_control_sequences
@@ -182,6 +184,36 @@ class PlaybackResult:
         assert step.frame.screen_after.cursor_row == step.diagnostics.hardware_cursor_row
         assert step.frame.screen_after.cursor_column == step.diagnostics.hardware_cursor_column
 
+    def write_jsonl(self, path: str | Path, *, include_frames: bool = False) -> None:
+        output_path = Path(path)
+        output_path.parent.mkdir(parents=True, exist_ok=True)
+        with output_path.open("w", encoding="utf-8") as stream:
+            for step in self.steps:
+                stream.write(json.dumps(self._jsonl_row(step, include_frames=include_frames), ensure_ascii=False))
+                stream.write("\n")
+
+    def _jsonl_row(self, step: PlaybackStep, *, include_frames: bool) -> dict[str, Any]:
+        row = {
+            "index": step.index,
+            "event": _event_payload(step.event),
+            "size": {"columns": step.size.columns, "rows": step.size.rows},
+            "operation_class": step.diagnostics.operation_class,
+            "changed_line_range": list(step.diagnostics.changed_line_range)
+            if step.diagnostics.changed_line_range is not None
+            else None,
+            "hardware_cursor": {
+                "row": step.diagnostics.hardware_cursor_row,
+                "column": step.diagnostics.hardware_cursor_column,
+            },
+            "flush_succeeded": step.flush_succeeded,
+            "flush_error": step.flush_error,
+            "operations": [operation.kind for operation in step.diagnostics.operations],
+            "visible_lines": list(step.frame.screen_after.visible_lines if step.frame is not None else self.port.screen.visible_lines),
+        }
+        if include_frames:
+            row["serialized_output"] = step.frame.serialized_output if step.frame is not None else None
+        return row
+
 
 @dataclass(slots=True)
 class PlaybackScenario:
@@ -225,3 +257,10 @@ def _normalize_diagnostics(diagnostics: RenderDiagnostics) -> RenderDiagnostics:
     if diagnostics.clear_scrollback_emitted == clear_scrollback_emitted:
         return diagnostics
     return replace(diagnostics, clear_scrollback_emitted=clear_scrollback_emitted)
+
+
+def _event_payload(event: PlaybackEvent) -> dict[str, Any]:
+    payload = event.payload
+    if isinstance(payload, TerminalSize):
+        payload = {"columns": payload.columns, "rows": payload.rows}
+    return {"kind": event.kind, "payload": payload}
