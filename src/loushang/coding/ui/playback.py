@@ -1,12 +1,14 @@
 from __future__ import annotations
 
 import asyncio
+import json
 import os
 import threading
 import time
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
 from io import StringIO
+from pathlib import Path
 from typing import Any
 
 from loushang.coding.ui.native_app import NativeCodingTuiApp
@@ -33,6 +35,13 @@ from loushang.tui.transcript import DisplayRecord
 
 NativeTuiHandler = Callable[..., Awaitable[int | None] | int | None]
 NativeTuiAbortHandler = Callable[[], Awaitable[object] | object]
+
+
+@dataclass(frozen=True, slots=True)
+class NativeTuiLoopArtifacts:
+    raw: Path
+    text: Path
+    state: Path
 
 
 @dataclass(slots=True)
@@ -304,6 +313,28 @@ class NativeTuiLoopPlaybackResult:
     def assert_no_clear_screen(self) -> None:
         assert TerminalOperation.clear_screen().serialize() not in self.output
         assert TerminalOperation.clear_scrollback().serialize() not in self.output
+
+    def write_artifacts(
+        self,
+        directory: str | Path,
+        *,
+        basename: str = "native-loop",
+    ) -> NativeTuiLoopArtifacts:
+        output_dir = Path(directory)
+        output_dir.mkdir(parents=True, exist_ok=True)
+        raw_path = output_dir / f"{basename}-raw.txt"
+        text_path = output_dir / f"{basename}-text.txt"
+        state_path = output_dir / f"{basename}-state.json"
+        raw_path.write_text(self.output, encoding="utf-8")
+        text_path.write_text(self.text, encoding="utf-8")
+        state_path.write_text(json.dumps(self._state_payload(), ensure_ascii=False, indent=2), encoding="utf-8")
+        return NativeTuiLoopArtifacts(raw=raw_path, text=text_path, state=state_path)
+
+    def _state_payload(self) -> dict[str, Any]:
+        return {
+            "exit_code": self.exit_code,
+            **_coding_state_payload(self.app),
+        }
 
 
 @dataclass(slots=True)

@@ -254,6 +254,30 @@ def test_native_tui_loop_playback_drives_running_steer_then_escape() -> None:
     result.assert_no_clear_screen()
 
 
+def test_native_tui_loop_playback_writes_artifacts_for_manual_inspection(tmp_path) -> None:
+    prompts: list[str] = []
+
+    async def handle_prompt(text: str) -> None:
+        prompts.append(text)
+
+    result = NativeTuiLoopScenario().type_text("hello").enter().end_input().run(handle_prompt=handle_prompt)
+
+    artifacts = result.write_artifacts(tmp_path / "loop-artifacts", basename="basic-loop")
+
+    assert prompts == ["hello"]
+    assert artifacts.raw == tmp_path / "loop-artifacts" / "basic-loop-raw.txt"
+    assert artifacts.text == tmp_path / "loop-artifacts" / "basic-loop-text.txt"
+    assert artifacts.state == tmp_path / "loop-artifacts" / "basic-loop-state.json"
+    assert "› hello" in artifacts.text.read_text(encoding="utf-8")
+    assert json.loads(artifacts.state.read_text(encoding="utf-8")) == {
+        "exit_code": 0,
+        "composer_text": "",
+        "running": False,
+        "pending_steers": [],
+        "pending_followups": [],
+    }
+
+
 def test_native_tui_loop_scenario_drives_escape_pending_steer_flow() -> None:
     scenario = NativeTuiLoopScenario()
     prompts: list[str] = []
