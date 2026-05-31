@@ -20,6 +20,12 @@ def test_native_tui_playback_runner_lists_default_scenarios(capsys) -> None:
     assert "completion-tab" in captured.out
     assert "long-transcript-input" in captured.out
     assert "escape-pending-steer" in captured.out
+    assert "running-steer-queued" in captured.out
+    assert "running-escape-keeps-queued-steer" in captured.out
+    assert "idle-escape-pops-pending-steer" in captured.out
+    assert "escape-pending-steer-fifo" in captured.out
+    assert "escape-pending-steer-preserves-draft" in captured.out
+    assert "running-follow-up-queued" in captured.out
 
 
 def test_native_tui_playback_runner_runs_named_scenario(capsys) -> None:
@@ -29,6 +35,15 @@ def test_native_tui_playback_runner_runs_named_scenario(capsys) -> None:
     assert exit_code == 0
     assert "PASS completion-tab" in captured.out
     assert "long-transcript-input" not in captured.out
+
+
+def test_native_tui_playback_runner_runs_lifecycle_scenario(capsys) -> None:
+    exit_code = run_playback_cli(["running-steer-queued"])
+
+    captured = capsys.readouterr()
+    assert exit_code == 0
+    assert "PASS running-steer-queued" in captured.out
+    assert "PASS completion-tab" not in captured.out
 
 
 def test_native_tui_playback_runner_writes_artifacts(tmp_path, capsys) -> None:
@@ -50,8 +65,11 @@ def test_native_tui_playback_runner_writes_artifacts_for_all_default_scenarios(t
     assert exit_code == 0
     assert "PASS completion-tab" in captured.out
     assert "PASS escape-pending-steer" in captured.out
+    assert "PASS running-follow-up-queued" in captured.out
     assert (tmp_path / "completion-tab.jsonl").exists()
     assert (tmp_path / "escape-pending-steer-text.txt").exists()
+    assert (tmp_path / "running-steer-queued.jsonl").exists()
+    assert (tmp_path / "escape-pending-steer-fifo-text.txt").exists()
 
 
 def test_native_tui_playback_runner_reports_unknown_scenario(capsys) -> None:
