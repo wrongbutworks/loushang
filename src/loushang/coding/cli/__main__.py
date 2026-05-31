@@ -41,9 +41,9 @@ from loushang.coding.platform.output_guard import stdout_guard
 from loushang.coding.plugin import PluginManager
 from loushang.coding.plugin.lifecycle import is_remote_plugin_source
 from loushang.coding.policy import (
-    InteractiveApprovalResolver,
-    HeadlessApprovalResolver,
     ApprovalResolver,
+    HeadlessApprovalResolver,
+    InteractiveApprovalResolver,
     PackageSecurityPolicy,
     PolicyEngine,
 )
@@ -370,13 +370,14 @@ async def run_cli(
         if list_models_result is not None:
             return list_models_result
 
+        effective_tui = _effective_tui(args, stdin=stdin, stdout=stdout)
         with coding_observability_context(
             args=args,
             session=session,
             cwd=project_root,
-            mode=_observability_mode(args),
+            mode=_observability_mode(args, effective_tui=effective_tui),
         ):
-            if args.tui:
+            if effective_tui:
                 return await tui_runner(
                     runtime=runtime,
                     session=session,
@@ -615,8 +616,52 @@ def _workflow_output_mode(args: CliArgs) -> str:
     return "json" if args.mode == "json" else "text"
 
 
-def _observability_mode(args: CliArgs) -> str:
+def _effective_tui(args: CliArgs, *, stdin: TextIO, stdout: TextIO) -> bool:
     if args.tui:
+        return True
+    if args.no_tui:
+        return False
+    if not (_stream_is_tty(stdin) and _stream_is_tty(stdout)):
+        return False
+    if args.mode != "text":
+        return False
+    if args.prompt is not None or args.prompt_steps is not None:
+        return False
+    if args.messages or args.file_args or args.message_prompts:
+        return False
+    return not _has_command_style_operation(args)
+
+
+def _has_command_style_operation(args: CliArgs) -> bool:
+    return bool(
+        args.list_sessions
+        or args.list_models is not False
+        or args.list_commands
+        or args.list_diagnostics
+        or args.list_skills
+        or args.list_plugins
+        or args.list_packages
+        or args.export is not None
+        or args.diag_export
+        or args.command is not None
+        or args.enable_skills
+        or args.disable_skills
+        or args.add_plugin_sources
+        or args.remove_plugin_sources
+        or args.enable_plugins
+        or args.disable_plugins
+        or args.install_packages
+        or args.uninstall_packages
+        or args.materialize_packages
+        or args.update_packages
+        or args.remove_packages
+        or args.update_all_packages
+        or args.check_package_updates
+    )
+
+
+def _observability_mode(args: CliArgs, *, effective_tui: bool) -> str:
+    if effective_tui:
         return "tui"
     if args.prompt is not None:
         return "prompt"
@@ -1211,7 +1256,7 @@ def _detect_supported_image_mime_type(path: Path, payload: bytes) -> str | None:
 
 
 def _read_stdin_prompt(stdin: TextIO) -> str | None:
-    if _stdin_is_tty(stdin):
+    if _stream_is_tty(stdin):
         return None
     content = stdin.read()
     if not isinstance(content, str):
@@ -1220,8 +1265,8 @@ def _read_stdin_prompt(stdin: TextIO) -> str | None:
     return stripped or None
 
 
-def _stdin_is_tty(stdin: TextIO) -> bool:
-    isatty = getattr(stdin, "isatty", None)
+def _stream_is_tty(stream: TextIO) -> bool:
+    isatty = getattr(stream, "isatty", None)
     if not callable(isatty):
         return False
     try:

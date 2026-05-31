@@ -26,6 +26,7 @@ _BUILTIN_FLAG_NAMES = frozenset(
         "prompt",
         "prompt-steps",
         "tui",
+        "no-tui",
         "no-session",
         "session",
         "session-name",
@@ -122,6 +123,7 @@ class CliArgs:
     prompt: str | None
     prompt_steps: str | None
     tui: bool
+    no_tui: bool
     continue_: bool
     resume: bool | str
     no_session: bool
@@ -267,6 +269,7 @@ def parse_args(
         prompt=namespace.prompt,
         prompt_steps=namespace.prompt_steps,
         tui=namespace.tui,
+        no_tui=namespace.no_tui,
         continue_=namespace.continue_,
         resume=namespace.resume,
         no_session=namespace.no_session,
@@ -377,6 +380,7 @@ def _build_parser() -> ArgumentParser:
         help="Run a prompt workflow file against a coding session.",
     )
     parser.add_argument("--tui", action="store_true")
+    parser.add_argument("--no-tui", action="store_true")
     parser.add_argument("--no-session", action="store_true")
     parser.add_argument("--session")
     parser.add_argument("--session-name")
