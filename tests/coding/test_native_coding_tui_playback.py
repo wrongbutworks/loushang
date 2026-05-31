@@ -6,8 +6,6 @@ from pathlib import Path
 from types import SimpleNamespace
 from typing import Any
 
-from native_tui_playback import NativeTuiInputPlayback
-
 from loushang.coding.types import ModelSelection
 from loushang.coding.ui.completion import coding_inline_completion_provider
 from loushang.coding.ui.native_app import NativeCodingTuiApp
@@ -20,6 +18,7 @@ from loushang.coding.ui.native_loop import (
     _terminal_runtime_wakeup_ms,
 )
 from loushang.coding.ui.native_surfaces import NativeSurfaceManager
+from loushang.coding.ui.playback import NativeTuiInputPlayback
 from loushang.coding.ui.status_provider import CodingTuiStatusProvider
 from loushang.tui import (
     FakeTerminalPort,

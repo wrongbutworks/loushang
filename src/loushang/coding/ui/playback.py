@@ -18,6 +18,8 @@ from loushang.tui import (
     InputReader,
     PlaybackEvent,
     PlaybackHarness,
+    PlaybackResult,
+    PlaybackScenario,
     PlaybackStep,
     RenderDiagnostics,
     RenderLoop,
@@ -117,7 +119,7 @@ class NativeTuiInputPlayback:
     def port(self) -> FakeTerminalPort:
         return self.harness.port
 
-    def play(self, events: list[PlaybackEvent]) -> tuple[PlaybackStep, ...]:
+    def play(self, events: list[PlaybackEvent] | tuple[PlaybackEvent, ...]) -> tuple[PlaybackStep, ...]:
         return self.harness.play(events)
 
     def _render(
@@ -141,25 +143,9 @@ class NativeTuiInputPlayback:
 
 
 @dataclass(frozen=True, slots=True)
-class NativeTuiInputPlaybackResult:
-    steps: tuple[PlaybackStep, ...]
+class NativeTuiInputPlaybackResult(PlaybackResult):
     input_results: tuple[NativeInputResult, ...]
     app: NativeCodingTuiApp
-    port: FakeTerminalPort
-
-    @property
-    def visible_text(self) -> str:
-        return strip_control_sequences("\n".join(self.port.screen.visible_lines))
-
-    def assert_all_flush_succeeded(self) -> None:
-        failed = [step for step in self.steps if not step.flush_succeeded]
-        assert not failed
-
-    def assert_visible_contains(self, expected: str) -> None:
-        assert expected in self.visible_text
-
-    def assert_visible_not_contains(self, unexpected: str) -> None:
-        assert unexpected not in self.visible_text
 
     def assert_composer_text(self, expected: str) -> None:
         assert self.app.composer.value == expected
@@ -186,45 +172,9 @@ class NativeTuiInputPlaybackResult:
     def assert_pending_steers(self, *expected: str) -> None:
         assert self.app.state.pending_steers == list(expected)
 
-    def assert_last_operation_class_not_in(self, *unexpected: str) -> None:
-        assert self.steps
-        assert self.steps[-1].diagnostics.operation_class not in unexpected
-
-    def assert_no_clear_screen(self) -> None:
-        clear_screen = TerminalOperation.clear_screen()
-        clear_scrollback = TerminalOperation.clear_scrollback()
-        for step in self.steps:
-            assert clear_screen not in step.diagnostics.operations
-            assert clear_scrollback not in step.diagnostics.operations
-            step.assert_no_clear_scrollback()
-            if step.frame is not None:
-                assert clear_screen.serialize() not in step.frame.serialized_output
-                assert clear_scrollback.serialize() not in step.frame.serialized_output
-
-    def assert_no_clear_scrollback(self) -> None:
-        clear_scrollback = TerminalOperation.clear_scrollback()
-        for step in self.steps:
-            assert clear_scrollback not in step.diagnostics.operations
-            step.assert_no_clear_scrollback()
-            if step.frame is not None:
-                assert clear_scrollback.serialize() not in step.frame.serialized_output
-
-    def assert_cursor_matches_diagnostics(self) -> None:
-        for step in self.steps:
-            assert step.frame is not None
-            assert step.frame.screen_after.cursor_row == step.diagnostics.hardware_cursor_row
-            assert step.frame.screen_after.cursor_column == step.diagnostics.hardware_cursor_column
-
-    def assert_last_cursor_matches_diagnostics(self) -> None:
-        assert self.steps
-        step = self.steps[-1]
-        assert step.frame is not None
-        assert step.frame.screen_after.cursor_row == step.diagnostics.hardware_cursor_row
-        assert step.frame.screen_after.cursor_column == step.diagnostics.hardware_cursor_column
-
 
 @dataclass(slots=True)
-class NativeTuiInputScenario:
+class NativeTuiInputScenario(PlaybackScenario):
     width: int = 80
     height: int = 12
     model_label: str = "kimi"
@@ -234,7 +184,6 @@ class NativeTuiInputScenario:
     now: float = 0.0
     app: NativeCodingTuiApp = field(init=False)
     playback: NativeTuiInputPlayback = field(init=False)
-    _events: list[PlaybackEvent] = field(default_factory=list)
 
     def __post_init__(self) -> None:
         self.app = NativeCodingTuiApp(
@@ -283,40 +232,12 @@ class NativeTuiInputScenario:
         )
         return self
 
-    def type_text(self, text: str) -> NativeTuiInputScenario:
-        self._events.append(PlaybackEvent.input(text))
-        return self
-
-    def render(self) -> NativeTuiInputScenario:
-        self._events.append(PlaybackEvent("render"))
-        return self
-
-    def enter(self) -> NativeTuiInputScenario:
-        return self.key("\r")
-
-    def tab(self) -> NativeTuiInputScenario:
-        return self.key("\t")
-
-    def escape(self) -> NativeTuiInputScenario:
-        return self.key("\x1b")
-
-    def ctrl_c(self) -> NativeTuiInputScenario:
-        return self.key("\x03")
-
-    def key(self, raw: str) -> NativeTuiInputScenario:
-        self._events.append(PlaybackEvent.input(raw))
-        return self
-
-    def resize(self, *, width: int, height: int) -> NativeTuiInputScenario:
-        self._events.append(PlaybackEvent.resize(columns=width, rows=height))
-        return self
-
     def run(self) -> NativeTuiInputPlaybackResult:
         return NativeTuiInputPlaybackResult(
-            steps=self.playback.play(self._events),
+            steps=self.playback.play(self.events),
+            port=self.playback.port,
             input_results=tuple(self.playback.input_results),
             app=self.app,
-            port=self.playback.port,
         )
 
 
@@ -481,7 +402,7 @@ class NativeTuiLoopScenario:
 
 
 class _NoTerminalMode:
-    def __enter__(self) -> "_NoTerminalMode":
+    def __enter__(self) -> _NoTerminalMode:
         return self
 
     def __exit__(self, *_args: object) -> bool:

@@ -2,13 +2,12 @@ from __future__ import annotations
 
 import asyncio
 
-from native_tui_playback import (
+from loushang.coding.ui.perf_probe import build_synthetic_long_transcript_records
+from loushang.coding.ui.playback import (
     NativeTuiInputScenario,
     NativeTuiLoopScenario,
     NativeTuiScenario,
 )
-
-from loushang.coding.ui.perf_probe import build_synthetic_long_transcript_records
 from loushang.tui import SelectionSurface, SelectItem
 
 

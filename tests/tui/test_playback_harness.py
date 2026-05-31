@@ -5,6 +5,8 @@ from loushang.tui import (
     MarkdownRenderer,
     PlaybackEvent,
     PlaybackHarness,
+    PlaybackResult,
+    PlaybackScenario,
     RenderConstraints,
     RenderDiagnostics,
     TerminalFrame,
@@ -97,6 +99,36 @@ def test_playback_event_input_carries_raw_terminal_input_chunk() -> None:
 
     assert event.kind == "input"
     assert event.payload == "/model gpt\t"
+
+
+def test_playback_scenario_scripts_common_terminal_events() -> None:
+    scenario = PlaybackScenario().type_text("hello").enter().tab().escape().resize(width=42, height=8).render()
+
+    assert scenario.events == (
+        PlaybackEvent.input("hello"),
+        PlaybackEvent.input("\r"),
+        PlaybackEvent.input("\t"),
+        PlaybackEvent.input("\x1b"),
+        PlaybackEvent.resize(columns=42, rows=8),
+        PlaybackEvent("render"),
+    )
+
+
+def test_playback_result_asserts_visible_text_and_flush_policy() -> None:
+    harness = PlaybackHarness(
+        render=lambda _event, _size, _previous: RenderDiagnostics(
+            current_logical_lines=("hello",),
+            operations=(TerminalOperation.write("hello"),),
+        ),
+        port=FakeTerminalPort(size=TerminalSize(columns=20, rows=5)),
+    )
+
+    result = PlaybackResult(steps=harness.play([PlaybackEvent("render")]), port=harness.port)
+
+    result.assert_all_flush_succeeded()
+    result.assert_visible_contains("hello")
+    result.assert_visible_not_contains("missing")
+    result.assert_no_clear_screen()
 
 
 def test_playback_harness_failed_flush_does_not_advance_successful_diagnostics() -> None:

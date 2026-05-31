@@ -2,8 +2,9 @@ from __future__ import annotations
 
 from collections.abc import Callable, Iterable
 from dataclasses import dataclass, field, replace
-from typing import Any
+from typing import Any, Self
 
+from loushang.tui.cell_width import strip_control_sequences
 from loushang.tui.terminal import (
     FakeTerminalPort,
     TerminalFrame,
@@ -124,6 +125,99 @@ class PlaybackHarness:
 
         self.steps = (*self.steps, *new_steps)
         return tuple(new_steps)
+
+
+@dataclass(frozen=True, slots=True)
+class PlaybackResult:
+    steps: tuple[PlaybackStep, ...]
+    port: FakeTerminalPort
+
+    @property
+    def visible_text(self) -> str:
+        return strip_control_sequences("\n".join(self.port.screen.visible_lines))
+
+    def assert_all_flush_succeeded(self) -> None:
+        failed = [step for step in self.steps if not step.flush_succeeded]
+        assert not failed
+
+    def assert_visible_contains(self, expected: str) -> None:
+        assert expected in self.visible_text
+
+    def assert_visible_not_contains(self, unexpected: str) -> None:
+        assert unexpected not in self.visible_text
+
+    def assert_last_operation_class_not_in(self, *unexpected: str) -> None:
+        assert self.steps
+        assert self.steps[-1].diagnostics.operation_class not in unexpected
+
+    def assert_no_clear_screen(self) -> None:
+        clear_screen = TerminalOperation.clear_screen()
+        clear_scrollback = TerminalOperation.clear_scrollback()
+        for step in self.steps:
+            assert clear_screen not in step.diagnostics.operations
+            assert clear_scrollback not in step.diagnostics.operations
+            step.assert_no_clear_scrollback()
+            if step.frame is not None:
+                assert clear_screen.serialize() not in step.frame.serialized_output
+                assert clear_scrollback.serialize() not in step.frame.serialized_output
+
+    def assert_no_clear_scrollback(self) -> None:
+        clear_scrollback = TerminalOperation.clear_scrollback()
+        for step in self.steps:
+            assert clear_scrollback not in step.diagnostics.operations
+            step.assert_no_clear_scrollback()
+            if step.frame is not None:
+                assert clear_scrollback.serialize() not in step.frame.serialized_output
+
+    def assert_cursor_matches_diagnostics(self) -> None:
+        for step in self.steps:
+            assert step.frame is not None
+            assert step.frame.screen_after.cursor_row == step.diagnostics.hardware_cursor_row
+            assert step.frame.screen_after.cursor_column == step.diagnostics.hardware_cursor_column
+
+    def assert_last_cursor_matches_diagnostics(self) -> None:
+        assert self.steps
+        step = self.steps[-1]
+        assert step.frame is not None
+        assert step.frame.screen_after.cursor_row == step.diagnostics.hardware_cursor_row
+        assert step.frame.screen_after.cursor_column == step.diagnostics.hardware_cursor_column
+
+
+@dataclass(slots=True)
+class PlaybackScenario:
+    _events: list[PlaybackEvent] = field(default_factory=list, init=False)
+
+    @property
+    def events(self) -> tuple[PlaybackEvent, ...]:
+        return tuple(self._events)
+
+    def type_text(self, text: str) -> Self:
+        self._events.append(PlaybackEvent.input(text))
+        return self
+
+    def render(self) -> Self:
+        self._events.append(PlaybackEvent("render"))
+        return self
+
+    def enter(self) -> Self:
+        return self.key("\r")
+
+    def tab(self) -> Self:
+        return self.key("\t")
+
+    def escape(self) -> Self:
+        return self.key("\x1b")
+
+    def ctrl_c(self) -> Self:
+        return self.key("\x03")
+
+    def key(self, raw: str) -> Self:
+        self._events.append(PlaybackEvent.input(raw))
+        return self
+
+    def resize(self, *, width: int, height: int) -> Self:
+        self._events.append(PlaybackEvent.resize(columns=width, rows=height))
+        return self
 
 
 def _normalize_diagnostics(diagnostics: RenderDiagnostics) -> RenderDiagnostics:

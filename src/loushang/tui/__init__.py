@@ -103,6 +103,8 @@ from loushang.tui.keyboard_protocol import KeyboardProtocolController
 from loushang.tui.playback import (
     PlaybackEvent,
     PlaybackHarness,
+    PlaybackResult,
+    PlaybackScenario,
     PlaybackStep,
     RenderDiagnostics,
 )
@@ -307,6 +309,8 @@ __all__ = [
     "MarkdownRenderer",
     "PlaybackEvent",
     "PlaybackHarness",
+    "PlaybackResult",
+    "PlaybackScenario",
     "PlaybackStep",
     "PendingQueueView",
     "PendingSection",
