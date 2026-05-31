@@ -177,6 +177,28 @@ class PlaybackResult:
                     f"step {step.index} emitted {operation_count} operations, expected <= {max_operations}"
                 )
 
+    def assert_screen_anchor_stable(
+        self,
+        anchor: str,
+        *,
+        occurrence: str = "first",
+        skip_first: bool = False,
+    ) -> None:
+        steps = self.steps[1:] if skip_first else self.steps
+        if not steps:
+            raise AssertionError("expected at least one playback step")
+        baseline = _screen_anchor_row(steps[0], anchor, occurrence=occurrence)
+        if baseline is None:
+            raise AssertionError(f"anchor {anchor!r} was not visible at step {steps[0].index}")
+        for step in steps[1:]:
+            row = _screen_anchor_row(step, anchor, occurrence=occurrence)
+            if row is None:
+                raise AssertionError(f"anchor {anchor!r} was not visible at step {step.index}")
+            if row != baseline:
+                raise AssertionError(
+                    f"anchor {anchor!r} moved from row {baseline} to row {row} at step {step.index}"
+                )
+
     def assert_no_clear_screen(self) -> None:
         clear_screen = TerminalOperation.clear_screen()
         clear_scrollback = TerminalOperation.clear_scrollback()
@@ -306,6 +328,20 @@ def _normalize_diagnostics(diagnostics: RenderDiagnostics) -> RenderDiagnostics:
     if diagnostics.clear_scrollback_emitted == clear_scrollback_emitted:
         return diagnostics
     return replace(diagnostics, clear_scrollback_emitted=clear_scrollback_emitted)
+
+
+def _screen_anchor_row(step: PlaybackStep, anchor: str, *, occurrence: str) -> int | None:
+    if occurrence not in {"first", "last"}:
+        raise ValueError("occurrence must be 'first' or 'last'")
+    if step.frame is None:
+        return None
+    rows = list(enumerate(step.frame.screen_after.visible_lines))
+    if occurrence == "last":
+        rows.reverse()
+    for row, line in rows:
+        if anchor in strip_control_sequences(line):
+            return row
+    return None
 
 
 def _event_payload(event: PlaybackEvent) -> dict[str, Any]:

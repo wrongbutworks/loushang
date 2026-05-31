@@ -207,6 +207,7 @@ def test_native_tui_input_scenario_echoes_input_after_long_transcript_without_re
     result.assert_no_clear_screen()
     result.assert_operation_classes_not_in("baseline_repaint", "recovery_repaint", skip_first=True)
     result.assert_max_operations_per_step(12, skip_first=True)
+    result.assert_screen_anchor_stable("›", occurrence="last")
 
 
 def test_native_tui_loop_playback_drives_running_steer_then_escape() -> None:
