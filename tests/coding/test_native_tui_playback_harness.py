@@ -3,6 +3,8 @@ from __future__ import annotations
 import asyncio
 import json
 
+import pytest
+
 from loushang.coding.ui.perf_probe import build_synthetic_long_transcript_records
 from loushang.coding.ui.playback import (
     NativeTuiInputScenario,
@@ -276,6 +278,20 @@ def test_native_tui_loop_playback_writes_artifacts_for_manual_inspection(tmp_pat
         "pending_steers": [],
         "pending_followups": [],
     }
+
+
+def test_native_tui_loop_playback_writes_artifacts_when_wrapped_assertion_fails(tmp_path) -> None:
+    result = NativeTuiLoopScenario().type_text("hello").enter().end_input().run()
+
+    with pytest.raises(AssertionError):
+        with result.write_artifacts_on_failure(tmp_path / "loop-failures", basename="missing-text"):
+            result.assert_text_contains("missing")
+
+    assert (tmp_path / "loop-failures" / "missing-text-raw.txt").exists()
+    text = tmp_path / "loop-failures" / "missing-text-text.txt"
+    state = tmp_path / "loop-failures" / "missing-text-state.json"
+    assert "› hello" in text.read_text(encoding="utf-8")
+    assert json.loads(state.read_text(encoding="utf-8"))["exit_code"] == 0
 
 
 def test_native_tui_loop_scenario_scripts_character_input() -> None:

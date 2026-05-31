@@ -1,7 +1,8 @@
 from __future__ import annotations
 
 import json
-from collections.abc import Callable, Iterable
+from collections.abc import Callable, Iterable, Iterator
+from contextlib import contextmanager
 from dataclasses import dataclass, field, replace
 from itertools import zip_longest
 from pathlib import Path
@@ -300,6 +301,20 @@ class PlaybackResult:
         self.write_jsonl(trace_path, include_frames=include_frames)
         screen_path.write_text(self.visible_text, encoding="utf-8")
         return PlaybackArtifacts(trace=trace_path, screen=screen_path)
+
+    @contextmanager
+    def write_artifacts_on_failure(
+        self,
+        directory: str | Path,
+        *,
+        basename: str = "playback",
+        include_frames: bool = False,
+    ) -> Iterator[None]:
+        try:
+            yield
+        except Exception:
+            self.write_artifacts(directory, basename=basename, include_frames=include_frames)
+            raise
 
     def _jsonl_row(self, step: PlaybackStep, *, include_frames: bool) -> dict[str, Any]:
         serialized_output = step.frame.serialized_output if step.frame is not None else None

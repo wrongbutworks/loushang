@@ -222,6 +222,44 @@ def test_playback_result_writes_trace_and_final_screen_artifacts(tmp_path) -> No
     assert artifacts.screen.read_text(encoding="utf-8") == "hello\n\n\n\n"
 
 
+def test_playback_result_writes_artifacts_when_wrapped_assertion_fails(tmp_path) -> None:
+    harness = PlaybackHarness(
+        render=lambda _event, _size, _previous: RenderDiagnostics(
+            current_logical_lines=("hello",),
+            operations=(TerminalOperation.write("hello"),),
+        ),
+        port=FakeTerminalPort(size=TerminalSize(columns=20, rows=5)),
+    )
+    result = PlaybackResult(steps=harness.play([PlaybackEvent.input("hello")]), port=harness.port)
+
+    with pytest.raises(AssertionError):
+        with result.write_artifacts_on_failure(tmp_path / "failures", basename="missing-text", include_frames=True):
+            result.assert_visible_contains("missing")
+
+    trace = tmp_path / "failures" / "missing-text.jsonl"
+    screen = tmp_path / "failures" / "missing-text-screen.txt"
+    assert trace.exists()
+    assert screen.exists()
+    assert json.loads(trace.read_text(encoding="utf-8"))["serialized_output"] == "hello"
+    assert screen.read_text(encoding="utf-8") == "hello\n\n\n\n"
+
+
+def test_playback_result_does_not_write_artifacts_when_wrapped_assertion_passes(tmp_path) -> None:
+    harness = PlaybackHarness(
+        render=lambda _event, _size, _previous: RenderDiagnostics(
+            current_logical_lines=("hello",),
+            operations=(TerminalOperation.write("hello"),),
+        ),
+        port=FakeTerminalPort(size=TerminalSize(columns=20, rows=5)),
+    )
+    result = PlaybackResult(steps=harness.play([PlaybackEvent.input("hello")]), port=harness.port)
+
+    with result.write_artifacts_on_failure(tmp_path / "failures", basename="passing"):
+        result.assert_visible_contains("hello")
+
+    assert not (tmp_path / "failures").exists()
+
+
 def test_playback_result_asserts_operation_class_budget_after_initial_frame() -> None:
     operation_classes = iter(("first_render", "changed_range_update", "baseline_repaint"))
 

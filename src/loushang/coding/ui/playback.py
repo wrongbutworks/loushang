@@ -5,7 +5,8 @@ import json
 import os
 import threading
 import time
-from collections.abc import Awaitable, Callable
+from collections.abc import Awaitable, Callable, Iterator
+from contextlib import contextmanager
 from dataclasses import dataclass, field
 from io import StringIO
 from pathlib import Path
@@ -329,6 +330,19 @@ class NativeTuiLoopPlaybackResult:
         text_path.write_text(self.text, encoding="utf-8")
         state_path.write_text(json.dumps(self._state_payload(), ensure_ascii=False, indent=2), encoding="utf-8")
         return NativeTuiLoopArtifacts(raw=raw_path, text=text_path, state=state_path)
+
+    @contextmanager
+    def write_artifacts_on_failure(
+        self,
+        directory: str | Path,
+        *,
+        basename: str = "native-loop",
+    ) -> Iterator[None]:
+        try:
+            yield
+        except Exception:
+            self.write_artifacts(directory, basename=basename)
+            raise
 
     def _state_payload(self) -> dict[str, Any]:
         return {
