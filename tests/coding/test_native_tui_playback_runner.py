@@ -26,6 +26,14 @@ def test_native_tui_playback_runner_lists_default_scenarios(capsys) -> None:
     assert "escape-pending-steer-fifo" in captured.out
     assert "escape-pending-steer-preserves-draft" in captured.out
     assert "running-follow-up-queued" in captured.out
+    assert "bracketed-paste-large-marker" in captured.out
+    assert "resize-reflow-stable" in captured.out
+    assert "wide-char-input-cursor" in captured.out
+    assert "keyboard-alt-enter-follow-up" in captured.out
+    assert "keyboard-shift-enter-newline" in captured.out
+    assert "terminal-control-response-hidden" in captured.out
+    assert "apple-shift-enter-normalized" in captured.out
+    assert "mouse-select-active-surface" in captured.out
 
 
 def test_native_tui_playback_runner_runs_named_scenario(capsys) -> None:

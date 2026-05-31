@@ -274,6 +274,22 @@ def test_changed_range_update_rewrites_only_visible_changed_rows() -> None:
     assert step.frame.screen_after.visible_lines[:3] == ("one", "TWO", "three")
 
 
+def test_changed_range_update_without_declared_cursor_reports_actual_hardware_cursor() -> None:
+    root = StaticRoot(("one", "two", "three"))
+    runtime = TuiRuntime(render_loop=RenderLoop(root), terminal=FakeTerminalPort(size=TerminalSize(columns=20, rows=5)))
+    runtime.render_now()
+    root.lines = ("one", "TWO", "three")
+
+    step = runtime.render_now()
+
+    step.assert_operation_class("changed_range_update")
+    assert step.frame is not None
+    assert step.frame.screen_after.cursor_row == 1
+    assert step.frame.screen_after.cursor_column == 3
+    assert step.diagnostics.hardware_cursor_row == 1
+    assert step.diagnostics.hardware_cursor_column == 3
+
+
 def test_changed_range_update_uses_pi_style_relative_cursor_movement_inside_viewport() -> None:
     root = StaticRoot(("one", "two", "three", "four", "five"))
     runtime = TuiRuntime(render_loop=RenderLoop(root), terminal=FakeTerminalPort(size=TerminalSize(columns=20, rows=3)))
