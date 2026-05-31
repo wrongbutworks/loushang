@@ -2,7 +2,11 @@ from __future__ import annotations
 
 import asyncio
 
-from native_tui_playback import NativeTuiLoopScenario, NativeTuiScenario
+from native_tui_playback import (
+    NativeTuiInputScenario,
+    NativeTuiLoopScenario,
+    NativeTuiScenario,
+)
 
 
 def test_native_tui_scenario_renders_composer_input_without_screen_clear() -> None:
@@ -15,6 +19,92 @@ def test_native_tui_scenario_renders_composer_input_without_screen_clear() -> No
     scenario.assert_no_clear(step)
     scenario.assert_visible_contains("› hello")
     scenario.assert_cursor_matches_diagnostics(step)
+
+
+def test_native_tui_input_scenario_scripts_input_without_screen_clear() -> None:
+    result = (
+        NativeTuiInputScenario(width=80, height=12)
+        .type_text("hello")
+        .type_text(" world")
+        .run()
+    )
+
+    result.assert_all_flush_succeeded()
+    result.assert_visible_contains("› hello world")
+    result.assert_composer_text("hello world")
+    result.assert_no_clear_screen()
+    result.assert_cursor_matches_diagnostics()
+
+
+def test_native_tui_input_scenario_scripts_resize_without_scrollback_or_cursor_drift() -> None:
+    result = (
+        NativeTuiInputScenario(width=80, height=12)
+        .type_text("hello")
+        .resize(width=42, height=8)
+        .type_text(" world")
+        .run()
+    )
+
+    result.assert_all_flush_succeeded()
+    result.assert_visible_contains("› hello world")
+    result.assert_composer_text("hello world")
+    result.assert_no_clear_scrollback()
+    result.assert_cursor_matches_diagnostics()
+
+
+def test_native_tui_input_scenario_captures_prompt_submission_without_screen_clear() -> None:
+    result = NativeTuiInputScenario(width=80, height=12).type_text("hello").enter().run()
+
+    result.assert_prompt_texts("hello")
+    result.assert_composer_text("")
+    result.assert_visible_contains("› hello")
+    result.assert_no_clear_screen()
+    result.assert_cursor_matches_diagnostics()
+
+
+def test_native_tui_input_scenario_captures_running_steer_without_screen_clear() -> None:
+    result = (
+        NativeTuiInputScenario(width=80, height=12)
+        .with_running_prompt("old")
+        .type_text("change")
+        .enter()
+        .run()
+    )
+
+    result.assert_steer_texts("change")
+    result.assert_pending_steers("change")
+    result.assert_composer_text("")
+    result.assert_visible_contains("Messages to be submitted after next tool call")
+    result.assert_visible_contains("change")
+    result.assert_no_clear_screen()
+    result.assert_cursor_matches_diagnostics()
+
+
+def test_native_tui_input_scenario_escape_abort_does_not_pop_pending_steer() -> None:
+    result = (
+        NativeTuiInputScenario(width=80, height=12)
+        .with_running_prompt("old")
+        .with_pending_steers("queued")
+        .escape()
+        .run()
+    )
+
+    result.assert_abort_requested()
+    result.assert_pending_steers("queued")
+    result.assert_visible_contains("Messages to be submitted after next tool call")
+    result.assert_visible_contains("queued")
+    result.assert_no_clear_screen()
+    result.assert_cursor_matches_diagnostics()
+
+
+def test_native_tui_input_scenario_idle_escape_pops_pending_steer() -> None:
+    result = NativeTuiInputScenario(width=80, height=12).with_pending_steers("queued").escape().run()
+
+    result.assert_steer_texts("queued")
+    result.assert_pending_steers()
+    result.assert_visible_not_contains("Messages to be submitted after next tool call")
+    result.assert_no_clear_screen()
+    result.assert_cursor_matches_diagnostics()
 
 
 def test_native_tui_loop_playback_drives_running_steer_then_escape() -> None:

@@ -9,7 +9,7 @@ from dataclasses import dataclass, field
 from io import StringIO
 
 from loushang.coding.ui.native_app import NativeCodingTuiApp
-from loushang.coding.ui.native_input import NativeInputRouter
+from loushang.coding.ui.native_input import NativeInputResult, NativeInputRouter
 from loushang.coding.ui.native_loop import run_native_coding_tui
 from loushang.tui import (
     FakeTerminalPort,
@@ -98,6 +98,7 @@ class NativeTuiInputPlayback:
     ) -> None:
         self.app = app
         self.reader = InputReader()
+        self.input_results: list[NativeInputResult] = []
         self.router = NativeInputRouter(
             app,
             should_exit=should_exit or (lambda _text: False),
@@ -125,11 +126,139 @@ class NativeTuiInputPlayback:
         if event.kind == "input":
             if not isinstance(event.payload, str):
                 raise TypeError("input playback event payload must be str")
-            for input_event in self.reader.feed(event.payload):
-                self.router.handle(input_event)
+            batch = self.reader.feed_batch(event.payload)
+            input_events = list(batch.app_events)
+            if self.reader.has_pending:
+                input_events.extend(self.reader.flush_pending_batch().app_events)
+            for input_event in input_events:
+                self.input_results.append(self.router.handle(input_event))
         diagnostics = self.render_loop.plan(size)
         self.render_loop.commit(diagnostics, size=size)
         return diagnostics
+
+
+@dataclass(frozen=True, slots=True)
+class NativeTuiInputPlaybackResult:
+    steps: tuple[PlaybackStep, ...]
+    input_results: tuple[NativeInputResult, ...]
+    app: NativeCodingTuiApp
+    port: FakeTerminalPort
+
+    @property
+    def visible_text(self) -> str:
+        return strip_control_sequences("\n".join(self.port.screen.visible_lines))
+
+    def assert_all_flush_succeeded(self) -> None:
+        failed = [step for step in self.steps if not step.flush_succeeded]
+        assert not failed
+
+    def assert_visible_contains(self, expected: str) -> None:
+        assert expected in self.visible_text
+
+    def assert_visible_not_contains(self, unexpected: str) -> None:
+        assert unexpected not in self.visible_text
+
+    def assert_composer_text(self, expected: str) -> None:
+        assert self.app.composer.value == expected
+
+    def assert_prompt_texts(self, *expected: str) -> None:
+        assert [result.prompt_text for result in self.input_results if result.prompt_text is not None] == list(expected)
+
+    def assert_steer_texts(self, *expected: str) -> None:
+        assert [result.steer_text for result in self.input_results if result.steer_text is not None] == list(expected)
+
+    def assert_abort_requested(self) -> None:
+        assert any(result.abort_requested for result in self.input_results)
+
+    def assert_pending_steers(self, *expected: str) -> None:
+        assert self.app.state.pending_steers == list(expected)
+
+    def assert_no_clear_screen(self) -> None:
+        clear_screen = TerminalOperation.clear_screen()
+        clear_scrollback = TerminalOperation.clear_scrollback()
+        for step in self.steps:
+            assert clear_screen not in step.diagnostics.operations
+            assert clear_scrollback not in step.diagnostics.operations
+            step.assert_no_clear_scrollback()
+            if step.frame is not None:
+                assert clear_screen.serialize() not in step.frame.serialized_output
+                assert clear_scrollback.serialize() not in step.frame.serialized_output
+
+    def assert_no_clear_scrollback(self) -> None:
+        clear_scrollback = TerminalOperation.clear_scrollback()
+        for step in self.steps:
+            assert clear_scrollback not in step.diagnostics.operations
+            step.assert_no_clear_scrollback()
+            if step.frame is not None:
+                assert clear_scrollback.serialize() not in step.frame.serialized_output
+
+    def assert_cursor_matches_diagnostics(self) -> None:
+        for step in self.steps:
+            assert step.frame is not None
+            assert step.frame.screen_after.cursor_row == step.diagnostics.hardware_cursor_row
+            assert step.frame.screen_after.cursor_column == step.diagnostics.hardware_cursor_column
+
+
+@dataclass(slots=True)
+class NativeTuiInputScenario:
+    width: int = 80
+    height: int = 12
+    model_label: str = "kimi"
+    cwd: str = "/repo"
+    branch: str | None = "main"
+    session_label: str = "abcd"
+    now: float = 0.0
+    app: NativeCodingTuiApp = field(init=False)
+    playback: NativeTuiInputPlayback = field(init=False)
+    _events: list[PlaybackEvent] = field(default_factory=list)
+
+    def __post_init__(self) -> None:
+        self.app = NativeCodingTuiApp(
+            model_label=self.model_label,
+            cwd=self.cwd,
+            branch=self.branch,
+            session_label=self.session_label,
+            now=lambda: self.now,
+        )
+        self.playback = NativeTuiInputPlayback(self.app, columns=self.width, rows=self.height)
+
+    def with_running_prompt(self, text: str) -> NativeTuiInputScenario:
+        self.app.start_prompt(text, started_at=self.now)
+        return self
+
+    def with_pending_steers(self, *texts: str) -> NativeTuiInputScenario:
+        for text in texts:
+            self.app.queue_steer(text)
+        return self
+
+    def type_text(self, text: str) -> NativeTuiInputScenario:
+        self._events.append(PlaybackEvent.input(text))
+        return self
+
+    def enter(self) -> NativeTuiInputScenario:
+        return self.key("\r")
+
+    def escape(self) -> NativeTuiInputScenario:
+        return self.key("\x1b")
+
+    def ctrl_c(self) -> NativeTuiInputScenario:
+        return self.key("\x03")
+
+    def key(self, raw: str) -> NativeTuiInputScenario:
+        self._events.append(PlaybackEvent.input(raw))
+        return self
+
+    def resize(self, *, width: int, height: int) -> NativeTuiInputScenario:
+        self._events.append(PlaybackEvent.resize(columns=width, rows=height))
+        return self
+
+    def run(self) -> NativeTuiInputPlaybackResult:
+        return NativeTuiInputPlaybackResult(
+            steps=self.playback.play(self._events),
+            input_results=tuple(self.playback.input_results),
+            app=self.app,
+            port=self.playback.port,
+        )
 
 
 @dataclass(frozen=True, slots=True)
