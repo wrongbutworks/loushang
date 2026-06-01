@@ -17,9 +17,12 @@ preferred package-level naming is now:
 - `loushang.agent.harness`
 - `DomainApp`
 
+This English document is the canonical full reference. The related Chinese
+document is an implementation summary focused on early landing decisions.
+
 Related draft:
 
-- [Loushang Work / Method / Channel / Harness target architecture](./loushang-work-method-channel-harness-architecture.md)
+- [Chinese implementation summary](./loushang-work-method-channel-harness-architecture.md)
 
 This is an architecture draft, not a detailed implementation plan.
 
@@ -133,6 +136,33 @@ loushang.agent + loushang.ai
 The TUI must not be the architectural center. It is one channel/host
 composition over the same operation/event model that future GUI, remote
 services, messaging channels, and upper-level host architectures use.
+
+## Review Follow-Up Decisions
+
+The current draft adopts these follow-up decisions:
+
+- P0 should introduce a real `loushang.work` package. Do not place
+  `WorkOperation`, `WorkRun`, or `WorkEvent` in a transitional module under the
+  current coding package.
+- `WorkEvent` should include a delivery hint so channels can distinguish
+  high-frequency deltas from events that require immediate delivery.
+- The two queue levels need an explicit coordination contract: `work` owns run
+  and task scheduling, while `agent.harness` owns only the queue inside one
+  prepared agent turn.
+- Domain apps should not call each other directly. Cross-domain work is
+  mediated by `loushang.work` through domain invocation steps and shared
+  `ArtifactRef` values.
+- P0 should define an `EventLogBackend` interface with append, query, and
+  subscribe semantics. The first implementation may be in-memory or file-backed.
+- P2 remains before full fixed `MethodPlan` support only as a thin
+  `CodingDomainApp` shell for the fast path. It must not implement its own
+  step/workflow manager; workflow step execution belongs to P3.
+- P0-P3 should not expose public multi-agent interfaces. `TaskFlow`,
+  `AgentLane`, `TaskLedger`, and `CollaborationBus` remain target concepts
+  until P3/P4 proves the simpler work/event/log contracts.
+- P0 should use dataclasses and `TypedDict`-style JSON-compatible payloads,
+  matching current `loushang.agent` conventions. Pydantic is not required for
+  the first slice.
 
 ## Naming Boundary
 
@@ -282,6 +312,7 @@ AgentLane
 ArtifactRef
 ApprovalRequest
 MethodRun
+DomainInvocation
 EventLog
 DomainAppRegistry
 Scheduler
@@ -338,6 +369,7 @@ Responsibilities:
 - declare supported operation kinds
 - declare tools, policy, artifact types, prompts, and method packs
 - map `MethodStep` into domain tasks
+- accept domain invocations from `loushang.work`
 - call `agent.harness` or another executor
 
 Non-responsibilities:
@@ -355,6 +387,33 @@ coding policy
 coding prompt resources
 coding artifacts: patch / test_report / review_finding / summary
 coding method packs: bugfix / review / tdd
+```
+
+Cross-domain workflows should be mediated by `loushang.work`, not by direct
+domain-app-to-domain-app calls. For example, a coding method that needs
+research should create a research task or `DomainInvocation` through `work`.
+`work` selects the target domain app, records the task relationship, and passes
+results back as `ArtifactRef` values. This keeps domain apps independently
+testable and prevents hidden in-memory coupling between domains.
+
+Minimum cross-domain protocol:
+
+```text
+DomainInvocation
+  invocation_id
+  source_domain
+  target_domain
+  task_id
+  input_artifacts
+  requested_capabilities
+  policy
+
+DomainResult
+  invocation_id
+  status
+  output_artifacts
+  summary
+  diagnostics
 ```
 
 ### `loushang.agent.harness`
@@ -514,6 +573,39 @@ SurfaceRequested
 OperationFailed
 ```
 
+Every `WorkEvent` should carry enough metadata for channel delivery and replay:
+
+```text
+event_id
+operation_id
+run_id
+session_id
+domain
+sequence
+created_at
+delivery_hint
+```
+
+`delivery_hint` should be one of:
+
+```text
+immediate
+  deliver without scheduler buffering; use for ApprovalRequested,
+  OperationFailed, SurfaceRequested, WorkRunCompleted, WorkRunFailed, and
+  other interaction gates.
+
+coalesce
+  safe to batch or frame-schedule; use for ContentDelta, tool progress, and
+  other high-frequency progress events.
+
+final_only
+  omit progressive delivery where the channel or policy prefers only final
+  output.
+```
+
+The hint is not a transport instruction. It is a semantic delivery preference.
+`channel` may still adapt it to channel capability, rate limits, and policy.
+
 Existing `loushang.agent.AgentEvent` should not be discarded. The relationship
 is:
 
@@ -530,6 +622,113 @@ WorkEvent
 
 Events should be append-friendly, replayable where possible, and consumable by
 multiple observers.
+
+### P0 Interface Sketch
+
+P0 should keep interfaces small and JSON-compatible. The implementation can use
+frozen dataclasses for stable objects and `TypedDict`/plain dict payloads for
+event-specific data.
+
+```python
+@dataclass(frozen=True)
+class WorkOperation:
+    operation_id: str
+    kind: str
+    session_id: str | None
+    domain: str
+    payload: Mapping[str, object]
+    source: Mapping[str, object] = field(default_factory=dict)
+
+
+@dataclass(frozen=True)
+class WorkRun:
+    run_id: str
+    operation_id: str
+    session_id: str
+    domain: str
+    status: Literal[
+        "accepted",
+        "running",
+        "cancelling",
+        "completed",
+        "failed",
+        "cancelled",
+    ]
+    method_id: str | None = None
+
+
+@dataclass(frozen=True)
+class WorkEvent:
+    event_id: str
+    kind: str
+    run_id: str
+    session_id: str
+    domain: str
+    operation_id: str
+    sequence: int
+    created_at: datetime
+    delivery_hint: Literal["immediate", "coalesce", "final_only"]
+    payload: Mapping[str, object]
+    source_event_ref: str | None = None
+```
+
+`WorkEvent` should not embed the full internal harness object by default. It
+should store a normalized payload and an optional `source_event_ref` that lets
+debugging and replay find the original `AgentEvent` or `HarnessEvent` when the
+event log stores it.
+
+### AgentEvent Projection
+
+P0 projection should start with the current `loushang.agent.AgentEvent` family:
+
+```text
+agent_start
+  -> WorkRunStarted
+
+agent_end
+  -> WorkRunCompleted
+
+turn_start
+  -> TaskStarted or TurnStarted-compatible work payload
+
+turn_end
+  -> TaskCompleted or WorkRunCompleted, depending on active run mode
+
+message_start
+  -> ContentDelta with start marker, coalesce
+
+message_update
+  -> ContentDelta, coalesce
+
+message_end
+  -> ContentDelta with end marker, coalesce
+
+tool_execution_start
+  -> ToolCallStarted, immediate for approval-sensitive tools or coalesce
+
+tool_execution_update
+  -> ToolCallCompleted only if update is terminal, otherwise tool progress
+
+tool_execution_end
+  -> ToolCallCompleted, immediate if is_error else coalesce
+```
+
+Coding session events outside `AgentEvent` should also project into `WorkEvent`
+where needed:
+
+```text
+queue_update
+  -> OperationAccepted or queue metadata event
+
+compaction_start / compaction_end
+  -> Method or context maintenance events, coalesce
+
+auto_retry_start / auto_retry_end
+  -> retry diagnostics, immediate on final failure
+
+package_progress
+  -> ArtifactUpdated or progress diagnostics
+```
 
 ## Separation Rules
 
@@ -648,6 +847,51 @@ Any existing skill can therefore act as a single-step method:
 `MethodSelector` may also select a skill-backed method in high-confidence,
 low-risk cases.
 
+### P1 MethodDescriptor Schema
+
+P1 should define a stable minimal schema before P3 adds fixed workflows.
+
+```text
+MethodDescriptor
+  id
+  name
+  description
+  kind: skill_backed | method_resource
+  domain: optional
+  source_path
+  version: optional
+  content
+  metadata
+```
+
+Compatibility rules:
+
+- unknown metadata fields must be preserved, not rejected
+- P1 only requires `id`, `name`, `description`, `kind`, and `content`
+- P3 may add `steps`, `roles`, `gates`, and `artifacts` without changing the
+  P1 loading contract
+- schema evolution should be additive; breaking method schema changes require a
+  version bump and migration note
+
+Minimum compiler/projector contract:
+
+```text
+MethodCompiler.compile(descriptor, context) -> MethodPlan
+
+MethodProjector.project(plan, step, context) -> MethodProjection
+
+MethodProjection
+  system_guidance
+  user_guidance
+  allowed_skills
+  suggested_tools
+  expected_artifacts
+  approval_gates
+```
+
+In P1, the compiler can always return a single-step plan. P3 is the first slice
+that needs fixed multi-step execution.
+
 ### Enhanced Method
 
 A richer method may add metadata over time:
@@ -758,6 +1002,73 @@ Suggested rule:
 The work queue must be work state, not TUI state. The harness queue must remain
 single-turn execution state, not multi-agent scheduling state.
 
+Minimum work-level state machine:
+
+```text
+idle
+  -> accepting
+  -> running
+  -> cancelling
+  -> draining_harness
+  -> dispatching_queued
+  -> running
+
+running
+  -> completing
+  -> completed
+
+running
+  -> failing
+  -> failed
+
+cancelling
+  -> cancelled
+```
+
+Minimum harness turn state machine:
+
+```text
+idle
+  -> running
+  -> settling
+  -> settled
+
+running
+  -> cancelling
+  -> settling
+  -> cancelled
+```
+
+Coordination rules:
+
+- `work` is the only owner of `WorkRun` state.
+- `agent.harness` is the only owner of one prepared turn's internal queue.
+- `work` may enqueue, cancel, or start a harness turn, but it must not mutate
+  the harness queue directly.
+- `agent.harness` may emit settled/cancelled facts, but it must not dispatch a
+  new `WorkRun` or cross-run task by itself.
+- during `cancelling`, `work` freezes normal queued operations, allows
+  immediate approvals or administrative cancellation responses, and waits for
+  the harness settled/cancelled event before dispatching the next eligible item.
+- after the harness settles, `work` chooses the next operation from the work
+  queue and either starts a new harness turn or completes the run.
+
+Example interrupt sequence:
+
+```text
+SubmitSteer
+  -> work records OperationAccepted
+  -> work routes steer to active run
+  -> harness queues steer for the current prepared turn
+
+InterruptRun
+  -> work marks run cancelling
+  -> work sends cancellation to harness
+  -> harness stops model/tool progress and emits settled/cancelled
+  -> work records cancellation facts
+  -> work dispatches the next eligible queued steer or completes the run
+```
+
 ## Protocol Boundary
 
 The external boundary should use operation/event semantics.
@@ -788,6 +1099,48 @@ The protocol should support:
 - service-side event stream
 - test playback from memory
 - persisted event log replay
+
+## EventLog Backend
+
+P0 should define a minimal `EventLogBackend` abstraction before choosing a
+database or storage format.
+
+Minimum interface:
+
+```text
+append(entry) -> EventPosition
+
+query(
+  run_id: optional,
+  session_id: optional,
+  after: optional EventPosition,
+  limit: optional int
+) -> list[EventLogEntry]
+
+subscribe(
+  run_id: optional,
+  session_id: optional,
+  after: optional EventPosition
+) -> async stream[EventLogEntry]
+```
+
+`EventLogEntry` should support both accepted operations and emitted events:
+
+```text
+entry_id
+entry_type: operation | event
+operation_id
+event_id
+run_id
+session_id
+sequence
+payload
+created_at
+```
+
+The first backend can be in-memory or file-backed. The interface matters more
+than the storage engine because `work`, playback, RPC, and future search should
+not depend on the same concrete persistence choice.
 
 ## Channel Capability Model
 
@@ -860,7 +1213,12 @@ Streaming is a delivery concern, not only an agent concern.
 
 `work` should emit stable events such as `ContentDelta`, `ToolCallStarted`,
 `ToolCallCompleted`, `ApprovalRequested`, and `WorkRunCompleted`. Each channel
-then chooses how to deliver those events.
+then chooses how to deliver those events. `delivery_hint` gives the channel a
+safe default:
+
+- `immediate` events bypass normal frame coalescing.
+- `coalesce` events may be buffered, batched, or diff-rendered.
+- `final_only` events may be suppressed until the final projection.
 
 Suggested delivery strategies:
 
@@ -1022,6 +1380,32 @@ workflow
 team
   multi-agent AgentLane
 ```
+
+### SubmitCodingTurn Sequence
+
+The first fast path should execute like this:
+
+```text
+User
+  -> ChannelAdapter: input text
+  -> loushang.work: SubmitCodingTurn
+  -> EventLogBackend: append operation
+  -> loushang.work: create WorkRun(status=running)
+  -> EventLogBackend: WorkRunStarted
+  -> CodingDomainApp: prepare coding turn
+  -> loushang.method: optional skill-backed method projection
+  -> loushang.agent.harness: run one prepared turn
+  -> loushang.agent: AgentEvent stream
+  -> loushang.agent.harness: HarnessEvent stream
+  -> loushang.work: WorkEvent projection
+  -> EventLogBackend: append WorkEvent
+  -> loushang.channel: deliver by delivery_hint/capability
+  -> User
+```
+
+`work` calls `method` and then `DomainApp`; `DomainApp` does not select methods
+by itself. `DomainApp` receives a selected/projection-ready method context and
+maps it to domain prompt, tools, policy, and artifacts.
 
 ## Extension Registry And Hook Lifecycle
 
@@ -1291,6 +1675,75 @@ This allows an upper-level architecture to treat `loushang` as a work component
 while keeping its own orchestration, product surface, deployment model, and
 governance.
 
+## Error, Permission, And Performance Policy
+
+### Error Handling
+
+P0 should define errors as work facts, not only exceptions.
+
+Required behavior:
+
+- `WorkRunFailed` is emitted for terminal run failure.
+- `OperationFailed` is emitted when an operation cannot be accepted or routed.
+- provider, tool, policy, cancellation, and channel delivery failures should
+  carry a typed reason code.
+- retry decisions belong to `work` for run-level retry and to lower layers for
+  provider/tool-local retry.
+- a failed channel delivery should not mutate `WorkRun` status; it should
+  create delivery diagnostics and allow retry by delivery policy.
+
+P4-only concepts such as `AgentLane` heartbeat and lane recovery should stay
+out of P0 interfaces. They can be added when multi-agent support is introduced.
+
+### Permission And Gates
+
+The first gate boundary is:
+
+```text
+DomainApp
+  declares risky action and policy metadata
+
+loushang.work
+  records ApprovalRequest and correlates approval result
+
+loushang.channel
+  renders approval UI or returns non-interactive denial/fallback
+
+agent.harness / tool layer
+  waits for the decision before executing the risky action
+```
+
+High-risk action categories for coding should include:
+
+- destructive filesystem changes
+- shell commands outside the workspace or with broad side effects
+- network or credential access
+- public API or schema changes
+- dependency installation or toolchain mutation
+- git push, merge, force update, or release operation
+
+### Performance Targets
+
+P0 targets are guardrails, not final SLOs:
+
+- AgentEvent-to-WorkEvent projection should normally stay under 10 ms per event
+  excluding I/O.
+- EventLog append should normally stay under 5 ms for the in-memory backend and
+  under 20 ms for a simple file backend.
+- `immediate` delivery events should bypass frame coalescing.
+- `coalesce` content deltas may be frame-scheduled by TUI delivery.
+- the coding fast path should not add a visible extra step before the model
+  starts streaming.
+
+### Persistence
+
+P0 may use in-memory or JSONL/file-backed storage. The stable decision is the
+`EventLogBackend` interface, not the backing store.
+
+`SessionAddress` storage can initially live in existing session metadata. SQLite
+or another database should wait until replay/search requirements outgrow file
+storage.
+
 ## First Version Scope
 
 ### P0: Wrap Existing `AgentSession` With `WorkRun`
@@ -1299,13 +1752,24 @@ Goal: establish the work shell without changing the user experience.
 
 Scope:
 
+- create the first `loushang.work` package, not a transitional coding module
 - add `WorkOperation`
 - add `WorkRun`
-- add `WorkEvent`
-- add minimal `EventLog`
+- add `WorkEvent` with `delivery_hint`
+- add minimal `EventLogBackend`
 - wrap existing `AgentSession.prompt()`
 - project existing `AgentEvent` into `WorkEvent`
 - add `run_id`, `session_id`, `domain`, and `operation_id` to work events
+- define the work/harness queue coordination contract
+
+Acceptance:
+
+- a normal coding session can be reconstructed from `EventLogBackend` entries
+- channel rendering can consume `WorkEvent` without reading `AgentSession`
+  internals
+- interrupt/cancel produces deterministic work and harness state transitions
+- no public P0 interface exposes `AgentLane`, `TaskLedger`, or
+  `CollaborationBus`
 
 Out of scope:
 
@@ -1321,7 +1785,8 @@ skill ecosystem.
 Scope:
 
 - add `MethodDescriptor`
-- extend the resource loader or add a method loader
+- add `MethodLoader` as the method-facing loader; it may reuse lower-level
+  resource discovery helpers internally
 - support `SkillDescriptor -> skill-backed MethodDescriptor`
 - support `methods/**/METHOD.md`
 - support `methods/**/SKILL.md`
@@ -1331,7 +1796,8 @@ Scope:
 
 ### P2: Coding DomainApp
 
-Goal: expose current coding capability as the first domain app.
+Goal: expose current coding capability as the first domain app without taking
+ownership of workflow step management.
 
 Scope:
 
@@ -1342,6 +1808,12 @@ Scope:
 - coding method packs as resources
 - gradual adaptation of existing command/session/tool behavior through the
   domain app boundary
+- keep the current coding fast path as `WorkRun(single_turn)`
+
+Non-scope:
+
+- do not add a coding-owned step manager
+- do not implement fixed multi-step workflow execution before P3
 
 ### P3: Fixed MethodPlan / TaskFlow
 
@@ -1384,6 +1856,10 @@ Current:
 
 P0:
   WorkRun wraps AgentSession.prompt().
+  AgentSession still owns prompt construction, tool execution, compaction,
+  extension hooks, and session persistence.
+  loushang.work owns operation acceptance, run ids, work event projection,
+  event log append, cancellation coordination, and channel-facing metadata.
 
 P1/P2:
   method projection and CodingDomainApp assemble AgentSession from outside.
@@ -1420,6 +1896,20 @@ QueueController
 WorkQueue / TaskQueue
   added for work/task/multi-agent scheduling.
 ```
+
+Priority rule:
+
+```text
+WorkQueue
+  decides which run or operation may execute next.
+
+QueueController
+  decides steer/follow-up ordering inside the active single-agent turn.
+```
+
+If both have pending items, `work` first decides whether the current run remains
+active. Only after that decision does the harness-level queue choose the next
+steer or follow-up inside that active turn.
 
 ### `coding.workflow.runner`
 
@@ -1523,24 +2013,37 @@ agent/ai handle the low-level model loop
 
 ## Open Questions
 
-1. Which package should introduce `WorkOperation`, `WorkRun`, and `WorkEvent`
-   first: a new `loushang.work` package or a transitional module under the
-   current coding package?
-2. What is the smallest event schema that can project current `AgentEvent`
-   without losing turn, tool, approval, and artifact semantics?
-3. Which current coding commands are domain commands, and which should become
+### Answered For P0
+
+- `WorkOperation`, `WorkRun`, and `WorkEvent` should start in a new
+  `loushang.work` package.
+- P0 should define `EventLogBackend`, but may use an in-memory or file-backed
+  implementation.
+- `WorkEvent` should include `delivery_hint`.
+- `CodingDomainApp` may ship before fixed `TaskFlow`, but only as a thin fast
+  path shell. It must not own step scheduling.
+
+### Must Answer Before P0 Implementation
+
+1. What is the smallest event schema that can project current `AgentEvent`
+   without losing turn, tool, approval, artifact, delivery hint, and replay
+   semantics?
+2. Which current coding commands are domain commands, and which should become
    shared work commands?
+3. How much of current RPC mode should be treated as a transitional surface
+   versus a long-term channel implementation?
+
+### Can Wait Until P1/P2
+
 4. What is the minimum `ArtifactRef` model that supports patches, reports,
    review findings, and future non-coding artifacts?
-5. Which host API should be implemented first: in-process SDK, JSONL stdio,
-   HTTP, or WebSocket?
-6. How much of current RPC mode should be treated as a transitional surface
-   versus a long-term channel implementation?
-7. What is the minimum external identity model that can support terminal,
+5. Which host API should be implemented first after the in-process boundary:
+   JSONL stdio, HTTP, or WebSocket?
+6. What is the minimum external identity model that can support terminal,
    HTTP, Feishu, WeChat, mini app, and upper-level host integrations?
-8. Which method metadata fields are needed in P1, and which should wait until
+7. Which method metadata fields are needed in P1, and which should wait until
    fixed `MethodPlan` support?
-9. Which extension hooks are safe to expose early, and which should wait until
+8. Which extension hooks are safe to expose early, and which should wait until
    capability governance is stronger?
-10. What store backend is sufficient for early session search and lineage
-    without overcommitting to a database architecture?
+9. What store backend is sufficient for early session search and lineage
+   without overcommitting to a database architecture?
