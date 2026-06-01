@@ -2,11 +2,12 @@ from __future__ import annotations
 
 from collections.abc import Callable
 from dataclasses import dataclass, field, replace
-from typing import Any, Awaitable, Literal
+from typing import Any, Awaitable, Literal, Protocol
 
+from loushang.coding.commands.catalog import CodingCommandCatalog
 from loushang.coding.ui.command_list import (
-    format_session_commands,
-    session_command_palette,
+    coding_command_palette,
+    format_coding_commands,
 )
 from loushang.coding.ui.hotkeys import format_hotkeys
 from loushang.coding.ui.intent import (
@@ -37,6 +38,7 @@ from loushang.coding.ui.model_list import (
 )
 from loushang.coding.ui.native_app import NativeCodingTuiApp
 from loushang.coding.ui.status_provider import CodingTuiStatusProvider
+from loushang.runtime.commands import CommandDef, CommandKind
 from loushang.tui import (
     ApprovalSurface,
     CommandPalette,
@@ -62,6 +64,12 @@ NativeSurfacePresentation = Literal["bottom", "bottom-exclusive"]
 SurfaceEventKind = Literal["surface_submit", "surface_close"]
 SurfaceEventSource = Literal["model", "command", "settings", "dialog", "approval"]
 MODEL_SELECTOR_SELECTED_STYLE = {"color": 33, "bold": True}
+
+
+class NativeCommandCatalog(Protocol):
+    def lookup(self, text: str) -> CommandDef | None: ...
+
+    def commands(self) -> tuple[CommandDef, ...]: ...
 
 
 @dataclass(slots=True)
@@ -309,6 +317,7 @@ class NativeSurfaceManager:
     status_provider: CodingTuiStatusProvider
     on_approval: Callable[[dict[str, Any]], Awaitable[None]] | None = None
     set_statusline_visible: Callable[[bool | None], str] | None = None
+    command_catalog: NativeCommandCatalog | None = None
     _handlers: dict[SurfaceEventSource, Callable[[Any], Awaitable[None]]] = field(init=False, repr=False)
     _active_overlay_view: NativeSurfaceView | None = None
     _active_overlay_handle: SurfaceHandle | None = None
@@ -321,42 +330,41 @@ class NativeSurfaceManager:
             "dialog": self._handle_dialog_submit,
             "approval": self._handle_approval_submit,
         }
+        if self.command_catalog is None:
+            self.command_catalog = CodingCommandCatalog(session_commands=_session_commands_provider(self.session))
 
     def is_local_command(self, text: str) -> bool:
-        return isinstance(
-            parse_prompt_intent(text),
-            (
-                CommandSelectIntent,
-                CommandsIntent,
-                HotkeysIntent,
-                ModelSelectIntent,
-                ModelsIntent,
-                SettingsIntent,
-                StatusIntent,
-                StatuslineIntent,
-                TerminalDiagnosticsIntent,
-            ),
-        )
+        return self._lookup_local_command(text) is not None
 
     async def handle_text(self, text: str) -> int | None:
+        command = self._lookup_local_command(text)
+        if command is None:
+            return None
         intent = parse_prompt_intent(text)
-        if isinstance(intent, ModelSelectIntent):
+        if command.name == "model" and isinstance(intent, ModelSelectIntent):
             await self._handle_model_intent(intent)
-        elif isinstance(intent, ModelsIntent):
+        elif command.name == "models" and isinstance(intent, ModelsIntent):
             self._open_info("Models", await format_available_models(self.session, query=intent.query))
-        elif isinstance(intent, CommandSelectIntent):
+        elif command.name == "command" and isinstance(intent, CommandSelectIntent):
             await self._handle_command_intent(intent)
-        elif isinstance(intent, CommandsIntent):
-            self._open_info("Commands", await format_session_commands(self.session, query=intent.query))
-        elif isinstance(intent, StatusIntent):
+        elif command.name == "commands" and isinstance(intent, CommandsIntent):
+            self._open_info(
+                "Commands",
+                await format_coding_commands(
+                    self.session,
+                    query=intent.query,
+                    command_catalog=self._list_command_catalog(),
+                ),
+            )
+        elif command.name == "status" and isinstance(intent, StatusIntent):
             self._open_info("Status", self.status_provider.render())
-        elif isinstance(intent, TerminalDiagnosticsIntent):
+        elif command.name == "terminal" and isinstance(intent, TerminalDiagnosticsIntent):
             self._open_terminal_diagnostics()
-        elif isinstance(intent, HotkeysIntent):
+        elif command.name == "hotkeys" and isinstance(intent, HotkeysIntent):
             self._open_info("Hotkeys", format_hotkeys())
-        elif isinstance(intent, SettingsIntent):
+        elif command.name == "settings" and isinstance(intent, SettingsIntent):
             self._open_settings()
-        elif isinstance(intent, StatuslineIntent):
+        elif command.name == "statusline" and isinstance(intent, StatuslineIntent):
             setter = self.set_statusline_visible or self.status_provider.set_visible
             message = setter(intent.enabled)
             if intent.enabled is not None:
@@ -365,6 +373,17 @@ class NativeSurfaceManager:
                 self.app.set_statusline_visible(self.status_provider.is_visible())
             self.app.set_status(message)
         return None
+
+    def _lookup_local_command(self, text: str) -> CommandDef | None:
+        if self.command_catalog is None:
+            return None
+        command = self.command_catalog.lookup(text)
+        if command is None or command.kind is not CommandKind.LOCAL_UI:
+            return None
+        return command
+
+    def _list_command_catalog(self) -> CodingCommandCatalog | None:
+        return self.command_catalog if isinstance(self.command_catalog, CodingCommandCatalog) else None
 
     async def handle_surface_intent(self, intent: InputIntent) -> int | None:
         surface = self._current_surface()
@@ -474,7 +493,11 @@ class NativeSurfaceManager:
             self.app.composer.set_text(command + " ")
             self.app.set_status(f"Command selected: {command}")
             return
-        self._open_palette("Commands", await session_command_palette(self.session, title="Commands"), purpose="command")
+        self._open_palette(
+            "Commands",
+            await coding_command_palette(self.session, title="Commands", command_catalog=self._list_command_catalog()),
+            purpose="command",
+        )
 
     def _open_palette(self, title: str, palette: CommandPalette, *, purpose: Literal["model", "command"]) -> None:
         surface = CommandSurface(_palette_items(palette), max_visible=8)
@@ -653,6 +676,13 @@ def _selected_model_item_index(items: tuple[SelectItem, ...], selected_value: st
 def _recoverable_surface_error(error: Exception) -> str:
     message = str(error).strip() or error.__class__.__name__
     return f"Error: {message}"
+
+
+def _session_commands_provider(session: Any) -> Callable[[], Any] | None:
+    getter = getattr(session, "list_commands", None)
+    if not callable(getter):
+        return None
+    return getter
 
 
 __all__ = ["NativeSurfaceManager", "NativeSurfaceView"]
