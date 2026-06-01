@@ -4,12 +4,110 @@ import json
 import sys
 
 from loushang.coding.ui import playback_runner
+from loushang.coding.ui.playback_fakes import SessionCommandPlaybackSession
 from loushang.coding.ui.playback_runner import (
     NativePlaybackScenarioSpec,
     NativePlaybackSuite,
     run_playback_cli,
     run_playback_scenarios,
 )
+from loushang.coding.ui.playback_scenarios.command import COMMAND_ROUTING_SCENARIOS
+from loushang.coding.ui.playback_scenarios.composer import COMPOSER_SCENARIOS
+from loushang.coding.ui.playback_scenarios.lifecycle import LIFECYCLE_SCENARIOS
+from loushang.coding.ui.playback_scenarios.surface import SURFACE_SCENARIOS
+from loushang.coding.ui.playback_scenarios.terminal import TERMINAL_SCENARIOS
+from loushang.coding.ui.playback_scenarios.transcript import TRANSCRIPT_SCENARIOS
+from loushang.coding.ui.playback_suite import NativePlaybackSuite as SuiteFromModule
+
+
+def test_native_tui_playback_runner_reexports_suite_types_from_playback_suite_module() -> None:
+    assert NativePlaybackSuite is SuiteFromModule
+
+
+def test_native_tui_playback_fake_session_lists_command_sources() -> None:
+    session = SessionCommandPlaybackSession()
+
+    commands = session.list_commands()
+
+    assert [(command.name, command.source) for command in commands] == [
+        ("name", "builtin"),
+        ("export", "builtin"),
+        ("review", "prompt"),
+        ("debugging", "skill"),
+    ]
+
+
+def test_native_tui_playback_command_scenarios_live_in_command_module() -> None:
+    assert [scenario.name for scenario in COMMAND_ROUTING_SCENARIOS] == [
+        "local-command",
+        "session-name-command",
+        "session-command-error",
+        "unknown-slash-prompt",
+        "non-executable-session-command",
+    ]
+
+
+def test_native_tui_playback_composer_scenarios_live_in_composer_module() -> None:
+    assert [scenario.name for scenario in COMPOSER_SCENARIOS] == [
+        "completion-tab",
+        "completion-session-command",
+        "completion-navigation-priority",
+        "history-navigation",
+        "bracketed-paste-large-marker",
+        "resize-reflow-stable",
+        "wide-char-input-cursor",
+        "keyboard-shift-enter-newline",
+    ]
+
+
+def test_native_tui_playback_surface_scenarios_live_in_surface_module() -> None:
+    assert [scenario.name for scenario in SURFACE_SCENARIOS] == [
+        "active-surface",
+        "status-surface",
+        "statusline-command",
+        "command-palette-select",
+        "command-palette-session-command",
+        "commands-info-surface",
+        "commands-info-session-command",
+        "settings-search",
+        "model-select",
+        "model-select-search",
+        "approval-surface",
+        "approval-reject-surface",
+        "dialog-surface",
+        "mouse-select-active-surface",
+    ]
+
+
+def test_native_tui_playback_lifecycle_scenarios_live_in_lifecycle_module() -> None:
+    assert [scenario.name for scenario in LIFECYCLE_SCENARIOS] == [
+        "idle-escape-clears-draft",
+        "running-steer-queued",
+        "running-escape-keeps-queued-steer",
+        "idle-escape-pops-pending-steer",
+        "escape-pending-steer",
+        "escape-pending-steer-fifo",
+        "escape-pending-steer-preserves-draft",
+        "native-loop-ctrl-c-abort-running",
+        "running-follow-up-queued",
+        "keyboard-alt-enter-follow-up",
+    ]
+
+
+def test_native_tui_playback_terminal_scenarios_live_in_terminal_module() -> None:
+    assert [scenario.name for scenario in TERMINAL_SCENARIOS] == [
+        "native-loop-split-bracketed-paste",
+        "terminal-control-response-hidden",
+        "native-loop-terminal-session-cleanup",
+        "apple-shift-enter-normalized",
+    ]
+
+
+def test_native_tui_playback_transcript_scenarios_live_in_transcript_module() -> None:
+    assert [scenario.name for scenario in TRANSCRIPT_SCENARIOS] == [
+        "long-transcript-input",
+        "tool-output-preview",
+    ]
 
 
 def test_native_tui_playback_runner_lists_default_scenarios(capsys) -> None:
