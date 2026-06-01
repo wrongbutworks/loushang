@@ -1,11 +1,10 @@
 from __future__ import annotations
 
 import asyncio
+import importlib
 import os
 import select
-import termios
 import time
-import tty
 from collections.abc import Callable
 from dataclasses import dataclass
 from io import StringIO
@@ -33,21 +32,27 @@ class TerminalInputMode:
     drain_max_duration: float = 1.0
     _fd: int | None = None
     _original_attrs: list[Any] | None = None
+    _termios: Any | None = None
     _enabled: bool = False
     _keyboard_controller: KeyboardProtocolController | None = None
 
     def __enter__(self) -> TerminalInputMode:
         if not stream_is_tty(self.stdin):
             return self
+        posix_terminal_modules = _load_posix_terminal_modules()
+        if posix_terminal_modules is None:
+            return self
+        termios_module, tty_module = posix_terminal_modules
         self._fd = self.stdin.fileno()
-        self._original_attrs = termios.tcgetattr(self._fd)
-        tty.setcbreak(self._fd)
+        self._termios = termios_module
+        self._original_attrs = termios_module.tcgetattr(self._fd)
+        tty_module.setcbreak(self._fd)
         attrs = [*self._original_attrs[:6], list(self._original_attrs[6])]
-        attrs[0] &= ~getattr(termios, "ICRNL", 0)
-        attrs[3] &= ~(termios.ECHO | termios.ICANON | getattr(termios, "ISIG", 0))
-        attrs[6][termios.VMIN] = 1
-        attrs[6][termios.VTIME] = 0
-        termios.tcsetattr(self._fd, termios.TCSADRAIN, attrs)
+        attrs[0] &= ~getattr(termios_module, "ICRNL", 0)
+        attrs[3] &= ~(termios_module.ECHO | termios_module.ICANON | getattr(termios_module, "ISIG", 0))
+        attrs[6][termios_module.VMIN] = 1
+        attrs[6][termios_module.VTIME] = 0
+        termios_module.tcsetattr(self._fd, termios_module.TCSADRAIN, attrs)
         if self.bracketed_paste:
             self.stdout.write("\x1b[?2004h")
         if self.focus_events:
@@ -64,7 +69,7 @@ class TerminalInputMode:
 
     def __exit__(self, exc_type: object, exc: object, traceback: object) -> Literal[False]:
         del exc_type, exc, traceback
-        if not self._enabled or self._fd is None or self._original_attrs is None:
+        if not self._enabled or self._fd is None or self._original_attrs is None or self._termios is None:
             return False
         try:
             if self.drain_on_exit:
@@ -83,7 +88,7 @@ class TerminalInputMode:
             if self.bracketed_paste or self.focus_events or self.keyboard_protocols:
                 self.stdout.flush()
         finally:
-            termios.tcsetattr(self._fd, termios.TCSADRAIN, self._original_attrs)
+            self._termios.tcsetattr(self._fd, self._termios.TCSADRAIN, self._original_attrs)
         return False
 
 
@@ -258,6 +263,13 @@ def _utf8_sequence_length(first_byte: int) -> int:
 def stream_is_tty(stream: Any) -> bool:
     isatty = getattr(stream, "isatty", None)
     return bool(callable(isatty) and isatty())
+
+
+def _load_posix_terminal_modules() -> tuple[Any, Any] | None:
+    try:
+        return importlib.import_module("termios"), importlib.import_module("tty")
+    except ModuleNotFoundError:
+        return None
 
 
 __all__ = ["TerminalInputMode", "drain_input", "read_input_chunk", "read_input_chunk_or_render_tick", "stream_is_tty"]

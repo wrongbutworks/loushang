@@ -1,9 +1,10 @@
 from __future__ import annotations
 
 import asyncio
-import termios
 from io import StringIO
 from typing import Any
+
+import pytest
 
 from loushang.tui.input import (
     BRACKETED_PASTE_END,
@@ -34,6 +35,8 @@ def test_terminal_input_mode_does_not_write_modes_for_non_tty_streams() -> None:
 
 
 def test_terminal_input_mode_enables_and_restores_tty_modes(monkeypatch: Any) -> None:
+    termios = pytest.importorskip("termios")
+    pytest.importorskip("tty")
     stdin = _TtyInput()
     stdout = StringIO()
     original_attrs = [0, 0, 0, 0, 0, 0, [0] * 32]
