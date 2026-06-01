@@ -4,6 +4,7 @@ from loushang.work.event_log import (
     EventLogEntry,
     EventPosition,
     InMemoryEventLogBackend,
+    JsonlEventLogBackend,
 )
 from loushang.work.projection import (
     WorkEventProjectionContext,
@@ -24,6 +25,7 @@ __all__ = [
     "EventLogEntry",
     "EventPosition",
     "InMemoryEventLogBackend",
+    "JsonlEventLogBackend",
     "WorkEventProjectionContext",
     "WorkEvent",
     "WorkOperation",

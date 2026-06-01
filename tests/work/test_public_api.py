@@ -11,6 +11,7 @@ def test_work_public_api_exposes_only_p0_surface() -> None:
         "EventLogEntry",
         "EventPosition",
         "InMemoryEventLogBackend",
+        "JsonlEventLogBackend",
         "WorkEvent",
         "WorkEventProjectionContext",
         "WorkOperation",

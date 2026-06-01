@@ -85,3 +85,61 @@ def test_coding_work_shell_wraps_prompt_and_logs_operation_run_and_projected_eve
         assert entries[4].payload["delivery_hint"] == "immediate"
 
     asyncio.run(scenario())
+
+
+def test_coding_work_shell_jsonl_log_can_replay_persisted_turn(tmp_path) -> None:
+    from loushang.ai.types import AssistantMessage, TextPart, Usage
+    from loushang.work import CodingWorkShell, JsonlEventLogBackend
+
+    usage = Usage(input=0, output=0, cache_read=0, cache_write=0, total_tokens=0, cost={})
+    assistant = AssistantMessage(
+        role="assistant",
+        content=[TextPart(type="text", text="done")],
+        api="anthropic-messages",
+        provider="faux",
+        model="faux-model",
+        response_id=None,
+        usage=usage,
+        stop_reason="stop",
+        error_message=None,
+        timestamp=0.0,
+    )
+
+    async def scenario() -> None:
+        log_path = tmp_path / "events.jsonl"
+        session = FakePromptSession(
+            events=[
+                {
+                    "type": "message_update",
+                    "message": {"role": "assistant"},
+                    "assistant_message_event": {"type": "text_delta", "text": "done"},
+                },
+                {"type": "message_end", "message": assistant},
+            ],
+        )
+        shell = CodingWorkShell(
+            session=session,
+            event_log=JsonlEventLogBackend(log_path),
+            clock=lambda: datetime(2026, 6, 1, 10, 30, tzinfo=UTC),
+        )
+
+        run = await shell.submit_coding_turn(
+            "persist this turn",
+            session_id="session-1",
+            operation_id="op-1",
+            run_id="run-1",
+        )
+
+        replayed = JsonlEventLogBackend(log_path).query(run_id=run.run_id)
+
+        assert [entry.payload["kind"] for entry in replayed] == [
+            "SubmitCodingTurn",
+            "WorkRunStarted",
+            "ContentDelta",
+            "ContentDelta",
+            "WorkRunCompleted",
+        ]
+        assert replayed[3].payload["payload"]["message"]["role"] == "assistant"
+        assert replayed[4].payload["delivery_hint"] == "immediate"
+
+    asyncio.run(scenario())

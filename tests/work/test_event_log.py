@@ -13,6 +13,7 @@ def _entry(
     run_id: str = "run-1",
     session_id: str = "session-1",
     sequence: int = 1,
+    payload: dict[str, object] | None = None,
 ) -> object:
     from loushang.work import EventLogEntry
 
@@ -24,7 +25,7 @@ def _entry(
         run_id=run_id,
         session_id=session_id,
         sequence=sequence,
-        payload={"kind": "WorkRunStarted"},
+        payload=payload or {"kind": "WorkRunStarted"},
         created_at=datetime(2026, 6, 1, 10, 30, tzinfo=UTC),
     )
 
@@ -56,6 +57,63 @@ def test_in_memory_event_log_subscribe_replays_existing_then_streams_later_entri
 
     async def scenario() -> None:
         backend = InMemoryEventLogBackend()
+        existing = _entry("entry-1", run_id="run-1", sequence=1)
+        ignored = _entry("entry-ignored", run_id="run-2", sequence=1)
+        later = _entry("entry-2", run_id="run-1", sequence=2)
+        backend.append(existing)
+
+        stream = backend.subscribe(run_id="run-1")
+        assert await asyncio.wait_for(anext(stream), timeout=0.1) == existing
+
+        next_entry = asyncio.create_task(anext(stream))
+        await asyncio.sleep(0)
+        backend.append(ignored)
+        backend.append(later)
+
+        assert await asyncio.wait_for(next_entry, timeout=0.1) == later
+        await stream.aclose()
+
+    asyncio.run(scenario())
+
+
+def test_jsonl_event_log_appends_queries_and_reopens(tmp_path) -> None:
+    from loushang.work import JsonlEventLogBackend
+
+    log_path = tmp_path / "work" / "events.jsonl"
+    backend = JsonlEventLogBackend(log_path)
+    first = _entry(
+        "entry-1",
+        run_id="run-1",
+        session_id="session-1",
+        sequence=1,
+        payload={"kind": "WorkRunStarted", "nested": {"at": datetime(2026, 6, 1, 10, 31, tzinfo=UTC)}},
+    )
+    second = _entry("entry-2", run_id="run-2", session_id="session-1", sequence=1)
+    third = _entry("entry-3", run_id="run-1", session_id="session-2", sequence=2)
+
+    first_position = backend.append(first)
+    backend.append(second)
+    backend.append(third)
+
+    assert first_position.offset == 1
+    assert log_path.read_text(encoding="utf-8").count("\n") == 3
+
+    reopened = JsonlEventLogBackend(log_path)
+    run_entries = reopened.query(run_id="run-1")
+    assert [entry.entry_id for entry in run_entries] == ["entry-1", "entry-3"]
+    assert run_entries[0].payload == {
+        "kind": "WorkRunStarted",
+        "nested": {"at": "2026-06-01T10:31:00+00:00"},
+    }
+    assert reopened.query(session_id="session-1") == [run_entries[0], second]
+    assert [entry.entry_id for entry in reopened.query(run_id="run-1", after=first_position)] == ["entry-3"]
+
+
+def test_jsonl_event_log_subscribe_replays_existing_then_streams_later_entries(tmp_path) -> None:
+    from loushang.work import JsonlEventLogBackend
+
+    async def scenario() -> None:
+        backend = JsonlEventLogBackend(tmp_path / "events.jsonl")
         existing = _entry("entry-1", run_id="run-1", sequence=1)
         ignored = _entry("entry-ignored", run_id="run-2", sequence=1)
         later = _entry("entry-2", run_id="run-1", sequence=2)
