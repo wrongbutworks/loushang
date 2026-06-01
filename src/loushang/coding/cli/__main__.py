@@ -67,6 +67,7 @@ from loushang.coding.workflow import (
 from loushang.work import JsonlEventLogBackend
 
 _MISSING = object()
+_WORK_LOG_INSPECT_LIMIT = 20
 
 
 @dataclass(frozen=True)
@@ -248,6 +249,9 @@ async def run_cli(
     if work_log_error is not None:
         stderr.write(f"Error: {work_log_error}.\n")
         return 2
+    work_log_inspect_result = _run_work_log_inspect(bootstrap_args, project_root, stdout, stderr)
+    if work_log_inspect_result is not None:
+        return work_log_inspect_result
 
     with _stdout_guard_context(bootstrap_args, stdout, stderr):
         resolved_services = services or build_default_services(project_root)
@@ -671,10 +675,67 @@ def _work_log_runtime_error(args: CliArgs, *, effective_tui: bool) -> str | None
 def _resolve_work_event_log(raw_path: str | None, project_root: Path) -> JsonlEventLogBackend | None:
     if raw_path is None:
         return None
+    return JsonlEventLogBackend(_resolve_work_log_path(raw_path, project_root))
+
+
+def _run_work_log_inspect(args: CliArgs, project_root: Path, stdout: TextIO, stderr: TextIO) -> int | None:
+    if args.work_log_inspect is None:
+        return None
+    try:
+        event_log = JsonlEventLogBackend(_resolve_work_log_path(args.work_log_inspect, project_root))
+        entries = event_log.query(run_id=args.work_log_run)[-_WORK_LOG_INSPECT_LIMIT:]
+    except Exception as error:
+        stderr.write(f"Error: {_format_cli_error(error)}\n")
+        return 1
+    if args.work_log_inspect_format == "json":
+        stdout.write(json.dumps([_work_log_entry_summary(entry) for entry in entries], ensure_ascii=False) + "\n")
+    else:
+        _write_work_log_text(entries, stdout)
+    return 0
+
+
+def _resolve_work_log_path(raw_path: str, project_root: Path) -> Path:
     path = Path(raw_path).expanduser()
     if not path.is_absolute():
         path = project_root / path
-    return JsonlEventLogBackend(path)
+    return path
+
+
+def _write_work_log_text(entries: list[Any], stdout: TextIO) -> None:
+    stdout.write("sequence\tkind\trun_id\tsession_id\tdelivery_hint\n")
+    for entry in entries:
+        stdout.write(
+            f"{entry.sequence}\t{_work_log_entry_kind(entry)}\t{entry.run_id}\t"
+            f"{entry.session_id}\t{_work_log_entry_delivery_hint(entry)}\n"
+        )
+
+
+def _work_log_entry_summary(entry: Any) -> dict[str, object]:
+    return {
+        "entry_id": entry.entry_id,
+        "entry_type": entry.entry_type,
+        "sequence": entry.sequence,
+        "kind": _work_log_entry_kind(entry),
+        "run_id": entry.run_id,
+        "session_id": entry.session_id,
+        "operation_id": entry.operation_id,
+        "event_id": entry.event_id,
+        "delivery_hint": _work_log_entry_delivery_hint(entry),
+    }
+
+
+def _work_log_entry_kind(entry: Any) -> str:
+    kind = entry.payload.get("kind")
+    if isinstance(kind, str) and kind:
+        return kind
+    return str(entry.entry_type)
+
+
+def _work_log_entry_delivery_hint(entry: Any) -> str:
+    delivery_hint = entry.payload.get("delivery_hint")
+    if isinstance(delivery_hint, str):
+        return delivery_hint
+    return ""
 
 
 def _has_command_style_operation(args: CliArgs) -> bool:
@@ -702,6 +763,7 @@ def _has_command_style_operation(args: CliArgs) -> bool:
         or args.remove_packages
         or args.update_all_packages
         or args.check_package_updates
+        or args.work_log_inspect is not None
     )
 
 

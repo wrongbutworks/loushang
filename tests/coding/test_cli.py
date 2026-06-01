@@ -238,6 +238,36 @@ def _append_work_log_marker(event_log: object) -> Path:
     return path
 
 
+def _append_work_log_inspect_entry(
+    event_log: object,
+    *,
+    sequence: int,
+    kind: str,
+    run_id: str = "run-1",
+    session_id: str = "session-1",
+    entry_type: str = "event",
+    delivery_hint: str | None = None,
+) -> None:
+    from loushang.work import EventLogEntry
+
+    payload: dict[str, object] = {"kind": kind}
+    if delivery_hint is not None:
+        payload["delivery_hint"] = delivery_hint
+    event_log.append(
+        EventLogEntry(
+            entry_id=f"entry-{sequence}",
+            entry_type=entry_type,
+            operation_id=f"operation-{run_id}",
+            event_id=f"event-{sequence}" if entry_type == "event" else None,
+            run_id=run_id,
+            session_id=session_id,
+            sequence=sequence,
+            payload=payload,
+            created_at=datetime(2026, 6, 1, 10, 30, sequence, tzinfo=UTC),
+        )
+    )
+
+
 def _fake_services(
     session_dir: str | None = None,
     package_roots: tuple[str, ...] = (),
@@ -325,6 +355,25 @@ def test_parse_args_accepts_work_log_flag() -> None:
 
     assert args.work_log == ".loushang/work/events.jsonl"
     assert args.messages == ("hello",)
+
+
+def test_parse_args_accepts_work_log_inspect_flags() -> None:
+    from loushang.coding.cli.args import parse_args
+
+    args = parse_args(
+        [
+            "--work-log-inspect",
+            ".loushang/work/events.jsonl",
+            "--work-log-run",
+            "run-1",
+            "--work-log-inspect-format",
+            "json",
+        ]
+    )
+
+    assert args.work_log_inspect == ".loushang/work/events.jsonl"
+    assert args.work_log_run == "run-1"
+    assert args.work_log_inspect_format == "json"
 
 
 def test_parse_args_accepts_observability_flags() -> None:
@@ -3142,6 +3191,128 @@ def test_run_cli_default_path_passes_work_log_backend_to_unified_mode_runner(tmp
     assert isinstance(event_log, JsonlEventLogBackend)
     assert _append_work_log_marker(event_log) == work_log_path
     assert work_log_path.exists()
+
+
+def test_run_cli_work_log_inspect_outputs_text_without_runtime(tmp_path) -> None:
+    from loushang.coding.cli.__main__ import run_cli
+    from loushang.work import JsonlEventLogBackend
+
+    log_path = tmp_path / "events.jsonl"
+    event_log = JsonlEventLogBackend(log_path)
+    _append_work_log_inspect_entry(
+        event_log,
+        sequence=1,
+        kind="SubmitCodingTurn",
+        entry_type="operation",
+    )
+    _append_work_log_inspect_entry(
+        event_log,
+        sequence=2,
+        kind="ContentDelta",
+        delivery_hint="coalesce",
+    )
+    stdout = StringIO()
+    stderr = StringIO()
+
+    def runtime_builder(**kwargs):
+        raise AssertionError("work log inspect should not build a runtime")
+
+    async def scenario() -> None:
+        exit_code = await run_cli(
+            ["--work-log-inspect", str(log_path)],
+            stdin=StringIO(""),
+            stdout=stdout,
+            stderr=stderr,
+            cwd=tmp_path,
+            services=_fake_services(),
+            runtime_builder=runtime_builder,
+        )
+        assert exit_code == 0
+
+    asyncio.run(scenario())
+
+    assert stdout.getvalue().splitlines() == [
+        "sequence\tkind\trun_id\tsession_id\tdelivery_hint",
+        "1\tSubmitCodingTurn\trun-1\tsession-1\t",
+        "2\tContentDelta\trun-1\tsession-1\tcoalesce",
+    ]
+    assert stderr.getvalue() == ""
+
+
+def test_run_cli_work_log_inspect_outputs_json_without_runtime(tmp_path) -> None:
+    from loushang.coding.cli.__main__ import run_cli
+    from loushang.work import JsonlEventLogBackend
+
+    log_path = tmp_path / "events.jsonl"
+    event_log = JsonlEventLogBackend(log_path)
+    _append_work_log_inspect_entry(
+        event_log,
+        sequence=3,
+        kind="TurnCompleted",
+        delivery_hint="immediate",
+    )
+    stdout = StringIO()
+
+    def runtime_builder(**kwargs):
+        raise AssertionError("work log inspect should not build a runtime")
+
+    async def scenario() -> None:
+        exit_code = await run_cli(
+            ["--work-log-inspect", str(log_path), "--work-log-inspect-format", "json"],
+            stdin=StringIO(""),
+            stdout=stdout,
+            stderr=StringIO(),
+            cwd=tmp_path,
+            services=_fake_services(),
+            runtime_builder=runtime_builder,
+        )
+        assert exit_code == 0
+
+    asyncio.run(scenario())
+
+    assert json.loads(stdout.getvalue()) == [
+        {
+            "entry_id": "entry-3",
+            "entry_type": "event",
+            "sequence": 3,
+            "kind": "TurnCompleted",
+            "run_id": "run-1",
+            "session_id": "session-1",
+            "operation_id": "operation-run-1",
+            "event_id": "event-3",
+            "delivery_hint": "immediate",
+        }
+    ]
+
+
+def test_run_cli_work_log_inspect_filters_by_run(tmp_path) -> None:
+    from loushang.coding.cli.__main__ import run_cli
+    from loushang.work import JsonlEventLogBackend
+
+    log_path = tmp_path / "events.jsonl"
+    event_log = JsonlEventLogBackend(log_path)
+    _append_work_log_inspect_entry(event_log, sequence=1, kind="ContentDelta", run_id="run-1")
+    _append_work_log_inspect_entry(event_log, sequence=2, kind="ApprovalRequested", run_id="run-2", delivery_hint="immediate")
+    stdout = StringIO()
+
+    async def scenario() -> None:
+        exit_code = await run_cli(
+            ["--work-log-inspect", str(log_path), "--work-log-run", "run-2"],
+            stdin=StringIO(""),
+            stdout=stdout,
+            stderr=StringIO(),
+            cwd=tmp_path,
+            services=_fake_services(),
+            runtime_builder=lambda **kwargs: (_ for _ in ()).throw(AssertionError("runtime should not start")),
+        )
+        assert exit_code == 0
+
+    asyncio.run(scenario())
+
+    assert stdout.getvalue().splitlines() == [
+        "sequence\tkind\trun_id\tsession_id\tdelivery_hint",
+        "2\tApprovalRequested\trun-2\tsession-1\timmediate",
+    ]
 
 
 def test_run_cli_default_rpc_path_uses_unified_mode_runner(tmp_path) -> None:
