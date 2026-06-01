@@ -4,6 +4,7 @@ import asyncio
 import importlib
 import os
 import select
+import sys
 import time
 from collections.abc import Callable
 from dataclasses import dataclass
@@ -11,6 +12,31 @@ from io import StringIO
 from typing import Any, Literal, Protocol, TextIO
 
 from loushang.tui.keyboard_protocol import KeyboardProtocolController
+
+_WINDOWS_EXTENDED_KEY_SEQUENCES = {
+    "H": "\x1b[A",
+    "P": "\x1b[B",
+    "M": "\x1b[C",
+    "K": "\x1b[D",
+    "G": "\x1b[H",
+    "O": "\x1b[F",
+    "R": "\x1b[2~",
+    "S": "\x1b[3~",
+    "I": "\x1b[5~",
+    "Q": "\x1b[6~",
+    ";": "\x1bOP",
+    "<": "\x1bOQ",
+    "=": "\x1bOR",
+    ">": "\x1bOS",
+    "?": "\x1b[15~",
+    "@": "\x1b[17~",
+    "A": "\x1b[18~",
+    "B": "\x1b[19~",
+    "C": "\x1b[20~",
+    "D": "\x1b[21~",
+    "E": "\x1b[23~",
+    "F": "\x1b[24~",
+}
 
 
 class RuntimeLike(Protocol):
@@ -39,6 +65,10 @@ class TerminalInputMode:
     def __enter__(self) -> TerminalInputMode:
         if not stream_is_tty(self.stdin):
             return self
+        if _is_windows_console_platform():
+            self._enabled = True
+            self._write_enter_sequences()
+            return self
         posix_terminal_modules = _load_posix_terminal_modules()
         if posix_terminal_modules is None:
             return self
@@ -49,27 +79,23 @@ class TerminalInputMode:
         tty_module.setcbreak(self._fd)
         attrs = [*self._original_attrs[:6], list(self._original_attrs[6])]
         attrs[0] &= ~getattr(termios_module, "ICRNL", 0)
-        attrs[3] &= ~(termios_module.ECHO | termios_module.ICANON | getattr(termios_module, "ISIG", 0))
+        attrs[3] &= ~(
+            termios_module.ECHO
+            | termios_module.ICANON
+            | getattr(termios_module, "ISIG", 0)
+        )
         attrs[6][termios_module.VMIN] = 1
         attrs[6][termios_module.VTIME] = 0
         termios_module.tcsetattr(self._fd, termios_module.TCSADRAIN, attrs)
-        if self.bracketed_paste:
-            self.stdout.write("\x1b[?2004h")
-        if self.focus_events:
-            self.stdout.write("\x1b[?1004h")
-        if self.keyboard_protocols:
-            self._keyboard_controller = KeyboardProtocolController()
-            self.stdout.write("".join(self._keyboard_controller.startup_sequences(now_ms=0)))
-            if self.keyboard_fallback_immediate:
-                self.stdout.write("".join(self._keyboard_controller.fallback_sequences_if_due(now_ms=150)))
-        if self.bracketed_paste or self.focus_events or self.keyboard_protocols:
-            self.stdout.flush()
+        self._write_enter_sequences()
         self._enabled = True
         return self
 
-    def __exit__(self, exc_type: object, exc: object, traceback: object) -> Literal[False]:
+    def __exit__(
+        self, exc_type: object, exc: object, traceback: object
+    ) -> Literal[False]:
         del exc_type, exc, traceback
-        if not self._enabled or self._fd is None or self._original_attrs is None or self._termios is None:
+        if not self._enabled:
             return False
         try:
             if self.drain_on_exit:
@@ -79,17 +105,46 @@ class TerminalInputMode:
                     idle_timeout=self.drain_idle_timeout,
                     max_duration=self.drain_max_duration,
                 )
-            if self.bracketed_paste:
-                self.stdout.write("\x1b[?2004l")
-            if self.focus_events:
-                self.stdout.write("\x1b[?1004l")
-            if self.keyboard_protocols and self._keyboard_controller is not None:
-                self.stdout.write("".join(self._keyboard_controller.shutdown_sequences()))
-            if self.bracketed_paste or self.focus_events or self.keyboard_protocols:
-                self.stdout.flush()
+            self._write_exit_sequences()
         finally:
-            self._termios.tcsetattr(self._fd, self._termios.TCSADRAIN, self._original_attrs)
+            if (
+                self._fd is not None
+                and self._original_attrs is not None
+                and self._termios is not None
+            ):
+                self._termios.tcsetattr(
+                    self._fd, self._termios.TCSADRAIN, self._original_attrs
+                )
         return False
+
+    def _write_enter_sequences(self) -> None:
+        if self.bracketed_paste:
+            self.stdout.write("\x1b[?2004h")
+        if self.focus_events:
+            self.stdout.write("\x1b[?1004h")
+        if self.keyboard_protocols:
+            self._keyboard_controller = KeyboardProtocolController()
+            self.stdout.write(
+                "".join(self._keyboard_controller.startup_sequences(now_ms=0))
+            )
+            if self.keyboard_fallback_immediate:
+                self.stdout.write(
+                    "".join(
+                        self._keyboard_controller.fallback_sequences_if_due(now_ms=150)
+                    )
+                )
+        if self.bracketed_paste or self.focus_events or self.keyboard_protocols:
+            self.stdout.flush()
+
+    def _write_exit_sequences(self) -> None:
+        if self.bracketed_paste:
+            self.stdout.write("\x1b[?2004l")
+        if self.focus_events:
+            self.stdout.write("\x1b[?1004l")
+        if self.keyboard_protocols and self._keyboard_controller is not None:
+            self.stdout.write("".join(self._keyboard_controller.shutdown_sequences()))
+        if self.bracketed_paste or self.focus_events or self.keyboard_protocols:
+            self.stdout.flush()
 
 
 def drain_input(
@@ -106,6 +161,14 @@ def drain_input(
         return stdin.read(max_bytes)
     if not stream_is_tty(stdin):
         return ""
+    if _is_windows_console_platform():
+        return _drain_windows_tty_input(
+            stdin,
+            max_bytes=max_bytes,
+            idle_timeout=idle_timeout,
+            max_duration=max_duration,
+            now=now,
+        )
     fd = stdin.fileno()
     drained = bytearray()
     deadline = None if max_duration is None else now() + max(0.0, max_duration)
@@ -174,7 +237,9 @@ async def read_input_chunk_or_render_tick(
                     timeout = idle_timeout
                     timeout_reason = "idle_wakeup"
 
-            done, _pending = await asyncio.wait(wait_for, timeout=timeout, return_when=asyncio.FIRST_COMPLETED)
+            done, _pending = await asyncio.wait(
+                wait_for, timeout=timeout, return_when=asyncio.FIRST_COMPLETED
+            )
             render_wakeup_fired = render_task is not None and render_task in done
             if render_wakeup_fired and render_wakeup is not None:
                 render_wakeup.clear()
@@ -206,6 +271,8 @@ async def read_input_chunk(stdin: TextIO) -> str:
     if isinstance(stdin, StringIO):
         return stdin.read(1)
     if stream_is_tty(stdin):
+        if _is_windows_console_platform():
+            return await _read_windows_tty_input_chunk_async(stdin)
         return await _read_tty_input_chunk_async(stdin)
     loop = asyncio.get_running_loop()
     return await loop.run_in_executor(None, _read_input_chunk_blocking, stdin)
@@ -225,6 +292,8 @@ async def _read_tty_input_chunk_async(stdin: Any) -> str:
 
 def _read_input_chunk_blocking(stdin: Any) -> str:
     if stream_is_tty(stdin):
+        if _is_windows_console_platform():
+            return _read_windows_tty_input_chunk(stdin)
         return _read_tty_input_chunk(stdin)
     return stdin.read(1)
 
@@ -265,6 +334,79 @@ def stream_is_tty(stream: Any) -> bool:
     return bool(callable(isatty) and isatty())
 
 
+def _is_windows_console_platform() -> bool:
+    return sys.platform == "win32"
+
+
+async def _read_windows_tty_input_chunk_async(stdin: Any) -> str:
+    msvcrt = _load_windows_console_module()
+    if msvcrt is None:
+        loop = asyncio.get_running_loop()
+        return await loop.run_in_executor(None, stdin.read, 1)
+    while True:
+        try:
+            if msvcrt.kbhit():
+                return _read_windows_tty_input_chunk_from_module(msvcrt)
+        except (OSError, ValueError):
+            return ""
+        await asyncio.sleep(0.01)
+
+
+def _read_windows_tty_input_chunk(stdin: Any) -> str:
+    del stdin
+    msvcrt = _load_windows_console_module()
+    if msvcrt is None:
+        return ""
+    return _read_windows_tty_input_chunk_from_module(msvcrt)
+
+
+def _read_windows_tty_input_chunk_from_module(msvcrt: Any) -> str:
+    char = msvcrt.getwch()
+    if char in {"\x00", "\xe0"}:
+        extended = msvcrt.getwch()
+        return _WINDOWS_EXTENDED_KEY_SEQUENCES.get(extended, char + extended)
+    return char
+
+
+def _drain_windows_tty_input(
+    stdin: Any,
+    *,
+    max_bytes: int,
+    idle_timeout: float,
+    max_duration: float | None,
+    now: Callable[[], float],
+) -> str:
+    del stdin
+    msvcrt = _load_windows_console_module()
+    if msvcrt is None:
+        return ""
+    drained: list[str] = []
+    drained_size = 0
+    idle_deadline = now() + max(0.0, idle_timeout)
+    max_deadline = None if max_duration is None else now() + max(0.0, max_duration)
+    while drained_size < max_bytes:
+        current = now()
+        if max_deadline is not None and current >= max_deadline:
+            break
+        if current >= idle_deadline:
+            break
+        try:
+            has_input = bool(msvcrt.kbhit())
+        except (OSError, ValueError):
+            break
+        if not has_input:
+            time.sleep(0.01)
+            continue
+        chunk = _read_windows_tty_input_chunk_from_module(msvcrt)
+        if not chunk:
+            break
+        remaining = max_bytes - drained_size
+        drained.append(chunk[:remaining])
+        drained_size += min(len(chunk), remaining)
+        idle_deadline = now() + max(0.0, idle_timeout)
+    return "".join(drained)
+
+
 def _load_posix_terminal_modules() -> tuple[Any, Any] | None:
     try:
         return importlib.import_module("termios"), importlib.import_module("tty")
@@ -272,4 +414,17 @@ def _load_posix_terminal_modules() -> tuple[Any, Any] | None:
         return None
 
 
-__all__ = ["TerminalInputMode", "drain_input", "read_input_chunk", "read_input_chunk_or_render_tick", "stream_is_tty"]
+def _load_windows_console_module() -> Any | None:
+    try:
+        return importlib.import_module("msvcrt")
+    except ModuleNotFoundError:
+        return None
+
+
+__all__ = [
+    "TerminalInputMode",
+    "drain_input",
+    "read_input_chunk",
+    "read_input_chunk_or_render_tick",
+    "stream_is_tty",
+]

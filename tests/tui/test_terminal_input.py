@@ -1,7 +1,10 @@
 from __future__ import annotations
 
 import asyncio
+import importlib
+import sys
 from io import StringIO
+from types import SimpleNamespace
 from typing import Any
 
 import pytest
@@ -48,7 +51,9 @@ def test_terminal_input_mode_enables_and_restores_tty_modes(monkeypatch: Any) ->
         lambda fd, when, attrs: tcsetattr_calls.append((fd, when, attrs)),
     )
     monkeypatch.setattr("tty.setcbreak", lambda fd: None)
-    monkeypatch.setattr("loushang.tui.terminal_input.drain_input", lambda *args, **kwargs: "")
+    monkeypatch.setattr(
+        "loushang.tui.terminal_input.drain_input", lambda *args, **kwargs: ""
+    )
 
     with TerminalInputMode(stdin=stdin, stdout=stdout):
         pass
@@ -64,10 +69,61 @@ def test_terminal_input_mode_enables_and_restores_tty_modes(monkeypatch: Any) ->
     assert tcsetattr_calls[-1] == (stdin.fileno(), termios.TCSADRAIN, original_attrs)
 
 
-def test_read_input_chunk_or_render_tick_reads_raw_stringio_escape_without_tail_joining() -> None:
+def test_terminal_input_mode_writes_control_modes_on_windows_without_posix_modules(
+    monkeypatch: Any,
+) -> None:
+    monkeypatch.setattr(sys, "platform", "win32")
+
+    original_import_module = importlib.import_module
+
+    def fake_import_module(name: str, package: str | None = None) -> object:
+        if name in {"termios", "tty"}:
+            raise ModuleNotFoundError(f"No module named {name!r}")
+        return original_import_module(name, package)
+
+    monkeypatch.setattr("importlib.import_module", fake_import_module)
+    stdout = StringIO()
+
+    with TerminalInputMode(stdin=_TtyInput(), stdout=stdout, keyboard_protocols=False):
+        pass
+
+    assert stdout.getvalue() == "\x1b[?2004h\x1b[?1004h\x1b[?2004l\x1b[?1004l"
+
+
+def test_read_input_chunk_or_render_tick_waits_for_windows_tty_input(
+    monkeypatch: Any,
+) -> None:
+    monkeypatch.setattr(sys, "platform", "win32")
+    _install_fake_msvcrt(monkeypatch, kbhit=lambda: False)
+
+    result = asyncio.run(
+        read_input_chunk_or_render_tick(
+            _TtyInput(), runtime=_Runtime(), active_task=None, idle_wakeup_ms=1
+        )
+    )
+
+    assert result is None
+
+
+def test_read_input_chunk_reads_windows_tty_key(monkeypatch: Any) -> None:
+    monkeypatch.setattr(sys, "platform", "win32")
+    _install_fake_msvcrt(monkeypatch, chars=["x"])
+
+    result = asyncio.run(read_input_chunk(_TtyInput()))
+
+    assert result == "x"
+
+
+def test_read_input_chunk_or_render_tick_reads_raw_stringio_escape_without_tail_joining() -> (
+    None
+):
     runtime = _Runtime()
 
-    result = asyncio.run(read_input_chunk_or_render_tick(StringIO("\x1b\r"), runtime=runtime, active_task=None))
+    result = asyncio.run(
+        read_input_chunk_or_render_tick(
+            StringIO("\x1b\r"), runtime=runtime, active_task=None
+        )
+    )
 
     assert result == "\x1b"
     assert runtime.rendered == 0
@@ -135,10 +191,14 @@ def test_drain_input_consumes_buffered_stringio_text() -> None:
     assert stdin.read() == ""
 
 
-def test_drain_input_respects_max_duration_for_continuous_tty_input(monkeypatch) -> None:
+def test_drain_input_respects_max_duration_for_continuous_tty_input(
+    monkeypatch,
+) -> None:
     calls: list[int] = []
 
-    def fake_select(read_list: list[int], _write: list[Any], _error: list[Any], _timeout: float):
+    def fake_select(
+        read_list: list[int], _write: list[Any], _error: list[Any], _timeout: float
+    ):
         return read_list, [], []
 
     def fake_read(_fd: int, size: int) -> bytes:
@@ -149,7 +209,9 @@ def test_drain_input_respects_max_duration_for_continuous_tty_input(monkeypatch)
     monkeypatch.setattr("select.select", fake_select)
     monkeypatch.setattr("os.read", fake_read)
 
-    drained = drain_input(_TtyInput(), max_bytes=1_000, idle_timeout=0.01, max_duration=0.01, now=clock)
+    drained = drain_input(
+        _TtyInput(), max_bytes=1_000, idle_timeout=0.01, max_duration=0.01, now=clock
+    )
 
     assert 1 <= len(drained) < 1_000
 
@@ -250,14 +312,18 @@ def test_input_batch_routes_windows_terminal_ctrl_backspace(monkeypatch: Any) ->
     batch = InputReader().feed_batch("\x08")
 
     assert batch.control_events == ()
-    assert batch.app_events == (InputEvent(kind="key", key="ctrl+backspace", raw="\x08"),)
+    assert batch.app_events == (
+        InputEvent(kind="key", key="ctrl+backspace", raw="\x08"),
+    )
 
 
 def test_input_batch_uses_kitty_base_layout_for_non_latin_shortcuts() -> None:
     batch = InputReader().feed_batch("\x1b[1089::99;5u")
 
     assert batch.control_events == ()
-    assert batch.app_events == (InputEvent(kind="key", key="ctrl+c", raw="\x1b[1089::99;5u"),)
+    assert batch.app_events == (
+        InputEvent(kind="key", key="ctrl+c", raw="\x1b[1089::99;5u"),
+    )
 
 
 def test_input_batch_routes_alt_control_and_alt_backspace_legacy_sequences() -> None:
@@ -302,7 +368,9 @@ def test_input_batch_keeps_split_bracketed_paste_atomic() -> None:
     assert second.app_events[0].text == "hello world"
 
 
-def test_input_batch_keeps_split_bracketed_paste_end_marker_atomic_with_surrounding_text() -> None:
+def test_input_batch_keeps_split_bracketed_paste_end_marker_atomic_with_surrounding_text() -> (
+    None
+):
     reader = InputReader()
 
     first = reader.feed_batch(f"pre{BRACKETED_PASTE_START[:-1]}")
@@ -331,7 +399,9 @@ def test_input_batch_keeps_split_bracketed_paste_end_marker_atomic_with_surround
     assert not fourth.has_pending
 
 
-def test_input_batch_keeps_split_terminal_control_sequences_pending_until_terminator() -> None:
+def test_input_batch_keeps_split_terminal_control_sequences_pending_until_terminator() -> (
+    None
+):
     cases = (
         (("\x1b]0;title", "\x07ok"), "osc", "0;title"),
         (("\x1b]0;title\x1b", "\\ok"), "osc", "0;title"),
@@ -347,7 +417,9 @@ def test_input_batch_keeps_split_terminal_control_sequences_pending_until_termin
         assert first.app_events == ()
         assert first.control_events == ()
         assert first.has_pending
-        assert second.control_events == (InputEvent(kind="signal", signal=signal, text=text),)
+        assert second.control_events == (
+            InputEvent(kind="signal", signal=signal, text=text),
+        )
         assert second.app_events == (InputEvent(kind="text", text="ok"),)
         assert not second.has_pending
 
@@ -435,3 +507,24 @@ class _FloatClock:
         current = self.value
         self.value += self.step
         return current
+
+
+def _install_fake_msvcrt(
+    monkeypatch: Any,
+    *,
+    chars: list[str] | None = None,
+    kbhit: object | None = None,
+) -> None:
+    pending = list(chars or ())
+    fake_msvcrt = SimpleNamespace(
+        kbhit=kbhit or (lambda: bool(pending)),
+        getwch=lambda: pending.pop(0),
+    )
+    original_import_module = importlib.import_module
+
+    def fake_import_module(name: str, package: str | None = None) -> object:
+        if name == "msvcrt":
+            return fake_msvcrt
+        return original_import_module(name, package)
+
+    monkeypatch.setattr("importlib.import_module", fake_import_module)
