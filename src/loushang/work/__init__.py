@@ -4,6 +4,10 @@ from loushang.work.event_log import (
     EventPosition,
     InMemoryEventLogBackend,
 )
+from loushang.work.projection import (
+    WorkEventProjectionContext,
+    project_agent_event_to_work_events,
+)
 from loushang.work.types import (
     DeliveryHint,
     WorkEvent,
@@ -18,8 +22,10 @@ __all__ = [
     "EventLogEntry",
     "EventPosition",
     "InMemoryEventLogBackend",
+    "WorkEventProjectionContext",
     "WorkEvent",
     "WorkOperation",
     "WorkRun",
     "WorkRunStatus",
+    "project_agent_event_to_work_events",
 ]
