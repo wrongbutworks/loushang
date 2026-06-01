@@ -6,7 +6,7 @@ from dataclasses import dataclass
 from typing import Any, Literal, Protocol, Sequence, TextIO, TypedDict, cast, get_args
 
 from loushang.coding.event import JsonEventView
-
+from loushang.work import EventLogBackend
 
 ModeName = Literal["text", "print", "json", "rpc"]
 ModeActionType = Literal[
@@ -130,6 +130,7 @@ def create_mode_adapter(
     stdout: TextIO,
     stderr: TextIO | None = None,
     session: Any | None = None,
+    work_event_log: EventLogBackend | None = None,
 ) -> ModeAdapter:
     """Create the concrete adapter for a configured coding mode."""
 
@@ -160,6 +161,7 @@ def create_mode_adapter(
         event_view=config.event_view,
         event_select=config.event_select,
         render_tool_events=config.render_tool_events,
+        work_event_log=work_event_log,
     )
 
 
@@ -174,6 +176,7 @@ async def run_mode(
     user_input: str | None = None,
     images: list[object] | None = None,
     follow_up_messages: Sequence[str] = (),
+    work_event_log: EventLogBackend | None = None,
 ) -> int:
     adapter = create_mode_adapter(
         config,
@@ -182,6 +185,7 @@ async def run_mode(
         stdin=stdin,
         stdout=stdout,
         stderr=stderr,
+        work_event_log=work_event_log,
     )
     if config.mode == "rpc":
         return await adapter.start(user_input)

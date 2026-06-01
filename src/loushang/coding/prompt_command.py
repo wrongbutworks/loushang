@@ -8,6 +8,7 @@ from typing import Any, Sequence, TextIO
 from loushang.coding.ui.events import CodingUiEventRenderer
 from loushang.coding.ui.model import ensure_usable_session_model
 from loushang.coding.ui.renderer import CodingUiRenderer
+from loushang.work import CodingWorkShell, EventLogBackend
 
 
 async def run_prompt_command(
@@ -20,6 +21,7 @@ async def run_prompt_command(
     images: list[object] | None = None,
     follow_up_messages: Sequence[str] = (),
     verbose: bool = False,
+    work_event_log: EventLogBackend | None = None,
 ) -> int:
     """Run one product prompt and render the stable coding transcript."""
 
@@ -39,6 +41,7 @@ async def run_prompt_command(
             event_renderer,
             prompt,
             images=images,
+            work_event_log=work_event_log,
         )
         if exit_code == 0:
             for message in follow_up_messages:
@@ -47,6 +50,7 @@ async def run_prompt_command(
                     renderer,
                     event_renderer,
                     message,
+                    work_event_log=work_event_log,
                 )
                 if exit_code != 0:
                     break
@@ -74,11 +78,12 @@ async def _run_turn(
     prompt: str,
     *,
     images: list[object] | None = None,
+    work_event_log: EventLogBackend | None = None,
 ) -> int:
     started_at = time.monotonic()
     previous_error = event_renderer.last_error_message
     renderer.render_user(prompt)
-    await _prompt_session(session, prompt, images=images)
+    await _run_prompt_session(session, prompt, images=images, work_event_log=work_event_log)
     await session.wait_for_idle()
     assistant_failure = _last_assistant_failure_message(session)
     if assistant_failure is None and event_renderer.last_error_message != previous_error:
@@ -87,6 +92,20 @@ async def _run_turn(
         return 1
     renderer.render_worked(time.monotonic() - started_at)
     return 0
+
+
+async def _run_prompt_session(
+    session: Any,
+    user_input: str,
+    *,
+    images: list[object] | None = None,
+    work_event_log: EventLogBackend | None = None,
+) -> None:
+    if work_event_log is None:
+        await _prompt_session(session, user_input, images=images)
+        return
+    shell = CodingWorkShell(session=session, event_log=work_event_log)
+    await shell.submit_coding_turn(user_input, session_id=_work_session_id(session), images=images)
 
 
 async def _prompt_session(session: Any, user_input: str, *, images: list[object] | None = None) -> None:
@@ -144,6 +163,23 @@ def _safe_getattr(target: Any, name: str, default: object) -> object:
         return getattr(target, name, default)
     except Exception:
         return default
+
+
+def _work_session_id(session: Any) -> str:
+    session_id = _safe_getattr(session, "session_id", None)
+    if isinstance(session_id, str) and session_id:
+        return session_id
+    session_manager = getattr(session, "session_manager", None)
+    get_header = getattr(session_manager, "get_header", None)
+    if callable(get_header):
+        try:
+            header = get_header()
+        except Exception:
+            header = None
+        header_id = _safe_getattr(header, "id", None)
+        if isinstance(header_id, str) and header_id:
+            return header_id
+    return "session"
 
 
 __all__ = ["run_prompt_command"]

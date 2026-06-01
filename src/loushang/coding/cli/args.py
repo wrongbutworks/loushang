@@ -17,6 +17,7 @@ PackageListFormat = Literal["text", "tsv", "json"]
 ExportFormat = Literal["html", "jsonl"]
 ExportResultFormat = Literal["text", "json"]
 CommandResultFormat = Literal["raw", "json"]
+WorkLogInspectFormat = Literal["text", "json"]
 ExtensionFlag: TypeAlias = RegisteredFlag | ResolvedFlag
 _BUILTIN_FLAG_NAMES = frozenset(
     {
@@ -110,6 +111,10 @@ _BUILTIN_FLAG_NAMES = frozenset(
         "command-args",
         "command-result-format",
         "render-tool-events",
+        "work-log",
+        "work-log-inspect",
+        "work-log-run",
+        "work-log-inspect-format",
         "message",
     }
 )
@@ -205,6 +210,10 @@ class CliArgs:
     export_format: ExportFormat
     export_result_format: ExportResultFormat
     render_tool_events: bool
+    work_log: str | None
+    work_log_inspect: str | None
+    work_log_run: str | None
+    work_log_inspect_format: WorkLogInspectFormat
     messages: tuple[str, ...]
     file_args: tuple[str, ...]
     message_prompts: tuple[str, ...]
@@ -351,6 +360,10 @@ def parse_args(
         export_format=namespace.export_format,
         export_result_format=namespace.export_result_format,
         render_tool_events=namespace.render_tool_events,
+        work_log=namespace.work_log,
+        work_log_inspect=namespace.work_log_inspect,
+        work_log_run=namespace.work_log_run,
+        work_log_inspect_format=namespace.work_log_inspect_format,
         messages=messages,
         file_args=file_args,
         message_prompts=tuple(namespace.message_prompts),
@@ -436,6 +449,17 @@ def _build_parser() -> ArgumentParser:
         action="store_true",
         help="Attach renderedToolCall/renderedToolResult payloads to JSON/RPC tool events.",
     )
+    parser.add_argument(
+        "--work-log",
+        help="Write WorkOperation/WorkEvent records for one-shot text/print/json prompts to a JSONL file.",
+    )
+    parser.add_argument(
+        "--work-log-inspect",
+        metavar="PATH",
+        help="Inspect a work event JSONL log without starting a session.",
+    )
+    parser.add_argument("--work-log-run", help="Filter --work-log-inspect output to one run id.")
+    parser.add_argument("--work-log-inspect-format", choices=("text", "json"), default="text")
     parser.add_argument("--message", dest="message_prompts", action="append", default=[])
     parser.add_argument("--tool", dest="tool_flags", action="append", default=[])
     parser.add_argument("--tools", "-t", dest="tools", action="append", default=[])

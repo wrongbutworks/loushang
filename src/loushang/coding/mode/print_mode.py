@@ -6,8 +6,8 @@ import sys
 from typing import Any, Literal, Sequence, TextIO
 
 from loushang.coding.event import (
-    JsonEventView,
     SUPPORTED_JSON_EVENT_VIEWS,
+    JsonEventView,
     normalize_event_select,
     project_session_event,
     should_emit_projected_event,
@@ -15,6 +15,7 @@ from loushang.coding.event import (
 from loushang.coding.message.json_codec import serialize_session_header
 from loushang.coding.mode.base import ModeAdapter, ModeState
 from loushang.coding.tools import ToolDefinitionResolver, ToolRenderRuntime
+from loushang.work import CodingWorkShell, EventLogBackend
 
 
 class PrintMode(ModeAdapter):
@@ -29,6 +30,7 @@ class PrintMode(ModeAdapter):
         event_view: JsonEventView = "full",
         event_select: Sequence[str] | str | None = None,
         render_tool_events: bool = False,
+        work_event_log: EventLogBackend | None = None,
     ) -> None:
         if output_mode not in {"text", "json"}:
             raise ValueError(f"unsupported output mode: {output_mode}")
@@ -54,6 +56,7 @@ class PrintMode(ModeAdapter):
         self.event_view = event_view
         self.event_select = normalize_event_select(event_select)
         self.render_tool_events = render_tool_events
+        self.work_event_log = work_event_log
         self._tool_render_runtime: ToolRenderRuntime | None = None
         self._tool_definition_resolver: ToolDefinitionResolver | None = None
         self._disposed = False
@@ -124,10 +127,10 @@ class PrintMode(ModeAdapter):
                 header = self.session.session_manager.get_header()
                 self._write_json_line(serialize_session_header(header))
             unsubscribe = self.session.subscribe(self._handle_event)
-            await _prompt_session(self.session, user_input, images=images)
+            await self._prompt_session(user_input, images=images)
             await self.session.wait_for_idle()
             for message in follow_up_messages:
-                await _prompt_session(self.session, message)
+                await self._prompt_session(message)
                 await self.session.wait_for_idle()
             assistant_failure = _last_assistant_failure_message(self.session)
             if assistant_failure is not None:
@@ -232,6 +235,13 @@ class PrintMode(ModeAdapter):
             return json.dumps(args, ensure_ascii=False, sort_keys=True)
         except TypeError:
             return repr(args)
+
+    async def _prompt_session(self, user_input: str, *, images: list[object] | None = None) -> None:
+        if self.work_event_log is None:
+            await _prompt_session(self.session, user_input, images=images)
+            return
+        shell = CodingWorkShell(session=self.session, event_log=self.work_event_log)
+        await shell.submit_coding_turn(user_input, session_id=_work_session_id(self.session), images=images)
 
 
 def _serialize_print_mode_state(session: Any) -> ModeState:
@@ -367,6 +377,23 @@ def _safe_getattr(target: Any, name: str, default: object) -> object:
         return default
 
 
+def _work_session_id(session: Any) -> str:
+    session_id = _safe_getattr(session, "session_id", None)
+    if isinstance(session_id, str) and session_id:
+        return session_id
+    session_manager = getattr(session, "session_manager", None)
+    get_header = getattr(session_manager, "get_header", None)
+    if callable(get_header):
+        try:
+            header = get_header()
+        except Exception:
+            header = None
+        header_id = _safe_getattr(header, "id", None)
+        if isinstance(header_id, str) and header_id:
+            return header_id
+    return "session"
+
+
 async def run_print_mode(
     *,
     runtime: Any,
@@ -380,6 +407,7 @@ async def run_print_mode(
     event_view: JsonEventView = "full",
     event_select: Sequence[str] | str | None = None,
     render_tool_events: bool = False,
+    work_event_log: EventLogBackend | None = None,
 ) -> int:
     mode = PrintMode(
         runtime=runtime,
@@ -390,6 +418,7 @@ async def run_print_mode(
         event_view=event_view,
         event_select=event_select,
         render_tool_events=render_tool_events,
+        work_event_log=work_event_log,
     )
     return await mode.run_once(user_input, images=images, follow_up_messages=follow_up_messages)
 
