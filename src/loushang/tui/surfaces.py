@@ -289,7 +289,14 @@ class CommandSurface(SelectionSurface):
         query: str = "",
         max_visible: int = 5,
     ) -> None:
-        super().__init__(items=items, max_visible=max_visible, select_kind="command")
+        super().__init__(
+            items=items,
+            max_visible=max_visible,
+            select_kind="command",
+            enable_search=True,
+            show_search_when_empty=False,
+            filter_mode="contains",
+        )
         if query:
             self.set_filter(query)
 
@@ -537,11 +544,15 @@ class ApprovalSurface:
         self.focused = False
 
     def handle_input(self, event: InputEvent) -> InputIntent | None:
-        if event.kind != "key":
+        if event.kind == "text":
+            value = event.text.strip().lower()
+        elif event.kind == "key":
+            value = event.key.lower()
+        else:
             return None
-        if event.key == "y":
+        if value == "y":
             return InputIntent(kind="approve", note=self.action_id or "")
-        if event.key == "n" or event.key in {"esc", "escape"}:
+        if value == "n" or value in {"esc", "escape"}:
             return InputIntent(kind="reject", note=self.action_id or "")
         return None
 

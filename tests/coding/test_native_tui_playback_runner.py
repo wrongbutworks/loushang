@@ -18,6 +18,10 @@ def test_native_tui_playback_runner_lists_default_scenarios(capsys) -> None:
     captured = capsys.readouterr()
     assert exit_code == 0
     assert "completion-tab" in captured.out
+    assert "completion-session-command" in captured.out
+    assert "completion-navigation-priority" in captured.out
+    assert "history-navigation" in captured.out
+    assert "idle-escape-clears-draft" in captured.out
     assert "long-transcript-input" in captured.out
     assert "escape-pending-steer" in captured.out
     assert "running-steer-queued" in captured.out
@@ -25,8 +29,25 @@ def test_native_tui_playback_runner_lists_default_scenarios(capsys) -> None:
     assert "idle-escape-pops-pending-steer" in captured.out
     assert "escape-pending-steer-fifo" in captured.out
     assert "escape-pending-steer-preserves-draft" in captured.out
+    assert "session-name-command" in captured.out
+    assert "session-command-error" in captured.out
+    assert "unknown-slash-prompt" in captured.out
+    assert "non-executable-session-command" in captured.out
     assert "running-follow-up-queued" in captured.out
+    assert "status-surface" in captured.out
+    assert "statusline-command" in captured.out
+    assert "command-palette-select" in captured.out
+    assert "command-palette-session-command" in captured.out
+    assert "commands-info-surface" in captured.out
+    assert "commands-info-session-command" in captured.out
+    assert "settings-search" in captured.out
+    assert "model-select" in captured.out
+    assert "model-select-search" in captured.out
+    assert "approval-surface" in captured.out
+    assert "approval-reject-surface" in captured.out
+    assert "dialog-surface" in captured.out
     assert "bracketed-paste-large-marker" in captured.out
+    assert "tool-output-preview" in captured.out
     assert "resize-reflow-stable" in captured.out
     assert "wide-char-input-cursor" in captured.out
     assert "keyboard-alt-enter-follow-up" in captured.out
@@ -48,6 +69,37 @@ def test_native_tui_playback_runner_runs_named_scenario(capsys) -> None:
     assert "long-transcript-input" not in captured.out
 
 
+def test_native_tui_playback_runner_runs_tagged_command_scenarios(capsys) -> None:
+    exit_code = run_playback_cli(["--tag", "command"])
+
+    captured = capsys.readouterr()
+    assert exit_code == 0
+    assert "PASS session-name-command" in captured.out
+    assert "PASS command-palette-session-command" in captured.out
+    assert "PASS commands-info-session-command" in captured.out
+    assert "PASS model-select" not in captured.out
+    assert "PASS long-transcript-input" not in captured.out
+
+
+def test_native_tui_playback_runner_lists_tagged_command_scenarios(capsys) -> None:
+    exit_code = run_playback_cli(["--list", "--tag", "command"])
+
+    captured = capsys.readouterr()
+    assert exit_code == 0
+    assert "session-name-command" in captured.out
+    assert "command-palette-session-command" in captured.out
+    assert "model-select" not in captured.out
+    assert "long-transcript-input" not in captured.out
+
+
+def test_native_tui_playback_runner_runs_completion_session_command_scenario(capsys) -> None:
+    exit_code = run_playback_cli(["completion-session-command"])
+
+    captured = capsys.readouterr()
+    assert exit_code == 0
+    assert "PASS completion-session-command" in captured.out
+
+
 def test_native_tui_playback_runner_runs_lifecycle_scenario(capsys) -> None:
     exit_code = run_playback_cli(["running-steer-queued"])
 
@@ -55,6 +107,127 @@ def test_native_tui_playback_runner_runs_lifecycle_scenario(capsys) -> None:
     assert exit_code == 0
     assert "PASS running-steer-queued" in captured.out
     assert "PASS completion-tab" not in captured.out
+
+
+def test_native_tui_playback_runner_runs_session_name_command_scenario(capsys) -> None:
+    exit_code = run_playback_cli(["session-name-command"])
+
+    captured = capsys.readouterr()
+    assert exit_code == 0
+    assert "PASS session-name-command" in captured.out
+
+
+def test_native_tui_playback_runner_runs_session_command_error_scenario(capsys) -> None:
+    exit_code = run_playback_cli(["session-command-error"])
+
+    captured = capsys.readouterr()
+    assert exit_code == 0
+    assert "PASS session-command-error" in captured.out
+
+
+def test_native_tui_playback_runner_runs_unknown_slash_prompt_scenario(capsys) -> None:
+    exit_code = run_playback_cli(["unknown-slash-prompt"])
+
+    captured = capsys.readouterr()
+    assert exit_code == 0
+    assert "PASS unknown-slash-prompt" in captured.out
+
+
+def test_native_tui_playback_runner_runs_non_executable_session_command_scenario(capsys) -> None:
+    exit_code = run_playback_cli(["non-executable-session-command"])
+
+    captured = capsys.readouterr()
+    assert exit_code == 0
+    assert "PASS non-executable-session-command" in captured.out
+
+
+def test_native_tui_playback_runner_runs_settings_search_scenario(capsys) -> None:
+    exit_code = run_playback_cli(["settings-search"])
+
+    captured = capsys.readouterr()
+    assert exit_code == 0
+    assert "PASS settings-search" in captured.out
+
+
+def test_native_tui_playback_runner_runs_info_surface_scenarios(capsys) -> None:
+    exit_code = run_playback_cli(["status-surface", "commands-info-surface"])
+
+    captured = capsys.readouterr()
+    assert exit_code == 0
+    assert "PASS status-surface" in captured.out
+    assert "PASS commands-info-surface" in captured.out
+
+
+def test_native_tui_playback_runner_runs_commands_info_session_command_scenario(capsys) -> None:
+    exit_code = run_playback_cli(["commands-info-session-command"])
+
+    captured = capsys.readouterr()
+    assert exit_code == 0
+    assert "PASS commands-info-session-command" in captured.out
+
+
+def test_native_tui_playback_runner_runs_statusline_command_scenario(capsys) -> None:
+    exit_code = run_playback_cli(["statusline-command"])
+
+    captured = capsys.readouterr()
+    assert exit_code == 0
+    assert "PASS statusline-command" in captured.out
+
+
+def test_native_tui_playback_runner_runs_command_palette_select_scenario(capsys) -> None:
+    exit_code = run_playback_cli(["command-palette-select"])
+
+    captured = capsys.readouterr()
+    assert exit_code == 0
+    assert "PASS command-palette-select" in captured.out
+
+
+def test_native_tui_playback_runner_runs_command_palette_session_command_scenario(capsys) -> None:
+    exit_code = run_playback_cli(["command-palette-session-command"])
+
+    captured = capsys.readouterr()
+    assert exit_code == 0
+    assert "PASS command-palette-session-command" in captured.out
+
+
+def test_native_tui_playback_runner_runs_model_select_scenario(capsys) -> None:
+    exit_code = run_playback_cli(["model-select"])
+
+    captured = capsys.readouterr()
+    assert exit_code == 0
+    assert "PASS model-select" in captured.out
+
+
+def test_native_tui_playback_runner_runs_model_select_search_scenario(capsys) -> None:
+    exit_code = run_playback_cli(["model-select-search"])
+
+    captured = capsys.readouterr()
+    assert exit_code == 0
+    assert "PASS model-select-search" in captured.out
+
+
+def test_native_tui_playback_runner_runs_approval_surface_scenario(capsys) -> None:
+    exit_code = run_playback_cli(["approval-surface"])
+
+    captured = capsys.readouterr()
+    assert exit_code == 0
+    assert "PASS approval-surface" in captured.out
+
+
+def test_native_tui_playback_runner_runs_approval_reject_surface_scenario(capsys) -> None:
+    exit_code = run_playback_cli(["approval-reject-surface"])
+
+    captured = capsys.readouterr()
+    assert exit_code == 0
+    assert "PASS approval-reject-surface" in captured.out
+
+
+def test_native_tui_playback_runner_runs_dialog_surface_scenario(capsys) -> None:
+    exit_code = run_playback_cli(["dialog-surface"])
+
+    captured = capsys.readouterr()
+    assert exit_code == 0
+    assert "PASS dialog-surface" in captured.out
 
 
 def test_native_tui_playback_runner_writes_artifacts(tmp_path, capsys) -> None:

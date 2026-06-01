@@ -190,6 +190,9 @@ class NativeTuiInputPlaybackResult(PlaybackResult):
     def assert_abort_requested(self) -> None:
         assert any(result.abort_requested for result in self.input_results)
 
+    def assert_no_abort_requested(self) -> None:
+        assert not any(result.abort_requested for result in self.input_results)
+
     def assert_pending_steers(self, *expected: str) -> None:
         assert self.app.state.pending_steers == list(expected)
 
@@ -237,6 +240,11 @@ class NativeTuiInputScenario(PlaybackScenario):
     def with_pending_steers(self, *texts: str) -> NativeTuiInputScenario:
         for text in texts:
             self.app.queue_steer(text)
+        return self
+
+    def with_history(self, *texts: str) -> NativeTuiInputScenario:
+        for text in texts:
+            self.app.composer.add_history(text)
         return self
 
     def with_active_surface(self, surface: object) -> NativeTuiInputScenario:
@@ -393,6 +401,7 @@ class NativeTuiLoopPlayback:
         handle_local: NativeTuiHandler | None = None,
         handle_steer: NativeTuiHandler | None = None,
         handle_followup: NativeTuiHandler | None = None,
+        handle_surface_intent: NativeTuiHandler | None = None,
         on_abort: NativeTuiAbortHandler | None = None,
         should_exit: Callable[[str], bool] | None = None,
         is_local_command: Callable[[str], bool] | None = None,
@@ -409,7 +418,9 @@ class NativeTuiLoopPlayback:
                 handle_local=handle_local,
                 handle_steer=handle_steer,
                 handle_followup=handle_followup,
+                handle_surface_intent=handle_surface_intent,
                 terminal_mode_factory=terminal_mode_factory or (lambda _stdin, _stdout: _NoTerminalMode()),
+                terminal_size_provider=lambda: TerminalSize(columns=self.width, rows=self.height),
                 on_abort=on_abort or (lambda: None),
                 should_exit=should_exit or (lambda text: text in {"/quit", "/exit"}),
                 is_local_command=is_local_command,
@@ -476,6 +487,7 @@ class NativeTuiLoopScenario:
         handle_local: NativeTuiHandler | None = None,
         handle_steer: NativeTuiHandler | None = None,
         handle_followup: NativeTuiHandler | None = None,
+        handle_surface_intent: NativeTuiHandler | None = None,
         on_abort: NativeTuiAbortHandler | None = None,
         should_exit: Callable[[str], bool] | None = None,
         is_local_command: Callable[[str], bool] | None = None,
@@ -486,6 +498,7 @@ class NativeTuiLoopScenario:
             handle_local=handle_local,
             handle_steer=handle_steer,
             handle_followup=handle_followup,
+            handle_surface_intent=handle_surface_intent,
             on_abort=on_abort,
             should_exit=should_exit,
             is_local_command=is_local_command,

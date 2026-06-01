@@ -70,6 +70,104 @@ def test_native_tui_playback_applies_recursive_at_file_completion(tmp_path: Path
     assert "› @src/tests/test_completion.py " in _plain_lines(steps[-1].diagnostics)
 
 
+def test_native_tui_playback_browses_history_from_non_empty_single_line_draft() -> None:
+    app = _app()
+    app.composer.add_history("first prompt")
+    app.composer.add_history("second prompt")
+    playback = NativeTuiInputPlayback(app)
+
+    result = playback.play(
+        [
+            PlaybackEvent.input("draft"),
+            PlaybackEvent.input("\x1b[A"),
+            PlaybackEvent.input("\x1b[A"),
+            PlaybackEvent.input("\x1b[B"),
+            PlaybackEvent.input("\x1b[B"),
+        ]
+    )
+
+    assert all(step.flush_succeeded for step in result)
+    assert [state["composer_text"] for state in playback.step_coding_states] == [
+        "draft",
+        "second prompt",
+        "first prompt",
+        "second prompt",
+        "draft",
+    ]
+    assert app.composer.value == "draft"
+    assert "› draft" in _plain_lines(result[-1].diagnostics)
+    for step in result:
+        step.assert_no_clear_scrollback()
+
+
+def test_native_tui_playback_uses_visual_up_before_history_for_multiline_draft() -> None:
+    app = _app()
+    app.composer.add_history("previous prompt")
+    playback = NativeTuiInputPlayback(app, columns=80, rows=12)
+
+    result = playback.play(
+        [
+            PlaybackEvent.input("alpha\nbeta"),
+            PlaybackEvent.input("\x1b[A"),
+            PlaybackEvent.input("\x1b[A"),
+        ]
+    )
+
+    assert all(step.flush_succeeded for step in result)
+    assert [state["composer_text"] for state in playback.step_coding_states] == [
+        "alpha\nbeta",
+        "alpha\nbeta",
+        "previous prompt",
+    ]
+    assert app.composer.value == "previous prompt"
+    for step in result:
+        step.assert_no_clear_scrollback()
+
+
+def test_native_tui_playback_completion_navigation_wins_over_history_navigation() -> None:
+    app = _app()
+    app.composer.add_history("history prompt")
+    app.composer.set_completion_provider(asyncio.run(coding_inline_completion_provider(_Session())))
+    playback = NativeTuiInputPlayback(app)
+
+    result = playback.play(
+        [
+            PlaybackEvent.input("/"),
+            PlaybackEvent.input("\x1b[B"),
+            PlaybackEvent.input("\t"),
+        ]
+    )
+
+    assert all(step.flush_succeeded for step in result)
+    assert app.composer.value == "/models "
+    assert [state["composer_text"] for state in playback.step_coding_states] == [
+        "/",
+        "/",
+        "/models ",
+    ]
+    for step in result:
+        step.assert_no_clear_scrollback()
+
+
+def test_native_tui_playback_escape_clears_idle_draft_without_abort() -> None:
+    app = _app()
+    playback = NativeTuiInputPlayback(app)
+
+    result = playback.play(
+        [
+            PlaybackEvent.input("draft"),
+            PlaybackEvent.input("\x1b"),
+        ]
+    )
+
+    assert all(step.flush_succeeded for step in result)
+    assert app.composer.value == ""
+    assert not any(input_result.abort_requested for input_result in playback.input_results)
+    assert "› draft" not in _plain_lines(result[-1].diagnostics)
+    for step in result:
+        step.assert_no_clear_scrollback()
+
+
 def test_native_tui_playback_edits_settings_search_with_text_input_cursor() -> None:
     app = _app()
     app.active_surface = SettingsSurface(
@@ -181,6 +279,91 @@ def test_native_tui_playback_smokes_surfaces_editor_and_image_fallback(monkeypat
     output = fallback_step.frame.serialized_output if fallback_step.frame else ""
     assert "[image: screenshot] shot.png" in output
     assert "\x1b_G" not in output
+
+
+def test_native_tui_playback_command_surface_filters_and_selects_command() -> None:
+    session = _Session()
+    app = _app()
+    playback = _NativeInteractivePlayback(
+        app,
+        _manager(app, session),
+        columns=100,
+        rows=18,
+    )
+
+    steps = playback.play(
+        [
+            PlaybackEvent.input("/command\r"),
+            PlaybackEvent.input("sta\r"),
+        ]
+    )
+
+    assert all(step.flush_succeeded for step in steps)
+    assert app.composer.value == "/status "
+    assert app.active_surface is None
+    assert app.surface_host is not None
+    assert app.surface_host.entries == []
+    lines = _plain_lines(steps[-1].diagnostics)
+    assert "Commands" not in lines
+    assert "› /status " in lines
+    assert "Command selected: /status" in lines[-1]
+    for step in steps:
+        step.assert_no_clear_scrollback()
+
+
+def test_native_tui_playback_settings_surface_toggles_statusline() -> None:
+    session = _Session()
+    app = _app()
+    playback = _NativeInteractivePlayback(
+        app,
+        _manager(app, session),
+        columns=100,
+        rows=18,
+    )
+
+    steps = playback.play(
+        [
+            PlaybackEvent.input("/settings\r"),
+            PlaybackEvent.input("\r"),
+        ]
+    )
+
+    assert all(step.flush_succeeded for step in steps)
+    assert app.active_surface is None
+    assert app.state.statusline_visible is False
+    assert app.state.status_message == "Status line: off"
+    lines = _plain_lines(steps[-1].diagnostics)
+    assert "Settings" not in lines
+    assert not any("moonshot/kimi-for-coding | repo | main | abcd | idle" in line for line in lines)
+    for step in steps:
+        step.assert_no_clear_scrollback()
+
+
+def test_native_tui_playback_settings_surface_searches_when_opened_by_command() -> None:
+    session = _Session()
+    app = _app()
+    playback = _NativeInteractivePlayback(
+        app,
+        _manager(app, session),
+        columns=100,
+        rows=18,
+    )
+
+    steps = playback.play(
+        [
+            PlaybackEvent.input("/settings\r"),
+            PlaybackEvent.input("zz"),
+        ]
+    )
+
+    assert all(step.flush_succeeded for step in steps)
+    lines = _plain_lines(steps[-1].diagnostics)
+    assert "Settings" in lines
+    assert "Search: zz" in lines
+    assert "  No matching settings" in lines
+    assert app.state.statusline_visible is True
+    for step in steps:
+        step.assert_no_clear_scrollback()
 
 
 def test_native_tui_playback_smokes_terminal_context_model_selector_and_resize() -> None:
