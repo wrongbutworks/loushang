@@ -719,6 +719,66 @@ def test_run_mode_routes_through_mode_adapter() -> None:
     asyncio.run(scenario())
 
 
+def test_run_mode_passes_work_event_log_to_print_adapter() -> None:
+    from loushang.coding.mode import ModeConfig, run_mode
+    from loushang.work import InMemoryEventLogBackend
+
+    class FakeRuntime:
+        pass
+
+    class FakeSession:
+        session_id = "session-1"
+
+        def __init__(self) -> None:
+            self.listeners = []
+
+        def subscribe(self, listener):
+            self.listeners.append(listener)
+
+            def unsubscribe() -> None:
+                self.listeners.remove(listener)
+
+            return unsubscribe
+
+        async def prompt(self, user_input: str, images=None) -> None:
+            del user_input, images
+            for listener in list(self.listeners):
+                result = listener(
+                    {
+                        "type": "message_update",
+                        "message": {"role": "assistant"},
+                        "assistant_message_event": {"type": "text_delta", "text": "done"},
+                    }
+                )
+                if result is not None:
+                    await result
+
+        async def wait_for_idle(self) -> None:
+            return None
+
+    async def scenario() -> None:
+        event_log = InMemoryEventLogBackend()
+        exit_code = await run_mode(
+            ModeConfig(mode="text"),
+            runtime=FakeRuntime(),
+            session=FakeSession(),
+            user_input="hello",
+            stdin=StringIO(),
+            stdout=StringIO(),
+            work_event_log=event_log,
+        )
+
+        assert exit_code == 0
+        assert [entry.payload["kind"] for entry in event_log.query(session_id="session-1")] == [
+            "SubmitCodingTurn",
+            "WorkRunStarted",
+            "ContentDelta",
+            "WorkRunCompleted",
+        ]
+
+    asyncio.run(scenario())
+
+
 def test_dispatch_mode_action_routes_to_adapter_contract() -> None:
     from loushang.coding.mode import ModeAction, dispatch_mode_action
 

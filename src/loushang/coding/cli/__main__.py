@@ -64,6 +64,7 @@ from loushang.coding.workflow import (
     resolve_workflow_files,
     run_prompt_steps_workflow,
 )
+from loushang.work import JsonlEventLogBackend
 
 _MISSING = object()
 
@@ -243,6 +244,10 @@ async def run_cli(
     if bootstrap_args.continue_ and bootstrap_args.resume:
         stderr.write("Error: --continue and --resume cannot be used together.\n")
         return 2
+    work_log_error = _work_log_static_error(bootstrap_args)
+    if work_log_error is not None:
+        stderr.write(f"Error: {work_log_error}.\n")
+        return 2
 
     with _stdout_guard_context(bootstrap_args, stdout, stderr):
         resolved_services = services or build_default_services(project_root)
@@ -374,6 +379,11 @@ async def run_cli(
             return list_models_result
 
         effective_tui = _effective_tui(args, stdin=stdin, stdout=stdout)
+        work_log_error = _work_log_runtime_error(args, effective_tui=effective_tui)
+        if work_log_error is not None:
+            stderr.write(f"Error: {work_log_error}.\n")
+            return 2
+        work_event_log = _resolve_work_event_log(args.work_log, project_root)
         with coding_observability_context(
             args=args,
             session=session,
@@ -448,6 +458,7 @@ async def run_cli(
                     images=print_input.images,
                     follow_up_messages=print_input.follow_up_messages,
                     verbose=args.verbose,
+                    work_event_log=work_event_log,
                 )
 
             output_mode = "text" if args.mode == "print" else args.mode
@@ -462,6 +473,7 @@ async def run_cli(
                     follow_up_messages=print_input.follow_up_messages,
                     output_mode=output_mode,
                     render_tool_events=args.render_tool_events,
+                    work_event_log=work_event_log,
                 )
 
             return await mode_runner(
@@ -477,6 +489,7 @@ async def run_cli(
                 stdin=stdin,
                 stdout=stdout,
                 stderr=stderr,
+                work_event_log=work_event_log,
             )
 
 
@@ -633,6 +646,35 @@ def _effective_tui(args: CliArgs, *, stdin: TextIO, stdout: TextIO) -> bool:
     if args.messages or args.file_args or args.message_prompts:
         return False
     return not _has_command_style_operation(args)
+
+
+def _work_log_static_error(args: CliArgs) -> str | None:
+    if args.work_log is None:
+        return None
+    if args.tui:
+        return "--work-log is not supported in TUI mode"
+    if args.mode == "rpc":
+        return "--work-log is not supported in RPC mode"
+    if args.prompt_steps is not None:
+        return "--work-log is not supported with --prompt-steps"
+    return None
+
+
+def _work_log_runtime_error(args: CliArgs, *, effective_tui: bool) -> str | None:
+    if args.work_log is None:
+        return None
+    if effective_tui:
+        return "--work-log is not supported in TUI mode"
+    return None
+
+
+def _resolve_work_event_log(raw_path: str | None, project_root: Path) -> JsonlEventLogBackend | None:
+    if raw_path is None:
+        return None
+    path = Path(raw_path).expanduser()
+    if not path.is_absolute():
+        path = project_root / path
+    return JsonlEventLogBackend(path)
 
 
 def _has_command_style_operation(args: CliArgs) -> bool:

@@ -5,6 +5,7 @@ import json
 import os
 import subprocess
 import sys
+from datetime import UTC, datetime
 from io import StringIO
 from pathlib import Path
 from types import SimpleNamespace
@@ -217,6 +218,26 @@ class TtyStringIO(StringIO):
         return True
 
 
+def _append_work_log_marker(event_log: object) -> Path:
+    from loushang.work import EventLogEntry
+
+    path = getattr(event_log, "_path")
+    event_log.append(
+        EventLogEntry(
+            entry_id="entry-1",
+            entry_type="event",
+            operation_id="op-1",
+            event_id="event-1",
+            run_id="run-1",
+            session_id="session-1",
+            sequence=1,
+            payload={"kind": "WorkRunStarted"},
+            created_at=datetime(2026, 6, 1, 10, 30, tzinfo=UTC),
+        )
+    )
+    return path
+
+
 def _fake_services(
     session_dir: str | None = None,
     package_roots: tuple[str, ...] = (),
@@ -295,6 +316,15 @@ def test_parse_args_accepts_no_tui_flag() -> None:
     args = parse_args(["--no-tui"])
 
     assert args.no_tui is True
+
+
+def test_parse_args_accepts_work_log_flag() -> None:
+    from loushang.coding.cli.args import parse_args
+
+    args = parse_args(["--work-log", ".loushang/work/events.jsonl", "hello"])
+
+    assert args.work_log == ".loushang/work/events.jsonl"
+    assert args.messages == ("hello",)
 
 
 def test_parse_args_accepts_observability_flags() -> None:
@@ -2161,6 +2191,35 @@ def test_run_cli_dash_p_dispatches_prompt_command(tmp_path) -> None:
     assert print_runner.calls == []
 
 
+def test_run_cli_dash_p_passes_work_log_backend_to_prompt_command(tmp_path) -> None:
+    from loushang.coding.cli.__main__ import run_cli
+    from loushang.work import JsonlEventLogBackend
+
+    runtime = FakeRuntime(FakeSession("session-1"))
+    prompt_runner = FakeRunner()
+    work_log_path = tmp_path / "prompt-work.jsonl"
+
+    async def scenario() -> None:
+        exit_code = await run_cli(
+            ["--work-log", str(work_log_path), "-p", "hello"],
+            stdin=StringIO(""),
+            stdout=StringIO(),
+            stderr=StringIO(),
+            cwd=tmp_path,
+            services=_fake_services(),
+            runtime_builder=lambda **kwargs: runtime,
+            prompt_runner=prompt_runner,
+        )
+        assert exit_code == 0
+
+    asyncio.run(scenario())
+
+    event_log = prompt_runner.calls[0]["work_event_log"]
+    assert isinstance(event_log, JsonlEventLogBackend)
+    assert _append_work_log_marker(event_log) == work_log_path
+    assert work_log_path.exists()
+
+
 def test_run_cli_dash_ps_dispatches_prompt_steps_workflow(tmp_path) -> None:
     from loushang.coding.cli.__main__ import run_cli
 
@@ -2398,6 +2457,35 @@ def test_run_cli_mode_print_dispatches_print_adapter(tmp_path) -> None:
     assert len(print_runner.calls) == 1
     assert print_runner.calls[0]["user_input"] == "hello"
     assert print_runner.calls[0]["output_mode"] == "text"
+
+
+def test_run_cli_mode_print_passes_work_log_backend_to_print_adapter(tmp_path) -> None:
+    from loushang.coding.cli.__main__ import run_cli
+    from loushang.work import JsonlEventLogBackend
+
+    runtime = FakeRuntime(FakeSession("session-1"))
+    print_runner = FakeRunner()
+    work_log_path = tmp_path / "logs" / "work-events.jsonl"
+
+    async def scenario() -> None:
+        exit_code = await run_cli(
+            ["--mode", "print", "--work-log", "logs/work-events.jsonl", "hello"],
+            stdin=StringIO(""),
+            stdout=StringIO(),
+            stderr=StringIO(),
+            cwd=tmp_path,
+            services=_fake_services(),
+            runtime_builder=lambda **kwargs: runtime,
+            print_runner=print_runner,
+        )
+        assert exit_code == 0
+
+    asyncio.run(scenario())
+
+    event_log = print_runner.calls[0]["work_event_log"]
+    assert isinstance(event_log, JsonlEventLogBackend)
+    assert _append_work_log_marker(event_log) == work_log_path
+    assert work_log_path.exists()
 
 
 def test_run_cli_builds_initial_prompt_from_at_file_and_text(tmp_path) -> None:
@@ -3027,6 +3115,35 @@ def test_run_cli_default_path_uses_unified_mode_runner(tmp_path) -> None:
     assert mode_runner.calls[0]["user_input"] == "hello"
 
 
+def test_run_cli_default_path_passes_work_log_backend_to_unified_mode_runner(tmp_path) -> None:
+    from loushang.coding.cli.__main__ import run_cli
+    from loushang.work import JsonlEventLogBackend
+
+    runtime = FakeRuntime(FakeSession("session-1"))
+    mode_runner = FakeRunner()
+    work_log_path = tmp_path / "events.jsonl"
+
+    async def scenario() -> None:
+        exit_code = await run_cli(
+            ["--mode", "json", "--work-log", str(work_log_path), "hello"],
+            stdin=StringIO(""),
+            stdout=StringIO(),
+            stderr=StringIO(),
+            cwd=tmp_path,
+            services=_fake_services(),
+            runtime_builder=lambda **kwargs: runtime,
+            mode_runner=mode_runner,
+        )
+        assert exit_code == 0
+
+    asyncio.run(scenario())
+
+    event_log = mode_runner.calls[0]["work_event_log"]
+    assert isinstance(event_log, JsonlEventLogBackend)
+    assert _append_work_log_marker(event_log) == work_log_path
+    assert work_log_path.exists()
+
+
 def test_run_cli_default_rpc_path_uses_unified_mode_runner(tmp_path) -> None:
     from loushang.coding.cli.__main__ import run_cli
 
@@ -3052,6 +3169,41 @@ def test_run_cli_default_rpc_path_uses_unified_mode_runner(tmp_path) -> None:
     assert mode_runner.calls[0]["runtime"] is runtime
     assert mode_runner.calls[0]["session"] is runtime.get_current_session()
     assert mode_runner.calls[0]["user_input"] is None
+
+
+@pytest.mark.parametrize(
+    ("argv", "message"),
+    [
+        (["--tui", "--work-log", "events.jsonl"], "--work-log is not supported in TUI mode"),
+        (["--mode", "rpc", "--work-log", "events.jsonl"], "--work-log is not supported in RPC mode"),
+        (["--work-log", "events.jsonl", "--prompt-steps", "workflow.json"], "--work-log is not supported with --prompt-steps"),
+    ],
+)
+def test_run_cli_rejects_work_log_on_unsupported_paths(tmp_path, argv, message) -> None:
+    from loushang.coding.cli.__main__ import run_cli
+
+    runtime = FakeRuntime(FakeSession("session-1"))
+    stderr = StringIO()
+
+    async def scenario() -> None:
+        exit_code = await run_cli(
+            argv,
+            stdin=TtyStringIO(""),
+            stdout=TtyStringIO(),
+            stderr=stderr,
+            cwd=tmp_path,
+            services=_fake_services(),
+            runtime_builder=lambda **kwargs: runtime,
+            mode_runner=FakeRunner(),
+            prompt_runner=FakeRunner(),
+            rpc_runner=FakeRunner(),
+            tui_runner=FakeRunner(),
+        )
+        assert exit_code == 2
+
+    asyncio.run(scenario())
+
+    assert message in stderr.getvalue()
 
 
 def test_run_cli_dispatches_tui_mode(tmp_path) -> None:

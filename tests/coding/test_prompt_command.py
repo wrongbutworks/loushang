@@ -152,6 +152,68 @@ def test_prompt_command_selects_usable_model_before_prompt() -> None:
     asyncio.run(scenario())
 
 
+def test_prompt_command_work_event_log_records_prompt_turn() -> None:
+    from loushang.coding.prompt_command import run_prompt_command
+    from loushang.work import InMemoryEventLogBackend
+
+    class FakeRuntime:
+        pass
+
+    class FakeSession:
+        session_id = "session-1"
+
+        def __init__(self) -> None:
+            self.listeners = []
+
+        def get_model_selection(self):
+            return None
+
+        def subscribe(self, listener):
+            self.listeners.append(listener)
+
+            def unsubscribe() -> None:
+                self.listeners.remove(listener)
+
+            return unsubscribe
+
+        async def prompt(self, user_input: str, images=None) -> None:
+            del user_input, images
+            for listener in list(self.listeners):
+                result = listener(
+                    {
+                        "type": "message_update",
+                        "message": {"role": "assistant"},
+                        "assistant_message_event": {"type": "text_delta", "text": "done"},
+                    }
+                )
+                if result is not None:
+                    await result
+
+        async def wait_for_idle(self) -> None:
+            return None
+
+    async def scenario() -> None:
+        event_log = InMemoryEventLogBackend()
+        exit_code = await run_prompt_command(
+            runtime=FakeRuntime(),
+            session=FakeSession(),
+            prompt="hello",
+            stdout=StringIO(),
+            stderr=StringIO(),
+            work_event_log=event_log,
+        )
+
+        assert exit_code == 0
+        assert [entry.payload["kind"] for entry in event_log.query(session_id="session-1")] == [
+            "SubmitCodingTurn",
+            "WorkRunStarted",
+            "ContentDelta",
+            "WorkRunCompleted",
+        ]
+
+    asyncio.run(scenario())
+
+
 def test_prompt_command_does_not_render_worked_after_assistant_error() -> None:
     from loushang.coding.prompt_command import run_prompt_command
 

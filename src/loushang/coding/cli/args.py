@@ -110,6 +110,7 @@ _BUILTIN_FLAG_NAMES = frozenset(
         "command-args",
         "command-result-format",
         "render-tool-events",
+        "work-log",
         "message",
     }
 )
@@ -205,6 +206,7 @@ class CliArgs:
     export_format: ExportFormat
     export_result_format: ExportResultFormat
     render_tool_events: bool
+    work_log: str | None
     messages: tuple[str, ...]
     file_args: tuple[str, ...]
     message_prompts: tuple[str, ...]
@@ -351,6 +353,7 @@ def parse_args(
         export_format=namespace.export_format,
         export_result_format=namespace.export_result_format,
         render_tool_events=namespace.render_tool_events,
+        work_log=namespace.work_log,
         messages=messages,
         file_args=file_args,
         message_prompts=tuple(namespace.message_prompts),
@@ -435,6 +438,10 @@ def _build_parser() -> ArgumentParser:
         "--render-tool-events",
         action="store_true",
         help="Attach renderedToolCall/renderedToolResult payloads to JSON/RPC tool events.",
+    )
+    parser.add_argument(
+        "--work-log",
+        help="Write WorkOperation/WorkEvent records for one-shot text/print/json prompts to a JSONL file.",
     )
     parser.add_argument("--message", dest="message_prompts", action="append", default=[])
     parser.add_argument("--tool", dest="tool_flags", action="append", default=[])
