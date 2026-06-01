@@ -1,9 +1,9 @@
 from __future__ import annotations
 
+from collections.abc import Mapping
 from dataclasses import dataclass, field
 from datetime import datetime
-from typing import Literal, Mapping, TypeAlias
-
+from typing import Literal, TypeAlias
 
 WorkRunStatus: TypeAlias = Literal[
     "accepted",
