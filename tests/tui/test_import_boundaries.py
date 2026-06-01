@@ -33,6 +33,15 @@ def test_pyproject_declares_markdown_it_py_as_direct_dependency() -> None:
     assert any(dependency.lower().startswith("markdown-it-py") for dependency in dependencies)
 
 
+def test_pyproject_does_not_declare_legacy_tui_dependencies() -> None:
+    pyproject = tomllib.loads(Path("pyproject.toml").read_text(encoding="utf-8"))
+    dependencies = pyproject["project"]["dependencies"]
+    normalized_dependencies = tuple(dependency.lower() for dependency in dependencies)
+
+    assert not any(dependency.startswith("prompt-toolkit") for dependency in normalized_dependencies)
+    assert not any(dependency.startswith("rich") for dependency in normalized_dependencies)
+
+
 def _drop_modules_with_prefix(prefix: str) -> None:
     for module_name in tuple(sys.modules):
         if module_name == prefix or module_name.startswith(f"{prefix}."):

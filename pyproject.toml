@@ -12,9 +12,7 @@ dependencies = [
   "markdown-it-py>=4.2,<5",
   "openai>=2.30.0",
   "pillow>=12.2.0",
-  "prompt-toolkit>=3,<4",
   "pygments>=2.19,<3",
-  "rich>=14,<15",
 ]
 
 [project.scripts]
