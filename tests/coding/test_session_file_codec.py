@@ -1,11 +1,40 @@
 from __future__ import annotations
 
+import builtins
+import importlib
+import sys
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
-from loushang.ai.types import AssistantMessage, TextPart, ToolResultMessage, Usage, UserMessage
+from loushang.ai.types import (
+    AssistantMessage,
+    TextPart,
+    ToolResultMessage,
+    Usage,
+    UserMessage,
+)
 from loushang.coding.message import CompactionEntry, SessionHeader, SessionMessageEntry
+
+
+def test_session_file_codec_import_does_not_require_fcntl(monkeypatch: pytest.MonkeyPatch) -> None:
+    sys.modules.pop("loushang.coding.store.file_codec", None)
+    store_package = sys.modules.get("loushang.coding.store")
+    if store_package is not None and hasattr(store_package, "file_codec"):
+        monkeypatch.delattr(store_package, "file_codec", raising=False)
+    original_import = builtins.__import__
+
+    def fake_import(name: str, *args: object, **kwargs: object):
+        if name == "fcntl":
+            raise ModuleNotFoundError("No module named 'fcntl'")
+        return original_import(name, *args, **kwargs)
+
+    monkeypatch.setattr(builtins, "__import__", fake_import)
+
+    module = importlib.import_module("loushang.coding.store.file_codec")
+
+    assert module.SessionFileError.__name__ == "SessionFileError"
 
 
 def test_write_then_load_jsonl_session_file(tmp_path: Path) -> None:
@@ -44,13 +73,21 @@ def test_session_file_codec_locks_reads_and_writes(tmp_path: Path, monkeypatch: 
     import fcntl
 
     import loushang.coding.store.file_codec as codec
+    import loushang.coding.store.file_lock as file_lock
 
     calls: list[int] = []
 
     def fake_flock(_fd: int, op: int) -> None:
         calls.append(op)
 
-    monkeypatch.setattr(codec.fcntl, "flock", fake_flock)
+    fake_fcntl = SimpleNamespace(
+        LOCK_EX=fcntl.LOCK_EX,
+        LOCK_SH=fcntl.LOCK_SH,
+        LOCK_UN=fcntl.LOCK_UN,
+        flock=fake_flock,
+    )
+    monkeypatch.setattr(file_lock, "_is_windows", lambda: False)
+    monkeypatch.setattr(file_lock, "_load_fcntl", lambda: fake_fcntl)
 
     header = SessionHeader(
         type="session",
@@ -80,6 +117,24 @@ def test_session_file_codec_locks_reads_and_writes(tmp_path: Path, monkeypatch: 
     assert fcntl.LOCK_EX in calls
     assert fcntl.LOCK_SH in calls
     assert calls.count(fcntl.LOCK_UN) == 3
+
+
+def test_session_file_lock_uses_msvcrt_on_windows(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    import loushang.coding.store.file_lock as file_lock
+
+    calls: list[tuple[int, int]] = []
+    fake_msvcrt = SimpleNamespace(
+        LK_LOCK=10,
+        LK_UNLCK=11,
+        locking=lambda _fd, mode, nbytes: calls.append((mode, nbytes)),
+    )
+    monkeypatch.setattr(file_lock, "_is_windows", lambda: True)
+    monkeypatch.setattr(file_lock, "_load_msvcrt", lambda: fake_msvcrt)
+
+    with file_lock.session_file_lock(tmp_path / "session.jsonl", "shared"):
+        pass
+
+    assert calls == [(fake_msvcrt.LK_LOCK, 1), (fake_msvcrt.LK_UNLCK, 1)]
 
 
 def test_load_session_file_rejects_missing_header(tmp_path: Path) -> None:

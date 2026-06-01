@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-from contextlib import contextmanager
-import fcntl
 import json
 import os
 from pathlib import Path
@@ -28,6 +26,7 @@ from loushang.coding.message.json_codec import (
     serialize_content_part,
     serialize_session_header,
 )
+from loushang.coding.store.file_lock import session_file_lock
 
 
 class SessionFileError(ValueError):
@@ -153,7 +152,7 @@ def write_session_file(path: Path, header: SessionHeader, entries: list[SessionE
     lines = [json.dumps(_serialize_header(header))]
     lines.extend(json.dumps(_serialize_entry(entry)) for entry in entries)
     data = "\n".join(lines) + "\n"
-    with _session_file_lock(path, fcntl.LOCK_EX):
+    with session_file_lock(path, "exclusive"):
         path.parent.mkdir(parents=True, exist_ok=True)
         temp_path = path.with_name(f".{path.name}.{os.getpid()}.tmp")
         with temp_path.open("w", encoding="utf-8") as handle:
@@ -165,7 +164,7 @@ def write_session_file(path: Path, header: SessionHeader, entries: list[SessionE
 
 def append_session_entry(path: Path, entry: SessionEntry) -> None:
     line = json.dumps(_serialize_entry(entry)) + "\n"
-    with _session_file_lock(path, fcntl.LOCK_EX):
+    with session_file_lock(path, "exclusive"):
         path.parent.mkdir(parents=True, exist_ok=True)
         with path.open("a", encoding="utf-8") as handle:
             handle.write(line)
@@ -174,7 +173,7 @@ def append_session_entry(path: Path, entry: SessionEntry) -> None:
 
 
 def load_session_file(path: Path) -> tuple[SessionHeader, list[SessionEntry]]:
-    with _session_file_lock(path, fcntl.LOCK_SH):
+    with session_file_lock(path, "shared"):
         lines = [line for line in path.read_text(encoding="utf-8").splitlines() if line.strip()]
     if not lines:
         raise SessionFileError("Session file is empty", path=path, code="empty_session_file")
@@ -210,14 +209,3 @@ def load_session_file(path: Path) -> tuple[SessionHeader, list[SessionEntry]]:
             continue
     return header, entries
 
-
-@contextmanager
-def _session_file_lock(path: Path, operation: int):
-    lock_path = path.with_name(f"{path.name}.lock")
-    lock_path.parent.mkdir(parents=True, exist_ok=True)
-    with lock_path.open("a", encoding="utf-8") as handle:
-        fcntl.flock(handle.fileno(), operation)
-        try:
-            yield
-        finally:
-            fcntl.flock(handle.fileno(), fcntl.LOCK_UN)
