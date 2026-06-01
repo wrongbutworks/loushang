@@ -47,6 +47,92 @@ def test_print_mode_run_once_prompts_session_and_waits_for_idle() -> None:
     asyncio.run(scenario())
 
 
+def test_print_mode_work_event_log_records_coding_turn_and_preserves_prompt_behavior() -> None:
+    from loushang.ai.types import AssistantMessage, TextPart, Usage
+    from loushang.coding.mode import PrintMode
+    from loushang.work import InMemoryEventLogBackend
+
+    image = {"type": "image", "mime_type": "image/png", "data": "abc"}
+    usage = Usage(input=0, output=0, cache_read=0, cache_write=0, total_tokens=0, cost={})
+    assistant = AssistantMessage(
+        role="assistant",
+        content=[TextPart(type="text", text="done")],
+        api="anthropic-messages",
+        provider="faux",
+        model="faux-model",
+        response_id=None,
+        usage=usage,
+        stop_reason="stop",
+        error_message=None,
+        timestamp=0.0,
+    )
+
+    class FakeRuntime:
+        pass
+
+    class FakeSession:
+        session_id = "session-1"
+
+        def __init__(self) -> None:
+            self.prompt_calls: list[tuple[str, object]] = []
+            self.listeners = []
+
+        def subscribe(self, listener):
+            self.listeners.append(listener)
+
+            def unsubscribe() -> None:
+                self.listeners.remove(listener)
+
+            return unsubscribe
+
+        async def prompt(self, user_input: str, images=None) -> None:
+            self.prompt_calls.append((user_input, images))
+            for listener in list(self.listeners):
+                result = listener(
+                    {
+                        "type": "message_update",
+                        "message": {"role": "assistant"},
+                        "assistant_message_event": {"type": "text_delta", "text": "done"},
+                    }
+                )
+                if result is not None:
+                    await result
+                result = listener({"type": "message_end", "message": assistant})
+                if result is not None:
+                    await result
+
+        async def wait_for_idle(self) -> None:
+            return None
+
+    async def scenario() -> None:
+        stdout = StringIO()
+        event_log = InMemoryEventLogBackend()
+        session = FakeSession()
+        mode = PrintMode(
+            runtime=FakeRuntime(),
+            session=session,
+            stdout=stdout,
+            work_event_log=event_log,
+        )
+
+        exit_code = await mode.run_once("describe", images=[image])
+
+        assert exit_code == 0
+        assert stdout.getvalue() == "done\n"
+        assert session.prompt_calls == [("describe", [image])]
+        entries = event_log.query(session_id="session-1")
+        assert [entry.payload["kind"] for entry in entries] == [
+            "SubmitCodingTurn",
+            "WorkRunStarted",
+            "ContentDelta",
+            "ContentDelta",
+            "WorkRunCompleted",
+        ]
+        assert entries[0].payload["payload"] == {"text": "describe", "image_count": 1}
+
+    asyncio.run(scenario())
+
+
 def test_print_mode_projects_assistant_text_and_tool_events() -> None:
     from loushang.ai.types import AssistantMessage, TextPart, Usage
     from loushang.coding.mode import PrintMode
@@ -1732,7 +1818,10 @@ def test_print_mode_json_streams_all_supported_session_events() -> None:
     from loushang.agent import AgentToolResult
     from loushang.ai.types import AssistantMessage, TextPart, ToolResultMessage, Usage
     from loushang.coding.message import SessionHeader
-    from loushang.coding.message.custom_messages import BranchSummaryMessage, CompactionSummaryMessage
+    from loushang.coding.message.custom_messages import (
+        BranchSummaryMessage,
+        CompactionSummaryMessage,
+    )
     from loushang.coding.mode import PrintMode
 
     usage = Usage(input=1, output=2, cache_read=3, cache_write=4, total_tokens=5, cost={})

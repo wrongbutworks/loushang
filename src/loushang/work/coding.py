@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from collections.abc import Awaitable, Callable, Mapping
+from collections.abc import Awaitable, Callable, Mapping, Sequence
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import Protocol
@@ -19,7 +19,7 @@ SessionEventListener = Callable[[Mapping[str, object]], Awaitable[None] | None]
 class PromptSession(Protocol):
     def subscribe(self, listener: SessionEventListener) -> Callable[[], None]: ...
 
-    def prompt(self, text: str) -> Awaitable[None]: ...
+    def prompt(self, text: str, *, images: Sequence[object] | None = None) -> Awaitable[None]: ...
 
 
 @dataclass
@@ -33,6 +33,7 @@ class CodingWorkShell:
         text: str,
         *,
         session_id: str,
+        images: Sequence[object] | None = None,
         operation_id: str | None = None,
         run_id: str | None = None,
     ) -> WorkRun:
@@ -44,7 +45,7 @@ class CodingWorkShell:
             kind="SubmitCodingTurn",
             session_id=session_id,
             domain="coding",
-            payload={"text": text},
+            payload=_operation_payload(text=text, images=images),
         )
         self._append_operation(operation, run_id=run_id, sequence=sequence)
 
@@ -83,7 +84,10 @@ class CodingWorkShell:
 
         unsubscribe = self.session.subscribe(listener)
         try:
-            await self.session.prompt(text)
+            if images is None:
+                await self.session.prompt(text)
+            else:
+                await self.session.prompt(text, images=images)
         except Exception:
             sequence += 1
             failed_run = WorkRun(
@@ -168,6 +172,13 @@ def _work_event(
         delivery_hint="immediate",
         payload=payload,
     )
+
+
+def _operation_payload(*, text: str, images: Sequence[object] | None) -> dict[str, object]:
+    payload: dict[str, object] = {"text": text}
+    if images is not None:
+        payload["image_count"] = len(images)
+    return payload
 
 
 def _event_log_entry_from_work_event(event: WorkEvent) -> EventLogEntry:
