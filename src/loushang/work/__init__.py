@@ -1,4 +1,4 @@
-from loushang.work.coding import CodingWorkShell, PromptSession
+from loushang.work.coding import CodingWorkShell
 from loushang.work.event_log import (
     EventLogBackend,
     EventLogEntry,
@@ -24,7 +24,6 @@ __all__ = [
     "EventLogEntry",
     "EventPosition",
     "InMemoryEventLogBackend",
-    "PromptSession",
     "WorkEventProjectionContext",
     "WorkEvent",
     "WorkOperation",
