@@ -1,6 +1,11 @@
 from __future__ import annotations
 
-from loushang.method.types import MethodContext, MethodPlan, MethodProjection, MethodStep
+from loushang.method.types import (
+    MethodContext,
+    MethodPlan,
+    MethodProjection,
+    MethodStep,
+)
 
 
 class MethodProjector:

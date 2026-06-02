@@ -2,7 +2,12 @@ from __future__ import annotations
 
 from collections.abc import Mapping as MappingABC
 
-from loushang.method.types import MethodContext, MethodDescriptor, MethodPlan, MethodStep
+from loushang.method.types import (
+    MethodContext,
+    MethodDescriptor,
+    MethodPlan,
+    MethodStep,
+)
 
 
 class MethodCompiler:
