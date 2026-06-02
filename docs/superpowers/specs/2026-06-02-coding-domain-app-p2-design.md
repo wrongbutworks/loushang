@@ -87,13 +87,15 @@ class CodingDomainRequest:
 
 @dataclass(frozen=True)
 class CodingDomainPreparedTurn:
-    user_input: str
+    prepared_prompt: str
     method_id: str | None = None
     method_guidance: str | None = None
     metadata: Mapping[str, object] = field(default_factory=dict)
 ```
 
-`CodingDomainPreparedTurn.user_input` is the final prompt text to send to the current session. P2 keeps this explicit so old session APIs do not need to change.
+`CodingDomainPreparedTurn.prepared_prompt` is the final prompt text to send to the current session. P2 avoids the name `user_input` here because future versions may represent prompt parts rather than a single text string.
+
+The request object keeps `user_input` because it represents the original user request. The prepared object uses `prepared_prompt` because it represents domain-assembled execution input.
 
 ### `app.py`
 
@@ -110,6 +112,8 @@ Suggested shape:
 class CodingDomainApp:
     def __init__(
         self,
+        *,
+        cwd: Path | None = None,
         method_loader: MethodLoader | None = None,
         method_compiler: MethodCompiler | None = None,
         method_projector: MethodProjector | None = None,
@@ -120,9 +124,25 @@ class CodingDomainApp:
 
 The app is intentionally synchronous in P2 because method loading and projection are local file/resource operations.
 
+Default dependency behavior:
+
+- `cwd` defaults to `Path.cwd()` only if a request does not provide `cwd`.
+- `method_loader=None` creates a default `MethodLoader()`.
+- `method_compiler=None` creates a default `MethodCompiler()`.
+- `method_projector=None` creates a default `MethodProjector()`.
+- request `cwd` takes precedence over app `cwd`.
+
+P2 should not add `prepare_turn_async`. If method loading later becomes remote or provider-backed, the async boundary should be introduced with the component that actually needs it.
+
 ## Prompt Guidance Policy
 
-P2 should use a deterministic prefix:
+P2 should use a deterministic prefix exposed as a module constant:
+
+```python
+DEFAULT_GUIDANCE_TEMPLATE = "{guidance}\n\nUser request:\n\n{user_input}"
+```
+
+Rendered form:
 
 ```text
 <method guidance>
@@ -140,6 +160,7 @@ Rules:
 
 - No method -> return original user input unchanged.
 - Explicit method -> prepend projected guidance.
+- Empty guidance -> return original user input unchanged but still carry `method_id` metadata.
 - Do not mutate session system prompt.
 - Do not mutate resource bundle.
 - Do not persist selected method.
@@ -161,6 +182,8 @@ Behavior:
 - Not valid for `method list/show` visibility commands.
 - Missing method returns `Error: method not found: <id-or-name>` and exit code `1`.
 
+The unsupported TUI/RPC checks should happen at runtime after parsing, not through argparse mutually exclusive groups. Current CLI parsing uses intermixed args and subcommand rewrites; runtime validation is less invasive and matches existing option validation patterns.
+
 CLI flow:
 
 ```text
@@ -168,7 +191,7 @@ parse args
 resolve print input
 if --method:
   CodingDomainApp.prepare_turn(user_input, method)
-  pass prepared.user_input to prompt/print/mode runner
+  pass prepared.prepared_prompt to prompt/print/mode runner
   pass prepared.method_id to work-shell capable paths
 else:
   existing behavior
@@ -185,6 +208,8 @@ P2 should thread `method_id` through:
 - `PrintMode`
 - CLI calls into prompt / print / json runners
 
+`PrintMode` is currently a class in `loushang.coding.mode.print_mode`, not an enum. P2 can safely add a `method_id: str | None = None` field/constructor argument and use it only when calling `CodingWorkShell`.
+
 This remains metadata-only for Work. Work does not compile or apply methods.
 
 ## Relationship To Existing Components
@@ -193,13 +218,15 @@ This remains metadata-only for Work. Work does not compile or apply methods.
 
 P2 consumes `MethodLoader`, `MethodSelector`, `MethodCompiler`, and `MethodProjector`. It should not modify method schemas.
 
+These P1 components are already implemented and covered by `tests/method`. P2 depends on their current synchronous APIs.
+
 ### `AgentSession`
 
 P2 does not change `AgentSession`. It sends a prepared prompt string through existing `session.prompt(...)`.
 
 ### CLI
 
-CLI parses `--method`, asks `CodingDomainApp` to prepare the turn, and routes the resulting text to existing runners.
+CLI parses `--method`, asks `CodingDomainApp` to prepare the turn, and routes `prepared_prompt` to existing runners.
 
 ### Work
 
@@ -208,8 +235,9 @@ Work receives `method_id` only when explicitly present. Work remains an observab
 ## Error Handling
 
 - Missing method -> `ValueError("method not found: <id-or-name>")` or a small domain-specific exception.
+- `--method` in TUI/RPC mode -> explicit runtime validation error before prompt/session execution.
 - Loader errors -> formatted CLI error.
-- Empty projected guidance -> still allowed if method content is empty, but tests should cover stable formatting.
+- Empty projected guidance -> no prompt prefix is added, but `method_id` can still be recorded.
 - `--method` with no prompt -> same prompt-required behavior unless the command is otherwise unsupported.
 
 Avoid a large custom exception hierarchy in P2.
