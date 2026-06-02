@@ -30,12 +30,12 @@
 - Modify: `src/loushang/coding/domain/__init__.py`
 - Test: `tests/coding/domain/test_coding_domain_app.py`
 
-- [ ] Write failing tests for no-method unchanged prompt, explicit skill-backed method, explicit `methods/**/SKILL.md` method, missing method error, and empty guidance behavior.
-- [ ] Verify tests fail because `CodingDomainApp` does not exist.
-- [ ] Implement `DEFAULT_GUIDANCE_TEMPLATE`, `CodingDomainApp.prepare_turn(...)`, method lookup, compile/project, and prompt assembly.
-- [ ] Keep `prepare_turn(...)` synchronous.
-- [ ] Run `uv --cache-dir .uv-cache run --extra dev pytest tests/coding/domain/test_coding_domain_app.py tests/method -q`.
-- [ ] Commit with `feat: prepare method-guided coding turns`.
+- [x] Write failing tests for no-method unchanged prompt, explicit skill-backed method, explicit `methods/**/SKILL.md` method, missing method error, and empty guidance behavior.
+- [x] Verify tests fail because `CodingDomainApp` does not exist.
+- [x] Implement `DEFAULT_GUIDANCE_TEMPLATE`, `CodingDomainApp.prepare_turn(...)`, method lookup, compile/project, and prompt assembly.
+- [x] Keep `prepare_turn(...)` synchronous.
+- [x] Run `uv --cache-dir .uv-cache run --extra dev pytest tests/coding/domain/test_coding_domain_app.py tests/method -q`.
+- [x] Commit with `feat: prepare method-guided coding turns`.
 
 ### Task 3: Prompt And Print Work Metadata Plumbing
 
