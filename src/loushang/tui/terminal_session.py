@@ -45,7 +45,9 @@ class TerminalSessionDiagnostics:
     alternate_screen: bool
     tmux_passthrough: bool
     windows_vt_input: bool
+    windows_vt_output: bool
     windows_console_mode_active: bool
+    windows_output_mode_active: bool
     termux_session: bool
     is_multiplexer: bool
     inside_ssh: bool
@@ -70,7 +72,9 @@ class TerminalSession:
     _keyboard_controller: KeyboardProtocolController | None = field(default=None, init=False, repr=False)
     _mouse_mode_active: bool = field(default=False, init=False, repr=False)
     _windows_vt_input_active: bool = field(default=False, init=False, repr=False)
+    _windows_vt_output_active: bool = field(default=False, init=False, repr=False)
     _windows_console_mode_active: bool = field(default=False, init=False, repr=False)
+    _windows_output_mode_active: bool = field(default=False, init=False, repr=False)
     _entered: bool = field(default=False, init=False, repr=False)
 
     def __enter__(self) -> TerminalSession:
@@ -80,6 +84,11 @@ class TerminalSession:
             self.capabilities = detect_terminal_capabilities(self.environment)
         if self.platform_adapter is None:
             self.platform_adapter = DefaultTerminalPlatformAdapter()
+        if self.capabilities.windows_vt_input and self._control_writes_allowed():
+            self._windows_vt_output_active = _enable_windows_vt_output(
+                self.platform_adapter, self.stdout
+            )
+            self._windows_output_mode_active = self._windows_vt_output_active
         if self._control_writes_allowed() and self.capabilities.alternate_screen:
             self._write_sequences((ALTERNATE_SCREEN_ENABLE_SEQUENCE,))
         factory = self.mode_factory or _default_mode_factory
@@ -124,6 +133,10 @@ class TerminalSession:
         finally:
             if self.capabilities is not None and self.capabilities.alternate_screen and self._control_writes_allowed():
                 self._write_sequences((ALTERNATE_SCREEN_DISABLE_SEQUENCE,))
+            if self._windows_output_mode_active and self.platform_adapter is not None:
+                _disable_windows_vt_output(self.platform_adapter)
+                self._windows_output_mode_active = False
+                self._windows_vt_output_active = False
         return suppress  # type: ignore[return-value]
 
     def consume_control_events(self, events: tuple[InputEvent, ...]) -> None:
@@ -163,7 +176,9 @@ class TerminalSession:
             alternate_screen=capabilities.alternate_screen,
             tmux_passthrough=capabilities.tmux_passthrough,
             windows_vt_input=self._windows_vt_input_active,
+            windows_vt_output=self._windows_vt_output_active,
             windows_console_mode_active=self._windows_console_mode_active,
+            windows_output_mode_active=self._windows_output_mode_active,
             termux_session=capabilities.termux_session,
             is_multiplexer=capabilities.is_multiplexer,
             inside_ssh=capabilities.inside_ssh,
@@ -228,6 +243,23 @@ def _windows_console_mode_configured(adapter: TerminalPlatformAdapter | None) ->
     if callable(configured):
         return bool(configured())
     return False
+
+
+def _enable_windows_vt_output(adapter: TerminalPlatformAdapter | None, stdout: TextIO) -> bool:
+    if adapter is None:
+        return False
+    enable = getattr(adapter, "enable_windows_vt_output", None)
+    if not callable(enable):
+        return False
+    return bool(enable(stdout))
+
+
+def _disable_windows_vt_output(adapter: TerminalPlatformAdapter | None) -> None:
+    if adapter is None:
+        return
+    disable = getattr(adapter, "disable_windows_vt_output", None)
+    if callable(disable):
+        disable()
 
 
 __all__ = [

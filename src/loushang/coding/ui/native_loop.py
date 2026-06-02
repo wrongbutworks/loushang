@@ -82,10 +82,10 @@ async def run_native_coding_tui(
 
     app.render_requester = request_app_render
     try:
-        _write_startup_welcome(app=app, runtime=runtime, stdout=stdout)
         with mode_factory(stdin, stdout) as terminal_context:
             app.terminal_diagnostics_provider = lambda context=terminal_context: _format_terminal_diagnostics(context)
             _configure_runtime_for_terminal_context(runtime, app, terminal_context)
+            _write_startup_welcome(app=app, runtime=runtime, stdout=stdout)
             runtime.render_now()
             while True:
                 if active_task is not None and active_task.done():
@@ -346,7 +346,9 @@ def _format_terminal_diagnostics(terminal_context: object) -> str:
                     f"alternate_screen_active: {_format_bool(_diagnostic_value(diagnostics, 'alternate_screen'))}",
                     f"tmux_passthrough_active: {_format_bool(_diagnostic_value(diagnostics, 'tmux_passthrough'))}",
                     f"windows_vt_input_active: {_format_bool(_diagnostic_value(diagnostics, 'windows_vt_input'))}",
+                    f"windows_vt_output_active: {_format_bool(_diagnostic_value(diagnostics, 'windows_vt_output'))}",
                     f"windows_console_mode_active: {_format_bool(_diagnostic_value(diagnostics, 'windows_console_mode_active'))}",
+                    f"windows_output_mode_active: {_format_bool(_diagnostic_value(diagnostics, 'windows_output_mode_active'))}",
                     f"termux_session_active: {_format_bool(_diagnostic_value(diagnostics, 'termux_session'))}",
                     f"multiplexer_active: {_format_bool(_diagnostic_value(diagnostics, 'is_multiplexer'))}",
                     f"ssh_active: {_format_bool(_diagnostic_value(diagnostics, 'inside_ssh'))}",

@@ -304,10 +304,16 @@ def test_terminal_session_diagnostics_report_runtime_state() -> None:
     assert diagnostics.alternate_screen is True
     assert diagnostics.tmux_passthrough is True
     assert diagnostics.windows_vt_input is True
+    assert diagnostics.windows_vt_output is True
     assert diagnostics.termux_session is True
     assert diagnostics.is_multiplexer is True
     assert diagnostics.inside_ssh is True
-    assert platform.calls == ["enable_windows_vt_input", "disable_windows_vt_input"]
+    assert platform.calls == [
+        "enable_windows_vt_output",
+        "enable_windows_vt_input",
+        "disable_windows_vt_input",
+        "disable_windows_vt_output",
+    ]
 
 
 def test_terminal_session_diagnostics_report_modify_other_keys_fallback() -> None:
@@ -341,8 +347,14 @@ def test_terminal_session_enables_and_disables_windows_vt_input_when_adapter_acc
         platform_adapter=platform,
     ) as session:
         assert session.diagnostics().windows_vt_input is True
+        assert session.diagnostics().windows_vt_output is True
 
-    assert platform.calls == ["enable_windows_vt_input", "disable_windows_vt_input"]
+    assert platform.calls == [
+        "enable_windows_vt_output",
+        "enable_windows_vt_input",
+        "disable_windows_vt_input",
+        "disable_windows_vt_output",
+    ]
 
 
 def test_terminal_session_reports_windows_vt_input_inactive_when_adapter_declines() -> None:
@@ -358,7 +370,7 @@ def test_terminal_session_reports_windows_vt_input_inactive_when_adapter_decline
     ) as session:
         assert session.diagnostics().windows_vt_input is False
 
-    assert platform.calls == ["enable_windows_vt_input"]
+    assert platform.calls == ["enable_windows_vt_output", "enable_windows_vt_input"]
 
 
 def test_terminal_session_restores_windows_console_mode_when_vt_input_declines() -> None:
@@ -376,7 +388,35 @@ def test_terminal_session_restores_windows_console_mode_when_vt_input_declines()
         assert diagnostics.windows_vt_input is False
         assert diagnostics.windows_console_mode_active is True
 
-    assert platform.calls == ["enable_windows_vt_input", "disable_windows_vt_input"]
+    assert platform.calls == [
+        "enable_windows_vt_output",
+        "enable_windows_vt_input",
+        "disable_windows_vt_input",
+    ]
+
+
+def test_terminal_session_enables_windows_vt_output_before_terminal_mode_writes() -> None:
+    stdout = StringIO()
+    calls: list[str] = []
+    platform = _RecordingPlatformAdapter(windows_enabled=True)
+    capabilities = TerminalRuntimeCapabilities(windows_vt_input=True)
+
+    with TerminalSession(
+        stdin=StringIO(),
+        stdout=stdout,
+        capabilities=capabilities,
+        mode_factory=lambda _stdin, output, _capabilities: _WritingMode(output, calls),
+        platform_adapter=platform,
+    ):
+        pass
+
+    assert platform.calls == [
+        "enable_windows_vt_output",
+        "enable_windows_vt_input",
+        "disable_windows_vt_input",
+        "disable_windows_vt_output",
+    ]
+    assert calls == ["mode:enter", "mode:exit"]
 
 
 def test_terminal_session_normalizes_apple_terminal_shift_enter_before_input_parsing() -> None:
@@ -464,6 +504,14 @@ class _RecordingPlatformAdapter:
         self.shift_pressed = shift_pressed
         self.calls: list[str] = []
 
+    def enable_windows_vt_output(self, stdout: object) -> bool:
+        del stdout
+        self.calls.append("enable_windows_vt_output")
+        return self.windows_enabled
+
+    def disable_windows_vt_output(self) -> None:
+        self.calls.append("disable_windows_vt_output")
+
     def enable_windows_vt_input(self, stdin: object) -> bool:
         del stdin
         self.calls.append("enable_windows_vt_input")
@@ -476,6 +524,9 @@ class _RecordingPlatformAdapter:
         return self.windows_configured
 
     def windows_vt_input_active(self) -> bool:
+        return self.windows_enabled
+
+    def windows_vt_output_active(self) -> bool:
         return self.windows_enabled
 
     def apple_shift_pressed(self) -> bool:

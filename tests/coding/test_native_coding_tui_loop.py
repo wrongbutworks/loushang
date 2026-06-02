@@ -46,6 +46,37 @@ def test_native_loop_prints_welcome_panel_to_scrollback_once() -> None:
     assert rendered.find("Welcome to Loushang CLI") < rendered.rfind("› ")
 
 
+def test_native_loop_enters_terminal_mode_before_welcome_panel() -> None:
+    from loushang.coding.ui.native_app import NativeCodingTuiApp
+    from loushang.coding.ui.native_loop import run_native_coding_tui
+
+    stdout = StringIO()
+    app = NativeCodingTuiApp(
+        model_label="moonshot/kimi-for-coding",
+        cwd="/repo",
+        branch="main",
+        session_label="abcd",
+        now=lambda: 1.0,
+    )
+
+    result = asyncio.run(
+        run_native_coding_tui(
+            app=app,
+            stdin=StringIO("/quit\r"),
+            stdout=stdout,
+            handle_prompt=lambda _text: None,
+            terminal_mode_factory=lambda _stdin, _stdout: _OrderingTerminalMode(stdout),
+            on_abort=lambda: None,
+            should_exit=lambda text: text in {"/quit", "/exit"},
+        )
+    )
+
+    output = stdout.getvalue()
+
+    assert result == 0
+    assert output.find("[mode-enter]") < output.find("Welcome to Loushang CLI")
+
+
 def test_native_loop_runs_prompt_to_worked_divider_without_stale_working() -> None:
     from loushang.coding.ui.native_app import NativeCodingTuiApp
     from loushang.coding.ui.native_loop import run_native_coding_tui
@@ -1033,6 +1064,19 @@ class _NoTerminalMode:
         return self
 
     def __exit__(self, *_args: object) -> bool:
+        return False
+
+
+class _OrderingTerminalMode:
+    def __init__(self, stdout: StringIO) -> None:
+        self.stdout = stdout
+
+    def __enter__(self) -> "_OrderingTerminalMode":
+        self.stdout.write("[mode-enter]\n")
+        return self
+
+    def __exit__(self, *_args: object) -> bool:
+        self.stdout.write("[mode-exit]\n")
         return False
 
 
