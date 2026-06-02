@@ -4,12 +4,13 @@
 
 在 Work P0 已经合并的基础上，引入最小可运行的 `loushang.method` 资源层。
 
-P1 的目标不是实现完整方法论执行引擎，而是先让 Loushang 可以把现有 skill 生态看作一种 method 资源，并为后续 `methods/**/METHOD.md`、DomainApp、TaskFlow、多 agent 协作留下稳定边界。
+P1 的目标不是实现完整方法论执行引擎，而是先让 Loushang 可以把现有 skill 生态看作一种 method 资源，并为后续 `methods/**/SKILL.md`、DomainApp、TaskFlow、多 agent 协作留下稳定边界。
 
 成功标准：
 
 - 现有 `skills/**/SKILL.md` 不迁移也能投影为 skill-backed method。
-- `MethodDescriptor`、`MethodLoader`、`MethodRegistry`、`MethodCompiler`、`MethodProjection` 有稳定 P1 公共 API。
+- `skills/**/SKILL.md` 和 `methods/**/SKILL.md` 中已有的 `type`、`phase`、`meta_role`、`temperature` 等方法论提示可以被保留，但 P1 不强制解释。
+- `MethodDescriptor`、`MethodLoader`、`MethodRegistry`、`MethodSelector`、`MethodCompiler`、`MethodProjection` 有稳定 P1 公共 API。
 - method 可以编译成 single-turn `MethodPlan`。
 - method projection 可以生成 prompt guidance，但默认不改变现有 CLI / AgentSession 行为。
 - P1 public API 不暴露 TaskFlow、AgentLane、CollaborationBus、多步骤 workflow 等 P3/P4 概念。
@@ -21,8 +22,11 @@ P1 的目标不是实现完整方法论执行引擎，而是先让 Loushang 可�
 - 新增独立包 `loushang.method`。
 - 定义 P1 `MethodDescriptor` schema。
 - 定义 `MethodLoader`，内部可以复用现有 coding resource discovery。
-- 定义 `MethodRegistry`，支持 list/get/select 的内存状态。
+- 定义 `MethodRegistry`，支持 list/get 和 selected-state 的内存状态。
+- 定义极简 `MethodSelector`，只支持显式 id/name 精确匹配。
 - 定义 `SkillDescriptor -> MethodDescriptor(kind="skill_backed")` 适配规则。
+- 保留 `type` / `phase` / `meta_role` / `temperature` 等可选 taxonomy hints。
+- 支持 `methods/**/SKILL.md` 的 method resource discovery。
 - 定义 single-turn `MethodPlan` 和 `MethodStep`。
 - 定义 `MethodCompiler`，P1 永远输出 single-turn plan。
 - 定义 `MethodProjector` / `MethodProjection`，把 plan 投影成 prompt guidance。
@@ -36,6 +40,10 @@ P1 的目标不是实现完整方法论执行引擎，而是先让 Loushang 可�
 - 多步骤 TaskFlow。
 - `CodingDomainApp` 实现。
 - 多 agent 协作。
+- 冻结最终方法论 ontology。
+- 强制执行 phase/activity/task/role/guidance/workproduct 语义。
+- CONDUCTOR 调度。
+- SPEM 风格方法模型校验。
 - method marketplace / package lifecycle。
 - 迁移 `AgentSession` 内部职责。
 
@@ -54,6 +62,19 @@ Work P0 已经提供：
 这让系统有了外部可观察的 work 生命周期。但目前 work 还不知道“该按什么方法执行”。如果直接进入 DomainApp 或多 agent，很容易把流程、领域、方法、队列混在一起。
 
 因此 P1 应先补上 method 资源兼容层，让 method 从 hardcoded prompt / skill usage 中独立出来。
+
+## Experimental Methodology Alignment
+
+`docs/experimental/methodology/` 中的元方法、元角色、元阶段文档是高价值设计输入，但在 P1 不应被当作已经冻结的运行时契约。
+
+P1 的处理原则：
+
+- 吸收 taxonomy hints：`phase`、`activity`、`task`、`role`、`guidance`、`workproduct`、`meta_role`、`temperature` 等字段可以进入 descriptor / plan / projection。
+- 不冻结 ontology：P1 不把这些字段做成强枚举，也不要求所有 method 必须声明这些字段。
+- 保持向后兼容：现有 `skills/**/SKILL.md` 不需要修改；没有方法论字段时仍按 skill-backed method 工作。
+- 保持可演进：P3/P4 可以在不破坏 P1 API 的前提下，把这些 hints 提升为 TaskFlow、DomainApp policy 或 multi-agent role routing。
+
+这意味着 `kind` 在 P1 仍然表示 method 的来源/消费分类，而不是最终方法论元素类型。方法论元素类型放在 `element_type` 这类可选 hint 中。
 
 相关架构文档：
 
@@ -90,6 +111,7 @@ Pros:
 - method 边界从第一天就是跨 domain 的。
 - P1 仍能复用现有 skill 生态，落地成本低。
 - 不要求修改 `ResourceBundle` 公共结构。
+- 可以保留 experimental methodology 的 taxonomy hints，但不把它们变成强运行时依赖。
 - 可以渐进接入 work / domain app。
 
 Cons:
@@ -127,6 +149,7 @@ src/loushang/method/
   skill_adapter.py
   loader.py
   registry.py
+  selector.py
   compiler.py
   projection.py
 ```
@@ -159,7 +182,7 @@ Owns:
 
 - `MethodLoader`
 - discovery from current resource loader
-- future placeholder for `methods/**/METHOD.md`
+- optional discovery from `methods/**/SKILL.md`
 
 P1 `MethodLoader` should be method-facing even if it delegates to `DefaultResourceLoader`.
 
@@ -168,10 +191,19 @@ P1 `MethodLoader` should be method-facing even if it delegates to `DefaultResour
 Owns:
 
 - `MethodRegistry`
-- list/get/select semantics
+- list/get semantics
 - selected method state in memory
 
 P1 registry does not persist selected method to session files.
+
+### `selector.py`
+
+Owns:
+
+- `MethodSelector`
+- exact id/name matching against a registry or descriptor list
+
+P1 selector must not perform automatic, LLM-based, fuzzy, semantic, or task-classification selection.
 
 ### `compiler.py`
 
@@ -183,8 +215,8 @@ Owns:
 P1 compiler always creates one step:
 
 ```text
-MethodPlan(mode="single_turn")
-  MethodStep(id="main", executor="current_agent")
+MethodPlan(mode="single_turn", phase=None, activity=None, task=None)
+  MethodStep(id="main", executor="current_agent", role_variant=None)
 ```
 
 ### `projection.py`
@@ -206,9 +238,12 @@ class MethodDescriptor:
     id: str
     name: str
     description: str
-    kind: Literal["skill_backed", "method_resource"]
     content: str
+    kind: str  # P1 values: "skill_backed" | "method_resource"
+    element_type: str | None = None
     domain: str | None = None
+    meta_role: str | None = None
+    phase: str | None = None
     source_path: str | None = None
     version: str | None = None
     metadata: Mapping[str, object] = field(default_factory=dict)
@@ -219,12 +254,15 @@ Required fields:
 - `id`
 - `name`
 - `description`
-- `kind`
 - `content`
+- `kind`
 
 Compatibility rules:
 
 - Unknown `metadata` keys must be preserved.
+- `kind` is a source/compatibility classification. It is not the method ontology.
+- `element_type` preserves optional method taxonomy hints such as `phase`, `activity`, `task`, `role`, `guidance`, and `workproduct`.
+- `meta_role`, `phase`, `temperature`, `responsible`, and other methodology fields should be copied from frontmatter into explicit fields where P1 has them and into `metadata` otherwise.
 - P3 additions such as `steps`, `roles`, `gates`, and `artifacts` must be additive.
 - P1 must not require existing `SKILL.md` files to change.
 
@@ -237,12 +275,20 @@ id          = "skill:<skill.name>"
 name        = skill.name
 description = skill.description or ""
 kind        = "skill_backed"
+element_type = frontmatter.type, if present
+domain      = frontmatter.domain, if present
+meta_role   = frontmatter.meta_role or frontmatter.role, if present
+phase       = frontmatter.phase, if present
 content     = skill.content
 source_path = skill.source_path
 metadata    = skill source, frontmatter, activation, and compatibility hints where available
 ```
 
 If a skill name already starts with `skill:`, the adapter should avoid double-prefixing.
+
+For `skills/**/SKILL.md`, `kind` remains `"skill_backed"` even when frontmatter has `type: task` or `type: role`. The `type` value is copied to `element_type`.
+
+For `methods/**/SKILL.md`, `kind` should be `"method_resource"` and `element_type` should come from frontmatter `type` or, if absent, from the directory segment under `methods/`.
 
 ### `MethodContext`
 
@@ -265,8 +311,11 @@ It is context for compiling/projecting a method, not a run state object.
 class MethodPlan:
     id: str
     method_id: str
-    mode: Literal["single_turn"]
+    mode: str  # P1 value: "single_turn"
     steps: tuple[MethodStep, ...]
+    phase: str | None = None
+    activity: str | None = None
+    task: str | None = None
     metadata: Mapping[str, object] = field(default_factory=dict)
 ```
 
@@ -277,11 +326,14 @@ class MethodPlan:
 class MethodStep:
     id: str
     title: str
-    executor: Literal["current_agent"]
+    executor: str  # P1 value: "current_agent"
+    role_variant: str | None = None
     projection: Mapping[str, object] = field(default_factory=dict)
 ```
 
 P1 step is descriptive. It is not a TaskFlow step and does not own lifecycle events.
+
+`phase`, `activity`, `task`, `executor`, and `role_variant` exist so later method compilation can express `Phase > Activity > Task > Step` and meta-role routing without changing the P1 object shape. P1 should normally leave these hints unset except for `mode="single_turn"` and `executor="current_agent"`.
 
 ### `MethodProjection`
 
@@ -291,11 +343,14 @@ class MethodProjection:
     method_id: str
     step_id: str
     system_guidance: str
+    meta_role: str | None = None
+    role_variant: str | None = None
     user_guidance: str | None = None
     allowed_skills: tuple[str, ...] = ()
     suggested_tools: tuple[str, ...] = ()
     expected_artifacts: tuple[str, ...] = ()
     approval_gates: tuple[str, ...] = ()
+    temperature: float | None = None
     metadata: Mapping[str, object] = field(default_factory=dict)
 ```
 
@@ -307,11 +362,20 @@ Use the following method guidance when performing this turn:
 <method content>
 ```
 
+P1 projection may copy `meta_role`, `role_variant`, and `temperature` from descriptor/step hints when present. It must not interpret those values as scheduling or provider-routing policy yet.
+
 ## Relationship To Existing Components
 
-### Skill Loader
+### Skill And Method Resource Loader
 
-P1 uses existing skills as source material, but it does not move skill discovery into method.
+P1 uses existing skills as source material, but it does not move skill discovery ownership into method.
+
+Discovery rules:
+
+- `skills/**/SKILL.md` loads as `kind="skill_backed"`.
+- `methods/**/SKILL.md` loads as `kind="method_resource"`.
+- `methods/{phase|activity|task|role|guidance|workproduct}/{name}/SKILL.md` is an experimental-compatible layout, but P1 should treat the directory segment as a hint, not a mandatory ontology.
+- When ids collide, project-local method resources should override project-local skills, and project-local resources should override package resources.
 
 `MethodLoader` can accept:
 
@@ -336,7 +400,7 @@ P1 does not need to modify `CodingWorkShell` immediately.
 The clean integration path is:
 
 1. P1 implements pure method APIs.
-2. A later small PR may allow work operations to carry `method_id`.
+2. P1 may allow work operations to carry `method_id` as metadata-only run context.
 3. DomainApp P2 will decide how to assemble projection into a domain prompt/tool/policy bundle.
 
 If P1 needs a smoke integration, it should be explicit and optional:
@@ -346,6 +410,8 @@ compile method -> project guidance -> caller prepends guidance to prompt
 ```
 
 The method package should not call `CodingWorkShell` directly.
+
+If `CodingWorkShell.submit_coding_turn(..., method_id=...)` is added in P1, it must only write `WorkRun.method_id` and related event metadata. It must not compile, project, select, or apply a method.
 
 ### AgentSession
 
@@ -381,6 +447,7 @@ tests/method/test_method_types.py
 tests/method/test_skill_adapter.py
 tests/method/test_method_loader.py
 tests/method/test_method_registry.py
+tests/method/test_method_selector.py
 tests/method/test_method_compiler.py
 tests/method/test_method_projection.py
 tests/method/test_public_api.py
@@ -390,11 +457,15 @@ Coverage:
 
 - dataclass defaults
 - metadata is JSON-friendly and preserved
+- taxonomy hints are preserved without being required
 - skill-backed id generation
 - loader discovers methods from skills
-- registry list/get/select
+- loader discovers method resources from `methods/**/SKILL.md`
+- registry list/get and selected-state behavior
+- selector exact id/name matching
 - compiler returns single-turn plan
-- projector returns stable guidance
+- compiler leaves phase/activity/task unset unless hints are explicitly available
+- projector returns stable guidance and carries optional role/temperature hints
 - public API excludes P3/P4 concepts
 
 ### Regression Tests
@@ -416,19 +487,27 @@ Create `loushang.method.types` and public exports.
 
 Implement `SkillDescriptor -> MethodDescriptor`.
 
+Preserve frontmatter hints such as `type`, `domain`, `phase`, `meta_role`, `role`, and `temperature`.
+
 ### Task 3: Method Loader
 
-Wrap existing resource loader skill discovery into method discovery.
+Wrap existing resource loader skill discovery into method discovery and add `methods/**/SKILL.md` discovery.
 
-### Task 4: Method Registry
+### Task 4: Method Registry And Selector
 
-Add list/get/select behavior with duplicate id protection.
+Add list/get and selected-state behavior with duplicate id protection. Add exact id/name matching selector.
 
 ### Task 5: Compiler And Projection
 
-Compile to single-turn plan and project stable guidance.
+Compile to single-turn plan and project stable guidance. Carry optional taxonomy and role hints without turning them into scheduling behavior.
 
-### Task 6: Public API And Regression
+### Task 6: Optional Work Metadata Integration
+
+If the implementation can stay small, allow `CodingWorkShell.submit_coding_turn(..., method_id=...)` to write `WorkRun.method_id`.
+
+This task is metadata-only. It must not apply prompt guidance or mutate `AgentSession`.
+
+### Task 7: Public API And Regression
 
 Add public API boundary tests and run focused regression.
 
@@ -436,10 +515,12 @@ Add public API boundary tests and run focused regression.
 
 These are explicitly deferred unless implementation reveals a blocker:
 
-- Should `METHOD.md` use frontmatter identical to `SKILL.md`, or a separate schema?
+- Should `METHOD.md` ever exist, or should method resources continue to use `SKILL.md` with richer frontmatter?
+- When should taxonomy hints become mandatory validated fields rather than optional metadata?
 - Should selected method live in settings, session metadata, or work operation payload?
 - Should CLI expose `--method` before DomainApp exists?
 - Should method projection append to system prompt or user prompt by default?
+- Should heuristic or semantic method selection exist before DomainApp owns task classification?
 
 P1 can ship without answering these globally.
 
