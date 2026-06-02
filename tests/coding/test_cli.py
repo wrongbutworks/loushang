@@ -376,6 +376,34 @@ def test_parse_args_accepts_work_log_inspect_flags() -> None:
     assert args.work_log_inspect_format == "json"
 
 
+def test_parse_args_accepts_method_visibility_flags_and_subcommands() -> None:
+    from loushang.coding.cli.args import parse_args
+
+    args = parse_args(["--list-methods", "--list-methods-format", "json"])
+
+    assert args.list_methods is True
+    assert args.list_methods_format == "json"
+
+    show_args = parse_args(["method", "show", "method:task:review", "--show-method-format", "json"])
+
+    assert show_args.show_method == "method:task:review"
+    assert show_args.show_method_format == "json"
+
+    list_args = parse_args(["method", "list"])
+
+    assert list_args.list_methods is True
+
+    cwd_first_args = parse_args(["--cwd", "/tmp/project", "method", "list"])
+
+    assert cwd_first_args.cwd == "/tmp/project"
+    assert cwd_first_args.list_methods is True
+
+    message_args = parse_args(["fix", "method", "list"])
+
+    assert message_args.list_methods is False
+    assert message_args.messages == ("fix", "method", "list")
+
+
 def test_parse_args_accepts_observability_flags() -> None:
     from loushang.coding.cli.args import parse_args
 
@@ -4471,6 +4499,118 @@ def test_run_cli_lists_skills_as_json(tmp_path) -> None:
         }
     ]
     assert stderr.getvalue() == ""
+
+
+def test_run_cli_lists_methods_as_json(tmp_path) -> None:
+    from loushang.coding.cli.__main__ import run_cli
+
+    method_dir = tmp_path / "methods" / "task" / "review"
+    method_dir.mkdir(parents=True)
+    (method_dir / "SKILL.md").write_text(
+        "---\n"
+        "name: review\n"
+        "description: Review changes.\n"
+        "type: task\n"
+        "domain: coding\n"
+        "meta_role: VALIDATOR\n"
+        "phase: VERIFY\n"
+        "---\n\n"
+        "Review the diff carefully.",
+        encoding="utf-8",
+    )
+    (tmp_path / "methods" / "METHOD.md").write_text("Future method manifest.", encoding="utf-8")
+    session = FakeSession("session-1")
+    runtime = FakeRuntime(session)
+    stdout = StringIO()
+    stderr = StringIO()
+
+    async def scenario() -> None:
+        exit_code = await run_cli(
+            ["method", "list", "--list-methods-format", "json"],
+            stdin=StringIO(""),
+            stdout=stdout,
+            stderr=stderr,
+            cwd=tmp_path,
+            services=_fake_services(),
+            runtime_builder=lambda **kwargs: runtime,
+        )
+        assert exit_code == 0
+
+    asyncio.run(scenario())
+
+    assert json.loads(stdout.getvalue()) == [
+        {
+            "id": "method:task:review",
+            "name": "review",
+            "kind": "method_resource",
+            "element_type": "task",
+            "domain": "coding",
+            "meta_role": "VALIDATOR",
+            "phase": "VERIFY",
+            "path": str(method_dir / "SKILL.md"),
+        }
+    ]
+    assert stderr.getvalue() == ""
+
+
+def test_run_cli_shows_method_as_text(tmp_path) -> None:
+    from loushang.coding.cli.__main__ import run_cli
+
+    skill_dir = tmp_path / "skills" / "debug"
+    skill_dir.mkdir(parents=True)
+    (skill_dir / "SKILL.md").write_text(
+        "---\nname: debug\ndescription: Debug failures.\ntype: task\n---\n\nDebug failures carefully.",
+        encoding="utf-8",
+    )
+    session = FakeSession("session-1")
+    runtime = FakeRuntime(session)
+    stdout = StringIO()
+    stderr = StringIO()
+
+    async def scenario() -> None:
+        exit_code = await run_cli(
+            ["method", "show", "debug"],
+            stdin=StringIO(""),
+            stdout=stdout,
+            stderr=stderr,
+            cwd=tmp_path,
+            services=_fake_services(),
+            runtime_builder=lambda **kwargs: runtime,
+        )
+        assert exit_code == 0
+
+    asyncio.run(scenario())
+
+    output = stdout.getvalue()
+    assert "id: skill:debug" in output
+    assert "kind: skill_backed" in output
+    assert "element_type: task" in output
+    assert "Debug failures carefully." in output
+    assert stderr.getvalue() == ""
+
+
+def test_run_cli_show_method_reports_missing_method(tmp_path) -> None:
+    from loushang.coding.cli.__main__ import run_cli
+
+    session = FakeSession("session-1")
+    runtime = FakeRuntime(session)
+    stderr = StringIO()
+
+    async def scenario() -> None:
+        exit_code = await run_cli(
+            ["method", "show", "missing"],
+            stdin=StringIO(""),
+            stdout=StringIO(),
+            stderr=stderr,
+            cwd=tmp_path,
+            services=_fake_services(),
+            runtime_builder=lambda **kwargs: runtime,
+        )
+        assert exit_code == 1
+
+    asyncio.run(scenario())
+
+    assert "Error: method not found: missing" in stderr.getvalue()
 
 
 def test_run_cli_lists_plugins_as_tsv(tmp_path) -> None:

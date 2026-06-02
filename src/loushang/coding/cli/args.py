@@ -12,6 +12,8 @@ DiagnosticListFormat = Literal["tsv", "json"]
 ModelListFormat = Literal["text", "json"]
 SessionListFormat = Literal["tsv", "json"]
 SkillListFormat = Literal["tsv", "json"]
+MethodListFormat = Literal["tsv", "json"]
+MethodShowFormat = Literal["text", "json"]
 PluginListFormat = Literal["tsv", "json"]
 PackageListFormat = Literal["text", "tsv", "json"]
 ExportFormat = Literal["html", "jsonl"]
@@ -88,6 +90,10 @@ _BUILTIN_FLAG_NAMES = frozenset(
         "diag-output",
         "list-skills",
         "list-skills-format",
+        "list-methods",
+        "list-methods-format",
+        "show-method",
+        "show-method-format",
         "enable-skill",
         "disable-skill",
         "list-plugins",
@@ -164,6 +170,10 @@ class CliArgs:
     diag_output: str | None
     list_skills: bool
     list_skills_format: SkillListFormat
+    list_methods: bool
+    list_methods_format: MethodListFormat
+    show_method: str | None
+    show_method_format: MethodShowFormat
     enable_skills: tuple[str, ...]
     disable_skills: tuple[str, ...]
     list_plugins: bool
@@ -249,7 +259,9 @@ def parse_args(
         else:
             parser.add_argument(option, dest=dest, default=None)
 
-    raw_argv = _rewrite_observability_flags(_rewrite_package_subcommands(_rewrite_diag_subcommands(list(argv))))
+    raw_argv = _rewrite_observability_flags(
+        _rewrite_package_subcommands(_rewrite_diag_subcommands(_rewrite_method_subcommands(list(argv))))
+    )
     if allow_unknown:
         filtered_argv, unknown_flags = _extract_unknown_flags(
             raw_argv,
@@ -314,6 +326,10 @@ def parse_args(
         diag_output=namespace.diag_output,
         list_skills=namespace.list_skills,
         list_skills_format=namespace.list_skills_format,
+        list_methods=namespace.list_methods,
+        list_methods_format=namespace.list_methods_format,
+        show_method=namespace.show_method,
+        show_method_format=namespace.show_method_format,
         enable_skills=tuple(namespace.enable_skill),
         disable_skills=tuple(namespace.disable_skill),
         list_plugins=namespace.list_plugins,
@@ -479,6 +495,10 @@ def _build_parser() -> ArgumentParser:
     parser.add_argument("--diag-output")
     parser.add_argument("--list-skills", action="store_true")
     parser.add_argument("--list-skills-format", choices=("tsv", "json"), default="tsv")
+    parser.add_argument("--list-methods", action="store_true")
+    parser.add_argument("--list-methods-format", choices=("tsv", "json"), default="tsv")
+    parser.add_argument("--show-method")
+    parser.add_argument("--show-method-format", choices=("text", "json"), default="text")
     parser.add_argument("--enable-skill", action="append", default=[])
     parser.add_argument("--disable-skill", action="append", default=[])
     parser.add_argument("--list-plugins", action="store_true")
@@ -569,6 +589,32 @@ def _rewrite_package_subcommands(argv: list[str]) -> list[str]:
 
     flag = "--install-package" if command == "install" else "--uninstall-package"
     return [flag, source, "--package-scope", scope]
+
+
+def _rewrite_method_subcommands(argv: list[str]) -> list[str]:
+    method_index = _method_subcommand_index(argv)
+    if method_index is None:
+        return argv
+    if len(argv) <= method_index + 1:
+        return argv
+    prefix = argv[:method_index]
+    command = argv[method_index + 1]
+    suffix = argv[method_index + 2 :]
+    if command == "list":
+        return [*prefix, "--list-methods", *suffix]
+    if command == "show" and suffix:
+        return [*prefix, "--show-method", suffix[0], *suffix[1:]]
+    return argv
+
+
+def _method_subcommand_index(argv: list[str]) -> int | None:
+    if argv and argv[0] == "method":
+        return 0
+    if len(argv) >= 3 and argv[0] == "--cwd" and argv[2] == "method":
+        return 2
+    if len(argv) >= 2 and argv[0].startswith("--cwd=") and argv[1] == "method":
+        return 1
+    return None
 
 
 def _rewrite_diag_subcommands(argv: list[str]) -> list[str]:
