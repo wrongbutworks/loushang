@@ -76,6 +76,16 @@ P1 的处理原则：
 
 这意味着 `kind` 在 P1 仍然表示 method 的来源/消费分类，而不是最终方法论元素类型。方法论元素类型放在 `element_type` 这类可选 hint 中。
 
+### Future Resource Standards
+
+P1 should not close the door on richer standard files.
+
+- `SKILL.md` is the P1 compatibility and guidance primitive. Existing skills and experimental method resources can both use it.
+- `METHOD.md` can remain a future canonical method manifest. It is a good place to standardize composite methods that bind phases, activities, tasks, roles, guidance, work products, gates, and source-role relationships.
+- `SOUR.md` is a plausible future long-lived role/source descriptor if the project decides to standardize self-evolving roles. The idea is valuable, but the exact name and acronym should stay open until its semantics are crisp enough to document.
+
+P1 should ignore `METHOD.md` and `SOUR.md` for discovery. They are future standardization candidates, not P1 loader inputs.
+
 相关架构文档：
 
 - `docs/architecture/drafts/loushang-work-method-channel-harness-architecture.md`
@@ -176,6 +186,8 @@ Owns:
 
 This is the only P1 module that should know the details of `SkillDescriptor`.
 
+`loader.py` may call `method_from_skill(...)`, but it should not read `SkillDescriptor` fields directly. This keeps the coding-loader compatibility bridge isolated in the adapter.
+
 ### `loader.py`
 
 Owns:
@@ -185,6 +197,8 @@ Owns:
 - optional discovery from `methods/**/SKILL.md`
 
 P1 `MethodLoader` should be method-facing even if it delegates to `DefaultResourceLoader`.
+
+`MethodLoader` owns discovery-time precedence and should return a de-duplicated method list. `MethodRegistry` should still reject duplicate ids as a defensive invariant.
 
 ### `registry.py`
 
@@ -393,6 +407,13 @@ list_methods() -> list[MethodDescriptor]
 get_method(id_or_name: str) -> MethodDescriptor | None
 ```
 
+Cache semantics:
+
+- `discover_methods(...)` is stateless and returns a freshly discovered, de-duplicated list.
+- `reload_methods(...)` clears and replaces the loader's cached snapshot, then returns that new snapshot.
+- `list_methods()` and `get_method(...)` read the current cached snapshot.
+- P1 does not need incremental refresh.
+
 ### Work
 
 P1 does not need to modify `CodingWorkShell` immediately.
@@ -412,6 +433,8 @@ compile method -> project guidance -> caller prepends guidance to prompt
 The method package should not call `CodingWorkShell` directly.
 
 If `CodingWorkShell.submit_coding_turn(..., method_id=...)` is added in P1, it must only write `WorkRun.method_id` and related event metadata. It must not compile, project, select, or apply a method.
+
+`WorkRun.method_id` already exists in Work P0, so this task is parameter plumbing and event/log metadata only. It is not a Work data model change.
 
 ### AgentSession
 
@@ -505,7 +528,7 @@ Compile to single-turn plan and project stable guidance. Carry optional taxonomy
 
 If the implementation can stay small, allow `CodingWorkShell.submit_coding_turn(..., method_id=...)` to write `WorkRun.method_id`.
 
-This task is metadata-only. It must not apply prompt guidance or mutate `AgentSession`.
+This task is parameter plumbing and metadata-only because `WorkRun.method_id` already exists in Work P0. It must not apply prompt guidance or mutate `AgentSession`.
 
 ### Task 7: Public API And Regression
 
@@ -515,7 +538,8 @@ Add public API boundary tests and run focused regression.
 
 These are explicitly deferred unless implementation reveals a blocker:
 
-- Should `METHOD.md` ever exist, or should method resources continue to use `SKILL.md` with richer frontmatter?
+- Should `METHOD.md` become the canonical composite method manifest, while `SKILL.md` remains the reusable guidance primitive?
+- Should long-lived self-evolving role/source resources be standardized as `SOUR.md`, `ROLE.md`, or another file name?
 - When should taxonomy hints become mandatory validated fields rather than optional metadata?
 - Should selected method live in settings, session metadata, or work operation payload?
 - Should CLI expose `--method` before DomainApp exists?
@@ -528,4 +552,4 @@ P1 can ship without answering these globally.
 
 GitHub issue:
 
-- `#36 P1: method resource compatibility`
+- `#36 P1: method resource compatibility` - https://github.com/zhnt/loushang/issues/36
