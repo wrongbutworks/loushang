@@ -1,16 +1,17 @@
 from __future__ import annotations
 
 import asyncio
-from dataclasses import asdict, is_dataclass
-import io
 import inspect
+import io
 import json
 import sys
 import uuid
 from collections.abc import Sequence
+from dataclasses import asdict, is_dataclass
 from pathlib import Path
 from typing import Any, NotRequired, Required, TextIO, TypedDict, cast
 
+from loushang.coding.commands import complete_slash_commands
 from loushang.coding.diagnostics import (
     DiagnosticsQuery,
     serialize_diagnostic,
@@ -18,19 +19,18 @@ from loushang.coding.diagnostics import (
     serialize_error_report,
 )
 from loushang.coding.event import (
-    JsonEventView,
     SUPPORTED_JSON_EVENT_VIEWS,
+    JsonEventView,
     normalize_event_select,
     project_session_event,
     shape_stream_event,
     should_emit_projected_event,
 )
-from loushang.coding.commands import complete_slash_commands
 from loushang.coding.message.json_codec import serialize_agent_message
-from loushang.coding.types import ModelSelection
-from loushang.coding.store import SessionQuery
 from loushang.coding.mode.base import ModeAdapter, ModeState
+from loushang.coding.store import SessionQuery
 from loushang.coding.tools import ToolDefinitionResolver, ToolRenderRuntime
+from loushang.coding.types import ModelSelection
 
 _THINKING_LEVEL_ORDER: tuple[str, ...] = ("off", "minimal", "low", "medium", "high", "xhigh")
 _MISSING = object()

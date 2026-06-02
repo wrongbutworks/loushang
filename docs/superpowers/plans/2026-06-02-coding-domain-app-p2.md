@@ -75,9 +75,9 @@
 - Modify as needed from previous tasks only.
 
 - [x] Run `uv --cache-dir .uv-cache run --extra dev pytest tests/coding/domain tests/coding/test_cli.py tests/method tests/work -q`.
-- [x] Run ruff on touched files: `src/loushang/coding/domain`, `src/loushang/coding/cli`, `src/loushang/coding/mode/base.py`, `src/loushang/coding/mode/print_mode.py`, `src/loushang/coding/prompt_command.py`, and touched tests.
+- [x] Run the broad planned ruff target: `src/loushang/coding/domain`, `src/loushang/coding/cli`, `src/loushang/coding/mode`, `src/loushang/coding/prompt_command.py`, `tests/coding/domain`, and `tests/coding/test_cli.py`.
 - [x] Manually verify method-guided CLI dispatch with a temporary `methods/task/review/SKILL.md` and a fake prompt runner to avoid real provider calls.
 - [x] Remove temporary demo files.
 - [x] Commit any final fixes.
 
-Note: the broader planned `src/loushang/coding/mode` ruff target still reports pre-existing import-order findings in `mode/__init__.py` and `mode/rpc_mode.py`; P2 did not touch those files.
+Note: the broader planned `src/loushang/coding/mode` ruff target initially exposed import-order findings in `mode/__init__.py` and `mode/rpc_mode.py`; those were fixed as a mechanical follow-up.
