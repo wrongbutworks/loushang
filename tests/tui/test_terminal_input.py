@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import importlib
 import sys
+import time
 from io import StringIO
 from types import SimpleNamespace
 from typing import Any
@@ -112,6 +113,43 @@ def test_read_input_chunk_reads_windows_tty_key(monkeypatch: Any) -> None:
     result = asyncio.run(read_input_chunk(_TtyInput()))
 
     assert result == "x"
+
+
+def test_windows_blocking_key_read_does_not_block_render_wakeup(monkeypatch: Any) -> None:
+    monkeypatch.setattr(sys, "platform", "win32")
+
+    def slow_getwch() -> str:
+        time.sleep(0.05)
+        return "x"
+
+    _install_fake_msvcrt(monkeypatch, kbhit=lambda: True, getwch=slow_getwch)
+
+    async def run() -> tuple[str | None, int]:
+        runtime = _DeferredRuntime()
+        render_wakeup = asyncio.Event()
+
+        async def active() -> None:
+            await asyncio.sleep(0.02)
+
+        async def wake_later() -> None:
+            await asyncio.sleep(0.001)
+            render_wakeup.set()
+
+        active_task = asyncio.create_task(active())
+        wake_task = asyncio.create_task(wake_later())
+        result = await read_input_chunk_or_render_tick(
+            _TtyInput(),
+            runtime=runtime,
+            active_task=active_task,
+            render_wakeup=render_wakeup,
+        )
+        await wake_task
+        return result, runtime.rendered
+
+    result, rendered = asyncio.run(run())
+
+    assert result is None
+    assert rendered >= 1
 
 
 def test_read_input_chunk_or_render_tick_reads_raw_stringio_escape_without_tail_joining() -> (
@@ -514,11 +552,12 @@ def _install_fake_msvcrt(
     *,
     chars: list[str] | None = None,
     kbhit: object | None = None,
+    getwch: object | None = None,
 ) -> None:
     pending = list(chars or ())
     fake_msvcrt = SimpleNamespace(
         kbhit=kbhit or (lambda: bool(pending)),
-        getwch=lambda: pending.pop(0),
+        getwch=getwch or (lambda: pending.pop(0)),
     )
     original_import_module = importlib.import_module
 

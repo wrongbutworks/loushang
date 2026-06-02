@@ -340,13 +340,13 @@ def _is_windows_console_platform() -> bool:
 
 async def _read_windows_tty_input_chunk_async(stdin: Any) -> str:
     msvcrt = _load_windows_console_module()
+    loop = asyncio.get_running_loop()
     if msvcrt is None:
-        loop = asyncio.get_running_loop()
         return await loop.run_in_executor(None, stdin.read, 1)
     while True:
         try:
             if msvcrt.kbhit():
-                return _read_windows_tty_input_chunk_from_module(msvcrt)
+                return await loop.run_in_executor(None, _read_windows_tty_input_chunk_from_module, msvcrt)
         except (OSError, ValueError):
             return ""
         await asyncio.sleep(0.01)
