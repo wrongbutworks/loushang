@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import importlib
 import sys
+import threading
 import time
 from io import StringIO
 from types import SimpleNamespace
@@ -150,6 +151,46 @@ def test_windows_blocking_key_read_does_not_block_render_wakeup(monkeypatch: Any
 
     assert result is None
     assert rendered >= 1
+
+
+def test_windows_canceled_key_read_is_reused_by_next_reader(monkeypatch: Any) -> None:
+    monkeypatch.setattr(sys, "platform", "win32")
+    calls: list[str] = []
+    started = threading.Event()
+    kbhit_calls = 0
+
+    def kbhit() -> bool:
+        nonlocal kbhit_calls
+        kbhit_calls += 1
+        return kbhit_calls == 1
+
+    def slow_getwch() -> str:
+        calls.append("start")
+        started.set()
+        time.sleep(0.02)
+        calls.append("end")
+        return "h"
+
+    _install_fake_msvcrt(monkeypatch, kbhit=kbhit, getwch=slow_getwch)
+
+    async def run() -> str:
+        first = asyncio.create_task(read_input_chunk(_TtyInput()))
+        while not started.is_set():
+            await asyncio.sleep(0.001)
+        first.cancel()
+        try:
+            await first
+        except asyncio.CancelledError:
+            pass
+        while calls != ["start", "end"]:
+            await asyncio.sleep(0.001)
+        return await asyncio.wait_for(read_input_chunk(_TtyInput()), timeout=0.1)
+
+    result = asyncio.run(run())
+
+    assert result == "h"
+    assert calls == ["start", "end"]
+    assert kbhit_calls == 1
 
 
 def test_read_input_chunk_or_render_tick_reads_raw_stringio_escape_without_tail_joining() -> (

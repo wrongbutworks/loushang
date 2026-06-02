@@ -6,6 +6,7 @@ import os
 import select
 import sys
 import time
+import weakref
 from collections.abc import Callable
 from dataclasses import dataclass
 from io import StringIO
@@ -37,6 +38,9 @@ _WINDOWS_EXTENDED_KEY_SEQUENCES = {
     "E": "\x1b[23~",
     "F": "\x1b[24~",
 }
+_WINDOWS_TTY_READ_FUTURES: weakref.WeakKeyDictionary[
+    asyncio.AbstractEventLoop, asyncio.Future[str]
+] = weakref.WeakKeyDictionary()
 
 
 class RuntimeLike(Protocol):
@@ -345,8 +349,11 @@ async def _read_windows_tty_input_chunk_async(stdin: Any) -> str:
         return await loop.run_in_executor(None, stdin.read, 1)
     while True:
         try:
-            if msvcrt.kbhit():
-                return await loop.run_in_executor(None, _read_windows_tty_input_chunk_from_module, msvcrt)
+            if (
+                _WINDOWS_TTY_READ_FUTURES.get(loop) is not None
+                or msvcrt.kbhit()
+            ):
+                return await _read_windows_tty_input_chunk_from_module_async(msvcrt)
         except (OSError, ValueError):
             return ""
         await asyncio.sleep(0.01)
@@ -358,6 +365,25 @@ def _read_windows_tty_input_chunk(stdin: Any) -> str:
     if msvcrt is None:
         return ""
     return _read_windows_tty_input_chunk_from_module(msvcrt)
+
+
+async def _read_windows_tty_input_chunk_from_module_async(msvcrt: Any) -> str:
+    loop = asyncio.get_running_loop()
+    future = _WINDOWS_TTY_READ_FUTURES.get(loop)
+    if future is None:
+        future = loop.run_in_executor(
+            None, _read_windows_tty_input_chunk_from_module, msvcrt
+        )
+        _WINDOWS_TTY_READ_FUTURES[loop] = future
+    try:
+        result = await asyncio.shield(future)
+    except asyncio.CancelledError:
+        if future.cancelled() and _WINDOWS_TTY_READ_FUTURES.get(loop) is future:
+            del _WINDOWS_TTY_READ_FUTURES[loop]
+        raise
+    if _WINDOWS_TTY_READ_FUTURES.get(loop) is future:
+        del _WINDOWS_TTY_READ_FUTURES[loop]
+    return result
 
 
 def _read_windows_tty_input_chunk_from_module(msvcrt: Any) -> str:
