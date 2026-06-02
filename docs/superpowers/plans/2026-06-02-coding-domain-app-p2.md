@@ -17,11 +17,11 @@
 - Create: `src/loushang/coding/domain/types.py`
 - Test: `tests/coding/domain/test_coding_domain_app.py`
 
-- [ ] Write failing tests for `CodingDomainRequest` and `CodingDomainPreparedTurn` defaults.
-- [ ] Verify tests fail because `loushang.coding.domain` does not exist.
-- [ ] Implement frozen dataclasses and public exports.
-- [ ] Run `uv --cache-dir .uv-cache run --extra dev pytest tests/coding/domain/test_coding_domain_app.py -q`.
-- [ ] Commit with `feat: add coding domain p2 types`.
+- [x] Write failing tests for `CodingDomainRequest` and `CodingDomainPreparedTurn` defaults.
+- [x] Verify tests fail because `loushang.coding.domain` does not exist.
+- [x] Implement frozen dataclasses and public exports.
+- [x] Run `uv --cache-dir .uv-cache run --extra dev pytest tests/coding/domain/test_coding_domain_app.py -q`.
+- [x] Commit with `feat: add coding domain p2 types`.
 
 ### Task 2: CodingDomainApp
 
