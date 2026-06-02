@@ -143,3 +143,34 @@ def test_coding_work_shell_jsonl_log_can_replay_persisted_turn(tmp_path) -> None
         assert replayed[4].payload["delivery_hint"] == "immediate"
 
     asyncio.run(scenario())
+
+
+def test_coding_work_shell_records_method_id_as_metadata_only() -> None:
+    from loushang.work import CodingWorkShell, InMemoryEventLogBackend
+
+    async def scenario() -> None:
+        event_log = InMemoryEventLogBackend()
+        session = FakePromptSession(events=[])
+        shell = CodingWorkShell(
+            session=session,
+            event_log=event_log,
+            clock=lambda: datetime(2026, 6, 1, 10, 30, tzinfo=UTC),
+        )
+
+        run = await shell.submit_coding_turn(
+            "fix this bug",
+            session_id="session-1",
+            operation_id="op-1",
+            run_id="run-1",
+            method_id="method:task:review",
+        )
+
+        assert session.prompts == ["fix this bug"]
+        assert run.method_id == "method:task:review"
+
+        entries = event_log.query(run_id="run-1")
+        assert entries[0].payload["payload"]["method_id"] == "method:task:review"
+        assert entries[1].payload["payload"]["method_id"] == "method:task:review"
+        assert entries[2].payload["payload"]["method_id"] == "method:task:review"
+
+    asyncio.run(scenario())

@@ -34,6 +34,7 @@ class CodingWorkShell:
         *,
         session_id: str,
         images: Sequence[object] | None = None,
+        method_id: str | None = None,
         operation_id: str | None = None,
         run_id: str | None = None,
     ) -> WorkRun:
@@ -45,7 +46,7 @@ class CodingWorkShell:
             kind="SubmitCodingTurn",
             session_id=session_id,
             domain="coding",
-            payload=_operation_payload(text=text, images=images),
+            payload=_operation_payload(text=text, images=images, method_id=method_id),
         )
         self._append_operation(operation, run_id=run_id, sequence=sequence)
 
@@ -55,6 +56,7 @@ class CodingWorkShell:
             session_id=session_id,
             domain="coding",
             status="running",
+            method_id=method_id,
         )
         sequence += 1
         self._append_event(
@@ -96,6 +98,7 @@ class CodingWorkShell:
                 session_id=session_id,
                 domain="coding",
                 status="failed",
+                method_id=method_id,
             )
             self._append_event(
                 _work_event(
@@ -117,6 +120,7 @@ class CodingWorkShell:
             session_id=session_id,
             domain="coding",
             status="completed",
+            method_id=method_id,
         )
         self._append_event(
             _work_event(
@@ -160,6 +164,9 @@ def _work_event(
     created_at: datetime,
     payload: Mapping[str, object],
 ) -> WorkEvent:
+    event_payload = dict(payload)
+    if run.method_id is not None:
+        event_payload["method_id"] = run.method_id
     return WorkEvent(
         event_id=f"{run.run_id}-event-{sequence}",
         kind=kind,
@@ -170,14 +177,16 @@ def _work_event(
         sequence=sequence,
         created_at=created_at,
         delivery_hint="immediate",
-        payload=payload,
+        payload=event_payload,
     )
 
 
-def _operation_payload(*, text: str, images: Sequence[object] | None) -> dict[str, object]:
+def _operation_payload(*, text: str, images: Sequence[object] | None, method_id: str | None) -> dict[str, object]:
     payload: dict[str, object] = {"text": text}
     if images is not None:
         payload["image_count"] = len(images)
+    if method_id is not None:
+        payload["method_id"] = method_id
     return payload
 
 
