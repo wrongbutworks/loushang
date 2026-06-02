@@ -64,6 +64,7 @@ from loushang.coding.workflow import (
     resolve_workflow_files,
     run_prompt_steps_workflow,
 )
+from loushang.method import MethodLoader
 from loushang.work import JsonlEventLogBackend
 
 _MISSING = object()
@@ -362,6 +363,10 @@ async def run_cli(
         if list_skills_result is not None:
             return list_skills_result
 
+        method_visibility_result = _run_method_visibility(args, project_root, stdout, stderr)
+        if method_visibility_result is not None:
+            return method_visibility_result
+
         list_plugins_result = _run_list_plugins(args, resolved_services, stdout, stderr)
         if list_plugins_result is not None:
             return list_plugins_result
@@ -584,6 +589,8 @@ def _stdout_guard_enabled(args: CliArgs) -> bool:
         or (args.list_commands and args.list_commands_format == "json")
         or (args.list_diagnostics and args.list_diagnostics_format == "json")
         or (args.list_skills and args.list_skills_format == "json")
+        or (args.list_methods and args.list_methods_format == "json")
+        or (args.show_method is not None and args.show_method_format == "json")
         or (args.list_plugins and args.list_plugins_format == "json")
         or (args.list_packages and args.list_packages_format == "json")
         or (args.export is not None and args.export_result_format == "json")
@@ -745,6 +752,8 @@ def _has_command_style_operation(args: CliArgs) -> bool:
         or args.list_commands
         or args.list_diagnostics
         or args.list_skills
+        or args.list_methods
+        or args.show_method is not None
         or args.list_plugins
         or args.list_packages
         or args.export is not None
@@ -813,6 +822,8 @@ def _runtime_args_for_bootstrap(args: CliArgs) -> CliArgs:
         args.list_commands
         or args.list_diagnostics
         or args.list_skills
+        or args.list_methods
+        or args.show_method is not None
         or args.list_plugins
         or args.list_packages
         or args.list_models is not False
@@ -1725,6 +1736,84 @@ def _normalize_skill_entry(skill: Any) -> dict[str, object] | None:
         "source_kind": _safe_getattr(skill, "source_kind", "") or "",
         "enabled": bool(_safe_getattr(skill, "enabled", True)),
     }
+
+
+def _run_method_visibility(
+    args: CliArgs,
+    project_root: Path,
+    stdout: TextIO,
+    stderr: TextIO,
+) -> int | None:
+    if not args.list_methods and args.show_method is None:
+        return None
+
+    try:
+        methods = MethodLoader().discover_methods(project_root)
+    except Exception as error:
+        stderr.write(f"Error: {_format_cli_error(error)}\n")
+        return 1
+
+    if args.list_methods:
+        normalized = [_normalize_method_entry(method) for method in methods]
+        if args.list_methods_format == "json":
+            stdout.write(json.dumps(normalized, ensure_ascii=False) + "\n")
+            return 0
+        for method in normalized:
+            stdout.write(
+                f"{method['id']}\t{method['name']}\t{method['kind']}\t"
+                f"{method['element_type']}\t{method['path']}\n"
+            )
+        return 0
+
+    method = _find_method(methods, args.show_method or "")
+    if method is None:
+        stderr.write(f"Error: method not found: {args.show_method}\n")
+        return 1
+    payload = _normalize_method_entry(method)
+    payload["description"] = _safe_getattr(method, "description", "") or ""
+    payload["content"] = _safe_getattr(method, "content", "") or ""
+    if args.show_method_format == "json":
+        stdout.write(json.dumps(payload, ensure_ascii=False) + "\n")
+        return 0
+    stdout.write(_format_method_detail(payload))
+    return 0
+
+
+def _find_method(methods: list[Any], id_or_name: str) -> Any | None:
+    for method in methods:
+        if _safe_getattr(method, "id", None) == id_or_name or _safe_getattr(method, "name", None) == id_or_name:
+            return method
+    return None
+
+
+def _normalize_method_entry(method: Any) -> dict[str, object]:
+    return {
+        "id": _safe_getattr(method, "id", "") or "",
+        "name": _safe_getattr(method, "name", "") or "",
+        "kind": _safe_getattr(method, "kind", "") or "",
+        "element_type": _safe_getattr(method, "element_type", None),
+        "domain": _safe_getattr(method, "domain", None),
+        "meta_role": _safe_getattr(method, "meta_role", None),
+        "phase": _safe_getattr(method, "phase", None),
+        "path": _safe_getattr(method, "source_path", "") or "",
+    }
+
+
+def _format_method_detail(method: Mapping[str, object]) -> str:
+    lines = [
+        f"id: {method['id']}",
+        f"name: {method['name']}",
+        f"kind: {method['kind']}",
+    ]
+    for key in ("element_type", "domain", "meta_role", "phase", "path", "description"):
+        value = method.get(key)
+        if value:
+            lines.append(f"{key}: {value}")
+    lines.append("")
+    lines.append(str(method.get("content", "")))
+    if not lines[-1].endswith("\n"):
+        lines[-1] = f"{lines[-1]}\n"
+    return "\n".join(lines)
 
 
 def _run_list_plugins(
