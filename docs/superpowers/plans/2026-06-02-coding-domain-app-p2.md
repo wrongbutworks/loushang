@@ -46,12 +46,12 @@
 - Test: `tests/coding/test_print_mode.py`
 - Test: `tests/coding/test_prompt_command.py`
 
-- [ ] Write failing tests showing `method_id` reaches `CodingWorkShell` when work logging is active in prompt and print paths.
-- [ ] Verify tests fail because prompt/print APIs do not accept `method_id`.
-- [ ] Add optional `method_id: str | None = None` to `run_prompt_command`, `_run_turn`, `_run_prompt_session`, `PrintMode`, `run_print_mode`, `create_mode_adapter`, and `run_mode`.
-- [ ] Pass `method_id` only to `CodingWorkShell.submit_coding_turn(...)`.
-- [ ] Run focused prompt/print tests.
-- [ ] Commit with `feat: thread method id through coding runners`.
+- [x] Write failing tests showing `method_id` reaches `CodingWorkShell` when work logging is active in prompt and print paths.
+- [x] Verify tests fail because prompt/print APIs do not accept `method_id`.
+- [x] Add optional `method_id: str | None = None` to `run_prompt_command`, `_run_turn`, `_run_prompt_session`, `PrintMode`, `run_print_mode`, `create_mode_adapter`, and `run_mode`.
+- [x] Pass `method_id` only to `CodingWorkShell.submit_coding_turn(...)`.
+- [x] Run focused prompt/print tests.
+- [x] Commit with `feat: thread method id through coding runners`.
 
 ### Task 4: CLI `--method`
 

@@ -31,6 +31,7 @@ class PrintMode(ModeAdapter):
         event_select: Sequence[str] | str | None = None,
         render_tool_events: bool = False,
         work_event_log: EventLogBackend | None = None,
+        method_id: str | None = None,
     ) -> None:
         if output_mode not in {"text", "json"}:
             raise ValueError(f"unsupported output mode: {output_mode}")
@@ -57,6 +58,7 @@ class PrintMode(ModeAdapter):
         self.event_select = normalize_event_select(event_select)
         self.render_tool_events = render_tool_events
         self.work_event_log = work_event_log
+        self.method_id = method_id
         self._tool_render_runtime: ToolRenderRuntime | None = None
         self._tool_definition_resolver: ToolDefinitionResolver | None = None
         self._disposed = False
@@ -241,7 +243,12 @@ class PrintMode(ModeAdapter):
             await _prompt_session(self.session, user_input, images=images)
             return
         shell = CodingWorkShell(session=self.session, event_log=self.work_event_log)
-        await shell.submit_coding_turn(user_input, session_id=_work_session_id(self.session), images=images)
+        await shell.submit_coding_turn(
+            user_input,
+            session_id=_work_session_id(self.session),
+            images=images,
+            method_id=self.method_id,
+        )
 
 
 def _serialize_print_mode_state(session: Any) -> ModeState:
@@ -408,6 +415,7 @@ async def run_print_mode(
     event_select: Sequence[str] | str | None = None,
     render_tool_events: bool = False,
     work_event_log: EventLogBackend | None = None,
+    method_id: str | None = None,
 ) -> int:
     mode = PrintMode(
         runtime=runtime,
@@ -419,6 +427,7 @@ async def run_print_mode(
         event_select=event_select,
         render_tool_events=render_tool_events,
         work_event_log=work_event_log,
+        method_id=method_id,
     )
     return await mode.run_once(user_input, images=images, follow_up_messages=follow_up_messages)
 

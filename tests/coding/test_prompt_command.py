@@ -201,15 +201,20 @@ def test_prompt_command_work_event_log_records_prompt_turn() -> None:
             stdout=StringIO(),
             stderr=StringIO(),
             work_event_log=event_log,
+            method_id="method:task:review",
         )
 
         assert exit_code == 0
-        assert [entry.payload["kind"] for entry in event_log.query(session_id="session-1")] == [
+        entries = event_log.query(session_id="session-1")
+        assert [entry.payload["kind"] for entry in entries] == [
             "SubmitCodingTurn",
             "WorkRunStarted",
             "ContentDelta",
             "WorkRunCompleted",
         ]
+        assert entries[0].payload["payload"]["method_id"] == "method:task:review"
+        assert entries[1].payload["payload"]["method_id"] == "method:task:review"
+        assert entries[3].payload["payload"]["method_id"] == "method:task:review"
 
     asyncio.run(scenario())
 

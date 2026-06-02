@@ -22,6 +22,7 @@ async def run_prompt_command(
     follow_up_messages: Sequence[str] = (),
     verbose: bool = False,
     work_event_log: EventLogBackend | None = None,
+    method_id: str | None = None,
 ) -> int:
     """Run one product prompt and render the stable coding transcript."""
 
@@ -42,6 +43,7 @@ async def run_prompt_command(
             prompt,
             images=images,
             work_event_log=work_event_log,
+            method_id=method_id,
         )
         if exit_code == 0:
             for message in follow_up_messages:
@@ -51,6 +53,7 @@ async def run_prompt_command(
                     event_renderer,
                     message,
                     work_event_log=work_event_log,
+                    method_id=method_id,
                 )
                 if exit_code != 0:
                     break
@@ -79,11 +82,12 @@ async def _run_turn(
     *,
     images: list[object] | None = None,
     work_event_log: EventLogBackend | None = None,
+    method_id: str | None = None,
 ) -> int:
     started_at = time.monotonic()
     previous_error = event_renderer.last_error_message
     renderer.render_user(prompt)
-    await _run_prompt_session(session, prompt, images=images, work_event_log=work_event_log)
+    await _run_prompt_session(session, prompt, images=images, work_event_log=work_event_log, method_id=method_id)
     await session.wait_for_idle()
     assistant_failure = _last_assistant_failure_message(session)
     if assistant_failure is None and event_renderer.last_error_message != previous_error:
@@ -100,12 +104,18 @@ async def _run_prompt_session(
     *,
     images: list[object] | None = None,
     work_event_log: EventLogBackend | None = None,
+    method_id: str | None = None,
 ) -> None:
     if work_event_log is None:
         await _prompt_session(session, user_input, images=images)
         return
     shell = CodingWorkShell(session=session, event_log=work_event_log)
-    await shell.submit_coding_turn(user_input, session_id=_work_session_id(session), images=images)
+    await shell.submit_coding_turn(
+        user_input,
+        session_id=_work_session_id(session),
+        images=images,
+        method_id=method_id,
+    )
 
 
 async def _prompt_session(session: Any, user_input: str, *, images: list[object] | None = None) -> None:

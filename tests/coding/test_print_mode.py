@@ -113,6 +113,7 @@ def test_print_mode_work_event_log_records_coding_turn_and_preserves_prompt_beha
             session=session,
             stdout=stdout,
             work_event_log=event_log,
+            method_id="method:task:review",
         )
 
         exit_code = await mode.run_once("describe", images=[image])
@@ -128,7 +129,13 @@ def test_print_mode_work_event_log_records_coding_turn_and_preserves_prompt_beha
             "ContentDelta",
             "WorkRunCompleted",
         ]
-        assert entries[0].payload["payload"] == {"text": "describe", "image_count": 1}
+        assert entries[0].payload["payload"] == {
+            "text": "describe",
+            "image_count": 1,
+            "method_id": "method:task:review",
+        }
+        assert entries[1].payload["payload"]["method_id"] == "method:task:review"
+        assert entries[4].payload["payload"]["method_id"] == "method:task:review"
 
     asyncio.run(scenario())
 
