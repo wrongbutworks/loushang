@@ -1,16 +1,12 @@
 # Detect OS
 ifeq ($(OS),Windows_NT)
     DETECTED_OS := Windows
-    PYTHON := python
-    VENV_BIN := .venv/Scripts
     EXE_EXT := .exe
     RM := del /Q
     RMDIR := rmdir /S /Q
     INSTALL_DIR := $(USERPROFILE)/bin
 else
     DETECTED_OS := $(shell uname -s)
-    PYTHON := python3
-    VENV_BIN := .venv/bin
     EXE_EXT :=
     RM := rm -f
     RMDIR := rm -rf
@@ -117,11 +113,9 @@ example-ai-advanced-openai-codex-login:
 # ---------------------------------------------------------------------------
 
 build-binary:
-ifeq ($(DETECTED_OS),Windows)
-	$(VENV_BIN)/pyinstaller --onefile --name loushang --collect-data loushang $(VENV_BIN)/loushang.exe
-else
-	$(VENV_BIN)/pyinstaller --onefile --name loushang --collect-data loushang $(VENV_BIN)/loushang
-endif
+	uv pip install pyinstaller
+	uv pip install -e .
+	uv run pyinstaller --onefile --name loushang --collect-data loushang --paths src src/loushang/coding/cli/__main__.py
 
 install-binary: build-binary
 ifeq ($(DETECTED_OS),Windows)
