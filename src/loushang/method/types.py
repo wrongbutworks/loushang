@@ -4,7 +4,6 @@ from dataclasses import dataclass, field
 from types import MappingProxyType
 from typing import Mapping
 
-
 _EMPTY_METADATA: Mapping[str, object] = MappingProxyType({})
 
 

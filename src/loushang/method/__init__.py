@@ -1,3 +1,4 @@
+from loushang.method.loader import MethodLoader
 from loushang.method.skill_adapter import method_from_skill
 from loushang.method.types import (
     MethodContext,
@@ -8,6 +9,7 @@ from loushang.method.types import (
 )
 
 __all__ = [
+    "MethodLoader",
     "MethodContext",
     "MethodDescriptor",
     "MethodPlan",

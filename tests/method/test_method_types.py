@@ -4,7 +4,13 @@ from dataclasses import FrozenInstanceError
 
 import pytest
 
-from loushang.method import MethodContext, MethodDescriptor, MethodPlan, MethodProjection, MethodStep
+from loushang.method import (
+    MethodContext,
+    MethodDescriptor,
+    MethodPlan,
+    MethodProjection,
+    MethodStep,
+)
 
 
 def test_method_descriptor_defaults_and_taxonomy_hints() -> None:
