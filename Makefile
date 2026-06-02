@@ -1,4 +1,26 @@
-.PHONY: bootstrap test test-ai check-ai test-tui test-tui-v1 lint-ai fmt-ai typecheck-ai typecheck-tui vendor-ai-moonshot-anthropic-stream vendor-ai-moonshot-anthropic-complete vendor-ai-moonshot-anthropic-tools vendor-ai-moonshot-openai-stream vendor-ai-moonshot-openai-complete vendor-ai-moonshot-openai-tools vendor-ai-dashscope-openai-responses-stream vendor-ai-dashscope-openai-responses-tools vendor-ai-moonshot-custom-base-url-openai vendor-ai-openai-codex-complete example-ai-model-lookup example-ai-complete example-ai-stream example-ai-tools example-ai-typed-context example-ai-advanced-faux-stream example-ai-advanced-context-tools example-ai-advanced-tool-result-roundtrip example-ai-advanced-openai-codex-login example-ai-kimi-anthropic-stream example-ai-kimi-anthropic-complete example-ai-kimi-anthropic-tools example-ai-kimi-openai-stream example-ai-kimi-openai-complete example-ai-kimi-openai-tools example-ai-dashscope-openai-responses-stream example-ai-dashscope-openai-responses-tools example-ai-custom-base-url-openai-advanced example-ai-faux-stream example-ai-context-tools-minimal example-ai-tool-result-roundtrip
+# Detect OS
+ifeq ($(OS),Windows_NT)
+    DETECTED_OS := Windows
+    PYTHON := python
+    VENV_BIN := .venv/Scripts
+    EXE_EXT := .exe
+    RM := del /Q
+    RMDIR := rmdir /S /Q
+    INSTALL_DIR := $(USERPROFILE)/bin
+else
+    DETECTED_OS := $(shell uname -s)
+    PYTHON := python3
+    VENV_BIN := .venv/bin
+    EXE_EXT :=
+    RM := rm -f
+    RMDIR := rm -rf
+    INSTALL_DIR := $(HOME)/.local/bin
+endif
+
+BINARY_NAME := loushang$(EXE_EXT)
+DIST_BINARY := dist/$(BINARY_NAME)
+
+.PHONY: bootstrap test test-ai check-ai test-tui test-tui-v1 lint-ai fmt-ai typecheck-ai typecheck-tui build-binary install-binary clean-binary vendor-ai-moonshot-anthropic-stream vendor-ai-moonshot-anthropic-complete vendor-ai-moonshot-anthropic-tools vendor-ai-moonshot-openai-stream vendor-ai-moonshot-openai-complete vendor-ai-moonshot-openai-tools vendor-ai-dashscope-openai-responses-stream vendor-ai-dashscope-openai-responses-tools vendor-ai-moonshot-custom-base-url-openai vendor-ai-openai-codex-complete example-ai-model-lookup example-ai-complete example-ai-stream example-ai-tools example-ai-typed-context example-ai-advanced-faux-stream example-ai-advanced-context-tools example-ai-advanced-tool-result-roundtrip example-ai-advanced-openai-codex-login example-ai-kimi-anthropic-stream example-ai-kimi-anthropic-complete example-ai-kimi-anthropic-tools example-ai-kimi-openai-stream example-ai-kimi-openai-complete example-ai-kimi-openai-tools example-ai-dashscope-openai-responses-stream example-ai-dashscope-openai-responses-tools example-ai-custom-base-url-openai-advanced example-ai-faux-stream example-ai-context-tools-minimal example-ai-tool-result-roundtrip
 
 bootstrap:
 	test -d .venv || uv venv .venv
@@ -89,3 +111,30 @@ example-ai-advanced-tool-result-roundtrip:
 
 example-ai-advanced-openai-codex-login:
 	uv run python examples/ai/advanced/openai_codex_login.py
+
+# ---------------------------------------------------------------------------
+# Binary build / install (cross-platform)
+# ---------------------------------------------------------------------------
+
+build-binary:
+ifeq ($(DETECTED_OS),Windows)
+	$(VENV_BIN)/pyinstaller --onefile --name loushang --collect-data loushang $(VENV_BIN)/loushang.exe
+else
+	$(VENV_BIN)/pyinstaller --onefile --name loushang --collect-data loushang $(VENV_BIN)/loushang
+endif
+
+install-binary: build-binary
+ifeq ($(DETECTED_OS),Windows)
+	@if not exist "$(INSTALL_DIR)" mkdir "$(INSTALL_DIR)"
+	copy /Y "$(DIST_BINARY)" "$(INSTALL_DIR)\$(BINARY_NAME)"
+	@echo Installed to $(INSTALL_DIR)\$(BINARY_NAME)
+else
+	mkdir -p $(INSTALL_DIR)
+	cp $(DIST_BINARY) $(INSTALL_DIR)/$(BINARY_NAME)
+	@echo Installed to $(INSTALL_DIR)/$(BINARY_NAME)
+	@echo 'Make sure $(INSTALL_DIR) is in your $$PATH'
+endif
+
+clean-binary:
+	$(RMDIR) build/
+	$(RM) dist/$(BINARY_NAME)
