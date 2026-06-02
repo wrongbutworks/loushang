@@ -86,6 +86,13 @@ def test_detects_windows_terminal_truecolor_without_images() -> None:
     assert capabilities.windows_vt_input
 
 
+def test_windows_console_attempts_input_mode_without_windows_terminal_env() -> None:
+    capabilities = _detect({}, platform_name="win32")
+
+    assert capabilities.image_protocol == "none"
+    assert capabilities.windows_vt_input
+
+
 def test_tmux_and_screen_disable_images_and_hyperlinks() -> None:
     tmux = _detect({"TERM": "xterm-kitty", "TMUX": "/tmp/tmux.sock", "COLORTERM": "truecolor"})
     screen = _detect({"TERM": "screen-256color", "STY": "123.screen"})

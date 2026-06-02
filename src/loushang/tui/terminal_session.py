@@ -45,6 +45,7 @@ class TerminalSessionDiagnostics:
     alternate_screen: bool
     tmux_passthrough: bool
     windows_vt_input: bool
+    windows_console_mode_active: bool
     termux_session: bool
     is_multiplexer: bool
     inside_ssh: bool
@@ -69,6 +70,7 @@ class TerminalSession:
     _keyboard_controller: KeyboardProtocolController | None = field(default=None, init=False, repr=False)
     _mouse_mode_active: bool = field(default=False, init=False, repr=False)
     _windows_vt_input_active: bool = field(default=False, init=False, repr=False)
+    _windows_console_mode_active: bool = field(default=False, init=False, repr=False)
     _entered: bool = field(default=False, init=False, repr=False)
 
     def __enter__(self) -> TerminalSession:
@@ -85,6 +87,7 @@ class TerminalSession:
         self._mode.__enter__()
         if self.capabilities.windows_vt_input and self._control_writes_allowed():
             self._windows_vt_input_active = bool(self.platform_adapter.enable_windows_vt_input(self.stdin))
+            self._windows_console_mode_active = _windows_console_mode_configured(self.platform_adapter)
         if self._control_writes_allowed() and self.capabilities.keyboard_protocol_strategy != "legacy":
             self._keyboard_controller = KeyboardProtocolController(strategy=self.capabilities.keyboard_protocol_strategy)
             self._write_sequences(self._keyboard_controller.startup_sequences(now_ms=self.now_ms()))
@@ -112,8 +115,9 @@ class TerminalSession:
                 idle_timeout=self.drain_idle_timeout,
                 max_duration=self.drain_max_duration,
             )
-        if self._windows_vt_input_active and self.platform_adapter is not None:
+        if self._windows_console_mode_active and self.platform_adapter is not None:
             self.platform_adapter.disable_windows_vt_input()
+            self._windows_console_mode_active = False
             self._windows_vt_input_active = False
         try:
             suppress = self._mode.__exit__(exc_type, exc, traceback)
@@ -159,6 +163,7 @@ class TerminalSession:
             alternate_screen=capabilities.alternate_screen,
             tmux_passthrough=capabilities.tmux_passthrough,
             windows_vt_input=self._windows_vt_input_active,
+            windows_console_mode_active=self._windows_console_mode_active,
             termux_session=capabilities.termux_session,
             is_multiplexer=capabilities.is_multiplexer,
             inside_ssh=capabilities.inside_ssh,
@@ -214,6 +219,16 @@ def _default_mode_factory(
         keyboard_protocols=False,
         drain_on_exit=False,
     )
+
+
+def _windows_console_mode_configured(adapter: TerminalPlatformAdapter | None) -> bool:
+    if adapter is None:
+        return False
+    configured = getattr(adapter, "windows_console_mode_configured", None)
+    if callable(configured):
+        return bool(configured())
+    return False
+
 
 __all__ = [
     "ALTERNATE_SCREEN_DISABLE_SEQUENCE",

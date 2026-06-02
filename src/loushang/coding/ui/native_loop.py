@@ -346,6 +346,7 @@ def _format_terminal_diagnostics(terminal_context: object) -> str:
                     f"alternate_screen_active: {_format_bool(_diagnostic_value(diagnostics, 'alternate_screen'))}",
                     f"tmux_passthrough_active: {_format_bool(_diagnostic_value(diagnostics, 'tmux_passthrough'))}",
                     f"windows_vt_input_active: {_format_bool(_diagnostic_value(diagnostics, 'windows_vt_input'))}",
+                    f"windows_console_mode_active: {_format_bool(_diagnostic_value(diagnostics, 'windows_console_mode_active'))}",
                     f"termux_session_active: {_format_bool(_diagnostic_value(diagnostics, 'termux_session'))}",
                     f"multiplexer_active: {_format_bool(_diagnostic_value(diagnostics, 'is_multiplexer'))}",
                     f"ssh_active: {_format_bool(_diagnostic_value(diagnostics, 'inside_ssh'))}",

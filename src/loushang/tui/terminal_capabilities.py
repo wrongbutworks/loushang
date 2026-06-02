@@ -159,7 +159,7 @@ def detect_terminal_capabilities(environment: TerminalEnvironment | None = None)
         enable_bracketed_paste=True,
         enable_focus_events=True,
         tmux_passthrough=tmux_passthrough and image_protocol != "none",
-        windows_vt_input=env.is_windows and env.has_windows_terminal_env,
+        windows_vt_input=env.is_windows,
         termux_session=env.termux_session,
         apple_terminal_normalization=apple_terminal_normalization,
         is_multiplexer=is_multiplexer,

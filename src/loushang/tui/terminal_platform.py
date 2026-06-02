@@ -7,6 +7,8 @@ from typing import Protocol
 APPLE_TERMINAL_SHIFT_ENTER_SEQUENCE = "\x1b[13;2u"
 _APPLE_EVENT_SOURCE_STATE_COMBINED_SESSION = 0
 _APPLE_EVENT_FLAG_MASK_SHIFT = 1 << 17
+_ENABLE_QUICK_EDIT_MODE = 0x0040
+_ENABLE_EXTENDED_FLAGS = 0x0080
 _ENABLE_VIRTUAL_TERMINAL_INPUT = 0x0200
 _STD_INPUT_HANDLE = -10
 
@@ -16,6 +18,10 @@ class TerminalPlatformAdapter(Protocol):
 
     def disable_windows_vt_input(self) -> None: ...
 
+    def windows_console_mode_configured(self) -> bool: ...
+
+    def windows_vt_input_active(self) -> bool: ...
+
     def apple_shift_pressed(self) -> bool: ...
 
 
@@ -23,24 +29,32 @@ class DefaultTerminalPlatformAdapter:
     def __init__(self) -> None:
         self._windows_handle: int | None = None
         self._windows_original_mode: int | None = None
+        self._windows_vt_input_active = False
 
     def enable_windows_vt_input(self, stdin: object) -> bool:
         if sys.platform != "win32":
             return False
+        if self._windows_handle is not None:
+            return self._windows_vt_input_active
         try:
             kernel32 = ctypes.windll.kernel32  # type: ignore[attr-defined]
             handle = ctypes.c_void_p(_windows_stdin_handle(stdin, kernel32))
             mode = ctypes.c_uint32()
             if not kernel32.GetConsoleMode(handle, ctypes.byref(mode)):
                 return False
-            requested = ctypes.c_uint32(mode.value | _ENABLE_VIRTUAL_TERMINAL_INPUT)
-            if not kernel32.SetConsoleMode(handle, requested):
-                return False
+            original_mode = int(mode.value)
+            requested = ctypes.c_uint32(_windows_console_input_mode(original_mode, vt_input=True))
+            vt_enabled = bool(kernel32.SetConsoleMode(handle, requested))
+            if not vt_enabled:
+                fallback = ctypes.c_uint32(_windows_console_input_mode(original_mode, vt_input=False))
+                if not kernel32.SetConsoleMode(handle, fallback):
+                    return False
         except Exception:  # noqa: BLE001
             return False
         self._windows_handle = handle.value
-        self._windows_original_mode = int(mode.value)
-        return self._windows_handle is not None
+        self._windows_original_mode = original_mode
+        self._windows_vt_input_active = vt_enabled
+        return self._windows_vt_input_active
 
     def disable_windows_vt_input(self) -> None:
         if sys.platform != "win32" or self._windows_handle is None or self._windows_original_mode is None:
@@ -53,6 +67,13 @@ class DefaultTerminalPlatformAdapter:
         finally:
             self._windows_handle = None
             self._windows_original_mode = None
+            self._windows_vt_input_active = False
+
+    def windows_console_mode_configured(self) -> bool:
+        return self._windows_handle is not None and self._windows_original_mode is not None
+
+    def windows_vt_input_active(self) -> bool:
+        return self._windows_vt_input_active
 
     def apple_shift_pressed(self) -> bool:
         if sys.platform != "darwin":
@@ -79,6 +100,13 @@ def _windows_stdin_handle(stdin: object, kernel32: object) -> int:
         except Exception:  # noqa: BLE001
             pass
     return int(kernel32.GetStdHandle(_STD_INPUT_HANDLE))
+
+
+def _windows_console_input_mode(mode: int, *, vt_input: bool) -> int:
+    requested = (mode | _ENABLE_EXTENDED_FLAGS) & ~_ENABLE_QUICK_EDIT_MODE
+    if vt_input:
+        requested |= _ENABLE_VIRTUAL_TERMINAL_INPUT
+    return requested
 
 
 def _apple_shift_pressed_via_quartz() -> bool:

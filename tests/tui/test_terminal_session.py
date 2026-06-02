@@ -361,6 +361,24 @@ def test_terminal_session_reports_windows_vt_input_inactive_when_adapter_decline
     assert platform.calls == ["enable_windows_vt_input"]
 
 
+def test_terminal_session_restores_windows_console_mode_when_vt_input_declines() -> None:
+    platform = _RecordingPlatformAdapter(windows_enabled=False, windows_configured=True)
+    capabilities = TerminalRuntimeCapabilities(windows_vt_input=True)
+
+    with TerminalSession(
+        stdin=StringIO(),
+        stdout=StringIO(),
+        capabilities=capabilities,
+        mode_factory=lambda _stdin, _stdout, _capabilities: _RecordingMode(),
+        platform_adapter=platform,
+    ) as session:
+        diagnostics = session.diagnostics()
+        assert diagnostics.windows_vt_input is False
+        assert diagnostics.windows_console_mode_active is True
+
+    assert platform.calls == ["enable_windows_vt_input", "disable_windows_vt_input"]
+
+
 def test_terminal_session_normalizes_apple_terminal_shift_enter_before_input_parsing() -> None:
     platform = _RecordingPlatformAdapter(shift_pressed=True)
     capabilities = TerminalRuntimeCapabilities(apple_terminal_normalization=True)
@@ -434,8 +452,15 @@ class _FakeClock:
 
 
 class _RecordingPlatformAdapter:
-    def __init__(self, *, windows_enabled: bool = False, shift_pressed: bool = False) -> None:
+    def __init__(
+        self,
+        *,
+        windows_enabled: bool = False,
+        windows_configured: bool | None = None,
+        shift_pressed: bool = False,
+    ) -> None:
         self.windows_enabled = windows_enabled
+        self.windows_configured = windows_enabled if windows_configured is None else windows_configured
         self.shift_pressed = shift_pressed
         self.calls: list[str] = []
 
@@ -446,6 +471,12 @@ class _RecordingPlatformAdapter:
 
     def disable_windows_vt_input(self) -> None:
         self.calls.append("disable_windows_vt_input")
+
+    def windows_console_mode_configured(self) -> bool:
+        return self.windows_configured
+
+    def windows_vt_input_active(self) -> bool:
+        return self.windows_enabled
 
     def apple_shift_pressed(self) -> bool:
         self.calls.append("apple_shift_pressed")
