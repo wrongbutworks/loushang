@@ -1,0 +1,76 @@
+from __future__ import annotations
+
+from dataclasses import dataclass, field
+from types import MappingProxyType
+from typing import Mapping
+
+_EMPTY_METADATA: Mapping[str, object] = MappingProxyType({})
+
+
+@dataclass(frozen=True)
+class MethodDescriptor:
+    id: str
+    name: str
+    description: str
+    content: str
+    kind: str
+    element_type: str | None = None
+    domain: str | None = None
+    meta_role: str | None = None
+    phase: str | None = None
+    source_path: str | None = None
+    version: str | None = None
+    metadata: Mapping[str, object] = field(default_factory=lambda: _EMPTY_METADATA)
+
+
+@dataclass(frozen=True)
+class MethodContext:
+    domain: str | None = None
+    task: str | None = None
+    metadata: Mapping[str, object] = field(default_factory=lambda: _EMPTY_METADATA)
+
+
+@dataclass(frozen=True)
+class MethodStep:
+    id: str
+    title: str
+    executor: str
+    role_variant: str | None = None
+    projection: Mapping[str, object] = field(default_factory=lambda: _EMPTY_METADATA)
+
+
+@dataclass(frozen=True)
+class MethodPlan:
+    id: str
+    method_id: str
+    mode: str
+    steps: tuple[MethodStep, ...]
+    phase: str | None = None
+    activity: str | None = None
+    task: str | None = None
+    metadata: Mapping[str, object] = field(default_factory=lambda: _EMPTY_METADATA)
+
+
+@dataclass(frozen=True)
+class MethodProjection:
+    method_id: str
+    step_id: str
+    system_guidance: str
+    meta_role: str | None = None
+    role_variant: str | None = None
+    user_guidance: str | None = None
+    allowed_skills: tuple[str, ...] = ()
+    suggested_tools: tuple[str, ...] = ()
+    expected_artifacts: tuple[str, ...] = ()
+    approval_gates: tuple[str, ...] = ()
+    temperature: float | None = None
+    metadata: Mapping[str, object] = field(default_factory=lambda: _EMPTY_METADATA)
+
+
+__all__ = [
+    "MethodContext",
+    "MethodDescriptor",
+    "MethodPlan",
+    "MethodProjection",
+    "MethodStep",
+]
