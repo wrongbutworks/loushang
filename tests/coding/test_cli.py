@@ -284,6 +284,21 @@ def _fake_services(
     return SimpleNamespace(settings_manager=settings_manager, diagnostics_service=object())
 
 
+def _write_review_method(project_root: Path) -> None:
+    method_dir = project_root / "methods" / "task" / "review"
+    method_dir.mkdir(parents=True)
+    (method_dir / "SKILL.md").write_text(
+        "---\n"
+        "name: review\n"
+        "description: Review changes.\n"
+        "type: task\n"
+        "meta_role: VALIDATOR\n"
+        "---\n\n"
+        "Use concise review guidance.",
+        encoding="utf-8",
+    )
+
+
 def test_parse_args_supports_modes_sessions_and_overrides() -> None:
     from loushang.coding.cli.args import parse_args
 
@@ -578,6 +593,7 @@ def test_parse_args_supports_prompt_alias_and_print_mode() -> None:
 
     short = parse_args(["-p", "hello"])
     long = parse_args(["--prompt", "hello"])
+    method = parse_args(["--method", "review", "-p", "hello"])
     print_mode = parse_args(["--mode", "print", "hello"])
     workflow = parse_args(["-ps", "scenarios/coding/bmi.workflow.yaml"])
 
@@ -585,6 +601,8 @@ def test_parse_args_supports_prompt_alias_and_print_mode() -> None:
     assert short.messages == ()
     assert long.prompt == "hello"
     assert long.messages == ()
+    assert method.method == "review"
+    assert method.prompt == "hello"
     assert print_mode.mode == "print"
     assert print_mode.messages == ("hello",)
     assert workflow.prompt_steps == "scenarios/coding/bmi.workflow.yaml"
@@ -2268,6 +2286,60 @@ def test_run_cli_dash_p_dispatches_prompt_command(tmp_path) -> None:
     assert print_runner.calls == []
 
 
+def test_run_cli_dash_p_with_method_prepares_prompt_and_method_id(tmp_path) -> None:
+    from loushang.coding.cli.__main__ import run_cli
+
+    _write_review_method(tmp_path)
+    runtime = FakeRuntime(FakeSession("session-1"))
+    prompt_runner = FakeRunner()
+
+    async def scenario() -> None:
+        exit_code = await run_cli(
+            ["--method", "review", "-p", "check src/app.py"],
+            stdin=StringIO(""),
+            stdout=StringIO(),
+            stderr=StringIO(),
+            cwd=tmp_path,
+            services=_fake_services(),
+            runtime_builder=lambda **kwargs: runtime,
+            prompt_runner=prompt_runner,
+        )
+        assert exit_code == 0
+
+    asyncio.run(scenario())
+
+    call = prompt_runner.calls[0]
+    assert call["method_id"] == "method:task:review"
+    assert "Use concise review guidance." in call["prompt"]
+    assert call["prompt"].endswith("User request:\n\ncheck src/app.py")
+
+
+def test_run_cli_dash_p_with_missing_method_reports_error(tmp_path) -> None:
+    from loushang.coding.cli.__main__ import run_cli
+
+    runtime = FakeRuntime(FakeSession("session-1"))
+    stderr = StringIO()
+    prompt_runner = FakeRunner()
+
+    async def scenario() -> None:
+        exit_code = await run_cli(
+            ["--method", "missing", "-p", "hello"],
+            stdin=StringIO(""),
+            stdout=StringIO(),
+            stderr=stderr,
+            cwd=tmp_path,
+            services=_fake_services(),
+            runtime_builder=lambda **kwargs: runtime,
+            prompt_runner=prompt_runner,
+        )
+        assert exit_code == 1
+
+    asyncio.run(scenario())
+
+    assert prompt_runner.calls == []
+    assert "method not found: missing" in stderr.getvalue()
+
+
 def test_run_cli_dash_p_passes_work_log_backend_to_prompt_command(tmp_path) -> None:
     from loushang.coding.cli.__main__ import run_cli
     from loushang.work import JsonlEventLogBackend
@@ -2534,6 +2606,35 @@ def test_run_cli_mode_print_dispatches_print_adapter(tmp_path) -> None:
     assert len(print_runner.calls) == 1
     assert print_runner.calls[0]["user_input"] == "hello"
     assert print_runner.calls[0]["output_mode"] == "text"
+
+
+def test_run_cli_mode_print_with_method_prepares_prompt_and_method_id(tmp_path) -> None:
+    from loushang.coding.cli.__main__ import run_cli
+
+    _write_review_method(tmp_path)
+    runtime = FakeRuntime(FakeSession("session-1"))
+    print_runner = FakeRunner()
+
+    async def scenario() -> None:
+        exit_code = await run_cli(
+            ["--method", "review", "--mode", "print", "check src/app.py"],
+            stdin=StringIO(""),
+            stdout=StringIO(),
+            stderr=StringIO(),
+            cwd=tmp_path,
+            services=_fake_services(),
+            runtime_builder=lambda **kwargs: runtime,
+            print_runner=print_runner,
+        )
+        assert exit_code == 0
+
+    asyncio.run(scenario())
+
+    call = print_runner.calls[0]
+    assert call["method_id"] == "method:task:review"
+    assert "Use concise review guidance." in call["user_input"]
+    assert call["user_input"].endswith("User request:\n\ncheck src/app.py")
+    assert call["output_mode"] == "text"
 
 
 def test_run_cli_mode_print_passes_work_log_backend_to_print_adapter(tmp_path) -> None:
@@ -3192,6 +3293,34 @@ def test_run_cli_default_path_uses_unified_mode_runner(tmp_path) -> None:
     assert mode_runner.calls[0]["user_input"] == "hello"
 
 
+def test_run_cli_default_path_with_method_prepares_prompt_and_method_id(tmp_path) -> None:
+    from loushang.coding.cli.__main__ import run_cli
+
+    _write_review_method(tmp_path)
+    runtime = FakeRuntime(FakeSession("session-1"))
+    mode_runner = FakeRunner()
+
+    async def scenario() -> None:
+        exit_code = await run_cli(
+            ["--mode", "json", "--method", "review", "check src/app.py"],
+            stdin=StringIO(""),
+            stdout=StringIO(),
+            stderr=StringIO(),
+            cwd=tmp_path,
+            services=_fake_services(),
+            runtime_builder=lambda **kwargs: runtime,
+            mode_runner=mode_runner,
+        )
+        assert exit_code == 0
+
+    asyncio.run(scenario())
+
+    call = mode_runner.calls[0]
+    assert call["method_id"] == "method:task:review"
+    assert "Use concise review guidance." in call["user_input"]
+    assert call["user_input"].endswith("User request:\n\ncheck src/app.py")
+
+
 def test_run_cli_default_path_passes_work_log_backend_to_unified_mode_runner(tmp_path) -> None:
     from loushang.coding.cli.__main__ import run_cli
     from loushang.work import JsonlEventLogBackend
@@ -3403,6 +3532,49 @@ def test_run_cli_rejects_work_log_on_unsupported_paths(tmp_path, argv, message) 
     asyncio.run(scenario())
 
     assert message in stderr.getvalue()
+
+
+@pytest.mark.parametrize(
+    ("argv", "stdin", "stdout"),
+    [
+        (["--method", "review", "--mode", "rpc"], StringIO(""), StringIO()),
+        (["--method", "review", "--tui"], TtyStringIO(""), TtyStringIO()),
+    ],
+)
+def test_run_cli_rejects_method_on_unsupported_interactive_paths(tmp_path, argv, stdin, stdout) -> None:
+    from loushang.coding.cli.__main__ import run_cli
+
+    _write_review_method(tmp_path)
+    runtime = FakeRuntime(FakeSession("session-1"))
+    stderr = StringIO()
+    prompt_runner = FakeRunner()
+    mode_runner = FakeRunner()
+    rpc_runner = FakeRunner()
+    tui_runner = FakeRunner()
+
+    async def scenario() -> None:
+        exit_code = await run_cli(
+            argv,
+            stdin=stdin,
+            stdout=stdout,
+            stderr=stderr,
+            cwd=tmp_path,
+            services=_fake_services(),
+            runtime_builder=lambda **kwargs: runtime,
+            mode_runner=mode_runner,
+            prompt_runner=prompt_runner,
+            rpc_runner=rpc_runner,
+            tui_runner=tui_runner,
+        )
+        assert exit_code == 2
+
+    asyncio.run(scenario())
+
+    assert "--method is not supported" in stderr.getvalue()
+    assert prompt_runner.calls == []
+    assert mode_runner.calls == []
+    assert rpc_runner.calls == []
+    assert tui_runner.calls == []
 
 
 def test_run_cli_dispatches_tui_mode(tmp_path) -> None:

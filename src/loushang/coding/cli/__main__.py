@@ -30,6 +30,7 @@ from loushang.coding.control.settings_store import (
 )
 from loushang.coding.diag_export import export_diagnostics_bundle
 from loushang.coding.diagnostics import serialize_diagnostic
+from loushang.coding.domain import CodingDomainApp, CodingDomainRequest
 from loushang.coding.extensions.types import ResolvedFlag
 from loushang.coding.mode import ModeConfig, run_mode, run_print_mode, run_rpc_mode
 from loushang.coding.observability import (
@@ -250,6 +251,10 @@ async def run_cli(
     if work_log_error is not None:
         stderr.write(f"Error: {work_log_error}.\n")
         return 2
+    method_error = _method_static_error(bootstrap_args)
+    if method_error is not None:
+        stderr.write(f"Error: {method_error}.\n")
+        return 2
     work_log_inspect_result = _run_work_log_inspect(bootstrap_args, project_root, stdout, stderr)
     if work_log_inspect_result is not None:
         return work_log_inspect_result
@@ -392,6 +397,10 @@ async def run_cli(
         if work_log_error is not None:
             stderr.write(f"Error: {work_log_error}.\n")
             return 2
+        method_error = _method_runtime_error(args, effective_tui=effective_tui)
+        if method_error is not None:
+            stderr.write(f"Error: {method_error}.\n")
+            return 2
         work_event_log = _resolve_work_event_log(args.work_log, project_root)
         with coding_observability_context(
             args=args,
@@ -457,17 +466,30 @@ async def run_cli(
                 stderr.write("Error: prompt is required for prompt/text/print/json modes.\n")
                 return 2
 
+            try:
+                prepared_turn = CodingDomainApp(cwd=project_root).prepare_turn(
+                    CodingDomainRequest(
+                        user_input=print_input.user_input,
+                        cwd=project_root,
+                        method=args.method,
+                    )
+                )
+            except ValueError as error:
+                stderr.write(f"Error: {_format_cli_error(error)}\n")
+                return 1
+
             if args.prompt is not None:
                 return await prompt_runner(
                     runtime=runtime,
                     session=session,
-                    prompt=print_input.user_input,
+                    prompt=prepared_turn.prepared_prompt,
                     stdout=stdout,
                     stderr=stderr,
                     images=print_input.images,
                     follow_up_messages=print_input.follow_up_messages,
                     verbose=args.verbose,
                     work_event_log=work_event_log,
+                    method_id=prepared_turn.method_id,
                 )
 
             output_mode = "text" if args.mode == "print" else args.mode
@@ -475,7 +497,7 @@ async def run_cli(
                 return await print_runner(
                     runtime=runtime,
                     session=session,
-                    user_input=print_input.user_input,
+                    user_input=prepared_turn.prepared_prompt,
                     stdout=stdout,
                     stderr=stderr,
                     images=print_input.images,
@@ -483,6 +505,7 @@ async def run_cli(
                     output_mode=output_mode,
                     render_tool_events=args.render_tool_events,
                     work_event_log=work_event_log,
+                    method_id=prepared_turn.method_id,
                 )
 
             return await mode_runner(
@@ -492,13 +515,14 @@ async def run_cli(
                 ),
                 runtime=runtime,
                 session=session,
-                user_input=print_input.user_input,
+                user_input=prepared_turn.prepared_prompt,
                 images=print_input.images,
                 follow_up_messages=print_input.follow_up_messages,
                 stdin=stdin,
                 stdout=stdout,
                 stderr=stderr,
                 work_event_log=work_event_log,
+                method_id=prepared_turn.method_id,
             )
 
 
@@ -676,6 +700,26 @@ def _work_log_runtime_error(args: CliArgs, *, effective_tui: bool) -> str | None
         return None
     if effective_tui:
         return "--work-log is not supported in TUI mode"
+    return None
+
+
+def _method_static_error(args: CliArgs) -> str | None:
+    if args.method is None:
+        return None
+    if args.tui:
+        return "--method is not supported in TUI mode"
+    if args.mode == "rpc":
+        return "--method is not supported in RPC mode"
+    if args.prompt_steps is not None:
+        return "--method is not supported with --prompt-steps"
+    return None
+
+
+def _method_runtime_error(args: CliArgs, *, effective_tui: bool) -> str | None:
+    if args.method is None:
+        return None
+    if effective_tui:
+        return "--method is not supported in TUI mode"
     return None
 
 
