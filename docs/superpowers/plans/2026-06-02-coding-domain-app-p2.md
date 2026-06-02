@@ -60,14 +60,14 @@
 - Modify: `src/loushang/coding/cli/__main__.py`
 - Test: `tests/coding/test_cli.py`
 
-- [ ] Write failing parse tests for `--method`.
-- [ ] Write failing CLI tests for `--method review -p`, `--method review --mode print`, missing method, unsupported TUI/RPC, and unchanged no-method behavior.
-- [ ] Add `method: str | None` to `CliArgs` and parser.
-- [ ] Add runtime validation for unsupported TUI/RPC mode.
-- [ ] Use `CodingDomainApp.prepare_turn(...)` after resolving print input and before dispatching prompt/print/mode runners.
-- [ ] Pass `prepared_prompt` and `method_id` into prompt/print/mode runners.
-- [ ] Run `uv --cache-dir .uv-cache run --extra dev pytest tests/coding/test_cli.py tests/coding/domain -q`.
-- [ ] Commit with `feat: add explicit method guided CLI turns`.
+- [x] Write failing parse tests for `--method`.
+- [x] Write failing CLI tests for `--method review -p`, `--method review --mode print`, missing method, unsupported TUI/RPC, and unchanged no-method behavior.
+- [x] Add `method: str | None` to `CliArgs` and parser.
+- [x] Add runtime validation for unsupported TUI/RPC mode.
+- [x] Use `CodingDomainApp.prepare_turn(...)` after resolving print input and before dispatching prompt/print/mode runners.
+- [x] Pass `prepared_prompt` and `method_id` into prompt/print/mode runners.
+- [x] Run `uv --cache-dir .uv-cache run --extra dev pytest tests/coding/test_cli.py tests/coding/domain -q`.
+- [x] Commit with `feat: add explicit method guided CLI turns`.
 
 ### Task 5: Regression
 
