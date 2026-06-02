@@ -1,3 +1,4 @@
+from loushang.method.skill_adapter import method_from_skill
 from loushang.method.types import (
     MethodContext,
     MethodDescriptor,
@@ -12,4 +13,5 @@ __all__ = [
     "MethodPlan",
     "MethodProjection",
     "MethodStep",
+    "method_from_skill",
 ]
