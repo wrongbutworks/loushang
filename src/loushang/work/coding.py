@@ -35,6 +35,10 @@ class CodingWorkShell:
         session_id: str,
         images: Sequence[object] | None = None,
         method_id: str | None = None,
+        plan_id: str | None = None,
+        step_id: str | None = None,
+        step_index: int | None = None,
+        step_title: str | None = None,
         operation_id: str | None = None,
         run_id: str | None = None,
     ) -> WorkRun:
@@ -46,7 +50,15 @@ class CodingWorkShell:
             kind="SubmitCodingTurn",
             session_id=session_id,
             domain="coding",
-            payload=_operation_payload(text=text, images=images, method_id=method_id),
+            payload=_operation_payload(
+                text=text,
+                images=images,
+                method_id=method_id,
+                plan_id=plan_id,
+                step_id=step_id,
+                step_index=step_index,
+                step_title=step_title,
+            ),
         )
         self._append_operation(operation, run_id=run_id, sequence=sequence)
 
@@ -57,6 +69,8 @@ class CodingWorkShell:
             domain="coding",
             status="running",
             method_id=method_id,
+            plan_id=plan_id,
+            current_step_id=step_id,
         )
         sequence += 1
         self._append_event(
@@ -68,6 +82,36 @@ class CodingWorkShell:
                 payload={"source_type": "work_shell"},
             ),
         )
+        if plan_id is not None:
+            sequence += 1
+            self._append_event(
+                _work_event(
+                    kind="WorkPlanStarted",
+                    run=run,
+                    sequence=sequence,
+                    created_at=self.clock(),
+                    delivery_hint="coalesce",
+                    payload=_step_payload(
+                        step_index=step_index,
+                        step_title=step_title,
+                    ),
+                ),
+            )
+        if step_id is not None:
+            sequence += 1
+            self._append_event(
+                _work_event(
+                    kind="WorkStepStarted",
+                    run=run,
+                    sequence=sequence,
+                    created_at=self.clock(),
+                    delivery_hint="coalesce",
+                    payload=_step_payload(
+                        step_index=step_index,
+                        step_title=step_title,
+                    ),
+                ),
+            )
 
         async def listener(event: Mapping[str, object]) -> None:
             nonlocal sequence
@@ -90,7 +134,7 @@ class CodingWorkShell:
                 await self.session.prompt(text)
             else:
                 await self.session.prompt(text, images=images)
-        except Exception:
+        except Exception as error:
             sequence += 1
             failed_run = WorkRun(
                 run_id=run_id,
@@ -99,7 +143,38 @@ class CodingWorkShell:
                 domain="coding",
                 status="failed",
                 method_id=method_id,
+                plan_id=plan_id,
+                current_step_id=step_id,
             )
+            failure_payload = _step_payload(
+                step_index=step_index,
+                step_title=step_title,
+                error=error,
+            )
+            if step_id is not None:
+                self._append_event(
+                    _work_event(
+                        kind="WorkStepFailed",
+                        run=failed_run,
+                        sequence=sequence,
+                        created_at=self.clock(),
+                        delivery_hint="immediate",
+                        payload=failure_payload,
+                    ),
+                )
+                sequence += 1
+            if plan_id is not None:
+                self._append_event(
+                    _work_event(
+                        kind="WorkPlanFailed",
+                        run=failed_run,
+                        sequence=sequence,
+                        created_at=self.clock(),
+                        delivery_hint="immediate",
+                        payload=failure_payload,
+                    ),
+                )
+                sequence += 1
             self._append_event(
                 _work_event(
                     kind="WorkRunFailed",
@@ -121,7 +196,39 @@ class CodingWorkShell:
             domain="coding",
             status="completed",
             method_id=method_id,
+            plan_id=plan_id,
+            current_step_id=step_id,
         )
+        if step_id is not None:
+            self._append_event(
+                _work_event(
+                    kind="WorkStepCompleted",
+                    run=completed_run,
+                    sequence=sequence,
+                    created_at=self.clock(),
+                    delivery_hint="coalesce",
+                    payload=_step_payload(
+                        step_index=step_index,
+                        step_title=step_title,
+                    ),
+                ),
+            )
+            sequence += 1
+        if plan_id is not None:
+            self._append_event(
+                _work_event(
+                    kind="WorkPlanCompleted",
+                    run=completed_run,
+                    sequence=sequence,
+                    created_at=self.clock(),
+                    delivery_hint="final_only",
+                    payload=_step_payload(
+                        step_index=step_index,
+                        step_title=step_title,
+                    ),
+                ),
+            )
+            sequence += 1
         self._append_event(
             _work_event(
                 kind="WorkRunCompleted",
@@ -163,10 +270,15 @@ def _work_event(
     sequence: int,
     created_at: datetime,
     payload: Mapping[str, object],
+    delivery_hint: str = "immediate",
 ) -> WorkEvent:
     event_payload = dict(payload)
     if run.method_id is not None:
         event_payload["method_id"] = run.method_id
+    if run.plan_id is not None:
+        event_payload["plan_id"] = run.plan_id
+    if run.current_step_id is not None:
+        event_payload["step_id"] = run.current_step_id
     return WorkEvent(
         event_id=f"{run.run_id}-event-{sequence}",
         kind=kind,
@@ -176,17 +288,50 @@ def _work_event(
         operation_id=run.operation_id,
         sequence=sequence,
         created_at=created_at,
-        delivery_hint="immediate",
+        delivery_hint=delivery_hint,
         payload=event_payload,
     )
 
 
-def _operation_payload(*, text: str, images: Sequence[object] | None, method_id: str | None) -> dict[str, object]:
+def _operation_payload(
+    *,
+    text: str,
+    images: Sequence[object] | None,
+    method_id: str | None,
+    plan_id: str | None,
+    step_id: str | None,
+    step_index: int | None,
+    step_title: str | None,
+) -> dict[str, object]:
     payload: dict[str, object] = {"text": text}
     if images is not None:
         payload["image_count"] = len(images)
     if method_id is not None:
         payload["method_id"] = method_id
+    if plan_id is not None:
+        payload["plan_id"] = plan_id
+    if step_id is not None:
+        payload["step_id"] = step_id
+    if step_index is not None:
+        payload["step_index"] = step_index
+    if step_title is not None:
+        payload["step_title"] = step_title
+    return payload
+
+
+def _step_payload(
+    *,
+    step_index: int | None,
+    step_title: str | None,
+    error: BaseException | None = None,
+) -> dict[str, object]:
+    payload: dict[str, object] = {"source_type": "work_shell"}
+    if step_index is not None:
+        payload["step_index"] = step_index
+    if step_title is not None:
+        payload["step_title"] = step_title
+    if error is not None:
+        payload["error"] = str(error)
     return payload
 
 
