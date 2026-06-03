@@ -80,6 +80,12 @@ Loushang 目前处于早期活跃开发阶段。
 
 当前稳定建设重点是 `loushang code` 以及底层 `loushang.ai` SDK。更广义的 `loushang work`、`loushang research`、`loushang ppt` 属于路线图中的产品方向，应视为持续演进中的能力。
 
+## 联系
+
+Loushang 由周恒发起；周恒现任北京楼上星链有限责任公司首席科学家，长期关注低代码、工作流、数据库、模型驱动、DSL、系统工程与智能体系统，致力于将方法论运行化为面向复杂工作交付的基础设施。
+
+问题反馈、交流合作或加入交流群，可以联系：zhnt@foxmail.com。
+
 ## 致谢
 
 Loushang 借鉴了 OpenAI Codex、pi、python-prompt-toolkit、browser-use、Kimi CLI、superpowers、gstack、openclaw、hermes-agent 等项目公开的设计与工程经验。这些项目是参考与灵感来源；除 `THIRD_PARTY_NOTICES.md` 中列出的依赖外，本仓库不包含或再分发其代码。
