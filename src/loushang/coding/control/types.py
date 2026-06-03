@@ -66,6 +66,12 @@ class WarningSettings:
 
 
 @dataclass(frozen=True)
+class MethodSettings:
+    mode: str = "explicit"
+    selected_method: str | None = None
+
+
+@dataclass(frozen=True)
 class ToolSettings:
     external_tool_policy: ExternalToolPolicy = "auto"
     blocked_tools: tuple[str, ...] = ()
@@ -110,6 +116,7 @@ class ControlConfig:
     terminal: TerminalSettings = field(default_factory=TerminalSettings)
     markdown: MarkdownSettings = field(default_factory=MarkdownSettings)
     warnings: WarningSettings = field(default_factory=WarningSettings)
+    method: MethodSettings = field(default_factory=MethodSettings)
     tools: ToolSettings = field(default_factory=ToolSettings)
     session_dir: str | None = None
     resource_roots: tuple[str, ...] = ()
@@ -129,6 +136,7 @@ __all__ = [
     "ImageSettings",
     "KeybindingValue",
     "MarkdownSettings",
+    "MethodSettings",
     "QueueMode",
     "RetrySettings",
     "TerminalSettings",

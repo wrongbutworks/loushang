@@ -22,6 +22,7 @@ from loushang.coding.control.types import (
     ImageSettings,
     KeybindingValue,
     MarkdownSettings,
+    MethodSettings,
     QueueMode,
     RetrySettings,
     TerminalSettings,
@@ -359,6 +360,9 @@ def _control_config_to_patch(config: ControlConfig) -> dict[str, Any]:
     warnings_patch = _diff_dataclass_slice(config.warnings, defaults.warnings)
     if warnings_patch:
         patch["warnings"] = warnings_patch
+    method_patch = _diff_dataclass_slice(config.method, defaults.method)
+    if method_patch:
+        patch["method"] = method_patch
     tools_patch = _diff_dataclass_slice(config.tools, defaults.tools)
     if tools_patch:
         patch["tools"] = tools_patch
@@ -526,6 +530,8 @@ def _apply_patch(config: ControlConfig, patch: Mapping[str, Any]) -> ControlConf
         next_config = replace(next_config, markdown=_apply_dataclass_patch(next_config.markdown, patch["markdown"], "markdown"))
     if "warnings" in patch:
         next_config = replace(next_config, warnings=_apply_dataclass_patch(next_config.warnings, patch["warnings"], "warnings"))
+    if "method" in patch:
+        next_config = replace(next_config, method=_apply_dataclass_patch(next_config.method, patch["method"], "method"))
     if "tools" in patch:
         next_config = replace(next_config, tools=_apply_tool_settings_patch(next_config.tools, patch["tools"]))
     if "session_dir" in patch:
@@ -661,6 +667,7 @@ class SettingsManager:
         terminal: TerminalSettings | object = _UNSET,
         markdown: MarkdownSettings | object = _UNSET,
         warnings: WarningSettings | object = _UNSET,
+        method: MethodSettings | Mapping[str, object] | object = _UNSET,
         tools: ToolSettings | Mapping[str, object] | object = _UNSET,
         session_dir: str | None | object = _UNSET,
         resource_roots: Iterable[str] | object = _UNSET,
@@ -738,6 +745,8 @@ class SettingsManager:
             patch["markdown"] = _serialize_settings_slice(markdown)
         if warnings is not _UNSET:
             patch["warnings"] = _serialize_settings_slice(warnings)
+        if method is not _UNSET:
+            patch["method"] = _serialize_settings_slice(method)
         if tools is not _UNSET:
             patch["tools"] = _serialize_tool_settings(tools)
         if session_dir is not _UNSET:
@@ -951,6 +960,17 @@ class SettingsManager:
 
     def get_warnings(self) -> WarningSettings:
         return self._settings.warnings
+
+    def get_method_settings(self) -> MethodSettings:
+        return self._settings.method
+
+    def set_method_settings(
+        self,
+        settings: MethodSettings | Mapping[str, object],
+        *,
+        scope: SettingsScope = "global",
+    ) -> None:
+        self.update_settings(scope=scope, method=settings)
 
     def get_tool_settings(self) -> ToolSettings:
         return self._settings.tools
