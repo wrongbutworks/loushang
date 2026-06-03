@@ -102,4 +102,4 @@
 - [x] Run `uv --cache-dir .uv-cache run ruff check src/loushang/coding/domain src/loushang/coding/cli tests/coding/domain tests/coding/test_cli.py`.
 - [x] Run a manual CLI fake-runner or work-log focused verification if needed by changed behavior.
 - [x] Commit any final fixes.
-- [ ] Push branch and create PR referencing issues #42 and #43.
+- [x] Push branch and create PR referencing issues #42 and #43.
