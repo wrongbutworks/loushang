@@ -80,6 +80,12 @@ Loushang is in active early development.
 
 The current stable focus is `loushang code` and the underlying `loushang.ai` SDK. Broader work surfaces such as `loushang work`, `loushang research`, and `loushang ppt` are part of the roadmap and should be treated as evolving product directions.
 
+## Contact
+
+Loushang was initiated by Heng Zhou, Chief Scientist at Beijing Loushang Xinglian Co., Ltd. He works across low-code systems, workflows, databases, model-driven engineering, DSLs, systems engineering, and agent systems, with a focus on turning methods into runtime infrastructure for complex-work delivery.
+
+For questions, feedback, collaboration, or a community group invitation, contact: zhnt@foxmail.com.
+
 ## Acknowledgements
 
 Loushang learns from public design and engineering patterns in projects such as OpenAI Codex, pi, python-prompt-toolkit, browser-use, Kimi CLI, superpowers, gstack, openclaw, and hermes-agent. These projects are references and inspiration; unless listed in `THIRD_PARTY_NOTICES.md`, this repository does not include or redistribute their code.
