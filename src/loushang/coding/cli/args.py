@@ -14,6 +14,7 @@ SessionListFormat = Literal["tsv", "json"]
 SkillListFormat = Literal["tsv", "json"]
 MethodListFormat = Literal["tsv", "json"]
 MethodShowFormat = Literal["text", "json"]
+MethodPlanShowFormat = Literal["text", "json"]
 PluginListFormat = Literal["tsv", "json"]
 PackageListFormat = Literal["text", "tsv", "json"]
 ExportFormat = Literal["html", "jsonl"]
@@ -96,6 +97,8 @@ _BUILTIN_FLAG_NAMES = frozenset(
         "list-methods-format",
         "show-method",
         "show-method-format",
+        "show-method-plan",
+        "show-method-plan-format",
         "enable-skill",
         "disable-skill",
         "list-plugins",
@@ -178,6 +181,8 @@ class CliArgs:
     list_methods_format: MethodListFormat
     show_method: str | None
     show_method_format: MethodShowFormat
+    show_method_plan: str | None
+    show_method_plan_format: MethodPlanShowFormat
     enable_skills: tuple[str, ...]
     disable_skills: tuple[str, ...]
     list_plugins: bool
@@ -336,6 +341,8 @@ def parse_args(
         list_methods_format=namespace.list_methods_format,
         show_method=namespace.show_method,
         show_method_format=namespace.show_method_format,
+        show_method_plan=namespace.show_method_plan,
+        show_method_plan_format=namespace.show_method_plan_format,
         enable_skills=tuple(namespace.enable_skill),
         disable_skills=tuple(namespace.disable_skill),
         list_plugins=namespace.list_plugins,
@@ -507,6 +514,8 @@ def _build_parser() -> ArgumentParser:
     parser.add_argument("--list-methods-format", choices=("tsv", "json"), default="tsv")
     parser.add_argument("--show-method")
     parser.add_argument("--show-method-format", choices=("text", "json"), default="text")
+    parser.add_argument("--show-method-plan")
+    parser.add_argument("--show-method-plan-format", choices=("text", "json"), default="text")
     parser.add_argument("--enable-skill", action="append", default=[])
     parser.add_argument("--disable-skill", action="append", default=[])
     parser.add_argument("--list-plugins", action="store_true")
@@ -612,7 +621,25 @@ def _rewrite_method_subcommands(argv: list[str]) -> list[str]:
         return [*prefix, "--list-methods", *suffix]
     if command == "show" and suffix:
         return [*prefix, "--show-method", suffix[0], *suffix[1:]]
+    if command == "plan" and len(suffix) >= 2 and suffix[0] == "show":
+        return [*prefix, "--show-method-plan", suffix[1], *_rewrite_method_plan_show_options(suffix[2:])]
     return argv
+
+
+def _rewrite_method_plan_show_options(argv: list[str]) -> list[str]:
+    rewritten: list[str] = []
+    index = 0
+    while index < len(argv):
+        token = argv[index]
+        if token == "--format":
+            rewritten.append("--show-method-plan-format")
+            if index + 1 < len(argv):
+                rewritten.append(argv[index + 1])
+                index += 2
+                continue
+        rewritten.append(token)
+        index += 1
+    return rewritten
 
 
 def _method_subcommand_index(argv: list[str]) -> int | None:

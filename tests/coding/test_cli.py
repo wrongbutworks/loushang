@@ -449,6 +449,11 @@ def test_parse_args_accepts_method_visibility_flags_and_subcommands() -> None:
     assert show_args.show_method == "method:task:review"
     assert show_args.show_method_format == "json"
 
+    plan_show_args = parse_args(["method", "plan", "show", "review", "--format", "json"])
+
+    assert plan_show_args.show_method_plan == "review"
+    assert plan_show_args.show_method_plan_format == "json"
+
     list_args = parse_args(["method", "list"])
 
     assert list_args.list_methods is True
@@ -5395,6 +5400,134 @@ def test_run_cli_shows_method_as_text(tmp_path) -> None:
     assert "  risk: medium" in output
     assert "  tags.method_family: debug-first" in output
     assert "Debug failures carefully." in output
+    assert stderr.getvalue() == ""
+
+
+def test_run_cli_shows_fixed_method_plan_as_json(tmp_path) -> None:
+    from loushang.coding.cli.__main__ import run_cli
+
+    method_dir = tmp_path / "methods" / "task" / "review"
+    method_dir.mkdir(parents=True)
+    (method_dir / "SKILL.md").write_text(
+        "---\n"
+        "name: review\n"
+        "description: Review changes.\n"
+        "type: task\n"
+        "domains: [coding, research]\n"
+        "task_types: [reviewing]\n"
+        "meta_role: VALIDATOR\n"
+        "phase: VERIFY\n"
+        "plan_mode: fixed\n"
+        "steps:\n"
+        "  - inspect\n"
+        "  - verify\n"
+        "step_titles:\n"
+        "  inspect: Inspect current changes\n"
+        "  verify: Run focused checks\n"
+        "step_guidance:\n"
+        "  inspect: Read changed files and summarize intent.\n"
+        "  verify: Run focused tests or explain why they cannot run.\n"
+        "---\n\n"
+        "Use concise review guidance.",
+        encoding="utf-8",
+    )
+    session = FakeSession("session-1")
+    runtime = FakeRuntime(session)
+    stdout = StringIO()
+    stderr = StringIO()
+
+    async def scenario() -> None:
+        exit_code = await run_cli(
+                ["method", "plan", "show", "review", "--format", "json"],
+            stdin=StringIO(""),
+            stdout=stdout,
+            stderr=stderr,
+            cwd=tmp_path,
+            services=_fake_services(),
+            runtime_builder=lambda **kwargs: runtime,
+        )
+        assert exit_code == 0
+
+    asyncio.run(scenario())
+
+    payload = json.loads(stdout.getvalue())
+    assert payload["method"]["id"] == "method:task:review"
+    assert payload["method"]["name"] == "review"
+    assert payload["method"]["applicability"]["domains"] == ["coding", "research"]
+    assert payload["plan"]["id"] == "plan:method:task:review"
+    assert payload["plan"]["method_id"] == "method:task:review"
+    assert payload["plan"]["mode"] == "fixed"
+    assert payload["plan"]["metadata"]["step_count"] == 2
+    assert [step["id"] for step in payload["steps"]] == ["inspect", "verify"]
+    assert [step["title"] for step in payload["steps"]] == ["Inspect current changes", "Run focused checks"]
+    first_projection = payload["steps"][0]["projection"]
+    second_projection = payload["steps"][1]["projection"]
+    assert first_projection["step_guidance"] == "Read changed files and summarize intent."
+    assert first_projection["step_index"] == 0
+    assert first_projection["step_count"] == 2
+    assert first_projection["meta_role"] == "VALIDATOR"
+    assert "Step inspect - Inspect current changes" in first_projection["content"]
+    assert second_projection["step_guidance"] == "Run focused tests or explain why they cannot run."
+    assert second_projection["step_index"] == 1
+    assert second_projection["step_count"] == 2
+    assert "Step verify - Run focused checks" in second_projection["content"]
+    assert payload["steps"][0]["applicability"]["domains"] == ["coding", "research"]
+    assert payload["steps"][0]["applicability"]["task_types"] == ["reviewing"]
+    assert stderr.getvalue() == ""
+
+
+def test_run_cli_shows_fixed_method_plan_as_text(tmp_path) -> None:
+    from loushang.coding.cli.__main__ import run_cli
+
+    method_dir = tmp_path / "methods" / "task" / "review"
+    method_dir.mkdir(parents=True)
+    (method_dir / "SKILL.md").write_text(
+        "---\n"
+        "name: review\n"
+        "description: Review changes.\n"
+        "type: task\n"
+        "plan_mode: fixed\n"
+        "steps:\n"
+        "  - inspect\n"
+        "  - verify\n"
+        "step_titles:\n"
+        "  inspect: Inspect current changes\n"
+        "  verify: Run focused checks\n"
+        "step_guidance:\n"
+        "  inspect: Read changed files and summarize intent.\n"
+        "  verify: Run focused tests or explain why they cannot run.\n"
+        "---\n\n"
+        "Use concise review guidance.",
+        encoding="utf-8",
+    )
+    session = FakeSession("session-1")
+    runtime = FakeRuntime(session)
+    stdout = StringIO()
+    stderr = StringIO()
+
+    async def scenario() -> None:
+        exit_code = await run_cli(
+            ["method", "plan", "show", "review"],
+            stdin=StringIO(""),
+            stdout=stdout,
+            stderr=stderr,
+            cwd=tmp_path,
+            services=_fake_services(),
+            runtime_builder=lambda **kwargs: runtime,
+        )
+        assert exit_code == 0
+
+    asyncio.run(scenario())
+
+    output = stdout.getvalue()
+    assert "method_id: method:task:review" in output
+    assert "plan_id: plan:method:task:review" in output
+    assert "mode: fixed" in output
+    assert "steps:" in output
+    assert "  1. inspect - Inspect current changes" in output
+    assert "     guidance: Read changed files and summarize intent." in output
+    assert "  2. verify - Run focused checks" in output
+    assert "     guidance: Run focused tests or explain why they cannot run." in output
     assert stderr.getvalue() == ""
 
 

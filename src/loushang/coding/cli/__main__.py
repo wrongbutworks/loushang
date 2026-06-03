@@ -65,7 +65,7 @@ from loushang.coding.workflow import (
     resolve_workflow_files,
     run_prompt_steps_workflow,
 )
-from loushang.method import MethodLoader
+from loushang.method import MethodCompiler, MethodContext, MethodLoader
 from loushang.work import JsonlEventLogBackend
 
 _MISSING = object()
@@ -665,6 +665,7 @@ def _stdout_guard_enabled(args: CliArgs) -> bool:
         or (args.list_skills and args.list_skills_format == "json")
         or (args.list_methods and args.list_methods_format == "json")
         or (args.show_method is not None and args.show_method_format == "json")
+        or (args.show_method_plan is not None and args.show_method_plan_format == "json")
         or (args.list_plugins and args.list_plugins_format == "json")
         or (args.list_packages and args.list_packages_format == "json")
         or (args.export is not None and args.export_result_format == "json")
@@ -896,6 +897,7 @@ def _has_command_style_operation(args: CliArgs) -> bool:
         or args.list_skills
         or args.list_methods
         or args.show_method is not None
+        or args.show_method_plan is not None
         or args.list_plugins
         or args.list_packages
         or args.export is not None
@@ -973,6 +975,7 @@ def _runtime_args_for_bootstrap(args: CliArgs) -> CliArgs:
         or args.list_skills
         or args.list_methods
         or args.show_method is not None
+        or args.show_method_plan is not None
         or args.list_plugins
         or args.list_packages
         or args.list_models is not False
@@ -1893,7 +1896,7 @@ def _run_method_visibility(
     stdout: TextIO,
     stderr: TextIO,
 ) -> int | None:
-    if not args.list_methods and args.show_method is None:
+    if not args.list_methods and args.show_method is None and args.show_method_plan is None:
         return None
 
     try:
@@ -1912,6 +1915,23 @@ def _run_method_visibility(
                 f"{method['id']}\t{method['name']}\t{method['kind']}\t"
                 f"{method['element_type']}\t{method['path']}\n"
             )
+        return 0
+
+    if args.show_method_plan is not None:
+        method = _find_method(methods, args.show_method_plan)
+        if method is None:
+            stderr.write(f"Error: method not found: {args.show_method_plan}\n")
+            return 1
+        try:
+            plan = MethodCompiler().compile(method, context=MethodContext(domain="coding"))
+        except Exception as error:
+            stderr.write(f"Error: {_format_cli_error(error)}\n")
+            return 1
+        payload = _normalize_method_plan(method, plan)
+        if args.show_method_plan_format == "json":
+            stdout.write(json.dumps(payload, ensure_ascii=False) + "\n")
+            return 0
+        stdout.write(_format_method_plan_detail(payload))
         return 0
 
     method = _find_method(methods, args.show_method or "")
@@ -1965,6 +1985,44 @@ def _normalize_method_applicability(applicability: Any) -> dict[str, object]:
     }
 
 
+def _normalize_method_plan(method: Any, plan: Any) -> dict[str, object]:
+    return {
+        "method": _normalize_method_entry(method),
+        "plan": {
+            "id": _safe_getattr(plan, "id", "") or "",
+            "method_id": _safe_getattr(plan, "method_id", "") or "",
+            "mode": _safe_getattr(plan, "mode", "") or "",
+            "phase": _safe_getattr(plan, "phase", None),
+            "activity": _safe_getattr(plan, "activity", None),
+            "task": _safe_getattr(plan, "task", None),
+            "metadata": _json_safe(_safe_getattr(plan, "metadata", {})),
+            "applicability": _normalize_method_applicability(_safe_getattr(plan, "applicability", None)),
+        },
+        "steps": [_normalize_method_plan_step(step) for step in _safe_getattr(plan, "steps", ())],
+    }
+
+
+def _normalize_method_plan_step(step: Any) -> dict[str, object]:
+    return {
+        "id": _safe_getattr(step, "id", "") or "",
+        "title": _safe_getattr(step, "title", "") or "",
+        "executor": _safe_getattr(step, "executor", "") or "",
+        "role_variant": _safe_getattr(step, "role_variant", None),
+        "projection": _json_safe(_safe_getattr(step, "projection", {})),
+        "applicability": _normalize_method_applicability(_safe_getattr(step, "applicability", None)),
+    }
+
+
+def _json_safe(value: Any) -> object:
+    if value is None or isinstance(value, str | int | float | bool):
+        return value
+    if isinstance(value, Mapping):
+        return {str(key): _json_safe(item) for key, item in value.items()}
+    if isinstance(value, list | tuple):
+        return [_json_safe(item) for item in value]
+    return str(value)
+
+
 def _normalize_method_tags(tags: Any) -> dict[str, list[str]]:
     if not isinstance(tags, Mapping):
         return {}
@@ -2008,6 +2066,46 @@ def _format_method_detail(method: Mapping[str, object]) -> str:
     if not lines[-1].endswith("\n"):
         lines[-1] = f"{lines[-1]}\n"
     return "\n".join(lines)
+
+
+def _format_method_plan_detail(payload: Mapping[str, object]) -> str:
+    method = payload.get("method")
+    plan = payload.get("plan")
+    steps = payload.get("steps")
+    method_mapping = method if isinstance(method, Mapping) else {}
+    plan_mapping = plan if isinstance(plan, Mapping) else {}
+    lines = [
+        f"method_id: {method_mapping.get('id', '')}",
+        f"method_name: {method_mapping.get('name', '')}",
+        f"plan_id: {plan_mapping.get('id', '')}",
+        f"mode: {plan_mapping.get('mode', '')}",
+        "steps:",
+    ]
+    if isinstance(steps, list):
+        for index, raw_step in enumerate(steps, start=1):
+            if not isinstance(raw_step, Mapping):
+                continue
+            step_id = raw_step.get("id", "")
+            title = raw_step.get("title", "")
+            lines.append(f"  {index}. {step_id} - {title}")
+            guidance = _method_plan_step_guidance(raw_step)
+            if guidance:
+                lines.append(f"     guidance: {guidance}")
+    lines.append("")
+    return "\n".join(lines)
+
+
+def _method_plan_step_guidance(step: Mapping[str, object]) -> str:
+    projection = step.get("projection")
+    if not isinstance(projection, Mapping):
+        return ""
+    step_guidance = projection.get("step_guidance")
+    if isinstance(step_guidance, str):
+        return step_guidance.strip()
+    content = projection.get("content")
+    if isinstance(content, str):
+        return content.strip()
+    return ""
 
 
 def _format_method_applicability_lines(applicability: object) -> list[str]:
