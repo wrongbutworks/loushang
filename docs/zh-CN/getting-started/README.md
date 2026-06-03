@@ -16,10 +16,19 @@
 git clone https://github.com/<owner>/loushang.git
 cd loushang
 
-python -m venv .venv
+uv venv .venv
 source .venv/bin/activate
-pip install -e ".[dev]"
+uv pip install -e ".[dev]"
 ```
+
+等价的 Makefile 便捷命令：
+
+```bash
+make bootstrap
+source .venv/bin/activate
+```
+
+`make bootstrap` 会用 `uv` 创建 `.venv/` 并以 editable development mode 安装项目。当前没有 `make install` 目标；`make install-binary` 用于构建并安装本地二进制。
 
 ## 检查 CLI
 

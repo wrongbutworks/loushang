@@ -29,15 +29,17 @@ Loushang is in early development. The recommended path is to run it from source.
 git clone https://github.com/<owner>/loushang.git
 cd loushang
 
-python -m venv .venv
+uv venv .venv
 source .venv/bin/activate
-pip install -e ".[dev]"
+uv pip install -e ".[dev]"
 
 loushang --help
 loushang --list-models
 loushang --list-commands
 loushang -p "Inspect this repository and summarize what it does."
 ```
+
+You can also run `make bootstrap`, which creates `.venv/` with `uv` and installs the project in editable development mode. The Makefile does not currently provide a `make install` target; use `make bootstrap` for local development or `make install-binary` for a local binary install.
 
 For local development in this repository, use the project virtual environment in `.venv/`.
 

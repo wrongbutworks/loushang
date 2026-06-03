@@ -29,15 +29,17 @@ Loushang 目前处于早期开发阶段。推荐从源码运行。
 git clone https://github.com/<owner>/loushang.git
 cd loushang
 
-python -m venv .venv
+uv venv .venv
 source .venv/bin/activate
-pip install -e ".[dev]"
+uv pip install -e ".[dev]"
 
 loushang --help
 loushang --list-models
 loushang --list-commands
 loushang -p "Inspect this repository and summarize what it does."
 ```
+
+也可以运行 `make bootstrap`；它会用 `uv` 创建 `.venv/` 并以 editable development mode 安装项目。当前 Makefile 没有 `make install` 目标；本地开发使用 `make bootstrap`，本地二进制安装使用 `make install-binary`。
 
 在本仓库做本地开发时，请使用项目虚拟环境 `.venv/`。
 
