@@ -93,6 +93,50 @@ P0-P2.7 已经形成以下约束：
 - 不引入 telemetry、learning、sidebar message flow 等产品化系统。
 - 不把 P3 设计成完整 agent coordination runtime。
 
+### Hermes Agent
+
+参考文件：
+
+- `/home/dev/workspace/hermes-agent/README.md`
+- `/home/dev/workspace/hermes-agent/hermes-already-has-routines.md`
+- `/home/dev/workspace/hermes-agent/batch_runner.py`
+- `/home/dev/workspace/hermes-agent/tests/test_batch_runner_checkpoint.py`
+- `/home/dev/workspace/hermes-agent/cron/jobs.py`
+- `/home/dev/workspace/hermes-agent/cron/scheduler.py`
+- `/home/dev/workspace/hermes-agent/hermes_cli/webhook.py`
+- `/home/dev/workspace/hermes-agent/hermes_cli/kanban_db.py`
+- `/home/dev/workspace/hermes-agent/hermes_cli/kanban_decompose.py`
+- `/home/dev/workspace/hermes-agent/agent/prompt_builder.py`
+- `/home/dev/workspace/hermes-agent/agent/curator.py`
+- `/home/dev/workspace/hermes-agent/skills/devops/kanban-orchestrator/SKILL.md`
+- `/home/dev/workspace/hermes-agent/skills/devops/kanban-worker/SKILL.md`
+
+可采纳：
+
+- Scheduled routines / webhook / API triggers 本质上是 `channel -> work`
+  的自动触发入口：触发源、prompt、skills、delivery、workdir、profile 等都应结构化记录。
+- Cron job 支持 script pre-processing、`context_from`、`no_agent`、`[SILENT]`
+  抑制交付和 delivery target，这些对后续 `SurfaceRequest`、`DeliveryPolicy`
+  和 background work 很有参考价值。
+- `batch_runner` 的 checkpoint/resume 值得借鉴：增量 checkpoint、失败项可重试、
+  按内容扫描已有输出恢复，避免只依赖易漂移的 index。
+- Kanban 的 task/run/event 分离、parent gating、heartbeat、blocked/complete、
+  structured handoff metadata 和 audit event 适合 P4 多 agent，但 P3 可以先借鉴
+  step lifecycle 和 handoff metadata 的形状。
+- `kanban_decompose` 说明“计划生成”可以独立于执行：先生成 2-6 个任务图，再原子落库。
+  P3 可以借鉴“先 compile plan，再执行”，但计划应固定，不在执行中动态改图。
+- Curator 的 self-improvement gate 值得保留为长期方向：idle/interval/dry-run、
+  archive instead of delete、pin、pre-run snapshot、report。Method evolution 应是受控后台任务，
+  不应混进 fixed plan executor。
+
+不采纳到 P3：
+
+- 不引入 Hermes Kanban 的完整 SQLite board、dispatcher、profile fleet 或 multi-board。
+- 不做 cron/webhook 平台，也不把 P3 变成 routines 系统。
+- 不做 LLM decomposer 生成动态 task graph。
+- 不做 goal-mode judge loop。
+- 不做 curator 式自动 skill/method 整理。
+
 ### Kimi Agent Flow
 
 参考文件：
@@ -190,6 +234,7 @@ P3 不做：
 - cross-domain orchestration
 - variable pool
 - automatic method evolution
+- scheduled routines / webhook triggers
 
 这样能验证“方法指导多步骤 coding”的核心假设，同时避免把 P3 做成 Dify/LangGraph
 级别的 workflow runtime。
@@ -353,6 +398,8 @@ current_step_id: str | None = None
 - 增加 `WorkStepStarted`、`WorkStepCompleted`、`WorkStepFailed`。
 - event log 可回放完整 step 序列。
 - `WorkRun` 或 metadata 可记录 plan/step 状态。
+- 可借鉴 Hermes batch/Kanban：失败 step 可重试，step 结果和结构化 handoff
+  应作为事件/metadata 保存，而不是只写在自然语言回复里。
 
 ### P3.3 CodingDomain step preparation
 
@@ -391,6 +438,7 @@ P3 应从“固定线性 MethodPlan”开始，而不是从 workflow graph 开�
 - Superpowers 的线性可执行计划与验证意识。
 - gbrain 的 thin harness / fat skills 和 method 可演进但需 gate 的原则。
 - gstack 的 gate/checkpoint 作为外围约束的思路。
+- Hermes 的 routines、checkpoint/resume、Kanban handoff、curator gate 经验。
 - Kimi 的 `type: flow` 与有限 Mermaid 解析经验。
 - Dify 的 step execution 可观测性。
 - LangChain/LangGraph 的长期 state graph/checkpoint 方向。
