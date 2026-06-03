@@ -1895,7 +1895,48 @@ def _normalize_method_entry(method: Any) -> dict[str, object]:
         "meta_role": _safe_getattr(method, "meta_role", None),
         "phase": _safe_getattr(method, "phase", None),
         "path": _safe_getattr(method, "source_path", "") or "",
+        "applicability": _normalize_method_applicability(_safe_getattr(method, "applicability", None)),
     }
+
+
+def _normalize_method_applicability(applicability: Any) -> dict[str, object]:
+    return {
+        "domains": _string_list(_safe_getattr(applicability, "domains", ())),
+        "task_types": _string_list(_safe_getattr(applicability, "task_types", ())),
+        "contexts": _string_list(_safe_getattr(applicability, "contexts", ())),
+        "artifact_types": _string_list(_safe_getattr(applicability, "artifact_types", ())),
+        "modalities": _string_list(_safe_getattr(applicability, "modalities", ())),
+        "toolchains": _string_list(_safe_getattr(applicability, "toolchains", ())),
+        "lifecycle": _string_list(_safe_getattr(applicability, "lifecycle", ())),
+        "capabilities": _string_list(_safe_getattr(applicability, "capabilities", ())),
+        "complexity": _optional_string(_safe_getattr(applicability, "complexity", None)),
+        "risk": _optional_string(_safe_getattr(applicability, "risk", None)),
+        "tags": _normalize_method_tags(_safe_getattr(applicability, "tags", {})),
+    }
+
+
+def _normalize_method_tags(tags: Any) -> dict[str, list[str]]:
+    if not isinstance(tags, Mapping):
+        return {}
+    return {
+        key: _string_list(value)
+        for key, value in sorted(tags.items())
+        if isinstance(key, str) and key and _string_list(value)
+    }
+
+
+def _string_list(value: Any) -> list[str]:
+    if isinstance(value, str):
+        return [value] if value else []
+    if isinstance(value, list | tuple):
+        return [item for item in value if isinstance(item, str) and item]
+    return []
+
+
+def _optional_string(value: Any) -> str | None:
+    if isinstance(value, str) and value:
+        return value
+    return None
 
 
 def _format_method_detail(method: Mapping[str, object]) -> str:
@@ -1908,11 +1949,45 @@ def _format_method_detail(method: Mapping[str, object]) -> str:
         value = method.get(key)
         if value:
             lines.append(f"{key}: {value}")
+    applicability_lines = _format_method_applicability_lines(method.get("applicability"))
+    if applicability_lines:
+        lines.append("applicability:")
+        lines.extend(applicability_lines)
     lines.append("")
     lines.append(str(method.get("content", "")))
     if not lines[-1].endswith("\n"):
         lines[-1] = f"{lines[-1]}\n"
     return "\n".join(lines)
+
+
+def _format_method_applicability_lines(applicability: object) -> list[str]:
+    if not isinstance(applicability, Mapping):
+        return []
+    lines: list[str] = []
+    for key in (
+        "domains",
+        "task_types",
+        "contexts",
+        "artifact_types",
+        "modalities",
+        "toolchains",
+        "lifecycle",
+        "capabilities",
+    ):
+        values = _string_list(applicability.get(key))
+        if values:
+            lines.append(f"  {key}: {', '.join(values)}")
+    for key in ("complexity", "risk"):
+        value = applicability.get(key)
+        if isinstance(value, str) and value:
+            lines.append(f"  {key}: {value}")
+    tags = applicability.get("tags")
+    if isinstance(tags, Mapping):
+        for key, raw_values in sorted(tags.items()):
+            values = _string_list(raw_values)
+            if isinstance(key, str) and key and values:
+                lines.append(f"  tags.{key}: {', '.join(values)}")
+    return lines
 
 
 def _run_list_plugins(

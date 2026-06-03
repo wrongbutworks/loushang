@@ -5051,6 +5051,29 @@ def test_run_cli_lists_methods_as_json(tmp_path) -> None:
         "description: Review changes.\n"
         "type: task\n"
         "domain: coding\n"
+        "domains:\n"
+        "  - coding\n"
+        "  - research\n"
+        "task_types:\n"
+        "  - reviewing\n"
+        "contexts:\n"
+        "  - oss-library\n"
+        "artifact_types:\n"
+        "  - code\n"
+        "modalities:\n"
+        "  - text\n"
+        "toolchains:\n"
+        "  - python\n"
+        "lifecycle:\n"
+        "  - maintenance\n"
+        "capabilities:\n"
+        "  - diff-review\n"
+        "complexity: standard\n"
+        "risk: medium\n"
+        "tags:\n"
+        "  method_family:\n"
+        "    - review-first\n"
+        "  domain_app: coding\n"
         "meta_role: VALIDATOR\n"
         "phase: VERIFY\n"
         "---\n\n"
@@ -5087,8 +5110,90 @@ def test_run_cli_lists_methods_as_json(tmp_path) -> None:
             "meta_role": "VALIDATOR",
             "phase": "VERIFY",
             "path": str(method_dir / "SKILL.md"),
+            "applicability": {
+                "domains": ["coding", "research"],
+                "task_types": ["reviewing"],
+                "contexts": ["oss-library"],
+                "artifact_types": ["code"],
+                "modalities": ["text"],
+                "toolchains": ["python"],
+                "lifecycle": ["maintenance"],
+                "capabilities": ["diff-review"],
+                "complexity": "standard",
+                "risk": "medium",
+                "tags": {
+                    "method_family": ["review-first"],
+                    "domain_app": ["coding"],
+                },
+            },
         }
     ]
+    assert stderr.getvalue() == ""
+
+
+def test_run_cli_shows_method_json_with_applicability(tmp_path) -> None:
+    from loushang.coding.cli.__main__ import run_cli
+
+    method_dir = tmp_path / "methods" / "task" / "review"
+    method_dir.mkdir(parents=True)
+    (method_dir / "SKILL.md").write_text(
+        "---\n"
+        "name: review\n"
+        "description: Review changes.\n"
+        "type: task\n"
+        "domains: [coding, research]\n"
+        "task_types: [reviewing]\n"
+        "tags:\n"
+        "  method_family: review-first\n"
+        "---\n\n"
+        "Review the diff carefully.",
+        encoding="utf-8",
+    )
+    session = FakeSession("session-1")
+    runtime = FakeRuntime(session)
+    stdout = StringIO()
+    stderr = StringIO()
+
+    async def scenario() -> None:
+        exit_code = await run_cli(
+            ["method", "show", "review", "--show-method-format", "json"],
+            stdin=StringIO(""),
+            stdout=stdout,
+            stderr=stderr,
+            cwd=tmp_path,
+            services=_fake_services(),
+            runtime_builder=lambda **kwargs: runtime,
+        )
+        assert exit_code == 0
+
+    asyncio.run(scenario())
+
+    payload = json.loads(stdout.getvalue())
+    assert payload["applicability"] == {
+        "domains": ["coding", "research"],
+        "task_types": ["reviewing"],
+        "contexts": [],
+        "artifact_types": [],
+        "modalities": [],
+        "toolchains": [],
+        "lifecycle": [],
+        "capabilities": [],
+        "complexity": None,
+        "risk": None,
+        "tags": {"method_family": ["review-first"]},
+    }
+    assert payload["content"] == (
+        "---\n"
+        "name: review\n"
+        "description: Review changes.\n"
+        "type: task\n"
+        "domains: [coding, research]\n"
+        "task_types: [reviewing]\n"
+        "tags:\n"
+        "  method_family: review-first\n"
+        "---\n\n"
+        "Review the diff carefully."
+    )
     assert stderr.getvalue() == ""
 
 
@@ -5098,7 +5203,17 @@ def test_run_cli_shows_method_as_text(tmp_path) -> None:
     skill_dir = tmp_path / "skills" / "debug"
     skill_dir.mkdir(parents=True)
     (skill_dir / "SKILL.md").write_text(
-        "---\nname: debug\ndescription: Debug failures.\ntype: task\n---\n\nDebug failures carefully.",
+        "---\n"
+        "name: debug\n"
+        "description: Debug failures.\n"
+        "type: task\n"
+        "domain: coding\n"
+        "task_types: [debugging]\n"
+        "risk: medium\n"
+        "tags:\n"
+        "  method_family: debug-first\n"
+        "---\n\n"
+        "Debug failures carefully.",
         encoding="utf-8",
     )
     session = FakeSession("session-1")
@@ -5124,6 +5239,11 @@ def test_run_cli_shows_method_as_text(tmp_path) -> None:
     assert "id: skill:debug" in output
     assert "kind: skill_backed" in output
     assert "element_type: task" in output
+    assert "applicability:" in output
+    assert "  domains: coding" in output
+    assert "  task_types: debugging" in output
+    assert "  risk: medium" in output
+    assert "  tags.method_family: debug-first" in output
     assert "Debug failures carefully." in output
     assert stderr.getvalue() == ""
 
