@@ -3,11 +3,13 @@ from __future__ import annotations
 from collections.abc import Mapping as MappingABC
 
 from loushang.coding.loader.types import SkillDescriptor
+from loushang.method.applicability import applicability_from_frontmatter, primary_domain
 from loushang.method.types import MethodDescriptor
 
 
 def method_from_skill(skill: SkillDescriptor) -> MethodDescriptor:
     frontmatter = _frontmatter(skill.metadata)
+    applicability = applicability_from_frontmatter(frontmatter)
     metadata = {
         **dict(skill.metadata),
         "source_kind": skill.source_kind,
@@ -23,12 +25,13 @@ def method_from_skill(skill: SkillDescriptor) -> MethodDescriptor:
         content=skill.content or "",
         kind="skill_backed",
         element_type=_string_hint(frontmatter, "type"),
-        domain=_string_hint(frontmatter, "domain"),
+        domain=primary_domain(frontmatter, applicability),
         meta_role=_first_string_hint(frontmatter, ("meta_role", "meta-role", "role")),
         phase=_string_hint(frontmatter, "phase"),
         source_path=skill.source_path.as_posix(),
         version=_string_hint(frontmatter, "version"),
         metadata=metadata,
+        applicability=applicability,
     )
 
 
