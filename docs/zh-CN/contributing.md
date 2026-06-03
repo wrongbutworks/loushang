@@ -7,10 +7,12 @@ Loushang 目前处于早期活跃开发阶段。贡献应保持当前公开产�
 ## 本地开发
 
 ```bash
-python -m venv .venv
+uv venv .venv
 source .venv/bin/activate
-pip install -e ".[dev]"
+uv pip install -e ".[dev]"
 ```
+
+等价的便捷命令是 `make bootstrap`。
 
 在本仓库做 Python 工作时，请使用本地虚拟环境 `.venv/`。
 

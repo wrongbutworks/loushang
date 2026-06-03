@@ -38,7 +38,3 @@ Built-in interactive commands include:
 /session /terminal /changelog /hotkeys /fork /clone /tree
 /login /logout /new /compact /resume /reload /quit
 ```
-
-## Internal Reference Material
-
-Detailed architecture, data object drafts, component interfaces, and design decisions live under [Internal Architecture And Design Notes](../../internals/).

@@ -14,7 +14,3 @@ Loushang 是一个把复杂工作变成可运行流程的智能工作系统。�
 - [参考手册](./reference/)：查询 CLI flags、配置、环境变量、模型 catalog、slash commands 和 session 文件。
 - [路线图](./roadmap.md)：了解当前重点和后续产品面。
 - [贡献指南](./contributing.md)：了解这个早期项目的贡献约定。
-
-## 内部笔记
-
-设计与实现历史保存在 [内部架构与设计笔记](../internals/) 中。这些文档对贡献者有价值，但不是新用户试用 Loushang 的推荐第一路径。

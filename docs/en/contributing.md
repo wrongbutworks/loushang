@@ -7,10 +7,12 @@ Loushang is in active early development. Contributions should keep the current p
 ## Local Development
 
 ```bash
-python -m venv .venv
+uv venv .venv
 source .venv/bin/activate
-pip install -e ".[dev]"
+uv pip install -e ".[dev]"
 ```
+
+The equivalent shortcut is `make bootstrap`.
 
 For Python work in this repository, use the local virtual environment in `.venv/`.
 

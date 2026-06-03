@@ -16,10 +16,19 @@ This guide gets you from a fresh clone to a first `loushang code` run.
 git clone https://github.com/<owner>/loushang.git
 cd loushang
 
-python -m venv .venv
+uv venv .venv
 source .venv/bin/activate
-pip install -e ".[dev]"
+uv pip install -e ".[dev]"
 ```
+
+Equivalent Makefile shortcut:
+
+```bash
+make bootstrap
+source .venv/bin/activate
+```
+
+`make bootstrap` creates `.venv/` with `uv` and installs the project in editable development mode. There is no `make install` target today; `make install-binary` is reserved for building and installing a local binary.
 
 ## Check The CLI
 

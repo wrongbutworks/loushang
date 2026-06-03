@@ -38,7 +38,3 @@ loushang --export session.jsonl --export-format jsonl
 /session /terminal /changelog /hotkeys /fork /clone /tree
 /login /logout /new /compact /resume /reload /quit
 ```
-
-## 内部参考材料
-
-详细架构、数据对象草案、组件接口和设计决策保存在[内部架构与设计笔记](../../internals/)中。
