@@ -8,6 +8,7 @@ from loushang.coding.domain import (
     CodingDomainApp,
     CodingDomainPreparedTurn,
     CodingDomainRequest,
+    MethodPolicy,
 )
 
 
@@ -37,6 +38,27 @@ def test_coding_domain_types_are_frozen() -> None:
 
     with pytest.raises(FrozenInstanceError):
         request.user_input = "changed"  # type: ignore[misc]
+
+
+def test_method_policy_defaults_to_explicit_without_selection() -> None:
+    policy = MethodPolicy()
+
+    assert policy.mode == "explicit"
+    assert policy.selected_method is None
+
+
+def test_method_policy_off_factory() -> None:
+    policy = MethodPolicy.off()
+
+    assert policy.mode == "off"
+    assert policy.selected_method is None
+
+
+def test_method_policy_explicit_factory() -> None:
+    policy = MethodPolicy.explicit("review")
+
+    assert policy.mode == "explicit"
+    assert policy.selected_method == "review"
 
 
 def test_prepare_turn_without_method_keeps_prompt_unchanged(tmp_path: Path) -> None:

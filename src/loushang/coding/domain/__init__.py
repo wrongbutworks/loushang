@@ -5,6 +5,7 @@ from loushang.coding.domain.app import (
 from loushang.coding.domain.types import (
     CodingDomainPreparedTurn,
     CodingDomainRequest,
+    MethodPolicy,
 )
 
 __all__ = [
@@ -12,4 +13,5 @@ __all__ = [
     "CodingDomainPreparedTurn",
     "CodingDomainRequest",
     "DEFAULT_GUIDANCE_TEMPLATE",
+    "MethodPolicy",
 ]

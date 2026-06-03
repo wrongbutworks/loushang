@@ -17,13 +17,13 @@
 - Modify: `src/loushang/coding/domain/__init__.py`
 - Test: `tests/coding/domain/test_coding_domain_app.py`
 
-- [ ] Write failing tests for `MethodPolicy` defaults, `MethodPolicy.off()`, and `MethodPolicy.explicit("review")`.
-- [ ] Run `uv --cache-dir .uv-cache run --extra dev pytest tests/coding/domain/test_coding_domain_app.py -q` and verify it fails because `MethodPolicy` does not exist.
-- [ ] Add frozen `MethodPolicy` dataclass with `mode: str = "explicit"` and `selected_method: str | None = None`.
-- [ ] Add `off()` and `explicit(selected_method)` classmethods.
-- [ ] Export `MethodPolicy` from `loushang.coding.domain`.
-- [ ] Run `uv --cache-dir .uv-cache run --extra dev pytest tests/coding/domain/test_coding_domain_app.py -q`.
-- [ ] Commit with `feat: add coding method policy`.
+- [x] Write failing tests for `MethodPolicy` defaults, `MethodPolicy.off()`, and `MethodPolicy.explicit("review")`.
+- [x] Run `uv --cache-dir .uv-cache run --extra dev pytest tests/coding/domain/test_coding_domain_app.py -q` and verify it fails because `MethodPolicy` does not exist.
+- [x] Add frozen `MethodPolicy` dataclass with `mode: str = "explicit"` and `selected_method: str | None = None`.
+- [x] Add `off()` and `explicit(selected_method)` classmethods.
+- [x] Export `MethodPolicy` from `loushang.coding.domain`.
+- [x] Run `uv --cache-dir .uv-cache run --extra dev pytest tests/coding/domain/test_coding_domain_app.py -q`.
+- [x] Commit with `feat: add coding method policy`.
 
 ### Task 2: CodingDomainApp Policy Resolution
 
