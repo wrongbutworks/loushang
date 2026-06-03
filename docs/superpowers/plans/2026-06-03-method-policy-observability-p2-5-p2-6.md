@@ -98,8 +98,8 @@
 **Files:**
 - Modify previous files only.
 
-- [ ] Run `uv --cache-dir .uv-cache run --extra dev pytest tests/coding/domain tests/coding/test_cli.py tests/method tests/work -q`.
-- [ ] Run `uv --cache-dir .uv-cache run ruff check src/loushang/coding/domain src/loushang/coding/cli tests/coding/domain tests/coding/test_cli.py`.
-- [ ] Run a manual CLI fake-runner or work-log focused verification if needed by changed behavior.
-- [ ] Commit any final fixes.
+- [x] Run `uv --cache-dir .uv-cache run --extra dev pytest tests/coding/domain tests/coding/test_cli.py tests/method tests/work -q`.
+- [x] Run `uv --cache-dir .uv-cache run ruff check src/loushang/coding/domain src/loushang/coding/cli tests/coding/domain tests/coding/test_cli.py`.
+- [x] Run a manual CLI fake-runner or work-log focused verification if needed by changed behavior.
+- [x] Commit any final fixes.
 - [ ] Push branch and create PR referencing issues #42 and #43.

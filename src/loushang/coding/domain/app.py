@@ -2,7 +2,11 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from loushang.coding.domain.types import CodingDomainPreparedTurn, CodingDomainRequest, MethodPolicy
+from loushang.coding.domain.types import (
+    CodingDomainPreparedTurn,
+    CodingDomainRequest,
+    MethodPolicy,
+)
 from loushang.method import (
     MethodCompiler,
     MethodContext,
