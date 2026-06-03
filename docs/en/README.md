@@ -14,7 +14,3 @@ Loushang is a method-native AI work system. This documentation focuses on what c
 - [Reference](./reference/) - look up CLI flags, configuration, environment variables, model catalog shape, slash commands, and session files.
 - [Roadmap](./roadmap.md) - understand current focus and future product surfaces.
 - [Contributing](./contributing.md) - understand contribution expectations for this early project.
-
-## Internal Notes
-
-Design and implementation history lives in [Internal Architecture And Design Notes](../internals/). Those documents are useful for contributors, but they are not the recommended first path for users trying Loushang.

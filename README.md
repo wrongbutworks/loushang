@@ -60,7 +60,6 @@ For local development in this repository, use the project virtual environment in
 - [AI SDK](./docs/en/sdk/)
 - [Examples](./docs/en/examples/)
 - [Reference](./docs/en/reference/)
-- [Internal Architecture And Design Notes](./docs/internals/)
 
 ## Examples
 

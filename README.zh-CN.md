@@ -60,7 +60,6 @@ loushang -p "Inspect this repository and summarize what it does."
 - [AI SDK](./docs/zh-CN/sdk/)
 - [示例](./docs/zh-CN/examples/)
 - [参考手册](./docs/zh-CN/reference/)
-- [内部架构与设计笔记](./docs/internals/)
 
 ## 示例
 
