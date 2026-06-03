@@ -70,15 +70,15 @@
 - Modify: `src/loushang/coding/cli/__main__.py`
 - Test: `tests/coding/test_cli.py`
 
-- [ ] Write failing tests for `work-log inspect` text output including `method_id` when an operation or event payload contains method metadata.
-- [ ] Write failing test for `work-log inspect --work-log-inspect-format json` including `method_id` only when present.
-- [ ] Run `uv --cache-dir .uv-cache run --extra dev pytest tests/coding/test_cli.py -q` and verify expected failures.
-- [ ] Add helper `_work_log_entry_method_id(entry) -> str`.
-- [ ] Add trailing `method_id` column to `_write_work_log_text(...)`.
-- [ ] Add `method_id` conditionally to `_work_log_entry_summary(...)`.
-- [ ] Keep entries without method metadata readable with an empty text column and no JSON key.
-- [ ] Run `uv --cache-dir .uv-cache run --extra dev pytest tests/coding/test_cli.py -q`.
-- [ ] Commit with `feat: expose method id in work log inspect`.
+- [x] Write failing tests for `work-log inspect` text output including `method_id` when an operation or event payload contains method metadata.
+- [x] Write failing test for `work-log inspect --work-log-inspect-format json` including `method_id` only when present.
+- [x] Run `uv --cache-dir .uv-cache run --extra dev pytest tests/coding/test_cli.py -q` and verify expected failures.
+- [x] Add helper `_work_log_entry_method_id(entry) -> str`.
+- [x] Add trailing `method_id` column to `_write_work_log_text(...)`.
+- [x] Add `method_id` conditionally to `_work_log_entry_summary(...)`.
+- [x] Keep entries without method metadata readable with an empty text column and no JSON key.
+- [x] Run `uv --cache-dir .uv-cache run --extra dev pytest tests/coding/test_cli.py -q`.
+- [x] Commit with `feat: expose method id in work log inspect`.
 
 ### Task 5: Missing Method Error Hint
 

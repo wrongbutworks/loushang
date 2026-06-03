@@ -761,16 +761,16 @@ def _resolve_work_log_path(raw_path: str, project_root: Path) -> Path:
 
 
 def _write_work_log_text(entries: list[Any], stdout: TextIO) -> None:
-    stdout.write("sequence\tkind\trun_id\tsession_id\tdelivery_hint\n")
+    stdout.write("sequence\tkind\trun_id\tsession_id\tdelivery_hint\tmethod_id\n")
     for entry in entries:
         stdout.write(
             f"{entry.sequence}\t{_work_log_entry_kind(entry)}\t{entry.run_id}\t"
-            f"{entry.session_id}\t{_work_log_entry_delivery_hint(entry)}\n"
+            f"{entry.session_id}\t{_work_log_entry_delivery_hint(entry)}\t{_work_log_entry_method_id(entry)}\n"
         )
 
 
 def _work_log_entry_summary(entry: Any) -> dict[str, object]:
-    return {
+    summary: dict[str, object] = {
         "entry_id": entry.entry_id,
         "entry_type": entry.entry_type,
         "sequence": entry.sequence,
@@ -781,6 +781,10 @@ def _work_log_entry_summary(entry: Any) -> dict[str, object]:
         "event_id": entry.event_id,
         "delivery_hint": _work_log_entry_delivery_hint(entry),
     }
+    method_id = _work_log_entry_method_id(entry)
+    if method_id:
+        summary["method_id"] = method_id
+    return summary
 
 
 def _work_log_entry_kind(entry: Any) -> str:
@@ -794,6 +798,18 @@ def _work_log_entry_delivery_hint(entry: Any) -> str:
     delivery_hint = entry.payload.get("delivery_hint")
     if isinstance(delivery_hint, str):
         return delivery_hint
+    return ""
+
+
+def _work_log_entry_method_id(entry: Any) -> str:
+    method_id = entry.payload.get("method_id")
+    if isinstance(method_id, str):
+        return method_id
+    nested_payload = entry.payload.get("payload")
+    if isinstance(nested_payload, dict):
+        nested_method_id = nested_payload.get("method_id")
+        if isinstance(nested_method_id, str):
+            return nested_method_id
     return ""
 
 
