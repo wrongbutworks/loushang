@@ -82,7 +82,7 @@ The current stable focus is `loushang code` and the underlying `loushang.ai` SDK
 
 ## Contact
 
-Loushang was initiated by Heng Zhou, Chief Scientist at Beijing Loushang Xinglian Co., Ltd. He works across low-code systems, workflows, databases, model-driven engineering, DSLs, systems engineering, and agent systems, with a focus on turning methods into runtime infrastructure for complex-work delivery.
+Loushang was initiated by Heng Zhou. He has long worked across low-code systems, workflows, databases, model-driven engineering, DSLs, architecture methods, systems engineering, and artificial intelligence, with a focus on operationalizing ontology and methodology into infrastructure for complex-work delivery.
 
 For questions, feedback, collaboration, or a community group invitation, contact: zhnt@foxmail.com.
 
