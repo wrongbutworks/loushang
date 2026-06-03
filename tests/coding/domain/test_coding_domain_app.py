@@ -100,6 +100,57 @@ def test_prepare_turn_with_skill_backed_method_adds_guidance(tmp_path: Path) -> 
     )
 
 
+def test_prepare_turn_method_policy_off_suppresses_method(tmp_path: Path) -> None:
+    skill_dir = tmp_path / "skills" / "review"
+    skill_dir.mkdir(parents=True)
+    (skill_dir / "SKILL.md").write_text("Review code carefully.", encoding="utf-8")
+    request = CodingDomainRequest(
+        user_input="check src/app.py",
+        cwd=tmp_path,
+        method="review",
+        method_policy=MethodPolicy.off(),
+    )
+
+    prepared = CodingDomainApp().prepare_turn(request)
+
+    assert prepared.prepared_prompt == "check src/app.py"
+    assert prepared.method_id is None
+    assert prepared.method_guidance is None
+
+
+def test_prepare_turn_method_policy_takes_precedence_over_method(tmp_path: Path) -> None:
+    skill_dir = tmp_path / "skills" / "review"
+    skill_dir.mkdir(parents=True)
+    (skill_dir / "SKILL.md").write_text("Review code carefully.", encoding="utf-8")
+    debug_dir = tmp_path / "skills" / "debug"
+    debug_dir.mkdir(parents=True)
+    (debug_dir / "SKILL.md").write_text("Debug failures carefully.", encoding="utf-8")
+    request = CodingDomainRequest(
+        user_input="check src/app.py",
+        cwd=tmp_path,
+        method="review",
+        method_policy=MethodPolicy.explicit("debug"),
+    )
+
+    prepared = CodingDomainApp().prepare_turn(request)
+
+    assert prepared.method_id == "skill:debug"
+    assert prepared.method_guidance is not None
+    assert "Debug failures carefully." in prepared.method_guidance
+    assert "Review code carefully." not in prepared.method_guidance
+
+
+def test_prepare_turn_unsupported_method_policy_mode_raises_value_error(tmp_path: Path) -> None:
+    request = CodingDomainRequest(
+        user_input="hello",
+        cwd=tmp_path,
+        method_policy=MethodPolicy(mode="auto", selected_method=None),
+    )
+
+    with pytest.raises(ValueError, match="unsupported method policy mode: auto"):
+        CodingDomainApp().prepare_turn(request)
+
+
 def test_prepare_turn_with_method_resource_adds_guidance(tmp_path: Path) -> None:
     method_dir = tmp_path / "methods" / "task" / "review"
     method_dir.mkdir(parents=True)

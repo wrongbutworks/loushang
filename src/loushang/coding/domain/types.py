@@ -27,6 +27,7 @@ class CodingDomainRequest:
     user_input: str
     cwd: Path
     method: str | None = None
+    method_policy: MethodPolicy | None = None
     metadata: Mapping[str, object] = field(default_factory=lambda: _EMPTY_METADATA)
 
 

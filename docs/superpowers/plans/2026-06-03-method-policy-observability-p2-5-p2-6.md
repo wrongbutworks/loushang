@@ -32,17 +32,17 @@
 - Modify: `src/loushang/coding/domain/app.py`
 - Test: `tests/coding/domain/test_coding_domain_app.py`
 
-- [ ] Write failing tests for `CodingDomainRequest(method_policy=MethodPolicy.off())` suppressing a method, `method_policy` taking precedence over `method`, and unsupported policy mode raising `ValueError`.
-- [ ] Run `uv --cache-dir .uv-cache run --extra dev pytest tests/coding/domain/test_coding_domain_app.py -q` and verify expected failures.
-- [ ] Add `method_policy: MethodPolicy | None = None` to `CodingDomainRequest`.
-- [ ] In `CodingDomainApp.prepare_turn(...)`, resolve policy as `request.method_policy or MethodPolicy.explicit(request.method)`.
-- [ ] Implement mode handling:
+- [x] Write failing tests for `CodingDomainRequest(method_policy=MethodPolicy.off())` suppressing a method, `method_policy` taking precedence over `method`, and unsupported policy mode raising `ValueError`.
+- [x] Run `uv --cache-dir .uv-cache run --extra dev pytest tests/coding/domain/test_coding_domain_app.py -q` and verify expected failures.
+- [x] Add `method_policy: MethodPolicy | None = None` to `CodingDomainRequest`.
+- [x] In `CodingDomainApp.prepare_turn(...)`, resolve policy as `request.method_policy or MethodPolicy.explicit(request.method)`.
+- [x] Implement mode handling:
   - `off`: return original prompt unchanged with no method metadata.
   - `explicit` with no selected method: return original prompt unchanged.
   - `explicit` with selected method: current P2 lookup/compile/project behavior.
   - otherwise raise `ValueError("unsupported method policy mode: <mode>")`.
-- [ ] Run `uv --cache-dir .uv-cache run --extra dev pytest tests/coding/domain/test_coding_domain_app.py tests/method -q`.
-- [ ] Commit with `feat: apply method policy in coding domain app`.
+- [x] Run `uv --cache-dir .uv-cache run --extra dev pytest tests/coding/domain/test_coding_domain_app.py tests/method -q`.
+- [x] Commit with `feat: apply method policy in coding domain app`.
 
 ### Task 3: CLI `--no-method`
 
