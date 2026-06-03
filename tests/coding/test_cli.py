@@ -2398,6 +2398,7 @@ def test_run_cli_dash_p_with_missing_method_reports_error(tmp_path) -> None:
 
     assert prompt_runner.calls == []
     assert "method not found: missing" in stderr.getvalue()
+    assert "Run 'loushang method list' to inspect available methods." in stderr.getvalue()
 
 
 def test_run_cli_dash_p_passes_work_log_backend_to_prompt_command(tmp_path) -> None:

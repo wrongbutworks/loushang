@@ -475,7 +475,7 @@ async def run_cli(
                     )
                 )
             except ValueError as error:
-                stderr.write(f"Error: {_format_cli_error(error)}\n")
+                stderr.write(f"Error: {_format_method_cli_error(error)}\n")
                 return 1
 
             if args.prompt is not None:
@@ -883,6 +883,13 @@ def _format_cli_error(error: BaseException) -> str:
         if filename is not None and strerror:
             return f"{strerror}: {filename}"
     return str(error)
+
+
+def _format_method_cli_error(error: ValueError) -> str:
+    message = _format_cli_error(error)
+    if message.startswith("method not found:"):
+        return f"{message}\nRun 'loushang method list' to inspect available methods."
+    return message
 
 
 def _runtime_args_for_bootstrap(args: CliArgs) -> CliArgs:

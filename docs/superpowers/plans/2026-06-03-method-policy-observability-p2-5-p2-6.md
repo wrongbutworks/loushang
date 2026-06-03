@@ -86,12 +86,12 @@
 - Modify: `src/loushang/coding/cli/__main__.py`
 - Test: `tests/coding/test_cli.py`
 
-- [ ] Write failing test asserting missing method error includes `Run 'loushang method list' to inspect available methods.`
-- [ ] Run `uv --cache-dir .uv-cache run --extra dev pytest tests/coding/test_cli.py -q` and verify expected failure.
-- [ ] Add a small formatter/helper for method lookup failures or special-case the `ValueError` from `CodingDomainApp`.
-- [ ] Keep exit code `1`.
-- [ ] Run `uv --cache-dir .uv-cache run --extra dev pytest tests/coding/test_cli.py -q`.
-- [ ] Commit with `feat: add missing method cli hint`.
+- [x] Write failing test asserting missing method error includes `Run 'loushang method list' to inspect available methods.`
+- [x] Run `uv --cache-dir .uv-cache run --extra dev pytest tests/coding/test_cli.py -q` and verify expected failure.
+- [x] Add a small formatter/helper for method lookup failures or special-case the `ValueError` from `CodingDomainApp`.
+- [x] Keep exit code `1`.
+- [x] Run `uv --cache-dir .uv-cache run --extra dev pytest tests/coding/test_cli.py -q`.
+- [x] Commit with `feat: add missing method cli hint`.
 
 ### Task 6: Regression And PR Prep
 
