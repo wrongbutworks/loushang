@@ -5,6 +5,22 @@ from types import MappingProxyType
 from typing import Mapping
 
 _EMPTY_METADATA: Mapping[str, object] = MappingProxyType({})
+_EMPTY_TAGS: Mapping[str, tuple[str, ...]] = MappingProxyType({})
+
+
+@dataclass(frozen=True)
+class MethodApplicability:
+    domains: tuple[str, ...] = ()
+    task_types: tuple[str, ...] = ()
+    contexts: tuple[str, ...] = ()
+    artifact_types: tuple[str, ...] = ()
+    modalities: tuple[str, ...] = ()
+    toolchains: tuple[str, ...] = ()
+    lifecycle: tuple[str, ...] = ()
+    capabilities: tuple[str, ...] = ()
+    complexity: str | None = None
+    risk: str | None = None
+    tags: Mapping[str, tuple[str, ...]] = field(default_factory=lambda: _EMPTY_TAGS)
 
 
 @dataclass(frozen=True)
@@ -21,6 +37,7 @@ class MethodDescriptor:
     source_path: str | None = None
     version: str | None = None
     metadata: Mapping[str, object] = field(default_factory=lambda: _EMPTY_METADATA)
+    applicability: MethodApplicability = field(default_factory=MethodApplicability)
 
 
 @dataclass(frozen=True)
@@ -28,6 +45,7 @@ class MethodContext:
     domain: str | None = None
     task: str | None = None
     metadata: Mapping[str, object] = field(default_factory=lambda: _EMPTY_METADATA)
+    applicability: MethodApplicability = field(default_factory=MethodApplicability)
 
 
 @dataclass(frozen=True)
@@ -37,6 +55,7 @@ class MethodStep:
     executor: str
     role_variant: str | None = None
     projection: Mapping[str, object] = field(default_factory=lambda: _EMPTY_METADATA)
+    applicability: MethodApplicability = field(default_factory=MethodApplicability)
 
 
 @dataclass(frozen=True)
@@ -49,6 +68,7 @@ class MethodPlan:
     activity: str | None = None
     task: str | None = None
     metadata: Mapping[str, object] = field(default_factory=lambda: _EMPTY_METADATA)
+    applicability: MethodApplicability = field(default_factory=MethodApplicability)
 
 
 @dataclass(frozen=True)
@@ -68,6 +88,7 @@ class MethodProjection:
 
 
 __all__ = [
+    "MethodApplicability",
     "MethodContext",
     "MethodDescriptor",
     "MethodPlan",

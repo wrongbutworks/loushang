@@ -5,6 +5,7 @@ from loushang.method.registry import MethodRegistry
 from loushang.method.selector import MethodSelector
 from loushang.method.skill_adapter import method_from_skill
 from loushang.method.types import (
+    MethodApplicability,
     MethodContext,
     MethodDescriptor,
     MethodPlan,
@@ -18,6 +19,7 @@ __all__ = [
     "MethodProjector",
     "MethodRegistry",
     "MethodSelector",
+    "MethodApplicability",
     "MethodContext",
     "MethodDescriptor",
     "MethodPlan",

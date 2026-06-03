@@ -6,6 +6,7 @@ from pathlib import Path
 
 from loushang.coding.frontmatter import FrontmatterParseError, parse_frontmatter
 from loushang.coding.loader import DefaultResourceLoader
+from loushang.method.applicability import applicability_from_frontmatter, primary_domain
 from loushang.method.skill_adapter import method_from_skill
 from loushang.method.types import MethodDescriptor
 
@@ -100,6 +101,7 @@ def _method_resource_from_file(
         return None
 
     frontmatter = parsed.frontmatter
+    applicability = applicability_from_frontmatter(frontmatter)
     relative_parts = skill_file.relative_to(methods_root).parts
     path_element_type = relative_parts[0] if relative_parts and relative_parts[0] in _METHOD_ELEMENT_TYPES else None
     element_type = _string_hint(frontmatter, "type") or path_element_type
@@ -121,12 +123,13 @@ def _method_resource_from_file(
         content=content,
         kind="method_resource",
         element_type=element_type,
-        domain=_string_hint(frontmatter, "domain"),
+        domain=primary_domain(frontmatter, applicability),
         meta_role=_first_string_hint(frontmatter, ("meta_role", "meta-role", "role")),
         phase=_string_hint(frontmatter, "phase"),
         source_path=skill_file.as_posix(),
         version=_string_hint(frontmatter, "version"),
         metadata=metadata,
+        applicability=applicability,
     )
 
 

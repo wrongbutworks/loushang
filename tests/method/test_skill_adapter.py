@@ -16,6 +16,20 @@ def test_method_from_skill_preserves_content_and_frontmatter_hints() -> None:
             "frontmatter": {
                 "type": "task",
                 "domain": "coding",
+                "domains": ["coding", "research"],
+                "task_types": ["reviewing", "verifying"],
+                "contexts": ["oss-library"],
+                "artifact_types": ["code", "test-report"],
+                "modalities": ["text", "code"],
+                "toolchains": ["python", "pytest"],
+                "lifecycle": ["maintenance"],
+                "capabilities": ["diff-review"],
+                "complexity": "standard",
+                "risk": "medium",
+                "tags": {
+                    "method_family": ["review-first"],
+                    "domain_app": "coding",
+                },
                 "meta_role": "VALIDATOR",
                 "phase": "VERIFY",
                 "temperature": 0.2,
@@ -34,6 +48,20 @@ def test_method_from_skill_preserves_content_and_frontmatter_hints() -> None:
     assert method.kind == "skill_backed"
     assert method.element_type == "task"
     assert method.domain == "coding"
+    assert method.applicability.domains == ("coding", "research")
+    assert method.applicability.task_types == ("reviewing", "verifying")
+    assert method.applicability.contexts == ("oss-library",)
+    assert method.applicability.artifact_types == ("code", "test-report")
+    assert method.applicability.modalities == ("text", "code")
+    assert method.applicability.toolchains == ("python", "pytest")
+    assert method.applicability.lifecycle == ("maintenance",)
+    assert method.applicability.capabilities == ("diff-review",)
+    assert method.applicability.complexity == "standard"
+    assert method.applicability.risk == "medium"
+    assert method.applicability.tags == {
+        "method_family": ("review-first",),
+        "domain_app": ("coding",),
+    }
     assert method.meta_role == "VALIDATOR"
     assert method.phase == "VERIFY"
     assert method.version == "1"
@@ -72,3 +100,18 @@ def test_method_from_skill_accepts_missing_optional_skill_fields() -> None:
     assert method.content == ""
     assert method.meta_role == "DESIGNER"
     assert method.element_type is None
+    assert method.applicability.domains == ()
+
+
+def test_method_from_skill_maps_legacy_domain_into_applicability_domains() -> None:
+    skill = SkillDescriptor(
+        name="legacy-domain",
+        source_path=Path("skills/legacy-domain/SKILL.md"),
+        content="Legacy domain content.",
+        metadata={"frontmatter": {"domain": "coding"}},
+    )
+
+    method = method_from_skill(skill)
+
+    assert method.domain == "coding"
+    assert method.applicability.domains == ("coding",)
