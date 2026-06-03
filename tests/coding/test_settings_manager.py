@@ -68,6 +68,61 @@ def test_settings_manager_loads_global_and_project_settings_with_project_precede
     }
 
 
+def test_settings_manager_loads_method_settings_with_project_precedence(tmp_path) -> None:
+    from loushang.coding.control import MethodSettings, SettingsManager
+
+    global_settings_path = tmp_path / "global-settings.json"
+    project_settings_path = tmp_path / "project-settings.json"
+    global_settings_path.write_text(
+        json.dumps({"method": {"mode": "explicit", "selected_method": "review"}}),
+        encoding="utf-8",
+    )
+    project_settings_path.write_text(
+        json.dumps({"method": {"selected_method": "debug"}}),
+        encoding="utf-8",
+    )
+
+    manager = SettingsManager(
+        global_settings_path=global_settings_path,
+        project_settings_path=project_settings_path,
+    )
+
+    assert manager.get_settings().method == MethodSettings(mode="explicit", selected_method="debug")
+    assert manager.get_method_settings() == MethodSettings(mode="explicit", selected_method="debug")
+
+
+def test_settings_manager_persists_method_settings_updates(tmp_path) -> None:
+    from loushang.coding.control import MethodSettings, SettingsManager
+
+    global_settings_path = tmp_path / "global-settings.json"
+    project_settings_path = tmp_path / "project-settings.json"
+    manager = SettingsManager(
+        global_settings_path=global_settings_path,
+        project_settings_path=project_settings_path,
+    )
+
+    assert manager.get_settings().method == MethodSettings()
+
+    manager.update_settings(
+        scope="global",
+        method=MethodSettings(mode="explicit", selected_method="review"),
+    )
+    manager.set_method_settings(MethodSettings(mode="off"), scope="project")
+
+    reloaded = SettingsManager(
+        global_settings_path=global_settings_path,
+        project_settings_path=project_settings_path,
+    )
+
+    assert reloaded.get_global_settings() == {
+        "method": {"mode": "explicit", "selected_method": "review"}
+    }
+    assert reloaded.get_project_settings() == {
+        "method": {"mode": "off", "selected_method": None}
+    }
+    assert reloaded.get_method_settings() == MethodSettings(mode="off", selected_method=None)
+
+
 def test_settings_manager_persists_scoped_updates_and_notifies_subscribers(tmp_path) -> None:
     from loushang.coding.control import (
         BranchSummarySettings,

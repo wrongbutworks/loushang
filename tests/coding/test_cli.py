@@ -276,12 +276,14 @@ def _fake_services(
     package_roots: tuple[str, ...] = (),
     plugin_sources: tuple[str, ...] = (),
     disabled_plugins: tuple[str, ...] = (),
+    method_settings: object | None = None,
 ):
     settings = SimpleNamespace(
         session_dir=session_dir,
         package_roots=package_roots,
         plugin_sources=plugin_sources,
         disabled_plugins=disabled_plugins,
+        method=method_settings,
     )
     settings_manager = SimpleNamespace(get_settings=lambda: settings)
     return SimpleNamespace(settings_manager=settings_manager, diagnostics_service=object())
@@ -298,6 +300,21 @@ def _write_review_method(project_root: Path) -> None:
         "meta_role: VALIDATOR\n"
         "---\n\n"
         "Use concise review guidance.",
+        encoding="utf-8",
+    )
+
+
+def _write_debug_method(project_root: Path) -> None:
+    method_dir = project_root / "methods" / "task" / "debug"
+    method_dir.mkdir(parents=True)
+    (method_dir / "SKILL.md").write_text(
+        "---\n"
+        "name: debug\n"
+        "description: Debug failures.\n"
+        "type: task\n"
+        "meta_role: VALIDATOR\n"
+        "---\n\n"
+        "Use focused debugging guidance.",
         encoding="utf-8",
     )
 
@@ -2348,6 +2365,129 @@ def test_run_cli_dash_p_with_no_method_suppresses_method(tmp_path) -> None:
     assert call["method_id"] is None
 
 
+def test_run_cli_dash_p_uses_method_default_from_settings(tmp_path) -> None:
+    from loushang.coding.cli.__main__ import run_cli
+    from loushang.coding.control import MethodSettings
+
+    _write_review_method(tmp_path)
+    runtime = FakeRuntime(FakeSession("session-1"))
+    prompt_runner = FakeRunner()
+
+    async def scenario() -> None:
+        exit_code = await run_cli(
+            ["-p", "check src/app.py"],
+            stdin=StringIO(""),
+            stdout=StringIO(),
+            stderr=StringIO(),
+            cwd=tmp_path,
+            services=_fake_services(
+                method_settings=MethodSettings(mode="explicit", selected_method="review"),
+            ),
+            runtime_builder=lambda **kwargs: runtime,
+            prompt_runner=prompt_runner,
+        )
+        assert exit_code == 0
+
+    asyncio.run(scenario())
+
+    call = prompt_runner.calls[0]
+    assert call["method_id"] == "method:task:review"
+    assert "Use concise review guidance." in call["prompt"]
+    assert call["prompt"].endswith("User request:\n\ncheck src/app.py")
+
+
+def test_run_cli_dash_p_method_flag_overrides_method_default_from_settings(tmp_path) -> None:
+    from loushang.coding.cli.__main__ import run_cli
+    from loushang.coding.control import MethodSettings
+
+    _write_review_method(tmp_path)
+    _write_debug_method(tmp_path)
+    runtime = FakeRuntime(FakeSession("session-1"))
+    prompt_runner = FakeRunner()
+
+    async def scenario() -> None:
+        exit_code = await run_cli(
+            ["--method", "debug", "-p", "check src/app.py"],
+            stdin=StringIO(""),
+            stdout=StringIO(),
+            stderr=StringIO(),
+            cwd=tmp_path,
+            services=_fake_services(
+                method_settings=MethodSettings(mode="explicit", selected_method="review"),
+            ),
+            runtime_builder=lambda **kwargs: runtime,
+            prompt_runner=prompt_runner,
+        )
+        assert exit_code == 0
+
+    asyncio.run(scenario())
+
+    call = prompt_runner.calls[0]
+    assert call["method_id"] == "method:task:debug"
+    assert "Use focused debugging guidance." in call["prompt"]
+    assert "Use concise review guidance." not in call["prompt"]
+
+
+def test_run_cli_dash_p_no_method_overrides_method_default_from_settings(tmp_path) -> None:
+    from loushang.coding.cli.__main__ import run_cli
+    from loushang.coding.control import MethodSettings
+
+    _write_review_method(tmp_path)
+    runtime = FakeRuntime(FakeSession("session-1"))
+    prompt_runner = FakeRunner()
+
+    async def scenario() -> None:
+        exit_code = await run_cli(
+            ["--no-method", "-p", "check src/app.py"],
+            stdin=StringIO(""),
+            stdout=StringIO(),
+            stderr=StringIO(),
+            cwd=tmp_path,
+            services=_fake_services(
+                method_settings=MethodSettings(mode="explicit", selected_method="review"),
+            ),
+            runtime_builder=lambda **kwargs: runtime,
+            prompt_runner=prompt_runner,
+        )
+        assert exit_code == 0
+
+    asyncio.run(scenario())
+
+    call = prompt_runner.calls[0]
+    assert call["prompt"] == "check src/app.py"
+    assert call["method_id"] is None
+
+
+def test_run_cli_dash_p_method_off_default_suppresses_method(tmp_path) -> None:
+    from loushang.coding.cli.__main__ import run_cli
+    from loushang.coding.control import MethodSettings
+
+    _write_review_method(tmp_path)
+    runtime = FakeRuntime(FakeSession("session-1"))
+    prompt_runner = FakeRunner()
+
+    async def scenario() -> None:
+        exit_code = await run_cli(
+            ["-p", "check src/app.py"],
+            stdin=StringIO(""),
+            stdout=StringIO(),
+            stderr=StringIO(),
+            cwd=tmp_path,
+            services=_fake_services(
+                method_settings=MethodSettings(mode="off", selected_method="review"),
+            ),
+            runtime_builder=lambda **kwargs: runtime,
+            prompt_runner=prompt_runner,
+        )
+        assert exit_code == 0
+
+    asyncio.run(scenario())
+
+    call = prompt_runner.calls[0]
+    assert call["prompt"] == "check src/app.py"
+    assert call["method_id"] is None
+
+
 def test_run_cli_rejects_method_and_no_method_conflict(tmp_path) -> None:
     from loushang.coding.cli.__main__ import run_cli
 
@@ -2399,6 +2539,65 @@ def test_run_cli_dash_p_with_missing_method_reports_error(tmp_path) -> None:
     assert prompt_runner.calls == []
     assert "method not found: missing" in stderr.getvalue()
     assert "Run 'loushang method list' to inspect available methods." in stderr.getvalue()
+
+
+def test_run_cli_dash_p_with_missing_method_default_reports_error(tmp_path) -> None:
+    from loushang.coding.cli.__main__ import run_cli
+    from loushang.coding.control import MethodSettings
+
+    runtime = FakeRuntime(FakeSession("session-1"))
+    stderr = StringIO()
+    prompt_runner = FakeRunner()
+
+    async def scenario() -> None:
+        exit_code = await run_cli(
+            ["-p", "hello"],
+            stdin=StringIO(""),
+            stdout=StringIO(),
+            stderr=stderr,
+            cwd=tmp_path,
+            services=_fake_services(
+                method_settings=MethodSettings(mode="explicit", selected_method="missing"),
+            ),
+            runtime_builder=lambda **kwargs: runtime,
+            prompt_runner=prompt_runner,
+        )
+        assert exit_code == 1
+
+    asyncio.run(scenario())
+
+    assert prompt_runner.calls == []
+    assert "method not found: missing" in stderr.getvalue()
+    assert "Run 'loushang method list' to inspect available methods." in stderr.getvalue()
+
+
+def test_run_cli_dash_p_with_unsupported_method_default_mode_reports_error(tmp_path) -> None:
+    from loushang.coding.cli.__main__ import run_cli
+    from loushang.coding.control import MethodSettings
+
+    runtime = FakeRuntime(FakeSession("session-1"))
+    stderr = StringIO()
+    prompt_runner = FakeRunner()
+
+    async def scenario() -> None:
+        exit_code = await run_cli(
+            ["-p", "hello"],
+            stdin=StringIO(""),
+            stdout=StringIO(),
+            stderr=stderr,
+            cwd=tmp_path,
+            services=_fake_services(
+                method_settings=MethodSettings(mode="auto", selected_method=None),
+            ),
+            runtime_builder=lambda **kwargs: runtime,
+            prompt_runner=prompt_runner,
+        )
+        assert exit_code == 1
+
+    asyncio.run(scenario())
+
+    assert prompt_runner.calls == []
+    assert "unsupported method policy mode: auto" in stderr.getvalue()
 
 
 def test_run_cli_dash_p_passes_work_log_backend_to_prompt_command(tmp_path) -> None:
@@ -2684,6 +2883,38 @@ def test_run_cli_mode_print_with_method_prepares_prompt_and_method_id(tmp_path) 
             stderr=StringIO(),
             cwd=tmp_path,
             services=_fake_services(),
+            runtime_builder=lambda **kwargs: runtime,
+            print_runner=print_runner,
+        )
+        assert exit_code == 0
+
+    asyncio.run(scenario())
+
+    call = print_runner.calls[0]
+    assert call["method_id"] == "method:task:review"
+    assert "Use concise review guidance." in call["user_input"]
+    assert call["user_input"].endswith("User request:\n\ncheck src/app.py")
+    assert call["output_mode"] == "text"
+
+
+def test_run_cli_mode_print_uses_method_default_from_settings(tmp_path) -> None:
+    from loushang.coding.cli.__main__ import run_cli
+    from loushang.coding.control import MethodSettings
+
+    _write_review_method(tmp_path)
+    runtime = FakeRuntime(FakeSession("session-1"))
+    print_runner = FakeRunner()
+
+    async def scenario() -> None:
+        exit_code = await run_cli(
+            ["--mode", "print", "check src/app.py"],
+            stdin=StringIO(""),
+            stdout=StringIO(),
+            stderr=StringIO(),
+            cwd=tmp_path,
+            services=_fake_services(
+                method_settings=MethodSettings(mode="explicit", selected_method="review"),
+            ),
             runtime_builder=lambda **kwargs: runtime,
             print_runner=print_runner,
         )

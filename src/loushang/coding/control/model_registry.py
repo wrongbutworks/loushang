@@ -3,10 +3,10 @@ from __future__ import annotations
 from pathlib import Path
 
 from loushang.ai.model import Model, Provider
-from loushang.ai.model.registry import ModelRegistry as AiModelRegistry, get_default_model_registry
+from loushang.ai.model.registry import ModelRegistry as AiModelRegistry
+from loushang.ai.model.registry import get_default_model_registry
 from loushang.coding.types import ModelSelection
 from loushang.observability import get_log
-
 
 log = get_log(__name__).bind(component="ModelRegistry")
 

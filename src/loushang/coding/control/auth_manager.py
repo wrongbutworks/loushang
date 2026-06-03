@@ -7,7 +7,8 @@ from dataclasses import dataclass, field
 from loushang.ai.auth.support import resolve_auth_material
 from loushang.ai.auth.types import OAuthCredentials
 from loushang.ai.model import Model
-from loushang.ai.model.registry import ModelRegistry as AiModelRegistry, get_default_model_registry
+from loushang.ai.model.registry import ModelRegistry as AiModelRegistry
+from loushang.ai.model.registry import get_default_model_registry
 
 
 @dataclass(frozen=True)
