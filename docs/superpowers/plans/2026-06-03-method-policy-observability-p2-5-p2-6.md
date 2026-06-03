@@ -51,18 +51,18 @@
 - Modify: `src/loushang/coding/cli/__main__.py`
 - Test: `tests/coding/test_cli.py`
 
-- [ ] Write failing parser test for `--no-method`.
-- [ ] Write failing CLI tests for:
+- [x] Write failing parser test for `--no-method`.
+- [x] Write failing CLI tests for:
   - `--no-method -p "hello"` dispatches original prompt and `method_id is None`.
   - `--method review --no-method -p "hello"` exits `2`.
   - existing `--method review -p "hello"` still applies method guidance.
-- [ ] Run `uv --cache-dir .uv-cache run --extra dev pytest tests/coding/test_cli.py tests/coding/domain -q` and verify expected failures.
-- [ ] Add `no_method: bool` to `CliArgs`.
-- [ ] Add `--no-method` to parser and `_BUILTIN_FLAG_NAMES`.
-- [ ] Add static conflict validation for `args.method and args.no_method`.
-- [ ] Map CLI flags to `MethodPolicy.off()` or `MethodPolicy.explicit(args.method)` before calling `CodingDomainApp.prepare_turn(...)`.
-- [ ] Run `uv --cache-dir .uv-cache run --extra dev pytest tests/coding/test_cli.py tests/coding/domain -q`.
-- [ ] Commit with `feat: add no-method cli switch`.
+- [x] Run `uv --cache-dir .uv-cache run --extra dev pytest tests/coding/test_cli.py tests/coding/domain -q` and verify expected failures.
+- [x] Add `no_method: bool` to `CliArgs`.
+- [x] Add `--no-method` to parser and `_BUILTIN_FLAG_NAMES`.
+- [x] Add static conflict validation for `args.method and args.no_method`.
+- [x] Map CLI flags to `MethodPolicy.off()` or `MethodPolicy.explicit(args.method)` before calling `CodingDomainApp.prepare_turn(...)`.
+- [x] Run `uv --cache-dir .uv-cache run --extra dev pytest tests/coding/test_cli.py tests/coding/domain -q`.
+- [x] Commit with `feat: add no-method cli switch`.
 
 ### Task 4: Work-Log Method Observability
 

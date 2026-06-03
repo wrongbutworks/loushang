@@ -27,6 +27,7 @@ _BUILTIN_FLAG_NAMES = frozenset(
         "version",
         "mode",
         "method",
+        "no-method",
         "prompt",
         "prompt-steps",
         "tui",
@@ -133,6 +134,7 @@ class CliArgs:
     version: bool
     mode: CliMode
     method: str | None
+    no_method: bool
     prompt: str | None
     prompt_steps: str | None
     tui: bool
@@ -290,6 +292,7 @@ def parse_args(
         version=namespace.version,
         mode=namespace.mode,
         method=namespace.method,
+        no_method=namespace.no_method,
         prompt=namespace.prompt,
         prompt_steps=namespace.prompt_steps,
         tui=namespace.tui,
@@ -402,6 +405,7 @@ def _build_parser() -> ArgumentParser:
     parser.add_argument("--version", "-v", action="store_true")
     parser.add_argument("--mode", choices=("text", "print", "json", "rpc"), default="text")
     parser.add_argument("--method", help="Guide one coding turn with a discovered method.")
+    parser.add_argument("--no-method", action="store_true", help="Run one coding turn without method guidance.")
     parser.add_argument(
         "--prompt",
         "-p",

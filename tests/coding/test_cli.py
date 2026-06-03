@@ -594,6 +594,7 @@ def test_parse_args_supports_prompt_alias_and_print_mode() -> None:
     short = parse_args(["-p", "hello"])
     long = parse_args(["--prompt", "hello"])
     method = parse_args(["--method", "review", "-p", "hello"])
+    no_method = parse_args(["--no-method", "-p", "hello"])
     print_mode = parse_args(["--mode", "print", "hello"])
     workflow = parse_args(["-ps", "scenarios/coding/bmi.workflow.yaml"])
 
@@ -602,7 +603,10 @@ def test_parse_args_supports_prompt_alias_and_print_mode() -> None:
     assert long.prompt == "hello"
     assert long.messages == ()
     assert method.method == "review"
+    assert method.no_method is False
     assert method.prompt == "hello"
+    assert no_method.no_method is True
+    assert no_method.prompt == "hello"
     assert print_mode.mode == "print"
     assert print_mode.messages == ("hello",)
     assert workflow.prompt_steps == "scenarios/coding/bmi.workflow.yaml"
@@ -2312,6 +2316,59 @@ def test_run_cli_dash_p_with_method_prepares_prompt_and_method_id(tmp_path) -> N
     assert call["method_id"] == "method:task:review"
     assert "Use concise review guidance." in call["prompt"]
     assert call["prompt"].endswith("User request:\n\ncheck src/app.py")
+
+
+def test_run_cli_dash_p_with_no_method_suppresses_method(tmp_path) -> None:
+    from loushang.coding.cli.__main__ import run_cli
+
+    _write_review_method(tmp_path)
+    runtime = FakeRuntime(FakeSession("session-1"))
+    prompt_runner = FakeRunner()
+
+    async def scenario() -> None:
+        exit_code = await run_cli(
+            ["--no-method", "-p", "check src/app.py"],
+            stdin=StringIO(""),
+            stdout=StringIO(),
+            stderr=StringIO(),
+            cwd=tmp_path,
+            services=_fake_services(),
+            runtime_builder=lambda **kwargs: runtime,
+            prompt_runner=prompt_runner,
+        )
+        assert exit_code == 0
+
+    asyncio.run(scenario())
+
+    call = prompt_runner.calls[0]
+    assert call["prompt"] == "check src/app.py"
+    assert call["method_id"] is None
+
+
+def test_run_cli_rejects_method_and_no_method_conflict(tmp_path) -> None:
+    from loushang.coding.cli.__main__ import run_cli
+
+    runtime = FakeRuntime(FakeSession("session-1"))
+    stderr = StringIO()
+    prompt_runner = FakeRunner()
+
+    async def scenario() -> None:
+        exit_code = await run_cli(
+            ["--method", "review", "--no-method", "-p", "hello"],
+            stdin=StringIO(""),
+            stdout=StringIO(),
+            stderr=stderr,
+            cwd=tmp_path,
+            services=_fake_services(),
+            runtime_builder=lambda **kwargs: runtime,
+            prompt_runner=prompt_runner,
+        )
+        assert exit_code == 2
+
+    asyncio.run(scenario())
+
+    assert prompt_runner.calls == []
+    assert "--method cannot be used with --no-method" in stderr.getvalue()
 
 
 def test_run_cli_dash_p_with_missing_method_reports_error(tmp_path) -> None:

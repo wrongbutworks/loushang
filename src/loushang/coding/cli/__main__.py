@@ -30,7 +30,7 @@ from loushang.coding.control.settings_store import (
 )
 from loushang.coding.diag_export import export_diagnostics_bundle
 from loushang.coding.diagnostics import serialize_diagnostic
-from loushang.coding.domain import CodingDomainApp, CodingDomainRequest
+from loushang.coding.domain import CodingDomainApp, CodingDomainRequest, MethodPolicy
 from loushang.coding.extensions.types import ResolvedFlag
 from loushang.coding.mode import ModeConfig, run_mode, run_print_mode, run_rpc_mode
 from loushang.coding.observability import (
@@ -471,7 +471,7 @@ async def run_cli(
                     CodingDomainRequest(
                         user_input=print_input.user_input,
                         cwd=project_root,
-                        method=args.method,
+                        method_policy=_method_policy_from_args(args),
                     )
                 )
             except ValueError as error:
@@ -704,6 +704,8 @@ def _work_log_runtime_error(args: CliArgs, *, effective_tui: bool) -> str | None
 
 
 def _method_static_error(args: CliArgs) -> str | None:
+    if args.method is not None and args.no_method:
+        return "--method cannot be used with --no-method"
     if args.method is None:
         return None
     if args.tui:
@@ -721,6 +723,12 @@ def _method_runtime_error(args: CliArgs, *, effective_tui: bool) -> str | None:
     if effective_tui:
         return "--method is not supported in TUI mode"
     return None
+
+
+def _method_policy_from_args(args: CliArgs) -> MethodPolicy:
+    if args.no_method:
+        return MethodPolicy.off()
+    return MethodPolicy.explicit(args.method)
 
 
 def _resolve_work_event_log(raw_path: str | None, project_root: Path) -> JsonlEventLogBackend | None:
