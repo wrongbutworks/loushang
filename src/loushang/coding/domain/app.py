@@ -2,7 +2,11 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from loushang.coding.domain.types import CodingDomainPreparedTurn, CodingDomainRequest
+from loushang.coding.domain.types import (
+    CodingDomainPreparedTurn,
+    CodingDomainRequest,
+    MethodPolicy,
+)
 from loushang.method import (
     MethodCompiler,
     MethodContext,
@@ -30,7 +34,13 @@ class CodingDomainApp:
         self._method_projector = method_projector or MethodProjector()
 
     def prepare_turn(self, request: CodingDomainRequest) -> CodingDomainPreparedTurn:
-        method_name = request.method.strip() if request.method is not None else None
+        policy = request.method_policy or MethodPolicy.explicit(request.method)
+        if policy.mode == "off":
+            return CodingDomainPreparedTurn(prepared_prompt=request.user_input)
+        if policy.mode != "explicit":
+            raise ValueError(f"unsupported method policy mode: {policy.mode}")
+
+        method_name = policy.selected_method.strip() if policy.selected_method is not None else None
         if not method_name:
             return CodingDomainPreparedTurn(prepared_prompt=request.user_input)
 

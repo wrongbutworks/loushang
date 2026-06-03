@@ -9,10 +9,25 @@ _EMPTY_METADATA: Mapping[str, object] = MappingProxyType({})
 
 
 @dataclass(frozen=True)
+class MethodPolicy:
+    mode: str = "explicit"
+    selected_method: str | None = None
+
+    @classmethod
+    def off(cls) -> MethodPolicy:
+        return cls(mode="off")
+
+    @classmethod
+    def explicit(cls, selected_method: str | None = None) -> MethodPolicy:
+        return cls(mode="explicit", selected_method=selected_method)
+
+
+@dataclass(frozen=True)
 class CodingDomainRequest:
     user_input: str
     cwd: Path
     method: str | None = None
+    method_policy: MethodPolicy | None = None
     metadata: Mapping[str, object] = field(default_factory=lambda: _EMPTY_METADATA)
 
 
@@ -27,4 +42,5 @@ class CodingDomainPreparedTurn:
 __all__ = [
     "CodingDomainPreparedTurn",
     "CodingDomainRequest",
+    "MethodPolicy",
 ]

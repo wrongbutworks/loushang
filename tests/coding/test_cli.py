@@ -247,12 +247,15 @@ def _append_work_log_inspect_entry(
     session_id: str = "session-1",
     entry_type: str = "event",
     delivery_hint: str | None = None,
+    method_id: str | None = None,
 ) -> None:
     from loushang.work import EventLogEntry
 
     payload: dict[str, object] = {"kind": kind}
     if delivery_hint is not None:
         payload["delivery_hint"] = delivery_hint
+    if method_id is not None:
+        payload["payload"] = {"method_id": method_id}
     event_log.append(
         EventLogEntry(
             entry_id=f"entry-{sequence}",
@@ -594,6 +597,7 @@ def test_parse_args_supports_prompt_alias_and_print_mode() -> None:
     short = parse_args(["-p", "hello"])
     long = parse_args(["--prompt", "hello"])
     method = parse_args(["--method", "review", "-p", "hello"])
+    no_method = parse_args(["--no-method", "-p", "hello"])
     print_mode = parse_args(["--mode", "print", "hello"])
     workflow = parse_args(["-ps", "scenarios/coding/bmi.workflow.yaml"])
 
@@ -602,7 +606,10 @@ def test_parse_args_supports_prompt_alias_and_print_mode() -> None:
     assert long.prompt == "hello"
     assert long.messages == ()
     assert method.method == "review"
+    assert method.no_method is False
     assert method.prompt == "hello"
+    assert no_method.no_method is True
+    assert no_method.prompt == "hello"
     assert print_mode.mode == "print"
     assert print_mode.messages == ("hello",)
     assert workflow.prompt_steps == "scenarios/coding/bmi.workflow.yaml"
@@ -2314,6 +2321,59 @@ def test_run_cli_dash_p_with_method_prepares_prompt_and_method_id(tmp_path) -> N
     assert call["prompt"].endswith("User request:\n\ncheck src/app.py")
 
 
+def test_run_cli_dash_p_with_no_method_suppresses_method(tmp_path) -> None:
+    from loushang.coding.cli.__main__ import run_cli
+
+    _write_review_method(tmp_path)
+    runtime = FakeRuntime(FakeSession("session-1"))
+    prompt_runner = FakeRunner()
+
+    async def scenario() -> None:
+        exit_code = await run_cli(
+            ["--no-method", "-p", "check src/app.py"],
+            stdin=StringIO(""),
+            stdout=StringIO(),
+            stderr=StringIO(),
+            cwd=tmp_path,
+            services=_fake_services(),
+            runtime_builder=lambda **kwargs: runtime,
+            prompt_runner=prompt_runner,
+        )
+        assert exit_code == 0
+
+    asyncio.run(scenario())
+
+    call = prompt_runner.calls[0]
+    assert call["prompt"] == "check src/app.py"
+    assert call["method_id"] is None
+
+
+def test_run_cli_rejects_method_and_no_method_conflict(tmp_path) -> None:
+    from loushang.coding.cli.__main__ import run_cli
+
+    runtime = FakeRuntime(FakeSession("session-1"))
+    stderr = StringIO()
+    prompt_runner = FakeRunner()
+
+    async def scenario() -> None:
+        exit_code = await run_cli(
+            ["--method", "review", "--no-method", "-p", "hello"],
+            stdin=StringIO(""),
+            stdout=StringIO(),
+            stderr=stderr,
+            cwd=tmp_path,
+            services=_fake_services(),
+            runtime_builder=lambda **kwargs: runtime,
+            prompt_runner=prompt_runner,
+        )
+        assert exit_code == 2
+
+    asyncio.run(scenario())
+
+    assert prompt_runner.calls == []
+    assert "--method cannot be used with --no-method" in stderr.getvalue()
+
+
 def test_run_cli_dash_p_with_missing_method_reports_error(tmp_path) -> None:
     from loushang.coding.cli.__main__ import run_cli
 
@@ -2338,6 +2398,7 @@ def test_run_cli_dash_p_with_missing_method_reports_error(tmp_path) -> None:
 
     assert prompt_runner.calls == []
     assert "method not found: missing" in stderr.getvalue()
+    assert "Run 'loushang method list' to inspect available methods." in stderr.getvalue()
 
 
 def test_run_cli_dash_p_passes_work_log_backend_to_prompt_command(tmp_path) -> None:
@@ -3389,11 +3450,54 @@ def test_run_cli_work_log_inspect_outputs_text_without_runtime(tmp_path) -> None
     asyncio.run(scenario())
 
     assert stdout.getvalue().splitlines() == [
-        "sequence\tkind\trun_id\tsession_id\tdelivery_hint",
-        "1\tSubmitCodingTurn\trun-1\tsession-1\t",
-        "2\tContentDelta\trun-1\tsession-1\tcoalesce",
+        "sequence\tkind\trun_id\tsession_id\tdelivery_hint\tmethod_id",
+        "1\tSubmitCodingTurn\trun-1\tsession-1\t\t",
+        "2\tContentDelta\trun-1\tsession-1\tcoalesce\t",
     ]
     assert stderr.getvalue() == ""
+
+
+def test_run_cli_work_log_inspect_text_includes_method_id(tmp_path) -> None:
+    from loushang.coding.cli.__main__ import run_cli
+    from loushang.work import JsonlEventLogBackend
+
+    log_path = tmp_path / "events.jsonl"
+    event_log = JsonlEventLogBackend(log_path)
+    _append_work_log_inspect_entry(
+        event_log,
+        sequence=1,
+        kind="SubmitCodingTurn",
+        entry_type="operation",
+        method_id="method:task:review",
+    )
+    _append_work_log_inspect_entry(
+        event_log,
+        sequence=2,
+        kind="WorkRunStarted",
+        delivery_hint="immediate",
+        method_id="method:task:review",
+    )
+    stdout = StringIO()
+
+    async def scenario() -> None:
+        exit_code = await run_cli(
+            ["--work-log-inspect", str(log_path)],
+            stdin=StringIO(""),
+            stdout=stdout,
+            stderr=StringIO(),
+            cwd=tmp_path,
+            services=_fake_services(),
+            runtime_builder=lambda **kwargs: (_ for _ in ()).throw(AssertionError("runtime should not start")),
+        )
+        assert exit_code == 0
+
+    asyncio.run(scenario())
+
+    assert stdout.getvalue().splitlines() == [
+        "sequence\tkind\trun_id\tsession_id\tdelivery_hint\tmethod_id",
+        "1\tSubmitCodingTurn\trun-1\tsession-1\t\tmethod:task:review",
+        "2\tWorkRunStarted\trun-1\tsession-1\timmediate\tmethod:task:review",
+    ]
 
 
 def test_run_cli_work_log_inspect_outputs_json_without_runtime(tmp_path) -> None:
@@ -3442,6 +3546,38 @@ def test_run_cli_work_log_inspect_outputs_json_without_runtime(tmp_path) -> None
     ]
 
 
+def test_run_cli_work_log_inspect_json_includes_method_id_when_present(tmp_path) -> None:
+    from loushang.coding.cli.__main__ import run_cli
+    from loushang.work import JsonlEventLogBackend
+
+    log_path = tmp_path / "events.jsonl"
+    event_log = JsonlEventLogBackend(log_path)
+    _append_work_log_inspect_entry(
+        event_log,
+        sequence=3,
+        kind="WorkRunCompleted",
+        delivery_hint="immediate",
+        method_id="method:task:review",
+    )
+    stdout = StringIO()
+
+    async def scenario() -> None:
+        exit_code = await run_cli(
+            ["--work-log-inspect", str(log_path), "--work-log-inspect-format", "json"],
+            stdin=StringIO(""),
+            stdout=stdout,
+            stderr=StringIO(),
+            cwd=tmp_path,
+            services=_fake_services(),
+            runtime_builder=lambda **kwargs: (_ for _ in ()).throw(AssertionError("runtime should not start")),
+        )
+        assert exit_code == 0
+
+    asyncio.run(scenario())
+
+    assert json.loads(stdout.getvalue())[0]["method_id"] == "method:task:review"
+
+
 def test_run_cli_work_log_inspect_filters_by_run(tmp_path) -> None:
     from loushang.coding.cli.__main__ import run_cli
     from loushang.work import JsonlEventLogBackend
@@ -3467,8 +3603,8 @@ def test_run_cli_work_log_inspect_filters_by_run(tmp_path) -> None:
     asyncio.run(scenario())
 
     assert stdout.getvalue().splitlines() == [
-        "sequence\tkind\trun_id\tsession_id\tdelivery_hint",
-        "2\tApprovalRequested\trun-2\tsession-1\timmediate",
+        "sequence\tkind\trun_id\tsession_id\tdelivery_hint\tmethod_id",
+        "2\tApprovalRequested\trun-2\tsession-1\timmediate\t",
     ]
 
 

@@ -8,6 +8,7 @@ from loushang.coding.domain import (
     CodingDomainApp,
     CodingDomainPreparedTurn,
     CodingDomainRequest,
+    MethodPolicy,
 )
 
 
@@ -37,6 +38,27 @@ def test_coding_domain_types_are_frozen() -> None:
 
     with pytest.raises(FrozenInstanceError):
         request.user_input = "changed"  # type: ignore[misc]
+
+
+def test_method_policy_defaults_to_explicit_without_selection() -> None:
+    policy = MethodPolicy()
+
+    assert policy.mode == "explicit"
+    assert policy.selected_method is None
+
+
+def test_method_policy_off_factory() -> None:
+    policy = MethodPolicy.off()
+
+    assert policy.mode == "off"
+    assert policy.selected_method is None
+
+
+def test_method_policy_explicit_factory() -> None:
+    policy = MethodPolicy.explicit("review")
+
+    assert policy.mode == "explicit"
+    assert policy.selected_method == "review"
 
 
 def test_prepare_turn_without_method_keeps_prompt_unchanged(tmp_path: Path) -> None:
@@ -76,6 +98,57 @@ def test_prepare_turn_with_skill_backed_method_adds_guidance(tmp_path: Path) -> 
         guidance=prepared.method_guidance,
         user_input="check src/app.py",
     )
+
+
+def test_prepare_turn_method_policy_off_suppresses_method(tmp_path: Path) -> None:
+    skill_dir = tmp_path / "skills" / "review"
+    skill_dir.mkdir(parents=True)
+    (skill_dir / "SKILL.md").write_text("Review code carefully.", encoding="utf-8")
+    request = CodingDomainRequest(
+        user_input="check src/app.py",
+        cwd=tmp_path,
+        method="review",
+        method_policy=MethodPolicy.off(),
+    )
+
+    prepared = CodingDomainApp().prepare_turn(request)
+
+    assert prepared.prepared_prompt == "check src/app.py"
+    assert prepared.method_id is None
+    assert prepared.method_guidance is None
+
+
+def test_prepare_turn_method_policy_takes_precedence_over_method(tmp_path: Path) -> None:
+    skill_dir = tmp_path / "skills" / "review"
+    skill_dir.mkdir(parents=True)
+    (skill_dir / "SKILL.md").write_text("Review code carefully.", encoding="utf-8")
+    debug_dir = tmp_path / "skills" / "debug"
+    debug_dir.mkdir(parents=True)
+    (debug_dir / "SKILL.md").write_text("Debug failures carefully.", encoding="utf-8")
+    request = CodingDomainRequest(
+        user_input="check src/app.py",
+        cwd=tmp_path,
+        method="review",
+        method_policy=MethodPolicy.explicit("debug"),
+    )
+
+    prepared = CodingDomainApp().prepare_turn(request)
+
+    assert prepared.method_id == "skill:debug"
+    assert prepared.method_guidance is not None
+    assert "Debug failures carefully." in prepared.method_guidance
+    assert "Review code carefully." not in prepared.method_guidance
+
+
+def test_prepare_turn_unsupported_method_policy_mode_raises_value_error(tmp_path: Path) -> None:
+    request = CodingDomainRequest(
+        user_input="hello",
+        cwd=tmp_path,
+        method_policy=MethodPolicy(mode="auto", selected_method=None),
+    )
+
+    with pytest.raises(ValueError, match="unsupported method policy mode: auto"):
+        CodingDomainApp().prepare_turn(request)
 
 
 def test_prepare_turn_with_method_resource_adds_guidance(tmp_path: Path) -> None:

@@ -30,7 +30,7 @@ from loushang.coding.control.settings_store import (
 )
 from loushang.coding.diag_export import export_diagnostics_bundle
 from loushang.coding.diagnostics import serialize_diagnostic
-from loushang.coding.domain import CodingDomainApp, CodingDomainRequest
+from loushang.coding.domain import CodingDomainApp, CodingDomainRequest, MethodPolicy
 from loushang.coding.extensions.types import ResolvedFlag
 from loushang.coding.mode import ModeConfig, run_mode, run_print_mode, run_rpc_mode
 from loushang.coding.observability import (
@@ -471,11 +471,11 @@ async def run_cli(
                     CodingDomainRequest(
                         user_input=print_input.user_input,
                         cwd=project_root,
-                        method=args.method,
+                        method_policy=_method_policy_from_args(args),
                     )
                 )
             except ValueError as error:
-                stderr.write(f"Error: {_format_cli_error(error)}\n")
+                stderr.write(f"Error: {_format_method_cli_error(error)}\n")
                 return 1
 
             if args.prompt is not None:
@@ -704,6 +704,8 @@ def _work_log_runtime_error(args: CliArgs, *, effective_tui: bool) -> str | None
 
 
 def _method_static_error(args: CliArgs) -> str | None:
+    if args.method is not None and args.no_method:
+        return "--method cannot be used with --no-method"
     if args.method is None:
         return None
     if args.tui:
@@ -721,6 +723,12 @@ def _method_runtime_error(args: CliArgs, *, effective_tui: bool) -> str | None:
     if effective_tui:
         return "--method is not supported in TUI mode"
     return None
+
+
+def _method_policy_from_args(args: CliArgs) -> MethodPolicy:
+    if args.no_method:
+        return MethodPolicy.off()
+    return MethodPolicy.explicit(args.method)
 
 
 def _resolve_work_event_log(raw_path: str | None, project_root: Path) -> JsonlEventLogBackend | None:
@@ -753,16 +761,16 @@ def _resolve_work_log_path(raw_path: str, project_root: Path) -> Path:
 
 
 def _write_work_log_text(entries: list[Any], stdout: TextIO) -> None:
-    stdout.write("sequence\tkind\trun_id\tsession_id\tdelivery_hint\n")
+    stdout.write("sequence\tkind\trun_id\tsession_id\tdelivery_hint\tmethod_id\n")
     for entry in entries:
         stdout.write(
             f"{entry.sequence}\t{_work_log_entry_kind(entry)}\t{entry.run_id}\t"
-            f"{entry.session_id}\t{_work_log_entry_delivery_hint(entry)}\n"
+            f"{entry.session_id}\t{_work_log_entry_delivery_hint(entry)}\t{_work_log_entry_method_id(entry)}\n"
         )
 
 
 def _work_log_entry_summary(entry: Any) -> dict[str, object]:
-    return {
+    summary: dict[str, object] = {
         "entry_id": entry.entry_id,
         "entry_type": entry.entry_type,
         "sequence": entry.sequence,
@@ -773,6 +781,10 @@ def _work_log_entry_summary(entry: Any) -> dict[str, object]:
         "event_id": entry.event_id,
         "delivery_hint": _work_log_entry_delivery_hint(entry),
     }
+    method_id = _work_log_entry_method_id(entry)
+    if method_id:
+        summary["method_id"] = method_id
+    return summary
 
 
 def _work_log_entry_kind(entry: Any) -> str:
@@ -786,6 +798,18 @@ def _work_log_entry_delivery_hint(entry: Any) -> str:
     delivery_hint = entry.payload.get("delivery_hint")
     if isinstance(delivery_hint, str):
         return delivery_hint
+    return ""
+
+
+def _work_log_entry_method_id(entry: Any) -> str:
+    method_id = entry.payload.get("method_id")
+    if isinstance(method_id, str):
+        return method_id
+    nested_payload = entry.payload.get("payload")
+    if isinstance(nested_payload, dict):
+        nested_method_id = nested_payload.get("method_id")
+        if isinstance(nested_method_id, str):
+            return nested_method_id
     return ""
 
 
@@ -859,6 +883,13 @@ def _format_cli_error(error: BaseException) -> str:
         if filename is not None and strerror:
             return f"{strerror}: {filename}"
     return str(error)
+
+
+def _format_method_cli_error(error: ValueError) -> str:
+    message = _format_cli_error(error)
+    if message.startswith("method not found:"):
+        return f"{message}\nRun 'loushang method list' to inspect available methods."
+    return message
 
 
 def _runtime_args_for_bootstrap(args: CliArgs) -> CliArgs:
