@@ -6,8 +6,9 @@ from datetime import UTC, datetime
 
 
 class FakePromptSession:
-    def __init__(self, events: list[dict[str, object]]) -> None:
+    def __init__(self, events: list[dict[str, object]], *, error: Exception | None = None) -> None:
         self.events = events
+        self.error = error
         self.prompts: list[str] = []
         self.listeners: list[Callable[[dict[str, object]], Awaitable[None] | None]] = []
 
@@ -22,6 +23,8 @@ class FakePromptSession:
 
     async def prompt(self, text: str) -> None:
         self.prompts.append(text)
+        if self.error is not None:
+            raise self.error
         for event in self.events:
             for listener in list(self.listeners):
                 result = listener(event)
@@ -172,5 +175,118 @@ def test_coding_work_shell_records_method_id_as_metadata_only() -> None:
         assert entries[0].payload["payload"]["method_id"] == "method:task:review"
         assert entries[1].payload["payload"]["method_id"] == "method:task:review"
         assert entries[2].payload["payload"]["method_id"] == "method:task:review"
+
+    asyncio.run(scenario())
+
+
+def test_coding_work_shell_records_plan_and_step_lifecycle_events() -> None:
+    from loushang.work import CodingWorkShell, InMemoryEventLogBackend
+
+    async def scenario() -> None:
+        event_log = InMemoryEventLogBackend()
+        session = FakePromptSession(events=[])
+        shell = CodingWorkShell(
+            session=session,
+            event_log=event_log,
+            clock=lambda: datetime(2026, 6, 1, 10, 30, tzinfo=UTC),
+        )
+
+        run = await shell.submit_coding_turn(
+            "inspect current changes",
+            session_id="session-1",
+            operation_id="op-1",
+            run_id="run-1",
+            method_id="method:task:review",
+            plan_id="plan:method:task:review",
+            step_id="inspect",
+            step_index=0,
+            step_title="Inspect current changes",
+        )
+
+        assert run.status == "completed"
+        assert run.method_id == "method:task:review"
+        assert run.plan_id == "plan:method:task:review"
+        assert run.current_step_id == "inspect"
+
+        entries = event_log.query(run_id="run-1")
+        assert [entry.payload["kind"] for entry in entries] == [
+            "SubmitCodingTurn",
+            "WorkRunStarted",
+            "WorkPlanStarted",
+            "WorkStepStarted",
+            "WorkStepCompleted",
+            "WorkPlanCompleted",
+            "WorkRunCompleted",
+        ]
+        assert entries[0].payload["payload"] == {
+            "text": "inspect current changes",
+            "method_id": "method:task:review",
+            "plan_id": "plan:method:task:review",
+            "step_id": "inspect",
+            "step_index": 0,
+            "step_title": "Inspect current changes",
+        }
+        assert entries[2].payload["delivery_hint"] == "coalesce"
+        assert entries[3].payload["delivery_hint"] == "coalesce"
+        assert entries[4].payload["delivery_hint"] == "coalesce"
+        assert entries[5].payload["delivery_hint"] == "final_only"
+        assert entries[3].payload["payload"] == {
+            "source_type": "work_shell",
+            "method_id": "method:task:review",
+            "plan_id": "plan:method:task:review",
+            "step_id": "inspect",
+            "step_index": 0,
+            "step_title": "Inspect current changes",
+        }
+
+    asyncio.run(scenario())
+
+
+def test_coding_work_shell_records_step_and_plan_failures_before_run_failure() -> None:
+    from loushang.work import CodingWorkShell, InMemoryEventLogBackend
+
+    async def scenario() -> None:
+        event_log = InMemoryEventLogBackend()
+        session = FakePromptSession(events=[], error=RuntimeError("agent failed"))
+        shell = CodingWorkShell(
+            session=session,
+            event_log=event_log,
+            clock=lambda: datetime(2026, 6, 1, 10, 30, tzinfo=UTC),
+        )
+
+        try:
+            await shell.submit_coding_turn(
+                "inspect current changes",
+                session_id="session-1",
+                operation_id="op-1",
+                run_id="run-1",
+                method_id="method:task:review",
+                plan_id="plan:method:task:review",
+                step_id="inspect",
+                step_index=0,
+                step_title="Inspect current changes",
+            )
+        except RuntimeError as error:
+            assert str(error) == "agent failed"
+        else:
+            raise AssertionError("expected prompt failure")
+
+        entries = event_log.query(run_id="run-1")
+        assert [entry.payload["kind"] for entry in entries] == [
+            "SubmitCodingTurn",
+            "WorkRunStarted",
+            "WorkPlanStarted",
+            "WorkStepStarted",
+            "WorkStepFailed",
+            "WorkPlanFailed",
+            "WorkRunFailed",
+        ]
+        assert entries[4].payload["delivery_hint"] == "immediate"
+        assert entries[5].payload["delivery_hint"] == "immediate"
+        assert entries[4].payload["payload"]["error"] == "agent failed"
+        assert entries[5].payload["payload"]["error"] == "agent failed"
+        assert entries[6].payload["payload"]["method_id"] == "method:task:review"
+        assert entries[6].payload["payload"]["plan_id"] == "plan:method:task:review"
+        assert entries[6].payload["payload"]["step_id"] == "inspect"
 
     asyncio.run(scenario())
