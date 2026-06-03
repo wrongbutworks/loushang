@@ -471,7 +471,7 @@ async def run_cli(
                     CodingDomainRequest(
                         user_input=print_input.user_input,
                         cwd=project_root,
-                        method_policy=_method_policy_from_args(args),
+                        method_policy=_method_policy_from_args(args, settings_manager=settings_manager),
                     )
                 )
             except ValueError as error:
@@ -725,10 +725,34 @@ def _method_runtime_error(args: CliArgs, *, effective_tui: bool) -> str | None:
     return None
 
 
-def _method_policy_from_args(args: CliArgs) -> MethodPolicy:
+def _method_policy_from_args(
+    args: CliArgs,
+    *,
+    settings_manager: object | None = None,
+) -> MethodPolicy:
     if args.no_method:
         return MethodPolicy.off()
-    return MethodPolicy.explicit(args.method)
+    if args.method is not None:
+        return MethodPolicy.explicit(args.method)
+    method_settings = _method_settings_from_settings_manager(settings_manager)
+    if method_settings is None:
+        return MethodPolicy.explicit(None)
+    if getattr(method_settings, "mode", None) == "off":
+        return MethodPolicy.off()
+    return MethodPolicy(
+        mode=getattr(method_settings, "mode", "explicit"),
+        selected_method=getattr(method_settings, "selected_method", None),
+    )
+
+
+def _method_settings_from_settings_manager(settings_manager: object | None) -> object | None:
+    get_method_settings = getattr(settings_manager, "get_method_settings", None)
+    if callable(get_method_settings):
+        return get_method_settings()
+    get_settings = getattr(settings_manager, "get_settings", None)
+    if callable(get_settings):
+        return getattr(get_settings(), "method", None)
+    return None
 
 
 def _resolve_work_event_log(raw_path: str | None, project_root: Path) -> JsonlEventLogBackend | None:
