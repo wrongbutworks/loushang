@@ -112,7 +112,7 @@
 
 Do not delete the branch or worktree until:
 
-- all three stages intended for this branch are complete,
+- all intended stages for this branch are complete,
 - focused and full TUI regression suites pass,
 - manual smoke/playback passes,
 - the PR is merged,
