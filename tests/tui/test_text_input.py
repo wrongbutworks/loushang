@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from loushang.tui import InputEvent, RenderConstraints, TextInput, Tui
+from loushang.tui.editor_buffer import EditorBuffer
 from loushang.tui.ui_parts import TextInput as ReexportedTextInput
 from loushang.tui.ui_parts.text_input import TextInput as ModuleTextInput
 
@@ -13,6 +14,44 @@ def rendered_text(part: TextInput, *, width: int = 20, height: int = 3) -> tuple
 def test_text_input_imports_are_compatible() -> None:
     assert TextInput is ReexportedTextInput
     assert TextInput is ModuleTextInput
+
+
+def test_text_input_delegates_editing_state_to_editor_buffer() -> None:
+    field = TextInput()
+
+    assert isinstance(field._buffer, EditorBuffer)
+
+    assert field.handle_input(InputEvent(kind="text", text="a中e\u0301"))
+    assert field.value == "a中e\u0301"
+    assert field._buffer.value == "a中e\u0301"
+    assert field._buffer.cursor == 3
+
+
+def test_text_input_programmatic_resets_clear_edit_history() -> None:
+    field = TextInput()
+
+    assert field.handle_input(InputEvent(kind="text", text="abc"))
+    field.set_text("seed")
+
+    assert not field.undo()
+    assert field.value == "seed"
+
+    assert field.handle_input(InputEvent(kind="text", text="!"))
+    field.clear()
+
+    assert not field.undo()
+    assert field.value == ""
+
+
+def test_text_input_direct_edits_preserve_existing_undo_boundary() -> None:
+    field = TextInput()
+
+    field.insert_text("abc")
+    field.delete_backward()
+
+    assert field.value == "ab"
+    assert not field.undo()
+    assert field.value == "ab"
 
 
 def test_text_input_can_be_focused_as_a_standalone_overlay() -> None:

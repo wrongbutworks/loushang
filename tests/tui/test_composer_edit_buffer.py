@@ -1,0 +1,89 @@
+from __future__ import annotations
+
+from loushang.tui.cell_width import visible_width
+from loushang.tui.composer_edit_buffer import (
+    ComposerEditBuffer,
+    ComposerPasteMarker,
+)
+
+
+def test_composer_edit_buffer_preserves_atom_value_and_display_text() -> None:
+    buffer = ComposerEditBuffer()
+    marker = ComposerPasteMarker(marker_id=1, text="a\nb\nc", label="[paste #1 +3 lines]")
+
+    buffer.insert_text("prefix")
+    buffer.insert_atoms([marker])
+
+    assert buffer.value == "prefixa\nb\nc"
+    assert buffer.display_text == "prefix[paste #1 +3 lines]"
+    assert buffer.display_cursor == visible_width("prefix[paste #1 +3 lines]")
+
+
+def test_composer_edit_buffer_deletes_paste_marker_atomically_and_undoes() -> None:
+    buffer = ComposerEditBuffer()
+    marker = ComposerPasteMarker(marker_id=1, text="a\nb\nc", label="[paste #1 +3 lines]")
+
+    buffer.insert_atoms([marker])
+
+    assert buffer.delete_backward()
+    assert buffer.value == ""
+
+    assert buffer.undo()
+    assert buffer.value == "a\nb\nc"
+    assert buffer.display_text == "[paste #1 +3 lines]"
+
+
+def test_composer_edit_buffer_moves_words_across_marker_atoms() -> None:
+    buffer = ComposerEditBuffer()
+    marker = ComposerPasteMarker(marker_id=1, text="a\nb\nc", label="[paste #1 +3 lines]")
+
+    buffer.insert_text("prefix")
+    buffer.insert_atoms([marker])
+    buffer.insert_text("suffix")
+
+    buffer.move_to_start()
+    assert buffer.move_word_right()
+    assert buffer.cursor == 6
+    assert buffer.move_word_right()
+    assert buffer.cursor == 7
+    assert buffer.move_word_right()
+    assert buffer.cursor == 13
+
+    buffer.move_to_end()
+    assert buffer.move_word_left()
+    assert buffer.cursor == 7
+    assert buffer.move_word_left()
+    assert buffer.cursor == 6
+
+
+def test_composer_edit_buffer_maps_value_index_and_lines_cursor() -> None:
+    buffer = ComposerEditBuffer()
+    marker = ComposerPasteMarker(marker_id=1, text="a\nb\nc", label="[paste #1 +3 lines]")
+
+    buffer.insert_text("x")
+    buffer.insert_atoms([marker])
+    buffer.insert_text("y")
+
+    buffer.move_cursor_to_value_index(2)
+    assert buffer.cursor == 1
+
+    buffer.move_to_end()
+    lines, cursor_line, cursor_col = buffer.lines_and_cursor()
+
+    assert lines == ("xa", "b", "cy")
+    assert (cursor_line, cursor_col) == (2, 2)
+
+
+def test_composer_edit_buffer_replaces_completion_prefix() -> None:
+    buffer = ComposerEditBuffer()
+    buffer.insert_text("/he")
+
+    assert buffer.completion_prefix_range() == (0, 3)
+    assert buffer.completion_prefix_text() == "/he"
+
+    buffer.replace_range(0, 3, "/help")
+
+    assert buffer.value == "/help"
+    assert buffer.cursor == 5
+    assert buffer.undo()
+    assert buffer.value == "/he"
