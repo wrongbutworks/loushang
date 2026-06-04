@@ -842,11 +842,41 @@ def _resolve_work_log_path(raw_path: str, project_root: Path) -> Path:
 
 
 def _write_work_log_text(entries: list[Any], stdout: TextIO) -> None:
-    stdout.write("sequence\tkind\trun_id\tsession_id\tdelivery_hint\tmethod_id\n")
+    stdout.write(
+        "\t".join(
+            [
+                "sequence",
+                "kind",
+                "run_id",
+                "session_id",
+                "delivery_hint",
+                "method_id",
+                "plan_id",
+                "step_id",
+                "step_index",
+                "step_title",
+            ]
+        )
+        + "\n"
+    )
     for entry in entries:
+        step_index = _work_log_entry_step_index(entry)
         stdout.write(
-            f"{entry.sequence}\t{_work_log_entry_kind(entry)}\t{entry.run_id}\t"
-            f"{entry.session_id}\t{_work_log_entry_delivery_hint(entry)}\t{_work_log_entry_method_id(entry)}\n"
+            "\t".join(
+                [
+                    str(entry.sequence),
+                    _work_log_entry_kind(entry),
+                    entry.run_id,
+                    entry.session_id,
+                    _work_log_entry_delivery_hint(entry),
+                    _work_log_entry_method_id(entry),
+                    _work_log_entry_plan_id(entry),
+                    _work_log_entry_step_id(entry),
+                    "" if step_index is None else str(step_index),
+                    _work_log_entry_step_title(entry),
+                ]
+            )
+            + "\n"
         )
 
 
@@ -865,6 +895,18 @@ def _work_log_entry_summary(entry: Any) -> dict[str, object]:
     method_id = _work_log_entry_method_id(entry)
     if method_id:
         summary["method_id"] = method_id
+    plan_id = _work_log_entry_plan_id(entry)
+    if plan_id:
+        summary["plan_id"] = plan_id
+    step_id = _work_log_entry_step_id(entry)
+    if step_id:
+        summary["step_id"] = step_id
+    step_index = _work_log_entry_step_index(entry)
+    if step_index is not None:
+        summary["step_index"] = step_index
+    step_title = _work_log_entry_step_title(entry)
+    if step_title:
+        summary["step_title"] = step_title
     return summary
 
 
@@ -883,15 +925,43 @@ def _work_log_entry_delivery_hint(entry: Any) -> str:
 
 
 def _work_log_entry_method_id(entry: Any) -> str:
-    method_id = entry.payload.get("method_id")
-    if isinstance(method_id, str):
-        return method_id
+    return _work_log_entry_string_payload_value(entry, "method_id")
+
+
+def _work_log_entry_plan_id(entry: Any) -> str:
+    return _work_log_entry_string_payload_value(entry, "plan_id")
+
+
+def _work_log_entry_step_id(entry: Any) -> str:
+    return _work_log_entry_string_payload_value(entry, "step_id")
+
+
+def _work_log_entry_step_title(entry: Any) -> str:
+    return _work_log_entry_string_payload_value(entry, "step_title")
+
+
+def _work_log_entry_step_index(entry: Any) -> int | None:
+    step_index = _work_log_entry_payload_value(entry, "step_index")
+    if isinstance(step_index, int) and not isinstance(step_index, bool):
+        return step_index
+    return None
+
+
+def _work_log_entry_string_payload_value(entry: Any, key: str) -> str:
+    value = _work_log_entry_payload_value(entry, key)
+    if isinstance(value, str):
+        return value
+    return ""
+
+
+def _work_log_entry_payload_value(entry: Any, key: str) -> object | None:
+    value = entry.payload.get(key)
+    if value is not None:
+        return value
     nested_payload = entry.payload.get("payload")
     if isinstance(nested_payload, dict):
-        nested_method_id = nested_payload.get("method_id")
-        if isinstance(nested_method_id, str):
-            return nested_method_id
-    return ""
+        return nested_payload.get(key)
+    return None
 
 
 def _has_command_style_operation(args: CliArgs) -> bool:
