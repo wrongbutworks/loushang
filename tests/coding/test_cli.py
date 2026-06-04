@@ -218,6 +218,20 @@ class TtyStringIO(StringIO):
         return True
 
 
+_WORK_LOG_INSPECT_COLUMNS = [
+    "sequence",
+    "kind",
+    "run_id",
+    "session_id",
+    "delivery_hint",
+    "method_id",
+    "plan_id",
+    "step_id",
+    "step_index",
+    "step_title",
+]
+
+
 def _append_work_log_marker(event_log: object) -> Path:
     from loushang.work import EventLogEntry
 
@@ -248,14 +262,29 @@ def _append_work_log_inspect_entry(
     entry_type: str = "event",
     delivery_hint: str | None = None,
     method_id: str | None = None,
+    plan_id: str | None = None,
+    step_id: str | None = None,
+    step_index: int | None = None,
+    step_title: str | None = None,
 ) -> None:
     from loushang.work import EventLogEntry
 
     payload: dict[str, object] = {"kind": kind}
     if delivery_hint is not None:
         payload["delivery_hint"] = delivery_hint
+    nested_payload: dict[str, object] = {}
     if method_id is not None:
-        payload["payload"] = {"method_id": method_id}
+        nested_payload["method_id"] = method_id
+    if plan_id is not None:
+        nested_payload["plan_id"] = plan_id
+    if step_id is not None:
+        nested_payload["step_id"] = step_id
+    if step_index is not None:
+        nested_payload["step_index"] = step_index
+    if step_title is not None:
+        nested_payload["step_title"] = step_title
+    if nested_payload:
+        payload["payload"] = nested_payload
     event_log.append(
         EventLogEntry(
             entry_id=f"entry-{sequence}",
@@ -3847,10 +3876,10 @@ def test_run_cli_work_log_inspect_outputs_text_without_runtime(tmp_path) -> None
 
     asyncio.run(scenario())
 
-    assert stdout.getvalue().splitlines() == [
-        "sequence\tkind\trun_id\tsession_id\tdelivery_hint\tmethod_id",
-        "1\tSubmitCodingTurn\trun-1\tsession-1\t\t",
-        "2\tContentDelta\trun-1\tsession-1\tcoalesce\t",
+    assert [line.split("\t") for line in stdout.getvalue().splitlines()] == [
+        _WORK_LOG_INSPECT_COLUMNS,
+        ["1", "SubmitCodingTurn", "run-1", "session-1", "", "", "", "", "", ""],
+        ["2", "ContentDelta", "run-1", "session-1", "coalesce", "", "", "", "", ""],
     ]
     assert stderr.getvalue() == ""
 
@@ -3891,10 +3920,60 @@ def test_run_cli_work_log_inspect_text_includes_method_id(tmp_path) -> None:
 
     asyncio.run(scenario())
 
-    assert stdout.getvalue().splitlines() == [
-        "sequence\tkind\trun_id\tsession_id\tdelivery_hint\tmethod_id",
-        "1\tSubmitCodingTurn\trun-1\tsession-1\t\tmethod:task:review",
-        "2\tWorkRunStarted\trun-1\tsession-1\timmediate\tmethod:task:review",
+    assert [line.split("\t") for line in stdout.getvalue().splitlines()] == [
+        _WORK_LOG_INSPECT_COLUMNS,
+        ["1", "SubmitCodingTurn", "run-1", "session-1", "", "method:task:review", "", "", "", ""],
+        ["2", "WorkRunStarted", "run-1", "session-1", "immediate", "method:task:review", "", "", "", ""],
+    ]
+
+
+def test_run_cli_work_log_inspect_text_includes_plan_step_metadata(tmp_path) -> None:
+    from loushang.coding.cli.__main__ import run_cli
+    from loushang.work import JsonlEventLogBackend
+
+    log_path = tmp_path / "events.jsonl"
+    event_log = JsonlEventLogBackend(log_path)
+    _append_work_log_inspect_entry(
+        event_log,
+        sequence=1,
+        kind="SubmitCodingTurn",
+        entry_type="operation",
+        method_id="method:task:review",
+        plan_id="plan:method:task:review",
+        step_id="inspect",
+        step_index=0,
+        step_title="Inspect current changes",
+    )
+    stdout = StringIO()
+
+    async def scenario() -> None:
+        exit_code = await run_cli(
+            ["--work-log-inspect", str(log_path)],
+            stdin=StringIO(),
+            stdout=stdout,
+            stderr=StringIO(),
+            cwd=tmp_path,
+            services=_fake_services(),
+            runtime_builder=lambda **kwargs: (_ for _ in ()).throw(AssertionError("runtime should not start")),
+        )
+        assert exit_code == 0
+
+    asyncio.run(scenario())
+
+    assert [line.split("\t") for line in stdout.getvalue().splitlines()] == [
+        _WORK_LOG_INSPECT_COLUMNS,
+        [
+            "1",
+            "SubmitCodingTurn",
+            "run-1",
+            "session-1",
+            "",
+            "method:task:review",
+            "plan:method:task:review",
+            "inspect",
+            "0",
+            "Inspect current changes",
+        ],
     ]
 
 
@@ -3976,6 +4055,47 @@ def test_run_cli_work_log_inspect_json_includes_method_id_when_present(tmp_path)
     assert json.loads(stdout.getvalue())[0]["method_id"] == "method:task:review"
 
 
+def test_run_cli_work_log_inspect_json_includes_plan_step_metadata(tmp_path) -> None:
+    from loushang.coding.cli.__main__ import run_cli
+    from loushang.work import JsonlEventLogBackend
+
+    log_path = tmp_path / "events.jsonl"
+    event_log = JsonlEventLogBackend(log_path)
+    _append_work_log_inspect_entry(
+        event_log,
+        sequence=3,
+        kind="WorkRunStarted",
+        delivery_hint="immediate",
+        method_id="method:task:review",
+        plan_id="plan:method:task:review",
+        step_id="inspect",
+        step_index=0,
+        step_title="Inspect current changes",
+    )
+    stdout = StringIO()
+
+    async def scenario() -> None:
+        exit_code = await run_cli(
+            ["--work-log-inspect", str(log_path), "--work-log-inspect-format", "json"],
+            stdin=StringIO(),
+            stdout=stdout,
+            stderr=StringIO(),
+            cwd=tmp_path,
+            services=_fake_services(),
+            runtime_builder=lambda **kwargs: (_ for _ in ()).throw(AssertionError("runtime should not start")),
+        )
+        assert exit_code == 0
+
+    asyncio.run(scenario())
+
+    summary = json.loads(stdout.getvalue())[0]
+    assert summary["method_id"] == "method:task:review"
+    assert summary["plan_id"] == "plan:method:task:review"
+    assert summary["step_id"] == "inspect"
+    assert summary["step_index"] == 0
+    assert summary["step_title"] == "Inspect current changes"
+
+
 def test_run_cli_work_log_inspect_filters_by_run(tmp_path) -> None:
     from loushang.coding.cli.__main__ import run_cli
     from loushang.work import JsonlEventLogBackend
@@ -4000,9 +4120,9 @@ def test_run_cli_work_log_inspect_filters_by_run(tmp_path) -> None:
 
     asyncio.run(scenario())
 
-    assert stdout.getvalue().splitlines() == [
-        "sequence\tkind\trun_id\tsession_id\tdelivery_hint\tmethod_id",
-        "2\tApprovalRequested\trun-2\tsession-1\timmediate\t",
+    assert [line.split("\t") for line in stdout.getvalue().splitlines()] == [
+        _WORK_LOG_INSPECT_COLUMNS,
+        ["2", "ApprovalRequested", "run-2", "session-1", "immediate", "", "", "", "", ""],
     ]
 
 
