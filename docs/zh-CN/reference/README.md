@@ -38,3 +38,7 @@ loushang --export session.jsonl --export-format jsonl
 /session /terminal /changelog /hotkeys /fork /clone /tree
 /login /logout /new /compact /resume /reload /quit
 ```
+
+## TUI
+
+- [TUI Runner](tui-runner.md)：使用 `loushang.tui` 构建终端应用的公共生命周期入口。
