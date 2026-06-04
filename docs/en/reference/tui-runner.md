@@ -4,6 +4,8 @@ English | [中文](../../zh-CN/reference/tui-runner.md)
 
 `TuiRunner` is the public lifecycle entry point for `loushang.tui`. It wires together terminal mode setup, input parsing, render scheduling, terminal output, and cleanup while keeping the lower-level `Tui`, `TuiRuntime`, `RenderLoop`, `InputReader`, and `TerminalSession` APIs available for advanced use.
 
+For a task-oriented walkthrough, see [Building TUI Apps](../user-guide/tui.md).
+
 ## Minimal Usage
 
 ```python

@@ -21,6 +21,8 @@ loushang --tui
 loushang -p "Summarize the current project."
 ```
 
+For building terminal UI applications with `loushang.tui`, see [Building TUI Apps](tui.md).
+
 ## Sessions
 
 Sessions preserve the coding conversation and execution record. They are designed for workflows that need resume, fork, export, diagnostics, and later inspection.

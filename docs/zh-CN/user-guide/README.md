@@ -21,6 +21,8 @@ loushang --tui
 loushang -p "Summarize the current project."
 ```
 
+如果要用 `loushang.tui` 构建终端 UI 应用，见 [构建 TUI 应用](tui.md)。
+
 ## 会话
 
 会话保存 coding 对话与执行记录，适合需要恢复、分叉、导出、诊断和后续检查的工作流。

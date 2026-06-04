@@ -4,6 +4,8 @@
 
 `TuiRunner` 是 `loushang.tui` 的公共生命周期入口。它负责把终端模式、输入解析、渲染调度、终端输出和退出清理串起来，同时保留底层的 `Tui`、`TuiRuntime`、`RenderLoop`、`InputReader`、`TerminalSession` 供高级场景直接使用。
 
+面向任务的使用说明见 [构建 TUI 应用](../user-guide/tui.md)。
+
 ## 最小用法
 
 ```python
