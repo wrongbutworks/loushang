@@ -2,7 +2,7 @@
 
 ## 状态
 
-Draft.
+Draft; historical research note.
 
 本调研用于支持 issue #46 的 P3 设计刷新。目标不是把外部 workflow
 系统搬进 `loushang`，而是在 P0-P2.7 已完成的边界上判断：
@@ -11,17 +11,22 @@ Draft.
 - `MethodPlan` 与 work/event/coding domain app 应如何衔接。
 - 哪些 flow 能力应在 P3 做，哪些应推迟到 P4+。
 
-## 当前 Loushang 约束
+截至 2026-06-04，P3 的大部分底座已经落到 `main`：fixed MethodPlan
+编译、work plan/step 生命周期、step policy/deviation metadata、tool approval
+audit events，以及 coding domain 非交互路径的逐 step 执行。本文保留为设计
+来源和取舍记录，不再代表当前实现清单。
 
-P0-P2.7 已经形成以下约束：
+## 调研时 Loushang 约束
+
+P0-P2.7 当时形成以下约束：
 
 - `loushang.method` 负责方法资源、选择、编译和投影，不负责执行。
 - `loushang.coding.domain` 负责把 method projection 映射成 coding prompt。
 - `loushang.work` 负责 `WorkRun`、`WorkEvent`、event log 和 replay 入口。
 - `AgentSession` 仍保持原有单 turn 执行语义。
-- `CodingDomainApp.prepare_turn(...)` 当前只消费 `plan.steps[0]`，并把 guidance
+- `CodingDomainApp.prepare_turn(...)` 当时只消费 `plan.steps[0]`，并把 guidance
   prefix 到一次 user prompt。
-- `WorkRun` 当前只记录 `method_id`，还没有 `plan_id`、`step_id` 或 step lifecycle。
+- `WorkRun` 当时只记录 `method_id`，还没有 `plan_id`、`step_id` 或 step lifecycle。
 
 因此 P3 的第一原则是：在不破坏单 turn 快速路径的前提下，把“一个 method 可以编译成固定步骤计划”
 变成可观察、可回放的 work 层能力。
@@ -384,16 +389,19 @@ current_step_id: str | None = None
 
 暂不建议在 P3 引入 public `TaskFlow`、`AgentLane`、`CollaborationBus`。
 
-## P3 实施切片建议
+## P3 实施切片建议与当前状态
 
-### P3.1 MethodPlan fixed schema (#48)
+以下切片是调研时建议。合入 `main` 后，P3.1-P3.3 已基本落地，剩余重点是
+失败语义和 UI/RPC 可见性硬化。
+
+### P3.1 MethodPlan fixed schema - landed
 
 - 让 `MethodCompiler` 能从 method metadata/body 生成多个 `MethodStep`。
 - 支持 `mode="fixed"`。
 - 保持 P1/P2 single-turn compiler 行为不变。
 - 测试 `MethodPlan` 解析、fallback、无 method 情况。
 
-### P3.2 Work step lifecycle (#51)
+### P3.2 Work step lifecycle - landed
 
 - 增加 `WorkStepStarted`、`WorkStepCompleted`、`WorkStepFailed`。
 - event log 可回放完整 step 序列。
@@ -401,9 +409,9 @@ current_step_id: str | None = None
 - 可借鉴 Hermes batch/Kanban：失败 step 可重试，step 结果和结构化 handoff
   应作为事件/metadata 保存，而不是只写在自然语言回复里。
 
-### P3.3 CodingDomain step preparation (#50)
+### P3.3 CodingDomain step preparation - landed for non-interactive CLI
 
-- 新增 `prepare_step(...)` 或等价 facade。
+- 新增 `prepare_turns(...)` 或等价 facade。
 - 每个 step 仍映射为一次现有 AgentSession turn。
 - 不改 AgentSession 的核心 prompt assembly。
 

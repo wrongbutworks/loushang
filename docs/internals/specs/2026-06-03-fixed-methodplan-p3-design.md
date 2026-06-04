@@ -2,15 +2,27 @@
 
 ## Status
 
-Draft for P3.1+ implementation.
+Current status as of 2026-06-04: P3 fixed MethodPlan is partially implemented
+on `main`.
 
-Already landed before this spec is published:
+Already landed:
 
 - P3.0: `MethodApplicability` data model and frontmatter parsing.
 - P3.0.1: method CLI JSON/text output exposes applicability metadata.
+- P3.1: fixed `MethodPlan` compilation from method metadata.
+- P3.2: work plan and step lifecycle events, replay, and inspect summaries.
+- P3.2.x: planned step policy, deviation metadata, and tool approval audit
+  events are projected into durable work logs.
+- P3.3: coding-domain non-interactive paths prepare and execute one coding turn
+  per fixed method step.
 
-The remaining P3 work starts from fixed `MethodPlan` compilation, then work step
-lifecycle events, then step-by-step coding-domain execution.
+Remaining hardening:
+
+- Ensure assistant-level failures such as `stop_reason="error"` or
+  `stop_reason="aborted"` produce `WorkStepFailed` / `WorkPlanFailed` instead
+  of completed step events.
+- Keep TUI/RPC method picking and step status visualization out of this design
+  until the work-log semantics are trustworthy.
 
 ## Goal
 
@@ -46,7 +58,8 @@ Success criteria:
 - Extend `loushang.method` types for fixed plans.
 - Use the existing structured `MethodApplicability` data object.
 - Keep existing `MethodDescriptor.domain` for compatibility, but treat it as a legacy/convenience projection.
-- Extend `MethodStep` with method-aligned fields such as role, phase/activity/task references, expected artifacts, success criteria, and applicability hints.
+- Preserve current `MethodStep` fields and carry method-aligned details through
+  projection, constraint, audit, metadata, and applicability hints.
 - Extend `MethodCompiler` to return `mode="fixed"` when method metadata declares fixed steps.
 - Keep `mode="single_turn"` as the default for existing skills and methods.
 - Extend `loushang.work` with step lifecycle concepts.
@@ -55,9 +68,13 @@ Success criteria:
 
 ### Implementation Slices
 
-- P3.1 / issue #48: compile fixed `MethodPlan` steps from method metadata.
-- P3.2 / issue #51: add work plan and step lifecycle events.
-- P3.3 / issue #50: execute fixed `MethodPlan` steps through the coding domain app.
+- P3.1: compile fixed `MethodPlan` steps from method metadata. Landed.
+- P3.2: add work plan and step lifecycle events. Landed.
+- P3.2.5: record step policy/deviation metadata. Landed.
+- P3.3: execute fixed `MethodPlan` steps through the coding domain app in
+  non-interactive CLI paths. Landed; the former tracking issue was deleted
+  after merge.
+- P3.4: harden failed-step semantics for assistant-level failures. Remaining.
 
 The P3.0 applicability foundation is already part of main and is not repeated in
 these implementation slices.
@@ -209,10 +226,12 @@ class MethodStep:
     executor: str
     role_variant: str | None = None
     projection: Mapping[str, object] = ...
+    constraint: Mapping[str, object] = ...
+    audit: Mapping[str, object] = ...
     applicability: MethodApplicability = field(default_factory=MethodApplicability)
 ```
 
-P3.1+ fixed-plan shape can add:
+Future fixed-plan shape can add direct fields if they remove real complexity:
 
 ```python
 @dataclass(frozen=True)
@@ -236,7 +255,10 @@ Notes:
 
 - `executor` stays `str`, not an enum, so P4 can add `agent_lane:<id>`, `role:<name>`, or remote executor references.
 - `role` and `role_variant` are hints for projection and future multi-agent routing.
-- `expected_artifacts` and `success_criteria` are P3-friendly and support future validation.
+- In current P3, planned constraints are carried through `constraint`, audit
+  requirements through `audit`, and model-visible guidance through `projection`.
+- `expected_artifacts` and `success_criteria` remain useful future fields, but
+  are not required for the current P3 execution path.
 - `applicability` on a step can narrow or override the plan-level applicability.
 
 ### `MethodPlan`
@@ -247,7 +269,7 @@ Already has:
 applicability: MethodApplicability = field(default_factory=MethodApplicability)
 ```
 
-P3.1+ fixed-plan shape can add:
+Future plan shape can add:
 
 ```python
 expected_artifacts: tuple[str, ...] = ()
@@ -283,15 +305,15 @@ Already has applicability hints:
 class MethodContext:
     domain: str | None = None
     task: str | None = None
-    applicability: MethodApplicability = field(default_factory=MethodApplicability)
     metadata: Mapping[str, object] = ...
+    applicability: MethodApplicability = field(default_factory=MethodApplicability)
 ```
 
 P3 compiler/projector can pass this through. P3 selector does not use it for automatic selection.
 
 ## Fixed Step Source
 
-P3 can support fixed steps from frontmatter or metadata without requiring `METHOD.md`.
+P3 supports fixed steps from frontmatter without requiring `METHOD.md`.
 
 Example `methods/task/review/SKILL.md`:
 
@@ -303,21 +325,26 @@ type: task
 domains: [coding]
 task_types: [reviewing, verifying]
 complexity: standard
-steps:
-  - id: inspect
-    title: Inspect current changes
-    phase: EXPLORE
-    role: EXPLORER
-    success_criteria:
-      - Changed files and intent are understood
-  - id: test
-    title: Run focused regression tests
-    phase: VERIFY
-    role: VALIDATOR
-    expected_artifacts:
-      - test-report
-    success_criteria:
-      - Relevant tests pass or failures are captured
+plan_mode: fixed
+steps: [inspect, verify]
+step_titles:
+  inspect: Inspect current changes
+  verify: Run focused checks
+step_guidance:
+  inspect: Read changed files and summarize intent.
+  verify: Run focused tests or explain why they cannot run.
+step_constraints:
+  inspect:
+    level: reasoned
+    requires_reason: true
+  verify:
+    level: evidence
+    requires_evidence: true
+step_audit:
+  inspect:
+    record: [status, reason]
+  verify:
+    record: [status, reason, evidence]
 ---
 
 Use this method to inspect changes before giving review findings.
@@ -326,15 +353,18 @@ Use this method to inspect changes before giving review findings.
 Compiler behavior:
 
 - No `steps` -> existing `single_turn` plan.
-- `steps` present and valid -> `fixed` plan.
+- `plan_mode: fixed` plus valid `steps` -> `fixed` plan.
 - Invalid `steps` -> clear compiler error.
 
 P3 should keep parsing conservative:
 
-- `steps` must be a list of mappings.
-- Each step needs `id` and `title`.
-- Optional fields use string or list of strings.
-- Unknown step fields go into `projection` or step metadata only if explicitly supported; otherwise preserve in `projection["frontmatter"]` or plan metadata.
+- `steps` is currently a list of non-empty string step ids.
+- `step_titles`, `step_guidance`, `step_constraints`, and `step_audit` are
+  optional maps keyed by step id.
+- Each fixed step currently executes on `current_agent`.
+- Unknown frontmatter remains preserved in descriptor metadata; it is not
+  promoted to execution semantics unless compiler/projector code explicitly
+  supports it.
 
 ## Work Type Changes
 
@@ -559,12 +589,13 @@ Already covered by P3.0/P3.0.1 and should remain regression coverage:
 - Frontmatter `domains` maps into applicability domains.
 - Frontmatter tags map into `MethodApplicability.tags`.
 
-New P3.1+ method coverage:
+P3 fixed-plan method coverage:
 
 - Existing skill-backed methods still compile to `single_turn`.
 - Method with valid `steps` compiles to `fixed`.
 - Invalid steps fail clearly.
-- Fixed plan preserves phase/activity/task/role/expected artifacts/success criteria.
+- Fixed plan preserves step guidance, planned constraints, audit policy, step
+  order, and applicability.
 
 ### Work Tests
 
@@ -576,10 +607,10 @@ New P3.1+ method coverage:
 ### Coding Domain Tests
 
 - Single-turn method behavior stays unchanged.
-- Fixed plan without `step_id` prepares first step.
-- Fixed plan with `step_id` prepares the requested step.
-- Missing step id fails clearly.
-- Prepared turn includes method/plan/step metadata.
+- `prepare_turn()` remains compatible and returns the first prepared turn.
+- `prepare_turns()` prepares all fixed steps in order.
+- Prepared turns include method/plan/step metadata.
+- Prepared turns include planned constraint and audit policy metadata.
 
 ### Regression Tests
 
@@ -587,6 +618,8 @@ New P3.1+ method coverage:
 - Existing `--method` single-turn path remains unchanged.
 - Method defaults from P2.7 still apply.
 - `--no-method` still disables all method behavior.
+- Non-interactive fixed method execution calls one runner turn per prepared
+  step and only completes the plan on the last step.
 
 ## Implementation Notes
 
