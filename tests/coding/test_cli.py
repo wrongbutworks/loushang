@@ -266,6 +266,7 @@ def _append_work_log_inspect_entry(
     step_id: str | None = None,
     step_index: int | None = None,
     step_title: str | None = None,
+    deviation: dict[str, object] | None = None,
 ) -> None:
     from loushang.work import EventLogEntry
 
@@ -283,6 +284,8 @@ def _append_work_log_inspect_entry(
         nested_payload["step_index"] = step_index
     if step_title is not None:
         nested_payload["step_title"] = step_title
+    if deviation is not None:
+        nested_payload["deviation"] = deviation
     if nested_payload:
         payload["payload"] = nested_payload
     event_log.append(
@@ -4110,10 +4113,10 @@ def test_run_cli_work_log_inspect_plans_outputs_plan_summary_without_runtime(tmp
     asyncio.run(scenario())
 
     assert [line.split("\t") for line in stdout.getvalue().splitlines()] == [
-        ["type", "index", "id", "status", "run_id", "method_id", "completed_steps", "failed_steps", "current_step", "title"],
-        ["plan", "", "plan:method:task:review", "completed", "", "method:task:review", "2/2", "0", "verify", ""],
-        ["step", "1", "inspect", "completed", "run-inspect", "method:task:review", "", "", "", "Inspect current changes"],
-        ["step", "2", "verify", "completed", "run-verify", "method:task:review", "", "", "", "Run focused checks"],
+        ["type", "index", "id", "status", "run_id", "method_id", "completed_steps", "failed_steps", "current_step", "title", "deviation"],
+        ["plan", "", "plan:method:task:review", "completed", "", "method:task:review", "2/2", "0", "verify", "", ""],
+        ["step", "1", "inspect", "completed", "run-inspect", "method:task:review", "", "", "", "Inspect current changes", ""],
+        ["step", "2", "verify", "completed", "run-verify", "method:task:review", "", "", "", "Run focused checks", ""],
     ]
 
 
@@ -4169,9 +4172,67 @@ def test_run_cli_work_log_inspect_plans_respects_run_filter(tmp_path) -> None:
     asyncio.run(scenario())
 
     assert [line.split("\t") for line in stdout.getvalue().splitlines()] == [
-        ["type", "index", "id", "status", "run_id", "method_id", "completed_steps", "failed_steps", "current_step", "title"],
-        ["plan", "", "plan:method:task:review", "running", "", "method:task:review", "0/1", "1", "verify", ""],
-        ["step", "2", "verify", "failed", "run-verify", "method:task:review", "", "", "", "Run focused checks"],
+        ["type", "index", "id", "status", "run_id", "method_id", "completed_steps", "failed_steps", "current_step", "title", "deviation"],
+        ["plan", "", "plan:method:task:review", "running", "", "method:task:review", "0/1", "1", "verify", "", ""],
+        ["step", "2", "verify", "failed", "run-verify", "method:task:review", "", "", "", "Run focused checks", ""],
+    ]
+
+
+def test_run_cli_work_log_inspect_plans_shows_step_deviation(tmp_path) -> None:
+    from loushang.coding.cli.__main__ import run_cli
+    from loushang.work import JsonlEventLogBackend
+
+    log_path = tmp_path / "events.jsonl"
+    event_log = JsonlEventLogBackend(log_path)
+    _append_work_log_inspect_entry(
+        event_log,
+        sequence=1,
+        kind="WorkStepCompleted",
+        run_id="run-inspect",
+        method_id="method:task:review",
+        plan_id="plan:method:task:review",
+        step_id="inspect",
+        step_index=0,
+        step_title="Inspect current changes",
+        deviation={
+            "deviation_type": "adapted",
+            "reason": "Only documentation files changed.",
+            "policy_level": "reasoned",
+            "evidence_refs": ["git-diff"],
+        },
+    )
+    stdout = StringIO()
+
+    async def scenario() -> None:
+        exit_code = await run_cli(
+            ["--work-log-inspect", str(log_path), "--work-log-inspect-format", "plans"],
+            stdin=StringIO(),
+            stdout=stdout,
+            stderr=StringIO(),
+            cwd=tmp_path,
+            services=_fake_services(),
+            runtime_builder=lambda **kwargs: (_ for _ in ()).throw(AssertionError("runtime should not start")),
+        )
+        assert exit_code == 0
+
+    asyncio.run(scenario())
+
+    assert [line.split("\t") for line in stdout.getvalue().splitlines()] == [
+        ["type", "index", "id", "status", "run_id", "method_id", "completed_steps", "failed_steps", "current_step", "title", "deviation"],
+        ["plan", "", "plan:method:task:review", "running", "", "method:task:review", "1/1", "0", "inspect", "", ""],
+        [
+            "step",
+            "1",
+            "inspect",
+            "completed",
+            "run-inspect",
+            "method:task:review",
+            "",
+            "",
+            "",
+            "Inspect current changes",
+            "adapted: Only documentation files changed.",
+        ],
     ]
 
 
@@ -4215,8 +4276,8 @@ def test_run_cli_work_log_inspect_plans_projects_full_log_not_tail_limit(tmp_pat
     asyncio.run(scenario())
 
     assert [line.split("\t") for line in stdout.getvalue().splitlines()][1:] == [
-        ["plan", "", "plan:method:task:review", "completed", "", "method:task:review", "1/1", "0", "inspect", ""],
-        ["step", "1", "inspect", "completed", "run-inspect", "method:task:review", "", "", "", "Inspect current changes"],
+        ["plan", "", "plan:method:task:review", "completed", "", "method:task:review", "1/1", "0", "inspect", "", ""],
+        ["step", "1", "inspect", "completed", "run-inspect", "method:task:review", "", "", "", "Inspect current changes", ""],
     ]
 
 
@@ -4264,6 +4325,59 @@ def test_run_cli_work_log_inspect_plans_json_outputs_plan_projection(tmp_path) -
     assert payload[0]["steps"][0]["status"] == "completed"
     assert payload[0]["steps"][0]["title"] == "Inspect current changes"
     assert payload[0]["steps"][0]["metadata"]["step_index"] == 0
+
+
+def test_run_cli_work_log_inspect_plans_json_includes_step_deviation(tmp_path) -> None:
+    from loushang.coding.cli.__main__ import run_cli
+    from loushang.work import JsonlEventLogBackend
+
+    log_path = tmp_path / "events.jsonl"
+    event_log = JsonlEventLogBackend(log_path)
+    _append_work_log_inspect_entry(
+        event_log,
+        sequence=1,
+        kind="WorkStepCompleted",
+        run_id="run-inspect",
+        method_id="method:task:review",
+        plan_id="plan:method:task:review",
+        step_id="inspect",
+        step_index=0,
+        step_title="Inspect current changes",
+        deviation={
+            "deviation_type": "adapted",
+            "reason": "Only documentation files changed.",
+            "policy_level": "reasoned",
+            "evidence_refs": ["git-diff"],
+        },
+    )
+    stdout = StringIO()
+
+    async def scenario() -> None:
+        exit_code = await run_cli(
+            ["--work-log-inspect", str(log_path), "--work-log-inspect-format", "plans-json"],
+            stdin=StringIO(),
+            stdout=stdout,
+            stderr=StringIO(),
+            cwd=tmp_path,
+            services=_fake_services(),
+            runtime_builder=lambda **kwargs: (_ for _ in ()).throw(AssertionError("runtime should not start")),
+        )
+        assert exit_code == 0
+
+    asyncio.run(scenario())
+
+    deviation = json.loads(stdout.getvalue())[0]["steps"][0]["deviation"]
+    assert deviation == {
+        "step_id": "inspect",
+        "deviation_type": "adapted",
+        "reason": "Only documentation files changed.",
+        "policy_level": "reasoned",
+        "evidence_refs": ["git-diff"],
+        "approval_ref": None,
+        "risk": None,
+        "outcome": None,
+        "metadata": {},
+    }
 
 
 def test_run_cli_work_log_inspect_outputs_json_without_runtime(tmp_path) -> None:

@@ -17,6 +17,7 @@ def _entry(
     step_index: int | None = None,
     step_title: str | None = None,
     error: str | None = None,
+    deviation: dict[str, object] | None = None,
 ) -> object:
     from loushang.work import EventLogEntry
 
@@ -34,6 +35,8 @@ def _entry(
         nested_payload["step_title"] = step_title
     if error is not None:
         nested_payload["error"] = error
+    if deviation is not None:
+        nested_payload["deviation"] = deviation
     if nested_payload:
         payload["payload"] = nested_payload
 
@@ -218,6 +221,62 @@ def test_project_work_plan_runs_replays_failed_step_and_plan_error() -> None:
     assert plan.steps[0].status == "failed"
     assert plan.steps[0].metadata["error"] == "step failed"
     assert plan.steps[0].metadata["failed_sequence"] == 4
+
+
+def test_project_work_plan_runs_replays_step_deviation_metadata() -> None:
+    from loushang.work import project_work_plan_runs
+
+    plans = project_work_plan_runs(
+        [
+            _entry(
+                "run-inspect-step-started",
+                kind="WorkStepStarted",
+                run_id="run-inspect",
+                sequence=1,
+                step_id="inspect",
+                step_index=0,
+                step_title="Inspect current changes",
+            ),
+            _entry(
+                "run-inspect-step-completed",
+                kind="WorkStepCompleted",
+                run_id="run-inspect",
+                sequence=2,
+                step_id="inspect",
+                step_index=0,
+                step_title="Inspect current changes",
+                deviation={
+                    "deviation_type": "adapted",
+                    "reason": "Only documentation files changed.",
+                    "policy_level": "reasoned",
+                    "evidence_refs": ["git-diff"],
+                    "risk": "low",
+                    "outcome": "accepted",
+                },
+            ),
+        ]
+    )
+
+    deviation = plans[0].steps[0].deviation
+    assert deviation is not None
+    assert deviation.step_id == "inspect"
+    assert deviation.deviation_type == "adapted"
+    assert deviation.reason == "Only documentation files changed."
+    assert deviation.policy_level == "reasoned"
+    assert deviation.evidence_refs == ("git-diff",)
+    assert deviation.risk == "low"
+    assert deviation.outcome == "accepted"
+    assert plans[0].steps[0].metadata["deviation"] == {
+        "step_id": "inspect",
+        "deviation_type": "adapted",
+        "reason": "Only documentation files changed.",
+        "policy_level": "reasoned",
+        "evidence_refs": ("git-diff",),
+        "approval_ref": None,
+        "risk": "low",
+        "outcome": "accepted",
+        "metadata": {},
+    }
 
 
 def test_project_work_plan_runs_ignores_entries_without_plan_id() -> None:
