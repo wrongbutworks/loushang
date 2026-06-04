@@ -60,6 +60,54 @@ def project_agent_event_to_work_events(
         payload = _payload(event, "tool_call_id", "tool_name", "result", "is_error", "duration_ms")
         delivery_hint: DeliveryHint = "immediate" if event.get("is_error") is True else "coalesce"
         return [_event(context, kind="ToolCallCompleted", delivery_hint=delivery_hint, payload=payload)]
+    if source_type == "tool_policy_evaluated":
+        payload = _payload(
+            event,
+            "tool_call_id",
+            "tool_name",
+            "cwd",
+            "policy_disposition",
+            "policy_code",
+            "policy_reason",
+            "approval_required",
+            "argument_keys",
+            "path",
+            "file_path",
+            "command",
+        )
+        return [_event(context, kind="ToolPolicyEvaluated", delivery_hint="immediate", payload=payload)]
+    if source_type == "tool_approval_requested":
+        payload = _payload(
+            event,
+            "tool_call_id",
+            "tool_name",
+            "cwd",
+            "action_id",
+            "policy_code",
+            "policy_reason",
+            "argument_keys",
+            "path",
+            "file_path",
+            "command",
+        )
+        return [_event(context, kind="ToolApprovalRequested", delivery_hint="immediate", payload=payload)]
+    if source_type == "tool_approval_resolved":
+        payload = _payload(
+            event,
+            "tool_call_id",
+            "tool_name",
+            "cwd",
+            "action_id",
+            "approval_decision",
+            "approval_reason",
+            "policy_code",
+            "policy_reason",
+            "argument_keys",
+            "path",
+            "file_path",
+            "command",
+        )
+        return [_event(context, kind="ToolApprovalResolved", delivery_hint="immediate", payload=payload)]
     if source_type == "queue_update":
         payload = _payload(event, "steering", "follow_up")
         return [_event(context, kind="QueueUpdated", delivery_hint="coalesce", payload=payload)]

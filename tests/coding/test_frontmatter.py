@@ -25,6 +25,61 @@ def test_parse_frontmatter_normalizes_crlf_and_block_scalars() -> None:
     assert result.body == "Run the review."
 
 
+def test_parse_frontmatter_supports_simple_lists_and_maps() -> None:
+    from loushang.coding.frontmatter import parse_frontmatter
+
+    result = parse_frontmatter(
+        "---\n"
+        "domains:\n"
+        "  - coding\n"
+        "  - research\n"
+        "tags:\n"
+        "  family: review-first\n"
+        "  phase:\n"
+        "    - verify\n"
+        "---\n\n"
+        "Run the review.\n"
+    )
+
+    assert result.frontmatter == {
+        "domains": ["coding", "research"],
+        "tags": {
+            "family": "review-first",
+            "phase": ["verify"],
+        },
+    }
+
+
+def test_parse_frontmatter_supports_nested_maps() -> None:
+    from loushang.coding.frontmatter import parse_frontmatter
+
+    result = parse_frontmatter(
+        "---\n"
+        "step_constraints:\n"
+        "  inspect:\n"
+        "    level: reasoned\n"
+        "    requires_reason: true\n"
+        "  verify:\n"
+        "    level: evidence\n"
+        "    required_evidence:\n"
+        "      - tests\n"
+        "      - logs\n"
+        "---\n\n"
+        "Run the review.\n"
+    )
+
+    assert result.frontmatter["step_constraints"] == {
+        "inspect": {
+            "level": "reasoned",
+            "requires_reason": True,
+        },
+        "verify": {
+            "level": "evidence",
+            "required_evidence": ["tests", "logs"],
+        },
+    }
+
+
 def test_parse_frontmatter_keeps_original_body_without_complete_frontmatter() -> None:
     from loushang.coding.frontmatter import parse_frontmatter, strip_frontmatter
 

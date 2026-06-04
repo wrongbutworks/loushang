@@ -1,9 +1,11 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Protocol
+from typing import Awaitable, Callable, Mapping, Protocol
 
 from loushang.coding.diagnostics import DiagnosticsService
+
+ToolEventSink = Callable[[Mapping[str, object]], Awaitable[None] | None]
 
 
 @dataclass(frozen=True)
@@ -13,6 +15,7 @@ class ToolContext:
     diagnostics: DiagnosticsService | None = None
     signal: object | None = None
     model: object | None = None
+    event_sink: ToolEventSink | None = None
 
 
 class ToolContextProvider(Protocol):

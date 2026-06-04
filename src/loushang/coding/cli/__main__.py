@@ -8,7 +8,7 @@ import os
 import sys
 from collections.abc import Callable
 from contextlib import contextmanager, nullcontext, redirect_stderr
-from dataclasses import dataclass, replace
+from dataclasses import asdict, dataclass, replace
 from importlib.metadata import PackageNotFoundError
 from importlib.metadata import version as package_version
 from pathlib import Path
@@ -65,8 +65,8 @@ from loushang.coding.workflow import (
     resolve_workflow_files,
     run_prompt_steps_workflow,
 )
-from loushang.method import MethodLoader
-from loushang.work import JsonlEventLogBackend
+from loushang.method import MethodCompiler, MethodContext, MethodLoader
+from loushang.work import JsonlEventLogBackend, project_work_plan_runs
 
 _MISSING = object()
 _WORK_LOG_INSPECT_LIMIT = 20
@@ -467,7 +467,7 @@ async def run_cli(
                 return 2
 
             try:
-                prepared_turn = CodingDomainApp(cwd=project_root).prepare_turn(
+                prepared_turns = CodingDomainApp(cwd=project_root).prepare_turns(
                     CodingDomainRequest(
                         user_input=print_input.user_input,
                         cwd=project_root,
@@ -479,51 +479,126 @@ async def run_cli(
                 return 1
 
             if args.prompt is not None:
-                return await prompt_runner(
-                    runtime=runtime,
-                    session=session,
-                    prompt=prepared_turn.prepared_prompt,
-                    stdout=stdout,
-                    stderr=stderr,
-                    images=print_input.images,
-                    follow_up_messages=print_input.follow_up_messages,
-                    verbose=args.verbose,
-                    work_event_log=work_event_log,
-                    method_id=prepared_turn.method_id,
-                )
+                for turn_index, prepared_turn in enumerate(prepared_turns):
+                    is_first_turn = turn_index == 0
+                    is_last_turn = turn_index == len(prepared_turns) - 1
+                    planned_constraint = _prepared_turn_policy_metadata(prepared_turn, "planned_constraint")
+                    audit_policy = _prepared_turn_policy_metadata(prepared_turn, "audit_policy")
+                    exit_code = await prompt_runner(
+                        runtime=runtime,
+                        session=session,
+                        prompt=prepared_turn.prepared_prompt,
+                        stdout=stdout,
+                        stderr=stderr,
+                        images=print_input.images if is_first_turn else None,
+                        follow_up_messages=print_input.follow_up_messages if is_last_turn else (),
+                        verbose=args.verbose,
+                        work_event_log=work_event_log,
+                        method_id=prepared_turn.method_id,
+                        plan_id=prepared_turn.plan_id,
+                        step_id=prepared_turn.step_id,
+                        step_index=prepared_turn.step_index,
+                        step_title=prepared_turn.step_title,
+                        planned_constraint=planned_constraint,
+                        audit_policy=audit_policy,
+                        emit_plan_start=is_first_turn,
+                        emit_plan_completion=is_last_turn,
+                        dispose=is_last_turn,
+                    )
+                    if exit_code != 0:
+                        if not is_last_turn:
+                            await _dispose_runtime_or_session(runtime, session)
+                        return exit_code
+                return 0
 
             output_mode = "text" if args.mode == "print" else args.mode
             if print_runner is not run_print_mode:
-                return await print_runner(
+                for turn_index, prepared_turn in enumerate(prepared_turns):
+                    is_first_turn = turn_index == 0
+                    is_last_turn = turn_index == len(prepared_turns) - 1
+                    planned_constraint = _prepared_turn_policy_metadata(prepared_turn, "planned_constraint")
+                    audit_policy = _prepared_turn_policy_metadata(prepared_turn, "audit_policy")
+                    exit_code = await print_runner(
+                        runtime=runtime,
+                        session=session,
+                        user_input=prepared_turn.prepared_prompt,
+                        stdout=stdout,
+                        stderr=stderr,
+                        images=print_input.images if is_first_turn else None,
+                        follow_up_messages=print_input.follow_up_messages if is_last_turn else (),
+                        output_mode=output_mode,
+                        render_tool_events=args.render_tool_events,
+                        work_event_log=work_event_log,
+                        method_id=prepared_turn.method_id,
+                        plan_id=prepared_turn.plan_id,
+                        step_id=prepared_turn.step_id,
+                        step_index=prepared_turn.step_index,
+                        step_title=prepared_turn.step_title,
+                        planned_constraint=planned_constraint,
+                        audit_policy=audit_policy,
+                        emit_plan_start=is_first_turn,
+                        emit_plan_completion=is_last_turn,
+                        dispose=is_last_turn,
+                    )
+                    if exit_code != 0:
+                        if not is_last_turn:
+                            await _dispose_runtime_or_session(runtime, session)
+                        return exit_code
+                return 0
+
+            for turn_index, prepared_turn in enumerate(prepared_turns):
+                is_first_turn = turn_index == 0
+                is_last_turn = turn_index == len(prepared_turns) - 1
+                planned_constraint = _prepared_turn_policy_metadata(prepared_turn, "planned_constraint")
+                audit_policy = _prepared_turn_policy_metadata(prepared_turn, "audit_policy")
+                exit_code = await mode_runner(
+                    config=ModeConfig(
+                        mode=args.mode,
+                        render_tool_events=args.render_tool_events,
+                    ),
                     runtime=runtime,
                     session=session,
                     user_input=prepared_turn.prepared_prompt,
+                    images=print_input.images if is_first_turn else None,
+                    follow_up_messages=print_input.follow_up_messages if is_last_turn else (),
+                    stdin=stdin,
                     stdout=stdout,
                     stderr=stderr,
-                    images=print_input.images,
-                    follow_up_messages=print_input.follow_up_messages,
-                    output_mode=output_mode,
-                    render_tool_events=args.render_tool_events,
                     work_event_log=work_event_log,
                     method_id=prepared_turn.method_id,
+                    plan_id=prepared_turn.plan_id,
+                    step_id=prepared_turn.step_id,
+                    step_index=prepared_turn.step_index,
+                    step_title=prepared_turn.step_title,
+                    planned_constraint=planned_constraint,
+                    audit_policy=audit_policy,
+                    emit_plan_start=is_first_turn,
+                    emit_plan_completion=is_last_turn,
+                    dispose=is_last_turn,
                 )
+                if exit_code != 0:
+                    if not is_last_turn:
+                        await _dispose_runtime_or_session(runtime, session)
+                    return exit_code
+            return 0
 
-            return await mode_runner(
-                config=ModeConfig(
-                    mode=args.mode,
-                    render_tool_events=args.render_tool_events,
-                ),
-                runtime=runtime,
-                session=session,
-                user_input=prepared_turn.prepared_prompt,
-                images=print_input.images,
-                follow_up_messages=print_input.follow_up_messages,
-                stdin=stdin,
-                stdout=stdout,
-                stderr=stderr,
-                work_event_log=work_event_log,
-                method_id=prepared_turn.method_id,
-            )
+
+async def _dispose_runtime_or_session(runtime: Any, session: Any) -> None:
+    disposer = getattr(runtime, "dispose", None)
+    if not callable(disposer):
+        disposer = getattr(session, "dispose", None)
+    if not callable(disposer):
+        return
+    result = disposer()
+    if inspect.isawaitable(result):
+        await result
+
+
+def _prepared_turn_policy_metadata(prepared_turn: Any, key: str) -> Mapping[str, object] | None:
+    value = prepared_turn.metadata.get(key)
+    if isinstance(value, Mapping) and value:
+        return dict(value)
+    return None
 
 
 def _resolve_session_dir(args: CliArgs, project_root: Path, services: Any) -> Path:
@@ -615,6 +690,7 @@ def _stdout_guard_enabled(args: CliArgs) -> bool:
         or (args.list_skills and args.list_skills_format == "json")
         or (args.list_methods and args.list_methods_format == "json")
         or (args.show_method is not None and args.show_method_format == "json")
+        or (args.show_method_plan is not None and args.show_method_plan_format == "json")
         or (args.list_plugins and args.list_plugins_format == "json")
         or (args.list_packages and args.list_packages_format == "json")
         or (args.export is not None and args.export_result_format == "json")
@@ -766,14 +842,19 @@ def _run_work_log_inspect(args: CliArgs, project_root: Path, stdout: TextIO, std
         return None
     try:
         event_log = JsonlEventLogBackend(_resolve_work_log_path(args.work_log_inspect, project_root))
-        entries = event_log.query(run_id=args.work_log_run)[-_WORK_LOG_INSPECT_LIMIT:]
+        entries = event_log.query(run_id=args.work_log_run)
     except Exception as error:
         stderr.write(f"Error: {_format_cli_error(error)}\n")
         return 1
     if args.work_log_inspect_format == "json":
-        stdout.write(json.dumps([_work_log_entry_summary(entry) for entry in entries], ensure_ascii=False) + "\n")
+        raw_entries = entries[-_WORK_LOG_INSPECT_LIMIT:]
+        stdout.write(json.dumps([_work_log_entry_summary(entry) for entry in raw_entries], ensure_ascii=False) + "\n")
+    elif args.work_log_inspect_format == "plans-json":
+        stdout.write(json.dumps([asdict(plan) for plan in project_work_plan_runs(entries)], ensure_ascii=False) + "\n")
+    elif args.work_log_inspect_format == "plans":
+        _write_work_log_plan_summary(entries, stdout)
     else:
-        _write_work_log_text(entries, stdout)
+        _write_work_log_text(entries[-_WORK_LOG_INSPECT_LIMIT:], stdout)
     return 0
 
 
@@ -785,12 +866,122 @@ def _resolve_work_log_path(raw_path: str, project_root: Path) -> Path:
 
 
 def _write_work_log_text(entries: list[Any], stdout: TextIO) -> None:
-    stdout.write("sequence\tkind\trun_id\tsession_id\tdelivery_hint\tmethod_id\n")
-    for entry in entries:
-        stdout.write(
-            f"{entry.sequence}\t{_work_log_entry_kind(entry)}\t{entry.run_id}\t"
-            f"{entry.session_id}\t{_work_log_entry_delivery_hint(entry)}\t{_work_log_entry_method_id(entry)}\n"
+    stdout.write(
+        "\t".join(
+            [
+                "sequence",
+                "kind",
+                "run_id",
+                "session_id",
+                "delivery_hint",
+                "method_id",
+                "plan_id",
+                "step_id",
+                "step_index",
+                "step_title",
+            ]
         )
+        + "\n"
+    )
+    for entry in entries:
+        step_index = _work_log_entry_step_index(entry)
+        stdout.write(
+            "\t".join(
+                [
+                    str(entry.sequence),
+                    _work_log_entry_kind(entry),
+                    entry.run_id,
+                    entry.session_id,
+                    _work_log_entry_delivery_hint(entry),
+                    _work_log_entry_method_id(entry),
+                    _work_log_entry_plan_id(entry),
+                    _work_log_entry_step_id(entry),
+                    "" if step_index is None else str(step_index),
+                    _work_log_entry_step_title(entry),
+                ]
+            )
+            + "\n"
+        )
+
+
+def _write_work_log_plan_summary(entries: list[Any], stdout: TextIO) -> None:
+    stdout.write(
+        "\t".join(
+            [
+                "type",
+                "index",
+                "id",
+                "status",
+                "run_id",
+                "method_id",
+                "completed_steps",
+                "failed_steps",
+                "current_step",
+                "title",
+                "deviation",
+            ]
+        )
+        + "\n"
+    )
+    for plan in project_work_plan_runs(entries):
+        stdout.write(
+            "\t".join(
+                [
+                    "plan",
+                    "",
+                    plan.plan_id,
+                    plan.status,
+                    "",
+                    plan.method_id or "",
+                    f"{plan.completed_step_count}/{plan.step_count}",
+                    str(plan.failed_step_count),
+                    plan.current_step_id or "",
+                    "",
+                    "",
+                ]
+            )
+            + "\n"
+        )
+        for fallback_index, step in enumerate(plan.steps, start=1):
+            stdout.write(
+                "\t".join(
+                    [
+                        "step",
+                        _work_log_plan_step_index(step.metadata, fallback_index),
+                        step.step_id,
+                        step.status,
+                        step.run_id,
+                        step.method_id or plan.method_id or "",
+                        "",
+                        "",
+                        "",
+                        step.title or "",
+                        _work_log_plan_step_deviation_summary(step.deviation),
+                    ]
+                )
+                + "\n"
+            )
+
+
+def _work_log_plan_step_index(metadata: Mapping[str, object], fallback_index: int) -> str:
+    step_index = metadata.get("step_index")
+    if isinstance(step_index, int) and not isinstance(step_index, bool):
+        return str(step_index + 1)
+    return str(fallback_index)
+
+
+def _work_log_plan_step_deviation_summary(deviation: Any) -> str:
+    if deviation is None:
+        return ""
+    deviation_type = getattr(deviation, "deviation_type", "")
+    reason = getattr(deviation, "reason", "")
+    if deviation_type and reason:
+        return f"{deviation_type}: {reason}"
+    if deviation_type:
+        return str(deviation_type)
+    if reason:
+        return str(reason)
+    return ""
 
 
 def _work_log_entry_summary(entry: Any) -> dict[str, object]:
@@ -808,6 +999,36 @@ def _work_log_entry_summary(entry: Any) -> dict[str, object]:
     method_id = _work_log_entry_method_id(entry)
     if method_id:
         summary["method_id"] = method_id
+    plan_id = _work_log_entry_plan_id(entry)
+    if plan_id:
+        summary["plan_id"] = plan_id
+    step_id = _work_log_entry_step_id(entry)
+    if step_id:
+        summary["step_id"] = step_id
+    step_index = _work_log_entry_step_index(entry)
+    if step_index is not None:
+        summary["step_index"] = step_index
+    step_title = _work_log_entry_step_title(entry)
+    if step_title:
+        summary["step_title"] = step_title
+    for key in (
+        "tool_call_id",
+        "tool_name",
+        "action_id",
+        "policy_disposition",
+        "policy_code",
+        "policy_reason",
+        "approval_required",
+        "approval_decision",
+        "approval_reason",
+        "argument_keys",
+        "path",
+        "file_path",
+        "command",
+    ):
+        value = _work_log_entry_payload_value(entry, key)
+        if isinstance(value, str | bool | int | float | list | tuple):
+            summary[key] = value
     return summary
 
 
@@ -826,15 +1047,43 @@ def _work_log_entry_delivery_hint(entry: Any) -> str:
 
 
 def _work_log_entry_method_id(entry: Any) -> str:
-    method_id = entry.payload.get("method_id")
-    if isinstance(method_id, str):
-        return method_id
+    return _work_log_entry_string_payload_value(entry, "method_id")
+
+
+def _work_log_entry_plan_id(entry: Any) -> str:
+    return _work_log_entry_string_payload_value(entry, "plan_id")
+
+
+def _work_log_entry_step_id(entry: Any) -> str:
+    return _work_log_entry_string_payload_value(entry, "step_id")
+
+
+def _work_log_entry_step_title(entry: Any) -> str:
+    return _work_log_entry_string_payload_value(entry, "step_title")
+
+
+def _work_log_entry_step_index(entry: Any) -> int | None:
+    step_index = _work_log_entry_payload_value(entry, "step_index")
+    if isinstance(step_index, int) and not isinstance(step_index, bool):
+        return step_index
+    return None
+
+
+def _work_log_entry_string_payload_value(entry: Any, key: str) -> str:
+    value = _work_log_entry_payload_value(entry, key)
+    if isinstance(value, str):
+        return value
+    return ""
+
+
+def _work_log_entry_payload_value(entry: Any, key: str) -> object | None:
+    value = entry.payload.get(key)
+    if value is not None:
+        return value
     nested_payload = entry.payload.get("payload")
     if isinstance(nested_payload, dict):
-        nested_method_id = nested_payload.get("method_id")
-        if isinstance(nested_method_id, str):
-            return nested_method_id
-    return ""
+        return nested_payload.get(key)
+    return None
 
 
 def _has_command_style_operation(args: CliArgs) -> bool:
@@ -846,6 +1095,7 @@ def _has_command_style_operation(args: CliArgs) -> bool:
         or args.list_skills
         or args.list_methods
         or args.show_method is not None
+        or args.show_method_plan is not None
         or args.list_plugins
         or args.list_packages
         or args.export is not None
@@ -923,6 +1173,7 @@ def _runtime_args_for_bootstrap(args: CliArgs) -> CliArgs:
         or args.list_skills
         or args.list_methods
         or args.show_method is not None
+        or args.show_method_plan is not None
         or args.list_plugins
         or args.list_packages
         or args.list_models is not False
@@ -1843,7 +2094,7 @@ def _run_method_visibility(
     stdout: TextIO,
     stderr: TextIO,
 ) -> int | None:
-    if not args.list_methods and args.show_method is None:
+    if not args.list_methods and args.show_method is None and args.show_method_plan is None:
         return None
 
     try:
@@ -1862,6 +2113,23 @@ def _run_method_visibility(
                 f"{method['id']}\t{method['name']}\t{method['kind']}\t"
                 f"{method['element_type']}\t{method['path']}\n"
             )
+        return 0
+
+    if args.show_method_plan is not None:
+        method = _find_method(methods, args.show_method_plan)
+        if method is None:
+            stderr.write(f"Error: method not found: {args.show_method_plan}\n")
+            return 1
+        try:
+            plan = MethodCompiler().compile(method, context=MethodContext(domain="coding"))
+        except Exception as error:
+            stderr.write(f"Error: {_format_cli_error(error)}\n")
+            return 1
+        payload = _normalize_method_plan(method, plan)
+        if args.show_method_plan_format == "json":
+            stdout.write(json.dumps(payload, ensure_ascii=False) + "\n")
+            return 0
+        stdout.write(_format_method_plan_detail(payload))
         return 0
 
     method = _find_method(methods, args.show_method or "")
@@ -1895,7 +2163,88 @@ def _normalize_method_entry(method: Any) -> dict[str, object]:
         "meta_role": _safe_getattr(method, "meta_role", None),
         "phase": _safe_getattr(method, "phase", None),
         "path": _safe_getattr(method, "source_path", "") or "",
+        "applicability": _normalize_method_applicability(_safe_getattr(method, "applicability", None)),
     }
+
+
+def _normalize_method_applicability(applicability: Any) -> dict[str, object]:
+    return {
+        "domains": _string_list(_safe_getattr(applicability, "domains", ())),
+        "task_types": _string_list(_safe_getattr(applicability, "task_types", ())),
+        "contexts": _string_list(_safe_getattr(applicability, "contexts", ())),
+        "artifact_types": _string_list(_safe_getattr(applicability, "artifact_types", ())),
+        "modalities": _string_list(_safe_getattr(applicability, "modalities", ())),
+        "toolchains": _string_list(_safe_getattr(applicability, "toolchains", ())),
+        "lifecycle": _string_list(_safe_getattr(applicability, "lifecycle", ())),
+        "capabilities": _string_list(_safe_getattr(applicability, "capabilities", ())),
+        "complexity": _optional_string(_safe_getattr(applicability, "complexity", None)),
+        "risk": _optional_string(_safe_getattr(applicability, "risk", None)),
+        "tags": _normalize_method_tags(_safe_getattr(applicability, "tags", {})),
+    }
+
+
+def _normalize_method_plan(method: Any, plan: Any) -> dict[str, object]:
+    return {
+        "method": _normalize_method_entry(method),
+        "plan": {
+            "id": _safe_getattr(plan, "id", "") or "",
+            "method_id": _safe_getattr(plan, "method_id", "") or "",
+            "mode": _safe_getattr(plan, "mode", "") or "",
+            "phase": _safe_getattr(plan, "phase", None),
+            "activity": _safe_getattr(plan, "activity", None),
+            "task": _safe_getattr(plan, "task", None),
+            "metadata": _json_safe(_safe_getattr(plan, "metadata", {})),
+            "applicability": _normalize_method_applicability(_safe_getattr(plan, "applicability", None)),
+        },
+        "steps": [_normalize_method_plan_step(step) for step in _safe_getattr(plan, "steps", ())],
+    }
+
+
+def _normalize_method_plan_step(step: Any) -> dict[str, object]:
+    return {
+        "id": _safe_getattr(step, "id", "") or "",
+        "title": _safe_getattr(step, "title", "") or "",
+        "executor": _safe_getattr(step, "executor", "") or "",
+        "role_variant": _safe_getattr(step, "role_variant", None),
+        "projection": _json_safe(_safe_getattr(step, "projection", {})),
+        "constraint": _json_safe(_safe_getattr(step, "constraint", {})),
+        "audit": _json_safe(_safe_getattr(step, "audit", {})),
+        "applicability": _normalize_method_applicability(_safe_getattr(step, "applicability", None)),
+    }
+
+
+def _json_safe(value: Any) -> object:
+    if value is None or isinstance(value, str | int | float | bool):
+        return value
+    if isinstance(value, Mapping):
+        return {str(key): _json_safe(item) for key, item in value.items()}
+    if isinstance(value, list | tuple):
+        return [_json_safe(item) for item in value]
+    return str(value)
+
+
+def _normalize_method_tags(tags: Any) -> dict[str, list[str]]:
+    if not isinstance(tags, Mapping):
+        return {}
+    return {
+        key: _string_list(value)
+        for key, value in sorted(tags.items())
+        if isinstance(key, str) and key and _string_list(value)
+    }
+
+
+def _string_list(value: Any) -> list[str]:
+    if isinstance(value, str):
+        return [value] if value else []
+    if isinstance(value, list | tuple):
+        return [item for item in value if isinstance(item, str) and item]
+    return []
+
+
+def _optional_string(value: Any) -> str | None:
+    if isinstance(value, str) and value:
+        return value
+    return None
 
 
 def _format_method_detail(method: Mapping[str, object]) -> str:
@@ -1908,11 +2257,98 @@ def _format_method_detail(method: Mapping[str, object]) -> str:
         value = method.get(key)
         if value:
             lines.append(f"{key}: {value}")
+    applicability_lines = _format_method_applicability_lines(method.get("applicability"))
+    if applicability_lines:
+        lines.append("applicability:")
+        lines.extend(applicability_lines)
     lines.append("")
     lines.append(str(method.get("content", "")))
     if not lines[-1].endswith("\n"):
         lines[-1] = f"{lines[-1]}\n"
     return "\n".join(lines)
+
+
+def _format_method_plan_detail(payload: Mapping[str, object]) -> str:
+    method = payload.get("method")
+    plan = payload.get("plan")
+    steps = payload.get("steps")
+    method_mapping = method if isinstance(method, Mapping) else {}
+    plan_mapping = plan if isinstance(plan, Mapping) else {}
+    lines = [
+        f"method_id: {method_mapping.get('id', '')}",
+        f"method_name: {method_mapping.get('name', '')}",
+        f"plan_id: {plan_mapping.get('id', '')}",
+        f"mode: {plan_mapping.get('mode', '')}",
+        "steps:",
+    ]
+    if isinstance(steps, list):
+        for index, raw_step in enumerate(steps, start=1):
+            if not isinstance(raw_step, Mapping):
+                continue
+            step_id = raw_step.get("id", "")
+            title = raw_step.get("title", "")
+            lines.append(f"  {index}. {step_id} - {title}")
+            guidance = _method_plan_step_guidance(raw_step)
+            if guidance:
+                lines.append(f"     guidance: {guidance}")
+            constraint = _method_plan_step_mapping(raw_step, "constraint")
+            if constraint:
+                lines.append(f"     constraint: {json.dumps(constraint, ensure_ascii=False)}")
+            audit = _method_plan_step_mapping(raw_step, "audit")
+            if audit:
+                lines.append(f"     audit: {json.dumps(audit, ensure_ascii=False)}")
+    lines.append("")
+    return "\n".join(lines)
+
+
+def _method_plan_step_guidance(step: Mapping[str, object]) -> str:
+    projection = step.get("projection")
+    if not isinstance(projection, Mapping):
+        return ""
+    step_guidance = projection.get("step_guidance")
+    if isinstance(step_guidance, str):
+        return step_guidance.strip()
+    content = projection.get("content")
+    if isinstance(content, str):
+        return content.strip()
+    return ""
+
+
+def _method_plan_step_mapping(step: Mapping[str, object], key: str) -> Mapping[str, object]:
+    value = step.get(key)
+    if isinstance(value, Mapping):
+        return value
+    return {}
+
+
+def _format_method_applicability_lines(applicability: object) -> list[str]:
+    if not isinstance(applicability, Mapping):
+        return []
+    lines: list[str] = []
+    for key in (
+        "domains",
+        "task_types",
+        "contexts",
+        "artifact_types",
+        "modalities",
+        "toolchains",
+        "lifecycle",
+        "capabilities",
+    ):
+        values = _string_list(applicability.get(key))
+        if values:
+            lines.append(f"  {key}: {', '.join(values)}")
+    for key in ("complexity", "risk"):
+        value = applicability.get(key)
+        if isinstance(value, str) and value:
+            lines.append(f"  {key}: {value}")
+    tags = applicability.get("tags")
+    if isinstance(tags, Mapping):
+        for key, raw_values in sorted(tags.items()):
+            values = _string_list(raw_values)
+            if isinstance(key, str) and key and values:
+                lines.append(f"  tags.{key}: {', '.join(values)}")
+    return lines
 
 
 def _run_list_plugins(

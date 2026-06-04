@@ -63,6 +63,28 @@ def test_method_loader_discovers_method_resources_and_ignores_future_manifests(t
         "description: Method review.\n"
         "type: task\n"
         "domain: coding\n"
+        "domains:\n"
+        "  - coding\n"
+        "  - research\n"
+        "task_types:\n"
+        "  - reviewing\n"
+        "contexts:\n"
+        "  - oss-library\n"
+        "artifact_types:\n"
+        "  - code\n"
+        "modalities:\n"
+        "  - text\n"
+        "toolchains:\n"
+        "  - python\n"
+        "lifecycle:\n"
+        "  - maintenance\n"
+        "capabilities:\n"
+        "  - diff-review\n"
+        "complexity: standard\n"
+        "risk: medium\n"
+        "tags:\n"
+        "  method_family:\n"
+        "    - review-first\n"
         "meta_role: VALIDATOR\n"
         "phase: VERIFY\n"
         "version: 1\n"
@@ -81,6 +103,17 @@ def test_method_loader_discovers_method_resources_and_ignores_future_manifests(t
     assert method.kind == "method_resource"
     assert method.element_type == "task"
     assert method.domain == "coding"
+    assert method.applicability.domains == ("coding", "research")
+    assert method.applicability.task_types == ("reviewing",)
+    assert method.applicability.contexts == ("oss-library",)
+    assert method.applicability.artifact_types == ("code",)
+    assert method.applicability.modalities == ("text",)
+    assert method.applicability.toolchains == ("python",)
+    assert method.applicability.lifecycle == ("maintenance",)
+    assert method.applicability.capabilities == ("diff-review",)
+    assert method.applicability.complexity == "standard"
+    assert method.applicability.risk == "medium"
+    assert method.applicability.tags == {"method_family": ("review-first",)}
     assert method.meta_role == "VALIDATOR"
     assert method.phase == "VERIFY"
     assert method.version == "1"

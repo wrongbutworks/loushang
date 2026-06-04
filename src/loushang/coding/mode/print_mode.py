@@ -3,7 +3,7 @@ from __future__ import annotations
 import inspect
 import json
 import sys
-from typing import Any, Literal, Sequence, TextIO
+from typing import Any, Literal, Mapping, Sequence, TextIO
 
 from loushang.coding.event import (
     SUPPORTED_JSON_EVENT_VIEWS,
@@ -32,6 +32,14 @@ class PrintMode(ModeAdapter):
         render_tool_events: bool = False,
         work_event_log: EventLogBackend | None = None,
         method_id: str | None = None,
+        plan_id: str | None = None,
+        step_id: str | None = None,
+        step_index: int | None = None,
+        step_title: str | None = None,
+        planned_constraint: Mapping[str, object] | None = None,
+        audit_policy: Mapping[str, object] | None = None,
+        emit_plan_start: bool = True,
+        emit_plan_completion: bool = True,
     ) -> None:
         if output_mode not in {"text", "json"}:
             raise ValueError(f"unsupported output mode: {output_mode}")
@@ -59,6 +67,14 @@ class PrintMode(ModeAdapter):
         self.render_tool_events = render_tool_events
         self.work_event_log = work_event_log
         self.method_id = method_id
+        self.plan_id = plan_id
+        self.step_id = step_id
+        self.step_index = step_index
+        self.step_title = step_title
+        self.planned_constraint = planned_constraint
+        self.audit_policy = audit_policy
+        self.emit_plan_start = emit_plan_start
+        self.emit_plan_completion = emit_plan_completion
         self._tool_render_runtime: ToolRenderRuntime | None = None
         self._tool_definition_resolver: ToolDefinitionResolver | None = None
         self._disposed = False
@@ -70,10 +86,16 @@ class PrintMode(ModeAdapter):
         *,
         images: list[object] | None = None,
         follow_up_messages: Sequence[str] = (),
+        dispose: bool = True,
     ) -> int:
         if user_input is None:
             raise ValueError("Print mode requires a user input")
-        return await self.run_once(user_input, images=images, follow_up_messages=follow_up_messages)
+        return await self.run_once(
+            user_input,
+            images=images,
+            follow_up_messages=follow_up_messages,
+            dispose=dispose,
+        )
 
     async def stop(self) -> int:
         return 0
@@ -119,6 +141,7 @@ class PrintMode(ModeAdapter):
         *,
         images: list[object] | None = None,
         follow_up_messages: Sequence[str] = (),
+        dispose: bool = True,
     ) -> int:
         def unsubscribe() -> None:
             return None
@@ -129,10 +152,19 @@ class PrintMode(ModeAdapter):
                 header = self.session.session_manager.get_header()
                 self._write_json_line(serialize_session_header(header))
             unsubscribe = self.session.subscribe(self._handle_event)
-            await self._prompt_session(user_input, images=images)
+            await self._prompt_session(
+                user_input,
+                images=images,
+                emit_plan_start=self.emit_plan_start,
+                emit_plan_completion=self.emit_plan_completion and not follow_up_messages,
+            )
             await self.session.wait_for_idle()
-            for message in follow_up_messages:
-                await self._prompt_session(message)
+            for follow_up_index, message in enumerate(follow_up_messages):
+                await self._prompt_session(
+                    message,
+                    emit_plan_start=False,
+                    emit_plan_completion=self.emit_plan_completion and follow_up_index == len(follow_up_messages) - 1,
+                )
                 await self.session.wait_for_idle()
             assistant_failure = _last_assistant_failure_message(self.session)
             if assistant_failure is not None:
@@ -143,11 +175,12 @@ class PrintMode(ModeAdapter):
             exit_code = 1
         finally:
             unsubscribe()
-            try:
-                await self.dispose()
-            except Exception as exc:
-                self.stderr.write(f"Error: {exc}\n")
-                exit_code = 1
+            if dispose:
+                try:
+                    await self.dispose()
+                except Exception as exc:
+                    self.stderr.write(f"Error: {exc}\n")
+                    exit_code = 1
         return exit_code
 
     def get_mode_state(self) -> ModeState:
@@ -238,7 +271,14 @@ class PrintMode(ModeAdapter):
         except TypeError:
             return repr(args)
 
-    async def _prompt_session(self, user_input: str, *, images: list[object] | None = None) -> None:
+    async def _prompt_session(
+        self,
+        user_input: str,
+        *,
+        images: list[object] | None = None,
+        emit_plan_start: bool = True,
+        emit_plan_completion: bool = True,
+    ) -> None:
         if self.work_event_log is None:
             await _prompt_session(self.session, user_input, images=images)
             return
@@ -248,6 +288,14 @@ class PrintMode(ModeAdapter):
             session_id=_work_session_id(self.session),
             images=images,
             method_id=self.method_id,
+            plan_id=self.plan_id,
+            step_id=self.step_id,
+            step_index=self.step_index,
+            step_title=self.step_title,
+            planned_constraint=self.planned_constraint,
+            audit_policy=self.audit_policy,
+            emit_plan_start=emit_plan_start,
+            emit_plan_completion=emit_plan_completion,
         )
 
 
@@ -416,6 +464,15 @@ async def run_print_mode(
     render_tool_events: bool = False,
     work_event_log: EventLogBackend | None = None,
     method_id: str | None = None,
+    plan_id: str | None = None,
+    step_id: str | None = None,
+    step_index: int | None = None,
+    step_title: str | None = None,
+    planned_constraint: Mapping[str, object] | None = None,
+    audit_policy: Mapping[str, object] | None = None,
+    emit_plan_start: bool = True,
+    emit_plan_completion: bool = True,
+    dispose: bool = True,
 ) -> int:
     mode = PrintMode(
         runtime=runtime,
@@ -428,8 +485,21 @@ async def run_print_mode(
         render_tool_events=render_tool_events,
         work_event_log=work_event_log,
         method_id=method_id,
+        plan_id=plan_id,
+        step_id=step_id,
+        step_index=step_index,
+        step_title=step_title,
+        planned_constraint=planned_constraint,
+        audit_policy=audit_policy,
+        emit_plan_start=emit_plan_start,
+        emit_plan_completion=emit_plan_completion,
     )
-    return await mode.run_once(user_input, images=images, follow_up_messages=follow_up_messages)
+    return await mode.run_once(
+        user_input,
+        images=images,
+        follow_up_messages=follow_up_messages,
+        dispose=dispose,
+    )
 
 
 async def _prompt_session(session: Any, user_input: str, *, images: list[object] | None = None) -> None:

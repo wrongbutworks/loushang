@@ -6,6 +6,7 @@ from loushang.work.event_log import (
     InMemoryEventLogBackend,
     JsonlEventLogBackend,
 )
+from loushang.work.plan_projection import project_work_plan_runs
 from loushang.work.projection import (
     WorkEventProjectionContext,
     project_agent_event_to_work_events,
@@ -14,8 +15,12 @@ from loushang.work.types import (
     DeliveryHint,
     WorkEvent,
     WorkOperation,
+    WorkPlanRun,
     WorkRun,
     WorkRunStatus,
+    WorkStepDeviation,
+    WorkStepRun,
+    WorkStepStatus,
 )
 
 __all__ = [
@@ -29,7 +34,12 @@ __all__ = [
     "WorkEventProjectionContext",
     "WorkEvent",
     "WorkOperation",
+    "WorkPlanRun",
     "WorkRun",
     "WorkRunStatus",
+    "WorkStepDeviation",
+    "WorkStepRun",
+    "WorkStepStatus",
     "project_agent_event_to_work_events",
+    "project_work_plan_runs",
 ]

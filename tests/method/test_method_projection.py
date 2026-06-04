@@ -28,6 +28,41 @@ def test_method_projector_builds_stable_system_guidance() -> None:
     assert projection.temperature == 0.2
 
 
+def test_method_projector_preserves_step_policy_metadata() -> None:
+    descriptor = MethodDescriptor(
+        id="method:task:review",
+        name="review",
+        description="Review changes.",
+        content="Review the diff carefully.",
+        kind="method_resource",
+        metadata={
+            "frontmatter": {
+                "plan_mode": "fixed",
+                "steps": ["inspect"],
+                "step_constraints": {
+                    "inspect": {
+                        "level": "reasoned",
+                        "requires_reason": True,
+                    },
+                },
+                "step_audit": {
+                    "inspect": {
+                        "record": ["status", "reason"],
+                    },
+                },
+            },
+        },
+    )
+    plan = MethodCompiler().compile(descriptor)
+    projection = MethodProjector().project(plan, plan.steps[0])
+
+    assert projection.metadata["source_constraint"] == {
+        "level": "reasoned",
+        "requires_reason": True,
+    }
+    assert projection.metadata["source_audit"] == {"record": ["status", "reason"]}
+
+
 def test_method_projector_handles_empty_content() -> None:
     descriptor = MethodDescriptor(id="skill:empty", name="empty", description="", content="", kind="skill_backed")
     plan = MethodCompiler().compile(descriptor)

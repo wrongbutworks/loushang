@@ -14,6 +14,18 @@ def _tool_context_provider(*, cwd: str):
     return _provider
 
 
+def _tool_context_provider_with_events(*, cwd: str, events: list[dict[str, object]]):
+    from loushang.coding.tools import ToolContext
+
+    async def emit_event(event: dict[str, object]) -> None:
+        events.append(event)
+
+    def _provider(*, tool_call_id: str) -> ToolContext:
+        return ToolContext(tool_call_id=tool_call_id, cwd=cwd, event_sink=emit_event)
+
+    return _provider
+
+
 def test_global_policy_engine_blocks_write_tool_before_mutation(tmp_path) -> None:
     from loushang.coding.policy import PolicyEngine
     from loushang.coding.tools import ToolRegistry, register_builtin_tools
@@ -140,6 +152,105 @@ def test_sync_approval_resolver_can_allow_ask_policy_for_write(tmp_path) -> None
     assert resolver.requests[0].tool_name == "write"
     assert resolver.requests[0].policy_code == "tool_requires_approval"
     assert "approved.txt" in str(resolver.requests[0].arguments["path"])
+
+
+def test_ask_policy_allow_emits_tool_approval_audit_events(tmp_path) -> None:
+    from loushang.coding.policy import ApprovalDecision, PolicyEngine
+    from loushang.coding.tools import ToolRegistry, register_builtin_tools
+
+    class AllowingResolver:
+        def resolve(self, request):
+            return ApprovalDecision.allow()
+
+    events: list[dict[str, object]] = []
+    registry = ToolRegistry()
+    register_builtin_tools(
+        registry,
+        policy_engine=PolicyEngine(ask_tools=["write"]),
+        approval_resolver=AllowingResolver(),
+    )
+    runtime_tool = registry.materialize_tool(
+        "write",
+        context_provider=_tool_context_provider_with_events(cwd=str(tmp_path), events=events),
+    )
+
+    asyncio.run(
+        runtime_tool.execute("call-write-approval-audit", {"path": "approved-audit.txt", "content": "approved"})
+    )
+
+    assert [event["type"] for event in events] == [
+        "tool_policy_evaluated",
+        "tool_approval_requested",
+        "tool_approval_resolved",
+    ]
+    assert events[0] == {
+        "type": "tool_policy_evaluated",
+        "tool_call_id": "call-write-approval-audit",
+        "tool_name": "write",
+        "cwd": str(tmp_path),
+        "policy_disposition": "ask",
+        "policy_code": "tool_requires_approval",
+        "policy_reason": "Tool write requires approval",
+        "approval_required": True,
+        "argument_keys": ["content", "path"],
+        "path": str(tmp_path / "approved-audit.txt"),
+    }
+    action_id = events[1].get("action_id")
+    assert isinstance(action_id, str)
+    assert events[1] == {
+        "type": "tool_approval_requested",
+        "tool_call_id": "call-write-approval-audit",
+        "tool_name": "write",
+        "cwd": str(tmp_path),
+        "action_id": action_id,
+        "policy_code": "tool_requires_approval",
+        "policy_reason": "Tool write requires approval",
+        "argument_keys": ["content", "path"],
+        "path": str(tmp_path / "approved-audit.txt"),
+    }
+    assert events[2] == {
+        "type": "tool_approval_resolved",
+        "tool_call_id": "call-write-approval-audit",
+        "tool_name": "write",
+        "cwd": str(tmp_path),
+        "action_id": action_id,
+        "approval_decision": "allow",
+        "policy_code": "tool_requires_approval",
+        "policy_reason": "Tool write requires approval",
+        "argument_keys": ["content", "path"],
+        "path": str(tmp_path / "approved-audit.txt"),
+    }
+
+
+def test_deny_policy_emits_tool_policy_evaluated_audit_event(tmp_path) -> None:
+    from loushang.coding.policy import PolicyEngine
+    from loushang.coding.tools import ToolRegistry, register_builtin_tools
+
+    events: list[dict[str, object]] = []
+    registry = ToolRegistry()
+    register_builtin_tools(registry, policy_engine=PolicyEngine(blocked_tools=["write"]))
+    runtime_tool = registry.materialize_tool(
+        "write",
+        context_provider=_tool_context_provider_with_events(cwd=str(tmp_path), events=events),
+    )
+
+    with pytest.raises(PermissionError):
+        asyncio.run(runtime_tool.execute("call-write-deny-audit", {"path": "blocked-audit.txt", "content": "blocked"}))
+
+    assert events == [
+        {
+            "type": "tool_policy_evaluated",
+            "tool_call_id": "call-write-deny-audit",
+            "tool_name": "write",
+            "cwd": str(tmp_path),
+            "policy_disposition": "deny",
+            "policy_code": "tool_blocked",
+            "policy_reason": "Tool write is blocked by policy",
+            "approval_required": False,
+            "argument_keys": ["content", "path"],
+            "path": str(tmp_path / "blocked-audit.txt"),
+        }
+    ]
 
 
 def test_async_approval_resolver_can_deny_ask_policy_for_write(tmp_path) -> None:

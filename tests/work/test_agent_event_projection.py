@@ -95,6 +95,70 @@ def test_project_tool_events_to_tool_call_work_events() -> None:
     assert completed[0].payload["duration_ms"] == 50
 
 
+def test_project_tool_policy_and_approval_events_to_audit_work_events() -> None:
+    from loushang.work import project_agent_event_to_work_events
+
+    evaluated = project_agent_event_to_work_events(
+        {
+            "type": "tool_policy_evaluated",
+            "tool_call_id": "tool-1",
+            "tool_name": "write",
+            "policy_disposition": "ask",
+            "policy_code": "tool_requires_approval",
+            "policy_reason": "Tool write requires approval",
+            "approval_required": True,
+            "argument_keys": ["content", "path"],
+            "path": "/repo/approved.txt",
+        },
+        context=_context(6),
+    )
+    requested = project_agent_event_to_work_events(
+        {
+            "type": "tool_approval_requested",
+            "tool_call_id": "tool-1",
+            "tool_name": "write",
+            "action_id": "approval-1",
+            "policy_code": "tool_requires_approval",
+            "policy_reason": "Tool write requires approval",
+            "argument_keys": ["content", "path"],
+            "path": "/repo/approved.txt",
+        },
+        context=_context(7),
+    )
+    resolved = project_agent_event_to_work_events(
+        {
+            "type": "tool_approval_resolved",
+            "tool_call_id": "tool-1",
+            "tool_name": "write",
+            "action_id": "approval-1",
+            "approval_decision": "allow",
+            "policy_code": "tool_requires_approval",
+            "policy_reason": "Tool write requires approval",
+        },
+        context=_context(8),
+    )
+
+    assert [event.kind for event in [*evaluated, *requested, *resolved]] == [
+        "ToolPolicyEvaluated",
+        "ToolApprovalRequested",
+        "ToolApprovalResolved",
+    ]
+    assert all(event.delivery_hint == "immediate" for event in [*evaluated, *requested, *resolved])
+    assert evaluated[0].payload == {
+        "source_type": "tool_policy_evaluated",
+        "tool_call_id": "tool-1",
+        "tool_name": "write",
+        "policy_disposition": "ask",
+        "policy_code": "tool_requires_approval",
+        "policy_reason": "Tool write requires approval",
+        "approval_required": True,
+        "argument_keys": ["content", "path"],
+        "path": "/repo/approved.txt",
+    }
+    assert requested[0].payload["action_id"] == "approval-1"
+    assert resolved[0].payload["approval_decision"] == "allow"
+
+
 def test_project_queue_update_to_coalesced_queue_metadata_event() -> None:
     from loushang.work import project_agent_event_to_work_events
 

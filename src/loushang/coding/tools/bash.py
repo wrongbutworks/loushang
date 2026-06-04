@@ -4,8 +4,8 @@ from collections.abc import Callable
 from dataclasses import dataclass, field, replace
 from typing import Any, NotRequired, Protocol, TypedDict
 
-from loushang.ai.types import TextPart
 from loushang.agent.types import AgentToolResult
+from loushang.ai.types import TextPart
 from loushang.coding.diagnostics import DiagnosticsService
 from loushang.coding.exec import ExecOutputChunk, ExecRequest, ExecService
 from loushang.coding.exec.types import ExecResult
@@ -14,7 +14,11 @@ from loushang.coding.policy import ApprovalResolver, PolicyEngine
 from .builtin_renderers import render_bash_call, render_bash_result
 from .context import ToolContextProvider
 from .policy import enforce_tool_policy
-from .runtime import emit_tool_update, pi_truncation_details, resolve_tool_argument_alias
+from .runtime import (
+    emit_tool_update,
+    pi_truncation_details,
+    resolve_tool_argument_alias,
+)
 from .truncate import TruncationResult, truncate_tail, truncation_details
 from .types import PiTruncationDetails, ToolDefinition
 
@@ -220,9 +224,11 @@ class _BashToolExecute:
         signal: object | None = None,
         on_update: object | None = None,
     ) -> AgentToolResult[dict[str, Any]]:
+        context = None
         default_cwd = None
         if self.context_provider is not None:
-            default_cwd = self.context_provider(tool_call_id=tool_call_id).cwd
+            context = self.context_provider(tool_call_id=tool_call_id)
+            default_cwd = context.cwd
 
         request_params = dict(params)
         runtime_operations = request_params.pop("__operations", None)
@@ -237,9 +243,11 @@ class _BashToolExecute:
         )
         await _enforce_bash_policy(
             self.policy_engine,
+            tool_call_id=tool_call_id,
             exec_request=exec_request,
             arguments=request_params,
             approval_resolver=self.approval_resolver,
+            audit_sink=getattr(context, "event_sink", None),
         )
 
         await emit_tool_update(on_update, AgentToolResult(content=[], details=None))
@@ -322,9 +330,11 @@ def _shell_command(command: str, *, shell_path: str | None = None) -> tuple[str,
 async def _enforce_bash_policy(
     policy_engine: PolicyEngine | None,
     *,
+    tool_call_id: str,
     exec_request: ExecRequest,
     arguments: dict[str, Any],
     approval_resolver: ApprovalResolver | None,
+    audit_sink: object | None = None,
 ) -> None:
     if policy_engine is None:
         return
@@ -336,6 +346,8 @@ async def _enforce_bash_policy(
             arguments=arguments,
             cwd=exec_request.cwd,
             approval_resolver=approval_resolver,
+            tool_call_id=tool_call_id,
+            audit_sink=audit_sink,
         )
         return
     evaluate_action = getattr(policy_engine, "evaluate_action", None)

@@ -1,65 +1,99 @@
 # Loushang
 
-`loushang` 是面向智能时代的操作系统，让个人、团队与组织能创新地发现机会，系统地驾驭复杂，快捷地释放价值。
+English | [中文](./README.zh-CN.md)
 
-## 愿景
+Loushang is a method-native AI work system for running complex work from intent to verified delivery.
 
-驾驭复杂工作，成就卓越价值。
+Current focus: `loushang code`, a CLI and terminal workbench for software development with model routing, persistent sessions, tools, extensions, and method-guided delivery.
 
-## 架构
+## Why Loushang
 
-`loushang` 采用“内核 + 协议 + 适配器 + 扩展点”的分层架构：
+Modern AI agents can plan and act, but complex work still breaks down when context is lost, execution cannot be resumed, tools are hard to govern, and results are not verified.
 
-- **内核**：定义系统运行语义
-- **协议**：定义系统与外部世界的沟通边界
-- **适配器**：连接不同环境与终端形态
-- **扩展点**：在不破坏一致性的前提下开放可编程能力
+Loushang treats methods, stages, roles, tools, sessions, and work products as runtime objects. The goal is not just to make agents smarter, but to make complex work more reliable, recoverable, auditable, and deliverable.
 
-## Monorepo Packages
+## What You Can Use Today
 
-- `loushang-ai`
-- `loushang-agent`
-- `loushang-channel`
-- `loushang-tui`
-- `loushang-methods`
-- `loushang-coding`
+- `loushang code`: a coding-focused CLI and terminal workbench.
+- `loushang.ai`: a provider-aware AI SDK with model registry, streaming, tool calls, and cost helpers.
+- Sessions: persistent coding sessions with resume, fork, export, and diagnostics.
+- Tools: built-in coding tools and configurable tool surfaces.
+- Extensions: project-level extension hooks, custom tools, dynamic resources, and commands.
+- Methods and skills: method-guided coding turns and reusable workflow assets.
 
-## 致谢
+## Quick Start
 
-Loushang 的产品形态、交互设计与工程实现参考了以下开源项目的公开设计经验：
+Loushang is in early development. The recommended path is to run it from source.
 
-- [OpenAI Codex](https://github.com/openai/codex) — Agent TUI、会话中断与多轮输入设计
-- [pi](https://github.com/earendil-works/pi) — Agent SDK 与会话状态管理
-- [python-prompt-toolkit](https://github.com/prompt-toolkit/python-prompt-toolkit) — 终端输入处理与全屏 TUI 模式
-- [browser-use](https://github.com/browser-use/browser-use) — 浏览器自动化 Agent 架构
-- [kimi-cli](https://github.com/MoonshotAI/kimi-cli) — CLI 流式输出与交互模式
-- [superpowers](https://github.com/obra/superpowers) — Skill 库与工作流编排
-- [gstack](https://github.com/garrytan/gstack) — Agent 协调与多智能体模式
-- [openclaw](https://github.com/openclaw/openclaw) — Agent 运行时参考
-- [hermes-agent](https://github.com/NousResearch/hermes-agent) — Agent 框架设计参考
+```bash
+git clone https://github.com/<owner>/loushang.git
+cd loushang
 
-上述项目为设计参考与灵感来源；除 `THIRD_PARTY_NOTICES.md` 中列出的依赖外，不表示本项目包含或再分发其代码。
+uv venv .venv
+source .venv/bin/activate
+uv pip install -e ".[dev]"
 
-## 许可证
+loushang --help
+loushang --list-models
+loushang --list-commands
+loushang -p "Inspect this repository and summarize what it does."
+```
 
-本项目的代码与文档默认遵循 Apache License 2.0，除非文件中另有说明。
+You can also run `make bootstrap`, which creates `.venv/` with `uv` and installs the project in editable development mode. The Makefile does not currently provide a `make install` target; use `make bootstrap` for local development or `make install-binary` for a local binary install.
 
-再分发本项目源码、二进制包、文档或其修改版本时，应保留 `LICENSE` 与 `NOTICE` 文件，并在产品文档、About/Credits 页面或其他第三方声明位置保留本项目归属信息。
+For local development in this repository, use the project virtual environment in `.venv/`.
 
-第三方依赖信息见 `THIRD_PARTY_NOTICES.md`。
+## Core Concepts
 
-## 文档
+- Method: a reusable way of running work, including stages, guidance, and acceptance expectations.
+- Session: a durable coding conversation and execution record that can be resumed, forked, exported, and inspected.
+- Tool: an executable capability made available to the agent under policy.
+- Extension: project-level Python code that can contribute hooks, tools, resources, commands, and flags.
+- Model provider: a concrete AI provider endpoint and model resolved through the model catalog.
 
-- [Loushang Strategy](./docs/strategy/strategy.md)
-- [Architecture Overview](./docs/architecture/architecture-overview.md)
-- [Loushang Subsystems](./docs/architecture/subsystem.md)
-- [Loushang Subsystem Diagram](./docs/architecture/subsystem-diagram.md)
-- [Loushang AI Streaming and Cancellation](./docs/architecture/ai/loushang-ai-streaming-and-cancellation.md)
-- [Loushang AI Streaming Validation](./docs/architecture/ai/validation/loushang-ai-streaming-validation.md)
-- [Loushang AI Historical Handoff Summary](./docs/architecture/ai/history/loushang-ai-historical-handoff.md)
-- [Loushang Method Notes](./docs/architecture/loushang-method-notes.md)
-- [Loushang Agent Runtime](./docs/architecture/agent/README.md)
-- [Loushang Agent](./docs/glossary/loushang-agent.md)
-- [Loushang AI Types](./docs/glossary/loushang-ai-types.md)
-- [Loushang Agent Types](./docs/glossary/loushang-agent-types.md)
-- [Loushang Channel Boundary Protocol](./docs/loushang-channel-boundary-protocol.md)
+## Documentation
+
+- [Documentation Home](./docs/en/)
+- [Getting Started](./docs/en/getting-started/)
+- [User Guide](./docs/en/user-guide/)
+- [Concepts](./docs/en/concepts/)
+- [AI SDK](./docs/en/sdk/)
+- [Examples](./docs/en/examples/)
+- [Reference](./docs/en/reference/)
+
+## Examples
+
+- [Coding examples](./examples/coding/) show CLI/session/tool/extension scenarios.
+- [AI SDK examples](./examples/ai/) show model lookup, complete, stream, tools, and typed contexts.
+
+## Roadmap
+
+- V1: `loushang code` as the primary product surface for software development work.
+- V2: `loushang work` as a personal complex-work workbench, with `code`, `research`, and `ppt` as specialized flows.
+- V3: daemon, method market, and model gateway foundations.
+- V4: team workflows, shared runs, approvals, budgets, and audit.
+- V5: managed runtime for method-bound complex work.
+
+## Project Status
+
+Loushang is in active early development.
+
+The current stable focus is `loushang code` and the underlying `loushang.ai` SDK. Broader work surfaces such as `loushang work`, `loushang research`, and `loushang ppt` are part of the roadmap and should be treated as evolving product directions.
+
+## Contact
+
+Loushang was initiated by Heng Zhou. He has long worked across low-code systems, workflows, databases, model-driven engineering, DSLs, architecture methods, systems engineering, and artificial intelligence, with a focus on operationalizing ontology and methodology into infrastructure for complex-work delivery.
+
+For questions, feedback, collaboration, or a community group invitation, contact: zhnt@foxmail.com.
+
+## Acknowledgements
+
+Loushang learns from public design and engineering patterns in projects such as OpenAI Codex, pi, python-prompt-toolkit, browser-use, Kimi CLI, superpowers, gstack, openclaw, and hermes-agent. These projects are references and inspiration; unless listed in `THIRD_PARTY_NOTICES.md`, this repository does not include or redistribute their code.
+
+## License
+
+Loushang is licensed under the Apache License 2.0 unless a file states otherwise.
+
+When redistributing source code, binaries, documents, or modified versions, keep `LICENSE` and `NOTICE`, and retain attribution in product documentation, About/Credits pages, or equivalent third-party notices.
+
+Third-party dependency information is available in [THIRD_PARTY_NOTICES.md](./THIRD_PARTY_NOTICES.md).

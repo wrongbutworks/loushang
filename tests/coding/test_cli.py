@@ -218,6 +218,20 @@ class TtyStringIO(StringIO):
         return True
 
 
+_WORK_LOG_INSPECT_COLUMNS = [
+    "sequence",
+    "kind",
+    "run_id",
+    "session_id",
+    "delivery_hint",
+    "method_id",
+    "plan_id",
+    "step_id",
+    "step_index",
+    "step_title",
+]
+
+
 def _append_work_log_marker(event_log: object) -> Path:
     from loushang.work import EventLogEntry
 
@@ -248,14 +262,41 @@ def _append_work_log_inspect_entry(
     entry_type: str = "event",
     delivery_hint: str | None = None,
     method_id: str | None = None,
+    plan_id: str | None = None,
+    step_id: str | None = None,
+    step_index: int | None = None,
+    step_title: str | None = None,
+    deviation: dict[str, object] | None = None,
+    planned_constraint: dict[str, object] | None = None,
+    audit_policy: dict[str, object] | None = None,
+    extra_payload: dict[str, object] | None = None,
 ) -> None:
     from loushang.work import EventLogEntry
 
     payload: dict[str, object] = {"kind": kind}
     if delivery_hint is not None:
         payload["delivery_hint"] = delivery_hint
+    nested_payload: dict[str, object] = {}
     if method_id is not None:
-        payload["payload"] = {"method_id": method_id}
+        nested_payload["method_id"] = method_id
+    if plan_id is not None:
+        nested_payload["plan_id"] = plan_id
+    if step_id is not None:
+        nested_payload["step_id"] = step_id
+    if step_index is not None:
+        nested_payload["step_index"] = step_index
+    if step_title is not None:
+        nested_payload["step_title"] = step_title
+    if deviation is not None:
+        nested_payload["deviation"] = deviation
+    if planned_constraint is not None:
+        nested_payload["planned_constraint"] = planned_constraint
+    if audit_policy is not None:
+        nested_payload["audit_policy"] = audit_policy
+    if extra_payload is not None:
+        nested_payload.update(extra_payload)
+    if nested_payload:
+        payload["payload"] = nested_payload
     event_log.append(
         EventLogEntry(
             entry_id=f"entry-{sequence}",
@@ -269,6 +310,94 @@ def _append_work_log_inspect_entry(
             created_at=datetime(2026, 6, 1, 10, 30, sequence, tzinfo=UTC),
         )
     )
+
+
+def _append_work_log_plan_step_entries(
+    event_log: object,
+    *,
+    start_sequence: int,
+    run_id: str,
+    step_id: str,
+    step_index: int,
+    step_title: str,
+    first: bool = False,
+    last: bool = False,
+    planned_constraint: dict[str, object] | None = None,
+    audit_policy: dict[str, object] | None = None,
+) -> int:
+    sequence = start_sequence
+    _append_work_log_inspect_entry(
+        event_log,
+        sequence=sequence,
+        kind="SubmitCodingTurn",
+        run_id=run_id,
+        entry_type="operation",
+        method_id="method:task:review",
+        plan_id="plan:method:task:review",
+        step_id=step_id,
+        step_index=step_index,
+        step_title=step_title,
+        planned_constraint=planned_constraint,
+        audit_policy=audit_policy,
+    )
+    sequence += 1
+    if first:
+        _append_work_log_inspect_entry(
+            event_log,
+            sequence=sequence,
+            kind="WorkPlanStarted",
+            run_id=run_id,
+            method_id="method:task:review",
+            plan_id="plan:method:task:review",
+            step_id=step_id,
+            step_index=step_index,
+            step_title=step_title,
+            planned_constraint=planned_constraint,
+            audit_policy=audit_policy,
+        )
+        sequence += 1
+    _append_work_log_inspect_entry(
+        event_log,
+        sequence=sequence,
+        kind="WorkStepStarted",
+        run_id=run_id,
+        method_id="method:task:review",
+        plan_id="plan:method:task:review",
+        step_id=step_id,
+        step_index=step_index,
+        step_title=step_title,
+        planned_constraint=planned_constraint,
+        audit_policy=audit_policy,
+    )
+    sequence += 1
+    _append_work_log_inspect_entry(
+        event_log,
+        sequence=sequence,
+        kind="WorkStepCompleted",
+        run_id=run_id,
+        method_id="method:task:review",
+        plan_id="plan:method:task:review",
+        step_id=step_id,
+        step_index=step_index,
+        step_title=step_title,
+    )
+    sequence += 1
+    if last:
+        _append_work_log_inspect_entry(
+            event_log,
+            sequence=sequence,
+            kind="WorkPlanCompleted",
+            run_id=run_id,
+            method_id="method:task:review",
+            plan_id="plan:method:task:review",
+            step_id=step_id,
+            step_index=step_index,
+            step_title=step_title,
+            planned_constraint=planned_constraint,
+            audit_policy=audit_policy,
+        )
+        sequence += 1
+    return sequence
 
 
 def _fake_services(
@@ -315,6 +444,45 @@ def _write_debug_method(project_root: Path) -> None:
         "meta_role: VALIDATOR\n"
         "---\n\n"
         "Use focused debugging guidance.",
+        encoding="utf-8",
+    )
+
+
+def _write_fixed_review_method(project_root: Path) -> None:
+    method_dir = project_root / "methods" / "task" / "review"
+    method_dir.mkdir(parents=True)
+    (method_dir / "SKILL.md").write_text(
+        "---\n"
+        "name: review\n"
+        "description: Review changes.\n"
+        "type: task\n"
+        "meta_role: VALIDATOR\n"
+        "plan_mode: fixed\n"
+        "steps:\n"
+        "  - inspect\n"
+        "  - verify\n"
+        "step_titles:\n"
+        "  inspect: Inspect current changes\n"
+        "  verify: Run focused checks\n"
+        "step_guidance:\n"
+        "  inspect: Read changed files and summarize intent.\n"
+        "  verify: Run focused tests or explain why they cannot run.\n"
+        "step_constraints:\n"
+        "  inspect:\n"
+        "    level: reasoned\n"
+        "    can_merge: true\n"
+        "    requires_reason: true\n"
+        "  verify:\n"
+        "    level: evidence\n"
+        "    can_skip: true\n"
+        "    requires_evidence: true\n"
+        "step_audit:\n"
+        "  inspect:\n"
+        "    record: [status, reason]\n"
+        "  verify:\n"
+        "    record: [status, reason, evidence]\n"
+        "---\n\n"
+        "Use concise review guidance.",
         encoding="utf-8",
     )
 
@@ -402,13 +570,13 @@ def test_parse_args_accepts_work_log_inspect_flags() -> None:
             "--work-log-run",
             "run-1",
             "--work-log-inspect-format",
-            "json",
+            "plans",
         ]
     )
 
     assert args.work_log_inspect == ".loushang/work/events.jsonl"
     assert args.work_log_run == "run-1"
-    assert args.work_log_inspect_format == "json"
+    assert args.work_log_inspect_format == "plans"
 
 
 def test_parse_args_accepts_method_visibility_flags_and_subcommands() -> None:
@@ -423,6 +591,11 @@ def test_parse_args_accepts_method_visibility_flags_and_subcommands() -> None:
 
     assert show_args.show_method == "method:task:review"
     assert show_args.show_method_format == "json"
+
+    plan_show_args = parse_args(["method", "plan", "show", "review", "--format", "json"])
+
+    assert plan_show_args.show_method_plan == "review"
+    assert plan_show_args.show_method_plan_format == "json"
 
     list_args = parse_args(["method", "list"])
 
@@ -2338,6 +2511,63 @@ def test_run_cli_dash_p_with_method_prepares_prompt_and_method_id(tmp_path) -> N
     assert call["prompt"].endswith("User request:\n\ncheck src/app.py")
 
 
+def test_run_cli_dash_p_with_fixed_method_executes_each_step(tmp_path) -> None:
+    from loushang.coding.cli.__main__ import run_cli
+
+    _write_fixed_review_method(tmp_path)
+    runtime = FakeRuntime(FakeSession("session-1"))
+    prompt_runner = FakeRunner()
+
+    async def scenario() -> None:
+        exit_code = await run_cli(
+            ["--method", "review", "-p", "check src/app.py"],
+            stdin=StringIO(""),
+            stdout=StringIO(),
+            stderr=StringIO(),
+            cwd=tmp_path,
+            services=_fake_services(),
+            runtime_builder=lambda **kwargs: runtime,
+            prompt_runner=prompt_runner,
+        )
+        assert exit_code == 0
+
+    asyncio.run(scenario())
+
+    assert len(prompt_runner.calls) == 2
+    first_call = prompt_runner.calls[0]
+    second_call = prompt_runner.calls[1]
+    assert first_call["method_id"] == "method:task:review"
+    assert first_call["plan_id"] == "plan:method:task:review"
+    assert first_call["step_id"] == "inspect"
+    assert first_call["step_index"] == 0
+    assert first_call["step_title"] == "Inspect current changes"
+    assert first_call["planned_constraint"] == {
+        "level": "reasoned",
+        "can_merge": True,
+        "requires_reason": True,
+    }
+    assert first_call["audit_policy"] == {"record": ["status", "reason"]}
+    assert first_call["emit_plan_start"] is True
+    assert first_call["emit_plan_completion"] is False
+    assert "Read changed files and summarize intent." in first_call["prompt"]
+    assert first_call["prompt"].endswith("User request:\n\ncheck src/app.py")
+    assert second_call["method_id"] == "method:task:review"
+    assert second_call["plan_id"] == "plan:method:task:review"
+    assert second_call["step_id"] == "verify"
+    assert second_call["step_index"] == 1
+    assert second_call["step_title"] == "Run focused checks"
+    assert second_call["planned_constraint"] == {
+        "level": "evidence",
+        "can_skip": True,
+        "requires_evidence": True,
+    }
+    assert second_call["audit_policy"] == {"record": ["status", "reason", "evidence"]}
+    assert second_call["emit_plan_start"] is False
+    assert second_call["emit_plan_completion"] is True
+    assert "Run focused tests or explain why they cannot run." in second_call["prompt"]
+    assert second_call["prompt"].endswith("User request:\n\ncheck src/app.py")
+
+
 def test_run_cli_dash_p_with_no_method_suppresses_method(tmp_path) -> None:
     from loushang.coding.cli.__main__ import run_cli
 
@@ -2895,6 +3125,65 @@ def test_run_cli_mode_print_with_method_prepares_prompt_and_method_id(tmp_path) 
     assert "Use concise review guidance." in call["user_input"]
     assert call["user_input"].endswith("User request:\n\ncheck src/app.py")
     assert call["output_mode"] == "text"
+
+
+def test_run_cli_mode_print_with_fixed_method_executes_each_step(tmp_path) -> None:
+    from loushang.coding.cli.__main__ import run_cli
+
+    _write_fixed_review_method(tmp_path)
+    runtime = FakeRuntime(FakeSession("session-1"))
+    print_runner = FakeRunner()
+
+    async def scenario() -> None:
+        exit_code = await run_cli(
+            ["--method", "review", "--mode", "print", "check src/app.py"],
+            stdin=StringIO(""),
+            stdout=StringIO(),
+            stderr=StringIO(),
+            cwd=tmp_path,
+            services=_fake_services(),
+            runtime_builder=lambda **kwargs: runtime,
+            print_runner=print_runner,
+        )
+        assert exit_code == 0
+
+    asyncio.run(scenario())
+
+    assert len(print_runner.calls) == 2
+    first_call = print_runner.calls[0]
+    second_call = print_runner.calls[1]
+    assert first_call["method_id"] == "method:task:review"
+    assert first_call["plan_id"] == "plan:method:task:review"
+    assert first_call["step_id"] == "inspect"
+    assert first_call["step_index"] == 0
+    assert first_call["step_title"] == "Inspect current changes"
+    assert first_call["planned_constraint"] == {
+        "level": "reasoned",
+        "can_merge": True,
+        "requires_reason": True,
+    }
+    assert first_call["audit_policy"] == {"record": ["status", "reason"]}
+    assert first_call["emit_plan_start"] is True
+    assert first_call["emit_plan_completion"] is False
+    assert "Read changed files and summarize intent." in first_call["user_input"]
+    assert first_call["user_input"].endswith("User request:\n\ncheck src/app.py")
+    assert first_call["output_mode"] == "text"
+    assert second_call["method_id"] == "method:task:review"
+    assert second_call["plan_id"] == "plan:method:task:review"
+    assert second_call["step_id"] == "verify"
+    assert second_call["step_index"] == 1
+    assert second_call["step_title"] == "Run focused checks"
+    assert second_call["planned_constraint"] == {
+        "level": "evidence",
+        "can_skip": True,
+        "requires_evidence": True,
+    }
+    assert second_call["audit_policy"] == {"record": ["status", "reason", "evidence"]}
+    assert second_call["emit_plan_start"] is False
+    assert second_call["emit_plan_completion"] is True
+    assert "Run focused tests or explain why they cannot run." in second_call["user_input"]
+    assert second_call["user_input"].endswith("User request:\n\ncheck src/app.py")
+    assert second_call["output_mode"] == "text"
 
 
 def test_run_cli_mode_print_uses_method_default_from_settings(tmp_path) -> None:
@@ -3613,6 +3902,51 @@ def test_run_cli_default_path_with_method_prepares_prompt_and_method_id(tmp_path
     assert call["user_input"].endswith("User request:\n\ncheck src/app.py")
 
 
+def test_run_cli_default_path_with_fixed_method_executes_each_step(tmp_path) -> None:
+    from loushang.coding.cli.__main__ import run_cli
+
+    _write_fixed_review_method(tmp_path)
+    runtime = FakeRuntime(FakeSession("session-1"))
+    mode_runner = FakeRunner()
+
+    async def scenario() -> None:
+        exit_code = await run_cli(
+            ["--mode", "json", "--method", "review", "check src/app.py"],
+            stdin=StringIO(""),
+            stdout=StringIO(),
+            stderr=StringIO(),
+            cwd=tmp_path,
+            services=_fake_services(),
+            runtime_builder=lambda **kwargs: runtime,
+            mode_runner=mode_runner,
+        )
+        assert exit_code == 0
+
+    asyncio.run(scenario())
+
+    assert len(mode_runner.calls) == 2
+    first_call = mode_runner.calls[0]
+    second_call = mode_runner.calls[1]
+    assert first_call["config"].mode == "json"
+    assert first_call["method_id"] == "method:task:review"
+    assert first_call["plan_id"] == "plan:method:task:review"
+    assert first_call["step_id"] == "inspect"
+    assert first_call["step_index"] == 0
+    assert first_call["emit_plan_start"] is True
+    assert first_call["emit_plan_completion"] is False
+    assert "Read changed files and summarize intent." in first_call["user_input"]
+    assert first_call["user_input"].endswith("User request:\n\ncheck src/app.py")
+    assert second_call["config"].mode == "json"
+    assert second_call["method_id"] == "method:task:review"
+    assert second_call["plan_id"] == "plan:method:task:review"
+    assert second_call["step_id"] == "verify"
+    assert second_call["step_index"] == 1
+    assert second_call["emit_plan_start"] is False
+    assert second_call["emit_plan_completion"] is True
+    assert "Run focused tests or explain why they cannot run." in second_call["user_input"]
+    assert second_call["user_input"].endswith("User request:\n\ncheck src/app.py")
+
+
 def test_run_cli_default_path_passes_work_log_backend_to_unified_mode_runner(tmp_path) -> None:
     from loushang.coding.cli.__main__ import run_cli
     from loushang.work import JsonlEventLogBackend
@@ -3680,10 +4014,10 @@ def test_run_cli_work_log_inspect_outputs_text_without_runtime(tmp_path) -> None
 
     asyncio.run(scenario())
 
-    assert stdout.getvalue().splitlines() == [
-        "sequence\tkind\trun_id\tsession_id\tdelivery_hint\tmethod_id",
-        "1\tSubmitCodingTurn\trun-1\tsession-1\t\t",
-        "2\tContentDelta\trun-1\tsession-1\tcoalesce\t",
+    assert [line.split("\t") for line in stdout.getvalue().splitlines()] == [
+        _WORK_LOG_INSPECT_COLUMNS,
+        ["1", "SubmitCodingTurn", "run-1", "session-1", "", "", "", "", "", ""],
+        ["2", "ContentDelta", "run-1", "session-1", "coalesce", "", "", "", "", ""],
     ]
     assert stderr.getvalue() == ""
 
@@ -3724,11 +4058,376 @@ def test_run_cli_work_log_inspect_text_includes_method_id(tmp_path) -> None:
 
     asyncio.run(scenario())
 
-    assert stdout.getvalue().splitlines() == [
-        "sequence\tkind\trun_id\tsession_id\tdelivery_hint\tmethod_id",
-        "1\tSubmitCodingTurn\trun-1\tsession-1\t\tmethod:task:review",
-        "2\tWorkRunStarted\trun-1\tsession-1\timmediate\tmethod:task:review",
+    assert [line.split("\t") for line in stdout.getvalue().splitlines()] == [
+        _WORK_LOG_INSPECT_COLUMNS,
+        ["1", "SubmitCodingTurn", "run-1", "session-1", "", "method:task:review", "", "", "", ""],
+        ["2", "WorkRunStarted", "run-1", "session-1", "immediate", "method:task:review", "", "", "", ""],
     ]
+
+
+def test_run_cli_work_log_inspect_text_includes_plan_step_metadata(tmp_path) -> None:
+    from loushang.coding.cli.__main__ import run_cli
+    from loushang.work import JsonlEventLogBackend
+
+    log_path = tmp_path / "events.jsonl"
+    event_log = JsonlEventLogBackend(log_path)
+    _append_work_log_inspect_entry(
+        event_log,
+        sequence=1,
+        kind="SubmitCodingTurn",
+        entry_type="operation",
+        method_id="method:task:review",
+        plan_id="plan:method:task:review",
+        step_id="inspect",
+        step_index=0,
+        step_title="Inspect current changes",
+    )
+    stdout = StringIO()
+
+    async def scenario() -> None:
+        exit_code = await run_cli(
+            ["--work-log-inspect", str(log_path)],
+            stdin=StringIO(),
+            stdout=stdout,
+            stderr=StringIO(),
+            cwd=tmp_path,
+            services=_fake_services(),
+            runtime_builder=lambda **kwargs: (_ for _ in ()).throw(AssertionError("runtime should not start")),
+        )
+        assert exit_code == 0
+
+    asyncio.run(scenario())
+
+    assert [line.split("\t") for line in stdout.getvalue().splitlines()] == [
+        _WORK_LOG_INSPECT_COLUMNS,
+        [
+            "1",
+            "SubmitCodingTurn",
+            "run-1",
+            "session-1",
+            "",
+            "method:task:review",
+            "plan:method:task:review",
+            "inspect",
+            "0",
+            "Inspect current changes",
+        ],
+    ]
+
+
+def test_run_cli_work_log_inspect_plans_outputs_plan_summary_without_runtime(tmp_path) -> None:
+    from loushang.coding.cli.__main__ import run_cli
+    from loushang.work import JsonlEventLogBackend
+
+    log_path = tmp_path / "events.jsonl"
+    event_log = JsonlEventLogBackend(log_path)
+    next_sequence = _append_work_log_plan_step_entries(
+        event_log,
+        start_sequence=1,
+        run_id="run-inspect",
+        step_id="inspect",
+        step_index=0,
+        step_title="Inspect current changes",
+        first=True,
+    )
+    _append_work_log_plan_step_entries(
+        event_log,
+        start_sequence=next_sequence,
+        run_id="run-verify",
+        step_id="verify",
+        step_index=1,
+        step_title="Run focused checks",
+        last=True,
+    )
+    stdout = StringIO()
+
+    async def scenario() -> None:
+        exit_code = await run_cli(
+            ["--work-log-inspect", str(log_path), "--work-log-inspect-format", "plans"],
+            stdin=StringIO(),
+            stdout=stdout,
+            stderr=StringIO(),
+            cwd=tmp_path,
+            services=_fake_services(),
+            runtime_builder=lambda **kwargs: (_ for _ in ()).throw(AssertionError("runtime should not start")),
+        )
+        assert exit_code == 0
+
+    asyncio.run(scenario())
+
+    assert [line.split("\t") for line in stdout.getvalue().splitlines()] == [
+        ["type", "index", "id", "status", "run_id", "method_id", "completed_steps", "failed_steps", "current_step", "title", "deviation"],
+        ["plan", "", "plan:method:task:review", "completed", "", "method:task:review", "2/2", "0", "verify", "", ""],
+        ["step", "1", "inspect", "completed", "run-inspect", "method:task:review", "", "", "", "Inspect current changes", ""],
+        ["step", "2", "verify", "completed", "run-verify", "method:task:review", "", "", "", "Run focused checks", ""],
+    ]
+
+
+def test_run_cli_work_log_inspect_plans_respects_run_filter(tmp_path) -> None:
+    from loushang.coding.cli.__main__ import run_cli
+    from loushang.work import JsonlEventLogBackend
+
+    log_path = tmp_path / "events.jsonl"
+    event_log = JsonlEventLogBackend(log_path)
+    _append_work_log_inspect_entry(
+        event_log,
+        sequence=1,
+        kind="WorkStepCompleted",
+        run_id="run-inspect",
+        method_id="method:task:review",
+        plan_id="plan:method:task:review",
+        step_id="inspect",
+        step_index=0,
+        step_title="Inspect current changes",
+    )
+    _append_work_log_inspect_entry(
+        event_log,
+        sequence=2,
+        kind="WorkStepFailed",
+        run_id="run-verify",
+        method_id="method:task:review",
+        plan_id="plan:method:task:review",
+        step_id="verify",
+        step_index=1,
+        step_title="Run focused checks",
+    )
+    stdout = StringIO()
+
+    async def scenario() -> None:
+        exit_code = await run_cli(
+            [
+                "--work-log-inspect",
+                str(log_path),
+                "--work-log-run",
+                "run-verify",
+                "--work-log-inspect-format",
+                "plans",
+            ],
+            stdin=StringIO(),
+            stdout=stdout,
+            stderr=StringIO(),
+            cwd=tmp_path,
+            services=_fake_services(),
+            runtime_builder=lambda **kwargs: (_ for _ in ()).throw(AssertionError("runtime should not start")),
+        )
+        assert exit_code == 0
+
+    asyncio.run(scenario())
+
+    assert [line.split("\t") for line in stdout.getvalue().splitlines()] == [
+        ["type", "index", "id", "status", "run_id", "method_id", "completed_steps", "failed_steps", "current_step", "title", "deviation"],
+        ["plan", "", "plan:method:task:review", "running", "", "method:task:review", "0/1", "1", "verify", "", ""],
+        ["step", "2", "verify", "failed", "run-verify", "method:task:review", "", "", "", "Run focused checks", ""],
+    ]
+
+
+def test_run_cli_work_log_inspect_plans_shows_step_deviation(tmp_path) -> None:
+    from loushang.coding.cli.__main__ import run_cli
+    from loushang.work import JsonlEventLogBackend
+
+    log_path = tmp_path / "events.jsonl"
+    event_log = JsonlEventLogBackend(log_path)
+    _append_work_log_inspect_entry(
+        event_log,
+        sequence=1,
+        kind="WorkStepCompleted",
+        run_id="run-inspect",
+        method_id="method:task:review",
+        plan_id="plan:method:task:review",
+        step_id="inspect",
+        step_index=0,
+        step_title="Inspect current changes",
+        deviation={
+            "deviation_type": "adapted",
+            "reason": "Only documentation files changed.",
+            "policy_level": "reasoned",
+            "evidence_refs": ["git-diff"],
+        },
+    )
+    stdout = StringIO()
+
+    async def scenario() -> None:
+        exit_code = await run_cli(
+            ["--work-log-inspect", str(log_path), "--work-log-inspect-format", "plans"],
+            stdin=StringIO(),
+            stdout=stdout,
+            stderr=StringIO(),
+            cwd=tmp_path,
+            services=_fake_services(),
+            runtime_builder=lambda **kwargs: (_ for _ in ()).throw(AssertionError("runtime should not start")),
+        )
+        assert exit_code == 0
+
+    asyncio.run(scenario())
+
+    assert [line.split("\t") for line in stdout.getvalue().splitlines()] == [
+        ["type", "index", "id", "status", "run_id", "method_id", "completed_steps", "failed_steps", "current_step", "title", "deviation"],
+        ["plan", "", "plan:method:task:review", "running", "", "method:task:review", "1/1", "0", "inspect", "", ""],
+        [
+            "step",
+            "1",
+            "inspect",
+            "completed",
+            "run-inspect",
+            "method:task:review",
+            "",
+            "",
+            "",
+            "Inspect current changes",
+            "adapted: Only documentation files changed.",
+        ],
+    ]
+
+
+def test_run_cli_work_log_inspect_plans_projects_full_log_not_tail_limit(tmp_path) -> None:
+    from loushang.coding.cli.__main__ import run_cli
+    from loushang.work import JsonlEventLogBackend
+
+    log_path = tmp_path / "events.jsonl"
+    event_log = JsonlEventLogBackend(log_path)
+    next_sequence = _append_work_log_plan_step_entries(
+        event_log,
+        start_sequence=1,
+        run_id="run-inspect",
+        step_id="inspect",
+        step_index=0,
+        step_title="Inspect current changes",
+        first=True,
+        last=True,
+    )
+    for offset in range(20):
+        _append_work_log_inspect_entry(
+            event_log,
+            sequence=next_sequence + offset,
+            kind="ContentDelta",
+            run_id=f"run-tail-{offset}",
+        )
+    stdout = StringIO()
+
+    async def scenario() -> None:
+        exit_code = await run_cli(
+            ["--work-log-inspect", str(log_path), "--work-log-inspect-format", "plans"],
+            stdin=StringIO(),
+            stdout=stdout,
+            stderr=StringIO(),
+            cwd=tmp_path,
+            services=_fake_services(),
+            runtime_builder=lambda **kwargs: (_ for _ in ()).throw(AssertionError("runtime should not start")),
+        )
+        assert exit_code == 0
+
+    asyncio.run(scenario())
+
+    assert [line.split("\t") for line in stdout.getvalue().splitlines()][1:] == [
+        ["plan", "", "plan:method:task:review", "completed", "", "method:task:review", "1/1", "0", "inspect", "", ""],
+        ["step", "1", "inspect", "completed", "run-inspect", "method:task:review", "", "", "", "Inspect current changes", ""],
+    ]
+
+
+def test_run_cli_work_log_inspect_plans_json_outputs_plan_projection(tmp_path) -> None:
+    from loushang.coding.cli.__main__ import run_cli
+    from loushang.work import JsonlEventLogBackend
+
+    log_path = tmp_path / "events.jsonl"
+    event_log = JsonlEventLogBackend(log_path)
+    _append_work_log_plan_step_entries(
+        event_log,
+        start_sequence=1,
+        run_id="run-inspect",
+        step_id="inspect",
+        step_index=0,
+        step_title="Inspect current changes",
+        first=True,
+        last=True,
+        planned_constraint={"level": "reasoned", "requires_reason": True},
+        audit_policy={"record": ["status", "reason"]},
+    )
+    stdout = StringIO()
+
+    async def scenario() -> None:
+        exit_code = await run_cli(
+            ["--work-log-inspect", str(log_path), "--work-log-inspect-format", "plans-json"],
+            stdin=StringIO(),
+            stdout=stdout,
+            stderr=StringIO(),
+            cwd=tmp_path,
+            services=_fake_services(),
+            runtime_builder=lambda **kwargs: (_ for _ in ()).throw(AssertionError("runtime should not start")),
+        )
+        assert exit_code == 0
+
+    asyncio.run(scenario())
+
+    payload = json.loads(stdout.getvalue())
+    assert payload[0]["plan_id"] == "plan:method:task:review"
+    assert payload[0]["status"] == "completed"
+    assert payload[0]["method_id"] == "method:task:review"
+    assert payload[0]["current_step_id"] == "inspect"
+    assert payload[0]["step_count"] == 1
+    assert payload[0]["completed_step_count"] == 1
+    assert payload[0]["failed_step_count"] == 0
+    assert payload[0]["steps"][0]["step_id"] == "inspect"
+    assert payload[0]["steps"][0]["status"] == "completed"
+    assert payload[0]["steps"][0]["title"] == "Inspect current changes"
+    assert payload[0]["steps"][0]["metadata"]["step_index"] == 0
+    assert payload[0]["steps"][0]["metadata"]["planned_constraint"] == {
+        "level": "reasoned",
+        "requires_reason": True,
+    }
+    assert payload[0]["steps"][0]["metadata"]["audit_policy"] == {"record": ["status", "reason"]}
+
+
+def test_run_cli_work_log_inspect_plans_json_includes_step_deviation(tmp_path) -> None:
+    from loushang.coding.cli.__main__ import run_cli
+    from loushang.work import JsonlEventLogBackend
+
+    log_path = tmp_path / "events.jsonl"
+    event_log = JsonlEventLogBackend(log_path)
+    _append_work_log_inspect_entry(
+        event_log,
+        sequence=1,
+        kind="WorkStepCompleted",
+        run_id="run-inspect",
+        method_id="method:task:review",
+        plan_id="plan:method:task:review",
+        step_id="inspect",
+        step_index=0,
+        step_title="Inspect current changes",
+        deviation={
+            "deviation_type": "adapted",
+            "reason": "Only documentation files changed.",
+            "policy_level": "reasoned",
+            "evidence_refs": ["git-diff"],
+        },
+    )
+    stdout = StringIO()
+
+    async def scenario() -> None:
+        exit_code = await run_cli(
+            ["--work-log-inspect", str(log_path), "--work-log-inspect-format", "plans-json"],
+            stdin=StringIO(),
+            stdout=stdout,
+            stderr=StringIO(),
+            cwd=tmp_path,
+            services=_fake_services(),
+            runtime_builder=lambda **kwargs: (_ for _ in ()).throw(AssertionError("runtime should not start")),
+        )
+        assert exit_code == 0
+
+    asyncio.run(scenario())
+
+    deviation = json.loads(stdout.getvalue())[0]["steps"][0]["deviation"]
+    assert deviation == {
+        "step_id": "inspect",
+        "deviation_type": "adapted",
+        "reason": "Only documentation files changed.",
+        "policy_level": "reasoned",
+        "evidence_refs": ["git-diff"],
+        "approval_ref": None,
+        "risk": None,
+        "outcome": None,
+        "metadata": {},
+    }
 
 
 def test_run_cli_work_log_inspect_outputs_json_without_runtime(tmp_path) -> None:
@@ -3809,6 +4508,96 @@ def test_run_cli_work_log_inspect_json_includes_method_id_when_present(tmp_path)
     assert json.loads(stdout.getvalue())[0]["method_id"] == "method:task:review"
 
 
+def test_run_cli_work_log_inspect_json_includes_plan_step_metadata(tmp_path) -> None:
+    from loushang.coding.cli.__main__ import run_cli
+    from loushang.work import JsonlEventLogBackend
+
+    log_path = tmp_path / "events.jsonl"
+    event_log = JsonlEventLogBackend(log_path)
+    _append_work_log_inspect_entry(
+        event_log,
+        sequence=3,
+        kind="WorkRunStarted",
+        delivery_hint="immediate",
+        method_id="method:task:review",
+        plan_id="plan:method:task:review",
+        step_id="inspect",
+        step_index=0,
+        step_title="Inspect current changes",
+    )
+    stdout = StringIO()
+
+    async def scenario() -> None:
+        exit_code = await run_cli(
+            ["--work-log-inspect", str(log_path), "--work-log-inspect-format", "json"],
+            stdin=StringIO(),
+            stdout=stdout,
+            stderr=StringIO(),
+            cwd=tmp_path,
+            services=_fake_services(),
+            runtime_builder=lambda **kwargs: (_ for _ in ()).throw(AssertionError("runtime should not start")),
+        )
+        assert exit_code == 0
+
+    asyncio.run(scenario())
+
+    summary = json.loads(stdout.getvalue())[0]
+    assert summary["method_id"] == "method:task:review"
+    assert summary["plan_id"] == "plan:method:task:review"
+    assert summary["step_id"] == "inspect"
+    assert summary["step_index"] == 0
+    assert summary["step_title"] == "Inspect current changes"
+
+
+def test_run_cli_work_log_inspect_json_includes_tool_approval_audit_metadata(tmp_path) -> None:
+    from loushang.coding.cli.__main__ import run_cli
+    from loushang.work import JsonlEventLogBackend
+
+    log_path = tmp_path / "events.jsonl"
+    event_log = JsonlEventLogBackend(log_path)
+    _append_work_log_inspect_entry(
+        event_log,
+        sequence=3,
+        kind="ToolApprovalResolved",
+        delivery_hint="immediate",
+        extra_payload={
+            "tool_call_id": "tool-1",
+            "tool_name": "write",
+            "action_id": "approval-1",
+            "approval_decision": "allow",
+            "policy_code": "tool_requires_approval",
+            "policy_reason": "Tool write requires approval",
+            "argument_keys": ["content", "path"],
+            "path": "/repo/approved.txt",
+        },
+    )
+    stdout = StringIO()
+
+    async def scenario() -> None:
+        exit_code = await run_cli(
+            ["--work-log-inspect", str(log_path), "--work-log-inspect-format", "json"],
+            stdin=StringIO(),
+            stdout=stdout,
+            stderr=StringIO(),
+            cwd=tmp_path,
+            services=_fake_services(),
+            runtime_builder=lambda **kwargs: (_ for _ in ()).throw(AssertionError("runtime should not start")),
+        )
+        assert exit_code == 0
+
+    asyncio.run(scenario())
+
+    summary = json.loads(stdout.getvalue())[0]
+    assert summary["tool_call_id"] == "tool-1"
+    assert summary["tool_name"] == "write"
+    assert summary["action_id"] == "approval-1"
+    assert summary["approval_decision"] == "allow"
+    assert summary["policy_code"] == "tool_requires_approval"
+    assert summary["policy_reason"] == "Tool write requires approval"
+    assert summary["argument_keys"] == ["content", "path"]
+    assert summary["path"] == "/repo/approved.txt"
+
+
 def test_run_cli_work_log_inspect_filters_by_run(tmp_path) -> None:
     from loushang.coding.cli.__main__ import run_cli
     from loushang.work import JsonlEventLogBackend
@@ -3833,9 +4622,9 @@ def test_run_cli_work_log_inspect_filters_by_run(tmp_path) -> None:
 
     asyncio.run(scenario())
 
-    assert stdout.getvalue().splitlines() == [
-        "sequence\tkind\trun_id\tsession_id\tdelivery_hint\tmethod_id",
-        "2\tApprovalRequested\trun-2\tsession-1\timmediate\t",
+    assert [line.split("\t") for line in stdout.getvalue().splitlines()] == [
+        _WORK_LOG_INSPECT_COLUMNS,
+        ["2", "ApprovalRequested", "run-2", "session-1", "immediate", "", "", "", "", ""],
     ]
 
 
@@ -5051,6 +5840,29 @@ def test_run_cli_lists_methods_as_json(tmp_path) -> None:
         "description: Review changes.\n"
         "type: task\n"
         "domain: coding\n"
+        "domains:\n"
+        "  - coding\n"
+        "  - research\n"
+        "task_types:\n"
+        "  - reviewing\n"
+        "contexts:\n"
+        "  - oss-library\n"
+        "artifact_types:\n"
+        "  - code\n"
+        "modalities:\n"
+        "  - text\n"
+        "toolchains:\n"
+        "  - python\n"
+        "lifecycle:\n"
+        "  - maintenance\n"
+        "capabilities:\n"
+        "  - diff-review\n"
+        "complexity: standard\n"
+        "risk: medium\n"
+        "tags:\n"
+        "  method_family:\n"
+        "    - review-first\n"
+        "  domain_app: coding\n"
         "meta_role: VALIDATOR\n"
         "phase: VERIFY\n"
         "---\n\n"
@@ -5087,8 +5899,90 @@ def test_run_cli_lists_methods_as_json(tmp_path) -> None:
             "meta_role": "VALIDATOR",
             "phase": "VERIFY",
             "path": str(method_dir / "SKILL.md"),
+            "applicability": {
+                "domains": ["coding", "research"],
+                "task_types": ["reviewing"],
+                "contexts": ["oss-library"],
+                "artifact_types": ["code"],
+                "modalities": ["text"],
+                "toolchains": ["python"],
+                "lifecycle": ["maintenance"],
+                "capabilities": ["diff-review"],
+                "complexity": "standard",
+                "risk": "medium",
+                "tags": {
+                    "method_family": ["review-first"],
+                    "domain_app": ["coding"],
+                },
+            },
         }
     ]
+    assert stderr.getvalue() == ""
+
+
+def test_run_cli_shows_method_json_with_applicability(tmp_path) -> None:
+    from loushang.coding.cli.__main__ import run_cli
+
+    method_dir = tmp_path / "methods" / "task" / "review"
+    method_dir.mkdir(parents=True)
+    (method_dir / "SKILL.md").write_text(
+        "---\n"
+        "name: review\n"
+        "description: Review changes.\n"
+        "type: task\n"
+        "domains: [coding, research]\n"
+        "task_types: [reviewing]\n"
+        "tags:\n"
+        "  method_family: review-first\n"
+        "---\n\n"
+        "Review the diff carefully.",
+        encoding="utf-8",
+    )
+    session = FakeSession("session-1")
+    runtime = FakeRuntime(session)
+    stdout = StringIO()
+    stderr = StringIO()
+
+    async def scenario() -> None:
+        exit_code = await run_cli(
+            ["method", "show", "review", "--show-method-format", "json"],
+            stdin=StringIO(""),
+            stdout=stdout,
+            stderr=stderr,
+            cwd=tmp_path,
+            services=_fake_services(),
+            runtime_builder=lambda **kwargs: runtime,
+        )
+        assert exit_code == 0
+
+    asyncio.run(scenario())
+
+    payload = json.loads(stdout.getvalue())
+    assert payload["applicability"] == {
+        "domains": ["coding", "research"],
+        "task_types": ["reviewing"],
+        "contexts": [],
+        "artifact_types": [],
+        "modalities": [],
+        "toolchains": [],
+        "lifecycle": [],
+        "capabilities": [],
+        "complexity": None,
+        "risk": None,
+        "tags": {"method_family": ["review-first"]},
+    }
+    assert payload["content"] == (
+        "---\n"
+        "name: review\n"
+        "description: Review changes.\n"
+        "type: task\n"
+        "domains: [coding, research]\n"
+        "task_types: [reviewing]\n"
+        "tags:\n"
+        "  method_family: review-first\n"
+        "---\n\n"
+        "Review the diff carefully."
+    )
     assert stderr.getvalue() == ""
 
 
@@ -5098,7 +5992,17 @@ def test_run_cli_shows_method_as_text(tmp_path) -> None:
     skill_dir = tmp_path / "skills" / "debug"
     skill_dir.mkdir(parents=True)
     (skill_dir / "SKILL.md").write_text(
-        "---\nname: debug\ndescription: Debug failures.\ntype: task\n---\n\nDebug failures carefully.",
+        "---\n"
+        "name: debug\n"
+        "description: Debug failures.\n"
+        "type: task\n"
+        "domain: coding\n"
+        "task_types: [debugging]\n"
+        "risk: medium\n"
+        "tags:\n"
+        "  method_family: debug-first\n"
+        "---\n\n"
+        "Debug failures carefully.",
         encoding="utf-8",
     )
     session = FakeSession("session-1")
@@ -5124,7 +6028,175 @@ def test_run_cli_shows_method_as_text(tmp_path) -> None:
     assert "id: skill:debug" in output
     assert "kind: skill_backed" in output
     assert "element_type: task" in output
+    assert "applicability:" in output
+    assert "  domains: coding" in output
+    assert "  task_types: debugging" in output
+    assert "  risk: medium" in output
+    assert "  tags.method_family: debug-first" in output
     assert "Debug failures carefully." in output
+    assert stderr.getvalue() == ""
+
+
+def test_run_cli_shows_fixed_method_plan_as_json(tmp_path) -> None:
+    from loushang.coding.cli.__main__ import run_cli
+
+    method_dir = tmp_path / "methods" / "task" / "review"
+    method_dir.mkdir(parents=True)
+    (method_dir / "SKILL.md").write_text(
+        "---\n"
+        "name: review\n"
+        "description: Review changes.\n"
+        "type: task\n"
+        "domains: [coding, research]\n"
+        "task_types: [reviewing]\n"
+        "meta_role: VALIDATOR\n"
+        "phase: VERIFY\n"
+        "plan_mode: fixed\n"
+        "steps:\n"
+        "  - inspect\n"
+        "  - verify\n"
+        "step_titles:\n"
+        "  inspect: Inspect current changes\n"
+        "  verify: Run focused checks\n"
+        "step_guidance:\n"
+        "  inspect: Read changed files and summarize intent.\n"
+        "  verify: Run focused tests or explain why they cannot run.\n"
+        "step_constraints:\n"
+        "  inspect:\n"
+        "    level: reasoned\n"
+        "    can_merge: true\n"
+        "    requires_reason: true\n"
+        "  verify:\n"
+        "    level: evidence\n"
+        "    can_skip: true\n"
+        "    requires_evidence: true\n"
+        "step_audit:\n"
+        "  inspect:\n"
+        "    record: [status, reason]\n"
+        "  verify:\n"
+        "    record: [status, reason, evidence]\n"
+        "---\n\n"
+        "Use concise review guidance.",
+        encoding="utf-8",
+    )
+    session = FakeSession("session-1")
+    runtime = FakeRuntime(session)
+    stdout = StringIO()
+    stderr = StringIO()
+
+    async def scenario() -> None:
+        exit_code = await run_cli(
+                ["method", "plan", "show", "review", "--format", "json"],
+            stdin=StringIO(""),
+            stdout=stdout,
+            stderr=stderr,
+            cwd=tmp_path,
+            services=_fake_services(),
+            runtime_builder=lambda **kwargs: runtime,
+        )
+        assert exit_code == 0
+
+    asyncio.run(scenario())
+
+    payload = json.loads(stdout.getvalue())
+    assert payload["method"]["id"] == "method:task:review"
+    assert payload["method"]["name"] == "review"
+    assert payload["method"]["applicability"]["domains"] == ["coding", "research"]
+    assert payload["plan"]["id"] == "plan:method:task:review"
+    assert payload["plan"]["method_id"] == "method:task:review"
+    assert payload["plan"]["mode"] == "fixed"
+    assert payload["plan"]["metadata"]["step_count"] == 2
+    assert [step["id"] for step in payload["steps"]] == ["inspect", "verify"]
+    assert [step["title"] for step in payload["steps"]] == ["Inspect current changes", "Run focused checks"]
+    first_projection = payload["steps"][0]["projection"]
+    second_projection = payload["steps"][1]["projection"]
+    assert first_projection["step_guidance"] == "Read changed files and summarize intent."
+    assert first_projection["step_index"] == 0
+    assert first_projection["step_count"] == 2
+    assert first_projection["meta_role"] == "VALIDATOR"
+    assert "Step inspect - Inspect current changes" in first_projection["content"]
+    assert second_projection["step_guidance"] == "Run focused tests or explain why they cannot run."
+    assert second_projection["step_index"] == 1
+    assert second_projection["step_count"] == 2
+    assert "Step verify - Run focused checks" in second_projection["content"]
+    assert payload["steps"][0]["constraint"] == {
+        "level": "reasoned",
+        "can_merge": True,
+        "requires_reason": True,
+    }
+    assert payload["steps"][0]["audit"] == {"record": ["status", "reason"]}
+    assert payload["steps"][1]["constraint"] == {
+        "level": "evidence",
+        "can_skip": True,
+        "requires_evidence": True,
+    }
+    assert payload["steps"][1]["audit"] == {"record": ["status", "reason", "evidence"]}
+    assert payload["steps"][0]["applicability"]["domains"] == ["coding", "research"]
+    assert payload["steps"][0]["applicability"]["task_types"] == ["reviewing"]
+    assert stderr.getvalue() == ""
+
+
+def test_run_cli_shows_fixed_method_plan_as_text(tmp_path) -> None:
+    from loushang.coding.cli.__main__ import run_cli
+
+    method_dir = tmp_path / "methods" / "task" / "review"
+    method_dir.mkdir(parents=True)
+    (method_dir / "SKILL.md").write_text(
+        "---\n"
+        "name: review\n"
+        "description: Review changes.\n"
+        "type: task\n"
+        "plan_mode: fixed\n"
+        "steps:\n"
+        "  - inspect\n"
+        "  - verify\n"
+        "step_titles:\n"
+        "  inspect: Inspect current changes\n"
+        "  verify: Run focused checks\n"
+        "step_guidance:\n"
+        "  inspect: Read changed files and summarize intent.\n"
+        "  verify: Run focused tests or explain why they cannot run.\n"
+        "step_constraints:\n"
+        "  inspect:\n"
+        "    level: reasoned\n"
+        "    requires_reason: true\n"
+        "step_audit:\n"
+        "  inspect:\n"
+        "    record: [status, reason]\n"
+        "---\n\n"
+        "Use concise review guidance.",
+        encoding="utf-8",
+    )
+    session = FakeSession("session-1")
+    runtime = FakeRuntime(session)
+    stdout = StringIO()
+    stderr = StringIO()
+
+    async def scenario() -> None:
+        exit_code = await run_cli(
+            ["method", "plan", "show", "review"],
+            stdin=StringIO(""),
+            stdout=stdout,
+            stderr=stderr,
+            cwd=tmp_path,
+            services=_fake_services(),
+            runtime_builder=lambda **kwargs: runtime,
+        )
+        assert exit_code == 0
+
+    asyncio.run(scenario())
+
+    output = stdout.getvalue()
+    assert "method_id: method:task:review" in output
+    assert "plan_id: plan:method:task:review" in output
+    assert "mode: fixed" in output
+    assert "steps:" in output
+    assert "  1. inspect - Inspect current changes" in output
+    assert "     guidance: Read changed files and summarize intent." in output
+    assert '     constraint: {"level": "reasoned", "requires_reason": true}' in output
+    assert '     audit: {"record": ["status", "reason"]}' in output
+    assert "  2. verify - Run focused checks" in output
+    assert "     guidance: Run focused tests or explain why they cannot run." in output
     assert stderr.getvalue() == ""
 
 
