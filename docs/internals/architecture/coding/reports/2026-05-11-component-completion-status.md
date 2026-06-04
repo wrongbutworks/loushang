@@ -1,12 +1,12 @@
 # 2026-05-11 Component Completion Status
 
-This report closes the current non-UI loushang coding alignment pass against pi coding.
+This report closes the current non-UI loushang coding alignment pass against reference coding agent.
 
 ## Scope
 
 Counted as gap:
 
-- pi coding has the non-UI capability or observable semantic
+- reference coding agent has the non-UI capability or observable semantic
 - loushang coding does not yet provide an equivalent capability or semantic
 
 Not counted as gap:
@@ -16,7 +16,7 @@ Not counted as gap:
 - method registry / method selection / method injection
 - naming style differences
 - Python-vs-TypeScript implementation differences
-- loushang-only capabilities that go beyond pi
+- loushang-only capabilities that go beyond reference implementation
 - provider/model configuration divergence, because loushang uses `loushang.ai` Provider -> Endpoint -> Model layering by design
 
 Latest verification for this pass:

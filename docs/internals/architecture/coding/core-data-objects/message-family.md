@@ -76,9 +76,9 @@
 - summary
 - tokens before
 
-## Pi Alignment
+## Reference Implementation Alignment
 
-- 这组对象整体直接对齐 `pi-coding-agent/messages.ts` 中的 coding-specific `AgentMessage` 扩展
+- 这组对象整体直接对齐 `reference coding agent/messages.ts` 中的 coding-specific `AgentMessage` 扩展
 
 ## Notes
 

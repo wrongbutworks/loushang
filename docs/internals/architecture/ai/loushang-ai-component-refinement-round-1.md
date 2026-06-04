@@ -65,7 +65,7 @@
 
 - 主功能清晰
 - public contract 已冻结
-- 与 `pi-ai` 对齐明确
+- 与 `reference AI SDK` 对齐明确
 - 没有必要再拆
 
 ### 2. Model Registry

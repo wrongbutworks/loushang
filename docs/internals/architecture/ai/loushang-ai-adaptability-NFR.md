@@ -2,7 +2,7 @@
 
 ## Scope
 
-本文档基于 `loushang-ai` 当前设计、实现状态与 `pi-ai` 参考，总结 `loushang-ai` 在适应性方面应满足的非功能需求（NFR）。
+本文档基于 `loushang-ai` 当前设计、实现状态与 `reference AI SDK` 参考，总结 `loushang-ai` 在适应性方面应满足的非功能需求（NFR）。
 
 本文档只讨论：
 
@@ -21,7 +21,7 @@
 
 ## Inputs
 
-- [PI-AI Adaptability NFR](/home/dev/workspace/loushang/docs/architecture/ai/reference/pi-ai/pi-ai-adaptability-NFR.md)
+- [Reference AI SDK Adaptability NFR](/home/dev/workspace/loushang/docs/architecture/ai/reference/reference-ai-sdk/reference-ai-sdk-adaptability-NFR.md)
 - [Loushang-AI System Context](/home/dev/workspace/loushang/docs/architecture/ai/loushang-ai-system-context.md)
 - [Loushang-AI Physical System Context](/home/dev/workspace/loushang/docs/architecture/ai/loushang-ai-physical-system-context.md)
 - [Loushang-AI Component Structure V1](/home/dev/workspace/loushang/docs/architecture/ai/loushang-ai-component-structure-v1.md)

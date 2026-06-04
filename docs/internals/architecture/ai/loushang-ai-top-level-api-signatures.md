@@ -41,9 +41,9 @@
 
 ---
 
-## Pi-AI Alignment
+## Reference AI SDK Alignment
 
-从 `pi-mono/packages/ai` 源码可以直接确认，`pi-ai` 真实导出了这四个入口：
+从 `reference-repository/packages/ai` 源码可以直接确认，`reference AI SDK` 真实导出了这四个入口：
 
 - `stream`
 - `complete`
@@ -52,16 +52,16 @@
 
 直接证据包括：
 
-- [index.ts](/home/dev/workspace/pi-mono/packages/ai/src/index.ts)
-- [stream.ts](/home/dev/workspace/pi-mono/packages/ai/src/stream.ts)
+- [index.ts](/home/dev/workspace/reference-repository/packages/ai/src/index.ts)
+- [stream.ts](/home/dev/workspace/reference-repository/packages/ai/src/stream.ts)
 
 其中：
 
 - `complete()` 建立在 `stream().result()` 之上
 - `completeSimple()` 建立在 `streamSimple().result()` 之上
 
-因此，`loushang.ai` 继续采用四个顶层入口，不是额外扩展，而是与 `pi-ai` 保持对齐。
-但 Python 版 `loushang.ai` 不必机械复制 `pi-ai` 的同步 stream 启动形态。
+因此，`loushang.ai` 继续采用四个顶层入口，不是额外扩展，而是与 `reference AI SDK` 保持对齐。
+但 Python 版 `loushang.ai` 不必机械复制 `reference AI SDK` 的同步 stream 启动形态。
 
 ---
 
@@ -76,7 +76,7 @@
 
 也就是说：
 
-- 保留 `pi-ai` 的双入口语义
+- 保留 `reference AI SDK` 的双入口语义
 - 仅将函数名从 `camelCase` 转为 `snake_case`
 
 不建议改成其他命名，例如：
@@ -85,7 +85,7 @@
 - `generate`
 - `generate_simple`
 
-因为这会削弱与 `pi-ai` 的对齐关系，也会让 registry / adapter / simple options 的语义链路变得不稳定。
+因为这会削弱与 `reference AI SDK` 的对齐关系，也会让 registry / adapter / simple options 的语义链路变得不稳定。
 
 ---
 
@@ -150,7 +150,7 @@ async def complete_simple(
 
 - `loushang.ai` 的输入语义核心就是统一 `Context`
 - 不应把 `system_prompt`、`messages`、`tools` 拆成多个根参数
-- `Context` 现已作为正式 AI 输入语义进入代码主链，并与 `pi-ai` 的 `systemPrompt + messages + tools` 语义保持对应
+- `Context` 现已作为正式 AI 输入语义进入代码主链，并与 `reference AI SDK` 的 `systemPrompt + messages + tools` 语义保持对应
 
 ### `options`
 

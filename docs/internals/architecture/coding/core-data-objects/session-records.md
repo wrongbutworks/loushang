@@ -100,11 +100,11 @@
 - 某个可恢复时间点的引用
 - 与 compaction / summarization / restore 相关的持久化锚点
 
-## Pi Alignment
+## Reference Implementation Alignment
 
-- `SessionRecord` 与 `SessionMetadata` 对齐的是 `pi` 中 session header、info entry 与索引视图的组合语义
+- `SessionRecord` 与 `SessionMetadata` 对齐的是 `reference CLI` 中 session header、info entry 与索引视图的组合语义
 - `SessionSummary` 是面向 mode / RPC / CLI 的稳定 read model，避免上层直接解析 JSONL
-- `SessionBranchRecord` 与 `SessionCheckpointRecord` 当前不直接对齐 `pi` 的稳定一等对象名
+- `SessionBranchRecord` 与 `SessionCheckpointRecord` 当前不直接对齐 `reference CLI` 的稳定一等对象名
 
 ## Notes
 

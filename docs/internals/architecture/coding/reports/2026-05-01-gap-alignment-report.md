@@ -1,8 +1,8 @@
-# Loushang vs Pi Coding Gap Report (2026-05-01)
+# Loushang vs Reference Coding Gap Report (2026-05-01)
 
 ## Scope
 
-- 对比对象：`loushang-coding` 当前实现 vs 架构规划 interface + `pi-coding-agent` 参考对齐
+- 对比对象：`loushang-coding` 当前实现 vs 架构规划 interface + `reference coding agent` 参考对齐
 - 排除范围：Interactive/TUI（暂不纳入本次清单）
 - 数据来源：`docs/architecture/coding/component-interfaces/*.md` 接口清单 + 当前 `src/loushang/coding` 实现扫描
 - 时间：2026-05-01
@@ -36,9 +36,9 @@
 
 > 注：`utils` 当前在架构中定位为薄辅助层，不属于本次接口方法清单直接计算口径。
 
-## 与 pi 对齐完成度清单（非 TUI）
+## 与参考实现对齐完成度清单（非 TUI）
 
-| 组件 | 与 pi 对齐% | 与 pi 差距% | 说明 |
+| 组件 | 与参考实现对齐% | 与参考实现差距% | 说明 |
 | --- | ---: | ---: | --- |
 | bootstrap | 95 | 5 | 与 `main.ts + services + sdk` 装配链路语义一致 |
 | cli | 80 | 20 | `list-models/list-commands/list-sessions` 与 command plane 部分完成，命令分发稳定性可增强 |
@@ -49,9 +49,9 @@
 | exec | 90 | 10 | 命令执行边界可继续对齐更细粒度行为 |
 | extensions | 40 | 60 | 运行时 hook 生命周期对齐不足 |
 | loader | 90 | 10 | 资源聚合口径与扩展发现稳定 |
-| message | 100 | 0 | 与 pi 的 message/event family 对齐度高 |
+| message | 100 | 0 | 与 参考实现的 message/event family 对齐度高 |
 | method | 10 | 90 | method guidance/选择层仍缺 |
-| mode | 50 | 50 | print/rpc 与 pi 的 adapter 思路接近，未形成完整 mode 接口层 |
+| mode | 50 | 50 | print/rpc 与 参考实现的 adapter 思路接近，未形成完整 mode 接口层 |
 | plugin | 20 | 80 | package/distribution 管理与展开尚未对齐 |
 | policy | 70 | 30 | 关键决策核心得到实现，但细化策略与上游一致性不足 |
 | prompt | 90 | 10 | prompt bridge 基础齐全 |
@@ -59,7 +59,7 @@
 | sdk | 95 | 5 | SDK 工厂链路高一致 |
 | session | 95 | 5 | session 门面语义基本对齐 |
 | skill | 10 | 90 | skill 加载/发现/注册仍是空白 |
-| store | 100 | 0 | 与 pi session 持久化模型高度一致 |
+| store | 100 | 0 | 与参考实现 session 持久化模型高度一致 |
 | tools | 95 | 5 | 工具定义与注册链路基本齐全 |
 | utils | 20 | 80 | 工具层薄化基础较弱 |
 
@@ -67,8 +67,8 @@
 
 - 规划完成率（总体）：**69.9%**
 - 规划缺口（总体）：**30.1%**
-- 与 pi 对齐率（总体）：**70.7%**
-- 与 pi 差距（总体）：**29.3%**
+- 与参考实现对齐率（总体）：**70.7%**
+- 与参考实现差距（总体）：**29.3%**
 
 ## 下一步建议（按缺口优先）
 
@@ -113,7 +113,7 @@
 
 ### 当前估算调整（非 TUI）
 
-- `extensions` 与 pi 对齐率从约 **40%** 提升到约 **55%**：
+- `extensions` 与参考实现对齐率从约 **40%** 提升到约 **55%**：
   - 已补运行时绑定、refresh、UI request、session control hooks、tree/compact/fork typed result。
   - 仍缺完整生命周期诊断分层、extension command context 的更细粒度 PI 行为、更多 UI/runtime hook 覆盖。
 - `mode` 规划完成率从旧口径 **0%** 调整为约 **70%**：
@@ -121,7 +121,7 @@
   - `print/json/rpc` 已纳入统一 adapter plane。
   - 仍缺 interactive/TUI 接入前的更完整 action/state contract。
 - 总体规划完成率粗估从 **69.9%** 提升到约 **74%**。
-- 总体与 pi 对齐率粗估从 **70.7%** 提升到约 **74%**。
+- 总体与参考实现对齐率粗估从 **70.7%** 提升到约 **74%**。
 
 ### 下一步建议
 
@@ -151,7 +151,7 @@
   - 准备、压缩、自动压缩触发、状态查询、branch summary 已有基础服务面。
   - 仍缺更完整的 abort signal wiring、独立 `CompactionArtifact` 命名对象、以及把更多 AgentSession 内部压缩逻辑下沉到 coordinator。
 - 总体规划完成率粗估从约 **74%** 提升到约 **75%**。
-- 总体与 pi 对齐率粗估从约 **74%** 提升到约 **75%**。
+- 总体与参考实现对齐率粗估从约 **74%** 提升到约 **75%**。
 
 ### 下一步建议
 
@@ -181,7 +181,7 @@
   - 已有本地 source、manifest、registry、manager、resolver、resource roots 展开。
   - 仍缺远程/source catalog、安装/卸载、持久化 registry、版本与冲突策略。
 - 总体规划完成率粗估从约 **75%** 提升到约 **78%**。
-- 总体与 pi 对齐率粗估从约 **75%** 提升到约 **78%**。
+- 总体与参考实现对齐率粗估从约 **75%** 提升到约 **78%**。
 
 ### 下一步建议
 
@@ -207,7 +207,7 @@
   - plugin source 已进入 settings/bootstrap 默认路径。
   - 仍缺 CLI/SDK 管理入口、持久化 registry、远程 source 与版本/冲突策略。
 - 总体规划完成率粗估从约 **78%** 提升到约 **79%**。
-- 总体与 pi 对齐率粗估从约 **78%** 提升到约 **79%**。
+- 总体与参考实现对齐率粗估从约 **78%** 提升到约 **79%**。
 
 ### 下一步建议
 
@@ -238,7 +238,7 @@
   - plugin 已有 settings/bootstrap 接入与 CLI list surface。
   - 仍缺 add/remove/enable/disable CLI/SDK 管理入口、持久化 registry、版本策略。
 - 总体规划完成率粗估从约 **79%** 提升到约 **80%**。
-- 总体与 pi 对齐率粗估从约 **79%** 提升到约 **80%**。
+- 总体与参考实现对齐率粗估从约 **79%** 提升到约 **80%**。
 
 ### 下一步建议
 
@@ -263,11 +263,11 @@
 - `diagnostics` 规划完成率从约 **40%** 提升到约 **70%**：
   - startup check 执行入口、启动检查结果对象、错误归一化与失败捕获已落地。
   - 仍缺更深的 bootstrap 默认 startup checks 接入，以及 provider/model/tool 结果到 diagnostics 的完整事件投影。
-- `diagnostics` 与 pi 对齐率从约 **60%** 提升到约 **75%**：
-  - 已具备 pi 风格的启动检查与错误归一化基础面。
+- `diagnostics` 与参考实现对齐率从约 **60%** 提升到约 **75%**：
+  - 已具备 参考实现风格的启动检查与错误归一化基础面。
   - 差距主要是运行时错误事实投影粒度和启动检查清单丰富度。
 - 总体规划完成率粗估从约 **80%** 提升到约 **81%**。
-- 总体与 pi 对齐率粗估从约 **80%** 提升到约 **81%**。
+- 总体与参考实现对齐率粗估从约 **80%** 提升到约 **81%**。
 
 ### 下一步建议
 
@@ -293,11 +293,11 @@
 - `diagnostics` 规划完成率从约 **70%** 提升到约 **75%**：
   - startup check 不再只是服务面，已进入默认 session bootstrap。
   - 仍缺模型 auth 从 session 内部记录迁移到统一 startup/runtime check plane，以及 provider/tool 事件投影。
-- `diagnostics` 与 pi 对齐率从约 **75%** 提升到约 **78%**：
-  - 启动前检查和坏配置容错更接近 pi 的 startup diagnostics 语义。
+- `diagnostics` 与参考实现对齐率从约 **75%** 提升到约 **78%**：
+  - 启动前检查和坏配置容错更接近 参考实现的 startup diagnostics 语义。
   - 差距主要是诊断检查清单深度和 runtime error projection。
 - 总体规划完成率粗估从约 **81%** 提升到约 **82%**。
-- 总体与 pi 对齐率粗估从约 **81%** 提升到约 **82%**。
+- 总体与参考实现对齐率粗估从约 **81%** 提升到约 **82%**。
 
 ### 下一步建议
 
@@ -323,11 +323,11 @@
 - `diagnostics` 规划完成率从约 **75%** 提升到约 **78%**：
   - 已覆盖 startup check、bootstrap 接入、tool runtime error projection、model source 细化。
   - 仍缺 provider/model assistant error 的一等投影，以及更多错误码/诊断级别策略。
-- `diagnostics` 与 pi 对齐率从约 **78%** 提升到约 **80%**：
+- `diagnostics` 与参考实现对齐率从约 **78%** 提升到约 **80%**：
   - 运行期错误事实开始从 event surface 投影，而不是只依赖局部组件手工写入。
   - 差距主要是 provider/model streaming error 与 UI 可展示诊断聚合。
 - 总体规划完成率粗估从约 **82%** 提升到约 **83%**。
-- 总体与 pi 对齐率粗估从约 **82%** 提升到约 **83%**。
+- 总体与参考实现对齐率粗估从约 **82%** 提升到约 **83%**。
 
 ### 下一步建议
 
@@ -352,11 +352,11 @@
 - `diagnostics` 规划完成率从约 **78%** 提升到约 **80%**：
   - startup、bootstrap、tool runtime error、assistant provider error、model auth source 已有统一投影。
   - 仍缺更完整的诊断聚合视图、错误去重/关联策略、以及 UI/CLI 展示策略。
-- `diagnostics` 与 pi 对齐率从约 **80%** 提升到约 **82%**：
+- `diagnostics` 与参考实现对齐率从约 **80%** 提升到约 **82%**：
   - provider/model 运行期错误不再只停留在 assistant message 内，而是进入统一 diagnostics 面。
   - 差距主要是更细的 provider error 分类、可恢复建议和前端展示。
 - 总体规划完成率粗估从约 **83%** 提升到约 **84%**。
-- 总体与 pi 对齐率粗估从约 **83%** 提升到约 **84%**。
+- 总体与参考实现对齐率粗估从约 **83%** 提升到约 **84%**。
 
 ### 下一步建议
 
@@ -391,7 +391,7 @@
   - 已有 settings/bootstrap 接入、list surface、持久化 disabled 清单与 CLI 管理入口。
   - 仍缺 add/remove CLI、远程安装、版本/冲突策略、plugin catalog。
 - 总体规划完成率粗估从约 **84%** 提升到约 **85%**。
-- 总体与 pi 对齐率粗估从约 **84%** 提升到约 **85%**。
+- 总体与参考实现对齐率粗估从约 **84%** 提升到约 **85%**。
 
 ### 下一步建议
 
@@ -419,7 +419,7 @@
   - source list/add/remove、enable/disable、bootstrap 展开、CLI list surface 已有基础闭环。
   - 仍缺远程安装、版本/冲突策略、plugin catalog、签名/安全策略。
 - 总体规划完成率粗估从约 **85%** 提升到约 **86%**。
-- 总体与 pi 对齐率粗估从约 **85%** 提升到约 **86%**。
+- 总体与参考实现对齐率粗估从约 **85%** 提升到约 **86%**。
 
 ### 下一步建议
 
@@ -446,7 +446,7 @@
   - adapter、config、state、run entry、action dispatch 已有稳定骨架。
   - 仍缺 interactive/TUI 具体 adapter、更多 action 类型、以及 mode 自身事件/状态 reducer。
 - 总体规划完成率粗估从约 **86%** 提升到约 **87%**。
-- 总体与 pi 对齐率粗估从约 **86%** 提升到约 **87%**。
+- 总体与参考实现对齐率粗估从约 **86%** 提升到约 **87%**。
 
 ### 下一步建议
 
@@ -475,10 +475,10 @@
 - `diagnostics` 规划完成率从约 **80%** 提升到约 **84%**：
   - startup、bootstrap、runtime projection、provider/model/tool source、dedupe、related correlation 均已有基础能力。
   - 仍缺更细错误分类、恢复建议、以及 CLI/RPC 可展示的诊断摘要面。
-- `diagnostics` 与 pi 对齐率从约 **82%** 提升到约 **85%**：
+- `diagnostics` 与参考实现对齐率从约 **82%** 提升到约 **85%**：
   - retry/provider error 场景更接近稳定 UI diagnostics，而不是重复事件日志。
 - 总体规划完成率粗估从约 **87%** 提升到约 **88%**。
-- 总体与 pi 对齐率粗估从约 **87%** 提升到约 **88%**。
+- 总体与参考实现对齐率粗估从约 **87%** 提升到约 **88%**。
 
 ### 下一步建议
 
@@ -506,10 +506,10 @@
 - `diagnostics` 规划完成率从约 **84%** 提升到约 **88%**：
   - 诊断采集、去重、错误报告、CLI 查询、RPC 查询已有基础闭环。
   - 仍缺更细错误分类、恢复建议、UI 分组策略、以及跨 session 诊断索引。
-- `diagnostics` 与 pi 对齐率从约 **85%** 提升到约 **89%**：
+- `diagnostics` 与参考实现对齐率从约 **85%** 提升到约 **89%**：
   - 已从内部 service 能力推进到可被 headless host/CLI 稳定消费的 diagnostics surface。
 - 总体规划完成率粗估从约 **88%** 提升到约 **89%**。
-- 总体与 pi 对齐率粗估从约 **88%** 提升到约 **89%**。
+- 总体与参考实现对齐率粗估从约 **88%** 提升到约 **89%**。
 
 ### 下一步建议
 
@@ -519,7 +519,7 @@
 
 ## 2026-05-01 更新（runtime session prefix lookup）
 
-- 2026-05-01 继续补 `runtime/store` 与 `pi` 的 session lookup 语义：
+- 2026-05-01 继续补 `runtime/store` 与 `reference CLI` 的 session lookup 语义：
   - `AgentSessionRuntime.restore_session(...)` / `switch_session(...)` 在 path 和完整 session id 之外，支持 session id prefix。
   - prefix 唯一匹配时恢复对应 session。
   - prefix 多匹配时抛出稳定 `Ambiguous session reference`，由 CLI/RPC 统一收口。
@@ -529,9 +529,9 @@
 
 ### 当前估算调整（非 TUI）
 
-- `runtime/store` 与 pi 对齐率从约 **90%** 提升到约 **91%**：
-  - session restore lookup 更接近 pi CLI/runtime 的短 ID 使用方式。
-- 总体与 pi 对齐率粗估维持约 **91%**。
+- `runtime/store` 与参考实现对齐率从约 **90%** 提升到约 **91%**：
+  - session restore lookup 更接近 reference implementation CLI/runtime 的短 ID 使用方式。
+- 总体与参考实现对齐率粗估维持约 **91%**。
 
 ### 下一步建议
 
@@ -541,7 +541,7 @@
 
 ## 2026-05-01 更新（store/runtime all-session lookup）
 
-- 2026-05-01 继续补 `store/session` 与 `pi` 的跨 session 查询面：
+- 2026-05-01 继续补 `store/session` 与 `reference CLI` 的跨 session 查询面：
   - `SessionManager.list_all_summaries(root)` 聚合 sessions root 下直接 JSONL 与一层 project/session 子目录。
   - `SessionManager.find_all_sessions(root, query)` 复用统一 summary filter。
   - `AgentSessionRuntime.list_all_session_summaries()` / `find_all_session_summaries(query)` 以当前 `session_dir.parent` 作为 sessions root 透出该能力。
@@ -550,11 +550,11 @@
 
 ### 当前估算调整（非 TUI）
 
-- `store/session` 与 pi 对齐率从约 **91%** 提升到约 **93%**：
+- `store/session` 与参考实现对齐率从约 **91%** 提升到约 **93%**：
   - 补齐跨 project/session dir 的 summary lookup 基础能力。
-- `runtime/store` 与 pi 对齐率从约 **91%** 提升到约 **92%**：
+- `runtime/store` 与参考实现对齐率从约 **91%** 提升到约 **92%**：
   - runtime 不再只限定当前 session_dir 查询。
-- 总体与 pi 对齐率粗估从约 **91%** 提升到约 **92%**。
+- 总体与参考实现对齐率粗估从约 **91%** 提升到约 **92%**。
 
 ### 下一步建议
 
@@ -575,9 +575,9 @@
 
 ### 当前估算调整（非 TUI）
 
-- `CLI/RPC session listing` 与 pi 对齐率从约 **90%** 提升到约 **93%**：
+- `CLI/RPC session listing` 与参考实现对齐率从约 **90%** 提升到约 **93%**：
   - 当前项目 session listing 与跨项目/all-session lookup 都已有稳定入口。
-- 总体与 pi 对齐率粗估维持约 **92%**。
+- 总体与参考实现对齐率粗估维持约 **92%**。
 
 ### 下一步建议
 
@@ -599,9 +599,9 @@
 
 ### 当前估算调整（非 TUI）
 
-- `CLI/RPC session listing` 与 pi 对齐率从约 **93%** 提升到约 **95%**：
+- `CLI/RPC session listing` 与参考实现对齐率从约 **93%** 提升到约 **95%**：
   - CLI 与 RPC 的 session 查询参数能力基本一致。
-- 总体与 pi 对齐率粗估维持约 **92%**。
+- 总体与参考实现对齐率粗估维持约 **92%**。
 
 ### 下一步建议
 
@@ -623,14 +623,14 @@
 
 ### 当前估算调整（非 TUI）
 
-- `mode` 与 pi 对齐率从约 **78%** 提升到约 **82%**：
+- `mode` 与参考实现对齐率从约 **78%** 提升到约 **82%**：
   - mode adapter contract 已覆盖非 TUI start/stop/input/state/event/wait/rebind/dispose 主生命周期。
-- 总体与 pi 对齐率粗估维持约 **92%**。
+- 总体与参考实现对齐率粗估维持约 **92%**。
 
 ### 下一步建议
 
 1. 继续补 runtime/session lifecycle diagnostics 查询。
-2. 评估 RPC shutdown/exit command 是否需要对齐 pi。
+2. 评估 RPC shutdown/exit command 是否需要对齐 reference implementation。
 3. 将 `method` 基础 registry 放到后续批次。
 
 ## 2026-05-01 更新（session-scoped diagnostics query）
@@ -639,26 +639,26 @@
   - `AgentSession.get_session_diagnostics(query?)` 默认限定当前 `sessionId`。
   - `AgentSessionRuntime.get_session_diagnostics(query?)` 默认限定 current session。
   - 原有 `get_diagnostics(query?)` 保留为 diagnostics service/global 查询面。
-  - 2026-05-01 后续收瘦：不保留 `getSessionDiagnostics` camelCase alias，避免非 pi 核心 API 重复暴露造成调用混乱。
+  - 2026-05-01 后续收瘦：不保留 `getSessionDiagnostics` camelCase alias，避免非 reference implementation 核心 API 重复暴露造成调用混乱。
 - 该批改动通过：
   - `tests/coding/test_agent_session.py`
   - `tests/coding/test_agent_session_runtime.py`
 
 ### 当前估算调整（非 TUI）
 
-- `diagnostics/runtime` 与 pi 对齐率从约 **91%** 提升到约 **92%**：
+- `diagnostics/runtime` 与参考实现对齐率从约 **91%** 提升到约 **92%**：
   - runtime/service 全局 diagnostics 与 current-session diagnostics 查询边界更清晰。
-- 总体与 pi 对齐率粗估维持约 **92%**。
+- 总体与参考实现对齐率粗估维持约 **92%**。
 
 ### 下一步建议
 
 1. 评估 RPC 是否需要暴露 `get_session_diagnostics`，与现有 `get_diagnostics` 区分。
-2. 评估 RPC shutdown/exit command 是否需要对齐 pi。
+2. 评估 RPC shutdown/exit command 是否需要对齐 reference implementation。
 3. 将 `method` 基础 registry 放到后续批次。
 
-## 2026-05-01 更新（pi-style session SDK breadth）
+## 2026-05-01 更新（reference-style session SDK breadth）
 
-- 2026-05-01 继续补 `AgentSession` 与 `pi-coding-agent` 的直接 SDK 调用面：
+- 2026-05-01 继续补 `AgentSession` 与 `reference coding agent` 的直接 SDK 调用面：
   - 新增 `getSessionStats()`，从当前消息流统计 user/assistant/tool/tokens/cost/context。
   - 新增 `scopedModels` / `setScopedModels()`，并让 scoped models 参与 `cycleModel()`。
   - 新增 `promptTemplates` / `resourceLoader` 查询面，直接投影 loader/resource bundle。
@@ -670,11 +670,11 @@
 
 ### 当前估算调整（非 TUI）
 
-- `session` 与 pi 对齐率从约 **90%** 提升到约 **93%**：
-  - 直接 SDK surface 已覆盖 pi 非交互主调用面的大多数查询、mutator、queue、model、thinking、resource、retry、bash、stats/export。
-- `runtime/session facade` 与 pi 对齐率从约 **87%** 提升到约 **90%**：
+- `session` 与参考实现对齐率从约 **90%** 提升到约 **93%**：
+  - 直接 SDK surface 已覆盖 reference implementation 非交互主调用面的大多数查询、mutator、queue、model、thinking、resource、retry、bash、stats/export。
+- `runtime/session facade` 与参考实现对齐率从约 **87%** 提升到约 **90%**：
   - mode/RPC/extension 不再需要自行拼接这些 session 状态和动作。
-- 总体与 pi 对齐率粗估从约 **90%** 提升到约 **91%**。
+- 总体与参考实现对齐率粗估从约 **90%** 提升到约 **91%**。
 
 ### 下一步建议
 
@@ -682,9 +682,9 @@
 2. 补 `store/session` 的跨 session diagnostics/index 查询。
 3. 将 `method` 基础 registry 放到后续批次。
 
-## 2026-05-01 更新（pi-style slash command surface）
+## 2026-05-01 更新（reference-style slash command surface）
 
-- 2026-05-01 继续按 `pi` 的 slash command 方式收口命令面：
+- 2026-05-01 继续按 `reference CLI` 的 slash command 方式收口命令面：
   - 不引入独立 `CommandRegistry` / `SlashCommandRegistry` class。
   - `AgentSession.list_commands()` 继续作为 session-level aggregation surface，动态聚合 extension / prompt / skill。
   - `ExtensionRunner` 继续负责 extension command 注册、去重和 invocation name。
@@ -700,10 +700,10 @@
 
 ### 当前估算调整（非 TUI）
 
-- `commands/session command surface` 与 pi 对齐率从约 **90%** 提升到约 **93%**：
-  - 类型、builtin slash list、parse helper 与 session aggregation 边界更接近 pi。
+- `commands/session command surface` 与参考实现对齐率从约 **90%** 提升到约 **93%**：
+  - 类型、builtin slash list、parse helper 与 session aggregation 边界更接近 reference implementation。
   - 明确不采用 cc-style global command registry，避免 MVP 阶段引入过重 command object 体系。
-- 总体与 pi 对齐率粗估从约 **90%** 提升到约 **91%**。
+- 总体与参考实现对齐率粗估从约 **90%** 提升到约 **91%**。
 
 ### 下一步建议
 
@@ -727,9 +727,9 @@
 
 - `store` 规划完成率从约 **86%** 提升到约 **90%**：
   - 单 session 持久化、恢复、branch/fork、context rebuild 之外，补上跨 session summary/query 基础面。
-- `session/store` 与 pi 对齐率从约 **88%** 提升到约 **91%**：
-  - 更接近 pi 中 SessionManager 同时承担会话文件管理和历史会话查询 read model 的定位。
-- 总体与 pi 对齐率粗估从约 **92%** 提升到约 **93%**。
+- `session/store` 与参考实现对齐率从约 **88%** 提升到约 **91%**：
+  - 更接近 参考实现中 SessionManager 同时承担会话文件管理和历史会话查询 read model 的定位。
+- 总体与参考实现对齐率粗估从约 **92%** 提升到约 **93%**。
 
 ### 下一步建议
 
@@ -755,9 +755,9 @@
 
 - `runtime/store` 规划完成率从约 **90%** 提升到约 **92%**：
   - store summary 已进入 runtime 与 headless adapter 查询面。
-- `RPC/mode` 与 pi 对齐率从约 **84%** 提升到约 **86%**：
+- `RPC/mode` 与参考实现对齐率从约 **84%** 提升到约 **86%**：
   - RPC session listing 不再需要宿主自己扫 session files。
-- 总体与 pi 对齐率粗估维持约 **93%**，跨 session 查询面更完整。
+- 总体与参考实现对齐率粗估维持约 **93%**，跨 session 查询面更完整。
 
 ### 下一步建议
 
@@ -781,9 +781,9 @@
 
 - `runtime/store` 规划完成率从约 **92%** 提升到约 **93%**：
   - summary query 已成为 runtime 一等查询面。
-- `RPC/mode` 与 pi 对齐率从约 **86%** 提升到约 **87%**：
+- `RPC/mode` 与参考实现对齐率从约 **86%** 提升到约 **87%**：
   - headless host 可直接按条件查询 session summary。
-- 总体与 pi 对齐率粗估维持约 **93%**。
+- 总体与参考实现对齐率粗估维持约 **93%**。
 
 ### 下一步建议
 
@@ -809,9 +809,9 @@
 
 - `diagnostics` 规划完成率从约 **88%** 提升到约 **90%**：
   - diagnostics 已从“最近记录”推进到可过滤查询面。
-- `diagnostics` 与 pi 对齐率从约 **90%** 提升到约 **91%**：
+- `diagnostics` 与参考实现对齐率从约 **90%** 提升到约 **91%**：
   - runtime/headless host 可以按 session 与来源筛选错误事实。
-- 总体与 pi 对齐率粗估维持约 **93%**。
+- 总体与参考实现对齐率粗估维持约 **93%**。
 
 ### 下一步建议
 
@@ -819,9 +819,9 @@
 2. 评估是否给 CLI `--list-sessions` 增加过滤参数。
 3. 后续若需要真正跨重启的 diagnostics index，应先设计 diagnostics 持久化 entry，而不是从内存 service 伪造。
 
-## 2026-05-01 更新（per-tool execution mode pi alignment）
+## 2026-05-01 更新（per-tool execution mode reference alignment）
 
-- 2026-05-01 继续按 `pi-agent` 补 per-tool execution mode：
+- 2026-05-01 继续按 `reference agent runtime` 补 per-tool execution mode：
   - `AgentTool` 明确拥有 `execution_mode` 字段，取值为 `parallel` 或 `sequential`。
   - `ToolDefinition` 与 wrapped tool 同步暴露 `execution_mode`。
   - agent loop 在一个 tool batch 内只要发现任一工具声明 `execution_mode="sequential"`，整批就按顺序执行。
@@ -833,11 +833,11 @@
 
 ### 当前估算调整（非 TUI）
 
-- `agent/tool loop` 与 pi 对齐率从约 **94%** 提升到约 **95%**：
-  - per-tool sequential override 与 pi 的 batch execution decision 一致。
-- `tools` 与 pi 对齐率从约 **90%** 提升到约 **92%**：
+- `agent/tool loop` 与参考实现对齐率从约 **94%** 提升到约 **95%**：
+  - per-tool sequential override 与 参考实现的 batch execution decision 一致。
+- `tools` 与参考实现对齐率从约 **90%** 提升到约 **92%**：
   - tool definition / runtime wrapper / registry 对 `execution_mode` 的表达更完整。
-- 总体与 pi 对齐率粗估维持约 **92%**，细分工具与 agent loop 完成度提高。
+- 总体与参考实现对齐率粗估维持约 **92%**，细分工具与 agent loop 完成度提高。
 
 ### 下一步建议
 
@@ -847,7 +847,7 @@
 
 ## 2026-05-01 更新（agent tool terminate semantics）
 
-- 2026-05-01 继续按 `pi-agent` 补 agent/tool loop 基础语义：
+- 2026-05-01 继续按 `reference agent runtime` 补 agent/tool loop 基础语义：
   - `AgentToolResult` 新增 `terminate`，默认 `False`。
   - `AfterToolCallResult` 新增 `terminate`，允许 hook 将工具结果标记为终止。
   - agent loop 在一个 tool batch 执行完后，如果所有 finalized tool result 都 `terminate=True`，则在当前 `turn_end` 后直接 `agent_end`。
@@ -859,19 +859,19 @@
 
 ### 当前估算调整（非 TUI）
 
-- `agent/tool loop` 与 pi 对齐率从约 **90%** 提升到约 **92%**：
-  - 已补齐 pi 的 tool batch early termination 语义。
-- 总体与 pi 对齐率粗估从约 **90%** 提升到约 **91%**。
+- `agent/tool loop` 与参考实现对齐率从约 **90%** 提升到约 **92%**：
+  - 已补齐 参考实现的 tool batch early termination 语义。
+- 总体与参考实现对齐率粗估从约 **90%** 提升到约 **91%**。
 
 ### 下一步建议
 
-1. 继续补 `after_tool_call` 异常处理对齐 pi：hook 抛错应变成 error tool result，而不是中断整个 loop。
+1. 继续补 `after_tool_call` 异常处理对齐 reference implementation：hook 抛错应变成 error tool result，而不是中断整个 loop。
 2. 继续补 `mode` action 类型和 adapter contract，但不进入 TUI。
 3. 将 `method` 基础 registry 放到后续批次。
 
-## 2026-05-01 更新（after tool hook pi alignment）
+## 2026-05-01 更新（after tool hook reference alignment）
 
-- 2026-05-01 继续补 `AgentTool` / tool hook 与 `pi-agent` 的一致性：
+- 2026-05-01 继续补 `AgentTool` / tool hook 与 `reference agent runtime` 的一致性：
   - `after_tool_call` 抛异常时，agent loop 不再中断整个 run。
   - hook 异常会被转换为 `ToolResultMessage(is_error=True)`，错误文本进入 tool result content。
   - extension `tool_result` hook 返回的 `AgentToolResult.terminate` 会透传到 `AfterToolCallResult`。
@@ -882,9 +882,9 @@
 
 ### 当前估算调整（非 TUI）
 
-- `agent/tool loop` 与 pi 对齐率从约 **92%** 提升到约 **94%**：
-  - after-tool hook 异常处理与 pi 一致，不再让 hook 失败破坏主 agent loop。
-- 总体与 pi 对齐率粗估从约 **91%** 提升到约 **92%**。
+- `agent/tool loop` 与参考实现对齐率从约 **92%** 提升到约 **94%**：
+  - after-tool hook 异常处理与参考实现一致，不再让 hook 失败破坏主 agent loop。
+- 总体与参考实现对齐率粗估从约 **91%** 提升到约 **92%**。
 
 ### 下一步建议
 
@@ -892,26 +892,26 @@
 2. 继续补 `mode` action 类型和 adapter contract，但不进入 TUI。
 3. 将 `method` 基础 registry 放到后续批次。
 
-## 2026-05-01 更新（tool error semantics strict pi alignment）
+## 2026-05-01 更新（tool error semantics strict reference alignment）
 
-- 2026-05-01 按 `pi` 的 tool error 语义收口 runtime tool failure：
+- 2026-05-01 按 `reference CLI` 的 tool error 语义收口 runtime tool failure：
   - 工具执行失败仍由 agent loop 捕获异常。
   - agent loop 继续生成 `ToolResultMessage(is_error=True)` 并送回模型。
   - `AgentSession` 不再把 `tool_execution_end(is_error=True)` 投影成通用 `tool_execution_failed` diagnostics。
   - built-in `bash` 的 policy / exec / timeout / cancel failure 不再直接写 runtime diagnostics。
-  - diagnostics 回到更接近 `pi` 的定位：resource/startup/provider/model/extension 等非普通工具执行结果问题。
+  - diagnostics 回到更接近 `reference CLI` 的定位：resource/startup/provider/model/extension 等非普通工具执行结果问题。
 - 该批改动通过相关测试：
   - `tests/coding/test_bootstrap.py`
   - `tests/coding/test_tool_registry.py`
 
 ### 当前估算调整（非 TUI）
 
-- `tools` 与 pi 对齐率从约 **85%** 提升到约 **90%**：
-  - tool failure 主通道与 pi 一致：throw -> error tool result -> model。
-- `diagnostics` 与 pi 对齐率从约 **89%** 调整到约 **90%**：
-  - 移除了 runtime tool failure 的重复 diagnostics 投影，更接近 pi 的 resource diagnostics 定位。
-  - diagnostics 的查询面仍是 loushang 增强能力，不影响 pi 主语义。
-- 总体与 pi 对齐率粗估从约 **89%** 提升到约 **90%**。
+- `tools` 与参考实现对齐率从约 **85%** 提升到约 **90%**：
+  - tool failure 主通道与参考实现一致：throw -> error tool result -> model。
+- `diagnostics` 与参考实现对齐率从约 **89%** 调整到约 **90%**：
+  - 移除了 runtime tool failure 的重复 diagnostics 投影，更接近 参考实现的 resource diagnostics 定位。
+  - diagnostics 的查询面仍是 loushang 增强能力，不影响 reference implementation 主语义。
+- 总体与参考实现对齐率粗估从约 **89%** 提升到约 **90%**。
 
 ### 下一步建议
 
@@ -931,11 +931,11 @@
 
 ### 当前估算调整（非 TUI）
 
-- `rpc` 与 pi-style session/runtime 分层对齐率从约 **88%** 提升到约 **90%**：
+- `rpc` 与 reference-style session/runtime 分层对齐率从约 **88%** 提升到约 **90%**：
   - diagnostics 查询入口更清楚地区分 global service 查询与 current-session 查询。
-- `diagnostics` 与 pi 对齐率维持约 **90%**：
-  - 查询能力是 loushang 增强面，但普通 tool failure 主通道仍按 pi 语义走 error tool result。
-- 总体与 pi 对齐率粗估维持约 **90%**。
+- `diagnostics` 与参考实现对齐率维持约 **90%**：
+  - 查询能力是 loushang 增强面，但普通 tool failure 主通道仍按 参考实现语义走 error tool result。
+- 总体与参考实现对齐率粗估维持约 **90%**。
 
 ### 下一步建议
 
@@ -956,9 +956,9 @@
 
 - `mode` 规划完成率从约 **72%** 提升到约 **75%**：
   - adapter lifecycle contract 更稳定，可被 headless host 直接消费。
-- `mode` 与 pi-style 边界对齐率从约 **68%** 提升到约 **72%**：
+- `mode` 与 reference-style 边界对齐率从约 **68%** 提升到约 **72%**：
   - 仍不包含 interactive/TUI，但非 TUI action 派发边界更清晰。
-- 总体与 pi 对齐率粗估维持约 **90%**。
+- 总体与参考实现对齐率粗估维持约 **90%**。
 
 ### 下一步建议
 
@@ -983,9 +983,9 @@
 
 - `store/session` 规划完成率从约 **86%** 提升到约 **88%**：
   - 跨 session summary/query 已能表达 diagnostics metadata。
-- `store/session` 与 pi 对齐率从约 **88%** 提升到约 **90%**：
-  - 更接近 pi 的 SessionManager all-session lookup 能力，同时保留 loushang 的 diagnostics 增强索引。
-- 总体与 pi 对齐率粗估维持约 **90%**。
+- `store/session` 与参考实现对齐率从约 **88%** 提升到约 **90%**：
+  - 更接近 参考实现的 SessionManager all-session lookup 能力，同时保留 loushang 的 diagnostics 增强索引。
+- 总体与参考实现对齐率粗估维持约 **90%**。
 
 ### 下一步建议
 
@@ -993,11 +993,11 @@
 2. 继续补 `mode` action 覆盖面，但避免把 RPC command plane 混进 mode lifecycle。
 3. 将 `method` 基础 registry 放到后续批次。
 
-## 2026-05-01 更新（pi-style session list/search metadata）
+## 2026-05-01 更新（reference-style session list/search metadata）
 
-- 2026-05-01 按 pi 的 `SessionInfo` 语义继续补 session list/search：
-  - `SessionSummary` 新增 `first_message`，对应 pi 的 `firstMessage`。
-  - `SessionSummary` 新增 `all_messages_text`，对应 pi 的 `allMessagesText`。
+- 2026-05-01 按 参考实现的 `SessionInfo` 语义继续补 session list/search：
+  - `SessionSummary` 新增 `first_message`，对应 参考实现的 `firstMessage`。
+  - `SessionSummary` 新增 `all_messages_text`，对应 参考实现的 `allMessagesText`。
   - `SessionQuery(text=...)` 现在会搜索 all-message text，不再只依赖 last-message preview 和元信息。
   - `updated_at` 改为优先取 user/assistant message activity timestamp；metadata-only entries 不再把旧 session 顶到最近。
   - CLI JSON 和 RPC `list_sessions` 会透出新增字段；CLI TSV 保持原有列格式。
@@ -1008,9 +1008,9 @@
 
 ### 当前估算调整（非 TUI）
 
-- `store/session` 与 pi 对齐率从约 **90%** 提升到约 **92%**：
-  - session list/search 的核心索引字段与排序语义更贴近 pi。
-- 总体与 pi 对齐率粗估从约 **90%** 提升到约 **91%**。
+- `store/session` 与参考实现对齐率从约 **90%** 提升到约 **92%**：
+  - session list/search 的核心索引字段与排序语义更贴近 reference implementation。
+- 总体与参考实现对齐率粗估从约 **90%** 提升到约 **91%**。
 
 ### 下一步建议
 
@@ -1020,7 +1020,7 @@
 
 ## 2026-05-01 更新（extension replaced context stale hardening）
 
-- 2026-05-01 继续补 pi-style extension command context replacement 语义：
+- 2026-05-01 继续补 reference-style extension command context replacement 语义：
   - `ReplacedSessionContext.sendMessage(...)` 在执行前会检查 context 是否仍属于当前 generation。
   - `ReplacedSessionContext.sendUserMessage(...)` 同样经过 stale-context 检查。
   - session replacement 后，旧 replaced ctx 不能继续写 custom message 或 user message 到旧 session。
@@ -1029,9 +1029,9 @@
 
 ### 当前估算调整（非 TUI）
 
-- `extensions` 与 pi 对齐率从约 **86%** 提升到约 **88%**：
-  - replacement 后 stale ctx 防护更接近 pi，减少 extension command 写错 session 的风险。
-- 总体与 pi 对齐率粗估维持约 **91%**。
+- `extensions` 与参考实现对齐率从约 **86%** 提升到约 **88%**：
+  - replacement 后 stale ctx 防护更接近 reference implementation，减少 extension command 写错 session 的风险。
+- 总体与参考实现对齐率粗估维持约 **91%**。
 
 ### 下一步建议
 
@@ -1041,8 +1041,8 @@
 
 ## 2026-05-01 更新（extension fork default before alignment）
 
-- 2026-05-01 继续补 pi-style extension command context fork 语义：
-  - `ctx.fork(entryId)` 默认从 `position="before"` fork，与 pi 保持一致。
+- 2026-05-01 继续补 reference-style extension command context fork 语义：
+  - `ctx.fork(entryId)` 默认从 `position="before"` fork，与参考实现保持一致。
   - 对 assistant/non-user message 使用 `position="before"` 会抛出稳定错误。
   - 需要 clone/fork 到目标 entry 时必须显式传 `{"position": "at"}`。
   - `ctx.fork(entryId, {"position": "before", "withSession": ...})` 的 `withSession` 会拿到新 fork session 的 fresh context。
@@ -1051,9 +1051,9 @@
 
 ### 当前估算调整（非 TUI）
 
-- `runtime/session/extensions` lifecycle 与 pi 对齐率从约 **88%** 提升到约 **90%**：
-  - extension command context 的 fork 默认值、selected text、withSession 语义更贴 pi。
-- 总体与 pi 对齐率粗估维持约 **91%**。
+- `runtime/session/extensions` lifecycle 与参考实现对齐率从约 **88%** 提升到约 **90%**：
+  - extension command context 的 fork 默认值、selected text、withSession 语义更贴 reference implementation。
+- 总体与参考实现对齐率粗估维持约 **91%**。
 
 ### 下一步建议
 
@@ -1063,7 +1063,7 @@
 
 ## 2026-05-02 更新（extension provider/control API facade）
 
-- 2026-05-02 继续补齐 pi-style extension provider 与 runtime API 面：
+- 2026-05-02 继续补齐 reference-style extension provider 与 runtime API 面：
   - `after_provider_response` 通过 `StreamOptions.on_response` 从 provider 层桥接到 `AgentSession` 和 `ExtensionRunner`。
   - OpenAI Responses、OpenAI Completions、Anthropic provider 已在获得 stream/response 对象后触发 `on_response`。
   - `ExtensionAPI` 可在 extension factory 闭包中读取当前 runtime 状态：`get_commands()`、`get_active_tools()`、`get_all_tools()`、`get_flag(name)`。
@@ -1078,12 +1078,12 @@
 
 ### 当前估算调整（非 TUI）
 
-- `extensions` 与 pi 对齐率从约 **90%** 提升到约 **92%**：
-  - provider request/response lifecycle、runtime-bound API reads/actions/control facade 已覆盖 pi 示例中的主要非 TUI extension 用法。
+- `extensions` 与参考实现对齐率从约 **90%** 提升到约 **92%**：
+  - provider request/response lifecycle、runtime-bound API reads/actions/control facade 已覆盖 reference implementation 示例中的主要非 TUI extension 用法。
   - 仍缺 provider registration facade（`registerProvider` / `unregisterProvider`）和 message renderer/theme/TUI UI 面。
 - `ai/agent` 直接包稳定性维持高位：
   - 本轮新增 `on_response` 传递链路后，直接包回归通过。
-- 总体与 pi 对齐率粗估从约 **91%** 提升到约 **92%**。
+- 总体与参考实现对齐率粗估从约 **91%** 提升到约 **92%**。
 
 ### 下一步建议
 
@@ -1093,23 +1093,23 @@
 
 ## 2026-05-02 更新（extension provider registration P0）
 
-- 2026-05-02 继续补齐 pi-style `registerProvider` / `unregisterProvider` 的非 TUI P0：
+- 2026-05-02 继续补齐 reference-style `registerProvider` / `unregisterProvider` 的非 TUI P0：
   - `ExtensionAPI.register_provider(name, config)` 支持 extension load-time 调用；runtime bindings 尚未就绪时先排队，绑定后自动应用。
   - `ExtensionAPI.unregister_provider(name)` 支持绑定后立即移除 provider。
   - `AgentSession` 通过 extension runtime bindings 将 provider registration 落到当前 `ModelRegistry`。
   - `loushang.ai.model.ModelRegistry` 新增 `unregister_provider(provider_id)`。
-  - P0 当时支持直接注册 `Provider` 对象，并临时支持 pi-style dict config（`name` / `baseUrl` / `api` / `apiKey` / `headers` / `models`）。
-    后续由 `ARD-003` 修正方向：dict 入口应改为 loushang-native schema，而不是继续承诺 pi-style flat config。
+  - P0 当时支持直接注册 `Provider` 对象，并临时支持 reference-style dict config（`name` / `baseUrl` / `api` / `apiKey` / `headers` / `models`）。
+    后续由 `ARD-003` 修正方向：dict 入口应改为 loushang-native schema，而不是继续承诺 reference-style flat config。
 - 该批改动通过相关测试：
   - `ruff check` 针对 ai model registry、control model registry、extensions、session 与目标测试文件
   - `pytest tests/coding/test_agent_session.py -q`
 
 ### 当前估算调整（非 TUI）
 
-- `extensions` 与 pi 对齐率从约 **92%** 提升到约 **93%**：
+- `extensions` 与参考实现对齐率从约 **92%** 提升到约 **93%**：
   - provider model registration 的 load-time pending 与 bound runtime immediate apply 语义已补齐。
   - 仍缺 `streamSimple` 自定义 API provider 注册、OAuth provider registration、以及 TUI/message renderer/theme 相关 API。
-- 总体与 pi 对齐率粗估维持约 **92%** 到 **93%** 区间。
+- 总体与参考实现对齐率粗估维持约 **92%** 到 **93%** 区间。
 
 ### 下一步建议
 
@@ -1131,10 +1131,10 @@
 
 ### 当前估算调整（非 TUI）
 
-- `session/mode/command` 与 pi 对齐率从约 **93%** 提升到约 **94%**：
+- `session/mode/command` 与参考实现对齐率从约 **93%** 提升到约 **94%**：
   - slash command 的 listing 与 execution surface 更一致，CLI/RPC/SDK 可以复用同一 `execute_command_async()` 入口。
   - 仍缺 interactive/TUI 的 builtin command handling，以及 method registry 相关 command 分发。
-- 总体与 pi 对齐率粗估维持约 **93%** 到 **94%** 区间。
+- 总体与参考实现对齐率粗估维持约 **93%** 到 **94%** 区间。
 
 ### 下一步建议
 
@@ -1155,20 +1155,20 @@
 
 ### 当前估算调整（非 TUI）
 
-- `session/mode/command/diagnostics` 与 pi 对齐率从约 **94%** 提升到约 **95%**：
+- `session/mode/command/diagnostics` 与参考实现对齐率从约 **94%** 提升到约 **95%**：
   - slash command listing、execution、resource fallback 与 diagnostics 区分已基本闭环。
   - 仍缺 interactive/TUI builtin command handling、method registry、以及部分 provider registration 的 streamSimple/OAuth API 面。
-- 总体与 pi 对齐率粗估维持约 **94%** 到 **95%** 区间。
+- 总体与参考实现对齐率粗估维持约 **94%** 到 **95%** 区间。
 
 ### 下一步建议
 
 1. 补 `streamSimple` provider registration 到 `ApiProviderRegistry`，收口 provider source ownership 与 unregister cleanup。
-2. 继续盘点 runtime/session/store 是否还有 pi-style lifecycle/query 小缺口。
+2. 继续盘点 runtime/session/store 是否还有 reference-style lifecycle/query 小缺口。
 3. 将 `method` 基础 registry 放到最后一批非 TUI MVP 收口。
 
 ## 2026-05-02 更新（streamSimple provider registration P0）
 
-- 2026-05-02 继续补齐 pi-style provider registration 的 API provider 面：
+- 2026-05-02 继续补齐 reference-style provider registration 的 API provider 面：
   - `AgentSession` 现在支持 extension provider config 中的 `streamSimple` / `stream_simple`。
   - `streamSimple` registration 要求显式 `api`，并注册到 `ApiProviderRegistry`。
   - API provider 使用 `provider:<name>` 作为 source ownership；重复注册会先清理同 source 的旧 API provider。
@@ -1180,10 +1180,10 @@
 
 ### 当前估算调整（非 TUI）
 
-- `extensions/provider/runtime` 与 pi 对齐率从约 **93%** 提升到约 **95%**：
+- `extensions/provider/runtime` 与参考实现对齐率从约 **93%** 提升到约 **95%**：
   - model provider registration 与 `streamSimple` API provider registration 已形成同一 extension lifecycle。
-  - 仍缺 OAuth provider registration、pi 完整 provider request config/compat 细节，以及 TUI/message renderer/theme API 面。
-- 总体与 pi 对齐率粗估提升到约 **95%** 区间。
+  - 仍缺 OAuth provider registration、reference implementation 完整 provider request config/compat 细节，以及 TUI/message renderer/theme API 面。
+- 总体与参考实现对齐率粗估提升到约 **95%** 区间。
 
 ### 下一步建议
 
@@ -1193,10 +1193,10 @@
 
 ## 2026-05-02 更新（OAuth provider registration P0）
 
-- 2026-05-02 继续补齐 pi-style `registerProvider({ oauth })` 的最小非 TUI 语义：
+- 2026-05-02 继续补齐 reference-style `registerProvider({ oauth })` 的最小非 TUI 语义：
   - extension provider config 中的 `oauth` 会注册到 `OAuthProviderRegistry`。
-  - OAuth provider id 强制使用 provider name，与 pi 保持一致。
-  - 支持 pi-style `login` / `refreshToken` / `getApiKey`，并兼容 snake_case `refresh_token` / `get_api_key`。
+  - OAuth provider id 强制使用 provider name，与参考实现保持一致。
+  - 支持 reference-style `login` / `refreshToken` / `getApiKey`，并兼容 snake_case `refresh_token` / `get_api_key`。
   - OAuth registration 使用同一个 `provider:<name>` source ownership；`unregisterProvider(name)` 会同步清理 OAuth provider。
   - OAuth callback 可返回 `OAuthCredentials` 或 dict，dict 会规范化为 loushang `OAuthCredentials`。
 - 该批改动通过相关测试：
@@ -1205,10 +1205,10 @@
 
 ### 当前估算调整（非 TUI）
 
-- `extensions/provider/auth` 与 pi 对齐率从约 **95%** 提升到约 **96%**：
+- `extensions/provider/auth` 与参考实现对齐率从约 **95%** 提升到约 **96%**：
   - model provider、API stream provider、OAuth provider 三条 registration 路径已有统一 lifecycle/source cleanup。
   - 仍缺完整 `/login` UI/TUI 交互、provider request config 的全部兼容字段和 method registry。
-- 总体与 pi 对齐率粗估提升到约 **95%** 到 **96%** 区间。
+- 总体与参考实现对齐率粗估提升到约 **95%** 到 **96%** 区间。
 
 ### 下一步建议
 
@@ -1218,9 +1218,9 @@
 
 ## 2026-05-02 更新（provider config validation/compat alignment）
 
-- 2026-05-02 继续补齐 pi-style provider config 的校验与字段落地：
-  - extension provider config 定义 `models` 时，按 pi 规则要求 `baseUrl`。
-  - extension provider config 定义 `models` 时，按 pi 规则要求 `apiKey` 或 `oauth`。
+- 2026-05-02 继续补齐 reference-style provider config 的校验与字段落地：
+  - extension provider config 定义 `models` 时，按 reference implementation 规则要求 `baseUrl`。
+  - extension provider config 定义 `models` 时，按 reference implementation 规则要求 `apiKey` 或 `oauth`。
   - model config 必须能从 model 或 provider config 解析出 `api`，不再隐式兜底成 `anthropic-messages`。
   - provider-level `compat` / `defaults` 会落到 endpoint，并通过 endpoint binding 合并到 model。
   - model-level `compat` / `defaults` 会落到 Model，并覆盖/扩展 endpoint 级字段。
@@ -1231,10 +1231,10 @@
 
 ### 当前估算调整（非 TUI）
 
-- `extensions/provider/model-config` 与 pi 对齐率从约 **96%** 提升到约 **97%**：
+- `extensions/provider/model-config` 与参考实现对齐率从约 **96%** 提升到约 **97%**：
   - provider registration 的 model/API/OAuth/request config P0 已基本闭环。
   - 仍缺更完整的 provider request config storage/override-only 更新语义、TUI login 交互、message renderer/theme API 和 method registry。
-- 总体与 pi 对齐率粗估提升到约 **96%** 到 **97%** 区间。
+- 总体与参考实现对齐率粗估提升到约 **96%** 到 **97%** 区间。
 
 ### 下一步建议
 
@@ -1244,21 +1244,21 @@
 
 ## 2026-05-02 更新（provider override-only update alignment）
 
-- 2026-05-02 继续补齐 pi-style `registerProvider` 的 override-only 更新语义：
+- 2026-05-02 继续补齐 reference-style `registerProvider` 的 override-only 更新语义：
   - 当 extension provider config 不包含 `models` 且 provider 已存在时，不再清空/替换 provider。
   - 无 `models` 的二次注册会更新已有 endpoint 的 `baseUrl`、auth headers、`compat`、`defaults`。
   - 更新后保留已有 models，并重新通过 endpoint binding 合并 endpoint-level `compat` / `defaults`。
-  - 这对齐 pi 中 `baseUrl` / `headers` override-only 更新已有 provider models 的行为。
+  - 这对齐 参考实现中 `baseUrl` / `headers` override-only 更新已有 provider models 的行为。
 - 该批改动通过相关测试：
   - `ruff check src/loushang/coding/session/agent_session.py tests/coding/test_agent_session.py`
   - `pytest tests/coding/test_agent_session.py -q`
 
 ### 当前估算调整（非 TUI）
 
-- `extensions/provider/model-config` 与 pi 对齐率从约 **97%** 提升到约 **98%**：
+- `extensions/provider/model-config` 与参考实现对齐率从约 **97%** 提升到约 **98%**：
   - provider registration 的 full replacement 与 override-only update P0 均已覆盖。
   - 仍缺完整 TUI login 交互、message renderer/theme API 和 method registry。
-- 总体与 pi 对齐率粗估提升到约 **97%** 区间。
+- 总体与参考实现对齐率粗估提升到约 **97%** 区间。
 
 ### 下一步建议
 
@@ -1269,18 +1269,18 @@
 
 - 2026-05-02 补充架构决策 `ARD-003: Provider And Model Boundary`：
   - `loushang-ai` 的 `Provider -> Endpoint -> Model` graph 是内部权威模型。
-  - `models.json` 与 `loushang-ai` registry loader 不应为了 pi-style provider config 降级成扁平结构。
+  - `models.json` 与 `loushang-ai` registry loader 不应为了 reference-style provider config 降级成扁平结构。
   - `ExtensionAPI.register_provider(name, dict)` 可以保留 dict 入口，但 dict schema 应是 loushang-native，
-    对齐 `models.json` / `Provider -> Endpoint -> Model`，不是 pi-style flat provider config。
+    对齐 `models.json` / `Provider -> Endpoint -> Model`，不是 reference-style flat provider config。
   - native `Provider` 输入是优先 typed path。
-  - `streamSimple` / OAuth / model registry 不应混进同一个 pi-style provider dict；如需迁移 pi extension，应做独立 adapter。
+  - `streamSimple` / OAuth / model registry 不应混进同一个 reference-style provider dict；如需迁移 reference implementation extension，应做独立 adapter。
 - 同步更新 `component-interfaces/extensions.md` 的 provider registration 边界说明。
 
 ### 当前估算调整（非 TUI）
 
 - 完成度不因文档更新直接提升，但 provider/model 后续工作边界更清晰：
-  - 已明确停止把 pi flat provider config 当 dict 入口目标。
-  - 下一步应转向 runtime/session/store、method registry 或 CLI/TUI，而不是继续扩 pi-style provider 字段。
+  - 已明确停止把 reference implementation flat provider config 当 dict 入口目标。
+  - 下一步应转向 runtime/session/store、method registry 或 CLI/TUI，而不是继续扩 reference-style provider 字段。
 
 ## 2026-05-02 更新（provider dict implementation boundary）
 
@@ -1289,41 +1289,41 @@
   - `ExtensionAPI.register_provider(name, dict)` 改为 loushang-native `Provider -> Endpoint -> Model` schema。
   - 新 dict schema 使用 provider-level `displayName` / `website` / `auth`、endpoint-level
     `api` / `baseUrl` / `authOverride` / `compat` / `defaults`、以及 endpoint `models` dict。
-  - 旧 pi-style flat dict（顶层 `api` / `baseUrl` / `apiKey` / `models` list）不再被 core 接受。
-  - `streamSimple` / `oauth` 不再混在 provider/model dict 中注册；未来如需要直接迁移 pi extension，
+  - 旧 reference-style flat dict（顶层 `api` / `baseUrl` / `apiKey` / `models` list）不再被 core 接受。
+  - `streamSimple` / `oauth` 不再混在 provider/model dict 中注册；未来如需要直接迁移 reference implementation extension，
     应新增显式 adapter 或独立 API/OAuth registration 面。
   - native dict 二次注册仍支持对已有 endpoint 做局部更新，并保留已有 models 后重新 binding endpoint 级
     `compat` / `defaults`。
-- 这会回退之前报告里“pi-style streamSimple/OAuth provider dict 已闭环”的结论：
+- 这会回退之前报告里“reference-style streamSimple/OAuth provider dict 已闭环”的结论：
   - 生命周期清理语义仍保留，但 provider dict 不再承载 API stream / OAuth 注册职责。
-  - provider/model 对齐目标从“字段形态对齐 pi”改为“生命周期语义对齐 pi，数据模型对齐 loushang-ai”。
+  - provider/model 对齐目标从“字段形态对齐 reference implementation”改为“生命周期语义对齐 reference implementation，数据模型对齐 loushang-ai”。
 
 ### 当前估算调整（非 TUI）
 
-- 与 pi 的 provider config 字段形态对齐率刻意下调，因为这是有意不对齐：
+- 与 参考实现的 provider config 字段形态对齐率刻意下调，因为这是有意不对齐：
   - provider/model 语义完成度约 **97%**：注册、注销、局部更新、diagnostics 都覆盖。
-  - pi flat provider config 兼容度约 **0%**：core 明确拒绝，未来只通过 adapter 承接。
-  - overall 非 TUI MVP 完成度维持约 **95%** 到 **96%**，不因刻意拒绝 pi flat schema 视为核心倒退。
+  - reference implementation flat provider config 兼容度约 **0%**：core 明确拒绝，未来只通过 adapter 承接。
+  - overall 非 TUI MVP 完成度维持约 **95%** 到 **96%**，不因刻意拒绝 reference implementation flat schema 视为核心倒退。
 
 ## 2026-05-02 更新（store/runtime session entrypoints）
 
-- 2026-05-02 补齐一批 pi-style store/session 基础入口，但使用 loushang snake_case 命名：
+- 2026-05-02 补齐一批 reference-style store/session 基础入口，但使用 loushang snake_case 命名：
   - `SessionManager.open(session_file, session_dir=None, cwd_override=None, persist=True)`
   - `SessionManager.continue_recent(session_dir, cwd, persist=True)`
   - `SessionManager.in_memory(cwd=".")`
   - `SessionManager.fork_from(source_file, target_cwd, session_dir, persist=True)`
 - `AgentSessionRuntime.restore_session()` 与 `import_from_jsonl()` 改为复用 `SessionManager.open()`，
   将 `session_dir` / `cwd_override` 语义收口到 store 层。
-- 与 pi 语义关系：
-  - 覆盖 pi `open` / `continueRecent` / `inMemory` / `forkFrom` 的核心能力。
+- 与参考实现语义关系：
+  - 覆盖 reference implementation `open` / `continueRecent` / `inMemory` / `forkFrom` 的核心能力。
   - 不新增 camelCase alias，避免重复 API 面。
   - 不改变 loushang 现有 JSONL 格式、summary index 或 diagnostics index。
 
 ### 当前估算调整（非 TUI）
 
-- `store/session entrypoints` 与 pi 对齐率从约 **90%** 提升到约 **95%**：
+- `store/session entrypoints` 与参考实现对齐率从约 **90%** 提升到约 **95%**：
   - session 创建、打开、最近恢复、内存 session、跨 cwd fork 的基础入口已覆盖。
-  - 仍未刻意复刻 pi 的延迟 flush 细节，当前 loushang 仍保持即时 header/session 文件创建。
+  - 仍未刻意复刻 参考实现的延迟 flush 细节，当前 loushang 仍保持即时 header/session 文件创建。
 - overall 非 TUI MVP 完成度粗估提升到约 **96%**。
 
 ## 2026-05-02 更新（AgentSession thinking/abort control surface）
@@ -1337,20 +1337,20 @@
 - 同时修正 `cycle_thinking_level()` 语义：
   - 当前模型不支持 reasoning 时返回 `None`。
   - thinking level 会 clamp 到可用 levels，不再在非 reasoning 模型上保留高 thinking level。
-- 与 pi 语义关系：
-  - 对齐 pi `supportsThinking()` / `supportsXhighThinking()` / `getAvailableThinkingLevels()` /
+- 与参考实现语义关系：
+  - 对齐 reference implementation `supportsThinking()` / `supportsXhighThinking()` / `getAvailableThinkingLevels()` /
     `cycleThinkingLevel()` / `abortCompaction()` / `abortBranchSummary()` 的核心行为。
   - loushang 对外优先新增 snake_case，不继续扩大 camelCase alias 面。
 
 ### 当前估算调整（非 TUI）
 
-- `session/control` 与 pi 对齐率从约 **94%** 提升到约 **96%**。
+- `session/control` 与参考实现对齐率从约 **94%** 提升到约 **96%**。
 - overall 非 TUI MVP 完成度维持约 **96%**，剩余主要集中在 method registry、TUI/interactive 外围和少量 UI 相关 extension API。
 
 ## 2026-05-02 更新（allowed tool boundary）
 
 - 2026-05-02 补齐 `AgentSession.allowed_tool_names` / `create_agent_session(..., allowed_tool_names=...)`：
-  - 对齐 pi `allowedToolNames` 的核心语义：限制当前 session 可见工具和可激活工具。
+  - 对齐 reference implementation `allowedToolNames` 的核心语义：限制当前 session 可见工具和可激活工具。
   - `get_all_tools()` / `getToolDefinition(name)` 只返回 allowlist 内工具。
   - 初始 active tools 与后续 `set_active_tools(...)` 会过滤掉 allowlist 外工具。
   - extension-contributed tools、built-in tools、custom registry tools 统一通过同一个 session allowlist 过滤。
@@ -1361,7 +1361,7 @@
 
 ### 当前估算调整（非 TUI）
 
-- `tools/session active tool boundary` 与 pi 对齐率从约 **95%** 提升到约 **97%**。
+- `tools/session active tool boundary` 与参考实现对齐率从约 **95%** 提升到约 **97%**。
 - overall 非 TUI MVP 完成度粗估维持约 **96%** 到 **97%**；剩余非 method 缺口主要在 command/slash 执行边角、少量 extension UI API，以及 TUI/interactive 外围。
 
 ## 2026-05-02 更新（CLI/runtime tools allowlist mapping）
@@ -1370,30 +1370,30 @@
   - `create_agent_session_runtime(..., allowed_tool_names=...)` 透传到每个新建/恢复 session factory。
   - CLI `--tools/-t` 现在同时映射为 allowed tools 和 initial active tools。
   - CLI `--no-tools/-nt` 现在映射为空 allowed tools，而不仅是空 active tools。
-- 与 pi 语义关系：
-  - 对齐 pi SDK 中 `options.tools -> allowedToolNames + initialActiveToolNames`。
-  - 对齐 pi SDK 中 `noTools=all -> allowedToolNames=[]` 的硬禁用语义。
+- 与参考实现语义关系：
+  - 对齐 reference implementation SDK 中 `options.tools -> allowedToolNames + initialActiveToolNames`。
+  - 对齐 reference implementation SDK 中 `noTools=all -> allowedToolNames=[]` 的硬禁用语义。
   - loushang 保留已有 `--no-builtin-tools` 语义：它仍是 registry 层不注册 built-ins，与 `--no-tools` 的 session allowlist 边界不同。
 
 ### 当前估算调整（非 TUI）
 
-- `CLI/runtime tools configuration` 与 pi 对齐率从约 **90%** 提升到约 **96%**。
+- `CLI/runtime tools configuration` 与参考实现对齐率从约 **90%** 提升到约 **96%**。
 - overall 非 TUI MVP 完成度粗估小幅提升到约 **97%**；剩余非 method 缺口继续集中在 command/slash execution 边角、extension UI/TUI API、以及 interactive/TUI。
 
 ## 2026-05-02 更新（default active tools）
 
-- 2026-05-02 对齐 pi 默认 active tools 规则：
+- 2026-05-02 对齐 reference implementation 默认 active tools 规则：
   - 默认只激活核心 built-ins：`read`、`bash`、`edit`、`write`。
   - `ls`、`find`、`grep` 仍在 `get_all_tools()` 中可见，但不默认注入 prompt / agent runtime。
   - custom tools 与 extension-contributed tools 默认 active，保持扩展安装后即可用。
-  - 显式 `allowed_tool_names` 存在时，默认 active set 为 allowlist 内所有可用工具，继续对齐 pi `allowedToolNames` 语义。
+  - 显式 `allowed_tool_names` 存在时，默认 active set 为 allowlist 内所有可用工具，继续对齐 reference implementation `allowedToolNames` 语义。
 - 影响：
   - 默认 prompt 更瘦，减少非必要工具 schema/说明进入模型上下文。
   - 用户仍可通过 `--tools`、`active_tool_names` 或 extension `set_active_tools()` 激活 `ls/find/grep`。
 
 ### 当前估算调整（非 TUI）
 
-- `tools/default runtime injection` 与 pi 对齐率从约 **88%** 提升到约 **97%**。
+- `tools/default runtime injection` 与参考实现对齐率从约 **88%** 提升到约 **97%**。
 - overall 非 TUI MVP 完成度继续维持约 **97%**；这批主要降低默认运行时差异，不改变工具能力覆盖。
 
 ## 2026-05-02 更新（tool sourceInfo projection）
@@ -1408,7 +1408,7 @@
 
 ### 当前估算调整（非 TUI）
 
-- `tool introspection/source provenance` 与 pi 对齐率从约 **80%** 提升到约 **90%**。
+- `tool introspection/source provenance` 与参考实现对齐率从约 **80%** 提升到约 **90%**。
 - overall 非 TUI MVP 完成度维持约 **97%**；剩余主要是精确 extension tool provenance、message renderer/theme/TUI API、interactive builtin command handling，以及 method registry。
 
 ## 2026-05-02 更新（extension tool provenance）
@@ -1418,13 +1418,13 @@
   - `ExtensionRunner` 为 extension tools 记录 `_source_info_from_extension(...)`。
   - bootstrap 注册 extension tools 时把真实 extension sourceInfo 写入 registry。
   - `AgentSession.getAllTools()` 优先使用 registry entry sourceInfo；没有 metadata 时才回退 synthetic builtin/sdk provenance。
-- 与 pi 语义关系：
-  - 对齐 pi `RegisteredTool { definition, sourceInfo }` 到 session `ToolInfo.sourceInfo` 的主路径。
+- 与参考实现语义关系：
+  - 对齐 reference implementation `RegisteredTool { definition, sourceInfo }` 到 session `ToolInfo.sourceInfo` 的主路径。
   - extension tool 现在能返回真实 `path/source/scope/origin/baseDir`，不再误标为 sdk。
 
 ### 当前估算调整（非 TUI）
 
-- `tool introspection/source provenance` 与 pi 对齐率从约 **90%** 提升到约 **97%**。
+- `tool introspection/source provenance` 与参考实现对齐率从约 **90%** 提升到约 **97%**。
 - overall 非 TUI MVP 完成度仍约 **97%**；剩余非 method 缺口进一步集中到 message renderer/theme/TUI API、interactive builtin command handling、以及少量 provider/UI 交互边缘。
 
 ## 2026-05-02 更新（message renderer registry）
@@ -1434,29 +1434,29 @@
   - `ExtensionAPI.registerMessageRenderer(custom_type, renderer)`
   - `LoadedExtension.message_renderers`
   - `ExtensionRunner.get_message_renderer(custom_type)` / `getMessageRenderer(custom_type)`
-- 与 pi 语义关系：
-  - 对齐 pi `registerMessageRenderer(...)` 和 runner `getMessageRenderer(...)` 的注册/查询主路径。
+- 与参考实现语义关系：
+  - 对齐 reference implementation `registerMessageRenderer(...)` 和 runner `getMessageRenderer(...)` 的注册/查询主路径。
   - 同 custom type 多个 extension 注册时，按 extension 加载顺序 first wins。
   - 本轮只做 headless registry contract，不实现 TUI component rendering。
 
 ### 当前估算调整（非 TUI）
 
-- `extension/message renderer registry` 与 pi 对齐率从约 **0%** 提升到约 **70%**。
+- `extension/message renderer registry` 与参考实现对齐率从约 **0%** 提升到约 **70%**。
 - overall 非 TUI MVP 完成度仍约 **97%**；剩余差距是 renderer 的真实 TUI消费、theme/UI细节、interactive builtin command handling，以及 method registry。
 
-## 2026-05-02 更新（pi-style resources_discover paths）
+## 2026-05-02 更新（reference-style resources_discover paths）
 
-- 2026-05-02 补齐 extension `resources_discover` 的 pi-style path result：
+- 2026-05-02 补齐 extension `resources_discover` 的 reference-style path result：
   - handler 可返回 `promptPaths`、`skillPaths`、`themePaths`。
   - runner 将这些 path 转成 loushang 现有 `PromptFragmentDescriptor`、`SkillDescriptor`、`ThemeDescriptor`。
   - 继续保留原有 `ExtensionResourceContribution` typed path。
-- 与 pi 语义关系：
-  - 对齐 pi `emitResourcesDiscover()` 返回 path arrays 的主语义。
+- 与参考实现语义关系：
+  - 对齐 reference implementation `emitResourcesDiscover()` 返回 path arrays 的主语义。
   - loushang 内部仍使用 descriptor/bundle 作为 canonical resource model。
 
 ### 当前估算调整（非 TUI）
 
-- `extension/resource discovery` 与 pi 对齐率从约 **88%** 提升到约 **96%**。
+- `extension/resource discovery` 与参考实现对齐率从约 **88%** 提升到约 **96%**。
 - overall 非 TUI MVP 完成度维持约 **97%**，剩余主要是 TUI/interactive 消费层、theme UI 细节、method registry。
 
 ## 2026-05-02 更新（extension resource path diagnostics）
@@ -1466,34 +1466,34 @@
   - `skillPaths` 指向不存在或不可读 skill 文件时返回 `extension_skill_path_not_found` / `extension_skill_path_read_failed`。
   - `themePaths` 指向不存在路径时返回 `extension_theme_path_not_found`。
   - contribution diagnostics 统一进入 `discover_resources()` 的 diagnostics 汇总，再同步到 runner 全局 diagnostics。
-- 与 pi 语义关系：
-  - 对齐 pi resource loading 对坏资源产出 warning diagnostics 的主行为。
+- 与参考实现语义关系：
+  - 对齐 reference implementation resource loading 对坏资源产出 warning diagnostics 的主行为。
   - loushang 仍保持 descriptor/bundle 为 canonical model，但不再对 extension 显式声明的坏 path 静默跳过。
 
 ### 当前估算调整（非 TUI）
 
-- `extension/resource discovery diagnostics` 与 pi 对齐率从约 **70%** 提升到约 **92%**。
+- `extension/resource discovery diagnostics` 与参考实现对齐率从约 **70%** 提升到约 **92%**。
 - overall 非 TUI MVP 完成度仍约 **97%**；这批主要降低诊断可见性差距。
 
 ## 2026-05-02 更新（session command listing）
 
-- 2026-05-02 对齐 pi `get_commands` / `list_commands` 的 extension command listing 语义：
-  - pi 的 `RegisteredCommand` 没有 `hidden` 过滤层，RPC `get_commands` 会返回 runner 注册的全部 extension commands。
+- 2026-05-02 对齐 reference implementation `get_commands` / `list_commands` 的 extension command listing 语义：
+  - 参考实现的 `RegisteredCommand` 没有 `hidden` 过滤层，RPC `get_commands` 会返回 runner 注册的全部 extension commands。
   - loushang `AgentSession.list_commands()` 不再按 `hidden=True` 过滤 extension commands。
   - `RegisteredCommand.hidden` 与 `ExtensionAPI.register_command(hidden=...)` 已删除，避免 API 语义继续分叉。
 
 ### 当前估算调整（非 TUI）
 
-- `commands/session command surface` 与 pi 对齐率从约 **93%** 提升到约 **96%**。
+- `commands/session command surface` 与参考实现对齐率从约 **93%** 提升到约 **96%**。
 - overall 非 TUI MVP 完成度仍约 **97%**；剩余 command 差距主要在 interactive builtin command 消费层与 TUI autocomplete。
 
 ## 2026-05-02 更新（queued extension command error）
 
-- 2026-05-02 对齐 pi `steer()` / `followUp()` 遇到 extension command 时的错误文案：
+- 2026-05-02 对齐 reference implementation `steer()` / `followUp()` 遇到 extension command 时的错误文案：
   - loushang 现在返回 `Extension command "/name" cannot be queued. Use prompt() or execute the command when not streaming.`
   - 行为仍保持不执行 command handler，只拒绝进入 queue。
 
 ### 当前估算调整（非 TUI）
 
-- `commands/queued command semantics` 与 pi 对齐率从约 **95%** 提升到约 **99%**。
+- `commands/queued command semantics` 与参考实现对齐率从约 **95%** 提升到约 **99%**。
 - overall 非 TUI MVP 完成度维持约 **97%**；这是 SDK-facing 错误契约收口。

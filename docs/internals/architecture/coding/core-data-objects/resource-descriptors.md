@@ -73,9 +73,9 @@
 - load target
 - hook capabilities
 
-## Pi Alignment
+## Reference Implementation Alignment
 
-- `ResourceBundle`、`SkillDescriptor`、`MethodDescriptor`、`ExtensionDescriptor` 当前不直接复用 `pi` 的统一导出对象名
+- `ResourceBundle`、`SkillDescriptor`、`MethodDescriptor`、`ExtensionDescriptor` 当前不直接复用 `reference CLI` 的统一导出对象名
 
 ## Notes
 

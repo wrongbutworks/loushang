@@ -49,9 +49,9 @@
 - extension hook 执行
 - prompt 最终组装
 
-## Pi Alignment
+## Reference Implementation Alignment
 
-- 语义上吸收 `pi` 的 customization / resource discovery 经验
+- 语义上吸收 `reference CLI` 的 customization / resource discovery 经验
 - 在 Python 设计里显式保留 `SkillLoader`，让 skill 解析边界更清楚
 - 但它更适合作为 resource loader 体系内的显式子边界，而不是另一套并列资源中心
 - `description` 用于 `/skill:name` command 描述与 system prompt 中的 available skills 摘要。

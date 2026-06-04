@@ -62,15 +62,15 @@
 - prompt/resource 发现
 - session run loop orchestration
 
-## Pi Alignment
+## Reference Implementation Alignment
 
-- 语义上对齐 `pi` 的 compaction / branch summarization layer
-- 不复刻 `pi` 把所有 compaction 逻辑继续堆进 `AgentSession`
+- 语义上对齐 `reference CLI` 的 compaction / branch summarization layer
+- 不复刻 `reference CLI` 把所有 compaction 逻辑继续堆进 `AgentSession`
 - `session` 负责决定何时触发 compaction；`compaction` 负责准备、总结与结果回填协调
-- summarization prompt 对齐 `pi`：不把旧对话直接当作继续对话喂给模型，而是序列化为单条 user prompt，使用固定 summary schema；已有 compaction summary 时走 update prompt
+- summarization prompt 对齐 `reference CLI`：不把旧对话直接当作继续对话喂给模型，而是序列化为单条 user prompt，使用固定 summary schema；已有 compaction summary 时走 update prompt
 - split-turn compaction 支持单独生成 turn-prefix summary，并合并到主 summary
 - compaction result 会追加 `<read-files>` / `<modified-files>` 片段，并把对应列表放入 `details`
-- branch summary 也使用相同的 serialized conversation summary path，追加 pi-style branch preamble 和 file operation details
+- branch summary 也使用相同的 serialized conversation summary path，追加 reference-style branch preamble 和 file operation details
 - `validate_summary_contract(...)` 和 `evaluate_summary_case(...)` 提供 mode-neutral summary quality harness，用于验证 compaction /
   branch summary 是否保留固定结构、是否缺失关键 section、是否仍包含 prompt placeholder、是否覆盖固定 workload 期待的关键词与文件操作；
   它们不改变生产摘要结果，只作为回归和真实模型评估的稳定判定面
@@ -81,13 +81,13 @@
 - `plan_compaction(...)` 是 deterministic fact layer：它不调用模型，只记录 previous compaction、`first_kept_entry_id`、
   `summarized_entry_ids`、`turn_prefix_entry_ids`、`kept_entry_ids`、`tokens_before` 与 `keep_recent_tokens`
 - `prepare_compaction(...)` 基于同一个 `CompactionPlan` 组装 `messages_to_summarize` / `turn_prefix_messages`，
-  并把 pi-style camelCase `compactionPlan` 写入 preparation details
+  并把 reference-style camelCase `compactionPlan` 写入 preparation details
 - 成功 compaction 后，`CompactionEntry.details.compactionPlan` 持久化该事实链，用于解释“摘要覆盖了哪些 entry、
   保留了哪些原文 entry、是否 split turn、使用了哪次 previous compaction boundary”
-- overflow recovery 对齐 `pi`：同一连续 overflow 只允许一次自动 `compact + retry`；
+- overflow recovery 对齐 `reference CLI`：同一连续 overflow 只允许一次自动 `compact + retry`；
   第二次 overflow 发出失败的 `compaction_end`，提示用户减少上下文或切换更大上下文模型
 - 普通成功 assistant response 会重置 overflow recovery guard，避免一次历史 overflow 永久禁止后续恢复
-- usage / compaction fact chain 对齐 `pi` 的分层语义：
+- usage / compaction fact chain 对齐 `reference CLI` 的分层语义：
   `loushang.ai` 只负责 provider usage、stop_reason、context overflow 的归一化事实；
   `coding.session.context_usage` 基于 session branch 和 normalized assistant usage 生成 `ContextUsageSnapshot`；
   `CompactionController` 只消费 `CompactionDecision` 触发 threshold / overflow compaction，不直接散落 token 计算逻辑
@@ -98,7 +98,7 @@
 - threshold policy 由 `coding.compaction.policy.calculate_compaction_budget(...)` 统一计算：
   `percent_threshold = context_window * compact_percent / 100`，
   `reserve_threshold = context_window - reserve_tokens`，
-  实际 `threshold_tokens = min(percent_threshold, reserve_threshold)`；这保留了 `pi` 的 fixed reserve guard，
+  实际 `threshold_tokens = min(percent_threshold, reserve_threshold)`；这保留了 `reference CLI` 的 fixed reserve guard，
   同时增加 loushang 全局百分比阈值，避免大上下文模型等到过高比例才 compact
 - 不能等到 `stop_reason="length"` 才 compact：只要上一轮可观测 usage 超过统一 policy 计算出的 `threshold_tokens`，
   下一次真正进入 agent prompt 前就应先触发 threshold compaction；extension command、streaming steer/follow-up 排队路径不触发 pre-prompt compaction

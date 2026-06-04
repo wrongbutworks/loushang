@@ -250,7 +250,7 @@ flowchart TD
 
 对应参考：
 
-- `pi-coding-agent` 的 `AgentSessionRuntime`
+- `reference coding agent` 的 `AgentSessionRuntime`
 
 备注：
 
@@ -272,7 +272,7 @@ flowchart TD
 
 对应参考：
 
-- `pi-coding-agent` 的 `AgentSession`
+- `reference coding agent` 的 `AgentSession`
 
 备注：
 
@@ -317,7 +317,7 @@ flowchart TD
   - 持久化 entry 层
   - runtime custom message projection 层
 - 前者以 `SessionEntry` 为中心
-- 后者对齐 `pi-coding-agent/messages.ts` 中的 custom message family
+- 后者对齐 `reference coding agent/messages.ts` 中的 custom message family
 
 ### `event`
 

@@ -4,7 +4,7 @@
 
 本文档给出 `loushang-agent` 的类型 / 数据类列表。
 
-本文档严格参照 `pi-agent` 当前公开边界整理，目标是形成一份独立于候选组件列表的类型清单。
+本文档严格参照 `reference agent runtime` 当前公开边界整理，目标是形成一份独立于候选组件列表的类型清单。
 
 本文档不讨论：
 
@@ -15,7 +15,7 @@
 
 ## Design Basis
 
-本清单严格参照以下 `pi-agent` 源文件：
+本清单严格参照以下 `reference agent runtime` 源文件：
 
 - `types.ts`
 - `agent.ts`
@@ -25,9 +25,9 @@
 
 原则：
 
-- 优先列出 `pi-agent` 已公开或已稳定承载语义的类、类型、接口、函数类型
-- 不把 `pi-ai` 的基础类型整体重复搬进 `loushang-agent`
-- 不提前加入 `pi-coding-agent` 才拥有的 session / memory policy 类型
+- 优先列出 `reference agent runtime` 已公开或已稳定承载语义的类、类型、接口、函数类型
+- 不把 `reference AI SDK` 的基础类型整体重复搬进 `loushang-agent`
+- 不提前加入 `reference coding agent` 才拥有的 session / memory policy 类型
 
 ## Core Runtime Class
 
@@ -86,7 +86,7 @@
 
 说明：
 
-- `AgentTool` 在 `pi-ai` 的 `Tool` 基础上扩展出 `label`、`prepareArguments`、`execute`、`execution_mode`
+- `AgentTool` 在 `reference AI SDK` 的 `Tool` 基础上扩展出 `label`、`prepareArguments`、`execute`、`execution_mode`
 - `AgentToolUpdateCallback` 用于工具执行过程中的 partial update
 - `ToolExecutionMode` 规定多 tool call 的执行模式，支持 `parallel` 与 `sequential`
 - 旧 runtime tool 未声明 `execution_mode` 时，在 agent/registry 边界默认补为 `parallel`
@@ -102,7 +102,7 @@
 
 - `BeforeToolCall*` 用于工具执行前拦截
 - `AfterToolCall*` 用于工具执行后覆写结果，可覆写 `content`、`details`、`is_error` 与 `terminate`
-- `AfterToolCall*` 抛出的异常会被 agent loop 转换为 `ToolResultMessage(is_error=True)`，保持与 `pi-agent` 的工具错误语义一致
+- `AfterToolCall*` 抛出的异常会被 agent loop 转换为 `ToolResultMessage(is_error=True)`，保持与 `reference agent runtime` 的工具错误语义一致
 
 ## Event Types
 
@@ -168,5 +168,5 @@
 
 原因：
 
-- 这些不是 `pi-agent` 的边界
-- 它们属于 `pi-coding-agent` 一侧的 session persistence / compaction / summary 职责
+- 这些不是 `reference agent runtime` 的边界
+- 它们属于 `reference coding agent` 一侧的 session persistence / compaction / summary 职责

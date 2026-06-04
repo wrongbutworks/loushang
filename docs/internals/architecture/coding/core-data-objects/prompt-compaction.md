@@ -67,7 +67,7 @@
 
 持久化语义：
 
-- `CompactionEntry.details.compactionPlan` 使用 pi-style camelCase 字段保存该对象
+- `CompactionEntry.details.compactionPlan` 使用 reference-style camelCase 字段保存该对象
 - 它解释新上下文为什么会重建为 `compactionSummary + firstKeptEntryId 后缀`
 - 它不是摘要内容本身，也不调用模型
 
@@ -109,10 +109,10 @@
 - `will_retry`
 - `last_error`
 
-## Pi Alignment
+## Reference Implementation Alignment
 
-- 这组对象对齐的是 `pi-coding-agent` 的 prompt assembly / compaction / summarization 语义
-- 其中 `PromptAssembly` 与 `CompactionArtifact` 当前不直接复用 `pi` 的稳定同名对象名
+- 这组对象对齐的是 `reference coding agent` 的 prompt assembly / compaction / summarization 语义
+- 其中 `PromptAssembly` 与 `CompactionArtifact` 当前不直接复用 `reference CLI` 的稳定同名对象名
 
 ## Notes
 

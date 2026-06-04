@@ -2,7 +2,7 @@
 
 ## Scope
 
-本文档讨论 `loushang.ai` 在 Python 中的 streaming 与 cancellation 设计边界。  
+本文档讨论 `loushang.ai` 在 Python 中的 streaming 与 cancellation 设计边界。
 核心问题是：`loushang.ai` 是否应该整体绑定 `asyncio`，以及 public API 应该暴露哪一层语义。
 
 本文档只讨论：
@@ -23,7 +23,7 @@
 
 ## Design Question
 
-`pi-ai` 在 TypeScript 中整体采用 async / streaming 模型。  
+`reference AI SDK` 在 TypeScript 中整体采用 async / streaming 模型。
 当它被翻译到 Python 时，需要决定：
 
 1. `loushang.ai` 是否整体绑定 `asyncio`
@@ -46,9 +46,9 @@
 
 ---
 
-## Pi-AI Semantics
+## Reference AI SDK Semantics
 
-`pi-ai` 的 public contract 主要建立在这些抽象之上：
+`reference AI SDK` 的 public contract 主要建立在这些抽象之上：
 
 - `Promise`
 - `AsyncIterable`
@@ -57,7 +57,7 @@
 
 它看起来“整体 async”，但它依赖的是 JavaScript / TypeScript 的平台级异步抽象，而不是某个框架专属 runtime。
 
-换句话说，`pi-ai` 绑定的是：
+换句话说，`reference AI SDK` 绑定的是：
 
 - 语言层 async 模型
 - 平台层 streaming / abort 抽象
@@ -138,7 +138,7 @@ LiteLLM 更偏向：
 
 ### 2. Cancellation Shape
 
-公开文档层面没有像 `pi-ai` 那样把取消建模为统一 public 协议。  
+公开文档层面没有像 `reference AI SDK` 那样把取消建模为统一 public 协议。
 更接近：
 
 - 调用方通过 Python async/sync 调用模型管理生命周期
@@ -151,7 +151,7 @@ LiteLLM 说明：
 - 统一 provider 接入层可以只做到 chunk iterator 级别
 - 这很适合通用调用库
 
-但对于 `loushang.ai` 来说，这种公开层级偏低。  
+但对于 `loushang.ai` 来说，这种公开层级偏低。
 `loushang.ai` 未来需要给 `loushang.agent` 提供稳定 streaming boundary，因此不宜只停留在 chunk iterator 语义。
 
 ---
@@ -166,7 +166,7 @@ LiteLLM 说明：
 
 ### 优点
 
-- public shape 更接近 `pi-ai`
+- public shape 更接近 `reference AI SDK`
 - `complete()` 可以继续表达为 `stream().result()` 语义
 
 ### 风险
@@ -196,7 +196,7 @@ LiteLLM 说明：
 
 ### 风险
 
-- 与 `pi-ai` 的同步 `stream()` public shape 不再完全一致
+- 与 `reference AI SDK` 的同步 `stream()` public shape 不再完全一致
 - `complete()` / `complete_simple()` 在文档和心智模型上需要多一段 `await stream(...)`
 - 调用方需要接受“先 await stream handle，再消费 stream”的模型
 
@@ -221,7 +221,7 @@ LiteLLM 说明：
 
 ### 2. Cancellation Model
 
-保留 `signal` 字段名，以对齐 `pi-ai`。
+保留 `signal` 字段名，以对齐 `reference AI SDK`。
 
 但：
 
@@ -333,7 +333,7 @@ v1 默认实现可以使用：
 
 这样设计的原因是：
 
-1. 保持 `pi-ai` 风格的 public event stream contract
+1. 保持 `reference AI SDK` 风格的 public event stream contract
 2. 避免把 `push()` / `end()` 这类生产端方法泄漏到 public API
 3. 允许内部 assembler 与 provider adapter 清晰分工
 4. 为默认 `asyncio` 实现保留足够空间，而不污染 public contract
@@ -356,14 +356,14 @@ v1 默认实现可以使用：
 
 内部私有中间层。
 
-它的职责是把不同 provider 的 SDK stream 收敛到一组统一原始片段。  
+它的职责是把不同 provider 的 SDK stream 收敛到一组统一原始片段。
 这一层可以借鉴 `kimi-cli` 的 part / merge 思路，但不应进入 public API。
 
 ### Assistant Message Event Stream
 
 对外 public contract。
 
-这一层严格对齐 `pi-ai` 的 assistant event 语义，并作为 `loushang.agent` 消费 `loushang.ai` 的主要流式边界。
+这一层严格对齐 `reference AI SDK` 的 assistant event 语义，并作为 `loushang.agent` 消费 `loushang.ai` 的主要流式边界。
 
 ### Raw Assembler Responsibilities
 
@@ -410,14 +410,14 @@ provider adapter 负责：
   - provider-normalized chunk iterator
   - OpenAI 风格统一输入输出
 
-- `pi-ai` 更适合作为 `loushang.ai` 的 public contract 参考：
+- `reference AI SDK` 更适合作为 `loushang.ai` 的 public contract 参考：
   - assistant event stream
   - `result()` 收敛
   - 取消作为协议语义的一部分
 
 因此建议：
 
-- public contract 对齐 `pi-ai`
+- public contract 对齐 `reference AI SDK`
 - internal streaming 结构吸收 `kimi-cli`
 - provider adapter lower-level shape 可参考 LiteLLM
 

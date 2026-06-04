@@ -1,6 +1,6 @@
 # 2026-05-02 Gap Alignment Report
 
-This report tracks the current loushang coding alignment state against pi coding after the current
+This report tracks the current loushang coding alignment state against reference coding agent after the current
 runtime/RPC/diagnostics/tool hardening pass.
 
 ## Overall Completion
@@ -13,21 +13,21 @@ runtime/RPC/diagnostics/tool hardening pass.
 
 ## Component Snapshot
 
-| Component | Pi Completion | Remaining Gap |
+| Component | reference implementation Completion | Remaining Gap |
 | --- | ---: | --- |
 | session | 99% | Minor SDK edge cases and HTML interaction polish. |
 | runtime | 98% | Remaining gaps are narrow lifecycle stress cases and rare cross-session operation error paths. |
-| store | 96-97% | Explicit session index cache/query APIs exist; pi delayed flush implementation details are still not replicated. |
+| store | 96-97% | Explicit session index cache/query APIs exist; reference implementation delayed flush implementation details are still not replicated. |
 | rpc | 98% | Minor command coverage edges remain. |
 | commands/slash | 97% | Interactive builtin command consumer and TUI autocomplete are not implemented. |
 | extensions | 96-97% | Real TUI consumption layer, theme rendering, and minor runtime hook edge cases. |
-| tools | 98-99% | Some rich tool display details still trail pi. |
+| tools | 98-99% | Some rich tool display details still trail reference implementation. |
 | diagnostics | 98-99% | Remaining gaps are mostly presentation and policy-specific warning grouping. |
 | loader/resource | 98-99% | Deeper theme validation and optional package trust hardening remain. |
 | prompt/skill | 99% | Minor command enablement and advanced ignore syntax edges. |
 | compaction | 99% | Remaining gap is summary quality polish under real model workloads. |
 | control/settings | ~100% | Aligned for headless MVP; provider/model config intentionally diverges. |
-| provider/model | intentionally divergent | Continue using loushang AI Provider -> Endpoint -> Model; do not replicate pi flat provider config. |
+| provider/model | intentionally divergent | Continue using loushang AI Provider -> Endpoint -> Model; do not replicate reference implementation flat provider config. |
 | method | low | Deferred by product decision. |
 | interactive/TUI | low | Not part of the current headless MVP. |
 
@@ -41,13 +41,13 @@ runtime/RPC/diagnostics/tool hardening pass.
   - Extension tools project real source metadata in `AgentSession.getAllTools()`.
 - Extension registry/resource alignment:
   - Message renderer headless registry added.
-  - `resources_discover` accepts pi-style `promptPaths`, `skillPaths`, `themePaths`.
+  - `resources_discover` accepts reference-style `promptPaths`, `skillPaths`, `themePaths`.
   - Bad extension resource paths generate `ResourceDiagnostic` instead of being silently ignored.
 - Command surface alignment:
   - Session/RPC command listing returns all registered extension commands.
   - `RegisteredCommand.hidden` and `ExtensionAPI.register_command(hidden=...)` were removed.
-  - Queued extension command errors now match pi-style message semantics.
-  - Builtin slash command descriptions now match pi-style metadata for future CLI/RPC/autocomplete projection.
+  - Queued extension command errors now match reference-style message semantics.
+  - Builtin slash command descriptions now match reference-style metadata for future CLI/RPC/autocomplete projection.
 - Extension UI headless state:
   - `RpcExtensionUIContext` now records status, widget, title/editor, working indicator, autocomplete provider count, and tools expanded state.
   - RPC `get_extension_ui_state` returns this snapshot for headless clients.
@@ -55,10 +55,10 @@ runtime/RPC/diagnostics/tool hardening pass.
   - Theme discovery skips non-`.json` files and records `unsupported_theme_entry`.
 - Exec backend alignment:
   - `ExecService(backend=...)` provides a stable custom execution backend seam.
-  - This covers the pi bash operations custom backend use case without copying pi's tool-layer structure.
+  - This covers the reference implementation bash operations custom backend use case without copying the reference implementation's tool-layer structure.
 - Resource collision diagnostics:
   - Collision metadata now includes `winner_path`, `candidate_paths`, and `loser_paths`.
-  - This makes loushang diagnostics closer to pi's winner/loser path reporting while retaining richer source-kind metadata.
+  - This makes loushang diagnostics closer to the reference implementation's winner/loser path reporting while retaining richer source-kind metadata.
 - JSONL session export:
   - Default JSONL exports now use cwd-local `session-<timestamp>.jsonl` paths.
   - Current-branch export explicitly re-chains `parentId` values into a linear sequence.
@@ -71,34 +71,34 @@ runtime/RPC/diagnostics/tool hardening pass.
   - Returned patches are defensive copies, so callers cannot mutate manager state.
 - Queue mode settings:
   - `steering_mode` and `follow_up_mode` are now first-class control settings.
-  - `AgentSession.set_steering_mode()` and `set_follow_up_mode()` persist settings, matching pi's session/settings behavior.
+  - `AgentSession.set_steering_mode()` and `set_follow_up_mode()` persist settings, matching the reference implementation's session/settings behavior.
   - Bootstrap applies configured queue modes when constructing the underlying agent.
 - Settings/control breadth:
   - Added theme, transport, shell path, shell command prefix, npm command, quiet startup, changelog collapse, install telemetry, skill command enablement, thinking budgets, terminal preferences, markdown preferences, warning preferences, and provider retry cap settings.
-  - Added enabled model cycling, double-escape action, tree filter mode, hardware cursor, editor padding, and autocomplete max-visible settings with pi-style defaults and bounds.
+  - Added enabled model cycling, double-escape action, tree filter mode, hardware cursor, editor padding, and autocomplete max-visible settings with reference-style defaults and bounds.
   - Added stable getter/setter accessors for resource roots, package roots, plugin sources, disabled skills, and disabled plugins.
   - Bootstrap now passes transport, thinking budgets, and provider retry delay cap to the underlying agent.
   - Bootstrap now maps configured `enabled_models` patterns into `AgentSession.scopedModels`, preserving per-model thinking-level suffixes such as `model-id:high`.
   - Added branch-summary `skip_prompt` and stable query facades for compaction, branch summary, image, terminal, markdown, and warnings settings.
-  - This closes settings/control for the non-interactive headless MVP while preserving loushang's non-pi provider/model configuration decision.
+  - This closes settings/control for the non-interactive headless MVP while preserving loushang's non-reference provider/model configuration decision.
 - Package/resource diagnostics:
   - Loader now reports `missing_package_root`, `invalid_package_root`, and `empty_package_root` instead of silently ignoring broken package roots.
   - Loader exposes filtered resource diagnostics and package resource summaries for CLI/RPC/TUI projection.
 - Compaction stale usage guard:
   - Auto-compaction now ignores assistant messages older than the latest compaction boundary.
-  - This matches pi's protection against stale pre-compaction usage/error messages retriggering compaction after context rebuild.
+  - This matches the reference implementation's protection against stale pre-compaction usage/error messages retriggering compaction after context rebuild.
 - HTML session export:
   - Exported HTML now embeds base64 JSON session data with header, full entries, leaf id, stats, and tree summary.
-  - Exported session data now includes current `systemPrompt` and pi-style tool definition metadata (`name`, `description`, `parameters`).
-  - Export template JS now decodes embedded session data into `window.loushangSessionData`, matching pi's runtime data loading seam for future sidebar/search/filter work.
+  - Exported session data now includes current `systemPrompt` and reference-style tool definition metadata (`name`, `description`, `parameters`).
+  - Export template JS now decodes embedded session data into `window.loushangSessionData`, matching the reference implementation's runtime data loading seam for future sidebar/search/filter work.
   - Transcript rendering now displays branch summary, compaction summary, and custom messages instead of falling back to unknown message reprs.
-  - Session tree summary includes entry types, active leaf, and labels, closing the non-interactive data-completeness gap with pi export.
+  - Session tree summary includes entry types, active leaf, and labels, closing the non-interactive data-completeness gap with reference implementation export.
 - Package list UX:
   - CLI now exposes `--list-packages` and `--list-packages-format tsv|json`.
   - The package list combines configured `package_roots` and plugin-provided package roots.
   - Output includes settings scope, source path, resolved package path, enabled state, version, prompt / skill / extension / theme counts, and package diagnostics count.
   - Disabled plugins remain visible but are not loaded into the active resource plane.
-  - CLI now accepts pi-style headless aliases: `list` for installed plugin sources, `install <source>` for adding a local plugin source, and `remove <source>` / `uninstall <source>` for removing a local plugin source.
+  - CLI now accepts reference-style headless aliases: `list` for installed plugin sources, `install <source>` for adding a local plugin source, and `remove <source>` / `uninstall <source>` for removing a local plugin source.
 - Skill frontmatter semantics:
   - `SKILL.md` frontmatter now populates structured skill `name`, `description`, and `disable-model-invocation`.
   - Skill command descriptions prefer frontmatter `description`.
@@ -106,7 +106,7 @@ runtime/RPC/diagnostics/tool hardening pass.
   - Loader reports stable diagnostics for invalid skill frontmatter `name` and `description`.
   - Skill discovery now recursively finds nested `SKILL.md` roots, stops descending once a directory is a skill root, skips hidden directories plus `node_modules`, and applies `.gitignore` / `.ignore` / `.fdignore` directory/path/glob patterns.
 - Package/settings diagnostics:
-  - Package/plugin/skill settings management CLI surfaces now drain `SettingsManager` load errors and print pi-style warnings to stderr.
+  - Package/plugin/skill settings management CLI surfaces now drain `SettingsManager` load errors and print reference-style warnings to stderr.
   - Settings load warnings do not fail otherwise successful package list or toggle operations.
   - Removing a missing plugin source now returns a stable CLI error instead of reporting a false successful removal.
   - Adding a duplicate plugin source now returns a stable CLI error instead of reporting a false successful add.
@@ -149,7 +149,7 @@ runtime/RPC/diagnostics/tool hardening pass.
   - Package lifecycle failures now surface as failed CLI/RPC responses instead of successful commands with failed records.
   - Materializer progress events now cover policy-denied installs, removals, and update checks in addition to install/update backend runs.
 - Python package update checks:
-  - `pypi:` package records now participate in update checks, mirroring pi's npm/git split with loushang's Python package source model.
+  - `pypi:` package records now participate in update checks, mirroring the reference implementation's npm/git split with loushang's Python package source model.
   - Pinned Python package sources are skipped during update checks, matching pinned git/ref behavior.
 - Package scope resource resolution:
   - Active package resource roots now use the same configured-source merge path as package update/check operations.
@@ -182,10 +182,10 @@ runtime/RPC/diagnostics/tool hardening pass.
 
 2. `compaction/branch summary strategy`
    - Branch summary and auto-compaction APIs exist.
-   - Compaction summarization now uses pi-style serialized `<conversation>` prompts instead of direct conversation continuation.
+   - Compaction summarization now uses reference-style serialized `<conversation>` prompts instead of direct conversation continuation.
    - Previous compaction summaries are passed through `<previous-summary>` and use an update prompt.
    - Split-turn prefix summaries and lightweight file operation summaries are covered.
-   - Branch summaries now use the same serialized conversation path, pi-style branch preamble, and file operation details.
+   - Branch summaries now use the same serialized conversation path, reference-style branch preamble, and file operation details.
    - Entry-aware cut-point selection, previous-compaction boundary handling, and split-turn preparation are covered.
    - Summary quality harness is covered by `validate_summary_contract(...)` and `evaluate_summary_case(...)`: fixed sections, missing sections, leftover prompt placeholders, required phrases, and expected file-operation tags can now be checked consistently for compaction and branch summaries.
    - Remaining gap is running this harness against real model workloads and tuning prompts based on measured failures.
@@ -208,7 +208,7 @@ runtime/RPC/diagnostics/tool hardening pass.
    - Local list UX is covered for direct package roots and plugin package roots, including settings scope projection.
    - Settings load warning projection is covered for package/plugin management commands.
    - Local source add-duplicate and remove-not-found error semantics are covered.
-   - Pi-style local CLI aliases for `list` / `install` / `remove` / `uninstall` are covered.
+   - reference-style local CLI aliases for `list` / `install` / `remove` / `uninstall` are covered.
    - Version conflict projection is covered for local package listing.
    - Offline catalog projection is covered.
    - Remote install/update/remove/check lifecycle and failure projection are covered for headless MVP.
@@ -216,7 +216,7 @@ runtime/RPC/diagnostics/tool hardening pass.
    - Active resource-plane package source merging is covered across project and user scopes.
    - Package identity dedupe covers project-over-user pinned version/ref conflicts.
    - Local relative source dedupe is scoped by settings base directory.
-   - No explicit custom package signature verification has been confirmed in pi coding-agent; remaining package trust work is optional hardening, not a pi parity blocker.
+   - No explicit custom package signature verification has been confirmed in reference coding agent; remaining package trust work is optional hardening, not a reference parity blocker.
 
 5. `interactive/TUI consumption`
    - Headless UI state now exists.
@@ -224,6 +224,6 @@ runtime/RPC/diagnostics/tool hardening pass.
 
 ## Explicit Non-Alignment
 
-- Provider/model config should not blindly align to pi.
+- Provider/model config should not blindly align to reference implementation.
 - Coding should continue to consume `loushang.ai` `models.json` and the Provider -> Endpoint -> Model layering.
-- Python dict config may remain as a convenience input, but it should not become a pi-style flat provider compatibility contract.
+- Python dict config may remain as a convenience input, but it should not become a reference-style flat provider compatibility contract.

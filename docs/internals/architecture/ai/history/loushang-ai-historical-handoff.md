@@ -6,7 +6,7 @@
 
 ## Architecture Position
 
-- `loushang.ai` 的职责不超过 `pi-ai`
+- `loushang.ai` 的职责不超过 `reference AI SDK`
 - 它是模型接入与统一流式协议层
 - 不负责：
   - `Agent`
@@ -18,10 +18,10 @@
 ## Naming Decision
 
 - Python import path 方向倾向于 `loushang.ai`
-- 语义严格对齐 `pi-ai`
+- 语义严格对齐 `reference AI SDK`
 - 表达轻度 Python 化
 - 函数名/字段名用 `snake_case`
-- 协议字面值保留 `pi-ai` 语义，例如：
+- 协议字面值保留 `reference AI SDK` 语义，例如：
   - `toolCall`
   - `toolUse`
 
@@ -110,7 +110,7 @@
 
 取舍结论：
 
-- public contract 对齐 `pi-ai`
+- public contract 对齐 `reference AI SDK`
 - internal streaming 结构吸收 `kimi-cli`
 - provider adapter lower-level shape 可参考 LiteLLM
 

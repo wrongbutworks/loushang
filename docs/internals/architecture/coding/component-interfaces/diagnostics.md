@@ -70,8 +70,8 @@
 - UI 级恢复建议与分组策略
 - 重试或恢复策略本体
 
-## Pi Alignment
+## Reference Implementation Alignment
 
-- 语义上对齐 `pi` 的 diagnostics / startup checks / error normalization 需求
+- 语义上对齐 `reference CLI` 的 diagnostics / startup checks / error normalization 需求
 - 保持诊断能力独立于 `session` 与 `mode`
 - `bootstrap` / `cli` / `mode` 可以调用 diagnostics，但不应让 diagnostics 反向依赖这些入口表面

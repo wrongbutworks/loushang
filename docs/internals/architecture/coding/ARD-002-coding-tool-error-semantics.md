@@ -2,13 +2,13 @@
 
 ## Status
 
-Superseded for runtime tool diagnostics by strict `pi` alignment on 2026-05-01.
+Superseded for runtime tool diagnostics by strict `reference CLI` alignment on 2026-05-01.
 
-Runtime tool failure now uses the `pi` main path only: tool throws, agent loop emits `ToolResultMessage.is_error=True`, and the result is sent back to the model. `AgentSession` no longer projects generic tool execution failure into diagnostics, and built-in tools no longer write ordinary runtime tool failures to diagnostics.
+Runtime tool failure now uses the `reference CLI` main path only: tool throws, agent loop emits `ToolResultMessage.is_error=True`, and the result is sent back to the model. `AgentSession` no longer projects generic tool execution failure into diagnostics, and built-in tools no longer write ordinary runtime tool failures to diagnostics.
 
 ## Context
 
-`loushang-coding` 当前已经有一条与 `pi-agent` 基本同构的工具执行主链：
+`loushang-coding` 当前已经有一条与 `reference agent runtime` 基本同构的工具执行主链：
 
 - tool 成功时返回 `AgentToolResult`
 - tool 失败时由 `agent_loop` 统一转换为 `ToolResultMessage.is_error=True`
@@ -24,7 +24,7 @@ Runtime tool failure now uses the `pi` main path only: tool throws, agent loop e
 
 目标是：
 
-- 对齐 `pi` 的 agent 层语义，不把状态位塞回每个 tool 的返回对象
+- 对齐 `reference CLI` 的 agent 层语义，不把状态位塞回每个 tool 的返回对象
 - 让新工具在 Python 中保持自然写法
 - 不吞错误，不假装成功
 - 让 provider / model / UI / diagnostics 看见同一套错误事实
@@ -33,7 +33,7 @@ Runtime tool failure now uses the `pi` main path only: tool throws, agent loop e
 
 ### 1. 工具失败继续使用异常表达，不把错误状态塞进 `AgentToolResult`
 
-`loushang.agent` 继续保持 `pi` 路线：
+`loushang.agent` 继续保持 `reference CLI` 路线：
 
 - 成功：tool 返回 `AgentToolResult`
 - 失败：tool 抛异常
@@ -183,7 +183,7 @@ provider / model / UI / diagnostics 对错误的关心点不同：
 - 新工具更容易写：成功返回，失败抛 typed exception
 - 错误不会只剩字符串
 - `tool_result`、UI、diagnostics、retry 能共享同一套结构化错误
-- 继续对齐 `pi` 的 agent 边界，不把 `sdk-python` 风格的状态位上移到 core
+- 继续对齐 `reference CLI` 的 agent 边界，不把 `sdk-python` 风格的状态位上移到 core
 
 ### Negative
 

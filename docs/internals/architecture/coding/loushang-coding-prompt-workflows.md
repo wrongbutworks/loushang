@@ -84,7 +84,7 @@ The fake backend uses normalized workflow events such as `run.started`,
   Nested objects are matched recursively, so scenarios can assert facts such as
   `runStatus`, `pendingMessageCount`, and `queue.followUp` without depending on
   the full runtime payload.
-- `session_stats`: partial checks against pi-style session stats, including
+- `session_stats`: partial checks against reference-style session stats, including
   `tokens`, `cost`, `contextUsage`, and `latestCompaction`.
 - `context_usage`: partial checks against the current context usage snapshot.
   This exists as a direct assertion path so compaction scenarios can inspect

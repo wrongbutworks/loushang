@@ -523,16 +523,16 @@
 
 ## Summary
 
-从白盒视角看，`kimi-cli` 的 AI 子系统和 `pi-ai` 的重心不一样：
+从白盒视角看，`kimi-cli` 的 AI 子系统和 `reference AI SDK` 的重心不一样：
 
-- `pi-ai` 更强调顶层 API、registry、统一 public contract
+- `reference AI SDK` 更强调顶层 API、registry、统一 public contract
 - `kimi-cli` 更强调消息模型、generate orchestration、provider runtime、tooling、stream merge
 
 对 `loushang-ai` 而言，这意味着：
 
-- 不能只参考 `pi-ai`
+- 不能只参考 `reference AI SDK`
 - 也不能只参考 `kimi-cli`
-- 需要把 `pi-ai` 的 contract / registry 视角与 `kimi-cli` 的 runtime / assembly / tooling 视角组合起来
+- 需要把 `reference AI SDK` 的 contract / registry 视角与 `kimi-cli` 的 runtime / assembly / tooling 视角组合起来
 
 ---
 

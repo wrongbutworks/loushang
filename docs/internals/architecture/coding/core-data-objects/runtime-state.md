@@ -61,10 +61,10 @@
 - `thinking_level`
 - `model`
 
-## Pi Alignment
+## Reference Implementation Alignment
 
-- `SessionContext` 直接对齐 `pi-coding-agent`
-- `AgentSessionState` 与 `RunState` 对齐的是 `pi` 中真实存在、但未必被明确独立命名导出的状态语义
+- `SessionContext` 直接对齐 `reference coding agent`
+- `AgentSessionState` 与 `RunState` 对齐的是 `reference CLI` 中真实存在、但未必被明确独立命名导出的状态语义
 
 ## Notes
 

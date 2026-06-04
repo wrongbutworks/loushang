@@ -133,7 +133,7 @@
 - query 命令只返回查询结果
 - mutator 命令尽量只返回最小成功确认
 - lifecycle 命令只返回这次切换本身的最小结果
-- `prompt` response 对齐 `pi`：preflight 成功后立即返回 success，LLM streaming 和最终 `agent_end` 继续通过事件流输出；preflight 失败才返回 prompt error
+- `prompt` response 对齐 `reference CLI`：preflight 成功后立即返回 success，LLM streaming 和最终 `agent_end` 继续通过事件流输出；preflight 失败才返回 prompt error
 
 已经收瘦到最小 ACK 的 mutator：
 
@@ -233,7 +233,7 @@ RPC wire command `get_commands` 是当前命令发现的统一入口。它只承
 - `source` 为 `extension`、`prompt`、`skill` 三选一
 - `sourceInfo` 使用 `path / source / scope / origin / baseDir` 结构
 
-会话内命令条目统一使用 `AgentSession.list_commands()` 返回的 typed descriptor。该面按 `pi` 风格由 session 动态聚合，不引入独立 command registry class：
+会话内命令条目统一使用 `AgentSession.list_commands()` 返回的 typed descriptor。该面按 `reference CLI` 风格由 session 动态聚合，不引入独立 command registry class：
 
 - `name`: 命令名（无前导 `/`）
 - `description`: 可选说明
@@ -253,13 +253,13 @@ RPC wire command `get_commands` 是当前命令发现的统一入口。它只承
 
 package provenance 不在 RPC 层兜底推断：prompt / skill 来自 loader descriptor，extension command 来自 `LoadedExtension`，RPC 仅序列化 session descriptor。
 
-命令执行路径不在 RPC 新增 command verb，保持与 `pi` 一致：主机仍通过常规 prompt 输入（如 `/deploy prod`）或 CLI 的 `--command` 触发会话命令执行。
+命令执行路径不在 RPC 新增 command verb，保持与 `reference CLI` 一致：主机仍通过常规 prompt 输入（如 `/deploy prod`）或 CLI 的 `--command` 触发会话命令执行。
 
-`fork` 默认使用 `position="before"`，对齐 `pi`：目标必须是 user message，响应 `text` 为选中的用户文本；调用方可传 `position="at"` 显式保留目标 entry。
+`fork` 默认使用 `position="before"`，对齐 `reference CLI`：目标必须是 user message，响应 `text` 为选中的用户文本；调用方可传 `position="at"` 显式保留目标 entry。
 
-## Pi Alignment
+## Reference Implementation Alignment
 
-当前这版 RPC surface 对齐 `pi` 的核心思路是：
+当前这版 RPC surface 对齐 `reference CLI` 的核心思路是：
 
 - `rpc mode` 仍是 mode adapter，不是另一套 runtime
 - `get_state` 只暴露 canonical session snapshot
@@ -269,7 +269,7 @@ package provenance 不在 RPC 层兜底推断：prompt / skill 来自 loader des
 当前保留的差异主要有两类：
 
 - `loushang` 自有命令仍存在，例如 `set_active_tools`
-- 部分命令的 response 还没有完全压成 `pi` 风格的最小集合
+- 部分命令的 response 还没有完全压成 `reference CLI` 风格的最小集合
 
 ## Related Tests
 

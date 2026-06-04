@@ -65,11 +65,11 @@
 - session transcript persistence
 - model selection
 
-## Pi Alignment
+## Reference Implementation Alignment
 
-- 语义上对齐 `pi` 中 permissions / approvals / guardrails
+- 语义上对齐 `reference CLI` 中 permissions / approvals / guardrails
 - 保留显式 `PolicyEngine`，不把这层判定逻辑散落进 mode、tool、exec
-- `evaluate_tool_call(...)` 对齐 `pi` 的 `beforeToolCall` 判定点：工具参数校验后、实际执行前做 allow / deny / ask。
+- `evaluate_tool_call(...)` 对齐 `reference CLI` 的 `beforeToolCall` 判定点：工具参数校验后、实际执行前做 allow / deny / ask。
 - `ApprovalResolver` 是 UI/RPC/CLI 未来承接审批交互的注入点；当前默认 `DenyApprovalResolver`
   保持无 UI 环境下的阻断语义。
 - mode 可以承接审批交互呈现，但 `PolicyEngine` 自身应保持 mode-neutral

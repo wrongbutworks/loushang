@@ -9,7 +9,7 @@
 - 哪些组件依赖哪些组件
 - 哪些依赖是主干依赖
 - 哪些依赖是支撑依赖
-- 哪些依赖关系应尽量对齐 `pi-coding-agent`
+- 哪些依赖关系应尽量对齐 `reference coding agent`
 - 哪些依赖关系是 `loushang-coding` 当前有意识的偏离
 
 本文档不展开：
@@ -26,7 +26,7 @@
 - [Loushang Coding Component Structure And Responsibilities](/home/dev/workspace/loushang/docs/architecture/coding/loushang-coding-component-structure-and-responsibilities.md)
 - [Loushang Coding Core Service Objects](/home/dev/workspace/loushang/docs/architecture/coding/loushang-coding-core-service-objects.md)
 - [Loushang Coding Component Interfaces](/home/dev/workspace/loushang/docs/architecture/coding/loushang-coding-component-interfaces.md)
-- [pi-coding-agent Internal Dependency Overview](/home/dev/workspace/loushang/docs/architecture/coding/reference/pi-coding/architecture-dependencies.md)
+- [reference coding agent Internal Dependency Overview](/home/dev/workspace/loushang/docs/architecture/coding/reference/reference-coding-agent/architecture-dependencies.md)
 
 ## Dependency Reading Rule
 
@@ -240,9 +240,9 @@ flowchart TD
     DIAG --> SESSION
 ```
 
-## 4. Strong Alignment With pi-coding-agent
+## 4. Strong Alignment With reference coding agent
 
-以下依赖关系建议尽量与 `pi-coding-agent` 对齐：
+以下依赖关系建议尽量与 `reference coding agent` 对齐：
 
 - `Bootstrap`/装配链
   - 对齐 `main.ts` + `agent-session-services.ts` + `sdk.ts`
@@ -251,19 +251,19 @@ flowchart TD
   - 直接对齐 `AgentSessionRuntime` 对 `AgentSession` 的生命周期宿主关系
 
 - `AgentSession -> SessionManager`
-  - 直接对齐 `pi-coding-agent`
+  - 直接对齐 `reference coding agent`
 
 - `AgentSession -> SettingsManager`
-  - 直接对齐 `pi-coding-agent`
+  - 直接对齐 `reference coding agent`
 
 - `AgentSession -> ModelRegistry`
-  - 直接对齐 `pi-coding-agent`
+  - 直接对齐 `reference coding agent`
 
 - `AgentSession -> DefaultResourceLoader`
-  - 直接对齐 `pi-coding-agent`
+  - 直接对齐 `reference coding agent`
 
 - `AgentSession -> ExtensionRunner`
-  - 直接对齐 `pi-coding-agent`
+  - 直接对齐 `reference coding agent`
 
 - `AgentSession -> ToolRegistry`
   - 语义上对齐 `core/tools/*` + tool registry 能力
@@ -275,13 +275,13 @@ flowchart TD
   - 对齐 `AgentSession -> Agent`
 
 - `AgentSession -> loushang-ai`
-  - 对齐 `pi-coding-agent` 对 `pi-ai` 的直接依赖
+  - 对齐 `reference coding agent` 对 `reference AI SDK` 的直接依赖
 
 ## 5. Intentional Explicit Modeling
 
 以下依赖关系当前更适合视为有意识保留的显式建模：
 
-- 它们大多不是对 `pi-coding-agent` 主语义的分叉
+- 它们大多不是对 `reference coding agent` 主语义的分叉
 - 更主要是在 `loushang-coding` 中把原本分散、隐含或容易被忽略的依赖显式写出来
 - 少数边界也服务于 Python 实现中的结构拆分
 
@@ -289,7 +289,7 @@ flowchart TD
 
 理由：
 
-- `pi-coding-agent` 确实也直接依赖 `pi-ai`
+- `reference coding agent` 确实也直接依赖 `reference AI SDK`
 - 但在结构文档里，这条边比 `AgentSession -> Agent` 更容易被忽略
 - 当前显式强化它，是为了后续 model registry / summarization / helper call 的落位更清楚
 
@@ -297,7 +297,7 @@ flowchart TD
 
 理由：
 
-- `pi-coding-agent` 更偏向把执行能力压在工具层中
+- `reference coding agent` 更偏向把执行能力压在工具层中
 - `loushang-coding` 先显式拆出 `exec`，是为了 Python 里 subprocess/sandbox 边界更清楚
 - 这条边更准确地表达 built-in executable tool family 对执行边界的依赖，而不是 `ToolRegistry` 核心本身依赖 `ExecService`
 
@@ -305,14 +305,14 @@ flowchart TD
 
 理由：
 
-- `pi-coding-agent` 存在 permissions / guardrails / approvals 语义，但没有显式单一 policy center
+- `reference coding agent` 存在 permissions / guardrails / approvals 语义，但没有显式单一 policy center
 - `loushang-coding` 把这条判定边显式写出，是为了把可执行工具与 guardrail 判定清楚分开
 
 ### `Prompt -> Loader/Tools/Method`
 
 理由：
 
-- `pi-coding-agent` 的 prompt 组装更分散
+- `reference coding agent` 的 prompt 组装更分散
 - `loushang-coding` 当前先显式表达 prompt 的资源来源与工具元数据输入，有利于后续拆出清晰装配边界
 
 ### `Control -> AI`
@@ -321,13 +321,13 @@ flowchart TD
 
 - 当前显式保留 `coding` 对 `ai` 的直接控制平面接缝
 - 主要服务于 `ModelRegistry` / model selection 设计
-- 它表达的是聚合边界上的接缝，而不是要求 `control` 对齐成 `pi` 的单一中心对象
+- 它表达的是聚合边界上的接缝，而不是要求 `control` 对齐成 `reference CLI` 的单一中心对象
 
 ### `Compaction -> AI`
 
 理由：
 
-- 对齐 `pi-coding-agent` 里 direct summarization / completion helper 的语义
+- 对齐 `reference coding agent` 里 direct summarization / completion helper 的语义
 - 当前显式写出，可避免把 compaction 错误下沉进 `agent`
 
 ## 6. Dependency Constraints

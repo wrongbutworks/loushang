@@ -4,7 +4,7 @@
 
 本文档将 `loushang-agent` 视为一个黑盒子系统，描述它的外部子系统、依赖关系与信息流关系。
 
-本文档目标是先确定 `loushang-agent` 的系统边界，为后续从 `pi-agent` 迁移到 `loushang-agent` 的白盒分析与组件识别提供落点。
+本文档目标是先确定 `loushang-agent` 的系统边界，为后续从 `reference agent runtime` 迁移到 `loushang-agent` 的白盒分析与组件识别提供落点。
 
 本文不展开：
 

@@ -15,7 +15,7 @@
 
 - 不同 mode 如何进入统一 runtime 主干
 - mode 与 `AgentSessionRuntime` / `AgentSession` 如何协作
-- 哪些时序应尽量对齐 `pi-coding-agent`
+- 哪些时序应尽量对齐 `reference coding agent`
 - 哪些地方是当前刻意保留的简化
 
 本文档不展开：
@@ -31,7 +31,7 @@
 - [Loushang Coding System Context](/home/dev/workspace/loushang/docs/architecture/coding/loushang-coding-system-context.md)
 - [Loushang Coding Component Interfaces](/home/dev/workspace/loushang/docs/architecture/coding/loushang-coding-component-interfaces.md)
 - [Loushang Coding Component Dependencies](/home/dev/workspace/loushang/docs/architecture/coding/loushang-coding-component-dependencies.md)
-- [pi-coding-agent Internal Dependency Overview](/home/dev/workspace/loushang/docs/architecture/coding/reference/pi-coding/architecture-dependencies.md)
+- [reference coding agent Internal Dependency Overview](/home/dev/workspace/loushang/docs/architecture/coding/reference/reference-coding-agent/architecture-dependencies.md)
 
 ## Shared Runtime Spine
 
@@ -175,7 +175,7 @@ sequenceDiagram
 - `print mode` 只通过 `AgentSession` 驱动运行
 - `print mode` 主要消费 `AgentSessionEvent` 并投影为文本
 
-### Alignment With pi-coding-agent
+### Alignment With reference coding agent
 
 - 对齐 `PrintMode` 作为 mode adapter 的定位
 - 对齐“统一 session facade 驱动 runtime，再由 mode 投影输出”的主思路
@@ -234,9 +234,9 @@ sequenceDiagram
 - 当前应把它建模为 `PrintMode(output_mode="json")`
 - 用户层仍可保留 `json mode` 这一运行形态命名
 
-### Alignment With pi-coding-agent
+### Alignment With reference coding agent
 
-- 对齐 `pi` 中 `--mode json` 作为 `runPrintMode(...)` 的结构化输出分支
+- 对齐 `reference CLI` 中 `--mode json` 作为 `runPrintMode(...)` 的结构化输出分支
 - 对齐的是“相同 session 主干，不同输出投影”这一点
 - 当前不建议再引入独立 `JsonMode` service object
 
@@ -303,7 +303,7 @@ sequenceDiagram
 - 未来如果 `channel` 落地，`rpc mode` 可以改为承载 `channel` projection
 - 这里的 `rpc mode` 首先表示运行形态，其次才是具体对象命名
 
-### Alignment With pi-coding-agent
+### Alignment With reference coding agent
 
 - 对齐 `rpc mode / rpc client` 作为 mode adapter 的定位
 - 保留当前 `loushang` 的明确决定：
@@ -347,11 +347,11 @@ sequenceDiagram
   - 订阅 `AgentSessionEvent`
   - 不绕过 session facade 直接驱动底层 runtime
 
-### Alignment With pi-coding-agent
+### Alignment With reference coding agent
 
 - 对齐 `InteractiveMode` 作为 UI orchestration layer
 - 当前差异在于：
-  - `pi` 依赖 `pi-tui`
+  - `reference CLI` 依赖 `reference TUI`
   - `loushang` 未来可能依赖 `loushang-tui`（Textual-based）
 
 ## 5. Cross-Mode Invariants
@@ -364,9 +364,9 @@ sequenceDiagram
 4. mode 通过 `AgentSession` 推进一次运行
 5. mode 通过 `AgentSessionEvent` 获取运行时观察面
 
-## 6. Strong Alignment With pi-coding-agent
+## 6. Strong Alignment With reference coding agent
 
-当前时序设计中，最需要对齐 `pi-coding-agent` 的点是：
+当前时序设计中，最需要对齐 `reference coding agent` 的点是：
 
 - `AgentSession` 是统一运行中心
 - 不同 mode 共用同一 session 语义
@@ -375,7 +375,7 @@ sequenceDiagram
 
 ## 7. Current Simplifications
 
-当前相对 `pi-coding-agent` 的简化主要包括：
+当前相对 `reference coding agent` 的简化主要包括：
 
 - 还未展开 extension hook 时序
 - 还未展开 compaction / retry / queue 的细粒度时序

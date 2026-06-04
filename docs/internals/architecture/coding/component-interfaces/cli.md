@@ -61,7 +61,7 @@
 - session listing JSON 会保留 `SessionSummary` 的轻量 index 字段，包括 diagnostics metadata；TSV 输出保持稳定的五列基础格式
 - package/plugin/skill settings 管理类命令会在执行前 drain `SettingsManager` load errors，并以 `Warning (<context>, <scope> settings): ...` 输出到 stderr；warning 不改变成功命令的 exit code。
 - session listing JSON 包含 `first_message` / `all_messages_text`；TSV 暂不输出这两个字段，避免破坏既有列顺序
-- pi-style package 子命令在 headless MVP 中是入口别名：
+- reference-style package 子命令在 headless MVP 中是入口别名：
   - `list` 单独出现时映射到 `--list-plugins`
   - `install <source>` 映射到 `--install-package <source>`
   - `remove <source>` / `uninstall <source>` 映射到 `--uninstall-package <source>`
@@ -76,9 +76,9 @@
 - session 核心逻辑
 - transcript 持久化
 - tool / exec / policy 实现
-- approval UI and optional package trust hardening; explicit package signature verification is not a current pi parity requirement
+- approval UI and optional package trust hardening; explicit package signature verification is not a current reference parity requirement
 
-## Pi Alignment
+## Reference Implementation Alignment
 
-- 语义上对齐 `pi` 的 CLI / main entry surface
+- 语义上对齐 `reference CLI` 的 CLI / main entry surface
 - 保持 CLI 只做入口与分发，不承载运行核心

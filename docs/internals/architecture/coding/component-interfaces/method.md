@@ -44,7 +44,7 @@
 - prompt 最终渲染
 - session 持久化细节
 
-## Pi Alignment
+## Reference Implementation Alignment
 
-- 语义上吸收 `pi` 中 method guidance / mode behavior 的经验
+- 语义上吸收 `reference CLI` 中 method guidance / mode behavior 的经验
 - 在 `loushang` 里单独抽成 registry，避免 method 逻辑散落在 prompt 或 mode 中

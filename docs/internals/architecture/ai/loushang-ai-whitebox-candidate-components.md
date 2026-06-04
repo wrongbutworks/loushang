@@ -6,7 +6,7 @@
 它建立在以下输入之上：
 
 - [Loushang Design Method: Identify Component](/home/dev/workspace/loushang/docs/architecture/loushang-design-method-identify-component.md)
-- [PI-AI Whitebox Candidate Components](/home/dev/workspace/loushang/docs/architecture/ai/reference/pi-ai/pi-ai-whitebox-candidate-components.md)
+- [Reference AI SDK Whitebox Candidate Components](/home/dev/workspace/loushang/docs/architecture/ai/reference/reference-ai-sdk/reference-ai-sdk-whitebox-candidate-components.md)
 - [Kimi-CLI AI Whitebox Candidate Components](/home/dev/workspace/loushang/docs/architecture/ai/reference/kimi-cli/kimi-cli-ai-whitebox-candidate-components.md)
 - [Loushang-AI Whitebox Candidate Functions](/home/dev/workspace/loushang/docs/architecture/ai/loushang-ai-whitebox-candidate-functions.md)
 
@@ -57,7 +57,7 @@
 **主要来源：**
 
 - [loushang-ai-top-level-api-signatures.md](/home/dev/workspace/loushang/docs/architecture/ai/loushang-ai-top-level-api-signatures.md)
-- `pi-ai` 顶层 API
+- `reference AI SDK` 顶层 API
 
 **作用：**
 
@@ -89,7 +89,7 @@
 **主要来源：**
 
 - glossary 中 `Model`
-- `pi-ai` model registry 经验
+- `reference AI SDK` model registry 经验
 - [loushang-ai-system-context.md](/home/dev/workspace/loushang/docs/architecture/ai/loushang-ai-system-context.md)
 
 **作用：**
@@ -120,7 +120,7 @@
 **主要来源：**
 
 - [loushang-ai-api-provider-registry.md](/home/dev/workspace/loushang/docs/architecture/ai/loushang-ai-api-provider-registry.md)
-- `pi-ai` api registry 经验
+- `reference AI SDK` api registry 经验
 
 **作用：**
 
@@ -183,7 +183,7 @@
 **主要来源：**
 
 - [loushang-ai-api-provider-registry.md](/home/dev/workspace/loushang/docs/architecture/ai/loushang-ai-api-provider-registry.md)
-- `pi-ai` 的 `ApiProvider`
+- `reference AI SDK` 的 `ApiProvider`
 - `kimi-cli` 的 `ChatProvider` protocol
 
 **作用：**
@@ -368,7 +368,7 @@
 **主要来源：**
 
 - [loushang-ai-streaming-and-cancellation.md](/home/dev/workspace/loushang/docs/architecture/ai/loushang-ai-streaming-and-cancellation.md)
-- `pi-ai` event stream 经验
+- `reference AI SDK` event stream 经验
 
 **作用：**
 
@@ -425,7 +425,7 @@
 
 **主要来源：**
 
-- `pi-ai` simple API 经验
+- `reference AI SDK` simple API 经验
 - 顶层 API 签名文档
 - adapter strategy 文档
 
@@ -456,7 +456,7 @@
 **主要来源：**
 
 - [loushang-ai-system-context.md](/home/dev/workspace/loushang/docs/architecture/ai/loushang-ai-system-context.md)
-- `pi-ai` / `kimi-cli` tool support 经验
+- `reference AI SDK` / `kimi-cli` tool support 经验
 
 **作用：**
 
@@ -573,7 +573,7 @@
 **主要来源：**
 
 - spike 验证
-- `pi-ai` / `kimi-cli` error mapping 经验
+- `reference AI SDK` / `kimi-cli` error mapping 经验
 
 **作用：**
 
@@ -632,7 +632,7 @@
 **主要来源：**
 
 - 白盒阶段用户强调不能漏掉 oauth/auth
-- `pi-ai` 内部 auth / oauth 相关结构
+- `reference AI SDK` 内部 auth / oauth 相关结构
 - physical system context
 
 **作用：**
@@ -718,7 +718,7 @@
 
 **主要来源：**
 
-- `pi-ai` built-in provider bootstrap / lazy loader 经验
+- `reference AI SDK` built-in provider bootstrap / lazy loader 经验
 - registry 与 adapter strategy 文档
 
 **作用：**
@@ -748,7 +748,7 @@
 
 **主要来源：**
 
-- `pi-ai` faux provider
+- `reference AI SDK` faux provider
 - `kimi-cli` mock / chaos / echo provider
 - 当前 spike 实践
 
@@ -800,7 +800,7 @@
 
 这也说明 `loushang-ai` 不能只照抄任一参考系统：
 
-- `pi-ai` 给了顶层 API、registry、bootstrap、event stream 视角
+- `reference AI SDK` 给了顶层 API、registry、bootstrap、event stream 视角
 - `kimi-cli` 给了 message model、assembly、tooling、runtime 边界视角
 
 `loushang-ai` 的白盒组件设计需要把两边拼起来，而不是只继承一边。

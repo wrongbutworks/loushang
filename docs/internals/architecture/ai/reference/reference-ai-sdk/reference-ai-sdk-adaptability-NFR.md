@@ -1,12 +1,12 @@
-# PI-AI Adaptability NFR
+# Reference AI SDK Adaptability NFR
 
 ## Scope
 
-本文档提炼 `pi-ai` 在协议、模型、认证、传输、兼容性与上下文迁移方面体现出来的适应性非功能需求（NFR）。
+本文档提炼 `reference AI SDK` 在协议、模型、认证、传输、兼容性与上下文迁移方面体现出来的适应性非功能需求（NFR）。
 
 本文档不讨论：
 
-- `pi-ai` 的完整组件结构
+- `reference AI SDK` 的完整组件结构
 - 具体 provider 的逐行实现细节
 - `loushang-ai` 的直接实现计划
 
@@ -14,17 +14,17 @@
 
 ## Sources
 
-- [PI-AI README](/home/dev/workspace/pi-mono/packages/ai/README.md)
-- [models.ts](/home/dev/workspace/pi-mono/packages/ai/src/models.ts)
-- [types.ts](/home/dev/workspace/pi-mono/packages/ai/src/types.ts)
-- [api-registry.ts](/home/dev/workspace/pi-mono/packages/ai/src/api-registry.ts)
-- [pi-ai-abstraction-variation-strategy.md](/home/dev/workspace/loushang/docs/architecture/ai/reference/pi-ai/pi-ai-abstraction-variation-strategy.md)
+- [Reference AI SDK README](/home/dev/workspace/reference-repository/packages/ai/README.md)
+- [models.ts](/home/dev/workspace/reference-repository/packages/ai/src/models.ts)
+- [types.ts](/home/dev/workspace/reference-repository/packages/ai/src/types.ts)
+- [api-registry.ts](/home/dev/workspace/reference-repository/packages/ai/src/api-registry.ts)
+- [reference-ai-sdk-abstraction-variation-strategy.md](/home/dev/workspace/loushang/docs/architecture/ai/reference/reference-ai-sdk/reference-ai-sdk-abstraction-variation-strategy.md)
 
 ---
 
 ## Reading Note
 
-`pi-ai` 并没有把这些适应性要求写成一份单独 NFR 文档。  
+`reference AI SDK` 并没有把这些适应性要求写成一份单独 NFR 文档。
 下面这些条目，是从它的类型系统、registry、provider family、OAuth 与 changelog 演进中反向提炼出来的。
 
 ---
@@ -33,7 +33,7 @@
 
 系统应允许新增或替换协议族，而不改变顶层 API 与统一消息/事件协议。
 
-在 `pi-ai` 中，这一点体现在：
+在 `reference AI SDK` 中，这一点体现在：
 
 - `KnownApi` 明确列出多个 API family
 - `ApiProvider` 围绕 `api` 建模，而不是围绕单一 provider 建模
@@ -41,8 +41,8 @@
 
 对应源码：
 
-- [types.ts](/home/dev/workspace/pi-mono/packages/ai/src/types.ts)
-- [api-registry.ts](/home/dev/workspace/pi-mono/packages/ai/src/api-registry.ts)
+- [types.ts](/home/dev/workspace/reference-repository/packages/ai/src/types.ts)
+- [api-registry.ts](/home/dev/workspace/reference-repository/packages/ai/src/api-registry.ts)
 
 ---
 
@@ -57,7 +57,7 @@
 - 某模型是否适合某条 transport
 - 某模型 family 的兼容性开关
 
-在 `pi-ai` 中，这一点主要体现为：
+在 `reference AI SDK` 中，这一点主要体现为：
 
 - model metadata 与 registry 分离
 - `supportsXhigh()` 这类 capability 判定
@@ -65,8 +65,8 @@
 
 对应源码：
 
-- [models.ts](/home/dev/workspace/pi-mono/packages/ai/src/models.ts)
-- [types.ts](/home/dev/workspace/pi-mono/packages/ai/src/types.ts)
+- [models.ts](/home/dev/workspace/reference-repository/packages/ai/src/models.ts)
+- [types.ts](/home/dev/workspace/reference-repository/packages/ai/src/types.ts)
 
 ---
 
@@ -74,7 +74,7 @@
 
 系统应允许 API key、OAuth、ADC、订阅型认证等多种认证方式并存，并将其收敛为 provider 可绑定的统一认证视图。
 
-在 `pi-ai` 中，这一点体现在：
+在 `reference AI SDK` 中，这一点体现在：
 
 - `getEnvApiKey()` 把环境变量认证集中处理
 - `utils/oauth/*` 把 OAuth provider 相关逻辑从具体 provider 中剥离
@@ -82,8 +82,8 @@
 
 对应源码：
 
-- [env-api-keys.ts](/home/dev/workspace/pi-mono/packages/ai/src/env-api-keys.ts)
-- [utils/oauth/](/home/dev/workspace/pi-mono/packages/ai/src/utils/oauth)
+- [env-api-keys.ts](/home/dev/workspace/reference-repository/packages/ai/src/env-api-keys.ts)
+- [utils/oauth/](/home/dev/workspace/reference-repository/packages/ai/src/utils/oauth)
 
 ---
 
@@ -91,7 +91,7 @@
 
 系统应允许 provider 在 `sse`、`websocket`、SDK-native stream、plain HTTPS 之间切换，而不改变 public message/event contract。
 
-在 `pi-ai` 中，这一点体现在：
+在 `reference AI SDK` 中，这一点体现在：
 
 - `transport` 进入 `StreamOptions`
 - Codex / Responses family 显式处理多 transport
@@ -99,7 +99,7 @@
 
 对应源码：
 
-- [types.ts](/home/dev/workspace/pi-mono/packages/ai/src/types.ts)
+- [types.ts](/home/dev/workspace/reference-repository/packages/ai/src/types.ts)
 - `openai-codex-responses` / related changelog entries
 
 ---
@@ -108,7 +108,7 @@
 
 系统应允许同一协议家族下的 provider 变体通过 compatibility metadata 被局部化，而不是在 top-level 调用链中散落 provider-specific if/else。
 
-在 `pi-ai` 中，这一点体现在：
+在 `reference AI SDK` 中，这一点体现在：
 
 - `OpenAICompletionsCompat`
 - `supportsStore`
@@ -118,7 +118,7 @@
 
 对应源码：
 
-- [types.ts](/home/dev/workspace/pi-mono/packages/ai/src/types.ts)
+- [types.ts](/home/dev/workspace/reference-repository/packages/ai/src/types.ts)
 
 ---
 
@@ -128,15 +128,15 @@
 
 这不是“最好有”，而是 agentic workflow 的核心要求。
 
-在 `pi-ai` 中，这一点体现在：
+在 `reference AI SDK` 中，这一点体现在：
 
 - README 明确强调 context persistence 与 hand-off
 - changelog 多次修复跨协议 tool call ID、thinking continuity、tool result orphan、cross-provider handoff
 
 对应来源：
 
-- [README.md](/home/dev/workspace/pi-mono/packages/ai/README.md)
-- [CHANGELOG.md](/home/dev/workspace/pi-mono/packages/ai/CHANGELOG.md)
+- [README.md](/home/dev/workspace/reference-repository/packages/ai/README.md)
+- [CHANGELOG.md](/home/dev/workspace/reference-repository/packages/ai/CHANGELOG.md)
 
 ---
 
@@ -155,7 +155,7 @@
 - public event contract
 - final message contract
 
-这条要求不是 `pi-ai` 显式写出的原则，但它的代码结构和 shared support 演进都体现了这一点。
+这条要求不是 `reference AI SDK` 显式写出的原则，但它的代码结构和 shared support 演进都体现了这一点。
 
 ---
 
@@ -163,7 +163,7 @@
 
 当模型、协议、auth、transport 或 compat 条件不满足时，系统应尽早 fail fast，而不是在 provider 深处才发生模糊错误。
 
-在 `pi-ai` 中，这一点体现在：
+在 `reference AI SDK` 中，这一点体现在：
 
 - `api` mismatch 在 registry wrapper 即暴露
 - 部分 capability / compat 通过类型或选项约束前置表达
@@ -171,13 +171,13 @@
 
 对应源码：
 
-- [api-registry.ts](/home/dev/workspace/pi-mono/packages/ai/src/api-registry.ts)
+- [api-registry.ts](/home/dev/workspace/reference-repository/packages/ai/src/api-registry.ts)
 
 ---
 
 ## Summary
 
-如果把 `pi-ai` 的适应性压缩成一句话，可以收成：
+如果把 `reference AI SDK` 的适应性压缩成一句话，可以收成：
 
 - 协议可增殖
 - 模型能力可解释
@@ -187,4 +187,4 @@
 - 上下文可迁移
 - 不兼容应前置暴露
 
-这组 NFR 不是额外附加物，而是 `pi-ai` 之所以能持续吸收新 provider、新协议与跨模型 handoff 的前提。
+这组 NFR 不是额外附加物，而是 `reference AI SDK` 之所以能持续吸收新 provider、新协议与跨模型 handoff 的前提。

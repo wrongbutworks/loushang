@@ -92,7 +92,7 @@
 
 These fields are lightweight index metadata derived from session entries. Store recognizes diagnostic metadata entries as `CustomEntry(custom_type="diagnostic" | "diagnostics")`; it does not own full diagnostics persistence or error-report generation.
 
-`updated_at` follows pi-style session list semantics: prefer the latest user/assistant message activity timestamp, fall back to message entry timestamp, then session header timestamp. Metadata-only entries such as labels, session info, and diagnostic custom entries do not make an old conversation sort as recently active.
+`updated_at` follows reference-style session list semantics: prefer the latest user/assistant message activity timestamp, fall back to message entry timestamp, then session header timestamp. Metadata-only entries such as labels, session info, and diagnostic custom entries do not make an old conversation sort as recently active.
 
 `refresh_index(session_dir)` writes a lightweight `.session-index.json` cache for `SessionSummary` projections. `list_indexed_summaries(...)` and `find_indexed_sessions(...)` use that cache when available and rebuild it if missing, invalid, or pointing at session files that have disappeared outside `SessionManager`. The default `list_summaries(...)` / `find_sessions(...)` paths intentionally continue to scan JSONL directly, so cache behavior is opt-in rather than hidden.
 
@@ -105,13 +105,13 @@ These fields are lightweight index metadata derived from session entries. Store 
 - compaction trigger 判断
 - prompt 组装
 
-## Pi Alignment
+## Reference Implementation Alignment
 
-- 语义上对齐 `pi` 的 `SessionManager`
+- 语义上对齐 `reference CLI` 的 `SessionManager`
 - 保持 append-only transcript tree
 - 支持 branch summary / compaction summary 的持久化与投影
 - 保持 `custom` 与 `custom_message` 的分层语义，以及由 entry 图重建 `SessionContext` 的职责
-- `list_all_summaries(root)` / `find_all_sessions(root, query)` 提供 pi-style all-session lookup 基础面，负责聚合 sessions root 下的直接 JSONL 与一层 project/session 子目录
-- `first_message` / `all_messages_text` 对齐 pi 的 `SessionInfo.firstMessage` / `allMessagesText`，用于 session list 展示和全文搜索
+- `list_all_summaries(root)` / `find_all_sessions(root, query)` 提供 reference-style all-session lookup 基础面，负责聚合 sessions root 下的直接 JSONL 与一层 project/session 子目录
+- `first_message` / `all_messages_text` 对齐 参考实现的 `SessionInfo.firstMessage` / `allMessagesText`，用于 session list 展示和全文搜索
 - session summary 提供轻量 diagnostics index 字段，便于跨 session lookup/filter；完整 diagnostics 记录、去重和 error report 仍属于 `diagnostics`
-- 显式 `.session-index.json` cache 补齐 pi-style session index 查询面；默认扫描路径不隐式依赖 cache，避免 stale index 影响核心 runtime
+- 显式 `.session-index.json` cache 补齐 reference-style session index 查询面；默认扫描路径不隐式依赖 cache，避免 stale index 影响核心 runtime

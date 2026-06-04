@@ -198,7 +198,7 @@ flowchart LR
 
 这是需要显式保留的直接依赖关系，而不只是通过 `agent` 的间接依赖。
 
-参考 `pi-coding-agent`，`coding` 产品层除了装配 `agent`，还会直接依赖部分 AI 能力，例如：
+参考 `reference coding agent`，`coding` 产品层除了装配 `agent`，还会直接依赖部分 AI 能力，例如：
 
 - model registry / model selection
 - direct summarization / compaction requests

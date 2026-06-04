@@ -440,7 +440,7 @@ Non-responsibilities:
 - multi-agent team
 - domain workflow
 
-This boundary matches the general shape of Pi's AgentHarness and OpenClaw's
+This boundary matches the general shape of the reference implementation's AgentHarness and OpenClaw's
 agent harness approach: harness is not a provider, not a channel, not a tool
 registry, and not the upper workflow engine.
 

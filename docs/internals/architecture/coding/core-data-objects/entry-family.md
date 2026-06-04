@@ -180,12 +180,12 @@
 
 承担语义：
 
-- `pi-coding-agent` 风格的 session file entry universe
+- `reference coding agent` 风格的 session file entry universe
 - transcript、model/thinking 变化、compaction 与 custom metadata 统一 entry 宇宙
 
-## Pi Alignment
+## Reference Implementation Alignment
 
-- 这组对象整体直接对齐 `pi-coding-agent` 的 session entry family
+- 这组对象整体直接对齐 `reference coding agent` 的 session entry family
 
 ## Notes
 

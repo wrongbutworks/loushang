@@ -7,7 +7,7 @@
 目标是：
 
 - 把 `SessionEntry family` 真正落到文件组织上
-- 尽量对齐 `pi-coding-agent` 的 `SessionManager`
+- 尽量对齐 `reference coding agent` 的 `SessionManager`
 - 明确 `store` 如何从 entry 重建当前运行上下文
 
 本文档不展开：
@@ -21,12 +21,12 @@
 
 本轮规则主要对齐：
 
-- [pi session-manager.ts](/home/dev/workspace/pi-mono/packages/coding-agent/src/core/session-manager.ts:27)
-- [pi messages.ts](/home/dev/workspace/pi-mono/packages/coding-agent/src/core/messages.ts:1)
+- [reference implementation session-manager.ts](/home/dev/workspace/reference-repository/packages/coding-agent/src/core/session-manager.ts:27)
+- [reference implementation messages.ts](/home/dev/workspace/reference-repository/packages/coding-agent/src/core/messages.ts:1)
 
 ## 1. File Model
 
-建议直接对齐 `pi` 的单文件 JSONL 模型：
+建议直接对齐 `reference CLI` 的单文件 JSONL 模型：
 
 - 一个 session 对应一个 `.jsonl` 文件
 - 第一行必须是 `SessionHeader`
@@ -41,7 +41,7 @@ SessionFile = SessionHeader + SessionEntry*
 
 ## 2. File Naming
 
-建议第一版保持和 `pi` 接近：
+建议第一版保持和 `reference CLI` 接近：
 
 - `YYYY-MM-DDTHH-MM-SS-sssZ_<session-id>.jsonl`
 
@@ -53,7 +53,7 @@ SessionFile = SessionHeader + SessionEntry*
 
 说明：
 
-- 最终文件名不必逐字复制 `pi`
+- 最终文件名不必逐字复制 `reference CLI`
 - 但应避免只用 session id，便于人工排查和时间排序
 
 ## 3. Header Schema
@@ -235,7 +235,7 @@ SessionFile = SessionHeader + SessionEntry*
 
 ### 5.3 Rewrite Only For Migration Or Repair
 
-建议和 `pi` 一样：
+建议和 `reference CLI` 一样：
 
 - 正常写入以 append 为主
 - rewrite 仅用于：
@@ -250,7 +250,7 @@ SessionFile = SessionHeader + SessionEntry*
 
 ## 6. `build_session_context()` Rule Draft
 
-建议直接对齐 `pi` 的核心思路。
+建议直接对齐 `reference CLI` 的核心思路。
 
 输入：
 
@@ -380,7 +380,7 @@ SessionFile = SessionHeader + SessionEntry*
 
 建议实现时保持：
 
-- JSON schema keys 贴近 `pi`
+- JSON schema keys 贴近 `reference CLI`
 - Python 模型字段可用 alias
 - `build_session_context()` 作为纯函数或近纯函数实现
 - `SessionManager` 只是状态持有与文件协调层

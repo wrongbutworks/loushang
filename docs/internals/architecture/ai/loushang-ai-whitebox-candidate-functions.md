@@ -60,7 +60,7 @@
 **来源：**
 
 - [loushang-ai-top-level-api-signatures.md](/home/dev/workspace/loushang/docs/architecture/ai/loushang-ai-top-level-api-signatures.md)
-- `pi-ai` 顶层 public contract
+- `reference AI SDK` 顶层 public contract
 
 **作用：**
 
@@ -91,7 +91,7 @@
 **来源：**
 
 - glossary 中 `Model`
-- `pi-ai` 的 model registry 经验
+- `reference AI SDK` 的 model registry 经验
 - [loushang-ai-system-context.md](/home/dev/workspace/loushang/docs/architecture/ai/loushang-ai-system-context.md)
 
 **作用：**
@@ -121,7 +121,7 @@
 **来源：**
 
 - [loushang-ai-api-provider-registry.md](/home/dev/workspace/loushang/docs/architecture/ai/loushang-ai-api-provider-registry.md)
-- `pi-ai` api registry 经验
+- `reference AI SDK` api registry 经验
 
 **作用：**
 
@@ -150,7 +150,7 @@
 
 **来源：**
 
-- `pi-ai` 的 `streamSimple` / `completeSimple`
+- `reference AI SDK` 的 `streamSimple` / `completeSimple`
 - [loushang-ai-top-level-api-signatures.md](/home/dev/workspace/loushang/docs/architecture/ai/loushang-ai-top-level-api-signatures.md)
 - [loushang-ai-provider-adapter-strategy.md](/home/dev/workspace/loushang/docs/architecture/ai/loushang-ai-provider-adapter-strategy.md)
 
@@ -181,7 +181,7 @@
 
 - glossary 中 `Context`
 - [loushang-ai-system-context.md](/home/dev/workspace/loushang/docs/architecture/ai/loushang-ai-system-context.md)
-- `pi-ai` / `kimi-cli` 都以消息上下文为主输入
+- `reference AI SDK` / `kimi-cli` 都以消息上下文为主输入
 
 **作用：**
 
@@ -271,7 +271,7 @@
 **来源：**
 
 - [loushang-ai-streaming-and-cancellation.md](/home/dev/workspace/loushang/docs/architecture/ai/loushang-ai-streaming-and-cancellation.md)
-- `pi-ai` event stream 经验
+- `reference AI SDK` event stream 经验
 - `kimi-cli` stream merge / event conversion 经验
 
 **作用：**
@@ -362,7 +362,7 @@
 **来源：**
 
 - [loushang-ai-system-context.md](/home/dev/workspace/loushang/docs/architecture/ai/loushang-ai-system-context.md)
-- `pi-ai` / `kimi-cli` tool support 经验
+- `reference AI SDK` / `kimi-cli` tool support 经验
 
 **作用：**
 
@@ -480,7 +480,7 @@
 
 **来源：**
 
-- `pi-ai` / `kimi-cli` error mapping 经验
+- `reference AI SDK` / `kimi-cli` error mapping 经验
 - provider adapter spike
 
 **作用：**
@@ -541,7 +541,7 @@
 
 **来源：**
 
-- `pi-ai` 内部已有 oauth/auth 相关结构
+- `reference AI SDK` 内部已有 oauth/auth 相关结构
 - physical system context 的真实接入边界
 - 用户明确指出白盒阶段不能漏掉
 
@@ -630,7 +630,7 @@
 
 **来源：**
 
-- `pi-ai` built-in provider bootstrap / lazy loader 经验
+- `reference AI SDK` built-in provider bootstrap / lazy loader 经验
 - `loushang-ai` 当前 registry 与 adapter 设计
 
 **作用：**
@@ -660,7 +660,7 @@
 
 **来源：**
 
-- `pi-ai` faux provider
+- `reference AI SDK` faux provider
 - `kimi-cli` mock / chaos / echo provider
 - 当前 spike 验证实践
 

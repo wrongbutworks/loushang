@@ -1,6 +1,6 @@
-## PI-AI 流式事件语义（参考）
+## Reference AI SDK 流式事件语义（参考）
 
-本文基于 `pi-mono/packages/ai/src` 的实现与注释，总结 PI-AI 在流式事件上的完整设计细节，作为 Loushang-AI 的对照与参考。
+本文基于 `reference-repository/packages/ai/src` 的实现与注释，总结 Reference AI SDK 在流式事件上的完整设计细节，作为 Loushang-AI 的对照与参考。
 
 ### 1. 概览与目标
 - 目标：提供稳定的“事件流”语义，屏蔽不同 Provider 的协议差异，支持思考（thinking）、工具（tool use）、多模态、用量统计和可靠落幕。
@@ -72,7 +72,7 @@
 
 ### 5. 块并行/交错与索引
 - Anthropic 的 `index` 用于区分并行/交错的多个块
-- PI-AI 在 provider 适配层维护 `blocks: Map<number, BlockState>`：
+- Reference AI SDK 在 provider 适配层维护 `blocks: Map<number, BlockState>`：
   - kind: "text" | "thinking" | "redacted_thinking" | "tool" | "image"
   - 文本/思考缓冲；工具 `partial_json`；思考签名缓冲
 - 在 stop 时输出对应 *_end/done，并清理 `BlockState`
@@ -96,7 +96,7 @@
 - usage
   - `message_start` 报告初始用量（尤其 input/cache）
   - `message_delta` 按存在字段覆盖增量（不覆盖缺失字段）
-  - 最终 total 由实现方计算（PI-AI 在 TS 端聚合）
+  - 最终 total 由实现方计算（Reference AI SDK 在 TS 端聚合）
 - stop_reason
   - 规范映射：end_turn→stop；max_tokens→length；tool_use→toolUse；refusal/sensitive→error
 - 完成态
@@ -130,7 +130,7 @@
 ### 12. 与 Loushang-AI 的对照
 - 事件等价：text/thinking/tool（start/delta/end）、usage、stop_reason、done/error
 - 差异与策略
-  - PI-AI：在支持块边界的协议上优先使用 start/stop 对齐
+  - Reference AI SDK：在支持块边界的协议上优先使用 start/stop 对齐
   - Loushang-AI：默认允许在 Assembler 侧从 delta 推断 start/end；亦可在 Provider 适配层显式发 start/end 以逐事件对齐
 - 建议：在 Anthropic 适配中默认显式发 start/end；在无边界协议中保持推断与补齐
 
@@ -143,4 +143,4 @@
 - 代理差异：官方 SDK / 兼容代理（如 DashScope、Kimi 等）
 
 ### 14. 结语
-PI-AI 通过“块级生命周期 + 用量/停因 + 完成收口”的统一设计，在多 Provider/代理场景下保持了稳定的一致性与可观测性。该语义已被 Loushang-AI 采纳并在实现层做了最小偏差的等价对齐，必要时可在 Provider 适配层开启显式 start/end 以满足严格逐事件对齐的需要。
+Reference AI SDK 通过“块级生命周期 + 用量/停因 + 完成收口”的统一设计，在多 Provider/代理场景下保持了稳定的一致性与可观测性。该语义已被 Loushang-AI 采纳并在实现层做了最小偏差的等价对齐，必要时可在 Provider 适配层开启显式 start/end 以满足严格逐事件对齐的需要。

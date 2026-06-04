@@ -6,7 +6,7 @@
 
 目标是：
 
-- 尽量对齐 `pi-coding-agent/session-manager.ts`
+- 尽量对齐 `reference coding agent/session-manager.ts`
 - 在 Python 实现前先稳定核心持久化字段
 - 明确哪些字段应直接进入 JSONL schema
 - 明确哪些字段只作为 Python 内部视图存在
@@ -22,15 +22,15 @@
 
 本轮字段草案主要对齐：
 
-- [pi session-manager.ts](/home/dev/workspace/pi-mono/packages/coding-agent/src/core/session-manager.ts:27)
-- [pi messages.ts](/home/dev/workspace/pi-mono/packages/coding-agent/src/core/messages.ts:1)
+- [reference implementation session-manager.ts](/home/dev/workspace/reference-repository/packages/coding-agent/src/core/session-manager.ts:27)
+- [reference implementation messages.ts](/home/dev/workspace/reference-repository/packages/coding-agent/src/core/messages.ts:1)
 
 ## Field Design Rule
 
 建议先接受这三条规则：
 
-1. 对象名优先对齐 `pi`
-2. JSONL 持久化字段语义优先对齐 `pi`
+1. 对象名优先对齐 `reference CLI`
+2. JSONL 持久化字段语义优先对齐 `reference CLI`
 3. Python 内部字段命名可用 `snake_case`，但应保留 JSON alias
 
 也就是说，推荐采用：
@@ -66,7 +66,7 @@
 说明：
 
 - `version` 应保留，即使第一版只有一个版本
-- `timestamp` 建议保持 ISO-8601 字符串，与 `pi` 一致
+- `timestamp` 建议保持 ISO-8601 字符串，与 `reference CLI` 一致
 - `parentSession` 用于 fork/resume lineage，不建议删除
 
 ## 2. Base Entry
@@ -131,7 +131,7 @@
 
 说明：
 
-- 对齐 `pi`
+- 对齐 `reference CLI`
 - `details` 不进入 LLM context
 - `display` 控制 future TUI / interactive rendering
 
@@ -314,7 +314,7 @@
 
 说明：
 
-- 直接对齐 `pi`
+- 直接对齐 `reference CLI`
 - 这是 `build_session_context()` 的结果，不直接落盘
 
 ### `SessionTreeNode`
@@ -340,7 +340,7 @@
 - diagnostics-only payloads
 - duplicated prompt cache fields
 
-这些都不属于 `pi` 的稳定 session entry 骨架。
+这些都不属于 `reference CLI` 的稳定 session entry 骨架。
 
 ## 10. Recommended Implementation Notes
 

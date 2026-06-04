@@ -46,8 +46,8 @@
 - session lifecycle
 - event transport
 
-## Pi Alignment
+## Reference Implementation Alignment
 
-- 语义上对齐 `pi` 的 `session-manager` entry family 与 custom message family
+- 语义上对齐 `reference CLI` 的 `session-manager` entry family 与 custom message family
 - 保留 `message` 作为独立边界，承接“持久化 entry”与“runtime projection”之间的转换
 - `SessionContext` 的重建职责仍应保持在 `store/session` 一侧

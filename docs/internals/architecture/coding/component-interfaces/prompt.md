@@ -42,7 +42,7 @@
 - tool execution
 - session persistence
 
-## Pi Alignment
+## Reference Implementation Alignment
 
-- 语义上对齐 `pi` 中 `system-prompt.ts` 与 session 内资源注入共同承担的 prompt assembly 职责
+- 语义上对齐 `reference CLI` 中 `system-prompt.ts` 与 session 内资源注入共同承担的 prompt assembly 职责
 - `loushang` 明确保留独立 `prompt` 组件，而不把它完全埋进 `session` 或 `loader`

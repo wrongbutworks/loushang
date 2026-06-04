@@ -9,7 +9,7 @@
 
 约束：
 
-- 不参考 `pi-mono`
+- 不参考 `reference repository`
 - 不参考 `kilocode`
 - 不读取 `models.json.bak`
 - 不把运行时抽象误写成 JSON 原生对象

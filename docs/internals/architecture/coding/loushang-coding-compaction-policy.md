@@ -54,7 +54,7 @@ threshold_tokens = min(percent_threshold, reserve_threshold)
 取较小值可以让策略保持保守：
 
 - `compact_percent` 避免大上下文模型等到极高比例才 compact。
-- `reserve_tokens` 保留 pi 风格的固定安全余量，尤其适合较小上下文窗口。
+- `reserve_tokens` 保留 参考实现风格的固定安全余量，尤其适合较小上下文窗口。
 
 示例：
 
@@ -73,7 +73,7 @@ threshold_tokens = 102400
 `ContextUsageSnapshot` 是 runtime、mode、TUI、RPC、extension 之间共享的事实对象。
 
 Python 内部使用 dataclass / snake_case 字段保存事实；跨 session stats、RPC、event、extension runtime
-边界时统一序列化为 pi-style camelCase payload，例如 `contextWindow`、`compactPercent`、
+边界时统一序列化为 reference-style camelCase payload，例如 `contextWindow`、`compactPercent`、
 `keepRecentTokens`、`thresholdTokens`、`thresholdReason`、`staleAfterCompaction`。
 
 它包含三类信息：
@@ -84,7 +84,7 @@ Python 内部使用 dataclass / snake_case 字段保存事实；跨 session stat
 
 `compaction_start` 事件携带当前 `usage` snapshot。
 `compaction_end` 事件携带 `usage_before` 与 `usage_after`。
-session stats 的 pi-style payload 还会携带 `latestCompaction`：
+session stats 的 reference-style payload 还会携带 `latestCompaction`：
 
 ```json
 {
@@ -122,9 +122,9 @@ usage_after.stale_after_compaction = True
 
 这表示旧 usage 不能继续作为当前上下文事实使用。
 
-## Pi Alignment
+## Reference Implementation Alignment
 
-Pi 使用：
+参考实现使用：
 
 ```text
 threshold = context_window - reserveTokens

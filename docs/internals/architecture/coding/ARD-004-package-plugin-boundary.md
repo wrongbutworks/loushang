@@ -138,8 +138,8 @@ introduced as an explicit higher-level operation, for example
 `loushang` is a Python project, but `loushang-coding` package management is about
 coding resources, not Python dependency installation.
 
-The package manager should not copy `pi`'s npm-specific implementation. Alignment
-with `pi` should focus on cross-ecosystem semantics:
+The package manager should not copy `reference CLI`'s npm-specific implementation. Alignment
+with `reference CLI` should focus on cross-ecosystem semantics:
 
 - source registration
 - materialization
@@ -234,7 +234,7 @@ Do not rename public-ish CLI/RPC/session methods casually. Prefer a staged path:
 
 - The old Python module paths still exist as compatibility aliases, so readers
   need this ADR until the compatibility layer is removed.
-- Some CLI aliases inherited from pi-style package commands still use plugin
+- Some CLI aliases inherited from reference-style package commands still use plugin
   source settings operations; docs must be explicit about that compatibility
   layer.
 - Removing compatibility aliases later will require explicit API versioning.
@@ -260,4 +260,4 @@ Do not rename public-ish CLI/RPC/session methods casually. Prefer a staged path:
   package/distribution subsystem.
 - Continue hardening durable package lockfile and package trust policy at the
   package layer, not the plugin layer. Custom signature verification is an
-  optional security enhancement rather than a confirmed pi parity requirement.
+  optional security enhancement rather than a confirmed reference parity requirement.

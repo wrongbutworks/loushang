@@ -1,10 +1,10 @@
-# pi-coding-agent Internal Dependency Overview
+# reference coding agent Internal Dependency Overview
 
 This document summarizes how the major components and classes inside `packages/coding-agent` depend on each other.
 
 ## High-Level Structure
 
-At a high level, `pi-coding-agent` is organized like this:
+At a high level, `reference coding agent` is organized like this:
 
 - `main.ts` is the composition root. It parses CLI input, initializes shared services, and selects a run mode.
 - `AgentSession` is the business center. It owns the active agent, session state, tools, prompts, compaction, and extension lifecycle binding.
@@ -45,9 +45,9 @@ graph TD
   theme["interactive/theme/theme.ts"]
   print["print-mode"]
   rpc["rpc-mode / rpc-client"]
-  agentCore["@mariozechner/pi-agent-core.Agent"]
-  ai["@mariozechner/pi-ai"]
-  tui["@mariozechner/pi-tui"]
+  agentCore["reference-agent-runtime package.Agent"]
+  ai["reference-ai-sdk package"]
+  tui["reference-tui package"]
 
   main --> cli
   main --> runtime
@@ -139,7 +139,7 @@ So `main.ts` depends on many modules, but mostly as a composition root.
 
 It owns or coordinates:
 
-- the underlying `Agent` from `@mariozechner/pi-agent-core`
+- the underlying `Agent` from `reference-agent-runtime package`
 - message and session state persistence through `SessionManager`
 - model and thinking-level changes
 - active tool registration
@@ -211,7 +211,7 @@ This is a lifecycle host, mainly used by the UI and other run modes.
 
 ## 4. Resource and Extension Layer
 
-This is the most distinctive subsystem in `pi-coding-agent`.
+This is the most distinctive subsystem in `reference coding agent`.
 
 ### `DefaultResourceLoader`
 
@@ -320,7 +320,7 @@ It depends on:
 - `ExtensionRunner` and extension UI context
 - all interactive components
 - `theme.ts`
-- `@mariozechner/pi-tui`
+- `reference-tui package`
 
 Its responsibilities include:
 
@@ -351,7 +351,7 @@ Examples include:
 
 Most of them depend on:
 
-- `@mariozechner/pi-tui`
+- `reference-tui package`
 - `theme.ts`
 - a small number of core types
 

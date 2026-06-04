@@ -580,7 +580,7 @@
 
 当前重点参考可包括：
 
-- `pi-ai`
+- `reference AI SDK`
 - `kimi-cli`
 
 需要注意：
@@ -776,7 +776,7 @@
 
 在 `loushang-ai` 当前阶段，建议按本方法继续推进如下顺序：
 
-1. 列 `pi-ai` 白盒候选组件清单
+1. 列 `reference AI SDK` 白盒候选组件清单
 2. 列 `loushang-ai` 白盒候选功能清单
 3. 列 `loushang-ai` 白盒候选组件清单
 4. 再进入组件映射、抽象、分解、组合与内聚/耦合判断

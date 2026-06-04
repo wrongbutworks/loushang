@@ -95,9 +95,9 @@
 - 当前 session 或 run 所选模型
 - 与 `loushang-ai` 的 model registry/query 接缝
 
-## Pi Alignment
+## Reference Implementation Alignment
 
-- `ControlConfig` 与 `ModelSelection` 在 `pi-coding-agent` 中没有足够清晰、稳定、同层级的一等对象名可直接复用
+- `ControlConfig` 与 `ModelSelection` 在 `reference coding agent` 中没有足够清晰、稳定、同层级的一等对象名可直接复用
 
 ## Notes
 

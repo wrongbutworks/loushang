@@ -1,8 +1,8 @@
-# Loushang-AI Gap vs PI-AI Round 1
+# Loushang-AI Gap vs Reference AI SDK Round 1
 
 ## Scope
 
-本文档总结当前 `loushang-ai` 相对 `pi-ai` 的主要差距。
+本文档总结当前 `loushang-ai` 相对 `reference AI SDK` 的主要差距。
 
 本文档关注三类内容：
 
@@ -12,7 +12,7 @@
 
 本文档不讨论：
 
-- `pi-ai` 的全部内部实现细节
+- `reference AI SDK` 的全部内部实现细节
 - `loushang-ai` 的未来完整路线图
 - 已经在单独 `ARD` 中拍板的 sync/async 取舍
 
@@ -20,7 +20,7 @@
 
 ## Current Alignment
 
-当前 `loushang-ai` 已与 `pi-ai` 对齐或接近对齐的部分包括：
+当前 `loushang-ai` 已与 `reference AI SDK` 对齐或接近对齐的部分包括：
 
 - top-level AI API 的四个入口概念
 - model registry
@@ -49,7 +49,7 @@
 
 这是当前最大的 gap。
 
-`pi-ai` 已覆盖：
+`reference AI SDK` 已覆盖：
 
 - `anthropic`
 - `openai-responses`
@@ -93,7 +93,7 @@
 - `OpenAICompletionsOptions`
 - `OpenAIResponsesOptions`
 
-相对 `pi-ai` 的剩余差距主要是：
+相对 `reference AI SDK` 的剩余差距主要是：
 
 - 字段覆盖面仍更窄
 - 尚未扩到更多 provider family
@@ -116,11 +116,11 @@
 剩余差距主要在：
 
 - `Transport Strategy` 仍未真正进入运行主链
-- 这些组件的 shared logic 深度仍低于 `pi-ai`
+- 这些组件的 shared logic 深度仍低于 `reference AI SDK`
 
 ### 4. Auth / OAuth Integration
 
-`pi-ai` 已有：
+`reference AI SDK` 已有：
 
 - env api key resolution
 - OAuth types
@@ -131,7 +131,7 @@
 
 ### 5. Validation / Overflow / Helper Layer
 
-`pi-ai` 已提供：
+`reference AI SDK` 已提供：
 
 - validation helper
 - overflow handling
@@ -156,7 +156,7 @@
 
 ### 7. Built-In Provider Ecosystem
 
-`pi-ai` 的 built-in provider registration / loading 生态更成熟。
+`reference AI SDK` 的 built-in provider registration / loading 生态更成熟。
 
 当前 `loushang-ai` 虽已有最小 `bootstrap`，但仍只够支撑：
 
@@ -180,7 +180,7 @@
 - `async stream(...)`
 - `async stream_simple(...)`
 
-而不是 `pi-ai` 的同步 surface。
+而不是 `reference AI SDK` 的同步 surface。
 
 这是有意接受的 Python 实现差异，详见：
 
@@ -202,7 +202,7 @@
 
 ## Conclusion
 
-当前 `loushang-ai` 相对 `pi-ai` 的差距，已经不再主要体现在：
+当前 `loushang-ai` 相对 `reference AI SDK` 的差距，已经不再主要体现在：
 
 - message/content/event 的基础协议骨架
 

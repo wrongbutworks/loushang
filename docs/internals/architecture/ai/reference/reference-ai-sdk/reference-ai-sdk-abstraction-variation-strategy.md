@@ -1,18 +1,18 @@
-# PI-AI Abstraction Variation Strategy
+# Reference AI SDK Abstraction Variation Strategy
 
 ## Scope
 
-本文档总结 `pi-ai` 如何处理三类持续变化：
+本文档总结 `reference AI SDK` 如何处理三类持续变化：
 
 - model family handling
 - auth
 - transport
 
-本文档的目的不是复述 `pi-ai` 的全部实现细节，而是提炼它在架构层的变化吸收策略，为 `loushang-ai` 后续更新组件设计提供参考。
+本文档的目的不是复述 `reference AI SDK` 的全部实现细节，而是提炼它在架构层的变化吸收策略，为 `loushang-ai` 后续更新组件设计提供参考。
 
 本文档只讨论：
 
-- `pi-ai` 如何在架构上安放这三类变化
+- `reference AI SDK` 如何在架构上安放这三类变化
 - 这些变化主要由哪些组件或责任簇吸收
 - 哪些点值得 `loushang-ai` 借鉴
 
@@ -28,30 +28,30 @@
 
 这里的“变化策略”不是在说：
 
-- `pi-ai` 已经有一套单独命名的“三大组件”
+- `reference AI SDK` 已经有一套单独命名的“三大组件”
 
 而是在说：
 
-- 从白盒视角看，`pi-ai` 已经把这三类变化放到了相对稳定的位置
+- 从白盒视角看，`reference AI SDK` 已经把这三类变化放到了相对稳定的位置
 - 它没有把这些变化平均散落到顶层 API、event stream 和 message types 中
 
 ---
 
 ## 1. Model Family Handling
 
-## 1.1 `pi-ai` 怎么处理
+## 1.1 `reference AI SDK` 怎么处理
 
-`pi-ai` 没有把 model family handling 做成一个单独显式导出的 capability resolver，而它实际上已经把这类变化放进了两层结构：
+`reference AI SDK` 没有把 model family handling 做成一个单独显式导出的 capability resolver，而它实际上已经把这类变化放进了两层结构：
 
 1. `Model Registry`
 2. provider-specific stream/options logic
 
 直接证据：
 
-- [types.ts](/home/dev/workspace/pi-mono/packages/ai/src/types.ts)
-- [models.ts](/home/dev/workspace/pi-mono/packages/ai/src/models.ts)
-- [models.generated.ts](/home/dev/workspace/pi-mono/packages/ai/src/models.generated.ts)
-- [scripts/generate-models.ts](/home/dev/workspace/pi-mono/packages/ai/scripts/generate-models.ts)
+- [types.ts](/home/dev/workspace/reference-repository/packages/ai/src/types.ts)
+- [models.ts](/home/dev/workspace/reference-repository/packages/ai/src/models.ts)
+- [models.generated.ts](/home/dev/workspace/reference-repository/packages/ai/src/models.generated.ts)
+- [scripts/generate-models.ts](/home/dev/workspace/reference-repository/packages/ai/scripts/generate-models.ts)
 
 其中：
 
@@ -69,14 +69,14 @@
   - reasoning capability
   - context/pricing metadata
 
-这说明在 `pi-ai` 里：
+这说明在 `reference AI SDK` 里：
 
 - model family handling 不是“运行时临时猜”
 - 而是“先在 model metadata 层确定，再在 provider 层消费”
 
 ## 1.2 关键做法
 
-`pi-ai` 对 model family 的关键做法有三条：
+`reference AI SDK` 对 model family 的关键做法有三条：
 
 1. 先在模型元数据层区分协议族
 - 例如不是简单一个 `openai`
@@ -92,7 +92,7 @@
 
 ## 1.3 启示
 
-对 `loushang-ai` 来说，`pi-ai` 的启示不是“必须复制它的所有模型表”，而是：
+对 `loushang-ai` 来说，`reference AI SDK` 的启示不是“必须复制它的所有模型表”，而是：
 
 - model family handling 应首先体现在 model metadata / capability metadata 层
 - provider adapter 应消费这种 metadata，而不是定义它
@@ -102,9 +102,9 @@
 
 ## 2. Auth
 
-## 2.1 `pi-ai` 怎么处理
+## 2.1 `reference AI SDK` 怎么处理
 
-`pi-ai` 没有把 auth 简化为“每个 provider 自己从环境变量里取 key”。  
+`reference AI SDK` 没有把 auth 简化为“每个 provider 自己从环境变量里取 key”。
 它实际分成了至少三层：
 
 1. env api key resolution
@@ -113,12 +113,12 @@
 
 直接证据：
 
-- [env-api-keys.ts](/home/dev/workspace/pi-mono/packages/ai/src/env-api-keys.ts)
-- [README.md](/home/dev/workspace/pi-mono/packages/ai/README.md)
+- [env-api-keys.ts](/home/dev/workspace/reference-repository/packages/ai/src/env-api-keys.ts)
+- [README.md](/home/dev/workspace/reference-repository/packages/ai/README.md)
 - `src/utils/oauth/*`
 - 各 provider 的 `createClient(...)`
 
-这说明在 `pi-ai` 里：
+这说明在 `reference AI SDK` 里：
 
 - auth 输入不是完全散在 provider 文件里
 - provider 文件主要负责“把已解析 auth material 接到 client”
@@ -126,7 +126,7 @@
 
 ## 2.2 关键做法
 
-`pi-ai` 对 auth 的关键做法有三条：
+`reference AI SDK` 对 auth 的关键做法有三条：
 
 1. 最小 API key resolution 有统一入口
 - 例如不同 provider 对应不同 env var
@@ -137,7 +137,7 @@
 3. provider 仍保留最后一公里接线责任
 - 例如不同 SDK/client 的 auth header / token 注入不同
 
-所以 `pi-ai` 的取向不是：
+所以 `reference AI SDK` 的取向不是：
 
 - 把 auth 完全统一成一个抽象对象后再传到底
 
@@ -164,27 +164,27 @@
 
 ## 3. Transport
 
-## 3.1 `pi-ai` 怎么处理
+## 3.1 `reference AI SDK` 怎么处理
 
-`pi-ai` 并没有把 transport 抽成一个单独统一的顶层组件，但它已经明确把 transport 视为一个稳定变化维度。
+`reference AI SDK` 并没有把 transport 抽成一个单独统一的顶层组件，但它已经明确把 transport 视为一个稳定变化维度。
 
 直接证据：
 
-- [types.ts](/home/dev/workspace/pi-mono/packages/ai/src/types.ts)
+- [types.ts](/home/dev/workspace/reference-repository/packages/ai/src/types.ts)
   - `transport?: "sse" | "websocket" | "auto"`
-- [CHANGELOG.md](/home/dev/workspace/pi-mono/packages/ai/CHANGELOG.md)
+- [CHANGELOG.md](/home/dev/workspace/reference-repository/packages/ai/CHANGELOG.md)
   - 多次提到 `openai-codex-responses` 的 websocket support
-- [openai-codex-responses.ts](/home/dev/workspace/pi-mono/packages/ai/src/providers/openai-codex-responses.ts)
+- [openai-codex-responses.ts](/home/dev/workspace/reference-repository/packages/ai/src/providers/openai-codex-responses.ts)
   - transport-specific logic
 
-这说明在 `pi-ai` 里：
+这说明在 `reference AI SDK` 里：
 
 - transport 不是 hidden implementation detail
 - 至少在 API/options 层，它已被承认为 provider capability / invocation strategy 的一部分
 
 ## 3.2 关键做法
 
-`pi-ai` 对 transport 的关键做法有两条：
+`reference AI SDK` 对 transport 的关键做法有两条：
 
 1. transport 是 provider-specific option
 - 不是顶层 message/event 协议的一部分
@@ -195,7 +195,7 @@
 - 例如 websocket
 - 例如 SDK-native streaming
 
-所以 `pi-ai` 的取向不是：
+所以 `reference AI SDK` 的取向不是：
 
 - 建一个全局 transport orchestrator
 
@@ -216,7 +216,7 @@
 
 ## 4. Combined View
 
-把三类变化放在一起看，`pi-ai` 的整体策略可以收成下面三句：
+把三类变化放在一起看，`reference AI SDK` 的整体策略可以收成下面三句：
 
 1. model family handling 主要落在 model metadata / capability metadata
 2. auth 主要落在边界支撑能力与 provider client binding
@@ -224,7 +224,7 @@
 
 换句话说：
 
-- `pi-ai` 没有把这三类变化都上提到 top-level AI API
+- `reference AI SDK` 没有把这三类变化都上提到 top-level AI API
 - 也没有把它们完全散到 provider 文件里
 - 而是让它们各自停留在最接近变化来源、又不污染主协议的位置
 
@@ -232,7 +232,7 @@
 
 ## 5. Suggested Borrowing For Loushang-AI
 
-如果只借鉴 `pi-ai` 的变化吸收策略，而不复制其全部实现，最值得借的有三点：
+如果只借鉴 `reference AI SDK` 的变化吸收策略，而不复制其全部实现，最值得借的有三点：
 
 ### 5.1 对 model family 的借鉴
 
@@ -255,13 +255,13 @@
 
 ## Conclusion
 
-`pi-ai` 对 `model family / auth / transport` 三类变化的处理，整体上体现了一个很稳定的架构取向：
+`reference AI SDK` 对 `model family / auth / transport` 三类变化的处理，整体上体现了一个很稳定的架构取向：
 
 - 让变化停留在最接近变化来源的层次
 - 让主 message/content/event 协议尽量稳定
 - 让 provider adapter 成为真正的变化吸收边界
 
-这对 `loushang-ai` 的直接启示不是“复制 `pi-ai`”，而是：
+这对 `loushang-ai` 的直接启示不是“复制 `reference AI SDK`”，而是：
 
 - 继续保持 `Top-Level AI API`、`RawAssembler`、`EventStream` 的稳定
 - 把 model family、auth、transport 的扩展主要放到：

@@ -3,7 +3,7 @@
 ### 概述与目标
 - 目标
   - 为多 Provider（Anthropic、OpenAI 及兼容代理）提供稳定一致且高可观测的流式事件语义。
-  - 与 pi-ai 在语义上等价：支持文本、思考、工具、多模态、用量与停因，并保证流可靠落幕。
+  - 与 reference AI SDK 在语义上等价：支持文本、思考、工具、多模态、用量与停因，并保证流可靠落幕。
 - 范围
   - Provider 原始事件 → RawPart（统一原语） → 高层事件（组装后） → 最终 `AssistantMessage`。
 - 非目标
@@ -162,11 +162,11 @@
 - 集成：Anthropic/OpenAI/DashScope/Kimi（SDK 与 httpx 双路线）。
 - 回归：并行/签名/redacted/无块结束/仅 tool_use 停因 等边界。
 
-### 与 pi-ai 的对照
+### 与 reference AI SDK 的对照
 - 关键事件等价：text/thinking/tool（start/delta/end）、usage、stop_reason、done/error。
 - 差异策略：我们允许在 Assembler 自动补齐 start/end；对具备块边界的协议推荐在 Provider 显式发 start/end 以提升可观测。
 - 参考文档
-  - 《PI-AI 流式事件语义（参考）》：`./reference/pi-ai/pi-ai-streaming-semantics.md`
+  - 《Reference AI SDK 流式事件语义（参考）》：`./reference/reference-ai-sdk/reference-ai-sdk-streaming-semantics.md`
 
 ### 未来工作
 - 多文本段 contentIndex 精细化与 UI 对齐。

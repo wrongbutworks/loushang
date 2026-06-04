@@ -1,13 +1,13 @@
-# PI-AI Whitebox Candidate Components
+# Reference AI SDK Whitebox Candidate Components
 
 ## Scope
 
-本文档从白盒视角列出 `pi-ai` 的候选组件清单。  
-目标不是给 `pi-ai` 下最终组件定版，而是识别它在内部已经存在或已经足够稳定的职责单元、边界单元与支撑结构。
+本文档从白盒视角列出 `reference AI SDK` 的候选组件清单。
+目标不是给 `reference AI SDK` 下最终组件定版，而是识别它在内部已经存在或已经足够稳定的职责单元、边界单元与支撑结构。
 
 本文档只讨论：
 
-- `pi-ai` 内部候选组件
+- `reference AI SDK` 内部候选组件
 - 每个候选组件的大致对应位置
 - 作用与职责
 - 内聚 / 耦合的初步判断
@@ -24,12 +24,12 @@
 
 这里的“候选组件”并不意味着：
 
-- `pi-ai` 已经显式将其命名为组件
+- `reference AI SDK` 已经显式将其命名为组件
 - 它必须在 `loushang-ai` 中被原样复制
 
 本文档只做两件事：
 
-1. 识别 `pi-ai` 内部已经存在的稳定职责单元
+1. 识别 `reference AI SDK` 内部已经存在的稳定职责单元
 2. 为 `loushang-ai` 的白盒设计提供参考线索与反例
 
 ---
@@ -44,12 +44,12 @@
 
 **对应位置：**
 
-- [stream.ts](/home/dev/workspace/pi-mono/packages/ai/src/stream.ts)
-- [index.ts](/home/dev/workspace/pi-mono/packages/ai/src/index.ts)
+- [stream.ts](/home/dev/workspace/reference-repository/packages/ai/src/stream.ts)
+- [index.ts](/home/dev/workspace/reference-repository/packages/ai/src/index.ts)
 
 **作用：**
 
-- 作为 `pi-ai` 的统一顶层调用入口
+- 作为 `reference AI SDK` 的统一顶层调用入口
 
 **主要职责：**
 
@@ -75,8 +75,8 @@
 
 **对应位置：**
 
-- [models.ts](/home/dev/workspace/pi-mono/packages/ai/src/models.ts)
-- [models.generated.ts](/home/dev/workspace/pi-mono/packages/ai/src/models.generated.ts)
+- [models.ts](/home/dev/workspace/reference-repository/packages/ai/src/models.ts)
+- [models.generated.ts](/home/dev/workspace/reference-repository/packages/ai/src/models.generated.ts)
 
 **作用：**
 
@@ -106,7 +106,7 @@
 
 **对应位置：**
 
-- [api-registry.ts](/home/dev/workspace/pi-mono/packages/ai/src/api-registry.ts)
+- [api-registry.ts](/home/dev/workspace/reference-repository/packages/ai/src/api-registry.ts)
 
 **作用：**
 
@@ -125,7 +125,7 @@
 
 - 内聚性高
 - 耦合性低
-- 是 `pi-ai` 内部最清晰的白盒逻辑组件之一
+- 是 `reference AI SDK` 内部最清晰的白盒逻辑组件之一
 
 ---
 
@@ -138,8 +138,8 @@
 
 **对应位置：**
 
-- [providers/register-builtins.ts](/home/dev/workspace/pi-mono/packages/ai/src/providers/register-builtins.ts)
-- [stream.ts](/home/dev/workspace/pi-mono/packages/ai/src/stream.ts)
+- [providers/register-builtins.ts](/home/dev/workspace/reference-repository/packages/ai/src/providers/register-builtins.ts)
+- [stream.ts](/home/dev/workspace/reference-repository/packages/ai/src/stream.ts)
 
 **作用：**
 
@@ -169,7 +169,7 @@
 
 **对应位置：**
 
-- [providers/register-builtins.ts](/home/dev/workspace/pi-mono/packages/ai/src/providers/register-builtins.ts)
+- [providers/register-builtins.ts](/home/dev/workspace/reference-repository/packages/ai/src/providers/register-builtins.ts)
 
 **作用：**
 
@@ -202,15 +202,15 @@
 
 重点包括：
 
-- [providers/anthropic.ts](/home/dev/workspace/pi-mono/packages/ai/src/providers/anthropic.ts)
-- [providers/openai-completions.ts](/home/dev/workspace/pi-mono/packages/ai/src/providers/openai-completions.ts)
-- [providers/openai-responses.ts](/home/dev/workspace/pi-mono/packages/ai/src/providers/openai-responses.ts)
-- [providers/mistral.ts](/home/dev/workspace/pi-mono/packages/ai/src/providers/mistral.ts)
-- [providers/amazon-bedrock.ts](/home/dev/workspace/pi-mono/packages/ai/src/providers/amazon-bedrock.ts)
+- [providers/anthropic.ts](/home/dev/workspace/reference-repository/packages/ai/src/providers/anthropic.ts)
+- [providers/openai-completions.ts](/home/dev/workspace/reference-repository/packages/ai/src/providers/openai-completions.ts)
+- [providers/openai-responses.ts](/home/dev/workspace/reference-repository/packages/ai/src/providers/openai-responses.ts)
+- [providers/mistral.ts](/home/dev/workspace/reference-repository/packages/ai/src/providers/mistral.ts)
+- [providers/amazon-bedrock.ts](/home/dev/workspace/reference-repository/packages/ai/src/providers/amazon-bedrock.ts)
 
 **作用：**
 
-- 隔离 `pi-ai` 与外部 provider API / SDK / transport 的变化
+- 隔离 `reference AI SDK` 与外部 provider API / SDK / transport 的变化
 
 **主要职责：**
 
@@ -238,7 +238,7 @@
 
 **对应位置：**
 
-- [providers/simple-options.ts](/home/dev/workspace/pi-mono/packages/ai/src/providers/simple-options.ts)
+- [providers/simple-options.ts](/home/dev/workspace/reference-repository/packages/ai/src/providers/simple-options.ts)
 - 各 provider 中的 `streamSimple*`
 
 **作用：**
@@ -253,7 +253,7 @@
 
 **初步判断：**
 
-- 这是 `pi-ai` simple API 能成立的重要支撑职责簇
+- 这是 `reference AI SDK` simple API 能成立的重要支撑职责簇
 - 当前分布在 provider 层与 shared helper 中
 - 值得在 `loushang-ai` 白盒阶段单独识别
 
@@ -268,8 +268,8 @@
 
 **对应位置：**
 
-- [providers/transform-messages.ts](/home/dev/workspace/pi-mono/packages/ai/src/providers/transform-messages.ts)
-- [providers/openai-responses-shared.ts](/home/dev/workspace/pi-mono/packages/ai/src/providers/openai-responses-shared.ts)
+- [providers/transform-messages.ts](/home/dev/workspace/reference-repository/packages/ai/src/providers/transform-messages.ts)
+- [providers/openai-responses-shared.ts](/home/dev/workspace/reference-repository/packages/ai/src/providers/openai-responses-shared.ts)
 - 多个 provider adapter 内部
 
 **作用：**
@@ -299,7 +299,7 @@
 
 **对应位置：**
 
-- [utils/event-stream.ts](/home/dev/workspace/pi-mono/packages/ai/src/utils/event-stream.ts)
+- [utils/event-stream.ts](/home/dev/workspace/reference-repository/packages/ai/src/utils/event-stream.ts)
 
 **作用：**
 
@@ -328,8 +328,8 @@
 
 **对应位置：**
 
-- [utils/event-stream.ts](/home/dev/workspace/pi-mono/packages/ai/src/utils/event-stream.ts)
-- [types.ts](/home/dev/workspace/pi-mono/packages/ai/src/types.ts)
+- [utils/event-stream.ts](/home/dev/workspace/reference-repository/packages/ai/src/utils/event-stream.ts)
+- [types.ts](/home/dev/workspace/reference-repository/packages/ai/src/types.ts)
 
 **作用：**
 
@@ -362,7 +362,7 @@
 
 可见线索包括：
 
-- [providers/register-builtins.ts](/home/dev/workspace/pi-mono/packages/ai/src/providers/register-builtins.ts)
+- [providers/register-builtins.ts](/home/dev/workspace/reference-repository/packages/ai/src/providers/register-builtins.ts)
 - 各 provider 文件中的 error conversion
 
 **作用：**
@@ -391,7 +391,7 @@
 
 **对应位置：**
 
-- [utils/validation.ts](/home/dev/workspace/pi-mono/packages/ai/src/utils/validation.ts)
+- [utils/validation.ts](/home/dev/workspace/reference-repository/packages/ai/src/utils/validation.ts)
 - README 中对 tool argument validation 的显式强调
 
 **作用：**
@@ -419,7 +419,7 @@
 
 **对应位置：**
 
-- [env-api-keys.ts](/home/dev/workspace/pi-mono/packages/ai/src/env-api-keys.ts)
+- [env-api-keys.ts](/home/dev/workspace/reference-repository/packages/ai/src/env-api-keys.ts)
 
 **作用：**
 
@@ -447,8 +447,8 @@
 
 **对应位置：**
 
-- [oauth.ts](/home/dev/workspace/pi-mono/packages/ai/src/oauth.ts)
-- [cli.ts](/home/dev/workspace/pi-mono/packages/ai/src/cli.ts)
+- [oauth.ts](/home/dev/workspace/reference-repository/packages/ai/src/oauth.ts)
+- [cli.ts](/home/dev/workspace/reference-repository/packages/ai/src/cli.ts)
 - `src/utils/oauth/*`
 
 **作用：**
@@ -480,7 +480,7 @@
 
 **对应位置：**
 
-- [utils/overflow.ts](/home/dev/workspace/pi-mono/packages/ai/src/utils/overflow.ts)
+- [utils/overflow.ts](/home/dev/workspace/reference-repository/packages/ai/src/utils/overflow.ts)
 
 **作用：**
 
@@ -492,7 +492,7 @@
 
 **初步判断：**
 
-- 虽然当前在 `pi-ai` 中可能更偏 utility 形态
+- 虽然当前在 `reference AI SDK` 中可能更偏 utility 形态
 - 但它表达的是稳定问题域
 - 值得进入候选组件或候选职责簇清单
 
@@ -507,10 +507,10 @@
 
 **对应位置：**
 
-- [utils/json-parse.ts](/home/dev/workspace/pi-mono/packages/ai/src/utils/json-parse.ts)
-- [utils/sanitize-unicode.ts](/home/dev/workspace/pi-mono/packages/ai/src/utils/sanitize-unicode.ts)
-- [utils/typebox-helpers.ts](/home/dev/workspace/pi-mono/packages/ai/src/utils/typebox-helpers.ts)
-- [utils/hash.ts](/home/dev/workspace/pi-mono/packages/ai/src/utils/hash.ts)
+- [utils/json-parse.ts](/home/dev/workspace/reference-repository/packages/ai/src/utils/json-parse.ts)
+- [utils/sanitize-unicode.ts](/home/dev/workspace/reference-repository/packages/ai/src/utils/sanitize-unicode.ts)
+- [utils/typebox-helpers.ts](/home/dev/workspace/reference-repository/packages/ai/src/utils/typebox-helpers.ts)
+- [utils/hash.ts](/home/dev/workspace/reference-repository/packages/ai/src/utils/hash.ts)
 
 **作用：**
 
@@ -539,7 +539,7 @@
 
 **对应位置：**
 
-- [providers/faux.ts](/home/dev/workspace/pi-mono/packages/ai/src/providers/faux.ts)
+- [providers/faux.ts](/home/dev/workspace/reference-repository/packages/ai/src/providers/faux.ts)
 
 **作用：**
 
@@ -562,7 +562,7 @@
 
 ## Summary
 
-从当前白盒视角看，`pi-ai` 至少已经暴露出以下几类候选组件：
+从当前白盒视角看，`reference AI SDK` 至少已经暴露出以下几类候选组件：
 
 ### 逻辑功能组件
 
@@ -600,7 +600,7 @@
 
 ## Current Takeaway
 
-`pi-ai` 的 export surface 只覆盖了其中一部分。  
+`reference AI SDK` 的 export surface 只覆盖了其中一部分。
 如果只看 public export，很容易漏掉：
 
 - bootstrap / loader

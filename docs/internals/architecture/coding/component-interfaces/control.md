@@ -119,14 +119,14 @@
 - session runtime 状态
 - prompt 内容本身
 
-## Pi Alignment
+## Reference Implementation Alignment
 
-- `SettingsManager` 与 `ModelRegistry` 的核心语义分别直接对齐 `pi`
-- `control` 是 `loushang` 在架构上对这些控制面服务的聚合边界，不要求对齐成单一 `pi` 对象名
-- settings/control 覆盖 pi headless MVP 所需的 queue mode、transport、theme、shell、npm、terminal、image、thinking budget、retry provider cap、skill command enablement、enabled model cycling、resource/package source 管理等偏好
-- branch summary 覆盖 pi headless 可见的 `reserve_tokens` 与 `skip_prompt` 语义；`enabled` 是 loushang 为策略控制保留的扩展字段
-- compaction 覆盖 pi 的 `reserve_tokens` / `keep_recent_tokens` 语义，并额外提供全局 `compact_percent`；
+- `SettingsManager` 与 `ModelRegistry` 的核心语义分别直接对齐 `reference CLI`
+- `control` 是 `loushang` 在架构上对这些控制面服务的聚合边界，不要求对齐成单一 `reference CLI` 对象名
+- settings/control 覆盖 reference implementation headless MVP 所需的 queue mode、transport、theme、shell、npm、terminal、image、thinking budget、retry provider cap、skill command enablement、enabled model cycling、resource/package source 管理等偏好
+- branch summary 覆盖 reference implementation headless 可见的 `reserve_tokens` 与 `skip_prompt` 语义；`enabled` 是 loushang 为策略控制保留的扩展字段
+- compaction 覆盖 参考实现的 `reserve_tokens` / `keep_recent_tokens` 语义，并额外提供全局 `compact_percent`；
   实际 threshold 由 `compaction.policy` 取 percent threshold 与 reserve threshold 中更保守者，配置通过
   `~/.loushang/coding/settings.json`、项目 `.loushang/settings.json` 与 session overrides 合并
 - TUI-only 偏好，例如 double-escape action、tree filter、editor padding、hardware cursor、autocomplete max visible，已作为 headless settings surface 暴露；当前不实现对应 interactive/TUI 消费层
-- provider/model 配置有意不复制 pi flat provider contract，继续使用 `loushang.ai` 的 Provider -> Endpoint -> Model 分层
+- provider/model 配置有意不复制 reference implementation flat provider contract，继续使用 `loushang.ai` 的 Provider -> Endpoint -> Model 分层

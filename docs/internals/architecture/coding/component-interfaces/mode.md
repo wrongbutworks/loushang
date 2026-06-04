@@ -56,9 +56,9 @@
 - control policy 或状态轮换策略
 - session lifecycle 实现细节，例如 clone/fork/switch 的业务规则
 
-## Pi Alignment
+## Reference Implementation Alignment
 
-- 语义上对齐 `pi` 中 `InteractiveMode` / `runPrintMode` / `runRpcMode` 这组 mode adapter
+- 语义上对齐 `reference CLI` 中 `InteractiveMode` / `runPrintMode` / `runRpcMode` 这组 mode adapter
 - 这里的 `PrintMode` / `RpcMode` 表示 mode-level service boundary，不要求最终一定以类实现
 - `json` 在架构上视为 `PrintMode` 的输出变体，而不是独立 runtime adapter
 - 强调 mode 只是 I/O projection，不是另一套 runtime core
@@ -66,7 +66,7 @@
 - `cycle_model`、`cycle_thinking_level`、`clone_session`、entry text extraction 等业务语义应由 `session` / `runtime` facade 承担
 - `ModeAction` 覆盖 `start` / `stop` / `submit_input` / `render_event` / `get_state` / `wait_for_idle` / `rebind_session` / `dispose`，供 CLI/RPC/未来 interactive 共享 adapter lifecycle contract
 - `normalize_mode_action(...)` 是 dataclass 与 JSON-like action payload 的唯一归一化入口；`dispatch_mode_action(...)` 先归一化再派发，避免各 mode host 各自解析 action dict
-- 不追求逐字复刻 pi 的 TypeScript shape，但保持同样的边界：mode 不直接读取 store，不实现控制策略，不拥有 session lifecycle
+- 不追求逐字复刻 参考实现的 TypeScript shape，但保持同样的边界：mode 不直接读取 store，不实现控制策略，不拥有 session lifecycle
 
 ## Related Docs
 

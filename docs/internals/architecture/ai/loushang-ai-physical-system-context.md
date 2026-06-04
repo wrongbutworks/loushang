@@ -99,7 +99,7 @@
 
 本视图遵守三个原则：
 
-1. public contract 继续对齐 `pi-ai`
+1. public contract 继续对齐 `reference AI SDK`
 2. internal streaming 结构继续吸收 `kimi-cli`
 3. provider adapter lower-level shape 继续参考 LiteLLM
 

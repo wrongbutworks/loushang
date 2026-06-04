@@ -37,7 +37,7 @@
 - 组件间 orchestration
 - 面向用户的产品接口
 
-## Pi Alignment
+## Reference Implementation Alignment
 
-- 与 `pi` 一样保留 utils 作为薄辅助层
+- 与 `reference CLI` 一样保留 utils 作为薄辅助层
 - 明确禁止把业务中心逻辑下沉到 `utils`

@@ -79,7 +79,7 @@
 
 当前建议继续沿用已冻结的参考取舍：
 
-- public contract 对齐 `pi-ai`
+- public contract 对齐 `reference AI SDK`
 - internal streaming 结构吸收 `kimi-cli`
 - lower-level provider adapter shape 参考 LiteLLM
 

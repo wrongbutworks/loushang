@@ -150,5 +150,5 @@
 - 不改变现有 RawPart/Assembler 语义；在 Provider 与 Agent 旁路集成
 - 文档相关
   - 参考《Loushang-AI 流式事件语义设计（详细版）》
-  - 参考《PI-AI 流式事件语义（参考）》
+  - 参考《Reference AI SDK 流式事件语义（参考）》
 

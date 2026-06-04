@@ -46,12 +46,12 @@
 - session 生命周期
 - prompt 组装
 
-## Pi Alignment
+## Reference Implementation Alignment
 
-- 语义上对齐 `pi` 中 bash executor 与 built-in tool execution capability
-- 不复刻 `pi` 把执行能力主要压在 tool layer 内部的结构
+- 语义上对齐 `reference CLI` 中 bash executor 与 built-in tool execution capability
+- 不复刻 `reference CLI` 把执行能力主要压在 tool layer 内部的结构
 - `ExecService` 是 `loushang` 为 Python subprocess 边界显式保留的一层
-- `ExecBackend` 承接 `pi` bash operations custom backend 语义，用于 remote executor、sandbox executor 或测试替身
+- `ExecBackend` 承接 `reference CLI` bash operations custom backend 语义，用于 remote executor、sandbox executor 或测试替身
 - 无 backend 时保持默认本地 subprocess 行为
 - `extensions` 通过 `ctx.exec_command(...)` / `api.exec_command(...)` 复用同一 `ExecService`，避免 extension
   侧另起一套 subprocess / shell 语义

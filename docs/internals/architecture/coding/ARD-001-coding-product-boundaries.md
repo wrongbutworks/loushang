@@ -8,7 +8,7 @@ Accepted
 
 `loushang-coding` 当前处于设计阶段，目标是：
 
-- 参考 `pi-coding-agent`
+- 参考 `reference coding agent`
 - 使用 Python 实现
 - 先设计完整组件边界，再分阶段实现
 - 当前不优先实现 `interactive mode`
@@ -117,7 +117,7 @@ Accepted
 
 `loushang-coding` 不只是通过 `loushang-agent` 间接依赖 `loushang-ai`，还保留对 `ai` 的直接依赖。
 
-主要原因是，参考 `pi-coding-agent`，coding 产品层会直接消费一部分 AI 能力，例如：
+主要原因是，参考 `reference coding agent`，coding 产品层会直接消费一部分 AI 能力，例如：
 
 - model registry / model selection
 - direct summarization / compaction requests
@@ -164,7 +164,7 @@ Accepted
 
 但约束是：
 
-- 对齐 `pi-tui` 的职责边界
+- 对齐 `reference TUI` 的职责边界
 - 不要求逐字 API 兼容
 - 更强调语义兼容与 Python 化实现
 
@@ -172,10 +172,10 @@ Accepted
 
 本次决定采用“先稳住产品骨架，再后置跨边界协议层”的策略，理由是：
 
-1. 当前 `loushang-coding` 的优先目标是镜像 `pi-coding-agent` 的产品装配主干。
+1. 当前 `loushang-coding` 的优先目标是镜像 `reference coding agent` 的产品装配主干。
 2. `channel` 是长期有价值的边界层，但不是 `coding` 起步的前置条件。
 3. 过早把 `channel` 并入 `coding`，会污染分层并让 `coding` 过厚。
-4. 参考 `pi-coding-agent`，`coding` 产品层不仅装配 `agent`，也会直接依赖部分 `ai` 能力，因此系统环境图必须显式保留 `coding -> ai`。
+4. 参考 `reference coding agent`，`coding` 产品层不仅装配 `agent`，也会直接依赖部分 `ai` 能力，因此系统环境图必须显式保留 `coding -> ai`。
 5. 过早单列 `context`，会增加边界数量，但当前其职责仍可被 `session/prompt/loader/compaction` 稳定承接。
 6. 明确保留 `sdk`、`mode`、`interactive`，有利于后续从 CLI 扩展到嵌入式、RPC 与 TUI。
 
@@ -184,7 +184,7 @@ Accepted
 ### Positive
 
 - `loushang-coding` 可以先独立推进，不被 `channel` 阻塞
-- 组件列表更贴近 `pi-coding-agent`
+- 组件列表更贴近 `reference coding agent`
 - `mode`、`sdk`、`runtime`、`session` 的主干更清楚
 - `coding -> ai` 的直接依赖被显式保留，后续 model registry / summarization 等设计更容易落位
 - `channel` 与 `tui` 的长期独立价值被保留

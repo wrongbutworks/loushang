@@ -1,15 +1,15 @@
-# pi-agent 架构分析
+# reference agent runtime 架构分析
 
 ## 说明
 
-用户请求中提到 `pi-mono/packages/pi-agent`，但当前仓库实际存在的是 `pi-mono/packages/agent`，其 npm 包名为 `@mariozechner/pi-agent-core`。本文基于该实际包路径进行分析，并将其视为本次所指的 `pi-agent`。
+用户请求中提到 `reference-repository/packages/agent-runtime`，但当前仓库实际存在的是 `reference-repository/packages/agent`，其 npm 包名为 `reference-agent-runtime package`。本文基于该实际包路径进行分析，并将其视为本次所指的 `reference agent runtime`。
 
 ## 包定位
 
-- 包路径：`pi-mono/packages/agent`
-- npm 名称：`@mariozechner/pi-agent-core`
+- 包路径：`reference-repository/packages/agent`
+- npm 名称：`reference-agent-runtime package`
 - 描述：通用 Agent Core，提供传输抽象、状态管理、工具执行与事件流能力
-- 直接依赖：`@mariozechner/pi-ai`
+- 直接依赖：`reference-ai-sdk package`
 
 这个包是一个“状态化 Agent 运行时内核”，职责不是提供具体业务工具，也不是提供 UI，而是把大模型调用、上下文管理、工具执行、事件派发和代理传输组合成统一运行循环。
 
@@ -100,7 +100,7 @@
   -> Agent.createLoopConfig()/createContextSnapshot()
   -> runAgentLoop()/runAgentLoopContinue()
   -> streamAssistantResponse()
-  -> pi-ai streamSimple()/自定义 streamFn/streamProxy()
+  -> reference AI SDK streamSimple()/自定义 streamFn/streamProxy()
   -> AssistantMessage 流
   -> executeToolCalls()
   -> ToolResultMessage
@@ -291,7 +291,7 @@
 
 ## 传输抽象
 
-默认情况下，Agent 使用 `@mariozechner/pi-ai` 的 `streamSimple`。
+默认情况下，Agent 使用 `reference-ai-sdk package` 的 `streamSimple`。
 
 但通过 `streamFn` 注入和 `streamProxy()` 适配，它把传输层做成了可替换模块：
 
@@ -326,12 +326,12 @@
 
 ```text
 调用方 / UI / 业务宿主
-  -> @mariozechner/pi-agent-core
+  -> reference-agent-runtime package
       -> agent.ts
       -> agent-loop.ts
       -> proxy.ts
       -> types.ts
-          -> @mariozechner/pi-ai
+          -> reference-ai-sdk package
 ```
 
 包本身不依赖任何上层 UI 或业务实现；上层只需要提供：
@@ -362,7 +362,7 @@
 
 ## 结论
 
-`pi-agent` 对应的这个包，本质上是一个以 `AgentMessage` 为中心的 Agent Runtime Core。它通过：
+`reference agent runtime` 对应的这个包，本质上是一个以 `AgentMessage` 为中心的 Agent Runtime Core。它通过：
 
 - `Agent` 提供状态与生命周期外观
 - `agent-loop` 提供无状态执行引擎

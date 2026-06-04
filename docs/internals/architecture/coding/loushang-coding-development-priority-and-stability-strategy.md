@@ -26,7 +26,7 @@
 - [Loushang Coding Core Data Objects](/home/dev/workspace/loushang/docs/architecture/coding/loushang-coding-core-data-objects.md)
 - [Loushang Coding Key Mode Sequences](/home/dev/workspace/loushang/docs/architecture/coding/loushang-coding-key-mode-sequences.md)
 
-同时参考 `pi-coding-agent` 的复杂度分布与依赖中心判断：
+同时参考 `reference coding agent` 的复杂度分布与依赖中心判断：
 
 - `AgentSession`
 - `InteractiveMode`
@@ -253,9 +253,9 @@ P0 不应以：
 - event 族不能先做一版临时协议再推倒
 - session/store 边界不能先糊起来后面再拆
 
-## Alignment With pi-coding-agent
+## Alignment With reference coding agent
 
-该策略与 `pi-coding-agent` 的主要对齐点是：
+该策略与 `reference coding agent` 的主要对齐点是：
 
 - 优先稳定 `AgentSession`
 - 优先稳定 `SessionManager`

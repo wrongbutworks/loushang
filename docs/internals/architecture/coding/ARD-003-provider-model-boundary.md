@@ -18,9 +18,9 @@ Accepted
 - model-level `compat` and `defaults`
 - `models.json` as the structured provider/endpoint/model registry source
 
-`pi-coding-agent` exposes a convenient `registerProvider(name, config)` API with a
+`reference coding agent` exposes a convenient `registerProvider(name, config)` API with a
 flatter provider config shape. That shape is not the right internal model for
-`loushang`. Blindly flattening provider configuration into the `pi` shape would
+`loushang`. Blindly flattening provider configuration into the `reference CLI` shape would
 weaken `loushang-ai` and make multi-endpoint or endpoint-specific behavior harder
 to preserve.
 
@@ -41,7 +41,7 @@ including `models.json` and any registry loaders that produce `Provider`,
 ### 2. Dict input is allowed, but it is loushang-native
 
 `ExtensionAPI.register_provider(name, config)` may accept a dict, but that dict is
-a loushang-native provider config shape, not a pi-style flat provider config.
+a loushang-native provider config shape, not a reference-style flat provider config.
 
 The dict schema should be aligned with `loushang-ai.models.json` and the
 `Provider -> Endpoint -> Model` graph:
@@ -55,7 +55,7 @@ The dict schema should be aligned with `loushang-ai.models.json` and the
   remain model concerns
 
 A dict is a convenient serialization/configuration entry point. It is not a
-promise to support pi's flat `registerProvider` config.
+promise to support the reference implementation's flat `registerProvider` config.
 
 ### 3. Native `Provider` input is the preferred typed path
 
@@ -77,9 +77,9 @@ These concerns should remain separate:
 
 If a future convenience API groups these concerns, it should still preserve these
 separate internal registrations and should not define provider/model config as a
-pi-style flat dict.
+reference-style flat dict.
 
-### 5. Align provider lifecycle semantics, not pi's provider config shape
+### 5. Align provider lifecycle semantics, not the reference implementation's provider config shape
 
 `loushang-coding` may align high-level extension lifecycle behavior:
 
@@ -92,25 +92,25 @@ pi-style flat dict.
 This alignment is limited to externally observable lifecycle semantics.
 
 It must not require changing `loushang-ai` `models.json`, `Provider`, `Endpoint`,
-`Model`, model registry loaders, or request-resolution semantics into pi's flatter
+`Model`, model registry loaders, or request-resolution semantics into the reference implementation's flatter
 shape.
 
-### 6. Pi compatibility, if needed, belongs in a separate adapter
+### 6. reference implementation compatibility, if needed, belongs in a separate adapter
 
-If direct pi extension migration becomes a requirement, pi-style flat provider
+If direct reference implementation extension migration becomes a requirement, reference-style flat provider
 config should be parsed by an explicit compatibility adapter, not by the core
 `ExtensionAPI.register_provider()` path.
 
-That adapter may translate pi-style config into loushang-native provider, API
+That adapter may translate reference-style config into loushang-native provider, API
 provider, and OAuth provider registrations.
 
 ## Consequences
 
-- `loushang-ai` remains independently useful and more expressive than pi's
+- `loushang-ai` remains independently useful and more expressive than the reference implementation's
   provider config.
 - Extension provider dicts remain possible, but their schema follows loushang,
-  not pi.
+  not the reference implementation.
 - Provider/model, API stream provider, and OAuth provider responsibilities stay
   separated.
 - Future provider work should be evaluated against this boundary before adding
-  more pi-style fields to core extension APIs.
+  more reference-style fields to core extension APIs.

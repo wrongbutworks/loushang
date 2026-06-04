@@ -48,7 +48,7 @@
 
 ## What Compat Already Covers
 
-在 `pi-ai` 的 `openai-completions` 兼容层里，`compat` 目前已经覆盖了多类差异。
+在 `reference AI SDK` 的 `openai-completions` 兼容层里，`compat` 目前已经覆盖了多类差异。
 
 ### Request Parameter Compat
 

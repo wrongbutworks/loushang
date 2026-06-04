@@ -41,7 +41,7 @@
 - [Loushang AI Streaming Validation](./validation/loushang-ai-streaming-validation.md)
 - [Loushang AI Provider Adapter Validation](./validation/loushang-ai-provider-adapter-validation.md)
 - [Loushang AI Implementation Status Round 1](./validation/loushang-ai-implementation-status-round-1.md)
-- [Loushang AI Gap vs PI-AI Round 1](./validation/loushang-ai-gap-vs-pi-ai-round-1.md)
+- [Loushang AI Gap vs Reference AI SDK Round 1](./validation/loushang-ai-gap-vs-reference-ai-sdk-round-1.md)
 
 ## Observability
 
@@ -233,10 +233,10 @@
 
 ## Reference
 
-- [PI-AI Reference](./reference/pi-ai/)
-- [PI-AI Streaming Semantics](./reference/pi-ai/pi-ai-streaming-semantics.md)
-- [PI-AI Adaptability NFR](./reference/pi-ai/pi-ai-adaptability-NFR.md)
-- [PI-AI Abstraction Variation Strategy](./reference/pi-ai/pi-ai-abstraction-variation-strategy.md)
+- [Reference AI SDK Reference](./reference/reference-ai-sdk/)
+- [Reference AI SDK Streaming Semantics](./reference/reference-ai-sdk/reference-ai-sdk-streaming-semantics.md)
+- [Reference AI SDK Adaptability NFR](./reference/reference-ai-sdk/reference-ai-sdk-adaptability-NFR.md)
+- [Reference AI SDK Abstraction Variation Strategy](./reference/reference-ai-sdk/reference-ai-sdk-abstraction-variation-strategy.md)
 - [Kimi-CLI Reference](./reference/kimi-cli/)
 - [Claude Code Borrowing Notes](./reference/cc/cc-ai-borrowing-notes.md)
 

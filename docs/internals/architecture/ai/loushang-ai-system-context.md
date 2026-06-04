@@ -4,7 +4,7 @@
 
 本文档将 `loushang-ai` 视为一个黑盒系统，描述它的外部对象、依赖关系与信息流关系。
 
-本文档的目标是先定义 `loushang-ai` 的系统边界，再为后续参考 `pi-ai` 的细化分析提供落点。
+本文档的目标是先定义 `loushang-ai` 的系统边界，再为后续参考 `reference AI SDK` 的细化分析提供落点。
 
 如果需要查看 `loushang-ai` 的内部实现接线路径、SDK / HTTP 依赖与 provider adapter 物理分层，请参见 [Loushang AI Physical System Context](./loushang-ai-physical-system-context.md)。
 
@@ -478,14 +478,14 @@ provider actor 向 `loushang-ai` 返回的信息包括：
 
 `loushang-ai` 的系统边界定义应遵守以下参考约束：
 
-1. 主参考 `pi-ai`
+1. 主参考 `reference AI SDK`
 2. 辅助参考 `kimi-cli`
-3. `loushang-ai` 的职责不超过 `pi-ai`
+3. `loushang-ai` 的职责不超过 `reference AI SDK`
 4. `kimi-cli` 的参考价值主要用于识别哪些能力不应下沉到 `ai` 层
 
 因此：
 
-- `loushang-ai` 应优先对齐 `pi-ai` 的 AI 层语义边界
+- `loushang-ai` 应优先对齐 `reference AI SDK` 的 AI 层语义边界
 - 不应把 `agent` 生命周期、tool orchestration policy、UI/rendering、channel protocol` 下沉到 `loushang-ai`
 
 ## Boundary Notes

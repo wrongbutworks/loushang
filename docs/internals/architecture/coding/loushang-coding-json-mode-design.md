@@ -89,7 +89,7 @@ session
 
 ## Output Shape
 
-推荐的输出形态与 `pi` 一致：
+推荐的输出形态与 `reference CLI` 一致：
 
 1. 第一行输出 session header
 2. 后续逐行输出 session event

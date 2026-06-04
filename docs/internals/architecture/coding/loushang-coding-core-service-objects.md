@@ -8,7 +8,7 @@
 
 - `loushang-coding` 的核心服务对象有哪些
 - 这些服务对象分别归属哪个组件
-- 哪些对象应优先对齐 `pi-coding-agent` 命名
+- 哪些对象应优先对齐 `reference coding agent` 命名
 - 哪些对象当前没有直接对齐物，以及原因是什么
 
 本文档不展开：
@@ -25,16 +25,16 @@
 - [Loushang Coding System Context](/home/dev/workspace/loushang/docs/architecture/coding/loushang-coding-system-context.md)
 - [Loushang Coding Component Structure And Responsibilities](/home/dev/workspace/loushang/docs/architecture/coding/loushang-coding-component-structure-and-responsibilities.md)
 - [Loushang Coding Core Data Objects](/home/dev/workspace/loushang/docs/architecture/coding/loushang-coding-core-data-objects.md)
-- [pi-coding-agent Internal Dependency Overview](/home/dev/workspace/loushang/docs/architecture/coding/reference/pi-coding/architecture-dependencies.md)
-- [pi-coding-agent 架构分析](/home/dev/workspace/loushang/docs/architecture/coding/reference/pi-coding/pi-codingagent-reference.md)
+- [reference coding agent Internal Dependency Overview](/home/dev/workspace/loushang/docs/architecture/coding/reference/reference-coding-agent/architecture-dependencies.md)
+- [reference coding agent 架构分析](/home/dev/workspace/loushang/docs/architecture/coding/reference/reference-coding-agent/reference-coding-agent-reference.md)
 
 ## Naming Rule
 
 当前接受的命名规则是：
 
-- 服务对象优先对齐 `pi-coding-agent` 命名
-- 如果 `pi-coding-agent` 已有稳定中心对象名，则优先复用
-- 如果当前语义在 `pi-coding-agent` 中没有清晰的一等服务对象，则保留 `loushang-coding` 的候选命名
+- 服务对象优先对齐 `reference coding agent` 命名
+- 如果 `reference coding agent` 已有稳定中心对象名，则优先复用
+- 如果当前语义在 `reference coding agent` 中没有清晰的一等服务对象，则保留 `loushang-coding` 的候选命名
 - 对所有未直接对齐项，必须写明理由
 
 ## Service Classification
@@ -67,16 +67,16 @@
 
 对齐情况：
 
-- 不直接对齐 `pi-coding-agent` 的单一对象
+- 不直接对齐 `reference coding agent` 的单一对象
 
 理由：
 
-- `pi-coding-agent` 的装配职责分散在：
+- `reference coding agent` 的装配职责分散在：
   - `main.ts`
   - `agent-session-services.ts`
   - `sdk.ts`
 - `Bootstrap` 是 `loushang-coding` 为 Python 设计收敛出的统一装配名
-- 该名字保留的理由是：它能把 `pi` 的多处装配链收束成一个更适合 Python 的内部入口对象
+- 该名字保留的理由是：它能把 `reference CLI` 的多处装配链收束成一个更适合 Python 的内部入口对象
 
 ### `SDK`
 
@@ -229,7 +229,7 @@
 
 理由：
 
-- `pi-coding-agent` 没有统一命名的 `ModeAdapter` 一等服务对象
+- `reference coding agent` 没有统一命名的 `ModeAdapter` 一等服务对象
 - 但确实存在一组 mode adapter 实现
 - 这里保留 `ModeAdapter` 作为结构化总称，便于 Python 设计时统一讨论 mode 服务对象
 - 其中 `PrintMode` / `RpcMode` 表示 mode-level service boundary，不要求最终一定以类实现
@@ -325,11 +325,11 @@
 
 对齐情况：
 
-- 不直接对齐 `pi-coding-agent` 的单一显式中心对象
+- 不直接对齐 `reference coding agent` 的单一显式中心对象
 
 理由：
 
-- `pi-coding-agent` 把 skills 更强地收束在 resource loader 体系中
+- `reference coding agent` 把 skills 更强地收束在 resource loader 体系中
 - 当前保留 `SkillLoader`，是为了让 Python 设计中 skill 边界更清楚
 - 后续如果过重，可并回 `DefaultResourceLoader`
 - 它更适合作为 resource loader 体系内的显式子边界，而不是并列资源中心
@@ -352,11 +352,11 @@
 
 对齐情况：
 
-- 不直接对齐 `pi-coding-agent` 的一等对象
+- 不直接对齐 `reference coding agent` 的一等对象
 
 理由：
 
-- `pi` 更偏 `skills + prompt/resources + extension`
+- `reference CLI` 更偏 `skills + prompt/resources + extension`
 - `method` 是 `loushang` 当前特有的显式子系统边界
 
 ## 4. 控制平面服务
@@ -404,7 +404,7 @@
 备注：
 
 - 这里是 `coding` 侧持有或使用的 model registry 服务，不取代 `loushang-ai` 自身的 provider/model 语义
-- `control` 组件表达的是这些控制面服务的聚合边界，不要求对齐成 `pi` 的单一中心对象
+- `control` 组件表达的是这些控制面服务的聚合边界，不要求对齐成 `reference CLI` 的单一中心对象
 
 ### `AuthStorage`
 
@@ -444,11 +444,11 @@
 
 对齐情况：
 
-- 不直接对齐 `pi-coding-agent` 的单一稳定对象
+- 不直接对齐 `reference coding agent` 的单一稳定对象
 
 理由：
 
-- `pi-coding-agent` 当前参考里有相关语义，但没有显式单一服务对象名
+- `reference coding agent` 当前参考里有相关语义，但没有显式单一服务对象名
 - 对 `loushang-coding` 而言，这是一块值得显式保留的服务边界
 - mode 可以承接审批交互，但 `PolicyEngine` 自身应保持 mode-neutral
 
@@ -477,8 +477,8 @@
 
 理由：
 
-- `pi-coding-agent` 参考明确存在 `ToolDefinition`、definition query 面、以及 `ToolDefinition -> AgentTool` wrapper seam
-- `pi` 的中心更接近 `AgentSession` 内部的 `_toolDefinitions` 与 `_toolRegistry` 双层结构，而不是单一 registry bag
+- `reference coding agent` 参考明确存在 `ToolDefinition`、definition query 面、以及 `ToolDefinition -> AgentTool` wrapper seam
+- `reference CLI` 的中心更接近 `AgentSession` 内部的 `_toolDefinitions` 与 `_toolRegistry` 双层结构，而不是单一 registry bag
 - 这里保留 `ToolRegistry` 这个名字，是为了把“定义注册”边界稳定下来；当前 session 的 active tools 仍归 `AgentSession`
 
 ### `ExecService`
@@ -499,11 +499,11 @@
 
 对齐情况：
 
-- 不直接对齐 `pi-coding-agent` 的单一服务对象
+- 不直接对齐 `reference coding agent` 的单一服务对象
 
 理由：
 
-- `pi-coding-agent` 更像把 bash/read/edit/write 等能力放在 tool layer 内
+- `reference coding agent` 更像把 bash/read/edit/write 等能力放在 tool layer 内
 - `loushang-coding` 当前保留 `ExecService`，是为了给 Python 实现中的命令执行边界留出明确位置
 - `PolicyEngine` 与 `ExecService` 可协同，但不要求把 policy 内嵌进 exec service
 
@@ -525,11 +525,11 @@
 
 对齐情况：
 
-- 不直接对齐 `pi-coding-agent` 的单一服务对象
+- 不直接对齐 `reference coding agent` 的单一服务对象
 
 理由：
 
-- `pi-coding-agent` 的 prompt assembly 分散在 `AgentSession`、`system-prompt`、resource loader 之间
+- `reference coding agent` 的 prompt assembly 分散在 `AgentSession`、`system-prompt`、resource loader 之间
 - 当前保留 `PromptAssembler`，是为了让 Python 设计中 prompt 组装边界更显式
 - 它的语义更接近显式桥接层，而不是取代 `DefaultResourceLoader` 的资源聚合职责
 
@@ -553,11 +553,11 @@
 
 对齐情况：
 
-- 不直接对齐 `pi-coding-agent` 的单一服务对象
+- 不直接对齐 `reference coding agent` 的单一服务对象
 
 理由：
 
-- `pi-coding-agent` 明确有 compaction / summarization 层
+- `reference coding agent` 明确有 compaction / summarization 层
 - 但当前参考文档仍主要是职责簇，不是单名中心对象
 
 ### `DiagnosticsService`
@@ -578,11 +578,11 @@
 
 对齐情况：
 
-- 不直接对齐 `pi-coding-agent` 的单一服务对象
+- 不直接对齐 `reference coding agent` 的单一服务对象
 
 理由：
 
-- `pi-coding-agent` 有 diagnostics 关注点，但当前参考未显示一个统一命名中心对象
+- `reference coding agent` 有 diagnostics 关注点，但当前参考未显示一个统一命名中心对象
 
 ## Primary Service Backbone
 
@@ -601,9 +601,9 @@
 - `ExtensionRunner`
 - `ToolRegistry`
 
-## Strongly Aligned With pi-coding-agent
+## Strongly Aligned With reference coding agent
 
-以下服务对象建议强对齐 `pi-coding-agent` 命名：
+以下服务对象建议强对齐 `reference coding agent` 命名：
 
 - `AgentSessionRuntime`
 - `AgentSession`
@@ -616,43 +616,43 @@
 
 这些对象之所以应优先对齐，是因为：
 
-- 它们在 `pi-coding-agent` 中已经是稳定中心对象
+- 它们在 `reference coding agent` 中已经是稳定中心对象
 - 它们构成了最关键的装配链与运行时骨架
-- 后续若与 `pi-coding-agent` 做对照实现，这些对象名最值得保持一致
+- 后续若与 `reference coding agent` 做对照实现，这些对象名最值得保持一致
 
 ## Intentionally Not Fully Aligned
 
-以下服务对象当前不完全对齐 `pi-coding-agent` 单一对象名，但保留有明确理由：
+以下服务对象当前不完全对齐 `reference coding agent` 单一对象名，但保留有明确理由：
 
 - `Bootstrap`
-  - `pi` 的装配职责分散在多个入口文件与工厂函数中
+  - `reference CLI` 的装配职责分散在多个入口文件与工厂函数中
 
 - `ModeAdapter`
-  - `pi` 有 mode 实现，但没有统一抽象名
+  - `reference CLI` 有 mode 实现，但没有统一抽象名
 
 - `SkillLoader`
-  - `pi` 更倾向并入 resource loader 体系
+  - `reference CLI` 更倾向并入 resource loader 体系
 
 - `MethodRegistry`
   - `method` 是当前 `loushang` 特有的显式边界
 
 - `PolicyEngine`
-  - `pi` 语义存在，但未见稳定单名中心对象
+  - `reference CLI` 语义存在，但未见稳定单名中心对象
 
 - `ToolRegistry`
-  - `pi` 有 tool registry 语义，但当前参考没有明确单一对象名
+  - `reference CLI` 有 tool registry 语义，但当前参考没有明确单一对象名
 
 - `ExecService`
-  - `pi` 更像把这层压在工具执行里
+  - `reference CLI` 更像把这层压在工具执行里
 
 - `PromptAssembler`
-  - `pi` 更像是职责分散协同，而非单名服务对象
+  - `reference CLI` 更像是职责分散协同，而非单名服务对象
 
 - `CompactionCoordinator`
-  - `pi` 有清晰层次，但当前参考不表现为统一中心类
+  - `reference CLI` 有清晰层次，但当前参考不表现为统一中心类
 
 - `DiagnosticsService`
-  - `pi` 有相关关注点，但当前参考未给出单一服务对象名
+  - `reference CLI` 有相关关注点，但当前参考未给出单一服务对象名
 
 ## Next Step
 

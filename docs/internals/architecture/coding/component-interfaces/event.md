@@ -49,7 +49,7 @@
 - transcript 持久化
 - mode-specific I/O
 
-## Pi Alignment
+## Reference Implementation Alignment
 
-- 语义上对齐 `pi` 的 agent passthrough + session-level lifecycle event stream
+- 语义上对齐 `reference CLI` 的 agent passthrough + session-level lifecycle event stream
 - 明确保留 `event` 作为独立组件，而不是把事件类型散落在 session/mode 内

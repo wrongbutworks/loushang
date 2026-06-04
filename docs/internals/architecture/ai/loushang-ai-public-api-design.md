@@ -19,7 +19,7 @@
 
 本文参考了两个公开项目的相近层设计：
 
-- `../pi-mono/packages/ai`
+- `../reference-repository/packages/ai`
 - `../kilocode/packages/opencode/src/provider/*`
 
 
@@ -49,9 +49,9 @@
 
 对外应该以“模型能力”和“统一调用”为中心，而不是以具体厂商 SDK 为中心。
 
-### 5. 兼容 `pi-mono` 风格，吸收 `kilocode` 的实用门面
+### 5. 兼容 `reference repository` 风格，吸收 `kilocode` 的实用门面
 
-建议整体对齐 `pi-mono` 的 SDK 化导出方式，同时补上少量 `kilocode` 风格的 provider discovery / auth facade。
+建议整体对齐 `reference repository` 的 SDK 化导出方式，同时补上少量 `kilocode` 风格的 provider discovery / auth facade。
 
 
 ## 职责边界
@@ -704,7 +704,7 @@ Stable 最小字段集合确认为：
 
 ## 与参考项目的对应关系
 
-### 对齐 `pi-mono/packages/ai`
+### 对齐 `reference-repository/packages/ai`
 
 应保留其核心优点：
 

@@ -2,7 +2,7 @@
 
 ## Scope
 
-本文档给出 `loushang-coding` 的候选组件列表，用于设计阶段对齐 `pi-coding-agent`。
+本文档给出 `loushang-coding` 的候选组件列表，用于设计阶段对齐 `reference coding agent`。
 
 本文档当前假设：
 
@@ -21,8 +21,8 @@
 
 本轮组件识别主要参考：
 
-- `docs/architecture/coding/reference/pi-coding/architecture-dependencies.md`
-- `docs/architecture/coding/pi-codingagent-reference.md`
+- `docs/architecture/coding/reference/reference-coding-agent/architecture-dependencies.md`
+- `docs/architecture/coding/reference-coding-agent-reference.md`
 
 同时结合当前对 `loushang` 分层的约束：
 
@@ -111,7 +111,7 @@
 - 恢复 session
 - 替换当前活动 session
 
-它主要对应 `pi-coding-agent` 的 `agent-session-runtime`。
+它主要对应 `reference coding agent` 的 `agent-session-runtime`。
 
 ### `session`
 
@@ -123,7 +123,7 @@
 - 协调 prompt、tools、loader、policy、compaction
 - 管理 session 内部状态与高层动作
 
-它主要对应 `pi-coding-agent` 的 `agent-session`。
+它主要对应 `reference coding agent` 的 `agent-session`。
 
 备注：
 
@@ -143,7 +143,7 @@
 - session 恢复与加载
 - 按 cwd / name / parent session / text 查询历史 session
 
-它更接近 `pi-coding-agent` 的 `SessionManager`，不等同于 `context`。
+它更接近 `reference coding agent` 的 `SessionManager`，不等同于 `context`。
 
 ### `message`
 
@@ -159,9 +159,9 @@ session entry 与 coding-specific custom message 层。
 
 备注：
 
-- 尽量对齐 `pi-coding-agent`，因此 `message` 不重新定义一套完整基础消息宇宙
+- 尽量对齐 `reference coding agent`，因此 `message` 不重新定义一套完整基础消息宇宙
 - 通用 `AgentMessage` 仍归 `loushang-agent`
-- `loushang-coding.message` 更接近 `pi-coding-agent` 中：
+- `loushang-coding.message` 更接近 `reference coding agent` 中：
   - `messages.ts`
   - `session-manager.ts` 里的 `SessionEntry` 体系
 - 建议显式保留两层：

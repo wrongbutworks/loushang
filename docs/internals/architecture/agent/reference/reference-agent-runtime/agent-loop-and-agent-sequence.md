@@ -2,12 +2,12 @@
 
 ## 说明
 
-本文分析 `pi-mono/packages/agent/src/agent.ts` 与 `pi-mono/packages/agent/src/agent-loop.ts` 的职责分层、核心执行流程，以及适合文档化表达的组件关系图和时序图。
+本文分析 `reference-repository/packages/agent/src/agent.ts` 与 `reference-repository/packages/agent/src/agent-loop.ts` 的职责分层、核心执行流程，以及适合文档化表达的组件关系图和时序图。
 
 相关源码：
 
-- `pi-mono/packages/agent/src/agent.ts`
-- `pi-mono/packages/agent/src/agent-loop.ts`
+- `reference-repository/packages/agent/src/agent.ts`
+- `reference-repository/packages/agent/src/agent-loop.ts`
 
 ## 总体分层
 

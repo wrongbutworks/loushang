@@ -29,7 +29,7 @@
 - [Loushang Coding Core Service Objects](/home/dev/workspace/loushang/docs/architecture/coding/loushang-coding-core-service-objects.md)
 - [Loushang Coding Core Data Objects](/home/dev/workspace/loushang/docs/architecture/coding/loushang-coding-core-data-objects.md)
 - [Loushang Coding Deployment Unit Terminology](/home/dev/workspace/loushang/docs/architecture/coding/loushang-coding-du-terminology.md)
-- [pi-coding-agent Internal Dependency Overview](/home/dev/workspace/loushang/docs/architecture/coding/reference/pi-coding/architecture-dependencies.md)
+- [reference coding agent Internal Dependency Overview](/home/dev/workspace/loushang/docs/architecture/coding/reference/reference-coding-agent/architecture-dependencies.md)
 
 ## How To Use This Doc Set
 
@@ -48,7 +48,7 @@
 
 当前接受以下统一规则：
 
-- 服务对象名尽量对齐 `pi-coding-agent`
+- 服务对象名尽量对齐 `reference coding agent`
 - 方法 / 函数名使用 Python 风格 `snake_case`
 - Python SDK surface 通过 `loushang.py.typed` 声明 typed package；新增稳定公开类型时应补顶层
   `loushang.coding` 导出或明确记录只在子包导出

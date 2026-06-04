@@ -106,10 +106,10 @@
 - execution metadata
 - sandbox / failure 信息
 
-## Pi Alignment
+## Reference Implementation Alignment
 
-- `ToolDefinition` 直接对齐 `pi-coding-agent`
-- `PolicyDecision`、`ExecRequest`、`ExecResult` 当前不直接对齐 `pi` 的稳定同名一等对象
+- `ToolDefinition` 直接对齐 `reference coding agent`
+- `PolicyDecision`、`ExecRequest`、`ExecResult` 当前不直接对齐 `reference CLI` 的稳定同名一等对象
 
 ## Notes
 

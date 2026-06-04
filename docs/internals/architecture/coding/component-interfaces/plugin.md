@@ -75,10 +75,10 @@
 - 推荐主链路：
   - `PluginSource -> PluginManager -> PluginRegistry -> PluginResolver -> ResourceDescriptors -> DefaultResourceLoader -> ExtensionLoader -> ExtensionRunner -> Session`
 
-## Pi Alignment
+## Reference Implementation Alignment
 
-- 对齐 `pi` 中 package / package-manager / resource-plane 的总体方向
-- `plugin` 更接近 `pi packages` 的分发与资源声明语义，不等同于 `ExtensionAPI` 本身
+- 对齐 `reference CLI` 中 package / package-manager / resource-plane 的总体方向
+- `plugin` 更接近 `reference packages` 的分发与资源声明语义，不等同于 `ExtensionAPI` 本身
 - `ExtensionAPI` 继续承担作者编程面；`plugin` 负责把 bundle 展开为 resources
 - `package` / `plugin` 在 loushang 中不再视为同义词：package 是资源分发单位，plugin 是 manifest-backed source view。
 - Headless MVP 已覆盖本地 plugin source 管理、enabled state、resource 展开与 package list UX；`--list-packages --list-packages-format json` 会标记同名多版本 package/plugin 的 `versionConflict` / `conflictVersions`。
@@ -88,11 +88,11 @@
 - `PackageMaterializer` intentionally owns lifecycle state, package source policy evaluation, git-backed materialization/update/remove, and an injectable async backend seam.
 - Package materialization must evaluate `PackageSourcePolicy` before invoking the backend; denied sources become `failed` / `denied` records and are still visible in package projection.
 - Package projection now includes pinned/ref/commit/dirty/update metadata and supports package source filters for prompts/skills/extensions/themes.
-- Python package sources use the Python package backend rather than pi's npm backend; install/update and update-check semantics are covered through
+- Python package sources use the Python package backend rather than the reference implementation's npm backend; install/update and update-check semantics are covered through
   `pypi:` sources while preserving pinned-version skip behavior.
 - Configured package source merging uses package identity instead of exact source strings, so project sources override user sources even when
   the two entries differ only by pinned version/ref syntax.
 - Local relative package sources are resolved against their settings scope before identity merging, so `packages/foo` in user and project settings
   can coexist when they point to different directories.
-- 剩余 package manager gap 主要是 approval UI 和兼容字段的后续退场。当前未在 pi coding-agent 中确认到独立的
-  package signature verification 语义；loushang 的 package trust / policy hardening 属于可选增强，不作为 pi parity 阻塞项。
+- 剩余 package manager gap 主要是 approval UI 和兼容字段的后续退场。当前未在 reference coding agent 中确认到独立的
+  package signature verification 语义；loushang 的 package trust / policy hardening 属于可选增强，不作为 reference parity 阻塞项。

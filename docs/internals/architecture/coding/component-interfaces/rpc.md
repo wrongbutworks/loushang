@@ -124,11 +124,11 @@ Move to `runtime`:
 - thinking-level ordering policy
 - lifecycle policy for clone/fork/switch
 - command execution context construction
-- approval UI and optional package trust hardening; explicit package signature verification is not a current pi parity requirement
+- approval UI and optional package trust hardening; explicit package signature verification is not a current reference parity requirement
 
-## Pi Alignment
+## Reference Implementation Alignment
 
-- Match pi's architectural boundary rather than its exact TypeScript implementation.
+- Match the reference implementation's architectural boundary rather than its exact TypeScript implementation.
 - RPC should remain a thin command adapter that calls `AgentSessionRuntime` and `AgentSession`.
 - Business logic belongs in `runtime` / `session`; RPC only validates inputs and serializes outputs.
 - Loushang may keep extra headless commands such as `list_sessions` and diagnostics queries, but they must follow the same thin-adapter rule.

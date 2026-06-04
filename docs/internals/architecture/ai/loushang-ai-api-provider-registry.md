@@ -82,7 +82,7 @@
 
 这一层的设计仍应遵守此前已冻结的参考取舍：
 
-- public contract 对齐 `pi-ai`
+- public contract 对齐 `reference AI SDK`
 - Python 实现经验吸收 `kimi-cli`
 - lower-level provider adapter shape 可参考 LiteLLM
 

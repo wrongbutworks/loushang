@@ -16,12 +16,12 @@
 
 ## Inputs
 
-- [PI-AI Adaptability NFR](/home/dev/workspace/loushang/docs/architecture/ai/reference/pi-ai/pi-ai-adaptability-NFR.md)
-- [PI-AI Abstraction Variation Strategy](/home/dev/workspace/loushang/docs/architecture/ai/reference/pi-ai/pi-ai-abstraction-variation-strategy.md)
+- [Reference AI SDK Adaptability NFR](/home/dev/workspace/loushang/docs/architecture/ai/reference/reference-ai-sdk/reference-ai-sdk-adaptability-NFR.md)
+- [Reference AI SDK Abstraction Variation Strategy](/home/dev/workspace/loushang/docs/architecture/ai/reference/reference-ai-sdk/reference-ai-sdk-abstraction-variation-strategy.md)
 - [Loushang-AI Adaptability NFR](/home/dev/workspace/loushang/docs/architecture/ai/loushang-ai-adaptability-NFR.md)
 - [Loushang-AI Component Structure V1](/home/dev/workspace/loushang/docs/architecture/ai/loushang-ai-component-structure-v1.md)
 - [Loushang-AI Component Interfaces V1](/home/dev/workspace/loushang/docs/architecture/ai/loushang-ai-component-interfaces-v1.md)
-- [Loushang AI Gap vs PI-AI Round 1](/home/dev/workspace/loushang/docs/architecture/ai/validation/loushang-ai-gap-vs-pi-ai-round-1.md)
+- [Loushang AI Gap vs Reference AI SDK Round 1](/home/dev/workspace/loushang/docs/architecture/ai/validation/loushang-ai-gap-vs-reference-ai-sdk-round-1.md)
 
 ---
 
@@ -35,7 +35,7 @@
 
 因此，下一阶段的重点不应再是继续平铺 provider，而应先把适应性骨架做实。
 
-参考 `pi-ai`，最值得吸收的不是某个 provider 文件本身，而是三类变化的吸收方式：
+参考 `reference AI SDK`，最值得吸收的不是某个 provider 文件本身，而是三类变化的吸收方式：
 
 - model family handling
 - auth variation handling
@@ -67,7 +67,7 @@
 
 ### 2. 稳定骨架与可增殖单元分离
 
-参考 `pi-ai`，不应把具体 provider adapter 吞进稳定骨架。
+参考 `reference AI SDK`，不应把具体 provider adapter 吞进稳定骨架。
 
 应保持：
 
@@ -462,7 +462,7 @@ provider adapter 只消费：
 
 - 稳定边界骨架本身
 
-当前这条判断与 `pi-ai` 的结构最接近：
+当前这条判断与 `reference AI SDK` 的结构最接近：
 
 - provider 文件独立增长
 - shared support 另行沉淀

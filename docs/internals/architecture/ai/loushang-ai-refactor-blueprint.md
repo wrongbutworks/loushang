@@ -21,7 +21,7 @@
 
 ## 当前原则
 
-- 参考 `pi-mono`
+- 参考 `reference repository`
 - 不引入额外中间层
 - 根包只保留 SDK 门面
 - provider 边界与具体 provider 实现分开

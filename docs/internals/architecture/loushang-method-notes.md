@@ -48,7 +48,7 @@
 
 这次设计不是抽象空转，而是持续对照三类参考：
 
-- `pi-ai`
+- `reference AI SDK`
   - 用来约束 public contract
 - `kimi-cli`
   - 用来吸收 Python 实现经验
@@ -57,7 +57,7 @@
 
 最后形成的取舍是：
 
-- public contract 对齐 `pi-ai`
+- public contract 对齐 `reference AI SDK`
 - internal streaming 结构吸收 `kimi-cli`
 - provider adapter lower-level shape 可参考 LiteLLM
 

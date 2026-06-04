@@ -4,7 +4,7 @@
 
 本文档给出 `loushang-agent` 的候选组件列表。
 
-本文档严格参照 `pi-agent` 的当前职责边界来识别候选组件，目标不是立即定版，而是为后续白盒设计提供组件候选清单。
+本文档严格参照 `reference agent runtime` 的当前职责边界来识别候选组件，目标不是立即定版，而是为后续白盒设计提供组件候选清单。
 
 本文档不讨论：
 
@@ -22,7 +22,7 @@
 - `loushang-coding` 直接依赖 `loushang-agent`
 - `loushang-channel` 与 `loushang-tui` 不属于 `loushang-agent` 的直接黑盒边界主体
 
-同时，组件识别严格参照 `pi-agent` 当前已有的代码结构与职责分配：
+同时，组件识别严格参照 `reference agent runtime` 当前已有的代码结构与职责分配：
 
 - `agent.ts`
 - `agent-loop.ts`

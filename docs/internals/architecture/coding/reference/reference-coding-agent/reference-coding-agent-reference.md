@@ -1,34 +1,34 @@
-# pi-coding-agent 架构分析
+# reference coding agent 架构分析
 
 ## 说明
 
-本文档分析 `pi-mono/packages/coding-agent`，即 npm 包 `@mariozechner/pi-coding-agent`。
+本文档分析 `reference-repository/packages/coding-agent`，即 npm 包 `reference-coding-agent package`。
 
 本文关注的是它作为“coding agent 产品装配层”的架构，而不是把它当作纯 agent core。
 
 原因是：
 
-- `pi-agent-core` 负责更底层的 agent runtime 语义
-- `pi-coding-agent` 在其上补上 session、resource、tool、extension、mode、TUI、RPC、CLI 装配
+- `reference agent runtime` 负责更底层的 agent runtime 语义
+- `reference coding agent` 在其上补上 session、resource、tool、extension、mode、TUI、RPC、CLI 装配
 - 对 `loushang-coding` 来说，真正更值得参考的是这层“产品化装配架构”
 
 ---
 
 ## 包定位
 
-- 包路径：`pi-mono/packages/coding-agent`
-- npm 名称：`@mariozechner/pi-coding-agent`
+- 包路径：`reference-repository/packages/coding-agent`
+- npm 名称：`reference-coding-agent package`
 - 描述：`Coding agent CLI with read, bash, edit, write tools and session management`
 - 关键依赖：
-  - `@mariozechner/pi-agent-core`
-  - `@mariozechner/pi-ai`
-  - `@mariozechner/pi-tui`
+  - `reference-agent-runtime package`
+  - `reference-ai-sdk package`
+  - `reference-tui package`
 
 这个包不是单纯的 CLI 外壳，也不是纯 SDK。
 
 它本质上是一个“多入口、多模式、可扩展的 coding agent runtime product layer”：
 
-- 向下依赖 `pi-agent-core` 承载 agent loop
+- 向下依赖 `reference agent runtime` 承载 agent loop
 - 向侧边整合模型注册、认证、设置、session、资源加载、工具定义和扩展系统
 - 向上暴露多种运行模式：
   - Interactive TUI
@@ -42,7 +42,7 @@
 
 ## 架构判断
 
-如果用一句话概括，`pi-coding-agent` 采用的是：
+如果用一句话概括，`reference coding agent` 采用的是：
 
 “`agent core` + `stateful session facade` + `resource/config/session plane` + `mode adapters` + `extension/tool system`”
 
@@ -124,10 +124,10 @@ src/
 
 这是整个包的一个关键设计点：
 
-- 运行时能力不是只能通过 `pi` 进程使用
+- 运行时能力不是只能通过 `reference CLI` 进程使用
 - 它允许宿主程序直接创建并操控 `AgentSession`
 
-这使得 `pi-coding-agent` 不只是一个 CLI，而是一个“可嵌入 coding agent runtime kit”。
+这使得 `reference coding agent` 不只是一个 CLI，而是一个“可嵌入 coding agent runtime kit”。
 
 这也是其 RPC 文档里明确强调的：
 
@@ -154,7 +154,7 @@ src/
 - 管理 branch summary
 - 管理 auto retry
 - 管理 tool definition registry
-- 把 `pi-agent-core` 的低层 agent loop 包装成更高层的 session object
+- 把 `reference agent runtime` 的低层 agent loop 包装成更高层的 session object
 
 `AgentSession` 是这个包最核心的对象。
 
@@ -262,7 +262,7 @@ src/
 - 管理模型与认证
 - 管理 package 安装、更新、卸载
 
-这一层的重要性经常被低估，但在 `pi-coding-agent` 中，它其实是一个完整的“资源平面”。
+这一层的重要性经常被低估，但在 `reference coding agent` 中，它其实是一个完整的“资源平面”。
 
 `DefaultResourceLoader` 的角色不是简单读文件，而是统一管理：
 
@@ -352,7 +352,7 @@ src/
   - 定制 compaction
   - 修改 context / provider request
 
-这说明 `pi-coding-agent` 的扩展机制并不是“脚本插件”那么简单，而是贯穿整个运行时。
+这说明 `reference coding agent` 的扩展机制并不是“脚本插件”那么简单，而是贯穿整个运行时。
 
 架构上，它把 extension 放在一个非常高权重的位置：
 
@@ -384,7 +384,7 @@ src/
 - 溢出恢复
 - auto retry
 
-这层说明 `pi-coding-agent` 把“长会话可持续性”视为一等公民。
+这层说明 `reference coding agent` 把“长会话可持续性”视为一等公民。
 
 它不是简单在 UI 上提供一个 `/compact` 命令，而是把 compaction 做成：
 
@@ -422,7 +422,7 @@ src/
 - SDK 一套逻辑
 - 三套系统最终不一致
 
-在 `pi-coding-agent` 里，这个问题是通过共享 `AgentSession` 被显式压平的。
+在 `reference coding agent` 里，这个问题是通过共享 `AgentSession` 被显式压平的。
 
 ## 10. Interactive TUI Layer
 
@@ -453,13 +453,13 @@ src/
 
 ## 核心对象关系
 
-可以把 `pi-coding-agent` 的对象关系简化为：
+可以把 `reference coding agent` 的对象关系简化为：
 
 ```text
 CLI / SDK caller
   -> createAgentSession()
   -> AgentSession
-      -> pi-agent-core Agent
+      -> reference agent runtime Agent
       -> SessionManager
       -> SettingsManager
       -> ModelRegistry
@@ -623,7 +623,7 @@ CLI、SDK、RPC 不是平行的三套产品，而是同一运行核心的三种�
 
 ## 对 `loushang-coding` 的可借鉴点
 
-结合 `loushang` 当前架构方向，`pi-coding-agent` 最值得借鉴的不是具体 UI，而是以下几个结构判断。
+结合 `loushang` 当前架构方向，`reference coding agent` 最值得借鉴的不是具体 UI，而是以下几个结构判断。
 
 ## 1. 明确区分 `agent runtime` 与 `coding product layer`
 
@@ -639,7 +639,7 @@ CLI、SDK、RPC 不是平行的三套产品，而是同一运行核心的三种�
   - mode adapters
   - coding-specific extension surface
 
-这和 `pi-agent-core` / `pi-coding-agent` 的分工是一致的。
+这和 `reference agent runtime` / `reference coding agent` 的分工是一致的。
 
 ## 2. 为 `loushang-coding` 设计中心 facade
 
@@ -695,7 +695,7 @@ CLI、SDK、RPC 不是平行的三套产品，而是同一运行核心的三种�
 
 ## 5. 扩展点应早设计，而不是后补
 
-`pi-coding-agent` 的经验表明：
+`reference coding agent` 的经验表明：
 
 - 真正成熟的 coding agent 产品，扩展点一定是主结构的一部分
 - 如果等产品成型后再补 extension，重构成本会很高
@@ -725,13 +725,13 @@ CLI、SDK、RPC 不是平行的三套产品，而是同一运行核心的三种�
 
 ## 对 `loushang-coding` 的非借鉴点
 
-并不是 `pi-coding-agent` 的所有设计都应直接复制。
+并不是 `reference coding agent` 的所有设计都应直接复制。
 
 至少以下几点应谨慎：
 
 ## 1. 不要过早复制其完整 TUI 复杂度
 
-`pi` 的 interactive mode 很强，但这是一整套成熟产品 UX 的结果。
+`reference CLI` 的 interactive mode 很强，但这是一整套成熟产品 UX 的结果。
 
 `loushang` 现阶段更应优先保证：
 
@@ -748,9 +748,9 @@ CLI、SDK、RPC 不是平行的三套产品，而是同一运行核心的三种�
 - `loushang-coding` 设计中心 facade 时
 - 应更早给 compaction、branching、resources、tools 预留可拆分边界
 
-## 3. 不要把 `pi` 的资源形态原样搬过来
+## 3. 不要把 `reference CLI` 的资源形态原样搬过来
 
-`pi` 的 skills / prompts / themes / packages 体系很完整，但 `loushang` 有自己的方法论与中文文档重心。
+`reference CLI` 的 skills / prompts / themes / packages 体系很完整，但 `loushang` 有自己的方法论与中文文档重心。
 
 因此更合理的是借鉴“统一资源平面”的思想，而不是照搬资源类别本身。
 
@@ -758,7 +758,7 @@ CLI、SDK、RPC 不是平行的三套产品，而是同一运行核心的三种�
 
 ## 一句话结论
 
-`pi-coding-agent` 不是一个“带 TUI 的 agent CLI”而已。
+`reference coding agent` 不是一个“带 TUI 的 agent CLI”而已。
 
 它的真正价值在于：
 
@@ -774,12 +774,12 @@ CLI、SDK、RPC 不是平行的三套产品，而是同一运行核心的三种�
 
 ## 相关源码入口
 
-- `pi-mono/packages/coding-agent/src/main.ts`
-- `pi-mono/packages/coding-agent/src/core/sdk.ts`
-- `pi-mono/packages/coding-agent/src/core/agent-session.ts`
-- `pi-mono/packages/coding-agent/src/core/session-manager.ts`
-- `pi-mono/packages/coding-agent/src/core/resource-loader.ts`
-- `pi-mono/packages/coding-agent/src/core/extensions/*`
-- `pi-mono/packages/coding-agent/src/core/tools/*`
-- `pi-mono/packages/coding-agent/src/modes/interactive/interactive-mode.ts`
-- `pi-mono/packages/coding-agent/src/modes/rpc/*`
+- `reference-repository/packages/coding-agent/src/main.ts`
+- `reference-repository/packages/coding-agent/src/core/sdk.ts`
+- `reference-repository/packages/coding-agent/src/core/agent-session.ts`
+- `reference-repository/packages/coding-agent/src/core/session-manager.ts`
+- `reference-repository/packages/coding-agent/src/core/resource-loader.ts`
+- `reference-repository/packages/coding-agent/src/core/extensions/*`
+- `reference-repository/packages/coding-agent/src/core/tools/*`
+- `reference-repository/packages/coding-agent/src/modes/interactive/interactive-mode.ts`
+- `reference-repository/packages/coding-agent/src/modes/rpc/*`

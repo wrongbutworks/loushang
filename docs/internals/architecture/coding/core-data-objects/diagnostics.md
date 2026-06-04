@@ -76,9 +76,9 @@
 - 用户可见消息
 - 诊断级别、代码、来源与详情
 
-## Pi Alignment
+## Reference Implementation Alignment
 
-- 这组对象对齐的是 `pi-coding-agent` 的 diagnostics concerns
+- 这组对象对齐的是 `reference coding agent` 的 diagnostics concerns
 - 当前参考中没有足够清晰、稳定、同层级的一等数据对象名可直接复用
 
 ## Notes

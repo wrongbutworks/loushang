@@ -6,7 +6,7 @@ Accepted
 
 ## Context
 
-`loushang-ai` 在早期设计中一度参考 `pi-ai`，倾向采用：
+`loushang-ai` 在早期设计中一度参考 `reference AI SDK`，倾向采用：
 
 - `stream(...) -> AssistantMessageEventStream`
 - `stream_simple(...) -> AssistantMessageEventStream`
@@ -49,7 +49,7 @@ Accepted
 
 优点：
 
-- 更接近 `pi-ai` 的 public surface
+- 更接近 `reference AI SDK` 的 public surface
 - 调用形态更紧凑
 
 缺点：
@@ -73,7 +73,7 @@ Accepted
 
 缺点：
 
-- 与 `pi-ai` 的 public surface 不完全一致
+- 与 `reference AI SDK` 的 public surface 不完全一致
 - 调用方需要先 `await stream(...)`
 
 ## Rationale
@@ -83,7 +83,7 @@ Accepted
 1. Python 的 async 启动边界应显式表达，而不应隐藏在同步入口之后。
 2. `provider` 的真实启动行为本来就是 async 行为，public contract 应诚实反映这一点。
 3. 对 `loushang-ai` 这种 Python 实现来说，清晰的 loop / task ownership 比保持表面同步更重要。
-4. `pi-ai` 的同步 surface 仍可作为语义参考，但不必机械复制到 Python。
+4. `reference AI SDK` 的同步 surface 仍可作为语义参考，但不必机械复制到 Python。
 
 ## Consequences
 
@@ -99,7 +99,7 @@ Accepted
 
 ### Negative
 
-- `loushang-ai` 与 `pi-ai` 的 public surface 产生明确差异
+- `loushang-ai` 与 `reference AI SDK` 的 public surface 产生明确差异
 - 相关设计文档需要统一改为 async-start
 - 上层调用方需要在更早位置进入 async context
 
@@ -121,5 +121,5 @@ Accepted
 
 ## Follow-up
 
-- 后续与 `pi-ai` 对齐时，应将“sync/async public surface”视为明确、已接受的例外。
-- 除这一点外，`loushang-ai` 仍应尽量对齐 `pi-ai` 的消息、事件、registry 与 provider semantic 边界。
+- 后续与 `reference AI SDK` 对齐时，应将“sync/async public surface”视为明确、已接受的例外。
+- 除这一点外，`loushang-ai` 仍应尽量对齐 `reference AI SDK` 的消息、事件、registry 与 provider semantic 边界。

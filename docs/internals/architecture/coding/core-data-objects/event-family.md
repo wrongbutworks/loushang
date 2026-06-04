@@ -41,9 +41,9 @@
 - payload
 - correlation / timestamp
 
-## Pi Alignment
+## Reference Implementation Alignment
 
-- `AgentSessionEvent` 直接对齐 `pi-coding-agent`
+- `AgentSessionEvent` 直接对齐 `reference coding agent`
 - `EventEnvelope` 当前更像概念对象，为未来 channel/protocol 投影预留
 
 ## Notes
