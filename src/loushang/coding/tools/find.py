@@ -5,8 +5,8 @@ from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import Any, NotRequired, TypedDict
 
-from loushang.ai.types import TextPart
 from loushang.agent.types import AgentToolResult
+from loushang.ai.types import TextPart
 from loushang.coding.policy import ApprovalResolver, PolicyEngine
 
 from .authoring import tool
@@ -25,14 +25,18 @@ from .external_tools import (
 )
 from .ignore import load_ignore_matcher
 from .normalize import tool_to_definition
-from .operations import FindOperations, normalize_find_operations, raise_if_operation_aborted, resolve_operation
+from .operations import (
+    FindOperations,
+    normalize_find_operations,
+    raise_if_operation_aborted,
+    resolve_operation,
+)
 from .path_utils import resolve_tool_path
 from .policy import enforce_tool_policy
-from .runtime import coerce_int_parameter, pi_truncation_details, prepare_tool_arguments
 from .process import run_external_process
+from .runtime import coerce_int_parameter, pi_truncation_details, prepare_tool_arguments
 from .truncate import truncate_head, truncation_details
 from .types import PiTruncationDetails, ToolDefinition
-
 
 DEFAULT_FIND_LIMIT = 1000
 
@@ -130,6 +134,8 @@ def create_find_tool_definition(
             arguments={"path": str(resolved_root), "pattern": pattern},
             cwd=ctx.cwd,
             approval_resolver=resolved_approval_resolver,
+            tool_call_id=ctx.tool_call_id,
+            audit_sink=ctx.event_sink,
         )
         effective_limit = _effective_limit(limit)
         matches, result_limit_reached = await _walk_matching_paths(

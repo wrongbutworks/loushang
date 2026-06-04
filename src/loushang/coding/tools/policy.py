@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import inspect
 from collections.abc import Mapping
 from typing import Any
 from uuid import uuid4
@@ -22,6 +23,8 @@ async def enforce_tool_policy(
     arguments: Mapping[str, Any],
     cwd: str | None = None,
     approval_resolver: ApprovalResolver | None = None,
+    tool_call_id: str | None = None,
+    audit_sink: Any = None,
 ) -> None:
     if policy_engine is None:
         return
@@ -29,6 +32,20 @@ async def enforce_tool_policy(
     if not callable(evaluate_tool_call):
         return
     decision = evaluate_tool_call(tool_name=tool_name, arguments=arguments, cwd=cwd)
+    await _emit_policy_audit_event(
+        audit_sink,
+        {
+            "type": "tool_policy_evaluated",
+            **_policy_audit_details(
+                tool_name=tool_name,
+                arguments=arguments,
+                cwd=cwd,
+                decision=decision,
+                approval_required=decision.disposition == "ask",
+                tool_call_id=tool_call_id,
+            ),
+        },
+    )
     if decision.disposition == "allow":
         return
     if decision.disposition == "deny":
@@ -44,6 +61,7 @@ async def enforce_tool_policy(
             ),
         )
     if decision.disposition == "ask":
+        action_id = f"policy-{uuid4().hex}"
         request = ApprovalRequest(
             tool_name=tool_name,
             arguments=arguments,
@@ -51,11 +69,40 @@ async def enforce_tool_policy(
             reason=decision.reason,
             policy_code=decision.code,
             policy_decision=decision,
-            action_id=f"policy-{uuid4().hex}",
+            action_id=action_id,
+        )
+        await _emit_policy_audit_event(
+            audit_sink,
+            {
+                "type": "tool_approval_requested",
+                **_approval_audit_details(
+                    tool_name=tool_name,
+                    arguments=arguments,
+                    cwd=cwd,
+                    decision=decision,
+                    action_id=action_id,
+                    tool_call_id=tool_call_id,
+                ),
+            },
         )
         approval = await resolve_approval(
             approval_resolver,
             request,
+        )
+        await _emit_policy_audit_event(
+            audit_sink,
+            {
+                "type": "tool_approval_resolved",
+                **_approval_audit_details(
+                    tool_name=tool_name,
+                    arguments=arguments,
+                    cwd=cwd,
+                    decision=decision,
+                    action_id=action_id,
+                    tool_call_id=tool_call_id,
+                    approval=approval,
+                ),
+            },
         )
         if approval.disposition == "allow":
             return
@@ -109,3 +156,66 @@ def _policy_error_details(
         if isinstance(value, str):
             details[key] = value
     return details
+
+
+def _policy_audit_details(
+    *,
+    tool_name: str,
+    arguments: Mapping[str, Any],
+    cwd: str | None,
+    decision: PolicyDecision,
+    approval_required: bool,
+    tool_call_id: str | None,
+) -> dict[str, Any]:
+    details = _policy_error_details(
+        tool_name=tool_name,
+        arguments=arguments,
+        cwd=cwd,
+        decision=decision,
+        approval_required=approval_required,
+    )
+    if tool_call_id is not None:
+        details["tool_call_id"] = tool_call_id
+    return details
+
+
+def _approval_audit_details(
+    *,
+    tool_name: str,
+    arguments: Mapping[str, Any],
+    cwd: str | None,
+    decision: PolicyDecision,
+    action_id: str,
+    tool_call_id: str | None,
+    approval: ApprovalDecision | None = None,
+) -> dict[str, Any]:
+    details: dict[str, Any] = {
+        "tool_name": tool_name,
+        "action_id": action_id,
+        "argument_keys": sorted(str(key) for key in arguments.keys()),
+    }
+    if tool_call_id is not None:
+        details["tool_call_id"] = tool_call_id
+    if cwd is not None:
+        details["cwd"] = cwd
+    if decision.code is not None:
+        details["policy_code"] = decision.code
+    if decision.reason is not None:
+        details["policy_reason"] = decision.reason
+    if approval is not None:
+        details["approval_decision"] = approval.disposition
+        if approval.reason is not None:
+            details["approval_reason"] = approval.reason
+    for key in ("path", "file_path", "command"):
+        value = arguments.get(key)
+        if isinstance(value, str):
+            details[key] = value
+    return details
+
+
+async def _emit_policy_audit_event(audit_sink: Any, event: Mapping[str, Any]) -> None:
+    if audit_sink is None:
+        return
+    result = audit_sink(dict(event))
+    if inspect.isawaitable(result):
+        await result

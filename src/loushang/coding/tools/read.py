@@ -5,15 +5,20 @@ from io import BytesIO
 from pathlib import Path
 from typing import Any, NotRequired, Protocol, TypedDict
 
-from loushang.ai.types import ImagePart, TextPart
 from loushang.agent.types import AgentToolResult
+from loushang.ai.types import ImagePart, TextPart
 from loushang.coding.policy import ApprovalResolver, PolicyEngine
 
 from .authoring import tool
 from .builtin_renderers import render_read_call, render_read_result
 from .context import ToolContext
 from .normalize import tool_to_definition
-from .operations import ReadOperations, normalize_read_operations, raise_if_operation_aborted, resolve_operation
+from .operations import (
+    ReadOperations,
+    normalize_read_operations,
+    raise_if_operation_aborted,
+    resolve_operation,
+)
 from .path_utils import resolve_tool_path
 from .policy import enforce_tool_policy
 from .runtime import (
@@ -25,7 +30,6 @@ from .runtime import (
 )
 from .truncate import DEFAULT_MAX_BYTES, format_size, truncate_head, truncation_details
 from .types import PiTruncationDetails, ToolDefinition
-
 
 MAX_INLINE_IMAGE_BASE64_BYTES = int(4.5 * 1024 * 1024)
 MAX_INLINE_IMAGE_DIMENSION = 2000
@@ -137,6 +141,8 @@ def create_read_tool_definition(
             arguments={"path": str(resolved)},
             cwd=ctx.cwd,
             approval_resolver=resolved_approval_resolver,
+            tool_call_id=ctx.tool_call_id,
+            audit_sink=ctx.event_sink,
         )
         payload = await resolve_operation(ops.read_bytes(resolved))
         raise_if_operation_aborted(ctx.signal)

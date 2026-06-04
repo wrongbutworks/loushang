@@ -2,21 +2,25 @@ from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import Any, NotRequired, TypedDict
 
-from loushang.ai.types import TextPart
 from loushang.agent.types import AgentToolResult
+from loushang.ai.types import TextPart
 from loushang.coding.policy import ApprovalResolver, PolicyEngine
 
 from .authoring import tool
 from .builtin_renderers import render_find_or_ls_result, render_ls_call
 from .context import ToolContext
 from .normalize import tool_to_definition
-from .operations import LsOperations, normalize_ls_operations, raise_if_operation_aborted, resolve_operation
+from .operations import (
+    LsOperations,
+    normalize_ls_operations,
+    raise_if_operation_aborted,
+    resolve_operation,
+)
 from .path_utils import resolve_tool_path
 from .policy import enforce_tool_policy
 from .runtime import coerce_int_parameter, pi_truncation_details, prepare_tool_arguments
 from .truncate import truncate_head, truncation_details
 from .types import PiTruncationDetails, ToolDefinition
-
 
 DEFAULT_LS_LIMIT = 500
 
@@ -82,6 +86,8 @@ def create_ls_tool_definition(
             arguments={"path": str(resolved)},
             cwd=ctx.cwd,
             approval_resolver=resolved_approval_resolver,
+            tool_call_id=ctx.tool_call_id,
+            audit_sink=ctx.event_sink,
         )
         effective_limit = _effective_limit(limit)
         lines, entry_limit_reached = await _list_entries(resolved, limit=effective_limit, operations=ops)
