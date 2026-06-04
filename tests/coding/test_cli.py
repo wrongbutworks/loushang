@@ -445,6 +445,20 @@ def _write_fixed_review_method(project_root: Path) -> None:
         "step_guidance:\n"
         "  inspect: Read changed files and summarize intent.\n"
         "  verify: Run focused tests or explain why they cannot run.\n"
+        "step_constraints:\n"
+        "  inspect:\n"
+        "    level: reasoned\n"
+        "    can_merge: true\n"
+        "    requires_reason: true\n"
+        "  verify:\n"
+        "    level: evidence\n"
+        "    can_skip: true\n"
+        "    requires_evidence: true\n"
+        "step_audit:\n"
+        "  inspect:\n"
+        "    record: [status, reason]\n"
+        "  verify:\n"
+        "    record: [status, reason, evidence]\n"
         "---\n\n"
         "Use concise review guidance.",
         encoding="utf-8",
@@ -5834,6 +5848,20 @@ def test_run_cli_shows_fixed_method_plan_as_json(tmp_path) -> None:
         "step_guidance:\n"
         "  inspect: Read changed files and summarize intent.\n"
         "  verify: Run focused tests or explain why they cannot run.\n"
+        "step_constraints:\n"
+        "  inspect:\n"
+        "    level: reasoned\n"
+        "    can_merge: true\n"
+        "    requires_reason: true\n"
+        "  verify:\n"
+        "    level: evidence\n"
+        "    can_skip: true\n"
+        "    requires_evidence: true\n"
+        "step_audit:\n"
+        "  inspect:\n"
+        "    record: [status, reason]\n"
+        "  verify:\n"
+        "    record: [status, reason, evidence]\n"
         "---\n\n"
         "Use concise review guidance.",
         encoding="utf-8",
@@ -5878,6 +5906,18 @@ def test_run_cli_shows_fixed_method_plan_as_json(tmp_path) -> None:
     assert second_projection["step_index"] == 1
     assert second_projection["step_count"] == 2
     assert "Step verify - Run focused checks" in second_projection["content"]
+    assert payload["steps"][0]["constraint"] == {
+        "level": "reasoned",
+        "can_merge": True,
+        "requires_reason": True,
+    }
+    assert payload["steps"][0]["audit"] == {"record": ["status", "reason"]}
+    assert payload["steps"][1]["constraint"] == {
+        "level": "evidence",
+        "can_skip": True,
+        "requires_evidence": True,
+    }
+    assert payload["steps"][1]["audit"] == {"record": ["status", "reason", "evidence"]}
     assert payload["steps"][0]["applicability"]["domains"] == ["coding", "research"]
     assert payload["steps"][0]["applicability"]["task_types"] == ["reviewing"]
     assert stderr.getvalue() == ""
@@ -5903,6 +5943,13 @@ def test_run_cli_shows_fixed_method_plan_as_text(tmp_path) -> None:
         "step_guidance:\n"
         "  inspect: Read changed files and summarize intent.\n"
         "  verify: Run focused tests or explain why they cannot run.\n"
+        "step_constraints:\n"
+        "  inspect:\n"
+        "    level: reasoned\n"
+        "    requires_reason: true\n"
+        "step_audit:\n"
+        "  inspect:\n"
+        "    record: [status, reason]\n"
         "---\n\n"
         "Use concise review guidance.",
         encoding="utf-8",
@@ -5933,6 +5980,8 @@ def test_run_cli_shows_fixed_method_plan_as_text(tmp_path) -> None:
     assert "steps:" in output
     assert "  1. inspect - Inspect current changes" in output
     assert "     guidance: Read changed files and summarize intent." in output
+    assert '     constraint: {"level": "reasoned", "requires_reason": true}' in output
+    assert '     audit: {"record": ["status", "reason"]}' in output
     assert "  2. verify - Run focused checks" in output
     assert "     guidance: Run focused tests or explain why they cannot run." in output
     assert stderr.getvalue() == ""

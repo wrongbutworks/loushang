@@ -82,14 +82,25 @@ def _next_line_is_indented(lines: list[str], index: int) -> bool:
 
 
 def _parse_collection(lines: list[str], index: int, *, parent_key: str) -> tuple[object, int]:
+    return _parse_collection_at_indent(lines, index, indent=2, parent_key=parent_key)
+
+
+def _parse_collection_at_indent(
+    lines: list[str],
+    index: int,
+    *,
+    indent: int,
+    parent_key: str,
+) -> tuple[object, int]:
     index = _skip_ignored_lines(lines, index)
     if index >= len(lines):
         return "", index
     raw_line = lines[index]
-    if raw_line.startswith("  - "):
-        return _parse_list(lines, index, indent=2, parent_key=parent_key)
-    if raw_line.startswith("  "):
-        return _parse_map(lines, index, indent=2, parent_key=parent_key)
+    prefix = " " * indent
+    if raw_line.startswith(f"{prefix}- "):
+        return _parse_list(lines, index, indent=indent, parent_key=parent_key)
+    if raw_line.startswith(prefix):
+        return _parse_map(lines, index, indent=indent, parent_key=parent_key)
     return "", index
 
 
@@ -136,7 +147,12 @@ def _parse_map(lines: list[str], index: int, *, indent: int, parent_key: str) ->
             raise _frontmatter_error(index, indent + 1, raw_line, "expected key")
         value = raw_value.strip()
         if not value and _next_line_is_deeper(lines, index + 1, indent=indent):
-            nested, index = _parse_list(lines, index + 1, indent=indent + 2, parent_key=f"{parent_key}.{key}")
+            nested, index = _parse_collection_at_indent(
+                lines,
+                index + 1,
+                indent=indent + 2,
+                parent_key=f"{parent_key}.{key}",
+            )
             values[key] = nested
             continue
         values[key] = _parse_scalar(value, line_number=index, line=raw_line, key=key)

@@ -50,6 +50,36 @@ def test_parse_frontmatter_supports_simple_lists_and_maps() -> None:
     }
 
 
+def test_parse_frontmatter_supports_nested_maps() -> None:
+    from loushang.coding.frontmatter import parse_frontmatter
+
+    result = parse_frontmatter(
+        "---\n"
+        "step_constraints:\n"
+        "  inspect:\n"
+        "    level: reasoned\n"
+        "    requires_reason: true\n"
+        "  verify:\n"
+        "    level: evidence\n"
+        "    required_evidence:\n"
+        "      - tests\n"
+        "      - logs\n"
+        "---\n\n"
+        "Run the review.\n"
+    )
+
+    assert result.frontmatter["step_constraints"] == {
+        "inspect": {
+            "level": "reasoned",
+            "requires_reason": True,
+        },
+        "verify": {
+            "level": "evidence",
+            "required_evidence": ["tests", "logs"],
+        },
+    }
+
+
 def test_parse_frontmatter_keeps_original_body_without_complete_frontmatter() -> None:
     from loushang.coding.frontmatter import parse_frontmatter, strip_frontmatter
 
