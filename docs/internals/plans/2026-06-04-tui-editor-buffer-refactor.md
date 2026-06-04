@@ -16,8 +16,8 @@
 
 - Create `src/loushang/tui/editor_buffer.py`: internal pure editing buffer for grapheme-cluster text state, cursor movement, deletion, undo, and redo.
 - Create `tests/tui/test_editor_buffer.py`: focused regression coverage for the new buffer.
-- Later modify `src/loushang/tui/ui_parts/text_input.py`: optional stage 2 migration after stage 1 is green.
-- Later modify `src/loushang/tui/ui_parts/composer.py`: optional stage 3 migration after stage 2 is green and reviewed.
+- Later modify `src/loushang/tui/ui_parts/text_input.py`: optional stage 3 migration after buffer hardening is green and reviewed.
+- Later modify `src/loushang/tui/ui_parts/composer.py`: optional stage 4 migration after TextInput migration is green and reviewed.
 
 ## Stage 1: Internal EditorBuffer
 
@@ -77,21 +77,31 @@
 
   Expected: all pass.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
   ```bash
   git add src/loushang/tui/editor_buffer.py tests/tui/test_editor_buffer.py docs/internals/plans/2026-06-04-tui-editor-buffer-refactor.md
   git commit -m "feat: add tui editor buffer" -m "Refs #78"
   ```
 
-## Stage 2: Low-Risk Component Migration
+## Stage 2: EditorBuffer Hardening
 
-- [ ] Confirm whether `TextInput` should migrate first or remain unchanged until Composer migration.
+- [x] Keep `TextInput` and `Composer` unchanged in this stage.
+- [x] Add `max_undo_depth` with validation for positive integers or `None`.
+- [x] Add `text_before_cursor` and `text_after_cursor` grapheme-cursor helpers.
+- [x] Add `delete_range()` and `replace_range()` primitives that return removed text and avoid no-op undo entries.
+- [x] Add `move_word_left()` and `move_word_right()` with behavior aligned to existing `TextInput` word movement.
+- [x] Add regression tests for undo depth, range edit no-ops, word movement, wide grapheme clusters, and terminal-width independence.
+- [x] Run focused TextInput, Composer, cell-width, input-routing, and full TUI regression tests.
+
+## Stage 3: Optional TextInput Migration
+
+- [ ] Confirm `TextInput` should migrate behind `EditorBuffer`.
 - [ ] Add regression tests before changing component internals.
 - [ ] Preserve existing public behavior, including `on_change`, single-line normalization, scroll, word movement, kill/yank, and undo/redo.
 - [ ] Run focused TextInput, surfaces, and input routing tests before committing.
 
-## Stage 3: Composer Integration
+## Stage 4: Composer Integration
 
 - [ ] Re-map Composer state boundaries before editing: atoms, paste markers, completion cursor columns, render cell widths, history, kill ring, and visual movement.
 - [ ] Add or strengthen regressions for paste marker atomicity, kill/yank, completion cursor mapping, grapheme edits, visual up/down, and bottom-frame rendering.

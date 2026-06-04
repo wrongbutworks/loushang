@@ -15,10 +15,15 @@ class EditorSnapshot:
 
 @dataclass(slots=True)
 class EditorBuffer:
-    _clusters: list[str] = field(default_factory=list)
+    max_undo_depth: int | None = None
+    _clusters: list[str] = field(default_factory=list, repr=False)
     _cursor: int = 0
-    _undo_stack: list[EditorSnapshot] = field(default_factory=list)
-    _redo_stack: list[EditorSnapshot] = field(default_factory=list)
+    _undo_stack: list[EditorSnapshot] = field(default_factory=list, repr=False)
+    _redo_stack: list[EditorSnapshot] = field(default_factory=list, repr=False)
+
+    def __post_init__(self) -> None:
+        if self.max_undo_depth is not None and self.max_undo_depth <= 0:
+            raise ValueError("max_undo_depth must be positive or None")
 
     def __len__(self) -> int:
         return len(self._clusters)
@@ -30,6 +35,14 @@ class EditorBuffer:
     @property
     def cursor(self) -> int:
         return self._cursor
+
+    @property
+    def text_before_cursor(self) -> str:
+        return "".join(self._clusters[: self._cursor])
+
+    @property
+    def text_after_cursor(self) -> str:
+        return "".join(self._clusters[self._cursor :])
 
     def set_text(self, text: str) -> None:
         self._clusters = list(grapheme_clusters(text))
@@ -68,6 +81,30 @@ class EditorBuffer:
         self._push_undo()
         del self._clusters[self._cursor]
         return True
+
+    def delete_range(self, start: int, end: int) -> str:
+        start, end = self._clamp_range(start, end)
+        if start == end:
+            return ""
+        removed = self._clusters[start:end]
+        self._push_undo()
+        del self._clusters[start:end]
+        self._cursor = start
+        return "".join(removed)
+
+    def replace_range(self, start: int, end: int, text: str) -> str:
+        start, end = self._clamp_range(start, end)
+        removed = self._clusters[start:end]
+        inserted = list(grapheme_clusters(text))
+        if not removed and not inserted:
+            return ""
+        if removed == inserted:
+            self._cursor = start + len(inserted)
+            return "".join(removed)
+        self._push_undo()
+        self._clusters[start:end] = inserted
+        self._cursor = start + len(inserted)
+        return "".join(removed)
 
     def move_left(self) -> bool:
         if self._cursor <= 0:
@@ -108,6 +145,20 @@ class EditorBuffer:
         self._cursor = target
         return True
 
+    def move_word_left(self) -> bool:
+        target = self._word_left_index()
+        if target == self._cursor:
+            return False
+        self._cursor = target
+        return True
+
+    def move_word_right(self) -> bool:
+        target = self._word_right_index()
+        if target == self._cursor:
+            return False
+        self._cursor = target
+        return True
+
     def undo(self) -> bool:
         if not self._undo_stack:
             return False
@@ -122,6 +173,14 @@ class EditorBuffer:
         self._restore(self._redo_stack.pop())
         return True
 
+    def _clamp_range(self, start: int, end: int) -> tuple[int, int]:
+        length = len(self._clusters)
+        start = max(0, min(start, length))
+        end = max(0, min(end, length))
+        if end < start:
+            end = start
+        return start, end
+
     def _line_start_index(self) -> int:
         index = self._cursor
         while index > 0 and self._clusters[index - 1] != "\n":
@@ -134,8 +193,32 @@ class EditorBuffer:
             index += 1
         return index
 
+    def _word_left_index(self) -> int:
+        index = self._cursor
+        while index > 0 and _cluster_kind(self._clusters[index - 1]) == "space":
+            index -= 1
+        if index == 0:
+            return index
+        kind = _cluster_kind(self._clusters[index - 1])
+        while index > 0 and _cluster_kind(self._clusters[index - 1]) == kind:
+            index -= 1
+        return index
+
+    def _word_right_index(self) -> int:
+        index = self._cursor
+        while index < len(self._clusters) and _cluster_kind(self._clusters[index]) == "space":
+            index += 1
+        if index >= len(self._clusters):
+            return index
+        kind = _cluster_kind(self._clusters[index])
+        while index < len(self._clusters) and _cluster_kind(self._clusters[index]) == kind:
+            index += 1
+        return index
+
     def _push_undo(self) -> None:
         self._undo_stack.append(self._snapshot())
+        if self.max_undo_depth is not None:
+            del self._undo_stack[:-self.max_undo_depth]
         self._redo_stack.clear()
 
     def _snapshot(self) -> EditorSnapshot:
@@ -144,3 +227,13 @@ class EditorBuffer:
     def _restore(self, snapshot: EditorSnapshot) -> None:
         self._clusters = list(snapshot.clusters)
         self._cursor = max(0, min(snapshot.cursor, len(self._clusters)))
+
+
+def _cluster_kind(cluster: str) -> str:
+    if cluster == "\n":
+        return "newline"
+    if cluster.isspace():
+        return "space"
+    if cluster.isalnum() or cluster == "_":
+        return "word"
+    return "punctuation"
