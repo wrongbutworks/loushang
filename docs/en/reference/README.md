@@ -38,3 +38,7 @@ Built-in interactive commands include:
 /session /terminal /changelog /hotkeys /fork /clone /tree
 /login /logout /new /compact /resume /reload /quit
 ```
+
+## TUI
+
+- [TUI Runner](tui-runner.md): public lifecycle entry point for terminal apps built with `loushang.tui`.

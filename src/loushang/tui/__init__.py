@@ -113,6 +113,14 @@ from loushang.tui.playback import (
     playback_artifacts_directory_from_env,
 )
 from loushang.tui.render_loop import RenderLoop
+from loushang.tui.runner import (
+    TerminalSessionFactory,
+    TerminalSizeProvider,
+    TuiInputHandler,
+    TuiInputResult,
+    TuiRunContext,
+    TuiRunner,
+)
 from loushang.tui.runtime import TuiRuntime
 from loushang.tui.scheduler import (
     AnimationFrameSource,
@@ -372,7 +380,9 @@ __all__ = [
     "TerminalRuntimeCapabilities",
     "TerminalRuntimeImageProtocol",
     "TerminalSession",
+    "TerminalSessionFactory",
     "TerminalSize",
+    "TerminalSizeProvider",
     "TerminalCapabilities",
     "ThemeResolver",
     "ThinkingRecord",
@@ -383,6 +393,10 @@ __all__ = [
     "TranscriptBuffer",
     "TranscriptView",
     "TruncatedText",
+    "TuiInputHandler",
+    "TuiInputResult",
+    "TuiRunContext",
+    "TuiRunner",
     "TuiRuntime",
     "Tui",
     "UserPromptRecord",
