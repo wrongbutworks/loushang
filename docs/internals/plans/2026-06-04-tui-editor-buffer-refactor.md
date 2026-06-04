@@ -1,0 +1,109 @@
+# TUI Editor Buffer Refactor Implementation Plan
+
+> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+
+**Goal:** Introduce a shared TUI editing core without regressing Composer, TextInput, terminal width, or completion behavior.
+
+**Architecture:** Build the refactor in three independently reviewable stages. Stage 1 adds an internal `EditorBuffer` with no runtime integration. Later stages may migrate existing components behind the buffer only after focused regressions prove current behavior is preserved. Editing cursor units remain grapheme clusters; terminal cell width remains a rendering concern handled by `visible_width()`.
+
+**Tech Stack:** Python 3.11+, dataclasses, `loushang.tui.cell_width.grapheme_clusters`, pytest, ruff.
+
+**Tracking:** Refs #78.
+
+---
+
+## File Structure
+
+- Create `src/loushang/tui/editor_buffer.py`: internal pure editing buffer for grapheme-cluster text state, cursor movement, deletion, undo, and redo.
+- Create `tests/tui/test_editor_buffer.py`: focused regression coverage for the new buffer.
+- Later modify `src/loushang/tui/ui_parts/text_input.py`: optional stage 2 migration after stage 1 is green.
+- Later modify `src/loushang/tui/ui_parts/composer.py`: optional stage 3 migration after stage 2 is green and reviewed.
+
+## Stage 1: Internal EditorBuffer
+
+- [x] **Step 1: Write failing tests**
+
+  Add tests in `tests/tui/test_editor_buffer.py` for:
+
+  - insertion and `__len__` using grapheme cluster count
+  - CJK, combining mark, and emoji cluster atomic edits
+  - line start/end movement including empty-line no-op behavior
+  - delete backward/forward changed status
+  - undo/redo for text edits only
+  - `set_text()` and `clear()` as programmatic resets that clear undo/redo
+  - cursor bounds never escaping `[0, len(buffer)]`
+
+  Run:
+
+  ```bash
+  uv --cache-dir .uv-cache run --extra dev pytest tests/tui/test_editor_buffer.py -q
+  ```
+
+  Expected: FAIL because `loushang.tui.editor_buffer` does not exist yet.
+
+- [x] **Step 2: Implement minimal buffer**
+
+  Create `src/loushang/tui/editor_buffer.py` with:
+
+  - `EditorSnapshot`
+  - `EditorBuffer`
+  - `value`, `cursor`, `__len__`
+  - `set_text`, `clear`, `insert_text`, `insert_newline`
+  - `delete_backward`, `delete_forward`
+  - `move_left`, `move_right`, `move_to_start`, `move_to_end`
+  - `move_to_line_start`, `move_to_line_end`
+  - `undo`, `redo`
+
+  Do not export it from `loushang.tui.__init__`.
+
+- [x] **Step 3: Verify stage 1**
+
+  Run:
+
+  ```bash
+  uv --cache-dir .uv-cache run --extra dev pytest tests/tui/test_editor_buffer.py -q
+  uv --cache-dir .uv-cache run --extra dev ruff check src/loushang/tui/editor_buffer.py tests/tui/test_editor_buffer.py
+  ```
+
+  Expected: all pass.
+
+- [x] **Step 4: Focused regression**
+
+  Run:
+
+  ```bash
+  uv --cache-dir .uv-cache run --extra dev pytest tests/tui/test_cell_width.py tests/tui/test_text_input.py tests/tui/test_composer_bottom_frame.py tests/tui/test_input_routing.py -q
+  ```
+
+  Expected: all pass.
+
+- [ ] **Step 5: Commit**
+
+  ```bash
+  git add src/loushang/tui/editor_buffer.py tests/tui/test_editor_buffer.py docs/internals/plans/2026-06-04-tui-editor-buffer-refactor.md
+  git commit -m "feat: add tui editor buffer" -m "Refs #78"
+  ```
+
+## Stage 2: Low-Risk Component Migration
+
+- [ ] Confirm whether `TextInput` should migrate first or remain unchanged until Composer migration.
+- [ ] Add regression tests before changing component internals.
+- [ ] Preserve existing public behavior, including `on_change`, single-line normalization, scroll, word movement, kill/yank, and undo/redo.
+- [ ] Run focused TextInput, surfaces, and input routing tests before committing.
+
+## Stage 3: Composer Integration
+
+- [ ] Re-map Composer state boundaries before editing: atoms, paste markers, completion cursor columns, render cell widths, history, kill ring, and visual movement.
+- [ ] Add or strengthen regressions for paste marker atomicity, kill/yank, completion cursor mapping, grapheme edits, visual up/down, and bottom-frame rendering.
+- [ ] Migrate only one behavior group at a time.
+- [ ] Run full `tests/tui -q` plus manual smoke before considering merge.
+
+## Cleanup Gate
+
+Do not delete the branch or worktree until:
+
+- all three stages intended for this branch are complete,
+- focused and full TUI regression suites pass,
+- manual smoke/playback passes,
+- the PR is merged,
+- the user approves cleanup.
