@@ -201,6 +201,8 @@ def test_coding_work_shell_records_plan_and_step_lifecycle_events() -> None:
             step_id="inspect",
             step_index=0,
             step_title="Inspect current changes",
+            planned_constraint={"level": "reasoned", "requires_reason": True},
+            audit_policy={"record": ["status", "reason"]},
         )
 
         assert run.status == "completed"
@@ -225,6 +227,8 @@ def test_coding_work_shell_records_plan_and_step_lifecycle_events() -> None:
             "step_id": "inspect",
             "step_index": 0,
             "step_title": "Inspect current changes",
+            "planned_constraint": {"level": "reasoned", "requires_reason": True},
+            "audit_policy": {"record": ["status", "reason"]},
         }
         assert entries[2].payload["delivery_hint"] == "coalesce"
         assert entries[3].payload["delivery_hint"] == "coalesce"
@@ -237,6 +241,8 @@ def test_coding_work_shell_records_plan_and_step_lifecycle_events() -> None:
             "step_id": "inspect",
             "step_index": 0,
             "step_title": "Inspect current changes",
+            "planned_constraint": {"level": "reasoned", "requires_reason": True},
+            "audit_policy": {"record": ["status", "reason"]},
         }
 
     asyncio.run(scenario())

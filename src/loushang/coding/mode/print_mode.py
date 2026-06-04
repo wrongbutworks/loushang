@@ -3,7 +3,7 @@ from __future__ import annotations
 import inspect
 import json
 import sys
-from typing import Any, Literal, Sequence, TextIO
+from typing import Any, Literal, Mapping, Sequence, TextIO
 
 from loushang.coding.event import (
     SUPPORTED_JSON_EVENT_VIEWS,
@@ -36,6 +36,8 @@ class PrintMode(ModeAdapter):
         step_id: str | None = None,
         step_index: int | None = None,
         step_title: str | None = None,
+        planned_constraint: Mapping[str, object] | None = None,
+        audit_policy: Mapping[str, object] | None = None,
         emit_plan_start: bool = True,
         emit_plan_completion: bool = True,
     ) -> None:
@@ -69,6 +71,8 @@ class PrintMode(ModeAdapter):
         self.step_id = step_id
         self.step_index = step_index
         self.step_title = step_title
+        self.planned_constraint = planned_constraint
+        self.audit_policy = audit_policy
         self.emit_plan_start = emit_plan_start
         self.emit_plan_completion = emit_plan_completion
         self._tool_render_runtime: ToolRenderRuntime | None = None
@@ -288,6 +292,8 @@ class PrintMode(ModeAdapter):
             step_id=self.step_id,
             step_index=self.step_index,
             step_title=self.step_title,
+            planned_constraint=self.planned_constraint,
+            audit_policy=self.audit_policy,
             emit_plan_start=emit_plan_start,
             emit_plan_completion=emit_plan_completion,
         )
@@ -462,6 +468,8 @@ async def run_print_mode(
     step_id: str | None = None,
     step_index: int | None = None,
     step_title: str | None = None,
+    planned_constraint: Mapping[str, object] | None = None,
+    audit_policy: Mapping[str, object] | None = None,
     emit_plan_start: bool = True,
     emit_plan_completion: bool = True,
     dispose: bool = True,
@@ -481,6 +489,8 @@ async def run_print_mode(
         step_id=step_id,
         step_index=step_index,
         step_title=step_title,
+        planned_constraint=planned_constraint,
+        audit_policy=audit_policy,
         emit_plan_start=emit_plan_start,
         emit_plan_completion=emit_plan_completion,
     )

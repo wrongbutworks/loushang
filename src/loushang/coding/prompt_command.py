@@ -3,7 +3,7 @@ from __future__ import annotations
 import inspect
 import time
 import traceback
-from typing import Any, Sequence, TextIO
+from typing import Any, Mapping, Sequence, TextIO
 
 from loushang.coding.ui.events import CodingUiEventRenderer
 from loushang.coding.ui.model import ensure_usable_session_model
@@ -27,6 +27,8 @@ async def run_prompt_command(
     step_id: str | None = None,
     step_index: int | None = None,
     step_title: str | None = None,
+    planned_constraint: Mapping[str, object] | None = None,
+    audit_policy: Mapping[str, object] | None = None,
     emit_plan_start: bool = True,
     emit_plan_completion: bool = True,
     dispose: bool = True,
@@ -55,6 +57,8 @@ async def run_prompt_command(
             step_id=step_id,
             step_index=step_index,
             step_title=step_title,
+            planned_constraint=planned_constraint,
+            audit_policy=audit_policy,
             emit_plan_start=emit_plan_start,
             emit_plan_completion=emit_plan_completion and not follow_up_messages,
         )
@@ -71,6 +75,8 @@ async def run_prompt_command(
                     step_id=step_id,
                     step_index=step_index,
                     step_title=step_title,
+                    planned_constraint=planned_constraint,
+                    audit_policy=audit_policy,
                     emit_plan_start=False,
                     emit_plan_completion=emit_plan_completion and follow_up_index == len(follow_up_messages) - 1,
                 )
@@ -107,6 +113,8 @@ async def _run_turn(
     step_id: str | None = None,
     step_index: int | None = None,
     step_title: str | None = None,
+    planned_constraint: Mapping[str, object] | None = None,
+    audit_policy: Mapping[str, object] | None = None,
     emit_plan_start: bool = True,
     emit_plan_completion: bool = True,
 ) -> int:
@@ -123,6 +131,8 @@ async def _run_turn(
         step_id=step_id,
         step_index=step_index,
         step_title=step_title,
+        planned_constraint=planned_constraint,
+        audit_policy=audit_policy,
         emit_plan_start=emit_plan_start,
         emit_plan_completion=emit_plan_completion,
     )
@@ -147,6 +157,8 @@ async def _run_prompt_session(
     step_id: str | None = None,
     step_index: int | None = None,
     step_title: str | None = None,
+    planned_constraint: Mapping[str, object] | None = None,
+    audit_policy: Mapping[str, object] | None = None,
     emit_plan_start: bool = True,
     emit_plan_completion: bool = True,
 ) -> None:
@@ -163,6 +175,8 @@ async def _run_prompt_session(
         step_id=step_id,
         step_index=step_index,
         step_title=step_title,
+        planned_constraint=planned_constraint,
+        audit_policy=audit_policy,
         emit_plan_start=emit_plan_start,
         emit_plan_completion=emit_plan_completion,
     )

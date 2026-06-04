@@ -482,6 +482,8 @@ async def run_cli(
                 for turn_index, prepared_turn in enumerate(prepared_turns):
                     is_first_turn = turn_index == 0
                     is_last_turn = turn_index == len(prepared_turns) - 1
+                    planned_constraint = _prepared_turn_policy_metadata(prepared_turn, "planned_constraint")
+                    audit_policy = _prepared_turn_policy_metadata(prepared_turn, "audit_policy")
                     exit_code = await prompt_runner(
                         runtime=runtime,
                         session=session,
@@ -497,6 +499,8 @@ async def run_cli(
                         step_id=prepared_turn.step_id,
                         step_index=prepared_turn.step_index,
                         step_title=prepared_turn.step_title,
+                        planned_constraint=planned_constraint,
+                        audit_policy=audit_policy,
                         emit_plan_start=is_first_turn,
                         emit_plan_completion=is_last_turn,
                         dispose=is_last_turn,
@@ -512,6 +516,8 @@ async def run_cli(
                 for turn_index, prepared_turn in enumerate(prepared_turns):
                     is_first_turn = turn_index == 0
                     is_last_turn = turn_index == len(prepared_turns) - 1
+                    planned_constraint = _prepared_turn_policy_metadata(prepared_turn, "planned_constraint")
+                    audit_policy = _prepared_turn_policy_metadata(prepared_turn, "audit_policy")
                     exit_code = await print_runner(
                         runtime=runtime,
                         session=session,
@@ -528,6 +534,8 @@ async def run_cli(
                         step_id=prepared_turn.step_id,
                         step_index=prepared_turn.step_index,
                         step_title=prepared_turn.step_title,
+                        planned_constraint=planned_constraint,
+                        audit_policy=audit_policy,
                         emit_plan_start=is_first_turn,
                         emit_plan_completion=is_last_turn,
                         dispose=is_last_turn,
@@ -541,6 +549,8 @@ async def run_cli(
             for turn_index, prepared_turn in enumerate(prepared_turns):
                 is_first_turn = turn_index == 0
                 is_last_turn = turn_index == len(prepared_turns) - 1
+                planned_constraint = _prepared_turn_policy_metadata(prepared_turn, "planned_constraint")
+                audit_policy = _prepared_turn_policy_metadata(prepared_turn, "audit_policy")
                 exit_code = await mode_runner(
                     config=ModeConfig(
                         mode=args.mode,
@@ -560,6 +570,8 @@ async def run_cli(
                     step_id=prepared_turn.step_id,
                     step_index=prepared_turn.step_index,
                     step_title=prepared_turn.step_title,
+                    planned_constraint=planned_constraint,
+                    audit_policy=audit_policy,
                     emit_plan_start=is_first_turn,
                     emit_plan_completion=is_last_turn,
                     dispose=is_last_turn,
@@ -580,6 +592,13 @@ async def _dispose_runtime_or_session(runtime: Any, session: Any) -> None:
     result = disposer()
     if inspect.isawaitable(result):
         await result
+
+
+def _prepared_turn_policy_metadata(prepared_turn: Any, key: str) -> Mapping[str, object] | None:
+    value = prepared_turn.metadata.get(key)
+    if isinstance(value, Mapping) and value:
+        return dict(value)
+    return None
 
 
 def _resolve_session_dir(args: CliArgs, project_root: Path, services: Any) -> Path:

@@ -18,6 +18,8 @@ def _entry(
     step_title: str | None = None,
     error: str | None = None,
     deviation: dict[str, object] | None = None,
+    planned_constraint: dict[str, object] | None = None,
+    audit_policy: dict[str, object] | None = None,
 ) -> object:
     from loushang.work import EventLogEntry
 
@@ -37,6 +39,10 @@ def _entry(
         nested_payload["error"] = error
     if deviation is not None:
         nested_payload["deviation"] = deviation
+    if planned_constraint is not None:
+        nested_payload["planned_constraint"] = planned_constraint
+    if audit_policy is not None:
+        nested_payload["audit_policy"] = audit_policy
     if nested_payload:
         payload["payload"] = nested_payload
 
@@ -277,6 +283,45 @@ def test_project_work_plan_runs_replays_step_deviation_metadata() -> None:
         "outcome": "accepted",
         "metadata": {},
     }
+
+
+def test_project_work_plan_runs_replays_planned_step_policy_metadata() -> None:
+    from loushang.work import project_work_plan_runs
+
+    plans = project_work_plan_runs(
+        [
+            _entry(
+                "run-inspect-step-started",
+                kind="WorkStepStarted",
+                run_id="run-inspect",
+                sequence=1,
+                step_id="inspect",
+                step_index=0,
+                step_title="Inspect current changes",
+                planned_constraint={
+                    "level": "reasoned",
+                    "requires_reason": True,
+                },
+                audit_policy={"record": ["status", "reason"]},
+            ),
+            _entry(
+                "run-inspect-step-completed",
+                kind="WorkStepCompleted",
+                run_id="run-inspect",
+                sequence=2,
+                step_id="inspect",
+                step_index=0,
+                step_title="Inspect current changes",
+            ),
+        ]
+    )
+
+    metadata = plans[0].steps[0].metadata
+    assert metadata["planned_constraint"] == {
+        "level": "reasoned",
+        "requires_reason": True,
+    }
+    assert metadata["audit_policy"] == {"record": ["status", "reason"]}
 
 
 def test_project_work_plan_runs_ignores_entries_without_plan_id() -> None:
