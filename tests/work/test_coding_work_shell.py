@@ -242,6 +242,89 @@ def test_coding_work_shell_records_plan_and_step_lifecycle_events() -> None:
     asyncio.run(scenario())
 
 
+def test_coding_work_shell_can_suppress_plan_boundaries_for_middle_step() -> None:
+    from loushang.work import CodingWorkShell, InMemoryEventLogBackend
+
+    async def scenario() -> None:
+        event_log = InMemoryEventLogBackend()
+        session = FakePromptSession(events=[])
+        shell = CodingWorkShell(
+            session=session,
+            event_log=event_log,
+            clock=lambda: datetime(2026, 6, 1, 10, 30, tzinfo=UTC),
+        )
+
+        run = await shell.submit_coding_turn(
+            "verify current changes",
+            session_id="session-1",
+            operation_id="op-1",
+            run_id="run-1",
+            method_id="method:task:review",
+            plan_id="plan:method:task:review",
+            step_id="verify",
+            step_index=1,
+            step_title="Run focused checks",
+            emit_plan_start=False,
+            emit_plan_completion=False,
+        )
+
+        assert run.status == "completed"
+        entries = event_log.query(run_id="run-1")
+        assert [entry.payload["kind"] for entry in entries] == [
+            "SubmitCodingTurn",
+            "WorkRunStarted",
+            "WorkStepStarted",
+            "WorkStepCompleted",
+            "WorkRunCompleted",
+        ]
+
+    asyncio.run(scenario())
+
+
+def test_coding_work_shell_records_plan_failure_even_when_plan_boundaries_are_suppressed() -> None:
+    from loushang.work import CodingWorkShell, InMemoryEventLogBackend
+
+    async def scenario() -> None:
+        event_log = InMemoryEventLogBackend()
+        session = FakePromptSession(events=[], error=RuntimeError("middle step failed"))
+        shell = CodingWorkShell(
+            session=session,
+            event_log=event_log,
+            clock=lambda: datetime(2026, 6, 1, 10, 30, tzinfo=UTC),
+        )
+
+        try:
+            await shell.submit_coding_turn(
+                "verify current changes",
+                session_id="session-1",
+                operation_id="op-1",
+                run_id="run-1",
+                method_id="method:task:review",
+                plan_id="plan:method:task:review",
+                step_id="verify",
+                step_index=1,
+                step_title="Run focused checks",
+                emit_plan_start=False,
+                emit_plan_completion=False,
+            )
+        except RuntimeError as error:
+            assert str(error) == "middle step failed"
+        else:
+            raise AssertionError("expected prompt failure")
+
+        entries = event_log.query(run_id="run-1")
+        assert [entry.payload["kind"] for entry in entries] == [
+            "SubmitCodingTurn",
+            "WorkRunStarted",
+            "WorkStepStarted",
+            "WorkStepFailed",
+            "WorkPlanFailed",
+            "WorkRunFailed",
+        ]
+
+    asyncio.run(scenario())
+
+
 def test_coding_work_shell_records_step_and_plan_failures_before_run_failure() -> None:
     from loushang.work import CodingWorkShell, InMemoryEventLogBackend
 

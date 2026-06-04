@@ -36,6 +36,8 @@ class PrintMode(ModeAdapter):
         step_id: str | None = None,
         step_index: int | None = None,
         step_title: str | None = None,
+        emit_plan_start: bool = True,
+        emit_plan_completion: bool = True,
     ) -> None:
         if output_mode not in {"text", "json"}:
             raise ValueError(f"unsupported output mode: {output_mode}")
@@ -67,6 +69,8 @@ class PrintMode(ModeAdapter):
         self.step_id = step_id
         self.step_index = step_index
         self.step_title = step_title
+        self.emit_plan_start = emit_plan_start
+        self.emit_plan_completion = emit_plan_completion
         self._tool_render_runtime: ToolRenderRuntime | None = None
         self._tool_definition_resolver: ToolDefinitionResolver | None = None
         self._disposed = False
@@ -144,10 +148,19 @@ class PrintMode(ModeAdapter):
                 header = self.session.session_manager.get_header()
                 self._write_json_line(serialize_session_header(header))
             unsubscribe = self.session.subscribe(self._handle_event)
-            await self._prompt_session(user_input, images=images)
+            await self._prompt_session(
+                user_input,
+                images=images,
+                emit_plan_start=self.emit_plan_start,
+                emit_plan_completion=self.emit_plan_completion and not follow_up_messages,
+            )
             await self.session.wait_for_idle()
-            for message in follow_up_messages:
-                await self._prompt_session(message)
+            for follow_up_index, message in enumerate(follow_up_messages):
+                await self._prompt_session(
+                    message,
+                    emit_plan_start=False,
+                    emit_plan_completion=self.emit_plan_completion and follow_up_index == len(follow_up_messages) - 1,
+                )
                 await self.session.wait_for_idle()
             assistant_failure = _last_assistant_failure_message(self.session)
             if assistant_failure is not None:
@@ -254,7 +267,14 @@ class PrintMode(ModeAdapter):
         except TypeError:
             return repr(args)
 
-    async def _prompt_session(self, user_input: str, *, images: list[object] | None = None) -> None:
+    async def _prompt_session(
+        self,
+        user_input: str,
+        *,
+        images: list[object] | None = None,
+        emit_plan_start: bool = True,
+        emit_plan_completion: bool = True,
+    ) -> None:
         if self.work_event_log is None:
             await _prompt_session(self.session, user_input, images=images)
             return
@@ -268,6 +288,8 @@ class PrintMode(ModeAdapter):
             step_id=self.step_id,
             step_index=self.step_index,
             step_title=self.step_title,
+            emit_plan_start=emit_plan_start,
+            emit_plan_completion=emit_plan_completion,
         )
 
 
@@ -440,6 +462,8 @@ async def run_print_mode(
     step_id: str | None = None,
     step_index: int | None = None,
     step_title: str | None = None,
+    emit_plan_start: bool = True,
+    emit_plan_completion: bool = True,
     dispose: bool = True,
 ) -> int:
     mode = PrintMode(
@@ -457,6 +481,8 @@ async def run_print_mode(
         step_id=step_id,
         step_index=step_index,
         step_title=step_title,
+        emit_plan_start=emit_plan_start,
+        emit_plan_completion=emit_plan_completion,
     )
     return await mode.run_once(
         user_input,

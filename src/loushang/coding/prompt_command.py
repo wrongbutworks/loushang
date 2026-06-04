@@ -27,6 +27,8 @@ async def run_prompt_command(
     step_id: str | None = None,
     step_index: int | None = None,
     step_title: str | None = None,
+    emit_plan_start: bool = True,
+    emit_plan_completion: bool = True,
     dispose: bool = True,
 ) -> int:
     """Run one product prompt and render the stable coding transcript."""
@@ -53,9 +55,11 @@ async def run_prompt_command(
             step_id=step_id,
             step_index=step_index,
             step_title=step_title,
+            emit_plan_start=emit_plan_start,
+            emit_plan_completion=emit_plan_completion and not follow_up_messages,
         )
         if exit_code == 0:
-            for message in follow_up_messages:
+            for follow_up_index, message in enumerate(follow_up_messages):
                 exit_code = await _run_turn(
                     session,
                     renderer,
@@ -67,6 +71,8 @@ async def run_prompt_command(
                     step_id=step_id,
                     step_index=step_index,
                     step_title=step_title,
+                    emit_plan_start=False,
+                    emit_plan_completion=emit_plan_completion and follow_up_index == len(follow_up_messages) - 1,
                 )
                 if exit_code != 0:
                     break
@@ -101,6 +107,8 @@ async def _run_turn(
     step_id: str | None = None,
     step_index: int | None = None,
     step_title: str | None = None,
+    emit_plan_start: bool = True,
+    emit_plan_completion: bool = True,
 ) -> int:
     started_at = time.monotonic()
     previous_error = event_renderer.last_error_message
@@ -115,6 +123,8 @@ async def _run_turn(
         step_id=step_id,
         step_index=step_index,
         step_title=step_title,
+        emit_plan_start=emit_plan_start,
+        emit_plan_completion=emit_plan_completion,
     )
     await session.wait_for_idle()
     assistant_failure = _last_assistant_failure_message(session)
@@ -137,6 +147,8 @@ async def _run_prompt_session(
     step_id: str | None = None,
     step_index: int | None = None,
     step_title: str | None = None,
+    emit_plan_start: bool = True,
+    emit_plan_completion: bool = True,
 ) -> None:
     if work_event_log is None:
         await _prompt_session(session, user_input, images=images)
@@ -151,6 +163,8 @@ async def _run_prompt_session(
         step_id=step_id,
         step_index=step_index,
         step_title=step_title,
+        emit_plan_start=emit_plan_start,
+        emit_plan_completion=emit_plan_completion,
     )
 
 

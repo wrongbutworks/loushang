@@ -41,6 +41,9 @@ class CodingWorkShell:
         step_title: str | None = None,
         operation_id: str | None = None,
         run_id: str | None = None,
+        emit_plan_start: bool = True,
+        emit_plan_completion: bool = True,
+        emit_plan_failure: bool = True,
     ) -> WorkRun:
         operation_id = operation_id or f"op-{uuid4().hex}"
         run_id = run_id or f"run-{uuid4().hex}"
@@ -82,7 +85,7 @@ class CodingWorkShell:
                 payload={"source_type": "work_shell"},
             ),
         )
-        if plan_id is not None:
+        if plan_id is not None and emit_plan_start:
             sequence += 1
             self._append_event(
                 _work_event(
@@ -163,7 +166,7 @@ class CodingWorkShell:
                     ),
                 )
                 sequence += 1
-            if plan_id is not None:
+            if plan_id is not None and emit_plan_failure:
                 self._append_event(
                     _work_event(
                         kind="WorkPlanFailed",
@@ -214,7 +217,7 @@ class CodingWorkShell:
                 ),
             )
             sequence += 1
-        if plan_id is not None:
+        if plan_id is not None and emit_plan_completion:
             self._append_event(
                 _work_event(
                     kind="WorkPlanCompleted",
