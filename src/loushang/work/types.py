@@ -49,6 +49,19 @@ class WorkRun:
 
 
 @dataclass(frozen=True)
+class WorkStepDeviation:
+    step_id: str
+    deviation_type: str
+    reason: str
+    policy_level: str | None = None
+    evidence_refs: tuple[str, ...] = ()
+    approval_ref: str | None = None
+    risk: str | None = None
+    outcome: str | None = None
+    metadata: Mapping[str, object] = field(default_factory=dict)
+
+
+@dataclass(frozen=True)
 class WorkStepRun:
     run_id: str
     plan_id: str
@@ -63,6 +76,7 @@ class WorkStepRun:
     role: str | None = None
     expected_artifacts: tuple[str, ...] = ()
     success_criteria: tuple[str, ...] = ()
+    deviation: WorkStepDeviation | None = None
     metadata: Mapping[str, object] = field(default_factory=dict)
 
 
@@ -101,6 +115,7 @@ __all__ = [
     "WorkPlanRun",
     "WorkRun",
     "WorkRunStatus",
+    "WorkStepDeviation",
     "WorkStepRun",
     "WorkStepStatus",
 ]

@@ -1,10 +1,16 @@
 from __future__ import annotations
 
 from collections.abc import Iterable, Mapping
-from dataclasses import dataclass, field
+from dataclasses import asdict, dataclass, field
 
 from loushang.work.event_log import EventLogEntry
-from loushang.work.types import WorkPlanRun, WorkRunStatus, WorkStepRun, WorkStepStatus
+from loushang.work.types import (
+    WorkPlanRun,
+    WorkRunStatus,
+    WorkStepDeviation,
+    WorkStepRun,
+    WorkStepStatus,
+)
 
 
 def project_work_plan_runs(entries: Iterable[EventLogEntry]) -> tuple[WorkPlanRun, ...]:
@@ -126,6 +132,7 @@ class _StepState:
     completed_sequence: int | None = None
     failed_sequence: int | None = None
     error: str | None = None
+    deviation: WorkStepDeviation | None = None
 
     def update_from_entry(
         self,
@@ -147,6 +154,9 @@ class _StepState:
         step_index = _entry_step_index(entry)
         if step_index is not None:
             self.step_index = step_index
+        deviation = _entry_step_deviation(entry, step_id=self.step_id)
+        if deviation is not None:
+            self.deviation = deviation
 
         if kind == "WorkStepStarted":
             self.status = "running"
@@ -168,6 +178,7 @@ class _StepState:
                 "completed_sequence": self.completed_sequence,
                 "failed_sequence": self.failed_sequence,
                 "error": self.error,
+                "deviation": asdict(self.deviation) if self.deviation is not None else None,
             }
         )
         return WorkStepRun(
@@ -178,6 +189,7 @@ class _StepState:
             status=self.status,
             method_id=self.method_id,
             title=self.title,
+            deviation=self.deviation,
             metadata=metadata,
         )
 
@@ -201,6 +213,44 @@ def _entry_step_index(entry: EventLogEntry) -> int | None:
     if isinstance(value, int) and not isinstance(value, bool):
         return value
     return None
+
+
+def _entry_step_deviation(entry: EventLogEntry, *, step_id: str) -> WorkStepDeviation | None:
+    value = _entry_payload_value(entry, "deviation")
+    if not isinstance(value, Mapping):
+        return None
+    deviation_type = _mapping_string_value(value, "deviation_type") or _mapping_string_value(value, "type")
+    if not deviation_type:
+        return None
+    reason = _mapping_string_value(value, "reason")
+    metadata_value = value.get("metadata")
+    metadata = dict(metadata_value) if isinstance(metadata_value, Mapping) else {}
+    return WorkStepDeviation(
+        step_id=_mapping_string_value(value, "step_id") or step_id,
+        deviation_type=deviation_type,
+        reason=reason,
+        policy_level=_mapping_string_value(value, "policy_level") or None,
+        evidence_refs=_mapping_string_tuple(value.get("evidence_refs")),
+        approval_ref=_mapping_string_value(value, "approval_ref") or None,
+        risk=_mapping_string_value(value, "risk") or None,
+        outcome=_mapping_string_value(value, "outcome") or None,
+        metadata=metadata,
+    )
+
+
+def _mapping_string_value(mapping: Mapping[str, object], key: str) -> str:
+    value = mapping.get(key)
+    if isinstance(value, str):
+        return value
+    return ""
+
+
+def _mapping_string_tuple(value: object) -> tuple[str, ...]:
+    if isinstance(value, str):
+        return (value,) if value else ()
+    if isinstance(value, list | tuple):
+        return tuple(item for item in value if isinstance(item, str) and item)
+    return ()
 
 
 def _entry_payload_value(entry: EventLogEntry, key: str) -> object | None:

@@ -18,6 +18,7 @@ from loushang.work.types import (
     WorkPlanRun,
     WorkRun,
     WorkRunStatus,
+    WorkStepDeviation,
     WorkStepRun,
     WorkStepStatus,
 )
@@ -36,6 +37,7 @@ __all__ = [
     "WorkPlanRun",
     "WorkRun",
     "WorkRunStatus",
+    "WorkStepDeviation",
     "WorkStepRun",
     "WorkStepStatus",
     "project_agent_event_to_work_events",

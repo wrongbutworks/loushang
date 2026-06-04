@@ -899,6 +899,7 @@ def _write_work_log_plan_summary(entries: list[Any], stdout: TextIO) -> None:
                 "failed_steps",
                 "current_step",
                 "title",
+                "deviation",
             ]
         )
         + "\n"
@@ -916,6 +917,7 @@ def _write_work_log_plan_summary(entries: list[Any], stdout: TextIO) -> None:
                     f"{plan.completed_step_count}/{plan.step_count}",
                     str(plan.failed_step_count),
                     plan.current_step_id or "",
+                    "",
                     "",
                 ]
             )
@@ -935,6 +937,7 @@ def _write_work_log_plan_summary(entries: list[Any], stdout: TextIO) -> None:
                         "",
                         "",
                         step.title or "",
+                        _work_log_plan_step_deviation_summary(step.deviation),
                     ]
                 )
                 + "\n"
@@ -946,6 +949,20 @@ def _work_log_plan_step_index(metadata: Mapping[str, object], fallback_index: in
     if isinstance(step_index, int) and not isinstance(step_index, bool):
         return str(step_index + 1)
     return str(fallback_index)
+
+
+def _work_log_plan_step_deviation_summary(deviation: Any) -> str:
+    if deviation is None:
+        return ""
+    deviation_type = getattr(deviation, "deviation_type", "")
+    reason = getattr(deviation, "reason", "")
+    if deviation_type and reason:
+        return f"{deviation_type}: {reason}"
+    if deviation_type:
+        return str(deviation_type)
+    if reason:
+        return str(reason)
+    return ""
 
 
 def _work_log_entry_summary(entry: Any) -> dict[str, object]:
