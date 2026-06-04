@@ -288,6 +288,34 @@ def test_replace_range_noop_does_not_record_undo() -> None:
     assert not buffer.undo()
 
 
+def test_unrecorded_edits_do_not_create_undo_entries() -> None:
+    buffer = EditorBuffer()
+
+    buffer.insert_text("abc", record=False)
+    buffer.delete_backward(record=False)
+
+    assert buffer.value == "ab"
+    assert not buffer.undo()
+    assert buffer.value == "ab"
+
+
+def test_apply_edit_records_composite_change_as_one_undo_entry() -> None:
+    buffer = EditorBuffer()
+
+    assert buffer.apply_edit(
+        lambda: (
+            buffer.insert_text("abc", record=False),
+            buffer.delete_range(0, 1, record=False),
+            buffer.insert_text("X", record=False),
+        )
+    )
+
+    assert buffer.value == "Xbc"
+    assert buffer.undo()
+    assert buffer.value == ""
+    assert not buffer.undo()
+
+
 def test_word_movement_alpha_and_punctuation() -> None:
     buffer = EditorBuffer()
     buffer.set_text("alpha beta")

@@ -4,7 +4,7 @@
 
 **Goal:** Introduce a shared TUI editing core without regressing Composer, TextInput, terminal width, or completion behavior.
 
-**Architecture:** Build the refactor in three independently reviewable stages. Stage 1 adds an internal `EditorBuffer` with no runtime integration. Later stages may migrate existing components behind the buffer only after focused regressions prove current behavior is preserved. Editing cursor units remain grapheme clusters; terminal cell width remains a rendering concern handled by `visible_width()`.
+**Architecture:** Build the refactor in independently reviewable stages. Stage 1 adds an internal `EditorBuffer` with no runtime integration. Later stages migrate existing components and shared editing concerns only after focused regressions prove current behavior is preserved. Editing cursor units remain grapheme clusters; terminal cell width remains a rendering concern handled by `visible_width()`.
 
 **Tech Stack:** Python 3.11+, dataclasses, `loushang.tui.cell_width.grapheme_clusters`, pytest, ruff.
 
@@ -15,9 +15,12 @@
 ## File Structure
 
 - Create `src/loushang/tui/editor_buffer.py`: internal pure editing buffer for grapheme-cluster text state, cursor movement, deletion, undo, and redo.
+- Create `src/loushang/tui/undo_stack.py`: reusable snapshot stack for undo/redo state.
+- Create `src/loushang/tui/kill_ring.py`: reusable Emacs-style kill/yank ring.
+- Create `src/loushang/tui/word_navigation.py`: reusable word-boundary helpers for grapheme and atom sequences.
 - Create `tests/tui/test_editor_buffer.py`: focused regression coverage for the new buffer.
 - Later modify `src/loushang/tui/ui_parts/text_input.py`: optional stage 3 migration after buffer hardening is green and reviewed.
-- Later modify `src/loushang/tui/ui_parts/composer.py`: optional stage 4 migration after TextInput migration is green and reviewed.
+- Later modify `src/loushang/tui/ui_parts/composer.py`: stage 5 atom-buffer migration after shared editing infrastructure is green and reviewed.
 
 ## Stage 1: Internal EditorBuffer
 
@@ -96,16 +99,29 @@
 
 ## Stage 3: Optional TextInput Migration
 
-- [ ] Confirm `TextInput` should migrate behind `EditorBuffer`.
-- [ ] Add regression tests before changing component internals.
-- [ ] Preserve existing public behavior, including `on_change`, single-line normalization, scroll, word movement, kill/yank, and undo/redo.
-- [ ] Run focused TextInput, surfaces, and input routing tests before committing.
+- [x] Confirm `TextInput` should migrate behind `EditorBuffer`.
+- [x] Add regression tests before changing component internals.
+- [x] Preserve existing public behavior, including `on_change`, single-line normalization, scroll, word movement, kill/yank, and undo/redo.
+- [x] Keep direct `TextInput.insert_text()` / delete helpers as unrecorded programmatic edits while `handle_input()` edits still create undo entries.
+- [x] Align `TextInput.set_text()` and `TextInput.clear()` with `EditorBuffer` programmatic reset semantics by clearing undo/redo history.
+- [x] Run focused TextInput, Composer, cell-width, and input-routing tests before committing.
 
-## Stage 4: Composer Integration
+## Stage 4: Reusable Editing Infrastructure
+
+- [x] Add reusable `UndoStack[T]` with max-depth support and empty pop semantics.
+- [x] Add reusable `KillRing` with accumulation, rotation, max entries, and tuple-style iteration.
+- [x] Add reusable `word_navigation` helpers for cluster/atom kind based word movement.
+- [x] Migrate `EditorBuffer` undo/redo and word movement to shared infrastructure.
+- [x] Migrate `TextInput` kill/yank state to shared `KillRing`.
+- [x] Migrate Composer undo/redo, kill/yank state, and word movement to shared infrastructure without changing atom storage.
+- [x] Keep the modules internal to `loushang.tui` and avoid exporting them from `loushang.tui.__init__` until their API has settled.
+
+## Stage 5: ComposerEditBuffer Integration
 
 - [ ] Re-map Composer state boundaries before editing: atoms, paste markers, completion cursor columns, render cell widths, history, kill ring, and visual movement.
 - [ ] Add or strengthen regressions for paste marker atomicity, kill/yank, completion cursor mapping, grapheme edits, visual up/down, and bottom-frame rendering.
-- [ ] Migrate only one behavior group at a time.
+- [ ] Add atom-aware `ComposerEditBuffer` and migrate Composer `_atoms/_cursor/_undo_stack/_redo_stack` to it as the branch final state.
+- [ ] Do not add feature flags, dual-write state, or long-lived compatibility layers.
 - [ ] Run full `tests/tui -q` plus manual smoke before considering merge.
 
 ## Cleanup Gate

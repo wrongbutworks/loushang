@@ -31,7 +31,10 @@ from loushang.tui.core import (
     RenderResult,
 )
 from loushang.tui.framework import surface_is_bottom_exclusive
+from loushang.tui.kill_ring import KillRing
 from loushang.tui.theme import apply_theme_style
+from loushang.tui.undo_stack import UndoStack
+from loushang.tui.word_navigation import word_left_index, word_right_index
 
 from .layout import RegionRenderable, ScreenRegion, ScreenRegionStack, _part_has_content
 from .pending import PendingQueueView as PendingQueueView
@@ -90,9 +93,9 @@ class Composer:
     submitted: bool = False
     _atoms: list[_Atom] = field(default_factory=list)
     _cursor: int = 0
-    _undo_stack: list[_Snapshot] = field(default_factory=list)
-    _redo_stack: list[_Snapshot] = field(default_factory=list)
-    _kill_ring: list[str] = field(default_factory=list)
+    _undo_stack: UndoStack[_Snapshot] = field(default_factory=UndoStack, repr=False)
+    _redo_stack: UndoStack[_Snapshot] = field(default_factory=UndoStack, repr=False)
+    _kill_ring: KillRing = field(default_factory=KillRing)
     _last_action: _EditAction = None
     _history: list[str] = field(default_factory=list)
     _history_index: int = -1
@@ -455,16 +458,19 @@ class Composer:
         self._refresh_completion_items()
 
     def yank(self) -> None:
-        if not self._kill_ring:
+        text = self._kill_ring.peek()
+        if text is None:
             return
         self._push_undo()
-        self._insert_atoms(_text_atoms(self._kill_ring[-1]))
+        self._insert_atoms(_text_atoms(text))
         self._last_action = "yank"
 
     def yank_pop(self) -> None:
         if self._last_action != "yank" or len(self._kill_ring) <= 1:
             return
-        previous_text = self._kill_ring[-1]
+        previous_text = self._kill_ring.peek()
+        if previous_text is None:
+            return
         previous_atoms = _text_atoms(previous_text)
         start = self._cursor - len(previous_atoms)
         if start < 0:
@@ -475,22 +481,26 @@ class Composer:
         del self._atoms[start : self._cursor]
         self._cursor = start
         self._rotate_kill_ring()
-        self._insert_atoms(_text_atoms(self._kill_ring[-1]))
+        replacement = self._kill_ring.peek()
+        if replacement is not None:
+            self._insert_atoms(_text_atoms(replacement))
         self._last_action = "yank"
 
     def undo(self) -> None:
-        if not self._undo_stack:
+        snapshot = self._undo_stack.pop()
+        if snapshot is None:
             return
-        self._redo_stack.append(self._snapshot())
-        self._restore(self._undo_stack.pop())
+        self._redo_stack.push(self._snapshot())
+        self._restore(snapshot)
         self._last_action = None
         self._refresh_completion_items()
 
     def redo(self) -> None:
-        if not self._redo_stack:
+        snapshot = self._redo_stack.pop()
+        if snapshot is None:
             return
-        self._undo_stack.append(self._snapshot())
-        self._restore(self._redo_stack.pop())
+        self._undo_stack.push(self._snapshot())
+        self._restore(snapshot)
         self._last_action = None
         self._refresh_completion_items()
 
@@ -536,7 +546,7 @@ class Composer:
         self._refresh_completion_items()
 
     def _push_undo(self) -> None:
-        self._undo_stack.append(self._snapshot())
+        self._undo_stack.push(self._snapshot())
         self._redo_stack.clear()
 
     def _insert_pushes_undo(self, atoms: list[_Atom]) -> bool:
@@ -548,18 +558,11 @@ class Composer:
     def _push_kill(self, text: str, *, prepend: bool, accumulate: bool) -> None:
         if not text:
             return
-        if accumulate and self._kill_ring:
-            last = self._kill_ring.pop()
-            self._kill_ring.append(f"{text}{last}" if prepend else f"{last}{text}")
-        else:
-            self._kill_ring.append(text)
+        self._kill_ring.push(text, prepend=prepend, accumulate=accumulate)
         self._last_action = "kill"
 
     def _rotate_kill_ring(self) -> None:
-        if len(self._kill_ring) <= 1:
-            return
-        latest = self._kill_ring.pop()
-        self._kill_ring.insert(0, latest)
+        self._kill_ring.rotate()
 
     def _snapshot(self) -> _Snapshot:
         return (tuple(self._atoms), self._cursor)
@@ -591,30 +594,10 @@ class Composer:
         return index
 
     def _word_left_index(self) -> int:
-        index = self._cursor
-        while index > 0 and _atom_kind(self._atoms[index - 1]) == "space":
-            index -= 1
-        if index == 0:
-            return index
-        kind = _atom_kind(self._atoms[index - 1])
-        if kind in {"newline", "paste_marker"}:
-            return index - 1
-        while index > 0 and _atom_kind(self._atoms[index - 1]) == kind:
-            index -= 1
-        return index
+        return word_left_index(self._atoms, self._cursor, _atom_kind, atomic_kinds={"newline", "paste_marker"})
 
     def _word_right_index(self) -> int:
-        index = self._cursor
-        while index < len(self._atoms) and _atom_kind(self._atoms[index]) == "space":
-            index += 1
-        if index >= len(self._atoms):
-            return index
-        kind = _atom_kind(self._atoms[index])
-        if kind in {"newline", "paste_marker"}:
-            return index + 1
-        while index < len(self._atoms) and _atom_kind(self._atoms[index]) == kind:
-            index += 1
-        return index
+        return word_right_index(self._atoms, self._cursor, _atom_kind, atomic_kinds={"newline", "paste_marker"})
 
     def _move_visual(self, *, delta: int, width: int) -> bool:
         segments = _visual_segments(
