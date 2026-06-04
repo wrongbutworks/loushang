@@ -497,6 +497,8 @@ async def run_cli(
                         step_id=prepared_turn.step_id,
                         step_index=prepared_turn.step_index,
                         step_title=prepared_turn.step_title,
+                        emit_plan_start=is_first_turn,
+                        emit_plan_completion=is_last_turn,
                         dispose=is_last_turn,
                     )
                     if exit_code != 0:
@@ -526,6 +528,8 @@ async def run_cli(
                         step_id=prepared_turn.step_id,
                         step_index=prepared_turn.step_index,
                         step_title=prepared_turn.step_title,
+                        emit_plan_start=is_first_turn,
+                        emit_plan_completion=is_last_turn,
                         dispose=is_last_turn,
                     )
                     if exit_code != 0:
@@ -556,6 +560,8 @@ async def run_cli(
                     step_id=prepared_turn.step_id,
                     step_index=prepared_turn.step_index,
                     step_title=prepared_turn.step_title,
+                    emit_plan_start=is_first_turn,
+                    emit_plan_completion=is_last_turn,
                     dispose=is_last_turn,
                 )
                 if exit_code != 0:

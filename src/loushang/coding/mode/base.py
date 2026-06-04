@@ -136,6 +136,8 @@ def create_mode_adapter(
     step_id: str | None = None,
     step_index: int | None = None,
     step_title: str | None = None,
+    emit_plan_start: bool = True,
+    emit_plan_completion: bool = True,
 ) -> ModeAdapter:
     """Create the concrete adapter for a configured coding mode."""
 
@@ -172,6 +174,8 @@ def create_mode_adapter(
         step_id=step_id,
         step_index=step_index,
         step_title=step_title,
+        emit_plan_start=emit_plan_start,
+        emit_plan_completion=emit_plan_completion,
     )
 
 
@@ -192,6 +196,8 @@ async def run_mode(
     step_id: str | None = None,
     step_index: int | None = None,
     step_title: str | None = None,
+    emit_plan_start: bool = True,
+    emit_plan_completion: bool = True,
     dispose: bool = True,
 ) -> int:
     adapter = create_mode_adapter(
@@ -207,6 +213,8 @@ async def run_mode(
         step_id=step_id,
         step_index=step_index,
         step_title=step_title,
+        emit_plan_start=emit_plan_start,
+        emit_plan_completion=emit_plan_completion,
     )
     if config.mode == "rpc":
         return await adapter.start(user_input)
