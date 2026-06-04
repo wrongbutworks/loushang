@@ -2153,6 +2153,8 @@ def _normalize_method_plan_step(step: Any) -> dict[str, object]:
         "executor": _safe_getattr(step, "executor", "") or "",
         "role_variant": _safe_getattr(step, "role_variant", None),
         "projection": _json_safe(_safe_getattr(step, "projection", {})),
+        "constraint": _json_safe(_safe_getattr(step, "constraint", {})),
+        "audit": _json_safe(_safe_getattr(step, "audit", {})),
         "applicability": _normalize_method_applicability(_safe_getattr(step, "applicability", None)),
     }
 
@@ -2235,6 +2237,12 @@ def _format_method_plan_detail(payload: Mapping[str, object]) -> str:
             guidance = _method_plan_step_guidance(raw_step)
             if guidance:
                 lines.append(f"     guidance: {guidance}")
+            constraint = _method_plan_step_mapping(raw_step, "constraint")
+            if constraint:
+                lines.append(f"     constraint: {json.dumps(constraint, ensure_ascii=False)}")
+            audit = _method_plan_step_mapping(raw_step, "audit")
+            if audit:
+                lines.append(f"     audit: {json.dumps(audit, ensure_ascii=False)}")
     lines.append("")
     return "\n".join(lines)
 
@@ -2250,6 +2258,13 @@ def _method_plan_step_guidance(step: Mapping[str, object]) -> str:
     if isinstance(content, str):
         return content.strip()
     return ""
+
+
+def _method_plan_step_mapping(step: Mapping[str, object], key: str) -> Mapping[str, object]:
+    value = step.get(key)
+    if isinstance(value, Mapping):
+        return value
+    return {}
 
 
 def _format_method_applicability_lines(applicability: object) -> list[str]:

@@ -55,6 +55,8 @@ class MethodStep:
     executor: str
     role_variant: str | None = None
     projection: Mapping[str, object] = field(default_factory=lambda: _EMPTY_METADATA)
+    constraint: Mapping[str, object] = field(default_factory=lambda: _EMPTY_METADATA)
+    audit: Mapping[str, object] = field(default_factory=lambda: _EMPTY_METADATA)
     applicability: MethodApplicability = field(default_factory=MethodApplicability)
 
 

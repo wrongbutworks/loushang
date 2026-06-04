@@ -47,6 +47,8 @@ def _compile_fixed_plan(descriptor: MethodDescriptor, *, frontmatter: MappingABC
     step_ids = _fixed_step_ids(frontmatter, descriptor=descriptor)
     step_titles = _string_map_hint(frontmatter, "step_titles")
     step_guidance = _string_map_hint(frontmatter, "step_guidance")
+    step_constraints = _mapping_map_hint(frontmatter, "step_constraints")
+    step_audit = _mapping_map_hint(frontmatter, "step_audit")
     temperature = _temperature_hint(descriptor.metadata)
     steps = tuple(
         MethodStep(
@@ -67,6 +69,8 @@ def _compile_fixed_plan(descriptor: MethodDescriptor, *, frontmatter: MappingABC
                 "meta_role": descriptor.meta_role,
                 "temperature": temperature,
             },
+            constraint=step_constraints.get(step_id, {}),
+            audit=step_audit.get(step_id, {}),
             applicability=descriptor.applicability,
         )
         for index, step_id in enumerate(step_ids)
@@ -133,6 +137,17 @@ def _string_map_hint(frontmatter: MappingABC[str, object], key: str) -> dict[str
         item_key: item_value
         for item_key, item_value in value.items()
         if isinstance(item_key, str) and item_key and isinstance(item_value, str) and item_value
+    }
+
+
+def _mapping_map_hint(frontmatter: MappingABC[str, object], key: str) -> dict[str, dict[str, object]]:
+    value = frontmatter.get(key)
+    if not isinstance(value, MappingABC):
+        return {}
+    return {
+        item_key: dict(item_value)
+        for item_key, item_value in value.items()
+        if isinstance(item_key, str) and item_key and isinstance(item_value, MappingABC)
     }
 
 

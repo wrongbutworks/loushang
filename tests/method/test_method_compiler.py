@@ -81,6 +81,26 @@ def test_method_compiler_returns_fixed_plan_from_flat_step_metadata() -> None:
                     "inspect": "Read changed files and summarize intent.",
                     "verify": "Run focused tests or explain why they cannot run.",
                 },
+                "step_constraints": {
+                    "inspect": {
+                        "level": "reasoned",
+                        "can_merge": True,
+                        "requires_reason": True,
+                    },
+                    "verify": {
+                        "level": "evidence",
+                        "can_skip": True,
+                        "requires_evidence": True,
+                    },
+                },
+                "step_audit": {
+                    "inspect": {
+                        "record": ["status", "reason"],
+                    },
+                    "verify": {
+                        "record": ["status", "reason", "evidence"],
+                    },
+                },
                 "temperature": "0.2",
             },
         },
@@ -114,7 +134,19 @@ def test_method_compiler_returns_fixed_plan_from_flat_step_metadata() -> None:
     assert inspect.projection["step_count"] == 2
     assert inspect.projection["meta_role"] == "VALIDATOR"
     assert inspect.projection["temperature"] == 0.2
+    assert inspect.constraint == {
+        "level": "reasoned",
+        "can_merge": True,
+        "requires_reason": True,
+    }
+    assert inspect.audit == {"record": ["status", "reason"]}
     assert verify.projection["content"].endswith("Run focused tests or explain why they cannot run.")
+    assert verify.constraint == {
+        "level": "evidence",
+        "can_skip": True,
+        "requires_evidence": True,
+    }
+    assert verify.audit == {"record": ["status", "reason", "evidence"]}
 
 
 def test_method_compiler_rejects_fixed_plan_without_steps() -> None:

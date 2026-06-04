@@ -25,7 +25,11 @@ class MethodProjector:
             meta_role=_string_projection_value(step, "meta_role"),
             role_variant=step.role_variant,
             temperature=_float_projection_value(step, "temperature"),
-            metadata={"source_projection": dict(step.projection)},
+            metadata={
+                "source_projection": dict(step.projection),
+                "source_constraint": dict(step.constraint),
+                "source_audit": dict(step.audit),
+            },
         )
 
 

@@ -85,6 +85,8 @@ def test_method_plan_and_step_support_single_turn_defaults() -> None:
     assert step.role_variant is None
     assert step.applicability == MethodApplicability()
     assert step.projection == {}
+    assert step.constraint == {}
+    assert step.audit == {}
 
 
 def test_method_projection_defaults_and_optional_role_hints() -> None:
