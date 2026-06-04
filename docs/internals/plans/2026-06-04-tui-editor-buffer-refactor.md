@@ -123,7 +123,8 @@
 - [x] Add atom-aware `ComposerEditBuffer` and migrate Composer `_atoms/_cursor/_undo_stack/_redo_stack` to it as the branch final state.
 - [x] Do not add feature flags, dual-write state, or long-lived compatibility layers.
 - [x] Run full `tests/tui -q`.
-- [ ] Run manual smoke/playback before considering merge.
+- [x] Run native TUI playback before considering merge.
+- [x] Run manual smoke before considering merge.
 
 ## Cleanup Gate
 
@@ -131,6 +132,6 @@ Do not delete the branch or worktree until:
 
 - all intended stages for this branch are complete,
 - focused and full TUI regression suites pass,
-- manual smoke/playback passes,
+- native TUI playback and manual smoke pass,
 - the PR is merged,
 - the user approves cleanup.
