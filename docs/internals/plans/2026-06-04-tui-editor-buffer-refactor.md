@@ -118,11 +118,12 @@
 
 ## Stage 5: ComposerEditBuffer Integration
 
-- [ ] Re-map Composer state boundaries before editing: atoms, paste markers, completion cursor columns, render cell widths, history, kill ring, and visual movement.
-- [ ] Add or strengthen regressions for paste marker atomicity, kill/yank, completion cursor mapping, grapheme edits, visual up/down, and bottom-frame rendering.
-- [ ] Add atom-aware `ComposerEditBuffer` and migrate Composer `_atoms/_cursor/_undo_stack/_redo_stack` to it as the branch final state.
-- [ ] Do not add feature flags, dual-write state, or long-lived compatibility layers.
-- [ ] Run full `tests/tui -q` plus manual smoke before considering merge.
+- [x] Re-map Composer state boundaries before editing: atoms, paste markers, completion cursor columns, render cell widths, history, kill ring, and visual movement.
+- [x] Add focused `ComposerEditBuffer` regressions for paste marker value/display semantics, atomic marker deletion, word movement, cursor mapping, and completion prefix replacement.
+- [x] Add atom-aware `ComposerEditBuffer` and migrate Composer `_atoms/_cursor/_undo_stack/_redo_stack` to it as the branch final state.
+- [x] Do not add feature flags, dual-write state, or long-lived compatibility layers.
+- [x] Run full `tests/tui -q`.
+- [ ] Run manual smoke/playback before considering merge.
 
 ## Cleanup Gate
 
