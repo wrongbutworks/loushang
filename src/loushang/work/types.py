@@ -67,6 +67,19 @@ class WorkStepRun:
 
 
 @dataclass(frozen=True)
+class WorkPlanRun:
+    plan_id: str
+    status: WorkRunStatus
+    steps: tuple[WorkStepRun, ...] = ()
+    method_id: str | None = None
+    current_step_id: str | None = None
+    step_count: int = 0
+    completed_step_count: int = 0
+    failed_step_count: int = 0
+    metadata: Mapping[str, object] = field(default_factory=dict)
+
+
+@dataclass(frozen=True)
 class WorkEvent:
     event_id: str
     kind: str
@@ -85,6 +98,7 @@ __all__ = [
     "DeliveryHint",
     "WorkEvent",
     "WorkOperation",
+    "WorkPlanRun",
     "WorkRun",
     "WorkRunStatus",
     "WorkStepRun",

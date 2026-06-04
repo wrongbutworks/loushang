@@ -15,11 +15,13 @@ def test_work_public_api_exposes_current_work_surface_without_multi_agent_types(
         "WorkEvent",
         "WorkEventProjectionContext",
         "WorkOperation",
+        "WorkPlanRun",
         "WorkRun",
         "WorkRunStatus",
         "WorkStepRun",
         "WorkStepStatus",
         "project_agent_event_to_work_events",
+        "project_work_plan_runs",
     }
 
     assert not hasattr(work, "AgentLane")
