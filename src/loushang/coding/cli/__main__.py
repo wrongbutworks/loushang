@@ -8,7 +8,7 @@ import os
 import sys
 from collections.abc import Callable
 from contextlib import contextmanager, nullcontext, redirect_stderr
-from dataclasses import dataclass, replace
+from dataclasses import asdict, dataclass, replace
 from importlib.metadata import PackageNotFoundError
 from importlib.metadata import version as package_version
 from pathlib import Path
@@ -66,7 +66,7 @@ from loushang.coding.workflow import (
     run_prompt_steps_workflow,
 )
 from loushang.method import MethodCompiler, MethodContext, MethodLoader
-from loushang.work import JsonlEventLogBackend
+from loushang.work import JsonlEventLogBackend, project_work_plan_runs
 
 _MISSING = object()
 _WORK_LOG_INSPECT_LIMIT = 20
@@ -823,14 +823,19 @@ def _run_work_log_inspect(args: CliArgs, project_root: Path, stdout: TextIO, std
         return None
     try:
         event_log = JsonlEventLogBackend(_resolve_work_log_path(args.work_log_inspect, project_root))
-        entries = event_log.query(run_id=args.work_log_run)[-_WORK_LOG_INSPECT_LIMIT:]
+        entries = event_log.query(run_id=args.work_log_run)
     except Exception as error:
         stderr.write(f"Error: {_format_cli_error(error)}\n")
         return 1
     if args.work_log_inspect_format == "json":
-        stdout.write(json.dumps([_work_log_entry_summary(entry) for entry in entries], ensure_ascii=False) + "\n")
+        raw_entries = entries[-_WORK_LOG_INSPECT_LIMIT:]
+        stdout.write(json.dumps([_work_log_entry_summary(entry) for entry in raw_entries], ensure_ascii=False) + "\n")
+    elif args.work_log_inspect_format == "plans-json":
+        stdout.write(json.dumps([asdict(plan) for plan in project_work_plan_runs(entries)], ensure_ascii=False) + "\n")
+    elif args.work_log_inspect_format == "plans":
+        _write_work_log_plan_summary(entries, stdout)
     else:
-        _write_work_log_text(entries, stdout)
+        _write_work_log_text(entries[-_WORK_LOG_INSPECT_LIMIT:], stdout)
     return 0
 
 
@@ -878,6 +883,69 @@ def _write_work_log_text(entries: list[Any], stdout: TextIO) -> None:
             )
             + "\n"
         )
+
+
+def _write_work_log_plan_summary(entries: list[Any], stdout: TextIO) -> None:
+    stdout.write(
+        "\t".join(
+            [
+                "type",
+                "index",
+                "id",
+                "status",
+                "run_id",
+                "method_id",
+                "completed_steps",
+                "failed_steps",
+                "current_step",
+                "title",
+            ]
+        )
+        + "\n"
+    )
+    for plan in project_work_plan_runs(entries):
+        stdout.write(
+            "\t".join(
+                [
+                    "plan",
+                    "",
+                    plan.plan_id,
+                    plan.status,
+                    "",
+                    plan.method_id or "",
+                    f"{plan.completed_step_count}/{plan.step_count}",
+                    str(plan.failed_step_count),
+                    plan.current_step_id or "",
+                    "",
+                ]
+            )
+            + "\n"
+        )
+        for fallback_index, step in enumerate(plan.steps, start=1):
+            stdout.write(
+                "\t".join(
+                    [
+                        "step",
+                        _work_log_plan_step_index(step.metadata, fallback_index),
+                        step.step_id,
+                        step.status,
+                        step.run_id,
+                        step.method_id or plan.method_id or "",
+                        "",
+                        "",
+                        "",
+                        step.title or "",
+                    ]
+                )
+                + "\n"
+            )
+
+
+def _work_log_plan_step_index(metadata: Mapping[str, object], fallback_index: int) -> str:
+    step_index = metadata.get("step_index")
+    if isinstance(step_index, int) and not isinstance(step_index, bool):
+        return str(step_index + 1)
+    return str(fallback_index)
 
 
 def _work_log_entry_summary(entry: Any) -> dict[str, object]:

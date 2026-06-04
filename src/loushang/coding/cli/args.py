@@ -20,7 +20,7 @@ PackageListFormat = Literal["text", "tsv", "json"]
 ExportFormat = Literal["html", "jsonl"]
 ExportResultFormat = Literal["text", "json"]
 CommandResultFormat = Literal["raw", "json"]
-WorkLogInspectFormat = Literal["text", "json"]
+WorkLogInspectFormat = Literal["text", "json", "plans", "plans-json"]
 ExtensionFlag: TypeAlias = RegisteredFlag | ResolvedFlag
 _BUILTIN_FLAG_NAMES = frozenset(
     {
@@ -490,7 +490,7 @@ def _build_parser() -> ArgumentParser:
         help="Inspect a work event JSONL log without starting a session.",
     )
     parser.add_argument("--work-log-run", help="Filter --work-log-inspect output to one run id.")
-    parser.add_argument("--work-log-inspect-format", choices=("text", "json"), default="text")
+    parser.add_argument("--work-log-inspect-format", choices=("text", "json", "plans", "plans-json"), default="text")
     parser.add_argument("--message", dest="message_prompts", action="append", default=[])
     parser.add_argument("--tool", dest="tool_flags", action="append", default=[])
     parser.add_argument("--tools", "-t", dest="tools", action="append", default=[])

@@ -300,6 +300,84 @@ def _append_work_log_inspect_entry(
     )
 
 
+def _append_work_log_plan_step_entries(
+    event_log: object,
+    *,
+    start_sequence: int,
+    run_id: str,
+    step_id: str,
+    step_index: int,
+    step_title: str,
+    first: bool = False,
+    last: bool = False,
+) -> int:
+    sequence = start_sequence
+    _append_work_log_inspect_entry(
+        event_log,
+        sequence=sequence,
+        kind="SubmitCodingTurn",
+        run_id=run_id,
+        entry_type="operation",
+        method_id="method:task:review",
+        plan_id="plan:method:task:review",
+        step_id=step_id,
+        step_index=step_index,
+        step_title=step_title,
+    )
+    sequence += 1
+    if first:
+        _append_work_log_inspect_entry(
+            event_log,
+            sequence=sequence,
+            kind="WorkPlanStarted",
+            run_id=run_id,
+            method_id="method:task:review",
+            plan_id="plan:method:task:review",
+            step_id=step_id,
+            step_index=step_index,
+            step_title=step_title,
+        )
+        sequence += 1
+    _append_work_log_inspect_entry(
+        event_log,
+        sequence=sequence,
+        kind="WorkStepStarted",
+        run_id=run_id,
+        method_id="method:task:review",
+        plan_id="plan:method:task:review",
+        step_id=step_id,
+        step_index=step_index,
+        step_title=step_title,
+    )
+    sequence += 1
+    _append_work_log_inspect_entry(
+        event_log,
+        sequence=sequence,
+        kind="WorkStepCompleted",
+        run_id=run_id,
+        method_id="method:task:review",
+        plan_id="plan:method:task:review",
+        step_id=step_id,
+        step_index=step_index,
+        step_title=step_title,
+    )
+    sequence += 1
+    if last:
+        _append_work_log_inspect_entry(
+            event_log,
+            sequence=sequence,
+            kind="WorkPlanCompleted",
+            run_id=run_id,
+            method_id="method:task:review",
+            plan_id="plan:method:task:review",
+            step_id=step_id,
+            step_index=step_index,
+            step_title=step_title,
+        )
+        sequence += 1
+    return sequence
+
+
 def _fake_services(
     session_dir: str | None = None,
     package_roots: tuple[str, ...] = (),
@@ -456,13 +534,13 @@ def test_parse_args_accepts_work_log_inspect_flags() -> None:
             "--work-log-run",
             "run-1",
             "--work-log-inspect-format",
-            "json",
+            "plans",
         ]
     )
 
     assert args.work_log_inspect == ".loushang/work/events.jsonl"
     assert args.work_log_run == "run-1"
-    assert args.work_log_inspect_format == "json"
+    assert args.work_log_inspect_format == "plans"
 
 
 def test_parse_args_accepts_method_visibility_flags_and_subcommands() -> None:
@@ -3975,6 +4053,203 @@ def test_run_cli_work_log_inspect_text_includes_plan_step_metadata(tmp_path) -> 
             "Inspect current changes",
         ],
     ]
+
+
+def test_run_cli_work_log_inspect_plans_outputs_plan_summary_without_runtime(tmp_path) -> None:
+    from loushang.coding.cli.__main__ import run_cli
+    from loushang.work import JsonlEventLogBackend
+
+    log_path = tmp_path / "events.jsonl"
+    event_log = JsonlEventLogBackend(log_path)
+    next_sequence = _append_work_log_plan_step_entries(
+        event_log,
+        start_sequence=1,
+        run_id="run-inspect",
+        step_id="inspect",
+        step_index=0,
+        step_title="Inspect current changes",
+        first=True,
+    )
+    _append_work_log_plan_step_entries(
+        event_log,
+        start_sequence=next_sequence,
+        run_id="run-verify",
+        step_id="verify",
+        step_index=1,
+        step_title="Run focused checks",
+        last=True,
+    )
+    stdout = StringIO()
+
+    async def scenario() -> None:
+        exit_code = await run_cli(
+            ["--work-log-inspect", str(log_path), "--work-log-inspect-format", "plans"],
+            stdin=StringIO(),
+            stdout=stdout,
+            stderr=StringIO(),
+            cwd=tmp_path,
+            services=_fake_services(),
+            runtime_builder=lambda **kwargs: (_ for _ in ()).throw(AssertionError("runtime should not start")),
+        )
+        assert exit_code == 0
+
+    asyncio.run(scenario())
+
+    assert [line.split("\t") for line in stdout.getvalue().splitlines()] == [
+        ["type", "index", "id", "status", "run_id", "method_id", "completed_steps", "failed_steps", "current_step", "title"],
+        ["plan", "", "plan:method:task:review", "completed", "", "method:task:review", "2/2", "0", "verify", ""],
+        ["step", "1", "inspect", "completed", "run-inspect", "method:task:review", "", "", "", "Inspect current changes"],
+        ["step", "2", "verify", "completed", "run-verify", "method:task:review", "", "", "", "Run focused checks"],
+    ]
+
+
+def test_run_cli_work_log_inspect_plans_respects_run_filter(tmp_path) -> None:
+    from loushang.coding.cli.__main__ import run_cli
+    from loushang.work import JsonlEventLogBackend
+
+    log_path = tmp_path / "events.jsonl"
+    event_log = JsonlEventLogBackend(log_path)
+    _append_work_log_inspect_entry(
+        event_log,
+        sequence=1,
+        kind="WorkStepCompleted",
+        run_id="run-inspect",
+        method_id="method:task:review",
+        plan_id="plan:method:task:review",
+        step_id="inspect",
+        step_index=0,
+        step_title="Inspect current changes",
+    )
+    _append_work_log_inspect_entry(
+        event_log,
+        sequence=2,
+        kind="WorkStepFailed",
+        run_id="run-verify",
+        method_id="method:task:review",
+        plan_id="plan:method:task:review",
+        step_id="verify",
+        step_index=1,
+        step_title="Run focused checks",
+    )
+    stdout = StringIO()
+
+    async def scenario() -> None:
+        exit_code = await run_cli(
+            [
+                "--work-log-inspect",
+                str(log_path),
+                "--work-log-run",
+                "run-verify",
+                "--work-log-inspect-format",
+                "plans",
+            ],
+            stdin=StringIO(),
+            stdout=stdout,
+            stderr=StringIO(),
+            cwd=tmp_path,
+            services=_fake_services(),
+            runtime_builder=lambda **kwargs: (_ for _ in ()).throw(AssertionError("runtime should not start")),
+        )
+        assert exit_code == 0
+
+    asyncio.run(scenario())
+
+    assert [line.split("\t") for line in stdout.getvalue().splitlines()] == [
+        ["type", "index", "id", "status", "run_id", "method_id", "completed_steps", "failed_steps", "current_step", "title"],
+        ["plan", "", "plan:method:task:review", "running", "", "method:task:review", "0/1", "1", "verify", ""],
+        ["step", "2", "verify", "failed", "run-verify", "method:task:review", "", "", "", "Run focused checks"],
+    ]
+
+
+def test_run_cli_work_log_inspect_plans_projects_full_log_not_tail_limit(tmp_path) -> None:
+    from loushang.coding.cli.__main__ import run_cli
+    from loushang.work import JsonlEventLogBackend
+
+    log_path = tmp_path / "events.jsonl"
+    event_log = JsonlEventLogBackend(log_path)
+    next_sequence = _append_work_log_plan_step_entries(
+        event_log,
+        start_sequence=1,
+        run_id="run-inspect",
+        step_id="inspect",
+        step_index=0,
+        step_title="Inspect current changes",
+        first=True,
+        last=True,
+    )
+    for offset in range(20):
+        _append_work_log_inspect_entry(
+            event_log,
+            sequence=next_sequence + offset,
+            kind="ContentDelta",
+            run_id=f"run-tail-{offset}",
+        )
+    stdout = StringIO()
+
+    async def scenario() -> None:
+        exit_code = await run_cli(
+            ["--work-log-inspect", str(log_path), "--work-log-inspect-format", "plans"],
+            stdin=StringIO(),
+            stdout=stdout,
+            stderr=StringIO(),
+            cwd=tmp_path,
+            services=_fake_services(),
+            runtime_builder=lambda **kwargs: (_ for _ in ()).throw(AssertionError("runtime should not start")),
+        )
+        assert exit_code == 0
+
+    asyncio.run(scenario())
+
+    assert [line.split("\t") for line in stdout.getvalue().splitlines()][1:] == [
+        ["plan", "", "plan:method:task:review", "completed", "", "method:task:review", "1/1", "0", "inspect", ""],
+        ["step", "1", "inspect", "completed", "run-inspect", "method:task:review", "", "", "", "Inspect current changes"],
+    ]
+
+
+def test_run_cli_work_log_inspect_plans_json_outputs_plan_projection(tmp_path) -> None:
+    from loushang.coding.cli.__main__ import run_cli
+    from loushang.work import JsonlEventLogBackend
+
+    log_path = tmp_path / "events.jsonl"
+    event_log = JsonlEventLogBackend(log_path)
+    _append_work_log_plan_step_entries(
+        event_log,
+        start_sequence=1,
+        run_id="run-inspect",
+        step_id="inspect",
+        step_index=0,
+        step_title="Inspect current changes",
+        first=True,
+        last=True,
+    )
+    stdout = StringIO()
+
+    async def scenario() -> None:
+        exit_code = await run_cli(
+            ["--work-log-inspect", str(log_path), "--work-log-inspect-format", "plans-json"],
+            stdin=StringIO(),
+            stdout=stdout,
+            stderr=StringIO(),
+            cwd=tmp_path,
+            services=_fake_services(),
+            runtime_builder=lambda **kwargs: (_ for _ in ()).throw(AssertionError("runtime should not start")),
+        )
+        assert exit_code == 0
+
+    asyncio.run(scenario())
+
+    payload = json.loads(stdout.getvalue())
+    assert payload[0]["plan_id"] == "plan:method:task:review"
+    assert payload[0]["status"] == "completed"
+    assert payload[0]["method_id"] == "method:task:review"
+    assert payload[0]["current_step_id"] == "inspect"
+    assert payload[0]["step_count"] == 1
+    assert payload[0]["completed_step_count"] == 1
+    assert payload[0]["failed_step_count"] == 0
+    assert payload[0]["steps"][0]["step_id"] == "inspect"
+    assert payload[0]["steps"][0]["status"] == "completed"
+    assert payload[0]["steps"][0]["title"] == "Inspect current changes"
+    assert payload[0]["steps"][0]["metadata"]["step_index"] == 0
 
 
 def test_run_cli_work_log_inspect_outputs_json_without_runtime(tmp_path) -> None:
