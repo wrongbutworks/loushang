@@ -4,11 +4,20 @@ import asyncio
 from collections.abc import Awaitable, Callable, Mapping, Sequence
 from pathlib import Path
 
-from loushang.agent import AbortController, AbortSignal, Agent, AgentEvent, ThinkingLevel
-from loushang.ai.types import AssistantMessage
-from loushang.ai.api_registry import ApiProviderRegistry, get_default_api_provider_registry
+from loushang.agent import (
+    AbortController,
+    AbortSignal,
+    Agent,
+    AgentEvent,
+    ThinkingLevel,
+)
+from loushang.ai.api_registry import (
+    ApiProviderRegistry,
+    get_default_api_provider_registry,
+)
 from loushang.ai.auth.registry import OAuthProviderRegistry, get_default_oauth_registry
 from loushang.ai.model import Model, Provider
+from loushang.ai.types import AssistantMessage, ImagePart
 from loushang.coding.compaction import (
     CompactionResult,
     CompactionStatus,
@@ -16,31 +25,92 @@ from loushang.coding.compaction import (
     generate_branch_summary,
     prepare_compaction,
 )
-from loushang.coding.control import AuthManager, CompactionSettings, ModelRegistry, RetrySettings, SettingsManager
+from loushang.coding.control import (
+    AuthManager,
+    CompactionSettings,
+    ModelRegistry,
+    RetrySettings,
+    SettingsManager,
+)
 from loushang.coding.diagnostics import (
     DiagnosticRecord,
-    DiagnosticSummary,
     DiagnosticsQuery,
     DiagnosticsService,
+    DiagnosticSummary,
     ErrorReport,
 )
-from loushang.coding.exec import ExecOutputChunk, ExecRequest, ExecResult, ExecService, ExecUpdateCallback
+from loushang.coding.event import AgentSessionEvent
+from loushang.coding.exec import (
+    ExecOutputChunk,
+    ExecRequest,
+    ExecResult,
+    ExecService,
+    ExecUpdateCallback,
+)
 from loushang.coding.extensions import (
     ExtensionRunner,
     ReplacedSessionContext,
     SessionShutdownEvent,
     SessionStartEvent,
 )
-from loushang.coding.loader import DefaultResourceLoader, PromptFragmentDescriptor, ResourceBundle, ResourceDiagnostic
-from loushang.ai.types import ImagePart
-from loushang.coding.event import AgentSessionEvent
-from loushang.coding.policy import InteractiveApprovalResolver
+from loushang.coding.loader import (
+    DefaultResourceLoader,
+    PromptFragmentDescriptor,
+    ResourceBundle,
+    ResourceDiagnostic,
+)
 from loushang.coding.message import SessionContext
-from loushang.coding.package.materializer import PackageMaterializer, PackageProgressEvent
+from loushang.coding.package.materializer import (
+    PackageMaterializer,
+    PackageProgressEvent,
+)
 from loushang.coding.platform.footer_data_provider import FooterDataProvider
+from loushang.coding.policy import InteractiveApprovalResolver
+from loushang.coding.session.agent_event_router import AgentEventRouter
+from loushang.coding.session.auth_bridge_controller import AuthBridgeController
+from loushang.coding.session.bash_controller import BashController
+from loushang.coding.session.builtin_commands import (
+    BuiltinCommandBackend,
+    read_changelog_for_cwd,
+)
+from loushang.coding.session.command_controller import CommandController
+from loushang.coding.session.compaction_controller import CompactionController
 from loushang.coding.session.export_html import export_session_to_html
 from loushang.coding.session.export_jsonl import export_session_to_jsonl
-from loushang.coding.store import SessionManager, SessionRecord
+from loushang.coding.session.extension_event_sink import ExtensionEventSink
+from loushang.coding.session.extension_hooks import ExtensionHooks
+from loushang.coding.session.extension_message_controller import (
+    ExtensionMessageController,
+)
+from loushang.coding.session.extension_provider_controller import (
+    ExtensionProviderController,
+)
+from loushang.coding.session.extension_replacement_controller import (
+    ExtensionReplacementController,
+)
+from loushang.coding.session.extension_runtime_bindings import (
+    ExtensionRuntimeBindingFactory,
+)
+from loushang.coding.session.extension_runtime_controller import (
+    ExtensionRuntimeController,
+)
+from loushang.coding.session.package_controller import PackageController
+from loushang.coding.session.prompt_controller import PromptController
+from loushang.coding.session.queue_controller import QueueController
+from loushang.coding.session.resource_refresh_controller import (
+    ResourceRefreshController,
+)
+from loushang.coding.session.resource_watcher import ResourceChangeWatcher
+from loushang.coding.session.retry_controller import RetryController
+from loushang.coding.session.selection_controller import SelectionController
+from loushang.coding.session.session_diagnostics_bridge import SessionDiagnosticsBridge
+from loushang.coding.session.session_event_bus import SessionEventBus
+from loushang.coding.session.session_settings_controller import (
+    SessionSettingsController,
+)
+from loushang.coding.session.session_view_controller import SessionViewController
+from loushang.coding.session.tool_controller import ToolController
+from loushang.coding.session.tree_controller import TreeController
 from loushang.coding.session.types import (
     AgentSessionState,
     CommandExecutionResult,
@@ -48,35 +118,9 @@ from loushang.coding.session.types import (
     SessionCommandDescriptor,
     TreeNavigationResult,
 )
-from loushang.coding.session.agent_event_router import AgentEventRouter
-from loushang.coding.session.auth_bridge_controller import AuthBridgeController
-from loushang.coding.session.bash_controller import BashController
-from loushang.coding.session.builtin_commands import BuiltinCommandBackend, read_changelog_for_cwd
-from loushang.coding.session.command_controller import CommandController
-from loushang.coding.session.compaction_controller import CompactionController
-from loushang.coding.session.extension_event_sink import ExtensionEventSink
-from loushang.coding.session.extension_hooks import ExtensionHooks
-from loushang.coding.session.extension_message_controller import ExtensionMessageController
-from loushang.coding.session.extension_provider_controller import ExtensionProviderController
-from loushang.coding.session.extension_replacement_controller import ExtensionReplacementController
-from loushang.coding.session.extension_runtime_bindings import ExtensionRuntimeBindingFactory
-from loushang.coding.session.extension_runtime_controller import ExtensionRuntimeController
-from loushang.coding.session.package_controller import PackageController
-from loushang.coding.session.prompt_controller import PromptController
-from loushang.coding.session.queue_controller import QueueController
-from loushang.coding.session.resource_refresh_controller import ResourceRefreshController
-from loushang.coding.session.resource_watcher import ResourceChangeWatcher
-from loushang.coding.session.retry_controller import RetryController
-from loushang.coding.session.selection_controller import SelectionController
-from loushang.coding.session.session_diagnostics_bridge import SessionDiagnosticsBridge
-from loushang.coding.session.session_event_bus import SessionEventBus
-from loushang.coding.session.session_settings_controller import SessionSettingsController
-from loushang.coding.session.session_view_controller import SessionViewController
-from loushang.coding.session.tool_controller import ToolController
-from loushang.coding.session.tree_controller import TreeController
 from loushang.coding.session.usage_payload import serialize_context_usage_payload
+from loushang.coding.store import SessionManager, SessionRecord
 from loushang.coding.tools import ToolDefinition, ToolRegistry
-
 
 SessionEventListener = Callable[[AgentSessionEvent], Awaitable[None] | None]
 
@@ -153,6 +197,7 @@ class AgentSession:
             base_prompt=self._base_prompt,
             get_resource_bundle=lambda: self.resource_bundle,
             get_diagnostics_service=lambda: self.diagnostics_service,
+            emit_tool_audit_event=self._dispatch_event,
         )
         self._resource_refresh_controller = ResourceRefreshController(
             get_resource_loader=lambda: self._resource_loader,

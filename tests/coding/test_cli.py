@@ -269,6 +269,7 @@ def _append_work_log_inspect_entry(
     deviation: dict[str, object] | None = None,
     planned_constraint: dict[str, object] | None = None,
     audit_policy: dict[str, object] | None = None,
+    extra_payload: dict[str, object] | None = None,
 ) -> None:
     from loushang.work import EventLogEntry
 
@@ -292,6 +293,8 @@ def _append_work_log_inspect_entry(
         nested_payload["planned_constraint"] = planned_constraint
     if audit_policy is not None:
         nested_payload["audit_policy"] = audit_policy
+    if extra_payload is not None:
+        nested_payload.update(extra_payload)
     if nested_payload:
         payload["payload"] = nested_payload
     event_log.append(
@@ -4544,6 +4547,55 @@ def test_run_cli_work_log_inspect_json_includes_plan_step_metadata(tmp_path) -> 
     assert summary["step_id"] == "inspect"
     assert summary["step_index"] == 0
     assert summary["step_title"] == "Inspect current changes"
+
+
+def test_run_cli_work_log_inspect_json_includes_tool_approval_audit_metadata(tmp_path) -> None:
+    from loushang.coding.cli.__main__ import run_cli
+    from loushang.work import JsonlEventLogBackend
+
+    log_path = tmp_path / "events.jsonl"
+    event_log = JsonlEventLogBackend(log_path)
+    _append_work_log_inspect_entry(
+        event_log,
+        sequence=3,
+        kind="ToolApprovalResolved",
+        delivery_hint="immediate",
+        extra_payload={
+            "tool_call_id": "tool-1",
+            "tool_name": "write",
+            "action_id": "approval-1",
+            "approval_decision": "allow",
+            "policy_code": "tool_requires_approval",
+            "policy_reason": "Tool write requires approval",
+            "argument_keys": ["content", "path"],
+            "path": "/repo/approved.txt",
+        },
+    )
+    stdout = StringIO()
+
+    async def scenario() -> None:
+        exit_code = await run_cli(
+            ["--work-log-inspect", str(log_path), "--work-log-inspect-format", "json"],
+            stdin=StringIO(),
+            stdout=stdout,
+            stderr=StringIO(),
+            cwd=tmp_path,
+            services=_fake_services(),
+            runtime_builder=lambda **kwargs: (_ for _ in ()).throw(AssertionError("runtime should not start")),
+        )
+        assert exit_code == 0
+
+    asyncio.run(scenario())
+
+    summary = json.loads(stdout.getvalue())[0]
+    assert summary["tool_call_id"] == "tool-1"
+    assert summary["tool_name"] == "write"
+    assert summary["action_id"] == "approval-1"
+    assert summary["approval_decision"] == "allow"
+    assert summary["policy_code"] == "tool_requires_approval"
+    assert summary["policy_reason"] == "Tool write requires approval"
+    assert summary["argument_keys"] == ["content", "path"]
+    assert summary["path"] == "/repo/approved.txt"
 
 
 def test_run_cli_work_log_inspect_filters_by_run(tmp_path) -> None:

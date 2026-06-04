@@ -1011,6 +1011,24 @@ def _work_log_entry_summary(entry: Any) -> dict[str, object]:
     step_title = _work_log_entry_step_title(entry)
     if step_title:
         summary["step_title"] = step_title
+    for key in (
+        "tool_call_id",
+        "tool_name",
+        "action_id",
+        "policy_disposition",
+        "policy_code",
+        "policy_reason",
+        "approval_required",
+        "approval_decision",
+        "approval_reason",
+        "argument_keys",
+        "path",
+        "file_path",
+        "command",
+    ):
+        value = _work_log_entry_payload_value(entry, key)
+        if isinstance(value, str | bool | int | float | list | tuple):
+            summary[key] = value
     return summary
 
 

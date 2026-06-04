@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from collections.abc import Callable
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -9,8 +9,13 @@ from loushang.coding.diagnostics import DiagnosticsService
 from loushang.coding.loader import ResourceBundle
 from loushang.coding.prompt import assemble_prompt
 from loushang.coding.store import SessionManager
-from loushang.coding.tools import ToolContext, ToolDefinition, ToolRegistry, create_tool_definition_from_tool, tool_to_definition
-
+from loushang.coding.tools import (
+    ToolContext,
+    ToolDefinition,
+    ToolRegistry,
+    create_tool_definition_from_tool,
+    tool_to_definition,
+)
 
 _DEFAULT_ACTIVE_TOOL_NAMES: tuple[str, ...] = ("read", "bash", "edit", "write")
 _BUILTIN_TOOL_NAMES: frozenset[str] = frozenset(("bash", "read", "ls", "find", "grep", "write", "edit"))
@@ -26,6 +31,7 @@ class ToolController:
     base_prompt: str
     get_resource_bundle: Callable[[], ResourceBundle | None]
     get_diagnostics_service: Callable[[], DiagnosticsService | None]
+    emit_tool_audit_event: Callable[[dict[str, object]], Awaitable[None]] | None = None
     default_activate_new_tools: bool = False
     show_empty_tool_prompt: bool = False
     _active_tool_names: list[str] = field(init=False)
@@ -95,6 +101,7 @@ class ToolController:
             cwd=self.session_manager.get_cwd(),
             diagnostics=self.get_diagnostics_service(),
             model=getattr(self.agent, "model", None),
+            event_sink=self.emit_tool_audit_event,
         )
 
     def resolve_active_tool_definitions(self, tool_names: list[str]) -> tuple[list[ToolDefinition], list[str]]:

@@ -90,6 +90,78 @@ def test_coding_work_shell_wraps_prompt_and_logs_operation_run_and_projected_eve
     asyncio.run(scenario())
 
 
+def test_coding_work_shell_logs_tool_policy_and_approval_audit_events() -> None:
+    from loushang.work import CodingWorkShell, InMemoryEventLogBackend
+
+    async def scenario() -> None:
+        event_log = InMemoryEventLogBackend()
+        session = FakePromptSession(
+            events=[
+                {
+                    "type": "tool_policy_evaluated",
+                    "tool_call_id": "tool-1",
+                    "tool_name": "write",
+                    "policy_disposition": "ask",
+                    "policy_code": "tool_requires_approval",
+                    "policy_reason": "Tool write requires approval",
+                    "approval_required": True,
+                    "argument_keys": ["content", "path"],
+                    "path": "/repo/approved.txt",
+                },
+                {
+                    "type": "tool_approval_requested",
+                    "tool_call_id": "tool-1",
+                    "tool_name": "write",
+                    "action_id": "approval-1",
+                    "policy_code": "tool_requires_approval",
+                    "policy_reason": "Tool write requires approval",
+                    "argument_keys": ["content", "path"],
+                    "path": "/repo/approved.txt",
+                },
+                {
+                    "type": "tool_approval_resolved",
+                    "tool_call_id": "tool-1",
+                    "tool_name": "write",
+                    "action_id": "approval-1",
+                    "approval_decision": "allow",
+                    "policy_code": "tool_requires_approval",
+                    "policy_reason": "Tool write requires approval",
+                },
+            ],
+        )
+        shell = CodingWorkShell(
+            session=session,
+            event_log=event_log,
+            clock=lambda: datetime(2026, 6, 1, 10, 30, tzinfo=UTC),
+        )
+
+        await shell.submit_coding_turn(
+            "write approved file",
+            session_id="session-1",
+            operation_id="op-1",
+            run_id="run-1",
+        )
+
+        entries = event_log.query(run_id="run-1")
+        assert [entry.payload["kind"] for entry in entries] == [
+            "SubmitCodingTurn",
+            "WorkRunStarted",
+            "ToolPolicyEvaluated",
+            "ToolApprovalRequested",
+            "ToolApprovalResolved",
+            "WorkRunCompleted",
+        ]
+        assert entries[2].payload["payload"]["tool_call_id"] == "tool-1"
+        assert entries[2].payload["payload"]["policy_disposition"] == "ask"
+        assert entries[3].payload["payload"]["action_id"] == "approval-1"
+        assert entries[4].payload["payload"]["approval_decision"] == "allow"
+        assert entries[2].payload["delivery_hint"] == "immediate"
+        assert entries[3].payload["delivery_hint"] == "immediate"
+        assert entries[4].payload["delivery_hint"] == "immediate"
+
+    asyncio.run(scenario())
+
+
 def test_coding_work_shell_jsonl_log_can_replay_persisted_turn(tmp_path) -> None:
     from loushang.ai.types import AssistantMessage, TextPart, Usage
     from loushang.work import CodingWorkShell, JsonlEventLogBackend

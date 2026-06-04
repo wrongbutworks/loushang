@@ -3,17 +3,27 @@ from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import Any, NotRequired, TypedDict
 
-from loushang.ai.types import TextPart
 from loushang.agent.types import AgentToolResult
+from loushang.ai.types import TextPart
 from loushang.coding.policy import ApprovalResolver, PolicyEngine
 
 from .authoring import tool
 from .builtin_renderers import render_edit_call, render_edit_result
 from .context import ToolContext
-from .edit_diff import EditEntry, apply_text_edits, build_unified_diff, first_changed_line
+from .edit_diff import (
+    EditEntry,
+    apply_text_edits,
+    build_unified_diff,
+    first_changed_line,
+)
 from .file_mutation_queue import with_file_mutation_queue
 from .normalize import tool_to_definition
-from .operations import EditOperations, normalize_edit_operations, raise_if_operation_aborted, resolve_operation
+from .operations import (
+    EditOperations,
+    normalize_edit_operations,
+    raise_if_operation_aborted,
+    resolve_operation,
+)
 from .path_utils import resolve_tool_path
 from .policy import enforce_tool_policy
 from .runtime import prepare_tool_arguments
@@ -73,6 +83,8 @@ def create_edit_tool_definition(
             arguments={"path": str(resolved), "edits": validated_edits},
             cwd=ctx.cwd,
             approval_resolver=resolved_approval_resolver,
+            tool_call_id=ctx.tool_call_id,
+            audit_sink=ctx.event_sink,
         )
         raise_if_operation_aborted(ctx.signal)
         async with with_file_mutation_queue(str(resolved)):
