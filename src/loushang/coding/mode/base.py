@@ -3,7 +3,17 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any, Literal, Protocol, Sequence, TextIO, TypedDict, cast, get_args
+from typing import (
+    Any,
+    Literal,
+    Mapping,
+    Protocol,
+    Sequence,
+    TextIO,
+    TypedDict,
+    cast,
+    get_args,
+)
 
 from loushang.coding.event import JsonEventView
 from loushang.work import EventLogBackend
@@ -136,6 +146,8 @@ def create_mode_adapter(
     step_id: str | None = None,
     step_index: int | None = None,
     step_title: str | None = None,
+    planned_constraint: Mapping[str, object] | None = None,
+    audit_policy: Mapping[str, object] | None = None,
     emit_plan_start: bool = True,
     emit_plan_completion: bool = True,
 ) -> ModeAdapter:
@@ -174,6 +186,8 @@ def create_mode_adapter(
         step_id=step_id,
         step_index=step_index,
         step_title=step_title,
+        planned_constraint=planned_constraint,
+        audit_policy=audit_policy,
         emit_plan_start=emit_plan_start,
         emit_plan_completion=emit_plan_completion,
     )
@@ -196,6 +210,8 @@ async def run_mode(
     step_id: str | None = None,
     step_index: int | None = None,
     step_title: str | None = None,
+    planned_constraint: Mapping[str, object] | None = None,
+    audit_policy: Mapping[str, object] | None = None,
     emit_plan_start: bool = True,
     emit_plan_completion: bool = True,
     dispose: bool = True,
@@ -213,6 +229,8 @@ async def run_mode(
         step_id=step_id,
         step_index=step_index,
         step_title=step_title,
+        planned_constraint=planned_constraint,
+        audit_policy=audit_policy,
         emit_plan_start=emit_plan_start,
         emit_plan_completion=emit_plan_completion,
     )

@@ -203,6 +203,18 @@ def test_prepare_turns_with_fixed_method_prepares_each_step(tmp_path: Path) -> N
         "step_guidance:\n"
         "  inspect: Read changed files and summarize intent.\n"
         "  verify: Run focused tests or explain why they cannot run.\n"
+        "step_constraints:\n"
+        "  inspect:\n"
+        "    level: reasoned\n"
+        "    requires_reason: true\n"
+        "  verify:\n"
+        "    level: evidence\n"
+        "    requires_evidence: true\n"
+        "step_audit:\n"
+        "  inspect:\n"
+        "    record: [status, reason]\n"
+        "  verify:\n"
+        "    record: [status, reason, evidence]\n"
         "---\n\n"
         "Use the review method.",
         encoding="utf-8",
@@ -222,6 +234,16 @@ def test_prepare_turns_with_fixed_method_prepares_each_step(tmp_path: Path) -> N
     assert all(turn.method_id == "method:task:review" for turn in prepared_turns)
     assert all(turn.plan_id == "plan:method:task:review" for turn in prepared_turns)
     assert all(turn.plan_mode == "fixed" for turn in prepared_turns)
+    assert prepared_turns[0].metadata["planned_constraint"] == {
+        "level": "reasoned",
+        "requires_reason": True,
+    }
+    assert prepared_turns[0].metadata["audit_policy"] == {"record": ["status", "reason"]}
+    assert prepared_turns[1].metadata["planned_constraint"] == {
+        "level": "evidence",
+        "requires_evidence": True,
+    }
+    assert prepared_turns[1].metadata["audit_policy"] == {"record": ["status", "reason", "evidence"]}
     assert "Read changed files and summarize intent." in prepared_turns[0].prepared_prompt
     assert "Run focused tests or explain why they cannot run." in prepared_turns[1].prepared_prompt
     assert prepared_turns[0].prepared_prompt.endswith("User request:\n\ncheck src/app.py")

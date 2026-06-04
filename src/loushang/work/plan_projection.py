@@ -133,6 +133,8 @@ class _StepState:
     failed_sequence: int | None = None
     error: str | None = None
     deviation: WorkStepDeviation | None = None
+    planned_constraint: dict[str, object] | None = None
+    audit_policy: dict[str, object] | None = None
 
     def update_from_entry(
         self,
@@ -157,6 +159,12 @@ class _StepState:
         deviation = _entry_step_deviation(entry, step_id=self.step_id)
         if deviation is not None:
             self.deviation = deviation
+        planned_constraint = _entry_mapping_payload_value(entry, "planned_constraint")
+        if planned_constraint is not None:
+            self.planned_constraint = planned_constraint
+        audit_policy = _entry_mapping_payload_value(entry, "audit_policy")
+        if audit_policy is not None:
+            self.audit_policy = audit_policy
 
         if kind == "WorkStepStarted":
             self.status = "running"
@@ -179,6 +187,8 @@ class _StepState:
                 "failed_sequence": self.failed_sequence,
                 "error": self.error,
                 "deviation": asdict(self.deviation) if self.deviation is not None else None,
+                "planned_constraint": self.planned_constraint,
+                "audit_policy": self.audit_policy,
             }
         )
         return WorkStepRun(
@@ -236,6 +246,13 @@ def _entry_step_deviation(entry: EventLogEntry, *, step_id: str) -> WorkStepDevi
         outcome=_mapping_string_value(value, "outcome") or None,
         metadata=metadata,
     )
+
+
+def _entry_mapping_payload_value(entry: EventLogEntry, key: str) -> dict[str, object] | None:
+    value = _entry_payload_value(entry, key)
+    if not isinstance(value, Mapping):
+        return None
+    return dict(value)
 
 
 def _mapping_string_value(mapping: Mapping[str, object], key: str) -> str:

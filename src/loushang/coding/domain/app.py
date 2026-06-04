@@ -91,6 +91,12 @@ class CodingDomainApp:
             "plan_mode": plan.mode,
             "step_index": step_index,
         }
+        constraint = projection.metadata.get("source_constraint")
+        if isinstance(constraint, Mapping) and constraint:
+            metadata["planned_constraint"] = dict(constraint)
+        audit = projection.metadata.get("source_audit")
+        if isinstance(audit, Mapping) and audit:
+            metadata["audit_policy"] = dict(audit)
         if not _has_meaningful_guidance(descriptor, projection):
             return CodingDomainPreparedTurn(
                 prepared_prompt=request.user_input,

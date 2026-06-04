@@ -39,6 +39,8 @@ class CodingWorkShell:
         step_id: str | None = None,
         step_index: int | None = None,
         step_title: str | None = None,
+        planned_constraint: Mapping[str, object] | None = None,
+        audit_policy: Mapping[str, object] | None = None,
         operation_id: str | None = None,
         run_id: str | None = None,
         emit_plan_start: bool = True,
@@ -61,6 +63,8 @@ class CodingWorkShell:
                 step_id=step_id,
                 step_index=step_index,
                 step_title=step_title,
+                planned_constraint=planned_constraint,
+                audit_policy=audit_policy,
             ),
         )
         self._append_operation(operation, run_id=run_id, sequence=sequence)
@@ -97,6 +101,8 @@ class CodingWorkShell:
                     payload=_step_payload(
                         step_index=step_index,
                         step_title=step_title,
+                        planned_constraint=planned_constraint,
+                        audit_policy=audit_policy,
                     ),
                 ),
             )
@@ -112,6 +118,8 @@ class CodingWorkShell:
                     payload=_step_payload(
                         step_index=step_index,
                         step_title=step_title,
+                        planned_constraint=planned_constraint,
+                        audit_policy=audit_policy,
                     ),
                 ),
             )
@@ -152,6 +160,8 @@ class CodingWorkShell:
             failure_payload = _step_payload(
                 step_index=step_index,
                 step_title=step_title,
+                planned_constraint=planned_constraint,
+                audit_policy=audit_policy,
                 error=error,
             )
             if step_id is not None:
@@ -213,6 +223,8 @@ class CodingWorkShell:
                     payload=_step_payload(
                         step_index=step_index,
                         step_title=step_title,
+                        planned_constraint=planned_constraint,
+                        audit_policy=audit_policy,
                     ),
                 ),
             )
@@ -228,6 +240,8 @@ class CodingWorkShell:
                     payload=_step_payload(
                         step_index=step_index,
                         step_title=step_title,
+                        planned_constraint=planned_constraint,
+                        audit_policy=audit_policy,
                     ),
                 ),
             )
@@ -305,6 +319,8 @@ def _operation_payload(
     step_id: str | None,
     step_index: int | None,
     step_title: str | None,
+    planned_constraint: Mapping[str, object] | None,
+    audit_policy: Mapping[str, object] | None,
 ) -> dict[str, object]:
     payload: dict[str, object] = {"text": text}
     if images is not None:
@@ -319,6 +335,10 @@ def _operation_payload(
         payload["step_index"] = step_index
     if step_title is not None:
         payload["step_title"] = step_title
+    if planned_constraint:
+        payload["planned_constraint"] = dict(planned_constraint)
+    if audit_policy:
+        payload["audit_policy"] = dict(audit_policy)
     return payload
 
 
@@ -326,6 +346,8 @@ def _step_payload(
     *,
     step_index: int | None,
     step_title: str | None,
+    planned_constraint: Mapping[str, object] | None = None,
+    audit_policy: Mapping[str, object] | None = None,
     error: BaseException | None = None,
 ) -> dict[str, object]:
     payload: dict[str, object] = {"source_type": "work_shell"}
@@ -333,6 +355,10 @@ def _step_payload(
         payload["step_index"] = step_index
     if step_title is not None:
         payload["step_title"] = step_title
+    if planned_constraint:
+        payload["planned_constraint"] = dict(planned_constraint)
+    if audit_policy:
+        payload["audit_policy"] = dict(audit_policy)
     if error is not None:
         payload["error"] = str(error)
     return payload
