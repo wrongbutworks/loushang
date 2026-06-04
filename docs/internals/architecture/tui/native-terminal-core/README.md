@@ -80,13 +80,7 @@ The initial product interface requirements were extracted from the older
 implementation. This native terminal core keeps the useful user-facing behavior
 and drops the old implementation choice.
 
-Loushang's native TUI is inspired by Pi's terminal UX: stable streaming,
-line-buffered rendering, append-friendly updates, resize recovery, cursor
-stability, and responsive editing. This is a product-quality reference point,
-not a compatibility contract. Loushang keeps its own terminology, APIs, product
-boundaries, and Python implementation.
-
-The runtime stability requirements use those terminal UX goals as input: native
+The runtime stability requirements use these terminal UX goals as input: native
 operation, full logical-line rendering, previous-line line-level diffing, append
 updates, resize repaint, overlay-before-diff composition, cursor marker mapping,
 synchronized terminal flushes, an ordered screen region stack, paste markers,

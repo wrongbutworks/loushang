@@ -207,9 +207,8 @@ raw chunk
   -> NativeInputRouter.handle(batch.app_events)
 ```
 
-This aligns behavior with Pi's stdin buffering semantics without copying Pi's
-internal parser shape. Terminal control responses are consumed before product
-routing, while user input remains normalized and application-facing.
+This keeps terminal control responses consumed before product routing while user
+input remains normalized and application-facing.
 
 It must not be duplicated by a second parser in the native app loop.
 
