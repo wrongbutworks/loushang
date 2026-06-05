@@ -2,7 +2,7 @@
 
 [English](../../en/user-guide/tui.md) | 中文
 
-本文说明如何用 `loushang.tui` 构建小型终端 UI。需要产品化的交互式终端界面时，可以从这里开始。精确 API 细节见 [TUI Runner 参考](../reference/tui-runner.md)。
+本文说明如何用 `loushang.tui` 构建小型终端 UI。需要产品化的交互式终端界面时，可以从这里开始。生命周期细节见 [TUI Runner 参考](../reference/tui-runner.md)。可复用输入编辑能力见 [TUI 编辑能力](../reference/tui-editing.md)。
 
 ## 选择入口
 
@@ -89,7 +89,31 @@ handle = tui.show_overlay(dialog, focus_target=dialog, presentation="modal", anc
 
 临时 UI 不再需要时，关闭返回的 handle。
 
+## 复用编辑基础设施
+
+单行搜索、过滤等输入使用 `TextInput`。多行 prompt 编辑器使用 `Composer` 配合 `InputRouter`，以获得历史、paste marker、completion、selection、undo 和 kill/yank 行为。
+
+```python
+from loushang.tui import Composer, InputEvent, InputRouter, TextInput
+
+
+field = TextInput(prompt="Search: ")
+field.handle_input(InputEvent(kind="text", text="hello world"))
+field.handle_input(InputEvent(kind="key", key="ctrl+shift+left"))
+field.handle_input(InputEvent(kind="text", text="loushang"))
+
+composer = Composer(prompt="> ")
+router = InputRouter(composer, width=80, height=24)
+router.route(InputEvent(kind="text", text="alpha beta"))
+router.route(InputEvent(kind="key", key="shift+left"))
+router.route(InputEvent(kind="key", key="ctrl+k"))
+```
+
+`TextInput` selection 索引用 grapheme cluster。`Composer` selection 索引用 composer atom，因此 paste marker 会保持原子性。显示宽度由渲染层处理。
+
 ## 示例
 
 - [examples/tui/40_runner_basic.py](../../../examples/tui/40_runner_basic.py)：使用 `TuiRunner` 的小型交互计数器。
+- [examples/tui/41_editing_foundation.py](../../../examples/tui/41_editing_foundation.py)：TextInput 和 Composer 编辑 walkthrough。
 - [TUI Runner 参考](../reference/tui-runner.md)：生命周期 API 细节。
+- [TUI 编辑能力参考](../reference/tui-editing.md)：编辑基础设施、快捷键和 playback smoke 检查。

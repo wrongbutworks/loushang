@@ -42,3 +42,4 @@ Built-in interactive commands include:
 ## TUI
 
 - [TUI Runner](tui-runner.md): public lifecycle entry point for terminal apps built with `loushang.tui`.
+- [TUI Editing](tui-editing.md): reusable TextInput, Composer, selection-aware editing, keybindings, and playback smoke checks.
