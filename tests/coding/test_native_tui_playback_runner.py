@@ -52,6 +52,9 @@ def test_native_tui_playback_composer_scenarios_live_in_composer_module() -> Non
         "completion-tab",
         "completion-session-command",
         "completion-navigation-priority",
+        "completion-escape-cancel",
+        "completion-prefix-refresh",
+        "completion-enter-submits-command",
         "history-navigation",
         "bracketed-paste-large-marker",
         "resize-reflow-stable",
@@ -121,6 +124,9 @@ def test_native_tui_playback_runner_lists_default_scenarios(capsys) -> None:
     assert "completion-tab" in captured.out
     assert "completion-session-command" in captured.out
     assert "completion-navigation-priority" in captured.out
+    assert "completion-escape-cancel" in captured.out
+    assert "completion-prefix-refresh" in captured.out
+    assert "completion-enter-submits-command" in captured.out
     assert "history-navigation" in captured.out
     assert "idle-escape-clears-draft" in captured.out
     assert "long-transcript-input" in captured.out
@@ -199,6 +205,22 @@ def test_native_tui_playback_runner_runs_completion_session_command_scenario(cap
     captured = capsys.readouterr()
     assert exit_code == 0
     assert "PASS completion-session-command" in captured.out
+
+
+def test_native_tui_playback_runner_runs_completion_detail_scenarios(capsys) -> None:
+    exit_code = run_playback_cli(
+        [
+            "completion-escape-cancel",
+            "completion-prefix-refresh",
+            "completion-enter-submits-command",
+        ]
+    )
+
+    captured = capsys.readouterr()
+    assert exit_code == 0
+    assert "PASS completion-escape-cancel" in captured.out
+    assert "PASS completion-prefix-refresh" in captured.out
+    assert "PASS completion-enter-submits-command" in captured.out
 
 
 def test_native_tui_playback_runner_runs_lifecycle_scenario(capsys) -> None:

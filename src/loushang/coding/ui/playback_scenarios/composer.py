@@ -69,6 +69,65 @@ def _run_completion_navigation_priority() -> NativeTuiInputPlaybackResult:
     return result
 
 
+def _run_completion_escape_cancel() -> NativeTuiInputPlaybackResult:
+    result = (
+        NativeTuiInputScenario(width=80, height=12)
+        .with_completion_items("/help", "/history")
+        .render()
+        .type_text("/h")
+        .escape()
+        .run()
+    )
+    result.assert_composer_text("/h")
+    result.assert_visible_contains("› /h")
+    result.assert_visible_not_contains("  /help")
+    result.assert_visible_not_contains("  /history")
+    result.assert_no_clear_screen()
+    result.assert_cursor_matches_diagnostics()
+    INTERACTION_FRAME_BUDGET.assert_result(result, skip_first=True)
+    return result
+
+
+def _run_completion_prefix_refresh() -> NativeTuiInputPlaybackResult:
+    result = (
+        NativeTuiInputScenario(width=80, height=12)
+        .with_completion_items("/help", "/history", "/model")
+        .render()
+        .type_text("/")
+        .type_text("m")
+        .run()
+    )
+    result.assert_composer_text("/m")
+    result.assert_visible_contains("› /m")
+    result.assert_visible_contains("  /model")
+    result.assert_visible_not_contains("  /help")
+    result.assert_visible_not_contains("  /history")
+    result.assert_no_clear_screen()
+    result.assert_cursor_matches_diagnostics()
+    INTERACTION_FRAME_BUDGET.assert_result(result, skip_first=True)
+    return result
+
+
+def _run_completion_enter_submits_command() -> NativeTuiInputPlaybackResult:
+    result = (
+        NativeTuiInputScenario(width=80, height=12)
+        .with_completion_items("/model", "/models")
+        .with_local_commands("/model")
+        .render()
+        .type_text("/mod")
+        .enter()
+        .run()
+    )
+    result.assert_local_texts("/model")
+    result.assert_composer_text("")
+    result.assert_visible_not_contains("  /model")
+    result.assert_visible_not_contains("  /models")
+    result.assert_no_clear_screen()
+    result.assert_cursor_matches_diagnostics()
+    INTERACTION_FRAME_BUDGET.assert_result(result, skip_first=True)
+    return result
+
+
 def _run_history_navigation() -> NativeTuiInputPlaybackResult:
     result = (
         NativeTuiInputScenario(width=80, height=12)
@@ -253,6 +312,24 @@ COMPOSER_SCENARIOS = (
         name="completion-navigation-priority",
         description="Route completion navigation before history navigation.",
         run=_run_completion_navigation_priority,
+    ),
+    NativePlaybackScenarioSpec(
+        name="completion-escape-cancel",
+        description="Cancel visible completions without clearing the composer draft.",
+        run=_run_completion_escape_cancel,
+        tags=("completion", "editor", "composer"),
+    ),
+    NativePlaybackScenarioSpec(
+        name="completion-prefix-refresh",
+        description="Refresh visible completions when the composer prefix changes.",
+        run=_run_completion_prefix_refresh,
+        tags=("completion", "editor", "composer"),
+    ),
+    NativePlaybackScenarioSpec(
+        name="completion-enter-submits-command",
+        description="Apply a selected slash command completion before local command submission.",
+        run=_run_completion_enter_submits_command,
+        tags=("completion", "command", "composer"),
     ),
     NativePlaybackScenarioSpec(
         name="history-navigation",
