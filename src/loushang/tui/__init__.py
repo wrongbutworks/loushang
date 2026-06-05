@@ -129,6 +129,7 @@ from loushang.tui.scheduler import (
     RenderScheduler,
     RenderSchedulerConfig,
 )
+from loushang.tui.selection import SelectionRange
 from loushang.tui.surfaces import (
     ApprovalSurface,
     AutocompleteSurface,
@@ -351,6 +352,7 @@ __all__ = [
     "Rule",
     "ScreenRoot",
     "SelectItem",
+    "SelectionRange",
     "SelectionSurface",
     "SettingsSurface",
     "SettingItem",

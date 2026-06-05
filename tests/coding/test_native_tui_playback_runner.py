@@ -63,6 +63,7 @@ def test_native_tui_playback_composer_scenarios_live_in_composer_module() -> Non
         "editor-key-editing",
         "page-navigation",
         "paste-marker-delete-undo",
+        "composer-selection-replace",
     ]
 
 
@@ -221,6 +222,14 @@ def test_native_tui_playback_runner_runs_completion_detail_scenarios(capsys) -> 
     assert "PASS completion-escape-cancel" in captured.out
     assert "PASS completion-prefix-refresh" in captured.out
     assert "PASS completion-enter-submits-command" in captured.out
+
+
+def test_native_tui_playback_runner_runs_composer_selection_scenario(capsys) -> None:
+    exit_code = run_playback_cli(["composer-selection-replace"])
+
+    captured = capsys.readouterr()
+    assert exit_code == 0
+    assert "PASS composer-selection-replace" in captured.out
 
 
 def test_native_tui_playback_runner_runs_lifecycle_scenario(capsys) -> None:

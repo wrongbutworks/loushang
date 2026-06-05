@@ -138,6 +138,19 @@ def test_input_reader_normalizes_csi_u_and_modify_other_keys() -> None:
     )
 
 
+def test_input_reader_normalizes_selection_navigation_keys() -> None:
+    reader = InputReader()
+
+    events = reader.feed("\x1b[1;2D\x1b[1;2C\x1b[1;6D\x1b[1;6C")
+
+    assert events == (
+        InputEvent(kind="key", key="shift+left", raw="\x1b[1;2D"),
+        InputEvent(kind="key", key="shift+right", raw="\x1b[1;2C"),
+        InputEvent(kind="key", key="ctrl+shift+left", raw="\x1b[1;6D"),
+        InputEvent(kind="key", key="ctrl+shift+right", raw="\x1b[1;6C"),
+    )
+
+
 def test_input_reader_reports_kitty_protocol_response_as_signal() -> None:
     reader = InputReader()
 
@@ -257,6 +270,21 @@ def test_input_router_alt_angle_moves_to_line_boundaries() -> None:
     assert router.route(InputEvent(kind="key", key="alt+>")) == ()
     composer.insert_text("!")
     assert composer.value == "lpha beta!"
+
+
+def test_input_router_routes_shift_selection_before_completion_navigation() -> None:
+    composer = Composer(prompt="> ")
+    composer.insert_text("ab")
+    composer.set_completion_items([CompletionItem(value="abc"), CompletionItem(value="abd")])
+    router = InputRouter(composer=composer)
+
+    assert router.route(InputEvent(kind="key", key="shift+left")) == ()
+
+    assert composer.selected_range == (1, 2)
+
+    assert router.route(InputEvent(kind="text", text="x")) == ()
+
+    assert composer.value == "ax"
 
 
 def test_input_router_jump_mode_moves_to_next_or_previous_character() -> None:

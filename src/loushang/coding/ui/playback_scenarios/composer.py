@@ -284,6 +284,25 @@ def _run_paste_marker_delete_undo() -> NativeTuiInputPlaybackResult:
     return result
 
 
+def _run_composer_selection_replace() -> NativeTuiInputPlaybackResult:
+    result = (
+        NativeTuiInputScenario(width=80, height=12)
+        .render()
+        .type_text("abc")
+        .key("\x1b[1;2D")
+        .type_text("x")
+        .run()
+    )
+    selected_output = result.steps[2].frame.serialized_output if result.steps[2].frame else ""
+    assert "\x1b[7mc\x1b[27m" in selected_output
+    result.assert_composer_text("abx")
+    result.assert_visible_contains("› abx")
+    result.assert_no_clear_screen()
+    result.assert_cursor_matches_diagnostics()
+    INTERACTION_FRAME_BUDGET.assert_result(result, skip_first=True)
+    return result
+
+
 def _result_from_scenario(scenario: NativeTuiInputScenario) -> NativeTuiInputPlaybackResult:
     playback = scenario.playback
     return NativeTuiInputPlaybackResult(
@@ -373,5 +392,11 @@ COMPOSER_SCENARIOS = (
         description="Delete a large paste marker atomically and restore it with undo.",
         run=_run_paste_marker_delete_undo,
         tags=("editor", "paste", "composer"),
+    ),
+    NativePlaybackScenarioSpec(
+        name="composer-selection-replace",
+        description="Extend composer selection with Shift+Left and replace it through typed input.",
+        run=_run_composer_selection_replace,
+        tags=("editor", "selection", "composer"),
     ),
 )

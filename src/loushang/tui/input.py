@@ -484,6 +484,8 @@ class InputRouter:
             surface_intents = self._route_surface_first(event)
             if surface_intents:
                 return surface_intents
+            if route_composer_selection_key(self.composer, event.key, keybindings=keybindings):
+                return ()
             if self.composer.has_completions:
                 if keybindings.matches(event.key, "tui.select.up"):
                     self.composer.select_previous_completion()
@@ -684,6 +686,34 @@ def route_composer_editing_key(
         return True
     if keybindings.matches(key, "tui.editor.undo"):
         composer.undo()
+        return True
+    return False
+
+
+def route_composer_selection_key(
+    composer: Composer,
+    key: str,
+    *,
+    keybindings: KeybindingManager | None = None,
+) -> bool:
+    keybindings = keybindings or KeybindingManager()
+    if keybindings.matches(key, "tui.editor.selectCharLeft"):
+        composer.select_char_left()
+        return True
+    if keybindings.matches(key, "tui.editor.selectCharRight"):
+        composer.select_char_right()
+        return True
+    if keybindings.matches(key, "tui.editor.selectWordLeft"):
+        composer.select_word_left()
+        return True
+    if keybindings.matches(key, "tui.editor.selectWordRight"):
+        composer.select_word_right()
+        return True
+    if keybindings.matches(key, "tui.editor.selectLineStart"):
+        composer.select_line_start()
+        return True
+    if keybindings.matches(key, "tui.editor.selectLineEnd"):
+        composer.select_line_end()
         return True
     return False
 

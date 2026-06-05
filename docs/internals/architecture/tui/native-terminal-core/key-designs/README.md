@@ -19,3 +19,6 @@ reference docs; they describe the invariants that tests must enforce.
 - [KD-012: Keyboard Protocol And Escape Buffering](./KD-012-keyboard-protocol-and-escape-buffering.md)
 - [KD-013: Terminal Runtime Capabilities](./KD-013-terminal-runtime-capabilities.md)
 - [KD-014: Tool Transcript Visual Styling](./KD-014-tool-transcript-visual-styling.md)
+- [KD-015: Stable Tail Window And Transcript Block Cache](./KD-015-stable-tail-window-and-transcript-block-cache.md)
+- [KD-016: Resume Overflow Recovery Regression Harness](./KD-016-resume-overflow-recovery-regression-harness.md)
+- [KD-017: Composer Selection And Selected Range](./KD-017-composer-selection-and-selected-range.md)

@@ -13,7 +13,12 @@ from loushang.coding.platform.clipboard_image import (
     read_clipboard_image,
 )
 from loushang.coding.ui.native_app import NativeCodingTuiApp
-from loushang.tui.input import InputEvent, InputIntent, route_composer_editing_key
+from loushang.tui.input import (
+    InputEvent,
+    InputIntent,
+    route_composer_editing_key,
+    route_composer_selection_key,
+)
 from loushang.tui.keybindings import KeybindingConfig, KeybindingManager
 
 RunningSubmitMode = Literal["steer", "follow_up"]
@@ -98,6 +103,8 @@ class NativeInputRouter:
             self._jump_mode = None
         if keybindings.matches(event.key, "tui.queue.editLast"):
             self._restore_queued_messages()
+            return NativeInputResult()
+        if route_composer_selection_key(self.app.composer, event.key, keybindings=keybindings):
             return NativeInputResult()
         if self.app.composer.has_completions and keybindings.matches(event.key, "tui.input.submit"):
             return self._submit_selected_completion()
