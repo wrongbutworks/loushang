@@ -1,6 +1,13 @@
 from __future__ import annotations
 
-from loushang.tui import InputEvent, RenderConstraints, TextInput, Tui
+from loushang.tui import (
+    InputEvent,
+    RenderConstraints,
+    TextInput,
+    ThemeResolver,
+    Tui,
+    strip_control_sequences,
+)
 from loushang.tui.editor_buffer import EditorBuffer
 from loushang.tui.ui_parts import TextInput as ReexportedTextInput
 from loushang.tui.ui_parts.text_input import TextInput as ModuleTextInput
@@ -150,3 +157,53 @@ def test_text_input_handles_line_editing_keys() -> None:
     assert field.handle_input(InputEvent(kind="key", key="ctrl+e"))
     assert field.handle_input(InputEvent(kind="key", key="ctrl+u"))
     assert field.value == ""
+
+
+def test_text_input_selection_replaces_text_and_undoes_atomically() -> None:
+    field = TextInput()
+    field.handle_input(InputEvent(kind="text", text="你🙂a"))
+
+    assert field.handle_input(InputEvent(kind="key", key="shift+left"))
+    assert field.handle_input(InputEvent(kind="key", key="shift+left"))
+    assert field.selected_range == (1, 3)
+
+    assert field.handle_input(InputEvent(kind="text", text="x"))
+
+    assert field.value == "你x"
+    assert field.selected_range is None
+
+    assert field.undo()
+
+    assert field.value == "你🙂a"
+    assert field.selected_range is None
+
+
+def test_text_input_kill_and_yank_operate_on_selection_first() -> None:
+    field = TextInput()
+    field.handle_input(InputEvent(kind="text", text="alpha beta"))
+
+    assert field.handle_input(InputEvent(kind="key", key="shift+left"))
+    assert field.handle_input(InputEvent(kind="key", key="ctrl+w"))
+
+    assert field.value == "alpha bet"
+    assert field.kill_ring == ("a",)
+
+    assert field.handle_input(InputEvent(kind="text", text="Z"))
+    assert field.handle_input(InputEvent(kind="key", key="shift+left"))
+    assert field.handle_input(InputEvent(kind="key", key="ctrl+y"))
+
+    assert field.value == "alpha beta"
+
+
+def test_text_input_selection_highlight_uses_editor_selection_theme_token() -> None:
+    field = TextInput(
+        prompt="> ",
+        theme=ThemeResolver(defaults={"editor.selection": {"color": "cyan", "bold": True}}),
+    )
+    field.handle_input(InputEvent(kind="text", text="abc"))
+    field.handle_input(InputEvent(kind="key", key="shift+left"))
+
+    raw = rendered_text(field, width=20)[0]
+
+    assert strip_control_sequences(raw) == "> abc"
+    assert "\x1b[1;36mc\x1b[22;39m" in raw

@@ -148,6 +148,23 @@ def test_playback_result_asserts_visible_text_and_flush_policy() -> None:
     result.assert_no_clear_screen()
 
 
+def test_playback_result_asserts_frame_output_contains_ansi_style_sequence() -> None:
+    harness = PlaybackHarness(
+        render=lambda _event, _size, _previous: RenderDiagnostics(
+            current_logical_lines=("selected",),
+            operations=(TerminalOperation.write("a\x1b[7mb\x1b[27mc"),),
+        ),
+        port=FakeTerminalPort(size=TerminalSize(columns=20, rows=5)),
+    )
+    result = PlaybackResult(steps=harness.play([PlaybackEvent.input("select")]), port=harness.port)
+
+    result.assert_frame_output_contains(0, "\x1b[7mb\x1b[27m")
+    result.assert_any_frame_output_contains("\x1b[7mb\x1b[27m")
+
+    with pytest.raises(AssertionError, match="expected step 0 frame output"):
+        result.assert_frame_output_contains(0, "\x1b[1;36m")
+
+
 def test_playback_result_writes_jsonl_for_manual_inspection(tmp_path) -> None:
     harness = PlaybackHarness(
         render=lambda _event, _size, _previous: RenderDiagnostics(

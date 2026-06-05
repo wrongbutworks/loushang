@@ -50,7 +50,11 @@ from loushang.tui.core import (
 )
 from loushang.tui.framework import surface_is_bottom_exclusive
 from loushang.tui.kill_ring import KillRing
-from loushang.tui.selection import SelectionRange
+from loushang.tui.selection_controller import SelectionController
+from loushang.tui.selection_rendering import (
+    DEFAULT_SELECTION_STYLE,
+    highlight_selection_by_columns,
+)
 from loushang.tui.theme import ThemeResolver, ThemeStyle, apply_theme_style
 
 from .layout import RegionRenderable, ScreenRegion, ScreenRegionStack, _part_has_content
@@ -59,7 +63,7 @@ from .status import StatusBar as StatusBar
 from .status import WorkingLine as WorkingLine
 
 _EditAction = str | None
-DEFAULT_COMPOSER_SELECTION_STYLE: ThemeStyle = {"reverse": True}
+DEFAULT_COMPOSER_SELECTION_STYLE: ThemeStyle = DEFAULT_SELECTION_STYLE
 
 
 @dataclass(frozen=True, slots=True)
@@ -102,7 +106,7 @@ class Composer:
     now: Callable[[], float] = field(default_factory=lambda: time.monotonic, repr=False)
     submitted: bool = False
     _buffer: ComposerEditBuffer = field(default_factory=ComposerEditBuffer, repr=False)
-    _selection: SelectionRange | None = None
+    _selection_controller: SelectionController = field(init=False, repr=False)
     _kill_ring: KillRing = field(default_factory=KillRing)
     _last_action: _EditAction = None
     _history: list[str] = field(default_factory=list)
@@ -120,6 +124,13 @@ class Composer:
     _completion_pending: _CompletionRefreshRequest | None = None
     _completion_request_token: int = 0
     _completion_last_started_at: float | None = None
+
+    def __post_init__(self) -> None:
+        self._selection_controller = SelectionController(
+            length=lambda: len(self._buffer),
+            cursor=lambda: self._buffer.cursor,
+            set_cursor=self._set_cursor_index,
+        )
 
     @property
     def value(self) -> str:
@@ -139,27 +150,16 @@ class Composer:
 
     @property
     def selected_range(self) -> tuple[int, int] | None:
-        if self._selection is None:
-            return None
-        start, end = self._selection.normalized(len(self._buffer))
-        if start == end:
-            return None
-        return start, end
+        return self._selection_controller.selected_range
 
     def has_selection(self) -> bool:
-        return self.selected_range is not None
+        return self._selection_controller.has_selection()
 
     def set_selection(self, anchor: int, focus: int) -> None:
-        anchor = self._clamp_selection_index(anchor)
-        focus = self._clamp_selection_index(focus)
-        self._set_cursor_index(focus)
-        if anchor == focus:
-            self._selection = None
-            return
-        self._selection = SelectionRange(anchor=anchor, focus=focus)
+        self._selection_controller.set(anchor, focus)
 
     def clear_selection(self) -> None:
-        self._selection = None
+        self._selection_controller.clear()
 
     def next_frame_due_ms(self, *, after_ms: int) -> int | None:
         del after_ms
@@ -198,7 +198,6 @@ class Composer:
         selection = self.selected_range
         insert_at = self._buffer.cursor if selection is None else selection[0]
         text = _prefix_space_before_path_paste(self._buffer.atoms, insert_at, text)
-        self._buffer.push_undo()
         line_count = text.count("\n") + 1
         char_count = len(text)
         if line_count > self.large_paste_line_threshold or char_count > self.large_paste_char_threshold:
@@ -214,41 +213,32 @@ class Composer:
                 ),
             )
             self._next_paste_marker_id += 1
-            if selection is not None:
-                self._buffer.replace_atoms(selection[0], selection[1], [marker], record=False)
-                self._after_buffer_content_edit(last_action=None)
-                return
-            self._insert_atoms([marker])
-            self._last_action = None
+            self._apply_buffer_content_edit(
+                lambda: self._replace_or_insert_atoms(selection, [marker]),
+                last_action=None,
+            )
             return
         if selection is not None:
-            self._buffer.replace_range(selection[0], selection[1], text, record=False)
-            self._after_buffer_content_edit(last_action=None)
+            self._apply_buffer_content_edit(
+                lambda: self._buffer.replace_range(selection[0], selection[1], text, record=False),
+                last_action=None,
+            )
             return
-        self._insert_atoms(_text_atoms(text))
-        self._last_action = None
+        self._apply_buffer_content_edit(lambda: self._buffer.insert_atoms(_text_atoms(text), record=False), last_action=None)
 
     def delete_backward(self) -> None:
         if self._delete_selection_or_none():
             return
         if self._buffer.cursor == 0:
             return
-        self._buffer.delete_backward()
-        self._last_action = None
-        self.clear_selection()
-        self._preferred_visual_column = None
-        self._refresh_completion_items()
+        self._apply_buffer_content_edit(lambda: self._buffer.delete_backward(record=False), last_action=None)
 
     def delete_forward(self) -> None:
         if self._delete_selection_or_none():
             return
         if self._buffer.cursor >= len(self._buffer):
             return
-        self._buffer.delete_forward()
-        self._last_action = None
-        self.clear_selection()
-        self._preferred_visual_column = None
-        self._refresh_completion_items()
+        self._apply_buffer_content_edit(lambda: self._buffer.delete_forward(record=False), last_action=None)
 
     def move_left(self) -> None:
         self._buffer.move_left()
@@ -340,11 +330,10 @@ class Composer:
             return
         killed = "".join(_atom_value(atom) for atom in self._buffer.atoms[start:cursor])
         was_kill = self._last_action == "kill"
-        self._buffer.push_undo()
-        self._push_kill(killed, prepend=True, accumulate=was_kill)
-        self._buffer.delete_range(start, cursor, record=False)
-        self._preferred_visual_column = None
-        self._refresh_completion_items()
+        self._apply_buffer_content_edit(
+            lambda: self._delete_range_to_kill_ring(start, cursor, killed, prepend=True, accumulate=was_kill),
+            last_action="kill",
+        )
 
     def delete_word_forward(self) -> None:
         if self._kill_selection_or_none(prepend=False):
@@ -355,11 +344,10 @@ class Composer:
             return
         killed = "".join(_atom_value(atom) for atom in self._buffer.atoms[cursor:end])
         was_kill = self._last_action == "kill"
-        self._buffer.push_undo()
-        self._push_kill(killed, prepend=False, accumulate=was_kill)
-        self._buffer.delete_range(cursor, end, record=False)
-        self._preferred_visual_column = None
-        self._refresh_completion_items()
+        self._apply_buffer_content_edit(
+            lambda: self._delete_range_to_kill_ring(cursor, end, killed, prepend=False, accumulate=was_kill),
+            last_action="kill",
+        )
 
     def move_cursor_to(self, value_index: int) -> None:
         self._buffer.move_cursor_to_value_index(value_index)
@@ -492,11 +480,11 @@ class Composer:
         killed = "".join(_atom_value(atom) for atom in self._buffer.atoms[cursor:end])
         if not killed:
             return
-        self._buffer.push_undo()
-        self._push_kill(killed, prepend=False, accumulate=self._last_action == "kill")
-        self._buffer.delete_range(cursor, end, record=False)
-        self._preferred_visual_column = None
-        self._refresh_completion_items()
+        was_kill = self._last_action == "kill"
+        self._apply_buffer_content_edit(
+            lambda: self._delete_range_to_kill_ring(cursor, end, killed, prepend=False, accumulate=was_kill),
+            last_action="kill",
+        )
 
     def kill_to_line_start(self) -> None:
         if self._kill_selection_or_none(prepend=True):
@@ -506,11 +494,11 @@ class Composer:
         killed = "".join(_atom_value(atom) for atom in self._buffer.atoms[start:cursor])
         if not killed:
             return
-        self._buffer.push_undo()
-        self._push_kill(killed, prepend=True, accumulate=self._last_action == "kill")
-        self._buffer.delete_range(start, cursor, record=False)
-        self._preferred_visual_column = None
-        self._refresh_completion_items()
+        was_kill = self._last_action == "kill"
+        self._apply_buffer_content_edit(
+            lambda: self._delete_range_to_kill_ring(start, cursor, killed, prepend=True, accumulate=was_kill),
+            last_action="kill",
+        )
 
     def yank(self) -> None:
         text = self._kill_ring.peek()
@@ -518,9 +506,7 @@ class Composer:
             return
         if self._replace_selection_with_atoms(_text_atoms(text), last_action="yank"):
             return
-        self._buffer.push_undo()
-        self._insert_atoms(_text_atoms(text))
-        self._last_action = "yank"
+        self._apply_buffer_content_edit(lambda: self._buffer.insert_atoms(_text_atoms(text), record=False), last_action="yank")
 
     def yank_pop(self) -> None:
         if self._last_action != "yank" or len(self._kill_ring) <= 1:
@@ -535,13 +521,15 @@ class Composer:
         cursor = self._buffer.cursor
         if "".join(_atom_value(atom) for atom in self._buffer.atoms[start:cursor]) != previous_text:
             return
-        self._buffer.push_undo()
-        self._buffer.delete_range(start, cursor, record=False)
-        self._rotate_kill_ring()
-        replacement = self._kill_ring.peek()
-        if replacement is not None:
-            self._insert_atoms(_text_atoms(replacement))
-        self._last_action = "yank"
+
+        def edit() -> None:
+            self._buffer.delete_range(start, cursor, record=False)
+            self._rotate_kill_ring()
+            replacement = self._kill_ring.peek()
+            if replacement is not None:
+                self._buffer.insert_atoms(_text_atoms(replacement), record=False)
+
+        self._apply_buffer_content_edit(edit, last_action="yank")
 
     def undo(self) -> None:
         if not self._buffer.undo():
@@ -617,11 +605,7 @@ class Composer:
         self._buffer.set_atoms(self._buffer.atoms, cursor=self._clamp_selection_index(index), record=False)
 
     def _extend_selection_to(self, target: int) -> None:
-        previous_cursor = self._buffer.cursor
-        target = self._clamp_selection_index(target)
-        anchor = self._selection.anchor if self._selection is not None else previous_cursor
-        self._set_cursor_index(target)
-        self.set_selection(anchor, target)
+        self._selection_controller.extend_to(target)
         self._last_action = None
         self._preferred_visual_column = None
         self._refresh_completion_items()
@@ -640,23 +624,48 @@ class Composer:
         self._last_action = last_action
         self._refresh_completion_items()
 
+    def _apply_buffer_content_edit(self, edit: Callable[[], object], *, last_action: _EditAction) -> bool:
+        changed = self._buffer.apply_edit(edit)
+        if not changed:
+            return False
+        self._after_buffer_content_edit(last_action=last_action)
+        return True
+
+    def _replace_or_insert_atoms(self, selection: tuple[int, int] | None, atoms: list[_Atom]) -> None:
+        if selection is None:
+            self._buffer.insert_atoms(atoms, record=False)
+            return
+        self._buffer.replace_atoms(selection[0], selection[1], atoms, record=False)
+
+    def _delete_range_to_kill_ring(
+        self,
+        start: int,
+        end: int,
+        killed: str,
+        *,
+        prepend: bool,
+        accumulate: bool,
+    ) -> None:
+        self._push_kill(killed, prepend=prepend, accumulate=accumulate)
+        self._buffer.delete_range(start, end, record=False)
+
     def _replace_selection_with_atoms(self, atoms: list[_Atom], *, last_action: _EditAction) -> bool:
         selection = self.selected_range
         if selection is None:
             return False
-        self._buffer.push_undo()
-        self._buffer.replace_atoms(selection[0], selection[1], atoms, record=False)
-        self._after_buffer_content_edit(last_action=last_action)
-        return True
+        return self._apply_buffer_content_edit(
+            lambda: self._buffer.replace_atoms(selection[0], selection[1], atoms, record=False),
+            last_action=last_action,
+        )
 
     def _delete_selection_or_none(self) -> bool:
         selection = self.selected_range
         if selection is None:
             return False
-        self._buffer.push_undo()
-        self._buffer.delete_range(selection[0], selection[1], record=False)
-        self._after_buffer_content_edit(last_action=None)
-        return True
+        return self._apply_buffer_content_edit(
+            lambda: self._buffer.delete_range(selection[0], selection[1], record=False),
+            last_action=None,
+        )
 
     def _kill_selection_or_none(self, *, prepend: bool) -> bool:
         selection = self.selected_range
@@ -667,13 +676,16 @@ class Composer:
             self.clear_selection()
             return True
         was_kill = self._last_action == "kill"
-        self._buffer.push_undo()
-        self._push_kill(killed, prepend=prepend, accumulate=was_kill)
-        self._buffer.delete_range(selection[0], selection[1], record=False)
-        self.clear_selection()
-        self._preferred_visual_column = None
-        self._refresh_completion_items()
-        return True
+        return self._apply_buffer_content_edit(
+            lambda: self._delete_range_to_kill_ring(
+                selection[0],
+                selection[1],
+                killed,
+                prepend=prepend,
+                accumulate=was_kill,
+            ),
+            last_action="kill",
+        )
 
     def _display_cursor(self) -> int:
         return self._buffer.display_cursor
@@ -1173,14 +1185,11 @@ def _highlight_selection_in_chunk(
     overlap_end = min(selection_end, chunk_end)
     if overlap_start >= overlap_end:
         return text
-    chunk_width = visible_width(text)
-    before_width = max(0, overlap_start - chunk_start)
-    selected_width = max(0, overlap_end - overlap_start)
-    after_start = before_width + selected_width
-    before = slice_by_column(text, start=0, length=before_width).text
-    selected = slice_by_column(text, start=before_width, length=selected_width).text
-    after = slice_by_column(text, start=after_start, length=max(0, chunk_width - after_start)).text
-    return before + apply_theme_style(selected, selection_style or DEFAULT_COMPOSER_SELECTION_STYLE) + after
+    return highlight_selection_by_columns(
+        text,
+        selection_range=(overlap_start - chunk_start, overlap_end - chunk_start),
+        selection_style=selection_style or DEFAULT_COMPOSER_SELECTION_STYLE,
+    )
 
 
 def _visual_segments(

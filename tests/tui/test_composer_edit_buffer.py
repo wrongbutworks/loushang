@@ -87,3 +87,36 @@ def test_composer_edit_buffer_replaces_completion_prefix() -> None:
     assert buffer.cursor == 5
     assert buffer.undo()
     assert buffer.value == "/he"
+
+
+def test_composer_edit_buffer_apply_edit_records_composite_change_as_one_undo_step() -> None:
+    buffer = ComposerEditBuffer()
+    buffer.insert_text("abcdef")
+
+    changed = buffer.apply_edit(
+        lambda: (
+            buffer.delete_range(1, 4, record=False),
+            buffer.insert_text("X", record=False),
+        )
+    )
+
+    assert changed
+    assert buffer.value == "aXef"
+
+    assert buffer.undo()
+    assert buffer.value == "abcdef"
+
+    assert buffer.redo()
+    assert buffer.value == "aXef"
+
+
+def test_composer_edit_buffer_apply_edit_ignores_cursor_only_changes() -> None:
+    buffer = ComposerEditBuffer()
+    buffer.insert_text("abc")
+
+    changed = buffer.apply_edit(buffer.move_to_start)
+
+    assert not changed
+    assert buffer.cursor == 0
+    assert buffer.undo()
+    assert buffer.value == ""

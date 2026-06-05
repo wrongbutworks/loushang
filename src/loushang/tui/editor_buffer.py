@@ -140,6 +140,13 @@ class EditorBuffer:
         self._cursor = end
         return True
 
+    def move_cursor_to(self, index: int) -> bool:
+        target = max(0, min(index, len(self._clusters)))
+        if target == self._cursor:
+            return False
+        self._cursor = target
+        return True
+
     def move_to_line_start(self) -> bool:
         target = self._line_start_index()
         if target == self._cursor:

@@ -130,6 +130,11 @@ from loushang.tui.scheduler import (
     RenderSchedulerConfig,
 )
 from loushang.tui.selection import SelectionRange
+from loushang.tui.selection_controller import SelectionController
+from loushang.tui.selection_rendering import (
+    DEFAULT_SELECTION_STYLE,
+    highlight_selection_by_columns,
+)
 from loushang.tui.surfaces import (
     ApprovalSurface,
     AutocompleteSurface,
@@ -278,6 +283,7 @@ __all__ = [
     "DialogSurface",
     "DiffBlock",
     "DefaultTerminalPlatformAdapter",
+    "DEFAULT_SELECTION_STYLE",
     "AssistantMessageRecord",
     "DynamicBorder",
     "ErrorRecord",
@@ -353,6 +359,7 @@ __all__ = [
     "ScreenRoot",
     "SelectItem",
     "SelectionRange",
+    "SelectionController",
     "SelectionSurface",
     "SettingsSurface",
     "SettingItem",
@@ -426,6 +433,7 @@ __all__ = [
     "get_png_dimensions",
     "get_webp_dimensions",
     "hyperlink",
+    "highlight_selection_by_columns",
     "get_completion_suggestions",
     "grapheme_clusters",
     "image_fallback",
