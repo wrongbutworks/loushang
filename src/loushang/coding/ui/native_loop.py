@@ -67,6 +67,7 @@ async def run_native_coding_tui(
         is_local_command=is_local_command or (lambda _text: False),
         keybindings=keybindings,
         width=initial_size.columns,
+        height=initial_size.rows,
     )
     runtime = TuiRuntime(
         render_loop=RenderLoop(app),

@@ -28,6 +28,7 @@ from loushang.tui import (
     PlaybackHarness,
     PlaybackStep,
     Renderable,
+    RenderConstraints,
     RenderDiagnostics,
     RenderLoop,
     SettingItem,
@@ -121,6 +122,28 @@ def test_native_tui_playback_uses_visual_up_before_history_for_multiline_draft()
     ]
     assert app.composer.value == "previous prompt"
     for step in result:
+        step.assert_no_clear_scrollback()
+
+
+def test_native_tui_playback_routes_composer_page_keys() -> None:
+    app = _app()
+    app.composer.set_text("one\ntwo\nthree\nfour\nfive")
+    playback = NativeTuiInputPlayback(app, columns=20, rows=3)
+
+    page_up_steps = playback.play([PlaybackEvent.input("\x1b[5~")])
+    page_up = app.composer.render(RenderConstraints(width=20, max_height=5))
+
+    assert all(step.flush_succeeded for step in page_up_steps)
+    assert page_up.cursor is not None
+    assert (page_up.cursor.row, page_up.cursor.column) == (2, 6)
+
+    page_down_steps = playback.play([PlaybackEvent.input("\x1b[6~")])
+    page_down = app.composer.render(RenderConstraints(width=20, max_height=5))
+
+    assert all(step.flush_succeeded for step in page_down_steps)
+    assert page_down.cursor is not None
+    assert (page_down.cursor.row, page_down.cursor.column) == (4, 6)
+    for step in (*page_up_steps, *page_down_steps):
         step.assert_no_clear_scrollback()
 
 
@@ -499,6 +522,7 @@ class _NativeInteractivePlayback:
             should_exit=lambda _text: False,
             is_local_command=surface_manager.is_local_command,
             width=columns,
+            height=rows,
         )
 
     def play(self, events: list[PlaybackEvent]) -> tuple[PlaybackStep, ...]:
@@ -508,6 +532,8 @@ class _NativeInteractivePlayback:
                 if not isinstance(event.payload, TerminalSize):
                     raise TypeError("resize event payload must be TerminalSize")
                 self.terminal.resize(event.payload)
+                self.router.width = event.payload.columns
+                self.router.height = event.payload.rows
             elif event.kind == "input":
                 if not isinstance(event.payload, str):
                     raise TypeError("input playback event payload must be str")

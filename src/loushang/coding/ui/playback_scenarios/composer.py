@@ -12,6 +12,7 @@ from loushang.coding.ui.playback_fakes import (
 )
 from loushang.coding.ui.playback_scenarios.budgets import INTERACTION_FRAME_BUDGET
 from loushang.coding.ui.playback_suite import NativePlaybackScenarioSpec
+from loushang.tui import PlaybackEvent, RenderConstraints
 from loushang.tui.input import BRACKETED_PASTE_END, BRACKETED_PASTE_START
 
 
@@ -62,6 +63,65 @@ def _run_completion_navigation_priority() -> NativeTuiInputPlaybackResult:
     )
     result.assert_composer_text("/models ")
     result.assert_visible_contains("› /models")
+    result.assert_no_clear_screen()
+    result.assert_cursor_matches_diagnostics()
+    INTERACTION_FRAME_BUDGET.assert_result(result, skip_first=True)
+    return result
+
+
+def _run_completion_escape_cancel() -> NativeTuiInputPlaybackResult:
+    result = (
+        NativeTuiInputScenario(width=80, height=12)
+        .with_completion_items("/help", "/history")
+        .render()
+        .type_text("/h")
+        .escape()
+        .run()
+    )
+    result.assert_composer_text("/h")
+    result.assert_visible_contains("› /h")
+    result.assert_visible_not_contains("  /help")
+    result.assert_visible_not_contains("  /history")
+    result.assert_no_clear_screen()
+    result.assert_cursor_matches_diagnostics()
+    INTERACTION_FRAME_BUDGET.assert_result(result, skip_first=True)
+    return result
+
+
+def _run_completion_prefix_refresh() -> NativeTuiInputPlaybackResult:
+    result = (
+        NativeTuiInputScenario(width=80, height=12)
+        .with_completion_items("/help", "/history", "/model")
+        .render()
+        .type_text("/")
+        .type_text("m")
+        .run()
+    )
+    result.assert_composer_text("/m")
+    result.assert_visible_contains("› /m")
+    result.assert_visible_contains("  /model")
+    result.assert_visible_not_contains("  /help")
+    result.assert_visible_not_contains("  /history")
+    result.assert_no_clear_screen()
+    result.assert_cursor_matches_diagnostics()
+    INTERACTION_FRAME_BUDGET.assert_result(result, skip_first=True)
+    return result
+
+
+def _run_completion_enter_submits_command() -> NativeTuiInputPlaybackResult:
+    result = (
+        NativeTuiInputScenario(width=80, height=12)
+        .with_completion_items("/model", "/models")
+        .with_local_commands("/model")
+        .render()
+        .type_text("/mod")
+        .enter()
+        .run()
+    )
+    result.assert_local_texts("/model")
+    result.assert_composer_text("")
+    result.assert_visible_not_contains("  /model")
+    result.assert_visible_not_contains("  /models")
     result.assert_no_clear_screen()
     result.assert_cursor_matches_diagnostics()
     INTERACTION_FRAME_BUDGET.assert_result(result, skip_first=True)
@@ -165,6 +225,77 @@ def _run_keyboard_shift_enter_newline() -> NativeTuiInputPlaybackResult:
     return result
 
 
+def _run_editor_key_editing() -> NativeTuiInputPlaybackResult:
+    result = (
+        NativeTuiInputScenario(width=80, height=12)
+        .render()
+        .type_text("alpha beta gamma")
+        .key("\x01say ")
+        .key("\x05\x17")
+        .key("\x19")
+        .key("\x1f")
+        .run()
+    )
+    result.assert_composer_text("say alpha beta ")
+    result.assert_visible_contains("› say alpha beta")
+    result.assert_no_clear_screen()
+    result.assert_cursor_matches_diagnostics()
+    INTERACTION_FRAME_BUDGET.assert_result(result, skip_first=True)
+    return result
+
+
+def _run_page_navigation() -> NativeTuiInputPlaybackResult:
+    scenario = NativeTuiInputScenario(width=20, height=3).with_composer_text("one\ntwo\nthree\nfour\nfive")
+    playback = scenario.playback
+
+    playback.play((PlaybackEvent("render"), PlaybackEvent.input("\x1b[5~")))
+    page_up = scenario.app.composer.render(RenderConstraints(width=20, max_height=5))
+    assert page_up.cursor is not None
+    assert (page_up.cursor.row, page_up.cursor.column) == (2, 6)
+
+    playback.play((PlaybackEvent.input("\x1b[6~"),))
+    page_down = scenario.app.composer.render(RenderConstraints(width=20, max_height=5))
+    assert page_down.cursor is not None
+    assert (page_down.cursor.row, page_down.cursor.column) == (4, 6)
+
+    result = _result_from_scenario(scenario)
+    result.assert_composer_text("one\ntwo\nthree\nfour\nfive")
+    result.assert_no_clear_screen()
+    result.assert_cursor_matches_diagnostics()
+    INTERACTION_FRAME_BUDGET.assert_result(result, skip_first=True)
+    return result
+
+
+def _run_paste_marker_delete_undo() -> NativeTuiInputPlaybackResult:
+    pasted = "\n".join(f"line {index}" for index in range(10))
+    result = (
+        NativeTuiInputScenario(width=80, height=12)
+        .render()
+        .key(f"{BRACKETED_PASTE_START}{pasted}{BRACKETED_PASTE_END}")
+        .key("\x7f")
+        .key("\x1f")
+        .run()
+    )
+    result.assert_composer_text(pasted)
+    result.assert_visible_contains("[paste #1 +10 lines]")
+    result.assert_no_clear_screen()
+    result.assert_cursor_matches_diagnostics()
+    INTERACTION_FRAME_BUDGET.assert_result(result, skip_first=True)
+    return result
+
+
+def _result_from_scenario(scenario: NativeTuiInputScenario) -> NativeTuiInputPlaybackResult:
+    playback = scenario.playback
+    return NativeTuiInputPlaybackResult(
+        steps=playback.harness.steps,
+        port=playback.port,
+        input_results=tuple(playback.input_results),
+        step_input_results=tuple(playback.step_input_results),
+        step_coding_states=tuple(playback.step_coding_states),
+        app=scenario.app,
+    )
+
+
 COMPOSER_SCENARIOS = (
     NativePlaybackScenarioSpec(
         name="completion-tab",
@@ -181,6 +312,24 @@ COMPOSER_SCENARIOS = (
         name="completion-navigation-priority",
         description="Route completion navigation before history navigation.",
         run=_run_completion_navigation_priority,
+    ),
+    NativePlaybackScenarioSpec(
+        name="completion-escape-cancel",
+        description="Cancel visible completions without clearing the composer draft.",
+        run=_run_completion_escape_cancel,
+        tags=("completion", "editor", "composer"),
+    ),
+    NativePlaybackScenarioSpec(
+        name="completion-prefix-refresh",
+        description="Refresh visible completions when the composer prefix changes.",
+        run=_run_completion_prefix_refresh,
+        tags=("completion", "editor", "composer"),
+    ),
+    NativePlaybackScenarioSpec(
+        name="completion-enter-submits-command",
+        description="Apply a selected slash command completion before local command submission.",
+        run=_run_completion_enter_submits_command,
+        tags=("completion", "command", "composer"),
     ),
     NativePlaybackScenarioSpec(
         name="history-navigation",
@@ -206,5 +355,23 @@ COMPOSER_SCENARIOS = (
         name="keyboard-shift-enter-newline",
         description="Route raw Shift+Enter to composer newline before submission.",
         run=_run_keyboard_shift_enter_newline,
+    ),
+    NativePlaybackScenarioSpec(
+        name="editor-key-editing",
+        description="Route common editor keys for line movement, kill/yank, and undo.",
+        run=_run_editor_key_editing,
+        tags=("editor", "composer"),
+    ),
+    NativePlaybackScenarioSpec(
+        name="page-navigation",
+        description="Route composer PageUp and PageDown using playback terminal dimensions.",
+        run=_run_page_navigation,
+        tags=("editor", "composer"),
+    ),
+    NativePlaybackScenarioSpec(
+        name="paste-marker-delete-undo",
+        description="Delete a large paste marker atomically and restore it with undo.",
+        run=_run_paste_marker_delete_undo,
+        tags=("editor", "paste", "composer"),
     ),
 )
