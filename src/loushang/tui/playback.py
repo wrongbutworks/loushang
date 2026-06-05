@@ -159,6 +159,21 @@ class PlaybackResult:
     def assert_visible_not_contains(self, unexpected: str) -> None:
         assert unexpected not in self.visible_text
 
+    def assert_frame_output_contains(self, step_index: int, expected: str) -> None:
+        if step_index < 0 or step_index >= len(self.steps):
+            raise AssertionError(f"expected step index {step_index} to exist")
+        step = self.steps[step_index]
+        if step.frame is None:
+            raise AssertionError(f"expected step {step_index} to record a terminal frame")
+        if expected not in step.frame.serialized_output:
+            raise AssertionError(f"expected step {step_index} frame output to contain {expected!r}")
+
+    def assert_any_frame_output_contains(self, expected: str) -> None:
+        for step in self.steps:
+            if step.frame is not None and expected in step.frame.serialized_output:
+                return
+        raise AssertionError(f"expected at least one frame output to contain {expected!r}")
+
     def assert_last_operation_class_not_in(self, *unexpected: str) -> None:
         assert self.steps
         assert self.steps[-1].diagnostics.operation_class not in unexpected

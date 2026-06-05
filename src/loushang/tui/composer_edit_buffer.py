@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from collections.abc import Sequence
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field
 
 from loushang.tui.cell_width import grapheme_clusters, visible_width
@@ -311,6 +311,16 @@ class ComposerEditBuffer:
 
     def clear_redo(self) -> None:
         self._redo_stack.clear()
+
+    def apply_edit(self, edit: Callable[[], object]) -> bool:
+        snapshot = self._snapshot()
+        previous_atoms = snapshot[0]
+        edit()
+        if tuple(self._atoms) == previous_atoms:
+            return False
+        self._undo_stack.push(snapshot)
+        self._redo_stack.clear()
+        return True
 
     def _clamp_range(self, start: int, end: int) -> tuple[int, int]:
         length = len(self._atoms)

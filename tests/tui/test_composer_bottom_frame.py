@@ -159,6 +159,17 @@ def test_multiline_paste_inserts_text_without_submitting_and_undoes_as_one_step(
     assert composer.value == ""
 
 
+def test_paste_records_single_undo_snapshot_for_redo_after_extra_undo() -> None:
+    composer = Composer(prompt="> ")
+
+    composer.paste("a\nb")
+    composer.undo()
+    composer.undo()
+    composer.redo()
+
+    assert composer.value == "a\nb"
+
+
 def test_paste_normalizes_line_endings_and_tabs_atomically() -> None:
     composer = Composer(prompt="> ")
 

@@ -375,6 +375,7 @@ def _run_composer_selection_stress() -> NativeTuiInputPlaybackResult:
     result = _result_from_scenario(scenario)
     result.assert_no_clear_screen()
     result.assert_cursor_matches_diagnostics()
+    result.assert_any_frame_output_contains("\x1b[7m")
     INTERACTION_FRAME_BUDGET.assert_result(result, skip_first=True)
     return result
 
