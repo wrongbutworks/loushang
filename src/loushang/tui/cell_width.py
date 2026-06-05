@@ -544,6 +544,8 @@ def _cluster_width(cluster: str) -> int:
         return 0
     if all(_char_width(char) == 0 for char in cluster):
         return 0
+    if "\ufe0f" in cluster:
+        return 2
     if "\u200d" in cluster:
         return 2
     if any(_is_emoji_width(char) or _is_regional_indicator(char) for char in cluster):
@@ -584,11 +586,7 @@ def _is_regional_indicator(char: str) -> bool:
 
 def _is_emoji_width(char: str) -> bool:
     codepoint = ord(char)
-    return (
-        0x1F000 <= codepoint <= 0x1FBFF
-        or 0x2300 <= codepoint <= 0x23FF
-        or 0x2600 <= codepoint <= 0x27BF
-    )
+    return 0x1F000 <= codepoint <= 0x1FBFF
 
 
 class _StyleTracker:
