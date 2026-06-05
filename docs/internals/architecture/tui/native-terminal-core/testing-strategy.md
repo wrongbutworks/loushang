@@ -65,6 +65,8 @@ Examples:
 - concise error without traceback
 - composer selection stress with wide text, paste markers, kill/yank, undo,
   completion refresh, and selection key priority
+- product-composed interaction with long transcript, running queue state,
+  settings search, completion, and composer selection in one playback
 
 Composer selection playback should be run directly when changing composer input,
 selection, paste marker, completion, keybinding, or render-highlight behavior:
@@ -76,6 +78,18 @@ uv --cache-dir .uv-cache run --extra dev python -m loushang.coding.ui.playback_r
 The trace should include `composer-selection-stress` as a passing scenario. Use
 the generated JSONL artifact when diagnosing selection regressions because the
 final screen cannot show transient selected ranges after replacement or undo.
+
+Product-composed playback should be run when changing bottom-frame composition,
+pending queue state, transcript viewport behavior, settings search, completion,
+or cross-feature input routing:
+
+```bash
+uv --cache-dir .uv-cache run --extra dev python -m loushang.coding.ui.playback_runner product-composed-interaction --artifacts /tmp/loushang-product-playback --include-frames
+```
+
+The trace should include `product-composed-interaction` as a passing scenario.
+This scenario protects cross-feature regressions that are easy to miss when
+composer, surface, lifecycle, and transcript tests are run only in isolation.
 
 ### 4. Boundary Tests
 

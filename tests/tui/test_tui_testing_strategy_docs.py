@@ -18,6 +18,19 @@ def test_testing_strategy_documents_composer_selection_manual_smoke() -> None:
     assert "Ctrl+-" in text
 
 
+def test_testing_strategy_documents_product_composed_playback() -> None:
+    strategy = Path(
+        "docs/internals/architecture/tui/native-terminal-core/testing-strategy.md"
+    ).read_text(encoding="utf-8")
+    playback = Path("docs/internals/testing/native-tui-playback.md").read_text(
+        encoding="utf-8"
+    )
+
+    for text in (strategy, playback):
+        assert "product-composed-interaction" in text
+        assert "loushang-product-playback" in text
+
+
 def test_theme_key_design_lists_editor_selection_token() -> None:
     text = Path(
         "docs/internals/architecture/tui/native-terminal-core/key-designs/KD-009-theme-resolution.md"
