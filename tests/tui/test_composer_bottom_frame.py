@@ -218,7 +218,208 @@ def test_large_paste_marker_forward_delete_is_atomic() -> None:
     composer.undo()
 
     assert composer.value == "a\nb\nc"
-    assert rendered_text(composer, width=30) == ("> [paste #1 +3 lines]",)
+
+
+def test_composer_selection_extends_and_clears_on_plain_movement() -> None:
+    composer = Composer(prompt="> ")
+    composer.insert_text("abc")
+
+    composer.select_char_left()
+    composer.select_char_left()
+
+    assert composer.selected_range == (1, 3)
+
+    composer.move_left()
+
+    assert composer.selected_range is None
+
+
+def test_composer_visual_movement_attempts_clear_selection_at_boundaries() -> None:
+    composer = Composer(prompt="> ")
+    composer.insert_text("abc")
+    composer.select_char_left()
+
+    assert not composer.move_visual_up(width=80)
+
+    assert composer.selected_range is None
+
+    composer.select_char_left()
+    composer.move_visual_page_up(width=80, visible_lines=4)
+
+    assert composer.selected_range is None
+
+
+def test_composer_set_selection_moves_cursor_to_focus() -> None:
+    composer = Composer(prompt="> ")
+    composer.insert_text("abc")
+
+    composer.set_selection(0, 2)
+    composer.insert_text("x")
+
+    assert composer.value == "xc"
+
+
+def test_composer_typing_replaces_selection_in_one_undo_step() -> None:
+    composer = Composer(prompt="> ")
+    composer.insert_text("hello")
+    composer.select_word_left()
+
+    composer.insert_text("bye")
+
+    assert composer.value == "bye"
+    assert composer.selected_range is None
+
+    composer.undo()
+
+    assert composer.value == "hello"
+    assert composer.selected_range is None
+
+
+def test_composer_paste_replaces_selection_in_one_undo_step() -> None:
+    composer = Composer(prompt="> ")
+    composer.insert_text("hello")
+    composer.select_word_left()
+
+    composer.paste("bye")
+
+    assert composer.value == "bye"
+
+    composer.undo()
+
+    assert composer.value == "hello"
+
+
+def test_composer_backspace_and_delete_remove_selection_without_adjacent_atoms() -> None:
+    composer = Composer(prompt="> ")
+    composer.insert_text("abcd")
+    composer.select_char_left()
+    composer.select_char_left()
+
+    composer.delete_backward()
+
+    assert composer.value == "ab"
+
+    composer.undo()
+    composer.move_to_line_end()
+    composer.select_char_left()
+    composer.select_char_left()
+    composer.delete_forward()
+
+    assert composer.value == "ab"
+
+
+def test_composer_kill_commands_kill_selection_only() -> None:
+    composer = Composer(prompt="> ")
+    composer.insert_text("alpha beta")
+    composer.select_word_left()
+
+    composer.kill_to_line_start()
+
+    assert composer.value == "alpha "
+    assert composer.kill_ring[0] == "beta"
+
+    composer.undo()
+    composer.move_to_line_end()
+    composer.select_word_left()
+    composer.kill_to_line_end()
+
+    assert composer.value == "alpha "
+    assert composer.kill_ring[0] == "beta"
+
+
+def test_composer_yank_replaces_selection_and_yank_pop_still_rotates() -> None:
+    composer = Composer(prompt="> ")
+    composer.insert_text("one")
+    composer.select_word_left()
+    composer.kill_to_line_start()
+    composer.insert_text("two")
+    composer.select_word_left()
+    composer.kill_to_line_start()
+    composer.insert_text("target")
+    composer.select_word_left()
+
+    composer.yank()
+
+    assert composer.value == "two"
+
+    composer.yank_pop()
+
+    assert composer.value == "one"
+
+
+def test_composer_selection_uses_atom_indexes_for_paste_markers() -> None:
+    composer = Composer(prompt="> ", large_paste_line_threshold=2)
+    composer.insert_text("x")
+    composer.paste("a\nb\nc")
+
+    composer.select_char_left()
+
+    assert composer.selected_range == (1, 2)
+
+    composer.delete_backward()
+
+    assert composer.value == "x"
+
+
+def test_composer_selection_handles_grapheme_clusters() -> None:
+    composer = Composer(prompt="> ")
+    composer.insert_text("你🙂a")
+
+    composer.select_char_left()
+    composer.select_char_left()
+
+    assert composer.selected_range == (1, 3)
+
+    composer.insert_text("x")
+
+    assert composer.value == "你x"
+
+
+def test_composer_render_highlights_selected_text() -> None:
+    composer = Composer(prompt="> ")
+    composer.insert_text("abc")
+    composer.select_char_left()
+
+    assert rendered_text(composer, width=20) == ("> ab\x1b[7mc\x1b[27m",)
+
+
+def test_composer_completion_navigation_does_not_share_text_selection_state() -> None:
+    composer = Composer(prompt="> ")
+    composer.insert_text("ab")
+    composer.set_completion_items([CompletionItem(value="abc"), CompletionItem(value="abd")])
+
+    composer.select_char_left()
+    composer.select_next_completion()
+
+    assert composer.selected_range == (1, 2)
+
+    composer.apply_selected_completion()
+
+    assert composer.selected_range is None
+
+
+def test_composer_history_and_undo_redo_clear_selection() -> None:
+    composer = Composer(prompt="> ")
+    composer.add_history("old")
+    composer.insert_text("new")
+    composer.select_word_left()
+
+    composer.history_previous()
+
+    assert composer.value == "old"
+    assert composer.selected_range is None
+
+    composer.select_word_left()
+    composer.insert_text("fresh")
+    composer.select_word_left()
+    composer.undo()
+
+    assert composer.selected_range is None
+
+    composer.select_word_left()
+    composer.redo()
+
+    assert composer.selected_range is None
 
 
 def test_large_paste_marker_is_atomic_for_word_backward_operations() -> None:

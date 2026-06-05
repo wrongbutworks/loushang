@@ -172,6 +172,27 @@ def test_native_tui_playback_completion_navigation_wins_over_history_navigation(
         step.assert_no_clear_scrollback()
 
 
+def test_native_tui_playback_shift_selection_replaces_selected_text() -> None:
+    app = _app()
+    playback = NativeTuiInputPlayback(app)
+
+    result = playback.play(
+        [
+            PlaybackEvent.input("abc"),
+            PlaybackEvent.input("\x1b[1;2D"),
+            PlaybackEvent.input("x"),
+        ]
+    )
+
+    assert all(step.flush_succeeded for step in result)
+    selected_output = result[1].frame.serialized_output if result[1].frame else ""
+    assert "\x1b[7mc\x1b[27m" in selected_output
+    assert app.composer.value == "abx"
+    assert "› abx" in _plain_lines(result[-1].diagnostics)
+    for step in result:
+        step.assert_no_clear_scrollback()
+
+
 def test_native_tui_playback_escape_clears_idle_draft_without_abort() -> None:
     app = _app()
     playback = NativeTuiInputPlayback(app)
