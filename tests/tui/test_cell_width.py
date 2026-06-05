@@ -302,6 +302,24 @@ def test_truncate_to_width_matches_pi_large_unicode_and_malformed_escape_fixture
     assert no_ellipsis.endswith("\x1b[0m")
 
 
+def test_visible_width_distinguishes_text_and_emoji_presentation() -> None:
+    """Text-default symbols (Text_Presentation) are single-width;
+    the same symbol with U+FE0F (VS16) becomes emoji-width.
+    Symbols whose East_Asian_Width is W remain double-width.
+    """
+    # Text presentation (no VS16)
+    assert visible_width(chr(0x26A0)) == 1  # ⚠
+    assert visible_width(chr(0x2600)) == 1  # ☀
+    assert visible_width(chr(0x261A)) == 1  # ☚
+    # Emoji presentation (with VS16)
+    assert visible_width(chr(0x26A0) + chr(0xFE0F)) == 2  # ⚠️
+    assert visible_width(chr(0x2600) + chr(0xFE0F)) == 2  # ☀️
+    # Default double-width via East_Asian_Width=W
+    assert visible_width(chr(0x2615)) == 2  # ☕
+    assert visible_width(chr(0x26A1)) == 2  # ⚡
+    assert visible_width(chr(0x2705)) == 2  # ✅
+
+
 def test_wrap_cells_rejects_non_positive_width() -> None:
     try:
         wrap_cells("abc", width=0)
