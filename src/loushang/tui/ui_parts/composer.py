@@ -51,7 +51,7 @@ from loushang.tui.core import (
 from loushang.tui.framework import surface_is_bottom_exclusive
 from loushang.tui.kill_ring import KillRing
 from loushang.tui.selection import SelectionRange
-from loushang.tui.theme import apply_theme_style
+from loushang.tui.theme import ThemeResolver, ThemeStyle, apply_theme_style
 
 from .layout import RegionRenderable, ScreenRegion, ScreenRegionStack, _part_has_content
 from .pending import PendingQueueView as PendingQueueView
@@ -59,6 +59,7 @@ from .status import StatusBar as StatusBar
 from .status import WorkingLine as WorkingLine
 
 _EditAction = str | None
+DEFAULT_COMPOSER_SELECTION_STYLE: ThemeStyle = {"reverse": True}
 
 
 @dataclass(frozen=True, slots=True)
@@ -94,6 +95,8 @@ class Composer:
     continuation_prompt: str = "  "
     large_paste_line_threshold: int = 8
     large_paste_char_threshold: int = 1000
+    theme: ThemeResolver | None = None
+    selection_theme_token: str = "editor.selection"
     completion_debounce_seconds: float = 0.05
     completion_min_interval_seconds: float = 0.05
     now: Callable[[], float] = field(default_factory=lambda: time.monotonic, repr=False)
@@ -569,6 +572,7 @@ class Composer:
             self._buffer.display_text,
             display_cursor=self._buffer.display_cursor,
             selection_display_range=self._selection_display_range(),
+            selection_style=self._selection_style(),
             prompt=self.prompt,
             continuation_prompt=self.continuation_prompt,
             width=constraints.width,
@@ -685,6 +689,13 @@ class Composer:
         if display_start == display_end:
             return None
         return display_start, display_end
+
+    def _selection_style(self) -> ThemeStyle:
+        if self.theme is not None and self.selection_theme_token:
+            resolved = self.theme.resolve(self.selection_theme_token)
+            if resolved:
+                return resolved
+        return DEFAULT_COMPOSER_SELECTION_STYLE
 
     def _line_start_index(self) -> int:
         return self._buffer.line_start_index()
@@ -1108,6 +1119,7 @@ def _render_composer_text(
     continuation_prompt: str,
     width: int,
     selection_display_range: tuple[int, int] | None = None,
+    selection_style: ThemeStyle | None = None,
 ) -> tuple[list[str], CursorDeclaration]:
     lines: list[str] = []
     cursor: CursorDeclaration | None = None
@@ -1128,6 +1140,7 @@ def _render_composer_text(
                 chunk_start=chunk_start,
                 chunk_end=chunk_end,
                 selection_display_range=selection_display_range,
+                selection_style=selection_style,
             )
             lines.append(truncate_to_width(row_prefix + chunk_text, max_width=line_width))
             if cursor is None and chunk_start <= display_cursor <= chunk_end:
@@ -1151,6 +1164,7 @@ def _highlight_selection_in_chunk(
     chunk_start: int,
     chunk_end: int,
     selection_display_range: tuple[int, int] | None,
+    selection_style: ThemeStyle | None,
 ) -> str:
     if selection_display_range is None:
         return text
@@ -1166,7 +1180,7 @@ def _highlight_selection_in_chunk(
     before = slice_by_column(text, start=0, length=before_width).text
     selected = slice_by_column(text, start=before_width, length=selected_width).text
     after = slice_by_column(text, start=after_start, length=max(0, chunk_width - after_start)).text
-    return before + apply_theme_style(selected, {"reverse": True}) + after
+    return before + apply_theme_style(selected, selection_style or DEFAULT_COMPOSER_SELECTION_STYLE) + after
 
 
 def _visual_segments(

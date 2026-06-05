@@ -23,6 +23,7 @@ from loushang.tui import (
     SlashCommandCompletionProvider,
     StatusBar,
     StatusField,
+    ThemeResolver,
     WorkingLine,
     strip_control_sequences,
     visible_width,
@@ -381,6 +382,20 @@ def test_composer_render_highlights_selected_text() -> None:
     composer.select_char_left()
 
     assert rendered_text(composer, width=20) == ("> ab\x1b[7mc\x1b[27m",)
+
+
+def test_composer_selection_highlight_uses_editor_selection_theme_token() -> None:
+    composer = Composer(
+        prompt="> ",
+        theme=ThemeResolver(defaults={"editor.selection": {"color": "cyan", "bold": True}}),
+    )
+    composer.insert_text("abc")
+    composer.select_char_left()
+
+    raw = rendered_text(composer, width=20)[0]
+
+    assert strip_control_sequences(raw) == "> abc"
+    assert "\x1b[1;36mc\x1b[22;39m" in raw
 
 
 def test_composer_completion_navigation_does_not_share_text_selection_state() -> None:

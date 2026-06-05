@@ -12,7 +12,12 @@ from loushang.coding.ui.playback_fakes import (
 )
 from loushang.coding.ui.playback_scenarios.budgets import INTERACTION_FRAME_BUDGET
 from loushang.coding.ui.playback_suite import NativePlaybackScenarioSpec
-from loushang.tui import PlaybackEvent, RenderConstraints
+from loushang.tui import (
+    CompletionItem,
+    CompletionProvider,
+    PlaybackEvent,
+    RenderConstraints,
+)
 from loushang.tui.input import BRACKETED_PASTE_END, BRACKETED_PASTE_START
 
 
@@ -303,6 +308,77 @@ def _run_composer_selection_replace() -> NativeTuiInputPlaybackResult:
     return result
 
 
+def _run_composer_selection_stress() -> NativeTuiInputPlaybackResult:
+    scenario = NativeTuiInputScenario(width=80, height=12)
+    playback = scenario.playback
+
+    playback.play(
+        (
+            PlaybackEvent("render"),
+            PlaybackEvent.input("你🙂a"),
+            PlaybackEvent.input("\x1b[1;2D"),
+            PlaybackEvent.input("\x1b[1;2D"),
+            PlaybackEvent.input("x"),
+            PlaybackEvent.input("\x1b[1;2H"),
+            PlaybackEvent.input("wide"),
+            PlaybackEvent.input("\x1f"),
+            PlaybackEvent.input("\x01"),
+            PlaybackEvent.input("\x1b[1;2F"),
+            PlaybackEvent.input("\x0b"),
+            PlaybackEvent.input("\x19"),
+            PlaybackEvent.input("\x1f"),
+        )
+    )
+    assert scenario.app.composer.value == ""
+    assert [state["composer_text"] for state in playback.step_coding_states[1:8]] == [
+        "你🙂a",
+        "你🙂a",
+        "你🙂a",
+        "你x",
+        "你x",
+        "wide",
+        "你x",
+    ]
+
+    pasted = "\n".join(f"selected paste line {index}" for index in range(10))
+    playback.play((PlaybackEvent.input(f"{BRACKETED_PASTE_START}{pasted}{BRACKETED_PASTE_END}"),))
+    assert scenario.app.composer.value == pasted
+    assert scenario.app.composer.selected_range is None
+    assert "[paste #1 +10 lines]" in "\n".join(playback.port.screen.visible_lines)
+
+    playback.play((PlaybackEvent.input("\x1b[1;2D"),))
+    assert scenario.app.composer.selected_range == (0, 1)
+
+    playback.play((PlaybackEvent.input("\x7f"),))
+    assert scenario.app.composer.value == ""
+
+    playback.play((PlaybackEvent.input("\x1f"),))
+    assert scenario.app.composer.value == pasted
+    assert "[paste #1 +10 lines]" in "\n".join(playback.port.screen.visible_lines)
+
+    scenario.app.composer.clear()
+    scenario.app.composer.set_completion_provider(
+        CompletionProvider((CompletionItem(value="ax-alpha"), CompletionItem(value="ax-beta")))
+    )
+    playback.play(
+        (
+            PlaybackEvent.input("ab"),
+            PlaybackEvent.input("\x1b[1;2D"),
+            PlaybackEvent.input("x"),
+        )
+    )
+    assert scenario.app.composer.value == "ax"
+    assert scenario.app.composer.selected_range is None
+    assert scenario.app.composer.has_completions
+    assert "ax-alpha" in "\n".join(playback.port.screen.visible_lines)
+
+    result = _result_from_scenario(scenario)
+    result.assert_no_clear_screen()
+    result.assert_cursor_matches_diagnostics()
+    INTERACTION_FRAME_BUDGET.assert_result(result, skip_first=True)
+    return result
+
+
 def _result_from_scenario(scenario: NativeTuiInputScenario) -> NativeTuiInputPlaybackResult:
     playback = scenario.playback
     return NativeTuiInputPlaybackResult(
@@ -398,5 +474,11 @@ COMPOSER_SCENARIOS = (
         description="Extend composer selection with Shift+Left and replace it through typed input.",
         run=_run_composer_selection_replace,
         tags=("editor", "selection", "composer"),
+    ),
+    NativePlaybackScenarioSpec(
+        name="composer-selection-stress",
+        description="Stress composer selection across wide text, paste markers, kill/yank, undo, and completions.",
+        run=_run_composer_selection_stress,
+        tags=("editor", "selection", "paste", "completion", "composer"),
     ),
 )

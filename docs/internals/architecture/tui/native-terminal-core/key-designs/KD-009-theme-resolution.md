@@ -29,6 +29,7 @@ status.branch
 composer.prompt
 surface.border
 surface.selection.active
+editor.selection
 markdown.heading.1
 markdown.code.inline
 markdown.code.block
