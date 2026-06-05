@@ -11,6 +11,8 @@ Good candidates include:
 - overlay and surface interactions
 - viewport or cursor positioning
 - long transcript resume behavior
+- product-composed interactions that combine transcript, running state,
+  pending queues, surfaces, completion, and composer selection
 
 Prefer focused component tests for pure rendering functions. Use the playback harness when the test needs a `NativeCodingTuiApp`, `TuiRuntime`, and `FakeTerminalPort` together.
 
@@ -22,3 +24,10 @@ Useful assertions:
 - `assert_cursor_matches_diagnostics(step)` when cursor anchoring is part of the behavior
 
 Avoid broad snapshot-only tests. Prefer targeted assertions on terminal operations, diagnostics, visible text, and cursor/viewport invariants.
+
+Useful direct smoke commands:
+
+```bash
+uv --cache-dir .uv-cache run --extra dev python -m loushang.coding.ui.playback_runner composer-selection-stress --artifacts /tmp/loushang-selection-playback --include-frames
+uv --cache-dir .uv-cache run --extra dev python -m loushang.coding.ui.playback_runner product-composed-interaction --artifacts /tmp/loushang-product-playback --include-frames
+```

@@ -10,6 +10,7 @@ from typing import TextIO
 from loushang.coding.ui.playback_scenarios.command import COMMAND_ROUTING_SCENARIOS
 from loushang.coding.ui.playback_scenarios.composer import COMPOSER_SCENARIOS
 from loushang.coding.ui.playback_scenarios.lifecycle import LIFECYCLE_SCENARIOS
+from loushang.coding.ui.playback_scenarios.product import PRODUCT_SCENARIOS
 from loushang.coding.ui.playback_scenarios.surface import SURFACE_SCENARIOS
 from loushang.coding.ui.playback_scenarios.terminal import TERMINAL_SCENARIOS
 from loushang.coding.ui.playback_scenarios.transcript import TRANSCRIPT_SCENARIOS
@@ -102,16 +103,35 @@ def _build_parser() -> argparse.ArgumentParser:
         prog="python -m loushang.coding.ui.playback_runner",
         description="Run native TUI playback regression scenarios.",
     )
-    parser.add_argument("scenarios", nargs="*", help="Scenario names to run. Defaults to all scenarios.")
+    parser.add_argument(
+        "scenarios", nargs="*", help="Scenario names to run. Defaults to all scenarios."
+    )
     parser.add_argument("--list", action="store_true", help="List available scenarios.")
-    parser.add_argument("--tag", action="append", default=None, help="Run or list scenarios matching this tag. Repeatable.")
-    parser.add_argument("--artifacts", help="Directory for manual inspection artifacts.")
-    parser.add_argument("--include-frames", action="store_true", help="Include visible frames in JSONL artifacts.")
-    parser.add_argument("--json", action="store_true", help="Write a machine-readable JSON summary to stdout.")
+    parser.add_argument(
+        "--tag",
+        action="append",
+        default=None,
+        help="Run or list scenarios matching this tag. Repeatable.",
+    )
+    parser.add_argument(
+        "--artifacts", help="Directory for manual inspection artifacts."
+    )
+    parser.add_argument(
+        "--include-frames",
+        action="store_true",
+        help="Include visible frames in JSONL artifacts.",
+    )
+    parser.add_argument(
+        "--json",
+        action="store_true",
+        help="Write a machine-readable JSON summary to stdout.",
+    )
     return parser
 
 
-def _write_scenario_list(suite: NativePlaybackSuite, stdout: TextIO, *, tags: Sequence[str] = ()) -> None:
+def _write_scenario_list(
+    suite: NativePlaybackSuite, stdout: TextIO, *, tags: Sequence[str] = ()
+) -> None:
     for scenario in suite.selected((), tags=tags):
         stdout.write(f"{scenario.name}\t{scenario.description}\n")
 
@@ -136,6 +156,7 @@ DEFAULT_SUITE = NativePlaybackSuite(
     (
         *COMPOSER_SCENARIOS,
         *LIFECYCLE_SCENARIOS,
+        *PRODUCT_SCENARIOS,
         *COMMAND_ROUTING_SCENARIOS,
         *SURFACE_SCENARIOS,
         *TRANSCRIPT_SCENARIOS,

@@ -14,13 +14,16 @@ from loushang.coding.ui.playback_runner import (
 from loushang.coding.ui.playback_scenarios.command import COMMAND_ROUTING_SCENARIOS
 from loushang.coding.ui.playback_scenarios.composer import COMPOSER_SCENARIOS
 from loushang.coding.ui.playback_scenarios.lifecycle import LIFECYCLE_SCENARIOS
+from loushang.coding.ui.playback_scenarios.product import PRODUCT_SCENARIOS
 from loushang.coding.ui.playback_scenarios.surface import SURFACE_SCENARIOS
 from loushang.coding.ui.playback_scenarios.terminal import TERMINAL_SCENARIOS
 from loushang.coding.ui.playback_scenarios.transcript import TRANSCRIPT_SCENARIOS
 from loushang.coding.ui.playback_suite import NativePlaybackSuite as SuiteFromModule
 
 
-def test_native_tui_playback_runner_reexports_suite_types_from_playback_suite_module() -> None:
+def test_native_tui_playback_runner_reexports_suite_types_from_playback_suite_module() -> (
+    None
+):
     assert NativePlaybackSuite is SuiteFromModule
 
 
@@ -102,6 +105,12 @@ def test_native_tui_playback_lifecycle_scenarios_live_in_lifecycle_module() -> N
     ]
 
 
+def test_native_tui_playback_product_scenarios_live_in_product_module() -> None:
+    assert [scenario.name for scenario in PRODUCT_SCENARIOS] == [
+        "product-composed-interaction",
+    ]
+
+
 def test_native_tui_playback_terminal_scenarios_live_in_terminal_module() -> None:
     assert [scenario.name for scenario in TERMINAL_SCENARIOS] == [
         "native-loop-split-bracketed-paste",
@@ -167,6 +176,7 @@ def test_native_tui_playback_runner_lists_default_scenarios(capsys) -> None:
     assert "native-loop-split-bracketed-paste" in captured.out
     assert "native-loop-terminal-session-cleanup" in captured.out
     assert "native-loop-ctrl-c-abort-running" in captured.out
+    assert "product-composed-interaction" in captured.out
 
 
 def test_native_tui_playback_runner_runs_named_scenario(capsys) -> None:
@@ -190,6 +200,15 @@ def test_native_tui_playback_runner_runs_tagged_command_scenarios(capsys) -> Non
     assert "PASS long-transcript-input" not in captured.out
 
 
+def test_native_tui_playback_runner_runs_tagged_product_scenarios(capsys) -> None:
+    exit_code = run_playback_cli(["--tag", "product"])
+
+    captured = capsys.readouterr()
+    assert exit_code == 0
+    assert "PASS product-composed-interaction" in captured.out
+    assert "PASS completion-tab" not in captured.out
+
+
 def test_native_tui_playback_runner_lists_tagged_command_scenarios(capsys) -> None:
     exit_code = run_playback_cli(["--list", "--tag", "command"])
 
@@ -201,7 +220,9 @@ def test_native_tui_playback_runner_lists_tagged_command_scenarios(capsys) -> No
     assert "long-transcript-input" not in captured.out
 
 
-def test_native_tui_playback_runner_runs_completion_session_command_scenario(capsys) -> None:
+def test_native_tui_playback_runner_runs_completion_session_command_scenario(
+    capsys,
+) -> None:
     exit_code = run_playback_cli(["completion-session-command"])
 
     captured = capsys.readouterr()
@@ -233,12 +254,24 @@ def test_native_tui_playback_runner_runs_composer_selection_scenario(capsys) -> 
     assert "PASS composer-selection-replace" in captured.out
 
 
-def test_native_tui_playback_runner_runs_composer_selection_stress_scenario(capsys) -> None:
+def test_native_tui_playback_runner_runs_composer_selection_stress_scenario(
+    capsys,
+) -> None:
     exit_code = run_playback_cli(["composer-selection-stress"])
 
     captured = capsys.readouterr()
     assert exit_code == 0
     assert "PASS composer-selection-stress" in captured.out
+
+
+def test_native_tui_playback_runner_runs_product_composed_interaction_scenario(
+    capsys,
+) -> None:
+    exit_code = run_playback_cli(["product-composed-interaction"])
+
+    captured = capsys.readouterr()
+    assert exit_code == 0
+    assert "PASS product-composed-interaction" in captured.out
 
 
 def test_native_tui_playback_runner_runs_lifecycle_scenario(capsys) -> None:
@@ -274,7 +307,9 @@ def test_native_tui_playback_runner_runs_unknown_slash_prompt_scenario(capsys) -
     assert "PASS unknown-slash-prompt" in captured.out
 
 
-def test_native_tui_playback_runner_runs_non_executable_session_command_scenario(capsys) -> None:
+def test_native_tui_playback_runner_runs_non_executable_session_command_scenario(
+    capsys,
+) -> None:
     exit_code = run_playback_cli(["non-executable-session-command"])
 
     captured = capsys.readouterr()
@@ -299,7 +334,9 @@ def test_native_tui_playback_runner_runs_info_surface_scenarios(capsys) -> None:
     assert "PASS commands-info-surface" in captured.out
 
 
-def test_native_tui_playback_runner_runs_commands_info_session_command_scenario(capsys) -> None:
+def test_native_tui_playback_runner_runs_commands_info_session_command_scenario(
+    capsys,
+) -> None:
     exit_code = run_playback_cli(["commands-info-session-command"])
 
     captured = capsys.readouterr()
@@ -315,7 +352,9 @@ def test_native_tui_playback_runner_runs_statusline_command_scenario(capsys) -> 
     assert "PASS statusline-command" in captured.out
 
 
-def test_native_tui_playback_runner_runs_command_palette_select_scenario(capsys) -> None:
+def test_native_tui_playback_runner_runs_command_palette_select_scenario(
+    capsys,
+) -> None:
     exit_code = run_playback_cli(["command-palette-select"])
 
     captured = capsys.readouterr()
@@ -323,7 +362,9 @@ def test_native_tui_playback_runner_runs_command_palette_select_scenario(capsys)
     assert "PASS command-palette-select" in captured.out
 
 
-def test_native_tui_playback_runner_runs_command_palette_session_command_scenario(capsys) -> None:
+def test_native_tui_playback_runner_runs_command_palette_session_command_scenario(
+    capsys,
+) -> None:
     exit_code = run_playback_cli(["command-palette-session-command"])
 
     captured = capsys.readouterr()
@@ -355,7 +396,9 @@ def test_native_tui_playback_runner_runs_approval_surface_scenario(capsys) -> No
     assert "PASS approval-surface" in captured.out
 
 
-def test_native_tui_playback_runner_runs_approval_reject_surface_scenario(capsys) -> None:
+def test_native_tui_playback_runner_runs_approval_reject_surface_scenario(
+    capsys,
+) -> None:
     exit_code = run_playback_cli(["approval-reject-surface"])
 
     captured = capsys.readouterr()
@@ -372,19 +415,25 @@ def test_native_tui_playback_runner_runs_dialog_surface_scenario(capsys) -> None
 
 
 def test_native_tui_playback_runner_writes_artifacts(tmp_path, capsys) -> None:
-    exit_code = run_playback_cli(["completion-tab", "--artifacts", str(tmp_path), "--include-frames"])
+    exit_code = run_playback_cli(
+        ["completion-tab", "--artifacts", str(tmp_path), "--include-frames"]
+    )
 
     captured = capsys.readouterr()
     assert exit_code == 0
     assert "PASS completion-tab" in captured.out
     assert (tmp_path / "completion-tab.jsonl").exists()
     assert (tmp_path / "completion-tab-screen.txt").exists()
-    row = json.loads((tmp_path / "completion-tab.jsonl").read_text(encoding="utf-8").splitlines()[0])
+    row = json.loads(
+        (tmp_path / "completion-tab.jsonl").read_text(encoding="utf-8").splitlines()[0]
+    )
     assert "visible_lines" in row
 
 
 def test_native_tui_playback_runner_writes_json_summary(tmp_path, capsys) -> None:
-    exit_code = run_playback_cli(["completion-tab", "--json", "--artifacts", str(tmp_path)])
+    exit_code = run_playback_cli(
+        ["completion-tab", "--json", "--artifacts", str(tmp_path)]
+    )
 
     captured = capsys.readouterr()
     payload = json.loads(captured.out)
@@ -409,7 +458,9 @@ def test_native_tui_playback_runner_writes_json_summary(tmp_path, capsys) -> Non
     assert "PASS completion-tab" not in captured.out
 
 
-def test_native_tui_playback_runner_writes_artifacts_for_all_default_scenarios(tmp_path, capsys) -> None:
+def test_native_tui_playback_runner_writes_artifacts_for_all_default_scenarios(
+    tmp_path, capsys
+) -> None:
     exit_code = run_playback_cli(["--artifacts", str(tmp_path), "--include-frames"])
 
     captured = capsys.readouterr()
@@ -454,10 +505,14 @@ def test_native_tui_playback_runner_reports_failed_scenario(tmp_path, capsys) ->
     assert len(results) == 1
     assert results[0].ok is False
     assert results[0].error == "forced failure"
-    assert (tmp_path / "forced-failure-error.txt").read_text(encoding="utf-8") == "forced failure\n"
+    assert (tmp_path / "forced-failure-error.txt").read_text(
+        encoding="utf-8"
+    ) == "forced failure\n"
 
 
-def test_native_tui_playback_runner_writes_failed_json_summary(tmp_path, capsys) -> None:
+def test_native_tui_playback_runner_writes_failed_json_summary(
+    tmp_path, capsys
+) -> None:
     def failing_run() -> None:
         raise AssertionError("forced failure")
 
