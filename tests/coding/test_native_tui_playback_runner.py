@@ -64,6 +64,7 @@ def test_native_tui_playback_composer_scenarios_live_in_composer_module() -> Non
         "page-navigation",
         "paste-marker-delete-undo",
         "composer-selection-replace",
+        "composer-selection-stress",
     ]
 
 
@@ -230,6 +231,14 @@ def test_native_tui_playback_runner_runs_composer_selection_scenario(capsys) -> 
     captured = capsys.readouterr()
     assert exit_code == 0
     assert "PASS composer-selection-replace" in captured.out
+
+
+def test_native_tui_playback_runner_runs_composer_selection_stress_scenario(capsys) -> None:
+    exit_code = run_playback_cli(["composer-selection-stress"])
+
+    captured = capsys.readouterr()
+    assert exit_code == 0
+    assert "PASS composer-selection-stress" in captured.out
 
 
 def test_native_tui_playback_runner_runs_lifecycle_scenario(capsys) -> None:

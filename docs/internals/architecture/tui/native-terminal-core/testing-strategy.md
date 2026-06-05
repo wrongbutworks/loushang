@@ -63,6 +63,19 @@ Examples:
 - stacked surfaces restore focus in order
 - constrained-height bottom frame follows priority rules
 - concise error without traceback
+- composer selection stress with wide text, paste markers, kill/yank, undo,
+  completion refresh, and selection key priority
+
+Composer selection playback should be run directly when changing composer input,
+selection, paste marker, completion, keybinding, or render-highlight behavior:
+
+```bash
+uv --cache-dir .uv-cache run --extra dev python -m loushang.coding.ui.playback_runner composer-selection-stress --artifacts /tmp/loushang-selection-playback --include-frames
+```
+
+The trace should include `composer-selection-stress` as a passing scenario. Use
+the generated JSONL artifact when diagnosing selection regressions because the
+final screen cannot show transient selected ranges after replacement or undo.
 
 ### 4. Boundary Tests
 
@@ -87,5 +100,14 @@ visually:
 - IME candidate window placement
 - terminal restoration after Ctrl-C, Esc abort, exception, and normal exit
 - narrow terminal status truncation
+- composer selection in a real terminal:
+  - type `abc`, press `Shift+Left`, verify the final `c` is visibly selected,
+    then type `x` and verify the draft becomes `abx`
+  - type `你🙂a`, press `Shift+Left` twice, type `x`, and verify the draft
+    becomes `你x` without splitting the emoji grapheme
+  - type a short draft, use `Shift+Home` and `Shift+End` from opposite line
+    ends, and verify typing replaces exactly the selected text
+  - press `Ctrl+-` after a selection replacement and verify undo restores the
+    previous content and clears the visible selection
 
 Manual smoke tests should be run after the playback harness and unit tests pass.
