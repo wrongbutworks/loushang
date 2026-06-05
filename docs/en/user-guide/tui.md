@@ -2,7 +2,7 @@
 
 English | [中文](../../zh-CN/user-guide/tui.md)
 
-This guide shows how to build a small terminal UI with `loushang.tui`. Use it when you want a product-facing interactive terminal surface. For exact API details, see the [TUI Runner reference](../reference/tui-runner.md).
+This guide shows how to build a small terminal UI with `loushang.tui`. Use it when you want a product-facing interactive terminal surface. For exact lifecycle details, see the [TUI Runner reference](../reference/tui-runner.md). For reusable input editing, see [TUI Editing](../reference/tui-editing.md).
 
 ## Choose The Entry Point
 
@@ -89,7 +89,31 @@ handle = tui.show_overlay(dialog, focus_target=dialog, presentation="modal", anc
 
 Close the returned handle when the surface is no longer needed.
 
+## Reuse Editing Primitives
+
+Use `TextInput` for single-line inputs such as search fields and filters. Use `Composer` plus `InputRouter` for multi-line prompt editors with history, paste markers, completion, selection, undo, and kill/yank behavior.
+
+```python
+from loushang.tui import Composer, InputEvent, InputRouter, TextInput
+
+
+field = TextInput(prompt="Search: ")
+field.handle_input(InputEvent(kind="text", text="hello world"))
+field.handle_input(InputEvent(kind="key", key="ctrl+shift+left"))
+field.handle_input(InputEvent(kind="text", text="loushang"))
+
+composer = Composer(prompt="> ")
+router = InputRouter(composer, width=80, height=24)
+router.route(InputEvent(kind="text", text="alpha beta"))
+router.route(InputEvent(kind="key", key="shift+left"))
+router.route(InputEvent(kind="key", key="ctrl+k"))
+```
+
+`TextInput` selection indexes are grapheme clusters. `Composer` selection indexes are composer atoms, so paste markers remain atomic. Display width is handled by rendering.
+
 ## Examples
 
 - [examples/tui/40_runner_basic.py](../../../examples/tui/40_runner_basic.py): small interactive counter using `TuiRunner`.
+- [examples/tui/41_editing_foundation.py](../../../examples/tui/41_editing_foundation.py): TextInput and Composer editing walkthrough.
 - [TUI Runner reference](../reference/tui-runner.md): lifecycle API details.
+- [TUI Editing reference](../reference/tui-editing.md): editing primitives, keybindings, and playback smoke checks.

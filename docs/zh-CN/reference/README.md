@@ -42,3 +42,4 @@ loushang --export session.jsonl --export-format jsonl
 ## TUI
 
 - [TUI Runner](tui-runner.md)：使用 `loushang.tui` 构建终端应用的公共生命周期入口。
+- [TUI 编辑能力](tui-editing.md)：可复用的 TextInput、Composer、selection-aware editing、快捷键和 playback smoke 检查。

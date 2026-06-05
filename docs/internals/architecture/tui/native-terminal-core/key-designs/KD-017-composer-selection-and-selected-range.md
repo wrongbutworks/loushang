@@ -1,6 +1,7 @@
 # KD-017: Composer Selection And Selected Range
 
-Status: Proposed
+Status: Accepted. Initial keyboard selection and shared edit foundation are
+implemented as of 2026-06-05.
 
 ## Purpose
 
@@ -9,6 +10,35 @@ Define the editing selection model for the native TUI composer.
 This design covers text selected inside the editable composer buffer. It does
 not redefine command-list selection, completion-menu selection, transcript copy
 selection, or terminal-native mouse selection.
+
+## Implementation Status
+
+The first implementation has landed in the native TUI core:
+
+- `SelectionRange` provides anchor/focus bounds, normalized start/end, and
+  empty-selection handling.
+- `SelectionController` owns reusable selection state and is shared by Composer
+  and TextInput.
+- `EditorBuffer` provides grapheme-indexed text editing for reusable text
+  inputs.
+- `ComposerEditBuffer` provides atom-indexed editing for composer text and
+  paste markers.
+- `UndoStack` and `KillRing` are reusable editing infrastructure.
+- Composer supports keyboard selection, selected-range replace/delete,
+  kill-selection, yank-over-selection, selection-aware undo boundaries,
+  completion refresh after selected-range replacement, and selection highlight
+  rendering.
+- TextInput uses the shared editing and selection primitives for the same
+  index-unit discipline.
+- Playback covers completion interaction and composer-selection stress,
+  including visible frame-output assertions.
+
+The following items remain outside the initial implementation:
+
+- mouse-driven composer selection
+- transcript or screen-buffer copy selection
+- restoring selection through undo/redo snapshots
+- changing the default redo keybinding policy
 
 ## Reference Observations
 
@@ -19,15 +49,15 @@ separate in Loushang:
 - visual or screen-buffer selection
 - menu/list selection
 
-The Codex textarea keeps a cursor-oriented editable buffer with byte-range
-replacement, element-aware range expansion, kill operations, and render-only
-highlight ranges. It does not require a persistent text `selected_range` field
-in the core textarea to support range edits.
+One textarea-style implementation keeps a cursor-oriented editable buffer with
+range replacement, element-aware range expansion, kill operations, and
+render-only highlight ranges. It does not require a persistent text
+`selected_range` field in the core textarea to support range edits.
 
-The Claude Code fullscreen selection model uses `anchor` and `focus` points and
-normalizes them only for rendering and copy extraction. That model is screen
-coordinate based and includes scrollback bookkeeping. It is useful for
-selection semantics, but it is too screen-specific for composer text editing.
+One fullscreen selection model uses `anchor` and `focus` points and normalizes
+them only for rendering and copy extraction. That model is screen-coordinate
+based and includes scrollback bookkeeping. It is useful for selection semantics,
+but it is too screen-specific for composer text editing.
 
 Loushang should borrow the anchor/focus semantics, but keep composer selection
 in buffer index space. Screen coordinates should appear only when converting
@@ -138,8 +168,15 @@ of the buffer avoids mixing UI interaction state with reusable range editing.
 This keeps selection close to completion, history, kill-ring, render, and
 bottom-frame behavior.
 
-If another editable widget later needs the same behavior, extract the selection
-state machine into a reusable `SelectionController`.
+The shared selection state machine now lives in `SelectionController`. Composer
+owns product-specific selection behavior, while `SelectionController` remains
+small enough for other editable widgets to reuse.
+
+### TextInput
+
+`TextInput` stores editable content in `EditorBuffer` and selection state in
+`SelectionController`. It uses grapheme cluster indexes for editing and
+selection. Display width remains a rendering and horizontal-scroll concern.
 
 ## Editing Semantics
 
@@ -225,15 +262,16 @@ If no selection exists, existing insert and paste behavior remains unchanged.
 
 ### Centralized Edit Application
 
-Implementation should centralize selection-aware edit bookkeeping instead of
+Implementation centralizes selection-aware edit bookkeeping instead of
 spreading it across every editing method.
 
 Recommended internal pattern:
 
 ```python
-def _replace_selection_or_insert(atoms, *, action_kind): ...
-def _delete_selection_or_none(*, push_to_kill_ring: bool) -> bool: ...
-def _after_buffer_edit(*, clear_selection: bool = True, refresh_completion: bool = True): ...
+def _replace_selection_with_atoms(atoms, *, last_action): ...
+def _delete_selection_or_none() -> bool: ...
+def _kill_selection_or_none(*, prepend: bool) -> bool: ...
+def _apply_buffer_edit(edit, *, last_action, refresh_completion): ...
 ```
 
 The helper is responsible for:
@@ -315,8 +353,7 @@ not in `ComposerEditBuffer`.
 
 ## Rendering
 
-The first implementation may land editing behavior before visual highlight, but
-any user-exposed keyboard selection should quickly gain visible highlighting.
+The first implementation includes visible highlighting for keyboard selection.
 
 The highlight contract:
 
@@ -330,6 +367,8 @@ The highlight contract:
 - clip selection to the visible composer viewport
 - close and reopen ANSI style on each rendered line so soft-wrapped multi-line
   selection cannot leak styling into later rows
+- use the shared `highlight_selection_by_columns()` helper for column-range
+  highlighting
 
 Recommended theme token:
 
@@ -422,16 +461,15 @@ Selection keybindings can be overridden by configuration.
 ## Implementation Sequence
 
 1. Add `SelectionRange` and focused unit tests for normalization, clamping, and
-   empty-range behavior.
-2. Add composer selection state and selection movement methods without render
-   highlighting.
+   empty-range behavior. Done.
+2. Add composer selection state and selection movement methods. Done.
 3. Add centralized selection-aware edit helpers for insert, paste, Backspace,
-   Delete, kill, yank, and yank-pop.
+   Delete, kill, yank, and yank-pop. Done.
 4. Make all cursor/content-changing Composer methods obey the default
-   selection lifecycle rule.
-5. Add keybinding actions and input-router priority coverage.
-6. Add render highlighting and playback tests.
-7. Add mouse selection only after keyboard selection is stable.
+   selection lifecycle rule. Done.
+5. Add keybinding actions and input-router priority coverage. Done.
+6. Add render highlighting and playback tests. Done.
+7. Add mouse selection only after keyboard selection is stable. Future work.
 
 This sequence keeps range editing testable before rendering and avoids mixing
 mouse coordinate work into the initial selection state machine.
