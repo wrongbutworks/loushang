@@ -57,6 +57,9 @@ def test_native_tui_playback_composer_scenarios_live_in_composer_module() -> Non
         "resize-reflow-stable",
         "wide-char-input-cursor",
         "keyboard-shift-enter-newline",
+        "editor-key-editing",
+        "page-navigation",
+        "paste-marker-delete-undo",
     ]
 
 

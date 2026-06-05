@@ -122,6 +122,8 @@ class NativeTuiInputPlayback:
             app,
             should_exit=should_exit or (lambda _text: False),
             is_local_command=is_local_command or (lambda _text: False),
+            width=columns,
+            height=rows,
         )
         self.render_loop = RenderLoop(app, clear_scrollback_policy="disabled")
         self.harness = PlaybackHarness(
@@ -143,7 +145,10 @@ class NativeTuiInputPlayback:
         _previous: RenderDiagnostics | None,
     ) -> RenderDiagnostics:
         step_input_results: list[NativeInputResult] = []
-        if event.kind == "input":
+        if event.kind == "resize":
+            self.router.width = size.columns
+            self.router.height = size.rows
+        elif event.kind == "input":
             if not isinstance(event.payload, str):
                 raise TypeError("input playback event payload must be str")
             batch = self.reader.feed_batch(event.payload)

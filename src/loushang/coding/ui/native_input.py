@@ -51,6 +51,7 @@ class NativeInputRouter:
     running_submit_mode: RunningSubmitMode = "steer"
     follow_up_keys: tuple[str, ...] = ("alt+enter",)
     width: int = 80
+    height: int = 12
     clipboard_image_reader: ClipboardImageReader = read_clipboard_image
     clipboard_image_dir: Path | str | None = None
     clipboard_image_name_factory: ClipboardImageNameFactory = field(default_factory=lambda: lambda: uuid.uuid4().hex)
@@ -80,6 +81,8 @@ class NativeInputRouter:
         if event.kind == "resize":
             if event.columns:
                 self.width = event.columns
+            if event.rows:
+                self.height = event.rows
             return NativeInputResult()
         if event.kind != "key" or event.event_type == "release":
             return NativeInputResult(render_requested=False)
@@ -126,6 +129,12 @@ class NativeInputRouter:
                 self.app.composer.history_next()
             elif not self.app.composer.value or not self.app.composer.move_visual_down(width=self.width):
                 self.app.composer.history_next()
+            return NativeInputResult()
+        if keybindings.matches(event.key, "tui.editor.pageUp"):
+            self.app.composer.move_visual_page_up(width=self.width, visible_lines=self._composer_page_lines())
+            return NativeInputResult()
+        if keybindings.matches(event.key, "tui.editor.pageDown"):
+            self.app.composer.move_visual_page_down(width=self.width, visible_lines=self._composer_page_lines())
             return NativeInputResult()
         if self.app.state.running and event.key in self.follow_up_keys:
             return self._submit_running(mode="follow_up")
@@ -212,6 +221,9 @@ class NativeInputRouter:
 
     def _keybindings(self) -> KeybindingManager:
         return self.keybindings if isinstance(self.keybindings, KeybindingManager) else KeybindingManager(self.keybindings)
+
+    def _composer_page_lines(self) -> int:
+        return max(2, min(10, self.height))
 
     def _route_active_surface(self, event: InputEvent) -> NativeInputResult:
         handler = getattr(self.app.active_surface, "handle_input", None)
