@@ -58,7 +58,9 @@ def test_fake_terminal_port_can_bound_recorded_history() -> None:
 
 
 def test_playback_harness_records_diagnostics_for_scripted_events() -> None:
-    def render(event: PlaybackEvent, size: TerminalSize, previous: RenderDiagnostics | None) -> RenderDiagnostics:
+    def render(
+        event: PlaybackEvent, size: TerminalSize, previous: RenderDiagnostics | None
+    ) -> RenderDiagnostics:
         previous_lines = previous.current_logical_lines if previous is not None else ()
         text = f"{event.kind}:{event.payload}@{size.columns}x{size.rows}"
         return RenderDiagnostics(
@@ -70,7 +72,9 @@ def test_playback_harness_records_diagnostics_for_scripted_events() -> None:
             operations=(TerminalOperation.write(text),),
         )
 
-    harness = PlaybackHarness(render=render, port=FakeTerminalPort(size=TerminalSize(columns=40, rows=10)))
+    harness = PlaybackHarness(
+        render=render, port=FakeTerminalPort(size=TerminalSize(columns=40, rows=10))
+    )
 
     steps = harness.play([PlaybackEvent("key", "a"), PlaybackEvent("stream", "chunk")])
 
@@ -86,14 +90,20 @@ def test_playback_harness_records_diagnostics_for_scripted_events() -> None:
 def test_playback_harness_resize_event_updates_terminal_size_before_render() -> None:
     seen_sizes: list[TerminalSize] = []
 
-    def render(event: PlaybackEvent, size: TerminalSize, previous: RenderDiagnostics | None) -> RenderDiagnostics:
+    def render(
+        event: PlaybackEvent, size: TerminalSize, previous: RenderDiagnostics | None
+    ) -> RenderDiagnostics:
         seen_sizes.append(size)
         return RenderDiagnostics(
             current_logical_lines=(event.kind,),
-            previous_rendered_lines=previous.current_logical_lines if previous is not None else (),
+            previous_rendered_lines=previous.current_logical_lines
+            if previous is not None
+            else (),
         )
 
-    harness = PlaybackHarness(render=render, port=FakeTerminalPort(size=TerminalSize(columns=80, rows=24)))
+    harness = PlaybackHarness(
+        render=render, port=FakeTerminalPort(size=TerminalSize(columns=80, rows=24))
+    )
 
     steps = harness.play([PlaybackEvent.resize(columns=100, rows=40)])
 
@@ -109,7 +119,15 @@ def test_playback_event_input_carries_raw_terminal_input_chunk() -> None:
 
 
 def test_playback_scenario_scripts_common_terminal_events() -> None:
-    scenario = PlaybackScenario().type_text("hello").enter().tab().escape().resize(width=42, height=8).render()
+    scenario = (
+        PlaybackScenario()
+        .type_text("hello")
+        .enter()
+        .tab()
+        .escape()
+        .resize(width=42, height=8)
+        .render()
+    )
 
     assert scenario.events == (
         PlaybackEvent.input("hello"),
@@ -140,7 +158,9 @@ def test_playback_result_asserts_visible_text_and_flush_policy() -> None:
         port=FakeTerminalPort(size=TerminalSize(columns=20, rows=5)),
     )
 
-    result = PlaybackResult(steps=harness.play([PlaybackEvent("render")]), port=harness.port)
+    result = PlaybackResult(
+        steps=harness.play([PlaybackEvent("render")]), port=harness.port
+    )
 
     result.assert_all_flush_succeeded()
     result.assert_visible_contains("hello")
@@ -156,7 +176,9 @@ def test_playback_result_asserts_frame_output_contains_ansi_style_sequence() -> 
         ),
         port=FakeTerminalPort(size=TerminalSize(columns=20, rows=5)),
     )
-    result = PlaybackResult(steps=harness.play([PlaybackEvent.input("select")]), port=harness.port)
+    result = PlaybackResult(
+        steps=harness.play([PlaybackEvent.input("select")]), port=harness.port
+    )
 
     result.assert_frame_output_contains(0, "\x1b[7mb\x1b[27m")
     result.assert_any_frame_output_contains("\x1b[7mb\x1b[27m")
@@ -176,7 +198,9 @@ def test_playback_result_writes_jsonl_for_manual_inspection(tmp_path) -> None:
         ),
         port=FakeTerminalPort(size=TerminalSize(columns=20, rows=5)),
     )
-    result = PlaybackResult(steps=harness.play([PlaybackEvent.input("hello")]), port=harness.port)
+    result = PlaybackResult(
+        steps=harness.play([PlaybackEvent.input("hello")]), port=harness.port
+    )
     path = tmp_path / "playback.jsonl"
 
     result.write_jsonl(path)
@@ -189,7 +213,10 @@ def test_playback_result_writes_jsonl_for_manual_inspection(tmp_path) -> None:
             "size": {"columns": 20, "rows": 5},
             "operation_class": "changed_range_update",
             "changed_line_range": None,
+            "logical_cursor": {"row": 0, "column": 0},
+            "viewport": {"top": 0, "previous_top": 0},
             "hardware_cursor": {"row": 0, "column": 5},
+            "screen_cursor": {"row": 0, "column": 5},
             "flush_succeeded": True,
             "flush_error": None,
             "operation_count": 1,
@@ -204,6 +231,35 @@ def test_playback_result_writes_jsonl_for_manual_inspection(tmp_path) -> None:
     assert "serialized_output" not in rows[0]
 
 
+def test_playback_result_asserts_last_cursor_on_visible_line() -> None:
+    harness = PlaybackHarness(
+        render=lambda _event, _size, _previous: RenderDiagnostics(
+            current_logical_lines=("status", "› hello"),
+            logical_cursor_row=1,
+            logical_cursor_column=7,
+            hardware_cursor_row=1,
+            hardware_cursor_column=7,
+            operations=(
+                TerminalOperation.write("status"),
+                TerminalOperation.newline(),
+                TerminalOperation.write("› hello"),
+                TerminalOperation.move_column(column=7),
+            ),
+        ),
+        port=FakeTerminalPort(size=TerminalSize(columns=20, rows=5)),
+    )
+    result = PlaybackResult(
+        steps=harness.play([PlaybackEvent.input("hello")]), port=harness.port
+    )
+
+    result.assert_last_cursor_on_visible_line("› hello", column=7)
+
+    with pytest.raises(AssertionError, match="expected cursor row"):
+        result.assert_last_cursor_on_visible_line("status", column=7)
+    with pytest.raises(AssertionError, match="expected cursor column"):
+        result.assert_last_cursor_on_visible_line("› hello", column=6)
+
+
 def test_playback_result_can_include_raw_frame_output_in_jsonl(tmp_path) -> None:
     harness = PlaybackHarness(
         render=lambda _event, _size, _previous: RenderDiagnostics(
@@ -212,7 +268,9 @@ def test_playback_result_can_include_raw_frame_output_in_jsonl(tmp_path) -> None
         ),
         port=FakeTerminalPort(size=TerminalSize(columns=20, rows=5)),
     )
-    result = PlaybackResult(steps=harness.play([PlaybackEvent("render")]), port=harness.port)
+    result = PlaybackResult(
+        steps=harness.play([PlaybackEvent("render")]), port=harness.port
+    )
     path = tmp_path / "playback.jsonl"
 
     result.write_jsonl(path, include_frames=True)
@@ -230,9 +288,13 @@ def test_playback_result_writes_trace_and_final_screen_artifacts(tmp_path) -> No
         ),
         port=FakeTerminalPort(size=TerminalSize(columns=20, rows=5)),
     )
-    result = PlaybackResult(steps=harness.play([PlaybackEvent.input("hello")]), port=harness.port)
+    result = PlaybackResult(
+        steps=harness.play([PlaybackEvent.input("hello")]), port=harness.port
+    )
 
-    artifacts = result.write_artifacts(tmp_path / "artifacts", basename="long-transcript", include_frames=True)
+    artifacts = result.write_artifacts(
+        tmp_path / "artifacts", basename="long-transcript", include_frames=True
+    )
 
     assert artifacts.trace == tmp_path / "artifacts" / "long-transcript.jsonl"
     assert artifacts.screen == tmp_path / "artifacts" / "long-transcript-screen.txt"
@@ -242,7 +304,9 @@ def test_playback_result_writes_trace_and_final_screen_artifacts(tmp_path) -> No
     assert artifacts.screen.read_text(encoding="utf-8") == "hello\n\n\n\n"
 
 
-def test_playback_result_writes_artifacts_when_wrapped_assertion_fails(tmp_path) -> None:
+def test_playback_result_writes_artifacts_when_wrapped_assertion_fails(
+    tmp_path,
+) -> None:
     harness = PlaybackHarness(
         render=lambda _event, _size, _previous: RenderDiagnostics(
             current_logical_lines=("hello",),
@@ -250,10 +314,14 @@ def test_playback_result_writes_artifacts_when_wrapped_assertion_fails(tmp_path)
         ),
         port=FakeTerminalPort(size=TerminalSize(columns=20, rows=5)),
     )
-    result = PlaybackResult(steps=harness.play([PlaybackEvent.input("hello")]), port=harness.port)
+    result = PlaybackResult(
+        steps=harness.play([PlaybackEvent.input("hello")]), port=harness.port
+    )
 
     with pytest.raises(AssertionError):
-        with result.write_artifacts_on_failure(tmp_path / "failures", basename="missing-text", include_frames=True):
+        with result.write_artifacts_on_failure(
+            tmp_path / "failures", basename="missing-text", include_frames=True
+        ):
             result.assert_visible_contains("missing")
 
     trace = tmp_path / "failures" / "missing-text.jsonl"
@@ -264,7 +332,9 @@ def test_playback_result_writes_artifacts_when_wrapped_assertion_fails(tmp_path)
     assert screen.read_text(encoding="utf-8") == "hello\n\n\n\n"
 
 
-def test_playback_result_does_not_write_artifacts_when_wrapped_assertion_passes(tmp_path) -> None:
+def test_playback_result_does_not_write_artifacts_when_wrapped_assertion_passes(
+    tmp_path,
+) -> None:
     harness = PlaybackHarness(
         render=lambda _event, _size, _previous: RenderDiagnostics(
             current_logical_lines=("hello",),
@@ -272,7 +342,9 @@ def test_playback_result_does_not_write_artifacts_when_wrapped_assertion_passes(
         ),
         port=FakeTerminalPort(size=TerminalSize(columns=20, rows=5)),
     )
-    result = PlaybackResult(steps=harness.play([PlaybackEvent.input("hello")]), port=harness.port)
+    result = PlaybackResult(
+        steps=harness.play([PlaybackEvent.input("hello")]), port=harness.port
+    )
 
     with result.write_artifacts_on_failure(tmp_path / "failures", basename="passing"):
         result.assert_visible_contains("hello")
@@ -288,7 +360,9 @@ def test_playback_result_writes_failure_artifacts_to_env_directory(tmp_path) -> 
         ),
         port=FakeTerminalPort(size=TerminalSize(columns=20, rows=5)),
     )
-    result = PlaybackResult(steps=harness.play([PlaybackEvent.input("hello")]), port=harness.port)
+    result = PlaybackResult(
+        steps=harness.play([PlaybackEvent.input("hello")]), port=harness.port
+    )
     artifact_root = tmp_path / "env-artifacts"
 
     with pytest.raises(AssertionError):
@@ -305,7 +379,9 @@ def test_playback_result_writes_failure_artifacts_to_env_directory(tmp_path) -> 
     assert screen.read_text(encoding="utf-8") == "hello\n\n\n\n"
 
 
-def test_playback_result_skips_env_artifacts_when_env_directory_is_unset(tmp_path) -> None:
+def test_playback_result_skips_env_artifacts_when_env_directory_is_unset(
+    tmp_path,
+) -> None:
     harness = PlaybackHarness(
         render=lambda _event, _size, _previous: RenderDiagnostics(
             current_logical_lines=("hello",),
@@ -313,7 +389,9 @@ def test_playback_result_skips_env_artifacts_when_env_directory_is_unset(tmp_pat
         ),
         port=FakeTerminalPort(size=TerminalSize(columns=20, rows=5)),
     )
-    result = PlaybackResult(steps=harness.play([PlaybackEvent.input("hello")]), port=harness.port)
+    result = PlaybackResult(
+        steps=harness.play([PlaybackEvent.input("hello")]), port=harness.port
+    )
 
     with pytest.raises(AssertionError):
         with result.write_artifacts_on_failure_from_env(basename="missing", env={}):
@@ -322,48 +400,84 @@ def test_playback_result_skips_env_artifacts_when_env_directory_is_unset(tmp_pat
     assert not (tmp_path / "missing.jsonl").exists()
 
 
-def test_playback_artifacts_directory_from_env_respects_explicit_empty_env(monkeypatch, tmp_path) -> None:
+def test_playback_artifacts_directory_from_env_respects_explicit_empty_env(
+    monkeypatch, tmp_path
+) -> None:
     monkeypatch.setenv(PLAYBACK_ARTIFACTS_ENV, str(tmp_path / "ambient"))
 
     assert playback_artifacts_directory_from_env({}) is None
 
 
 def test_playback_result_asserts_operation_class_budget_after_initial_frame() -> None:
-    operation_classes = iter(("first_render", "changed_range_update", "baseline_repaint"))
+    operation_classes = iter(
+        ("first_render", "changed_range_update", "baseline_repaint")
+    )
 
-    def render(_event: PlaybackEvent, _size: TerminalSize, _previous: RenderDiagnostics | None) -> RenderDiagnostics:
+    def render(
+        _event: PlaybackEvent, _size: TerminalSize, _previous: RenderDiagnostics | None
+    ) -> RenderDiagnostics:
         return RenderDiagnostics(
             current_logical_lines=("hello",),
             operation_class=next(operation_classes),
             operations=(TerminalOperation.write("hello"),),
         )
 
-    harness = PlaybackHarness(render=render, port=FakeTerminalPort(size=TerminalSize(columns=20, rows=5)))
+    harness = PlaybackHarness(
+        render=render, port=FakeTerminalPort(size=TerminalSize(columns=20, rows=5))
+    )
     result = PlaybackResult(
-        steps=harness.play([PlaybackEvent("render"), PlaybackEvent.input("a"), PlaybackEvent.input("b")]),
+        steps=harness.play(
+            [
+                PlaybackEvent("render"),
+                PlaybackEvent.input("a"),
+                PlaybackEvent.input("b"),
+            ]
+        ),
         port=harness.port,
     )
 
     with pytest.raises(AssertionError, match="baseline_repaint"):
-        result.assert_operation_classes_not_in("baseline_repaint", "recovery_repaint", skip_first=True)
+        result.assert_operation_classes_not_in(
+            "baseline_repaint", "recovery_repaint", skip_first=True
+        )
 
 
 def test_playback_result_asserts_max_operations_per_step_after_initial_frame() -> None:
     operation_batches = iter(
         (
-            (TerminalOperation.write("initial"), TerminalOperation.newline(), TerminalOperation.write("frame")),
+            (
+                TerminalOperation.write("initial"),
+                TerminalOperation.newline(),
+                TerminalOperation.write("frame"),
+            ),
             (TerminalOperation.write("ok"), TerminalOperation.move_column(column=1)),
-            (TerminalOperation.write("too"), TerminalOperation.newline(), TerminalOperation.write("many")),
+            (
+                TerminalOperation.write("too"),
+                TerminalOperation.newline(),
+                TerminalOperation.write("many"),
+            ),
         )
     )
 
-    def render(_event: PlaybackEvent, _size: TerminalSize, _previous: RenderDiagnostics | None) -> RenderDiagnostics:
+    def render(
+        _event: PlaybackEvent, _size: TerminalSize, _previous: RenderDiagnostics | None
+    ) -> RenderDiagnostics:
         operations = next(operation_batches)
-        return RenderDiagnostics(current_logical_lines=("hello",), operations=operations)
+        return RenderDiagnostics(
+            current_logical_lines=("hello",), operations=operations
+        )
 
-    harness = PlaybackHarness(render=render, port=FakeTerminalPort(size=TerminalSize(columns=20, rows=5)))
+    harness = PlaybackHarness(
+        render=render, port=FakeTerminalPort(size=TerminalSize(columns=20, rows=5))
+    )
     result = PlaybackResult(
-        steps=harness.play([PlaybackEvent("render"), PlaybackEvent.input("a"), PlaybackEvent.input("b")]),
+        steps=harness.play(
+            [
+                PlaybackEvent("render"),
+                PlaybackEvent.input("a"),
+                PlaybackEvent.input("b"),
+            ]
+        ),
         port=harness.port,
     )
 
@@ -379,11 +493,20 @@ def test_playback_result_asserts_max_serialized_output_bytes_per_step() -> None:
         )
     )
 
-    def render(_event: PlaybackEvent, _size: TerminalSize, _previous: RenderDiagnostics | None) -> RenderDiagnostics:
-        return RenderDiagnostics(current_logical_lines=("frame",), operations=next(frames))
+    def render(
+        _event: PlaybackEvent, _size: TerminalSize, _previous: RenderDiagnostics | None
+    ) -> RenderDiagnostics:
+        return RenderDiagnostics(
+            current_logical_lines=("frame",), operations=next(frames)
+        )
 
-    harness = PlaybackHarness(render=render, port=FakeTerminalPort(size=TerminalSize(columns=80, rows=24)))
-    result = PlaybackResult(steps=harness.play([PlaybackEvent("render"), PlaybackEvent.input("x")]), port=harness.port)
+    harness = PlaybackHarness(
+        render=render, port=FakeTerminalPort(size=TerminalSize(columns=80, rows=24))
+    )
+    result = PlaybackResult(
+        steps=harness.play([PlaybackEvent("render"), PlaybackEvent.input("x")]),
+        port=harness.port,
+    )
 
     with pytest.raises(AssertionError, match="step 1 emitted 40 serialized bytes"):
         result.assert_max_serialized_output_bytes_per_step(20, skip_first=True)
@@ -409,11 +532,20 @@ def test_playback_result_asserts_max_changed_visible_lines_per_step() -> None:
         )
     )
 
-    def render(_event: PlaybackEvent, _size: TerminalSize, _previous: RenderDiagnostics | None) -> RenderDiagnostics:
-        return RenderDiagnostics(current_logical_lines=("frame",), operations=next(frames))
+    def render(
+        _event: PlaybackEvent, _size: TerminalSize, _previous: RenderDiagnostics | None
+    ) -> RenderDiagnostics:
+        return RenderDiagnostics(
+            current_logical_lines=("frame",), operations=next(frames)
+        )
 
-    harness = PlaybackHarness(render=render, port=FakeTerminalPort(size=TerminalSize(columns=20, rows=5)))
-    result = PlaybackResult(steps=harness.play([PlaybackEvent("render"), PlaybackEvent.input("x")]), port=harness.port)
+    harness = PlaybackHarness(
+        render=render, port=FakeTerminalPort(size=TerminalSize(columns=20, rows=5))
+    )
+    result = PlaybackResult(
+        steps=harness.play([PlaybackEvent("render"), PlaybackEvent.input("x")]),
+        port=harness.port,
+    )
 
     with pytest.raises(AssertionError, match="step 1 changed 2 visible lines"):
         result.assert_max_changed_visible_lines_per_step(1, skip_first=True)
@@ -437,13 +569,24 @@ def test_playback_result_asserts_screen_anchor_row_stability() -> None:
         )
     )
 
-    def render(_event: PlaybackEvent, _size: TerminalSize, _previous: RenderDiagnostics | None) -> RenderDiagnostics:
-        return RenderDiagnostics(current_logical_lines=("frame",), operations=next(frames))
+    def render(
+        _event: PlaybackEvent, _size: TerminalSize, _previous: RenderDiagnostics | None
+    ) -> RenderDiagnostics:
+        return RenderDiagnostics(
+            current_logical_lines=("frame",), operations=next(frames)
+        )
 
-    harness = PlaybackHarness(render=render, port=FakeTerminalPort(size=TerminalSize(columns=20, rows=5)))
-    result = PlaybackResult(steps=harness.play([PlaybackEvent("render"), PlaybackEvent("render")]), port=harness.port)
+    harness = PlaybackHarness(
+        render=render, port=FakeTerminalPort(size=TerminalSize(columns=20, rows=5))
+    )
+    result = PlaybackResult(
+        steps=harness.play([PlaybackEvent("render"), PlaybackEvent("render")]),
+        port=harness.port,
+    )
 
-    with pytest.raises(AssertionError, match="anchor 'anchor' moved from row 1 to row 0 at step 1"):
+    with pytest.raises(
+        AssertionError, match="anchor 'anchor' moved from row 1 to row 0 at step 1"
+    ):
         result.assert_screen_anchor_stable("anchor")
 
 
@@ -459,11 +602,20 @@ def test_playback_result_asserts_synchronized_frames() -> None:
         )
     )
 
-    def render(_event: PlaybackEvent, _size: TerminalSize, _previous: RenderDiagnostics | None) -> RenderDiagnostics:
-        return RenderDiagnostics(current_logical_lines=("frame",), operations=next(frames))
+    def render(
+        _event: PlaybackEvent, _size: TerminalSize, _previous: RenderDiagnostics | None
+    ) -> RenderDiagnostics:
+        return RenderDiagnostics(
+            current_logical_lines=("frame",), operations=next(frames)
+        )
 
-    harness = PlaybackHarness(render=render, port=FakeTerminalPort(size=TerminalSize(columns=20, rows=5)))
-    result = PlaybackResult(steps=harness.play([PlaybackEvent("render"), PlaybackEvent("render")]), port=harness.port)
+    harness = PlaybackHarness(
+        render=render, port=FakeTerminalPort(size=TerminalSize(columns=20, rows=5))
+    )
+    result = PlaybackResult(
+        steps=harness.play([PlaybackEvent("render"), PlaybackEvent("render")]),
+        port=harness.port,
+    )
 
     with pytest.raises(AssertionError, match="step 1 was not synchronized"):
         result.assert_synchronized_frames()
@@ -486,15 +638,22 @@ def test_playback_frame_budget_asserts_incremental_render_contract() -> None:
     )
     operation_classes = iter(("first_render", "changed_range_update"))
 
-    def render(_event: PlaybackEvent, _size: TerminalSize, _previous: RenderDiagnostics | None) -> RenderDiagnostics:
+    def render(
+        _event: PlaybackEvent, _size: TerminalSize, _previous: RenderDiagnostics | None
+    ) -> RenderDiagnostics:
         return RenderDiagnostics(
             current_logical_lines=("frame",),
             operation_class=next(operation_classes),
             operations=next(frames),
         )
 
-    harness = PlaybackHarness(render=render, port=FakeTerminalPort(size=TerminalSize(columns=20, rows=5)))
-    result = PlaybackResult(steps=harness.play([PlaybackEvent("render"), PlaybackEvent.input("!")]), port=harness.port)
+    harness = PlaybackHarness(
+        render=render, port=FakeTerminalPort(size=TerminalSize(columns=20, rows=5))
+    )
+    result = PlaybackResult(
+        steps=harness.play([PlaybackEvent("render"), PlaybackEvent.input("!")]),
+        port=harness.port,
+    )
     budget = PlaybackFrameBudget(
         disallowed_operation_classes=("baseline_repaint", "recovery_repaint"),
         max_operations=3,
@@ -523,21 +682,30 @@ def test_playback_frame_budget_reports_operation_count_violation() -> None:
         )
     )
 
-    def render(_event: PlaybackEvent, _size: TerminalSize, _previous: RenderDiagnostics | None) -> RenderDiagnostics:
+    def render(
+        _event: PlaybackEvent, _size: TerminalSize, _previous: RenderDiagnostics | None
+    ) -> RenderDiagnostics:
         return RenderDiagnostics(
             current_logical_lines=("frame",),
             operation_class="changed_range_update",
             operations=next(frames),
         )
 
-    harness = PlaybackHarness(render=render, port=FakeTerminalPort(size=TerminalSize(columns=20, rows=5)))
-    result = PlaybackResult(steps=harness.play([PlaybackEvent("render"), PlaybackEvent.input("!")]), port=harness.port)
+    harness = PlaybackHarness(
+        render=render, port=FakeTerminalPort(size=TerminalSize(columns=20, rows=5))
+    )
+    result = PlaybackResult(
+        steps=harness.play([PlaybackEvent("render"), PlaybackEvent.input("!")]),
+        port=harness.port,
+    )
 
     with pytest.raises(AssertionError, match="step 1 emitted 4 operations"):
         PlaybackFrameBudget(max_operations=3).assert_result(result, skip_first=True)
 
 
-def test_playback_frame_budget_allows_noop_frames_when_requiring_synchronization() -> None:
+def test_playback_frame_budget_allows_noop_frames_when_requiring_synchronization() -> (
+    None
+):
     frames = iter(
         (
             (
@@ -550,21 +718,34 @@ def test_playback_frame_budget_allows_noop_frames_when_requiring_synchronization
     )
     operation_classes = iter(("first_render", "noop"))
 
-    def render(_event: PlaybackEvent, _size: TerminalSize, _previous: RenderDiagnostics | None) -> RenderDiagnostics:
+    def render(
+        _event: PlaybackEvent, _size: TerminalSize, _previous: RenderDiagnostics | None
+    ) -> RenderDiagnostics:
         return RenderDiagnostics(
             current_logical_lines=("frame",),
             operation_class=next(operation_classes),
             operations=next(frames),
         )
 
-    harness = PlaybackHarness(render=render, port=FakeTerminalPort(size=TerminalSize(columns=20, rows=5)))
-    result = PlaybackResult(steps=harness.play([PlaybackEvent("render"), PlaybackEvent.input("noop")]), port=harness.port)
+    harness = PlaybackHarness(
+        render=render, port=FakeTerminalPort(size=TerminalSize(columns=20, rows=5))
+    )
+    result = PlaybackResult(
+        steps=harness.play([PlaybackEvent("render"), PlaybackEvent.input("noop")]),
+        port=harness.port,
+    )
 
-    PlaybackFrameBudget(require_synchronized=True).assert_result(result, skip_first=True)
+    PlaybackFrameBudget(require_synchronized=True).assert_result(
+        result, skip_first=True
+    )
 
 
-def test_playback_harness_failed_flush_does_not_advance_successful_diagnostics() -> None:
-    def render(event: PlaybackEvent, size: TerminalSize, previous: RenderDiagnostics | None) -> RenderDiagnostics:
+def test_playback_harness_failed_flush_does_not_advance_successful_diagnostics() -> (
+    None
+):
+    def render(
+        event: PlaybackEvent, size: TerminalSize, previous: RenderDiagnostics | None
+    ) -> RenderDiagnostics:
         previous_lines = previous.current_logical_lines if previous is not None else ()
         return RenderDiagnostics(
             current_logical_lines=(str(event.payload),),
@@ -587,7 +768,9 @@ def test_playback_harness_failed_flush_does_not_advance_successful_diagnostics()
     assert harness.previous_successful_diagnostics.current_logical_lines == ("third",)
 
 
-def test_terminal_frame_records_serialized_synchronized_flush_and_screen_snapshots() -> None:
+def test_terminal_frame_records_serialized_synchronized_flush_and_screen_snapshots() -> (
+    None
+):
     port = FakeTerminalPort(size=TerminalSize(columns=8, rows=3))
 
     frame = port.flush(
@@ -610,7 +793,9 @@ def test_terminal_frame_records_serialized_synchronized_flush_and_screen_snapsho
     assert frame.screen_after.cursor_column == 3
 
 
-def test_terminal_frame_treats_pi_style_cursor_after_sync_as_synchronized_render() -> None:
+def test_terminal_frame_treats_pi_style_cursor_after_sync_as_synchronized_render() -> (
+    None
+):
     port = FakeTerminalPort(size=TerminalSize(columns=8, rows=3))
 
     frame = port.flush(
@@ -625,7 +810,9 @@ def test_terminal_frame_treats_pi_style_cursor_after_sync_as_synchronized_render
     )
 
     assert frame.synchronized is True
-    assert frame.serialized_output == "\x1b[?25l\x1b[?2026habc\x1b[?2026l\x1b[2G\x1b[?25h"
+    assert (
+        frame.serialized_output == "\x1b[?25l\x1b[?2026habc\x1b[?2026l\x1b[2G\x1b[?25h"
+    )
     assert frame.screen_after.visible_lines[0] == "abc"
     assert frame.screen_after.cursor_row == 0
     assert frame.screen_after.cursor_column == 1
@@ -685,7 +872,9 @@ def test_fake_screen_wraps_before_next_printable_after_full_width_write() -> Non
     assert port.screen.cursor_column == 1
 
 
-def test_fake_screen_tracks_sgr_cell_styles_and_resets_them_after_terminal_resets() -> None:
+def test_fake_screen_tracks_sgr_cell_styles_and_resets_them_after_terminal_resets() -> (
+    None
+):
     port = FakeTerminalPort(size=TerminalSize(columns=20, rows=3))
 
     port.flush([TerminalOperation.write("\x1b[3;90mthink\x1b[23;39m\ninput")])
@@ -696,26 +885,37 @@ def test_fake_screen_tracks_sgr_cell_styles_and_resets_them_after_terminal_reset
     assert port.screen.cell_style(row=1, column=0).foreground is None
 
 
-def test_fake_screen_proves_markdown_heading_underline_does_not_leak_into_following_cells() -> None:
+def test_fake_screen_proves_markdown_heading_underline_does_not_leak_into_following_cells() -> (
+    None
+):
     theme = ThemeResolver(defaults={"markdown.heading.level1": {"color": "cyan"}})
-    heading = MarkdownRenderer("# Important distinction from `open()`", theme=theme).render(
-        RenderConstraints(width=80, max_height=3)
-    ).lines[0].text
+    heading = (
+        MarkdownRenderer("# Important distinction from `open()`", theme=theme)
+        .render(RenderConstraints(width=80, max_height=3))
+        .lines[0]
+        .text
+    )
     port = FakeTerminalPort(size=TerminalSize(columns=80, rows=3))
 
     port.flush([TerminalOperation.write(heading), TerminalOperation.write(" plain")])
 
     plain_column = len("Important distinction from open() ")
-    assert port.screen.visible_lines[0].startswith("Important distinction from open() plain")
+    assert port.screen.visible_lines[0].startswith(
+        "Important distinction from open() plain"
+    )
     assert port.screen.cell_style(row=0, column=0).underline is True
     assert port.screen.cell_style(row=0, column=plain_column).underline is False
 
 
 def test_playback_step_asserts_operation_class_and_scrollback_policy() -> None:
-    def render(event: PlaybackEvent, size: TerminalSize, previous: RenderDiagnostics | None) -> RenderDiagnostics:
+    def render(
+        event: PlaybackEvent, size: TerminalSize, previous: RenderDiagnostics | None
+    ) -> RenderDiagnostics:
         return RenderDiagnostics(
             current_logical_lines=("resized",),
-            previous_rendered_lines=previous.current_logical_lines if previous is not None else (),
+            previous_rendered_lines=previous.current_logical_lines
+            if previous is not None
+            else (),
             operation_class="resize_repaint",
             width_changed=True,
             height_changed=True,
@@ -729,7 +929,9 @@ def test_playback_step_asserts_operation_class_and_scrollback_policy() -> None:
             ),
         )
 
-    harness = PlaybackHarness(render=render, port=FakeTerminalPort(size=TerminalSize(columns=80, rows=24)))
+    harness = PlaybackHarness(
+        render=render, port=FakeTerminalPort(size=TerminalSize(columns=80, rows=24))
+    )
 
     step = harness.play([PlaybackEvent.resize(columns=100, rows=30)])[0]
 
@@ -742,7 +944,9 @@ def test_playback_step_asserts_operation_class_and_scrollback_policy() -> None:
 
 
 def test_playback_step_asserts_explicit_clear_scrollback() -> None:
-    def render(event: PlaybackEvent, size: TerminalSize, previous: RenderDiagnostics | None) -> RenderDiagnostics:
+    def render(
+        event: PlaybackEvent, size: TerminalSize, previous: RenderDiagnostics | None
+    ) -> RenderDiagnostics:
         return RenderDiagnostics(
             current_logical_lines=("panic repaint",),
             operation_class="recovery_repaint",

@@ -75,7 +75,9 @@ class PlaybackStep:
     def assert_operation_class(self, expected: str) -> None:
         actual = self.diagnostics.operation_class
         if actual != expected:
-            raise AssertionError(f"expected operation_class {expected!r}, got {actual!r}")
+            raise AssertionError(
+                f"expected operation_class {expected!r}, got {actual!r}"
+            )
 
     def assert_no_clear_scrollback(self) -> None:
         if self.diagnostics.clear_scrollback_emitted:
@@ -90,7 +92,9 @@ class PlaybackStep:
             raise AssertionError("expected frame to emit clear scrollback")
 
 
-PlaybackRender = Callable[[PlaybackEvent, TerminalSize, RenderDiagnostics | None], RenderDiagnostics]
+PlaybackRender = Callable[
+    [PlaybackEvent, TerminalSize, RenderDiagnostics | None], RenderDiagnostics
+]
 
 
 @dataclass(frozen=True, slots=True)
@@ -164,21 +168,29 @@ class PlaybackResult:
             raise AssertionError(f"expected step index {step_index} to exist")
         step = self.steps[step_index]
         if step.frame is None:
-            raise AssertionError(f"expected step {step_index} to record a terminal frame")
+            raise AssertionError(
+                f"expected step {step_index} to record a terminal frame"
+            )
         if expected not in step.frame.serialized_output:
-            raise AssertionError(f"expected step {step_index} frame output to contain {expected!r}")
+            raise AssertionError(
+                f"expected step {step_index} frame output to contain {expected!r}"
+            )
 
     def assert_any_frame_output_contains(self, expected: str) -> None:
         for step in self.steps:
             if step.frame is not None and expected in step.frame.serialized_output:
                 return
-        raise AssertionError(f"expected at least one frame output to contain {expected!r}")
+        raise AssertionError(
+            f"expected at least one frame output to contain {expected!r}"
+        )
 
     def assert_last_operation_class_not_in(self, *unexpected: str) -> None:
         assert self.steps
         assert self.steps[-1].diagnostics.operation_class not in unexpected
 
-    def assert_operation_classes_not_in(self, *unexpected: str, skip_first: bool = False) -> None:
+    def assert_operation_classes_not_in(
+        self, *unexpected: str, skip_first: bool = False
+    ) -> None:
         unexpected_set = set(unexpected)
         steps = self.steps[1:] if skip_first else self.steps
         for step in steps:
@@ -188,7 +200,9 @@ class PlaybackResult:
                     f"step {step.index} used disallowed operation_class {operation_class!r}"
                 )
 
-    def assert_max_operations_per_step(self, max_operations: int, *, skip_first: bool = False) -> None:
+    def assert_max_operations_per_step(
+        self, max_operations: int, *, skip_first: bool = False
+    ) -> None:
         steps = self.steps[1:] if skip_first else self.steps
         for step in steps:
             operation_count = len(step.diagnostics.operations)
@@ -208,7 +222,9 @@ class PlaybackResult:
             if step.frame is None:
                 if step.flush_error is not None:
                     continue
-                raise AssertionError(f"step {step.index} did not record a terminal frame")
+                raise AssertionError(
+                    f"step {step.index} did not record a terminal frame"
+                )
             byte_count = len(step.frame.serialized_output.encode("utf-8"))
             if byte_count > max_bytes:
                 raise AssertionError(
@@ -226,7 +242,9 @@ class PlaybackResult:
             if step.frame is None:
                 if step.flush_error is not None:
                     continue
-                raise AssertionError(f"step {step.index} did not record a terminal frame")
+                raise AssertionError(
+                    f"step {step.index} did not record a terminal frame"
+                )
             changed_lines = _changed_visible_line_count(step.frame)
             if changed_lines > max_changed_lines:
                 raise AssertionError(
@@ -245,11 +263,15 @@ class PlaybackResult:
             raise AssertionError("expected at least one playback step")
         baseline = _screen_anchor_row(steps[0], anchor, occurrence=occurrence)
         if baseline is None:
-            raise AssertionError(f"anchor {anchor!r} was not visible at step {steps[0].index}")
+            raise AssertionError(
+                f"anchor {anchor!r} was not visible at step {steps[0].index}"
+            )
         for step in steps[1:]:
             row = _screen_anchor_row(step, anchor, occurrence=occurrence)
             if row is None:
-                raise AssertionError(f"anchor {anchor!r} was not visible at step {step.index}")
+                raise AssertionError(
+                    f"anchor {anchor!r} was not visible at step {step.index}"
+                )
             if row != baseline:
                 raise AssertionError(
                     f"anchor {anchor!r} moved from row {baseline} to row {row} at step {step.index}"
@@ -261,7 +283,9 @@ class PlaybackResult:
             if step.frame is None:
                 if step.flush_error is not None:
                     continue
-                raise AssertionError(f"step {step.index} did not record a terminal frame")
+                raise AssertionError(
+                    f"step {step.index} did not record a terminal frame"
+                )
             if not step.frame.synchronized:
                 raise AssertionError(f"step {step.index} was not synchronized")
 
@@ -287,22 +311,66 @@ class PlaybackResult:
     def assert_cursor_matches_diagnostics(self) -> None:
         for step in self.steps:
             assert step.frame is not None
-            assert step.frame.screen_after.cursor_row == step.diagnostics.hardware_cursor_row
-            assert step.frame.screen_after.cursor_column == step.diagnostics.hardware_cursor_column
+            assert (
+                step.frame.screen_after.cursor_row
+                == step.diagnostics.hardware_cursor_row
+            )
+            assert (
+                step.frame.screen_after.cursor_column
+                == step.diagnostics.hardware_cursor_column
+            )
 
     def assert_last_cursor_matches_diagnostics(self) -> None:
         assert self.steps
         step = self.steps[-1]
         assert step.frame is not None
-        assert step.frame.screen_after.cursor_row == step.diagnostics.hardware_cursor_row
-        assert step.frame.screen_after.cursor_column == step.diagnostics.hardware_cursor_column
+        assert (
+            step.frame.screen_after.cursor_row == step.diagnostics.hardware_cursor_row
+        )
+        assert (
+            step.frame.screen_after.cursor_column
+            == step.diagnostics.hardware_cursor_column
+        )
+
+    def assert_last_cursor_on_visible_line(
+        self,
+        anchor: str,
+        *,
+        column: int | None = None,
+        occurrence: str = "last",
+    ) -> None:
+        assert self.steps
+        step = self.steps[-1]
+        if step.frame is None:
+            raise AssertionError(
+                f"expected step {step.index} to record a terminal frame"
+            )
+        row = _screen_anchor_row(step, anchor, occurrence=occurrence)
+        if row is None:
+            raise AssertionError(
+                f"anchor {anchor!r} was not visible at step {step.index}"
+            )
+        cursor_row = step.frame.screen_after.cursor_row
+        if cursor_row != row:
+            raise AssertionError(
+                f"expected cursor row {cursor_row} to be visible anchor row {row} for {anchor!r}"
+            )
+        if column is not None and step.frame.screen_after.cursor_column != column:
+            raise AssertionError(
+                f"expected cursor column {step.frame.screen_after.cursor_column} to be {column}"
+            )
 
     def write_jsonl(self, path: str | Path, *, include_frames: bool = False) -> None:
         output_path = Path(path)
         output_path.parent.mkdir(parents=True, exist_ok=True)
         with output_path.open("w", encoding="utf-8") as stream:
             for step in self.steps:
-                stream.write(json.dumps(self._jsonl_row(step, include_frames=include_frames), ensure_ascii=False))
+                stream.write(
+                    json.dumps(
+                        self._jsonl_row(step, include_frames=include_frames),
+                        ensure_ascii=False,
+                    )
+                )
                 stream.write("\n")
 
     def write_artifacts(
@@ -331,7 +399,9 @@ class PlaybackResult:
         try:
             yield
         except Exception:
-            self.write_artifacts(directory, basename=basename, include_frames=include_frames)
+            self.write_artifacts(
+                directory, basename=basename, include_frames=include_frames
+            )
             raise
 
     @contextmanager
@@ -346,11 +416,15 @@ class PlaybackResult:
             yield
         except Exception:
             if directory := playback_artifacts_directory_from_env(env):
-                self.write_artifacts(directory, basename=basename, include_frames=include_frames)
+                self.write_artifacts(
+                    directory, basename=basename, include_frames=include_frames
+                )
             raise
 
     def _jsonl_row(self, step: PlaybackStep, *, include_frames: bool) -> dict[str, Any]:
-        serialized_output = step.frame.serialized_output if step.frame is not None else None
+        serialized_output = (
+            step.frame.serialized_output if step.frame is not None else None
+        )
         row = {
             "index": step.index,
             "event": _event_payload(step.event),
@@ -359,23 +433,47 @@ class PlaybackResult:
             "changed_line_range": list(step.diagnostics.changed_line_range)
             if step.diagnostics.changed_line_range is not None
             else None,
+            "logical_cursor": {
+                "row": step.diagnostics.logical_cursor_row,
+                "column": step.diagnostics.logical_cursor_column,
+            },
+            "viewport": {
+                "top": step.diagnostics.viewport_top,
+                "previous_top": step.diagnostics.previous_viewport_top,
+            },
             "hardware_cursor": {
                 "row": step.diagnostics.hardware_cursor_row,
                 "column": step.diagnostics.hardware_cursor_column,
             },
+            "screen_cursor": (
+                {
+                    "row": step.frame.screen_after.cursor_row,
+                    "column": step.frame.screen_after.cursor_column,
+                }
+                if step.frame is not None
+                else None
+            ),
             "flush_succeeded": step.flush_succeeded,
             "flush_error": step.flush_error,
             "operation_count": len(step.diagnostics.operations),
             "operations": [operation.kind for operation in step.diagnostics.operations],
-            "serialized_output_bytes": len(serialized_output.encode("utf-8")) if serialized_output is not None else None,
-            "changed_visible_lines": _changed_visible_line_count(step.frame) if step.frame is not None else None,
+            "serialized_output_bytes": len(serialized_output.encode("utf-8"))
+            if serialized_output is not None
+            else None,
+            "changed_visible_lines": _changed_visible_line_count(step.frame)
+            if step.frame is not None
+            else None,
             "synchronized": step.frame.synchronized if step.frame is not None else None,
             "clear_scrollback_emitted": (
                 step.frame.clear_scrollback_emitted
                 if step.frame is not None
                 else step.diagnostics.clear_scrollback_emitted
             ),
-            "visible_lines": list(step.frame.screen_after.visible_lines if step.frame is not None else self.port.screen.visible_lines),
+            "visible_lines": list(
+                step.frame.screen_after.visible_lines
+                if step.frame is not None
+                else self.port.screen.visible_lines
+            ),
         }
         if include_frames:
             row["serialized_output"] = serialized_output
@@ -390,11 +488,17 @@ class PlaybackFrameBudget:
     max_changed_visible_lines: int | None = None
     require_synchronized: bool = False
 
-    def assert_result(self, result: PlaybackResult, *, skip_first: bool = False) -> None:
+    def assert_result(
+        self, result: PlaybackResult, *, skip_first: bool = False
+    ) -> None:
         if self.disallowed_operation_classes:
-            result.assert_operation_classes_not_in(*self.disallowed_operation_classes, skip_first=skip_first)
+            result.assert_operation_classes_not_in(
+                *self.disallowed_operation_classes, skip_first=skip_first
+            )
         if self.max_operations is not None:
-            result.assert_max_operations_per_step(self.max_operations, skip_first=skip_first)
+            result.assert_max_operations_per_step(
+                self.max_operations, skip_first=skip_first
+            )
         if self.max_serialized_output_bytes is not None:
             result.assert_max_serialized_output_bytes_per_step(
                 self.max_serialized_output_bytes,
@@ -452,13 +556,17 @@ class PlaybackScenario:
 
 
 def _normalize_diagnostics(diagnostics: RenderDiagnostics) -> RenderDiagnostics:
-    clear_scrollback_emitted = any(operation.kind == "clear_scrollback" for operation in diagnostics.operations)
+    clear_scrollback_emitted = any(
+        operation.kind == "clear_scrollback" for operation in diagnostics.operations
+    )
     if diagnostics.clear_scrollback_emitted == clear_scrollback_emitted:
         return diagnostics
     return replace(diagnostics, clear_scrollback_emitted=clear_scrollback_emitted)
 
 
-def _screen_anchor_row(step: PlaybackStep, anchor: str, *, occurrence: str) -> int | None:
+def _screen_anchor_row(
+    step: PlaybackStep, anchor: str, *, occurrence: str
+) -> int | None:
     if occurrence not in {"first", "last"}:
         raise ValueError("occurrence must be 'first' or 'last'")
     if step.frame is None:
@@ -483,7 +591,9 @@ def _changed_visible_line_count(frame: TerminalFrame) -> int:
     )
 
 
-def playback_artifacts_directory_from_env(env: Mapping[str, str] | None = None) -> Path | None:
+def playback_artifacts_directory_from_env(
+    env: Mapping[str, str] | None = None,
+) -> Path | None:
     environment = os.environ if env is None else env
     raw_path = environment.get(PLAYBACK_ARTIFACTS_ENV, "").strip()
     if not raw_path:
@@ -491,7 +601,9 @@ def playback_artifacts_directory_from_env(env: Mapping[str, str] | None = None) 
     return Path(raw_path).expanduser()
 
 
-def _assert_synchronized_or_noop_frames(result: PlaybackResult, *, skip_first: bool = False) -> None:
+def _assert_synchronized_or_noop_frames(
+    result: PlaybackResult, *, skip_first: bool = False
+) -> None:
     steps = result.steps[1:] if skip_first else result.steps
     for step in steps:
         if step.frame is None:

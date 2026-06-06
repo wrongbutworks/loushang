@@ -78,6 +78,7 @@ def _run_product_composed_interaction() -> NativeTuiInputPlaybackResult:
     assert result.app.state.pending_followups == ["follow one"]
     result.assert_composer_text("/model gpx")
     result.assert_visible_contains("› /model gpx")
+    result.assert_last_cursor_on_visible_line("› /model gpx", column=12)
     result.assert_visible_contains("queued=1 steer=0")
     result.assert_no_clear_screen()
     PRODUCT_COMPOSED_FRAME_BUDGET.assert_result(result, skip_first=True)
