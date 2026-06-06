@@ -3,17 +3,28 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 
 from loushang.coding.ui.transcript_source import TranscriptSnapshot, TranscriptSource
-from loushang.tui.cell_width import truncate_to_width
+from loushang.tui.cell_width import truncate_to_width, wrap_cells
 from loushang.tui.core import RenderConstraints, RenderLine, RenderResult
 from loushang.tui.input import InputEvent, InputIntent
 from loushang.tui.theme import apply_theme_style
-from loushang.tui.transcript import render_transcript_records
+from loushang.tui.transcript import (
+    AssistantMessageRecord,
+    ContextCompactionRecord,
+    DisplayRecord,
+    ErrorRecord,
+    ThinkingRecord,
+    ThinkingVisibility,
+    ToolExecutionRecord,
+    UserPromptRecord,
+    WorkedDividerRecord,
+    render_transcript_records,
+)
 
 _MAX_TRANSCRIPT_RENDER_HEIGHT = 1_000_000
 _FOOTER_STYLE = {"color": "bright_black", "dim": True}
 _FOOTER_LINES = (
     "↑/↓ scroll   PgUp/Ctrl+B · PgDn/Ctrl+F page   Home/End jump",
-    "Ctrl+O/q/Esc close",
+    "Ctrl+O/q/Esc close   d detail   r raw",
 )
 _CONSUMED = InputIntent(kind="consumed", note="transcript_reader")
 
@@ -113,10 +124,18 @@ class TranscriptReaderSurface:
         return tuple(RenderLine(_footer_text(line, width=width)) for line in selected)
 
     def _body_lines(self, *, width: int) -> tuple[RenderLine, ...]:
+        if self.raw_mode:
+            return _render_raw_transcript_records(
+                self._snapshot.records,
+                width=width,
+                detail=self.detail_mode,
+                max_height=_MAX_TRANSCRIPT_RENDER_HEIGHT,
+            )
         return render_transcript_records(
             self._snapshot.records,
             width=width,
             max_height=_MAX_TRANSCRIPT_RENDER_HEIGHT,
+            verbose_errors=self.detail_mode,
         )
 
     def _scroll_by(self, delta: int) -> None:
@@ -140,6 +159,87 @@ def _clamp(value: int, minimum: int, maximum: int) -> int:
 
 def _footer_text(text: str, *, width: int) -> str:
     return apply_theme_style(truncate_to_width(text, max_width=width), _FOOTER_STYLE)
+
+
+def _render_raw_transcript_records(
+    records: tuple[DisplayRecord, ...],
+    *,
+    width: int,
+    detail: bool,
+    max_height: int,
+) -> tuple[RenderLine, ...]:
+    lines: list[str] = []
+    for record in records:
+        if lines:
+            lines.append("")
+        lines.extend(_raw_record_lines(record, width=width, detail=detail))
+        if len(lines) >= max_height:
+            break
+    return tuple(RenderLine(line) for line in lines[:max_height])
+
+
+def _raw_record_lines(record: DisplayRecord, *, width: int, detail: bool) -> list[str]:
+    if isinstance(record, UserPromptRecord):
+        return _raw_labeled_text("User", record.text, width=width)
+    if isinstance(record, AssistantMessageRecord):
+        return _raw_labeled_text("Assistant", record.text, width=width)
+    if isinstance(record, ToolExecutionRecord):
+        return _raw_tool_lines(record, width=width)
+    if isinstance(record, ThinkingRecord):
+        return _raw_thinking_lines(record, width=width)
+    if isinstance(record, ErrorRecord):
+        text = record.summary
+        if detail and record.diagnostics:
+            text = f"{text}\n{record.diagnostics}"
+        return _raw_labeled_text("Error", text, width=width)
+    if isinstance(record, ContextCompactionRecord):
+        summary = record.summary.strip()
+        text = summary or "Context compacted"
+        if record.tokens_before is not None:
+            text = f"{text}\n{record.tokens_before} tokens before compaction"
+        return _raw_labeled_text("Context", text, width=width)
+    if isinstance(record, WorkedDividerRecord):
+        return _raw_wrapped_lines(f"Worked for {record.elapsed_seconds:.2f}s", width=width)
+    return []
+
+
+def _raw_tool_lines(record: ToolExecutionRecord, *, width: int) -> list[str]:
+    elapsed = f"{record.elapsed_seconds:.2f}s"
+    lines = _raw_wrapped_lines(f"Tool: {record.name} {record.state} in {elapsed}", width=width)
+    if record.command:
+        lines.extend(_raw_wrapped_lines(f"command: {record.command}", width=width))
+    if record.output:
+        lines.extend(_raw_wrapped_lines(record.output, width=width))
+    if record.stderr:
+        lines.extend(_raw_wrapped_lines(f"stderr: {record.stderr}", width=width))
+    if record.exit_code is not None:
+        lines.extend(_raw_wrapped_lines(f"exit code: {record.exit_code}", width=width))
+    return lines
+
+
+def _raw_thinking_lines(record: ThinkingRecord, *, width: int) -> list[str]:
+    if record.visibility is ThinkingVisibility.HIDDEN:
+        return []
+    if record.visibility is ThinkingVisibility.UNAVAILABLE:
+        return _raw_wrapped_lines("Thinking unavailable", width=width)
+    if record.visibility is ThinkingVisibility.COLLAPSED:
+        return _raw_wrapped_lines("Thinking collapsed", width=width)
+    return _raw_labeled_text("Thinking", record.text, width=width)
+
+
+def _raw_labeled_text(label: str, text: str, *, width: int) -> list[str]:
+    lines = _raw_wrapped_lines(label, width=width)
+    if text:
+        lines.extend(_raw_wrapped_lines(text, width=width))
+    return lines
+
+
+def _raw_wrapped_lines(text: str, *, width: int) -> list[str]:
+    target_width = max(1, width)
+    lines: list[str] = []
+    for logical_line in text.splitlines() or [""]:
+        lines.extend(wrap_cells(logical_line, width=target_width) or [""])
+    return [truncate_to_width(line, max_width=target_width) for line in lines]
 
 
 __all__ = ["TranscriptReaderSurface"]

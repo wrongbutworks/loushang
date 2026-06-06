@@ -271,7 +271,7 @@ def test_native_tui_input_scenario_reader_short_content_restores_bottom_frame() 
     open_screen = _step_visible_text(result, 1)
     close_screen = _step_visible_text(result, 2)
 
-    assert open_screen.splitlines()[-1] == "Ctrl+O/q/Esc close"
+    assert open_screen.splitlines()[-1] == "Ctrl+O/q/Esc close   d detail   r raw"
     assert "› draft" not in open_screen
     assert "› draft" in close_screen
     assert "kimi | repo | main | abcd | idle" in close_screen

@@ -9,6 +9,10 @@ from loushang.tui.input import InputEvent, InputIntent
 from loushang.tui.transcript import (
     AssistantMessageRecord,
     DisplayRecord,
+    ErrorRecord,
+    ThinkingRecord,
+    ThinkingVisibility,
+    ToolExecutionRecord,
     UserPromptRecord,
 )
 
@@ -56,7 +60,7 @@ def test_transcript_reader_renders_frozen_snapshot_and_footer() -> None:
     assert "Earlier transcript records were trimmed." in first
     assert first[-3] == "─" * 80
     assert first[-2] == "↑/↓ scroll   PgUp/Ctrl+B · PgDn/Ctrl+F page   Home/End jump"
-    assert first[-1] == "Ctrl+O/q/Esc close"
+    assert first[-1] == "Ctrl+O/q/Esc close   d detail   r raw"
     assert any("first" in line for line in first)
     assert all("second" not in line for line in first)
 
@@ -82,7 +86,7 @@ def test_transcript_reader_short_content_fills_full_height_with_footer_at_bottom
     assert rendered[-3] == "─" * 40
     assert rendered[-2].startswith("↑/↓ scroll   PgUp/Ctrl+B")
     assert "PgDn/Ctrl" in rendered[-2]
-    assert rendered[-1] == "Ctrl+O/q/Esc close"
+    assert rendered[-1] == "Ctrl+O/q/Esc close   d detail   r raw"
 
 
 def test_transcript_reader_opens_at_tail_and_scrolls_by_page() -> None:
@@ -163,3 +167,64 @@ def test_transcript_reader_detail_and_raw_toggles_are_stable() -> None:
     assert reader.raw_mode is True
     assert reader.handle_input(InputEvent(kind="key", key="r")) == InputIntent(kind="consumed", note="transcript_reader")
     assert reader.raw_mode is False
+
+
+def test_transcript_reader_raw_mode_renders_copy_friendly_logical_text() -> None:
+    reader = TranscriptReaderSurface(
+        _Source(
+            (
+                UserPromptRecord("show status"),
+                AssistantMessageRecord("Use **markdown** literally."),
+                ToolExecutionRecord(
+                    name="pytest",
+                    state="completed",
+                    elapsed_seconds=1.25,
+                    command="uv run pytest",
+                    output="2 passed",
+                ),
+            )
+        )
+    )
+
+    reader.handle_input(InputEvent(kind="key", key="r"))
+    rendered = _render_text(reader, width=80, height=14)
+
+    assert "User" in rendered
+    assert "show status" in rendered
+    assert "Assistant" in rendered
+    assert "Use **markdown** literally." in rendered
+    assert "Tool: pytest completed in 1.25s" in rendered
+    assert "command: uv run pytest" in rendered
+    assert "2 passed" in rendered
+    assert not any(line.startswith(("> ", "* ", "- Ran ")) for line in rendered)
+
+
+def test_transcript_reader_detail_mode_includes_error_diagnostics() -> None:
+    reader = TranscriptReaderSurface(
+        _Source((ErrorRecord(summary="Request failed", diagnostics="Traceback line"),))
+    )
+
+    compact = _render_text(reader, width=80, height=8)
+    reader.handle_input(InputEvent(kind="key", key="d"))
+    detailed = _render_text(reader, width=80, height=8)
+
+    assert any("Request failed" in line for line in compact)
+    assert all("Traceback line" not in line for line in compact)
+    assert any("Traceback line" in line for line in detailed)
+
+
+def test_transcript_reader_raw_mode_does_not_expose_hidden_thinking() -> None:
+    reader = TranscriptReaderSurface(
+        _Source(
+            (
+                ThinkingRecord("hidden reasoning", ThinkingVisibility.HIDDEN),
+                ThinkingRecord("visible thinking", ThinkingVisibility.VISIBLE),
+            )
+        )
+    )
+
+    reader.handle_input(InputEvent(kind="key", key="r"))
+    rendered = _render_text(reader, width=80, height=10)
+
+    assert all("hidden reasoning" not in line for line in rendered)
+    assert any("visible thinking" in line for line in rendered)
