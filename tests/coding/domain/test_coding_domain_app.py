@@ -239,11 +239,24 @@ def test_prepare_turns_with_fixed_method_prepares_each_step(tmp_path: Path) -> N
         "requires_reason": True,
     }
     assert prepared_turns[0].metadata["audit_policy"] == {"record": ["status", "reason"]}
+    assert prepared_turns[0].metadata["plan_facts"]["plan_id"] == "plan:method:task:review"
+    assert prepared_turns[0].metadata["plan_facts"]["method_id"] == "method:task:review"
+    assert prepared_turns[0].metadata["plan_facts"]["mode"] == "fixed"
+    assert prepared_turns[0].metadata["plan_facts"]["metadata"]["step_count"] == 2
+    assert prepared_turns[0].metadata["step_facts"]["step_id"] == "inspect"
+    assert prepared_turns[0].metadata["step_facts"]["title"] == "Inspect current changes"
+    assert prepared_turns[0].metadata["step_facts"]["step_index"] == 0
+    assert prepared_turns[0].metadata["step_facts"]["step_count"] == 2
     assert prepared_turns[1].metadata["planned_constraint"] == {
         "level": "evidence",
         "requires_evidence": True,
     }
     assert prepared_turns[1].metadata["audit_policy"] == {"record": ["status", "reason", "evidence"]}
+    assert prepared_turns[1].metadata["plan_facts"]["plan_id"] == "plan:method:task:review"
+    assert prepared_turns[1].metadata["step_facts"]["step_id"] == "verify"
+    assert prepared_turns[1].metadata["step_facts"]["title"] == "Run focused checks"
+    assert prepared_turns[1].metadata["step_facts"]["step_index"] == 1
+    assert prepared_turns[1].metadata["step_facts"]["step_count"] == 2
     assert "Read changed files and summarize intent." in prepared_turns[0].prepared_prompt
     assert "Run focused tests or explain why they cannot run." in prepared_turns[1].prepared_prompt
     assert prepared_turns[0].prepared_prompt.endswith("User request:\n\ncheck src/app.py")

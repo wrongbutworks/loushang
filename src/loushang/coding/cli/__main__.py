@@ -495,6 +495,8 @@ async def run_cli(
                     is_last_turn = turn_index == len(prepared_turns) - 1
                     planned_constraint = _prepared_turn_policy_metadata(prepared_turn, "planned_constraint")
                     audit_policy = _prepared_turn_policy_metadata(prepared_turn, "audit_policy")
+                    plan_facts = _prepared_turn_policy_metadata(prepared_turn, "plan_facts")
+                    step_facts = _prepared_turn_policy_metadata(prepared_turn, "step_facts")
                     exit_code = await prompt_runner(
                         runtime=runtime,
                         session=session,
@@ -512,6 +514,8 @@ async def run_cli(
                         step_title=prepared_turn.step_title,
                         planned_constraint=planned_constraint,
                         audit_policy=audit_policy,
+                        plan_facts=plan_facts,
+                        step_facts=step_facts,
                         emit_plan_start=is_first_turn,
                         emit_plan_completion=is_last_turn,
                         dispose=is_last_turn,
@@ -529,6 +533,8 @@ async def run_cli(
                     is_last_turn = turn_index == len(prepared_turns) - 1
                     planned_constraint = _prepared_turn_policy_metadata(prepared_turn, "planned_constraint")
                     audit_policy = _prepared_turn_policy_metadata(prepared_turn, "audit_policy")
+                    plan_facts = _prepared_turn_policy_metadata(prepared_turn, "plan_facts")
+                    step_facts = _prepared_turn_policy_metadata(prepared_turn, "step_facts")
                     exit_code = await print_runner(
                         runtime=runtime,
                         session=session,
@@ -547,6 +553,8 @@ async def run_cli(
                         step_title=prepared_turn.step_title,
                         planned_constraint=planned_constraint,
                         audit_policy=audit_policy,
+                        plan_facts=plan_facts,
+                        step_facts=step_facts,
                         emit_plan_start=is_first_turn,
                         emit_plan_completion=is_last_turn,
                         dispose=is_last_turn,
@@ -562,6 +570,8 @@ async def run_cli(
                 is_last_turn = turn_index == len(prepared_turns) - 1
                 planned_constraint = _prepared_turn_policy_metadata(prepared_turn, "planned_constraint")
                 audit_policy = _prepared_turn_policy_metadata(prepared_turn, "audit_policy")
+                plan_facts = _prepared_turn_policy_metadata(prepared_turn, "plan_facts")
+                step_facts = _prepared_turn_policy_metadata(prepared_turn, "step_facts")
                 exit_code = await mode_runner(
                     config=ModeConfig(
                         mode=args.mode,
@@ -583,6 +593,8 @@ async def run_cli(
                     step_title=prepared_turn.step_title,
                     planned_constraint=planned_constraint,
                     audit_policy=audit_policy,
+                    plan_facts=plan_facts,
+                    step_facts=step_facts,
                     emit_plan_start=is_first_turn,
                     emit_plan_completion=is_last_turn,
                     dispose=is_last_turn,

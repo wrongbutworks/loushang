@@ -41,6 +41,8 @@ class CodingWorkShell:
         step_title: str | None = None,
         planned_constraint: Mapping[str, object] | None = None,
         audit_policy: Mapping[str, object] | None = None,
+        plan_facts: Mapping[str, object] | None = None,
+        step_facts: Mapping[str, object] | None = None,
         operation_id: str | None = None,
         run_id: str | None = None,
         emit_plan_start: bool = True,
@@ -65,6 +67,8 @@ class CodingWorkShell:
                 step_title=step_title,
                 planned_constraint=planned_constraint,
                 audit_policy=audit_policy,
+                plan_facts=plan_facts,
+                step_facts=step_facts,
             ),
         )
         self._append_operation(operation, run_id=run_id, sequence=sequence)
@@ -103,6 +107,8 @@ class CodingWorkShell:
                         step_title=step_title,
                         planned_constraint=planned_constraint,
                         audit_policy=audit_policy,
+                        plan_facts=plan_facts,
+                        step_facts=step_facts,
                     ),
                 ),
             )
@@ -120,6 +126,8 @@ class CodingWorkShell:
                         step_title=step_title,
                         planned_constraint=planned_constraint,
                         audit_policy=audit_policy,
+                        plan_facts=plan_facts,
+                        step_facts=step_facts,
                     ),
                 ),
             )
@@ -162,6 +170,8 @@ class CodingWorkShell:
                 step_title=step_title,
                 planned_constraint=planned_constraint,
                 audit_policy=audit_policy,
+                plan_facts=plan_facts,
+                step_facts=step_facts,
                 error=error,
             )
             if step_id is not None:
@@ -225,6 +235,8 @@ class CodingWorkShell:
                         step_title=step_title,
                         planned_constraint=planned_constraint,
                         audit_policy=audit_policy,
+                        plan_facts=plan_facts,
+                        step_facts=step_facts,
                     ),
                 ),
             )
@@ -242,6 +254,8 @@ class CodingWorkShell:
                         step_title=step_title,
                         planned_constraint=planned_constraint,
                         audit_policy=audit_policy,
+                        plan_facts=plan_facts,
+                        step_facts=step_facts,
                     ),
                 ),
             )
@@ -321,6 +335,8 @@ def _operation_payload(
     step_title: str | None,
     planned_constraint: Mapping[str, object] | None,
     audit_policy: Mapping[str, object] | None,
+    plan_facts: Mapping[str, object] | None,
+    step_facts: Mapping[str, object] | None,
 ) -> dict[str, object]:
     payload: dict[str, object] = {"text": text}
     if images is not None:
@@ -339,6 +355,10 @@ def _operation_payload(
         payload["planned_constraint"] = dict(planned_constraint)
     if audit_policy:
         payload["audit_policy"] = dict(audit_policy)
+    if plan_facts:
+        payload["plan_facts"] = dict(plan_facts)
+    if step_facts:
+        payload["step_facts"] = dict(step_facts)
     return payload
 
 
@@ -348,6 +368,8 @@ def _step_payload(
     step_title: str | None,
     planned_constraint: Mapping[str, object] | None = None,
     audit_policy: Mapping[str, object] | None = None,
+    plan_facts: Mapping[str, object] | None = None,
+    step_facts: Mapping[str, object] | None = None,
     error: BaseException | None = None,
 ) -> dict[str, object]:
     payload: dict[str, object] = {"source_type": "work_shell"}
@@ -359,6 +381,10 @@ def _step_payload(
         payload["planned_constraint"] = dict(planned_constraint)
     if audit_policy:
         payload["audit_policy"] = dict(audit_policy)
+    if plan_facts:
+        payload["plan_facts"] = dict(plan_facts)
+    if step_facts:
+        payload["step_facts"] = dict(step_facts)
     if error is not None:
         payload["error"] = str(error)
     return payload
