@@ -6,10 +6,15 @@ from loushang.coding.ui.transcript_source import TranscriptSnapshot, TranscriptS
 from loushang.tui.cell_width import truncate_to_width
 from loushang.tui.core import RenderConstraints, RenderLine, RenderResult
 from loushang.tui.input import InputEvent, InputIntent
+from loushang.tui.theme import apply_theme_style
 from loushang.tui.transcript import render_transcript_records
 
 _MAX_TRANSCRIPT_RENDER_HEIGHT = 1_000_000
-_FOOTER = "Ctrl+O/q/Esc close | PgUp/PgDn scroll | d detail | r raw"
+_FOOTER_STYLE = {"color": "bright_black", "dim": True}
+_FOOTER_LINES = (
+    "↑/↓ scroll   PgUp/Ctrl+B · PgDn/Ctrl+F page   Home/End jump",
+    "Ctrl+O/q/Esc close",
+)
 _CONSUMED = InputIntent(kind="consumed", note="transcript_reader")
 
 
@@ -54,10 +59,10 @@ class TranscriptReaderSurface:
         if key == "down":
             self._scroll_by(1)
             return _CONSUMED
-        if key == "pageUp":
+        if key in {"pageUp", "ctrl+b", "ctrl_b"}:
             self._scroll_by(-self._last_body_height)
             return _CONSUMED
-        if key == "pageDown":
+        if key in {"pageDown", "ctrl+f", "ctrl_f"}:
             self._scroll_by(self._last_body_height)
             return _CONSUMED
         if key == "home":
@@ -75,8 +80,9 @@ class TranscriptReaderSurface:
         return _CONSUMED
 
     def render(self, constraints: RenderConstraints) -> RenderResult:
-        chrome = self._chrome_lines(constraints.width, constraints.max_height)
-        body_height = max(0, constraints.max_height - len(chrome))
+        top_chrome = self._top_chrome_lines(constraints.width, constraints.max_height)
+        footer = self._footer_lines(constraints.width, max_height=constraints.max_height - len(top_chrome))
+        body_height = max(0, constraints.max_height - len(top_chrome) - len(footer))
         self._last_body_height = max(1, body_height)
         body = self._body_lines(width=constraints.width)
         self._max_scroll_offset = max(0, len(body) - body_height)
@@ -85,20 +91,26 @@ class TranscriptReaderSurface:
         else:
             self._scroll_offset = _clamp(self._scroll_offset, 0, self._max_scroll_offset)
 
-        visible_body = body[self._scroll_offset : self._scroll_offset + body_height] if body_height else ()
-        lines = [*chrome[:-1], *visible_body, *chrome[-1:]]
-        if len(lines) < constraints.max_height and not visible_body:
-            insert_at = max(0, len(lines) - 1)
-            lines.insert(insert_at, RenderLine(truncate_to_width("No transcript records.", max_width=constraints.width)))
+        visible_body = list(body[self._scroll_offset : self._scroll_offset + body_height]) if body_height else []
+        if body_height and not visible_body:
+            visible_body.append(RenderLine(truncate_to_width("No transcript records.", max_width=constraints.width)))
+        padding = [RenderLine("") for _ in range(max(0, body_height - len(visible_body)))]
+        lines = [*top_chrome, *visible_body, *padding, *footer]
         return RenderResult.from_lines(lines[: constraints.max_height], constraints=constraints)
 
-    def _chrome_lines(self, width: int, max_height: int) -> tuple[RenderLine, ...]:
+    def _top_chrome_lines(self, width: int, max_height: int) -> tuple[RenderLine, ...]:
         lines = [RenderLine(truncate_to_width(self._snapshot.source_label, max_width=width))]
         if self._snapshot.evicted_prefix_record_count > 0 and len(lines) < max_height - 1:
             lines.append(RenderLine(truncate_to_width("Earlier transcript records were trimmed.", max_width=width)))
-        if len(lines) < max_height:
-            lines.append(RenderLine(truncate_to_width(_FOOTER, max_width=width)))
         return tuple(lines[:max_height])
+
+    def _footer_lines(self, width: int, *, max_height: int) -> tuple[RenderLine, ...]:
+        if max_height <= 0:
+            return ()
+        separator = "─" * max(0, width)
+        raw_lines = (separator, *_FOOTER_LINES)
+        selected = raw_lines[-max_height:]
+        return tuple(RenderLine(_footer_text(line, width=width)) for line in selected)
 
     def _body_lines(self, *, width: int) -> tuple[RenderLine, ...]:
         return render_transcript_records(
@@ -124,6 +136,10 @@ class TranscriptReaderSurface:
 
 def _clamp(value: int, minimum: int, maximum: int) -> int:
     return max(minimum, min(value, maximum))
+
+
+def _footer_text(text: str, *, width: int) -> str:
+    return apply_theme_style(truncate_to_width(text, max_width=width), _FOOTER_STYLE)
 
 
 __all__ = ["TranscriptReaderSurface"]

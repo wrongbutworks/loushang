@@ -265,12 +265,18 @@ Earlier transcript records were trimmed. Export may include more history.
 
 ... rendered transcript lines ...
 
-Ctrl+O/q/Esc close | PgUp/PgDn scroll | d detail | r raw
+────────────────────────────────────────────────────────────────
+↑/↓ scroll   PgUp/Ctrl+B · PgDn/Ctrl+F page   Home/End jump
+Ctrl+O/q/Esc close
 ```
 
 Rules:
 
 - The header and footer are reader chrome, not transcript records.
+- The footer separator and hint lines should use dim gray styling so they read as
+  chrome rather than transcript content.
+- The reader surface should fill the visible terminal height; short transcript
+  bodies are padded so the footer remains anchored at the bottom.
 - The body is clipped to the available reader height.
 - The scroll offset is bounded after resize and source refresh.
 - If `complete=False`, the reader must not label itself "Full transcript".
@@ -281,7 +287,8 @@ Rules:
   either omit `d` from the footer or treat it as a visibly unsupported no-op.
 
 The footer should only advertise keys that the current reader implementation
-actually handles.
+actually handles. `d` detail and `r` raw may remain internal toggles until they
+produce a visible rendering difference.
 
 ## Export Semantics
 

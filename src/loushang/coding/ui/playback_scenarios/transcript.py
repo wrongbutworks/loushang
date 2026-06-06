@@ -75,7 +75,8 @@ def _run_transcript_reader_modal() -> NativeTuiInputPlaybackResult:
         .render()
         .key("\x0f")
         .tab()
-        .key("\x1b[5~")
+        .key("\x02")
+        .key("\x06")
         .ctrl_c()
         .type_text("!")
         .run()
@@ -90,12 +91,15 @@ def _run_transcript_reader_modal() -> NativeTuiInputPlaybackResult:
 
     opened_screen = _step_screen(result, 1)
     tab_screen = _step_screen(result, 2)
-    page_up_screen = _step_screen(result, 3)
+    ctrl_b_screen = _step_screen(result, 3)
+    ctrl_f_screen = _step_screen(result, 4)
     assert "Ctrl+O/q/Esc close" in opened_screen
+    assert "PgUp/Ctrl+B · PgDn/Ctrl+F page" in opened_screen
     assert "answer line 11" in opened_screen
     assert "Ctrl+O/q/Esc close" in tab_screen
     assert result.step_coding_states[2]["composer_text"] == "draft"
-    assert "answer line 0" in page_up_screen
+    assert "answer line 4" in ctrl_b_screen
+    assert "answer line 11" in ctrl_f_screen
     return result
 
 

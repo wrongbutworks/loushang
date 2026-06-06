@@ -16,7 +16,9 @@ from loushang.tui import (
     PlaybackFrameBudget,
     SelectionSurface,
     SelectItem,
+    strip_control_sequences,
 )
+from loushang.tui.transcript import AssistantMessageRecord
 
 INTERACTION_FRAME_BUDGET = PlaybackFrameBudget(
     disallowed_operation_classes=("baseline_repaint", "recovery_repaint"),
@@ -255,6 +257,27 @@ def test_native_tui_input_scenario_echoes_input_after_long_transcript_without_re
         result.assert_screen_anchor_stable("›", occurrence="last")
 
 
+def test_native_tui_input_scenario_reader_short_content_restores_bottom_frame() -> None:
+    result = (
+        NativeTuiInputScenario(width=72, height=8)
+        .with_records((AssistantMessageRecord("short answer"),))
+        .with_composer_text("draft")
+        .render()
+        .key("\x0f")
+        .ctrl_c()
+        .run()
+    )
+
+    open_screen = _step_visible_text(result, 1)
+    close_screen = _step_visible_text(result, 2)
+
+    assert open_screen.splitlines()[-1] == "Ctrl+O/q/Esc close"
+    assert "› draft" not in open_screen
+    assert "› draft" in close_screen
+    assert "kimi | repo | main | abcd | idle" in close_screen
+    result.assert_cursor_matches_diagnostics()
+
+
 def test_native_tui_loop_playback_drives_running_steer_then_escape() -> None:
     scenario = NativeTuiLoopScenario()
     prompts: list[str] = []
@@ -295,6 +318,12 @@ def test_native_tui_loop_playback_drives_running_steer_then_escape() -> None:
         result.assert_text_contains("fresh change")
         result.assert_text_contains("Conversation interrupted")
         result.assert_no_clear_screen()
+
+
+def _step_visible_text(result, step_index: int) -> str:
+    step = result.steps[step_index]
+    assert step.frame is not None
+    return strip_control_sequences("\n".join(step.frame.screen_after.visible_lines))
 
 
 def test_native_tui_loop_playback_writes_artifacts_for_manual_inspection(tmp_path) -> None:
