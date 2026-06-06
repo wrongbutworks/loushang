@@ -1,9 +1,11 @@
 from __future__ import annotations
 
+from collections.abc import Iterable
 from dataclasses import dataclass
-from typing import Protocol
+from typing import Any, Protocol
 
 from loushang.coding.ui.native_state import NativeCodingTuiState
+from loushang.coding.ui.session_history import session_history_records
 from loushang.tui.transcript import AssistantMessageRecord, DisplayRecord
 
 
@@ -34,13 +36,45 @@ class ActiveWindowTranscriptSource:
         )
 
     def recent_assistant_texts(self) -> tuple[str, ...]:
-        texts: list[str] = []
-        for record in reversed(self.state.records):
-            if not isinstance(record, AssistantMessageRecord):
-                continue
-            if record.text.strip():
-                texts.append(record.text)
-        return tuple(texts)
+        return _recent_assistant_texts(self.state.records)
 
 
-__all__ = ["ActiveWindowTranscriptSource", "TranscriptSnapshot", "TranscriptSource"]
+@dataclass(frozen=True, slots=True)
+class SessionTranscriptSource:
+    session: Any
+    tool_definition_resolver: Any | None = None
+    max_tool_body_lines: int = 8
+    source_label: str = "Full transcript"
+
+    def snapshot(self) -> TranscriptSnapshot:
+        return TranscriptSnapshot(
+            records=session_history_records(
+                self.session,
+                tool_definition_resolver=self.tool_definition_resolver,
+                max_tool_body_lines=self.max_tool_body_lines,
+            ),
+            evicted_prefix_record_count=0,
+            complete=True,
+            source_label=self.source_label,
+        )
+
+    def recent_assistant_texts(self) -> tuple[str, ...]:
+        return _recent_assistant_texts(self.snapshot().records)
+
+
+def _recent_assistant_texts(records: Iterable[DisplayRecord]) -> tuple[str, ...]:
+    texts: list[str] = []
+    for record in reversed(tuple(records)):
+        if not isinstance(record, AssistantMessageRecord):
+            continue
+        if record.text.strip():
+            texts.append(record.text)
+    return tuple(texts)
+
+
+__all__ = [
+    "ActiveWindowTranscriptSource",
+    "SessionTranscriptSource",
+    "TranscriptSnapshot",
+    "TranscriptSource",
+]

@@ -442,6 +442,40 @@ def test_native_input_router_ctrl_o_opens_transcript_reader_overlay() -> None:
     assert app.state.records[-1] == AssistantMessageRecord("answer")
 
 
+def test_native_input_router_ctrl_o_uses_transcript_source_factory() -> None:
+    from loushang.coding.ui.native_app import NativeCodingTuiApp
+    from loushang.coding.ui.native_input import NativeInputRouter
+    from loushang.coding.ui.transcript_reader import TranscriptReaderSurface
+    from loushang.coding.ui.transcript_source import TranscriptSnapshot
+    from loushang.tui import SurfaceHost
+    from loushang.tui.transcript import AssistantMessageRecord
+
+    class _Source:
+        def snapshot(self) -> TranscriptSnapshot:
+            return TranscriptSnapshot(
+                records=(AssistantMessageRecord("full session answer"),),
+                complete=True,
+                source_label="Full transcript",
+            )
+
+        def recent_assistant_texts(self) -> tuple[str, ...]:
+            return ("full session answer",)
+
+    source = _Source()
+    app = NativeCodingTuiApp(model_label="kimi", cwd="/repo", branch="main", session_label="abcd", now=lambda: 10.0)
+    app.surface_host = SurfaceHost()
+    app.transcript_source_factory = lambda: source
+    app.state.records.append(AssistantMessageRecord("active window answer"))
+
+    result = NativeInputRouter(app, should_exit=lambda text: False).handle(InputEvent(kind="key", key="ctrl+o"))
+
+    assert result.render_requested is True
+    assert app.surface_host.entries
+    reader = app.surface_host.entries[0].surface.renderable
+    assert isinstance(reader, TranscriptReaderSurface)
+    assert reader.source is source
+
+
 def test_native_input_router_reader_strict_modal_consumes_tab_without_completion() -> None:
     from loushang.coding.ui.native_app import NativeCodingTuiApp
     from loushang.coding.ui.native_input import NativeInputRouter

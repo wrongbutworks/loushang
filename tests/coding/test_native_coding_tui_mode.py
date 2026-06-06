@@ -245,8 +245,14 @@ def test_run_coding_tui_interactive_replays_resumed_session_history(monkeypatch)
         )
     )
 
-    records = getattr(captured["app"], "state").records
+    app = captured["app"]
+    records = getattr(app, "state").records
+    reader_source = getattr(app, "transcript_source_factory")()
+    reader_snapshot = reader_source.snapshot()
     assert exit_code == 0
+    assert reader_snapshot.complete is True
+    assert reader_snapshot.source_label == "Full transcript"
+    assert reader_snapshot.records == tuple(records)
     assert isinstance(records[0], UserPromptRecord)
     assert records[0].text == "previous question"
     assert isinstance(records[1], AssistantMessageRecord)
