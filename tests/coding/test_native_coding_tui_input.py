@@ -418,3 +418,99 @@ def test_native_input_router_routes_runtime_overlay_before_composer() -> None:
     assert result.surface_intent == InputIntent(kind="command", text="/model")
     assert app.composer.value == "draft"
     assert app.state.records == []
+
+
+def test_native_input_router_ctrl_o_opens_transcript_reader_overlay() -> None:
+    from loushang.coding.ui.native_app import NativeCodingTuiApp
+    from loushang.coding.ui.native_input import NativeInputRouter
+    from loushang.coding.ui.transcript_reader import TranscriptReaderSurface
+    from loushang.tui import SurfaceHost
+    from loushang.tui.transcript import AssistantMessageRecord
+
+    app = NativeCodingTuiApp(model_label="kimi", cwd="/repo", branch="main", session_label="abcd", now=lambda: 10.0)
+    app.surface_host = SurfaceHost()
+    app.state.records.append(AssistantMessageRecord("answer"))
+    app.composer.set_text("draft")
+
+    result = NativeInputRouter(app, should_exit=lambda text: False).handle(InputEvent(kind="key", key="ctrl+o"))
+
+    assert result.render_requested is True
+    assert result.surface_intent is None
+    assert len(app.surface_host.entries) == 1
+    assert isinstance(app.surface_host.entries[0].surface.renderable, TranscriptReaderSurface)
+    assert app.composer.value == "draft"
+    assert app.state.records[-1] == AssistantMessageRecord("answer")
+
+
+def test_native_input_router_reader_strict_modal_consumes_tab_without_completion() -> None:
+    from loushang.coding.ui.native_app import NativeCodingTuiApp
+    from loushang.coding.ui.native_input import NativeInputRouter
+    from loushang.tui import SurfaceHost
+    from loushang.tui.transcript import AssistantMessageRecord
+
+    app = NativeCodingTuiApp(model_label="kimi", cwd="/repo", branch="main", session_label="abcd", now=lambda: 10.0)
+    app.surface_host = SurfaceHost()
+    app.state.records.append(AssistantMessageRecord("answer"))
+    app.composer.set_text("/mo")
+    app.composer.set_completion_items((CompletionItem(value="/model", label="/model"),))
+    router = NativeInputRouter(app, should_exit=lambda text: False)
+
+    router.handle(InputEvent(kind="key", key="ctrl+o"))
+    result = router.handle(InputEvent(kind="key", key="tab"))
+
+    assert result.render_requested is True
+    assert result.surface_intent is None
+    assert len(app.surface_host.entries) == 1
+    assert app.composer.value == "/mo"
+    assert app.composer.has_completions
+
+
+def test_native_input_router_reader_ctrl_c_closes_then_text_routes_to_composer() -> None:
+    from loushang.coding.ui.native_app import NativeCodingTuiApp
+    from loushang.coding.ui.native_input import NativeInputRouter
+    from loushang.tui import SurfaceHost
+    from loushang.tui.transcript import AssistantMessageRecord
+
+    app = NativeCodingTuiApp(model_label="kimi", cwd="/repo", branch="main", session_label="abcd", now=lambda: 10.0)
+    app.surface_host = SurfaceHost()
+    app.state.records.append(AssistantMessageRecord("answer"))
+    router = NativeInputRouter(app, should_exit=lambda text: False)
+
+    router.handle(InputEvent(kind="key", key="ctrl+o"))
+    close_result = router.handle(InputEvent(kind="key", key="ctrl+c"))
+    text_result = router.handle(InputEvent(kind="text", text="x"))
+
+    assert close_result.surface_intent == InputIntent(kind="surface_close")
+    assert app.surface_host.entries == []
+    assert text_result.render_requested is True
+    assert app.composer.value == "x"
+
+
+def test_native_input_router_reader_page_up_scrolls_without_moving_composer() -> None:
+    from loushang.coding.ui.native_app import NativeCodingTuiApp
+    from loushang.coding.ui.native_input import NativeInputRouter
+    from loushang.coding.ui.transcript_reader import TranscriptReaderSurface
+    from loushang.tui import RenderConstraints, SurfaceHost
+    from loushang.tui.transcript import AssistantMessageRecord
+
+    app = NativeCodingTuiApp(model_label="kimi", cwd="/repo", branch="main", session_label="abcd", now=lambda: 10.0)
+    app.surface_host = SurfaceHost()
+    app.state.records.append(AssistantMessageRecord("\n".join(f"line {index}" for index in range(12))))
+    app.composer.set_text("one\ntwo\nthree")
+    app.composer.move_to_line_start()
+    cursor_before = app.composer.render(RenderConstraints(width=20, max_height=5)).cursor
+    router = NativeInputRouter(app, should_exit=lambda text: False, width=20, height=5)
+
+    router.handle(InputEvent(kind="key", key="ctrl+o"))
+    assert app.surface_host.entries
+    reader = app.surface_host.entries[0].surface.renderable
+    assert isinstance(reader, TranscriptReaderSurface)
+    reader.render(RenderConstraints(width=40, max_height=5))
+    tail_offset = reader.scroll_offset
+
+    result = router.handle(InputEvent(kind="key", key="pageUp"))
+
+    assert result.render_requested is True
+    assert reader.scroll_offset < tail_offset
+    assert app.composer.value == "one\ntwo\nthree"
+    assert app.composer.render(RenderConstraints(width=20, max_height=5)).cursor == cursor_before

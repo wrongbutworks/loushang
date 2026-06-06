@@ -104,6 +104,8 @@ class NativeInputRouter:
         if keybindings.matches(event.key, "tui.queue.editLast"):
             self._restore_queued_messages()
             return NativeInputResult()
+        if keybindings.matches(event.key, "tui.transcript.open"):
+            return NativeInputResult(render_requested=self.app.open_transcript_reader())
         if route_composer_selection_key(self.app.composer, event.key, keybindings=keybindings):
             return NativeInputResult()
         if self.app.composer.has_completions and keybindings.matches(event.key, "tui.input.submit"):
@@ -238,6 +240,8 @@ class NativeInputRouter:
             return NativeInputResult(render_requested=False)
         intent = handler(event)
         if isinstance(intent, InputIntent):
+            if intent.kind == "consumed":
+                return NativeInputResult()
             return NativeInputResult(surface_intent=intent)
         return NativeInputResult()
 
@@ -252,6 +256,8 @@ class NativeInputRouter:
         intents = surface_host.route_input(event, close_on_intents=("surface_close", "dialog_cancel"))
         for intent in intents:
             if isinstance(intent, InputIntent):
+                if intent.kind == "consumed":
+                    return NativeInputResult()
                 return NativeInputResult(surface_intent=intent)
         return NativeInputResult()
 

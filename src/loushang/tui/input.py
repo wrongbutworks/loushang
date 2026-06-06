@@ -229,6 +229,7 @@ _CONTROL_KEY_MAP = {
     "\x09": "tab",
     "\x0a": "ctrl+j",
     "\x0b": "ctrl+k",
+    "\x0f": "ctrl+o",
     "\x0d": "enter",
     "\x15": "ctrl+u",
     "\x16": "ctrl+v",

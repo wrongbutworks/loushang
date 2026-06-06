@@ -95,7 +95,7 @@ def test_input_reader_normalizes_arrow_escape_sequences() -> None:
 def test_input_reader_normalizes_common_editor_control_keys() -> None:
     reader = InputReader()
 
-    events = reader.feed("\x7f\x1b[3~\x01\x05\x0a\x0b\x15\x16\x17\x19\x1by\x1b\r\x1b[13;2~\x1b[1;3A")
+    events = reader.feed("\x7f\x1b[3~\x01\x05\x0a\x0b\x0f\x15\x16\x17\x19\x1by\x1b\r\x1b[13;2~\x1b[1;3A")
 
     assert events == (
         InputEvent(kind="key", key="backspace"),
@@ -104,6 +104,7 @@ def test_input_reader_normalizes_common_editor_control_keys() -> None:
         InputEvent(kind="key", key="ctrl+e"),
         InputEvent(kind="key", key="ctrl+j"),
         InputEvent(kind="key", key="ctrl+k"),
+        InputEvent(kind="key", key="ctrl+o"),
         InputEvent(kind="key", key="ctrl+u"),
         InputEvent(kind="key", key="ctrl+v"),
         InputEvent(kind="key", key="ctrl+w"),
@@ -256,6 +257,13 @@ def test_keybinding_manager_normalizes_legacy_alt_arrow_aliases() -> None:
     assert manager.matches("alt_right", "tui.editor.cursorWordRight")
     assert manager.matches("alt_up", "tui.queue.editLast")
     assert manager.matches("alt_down", "tui.select.down")
+
+
+def test_keybinding_manager_matches_transcript_reader_alias() -> None:
+    manager = KeybindingManager()
+
+    assert manager.matches("ctrl_o", "tui.transcript.open")
+    assert manager.matches("ctrl+o", "tui.transcript.open")
 
 
 def test_input_router_alt_angle_moves_to_line_boundaries() -> None:

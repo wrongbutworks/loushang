@@ -14,6 +14,8 @@ from loushang.coding.tools.output_preview import (
     prefers_tail_tool_output,
 )
 from loushang.coding.ui.native_state import NativeCodingTuiState, NativeTranscriptWindow
+from loushang.coding.ui.transcript_reader import TranscriptReaderSurface
+from loushang.coding.ui.transcript_source import ActiveWindowTranscriptSource
 from loushang.coding.ui.transcript_style import apply_coding_transcript_style
 from loushang.tui import (
     BottomFrame,
@@ -28,6 +30,7 @@ from loushang.tui import (
     ScreenLayout,
     StatusBar,
     StatusField,
+    Surface,
     SurfaceHost,
     TerminalRuntimeCapabilities,
     WorkingLine,
@@ -166,6 +169,21 @@ class NativeCodingTuiApp:
     def set_statusline_visible(self, visible: bool) -> None:
         self.state.statusline_visible = visible
         self._request_render("product")
+
+    def open_transcript_reader(self) -> bool:
+        if self.surface_host is None:
+            return False
+        reader = TranscriptReaderSurface(ActiveWindowTranscriptSource(self.state))
+        self.surface_host.open_surface(
+            Surface(
+                renderable=reader,
+                focus_target=reader,
+                presentation="modal",
+                max_height="100%",
+            )
+        )
+        self._request_render("input")
+        return True
 
     def add_error(self, summary: str, diagnostics: str = "") -> None:
         self.state.add_error(summary, diagnostics)
