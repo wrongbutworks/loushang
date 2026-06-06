@@ -15,6 +15,7 @@ from loushang.tui import (
     TranscriptView,
     UserPromptRecord,
     WorkedDividerRecord,
+    render_transcript_records,
     strip_control_sequences,
 )
 
@@ -162,6 +163,17 @@ def test_transcript_view_reuses_stable_record_lines_while_draft_changes(monkeypa
         (AssistantMessageRecord("chunk 1", stable=False), 40, False),
         (AssistantMessageRecord("chunk 1 chunk 2", stable=False), 40, False),
     ]
+
+
+def test_render_transcript_records_matches_transcript_view_output() -> None:
+    records = (
+        UserPromptRecord("hello"),
+        AssistantMessageRecord("world"),
+    )
+
+    lines = render_transcript_records(records, width=40, max_height=20)
+
+    assert tuple(line.text for line in lines) == rendered_text(TranscriptView(records), width=40, height=20)
 
 
 def test_transcript_view_can_render_assistant_markdown_with_content_theme() -> None:

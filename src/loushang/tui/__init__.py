@@ -227,6 +227,7 @@ from loushang.tui.transcript import (
     TranscriptView,
     UserPromptRecord,
     WorkedDividerRecord,
+    render_transcript_records,
 )
 from loushang.tui.tui import InputListener, Tui
 from loushang.tui.ui_parts import (
@@ -444,6 +445,7 @@ __all__ = [
     "set_ambiguous_width",
     "read_input_chunk",
     "read_input_chunk_or_render_tick",
+    "render_transcript_records",
     "render_terminal_image",
     "render_terminal_image_result",
     "slice_by_column",
