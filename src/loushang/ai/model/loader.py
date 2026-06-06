@@ -6,7 +6,6 @@ from importlib.resources import files
 from pathlib import Path
 from typing import Any
 
-from loushang.ai.auth.support import merge_auth_config
 from loushang.ai.model.compat_schema import (
     COMPAT_DEFAULTS,
     MAX_TOKENS_FIELD,
@@ -60,6 +59,9 @@ ALLOWED_CAPABILITY_KEYS = frozenset(
 ALLOWED_PRICING_KEYS = frozenset(
     {"currency", "input", "output", "cacheRead", "cacheWrite"}
 )
+ALLOWED_AUTH_KEYS = frozenset(
+    {"kind", "apiKeyEnv", "apiKeyEnvs", "header", "prefix", "extraHeaders"}
+)
 
 
 def validate_model_registry_raw(raw: dict[str, Any]) -> None:
@@ -68,7 +70,7 @@ def validate_model_registry_raw(raw: dict[str, Any]) -> None:
     for provider_id, provider_raw in providers.items():
         provider_path = f"providers.{provider_id}"
         provider = _require_mapping(provider_raw, provider_path)
-        _validate_optional_mapping(provider.get("auth"), f"{provider_path}.auth")
+        _validate_auth_mapping(provider.get("auth"), f"{provider_path}.auth")
         endpoints = _require_mapping(
             provider.get("endpoints"), f"{provider_path}.endpoints"
         )
@@ -76,7 +78,7 @@ def validate_model_registry_raw(raw: dict[str, Any]) -> None:
             endpoint_path = f"{provider_path}.endpoints.{endpoint_key}"
             endpoint = _require_mapping(endpoint_raw, endpoint_path)
             _require_str(endpoint.get("api"), f"{endpoint_path}.api")
-            _validate_optional_mapping(
+            _validate_auth_mapping(
                 endpoint.get("authOverride", endpoint.get("auth")),
                 f"{endpoint_path}.auth",
             )
@@ -94,6 +96,10 @@ def validate_model_registry_raw(raw: dict[str, Any]) -> None:
             for model_id, model_raw in models.items():
                 model_path = f"{endpoint_path}.models.{model_id}"
                 model = _require_mapping(model_raw, model_path)
+                _validate_auth_mapping(
+                    model.get("authOverride", model.get("auth")),
+                    f"{model_path}.auth",
+                )
                 _validate_keyed_mapping(
                     model.get("compat"),
                     ALLOWED_COMPAT_KEYS,
@@ -154,6 +160,31 @@ def _validate_keyed_mapping(
     unknown = sorted(set(mapping) - allowed_keys)
     if unknown:
         raise ValueError(f"models registry field has unknown keys at {path}: {unknown}")
+
+
+def _validate_auth_mapping(value: object, path: str) -> None:
+    if value is None:
+        return
+    mapping = _require_mapping(value, path)
+    unknown = sorted(set(mapping) - ALLOWED_AUTH_KEYS)
+    if unknown:
+        raise ValueError(f"models registry field has unknown keys at {path}: {unknown}")
+    api_key_envs = mapping.get("apiKeyEnvs")
+    if api_key_envs is not None and (
+        not isinstance(api_key_envs, list)
+        or not all(isinstance(item, str) for item in api_key_envs)
+    ):
+        raise ValueError(f"models registry field must be a string list: {path}.apiKeyEnvs")
+    extra_headers = mapping.get("extraHeaders")
+    if extra_headers is not None:
+        _as_str_mapping(extra_headers, f"{path}.extraHeaders")
+
+
+def _as_str_mapping(value: object, path: str) -> dict[str, str]:
+    mapping = _require_mapping(value, path)
+    if not all(isinstance(key, str) and isinstance(entry, str) for key, entry in mapping.items()):
+        raise ValueError(f"models registry field must be a string map: {path}")
+    return mapping
 
 
 def _validate_modalities(value: object, path: str) -> None:
@@ -227,7 +258,8 @@ def _build_registry(raw: dict[str, Any]) -> ModelRegistry:
     validate_model_registry_raw(raw)
     providers: dict[str, Provider] = {}
     for provider_id, provider_raw in raw.get("providers", {}).items():
-        provider_auth = Auth.from_raw(provider_raw.get("auth"))
+        provider_auth_raw = _auth_raw(provider_raw)
+        provider_auth = Auth.from_raw(provider_auth_raw)
         endpoints: dict[str, Endpoint] = {}
         for endpoint_key, endpoint_raw in provider_raw.get("endpoints", {}).items():
             endpoint_api = str(endpoint_raw.get("api", ""))
@@ -237,10 +269,11 @@ def _build_registry(raw: dict[str, Any]) -> ModelRegistry:
                 endpoint_raw.get("lane"),
                 endpoint_raw.get("region"),
             )
-            endpoint_override = Auth.from_raw(
-                endpoint_raw.get("authOverride", endpoint_raw.get("auth"))
+            endpoint_auth_raw = _merge_auth_raw(
+                provider_auth_raw,
+                _auth_raw(endpoint_raw),
             )
-            endpoint_auth = merge_auth_config(provider_auth, endpoint_override)
+            endpoint_auth = Auth.from_raw(endpoint_auth_raw)
             endpoint = Endpoint(
                 id=endpoint_id,
                 provider=provider_id,
@@ -257,6 +290,12 @@ def _build_registry(raw: dict[str, Any]) -> ModelRegistry:
             )
             models: dict[str, Model] = {}
             for model_id, model_raw in endpoint_raw.get("models", {}).items():
+                model_auth_raw = _auth_raw(model_raw)
+                model_auth = (
+                    Auth.from_raw(_merge_auth_raw(endpoint_auth_raw, model_auth_raw))
+                    if model_auth_raw is not None
+                    else None
+                )
                 compat = endpoint.compat.merged(
                     Compat.from_raw(model_raw.get("compat"))
                 )
@@ -278,6 +317,7 @@ def _build_registry(raw: dict[str, Any]) -> ModelRegistry:
                     knowledge=model_raw.get("knowledge"),
                     release_date=model_raw.get("releaseDate"),
                     last_updated=model_raw.get("lastUpdated"),
+                    auth=model_auth,
                     pricing=Pricing.from_raw(model_raw.get("pricing")),
                     compat=compat,
                     defaults=defaults,
@@ -292,6 +332,31 @@ def _build_registry(raw: dict[str, Any]) -> ModelRegistry:
             endpoints=endpoints,
         )
     return ModelRegistry.from_providers(providers)
+
+
+def _auth_raw(raw: dict[str, Any]) -> dict[str, Any] | None:
+    value = raw["authOverride"] if "authOverride" in raw else raw.get("auth")
+    return dict(value) if isinstance(value, dict) and value else None
+
+
+def _merge_auth_raw(
+    base: dict[str, Any] | None,
+    override: dict[str, Any] | None,
+) -> dict[str, Any] | None:
+    if override is None:
+        return dict(base) if base is not None else None
+    if base is None:
+        return dict(override)
+    merged = dict(base)
+    for key, value in override.items():
+        if key == "extraHeaders" and isinstance(value, dict):
+            merged[key] = {
+                **dict(merged.get(key) if isinstance(merged.get(key), dict) else {}),
+                **value,
+            }
+            continue
+        merged[key] = value
+    return merged
 
 
 def _load_builtin_raw() -> dict[str, Any]:
