@@ -1092,6 +1092,9 @@ def test_parse_args_supports_command_dispatch_flags() -> None:
 
     args = parse_args(
         [
+            "--source-info",
+            "--source-info-format",
+            "json",
             "--list-commands",
             "--list-commands-format",
             "json",
@@ -1133,6 +1136,8 @@ def test_parse_args_supports_command_dispatch_flags() -> None:
         ]
     )
 
+    assert args.source_info is True
+    assert args.source_info_format == "json"
     assert args.list_commands is True
     assert args.list_commands_format == "json"
     assert args.list_diagnostics is True
@@ -1411,6 +1416,99 @@ def test_run_cli_prints_version_and_exits_before_runtime(tmp_path) -> None:
         assert stdout.getvalue().strip() != ""
 
     asyncio.run(scenario())
+
+
+def test_run_cli_prints_source_info_and_exits_before_runtime(tmp_path, monkeypatch) -> None:
+    from loushang.coding.cli.__main__ import run_cli
+
+    bin_dir = tmp_path / "bin"
+    shadow_dir = tmp_path / "shadow"
+    bin_dir.mkdir()
+    shadow_dir.mkdir()
+    active = bin_dir / "loushang"
+    shadowed = shadow_dir / "loushang"
+    active.write_text("#!/bin/sh\n", encoding="utf-8")
+    shadowed.write_text("#!/bin/sh\n", encoding="utf-8")
+    active.chmod(0o755)
+    shadowed.chmod(0o755)
+    monkeypatch.setenv("PATH", f"{bin_dir}{os.pathsep}{shadow_dir}")
+    monkeypatch.setattr(sys, "argv", ["loushang", "--source-info"])
+
+    def runtime_builder(**kwargs):
+        del kwargs
+        raise AssertionError("source-info should exit before runtime creation")
+
+    stdout = StringIO()
+    stderr = StringIO()
+
+    async def scenario() -> None:
+        exit_code = await run_cli(
+            ["--source-info"],
+            stdin=StringIO(),
+            stdout=stdout,
+            stderr=stderr,
+            cwd=tmp_path,
+            runtime_builder=runtime_builder,
+        )
+        assert exit_code == 0
+
+    asyncio.run(scenario())
+
+    output = stdout.getvalue()
+    assert "loushang source info" in output
+    assert "entrypoint:" in output
+    assert "python_executable:" in output
+    assert "module_file:" in output
+    assert "package_root:" in output
+    assert "project_root:" in output
+    assert "git_branch:" in output
+    assert "git_commit:" in output
+    assert "cwd:" in output
+    assert "virtual_env:" in output
+    assert "sys_prefix:" in output
+    assert "package_version:" in output
+    assert "install_mode:" in output
+    assert f"{active} [active]" in output
+    assert f"{shadowed} [shadowed]" in output
+    assert stderr.getvalue() == ""
+
+
+def test_run_cli_prints_source_info_as_json(tmp_path, monkeypatch) -> None:
+    from loushang.coding.cli.__main__ import run_cli
+
+    bin_dir = tmp_path / "bin"
+    bin_dir.mkdir()
+    active = bin_dir / "loushang"
+    active.write_text("#!/bin/sh\n", encoding="utf-8")
+    active.chmod(0o755)
+    monkeypatch.setenv("PATH", str(bin_dir))
+    monkeypatch.setattr(sys, "argv", ["loushang", "--source-info", "--source-info-format", "json"])
+
+    stdout = StringIO()
+    stderr = StringIO()
+
+    async def scenario() -> None:
+        exit_code = await run_cli(
+            ["--source-info", "--source-info-format", "json"],
+            stdin=StringIO(),
+            stdout=stdout,
+            stderr=stderr,
+            cwd=tmp_path,
+        )
+        assert exit_code == 0
+
+    asyncio.run(scenario())
+
+    payload = json.loads(stdout.getvalue())
+    assert payload["entrypoint"] == str(active)
+    assert payload["cwd"] == str(tmp_path)
+    assert isinstance(payload["python_executable"], str)
+    assert payload["path_candidates"][0] == {
+        "path": str(active),
+        "status": "active",
+        "active": True,
+    }
+    assert stderr.getvalue() == ""
 
 
 def test_run_cli_reports_parse_errors_to_provided_stderr(tmp_path) -> None:

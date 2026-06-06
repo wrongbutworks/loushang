@@ -13,14 +13,62 @@ def test_executable_source_identity_projects_stable_runtime_details(monkeypatch,
 
     details = executable_source_identity(cwd=tmp_path)
 
+    assert details["entrypoint"] == "/tmp/bin/loushang"
     assert details["python_executable"] == "/tmp/python"
     assert details["argv0"] == "/tmp/bin/loushang"
     assert details["cwd"] == str(tmp_path)
     assert details["package_name"] == "loushang"
     assert isinstance(details["package_version"], str)
+    assert isinstance(details["module_file"], str)
+    assert isinstance(details["package_root"], str)
     assert isinstance(details["loushang_module_file"], str)
     assert isinstance(details["coding_module_file"], str)
+    assert "project_root" in details
+    assert "git_branch" in details
+    assert "git_commit" in details
+    assert "virtual_env" in details
+    assert isinstance(details["sys_prefix"], str)
+    assert isinstance(details["sys_base_prefix"], str)
     assert details["import_source"] in {"editable", "installed", "source-tree", "unknown"}
+    assert details["install_mode"] in {"editable", "source-tree", "package", "unknown"}
+
+
+def test_executable_source_identity_marks_path_candidates_active_and_shadowed(tmp_path) -> None:
+    from loushang.coding.source_info import executable_source_identity
+
+    first_bin = tmp_path / "first" / "bin"
+    second_bin = tmp_path / "second" / "bin"
+    first_bin.mkdir(parents=True)
+    second_bin.mkdir(parents=True)
+    first_candidate = first_bin / "loushang"
+    second_candidate = second_bin / "loushang"
+    first_candidate.write_text("#!/bin/sh\n", encoding="utf-8")
+    second_candidate.write_text("#!/bin/sh\n", encoding="utf-8")
+    first_candidate.chmod(0o755)
+    second_candidate.chmod(0o755)
+
+    details = executable_source_identity(
+        cwd=tmp_path,
+        argv0="loushang",
+        env={"PATH": f"{first_bin}:{second_bin}"},
+    )
+
+    assert details["entrypoint"] == str(first_candidate)
+    assert details["path_candidates"] == [
+        {"path": str(first_candidate), "status": "active", "active": True},
+        {"path": str(second_candidate), "status": "shadowed", "active": False},
+    ]
+
+
+def test_executable_source_identity_gracefully_degrades_outside_git(tmp_path) -> None:
+    from loushang.coding.source_info import executable_source_identity
+
+    details = executable_source_identity(cwd=tmp_path, env={"PATH": ""})
+
+    assert details["project_root"] is None
+    assert details["git_branch"] is None
+    assert details["git_commit"] is None
+    assert details["path_candidates"] == []
 
 
 def test_source_info_from_resource_descriptor_projects_package_provenance() -> None:

@@ -49,6 +49,10 @@ from loushang.coding.policy import (
     PolicyEngine,
 )
 from loushang.coding.prompt_command import run_prompt_command
+from loushang.coding.source_info import (
+    executable_source_identity,
+    format_source_identity_text,
+)
 from loushang.coding.store import SessionQuery
 from loushang.coding.tools import ToolRegistry, register_builtin_tools
 from loushang.coding.tools.path_utils import resolve_tool_path
@@ -231,6 +235,13 @@ async def run_cli(
         return 0
     if bootstrap_args.version:
         stdout.write(f"{_package_version()}\n")
+        return 0
+    if bootstrap_args.source_info:
+        source_identity = executable_source_identity(cwd=project_root)
+        if bootstrap_args.source_info_format == "json":
+            stdout.write(json.dumps(source_identity, ensure_ascii=False) + "\n")
+        else:
+            stdout.write(format_source_identity_text(source_identity) + "\n")
         return 0
 
     if bootstrap_args.tui and bootstrap_args.no_tui:
@@ -1089,6 +1100,7 @@ def _work_log_entry_payload_value(entry: Any, key: str) -> object | None:
 def _has_command_style_operation(args: CliArgs) -> bool:
     return bool(
         args.list_sessions
+        or args.source_info
         or args.list_models is not False
         or args.list_commands
         or args.list_diagnostics
