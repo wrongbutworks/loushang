@@ -104,6 +104,10 @@
   V1 code hardening lane
   checkout: feature/code-* or lane/code/*
 
+/home/dev/workspace/loushang/.worktrees/method
+  method/work-runtime lane
+  checkout: feature/method-* or lane/method/*
+
 /home/dev/workspace/loushang/.worktrees/ai
   AI/provider lane
   checkout: feature/ai-* or lane/ai/*
@@ -117,7 +121,7 @@
 
 - control lane 是唯一默认 checkout `main` 的 worktree。
 - control lane 负责进度管理、方向协调、最终验证、集成、merge 与 push。
-- TUI/code/AI/agent lane 长期保留，不作为一次性临时目录随意删除或改作他用。
+- TUI/code/method/AI/agent lane 长期保留，不作为一次性临时目录随意删除或改作他用。
 - 以某个子系统为主的模块内开发，优先在对应 lane 内创建或切换任务分支。
 - 其他 lane 的任务分支都以 `main` / `origin/main` 为 base，并定期 rebase 或 merge 最新 `main`。
 - 跨 lane 接口变化应先在 control lane 明确方向，再由相关 lane 消费稳定契约。
@@ -128,6 +132,7 @@
 - `main` 始终作为可集成事实；
 - TUI 回归、playback 与终端行为调试不污染 code hardening 工作区；
 - code/session/runtime/tool/policy 改动不污染 TUI worktree；
+- method 执行语义、MethodPlan/WorkEvent 投影与 work/method 集成不被 CLI/TUI/RPC 表面改动裹挟；
 - AI 与 agent 层在需要时也能拥有相同的隔离与同步节奏。
 
 ---

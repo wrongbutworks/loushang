@@ -9,6 +9,7 @@ Use long-lived worktree lanes for major module work:
 - `/home/dev/workspace/loushang` is the control/integration lane. It normally stays on `main` and is used for progress management, direction coordination, final verification, merge/push, and small integration-only edits.
 - `.worktrees/tui` is the long-lived Native TUI lane. For TUI-dominant work, create or switch task branches inside this lane.
 - `.worktrees/code` is the long-lived V1 code hardening lane. For coding/runtime/session/tool/policy/diagnostics-dominant work, create or switch task branches inside this lane.
+- `.worktrees/method` is the long-lived method/work-runtime lane when method-layer work is active. For `loushang.method`, method execution semantics, MethodPlan/WorkEvent projection, and work/method integration work, create or switch task branches inside this lane.
 - `.worktrees/ai` is the long-lived AI/provider lane when AI-layer work is active. For AI/provider/model/usage/auth work, create or switch task branches inside this lane.
 - `.worktrees/agent` is the long-lived agent-runtime lane when agent-layer work is active. For agent loop/session orchestration/queue/tool-call semantics work, create or switch task branches inside this lane.
 
