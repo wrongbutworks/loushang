@@ -10,10 +10,10 @@ from typing import Any
 
 from loushang.ai import (
     AnthropicOptions,
+    ModelCallOptions,
     OpenAICodexResponsesOptions,
     OpenAICompletionsOptions,
     OpenAIResponsesOptions,
-    StreamOptions,
     complete,
     get_api_provider,
     get_env_api_key,
@@ -677,7 +677,7 @@ def _build_console_options(model, *, api: str, auth_result, debug: bool = False)
         option_kwargs["trace"] = _console_trace
     if not option_kwargs:
         return None, auth_source
-    option_cls = _OPTION_CLASS_BY_API.get(api, StreamOptions)
+    option_cls = _OPTION_CLASS_BY_API.get(api, ModelCallOptions)
     return option_cls(**option_kwargs), auth_source
 
 

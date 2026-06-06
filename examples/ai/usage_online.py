@@ -27,12 +27,12 @@ from dataclasses import dataclass
 
 from loushang.ai import (
     AnthropicOptions,
+    ModelCallOptions,
     OpenAICompletionsOptions,
     OpenAIResponsesOptions,
     calculate_cost,
     get_model,
 )
-from loushang.ai.options import StreamOptions
 from loushang.ai.types import AssistantMessage, Usage
 
 
@@ -42,7 +42,7 @@ class Route:
     endpoint: str
     model: str
     api_key_envs: tuple[str, ...]
-    options_factory: Callable[..., StreamOptions]
+    options_factory: Callable[..., ModelCallOptions]
 
 
 ROUTES: dict[str, Route] = {
@@ -131,7 +131,9 @@ def _resolve_api_key(*, explicit_api_key: str | None, env_names: tuple[str, ...]
     raise RuntimeError(f"Set --api-key, or export {joined}.")
 
 
-def _build_options(route: Route, *, api_key: str, max_tokens: int, timeout: float) -> StreamOptions:
+def _build_options(
+    route: Route, *, api_key: str, max_tokens: int, timeout: float
+) -> ModelCallOptions:
     value = route.options_factory(api_key=api_key, max_tokens=max_tokens, timeout=timeout)
     if route.model != "kimi-for-coding":
         return value
@@ -188,11 +190,15 @@ def _print_json(label: str, payload: dict[str, object]) -> None:
     print(f"{label}: {json.dumps(payload, ensure_ascii=False, sort_keys=True)}")
 
 
-async def _complete(model: object, context: dict[str, object], options: StreamOptions) -> AssistantMessage:
+async def _complete(
+    model: object, context: dict[str, object], options: ModelCallOptions
+) -> AssistantMessage:
     return await model.complete(context, options)  # type: ignore[attr-defined,no-any-return]
 
 
-async def _stream(model: object, context: dict[str, object], options: StreamOptions) -> AssistantMessage:
+async def _stream(
+    model: object, context: dict[str, object], options: ModelCallOptions
+) -> AssistantMessage:
     events = await model.stream(context, options)  # type: ignore[attr-defined]
     async for event in events:
         if event["type"] == "text_delta":
