@@ -830,6 +830,23 @@ def test_markdown_renderer_normalizes_box_drawing_diagrams_with_side_annotations
     assert "Layer 5: 组件框架 (Framework)          │  Renderable" in diagram[4]
 
 
+def test_markdown_renderer_preserves_box_drawing_internal_columns() -> None:
+    renderer = MarkdownRenderer(
+        "```\n"
+        "  ┌─────────────────────────────────────────────────────────────┐\n"
+        "  │      │              │               │             │           │\n"
+        "  │   │建议 │  →   │需理由│   →   │需证据│  →  │需审批│ →  │必须 │\n"
+        "  └─────────────────────────────────────────────────────────────┘\n"
+        "```"
+    )
+
+    lines = tuple(strip_control_sequences(line) for line in rendered_text(renderer, width=120, height=20))
+
+    assert any(line.startswith("    │      │              │") for line in lines)
+    assert any(line.startswith("    │   │建议 │") for line in lines)
+    assert not any("│                                                             │" in line for line in lines)
+
+
 def test_markdown_result_skips_second_wrap_for_fitting_lines(monkeypatch) -> None:
     import loushang.tui.markdown.renderer as renderer
 

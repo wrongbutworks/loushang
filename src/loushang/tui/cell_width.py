@@ -334,7 +334,7 @@ def _normalize_box_content_line(line: str, *, indent: str, inner_width: int) -> 
     rest = line[len(indent) :]
     if not rest.startswith("│"):
         return line
-    right_border_index = rest.find("│", 1)
+    right_border_index = _box_content_right_border_index(rest, inner_width=inner_width)
     if right_border_index < 0:
         return line
     body = rest[1:right_border_index].rstrip(" ")
@@ -342,6 +342,17 @@ def _normalize_box_content_line(line: str, *, indent: str, inner_width: int) -> 
     if visible_width(body) > inner_width:
         return line
     return indent + "│" + body + (" " * (inner_width - visible_width(body))) + "│" + suffix
+
+
+def _box_content_right_border_index(rest: str, *, inner_width: int) -> int:
+    for index in range(1, len(rest)):
+        if rest[index] != "│":
+            continue
+        raw_body = rest[1:index]
+        body = raw_body.rstrip(" ")
+        if visible_width(body) <= inner_width and visible_width(raw_body) >= inner_width:
+            return index
+    return -1
 
 
 def _truncate_plain_ascii(

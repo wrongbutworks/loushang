@@ -105,6 +105,21 @@ def test_normalize_box_drawing_diagram_preserves_right_side_annotations() -> Non
     assert [visible_width(line[: line.rindex("│") + 1]) for line in fixed if "│" in line] == [45, 45, 45, 45]
 
 
+def test_normalize_box_drawing_diagram_preserves_internal_column_separators() -> None:
+    lines = (
+        "  ┌─────────────────────────────────────────────────────────────┐",
+        "  │      │              │               │             │           │",
+        "  │   │建议 │  →   │需理由│   →   │需证据│  →  │需审批│ →  │必须 │",
+        "  └─────────────────────────────────────────────────────────────┘",
+    )
+
+    fixed = normalize_box_drawing_diagram(lines)
+
+    assert fixed[1].startswith("  │      │              │")
+    assert fixed[2].startswith("  │   │建议 │")
+    assert not any("│                                                             │" in line for line in fixed)
+
+
 def test_visible_width_handles_apc_cursor_marker_and_tabs() -> None:
     assert strip_control_sequences(f"a{CURSOR_MARKER}b") == "ab"
     assert visible_width(CURSOR_MARKER) == 0
