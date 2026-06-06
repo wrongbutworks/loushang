@@ -1936,6 +1936,24 @@ def test_agent_session_exposes_pi_style_last_assistant_text_alias(tmp_path) -> N
     assert session.getLastAssistantText() == "answer"
 
 
+def test_agent_session_exposes_recent_assistant_texts_newest_first(tmp_path) -> None:
+    from loushang.agent import Agent
+    from loushang.coding.session import AgentSession
+    from loushang.coding.store import SessionManager
+
+    session = AgentSession(agent=Agent(), session_manager=SessionManager.new(session_dir=tmp_path, cwd="/tmp/project", persist=False))
+    session.agent.state.set_messages(
+        [
+            _assistant_text_message("first"),
+            _assistant_text_message(""),
+            _user_message("hello"),
+            _assistant_text_message("second"),
+        ]
+    )
+
+    assert session.get_recent_assistant_texts() == ("second", "first")
+
+
 def test_agent_session_exposes_pi_style_state_property_aliases(tmp_path) -> None:
     from loushang.agent import Agent
     from loushang.coding.session import AgentSession

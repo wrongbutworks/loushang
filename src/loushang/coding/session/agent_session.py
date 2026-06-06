@@ -259,6 +259,7 @@ class AgentSession:
                 export_to_jsonl=self.export_to_jsonl,
                 compact=self.compact,
                 reload=self.reload_extension_runtime,
+                get_recent_assistant_texts=self.get_recent_assistant_texts,
                 get_last_assistant_text=self.get_last_assistant_text,
                 get_changelog=lambda args: read_changelog_for_cwd(self.session_manager.get_cwd(), args),
                 new_session=self._new_session_from_extension,
@@ -907,6 +908,9 @@ class AgentSession:
 
     def getLastAssistantText(self) -> str | None:
         return self.get_last_assistant_text()
+
+    def get_recent_assistant_texts(self) -> tuple[str, ...]:
+        return self._view_controller.get_recent_assistant_texts()
 
     # Public facade: bash execution.
 
