@@ -9,6 +9,7 @@ from loushang.coding.extensions.types import RegisteredFlag, ResolvedFlag
 CliMode = Literal["text", "print", "json", "rpc"]
 CommandListFormat = Literal["tsv", "json"]
 DiagnosticListFormat = Literal["tsv", "json"]
+SourceInfoFormat = Literal["text", "json"]
 ModelListFormat = Literal["text", "json"]
 SessionListFormat = Literal["tsv", "json"]
 SkillListFormat = Literal["tsv", "json"]
@@ -26,6 +27,8 @@ _BUILTIN_FLAG_NAMES = frozenset(
     {
         "help",
         "version",
+        "source-info",
+        "source-info-format",
         "mode",
         "method",
         "no-method",
@@ -135,6 +138,8 @@ _BUILTIN_FLAG_NAMES = frozenset(
 class CliArgs:
     help: bool
     version: bool
+    source_info: bool
+    source_info_format: SourceInfoFormat
     mode: CliMode
     method: str | None
     no_method: bool
@@ -295,6 +300,8 @@ def parse_args(
     return CliArgs(
         help=namespace.help,
         version=namespace.version,
+        source_info=namespace.source_info,
+        source_info_format=namespace.source_info_format,
         mode=namespace.mode,
         method=namespace.method,
         no_method=namespace.no_method,
@@ -410,6 +417,8 @@ def _build_parser() -> ArgumentParser:
     parser.add_argument("messages", nargs="*")
     parser.add_argument("--help", "-h", action="store_true")
     parser.add_argument("--version", "-v", action="store_true")
+    parser.add_argument("--source-info", action="store_true")
+    parser.add_argument("--source-info-format", choices=("text", "json"), default="text")
     parser.add_argument("--mode", choices=("text", "print", "json", "rpc"), default="text")
     parser.add_argument("--method", help="Guide one coding turn with a discovered method.")
     parser.add_argument("--no-method", action="store_true", help="Run one coding turn without method guidance.")
