@@ -43,6 +43,13 @@ def test_openai_codex_complete_live() -> None:
             ),
         )
 
+        if (
+            message.response_id is None
+            and message.error_message
+            and "model is not supported" in message.error_message
+            and "ChatGPT account" in message.error_message
+        ):
+            pytest.skip(message.error_message)
         assert message.response_id is not None
         assert message.stop_reason in {"stop", "length"}
         text = "".join(
