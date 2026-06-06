@@ -4,6 +4,7 @@ from loushang.ai.api.streaming import complete, complete_simple, stream, stream_
 from loushang.ai.options import (
     AnthropicOptions,
     CacheRetention,
+    ModelCallOptions,
     OpenAICompletionsOptions,
     OpenAIResponsesOptions,
     PairingMode,
@@ -47,6 +48,7 @@ __all__ = [
     "ThinkingBudgets",
     "CacheRetention",
     "Transport",
+    "ModelCallOptions",
     "ProviderStreamOptions",
     "StreamOptions",
     "SimpleStreamOptions",
