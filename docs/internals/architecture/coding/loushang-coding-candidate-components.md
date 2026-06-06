@@ -8,21 +8,21 @@
 
 - 语言为 Python
 - 目录前缀采用 `loushang/coding/`
-- 先不实现 `interactive mode`
-- 设计阶段先完整识别组件，再按阶段安排实现优先级
+- native TUI 已作为 `loushang.coding.ui` product adapter 落地
+- 组件识别应同步当前代码包边界，并保留目标架构边界
 
 本文档不讨论：
 
 - 具体文件级实现
 - 具体类名与函数签名
-- interactive 的详细交互设计
+- TUI 的详细交互设计
 
 ## Design Basis
 
 本轮组件识别主要参考：
 
-- `docs/architecture/coding/reference/reference-coding-agent/architecture-dependencies.md`
-- `docs/architecture/coding/reference-coding-agent-reference.md`
+- `reference/reference-coding-agent/architecture-dependencies.md`
+- `reference/reference-coding-agent/reference-coding-agent-reference.md`
 
 同时结合当前对 `loushang` 分层的约束：
 
@@ -30,6 +30,7 @@
 - `loushang-agent` 负责 agent runtime core
 - `loushang-coding` 负责 coding 产品装配层
 - `loushang-coding` 对 `loushang-ai` 保留直接依赖，不只是通过 `loushang-agent` 间接依赖
+- `loushang-method` / `loushang-work` 是相邻子系统，coding 只保留 domain bridge 与 work-log integration
 
 ## Candidate Components
 
@@ -49,13 +50,17 @@
 - `prompt`
 - `skill`
 - `loader`
+- `resources`
 - `extensions`
 - `plugin`
+- `package`
+- `domain`
 - `control`
 - `policy`
 - `compaction`
-- `method`
 - `diagnostics`
+- `platform`
+- `workflow`
 - `utils`
 
 ## Component Notes
@@ -95,10 +100,11 @@
 
 当前阶段建议列出这些 mode：
 
+- `text`
 - `print`
 - `json`
 - `rpc`
-- `interactive`（未来实现）
+- `tui` / `interactive`
 
 ### `runtime`
 
@@ -233,6 +239,16 @@ skill 资源与运行接缝。
 - extension 资源
 - 其他 coding 侧资源文件
 
+### `resources`
+
+coding resource descriptors 与加载结果边界。
+
+负责：
+
+- prompt/skill/theme/extension resource descriptors
+- loader/package/plugin 展开后的资源结果
+- coding 运行时可消费的资源投影
+
 ### `extensions`
 
 扩展运行时。
@@ -259,6 +275,29 @@ plugin bundle 管理与资源展开层。
 - plugin source
 - plugin 启停与作用域
 - 将 plugin 展开为 extensions / skills / prompts / themes 资源描述符
+
+### `package`
+
+package/plugin lifecycle 与 source 管理层。
+
+负责：
+
+- package catalog/source
+- package install/update/remove
+- package materialization
+- package 与 plugin resource 形态的衔接
+
+### `domain`
+
+coding domain bridge。
+
+负责：
+
+- `CodingDomainRequest`
+- `MethodPolicy`
+- `CodingDomainPreparedTurn`
+- 通过 `loushang.method` 应用 method plan/prepared turn
+- 将 method plan/step metadata 传递给 work-log path
 
 ### `control`
 
@@ -299,16 +338,6 @@ plugin bundle 管理与资源展开层。
 - 摘要生成
 - 上下文预算收缩策略
 
-### `method`
-
-coding 方法层接缝。
-
-负责：
-
-- 方法选择
-- workflow guidance
-- coding 场景下的方法注入
-
 ### `diagnostics`
 
 诊断与检查能力。
@@ -320,6 +349,27 @@ coding 方法层接缝。
 - 执行失败归一化
 - 可观测诊断输出
 
+### `platform`
+
+平台能力 helper。
+
+负责：
+
+- clipboard
+- filesystem
+- terminal/platform capability detection
+- 跨 mode 共享的平台差异封装
+
+### `workflow`
+
+prompt workflow loader / runner。
+
+负责：
+
+- prompt workflow 文件加载
+- workflow step 展开
+- 将 prompt workflow 映射到 coding session 调用
+
 ### `utils`
 
 真正通用、无稳定业务边界的辅助代码。
@@ -329,11 +379,11 @@ coding 方法层接缝。
 - 不承载核心业务职责
 - 只放跨组件复用的轻量工具
 
-## Staging
+## Current Orientation
 
-### P0
+### Core Skeleton
 
-设计上必须先明确的骨架组件：
+当前 coding 产品的骨架组件：
 
 - `bootstrap`
 - `sdk`
@@ -347,33 +397,39 @@ coding 方法层接缝。
 - `tools`
 - `exec`
 - `prompt`
+- `resources`
 - `loader`
+- `domain`
 - `control`
 - `policy`
 - `diagnostics`
+- `platform`
 - `utils`
 
-P0 mode：
+当前 mode / surface：
 
+- `text`
 - `print`
 - `json`
 - `rpc`
-- `interactive`（仅列出，暂不实现）
+- `tui` / `interactive`
 
-### P1
+### Productization And Extension Components
 
-第一批产品化增强组件：
+当前产品化与扩展组件：
 
 - `skill`
 - `extensions`
 - `compaction`
-- `method`
+- `plugin`
+- `package`
+- `workflow`
 
-### P2
+### Later Directions
 
 后续增强方向：
 
-- `interactive` 完整实现
+- TUI + method status layer
 - 更强的 extension/plugin 生态
 - 更复杂的方法编排
 - multi-agent / orchestration 扩展

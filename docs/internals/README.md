@@ -16,3 +16,19 @@ This directory keeps historical and contributor-facing material that used to liv
 - [Legacy](./legacy/) - older root-level documents kept for continuity.
 
 These documents may describe target architecture, historical design decisions, or implementation plans. For current user-facing behavior, start with the public documentation and the code/tests.
+
+## Reading Rule
+
+Internal docs are not all live architecture.
+
+- `architecture/` root and accepted ARDs are the primary architecture sources.
+- `architecture/drafts/` records exploratory architecture and unresolved design options.
+- `specs/` records dated implementation designs; use them for rationale, not as current API truth.
+- `plans/archive/` records completed or abandoned execution plans.
+- `experimental/` records research inputs and methodology experiments.
+- `legacy/` preserves older position papers and boundary notes.
+
+When these documents conflict, prefer current code/tests and the live architecture
+docs. Historical terms such as `loushang-methods`, `methods/**`, Textual, or old
+`docs/architecture/...` paths may be preserved in historical files and should not
+be read as current implementation status.

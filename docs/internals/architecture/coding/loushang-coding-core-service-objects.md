@@ -22,11 +22,11 @@
 
 本文档建立在以下文档之上：
 
-- [Loushang Coding System Context](/home/dev/workspace/loushang/docs/architecture/coding/loushang-coding-system-context.md)
-- [Loushang Coding Component Structure And Responsibilities](/home/dev/workspace/loushang/docs/architecture/coding/loushang-coding-component-structure-and-responsibilities.md)
-- [Loushang Coding Core Data Objects](/home/dev/workspace/loushang/docs/architecture/coding/loushang-coding-core-data-objects.md)
-- [reference coding agent Internal Dependency Overview](/home/dev/workspace/loushang/docs/architecture/coding/reference/reference-coding-agent/architecture-dependencies.md)
-- [reference coding agent 架构分析](/home/dev/workspace/loushang/docs/architecture/coding/reference/reference-coding-agent/reference-coding-agent-reference.md)
+- [Loushang Coding System Context](loushang-coding-system-context.md)
+- [Loushang Coding Component Structure And Responsibilities](loushang-coding-component-structure-and-responsibilities.md)
+- [Loushang Coding Core Data Objects](loushang-coding-core-data-objects.md)
+- [reference coding agent Internal Dependency Overview](reference/reference-coding-agent/architecture-dependencies.md)
+- [reference coding agent 架构分析](reference/reference-coding-agent/reference-coding-agent-reference.md)
 
 ## Naming Rule
 
@@ -334,21 +334,23 @@
 - 后续如果过重，可并回 `DefaultResourceLoader`
 - 它更适合作为 resource loader 体系内的显式子边界，而不是并列资源中心
 
-### `MethodRegistry`
+### `CodingDomainApp`
 
 归属组件：
 
-- `method`
+- `domain`
 
 角色：
 
-- 方法资产注册与选择服务
+- coding domain method integration facade
 
 主要职责：
 
-- 方法资产发现
-- 方法选择
-- guidance/workflow 注入入口
+- 接收 `CodingDomainRequest`
+- 应用 `MethodPolicy`
+- 调用 `loushang.method` 的 loader/compiler/projector
+- 生成一个或多个 `CodingDomainPreparedTurn`
+- 将 `method_id` / `plan_id` / `step_id` / step metadata 传递给 CLI runner 与 work-log path
 
 对齐情况：
 
@@ -357,7 +359,8 @@
 理由：
 
 - `reference CLI` 更偏 `skills + prompt/resources + extension`
-- `method` 是 `loushang` 当前特有的显式子系统边界
+- `method` 是 `loushang` 当前特有的显式子系统边界，归属 `loushang.method`
+- `loushang.coding` 只保留 domain bridge，不拥有 method registry lifecycle
 
 ## 4. 控制平面服务
 

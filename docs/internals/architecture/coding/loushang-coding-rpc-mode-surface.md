@@ -11,11 +11,15 @@
 - mutator / lifecycle response 为什么要收瘦
 - `model` 在 RPC 中如何从 `loushang.ai.Model` 投影出来
 
+`RpcMode` 当前定位是 transitional headless mode surface，不是长期
+package-level `loushang.channel` protocol layer。长期 channel 设计见
+[ARD-005: RPC Mode Transitional Channel Positioning](ARD-005-rpc-mode-transitional-channel-positioning.md)。
+
 相关架构文档仍然看这里：
 
-- [mode](/home/dev/workspace/loushang/docs/architecture/coding/component-interfaces/mode.md)
-- [session](/home/dev/workspace/loushang/docs/architecture/coding/component-interfaces/session.md)
-- [Loushang Coding Key Mode Sequences](/home/dev/workspace/loushang/docs/architecture/coding/loushang-coding-key-mode-sequences.md)
+- [mode](component-interfaces/mode.md)
+- [session](component-interfaces/session.md)
+- [Loushang Coding Key Mode Sequences](loushang-coding-key-mode-sequences.md)
 
 当前代码入口：
 
@@ -47,7 +51,7 @@
 
 详细合约见：
 
-- [Loushang Coding Rendered Tool Events](/home/dev/workspace/loushang/docs/architecture/coding/loushang-coding-rendered-tool-events.md)
+- [Loushang Coding Rendered Tool Events](loushang-coding-rendered-tool-events.md)
 
 ## Command Families
 
@@ -240,7 +244,7 @@ RPC wire command `get_commands` 是当前命令发现的统一入口。它只承
 - `source`: 命令来源类型（`extension`、`prompt`、`skill`）
 - `source_info`: `CommandSourceInfo`
 
-`RpcMode` 会把会话 descriptor 序列化为标准 `sourceInfo` 输出。  
+`RpcMode` 会把会话 descriptor 序列化为标准 `sourceInfo` 输出。
 建议客户端基于 `sourceInfo.path` 做展示；内部不再保留 legacy dict / alias 输入兼容。
 
 `sourceInfo` 由会话 descriptor 的 `source_info` 投影：
@@ -257,11 +261,22 @@ package provenance 不在 RPC 层兜底推断：prompt / skill 来自 loader des
 
 `fork` 默认使用 `position="before"`，对齐 `reference CLI`：目标必须是 user message，响应 `text` 为选中的用户文本；调用方可传 `position="at"` 显式保留目标 entry。
 
+## Method And Work Log Boundary
+
+当前 RPC surface 不支持 `--method` / method plan execution，也不支持 `--work-log`
+写入路径。原因不是 wire protocol 无法承载，而是 RPC 当前仍是 `loushang.coding`
+内部 transitional mode surface；在 method plan/step projection、work event replay 与
+长期 channel contract 收敛前，不把 method lifecycle 挂到 RPC 命令面上。
+
+这一判断与 [ARD-006: TUI Method Integration Constraints](ARD-006-tui-method-integration-constraints.md)
+保持一致：method-driven execution 当前只落在非交互 prompt/print/json path。
+
 ## Reference Implementation Alignment
 
 当前这版 RPC surface 对齐 `reference CLI` 的核心思路是：
 
 - `rpc mode` 仍是 mode adapter，不是另一套 runtime
+- `rpc mode` 也不是长期 `loushang.channel` package layer
 - `get_state` 只暴露 canonical session snapshot
 - `cwd` 和 active tools 不是 canonical session state
 - `model` 尽量围绕真实 AI model，而不是只围绕 selection object

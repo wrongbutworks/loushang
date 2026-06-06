@@ -2,6 +2,14 @@
 
 > **Position Paper** | 面壁智能 (OpenBMB) · Loushang 项目组
 
+## Status
+
+Legacy position paper.
+
+本文保留产品愿景、方法科学和治理模型背景。文中的 `loushang-methods`、
+`methods/` 和旧 `docs/architecture/` 表述是历史术语，不代表当前包名、
+目录布局或实现状态。当前实现边界以 live architecture docs、代码和测试为准。
+
 ---
 
 ## 摘要

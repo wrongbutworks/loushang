@@ -2,19 +2,29 @@
 
 ## Scope
 
-本文档定义 `loushang` 的主要子系统及其职责边界。  
+本文档定义 `loushang` 的主要子系统及其职责边界。
 它关注系统分工，不展开实现细节、类型系统或边界协议。
 
 ## Subsystem List
 
-当前建议的核心子系统包括：
+当前已落地的核心包级子系统包括：
 
-- `loushang-ai`
-- `loushang-agent`
-- `loushang-channel`
-- `loushang-tui`
-- `loushang-methods`
-- `loushang-coding`
+- `loushang.ai`
+- `loushang.agent`
+- `loushang.coding`
+- `loushang.method`
+- `loushang.tui`
+- `loushang.work`
+
+当前已落地的支撑/实验性包包括：
+
+- `loushang.runtime`
+- `loushang.observability`
+- `loushang.ontology`
+
+目标架构仍保留 `loushang.channel`，但当前没有 package-level
+implementation。现有 RPC mode 是 coding-local transitional adapter，不等于
+长期 channel surface。
 
 ## Subsystem Responsibilities
 
@@ -59,9 +69,9 @@ agent 运行内核。
 - UI 渲染
 - 跨边界 transport
 
-### loushang-channel
+### loushang-channel (target)
 
-agent 边界与协议层。
+边界协议与 transport 层。当前是目标架构概念，不是已落地 Python 包。
 
 负责：
 
@@ -104,25 +114,49 @@ agent 边界与协议层。
 
 - [Loushang-TUI Architecture](./tui/README.md)
 
-### loushang-methods
+### loushang-method
 
 方法层。
 
 负责：
 
 - `skill`
-- `stage`
-- `role`
-- `task`
+- `MethodDescriptor`
+- `MethodPlan`
+- `MethodStep`
+- `MethodProjection`
+- method resource loading
+- fixed method compilation
 - `guidance`
 - `work product`
-- 方法元与调度关系
+- 方法元与投影关系
 
 不负责：
 
 - 底层模型接入
 - 边界协议承载
 - TUI 交互实现
+- 通用 work lifecycle
+
+### loushang-work
+
+工作运行语义、事件日志与 projection 层。
+
+负责：
+
+- `WorkOperation`
+- `WorkRun`
+- `WorkEvent`
+- work event log
+- plan/step lifecycle projection
+- method run replay / inspect 的基础语义
+
+不负责：
+
+- coding-specific tool policy
+- method resource 编译
+- TUI 呈现
+- 外部 transport
 
 ### loushang-coding
 
@@ -134,7 +168,8 @@ agent 边界与协议层。
 - 默认策略
 - coding workflow
 - CLI 入口
-- 与 `tui`、`channel`、`methods` 的产品化集成
+- 与 `tui`、`method`、`work` 的产品化集成
+- transitional RPC/JSONL mode adapter
 - `loushang.coding.ui` 终端产品适配层
 - session/runtime 与 terminal UI 的交互编排
 
@@ -147,20 +182,33 @@ agent 边界与协议层。
 
 ## Layer Relationship
 
-从下到上，建议的系统关系为：
+当前 V1 coding 产品的主链路为：
 
-1. `loushang-ai`
-2. `loushang-agent`
-3. `loushang-channel`
-4. `loushang-tui`
-5. `loushang-methods`
-6. `loushang-coding`
+```text
+loushang.coding
+  -> loushang.agent
+  -> loushang.ai
+```
+
+相邻集成链路为：
+
+```text
+loushang.method -> loushang.coding -> loushang.work
+loushang.coding.ui -> loushang.tui
+```
+
+长期目标边界为：
+
+```text
+external host/client -> loushang.channel -> loushang.work -> domain app
+```
 
 其中：
 
 - `ai` 提供模型接入能力
 - `agent` 提供运行语义
-- `channel` 提供边界通信
+- `channel` 提供目标边界通信，当前未作为源码包落地
 - `tui` 提供通用终端交互原语
-- `methods` 提供方法组织
+- `method` 提供方法组织与 plan/projection
+- `work` 提供运行、事件、日志与 projection
 - `coding` 提供场景装配，并通过 `loushang.coding.ui` 调用 `loushang.tui`

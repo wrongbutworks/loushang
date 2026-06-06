@@ -26,5 +26,9 @@ Use these files as migration and history references only. Do not treat
 prompt-toolkit, Rich, Textual, or the v1 inline runtime layout as the current
 target architecture.
 
+Older subsystem names such as `loushang-methods` are preserved inside these
+files as historical wording. Current method resources live in `loushang.method`,
+and coding/TUI method integration is governed by the live coding ARDs.
+
 If the historical v1 release gate needs to be reproduced, run
 `make test-tui-v1`.

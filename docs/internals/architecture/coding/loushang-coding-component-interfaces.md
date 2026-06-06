@@ -14,30 +14,30 @@
 
 详细 one-pager 统一放在：
 
-- [component-interfaces/](/home/dev/workspace/loushang/docs/architecture/coding/component-interfaces/README.md)
+- [component-interfaces/](component-interfaces/README.md)
 
 当前组件清单总表见：
 
-- [Loushang Coding Component Inventory](/home/dev/workspace/loushang/docs/architecture/coding/loushang-coding-component-inventory.md)
+- [Loushang Coding Component Inventory](loushang-coding-component-inventory.md)
 
 ## Design Basis
 
 本文档建立在以下文档之上：
 
-- [Loushang Coding Component Structure And Responsibilities](/home/dev/workspace/loushang/docs/architecture/coding/loushang-coding-component-structure-and-responsibilities.md)
-- [Loushang Coding Component Dependencies](/home/dev/workspace/loushang/docs/architecture/coding/loushang-coding-component-dependencies.md)
-- [Loushang Coding Core Service Objects](/home/dev/workspace/loushang/docs/architecture/coding/loushang-coding-core-service-objects.md)
-- [Loushang Coding Core Data Objects](/home/dev/workspace/loushang/docs/architecture/coding/loushang-coding-core-data-objects.md)
-- [Loushang Coding Deployment Unit Terminology](/home/dev/workspace/loushang/docs/architecture/coding/loushang-coding-du-terminology.md)
-- [reference coding agent Internal Dependency Overview](/home/dev/workspace/loushang/docs/architecture/coding/reference/reference-coding-agent/architecture-dependencies.md)
+- [Loushang Coding Component Structure And Responsibilities](loushang-coding-component-structure-and-responsibilities.md)
+- [Loushang Coding Component Dependencies](loushang-coding-component-dependencies.md)
+- [Loushang Coding Core Service Objects](loushang-coding-core-service-objects.md)
+- [Loushang Coding Core Data Objects](loushang-coding-core-data-objects.md)
+- [Loushang Coding Deployment Unit Terminology](loushang-coding-du-terminology.md)
+- [reference coding agent Internal Dependency Overview](reference/reference-coding-agent/architecture-dependencies.md)
 
 ## How To Use This Doc Set
 
 建议按下面顺序阅读：
 
 1. 先看本文档，理解接口命名、分层和跨组件约束
-2. 再看 [Component Inventory](/home/dev/workspace/loushang/docs/architecture/coding/loushang-coding-component-inventory.md) 了解组件清单与结构分层
-3. 最后按需进入 [component-interfaces/](/home/dev/workspace/loushang/docs/architecture/coding/component-interfaces/README.md) 阅读单组件 one-pager
+2. 再看 [Component Inventory](loushang-coding-component-inventory.md) 了解组件清单与结构分层
+3. 最后按需进入 [component-interfaces/](component-interfaces/README.md) 阅读单组件 one-pager
 
 阅读时还应区分两种口径：
 
@@ -80,40 +80,45 @@
 
 ### Entry And Surface Layer
 
-- [bootstrap](/home/dev/workspace/loushang/docs/architecture/coding/component-interfaces/bootstrap.md)
-- [sdk](/home/dev/workspace/loushang/docs/architecture/coding/component-interfaces/sdk.md)
-- [cli](/home/dev/workspace/loushang/docs/architecture/coding/component-interfaces/cli.md)
-- [mode](/home/dev/workspace/loushang/docs/architecture/coding/component-interfaces/mode.md)
+- [bootstrap](component-interfaces/bootstrap.md)
+- [sdk](component-interfaces/sdk.md)
+- [cli](component-interfaces/cli.md)
+- [mode](component-interfaces/mode.md)
+- [rpc](component-interfaces/rpc.md)
 
 ### Runtime Core Layer
 
-- [runtime](/home/dev/workspace/loushang/docs/architecture/coding/component-interfaces/runtime.md)
-- [session](/home/dev/workspace/loushang/docs/architecture/coding/component-interfaces/session.md)
-- [store](/home/dev/workspace/loushang/docs/architecture/coding/component-interfaces/store.md)
-- [message](/home/dev/workspace/loushang/docs/architecture/coding/component-interfaces/message.md)
-- [event](/home/dev/workspace/loushang/docs/architecture/coding/component-interfaces/event.md)
+- [runtime](component-interfaces/runtime.md)
+- [session](component-interfaces/session.md)
+- [store](component-interfaces/store.md)
+- [message](component-interfaces/message.md)
+- [event](component-interfaces/event.md)
 
 ### Execution And Assembly Layer
 
-- [tools](/home/dev/workspace/loushang/docs/architecture/coding/component-interfaces/tools.md)
-- [exec](/home/dev/workspace/loushang/docs/architecture/coding/component-interfaces/exec.md)
-- [compaction](/home/dev/workspace/loushang/docs/architecture/coding/component-interfaces/compaction.md)
+- [tools](component-interfaces/tools.md)
+- [exec](component-interfaces/exec.md)
+- [compaction](component-interfaces/compaction.md)
 
 ### Resource And Customization Layer
 
-- [prompt](/home/dev/workspace/loushang/docs/architecture/coding/component-interfaces/prompt.md)
-- [skill](/home/dev/workspace/loushang/docs/architecture/coding/component-interfaces/skill.md)
-- [loader](/home/dev/workspace/loushang/docs/architecture/coding/component-interfaces/loader.md)
-- [extensions](/home/dev/workspace/loushang/docs/architecture/coding/component-interfaces/extensions.md)
-- [plugin](/home/dev/workspace/loushang/docs/architecture/coding/component-interfaces/plugin.md)
-- [method](/home/dev/workspace/loushang/docs/architecture/coding/component-interfaces/method.md)
+- [prompt](component-interfaces/prompt.md)
+- [skill](component-interfaces/skill.md)
+- [loader](component-interfaces/loader.md)
+- [resources](component-interfaces/resources.md)
+- [extensions](component-interfaces/extensions.md)
+- [plugin](component-interfaces/plugin.md)
+- [package](component-interfaces/package.md)
+- [domain](component-interfaces/domain.md)
 
-### Control And Support Layer
+### Control, Platform And Support Layer
 
-- [control](/home/dev/workspace/loushang/docs/architecture/coding/component-interfaces/control.md)
-- [policy](/home/dev/workspace/loushang/docs/architecture/coding/component-interfaces/policy.md)
-- [diagnostics](/home/dev/workspace/loushang/docs/architecture/coding/component-interfaces/diagnostics.md)
-- [utils](/home/dev/workspace/loushang/docs/architecture/coding/component-interfaces/utils.md)
+- [control](component-interfaces/control.md)
+- [policy](component-interfaces/policy.md)
+- [diagnostics](component-interfaces/diagnostics.md)
+- [platform](component-interfaces/platform.md)
+- [workflow](component-interfaces/workflow.md)
+- [utils](component-interfaces/utils.md)
 
 ## Cross-Component Constraints
 
@@ -122,15 +127,17 @@
 - `session` 是业务中心；不要把核心编排下沉到 `cli`、`mode` 或 `bootstrap`
 - `store` 负责持久化边界；special summary entry 不应伪装成普通 message
 - `message` 与 `event` 应尽量早稳，避免后续 mode/tool/diagnostics 大面积返工
-- `prompt` 是资源层到运行层的桥，不应吞并 `skill`、`method` 或 `session` 的职责
+- `prompt` 是资源层到运行层的桥，不应吞并 `skill`、`domain` 或 `session` 的职责
+- `domain` 是 coding 对 `loushang.method` 的桥，不拥有 method registry/compiler/projector lifecycle
+- `package` 负责 package lifecycle；`plugin` 只负责 manifest-backed source view 与资源展开
 - `tools`、`exec`、`policy` 保持分离；不要把工具注册、命令执行和审批逻辑混成单层
 - `compaction` 是协调层，不应回流成 `store` 或 `session` 内部的隐式逻辑
 - `utils` 只能做薄辅助层，不应承载隐藏业务中心
 
 ## Related Docs
 
-- [Loushang Coding Component Inventory](/home/dev/workspace/loushang/docs/architecture/coding/loushang-coding-component-inventory.md)
-- [Loushang Coding Component Structure And Responsibilities](/home/dev/workspace/loushang/docs/architecture/coding/loushang-coding-component-structure-and-responsibilities.md)
-- [Loushang Coding Component Dependencies](/home/dev/workspace/loushang/docs/architecture/coding/loushang-coding-component-dependencies.md)
-- [Loushang Coding Development Priority And Stability Strategy](/home/dev/workspace/loushang/docs/architecture/coding/loushang-coding-development-priority-and-stability-strategy.md)
-- [Component Interface Notes](/home/dev/workspace/loushang/docs/architecture/coding/component-interfaces/README.md)
+- [Loushang Coding Component Inventory](loushang-coding-component-inventory.md)
+- [Loushang Coding Component Structure And Responsibilities](loushang-coding-component-structure-and-responsibilities.md)
+- [Loushang Coding Component Dependencies](loushang-coding-component-dependencies.md)
+- [Loushang Coding Development Priority And Stability Strategy](loushang-coding-development-priority-and-stability-strategy.md)
+- [Component Interface Notes](component-interfaces/README.md)

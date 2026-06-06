@@ -53,6 +53,12 @@
 - `PluginSource`
 - `InstalledPlugin`
 - `PluginResolvedResources`
+
+## Related Package Data
+
+这些对象由 [package](package.md) 拥有。`plugin` 可以投影或委托使用它们，但不拥有
+package lifecycle facade：
+
 - `PackageMaterializer`
 - `PackageMaterializationRecord`
 - `PackageSourcePolicy`

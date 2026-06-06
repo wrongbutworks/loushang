@@ -18,7 +18,7 @@
 - `loushang-coding` 内部白盒组件分解
 - 具体文件结构
 - 具体类名、函数签名与字段设计
-- `interactive mode` 的详细交互流程
+- TUI 的详细交互流程
 
 这些内容将在后续文档中继续展开。
 
@@ -28,14 +28,15 @@
 
 - 面向 coding 场景的产品装配层
 - `loushang-agent` 的直接上游装配子系统
-- 与 `tui`、`channel`、`methods` 发生产品化集成的主承载层
+- 与 `tui`、`method`、`work` 发生产品化集成的主承载层
+- 当前 RPC/JSONL transitional surface 的承载层
 
 但在设计推进中，仍有几个高频边界问题会反复影响后续工作：
 
 - `coding` 是否必须先依赖 `channel`
 - `coding` 与 `tui` 的边界如何划分
 - `rpc / print / json / interactive` 是否属于 `coding`
-- `coding` 与 `methods` 是依赖关系还是包含关系
+- `coding` 与 `method` / `work` 是依赖关系还是包含关系
 
 因此，需要先用系统环境图把这些边界钉住。
 
@@ -53,18 +54,22 @@
   - `loushang-coding` 的直接下游能力子系统之一
   - `coding` 不直接承担 provider 细节，但会直接消费部分 AI 能力，例如 model registry、model selection、summarization 与其他 helper-style AI 调用
 
-- `loushang-methods`
+- `loushang-method`
   - `loushang-coding` 的方法层相邻子系统
-  - 提供 skill、stage、role、task、guidance 等方法元与方法资产
+  - 提供 `MethodDescriptor`、`MethodPlan`、`MethodStep`、`MethodProjection`、guidance 等方法元与方法资产
+
+- `loushang-work`
+  - `loushang-coding` 的工作运行语义相邻子系统
+  - 提供 `WorkOperation`、`WorkRun`、`WorkEvent`、event log、plan/step projection
 
 - `loushang-channel`
   - `loushang-coding` 的潜在边界协议相邻子系统
   - 当前阶段不作为 `coding` 起步的前置依赖
-  - 未来可承接 `rpc / web / interactive` 的统一边界协议
+  - 未来可承接 `rpc_jsonl / web / host` 的统一边界协议
 
 - `loushang-tui`
   - `loushang-coding` 的终端交互相邻子系统
-  - 为 `interactive mode` 提供 TUI primitives、widgets、layout 与交互呈现
+  - 为 native coding TUI 提供 terminal primitives、render loop、input、surfaces、layout 与编辑基础设施
 
 ### Actors
 
@@ -75,8 +80,8 @@
   - 通过 `sdk` 嵌入 `loushang-coding` 的宿主程序
 
 - `RPC / Web Client`
-  - 当前阶段作为未来 actor 保留
-  - 代表通过远程或协议边界消费 `coding runtime` 的外部客户端
+  - RPC client 当前可通过 `loushang.coding.mode.RpcMode` 消费 coding-local JSONL surface
+  - Web / remote client 是未来 channel actor
 
 ## Internal Adjacent Subsystems
 
@@ -94,18 +99,34 @@
 
 `agent` 负责把这些装配结果转化为实际 runtime 推进。
 
-### loushang-methods
+### loushang-method
 
-`loushang-methods` 是 `loushang-coding` 的直接上游资源/策略子系统。
+`loushang-method` 是 `loushang-coding` 的直接上游资源/策略子系统。
 
 它向 `coding` 提供的是：
 
 - skill 资产
 - 方法元
-- stage / role / task / guidance
+- `MethodPlan` / `MethodStep`
+- guidance
 - work product 模板
 
-`methods` 不直接承担 coding runtime，而是为 `coding` 提供方法层资产与组织关系。
+`method` 不直接承担 coding runtime，而是为 `coding` 提供方法层资产、编译与投影。`coding` 通过 `CodingDomainApp` 把 method plan/prepared turn 应用到 coding turn。
+
+### loushang-work
+
+`loushang-work` 是 `loushang-coding` 的 work lifecycle / event log 相邻子系统。
+
+它向 `coding` 提供的是：
+
+- `WorkOperation`
+- `WorkRun`
+- `WorkEvent`
+- `EventLogBackend`
+- method plan/step lifecycle projection
+- `work-log-inspect` 使用的 replay / plan summary 语义
+
+`work` 不负责 coding tool policy、prompt assembly 或 TUI 呈现。
 
 ### loushang-channel
 
@@ -123,12 +144,13 @@
 
 ### loushang-tui
 
-`loushang-tui` 是 `interactive mode` 的下游交互子系统。
+`loushang-tui` 是 native coding TUI 的下游通用交互子系统。
 
-它不负责 coding runtime，也不负责 agent loop。  
+它不负责 coding runtime，也不负责 agent loop。
 它应只负责：
 
-- terminal app / screen / widget
+- render loop / terminal writer / input reader
+- terminal UI parts / surfaces / display records
 - input / select / modal / status primitives
 - 交互事件与界面呈现
 
@@ -144,9 +166,10 @@ flowchart LR
     SDK["Embedding Host / SDK Consumer (actor)"]
     RPC["RPC / Web Client (future actor)"]
 
-    METHODS["loushang-methods (internal)"]
-    CHANNEL["loushang-channel (internal, future)"]
-    TUI["loushang-tui (internal, future interactive)"]
+    METHOD["loushang-method (internal)"]
+    WORK["loushang-work (internal)"]
+    CHANNEL["loushang-channel (target, future package)"]
+    TUI["loushang-tui (internal, current native TUI)"]
     AGENT["loushang-agent (internal)"]
     AI["loushang-ai (internal)"]
 
@@ -156,13 +179,14 @@ flowchart LR
     SDK --> CODING
     RPC -. future .-> CODING
 
-    METHODS --> CODING
+    METHOD --> CODING
+    CODING --> WORK
     CODING --> AGENT
     CODING --> AI
     AGENT --> AI
 
-    CODING -. future integration .-> CHANNEL
-    CODING -. interactive integration .-> TUI
+    CODING -. future channel adapter .-> CHANNEL
+    CODING --> TUI
 ```
 
 ### CLI User / SDK Consumer -> loushang-coding
@@ -171,11 +195,19 @@ flowchart LR
 
 `coding` 不是只能由命令行进程使用；它还应保留 `sdk` 形式的嵌入入口。
 
-### loushang-methods -> loushang-coding
+### loushang-method -> loushang-coding
 
 这是当前接受的上游策略/资源依赖关系。
 
-`methods` 提供方法资产，`coding` 决定如何在具体 coding runtime 中使用这些资产。
+`method` 提供方法资产与 plan/projection，`coding` 决定如何在具体 coding runtime 中使用这些资产。
+
+### loushang-coding -> loushang-work
+
+这是当前已经存在的 work event/log/projection 依赖关系。
+
+`coding` 在 non-interactive method path 中通过 work shell / work event log 记录
+`WorkRun`、`WorkPlan*`、`WorkStep*` lifecycle；未来 TUI method status layer 也应消费
+`WorkEvent` / `WorkPlanRun` projection，而不是直接消费裸 `MethodPlan`。
 
 ### loushang-coding -> loushang-agent
 
@@ -224,9 +256,7 @@ flowchart LR
 
 ### loushang-coding -> loushang-tui
 
-这条依赖关系只在 `interactive mode` 真正实现时成立。
-
-当前阶段它是被保留的未来 integration edge，而不是当前起步所必需。
+这条依赖关系当前已经成立，由 `loushang.coding.ui` 适配 coding session/runtime 状态到 native terminal TUI。
 
 ## Information Flow Relations
 
@@ -251,24 +281,46 @@ flowchart LR
 - session metadata
 - error / interrupted / approval-needed 等语义
 
-### loushang-methods <-> loushang-coding
+### loushang-method <-> loushang-coding
 
-`methods` 向 `coding` 输入的信息包括：
+`method` 向 `coding` 输入的信息包括：
 
 - skill 资产
 - 方法 guidance
-- role / stage / task 元信息
+- `MethodPlan` / `MethodStep`
+- role / task 元信息
 - work product 模板或约束
 
-`coding` 向 `methods` 的需求包括：
+`coding` 向 `method` 的需求包括：
 
 - 当前场景所需的方法选择
 - 当前 mode / policy 下可用的方法装配需求
 
 这里的关键点是：
 
-- `methods` 提供方法资产
-- `coding` 决定如何把这些资产注入实际运行
+- `method` 提供方法资产、编译与投影
+- `coding` 决定如何把这些资产应用到 coding turn
+
+### loushang-coding <-> loushang-work
+
+`coding` 向 `work` 输入的信息包括：
+
+- coding turn operation metadata
+- `method_id` / `plan_id` / `step_id`
+- step policy / deviation metadata
+- agent events requiring work projection
+
+`work` 向 `coding` 输出的信息包括：
+
+- work event log backend
+- `WorkEvent` stream / persisted records
+- `WorkPlanRun` / `WorkStepRun` projection
+- replay / inspect summaries
+
+这里的关键点是：
+
+- `coding` 仍负责 coding-specific execution
+- `work` 负责 run/event/log/projection 的通用语义
 
 ### loushang-coding <-> loushang-agent
 
@@ -322,7 +374,7 @@ flowchart LR
 
 未来若接入 `channel`，`coding` 可能向 `channel` 投影的信息包括：
 
-- runtime events 的 protocol projection
+- `WorkOperation` / `WorkEvent` 的 protocol projection
 - approval / question / input / selection requests
 - replay / audit 所需的边界记录
 
@@ -334,9 +386,7 @@ flowchart LR
 
 ### loushang-coding <-> loushang-tui
 
-当前阶段只保留未来信息流方向。
-
-未来在 `interactive mode` 中：
+当前 native TUI 中：
 
 - `coding` 向 `tui` 输入可渲染的状态、事件与交互请求
 - `tui` 向 `coding` 返回用户输入、选择、确认与界面动作
@@ -356,7 +406,8 @@ flowchart LR
 - mode adapters
 - CLI / SDK 入口
 - session/runtime/store 的产品化组织
-- methods / skills 的使用策略
+- method / skills 的使用策略
+- work-log / WorkEvent projection 接入
 - memory / compaction / workflow 决策
 - 与 `channel` / `tui` 的产品化集成入口
 
@@ -376,12 +427,25 @@ flowchart LR
 - runtime state
 - agent events
 
-### loushang-methods
+### loushang-method
 
-`loushang-methods` 应承载：
+`loushang-method` 应承载：
 
-- skill / stage / role / task / guidance 等方法资产
-- 方法元及其组织关系
+- `MethodDescriptor` / `MethodPlan` / `MethodStep` / `MethodProjection`
+- method resource loading
+- method compilation and projection
+- guidance / work product assets
+
+### loushang-work
+
+`loushang-work` 应承载：
+
+- `WorkOperation`
+- `WorkRun`
+- `WorkEvent`
+- `EventLogBackend`
+- plan/step lifecycle projection
+- replay / inspect summaries
 
 ### loushang-channel
 
@@ -396,8 +460,8 @@ flowchart LR
 
 `loushang-tui` 应承载：
 
-- TUI app runtime
-- widget / layout / status / input / modal primitives
+- native terminal TUI runtime
+- render loop / input / surface / layout / status primitives
 - terminal interaction rendering
 
 ## Data Boundary
@@ -421,11 +485,23 @@ flowchart LR
 - `AgentEvent`
 - `AgentTool`
 
-### loushang-methods 的主数据
+### loushang-method 的主数据
 
 - skill descriptors
-- stage / role / task metadata
+- `MethodDescriptor`
+- `MethodPlan`
+- `MethodStep`
+- `MethodProjection`
 - guidance / work product assets
+
+### loushang-work 的主数据
+
+- `WorkOperation`
+- `WorkRun`
+- `WorkEvent`
+- `WorkPlanRun`
+- `WorkStepRun`
+- event log entries
 
 ### loushang-channel 的主数据
 
@@ -445,6 +521,8 @@ flowchart LR
 
 - `coding` 持有的是“产品装配与场景控制”层数据
 - `agent` 持有的是“通用运行时”层数据
+- `method` 持有的是“方法资产与投影”层数据
+- `work` 持有的是“运行与事件投影”层数据
 - `channel` 持有的是“边界协议投影”层数据
 - `tui` 持有的是“本地呈现与交互”层数据
 
@@ -454,13 +532,16 @@ flowchart LR
 
 1. `loushang-coding` 前期不依赖 `loushang-channel`
 2. `loushang-channel` 不并入 `loushang-coding`
-3. `interactive` 属于 `coding` 的 mode，但实现后置
+3. native TUI 属于 `coding` product adapter，但 generic primitives 归属 `loushang.tui`
 4. `loushang-tui` 保持独立子系统定位
-5. 当前不在 `coding` 中单列 `context`
+5. `loushang.method` / `loushang.work` 不并入 `loushang-coding`
+6. 当前不在 `coding` 中单列 `context`
 
 这些决定的正式记录见：
 
-- [ARD-001-coding-product-boundaries.md](/home/dev/workspace/loushang/docs/architecture/coding/ARD-001-coding-product-boundaries.md)
+- [ARD-001-coding-product-boundaries.md](./ARD-001-coding-product-boundaries.md)
+- [ARD-005-rpc-mode-transitional-channel-positioning.md](./ARD-005-rpc-mode-transitional-channel-positioning.md)
+- [ARD-006-tui-method-integration-constraints.md](./ARD-006-tui-method-integration-constraints.md)
 
 ## Next Step
 

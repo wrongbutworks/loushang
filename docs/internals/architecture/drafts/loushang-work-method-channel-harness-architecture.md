@@ -15,6 +15,16 @@ Draft.
 - 中文文档不做逐段翻译，聚焦 P0-P2 的实现边界、接口草案、时序、迁移和验收。
 - 如果两份文档出现冲突，先以英文完整参考中的对象边界为准，再同步中文摘要。
 
+当前实现边界比本文档的目标架构更窄：
+
+- `loushang.channel` 仍是目标架构；当前 RPC 是 `loushang.coding.mode.RpcMode`
+  transitional surface。
+- `loushang.method` / `loushang.work` 是 coding 的相邻子系统；coding 只拥有
+  domain bridge 与 work-log integration。
+- TUI + method integration 暂不落地，受 ARD-006 约束。
+
+当前边界以已接受的 coding ARD、组件接口文档和代码/测试为准。
+
 ## 评审采纳决策
 
 采纳：

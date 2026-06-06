@@ -170,7 +170,7 @@ session
 
 详细合约见：
 
-- [Loushang Coding Rendered Tool Events](/home/dev/workspace/loushang/docs/architecture/coding/loushang-coding-rendered-tool-events.md)
+- [Loushang Coding Rendered Tool Events](loushang-coding-rendered-tool-events.md)
 
 ## Message Serialization
 
@@ -198,12 +198,12 @@ session
 原因：
 
 - 现有 `AgentSessionEvent` 已足够支撑 JSON event stream
-- 过早引入 envelope 会把 `json mode` 设计提前耦合到未来 `channel/rpc` 协议
+- 过早引入 envelope 会把 `json mode` 设计提前耦合到未来 `loushang.channel` 协议
 
 但可保留这个判断：
 
-- 如果后续引入 `channel`
-- 或希望统一 `json/rpc/web` 边界协议
+- 如果后续引入 package-level `loushang.channel`
+- 或希望统一 `json/web/external host` 边界协议
 
 则：
 
@@ -220,10 +220,10 @@ session
 
 ## Related Docs
 
-- [Loushang Coding Component Interfaces](/home/dev/workspace/loushang/docs/architecture/coding/loushang-coding-component-interfaces.md)
-- [Loushang Coding Core Data Objects](/home/dev/workspace/loushang/docs/architecture/coding/loushang-coding-core-data-objects.md)
-- [Core Data Object Notes](/home/dev/workspace/loushang/docs/architecture/coding/core-data-objects/README.md)
-- [event-family.md](/home/dev/workspace/loushang/docs/architecture/coding/core-data-objects/event-family.md)
-- [message-family.md](/home/dev/workspace/loushang/docs/architecture/coding/core-data-objects/message-family.md)
-- [mode.md](/home/dev/workspace/loushang/docs/architecture/coding/component-interfaces/mode.md)
-- [Loushang Coding Rendered Tool Events](/home/dev/workspace/loushang/docs/architecture/coding/loushang-coding-rendered-tool-events.md)
+- [Loushang Coding Component Interfaces](loushang-coding-component-interfaces.md)
+- [Loushang Coding Core Data Objects](loushang-coding-core-data-objects.md)
+- [Core Data Object Notes](core-data-objects/README.md)
+- [event-family.md](core-data-objects/event-family.md)
+- [message-family.md](core-data-objects/message-family.md)
+- [mode.md](component-interfaces/mode.md)
+- [Loushang Coding Rendered Tool Events](loushang-coding-rendered-tool-events.md)

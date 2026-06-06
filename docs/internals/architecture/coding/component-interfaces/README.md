@@ -11,8 +11,8 @@
 
 对应总览文档：
 
-- [Loushang Coding Component Interfaces](/home/dev/workspace/loushang/docs/architecture/coding/loushang-coding-component-interfaces.md)
-- [Loushang Coding Component Inventory](/home/dev/workspace/loushang/docs/architecture/coding/loushang-coding-component-inventory.md)
+- [Loushang Coding Component Interfaces](../loushang-coding-component-interfaces.md)
+- [Loushang Coding Component Inventory](../loushang-coding-component-inventory.md)
 
 ## Writing Rule
 
@@ -56,29 +56,38 @@
 
 新建组件接口文档时，优先复制：
 
-- [_template.md](/home/dev/workspace/loushang/docs/architecture/coding/component-interfaces/_template.md)
+- [_template.md](_template.md)
 
 ## Current Notes
 
-- [session.md](/home/dev/workspace/loushang/docs/architecture/coding/component-interfaces/session.md)
-- [store.md](/home/dev/workspace/loushang/docs/architecture/coding/component-interfaces/store.md)
-- [control.md](/home/dev/workspace/loushang/docs/architecture/coding/component-interfaces/control.md)
-- [prompt.md](/home/dev/workspace/loushang/docs/architecture/coding/component-interfaces/prompt.md)
-- [tools.md](/home/dev/workspace/loushang/docs/architecture/coding/component-interfaces/tools.md)
-- [exec.md](/home/dev/workspace/loushang/docs/architecture/coding/component-interfaces/exec.md)
-- [policy.md](/home/dev/workspace/loushang/docs/architecture/coding/component-interfaces/policy.md)
-- [bootstrap.md](/home/dev/workspace/loushang/docs/architecture/coding/component-interfaces/bootstrap.md)
-- [runtime.md](/home/dev/workspace/loushang/docs/architecture/coding/component-interfaces/runtime.md)
-- [loader.md](/home/dev/workspace/loushang/docs/architecture/coding/component-interfaces/loader.md)
-- [plugin.md](/home/dev/workspace/loushang/docs/architecture/coding/component-interfaces/plugin.md)
-- [compaction.md](/home/dev/workspace/loushang/docs/architecture/coding/component-interfaces/compaction.md)
-- [message.md](/home/dev/workspace/loushang/docs/architecture/coding/component-interfaces/message.md)
-- [event.md](/home/dev/workspace/loushang/docs/architecture/coding/component-interfaces/event.md)
-- [sdk.md](/home/dev/workspace/loushang/docs/architecture/coding/component-interfaces/sdk.md)
-- [cli.md](/home/dev/workspace/loushang/docs/architecture/coding/component-interfaces/cli.md)
-- [mode.md](/home/dev/workspace/loushang/docs/architecture/coding/component-interfaces/mode.md)
-- [diagnostics.md](/home/dev/workspace/loushang/docs/architecture/coding/component-interfaces/diagnostics.md)
-- [skill.md](/home/dev/workspace/loushang/docs/architecture/coding/component-interfaces/skill.md)
-- [extensions.md](/home/dev/workspace/loushang/docs/architecture/coding/component-interfaces/extensions.md)
-- [method.md](/home/dev/workspace/loushang/docs/architecture/coding/component-interfaces/method.md)
-- [utils.md](/home/dev/workspace/loushang/docs/architecture/coding/component-interfaces/utils.md)
+- [bootstrap.md](bootstrap.md)
+- [sdk.md](sdk.md)
+- [cli.md](cli.md)
+- [mode.md](mode.md)
+- [rpc.md](rpc.md)
+- [runtime.md](runtime.md)
+- [session.md](session.md)
+- [store.md](store.md)
+- [message.md](message.md)
+- [event.md](event.md)
+- [tools.md](tools.md)
+- [exec.md](exec.md)
+- [compaction.md](compaction.md)
+- [prompt.md](prompt.md)
+- [skill.md](skill.md)
+- [loader.md](loader.md)
+- [resources.md](resources.md)
+- [extensions.md](extensions.md)
+- [plugin.md](plugin.md)
+- [package.md](package.md)
+- [domain.md](domain.md)
+- [control.md](control.md)
+- [policy.md](policy.md)
+- [diagnostics.md](diagnostics.md)
+- [platform.md](platform.md)
+- [workflow.md](workflow.md)
+- [utils.md](utils.md)
+
+`method.md` remains as a compatibility entry for older links. The canonical
+coding component is now [domain.md](domain.md); method resources and method
+plan ownership live in `loushang.method`.

@@ -22,11 +22,11 @@
 
 本文档建立在以下文档之上：
 
-- [Loushang Coding System Context](/home/dev/workspace/loushang/docs/architecture/coding/loushang-coding-system-context.md)
-- [Loushang Coding Component Structure And Responsibilities](/home/dev/workspace/loushang/docs/architecture/coding/loushang-coding-component-structure-and-responsibilities.md)
-- [Loushang Coding Core Service Objects](/home/dev/workspace/loushang/docs/architecture/coding/loushang-coding-core-service-objects.md)
-- [Loushang Coding Component Interfaces](/home/dev/workspace/loushang/docs/architecture/coding/loushang-coding-component-interfaces.md)
-- [reference coding agent Internal Dependency Overview](/home/dev/workspace/loushang/docs/architecture/coding/reference/reference-coding-agent/architecture-dependencies.md)
+- [Loushang Coding System Context](loushang-coding-system-context.md)
+- [Loushang Coding Component Structure And Responsibilities](loushang-coding-component-structure-and-responsibilities.md)
+- [Loushang Coding Core Service Objects](loushang-coding-core-service-objects.md)
+- [Loushang Coding Component Interfaces](loushang-coding-component-interfaces.md)
+- [reference coding agent Internal Dependency Overview](reference/reference-coding-agent/architecture-dependencies.md)
 
 ## Dependency Reading Rule
 
@@ -64,16 +64,23 @@ flowchart TD
 
     SKILL["skill"]
     LOADER["loader"]
+    RESOURCES["resources"]
     EXT["extensions"]
-    METHOD["method"]
+    PLUGIN["plugin"]
+    PACKAGE["package"]
+    DOMAIN["domain"]
 
     CONTROL["control"]
     POLICY["policy"]
     DIAG["diagnostics"]
+    PLATFORM["platform"]
+    WORKFLOW["workflow"]
     UTILS["utils"]
 
     AGENT["loushang-agent"]
     AI["loushang-ai"]
+    METHOD["loushang-method"]
+    WORK["loushang-work"]
 
     SDK --> BOOT
     CLI --> BOOT
@@ -84,6 +91,7 @@ flowchart TD
     BOOT --> STORE
     BOOT --> LOADER
     BOOT --> CONTROL
+    BOOT --> PLATFORM
 
     RUNTIME --> SESSION
     RUNTIME --> STORE
@@ -96,37 +104,54 @@ flowchart TD
     SESSION --> COMPACTION
     SESSION --> LOADER
     SESSION --> EXT
+    SESSION --> DOMAIN
     SESSION --> CONTROL
     SESSION --> POLICY
+    SESSION --> WORKFLOW
     SESSION --> AGENT
     SESSION --> AI
+    SESSION --> WORK
 
     TOOLS --> EXEC
     TOOLS --> POLICY
     TOOLS --> EXT
+    TOOLS --> PLATFORM
 
     PROMPT --> LOADER
+    PROMPT --> RESOURCES
     PROMPT --> TOOLS
     PROMPT --> SKILL
-    PROMPT --> METHOD
+    PROMPT --> DOMAIN
     PROMPT --> CONTROL
 
     COMPACTION --> CONTROL
     COMPACTION --> STORE
     COMPACTION --> AI
 
+    LOADER --> RESOURCES
+    LOADER --> PACKAGE
+    LOADER --> PLUGIN
+
     EXT --> LOADER
     EXT --> AI
     EXT --> AGENT
 
-    METHOD --> SKILL
-    METHOD --> LOADER
+    PLUGIN --> RESOURCES
+    PLUGIN --> LOADER
+    PACKAGE --> RESOURCES
+    PACKAGE --> PLUGIN
+    PACKAGE --> CONTROL
+    DOMAIN --> METHOD
+    DOMAIN --> WORK
 
     CONTROL --> AI
 
     DIAG --> CONTROL
     DIAG --> STORE
     DIAG --> SESSION
+
+    WORKFLOW --> SESSION
+    WORKFLOW --> MODE
 
     BOOT --> UTILS
     SESSION --> UTILS
@@ -185,9 +210,13 @@ flowchart TD
     EXEC["ExecService"]
     COMPACT["CompactionCoordinator"]
     DIAG["DiagnosticsService"]
+    DOMAIN["CodingDomainApp"]
+    PACKAGE["PackageMaterializer"]
 
     AGENT["loushang-agent"]
     AI["loushang-ai"]
+    METHOD["loushang-method"]
+    WORK["loushang-work"]
 
     SDK --> BOOT
     CLI --> BOOT
@@ -201,6 +230,7 @@ flowchart TD
     BOOT --> LOADER
     BOOT --> TOOLS
     BOOT --> POLICY
+    BOOT --> PACKAGE
 
     RUNTIME --> SESSION
     RUNTIME --> STORE
@@ -214,8 +244,10 @@ flowchart TD
     SESSION --> PROMPT
     SESSION --> POLICY
     SESSION --> COMPACT
+    SESSION --> DOMAIN
     SESSION --> AGENT
     SESSION --> AI
+    SESSION --> WORK
 
     TOOLS --> EXEC
     TOOLS --> POLICY
@@ -225,6 +257,7 @@ flowchart TD
     PROMPT --> TOOLS
     PROMPT --> SETTINGS
     PROMPT --> MODELS
+    PROMPT --> DOMAIN
 
     COMPACT --> SETTINGS
     COMPACT --> STORE
@@ -232,8 +265,11 @@ flowchart TD
 
     LOADER --> SETTINGS
     LOADER --> AI
+    LOADER --> PACKAGE
     RUNNER --> AGENT
     RUNNER --> AI
+    DOMAIN --> METHOD
+    DOMAIN --> WORK
 
     DIAG --> SETTINGS
     DIAG --> STORE
@@ -308,12 +344,29 @@ flowchart TD
 - `reference coding agent` 存在 permissions / guardrails / approvals 语义，但没有显式单一 policy center
 - `loushang-coding` 把这条判定边显式写出，是为了把可执行工具与 guardrail 判定清楚分开
 
-### `Prompt -> Loader/Tools/Method`
+### `Prompt -> Loader/Resources/Tools/Domain`
 
 理由：
 
 - `reference coding agent` 的 prompt 组装更分散
-- `loushang-coding` 当前先显式表达 prompt 的资源来源与工具元数据输入，有利于后续拆出清晰装配边界
+- `loushang-coding` 当前先显式表达 prompt 的资源来源、工具元数据输入与 domain-prepared turn 输入，有利于后续拆出清晰装配边界
+- `prompt` 不直接拥有 method registry/compiler/projector；method plan 应先经 `domain` bridge 变成 coding prepared turn
+
+### `Domain -> loushang-method / loushang-work`
+
+理由：
+
+- `loushang.method` 是 method resource、compiler 与 projector 的拥有者
+- `loushang.work` 是 method plan / step observability 与 event log 的拥有者
+- `domain` 只负责 coding-specific prepared turn bridge，不把 method/work lifecycle 并入 `loushang-coding`
+
+### `Package -> Plugin/Resources`
+
+理由：
+
+- `package` 是资源分发与 lifecycle 边界
+- `plugin` 是 manifest-backed source view 与资源展开边界
+- package provenance 应经 `resources` descriptor 被 loader、CLI、RPC 与 TUI 投影，不应由各 adapter 重新推断
 
 ### `Control -> AI`
 
@@ -366,6 +419,11 @@ flowchart TD
 
 权限与审批策略应是 mode-neutral 的；mode 只负责呈现或交互适配。
 
+### F. `rpc` 不承担 `loushang.channel` 职责
+
+当前 `RpcMode` 是 transitional headless mode surface。它可以暴露 JSONL command/event
+surface，但不拥有未来 package-level `loushang.channel` 的协议层职责。
+
 ## 7. Open Questions
 
 当前仍保留这些依赖层面的开放问题：
@@ -375,6 +433,7 @@ flowchart TD
 - `ModeAdapter` 是否需要直接依赖 `SessionManager`
 - `ExtensionRunner` 是否需要显式依赖 `ToolRegistry`
 - `PromptAssembler` 是否需要直接依赖 `PolicyEngine`
+- `Workflow` 是否未来演化为更完整 orchestration 边界，还是继续保持 prompt workflow harness
 
 ## Next Step
 

@@ -1,0 +1,24 @@
+# Experimental Methodology Notes
+
+## Status
+
+Experimental.
+
+These documents explore method ontology, roles, phases, conductor behavior, and
+multi-agent methodology concepts. They are design inputs for `loushang.method`
+and future orchestration work, not current runtime contracts.
+
+## Reading Rule
+
+- Preserve `methods/**` examples as experimental methodology layout examples.
+- Do not infer that current CLI/TUI/RPC surfaces implement the full ontology.
+- Do not treat phase/activity/task/role/guidance/workproduct terms as required
+  runtime schema unless a live `loushang.method` spec or ARD says so.
+- Current method resources and projection ownership live in `loushang.method`;
+  coding only owns the `domain` bridge.
+
+Current live references:
+
+- [Coding Domain Component](../../architecture/coding/component-interfaces/domain.md)
+- [Domain And Work Projection Objects](../../architecture/coding/core-data-objects/domain-work.md)
+- [TUI Method Integration Constraints](../../architecture/coding/ARD-006-tui-method-integration-constraints.md)

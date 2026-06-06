@@ -1,6 +1,20 @@
 # KD-018: Transcript Reader And Copy Semantics
 
-Status: Proposed. No implementation has landed yet.
+Status: Accepted. Partially implemented.
+
+Implemented:
+
+- `/copy [N]` backend semantics and command tests.
+- `TranscriptReaderSurface`.
+- Native TUI transcript reader entry and modal input routing.
+- Playback coverage for `transcript-reader-modal`.
+
+Still future/deferred:
+
+- full session transcript loading beyond the active window
+- reader-local export convenience
+- screen-buffer selection/copy
+- code-block picker
 
 ## Purpose
 

@@ -69,14 +69,20 @@ loushang/
     loushang/
       ai/
       agent/
-      channel/
-      tui/
-      methods/
       coding/
+      method/
+      tui/
+      work/
+      runtime/
+      observability/
+      ontology/
   tests/
     ai/
     agent/
-    channel/
+    coding/
+    method/
+    tui/
+    work/
   scripts/
   spikes/
   .venv/
@@ -112,7 +118,10 @@ loushang/
 3. 单一根 project 已足够支持：
    - `loushang.ai`
    - `loushang.agent`
-   - `loushang.channel`
+   - `loushang.coding`
+   - `loushang.method`
+   - `loushang.work`
+   - `loushang.tui`
 4. 未来若确实需要独立发布或独立依赖管理，仍可再升级到 `packages/*`
 
 因此当前更稳的路线是：
@@ -132,7 +141,13 @@ loushang/
 
 - `loushang-ai`
 - `loushang-agent`
-- `loushang-channel`
+- `loushang-coding`
+- `loushang-method`
+- `loushang-work`
+- `loushang-tui`
+
+`loushang-channel` 是保留的目标架构子系统名；在 `src/loushang/channel/`
+落地前，不应把它写成当前源码目录。
 
 ### 2. Python Import Namespace
 
@@ -140,7 +155,13 @@ loushang/
 
 - `loushang.ai`
 - `loushang.agent`
-- `loushang.channel`
+- `loushang.coding`
+- `loushang.method`
+- `loushang.work`
+- `loushang.tui`
+
+`loushang.channel` 只有在 package-level channel implementation 落地后才进入
+当前 import namespace 清单。
 
 即：
 
@@ -159,6 +180,9 @@ loushang/
 
 - `loushang-ai`
 - `loushang-agent`
+- `loushang-coding`
+- `loushang-method`
+- `loushang-work`
 
 但这不是当前阶段必须先冻结的物理边界。
 
@@ -173,6 +197,10 @@ loushang/
 ```text
 src/loushang/ai/
 src/loushang/agent/
+src/loushang/coding/
+src/loushang/method/
+src/loushang/work/
+src/loushang/tui/
 ```
 
 这样做的价值是：

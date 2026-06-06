@@ -2,7 +2,7 @@
 
 ## Scope
 
-本文档只描述 `loushang` 的技术架构。  
+本文档只描述 `loushang` 的技术架构。
 业务定位、愿景、使命与品牌叙事请参见 [Loushang Strategy](../strategy/strategy.md)。
 
 ## 架构原则
@@ -15,16 +15,24 @@
 
 `loushang` 采用 monorepo 组织。当前阶段按统一根 Python project 组织各子系统源码，而不是先拆成多个独立 package。
 
-建议子系统 map：
+当前已经落到 Python 包级源码的主要子系统包括：
 
-- `loushang-ai`
-- `loushang-agent`
-- `loushang-channel`
-- `loushang-tui`
-- `loushang-methods`
-- `loushang-coding`
+- `loushang.ai`
+- `loushang.agent`
+- `loushang.coding`
+- `loushang.method`
+- `loushang.tui`
+- `loushang.work`
+- `loushang.runtime`
+- `loushang.observability`
+- `loushang.ontology`
 
-建议仓库结构：
+`loushang.channel` 仍是重要的目标架构层，但当前没有 `src/loushang/channel/`
+包。现有 RPC/JSONL 能力先作为 `loushang.coding.mode.RpcMode` 的
+transitional surface 存在；后续 channel 层成熟后再上提为
+`loushang.channel.rpc_jsonl` 等 adapter。
+
+当前仓库结构应按已落地包理解：
 
 ```text
 loushang/
@@ -33,10 +41,13 @@ loushang/
     loushang/
       ai/
       agent/
-      channel/
-      tui/
-      methods/
       coding/
+      method/
+      tui/
+      work/
+      runtime/
+      observability/
+      ontology/
   tests/
 ```
 
@@ -50,22 +61,35 @@ loushang/
 
 ## Architecture Stack
 
-从下到上，`loushang` 的核心运行栈为：
+当前 V1 coding 产品的核心运行链路为：
 
-1. `loushang-ai`
-2. `loushang-agent`
-3. `loushang-channel`
-4. `loushang-tui`
-5. `loushang-methods`
-6. `loushang-coding`
+```text
+CLI / TUI
+  -> loushang.coding bootstrap / runtime / session
+  -> loushang.agent loop
+  -> loushang.ai provider adapters
+  -> tools / events / store / diagnostics / modes
+```
+
+相邻能力层：
+
+- `loushang.method` 提供 method resource、compile、projection 和 fixed
+  `MethodPlan` 语义
+- `loushang.work` 提供 `WorkOperation`、`WorkRun`、`WorkEvent`、work event
+  log 与 plan/step projection
+- `loushang.tui` 提供通用 terminal-native UI primitives，`loushang.coding.ui`
+  将 coding session 状态适配到 TUI
+- `loushang.channel` 是未来边界协议层，不是当前 V1 起步前置条件
 
 其中：
 
-- `agent` 定义运行语义
-- `channel` 定义边界通信
+- `agent` 定义 agent loop 与运行语义
+- `ai` 定义模型/provider/streaming/tool-call 兼容层
+- `method` 提供方法资产与 plan/projection
+- `work` 提供 run/event/log/projection
 - `tui` 提供通用终端 UI primitives
-- `methods` 提供方法论运行骨架
 - `coding` 提供产品化装配，并通过 `loushang.coding.ui` 连接 coding core 与 `loushang.tui`
+- `channel` 定义目标边界通信协议，待独立落地
 
 ## Agent and Channel Documentation
 
@@ -76,13 +100,14 @@ loushang/
 - [Loushang AI Types](../glossary/loushang-ai-types.md)
 - [Loushang Agent](../glossary/loushang-agent.md)
 - [Loushang Agent Types](../glossary/loushang-agent-types.md)
-- [Loushang Channel Boundary Protocol](../loushang-channel-boundary-protocol.md)
+- [Loushang Channel Glossary](../glossary/loushang-channel.md)
+- [Legacy Channel Boundary Protocol](../legacy/loushang-channel-boundary-protocol.md)
 
 ## Next Steps
 
 下一步建议继续完善：
 
-1. `Client Capability Model`
-2. `Notification Type Families`
-3. `Method Layer Bridge`
-4. `Loushang Methods Architecture`
+1. `loushang.work` 与 method plan/step failure projection 的硬化
+2. `loushang.channel` 的最小边界协议和 `rpc_jsonl` adapter 草案
+3. TUI method status layer 与 `WorkEvent` / `WorkPlanRun` projection
+4. public CLI reference 对 method/work/package surface 的补齐

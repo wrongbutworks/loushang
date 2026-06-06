@@ -50,6 +50,18 @@ loushang --no-tools -p "Explain the repository from context only."
 
 扩展是可以注册生命周期 hooks、工具、动态资源、命令和 flags 的 Python 文件。可以先阅读 [examples/coding/extensions](../../../examples/coding/extensions/) 中的可运行扩展示例。
 
+## 包与插件
+
+包与插件可以提供可复用的 coding 资产。常见生命周期命令：
+
+```bash
+loushang --list-plugins
+loushang --list-packages
+loushang --install-package <source>
+loushang --check-package-updates
+loushang --update-packages
+```
+
 ## 方法与技能
 
 方法与技能把可复用工作实践变成运行时资产。CLI 中可以使用：
@@ -57,9 +69,25 @@ loushang --no-tools -p "Explain the repository from context only."
 ```bash
 loushang --list-methods
 loushang --show-method <method>
+loushang --show-method-plan <method>
 loushang --method <method> -p "Run this coding task."
+loushang --no-method -p "Run without the configured default method."
 loushang --list-skills
 ```
+
+`--method` 支持非交互的 prompt/print/json 路径。在 method step UI 与 work-event projection 路径就绪前，TUI 和 RPC mode 会继续拒绝 `--method`。
+
+## Work Logs
+
+Work log 会为一次性 prompt/print/json 运行记录 `WorkOperation` 与 `WorkEvent`：
+
+```bash
+loushang --work-log .loushang/work/events.jsonl -p "Run this coding task."
+loushang --work-log-inspect .loushang/work/events.jsonl
+loushang --work-log-inspect .loushang/work/events.jsonl --work-log-inspect-format plans
+```
+
+`--work-log` 不支持 TUI 或 RPC mode。
 
 ## 诊断与导出
 

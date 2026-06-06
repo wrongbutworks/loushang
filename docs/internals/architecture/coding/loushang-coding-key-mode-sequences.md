@@ -9,7 +9,7 @@
 - `print mode`
 - `json mode`
 - `rpc mode`
-- `interactive mode`（未来占位）
+- native `tui` / `interactive` mode
 
 本文档目标是回答：
 
@@ -23,15 +23,16 @@
 - 字段级协议
 - 详细 UI 行为
 - channel 协议细节
+- method-driven TUI 的 step status layer；该部分见 ARD-006
 
 ## Design Basis
 
 本文档建立在以下文档之上：
 
-- [Loushang Coding System Context](/home/dev/workspace/loushang/docs/architecture/coding/loushang-coding-system-context.md)
-- [Loushang Coding Component Interfaces](/home/dev/workspace/loushang/docs/architecture/coding/loushang-coding-component-interfaces.md)
-- [Loushang Coding Component Dependencies](/home/dev/workspace/loushang/docs/architecture/coding/loushang-coding-component-dependencies.md)
-- [reference coding agent Internal Dependency Overview](/home/dev/workspace/loushang/docs/architecture/coding/reference/reference-coding-agent/architecture-dependencies.md)
+- [Loushang Coding System Context](./loushang-coding-system-context.md)
+- [Loushang Coding Component Interfaces](./loushang-coding-component-interfaces.md)
+- [Loushang Coding Component Dependencies](./loushang-coding-component-dependencies.md)
+- [reference coding agent Internal Dependency Overview](./reference/reference-coding-agent/architecture-dependencies.md)
 
 ## Shared Runtime Spine
 
@@ -310,13 +311,14 @@ sequenceDiagram
   - `channel` 有长期价值
   - 但不是 `rpc mode` 的前置实现条件
 
-## 4. `interactive mode` (Future)
+## 4. Native TUI / `interactive mode`
 
 ### Intent
 
 - 面向 TUI 交互
-- 未来依赖 `loushang-tui`
-- 当前只保留架构时序占位
+- 通过 `loushang.coding.ui` 适配 coding session/runtime
+- 依赖 `loushang.tui` 的 native terminal core primitives
+- 当前不支持 `--method`；method integration 需等待 ARD-006 的前置条件
 
 ### Sequence
 
@@ -324,35 +326,43 @@ sequenceDiagram
 sequenceDiagram
   autonumber
   participant User as Terminal User
-  participant IM as InteractiveMode
+  participant CLI as CLI / tui runner
+  participant App as NativeCodingApp
+  participant Controller as CodingUiController
   participant Runtime as AgentSessionRuntime
   participant Session as AgentSession
   participant TUI as loushang-tui
 
-  User->>IM: input / select / keybinding
-  IM->>Runtime: create / switch session as needed
-  IM->>Session: prompt / steer / follow_up / abort
-  Session-->>IM: AgentSessionEvent
-  IM->>TUI: project state / render widgets / dialogs / status
-  TUI-->>IM: interaction result
+  User->>CLI: loushang --tui / interactive resume
+  CLI->>Runtime: create / restore / switch session
+  Runtime-->>CLI: Session
+  CLI->>App: create native coding app
+  App->>TUI: render transcript / composer / surfaces
+  User->>TUI: key input / paste / surface action
+  TUI-->>App: InputEvent / intent
+  App->>Controller: dispatch PromptIntent / AbortIntent / FollowUpIntent
+  Controller->>Session: prompt / steer / follow_up / abort
+  Session-->>App: AgentSessionEvent / native event projection
+  App->>TUI: update display records / bottom frame / surfaces
 ```
 
 ### Reading Notes
 
-- `interactive mode` 将是未来最重的 mode
-- 在对象层更直接对齐 `InteractiveMode` 这一 UI orchestration object
-- 但它仍应：
+- native TUI 是当前最重的 local product surface
+- 在对象层由 `loushang.coding.ui` 承担 UI orchestration，而不是把 generic TUI 变成 coding runtime
+- 它仍应：
   - 依赖 `AgentSessionRuntime`
   - 依赖 `AgentSession`
   - 订阅 `AgentSessionEvent`
   - 不绕过 session facade 直接驱动底层 runtime
+- TUI + method 不应通过遍历 `prepared_turns` 快速打通；应等 method status layer 消费 `WorkEvent` / `WorkPlanRun` projection
 
 ### Alignment With reference coding agent
 
-- 对齐 `InteractiveMode` 作为 UI orchestration layer
+- 对齐 `InteractiveMode` 作为 UI orchestration layer 的边界
 - 当前差异在于：
-  - `reference CLI` 依赖 `reference TUI`
-  - `loushang` 未来可能依赖 `loushang-tui`（Textual-based）
+  - `reference CLI` 依赖 reference TUI
+  - `loushang` 依赖 native terminal core，不采用 Textual/fullscreen 方案
 
 ## 5. Cross-Mode Invariants
 
@@ -370,7 +380,7 @@ sequenceDiagram
 
 - `AgentSession` 是统一运行中心
 - 不同 mode 共用同一 session 语义
-- `InteractiveMode` / `PrintMode` / `RpcMode` 都只是适配层
+- TUI / `PrintMode` / `RpcMode` 都只是适配层
 - session event stream 是 mode 最重要的输入面
 
 ## 7. Current Simplifications
@@ -379,13 +389,13 @@ sequenceDiagram
 
 - 还未展开 extension hook 时序
 - 还未展开 compaction / retry / queue 的细粒度时序
-- `interactive mode` 仅保留未来占位
+- TUI + method 尚未打通，`--method` 在 TUI 中保持互斥
 - `rpc mode` 仍未接入 `channel`
 
 ## Next Step
 
 基于当前关键 mode 时序，后续建议继续：
 
-1. P0 实现切片
-2. 第一批接口裁剪
-3. `print/json/rpc` 的公共 mode base 设计
+1. TUI + method 前置条件跟踪，见 ARD-006
+2. `rpc mode` 到 future `loushang.channel.rpc_jsonl` 的迁移草案，见 ARD-005
+3. `print/json/rpc/tui` 的公共 mode/event boundary 继续收窄

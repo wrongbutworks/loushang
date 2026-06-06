@@ -49,4 +49,4 @@
 ## Notes
 
 - 如果后续引入 `channel`，`EventEnvelope` 很可能成为边界投影基础
-- `PrintMode` 的 JSON projection 当前直接消费 `AgentSessionEvent`，见 [Loushang Coding JSON Mode Design](/home/dev/workspace/loushang/docs/architecture/coding/loushang-coding-json-mode-design.md)
+- `PrintMode` 的 JSON projection 当前直接消费 `AgentSessionEvent`，见 [Loushang Coding JSON Mode Design](../loushang-coding-json-mode-design.md)

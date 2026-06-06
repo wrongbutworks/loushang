@@ -50,7 +50,7 @@
 ## Key Data
 
 - `ModeConfig`
-- `SessionCommandDescriptor`（会话暴露）：  
+- `SessionCommandDescriptor`（会话暴露）：
   - `name: str`
   - `description: str | None`
   - `source: "extension" | "prompt" | "skill"`

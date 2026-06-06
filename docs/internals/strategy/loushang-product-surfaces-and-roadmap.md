@@ -23,9 +23,9 @@
 
 本文档建立在以下文档与讨论结论之上：
 
-- [Loushang Strategy](/home/dev/workspace/loushang/docs/strategy/strategy.md)
-- [ARD-001: Loushang Coding Product Boundaries](/home/dev/workspace/loushang/docs/architecture/coding/ARD-001-coding-product-boundaries.md)
-- [Loushang Coding System Context](/home/dev/workspace/loushang/docs/architecture/coding/loushang-coding-system-context.md)
+- [Loushang Strategy](strategy.md)
+- [ARD-001: Loushang Coding Product Boundaries](../architecture/coding/ARD-001-coding-product-boundaries.md)
+- [Loushang Coding System Context](../architecture/coding/loushang-coding-system-context.md)
 
 同时吸收以下外部参考的启发：
 

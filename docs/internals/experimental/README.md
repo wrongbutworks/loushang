@@ -35,8 +35,8 @@ experimental/
 
 ## Related Documents (outside this directory)
 
-- `../session-controller-architecture.md` — Multi-terminal / multi-interface support design
-  (currently in review; may be revised based on methodology integration)
+- `../legacy/session-controller-architecture.md` — historical multi-terminal /
+  multi-interface support design note
 
 ## How to Use
 
@@ -44,7 +44,8 @@ experimental/
 2. Do **not** import or reference them from production code
 3. When a design stabilizes, it should be promoted out of this directory
    (e.g., into `../architecture/` or the codebase itself)
-4. When a design is rejected, delete it — do not keep obsolete drafts
+4. When a design is rejected, either delete it or move it to `../legacy/` with a
+   clear historical status note if it still has context value.
 
 ## Origin of Methodology Documents
 
@@ -60,3 +61,8 @@ copied here for cross-project design alignment. They describe:
 
 These concepts are being evaluated for integration with the SessionController
 architecture and multi-agent collaboration scenarios.
+
+Current implementation boundaries are documented outside this directory. In
+particular, methodology examples under `methods/**` are exploratory; current
+method resource ownership lives in `loushang.method`, and coding only owns the
+domain bridge into prepared coding turns.

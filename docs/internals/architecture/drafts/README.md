@@ -1,0 +1,33 @@
+# Architecture Drafts
+
+## Status
+
+Draft / exploratory.
+
+This directory contains architecture drafts and research notes. They may be high
+value design inputs, but they are not accepted architecture unless a live ARD or
+architecture overview explicitly adopts the decision.
+
+## Reading Rule
+
+- Use these files for rationale, tradeoff history, and future architecture inputs.
+- Do not treat unresolved draft questions as current implementation requirements.
+- Do not update historical terminology just to match current package names.
+- When a draft conflicts with current code/tests or accepted ARDs, prefer the
+  live source.
+
+Current live references:
+
+- [Architecture Overview](../architecture-overview.md)
+- [Subsystems](../subsystem.md)
+- [Coding Product Boundaries](../coding/ARD-001-coding-product-boundaries.md)
+- [RPC Mode Transitional Channel Positioning](../coding/ARD-005-rpc-mode-transitional-channel-positioning.md)
+- [TUI Method Integration Constraints](../coding/ARD-006-tui-method-integration-constraints.md)
+
+## Documents
+
+- [Loushang Runtime Architecture](loushang-runtime-architecture.md)
+- [Loushang Work / Method / Channel / Harness Architecture](loushang-work-method-channel-harness-architecture.md)
+- [P3 Fixed MethodPlan Flow Research](p3-fixed-methodplan-flow-research.md)
+- [Method Deviation And Evolution](method-deviation-and-evolution.md)
+- [Methodology System Reference Survey](loushang-methodology-system-reference-survey.md)

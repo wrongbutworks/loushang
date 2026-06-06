@@ -83,7 +83,7 @@
 - `AgentToolResult.terminate` 是工具执行语义的一部分；event/RPC/print JSON 投影必须保留 `terminate`，便于客户端理解工具批次是否请求终止 agent loop。
 - 工具 renderer callback 属于 tool definition 的展示能力；`renderedToolCall` / `renderedToolResult`
   的 wire 合约属于 event projection / mode 边界，见
-  [Loushang Coding Rendered Tool Events](/home/dev/workspace/loushang/docs/architecture/coding/loushang-coding-rendered-tool-events.md)。
+  [Loushang Coding Rendered Tool Events](../loushang-coding-rendered-tool-events.md)。
 - 全局 `ToolsOptions.policy_engine` 会传入 bash/read/write/edit/ls/find/grep。默认策略保持 allow；配置
   `blocked_tools` 后，内建工具在实际执行或文件变更前抛出 `PermissionError`。
 - 全局 `ToolsOptions.approval_resolver` 会处理 `ask_tools` / ask path / ask command policy。无 resolver 时默认拒绝；

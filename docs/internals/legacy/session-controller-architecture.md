@@ -1,5 +1,14 @@
 # SessionController Architecture for Multi-Terminal / Multi-Interface Support
 
+## Status
+
+Legacy architecture note.
+
+This document records an older multi-interface SessionController proposal. Use it
+as background for future multi-client work only. Current coding runtime/session
+boundaries are documented in the live coding architecture and component
+interface docs.
+
 ## Context
 
 The current loushang coding architecture is fundamentally single-terminal:

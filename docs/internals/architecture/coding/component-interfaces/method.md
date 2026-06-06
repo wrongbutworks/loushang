@@ -1,50 +1,23 @@
-# `method`
+# `method` compatibility note
 
 ## Role
 
-- coding method 注册、选择与注入组件
+- compatibility entry for older links that referenced a coding `method` component
+- canonical coding component is now [`domain`](domain.md)
+- method resources, method registry, method compiler, and method projector belong to `loushang.method`
 
-## Owns
+## Current Boundary
 
-- `MethodRegistry`
-- method 元数据
-- method 到 prompt/skill 的投影规则
-- session method 选择状态
+`loushang.coding` owns only the coding-specific domain bridge:
 
-## Depends On
+- `CodingDomainRequest`
+- `CodingDomainPreparedTurn`
+- `MethodPolicy`
+- `CodingDomainApp.prepare_turns(...)`
 
-- `prompt`
-- `skill`
-- `loader`
-- `session`
+The full boundary is documented in [domain.md](domain.md).
 
-## Commands
+## Related Architecture Decisions
 
-- `register_method(...)`
-- `select_method(...)`
-- `reload_methods(...)`
-
-## Queries
-
-- `get_method(...)`
-- `list_methods()`
-- `get_selected_method()`
-
-## Events
-
-- 当前无稳定事件面
-
-## Key Data
-
-- `MethodDescriptor`
-
-## Out Of Scope
-
-- skill 文件发现
-- prompt 最终渲染
-- session 持久化细节
-
-## Reference Implementation Alignment
-
-- 语义上吸收 `reference CLI` 中 method guidance / mode behavior 的经验
-- 在 `loushang` 里单独抽成 registry，避免 method 逻辑散落在 prompt 或 mode 中
+- [ARD-006: TUI Method Integration Constraints](../ARD-006-tui-method-integration-constraints.md)
+- [Coding Product Boundaries](../ARD-001-coding-product-boundaries.md)

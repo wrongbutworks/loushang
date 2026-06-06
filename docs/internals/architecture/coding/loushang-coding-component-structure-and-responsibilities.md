@@ -6,11 +6,11 @@
 
 本文档建立在以下已接受文档之上：
 
-- [Loushang Coding System Context](/home/dev/workspace/loushang/docs/architecture/coding/loushang-coding-system-context.md)
-- [ARD-001: Loushang Coding Product Boundaries](/home/dev/workspace/loushang/docs/architecture/coding/ARD-001-coding-product-boundaries.md)
-- [ARD-004: Package And Plugin Boundary](/home/dev/workspace/loushang/docs/architecture/coding/ARD-004-package-plugin-boundary.md)
-- [Loushang Coding Candidate Components](/home/dev/workspace/loushang/docs/architecture/coding/loushang-coding-candidate-components.md)
-- [Loushang Coding Deployment Unit Terminology](/home/dev/workspace/loushang/docs/architecture/coding/loushang-coding-du-terminology.md)
+- [Loushang Coding System Context](loushang-coding-system-context.md)
+- [ARD-001: Loushang Coding Product Boundaries](ARD-001-coding-product-boundaries.md)
+- [ARD-004: Package And Plugin Boundary](ARD-004-package-plugin-boundary.md)
+- [Loushang Coding Candidate Components](loushang-coding-candidate-components.md)
+- [Loushang Coding Deployment Unit Terminology](loushang-coding-du-terminology.md)
 
 本文档不展开：
 
@@ -47,12 +47,17 @@
 - `prompt`
 - `skill`
 - `loader`
+- `resources`
 - `extensions`
+- `plugin`
+- `package`
+- `domain`
 - `control`
 - `policy`
 - `compaction`
-- `method`
 - `diagnostics`
+- `platform`
+- `workflow`
 - `utils`
 
 ## Structural Classification
@@ -106,30 +111,35 @@
 
 ### 4. Resource And Customization Layer
 
-这一层负责资源加载、方法资产与扩展定制。
+这一层负责资源加载、domain bridge 与扩展定制。
 
 - `prompt`
 - `skill`
 - `loader`
+- `resources`
 - `extensions`
-- `method`
+- `plugin`
+- `package`
+- `domain`
 
 它们的共同特点是：
 
-- 提供 coding-specific 的方法资产、资源注入与扩展能力
+- 提供 coding-specific 的资源注入、扩展能力、package/plugin lifecycle 与 method bridge
 - 更多负责“装什么”和“从哪里装”，而不是直接推进 run loop
 - 其中 `prompt` 是桥接组件：
-  - 上接 `loader` / `skill` / `method`
+  - 上接 `loader` / `resources` / `skill` / `domain`
   - 下接 `session`
   - 负责把资源层输入装配成运行时 prompt
 
-### 5. Control And Support Layer
+### 5. Control, Platform And Support Layer
 
-这一层负责控制平面、权限与支撑能力。
+这一层负责控制平面、权限、平台能力与工作流支撑。
 
 - `control`
 - `policy`
 - `diagnostics`
+- `platform`
+- `workflow`
 - `utils`
 
 它们的共同特点是：
@@ -147,8 +157,8 @@ flowchart TD
     ENTRY["Entry And Surface Layer\nbootstrap / sdk / cli / mode"]
     CORE["Runtime Core Layer\nruntime / session / store / message / event"]
     EXEC["Execution And Assembly Layer\ntools / exec / compaction"]
-    RESOURCE["Resource And Customization Layer\nprompt / skill / loader / extensions / method"]
-    CONTROL["Control And Support Layer\ncontrol / policy / diagnostics / utils"]
+    RESOURCE["Resource And Customization Layer\nprompt / skill / loader / resources / extensions / plugin / package / domain"]
+    CONTROL["Control, Platform And Support Layer\ncontrol / policy / diagnostics / platform / workflow / utils"]
 
     ENTRY --> CORE
     CORE --> EXEC
@@ -373,7 +383,7 @@ flowchart TD
 
 它的结构定位是：
 
-- 资源来源上接 `loader` / `skill` / `method`
+- 资源来源上接 `loader` / `resources` / `skill` / `domain`
 - 运行时装配上服务 `session`
 
 ### `compaction`
@@ -413,6 +423,18 @@ flowchart TD
 - 加载 prompt/skill/extension 资源
 - 聚合 coding 侧运行资源
 
+### `resources`
+
+角色：
+
+- coding resource descriptors 与加载结果边界
+
+职责：
+
+- 定义 prompt/skill/theme/extension 等 coding resource descriptor
+- 承载 loader/package/plugin 展开后的资源结果
+- 为 prompt/session 提供稳定资源投影
+
 ### `extensions`
 
 角色：
@@ -442,17 +464,31 @@ flowchart TD
 - 读取 plugin manifest
 - 将 plugin 展开为 extensions / skills / prompts / themes 资源描述符
 
-### `method`
+### `package`
 
 角色：
 
-- coding 方法层接缝
+- package/plugin lifecycle 与 source 管理层
 
 职责：
 
-- 方法选择
-- workflow guidance
-- coding 场景下注入方法资产
+- 管理 package catalog/source
+- 安装、更新、移除 package
+- 将 package materialize 为 plugin/resource 可消费形态
+
+### `domain`
+
+角色：
+
+- coding domain bridge
+
+职责：
+
+- 接收 `CodingDomainRequest`
+- 应用 `MethodPolicy`
+- 调用 `loushang.method` 的 loader/compiler/projector
+- 生成 `CodingDomainPreparedTurn`
+- 将 method plan/step metadata 传递给 CLI runner 与 work-log path
 
 ### `control`
 
@@ -505,6 +541,31 @@ flowchart TD
 - `diagnostics` 是支撑边界，可被 `bootstrap` / `cli` / `mode` 调用
 - 但不应反向依赖这些入口层
 
+### `platform`
+
+角色：
+
+- 平台能力 helper 层
+
+职责：
+
+- clipboard
+- filesystem
+- terminal/platform capability detection
+- 其他跨 mode 的平台差异封装
+
+### `workflow`
+
+角色：
+
+- prompt workflow loader / runner
+
+职责：
+
+- 加载 prompt workflow 文件
+- 展开 workflow step
+- 将 prompt workflow 映射到 coding session 调用
+
 ### `utils`
 
 角色：
@@ -555,9 +616,13 @@ flowchart TD
 - `loader`
 - `extensions`
 - `plugin`
+- `package`
+- `resources`
+- `domain`
 - `compaction`
-- `method`
 - `diagnostics`
+- `platform`
+- `workflow`
 - `utils`
 
 这并不表示它们不重要，而是表示它们当前更适合围绕主干展开，而不是被当作结构中心。
@@ -567,9 +632,9 @@ flowchart TD
 当前仍保留这些结构问题，后续可继续收敛：
 
 - `control` 是否未来进一步拆分为 `settings` / `config` / `models`
-- `extensions` 是否未来拆出 `plugin`
 - `session` 是否未来拆出显式 `context`
-- `method` 是否未来演化出 `orchestration`
+- `domain` 是否未来按 method / intake / domain app 拆出更细 adapter
+- `workflow` 是否未来演化出更完整的 orchestration 边界
 
 ## Next Step
 

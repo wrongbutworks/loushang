@@ -13,6 +13,8 @@ loushang --list-models
 loushang --list-commands
 loushang --list-sessions
 loushang --list-methods
+loushang --show-method <method>
+loushang --show-method-plan <method>
 loushang --list-skills
 loushang --list-plugins
 loushang --list-packages
@@ -26,7 +28,49 @@ Several list and export commands support machine-readable output:
 loushang --list-models --list-models-format json
 loushang --list-sessions --list-sessions-format json
 loushang --list-commands --list-commands-format json
+loushang --list-methods --list-methods-format json
+loushang --show-method <method> --show-method-format json
+loushang --show-method-plan <method> --show-method-plan-format json
+loushang --list-packages --list-packages-format json
+loushang --work-log-inspect .loushang/work/events.jsonl --work-log-inspect-format plans-json
 loushang --export session.jsonl --export-format jsonl
+```
+
+## Methods
+
+```bash
+loushang --method <method> -p "Run this coding task."
+loushang --no-method -p "Run without the configured default method."
+```
+
+`--method` is supported on prompt/print/json paths and rejected in TUI/RPC modes.
+
+## Work Logs
+
+```bash
+loushang --work-log .loushang/work/events.jsonl -p "Run this coding task."
+loushang --work-log-inspect .loushang/work/events.jsonl
+loushang --work-log-inspect .loushang/work/events.jsonl --work-log-run <run-id>
+```
+
+Supported inspect formats: `text`, `json`, `plans`, `plans-json`.
+
+## Packages
+
+```bash
+loushang --install-package <source>
+loushang --uninstall-package <source>
+loushang --materialize-package <source>
+loushang --update-package <source>
+loushang --update-packages
+loushang --check-package-updates
+```
+
+## Command Execution
+
+```bash
+loushang --command <command-name> --command-args "<args>"
+loushang --command <command-name> --command-result-format json
 ```
 
 ## Slash Commands

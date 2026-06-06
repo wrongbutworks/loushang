@@ -2,7 +2,7 @@
 
 ## Scope
 
-- skill、method、resource 与 extension 的描述对象
+- prompt、skill、theme、extension、package resource 与 provenance 描述对象
 
 ## Objects
 
@@ -23,22 +23,6 @@
 - source location
 - activation constraints
 
-### `MethodDescriptor`
-
-归属组件：
-
-- `method`
-
-角色：
-
-- 方法资产描述对象
-
-承担语义：
-
-- method identity
-- guidance
-- role / stage / task 关联
-
 ### `ResourceBundle`
 
 归属组件：
@@ -54,8 +38,10 @@
 - prompts
 - skills
 - extensions
+- themes
 - `AGENTS.md`
-- 其他 coding 侧资源
+- package resource summaries
+- resource diagnostics
 
 ### `ExtensionDescriptor`
 
@@ -73,10 +59,29 @@
 - load target
 - hook capabilities
 
+### `PackageResourceSummary`
+
+归属组件：
+
+- `loader`
+- `resources`
+
+角色：
+
+- package/plugin 提供的资源汇总对象
+
+承担语义：
+
+- package identity
+- package source/provenance
+- prompt / skill / extension / theme counts
+- resource diagnostic counts
+
 ## Reference Implementation Alignment
 
-- `ResourceBundle`、`SkillDescriptor`、`MethodDescriptor`、`ExtensionDescriptor` 当前不直接复用 `reference CLI` 的统一导出对象名
+- `ResourceBundle`、`SkillDescriptor`、`ExtensionDescriptor`、`PackageResourceSummary` 当前不直接复用 `reference CLI` 的统一导出对象名
 
 ## Notes
 
-- 这组对象主要服务于 loader / skill / method / extensions 之间的资源交换
+- 这组对象主要服务于 loader / resources / skill / extensions / plugin / package 之间的资源交换
+- `MethodDescriptor` / `MethodPlan` / `MethodStep` 归属 `loushang.method`，不再作为 `loushang-coding` resource descriptor 拥有对象

@@ -43,16 +43,20 @@
 | `prompt` | resource | prompt 装配桥 |
 | `skill` | resource | skill 发现与注入 |
 | `loader` | resource | 资源发现与加载 |
+| `resources` | resource | coding resource descriptors 与加载结果 |
 | `extensions` | resource | 扩展 hook 运行层 |
 | `plugin` | resource | plugin bundle 管理与资源展开 |
-| `method` | resource | method 注册与选择 |
+| `package` | resource | package/plugin lifecycle 与 source 管理 |
+| `domain` | resource | coding domain request、method policy 与 prepared turn bridge |
 | `control` | support | settings / model 控制平面 |
 | `policy` | support | 权限与审批策略 |
 | `diagnostics` | support | 诊断与错误归一化 |
+| `platform` | support | clipboard、filesystem、terminal/platform helpers |
+| `workflow` | support | prompt workflow loader / runner |
 | `utils` | support | 薄通用辅助层 |
 
 ## Related Docs
 
-- [Loushang Coding Component Interfaces](/home/dev/workspace/loushang/docs/architecture/coding/loushang-coding-component-interfaces.md)
-- [Component Interface Notes](/home/dev/workspace/loushang/docs/architecture/coding/component-interfaces/README.md)
-- [Loushang Coding Development Priority And Stability Strategy](/home/dev/workspace/loushang/docs/architecture/coding/loushang-coding-development-priority-and-stability-strategy.md)
+- [Loushang Coding Component Interfaces](loushang-coding-component-interfaces.md)
+- [Component Interface Notes](component-interfaces/README.md)
+- [Loushang Coding Development Priority And Stability Strategy](loushang-coding-development-priority-and-stability-strategy.md)

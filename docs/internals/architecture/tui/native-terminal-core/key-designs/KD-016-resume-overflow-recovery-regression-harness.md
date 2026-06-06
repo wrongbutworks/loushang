@@ -1,6 +1,18 @@
 # KD-016: Resume Overflow Recovery Regression Harness
 
-Status: Pending implementation
+Status: Accepted. Partially implemented.
+
+Implemented:
+
+- deterministic resumed-session fixture for the `963306bf` silent-overflow shape
+- overflow classification tests for empty/near-limit assistant stop responses
+- session compaction/recovery tests for overflow handling
+- native TUI resume / long transcript playback regressions
+
+Still future/deferred:
+
+- live-provider integration tests for the original session sample
+- broad golden-snapshot approval of resumed transcript rendering
 
 ## Purpose
 

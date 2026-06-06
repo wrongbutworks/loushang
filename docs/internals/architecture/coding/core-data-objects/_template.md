@@ -2,7 +2,7 @@
 
 ## Scope
 
-- 
+-
 
 ## Objects
 
@@ -10,20 +10,20 @@
 
 归属组件：
 
-- 
+-
 
 角色：
 
-- 
+-
 
 承担语义：
 
-- 
+-
 
 ## Reference Implementation Alignment
 
-- 
+-
 
 ## Notes
 
-- 
+-

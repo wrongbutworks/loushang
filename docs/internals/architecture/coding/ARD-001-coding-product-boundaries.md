@@ -6,21 +6,27 @@ Accepted
 
 ## Context
 
-`loushang-coding` 当前处于设计阶段，目标是：
+`loushang-coding` 当前是 V1 coding 产品主承载层。早期目标是：
 
 - 参考 `reference coding agent`
 - 使用 Python 实现
 - 先设计完整组件边界，再分阶段实现
-- 当前不优先实现 `interactive mode`
+
+截至当前实现，headless CLI/mode、session/runtime/store、extensions、tools、
+diagnostics、package/plugin、native TUI、method-guided non-interactive path 与
+work-log/projection 都已有主干。`--method` 与 TUI/RPC 仍保持互斥，原因见
+[ARD-006](./ARD-006-tui-method-integration-constraints.md)。
 
 同时，`loushang` 总体架构中已经存在这些相邻子系统概念：
 
 - `loushang-ai`
 - `loushang-agent`
-- `loushang-channel`
 - `loushang-tui`
-- `loushang-methods`
+- `loushang-method`
+- `loushang-work`
 - `loushang-coding`
+
+`loushang-channel` 仍是目标架构层，但当前没有 package-level implementation。
 
 在讨论中出现了几个需要尽早钉住的边界问题：
 
@@ -52,13 +58,22 @@ Accepted
 - `prompt`
 - `skill`
 - `loader`
+- `resources`
 - `extensions`
+- `plugin`
+- `package`
+- `domain`
 - `control`
 - `policy`
 - `compaction`
-- `method`
 - `diagnostics`
+- `platform`
+- `workflow`
 - `utils`
+
+`method` 不再作为 `loushang.coding` 内部独立 registry 组件表达；当前由
+`loushang.method` 承载 method 资源、编译与投影，`loushang.coding.domain`
+负责把 method plan/prepared turn 应用到 coding turn。
 
 ### 2. 当前不单列 `context`
 
@@ -75,18 +90,27 @@ Accepted
 
 ### 3. `mode` 是 `loushang-coding` 的核心组件
 
-当前接受以下 mode 列表：
+当前接受以下 mode / product surface 列表：
 
+- `text`
 - `print`
 - `json`
 - `rpc`
-- `interactive`（未来实现）
+- `tui` / `interactive`
 
 其中：
 
-- `print` / `json` / `rpc` 属于当前阶段需要纳入设计范围的运行形态
-- `interactive` 保留为明确 mode，但实现后置
+- `text` / `print` / `json` / `rpc` 属于 headless / non-interactive 运行形态
+- `tui` / `interactive` 已由 native terminal core 和 `loushang.coding.ui` 承载
 - 在架构对象层，`json` 当前应视为 `PrintMode` 的结构化输出 projection，而不是独立 `JsonMode`
+
+**关于 `rpc` mode 的长期定位**：
+
+`rpc` mode 当前作为 `loushang-coding` 的 headless control adapter 实现（`loushang.coding.mode.RpcMode`），是一个 **transitional surface**。它直接暴露 coding session 控制命令（prompt、abort、fork、set_model 等），服务于测试、SDK host、CI/CD 和第三方工具集成。
+
+但 `rpc` mode **不是**长期 channel surface。JSONL request/response framing、id correlation、event stream projection 等机制有价值且应长期保留，但未来归属于 `loushang.channel` 下的 `rpc_jsonl` adapter，面向 `WorkOperation/WorkEvent` 语义，而非直接操作 `AgentSession`。
+
+详见 [ARD-005: RpcMode Transitional Positioning and Channel Migration Path](./ARD-005-rpc-mode-transitional-channel-positioning.md)。
 
 ### 4. `sdk` 保留为对外入口层
 
@@ -157,14 +181,15 @@ Accepted
 
 边界建议为：
 
-- `coding` 负责 interactive mode 的流程编排
-- `tui` 负责终端 UI primitives、widgets、layout 与交互呈现
+- `coding` 负责 TUI product adapter、session/runtime 流程编排、命令和 coding-specific 状态
+- `tui` 负责 terminal-native UI primitives、render loop、input、surface、layout 与编辑基础设施
 
-未来若基于 Textual 实现 `loushang-tui`，这是可接受方向。
+当前目标实现是 native terminal core，不是 Textual/fullscreen 方案。旧 Textual /
+prompt-toolkit/Rich 设计只保留在 TUI history 文档中。
 
 但约束是：
 
-- 对齐 `reference TUI` 的职责边界
+- 对齐 terminal-native TUI 的职责边界
 - 不要求逐字 API 兼容
 - 更强调语义兼容与 Python 化实现
 
@@ -177,7 +202,7 @@ Accepted
 3. 过早把 `channel` 并入 `coding`，会污染分层并让 `coding` 过厚。
 4. 参考 `reference coding agent`，`coding` 产品层不仅装配 `agent`，也会直接依赖部分 `ai` 能力，因此系统环境图必须显式保留 `coding -> ai`。
 5. 过早单列 `context`，会增加边界数量，但当前其职责仍可被 `session/prompt/loader/compaction` 稳定承接。
-6. 明确保留 `sdk`、`mode`、`interactive`，有利于后续从 CLI 扩展到嵌入式、RPC 与 TUI。
+6. 明确保留 `sdk`、`mode`、`tui/interactive`，有利于从 CLI 扩展到嵌入式、RPC 与 TUI。
 
 ## Consequences
 
@@ -197,14 +222,15 @@ Accepted
 
 ## Impacted Documents
 
-- `docs/architecture/coding/loushang-coding-candidate-components.md`
-- `docs/architecture/coding/loushang-coding-system-context.md`
-- `docs/architecture/subsystem.md`
-- `docs/architecture/agent/loushang-agent-system-context.md`
-- `docs/loushang-channel-boundary-protocol.md`
+- `docs/internals/architecture/coding/loushang-coding-candidate-components.md`
+- `docs/internals/architecture/coding/loushang-coding-system-context.md`
+- `docs/internals/architecture/subsystem.md`
+- `docs/internals/architecture/agent/loushang-agent-system-context.md`
+- `docs/internals/legacy/loushang-channel-boundary-protocol.md`
 
 ## Follow-up
 
 - 后续补一份 `loushang-coding` 分阶段实现建议
-- 后续在 `interactive` 设计阶段，再决定 `loushang-tui` 的 Textual 方案细节
+- 后续在 TUI + method 集成阶段，按 ARD-006 决定 method status layer 与 WorkEvent projection
 - 后续在 `rpc/web` 需求稳定后，再决定 `loushang-channel` 的落地时机
+- `rpc` mode 的长期定位与迁移路径参见 [ARD-005](./ARD-005-rpc-mode-transitional-channel-positioning.md)

@@ -1,8 +1,19 @@
 # Loushang Channel Boundary Protocol v0.1
 
+## Status
+
+Legacy target-architecture reference.
+
+This document preserves an older channel boundary model. It is useful for future
+`loushang.channel` protocol work, but it is not evidence of a current
+`src/loushang/channel/` implementation. Current RPC support is a transitional
+`loushang.coding.mode.RpcMode` surface; see
+[ARD-005](../architecture/coding/ARD-005-rpc-mode-transitional-channel-positioning.md)
+for the accepted positioning.
+
 ## 1. Scope
 
-本文档定义 `loushang-channel` 的边界协议模型。  
+本文档定义 `loushang-channel` 的边界协议模型。
 目标是在 `pi` 已验证的 agent 抽象基础上，补齐跨边界运行所需的概念，包括：
 
 1. `protocol`
@@ -13,7 +24,7 @@
 6. `client`
 7. `channel host`
 
-本层对应的是过去常被称为 `wire` 的部分。  
+本层对应的是过去常被称为 `wire` 的部分。
 在 `loushang` 中，不再使用 `wire` 作为核心术语，而统一使用：
 
 - `protocol`
@@ -41,7 +52,7 @@
 
 ### Protocol
 
-协议。  
+协议。
 定义 channel 边界上消息、事件、请求与响应结构的规则集合。
 
 `Protocol` 负责回答：
@@ -55,7 +66,7 @@
 
 ### Transport
 
-传输。  
+传输。
 承载 protocol 的具体通信实现。
 
 常见 transport 包括：
@@ -72,7 +83,7 @@
 
 ### Channel Host
 
-通道宿主。  
+通道宿主。
 真正运行 `Agent`、`AgentLoop` 与工具执行逻辑的一侧。
 
 它负责：
@@ -84,7 +95,7 @@
 
 ### Client
 
-客户端。  
+客户端。
 消费 channel protocol 的一侧。
 
 它可以是：
@@ -113,7 +124,7 @@
 
 ### Event
 
-事件。  
+事件。
 由 channel host 发出，用于表达运行过程中的状态变化。
 
 它主要对应 `AgentEvent` 的协议化表达。
@@ -128,7 +139,7 @@
 
 ### Request
 
-请求。  
+请求。
 由 channel host 发出，要求 client 或外部系统给出明确响应。
 
 典型 request：
@@ -140,7 +151,7 @@
 
 ### Response
 
-响应。  
+响应。
 由 client 返回给 channel host，用于回应某个 request。
 
 典型 response：
@@ -152,7 +163,7 @@
 
 ### Notification
 
-通知。  
+通知。
 由 channel host 或 client 发出，用于传递无需显式回应的信息。
 
 典型 notification：
@@ -168,7 +179,7 @@
 
 ### Event Semantics
 
-`Event` 用于表达 channel 边界上的事实。  
+`Event` 用于表达 channel 边界上的事实。
 它不要求 client 回答。
 
 特点：
@@ -242,7 +253,7 @@
 
 ### correlationId
 
-用于将 response 关联回对应的 request。  
+用于将 response 关联回对应的 request。
 对 request/response 类消息尤其重要。
 
 ---
@@ -251,7 +262,7 @@
 
 ### AgentEvent -> Event
 
-`AgentEvent` 是 agent 内部事件抽象。  
+`AgentEvent` 是 agent 内部事件抽象。
 当跨边界传输时，应投影为 protocol `event`。
 
 ### AssistantMessageEvent -> Event
@@ -260,7 +271,7 @@
 
 ### AgentMessage -> Protocol Payload
 
-`AgentMessage` 本身通常不直接等于 protocol message。  
+`AgentMessage` 本身通常不直接等于 protocol message。
 更常见的是：
 
 - 它作为 `event.payload`
@@ -269,7 +280,7 @@
 
 ### EventStream -> Transported Event Sequence
 
-`EventStream` 是 agent 内部的流式抽象。  
+`EventStream` 是 agent 内部的流式抽象。
 跨边界后，它会表现为 transport 上持续流动的一系列 protocol messages。
 
 ---
@@ -298,7 +309,7 @@ Channel Host
 
 ### Protocol Adapter
 
-协议适配器。  
+协议适配器。
 负责把 agent 内部对象投影为边界协议消息，并将外部 response 映射回 agent 可用的数据结构。
 
 它处于：

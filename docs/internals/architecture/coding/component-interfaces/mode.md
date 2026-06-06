@@ -6,9 +6,9 @@
 
 ## Owns
 
-- 用户可见运行形态：`print / json / rpc / interactive`
+- 用户可见运行形态：`text / print / json / rpc / tui / interactive`
 - `ModeAdapter` 抽象边界
-- `PrintMode` / `RpcMode` / `InteractiveMode`（future）等 adapter object
+- `PrintMode` / `RpcMode` / native TUI runner 等 adapter object
 - `json` 作为 `PrintMode` 的结构化输出 projection
 - runtime event 到输出投影的规则
 
@@ -64,12 +64,12 @@
 - 强调 mode 只是 I/O projection，不是另一套 runtime core
 - RPC/mode handler 采用 `validate -> call session/runtime -> serialize` 结构
 - `cycle_model`、`cycle_thinking_level`、`clone_session`、entry text extraction 等业务语义应由 `session` / `runtime` facade 承担
-- `ModeAction` 覆盖 `start` / `stop` / `submit_input` / `render_event` / `get_state` / `wait_for_idle` / `rebind_session` / `dispose`，供 CLI/RPC/未来 interactive 共享 adapter lifecycle contract
+- `ModeAction` 覆盖 `start` / `stop` / `submit_input` / `render_event` / `get_state` / `wait_for_idle` / `rebind_session` / `dispose`，供 CLI/RPC/TUI 共享 adapter lifecycle contract
 - `normalize_mode_action(...)` 是 dataclass 与 JSON-like action payload 的唯一归一化入口；`dispatch_mode_action(...)` 先归一化再派发，避免各 mode host 各自解析 action dict
 - 不追求逐字复刻 参考实现的 TypeScript shape，但保持同样的边界：mode 不直接读取 store，不实现控制策略，不拥有 session lifecycle
 
 ## Related Docs
 
-- [Loushang Coding JSON Mode Design](/home/dev/workspace/loushang/docs/architecture/coding/loushang-coding-json-mode-design.md)
-- [Loushang Coding RPC Mode Surface](/home/dev/workspace/loushang/docs/architecture/coding/loushang-coding-rpc-mode-surface.md)
-- [RPC Component Interface](/home/dev/workspace/loushang/docs/architecture/coding/component-interfaces/rpc.md)
+- [Loushang Coding JSON Mode Design](../loushang-coding-json-mode-design.md)
+- [Loushang Coding RPC Mode Surface](../loushang-coding-rpc-mode-surface.md)
+- [RPC Component Interface](rpc.md)

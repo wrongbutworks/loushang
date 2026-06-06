@@ -8,6 +8,18 @@ This document records the target architecture direction for turning `loushang`
 from a coding-first CLI/TUI product into a method-guided, multi-domain work
 operating layer.
 
+Current implementation status is narrower than this target architecture:
+
+- `loushang.channel` is target architecture only; current RPC is a transitional
+  `loushang.coding.mode.RpcMode` surface.
+- `loushang.method` and `loushang.work` are adjacent subsystems; coding owns only
+  the domain bridge and work-log integration.
+- TUI + method integration is intentionally deferred until the ARD-006
+  preconditions are met.
+
+For current boundaries, prefer the accepted coding ARDs and component interface
+docs over this draft.
+
 This draft supersedes the older "runtime kernel" wording in this file. The
 preferred package-level naming is now:
 

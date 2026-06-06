@@ -50,6 +50,18 @@ loushang --no-tools -p "Explain the repository from context only."
 
 Extensions are Python files that can register lifecycle hooks, tools, dynamic resources, commands, and flags. Start with the runnable extension examples in [examples/coding/extensions](../../../examples/coding/extensions/).
 
+## Packages And Plugins
+
+Packages and plugins can contribute reusable coding assets. Common lifecycle commands:
+
+```bash
+loushang --list-plugins
+loushang --list-packages
+loushang --install-package <source>
+loushang --check-package-updates
+loushang --update-packages
+```
+
 ## Methods And Skills
 
 Methods and skills turn reusable working practices into runtime assets. In the CLI, use:
@@ -57,9 +69,25 @@ Methods and skills turn reusable working practices into runtime assets. In the C
 ```bash
 loushang --list-methods
 loushang --show-method <method>
+loushang --show-method-plan <method>
 loushang --method <method> -p "Run this coding task."
+loushang --no-method -p "Run without the configured default method."
 loushang --list-skills
 ```
+
+`--method` is supported for non-interactive prompt/print/json paths. It is intentionally rejected in TUI and RPC modes until the method step UI and work-event projection path are ready.
+
+## Work Logs
+
+Work logs record `WorkOperation` and `WorkEvent` entries for one-shot prompt/print/json runs:
+
+```bash
+loushang --work-log .loushang/work/events.jsonl -p "Run this coding task."
+loushang --work-log-inspect .loushang/work/events.jsonl
+loushang --work-log-inspect .loushang/work/events.jsonl --work-log-inspect-format plans
+```
+
+`--work-log` is not supported in TUI or RPC modes.
 
 ## Diagnostics And Export
 

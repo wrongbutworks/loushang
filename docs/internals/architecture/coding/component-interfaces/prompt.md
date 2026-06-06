@@ -15,7 +15,7 @@
 - `loader`
 - `tools`
 - `control`
-- `method`
+- `domain`
 
 ## Commands
 
@@ -38,7 +38,8 @@
 ## Out Of Scope
 
 - 资源发现
-- skill / method 解析
+- skill 解析
+- method registry/compiler/projector lifecycle
 - tool execution
 - session persistence
 
