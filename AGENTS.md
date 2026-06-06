@@ -3,6 +3,17 @@
 ## Project Structure & Module Organization
 This repository uses a `src/` layout. Core package code lives in `src/loushang/`, with AI-facing modules under `src/loushang/ai/`, agent code under `src/loushang/agent/`, and coding/session infrastructure under `src/loushang/coding/`. Tests live in `tests/`. Runnable examples live in `examples/ai/`, with supporting scripts in `scripts/` and exploratory work in `spikes/`. Architecture and design notes belong in `docs/`.
 
+## Worktree Lane Conventions
+Use long-lived worktree lanes for major module work:
+
+- `/home/dev/workspace/loushang` is the control/integration lane. It normally stays on `main` and is used for progress management, direction coordination, final verification, merge/push, and small integration-only edits.
+- `.worktrees/tui` is the long-lived Native TUI lane. For TUI-dominant work, create or switch task branches inside this lane.
+- `.worktrees/code` is the long-lived V1 code hardening lane. For coding/runtime/session/tool/policy/diagnostics-dominant work, create or switch task branches inside this lane.
+- `.worktrees/ai` is the long-lived AI/provider lane when AI-layer work is active. For AI/provider/model/usage/auth work, create or switch task branches inside this lane.
+- `.worktrees/agent` is the long-lived agent-runtime lane when agent-layer work is active. For agent loop/session orchestration/queue/tool-call semantics work, create or switch task branches inside this lane.
+
+Only the control lane should normally check out `main`. Other lanes should use task branches based on `main` or `origin/main` and should regularly rebase or merge the latest `main`. Before switching branches in any lane, check dirty state and preserve user changes.
+
 ## Build, Test, and Development Commands
 Prefer `uv` for all Python workflows in this repository.
 

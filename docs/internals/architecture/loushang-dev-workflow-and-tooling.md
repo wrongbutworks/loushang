@@ -87,6 +87,51 @@
 
 ---
 
+## Long-Lived Worktree Lane Rule
+
+当前建议为高频子系统开发保留长期 worktree lane：
+
+```text
+/home/dev/workspace/loushang
+  control / integration lane
+  checkout: main
+
+/home/dev/workspace/loushang/.worktrees/tui
+  Native TUI lane
+  checkout: feature/tui-* or lane/tui/*
+
+/home/dev/workspace/loushang/.worktrees/code
+  V1 code hardening lane
+  checkout: feature/code-* or lane/code/*
+
+/home/dev/workspace/loushang/.worktrees/ai
+  AI/provider lane
+  checkout: feature/ai-* or lane/ai/*
+
+/home/dev/workspace/loushang/.worktrees/agent
+  agent-runtime lane
+  checkout: feature/agent-* or lane/agent/*
+```
+
+语义：
+
+- control lane 是唯一默认 checkout `main` 的 worktree。
+- control lane 负责进度管理、方向协调、最终验证、集成、merge 与 push。
+- TUI/code/AI/agent lane 长期保留，不作为一次性临时目录随意删除或改作他用。
+- 以某个子系统为主的模块内开发，优先在对应 lane 内创建或切换任务分支。
+- 其他 lane 的任务分支都以 `main` / `origin/main` 为 base，并定期 rebase 或 merge 最新 `main`。
+- 跨 lane 接口变化应先在 control lane 明确方向，再由相关 lane 消费稳定契约。
+- 切换任何 lane 的分支前，必须检查 dirty state，避免覆盖用户或其他 agent 的未提交修改。
+
+这样做的目的不是制造长期分叉，而是把高频并行开发隔离在稳定 lane 中：
+
+- `main` 始终作为可集成事实；
+- TUI 回归、playback 与终端行为调试不污染 code hardening 工作区；
+- code/session/runtime/tool/policy 改动不污染 TUI worktree；
+- AI 与 agent 层在需要时也能拥有相同的隔离与同步节奏。
+
+---
+
 ## Workspace Bootstrap Rule
 
 根工作区应提供一个统一 bootstrap 入口。
