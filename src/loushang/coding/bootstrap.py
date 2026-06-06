@@ -9,25 +9,40 @@ from loushang.agent import Agent, AgentTool, StreamFn, ThinkingLevel
 from loushang.ai.model import Model
 from loushang.ai.model.registry import ModelRegistry as AiModelRegistry
 from loushang.ai.types import Message, TextPart
-from loushang.coding.control import AuthManager, ControlConfig, ModelRegistry, SettingsManager
-from loushang.coding.control.settings_store import default_global_settings_path, default_project_settings_path
-from loushang.coding.diagnostics import DiagnosticRecord, DiagnosticsService, StartupCheckResult
+from loushang.coding.control import (
+    AuthManager,
+    ControlConfig,
+    ModelRegistry,
+    SettingsManager,
+)
+from loushang.coding.control.settings_store import (
+    default_global_settings_path,
+    default_project_settings_path,
+)
+from loushang.coding.diagnostics import (
+    DiagnosticRecord,
+    DiagnosticsService,
+    StartupCheckResult,
+)
 from loushang.coding.exec import ExecService
 from loushang.coding.extensions import ExtensionRunner
 from loushang.coding.extensions.types import SessionStartEvent
 from loushang.coding.loader import DefaultResourceLoader
 from loushang.coding.loader.types import ResourceBundle, ResourceDiagnostic
 from loushang.coding.message import convert_to_llm
-from loushang.coding.prompt import assemble_prompt
 from loushang.coding.package import GitPackageMaterializerBackend, PackageMaterializer
 from loushang.coding.package.resource_roots import resolve_package_resource_roots
-from loushang.coding.package.source_manager import PackageSourceResolver, package_source_scopes
+from loushang.coding.package.source_manager import (
+    PackageSourceResolver,
+    package_source_scopes,
+)
+from loushang.coding.prompt import assemble_prompt
 from loushang.coding.runtime import AgentSessionRuntime
 from loushang.coding.session import AgentSession
+from loushang.coding.source_info import executable_source_identity
 from loushang.coding.store import SessionManager
 from loushang.coding.tools import ToolRegistry
 from loushang.coding.types import ModelSelection
-
 
 AgentFactory = Callable[..., Agent]
 ServicesFactory = Callable[[str], "BootstrapServices"]
@@ -916,9 +931,21 @@ def _run_bootstrap_startup_checks(
             details={"cwd": str(cwd_path)},
         )
 
+    def executable_source_identity_check() -> StartupCheckResult:
+        return StartupCheckResult(
+            name="executable_source_identity",
+            ok=True,
+            code="executable_source_identity",
+            level="info",
+            message="Executable and import source identity captured.",
+            source_path=Path(__file__).resolve(strict=False),
+            details=executable_source_identity(cwd=cwd),
+        )
+
     checks = [cwd_check]
     for root in package_roots:
         checks.append(_package_root_check(root))
+    checks.append(executable_source_identity_check)
 
     diagnostics_service.run_startup_checks(
         checks,

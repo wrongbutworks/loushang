@@ -8,14 +8,13 @@ from loushang.coding.diagnostics import (
     DiagnosticLevel,
     DiagnosticPhase,
     DiagnosticRecord,
-    DiagnosticSummary,
     DiagnosticsQuery,
     DiagnosticsService,
+    DiagnosticSummary,
     ErrorReport,
 )
 from loushang.coding.loader import ResourceDiagnostic
 from loushang.coding.store import SessionManager
-
 
 _EXTENSION_ERROR_DIAGNOSTIC_CODES: frozenset[str] = frozenset(
     {
@@ -148,9 +147,11 @@ class SessionDiagnosticsBridge:
         if not isinstance(tool_call_id, str) or not isinstance(tool_name, str):
             return
         result = event.get("result")
+        message = _tool_result_error_message(result)
+        result_details = _tool_result_details(result)
         self.diagnostics_service.capture_failure(
             code="tool_execution_failed",
-            error=_tool_result_error_message(result),
+            error=message,
             phase="runtime",
             source="tool",
             session_id=self.session_manager.get_header().id,
@@ -159,9 +160,24 @@ class SessionDiagnosticsBridge:
                 "tool_call_id": tool_call_id,
                 "tool_name": tool_name,
                 "is_error": True,
-                "result_details": _tool_result_details(result),
+                "result_details": result_details,
             },
         )
+        if _is_policy_result_details(result_details):
+            self.diagnostics_service.capture_failure(
+                code=_policy_result_code(result_details),
+                error=message,
+                phase="runtime",
+                source="policy",
+                level="warning",
+                session_id=self.session_manager.get_header().id,
+                entry_id=self.session_manager.get_leaf_id(),
+                details=_policy_diagnostic_details(
+                    tool_call_id=tool_call_id,
+                    tool_name=tool_name,
+                    result_details=result_details,
+                ),
+            )
 
 
 def _extension_diagnostic_level(code: str) -> DiagnosticLevel:
@@ -191,3 +207,28 @@ def _tool_result_error_message(result: object) -> str:
 
 def _tool_result_details(result: object) -> object:
     return getattr(result, "details", None)
+
+
+def _is_policy_result_details(details: object) -> bool:
+    return isinstance(details, Mapping) and isinstance(details.get("policy_disposition"), str)
+
+
+def _policy_result_code(details: Mapping[str, object]) -> str:
+    code = details.get("policy_code")
+    return code if isinstance(code, str) and code else "tool_policy_denied"
+
+
+def _policy_diagnostic_details(
+    *,
+    tool_call_id: str,
+    tool_name: str,
+    result_details: Mapping[str, object],
+) -> dict[str, object]:
+    details = {
+        key: value
+        for key, value in result_details.items()
+        if isinstance(value, str | bool | int | float | list | tuple | dict) or value is None
+    }
+    details["tool_call_id"] = tool_call_id
+    details["tool_name"] = tool_name
+    return details

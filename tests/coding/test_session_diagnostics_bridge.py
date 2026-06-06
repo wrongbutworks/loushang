@@ -116,3 +116,48 @@ def test_session_diagnostics_bridge_records_runtime_errors_with_session_context(
     assert records[1].details["response_id"] == "resp_1"
     assert records[2].message == "tool failed"
     assert records[2].details["tool_call_id"] == "tc1"
+
+
+def test_session_diagnostics_bridge_records_policy_tool_errors_with_correlation(tmp_path) -> None:
+    diagnostics = DiagnosticsService()
+    manager = SessionManager.new(session_dir=tmp_path, cwd="/tmp/project", persist=False)
+    bridge = SessionDiagnosticsBridge(
+        diagnostics_service=diagnostics,
+        session_manager=manager,
+        get_extension_runner=lambda: None,
+    )
+    tool_result = SimpleNamespace(
+        content=[TextPart(type="text", text="Tool write is blocked by policy")],
+        details={
+            "tool_name": "write",
+            "policy_disposition": "deny",
+            "policy_code": "tool_blocked",
+            "policy_reason": "Tool write is blocked by policy",
+            "approval_required": False,
+            "argument_keys": ["content", "path"],
+            "path": "/tmp/project/blocked.txt",
+        },
+    )
+
+    bridge.record_tool_execution_error(
+        {
+            "tool_call_id": "tc-policy-1",
+            "tool_name": "write",
+            "result": tool_result,
+        }
+    )
+
+    records = diagnostics.get_diagnostics()
+    assert [record.code for record in records] == ["tool_execution_failed", "tool_blocked"]
+    policy_records = diagnostics.get_diagnostics(query=DiagnosticsQuery(tool_call_id="tc-policy-1", code="tool_blocked"))
+    assert len(policy_records) == 1
+    assert policy_records[0].type == "warning"
+    assert policy_records[0].source == "policy"
+    assert policy_records[0].phase == "runtime"
+    assert policy_records[0].message == "Tool write is blocked by policy"
+    assert policy_records[0].session_id == manager.get_header().id
+    assert policy_records[0].details["tool_call_id"] == "tc-policy-1"
+    assert policy_records[0].details["tool_name"] == "write"
+    assert policy_records[0].details["policy_disposition"] == "deny"
+    assert policy_records[0].details["policy_reason"] == "Tool write is blocked by policy"
+    assert policy_records[0].details["path"] == "/tmp/project/blocked.txt"

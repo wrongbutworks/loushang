@@ -138,7 +138,7 @@ def test_create_agent_session_result_returns_sdk_creation_snapshot(tmp_path) -> 
     assert result.session.session_manager is manager
     assert result.resource_bundle is result.session.resource_bundle
     assert result.cwd_bound_services_audit is result.session.cwd_bound_services_audit
-    assert [record.code for record in result.diagnostics if record.phase == "startup"] == [
+    assert [record.code for record in result.diagnostics if record.phase == "startup" and record.type != "info"] == [
         "package_root_unavailable"
     ]
 
@@ -151,7 +151,7 @@ def test_create_agent_session_result_returns_sdk_creation_snapshot(tmp_path) -> 
         session_id=result.session.session_id,
     )
 
-    assert [record.code for record in result.diagnostics if record.phase == "startup"] == [
+    assert [record.code for record in result.diagnostics if record.phase == "startup" and record.type != "info"] == [
         "package_root_unavailable"
     ]
 
@@ -1344,7 +1344,7 @@ def test_runtime_tool_failures_still_surface_as_tool_result_errors(tmp_path) -> 
     assert tool_results[0].tool_name == "runtime_tool"
     assert tool_results[0].is_error is True
     assert tool_results[0].content[0].text == "runtime tool exploded"
-    diagnostics = session.get_last_diagnostics()
+    diagnostics = [record for record in session.get_last_diagnostics() if record.code == "tool_execution_failed"]
     assert len(diagnostics) == 1
     assert diagnostics[0].code == "tool_execution_failed"
     assert diagnostics[0].source == "tool"
@@ -1884,7 +1884,11 @@ def test_create_agent_session_records_startup_package_root_diagnostics(tmp_path)
         model=_model(),
     )
 
-    diagnostics = services.diagnostics_service.get_diagnostics(phase="startup", source="bootstrap")
+    diagnostics = services.diagnostics_service.get_diagnostics(
+        phase="startup",
+        source="bootstrap",
+        code="package_root_unavailable",
+    )
 
     assert [record.code for record in diagnostics] == ["package_root_unavailable"]
     assert diagnostics[0].type == "warning"
@@ -1894,6 +1898,37 @@ def test_create_agent_session_records_startup_package_root_diagnostics(tmp_path)
         "ok": False,
         "package_root": str(missing_package_root),
     }
+
+
+def test_create_agent_session_records_executable_source_identity_diagnostic(tmp_path) -> None:
+    from loushang.coding.bootstrap import create_agent_session, create_services
+    from loushang.coding.store import SessionManager
+
+    manager = SessionManager.new(session_dir=tmp_path / "sessions", cwd=str(tmp_path), persist=False)
+    services = create_services()
+
+    create_agent_session(
+        session_manager=manager,
+        services=services,
+        model=_model(),
+    )
+
+    diagnostics = services.diagnostics_service.get_diagnostics(
+        phase="startup",
+        source="bootstrap",
+        code="executable_source_identity",
+    )
+
+    assert len(diagnostics) == 1
+    assert diagnostics[0].type == "info"
+    assert diagnostics[0].session_id == manager.get_header().id
+    assert diagnostics[0].source_path is not None
+    assert diagnostics[0].details["check"] == "executable_source_identity"
+    assert diagnostics[0].details["ok"] is True
+    assert diagnostics[0].details["cwd"] == str(tmp_path)
+    assert isinstance(diagnostics[0].details["python_executable"], str)
+    assert isinstance(diagnostics[0].details["loushang_module_file"], str)
+    assert isinstance(diagnostics[0].details["coding_module_file"], str)
 
 
 def test_create_agent_session_records_package_lockfile_diagnostics(tmp_path) -> None:
