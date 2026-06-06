@@ -355,7 +355,7 @@ def test_resolve_request_merges_auth_extra_headers_with_child_override(tmp_path)
                 "endpoints": {
                     "openai-completions": {
                         "api": "openai-completions",
-                        "authOverride": {
+                        "auth": {
                             "extraHeaders": {
                                 "x-shared": "endpoint",
                                 "x-endpoint-only": "yes",

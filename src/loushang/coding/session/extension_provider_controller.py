@@ -5,7 +5,16 @@ from dataclasses import dataclass, replace
 
 from loushang.ai.api_registry import ApiProviderRegistry
 from loushang.ai.auth.registry import OAuthProviderRegistry
-from loushang.ai.model import Auth, Capabilities, Compat, Defaults, Endpoint, Model, Pricing, Provider
+from loushang.ai.model import (
+    Auth,
+    Capabilities,
+    Compat,
+    Defaults,
+    Endpoint,
+    Model,
+    Pricing,
+    Provider,
+)
 
 
 @dataclass
@@ -155,7 +164,9 @@ def _native_endpoint_from_extension_dict(
         region=_optional_string(config.get("region")) or (existing_endpoint.region if existing_endpoint is not None else None),
         lane=_optional_string(config.get("lane")) or (existing_endpoint.lane if existing_endpoint is not None else None),
         docs=_optional_string(config.get("docs")) or (existing_endpoint.docs if existing_endpoint is not None else None),
-        auth=_auth_from_native_raw(config.get("authOverride") or config.get("auth"))
+        auth=_auth_from_native_raw(
+            config.get("auth") if "auth" in config else config.get("authOverride")
+        )
         or (existing_endpoint.auth if existing_endpoint is not None else None),
         compat=(existing_endpoint.compat if existing_endpoint is not None else Compat()).merged(compat),
         defaults=(existing_endpoint.defaults if existing_endpoint is not None else Defaults()).merged(defaults),

@@ -78,10 +78,7 @@ def validate_model_registry_raw(raw: dict[str, Any]) -> None:
             endpoint_path = f"{provider_path}.endpoints.{endpoint_key}"
             endpoint = _require_mapping(endpoint_raw, endpoint_path)
             _require_str(endpoint.get("api"), f"{endpoint_path}.api")
-            _validate_auth_mapping(
-                endpoint.get("authOverride", endpoint.get("auth")),
-                f"{endpoint_path}.auth",
-            )
+            _validate_auth_fields(endpoint, endpoint_path)
             _validate_keyed_mapping(
                 endpoint.get("compat"),
                 ALLOWED_COMPAT_KEYS,
@@ -96,10 +93,7 @@ def validate_model_registry_raw(raw: dict[str, Any]) -> None:
             for model_id, model_raw in models.items():
                 model_path = f"{endpoint_path}.models.{model_id}"
                 model = _require_mapping(model_raw, model_path)
-                _validate_auth_mapping(
-                    model.get("authOverride", model.get("auth")),
-                    f"{model_path}.auth",
-                )
+                _validate_auth_fields(model, model_path)
                 _validate_keyed_mapping(
                     model.get("compat"),
                     ALLOWED_COMPAT_KEYS,
@@ -178,6 +172,17 @@ def _validate_auth_mapping(value: object, path: str) -> None:
     extra_headers = mapping.get("extraHeaders")
     if extra_headers is not None:
         _as_str_mapping(extra_headers, f"{path}.extraHeaders")
+
+
+def _validate_auth_fields(raw: dict[str, Any], path: str) -> None:
+    auth = raw.get("auth")
+    legacy_auth = raw.get("authOverride")
+    if auth is not None and legacy_auth is not None:
+        raise ValueError(
+            f"models registry field cannot define both auth and authOverride: {path}"
+        )
+    _validate_auth_mapping(auth, f"{path}.auth")
+    _validate_auth_mapping(legacy_auth, f"{path}.authOverride")
 
 
 def _as_str_mapping(value: object, path: str) -> dict[str, str]:
@@ -335,7 +340,9 @@ def _build_registry(raw: dict[str, Any]) -> ModelRegistry:
 
 
 def _auth_raw(raw: dict[str, Any]) -> dict[str, Any] | None:
-    value = raw["authOverride"] if "authOverride" in raw else raw.get("auth")
+    value = raw.get("auth")
+    if value is None:
+        value = raw.get("authOverride")
     return dict(value) if isinstance(value, dict) and value else None
 
 

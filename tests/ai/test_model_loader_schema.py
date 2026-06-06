@@ -79,7 +79,7 @@ def test_model_registry_schema_accepts_auth_on_provider_endpoint_and_model() -> 
                 "endpoints": {
                     "openai-completions": {
                         "api": "openai-completions",
-                        "authOverride": {"extraHeaders": {"x-endpoint": "yes"}},
+                        "auth": {"extraHeaders": {"x-endpoint": "yes"}},
                         "models": {
                             "model-a": {
                                 "auth": {"apiKeyEnv": "MODEL_API_KEY"},
@@ -96,6 +96,58 @@ def test_model_registry_schema_accepts_auth_on_provider_endpoint_and_model() -> 
     }
 
     validate_model_registry_raw(raw)
+
+
+def test_model_registry_schema_accepts_legacy_auth_override() -> None:
+    raw = {
+        "providers": {
+            "custom": {
+                "endpoints": {
+                    "openai-completions": {
+                        "api": "openai-completions",
+                        "authOverride": {"apiKeyEnv": "CUSTOM_API_KEY"},
+                        "models": {
+                            "model-a": {
+                                "capabilities": {
+                                    "input": ["text"],
+                                    "output": ["text"],
+                                }
+                            }
+                        },
+                    }
+                },
+            }
+        }
+    }
+
+    validate_model_registry_raw(raw)
+
+
+def test_model_registry_schema_rejects_auth_and_legacy_auth_override() -> None:
+    raw = {
+        "providers": {
+            "custom": {
+                "endpoints": {
+                    "openai-completions": {
+                        "api": "openai-completions",
+                        "auth": {"apiKeyEnv": "CUSTOM_API_KEY"},
+                        "authOverride": {"apiKeyEnv": "LEGACY_API_KEY"},
+                        "models": {
+                            "model-a": {
+                                "capabilities": {
+                                    "input": ["text"],
+                                    "output": ["text"],
+                                }
+                            }
+                        },
+                    }
+                },
+            }
+        }
+    }
+
+    with pytest.raises(ValueError, match="both auth and authOverride"):
+        validate_model_registry_raw(raw)
 
 
 def test_model_registry_schema_rejects_invalid_auth_shape() -> None:
