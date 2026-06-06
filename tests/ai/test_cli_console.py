@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import pytest
 
-from loushang.ai.cli.__main__ import main
+from loushang.ai.cli.__main__ import _resolve_console_api_key, main
 from loushang.ai.model.domain import Auth, Capabilities, Endpoint, Model, Provider
 from loushang.ai.model.registry import ModelRegistry
 from loushang.ai.types import AssistantMessage, Usage
@@ -165,6 +165,25 @@ def test_console_authenticates_after_endpoint_before_model_selection(
         main(["console"])
 
     assert events[:3] == ["input", "getpass", "input"]
+
+
+def test_console_api_key_uses_first_available_env_candidate(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("PRIMARY_KEY", "")
+    monkeypatch.setenv("SECONDARY_KEY", "secondary-secret")
+    monkeypatch.setenv("FALLBACK_KEY", "fallback-secret")
+
+    api_key, source = _resolve_console_api_key(
+        "custom",
+        Auth(
+            api_key_env="FALLBACK_KEY",
+            api_key_envs=("PRIMARY_KEY", "SECONDARY_KEY"),
+        ),
+    )
+
+    assert api_key == "secondary-secret"
+    assert source == "env:SECONDARY_KEY"
 
 
 def test_console_can_switch_model(
