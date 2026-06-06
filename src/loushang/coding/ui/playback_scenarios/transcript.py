@@ -1,9 +1,15 @@
 from __future__ import annotations
 
+from io import StringIO
+from types import SimpleNamespace
+
+from loushang.coding.ui.controller import CodingUiController
+from loushang.coding.ui.mode import _native_prompt_handler
 from loushang.coding.ui.perf_probe import build_synthetic_long_transcript_records
 from loushang.coding.ui.playback import (
     NativeTuiInputPlaybackResult,
     NativeTuiInputScenario,
+    NativeTuiLoopPlayback,
 )
 from loushang.coding.ui.playback_scenarios.budgets import (
     INTERACTION_FRAME_BUDGET,
@@ -103,10 +109,89 @@ def _run_transcript_reader_modal() -> NativeTuiInputPlaybackResult:
     return result
 
 
+def _run_transcript_reader_copy_command() -> object:
+    playback = NativeTuiLoopPlayback(width=72, height=9)
+    playback.app.state.records.extend(
+        (
+            AssistantMessageRecord("reader-visible latest answer"),
+            AssistantMessageRecord("reader-visible older answer"),
+        )
+    )
+    session = _CopyCommandPlaybackSession(
+        recent_texts=(
+            "latest structured answer",
+            "previous structured answer",
+        )
+    )
+    controller = CodingUiController(session=session)
+
+    result = playback.run(
+        (0.00, "\x0f"),
+        (0.01, "\x02"),
+        (0.02, "\x0f"),
+        (0.03, "/copy 2\r"),
+        (0.05, ""),
+        handle_prompt=_native_prompt_handler(
+            app=playback.app,
+            controller=controller,
+            stderr=StringIO(),
+            verbose=False,
+        ),
+    )
+
+    result.assert_exit_code(0)
+    result.assert_text_contains("Transcript window")
+    result.assert_text_contains("Ctrl+O/q/Esc close")
+    result.assert_text_contains("Copied /copy 2 from structured source.")
+    result.assert_no_clear_screen()
+    assert session.commands == [("copy", "2")]
+    assert session.prompts == []
+    assert session.copied == ["previous structured answer"]
+    return result
+
+
 def _step_screen(result: NativeTuiInputPlaybackResult, step_index: int) -> str:
     step = result.steps[step_index]
     assert step.frame is not None
     return strip_control_sequences("\n".join(step.frame.screen_after.visible_lines))
+
+
+class _CopyCommandPlaybackSession:
+    def __init__(self, *, recent_texts: tuple[str, ...]) -> None:
+        self.recent_texts = recent_texts
+        self.commands: list[tuple[str, str]] = []
+        self.prompts: list[str] = []
+        self.copied: list[str] = []
+
+    def list_commands(self) -> list[object]:
+        return [
+            SimpleNamespace(
+                name="copy",
+                description="Copy an assistant message to clipboard",
+                source="builtin",
+                argument_hint="[N]",
+            )
+        ]
+
+    async def execute_command_async(self, invocation_name: str, args: str) -> object:
+        self.commands.append((invocation_name, args))
+        copy_index = int(args.strip() or "1")
+        text = self.recent_texts[copy_index - 1]
+        self.copied.append(text)
+        return SimpleNamespace(
+            invocation_name=invocation_name,
+            result={
+                "source": "builtin",
+                "command": invocation_name,
+                "status": "ok",
+                "message": f"Copied /copy {copy_index} from structured source.",
+                "index": copy_index,
+                "characters": len(text),
+            },
+        )
+
+    async def prompt(self, text: str, **_kwargs: object) -> None:
+        self.prompts.append(text)
 
 
 TRANSCRIPT_SCENARIOS = (
@@ -124,6 +209,12 @@ TRANSCRIPT_SCENARIOS = (
         name="transcript-reader-modal",
         description="Open the transcript reader, keep input modal, close it, and resume composing.",
         run=_run_transcript_reader_modal,
+    ),
+    NativePlaybackScenarioSpec(
+        name="transcript-reader-copy-command",
+        description="Open and close the transcript reader, then copy the second assistant response from structured history.",
+        run=_run_transcript_reader_copy_command,
+        tags=("transcript", "command"),
     ),
 )
 
