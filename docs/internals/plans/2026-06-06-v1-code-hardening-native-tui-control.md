@@ -30,9 +30,12 @@ branches based on `main` or `origin/main`.
 - `docs/articles/` is untracked in the control lane and is intentionally outside
   this control plan.
 - TUI lane exists at `.worktrees/tui` on `feature/tui-reader-footer-hints` with
-  uncommitted changes that must be reviewed before branch switching.
-- code lane is expected at `.worktrees/code` and should be created from current
-  `main`.
+  uncommitted transcript reader/footer hint changes. Focused tests pass:
+  `tests/coding/test_native_tui_transcript_reader.py` and
+  `tests/coding/test_native_tui_playback_harness.py`.
+- code lane exists at `.worktrees/code` on `feature/v1-code-hardening`, created
+  from current `main`. Baseline coding tests pass:
+  `tests/coding/test_cli.py` and `tests/coding/test_bootstrap.py`.
 - AI and agent lanes should be created only when active work requires them.
 
 ## Control Responsibilities
@@ -57,10 +60,10 @@ branches based on `main` or `origin/main`.
 
 ### P0: Lane Bootstrap
 
-- Inspect and classify existing TUI lane dirty changes.
-- Create `.worktrees/code` from current `main`.
-- Verify both active implementation lanes have a clean or intentionally tracked
-  baseline before assigning new work.
+- [x] Inspect and classify existing TUI lane dirty changes.
+- [x] Create `.worktrees/code` from current `main`.
+- [x] Verify both active implementation lanes have a clean or intentionally
+  tracked baseline before assigning new work.
 
 ### P1: V1 Code Hardening
 
@@ -77,6 +80,53 @@ branches based on `main` or `origin/main`.
   modal input routing.
 - Keep TUI changes inside product adapter / TUI boundaries unless a control-lane
   contract change has been accepted.
+
+## Active Briefs
+
+### TUI Lane Brief
+
+```text
+Lane:
+  /home/dev/workspace/loushang/.worktrees/tui
+
+Branch:
+  feature/tui-reader-footer-hints
+
+Mission:
+  Finish the current transcript reader/footer hints slice.
+
+Allowed files:
+  docs/internals/architecture/tui/native-terminal-core/key-designs/KD-018-transcript-reader-and-copy-semantics.md
+  src/loushang/coding/ui/transcript_reader.py
+  src/loushang/coding/ui/playback_scenarios/transcript.py
+  tests/coding/test_native_tui_transcript_reader.py
+  tests/coding/test_native_tui_playback_harness.py
+
+Verification:
+  uv --cache-dir /home/dev/workspace/loushang/.uv-cache run --extra dev pytest tests/coding/test_native_tui_transcript_reader.py tests/coding/test_native_tui_playback_harness.py -q
+```
+
+### Code Lane Brief
+
+```text
+Lane:
+  /home/dev/workspace/loushang/.worktrees/code
+
+Branch:
+  feature/v1-code-hardening
+
+Mission:
+  Implement the first V1 code hardening slice: executable/source identity
+  diagnostics so users can tell whether they are running the repo .venv script
+  or a packaged binary.
+
+Forbidden:
+  Do not touch Native TUI renderer/playback internals in this slice.
+
+Verification:
+  Start with focused CLI tests, then run tests/coding/test_cli.py and
+  tests/coding/test_bootstrap.py before reporting.
+```
 
 ## Agent Brief Template
 
