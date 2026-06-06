@@ -22,3 +22,4 @@ reference docs; they describe the invariants that tests must enforce.
 - [KD-015: Stable Tail Window And Transcript Block Cache](./KD-015-stable-tail-window-and-transcript-block-cache.md)
 - [KD-016: Resume Overflow Recovery Regression Harness](./KD-016-resume-overflow-recovery-regression-harness.md)
 - [KD-017: Composer Selection And Selected Range](./KD-017-composer-selection-and-selected-range.md)
+- [KD-018: Transcript Reader And Copy Semantics](./KD-018-transcript-reader-and-copy-semantics.md)
