@@ -30,6 +30,10 @@ def test_testing_strategy_documents_product_composed_playback() -> None:
         assert "product-composed-interaction" in text
         assert "loushang-product-playback" in text
 
+    assert "assert_last_cursor_on_visible_line" in playback
+    assert "logical_cursor" in playback
+    assert "screen_cursor" in playback
+
 
 def test_theme_key_design_lists_editor_selection_token() -> None:
     text = Path(

@@ -22,8 +22,15 @@ Useful assertions:
 - `assert_operation_class(step, "...")` for differential update expectations
 - `assert_visible_contains(text)` and `assert_visible_not_contains(text)` for visible terminal output
 - `assert_cursor_matches_diagnostics(step)` when cursor anchoring is part of the behavior
+- `assert_last_cursor_on_visible_line(text, column=n)` when a long transcript
+  makes logical cursor rows differ from visible screen rows
 
 Avoid broad snapshot-only tests. Prefer targeted assertions on terminal operations, diagnostics, visible text, and cursor/viewport invariants.
+
+JSONL traces include `logical_cursor`, `viewport`, `hardware_cursor`, and
+`screen_cursor`. Use `screen_cursor` for the fake terminal's final physical
+cursor position, and keep `logical_cursor`/`viewport` for diagnosing render-loop
+line mapping.
 
 Useful direct smoke commands:
 
