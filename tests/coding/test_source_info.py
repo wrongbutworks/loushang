@@ -3,6 +3,26 @@ from __future__ import annotations
 from pathlib import Path
 
 
+def test_executable_source_identity_projects_stable_runtime_details(monkeypatch, tmp_path) -> None:
+    import sys
+
+    from loushang.coding.source_info import executable_source_identity
+
+    monkeypatch.setattr(sys, "executable", "/tmp/python")
+    monkeypatch.setattr(sys, "argv", ["/tmp/bin/loushang", "--list-diagnostics"])
+
+    details = executable_source_identity(cwd=tmp_path)
+
+    assert details["python_executable"] == "/tmp/python"
+    assert details["argv0"] == "/tmp/bin/loushang"
+    assert details["cwd"] == str(tmp_path)
+    assert details["package_name"] == "loushang"
+    assert isinstance(details["package_version"], str)
+    assert isinstance(details["loushang_module_file"], str)
+    assert isinstance(details["coding_module_file"], str)
+    assert details["import_source"] in {"editable", "installed", "source-tree", "unknown"}
+
+
 def test_source_info_from_resource_descriptor_projects_package_provenance() -> None:
     from loushang.coding.loader import PromptFragmentDescriptor
     from loushang.coding.source_info import source_info_from_resource_descriptor
