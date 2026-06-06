@@ -126,9 +126,11 @@ class NativeTuiInputPlayback:
             height=rows,
         )
         self.render_loop = RenderLoop(app, clear_scrollback_policy="disabled")
+        port = FakeTerminalPort(size=TerminalSize(columns=columns, rows=rows))
+        app.surface_host = TuiRuntime(render_loop=self.render_loop, terminal=port).overlay_host()
         self.harness = PlaybackHarness(
             render=self._render,
-            port=FakeTerminalPort(size=TerminalSize(columns=columns, rows=rows)),
+            port=port,
         )
 
     @property

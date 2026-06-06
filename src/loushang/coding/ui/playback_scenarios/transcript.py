@@ -10,7 +10,8 @@ from loushang.coding.ui.playback_scenarios.budgets import (
     LONG_TRANSCRIPT_FRAME_BUDGET,
 )
 from loushang.coding.ui.playback_suite import NativePlaybackScenarioSpec
-from loushang.tui.transcript import ToolExecutionRecord
+from loushang.tui import strip_control_sequences
+from loushang.tui.transcript import AssistantMessageRecord, ToolExecutionRecord
 
 
 def _run_long_transcript_input() -> NativeTuiInputPlaybackResult:
@@ -59,6 +60,51 @@ def _run_tool_output_preview() -> NativeTuiInputPlaybackResult:
     return result
 
 
+def _run_transcript_reader_modal() -> NativeTuiInputPlaybackResult:
+    result = (
+        NativeTuiInputScenario(width=72, height=8)
+        .with_records(
+            (
+                AssistantMessageRecord(
+                    "\n".join(f"answer line {index}" for index in range(12))
+                ),
+            )
+        )
+        .with_composer_text("draft")
+        .with_completion_items("drafted")
+        .render()
+        .key("\x0f")
+        .tab()
+        .key("\x1b[5~")
+        .ctrl_c()
+        .type_text("!")
+        .run()
+    )
+    result.assert_composer_text("draft!")
+    result.assert_prompt_texts()
+    result.assert_local_texts()
+    result.assert_no_abort_requested()
+    result.assert_visible_contains("› draft!")
+    result.assert_visible_not_contains("Ctrl+O/q/Esc close")
+    result.assert_no_clear_screen()
+
+    opened_screen = _step_screen(result, 1)
+    tab_screen = _step_screen(result, 2)
+    page_up_screen = _step_screen(result, 3)
+    assert "Ctrl+O/q/Esc close" in opened_screen
+    assert "answer line 11" in opened_screen
+    assert "Ctrl+O/q/Esc close" in tab_screen
+    assert result.step_coding_states[2]["composer_text"] == "draft"
+    assert "answer line 0" in page_up_screen
+    return result
+
+
+def _step_screen(result: NativeTuiInputPlaybackResult, step_index: int) -> str:
+    step = result.steps[step_index]
+    assert step.frame is not None
+    return strip_control_sequences("\n".join(step.frame.screen_after.visible_lines))
+
+
 TRANSCRIPT_SCENARIOS = (
     NativePlaybackScenarioSpec(
         name="long-transcript-input",
@@ -69,6 +115,11 @@ TRANSCRIPT_SCENARIOS = (
         name="tool-output-preview",
         description="Render long tool output as head, hidden-count, and tail without flicker.",
         run=_run_tool_output_preview,
+    ),
+    NativePlaybackScenarioSpec(
+        name="transcript-reader-modal",
+        description="Open the transcript reader, keep input modal, close it, and resume composing.",
+        run=_run_transcript_reader_modal,
     ),
 )
 

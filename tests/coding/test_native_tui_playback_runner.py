@@ -124,6 +124,7 @@ def test_native_tui_playback_transcript_scenarios_live_in_transcript_module() ->
     assert [scenario.name for scenario in TRANSCRIPT_SCENARIOS] == [
         "long-transcript-input",
         "tool-output-preview",
+        "transcript-reader-modal",
     ]
 
 
@@ -141,6 +142,7 @@ def test_native_tui_playback_runner_lists_default_scenarios(capsys) -> None:
     assert "history-navigation" in captured.out
     assert "idle-escape-clears-draft" in captured.out
     assert "long-transcript-input" in captured.out
+    assert "transcript-reader-modal" in captured.out
     assert "escape-pending-steer" in captured.out
     assert "running-steer-queued" in captured.out
     assert "running-escape-keeps-queued-steer" in captured.out
@@ -262,6 +264,14 @@ def test_native_tui_playback_runner_runs_composer_selection_stress_scenario(
     captured = capsys.readouterr()
     assert exit_code == 0
     assert "PASS composer-selection-stress" in captured.out
+
+
+def test_native_tui_playback_runner_runs_transcript_reader_scenario(capsys) -> None:
+    exit_code = run_playback_cli(["transcript-reader-modal"])
+
+    captured = capsys.readouterr()
+    assert exit_code == 0
+    assert "PASS transcript-reader-modal" in captured.out
 
 
 def test_native_tui_playback_runner_runs_product_composed_interaction_scenario(
