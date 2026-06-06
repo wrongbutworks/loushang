@@ -272,6 +272,31 @@ class TranscriptView:
         return rendered
 
 
+def render_transcript_records(
+    records: tuple[DisplayRecord, ...] | list[DisplayRecord],
+    *,
+    width: int,
+    max_height: int,
+    draft: AssistantMessageRecord | None = None,
+    verbose_errors: bool = False,
+    theme: ThemeResolver | None = None,
+    capabilities: TerminalCapabilities | None = None,
+    code_highlighter: CodeHighlighterLike | None = None,
+    markdown_cache: MarkdownRenderCache | None = None,
+) -> tuple[RenderLine, ...]:
+    view = TranscriptView(
+        records,
+        draft=draft,
+        verbose_errors=verbose_errors,
+        theme=theme,
+        capabilities=capabilities,
+        code_highlighter=code_highlighter,
+        markdown_cache=markdown_cache,
+    )
+    rendered = view.render(RenderConstraints(width=width, max_height=max_height))
+    return rendered.lines
+
+
 def _record_is_transient(record: DisplayRecord) -> bool:
     return isinstance(record, AssistantMessageRecord) and not record.stable
 

@@ -25,6 +25,7 @@ InputIntentKind = Literal[
     "reject",
     "dialog_confirm",
     "dialog_cancel",
+    "consumed",
 ]
 SubmitMode = Literal["submit", "follow_up", "steer"]
 KeyEventType = Literal["press", "repeat", "release"]
