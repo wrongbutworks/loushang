@@ -357,8 +357,13 @@ def _merge_auth_raw(
     merged = dict(base)
     for key, value in override.items():
         if key == "extraHeaders" and isinstance(value, dict):
+            existing_extra_headers = merged.get(key)
             merged[key] = {
-                **dict(merged.get(key) if isinstance(merged.get(key), dict) else {}),
+                **dict(
+                    existing_extra_headers
+                    if isinstance(existing_extra_headers, dict)
+                    else {}
+                ),
                 **value,
             }
             continue
