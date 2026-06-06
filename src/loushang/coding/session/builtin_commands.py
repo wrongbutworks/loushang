@@ -6,12 +6,18 @@ from collections.abc import Awaitable, Callable, Mapping
 from dataclasses import asdict, dataclass, is_dataclass
 from pathlib import Path
 
-from loushang.coding.commands.types import BUILTIN_SLASH_COMMANDS, SessionCommandDescriptor
-from loushang.coding.platform.changelog import find_changelog_path, format_changelog_entries, parse_changelog
+from loushang.coding.commands.types import (
+    BUILTIN_SLASH_COMMANDS,
+    SessionCommandDescriptor,
+)
+from loushang.coding.platform.changelog import (
+    find_changelog_path,
+    format_changelog_entries,
+    parse_changelog,
+)
 from loushang.coding.platform.clipboard import ClipboardCopyResult, copy_to_clipboard
 from loushang.coding.session.types import CommandExecutionResult
 from loushang.coding.source_info import create_source_info
-
 
 BuiltinCallable = Callable[..., object | Awaitable[object]]
 
@@ -24,6 +30,7 @@ class BuiltinCommandBackend:
     export_to_jsonl: Callable[[str | None], str] | None = None
     compact: Callable[[str | None], object | Awaitable[object]] | None = None
     reload: Callable[[], object | Awaitable[object]] | None = None
+    get_recent_assistant_texts: Callable[[], tuple[str, ...]] | None = None
     get_last_assistant_text: Callable[[], str | None] | None = None
     copy_text: Callable[[str], ClipboardCopyResult] = copy_to_clipboard
     get_changelog: Callable[[str], object] | None = None
@@ -69,7 +76,7 @@ async def execute_builtin_command_async(
         case "export":
             return _execute_export(args, backend)
         case "copy":
-            return _execute_copy(backend)
+            return _execute_copy(args, backend)
         case "changelog":
             return _execute_changelog(args, backend)
         case "compact":
@@ -117,20 +124,65 @@ def _execute_export(args: str, backend: BuiltinCommandBackend) -> CommandExecuti
     return _ok("export", format=export_format, path=path)
 
 
-def _execute_copy(backend: BuiltinCommandBackend) -> CommandExecutionResult:
-    if backend.get_last_assistant_text is None:
-        return _unsupported("copy")
-    text = backend.get_last_assistant_text()
-    if not text:
-        return _ok("copy", copied=False, characters=0, message="No assistant text is available.")
+def _execute_copy(args: str, backend: BuiltinCommandBackend) -> CommandExecutionResult:
+    copy_index = _parse_copy_index(args)
+    if copy_index is None:
+        return _error("copy", "Usage: /copy [N], where N is a positive integer.")
+    texts = _recent_assistant_texts(backend)
+    if not texts:
+        if backend.get_recent_assistant_texts is None and backend.get_last_assistant_text is None:
+            return _unsupported("copy")
+        return _ok(
+            "copy",
+            copied=False,
+            characters=0,
+            message=f"No assistant text is available for /copy {copy_index}.",
+            index=copy_index,
+        )
+    text_index = copy_index - 1
+    if text_index >= len(texts):
+        return _ok(
+            "copy",
+            copied=False,
+            characters=0,
+            message=f"No assistant text is available for /copy {copy_index}.",
+            index=copy_index,
+        )
+    text = texts[text_index]
     result = backend.copy_text(text)
     return _ok(
         "copy",
         copied=result.ok,
         characters=len(text),
-        command=result.command,
+        command_backend=result.command,
         message=result.message,
+        index=copy_index,
     )
+
+
+def _parse_copy_index(args: str) -> int | None:
+    stripped = args.strip()
+    if not stripped:
+        return 1
+    tokens = _split_args(stripped)
+    if len(tokens) != 1:
+        return None
+    try:
+        value = int(tokens[0])
+    except ValueError:
+        return None
+    return value if value > 0 else None
+
+
+def _recent_assistant_texts(backend: BuiltinCommandBackend) -> tuple[str, ...]:
+    if backend.get_recent_assistant_texts is not None:
+        return tuple(backend.get_recent_assistant_texts())
+    if backend.get_last_assistant_text is None:
+        return ()
+    text = backend.get_last_assistant_text()
+    if not text:
+        return ()
+    return (text,)
 
 
 def _execute_changelog(args: str, backend: BuiltinCommandBackend) -> CommandExecutionResult:

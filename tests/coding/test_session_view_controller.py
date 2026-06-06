@@ -2,7 +2,14 @@ from __future__ import annotations
 
 from loushang.agent import Agent
 from loushang.ai.model import Capabilities, Model
-from loushang.ai.types import AssistantMessage, TextPart, ToolCall, ToolResultMessage, Usage, UserMessage
+from loushang.ai.types import (
+    AssistantMessage,
+    TextPart,
+    ToolCall,
+    ToolResultMessage,
+    Usage,
+    UserMessage,
+)
 from loushang.coding.message import BashExecutionMessage
 from loushang.coding.session.types import ModelSelection, RunState
 from loushang.coding.store import SessionManager
@@ -51,6 +58,21 @@ def _assistant_message(text: str = "answer", *, total_tokens: int = 17, stop_rea
         response_id=None,
         usage=_usage(total_tokens),
         stop_reason=stop_reason,
+        error_message=None,
+        timestamp=1.0,
+    )
+
+
+def _tool_only_assistant_message() -> AssistantMessage:
+    return AssistantMessage(
+        role="assistant",
+        content=[ToolCall(type="toolCall", id="tool-1", name="read", arguments={"path": "README.md"})],
+        api="anthropic-messages",
+        provider="faux",
+        model="faux-model",
+        response_id=None,
+        usage=_usage(),
+        stop_reason="toolUse",
         error_message=None,
         timestamp=1.0,
     )
@@ -265,6 +287,30 @@ def test_session_view_controller_reads_forking_entries_and_last_assistant_text(t
     ]
     assert controller.get_entry_text(second_id) == "second"
     assert controller.get_last_assistant_text() == "assistant"
+
+
+def test_session_view_controller_returns_recent_assistant_texts_newest_first(tmp_path) -> None:
+    from loushang.coding.session.session_view_controller import SessionViewController
+
+    manager = SessionManager.new(session_dir=tmp_path, cwd="/tmp/project", persist=False)
+    manager.append_message(_assistant_message("first"))
+    manager.append_message(_assistant_message(""))
+    manager.append_message(_tool_only_assistant_message())
+    manager.append_message(_assistant_message("second"))
+    agent = Agent(initial_state={"system_prompt": "", "model": _model(), "thinking_level": "off"})
+    agent.state.set_messages(manager.build_session_context().messages)
+    controller = SessionViewController(
+        agent=agent,
+        session_manager=manager,
+        get_active_tool_names=lambda: [],
+        is_retrying=lambda: False,
+        is_compacting=lambda: False,
+        get_last_diagnostics=lambda limit=50: [],
+        get_model_selection=lambda: None,
+    )
+
+    assert controller.get_recent_assistant_texts() == ("second", "first")
+    assert controller.get_last_assistant_text() == "second"
 
 
 def test_session_view_controller_builds_state_snapshot(tmp_path) -> None:

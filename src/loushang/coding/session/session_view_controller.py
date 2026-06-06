@@ -6,9 +6,19 @@ from dataclasses import dataclass
 from loushang.agent import Agent
 from loushang.ai.types import AssistantMessage, ToolCall, ToolResultMessage, UserMessage
 from loushang.coding.compaction import estimate_context_tokens
-from loushang.coding.message import CompactionEntry, CustomMessageEntry, SessionMessageEntry
+from loushang.coding.message import (
+    CompactionEntry,
+    CustomMessageEntry,
+    SessionMessageEntry,
+)
 from loushang.coding.session.context_usage import build_context_usage_snapshot
-from loushang.coding.session.types import AgentSessionState, ContextUsage, ModelSelection, RunState, SessionStats
+from loushang.coding.session.types import (
+    AgentSessionState,
+    ContextUsage,
+    ModelSelection,
+    RunState,
+    SessionStats,
+)
 from loushang.coding.session.usage_payload import serialize_context_usage_payload
 from loushang.coding.store import SessionManager
 
@@ -203,15 +213,18 @@ class SessionViewController:
         return None
 
     def get_last_assistant_text(self) -> str | None:
-        message = _last_assistant_message(self.agent.state.messages)
-        if message is None:
-            return None
-        content = getattr(message, "content", None)
-        if isinstance(content, str):
-            return content
-        if isinstance(content, list):
-            return "".join(block.text for block in content if getattr(block, "type", None) == "text")
-        return None
+        texts = self.get_recent_assistant_texts()
+        return texts[0] if texts else None
+
+    def get_recent_assistant_texts(self) -> tuple[str, ...]:
+        texts: list[str] = []
+        for message in reversed(self.agent.state.messages):
+            if not isinstance(message, AssistantMessage):
+                continue
+            text = _extract_assistant_message_text(message)
+            if text is not None:
+                texts.append(text)
+        return tuple(texts)
 
 
 def _count_leaf_branches(nodes: list[object]) -> int:
@@ -227,10 +240,13 @@ def _count_leaf_branches(nodes: list[object]) -> int:
     return sum(_count(node) for node in nodes)
 
 
-def _last_assistant_message(messages: list[object]) -> AssistantMessage | None:
-    for message in reversed(messages):
-        if isinstance(message, AssistantMessage):
-            return message
+def _extract_assistant_message_text(message: AssistantMessage) -> str | None:
+    content = getattr(message, "content", None)
+    if isinstance(content, str):
+        return content if content.strip() else None
+    if isinstance(content, list):
+        text = "".join(block.text for block in content if getattr(block, "type", None) == "text")
+        return text if text.strip() else None
     return None
 
 

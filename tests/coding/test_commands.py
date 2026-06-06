@@ -34,7 +34,7 @@ def test_builtin_slash_commands_match_pi_style_core_surface() -> None:
         "export": "Export session (HTML default, or specify path: .html/.jsonl)",
         "import": "Import and resume a session from a JSONL file",
         "share": "Share session as a secret GitHub gist",
-        "copy": "Copy last agent message to clipboard",
+        "copy": "Copy an assistant message to clipboard",
         "name": "Set session display name",
         "session": "Show session info and stats",
         "terminal": "Show terminal capabilities and protocol diagnostics",

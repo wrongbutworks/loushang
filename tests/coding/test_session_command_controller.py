@@ -16,6 +16,7 @@ from loushang.coding.loader import (
     ResourceBundle,
     SkillDescriptor,
 )
+from loushang.coding.platform.clipboard import ClipboardCopyResult
 from loushang.coding.session.builtin_commands import BuiltinCommandBackend
 from loushang.coding.session.command_controller import CommandController
 from loushang.coding.store import SessionManager
@@ -219,6 +220,115 @@ def test_command_controller_executes_builtin_name_session_and_unsupported_comman
         "command": "model",
         "status": "unsupported",
         "message": 'Builtin command "/model" is handled by the interactive shell.',
+    }
+
+
+def test_command_controller_executes_builtin_copy_by_recent_index(tmp_path) -> None:
+    copied: list[str] = []
+
+    def _copy_text(text: str) -> ClipboardCopyResult:
+        copied.append(text)
+        return ClipboardCopyResult(ok=True, command="fake-copy", message="copied")
+
+    controller = CommandController(
+        session_manager=SessionManager.new(session_dir=tmp_path, cwd="/tmp/project", persist=False),
+        get_extension_runner=lambda: None,
+        get_resource_bundle=lambda: None,
+        get_diagnostics_service=lambda: None,
+        builtin_backend=BuiltinCommandBackend(
+            get_recent_assistant_texts=lambda: ("latest answer", "previous answer"),
+            copy_text=_copy_text,
+        ),
+    )
+
+    latest_result = asyncio.run(controller.execute_command_async("/copy", ""))
+    previous_result = asyncio.run(controller.execute_command_async("/copy", "2"))
+
+    assert copied == ["latest answer", "previous answer"]
+    assert latest_result is not None
+    assert latest_result.result == {
+        "source": "builtin",
+        "command": "copy",
+        "status": "ok",
+        "copied": True,
+        "characters": len("latest answer"),
+        "command_backend": "fake-copy",
+        "message": "copied",
+        "index": 1,
+    }
+    assert previous_result is not None
+    assert previous_result.result == {
+        "source": "builtin",
+        "command": "copy",
+        "status": "ok",
+        "copied": True,
+        "characters": len("previous answer"),
+        "command_backend": "fake-copy",
+        "message": "copied",
+        "index": 2,
+    }
+
+
+def test_command_controller_rejects_invalid_builtin_copy_index(tmp_path) -> None:
+    controller = CommandController(
+        session_manager=SessionManager.new(session_dir=tmp_path, cwd="/tmp/project", persist=False),
+        get_extension_runner=lambda: None,
+        get_resource_bundle=lambda: None,
+        get_diagnostics_service=lambda: None,
+        builtin_backend=BuiltinCommandBackend(get_recent_assistant_texts=lambda: ("latest answer",)),
+    )
+
+    zero_result = asyncio.run(controller.execute_command_async("/copy", "0"))
+    bad_result = asyncio.run(controller.execute_command_async("/copy", "latest"))
+    missing_result = asyncio.run(controller.execute_command_async("/copy", "2"))
+
+    assert zero_result is not None
+    assert zero_result.result == {
+        "source": "builtin",
+        "command": "copy",
+        "status": "error",
+        "message": "Usage: /copy [N], where N is a positive integer.",
+    }
+    assert bad_result is not None
+    assert bad_result.result == zero_result.result
+    assert missing_result is not None
+    assert missing_result.result == {
+        "source": "builtin",
+        "command": "copy",
+        "status": "ok",
+        "copied": False,
+        "characters": 0,
+        "message": "No assistant text is available for /copy 2.",
+        "index": 2,
+    }
+
+
+def test_command_controller_keeps_legacy_builtin_copy_backend(tmp_path) -> None:
+    copied: list[str] = []
+    controller = CommandController(
+        session_manager=SessionManager.new(session_dir=tmp_path, cwd="/tmp/project", persist=False),
+        get_extension_runner=lambda: None,
+        get_resource_bundle=lambda: None,
+        get_diagnostics_service=lambda: None,
+        builtin_backend=BuiltinCommandBackend(
+            get_last_assistant_text=lambda: "legacy latest",
+            copy_text=lambda text: (copied.append(text) or ClipboardCopyResult(ok=True, command="fake-copy")),
+        ),
+    )
+
+    result = asyncio.run(controller.execute_command_async("/copy", ""))
+
+    assert copied == ["legacy latest"]
+    assert result is not None
+    assert result.result == {
+        "source": "builtin",
+        "command": "copy",
+        "status": "ok",
+        "copied": True,
+        "characters": len("legacy latest"),
+        "command_backend": "fake-copy",
+        "message": None,
+        "index": 1,
     }
 
 

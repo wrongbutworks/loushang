@@ -43,7 +43,7 @@ BUILTIN_SLASH_COMMANDS: tuple[BuiltinSlashCommand, ...] = (
     BuiltinSlashCommand(name="export", description="Export session (HTML default, or specify path: .html/.jsonl)"),
     BuiltinSlashCommand(name="import", description="Import and resume a session from a JSONL file"),
     BuiltinSlashCommand(name="share", description="Share session as a secret GitHub gist"),
-    BuiltinSlashCommand(name="copy", description="Copy last agent message to clipboard"),
+    BuiltinSlashCommand(name="copy", description="Copy an assistant message to clipboard"),
     BuiltinSlashCommand(name="name", description="Set session display name"),
     BuiltinSlashCommand(name="session", description="Show session info and stats"),
     BuiltinSlashCommand(name="terminal", description="Show terminal capabilities and protocol diagnostics"),
