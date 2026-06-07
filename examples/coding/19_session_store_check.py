@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import json
 import os
 import sys
@@ -9,17 +10,15 @@ from tempfile import TemporaryDirectory
 if __package__ in {None, ""}:
     sys.path.insert(0, str(Path(__file__).resolve().parent))
 
-from loushang.ai.event_stream.stream import AssistantMessageEventStream
-from loushang.ai.model import Capabilities, Model
-from loushang.ai.types import AssistantMessage, TextPart, Usage, UserMessage
-from loushang.coding import create_agent_session_runtime
-
-import asyncio
-
 from _support import (
     ENV_EXAMPLES_SESSION_DIR,
     _resolve_model_catalog,
 )
+
+from loushang.ai.event_stream.stream import AssistantMessageEventStream
+from loushang.ai.model import Capabilities, Model
+from loushang.ai.types import AssistantMessage, TextPart, Usage, UserMessage
+from loushang.coding import create_agent_session_runtime
 
 
 def print_event(name: str, payload: dict[str, object]) -> None:
@@ -133,7 +132,7 @@ def main() -> None:
             persist=True,
             stream_fn=_offline_stream_fn,
         )
-        session = asyncio.get_event_loop().run_until_complete(runtime.create_session(cwd=str(Path(workspace))))  # type: ignore[call-arg]
+        session = asyncio.run(runtime.create_session(cwd=str(Path(workspace))))  # type: ignore[call-arg]
         print_event("tool.start", {"name": "session_create"})
         session_file = session.session_manager.get_session_file()
         if session_file is None:
@@ -143,7 +142,7 @@ def main() -> None:
         print_event("tool.end", {"name": "session_create", "status": "ok", "session_file": str(session_file)})
 
         print_event("message.start", {"step": "round-1", "session_id": session.session_manager.get_header().id})
-        asyncio.get_event_loop().run_until_complete(
+        asyncio.run(
             _prompt(session, "请确认会话已创建，并写入一条用户状态记录。", timeout_seconds=6.0)
         )
 
@@ -153,7 +152,7 @@ def main() -> None:
         print(f"messages_before_restore={before_count}")
         print(f"session_file_exists={session_file.exists()}")
 
-        restored = asyncio.get_event_loop().run_until_complete(runtime.restore_session(session_file))
+        restored = asyncio.run(runtime.restore_session(session_file))
         print_event("message.start", {"step": "restore"})
         print(f"restored_session_id={restored.session_manager.get_header().id}")
         print(f"messages_after_restore={_message_count(restored)}")
@@ -164,7 +163,7 @@ def main() -> None:
         print_event("message.end", {"step": "restore", "restore_ok": True})
 
         print_event("message.start", {"step": "round-2", "session_id": restored.session_manager.get_header().id})
-        asyncio.get_event_loop().run_until_complete(
+        asyncio.run(
             _prompt(restored, "请继续刚才会话，说明落盘与恢复一致。", timeout_seconds=6.0)
         )
         after_count = _message_count(restored)

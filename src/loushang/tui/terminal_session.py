@@ -103,7 +103,7 @@ class TerminalSession:
         if self._control_writes_allowed() and self.capabilities.enable_mouse:
             self._write_sequences(MOUSE_ENABLE_SEQUENCES)
             self._mouse_mode_active = True
-        if self.capabilities.query_cell_size:
+        if self._control_writes_allowed() and self.capabilities.query_cell_size:
             self._write_sequences(("\x1b[16t",))
         self._entered = True
         return self

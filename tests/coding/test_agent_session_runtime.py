@@ -2002,11 +2002,13 @@ def test_runtime_exposes_current_session_diagnostics(tmp_path) -> None:
         )
     )
 
-    assert [record.code for record in runtime.get_session_diagnostics()] == ["current_runtime_error"]
+    assert [record.code for record in runtime.get_session_diagnostics(DiagnosticsQuery(level="error"))] == [
+        "current_runtime_error"
+    ]
     assert [
         record.code for record in runtime.get_session_diagnostics(DiagnosticsQuery(code="current_runtime_error"))
     ] == ["current_runtime_error"]
-    summary = runtime.get_session_diagnostics_summary()
+    summary = runtime.get_session_diagnostics_summary(DiagnosticsQuery(level="error"))
     assert summary.total_count == 1
     assert summary.by_code == {"current_runtime_error": 1}
     assert summary.latest_error is not None
