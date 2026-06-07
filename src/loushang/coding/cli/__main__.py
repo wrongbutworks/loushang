@@ -2103,12 +2103,38 @@ def _normalize_skill_entry(skill: Any) -> dict[str, object] | None:
     if not isinstance(name, str) or not name:
         return None
     source_path = _safe_getattr(skill, "source_path", None)
+    source_root = _safe_getattr(skill, "source_root", None)
     return {
         "name": name,
         "id": _safe_getattr(skill, "id", "") or "",
+        "canonical_name": _safe_getattr(skill, "canonical_name", "") or "",
+        "description": _safe_getattr(skill, "description", "") or "",
         "path": _safe_string(source_path),
         "source_kind": _safe_getattr(skill, "source_kind", "") or "",
+        "source_scope": _safe_getattr(skill, "source_scope", "") or "",
+        "source": _safe_getattr(skill, "source", "") or "",
+        "source_root": _safe_string(source_root) if source_root is not None else "",
+        "disable_model_invocation": bool(_safe_getattr(skill, "disable_model_invocation", False)),
         "enabled": bool(_safe_getattr(skill, "enabled", True)),
+        "diagnostics": [
+            normalized
+            for diagnostic in _safe_getattr(skill, "diagnostics", ()) or ()
+            if (normalized := _normalize_skill_diagnostic(diagnostic)) is not None
+        ],
+    }
+
+
+def _normalize_skill_diagnostic(diagnostic: Any) -> dict[str, object] | None:
+    code = _safe_getattr(diagnostic, "code", None)
+    if not isinstance(code, str) or not code:
+        return None
+    return {
+        "code": code,
+        "message": _safe_getattr(diagnostic, "message", "") or "",
+        "path": _safe_string(_safe_getattr(diagnostic, "source_path", "")),
+        "resource_type": _safe_getattr(diagnostic, "resource_type", None),
+        "source_kind": _safe_getattr(diagnostic, "source_kind", None),
+        "metadata": _json_safe_value(_safe_getattr(diagnostic, "metadata", {})),
     }
 
 

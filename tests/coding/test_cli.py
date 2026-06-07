@@ -5937,7 +5937,7 @@ def test_run_cli_lists_diagnostics_as_tsv_and_returns_early(tmp_path) -> None:
 
 def test_run_cli_lists_skills_as_json(tmp_path) -> None:
     from loushang.coding.cli.__main__ import run_cli
-    from loushang.coding.loader import SkillDescriptor
+    from loushang.coding.loader import ResourceDiagnostic, SkillDescriptor
 
     session = FakeSession("session-1")
     session.resource_bundle.skills = [
@@ -5945,7 +5945,23 @@ def test_run_cli_lists_skills_as_json(tmp_path) -> None:
             name="debug",
             source_path=Path("/tmp/project/skills/debug/SKILL.md"),
             content="Debug skill",
+            description="Debug failures by tracing the narrowest failing path.",
+            disable_model_invocation=True,
             source_kind="project_local",
+            source_scope="project",
+            source="filesystem",
+            canonical_name="debug/SKILL.md",
+            source_root=Path("/tmp/project/skills"),
+            diagnostics=(
+                ResourceDiagnostic(
+                    code="invalid_skill_description",
+                    message="Skill frontmatter description is required.",
+                    source_path=Path("/tmp/project/skills/debug/SKILL.md"),
+                    resource_type="skill",
+                    source_kind="project_local",
+                    metadata={"field": "description"},
+                ),
+            ),
         )
     ]
     runtime = FakeRuntime(session)
@@ -5969,10 +5985,81 @@ def test_run_cli_lists_skills_as_json(tmp_path) -> None:
     assert json.loads(stdout.getvalue()) == [
         {
             "name": "debug",
-            "id": "debug",
+            "id": "debug/SKILL.md",
+            "canonical_name": "debug/SKILL.md",
+            "description": "Debug failures by tracing the narrowest failing path.",
             "path": "/tmp/project/skills/debug/SKILL.md",
             "source_kind": "project_local",
+            "source_scope": "project",
+            "source": "filesystem",
+            "source_root": "/tmp/project/skills",
+            "disable_model_invocation": True,
             "enabled": True,
+            "diagnostics": [
+                {
+                    "code": "invalid_skill_description",
+                    "message": "Skill frontmatter description is required.",
+                    "path": "/tmp/project/skills/debug/SKILL.md",
+                    "resource_type": "skill",
+                    "source_kind": "project_local",
+                    "metadata": {"field": "description"},
+                }
+            ],
+        }
+    ]
+    assert stderr.getvalue() == ""
+
+
+def test_run_cli_lists_project_skill_provenance_as_json(tmp_path) -> None:
+    from loushang.coding.cli.__main__ import run_cli
+    from loushang.coding.loader import DefaultResourceLoader
+
+    skill_dir = tmp_path / "skills" / "debug"
+    skill_dir.mkdir(parents=True)
+    (skill_dir / "SKILL.md").write_text(
+        "---\n"
+        "name: debug\n"
+        "description: Debug failures.\n"
+        "---\n\n"
+        "Debug body.",
+        encoding="utf-8",
+    )
+    loader = DefaultResourceLoader()
+    bundle = loader.discover_resources(tmp_path)
+    session = FakeSession("session-1")
+    session.resource_bundle = bundle
+    runtime = FakeRuntime(session)
+    stdout = StringIO()
+    stderr = StringIO()
+
+    async def scenario() -> None:
+        exit_code = await run_cli(
+            ["--list-skills", "--list-skills-format", "json"],
+            stdin=StringIO(""),
+            stdout=stdout,
+            stderr=stderr,
+            cwd=tmp_path,
+            services=_fake_services(),
+            runtime_builder=lambda **kwargs: runtime,
+        )
+        assert exit_code == 0
+
+    asyncio.run(scenario())
+
+    assert json.loads(stdout.getvalue()) == [
+        {
+            "name": "debug",
+            "id": "debug/SKILL.md",
+            "canonical_name": "debug/SKILL.md",
+            "description": "Debug failures.",
+            "path": str(skill_dir / "SKILL.md"),
+            "source_kind": "project_local",
+            "source_scope": "project",
+            "source": "filesystem",
+            "source_root": str(tmp_path / "skills"),
+            "disable_model_invocation": False,
+            "enabled": True,
+            "diagnostics": [],
         }
     ]
     assert stderr.getvalue() == ""
