@@ -95,6 +95,7 @@ async def _run_native_interactive_tui(
     app.transcript_source_factory = lambda: SessionTranscriptSource(
         session,
         tool_definition_resolver=tool_definition_resolver,
+        active_window_state=app.state,
     )
     history_records = session_history_records(session, tool_definition_resolver=tool_definition_resolver)
     if history_records:

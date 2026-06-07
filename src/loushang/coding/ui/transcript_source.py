@@ -45,17 +45,29 @@ class SessionTranscriptSource:
     tool_definition_resolver: Any | None = None
     max_tool_body_lines: int = 8
     source_label: str = "Full transcript"
+    active_window_state: NativeCodingTuiState | None = None
 
     def snapshot(self) -> TranscriptSnapshot:
+        session_records = session_history_records(
+            self.session,
+            tool_definition_resolver=self.tool_definition_resolver,
+            max_tool_body_lines=self.max_tool_body_lines,
+        )
+        records = session_records
+        complete = True
+        source_label = self.source_label
+        if self.active_window_state is not None:
+            active_records = tuple(self.active_window_state.records)
+            merged_records = _merge_active_window_records(session_records, active_records)
+            if merged_records != session_records:
+                records = merged_records
+                complete = False
+                source_label = f"{self.source_label} + live window"
         return TranscriptSnapshot(
-            records=session_history_records(
-                self.session,
-                tool_definition_resolver=self.tool_definition_resolver,
-                max_tool_body_lines=self.max_tool_body_lines,
-            ),
+            records=records,
             evicted_prefix_record_count=0,
-            complete=True,
-            source_label=self.source_label,
+            complete=complete,
+            source_label=source_label,
         )
 
     def recent_assistant_texts(self) -> tuple[str, ...]:
@@ -70,6 +82,29 @@ def _recent_assistant_texts(records: Iterable[DisplayRecord]) -> tuple[str, ...]
         if record.text.strip():
             texts.append(record.text)
     return tuple(texts)
+
+
+def _merge_active_window_records(
+    session_records: tuple[DisplayRecord, ...],
+    active_records: tuple[DisplayRecord, ...],
+) -> tuple[DisplayRecord, ...]:
+    if not active_records:
+        return session_records
+    overlap_count = _suffix_prefix_overlap_count(session_records, active_records)
+    if overlap_count == len(active_records):
+        return session_records
+    return (*session_records, *active_records[overlap_count:])
+
+
+def _suffix_prefix_overlap_count(
+    left: tuple[DisplayRecord, ...],
+    right: tuple[DisplayRecord, ...],
+) -> int:
+    max_overlap = min(len(left), len(right))
+    for overlap_count in range(max_overlap, 0, -1):
+        if left[-overlap_count:] == right[:overlap_count]:
+            return overlap_count
+    return 0
 
 
 __all__ = [
