@@ -29,14 +29,14 @@ class ActiveWindowTranscriptSource:
 
     def snapshot(self) -> TranscriptSnapshot:
         return TranscriptSnapshot(
-            records=tuple(self.state.records),
+            records=_active_window_records(self.state),
             evicted_prefix_record_count=max(0, self.state.evicted_prefix_record_count),
             complete=False,
             source_label="Transcript window",
         )
 
     def recent_assistant_texts(self) -> tuple[str, ...]:
-        return _recent_assistant_texts(self.state.records)
+        return _recent_assistant_texts(_active_window_records(self.state))
 
 
 @dataclass(frozen=True, slots=True)
@@ -57,7 +57,7 @@ class SessionTranscriptSource:
         complete = True
         source_label = self.source_label
         if self.active_window_state is not None:
-            active_records = tuple(self.active_window_state.records)
+            active_records = _active_window_records(self.active_window_state)
             merged_records = _merge_active_window_records(session_records, active_records)
             if merged_records != session_records:
                 records = merged_records
@@ -82,6 +82,14 @@ def _recent_assistant_texts(records: Iterable[DisplayRecord]) -> tuple[str, ...]
         if record.text.strip():
             texts.append(record.text)
     return tuple(texts)
+
+
+def _active_window_records(state: NativeCodingTuiState) -> tuple[DisplayRecord, ...]:
+    records = tuple(state.records)
+    assistant_draft = state.assistant_draft
+    if assistant_draft is not None:
+        return (*records, assistant_draft)
+    return records
 
 
 def _merge_active_window_records(

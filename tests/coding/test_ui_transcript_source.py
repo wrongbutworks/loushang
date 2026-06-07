@@ -38,6 +38,28 @@ def test_active_window_transcript_source_returns_snapshot_metadata() -> None:
     assert snapshot.source_label == "Transcript window"
 
 
+def test_active_window_transcript_source_includes_live_assistant_draft() -> None:
+    state = NativeCodingTuiState(model_label="model", cwd="/tmp/project", branch=None, session_label=None)
+    state.replace_transcript_window(
+        (
+            UserPromptRecord("hello"),
+            AssistantMessageRecord("answer"),
+        ),
+    )
+    state.begin_run(started_at=1.0)
+    state.append_assistant_chunk("streaming draft")
+
+    snapshot = ActiveWindowTranscriptSource(state).snapshot()
+
+    assert snapshot.records == (
+        UserPromptRecord("hello"),
+        AssistantMessageRecord("answer"),
+        AssistantMessageRecord("streaming draft", stable=False),
+    )
+    assert snapshot.complete is False
+    assert snapshot.source_label == "Transcript window"
+
+
 def test_active_window_transcript_source_recent_assistant_texts_are_filtered_newest_first() -> None:
     state = NativeCodingTuiState(model_label="model", cwd="/tmp/project", branch=None, session_label=None)
     state.records.extend(
@@ -109,6 +131,34 @@ def test_session_transcript_source_merges_live_active_window_records() -> None:
         UserPromptRecord("full question"),
         AssistantMessageRecord("full answer", stable=True),
         ToolExecutionRecord(name="bash run-tests", state="running", elapsed_seconds=0.1, output="live output"),
+    )
+
+
+def test_session_transcript_source_merges_live_assistant_draft() -> None:
+    session = _Session(
+        messages=[
+            UserMessage(role="user", content=[TextPart(type="text", text="full question")], timestamp=1.0),
+            _assistant_message("full answer", timestamp=2.0),
+        ]
+    )
+    state = NativeCodingTuiState(model_label="model", cwd="/tmp/project", branch=None, session_label=None)
+    state.replace_transcript_window(
+        (
+            UserPromptRecord("full question"),
+            AssistantMessageRecord("full answer", stable=True),
+        )
+    )
+    state.begin_run(started_at=3.0)
+    state.append_assistant_chunk("streaming draft")
+
+    snapshot = SessionTranscriptSource(session, active_window_state=state).snapshot()
+
+    assert snapshot.complete is False
+    assert snapshot.source_label == "Full transcript + live window"
+    assert snapshot.records == (
+        UserPromptRecord("full question"),
+        AssistantMessageRecord("full answer", stable=True),
+        AssistantMessageRecord("streaming draft", stable=False),
     )
 
 
