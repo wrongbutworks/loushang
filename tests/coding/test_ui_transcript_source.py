@@ -112,6 +112,34 @@ def test_session_transcript_source_merges_live_active_window_records() -> None:
     )
 
 
+def test_session_transcript_source_merges_live_assistant_draft() -> None:
+    session = _Session(
+        messages=[
+            UserMessage(role="user", content=[TextPart(type="text", text="full question")], timestamp=1.0),
+            _assistant_message("full answer", timestamp=2.0),
+        ]
+    )
+    state = NativeCodingTuiState(model_label="model", cwd="/tmp/project", branch=None, session_label=None)
+    state.replace_transcript_window(
+        (
+            UserPromptRecord("full question"),
+            AssistantMessageRecord("full answer", stable=True),
+        )
+    )
+    state.begin_run(started_at=3.0)
+    state.append_assistant_chunk("streaming draft")
+
+    snapshot = SessionTranscriptSource(session, active_window_state=state).snapshot()
+
+    assert snapshot.complete is False
+    assert snapshot.source_label == "Full transcript + live window"
+    assert snapshot.records == (
+        UserPromptRecord("full question"),
+        AssistantMessageRecord("full answer", stable=True),
+        AssistantMessageRecord("streaming draft", stable=False),
+    )
+
+
 def _assistant_message(text: str, *, timestamp: float) -> AssistantMessage:
     return AssistantMessage(
         role="assistant",
