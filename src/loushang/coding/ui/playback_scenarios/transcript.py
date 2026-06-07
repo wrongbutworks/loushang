@@ -19,6 +19,7 @@ from loushang.coding.ui.playback_suite import NativePlaybackScenarioSpec
 from loushang.tui import strip_control_sequences
 from loushang.tui.transcript import (
     AssistantMessageRecord,
+    ErrorRecord,
     ToolExecutionRecord,
     UserPromptRecord,
 )
@@ -192,6 +193,103 @@ def _run_transcript_reader_live_draft() -> NativeTuiInputPlaybackResult:
     return result
 
 
+def _run_transcript_reader_render_modes() -> NativeTuiInputPlaybackResult:
+    result = (
+        NativeTuiInputScenario(width=88, height=12)
+        .with_records(
+            (
+                AssistantMessageRecord("Use **markdown** literally.", stable=True),
+                ErrorRecord(summary="Request failed", diagnostics="Traceback detail"),
+            )
+        )
+        .with_composer_text("draft")
+        .render()
+        .key("\x0f")
+        .type_text("d")
+        .type_text("r")
+        .key("\x0f")
+        .type_text("!")
+        .run()
+    )
+
+    result.assert_composer_text("draft!")
+    result.assert_no_clear_screen()
+    result.assert_visible_contains("› draft!")
+    result.assert_visible_not_contains("Ctrl+O/q/Esc close")
+
+    opened_screen = _step_screen(result, 1)
+    detail_screen = _step_screen(result, 2)
+    raw_detail_screen = _step_screen(result, 3)
+    closed_screen = _step_screen(result, 4)
+    assert "Transcript window" in opened_screen
+    assert "Traceback detail" not in opened_screen
+    assert "Transcript window · detail" in detail_screen
+    assert "Traceback detail" in detail_screen
+    assert "Transcript window · raw+detail" in raw_detail_screen
+    assert "Assistant" in raw_detail_screen
+    assert "Use **markdown** literally." in raw_detail_screen
+    assert "Error" in raw_detail_screen
+    assert "Traceback detail" in raw_detail_screen
+    assert "Ctrl+O/q/Esc close" not in closed_screen
+    assert "› draft" in closed_screen
+    return result
+
+
+def _run_transcript_reader_search() -> NativeTuiInputPlaybackResult:
+    result = (
+        NativeTuiInputScenario(width=82, height=10)
+        .with_records(
+            (
+                AssistantMessageRecord(
+                    "\n".join(
+                        (
+                            "alpha one",
+                            "beta first match",
+                            "middle line",
+                            "beta second match",
+                        )
+                    ),
+                    stable=True,
+                ),
+            )
+        )
+        .with_composer_text("draft")
+        .render()
+        .key("\x0f")
+        .type_chars("/beta")
+        .enter()
+        .type_chars("n")
+        .type_chars("N")
+        .escape()
+        .key("\x0f")
+        .type_text("!")
+        .run()
+    )
+
+    result.assert_composer_text("draft!")
+    result.assert_no_clear_screen()
+    result.assert_visible_contains("› draft!")
+    result.assert_visible_not_contains("Ctrl+O/q/Esc close")
+
+    search_input_screen = _step_screen(result, 6)
+    first_match_screen = _step_screen(result, 7)
+    next_match_screen = _step_screen(result, 8)
+    previous_match_screen = _step_screen(result, 9)
+    cleared_search_screen = _step_screen(result, 10)
+    closed_screen = _step_screen(result, 11)
+    assert "Search: beta" in search_input_screen
+    assert "Transcript window · search beta 1/2" in first_match_screen
+    assert "beta first match" in first_match_screen
+    assert "Transcript window · search beta 2/2" in next_match_screen
+    assert "beta second match" in next_match_screen
+    assert "Transcript window · search beta 1/2" in previous_match_screen
+    assert "Transcript window · search" not in cleared_search_screen
+    assert "Ctrl+O/q/Esc close" in cleared_search_screen
+    assert "Ctrl+O/q/Esc close" not in closed_screen
+    assert "› draft" in closed_screen
+    return result
+
+
 def _step_screen(result: NativeTuiInputPlaybackResult, step_index: int) -> str:
     step = result.steps[step_index]
     assert step.frame is not None
@@ -262,6 +360,18 @@ TRANSCRIPT_SCENARIOS = (
         name="transcript-reader-live-draft",
         description="Open the transcript reader during assistant streaming and keep the live draft visible.",
         run=_run_transcript_reader_live_draft,
+        tags=("transcript",),
+    ),
+    NativePlaybackScenarioSpec(
+        name="transcript-reader-render-modes",
+        description="Toggle transcript reader detail and raw modes without changing the composer.",
+        run=_run_transcript_reader_render_modes,
+        tags=("transcript",),
+    ),
+    NativePlaybackScenarioSpec(
+        name="transcript-reader-search",
+        description="Search within the transcript reader, navigate matches, and return to composing.",
+        run=_run_transcript_reader_search,
         tags=("transcript",),
     ),
 )

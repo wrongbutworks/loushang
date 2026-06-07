@@ -60,7 +60,7 @@ def test_transcript_reader_renders_frozen_snapshot_and_footer() -> None:
     assert "Earlier transcript records were trimmed." in first
     assert first[-3] == "─" * 80
     assert first[-2] == "↑/↓ scroll   PgUp/Ctrl+B · PgDn/Ctrl+F page   Home/End jump"
-    assert first[-1] == "Ctrl+O/q/Esc close   d detail   r raw"
+    assert first[-1] == "Ctrl+O/q/Esc close   / search   n/N next   d detail   r raw"
     assert any("first" in line for line in first)
     assert all("second" not in line for line in first)
 
@@ -86,7 +86,7 @@ def test_transcript_reader_short_content_fills_full_height_with_footer_at_bottom
     assert rendered[-3] == "─" * 40
     assert rendered[-2].startswith("↑/↓ scroll   PgUp/Ctrl+B")
     assert "PgDn/Ctrl" in rendered[-2]
-    assert rendered[-1] == "Ctrl+O/q/Esc close   d detail   r raw"
+    assert rendered[-1].startswith("Ctrl+O/q/Esc close   / search")
 
 
 def test_transcript_reader_opens_at_tail_and_scrolls_by_page() -> None:
@@ -169,6 +169,21 @@ def test_transcript_reader_detail_and_raw_toggles_are_stable() -> None:
     assert reader.raw_mode is False
 
 
+def test_transcript_reader_title_shows_current_render_mode() -> None:
+    reader = TranscriptReaderSurface(_Source((AssistantMessageRecord("answer"),)))
+
+    assert _render_text(reader, width=80, height=6)[0] == "Transcript window"
+
+    reader.handle_input(InputEvent(kind="key", key="d"))
+    assert _render_text(reader, width=80, height=6)[0] == "Transcript window · detail"
+
+    reader.handle_input(InputEvent(kind="key", key="r"))
+    assert _render_text(reader, width=80, height=6)[0] == "Transcript window · raw+detail"
+
+    reader.handle_input(InputEvent(kind="key", key="d"))
+    assert _render_text(reader, width=80, height=6)[0] == "Transcript window · raw"
+
+
 def test_transcript_reader_raw_mode_renders_copy_friendly_logical_text() -> None:
     reader = TranscriptReaderSurface(
         _Source(
@@ -228,3 +243,41 @@ def test_transcript_reader_raw_mode_does_not_expose_hidden_thinking() -> None:
 
     assert all("hidden reasoning" not in line for line in rendered)
     assert any("visible thinking" in line for line in rendered)
+
+
+def test_transcript_reader_search_finds_matches_and_navigates_without_closing() -> None:
+    reader = TranscriptReaderSurface(
+        _Source((AssistantMessageRecord("\n".join(("alpha one", "beta two", "gamma beta three"))),))
+    )
+    _render_text(reader, width=80, height=7)
+
+    assert reader.handle_input(InputEvent(kind="text", text="/")) == InputIntent(kind="consumed", note="transcript_reader")
+    assert reader.handle_input(InputEvent(kind="text", text="beta")) == InputIntent(kind="consumed", note="transcript_reader")
+    editing = _render_text(reader, width=80, height=7)
+    assert editing[-1] == "Search: beta"
+
+    assert reader.handle_input(InputEvent(kind="key", key="enter")) == InputIntent(kind="consumed", note="transcript_reader")
+    first = _render_text(reader, width=80, height=7)
+    assert first[0] == "Transcript window · search beta 1/2"
+    assert any("beta two" in line for line in first)
+
+    assert reader.handle_input(InputEvent(kind="text", text="n")) == InputIntent(kind="consumed", note="transcript_reader")
+    second = _render_text(reader, width=80, height=7)
+    assert second[0] == "Transcript window · search beta 2/2"
+    assert any("gamma beta three" in line for line in second)
+
+    assert reader.handle_input(InputEvent(kind="text", text="N")) == InputIntent(kind="consumed", note="transcript_reader")
+    previous = _render_text(reader, width=80, height=7)
+    assert previous[0] == "Transcript window · search beta 1/2"
+
+
+def test_transcript_reader_search_escape_exits_search_input_without_closing() -> None:
+    reader = TranscriptReaderSurface(_Source((AssistantMessageRecord("alpha beta"),)))
+
+    reader.handle_input(InputEvent(kind="text", text="/"))
+    reader.handle_input(InputEvent(kind="text", text="beta"))
+
+    assert reader.handle_input(InputEvent(kind="key", key="esc")) == InputIntent(kind="consumed", note="transcript_reader")
+    rendered = _render_text(reader, width=80, height=7)
+    assert rendered[0] == "Transcript window"
+    assert "Search: beta" not in rendered

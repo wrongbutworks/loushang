@@ -127,6 +127,8 @@ def test_native_tui_playback_transcript_scenarios_live_in_transcript_module() ->
         "transcript-reader-modal",
         "transcript-reader-copy-command",
         "transcript-reader-live-draft",
+        "transcript-reader-render-modes",
+        "transcript-reader-search",
     ]
 
 
@@ -147,6 +149,8 @@ def test_native_tui_playback_runner_lists_default_scenarios(capsys) -> None:
     assert "transcript-reader-modal" in captured.out
     assert "transcript-reader-copy-command" in captured.out
     assert "transcript-reader-live-draft" in captured.out
+    assert "transcript-reader-render-modes" in captured.out
+    assert "transcript-reader-search" in captured.out
     assert "escape-pending-steer" in captured.out
     assert "running-steer-queued" in captured.out
     assert "running-escape-keeps-queued-steer" in captured.out
@@ -296,6 +300,26 @@ def test_native_tui_playback_runner_runs_transcript_reader_live_draft_scenario(
     captured = capsys.readouterr()
     assert exit_code == 0
     assert "PASS transcript-reader-live-draft" in captured.out
+
+
+def test_native_tui_playback_runner_runs_transcript_reader_render_modes_scenario(
+    capsys,
+) -> None:
+    exit_code = run_playback_cli(["transcript-reader-render-modes"])
+
+    captured = capsys.readouterr()
+    assert exit_code == 0
+    assert "PASS transcript-reader-render-modes" in captured.out
+
+
+def test_native_tui_playback_runner_runs_transcript_reader_search_scenario(
+    capsys,
+) -> None:
+    exit_code = run_playback_cli(["transcript-reader-search"])
+
+    captured = capsys.readouterr()
+    assert exit_code == 0
+    assert "PASS transcript-reader-search" in captured.out
 
 
 def test_native_tui_playback_runner_runs_product_composed_interaction_scenario(
