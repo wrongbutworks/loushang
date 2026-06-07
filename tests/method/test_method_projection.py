@@ -1,10 +1,14 @@
 from __future__ import annotations
 
+import json
+
 from loushang.method import (
     MethodApplicability,
     MethodCompiler,
     MethodDescriptor,
+    MethodPlan,
     MethodProjector,
+    MethodStep,
 )
 
 
@@ -113,17 +117,17 @@ def test_method_projector_exposes_structured_plan_and_step_facts() -> None:
             "step_count": 2,
         },
         "applicability": {
-            "domains": ("coding",),
-            "task_types": ("reviewing",),
-            "contexts": (),
-            "artifact_types": (),
-            "modalities": (),
-            "toolchains": (),
-            "lifecycle": (),
-            "capabilities": (),
+            "domains": ["coding"],
+            "task_types": ["reviewing"],
+            "contexts": [],
+            "artifact_types": [],
+            "modalities": [],
+            "toolchains": [],
+            "lifecycle": [],
+            "capabilities": [],
             "complexity": None,
             "risk": None,
-            "tags": {"method_family": ("verification",)},
+            "tags": {"method_family": ["verification"]},
         },
     }
     assert projection.metadata["step_facts"] == {
@@ -134,19 +138,113 @@ def test_method_projector_exposes_structured_plan_and_step_facts() -> None:
         "step_index": 1,
         "step_count": 2,
         "applicability": {
-            "domains": ("coding",),
-            "task_types": ("reviewing",),
-            "contexts": (),
-            "artifact_types": (),
-            "modalities": (),
-            "toolchains": (),
-            "lifecycle": (),
-            "capabilities": (),
+            "domains": ["coding"],
+            "task_types": ["reviewing"],
+            "contexts": [],
+            "artifact_types": [],
+            "modalities": [],
+            "toolchains": [],
+            "lifecycle": [],
+            "capabilities": [],
             "complexity": None,
             "risk": None,
-            "tags": {"method_family": ("verification",)},
+            "tags": {"method_family": ["verification"]},
         },
     }
+
+
+def test_method_projector_facts_use_stable_json_safe_contract() -> None:
+    plan = MethodPlan(
+        id="plan:method:task:review",
+        method_id="method:task:review",
+        mode="fixed",
+        phase="VERIFY",
+        activity="review",
+        task="check change",
+        steps=(
+            MethodStep(
+                id="inspect",
+                title="Inspect current changes",
+                executor="current_agent",
+                projection={"content": "Inspect.", "step_index": 0},
+                applicability=MethodApplicability(
+                    domains=("coding",),
+                    task_types=("reviewing",),
+                    tags={"method_family": ("verification",)},
+                ),
+            ),
+        ),
+        metadata={
+            "method_kind": "method_resource",
+            "element_type": "task",
+            "plan_mode": "fixed",
+            "step_count": 1,
+            "internal_object": object(),
+            "frontmatter": {"raw": object()},
+        },
+        applicability=MethodApplicability(
+            domains=("coding",),
+            task_types=("reviewing",),
+            tags={"method_family": ("verification",)},
+        ),
+    )
+
+    projection = MethodProjector().project(plan, plan.steps[0])
+
+    assert projection.metadata["plan_facts"] == {
+        "plan_id": "plan:method:task:review",
+        "method_id": "method:task:review",
+        "mode": "fixed",
+        "phase": "VERIFY",
+        "activity": "review",
+        "task": "check change",
+        "metadata": {
+            "method_kind": "method_resource",
+            "element_type": "task",
+            "plan_mode": "fixed",
+            "step_count": 1,
+        },
+        "applicability": {
+            "domains": ["coding"],
+            "task_types": ["reviewing"],
+            "contexts": [],
+            "artifact_types": [],
+            "modalities": [],
+            "toolchains": [],
+            "lifecycle": [],
+            "capabilities": [],
+            "complexity": None,
+            "risk": None,
+            "tags": {"method_family": ["verification"]},
+        },
+    }
+    assert projection.metadata["step_facts"]["applicability"]["domains"] == ["coding"]
+    assert projection.metadata["step_facts"]["applicability"]["tags"] == {
+        "method_family": ["verification"],
+    }
+    json.dumps(projection.metadata["plan_facts"])
+    json.dumps(projection.metadata["step_facts"])
+
+
+def test_method_projector_plan_metadata_facts_include_stable_keys_with_nulls() -> None:
+    descriptor = MethodDescriptor(
+        id="method:task:single",
+        name="single",
+        description="Review once.",
+        content="Review once.",
+        kind="method_resource",
+    )
+    plan = MethodCompiler().compile(descriptor)
+
+    projection = MethodProjector().project(plan, plan.steps[0])
+
+    assert projection.metadata["plan_facts"]["metadata"] == {
+        "method_kind": "method_resource",
+        "element_type": None,
+        "plan_mode": None,
+        "step_count": None,
+    }
+    json.dumps(projection.metadata["plan_facts"])
 
 
 def test_method_projector_handles_empty_content() -> None:
