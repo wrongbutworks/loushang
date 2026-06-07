@@ -45,7 +45,7 @@ loushang -p "Inspect this repository and summarize what it does."
 
 ## 核心概念
 
-- 方法：可复用的工作运行方式，包含阶段、指导与验收预期。
+- 方法：面向一类工作的结构化工作契约，定义角色、阶段、流程、约束、工作产物与验收预期。
 - 会话：可恢复、可分叉、可导出、可检查的 coding 对话与执行记录。
 - 工具：在策略约束下提供给 agent 的可执行能力。
 - 扩展：项目级 Python 代码，可贡献 hooks、工具、资源、命令和 flags。

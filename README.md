@@ -45,7 +45,7 @@ For local development in this repository, use the project virtual environment in
 
 ## Core Concepts
 
-- Method: a reusable way of running work, including stages, guidance, and acceptance expectations.
+- Method: a structured work contract that defines roles, phases, workflow, constraints, artifacts, and acceptance expectations for a class of work.
 - Session: a durable coding conversation and execution record that can be resumed, forked, exported, and inspected.
 - Tool: an executable capability made available to the agent under policy.
 - Extension: project-level Python code that can contribute hooks, tools, resources, commands, and flags.

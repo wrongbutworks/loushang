@@ -74,7 +74,7 @@ CLI / TUI
 相邻能力层：
 
 - `loushang.method` 提供 method resource、compile、projection 和 fixed
-  `MethodPlan` 语义
+  `MethodPlan` 语义；method 是面向一类任务的结构化工作契约
 - `loushang.work` 提供 `WorkOperation`、`WorkRun`、`WorkEvent`、work event
   log 与 plan/step projection
 - `loushang.tui` 提供通用 terminal-native UI primitives，`loushang.coding.ui`
@@ -85,7 +85,7 @@ CLI / TUI
 
 - `agent` 定义 agent loop 与运行语义
 - `ai` 定义模型/provider/streaming/tool-call 兼容层
-- `method` 提供方法资产与 plan/projection
+- `method` 提供方法资产与 plan/projection，定义角色、阶段、流程、约束、工作产物与验收预期
 - `work` 提供 run/event/log/projection
 - `tui` 提供通用终端 UI primitives
 - `coding` 提供产品化装配，并通过 `loushang.coding.ui` 连接 coding core 与 `loushang.tui`
