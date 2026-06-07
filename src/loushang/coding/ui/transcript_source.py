@@ -23,6 +23,10 @@ class TranscriptSource(Protocol):
     def recent_assistant_texts(self) -> tuple[str, ...]: ...
 
 
+# Transcript reader sources intentionally separate three data shapes:
+# - active window: bounded UI records plus current assistant draft.
+# - session history: full materialized session projection.
+# - session + live window: full history with active UI-only suffix records.
 @dataclass(frozen=True, slots=True)
 class ActiveWindowTranscriptSource:
     state: NativeCodingTuiState
