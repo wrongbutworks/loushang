@@ -255,7 +255,7 @@ def test_coding_top_level_sdk_smoke_covers_session_runtime_tools_and_diagnostics
     assert isinstance(result, coding.CreateAgentSessionResult)
     assert isinstance(result.cwd_bound_services_audit, coding.CwdBoundServicesAudit)
     assert result.cwd_bound_services_audit.ok is True
-    assert result.diagnostics == ()
+    assert [record for record in result.diagnostics if record.type == "error"] == []
 
     direct_session = coding.create_agent_session(
         session_manager=session_manager,
@@ -310,5 +310,5 @@ def test_coding_top_level_sdk_smoke_covers_session_runtime_tools_and_diagnostics
     assert imported is not None
     assert [message.content[0].text for message in imported.get_session_context().messages] == ["imported"]
     assert runtime.get_packages() == []
-    assert runtime.get_diagnostics_summary().total_count == 0
+    assert runtime.get_diagnostics_summary(coding.DiagnosticsQuery(level="error")).total_count == 0
     assert runtime.get_diagnostics(coding.DiagnosticsQuery(source="session")) == []

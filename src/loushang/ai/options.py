@@ -7,7 +7,7 @@ PairingMode = Literal["repair", "strict"]
 
 
 @dataclass(frozen=True)
-class StreamOptions:
+class ModelCallOptions:
     signal: object | None = None
     api_key: str | None = None
     headers: dict[str, str] = field(default_factory=dict)
@@ -28,8 +28,11 @@ class StreamOptions:
     pairing_mode: PairingMode = "repair"
 
 
+StreamOptions = ModelCallOptions
+
+
 @dataclass(frozen=True)
-class AnthropicOptions(StreamOptions):
+class AnthropicOptions(ModelCallOptions):
     thinking_enabled: bool = False
     thinking_budget_tokens: int | None = None
     effort: str | None = None
@@ -38,13 +41,13 @@ class AnthropicOptions(StreamOptions):
 
 
 @dataclass(frozen=True)
-class OpenAICompletionsOptions(StreamOptions):
+class OpenAICompletionsOptions(ModelCallOptions):
     reasoning: str | None = None
     tool_choice: str | dict[str, Any] | None = None
 
 
 @dataclass(frozen=True)
-class OpenAIResponsesOptions(StreamOptions):
+class OpenAIResponsesOptions(ModelCallOptions):
     reasoning: str | None = None
     reasoning_summary: str | None = None
     service_tier: str | None = None
@@ -53,7 +56,7 @@ class OpenAIResponsesOptions(StreamOptions):
 
 
 @dataclass(frozen=True)
-class OpenAICodexResponsesOptions(StreamOptions):
+class OpenAICodexResponsesOptions(ModelCallOptions):
     reasoning: str | None = None
     reasoning_summary: str | None = None
     text_verbosity: str | None = None
@@ -78,12 +81,12 @@ CacheRetention = Literal["none", "short", "long"]
 Transport = Literal["sse", "websocket", "auto"]
 
 
-# Alias to indicate provider-specific extensions on top of StreamOptions.
-# In Python, we keep it equal to StreamOptions; providers may downcast to their own options.
-ProviderStreamOptions = StreamOptions
+# Alias to indicate provider-specific extensions on top of ModelCallOptions.
+# In Python, we keep it equal to the base options; providers may downcast to their own options.
+ProviderStreamOptions = ModelCallOptions
 
 
 @dataclass(frozen=True)
-class SimpleStreamOptions(StreamOptions):
+class SimpleStreamOptions(ModelCallOptions):
     reasoning: "ThinkingLevel | None" = None
     thinking_budgets: "ThinkingBudgets | None" = None

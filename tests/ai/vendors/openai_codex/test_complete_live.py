@@ -5,7 +5,11 @@ import asyncio
 import pytest
 
 from loushang.ai import OpenAICodexResponsesOptions, get_model
-from loushang.ai.auth import load_credentials, register_builtin_oauth_providers
+from loushang.ai.auth import (
+    load_credentials,
+    register_builtin_oauth_providers,
+    resolve_oauth_api_key,
+)
 
 pytestmark = [
     pytest.mark.live,
@@ -26,6 +30,16 @@ def test_openai_codex_complete_live() -> None:
     ).get("chatgpt_account_id")
     if not isinstance(account_id, str) or not account_id:
         pytest.skip("openai-codex credentials missing account_id")
+    try:
+        resolved_api_key = resolve_oauth_api_key(
+            "openai-codex",
+            credentials={"openai-codex": credentials},
+            persist_refresh=False,
+        )
+    except Exception as exc:
+        pytest.skip(f"openai-codex credentials could not be refreshed: {exc}")
+    if resolved_api_key is None:
+        pytest.skip("openai-codex credentials could not be resolved to an API key")
 
     model = get_model("openai-codex", "openai-codex-responses", "gpt-5.3-codex")
 
@@ -43,6 +57,13 @@ def test_openai_codex_complete_live() -> None:
             ),
         )
 
+        if (
+            message.response_id is None
+            and message.error_message
+            and "model is not supported" in message.error_message
+            and "ChatGPT account" in message.error_message
+        ):
+            pytest.skip(message.error_message)
         assert message.response_id is not None
         assert message.stop_reason in {"stop", "length"}
         text = "".join(

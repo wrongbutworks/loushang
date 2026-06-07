@@ -9,7 +9,9 @@ from loushang.ai.auth.registry import OAuthProviderRegistry
 from loushang.ai.model import Endpoint, Model, Provider
 from loushang.ai.model.registry import ModelRegistry as AiModelRegistry
 from loushang.coding.control import ModelRegistry
-from loushang.coding.session.extension_provider_controller import ExtensionProviderController
+from loushang.coding.session.extension_provider_controller import (
+    ExtensionProviderController,
+)
 
 
 class _ApiProvider:
@@ -91,6 +93,37 @@ def test_extension_provider_controller_registers_native_provider_against_existin
     assert new_model.name == "New Model"
     assert new_model.supports_image_input is True
     assert new_model.supports_thinking is True
+
+
+def test_extension_provider_controller_registers_canonical_endpoint_auth() -> None:
+    ai_registry = AiModelRegistry()
+    controller = ExtensionProviderController(
+        model_registry=ModelRegistry(ai_registry=ai_registry),
+        api_provider_registry=ApiProviderRegistry(),
+        oauth_provider_registry=OAuthProviderRegistry(),
+    )
+
+    controller.register_provider(
+        "proxy",
+        {
+            "endpoints": {
+                "proxy-simple": {
+                    "api": "proxy-api",
+                    "auth": {
+                        "kind": "apiKey",
+                        "apiKeyEnv": "PROXY_API_KEY",
+                        "extraHeaders": {"x-proxy": "yes"},
+                    },
+                }
+            },
+        },
+    )
+
+    endpoint = ai_registry.get_endpoint("proxy", "proxy-simple")
+    assert endpoint is not None
+    assert endpoint.auth is not None
+    assert endpoint.auth.api_key_env == "PROXY_API_KEY"
+    assert endpoint.auth.extra_headers == {"x-proxy": "yes"}
 
 
 def test_extension_provider_controller_unregisters_provider_and_source_registrations() -> None:

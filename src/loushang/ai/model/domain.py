@@ -12,6 +12,7 @@ ALLOWED_MODALITIES: tuple[Modality, ...] = ("text", "image", "video", "audio", "
 class Auth:
     kind: str = "apiKey"
     api_key_env: str | None = None
+    api_key_envs: tuple[str, ...] = ()
     header: str = "Authorization"
     prefix: str = "Bearer "
     extra_headers: dict[str, str] = field(default_factory=dict)
@@ -23,6 +24,7 @@ class Auth:
         return cls(
             kind=str(raw.get("kind", "apiKey")),
             api_key_env=_as_optional_str(raw.get("apiKeyEnv")),
+            api_key_envs=_as_str_tuple(raw.get("apiKeyEnvs")),
             header=str(raw.get("header", "Authorization")),
             prefix=str(raw.get("prefix", "Bearer ")),
             extra_headers=_as_str_dict(raw.get("extraHeaders")),
@@ -32,6 +34,7 @@ class Auth:
         return {
             "kind": self.kind,
             "apiKeyEnv": self.api_key_env,
+            "apiKeyEnvs": list(self.api_key_envs),
             "header": self.header,
             "prefix": self.prefix,
             "extraHeaders": dict(self.extra_headers),
@@ -210,6 +213,7 @@ class Model:
     base_url_env: str | None = None
     region: str | None = None
     auth: Auth | None = None
+    _auth_inherited: bool = False
     name: str | None = None
     family: str | None = None
     alias: str | None = None
@@ -291,6 +295,8 @@ class Model:
         return self.capabilities.supports_image_output
 
     def with_endpoint(self, endpoint: "Endpoint") -> "Model":
+        inherits_auth = self.auth is None or self._auth_inherited
+        auth = endpoint.auth if inherits_auth else self.auth
         return replace(
             self,
             _endpoint_key=endpoint.endpoint_key,
@@ -298,7 +304,8 @@ class Model:
             base_url=endpoint.base_url,
             base_url_env=endpoint.base_url_env,
             region=endpoint.region,
-            auth=endpoint.auth,
+            auth=auth,
+            _auth_inherited=inherits_auth and auth is not None,
             compat=endpoint.compat.merged(self.compat),
             defaults=endpoint.defaults.merged(self.defaults),
         )
@@ -336,6 +343,8 @@ class Model:
             "defaults": self.defaults.to_raw(),
         }
         raw.update(self.capabilities.to_raw())
+        if self.auth is not None and not self._auth_inherited:
+            raw["auth"] = self.auth.to_raw()
         return {key: value for key, value in raw.items() if value is not None}
 
 
@@ -402,7 +411,7 @@ class Endpoint:
         if self.docs is not None:
             raw["docs"] = self.docs
         if self.auth is not None:
-            raw["authOverride"] = self.auth.to_raw()
+            raw["auth"] = self.auth.to_raw()
         return raw
 
 
@@ -486,6 +495,12 @@ def _as_str_dict(value: object) -> dict[str, str]:
         if isinstance(key, str) and isinstance(entry, str):
             result[key] = entry
     return result
+
+
+def _as_str_tuple(value: object) -> tuple[str, ...]:
+    if not isinstance(value, (list, tuple)):
+        return ()
+    return tuple(item for item in value if isinstance(item, str) and item)
 
 
 def _coerce_modalities(values: tuple[str, ...]) -> tuple[Modality, ...]:

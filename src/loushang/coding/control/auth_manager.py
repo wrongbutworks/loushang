@@ -53,7 +53,7 @@ class AuthManager:
 
     def resolve_for_model(self, model: Model) -> AuthResolution:
         endpoint = self._ai_registry.get_endpoint(model.provider_id, model.endpoint_id)
-        auth_config = endpoint.auth if endpoint is not None else None
+        auth_config = getattr(model, "auth", None) or (endpoint.auth if endpoint is not None else None)
         auth_required = auth_config is not None and getattr(auth_config, "kind", "apiKey") != "none"
         env = os.environ if self._env is None else self._env
 
@@ -74,8 +74,8 @@ class AuthManager:
                     headers=resolve_auth_material(bearer_token=oauth_api_key).headers,
                 )
 
-        api_key_env = getattr(auth_config, "api_key_env", None)
-        api_key = env.get(api_key_env) if api_key_env else None
+        api_key_env = _primary_api_key_env(auth_config)
+        api_key = _resolve_api_key_from_env(auth_config, env)
         if api_key:
             return AuthResolution(
                 provider=model.provider_id,
@@ -146,6 +146,32 @@ def _build_missing_auth_message(
         options.append("provide provider credentials")
     joined = " or ".join(options)
     return f"Missing auth for model '{provider}:{model_id}'; {joined}."
+
+
+def _api_key_env_names(auth_config) -> tuple[str, ...]:
+    if auth_config is None:
+        return ()
+    names: list[str] = []
+    for name in tuple(getattr(auth_config, "api_key_envs", ()) or ()):
+        if isinstance(name, str) and name:
+            names.append(name)
+    api_key_env = getattr(auth_config, "api_key_env", None)
+    if isinstance(api_key_env, str) and api_key_env:
+        names.append(api_key_env)
+    return tuple(dict.fromkeys(names))
+
+
+def _primary_api_key_env(auth_config) -> str | None:
+    names = _api_key_env_names(auth_config)
+    return names[0] if names else None
+
+
+def _resolve_api_key_from_env(auth_config, env: Mapping[str, str]) -> str | None:
+    for name in _api_key_env_names(auth_config):
+        value = env.get(name)
+        if isinstance(value, str) and value.strip():
+            return value.strip()
+    return None
 
 
 __all__ = ["AuthManager", "AuthResolution"]

@@ -98,7 +98,7 @@ async def oauth_login(
         raise ValueError(f"OAuth provider not found: {provider_id}")
     next_credentials = await provider.login(callbacks)
     if persist:
-        stored = dict(credentials or load_credentials())
+        stored = dict(load_credentials() if credentials is None else credentials)
         stored[provider_id] = next_credentials
         save_credentials(stored)
     return next_credentials
@@ -131,7 +131,7 @@ def resolve_oauth_api_key(
     credentials: Mapping[str, OAuthCredentials] | None = None,
     persist_refresh: bool = True,
 ) -> GetOAuthApiKeyResult | None:
-    stored = dict(credentials or load_credentials())
+    stored = dict(load_credentials() if credentials is None else credentials)
     from loushang.ai.auth.oauth import get_oauth_api_key
 
     result = get_oauth_api_key(provider_id, stored)

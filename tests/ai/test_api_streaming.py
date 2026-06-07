@@ -7,7 +7,7 @@ import pytest
 
 from loushang.ai.api.streaming import stream
 from loushang.ai.context import NORMALIZED_CONTEXT_MARKER
-from loushang.ai.options import StreamOptions
+from loushang.ai.options import ModelCallOptions
 from loushang.ai.types import AssistantMessage, ToolCall, Usage, UserMessage
 
 
@@ -101,7 +101,7 @@ def test_stream_exposes_pairing_mode_through_public_options(
                         UserMessage(role="user", content="next", timestamp=0.0),
                     ]
                 },
-                StreamOptions(pairing_mode="strict"),
+                ModelCallOptions(pairing_mode="strict"),
                 registry=registry,
             )
         )
@@ -124,7 +124,7 @@ def test_stream_passes_normalized_context_to_provider(
         stream(
             _Model(),
             {"messages": [UserMessage(role="user", content="hello", timestamp=0.0)]},
-            StreamOptions(),
+            ModelCallOptions(),
             registry=registry,
         )
     )

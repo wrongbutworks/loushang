@@ -10,10 +10,10 @@ from typing import Any
 
 from loushang.ai import (
     AnthropicOptions,
+    ModelCallOptions,
     OpenAICodexResponsesOptions,
     OpenAICompletionsOptions,
     OpenAIResponsesOptions,
-    StreamOptions,
     complete,
     get_api_provider,
     get_env_api_key,
@@ -677,7 +677,7 @@ def _build_console_options(model, *, api: str, auth_result, debug: bool = False)
         option_kwargs["trace"] = _console_trace
     if not option_kwargs:
         return None, auth_source
-    option_cls = _OPTION_CLASS_BY_API.get(api, StreamOptions)
+    option_cls = _OPTION_CLASS_BY_API.get(api, ModelCallOptions)
     return option_cls(**option_kwargs), auth_source
 
 
@@ -700,21 +700,35 @@ def _resolve_console_oauth_credentials(
 
 
 def _resolve_console_api_key(provider_id: str, auth_config) -> tuple[str | None, str]:
-    env_name = getattr(auth_config, "api_key_env", None)
-    if env_name:
+    env_names = _console_api_key_env_names(auth_config)
+    for env_name in env_names:
         value = os.getenv(env_name)
         if isinstance(value, str) and value.strip():
             return value.strip(), f"env:{env_name}"
-    else:
+
+    if not env_names:
         fallback = get_env_api_key(provider_id)
         if fallback:
             return fallback, "env:provider-default"
 
-    label = env_name or f"{provider_id.upper().replace('-', '_')}_API_KEY"
+    label = env_names[0] if env_names else f"{provider_id.upper().replace('-', '_')}_API_KEY"
     value = getpass.getpass(f"{label}: ").strip()
     if not value:
         raise ValueError(f"Missing API key for provider: {provider_id}")
     return value, "interactive-secret"
+
+
+def _console_api_key_env_names(auth_config) -> tuple[str, ...]:
+    if auth_config is None:
+        return ()
+    names: list[str] = []
+    for name in tuple(getattr(auth_config, "api_key_envs", ()) or ()):
+        if isinstance(name, str) and name:
+            names.append(name)
+    api_key_env = getattr(auth_config, "api_key_env", None)
+    if isinstance(api_key_env, str) and api_key_env:
+        names.append(api_key_env)
+    return tuple(dict.fromkeys(names))
 
 
 def _console_trace(event: dict) -> None:

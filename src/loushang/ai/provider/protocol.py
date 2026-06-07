@@ -4,11 +4,11 @@ from typing import Any, Protocol, runtime_checkable
 
 from loushang.ai.event_stream import AssistantMessageEventStream
 from loushang.ai.model import Model
-from loushang.ai.options import StreamOptions
+from loushang.ai.options import ModelCallOptions
 from loushang.ai.types import Context
 
 ProviderContext = Context | dict[str, Any]
-ProviderOptions = StreamOptions | None
+ProviderOptions = ModelCallOptions | None
 
 
 @runtime_checkable

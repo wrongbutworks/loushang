@@ -1,7 +1,11 @@
 from __future__ import annotations
 
+import asyncio
+import inspect
+import threading
 import time
-from typing import TypedDict
+from collections.abc import Awaitable
+from typing import TypedDict, cast
 
 from loushang.ai.auth.types import OAuthCredentials
 
@@ -36,8 +40,33 @@ def refresh_oauth_token(provider: str, creds: OAuthCredentials) -> OAuthCredenti
     if rt is None:
         raise ValueError(f"OAuth provider does not support refresh: {provider}")
     maybe = rt(creds)
-    if hasattr(maybe, "__await__"):
-        import asyncio
-
-        return asyncio.get_event_loop().run_until_complete(maybe)  # type: ignore[arg-type]
+    if inspect.isawaitable(maybe):
+        return _run_awaitable_sync(cast("Awaitable[OAuthCredentials]", maybe))
     return maybe  # type: ignore[return-value]
+
+
+def _run_awaitable_sync(awaitable: Awaitable[OAuthCredentials]) -> OAuthCredentials:
+    try:
+        asyncio.get_running_loop()
+    except RuntimeError:
+        return asyncio.run(_await_result(awaitable))
+
+    result: dict[str, OAuthCredentials] = {}
+    errors: list[BaseException] = []
+
+    def _runner() -> None:
+        try:
+            result["value"] = asyncio.run(_await_result(awaitable))
+        except BaseException as exc:
+            errors.append(exc)
+
+    thread = threading.Thread(target=_runner, daemon=True)
+    thread.start()
+    thread.join()
+    if errors:
+        raise errors[0]
+    return result["value"]
+
+
+async def _await_result(awaitable: Awaitable[OAuthCredentials]) -> OAuthCredentials:
+    return await awaitable
