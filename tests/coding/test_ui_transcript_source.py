@@ -38,6 +38,28 @@ def test_active_window_transcript_source_returns_snapshot_metadata() -> None:
     assert snapshot.source_label == "Transcript window"
 
 
+def test_active_window_transcript_source_includes_live_assistant_draft() -> None:
+    state = NativeCodingTuiState(model_label="model", cwd="/tmp/project", branch=None, session_label=None)
+    state.replace_transcript_window(
+        (
+            UserPromptRecord("hello"),
+            AssistantMessageRecord("answer"),
+        ),
+    )
+    state.begin_run(started_at=1.0)
+    state.append_assistant_chunk("streaming draft")
+
+    snapshot = ActiveWindowTranscriptSource(state).snapshot()
+
+    assert snapshot.records == (
+        UserPromptRecord("hello"),
+        AssistantMessageRecord("answer"),
+        AssistantMessageRecord("streaming draft", stable=False),
+    )
+    assert snapshot.complete is False
+    assert snapshot.source_label == "Transcript window"
+
+
 def test_active_window_transcript_source_recent_assistant_texts_are_filtered_newest_first() -> None:
     state = NativeCodingTuiState(model_label="model", cwd="/tmp/project", branch=None, session_label=None)
     state.records.extend(

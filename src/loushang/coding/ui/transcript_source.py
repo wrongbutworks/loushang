@@ -29,14 +29,14 @@ class ActiveWindowTranscriptSource:
 
     def snapshot(self) -> TranscriptSnapshot:
         return TranscriptSnapshot(
-            records=tuple(self.state.records),
+            records=_active_window_records(self.state),
             evicted_prefix_record_count=max(0, self.state.evicted_prefix_record_count),
             complete=False,
             source_label="Transcript window",
         )
 
     def recent_assistant_texts(self) -> tuple[str, ...]:
-        return _recent_assistant_texts(self.state.records)
+        return _recent_assistant_texts(_active_window_records(self.state))
 
 
 @dataclass(frozen=True, slots=True)

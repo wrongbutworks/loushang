@@ -442,6 +442,38 @@ def test_native_input_router_ctrl_o_opens_transcript_reader_overlay() -> None:
     assert app.state.records[-1] == AssistantMessageRecord("answer")
 
 
+def test_native_input_router_ctrl_o_fallback_reader_includes_streaming_assistant_draft() -> None:
+    from loushang.coding.ui.native_app import NativeCodingTuiApp
+    from loushang.coding.ui.native_input import NativeInputRouter
+    from loushang.coding.ui.transcript_reader import TranscriptReaderSurface
+    from loushang.tui import RenderConstraints, SurfaceHost, strip_control_sequences
+    from loushang.tui.transcript import AssistantMessageRecord, UserPromptRecord
+
+    app = NativeCodingTuiApp(model_label="kimi", cwd="/repo", branch="main", session_label="abcd", now=lambda: 10.0)
+    app.surface_host = SurfaceHost()
+    app.replace_transcript_window(
+        (
+            UserPromptRecord("full question"),
+            AssistantMessageRecord("full answer", stable=True),
+        ),
+        reason="test",
+    )
+    app.begin_run(started_at=3.0)
+    app.append_assistant_chunk("streaming fallback draft")
+
+    result = NativeInputRouter(app, should_exit=lambda text: False).handle(InputEvent(kind="key", key="ctrl+o"))
+
+    assert result.render_requested is True
+    assert app.surface_host.entries
+    reader = app.surface_host.entries[0].surface.renderable
+    assert isinstance(reader, TranscriptReaderSurface)
+    reader.raw_mode = True
+    rendered = reader.render(RenderConstraints(width=100, max_height=12))
+    lines = tuple(strip_control_sequences(line.text) for line in rendered.lines)
+    assert "Transcript window" in lines
+    assert any("streaming fallback draft" in line for line in lines)
+
+
 def test_native_input_router_ctrl_o_uses_transcript_source_factory() -> None:
     from loushang.coding.ui.native_app import NativeCodingTuiApp
     from loushang.coding.ui.native_input import NativeInputRouter
