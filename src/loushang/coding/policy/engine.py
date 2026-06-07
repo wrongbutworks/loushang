@@ -9,7 +9,6 @@ from typing import Any, Mapping
 from loushang.coding.exec import ExecRequest
 from loushang.coding.policy.types import PolicyDecision
 
-
 _DEFAULT_BLOCKED_SUBSTRINGS: tuple[str, ...] = (
     "rm -rf",
     "git reset --hard",

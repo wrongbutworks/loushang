@@ -1,11 +1,13 @@
 import asyncio
-from spike_ai_provider_adapters.adapters.anthropic_httpx import create_httpx_provider
+
 from spike_ai_provider_adapters.abort_signal import ManualAbortSignal
+from spike_ai_provider_adapters.adapters.anthropic_httpx import create_httpx_provider
 from spike_ai_provider_adapters.config import (
   build_real_context,
   build_real_model,
   resolve_api_key,
 )
+
 
 async def main():
   model = build_real_model()

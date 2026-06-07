@@ -2,7 +2,13 @@
 
 import pytest
 
-from loushang.ontology import DataFusion, FieldMapping, Ontology, Property, SourceMapping
+from loushang.ontology import (
+    DataFusion,
+    FieldMapping,
+    Ontology,
+    Property,
+    SourceMapping,
+)
 
 
 class TestDataFusion:

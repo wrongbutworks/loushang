@@ -15,9 +15,6 @@ from httpx import AsyncClient
 if __package__ in {None, ""}:
     sys.path.insert(0, str(Path(__file__).resolve().parent))
 
-from loushang.ai import Context, UserMessage, complete_simple
-from loushang.ai.pricing import calculate_cost
-
 from _support import (
     ENV_EXAMPLES_ARTIFACT_ROOT,
     _resolve_model_catalog,
@@ -25,6 +22,9 @@ from _support import (
     describe_model,
     resolve_api_key,
 )
+
+from loushang.ai import Context, UserMessage, complete_simple
+from loushang.ai.pricing import calculate_cost
 
 LEDGER_FILE_NAME = "usage-ledger.jsonl"
 ENV_WEEKLY_QUOTA_TOKENS = "LOUSHANG_WEEKLY_QUOTA_TOKENS"

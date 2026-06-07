@@ -6,14 +6,17 @@ from pathlib import Path
 from typing import Literal
 
 from loushang.coding.diagnostics import DiagnosticsService
-from loushang.coding.package.materializer import PackageMaterializationRecord, PackageMaterializer, _package_offline_enabled
+from loushang.coding.package.materializer import (
+    PackageMaterializationRecord,
+    PackageMaterializer,
+    _package_offline_enabled,
+)
 from loushang.coding.package.source import (
     PackageSourceConfig,
     PackageSourceIdentity,
     is_remote_package_source,
     package_source_match_key,
 )
-
 
 MissingSourceAction = Literal["install", "skip", "error"]
 MissingSourceResolver = Callable[[str], MissingSourceAction]

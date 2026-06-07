@@ -7,7 +7,13 @@ from pathlib import Path
 if __package__ in {None, ""}:
     sys.path.insert(0, str(Path(__file__).resolve().parent))
 
-from _support import attach_stream_printer, build_kimi_model, create_kimi_session, describe_model
+from _support import (
+    attach_stream_printer,
+    build_kimi_model,
+    create_kimi_session,
+    describe_model,
+)
+
 from loushang.coding import ToolRegistry, register_builtin_tools
 
 EXAMPLE_REQUEST = (

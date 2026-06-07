@@ -1194,7 +1194,11 @@ def test_runtime_import_from_jsonl_respects_before_switch_cancellation(tmp_path)
     from pathlib import Path
 
     from loushang.agent import Agent
-    from loushang.coding.extensions import ExtensionRunner, LoadedExtension, SessionActionDecision
+    from loushang.coding.extensions import (
+        ExtensionRunner,
+        LoadedExtension,
+        SessionActionDecision,
+    )
     from loushang.coding.runtime import AgentSessionRuntime
     from loushang.coding.session import AgentSession
     from loushang.coding.store import SessionManager
@@ -1315,7 +1319,11 @@ def test_runtime_import_from_jsonl_records_before_switch_failure_and_flushes_ind
 def test_runtime_pi_style_lifecycle_aliases_report_cancellation(tmp_path) -> None:
     from pathlib import Path
 
-    from loushang.coding.extensions import ExtensionRunner, LoadedExtension, SessionActionDecision
+    from loushang.coding.extensions import (
+        ExtensionRunner,
+        LoadedExtension,
+        SessionActionDecision,
+    )
     from loushang.coding.runtime import AgentSessionRuntime
     from loushang.coding.store import SessionManager
 
@@ -1370,7 +1378,11 @@ def test_extension_command_context_fork_uses_runtime_host(tmp_path) -> None:
     from pathlib import Path
 
     from loushang.agent import Agent
-    from loushang.coding.extensions import ExtensionRunner, LoadedExtension, RegisteredCommand
+    from loushang.coding.extensions import (
+        ExtensionRunner,
+        LoadedExtension,
+        RegisteredCommand,
+    )
     from loushang.coding.runtime import AgentSessionRuntime
     from loushang.coding.session import AgentSession
     from loushang.coding.store import SessionManager
@@ -1426,7 +1438,11 @@ def test_extension_command_context_fork_supports_before_position(tmp_path) -> No
     from pathlib import Path
 
     from loushang.agent import Agent
-    from loushang.coding.extensions import ExtensionRunner, LoadedExtension, RegisteredCommand
+    from loushang.coding.extensions import (
+        ExtensionRunner,
+        LoadedExtension,
+        RegisteredCommand,
+    )
     from loushang.coding.runtime import AgentSessionRuntime
     from loushang.coding.session import AgentSession
     from loushang.coding.store import SessionManager
@@ -1484,7 +1500,11 @@ def test_extension_command_context_fork_defaults_to_before_position(tmp_path) ->
     from pathlib import Path
 
     from loushang.agent import Agent
-    from loushang.coding.extensions import ExtensionRunner, LoadedExtension, RegisteredCommand
+    from loushang.coding.extensions import (
+        ExtensionRunner,
+        LoadedExtension,
+        RegisteredCommand,
+    )
     from loushang.coding.runtime import AgentSessionRuntime
     from loushang.coding.session import AgentSession
     from loushang.coding.store import SessionManager
@@ -1538,7 +1558,11 @@ def test_extension_command_context_fork_before_runs_with_session_on_new_fork(tmp
     from pathlib import Path
 
     from loushang.agent import Agent
-    from loushang.coding.extensions import ExtensionRunner, LoadedExtension, RegisteredCommand
+    from loushang.coding.extensions import (
+        ExtensionRunner,
+        LoadedExtension,
+        RegisteredCommand,
+    )
     from loushang.coding.runtime import AgentSessionRuntime
     from loushang.coding.session import AgentSession
     from loushang.coding.store import SessionManager
@@ -1600,7 +1624,11 @@ def test_extension_command_context_new_session_uses_runtime_host(tmp_path) -> No
     from pathlib import Path
 
     from loushang.agent import Agent
-    from loushang.coding.extensions import ExtensionRunner, LoadedExtension, RegisteredCommand
+    from loushang.coding.extensions import (
+        ExtensionRunner,
+        LoadedExtension,
+        RegisteredCommand,
+    )
     from loushang.coding.runtime import AgentSessionRuntime
     from loushang.coding.session import AgentSession
     from loushang.coding.store import SessionManager
@@ -1666,7 +1694,11 @@ def test_extension_command_new_session_with_session_gets_fresh_context_and_stale
     from pathlib import Path
 
     from loushang.agent import Agent
-    from loushang.coding.extensions import ExtensionRunner, LoadedExtension, RegisteredCommand
+    from loushang.coding.extensions import (
+        ExtensionRunner,
+        LoadedExtension,
+        RegisteredCommand,
+    )
     from loushang.coding.runtime import AgentSessionRuntime
     from loushang.coding.session import AgentSession
     from loushang.coding.store import SessionManager
@@ -1729,7 +1761,11 @@ def test_replaced_session_context_send_message_becomes_stale_after_next_replacem
     import pytest
 
     from loushang.agent import Agent
-    from loushang.coding.extensions import ExtensionRunner, LoadedExtension, RegisteredCommand
+    from loushang.coding.extensions import (
+        ExtensionRunner,
+        LoadedExtension,
+        RegisteredCommand,
+    )
     from loushang.coding.runtime import AgentSessionRuntime
     from loushang.coding.session import AgentSession
     from loushang.coding.store import SessionManager
@@ -1815,7 +1851,11 @@ def test_extension_command_context_switch_session_uses_runtime_host(tmp_path) ->
     from pathlib import Path
 
     from loushang.agent import Agent
-    from loushang.coding.extensions import ExtensionRunner, LoadedExtension, RegisteredCommand
+    from loushang.coding.extensions import (
+        ExtensionRunner,
+        LoadedExtension,
+        RegisteredCommand,
+    )
     from loushang.coding.runtime import AgentSessionRuntime
     from loushang.coding.session import AgentSession
     from loushang.coding.store import SessionManager
@@ -1880,7 +1920,11 @@ def test_extension_command_replacement_callbacks_require_async_callables(tmp_pat
 
     from loushang.agent import Agent
     from loushang.coding.diagnostics import DiagnosticsService
-    from loushang.coding.extensions import ExtensionRunner, LoadedExtension, RegisteredCommand
+    from loushang.coding.extensions import (
+        ExtensionRunner,
+        LoadedExtension,
+        RegisteredCommand,
+    )
     from loushang.coding.runtime import AgentSessionRuntime
     from loushang.coding.session import AgentSession
     from loushang.coding.store import SessionManager
@@ -2579,7 +2623,11 @@ def test_runtime_create_session_normalizes_cwd_and_rejects_missing_paths(tmp_pat
 def test_runtime_new_session_respects_extension_before_switch_cancellation(tmp_path) -> None:
     from pathlib import Path
 
-    from loushang.coding.extensions import ExtensionRunner, LoadedExtension, SessionActionDecision
+    from loushang.coding.extensions import (
+        ExtensionRunner,
+        LoadedExtension,
+        SessionActionDecision,
+    )
     from loushang.coding.runtime import AgentSessionRuntime
     from loushang.coding.store import SessionManager
 
@@ -2628,7 +2676,11 @@ def test_runtime_new_session_respects_extension_before_switch_cancellation(tmp_p
 def test_runtime_fork_session_respects_extension_before_fork_cancellation(tmp_path) -> None:
     from pathlib import Path
 
-    from loushang.coding.extensions import ExtensionRunner, LoadedExtension, SessionActionDecision
+    from loushang.coding.extensions import (
+        ExtensionRunner,
+        LoadedExtension,
+        SessionActionDecision,
+    )
     from loushang.coding.runtime import AgentSessionRuntime
     from loushang.coding.store import SessionManager
 
@@ -2679,7 +2731,11 @@ def test_runtime_fork_session_respects_extension_before_fork_cancellation(tmp_pa
 def test_runtime_new_session_allows_extension_non_cancel_decision(tmp_path) -> None:
     from pathlib import Path
 
-    from loushang.coding.extensions import ExtensionRunner, LoadedExtension, SessionActionDecision
+    from loushang.coding.extensions import (
+        ExtensionRunner,
+        LoadedExtension,
+        SessionActionDecision,
+    )
     from loushang.coding.runtime import AgentSessionRuntime
     from loushang.coding.store import SessionManager
 
@@ -2729,7 +2785,11 @@ def test_runtime_new_session_allows_extension_non_cancel_decision(tmp_path) -> N
 def test_runtime_restore_session_allows_extension_non_cancel_decision(tmp_path) -> None:
     from pathlib import Path
 
-    from loushang.coding.extensions import ExtensionRunner, LoadedExtension, SessionActionDecision
+    from loushang.coding.extensions import (
+        ExtensionRunner,
+        LoadedExtension,
+        SessionActionDecision,
+    )
     from loushang.coding.runtime import AgentSessionRuntime
     from loushang.coding.store import SessionManager
 
@@ -2790,7 +2850,11 @@ def test_runtime_restore_session_allows_extension_non_cancel_decision(tmp_path) 
 def test_runtime_fork_session_allows_extension_non_cancel_decision(tmp_path) -> None:
     from pathlib import Path
 
-    from loushang.coding.extensions import ExtensionRunner, LoadedExtension, SessionActionDecision
+    from loushang.coding.extensions import (
+        ExtensionRunner,
+        LoadedExtension,
+        SessionActionDecision,
+    )
     from loushang.coding.runtime import AgentSessionRuntime
     from loushang.coding.store import SessionManager
 

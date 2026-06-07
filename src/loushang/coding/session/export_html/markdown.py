@@ -8,7 +8,6 @@ from pygments.formatters import HtmlFormatter
 from pygments.lexers import TextLexer, get_lexer_by_name
 from pygments.util import ClassNotFound
 
-
 _FENCE_RE = re.compile(r"```([A-Za-z0-9_+.#-]*)[^\n]*\n(.*?)```", re.DOTALL)
 _LANGUAGE_RE = re.compile(r"[^A-Za-z0-9_+.#-]+")
 _FORMATTER = HtmlFormatter(nowrap=True)

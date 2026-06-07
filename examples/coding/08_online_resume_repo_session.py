@@ -16,7 +16,12 @@ from _support import (
     describe_model,
     resolve_api_key,
 )
-from loushang.coding import ToolRegistry, create_agent_session_runtime, register_builtin_tools
+
+from loushang.coding import (
+    ToolRegistry,
+    create_agent_session_runtime,
+    register_builtin_tools,
+)
 
 EXAMPLE_FIRST_REQUEST = (
     "当前目录有哪些文件？"

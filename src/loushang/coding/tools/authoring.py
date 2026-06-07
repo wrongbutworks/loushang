@@ -4,7 +4,6 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Any, Protocol, runtime_checkable
 
-
 _TOOL_SPEC_ATTR = "__loushang_tool_spec__"
 
 

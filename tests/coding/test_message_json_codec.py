@@ -68,7 +68,10 @@ def test_deserialize_session_header_accepts_pi_v3_json_keys() -> None:
 
 def test_assistant_message_roundtrip_preserves_response_model_and_signatures() -> None:
     from loushang.ai.types import AssistantMessage, TextPart, ThinkingPart, ToolCall
-    from loushang.coding.message.json_codec import deserialize_agent_message, serialize_agent_message
+    from loushang.coding.message.json_codec import (
+        deserialize_agent_message,
+        serialize_agent_message,
+    )
 
     message = AssistantMessage(
         role="assistant",
@@ -103,7 +106,10 @@ def test_tool_result_and_custom_messages_roundtrip_with_images_and_details() -> 
         CompactionSummaryMessage,
         CustomMessage,
     )
-    from loushang.coding.message.json_codec import deserialize_agent_message, serialize_agent_message
+    from loushang.coding.message.json_codec import (
+        deserialize_agent_message,
+        serialize_agent_message,
+    )
 
     messages = [
         ToolResultMessage(

@@ -6,13 +6,15 @@ from typing import Any
 
 from loushang.agent import AbortController, Agent
 from loushang.ai.types import UserMessage
-from loushang.coding.compaction import collect_entries_for_branch_summary, generate_branch_summary
+from loushang.coding.compaction import (
+    collect_entries_for_branch_summary,
+    generate_branch_summary,
+)
 from loushang.coding.event import AgentSessionEvent
 from loushang.coding.extensions import ExtensionRunner, SessionBeforeTreeEvent
 from loushang.coding.message import CustomMessageEntry, SessionMessageEntry
 from loushang.coding.session.types import TreeNavigationResult
 from loushang.coding.store import SessionManager
-
 
 EventDispatcher = Callable[[AgentSessionEvent], Awaitable[None]]
 RuntimeExceptionRecorder = Callable[..., None]

@@ -18,19 +18,17 @@ import sys
 from dataclasses import dataclass
 from typing import Any
 
+from loushang.agent import (
+    Agent,
+    AgentState,
+    AgentToolResult,
+)
 from loushang.ai import (
     Model,
     TextPart,
     get_model,
     reset_api_providers,
 )
-from loushang.agent import (
-    Agent,
-    AgentState,
-    AgentTool,
-    AgentToolResult,
-)
-
 
 BASE_URL = "https://api.moonshot.cn/anthropic"
 MODEL_ID = "kimi-k2.5"

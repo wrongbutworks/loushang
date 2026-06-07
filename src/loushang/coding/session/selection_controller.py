@@ -9,7 +9,6 @@ from loushang.ai.model import Model
 from loushang.coding.session.types import ModelSelection
 from loushang.coding.store import SessionManager
 
-
 _THINKING_LEVEL_ORDER: tuple[ThinkingLevel, ...] = ("off", "minimal", "low", "medium", "high", "xhigh")
 
 

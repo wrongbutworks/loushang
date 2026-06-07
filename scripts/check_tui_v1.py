@@ -3,8 +3,6 @@ from __future__ import annotations
 
 import argparse
 import subprocess
-import sys
-
 
 GATE_COMMANDS = (
     ("uv", "--cache-dir", ".uv-cache", "run", "pytest", "tests/tui/test_import_boundaries.py", "-q"),

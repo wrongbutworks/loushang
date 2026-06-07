@@ -3,7 +3,9 @@ from __future__ import annotations
 
 def test_session_settings_controller_returns_defaults_without_manager() -> None:
     from loushang.coding.control import CompactionSettings, RetrySettings
-    from loushang.coding.session.session_settings_controller import SessionSettingsController
+    from loushang.coding.session.session_settings_controller import (
+        SessionSettingsController,
+    )
 
     controller = SessionSettingsController(settings_manager=None)
 
@@ -15,7 +17,9 @@ def test_session_settings_controller_returns_defaults_without_manager() -> None:
 
 
 def test_session_settings_controller_lazily_creates_manager_for_auto_flags() -> None:
-    from loushang.coding.session.session_settings_controller import SessionSettingsController
+    from loushang.coding.session.session_settings_controller import (
+        SessionSettingsController,
+    )
 
     controller = SessionSettingsController(settings_manager=None)
 
@@ -30,7 +34,9 @@ def test_session_settings_controller_lazily_creates_manager_for_auto_flags() -> 
 
 def test_session_settings_controller_persists_queue_modes_to_existing_manager(tmp_path) -> None:
     from loushang.coding.control import SettingsManager
-    from loushang.coding.session.session_settings_controller import SessionSettingsController
+    from loushang.coding.session.session_settings_controller import (
+        SessionSettingsController,
+    )
 
     settings_path = tmp_path / "settings.json"
     controller = SessionSettingsController(

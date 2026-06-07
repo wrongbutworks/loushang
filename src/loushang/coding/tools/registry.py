@@ -7,10 +7,9 @@ from loushang.agent.types import AgentTool, ensure_agent_tool, is_agent_tool_lik
 
 from .authoring import DecoratedTool
 from .context import ToolContextProvider
-from .wrapper import create_tool_definition_from_tool
-from .types import ToolDefinition
 from .normalize import tool_to_definition
-from .wrapper import wrap_tool_definition
+from .types import ToolDefinition
+from .wrapper import create_tool_definition_from_tool, wrap_tool_definition
 
 
 @dataclass(frozen=True)

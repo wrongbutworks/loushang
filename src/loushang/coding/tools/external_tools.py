@@ -16,7 +16,6 @@ from typing import Literal, Protocol
 
 from .runtime import MaybeAwaitable, resolve_maybe_awaitable
 
-
 ExternalToolName = Literal["fd", "rg"]
 ExternalToolPolicy = Literal["never", "auto", "required"]
 

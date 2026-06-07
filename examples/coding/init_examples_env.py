@@ -6,7 +6,6 @@ import os
 import shutil
 from pathlib import Path
 
-
 ARTIFACT_ROOT_NAME = ".loushang"
 
 

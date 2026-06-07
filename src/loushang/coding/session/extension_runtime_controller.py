@@ -7,7 +7,6 @@ from dataclasses import dataclass
 from loushang.coding.extensions import SessionRefreshEvent, SessionStartEvent
 from loushang.coding.loader import ResourceDiagnostic
 
-
 BuildBindings = Callable[[], object]
 RefreshResources = Callable[[], object | None]
 RecordRuntimeDiagnostic = Callable[[ResourceDiagnostic], None]

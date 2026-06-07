@@ -16,7 +16,6 @@ from loushang.ai import (
     get_model,
 )
 
-
 API_KEY = ""
 PROVIDER_ID = "moonshot"
 ENDPOINT_ID = "openai-completions"

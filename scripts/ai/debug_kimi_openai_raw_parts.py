@@ -7,8 +7,9 @@ import os
 import sys
 
 from loushang.ai.model_registry import ModelDefinition
-from loushang.ai.providers.openai_chat_completions_httpx import OpenAIChatCompletionsHttpxProvider
-
+from loushang.ai.providers.openai_chat_completions_httpx import (
+    OpenAIChatCompletionsHttpxProvider,
+)
 
 BASE_URL = "https://api.moonshot.cn/v1"
 

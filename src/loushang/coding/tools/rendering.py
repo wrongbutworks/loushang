@@ -5,7 +5,12 @@ from typing import Any
 
 from loushang.agent.types import AgentToolResult
 
-from .types import ToolDefinition, ToolRenderContext, ToolRenderOutput, ToolRenderResultOptions
+from .types import (
+    ToolDefinition,
+    ToolRenderContext,
+    ToolRenderOutput,
+    ToolRenderResultOptions,
+)
 
 ToolDefinitionResolver = Callable[[str], ToolDefinition | None]
 

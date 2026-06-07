@@ -1,15 +1,20 @@
 from __future__ import annotations
 
-from copy import deepcopy
-from collections.abc import Callable, Mapping, Sequence
 import inspect
+from collections.abc import Callable, Mapping, Sequence
+from copy import deepcopy
 from dataclasses import dataclass, field, replace
 from pathlib import Path
 from typing import cast
 
-from loushang.agent.types import AfterToolCallResult, AgentMessage, AgentToolResult, BeforeToolCallResult
+from loushang.agent.types import (
+    AfterToolCallResult,
+    AgentMessage,
+    AgentToolResult,
+    BeforeToolCallResult,
+)
 from loushang.ai.types import ToolCall
-
+from loushang.coding.exec import ExecResult, ExecUpdateCallback
 from loushang.coding.extensions.loader import ExtensionLoader
 from loushang.coding.extensions.types import (
     BeforeAgentStartResult,
@@ -34,7 +39,6 @@ from loushang.coding.extensions.types import (
     ToolResultDecision,
 )
 from loushang.coding.extensions.wrapper import wrap_registered_tool_definition
-from loushang.coding.exec import ExecResult, ExecUpdateCallback
 from loushang.coding.loader import (
     ExtensionDescriptor,
     PromptFragmentDescriptor,

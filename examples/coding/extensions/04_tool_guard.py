@@ -22,7 +22,6 @@ from loushang.agent.types import AgentToolResult
 from loushang.ai.types import TextPart
 from loushang.coding import ToolDefinition
 
-
 EXTENSION_SOURCE = """
 from loushang.agent.types import AgentToolResult
 from loushang.ai.types import TextPart

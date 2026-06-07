@@ -1,6 +1,5 @@
 """规则引擎测试."""
 
-import pytest
 
 from loushang.ontology import Ontology, Property, RuleEngine
 

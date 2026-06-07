@@ -7,7 +7,6 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import TypeAlias
 
-
 ResourceWatchPathGetter: TypeAlias = Callable[[], Iterable[str | Path]]
 ResourceWatchCallback: TypeAlias = Callable[[], object | Awaitable[object]]
 ResourceSnapshot: TypeAlias = dict[str, tuple[int, int] | None]

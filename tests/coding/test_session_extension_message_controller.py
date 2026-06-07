@@ -7,7 +7,9 @@ import pytest
 
 from loushang.agent import Agent
 from loushang.ai.types import TextPart
-from loushang.coding.session.extension_message_controller import ExtensionMessageController
+from loushang.coding.session.extension_message_controller import (
+    ExtensionMessageController,
+)
 from loushang.coding.session.queue_controller import QueueController
 from loushang.coding.store import SessionManager
 

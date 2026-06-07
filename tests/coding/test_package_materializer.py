@@ -47,7 +47,11 @@ def test_package_materializer_records_pending_remote_sources(tmp_path) -> None:
 def test_package_resource_root_resolver_covers_local_and_installed_remote_sources(tmp_path) -> None:
     from pathlib import Path
 
-    from loushang.coding.package import PackageMaterializationRecord, PackageMaterializer, PackageSourceConfig
+    from loushang.coding.package import (
+        PackageMaterializationRecord,
+        PackageMaterializer,
+        PackageSourceConfig,
+    )
     from loushang.coding.package.resource_roots import resolve_package_resource_roots
 
     source = "https://packages.example.invalid/review-pack.git"
@@ -75,7 +79,11 @@ def test_package_resource_root_resolver_covers_local_and_installed_remote_source
 def test_package_resource_root_resolver_uses_installed_package_manifest_root(tmp_path) -> None:
     from pathlib import Path
 
-    from loushang.coding.package import PackageMaterializationRecord, PackageMaterializer, PackageSourceConfig
+    from loushang.coding.package import (
+        PackageMaterializationRecord,
+        PackageMaterializer,
+        PackageSourceConfig,
+    )
     from loushang.coding.package.resource_roots import resolve_package_resource_roots
 
     source = "https://packages.example.invalid/review-pack.git"
@@ -125,7 +133,12 @@ def test_package_lifecycle_types_are_exported_from_package_namespace() -> None:
 
 
 def test_package_source_identity_parses_pi_git_shorthand_and_at_refs() -> None:
-    from loushang.coding.package import PackageSourceIdentity, is_remote_package_source, package_source_match_key, remote_package_name
+    from loushang.coding.package import (
+        PackageSourceIdentity,
+        is_remote_package_source,
+        package_source_match_key,
+        remote_package_name,
+    )
 
     shorthand = PackageSourceIdentity.parse("git:github.com/acme/review-pack@main")
     scp_like = PackageSourceIdentity.parse("git@github.com:acme/review-pack.git@v1.2.3")
@@ -211,7 +224,10 @@ def test_configured_package_sources_dedupes_pinned_versions_by_package_identity(
 
 def test_configured_package_sources_preserves_same_relative_local_source_across_scopes(tmp_path) -> None:
     from loushang.coding.control import SettingsManager
-    from loushang.coding.package.source_manager import configured_package_sources, package_source_scopes
+    from loushang.coding.package.source_manager import (
+        configured_package_sources,
+        package_source_scopes,
+    )
 
     global_settings = tmp_path / "agent" / "settings.json"
     project_settings = tmp_path / "project" / ".loushang" / "settings.json"
@@ -239,7 +255,10 @@ def test_configured_package_sources_preserves_same_relative_local_source_across_
 
 
 def test_python_package_installer_backend_installs_with_uv_and_records_metadata(tmp_path) -> None:
-    from loushang.coding.package import PackageMaterializationRecord, PythonPackageInstallerBackend
+    from loushang.coding.package import (
+        PackageMaterializationRecord,
+        PythonPackageInstallerBackend,
+    )
 
     calls: list[list[str]] = []
 
@@ -271,7 +290,10 @@ def test_python_package_installer_backend_installs_with_uv_and_records_metadata(
 
 
 def test_python_package_installer_backend_falls_back_to_pip_when_uv_is_missing(tmp_path) -> None:
-    from loushang.coding.package import PackageMaterializationRecord, PythonPackageInstallerBackend
+    from loushang.coding.package import (
+        PackageMaterializationRecord,
+        PythonPackageInstallerBackend,
+    )
 
     calls: list[list[str]] = []
 
@@ -301,7 +323,10 @@ def test_python_package_installer_backend_falls_back_to_pip_when_uv_is_missing(t
 
 
 def test_package_materializer_materializes_python_package_sources_and_persists_lockfile(tmp_path) -> None:
-    from loushang.coding.package import PackageMaterializer, PythonPackageInstallerBackend
+    from loushang.coding.package import (
+        PackageMaterializer,
+        PythonPackageInstallerBackend,
+    )
 
     def runner(args: list[str], **kwargs: object) -> subprocess.CompletedProcess[str]:
         target = Path(args[args.index("--target") + 1])
@@ -375,7 +400,7 @@ def test_package_materializer_refreshes_temporary_remote_source_without_persisti
 
 
 def test_package_materializer_resolves_scope_relative_local_sources(tmp_path) -> None:
-    from loushang.coding.package import PackageSourceConfig, PackageMaterializer
+    from loushang.coding.package import PackageMaterializer, PackageSourceConfig
     from loushang.coding.package.resource_roots import resolve_package_resource_roots
 
     global_base = tmp_path / "agent"
@@ -439,7 +464,11 @@ def test_package_projection_resolves_scope_relative_package_sources(tmp_path) ->
 
 
 def test_git_package_materializer_backend_clones_remote_plugin_source(tmp_path) -> None:
-    from loushang.coding.plugin import GitPackageMaterializerBackend, PackageMaterializer, PluginManager
+    from loushang.coding.plugin import (
+        GitPackageMaterializerBackend,
+        PackageMaterializer,
+        PluginManager,
+    )
 
     source_repo = tmp_path / "source"
     source_repo.mkdir()
@@ -474,7 +503,10 @@ def test_git_package_materializer_backend_clones_remote_plugin_source(tmp_path) 
 
 
 def test_package_materializer_updates_existing_git_checkout(tmp_path) -> None:
-    from loushang.coding.plugin import GitPackageMaterializerBackend, PackageMaterializer
+    from loushang.coding.plugin import (
+        GitPackageMaterializerBackend,
+        PackageMaterializer,
+    )
 
     source_repo = tmp_path / "source"
     source_repo.mkdir()
@@ -508,7 +540,10 @@ def test_package_materializer_updates_existing_git_checkout(tmp_path) -> None:
 
 
 def test_git_package_materializer_updates_detached_checkout_without_upstream(tmp_path) -> None:
-    from loushang.coding.plugin import GitPackageMaterializerBackend, PackageMaterializer
+    from loushang.coding.plugin import (
+        GitPackageMaterializerBackend,
+        PackageMaterializer,
+    )
 
     source_repo = tmp_path / "source"
     source_repo.mkdir()
@@ -541,7 +576,10 @@ def test_git_package_materializer_updates_detached_checkout_without_upstream(tmp
 
 
 def test_git_package_materializer_recovers_after_remote_history_rewrite(tmp_path) -> None:
-    from loushang.coding.plugin import GitPackageMaterializerBackend, PackageMaterializer
+    from loushang.coding.plugin import (
+        GitPackageMaterializerBackend,
+        PackageMaterializer,
+    )
 
     source_repo = tmp_path / "source"
     source_repo.mkdir()
@@ -581,7 +619,10 @@ def test_git_package_materializer_recovers_after_remote_history_rewrite(tmp_path
 
 
 def test_git_package_materializer_skips_existing_pinned_checkout_update(tmp_path) -> None:
-    from loushang.coding.package import GitPackageMaterializerBackend, PackageMaterializer
+    from loushang.coding.package import (
+        GitPackageMaterializerBackend,
+        PackageMaterializer,
+    )
 
     source_repo = tmp_path / "source"
     source_repo.mkdir()
@@ -613,7 +654,10 @@ def test_git_package_materializer_skips_existing_pinned_checkout_update(tmp_path
 
 
 def test_git_package_materializer_uses_explicit_default_branch_fetch_without_pull(tmp_path) -> None:
-    from loushang.coding.package import GitPackageMaterializerBackend, PackageMaterializationRecord
+    from loushang.coding.package import (
+        GitPackageMaterializerBackend,
+        PackageMaterializationRecord,
+    )
 
     class RecordingBackend(GitPackageMaterializerBackend):
         def __init__(self) -> None:
@@ -658,7 +702,10 @@ def test_git_package_materializer_uses_explicit_default_branch_fetch_without_pul
 
 
 def test_package_materializer_refuses_to_update_dirty_git_checkout(tmp_path) -> None:
-    from loushang.coding.plugin import GitPackageMaterializerBackend, PackageMaterializer
+    from loushang.coding.plugin import (
+        GitPackageMaterializerBackend,
+        PackageMaterializer,
+    )
 
     source_repo = tmp_path / "source"
     source_repo.mkdir()
@@ -751,7 +798,10 @@ def test_package_materializer_denies_insecure_remote_sources_by_policy(tmp_path)
 
 
 def test_package_materializer_records_pinned_git_ref_and_commit(tmp_path) -> None:
-    from loushang.coding.package import GitPackageMaterializerBackend, PackageMaterializer
+    from loushang.coding.package import (
+        GitPackageMaterializerBackend,
+        PackageMaterializer,
+    )
 
     source_repo = tmp_path / "source"
     source_repo.mkdir()
@@ -795,7 +845,10 @@ def test_package_source_identity_normalizes_equivalent_git_urls() -> None:
 
 
 def test_package_materializer_persists_and_restores_lockfile_records(tmp_path) -> None:
-    from loushang.coding.package import PackageMaterializationRecord, PackageMaterializer
+    from loushang.coding.package import (
+        PackageMaterializationRecord,
+        PackageMaterializer,
+    )
 
     source = "https://packages.example.invalid/review-pack.git"
 
@@ -817,7 +870,10 @@ def test_package_materializer_persists_and_restores_lockfile_records(tmp_path) -
 
 
 def test_package_materializer_keys_records_by_normalized_source_identity(tmp_path) -> None:
-    from loushang.coding.package import PackageMaterializationRecord, PackageMaterializer
+    from loushang.coding.package import (
+        PackageMaterializationRecord,
+        PackageMaterializer,
+    )
 
     source = "https://github.com/acme/review-pack.git"
     equivalent = "git+https://github.com/acme/review-pack"
@@ -865,7 +921,10 @@ def test_package_materializer_reports_corrupt_lockfile_and_writes_atomically(tmp
 
 
 def test_package_materializer_skips_ref_pinned_update_checks(tmp_path) -> None:
-    from loushang.coding.package import GitPackageMaterializerBackend, PackageMaterializer
+    from loushang.coding.package import (
+        GitPackageMaterializerBackend,
+        PackageMaterializer,
+    )
 
     source_repo = tmp_path / "source"
     source_repo.mkdir()
@@ -894,7 +953,10 @@ def test_package_materializer_skips_ref_pinned_update_checks(tmp_path) -> None:
 
 
 def test_package_materializer_reports_update_check_failures(tmp_path) -> None:
-    from loushang.coding.package import PackageMaterializationRecord, PackageMaterializer
+    from loushang.coding.package import (
+        PackageMaterializationRecord,
+        PackageMaterializer,
+    )
 
     source = (tmp_path / "missing.git").as_uri()
 
@@ -930,7 +992,10 @@ def test_package_materializer_reports_update_check_failures(tmp_path) -> None:
 
 
 def test_package_materializer_skips_update_work_in_offline_mode(tmp_path, monkeypatch) -> None:
-    from loushang.coding.package import PackageMaterializationRecord, PackageMaterializer
+    from loushang.coding.package import (
+        PackageMaterializationRecord,
+        PackageMaterializer,
+    )
 
     source = "https://packages.example.invalid/review-pack.git"
     calls: list[str] = []
@@ -952,7 +1017,10 @@ def test_package_materializer_skips_update_work_in_offline_mode(tmp_path, monkey
 
 
 def test_package_materializer_updates_remote_sources_with_bounded_concurrency(tmp_path) -> None:
-    from loushang.coding.package import PackageMaterializationRecord, PackageMaterializer
+    from loushang.coding.package import (
+        PackageMaterializationRecord,
+        PackageMaterializer,
+    )
     from loushang.coding.policy import PackageSecurityPolicy
 
     active = 0
@@ -982,7 +1050,10 @@ def test_package_materializer_updates_remote_sources_with_bounded_concurrency(tm
 
 
 def test_package_materializer_check_updates_uses_configured_timeout(tmp_path, monkeypatch) -> None:
-    from loushang.coding.package import PackageMaterializationRecord, PackageMaterializer
+    from loushang.coding.package import (
+        PackageMaterializationRecord,
+        PackageMaterializer,
+    )
     from loushang.coding.policy import PackageSecurityPolicy
 
     source = "https://packages.example.invalid/review-pack.git"
@@ -1015,7 +1086,10 @@ def test_package_materializer_check_updates_uses_configured_timeout(tmp_path, mo
 
 
 def test_package_materializer_check_updates_emits_progress_events(tmp_path, monkeypatch) -> None:
-    from loushang.coding.package import PackageMaterializationRecord, PackageMaterializer
+    from loushang.coding.package import (
+        PackageMaterializationRecord,
+        PackageMaterializer,
+    )
     from loushang.coding.policy import PackageSecurityPolicy
 
     source = "https://packages.example.invalid/review-pack.git"
@@ -1051,7 +1125,10 @@ def test_package_materializer_check_updates_emits_progress_events(tmp_path, monk
 
 
 def test_package_materializer_check_updates_reports_python_package_update(tmp_path, monkeypatch) -> None:
-    from loushang.coding.package import PackageMaterializationRecord, PackageMaterializer
+    from loushang.coding.package import (
+        PackageMaterializationRecord,
+        PackageMaterializer,
+    )
 
     source = "pypi:acme-review-pack"
     checked: list[tuple[str, float | None]] = []
@@ -1099,7 +1176,10 @@ def test_package_materializer_check_updates_reports_python_package_update(tmp_pa
 
 
 def test_package_materializer_check_updates_skips_pinned_python_packages(tmp_path, monkeypatch) -> None:
-    from loushang.coding.package import PackageMaterializationRecord, PackageMaterializer
+    from loushang.coding.package import (
+        PackageMaterializationRecord,
+        PackageMaterializer,
+    )
 
     source = "pypi:acme-review-pack==1.2.3"
     checked: list[str] = []
@@ -1132,7 +1212,10 @@ def test_package_materializer_check_updates_skips_pinned_python_packages(tmp_pat
 
 
 def test_package_materializer_persists_trusted_sources(tmp_path) -> None:
-    from loushang.coding.package import PackageMaterializationRecord, PackageMaterializer
+    from loushang.coding.package import (
+        PackageMaterializationRecord,
+        PackageMaterializer,
+    )
     from loushang.coding.policy import PackageSecurityPolicy
 
     source = "https://packages.example.invalid/review-pack.git"
@@ -1158,7 +1241,10 @@ def test_package_materializer_persists_trusted_sources(tmp_path) -> None:
 
 
 def test_package_materializer_updates_all_and_checks_available_updates(tmp_path) -> None:
-    from loushang.coding.package import GitPackageMaterializerBackend, PackageMaterializer
+    from loushang.coding.package import (
+        GitPackageMaterializerBackend,
+        PackageMaterializer,
+    )
 
     source_repo = tmp_path / "source"
     source_repo.mkdir()
@@ -1227,7 +1313,10 @@ def test_package_security_policy_trusted_sources_use_normalized_identity() -> No
 
 
 def test_package_security_policy_explains_source_trust_decision() -> None:
-    from loushang.coding.policy import PackageSecurityPolicy, PackageSourceSecurityReport
+    from loushang.coding.policy import (
+        PackageSecurityPolicy,
+        PackageSourceSecurityReport,
+    )
 
     policy = PackageSecurityPolicy(trusted_hosts=("packages.example.invalid",))
 
@@ -1249,7 +1338,10 @@ def test_package_security_policy_explains_source_trust_decision() -> None:
 def test_package_projection_applies_package_source_filters(tmp_path) -> None:
     from pathlib import Path
 
-    from loushang.coding.package import PackageMaterializationRecord, PackageMaterializer
+    from loushang.coding.package import (
+        PackageMaterializationRecord,
+        PackageMaterializer,
+    )
     from loushang.coding.package.projection import collect_package_entries
     from loushang.coding.package.source import PackageSourceConfig
 

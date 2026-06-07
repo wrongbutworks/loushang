@@ -3,14 +3,16 @@ from __future__ import annotations
 import argparse
 import asyncio
 import importlib.util
-from pathlib import Path
 import sys
+from pathlib import Path
 from typing import TYPE_CHECKING, Any, TextIO, cast
 
 from loushang.coding.ui.native_loop import run_native_coding_tui
 
 if TYPE_CHECKING:
-    from loushang.coding.ui.native_app import NativeCodingTuiApp as _PerfNativeCodingTuiAppBase
+    from loushang.coding.ui.native_app import (
+        NativeCodingTuiApp as _PerfNativeCodingTuiAppBase,
+    )
 
 
 _EXAMPLE_DIR = Path(__file__).parent

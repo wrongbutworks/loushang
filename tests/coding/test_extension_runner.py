@@ -78,7 +78,11 @@ def _user_message(text: str) -> UserMessage:
 
 
 def test_extension_runner_merges_resource_contributions_from_loaded_extensions() -> None:
-    from loushang.coding.extensions import ExtensionRunner, ExtensionResourceContribution, LoadedExtension
+    from loushang.coding.extensions import (
+        ExtensionResourceContribution,
+        ExtensionRunner,
+        LoadedExtension,
+    )
     from loushang.coding.loader import PromptFragmentDescriptor, ResourceBundle
 
     def _resources_discover(event, ctx):
@@ -343,7 +347,11 @@ def test_extension_runner_flag_collisions_are_first_wins() -> None:
 
 
 def test_extension_runner_populates_flag_defaults() -> None:
-    from loushang.coding.extensions import ExtensionRunner, LoadedExtension, RegisteredFlag
+    from loushang.coding.extensions import (
+        ExtensionRunner,
+        LoadedExtension,
+        RegisteredFlag,
+    )
 
     first = LoadedExtension(name="first", source_path=Path("/tmp/one.py"))
     second = LoadedExtension(name="second", source_path=Path("/tmp/two.py"))
@@ -367,7 +375,11 @@ def test_extension_runner_populates_flag_defaults() -> None:
 
 
 def test_extension_runner_does_not_overwrite_explicit_flag_values_with_defaults() -> None:
-    from loushang.coding.extensions import ExtensionRunner, LoadedExtension, RegisteredFlag
+    from loushang.coding.extensions import (
+        ExtensionRunner,
+        LoadedExtension,
+        RegisteredFlag,
+    )
 
     ext = LoadedExtension(name="demo", source_path=Path("/tmp/demo.py"))
     object.__setattr__(
@@ -485,7 +497,12 @@ def test_extension_runner_closes_async_session_hook_coroutines() -> None:
 
 
 def test_extension_runner_records_session_refresh_hook_failures() -> None:
-    from loushang.coding.extensions import ExtensionRunner, ExtensionRuntimeBindings, LoadedExtension, SessionRefreshEvent
+    from loushang.coding.extensions import (
+        ExtensionRunner,
+        ExtensionRuntimeBindings,
+        LoadedExtension,
+        SessionRefreshEvent,
+    )
 
     def _broken_refresh(event, ctx):
         del event, ctx
@@ -519,7 +536,12 @@ def test_extension_runner_records_session_refresh_hook_failures() -> None:
 
 
 def test_extension_runner_records_session_action_callback_failures_via_refresh_hook_diagnostics() -> None:
-    from loushang.coding.extensions import ExtensionRunner, ExtensionRuntimeBindings, LoadedExtension, SessionRefreshEvent
+    from loushang.coding.extensions import (
+        ExtensionRunner,
+        ExtensionRuntimeBindings,
+        LoadedExtension,
+        SessionRefreshEvent,
+    )
 
     async def _broken_refresh(event, ctx):
         del event
@@ -560,7 +582,11 @@ def test_extension_runner_pipelines_tool_call_decisions() -> None:
     import asyncio
 
     from loushang.agent.types import BeforeToolCallContext
-    from loushang.coding.extensions import ExtensionRunner, LoadedExtension, ToolCallDecision
+    from loushang.coding.extensions import (
+        ExtensionRunner,
+        LoadedExtension,
+        ToolCallDecision,
+    )
 
     seen: list[tuple[str, dict[str, object]]] = []
 
@@ -612,7 +638,11 @@ def test_extension_runner_pipelines_tool_result_decisions() -> None:
     import asyncio
 
     from loushang.agent.types import AfterToolCallContext, AgentToolResult
-    from loushang.coding.extensions import ExtensionRunner, LoadedExtension, ToolResultDecision
+    from loushang.coding.extensions import (
+        ExtensionRunner,
+        LoadedExtension,
+        ToolResultDecision,
+    )
 
     seen: list[str] = []
 
@@ -677,7 +707,11 @@ def test_extension_runner_pipelines_tool_result_decisions() -> None:
 def test_extension_runner_pipelines_context_results_without_mutating_input_messages() -> None:
     import asyncio
 
-    from loushang.coding.extensions import ContextResult, ExtensionRunner, LoadedExtension
+    from loushang.coding.extensions import (
+        ContextResult,
+        ExtensionRunner,
+        LoadedExtension,
+    )
 
     seen: list[str] = []
 
@@ -719,7 +753,11 @@ def test_extension_runner_pipelines_context_results_without_mutating_input_messa
 def test_extension_runner_emit_input_chains_transform_results() -> None:
     import asyncio
 
-    from loushang.coding.extensions import ExtensionRunner, InputEventResult, LoadedExtension
+    from loushang.coding.extensions import (
+        ExtensionRunner,
+        InputEventResult,
+        LoadedExtension,
+    )
 
     seen: list[tuple[str, str]] = []
 
@@ -750,7 +788,11 @@ def test_extension_runner_emit_input_chains_transform_results() -> None:
 def test_extension_runner_emit_input_stops_on_handled_result() -> None:
     import asyncio
 
-    from loushang.coding.extensions import ExtensionRunner, InputEventResult, LoadedExtension
+    from loushang.coding.extensions import (
+        ExtensionRunner,
+        InputEventResult,
+        LoadedExtension,
+    )
 
     seen: list[str] = []
 
@@ -780,7 +822,11 @@ def test_extension_runner_emit_input_stops_on_handled_result() -> None:
 def test_extension_runner_returns_command_argument_completions() -> None:
     import asyncio
 
-    from loushang.coding.extensions import ExtensionRunner, LoadedExtension, RegisteredCommand
+    from loushang.coding.extensions import (
+        ExtensionRunner,
+        LoadedExtension,
+        RegisteredCommand,
+    )
 
     async def _handler(args, ctx):
         del args, ctx
@@ -813,7 +859,11 @@ def test_extension_runner_returns_command_argument_completions() -> None:
 def test_extension_runner_records_diagnostic_for_invalid_command_argument_completions() -> None:
     import asyncio
 
-    from loushang.coding.extensions import ExtensionRunner, LoadedExtension, RegisteredCommand
+    from loushang.coding.extensions import (
+        ExtensionRunner,
+        LoadedExtension,
+        RegisteredCommand,
+    )
 
     async def _handler(args, ctx):
         del args, ctx
@@ -1279,8 +1329,16 @@ def test_extension_runner_reports_hook_failures_to_runtime_error_sink() -> None:
     import asyncio
     from types import SimpleNamespace
 
-    from loushang.agent.types import AfterToolCallContext, AgentToolResult, BeforeToolCallContext
-    from loushang.coding.extensions import ExtensionRunner, LoadedExtension, SessionRefreshEvent
+    from loushang.agent.types import (
+        AfterToolCallContext,
+        AgentToolResult,
+        BeforeToolCallContext,
+    )
+    from loushang.coding.extensions import (
+        ExtensionRunner,
+        LoadedExtension,
+        SessionRefreshEvent,
+    )
 
     def _broken(name):
         def _hook(event, ctx):
@@ -1427,7 +1485,11 @@ def test_extension_runner_emits_runtime_error_for_agent_lifecycle_hook_failure()
 def test_extension_runner_before_agent_start_returns_messages_and_system_prompt() -> None:
     import asyncio
 
-    from loushang.coding.extensions import BeforeAgentStartResult, ExtensionRunner, LoadedExtension
+    from loushang.coding.extensions import (
+        BeforeAgentStartResult,
+        ExtensionRunner,
+        LoadedExtension,
+    )
 
     seen: list[tuple[object, ...]] = []
 
@@ -1726,7 +1788,11 @@ def test_extension_runner_refresh_runtime_updates_context_visible_state() -> Non
 
 
 def test_extension_runner_bind_runtime_and_emit_session_refresh() -> None:
-    from loushang.coding.extensions import ExtensionRunner, LoadedExtension, SessionRefreshEvent
+    from loushang.coding.extensions import (
+        ExtensionRunner,
+        LoadedExtension,
+        SessionRefreshEvent,
+    )
 
     events: list[tuple[str, str]] = []
 
@@ -2273,6 +2339,7 @@ def test_extension_runner_context_exposes_pi_style_ui_namespace_and_has_ui() -> 
 
 
 def test_extension_runner_emits_tree_and_compact_decision_hooks() -> None:
+    from loushang.coding.compaction import BranchSummaryResult, CompactionResult
     from loushang.coding.extensions import (
         ExtensionRunner,
         LoadedExtension,
@@ -2283,7 +2350,6 @@ def test_extension_runner_emits_tree_and_compact_decision_hooks() -> None:
         SessionBeforeTreeEvent,
         SessionBeforeTreeResult,
     )
-    from loushang.coding.compaction import BranchSummaryResult, CompactionResult
 
     seen: list[tuple[str, str]] = []
 

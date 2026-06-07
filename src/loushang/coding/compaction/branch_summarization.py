@@ -5,7 +5,6 @@ from collections.abc import Mapping, Sequence
 from loushang.agent import AgentMessage
 from loushang.ai import Context, complete_simple
 from loushang.ai.types import TextPart, UserMessage
-
 from loushang.coding.compaction.compaction import (
     SUMMARIZATION_SYSTEM_PROMPT,
     _build_summarization_prompt,
@@ -15,13 +14,12 @@ from loushang.coding.compaction.compaction import (
     _format_file_operations,
 )
 from loushang.coding.compaction.types import (
-    BranchSummaryDetails,
     BranchPreparation,
+    BranchSummaryDetails,
     BranchSummaryResult,
     CollectEntriesResult,
 )
 from loushang.coding.store import SessionManager
-
 
 BRANCH_SUMMARY_PREAMBLE = """The user explored a different conversation branch before returning here.
 Summary of that exploration:

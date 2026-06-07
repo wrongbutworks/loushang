@@ -7,8 +7,12 @@ from pathlib import Path
 if __package__ in {None, ""}:
     sys.path.insert(0, str(Path(__file__).resolve().parent))
 
-from _support import ENV_EXAMPLES_ARTIFACT_ROOT, ENV_EXAMPLES_MODEL_CATALOG, build_kimi_model, describe_model
-
+from _support import (
+    ENV_EXAMPLES_ARTIFACT_ROOT,
+    ENV_EXAMPLES_MODEL_CATALOG,
+    build_kimi_model,
+    describe_model,
+)
 
 _KIMI_API_KEY_PRIORITY = (
     "KIMI_API_KEY",

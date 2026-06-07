@@ -76,7 +76,11 @@ def test_agent_session_compact_appends_compaction_and_rebuilds_context(tmp_path,
 
     from loushang.agent import Agent
     from loushang.coding.compaction import CompactionResult
-    from loushang.coding.control import CompactionSettings, ControlConfig, SettingsManager
+    from loushang.coding.control import (
+        CompactionSettings,
+        ControlConfig,
+        SettingsManager,
+    )
     from loushang.coding.extensions import ExtensionRunner, LoadedExtension
     from loushang.coding.session import AgentSession
     from loushang.coding.store import SessionManager
@@ -169,7 +173,11 @@ def test_agent_session_compact_appends_compaction_and_rebuilds_context(tmp_path,
 def test_agent_session_exposes_compaction_service_surface(tmp_path, monkeypatch) -> None:
     from loushang.agent import Agent
     from loushang.coding.compaction import CompactionResult
-    from loushang.coding.control import CompactionSettings, ControlConfig, SettingsManager
+    from loushang.coding.control import (
+        CompactionSettings,
+        ControlConfig,
+        SettingsManager,
+    )
     from loushang.coding.session import AgentSession
     from loushang.coding.store import SessionManager
 
@@ -211,7 +219,11 @@ def test_agent_session_exposes_compaction_service_surface(tmp_path, monkeypatch)
 def test_agent_session_compact_emits_error_event_on_failure(tmp_path, monkeypatch) -> None:
     from loushang.agent import Agent
     from loushang.coding.compaction import CompactionPreparation
-    from loushang.coding.control import CompactionSettings, ControlConfig, SettingsManager
+    from loushang.coding.control import (
+        CompactionSettings,
+        ControlConfig,
+        SettingsManager,
+    )
     from loushang.coding.diagnostics import DiagnosticsService
     from loushang.coding.session import AgentSession
     from loushang.coding.store import SessionManager
@@ -277,9 +289,17 @@ def test_agent_session_compact_emits_error_event_on_failure(tmp_path, monkeypatc
 
 def test_agent_session_compact_respects_extension_before_compact_cancellation(tmp_path) -> None:
     from loushang.agent import Agent
-    from loushang.coding.control import CompactionSettings, ControlConfig, SettingsManager
+    from loushang.coding.control import (
+        CompactionSettings,
+        ControlConfig,
+        SettingsManager,
+    )
     from loushang.coding.diagnostics import DiagnosticsService
-    from loushang.coding.extensions import ExtensionRunner, LoadedExtension, SessionActionDecision
+    from loushang.coding.extensions import (
+        ExtensionRunner,
+        LoadedExtension,
+        SessionActionDecision,
+    )
     from loushang.coding.session import AgentSession
     from loushang.coding.store import SessionManager
 
@@ -340,8 +360,16 @@ def test_agent_session_compact_respects_extension_before_compact_cancellation(tm
 def test_agent_session_compact_respects_extension_before_compact_result_override(tmp_path, monkeypatch) -> None:
     from loushang.agent import Agent
     from loushang.coding.compaction import CompactionResult
-    from loushang.coding.control import CompactionSettings, ControlConfig, SettingsManager
-    from loushang.coding.extensions import ExtensionRunner, LoadedExtension, SessionBeforeCompactResult
+    from loushang.coding.control import (
+        CompactionSettings,
+        ControlConfig,
+        SettingsManager,
+    )
+    from loushang.coding.extensions import (
+        ExtensionRunner,
+        LoadedExtension,
+        SessionBeforeCompactResult,
+    )
     from loushang.coding.session import AgentSession
     from loushang.coding.store import SessionManager
 
@@ -418,7 +446,11 @@ def test_agent_session_compact_respects_extension_before_compact_result_override
 def test_agent_session_auto_compacts_after_agent_end_when_threshold_exceeded(tmp_path, monkeypatch) -> None:
     from loushang.agent import AbortSignal, Agent
     from loushang.coding.compaction import CompactionResult
-    from loushang.coding.control import CompactionSettings, ControlConfig, SettingsManager
+    from loushang.coding.control import (
+        CompactionSettings,
+        ControlConfig,
+        SettingsManager,
+    )
     from loushang.coding.session import AgentSession
     from loushang.coding.store import SessionManager
 
@@ -504,7 +536,11 @@ def test_agent_session_auto_compacts_after_agent_end_when_threshold_exceeded(tmp
 def test_agent_session_auto_compaction_uses_compact_percent_threshold(tmp_path, monkeypatch) -> None:
     from loushang.agent import AbortSignal, Agent
     from loushang.coding.compaction import CompactionResult
-    from loushang.coding.control import CompactionSettings, ControlConfig, SettingsManager
+    from loushang.coding.control import (
+        CompactionSettings,
+        ControlConfig,
+        SettingsManager,
+    )
     from loushang.coding.session import AgentSession
     from loushang.coding.store import SessionManager
 
@@ -594,9 +630,13 @@ def test_agent_session_auto_compaction_uses_compact_percent_threshold(tmp_path, 
 
 
 def test_agent_session_auto_compaction_ignores_stale_assistant_usage_before_latest_compaction(tmp_path, monkeypatch) -> None:
-    from loushang.ai import AssistantMessage, TextPart, Usage
     from loushang.agent import Agent
-    from loushang.coding.control import CompactionSettings, ControlConfig, SettingsManager
+    from loushang.ai import AssistantMessage, TextPart, Usage
+    from loushang.coding.control import (
+        CompactionSettings,
+        ControlConfig,
+        SettingsManager,
+    )
     from loushang.coding.session import AgentSession
     from loushang.coding.store import SessionManager
 
@@ -651,7 +691,11 @@ def test_agent_session_auto_compaction_ignores_stale_assistant_usage_before_late
 def test_agent_session_auto_compacts_error_message_using_last_successful_usage(tmp_path, monkeypatch) -> None:
     from loushang.agent import Agent
     from loushang.coding.compaction import CompactionResult
-    from loushang.coding.control import CompactionSettings, ControlConfig, SettingsManager
+    from loushang.coding.control import (
+        CompactionSettings,
+        ControlConfig,
+        SettingsManager,
+    )
     from loushang.coding.session import AgentSession
     from loushang.coding.store import SessionManager
 
@@ -717,7 +761,11 @@ def test_agent_session_auto_compacts_error_message_using_last_successful_usage(t
 def test_agent_session_compacts_before_prompt_when_previous_usage_crossed_threshold(tmp_path, monkeypatch) -> None:
     from loushang.agent import Agent
     from loushang.coding.compaction import CompactionResult
-    from loushang.coding.control import CompactionSettings, ControlConfig, SettingsManager
+    from loushang.coding.control import (
+        CompactionSettings,
+        ControlConfig,
+        SettingsManager,
+    )
     from loushang.coding.session import AgentSession
     from loushang.coding.store import SessionManager
 
@@ -788,7 +836,11 @@ def test_agent_session_streaming_control_does_not_pre_prompt_compact(
     expected_follow_up,
 ) -> None:
     from loushang.agent import Agent
-    from loushang.coding.control import CompactionSettings, ControlConfig, SettingsManager
+    from loushang.coding.control import (
+        CompactionSettings,
+        ControlConfig,
+        SettingsManager,
+    )
     from loushang.coding.session import AgentSession
     from loushang.coding.store import SessionManager
 
@@ -838,7 +890,11 @@ def test_agent_session_streaming_control_does_not_pre_prompt_compact(
 def test_agent_session_threshold_auto_compaction_resumes_agent_level_queue(tmp_path, monkeypatch) -> None:
     from loushang.agent import Agent
     from loushang.coding.compaction import CompactionResult
-    from loushang.coding.control import CompactionSettings, ControlConfig, SettingsManager
+    from loushang.coding.control import (
+        CompactionSettings,
+        ControlConfig,
+        SettingsManager,
+    )
     from loushang.coding.session import AgentSession
     from loushang.coding.store import SessionManager
 
@@ -900,7 +956,11 @@ def test_agent_session_threshold_auto_compaction_resumes_agent_level_queue(tmp_p
 def test_agent_session_overflow_recovery_emits_compaction_with_retry_flag(tmp_path, monkeypatch) -> None:
     from loushang.agent import AbortSignal, Agent
     from loushang.coding.compaction import CompactionResult
-    from loushang.coding.control import CompactionSettings, ControlConfig, SettingsManager
+    from loushang.coding.control import (
+        CompactionSettings,
+        ControlConfig,
+        SettingsManager,
+    )
     from loushang.coding.session import AgentSession
     from loushang.coding.store import SessionManager
 
@@ -986,7 +1046,11 @@ def test_agent_session_overflow_recovery_emits_compaction_with_retry_flag(tmp_pa
 def test_agent_session_overflow_recovery_is_limited_to_one_attempt(tmp_path, monkeypatch) -> None:
     from loushang.agent import AbortSignal, Agent
     from loushang.coding.compaction import CompactionResult
-    from loushang.coding.control import CompactionSettings, ControlConfig, SettingsManager
+    from loushang.coding.control import (
+        CompactionSettings,
+        ControlConfig,
+        SettingsManager,
+    )
     from loushang.coding.session import AgentSession
     from loushang.coding.store import SessionManager
 

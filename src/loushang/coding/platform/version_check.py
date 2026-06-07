@@ -8,7 +8,6 @@ from dataclasses import dataclass
 
 import httpx
 
-
 LATEST_VERSION_URL = "https://loushang.ai/api/latest-version"
 DEFAULT_VERSION_CHECK_TIMEOUT_SECONDS = 10.0
 

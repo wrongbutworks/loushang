@@ -14,12 +14,6 @@ from typing import Any
 if __package__ in {None, ""}:
     sys.path.insert(0, str(Path(__file__).resolve().parent))
 
-from loushang.agent.types import AgentToolResult
-from loushang.ai.event_stream.stream import AssistantMessageEventStream
-from loushang.ai.model import Capabilities, Model
-from loushang.ai.types import AssistantMessage, TextPart, ToolCall, Usage, UserMessage
-from loushang.coding import create_agent_session_runtime
-
 from _support import (
     ENV_EXAMPLES_SESSION_DIR,
     _resolve_model_catalog,
@@ -28,6 +22,12 @@ from _support import (
     describe_model,
     resolve_api_key,
 )
+
+from loushang.agent.types import AgentToolResult
+from loushang.ai.event_stream.stream import AssistantMessageEventStream
+from loushang.ai.model import Capabilities, Model
+from loushang.ai.types import AssistantMessage, TextPart, ToolCall, Usage
+from loushang.coding import create_agent_session_runtime
 
 
 def print_event(name: str, payload: dict[str, object]) -> None:

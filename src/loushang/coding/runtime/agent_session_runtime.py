@@ -1,11 +1,11 @@
 from __future__ import annotations
 
 import asyncio
+import errno
+import inspect
 from collections.abc import AsyncIterator, Awaitable, Callable
 from contextlib import asynccontextmanager
 from dataclasses import dataclass, replace
-import errno
-import inspect
 from pathlib import Path
 from shutil import copyfileobj
 from time import monotonic
@@ -13,12 +13,27 @@ from types import SimpleNamespace
 from typing import Literal
 
 from loushang.ai.types import TextPart, UserMessage
-from loushang.coding.diagnostics import DiagnosticRecord, DiagnosticSummary, DiagnosticsQuery, DiagnosticsService, ErrorReport
-from loushang.coding.extensions import SessionBeforeForkEvent, SessionBeforeSwitchEvent, SessionShutdownEvent, SessionStartEvent
+from loushang.coding.diagnostics import (
+    DiagnosticRecord,
+    DiagnosticsQuery,
+    DiagnosticsService,
+    DiagnosticSummary,
+    ErrorReport,
+)
+from loushang.coding.extensions import (
+    SessionBeforeForkEvent,
+    SessionBeforeSwitchEvent,
+    SessionShutdownEvent,
+    SessionStartEvent,
+)
 from loushang.coding.message import SessionMessageEntry
 from loushang.coding.session import AgentSession
-from loushang.coding.store import SessionManager, SessionQuery, SessionRecord, SessionSummary
-
+from loushang.coding.store import (
+    SessionManager,
+    SessionQuery,
+    SessionRecord,
+    SessionSummary,
+)
 
 SessionFactory = Callable[..., AgentSession]
 SessionRebindCallback = Callable[[AgentSession], Awaitable[None]]

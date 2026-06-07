@@ -17,8 +17,8 @@ def test_session_materialized_decorated_tool_receives_session_cwd(tmp_path) -> N
     from loushang.agent import Agent
     from loushang.ai.model import Capabilities, Model
     from loushang.coding import SessionManager, ToolRegistry
-    from loushang.coding.tools import tool
     from loushang.coding.session import AgentSession
+    from loushang.coding.tools import tool
 
     @tool()
     async def show_session_cwd(ctx: ToolContext) -> str:

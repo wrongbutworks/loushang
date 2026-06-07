@@ -5,9 +5,15 @@ from collections.abc import Awaitable, Callable, Mapping, Sequence
 from pathlib import Path
 from typing import Literal, cast
 
-from loushang.agent.types import AgentTool, ThinkingLevel, ensure_agent_tool, is_agent_tool_like
+from loushang.agent.types import (
+    AgentTool,
+    ThinkingLevel,
+    ensure_agent_tool,
+    is_agent_tool_like,
+)
 from loushang.coding.exec import ExecResult, ExecUpdateCallback
 from loushang.coding.extensions.types import (
+    VALID_EXTENSION_EVENTS,
     ExtensionCommandContext,
     ExtensionContext,
     ExtensionHandler,
@@ -16,10 +22,14 @@ from loushang.coding.extensions.types import (
     RegisteredFlag,
     RegisteredShortcut,
     SourceInfo,
-    VALID_EXTENSION_EVENTS,
 )
 from loushang.coding.loader import ResourceDiagnostic
-from loushang.coding.tools import DecoratedTool, ToolDefinition, create_tool_definition_from_tool, tool_to_definition
+from loushang.coding.tools import (
+    DecoratedTool,
+    ToolDefinition,
+    create_tool_definition_from_tool,
+    tool_to_definition,
+)
 
 
 class ExtensionAPI:

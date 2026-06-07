@@ -1,10 +1,14 @@
 from __future__ import annotations
 
-from dataclasses import is_dataclass, asdict
+from dataclasses import asdict, is_dataclass
 from pathlib import Path
 from typing import Any
 
-from loushang.coding.diagnostics.types import DiagnosticRecord, DiagnosticSummary, ErrorReport
+from loushang.coding.diagnostics.types import (
+    DiagnosticRecord,
+    DiagnosticSummary,
+    ErrorReport,
+)
 
 
 def serialize_diagnostic(record: DiagnosticRecord) -> dict[str, object]:

@@ -8,8 +8,12 @@ from tempfile import TemporaryDirectory
 if __package__ in {None, ""}:
     sys.path.insert(0, str(Path(__file__).resolve().parent))
 
-from _support import assistant_text_message, build_runtime, print_messages, stream_with_final_message
-
+from _support import (
+    assistant_text_message,
+    build_runtime,
+    print_messages,
+    stream_with_final_message,
+)
 
 EXTENSION_SOURCE = """
 from pathlib import Path

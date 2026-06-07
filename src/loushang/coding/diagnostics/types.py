@@ -5,7 +5,6 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Literal
 
-
 DiagnosticLevel = Literal["info", "warning", "error"]
 DiagnosticPhase = Literal["startup", "resource_loading", "runtime"]
 DiagnosticSource = Literal[

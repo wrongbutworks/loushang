@@ -276,7 +276,12 @@ def test_exec_service_marks_cancelled_and_kills_process(tmp_path) -> None:
 def test_exec_service_delegates_to_custom_backend(tmp_path) -> None:
     import asyncio
 
-    from loushang.coding.exec import ExecOutputChunk, ExecRequest, ExecResult, ExecService
+    from loushang.coding.exec import (
+        ExecOutputChunk,
+        ExecRequest,
+        ExecResult,
+        ExecService,
+    )
 
     seen: list[tuple[tuple[str, ...], str | None, object | None]] = []
     updates: list[tuple[str, str]] = []

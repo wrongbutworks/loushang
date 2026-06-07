@@ -9,7 +9,6 @@ from loushang.agent.types import AfterToolCallResult, BeforeToolCallResult
 from loushang.ai.types import ToolCall
 from loushang.coding.extensions import ExtensionRunner
 
-
 CwdProvider = Callable[[], str]
 
 

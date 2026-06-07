@@ -24,7 +24,6 @@ from prompt_toolkit.layout.layout import Layout
 from prompt_toolkit.layout.processors import BeforeInput
 from prompt_toolkit.styles import Style
 
-
 REPO_ROOT = Path(__file__).resolve().parents[2]
 
 

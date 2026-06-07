@@ -3,7 +3,9 @@ from __future__ import annotations
 import asyncio
 
 from loushang.coding.extensions import SessionStartEvent
-from loushang.coding.session.extension_runtime_controller import ExtensionRuntimeController
+from loushang.coding.session.extension_runtime_controller import (
+    ExtensionRuntimeController,
+)
 
 
 class Runner:

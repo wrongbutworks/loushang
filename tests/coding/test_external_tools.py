@@ -214,7 +214,10 @@ def test_local_external_tool_resolver_prefers_managed_binary(tmp_path) -> None:
 
 
 def test_github_release_downloader_downloads_extracts_and_caches_tarball(tmp_path) -> None:
-    from loushang.coding.tools import GitHubReleaseExternalToolDownloader, get_managed_external_tool_install
+    from loushang.coding.tools import (
+        GitHubReleaseExternalToolDownloader,
+        get_managed_external_tool_install,
+    )
 
     archive_path = tmp_path / "fd-release.tar.gz"
     asset_name = "fd-v1.2.3-x86_64-unknown-linux-gnu.tar.gz"

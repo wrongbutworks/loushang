@@ -5,13 +5,21 @@ import json
 from collections.abc import Callable
 from dataclasses import dataclass, replace
 from inspect import signature
-from typing import Any, Annotated, NotRequired, Required, get_args, get_origin, get_type_hints
+from typing import (
+    Annotated,
+    Any,
+    NotRequired,
+    Required,
+    get_args,
+    get_origin,
+    get_type_hints,
+)
 
-from loushang.ai.types import TextPart
 from loushang.agent.types import AgentToolResult
+from loushang.ai.types import TextPart
 
+from .authoring import _TOOL_SPEC_ATTR, DecoratedTool, DecoratedToolSpec
 from .context import ToolContext, ToolContextProvider
-from .authoring import DecoratedTool, DecoratedToolSpec, _TOOL_SPEC_ATTR
 from .schema import apply_schema_overrides, infer_schema_from_signature
 from .types import ToolDefinition
 

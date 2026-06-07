@@ -1,13 +1,23 @@
 from __future__ import annotations
 
-from loushang.agent import Agent
-from loushang.ai.model import Capabilities, Model
-from loushang.ai.types import AssistantMessage, TextPart, ToolCall, ToolResultMessage, Usage, UserMessage
 import loushang.coding as coding
 import loushang.coding.session as coding_session
+from loushang.agent import Agent
+from loushang.ai.model import Capabilities, Model
+from loushang.ai.types import (
+    AssistantMessage,
+    TextPart,
+    ToolCall,
+    ToolResultMessage,
+    Usage,
+    UserMessage,
+)
 from loushang.coding.diagnostics import DiagnosticRecord, DiagnosticsService
+from loushang.coding.session.introspection import (
+    build_context_usage,
+    build_session_stats,
+)
 from loushang.coding.store import SessionManager
-from loushang.coding.session.introspection import build_context_usage, build_session_stats
 from loushang.coding.tools import ToolRegistry, register_builtin_tools
 
 
@@ -137,7 +147,11 @@ def test_build_context_usage_uses_best_effort_token_estimate(tmp_path) -> None:
 
 
 def test_build_context_usage_uses_session_compaction_settings(tmp_path) -> None:
-    from loushang.coding.control import CompactionSettings, ControlConfig, SettingsManager
+    from loushang.coding.control import (
+        CompactionSettings,
+        ControlConfig,
+        SettingsManager,
+    )
 
     manager = SessionManager.new(session_dir=tmp_path, cwd="/tmp/project", persist=False)
     manager.append_message(UserMessage(role="user", content=[TextPart(type="text", text="hello")], timestamp=0.0))

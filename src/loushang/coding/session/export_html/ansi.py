@@ -4,7 +4,6 @@ import html
 import re
 from dataclasses import dataclass
 
-
 _ANSI_COLORS = [
     "#000000",
     "#800000",

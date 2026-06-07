@@ -6,7 +6,13 @@ from typing import Any
 
 from loushang.agent.types import AgentToolResult
 from loushang.ai.types import TextPart
-from loushang.coding.tools import ToolContext, ToolDefinition, tool, tool_to_definition, wrap_tool_definition
+from loushang.coding.tools import (
+    ToolContext,
+    ToolDefinition,
+    tool,
+    tool_to_definition,
+    wrap_tool_definition,
+)
 
 
 async def _dummy_execute(

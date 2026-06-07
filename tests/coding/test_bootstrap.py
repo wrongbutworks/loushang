@@ -182,7 +182,10 @@ def test_create_agent_session_services_builds_cwd_bound_services(tmp_path) -> No
 
 
 def test_create_agent_session_from_services_uses_cwd_bound_services(tmp_path) -> None:
-    from loushang.coding import create_agent_session_from_services, create_agent_session_services
+    from loushang.coding import (
+        create_agent_session_from_services,
+        create_agent_session_services,
+    )
     from loushang.coding.store import SessionManager
 
     project_root = tmp_path / "project"
@@ -237,7 +240,10 @@ def test_create_agent_session_services_loads_extension_flags_and_values(tmp_path
 
 
 def test_create_agent_session_from_services_applies_extension_flag_values(tmp_path) -> None:
-    from loushang.coding import create_agent_session_from_services, create_agent_session_services
+    from loushang.coding import (
+        create_agent_session_from_services,
+        create_agent_session_services,
+    )
     from loushang.coding.store import SessionManager
 
     project_root = tmp_path / "project"
@@ -472,7 +478,11 @@ def test_create_agent_session_no_tools_builtin_keeps_dynamic_extension_tools(tmp
     import asyncio
 
     from loushang.coding.bootstrap import create_agent_session, create_services
-    from loushang.coding.loader import DefaultResourceLoader, ExtensionDescriptor, ResourceBundle
+    from loushang.coding.loader import (
+        DefaultResourceLoader,
+        ExtensionDescriptor,
+        ResourceBundle,
+    )
     from loushang.coding.store import SessionManager
     from loushang.coding.tools import ToolRegistry, register_builtin_tools
 
@@ -545,7 +555,11 @@ def test_create_agent_session_no_tools_all_hides_dynamic_extension_tools_and_pro
     import asyncio
 
     from loushang.coding.bootstrap import create_agent_session, create_services
-    from loushang.coding.loader import DefaultResourceLoader, ExtensionDescriptor, ResourceBundle
+    from loushang.coding.loader import (
+        DefaultResourceLoader,
+        ExtensionDescriptor,
+        ResourceBundle,
+    )
     from loushang.coding.store import SessionManager
     from loushang.coding.tools import ToolRegistry, register_builtin_tools
 
@@ -1030,7 +1044,11 @@ def test_create_agent_session_defaults_custom_tools_active_without_defaulting_al
     from loushang.agent.types import AgentToolResult
     from loushang.coding.bootstrap import create_agent_session, create_services
     from loushang.coding.store import SessionManager
-    from loushang.coding.tools import ToolDefinition, ToolRegistry, register_builtin_tools
+    from loushang.coding.tools import (
+        ToolDefinition,
+        ToolRegistry,
+        register_builtin_tools,
+    )
 
     async def execute_custom_tool(tool_call_id: str, params: dict[str, object], signal=None, on_update=None):
         del tool_call_id, params, signal, on_update
@@ -1424,7 +1442,12 @@ def test_create_agent_session_merges_extension_resources_and_tools(tmp_path) -> 
     from pathlib import Path
 
     from loushang.coding.bootstrap import create_agent_session, create_services
-    from loushang.coding.loader import DefaultResourceLoader, ExtensionDescriptor, PromptFragmentDescriptor, ResourceBundle
+    from loushang.coding.loader import (
+        DefaultResourceLoader,
+        ExtensionDescriptor,
+        PromptFragmentDescriptor,
+        ResourceBundle,
+    )
     from loushang.coding.store import SessionManager
     from loushang.coding.tools import ToolDefinition
 
@@ -1505,7 +1528,11 @@ def test_create_agent_session_wires_extension_tool_interception_into_agent(tmp_p
     import asyncio
 
     from loushang.coding.bootstrap import create_agent_session, create_services
-    from loushang.coding.loader import DefaultResourceLoader, ExtensionDescriptor, ResourceBundle
+    from loushang.coding.loader import (
+        DefaultResourceLoader,
+        ExtensionDescriptor,
+        ResourceBundle,
+    )
     from loushang.coding.store import SessionManager
     from loushang.coding.tools import ToolDefinition
 
@@ -1629,7 +1656,11 @@ def test_create_agent_session_wires_extension_tool_interception_into_agent(tmp_p
 
 def test_create_agent_session_records_nonfatal_extension_tool_conflicts(tmp_path) -> None:
     from loushang.coding.bootstrap import create_agent_session, create_services
-    from loushang.coding.loader import DefaultResourceLoader, ExtensionDescriptor, ResourceBundle
+    from loushang.coding.loader import (
+        DefaultResourceLoader,
+        ExtensionDescriptor,
+        ResourceBundle,
+    )
     from loushang.coding.store import SessionManager
     from loushang.coding.tools import ToolDefinition
 
@@ -1827,7 +1858,11 @@ def test_create_agent_session_records_resource_loading_diagnostics(tmp_path) -> 
     from pathlib import Path
 
     from loushang.coding.bootstrap import create_agent_session, create_services
-    from loushang.coding.loader import DefaultResourceLoader, ResourceBundle, ResourceDiagnostic
+    from loushang.coding.loader import (
+        DefaultResourceLoader,
+        ResourceBundle,
+        ResourceDiagnostic,
+    )
     from loushang.coding.store import SessionManager
 
     class _Loader(DefaultResourceLoader):

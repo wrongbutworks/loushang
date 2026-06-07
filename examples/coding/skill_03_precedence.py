@@ -15,7 +15,6 @@ if str(SRC_ROOT) not in sys.path:
 from loushang.coding.loader import DefaultResourceLoader
 from loushang.coding.skill import SkillLoader
 
-
 SKILL_REVIEW_PKG = """\
 ---
 name: review

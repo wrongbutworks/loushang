@@ -1,12 +1,11 @@
 from __future__ import annotations
 
-import re
 import json
+import re
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
-from collections.abc import Mapping, Sequence
 from typing import Literal
-
 
 SummaryType = Literal["compaction", "branch"]
 

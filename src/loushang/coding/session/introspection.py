@@ -4,7 +4,12 @@ from typing import TYPE_CHECKING
 
 from loushang.ai.types import AssistantMessage, ToolCall, ToolResultMessage, UserMessage
 from loushang.coding.compaction import calculate_context_tokens, estimate_context_tokens
-from loushang.coding.message import CompactionEntry, CustomMessageEntry, SessionMessageEntry, SessionTreeNode
+from loushang.coding.message import (
+    CompactionEntry,
+    CustomMessageEntry,
+    SessionMessageEntry,
+    SessionTreeNode,
+)
 from loushang.coding.session.types import ContextUsage, SessionStats, TokenUsageTotals
 
 if TYPE_CHECKING:

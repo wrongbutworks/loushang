@@ -4,8 +4,13 @@ import json
 from pathlib import Path
 from typing import Any
 
-from loushang.coding.plugin.types import InstalledPlugin, PluginManifest, PluginResolvedResources, PluginSource
 from loushang.coding.plugin.lifecycle import is_remote_plugin_source, remote_plugin_name
+from loushang.coding.plugin.types import (
+    InstalledPlugin,
+    PluginManifest,
+    PluginResolvedResources,
+    PluginSource,
+)
 
 
 class PluginResolver:

@@ -5,7 +5,12 @@ from collections.abc import Callable
 from dataclasses import dataclass, replace
 from pathlib import Path
 
-from loushang.coding.loader import PromptFragmentDescriptor, ResourceBundle, ResourceDiagnostic, SkillDescriptor
+from loushang.coding.loader import (
+    PromptFragmentDescriptor,
+    ResourceBundle,
+    ResourceDiagnostic,
+    SkillDescriptor,
+)
 
 
 @dataclass

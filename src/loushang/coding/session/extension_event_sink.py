@@ -7,7 +7,6 @@ from typing import Any
 
 from loushang.coding.extensions import ExtensionRunner
 
-
 ExtensionRunnerProvider = Callable[[], ExtensionRunner | None]
 CwdProvider = Callable[[], str]
 

@@ -3,12 +3,17 @@ from __future__ import annotations
 import argparse
 import asyncio
 import importlib.util
-from pathlib import Path
 import sys
+from pathlib import Path
 from typing import Any, TextIO, cast
 
-from loushang.tui import FakeTerminalPort, RenderConstraints, RenderLoop, TerminalSize, TuiRuntime
-
+from loushang.tui import (
+    FakeTerminalPort,
+    RenderConstraints,
+    RenderLoop,
+    TerminalSize,
+    TuiRuntime,
+)
 
 _PERF31_PATH = Path(__file__).with_name("31_native_coding_markdown_perf.py")
 

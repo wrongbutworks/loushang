@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Literal, NotRequired, TypedDict, TypeAlias
+from typing import Literal, NotRequired, TypeAlias, TypedDict
 
 from loushang.agent import AgentEvent
 

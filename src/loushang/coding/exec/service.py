@@ -10,7 +10,12 @@ from dataclasses import dataclass, field, replace
 from pathlib import Path
 from typing import Protocol, TextIO
 
-from loushang.coding.exec.types import ExecOutputChunk, ExecRequest, ExecResult, ExecUpdateCallback
+from loushang.coding.exec.types import (
+    ExecOutputChunk,
+    ExecRequest,
+    ExecResult,
+    ExecUpdateCallback,
+)
 
 
 class ExecBackend(Protocol):

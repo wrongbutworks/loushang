@@ -5,11 +5,17 @@ import asyncio
 import json
 from dataclasses import asdict
 
+from .abort_signal import ManualAbortSignal
 from .adapters.anthropic_httpx import create_httpx_provider
 from .adapters.anthropic_sdk import create_sdk_provider
 from .adapters.faux import create_faux_provider
-from .abort_signal import ManualAbortSignal
-from .config import build_mock_context, build_mock_model, build_real_context, build_real_model, resolve_api_key
+from .config import (
+    build_mock_context,
+    build_mock_model,
+    build_real_context,
+    build_real_model,
+    resolve_api_key,
+)
 from .registry import clear_api_providers, register_api_provider
 from .stream import complete, complete_simple, stream, stream_simple
 from .types import SimpleStreamOptions, StreamOptions

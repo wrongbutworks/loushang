@@ -1,5 +1,5 @@
-from loushang.coding.plugin.manager import PluginManager
 from loushang.coding.plugin.lifecycle import is_remote_plugin_source, remote_plugin_name
+from loushang.coding.plugin.manager import PluginManager
 from loushang.coding.plugin.materializer import (
     GitPackageMaterializerBackend,
     PackageMaterializationLifecycle,

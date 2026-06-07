@@ -2,11 +2,11 @@ from loushang.coding.extensions.api import ExtensionAPI
 from loushang.coding.extensions.loader import ExtensionLoader
 from loushang.coding.extensions.runner import ExtensionRunner
 from loushang.coding.extensions.types import (
+    VALID_EXTENSION_EVENTS,
     BeforeAgentStartResult,
     ContextResult,
-    ExtensionContext,
     ExtensionCommandContext,
-    ReplacedSessionContext,
+    ExtensionContext,
     ExtensionResourceContribution,
     ExtensionRuntimeBindings,
     InputEvent,
@@ -16,10 +16,10 @@ from loushang.coding.extensions.types import (
     RegisteredCommand,
     RegisteredFlag,
     RegisteredShortcut,
+    ReplacedSessionContext,
     ResolvedCommand,
     ResolvedFlag,
     ResolvedShortcut,
-    SourceInfo,
     SessionActionDecision,
     SessionBeforeCompactEvent,
     SessionBeforeCompactResult,
@@ -31,9 +31,9 @@ from loushang.coding.extensions.types import (
     SessionRefreshEvent,
     SessionShutdownEvent,
     SessionStartEvent,
+    SourceInfo,
     ToolCallDecision,
     ToolResultDecision,
-    VALID_EXTENSION_EVENTS,
 )
 
 __all__ = [

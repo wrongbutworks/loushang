@@ -128,7 +128,11 @@ def test_per_tool_operations_and_options_are_public_api() -> None:
 def test_factory_forwards_pi_style_per_tool_options(tmp_path) -> None:
     import asyncio
 
-    from loushang.coding.tools import ReadToolOptions, ToolsOptions, create_tool_definition
+    from loushang.coding.tools import (
+        ReadToolOptions,
+        ToolsOptions,
+        create_tool_definition,
+    )
     from loushang.coding.tools.wrapper import wrap_tool_definition
 
     class VirtualReadOperations:

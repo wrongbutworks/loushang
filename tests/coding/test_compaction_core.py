@@ -1,11 +1,18 @@
 import pytest
 
-from loushang.ai.types import AssistantMessage, TextPart, ToolCall, ToolResultMessage, Usage, UserMessage
+from loushang.ai.types import (
+    AssistantMessage,
+    TextPart,
+    ToolCall,
+    ToolResultMessage,
+    Usage,
+    UserMessage,
+)
 from loushang.coding.compaction import (
-    CompactionPreparation,
-    CompactionResult,
     BranchSummaryDetails,
     BranchSummaryResult,
+    CompactionPreparation,
+    CompactionResult,
     calculate_context_tokens,
     compact,
     estimate_context_tokens,
@@ -19,7 +26,10 @@ from loushang.coding.store import SessionManager
 
 
 def test_compaction_package_exports_core_symbols() -> None:
-    from loushang.coding.compaction import SummaryQualityReport, validate_summary_contract
+    from loushang.coding.compaction import (
+        SummaryQualityReport,
+        validate_summary_contract,
+    )
 
     assert CompactionResult is not None
     assert SummaryQualityReport is not None
@@ -376,7 +386,9 @@ def test_prepare_compaction_detects_split_turn_cut_point(tmp_path) -> None:
 def test_top_level_package_exports_compaction_surface() -> None:
     from loushang.coding import CompactionResult as TopLevelCompactionResult
     from loushang.coding import prepare_compaction as top_level_prepare_compaction
-    from loushang.coding import validate_summary_contract as top_level_validate_summary_contract
+    from loushang.coding import (
+        validate_summary_contract as top_level_validate_summary_contract,
+    )
     from loushang.coding.compaction import validate_summary_contract
 
     assert TopLevelCompactionResult is CompactionResult
@@ -385,7 +397,10 @@ def test_top_level_package_exports_compaction_surface() -> None:
 
 
 def test_validate_summary_contract_accepts_structured_compaction_summary_with_file_tags() -> None:
-    from loushang.coding.compaction import SummaryQualityReport, validate_summary_contract
+    from loushang.coding.compaction import (
+        SummaryQualityReport,
+        validate_summary_contract,
+    )
 
     summary = """## Goal
 Continue aligning loushang coding with pi coding.
@@ -487,7 +502,9 @@ Try a branch-specific refactor.
 def test_top_level_package_exports_branch_summary_surface() -> None:
     from loushang.coding import BranchSummaryDetails as TopLevelBranchSummaryDetails
     from loushang.coding import TreeNavigationResult as TopLevelTreeNavigationResult
-    from loushang.coding import generate_branch_summary as top_level_generate_branch_summary
+    from loushang.coding import (
+        generate_branch_summary as top_level_generate_branch_summary,
+    )
 
     assert TopLevelBranchSummaryDetails is not None
     assert TopLevelTreeNavigationResult is not None

@@ -1,13 +1,16 @@
 from __future__ import annotations
 
-import inspect
 import asyncio
+import inspect
 from pathlib import Path
 from types import SimpleNamespace
 from typing import Any, Protocol
 
+from loushang.coding.workflow.assertions import (
+    evaluate_expectations,
+    evaluate_workflow_expectations,
+)
 from loushang.coding.workflow.events import EventPattern, WorkflowEvent, find_event
-from loushang.coding.workflow.assertions import evaluate_expectations, evaluate_workflow_expectations
 from loushang.coding.workflow.schema import (
     AbortStep,
     CheckResult,

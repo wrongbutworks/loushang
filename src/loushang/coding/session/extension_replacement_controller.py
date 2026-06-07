@@ -4,7 +4,6 @@ import inspect
 from collections.abc import Callable
 from dataclasses import dataclass
 
-
 RuntimeHostProvider = Callable[[], object | None]
 
 

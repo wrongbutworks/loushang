@@ -97,7 +97,13 @@ def test_plugin_manager_tracks_https_remote_sources_without_local_resolution() -
 
 
 def test_plugin_types_are_exported_from_coding_package() -> None:
-    from loushang.coding import PluginManager, PluginManifest, PluginRegistry, PluginResolver, PluginSource
+    from loushang.coding import (
+        PluginManager,
+        PluginManifest,
+        PluginRegistry,
+        PluginResolver,
+        PluginSource,
+    )
 
     assert PluginManager is not None
     assert PluginManifest is not None

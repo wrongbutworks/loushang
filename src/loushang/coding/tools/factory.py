@@ -8,12 +8,17 @@ from loushang.coding.diagnostics import DiagnosticsService
 from loushang.coding.exec import ExecService
 from loushang.coding.policy import ApprovalResolver, PolicyEngine
 
-from .bash import BashOperations, BashSpawnHook, BashToolOptions, create_bash_tool_definition
+from .bash import (
+    BashOperations,
+    BashSpawnHook,
+    BashToolOptions,
+    create_bash_tool_definition,
+)
 from .context import ToolContext, ToolContextProvider
 from .edit import EditToolOptions, create_edit_tool_definition
 from .external_tools import (
-    ExternalToolPolicy,
     ExternalToolDownloader,
+    ExternalToolPolicy,
     ExternalToolResolver,
     GitHubReleaseExternalToolDownloader,
     external_tool_required_for_policy,
@@ -35,7 +40,6 @@ from .read import ReadToolOptions, create_read_tool_definition
 from .types import ToolDefinition
 from .wrapper import wrap_tool_definition
 from .write import WriteToolOptions, create_write_tool_definition
-
 
 ToolName = Literal["read", "bash", "edit", "write", "grep", "find", "ls"]
 Tool = AgentTool[Any]

@@ -4,7 +4,10 @@ from dataclasses import dataclass
 from pathlib import Path
 from urllib.parse import urlparse
 
-from loushang.coding.package.source import PackageSourceIdentity, is_remote_package_source
+from loushang.coding.package.source import (
+    PackageSourceIdentity,
+    is_remote_package_source,
+)
 from loushang.coding.policy.types import PolicyDecision
 
 

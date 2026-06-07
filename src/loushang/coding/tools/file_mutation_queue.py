@@ -10,7 +10,6 @@ from typing import TypeVar
 from .path_utils import canonicalize_tool_path
 from .runtime import MaybeAwaitable, resolve_maybe_awaitable
 
-
 T = TypeVar("T")
 
 

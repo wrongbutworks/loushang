@@ -9,7 +9,13 @@ if __package__ in {None, ""}:
     sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 from _support import build_kimi_model, create_kimi_runtime_session
-from loushang.coding import ToolRegistry, register_builtin_tools, run_print_mode, select_events
+
+from loushang.coding import (
+    ToolRegistry,
+    register_builtin_tools,
+    run_print_mode,
+    select_events,
+)
 
 EXAMPLE_REQUEST = (
     "当前目录有哪些文件？"

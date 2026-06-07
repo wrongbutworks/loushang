@@ -5,9 +5,9 @@ from __future__ import annotations
 from typing import Any
 from uuid import UUID
 
+from loushang.ontology.core.link_type import LinkType
 from loushang.ontology.core.object import OntologyObject
 from loushang.ontology.core.object_type import ObjectType
-from loushang.ontology.core.link_type import LinkType
 from loushang.ontology.core.property import Property
 from loushang.ontology.core.store import ObjectStore
 from loushang.ontology.query.builder import QueryBuilder

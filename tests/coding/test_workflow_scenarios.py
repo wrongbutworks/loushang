@@ -5,7 +5,6 @@ from pathlib import Path
 
 import pytest
 
-
 SCENARIO_PATHS = sorted(Path("scenarios/coding/workflows").glob("*.workflow.yaml"))
 STRESS_SCENARIO_PATH = Path("scenarios/coding/workflows/repeated-control-mix.workflow.yaml")
 

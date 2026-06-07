@@ -4,8 +4,8 @@ from loushang.ai.types import TextPart, UserMessage
 
 
 def test_coding_public_imports_smoke() -> None:
-    from loushang.coding.message import SessionEntry, SessionHeader
     from loushang.coding.event import AgentSessionEvent
+    from loushang.coding.message import SessionEntry, SessionHeader
     from loushang.coding.store import SessionManager
 
     assert SessionHeader is not None
@@ -35,7 +35,11 @@ def test_session_message_entry_accepts_agent_message() -> None:
 
 
 def test_session_entry_union_includes_compaction_and_custom_message_entries() -> None:
-    from loushang.coding.message import CompactionEntry, CustomMessageEntry, SessionEntry
+    from loushang.coding.message import (
+        CompactionEntry,
+        CustomMessageEntry,
+        SessionEntry,
+    )
 
     compaction: SessionEntry = CompactionEntry(
         type="compaction",

@@ -8,7 +8,6 @@ from loushang.agent import Agent
 from loushang.ai.types import ImagePart, TextPart, UserMessage
 from loushang.observability import get_log
 
-
 PreflightUserInput = Callable[[str], object]
 RejectExtensionCommand = Callable[[str], None]
 QueueUpdateEmitter = Callable[[], None]

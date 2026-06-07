@@ -3,12 +3,22 @@ from typing import Any
 
 import pytest
 
+from loushang.agent.types import AgentToolResult
 from loushang.ai.event_stream.stream import AssistantMessageEventStream
 from loushang.ai.model import Capabilities, Model
 from loushang.ai.model.domain import Endpoint
-from loushang.ai.model.registry import clear_default_model_registry, get_default_model_registry
-from loushang.ai.types import AssistantMessage, ImagePart, TextPart, ToolCall, Usage, UserMessage
-from loushang.agent.types import AgentToolResult
+from loushang.ai.model.registry import (
+    clear_default_model_registry,
+    get_default_model_registry,
+)
+from loushang.ai.types import (
+    AssistantMessage,
+    ImagePart,
+    TextPart,
+    ToolCall,
+    Usage,
+    UserMessage,
+)
 
 
 def _model() -> Model:
