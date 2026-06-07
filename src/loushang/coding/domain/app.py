@@ -97,6 +97,12 @@ class CodingDomainApp:
         audit = projection.metadata.get("source_audit")
         if isinstance(audit, Mapping) and audit:
             metadata["audit_policy"] = dict(audit)
+        plan_facts = projection.metadata.get("plan_facts")
+        if isinstance(plan_facts, Mapping) and plan_facts:
+            metadata["plan_facts"] = dict(plan_facts)
+        step_facts = projection.metadata.get("step_facts")
+        if isinstance(step_facts, Mapping) and step_facts:
+            metadata["step_facts"] = dict(step_facts)
         if not _has_meaningful_guidance(descriptor, projection):
             return CodingDomainPreparedTurn(
                 prepared_prompt=request.user_input,

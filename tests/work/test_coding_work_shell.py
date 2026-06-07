@@ -262,6 +262,17 @@ def test_coding_work_shell_records_plan_and_step_lifecycle_events() -> None:
             event_log=event_log,
             clock=lambda: datetime(2026, 6, 1, 10, 30, tzinfo=UTC),
         )
+        plan_facts = {
+            "plan_id": "plan:method:task:review",
+            "method_id": "method:task:review",
+            "mode": "fixed",
+        }
+        step_facts = {
+            "step_id": "inspect",
+            "title": "Inspect current changes",
+            "step_index": 0,
+            "step_count": 2,
+        }
 
         run = await shell.submit_coding_turn(
             "inspect current changes",
@@ -275,6 +286,8 @@ def test_coding_work_shell_records_plan_and_step_lifecycle_events() -> None:
             step_title="Inspect current changes",
             planned_constraint={"level": "reasoned", "requires_reason": True},
             audit_policy={"record": ["status", "reason"]},
+            plan_facts=plan_facts,
+            step_facts=step_facts,
         )
 
         assert run.status == "completed"
@@ -301,6 +314,8 @@ def test_coding_work_shell_records_plan_and_step_lifecycle_events() -> None:
             "step_title": "Inspect current changes",
             "planned_constraint": {"level": "reasoned", "requires_reason": True},
             "audit_policy": {"record": ["status", "reason"]},
+            "plan_facts": plan_facts,
+            "step_facts": step_facts,
         }
         assert entries[2].payload["delivery_hint"] == "coalesce"
         assert entries[3].payload["delivery_hint"] == "coalesce"
@@ -315,7 +330,15 @@ def test_coding_work_shell_records_plan_and_step_lifecycle_events() -> None:
             "step_title": "Inspect current changes",
             "planned_constraint": {"level": "reasoned", "requires_reason": True},
             "audit_policy": {"record": ["status", "reason"]},
+            "plan_facts": plan_facts,
+            "step_facts": step_facts,
         }
+        assert entries[2].payload["payload"]["plan_facts"] == plan_facts
+        assert entries[2].payload["payload"]["step_facts"] == step_facts
+        assert entries[4].payload["payload"]["plan_facts"] == plan_facts
+        assert entries[4].payload["payload"]["step_facts"] == step_facts
+        assert entries[5].payload["payload"]["plan_facts"] == plan_facts
+        assert entries[5].payload["payload"]["step_facts"] == step_facts
 
     asyncio.run(scenario())
 
@@ -414,6 +437,8 @@ def test_coding_work_shell_records_step_and_plan_failures_before_run_failure() -
             event_log=event_log,
             clock=lambda: datetime(2026, 6, 1, 10, 30, tzinfo=UTC),
         )
+        plan_facts = {"plan_id": "plan:method:task:review", "method_id": "method:task:review"}
+        step_facts = {"step_id": "inspect", "step_index": 0}
 
         try:
             await shell.submit_coding_turn(
@@ -426,6 +451,8 @@ def test_coding_work_shell_records_step_and_plan_failures_before_run_failure() -
                 step_id="inspect",
                 step_index=0,
                 step_title="Inspect current changes",
+                plan_facts=plan_facts,
+                step_facts=step_facts,
             )
         except RuntimeError as error:
             assert str(error) == "agent failed"
@@ -446,6 +473,10 @@ def test_coding_work_shell_records_step_and_plan_failures_before_run_failure() -
         assert entries[5].payload["delivery_hint"] == "immediate"
         assert entries[4].payload["payload"]["error"] == "agent failed"
         assert entries[5].payload["payload"]["error"] == "agent failed"
+        assert entries[4].payload["payload"]["plan_facts"] == plan_facts
+        assert entries[4].payload["payload"]["step_facts"] == step_facts
+        assert entries[5].payload["payload"]["plan_facts"] == plan_facts
+        assert entries[5].payload["payload"]["step_facts"] == step_facts
         assert entries[6].payload["payload"]["method_id"] == "method:task:review"
         assert entries[6].payload["payload"]["plan_id"] == "plan:method:task:review"
         assert entries[6].payload["payload"]["step_id"] == "inspect"

@@ -38,6 +38,8 @@ class PrintMode(ModeAdapter):
         step_title: str | None = None,
         planned_constraint: Mapping[str, object] | None = None,
         audit_policy: Mapping[str, object] | None = None,
+        plan_facts: Mapping[str, object] | None = None,
+        step_facts: Mapping[str, object] | None = None,
         emit_plan_start: bool = True,
         emit_plan_completion: bool = True,
     ) -> None:
@@ -73,6 +75,8 @@ class PrintMode(ModeAdapter):
         self.step_title = step_title
         self.planned_constraint = planned_constraint
         self.audit_policy = audit_policy
+        self.plan_facts = plan_facts
+        self.step_facts = step_facts
         self.emit_plan_start = emit_plan_start
         self.emit_plan_completion = emit_plan_completion
         self._tool_render_runtime: ToolRenderRuntime | None = None
@@ -294,6 +298,8 @@ class PrintMode(ModeAdapter):
             step_title=self.step_title,
             planned_constraint=self.planned_constraint,
             audit_policy=self.audit_policy,
+            plan_facts=self.plan_facts,
+            step_facts=self.step_facts,
             emit_plan_start=emit_plan_start,
             emit_plan_completion=emit_plan_completion,
         )
@@ -470,6 +476,8 @@ async def run_print_mode(
     step_title: str | None = None,
     planned_constraint: Mapping[str, object] | None = None,
     audit_policy: Mapping[str, object] | None = None,
+    plan_facts: Mapping[str, object] | None = None,
+    step_facts: Mapping[str, object] | None = None,
     emit_plan_start: bool = True,
     emit_plan_completion: bool = True,
     dispose: bool = True,
@@ -491,6 +499,8 @@ async def run_print_mode(
         step_title=step_title,
         planned_constraint=planned_constraint,
         audit_policy=audit_policy,
+        plan_facts=plan_facts,
+        step_facts=step_facts,
         emit_plan_start=emit_plan_start,
         emit_plan_completion=emit_plan_completion,
     )

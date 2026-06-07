@@ -269,6 +269,8 @@ def _append_work_log_inspect_entry(
     deviation: dict[str, object] | None = None,
     planned_constraint: dict[str, object] | None = None,
     audit_policy: dict[str, object] | None = None,
+    plan_facts: dict[str, object] | None = None,
+    step_facts: dict[str, object] | None = None,
     extra_payload: dict[str, object] | None = None,
 ) -> None:
     from loushang.work import EventLogEntry
@@ -293,6 +295,10 @@ def _append_work_log_inspect_entry(
         nested_payload["planned_constraint"] = planned_constraint
     if audit_policy is not None:
         nested_payload["audit_policy"] = audit_policy
+    if plan_facts is not None:
+        nested_payload["plan_facts"] = plan_facts
+    if step_facts is not None:
+        nested_payload["step_facts"] = step_facts
     if extra_payload is not None:
         nested_payload.update(extra_payload)
     if nested_payload:
@@ -324,6 +330,8 @@ def _append_work_log_plan_step_entries(
     last: bool = False,
     planned_constraint: dict[str, object] | None = None,
     audit_policy: dict[str, object] | None = None,
+    plan_facts: dict[str, object] | None = None,
+    step_facts: dict[str, object] | None = None,
 ) -> int:
     sequence = start_sequence
     _append_work_log_inspect_entry(
@@ -339,6 +347,8 @@ def _append_work_log_plan_step_entries(
         step_title=step_title,
         planned_constraint=planned_constraint,
         audit_policy=audit_policy,
+        plan_facts=plan_facts,
+        step_facts=step_facts,
     )
     sequence += 1
     if first:
@@ -354,6 +364,8 @@ def _append_work_log_plan_step_entries(
             step_title=step_title,
             planned_constraint=planned_constraint,
             audit_policy=audit_policy,
+            plan_facts=plan_facts,
+            step_facts=step_facts,
         )
         sequence += 1
     _append_work_log_inspect_entry(
@@ -368,6 +380,8 @@ def _append_work_log_plan_step_entries(
         step_title=step_title,
         planned_constraint=planned_constraint,
         audit_policy=audit_policy,
+        plan_facts=plan_facts,
+        step_facts=step_facts,
     )
     sequence += 1
     _append_work_log_inspect_entry(
@@ -395,6 +409,8 @@ def _append_work_log_plan_step_entries(
             step_title=step_title,
             planned_constraint=planned_constraint,
             audit_policy=audit_policy,
+            plan_facts=plan_facts,
+            step_facts=step_facts,
         )
         sequence += 1
     return sequence
@@ -2645,6 +2661,12 @@ def test_run_cli_dash_p_with_fixed_method_executes_each_step(tmp_path) -> None:
         "requires_reason": True,
     }
     assert first_call["audit_policy"] == {"record": ["status", "reason"]}
+    assert first_call["plan_facts"]["plan_id"] == "plan:method:task:review"
+    assert first_call["plan_facts"]["method_id"] == "method:task:review"
+    assert first_call["plan_facts"]["mode"] == "fixed"
+    assert first_call["step_facts"]["step_id"] == "inspect"
+    assert first_call["step_facts"]["title"] == "Inspect current changes"
+    assert first_call["step_facts"]["step_index"] == 0
     assert first_call["emit_plan_start"] is True
     assert first_call["emit_plan_completion"] is False
     assert "Read changed files and summarize intent." in first_call["prompt"]
@@ -2660,6 +2682,10 @@ def test_run_cli_dash_p_with_fixed_method_executes_each_step(tmp_path) -> None:
         "requires_evidence": True,
     }
     assert second_call["audit_policy"] == {"record": ["status", "reason", "evidence"]}
+    assert second_call["plan_facts"]["plan_id"] == "plan:method:task:review"
+    assert second_call["step_facts"]["step_id"] == "verify"
+    assert second_call["step_facts"]["title"] == "Run focused checks"
+    assert second_call["step_facts"]["step_index"] == 1
     assert second_call["emit_plan_start"] is False
     assert second_call["emit_plan_completion"] is True
     assert "Run focused tests or explain why they cannot run." in second_call["prompt"]
@@ -3261,6 +3287,12 @@ def test_run_cli_mode_print_with_fixed_method_executes_each_step(tmp_path) -> No
         "requires_reason": True,
     }
     assert first_call["audit_policy"] == {"record": ["status", "reason"]}
+    assert first_call["plan_facts"]["plan_id"] == "plan:method:task:review"
+    assert first_call["plan_facts"]["method_id"] == "method:task:review"
+    assert first_call["plan_facts"]["mode"] == "fixed"
+    assert first_call["step_facts"]["step_id"] == "inspect"
+    assert first_call["step_facts"]["title"] == "Inspect current changes"
+    assert first_call["step_facts"]["step_index"] == 0
     assert first_call["emit_plan_start"] is True
     assert first_call["emit_plan_completion"] is False
     assert "Read changed files and summarize intent." in first_call["user_input"]
@@ -3277,6 +3309,10 @@ def test_run_cli_mode_print_with_fixed_method_executes_each_step(tmp_path) -> No
         "requires_evidence": True,
     }
     assert second_call["audit_policy"] == {"record": ["status", "reason", "evidence"]}
+    assert second_call["plan_facts"]["plan_id"] == "plan:method:task:review"
+    assert second_call["step_facts"]["step_id"] == "verify"
+    assert second_call["step_facts"]["title"] == "Run focused checks"
+    assert second_call["step_facts"]["step_index"] == 1
     assert second_call["emit_plan_start"] is False
     assert second_call["emit_plan_completion"] is True
     assert "Run focused tests or explain why they cannot run." in second_call["user_input"]
@@ -4428,6 +4464,17 @@ def test_run_cli_work_log_inspect_plans_json_outputs_plan_projection(tmp_path) -
 
     log_path = tmp_path / "events.jsonl"
     event_log = JsonlEventLogBackend(log_path)
+    plan_facts = {
+        "plan_id": "plan:method:task:review",
+        "method_id": "method:task:review",
+        "mode": "fixed",
+    }
+    step_facts = {
+        "step_id": "inspect",
+        "title": "Inspect current changes",
+        "step_index": 0,
+        "step_count": 1,
+    }
     _append_work_log_plan_step_entries(
         event_log,
         start_sequence=1,
@@ -4439,6 +4486,8 @@ def test_run_cli_work_log_inspect_plans_json_outputs_plan_projection(tmp_path) -
         last=True,
         planned_constraint={"level": "reasoned", "requires_reason": True},
         audit_policy={"record": ["status", "reason"]},
+        plan_facts=plan_facts,
+        step_facts=step_facts,
     )
     stdout = StringIO()
 
@@ -4473,6 +4522,8 @@ def test_run_cli_work_log_inspect_plans_json_outputs_plan_projection(tmp_path) -
         "requires_reason": True,
     }
     assert payload[0]["steps"][0]["metadata"]["audit_policy"] == {"record": ["status", "reason"]}
+    assert payload[0]["metadata"]["plan_facts"] == plan_facts
+    assert payload[0]["steps"][0]["metadata"]["step_facts"] == step_facts
 
 
 def test_run_cli_work_log_inspect_plans_json_includes_step_deviation(tmp_path) -> None:

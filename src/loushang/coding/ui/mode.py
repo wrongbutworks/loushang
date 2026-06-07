@@ -29,6 +29,7 @@ from loushang.coding.ui.startup import (
     load_coding_tui_startup_snapshot,
 )
 from loushang.coding.ui.status_provider import CodingTuiStatusProvider
+from loushang.coding.ui.transcript_source import SessionTranscriptSource
 from loushang.observability import get_log, log_context
 from loushang.tui import CompletionProvider
 from loushang.tui.prompt import run_non_interactive_prompt_loop
@@ -90,7 +91,13 @@ async def _run_native_interactive_tui(
         session_label=snapshot.session_label,
         now=time.monotonic,
     )
-    history_records = session_history_records(session, tool_definition_resolver=_tool_definition_resolver(session))
+    tool_definition_resolver = _tool_definition_resolver(session)
+    app.transcript_source_factory = lambda: SessionTranscriptSource(
+        session,
+        tool_definition_resolver=tool_definition_resolver,
+        active_window_state=app.state,
+    )
+    history_records = session_history_records(session, tool_definition_resolver=tool_definition_resolver)
     if history_records:
         app.replace_transcript_window(history_records, reason="resume")
         app.trim_active_transcript_window()

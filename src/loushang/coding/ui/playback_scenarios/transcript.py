@@ -1,9 +1,15 @@
 from __future__ import annotations
 
+from io import StringIO
+from types import SimpleNamespace
+
+from loushang.coding.ui.controller import CodingUiController
+from loushang.coding.ui.mode import _native_prompt_handler
 from loushang.coding.ui.perf_probe import build_synthetic_long_transcript_records
 from loushang.coding.ui.playback import (
     NativeTuiInputPlaybackResult,
     NativeTuiInputScenario,
+    NativeTuiLoopPlayback,
 )
 from loushang.coding.ui.playback_scenarios.budgets import (
     INTERACTION_FRAME_BUDGET,
@@ -11,7 +17,11 @@ from loushang.coding.ui.playback_scenarios.budgets import (
 )
 from loushang.coding.ui.playback_suite import NativePlaybackScenarioSpec
 from loushang.tui import strip_control_sequences
-from loushang.tui.transcript import AssistantMessageRecord, ToolExecutionRecord
+from loushang.tui.transcript import (
+    AssistantMessageRecord,
+    ToolExecutionRecord,
+    UserPromptRecord,
+)
 
 
 def _run_long_transcript_input() -> NativeTuiInputPlaybackResult:
@@ -75,7 +85,8 @@ def _run_transcript_reader_modal() -> NativeTuiInputPlaybackResult:
         .render()
         .key("\x0f")
         .tab()
-        .key("\x1b[5~")
+        .key("\x02")
+        .key("\x06")
         .ctrl_c()
         .type_text("!")
         .run()
@@ -90,12 +101,94 @@ def _run_transcript_reader_modal() -> NativeTuiInputPlaybackResult:
 
     opened_screen = _step_screen(result, 1)
     tab_screen = _step_screen(result, 2)
-    page_up_screen = _step_screen(result, 3)
+    ctrl_b_screen = _step_screen(result, 3)
+    ctrl_f_screen = _step_screen(result, 4)
     assert "Ctrl+O/q/Esc close" in opened_screen
+    assert "PgUp/Ctrl+B · PgDn/Ctrl+F page" in opened_screen
     assert "answer line 11" in opened_screen
     assert "Ctrl+O/q/Esc close" in tab_screen
     assert result.step_coding_states[2]["composer_text"] == "draft"
-    assert "answer line 0" in page_up_screen
+    assert "answer line 4" in ctrl_b_screen
+    assert "answer line 11" in ctrl_f_screen
+    return result
+
+
+def _run_transcript_reader_copy_command() -> object:
+    playback = NativeTuiLoopPlayback(width=72, height=9)
+    playback.app.state.records.extend(
+        (
+            AssistantMessageRecord("reader-visible latest answer"),
+            AssistantMessageRecord("reader-visible older answer"),
+        )
+    )
+    session = _CopyCommandPlaybackSession(
+        recent_texts=(
+            "latest structured answer",
+            "previous structured answer",
+        )
+    )
+    controller = CodingUiController(session=session)
+
+    result = playback.run(
+        (0.00, "\x0f"),
+        (0.01, "\x02"),
+        (0.02, "\x0f"),
+        (0.03, "/copy 2\r"),
+        (0.05, ""),
+        handle_prompt=_native_prompt_handler(
+            app=playback.app,
+            controller=controller,
+            stderr=StringIO(),
+            verbose=False,
+        ),
+    )
+
+    result.assert_exit_code(0)
+    result.assert_text_contains("Transcript window")
+    result.assert_text_contains("Ctrl+O/q/Esc close")
+    result.assert_text_contains("Copied /copy 2 from structured source.")
+    result.assert_no_clear_screen()
+    assert session.commands == [("copy", "2")]
+    assert session.prompts == []
+    assert session.copied == ["previous structured answer"]
+    return result
+
+
+def _run_transcript_reader_live_draft() -> NativeTuiInputPlaybackResult:
+    scenario = (
+        NativeTuiInputScenario(width=78, height=10)
+        .with_records(
+            (
+                UserPromptRecord("previous question"),
+                AssistantMessageRecord("previous answer", stable=True),
+            )
+        )
+        .with_composer_text("draft")
+    )
+    scenario.app.begin_run(started_at=0.0)
+    scenario.app.begin_assistant()
+    scenario.app.append_assistant_chunk("streaming live draft")
+
+    result = (
+        scenario.render()
+        .key("\x0f")
+        .key("\x0f")
+        .type_text("!")
+        .run()
+    )
+
+    result.assert_composer_text("draft!")
+    result.assert_no_clear_screen()
+    result.assert_visible_contains("› draft!")
+    result.assert_visible_not_contains("Ctrl+O/q/Esc close")
+
+    opened_screen = _step_screen(result, 1)
+    closed_screen = _step_screen(result, 2)
+    assert "Transcript window" in opened_screen
+    assert "streaming live draft" in opened_screen
+    assert "Ctrl+O/q/Esc close" in opened_screen
+    assert "Ctrl+O/q/Esc close" not in closed_screen
+    assert "› draft" in closed_screen
     return result
 
 
@@ -103,6 +196,44 @@ def _step_screen(result: NativeTuiInputPlaybackResult, step_index: int) -> str:
     step = result.steps[step_index]
     assert step.frame is not None
     return strip_control_sequences("\n".join(step.frame.screen_after.visible_lines))
+
+
+class _CopyCommandPlaybackSession:
+    def __init__(self, *, recent_texts: tuple[str, ...]) -> None:
+        self.recent_texts = recent_texts
+        self.commands: list[tuple[str, str]] = []
+        self.prompts: list[str] = []
+        self.copied: list[str] = []
+
+    def list_commands(self) -> list[object]:
+        return [
+            SimpleNamespace(
+                name="copy",
+                description="Copy an assistant message to clipboard",
+                source="builtin",
+                argument_hint="[N]",
+            )
+        ]
+
+    async def execute_command_async(self, invocation_name: str, args: str) -> object:
+        self.commands.append((invocation_name, args))
+        copy_index = int(args.strip() or "1")
+        text = self.recent_texts[copy_index - 1]
+        self.copied.append(text)
+        return SimpleNamespace(
+            invocation_name=invocation_name,
+            result={
+                "source": "builtin",
+                "command": invocation_name,
+                "status": "ok",
+                "message": f"Copied /copy {copy_index} from structured source.",
+                "index": copy_index,
+                "characters": len(text),
+            },
+        )
+
+    async def prompt(self, text: str, **_kwargs: object) -> None:
+        self.prompts.append(text)
 
 
 TRANSCRIPT_SCENARIOS = (
@@ -120,6 +251,18 @@ TRANSCRIPT_SCENARIOS = (
         name="transcript-reader-modal",
         description="Open the transcript reader, keep input modal, close it, and resume composing.",
         run=_run_transcript_reader_modal,
+    ),
+    NativePlaybackScenarioSpec(
+        name="transcript-reader-copy-command",
+        description="Open and close the transcript reader, then copy the second assistant response from structured history.",
+        run=_run_transcript_reader_copy_command,
+        tags=("transcript", "command"),
+    ),
+    NativePlaybackScenarioSpec(
+        name="transcript-reader-live-draft",
+        description="Open the transcript reader during assistant streaming and keep the live draft visible.",
+        run=_run_transcript_reader_live_draft,
+        tags=("transcript",),
     ),
 )
 
