@@ -162,6 +162,62 @@ def test_session_transcript_source_merges_live_assistant_draft() -> None:
     )
 
 
+def test_transcript_source_boundary_matrix() -> None:
+    session = _Session(
+        messages=[
+            UserMessage(role="user", content=[TextPart(type="text", text="full question")], timestamp=1.0),
+            _assistant_message("full answer", timestamp=2.0),
+        ]
+    )
+    active_state = NativeCodingTuiState(model_label="model", cwd="/tmp/project", branch=None, session_label=None)
+    active_state.replace_transcript_window((AssistantMessageRecord("active answer"),))
+    active_state.begin_run(started_at=3.0)
+    active_state.append_assistant_chunk("active draft")
+
+    running_tool_state = NativeCodingTuiState(model_label="model", cwd="/tmp/project", branch=None, session_label=None)
+    running_tool_state.replace_transcript_window(
+        (
+            UserPromptRecord("full question"),
+            AssistantMessageRecord("full answer", stable=True),
+            ToolExecutionRecord(name="bash test", state="running", elapsed_seconds=0.1),
+        )
+    )
+
+    draft_state = NativeCodingTuiState(model_label="model", cwd="/tmp/project", branch=None, session_label=None)
+    draft_state.replace_transcript_window(
+        (
+            UserPromptRecord("full question"),
+            AssistantMessageRecord("full answer", stable=True),
+        )
+    )
+    draft_state.begin_run(started_at=4.0)
+    draft_state.append_assistant_chunk("streaming draft")
+
+    cases = (
+        ("active", ActiveWindowTranscriptSource(active_state).snapshot(), False, "Transcript window", "active draft"),
+        ("session", SessionTranscriptSource(session).snapshot(), True, "Full transcript", "full answer"),
+        (
+            "session+tool",
+            SessionTranscriptSource(session, active_window_state=running_tool_state).snapshot(),
+            False,
+            "Full transcript + live window",
+            "bash test",
+        ),
+        (
+            "session+draft",
+            SessionTranscriptSource(session, active_window_state=draft_state).snapshot(),
+            False,
+            "Full transcript + live window",
+            "streaming draft",
+        ),
+    )
+
+    for name, snapshot, complete, label, expected_text in cases:
+        assert snapshot.complete is complete, name
+        assert snapshot.source_label == label, name
+        assert _snapshot_text(snapshot.records).find(expected_text) >= 0, name
+
+
 def _assistant_message(text: str, *, timestamp: float) -> AssistantMessage:
     return AssistantMessage(
         role="assistant",
@@ -175,3 +231,15 @@ def _assistant_message(text: str, *, timestamp: float) -> AssistantMessage:
         error_message=None,
         timestamp=timestamp,
     )
+
+
+def _snapshot_text(records: tuple[object, ...]) -> str:
+    parts: list[str] = []
+    for record in records:
+        text = getattr(record, "text", None)
+        if isinstance(text, str):
+            parts.append(text)
+        name = getattr(record, "name", None)
+        if isinstance(name, str):
+            parts.append(name)
+    return "\n".join(parts)
