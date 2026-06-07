@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass, field
 
 from loushang.coding.ui.transcript_source import TranscriptSnapshot, TranscriptSource
@@ -22,6 +23,7 @@ from loushang.tui.transcript import (
 
 _MAX_TRANSCRIPT_RENDER_HEIGHT = 1_000_000
 _FOOTER_STYLE = {"color": "bright_black", "dim": True}
+_SEARCH_HIGHLIGHT_STYLE = {"bold": True, "reverse": True}
 _FOOTER_LINES = (
     "↑/↓ scroll   PgUp/Ctrl+B · PgDn/Ctrl+F page   Home/End jump",
     "Ctrl+O/q/Esc close   / search   n/N next   d detail   r raw",
@@ -130,6 +132,8 @@ class TranscriptReaderSurface:
             self._scroll_offset = _clamp(self._scroll_offset, 0, self._max_scroll_offset)
 
         visible_body = list(body[self._scroll_offset : self._scroll_offset + body_height]) if body_height else []
+        if self.search_query:
+            visible_body = [RenderLine(_highlight_search_matches(line.text, self.search_query)) for line in visible_body]
         if body_height and not visible_body:
             visible_body.append(RenderLine(truncate_to_width("No transcript records.", max_width=constraints.width)))
         padding = [RenderLine("") for _ in range(max(0, body_height - len(visible_body)))]
@@ -260,6 +264,24 @@ def _clamp(value: int, minimum: int, maximum: int) -> int:
 
 def _footer_text(text: str, *, width: int) -> str:
     return apply_theme_style(truncate_to_width(text, max_width=width), _FOOTER_STYLE)
+
+
+def _highlight_search_matches(text: str, query: str) -> str:
+    if not query:
+        return text
+    pattern = re.compile(re.escape(query), re.IGNORECASE)
+    parts: list[str] = []
+    last_end = 0
+    for match in pattern.finditer(text):
+        start, end = match.span()
+        if start > last_end:
+            parts.append(text[last_end:start])
+        parts.append(apply_theme_style(text[start:end], _SEARCH_HIGHLIGHT_STYLE))
+        last_end = end
+    if not parts:
+        return text
+    parts.append(text[last_end:])
+    return "".join(parts)
 
 
 def _title_text(

@@ -271,6 +271,29 @@ def test_transcript_reader_search_finds_matches_and_navigates_without_closing() 
     assert previous[0] == "Transcript window · search beta 1/2"
 
 
+def test_transcript_reader_search_highlights_matches_without_changing_text() -> None:
+    reader = TranscriptReaderSurface(_Source((AssistantMessageRecord("alpha beta beta"),)))
+
+    reader.handle_input(InputEvent(kind="text", text="/"))
+    reader.handle_input(InputEvent(kind="text", text="beta"))
+    reader.handle_input(InputEvent(kind="key", key="enter"))
+
+    raw = _render_raw(reader, width=80, height=7)
+    stripped = tuple(strip_control_sequences(line) for line in raw)
+    match_line = next(line for line in raw if strip_control_sequences(line).endswith("alpha beta beta"))
+
+    assert "\x1b[" in match_line
+    assert any(line.endswith("alpha beta beta") for line in stripped)
+
+
+def test_transcript_reader_search_does_not_highlight_without_query() -> None:
+    reader = TranscriptReaderSurface(_Source((AssistantMessageRecord("alpha beta"),)))
+
+    raw = _render_raw(reader, width=80, height=7)
+
+    assert all("\x1b[" not in line for line in raw[:-3])
+
+
 def test_transcript_reader_search_escape_exits_search_input_without_closing() -> None:
     reader = TranscriptReaderSurface(_Source((AssistantMessageRecord("alpha beta"),)))
 
