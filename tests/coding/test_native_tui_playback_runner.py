@@ -126,6 +126,7 @@ def test_native_tui_playback_transcript_scenarios_live_in_transcript_module() ->
         "tool-output-preview",
         "transcript-reader-modal",
         "transcript-reader-copy-command",
+        "transcript-reader-live-draft",
     ]
 
 
@@ -145,6 +146,7 @@ def test_native_tui_playback_runner_lists_default_scenarios(capsys) -> None:
     assert "long-transcript-input" in captured.out
     assert "transcript-reader-modal" in captured.out
     assert "transcript-reader-copy-command" in captured.out
+    assert "transcript-reader-live-draft" in captured.out
     assert "escape-pending-steer" in captured.out
     assert "running-steer-queued" in captured.out
     assert "running-escape-keeps-queued-steer" in captured.out
@@ -284,6 +286,16 @@ def test_native_tui_playback_runner_runs_transcript_reader_copy_scenario(
     captured = capsys.readouterr()
     assert exit_code == 0
     assert "PASS transcript-reader-copy-command" in captured.out
+
+
+def test_native_tui_playback_runner_runs_transcript_reader_live_draft_scenario(
+    capsys,
+) -> None:
+    exit_code = run_playback_cli(["transcript-reader-live-draft"])
+
+    captured = capsys.readouterr()
+    assert exit_code == 0
+    assert "PASS transcript-reader-live-draft" in captured.out
 
 
 def test_native_tui_playback_runner_runs_product_composed_interaction_scenario(

@@ -17,7 +17,11 @@ from loushang.coding.ui.playback_scenarios.budgets import (
 )
 from loushang.coding.ui.playback_suite import NativePlaybackScenarioSpec
 from loushang.tui import strip_control_sequences
-from loushang.tui.transcript import AssistantMessageRecord, ToolExecutionRecord
+from loushang.tui.transcript import (
+    AssistantMessageRecord,
+    ToolExecutionRecord,
+    UserPromptRecord,
+)
 
 
 def _run_long_transcript_input() -> NativeTuiInputPlaybackResult:
@@ -150,6 +154,44 @@ def _run_transcript_reader_copy_command() -> object:
     return result
 
 
+def _run_transcript_reader_live_draft() -> NativeTuiInputPlaybackResult:
+    scenario = (
+        NativeTuiInputScenario(width=78, height=10)
+        .with_records(
+            (
+                UserPromptRecord("previous question"),
+                AssistantMessageRecord("previous answer", stable=True),
+            )
+        )
+        .with_composer_text("draft")
+    )
+    scenario.app.begin_run(started_at=0.0)
+    scenario.app.begin_assistant()
+    scenario.app.append_assistant_chunk("streaming live draft")
+
+    result = (
+        scenario.render()
+        .key("\x0f")
+        .key("\x0f")
+        .type_text("!")
+        .run()
+    )
+
+    result.assert_composer_text("draft!")
+    result.assert_no_clear_screen()
+    result.assert_visible_contains("› draft!")
+    result.assert_visible_not_contains("Ctrl+O/q/Esc close")
+
+    opened_screen = _step_screen(result, 1)
+    closed_screen = _step_screen(result, 2)
+    assert "Transcript window" in opened_screen
+    assert "streaming live draft" in opened_screen
+    assert "Ctrl+O/q/Esc close" in opened_screen
+    assert "Ctrl+O/q/Esc close" not in closed_screen
+    assert "› draft" in closed_screen
+    return result
+
+
 def _step_screen(result: NativeTuiInputPlaybackResult, step_index: int) -> str:
     step = result.steps[step_index]
     assert step.frame is not None
@@ -215,6 +257,12 @@ TRANSCRIPT_SCENARIOS = (
         description="Open and close the transcript reader, then copy the second assistant response from structured history.",
         run=_run_transcript_reader_copy_command,
         tags=("transcript", "command"),
+    ),
+    NativePlaybackScenarioSpec(
+        name="transcript-reader-live-draft",
+        description="Open the transcript reader during assistant streaming and keep the live draft visible.",
+        run=_run_transcript_reader_live_draft,
+        tags=("transcript",),
     ),
 )
 
