@@ -6,7 +6,9 @@ Loushang is organized around complex work, not just model calls.
 
 ## Method
 
-A method is a reusable way of running work. It can define stages, guidance, roles, expected work products, and acceptance criteria. The long-term goal is for methods to become executable and improvable assets, not static process documents.
+A method is a structured work contract for a class of tasks. It defines when the method applies, which role the agent should take, which phase the work is in, what workflow to follow, what constraints and gates apply, and what artifacts or acceptance criteria should be produced.
+
+The long-term goal is for methods to become executable and improvable assets, not static process documents.
 
 ## Session
 

@@ -153,6 +153,38 @@ def test_default_resource_loader_can_disable_context_files(tmp_path) -> None:
     assert bundle.prompt_descriptors == []
 
 
+def test_default_resource_loader_exposes_user_global_skill_candidates_and_project_precedence(tmp_path) -> None:
+    from loushang.coding.loader import DefaultResourceLoader
+
+    user_root = tmp_path / "user"
+    project_root = tmp_path / "project"
+    user_skill = user_root / "skills" / "review"
+    project_skill = project_root / "skills" / "review"
+    user_skill.mkdir(parents=True)
+    project_skill.mkdir(parents=True)
+    (user_skill / "SKILL.md").write_text("Global review rules", encoding="utf-8")
+    (project_skill / "SKILL.md").write_text("Project review rules", encoding="utf-8")
+
+    loader = DefaultResourceLoader(user_resource_roots=[user_root])
+    bundle = loader.discover_resources(project_root)
+    snapshot = loader.get_resource_snapshot()
+
+    assert [skill.content for skill in bundle.skills] == ["Project review rules"]
+    assert [skill.source_kind for skill in bundle.skills] == ["project_local"]
+    assert [skill.source_scope for skill in bundle.skills] == ["project"]
+    assert [skill.source_root for skill in bundle.skills] == [project_root / "skills"]
+    assert [(skill.name, skill.source_kind, skill.source_root) for skill in snapshot.candidate_skill_descriptors] == [
+        ("review", "user_global", user_root / "skills"),
+        ("review", "project_local", project_root / "skills"),
+    ]
+    assert any(
+        decision.logical_id == "review/SKILL.md"
+        and decision.winner_source_kind == "project_local"
+        and decision.candidate_source_kinds == ("project_local", "user_global")
+        for decision in snapshot.merge_decisions
+    )
+
+
 def test_default_resource_loader_loads_explicit_resource_paths_when_defaults_disabled(tmp_path) -> None:
     from loushang.coding.loader import DefaultResourceLoader
 
@@ -373,6 +405,34 @@ def test_default_resource_loader_reports_invalid_prompt_frontmatter(tmp_path) ->
     diagnostic = bundle.diagnostics[0]
     assert diagnostic.resource_type == "prompt"
     assert diagnostic.source_path == prompts_dir / "broken.md"
+    assert "line 1" in diagnostic.message
+
+
+def test_default_resource_loader_reports_invalid_skill_frontmatter_without_loading_skill(tmp_path) -> None:
+    from loushang.coding.loader import DefaultResourceLoader
+
+    project_root = tmp_path / "project"
+    skill_dir = project_root / "skills" / "broken"
+    skill_dir.mkdir(parents=True)
+    (skill_dir / "SKILL.md").write_text(
+        "---\n"
+        "description: [broken\n"
+        "---\n\n"
+        "Broken skill body.",
+        encoding="utf-8",
+    )
+
+    loader = DefaultResourceLoader()
+    bundle = loader.discover_resources(project_root)
+    snapshot = loader.get_resource_snapshot()
+
+    assert bundle.skills == []
+    assert snapshot.candidate_skill_descriptors == ()
+    assert [diagnostic.code for diagnostic in bundle.diagnostics] == ["invalid_skill_frontmatter"]
+    diagnostic = bundle.diagnostics[0]
+    assert diagnostic.resource_type == "skill"
+    assert diagnostic.source_kind == "project_local"
+    assert diagnostic.source_path == skill_dir / "SKILL.md"
     assert "line 1" in diagnostic.message
 
 
