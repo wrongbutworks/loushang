@@ -49,6 +49,7 @@ class _PlanState:
     method_id: str | None = None
     current_step_id: str | None = None
     error: str | None = None
+    plan_facts: dict[str, object] | None = None
     operation_ids: list[str] = field(default_factory=list)
     steps: dict[str, _StepState] = field(default_factory=dict)
     step_order: list[str] = field(default_factory=list)
@@ -59,6 +60,9 @@ class _PlanState:
             self.method_id = method_id
         if entry.operation_id and entry.operation_id not in self.operation_ids:
             self.operation_ids.append(entry.operation_id)
+        plan_facts = _entry_mapping_payload_value(entry, "plan_facts")
+        if plan_facts is not None:
+            self.plan_facts = plan_facts
 
         if kind == "WorkPlanStarted":
             self.status = "running"
@@ -91,6 +95,8 @@ class _PlanState:
         metadata: dict[str, object] = {"operation_ids": tuple(self.operation_ids)}
         if self.error is not None:
             metadata["error"] = self.error
+        if self.plan_facts is not None:
+            metadata["plan_facts"] = self.plan_facts
         return WorkPlanRun(
             plan_id=self.plan_id,
             status=self.status,
@@ -135,6 +141,7 @@ class _StepState:
     deviation: WorkStepDeviation | None = None
     planned_constraint: dict[str, object] | None = None
     audit_policy: dict[str, object] | None = None
+    step_facts: dict[str, object] | None = None
 
     def update_from_entry(
         self,
@@ -165,6 +172,9 @@ class _StepState:
         audit_policy = _entry_mapping_payload_value(entry, "audit_policy")
         if audit_policy is not None:
             self.audit_policy = audit_policy
+        step_facts = _entry_mapping_payload_value(entry, "step_facts")
+        if step_facts is not None:
+            self.step_facts = step_facts
 
         if kind == "WorkStepStarted":
             self.status = "running"
@@ -189,6 +199,7 @@ class _StepState:
                 "deviation": asdict(self.deviation) if self.deviation is not None else None,
                 "planned_constraint": self.planned_constraint,
                 "audit_policy": self.audit_policy,
+                "step_facts": self.step_facts,
             }
         )
         return WorkStepRun(

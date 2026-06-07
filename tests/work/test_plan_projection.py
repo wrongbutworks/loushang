@@ -20,6 +20,8 @@ def _entry(
     deviation: dict[str, object] | None = None,
     planned_constraint: dict[str, object] | None = None,
     audit_policy: dict[str, object] | None = None,
+    plan_facts: dict[str, object] | None = None,
+    step_facts: dict[str, object] | None = None,
 ) -> object:
     from loushang.work import EventLogEntry
 
@@ -43,6 +45,10 @@ def _entry(
         nested_payload["planned_constraint"] = planned_constraint
     if audit_policy is not None:
         nested_payload["audit_policy"] = audit_policy
+    if plan_facts is not None:
+        nested_payload["plan_facts"] = plan_facts
+    if step_facts is not None:
+        nested_payload["step_facts"] = step_facts
     if nested_payload:
         payload["payload"] = nested_payload
 
@@ -322,6 +328,52 @@ def test_project_work_plan_runs_replays_planned_step_policy_metadata() -> None:
         "requires_reason": True,
     }
     assert metadata["audit_policy"] == {"record": ["status", "reason"]}
+
+
+def test_project_work_plan_runs_replays_plan_and_step_facts() -> None:
+    from loushang.work import project_work_plan_runs
+
+    plan_facts = {
+        "plan_id": "plan:method:task:review",
+        "method_id": "method:task:review",
+        "mode": "fixed",
+        "phase": "VERIFY",
+    }
+    step_facts = {
+        "step_id": "inspect",
+        "title": "Inspect current changes",
+        "executor": "current_agent",
+        "step_index": 0,
+        "step_count": 2,
+    }
+
+    plans = project_work_plan_runs(
+        [
+            _entry(
+                "run-inspect-plan-started",
+                kind="WorkPlanStarted",
+                run_id="run-inspect",
+                sequence=1,
+                step_id="inspect",
+                step_index=0,
+                step_title="Inspect current changes",
+                plan_facts=plan_facts,
+                step_facts=step_facts,
+            ),
+            _entry(
+                "run-inspect-step-completed",
+                kind="WorkStepCompleted",
+                run_id="run-inspect",
+                sequence=2,
+                step_id="inspect",
+                step_index=0,
+                step_title="Inspect current changes",
+            ),
+        ]
+    )
+
+    assert plans[0].metadata["plan_facts"] == plan_facts
+    assert plans[0].steps[0].metadata["step_facts"] == step_facts
 
 
 def test_project_work_plan_runs_ignores_entries_without_plan_id() -> None:
