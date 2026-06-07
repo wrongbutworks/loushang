@@ -8,6 +8,15 @@ from loushang.method.types import (
     MethodStep,
 )
 
+_PLAN_METADATA_FACT_KEYS = frozenset(
+    {
+        "method_kind",
+        "element_type",
+        "plan_mode",
+        "step_count",
+    }
+)
+
 
 class MethodProjector:
     def project(
@@ -60,7 +69,7 @@ def _plan_facts(plan: MethodPlan) -> dict[str, object]:
         "phase": plan.phase,
         "activity": plan.activity,
         "task": plan.task,
-        "metadata": dict(plan.metadata),
+        "metadata": _stable_plan_metadata_facts(plan),
         "applicability": _applicability_facts(plan.applicability),
     }
 
@@ -94,18 +103,43 @@ def _step_index(plan: MethodPlan, step: MethodStep) -> int | None:
 
 def _applicability_facts(applicability: MethodApplicability) -> dict[str, object]:
     return {
-        "domains": applicability.domains,
-        "task_types": applicability.task_types,
-        "contexts": applicability.contexts,
-        "artifact_types": applicability.artifact_types,
-        "modalities": applicability.modalities,
-        "toolchains": applicability.toolchains,
-        "lifecycle": applicability.lifecycle,
-        "capabilities": applicability.capabilities,
+        "domains": list(applicability.domains),
+        "task_types": list(applicability.task_types),
+        "contexts": list(applicability.contexts),
+        "artifact_types": list(applicability.artifact_types),
+        "modalities": list(applicability.modalities),
+        "toolchains": list(applicability.toolchains),
+        "lifecycle": list(applicability.lifecycle),
+        "capabilities": list(applicability.capabilities),
         "complexity": applicability.complexity,
         "risk": applicability.risk,
-        "tags": {key: tuple(values) for key, values in applicability.tags.items()},
+        "tags": {key: list(values) for key, values in applicability.tags.items()},
     }
+
+
+def _stable_plan_metadata_facts(plan: MethodPlan) -> dict[str, object]:
+    facts: dict[str, object] = {}
+    for key in _PLAN_METADATA_FACT_KEYS:
+        value = plan.metadata.get(key)
+        facts[key] = _json_safe_fact_value(value)
+    return facts
+
+
+def _json_safe_fact_value(value: object) -> object | None:
+    if value is None or isinstance(value, str | int | float | bool):
+        return value
+    if isinstance(value, tuple | list):
+        return [_json_safe_fact_value(item) for item in value]
+    if isinstance(value, dict):
+        result: dict[str, object] = {}
+        for key, item in value.items():
+            if not isinstance(key, str):
+                continue
+            normalized = _json_safe_fact_value(item)
+            if normalized is not None:
+                result[key] = normalized
+        return result
+    return None
 
 
 __all__ = ["MethodProjector"]

@@ -71,6 +71,11 @@ Method-driven non-interactive runs are observed through `loushang.work`:
 Step deviation is represented as `WorkStepDeviation` metadata, not as a separate
 `step_deviation` event kind.
 
+Method `plan_facts` and `step_facts` are defined by
+[`loushang.method`'s facts contract](../method-facts-contract.md). The coding
+domain bridge only carries those facts from method projection to runner/work-log
+parameters; it does not redefine their semantics.
+
 ## Key Data
 
 - `CodingDomainRequest`
