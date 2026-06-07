@@ -9,10 +9,10 @@ from loushang.coding.compaction import (
     SummaryEvaluationCase,
     SummaryEvaluationResult,
     compact,
-    evaluate_summary_fixture,
     evaluate_summary_case,
-    load_summary_evaluation_cases,
+    evaluate_summary_fixture,
     generate_branch_summary,
+    load_summary_evaluation_cases,
 )
 
 

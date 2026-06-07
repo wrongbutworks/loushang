@@ -18,6 +18,7 @@ from typing import TYPE_CHECKING, Any, Callable
 from uuid import UUID
 
 if TYPE_CHECKING:
+    from loushang.ontology.core.object import OntologyObject
     from loushang.ontology.core.store import ObjectStore
 
 
@@ -40,7 +41,7 @@ class QueryBuilder:
     # 链式 API
     # ------------------------------------------------------------------
 
-    def start_from(self, obj: "OntologyObject" | UUID) -> QueryBuilder:
+    def start_from(self, obj: OntologyObject | UUID) -> QueryBuilder:
         """设置查询起始对象."""
         from loushang.ontology.core.object import OntologyObject
         obj_id = obj.id if isinstance(obj, OntologyObject) else obj

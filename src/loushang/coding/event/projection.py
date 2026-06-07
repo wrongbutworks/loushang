@@ -6,9 +6,16 @@ from typing import Any, Literal, Sequence
 from loushang.agent.types import AgentToolResult
 from loushang.coding.event.serialization import serialize_session_event
 from loushang.coding.event.types import AgentSessionEvent
-from loushang.coding.message.json_codec import serialize_agent_message, serialize_assistant_message_event
-from loushang.coding.message.json_codec import serialize_json_value
-from loushang.coding.tools import ToolDefinitionResolver, ToolRenderOutput, ToolRenderRuntime
+from loushang.coding.message.json_codec import (
+    serialize_agent_message,
+    serialize_assistant_message_event,
+    serialize_json_value,
+)
+from loushang.coding.tools import (
+    ToolDefinitionResolver,
+    ToolRenderOutput,
+    ToolRenderRuntime,
+)
 from loushang.coding.tools.protocol import project_tool_details_for_protocol
 
 JsonEventView = Literal["full", "compact", "assistant_stream", "tools", "final"]

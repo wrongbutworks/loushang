@@ -2,8 +2,8 @@ from __future__ import annotations
 
 
 def test_tool_render_runtime_preserves_state_and_last_rendered_per_tool_call() -> None:
-    from loushang.ai.types import TextPart
     from loushang.agent.types import AgentToolResult
+    from loushang.ai.types import TextPart
     from loushang.coding.tools import ToolDefinition, ToolRenderRuntime
 
     invalidated: list[str] = []
@@ -73,8 +73,8 @@ def test_tool_render_runtime_preserves_state_and_last_rendered_per_tool_call() -
 
 
 def test_tool_render_runtime_keeps_renderer_state_isolated_by_tool_call_id() -> None:
-    from loushang.ai.types import TextPart
     from loushang.agent.types import AgentToolResult
+    from loushang.ai.types import TextPart
     from loushang.coding.tools import ToolDefinition, ToolRenderRuntime
 
     async def execute(tool_call_id, params, signal=None, on_update=None):
@@ -102,8 +102,8 @@ def test_tool_render_runtime_keeps_renderer_state_isolated_by_tool_call_id() -> 
 
 
 def test_tool_render_runtime_renders_tool_execution_events_with_partial_flags() -> None:
-    from loushang.ai.types import TextPart
     from loushang.agent.types import AgentToolResult
+    from loushang.ai.types import TextPart
     from loushang.coding.tools import ToolDefinition, ToolRenderRuntime
 
     observations: list[tuple[str, object | None, bool, bool, bool, object | None]] = []

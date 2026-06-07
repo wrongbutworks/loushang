@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import re
 
-
 _PLACEHOLDER_PATTERN = re.compile(r"\$\{@:(\d+)(?::(\d+))?\}|\$ARGUMENTS|\$@|\$(\d+)")
 
 

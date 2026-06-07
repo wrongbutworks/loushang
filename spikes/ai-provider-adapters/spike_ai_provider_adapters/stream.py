@@ -1,7 +1,7 @@
 from __future__ import annotations
 
-from .registry import get_api_provider
 from .event_stream import AssistantMessageEventStream
+from .registry import get_api_provider
 from .types import AssistantMessage, Context, Model, SimpleStreamOptions, StreamOptions
 
 

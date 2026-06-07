@@ -1,12 +1,16 @@
+from loushang.coding.diagnostics.serialization import (
+    serialize_diagnostic,
+    serialize_diagnostic_summary,
+    serialize_error_report,
+)
 from loushang.coding.diagnostics.service import DiagnosticsService
-from loushang.coding.diagnostics.serialization import serialize_diagnostic, serialize_diagnostic_summary, serialize_error_report
 from loushang.coding.diagnostics.types import (
     DiagnosticLevel,
     DiagnosticPhase,
     DiagnosticRecord,
     DiagnosticSource,
-    DiagnosticSummary,
     DiagnosticsQuery,
+    DiagnosticSummary,
     ErrorReport,
     StartupCheck,
     StartupCheckResult,

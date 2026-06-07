@@ -7,23 +7,26 @@ from loushang.coding.compaction.branch_summarization import (
 )
 from loushang.coding.compaction.compaction import (
     calculate_context_tokens,
-    compaction_plan_to_payload,
     compact,
+    compaction_plan_to_payload,
     estimate_context_tokens,
     plan_compaction,
     prepare_compaction,
     should_compact,
 )
-from loushang.coding.compaction.policy import CompactionBudget, calculate_compaction_budget
+from loushang.coding.compaction.policy import (
+    CompactionBudget,
+    calculate_compaction_budget,
+)
 from loushang.coding.compaction.service import CompactionCoordinator
 from loushang.coding.compaction.summary_quality import (
     SummaryEvaluationCase,
     SummaryEvaluationResult,
     SummaryEvaluationSuiteResult,
     SummaryQualityReport,
-    evaluate_summary_fixture,
-    evaluate_summary_cases,
     evaluate_summary_case,
+    evaluate_summary_cases,
+    evaluate_summary_fixture,
     load_summary_evaluation_cases,
     validate_summary_contract,
 )

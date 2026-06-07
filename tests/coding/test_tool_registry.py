@@ -81,12 +81,12 @@ def test_tool_factory_surface_exposes_pi_style_tool_groups() -> None:
         ALL_TOOL_NAMES,
         ToolName,
         allToolNames,
-        create_all_tools,
         create_all_tool_definitions,
-        create_coding_tools,
+        create_all_tools,
         create_coding_tool_definitions,
-        create_read_only_tools,
+        create_coding_tools,
         create_read_only_tool_definitions,
+        create_read_only_tools,
         create_tool,
         create_tool_definition,
     )
@@ -107,7 +107,9 @@ def test_tool_factory_surface_exposes_pi_style_tool_groups() -> None:
 def test_tool_factory_exposes_pi_style_camel_case_aliases(tmp_path) -> None:
     import asyncio
 
-    from loushang.coding import createAllToolDefinitions as top_level_create_all_tool_definitions
+    from loushang.coding import (
+        createAllToolDefinitions as top_level_create_all_tool_definitions,
+    )
     from loushang.coding.tools import (
         createAllToolDefinitions,
         createAllTools,
@@ -386,6 +388,7 @@ def test_tool_factory_external_tool_policy_never_skips_resolver_and_uses_fallbac
 
 def test_tool_factory_external_tool_policy_required_errors_when_unavailable(tmp_path) -> None:
     import asyncio
+
     import pytest
 
     from loushang.coding.tools import ToolsOptions, create_tool_definition
@@ -424,6 +427,7 @@ def test_tool_factory_external_tool_policy_required_errors_when_unavailable(tmp_
 
 def test_tool_factory_download_failure_surfaces_as_stable_unavailable_error(tmp_path) -> None:
     import asyncio
+
     import pytest
 
     from loushang.coding.tools import ToolsOptions, create_tool_definition
@@ -1246,6 +1250,7 @@ def test_bash_tool_returns_no_output_placeholder(tmp_path) -> None:
 
 def test_bash_tool_raises_for_nonzero_exit_code_with_buffered_output(tmp_path) -> None:
     import asyncio
+
     import pytest
 
     from loushang.coding.exec.types import ExecResult
@@ -1284,6 +1289,7 @@ def test_bash_tool_raises_for_nonzero_exit_code_with_buffered_output(tmp_path) -
 
 def test_bash_tool_raises_for_invalid_command_and_env_shapes(tmp_path) -> None:
     import asyncio
+
     import pytest
 
     from loushang.coding.tools import ToolRegistry, register_builtin_tools
@@ -1329,6 +1335,7 @@ def test_bash_tool_raises_for_invalid_command_and_env_shapes(tmp_path) -> None:
 
 def test_bash_tool_policy_decisions_do_not_record_runtime_diagnostics(tmp_path) -> None:
     import asyncio
+
     import pytest
 
     from loushang.coding.diagnostics import DiagnosticsService
@@ -1381,6 +1388,7 @@ def test_bash_tool_policy_decisions_do_not_record_runtime_diagnostics(tmp_path) 
 
 def test_bash_tool_exec_timeout_does_not_record_runtime_diagnostics(tmp_path) -> None:
     import asyncio
+
     import pytest
 
     from loushang.coding.diagnostics import DiagnosticsService
@@ -1422,6 +1430,7 @@ def test_bash_tool_exec_timeout_does_not_record_runtime_diagnostics(tmp_path) ->
 
 def test_bash_tool_timeout_error_includes_buffered_output(tmp_path) -> None:
     import asyncio
+
     import pytest
 
     from loushang.coding import ToolRegistry, register_builtin_tools
@@ -1709,6 +1718,7 @@ def test_file_tool_prepare_arguments_reject_conflicting_file_path_aliases(tmp_pa
 
 def test_read_rejects_binary_file_payloads(tmp_path) -> None:
     import asyncio
+
     import pytest
 
     from loushang.coding.tools import create_read_tool_definition
@@ -1829,7 +1839,11 @@ def test_read_resizes_oversized_image_when_resizer_is_available(tmp_path) -> Non
     import asyncio
     import base64
 
-    from loushang.coding.tools import ReadImageResizeResult, ReadToolOptions, create_read_tool_definition
+    from loushang.coding.tools import (
+        ReadImageResizeResult,
+        ReadToolOptions,
+        create_read_tool_definition,
+    )
     from loushang.coding.tools.wrapper import wrap_tool_definition
 
     png_payload = (
@@ -1983,6 +1997,7 @@ def test_read_description_mentions_text_and_images() -> None:
 
 def test_read_tool_raises_for_missing_file(tmp_path) -> None:
     import asyncio
+
     import pytest
 
     from loushang.coding.tools import create_read_tool_definition
@@ -2109,6 +2124,7 @@ def test_ls_tool_returns_empty_directory_message(tmp_path) -> None:
 
 def test_ls_tool_raises_for_file_path(tmp_path) -> None:
     import asyncio
+
     import pytest
 
     from loushang.coding.tools import create_ls_tool_definition
@@ -2448,6 +2464,7 @@ def test_find_external_tool_failure_is_not_masked_by_fallback(tmp_path) -> None:
 
 def test_find_requires_external_tool_when_configured(tmp_path) -> None:
     import asyncio
+
     import pytest
 
     from loushang.coding.tools import FindToolOptions, create_find_tool_definition
@@ -2478,11 +2495,10 @@ def test_find_fd_process_is_killed_when_signal_aborts(monkeypatch, tmp_path) -> 
 
     import pytest
 
+    import loushang.coding.tools.find as find_module
     from loushang.agent import AbortController
     from loushang.coding.tools import create_find_tool_definition
     from loushang.coding.tools.wrapper import wrap_tool_definition
-
-    import loushang.coding.tools.find as find_module
 
     fake_fd = tmp_path / "fd"
     fake_fd.write_text("#!/bin/sh\nsleep 1\n", encoding="utf-8")
@@ -2579,6 +2595,7 @@ def test_find_tool_returns_no_match_message(tmp_path) -> None:
 
 def test_find_tool_raises_for_missing_root(tmp_path) -> None:
     import asyncio
+
     import pytest
 
     from loushang.coding.tools import create_find_tool_definition
@@ -2775,6 +2792,7 @@ def test_grep_external_regex_is_not_prevalidated_by_python_re(tmp_path) -> None:
 
 def test_grep_requires_external_tool_when_configured(tmp_path) -> None:
     import asyncio
+
     import pytest
 
     from loushang.coding.tools import GrepToolOptions, create_grep_tool_definition
@@ -2831,11 +2849,10 @@ def test_grep_rg_process_is_killed_when_signal_aborts(monkeypatch, tmp_path) -> 
 
     import pytest
 
+    import loushang.coding.tools.grep as grep_module
     from loushang.agent import AbortController
     from loushang.coding.tools import create_grep_tool_definition
     from loushang.coding.tools.wrapper import wrap_tool_definition
-
-    import loushang.coding.tools.grep as grep_module
 
     fake_rg = tmp_path / "rg"
     fake_rg.write_text("#!/bin/sh\nsleep 1\n", encoding="utf-8")
@@ -2872,10 +2889,9 @@ def test_grep_rg_stops_process_after_match_limit(monkeypatch, tmp_path) -> None:
     import asyncio
     import time
 
+    import loushang.coding.tools.grep as grep_module
     from loushang.coding.tools import create_grep_tool_definition
     from loushang.coding.tools.wrapper import wrap_tool_definition
-
-    import loushang.coding.tools.grep as grep_module
 
     fake_rg = tmp_path / "rg"
     fake_rg.write_text(
@@ -3114,6 +3130,7 @@ def test_grep_tool_returns_no_matches_message(tmp_path) -> None:
 
 def test_grep_tool_raises_for_missing_root(tmp_path) -> None:
     import asyncio
+
     import pytest
 
     from loushang.coding.tools import create_grep_tool_definition
@@ -3316,6 +3333,7 @@ def test_write_creates_missing_parent_directories(tmp_path) -> None:
 
 def test_write_raises_when_non_directory_ancestor_blocks_traversal(tmp_path) -> None:
     import asyncio
+
     import pytest
 
     from loushang.coding.tools import create_write_tool_definition
@@ -3369,6 +3387,7 @@ def test_write_raises_for_conflict_or_policy_rejection(tmp_path, monkeypatch) ->
 
 def test_write_tool_raises_for_invalid_inputs(tmp_path) -> None:
     import asyncio
+
     import pytest
 
     from loushang.coding.tools import create_write_tool_definition
@@ -3667,6 +3686,7 @@ def test_edit_tool_applies_multiple_disjoint_edits_against_original_file(tmp_pat
 def test_edit_raises_for_no_match(tmp_path) -> None:
     import asyncio
     import re
+
     import pytest
 
     from loushang.coding.tools import create_edit_tool_definition
@@ -3698,6 +3718,7 @@ def test_edit_raises_for_no_match(tmp_path) -> None:
 def test_edit_raises_for_multi_match_ambiguity(tmp_path) -> None:
     import asyncio
     import re
+
     import pytest
 
     from loushang.coding.tools import create_edit_tool_definition
@@ -3729,6 +3750,7 @@ def test_edit_raises_for_multi_match_ambiguity(tmp_path) -> None:
 def test_edit_rejects_overlapping_edits(tmp_path) -> None:
     import asyncio
     import re
+
     import pytest
 
     from loushang.coding.tools import create_edit_tool_definition

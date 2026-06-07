@@ -2,7 +2,10 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from loushang.coding.control.config_value import ConfigCommandResult, ConfigValueResolver
+from loushang.coding.control.config_value import (
+    ConfigCommandResult,
+    ConfigValueResolver,
+)
 from loushang.coding.platform.changelog import format_changelog_entries, parse_changelog
 from loushang.coding.platform.clipboard import ClipboardCopyResult, copy_to_clipboard
 

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+
 def test_extension_loader_supports_register_api_modules(tmp_path) -> None:
     from loushang.coding.extensions.loader import ExtensionLoader
     from loushang.coding.loader import ExtensionDescriptor

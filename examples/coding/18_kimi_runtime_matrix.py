@@ -11,8 +11,11 @@ from loushang.ai.model.registry import ModelRegistry
 if __package__ in {None, ""}:
     sys.path.insert(0, str(Path(__file__).resolve().parent))
 
-from _support import ENV_EXAMPLES_ARTIFACT_ROOT, _resolve_model_catalog, _resolve_model_registry
-
+from _support import (
+    ENV_EXAMPLES_ARTIFACT_ROOT,
+    _resolve_model_catalog,
+    _resolve_model_registry,
+)
 
 ERROR_CODE_MAP = {
     "401": "auth invalid / key missing",

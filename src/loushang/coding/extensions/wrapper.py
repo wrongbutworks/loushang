@@ -1,8 +1,8 @@
 from __future__ import annotations
 
+import inspect
 from collections.abc import Callable
 from dataclasses import replace
-import inspect
 from typing import Any
 
 from loushang.agent.types import AgentToolResult

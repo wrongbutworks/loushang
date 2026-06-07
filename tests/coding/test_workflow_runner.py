@@ -17,7 +17,13 @@ class FakeWorkflowAdapter:
 
 
 def test_run_workflow_executes_steps_and_asserts_outputs(tmp_path) -> None:
-    from loushang.coding.workflow import CommandExpectation, PromptStep, StepExpectation, Workflow, run_workflow
+    from loushang.coding.workflow import (
+        CommandExpectation,
+        PromptStep,
+        StepExpectation,
+        Workflow,
+        run_workflow,
+    )
 
     target = tmp_path / "tmp" / "bmi.py"
     target.parent.mkdir()
@@ -51,7 +57,12 @@ def test_run_workflow_executes_steps_and_asserts_outputs(tmp_path) -> None:
 
 
 def test_run_workflow_reports_failed_expectation_without_stopping_later_steps(tmp_path) -> None:
-    from loushang.coding.workflow import PromptStep, StepExpectation, Workflow, run_workflow
+    from loushang.coding.workflow import (
+        PromptStep,
+        StepExpectation,
+        Workflow,
+        run_workflow,
+    )
 
     workflow = Workflow(
         name="chat",
@@ -78,7 +89,12 @@ def test_run_workflow_reports_failed_expectation_without_stopping_later_steps(tm
 
 
 def test_run_workflow_times_out_prompt_and_aborts_adapter(tmp_path) -> None:
-    from loushang.coding.workflow import PromptStep, StepExpectation, Workflow, run_workflow
+    from loushang.coding.workflow import (
+        PromptStep,
+        StepExpectation,
+        Workflow,
+        run_workflow,
+    )
 
     class SlowAdapter:
         def __init__(self) -> None:
@@ -218,7 +234,13 @@ def test_agent_session_adapter_supports_hold_actions_and_abort(tmp_path) -> None
 
 
 def test_agent_session_adapter_exposes_public_fact_snapshots(tmp_path) -> None:
-    from loushang.coding.workflow import AgentSessionWorkflowAdapter, ExpectStep, Workflow, WorkflowExpectation, run_workflow
+    from loushang.coding.workflow import (
+        AgentSessionWorkflowAdapter,
+        ExpectStep,
+        Workflow,
+        WorkflowExpectation,
+        run_workflow,
+    )
 
     class FactSession:
         def subscribe(self, listener):
@@ -283,7 +305,12 @@ def test_agent_session_adapter_exposes_public_fact_snapshots(tmp_path) -> None:
 
 
 def test_agent_session_adapter_does_not_duplicate_assistant_message_events(tmp_path) -> None:
-    from loushang.coding.workflow import AgentSessionWorkflowAdapter, PromptStep, Workflow, run_workflow
+    from loushang.coding.workflow import (
+        AgentSessionWorkflowAdapter,
+        PromptStep,
+        Workflow,
+        run_workflow,
+    )
 
     class EventfulSession:
         def __init__(self) -> None:

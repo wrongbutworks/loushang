@@ -4,8 +4,8 @@ from __future__ import annotations
 def test_emit_tool_update_accepts_sync_and_async_callbacks() -> None:
     import asyncio
 
-    from loushang.ai.types import TextPart
     from loushang.agent.types import AgentToolResult
+    from loushang.ai.types import TextPart
     from loushang.coding.tools.runtime import emit_tool_update
 
     seen: list[str] = []
@@ -64,8 +64,8 @@ def test_wrapped_tool_rejects_pre_aborted_signal_before_execute() -> None:
 
     import pytest
 
-    from loushang.ai.types import TextPart
     from loushang.agent.types import AgentToolResult
+    from loushang.ai.types import TextPart
     from loushang.coding.tools import ToolDefinition, wrap_tool_definition
 
     class AbortedSignal:

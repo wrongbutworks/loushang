@@ -2,11 +2,11 @@ from __future__ import annotations
 
 import argparse
 import asyncio
-from dataclasses import dataclass, field
 import random
 import shutil
 import sys
 import time
+from dataclasses import dataclass, field
 from typing import Literal, Protocol, TextIO
 
 from loushang.tui import (
@@ -43,8 +43,10 @@ from loushang.tui import (
     wrap_cells,
 )
 from loushang.tui.terminal import ProcessTerminalPort
-from loushang.tui.terminal_input import TerminalInputMode, read_input_chunk_or_render_tick
-
+from loushang.tui.terminal_input import (
+    TerminalInputMode,
+    read_input_chunk_or_render_tick,
+)
 
 THEME = {
     "user": {"color": "bright_cyan", "bold": True},

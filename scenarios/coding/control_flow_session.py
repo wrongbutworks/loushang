@@ -6,7 +6,6 @@ import sys
 from dataclasses import dataclass, field
 from pathlib import Path
 
-
 SCENARIOS: dict[str, list[dict[str, object]]] = {
     "abort-recovery": [
         {"prompt": "long control flow run", "hold": True, "tool": True},

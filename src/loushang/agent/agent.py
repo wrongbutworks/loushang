@@ -5,13 +5,6 @@ import time
 from collections.abc import Mapping
 from typing import Any, Awaitable, Callable
 
-from loushang.ai.api import stream_simple
-from loushang.ai.model.registry import resolve_model_api
-from loushang.ai.api_registry import ApiProviderRegistry, get_default_api_provider_registry
-from loushang.ai.messages import canonicalize_user_message
-from loushang.ai.bootstrap import register_builtin_ai_providers
-from loushang.ai.model import Capabilities, Model
-from loushang.ai.types import AssistantMessage, ImagePart, Message, TextPart, Usage, UserMessage
 from loushang.agent.agent_loop import run_agent_loop, run_agent_loop_continue
 from loushang.agent.types import (
     AfterToolCallContext,
@@ -20,15 +13,31 @@ from loushang.agent.types import (
     AgentEvent,
     AgentLoopConfig,
     AgentMessage,
-    AgentTool,
     AgentOptions,
     AgentState,
+    AgentTool,
     BeforeToolCallContext,
     BeforeToolCallResult,
     ThinkingLevel,
     ToolExecutionMode,
 )
-
+from loushang.ai.api import stream_simple
+from loushang.ai.api_registry import (
+    ApiProviderRegistry,
+    get_default_api_provider_registry,
+)
+from loushang.ai.bootstrap import register_builtin_ai_providers
+from loushang.ai.messages import canonicalize_user_message
+from loushang.ai.model import Capabilities, Model
+from loushang.ai.model.registry import resolve_model_api
+from loushang.ai.types import (
+    AssistantMessage,
+    ImagePart,
+    Message,
+    TextPart,
+    Usage,
+    UserMessage,
+)
 
 _ABORT_FORCE_CANCEL_DELAY_S = 0.05
 

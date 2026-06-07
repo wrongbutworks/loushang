@@ -9,7 +9,6 @@ from collections.abc import Iterable
 
 from loushang.ai import OpenAICompletionsOptions, get_model
 
-
 API_KEY = ""
 PROVIDER_ID = "moonshot"
 ENDPOINT_ID = "openai-completions"

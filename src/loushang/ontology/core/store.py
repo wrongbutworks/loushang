@@ -5,10 +5,9 @@ from __future__ import annotations
 from typing import Any
 from uuid import UUID
 
-from loushang.ontology.core.object import OntologyObject, LinkVersion
-from loushang.ontology.core.object_type import ObjectType
 from loushang.ontology.core.link_type import LinkType
-from loushang.ontology.core.property import Property
+from loushang.ontology.core.object import LinkVersion, OntologyObject
+from loushang.ontology.core.object_type import ObjectType
 
 
 class ObjectStore:
@@ -228,7 +227,7 @@ class ObjectStore:
         else:
             raise ValueError("direction must be 'outgoing' or 'incoming'")
 
-        return [self._objects[l.target_id] for l in links if l.target_id in self._objects]
+        return [self._objects[link.target_id] for link in links if link.target_id in self._objects]
 
     def all_objects(self) -> list[OntologyObject]:
         return list(self._objects.values())

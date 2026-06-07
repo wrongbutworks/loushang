@@ -27,8 +27,8 @@ from loushang.coding import (
     AgentSessionRuntime,
     SessionManager,
     create_agent_session,
-    create_services,
     create_agent_session_runtime,
+    create_services,
 )
 
 ENV_EXAMPLES_MODEL_CATALOG = "LOUSHANG_EXAMPLES_MODEL_CATALOG"

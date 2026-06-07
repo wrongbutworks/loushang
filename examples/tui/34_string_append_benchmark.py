@@ -1,9 +1,9 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
 import argparse
-from io import StringIO
 import random
+from dataclasses import dataclass
+from io import StringIO
 from time import perf_counter
 
 

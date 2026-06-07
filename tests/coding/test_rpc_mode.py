@@ -12,10 +12,24 @@ import pytest
 from loushang.ai.model.domain import Capabilities, Compat, Endpoint, Model, Pricing
 from loushang.ai.types import AssistantMessage, TextPart, Usage, UserMessage
 from loushang.coding.compaction import CompactionResult
-from loushang.coding.diagnostics import DiagnosticRecord, DiagnosticSummary, DiagnosticsQuery, ErrorReport
+from loushang.coding.diagnostics import (
+    DiagnosticRecord,
+    DiagnosticsQuery,
+    DiagnosticSummary,
+    ErrorReport,
+)
+from loushang.coding.loader import (
+    PromptFragmentDescriptor,
+    ResourceBundle,
+    SkillDescriptor,
+)
 from loushang.coding.message import SessionMessageEntry
-from loushang.coding.loader import PromptFragmentDescriptor, ResourceBundle, SkillDescriptor
-from loushang.coding.session.types import AgentSessionState, CommandSourceInfo, RunState, SessionCommandDescriptor
+from loushang.coding.session.types import (
+    AgentSessionState,
+    CommandSourceInfo,
+    RunState,
+    SessionCommandDescriptor,
+)
 from loushang.coding.store import SessionQuery
 from loushang.coding.types import ModelSelection
 

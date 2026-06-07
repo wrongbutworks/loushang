@@ -3,7 +3,10 @@ import asyncio
 import pytest
 
 from loushang.coding.tools import file_mutation_queue
-from loushang.coding.tools.file_mutation_queue import run_with_file_mutation_queue, with_file_mutation_queue
+from loushang.coding.tools.file_mutation_queue import (
+    run_with_file_mutation_queue,
+    with_file_mutation_queue,
+)
 
 
 def test_mutation_queue_serializes_same_file_operations(tmp_path) -> None:
@@ -145,7 +148,10 @@ def test_run_with_file_mutation_queue_accepts_sync_callback(tmp_path) -> None:
 def test_pi_style_with_file_mutation_queue_alias_is_exported(tmp_path) -> None:
     from loushang.coding import withFileMutationQueue as top_level_alias
     from loushang.coding.tools import run_with_file_mutation_queue as exported_runner
-    from loushang.coding.tools import withFileMutationQueue, with_file_mutation_queue as exported_context_manager
+    from loushang.coding.tools import (
+        with_file_mutation_queue as exported_context_manager,
+    )
+    from loushang.coding.tools import withFileMutationQueue
 
     path = tmp_path / "note.txt"
 

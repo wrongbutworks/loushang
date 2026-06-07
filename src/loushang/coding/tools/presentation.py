@@ -4,9 +4,11 @@ import re
 from dataclasses import dataclass
 from typing import Any, Mapping, Sequence
 
-from .protocol import project_tool_details_for_protocol, tool_artifact_paths_for_protocol
+from .protocol import (
+    project_tool_details_for_protocol,
+    tool_artifact_paths_for_protocol,
+)
 from .truncate import format_size
-
 
 ANSI_ESCAPE_RE = re.compile(r"\x1b\[[0-9;]*[A-Za-z]")
 

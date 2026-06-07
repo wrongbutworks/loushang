@@ -10,13 +10,13 @@ if __package__ in {None, ""}:
 
 from _support import (
     attach_stream_printer,
+    build_kimi_model,
     create_kimi_runtime_session,
     describe_model,
-    build_kimi_model,
     latest_tool_results,
 )
-from loushang.coding import ToolRegistry, register_builtin_tools
 
+from loushang.coding import ToolRegistry, register_builtin_tools
 
 EXTENSION_SOURCE = """
 from loushang.agent.types import AgentToolResult

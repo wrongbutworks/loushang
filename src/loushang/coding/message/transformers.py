@@ -3,7 +3,13 @@ from __future__ import annotations
 from datetime import datetime
 
 from loushang.agent import AgentMessage
-from loushang.ai.types import AssistantMessage, Message, TextPart, ToolResultMessage, UserMessage
+from loushang.ai.types import (
+    AssistantMessage,
+    Message,
+    TextPart,
+    ToolResultMessage,
+    UserMessage,
+)
 from loushang.coding.message.custom_messages import (
     BashExecutionMessage,
     BranchSummaryMessage,
@@ -11,7 +17,6 @@ from loushang.coding.message.custom_messages import (
     ContentBlock,
     CustomMessage,
 )
-
 
 COMPACTION_SUMMARY_PREFIX = """The conversation history before this point was compacted into the following summary:
 

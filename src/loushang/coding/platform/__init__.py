@@ -1,9 +1,22 @@
 from __future__ import annotations
 
-from loushang.coding.platform.changelog import ChangelogEntry, find_changelog_path, format_changelog_entries, parse_changelog
+from loushang.coding.platform.changelog import (
+    ChangelogEntry,
+    find_changelog_path,
+    format_changelog_entries,
+    parse_changelog,
+)
 from loushang.coding.platform.clipboard import ClipboardCopyResult, copy_to_clipboard
-from loushang.coding.platform.clipboard_image import ClipboardImage, extension_for_image_mime_type, read_clipboard_image
-from loushang.coding.platform.footer_data_provider import FooterDataProvider, FooterSnapshot, footer_snapshot_to_mapping
+from loushang.coding.platform.clipboard_image import (
+    ClipboardImage,
+    extension_for_image_mime_type,
+    read_clipboard_image,
+)
+from loushang.coding.platform.footer_data_provider import (
+    FooterDataProvider,
+    FooterSnapshot,
+    footer_snapshot_to_mapping,
+)
 from loushang.coding.platform.git import get_git_branch
 from loushang.coding.platform.output_guard import (
     flush_raw_stdout,

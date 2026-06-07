@@ -7,13 +7,19 @@ from pathlib import Path
 from loushang.coding.control import SettingsManager
 from loushang.coding.diagnostics import DiagnosticsService
 from loushang.coding.loader import DefaultResourceLoader, ResourceDiagnostic
-from loushang.coding.package.materializer import PackageMaterializationRecord, PackageMaterializer
+from loushang.coding.package.materializer import (
+    PackageMaterializationRecord,
+    PackageMaterializer,
+)
 from loushang.coding.package.projection import collect_package_entries
 from loushang.coding.package.resource_roots import resolve_package_resource_roots
 from loushang.coding.package.source import is_remote_package_source
-from loushang.coding.package.source_manager import PackageSourceResolver, configured_package_sources, package_source_scopes
+from loushang.coding.package.source_manager import (
+    PackageSourceResolver,
+    configured_package_sources,
+    package_source_scopes,
+)
 from loushang.coding.store import SessionManager
-
 
 SettingsManagerProvider = Callable[[], SettingsManager | None]
 PackageMaterializerProvider = Callable[[], PackageMaterializer | None]

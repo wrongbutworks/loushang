@@ -17,7 +17,6 @@ if str(SRC_ROOT) not in sys.path:
 from loushang.coding import create_agent_session_runtime
 from loushang.coding.mode import RpcMode
 
-
 RPC_COMMANDS = [
     ("intro", {"type": "get_state"}),
     ("models", {"type": "get_available_models"}),

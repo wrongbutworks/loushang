@@ -11,7 +11,6 @@ from loushang.coding.message import create_custom_message
 from loushang.coding.session.queue_controller import QueueController
 from loushang.coding.store import SessionManager
 
-
 EventDispatcher = Callable[[AgentSessionEvent], Awaitable[None]]
 
 

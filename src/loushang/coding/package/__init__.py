@@ -8,8 +8,14 @@ from loushang.coding.package.materializer import (
     PackageSourcePolicy,
     PythonPackageInstallerBackend,
 )
-from loushang.coding.package.projection import collect_package_entries, remote_package_entry
-from loushang.coding.package.resource_roots import ResolvedPackageResourceRoots, resolve_package_resource_roots
+from loushang.coding.package.projection import (
+    collect_package_entries,
+    remote_package_entry,
+)
+from loushang.coding.package.resource_roots import (
+    ResolvedPackageResourceRoots,
+    resolve_package_resource_roots,
+)
 from loushang.coding.package.source import (
     PackageSourceConfig,
     PackageSourceIdentity,

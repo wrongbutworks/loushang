@@ -21,7 +21,6 @@ from loushang.observability import (
     restore_observability,
 )
 
-
 CaseName = str
 
 CASES: tuple[CaseName, ...] = (

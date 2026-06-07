@@ -2,10 +2,10 @@ from __future__ import annotations
 
 import argparse
 import asyncio
-from dataclasses import dataclass
 import shutil
 import sys
 import time
+from dataclasses import dataclass
 from typing import TextIO
 
 from loushang.tui import (
@@ -34,7 +34,10 @@ from loushang.tui import (
     visible_width,
 )
 from loushang.tui.terminal import ProcessTerminalPort
-from loushang.tui.terminal_input import TerminalInputMode, read_input_chunk_or_render_tick
+from loushang.tui.terminal_input import (
+    TerminalInputMode,
+    read_input_chunk_or_render_tick,
+)
 
 
 @dataclass(frozen=True, slots=True)

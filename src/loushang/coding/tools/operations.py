@@ -5,7 +5,12 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Protocol, TypeVar
 
-from .runtime import MaybeAwaitable, is_tool_aborted, raise_if_tool_aborted, resolve_maybe_awaitable
+from .runtime import (
+    MaybeAwaitable,
+    is_tool_aborted,
+    raise_if_tool_aborted,
+    resolve_maybe_awaitable,
+)
 
 T = TypeVar("T")
 

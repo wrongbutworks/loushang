@@ -21,15 +21,15 @@
     print(alice.get("name"))  # "Alice"
 """
 
-from loushang.ontology.core.ontology import Ontology
-from loushang.ontology.core.object_type import ObjectType
-from loushang.ontology.core.property import Property, TemporalProperty, DerivedProperty
-from loushang.ontology.core.link_type import LinkType, Cardinality
+from loushang.ontology.core.link_type import Cardinality, LinkType
 from loushang.ontology.core.object import OntologyObject
+from loushang.ontology.core.object_type import ObjectType
+from loushang.ontology.core.ontology import Ontology
+from loushang.ontology.core.property import DerivedProperty, Property, TemporalProperty
 from loushang.ontology.core.store import ObjectStore
-from loushang.ontology.query.builder import QueryBuilder
-from loushang.ontology.rules.engine import RuleEngine, Rule
 from loushang.ontology.fusion.mapper import DataFusion, FieldMapping, SourceMapping
+from loushang.ontology.query.builder import QueryBuilder
+from loushang.ontology.rules.engine import Rule, RuleEngine
 
 __all__ = [
     "Ontology",

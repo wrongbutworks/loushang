@@ -1,17 +1,12 @@
 from __future__ import annotations
 
-import inspect
 import asyncio
+import inspect
 import time
 from collections.abc import Mapping
 from dataclasses import dataclass, replace
 from typing import Any, Awaitable, Callable
 
-from loushang.ai.api import stream_simple
-from loushang.ai.event_stream import EventStream
-from loushang.ai.tool.validation import validate_tool_arguments
-from loushang.ai.types import AssistantMessage, Context, TextPart, Tool, ToolCall, ToolResultMessage, Usage
-from loushang.observability import get_log
 from loushang.agent.types import (
     AfterToolCallContext,
     AgentContext,
@@ -24,6 +19,19 @@ from loushang.agent.types import (
     BeforeToolCallContext,
     StreamFn,
 )
+from loushang.ai.api import stream_simple
+from loushang.ai.event_stream import EventStream
+from loushang.ai.tool.validation import validate_tool_arguments
+from loushang.ai.types import (
+    AssistantMessage,
+    Context,
+    TextPart,
+    Tool,
+    ToolCall,
+    ToolResultMessage,
+    Usage,
+)
+from loushang.observability import get_log
 
 AgentEventSink = Callable[[AgentEvent], Awaitable[None] | None]
 AgentEventStream = EventStream[AgentEvent, list[AgentMessage]]

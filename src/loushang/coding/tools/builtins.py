@@ -4,11 +4,14 @@ from loushang.coding.diagnostics import DiagnosticsService
 from loushang.coding.exec import ExecService
 from loushang.coding.policy import ApprovalResolver, PolicyEngine
 
-from .external_tools import ExternalToolDownloader, ExternalToolPolicy, ExternalToolResolver
+from .external_tools import (
+    ExternalToolDownloader,
+    ExternalToolPolicy,
+    ExternalToolResolver,
+)
 from .factory import ToolsOptions, create_tool_definition
 from .operations import ToolOperations
 from .registry import ToolRegistry
-
 
 BUILTIN_TOOL_NAMES = ("bash", "read", "ls", "find", "grep", "write", "edit")
 

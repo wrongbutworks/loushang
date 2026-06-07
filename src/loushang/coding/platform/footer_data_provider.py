@@ -1,13 +1,12 @@
 from __future__ import annotations
 
+import threading
+import time
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from pathlib import Path
-import threading
-import time
 
 from loushang.coding.platform.git import find_git_paths, get_git_branch
-
 
 BranchResolver = Callable[[str | Path], str | None]
 BranchChangeCallback = Callable[[str | None], None]

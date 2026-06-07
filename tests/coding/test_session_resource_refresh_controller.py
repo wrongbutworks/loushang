@@ -3,8 +3,15 @@ from __future__ import annotations
 import asyncio
 from pathlib import Path
 
-from loushang.coding.loader import PromptFragmentDescriptor, ResourceBundle, ResourceDiagnostic, SkillDescriptor
-from loushang.coding.session.resource_refresh_controller import ResourceRefreshController
+from loushang.coding.loader import (
+    PromptFragmentDescriptor,
+    ResourceBundle,
+    ResourceDiagnostic,
+    SkillDescriptor,
+)
+from loushang.coding.session.resource_refresh_controller import (
+    ResourceRefreshController,
+)
 
 
 class _Loader:

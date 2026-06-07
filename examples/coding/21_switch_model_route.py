@@ -10,10 +10,14 @@ from pathlib import Path
 if __package__ in {None, ""}:
     sys.path.insert(0, str(Path(__file__).resolve().parent))
 
+from _support import (
+    ENV_EXAMPLES_ARTIFACT_ROOT,
+    _resolve_model_catalog,
+    build_kimi_model,
+    describe_model,
+)
+
 from loushang.ai import Context, UserMessage, complete_simple
-
-from _support import _resolve_model_catalog, ENV_EXAMPLES_ARTIFACT_ROOT, build_kimi_model, describe_model
-
 
 TARGET_ENDPOINTS = [
     "kimi-code-anthropic",

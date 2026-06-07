@@ -12,7 +12,13 @@ from __future__ import annotations
 import asyncio
 from collections.abc import Iterable
 
-from loushang.ai import ApiProviderRegistry, Model, TextPart, ToolResultMessage, complete
+from loushang.ai import (
+    ApiProviderRegistry,
+    Model,
+    TextPart,
+    ToolResultMessage,
+    complete,
+)
 from loushang.ai.model import Endpoint
 from loushang.ai.model.registry import get_default_model_registry
 from loushang.ai.providers.faux import FauxProvider

@@ -5,7 +5,6 @@ import os
 from dataclasses import dataclass
 from pathlib import Path
 
-
 _DEFAULT_IGNORED_DIRS = {".git", "node_modules"}
 
 

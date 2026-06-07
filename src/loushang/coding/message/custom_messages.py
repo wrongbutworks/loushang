@@ -5,7 +5,6 @@ from dataclasses import dataclass
 from loushang.agent import CustomAgentMessage
 from loushang.ai.types import ImagePart, TextPart
 
-
 ContentBlock = TextPart | ImagePart
 
 

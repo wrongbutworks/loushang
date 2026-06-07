@@ -17,7 +17,6 @@ from _support import (
     stream_with_final_message,
 )
 
-
 EXTENSION_SOURCE = """
 from loushang.coding.tools import tool
 

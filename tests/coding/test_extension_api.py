@@ -54,7 +54,10 @@ def test_extension_command_registration_surface_matches_pi_style_signature() -> 
 
 
 def test_extension_command_context_is_distinct_from_extension_context() -> None:
-    from loushang.coding.extensions.types import ExtensionCommandContext, ExtensionContext
+    from loushang.coding.extensions.types import (
+        ExtensionCommandContext,
+        ExtensionContext,
+    )
 
     assert ExtensionCommandContext is not ExtensionContext
 
@@ -235,9 +238,10 @@ def test_extension_api_accepts_input_hook() -> None:
 
 
 def test_extension_api_annotates_flag_type_as_literal() -> None:
+    from typing import Literal, get_type_hints
+
     from loushang.coding.extensions.api import ExtensionAPI
     from loushang.coding.extensions.types import RegisteredFlag
-    from typing import Literal, get_type_hints
 
     register_flag_hints = get_type_hints(ExtensionAPI.register_flag)
     registered_flag_hints = get_type_hints(RegisteredFlag)
@@ -269,12 +273,12 @@ def test_extension_api_rejects_invalid_flag_default_for_type() -> None:
 
 def test_extension_api_v1_core_types_are_available() -> None:
     from loushang.coding.extensions.types import (
+        VALID_EXTENSION_EVENTS,
         BeforeAgentStartResult,
         ContextResult,
         LoadedExtension,
         ToolCallDecision,
         ToolResultDecision,
-        VALID_EXTENSION_EVENTS,
     )
     from loushang.coding.loader import ResourceDiagnostic
     from loushang.coding.tools import ToolDefinition
@@ -388,7 +392,12 @@ def test_extension_api_v2_core_types_include_session_refresh() -> None:
 
 
 def test_extension_api_exports_runtime_binding_types() -> None:
-    from loushang.coding.extensions import ExtensionRuntimeBindings, SessionRefreshEvent, SessionShutdownEvent, SessionStartEvent
+    from loushang.coding.extensions import (
+        ExtensionRuntimeBindings,
+        SessionRefreshEvent,
+        SessionShutdownEvent,
+        SessionStartEvent,
+    )
 
     assert SessionRefreshEvent
     assert SessionStartEvent(reason="new", previous_session_file="/tmp/old.jsonl").reason == "new"
@@ -442,11 +451,15 @@ def test_extension_api_v2_core_types_include_session_control_hooks() -> None:
 
 
 def test_extension_api_uses_public_model_selection_type_for_runtime_bindings() -> None:
-    from collections.abc import Awaitable, Callable
     import inspect
+    from collections.abc import Awaitable, Callable
     from typing import get_args, get_origin, get_type_hints
 
-    from loushang.coding.extensions.types import ExtensionCommandContext, ExtensionContext, ExtensionRuntimeBindings
+    from loushang.coding.extensions.types import (
+        ExtensionCommandContext,
+        ExtensionContext,
+        ExtensionRuntimeBindings,
+    )
     from loushang.coding.types import ModelSelection
 
     get_model_selection_hints = get_type_hints(ExtensionContext.get_model_selection)

@@ -5,7 +5,13 @@ from types import SimpleNamespace
 from typing import Literal
 
 from loushang.agent import AgentToolResult
-from loushang.ai import AssistantMessage, TextPart, ToolResultMessage, Usage, UserMessage
+from loushang.ai import (
+    AssistantMessage,
+    TextPart,
+    ToolResultMessage,
+    Usage,
+    UserMessage,
+)
 
 
 def _usage() -> Usage:
@@ -207,7 +213,11 @@ def test_event_renderer_does_not_duplicate_tool_result_message_after_tool_end() 
 
 
 def test_event_renderer_renders_tool_block_with_bounded_result_preview() -> None:
-    from loushang.coding.tools import ToolDefinition, ToolRenderContext, ToolRenderResultOptions
+    from loushang.coding.tools import (
+        ToolDefinition,
+        ToolRenderContext,
+        ToolRenderResultOptions,
+    )
     from loushang.coding.ui.events import CodingUiEventRenderer
     from loushang.coding.ui.renderer import CodingUiRenderer
 
@@ -372,7 +382,11 @@ def test_renderer_buffers_deltas_then_projects_final_assistant_record() -> None:
 
 def test_renderer_collects_native_transcript_without_stdout_writes() -> None:
     from loushang.coding.ui.renderer import CodingUiRenderer
-    from loushang.tui import RenderConstraints, TranscriptBuffer, strip_control_sequences
+    from loushang.tui import (
+        RenderConstraints,
+        TranscriptBuffer,
+        strip_control_sequences,
+    )
 
     stdout = StringIO()
     buffer = TranscriptBuffer()

@@ -353,7 +353,11 @@ def test_exec_result_contract_defaults_and_shape() -> None:
 def test_preflight_user_input_expands_prompt_templates_and_skill_references() -> None:
     from pathlib import Path
 
-    from loushang.coding.loader import PromptFragmentDescriptor, ResourceBundle, SkillDescriptor
+    from loushang.coding.loader import (
+        PromptFragmentDescriptor,
+        ResourceBundle,
+        SkillDescriptor,
+    )
     from loushang.coding.prompt import preflight_user_input
 
     resource_bundle = ResourceBundle(
@@ -390,7 +394,10 @@ def test_preflight_user_input_expands_prompt_templates_and_skill_references() ->
 
 
 def test_prompt_template_args_parse_quotes_and_substitute_pi_placeholders() -> None:
-    from loushang.coding.prompt import parse_prompt_template_args, substitute_prompt_template_args
+    from loushang.coding.prompt import (
+        parse_prompt_template_args,
+        substitute_prompt_template_args,
+    )
 
     args = parse_prompt_template_args('component "first feature" second\tthird')
 

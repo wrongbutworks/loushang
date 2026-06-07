@@ -5,7 +5,12 @@ from dataclasses import dataclass, field
 
 from loushang.coding.commands.slash import split_slash_command
 from loushang.coding.frontmatter import strip_frontmatter
-from loushang.coding.loader import PromptFragmentDescriptor, ResourceBundle, ResourceDiagnostic, SkillDescriptor
+from loushang.coding.loader import (
+    PromptFragmentDescriptor,
+    ResourceBundle,
+    ResourceDiagnostic,
+    SkillDescriptor,
+)
 from loushang.coding.prompt.templates import (
     parse_prompt_template_args,
     prompt_template_has_args,

@@ -9,8 +9,8 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Any, Callable
 
-from loushang.ontology.core.ontology import Ontology
 from loushang.ontology.core.object import OntologyObject
+from loushang.ontology.core.ontology import Ontology
 
 
 @dataclass

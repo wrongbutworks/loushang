@@ -16,8 +16,8 @@ from _support import (
     print_messages,
     resolve_api_key,
 )
-from loushang.coding import ToolRegistry, register_builtin_tools
 
+from loushang.coding import ToolRegistry, register_builtin_tools
 
 EXTENSION_SOURCE = """
 from pathlib import Path

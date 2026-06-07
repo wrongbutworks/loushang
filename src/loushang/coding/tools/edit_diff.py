@@ -5,7 +5,6 @@ from dataclasses import dataclass
 from difflib import SequenceMatcher, unified_diff
 from typing import Literal, TypedDict
 
-
 LineEnding = Literal["\r\n", "\n"]
 
 

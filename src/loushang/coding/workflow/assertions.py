@@ -5,7 +5,12 @@ from collections.abc import Mapping, Sequence
 from pathlib import Path
 
 from loushang.coding.workflow.events import WorkflowEvent, find_event
-from loushang.coding.workflow.schema import CheckResult, CommandExpectation, StepExpectation, WorkflowExpectation
+from loushang.coding.workflow.schema import (
+    CheckResult,
+    CommandExpectation,
+    StepExpectation,
+    WorkflowExpectation,
+)
 
 _MISSING = object()
 

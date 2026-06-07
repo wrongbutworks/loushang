@@ -15,7 +15,6 @@ if str(SRC_ROOT) not in sys.path:
 
 from loushang.coding.cli.__main__ import run_cli  # noqa: E402
 
-
 EXTENSION_SOURCE = """
 def register(api):
     async def deploy(args, ctx):

@@ -4,7 +4,14 @@ from dataclasses import dataclass, field
 
 from .event_stream import _StreamWriter
 from .raw_parts import RawDone, RawError, RawTextDelta
-from .types import AssistantMessage, AssistantMessageEvent, Context, Model, TextContent, Usage
+from .types import (
+    AssistantMessage,
+    AssistantMessageEvent,
+    Context,
+    Model,
+    TextContent,
+    Usage,
+)
 
 
 @dataclass

@@ -4,7 +4,6 @@ import ast
 import sys
 from pathlib import Path
 
-
 PACKAGE_ROOT = Path(__file__).resolve().parents[2] / "src" / "loushang" / "observability"
 
 

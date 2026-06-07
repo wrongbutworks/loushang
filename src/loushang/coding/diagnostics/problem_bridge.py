@@ -1,6 +1,10 @@
 from __future__ import annotations
 
-from loushang.coding.diagnostics.types import DiagnosticPhase, DiagnosticRecord, DiagnosticSource
+from loushang.coding.diagnostics.types import (
+    DiagnosticPhase,
+    DiagnosticRecord,
+    DiagnosticSource,
+)
 from loushang.observability import InMemoryProblemStore, ProblemRecord
 
 

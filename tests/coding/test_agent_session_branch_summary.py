@@ -132,7 +132,11 @@ def test_navigate_tree_raises_for_unknown_target(tmp_path) -> None:
 
 def test_navigate_tree_respects_extension_before_tree_cancellation(tmp_path) -> None:
     from loushang.agent import Agent
-    from loushang.coding.extensions import ExtensionRunner, LoadedExtension, SessionActionDecision
+    from loushang.coding.extensions import (
+        ExtensionRunner,
+        LoadedExtension,
+        SessionActionDecision,
+    )
     from loushang.coding.session import AgentSession
     from loushang.coding.store import SessionManager
 
@@ -238,7 +242,11 @@ def test_navigate_tree_with_summary_appends_branch_summary_and_emits_events(tmp_
 def test_navigate_tree_uses_extension_before_tree_summary_override(tmp_path, monkeypatch) -> None:
     from loushang.agent import Agent
     from loushang.coding.compaction import BranchSummaryResult
-    from loushang.coding.extensions import ExtensionRunner, LoadedExtension, SessionBeforeTreeResult
+    from loushang.coding.extensions import (
+        ExtensionRunner,
+        LoadedExtension,
+        SessionBeforeTreeResult,
+    )
     from loushang.coding.session import AgentSession
     from loushang.coding.store import SessionManager
 

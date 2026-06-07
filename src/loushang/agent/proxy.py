@@ -6,6 +6,7 @@ import time
 from dataclasses import dataclass, field, replace
 from typing import Any
 
+from loushang.agent.types import ProxyAssistantMessageEvent, ProxyStreamOptions
 from loushang.ai.event_stream.stream import AssistantMessageEventStream
 from loushang.ai.model import Model
 from loushang.ai.model.registry import resolve_model_api
@@ -19,7 +20,6 @@ from loushang.ai.types import (
     ToolCall,
     Usage,
 )
-from loushang.agent.types import ProxyAssistantMessageEvent, ProxyStreamOptions
 
 
 @dataclass

@@ -5,7 +5,6 @@ from pathlib import Path
 from types import MappingProxyType
 from typing import Literal, Mapping
 
-
 ResourceSourceKind = Literal["built_in", "project_local", "external_package", "user_global", "temporary"]
 ResourceSourceScope = Literal["builtin", "project", "package", "user", "temporary"]
 

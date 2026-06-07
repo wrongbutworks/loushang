@@ -6,9 +6,19 @@ import json
 import re
 
 from loushang.agent.types import AgentToolResult
-from loushang.ai.types import AssistantMessage, TextPart, ToolCall, ToolResultMessage, UserMessage
+from loushang.ai.types import (
+    AssistantMessage,
+    TextPart,
+    ToolCall,
+    ToolResultMessage,
+    UserMessage,
+)
 from loushang.coding.message import LabelEntry, SessionEntry
-from loushang.coding.message.custom_messages import BranchSummaryMessage, CompactionSummaryMessage, CustomMessage
+from loushang.coding.message.custom_messages import (
+    BranchSummaryMessage,
+    CompactionSummaryMessage,
+    CustomMessage,
+)
 from loushang.coding.tools.presentation import render_tool_result_text
 from loushang.coding.tools.rendering import ToolDefinitionResolver, ToolRenderRuntime
 

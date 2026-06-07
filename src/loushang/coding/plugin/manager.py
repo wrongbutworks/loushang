@@ -5,7 +5,11 @@ from pathlib import Path
 from loushang.coding.plugin.lifecycle import is_remote_plugin_source
 from loushang.coding.plugin.registry import PluginRegistry
 from loushang.coding.plugin.resolver import PluginResolver
-from loushang.coding.plugin.types import InstalledPlugin, PluginResolvedResources, PluginSource
+from loushang.coding.plugin.types import (
+    InstalledPlugin,
+    PluginResolvedResources,
+    PluginSource,
+)
 
 
 class PluginManager:

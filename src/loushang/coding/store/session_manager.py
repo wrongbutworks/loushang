@@ -8,8 +8,8 @@ from pathlib import Path
 from time import time_ns
 from uuid import uuid4
 
-from loushang.ai.types import AssistantMessage, TextPart, ToolResultMessage, UserMessage
 from loushang.agent import AgentMessage
+from loushang.ai.types import AssistantMessage, TextPart, ToolResultMessage, UserMessage
 from loushang.coding.message import (
     BranchSummaryEntry,
     BranchSummaryMessage,
@@ -30,10 +30,19 @@ from loushang.coding.message import (
     create_compaction_summary_message,
     create_custom_message,
 )
-from loushang.coding.store.file_codec import SessionFileError, append_session_entry, load_session_file, write_session_file
-from loushang.coding.store.types import SessionMetadata, SessionQuery, SessionRecord, SessionSummary
+from loushang.coding.store.file_codec import (
+    SessionFileError,
+    append_session_entry,
+    load_session_file,
+    write_session_file,
+)
+from loushang.coding.store.types import (
+    SessionMetadata,
+    SessionQuery,
+    SessionRecord,
+    SessionSummary,
+)
 from loushang.observability import get_log
-
 
 CURRENT_SESSION_VERSION = 3
 _LEAF_UNSET = object()

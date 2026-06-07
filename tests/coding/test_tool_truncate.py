@@ -1,12 +1,12 @@
 from loushang.coding.tools.truncate import (
-    formatSize,
     format_size,
-    truncateHead,
-    truncateLine,
-    truncateTail,
+    formatSize,
     truncate_head,
     truncate_line,
     truncate_tail,
+    truncateHead,
+    truncateLine,
+    truncateTail,
 )
 
 

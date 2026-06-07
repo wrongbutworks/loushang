@@ -628,7 +628,11 @@ def test_session_summary_searches_all_messages_and_uses_message_modified_time(tm
 def test_session_metadata_accepts_message_timestamps_in_milliseconds(tmp_path) -> None:
     from loushang.ai.types import TextPart, UserMessage
     from loushang.coding.store import SessionManager
-    from loushang.observability import get_problem_store, log_context, reset_observability
+    from loushang.observability import (
+        get_problem_store,
+        log_context,
+        reset_observability,
+    )
 
     session = SessionManager.new(session_dir=tmp_path, cwd="/tmp/project", persist=True)
     session.append_message(

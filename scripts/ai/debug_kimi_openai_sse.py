@@ -8,7 +8,6 @@ import sys
 
 import httpx
 
-
 BASE_URL = "https://api.moonshot.cn/v1"
 
 

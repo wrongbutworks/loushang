@@ -133,7 +133,11 @@ def test_model_registry_records_problem_for_ambiguous_model_selection() -> None:
     from loushang.ai.model.registry import ModelRegistry as AiModelRegistry
     from loushang.coding.control import ModelRegistry
     from loushang.coding.session import ModelSelection
-    from loushang.observability import get_problem_store, log_context, reset_observability
+    from loushang.observability import (
+        get_problem_store,
+        log_context,
+        reset_observability,
+    )
 
     registry = ModelRegistry(ai_registry=AiModelRegistry())
     registry.register_model(_model("alpha", provider="faux", endpoint="anthropic-messages"))

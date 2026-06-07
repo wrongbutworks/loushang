@@ -2,7 +2,12 @@ from __future__ import annotations
 
 from loushang.coding.control import ControlConfig, SettingsManager
 from loushang.coding.diagnostics import DiagnosticsService
-from loushang.coding.package import PackageMaterializationRecord, PackageMaterializer, PackageProgressEvent, PackageSourceConfig
+from loushang.coding.package import (
+    PackageMaterializationRecord,
+    PackageMaterializer,
+    PackageProgressEvent,
+    PackageSourceConfig,
+)
 from loushang.coding.package.source_manager import PackageSourceResolver
 
 

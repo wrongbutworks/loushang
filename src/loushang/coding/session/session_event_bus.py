@@ -6,7 +6,6 @@ from collections.abc import Awaitable, Callable
 
 from loushang.coding.event import AgentSessionEvent
 
-
 SessionEventListener = Callable[[AgentSessionEvent], Awaitable[None] | None]
 
 

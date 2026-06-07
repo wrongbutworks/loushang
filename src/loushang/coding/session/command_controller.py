@@ -3,19 +3,33 @@ from __future__ import annotations
 from collections.abc import Callable
 from dataclasses import dataclass
 
-from loushang.coding.diagnostics import DiagnosticsService
 from loushang.coding.commands.slash import split_slash_command
-from loushang.coding.extensions import ExtensionRunner, ResolvedCommand, SourceInfo as ExtensionSourceInfo
+from loushang.coding.diagnostics import DiagnosticsService
+from loushang.coding.extensions import ExtensionRunner, ResolvedCommand
+from loushang.coding.extensions import SourceInfo as ExtensionSourceInfo
 from loushang.coding.frontmatter import strip_frontmatter
-from loushang.coding.loader import PromptFragmentDescriptor, ResourceBundle, ResourceDiagnostic, SkillDescriptor
-from loushang.coding.prompt import PromptPreflightResult, preflight_user_input, preflight_user_input_async
+from loushang.coding.loader import (
+    PromptFragmentDescriptor,
+    ResourceBundle,
+    ResourceDiagnostic,
+    SkillDescriptor,
+)
+from loushang.coding.prompt import (
+    PromptPreflightResult,
+    preflight_user_input,
+    preflight_user_input_async,
+)
 from loushang.coding.session.builtin_commands import (
     BuiltinCommandBackend,
     execute_builtin_command_async,
     is_builtin_command,
     list_builtin_command_descriptors,
 )
-from loushang.coding.session.types import CommandExecutionResult, CommandSourceInfo, SessionCommandDescriptor
+from loushang.coding.session.types import (
+    CommandExecutionResult,
+    CommandSourceInfo,
+    SessionCommandDescriptor,
+)
 from loushang.coding.source_info import source_info_from_resource_descriptor
 from loushang.coding.store import SessionManager
 

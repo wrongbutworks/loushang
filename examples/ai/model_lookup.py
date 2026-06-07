@@ -10,7 +10,6 @@ from __future__ import annotations
 
 from loushang.ai import get_model, get_providers, list_models
 
-
 PROVIDER_ID = "moonshot"
 ENDPOINT_ID = "openai-completions"
 MODEL_ID = "kimi-k2.5"

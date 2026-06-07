@@ -8,7 +8,6 @@ from loushang.agent import AbortSignal, AgentEvent
 from loushang.ai.types import AssistantMessage
 from loushang.coding.event import AgentSessionEvent
 
-
 AppendMessage = Callable[[object], None]
 EventDispatcher = Callable[[AgentSessionEvent], Awaitable[None]]
 ExtensionEventEmitter = Callable[[AgentEvent], Awaitable[None]]

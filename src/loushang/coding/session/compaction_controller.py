@@ -12,17 +12,21 @@ from loushang.ai.types import AssistantMessage
 from loushang.coding.compaction import (
     CompactionPreparation,
     CompactionResult,
-    compact as run_compaction,
     prepare_compaction,
+)
+from loushang.coding.compaction import (
+    compact as run_compaction,
 )
 from loushang.coding.control import CompactionSettings
 from loushang.coding.event import AgentSessionEvent
 from loushang.coding.extensions import ExtensionRunner, SessionBeforeCompactEvent
 from loushang.coding.message import CompactionEntry
-from loushang.coding.session.context_usage import build_context_usage_snapshot, build_threshold_compaction_decision
+from loushang.coding.session.context_usage import (
+    build_context_usage_snapshot,
+    build_threshold_compaction_decision,
+)
 from loushang.coding.session.types import ContextUsageSnapshot
 from loushang.coding.store import SessionManager
-
 
 EventDispatcher = Callable[[AgentSessionEvent], Awaitable[None]]
 ExtensionRunnerProvider = Callable[[], ExtensionRunner | None]

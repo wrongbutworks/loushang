@@ -75,7 +75,11 @@ def test_agent_session_composes_existing_transform_with_extension_context_withou
     import asyncio
 
     from loushang.agent import Agent
-    from loushang.coding.extensions import ContextResult, ExtensionRunner, LoadedExtension
+    from loushang.coding.extensions import (
+        ContextResult,
+        ExtensionRunner,
+        LoadedExtension,
+    )
     from loushang.coding.session import AgentSession
     from loushang.coding.store import SessionManager
 
@@ -333,7 +337,11 @@ def test_agent_session_prompt_expands_preflight_references_and_records_unresolve
 
     from loushang.agent import Agent
     from loushang.coding.diagnostics import DiagnosticsService
-    from loushang.coding.loader import PromptFragmentDescriptor, ResourceBundle, SkillDescriptor
+    from loushang.coding.loader import (
+        PromptFragmentDescriptor,
+        ResourceBundle,
+        SkillDescriptor,
+    )
     from loushang.coding.session import AgentSession
     from loushang.coding.store import SessionManager
 
@@ -396,7 +404,11 @@ def test_agent_session_slash_prefix_deploy_consumes_extension_command_without_pr
     from pathlib import Path
 
     from loushang.agent import Agent
-    from loushang.coding.extensions import ExtensionRunner, LoadedExtension, RegisteredCommand
+    from loushang.coding.extensions import (
+        ExtensionRunner,
+        LoadedExtension,
+        RegisteredCommand,
+    )
     from loushang.coding.session import AgentSession
     from loushang.coding.store import SessionManager
 
@@ -445,7 +457,11 @@ def test_agent_session_input_hook_transforms_before_prompt_preflight(tmp_path) -
     from pathlib import Path
 
     from loushang.agent import Agent
-    from loushang.coding.extensions import ExtensionRunner, InputEventResult, LoadedExtension
+    from loushang.coding.extensions import (
+        ExtensionRunner,
+        InputEventResult,
+        LoadedExtension,
+    )
     from loushang.coding.loader import PromptFragmentDescriptor, ResourceBundle
     from loushang.coding.session import AgentSession
     from loushang.coding.store import SessionManager
@@ -502,7 +518,11 @@ def test_agent_session_input_hook_can_handle_prompt_without_model_call(tmp_path)
     from pathlib import Path
 
     from loushang.agent import Agent
-    from loushang.coding.extensions import ExtensionRunner, InputEventResult, LoadedExtension
+    from loushang.coding.extensions import (
+        ExtensionRunner,
+        InputEventResult,
+        LoadedExtension,
+    )
     from loushang.coding.session import AgentSession
     from loushang.coding.store import SessionManager
 
@@ -544,7 +564,11 @@ def test_agent_session_extension_command_runs_before_input_hook(tmp_path) -> Non
     from pathlib import Path
 
     from loushang.agent import Agent
-    from loushang.coding.extensions import ExtensionRunner, LoadedExtension, RegisteredCommand
+    from loushang.coding.extensions import (
+        ExtensionRunner,
+        LoadedExtension,
+        RegisteredCommand,
+    )
     from loushang.coding.session import AgentSession
     from loushang.coding.store import SessionManager
 
@@ -585,7 +609,12 @@ def test_agent_session_input_hook_transform_to_extension_command_is_plain_prompt
     from pathlib import Path
 
     from loushang.agent import Agent
-    from loushang.coding.extensions import ExtensionRunner, InputEventResult, LoadedExtension, RegisteredCommand
+    from loushang.coding.extensions import (
+        ExtensionRunner,
+        InputEventResult,
+        LoadedExtension,
+        RegisteredCommand,
+    )
     from loushang.coding.session import AgentSession
     from loushang.coding.store import SessionManager
 
@@ -805,7 +834,11 @@ def test_agent_session_applies_before_agent_start_result(tmp_path) -> None:
     from pathlib import Path
 
     from loushang.agent import Agent
-    from loushang.coding.extensions import BeforeAgentStartResult, ExtensionRunner, LoadedExtension
+    from loushang.coding.extensions import (
+        BeforeAgentStartResult,
+        ExtensionRunner,
+        LoadedExtension,
+    )
     from loushang.coding.session import AgentSession
     from loushang.coding.store import SessionManager
 
@@ -958,7 +991,11 @@ def test_agent_session_extension_hook_ordering_spans_provider_tool_and_agent_end
 
     from loushang.agent import Agent
     from loushang.agent.types import AgentToolResult
-    from loushang.coding.extensions import ExtensionRunner, InputEventResult, LoadedExtension
+    from loushang.coding.extensions import (
+        ExtensionRunner,
+        InputEventResult,
+        LoadedExtension,
+    )
     from loushang.coding.session import AgentSession
     from loushang.coding.store import SessionManager
 
@@ -1194,7 +1231,11 @@ def test_agent_session_steer_rejects_extension_command_without_executing(tmp_pat
     import pytest
 
     from loushang.agent import Agent
-    from loushang.coding.extensions import ExtensionRunner, LoadedExtension, RegisteredCommand
+    from loushang.coding.extensions import (
+        ExtensionRunner,
+        LoadedExtension,
+        RegisteredCommand,
+    )
     from loushang.coding.session import AgentSession
     from loushang.coding.store import SessionManager
 
@@ -1233,7 +1274,11 @@ def test_agent_session_follow_up_rejects_extension_command_without_executing(tmp
     import pytest
 
     from loushang.agent import Agent
-    from loushang.coding.extensions import ExtensionRunner, LoadedExtension, RegisteredCommand
+    from loushang.coding.extensions import (
+        ExtensionRunner,
+        LoadedExtension,
+        RegisteredCommand,
+    )
     from loushang.coding.session import AgentSession
     from loushang.coding.store import SessionManager
 
@@ -1270,8 +1315,16 @@ def test_agent_session_get_commands_aggregates_extension_prompt_and_skill_source
     from pathlib import Path
 
     from loushang.agent import Agent
-    from loushang.coding.extensions import ExtensionRunner, LoadedExtension, RegisteredCommand
-    from loushang.coding.loader import PromptFragmentDescriptor, ResourceBundle, SkillDescriptor
+    from loushang.coding.extensions import (
+        ExtensionRunner,
+        LoadedExtension,
+        RegisteredCommand,
+    )
+    from loushang.coding.loader import (
+        PromptFragmentDescriptor,
+        ResourceBundle,
+        SkillDescriptor,
+    )
     from loushang.coding.session import AgentSession
     from loushang.coding.store import SessionManager
 
@@ -1386,7 +1439,11 @@ def test_agent_session_execute_command_async_dispatches_extension_command(tmp_pa
     from pathlib import Path
 
     from loushang.agent import Agent
-    from loushang.coding.extensions import ExtensionRunner, LoadedExtension, RegisteredCommand
+    from loushang.coding.extensions import (
+        ExtensionRunner,
+        LoadedExtension,
+        RegisteredCommand,
+    )
     from loushang.coding.session import AgentSession
     from loushang.coding.session.types import CommandExecutionResult
     from loushang.coding.store import SessionManager
@@ -1433,7 +1490,11 @@ def test_agent_session_extension_command_context_exec_command_uses_exec_service(
 
     from loushang.agent import Agent
     from loushang.coding.exec import ExecOutputChunk, ExecResult
-    from loushang.coding.extensions import ExtensionRunner, LoadedExtension, RegisteredCommand
+    from loushang.coding.extensions import (
+        ExtensionRunner,
+        LoadedExtension,
+        RegisteredCommand,
+    )
     from loushang.coding.session import AgentSession
     from loushang.coding.store import SessionManager
 
@@ -1510,7 +1571,11 @@ def test_agent_session_execute_command_async_expands_prompt_and_skill_commands(t
     from pathlib import Path
 
     from loushang.agent import Agent
-    from loushang.coding.loader import PromptFragmentDescriptor, ResourceBundle, SkillDescriptor
+    from loushang.coding.loader import (
+        PromptFragmentDescriptor,
+        ResourceBundle,
+        SkillDescriptor,
+    )
     from loushang.coding.session import AgentSession
     from loushang.coding.store import SessionManager
 
@@ -1561,7 +1626,11 @@ def test_agent_session_execute_command_async_prefers_extension_over_prompt(tmp_p
     from pathlib import Path
 
     from loushang.agent import Agent
-    from loushang.coding.extensions import ExtensionRunner, LoadedExtension, RegisteredCommand
+    from loushang.coding.extensions import (
+        ExtensionRunner,
+        LoadedExtension,
+        RegisteredCommand,
+    )
     from loushang.coding.loader import PromptFragmentDescriptor, ResourceBundle
     from loushang.coding.session import AgentSession
     from loushang.coding.store import SessionManager
@@ -1607,7 +1676,11 @@ def test_agent_session_returns_command_argument_completions(tmp_path) -> None:
     from pathlib import Path
 
     from loushang.agent import Agent
-    from loushang.coding.extensions import ExtensionRunner, LoadedExtension, RegisteredCommand
+    from loushang.coding.extensions import (
+        ExtensionRunner,
+        LoadedExtension,
+        RegisteredCommand,
+    )
     from loushang.coding.session import AgentSession
     from loushang.coding.store import SessionManager
 
@@ -1648,7 +1721,11 @@ def test_agent_session_extension_command_context_wait_for_idle_and_reload(tmp_pa
     from pathlib import Path
 
     from loushang.agent import Agent
-    from loushang.coding.extensions import ExtensionRunner, LoadedExtension, RegisteredCommand
+    from loushang.coding.extensions import (
+        ExtensionRunner,
+        LoadedExtension,
+        RegisteredCommand,
+    )
     from loushang.coding.session import AgentSession
     from loushang.coding.store import SessionManager
 
@@ -1695,7 +1772,11 @@ def test_agent_session_extension_command_context_navigate_tree(tmp_path) -> None
     from pathlib import Path
 
     from loushang.agent import Agent
-    from loushang.coding.extensions import ExtensionRunner, LoadedExtension, RegisteredCommand
+    from loushang.coding.extensions import (
+        ExtensionRunner,
+        LoadedExtension,
+        RegisteredCommand,
+    )
     from loushang.coding.session import AgentSession
     from loushang.coding.store import SessionManager
 
@@ -1754,7 +1835,11 @@ def test_agent_session_execute_command_async_records_errors(tmp_path) -> None:
 
     from loushang.agent import Agent
     from loushang.coding.diagnostics import DiagnosticsService
-    from loushang.coding.extensions import ExtensionRunner, LoadedExtension, RegisteredCommand
+    from loushang.coding.extensions import (
+        ExtensionRunner,
+        LoadedExtension,
+        RegisteredCommand,
+    )
     from loushang.coding.session import AgentSession
     from loushang.coding.store import SessionManager
 
@@ -1853,7 +1938,11 @@ def test_agent_session_get_commands_includes_all_extension_commands(tmp_path) ->
     from pathlib import Path
 
     from loushang.agent import Agent
-    from loushang.coding.extensions import ExtensionRunner, LoadedExtension, RegisteredCommand
+    from loushang.coding.extensions import (
+        ExtensionRunner,
+        LoadedExtension,
+        RegisteredCommand,
+    )
     from loushang.coding.session import AgentSession
     from loushang.coding.store import SessionManager
 
@@ -2830,7 +2919,11 @@ def test_agent_session_extension_runtime_actions_update_session_store(tmp_path) 
 
 def test_agent_session_extension_send_user_message_triggers_turn_without_command_preflight(tmp_path) -> None:
     from loushang.agent import Agent
-    from loushang.coding.extensions import ExtensionRunner, LoadedExtension, RegisteredCommand
+    from loushang.coding.extensions import (
+        ExtensionRunner,
+        LoadedExtension,
+        RegisteredCommand,
+    )
     from loushang.coding.session import AgentSession
     from loushang.coding.store import SessionManager
 
@@ -2889,7 +2982,11 @@ def test_agent_session_extension_send_user_message_triggers_turn_without_command
 
 def test_agent_session_extension_send_user_message_queues_while_streaming(tmp_path) -> None:
     from loushang.agent import Agent
-    from loushang.coding.extensions import ExtensionRunner, LoadedExtension, RegisteredCommand
+    from loushang.coding.extensions import (
+        ExtensionRunner,
+        LoadedExtension,
+        RegisteredCommand,
+    )
     from loushang.coding.session import AgentSession
     from loushang.coding.store import SessionManager
 
@@ -2930,7 +3027,11 @@ def test_agent_session_send_message_next_turn_is_appended_after_user_message(tmp
     import asyncio
 
     from loushang.agent import Agent
-    from loushang.coding.extensions import ExtensionRunner, LoadedExtension, RegisteredCommand
+    from loushang.coding.extensions import (
+        ExtensionRunner,
+        LoadedExtension,
+        RegisteredCommand,
+    )
     from loushang.coding.session import AgentSession
     from loushang.coding.store import SessionManager
 
@@ -3005,7 +3106,11 @@ def test_agent_session_send_custom_message_public_api_persists_and_emits_events(
 
 def test_agent_session_send_user_message_public_api_triggers_turn_without_command_preflight(tmp_path) -> None:
     from loushang.agent import Agent
-    from loushang.coding.extensions import ExtensionRunner, LoadedExtension, RegisteredCommand
+    from loushang.coding.extensions import (
+        ExtensionRunner,
+        LoadedExtension,
+        RegisteredCommand,
+    )
     from loushang.coding.session import AgentSession
     from loushang.coding.store import SessionManager
 
@@ -3053,8 +3158,16 @@ def test_agent_session_reload_extensions_refreshes_resources_before_session_star
     from pathlib import Path
 
     from loushang.agent import Agent
-    from loushang.coding.extensions import ExtensionResourceContribution, ExtensionRunner, LoadedExtension
-    from loushang.coding.loader import DefaultResourceLoader, PromptFragmentDescriptor, ResourceBundle
+    from loushang.coding.extensions import (
+        ExtensionResourceContribution,
+        ExtensionRunner,
+        LoadedExtension,
+    )
+    from loushang.coding.loader import (
+        DefaultResourceLoader,
+        PromptFragmentDescriptor,
+        ResourceBundle,
+    )
     from loushang.coding.session import AgentSession
     from loushang.coding.store import SessionManager
 
@@ -3634,8 +3747,16 @@ def test_agent_session_records_bind_failures_as_diagnostics(tmp_path) -> None:
 
     from loushang.agent import Agent
     from loushang.coding.diagnostics import DiagnosticsService
-    from loushang.coding.extensions import ExtensionRunner, ExtensionResourceContribution, LoadedExtension
-    from loushang.coding.loader import DefaultResourceLoader, PromptFragmentDescriptor, ResourceBundle
+    from loushang.coding.extensions import (
+        ExtensionResourceContribution,
+        ExtensionRunner,
+        LoadedExtension,
+    )
+    from loushang.coding.loader import (
+        DefaultResourceLoader,
+        PromptFragmentDescriptor,
+        ResourceBundle,
+    )
     from loushang.coding.session import AgentSession
     from loushang.coding.store import SessionManager
 
@@ -3924,7 +4045,11 @@ def test_agent_session_records_remote_package_manifest_diagnostics(tmp_path) -> 
     from loushang.agent import Agent
     from loushang.coding.control import ControlConfig, SettingsManager
     from loushang.coding.diagnostics import DiagnosticsService
-    from loushang.coding.package import PackageMaterializationRecord, PackageMaterializer, PackageSourceConfig
+    from loushang.coding.package import (
+        PackageMaterializationRecord,
+        PackageMaterializer,
+        PackageSourceConfig,
+    )
     from loushang.coding.policy import PackageSecurityPolicy
     from loushang.coding.session import AgentSession
     from loushang.coding.store import SessionManager
@@ -4063,7 +4188,10 @@ def test_agent_session_installs_and_uninstalls_package_with_settings(tmp_path) -
 
     from loushang.agent import Agent
     from loushang.coding.control import ControlConfig, SettingsManager
-    from loushang.coding.package import PackageMaterializationRecord, PackageMaterializer
+    from loushang.coding.package import (
+        PackageMaterializationRecord,
+        PackageMaterializer,
+    )
     from loushang.coding.session import AgentSession
     from loushang.coding.store import SessionManager
 
@@ -4130,7 +4258,10 @@ def test_agent_session_install_package_does_not_persist_failed_materialization(t
 
     from loushang.agent import Agent
     from loushang.coding.control import ControlConfig, SettingsManager
-    from loushang.coding.package import PackageMaterializationRecord, PackageMaterializer
+    from loushang.coding.package import (
+        PackageMaterializationRecord,
+        PackageMaterializer,
+    )
     from loushang.coding.session import AgentSession
     from loushang.coding.store import SessionManager
 
@@ -4161,7 +4292,10 @@ def test_agent_session_install_package_refreshes_resources_for_current_session(t
     from loushang.agent import Agent
     from loushang.coding.control import ControlConfig, SettingsManager
     from loushang.coding.loader import DefaultResourceLoader
-    from loushang.coding.package import PackageMaterializationRecord, PackageMaterializer
+    from loushang.coding.package import (
+        PackageMaterializationRecord,
+        PackageMaterializer,
+    )
     from loushang.coding.session import AgentSession
     from loushang.coding.store import SessionManager
 
@@ -4196,7 +4330,10 @@ def test_agent_session_emits_package_progress_events(tmp_path) -> None:
 
     from loushang.agent import Agent
     from loushang.coding.control import ControlConfig, SettingsManager
-    from loushang.coding.package import PackageMaterializationRecord, PackageMaterializer
+    from loushang.coding.package import (
+        PackageMaterializationRecord,
+        PackageMaterializer,
+    )
     from loushang.coding.session import AgentSession
     from loushang.coding.store import SessionManager
 
@@ -4233,7 +4370,10 @@ def test_agent_session_updates_all_packages_and_checks_updates(tmp_path) -> None
 
     from loushang.agent import Agent
     from loushang.coding.control import ControlConfig, SettingsManager
-    from loushang.coding.package import PackageMaterializationRecord, PackageMaterializer
+    from loushang.coding.package import (
+        PackageMaterializationRecord,
+        PackageMaterializer,
+    )
     from loushang.coding.session import AgentSession
     from loushang.coding.store import SessionManager
 
@@ -4268,7 +4408,11 @@ def test_agent_session_updates_and_checks_configured_package_sources(tmp_path) -
 
     from loushang.agent import Agent
     from loushang.coding.control import ControlConfig, SettingsManager
-    from loushang.coding.package import PackageMaterializationRecord, PackageMaterializer, PackageSourceConfig
+    from loushang.coding.package import (
+        PackageMaterializationRecord,
+        PackageMaterializer,
+        PackageSourceConfig,
+    )
     from loushang.coding.session import AgentSession
     from loushang.coding.store import SessionManager
 
@@ -4305,7 +4449,10 @@ def test_agent_session_update_packages_dedupes_configured_sources_by_identity(tm
 
     from loushang.agent import Agent
     from loushang.coding.control import SettingsManager
-    from loushang.coding.package import PackageMaterializationRecord, PackageMaterializer
+    from loushang.coding.package import (
+        PackageMaterializationRecord,
+        PackageMaterializer,
+    )
     from loushang.coding.policy import PackageSecurityPolicy
     from loushang.coding.session import AgentSession
     from loushang.coding.store import SessionManager
@@ -4455,7 +4602,11 @@ def test_agent_session_records_package_update_check_failures(tmp_path) -> None:
     from loushang.agent import Agent
     from loushang.coding.control import ControlConfig, SettingsManager
     from loushang.coding.diagnostics import DiagnosticsService
-    from loushang.coding.package import PackageMaterializationRecord, PackageMaterializer, PackageSourceConfig
+    from loushang.coding.package import (
+        PackageMaterializationRecord,
+        PackageMaterializer,
+        PackageSourceConfig,
+    )
     from loushang.coding.session import AgentSession
     from loushang.coding.store import SessionManager
 

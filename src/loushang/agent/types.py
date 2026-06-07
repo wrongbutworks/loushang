@@ -1,7 +1,20 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Any, Awaitable, Callable, Generic, Literal, NotRequired, Protocol, TypeAlias, TypeVar, TypedDict, cast, runtime_checkable
+from typing import (
+    Any,
+    Awaitable,
+    Callable,
+    Generic,
+    Literal,
+    NotRequired,
+    Protocol,
+    TypeAlias,
+    TypedDict,
+    TypeVar,
+    cast,
+    runtime_checkable,
+)
 
 from loushang.ai.event_stream.stream import AssistantMessageEventStream
 from loushang.ai.model import Model
@@ -17,7 +30,6 @@ from loushang.ai.types import (
     ToolResultMessage,
     Usage,
 )
-
 
 TDetails = TypeVar("TDetails")
 

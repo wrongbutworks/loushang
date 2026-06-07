@@ -1,11 +1,18 @@
 from __future__ import annotations
 
-from dataclasses import dataclass, is_dataclass
 from collections.abc import Mapping, Sequence
+from dataclasses import dataclass, is_dataclass
 
 from loushang.agent import AgentMessage
 from loushang.ai import Context, complete_simple
 from loushang.ai.types import AssistantMessage, TextPart, ToolResultMessage, UserMessage
+from loushang.coding.compaction.policy import calculate_compaction_budget
+from loushang.coding.compaction.types import (
+    CompactionPlan,
+    CompactionPreparation,
+    CompactionResult,
+    ContextUsageEstimate,
+)
 from loushang.coding.message import (
     BranchSummaryEntry,
     CompactionEntry,
@@ -22,9 +29,6 @@ from loushang.coding.message.custom_messages import (
     CustomMessage,
 )
 from loushang.coding.message.transformers import convert_to_llm
-
-from loushang.coding.compaction.policy import calculate_compaction_budget
-from loushang.coding.compaction.types import CompactionPlan, CompactionPreparation, CompactionResult, ContextUsageEstimate
 
 COMPACTION_SYSTEM_PROMPT = """Summarize the older conversation context for later continuation.
 

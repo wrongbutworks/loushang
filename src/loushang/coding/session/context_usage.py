@@ -3,7 +3,11 @@ from __future__ import annotations
 from typing import Any
 
 from loushang.ai.types import AssistantMessage
-from loushang.coding.compaction import calculate_compaction_budget, calculate_context_tokens, estimate_context_tokens
+from loushang.coding.compaction import (
+    calculate_compaction_budget,
+    calculate_context_tokens,
+    estimate_context_tokens,
+)
 from loushang.coding.message import CompactionEntry, SessionMessageEntry
 from loushang.coding.session.types import CompactionDecision, ContextUsageSnapshot
 

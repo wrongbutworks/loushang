@@ -8,7 +8,6 @@ import sys
 
 from loushang.ai import OpenAICompletionsOptions, TextPart, ToolResultMessage, get_model
 
-
 API_KEY = ""
 PROVIDER_ID = "moonshot"
 ENDPOINT_ID = "openai-completions"

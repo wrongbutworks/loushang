@@ -15,9 +15,20 @@ if str(SRC_ROOT) not in sys.path:
     sys.path.insert(0, str(SRC_ROOT))
 
 from _support import build_kimi_model, describe_model  # noqa: E402
-from loushang.ai.types import AssistantMessage, TextPart, ToolCall, Usage, UserMessage  # noqa: E402
-from loushang.coding import CompactionPreparation, SummaryEvaluationCase, compact, evaluate_summary_case  # noqa: E402
 
+from loushang.ai.types import (  # noqa: E402
+    AssistantMessage,
+    TextPart,
+    ToolCall,
+    Usage,
+    UserMessage,
+)
+from loushang.coding import (  # noqa: E402
+    CompactionPreparation,
+    SummaryEvaluationCase,
+    compact,
+    evaluate_summary_case,
+)
 
 SAMPLE_SUMMARY = """## Goal
 Harden the session index lifecycle and runtime diagnostics.

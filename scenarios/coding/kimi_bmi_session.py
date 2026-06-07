@@ -24,8 +24,13 @@ from loushang.coding.policy import HeadlessApprovalResolver, PolicyEngine
 from loushang.coding.store import SessionManager
 from loushang.coding.tools import ToolRegistry, register_builtin_tools
 from loushang.coding.types import ModelSelection
-from loushang.observability import TraceJSONLSink, capture_observability, configure_observability, log_context, restore_observability
-
+from loushang.observability import (
+    TraceJSONLSink,
+    capture_observability,
+    configure_observability,
+    log_context,
+    restore_observability,
+)
 
 DEFAULT_MODEL = ModelSelection(provider="moonshot", model_id="kimi-for-coding")
 DEFAULT_ENDPOINT = "kimi-code-anthropic"

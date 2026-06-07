@@ -6,7 +6,6 @@ from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
 from types import ModuleType
 
-
 DEFAULT_SDK_ENTRY_NAMES: tuple[str, ...] = (
     "create_services",
     "create_agent_session_services",

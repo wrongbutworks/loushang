@@ -1,11 +1,15 @@
 import asyncio
 
+import pytest
+
+from loushang.agent.types import ProxyStreamOptions
 from loushang.ai.model import Capabilities, Model
 from loushang.ai.model.domain import Endpoint
-from loushang.ai.model.registry import clear_default_model_registry, get_default_model_registry
+from loushang.ai.model.registry import (
+    clear_default_model_registry,
+    get_default_model_registry,
+)
 from loushang.ai.types import AssistantMessage, Context, Usage, UserMessage
-from loushang.agent.types import ProxyStreamOptions
-import pytest
 
 
 def _model() -> Model:
@@ -50,7 +54,10 @@ def _default_registry() -> None:
 
 
 def test_process_proxy_event_reconstructs_partial_message() -> None:
-    from loushang.agent.proxy import _create_initial_partial_message, _process_proxy_event
+    from loushang.agent.proxy import (
+        _create_initial_partial_message,
+        _process_proxy_event,
+    )
 
     partial = _create_initial_partial_message(_model())
 
@@ -92,7 +99,10 @@ def test_process_proxy_event_reconstructs_partial_message() -> None:
 
 
 def test_process_proxy_event_accumulates_partial_toolcall_json_until_valid() -> None:
-    from loushang.agent.proxy import _create_initial_partial_message, _process_proxy_event
+    from loushang.agent.proxy import (
+        _create_initial_partial_message,
+        _process_proxy_event,
+    )
 
     partial = _create_initial_partial_message(_model())
     _process_proxy_event({"type": "toolcall_start", "content_index": 0, "id": "tc_1", "tool_name": "calc"}, partial)

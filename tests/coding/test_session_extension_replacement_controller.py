@@ -4,7 +4,9 @@ import asyncio
 
 import pytest
 
-from loushang.coding.session.extension_replacement_controller import ExtensionReplacementController
+from loushang.coding.session.extension_replacement_controller import (
+    ExtensionReplacementController,
+)
 
 
 class Session:

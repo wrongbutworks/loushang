@@ -13,7 +13,6 @@ if str(SRC_ROOT) not in sys.path:
 
 from loushang.coding.loader import DefaultResourceLoader
 
-
 SKILL_USER_REVIEW = """\
 ---
 name: review

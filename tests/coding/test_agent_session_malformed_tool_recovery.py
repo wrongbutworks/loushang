@@ -6,7 +6,13 @@ from loushang.agent import Agent
 from loushang.ai.context import normalize_context
 from loushang.ai.event_stream.stream import AssistantMessageEventStream
 from loushang.ai.model import Capabilities, Model
-from loushang.ai.types import AssistantMessage, TextPart, ToolCall, ToolResultMessage, Usage
+from loushang.ai.types import (
+    AssistantMessage,
+    TextPart,
+    ToolCall,
+    ToolResultMessage,
+    Usage,
+)
 from loushang.coding.session import AgentSession
 from loushang.coding.store import SessionManager
 from loushang.coding.tools import create_write_tool

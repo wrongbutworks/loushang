@@ -1,7 +1,7 @@
 from __future__ import annotations
 
-from pathlib import Path
 import time
+from pathlib import Path
 
 
 def test_footer_data_provider_caches_and_refreshes_git_branch(tmp_path) -> None:

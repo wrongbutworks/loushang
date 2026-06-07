@@ -3,7 +3,6 @@ from __future__ import annotations
 import argparse
 import asyncio
 import json
-import os
 import sys
 from pathlib import Path
 from tempfile import TemporaryDirectory
@@ -12,10 +11,10 @@ if __package__ in {None, ""}:
     sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 from _support import (
+    _resolve_model_catalog,
     build_kimi_model,
     create_kimi_runtime_session,
     describe_model,
-    _resolve_model_catalog,
     resolve_api_key,
 )
 

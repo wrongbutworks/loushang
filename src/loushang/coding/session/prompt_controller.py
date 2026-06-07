@@ -8,7 +8,6 @@ from typing import Protocol
 from loushang.ai.types import ImagePart, TextPart, UserMessage
 from loushang.coding.message import create_custom_message
 
-
 CommandExtractor = Callable[[str], tuple[str, str] | None]
 CommandExecutor = Callable[[str, str], Awaitable[object | None]]
 ExtensionRunnerProvider = Callable[[], object | None]

@@ -7,7 +7,8 @@ import sys
 import zipfile
 from collections.abc import Callable
 from datetime import UTC, datetime
-from importlib.metadata import PackageNotFoundError, version as package_version
+from importlib.metadata import PackageNotFoundError
+from importlib.metadata import version as package_version
 from pathlib import Path
 from typing import Any
 

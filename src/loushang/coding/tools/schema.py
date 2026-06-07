@@ -3,7 +3,17 @@ from __future__ import annotations
 from dataclasses import MISSING, fields, is_dataclass
 from inspect import Parameter, signature
 from types import NoneType
-from typing import Any, Annotated, NotRequired, Required, TypedDict, get_args, get_origin, get_type_hints, is_typeddict
+from typing import (
+    Annotated,
+    Any,
+    NotRequired,
+    Required,
+    TypedDict,
+    get_args,
+    get_origin,
+    get_type_hints,
+    is_typeddict,
+)
 
 _SCALAR_TYPES: dict[type[object], str] = {
     str: "string",

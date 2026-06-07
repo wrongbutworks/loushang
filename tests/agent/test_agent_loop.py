@@ -5,10 +5,18 @@ from typing import Any
 
 import pytest
 
+from loushang.agent.types import AgentContext, AgentLoopConfig, AgentToolResult
 from loushang.ai.event_stream import AssistantMessageEventStream, EventStream
 from loushang.ai.model import Capabilities, Model
-from loushang.ai.types import AssistantMessage, Context, TextPart, Tool, ToolCall, Usage, UserMessage
-from loushang.agent.types import AgentContext, AgentLoopConfig, AgentToolResult
+from loushang.ai.types import (
+    AssistantMessage,
+    Context,
+    TextPart,
+    Tool,
+    ToolCall,
+    Usage,
+    UserMessage,
+)
 from loushang.observability import get_problem_store, log_context, reset_observability
 
 

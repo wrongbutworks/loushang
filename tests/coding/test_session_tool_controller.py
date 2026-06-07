@@ -9,8 +9,7 @@ from loushang.coding.diagnostics import DiagnosticsService
 from loushang.coding.loader import ResourceBundle
 from loushang.coding.session.tool_controller import ToolController
 from loushang.coding.store import SessionManager
-from loushang.coding.tools import ToolDefinition, ToolRegistry, tool
-from loushang.coding.tools import ToolContext
+from loushang.coding.tools import ToolContext, ToolDefinition, ToolRegistry, tool
 
 
 def test_tool_controller_materializes_active_registry_tools_and_rebuilds_prompt(tmp_path) -> None:

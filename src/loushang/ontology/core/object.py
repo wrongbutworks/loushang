@@ -6,8 +6,6 @@ from dataclasses import dataclass, field
 from typing import Any
 from uuid import UUID, uuid4
 
-from loushang.ontology.core.link_type import LinkType
-
 
 @dataclass
 class PropertyVersion:

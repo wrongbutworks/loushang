@@ -2,15 +2,18 @@ from __future__ import annotations
 
 import argparse
 import asyncio
-from io import StringIO
 import sys
+from io import StringIO
 from typing import TextIO
 
 from loushang.coding.ui.native_app import NativeCodingTuiApp
 from loushang.coding.ui.native_loop import run_native_coding_tui
 from loushang.tui import RenderConstraints, strip_control_sequences
-from loushang.tui.transcript import AssistantMessageRecord, UserPromptRecord, WorkedDividerRecord
-
+from loushang.tui.transcript import (
+    AssistantMessageRecord,
+    UserPromptRecord,
+    WorkedDividerRecord,
+)
 
 SCRIPTED_PROMPT = "你好，请展示 native coding TUI。"
 

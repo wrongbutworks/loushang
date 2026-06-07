@@ -170,7 +170,11 @@ def test_coding_observability_context_preserves_existing_trace_when_bridging_pro
 
     from loushang.coding.diagnostics import DiagnosticsService
     from loushang.coding.observability import coding_observability_context
-    from loushang.observability import configure_observability, get_log, reset_observability
+    from loushang.observability import (
+        configure_observability,
+        get_log,
+        reset_observability,
+    )
     from loushang.observability.trace import TraceJSONLSink
 
     trace_path = tmp_path / "trace.jsonl"
@@ -197,7 +201,11 @@ def test_coding_observability_context_restores_existing_trace_after_exit(tmp_pat
 
     from loushang.coding.diagnostics import DiagnosticsService
     from loushang.coding.observability import coding_observability_context
-    from loushang.observability import configure_observability, get_log, reset_observability
+    from loushang.observability import (
+        configure_observability,
+        get_log,
+        reset_observability,
+    )
     from loushang.observability.trace import TraceJSONLSink
 
     trace_path = tmp_path / "trace.jsonl"

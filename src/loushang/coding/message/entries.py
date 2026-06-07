@@ -6,7 +6,6 @@ from typing import TypeAlias
 from loushang.agent import AgentMessage
 from loushang.ai.types import ImagePart, TextPart
 
-
 ContentBlock: TypeAlias = TextPart | ImagePart
 
 

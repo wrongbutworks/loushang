@@ -9,7 +9,6 @@ from uuid import uuid4
 
 from loushang.coding.policy.types import PolicyDecision
 
-
 T = TypeVar("T")
 MaybeAwaitable = T | Awaitable[T]
 

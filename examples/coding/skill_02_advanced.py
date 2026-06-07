@@ -17,7 +17,6 @@ from loushang.ai.model import Capabilities, Model
 from loushang.ai.types import AssistantMessage, TextPart, Usage, UserMessage
 from loushang.coding import create_agent_session_runtime
 
-
 SKILL_REVIEW = """\
 ---
 name: review

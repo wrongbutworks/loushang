@@ -23,7 +23,6 @@ from loushang.coding.loader.types import (
 )
 from loushang.coding.package.source import PackageSourceConfig
 
-
 BUILT_IN_RESOURCE_PACKAGE = "loushang.coding.resources"
 _MAX_SKILL_NAME_LENGTH = 64
 _MAX_SKILL_DESCRIPTION_LENGTH = 1024

@@ -4,8 +4,8 @@ from __future__ import annotations
 def test_wrap_tool_definition_exposes_agent_tool_contract() -> None:
     import asyncio
 
-    from loushang.ai.types import TextPart
     from loushang.agent.types import AgentToolResult
+    from loushang.ai.types import TextPart
     from loushang.coding.tools.types import ToolDefinition
     from loushang.coding.tools.wrapper import wrap_tool_definition
 
@@ -37,8 +37,8 @@ def test_wrap_tool_definition_exposes_agent_tool_contract() -> None:
 
 
 def test_wrap_tool_definition_exposes_custom_execution_mode() -> None:
-    from loushang.ai.types import TextPart
     from loushang.agent.types import AgentToolResult
+    from loushang.ai.types import TextPart
     from loushang.coding.tools.types import ToolDefinition
     from loushang.coding.tools.wrapper import wrap_tool_definition
 
@@ -59,10 +59,17 @@ def test_wrap_tool_definition_exposes_custom_execution_mode() -> None:
 
 
 def test_wrap_tool_definition_preserves_tool_renderers() -> None:
-    from loushang.ai.types import TextPart
     from loushang.agent.types import AgentToolResult
-    from loushang.coding.tools.types import ToolDefinition, ToolRenderContext, ToolRenderResultOptions
-    from loushang.coding.tools.wrapper import create_tool_definition_from_tool, wrap_tool_definition
+    from loushang.ai.types import TextPart
+    from loushang.coding.tools.types import (
+        ToolDefinition,
+        ToolRenderContext,
+        ToolRenderResultOptions,
+    )
+    from loushang.coding.tools.wrapper import (
+        create_tool_definition_from_tool,
+        wrap_tool_definition,
+    )
 
     async def execute(tool_call_id, params, signal=None, on_update=None):
         del tool_call_id, params, signal, on_update
@@ -99,8 +106,8 @@ def test_wrap_tool_definition_preserves_tool_renderers() -> None:
 def test_pi_style_wrapper_aliases_delegate_to_python_helpers() -> None:
     import asyncio
 
-    from loushang.ai.types import TextPart
     from loushang.agent.types import AgentToolResult
+    from loushang.ai.types import TextPart
     from loushang.coding.tools.types import ToolDefinition
     from loushang.coding.tools.wrapper import (
         createToolDefinitionFromAgentTool,

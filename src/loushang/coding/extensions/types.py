@@ -1,12 +1,13 @@
 from __future__ import annotations
 
+import inspect
 from collections.abc import Awaitable, Callable, Mapping, Sequence
 from dataclasses import dataclass, field
-import inspect
 from pathlib import Path
 from typing import Any, Literal, Protocol
 
 from loushang.agent import AgentMessage, ThinkingLevel
+from loushang.coding.commands import SessionCommandDescriptor
 from loushang.coding.compaction import BranchSummaryResult, CompactionResult
 from loushang.coding.exec import ExecResult, ExecUpdateCallback
 from loushang.coding.loader import (
@@ -17,11 +18,9 @@ from loushang.coding.loader import (
     ThemeDescriptor,
 )
 from loushang.coding.loader.types import ResourceSourceKind, ResourceSourceScope
-from loushang.coding.commands import SessionCommandDescriptor
 from loushang.coding.source_info import SourceOrigin, SourceScope
 from loushang.coding.tools import ToolDefinition
 from loushang.coding.types import ModelSelection
-
 
 VALID_EXTENSION_EVENTS = (
     "session_start",
