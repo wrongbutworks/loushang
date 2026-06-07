@@ -9,6 +9,10 @@ from loushang.tui.input import InputEvent, InputIntent
 from loushang.tui.transcript import (
     AssistantMessageRecord,
     DisplayRecord,
+    ErrorRecord,
+    ThinkingRecord,
+    ThinkingVisibility,
+    ToolExecutionRecord,
     UserPromptRecord,
 )
 
@@ -37,38 +41,87 @@ def _render_text(reader: TranscriptReaderSurface, *, width: int = 48, height: in
     return tuple(strip_control_sequences(line.text) for line in result.lines)
 
 
+def _render_raw(reader: TranscriptReaderSurface, *, width: int = 48, height: int = 6) -> tuple[str, ...]:
+    result = reader.render(RenderConstraints(width=width, max_height=height))
+    return tuple(line.text for line in result.lines)
+
+
 def test_transcript_reader_renders_frozen_snapshot_and_footer() -> None:
     source = _Source((UserPromptRecord("hello"), AssistantMessageRecord("first")), evicted_prefix_record_count=2)
     reader = TranscriptReaderSurface(source)
 
-    first = _render_text(reader, width=80, height=7)
+    first = _render_text(reader, width=80, height=9)
     source.records = (AssistantMessageRecord("second"),)
-    second = _render_text(reader, width=80, height=7)
+    second = _render_text(reader, width=80, height=9)
 
     assert source.snapshot_calls == 1
     assert first == second
     assert first[0] == "Transcript window"
     assert "Earlier transcript records were trimmed." in first
-    assert first[-1] == "Ctrl+O/q/Esc close | PgUp/PgDn scroll | d detail | r raw"
+    assert first[-3] == "─" * 80
+    assert first[-2] == "↑/↓ scroll   PgUp/Ctrl+B · PgDn/Ctrl+F page   Home/End jump"
+    assert first[-1] == "Ctrl+O/q/Esc close   d detail   r raw"
     assert any("first" in line for line in first)
     assert all("second" not in line for line in first)
+
+
+def test_transcript_reader_footer_chrome_is_dim_gray() -> None:
+    reader = TranscriptReaderSurface(_Source((AssistantMessageRecord("answer"),)))
+
+    raw = _render_raw(reader, width=80, height=6)
+
+    assert raw[-3].startswith("\x1b[2;90m")
+    assert raw[-2].startswith("\x1b[2;90m")
+    assert raw[-1].startswith("\x1b[2;90m")
+
+
+def test_transcript_reader_short_content_fills_full_height_with_footer_at_bottom() -> None:
+    reader = TranscriptReaderSurface(_Source((AssistantMessageRecord("short answer"),)))
+
+    rendered = _render_text(reader, width=40, height=8)
+
+    assert len(rendered) == 8
+    assert rendered[0] == "Transcript window"
+    assert any("short answer" in line for line in rendered)
+    assert rendered[-3] == "─" * 40
+    assert rendered[-2].startswith("↑/↓ scroll   PgUp/Ctrl+B")
+    assert "PgDn/Ctrl" in rendered[-2]
+    assert rendered[-1] == "Ctrl+O/q/Esc close   d detail   r raw"
 
 
 def test_transcript_reader_opens_at_tail_and_scrolls_by_page() -> None:
     source = _Source((AssistantMessageRecord("\n".join(f"line {index}" for index in range(8))),))
     reader = TranscriptReaderSurface(source)
 
-    tail = _render_text(reader, height=5)
+    tail = _render_text(reader, height=7)
     assert any("line 7" in line for line in tail)
     assert all("line 0" not in line for line in tail)
 
     assert reader.handle_input(InputEvent(kind="key", key="pageUp")) == InputIntent(kind="consumed", note="transcript_reader")
-    older = _render_text(reader, height=5)
+    older = _render_text(reader, height=7)
     assert any("line 4" in line for line in older)
     assert reader.scroll_offset < reader.max_scroll_offset
 
     assert reader.handle_input(InputEvent(kind="key", key="end")) == InputIntent(kind="consumed", note="transcript_reader")
-    assert any("line 7" in line for line in _render_text(reader, height=5))
+    assert any("line 7" in line for line in _render_text(reader, height=7))
+
+
+def test_transcript_reader_ctrl_b_and_ctrl_f_page_backward_and_forward() -> None:
+    source = _Source((AssistantMessageRecord("\n".join(f"line {index}" for index in range(12))),))
+    reader = TranscriptReaderSurface(source)
+
+    tail = _render_text(reader, height=12)
+    assert any("line 11" in line for line in tail)
+
+    assert reader.handle_input(InputEvent(kind="key", key="ctrl+b")) == InputIntent(kind="consumed", note="transcript_reader")
+    older = _render_text(reader, height=12)
+    assert any("line 0" in line for line in older)
+    assert reader.scroll_offset < reader.max_scroll_offset
+
+    assert reader.handle_input(InputEvent(kind="key", key="ctrl+f")) == InputIntent(kind="consumed", note="transcript_reader")
+    newer = _render_text(reader, height=12)
+    assert any("line 11" in line for line in newer)
+    assert reader.scroll_offset == reader.max_scroll_offset
 
 
 def test_transcript_reader_clamps_scroll_offset_after_resize() -> None:
@@ -114,3 +167,64 @@ def test_transcript_reader_detail_and_raw_toggles_are_stable() -> None:
     assert reader.raw_mode is True
     assert reader.handle_input(InputEvent(kind="key", key="r")) == InputIntent(kind="consumed", note="transcript_reader")
     assert reader.raw_mode is False
+
+
+def test_transcript_reader_raw_mode_renders_copy_friendly_logical_text() -> None:
+    reader = TranscriptReaderSurface(
+        _Source(
+            (
+                UserPromptRecord("show status"),
+                AssistantMessageRecord("Use **markdown** literally."),
+                ToolExecutionRecord(
+                    name="pytest",
+                    state="completed",
+                    elapsed_seconds=1.25,
+                    command="uv run pytest",
+                    output="2 passed",
+                ),
+            )
+        )
+    )
+
+    reader.handle_input(InputEvent(kind="key", key="r"))
+    rendered = _render_text(reader, width=80, height=14)
+
+    assert "User" in rendered
+    assert "show status" in rendered
+    assert "Assistant" in rendered
+    assert "Use **markdown** literally." in rendered
+    assert "Tool: pytest completed in 1.25s" in rendered
+    assert "command: uv run pytest" in rendered
+    assert "2 passed" in rendered
+    assert not any(line.startswith(("> ", "* ", "- Ran ")) for line in rendered)
+
+
+def test_transcript_reader_detail_mode_includes_error_diagnostics() -> None:
+    reader = TranscriptReaderSurface(
+        _Source((ErrorRecord(summary="Request failed", diagnostics="Traceback line"),))
+    )
+
+    compact = _render_text(reader, width=80, height=8)
+    reader.handle_input(InputEvent(kind="key", key="d"))
+    detailed = _render_text(reader, width=80, height=8)
+
+    assert any("Request failed" in line for line in compact)
+    assert all("Traceback line" not in line for line in compact)
+    assert any("Traceback line" in line for line in detailed)
+
+
+def test_transcript_reader_raw_mode_does_not_expose_hidden_thinking() -> None:
+    reader = TranscriptReaderSurface(
+        _Source(
+            (
+                ThinkingRecord("hidden reasoning", ThinkingVisibility.HIDDEN),
+                ThinkingRecord("visible thinking", ThinkingVisibility.VISIBLE),
+            )
+        )
+    )
+
+    reader.handle_input(InputEvent(kind="key", key="r"))
+    rendered = _render_text(reader, width=80, height=10)
+
+    assert all("hidden reasoning" not in line for line in rendered)
+    assert any("visible thinking" in line for line in rendered)

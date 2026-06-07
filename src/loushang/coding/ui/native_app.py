@@ -15,7 +15,10 @@ from loushang.coding.tools.output_preview import (
 )
 from loushang.coding.ui.native_state import NativeCodingTuiState, NativeTranscriptWindow
 from loushang.coding.ui.transcript_reader import TranscriptReaderSurface
-from loushang.coding.ui.transcript_source import ActiveWindowTranscriptSource
+from loushang.coding.ui.transcript_source import (
+    ActiveWindowTranscriptSource,
+    TranscriptSource,
+)
 from loushang.coding.ui.transcript_style import apply_coding_transcript_style
 from loushang.tui import (
     BottomFrame,
@@ -102,6 +105,7 @@ class NativeCodingTuiApp:
     render_requester: Callable[[RenderRequestKind], object] | None = None
     terminal_diagnostics_provider: Callable[[], str] | None = None
     terminal_capabilities: TerminalRuntimeCapabilities | None = None
+    transcript_source_factory: Callable[[], TranscriptSource] | None = None
     _transcript_region: _NativeTranscriptRegion = field(init=False, repr=False)
     _bottom_frame_component: BottomFrame = field(init=False, repr=False)
     _render_baseline_reset_reason: str | None = field(default=None, init=False, repr=False)
@@ -173,7 +177,12 @@ class NativeCodingTuiApp:
     def open_transcript_reader(self) -> bool:
         if self.surface_host is None:
             return False
-        reader = TranscriptReaderSurface(ActiveWindowTranscriptSource(self.state))
+        source = (
+            self.transcript_source_factory()
+            if self.transcript_source_factory is not None
+            else ActiveWindowTranscriptSource(self.state)
+        )
+        reader = TranscriptReaderSurface(source)
         self.surface_host.open_surface(
             Surface(
                 renderable=reader,
