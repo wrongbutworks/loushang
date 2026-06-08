@@ -38,7 +38,7 @@ assert field.value == "hello loushang"
 field.handle_input(InputEvent(kind="key", key="ctrl+-"))
 assert field.value == "hello world"
 
-field.handle_input(InputEvent(kind="key", key="ctrl+shift+z"))
+field.handle_input(InputEvent(kind="key", key="alt+r"))
 assert field.value == "hello loushang"
 
 result = field.render(RenderConstraints(width=40, max_height=1))
@@ -89,13 +89,13 @@ Composer selection 使用 atom 索引。普通文本会拆成类 grapheme 的文
 | 删除词 | `ctrl+w`, `alt+backspace`, `alt+d`, `alt+delete` |
 | kill 到行首/行尾 | `ctrl+u`, `ctrl+k` |
 | Yank / yank-pop | `ctrl+y`, `alt+y` |
-| Undo | `ctrl+-`, `ctrl+_` |
-| Redo | `ctrl+shift+z` |
+| Undo | `ctrl+-`, `ctrl+_`, `alt+u` |
+| Redo | `alt+r` |
 | 换行/提交 | `shift+enter`, `alt+enter`, `ctrl+j`, `enter` |
 
-部分终端会把 `ctrl+-` 上报为 `ctrl+_`，两者都会触发 undo。默认 redo
-使用 `ctrl+shift+z`，因为 `ctrl+y` 已保留给 yank，而 `ctrl+shift+-`
-在部分终端里无法和 undo 稳定区分。
+部分终端会把 `ctrl+-` 上报为 `ctrl+_`，两者都会触发 undo。`alt+u`
+和 `alt+r` 提供更好记且更稳定的终端 undo/redo 备用键，同时不占用
+`ctrl+u` 或 `ctrl+r`。
 
 ## Selection-Aware Edit
 

@@ -95,7 +95,7 @@ def test_input_reader_normalizes_arrow_escape_sequences() -> None:
 def test_input_reader_normalizes_common_editor_control_keys() -> None:
     reader = InputReader()
 
-    events = reader.feed("\x7f\x1b[3~\x01\x05\x0a\x0b\x0f\x15\x16\x17\x19\x1by\x1b\r\x1b[13;2~\x1b[1;3A")
+    events = reader.feed("\x7f\x1b[3~\x01\x05\x0a\x0b\x0f\x15\x16\x17\x19\x1bu\x1br\x1by\x1b\r\x1b[13;2~\x1b[1;3A")
 
     assert events == (
         InputEvent(kind="key", key="backspace"),
@@ -109,6 +109,8 @@ def test_input_reader_normalizes_common_editor_control_keys() -> None:
         InputEvent(kind="key", key="ctrl+v"),
         InputEvent(kind="key", key="ctrl+w"),
         InputEvent(kind="key", key="ctrl+y"),
+        InputEvent(kind="key", key="alt+u"),
+        InputEvent(kind="key", key="alt+r"),
         InputEvent(kind="key", key="alt+y"),
         InputEvent(kind="key", key="alt+enter"),
         InputEvent(kind="key", key="shift+enter"),
@@ -271,14 +273,16 @@ def test_keybinding_manager_matches_transcript_reader_alias() -> None:
 def test_keybinding_manager_matches_default_redo_key() -> None:
     manager = KeybindingManager()
 
-    assert manager.keys_for("tui.editor.redo") == ("ctrl+shift+z",)
-    assert manager.matches("shift+ctrl+z", "tui.editor.redo")
+    assert manager.keys_for("tui.editor.redo") == ("alt+r",)
+    assert manager.matches("alt+r", "tui.editor.redo")
+    assert not manager.matches("ctrl+shift+z", "tui.editor.redo")
 
 
 def test_keybinding_manager_matches_terminal_underscore_undo_alias() -> None:
     manager = KeybindingManager()
 
     assert manager.matches("ctrl+_", "tui.editor.undo")
+    assert manager.matches("alt+u", "tui.editor.undo")
 
 
 def test_input_router_alt_angle_moves_to_line_boundaries() -> None:
@@ -380,9 +384,19 @@ def test_input_router_routes_default_redo_to_composer() -> None:
 
     assert composer.value == ""
 
-    router.route(InputEvent(kind="key", key="ctrl+shift+z"))
+    router.route(InputEvent(kind="key", key="alt+r"))
 
     assert composer.value == "abc"
+
+
+def test_input_router_routes_alt_u_undo_to_composer() -> None:
+    composer = Composer(prompt="> ")
+    router = InputRouter(composer=composer)
+
+    router.route(InputEvent(kind="text", text="abc"))
+    router.route(InputEvent(kind="key", key="alt+u"))
+
+    assert composer.value == ""
 
 
 def test_input_router_routes_terminal_underscore_undo_alias_to_composer() -> None:

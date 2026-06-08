@@ -39,7 +39,7 @@ The following items remain outside the initial implementation:
 - transcript or screen-buffer copy selection
 - restoring selection through undo/redo snapshots
 - changing the default redo keybinding policy. This was handled later as a
-  separate follow-up with `ctrl+shift+z`.
+  separate follow-up with `alt+r`.
 
 ## Reference Observations
 

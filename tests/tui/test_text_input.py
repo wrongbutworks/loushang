@@ -152,8 +152,16 @@ def test_text_input_routes_default_redo_key() -> None:
     assert field.handle_input(InputEvent(kind="key", key="ctrl+-"))
     assert field.value == ""
 
-    assert field.handle_input(InputEvent(kind="key", key="ctrl+shift+z"))
+    assert field.handle_input(InputEvent(kind="key", key="alt+r"))
     assert field.value == "abc"
+
+
+def test_text_input_routes_alt_u_undo_key() -> None:
+    field = TextInput()
+
+    assert field.handle_input(InputEvent(kind="text", text="abc"))
+    assert field.handle_input(InputEvent(kind="key", key="alt+u"))
+    assert field.value == ""
 
 
 def test_text_input_routes_terminal_underscore_undo_alias() -> None:

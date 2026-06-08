@@ -43,7 +43,7 @@ assert field.value == "hello loushang"
 field.handle_input(InputEvent(kind="key", key="ctrl+-"))
 assert field.value == "hello world"
 
-field.handle_input(InputEvent(kind="key", key="ctrl+shift+z"))
+field.handle_input(InputEvent(kind="key", key="alt+r"))
 assert field.value == "hello loushang"
 
 result = field.render(RenderConstraints(width=40, max_height=1))
@@ -101,13 +101,13 @@ editing.
 | Delete word | `ctrl+w`, `alt+backspace`, `alt+d`, `alt+delete` |
 | Kill to line start / end | `ctrl+u`, `ctrl+k` |
 | Yank / yank-pop | `ctrl+y`, `alt+y` |
-| Undo | `ctrl+-`, `ctrl+_` |
-| Redo | `ctrl+shift+z` |
+| Undo | `ctrl+-`, `ctrl+_`, `alt+u` |
+| Redo | `alt+r` |
 | New line / submit | `shift+enter`, `alt+enter`, `ctrl+j`, `enter` |
 
-Some terminals report `ctrl+-` as `ctrl+_`; both are treated as undo. Redo
-uses `ctrl+shift+z` by default because `ctrl+y` is reserved for yank and
-`ctrl+shift+-` is not distinguishable from undo in every terminal.
+Some terminals report `ctrl+-` as `ctrl+_`; both are treated as undo. `alt+u`
+and `alt+r` provide mnemonic terminal-stable undo/redo alternatives without
+claiming `ctrl+u` or `ctrl+r`.
 
 ## Selection-Aware Edits
 
