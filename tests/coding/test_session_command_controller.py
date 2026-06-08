@@ -114,8 +114,8 @@ def test_command_controller_lists_builtin_commands_before_extension_and_resource
     commands = controller.list_commands()
 
     assert [command.name for command in commands[:4]] == ["settings", "model", "scoped-models", "export"]
-    assert {command.name for command in commands} >= {"copy", "name", "session", "terminal", "changelog", "deploy", "plan"}
-    assert all(command.source == "builtin" for command in commands[:22])
+    assert {command.name for command in commands} >= {"copy", "name", "session", "terminal", "changelog", "tools", "deploy", "plan"}
+    assert all(command.source == "builtin" for command in commands[:23])
     assert commands[0].source_info.source == "builtin"
 
 
@@ -220,6 +220,87 @@ def test_command_controller_executes_builtin_name_session_and_unsupported_comman
         "command": "model",
         "status": "unsupported",
         "message": 'Builtin command "/model" is handled by the interactive shell.',
+    }
+
+
+def test_command_controller_executes_builtin_tools_list_and_mutations(tmp_path) -> None:
+    active_tools = ["read", "grep"]
+    all_tools = [
+        {"name": "read", "description": "Read files"},
+        {"name": "grep", "description": "Search files"},
+        {"name": "bash", "description": "Run shell commands"},
+    ]
+    set_calls: list[list[str]] = []
+
+    async def _set_active_tools(tool_names: list[str]) -> None:
+        set_calls.append(list(tool_names))
+        active_tools[:] = list(tool_names)
+
+    controller = CommandController(
+        session_manager=SessionManager.new(session_dir=tmp_path, cwd="/tmp/project", persist=False, session_id="session-1"),
+        get_extension_runner=lambda: None,
+        get_resource_bundle=lambda: None,
+        get_diagnostics_service=lambda: None,
+        builtin_backend=BuiltinCommandBackend(
+            get_active_tool_names=lambda: list(active_tools),
+            get_all_tools=lambda: list(all_tools),
+            set_active_tools=_set_active_tools,
+            get_default_active_tool_names=lambda: ["read", "grep", "bash"],
+        ),
+    )
+
+    list_result = asyncio.run(controller.execute_command_async("/tools", ""))
+    off_result = asyncio.run(controller.execute_command_async("/tools", "off grep"))
+    on_result = asyncio.run(controller.execute_command_async("/tools", "on bash"))
+    only_result = asyncio.run(controller.execute_command_async("/tools", "only read"))
+    reset_result = asyncio.run(controller.execute_command_async("/tools", "reset"))
+
+    assert list_result is not None
+    assert list_result.result == {
+        "source": "builtin",
+        "command": "tools",
+        "status": "ok",
+        "active_tools": ["read", "grep"],
+        "available_tools": [
+            {"name": "read", "active": True, "description": "Read files"},
+            {"name": "grep", "active": True, "description": "Search files"},
+            {"name": "bash", "active": False, "description": "Run shell commands"},
+        ],
+        "message": "Active tools: read, grep",
+    }
+    assert off_result is not None
+    assert off_result.result["active_tools"] == ["read"]
+    assert on_result is not None
+    assert on_result.result["active_tools"] == ["read", "bash"]
+    assert only_result is not None
+    assert only_result.result["active_tools"] == ["read"]
+    assert reset_result is not None
+    assert reset_result.result["active_tools"] == ["read", "grep", "bash"]
+    assert set_calls == [["read"], ["read", "bash"], ["read"], ["read", "grep", "bash"]]
+
+
+def test_command_controller_builtin_tools_rejects_unknown_tool(tmp_path) -> None:
+    controller = CommandController(
+        session_manager=SessionManager.new(session_dir=tmp_path, cwd="/tmp/project", persist=False, session_id="session-1"),
+        get_extension_runner=lambda: None,
+        get_resource_bundle=lambda: None,
+        get_diagnostics_service=lambda: None,
+        builtin_backend=BuiltinCommandBackend(
+            get_active_tool_names=lambda: ["read"],
+            get_all_tools=lambda: [{"name": "read", "description": "Read files"}],
+            set_active_tools=lambda tool_names: None,
+            get_default_active_tool_names=lambda: ["read"],
+        ),
+    )
+
+    result = asyncio.run(controller.execute_command_async("/tools", "on bash"))
+
+    assert result is not None
+    assert result.result == {
+        "source": "builtin",
+        "command": "tools",
+        "status": "error",
+        "message": "Unknown tool: bash. Available tools: read",
     }
 
 

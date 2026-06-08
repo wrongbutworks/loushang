@@ -176,6 +176,58 @@ def test_agent_session_tracks_active_tool_names_and_runtime_tools(tmp_path) -> N
     )
 
 
+def test_agent_session_builtin_tools_command_can_restore_active_tools(tmp_path) -> None:
+    from pathlib import Path
+
+    from loushang.agent import Agent
+    from loushang.ai.model import Capabilities, Model
+    from loushang.coding import SessionManager, ToolRegistry, register_builtin_tools
+    from loushang.coding.loader import ResourceBundle
+    from loushang.coding.session import AgentSession
+
+    manager = SessionManager.new(session_dir=tmp_path, cwd="/tmp/project", persist=False)
+    registry = ToolRegistry()
+    register_builtin_tools(registry)
+    model = Model(
+        id="faux-model",
+        name="Faux",
+        provider="faux",
+        endpoint="anthropic-messages",
+        capabilities=Capabilities(
+            reasoning=True,
+            input=("text",),
+            context_window=128000,
+            max_tokens=4096,
+        ),
+    )
+    session = AgentSession(
+        agent=Agent(
+            initial_state={
+                "system_prompt": "stale prompt",
+                "model": model,
+                "thinking_level": "off",
+                "tools": [],
+            },
+            convert_to_llm=lambda messages: [],
+        ),
+        session_manager=manager,
+        resource_bundle=ResourceBundle(cwd=Path("/tmp/project")),
+        tool_registry=registry,
+        active_tool_names=["bash"],
+        base_prompt="Base prompt.",
+    )
+
+    off_result = asyncio.run(session.execute_command_async("/tools", "off bash"))
+    reset_result = asyncio.run(session.execute_command_async("/tools", "reset"))
+
+    assert off_result is not None
+    assert off_result.result["active_tools"] == []
+    assert session.get_active_tool_names() == ["read", "ls", "find", "grep", "bash", "edit", "write"]
+    assert [tool.name for tool in session.agent.tools] == ["read", "ls", "find", "grep", "bash", "edit", "write"]
+    assert reset_result is not None
+    assert reset_result.result["active_tools"] == ["read", "ls", "find", "grep", "bash", "edit", "write"]
+
+
 def test_agent_session_exposes_pi_style_tool_surface_aliases(tmp_path) -> None:
     from pathlib import Path
 

@@ -45,6 +45,7 @@ def test_builtin_slash_commands_match_pi_style_core_surface() -> None:
         "tree": "Navigate session tree (switch branches)",
         "login": "Configure provider authentication",
         "logout": "Remove provider authentication",
+        "tools": "Show or update active tools for this session",
         "new": "Start a new session",
         "compact": "Manually compact the session context",
         "resume": "Resume a different session",

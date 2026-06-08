@@ -35,13 +35,19 @@ loushang --resume
 loushang --export
 ```
 
-在交互界面中，内置 slash commands 包括 `/session`、`/resume`、`/fork`、`/clone`、`/tree`、`/export`、`/compact`、`/reload` 和 `/quit`。
+在交互界面中，内置 slash commands 包括 `/session`、`/resume`、`/fork`、`/clone`、`/tree`、`/tools`、`/export`、`/compact`、`/reload` 和 `/quit`。
 
 ## 工具
 
 工具把可执行能力暴露给 agent。Coding 产品包含内置工具面，并支持启用、禁用和收窄工具范围：
 
+新的交互会话默认启用内置 `read`、`ls`、`find`、`grep`、`bash`、`edit` 和 `write` 工具。文件探索优先使用 `ls`、`find`、`grep` 和 `read`；`bash` 更适合 shell 管道、重定向、构建命令、测试和 Git 操作。
+
 ```bash
+/tools
+/tools off bash
+/tools only read,ls,find,grep
+/tools reset
 loushang --tools bash,write -p "Inspect this project."
 loushang --no-tools -p "Explain the repository from context only."
 ```

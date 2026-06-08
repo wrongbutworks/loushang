@@ -47,6 +47,7 @@ BUILTIN_SLASH_COMMANDS: tuple[BuiltinSlashCommand, ...] = (
     BuiltinSlashCommand(name="name", description="Set session display name"),
     BuiltinSlashCommand(name="session", description="Show session info and stats"),
     BuiltinSlashCommand(name="terminal", description="Show terminal capabilities and protocol diagnostics"),
+    BuiltinSlashCommand(name="tools", description="Show or update active tools for this session"),
     BuiltinSlashCommand(name="changelog", description="Show changelog entries"),
     BuiltinSlashCommand(name="hotkeys", description="Show all keyboard shortcuts"),
     BuiltinSlashCommand(name="fork", description="Create a new fork from a previous user message"),

@@ -35,13 +35,19 @@ loushang --resume
 loushang --export
 ```
 
-Inside the interactive surface, built-in slash commands include `/session`, `/resume`, `/fork`, `/clone`, `/tree`, `/export`, `/compact`, `/reload`, and `/quit`.
+Inside the interactive surface, built-in slash commands include `/session`, `/resume`, `/fork`, `/clone`, `/tree`, `/tools`, `/export`, `/compact`, `/reload`, and `/quit`.
 
 ## Tools
 
 Tools expose executable capabilities to the agent. The coding product includes built-in tool surfaces and options for enabling, disabling, and narrowing tools:
 
+New interactive sessions enable the built-in `read`, `ls`, `find`, `grep`, `bash`, `edit`, and `write` tools by default. Prefer `ls`, `find`, `grep`, and `read` for file exploration; keep `bash` for shell behavior such as pipelines, redirects, build commands, tests, and Git operations.
+
 ```bash
+/tools
+/tools off bash
+/tools only read,ls,find,grep
+/tools reset
 loushang --tools bash,write -p "Inspect this project."
 loushang --no-tools -p "Explain the repository from context only."
 ```
