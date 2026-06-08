@@ -7,9 +7,8 @@ from loushang.tui.transcript import (
     AssistantMessageRecord,
     DisplayRecord,
     ErrorRecord,
+    StatusRecord,
     StreamingTextBuffer,
-    ThinkingRecord,
-    ThinkingVisibility,
     ToolExecutionRecord,
     UserPromptRecord,
     WorkedDividerRecord,
@@ -176,7 +175,7 @@ class NativeCodingTuiState:
     def add_status(self, message: str) -> None:
         stripped = message.strip()
         if stripped:
-            self.records.append(ThinkingRecord(stripped, ThinkingVisibility.VISIBLE))
+            self.records.append(StatusRecord(stripped))
         self._pending_user_echo = None
 
     def consume_pending_user_echo(self, text: str) -> bool:

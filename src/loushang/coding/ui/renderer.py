@@ -23,6 +23,7 @@ from loushang.tui.transcript import (
     AssistantMessageRecord,
     DisplayRecord,
     ErrorRecord,
+    StatusRecord,
     ThinkingRecord,
     ThinkingVisibility,
     ToolExecutionRecord,
@@ -176,7 +177,7 @@ class CodingUiRenderer:
 
     def render_status(self, text: str) -> None:
         if self.transcript_buffer is not None:
-            self.transcript_buffer.append(ThinkingRecord(text, ThinkingVisibility.VISIBLE))
+            self.transcript_buffer.append(StatusRecord(text))
             return
         self._write_line(text)
 

@@ -6,6 +6,7 @@ from loushang.tui import (
     ContextCompactionRecord,
     ErrorRecord,
     RenderConstraints,
+    StatusRecord,
     TerminalCapabilities,
     ThemeResolver,
     ThinkingRecord,
@@ -86,6 +87,12 @@ def test_context_compaction_record_renders_as_single_stable_transcript_line() ->
     view = TranscriptView([ContextCompactionRecord(summary="older context summarized", tokens_before=500_000)])
 
     assert rendered_text(view, width=80) == ("* Context compacted: older context summarized (500000 tokens before)",)
+
+
+def test_status_record_renders_message_without_thinking_prefix() -> None:
+    view = TranscriptView([StatusRecord("Active tools: read, ls, find, grep, bash, edit, write")])
+
+    assert rendered_text(view, width=80) == ("Active tools: read, ls, find, grep, bash, edit, write",)
 
 
 def test_tool_execution_records_have_running_elapsed_and_completed_took_markers() -> None:
