@@ -470,7 +470,7 @@ def test_native_input_router_ctrl_o_fallback_reader_includes_streaming_assistant
     reader.raw_mode = True
     rendered = reader.render(RenderConstraints(width=100, max_height=12))
     lines = tuple(strip_control_sequences(line.text) for line in rendered.lines)
-    assert "Transcript window" in lines
+    assert lines[0] == "Transcript window · raw"
     assert any("streaming fallback draft" in line for line in lines)
 
 
@@ -624,7 +624,7 @@ def test_native_input_router_ctrl_o_session_reader_includes_streaming_assistant_
     reader.raw_mode = True
     rendered = reader.render(RenderConstraints(width=100, max_height=12))
     lines = tuple(strip_control_sequences(line.text) for line in rendered.lines)
-    assert "Full transcript + live window" in lines
+    assert lines[0] == "Full transcript + live window · raw"
     assert any("streaming draft" in line for line in lines)
 
 

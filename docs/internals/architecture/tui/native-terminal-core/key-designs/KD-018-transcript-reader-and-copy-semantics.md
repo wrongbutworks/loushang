@@ -8,10 +8,12 @@ Implemented:
 - `TranscriptReaderSurface`.
 - Native TUI transcript reader entry and modal input routing.
 - Playback coverage for `transcript-reader-modal`.
+- Full-session, active-window, and full-session-plus-live-window transcript
+  sources.
+- Detail/raw reader modes, reader mode title indicators, and reader search.
 
 Still future/deferred:
 
-- full session transcript loading beyond the active window
 - reader-local export convenience
 - screen-buffer selection/copy
 - code-block picker
@@ -161,13 +163,31 @@ class TranscriptSource(Protocol):
 excludes tool-only turns, empty assistant messages, and unavailable responses.
 The `/copy [N]` caller should not apply a second, divergent filter.
 
-The first implementation may provide `ActiveWindowTranscriptSource`, backed by
-`NativeCodingTuiApp.state.records` and
-`NativeCodingTuiApp.state.evicted_prefix_record_count`.
+`ActiveWindowTranscriptSource` is backed by the bounded native TUI active
+window. It includes `NativeCodingTuiState.records` plus the current
+`assistant_draft` when streaming is active. It sets `complete=False` because the
+active window may have evicted earlier records.
 
-Future implementations may provide `SessionTranscriptSource`, backed by the
-session JSONL/session manager. That source can set `complete=True` when it can
-prove that all persisted transcript records are available.
+`SessionTranscriptSource` is backed by persisted/session materialized history.
+When used alone, it sets `complete=True` because it is presenting the full
+available session projection.
+
+`SessionTranscriptSource(..., active_window_state=...)` presents full session
+history plus active UI-only suffix records. This is the normal interactive TUI
+reader source. It keeps session history as the base, appends active-window
+records not already covered by the session projection, and includes the current
+assistant draft. When any live suffix is appended, it sets `complete=False` and
+labels the snapshot `Full transcript + live window`.
+
+Boundary matrix:
+
+| Source shape | Includes | `complete` | Label |
+| --- | --- | --- | --- |
+| Active window only | bounded UI records + current assistant draft | `False` | `Transcript window` |
+| Session only | full materialized session projection | `True` | `Full transcript` |
+| Session + running tool | session projection + active UI-only tool record | `False` | `Full transcript + live window` |
+| Session + assistant draft | session projection + current streaming draft | `False` | `Full transcript + live window` |
+| Fallback active reader + draft | bounded UI records + draft, no session factory | `False` | `Transcript window` |
 
 The reader holds a reference to `TranscriptSource`, not only a one-time
 `TranscriptSnapshot`. The first implementation may freeze the first snapshot for
