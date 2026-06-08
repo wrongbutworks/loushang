@@ -89,11 +89,13 @@ Composer selection 使用 atom 索引。普通文本会拆成类 grapheme 的文
 | 删除词 | `ctrl+w`, `alt+backspace`, `alt+d`, `alt+delete` |
 | kill 到行首/行尾 | `ctrl+u`, `ctrl+k` |
 | Yank / yank-pop | `ctrl+y`, `alt+y` |
-| Undo | `ctrl+-` |
+| Undo | `ctrl+-`, `ctrl+_` |
 | Redo | `ctrl+shift+z` |
 | 换行/提交 | `shift+enter`, `alt+enter`, `ctrl+j`, `enter` |
 
-默认 redo 使用 `ctrl+shift+z`，因为 `ctrl+y` 已保留给 yank。
+部分终端会把 `ctrl+-` 上报为 `ctrl+_`，两者都会触发 undo。默认 redo
+使用 `ctrl+shift+z`，因为 `ctrl+y` 已保留给 yank，而 `ctrl+shift+-`
+在部分终端里无法和 undo 稳定区分。
 
 ## Selection-Aware Edit
 

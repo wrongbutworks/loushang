@@ -101,11 +101,13 @@ editing.
 | Delete word | `ctrl+w`, `alt+backspace`, `alt+d`, `alt+delete` |
 | Kill to line start / end | `ctrl+u`, `ctrl+k` |
 | Yank / yank-pop | `ctrl+y`, `alt+y` |
-| Undo | `ctrl+-` |
+| Undo | `ctrl+-`, `ctrl+_` |
 | Redo | `ctrl+shift+z` |
 | New line / submit | `shift+enter`, `alt+enter`, `ctrl+j`, `enter` |
 
-Redo uses `ctrl+shift+z` by default because `ctrl+y` is reserved for yank.
+Some terminals report `ctrl+-` as `ctrl+_`; both are treated as undo. Redo
+uses `ctrl+shift+z` by default because `ctrl+y` is reserved for yank and
+`ctrl+shift+-` is not distinguishable from undo in every terminal.
 
 ## Selection-Aware Edits
 
