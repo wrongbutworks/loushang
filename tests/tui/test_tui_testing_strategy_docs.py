@@ -35,6 +35,23 @@ def test_testing_strategy_documents_product_composed_playback() -> None:
     assert "screen_cursor" in playback
 
 
+def test_testing_strategy_documents_streaming_control_and_live_smoke() -> None:
+    strategy = Path(
+        "docs/internals/architecture/tui/native-terminal-core/testing-strategy.md"
+    ).read_text(encoding="utf-8")
+    playback = Path("docs/internals/testing/native-tui-playback.md").read_text(
+        encoding="utf-8"
+    )
+
+    for text in (strategy, playback):
+        assert "product-streaming-control-flow" in text
+        assert "last frames" in text
+
+    assert "Live Terminal Smoke Checklist" in strategy
+    assert "IME candidate window" in strategy
+    assert "Kitty, iTerm2, WezTerm, Ghostty, VS Code terminal" in strategy
+
+
 def test_theme_key_design_lists_editor_selection_token() -> None:
     text = Path(
         "docs/internals/architecture/tui/native-terminal-core/key-designs/KD-009-theme-resolution.md"
@@ -80,3 +97,17 @@ def test_public_tui_reference_documents_editing_foundation() -> None:
 
     assert "tui-editing.md" in english_index
     assert "tui-editing.md" in chinese_index
+
+
+def test_public_tui_reference_documents_runner_and_playback_examples() -> None:
+    english_runner = Path("docs/en/reference/tui-runner.md").read_text(
+        encoding="utf-8"
+    )
+    chinese_runner = Path("docs/zh-CN/reference/tui-runner.md").read_text(
+        encoding="utf-8"
+    )
+
+    for text in (english_runner, chinese_runner):
+        assert "examples/tui/40_runner_basic.py" in text
+        assert "examples/tui/42_playback_smoke.py" in text
+        assert "PlaybackHarness" in text

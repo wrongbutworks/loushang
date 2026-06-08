@@ -79,4 +79,10 @@ During `run()`, `TuiRunner` temporarily owns `tui.terminal`, `tui._runtime`, `tu
 
 Do not run the same `TuiRunner` concurrently. Reentrant `run()` calls raise `RuntimeError`.
 
-See [examples/tui/40_runner_basic.py](../../../examples/tui/40_runner_basic.py) for a small interactive example.
+## Examples
+
+- [examples/tui/40_runner_basic.py](../../../examples/tui/40_runner_basic.py):
+  small interactive `TuiRunner` app with focused input handling.
+- [examples/tui/42_playback_smoke.py](../../../examples/tui/42_playback_smoke.py):
+  product-neutral `PlaybackHarness` smoke test that writes JSONL and screen
+  artifacts for review.

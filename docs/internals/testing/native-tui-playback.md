@@ -13,6 +13,8 @@ Good candidates include:
 - long transcript resume behavior
 - product-composed interactions that combine transcript, running state,
   pending queues, surfaces, completion, and composer selection
+- streaming product control flows that combine long transcripts, live assistant
+  draft, follow-up queueing, steering, resize, surfaces, and abort
 
 Prefer focused component tests for pure rendering functions. Use the playback harness when the test needs a `NativeCodingTuiApp`, `TuiRuntime`, and `FakeTerminalPort` together.
 
@@ -32,9 +34,18 @@ JSONL traces include `logical_cursor`, `viewport`, `hardware_cursor`, and
 cursor position, and keep `logical_cursor`/`viewport` for diagnosing render-loop
 line mapping.
 
+If a playback scenario fails after producing a `PlaybackResult`, attach that
+result to the `AssertionError` as `playback_result`. The scenario runner will
+write the normal error file plus the JSONL trace and final screen artifact, so
+reviewers can inspect the last frames without rerunning the scenario locally.
+
 Useful direct smoke commands:
 
 ```bash
 uv --cache-dir .uv-cache run --extra dev python -m loushang.coding.ui.playback_runner composer-selection-stress --artifacts /tmp/loushang-selection-playback --include-frames
 uv --cache-dir .uv-cache run --extra dev python -m loushang.coding.ui.playback_runner product-composed-interaction --artifacts /tmp/loushang-product-playback --include-frames
+uv --cache-dir .uv-cache run --extra dev python -m loushang.coding.ui.playback_runner product-streaming-control-flow --artifacts /tmp/loushang-product-streaming-playback --include-frames
 ```
+
+For a public, product-neutral playback example, see
+`examples/tui/42_playback_smoke.py`.
