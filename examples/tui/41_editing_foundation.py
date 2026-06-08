@@ -30,7 +30,7 @@ def _text_input_walkthrough() -> None:
     replaced = field.value
     field.handle_input(InputEvent(kind="key", key="ctrl+-"))
     undone = field.value
-    field.handle_input(InputEvent(kind="key", key="ctrl+shift+z"))
+    field.handle_input(InputEvent(kind="key", key="alt+r"))
 
     print("## TextInput")
     print(f"selection: {selected!r} -> {selected_text!r}")
@@ -53,7 +53,7 @@ def _composer_walkthrough() -> None:
     yanked = composer.value
     router.route(InputEvent(kind="key", key="ctrl+-"))
     undo = composer.value
-    router.route(InputEvent(kind="key", key="ctrl+shift+z"))
+    router.route(InputEvent(kind="key", key="alt+r"))
     redo = composer.value
     router.route(InputEvent(kind="text", text=" "))
     router.route(
