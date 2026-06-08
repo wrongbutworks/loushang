@@ -10,7 +10,9 @@ from loushang.ai.event_stream import AssistantMessageEventStream, RawAssembler
 from loushang.ai.model.compat_schema import (
     SEND_SESSION_ID_HEADER,
     SUPPORTS_LONG_CACHE_RETENTION,
+    UPSTREAM_MODEL_ID,
     compat_bool,
+    compat_str,
 )
 from loushang.ai.options import PairingMode
 from loushang.ai.output_budget import resolve_output_token_budget
@@ -182,8 +184,9 @@ class OpenAIResponsesProvider:
         )
         _debug("client", {"base_url": effective_base_url, "headers": default_headers})
 
+        upstream_model_id = compat_str(compat, UPSTREAM_MODEL_ID) or model.id
         params: dict[str, Any] = {
-            "model": model.id,
+            "model": upstream_model_id,
             "input": input_items,
             "stream": True,
             "store": False,

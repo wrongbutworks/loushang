@@ -17,6 +17,7 @@ from loushang.ai.model.registry import (
 )
 from loushang.ai.options import (
     AnthropicOptions,
+    AzureOpenAIResponsesOptions,
     CacheRetention,
     ModelCallOptions,
     OpenAICodexResponsesOptions,
@@ -130,6 +131,7 @@ __all__ = [
     "StreamOptions",
     "SimpleStreamOptions",
     "AnthropicOptions",
+    "AzureOpenAIResponsesOptions",
     "OpenAICompletionsOptions",
     "OpenAICodexResponsesOptions",
     "OpenAIResponsesOptions",

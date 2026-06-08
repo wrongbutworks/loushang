@@ -76,12 +76,47 @@ def test_builtin_catalog_includes_issue_only_official_providers() -> None:
     assert "STEPFUN_API_KEY" in stepfun.auth.api_key_envs
 
 
-def test_builtin_catalog_skips_model_ids_with_colons() -> None:
+def test_builtin_catalog_normalizes_model_ids_with_colons() -> None:
     registry = load_builtin_model_registry()
+
+    model = registry.get_model(
+        "openrouter", "openai-completions", "openai/gpt-oss-120b_free"
+    )
 
     assert registry.find_model(
         "openrouter", "openai-completions", "openai/gpt-oss-120b:free"
     ) is None
+    assert model.compat.get("upstreamModelId") == "openai/gpt-oss-120b:free"
+
+
+def test_builtin_catalog_includes_framework_gap_providers() -> None:
+    registry = load_builtin_model_registry()
+
     assert registry.get_model(
-        "openrouter", "openai-completions", "openai/gpt-5.1"
-    ) is not None
+        "azure-openai-responses", "azure-openai-responses", "gpt-4o-mini"
+    ).api == "azure-openai-responses"
+    assert registry.get_model(
+        "cloudflare-workers-ai",
+        "openai-completions",
+        "@cf/openai/gpt-oss-120b",
+    ).base_url == "https://api.cloudflare.com/client/v4/accounts/{CLOUDFLARE_ACCOUNT_ID}/ai/v1"
+    assert registry.get_model(
+        "mistral", "openai-completions", "mistral-large-latest"
+    ).api == "openai-completions"
+    assert registry.get_model(
+        "google", "openai-completions", "gemini-2.5-flash"
+    ).base_url == "https://generativelanguage.googleapis.com/v1beta/openai"
+    vertex = registry.get_model(
+        "google-vertex", "openai-completions", "gemini-2.5-flash"
+    )
+    assert vertex.compat.get("upstreamModelId") == "google/gemini-2.5-flash"
+    bedrock = registry.get_model(
+        "amazon-bedrock",
+        "bedrock-converse-stream",
+        "anthropic.claude-sonnet-4-5-20250929-v1_0",
+    )
+    assert bedrock.api == "bedrock-converse-stream"
+    assert (
+        bedrock.compat.get("upstreamModelId")
+        == "anthropic.claude-sonnet-4-5-20250929-v1:0"
+    )

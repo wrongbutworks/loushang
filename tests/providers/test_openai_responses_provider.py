@@ -66,6 +66,33 @@ def test_openai_responses_payload_maps_formal_context_and_tools(
     ]
 
 
+def test_openai_responses_uses_upstream_model_id(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _fake_openai_module(monkeypatch)
+    _patch_resolved_request(
+        monkeypatch,
+        base_url="https://api.openai.test/v1",
+        compat={"upstreamModelId": "openai/gpt-oss-120b:free"},
+    )
+    provider = OpenAIResponsesProvider()
+
+    asyncio.run(
+        _collect_parts(
+            provider._stream_raw_parts(
+                _Model(id="openai/gpt-oss-120b_free"),
+                Context(
+                    system_prompt=None,
+                    messages=[UserMessage(role="user", content="hello", timestamp=0.0)],
+                ),
+                OpenAIResponsesOptions(api_key="test-key"),
+            )
+        )
+    )
+
+    assert _FakeAsyncOpenAI.last_create_kwargs["model"] == "openai/gpt-oss-120b:free"
+
+
 def test_openai_responses_caps_model_max_tokens_default(
 	monkeypatch: pytest.MonkeyPatch,
 ) -> None:

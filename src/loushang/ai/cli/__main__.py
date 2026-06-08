@@ -10,6 +10,7 @@ from typing import Any
 
 from loushang.ai import (
     AnthropicOptions,
+    AzureOpenAIResponsesOptions,
     ModelCallOptions,
     OpenAICodexResponsesOptions,
     OpenAICompletionsOptions,
@@ -38,6 +39,7 @@ _OPTION_CLASS_BY_API = {
     "openai-completions": OpenAICompletionsOptions,
     "openai-responses": OpenAIResponsesOptions,
     "openai-codex-responses": OpenAICodexResponsesOptions,
+    "azure-openai-responses": AzureOpenAIResponsesOptions,
 }
 
 _BACK = object()

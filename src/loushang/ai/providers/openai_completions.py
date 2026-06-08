@@ -23,6 +23,7 @@ from loushang.ai.model.compat_schema import (
     SUPPORTS_STRICT_MODE,
     SUPPORTS_USAGE_IN_STREAMING,
     THINKING_FORMAT,
+    UPSTREAM_MODEL_ID,
     VERCEL_GATEWAY_ROUTING,
     ZAI_TOOL_STREAM,
     compat_bool,
@@ -186,8 +187,9 @@ class OpenAICompletionsProvider:
             _apply_anthropic_cache_control(messages_param, tools_param, cache_control)
 
         max_tokens = resolve_output_token_budget(model, resolved, options).value
+        upstream_model_id = compat_str(compat, UPSTREAM_MODEL_ID) or model.id
         params: dict[str, Any] = {
-            "model": model.id,
+            "model": upstream_model_id,
             "messages": messages_param,
             "stream": True,
         }
