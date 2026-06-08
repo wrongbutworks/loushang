@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from collections.abc import Callable
+
 from loushang.coding.ui.perf_probe import build_synthetic_long_transcript_records
 from loushang.coding.ui.playback import (
     NativeTuiInputPlaybackResult,
@@ -19,6 +21,14 @@ PRODUCT_COMPOSED_FRAME_BUDGET = PlaybackFrameBudget(
     max_operations=64,
     max_serialized_output_bytes=3_000,
     max_changed_visible_lines=20,
+    require_synchronized=True,
+)
+
+PRODUCT_STREAMING_CONTROL_FRAME_BUDGET = PlaybackFrameBudget(
+    disallowed_operation_classes=("baseline_repaint", "recovery_repaint"),
+    max_operations=1_500,
+    max_serialized_output_bytes=90_000,
+    max_changed_visible_lines=18,
     require_synchronized=True,
 )
 
@@ -81,7 +91,92 @@ def _run_product_composed_interaction() -> NativeTuiInputPlaybackResult:
     result.assert_last_cursor_on_visible_line("› /model gpx", column=12)
     result.assert_visible_contains("queued=1 steer=0")
     result.assert_no_clear_screen()
-    PRODUCT_COMPOSED_FRAME_BUDGET.assert_result(result, skip_first=True)
+    _assert_with_review_artifacts(
+        result,
+        lambda: PRODUCT_COMPOSED_FRAME_BUDGET.assert_result(result, skip_first=True),
+    )
+    return result
+
+
+def _run_product_streaming_control_flow() -> NativeTuiInputPlaybackResult:
+    scenario = (
+        NativeTuiInputScenario(width=104, height=20)
+        .with_records(
+            build_synthetic_long_transcript_records(
+                turns=36,
+                tail_tool_output_lines=180,
+            )
+        )
+        .with_running_prompt("investigate live product controls")
+    )
+    scenario.app.begin_assistant()
+    scenario.app.append_assistant_chunk("streaming answer chunk one")
+
+    scenario.playback.play(
+        (
+            PlaybackEvent("render"),
+            PlaybackEvent.input("follow after current run"),
+            PlaybackEvent.input("\x1b\r"),
+        )
+    )
+    assert scenario.app.state.pending_followups == ["follow after current run"]
+    _assert_visible_contains(scenario, "streaming answer chunk one")
+    _assert_visible_contains(scenario, "Queued follow-up inputs")
+
+    scenario.app.append_assistant_chunk(" and chunk two")
+    scenario.playback.play(
+        (
+            PlaybackEvent("render"),
+            PlaybackEvent.resize(columns=72, rows=12),
+            PlaybackEvent.input("steer before next tool"),
+            PlaybackEvent.input("\r"),
+        )
+    )
+    assert scenario.app.state.pending_steers == ["steer before next tool"]
+    _assert_visible_contains(scenario, "Messages to be submitted after next tool call")
+    _assert_visible_contains(scenario, "steer before next tool")
+
+    scenario.app.active_surface = SettingsSurface(
+        (
+            SettingItem(id="memory", label="Memory", current_value="on"),
+            SettingItem(id="model", label="Model", current_value="kimi"),
+            SettingItem(id="theme", label="Theme", current_value="system"),
+        ),
+        enable_search=True,
+    )
+    scenario.playback.play(
+        (
+            PlaybackEvent("render"),
+            PlaybackEvent.input("mem"),
+        )
+    )
+    _assert_visible_contains(scenario, "Search: mem")
+    _assert_visible_contains(scenario, "Memory")
+
+    scenario.app.active_surface = None
+    scenario.playback.play(
+        (
+            PlaybackEvent("render"),
+            PlaybackEvent.input("\x1b"),
+        )
+    )
+
+    result = _result_from_scenario(scenario)
+    result.assert_abort_requested()
+    result.assert_pending_steers("steer before next tool")
+    assert result.app.state.pending_followups == ["follow after current run"]
+    draft = result.app.state.assistant_draft
+    assert draft is not None
+    assert draft.text == "streaming answer chunk one and chunk two"
+    result.assert_visible_contains("queued=1 steer=1")
+    result.assert_no_clear_scrollback()
+    _assert_with_review_artifacts(
+        result,
+        lambda: PRODUCT_STREAMING_CONTROL_FRAME_BUDGET.assert_result(
+            result,
+            skip_first=True,
+        ),
+    )
     return result
 
 
@@ -105,6 +200,17 @@ def _assert_visible_contains(scenario: NativeTuiInputScenario, expected: str) ->
     assert expected in visible
 
 
+def _assert_with_review_artifacts(
+    result: NativeTuiInputPlaybackResult,
+    assertion: Callable[[], None],
+) -> None:
+    try:
+        assertion()
+    except AssertionError as error:
+        error.playback_result = result
+        raise
+
+
 PRODUCT_SCENARIOS = (
     NativePlaybackScenarioSpec(
         name="product-composed-interaction",
@@ -117,6 +223,19 @@ PRODUCT_SCENARIOS = (
             "surface",
             "completion",
             "selection",
+        ),
+    ),
+    NativePlaybackScenarioSpec(
+        name="product-streaming-control-flow",
+        description="Exercise long streaming transcript controls with follow-up, steer, settings surface, resize, and abort.",
+        run=_run_product_streaming_control_flow,
+        tags=(
+            "product",
+            "transcript",
+            "streaming",
+            "lifecycle",
+            "surface",
+            "resize",
         ),
     ),
 )

@@ -79,4 +79,10 @@ factory 会收到当前 `stdin` 和 `stdout`，并且必须返回一个 context 
 
 不要并发运行同一个 `TuiRunner`。重入调用 `run()` 会抛出 `RuntimeError`。
 
-小型交互示例见 [examples/tui/40_runner_basic.py](../../../examples/tui/40_runner_basic.py)。
+## 示例
+
+- [examples/tui/40_runner_basic.py](../../../examples/tui/40_runner_basic.py)：
+  小型交互式 `TuiRunner` 应用，展示 focus 和输入处理。
+- [examples/tui/42_playback_smoke.py](../../../examples/tui/42_playback_smoke.py)：
+  与产品无关的 `PlaybackHarness` smoke 示例，会写出 JSONL 和 screen
+  artifact，便于 review。

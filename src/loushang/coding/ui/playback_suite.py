@@ -78,7 +78,12 @@ def run_playback_scenarios(
                 )
             )
         except AssertionError as error:
-            artifacts = _write_error_artifact(scenario.name, error, artifacts_dir=artifacts_dir)
+            artifacts = _write_error_artifacts(
+                scenario.name,
+                error,
+                artifacts_dir=artifacts_dir,
+                include_frames=include_frames,
+            )
             results.append(
                 NativePlaybackScenarioResult(
                     name=scenario.name,
@@ -114,11 +119,12 @@ def _write_artifacts(
     return tuple(Path(getattr(artifacts, field.name)) for field in fields(artifacts))
 
 
-def _write_error_artifact(
+def _write_error_artifacts(
     name: str,
     error: AssertionError,
     *,
     artifacts_dir: str | Path | None,
+    include_frames: bool,
 ) -> tuple[Path, ...]:
     if artifacts_dir is None:
         return ()
@@ -126,7 +132,31 @@ def _write_error_artifact(
     output_dir.mkdir(parents=True, exist_ok=True)
     path = output_dir / f"{name}-error.txt"
     path.write_text(f"{error}\n", encoding="utf-8")
-    return (path,)
+    playback_artifacts = _write_failure_playback_artifacts(
+        name,
+        error,
+        artifacts_dir=artifacts_dir,
+        include_frames=include_frames,
+    )
+    return (path, *playback_artifacts)
+
+
+def _write_failure_playback_artifacts(
+    name: str,
+    error: AssertionError,
+    *,
+    artifacts_dir: str | Path,
+    include_frames: bool,
+) -> tuple[Path, ...]:
+    result = getattr(error, "playback_result", None)
+    if result is None:
+        return ()
+    return _write_artifacts(
+        name,
+        result,
+        artifacts_dir=artifacts_dir,
+        include_frames=include_frames,
+    )
 
 
 def _elapsed_ms(started: float) -> float:

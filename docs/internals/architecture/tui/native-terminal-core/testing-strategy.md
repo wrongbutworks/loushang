@@ -85,11 +85,16 @@ or cross-feature input routing:
 
 ```bash
 uv --cache-dir .uv-cache run --extra dev python -m loushang.coding.ui.playback_runner product-composed-interaction --artifacts /tmp/loushang-product-playback --include-frames
+uv --cache-dir .uv-cache run --extra dev python -m loushang.coding.ui.playback_runner product-streaming-control-flow --artifacts /tmp/loushang-product-streaming-playback --include-frames
 ```
 
-The trace should include `product-composed-interaction` as a passing scenario.
-This scenario protects cross-feature regressions that are easy to miss when
-composer, surface, lifecycle, and transcript tests are run only in isolation.
+The trace should include `product-composed-interaction` and
+`product-streaming-control-flow` as passing scenarios. These scenarios protect
+cross-feature regressions that are easy to miss when composer, surface,
+lifecycle, resize, streaming transcript, and pending queue tests are run only in
+isolation. When a scenario fails, inspect the JSONL trace and screen artifact;
+review-oriented failures should preserve enough last frames to explain the
+visible state at the failure point.
 
 ### 4. Boundary Tests
 
@@ -103,7 +108,7 @@ Examples:
 - extensions receive normalized input events rather than raw terminal bytes
 - v1 prompt_toolkit modules are not on the new public API path
 
-## Manual Smoke Tests
+## Live Terminal Smoke Checklist
 
 Manual testing should focus on terminal behavior that is hard to assert
 visually:
@@ -114,6 +119,12 @@ visually:
 - IME candidate window placement
 - terminal restoration after Ctrl-C, Esc abort, exception, and normal exit
 - narrow terminal status truncation
+- modifier-key variants for Shift+Enter, Alt+Enter, Ctrl+Shift+Left/Right, and
+  terminal-specific option/meta behavior
+- keyboard-protocol negotiation in terminals that support enhanced key reporting
+- image fallback and image protocol behavior when Kitty, iTerm2, WezTerm,
+  Ghostty, VS Code terminal, tmux, or SSH changes runtime capabilities. The
+  baseline manual matrix should include Kitty, iTerm2, WezTerm, Ghostty, VS Code terminal.
 - composer selection in a real terminal:
   - type `abc`, press `Shift+Left`, verify the final `c` is visibly selected,
     then type `x` and verify the draft becomes `abx`

@@ -19,6 +19,15 @@ from loushang.coding.ui.playback_scenarios.surface import SURFACE_SCENARIOS
 from loushang.coding.ui.playback_scenarios.terminal import TERMINAL_SCENARIOS
 from loushang.coding.ui.playback_scenarios.transcript import TRANSCRIPT_SCENARIOS
 from loushang.coding.ui.playback_suite import NativePlaybackSuite as SuiteFromModule
+from loushang.tui import (
+    FakeTerminalPort,
+    PlaybackEvent,
+    PlaybackHarness,
+    PlaybackResult,
+    RenderDiagnostics,
+    TerminalOperation,
+    TerminalSize,
+)
 
 
 def test_native_tui_playback_runner_reexports_suite_types_from_playback_suite_module() -> (
@@ -108,6 +117,7 @@ def test_native_tui_playback_lifecycle_scenarios_live_in_lifecycle_module() -> N
 def test_native_tui_playback_product_scenarios_live_in_product_module() -> None:
     assert [scenario.name for scenario in PRODUCT_SCENARIOS] == [
         "product-composed-interaction",
+        "product-streaming-control-flow",
     ]
 
 
@@ -187,6 +197,7 @@ def test_native_tui_playback_runner_lists_default_scenarios(capsys) -> None:
     assert "native-loop-terminal-session-cleanup" in captured.out
     assert "native-loop-ctrl-c-abort-running" in captured.out
     assert "product-composed-interaction" in captured.out
+    assert "product-streaming-control-flow" in captured.out
 
 
 def test_native_tui_playback_runner_runs_named_scenario(capsys) -> None:
@@ -216,6 +227,7 @@ def test_native_tui_playback_runner_runs_tagged_product_scenarios(capsys) -> Non
     captured = capsys.readouterr()
     assert exit_code == 0
     assert "PASS product-composed-interaction" in captured.out
+    assert "PASS product-streaming-control-flow" in captured.out
     assert "PASS completion-tab" not in captured.out
 
 
@@ -330,6 +342,16 @@ def test_native_tui_playback_runner_runs_product_composed_interaction_scenario(
     captured = capsys.readouterr()
     assert exit_code == 0
     assert "PASS product-composed-interaction" in captured.out
+
+
+def test_native_tui_playback_runner_runs_product_streaming_control_flow_scenario(
+    capsys,
+) -> None:
+    exit_code = run_playback_cli(["product-streaming-control-flow"])
+
+    captured = capsys.readouterr()
+    assert exit_code == 0
+    assert "PASS product-streaming-control-flow" in captured.out
 
 
 def test_native_tui_playback_runner_runs_lifecycle_scenario(capsys) -> None:
@@ -568,6 +590,55 @@ def test_native_tui_playback_runner_reports_failed_scenario(tmp_path, capsys) ->
     ) == "forced failure\n"
 
 
+def test_native_tui_playback_runner_writes_review_artifacts_for_playback_failure(
+    tmp_path,
+) -> None:
+    def failing_run() -> None:
+        result = _single_frame_result("reviewable failure frame")
+        error = AssertionError("forced review failure")
+        error.playback_result = result
+        raise error
+
+    suite = NativePlaybackSuite(
+        (
+            NativePlaybackScenarioSpec(
+                name="forced-review-failure",
+                description="Fails after producing playback frames.",
+                run=failing_run,
+            ),
+        )
+    )
+
+    results = run_playback_scenarios(
+        ["forced-review-failure"],
+        suite=suite,
+        artifacts_dir=tmp_path,
+        include_frames=True,
+    )
+
+    assert len(results) == 1
+    assert results[0].ok is False
+    assert results[0].error == "forced review failure"
+    assert [path.name for path in results[0].artifacts] == [
+        "forced-review-failure-error.txt",
+        "forced-review-failure.jsonl",
+        "forced-review-failure-screen.txt",
+    ]
+    assert "forced review failure" in (
+        tmp_path / "forced-review-failure-error.txt"
+    ).read_text(encoding="utf-8")
+    assert "reviewable failure frame" in (
+        tmp_path / "forced-review-failure-screen.txt"
+    ).read_text(encoding="utf-8")
+    row = json.loads(
+        (tmp_path / "forced-review-failure.jsonl")
+        .read_text(encoding="utf-8")
+        .splitlines()[0]
+    )
+    assert row["visible_lines"][0] == "reviewable failure frame"
+    assert row["serialized_output"] == "reviewable failure frame"
+
+
 def test_native_tui_playback_runner_writes_failed_json_summary(
     tmp_path, capsys
 ) -> None:
@@ -653,3 +724,22 @@ def test_native_tui_playback_runner_main_can_emit_json(monkeypatch, capsys) -> N
     assert payload["ok"] is True
     assert payload["results"][0]["name"] == "completion-tab"
     assert "PASS completion-tab" not in captured.out
+
+
+def _single_frame_result(text: str) -> PlaybackResult:
+    def render(
+        _event: PlaybackEvent,
+        _size: TerminalSize,
+        _previous: RenderDiagnostics | None,
+    ) -> RenderDiagnostics:
+        return RenderDiagnostics(
+            current_logical_lines=(text,),
+            changed_line_range=(0, 0),
+            logical_cursor_row=0,
+            hardware_cursor_row=0,
+            operations=(TerminalOperation.write(text),),
+        )
+
+    port = FakeTerminalPort(size=TerminalSize(columns=80, rows=4))
+    harness = PlaybackHarness(render=render, port=port)
+    return PlaybackResult(steps=harness.play([PlaybackEvent("render")]), port=port)
