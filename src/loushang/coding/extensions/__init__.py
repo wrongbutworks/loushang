@@ -1,5 +1,21 @@
 from loushang.coding.extensions.api import ExtensionAPI
+from loushang.coding.extensions.contributions import (
+    ContributionDescriptor,
+    ContributionRegistry,
+)
 from loushang.coding.extensions.loader import ExtensionLoader
+from loushang.coding.extensions.manifest import (
+    ExtensionDependencyDeclaration,
+    ExtensionHookDeclaration,
+    ExtensionManifest,
+    ExtensionManifestParseResult,
+    ExtensionPermissionDeclaration,
+    parse_extension_manifest,
+)
+from loushang.coding.extensions.policy import (
+    ExtensionPolicyDecision,
+    policy_from_manifest,
+)
 from loushang.coding.extensions.runner import ExtensionRunner
 from loushang.coding.extensions.types import (
     VALID_EXTENSION_EVENTS,
@@ -39,11 +55,19 @@ from loushang.coding.extensions.types import (
 __all__ = [
     "BeforeAgentStartResult",
     "ContextResult",
+    "ContributionDescriptor",
+    "ContributionRegistry",
     "ExtensionAPI",
     "ExtensionContext",
     "ExtensionCommandContext",
+    "ExtensionDependencyDeclaration",
+    "ExtensionHookDeclaration",
     "ReplacedSessionContext",
     "ExtensionLoader",
+    "ExtensionManifest",
+    "ExtensionManifestParseResult",
+    "ExtensionPermissionDeclaration",
+    "ExtensionPolicyDecision",
     "ExtensionResourceContribution",
     "ExtensionRuntimeBindings",
     "InputEvent",
@@ -72,4 +96,6 @@ __all__ = [
     "ToolCallDecision",
     "ToolResultDecision",
     "VALID_EXTENSION_EVENTS",
+    "parse_extension_manifest",
+    "policy_from_manifest",
 ]

@@ -10,6 +10,9 @@ from loushang.agent import AgentMessage, ThinkingLevel
 from loushang.coding.commands import SessionCommandDescriptor
 from loushang.coding.compaction import BranchSummaryResult, CompactionResult
 from loushang.coding.exec import ExecResult, ExecUpdateCallback
+from loushang.coding.extensions.contributions import ContributionDescriptor
+from loushang.coding.extensions.manifest import ExtensionManifest
+from loushang.coding.extensions.policy import ExtensionPolicyDecision
 from loushang.coding.loader import (
     ExtensionDescriptor,
     PromptFragmentDescriptor,
@@ -770,6 +773,9 @@ class LoadedExtension:
     diagnostics: list[ResourceDiagnostic] = field(default_factory=list)
     metadata: dict[str, object] = field(default_factory=dict)
     api: object | None = None
+    manifest: ExtensionManifest | None = None
+    policy: ExtensionPolicyDecision | None = None
+    contributions: list[ContributionDescriptor] = field(default_factory=list)
 
 
 @dataclass(frozen=True)
