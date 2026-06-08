@@ -38,6 +38,9 @@ assert field.value == "hello loushang"
 field.handle_input(InputEvent(kind="key", key="ctrl+-"))
 assert field.value == "hello world"
 
+field.handle_input(InputEvent(kind="key", key="ctrl+shift+z"))
+assert field.value == "hello loushang"
+
 result = field.render(RenderConstraints(width=40, max_height=1))
 ```
 
@@ -87,9 +90,10 @@ Composer selection 使用 atom 索引。普通文本会拆成类 grapheme 的文
 | kill 到行首/行尾 | `ctrl+u`, `ctrl+k` |
 | Yank / yank-pop | `ctrl+y`, `alt+y` |
 | Undo | `ctrl+-` |
+| Redo | `ctrl+shift+z` |
 | 换行/提交 | `shift+enter`, `alt+enter`, `ctrl+j`, `enter` |
 
-编辑 buffer 里已有 redo 存储，但当前还没有为终端使用文档化默认 redo 快捷键。
+默认 redo 使用 `ctrl+shift+z`，因为 `ctrl+y` 已保留给 yank。
 
 ## Selection-Aware Edit
 

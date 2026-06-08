@@ -36,6 +36,7 @@ DEFAULT_KEYBINDINGS: dict[KeybindingAction, tuple[KeyId, ...]] = {
     "tui.editor.yank": ("ctrl+y",),
     "tui.editor.yankPop": ("alt+y",),
     "tui.editor.undo": ("ctrl+-",),
+    "tui.editor.redo": ("ctrl+shift+z",),
     "tui.input.newLine": ("shift+enter", "alt+enter", "ctrl+j"),
     "tui.input.submit": ("enter",),
     "tui.input.tab": ("tab",),

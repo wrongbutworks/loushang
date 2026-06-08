@@ -68,7 +68,7 @@ def test_terminal_ux_alignment_documents_current_capability_snapshot() -> None:
     assert "2026-06-05" in text
     assert "Overall qualitative completion" in text
     assert "SelectionController" in text
-    assert "Redo storage exists" in text
+    assert "default redo keybinding policy through `ctrl+shift+z`" in text
 
 
 def test_composer_selection_key_design_records_implemented_status() -> None:
@@ -92,6 +92,7 @@ def test_public_tui_reference_documents_editing_foundation() -> None:
         assert "TextInput" in text
         assert "Composer" in text
         assert "SelectionController" in text
+        assert "ctrl+shift+z" in text
         assert "composer-selection-stress" in text
         assert "examples/tui/41_editing_foundation.py" in text
 

@@ -129,10 +129,11 @@ def test_input_reader_buffers_incomplete_escape_until_flush() -> None:
 def test_input_reader_normalizes_csi_u_and_modify_other_keys() -> None:
     reader = InputReader()
 
-    events = reader.feed("\x1b[97;5u\x1b[1;5D\x1b[27;3;127~\x1b[13;2u")
+    events = reader.feed("\x1b[97;5u\x1b[90;6u\x1b[1;5D\x1b[27;3;127~\x1b[13;2u")
 
     assert events == (
         InputEvent(kind="key", key="ctrl+a", raw="\x1b[97;5u"),
+        InputEvent(kind="key", key="ctrl+shift+z", raw="\x1b[90;6u"),
         InputEvent(kind="key", key="ctrl+left", raw="\x1b[1;5D"),
         InputEvent(kind="key", key="alt+backspace", raw="\x1b[27;3;127~"),
         InputEvent(kind="key", key="shift+enter", raw="\x1b[13;2u"),
@@ -266,6 +267,13 @@ def test_keybinding_manager_matches_transcript_reader_alias() -> None:
     assert manager.matches("ctrl+o", "tui.transcript.open")
 
 
+def test_keybinding_manager_matches_default_redo_key() -> None:
+    manager = KeybindingManager()
+
+    assert manager.keys_for("tui.editor.redo") == ("ctrl+shift+z",)
+    assert manager.matches("shift+ctrl+z", "tui.editor.redo")
+
+
 def test_input_router_alt_angle_moves_to_line_boundaries() -> None:
     composer = Composer(prompt="> ")
     composer.insert_text("alpha beta")
@@ -354,6 +362,20 @@ def test_input_router_routes_common_editor_actions_to_composer() -> None:
     router.route(InputEvent(kind="key", key="ctrl_y"))
 
     assert composer.value == "helo"
+
+
+def test_input_router_routes_default_redo_to_composer() -> None:
+    composer = Composer(prompt="> ")
+    router = InputRouter(composer=composer)
+
+    router.route(InputEvent(kind="text", text="abc"))
+    router.route(InputEvent(kind="key", key="ctrl+-"))
+
+    assert composer.value == ""
+
+    router.route(InputEvent(kind="key", key="ctrl+shift+z"))
+
+    assert composer.value == "abc"
 
 
 def test_input_router_alt_y_routes_yank_pop() -> None:

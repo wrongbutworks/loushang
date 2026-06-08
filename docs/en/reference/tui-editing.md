@@ -43,6 +43,9 @@ assert field.value == "hello loushang"
 field.handle_input(InputEvent(kind="key", key="ctrl+-"))
 assert field.value == "hello world"
 
+field.handle_input(InputEvent(kind="key", key="ctrl+shift+z"))
+assert field.value == "hello loushang"
+
 result = field.render(RenderConstraints(width=40, max_height=1))
 ```
 
@@ -99,10 +102,10 @@ editing.
 | Kill to line start / end | `ctrl+u`, `ctrl+k` |
 | Yank / yank-pop | `ctrl+y`, `alt+y` |
 | Undo | `ctrl+-` |
+| Redo | `ctrl+shift+z` |
 | New line / submit | `shift+enter`, `alt+enter`, `ctrl+j`, `enter` |
 
-Redo storage exists in the edit buffers, but no default redo key is currently
-documented for terminal use.
+Redo uses `ctrl+shift+z` by default because `ctrl+y` is reserved for yank.
 
 ## Selection-Aware Edits
 

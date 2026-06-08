@@ -139,6 +139,8 @@ class TextInput:
         manager = keybindings if isinstance(keybindings, KeybindingManager) else KeybindingManager(keybindings)
         if manager.matches(key, "tui.editor.undo"):
             return self.undo()
+        if manager.matches(key, "tui.editor.redo"):
+            return self.redo()
         if manager.matches(key, "tui.editor.yank"):
             return self.yank()
         if manager.matches(key, "tui.editor.yankPop"):

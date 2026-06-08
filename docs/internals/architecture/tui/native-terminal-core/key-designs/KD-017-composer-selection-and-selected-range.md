@@ -38,7 +38,8 @@ The following items remain outside the initial implementation:
 - mouse-driven composer selection
 - transcript or screen-buffer copy selection
 - restoring selection through undo/redo snapshots
-- changing the default redo keybinding policy
+- changing the default redo keybinding policy. This was handled later as a
+  separate follow-up with `ctrl+shift+z`.
 
 ## Reference Observations
 
