@@ -8,6 +8,18 @@ def _runtime_footer(cwd: str) -> str:
     return f"Current date: {date.today().isoformat()}\nCurrent working directory: {cwd}"
 
 
+def test_default_system_prompt_includes_exploration_progress_guidelines() -> None:
+    from loushang.coding.prompt import assemble_prompt
+
+    system_prompt = assemble_prompt().system_prompt
+
+    assert "首次探索工具调用前，必须先用一句话说明本轮要验证什么；不要直接开始扫描。" in system_prompt
+    assert "连续执行 3 次探索工具调用后，必须先汇总已确认信息，再决定是否继续。" in system_prompt
+    assert "避免无明确目标地批量列目录、搜索和读取文件；证据足够时停止探索并回答。" in system_prompt
+    assert "进度说明只在目标变化、关键证据、阶段切换或需用户决策时发送，保持简短。" in system_prompt
+    assert "多步骤任务阶段结束时说明结果、验证和下一步或阻塞。" in system_prompt
+
+
 def test_assemble_prompt_returns_prompt_assembly() -> None:
     from pathlib import Path
 
