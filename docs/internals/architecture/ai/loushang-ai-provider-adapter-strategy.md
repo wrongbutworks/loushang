@@ -309,6 +309,61 @@ provider adapter strategy 需要明确承接当前已冻结的 cancellation 方�
 
 ---
 
+## Current Provider Surface
+
+当前实现已经把 provider support 分为两层：
+
+1. catalog 层：`models.json` 记录 provider、endpoint、model、auth、capability、pricing、compat
+2. adapter 层：`ApiProvider` 按 `endpoint.api` 接管真实请求
+
+当前内置 adapter 覆盖：
+
+- `openai-completions`
+- `openai-responses`
+- `anthropic-messages`
+- `openai-codex-responses`
+- `azure-openai-responses`
+- `bedrock-converse-stream`
+
+其中：
+
+- Mistral 通过官方 Chat Completions 兼容面接入 `openai-completions`
+- Google Gemini API 通过 OpenAI-compatible endpoint 接入 `openai-completions`
+- Google Vertex 通过 OpenAI-compatible endpoint 接入 `openai-completions`
+- Cloudflare AI Gateway / Workers AI 通过 OpenAI-compatible 或 Anthropic passthrough 接入
+- Azure OpenAI Responses 使用 OpenAI SDK 的 Azure client，但只在 adapter 内部暴露
+- Amazon Bedrock 使用 `httpx-thin + SigV4 + Converse`，先覆盖基础文本调用
+
+### Model ID Normalization
+
+本地三元组必须保持可解析：
+
+`provider:endpoint:model`
+
+因此 catalog 不直接暴露包含 `:` 的 model ID。规则是：
+
+- 公开 `model.id` 将 `:` 替换为 `_`
+- 真实上游模型 ID 存入 `compat.upstreamModelId`
+- provider adapter 发请求时优先使用 `compat.upstreamModelId`
+
+这个规则同时适用于 OpenRouter 的 `:free` 模型和 Bedrock 的 `:0` 模型。
+
+### Remaining Limits
+
+当前 Bedrock adapter 是轻量实现：
+
+- 使用 Bedrock `Converse` 非流式 HTTP 调用
+- 输出被投影为统一 raw parts
+- 暂未完整支持 Bedrock streaming event stream
+- 暂未完整支持 Bedrock tool use、image payload、Claude thinking/cache/interleaved thinking
+
+当前 Vertex 认证是显式 token 模式：
+
+- 通过 `GOOGLE_VERTEX_ACCESS_TOKEN` 注入 bearer token
+- 尚未实现 ADC 或 service account 自动取 token
+
+---
+
 ## Recommendation
 
 建议冻结如下方向：
