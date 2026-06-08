@@ -268,6 +268,10 @@ class AgentSession:
                 clone_session=self._clone_from_builtin,
                 navigate_tree=self._navigate_tree_from_extension,
                 import_session=self._import_from_builtin,
+                get_active_tool_names=self.get_active_tool_names,
+                get_all_tools=lambda: list(self.get_all_tools()),
+                set_active_tools=self.set_active_tools,
+                get_default_active_tool_names=self._default_active_tool_names,
             ),
         )
         self._extension_event_sink = ExtensionEventSink(

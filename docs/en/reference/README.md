@@ -79,7 +79,7 @@ Built-in interactive commands include:
 
 ```text
 /settings /model /scoped-models /export /import /share /copy /name
-/session /terminal /changelog /hotkeys /fork /clone /tree
+/session /terminal /tools /changelog /hotkeys /fork /clone /tree
 /login /logout /new /compact /resume /reload /quit
 ```
 

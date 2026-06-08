@@ -128,8 +128,8 @@
 - 语义上对齐 `reference CLI` 的 `AgentSession`
 - 保留 session 作为业务中心与统一 orchestration center
 - session 拥有 active tool state，而不是让 registry 直接等同于当前正在使用的工具集
-- 默认 active tools 对齐 `reference CLI` 的核心 built-ins：`read`、`bash`、`edit`、`write`；
-  `ls`、`find`、`grep` 默认可见但不 active，custom/extension tools 默认 active；
+- 默认 active tools 包含核心编辑/执行工具与文件探索工具：`read`、`ls`、`find`、`grep`、`bash`、`edit`、`write`；
+  custom/extension tools 默认 active；
   `allowed_tool_names` 存在时默认 active set 为 allowlist 内所有可用工具
 - 将 compaction、policy、tools 等横切能力拆成协作者，而不是继续膨胀 session
 - 协作者的显式抽离不应削弱 `AgentSession` 作为 mode-neutral core facade 的主语义

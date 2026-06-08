@@ -40,6 +40,10 @@ class BuiltinCommandBackend:
     clone_session: Callable[[], object | Awaitable[object]] | None = None
     navigate_tree: Callable[[str, object | None], object | Awaitable[object]] | None = None
     import_session: Callable[[str, str | None], object | Awaitable[object]] | None = None
+    get_active_tool_names: Callable[[], list[str]] | None = None
+    get_all_tools: Callable[[], list[object]] | None = None
+    set_active_tools: Callable[[list[str]], object | Awaitable[object]] | None = None
+    get_default_active_tool_names: Callable[[], list[str]] | None = None
 
 
 def list_builtin_command_descriptors() -> list[SessionCommandDescriptor]:
@@ -79,6 +83,8 @@ async def execute_builtin_command_async(
             return _execute_copy(args, backend)
         case "changelog":
             return _execute_changelog(args, backend)
+        case "tools":
+            return await _execute_tools(args, backend)
         case "compact":
             return await _execute_compact(args, backend)
         case "reload":
@@ -189,6 +195,49 @@ def _execute_changelog(args: str, backend: BuiltinCommandBackend) -> CommandExec
     if backend.get_changelog is None:
         return _unsupported("changelog")
     return _ok("changelog", changelog=_to_plain_data(backend.get_changelog(args)))
+
+
+async def _execute_tools(args: str, backend: BuiltinCommandBackend) -> CommandExecutionResult:
+    if backend.get_active_tool_names is None or backend.get_all_tools is None:
+        return _unsupported("tools")
+    active_tools = list(backend.get_active_tool_names())
+    available_tools = _available_tool_entries(backend.get_all_tools(), active_tools)
+    available_names = [entry["name"] for entry in available_tools]
+    tokens = _split_args(args.strip()) if args.strip() else []
+    if not tokens:
+        return _tools_ok(active_tools, available_tools)
+
+    action = tokens[0]
+    if action == "reset":
+        if len(tokens) != 1:
+            return _error("tools", "Usage: /tools reset")
+        if backend.get_default_active_tool_names is None or backend.set_active_tools is None:
+            return _unsupported("tools")
+        next_tools = _filter_available_tools(backend.get_default_active_tool_names(), available_names)
+        await _maybe_await(backend.set_active_tools(next_tools))
+        return _tools_ok(next_tools, _available_tool_entries(backend.get_all_tools(), next_tools), action="reset")
+
+    if action not in {"on", "off", "only"}:
+        return _error("tools", "Usage: /tools [on|off|only <tool[,tool]...>|reset]")
+    if backend.set_active_tools is None:
+        return _unsupported("tools")
+    requested = _parse_tool_names(tokens[1:])
+    if not requested:
+        return _error("tools", f"Usage: /tools {action} <tool[,tool]...>")
+    unknown = [name for name in requested if name not in available_names]
+    if unknown:
+        return _error("tools", f"Unknown tool: {', '.join(unknown)}. Available tools: {', '.join(available_names)}")
+
+    if action == "on":
+        next_tools = [*active_tools, *(name for name in requested if name not in active_tools)]
+    elif action == "off":
+        remove = set(requested)
+        next_tools = [name for name in active_tools if name not in remove]
+    else:
+        next_tools = requested
+    next_tools = _filter_available_tools(next_tools, available_names)
+    await _maybe_await(backend.set_active_tools(next_tools))
+    return _tools_ok(next_tools, _available_tool_entries(backend.get_all_tools(), next_tools), action=action)
 
 
 async def _execute_compact(args: str, backend: BuiltinCommandBackend) -> CommandExecutionResult:
@@ -320,6 +369,17 @@ def _unsupported(command: str) -> CommandExecutionResult:
     )
 
 
+def _tools_ok(active_tools: list[str], available_tools: list[dict[str, object]], *, action: str | None = None) -> CommandExecutionResult:
+    fields: dict[str, object] = {
+        "active_tools": active_tools,
+        "available_tools": available_tools,
+        "message": f"Active tools: {', '.join(active_tools) if active_tools else '(none)'}",
+    }
+    if action is not None:
+        fields["action"] = action
+    return _ok("tools", **fields)
+
+
 async def _maybe_await(value: object | Awaitable[object]) -> object:
     if inspect.isawaitable(value):
         return await value
@@ -331,6 +391,46 @@ def _split_args(args: str) -> list[str]:
         return shlex.split(args)
     except ValueError:
         return args.split()
+
+
+def _parse_tool_names(tokens: list[str]) -> list[str]:
+    names: list[str] = []
+    for token in tokens:
+        for name in token.split(","):
+            cleaned = name.strip()
+            if cleaned and cleaned not in names:
+                names.append(cleaned)
+    return names
+
+
+def _available_tool_entries(tools: list[object], active_tools: list[str]) -> list[dict[str, object]]:
+    active_set = set(active_tools)
+    entries: list[dict[str, object]] = []
+    for tool in tools:
+        name = _tool_field(tool, "name")
+        if not name:
+            continue
+        entries.append(
+            {
+                "name": name,
+                "active": name in active_set,
+                "description": _tool_field(tool, "description"),
+            }
+        )
+    return entries
+
+
+def _tool_field(tool: object, field: str) -> str:
+    if isinstance(tool, Mapping):
+        value = tool.get(field)
+    else:
+        value = getattr(tool, field, None)
+    return value if isinstance(value, str) else ""
+
+
+def _filter_available_tools(tool_names: list[str], available_names: list[str]) -> list[str]:
+    available = set(available_names)
+    return [name for name in tool_names if name in available]
 
 
 def _parse_tree_options(tokens: list[str]) -> dict[str, object]:
