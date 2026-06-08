@@ -85,6 +85,7 @@ As of 2026-06-05, these gaps are no longer open in the native TUI core:
   interaction in Composer
 - TextInput migration to shared selection and editing primitives
 - frame-level playback for completion and composer-selection stress scenarios
+- default redo keybinding policy through `ctrl+shift+z`
 
 ## Remaining Gaps
 
@@ -94,8 +95,6 @@ As of 2026-06-05, these gaps are no longer open in the native TUI core:
 - Screen-buffer copy selection and mouse-driven transcript selection remain
   intentionally separate from composer text selection and are not implemented
   in the first keyboard-selection pass.
-- Redo storage exists in editing buffers, but the public/default redo keybinding
-  policy is still unresolved.
 - Live-terminal coverage should be broadened for modifier-key variants,
   keyboard-protocol negotiation, IME cursor behavior, and image protocols.
 - Public reference docs should add more small examples for `TuiRunner`,

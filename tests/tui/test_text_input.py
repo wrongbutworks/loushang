@@ -145,6 +145,25 @@ def test_text_input_handles_word_kill_yank_and_undo() -> None:
     assert field.value == "alpha "
 
 
+def test_text_input_routes_default_redo_key() -> None:
+    field = TextInput()
+
+    assert field.handle_input(InputEvent(kind="text", text="abc"))
+    assert field.handle_input(InputEvent(kind="key", key="ctrl+-"))
+    assert field.value == ""
+
+    assert field.handle_input(InputEvent(kind="key", key="ctrl+shift+z"))
+    assert field.value == "abc"
+
+
+def test_text_input_routes_terminal_underscore_undo_alias() -> None:
+    field = TextInput()
+
+    assert field.handle_input(InputEvent(kind="text", text="abc"))
+    assert field.handle_input(InputEvent(kind="key", key="ctrl+_"))
+    assert field.value == ""
+
+
 def test_text_input_handles_line_editing_keys() -> None:
     field = TextInput()
     field.handle_input(InputEvent(kind="text", text="alpha beta"))

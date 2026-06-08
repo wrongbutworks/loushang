@@ -689,6 +689,9 @@ def route_composer_editing_key(
     if keybindings.matches(key, "tui.editor.undo"):
         composer.undo()
         return True
+    if keybindings.matches(key, "tui.editor.redo"):
+        composer.redo()
+        return True
     return False
 
 

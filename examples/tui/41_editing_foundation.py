@@ -29,11 +29,14 @@ def _text_input_walkthrough() -> None:
     field.handle_input(InputEvent(kind="text", text="loushang"))
     replaced = field.value
     field.handle_input(InputEvent(kind="key", key="ctrl+-"))
+    undone = field.value
+    field.handle_input(InputEvent(kind="key", key="ctrl+shift+z"))
 
     print("## TextInput")
     print(f"selection: {selected!r} -> {selected_text!r}")
     print(f"replace:   {replaced!r}")
-    print(f"undo:      {field.value!r}")
+    print(f"undo:      {undone!r}")
+    print(f"redo:      {field.value!r}")
     _print_rendered(field.render(RenderConstraints(width=40, max_height=1)))
 
 
@@ -48,6 +51,10 @@ def _composer_walkthrough() -> None:
     kill_ring = composer.kill_ring
     router.route(InputEvent(kind="key", key="ctrl+y"))
     yanked = composer.value
+    router.route(InputEvent(kind="key", key="ctrl+-"))
+    undo = composer.value
+    router.route(InputEvent(kind="key", key="ctrl+shift+z"))
+    redo = composer.value
     router.route(InputEvent(kind="text", text=" "))
     router.route(
         InputEvent(
@@ -60,6 +67,8 @@ def _composer_walkthrough() -> None:
     print(f"kill:      {killed!r}")
     print(f"kill ring: {kill_ring!r}")
     print(f"yank:      {yanked!r}")
+    print(f"undo:      {undo!r}")
+    print(f"redo:      {redo!r}")
     print(f"paste:     {composer.value!r}")
     _print_rendered(composer.render(RenderConstraints(width=72, max_height=6)))
 
