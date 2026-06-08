@@ -17,7 +17,7 @@ from loushang.coding.tools import (
     tool_to_definition,
 )
 
-_DEFAULT_ACTIVE_TOOL_NAMES: tuple[str, ...] = ("read", "bash", "edit", "write")
+_DEFAULT_ACTIVE_TOOL_NAMES: tuple[str, ...] = ("read", "ls", "find", "grep", "bash", "edit", "write")
 _BUILTIN_TOOL_NAMES: frozenset[str] = frozenset(("bash", "read", "ls", "find", "grep", "write", "edit"))
 
 

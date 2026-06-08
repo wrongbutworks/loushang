@@ -1027,7 +1027,7 @@ def test_create_agent_session_synthesizes_definitions_from_legacy_tools(tmp_path
         tools=registry.list_enabled_tools(),
     )
 
-    assert session.get_active_tool_names() == ["read", "bash", "edit", "write"]
+    assert session.get_active_tool_names() == ["read", "ls", "find", "grep", "bash", "edit", "write"]
     assert [definition.name for definition in session.get_all_tools()] == [
         "bash",
         "read",
@@ -1075,7 +1075,7 @@ def test_create_agent_session_defaults_custom_tools_active_without_defaulting_al
         tool_registry=registry,
     )
 
-    assert session.get_active_tool_names() == ["read", "bash", "edit", "write", "custom_tool"]
+    assert session.get_active_tool_names() == ["read", "ls", "find", "grep", "bash", "edit", "write", "custom_tool"]
     assert [definition.name for definition in session.get_all_tools()] == [
         "bash",
         "read",
@@ -1087,7 +1087,7 @@ def test_create_agent_session_defaults_custom_tools_active_without_defaulting_al
         "custom_tool",
     ]
     assert "- custom_tool:" not in session.agent.system_prompt
-    assert "- grep:" not in session.agent.system_prompt
+    assert "- grep:" in session.agent.system_prompt
 
 
 def test_create_agent_session_marks_failing_builtin_tool_result_as_error(tmp_path) -> None:
