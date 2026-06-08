@@ -40,6 +40,24 @@ Authors and users need a unified mental model, and the runtime needs a single
 place to project extension contributions, conflicts, permissions, and
 diagnostics.
 
+## Relationship To Existing Designs
+
+This design consolidates and extends existing accepted designs. It does not
+supersede them.
+
+- Extension API v1 remains the author-facing runtime API baseline.
+- Extensions Runtime V2 remains the binding and rebinding lifecycle baseline.
+- The package/plugin boundary remains authoritative for distribution and source
+  management.
+- The command-plane design remains authoritative for built-in command
+  registration and command execution semantics.
+- Resource loader precedence and collision rules remain authoritative for
+  prompts, skills, themes, and resource roots.
+
+This design adds the missing platform layer above those documents: a manifest,
+policy, contribution registry, diagnostics projection, and staged integration
+plan that tie the existing subsystems together.
+
 ## Boundary Decisions
 
 ### Package
@@ -179,8 +197,15 @@ enabled = true
 allow_managed_hooks_only = false
 ```
 
-When `allow_managed_hooks_only` is true, user/project/session hook definitions
-are ignored while managed extension hooks remain eligible.
+When `allow_managed_hooks_only` is true, unmanaged hook definitions are ignored
+while managed extension hooks remain eligible.
+
+For this policy:
+
+- managed hooks are hook declarations loaded from enabled extensions delivered
+  by accepted plugin/package sources or managed configuration
+- unmanaged hooks are local project, user, or session hook definitions that are
+  not tied to a loaded extension contribution
 
 ## Contribution Registry
 
@@ -263,6 +288,13 @@ Hook classes:
 - `intercept`: may block, approve, deny, or replace an operation
 - `augment`: may add context, messages, diagnostics, or side effects
 
+`transform` and `augment` are mutually exclusive for one handler result.
+`transform` is replacement-style: it returns the next payload for the pipeline.
+`augment` is append-style: it may add messages, context, diagnostics, or
+side-effect requests, but it must not replace the event payload. If both are
+needed, they should be expressed as separate hook handlers so ordering remains
+explicit.
+
 The hook subsystem should be split into:
 
 - hook schema and manifest parsing
@@ -290,6 +322,11 @@ Allowed bridge capabilities:
 - command/action palette entries
 - message renderers
 - controlled editor text actions
+
+Message renderers are constrained renderers, not arbitrary output channels.
+They should receive structured message data and return only renderer-approved
+objects or an allowed markup subset. They must not emit raw terminal control
+sequences, arbitrary ANSI, or executable markdown side effects.
 
 Disallowed:
 
@@ -321,6 +358,30 @@ Supported semantics:
 
 Extensions must not install dependencies into the user's project virtualenv,
 global Python environment, or active shell environment.
+
+The preferred Python dependency installation candidate is
+`uv pip install --target <loushang-managed-extension-site>`, with the target
+owned by Loushang package state. Runtime import exposure should be explicit,
+for example by adding the resolved target through a controlled import path
+mechanism during extension loading. The author manifest declares dependencies;
+resolved paths belong to internal package/extension state, not to the author
+manifest.
+
+## Performance Constraints
+
+Extension platform plumbing sits near hot paths, so implementation phases should
+keep these constraints visible:
+
+- contribution lookup should use indexed maps rather than repeated linear scans
+  over all extensions
+- model-visible tool filtering should be computed when extension/tool state
+  changes, not on every token or render event
+- hook dispatch should run with deterministic ordering and explicit timeouts for
+  blocking/intercept hooks
+- UI bridge rendering should isolate extension failures and avoid blocking the
+  main TUI render loop
+- `/extensions` should be cheap enough for interactive use by reading projected
+  state instead of reloading extensions
 
 ## Diagnostics And Management Surface
 

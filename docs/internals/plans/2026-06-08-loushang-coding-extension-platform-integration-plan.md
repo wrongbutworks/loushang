@@ -64,6 +64,10 @@ user-visible runtime behavior.
 - Add an internal extension manifest model for `loushang-extension.toml`.
 - Add parser diagnostics for invalid TOML, unknown required fields, unsupported
   contribution sections, and invalid permission levels.
+- Parse and store dependency declarations, but do not install or resolve them in
+  P1.
+- Reserve internal dependency resolution state for future isolated import paths;
+  do not put resolved paths in the author manifest.
 - Add `ExtensionPolicy` or equivalent evaluation object with:
   - `enabled`
   - permission level
@@ -104,6 +108,10 @@ Route the main user-facing contribution types through the registry.
 - Preserve existing prompt and skill resource loader precedence; add registry
   diagnostics that explain collisions and inactive resources.
 - Add `/extensions` as the first management surface.
+  - Register it as a built-in core management command, not as an
+    extension-contributed command.
+  - Route its output through the existing command plane and diagnostics
+    projection.
   - It should list active tools, commands, hooks, prompts, skills, permissions,
     conflicts, and load warnings.
   - It should not install, update, or remove extensions in this phase.
@@ -132,6 +140,9 @@ event names.
 
 ### Implementation
 
+- Audit current hook call sites before rerouting them. The audit should list
+  session, tool, provider, resource, and shutdown hook entrypoints that need to
+  move through the dispatcher.
 - Add hook metadata classes:
   - `observe`
   - `transform`
@@ -212,7 +223,11 @@ Add dependency semantics with conservative installation boundaries.
   - external binaries
   - system capabilities
 - Implement Python package installation only into Loushang-managed isolated
-  targets.
+  targets. The default candidate is `uv pip install --target` into a
+  Loushang-owned extension package directory.
+- Expose isolated Python dependencies to extension imports through explicit
+  loader-managed import paths, not through the project virtualenv or global
+  `PYTHONPATH`.
 - Add binary detection with actionable diagnostics.
 - Add system capability checks as diagnostic-only.
 - Project the dependency state in `/extensions`.
@@ -255,6 +270,38 @@ Each implementation PR should include:
 - diagnostics snapshots or assertions where applicable
 - compatibility notes for existing extension APIs
 - updates to examples only after the API surface is stable for that phase
+
+## Rollback And Compatibility
+
+Each phase should keep a narrow rollback path:
+
+- P1 can disable the new manifest and contribution projection while leaving
+  existing `register(api)` loading active.
+- P2 can hide `/extensions` and fall back to current command/tool/resource
+  registration paths.
+- P3 must keep compatibility wrappers around existing hook event names until
+  all call sites are routed through the dispatcher and tested.
+- P4 can disable UI bridge contributions while preserving non-UI extension
+  runtime behavior.
+- P5 can disable dependency resolution and leave dependency declarations as
+  diagnostics-only metadata.
+
+Policy switches should prefer disabling new platform layers over changing
+extension author APIs during rollback.
+
+## Performance Baseline
+
+Implementation PRs should include lightweight performance checks or explicit
+review evidence for hot paths:
+
+- contribution lookup is indexed by contribution type and id
+- tool exposure is recomputed on extension/tool state changes, not per render
+  frame
+- hook dispatch has deterministic ordering and timeout behavior for blocking
+  hooks
+- `/extensions` reads projected state and should remain interactive with dozens
+  of loaded extensions
+- UI bridge failures are isolated from the main TUI render loop
 
 ## Acceptance Criteria
 
