@@ -15,15 +15,21 @@ from loushang.ai.model.loader import (
     load_model_registry_from_file,
 )
 from loushang.ai.model.registry import (
+    AmbiguousModelReference,
+    AmbiguousPreferredModelReference,
     ModelRegistry,
     clear_default_model_registry,
+    format_model_ref,
     get_default_model_registry,
     reload_default_model_registry,
     resolve_model_api,
     resolve_model_endpoint,
+    resolve_model_ref,
 )
 
 __all__ = [
+    "AmbiguousModelReference",
+    "AmbiguousPreferredModelReference",
     "Auth",
     "Capabilities",
     "clear_default_model_registry",
@@ -34,6 +40,7 @@ __all__ = [
     "ModelRegistry",
     "Pricing",
     "Provider",
+    "format_model_ref",
     "get_default_model_registry",
     "load_builtin_model_registry",
     "load_model_registry",
@@ -42,4 +49,5 @@ __all__ = [
     "reload_default_model_registry",
     "resolve_model_api",
     "resolve_model_endpoint",
+    "resolve_model_ref",
 ]

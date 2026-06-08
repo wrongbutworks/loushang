@@ -416,6 +416,7 @@ class AgentSession:
             selection = ModelSelection(
                 provider=session_context.model["provider"],
                 model_id=session_context.model["model_id"],
+                endpoint_id=session_context.model.get("endpoint_id"),
             )
             if self.get_model_selection() != selection and self.model_registry is not None:
                 try:

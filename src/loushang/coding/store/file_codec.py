@@ -64,6 +64,8 @@ def _serialize_entry(entry: SessionEntry) -> dict[str, Any]:
     if isinstance(entry, ModelChangeEntry):
         data["provider"] = entry.provider
         data["modelId"] = entry.model_id
+        if entry.endpoint_id:
+            data["endpointId"] = entry.endpoint_id
         return data
     if isinstance(entry, CompactionEntry):
         data["summary"] = entry.summary
@@ -112,7 +114,12 @@ def _deserialize_entry(payload: dict[str, Any]) -> SessionEntry:
     if entry_type == "thinking_level_change":
         return ThinkingLevelChangeEntry(thinking_level=payload["thinkingLevel"], **common)
     if entry_type == "model_change":
-        return ModelChangeEntry(provider=payload["provider"], model_id=payload["modelId"], **common)
+        return ModelChangeEntry(
+            provider=payload["provider"],
+            model_id=payload["modelId"],
+            endpoint_id=payload.get("endpointId"),
+            **common,
+        )
     if entry_type == "compaction":
         return CompactionEntry(
             summary=payload["summary"],
@@ -208,4 +215,3 @@ def load_session_file(path: Path) -> tuple[SessionHeader, list[SessionEntry]]:
         except Exception:
             continue
     return header, entries
-

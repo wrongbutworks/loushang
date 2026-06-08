@@ -1359,13 +1359,21 @@ def _resolve_latest_session_file(runtime: Any) -> str | None:
 def _resolve_model_selection(args: CliArgs) -> ModelSelection | None:
     if args.provider is None and args.model is None:
         return None
+    if args.provider is None and args.model is not None and args.model.count(":") >= 2:
+        provider, rest = args.model.split(":", 1)
+        endpoint_id, model_id = rest.rsplit(":", 1)
+        if provider and endpoint_id and model_id:
+            return ModelSelection(provider=provider, endpoint_id=endpoint_id, model_id=model_id)
     if args.provider is not None and args.model is not None:
         return ModelSelection(provider=args.provider, model_id=args.model)
     if args.provider is None and args.model is not None and "/" in args.model:
         provider, model_id = args.model.split("/", 1)
         if provider and model_id:
             return ModelSelection(provider=provider, model_id=model_id)
-    raise ValueError("Model selection requires --provider and --model, or --model provider/model_id.")
+    raise ValueError(
+        "Model selection requires --provider and --model, "
+        "--model provider/model_id, or --model provider:endpoint:model_id."
+    )
 
 
 async def _apply_model_and_thinking_overrides(args: CliArgs, session: Any, stderr: TextIO) -> int | None:

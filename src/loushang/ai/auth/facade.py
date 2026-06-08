@@ -54,8 +54,8 @@ def register_builtin_oauth_providers(
 
 
 def _register_builtin_oauth_providers(registry: OAuthProviderRegistry) -> None:
-    _register_builtin_anthropic(registry)
     _register_builtin_openai_codex(registry)
+    _register_builtin_anthropic(registry)
 
 
 def _register_builtin_anthropic(

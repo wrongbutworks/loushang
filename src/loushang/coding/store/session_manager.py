@@ -286,7 +286,11 @@ def _model(value: object) -> dict[str, str] | None:
     provider = value.get("provider")
     model_id = value.get("model_id")
     if isinstance(provider, str) and isinstance(model_id, str):
-        return {"provider": provider, "model_id": model_id}
+        payload = {"provider": provider, "model_id": model_id}
+        endpoint_id = value.get("endpoint_id") or value.get("endpointId")
+        if isinstance(endpoint_id, str):
+            payload["endpoint_id"] = endpoint_id
+        return payload
     return None
 
 
@@ -356,6 +360,8 @@ def build_session_context(
             thinking_level = entry.thinking_level
         elif isinstance(entry, ModelChangeEntry):
             model = {"provider": entry.provider, "model_id": entry.model_id}
+            if entry.endpoint_id:
+                model["endpoint_id"] = entry.endpoint_id
         elif isinstance(entry, SessionMessageEntry) and isinstance(entry.message, AssistantMessage):
             model = {"provider": entry.message.provider, "model_id": entry.message.model}
         elif isinstance(entry, CompactionEntry):
@@ -774,7 +780,13 @@ class SessionManager:
             )
         )
 
-    def append_model_change(self, provider: str, model_id: str) -> str:
+    def append_model_change(
+        self,
+        provider: str,
+        model_id: str,
+        *,
+        endpoint_id: str | None = None,
+    ) -> str:
         return self.append_entry(
             ModelChangeEntry(
                 type="model_change",
@@ -783,6 +795,7 @@ class SessionManager:
                 timestamp=_now_iso(),
                 provider=provider,
                 model_id=model_id,
+                endpoint_id=endpoint_id,
             )
         )
 

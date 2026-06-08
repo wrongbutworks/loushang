@@ -31,7 +31,11 @@ from loushang.ai.auth import (
 )
 from loushang.ai.auth.support import merge_auth_config
 from loushang.ai.auth.types import OAuthAuthInfo, OAuthLoginCallbacks, OAuthPrompt
-from loushang.ai.model.registry import get_default_model_registry, resolve_model_api
+from loushang.ai.model.registry import (
+    get_default_model_registry,
+    resolve_model_api,
+    resolve_model_ref,
+)
 
 _OPTION_CLASS_BY_API = {
     "anthropic-messages": AnthropicOptions,
@@ -131,11 +135,15 @@ def cmd_models(args: argparse.Namespace) -> None:
         except (KeyError, ValueError) as error:
             print(str(error), file=sys.stderr)
             sys.exit(2)
+        endpoint_info = registry.get_endpoint(model.provider_id, model.endpoint_id)
         data = {
             "id": model.id,
             "provider": model.provider_id,
             "endpoint": model.endpoint_id,
             "api": resolve_model_api(model, registry=registry),
+            "region": endpoint_info.region if endpoint_info is not None else model.region,
+            "lane": endpoint_info.lane if endpoint_info is not None else None,
+            "preferredEndpoint": bool(endpoint_info.preferred) if endpoint_info is not None else False,
             "name": model.name,
             "family": model.family,
             "alias": model.alias,
@@ -151,8 +159,8 @@ def cmd_models(args: argparse.Namespace) -> None:
                 "stream": model.capabilities.stream,
                 "attachment": model.capabilities.attachment,
             },
-            "defaults": model.defaults,
-            "compat": model.compat,
+            "defaults": dict(model.defaults),
+            "compat": dict(model.compat),
         }
         _print(data, args.json)
         return
@@ -781,31 +789,13 @@ def _resolve_model_arg(
     endpoint: str | None,
     api: str | None,
 ):
-    if model_arg.count(":") == 2:
-        p, e, mid = model_arg.split(":", 2)
-        return registry.get_model(p, e, mid)
-    if provider and endpoint:
-        return registry.get_model(provider, endpoint, model_arg)
-    if api:
-        candidates = [
-            (model.provider_id, model.endpoint_id)
-            for model in registry.list_models(model_id=model_arg)
-            if resolve_model_api(model, registry=registry) == api
-        ]
-        if len(candidates) == 1:
-            p, e = candidates[0]
-            return registry.get_model(p, e, model_arg)
-        if len(candidates) > 1:
-            print(
-                "Ambiguous model for api; candidates:",
-                ", ".join(f"{p}:{e}:{model_arg}" for p, e in candidates),
-                file=sys.stderr,
-            )
-            sys.exit(2)
-    resolved = registry.find_model(model_arg)
-    if resolved is not None:
-        return resolved
-    return registry.get_model(model_arg)
+    return resolve_model_ref(
+        registry,
+        model_arg,
+        provider=provider,
+        endpoint=endpoint,
+        api=api,
+    )
 
 
 def _resolve_model_with_env_fallback(

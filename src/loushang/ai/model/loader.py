@@ -69,6 +69,7 @@ def validate_model_registry_raw(raw: dict[str, Any]) -> None:
     providers = _require_mapping(root.get("providers"), "providers")
     for provider_id, provider_raw in providers.items():
         provider_path = f"providers.{provider_id}"
+        _validate_ref_segment_key(provider_id, provider_path)
         provider = _require_mapping(provider_raw, provider_path)
         _validate_auth_mapping(provider.get("auth"), f"{provider_path}.auth")
         endpoints = _require_mapping(
@@ -78,6 +79,7 @@ def validate_model_registry_raw(raw: dict[str, Any]) -> None:
             endpoint_path = f"{provider_path}.endpoints.{endpoint_key}"
             endpoint = _require_mapping(endpoint_raw, endpoint_path)
             _require_str(endpoint.get("api"), f"{endpoint_path}.api")
+            _validate_optional_bool(endpoint.get("preferred"), f"{endpoint_path}.preferred")
             _validate_auth_fields(endpoint, endpoint_path)
             _validate_keyed_mapping(
                 endpoint.get("compat"),
@@ -92,6 +94,7 @@ def validate_model_registry_raw(raw: dict[str, Any]) -> None:
             models = _require_mapping(endpoint.get("models"), f"{endpoint_path}.models")
             for model_id, model_raw in models.items():
                 model_path = f"{endpoint_path}.models.{model_id}"
+                _validate_ref_segment_key(model_id, model_path)
                 model = _require_mapping(model_raw, model_path)
                 _validate_auth_fields(model, model_path)
                 _validate_keyed_mapping(
@@ -141,6 +144,21 @@ def _require_str(value: object, path: str) -> str:
     if not isinstance(value, str) or not value:
         raise ValueError(f"models registry field must be a non-empty string: {path}")
     return value
+
+
+def _validate_optional_bool(value: object, path: str) -> None:
+    if value is not None and not isinstance(value, bool):
+        raise ValueError(f"models registry field must be a boolean: {path}")
+
+
+def _validate_ref_segment_key(value: object, path: str) -> None:
+    if not isinstance(value, str) or not value:
+        raise ValueError(f"models registry key must be a non-empty string: {path}")
+    if ":" in value:
+        raise ValueError(
+            "models registry provider and model keys must not contain ':': "
+            f"{path}"
+        )
 
 
 def _validate_keyed_mapping(
@@ -288,6 +306,7 @@ def _build_registry(raw: dict[str, Any]) -> ModelRegistry:
                 base_url_env=endpoint_raw.get("baseUrlEnv"),
                 region=endpoint_raw.get("region"),
                 lane=endpoint_raw.get("lane"),
+                preferred=bool(endpoint_raw.get("preferred", False)),
                 docs=endpoint_raw.get("docs"),
                 auth=endpoint_auth,
                 compat=_normalize_endpoint_compat(endpoint_raw),

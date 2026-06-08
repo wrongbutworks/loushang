@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import json
+
 import pytest
 
 from loushang.ai.cli.__main__ import _resolve_console_api_key, main
@@ -109,6 +111,18 @@ def test_console_uses_env_api_key_for_selected_binding(
         in output
     )
     assert "Current model: moonshot:openai-completions:kimi-a" in output
+
+
+def test_models_show_accepts_provider_model_reference(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    main(["--json", "models", "show", "moonshot/kimi-a"])
+
+    payload = json.loads(capsys.readouterr().out)
+
+    assert payload["provider"] == "moonshot"
+    assert payload["endpoint"] == "openai-completions"
+    assert payload["id"] == "kimi-a"
 
 
 def test_console_prompts_for_api_key_when_env_missing(

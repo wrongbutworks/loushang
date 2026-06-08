@@ -19,6 +19,7 @@ dependencies = [
 
 [project.scripts]
 loushang = "loushang.coding.cli.__main__:main"
+loushang-ai = "loushang.ai.cli.__main__:main"
 loushang-tui = "loushang.coding.ui.cli:main"
 
 [project.optional-dependencies]

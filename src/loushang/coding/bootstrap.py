@@ -760,9 +760,13 @@ def _scoped_models_from_enabled_patterns(
         selection = model_registry.get_model(model_name)
         if selection is None:
             continue
-        scoped: dict[str, object] = {
-            "model": {"provider": selection.provider, "model_id": selection.model_id},
+        model_payload: dict[str, object] = {
+            "provider": selection.provider,
+            "model_id": selection.model_id,
         }
+        if selection.endpoint_id:
+            model_payload["endpoint_id"] = selection.endpoint_id
+        scoped: dict[str, object] = {"model": model_payload}
         if thinking_level is not None:
             scoped["thinkingLevel"] = thinking_level
         scoped_models.append(scoped)
