@@ -13,6 +13,7 @@ from loushang.tui.transcript import (
     ContextCompactionRecord,
     DisplayRecord,
     ErrorRecord,
+    StatusRecord,
     ThinkingRecord,
     ThinkingVisibility,
     ToolExecutionRecord,
@@ -333,6 +334,8 @@ def _raw_record_lines(record: DisplayRecord, *, width: int, detail: bool) -> lis
         return _raw_tool_lines(record, width=width)
     if isinstance(record, ThinkingRecord):
         return _raw_thinking_lines(record, width=width)
+    if isinstance(record, StatusRecord):
+        return _raw_wrapped_lines(record.text, width=width)
     if isinstance(record, ErrorRecord):
         text = record.summary
         if detail and record.diagnostics:

@@ -119,6 +119,11 @@ class ThinkingRecord:
 
 
 @dataclass(frozen=True, slots=True)
+class StatusRecord:
+    text: str
+
+
+@dataclass(frozen=True, slots=True)
 class ErrorRecord:
     summary: str
     diagnostics: str = ""
@@ -140,6 +145,7 @@ DisplayRecord: TypeAlias = (
     | AssistantMessageRecord
     | ToolExecutionRecord
     | ThinkingRecord
+    | StatusRecord
     | ErrorRecord
     | ContextCompactionRecord
     | WorkedDividerRecord
@@ -341,6 +347,8 @@ def _render_record(
         )
     if isinstance(record, ThinkingRecord):
         return _render_thinking(record, width=target_width)
+    if isinstance(record, StatusRecord):
+        return _prefixed_block("", record.text, width=target_width)
     if isinstance(record, ErrorRecord):
         lines = _prefixed_block("! Error: ", record.summary, width=target_width)
         if verbose_errors and record.diagnostics:

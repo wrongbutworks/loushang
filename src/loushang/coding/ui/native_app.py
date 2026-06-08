@@ -47,6 +47,7 @@ from loushang.tui.transcript import (
     ContextCompactionRecord,
     DisplayRecord,
     ErrorRecord,
+    StatusRecord,
     StreamingTextBuffer,
     ThinkingRecord,
     ToolExecutionRecord,
@@ -822,7 +823,7 @@ def _trim_records_to_line_budget(
 
 
 def _record_logical_line_count(record: DisplayRecord) -> int:
-    if isinstance(record, UserPromptRecord | AssistantMessageRecord | ThinkingRecord):
+    if isinstance(record, UserPromptRecord | AssistantMessageRecord | ThinkingRecord | StatusRecord):
         return _text_line_count(record.text)
     if isinstance(record, ToolExecutionRecord):
         count = 1
@@ -874,6 +875,14 @@ def _tail_trim_record(record: DisplayRecord, *, max_lines: int) -> DisplayRecord
                 max_lines=max_lines,
                 marker="[older thinking content omitted from active UI window]",
             ),
+        )
+    if isinstance(record, StatusRecord):
+        return StatusRecord(
+            _tail_trim_text(
+                record.text,
+                max_lines=max_lines,
+                marker="[older status content omitted from active UI window]",
+            )
         )
     if isinstance(record, ErrorRecord):
         if max_lines <= 1 or not record.diagnostics:

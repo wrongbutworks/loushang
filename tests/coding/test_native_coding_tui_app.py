@@ -9,6 +9,7 @@ from loushang.tui.transcript import (
     AssistantMessageRecord,
     DisplayRecord,
     ErrorRecord,
+    StatusRecord,
     ToolExecutionRecord,
     UserPromptRecord,
     WorkedDividerRecord,
@@ -54,6 +55,25 @@ def test_native_coding_tui_state_commits_turn_without_stale_working() -> None:
     assert "• 你好！" in rendered
     assert "Worked for 3.25s" in rendered
     assert "Working" not in rendered[rendered.rfind("Worked for 3.25s") :]
+
+
+def test_native_coding_tui_status_message_is_not_rendered_as_thinking() -> None:
+    from loushang.coding.ui.native_app import NativeCodingTuiApp
+
+    app = NativeCodingTuiApp(
+        model_label="kimi",
+        cwd="/repo",
+        branch="main",
+        session_label="abcd1234",
+        now=lambda: 1.0,
+    )
+
+    app.add_status("Active tools: read, ls, find, grep, bash, edit, write")
+
+    assert app.state.records == [StatusRecord("Active tools: read, ls, find, grep, bash, edit, write")]
+    rendered = "\n".join(_lines(app, width=100, height=24))
+    assert "Active tools: read, ls, find, grep, bash, edit, write" in rendered
+    assert "? thinking:" not in rendered
 
 
 def test_native_coding_tui_styles_tool_heading_marker_verb_and_flags() -> None:
