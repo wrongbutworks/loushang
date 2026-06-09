@@ -17,6 +17,12 @@ in this order:
 4. product adapter command routing
 5. global keybindings
 
+The generic prompt route uses a `PromptInputTarget` boundary. `InputRouter`
+owns routing priority and prompt intents, while concrete editors provide
+operations through target adapters such as `ComposerInputTarget`. Product
+adapters may reuse target helper functions, but they keep their own routing
+order when product semantics differ.
+
 Keybindings are configuration-owned by the runtime or product adapter. The
 coding product adapter loads configured keybindings from settings and passes
 them into the native input router. UI parts may handle routed events, but they
@@ -82,7 +88,7 @@ normalized input events:
 - paste marker is an editor atom that may stand in for a large payload while the
   full payload remains available for submission
 
-These editor primitives are local to the focused composer until the product
+These editor primitives are local to the focused prompt target until the product
 adapter receives a submit, steer, or follow-up intent.
 
 ## Test Obligations
