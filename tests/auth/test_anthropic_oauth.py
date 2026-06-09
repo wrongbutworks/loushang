@@ -90,6 +90,7 @@ def test_login_rejects_state_mismatch() -> None:
 	provider = AnthropicOAuthProvider(
 		http_post_json=_unexpected_post,
 		pkce_generator=lambda: ("expected-state", "test-challenge"),
+		browser_opener=lambda _url: False,
 		callback_waiter=_return_wrong_state_url,
 	)
 	callbacks = _Callbacks()
@@ -118,6 +119,7 @@ def test_login_falls_back_to_manual_input_when_callback_waiter_fails() -> None:
 	provider = AnthropicOAuthProvider(
 		http_post_json=fake_post,
 		pkce_generator=lambda: ("test-verifier", "test-challenge"),
+		browser_opener=lambda _url: False,
 		callback_waiter=broken_callback_waiter,
 	)
 

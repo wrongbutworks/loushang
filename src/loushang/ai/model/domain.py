@@ -212,6 +212,8 @@ class Model:
     base_url: str | None = None
     base_url_env: str | None = None
     region: str | None = None
+    lane: str | None = None
+    preferred_endpoint: bool = False
     auth: Auth | None = None
     _auth_inherited: bool = False
     name: str | None = None
@@ -304,6 +306,8 @@ class Model:
             base_url=endpoint.base_url,
             base_url_env=endpoint.base_url_env,
             region=endpoint.region,
+            lane=endpoint.lane,
+            preferred_endpoint=endpoint.preferred,
             auth=auth,
             _auth_inherited=inherits_auth and auth is not None,
             compat=endpoint.compat.merged(self.compat),
@@ -359,6 +363,7 @@ class Endpoint:
     base_url_env: str | None = None
     region: str | None = None
     lane: str | None = None
+    preferred: bool = False
     docs: str | None = None
     auth: Auth | None = None
     compat: Compat = field(default_factory=Compat)
@@ -408,6 +413,8 @@ class Endpoint:
             raw["region"] = self.region
         if self.lane is not None:
             raw["lane"] = self.lane
+        if self.preferred:
+            raw["preferred"] = self.preferred
         if self.docs is not None:
             raw["docs"] = self.docs
         if self.auth is not None:

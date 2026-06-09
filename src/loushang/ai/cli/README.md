@@ -13,7 +13,7 @@
 推荐入口：
 
 ```bash
-uv run python -m loushang.ai.cli console
+uv run loushang-ai console
 ```
 
 ## Console 能力
@@ -63,9 +63,9 @@ uv run python -m loushang.ai.cli console
 示例：
 
 ```bash
-uv run python -m loushang.ai.cli auth providers
-uv run python -m loushang.ai.cli auth show openai-codex
-uv run python -m loushang.ai.cli auth login openai-codex
+uv run loushang-ai auth providers
+uv run loushang-ai auth show openai-codex
+uv run loushang-ai auth login openai-codex
 ```
 
 对于大多数验证场景，优先使用 `console`。

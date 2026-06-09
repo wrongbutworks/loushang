@@ -659,6 +659,12 @@ def _model_choice_selector_description(choice: ModelChoice, *, current_value: st
         parts.append("current")
     if choice.endpoint_id:
         parts.append(f"endpoint: {choice.endpoint_id}")
+    if choice.region:
+        parts.append(f"region: {choice.region}")
+    if choice.lane:
+        parts.append(f"lane: {choice.lane}")
+    if choice.api:
+        parts.append(f"protocol: {choice.api}")
     if choice.description:
         parts.append(choice.description)
     return " - ".join(parts)

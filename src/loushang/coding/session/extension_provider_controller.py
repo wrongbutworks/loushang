@@ -163,6 +163,9 @@ def _native_endpoint_from_extension_dict(
         or (existing_endpoint.base_url_env if existing_endpoint is not None else None),
         region=_optional_string(config.get("region")) or (existing_endpoint.region if existing_endpoint is not None else None),
         lane=_optional_string(config.get("lane")) or (existing_endpoint.lane if existing_endpoint is not None else None),
+        preferred=_optional_bool(config.get("preferred"))
+        if "preferred" in config
+        else (existing_endpoint.preferred if existing_endpoint is not None else False),
         docs=_optional_string(config.get("docs")) or (existing_endpoint.docs if existing_endpoint is not None else None),
         auth=_auth_from_native_raw(
             config.get("auth") if "auth" in config else config.get("authOverride")
@@ -221,3 +224,7 @@ def _optional_mapping(value: object) -> Mapping[str, object] | None:
 
 def _optional_string(value: object) -> str | None:
     return value if isinstance(value, str) else None
+
+
+def _optional_bool(value: object) -> bool:
+    return value if isinstance(value, bool) else False

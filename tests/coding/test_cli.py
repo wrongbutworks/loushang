@@ -2565,6 +2565,76 @@ def test_run_cli_dispatches_print_mode_with_restored_session_and_model_override(
     assert print_runner.calls[0]["session"] is runtime.get_current_session()
 
 
+def test_run_cli_accepts_explicit_endpoint_model_override(tmp_path) -> None:
+    from loushang.coding.cli.__main__ import run_cli
+    from loushang.coding.types import ModelSelection
+
+    runtime = FakeRuntime(FakeSession("session-1"))
+    print_runner = FakeRunner()
+
+    async def scenario() -> None:
+        exit_code = await run_cli(
+            [
+                "--mode",
+                "json",
+                "--session",
+                "session-1",
+                "--model",
+                "faux:responses:beta",
+                "hello",
+            ],
+            stdin=StringIO(""),
+            stdout=StringIO(),
+            stderr=StringIO(),
+            cwd=tmp_path,
+            services=_fake_services(str(tmp_path / "sessions")),
+            runtime_builder=lambda **kwargs: runtime,
+            print_runner=print_runner,
+        )
+        assert exit_code == 0
+
+    asyncio.run(scenario())
+
+    assert runtime.get_current_session().set_model_calls == [
+        ModelSelection(provider="faux", endpoint_id="responses", model_id="beta")
+    ]
+
+
+def test_run_cli_accepts_explicit_endpoint_model_override_with_colon_endpoint(tmp_path) -> None:
+    from loushang.coding.cli.__main__ import run_cli
+    from loushang.coding.types import ModelSelection
+
+    runtime = FakeRuntime(FakeSession("session-1"))
+    print_runner = FakeRunner()
+
+    async def scenario() -> None:
+        exit_code = await run_cli(
+            [
+                "--mode",
+                "json",
+                "--session",
+                "session-1",
+                "--model",
+                "faux:responses:cn:beta",
+                "hello",
+            ],
+            stdin=StringIO(""),
+            stdout=StringIO(),
+            stderr=StringIO(),
+            cwd=tmp_path,
+            services=_fake_services(str(tmp_path / "sessions")),
+            runtime_builder=lambda **kwargs: runtime,
+            print_runner=print_runner,
+        )
+        assert exit_code == 0
+
+    asyncio.run(scenario())
+
+    assert runtime.get_current_session().set_model_calls == [
+        ModelSelection(provider="faux", endpoint_id="responses:cn", model_id="beta")
+    ]
+
+
 def test_run_cli_dash_p_dispatches_prompt_command(tmp_path) -> None:
     from loushang.coding.cli.__main__ import run_cli
 

@@ -3,8 +3,13 @@ from __future__ import annotations
 from pathlib import Path
 
 from loushang.ai.model import Model, Provider
-from loushang.ai.model.registry import ModelRegistry as AiModelRegistry
-from loushang.ai.model.registry import get_default_model_registry
+from loushang.ai.model.registry import (
+    ModelRegistry as AiModelRegistry,
+)
+from loushang.ai.model.registry import (
+    get_default_model_registry,
+    resolve_model_ref,
+)
 from loushang.coding.types import ModelSelection
 from loushang.observability import get_log
 
@@ -43,7 +48,7 @@ class ModelRegistry:
 
     def get_model(self, name: str) -> ModelSelection | None:
         try:
-            model = self._ai_registry.get_model(name)
+            model = resolve_model_ref(self._ai_registry, name)
         except (KeyError, ValueError):
             return None
         return ModelSelection(provider=model.provider_id, model_id=model.id)
@@ -60,7 +65,7 @@ class ModelRegistry:
         if isinstance(selection_input, Model):
             return ModelSelection(provider=selection_input.provider_id, model_id=selection_input.id)
 
-        model = self._ai_registry.get_model(selection_input)
+        model = resolve_model_ref(self._ai_registry, selection_input)
         return ModelSelection(provider=model.provider_id, model_id=model.id)
 
     def build_model(self, selection_input: ModelSelection | str | Model) -> Model:
@@ -68,11 +73,18 @@ class ModelRegistry:
         return self._resolve_model(selection)
 
     def _resolve_model(self, selection: ModelSelection) -> Model:
-        matches = [
-            model
-            for model in self._ai_registry.list_models(provider=selection.provider, model_id=selection.model_id)
-        ]
-        if not matches:
+        if selection.endpoint_id:
+            return self._ai_registry.get_model(
+                selection.provider,
+                selection.endpoint_id,
+                selection.model_id,
+            )
+        try:
+            return resolve_model_ref(
+                self._ai_registry,
+                f"{selection.provider}/{selection.model_id}",
+            )
+        except KeyError:
             log.problem(
                 "model_selection_not_found",
                 source="config",
@@ -82,7 +94,11 @@ class ModelRegistry:
                 model_id=selection.model_id,
             )
             raise KeyError((selection.provider, selection.model_id))
-        if len(matches) > 1:
+        except ValueError as error:
+            matches = self._ai_registry.list_models(
+                provider=selection.provider,
+                model_id=selection.model_id,
+            )
             log.problem(
                 "model_selection_ambiguous",
                 source="config",
@@ -92,5 +108,6 @@ class ModelRegistry:
                 model_id=selection.model_id,
                 endpoint_ids=[model.endpoint_id for model in matches],
             )
-            raise ValueError(f"Ambiguous model selection: {selection.provider}:{selection.model_id}")
-        return matches[0]
+            raise ValueError(
+                f"Ambiguous model selection: {selection.provider}:{selection.model_id}; {error}"
+            ) from error

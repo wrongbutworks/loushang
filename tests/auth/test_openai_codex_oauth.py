@@ -11,6 +11,7 @@ import pytest
 from loushang.ai.auth import (
     clear_oauth_providers,
     get_oauth_provider,
+    list_oauth_providers,
     register_builtin_oauth_providers,
     reset_oauth_providers,
 )
@@ -205,6 +206,18 @@ def test_register_builtin_oauth_providers_includes_openai_codex() -> None:
     clear_oauth_providers()
     register_builtin_oauth_providers()
     assert get_oauth_provider("openai-codex") is not None
+
+
+def test_register_builtin_oauth_providers_lists_openai_codex_first() -> None:
+    clear_oauth_providers()
+    register_builtin_oauth_providers()
+
+    providers = list_oauth_providers()
+
+    assert [provider.id for provider in providers] == [
+        "openai-codex",
+        "anthropic",
+    ]
 
 
 def test_reset_oauth_providers_restores_builtin_openai_codex() -> None:

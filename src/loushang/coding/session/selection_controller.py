@@ -52,7 +52,8 @@ class SelectionController:
     async def set_model(self, model: Model | ModelSelection, *, emit_refresh: bool, source: str = "set") -> None:
         previous_model = self.agent.model
         resolved_model = self._resolve_model(model)
-        self._apply_model(resolved_model)
+        explicit_endpoint_id = model.endpoint_id if isinstance(model, ModelSelection) else None
+        self._apply_model(resolved_model, endpoint_id=explicit_endpoint_id)
         if emit_refresh:
             await self.refresh_extension_runtime("model_selection_changed")
         runner = self.get_extension_runner()
@@ -69,7 +70,7 @@ class SelectionController:
 
     async def set_model_from_extension(self, selection: ModelSelection) -> None:
         resolved_model = self._resolve_model_from_selection(selection)
-        self._apply_model(resolved_model)
+        self._apply_model(resolved_model, endpoint_id=selection.endpoint_id)
         if not self.is_extension_runtime_refreshing():
             await self.refresh_extension_runtime("model_selection_changed")
 
@@ -123,8 +124,13 @@ class SelectionController:
         if isinstance(model, dict):
             provider = model.get("provider") or model.get("provider_id") or model.get("providerId")
             model_id = model.get("model_id") or model.get("modelId") or model.get("id")
+            endpoint_id = model.get("endpoint_id") or model.get("endpointId") or model.get("endpoint")
             if isinstance(provider, str) and isinstance(model_id, str):
-                return ModelSelection(provider=provider, model_id=model_id)
+                return ModelSelection(
+                    provider=provider,
+                    model_id=model_id,
+                    endpoint_id=endpoint_id if isinstance(endpoint_id, str) else None,
+                )
         return None
 
     def set_thinking_level(self, level: ThinkingLevel) -> None:
@@ -168,13 +174,17 @@ class SelectionController:
             raise RuntimeError("ModelSelection requires a model registry")
         return _validate_model(registry.build_model(selection))
 
-    def _apply_model(self, model: Model) -> None:
+    def _apply_model(self, model: Model, *, endpoint_id: str | None = None) -> None:
         provider = getattr(model, "provider_id", None) or getattr(model, "provider", None)
         model_id = getattr(model, "id", None)
         if not provider or not model_id:
             raise ValueError("Model updates require a provider and model id.")
         self.agent.model = model
-        self.session_manager.append_model_change(str(provider), str(model_id))
+        self.session_manager.append_model_change(
+            str(provider),
+            str(model_id),
+            endpoint_id=endpoint_id,
+        )
         self.record_model_auth_resolution(model)
 
 

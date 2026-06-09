@@ -47,6 +47,7 @@ class RpcModel(TypedDict, total=False):
     provider: Required[str]
     id: Required[str]
     name: Required[str]
+    endpointId: NotRequired[str]
     api: NotRequired[str]
     baseUrl: NotRequired[str]
     input: NotRequired[list[str]]
@@ -765,7 +766,12 @@ class RpcMode(ModeAdapter):
     async def _handle_set_model_command(self, command_id: str | None, payload: dict[str, Any]) -> None:
         provider = self._require_string(payload, "provider")
         model_id = self._require_string(payload, "modelId", "model_id")
-        selection = ModelSelection(provider=provider, model_id=model_id)
+        endpoint_id = payload.get("endpointId") or payload.get("endpoint_id")
+        selection = ModelSelection(
+            provider=provider,
+            model_id=model_id,
+            endpoint_id=endpoint_id if isinstance(endpoint_id, str) else None,
+        )
         try:
             available_models = self.session.get_available_models()
         except Exception as error:
@@ -2038,10 +2044,13 @@ class RpcMode(ModeAdapter):
     def _serialize_model_selection(self, selection: ModelSelection | None) -> dict[str, str] | None:
         if selection is None:
             return None
-        return {
+        payload = {
             "provider": selection.provider,
             "modelId": selection.model_id,
         }
+        if selection.endpoint_id:
+            payload["endpointId"] = selection.endpoint_id
+        return payload
 
     def _serialize_model_selection_as_model(self, selection: ModelSelection | None) -> RpcModel | None:
         if selection is None:
@@ -2053,10 +2062,11 @@ class RpcMode(ModeAdapter):
             model_id = self._safe_string(model_id) if model_id is not None else None
             if not provider or not model_id:
                 return None
-        return {
+        payload: RpcModel = {
             "provider": provider,
             "id": model_id,
         }
+        return payload
 
     def _serialize_model(self, session: Any, model: object) -> RpcModel | None:
         provider = self._safe_getattr(model, "provider_id", None) or self._safe_getattr(model, "provider", None)
@@ -2068,7 +2078,6 @@ class RpcMode(ModeAdapter):
             "provider": str(provider),
             "id": str(model_id),
         }
-
         name = self._safe_getattr(model, "name", None)
         if isinstance(name, str) and name:
             data["name"] = name
