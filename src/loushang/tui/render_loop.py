@@ -1,7 +1,8 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Literal, Protocol
+from enum import Enum, auto
+from typing import ClassVar, Literal, Protocol
 
 from loushang.tui.cell_width import normalize_terminal_output, visible_width
 from loushang.tui.core import CursorDeclaration, RenderConstraints, RenderResult
@@ -20,6 +21,37 @@ SEGMENT_RESET = "\x1b[0m\x1b]8;;\x07"
 
 class ScreenRoot(Protocol):
     def render(self, constraints: RenderConstraints) -> RenderResult: ...
+
+
+class RenderPlanStrategyKind(Enum):
+    FIRST_RENDER = auto()
+    TRANSCRIPT_WINDOW_TRIMMED_RESET = auto()
+    BASELINE_RESET = auto()
+    RESIZE_REPAINT = auto()
+    UNSAFE_VIEWPORT = auto()
+    NO_CHANGE = auto()
+    APPEND = auto()
+    PROTECTED_APPEND = auto()
+    SHRINK_VIEWPORT_REPAINT = auto()
+    SHRINK_CLEAR = auto()
+    CHANGED_ABOVE_VIEWPORT = auto()
+    CHANGED_RANGE = auto()
+
+
+DEFAULT_STRATEGY_ORDER: tuple[RenderPlanStrategyKind, ...] = (
+    RenderPlanStrategyKind.FIRST_RENDER,
+    RenderPlanStrategyKind.TRANSCRIPT_WINDOW_TRIMMED_RESET,
+    RenderPlanStrategyKind.BASELINE_RESET,
+    RenderPlanStrategyKind.RESIZE_REPAINT,
+    RenderPlanStrategyKind.UNSAFE_VIEWPORT,
+    RenderPlanStrategyKind.NO_CHANGE,
+    RenderPlanStrategyKind.APPEND,
+    RenderPlanStrategyKind.PROTECTED_APPEND,
+    RenderPlanStrategyKind.SHRINK_VIEWPORT_REPAINT,
+    RenderPlanStrategyKind.SHRINK_CLEAR,
+    RenderPlanStrategyKind.CHANGED_ABOVE_VIEWPORT,
+    RenderPlanStrategyKind.CHANGED_RANGE,
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -42,6 +74,29 @@ class RenderPlanContext:
     width_changed: bool
     height_changed: bool
     previous_kitty_delete_sequences: tuple[str, ...]
+
+
+@dataclass(frozen=True, slots=True)
+class RenderPlanRuntime:
+    previous_viewport_top: int
+    previous_cursor_row: int
+    previous_cursor_column: int
+    hardware_cursor_row: int
+    hardware_cursor_column: int
+    working_area_high_water_mark: int
+    termux_session: bool
+    clear_scrollback_policy: ClearScrollbackPolicy
+    baseline_reset_reason: str | None
+    unsafe_viewport_reason: str | None
+
+
+class RenderPlanStrategy(Protocol):
+    kind: ClassVar[RenderPlanStrategyKind]
+    name: ClassVar[str]
+
+    def match(self, context: RenderPlanContext, *, runtime: RenderPlanRuntime) -> bool: ...
+
+    def plan(self, context: RenderPlanContext, *, runtime: RenderPlanRuntime) -> RenderDiagnostics: ...
 
 
 @dataclass(slots=True)
@@ -126,6 +181,20 @@ class RenderLoop:
             width_changed=width_changed,
             height_changed=height_changed,
             previous_kitty_delete_sequences=previous_kitty_delete_sequences,
+        )
+
+    def _plan_runtime(self) -> RenderPlanRuntime:
+        return RenderPlanRuntime(
+            previous_viewport_top=self.previous_viewport_top,
+            previous_cursor_row=self.previous_cursor_row,
+            previous_cursor_column=self.previous_cursor_column,
+            hardware_cursor_row=self.hardware_cursor_row,
+            hardware_cursor_column=self.hardware_cursor_column,
+            working_area_high_water_mark=self.working_area_high_water_mark,
+            termux_session=self.termux_session,
+            clear_scrollback_policy=self.clear_scrollback_policy,
+            baseline_reset_reason=self._baseline_reset_reason,
+            unsafe_viewport_reason=self._unsafe_viewport_reason,
         )
 
     def plan(self, size: TerminalSize) -> RenderDiagnostics:

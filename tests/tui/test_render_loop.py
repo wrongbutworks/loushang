@@ -23,6 +23,7 @@ from loushang.tui import (
     delete_kitty_image,
     wrap_tmux_passthrough,
 )
+from loushang.tui.render_loop import DEFAULT_STRATEGY_ORDER, RenderPlanStrategyKind
 
 
 class StaticRoot:
@@ -114,6 +115,23 @@ def test_render_plan_context_carries_cursor_and_diff_facts() -> None:
     assert context.last_changed == 1
     assert context.appended_lines == 1
     assert context.append_start == 1
+
+
+def test_default_render_strategy_order_matches_design() -> None:
+    assert DEFAULT_STRATEGY_ORDER == (
+        RenderPlanStrategyKind.FIRST_RENDER,
+        RenderPlanStrategyKind.TRANSCRIPT_WINDOW_TRIMMED_RESET,
+        RenderPlanStrategyKind.BASELINE_RESET,
+        RenderPlanStrategyKind.RESIZE_REPAINT,
+        RenderPlanStrategyKind.UNSAFE_VIEWPORT,
+        RenderPlanStrategyKind.NO_CHANGE,
+        RenderPlanStrategyKind.APPEND,
+        RenderPlanStrategyKind.PROTECTED_APPEND,
+        RenderPlanStrategyKind.SHRINK_VIEWPORT_REPAINT,
+        RenderPlanStrategyKind.SHRINK_CLEAR,
+        RenderPlanStrategyKind.CHANGED_ABOVE_VIEWPORT,
+        RenderPlanStrategyKind.CHANGED_RANGE,
+    )
 
 
 def test_runtime_render_now_does_not_emit_tui_render_frame_when_scope_is_disabled() -> None:
