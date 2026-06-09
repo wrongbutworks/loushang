@@ -8,6 +8,7 @@ import pytest
 from loushang.observability import configure_debug_logging, reset_observability
 from loushang.tui import (
     CURSOR_MARKER,
+    CursorDeclaration,
     FakeTerminalPort,
     ProcessTerminalPort,
     RenderConstraints,
@@ -22,6 +23,7 @@ from loushang.tui import (
     delete_kitty_image,
     wrap_tmux_passthrough,
 )
+from loushang.tui.render_loop import DEFAULT_STRATEGY_ORDER, RenderPlanStrategyKind
 
 
 class StaticRoot:
@@ -92,6 +94,98 @@ def test_runtime_render_now_emits_tui_render_frame_diagnostics() -> None:
     assert event.data["plan_ms"] >= 0
     assert event.data["flush_ms"] >= 0
     assert event.data["total_ms"] >= 0
+
+
+def test_render_plan_context_carries_cursor_and_diff_facts() -> None:
+    root = StaticRoot(("alpha",))
+    loop = RenderLoop(root)
+    size = TerminalSize(columns=20, rows=5)
+    first = loop.plan(size)
+    loop.commit(first, size=size)
+
+    root.lines = ("alpha", "beta" + CURSOR_MARKER)
+    context = loop._build_plan_context(size)
+
+    assert context.raw_current_lines == ("alpha", "beta")
+    assert context.current_lines == ("alpha", "beta")
+    assert context.declared_cursor == CursorDeclaration(row=1, column=4)
+    assert context.cursor == CursorDeclaration(row=1, column=4)
+    assert context.changed_range == (1, 1)
+    assert context.first_changed == 1
+    assert context.last_changed == 1
+    assert context.appended_lines == 1
+    assert context.append_start == 1
+
+
+def test_default_render_strategy_order_matches_design() -> None:
+    assert DEFAULT_STRATEGY_ORDER == (
+        RenderPlanStrategyKind.FIRST_RENDER,
+        RenderPlanStrategyKind.TRANSCRIPT_WINDOW_TRIMMED_RESET,
+        RenderPlanStrategyKind.BASELINE_RESET,
+        RenderPlanStrategyKind.RESIZE_REPAINT,
+        RenderPlanStrategyKind.UNSAFE_VIEWPORT,
+        RenderPlanStrategyKind.NO_CHANGE,
+        RenderPlanStrategyKind.APPEND,
+        RenderPlanStrategyKind.PROTECTED_APPEND,
+        RenderPlanStrategyKind.SHRINK_VIEWPORT_REPAINT,
+        RenderPlanStrategyKind.SHRINK_CLEAR,
+        RenderPlanStrategyKind.CHANGED_ABOVE_VIEWPORT,
+        RenderPlanStrategyKind.CHANGED_RANGE,
+    )
+
+
+def test_resize_repaint_precedes_changed_range_strategy() -> None:
+    root = StaticRoot(("one",))
+    loop = RenderLoop(root)
+    first = loop.plan(TerminalSize(columns=20, rows=5))
+    loop.commit(first, size=TerminalSize(columns=20, rows=5))
+
+    root.lines = ("two",)
+    step = loop.plan(TerminalSize(columns=30, rows=5))
+
+    assert step.operation_class == "resize_repaint"
+
+
+def test_unsafe_viewport_precedes_append_strategy() -> None:
+    root = StaticRoot(("one",))
+    loop = RenderLoop(root)
+    first = loop.plan(TerminalSize(columns=20, rows=5))
+    loop.commit(first, size=TerminalSize(columns=20, rows=5))
+
+    root.lines = ("one", "two")
+    loop.mark_viewport_unsafe("external_stdout")
+    step = loop.plan(TerminalSize(columns=20, rows=5))
+
+    assert step.operation_class == "recovery_repaint"
+    assert step.repaint_reason == "external_stdout"
+
+
+def test_transcript_window_trimmed_reset_precedes_resize_repaint() -> None:
+    root = StaticRoot(("one",))
+    loop = RenderLoop(root)
+    first = loop.plan(TerminalSize(columns=20, rows=5))
+    loop.commit(first, size=TerminalSize(columns=20, rows=5))
+
+    root.lines = ("one", "two")
+    loop.reset_baseline("transcript_window_trimmed:active_line_budget")
+    step = loop.plan(TerminalSize(columns=30, rows=5))
+
+    assert step.operation_class == "managed_viewport_repaint"
+    assert step.repaint_reason == "transcript_window_trimmed:active_line_budget"
+
+
+def test_ordinary_baseline_reset_precedes_resize_repaint() -> None:
+    root = StaticRoot(("one",))
+    loop = RenderLoop(root)
+    first = loop.plan(TerminalSize(columns=20, rows=5))
+    loop.commit(first, size=TerminalSize(columns=20, rows=5))
+
+    root.lines = ("one", "two")
+    loop.reset_baseline("transcript_window_replaced:resume")
+    step = loop.plan(TerminalSize(columns=30, rows=5))
+
+    assert step.operation_class == "baseline_repaint"
+    assert step.repaint_reason == "transcript_window_replaced:resume"
 
 
 def test_runtime_render_now_does_not_emit_tui_render_frame_when_scope_is_disabled() -> None:

@@ -77,5 +77,6 @@ def test_long_transcript_probe_stays_bounded_after_active_window_trim() -> None:
     assert second_metrics.visible_render_ms < 1_000
     assert first_metrics.render_loop_logical_line_count <= app.active_transcript_line_budget + 60
     assert second_metrics.render_loop_logical_line_count <= app.active_transcript_line_budget + 60
+    assert second_metrics.render_loop_logical_line_count == first_metrics.render_loop_logical_line_count
     assert second_metrics.render_loop_operation_class == "changed_range_update"
     assert second_metrics.changed_line_range is not None
