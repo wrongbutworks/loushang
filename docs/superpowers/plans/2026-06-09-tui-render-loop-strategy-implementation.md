@@ -44,19 +44,28 @@ Add a test near the render-loop diagnostics tests:
 
 ```python
 def test_render_plan_context_carries_cursor_and_diff_facts() -> None:
-    root = SequenceRoot(["alpha"], ["alpha", "beta"])
+    root = StaticRoot(("alpha",))
     loop = RenderLoop(root)
-    first = loop.plan(TerminalSize(columns=20, rows=5))
-    loop.commit(first, size=TerminalSize(columns=20, rows=5))
+    size = TerminalSize(columns=20, rows=5)
+    first = loop.plan(size)
+    loop.commit(first, size=size)
 
-    second = loop.plan(TerminalSize(columns=20, rows=5))
+    root.lines = ("alpha", "beta" + CURSOR_MARKER)
+    context = loop._build_plan_context(size)
 
-    assert second.operation_class == "append_update"
-    assert second.appended_lines == 1
-    assert second.append_start == 1
+    assert context.raw_current_lines == ("alpha", "beta" + CURSOR_MARKER)
+    assert context.current_lines == ("alpha", "beta")
+    assert context.declared_cursor == CursorDeclaration(row=1, column=4)
+    assert context.cursor == CursorDeclaration(row=1, column=4)
+    assert context.changed_range == (1, 1)
+    assert context.first_changed == 1
+    assert context.last_changed == 1
+    assert context.appended_lines == 1
+    assert context.append_start == 1
 ```
 
-Use existing test helpers in `tests/tui/test_render_loop.py` where possible. If `SequenceRoot` does not exist, add the smallest local renderable helper matching current test style.
+Add `CursorDeclaration` to the existing `loushang.tui` imports in
+`tests/tui/test_render_loop.py`.
 
 - [ ] **Step 2: Run the focused test and verify RED**
 
@@ -66,7 +75,7 @@ Run:
 uv --cache-dir .uv-cache run --extra dev pytest tests/tui/test_render_loop.py::test_render_plan_context_carries_cursor_and_diff_facts -q
 ```
 
-Expected: FAIL because the new helper/test is not yet wired to a context extraction behavior or because helper names need implementation.
+Expected: FAIL because `RenderLoop._build_plan_context` does not exist yet.
 
 - [ ] **Step 3: Add internal dataclasses**
 
