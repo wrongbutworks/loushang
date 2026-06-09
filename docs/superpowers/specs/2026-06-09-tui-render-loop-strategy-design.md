@@ -76,6 +76,7 @@ construction:
 ```python
 class RenderPlanStrategyKind(Enum):
     FIRST_RENDER = auto()
+    TRANSCRIPT_WINDOW_TRIMMED_RESET = auto()
     BASELINE_RESET = auto()
     RESIZE_REPAINT = auto()
     UNSAFE_VIEWPORT = auto()
@@ -90,6 +91,7 @@ class RenderPlanStrategyKind(Enum):
 
 DEFAULT_STRATEGY_ORDER: tuple[RenderPlanStrategyKind, ...] = (
     RenderPlanStrategyKind.FIRST_RENDER,
+    RenderPlanStrategyKind.TRANSCRIPT_WINDOW_TRIMMED_RESET,
     RenderPlanStrategyKind.BASELINE_RESET,
     RenderPlanStrategyKind.RESIZE_REPAINT,
     RenderPlanStrategyKind.UNSAFE_VIEWPORT,
@@ -110,6 +112,9 @@ would make priority more fragmented without improving clarity.
 `SHRINK_VIEWPORT_REPAINT` covers the current
 `viewport_top_decreased_after_shrink` managed viewport repaint path.
 `SHRINK_CLEAR` covers the existing `operation_class="shrink_clear"` path.
+`TRANSCRIPT_WINDOW_TRIMMED_RESET` is separate from ordinary baseline reset
+because trimmed transcript windows currently use `managed_viewport_repaint`,
+while other baseline resets use `baseline_repaint`.
 
 ## Strategy Contract
 
@@ -156,15 +161,25 @@ class RenderPlanContext:
     current_lines: tuple[str, ...]
     previous_lines: tuple[str, ...]
     previous_size: TerminalSize | None
+    declared_cursor: CursorDeclaration | None
+    cursor: CursorDeclaration
     changed_range: tuple[int, int] | None
+    first_changed: int | None
+    last_changed: int | None
+    appended_lines: int
+    append_start: int | None
     viewport_top: int
+    differential_viewport_top: int
     width_changed: bool
     height_changed: bool
     previous_kitty_delete_sequences: tuple[str, ...]
 ```
 
 The context contains facts only. It should not expose helper methods that encode
-strategy decisions.
+strategy decisions. Derived fields such as `first_changed`, `last_changed`,
+`appended_lines`, `append_start`, and `differential_viewport_top` are still facts:
+they describe the frame once, so individual strategies do not recompute them and
+accidentally drift from one another.
 
 ## RenderPlanRuntime
 
@@ -175,6 +190,8 @@ mutate unrelated internals.
 It exposes:
 
 - `previous_viewport_top`
+- `previous_cursor_row`
+- `previous_cursor_column`
 - `hardware_cursor_row`
 - `hardware_cursor_column`
 - `working_area_high_water_mark`
@@ -192,7 +209,8 @@ refactor. The important boundary is that strategies do not mutate loop state.
 | Scenario | Strategy | operation_class | Key condition |
 | --- | --- | --- | --- |
 | First render | `FirstRenderStrategy` | `first_render` | `previous_size is None` |
-| Internal baseline reset | `BaselineResetStrategy` | `baseline_repaint` or `managed_viewport_repaint` | `baseline_reset_reason is not None` |
+| Trimmed transcript reset | `TranscriptWindowTrimmedResetStrategy` | `managed_viewport_repaint` | `baseline_reset_reason.startswith("transcript_window_trimmed:")` |
+| Ordinary internal baseline reset | `BaselineResetStrategy` | `baseline_repaint` | `baseline_reset_reason is not None` and not a trimmed transcript reset |
 | Terminal resize | `ResizeRepaintStrategy` | `resize_repaint` | `width_changed or height_changed`, except Termux height-only |
 | External unsafe viewport | `UnsafeViewportStrategy` | `recovery_repaint` | `unsafe_viewport_reason is not None` |
 | No content change, cursor moved | `NoChangeStrategy` | `cursor_update` | `changed_range is None` and cursor differs |
@@ -204,10 +222,12 @@ refactor. The important boundary is that strategies do not mutate loop state.
 | Changed row above visible viewport | `ChangedAboveViewportStrategy` | `managed_viewport_repaint` | `first_changed < previous_viewport_top` |
 | Ordinary changed range | `ChangedRangeStrategy` | `changed_range_update` | normal diff path after earlier strategies decline |
 
-Priority matters. For example, `baseline_reset + resize` must use the baseline
-reset path because internal transcript-window replacement is a stronger signal
-than terminal-size repaint. `unsafe_viewport + append` must use recovery repaint
-because appending against an unsafe physical viewport can corrupt managed rows.
+Priority matters. For example, `transcript_window_trimmed + resize` must use the
+trimmed-window managed repaint path, and ordinary `baseline_reset + resize` must
+use baseline repaint, because internal transcript-window replacement is a
+stronger signal than terminal-size repaint. `unsafe_viewport + append` must use
+recovery repaint because appending against an unsafe physical viewport can
+corrupt managed rows.
 
 ## Repaint Trigger Classes
 
@@ -301,7 +321,9 @@ Existing operation-class assertions should continue to pass.
 Add focused tests for:
 
 - `DEFAULT_STRATEGY_ORDER` matches the documented order.
-- `baseline_reset + resize` chooses baseline reset before resize.
+- `transcript_window_trimmed + resize` chooses trimmed-window managed repaint
+  before resize.
+- ordinary `baseline_reset + resize` chooses baseline reset before resize.
 - `unsafe_viewport + append` chooses recovery repaint before append.
 - `changed_range is None` chooses `cursor_update` or `noop`.
 - protected append admission conditions, preferably parameterized around the
@@ -333,15 +355,19 @@ Phase 1: Extract facts.
 Phase 2: Extract simple strategies.
 
 - Add strategy kinds, default order, and stateless strategy protocol.
-- Extract first render, baseline reset, resize repaint, unsafe viewport, and
-  no-change strategies.
-- Keep complex diff paths inline until the simple path is proven.
+- Extract first render, resize repaint, unsafe viewport, and no-change
+  strategies.
+- Keep baseline reset and complex diff paths inline until the simple path is
+  proven. Baseline reset is intentionally delayed because trimmed transcript
+  reset uses managed viewport repaint while ordinary baseline reset uses
+  baseline repaint.
 - Run render-loop tests after each extraction.
 
 Phase 3: Extract complex strategies and docs.
 
-- Extract append, protected append, shrink viewport repaint, shrink clear,
-  changed-above-viewport, and changed-range strategies.
+- Extract transcript-window-trimmed reset, ordinary baseline reset, append,
+  protected append, shrink viewport repaint, shrink clear, changed-above-viewport,
+  and changed-range strategies.
 - Add render-loop and managed-viewport docs.
 - Add strategy boundary tests and performance guards.
 - Run targeted TUI tests and coding perf probes.
