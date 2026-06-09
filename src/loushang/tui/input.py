@@ -2,8 +2,8 @@ from __future__ import annotations
 
 import os
 import re
-from dataclasses import dataclass
-from typing import Literal
+from dataclasses import InitVar, dataclass, field
+from typing import Literal, Protocol
 
 from loushang.tui.framework import SurfaceHost
 from loushang.tui.keybindings import KeybindingManager, normalize_key_id
@@ -297,6 +297,231 @@ class InputBatch:
     has_pending: bool = False
 
 
+class EditorInputTarget(Protocol):
+    def insert_text(self, text: str) -> None: ...
+
+    def paste(self, text: str) -> None: ...
+
+    def move_left(self) -> None: ...
+
+    def move_right(self) -> None: ...
+
+    def move_word_left(self) -> None: ...
+
+    def move_word_right(self) -> None: ...
+
+    def move_to_line_start(self) -> None: ...
+
+    def move_to_line_end(self) -> None: ...
+
+    def select_char_left(self) -> None: ...
+
+    def select_char_right(self) -> None: ...
+
+    def select_word_left(self) -> None: ...
+
+    def select_word_right(self) -> None: ...
+
+    def select_line_start(self) -> None: ...
+
+    def select_line_end(self) -> None: ...
+
+    def delete_backward(self) -> None: ...
+
+    def delete_forward(self) -> None: ...
+
+    def delete_word_backward(self) -> None: ...
+
+    def delete_word_forward(self) -> None: ...
+
+    def kill_to_line_start(self) -> None: ...
+
+    def kill_to_line_end(self) -> None: ...
+
+    def yank(self) -> None: ...
+
+    def yank_pop(self) -> None: ...
+
+    def undo(self) -> None: ...
+
+    def redo(self) -> None: ...
+
+
+class PromptInputTarget(EditorInputTarget, Protocol):
+    @property
+    def value(self) -> str: ...
+
+    @property
+    def browsing_history(self) -> bool: ...
+
+    @property
+    def has_completions(self) -> bool: ...
+
+    def clear(self) -> None: ...
+
+    def add_history(self, text: str) -> None: ...
+
+    def insert_newline(self) -> None: ...
+
+    def history_previous(self) -> None: ...
+
+    def history_next(self) -> None: ...
+
+    def move_visual_up(self, *, width: int) -> bool: ...
+
+    def move_visual_down(self, *, width: int) -> bool: ...
+
+    def move_visual_page_up(self, *, width: int, visible_lines: int) -> None: ...
+
+    def move_visual_page_down(self, *, width: int, visible_lines: int) -> None: ...
+
+    def jump_to_char(self, text: str, *, direction: Literal["forward", "backward"]) -> None: ...
+
+    def refresh_completions(self, *, force: bool = False, explicit: bool = False) -> None: ...
+
+    def apply_selected_completion(self) -> None: ...
+
+    def select_previous_completion(self) -> None: ...
+
+    def select_next_completion(self) -> None: ...
+
+    def clear_completion_items(self) -> None: ...
+
+
+@dataclass(frozen=True, slots=True)
+class ComposerInputTarget:
+    composer: Composer
+
+    @property
+    def value(self) -> str:
+        return self.composer.value
+
+    @property
+    def browsing_history(self) -> bool:
+        return self.composer.browsing_history
+
+    @property
+    def has_completions(self) -> bool:
+        return self.composer.has_completions
+
+    def insert_text(self, text: str) -> None:
+        self.composer.insert_text(text)
+
+    def paste(self, text: str) -> None:
+        self.composer.paste(text)
+
+    def move_left(self) -> None:
+        self.composer.move_left()
+
+    def move_right(self) -> None:
+        self.composer.move_right()
+
+    def move_word_left(self) -> None:
+        self.composer.move_word_left()
+
+    def move_word_right(self) -> None:
+        self.composer.move_word_right()
+
+    def move_to_line_start(self) -> None:
+        self.composer.move_to_line_start()
+
+    def move_to_line_end(self) -> None:
+        self.composer.move_to_line_end()
+
+    def select_char_left(self) -> None:
+        self.composer.select_char_left()
+
+    def select_char_right(self) -> None:
+        self.composer.select_char_right()
+
+    def select_word_left(self) -> None:
+        self.composer.select_word_left()
+
+    def select_word_right(self) -> None:
+        self.composer.select_word_right()
+
+    def select_line_start(self) -> None:
+        self.composer.select_line_start()
+
+    def select_line_end(self) -> None:
+        self.composer.select_line_end()
+
+    def delete_backward(self) -> None:
+        self.composer.delete_backward()
+
+    def delete_forward(self) -> None:
+        self.composer.delete_forward()
+
+    def delete_word_backward(self) -> None:
+        self.composer.delete_word_backward()
+
+    def delete_word_forward(self) -> None:
+        self.composer.delete_word_forward()
+
+    def kill_to_line_start(self) -> None:
+        self.composer.kill_to_line_start()
+
+    def kill_to_line_end(self) -> None:
+        self.composer.kill_to_line_end()
+
+    def yank(self) -> None:
+        self.composer.yank()
+
+    def yank_pop(self) -> None:
+        self.composer.yank_pop()
+
+    def undo(self) -> None:
+        self.composer.undo()
+
+    def redo(self) -> None:
+        self.composer.redo()
+
+    def clear(self) -> None:
+        self.composer.clear()
+
+    def add_history(self, text: str) -> None:
+        self.composer.add_history(text)
+
+    def insert_newline(self) -> None:
+        self.composer.insert_newline()
+
+    def history_previous(self) -> None:
+        self.composer.history_previous()
+
+    def history_next(self) -> None:
+        self.composer.history_next()
+
+    def move_visual_up(self, *, width: int) -> bool:
+        return self.composer.move_visual_up(width=width)
+
+    def move_visual_down(self, *, width: int) -> bool:
+        return self.composer.move_visual_down(width=width)
+
+    def move_visual_page_up(self, *, width: int, visible_lines: int) -> None:
+        self.composer.move_visual_page_up(width=width, visible_lines=visible_lines)
+
+    def move_visual_page_down(self, *, width: int, visible_lines: int) -> None:
+        self.composer.move_visual_page_down(width=width, visible_lines=visible_lines)
+
+    def jump_to_char(self, text: str, *, direction: Literal["forward", "backward"]) -> None:
+        self.composer.jump_to_char(text, direction=direction)
+
+    def refresh_completions(self, *, force: bool = False, explicit: bool = False) -> None:
+        self.composer.refresh_completions(force=force, explicit=explicit)
+
+    def apply_selected_completion(self) -> None:
+        self.composer.apply_selected_completion()
+
+    def select_previous_completion(self) -> None:
+        self.composer.select_previous_completion()
+
+    def select_next_completion(self) -> None:
+        self.composer.select_next_completion()
+
+    def clear_completion_items(self) -> None:
+        self.composer.clear_completion_items()
+
+
 @dataclass(slots=True)
 class InputReader:
     _buffer: str = ""
@@ -460,7 +685,7 @@ class InputReader:
 
 @dataclass(slots=True)
 class InputRouter:
-    composer: Composer
+    composer: Composer | None = None
     surface_host: SurfaceHost | None = None
     running: bool = False
     steering_supported: bool = False
@@ -468,8 +693,22 @@ class InputRouter:
     height: int = 24
     keybindings: KeybindingManager | None = None
     _jump_mode: Literal["forward", "backward"] | None = None
+    target: InitVar[PromptInputTarget | None] = None
+    _target: PromptInputTarget = field(init=False, repr=False)
+
+    def __post_init__(self, target: PromptInputTarget | None) -> None:
+        if self.composer is not None and target is not None:
+            raise TypeError("InputRouter accepts composer or target, not both")
+        if target is not None:
+            self._target = target
+            return
+        if self.composer is not None:
+            self._target = ComposerInputTarget(self.composer)
+            return
+        raise TypeError("InputRouter requires composer or target")
 
     def route(self, event: InputEvent) -> tuple[InputIntent, ...]:
+        target = self._target
         if event.kind == "key" and event.event_type == "release":
             return ()
         if event.kind == "key":
@@ -486,21 +725,10 @@ class InputRouter:
             surface_intents = self._route_surface_first(event)
             if surface_intents:
                 return surface_intents
-            if route_composer_selection_key(self.composer, event.key, keybindings=keybindings):
+            if route_editor_selection_key(target, event.key, keybindings=keybindings):
                 return ()
-            if self.composer.has_completions:
-                if keybindings.matches(event.key, "tui.select.up"):
-                    self.composer.select_previous_completion()
-                    return ()
-                if keybindings.matches(event.key, "tui.select.down"):
-                    self.composer.select_next_completion()
-                    return ()
-                if keybindings.matches(event.key, "tui.input.tab"):
-                    self.composer.apply_selected_completion()
-                    return ()
-                if keybindings.matches(event.key, "tui.select.cancel"):
-                    self.composer.clear_completion_items()
-                    return ()
+            if target.has_completions and route_prompt_completion_key(target, event.key, keybindings=keybindings):
+                return ()
             if keybindings.matches(event.key, "tui.select.cancel") and self.running:
                 return (InputIntent(kind="abort"),)
             if keybindings.matches(event.key, "tui.editor.jumpForward"):
@@ -512,14 +740,14 @@ class InputRouter:
             if keybindings.matches(event.key, "tui.queue.editLast"):
                 return (InputIntent(kind="command", note="edit_last_queued_prompt"),)
             if keybindings.matches(event.key, "tui.input.tab"):
-                self.composer.refresh_completions(force=True, explicit=True)
-                if self.composer.has_completions:
-                    self.composer.apply_selected_completion()
+                target.refresh_completions(force=True, explicit=True)
+                if target.has_completions:
+                    target.apply_selected_completion()
                 return ()
             if keybindings.matches(event.key, "tui.input.submit"):
                 return self.submit()
             if keybindings.matches(event.key, "tui.input.newLine"):
-                self.composer.insert_newline()
+                target.insert_newline()
                 return ()
             if keybindings.matches(event.key, "tui.editor.cursorUp"):
                 self._move_up_or_history()
@@ -528,34 +756,35 @@ class InputRouter:
                 self._move_down_or_history()
                 return ()
             if keybindings.matches(event.key, "tui.editor.pageUp"):
-                self.composer.move_visual_page_up(width=self.width, visible_lines=self._composer_page_lines())
+                target.move_visual_page_up(width=self.width, visible_lines=self._composer_page_lines())
                 return ()
             if keybindings.matches(event.key, "tui.editor.pageDown"):
-                self.composer.move_visual_page_down(width=self.width, visible_lines=self._composer_page_lines())
+                target.move_visual_page_down(width=self.width, visible_lines=self._composer_page_lines())
                 return ()
-            if route_composer_editing_key(self.composer, event.key, keybindings=keybindings):
+            if route_editor_editing_key(target, event.key, keybindings=keybindings):
                 return ()
         if event.kind == "paste":
             self._jump_mode = None
-            self.composer.paste(event.text)
+            target.paste(event.text)
             return ()
         if event.kind == "text":
             if self._jump_mode is not None:
-                self.composer.jump_to_char(event.text, direction=self._jump_mode)
+                target.jump_to_char(event.text, direction=self._jump_mode)
                 self._jump_mode = None
                 return ()
-            self.composer.insert_text(event.text)
+            target.insert_text(event.text)
             return ()
         if event.kind == "resize" or (event.kind == "signal" and event.signal == "sigwinch"):
             return (InputIntent(kind="invalidate_render"),)
         return ()
 
     def submit(self, *, mode: SubmitMode = "submit") -> tuple[InputIntent, ...]:
-        text = self.composer.value
+        target = self._target
+        text = target.value
         if not text:
             return ()
-        self.composer.add_history(text)
-        self.composer.clear()
+        target.add_history(text)
+        target.clear()
         if not self.running:
             return (InputIntent(kind="submit", text=text),)
         if mode == "steer":
@@ -581,16 +810,18 @@ class InputRouter:
         return ()
 
     def _move_up_or_history(self) -> None:
-        if self.composer.browsing_history:
-            self.composer.history_previous()
-        elif not self.composer.value or not self.composer.move_visual_up(width=self.width):
-            self.composer.history_previous()
+        target = self._target
+        if target.browsing_history:
+            target.history_previous()
+        elif not target.value or not target.move_visual_up(width=self.width):
+            target.history_previous()
 
     def _move_down_or_history(self) -> None:
-        if self.composer.browsing_history:
-            self.composer.history_next()
-        elif not self.composer.value or not self.composer.move_visual_down(width=self.width):
-            self.composer.history_next()
+        target = self._target
+        if target.browsing_history:
+            target.history_next()
+        elif not target.value or not target.move_visual_down(width=self.width):
+            target.history_next()
 
     def _keybindings(self) -> KeybindingManager:
         if self.keybindings is None:
@@ -637,62 +868,121 @@ def _split_paste_payload_and_pending_end_marker(text: str) -> tuple[str, str]:
     return text, ""
 
 
-def route_composer_editing_key(
-    composer: Composer,
+def route_editor_editing_key(
+    target: EditorInputTarget,
     key: str,
     *,
     keybindings: KeybindingManager | None = None,
 ) -> bool:
     keybindings = keybindings or KeybindingManager()
     if keybindings.matches(key, "tui.editor.cursorLeft"):
-        composer.move_left()
+        target.move_left()
         return True
     if keybindings.matches(key, "tui.editor.cursorRight"):
-        composer.move_right()
+        target.move_right()
         return True
     if keybindings.matches(key, "tui.editor.cursorWordLeft"):
-        composer.move_word_left()
+        target.move_word_left()
         return True
     if keybindings.matches(key, "tui.editor.cursorWordRight"):
-        composer.move_word_right()
+        target.move_word_right()
         return True
     if keybindings.matches(key, "tui.editor.deleteCharBackward"):
-        composer.delete_backward()
+        target.delete_backward()
         return True
     if keybindings.matches(key, "tui.editor.deleteCharForward"):
-        composer.delete_forward()
+        target.delete_forward()
         return True
     if keybindings.matches(key, "tui.editor.cursorLineStart"):
-        composer.move_to_line_start()
+        target.move_to_line_start()
         return True
     if keybindings.matches(key, "tui.editor.cursorLineEnd"):
-        composer.move_to_line_end()
+        target.move_to_line_end()
         return True
     if keybindings.matches(key, "tui.editor.deleteToLineEnd"):
-        composer.kill_to_line_end()
+        target.kill_to_line_end()
         return True
     if keybindings.matches(key, "tui.editor.deleteToLineStart"):
-        composer.kill_to_line_start()
+        target.kill_to_line_start()
         return True
     if keybindings.matches(key, "tui.editor.deleteWordBackward"):
-        composer.delete_word_backward()
+        target.delete_word_backward()
         return True
     if keybindings.matches(key, "tui.editor.deleteWordForward"):
-        composer.delete_word_forward()
+        target.delete_word_forward()
         return True
     if keybindings.matches(key, "tui.editor.yank"):
-        composer.yank()
+        target.yank()
         return True
     if keybindings.matches(key, "tui.editor.yankPop"):
-        composer.yank_pop()
+        target.yank_pop()
         return True
     if keybindings.matches(key, "tui.editor.undo"):
-        composer.undo()
+        target.undo()
         return True
     if keybindings.matches(key, "tui.editor.redo"):
-        composer.redo()
+        target.redo()
         return True
     return False
+
+
+def route_editor_selection_key(
+    target: EditorInputTarget,
+    key: str,
+    *,
+    keybindings: KeybindingManager | None = None,
+) -> bool:
+    keybindings = keybindings or KeybindingManager()
+    if keybindings.matches(key, "tui.editor.selectCharLeft"):
+        target.select_char_left()
+        return True
+    if keybindings.matches(key, "tui.editor.selectCharRight"):
+        target.select_char_right()
+        return True
+    if keybindings.matches(key, "tui.editor.selectWordLeft"):
+        target.select_word_left()
+        return True
+    if keybindings.matches(key, "tui.editor.selectWordRight"):
+        target.select_word_right()
+        return True
+    if keybindings.matches(key, "tui.editor.selectLineStart"):
+        target.select_line_start()
+        return True
+    if keybindings.matches(key, "tui.editor.selectLineEnd"):
+        target.select_line_end()
+        return True
+    return False
+
+
+def route_prompt_completion_key(
+    target: PromptInputTarget,
+    key: str,
+    *,
+    keybindings: KeybindingManager | None = None,
+) -> bool:
+    keybindings = keybindings or KeybindingManager()
+    if keybindings.matches(key, "tui.select.up"):
+        target.select_previous_completion()
+        return True
+    if keybindings.matches(key, "tui.select.down"):
+        target.select_next_completion()
+        return True
+    if keybindings.matches(key, "tui.input.tab"):
+        target.apply_selected_completion()
+        return True
+    if keybindings.matches(key, "tui.select.cancel"):
+        target.clear_completion_items()
+        return True
+    return False
+
+
+def route_composer_editing_key(
+    composer: Composer,
+    key: str,
+    *,
+    keybindings: KeybindingManager | None = None,
+) -> bool:
+    return route_editor_editing_key(ComposerInputTarget(composer), key, keybindings=keybindings)
 
 
 def route_composer_selection_key(
@@ -701,26 +991,7 @@ def route_composer_selection_key(
     *,
     keybindings: KeybindingManager | None = None,
 ) -> bool:
-    keybindings = keybindings or KeybindingManager()
-    if keybindings.matches(key, "tui.editor.selectCharLeft"):
-        composer.select_char_left()
-        return True
-    if keybindings.matches(key, "tui.editor.selectCharRight"):
-        composer.select_char_right()
-        return True
-    if keybindings.matches(key, "tui.editor.selectWordLeft"):
-        composer.select_word_left()
-        return True
-    if keybindings.matches(key, "tui.editor.selectWordRight"):
-        composer.select_word_right()
-        return True
-    if keybindings.matches(key, "tui.editor.selectLineStart"):
-        composer.select_line_start()
-        return True
-    if keybindings.matches(key, "tui.editor.selectLineEnd"):
-        composer.select_line_end()
-        return True
-    return False
+    return route_editor_selection_key(ComposerInputTarget(composer), key, keybindings=keybindings)
 
 
 def _extract_complete_sequences(buffer: str) -> tuple[tuple[str, ...], str]:

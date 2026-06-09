@@ -1,7 +1,9 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
-from typing import Any
+from dataclasses import dataclass, field
+from typing import Any, Literal
+
+import pytest
 
 from loushang.tui import (
     CompletionItem,
@@ -20,6 +22,10 @@ from loushang.tui import (
     Surface,
     SurfaceHost,
 )
+from loushang.tui.input import (
+    route_editor_editing_key,
+    route_editor_selection_key,
+)
 
 
 @dataclass(slots=True)
@@ -35,6 +41,144 @@ class EscConsumer(FocusableMixin):
         if isinstance(event, InputEvent) and event.kind == "key" and event.key == "esc":
             return InputIntent(kind="surface_close")
         return None
+
+
+@dataclass(slots=True)
+class FakePromptTarget:
+    value: str = ""
+    browsing_history: bool = False
+    has_completions: bool = False
+    calls: list[str] = field(default_factory=list)
+    history: list[str] = field(default_factory=list)
+
+    def insert_text(self, text: str) -> None:
+        self.calls.append(f"insert_text:{text}")
+        self.value += text
+
+    def paste(self, text: str) -> None:
+        self.calls.append(f"paste:{text}")
+        self.value += text
+
+    def clear(self) -> None:
+        self.calls.append("clear")
+        self.value = ""
+
+    def add_history(self, text: str) -> None:
+        self.calls.append(f"add_history:{text}")
+        self.history.append(text)
+
+    def insert_newline(self) -> None:
+        self.calls.append("insert_newline")
+        self.value += "\n"
+
+    def _record(self, name: str) -> None:
+        self.calls.append(name)
+
+    def move_left(self) -> None:
+        self._record("move_left")
+
+    def move_right(self) -> None:
+        self._record("move_right")
+
+    def move_word_left(self) -> None:
+        self._record("move_word_left")
+
+    def move_word_right(self) -> None:
+        self._record("move_word_right")
+
+    def move_to_line_start(self) -> None:
+        self._record("move_to_line_start")
+
+    def move_to_line_end(self) -> None:
+        self._record("move_to_line_end")
+
+    def select_char_left(self) -> None:
+        self._record("select_char_left")
+
+    def select_char_right(self) -> None:
+        self._record("select_char_right")
+
+    def select_word_left(self) -> None:
+        self._record("select_word_left")
+
+    def select_word_right(self) -> None:
+        self._record("select_word_right")
+
+    def select_line_start(self) -> None:
+        self._record("select_line_start")
+
+    def select_line_end(self) -> None:
+        self._record("select_line_end")
+
+    def delete_backward(self) -> None:
+        self._record("delete_backward")
+
+    def delete_forward(self) -> None:
+        self._record("delete_forward")
+
+    def delete_word_backward(self) -> None:
+        self._record("delete_word_backward")
+
+    def delete_word_forward(self) -> None:
+        self._record("delete_word_forward")
+
+    def kill_to_line_start(self) -> None:
+        self._record("kill_to_line_start")
+
+    def kill_to_line_end(self) -> None:
+        self._record("kill_to_line_end")
+
+    def yank(self) -> None:
+        self._record("yank")
+
+    def yank_pop(self) -> None:
+        self._record("yank_pop")
+
+    def undo(self) -> None:
+        self._record("undo")
+
+    def redo(self) -> None:
+        self._record("redo")
+
+    def history_previous(self) -> None:
+        self._record("history_previous")
+
+    def history_next(self) -> None:
+        self._record("history_next")
+
+    def move_visual_up(self, *, width: int) -> bool:
+        self.calls.append(f"move_visual_up:{width}")
+        return False
+
+    def move_visual_down(self, *, width: int) -> bool:
+        self.calls.append(f"move_visual_down:{width}")
+        return False
+
+    def move_visual_page_up(self, *, width: int, visible_lines: int) -> None:
+        self.calls.append(f"move_visual_page_up:{width}:{visible_lines}")
+
+    def move_visual_page_down(self, *, width: int, visible_lines: int) -> None:
+        self.calls.append(f"move_visual_page_down:{width}:{visible_lines}")
+
+    def jump_to_char(self, text: str, *, direction: Literal["forward", "backward"]) -> None:
+        self.calls.append(f"jump_to_char:{direction}:{text}")
+
+    def refresh_completions(self, *, force: bool = False, explicit: bool = False) -> None:
+        self.calls.append(f"refresh_completions:{force}:{explicit}")
+        self.has_completions = True
+
+    def apply_selected_completion(self) -> None:
+        self.calls.append("apply_selected_completion")
+
+    def select_previous_completion(self) -> None:
+        self.calls.append("select_previous_completion")
+
+    def select_next_completion(self) -> None:
+        self.calls.append("select_next_completion")
+
+    def clear_completion_items(self) -> None:
+        self.calls.append("clear_completion_items")
+        self.has_completions = False
 
 
 def test_input_reader_groups_bracketed_paste_as_single_paste_event() -> None:
@@ -283,6 +427,45 @@ def test_keybinding_manager_matches_terminal_underscore_undo_alias() -> None:
 
     assert manager.matches("ctrl+_", "tui.editor.undo")
     assert manager.matches("alt+u", "tui.editor.undo")
+
+
+def test_input_router_rejects_missing_prompt_target() -> None:
+    with pytest.raises(TypeError, match="requires composer or target"):
+        InputRouter()
+
+
+def test_input_router_rejects_composer_and_target_together() -> None:
+    with pytest.raises(TypeError, match="composer or target"):
+        InputRouter(composer=Composer(prompt="> "), target=FakePromptTarget())
+
+
+def test_input_router_routes_text_paste_and_submit_through_target() -> None:
+    target = FakePromptTarget()
+    router = InputRouter(target=target)
+
+    assert router.route(InputEvent(kind="text", text="he")) == ()
+    assert router.route(InputEvent(kind="paste", text="llo")) == ()
+    assert router.route(InputEvent(kind="key", key="enter")) == (
+        InputIntent(kind="submit", text="hello"),
+    )
+
+    assert target.calls == [
+        "insert_text:he",
+        "paste:llo",
+        "add_history:hello",
+        "clear",
+    ]
+    assert target.history == ["hello"]
+    assert target.value == ""
+
+
+def test_editor_key_helpers_route_to_target_operations() -> None:
+    target = FakePromptTarget()
+
+    assert route_editor_editing_key(target, "left")
+    assert route_editor_selection_key(target, "shift+left")
+
+    assert target.calls == ["move_left", "select_char_left"]
 
 
 def test_input_router_alt_angle_moves_to_line_boundaries() -> None:
