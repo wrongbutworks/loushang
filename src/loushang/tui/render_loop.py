@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import dataclass
 from enum import Enum, auto
 from typing import ClassVar, Literal, Protocol
@@ -88,6 +89,8 @@ class RenderPlanRuntime:
     clear_scrollback_policy: ClearScrollbackPolicy
     baseline_reset_reason: str | None
     unsafe_viewport_reason: str | None
+    diagnostics: Callable[..., RenderDiagnostics]
+    repaint_diagnostics: Callable[..., RenderDiagnostics]
 
 
 class RenderPlanStrategy(Protocol):
@@ -97,6 +100,136 @@ class RenderPlanStrategy(Protocol):
     def match(self, context: RenderPlanContext, *, runtime: RenderPlanRuntime) -> bool: ...
 
     def plan(self, context: RenderPlanContext, *, runtime: RenderPlanRuntime) -> RenderDiagnostics: ...
+
+
+@dataclass(frozen=True, slots=True)
+class FirstRenderStrategy:
+    kind: ClassVar[RenderPlanStrategyKind] = RenderPlanStrategyKind.FIRST_RENDER
+    name: ClassVar[str] = "first_render"
+
+    def match(self, context: RenderPlanContext, *, runtime: RenderPlanRuntime) -> bool:
+        return context.previous_size is None
+
+    def plan(self, context: RenderPlanContext, *, runtime: RenderPlanRuntime) -> RenderDiagnostics:
+        return runtime.diagnostics(
+            current_lines=context.current_lines,
+            previous_lines=context.previous_lines,
+            size=context.size,
+            operation_class="first_render",
+            operations=_full_write_operations(
+                context.current_lines,
+                cursor=context.declared_cursor,
+                viewport_top=context.viewport_top,
+            ),
+            changed_range=context.changed_range,
+            viewport_top=context.viewport_top,
+            cursor=context.cursor,
+            hardware_cursor_row=_hardware_row_after_write(context.current_lines, cursor=context.declared_cursor),
+            hardware_cursor_column=context.cursor.column,
+        )
+
+
+@dataclass(frozen=True, slots=True)
+class ResizeRepaintStrategy:
+    kind: ClassVar[RenderPlanStrategyKind] = RenderPlanStrategyKind.RESIZE_REPAINT
+    name: ClassVar[str] = "resize_repaint"
+
+    def match(self, context: RenderPlanContext, *, runtime: RenderPlanRuntime) -> bool:
+        return context.width_changed or (context.height_changed and not runtime.termux_session)
+
+    def plan(self, context: RenderPlanContext, *, runtime: RenderPlanRuntime) -> RenderDiagnostics:
+        return runtime.repaint_diagnostics(
+            current_lines=context.current_lines,
+            previous_lines=context.previous_lines,
+            size=context.size,
+            changed_range=context.changed_range,
+            cursor=context.cursor,
+            declared_cursor=context.declared_cursor,
+            operation_class="resize_repaint",
+            repaint_kind="resize",
+            repaint_reason="terminal_size_changed",
+            width_changed=context.width_changed,
+            height_changed=context.height_changed,
+            delete_kitty_image_sequences=context.previous_kitty_delete_sequences,
+        )
+
+
+@dataclass(frozen=True, slots=True)
+class UnsafeViewportStrategy:
+    kind: ClassVar[RenderPlanStrategyKind] = RenderPlanStrategyKind.UNSAFE_VIEWPORT
+    name: ClassVar[str] = "unsafe_viewport"
+
+    def match(self, context: RenderPlanContext, *, runtime: RenderPlanRuntime) -> bool:
+        return runtime.unsafe_viewport_reason is not None
+
+    def plan(self, context: RenderPlanContext, *, runtime: RenderPlanRuntime) -> RenderDiagnostics:
+        if runtime.unsafe_viewport_reason is None:
+            raise AssertionError("unsafe viewport strategy planned without a reason")
+        return runtime.repaint_diagnostics(
+            current_lines=context.current_lines,
+            previous_lines=context.previous_lines,
+            size=context.size,
+            changed_range=context.changed_range,
+            cursor=context.cursor,
+            declared_cursor=context.declared_cursor,
+            operation_class="recovery_repaint",
+            repaint_kind="recovery",
+            repaint_reason=runtime.unsafe_viewport_reason,
+            delete_kitty_image_sequences=context.previous_kitty_delete_sequences,
+        )
+
+
+@dataclass(frozen=True, slots=True)
+class NoChangeStrategy:
+    kind: ClassVar[RenderPlanStrategyKind] = RenderPlanStrategyKind.NO_CHANGE
+    name: ClassVar[str] = "no_change"
+
+    def match(self, context: RenderPlanContext, *, runtime: RenderPlanRuntime) -> bool:
+        return context.changed_range is None
+
+    def plan(self, context: RenderPlanContext, *, runtime: RenderPlanRuntime) -> RenderDiagnostics:
+        if (context.cursor.row, context.cursor.column) != (
+            runtime.previous_cursor_row,
+            runtime.previous_cursor_column,
+        ):
+            return runtime.diagnostics(
+                current_lines=context.current_lines,
+                previous_lines=context.previous_lines,
+                size=context.size,
+                operation_class="cursor_update",
+                operations=_cursor_update_operations(
+                    context.cursor,
+                    viewport_top=context.viewport_top,
+                    hardware_cursor_row=runtime.hardware_cursor_row,
+                ),
+                viewport_top=context.viewport_top,
+                width_changed=context.width_changed,
+                height_changed=context.height_changed,
+                cursor=context.cursor,
+                hardware_cursor_row=context.cursor.row,
+                hardware_cursor_column=context.cursor.column,
+            )
+        return runtime.diagnostics(
+            current_lines=context.current_lines,
+            previous_lines=context.previous_lines,
+            size=context.size,
+            operation_class="noop",
+            operations=(),
+            viewport_top=context.viewport_top,
+            width_changed=context.width_changed,
+            height_changed=context.height_changed,
+            cursor=context.cursor,
+            hardware_cursor_row=runtime.hardware_cursor_row,
+            hardware_cursor_column=runtime.hardware_cursor_column,
+        )
+
+
+FIRST_RENDER_STRATEGY = FirstRenderStrategy()
+POST_BASELINE_SIMPLE_STRATEGIES: tuple[RenderPlanStrategy, ...] = (
+    ResizeRepaintStrategy(),
+    UnsafeViewportStrategy(),
+    NoChangeStrategy(),
+)
 
 
 @dataclass(slots=True)
@@ -195,34 +328,23 @@ class RenderLoop:
             clear_scrollback_policy=self.clear_scrollback_policy,
             baseline_reset_reason=self._baseline_reset_reason,
             unsafe_viewport_reason=self._unsafe_viewport_reason,
+            diagnostics=self._diagnostics,
+            repaint_diagnostics=self._repaint_diagnostics,
         )
 
     def plan(self, size: TerminalSize) -> RenderDiagnostics:
         context = self._build_plan_context(size)
+        runtime = self._plan_runtime()
         result = context.result
         current_lines = context.current_lines
         cursor = context.cursor
         previous_lines = context.previous_lines
-        previous_size = context.previous_size
-        width_changed = context.width_changed
-        height_changed = context.height_changed
         changed_range = context.changed_range
         viewport_top = context.viewport_top
         previous_kitty_delete_sequences = context.previous_kitty_delete_sequences
 
-        if previous_size is None:
-            return self._diagnostics(
-                current_lines=current_lines,
-                previous_lines=previous_lines,
-                size=size,
-                operation_class="first_render",
-                operations=_full_write_operations(current_lines, cursor=result.cursor, viewport_top=viewport_top),
-                changed_range=changed_range,
-                viewport_top=viewport_top,
-                cursor=cursor,
-                hardware_cursor_row=_hardware_row_after_write(current_lines, cursor=result.cursor),
-                hardware_cursor_column=cursor.column,
-            )
+        if FIRST_RENDER_STRATEGY.match(context, runtime=runtime):
+            return FIRST_RENDER_STRATEGY.plan(context, runtime=runtime)
 
         if self._baseline_reset_reason is not None:
             if self._baseline_reset_reason.startswith("transcript_window_trimmed:"):
@@ -249,68 +371,9 @@ class RenderLoop:
                 delete_kitty_image_sequences=previous_kitty_delete_sequences,
             )
 
-        if width_changed or (height_changed and not self.termux_session):
-            return self._repaint_diagnostics(
-                current_lines=current_lines,
-                previous_lines=previous_lines,
-                size=size,
-                changed_range=changed_range,
-                cursor=cursor,
-                declared_cursor=result.cursor,
-                operation_class="resize_repaint",
-                repaint_kind="resize",
-                repaint_reason="terminal_size_changed",
-                width_changed=width_changed,
-                height_changed=height_changed,
-                delete_kitty_image_sequences=previous_kitty_delete_sequences,
-            )
-
-        if self._unsafe_viewport_reason is not None:
-            return self._repaint_diagnostics(
-                current_lines=current_lines,
-                previous_lines=previous_lines,
-                size=size,
-                changed_range=changed_range,
-                cursor=cursor,
-                declared_cursor=result.cursor,
-                operation_class="recovery_repaint",
-                repaint_kind="recovery",
-                repaint_reason=self._unsafe_viewport_reason,
-                delete_kitty_image_sequences=previous_kitty_delete_sequences,
-            )
-
-        if changed_range is None:
-            if (cursor.row, cursor.column) != (self.previous_cursor_row, self.previous_cursor_column):
-                return self._diagnostics(
-                    current_lines=current_lines,
-                    previous_lines=previous_lines,
-                    size=size,
-                    operation_class="cursor_update",
-                    operations=_cursor_update_operations(
-                        cursor,
-                        viewport_top=viewport_top,
-                        hardware_cursor_row=self.hardware_cursor_row,
-                    ),
-                    viewport_top=viewport_top,
-                    width_changed=width_changed,
-                    height_changed=height_changed,
-                    cursor=cursor,
-                    hardware_cursor_row=cursor.row,
-                    hardware_cursor_column=cursor.column,
-                )
-            return self._diagnostics(
-                current_lines=current_lines,
-                previous_lines=previous_lines,
-                size=size,
-                operation_class="noop",
-                operations=(),
-                viewport_top=viewport_top,
-                width_changed=width_changed,
-                height_changed=height_changed,
-                cursor=cursor,
-                hardware_cursor_row=self.hardware_cursor_row,
-                hardware_cursor_column=self.hardware_cursor_column,
-            )
+        for strategy in POST_BASELINE_SIMPLE_STRATEGIES:
+            if strategy.match(context, runtime=runtime):
+                return strategy.plan(context, runtime=runtime)
 
         first_changed = context.first_changed
         last_changed = context.last_changed
