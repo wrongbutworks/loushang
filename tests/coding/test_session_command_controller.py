@@ -279,6 +279,121 @@ def test_command_controller_executes_builtin_tools_list_and_mutations(tmp_path) 
     assert set_calls == [["read"], ["read", "bash"], ["read"], ["read", "grep", "bash"]]
 
 
+def test_command_controller_builtin_tools_preserves_tool_source_info(tmp_path) -> None:
+    controller = CommandController(
+        session_manager=SessionManager.new(session_dir=tmp_path, cwd="/tmp/project", persist=False, session_id="session-1"),
+        get_extension_runner=lambda: None,
+        get_resource_bundle=lambda: None,
+        get_diagnostics_service=lambda: None,
+        builtin_backend=BuiltinCommandBackend(
+            get_active_tool_names=lambda: ["review_lookup"],
+            get_all_tools=lambda: [
+                {
+                    "name": "review_lookup",
+                    "description": "Look up review metadata",
+                    "sourceInfo": {
+                        "path": "/tmp/project/extensions/review/extension.py",
+                        "source": "filesystem",
+                        "scope": "project",
+                        "origin": "package",
+                        "baseDir": "/tmp/project/extensions/review",
+                    },
+                }
+            ],
+        ),
+    )
+
+    result = asyncio.run(controller.execute_command_async("/tools", ""))
+
+    assert result is not None
+    assert result.result["available_tools"] == [
+        {
+            "name": "review_lookup",
+            "active": True,
+            "description": "Look up review metadata",
+            "sourceInfo": {
+                "path": "/tmp/project/extensions/review/extension.py",
+                "source": "filesystem",
+                "scope": "project",
+                "origin": "package",
+                "baseDir": "/tmp/project/extensions/review",
+            },
+        }
+    ]
+
+
+def test_command_controller_executes_builtin_extensions_list_and_detail(tmp_path) -> None:
+    extensions = [
+        {
+            "id": "acme.review",
+            "name": "Acme Review",
+            "version": "0.1.0",
+            "description": "Review helpers",
+            "sourcePath": "/tmp/project/extensions/review/extension.py",
+            "permissionLevel": "standard",
+            "capabilities": ["filesystem"],
+            "contributions": [
+                {"type": "command", "name": "acme-review", "active": True, "source": "manifest"},
+                {"type": "tool", "name": "review_lookup", "active": True, "source": "runtime"},
+            ],
+            "diagnostics": [
+                {
+                    "code": "missing_extension_hook_event",
+                    "message": "Extension manifest hook declaration requires an event.",
+                    "sourcePath": "/tmp/project/extensions/review/loushang-extension.toml",
+                }
+            ],
+        }
+    ]
+    controller = CommandController(
+        session_manager=SessionManager.new(session_dir=tmp_path, cwd="/tmp/project", persist=False, session_id="session-1"),
+        get_extension_runner=lambda: None,
+        get_resource_bundle=lambda: None,
+        get_diagnostics_service=lambda: None,
+        builtin_backend=BuiltinCommandBackend(get_extensions=lambda: extensions),
+    )
+
+    list_result = asyncio.run(controller.execute_command_async("/extensions", ""))
+    detail_result = asyncio.run(controller.execute_command_async("/extensions", "acme.review"))
+
+    assert list_result is not None
+    assert list_result.result == {
+        "source": "builtin",
+        "command": "extensions",
+        "status": "ok",
+        "extensions": extensions,
+        "message": "Extensions: acme.review (standard, 2 contributions, 1 diagnostic)",
+    }
+    assert detail_result is not None
+    assert detail_result.result == {
+        "source": "builtin",
+        "command": "extensions",
+        "status": "ok",
+        "extension": extensions[0],
+        "message": "Extension acme.review: Acme Review",
+    }
+
+
+def test_command_controller_builtin_extensions_reports_unknown_extension(tmp_path) -> None:
+    controller = CommandController(
+        session_manager=SessionManager.new(session_dir=tmp_path, cwd="/tmp/project", persist=False, session_id="session-1"),
+        get_extension_runner=lambda: None,
+        get_resource_bundle=lambda: None,
+        get_diagnostics_service=lambda: None,
+        builtin_backend=BuiltinCommandBackend(get_extensions=lambda: [{"id": "acme.review", "name": "Acme Review"}]),
+    )
+
+    result = asyncio.run(controller.execute_command_async("/extensions", "missing.ext"))
+
+    assert result is not None
+    assert result.result == {
+        "source": "builtin",
+        "command": "extensions",
+        "status": "error",
+        "message": "Unknown extension: missing.ext. Loaded extensions: acme.review",
+    }
+
+
 def test_command_controller_builtin_tools_rejects_unknown_tool(tmp_path) -> None:
     controller = CommandController(
         session_manager=SessionManager.new(session_dir=tmp_path, cwd="/tmp/project", persist=False, session_id="session-1"),

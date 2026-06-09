@@ -196,6 +196,105 @@ kind = "augment"
     assert loader.get_diagnostics() == []
 
 
+def test_extension_runner_lists_extension_visibility_snapshot() -> None:
+    from pathlib import Path
+
+    from loushang.coding.extensions import (
+        ContributionDescriptor,
+        ExtensionManifest,
+        ExtensionPermissionDeclaration,
+        ExtensionPolicyDecision,
+        ExtensionRunner,
+        LoadedExtension,
+    )
+    from loushang.coding.loader import ResourceDiagnostic
+
+    manifest = ExtensionManifest(
+        id="acme.review",
+        name="Acme Review",
+        version="0.1.0",
+        description="Review helpers",
+        permissions=ExtensionPermissionDeclaration(level="standard", capabilities=("filesystem",)),
+    )
+    extension = LoadedExtension(
+        name="review",
+        source_path=Path("/tmp/project/extensions/review/extension.py"),
+        manifest=manifest,
+        policy=ExtensionPolicyDecision(permission_level="standard", capabilities=("filesystem",)),
+        contributions=[
+            ContributionDescriptor(
+                type="command",
+                name="acme-review",
+                extension_id="acme.review",
+                source_path=Path("/tmp/project/extensions/review/extension.py"),
+                metadata={"source": "manifest"},
+            ),
+            ContributionDescriptor(
+                type="tool",
+                name="review_lookup",
+                extension_id="acme.review",
+                source_path=Path("/tmp/project/extensions/review/extension.py"),
+                metadata={"source": "runtime"},
+            ),
+        ],
+        diagnostics=[
+            ResourceDiagnostic(
+                code="missing_extension_hook_event",
+                message="Extension manifest hook declaration requires an event.",
+                source_path=Path("/tmp/project/extensions/review/loushang-extension.toml"),
+            )
+        ],
+    )
+
+    snapshot = ExtensionRunner([extension]).list_extensions()
+
+    assert snapshot == [
+        {
+            "id": "acme.review",
+            "name": "Acme Review",
+            "runtimeName": "review",
+            "version": "0.1.0",
+            "description": "Review helpers",
+            "sourcePath": "/tmp/project/extensions/review/extension.py",
+            "manifestPath": None,
+            "enabled": True,
+            "permissionLevel": "standard",
+            "capabilities": ["filesystem"],
+            "contributions": [
+                {
+                    "type": "command",
+                    "name": "acme-review",
+                    "active": True,
+                    "priority": 0,
+                    "source": "manifest",
+                    "sourcePath": "/tmp/project/extensions/review/extension.py",
+                    "diagnostics": [],
+                },
+                {
+                    "type": "tool",
+                    "name": "review_lookup",
+                    "active": True,
+                    "priority": 0,
+                    "source": "runtime",
+                    "sourcePath": "/tmp/project/extensions/review/extension.py",
+                    "diagnostics": [],
+                },
+            ],
+            "diagnostics": [
+                {
+                    "code": "missing_extension_hook_event",
+                    "message": "Extension manifest hook declaration requires an event.",
+                    "sourcePath": "/tmp/project/extensions/review/loushang-extension.toml",
+                    "resourceId": None,
+                    "resourceType": None,
+                    "sourceKind": None,
+                    "metadata": {},
+                }
+            ],
+        }
+    ]
+
+
 def test_contribution_registry_indexes_loaded_extension_contributions(tmp_path) -> None:
     from pathlib import Path
 

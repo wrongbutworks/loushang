@@ -44,6 +44,7 @@ class BuiltinCommandBackend:
     get_all_tools: Callable[[], list[object]] | None = None
     set_active_tools: Callable[[list[str]], object | Awaitable[object]] | None = None
     get_default_active_tool_names: Callable[[], list[str]] | None = None
+    get_extensions: Callable[[], list[object]] | None = None
 
 
 def list_builtin_command_descriptors() -> list[SessionCommandDescriptor]:
@@ -85,6 +86,8 @@ async def execute_builtin_command_async(
             return _execute_changelog(args, backend)
         case "tools":
             return await _execute_tools(args, backend)
+        case "extensions":
+            return _execute_extensions(args, backend)
         case "compact":
             return await _execute_compact(args, backend)
         case "reload":
@@ -238,6 +241,25 @@ async def _execute_tools(args: str, backend: BuiltinCommandBackend) -> CommandEx
     next_tools = _filter_available_tools(next_tools, available_names)
     await _maybe_await(backend.set_active_tools(next_tools))
     return _tools_ok(next_tools, _available_tool_entries(backend.get_all_tools(), next_tools), action=action)
+
+
+def _execute_extensions(args: str, backend: BuiltinCommandBackend) -> CommandExecutionResult:
+    if backend.get_extensions is None:
+        return _unsupported("extensions")
+    extensions = [_extension_entry(extension) for extension in backend.get_extensions()]
+    query = args.strip()
+    if not query:
+        return _extensions_ok(extensions)
+
+    extension = _find_extension(extensions, query)
+    if extension is None:
+        available = ", ".join(_extension_id(extension) for extension in extensions) or "(none)"
+        return _error("extensions", f"Unknown extension: {query}. Loaded extensions: {available}")
+    return _ok(
+        "extensions",
+        extension=extension,
+        message=f"Extension {_extension_id(extension)}: {_extension_name(extension)}",
+    )
 
 
 async def _execute_compact(args: str, backend: BuiltinCommandBackend) -> CommandExecutionResult:
@@ -410,13 +432,15 @@ def _available_tool_entries(tools: list[object], active_tools: list[str]) -> lis
         name = _tool_field(tool, "name")
         if not name:
             continue
-        entries.append(
-            {
-                "name": name,
-                "active": name in active_set,
-                "description": _tool_field(tool, "description"),
-            }
-        )
+        entry: dict[str, object] = {
+            "name": name,
+            "active": name in active_set,
+            "description": _tool_field(tool, "description"),
+        }
+        source_info = _tool_source_info(tool)
+        if source_info is not None:
+            entry["sourceInfo"] = dict(source_info)
+        entries.append(entry)
     return entries
 
 
@@ -426,6 +450,86 @@ def _tool_field(tool: object, field: str) -> str:
     else:
         value = getattr(tool, field, None)
     return value if isinstance(value, str) else ""
+
+
+def _tool_source_info(tool: object) -> object | None:
+    if isinstance(tool, Mapping):
+        value = tool.get("sourceInfo") or tool.get("source_info")
+    else:
+        value = getattr(tool, "sourceInfo", None) or getattr(tool, "source_info", None)
+    return value if isinstance(value, Mapping) else None
+
+
+def _extensions_ok(extensions: list[dict[str, object]]) -> CommandExecutionResult:
+    return _ok(
+        "extensions",
+        extensions=extensions,
+        message=_extensions_summary_message(extensions),
+    )
+
+
+def _extensions_summary_message(extensions: list[dict[str, object]]) -> str:
+    if not extensions:
+        return "Extensions: (none)"
+    parts = [_extension_summary(extension) for extension in extensions]
+    return f"Extensions: {'; '.join(parts)}"
+
+
+def _extension_summary(extension: Mapping[str, object]) -> str:
+    contribution_count = len(_list_field(extension, "contributions"))
+    diagnostic_count = len(_list_field(extension, "diagnostics"))
+    details = [_string_mapping_field(extension, "permissionLevel", default="safe")]
+    details.append(f"{contribution_count} {_pluralize('contribution', contribution_count)}")
+    if diagnostic_count:
+        details.append(f"{diagnostic_count} {_pluralize('diagnostic', diagnostic_count)}")
+    return f"{_extension_id(extension)} ({', '.join(details)})"
+
+
+def _find_extension(extensions: list[dict[str, object]], query: str) -> dict[str, object] | None:
+    for extension in extensions:
+        if query in {_extension_id(extension), _extension_name(extension), _runtime_name(extension)}:
+            return extension
+    return None
+
+
+def _extension_entry(extension: object) -> dict[str, object]:
+    if isinstance(extension, Mapping):
+        return dict(extension)
+    return {
+        "id": _string_object_field(extension, "id", default=_string_object_field(extension, "name")),
+        "name": _string_object_field(extension, "name"),
+    }
+
+
+def _extension_id(extension: Mapping[str, object]) -> str:
+    return _string_mapping_field(extension, "id", default=_extension_name(extension))
+
+
+def _extension_name(extension: Mapping[str, object]) -> str:
+    return _string_mapping_field(extension, "name", default=_runtime_name(extension))
+
+
+def _runtime_name(extension: Mapping[str, object]) -> str:
+    return _string_mapping_field(extension, "runtimeName")
+
+
+def _string_mapping_field(value: Mapping[str, object], field: str, *, default: str = "") -> str:
+    raw = value.get(field)
+    return raw if isinstance(raw, str) and raw else default
+
+
+def _string_object_field(value: object, field: str, *, default: str = "") -> str:
+    raw = getattr(value, field, None)
+    return raw if isinstance(raw, str) and raw else default
+
+
+def _list_field(value: Mapping[str, object], field: str) -> list[object]:
+    raw = value.get(field)
+    return list(raw) if isinstance(raw, list | tuple) else []
+
+
+def _pluralize(word: str, count: int) -> str:
+    return word if count == 1 else f"{word}s"
 
 
 def _filter_available_tools(tool_names: list[str], available_names: list[str]) -> list[str]:

@@ -35,7 +35,7 @@ loushang --resume
 loushang --export
 ```
 
-在交互界面中，内置 slash commands 包括 `/session`、`/resume`、`/fork`、`/clone`、`/tree`、`/tools`、`/export`、`/compact`、`/reload` 和 `/quit`。
+在交互界面中，内置 slash commands 包括 `/session`、`/resume`、`/fork`、`/clone`、`/tree`、`/tools`、`/extensions`、`/export`、`/compact`、`/reload` 和 `/quit`。
 
 ## 工具
 
@@ -55,6 +55,8 @@ loushang --no-tools -p "Explain the repository from context only."
 ## 扩展
 
 扩展是可以注册生命周期 hooks、工具、动态资源、命令和 flags 的 Python 文件。可以先阅读 [examples/coding/extensions](../../../examples/coding/extensions/) 中的可运行扩展示例。
+
+扩展可以携带相邻的 `loushang-extension.toml` manifest，用来声明身份、权限等级、依赖和预期贡献。使用 `/extensions` 查看已加载扩展、贡献摘要和诊断；使用 `/extensions <id>` 查看单个扩展详情。`/tools` 会在可用时展示 extension tool 的来源信息。
 
 ## 包与插件
 
