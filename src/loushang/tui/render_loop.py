@@ -91,6 +91,7 @@ class RenderPlanRuntime:
     unsafe_viewport_reason: str | None
     diagnostics: Callable[..., RenderDiagnostics]
     repaint_diagnostics: Callable[..., RenderDiagnostics]
+    managed_viewport_repaint_diagnostics: Callable[..., RenderDiagnostics]
 
 
 class RenderPlanStrategy(Protocol):
@@ -224,12 +225,300 @@ class NoChangeStrategy:
         )
 
 
-FIRST_RENDER_STRATEGY = FirstRenderStrategy()
-POST_BASELINE_SIMPLE_STRATEGIES: tuple[RenderPlanStrategy, ...] = (
-    ResizeRepaintStrategy(),
-    UnsafeViewportStrategy(),
-    NoChangeStrategy(),
-)
+@dataclass(frozen=True, slots=True)
+class TranscriptWindowTrimmedResetStrategy:
+    kind: ClassVar[RenderPlanStrategyKind] = RenderPlanStrategyKind.TRANSCRIPT_WINDOW_TRIMMED_RESET
+    name: ClassVar[str] = "transcript_window_trimmed_reset"
+
+    def match(self, context: RenderPlanContext, *, runtime: RenderPlanRuntime) -> bool:
+        return bool(
+            runtime.baseline_reset_reason is not None
+            and runtime.baseline_reset_reason.startswith("transcript_window_trimmed:")
+        )
+
+    def plan(self, context: RenderPlanContext, *, runtime: RenderPlanRuntime) -> RenderDiagnostics:
+        if runtime.baseline_reset_reason is None:
+            raise AssertionError("trimmed transcript reset strategy planned without a reason")
+        return runtime.managed_viewport_repaint_diagnostics(
+            current_lines=context.current_lines,
+            previous_lines=context.previous_lines,
+            size=context.size,
+            changed_range=context.changed_range,
+            cursor=context.cursor,
+            declared_cursor=context.declared_cursor,
+            repaint_reason=runtime.baseline_reset_reason,
+            delete_kitty_image_sequences=context.previous_kitty_delete_sequences,
+        )
+
+
+@dataclass(frozen=True, slots=True)
+class BaselineResetStrategy:
+    kind: ClassVar[RenderPlanStrategyKind] = RenderPlanStrategyKind.BASELINE_RESET
+    name: ClassVar[str] = "baseline_reset"
+
+    def match(self, context: RenderPlanContext, *, runtime: RenderPlanRuntime) -> bool:
+        return bool(
+            runtime.baseline_reset_reason is not None
+            and not runtime.baseline_reset_reason.startswith("transcript_window_trimmed:")
+        )
+
+    def plan(self, context: RenderPlanContext, *, runtime: RenderPlanRuntime) -> RenderDiagnostics:
+        if runtime.baseline_reset_reason is None:
+            raise AssertionError("baseline reset strategy planned without a reason")
+        return runtime.repaint_diagnostics(
+            current_lines=context.current_lines,
+            previous_lines=context.previous_lines,
+            size=context.size,
+            changed_range=context.changed_range,
+            cursor=context.cursor,
+            declared_cursor=context.declared_cursor,
+            operation_class="baseline_repaint",
+            repaint_kind="recovery",
+            repaint_reason=runtime.baseline_reset_reason,
+            delete_kitty_image_sequences=context.previous_kitty_delete_sequences,
+        )
+
+
+@dataclass(frozen=True, slots=True)
+class AppendStrategy:
+    kind: ClassVar[RenderPlanStrategyKind] = RenderPlanStrategyKind.APPEND
+    name: ClassVar[str] = "append"
+
+    def match(self, context: RenderPlanContext, *, runtime: RenderPlanRuntime) -> bool:
+        return context.append_start is not None
+
+    def plan(self, context: RenderPlanContext, *, runtime: RenderPlanRuntime) -> RenderDiagnostics:
+        if context.append_start is None or context.last_changed is None:
+            raise AssertionError("append strategy planned without append facts")
+        return runtime.diagnostics(
+            current_lines=context.current_lines,
+            previous_lines=context.previous_lines,
+            size=context.size,
+            operation_class="append_update",
+            operations=_append_operations(
+                context.current_lines[context.append_start :],
+                append_start=context.append_start,
+                hardware_cursor_row=runtime.hardware_cursor_row,
+                cursor=context.declared_cursor,
+                viewport_top=context.viewport_top,
+            ),
+            changed_range=context.changed_range,
+            viewport_top=context.viewport_top,
+            append_start=context.append_start,
+            appended_lines=context.appended_lines,
+            render_end=context.last_changed,
+            cursor=context.cursor,
+            hardware_cursor_row=_hardware_row_after_write(context.current_lines, cursor=context.declared_cursor),
+            hardware_cursor_column=context.cursor.column,
+        )
+
+
+@dataclass(frozen=True, slots=True)
+class ProtectedAppendStrategy:
+    kind: ClassVar[RenderPlanStrategyKind] = RenderPlanStrategyKind.PROTECTED_APPEND
+    name: ClassVar[str] = "protected_append"
+
+    def match(self, context: RenderPlanContext, *, runtime: RenderPlanRuntime) -> bool:
+        if context.first_changed is None:
+            return False
+        return (
+            _protected_append_plan(
+                current_lines=context.current_lines,
+                previous_lines=context.previous_lines,
+                first_changed=context.first_changed,
+                appended_lines=context.appended_lines,
+                cursor=context.declared_cursor,
+                size=context.size,
+            )
+            is not None
+        )
+
+    def plan(self, context: RenderPlanContext, *, runtime: RenderPlanRuntime) -> RenderDiagnostics:
+        if context.first_changed is None:
+            raise AssertionError("protected append strategy planned without changed range facts")
+        protected_append = _protected_append_plan(
+            current_lines=context.current_lines,
+            previous_lines=context.previous_lines,
+            first_changed=context.first_changed,
+            appended_lines=context.appended_lines,
+            cursor=context.declared_cursor,
+            size=context.size,
+        )
+        if protected_append is None:
+            raise AssertionError("protected append strategy planned without an admissible append")
+        inserted_start, inserted_end, protected_start = protected_append
+        return runtime.diagnostics(
+            current_lines=context.current_lines,
+            previous_lines=context.previous_lines,
+            size=context.size,
+            operation_class="protected_append_update",
+            operations=_protected_append_operations(
+                current_lines=context.current_lines,
+                inserted_range=(inserted_start, inserted_end),
+                protected_start=protected_start,
+                cursor=context.declared_cursor,
+                viewport_top=context.viewport_top,
+                size=context.size,
+                delete_kitty_image_sequences=_kitty_delete_sequences(context.previous_lines[inserted_start:]),
+            ),
+            changed_range=context.changed_range,
+            viewport_top=context.viewport_top,
+            append_start=inserted_start,
+            appended_lines=context.appended_lines,
+            render_end=len(context.current_lines) - 1,
+            cursor=context.cursor,
+            hardware_cursor_row=context.cursor.row,
+            hardware_cursor_column=context.cursor.column,
+        )
+
+
+@dataclass(frozen=True, slots=True)
+class ShrinkViewportRepaintStrategy:
+    kind: ClassVar[RenderPlanStrategyKind] = RenderPlanStrategyKind.SHRINK_VIEWPORT_REPAINT
+    name: ClassVar[str] = "shrink_viewport_repaint"
+
+    def match(self, context: RenderPlanContext, *, runtime: RenderPlanRuntime) -> bool:
+        return (
+            len(context.current_lines) < len(context.previous_lines)
+            and context.viewport_top < runtime.previous_viewport_top
+        )
+
+    def plan(self, context: RenderPlanContext, *, runtime: RenderPlanRuntime) -> RenderDiagnostics:
+        return runtime.managed_viewport_repaint_diagnostics(
+            current_lines=context.current_lines,
+            previous_lines=context.previous_lines,
+            size=context.size,
+            changed_range=context.changed_range,
+            cursor=context.cursor,
+            declared_cursor=context.declared_cursor,
+            repaint_reason="viewport_top_decreased_after_shrink",
+            delete_kitty_image_sequences=context.previous_kitty_delete_sequences,
+        )
+
+
+@dataclass(frozen=True, slots=True)
+class ShrinkClearStrategy:
+    kind: ClassVar[RenderPlanStrategyKind] = RenderPlanStrategyKind.SHRINK_CLEAR
+    name: ClassVar[str] = "shrink_clear"
+
+    def match(self, context: RenderPlanContext, *, runtime: RenderPlanRuntime) -> bool:
+        return bool(
+            context.first_changed is not None
+            and context.first_changed >= len(context.current_lines)
+            and len(context.previous_lines) > len(context.current_lines)
+        )
+
+    def plan(self, context: RenderPlanContext, *, runtime: RenderPlanRuntime) -> RenderDiagnostics:
+        if context.first_changed is None or context.last_changed is None:
+            raise AssertionError("shrink clear strategy planned without changed range facts")
+        target_row = max(0, len(context.current_lines) - 1)
+        return runtime.diagnostics(
+            current_lines=context.current_lines,
+            previous_lines=context.previous_lines,
+            size=context.size,
+            operation_class="shrink_clear",
+            operations=_shrink_clear_operations(
+                previous_lines=context.previous_lines,
+                current_lines=context.current_lines,
+                target_row=target_row,
+                hardware_cursor_row=runtime.hardware_cursor_row,
+                delete_kitty_image_sequences=_kitty_delete_sequences_in_range(
+                    context.previous_lines,
+                    context.first_changed,
+                    context.last_changed,
+                ),
+            ),
+            changed_range=context.changed_range,
+            viewport_top=context.differential_viewport_top,
+            render_end=target_row,
+            cursor=context.cursor,
+            hardware_cursor_row=target_row,
+            hardware_cursor_column=context.cursor.column,
+        )
+
+
+@dataclass(frozen=True, slots=True)
+class ChangedAboveViewportStrategy:
+    kind: ClassVar[RenderPlanStrategyKind] = RenderPlanStrategyKind.CHANGED_ABOVE_VIEWPORT
+    name: ClassVar[str] = "changed_above_viewport"
+
+    def match(self, context: RenderPlanContext, *, runtime: RenderPlanRuntime) -> bool:
+        return bool(context.first_changed is not None and context.first_changed < runtime.previous_viewport_top)
+
+    def plan(self, context: RenderPlanContext, *, runtime: RenderPlanRuntime) -> RenderDiagnostics:
+        return runtime.managed_viewport_repaint_diagnostics(
+            current_lines=context.current_lines,
+            previous_lines=context.previous_lines,
+            size=context.size,
+            changed_range=context.changed_range,
+            cursor=context.cursor,
+            declared_cursor=context.declared_cursor,
+            repaint_reason="changed_range_above_viewport",
+            delete_kitty_image_sequences=context.previous_kitty_delete_sequences,
+        )
+
+
+@dataclass(frozen=True, slots=True)
+class ChangedRangeStrategy:
+    kind: ClassVar[RenderPlanStrategyKind] = RenderPlanStrategyKind.CHANGED_RANGE
+    name: ClassVar[str] = "changed_range"
+
+    def match(self, context: RenderPlanContext, *, runtime: RenderPlanRuntime) -> bool:
+        return context.changed_range is not None
+
+    def plan(self, context: RenderPlanContext, *, runtime: RenderPlanRuntime) -> RenderDiagnostics:
+        if context.changed_range is None or context.last_changed is None or context.first_changed is None:
+            raise AssertionError("changed range strategy planned without changed range facts")
+        render_end = min(context.last_changed, len(context.current_lines) - 1)
+        hardware_cursor_row, hardware_cursor_column = _changed_range_hardware_cursor(
+            current_lines=context.current_lines,
+            previous_lines=context.previous_lines,
+            render_end=render_end,
+            declared_cursor=context.declared_cursor,
+            size=context.size,
+        )
+        return runtime.diagnostics(
+            current_lines=context.current_lines,
+            previous_lines=context.previous_lines,
+            size=context.size,
+            operation_class="changed_range_update",
+            operations=_changed_range_operations(
+                current_lines=context.current_lines,
+                previous_lines=context.previous_lines,
+                changed_range=context.changed_range,
+                previous_viewport_top=runtime.previous_viewport_top,
+                hardware_cursor_row=runtime.hardware_cursor_row,
+                cursor=context.declared_cursor,
+                viewport_top=context.differential_viewport_top,
+                delete_kitty_image_sequences=_kitty_delete_sequences_in_range(
+                    context.previous_lines,
+                    context.first_changed,
+                    context.last_changed,
+                ),
+            ),
+            changed_range=context.changed_range,
+            viewport_top=context.differential_viewport_top,
+            render_end=render_end,
+            cursor=context.cursor,
+            hardware_cursor_row=hardware_cursor_row,
+            hardware_cursor_column=hardware_cursor_column,
+        )
+
+
+DEFAULT_STRATEGIES: dict[RenderPlanStrategyKind, RenderPlanStrategy] = {
+    RenderPlanStrategyKind.FIRST_RENDER: FirstRenderStrategy(),
+    RenderPlanStrategyKind.TRANSCRIPT_WINDOW_TRIMMED_RESET: TranscriptWindowTrimmedResetStrategy(),
+    RenderPlanStrategyKind.BASELINE_RESET: BaselineResetStrategy(),
+    RenderPlanStrategyKind.RESIZE_REPAINT: ResizeRepaintStrategy(),
+    RenderPlanStrategyKind.UNSAFE_VIEWPORT: UnsafeViewportStrategy(),
+    RenderPlanStrategyKind.NO_CHANGE: NoChangeStrategy(),
+    RenderPlanStrategyKind.APPEND: AppendStrategy(),
+    RenderPlanStrategyKind.PROTECTED_APPEND: ProtectedAppendStrategy(),
+    RenderPlanStrategyKind.SHRINK_VIEWPORT_REPAINT: ShrinkViewportRepaintStrategy(),
+    RenderPlanStrategyKind.SHRINK_CLEAR: ShrinkClearStrategy(),
+    RenderPlanStrategyKind.CHANGED_ABOVE_VIEWPORT: ChangedAboveViewportStrategy(),
+    RenderPlanStrategyKind.CHANGED_RANGE: ChangedRangeStrategy(),
+}
 
 
 @dataclass(slots=True)
@@ -330,191 +619,17 @@ class RenderLoop:
             unsafe_viewport_reason=self._unsafe_viewport_reason,
             diagnostics=self._diagnostics,
             repaint_diagnostics=self._repaint_diagnostics,
+            managed_viewport_repaint_diagnostics=self._managed_viewport_repaint_diagnostics,
         )
 
     def plan(self, size: TerminalSize) -> RenderDiagnostics:
         context = self._build_plan_context(size)
         runtime = self._plan_runtime()
-        result = context.result
-        current_lines = context.current_lines
-        cursor = context.cursor
-        previous_lines = context.previous_lines
-        changed_range = context.changed_range
-        viewport_top = context.viewport_top
-        previous_kitty_delete_sequences = context.previous_kitty_delete_sequences
-
-        if FIRST_RENDER_STRATEGY.match(context, runtime=runtime):
-            return FIRST_RENDER_STRATEGY.plan(context, runtime=runtime)
-
-        if self._baseline_reset_reason is not None:
-            if self._baseline_reset_reason.startswith("transcript_window_trimmed:"):
-                return self._managed_viewport_repaint_diagnostics(
-                    current_lines=current_lines,
-                    previous_lines=previous_lines,
-                    size=size,
-                    changed_range=changed_range,
-                    cursor=cursor,
-                    declared_cursor=result.cursor,
-                    repaint_reason=self._baseline_reset_reason,
-                    delete_kitty_image_sequences=previous_kitty_delete_sequences,
-                )
-            return self._repaint_diagnostics(
-                current_lines=current_lines,
-                previous_lines=previous_lines,
-                size=size,
-                changed_range=changed_range,
-                cursor=cursor,
-                declared_cursor=result.cursor,
-                operation_class="baseline_repaint",
-                repaint_kind="recovery",
-                repaint_reason=self._baseline_reset_reason,
-                delete_kitty_image_sequences=previous_kitty_delete_sequences,
-            )
-
-        for strategy in POST_BASELINE_SIMPLE_STRATEGIES:
+        for kind in DEFAULT_STRATEGY_ORDER:
+            strategy = DEFAULT_STRATEGIES[kind]
             if strategy.match(context, runtime=runtime):
                 return strategy.plan(context, runtime=runtime)
-
-        first_changed = context.first_changed
-        last_changed = context.last_changed
-        appended_lines = context.appended_lines
-        append_start = context.append_start
-        if first_changed is None or last_changed is None:
-            raise AssertionError("changed range facts missing for changed render plan")
-        if append_start is not None:
-            return self._diagnostics(
-                current_lines=current_lines,
-                previous_lines=previous_lines,
-                size=size,
-                operation_class="append_update",
-                operations=_append_operations(
-                    current_lines[append_start:],
-                    append_start=append_start,
-                    hardware_cursor_row=self.hardware_cursor_row,
-                    cursor=result.cursor,
-                    viewport_top=viewport_top,
-                ),
-                changed_range=changed_range,
-                viewport_top=viewport_top,
-                append_start=append_start,
-                appended_lines=appended_lines,
-                render_end=last_changed,
-                cursor=cursor,
-                hardware_cursor_row=_hardware_row_after_write(current_lines, cursor=result.cursor),
-                hardware_cursor_column=cursor.column,
-            )
-
-        protected_append = _protected_append_plan(
-            current_lines=current_lines,
-            previous_lines=previous_lines,
-            first_changed=first_changed,
-            appended_lines=appended_lines,
-            cursor=result.cursor,
-            size=size,
-        )
-        if protected_append is not None:
-            inserted_start, inserted_end, protected_start = protected_append
-            return self._diagnostics(
-                current_lines=current_lines,
-                previous_lines=previous_lines,
-                size=size,
-                operation_class="protected_append_update",
-                operations=_protected_append_operations(
-                    current_lines=current_lines,
-                    inserted_range=(inserted_start, inserted_end),
-                    protected_start=protected_start,
-                    cursor=result.cursor,
-                    viewport_top=viewport_top,
-                    size=size,
-                    delete_kitty_image_sequences=_kitty_delete_sequences(previous_lines[inserted_start:]),
-                ),
-                changed_range=changed_range,
-                viewport_top=viewport_top,
-                append_start=inserted_start,
-                appended_lines=appended_lines,
-                render_end=len(current_lines) - 1,
-                cursor=cursor,
-                hardware_cursor_row=cursor.row,
-                hardware_cursor_column=cursor.column,
-            )
-
-        differential_viewport_top = context.differential_viewport_top
-        if len(current_lines) < len(previous_lines) and viewport_top < self.previous_viewport_top:
-            return self._managed_viewport_repaint_diagnostics(
-                current_lines=current_lines,
-                previous_lines=previous_lines,
-                size=size,
-                changed_range=changed_range,
-                cursor=cursor,
-                declared_cursor=result.cursor,
-                repaint_reason="viewport_top_decreased_after_shrink",
-                delete_kitty_image_sequences=previous_kitty_delete_sequences,
-            )
-
-        if first_changed >= len(current_lines) and len(previous_lines) > len(current_lines):
-            target_row = max(0, len(current_lines) - 1)
-            return self._diagnostics(
-                current_lines=current_lines,
-                previous_lines=previous_lines,
-                size=size,
-                operation_class="shrink_clear",
-                operations=_shrink_clear_operations(
-                    previous_lines=previous_lines,
-                    current_lines=current_lines,
-                    target_row=target_row,
-                    hardware_cursor_row=self.hardware_cursor_row,
-                    delete_kitty_image_sequences=_kitty_delete_sequences_in_range(previous_lines, first_changed, last_changed),
-                ),
-                changed_range=changed_range,
-                viewport_top=differential_viewport_top,
-                render_end=target_row,
-                cursor=cursor,
-                hardware_cursor_row=target_row,
-                hardware_cursor_column=cursor.column,
-            )
-
-        if first_changed < self.previous_viewport_top:
-            return self._managed_viewport_repaint_diagnostics(
-                current_lines=current_lines,
-                previous_lines=previous_lines,
-                size=size,
-                changed_range=changed_range,
-                cursor=cursor,
-                declared_cursor=result.cursor,
-                repaint_reason="changed_range_above_viewport",
-                delete_kitty_image_sequences=previous_kitty_delete_sequences,
-            )
-
-        render_end = min(last_changed, len(current_lines) - 1)
-        hardware_cursor_row, hardware_cursor_column = _changed_range_hardware_cursor(
-            current_lines=current_lines,
-            previous_lines=previous_lines,
-            render_end=render_end,
-            declared_cursor=result.cursor,
-            size=size,
-        )
-        return self._diagnostics(
-            current_lines=current_lines,
-            previous_lines=previous_lines,
-            size=size,
-            operation_class="changed_range_update",
-            operations=_changed_range_operations(
-                current_lines=current_lines,
-                previous_lines=previous_lines,
-                changed_range=changed_range,
-                previous_viewport_top=self.previous_viewport_top,
-                hardware_cursor_row=self.hardware_cursor_row,
-                cursor=result.cursor,
-                viewport_top=differential_viewport_top,
-                delete_kitty_image_sequences=_kitty_delete_sequences_in_range(previous_lines, first_changed, last_changed),
-            ),
-            changed_range=changed_range,
-            viewport_top=differential_viewport_top,
-            render_end=render_end,
-            cursor=cursor,
-            hardware_cursor_row=hardware_cursor_row,
-            hardware_cursor_column=hardware_cursor_column,
-        )
+        raise AssertionError("no render strategy matched")
 
     def _managed_viewport_repaint_diagnostics(
         self,

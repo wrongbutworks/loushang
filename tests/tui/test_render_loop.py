@@ -160,6 +160,34 @@ def test_unsafe_viewport_precedes_append_strategy() -> None:
     assert step.repaint_reason == "external_stdout"
 
 
+def test_transcript_window_trimmed_reset_precedes_resize_repaint() -> None:
+    root = StaticRoot(("one",))
+    loop = RenderLoop(root)
+    first = loop.plan(TerminalSize(columns=20, rows=5))
+    loop.commit(first, size=TerminalSize(columns=20, rows=5))
+
+    root.lines = ("one", "two")
+    loop.reset_baseline("transcript_window_trimmed:active_line_budget")
+    step = loop.plan(TerminalSize(columns=30, rows=5))
+
+    assert step.operation_class == "managed_viewport_repaint"
+    assert step.repaint_reason == "transcript_window_trimmed:active_line_budget"
+
+
+def test_ordinary_baseline_reset_precedes_resize_repaint() -> None:
+    root = StaticRoot(("one",))
+    loop = RenderLoop(root)
+    first = loop.plan(TerminalSize(columns=20, rows=5))
+    loop.commit(first, size=TerminalSize(columns=20, rows=5))
+
+    root.lines = ("one", "two")
+    loop.reset_baseline("transcript_window_replaced:resume")
+    step = loop.plan(TerminalSize(columns=30, rows=5))
+
+    assert step.operation_class == "baseline_repaint"
+    assert step.repaint_reason == "transcript_window_replaced:resume"
+
+
 def test_runtime_render_now_does_not_emit_tui_render_frame_when_scope_is_disabled() -> None:
     sink = RecordingDebugSink()
     reset_observability()
