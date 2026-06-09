@@ -12,6 +12,14 @@ HookKind = Literal["observe", "transform", "intercept", "augment"]
 
 _VALID_PERMISSION_LEVELS = frozenset({"safe", "standard", "powerful"})
 _VALID_HOOK_KINDS = frozenset({"observe", "transform", "intercept", "augment"})
+_FATAL_DIAGNOSTIC_CODES = frozenset(
+    {
+        "missing_extension_manifest_metadata",
+        "missing_extension_manifest_id",
+        "missing_extension_manifest_name",
+        "invalid_extension_permission_level",
+    }
+)
 _SUPPORTED_TOP_LEVEL_SECTIONS = frozenset(
     {
         "extension",
@@ -169,7 +177,7 @@ def parse_extension_manifest(path: Path) -> ExtensionManifestParseResult:
     hooks = _parse_hooks(data.get("hooks"), path, diagnostics)
     dependencies = _parse_dependencies(data.get("dependencies"))
 
-    if any(diagnostic.code.startswith(("missing_", "invalid_extension_permission_level")) for diagnostic in diagnostics):
+    if any(diagnostic.code in _FATAL_DIAGNOSTIC_CODES for diagnostic in diagnostics):
         return ExtensionManifestParseResult(diagnostics=diagnostics)
 
     return ExtensionManifestParseResult(

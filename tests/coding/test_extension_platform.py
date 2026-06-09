@@ -80,6 +80,37 @@ level = "root"
     assert result.diagnostics[0].resource_type == "extension"
 
 
+def test_extension_manifest_parser_keeps_manifest_for_partial_contribution_errors(tmp_path) -> None:
+    from loushang.coding.extensions.manifest import parse_extension_manifest
+
+    manifest_path = tmp_path / "loushang-extension.toml"
+    manifest_path.write_text(
+        """
+[extension]
+id = "demo.partial"
+name = "Demo Partial"
+
+[[commands]]
+description = "missing name"
+
+[[tools]]
+name = "valid_tool"
+        """.strip()
+        + "\n",
+        encoding="utf-8",
+    )
+
+    result = parse_extension_manifest(manifest_path)
+
+    assert result.manifest is not None
+    assert result.manifest.id == "demo.partial"
+    assert result.manifest.commands == ()
+    assert [tool.name for tool in result.manifest.tools] == ["valid_tool"]
+    assert [diagnostic.code for diagnostic in result.diagnostics] == [
+        "missing_extension_command_name"
+    ]
+
+
 def test_extension_loader_attaches_manifest_policy_and_contributions(tmp_path) -> None:
     from loushang.coding.extensions.loader import ExtensionLoader
     from loushang.coding.loader import ExtensionDescriptor
@@ -201,3 +232,39 @@ def test_contribution_registry_indexes_loaded_extension_contributions(tmp_path) 
         "review",
     ]
     assert registry.get("tool", "lookup").extension_id == "review"
+
+
+def test_contribution_registry_does_not_silently_overwrite_duplicate_keys() -> None:
+    from pathlib import Path
+
+    import pytest
+
+    from loushang.coding.extensions.contributions import (
+        ContributionDescriptor,
+        ContributionRegistry,
+        DuplicateContributionKeyError,
+    )
+
+    first = ContributionDescriptor(
+        type="command",
+        name="review",
+        extension_id="one",
+        source_path=Path("/tmp/one.py"),
+    )
+    second = ContributionDescriptor(
+        type="command",
+        name="review",
+        extension_id="two",
+        source_path=Path("/tmp/two.py"),
+    )
+
+    registry = ContributionRegistry()
+    registry.add(first)
+    registry.add(second)
+
+    assert [contribution.extension_id for contribution in registry.by_key("command", "review")] == [
+        "one",
+        "two",
+    ]
+    with pytest.raises(DuplicateContributionKeyError):
+        registry.get("command", "review")

@@ -34,12 +34,20 @@ class ContributionDescriptor:
     metadata: dict[str, object] = field(default_factory=dict)
 
 
+class DuplicateContributionKeyError(KeyError):
+    def __init__(self, contribution_type: str, name: str, contributions: list[ContributionDescriptor]) -> None:
+        super().__init__(f"Duplicate contribution key: {contribution_type}:{name}")
+        self.contribution_type = contribution_type
+        self.name = name
+        self.contributions = list(contributions)
+
+
 @dataclass
 class ContributionRegistry:
     _contributions: list[ContributionDescriptor] = field(default_factory=list)
     _by_type: dict[str, list[ContributionDescriptor]] = field(default_factory=lambda: defaultdict(list))
     _by_extension: dict[str, list[ContributionDescriptor]] = field(default_factory=lambda: defaultdict(list))
-    _by_key: dict[tuple[str, str], ContributionDescriptor] = field(default_factory=dict)
+    _by_key: dict[tuple[str, str], list[ContributionDescriptor]] = field(default_factory=lambda: defaultdict(list))
 
     @classmethod
     def from_extensions(cls, extensions: Iterable[object]) -> "ContributionRegistry":
@@ -53,7 +61,7 @@ class ContributionRegistry:
         self._contributions.append(contribution)
         self._by_type[contribution.type].append(contribution)
         self._by_extension[contribution.extension_id].append(contribution)
-        self._by_key[(contribution.type, contribution.name)] = contribution
+        self._by_key[(contribution.type, contribution.name)].append(contribution)
 
     def all(self) -> list[ContributionDescriptor]:
         return list(self._contributions)
@@ -64,8 +72,14 @@ class ContributionRegistry:
     def by_extension(self, extension_id: str) -> list[ContributionDescriptor]:
         return list(self._by_extension.get(extension_id, ()))
 
+    def by_key(self, contribution_type: str, name: str) -> list[ContributionDescriptor]:
+        return list(self._by_key.get((contribution_type, name), ()))
+
     def get(self, contribution_type: str, name: str) -> ContributionDescriptor:
-        return self._by_key[(contribution_type, name)]
+        contributions = self._by_key[(contribution_type, name)]
+        if len(contributions) > 1:
+            raise DuplicateContributionKeyError(contribution_type, name, contributions)
+        return contributions[0]
 
 
 def contributions_from_loaded_extension(extension: object) -> tuple[ContributionDescriptor, ...]:
