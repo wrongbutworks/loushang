@@ -13,7 +13,7 @@
 ## 从源码安装
 
 ```bash
-git clone https://github.com/<owner>/loushang.git
+git clone https://github.com/zhnt/loushang.git
 cd loushang
 
 uv venv .venv

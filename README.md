@@ -26,7 +26,7 @@ Loushang treats methods, stages, roles, tools, sessions, and work products as ru
 Loushang is in early development. The recommended path is to run it from source.
 
 ```bash
-git clone https://github.com/<owner>/loushang.git
+git clone https://github.com/zhnt/loushang.git
 cd loushang
 
 uv venv .venv

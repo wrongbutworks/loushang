@@ -26,7 +26,7 @@ Loushang 将方法、阶段、角色、工具、会话和工作产物作为可�
 Loushang 目前处于早期开发阶段。推荐从源码运行。
 
 ```bash
-git clone https://github.com/<owner>/loushang.git
+git clone https://github.com/zhnt/loushang.git
 cd loushang
 
 uv venv .venv
