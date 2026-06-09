@@ -80,14 +80,6 @@ Composer object.
 
 ```python
 class EditorInputTarget(Protocol):
-    @property
-    def value(self) -> str: ...
-
-    @property
-    def selected_range(self) -> tuple[int, int] | None: ...
-
-    def has_selection(self) -> bool: ...
-
     def insert_text(self, text: str) -> None: ...
     def paste(self, text: str) -> None: ...
     def move_left(self) -> None: ...
@@ -120,6 +112,9 @@ ordinary fields:
 ```python
 class PromptInputTarget(EditorInputTarget, Protocol):
     @property
+    def value(self) -> str: ...
+
+    @property
     def browsing_history(self) -> bool: ...
 
     @property
@@ -145,7 +140,9 @@ class PromptInputTarget(EditorInputTarget, Protocol):
 The interface intentionally remains method-oriented. A single
 `handle_input(event)` callback would align with `TextInput`, but it would move
 too much routing policy into every target and make global priority rules harder
-to audit.
+to audit. Read-only state is kept on `PromptInputTarget` unless generic key
+helpers need it. Fake-target tests may expose their own inspection fields without
+widening the production protocol.
 
 ## InputRouter Construction
 
@@ -155,20 +152,26 @@ The first implementation should preserve the existing constructor shape:
 @dataclass(slots=True)
 class InputRouter:
     composer: Composer | None = None
-    target: PromptInputTarget | None = None
+    target: InitVar[PromptInputTarget | None] = None
+    _target: PromptInputTarget = field(init=False, repr=False)
     ...
 
-    def __post_init__(self) -> None:
-        if self.target is None:
-            if self.composer is None:
-                raise TypeError("InputRouter requires composer or target")
-            self.target = ComposerInputTarget(self.composer)
+    def __post_init__(self, target: PromptInputTarget | None) -> None:
+        if self.composer is not None and target is not None:
+            raise TypeError("InputRouter accepts composer or target, not both")
+        if target is not None:
+            self._target = target
+        elif self.composer is not None:
+            self._target = ComposerInputTarget(self.composer)
+        else:
+            raise TypeError("InputRouter requires composer or target")
 ```
 
-If keeping both as dataclass fields creates awkward typing or initialization
-edge cases, use an internal `_target` field and expose a read-only `target`
-property. The compatibility rule is what matters: existing
-`InputRouter(composer=composer)` callers continue to work.
+`composer` and `target` are intentionally mutually exclusive. This avoids two
+sources of editable state drifting apart. Existing `InputRouter(composer=...)`
+callers continue to work; new callers use `InputRouter(target=...)`. The router
+uses `_target` internally and may expose a read-only `target` property for tests
+and diagnostics.
 
 The public `composer` attribute may remain during the transition. It should be
 documented as a compatibility attribute for prompt routers, not as the router's
@@ -176,7 +179,8 @@ long-term extension point.
 
 ## Routing Order
 
-Routing priority must not change. The target refactor should keep this order:
+This order describes the generic `InputRouter` only. Routing priority must not
+change:
 
 1. Ignore key release events.
 2. For key events, clear jump-to-character mode before continuing. If the key is
@@ -184,20 +188,20 @@ Routing priority must not change. The target refactor should keep this order:
 3. For key events, route active runtime surfaces and return if they emit
    `InputIntent` values.
 4. Route selection keys before completion handling.
-5. Submit the selected slash-command completion on submit.
-6. Route completion navigation and cancellation.
-7. Convert cancel to abort only when the app is running and completion did not
+5. Route completion navigation and cancellation.
+6. Convert cancel to abort only when the app is running and completion did not
    consume it.
-8. Enter jump-to-character mode.
-9. Emit queue-edit command intents.
-10. Force and apply completion on tab.
-11. Submit prompt text.
-12. Insert explicit newline.
-13. Move visual cursor or browse history.
-14. Route page movement.
-15. Route ordinary editing keys.
-16. Route paste and text insertion.
-17. Emit render invalidation for resize and SIGWINCH.
+7. Enter jump-to-character mode.
+8. Emit queue-edit command intents.
+9. Force and apply completion on tab.
+10. Submit prompt text exactly as typed. Do not apply an active completion on
+    generic submit.
+11. Insert explicit newline.
+12. Move visual cursor or browse history.
+13. Route page movement.
+14. Route ordinary editing keys.
+15. Route paste and text insertion.
+16. Emit render invalidation for resize and SIGWINCH.
 
 The adapter should not reorder these checks. Tests should assert the most fragile
 crossovers: completion cancel before running abort, selection before completion,
@@ -247,6 +251,14 @@ Native-only behavior remains local:
 
 This keeps `loushang.tui` general while reducing duplicated editor semantics.
 
+Native routing order is not the generic `InputRouter` order. It must keep its
+existing product-specific priority: runtime surfaces and active surfaces route
+before text/paste/resize/key-release handling, transcript and queued-message
+commands stay native, `follow_up_keys` keep their current position, and
+slash-command selected-completion submit remains native-only. If helper reuse
+would reorder any of those checks, stop at generic router decoupling and leave
+native routing unchanged.
+
 ## Surface and TextInput Path
 
 The first slice should not make surfaces use `InputRouter`. `SurfaceHost` already
@@ -268,6 +280,8 @@ submission.
 
 - Constructing `InputRouter` without either `composer` or `target` should fail
   early with a clear `TypeError`.
+- Constructing `InputRouter` with both `composer` and `target` should fail early
+  with a clear `TypeError`.
 - A target missing required prompt behavior should fail at construction or first
   use, not silently fall back to Composer.
 - Existing surface input normalization should remain defensive: non-`InputIntent`
@@ -286,9 +300,13 @@ Add target-level tests:
   existing text, paste, submit, and clear behavior.
 - `InputRouter(target=fake_prompt_target)` routes ordinary editing keys without
   importing or constructing `Composer`.
+- Passing both `composer` and `target` raises `TypeError`.
 - Selection keys call target selection methods before completion routing.
 - Completion cancel still closes completion before running abort.
 - Tab still forces completions and applies the selected completion.
+- Enter with active completion in generic `InputRouter` still submits raw text
+  without applying completion.
+- Native slash-command completion submit stays covered by native input tests.
 - Resize and SIGWINCH still emit `invalidate_render` without touching the target.
 
 Keep existing behavior tests:
