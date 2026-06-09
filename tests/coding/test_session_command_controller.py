@@ -363,6 +363,13 @@ def test_command_controller_executes_builtin_extensions_list_and_detail(tmp_path
         "status": "ok",
         "extensions": extensions,
         "message": "Extensions: acme.review (standard, 2 contributions, 1 diagnostic)",
+        "display": (
+            "Extensions:\n"
+            "- acme.review - Acme Review [standard]\n"
+            "  Source: /tmp/project/extensions/review/extension.py\n"
+            "  Contributions: command acme-review, tool review_lookup\n"
+            "  Diagnostics: 1"
+        ),
     }
     assert detail_result is not None
     assert detail_result.result == {
@@ -371,6 +378,20 @@ def test_command_controller_executes_builtin_extensions_list_and_detail(tmp_path
         "status": "ok",
         "extension": extensions[0],
         "message": "Extension acme.review: Acme Review",
+        "display": (
+            "Extension acme.review\n"
+            "Name: Acme Review\n"
+            "Version: 0.1.0\n"
+            "Description: Review helpers\n"
+            "Permission: standard\n"
+            "Capabilities: filesystem\n"
+            "Source: /tmp/project/extensions/review/extension.py\n"
+            "Contributions:\n"
+            "- command acme-review (manifest)\n"
+            "- tool review_lookup (runtime)\n"
+            "Diagnostics:\n"
+            "- missing_extension_hook_event: Extension manifest hook declaration requires an event."
+        ),
     }
 
 

@@ -259,6 +259,7 @@ def _execute_extensions(args: str, backend: BuiltinCommandBackend) -> CommandExe
         "extensions",
         extension=extension,
         message=f"Extension {_extension_id(extension)}: {_extension_name(extension)}",
+        display=_extension_detail_display(extension),
     )
 
 
@@ -465,6 +466,7 @@ def _extensions_ok(extensions: list[dict[str, object]]) -> CommandExecutionResul
         "extensions",
         extensions=extensions,
         message=_extensions_summary_message(extensions),
+        display=_extensions_display(extensions),
     )
 
 
@@ -483,6 +485,108 @@ def _extension_summary(extension: Mapping[str, object]) -> str:
     if diagnostic_count:
         details.append(f"{diagnostic_count} {_pluralize('diagnostic', diagnostic_count)}")
     return f"{_extension_id(extension)} ({', '.join(details)})"
+
+
+def _extensions_display(extensions: list[dict[str, object]]) -> str:
+    if not extensions:
+        return "Extensions:\n(none)"
+    lines = ["Extensions:"]
+    for extension in extensions:
+        lines.extend(_extension_list_display_lines(extension))
+    return "\n".join(lines)
+
+
+def _extension_list_display_lines(extension: Mapping[str, object]) -> list[str]:
+    lines = [
+        f"- {_extension_id(extension)} - {_extension_name(extension)} [{_string_mapping_field(extension, 'permissionLevel', default='safe')}]"
+    ]
+    source_path = _string_mapping_field(extension, "sourcePath")
+    if source_path:
+        lines.append(f"  Source: {source_path}")
+    contributions = _list_field(extension, "contributions")
+    if contributions:
+        lines.append(f"  Contributions: {_contributions_summary(contributions)}")
+    diagnostics = _list_field(extension, "diagnostics")
+    if diagnostics:
+        lines.append(f"  Diagnostics: {len(diagnostics)}")
+    return lines
+
+
+def _extension_detail_display(extension: Mapping[str, object]) -> str:
+    lines = [
+        f"Extension {_extension_id(extension)}",
+        f"Name: {_extension_name(extension)}",
+    ]
+    for label, field in (
+        ("Version", "version"),
+        ("Description", "description"),
+    ):
+        value = _string_mapping_field(extension, field)
+        if value:
+            lines.append(f"{label}: {value}")
+    lines.append(f"Permission: {_string_mapping_field(extension, 'permissionLevel', default='safe')}")
+    lines.append(f"Capabilities: {_capabilities_text(extension)}")
+    source_path = _string_mapping_field(extension, "sourcePath")
+    if source_path:
+        lines.append(f"Source: {source_path}")
+    manifest_path = _string_mapping_field(extension, "manifestPath")
+    if manifest_path:
+        lines.append(f"Manifest: {manifest_path}")
+    lines.extend(_contributions_detail_lines(_list_field(extension, "contributions")))
+    lines.extend(_diagnostic_detail_lines(_list_field(extension, "diagnostics")))
+    return "\n".join(lines)
+
+
+def _contributions_summary(contributions: list[object]) -> str:
+    parts: list[str] = []
+    for contribution in contributions:
+        if not isinstance(contribution, Mapping):
+            continue
+        contribution_type = _string_mapping_field(contribution, "type", default="contribution")
+        name = _string_mapping_field(contribution, "name")
+        if name:
+            parts.append(f"{contribution_type} {name}")
+    return ", ".join(parts) if parts else "(none)"
+
+
+def _contributions_detail_lines(contributions: list[object]) -> list[str]:
+    if not contributions:
+        return ["Contributions:", "- (none)"]
+    lines = ["Contributions:"]
+    for contribution in contributions:
+        if not isinstance(contribution, Mapping):
+            continue
+        contribution_type = _string_mapping_field(contribution, "type", default="contribution")
+        name = _string_mapping_field(contribution, "name", default="(unnamed)")
+        source = _string_mapping_field(contribution, "source")
+        suffix = f" ({source})" if source else ""
+        lines.append(f"- {contribution_type} {name}{suffix}")
+    return lines
+
+
+def _diagnostic_detail_lines(diagnostics: list[object]) -> list[str]:
+    if not diagnostics:
+        return ["Diagnostics:", "- (none)"]
+    lines = ["Diagnostics:"]
+    for diagnostic in diagnostics:
+        if not isinstance(diagnostic, Mapping):
+            continue
+        code = _string_mapping_field(diagnostic, "code", default="diagnostic")
+        message = _string_mapping_field(diagnostic, "message")
+        if message:
+            lines.append(f"- {code}: {message}")
+        else:
+            lines.append(f"- {code}")
+    return lines
+
+
+def _capabilities_text(extension: Mapping[str, object]) -> str:
+    capabilities = [
+        item
+        for item in _list_field(extension, "capabilities")
+        if isinstance(item, str) and item
+    ]
+    return ", ".join(capabilities) if capabilities else "(none)"
 
 
 def _find_extension(extensions: list[dict[str, object]], query: str) -> dict[str, object] | None:
