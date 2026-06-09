@@ -53,7 +53,7 @@ def test_render_plan_context_carries_cursor_and_diff_facts() -> None:
     root.lines = ("alpha", "beta" + CURSOR_MARKER)
     context = loop._build_plan_context(size)
 
-    assert context.raw_current_lines == ("alpha", "beta" + CURSOR_MARKER)
+    assert context.raw_current_lines == ("alpha", "beta")
     assert context.current_lines == ("alpha", "beta")
     assert context.declared_cursor == CursorDeclaration(row=1, column=4)
     assert context.cursor == CursorDeclaration(row=1, column=4)

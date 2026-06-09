@@ -8,6 +8,7 @@ import pytest
 from loushang.observability import configure_debug_logging, reset_observability
 from loushang.tui import (
     CURSOR_MARKER,
+    CursorDeclaration,
     FakeTerminalPort,
     ProcessTerminalPort,
     RenderConstraints,
@@ -92,6 +93,27 @@ def test_runtime_render_now_emits_tui_render_frame_diagnostics() -> None:
     assert event.data["plan_ms"] >= 0
     assert event.data["flush_ms"] >= 0
     assert event.data["total_ms"] >= 0
+
+
+def test_render_plan_context_carries_cursor_and_diff_facts() -> None:
+    root = StaticRoot(("alpha",))
+    loop = RenderLoop(root)
+    size = TerminalSize(columns=20, rows=5)
+    first = loop.plan(size)
+    loop.commit(first, size=size)
+
+    root.lines = ("alpha", "beta" + CURSOR_MARKER)
+    context = loop._build_plan_context(size)
+
+    assert context.raw_current_lines == ("alpha", "beta")
+    assert context.current_lines == ("alpha", "beta")
+    assert context.declared_cursor == CursorDeclaration(row=1, column=4)
+    assert context.cursor == CursorDeclaration(row=1, column=4)
+    assert context.changed_range == (1, 1)
+    assert context.first_changed == 1
+    assert context.last_changed == 1
+    assert context.appended_lines == 1
+    assert context.append_start == 1
 
 
 def test_runtime_render_now_does_not_emit_tui_render_frame_when_scope_is_disabled() -> None:

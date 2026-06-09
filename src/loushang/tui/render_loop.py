@@ -22,6 +22,28 @@ class ScreenRoot(Protocol):
     def render(self, constraints: RenderConstraints) -> RenderResult: ...
 
 
+@dataclass(frozen=True, slots=True)
+class RenderPlanContext:
+    size: TerminalSize
+    result: RenderResult
+    raw_current_lines: tuple[str, ...]
+    current_lines: tuple[str, ...]
+    previous_lines: tuple[str, ...]
+    previous_size: TerminalSize | None
+    declared_cursor: CursorDeclaration | None
+    cursor: CursorDeclaration
+    changed_range: tuple[int, int] | None
+    first_changed: int | None
+    last_changed: int | None
+    appended_lines: int
+    append_start: int | None
+    viewport_top: int
+    differential_viewport_top: int
+    width_changed: bool
+    height_changed: bool
+    previous_kitty_delete_sequences: tuple[str, ...]
+
+
 @dataclass(slots=True)
 class RenderLoop:
     screen_root: ScreenRoot
@@ -46,7 +68,7 @@ class RenderLoop:
     def reset_baseline(self, reason: str = "baseline_reset") -> None:
         self._baseline_reset_reason = reason
 
-    def plan(self, size: TerminalSize) -> RenderDiagnostics:
+    def _build_plan_context(self, size: TerminalSize) -> RenderPlanContext:
         result = self.screen_root.render(
             RenderConstraints(width=size.columns, max_height=1_000_000, visible_height=size.rows)
         )
@@ -66,8 +88,58 @@ class RenderLoop:
             previous_lines,
             _changed_line_range(previous_lines, current_lines),
         )
+        first_changed: int | None = None
+        last_changed: int | None = None
+        appended_lines = max(0, len(current_lines) - len(previous_lines))
+        append_start: int | None = None
+        if changed_range is not None:
+            first_changed, last_changed = changed_range
+            append_start = (
+                first_changed
+                if appended_lines > 0 and first_changed == len(previous_lines) and first_changed > 0
+                else None
+            )
         viewport_top = _viewport_top(current_lines, size)
+        differential_viewport_top = _differential_viewport_top(
+            previous_viewport_top=self.previous_viewport_top,
+            natural_viewport_top=viewport_top,
+            previous_line_count=len(previous_lines),
+            current_line_count=len(current_lines),
+        )
         previous_kitty_delete_sequences = _kitty_delete_sequences(previous_lines)
+        return RenderPlanContext(
+            size=size,
+            result=result,
+            raw_current_lines=raw_current_lines,
+            current_lines=current_lines,
+            previous_lines=previous_lines,
+            previous_size=previous_size,
+            declared_cursor=result.cursor,
+            cursor=cursor,
+            changed_range=changed_range,
+            first_changed=first_changed,
+            last_changed=last_changed,
+            appended_lines=appended_lines,
+            append_start=append_start,
+            viewport_top=viewport_top,
+            differential_viewport_top=differential_viewport_top,
+            width_changed=width_changed,
+            height_changed=height_changed,
+            previous_kitty_delete_sequences=previous_kitty_delete_sequences,
+        )
+
+    def plan(self, size: TerminalSize) -> RenderDiagnostics:
+        context = self._build_plan_context(size)
+        result = context.result
+        current_lines = context.current_lines
+        cursor = context.cursor
+        previous_lines = context.previous_lines
+        previous_size = context.previous_size
+        width_changed = context.width_changed
+        height_changed = context.height_changed
+        changed_range = context.changed_range
+        viewport_top = context.viewport_top
+        previous_kitty_delete_sequences = context.previous_kitty_delete_sequences
 
         if previous_size is None:
             return self._diagnostics(
@@ -171,9 +243,12 @@ class RenderLoop:
                 hardware_cursor_column=self.hardware_cursor_column,
             )
 
-        first_changed, last_changed = changed_range
-        appended_lines = max(0, len(current_lines) - len(previous_lines))
-        append_start = first_changed if appended_lines > 0 and first_changed == len(previous_lines) and first_changed > 0 else None
+        first_changed = context.first_changed
+        last_changed = context.last_changed
+        appended_lines = context.appended_lines
+        append_start = context.append_start
+        if first_changed is None or last_changed is None:
+            raise AssertionError("changed range facts missing for changed render plan")
         if append_start is not None:
             return self._diagnostics(
                 current_lines=current_lines,
@@ -231,12 +306,7 @@ class RenderLoop:
                 hardware_cursor_column=cursor.column,
             )
 
-        differential_viewport_top = _differential_viewport_top(
-            previous_viewport_top=self.previous_viewport_top,
-            natural_viewport_top=viewport_top,
-            previous_line_count=len(previous_lines),
-            current_line_count=len(current_lines),
-        )
+        differential_viewport_top = context.differential_viewport_top
         if len(current_lines) < len(previous_lines) and viewport_top < self.previous_viewport_top:
             return self._managed_viewport_repaint_diagnostics(
                 current_lines=current_lines,
