@@ -100,6 +100,24 @@ def test_native_input_router_escape_closes_completion_before_running_abort() -> 
     assert not app.composer.has_completions
 
 
+def test_native_input_router_enter_applies_slash_completion_before_submit() -> None:
+    from loushang.coding.ui.native_app import NativeCodingTuiApp
+    from loushang.coding.ui.native_input import NativeInputRouter
+
+    app = NativeCodingTuiApp(model_label="kimi", cwd="/repo", branch="main", session_label="abcd", now=lambda: 12.0)
+    app.composer.set_text("/mo")
+    app.composer.set_completion_items((CompletionItem(value="/model", label="/model"),))
+
+    result = NativeInputRouter(
+        app,
+        should_exit=lambda text: False,
+        is_local_command=lambda text: text == "/model",
+    ).handle(InputEvent(kind="key", key="enter"))
+
+    assert result.local_text == "/model"
+    assert app.composer.value == ""
+
+
 def test_native_input_router_restores_queued_messages_to_composer() -> None:
     from loushang.coding.ui.native_app import NativeCodingTuiApp
     from loushang.coding.ui.native_input import NativeInputRouter

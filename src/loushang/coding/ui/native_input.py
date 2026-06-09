@@ -14,10 +14,12 @@ from loushang.coding.platform.clipboard_image import (
 )
 from loushang.coding.ui.native_app import NativeCodingTuiApp
 from loushang.tui.input import (
+    ComposerInputTarget,
     InputEvent,
     InputIntent,
-    route_composer_editing_key,
-    route_composer_selection_key,
+    route_editor_editing_key,
+    route_editor_selection_key,
+    route_prompt_completion_key,
 )
 from loushang.tui.keybindings import KeybindingConfig, KeybindingManager
 
@@ -62,10 +64,12 @@ class NativeInputRouter:
     clipboard_image_name_factory: ClipboardImageNameFactory = field(default_factory=lambda: lambda: uuid.uuid4().hex)
     _jump_mode: Literal["forward", "backward"] | None = None
     _pending_clipboard_images: list[_PendingClipboardImage] = field(default_factory=list, init=False, repr=False)
+    _composer_target: ComposerInputTarget = field(init=False, repr=False)
 
     def __post_init__(self) -> None:
         if not isinstance(self.keybindings, KeybindingManager):
             self.keybindings = KeybindingManager(self.keybindings)
+        self._composer_target = ComposerInputTarget(self.app.composer)
 
     def handle(self, event: InputEvent) -> NativeInputResult:
         if self._runtime_surface_active():
@@ -106,7 +110,7 @@ class NativeInputRouter:
             return NativeInputResult()
         if keybindings.matches(event.key, "tui.transcript.open"):
             return NativeInputResult(render_requested=self.app.open_transcript_reader())
-        if route_composer_selection_key(self.app.composer, event.key, keybindings=keybindings):
+        if route_editor_selection_key(self._composer_target, event.key, keybindings=keybindings):
             return NativeInputResult()
         if self.app.composer.has_completions and keybindings.matches(event.key, "tui.input.submit"):
             return self._submit_selected_completion()
@@ -152,24 +156,12 @@ class NativeInputRouter:
             return NativeInputResult()
         if keybindings.matches(event.key, "tui.input.submit"):
             return self._submit()
-        if route_composer_editing_key(self.app.composer, event.key, keybindings=keybindings):
+        if route_editor_editing_key(self._composer_target, event.key, keybindings=keybindings):
             return NativeInputResult()
         return NativeInputResult(render_requested=False)
 
     def _route_completion_key(self, event: InputEvent, keybindings: KeybindingManager) -> bool:
-        if keybindings.matches(event.key, "tui.select.up"):
-            self.app.composer.select_previous_completion()
-            return True
-        if keybindings.matches(event.key, "tui.select.down"):
-            self.app.composer.select_next_completion()
-            return True
-        if keybindings.matches(event.key, "tui.input.tab"):
-            self.app.composer.apply_selected_completion()
-            return True
-        if keybindings.matches(event.key, "tui.select.cancel"):
-            self.app.composer.clear_completion_items()
-            return True
-        return False
+        return route_prompt_completion_key(self._composer_target, event.key, keybindings=keybindings)
 
     def _submit_selected_completion(self) -> NativeInputResult:
         should_submit_after_completion = self.app.composer.value.lstrip().startswith("/")
