@@ -8,7 +8,6 @@ from importlib.resources.abc import Traversable
 from pathlib import Path
 from typing import TypeVar
 
-from loushang.coding.frontmatter import FrontmatterParseError, parse_frontmatter
 from loushang.coding.loader.types import (
     ExtensionDescriptor,
     PackageResourceSummary,
@@ -22,6 +21,7 @@ from loushang.coding.loader.types import (
     ThemeDescriptor,
 )
 from loushang.coding.package.source import PackageSourceConfig
+from loushang.resource.frontmatter import FrontmatterParseError, parse_frontmatter
 
 BUILT_IN_RESOURCE_PACKAGE = "loushang.coding.resources"
 _MAX_SKILL_NAME_LENGTH = 64
