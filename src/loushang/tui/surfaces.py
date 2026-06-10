@@ -86,42 +86,42 @@ class SelectionSurface:
             return ""
         return self._filter_input.value
 
-    def handle_input(self, event: InputEvent) -> InputIntent | None:
+    def handle_input(self, event: InputEvent) -> InputIntent | bool | None:
         if self.enable_search and event.kind == "text":
             filter_input = self._ensure_filter_input()
             filter_input.handle_input(event)
             self._apply_filter(filter_input.value)
-            return None
+            return True
         if event.kind == "mouse":
             self._handle_mouse(event)
-            return None
+            return True
         if event.kind != "key":
             return None
         if self._search_accepts_editing_keys() and _handle_text_input_key(self._filter_input, event.key):
             self._apply_filter(self._filter_input.value if self._filter_input is not None else "")
-            return None
+            return True
         if event.key == "up":
             self._move(-1)
-            return None
+            return True
         if event.key == "down":
             self._move(1)
-            return None
+            return True
         if event.key == "pageUp":
             self._move(-max(1, self.max_visible))
-            return None
+            return True
         if event.key == "pageDown":
             self._move(max(1, self.max_visible))
-            return None
+            return True
         if event.key == "home":
             self._move_to_edge("first")
-            return None
+            return True
         if event.key == "end":
             self._move_to_edge("last")
-            return None
+            return True
         if event.key == "enter":
             selected = self.selected_item()
             if selected is None:
-                return None
+                return True
             return InputIntent(kind=self.select_kind, text=selected.selected_value)
         if event.key in {"esc", "escape"}:
             return InputIntent(kind="surface_close")
@@ -330,7 +330,7 @@ class SettingsSurface(SelectionSurface):
             return
         super().set_filter(query)
 
-    def handle_input(self, event: InputEvent) -> InputIntent | None:
+    def handle_input(self, event: InputEvent) -> InputIntent | bool | None:
         if self._submenu_component is not None:
             return self._handle_submenu_input(event)
         if not self._settings_items:
@@ -341,26 +341,26 @@ class SettingsSurface(SelectionSurface):
             if self._search_input is not None:
                 self._search_input.insert_text(event.text)
             self.selected_index = 0
-            return None
+            return True
         if event.kind != "key":
             return None
         if self._search_enabled and _handle_text_input_key(self._search_input, event.key):
             self.selected_index = 0
-            return None
+            return True
         if event.key == "up":
             self._move_settings(-1)
-            return None
+            return True
         if event.key == "down":
             self._move_settings(1)
-            return None
+            return True
         if event.key == "pageUp":
             self._move_settings(-max(1, self.max_visible))
-            return None
+            return True
         if event.key == "pageDown":
             self._move_settings(max(1, self.max_visible))
-            return None
+            return True
         if event.key in {"enter", "space"} or event.text == " ":
-            return self._activate_setting()
+            return self._activate_setting() or True
         if event.key in {"esc", "escape"}:
             return InputIntent(kind="surface_close")
         return None
@@ -482,7 +482,7 @@ class SettingsSurface(SelectionSurface):
             return InputIntent(kind="setting", text=selected.id, note=selected.current_value)
         return InputIntent(kind="setting", text=selected.id, note="true" if selected.enabled else "false")
 
-    def _handle_submenu_input(self, event: InputEvent) -> InputIntent | None:
+    def _handle_submenu_input(self, event: InputEvent) -> InputIntent | bool | None:
         component = self._submenu_component
         handle_input = getattr(component, "handle_input", None)
         result = handle_input(event) if callable(handle_input) else None
@@ -496,7 +496,9 @@ class SettingsSurface(SelectionSurface):
                 return self._complete_submenu(selected_value)
             if intent.kind in {"surface_close", "dialog_cancel"}:
                 self._close_submenu()
-                return None
+                return True
+        if result is True:
+            return True
         return result if isinstance(result, InputIntent) else None
 
     def _complete_submenu_from_callback(self, selected_value: str | None = None) -> None:
