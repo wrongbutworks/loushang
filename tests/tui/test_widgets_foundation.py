@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import runpy
+
 from loushang.tui import (
     Button,
     Checkbox,
@@ -262,3 +264,9 @@ def test_dialog_tabs_from_form_edge_to_actions_and_delegates_editor_target() -> 
         InputIntent(kind="dialog_confirm"),
         InputIntent(kind="surface_close"),
     )
+
+
+def test_widgets_foundation_example_imports() -> None:
+    namespace = runpy.run_path("examples/tui/43_widgets_foundation.py", run_name="__test__")
+
+    assert "build_app" in namespace
