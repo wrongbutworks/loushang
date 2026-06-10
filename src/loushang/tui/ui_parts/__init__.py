@@ -19,6 +19,8 @@ from .welcome import LOUSHANG_BANNER_LOGO as LOUSHANG_BANNER_LOGO
 from .welcome import LOUSHANG_GUANQUE_TOWER_LOGO as LOUSHANG_GUANQUE_TOWER_LOGO
 from .welcome import LoushangWelcomePanel as LoushangWelcomePanel
 from .welcome import loushang_welcome_theme as loushang_welcome_theme
+from .widgets import Badge as Badge
+from .widgets import BadgeKind as BadgeKind
 from .widgets import Button as Button
 from .widgets import ButtonKind as ButtonKind
 from .widgets import Checkbox as Checkbox
@@ -30,12 +32,21 @@ from .widgets import Form as Form
 from .widgets import FormRow as FormRow
 from .widgets import FormValidationResult as FormValidationResult
 from .widgets import IconButton as IconButton
+from .widgets import KeyValueItem as KeyValueItem
+from .widgets import KeyValueList as KeyValueList
+from .widgets import ProgressBar as ProgressBar
 from .widgets import RadioGroup as RadioGroup
 from .widgets import SelectList as SelectList
+from .widgets import StatusKind as StatusKind
+from .widgets import StatusPill as StatusPill
 from .widgets import TextField as TextField
 from .widgets import Toggle as Toggle
+from .widgets import Toolbar as Toolbar
+from .widgets import ToolbarAction as ToolbarAction
 
 __all__ = [
+    "Badge",
+    "BadgeKind",
     "BottomFrame",
     "Button",
     "ButtonKind",
@@ -52,12 +63,15 @@ __all__ = [
     "FormRow",
     "FormValidationResult",
     "IconButton",
+    "KeyValueItem",
+    "KeyValueList",
     "LOUSHANG_BANNER_LOGO",
     "LOUSHANG_GUANQUE_TOWER_LOGO",
     "LoushangWelcomePanel",
     "loushang_welcome_theme",
     "PendingQueueView",
     "PendingSection",
+    "ProgressBar",
     "RadioGroup",
     "RegionRenderable",
     "ScreenLayout",
@@ -66,8 +80,12 @@ __all__ = [
     "SelectList",
     "StatusBar",
     "StatusField",
+    "StatusKind",
+    "StatusPill",
     "TextField",
     "TextInput",
     "Toggle",
+    "Toolbar",
+    "ToolbarAction",
     "WorkingLine",
 ]

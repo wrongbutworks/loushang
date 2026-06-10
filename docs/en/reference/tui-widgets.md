@@ -22,6 +22,30 @@ see [TUI Editing](tui-editing.md).
 | `Form` / `FormRow` | Local focus traversal and synchronous validation. |
 | `Dialog` / `ConfirmDialog` | Modal composition and confirm/cancel flows. |
 
+## P0B Small Controls
+
+| Widget | Use it for |
+| --- | --- |
+| `Badge` | Compact metadata labels such as `beta`, `cached`, or counts. |
+| `StatusPill` | Semantic state labels such as `ready`, `warning`, or `failed`. |
+| `ProgressBar` | Static one-line progress with optional label and percent text. |
+| `KeyValueList` / `KeyValueItem` | Dense property summaries and detail panes. |
+| `Toolbar` / `ToolbarAction` | Horizontal action groups with local focus and activation. |
+
+Small controls are plain `Renderable` parts except for `Toolbar`, which handles
+only its own local focus. They are intended for dashboards, dialogs, status
+panels, and extension surfaces that need compact reusable rows.
+
+```python
+from loushang.tui import Badge, KeyValueList, ProgressBar, StatusPill, Toolbar, ToolbarAction
+
+header = (Badge("beta", kind="info"), StatusPill("ready", status="success"))
+progress = ProgressBar(value=42, total=100, label="Indexing", width=12)
+details = KeyValueList([("Model", "Kimi"), ("Mode", "safe")])
+toolbar = Toolbar([ToolbarAction("Refresh", value="refresh"), ToolbarAction("Cancel", value="cancel")])
+toolbar.focus()
+```
+
 ## Forms
 
 ```python
@@ -69,8 +93,8 @@ body focus is active.
 
 ## Theme Tokens
 
-P0A widgets accept `ThemeResolver` where styling is supported. Initial stable
-tokens are:
+P0A and P0B widgets accept `ThemeResolver` where styling is supported. Initial
+stable tokens are:
 
 | Token | Applies to |
 | --- | --- |
@@ -85,14 +109,34 @@ tokens are:
 | `widget.button.ghost` | Ghost buttons. |
 | `widget.dialog.title` | Dialog titles. |
 | `widget.dialog.action` | Dialog action rows. |
+| `widget.badge.default` | Default badges. |
+| `widget.badge.info` | Informational badges. |
+| `widget.badge.success` | Successful badges. |
+| `widget.badge.warning` | Warning badges. |
+| `widget.badge.danger` | Dangerous or failed badges. |
+| `widget.status.neutral` | Neutral status pills. |
+| `widget.status.info` | Informational status pills. |
+| `widget.status.success` | Successful status pills. |
+| `widget.status.warning` | Warning status pills. |
+| `widget.status.danger` | Dangerous or failed status pills. |
+| `widget.progress.track` | Progress bar unfilled track. |
+| `widget.progress.fill` | Progress bar filled region. |
+| `widget.progress.label` | Progress label and numeric text. |
+| `widget.keyValue.key` | Key column in `KeyValueList`. |
+| `widget.keyValue.value` | Value column in `KeyValueList`. |
+| `widget.toolbar.action` | Enabled toolbar actions. |
+| `widget.toolbar.focus` | Focused toolbar action. |
+| `widget.toolbar.disabled` | Disabled toolbar actions. |
 
 ## Planned Catalog
 
-`Toolbar`, `Menu`, `Popover`, `ProgressBar`, `Spinner`, `Badge`, `StatusPill`,
-`KeyValueList`, `Tabs`, `Table`, `TreeView`, `Toast`, and `TextArea` are planned
-catalog entries. They are not part of the P0A implementation.
+`Menu`, `Popover`, `Spinner`, `Tabs`, `Table`, `TreeView`, `Toast`, and
+`TextArea` are planned catalog entries. They are not part of the current widget
+implementation.
 
 ## Example
 
 - [examples/tui/43_widgets_foundation.py](../../../examples/tui/43_widgets_foundation.py):
   small keyboard-only widget app with a form and confirm dialog.
+- [examples/tui/44_widgets_small_controls.py](../../../examples/tui/44_widgets_small_controls.py):
+  compact status, details, progress, and toolbar composition.
