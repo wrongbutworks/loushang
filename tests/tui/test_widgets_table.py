@@ -140,3 +140,66 @@ def test_table_can_hide_header() -> None:
     )
 
     assert plain_lines(table, width=12, height=2) == ("  One",)
+
+
+def test_table_navigation_activation_callbacks_and_space_forms() -> None:
+    calls: list[str] = []
+    table = Table(
+        [TableColumn("name", "Name")],
+        [
+            TableRow("build", {"name": "Build"}, on_select=lambda: calls.append("build")),
+            TableRow("disabled", {"name": "Disabled"}, disabled=True),
+            TableRow("deploy", {"name": "Deploy"}, on_select=lambda: "deploy"),
+        ],
+    )
+    table.focus()
+
+    assert table.active_value == "build"
+    assert plain_lines(table, width=20, height=4)[1] == "> Build"
+    assert table.handle_input(InputEvent(kind="key", key="enter")) is True
+    assert table.handle_input(InputEvent(kind="key", key="down")) is True
+    assert table.active_value == "deploy"
+    assert table.handle_input(InputEvent(kind="key", key="enter")) == "deploy"
+    assert table.handle_input(InputEvent(kind="key", key="down")) is True
+    assert table.active_value == "build"
+    assert table.handle_input(InputEvent(kind="text", text=" ")) is True
+    assert table.handle_input(InputEvent(kind="key", key="space")) is True
+    assert calls == ["build", "build", "build"]
+
+
+def test_table_wrap_false_boundaries_empty_disabled_and_height_window() -> None:
+    table = Table(
+        [TableColumn("name", "Name")],
+        [
+            TableRow("one", {"name": "One"}),
+            TableRow("two", {"name": "Two"}),
+            TableRow("three", {"name": "Three"}),
+        ],
+        wrap=False,
+    )
+    table.focus()
+
+    assert table.handle_input(InputEvent(kind="key", key="up")) is False
+    assert table.handle_input(InputEvent(kind="key", key="end")) is True
+    assert table.active_value == "three"
+    assert table.handle_input(InputEvent(kind="key", key="down")) is False
+    assert table.handle_input(InputEvent(kind="key", key="home")) is True
+    assert table.active_value == "one"
+
+    assert Table([], []).handle_input(InputEvent(kind="key", key="down")) is None
+    disabled = Table([TableColumn("name", "Name")], [TableRow("no", {"name": "No"}, disabled=True)])
+    disabled.focus()
+    assert disabled.handle_input(InputEvent(kind="key", key="down")) is None
+    assert disabled.handle_input(InputEvent(kind="key", key="enter")) is None
+
+    windowed = Table(
+        [TableColumn("name", "Name")],
+        [TableRow(str(index), {"name": f"Item {index}"}) for index in range(5)],
+        active_index=4,
+    )
+    windowed.focus()
+    assert plain_lines(windowed, width=20, height=3) == (
+        "  Name",
+        "  Item 3",
+        "> Item 4",
+    )
