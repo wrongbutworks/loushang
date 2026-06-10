@@ -1195,7 +1195,7 @@ def test_create_agent_session_uses_stored_oauth_credentials_for_auth_bridge(tmp_
             id="responses",
             api="responses",
             provider="demo",
-            auth=Auth(api_key_env="LOUSHANG_TEST_DEMO_KEY"),
+            auth=Auth(kind="oauth"),
         ),
     )
     ai_registry.register_model(
@@ -1208,13 +1208,19 @@ def test_create_agent_session_uses_stored_oauth_credentials_for_auth_bridge(tmp_
         )
     )
 
-    monkeypatch.setattr(
-        "loushang.ai.auth.storage.load_credentials",
-        lambda: {"demo": OAuthCredentials(provider="demo", access_token="oauth-token")},
-    )
+    credential_store = {
+        "providers": {"demo": OAuthCredentials(provider="demo", access_token="oauth-token")},
+        "endpoints": {},
+        "models": {},
+    }
+    monkeypatch.setattr("loushang.ai.auth.storage.load_credential_store", lambda: credential_store)
+    monkeypatch.setattr("loushang.ai.auth.facade.load_credential_store", lambda: credential_store)
     monkeypatch.setattr(
         "loushang.ai.auth.oauth.get_oauth_api_key",
-        lambda provider, credentials: {"apiKey": f"{provider}-oauth-key"},
+        lambda provider, credentials: {
+            "apiKey": f"{provider}-oauth-key",
+            "newCredentials": credentials[provider],
+        },
     )
 
     services = create_services(

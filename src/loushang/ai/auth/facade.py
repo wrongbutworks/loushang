@@ -59,6 +59,16 @@ def register_builtin_oauth_providers(
     _register_builtin_oauth_providers(resolved_registry)
 
 
+def ensure_builtin_oauth_providers(
+    *, registry: OAuthProviderRegistry | None = None
+) -> None:
+    resolved_registry = registry or get_default_oauth_registry()
+    if resolved_registry.get_oauth_provider("openai-codex") is None:
+        _register_builtin_openai_codex(resolved_registry)
+    if resolved_registry.get_oauth_provider("anthropic") is None:
+        _register_builtin_anthropic(resolved_registry)
+
+
 def _register_builtin_oauth_providers(registry: OAuthProviderRegistry) -> None:
     _register_builtin_openai_codex(registry)
     _register_builtin_anthropic(registry)

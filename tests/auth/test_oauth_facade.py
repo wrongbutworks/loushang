@@ -6,7 +6,12 @@ from dataclasses import asdict
 import pytest
 
 from loushang.ai.auth import facade
-from loushang.ai.auth.facade import oauth_login, oauth_refresh, resolve_oauth_api_key
+from loushang.ai.auth.facade import (
+    ensure_builtin_oauth_providers,
+    oauth_login,
+    oauth_refresh,
+    resolve_oauth_api_key,
+)
 from loushang.ai.auth.registry import OAuthProviderRegistry
 from loushang.ai.auth.types import OAuthCredentials
 
@@ -65,6 +70,16 @@ def _registry() -> OAuthProviderRegistry:
     registry = OAuthProviderRegistry()
     registry.register_oauth_provider(_FakeProvider(), source_id="test")
     return registry
+
+
+def test_ensure_builtin_oauth_providers_does_not_reset_registry() -> None:
+    registry = _registry()
+
+    ensure_builtin_oauth_providers(registry=registry)
+
+    assert registry.get_oauth_provider("demo") is not None
+    assert registry.get_oauth_provider("openai-codex") is not None
+    assert registry.get_oauth_provider("anthropic") is not None
 
 
 def test_oauth_login_persists_into_explicit_credentials_map(

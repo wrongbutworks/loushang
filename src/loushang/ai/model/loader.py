@@ -292,9 +292,10 @@ def _build_registry(raw: dict[str, Any]) -> ModelRegistry:
                 endpoint_raw.get("lane"),
                 endpoint_raw.get("region"),
             )
+            endpoint_specific_auth_raw = _auth_raw(endpoint_raw)
             endpoint_auth_raw = _merge_auth_raw(
                 provider_auth_raw,
-                _auth_raw(endpoint_raw),
+                endpoint_specific_auth_raw,
             )
             endpoint_auth = Auth.from_raw(endpoint_auth_raw)
             endpoint = Endpoint(
@@ -309,6 +310,7 @@ def _build_registry(raw: dict[str, Any]) -> ModelRegistry:
                 preferred=bool(endpoint_raw.get("preferred", False)),
                 docs=endpoint_raw.get("docs"),
                 auth=endpoint_auth,
+                _auth_inherited=endpoint_specific_auth_raw is None and endpoint_auth is not None,
                 compat=_normalize_endpoint_compat(endpoint_raw),
                 defaults=Defaults.from_raw(endpoint_raw.get("defaults")),
             )

@@ -68,6 +68,12 @@ from loushang.coding.platform.footer_data_provider import FooterDataProvider
 from loushang.coding.policy import InteractiveApprovalResolver
 from loushang.coding.session.agent_event_router import AgentEventRouter
 from loushang.coding.session.auth_bridge_controller import AuthBridgeController
+from loushang.coding.session.auth_commands import (
+    SessionOAuthLoginCallbacks,
+    login_scope_kwargs,
+    resolve_auth_login_target,
+    validate_oauth_login_target,
+)
 from loushang.coding.session.bash_controller import BashController
 from loushang.coding.session.builtin_commands import (
     BuiltinCommandBackend,
@@ -273,6 +279,7 @@ class AgentSession:
                 set_active_tools=self.set_active_tools,
                 get_default_active_tool_names=self._default_active_tool_names,
                 get_extensions=self.list_extensions,
+                login_provider=self._login_from_builtin,
             ),
         )
         self._extension_event_sink = ExtensionEventSink(
@@ -800,6 +807,41 @@ class AgentSession:
         return self.clear_queue()
 
     # Public facade: model, thinking, tools, and session metadata.
+
+    async def _login_from_builtin(self, raw_target: str | None) -> dict[str, object]:
+        if self.model_registry is None:
+            raise RuntimeError("Model registry is not available.")
+        from loushang.ai.auth import ensure_builtin_oauth_providers, oauth_login
+
+        target = resolve_auth_login_target(
+            raw_target,
+            current_model=getattr(self.agent, "model", None),
+            registry=self.model_registry.ai_registry,
+        )
+        validate_oauth_login_target(target)
+        ensure_builtin_oauth_providers(registry=self.oauth_provider_registry)
+        callbacks = SessionOAuthLoginCallbacks()
+        scope_kwargs = login_scope_kwargs(target)
+        credentials = await oauth_login(
+            target.provider,
+            callbacks,
+            registry=self.oauth_provider_registry,
+            endpoint_id=scope_kwargs["endpoint_id"],
+            model_id=scope_kwargs["model_id"],
+            persist=True,
+        )
+        current_model = getattr(self.agent, "model", None)
+        if isinstance(current_model, Model):
+            self._auth_bridge_controller.record_model_auth_resolution(current_model)
+        return {
+            "provider": credentials.provider,
+            "scope": target.scope,
+            "endpoint_id": target.endpoint_id,
+            "model_id": target.model_id,
+            "message": _login_success_message(target.provider, target.scope),
+            "auth_url": (callbacks.auth_info or {}).get("url"),
+            "progress": list(callbacks.progress),
+        }
 
     async def set_model(self, model: Model | ModelSelection) -> None:
         await self._set_model_internal(model, emit_refresh=True, source="set")
@@ -1667,6 +1709,10 @@ def _resolve_extension_exec_cwd(session_cwd: str, cwd: str | Path | None) -> str
 
 def _optional_string(value: object) -> str | None:
     return value if isinstance(value, str) else None
+
+
+def _login_success_message(provider: str, scope: str) -> str:
+    return f"Login complete for {provider} ({scope} scope)."
 
 
 def _model_selection_payload(selection: ModelSelection | None) -> dict[str, str] | None:

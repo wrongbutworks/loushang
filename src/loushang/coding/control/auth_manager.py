@@ -53,33 +53,41 @@ class AuthManager:
 
     def resolve_for_model(self, model: Model) -> AuthResolution:
         endpoint = self._ai_registry.get_endpoint(model.provider_id, model.endpoint_id)
-        auth_config = getattr(model, "auth", None) or (endpoint.auth if endpoint is not None else None)
-        auth_required = auth_config is not None and getattr(auth_config, "kind", "apiKey") != "none"
+        provider = self._ai_registry.get_provider(model.provider_id)
+        auth_config = (
+            getattr(model, "auth", None)
+            or (endpoint.auth if endpoint is not None else None)
+            or (provider.auth if provider is not None else None)
+        )
+        auth_kind = getattr(auth_config, "kind", "apiKey")
+        auth_required = auth_config is not None and auth_kind != "none"
         env = os.environ if self._env is None else self._env
 
-        oauth_credentials = self._resolve_oauth_credentials(
-            model.provider_id,
-            endpoint_id=model.endpoint_id,
-            model_id=model.id,
-        )
-        if oauth_credentials is not None:
-            oauth_api_key = self._resolve_oauth_api_key(
+        oauth_credentials: OAuthCredentials | None = None
+        if auth_kind == "oauth":
+            oauth_credentials = self._resolve_oauth_credentials(
                 model.provider_id,
                 endpoint_id=model.endpoint_id,
                 model_id=model.id,
             )
-            if oauth_api_key is not None:
-                return AuthResolution(
-                    provider=model.provider_id,
-                    model_id=model.id,
+            if oauth_credentials is not None:
+                oauth_api_key = self._resolve_oauth_api_key(
+                    model.provider_id,
                     endpoint_id=model.endpoint_id,
-                    auth_required=auth_required,
-                    satisfied=True,
-                    api_key=oauth_api_key,
-                    api_key_env=getattr(auth_config, "api_key_env", None),
-                    source="stored_oauth",
-                    headers=resolve_auth_material(bearer_token=oauth_api_key).headers,
+                    model_id=model.id,
                 )
+                if oauth_api_key is not None:
+                    return AuthResolution(
+                        provider=model.provider_id,
+                        model_id=model.id,
+                        endpoint_id=model.endpoint_id,
+                        auth_required=auth_required,
+                        satisfied=True,
+                        api_key=oauth_api_key,
+                        api_key_env=getattr(auth_config, "api_key_env", None),
+                        source="stored_oauth",
+                        headers=resolve_auth_material(bearer_token=oauth_api_key).headers,
+                    )
 
         api_key_env = _primary_api_key_env(auth_config)
         api_key = _resolve_api_key_from_env(auth_config, env)
