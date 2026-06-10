@@ -152,3 +152,48 @@ def test_select_list_can_emit_surface_close_for_popup_usage() -> None:
     select = SelectList([SelectItem("Kimi")], close_on_escape=True)
 
     assert select.handle_input(InputEvent(kind="key", key="escape")) == InputIntent(kind="surface_close")
+
+
+def test_form_tabs_between_focusable_rows_and_delegates_input() -> None:
+    name = TextField(value="")
+    enabled = Checkbox("Enabled")
+    form = Form([FormRow("name", name), FormRow("enabled", enabled)])
+
+    form.focus()
+    assert name.focused is True
+    assert form.handle_input(InputEvent(kind="text", text="a")) is True
+    assert name.value == "a"
+    assert form.handle_input(InputEvent(kind="key", key="tab")) is True
+    assert enabled.focused is True
+    assert form.handle_input(InputEvent(kind="text", text=" ")) is True
+    assert enabled.checked is True
+
+
+def test_form_validation_uses_field_ids_and_value_getters() -> None:
+    name = TextField(value="")
+    form = Form(
+        [
+            FormRow("name", name, validator=lambda value: "Name required" if not value else None),
+            FormRow("enabled", Checkbox("Enabled", checked=True), value_getter=lambda control: control.checked),
+        ]
+    )
+
+    result = form.validate()
+
+    assert result.valid is False
+    assert result.errors == {"name": "Name required"}
+    assert form.values() == {"name": "", "enabled": True}
+
+
+def test_form_exposes_active_editable_child_target() -> None:
+    field = TextField(value="")
+    form = Form([FormRow("name", field), FormRow("enabled", Checkbox("Enabled"))])
+    form.focus()
+
+    target = form.editor_input_target()
+    assert target is not None
+    target.insert_text("abc")
+    assert field.value == "abc"
+
+    form.focus_next()
+    assert form.editor_input_target() is None
