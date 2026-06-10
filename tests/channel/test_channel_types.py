@@ -14,6 +14,8 @@ def test_channel_public_api_exposes_minimal_boundary_surface() -> None:
         "ChannelEnvelope",
         "ChannelEnvelopeKind",
         "ChannelPayload",
+        "channel_envelope_from_json",
+        "channel_envelope_to_json",
     }
 
 
