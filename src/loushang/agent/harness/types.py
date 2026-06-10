@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from typing import Literal
 
@@ -13,6 +14,7 @@ from loushang.agent.types import (
 
 AgentRunMode = Literal["prompt", "continue"]
 AgentRunStatus = Literal["completed", "failed"]
+AgentEventSink = Callable[[AgentEvent], Awaitable[None] | None]
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -23,6 +25,7 @@ class AgentRunSpec:
     mode: AgentRunMode = "prompt"
     signal: object | None = None
     stream_fn: StreamFn | None = None
+    event_sink: AgentEventSink | None = None
 
 
 @dataclass(frozen=True)

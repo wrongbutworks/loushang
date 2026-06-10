@@ -109,6 +109,33 @@ def test_run_agent_collects_events_and_new_messages_for_prompt_run() -> None:
     assert result.new_messages[-1].content[0].text == "hello"
 
 
+def test_run_agent_forwards_events_to_external_sink() -> None:
+    from loushang.agent.harness import AgentRunSpec, run_agent
+    from loushang.agent.types import AgentContext
+
+    forwarded_events: list[str] = []
+
+    async def stream_fn(model, context, options=None):
+        return _stream_with_final_message(_assistant_text_message("hello"))
+
+    async def event_sink(event):
+        forwarded_events.append(event["type"])
+
+    prompt = UserMessage(role="user", content="hi", timestamp=0.0)
+    spec = AgentRunSpec(
+        prompts=(prompt,),
+        context=AgentContext(system_prompt="system", messages=()),
+        config=_config(),
+        stream_fn=stream_fn,
+        event_sink=event_sink,
+    )
+
+    result = asyncio.run(run_agent(spec))
+
+    assert result.status == "completed"
+    assert forwarded_events == [event["type"] for event in result.events]
+
+
 def test_run_agent_can_continue_from_existing_context() -> None:
     from loushang.agent.harness import AgentRunSpec, run_agent
     from loushang.agent.types import AgentContext

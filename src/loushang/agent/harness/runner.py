@@ -10,6 +10,10 @@ async def run_agent(spec: AgentRunSpec) -> AgentRunResult:
 
     async def emit(event: AgentEvent) -> None:
         events.append(event)
+        if spec.event_sink is not None:
+            result = spec.event_sink(event)
+            if result is not None:
+                await result
 
     try:
         if spec.mode == "continue":
