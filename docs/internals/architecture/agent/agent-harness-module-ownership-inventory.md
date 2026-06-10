@@ -55,10 +55,10 @@ loushang.coding -> loushang.work
 loushang.coding -> loushang.method
 ```
 
-Current transitional couplings:
+Current transitional compatibility exports:
 
 ```text
-loushang.work.coding.CodingWorkShell lives under work despite coding-specific semantics.
+loushang.work.CodingWorkShell remains as a compatibility export for the coding-owned implementation.
 ```
 
 These couplings do not block P2 harness work because `agent.harness` must not
@@ -141,13 +141,14 @@ independent from product packages.
 | `work/event_log.py` | Event log protocol, in-memory backend, JSONL backend | Work primitive | Keep. |
 | `work/projection.py` | Generic mapping from agent-like events to `WorkEvent` | Work primitive | Keep. It accepts mappings and does not need product imports. |
 | `work/plan_projection.py` | Plan/step run projection from work log entries | Work primitive | Keep. |
-| `work/coding.py` | `CodingWorkShell` for `SubmitCodingTurn` | Transitional compatibility | Do not expand. Coding runtime should import through `loushang.coding.work_shell`. |
-| `work/__init__.py` | Work exports | Work primitive plus compatibility exports | Avoid expanding coding-specific exports. |
+| `work/coding.py` | Compatibility re-export for `CodingWorkShell` | Transitional compatibility | Do not expand. Implementation lives in `loushang.coding.work_shell`. |
+| `work/__init__.py` | Work exports | Work primitive plus lazy compatibility exports | Avoid eager product imports. |
 
-`CodingWorkShell` is useful but product-specific. `loushang.coding.work_shell`
-is the coding-owned entrypoint. The `loushang.work` export is retained as a
-compatibility bridge, not a pattern for future `ResearchWorkShell`,
-`PptWorkShell`, or `CoworkWorkShell` modules inside `loushang.work`.
+`CodingWorkShell` is useful but product-specific. Its implementation and coding
+runtime entrypoint live in `loushang.coding.work_shell`. The `loushang.work`
+export is retained as a lazy compatibility bridge, not a pattern for future
+`ResearchWorkShell`, `PptWorkShell`, or `CoworkWorkShell` modules inside
+`loushang.work`.
 
 ## `loushang.method`
 
@@ -233,3 +234,4 @@ These names are intentionally excluded from `loushang.agent.harness`:
 3. Completed: move coding runtime imports to the `loushang.coding.work_shell` adapter.
 4. Completed: route `Agent` prompt and continuation execution through `agent.harness` while preserving the stateful lifecycle.
 5. Completed: isolate method resource loading from `loushang.coding.loader`.
+6. Completed: move `CodingWorkShell` implementation ownership to `loushang.coding.work_shell`.
