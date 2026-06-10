@@ -4,7 +4,12 @@ from collections.abc import Callable
 from dataclasses import dataclass, field
 
 from loushang.tui.cell_width import autowrap_safe_width, truncate_to_width
-from loushang.tui.core import CursorDeclaration, RenderConstraints, RenderLine, RenderResult
+from loushang.tui.core import (
+    CursorDeclaration,
+    RenderConstraints,
+    RenderLine,
+    RenderResult,
+)
 from loushang.tui.theme import ThemeResolver
 from loushang.tui.ui_parts.text_input import TextInput
 

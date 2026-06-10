@@ -12,7 +12,6 @@ from loushang.tui import (
     FormRow,
     IconButton,
     InputEvent,
-    InputIntent,
     RadioGroup,
     RenderConstraints,
     RenderLine,
@@ -37,6 +36,18 @@ def test_widgets_are_reexported_from_public_modules() -> None:
 def rendered_text(part: object, *, width: int = 40, height: int = 8) -> tuple[str, ...]:
     result = part.render(RenderConstraints(width=width, max_height=height))
     return tuple(strip_control_sequences(line.text) for line in result.lines)
+
+
+def intent_tuple(intent: object) -> tuple[str, str, str]:
+    return (
+        getattr(intent, "kind", ""),
+        getattr(intent, "text", ""),
+        getattr(intent, "note", ""),
+    )
+
+
+def intent_tuples(intents: tuple[object, ...]) -> tuple[tuple[str, str, str], ...]:
+    return tuple(intent_tuple(intent) for intent in intents)
 
 
 def test_button_activates_from_enter_and_space_without_layout_shift() -> None:
@@ -146,14 +157,14 @@ def test_select_list_delegates_navigation_and_selection_without_default_escape_c
 
     assert select.handle_input(InputEvent(kind="key", key="down")) is True
     assert select.selected_value == "Qwen"
-    assert select.handle_input(InputEvent(kind="key", key="enter")) == InputIntent(kind="select", text="Qwen")
+    assert intent_tuple(select.handle_input(InputEvent(kind="key", key="enter"))) == ("select", "Qwen", "")
     assert select.handle_input(InputEvent(kind="key", key="escape")) is None
 
 
 def test_select_list_can_emit_surface_close_for_popup_usage() -> None:
     select = SelectList([SelectItem("Kimi")], close_on_escape=True)
 
-    assert select.handle_input(InputEvent(kind="key", key="escape")) == InputIntent(kind="surface_close")
+    assert intent_tuple(select.handle_input(InputEvent(kind="key", key="escape"))) == ("surface_close", "", "")
 
 
 def test_form_tabs_between_focusable_rows_and_delegates_input() -> None:
@@ -204,17 +215,17 @@ def test_form_exposes_active_editable_child_target() -> None:
 def test_confirm_dialog_returns_confirm_and_close_intents_by_default() -> None:
     dialog = ConfirmDialog(title="Delete session?")
 
-    assert dialog.handle_input(InputEvent(kind="key", key="enter")) == (
-        InputIntent(kind="dialog_confirm"),
-        InputIntent(kind="surface_close"),
+    assert intent_tuples(dialog.handle_input(InputEvent(kind="key", key="enter"))) == (
+        ("dialog_confirm", "", ""),
+        ("surface_close", "", ""),
     )
-    assert dialog.handle_input(InputEvent(kind="key", key="escape")) == InputIntent(kind="dialog_cancel")
+    assert intent_tuple(dialog.handle_input(InputEvent(kind="key", key="escape"))) == ("dialog_cancel", "", "")
 
 
 def test_confirm_dialog_can_keep_open_after_confirm() -> None:
     dialog = ConfirmDialog(title="Validate", close_on_confirm=False)
 
-    assert dialog.handle_input(InputEvent(kind="key", key="enter")) == InputIntent(kind="dialog_confirm")
+    assert intent_tuple(dialog.handle_input(InputEvent(kind="key", key="enter"))) == ("dialog_confirm", "", "")
 
 
 class RecordingBody:
@@ -242,8 +253,8 @@ def test_dialog_cancels_before_body_handles_cancel_keys() -> None:
     dialog = Dialog(title="Edit", body=body)
     dialog.focus()
 
-    assert dialog.handle_input(InputEvent(kind="key", key="escape")) == InputIntent(kind="dialog_cancel")
-    assert dialog.handle_input(InputEvent(kind="key", key="ctrl+c")) == InputIntent(kind="dialog_cancel")
+    assert intent_tuple(dialog.handle_input(InputEvent(kind="key", key="escape"))) == ("dialog_cancel", "", "")
+    assert intent_tuple(dialog.handle_input(InputEvent(kind="key", key="ctrl+c"))) == ("dialog_cancel", "", "")
     assert body.events == []
 
 
@@ -260,9 +271,9 @@ def test_dialog_tabs_from_form_edge_to_actions_and_delegates_editor_target() -> 
 
     assert dialog.handle_input(InputEvent(kind="key", key="tab")) is True
     assert dialog.editor_input_target() is None
-    assert dialog.handle_input(InputEvent(kind="key", key="enter")) == (
-        InputIntent(kind="dialog_confirm"),
-        InputIntent(kind="surface_close"),
+    assert intent_tuples(dialog.handle_input(InputEvent(kind="key", key="enter"))) == (
+        ("dialog_confirm", "", ""),
+        ("surface_close", "", ""),
     )
 
 
