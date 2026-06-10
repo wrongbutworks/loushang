@@ -74,7 +74,7 @@ resource-loader / product-adapter cleanup.
 | --- | --- | --- | --- |
 | `agent/types.py` | Agent messages, tool protocols, loop config, event types, state types | Keep / Harness input | Reuse types from harness. Do not move. |
 | `agent/agent_loop.py` | Low-level run loop, event emission, model stream and tool execution orchestration | Keep / Harness input | `run_agent()` should call existing loop functions. Do not duplicate the loop. |
-| `agent/agent.py` | Stateful `Agent` facade, queues, active run lifecycle, subscriptions | Keep | Do not rewrite for P2. Harness may bypass it and call the loop directly. |
+| `agent/agent.py` | Stateful `Agent` facade, queues, active run lifecycle, subscriptions | Keep / Harness host | Keep lifecycle here; delegate prompt and continuation loop execution through `agent.harness`. |
 | `agent/proxy.py` | Proxy stream adapter | Keep | No P2 change. |
 | `agent/__init__.py` | Stable public exports | Keep | Do not re-export harness API in P2. |
 | `agent/harness/*` | Headless run scaffolding for product adapters | Harness candidate | Add in P2 as a thin facade only. |
@@ -233,5 +233,5 @@ These names are intentionally excluded from `loushang.agent.harness`:
 1. Completed: add thin `loushang.agent.harness` facade and tests.
 2. Completed: add `loushang.work.ArtifactRef`.
 3. Completed: move coding runtime imports to the `loushang.coding.work_shell` adapter.
-4. Next: let one narrow headless coding path call the harness.
+4. Completed: route `Agent` prompt and continuation execution through `agent.harness` while preserving the stateful lifecycle.
 5. Next: isolate method resource loading from `loushang.coding.loader`.

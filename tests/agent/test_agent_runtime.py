@@ -164,6 +164,43 @@ def test_prompt_updates_state_and_notifies_subscribers() -> None:
     asyncio.run(scenario())
 
 
+def test_prompt_routes_execution_through_harness(monkeypatch) -> None:
+    import loushang.agent.agent as agent_module
+    from loushang.agent import Agent
+    from loushang.agent.harness import AgentRunResult
+
+    calls: list[object] = []
+
+    async def fake_run_agent(spec):
+        calls.append(spec)
+        assert [getattr(message, "role", None) for message in spec.prompts] == ["user"]
+        assert spec.mode == "prompt"
+
+        assistant = _assistant_text_message("via harness")
+        assert spec.event_sink is not None
+        await spec.event_sink({"type": "message_end", "message": spec.prompts[0]})
+        await spec.event_sink({"type": "message_end", "message": assistant})
+        return AgentRunResult(
+            status="completed",
+            new_messages=(*spec.prompts, assistant),
+            events=(),
+            stop_reason="stop",
+        )
+
+    monkeypatch.setattr(agent_module, "run_agent", fake_run_agent)
+
+    async def scenario() -> None:
+        agent = Agent()
+
+        await agent.prompt("hi")
+
+        assert len(calls) == 1
+        assert [getattr(message, "role", None) for message in agent.state.messages] == ["user", "assistant"]
+        assert agent.state.messages[-1].content[0].text == "via harness"
+
+    asyncio.run(scenario())
+
+
 def test_subscribe_deduplicates_same_listener() -> None:
     from loushang.agent import Agent
 
