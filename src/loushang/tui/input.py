@@ -3,7 +3,7 @@ from __future__ import annotations
 import os
 import re
 from dataclasses import InitVar, dataclass, field
-from typing import Literal, Protocol
+from typing import Literal, Protocol, cast
 
 from loushang.tui.framework import SurfaceHost
 from loushang.tui.keybindings import KeybindingManager, normalize_key_id
@@ -683,6 +683,12 @@ class InputReader:
         return InputEvent(kind="text", text=sequence)
 
 
+@dataclass(frozen=True, slots=True)
+class _SurfaceRoute:
+    intents: tuple[InputIntent, ...] = ()
+    consumed: bool = False
+
+
 @dataclass(slots=True)
 class InputRouter:
     composer: Composer | None = None
@@ -722,9 +728,18 @@ class InputRouter:
                     return ()
                 self._jump_mode = None
             keybindings = self._keybindings()
-            surface_intents = self._route_surface_first(event)
-            if surface_intents:
-                return surface_intents
+            surface_route = self._route_surface_first(event)
+            if surface_route.intents:
+                return surface_route.intents
+            if surface_route.consumed:
+                return ()
+            focused_target = self._focused_editor_target()
+            if focused_target is not None:
+                if route_editor_selection_key(focused_target, event.key, keybindings=keybindings):
+                    return ()
+                if route_editor_editing_key(focused_target, event.key, keybindings=keybindings):
+                    return ()
+                return ()
             if route_editor_selection_key(target, event.key, keybindings=keybindings):
                 return ()
             if target.has_completions and route_prompt_completion_key(target, event.key, keybindings=keybindings):
@@ -765,12 +780,30 @@ class InputRouter:
                 return ()
         if event.kind == "paste":
             self._jump_mode = None
+            surface_route = self._route_surface_first(event)
+            if surface_route.intents:
+                return surface_route.intents
+            if surface_route.consumed:
+                return ()
+            focused_target = self._focused_editor_target()
+            if focused_target is not None:
+                focused_target.paste(event.text)
+                return ()
             target.paste(event.text)
             return ()
         if event.kind == "text":
             if self._jump_mode is not None:
                 target.jump_to_char(event.text, direction=self._jump_mode)
                 self._jump_mode = None
+                return ()
+            surface_route = self._route_surface_first(event)
+            if surface_route.intents:
+                return surface_route.intents
+            if surface_route.consumed:
+                return ()
+            focused_target = self._focused_editor_target()
+            if focused_target is not None:
+                focused_target.insert_text(event.text)
                 return ()
             target.insert_text(event.text)
             return ()
@@ -793,21 +826,31 @@ class InputRouter:
             return (InputIntent(kind="follow_up", text=text, note="steer_unavailable"),)
         return (InputIntent(kind="follow_up", text=text),)
 
-    def _route_surface_first(self, event: InputEvent) -> tuple[InputIntent, ...]:
+    def _route_surface_first(self, event: InputEvent) -> _SurfaceRoute:
         if self.surface_host is None:
-            return ()
+            return _SurfaceRoute()
+        route_input_result = getattr(self.surface_host, "route_input_result", None)
+        if callable(route_input_result):
+            result = route_input_result(_legacy_event(event))
+            return _SurfaceRoute(
+                intents=_input_intents(getattr(result, "intents", None)),
+                consumed=bool(getattr(result, "consumed", False)),
+            )
         route_input = getattr(self.surface_host, "route_input", None)
         if callable(route_input):
             result = route_input(_legacy_event(event))
         else:
             result = self.surface_host.handle_input(_legacy_event(event))
-        if result is None:
-            return ()
-        if isinstance(result, InputIntent):
-            return (result,)
-        if isinstance(result, tuple) and all(isinstance(item, InputIntent) for item in result):
-            return result
-        return ()
+        return _SurfaceRoute(intents=_input_intents(result), consumed=_input_result_consumed(result))
+
+    def _focused_editor_target(self) -> EditorInputTarget | None:
+        if self.surface_host is None:
+            return None
+        current = getattr(self.surface_host, "current_editor_target", None)
+        if not callable(current):
+            return None
+        target = current()
+        return cast(EditorInputTarget, target) if target is not None else None
 
     def _move_up_or_history(self) -> None:
         target = self._target
@@ -830,6 +873,26 @@ class InputRouter:
 
     def _composer_page_lines(self) -> int:
         return max(2, min(10, self.height))
+
+
+def _input_intents(result: object) -> tuple[InputIntent, ...]:
+    if result is None:
+        return ()
+    if isinstance(result, InputIntent):
+        return (result,)
+    if isinstance(result, tuple):
+        return tuple(item for item in result if isinstance(item, InputIntent))
+    return ()
+
+
+def _input_result_consumed(result: object) -> bool:
+    if isinstance(result, bool):
+        return result
+    if result is None:
+        return False
+    if isinstance(result, tuple):
+        return bool(result)
+    return True
 
 
 def sanitize_paste_text(text: str) -> str:

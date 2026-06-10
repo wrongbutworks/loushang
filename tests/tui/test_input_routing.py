@@ -6,6 +6,7 @@ from typing import Any, Literal
 import pytest
 
 from loushang.tui import (
+    CommandSurface,
     CompletionItem,
     CompletionProvider,
     Composer,
@@ -19,8 +20,10 @@ from loushang.tui import (
     RenderConstraints,
     RenderLine,
     RenderResult,
+    SelectItem,
     Surface,
     SurfaceHost,
+    TextInput,
 )
 from loushang.tui.input import (
     route_editor_editing_key,
@@ -41,6 +44,18 @@ class EscConsumer(FocusableMixin):
         if isinstance(event, InputEvent) and event.kind == "key" and event.key == "esc":
             return InputIntent(kind="surface_close")
         return None
+
+
+class DecliningEditorFocus(FocusableMixin):
+    def __init__(self, target: object) -> None:
+        super().__init__()
+        self.target = target
+
+    def editor_input_target(self) -> object:
+        return self.target
+
+    def handle_input(self, event: Any) -> bool:
+        return False
 
 
 @dataclass(slots=True)
@@ -863,6 +878,129 @@ def test_surface_receives_escape_before_active_run_abort() -> None:
     assert intents == (InputIntent(kind="surface_close"),)
     assert host.entries == []
     assert focus.focused is False
+
+
+def test_input_router_routes_text_and_paste_to_declined_focused_editor_target() -> None:
+    prompt = Composer(prompt="> ")
+    field = TextInput()
+    host = SurfaceHost()
+    host.open_surface(
+        Surface(
+            renderable=DummyRenderable(),
+            focus_target=DecliningEditorFocus(field.editor_input_target()),
+        )
+    )
+    router = InputRouter(composer=prompt, surface_host=host)
+
+    assert router.route(InputEvent(kind="text", text="ab")) == ()
+    assert router.route(InputEvent(kind="paste", text="c\nd")) == ()
+
+    assert field.value == "abc d"
+    assert prompt.value == ""
+
+
+def test_input_router_does_not_double_insert_direct_focused_text_input_surface() -> None:
+    changes: list[str] = []
+    prompt = Composer(prompt="> ")
+    field = TextInput(on_change=changes.append)
+    host = SurfaceHost()
+    host.open_surface(Surface(renderable=DummyRenderable(), focus_target=field))
+    router = InputRouter(composer=prompt, surface_host=host)
+
+    assert router.route(InputEvent(kind="text", text="a")) == ()
+
+    assert field.value == "a"
+    assert changes == ["a"]
+    assert prompt.value == ""
+
+
+def test_input_router_routes_focused_editor_selection_and_editing_keys() -> None:
+    prompt = Composer(prompt="> ")
+    field = TextInput()
+    target = field.editor_input_target()
+    target.insert_text("abc")
+    host = SurfaceHost()
+    host.open_surface(Surface(renderable=DummyRenderable(), focus_target=DecliningEditorFocus(target)))
+    router = InputRouter(composer=prompt, surface_host=host)
+
+    assert router.route(InputEvent(kind="key", key="shift+left")) == ()
+    assert field.selected_range == (2, 3)
+    assert router.route(InputEvent(kind="key", key="backspace")) == ()
+
+    assert field.value == "ab"
+    assert prompt.value == ""
+
+
+def test_input_router_surface_intent_wins_before_focused_editor_fallback() -> None:
+    class ClosingEditorFocus(DecliningEditorFocus):
+        def handle_input(self, event: Any) -> InputIntent | None:
+            if isinstance(event, InputEvent) and event.kind == "key":
+                return InputIntent(kind="surface_close")
+            return None
+
+    prompt = Composer(prompt="> ")
+    field = TextInput()
+    host = SurfaceHost()
+    host.open_surface(Surface(renderable=DummyRenderable(), focus_target=ClosingEditorFocus(field.editor_input_target())))
+    router = InputRouter(composer=prompt, surface_host=host)
+
+    assert router.route(InputEvent(kind="key", key="left")) == (InputIntent(kind="surface_close"),)
+    assert field.value == ""
+    assert host.entries == []
+
+
+def test_input_router_does_not_submit_prompt_while_focused_editor_target_is_active() -> None:
+    prompt = Composer(prompt="> ")
+    prompt.insert_text("prompt")
+    field = TextInput()
+    host = SurfaceHost()
+    host.open_surface(Surface(renderable=DummyRenderable(), focus_target=DecliningEditorFocus(field.editor_input_target())))
+    router = InputRouter(composer=prompt, surface_host=host)
+
+    assert router.route(InputEvent(kind="key", key="enter")) == ()
+    assert prompt.value == "prompt"
+
+
+def test_input_router_does_not_abort_running_prompt_while_focused_editor_target_is_active() -> None:
+    prompt = Composer(prompt="> ")
+    field = TextInput()
+    host = SurfaceHost()
+    host.open_surface(Surface(renderable=DummyRenderable(), focus_target=DecliningEditorFocus(field.editor_input_target())))
+    router = InputRouter(composer=prompt, surface_host=host, running=True)
+
+    assert router.route(InputEvent(kind="key", key="escape")) == ()
+
+
+def test_input_router_prompt_jump_text_wins_before_focused_editor_fallback() -> None:
+    prompt = Composer(prompt="> ")
+    prompt.insert_text("abc def")
+    prompt.move_to_line_start()
+    router = InputRouter(composer=prompt)
+    assert router.route(InputEvent(kind="key", key="ctrl+]")) == ()
+
+    field = TextInput()
+    host = SurfaceHost()
+    host.open_surface(Surface(renderable=DummyRenderable(), focus_target=DecliningEditorFocus(field.editor_input_target())))
+    router.surface_host = host
+
+    assert router.route(InputEvent(kind="text", text="d")) == ()
+    prompt.delete_forward()
+
+    assert prompt.value == "abc ef"
+    assert field.value == ""
+
+
+def test_input_router_does_not_leak_searchable_surface_text_to_prompt() -> None:
+    prompt = Composer(prompt="> ")
+    host = SurfaceHost()
+    surface = CommandSurface([SelectItem("/status", value="/status")])
+    host.open_surface(Surface(renderable=surface, focus_target=surface))
+    router = InputRouter(composer=prompt, surface_host=host)
+
+    assert router.route(InputEvent(kind="text", text="sta")) == ()
+
+    assert prompt.value == ""
+    assert tuple(item.selected_value for item in surface._filtered_items) == ("/status",)
 
 
 def test_ctrl_c_during_running_turn_routes_abort_intent() -> None:
