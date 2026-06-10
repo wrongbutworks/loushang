@@ -244,3 +244,6 @@ It should not include:
 - moving AGENTS.md prompt assembly into agent
 - top-level extension marketplace or dependency isolation
 - work/method projection inside `agent`
+
+The P1 ownership inventory is tracked in
+[Agent Harness Module Ownership Inventory](agent-harness-module-ownership-inventory.md).

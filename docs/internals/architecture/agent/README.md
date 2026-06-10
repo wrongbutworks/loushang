@@ -45,6 +45,8 @@ agent loop and keeping coding, work, method, research, ppt, and cowork product
 semantics outside `loushang.agent`.
 
 See [ARD-001: Agent Harness and Product Adapter Boundaries](ARD-001-agent-harness-and-product-adapters.md).
+The current P1 module ownership inventory is
+[Agent Harness Module Ownership Inventory](agent-harness-module-ownership-inventory.md).
 
 ## Event Flow
 
