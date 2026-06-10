@@ -64,6 +64,24 @@ menu = Menu([MenuItem("open", "Open"), MenuItem("refresh", "Refresh")])
 spinner = Spinner(label="Syncing", frame=1)
 ```
 
+## P1A 数据控件
+
+| 控件 | 用途 |
+| --- | --- |
+| `Table` / `TableColumn` / `TableRow` | 带局部 active-row 导航的密集行列数据。 |
+
+`Table` 支持固定和弹性列、左/右对齐、禁用行、局部键盘导航和行激活。
+
+```python
+from loushang.tui import Table, TableColumn, TableRow
+
+table = Table(
+    [TableColumn("job", "Job"), TableColumn("status", "Status")],
+    [TableRow("build", {"job": "Build", "status": "ready"})],
+)
+table.focus()
+```
+
 ## 表单
 
 ```python
@@ -108,7 +126,7 @@ Dialog 会先处理 `escape` 和 `ctrl+c`，再委派给内部字段。body 焦�
 
 ## 主题 Token
 
-支持样式的 P0A、P0B 与 P0C 控件可以接收 `ThemeResolver`。第一批稳定 token 如下：
+支持样式的 P0A、P0B、P0C 与 P1A 控件可以接收 `ThemeResolver`。第一批稳定 token 如下：
 
 | Token | 作用范围 |
 | --- | --- |
@@ -151,11 +169,16 @@ Dialog 会先处理 `escape` 和 `ctrl+c`，再委派给内部字段。body 焦�
 | `widget.tabs.disabled` | 禁用 tab。 |
 | `widget.spinner.frame` | spinner frame 字符。 |
 | `widget.spinner.label` | spinner 标签文本。 |
+| `widget.table.header` | table header 行。 |
+| `widget.table.row` | 可用的非激活 table 行。 |
+| `widget.table.focus` | 获得焦点的激活 table 行。 |
+| `widget.table.disabled` | 禁用 table 行。 |
+| `widget.table.empty` | table 空状态文本。 |
 
 ## 计划中的控件目录
 
-`Popover`、`PromptDialog`、`Table`、`TreeView`、`Toast` 和 `TextArea` 是计划中的
-目录项，不属于当前 widget 实现范围。
+`Popover`、`PromptDialog`、`TreeView`、`Toast` 和 `TextArea` 是计划中的目录项，
+不属于当前 widget 实现范围。
 
 ## 示例
 
@@ -165,3 +188,5 @@ Dialog 会先处理 `escape` 和 `ctrl+c`，再委派给内部字段。body 焦�
   一个组合状态、详情、进度和 toolbar 的紧凑小控件示例。
 - [examples/tui/45_widgets_light_controls.py](../../../examples/tui/45_widgets_light_controls.py)：
   一个组合 menu、tabs 和 spinner 的轻量控件示例。
+- [examples/tui/46_widgets_table.py](../../../examples/tui/46_widgets_table.py)：
+  一个带键盘行选择的密集 table 组合示例。

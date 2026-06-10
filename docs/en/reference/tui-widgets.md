@@ -65,6 +65,25 @@ menu = Menu([MenuItem("open", "Open"), MenuItem("refresh", "Refresh")])
 spinner = Spinner(label="Syncing", frame=1)
 ```
 
+## P1A Data Controls
+
+| Widget | Use it for |
+| --- | --- |
+| `Table` / `TableColumn` / `TableRow` | Dense row/column data with local active-row navigation. |
+
+`Table` supports fixed and flexible columns, left and right alignment, disabled
+rows, local keyboard navigation, and row activation.
+
+```python
+from loushang.tui import Table, TableColumn, TableRow
+
+table = Table(
+    [TableColumn("job", "Job"), TableColumn("status", "Status")],
+    [TableRow("build", {"job": "Build", "status": "ready"})],
+)
+table.focus()
+```
+
 ## Forms
 
 ```python
@@ -112,7 +131,7 @@ body focus is active.
 
 ## Theme Tokens
 
-P0A, P0B, and P0C widgets accept `ThemeResolver` where styling is supported.
+P0A, P0B, P0C, and P1A widgets accept `ThemeResolver` where styling is supported.
 Initial stable tokens are:
 
 | Token | Applies to |
@@ -156,11 +175,16 @@ Initial stable tokens are:
 | `widget.tabs.disabled` | Disabled tabs. |
 | `widget.spinner.frame` | Spinner frame glyph. |
 | `widget.spinner.label` | Spinner label text. |
+| `widget.table.header` | Table header rows. |
+| `widget.table.row` | Enabled inactive table rows. |
+| `widget.table.focus` | Focused active table row. |
+| `widget.table.disabled` | Disabled table rows. |
+| `widget.table.empty` | Table empty-state text. |
 
 ## Planned Catalog
 
-`Popover`, `PromptDialog`, `Table`, `TreeView`, `Toast`, and `TextArea` are
-planned catalog entries. They are not part of the current widget implementation.
+`Popover`, `PromptDialog`, `TreeView`, `Toast`, and `TextArea` are planned
+catalog entries. They are not part of the current widget implementation.
 
 ## Example
 
@@ -170,3 +194,5 @@ planned catalog entries. They are not part of the current widget implementation.
   compact status, details, progress, and toolbar composition.
 - [examples/tui/45_widgets_light_controls.py](../../../examples/tui/45_widgets_light_controls.py):
   light menu, tabs, and spinner composition.
+- [examples/tui/46_widgets_table.py](../../../examples/tui/46_widgets_table.py):
+  dense table composition with keyboard row selection.

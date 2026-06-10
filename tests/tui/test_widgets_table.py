@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import runpy
 from typing import Any
 
 from loushang.tui import (
@@ -251,3 +252,9 @@ def test_table_empty_state_uses_theme_and_width_rules() -> None:
         "  Name",
         "  Nothing h",
     )
+
+
+def test_widgets_table_example_imports() -> None:
+    namespace = runpy.run_path("examples/tui/46_widgets_table.py", run_name="__test__")
+
+    assert "build_app" in namespace
