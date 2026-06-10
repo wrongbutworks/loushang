@@ -52,6 +52,11 @@ class Focusable(Protocol):
     def handle_input(self, event: Any) -> Any: ...
 
 
+@runtime_checkable
+class EditorInputTargetProvider(Protocol):
+    def editor_input_target(self) -> Any: ...
+
+
 class FocusableMixin:
     def __init__(self) -> None:
         self.focused = False
@@ -148,6 +153,12 @@ class SurfaceEntry:
     last_column: int | None = None
 
 
+@dataclass(frozen=True, slots=True)
+class SurfaceInputRouteResult:
+    intents: tuple[Any, ...]
+    consumed: bool
+
+
 @dataclass(slots=True)
 class SurfaceHost:
     base_focus: Focusable | None = None
@@ -232,6 +243,14 @@ class SurfaceHost:
         *,
         close_on_intents: tuple[str, ...] = ("surface_close", "dialog_cancel"),
     ) -> tuple[Any, ...]:
+        return self.route_input_result(event, close_on_intents=close_on_intents).intents
+
+    def route_input_result(
+        self,
+        event: Any,
+        *,
+        close_on_intents: tuple[str, ...] = ("surface_close", "dialog_cancel"),
+    ) -> SurfaceInputRouteResult:
         self._sync_focus_for_visible_entries(self._last_known_size())
         entry = self._current_focus_entry()
         if entry is None:
@@ -244,7 +263,7 @@ class SurfaceHost:
                 if getattr(intent, "kind", None) in close_on_intents:
                     self.close_surface(entry, reason=getattr(intent, "kind", "closed"))
                     break
-        return intents
+        return SurfaceInputRouteResult(intents=intents, consumed=_surface_input_consumed(result, intents))
 
     def compose(self, base: RenderResult, constraints: RenderConstraints) -> RenderResult:
         visible_height = constraints.visible_height or constraints.max_height
@@ -407,6 +426,16 @@ def _normalize_surface_input_result(result: Any) -> tuple[Any, ...]:
     if isinstance(result, tuple):
         return result
     return (result,)
+
+
+def _surface_input_consumed(result: Any, intents: tuple[Any, ...]) -> bool:
+    if isinstance(result, bool):
+        return result
+    if result is None:
+        return False
+    if isinstance(result, tuple):
+        return bool(result)
+    return True
 
 
 def _translate_surface_input_event(entry: SurfaceEntry, event: Any) -> Any:

@@ -51,6 +51,17 @@ class FocusTarget(FocusableMixin):
         return f"{self.name}:{event}"
 
 
+class ReturningFocusTarget(FocusableMixin):
+    def __init__(self, result: Any) -> None:
+        super().__init__()
+        self.result = result
+        self.events: list[Any] = []
+
+    def handle_input(self, event: Any) -> Any:
+        self.events.append(event)
+        return self.result
+
+
 @dataclass
 class BaselineResetRenderable(TextRenderable):
     reset_reason: str | None = None
@@ -149,6 +160,39 @@ def test_surface_host_routes_close_intent_and_restores_base_focus() -> None:
     assert host.entries == []
     assert command.focused is False
     assert composer.focused is True
+    assert handle.entry.close_reason == "surface_close"
+
+
+def test_surface_host_route_input_result_preserves_consumption_without_changing_route_input() -> None:
+    cases: tuple[tuple[Any, tuple[Any, ...], bool], ...] = (
+        (None, (), False),
+        (False, (), False),
+        (True, (), True),
+        ("handled", ("handled",), True),
+        (("handled",), ("handled",), True),
+    )
+    for result, expected_intents, expected_consumed in cases:
+        target = ReturningFocusTarget(result)
+        host = SurfaceHost()
+        host.open_surface(Surface(renderable=TextRenderable(("surface",), []), focus_target=target))
+
+        routed = host.route_input_result("x")
+
+        assert routed.intents == expected_intents
+        assert routed.consumed is expected_consumed
+        assert host.route_input("x") == expected_intents
+
+
+def test_surface_host_route_input_result_closes_on_close_intent() -> None:
+    target = ReturningFocusTarget(InputIntent(kind="surface_close"))
+    host = SurfaceHost()
+    handle = host.open_surface(Surface(renderable=TextRenderable(("surface",), []), focus_target=target))
+
+    routed = host.route_input_result(InputEvent(kind="key", key="escape"))
+
+    assert routed.intents == (InputIntent(kind="surface_close"),)
+    assert routed.consumed is True
+    assert host.entries == []
     assert handle.entry.close_reason == "surface_close"
 
 
