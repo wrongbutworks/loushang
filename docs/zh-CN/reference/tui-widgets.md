@@ -22,6 +22,29 @@
 | `Form` / `FormRow` | 局部焦点遍历和同步校验。 |
 | `Dialog` / `ConfirmDialog` | modal 组合与 confirm/cancel 流程。 |
 
+## P0B 小控件
+
+| 控件 | 用途 |
+| --- | --- |
+| `Badge` | 紧凑元信息标签，例如 `beta`、`cached` 或计数。 |
+| `StatusPill` | 语义状态标签，例如 `ready`、`warning` 或 `failed`。 |
+| `ProgressBar` | 带可选标签和百分比文本的静态单行进度。 |
+| `KeyValueList` / `KeyValueItem` | 密集属性摘要和详情面板。 |
+| `Toolbar` / `ToolbarAction` | 带局部焦点和激活行为的横向动作组。 |
+
+除 `Toolbar` 会处理自己的局部焦点外，小控件都是普通 `Renderable`。它们适合
+dashboard、dialog、状态面板和 extension surface 中的紧凑复用行。
+
+```python
+from loushang.tui import Badge, KeyValueList, ProgressBar, StatusPill, Toolbar, ToolbarAction
+
+header = (Badge("beta", kind="info"), StatusPill("ready", status="success"))
+progress = ProgressBar(value=42, total=100, label="Indexing", width=12)
+details = KeyValueList([("Model", "Kimi"), ("Mode", "safe")])
+toolbar = Toolbar([ToolbarAction("Refresh", value="refresh"), ToolbarAction("Cancel", value="cancel")])
+toolbar.focus()
+```
+
 ## 表单
 
 ```python
@@ -66,7 +89,7 @@ Dialog 会先处理 `escape` 和 `ctrl+c`，再委派给内部字段。body 焦�
 
 ## 主题 Token
 
-支持样式的 P0A 控件可以接收 `ThemeResolver`。第一批稳定 token 如下：
+支持样式的 P0A 与 P0B 控件可以接收 `ThemeResolver`。第一批稳定 token 如下：
 
 | Token | 作用范围 |
 | --- | --- |
@@ -81,14 +104,33 @@ Dialog 会先处理 `escape` 和 `ctrl+c`，再委派给内部字段。body 焦�
 | `widget.button.ghost` | ghost button。 |
 | `widget.dialog.title` | dialog 标题。 |
 | `widget.dialog.action` | dialog action 行。 |
+| `widget.badge.default` | default badge。 |
+| `widget.badge.info` | informational badge。 |
+| `widget.badge.success` | successful badge。 |
+| `widget.badge.warning` | warning badge。 |
+| `widget.badge.danger` | dangerous 或 failed badge。 |
+| `widget.status.neutral` | neutral status pill。 |
+| `widget.status.info` | informational status pill。 |
+| `widget.status.success` | successful status pill。 |
+| `widget.status.warning` | warning status pill。 |
+| `widget.status.danger` | dangerous 或 failed status pill。 |
+| `widget.progress.track` | progress bar 未填充轨道。 |
+| `widget.progress.fill` | progress bar 已填充区域。 |
+| `widget.progress.label` | progress 标签和数字文本。 |
+| `widget.keyValue.key` | `KeyValueList` key 列。 |
+| `widget.keyValue.value` | `KeyValueList` value 列。 |
+| `widget.toolbar.action` | 可用 toolbar action。 |
+| `widget.toolbar.focus` | 获得焦点的 toolbar action。 |
+| `widget.toolbar.disabled` | 禁用 toolbar action。 |
 
 ## 计划中的控件目录
 
-`Toolbar`、`Menu`、`Popover`、`ProgressBar`、`Spinner`、`Badge`、`StatusPill`、
-`KeyValueList`、`Tabs`、`Table`、`TreeView`、`Toast` 和 `TextArea` 是计划中的
-目录项，不属于 P0A 实现范围。
+`Menu`、`Popover`、`Spinner`、`Tabs`、`Table`、`TreeView`、`Toast` 和 `TextArea`
+是计划中的目录项，不属于当前 widget 实现范围。
 
 ## 示例
 
 - [examples/tui/43_widgets_foundation.py](../../../examples/tui/43_widgets_foundation.py)：
   一个包含表单和确认对话框的键盘操作 widget 小应用。
+- [examples/tui/44_widgets_small_controls.py](../../../examples/tui/44_widgets_small_controls.py)：
+  一个组合状态、详情、进度和 toolbar 的紧凑小控件示例。

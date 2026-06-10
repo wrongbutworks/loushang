@@ -211,3 +211,9 @@ def test_toolbar_applies_theme_tokens_and_respects_width() -> None:
     assert "\x1b[2m[Delete]" in raw
     assert strip_control_sequences(raw) == "> [Save]  [Delete]"
     assert_widths_within(render_lines(toolbar, width=5), 5)
+
+
+def test_widgets_small_controls_example_imports() -> None:
+    namespace = runpy.run_path("examples/tui/44_widgets_small_controls.py", run_name="__test__")
+
+    assert "build_app" in namespace
