@@ -34,6 +34,8 @@ from .widgets import FormValidationResult as FormValidationResult
 from .widgets import IconButton as IconButton
 from .widgets import KeyValueItem as KeyValueItem
 from .widgets import KeyValueList as KeyValueList
+from .widgets import Menu as Menu
+from .widgets import MenuItem as MenuItem
 from .widgets import ProgressBar as ProgressBar
 from .widgets import RadioGroup as RadioGroup
 from .widgets import SelectList as SelectList
@@ -65,6 +67,8 @@ __all__ = [
     "IconButton",
     "KeyValueItem",
     "KeyValueList",
+    "Menu",
+    "MenuItem",
     "LOUSHANG_BANNER_LOGO",
     "LOUSHANG_GUANQUE_TOWER_LOGO",
     "LoushangWelcomePanel",
