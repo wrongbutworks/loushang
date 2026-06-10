@@ -5,6 +5,8 @@ def test_work_public_api_exposes_current_work_surface_without_multi_agent_types(
     import loushang.work as work
 
     assert set(work.__all__) == {
+        "ArtifactRef",
+        "ArtifactStatus",
         "CodingWorkShell",
         "DeliveryHint",
         "EventLogBackend",

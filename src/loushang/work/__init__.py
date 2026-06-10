@@ -12,6 +12,8 @@ from loushang.work.projection import (
     project_agent_event_to_work_events,
 )
 from loushang.work.types import (
+    ArtifactRef,
+    ArtifactStatus,
     DeliveryHint,
     WorkEvent,
     WorkOperation,
@@ -24,6 +26,8 @@ from loushang.work.types import (
 )
 
 __all__ = [
+    "ArtifactRef",
+    "ArtifactStatus",
     "CodingWorkShell",
     "DeliveryHint",
     "EventLogBackend",
