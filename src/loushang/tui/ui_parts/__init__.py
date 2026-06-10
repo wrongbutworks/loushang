@@ -41,6 +41,8 @@ from .widgets import StatusKind as StatusKind
 from .widgets import StatusPill as StatusPill
 from .widgets import TextField as TextField
 from .widgets import Toggle as Toggle
+from .widgets import Toolbar as Toolbar
+from .widgets import ToolbarAction as ToolbarAction
 
 __all__ = [
     "Badge",
@@ -83,5 +85,7 @@ __all__ = [
     "TextField",
     "TextInput",
     "Toggle",
+    "Toolbar",
+    "ToolbarAction",
     "WorkingLine",
 ]

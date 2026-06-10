@@ -22,6 +22,8 @@ from .form import Form as Form
 from .form import FormRow as FormRow
 from .form import FormValidationResult as FormValidationResult
 from .selection import SelectList as SelectList
+from .toolbar import Toolbar as Toolbar
+from .toolbar import ToolbarAction as ToolbarAction
 
 __all__ = [
     "Button",
@@ -46,4 +48,6 @@ __all__ = [
     "StatusPill",
     "TextField",
     "Toggle",
+    "Toolbar",
+    "ToolbarAction",
 ]

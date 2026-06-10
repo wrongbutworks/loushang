@@ -270,6 +270,8 @@ from loushang.tui.ui_parts import (
     TextField,
     TextInput,
     Toggle,
+    Toolbar,
+    ToolbarAction,
     WorkingLine,
     loushang_welcome_theme,
 )
@@ -445,6 +447,8 @@ __all__ = [
     "TextField",
     "TextInput",
     "Toggle",
+    "Toolbar",
+    "ToolbarAction",
     "ToolExecutionRecord",
     "TranscriptBuffer",
     "TranscriptView",

@@ -5,12 +5,15 @@ from typing import Any
 
 from loushang.tui import (
     Badge,
+    InputEvent,
     KeyValueItem,
     KeyValueList,
     ProgressBar,
     RenderConstraints,
     StatusPill,
     ThemeResolver,
+    Toolbar,
+    ToolbarAction,
     strip_control_sequences,
     visible_width,
 )
@@ -138,3 +141,73 @@ def test_key_value_list_honors_key_width_height_and_truncation() -> None:
     lines = plain_lines(details, width=10, height=1)
 
     assert lines == ("Lon: Long",)
+
+
+def test_toolbar_focus_navigation_and_activation_callback_results() -> None:
+    calls: list[str] = []
+    toolbar = Toolbar(
+        [
+            ToolbarAction("Save", on_press=lambda: calls.append("save")),
+            ToolbarAction("Delete", disabled=True, value="delete"),
+            ToolbarAction("Cancel", value="cancel"),
+            ToolbarAction("Preview", on_press=lambda: "preview"),
+        ]
+    )
+
+    toolbar.focus()
+
+    assert plain_lines(toolbar, width=60) == ("> [Save]  [Delete]  [Cancel]  [Preview]",)
+    assert toolbar.handle_input(InputEvent(kind="key", key="right")) is True
+    assert toolbar.active_value == "cancel"
+    assert plain_lines(toolbar, width=60) == ("[Save]  [Delete]  > [Cancel]  [Preview]",)
+    assert toolbar.handle_input(InputEvent(kind="key", key="enter")) == "cancel"
+    assert toolbar.handle_input(InputEvent(kind="key", key="right")) is True
+    assert toolbar.active_value == "Preview"
+    assert toolbar.handle_input(InputEvent(kind="key", key="enter")) == "preview"
+    assert toolbar.handle_input(InputEvent(kind="key", key="right")) is True
+    assert toolbar.active_value == "Save"
+    assert toolbar.handle_input(InputEvent(kind="text", text=" ")) is True
+    assert toolbar.handle_input(InputEvent(kind="key", key="space")) is True
+    toolbar.blur()
+    assert plain_lines(toolbar, width=60) == ("[Save]  [Delete]  [Cancel]  [Preview]",)
+    assert calls == ["save", "save"]
+
+
+def test_toolbar_wrap_false_boundaries_empty_and_all_disabled_semantics() -> None:
+    toolbar = Toolbar([ToolbarAction("One"), ToolbarAction("Two")], wrap=False)
+    toolbar.focus()
+
+    assert toolbar.handle_input(InputEvent(kind="key", key="left")) is False
+    assert toolbar.handle_input(InputEvent(kind="key", key="end")) is True
+    assert toolbar.active_value == "Two"
+    assert toolbar.handle_input(InputEvent(kind="key", key="right")) is False
+    assert toolbar.handle_input(InputEvent(kind="key", key="end")) is False
+
+    assert Toolbar([]).render(RenderConstraints(width=20, max_height=1)).lines == ()
+    assert Toolbar([]).handle_input(InputEvent(kind="key", key="right")) is None
+    disabled = Toolbar([ToolbarAction("No", disabled=True)])
+    disabled.focus()
+    assert disabled.handle_input(InputEvent(kind="key", key="right")) is None
+    assert disabled.handle_input(InputEvent(kind="key", key="enter")) is None
+
+
+def test_toolbar_applies_theme_tokens_and_respects_width() -> None:
+    theme = ThemeResolver(
+        defaults={
+            "widget.toolbar.action": {"color": "white"},
+            "widget.toolbar.focus": {"bold": True, "color": "cyan"},
+            "widget.toolbar.disabled": {"dim": True},
+        }
+    )
+    toolbar = Toolbar(
+        [ToolbarAction("Save"), ToolbarAction("Delete", disabled=True)],
+        theme=theme,
+    )
+    toolbar.focus()
+
+    raw = render_lines(toolbar, width=40)[0]
+
+    assert raw.startswith("\x1b[1;36m> [Save]")
+    assert "\x1b[2m[Delete]" in raw
+    assert strip_control_sequences(raw) == "> [Save]  [Delete]"
+    assert_widths_within(render_lines(toolbar, width=5), 5)
