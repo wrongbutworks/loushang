@@ -15,7 +15,8 @@ from loushang.coding.event import (
 from loushang.coding.message.json_codec import serialize_session_header
 from loushang.coding.mode.base import ModeAdapter, ModeState
 from loushang.coding.tools import ToolDefinitionResolver, ToolRenderRuntime
-from loushang.work import CodingWorkShell, EventLogBackend
+from loushang.coding.work_shell import CodingWorkShell
+from loushang.work import EventLogBackend
 
 
 class PrintMode(ModeAdapter):

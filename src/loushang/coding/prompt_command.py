@@ -8,7 +8,8 @@ from typing import Any, Mapping, Sequence, TextIO
 from loushang.coding.ui.events import CodingUiEventRenderer
 from loushang.coding.ui.model import ensure_usable_session_model
 from loushang.coding.ui.renderer import CodingUiRenderer
-from loushang.work import CodingWorkShell, EventLogBackend
+from loushang.coding.work_shell import CodingWorkShell
+from loushang.work import EventLogBackend
 
 
 async def run_prompt_command(
