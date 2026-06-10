@@ -16,6 +16,7 @@ Current code package:
 ```text
 src/loushang/channel/
   __init__.py
+  json_codec.py
   types.py
 ```
 
@@ -26,12 +27,18 @@ Current public types:
 - `ChannelEnvelopeKind`
 - `ChannelPayload`
 
+Current public codec helpers:
+
+- `channel_envelope_to_json`
+- `channel_envelope_from_json`
+
 `ChannelEnvelope` accepts only two payload families:
 
 - `kind="operation"` with a `WorkOperation`
 - `kind="event"` with a `WorkEvent`
 
-This first surface is a protocol skeleton, not a transport implementation.
+`json_codec.py` converts those envelopes to and from JSON-compatible Python
+dicts. This is still a protocol skeleton, not a transport implementation.
 
 ## Ownership
 
