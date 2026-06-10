@@ -12,7 +12,7 @@ graph TD
     METHOD[loushang-method]
     WORK[loushang-work]
     TUI[loushang-tui<br/>generic terminal UI]
-    CHANNEL[loushang-channel<br/>target only]
+    CHANNEL[loushang-channel<br/>boundary protocol]
 
     subgraph CODING[loushang-coding]
         CODING_CORE[coding core<br/>runtime / session / tools]
@@ -27,13 +27,14 @@ graph TD
     CODING_UI --> CODING_CORE
     CODING_UI --> TUI
 
-    CHANNEL -. future protocol boundary .-> WORK
+    CHANNEL --> WORK
 ```
 
 `loushang-tui` is a generic terminal UI subsystem. Coding-specific terminal behavior lives in
 `loushang.coding.ui`, which depends on both `loushang-tui` and the headless
 `loushang-coding` core.
 
-`loushang-channel` is target architecture only. The current RPC implementation is the
-`loushang.coding.mode.RpcMode` surface, not a package-level `src/loushang/channel/`
-implementation.
+`loushang-channel` currently owns the minimal boundary protocol types for carrying
+`WorkOperation` and `WorkEvent`. The current RPC implementation remains the
+transitional `loushang.coding.mode.RpcMode` surface; future transport adapters
+should live under `loushang.channel`.
