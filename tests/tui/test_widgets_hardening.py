@@ -4,9 +4,21 @@ from typing import Any
 
 from loushang.tui import (
     Button,
+    Checkbox,
+    Choice,
+    ConfirmDialog,
+    Dialog,
+    Form,
+    FormRow,
+    IconButton,
     InputEvent,
+    RadioGroup,
     RenderConstraints,
+    SelectItem,
+    SelectList,
+    TextField,
     ThemeResolver,
+    Toggle,
     strip_control_sequences,
     visible_width,
 )
@@ -68,3 +80,55 @@ def test_button_theme_token_overrides_kind_before_focus_style() -> None:
 
     assert raw[0].startswith("\x1b[4;36m")
     assert strip_control_sequences(raw[0]) == "> [Delete]"
+
+
+def test_choice_widgets_apply_focus_and_disabled_theme_without_text_changes() -> None:
+    theme = ThemeResolver(defaults={"widget.focus": {"bold": True}, "widget.disabled": {"dim": True}})
+
+    checkbox = Checkbox("Enabled", checked=True, focused=True, theme=theme)
+    toggle = Toggle("Auto", value=False, disabled=True, focused=True, theme=theme)
+    radio = RadioGroup(
+        [Choice("fast", "Fast"), Choice("slow", "Slow", disabled=True)],
+        value="fast",
+        theme=theme,
+        focused=True,
+    )
+
+    assert render_lines(checkbox)[0].startswith("\x1b[1m")
+    assert plain_lines(checkbox) == ("> [x] Enabled",)
+    assert render_lines(toggle)[0].startswith("\x1b[2m")
+    assert plain_lines(toggle) == ("> [off] Auto",)
+
+    radio_lines = render_lines(radio, width=20, height=3)
+    assert radio_lines[0].startswith("\x1b[1m")
+    assert radio_lines[1].startswith("\x1b[2m")
+    assert tuple(strip_control_sequences(line) for line in radio_lines) == ("> (x) Fast", "  ( ) Slow")
+
+
+def p0a_constraint_cases() -> list[object]:
+    return [
+        Button("Very long label", focused=True),
+        IconButton("*", label="Very long label", focused=True),
+        Checkbox("Very long label", focused=True),
+        Toggle("Very long label", focused=True),
+        RadioGroup([Choice("a", "Very long label")], value="a", focused=True),
+        TextField(label="Very long label", value="Very long value", help_text="Very long help"),
+        SelectList([SelectItem("Very long label")], max_visible=1),
+        Form([FormRow("name", TextField(label="Very long label", value="Very long value"))]),
+        Dialog(title="Very long dialog title", body="Very long dialog body"),
+        ConfirmDialog(title="Very long confirm title", body="Very long confirm body"),
+    ]
+
+
+def test_all_p0a_widgets_respect_small_valid_render_constraints() -> None:
+    for control in p0a_constraint_cases():
+        lines = render_lines(control, width=1, height=1)
+        assert len(lines) <= 1
+        assert_widths_within(lines, 1)
+
+
+def test_all_p0a_widgets_respect_narrow_short_render_constraints() -> None:
+    for control in p0a_constraint_cases():
+        lines = render_lines(control, width=6, height=2)
+        assert len(lines) <= 2
+        assert_widths_within(lines, 6)
