@@ -197,3 +197,68 @@ def test_form_exposes_active_editable_child_target() -> None:
 
     form.focus_next()
     assert form.editor_input_target() is None
+
+
+def test_confirm_dialog_returns_confirm_and_close_intents_by_default() -> None:
+    dialog = ConfirmDialog(title="Delete session?")
+
+    assert dialog.handle_input(InputEvent(kind="key", key="enter")) == (
+        InputIntent(kind="dialog_confirm"),
+        InputIntent(kind="surface_close"),
+    )
+    assert dialog.handle_input(InputEvent(kind="key", key="escape")) == InputIntent(kind="dialog_cancel")
+
+
+def test_confirm_dialog_can_keep_open_after_confirm() -> None:
+    dialog = ConfirmDialog(title="Validate", close_on_confirm=False)
+
+    assert dialog.handle_input(InputEvent(kind="key", key="enter")) == InputIntent(kind="dialog_confirm")
+
+
+class RecordingBody:
+    def __init__(self) -> None:
+        self.focused = False
+        self.events: list[str] = []
+
+    def focus(self) -> None:
+        self.focused = True
+
+    def blur(self) -> None:
+        self.focused = False
+
+    def handle_input(self, event: InputEvent) -> object:
+        if event.kind == "key":
+            self.events.append(event.key)
+        return True
+
+    def render(self, constraints: RenderConstraints) -> RenderResult:
+        return RenderResult.from_lines([RenderLine("body")], constraints=constraints)
+
+
+def test_dialog_cancels_before_body_handles_cancel_keys() -> None:
+    body = RecordingBody()
+    dialog = Dialog(title="Edit", body=body)
+    dialog.focus()
+
+    assert dialog.handle_input(InputEvent(kind="key", key="escape")) == InputIntent(kind="dialog_cancel")
+    assert dialog.handle_input(InputEvent(kind="key", key="ctrl+c")) == InputIntent(kind="dialog_cancel")
+    assert body.events == []
+
+
+def test_dialog_tabs_from_form_edge_to_actions_and_delegates_editor_target() -> None:
+    field = TextField(value="")
+    form = Form([FormRow("name", field)])
+    dialog = ConfirmDialog(title="Edit", body=form)
+    dialog.focus()
+
+    target = dialog.editor_input_target()
+    assert target is not None
+    target.insert_text("abc")
+    assert field.value == "abc"
+
+    assert dialog.handle_input(InputEvent(kind="key", key="tab")) is True
+    assert dialog.editor_input_target() is None
+    assert dialog.handle_input(InputEvent(kind="key", key="enter")) == (
+        InputIntent(kind="dialog_confirm"),
+        InputIntent(kind="surface_close"),
+    )
