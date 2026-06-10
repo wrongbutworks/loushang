@@ -16,6 +16,7 @@ Read in this order for current implementation decisions:
 1. [Architecture Overview](architecture-overview.md)
 2. [Subsystems](subsystem.md)
 3. Accepted ARDs under subsystem directories, especially
+   [agent harness boundaries](agent/ARD-001-agent-harness-and-product-adapters.md) and
    [coding](coding/ARD-001-coding-product-boundaries.md)
 4. Component interfaces and core data object notes for the subsystem being edited
 5. Draft/history/reference material only when extra rationale is needed

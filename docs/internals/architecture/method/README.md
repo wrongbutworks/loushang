@@ -54,6 +54,36 @@ Work   = Runtime event, log, and projection layer
 Coding-specific method usage is bridged through `loushang.coding.domain`.
 Runtime execution observability is projected through `loushang.work`.
 
+## Relation To Agent Harness And Products
+
+`loushang.method` is optional for product execution.
+
+Product packages such as `loushang.coding`, and future `loushang.research`,
+`loushang.ppt`, and `loushang.cowork`, may call `loushang.agent.harness`
+directly for lightweight turns. They may also write or project through
+`loushang.work` directly.
+
+Use `method` when the product needs structured work: planning, staged execution,
+review gates, method-specific constraints, or acceptance criteria. Do not route
+every product turn through method by default.
+
+`cowork` is treated as a future product line, parallel to `coding`, `research`,
+and `ppt`; it is not the name of the shared work or collaboration abstraction.
+
+## Artifact Boundary
+
+Method defines expected artifacts: what a structured workflow or method step
+should produce.
+
+`loushang.work` records actual artifact references: what was produced, where it
+is, which run or step produced it, and how it relates to the expected artifact.
+
+Product packages such as `coding`, `research`, `ppt`, and `cowork` own concrete
+artifact types, content, loading, rendering, validation, and materialization.
+
+Therefore the shared work layer should prefer a lightweight `ArtifactRef` over a
+shared abstract `Artifact` base class.
+
 ## Field Mapping
 
 The work-contract definition maps to current method data objects as follows:
