@@ -43,6 +43,10 @@ from .widgets import Spinner as Spinner
 from .widgets import StatusKind as StatusKind
 from .widgets import StatusPill as StatusPill
 from .widgets import TabItem as TabItem
+from .widgets import Table as Table
+from .widgets import TableAlign as TableAlign
+from .widgets import TableColumn as TableColumn
+from .widgets import TableRow as TableRow
 from .widgets import Tabs as Tabs
 from .widgets import TextField as TextField
 from .widgets import Toggle as Toggle
@@ -90,6 +94,10 @@ __all__ = [
     "StatusField",
     "StatusKind",
     "StatusPill",
+    "Table",
+    "TableAlign",
+    "TableColumn",
+    "TableRow",
     "TabItem",
     "Tabs",
     "TextField",
