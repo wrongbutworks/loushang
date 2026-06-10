@@ -4,8 +4,10 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Literal
 
-from loushang.tui.core import RenderConstraints, RenderResult
+from loushang.tui.cell_width import autowrap_safe_width, truncate_to_width
+from loushang.tui.core import RenderConstraints, RenderLine, RenderResult
 from loushang.tui.theme import ThemeResolver
+from loushang.tui.ui_parts.widgets._utils import callback_result, is_activation_event
 
 ButtonKind = Literal["default", "primary", "danger", "ghost"]
 
@@ -28,11 +30,18 @@ class Button:
         self.focused = False
 
     def handle_input(self, event: object) -> object:
-        return None
+        if self.disabled or not is_activation_event(event):
+            return None
+        if self.on_press is None:
+            return True
+        return callback_result(self.on_press())
 
     def render(self, constraints: RenderConstraints) -> RenderResult:
-        return RenderResult.from_lines([], constraints=constraints)
-
+        target_width = autowrap_safe_width(constraints.width)
+        label = self.label if not self.icon else f"{self.icon} {self.label}".strip()
+        line = f"{'> ' if self.focused else '  '}[{label}]"
+        rendered = truncate_to_width(line, max_width=target_width, ellipsis="")
+        return RenderResult.from_lines([RenderLine(rendered)][: constraints.max_height], constraints=constraints)
 
 def IconButton(icon: str, *, label: str = "", **kwargs: object) -> Button:
     return Button(label=label, icon=icon, **kwargs)
