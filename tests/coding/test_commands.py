@@ -46,6 +46,7 @@ def test_builtin_slash_commands_match_pi_style_core_surface() -> None:
         "login": "Configure provider authentication",
         "logout": "Remove provider authentication",
         "tools": "Show or update active tools for this session",
+        "extensions": "Show loaded extensions and diagnostics",
         "new": "Start a new session",
         "compact": "Manually compact the session context",
         "resume": "Resume a different session",

@@ -432,6 +432,18 @@ requires_api_key = false
 tags = ["coding", "extensions", "existing", "guard"]
 
 [[example]]
+id = "legacy-ext-05"
+slug = "extensions/05_manifest_visibility.py"
+title = "extensions/05_manifest_visibility.py - Manifest 与可见性"
+category = "extensions"
+description = "演示 loushang-extension.toml、/extensions 和 extension tool 来源信息。"
+runtime = "offline"
+entrypoint = "extensions/05_manifest_visibility.py"
+model_profile = "coding_primary"
+requires_api_key = false
+tags = ["coding", "extensions", "existing", "manifest", "visibility"]
+
+[[example]]
 id = "legacy-ext-11"
 slug = "extensions/11_online_tool_guard.py"
 title = "extensions/11_online_tool_guard.py - 在线工具拦截"

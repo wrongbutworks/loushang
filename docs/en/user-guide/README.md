@@ -35,7 +35,7 @@ loushang --resume
 loushang --export
 ```
 
-Inside the interactive surface, built-in slash commands include `/session`, `/resume`, `/fork`, `/clone`, `/tree`, `/tools`, `/export`, `/compact`, `/reload`, and `/quit`.
+Inside the interactive surface, built-in slash commands include `/session`, `/resume`, `/fork`, `/clone`, `/tree`, `/tools`, `/extensions`, `/export`, `/compact`, `/reload`, and `/quit`.
 
 ## Tools
 
@@ -55,6 +55,8 @@ loushang --no-tools -p "Explain the repository from context only."
 ## Extensions
 
 Extensions are Python files that can register lifecycle hooks, tools, dynamic resources, commands, and flags. Start with the runnable extension examples in [examples/coding/extensions](../../../examples/coding/extensions/).
+
+An extension may include an adjacent `loushang-extension.toml` manifest to declare identity, permission level, dependencies, and expected contributions. Use `/extensions` to inspect loaded extensions, contribution summaries, and diagnostics; use `/extensions <id>` for one extension. `/tools` includes source information for extension-provided tools when available.
 
 ## Packages And Plugins
 

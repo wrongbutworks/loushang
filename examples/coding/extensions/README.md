@@ -12,6 +12,7 @@ These examples demonstrate the current `loushang-coding` `ExtensionAPI v1` surfa
 - `02_dynamic_resources.py`: `resources_discover` with prompt and skill contributions
 - `03_custom_tool.py`: `@tool` and tool execution through a session
 - `04_tool_guard.py`: `tool_call` and `tool_result` interception
+- `05_manifest_visibility.py`: `loushang-extension.toml`, `/extensions`, and extension tool source visibility
 - `11_online_tool_guard.py`: extension interception on top of the real built-in `bash` tool
 - `12_online_dynamic_resources.py`: dynamic prompt/skill resources against a real model
 - `13_online_resume_with_extension.py`: persisted online session + restore with extension resources still active

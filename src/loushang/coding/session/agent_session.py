@@ -269,9 +269,10 @@ class AgentSession:
                 navigate_tree=self._navigate_tree_from_extension,
                 import_session=self._import_from_builtin,
                 get_active_tool_names=self.get_active_tool_names,
-                get_all_tools=lambda: list(self.get_all_tools()),
+                get_all_tools=self.getAllTools,
                 set_active_tools=self.set_active_tools,
                 get_default_active_tool_names=self._default_active_tool_names,
+                get_extensions=self.list_extensions,
             ),
         )
         self._extension_event_sink = ExtensionEventSink(
@@ -498,6 +499,12 @@ class AgentSession:
 
     def list_commands(self) -> list[SessionCommandDescriptor]:
         return self._command_controller.list_commands()
+
+    def list_extensions(self) -> list[dict[str, object]]:
+        return self._extension_runner.list_extensions()
+
+    def listExtensions(self) -> list[dict[str, object]]:
+        return self.list_extensions()
 
     async def execute_command_async(self, invocation_name: str, args: str) -> CommandExecutionResult | None:
         return await self._command_controller.execute_command_async(invocation_name, args)
