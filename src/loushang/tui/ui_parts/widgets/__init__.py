@@ -25,6 +25,10 @@ from .menu import Menu as Menu
 from .menu import MenuItem as MenuItem
 from .selection import SelectList as SelectList
 from .spinner import Spinner as Spinner
+from .table import Table as Table
+from .table import TableAlign as TableAlign
+from .table import TableColumn as TableColumn
+from .table import TableRow as TableRow
 from .tabs import TabItem as TabItem
 from .tabs import Tabs as Tabs
 from .toolbar import Toolbar as Toolbar
@@ -54,6 +58,10 @@ __all__ = [
     "Spinner",
     "StatusKind",
     "StatusPill",
+    "Table",
+    "TableAlign",
+    "TableColumn",
+    "TableRow",
     "TabItem",
     "Tabs",
     "TextField",

@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import runpy
 from typing import Any
 
 from loushang.tui import (
@@ -9,7 +8,6 @@ from loushang.tui import (
     Table,
     TableColumn,
     TableRow,
-    ThemeResolver,
     strip_control_sequences,
     visible_width,
 )
@@ -58,9 +56,9 @@ def test_table_normalizes_mapping_sequence_rows_and_column_config() -> None:
         ],
     )
 
-    assert table.handle_input(InputEvent(kind="key", key="enter")) == "0"
+    assert table.handle_input(InputEvent(kind="key", key="enter")) == "ready"
     assert table.handle_input(InputEvent(kind="key", key="down")) is True
-    assert table.handle_input(InputEvent(kind="key", key="enter")) == "1"
+    assert table.handle_input(InputEvent(kind="key", key="enter")) == "idle"
     assert table.handle_input(InputEvent(kind="key", key="down")) is True
     assert table.handle_input(InputEvent(kind="key", key="enter")) == "coded"
     assert_widths_within(render_lines(table, width=12, height=4), 12)
