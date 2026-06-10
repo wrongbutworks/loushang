@@ -225,6 +225,9 @@ def _controller_result_from_command_execution(execution: object, *, invocation_n
     if result is None and not hasattr(execution, "result"):
         result = execution
     if isinstance(result, dict):
+        display = result.get("display")
+        if isinstance(display, str) and display:
+            return ControllerResult(status_message=display)
         message = result.get("message")
         if isinstance(message, str) and message:
             if result.get("status") == "error":

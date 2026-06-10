@@ -197,6 +197,44 @@ def test_controller_dispatches_catalog_session_command_without_prompting_agent()
     assert session.prompts == []
 
 
+def test_controller_prefers_session_command_display_text_for_status() -> None:
+    from loushang.coding.ui.controller import CodingUiController
+    from loushang.coding.ui.intent import PromptIntent
+
+    class CommandSession(_Session):
+        def list_commands(self) -> list[object]:
+            return [
+                SimpleNamespace(
+                    name="extensions",
+                    description="Show loaded extensions and diagnostics",
+                    source="builtin",
+                )
+            ]
+
+        async def execute_command_async(self, invocation_name: str, args: str) -> object:
+            return SimpleNamespace(
+                invocation_name=invocation_name,
+                result={
+                    "source": "builtin",
+                    "command": invocation_name,
+                    "status": "ok",
+                    "message": "Extensions: acme.review (standard, 2 contributions)",
+                    "display": "Extensions:\n- acme.review - Acme Review [standard]\n  Contributions: command acme-review, tool review_lookup",
+                },
+            )
+
+    controller = CodingUiController(session=CommandSession())
+
+    result = asyncio.run(controller.dispatch(PromptIntent(text="/extensions")))
+
+    assert result.error_message is None
+    assert result.status_message == (
+        "Extensions:\n"
+        "- acme.review - Acme Review [standard]\n"
+        "  Contributions: command acme-review, tool review_lookup"
+    )
+
+
 def test_controller_leaves_prompt_resource_commands_on_prompt_path() -> None:
     from loushang.coding.ui.controller import CodingUiController
     from loushang.coding.ui.intent import PromptIntent
