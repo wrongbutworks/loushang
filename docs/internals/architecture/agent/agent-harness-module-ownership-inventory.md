@@ -140,17 +140,17 @@ independent from product packages.
 
 | Module | Current responsibility | Ownership | Follow-up |
 | --- | --- | --- | --- |
-| `work/types.py` | `WorkOperation`, `WorkRun`, `WorkEvent`, plan/step run data | Work primitive | Add `ArtifactRef` in a later focused PR. |
+| `work/types.py` | `WorkOperation`, `WorkRun`, `WorkEvent`, plan/step run data, `ArtifactRef` | Work primitive | Keep artifact references generic; product packages own concrete artifact content. |
 | `work/event_log.py` | Event log protocol, in-memory backend, JSONL backend | Work primitive | Keep. |
 | `work/projection.py` | Generic mapping from agent-like events to `WorkEvent` | Work primitive | Keep. It accepts mappings and does not need product imports. |
 | `work/plan_projection.py` | Plan/step run projection from work log entries | Work primitive | Keep. |
-| `work/coding.py` | `CodingWorkShell` for `SubmitCodingTurn` | Transitional coupling | Do not expand. Later move to `loushang.coding` adapter or replace with generic work runner. |
-| `work/__init__.py` | Work exports | Work primitive | Avoid expanding coding-specific exports. |
+| `work/coding.py` | `CodingWorkShell` for `SubmitCodingTurn` | Transitional compatibility | Do not expand. Coding runtime should import through `loushang.coding.work_shell`. |
+| `work/__init__.py` | Work exports | Work primitive plus compatibility exports | Avoid expanding coding-specific exports. |
 
-`CodingWorkShell` is useful but product-specific. Its existence under `work`
-should be treated as a compatibility bridge, not a pattern for future
-`ResearchWorkShell`, `PptWorkShell`, or `CoworkWorkShell` modules inside
-`loushang.work`.
+`CodingWorkShell` is useful but product-specific. `loushang.coding.work_shell`
+is the coding-owned entrypoint. The `loushang.work` export is retained as a
+compatibility bridge, not a pattern for future `ResearchWorkShell`,
+`PptWorkShell`, or `CoworkWorkShell` modules inside `loushang.work`.
 
 ## `loushang.method`
 
@@ -228,10 +228,10 @@ These names are intentionally excluded from `loushang.agent.harness`:
 - coding package/plugin materialization
 - TUI playback and UI controllers
 
-## Recommended Follow-up Sequence
+## Current Follow-up Sequence
 
-1. Add thin `loushang.agent.harness` facade and tests.
-2. Let one narrow headless coding path call the harness.
-3. Add `loushang.work.ArtifactRef`.
-4. Move or replace `work.coding.CodingWorkShell` with a product adapter boundary.
-5. Isolate method resource loading from `loushang.coding.loader`.
+1. Completed: add thin `loushang.agent.harness` facade and tests.
+2. Completed: add `loushang.work.ArtifactRef`.
+3. Completed: move coding runtime imports to the `loushang.coding.work_shell` adapter.
+4. Next: let one narrow headless coding path call the harness.
+5. Next: isolate method resource loading from `loushang.coding.loader`.
