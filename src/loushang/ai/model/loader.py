@@ -288,6 +288,7 @@ def _build_registry(raw: dict[str, Any]) -> ModelRegistry:
                 base_url_env=endpoint_raw.get("baseUrlEnv"),
                 region=endpoint_raw.get("region"),
                 lane=endpoint_raw.get("lane"),
+                preferred=bool(endpoint_raw.get("preferred", False)),
                 docs=endpoint_raw.get("docs"),
                 auth=endpoint_auth,
                 compat=_normalize_endpoint_compat(endpoint_raw),

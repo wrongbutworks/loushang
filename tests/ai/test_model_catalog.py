@@ -26,6 +26,25 @@ def test_builtin_catalog_resolves_kimi_coding_anthropic_model() -> None:
     assert model.supports_tool_use is True
 
 
+def test_builtin_catalog_marks_duplicate_short_model_routes_as_preferred() -> None:
+    registry = load_builtin_model_registry()
+
+    assert registry.get_endpoint("moonshot", "openai-completions").preferred is True
+    assert registry.get_endpoint("moonshot", "kimi-code-anthropic").preferred is True
+    assert registry.get_endpoint("dashscope", "openai-responses").preferred is True
+
+
+def test_builtin_catalog_models_expose_endpoint_lane_and_preferred_metadata() -> None:
+    registry = load_builtin_model_registry()
+
+    model = registry.get_model("moonshot", "kimi-code-anthropic", "kimi-for-coding")
+
+    assert model.api == "anthropic-messages"
+    assert model.region == "cn"
+    assert model.lane == "coding"
+    assert model.preferred_endpoint is True
+
+
 def test_builtin_catalog_includes_issue_model_providers_from_pi_mono() -> None:
     registry = load_builtin_model_registry()
 

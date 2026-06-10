@@ -15,6 +15,7 @@
           "baseUrl": "https://api.moonshot.cn/v1",
           "baseUrlEnv": "MOONSHOT_COMPLETIONS_URL",
           "api": "openai-completions",
+          "preferred": true,
           "docs": "https://platform.moonshot.ai/docs/api/chat",
           "compat": {
             "thinkingFormat": "moonshot",
@@ -165,6 +166,7 @@
           "api": "anthropic-messages",
           "region": "cn",
           "lane": "coding",
+          "preferred": true,
           "docs": "https://www.kimi.com/code/docs/en/",
           "compat": {
             "supportsDeveloperRole": false
@@ -278,6 +280,7 @@
           "baseUrlEnv": "DASHSCOPE_CN_RESPONSES_URL",
           "api": "openai-responses",
           "region": "cn",
+          "preferred": true,
           "docs": "https://help.aliyun.com/zh/model-studio/",
           "compat": {
             "supportsDeveloperRole": true,
