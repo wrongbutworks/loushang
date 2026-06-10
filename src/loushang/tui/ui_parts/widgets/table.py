@@ -4,10 +4,18 @@ from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, field
 from typing import Literal
 
-from loushang.tui.cell_width import autowrap_safe_width, truncate_to_width
+from loushang.tui.cell_width import (
+    autowrap_safe_width,
+    truncate_to_width,
+    visible_width,
+)
 from loushang.tui.core import RenderConstraints, RenderLine, RenderResult
 from loushang.tui.theme import ThemeResolver
-from loushang.tui.ui_parts.widgets._utils import callback_result, is_activation_event
+from loushang.tui.ui_parts.widgets._utils import (
+    callback_result,
+    is_activation_event,
+    style_text,
+)
 
 TableAlign = Literal["left", "right"]
 TABLE_SEPARATOR = "  "
@@ -91,10 +99,32 @@ class Table:
 
     def render(self, constraints: RenderConstraints) -> RenderResult:
         target_width = autowrap_safe_width(constraints.width)
-        if constraints.max_height <= 0:
+        height = max(0, constraints.max_height)
+        if height == 0:
             return RenderResult.from_lines([], constraints=constraints)
-        line = truncate_to_width(self.empty_text, max_width=target_width, ellipsis="")
-        return RenderResult.from_lines([RenderLine(line)], constraints=constraints)
+        if not self._columns:
+            empty = truncate_to_width(self.empty_text, max_width=target_width, ellipsis="")
+            return RenderResult.from_lines(
+                [RenderLine(style_text(empty, self.theme, "widget.table.empty"))],
+                constraints=constraints,
+            )
+
+        widths = _column_widths(self._columns, target_width)
+        prefix_width = min(2, target_width)
+        lines: list[RenderLine] = []
+        if self.show_header and len(lines) < height:
+            lines.append(RenderLine(_table_header_line(self, widths, prefix_width, target_width)))
+
+        body_height = max(0, height - len(lines))
+        if self._rows:
+            self._ensure_active_visible(body_height)
+            indexed_rows = tuple(enumerate(self._rows))
+            visible_rows = indexed_rows[self._first_visible_index : self._first_visible_index + body_height]
+            for index, row in visible_rows:
+                lines.append(RenderLine(_table_body_line(self, index, row, widths, prefix_width, target_width)))
+        elif len(lines) < height:
+            lines.append(RenderLine(_table_empty_line(self, widths, prefix_width, target_width)))
+        return RenderResult.from_lines(lines[:height], constraints=constraints)
 
     def _enabled_indices(self) -> tuple[int, ...]:
         return tuple(index for index, row in enumerate(self._rows) if not row.disabled)
@@ -154,6 +184,16 @@ class Table:
             return callback_result(row.on_select())
         return row.value
 
+    def _ensure_active_visible(self, height: int) -> None:
+        if height <= 0 or not self._rows:
+            return
+        if self._active_index < self._first_visible_index:
+            self._first_visible_index = self._active_index
+        elif self._active_index >= self._first_visible_index + height:
+            self._first_visible_index = self._active_index - height + 1
+        max_first = max(0, len(self._rows) - height)
+        self._first_visible_index = max(0, min(self._first_visible_index, max_first))
+
 
 def _normalize_row(
     index: int,
@@ -185,3 +225,108 @@ def _default_row_value(index: int, row: Mapping[str, object] | Sequence[object],
         if value is not None and str(value) != "":
             return str(value)
     return str(index)
+
+
+def _column_widths(columns: Sequence[TableColumn], target_width: int) -> tuple[int, ...]:
+    if not columns or target_width <= 0:
+        return tuple(0 for _ in columns)
+    prefix_width = min(2, target_width)
+    grid_width = max(0, target_width - prefix_width)
+    if grid_width == 0:
+        return tuple(0 for _ in columns)
+
+    widths: list[int] = []
+    flexible_indices: list[int] = []
+    for index, column in enumerate(columns):
+        if column.width is None:
+            widths.append(column.min_width)
+            flexible_indices.append(index)
+        else:
+            widths.append(max(column.width, column.min_width))
+
+    remaining = grid_width - _occupied_grid_width(widths)
+    if remaining > 0 and flexible_indices:
+        base, remainder = divmod(remaining, len(flexible_indices))
+        for offset, index in enumerate(flexible_indices):
+            widths[index] += base + (1 if offset < remainder else 0)
+    if _occupied_grid_width(widths) > grid_width:
+        widths = _shrink_widths_to_fit(widths, grid_width)
+    return tuple(widths)
+
+
+def _occupied_grid_width(widths: Sequence[int]) -> int:
+    visible_count = sum(1 for width in widths if width > 0)
+    separator_width = max(0, visible_count - 1) * len(TABLE_SEPARATOR)
+    return sum(max(0, width) for width in widths) + separator_width
+
+
+def _shrink_widths_to_fit(widths: Sequence[int], grid_width: int) -> list[int]:
+    result = [max(0, width) for width in widths]
+    overflow = _occupied_grid_width(result) - max(0, grid_width)
+    while overflow > 0 and any(width > 0 for width in result):
+        for index in range(len(result) - 1, -1, -1):
+            if result[index] <= 0:
+                continue
+            reduction = min(result[index], overflow)
+            result[index] -= reduction
+            overflow = _occupied_grid_width(result) - max(0, grid_width)
+            if overflow <= 0:
+                break
+    return result
+
+
+def _table_header_line(table: Table, widths: Sequence[int], prefix_width: int, target_width: int) -> str:
+    prefix = " " * prefix_width
+    cells = _join_cells(tuple(column.header for column in table._columns), widths, table._columns)
+    line = truncate_to_width(f"{prefix}{cells}", max_width=target_width, ellipsis="")
+    return style_text(line, table.theme, "widget.table.header")
+
+
+def _table_body_line(
+    table: Table,
+    index: int,
+    row: _NormalizedRow,
+    widths: Sequence[int],
+    prefix_width: int,
+    target_width: int,
+) -> str:
+    is_focused_row = table.focused and index == table._active_index and not row.disabled
+    prefix_text = "> " if is_focused_row else "  "
+    prefix = truncate_to_width(prefix_text, max_width=prefix_width, ellipsis="")
+    cells = _join_cells(row.cells, widths, table._columns)
+    line = truncate_to_width(f"{prefix}{cells}", max_width=target_width, ellipsis="")
+    token = (
+        "widget.table.disabled"
+        if row.disabled
+        else "widget.table.focus"
+        if is_focused_row
+        else "widget.table.row"
+    )
+    return style_text(line, table.theme, token)
+
+
+def _table_empty_line(table: Table, widths: Sequence[int], prefix_width: int, target_width: int) -> str:
+    prefix = " " * prefix_width
+    cells = _join_cells((table.empty_text,) + tuple("" for _ in table._columns[1:]), widths, table._columns)
+    line = truncate_to_width(f"{prefix}{cells}", max_width=target_width, ellipsis="")
+    return style_text(line, table.theme, "widget.table.empty")
+
+
+def _format_cell(text: str, width: int, align: TableAlign, *, pad_right: bool = True) -> str:
+    if width <= 0:
+        return ""
+    clipped = truncate_to_width(text, max_width=width, ellipsis="")
+    padding = " " * max(0, width - visible_width(clipped))
+    if align == "right":
+        return f"{padding}{clipped}"
+    return f"{clipped}{padding}" if pad_right else clipped
+
+
+def _join_cells(cells: Sequence[str], widths: Sequence[int], columns: Sequence[TableColumn]) -> str:
+    rendered: list[str] = []
+    visible_cells = [
+        (cell, width, column) for cell, width, column in zip(cells, widths, columns, strict=True) if width > 0
+    ]
+    for offset, (cell, width, column) in enumerate(visible_cells):
+        rendered.append(_format_cell(cell, width, column.align, pad_right=offset < len(visible_cells) - 1))
+    return TABLE_SEPARATOR.join(rendered)

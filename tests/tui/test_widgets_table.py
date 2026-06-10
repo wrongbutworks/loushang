@@ -62,3 +62,81 @@ def test_table_normalizes_mapping_sequence_rows_and_column_config() -> None:
     assert table.handle_input(InputEvent(kind="key", key="down")) is True
     assert table.handle_input(InputEvent(kind="key", key="enter")) == "coded"
     assert_widths_within(render_lines(table, width=12, height=4), 12)
+
+
+def test_table_renders_header_rows_fixed_flexible_widths_and_alignment() -> None:
+    table = Table(
+        [
+            TableColumn("name", "Name", width=8),
+            TableColumn("status", "Status"),
+            TableColumn("count", "Count", width=5, align="right"),
+        ],
+        [
+            TableRow("build", {"name": "Build", "status": "ready", "count": 12}),
+            TableRow("deploy", {"name": "Deploy", "status": "blocked", "count": 3}),
+        ],
+    )
+
+    assert plain_lines(table, width=34, height=4) == (
+        "  Name      Status          Count",
+        "  Build     ready              12",
+        "  Deploy    blocked             3",
+    )
+
+
+def test_table_truncates_narrow_width_and_short_height() -> None:
+    table = Table(
+        [
+            TableColumn("name", "Name", width=8),
+            TableColumn("status", "Status"),
+        ],
+        [
+            TableRow("one", {"name": "LongName", "status": "VeryLongStatus"}),
+            TableRow("two", {"name": "Second", "status": "Done"}),
+        ],
+    )
+
+    assert plain_lines(table, width=16, height=2) == (
+        "  Name      Sta",
+        "  LongName  Ver",
+    )
+    assert_widths_within(render_lines(table, width=1, height=3), 1)
+
+
+def test_table_column_widths_honor_min_width_then_shrink_right_to_left() -> None:
+    table = Table(
+        [
+            TableColumn("id", "ID", width=1, min_width=3),
+            TableColumn("name", "Name", min_width=4),
+            TableColumn("note", "Note", width=20),
+        ],
+        [
+            {"id": "ABCDE", "name": "WXYZ", "note": "tail"},
+        ],
+    )
+
+    assert plain_lines(table, width=15, height=2) == (
+        "  ID   Name  N",
+        "  ABC  WXYZ  t",
+    )
+
+
+def test_table_empty_and_no_column_rendering() -> None:
+    with_columns = Table([TableColumn("name", "Name")], [])
+    no_columns = Table([], [])
+
+    assert plain_lines(with_columns, width=12, height=3) == (
+        "  Name",
+        "  No rows",
+    )
+    assert plain_lines(no_columns, width=12, height=3) == ("No rows",)
+
+
+def test_table_can_hide_header() -> None:
+    table = Table(
+        [TableColumn("name", "Name")],
+        [TableRow("one", {"name": "One"})],
+        show_header=False,
+    )
+
+    assert plain_lines(table, width=12, height=2) == ("  One",)
