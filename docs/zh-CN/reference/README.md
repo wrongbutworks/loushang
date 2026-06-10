@@ -87,3 +87,4 @@ loushang --command <command-name> --command-result-format json
 
 - [TUI Runner](tui-runner.md)：使用 `loushang.tui` 构建终端应用的公共生命周期入口。
 - [TUI 编辑能力](tui-editing.md)：可复用的 TextInput、Composer、selection-aware editing、快捷键和 playback smoke 检查。
+- [TUI 控件](tui-widgets.md)：可复用的按钮、选项、字段、表单、选择列表和 modal 对话框。
