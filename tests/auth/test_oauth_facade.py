@@ -73,7 +73,7 @@ def test_oauth_login_persists_into_explicit_credentials_map(
     save_calls: list[dict[str, OAuthCredentials]] = []
     monkeypatch.setattr(
         facade,
-        "load_credentials",
+        "load_credential_store",
         lambda: pytest.fail("explicit credentials should not load storage"),
     )
     monkeypatch.setattr(facade, "save_credentials", lambda data: save_calls.append(data))
@@ -92,17 +92,55 @@ def test_oauth_login_persists_into_explicit_credentials_map(
     assert [asdict(saved["demo"]) for saved in save_calls] == [asdict(result)]
 
 
+def test_oauth_login_persists_provider_scope_by_default(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    store = {"providers": {}, "endpoints": {}, "models": {}}
+    save_calls: list[dict[str, dict[str, OAuthCredentials]]] = []
+    monkeypatch.setattr(facade, "load_credential_store", lambda: store)
+    monkeypatch.setattr(facade, "save_credential_store", lambda data: save_calls.append(data))
+
+    result = asyncio.run(oauth_login("demo", _Callbacks(), registry=_registry(), persist=True))
+
+    assert result.access_token == "login-token"
+    assert save_calls[0]["providers"]["demo"] == result
+    assert save_calls[0]["endpoints"] == {}
+    assert save_calls[0]["models"] == {}
+
+
+def test_oauth_login_persists_model_scope_when_requested(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    store = {"providers": {}, "endpoints": {}, "models": {}}
+    save_calls: list[dict[str, dict[str, OAuthCredentials]]] = []
+    monkeypatch.setattr(facade, "load_credential_store", lambda: store)
+    monkeypatch.setattr(facade, "save_credential_store", lambda data: save_calls.append(data))
+
+    result = asyncio.run(
+        oauth_login(
+            "demo",
+            _Callbacks(),
+            registry=_registry(),
+            endpoint_id="responses",
+            model_id="chat",
+            persist=True,
+        )
+    )
+
+    assert save_calls[0]["models"]["demo:responses:chat"] == result
+
+
 def test_oauth_login_without_persist_does_not_touch_storage(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     monkeypatch.setattr(
         facade,
-        "load_credentials",
+        "load_credential_store",
         lambda: pytest.fail("non-persistent login should not load storage"),
     )
     monkeypatch.setattr(
         facade,
-        "save_credentials",
+        "save_credential_store",
         lambda _data: pytest.fail("non-persistent login should not save storage"),
     )
 
@@ -122,14 +160,15 @@ def test_oauth_refresh_persists_refreshed_stored_credentials(
         access_token="old-token",
         refresh_token="refresh-token",
     )
-    save_calls: list[dict[str, OAuthCredentials]] = []
-    monkeypatch.setattr(facade, "load_credentials", lambda: {"demo": original})
-    monkeypatch.setattr(facade, "save_credentials", lambda data: save_calls.append(data))
+    store = {"providers": {"demo": original}, "endpoints": {}, "models": {}}
+    save_calls: list[dict[str, dict[str, OAuthCredentials]]] = []
+    monkeypatch.setattr(facade, "load_credential_store", lambda: store)
+    monkeypatch.setattr(facade, "save_credential_store", lambda data: save_calls.append(data))
 
     result = asyncio.run(oauth_refresh("demo", registry=_registry(), persist=True))
 
     assert result.access_token == "refreshed-token"
-    assert [asdict(saved["demo"]) for saved in save_calls] == [asdict(result)]
+    assert [asdict(saved["providers"]["demo"]) for saved in save_calls] == [asdict(result)]
 
 
 def test_oauth_refresh_explicit_credentials_without_persist_does_not_touch_storage(
@@ -137,12 +176,12 @@ def test_oauth_refresh_explicit_credentials_without_persist_does_not_touch_stora
 ) -> None:
     monkeypatch.setattr(
         facade,
-        "load_credentials",
+        "load_credential_store",
         lambda: pytest.fail("explicit non-persistent refresh should not load storage"),
     )
     monkeypatch.setattr(
         facade,
-        "save_credentials",
+        "save_credential_store",
         lambda _data: pytest.fail("explicit non-persistent refresh should not save storage"),
     )
 
@@ -167,8 +206,36 @@ def test_resolve_oauth_api_key_uses_explicit_empty_credentials_map(
 ) -> None:
     monkeypatch.setattr(
         facade,
-        "load_credentials",
+        "load_credential_store",
         lambda: pytest.fail("explicit credentials should not load storage"),
     )
 
     assert resolve_oauth_api_key("demo", credentials={}) is None
+
+
+def test_resolve_oauth_api_key_prefers_model_scope(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    provider = OAuthCredentials(provider="demo", access_token="provider-token")
+    endpoint = OAuthCredentials(provider="demo", access_token="endpoint-token")
+    model = OAuthCredentials(provider="demo", access_token="model-token")
+    monkeypatch.setattr(
+        facade,
+        "load_credential_store",
+        lambda: {
+            "providers": {"demo": provider},
+            "endpoints": {"demo:responses": endpoint},
+            "models": {"demo:responses:chat": model},
+        },
+    )
+    monkeypatch.setattr(facade, "save_credential_store", lambda _data: None)
+
+    result = resolve_oauth_api_key(
+        "demo",
+        endpoint_id="responses",
+        model_id="chat",
+        persist_refresh=False,
+    )
+
+    assert result is not None
+    assert result["apiKey"] == "model-token"

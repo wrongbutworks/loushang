@@ -25,10 +25,10 @@ from loushang.ai.auth import (
     get_env_oauth_credentials,
     get_oauth_provider,
     list_oauth_providers,
-    load_credentials,
     oauth_login,
     register_builtin_oauth_providers,
 )
+from loushang.ai.auth.storage import find_scoped_credential, load_credential_store
 from loushang.ai.auth.support import merge_auth_config
 from loushang.ai.auth.types import OAuthAuthInfo, OAuthLoginCallbacks, OAuthPrompt
 from loushang.ai.model.registry import (
@@ -287,11 +287,17 @@ def cmd_auth(args: argparse.Namespace) -> None:
         if provider is None:
             print(f"OAuth provider not found: {args.provider}", file=sys.stderr)
             sys.exit(2)
-        stored = load_credentials().get(args.provider)
+        stored = find_scoped_credential(
+            load_credential_store(),
+            args.provider,
+            endpoint_id=getattr(args, "endpoint", None),
+            model_id=getattr(args, "model", None),
+        )
         source = "stored" if stored is not None else None
         data = {
             "id": provider.id,
             "name": provider.name,
+            "scope": _auth_scope_payload(args.provider, getattr(args, "endpoint", None), getattr(args, "model", None)),
             "uses_callback_server": provider.uses_callback_server(),
             "has_credentials": stored is not None,
             "source": source,
@@ -339,11 +345,14 @@ def cmd_auth(args: argparse.Namespace) -> None:
             lambda: oauth_login(
                 provider_id,
                 _CliOAuthCallbacks(),
+                endpoint_id=getattr(args, "endpoint", None),
+                model_id=getattr(args, "model", None),
                 persist=True,
             )
         )
         output = {
             "provider": credentials.provider,
+            "scope": _auth_scope_payload(provider_id, getattr(args, "endpoint", None), getattr(args, "model", None)),
             "stored": True,
             "source": "stored",
             "expires_at": credentials.expires_at,
@@ -351,6 +360,14 @@ def cmd_auth(args: argparse.Namespace) -> None:
         }
         _print(output, args.json)
         return
+
+
+def _auth_scope_payload(provider: str, endpoint: str | None, model: str | None) -> dict[str, str | None]:
+    return {
+        "provider": provider,
+        "endpoint": endpoint,
+        "model": model,
+    }
 
 
 def cmd_console(args: argparse.Namespace) -> None:
@@ -664,7 +681,7 @@ def _prepare_console_auth(
     option_kwargs: dict[str, object] = {}
     auth_source = "none"
     if getattr(auth_config, "kind", "apiKey") == "oauth":
-        oauth_credentials, auth_source = _resolve_console_oauth_credentials(provider.id)
+        oauth_credentials, auth_source = _resolve_console_oauth_credentials(provider.id, endpoint_id=endpoint.id)
         if oauth_credentials is not None:
             option_kwargs["oauth_credentials"] = oauth_credentials
     else:
@@ -691,12 +708,18 @@ def _build_console_options(model, *, api: str, auth_result, debug: bool = False)
 
 def _resolve_console_oauth_credentials(
     provider_id: str,
+    *,
+    endpoint_id: str | None = None,
 ) -> tuple[dict[str, object] | None, str]:
     env_credentials = get_env_oauth_credentials(provider_id)
     if env_credentials is not None:
         return {provider_id: env_credentials}, "env-oauth"
 
-    stored = load_credentials().get(provider_id)
+    stored = find_scoped_credential(
+        load_credential_store(),
+        provider_id,
+        endpoint_id=endpoint_id,
+    )
     if stored is not None:
         return {provider_id: stored}, "stored-oauth"
 
@@ -898,8 +921,12 @@ def main(argv: list[str] | None = None) -> None:
     sauth.add_parser("providers")
     p_auth_show = sauth.add_parser("show")
     p_auth_show.add_argument("provider")
+    p_auth_show.add_argument("--endpoint")
+    p_auth_show.add_argument("--model")
     p_auth_login = sauth.add_parser("login")
     p_auth_login.add_argument("provider", nargs="?")
+    p_auth_login.add_argument("--endpoint")
+    p_auth_login.add_argument("--model")
     p_auth.set_defaults(func=cmd_auth)
 
     p_console = sub.add_parser("console")
