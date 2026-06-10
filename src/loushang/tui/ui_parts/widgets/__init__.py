@@ -21,7 +21,12 @@ from .field import TextField as TextField
 from .form import Form as Form
 from .form import FormRow as FormRow
 from .form import FormValidationResult as FormValidationResult
+from .menu import Menu as Menu
+from .menu import MenuItem as MenuItem
 from .selection import SelectList as SelectList
+from .spinner import Spinner as Spinner
+from .tabs import TabItem as TabItem
+from .tabs import Tabs as Tabs
 from .toolbar import Toolbar as Toolbar
 from .toolbar import ToolbarAction as ToolbarAction
 
@@ -41,11 +46,16 @@ __all__ = [
     "IconButton",
     "KeyValueItem",
     "KeyValueList",
+    "Menu",
+    "MenuItem",
     "ProgressBar",
     "RadioGroup",
     "SelectList",
+    "Spinner",
     "StatusKind",
     "StatusPill",
+    "TabItem",
+    "Tabs",
     "TextField",
     "Toggle",
     "Toolbar",

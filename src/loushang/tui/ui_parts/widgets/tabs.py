@@ -1,0 +1,150 @@
+from __future__ import annotations
+
+from collections.abc import Callable, Sequence
+from dataclasses import dataclass
+
+from loushang.tui.cell_width import autowrap_safe_width, truncate_to_width
+from loushang.tui.core import RenderConstraints, RenderLine, RenderResult
+from loushang.tui.theme import ThemeResolver
+from loushang.tui.ui_parts.widgets._utils import (
+    callback_result,
+    is_activation_event,
+    style_text,
+)
+
+
+@dataclass(frozen=True, slots=True)
+class TabItem:
+    value: str
+    label: str
+    disabled: bool = False
+    badge: str = ""
+
+    @property
+    def display_label(self) -> str:
+        return self.label if not self.badge else f"{self.label} {self.badge}".strip()
+
+
+@dataclass(slots=True)
+class Tabs:
+    tabs: Sequence[TabItem]
+    value: str = ""
+    wrap: bool = True
+    on_change: Callable[[str], object] | None = None
+    theme: ThemeResolver | None = None
+    focused: bool = False
+
+    def __post_init__(self) -> None:
+        self.tabs = tuple(self.tabs)
+        self.value = self._normalize_value(self.value)
+
+    @property
+    def selected_value(self) -> str:
+        return self.value
+
+    def focus(self) -> None:
+        self.focused = True
+
+    def blur(self) -> None:
+        self.focused = False
+
+    def handle_input(self, event: object) -> object:
+        if getattr(event, "kind", "") == "key":
+            key = getattr(event, "key", "")
+            if key == "left":
+                return self._move_selection(-1)
+            if key == "right":
+                return self._move_selection(1)
+            if key == "home":
+                return self._jump_selection(first=True)
+            if key == "end":
+                return self._jump_selection(first=False)
+        if is_activation_event(event):
+            return self.value or None
+        return None
+
+    def render(self, constraints: RenderConstraints) -> RenderResult:
+        if not self.tabs:
+            return RenderResult.from_lines([], constraints=constraints)
+        target_width = autowrap_safe_width(constraints.width)
+        parts = [_tab_segment(self, tab) for tab in self.tabs]
+        line = truncate_to_width("  ".join(parts), max_width=target_width, ellipsis="")
+        return RenderResult.from_lines([RenderLine(line)][: constraints.max_height], constraints=constraints)
+
+    def _enabled_indices(self) -> tuple[int, ...]:
+        return tuple(index for index, tab in enumerate(self.tabs) if not tab.disabled)
+
+    def _index_for_value(self, value: str) -> int | None:
+        for index, tab in enumerate(self.tabs):
+            if tab.value == value:
+                return index
+        return None
+
+    def _normalize_value(self, requested: str) -> str:
+        enabled = self._enabled_indices()
+        if not enabled:
+            return ""
+        requested_index = self._index_for_value(requested)
+        if requested_index is not None:
+            if requested_index in enabled:
+                return self.tabs[requested_index].value
+            for index in enabled:
+                if index > requested_index:
+                    return self.tabs[index].value
+        return self.tabs[enabled[0]].value
+
+    def _selected_index(self) -> int | None:
+        index = self._index_for_value(self.value)
+        if index is None or self.tabs[index].disabled:
+            return None
+        return index
+
+    def _move_selection(self, delta: int) -> bool | None:
+        enabled = self._enabled_indices()
+        if not enabled:
+            return None
+        selected = self._selected_index()
+        if selected is None:
+            return self._set_value(self.tabs[enabled[0]].value)
+        position = enabled.index(selected)
+        next_position = position + delta
+        if self.wrap:
+            next_position %= len(enabled)
+        elif next_position < 0 or next_position >= len(enabled):
+            return False
+        next_index = enabled[next_position]
+        if next_index == selected:
+            return False
+        return self._set_value(self.tabs[next_index].value)
+
+    def _jump_selection(self, *, first: bool) -> bool | None:
+        enabled = self._enabled_indices()
+        if not enabled:
+            return None
+        selected = self._selected_index()
+        target = enabled[0] if first else enabled[-1]
+        if target == selected:
+            return False
+        return self._set_value(self.tabs[target].value)
+
+    def _set_value(self, value: str) -> object:
+        self.value = value
+        if self.on_change is not None:
+            return callback_result(self.on_change(value))
+        return True
+
+
+def _tab_segment(tabs: Tabs, tab: TabItem) -> str:
+    selected = tab.value == tabs.value and not tab.disabled
+    prefix = "> " if tabs.focused and selected else "* " if selected else "  "
+    text = f"{prefix}[{tab.display_label}]"
+    token = (
+        "widget.tabs.disabled"
+        if tab.disabled
+        else "widget.tabs.focus"
+        if tabs.focused and selected
+        else "widget.tabs.selected"
+        if selected
+        else "widget.tabs.tab"
+    )
+    return style_text(text, tabs.theme, token)

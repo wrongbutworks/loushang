@@ -34,11 +34,16 @@ from .widgets import FormValidationResult as FormValidationResult
 from .widgets import IconButton as IconButton
 from .widgets import KeyValueItem as KeyValueItem
 from .widgets import KeyValueList as KeyValueList
+from .widgets import Menu as Menu
+from .widgets import MenuItem as MenuItem
 from .widgets import ProgressBar as ProgressBar
 from .widgets import RadioGroup as RadioGroup
 from .widgets import SelectList as SelectList
+from .widgets import Spinner as Spinner
 from .widgets import StatusKind as StatusKind
 from .widgets import StatusPill as StatusPill
+from .widgets import TabItem as TabItem
+from .widgets import Tabs as Tabs
 from .widgets import TextField as TextField
 from .widgets import Toggle as Toggle
 from .widgets import Toolbar as Toolbar
@@ -65,6 +70,8 @@ __all__ = [
     "IconButton",
     "KeyValueItem",
     "KeyValueList",
+    "Menu",
+    "MenuItem",
     "LOUSHANG_BANNER_LOGO",
     "LOUSHANG_GUANQUE_TOWER_LOGO",
     "LoushangWelcomePanel",
@@ -78,10 +85,13 @@ __all__ = [
     "ScreenRegion",
     "ScreenRegionStack",
     "SelectList",
+    "Spinner",
     "StatusBar",
     "StatusField",
     "StatusKind",
     "StatusPill",
+    "TabItem",
+    "Tabs",
     "TextField",
     "TextInput",
     "Toggle",

@@ -45,6 +45,25 @@ toolbar = Toolbar([ToolbarAction("Refresh", value="refresh"), ToolbarAction("Can
 toolbar.focus()
 ```
 
+## P0C 轻量控件
+
+| 控件 | 用途 |
+| --- | --- |
+| `Menu` / `MenuItem` | 带局部焦点和激活行为的短纵向动作列表。 |
+| `Tabs` / `TabItem` | 用于视图切换的横向 selected-value 控件。 |
+| `Spinner` | 由调用方驱动 frame 的静态活动指示器。 |
+
+`Menu` 和 `Tabs` 只处理自己的局部状态。`Spinner` 只负责显示：调用方传入
+`frame`，并决定何时请求下一次渲染。
+
+```python
+from loushang.tui import Menu, MenuItem, Spinner, TabItem, Tabs
+
+tabs = Tabs([TabItem("overview", "Overview"), TabItem("logs", "Logs")])
+menu = Menu([MenuItem("open", "Open"), MenuItem("refresh", "Refresh")])
+spinner = Spinner(label="Syncing", frame=1)
+```
+
 ## 表单
 
 ```python
@@ -89,7 +108,7 @@ Dialog 会先处理 `escape` 和 `ctrl+c`，再委派给内部字段。body 焦�
 
 ## 主题 Token
 
-支持样式的 P0A 与 P0B 控件可以接收 `ThemeResolver`。第一批稳定 token 如下：
+支持样式的 P0A、P0B 与 P0C 控件可以接收 `ThemeResolver`。第一批稳定 token 如下：
 
 | Token | 作用范围 |
 | --- | --- |
@@ -122,11 +141,21 @@ Dialog 会先处理 `escape` 和 `ctrl+c`，再委派给内部字段。body 焦�
 | `widget.toolbar.action` | 可用 toolbar action。 |
 | `widget.toolbar.focus` | 获得焦点的 toolbar action。 |
 | `widget.toolbar.disabled` | 禁用 toolbar action。 |
+| `widget.menu.item` | 可用的非激活 menu item。 |
+| `widget.menu.focus` | 获得焦点的激活 menu item。 |
+| `widget.menu.disabled` | 禁用 menu item。 |
+| `widget.menu.description` | menu item 描述。 |
+| `widget.tabs.tab` | 可用的未选中 tab。 |
+| `widget.tabs.selected` | tab strip 未聚焦时的选中 tab。 |
+| `widget.tabs.focus` | tab strip 聚焦时的选中 tab。 |
+| `widget.tabs.disabled` | 禁用 tab。 |
+| `widget.spinner.frame` | spinner frame 字符。 |
+| `widget.spinner.label` | spinner 标签文本。 |
 
 ## 计划中的控件目录
 
-`Menu`、`Popover`、`Spinner`、`Tabs`、`Table`、`TreeView`、`Toast` 和 `TextArea`
-是计划中的目录项，不属于当前 widget 实现范围。
+`Popover`、`PromptDialog`、`Table`、`TreeView`、`Toast` 和 `TextArea` 是计划中的
+目录项，不属于当前 widget 实现范围。
 
 ## 示例
 
@@ -134,3 +163,5 @@ Dialog 会先处理 `escape` 和 `ctrl+c`，再委派给内部字段。body 焦�
   一个包含表单和确认对话框的键盘操作 widget 小应用。
 - [examples/tui/44_widgets_small_controls.py](../../../examples/tui/44_widgets_small_controls.py)：
   一个组合状态、详情、进度和 toolbar 的紧凑小控件示例。
+- [examples/tui/45_widgets_light_controls.py](../../../examples/tui/45_widgets_light_controls.py)：
+  一个组合 menu、tabs 和 spinner 的轻量控件示例。
