@@ -64,6 +64,24 @@ tui.show_overlay(dialog, focus_target=dialog, presentation="modal", anchor="cent
 Dialog 会先处理 `escape` 和 `ctrl+c`，再委派给内部字段。body 焦点处于激活状态时，
 它也会把 `editor_input_target()` 委派给当前可编辑子控件。
 
+## 主题 Token
+
+支持样式的 P0A 控件可以接收 `ThemeResolver`。第一批稳定 token 如下：
+
+| Token | 作用范围 |
+| --- | --- |
+| `widget.focus` | 获得焦点且未禁用的控件或行。 |
+| `widget.disabled` | 禁用控件或禁用的 radio 选项。 |
+| `widget.error` | `TextField` 与 `FormRow` 的错误行。 |
+| `widget.field.label` | `TextField` 标签。 |
+| `widget.field.help` | `TextField` 帮助信息行。 |
+| `widget.button.default` | default button。 |
+| `widget.button.primary` | primary button。 |
+| `widget.button.danger` | danger button。 |
+| `widget.button.ghost` | ghost button。 |
+| `widget.dialog.title` | dialog 标题。 |
+| `widget.dialog.action` | dialog action 行。 |
+
 ## 计划中的控件目录
 
 `Toolbar`、`Menu`、`Popover`、`ProgressBar`、`Spinner`、`Badge`、`StatusPill`、
