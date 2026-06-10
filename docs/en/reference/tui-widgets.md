@@ -46,6 +46,25 @@ toolbar = Toolbar([ToolbarAction("Refresh", value="refresh"), ToolbarAction("Can
 toolbar.focus()
 ```
 
+## P0C Light Controls
+
+| Widget | Use it for |
+| --- | --- |
+| `Menu` / `MenuItem` | Short vertical action lists with local focus and activation. |
+| `Tabs` / `TabItem` | Horizontal selected-value controls for view switching. |
+| `Spinner` | Static caller-driven activity indicators. |
+
+`Menu` and `Tabs` handle only their local state. `Spinner` is display-only: the
+caller passes `frame` and decides when to request another render.
+
+```python
+from loushang.tui import Menu, MenuItem, Spinner, TabItem, Tabs
+
+tabs = Tabs([TabItem("overview", "Overview"), TabItem("logs", "Logs")])
+menu = Menu([MenuItem("open", "Open"), MenuItem("refresh", "Refresh")])
+spinner = Spinner(label="Syncing", frame=1)
+```
+
 ## Forms
 
 ```python
@@ -93,8 +112,8 @@ body focus is active.
 
 ## Theme Tokens
 
-P0A and P0B widgets accept `ThemeResolver` where styling is supported. Initial
-stable tokens are:
+P0A, P0B, and P0C widgets accept `ThemeResolver` where styling is supported.
+Initial stable tokens are:
 
 | Token | Applies to |
 | --- | --- |
@@ -127,12 +146,21 @@ stable tokens are:
 | `widget.toolbar.action` | Enabled toolbar actions. |
 | `widget.toolbar.focus` | Focused toolbar action. |
 | `widget.toolbar.disabled` | Disabled toolbar actions. |
+| `widget.menu.item` | Enabled inactive menu items. |
+| `widget.menu.focus` | Focused active menu item. |
+| `widget.menu.disabled` | Disabled menu items. |
+| `widget.menu.description` | Menu item descriptions. |
+| `widget.tabs.tab` | Enabled unselected tabs. |
+| `widget.tabs.selected` | Selected tab when the tab strip is not focused. |
+| `widget.tabs.focus` | Selected tab while the tab strip is focused. |
+| `widget.tabs.disabled` | Disabled tabs. |
+| `widget.spinner.frame` | Spinner frame glyph. |
+| `widget.spinner.label` | Spinner label text. |
 
 ## Planned Catalog
 
-`Menu`, `Popover`, `Spinner`, `Tabs`, `Table`, `TreeView`, `Toast`, and
-`TextArea` are planned catalog entries. They are not part of the current widget
-implementation.
+`Popover`, `PromptDialog`, `Table`, `TreeView`, `Toast`, and `TextArea` are
+planned catalog entries. They are not part of the current widget implementation.
 
 ## Example
 
@@ -140,3 +168,5 @@ implementation.
   small keyboard-only widget app with a form and confirm dialog.
 - [examples/tui/44_widgets_small_controls.py](../../../examples/tui/44_widgets_small_controls.py):
   compact status, details, progress, and toolbar composition.
+- [examples/tui/45_widgets_light_controls.py](../../../examples/tui/45_widgets_light_controls.py):
+  light menu, tabs, and spinner composition.

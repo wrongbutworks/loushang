@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import runpy
 from typing import Any
 
 from loushang.tui import (
@@ -288,3 +289,9 @@ def test_spinner_applies_theme_tokens_without_width_growth() -> None:
     assert "\x1b[1mLoading" in raw
     assert strip_control_sequences(raw) == "| Loading"
     assert visible_width(raw) == len("| Loading")
+
+
+def test_widgets_light_controls_example_imports() -> None:
+    namespace = runpy.run_path("examples/tui/45_widgets_light_controls.py", run_name="__test__")
+
+    assert "build_app" in namespace
