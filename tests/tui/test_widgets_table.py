@@ -8,6 +8,7 @@ from loushang.tui import (
     Table,
     TableColumn,
     TableRow,
+    ThemeResolver,
     strip_control_sequences,
     visible_width,
 )
@@ -202,4 +203,51 @@ def test_table_wrap_false_boundaries_empty_disabled_and_height_window() -> None:
         "  Name",
         "  Item 3",
         "> Item 4",
+    )
+
+
+def test_table_applies_theme_tokens_and_preserves_visible_width() -> None:
+    theme = ThemeResolver(
+        defaults={
+            "widget.table.header": {"color": "cyan"},
+            "widget.table.row": {"color": "white"},
+            "widget.table.focus": {"bold": True, "color": "green"},
+            "widget.table.disabled": {"dim": True},
+            "widget.table.empty": {"color": "bright_black"},
+        }
+    )
+    table = Table(
+        [TableColumn("name", "Name")],
+        [
+            TableRow("build", {"name": "Build"}),
+            TableRow("skip", {"name": "Skip"}, disabled=True),
+        ],
+        theme=theme,
+    )
+    table.focus()
+
+    raw = render_lines(table, width=20, height=3)
+
+    assert raw[0].startswith("\x1b[36m  Name")
+    assert raw[1].startswith("\x1b[1;32m> Build")
+    assert raw[2].startswith("\x1b[2m  Skip")
+    assert plain_lines(table, width=20, height=3) == (
+        "  Name",
+        "> Build",
+        "  Skip",
+    )
+    assert_widths_within(raw, 20)
+
+
+def test_table_empty_state_uses_theme_and_width_rules() -> None:
+    theme = ThemeResolver(defaults={"widget.table.empty": {"color": "bright_black"}})
+
+    no_columns = Table([], [], empty_text="Nothing here", theme=theme)
+    with_columns = Table([TableColumn("name", "Name")], [], empty_text="Nothing here", theme=theme)
+
+    assert render_lines(no_columns, width=8, height=2)[0].startswith("\x1b[90mNothing")
+    assert plain_lines(no_columns, width=8, height=2) == ("Nothing",)
+    assert plain_lines(with_columns, width=12, height=3) == (
+        "  Name",
+        "  Nothing h",
     )
