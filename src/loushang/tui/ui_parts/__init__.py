@@ -39,6 +39,7 @@ from .widgets import MenuItem as MenuItem
 from .widgets import ProgressBar as ProgressBar
 from .widgets import RadioGroup as RadioGroup
 from .widgets import SelectList as SelectList
+from .widgets import Spinner as Spinner
 from .widgets import StatusKind as StatusKind
 from .widgets import StatusPill as StatusPill
 from .widgets import TabItem as TabItem
@@ -84,6 +85,7 @@ __all__ = [
     "ScreenRegion",
     "ScreenRegionStack",
     "SelectList",
+    "Spinner",
     "StatusBar",
     "StatusField",
     "StatusKind",

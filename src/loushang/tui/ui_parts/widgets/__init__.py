@@ -24,6 +24,7 @@ from .form import FormValidationResult as FormValidationResult
 from .menu import Menu as Menu
 from .menu import MenuItem as MenuItem
 from .selection import SelectList as SelectList
+from .spinner import Spinner as Spinner
 from .tabs import TabItem as TabItem
 from .tabs import Tabs as Tabs
 from .toolbar import Toolbar as Toolbar
@@ -50,6 +51,7 @@ __all__ = [
     "ProgressBar",
     "RadioGroup",
     "SelectList",
+    "Spinner",
     "StatusKind",
     "StatusPill",
     "TabItem",

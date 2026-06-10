@@ -7,6 +7,7 @@ from loushang.tui import (
     Menu,
     MenuItem,
     RenderConstraints,
+    Spinner,
     TabItem,
     Tabs,
     ThemeResolver,
@@ -15,10 +16,12 @@ from loushang.tui import (
 )
 from loushang.tui.ui_parts import Menu as UiMenu
 from loushang.tui.ui_parts import MenuItem as UiMenuItem
+from loushang.tui.ui_parts import Spinner as UiSpinner
 from loushang.tui.ui_parts import TabItem as UiTabItem
 from loushang.tui.ui_parts import Tabs as UiTabs
 from loushang.tui.ui_parts.widgets import Menu as WidgetMenu
 from loushang.tui.ui_parts.widgets import MenuItem as WidgetMenuItem
+from loushang.tui.ui_parts.widgets import Spinner as WidgetSpinner
 from loushang.tui.ui_parts.widgets import TabItem as WidgetTabItem
 from loushang.tui.ui_parts.widgets import Tabs as WidgetTabs
 
@@ -41,11 +44,14 @@ def test_light_controls_are_reexported_from_public_modules() -> None:
     assert Menu is WidgetMenu
     assert MenuItem is UiMenuItem
     assert MenuItem is WidgetMenuItem
+    assert Spinner is UiSpinner
+    assert Spinner is WidgetSpinner
     assert Tabs is UiTabs
     assert Tabs is WidgetTabs
     assert TabItem is UiTabItem
     assert TabItem is WidgetTabItem
     assert MenuItem("open", "Open").value == "open"
+    assert Spinner(label="Loading").label == "Loading"
 
 
 def test_menu_renders_focus_disabled_description_theme_and_width() -> None:
@@ -257,3 +263,28 @@ def test_tabs_boundaries_disabled_last_value_and_empty_all_disabled_semantics() 
     assert disabled.value == ""
     assert disabled.handle_input(InputEvent(kind="key", key="right")) is None
     assert disabled.handle_input(InputEvent(kind="key", key="enter")) is None
+
+
+def test_spinner_renders_frame_modulo_label_empty_frames_and_width() -> None:
+    assert plain_lines(Spinner(label="Loading", frame=5), width=20, height=1) == ("/ Loading",)
+    assert plain_lines(Spinner(label="", frame=2), width=20, height=1) == ("-",)
+    assert plain_lines(Spinner(label="Waiting", frames=()), width=20, height=1) == ("Waiting",)
+    assert plain_lines(Spinner(label="", frames=()), width=20, height=1) == ("",)
+    assert_widths_within(render_lines(Spinner(label="Very long loading label"), width=8, height=1), 8)
+    assert not hasattr(Spinner(label="Loading"), "handle_input")
+    assert not hasattr(Spinner(label="Loading"), "focus")
+
+
+def test_spinner_applies_theme_tokens_without_width_growth() -> None:
+    theme = ThemeResolver(
+        defaults={
+            "widget.spinner.frame": {"color": "cyan"},
+            "widget.spinner.label": {"bold": True},
+        }
+    )
+    raw = render_lines(Spinner(label="Loading", frame=0, theme=theme), width=20, height=1)[0]
+
+    assert raw.startswith("\x1b[36m|\x1b[39m")
+    assert "\x1b[1mLoading" in raw
+    assert strip_control_sequences(raw) == "| Loading"
+    assert visible_width(raw) == len("| Loading")
