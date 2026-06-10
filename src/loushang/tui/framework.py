@@ -231,6 +231,17 @@ class SurfaceHost:
             return self.base_focus
         return None
 
+    def current_editor_target(self) -> Any | None:
+        self._sync_focus_for_visible_entries(self._last_known_size())
+        entry = self._current_focus_entry()
+        if entry is None:
+            return None
+        focus_target = entry.surface.focus_target
+        if not isinstance(focus_target, EditorInputTargetProvider):
+            return None
+        target = focus_target.editor_input_target()
+        return target if target is not None else None
+
     def handle_input(self, event: Any) -> Any:
         focus_target = self.current_focus()
         if focus_target is None:
