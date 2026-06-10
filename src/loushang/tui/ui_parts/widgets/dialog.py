@@ -4,6 +4,8 @@ from dataclasses import dataclass, field
 
 from loushang.tui.cell_width import autowrap_safe_width, truncate_to_width
 from loushang.tui.core import RenderConstraints, RenderLine, RenderResult
+from loushang.tui.theme import ThemeResolver
+from loushang.tui.ui_parts.widgets._utils import style_text
 
 
 @dataclass(frozen=True, slots=True)
@@ -19,6 +21,7 @@ class Dialog:
     body: object | str | None = None
     actions: list[DialogAction] | tuple[DialogAction, ...] = ()
     focused: bool = False
+    theme: ThemeResolver | None = field(default=None, kw_only=True)
     _focus_slot: str = field(default="body", init=False, repr=False)
 
     def focus(self) -> None:
@@ -78,6 +81,7 @@ class Dialog:
             body=self.body,
             action_labels=tuple(action.label for action in self.actions),
             constraints=constraints,
+            theme=self.theme,
         )
 
 
@@ -114,6 +118,7 @@ class ConfirmDialog(Dialog):
             body=self.body,
             action_labels=(self.confirm_label, self.cancel_label),
             constraints=constraints,
+            theme=self.theme,
         )
 
 
@@ -129,9 +134,11 @@ def _dialog_result(
     body: object | str | None,
     action_labels: tuple[str, ...],
     constraints: RenderConstraints,
+    theme: ThemeResolver | None = None,
 ) -> RenderResult:
     target_width = autowrap_safe_width(constraints.width)
-    lines = [RenderLine(truncate_to_width(title, max_width=target_width, ellipsis=""))]
+    title_line = truncate_to_width(title, max_width=target_width, ellipsis="")
+    lines = [RenderLine(style_text(title_line, theme, "widget.dialog.title"))]
     if isinstance(body, str) and body:
         lines.append(RenderLine(truncate_to_width(body, max_width=target_width, ellipsis="")))
     elif body is not None:
@@ -141,7 +148,8 @@ def _dialog_result(
             lines.extend(body_result.lines[: constraints.max_height - len(lines)])
     if action_labels:
         action_line = "  ".join(f"[{label}]" for label in action_labels)
-        lines.append(RenderLine(truncate_to_width(action_line, max_width=target_width, ellipsis="")))
+        action_line = truncate_to_width(action_line, max_width=target_width, ellipsis="")
+        lines.append(RenderLine(style_text(action_line, theme, "widget.dialog.action")))
     return RenderResult.from_lines(lines[: constraints.max_height], constraints=constraints)
 
 

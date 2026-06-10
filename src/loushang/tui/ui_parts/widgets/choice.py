@@ -6,7 +6,11 @@ from dataclasses import dataclass, field
 from loushang.tui.cell_width import autowrap_safe_width, truncate_to_width
 from loushang.tui.core import RenderConstraints, RenderLine, RenderResult
 from loushang.tui.theme import ThemeResolver
-from loushang.tui.ui_parts.widgets._utils import callback_result, is_activation_event
+from loushang.tui.ui_parts.widgets._utils import (
+    callback_result,
+    is_activation_event,
+    style_text,
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -47,7 +51,8 @@ class Checkbox:
     def render(self, constraints: RenderConstraints) -> RenderResult:
         marker = "x" if self.checked else " "
         line = f"{_focus_prefix(self.focused)}[{marker}] {self.label}"
-        return _single_line_result(line, constraints)
+        state_token = "widget.disabled" if self.disabled else "widget.focus" if self.focused else None
+        return _single_line_result(line, constraints, theme=self.theme, state_token=state_token)
 
 
 @dataclass(slots=True)
@@ -77,7 +82,8 @@ class Toggle:
     def render(self, constraints: RenderConstraints) -> RenderResult:
         marker = "on " if self.value else "off"
         line = f"{_focus_prefix(self.focused)}[{marker}] {self.label}"
-        return _single_line_result(line, constraints)
+        state_token = "widget.disabled" if self.disabled else "widget.focus" if self.focused else None
+        return _single_line_result(line, constraints, theme=self.theme, state_token=state_token)
 
 
 @dataclass(slots=True)
@@ -122,7 +128,15 @@ class RadioGroup:
             text = f"{prefix}({marker}) {option.label}"
             if option.description:
                 text = f"{text}  {option.description}"
-            lines.append(RenderLine(truncate_to_width(text, max_width=target_width, ellipsis="")))
+            rendered = truncate_to_width(text, max_width=target_width, ellipsis="")
+            state_token = (
+                "widget.disabled"
+                if option.disabled
+                else "widget.focus"
+                if self.focused and index == self._active_index
+                else None
+            )
+            lines.append(RenderLine(style_text(rendered, self.theme, state_token)))
             if len(lines) >= constraints.max_height:
                 break
         return RenderResult.from_lines(lines, constraints=constraints)
@@ -166,7 +180,14 @@ def _focus_prefix(focused: bool) -> str:
     return "> " if focused else "  "
 
 
-def _single_line_result(line: str, constraints: RenderConstraints) -> RenderResult:
+def _single_line_result(
+    line: str,
+    constraints: RenderConstraints,
+    *,
+    theme: ThemeResolver | None = None,
+    state_token: str | None = None,
+) -> RenderResult:
     target_width = autowrap_safe_width(constraints.width)
     rendered = truncate_to_width(line, max_width=target_width, ellipsis="")
+    rendered = style_text(rendered, theme, state_token)
     return RenderResult.from_lines([RenderLine(rendered)][: constraints.max_height], constraints=constraints)

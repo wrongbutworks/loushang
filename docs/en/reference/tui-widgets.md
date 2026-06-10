@@ -67,6 +67,25 @@ The dialog handles `escape` and `ctrl+c` before delegating to nested fields. It
 also delegates `editor_input_target()` to the active editable body child while
 body focus is active.
 
+## Theme Tokens
+
+P0A widgets accept `ThemeResolver` where styling is supported. Initial stable
+tokens are:
+
+| Token | Applies to |
+| --- | --- |
+| `widget.focus` | Focused enabled controls or rows. |
+| `widget.disabled` | Disabled controls or disabled radio options. |
+| `widget.error` | `TextField` and `FormRow` error lines. |
+| `widget.field.label` | `TextField` labels. |
+| `widget.field.help` | `TextField` help lines. |
+| `widget.button.default` | Default buttons. |
+| `widget.button.primary` | Primary buttons. |
+| `widget.button.danger` | Danger buttons. |
+| `widget.button.ghost` | Ghost buttons. |
+| `widget.dialog.title` | Dialog titles. |
+| `widget.dialog.action` | Dialog action rows. |
+
 ## Planned Catalog
 
 `Toolbar`, `Menu`, `Popover`, `ProgressBar`, `Spinner`, `Badge`, `StatusPill`,

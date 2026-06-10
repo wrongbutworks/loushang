@@ -7,7 +7,11 @@ from typing import Literal
 from loushang.tui.cell_width import autowrap_safe_width, truncate_to_width
 from loushang.tui.core import RenderConstraints, RenderLine, RenderResult
 from loushang.tui.theme import ThemeResolver
-from loushang.tui.ui_parts.widgets._utils import callback_result, is_activation_event
+from loushang.tui.ui_parts.widgets._utils import (
+    callback_result,
+    is_activation_event,
+    style_text,
+)
 
 ButtonKind = Literal["default", "primary", "danger", "ghost"]
 
@@ -41,7 +45,15 @@ class Button:
         label = self.label if not self.icon else f"{self.icon} {self.label}".strip()
         line = f"{'> ' if self.focused else '  '}[{label}]"
         rendered = truncate_to_width(line, max_width=target_width, ellipsis="")
+        base_token = self.theme_token or _button_base_token(self.kind)
+        state_token = "widget.disabled" if self.disabled else "widget.focus" if self.focused else None
+        rendered = style_text(rendered, self.theme, base_token, state_token)
         return RenderResult.from_lines([RenderLine(rendered)][: constraints.max_height], constraints=constraints)
+
 
 def IconButton(icon: str, *, label: str = "", **kwargs: object) -> Button:
     return Button(label=label, icon=icon, **kwargs)
+
+
+def _button_base_token(kind: ButtonKind) -> str:
+    return f"widget.button.{kind}"

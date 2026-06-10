@@ -12,6 +12,7 @@ from loushang.tui.core import (
 )
 from loushang.tui.theme import ThemeResolver
 from loushang.tui.ui_parts.text_input import TextInput
+from loushang.tui.ui_parts.widgets._utils import style_text
 
 
 @dataclass(init=False, slots=True)
@@ -95,7 +96,8 @@ class TextField:
         cursor: CursorDeclaration | None = None
 
         if self.label and len(lines) < constraints.max_height:
-            lines.append(RenderLine(truncate_to_width(self.label, max_width=target_width, ellipsis="")))
+            label = truncate_to_width(self.label, max_width=target_width, ellipsis="")
+            lines.append(RenderLine(style_text(label, self.theme, "widget.field.label")))
 
         if len(lines) < constraints.max_height:
             input_row = len(lines)
@@ -109,6 +111,8 @@ class TextField:
 
         detail = self.error or self.help_text
         if detail and len(lines) < constraints.max_height:
-            lines.append(RenderLine(truncate_to_width(detail, max_width=target_width, ellipsis="")))
+            detail_token = "widget.error" if self.error else "widget.field.help"
+            rendered_detail = truncate_to_width(detail, max_width=target_width, ellipsis="")
+            lines.append(RenderLine(style_text(rendered_detail, self.theme, detail_token)))
 
         return RenderResult.from_lines(lines, constraints=constraints, cursor=cursor)
