@@ -16,6 +16,8 @@ from loushang.tui import (
     RenderConstraints,
     SelectItem,
     SelectList,
+    Surface,
+    SurfaceHost,
     TextField,
     ThemeResolver,
     Toggle,
@@ -178,3 +180,64 @@ def test_form_themes_validation_errors_without_changing_values() -> None:
     assert raw[-1].startswith("\x1b[31m")
     assert strip_control_sequences(raw[-1]) == "Name required"
     assert form.values() == {"name": ""}
+
+
+def intent_tuple(intent: object) -> tuple[str, str, str]:
+    return (getattr(intent, "kind", ""), getattr(intent, "text", ""), getattr(intent, "note", ""))
+
+
+def test_dialog_themes_title_and_actions() -> None:
+    theme = ThemeResolver(
+        defaults={
+            "widget.dialog.title": {"bold": True},
+            "widget.dialog.action": {"color": "cyan"},
+        }
+    )
+    dialog = ConfirmDialog(title="Apply?", body="Changes", theme=theme)
+
+    raw = render_lines(dialog, width=30, height=4)
+
+    assert raw[0].startswith("\x1b[1m")
+    assert raw[-1].startswith("\x1b[36m")
+    assert tuple(strip_control_sequences(line) for line in raw) == ("Apply?", "Changes", "[Confirm]  [Cancel]")
+
+
+def test_confirm_dialog_modal_routes_editor_target_and_confirm_closes_surface() -> None:
+    field = TextField(value="")
+    form = Form([FormRow("name", field)])
+    dialog = ConfirmDialog(title="Edit", body=form)
+    host = SurfaceHost()
+
+    host.open_surface(Surface(renderable=dialog, focus_target=dialog, presentation="modal"))
+
+    assert dialog.focused is True
+    assert form.focused is True
+    target = host.current_editor_target()
+    assert target is not None
+    target.insert_text("abc")
+    assert field.value == "abc"
+
+    assert host.route_input(InputEvent(kind="key", key="tab")) == ()
+    assert host.current_editor_target() is None
+
+    intents = host.route_input(InputEvent(kind="key", key="enter"))
+    assert tuple(intent_tuple(intent) for intent in intents) == (
+        ("dialog_confirm", "", ""),
+        ("surface_close", "", ""),
+    )
+    assert host.current_focus() is None
+
+
+def test_confirm_dialog_modal_cancel_closes_before_text_field_escape() -> None:
+    seen_escape: list[str] = []
+    field = TextField(value="", on_escape=lambda: seen_escape.append("field"))
+    form = Form([FormRow("name", field)])
+    dialog = ConfirmDialog(title="Edit", body=form)
+    host = SurfaceHost()
+    host.open_surface(Surface(renderable=dialog, focus_target=dialog, presentation="modal"))
+
+    intents = host.route_input(InputEvent(kind="key", key="escape"))
+
+    assert tuple(intent_tuple(intent) for intent in intents) == (("dialog_cancel", "", ""),)
+    assert seen_escape == []
+    assert host.current_focus() is None

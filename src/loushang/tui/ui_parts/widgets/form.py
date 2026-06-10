@@ -31,7 +31,7 @@ class FormRow:
 class Form:
     rows: list[FormRow] | tuple[FormRow, ...]
     focused: bool = False
-    theme: ThemeResolver | None = None
+    theme: ThemeResolver | None = field(default=None, kw_only=True)
     _active_index: int = field(default=0, init=False, repr=False)
 
     def focus(self) -> None:
