@@ -61,6 +61,49 @@ def test_text_input_direct_edits_preserve_existing_undo_boundary() -> None:
     assert field.value == "ab"
 
 
+def test_text_input_editor_input_target_routes_high_level_text_edits() -> None:
+    changes: list[str] = []
+    field = TextInput(on_change=changes.append)
+    target = field.editor_input_target()
+
+    target.insert_text("ab")
+    target.paste("c\nd")
+
+    assert field.value == "abc d"
+    assert changes == ["ab", "abc d"]
+    assert field.undo()
+    assert field.value == "ab"
+    assert field.undo()
+    assert field.value == ""
+
+
+def test_text_input_editor_input_target_routes_destructive_edits_with_undo() -> None:
+    changes: list[str] = []
+    field = TextInput(on_change=changes.append)
+    target = field.editor_input_target()
+
+    target.insert_text("abc")
+    target.delete_backward()
+
+    assert field.value == "ab"
+    assert changes == ["abc", "ab"]
+    assert field.undo()
+    assert field.value == "abc"
+
+
+def test_text_input_editor_input_target_exposes_shared_editor_operations() -> None:
+    field = TextInput()
+    target = field.editor_input_target()
+
+    target.insert_text("alpha beta")
+    target.move_to_line_start()
+    target.move_word_right()
+    target.kill_to_line_end()
+
+    assert field.value == "alpha"
+    assert field.kill_ring == (" beta",)
+
+
 def test_text_input_can_be_focused_as_a_standalone_overlay() -> None:
     tui = Tui()
     field = TextInput(prompt="Search: ")
