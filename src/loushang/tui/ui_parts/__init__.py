@@ -41,6 +41,8 @@ from .widgets import RadioGroup as RadioGroup
 from .widgets import SelectList as SelectList
 from .widgets import StatusKind as StatusKind
 from .widgets import StatusPill as StatusPill
+from .widgets import TabItem as TabItem
+from .widgets import Tabs as Tabs
 from .widgets import TextField as TextField
 from .widgets import Toggle as Toggle
 from .widgets import Toolbar as Toolbar
@@ -86,6 +88,8 @@ __all__ = [
     "StatusField",
     "StatusKind",
     "StatusPill",
+    "TabItem",
+    "Tabs",
     "TextField",
     "TextInput",
     "Toggle",

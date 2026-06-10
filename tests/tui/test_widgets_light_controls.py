@@ -7,14 +7,20 @@ from loushang.tui import (
     Menu,
     MenuItem,
     RenderConstraints,
+    TabItem,
+    Tabs,
     ThemeResolver,
     strip_control_sequences,
     visible_width,
 )
 from loushang.tui.ui_parts import Menu as UiMenu
 from loushang.tui.ui_parts import MenuItem as UiMenuItem
+from loushang.tui.ui_parts import TabItem as UiTabItem
+from loushang.tui.ui_parts import Tabs as UiTabs
 from loushang.tui.ui_parts.widgets import Menu as WidgetMenu
 from loushang.tui.ui_parts.widgets import MenuItem as WidgetMenuItem
+from loushang.tui.ui_parts.widgets import TabItem as WidgetTabItem
+from loushang.tui.ui_parts.widgets import Tabs as WidgetTabs
 
 
 def render_lines(part: Any, *, width: int = 40, height: int = 8) -> tuple[str, ...]:
@@ -35,6 +41,10 @@ def test_light_controls_are_reexported_from_public_modules() -> None:
     assert Menu is WidgetMenu
     assert MenuItem is UiMenuItem
     assert MenuItem is WidgetMenuItem
+    assert Tabs is UiTabs
+    assert Tabs is WidgetTabs
+    assert TabItem is UiTabItem
+    assert TabItem is WidgetTabItem
     assert MenuItem("open", "Open").value == "open"
 
 
@@ -137,3 +147,113 @@ def test_menu_description_threshold_omits_then_truncates_description() -> None:
 
     assert plain_lines(menu, width=8, height=1) == ("  Build",)
     assert plain_lines(menu, width=13, height=1) == ("  Build  com",)
+
+
+def test_tabs_normalize_value_render_theme_and_width() -> None:
+    changes: list[str] = []
+    theme = ThemeResolver(
+        defaults={
+            "widget.tabs.tab": {"color": "white"},
+            "widget.tabs.selected": {"color": "green"},
+            "widget.tabs.focus": {"bold": True, "color": "cyan"},
+            "widget.tabs.disabled": {"dim": True},
+        }
+    )
+    tabs = Tabs(
+        [
+            TabItem("overview", "Overview"),
+            TabItem("logs", "Logs", badge="3"),
+            TabItem("settings", "Settings", disabled=True),
+        ],
+        value="missing",
+        on_change=lambda value: changes.append(value),
+        theme=theme,
+    )
+
+    assert tabs.value == "overview"
+    assert tabs.selected_value == "overview"
+    assert changes == []
+    assert plain_lines(tabs, width=60, height=1) == ("* [Overview]    [Logs 3]    [Settings]",)
+
+    tabs.focus()
+    raw = render_lines(tabs, width=60, height=1)[0]
+    assert raw.startswith("\x1b[1;36m> [Overview]")
+    assert "\x1b[2m  [Settings]" in raw
+    assert_widths_within(render_lines(tabs, width=10, height=1), 10)
+
+
+def test_tabs_navigation_changes_value_callbacks_and_activation_forms() -> None:
+    calls: list[str] = []
+
+    def record_change(value: str) -> str:
+        calls.append(value)
+        return f"changed:{value}"
+
+    tabs = Tabs(
+        [
+            TabItem("overview", "Overview"),
+            TabItem("disabled", "Disabled", disabled=True),
+            TabItem("logs", "Logs"),
+        ],
+        on_change=record_change,
+    )
+    tabs.focus()
+
+    assert tabs.handle_input(InputEvent(kind="key", key="right")) == "changed:logs"
+    assert tabs.value == "logs"
+    assert calls == ["logs"]
+    assert tabs.handle_input(InputEvent(kind="key", key="enter")) == "logs"
+    assert tabs.handle_input(InputEvent(kind="text", text=" ")) == "logs"
+    assert tabs.handle_input(InputEvent(kind="key", key="space")) == "logs"
+    assert tabs.handle_input(InputEvent(kind="key", key="right")) == "changed:overview"
+    assert tabs.value == "overview"
+    assert calls == ["logs", "overview"]
+
+
+def test_tabs_boundaries_disabled_last_value_and_empty_all_disabled_semantics() -> None:
+    assert Tabs(
+        [
+            TabItem("one", "One"),
+            TabItem("two", "Two", disabled=True),
+            TabItem("three", "Three"),
+        ],
+        value="two",
+    ).value == "three"
+
+    jumps = Tabs(
+        [
+            TabItem("one", "One"),
+            TabItem("two", "Two"),
+            TabItem("three", "Three"),
+        ],
+        value="one",
+        wrap=False,
+    )
+    assert jumps.handle_input(InputEvent(kind="key", key="end")) is True
+    assert jumps.value == "three"
+    assert jumps.handle_input(InputEvent(kind="key", key="home")) is True
+    assert jumps.value == "one"
+
+    tabs = Tabs(
+        [
+            TabItem("one", "One"),
+            TabItem("two", "Two", disabled=True),
+        ],
+        value="two",
+        wrap=False,
+    )
+    tabs.focus()
+
+    assert tabs.value == "one"
+    assert tabs.handle_input(InputEvent(kind="key", key="left")) is False
+    assert tabs.handle_input(InputEvent(kind="key", key="home")) is False
+    assert tabs.handle_input(InputEvent(kind="key", key="end")) is False
+    assert tabs.handle_input(InputEvent(kind="key", key="right")) is False
+
+    assert Tabs([]).value == ""
+    assert Tabs([]).handle_input(InputEvent(kind="key", key="right")) is None
+    disabled = Tabs([TabItem("no", "No", disabled=True)])
+    disabled.focus()
+    assert disabled.value == ""
+    assert disabled.handle_input(InputEvent(kind="key", key="right")) is None
+    assert disabled.handle_input(InputEvent(kind="key", key="enter")) is None

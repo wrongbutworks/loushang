@@ -24,6 +24,8 @@ from .form import FormValidationResult as FormValidationResult
 from .menu import Menu as Menu
 from .menu import MenuItem as MenuItem
 from .selection import SelectList as SelectList
+from .tabs import TabItem as TabItem
+from .tabs import Tabs as Tabs
 from .toolbar import Toolbar as Toolbar
 from .toolbar import ToolbarAction as ToolbarAction
 
@@ -50,6 +52,8 @@ __all__ = [
     "SelectList",
     "StatusKind",
     "StatusPill",
+    "TabItem",
+    "Tabs",
     "TextField",
     "Toggle",
     "Toolbar",
