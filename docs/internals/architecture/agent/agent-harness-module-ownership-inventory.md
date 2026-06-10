@@ -58,9 +58,6 @@ loushang.coding -> loushang.method
 Current transitional couplings:
 
 ```text
-loushang.method.loader -> loushang.coding.frontmatter
-loushang.method.loader -> loushang.coding.loader
-loushang.method.skill_adapter -> loushang.coding.loader.types
 loushang.work.coding.CodingWorkShell lives under work despite coding-specific semantics.
 ```
 
@@ -164,14 +161,15 @@ execution and must not become a mandatory harness dependency.
 | `method/projection.py` | Project method steps into guidance/facts | Method primitive | Keep. |
 | `method/registry.py` / `selector.py` | Method registry and explicit selection | Method primitive | Keep. |
 | `method/applicability.py` | Applicability metadata parsing | Method primitive | Keep. |
-| `method/loader.py` | Discover method resources and skill-backed methods | Method primitive with transitional coupling | Keep for now; later isolate coding resource loader dependency. |
-| `method/skill_adapter.py` | Adapt coding skill descriptors into method descriptors | Transitional coupling | Keep for now; later move shared skill descriptor or adapter boundary. |
+| `method/resources.py` | Product-neutral skill-like resource protocol and minimal skill discovery for method loading | Method primitive | Keep scoped to method needs. Do not absorb coding prompt/theme/extension loading. |
+| `method/loader.py` | Discover method resources and skill-backed methods | Method primitive | Keep independent from coding loader. |
+| `method/skill_adapter.py` | Adapt skill-like descriptors into method descriptors | Method primitive | Accept protocol-shaped resources; do not depend on coding descriptor classes. |
 
 Known method cleanup candidates:
 
-- move reusable frontmatter parsing out of `loushang.coding`
-- introduce a product-neutral resource loader interface if method resource
-  discovery needs to stop depending on `coding.loader`
+- completed: move reusable frontmatter parsing to `loushang.resource`
+- completed: introduce method-owned skill-like resource protocols so method
+  discovery does not depend on `coding.loader`
 - keep method expected artifacts as method metadata; do not record actual
   artifact refs in `method`
 
@@ -234,4 +232,4 @@ These names are intentionally excluded from `loushang.agent.harness`:
 2. Completed: add `loushang.work.ArtifactRef`.
 3. Completed: move coding runtime imports to the `loushang.coding.work_shell` adapter.
 4. Completed: route `Agent` prompt and continuation execution through `agent.harness` while preserving the stateful lifecycle.
-5. Next: isolate method resource loading from `loushang.coding.loader`.
+5. Completed: isolate method resource loading from `loushang.coding.loader`.

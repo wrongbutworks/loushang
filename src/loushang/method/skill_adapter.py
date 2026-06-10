@@ -2,12 +2,12 @@ from __future__ import annotations
 
 from collections.abc import Mapping as MappingABC
 
-from loushang.coding.loader.types import SkillDescriptor
 from loushang.method.applicability import applicability_from_frontmatter, primary_domain
+from loushang.method.resources import SkillResourceLike
 from loushang.method.types import MethodDescriptor
 
 
-def method_from_skill(skill: SkillDescriptor) -> MethodDescriptor:
+def method_from_skill(skill: SkillResourceLike) -> MethodDescriptor:
     frontmatter = _frontmatter(skill.metadata)
     applicability = applicability_from_frontmatter(frontmatter)
     metadata = {
