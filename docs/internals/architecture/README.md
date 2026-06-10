@@ -28,6 +28,7 @@ history, experimental notes, or legacy documents.
 
 - [AI](ai/README.md)
 - [Agent](agent/README.md)
+- [Channel](channel/README.md)
 - [Coding](coding/loushang-coding-system-context.md)
 - [Method](method/README.md)
 - [TUI](tui/README.md)
