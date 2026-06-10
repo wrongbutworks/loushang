@@ -98,7 +98,7 @@ class NativeSurfaceView(FocusableMixin):
             return None
         handler = getattr(self.content, "handle_input", None)
         if callable(handler):
-            return handler(self._translate_content_input_event(event))
+            return _native_input_intent_or_none(handler(self._translate_content_input_event(event)))
         return None
 
     def render(self, constraints: RenderConstraints) -> RenderResult:
@@ -179,7 +179,7 @@ class ModelSelectorSurface:
             self._pending_ordinal = ""
         intent = self._surface.handle_input(event)
         self._filter_text = self._surface.filter_text
-        return intent
+        return _native_input_intent_or_none(intent)
 
     def render(self, constraints: RenderConstraints) -> RenderResult:
         if not self.scoped_items:
@@ -689,6 +689,19 @@ def _session_commands_provider(session: Any) -> Callable[[], Any] | None:
     if not callable(getter):
         return None
     return getter
+
+
+def _native_input_intent_or_none(result: object) -> InputIntent | None:
+    if isinstance(result, InputIntent):
+        return result
+    kind = getattr(result, "kind", None)
+    if not isinstance(kind, str):
+        return None
+    return InputIntent(
+        kind=kind,
+        text=str(getattr(result, "text", "")),
+        note=str(getattr(result, "note", "")),
+    )
 
 
 __all__ = ["NativeSurfaceManager", "NativeSurfaceView"]
