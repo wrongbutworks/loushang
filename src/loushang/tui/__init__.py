@@ -232,10 +232,10 @@ from loushang.tui.transcript import (
 )
 from loushang.tui.tui import InputListener, Tui
 from loushang.tui.ui_parts import (
-    Badge,
-    BadgeKind,
     LOUSHANG_BANNER_LOGO,
     LOUSHANG_GUANQUE_TOWER_LOGO,
+    Badge,
+    BadgeKind,
     BottomFrame,
     Button,
     ButtonKind,

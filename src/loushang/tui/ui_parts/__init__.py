@@ -19,10 +19,10 @@ from .welcome import LOUSHANG_BANNER_LOGO as LOUSHANG_BANNER_LOGO
 from .welcome import LOUSHANG_GUANQUE_TOWER_LOGO as LOUSHANG_GUANQUE_TOWER_LOGO
 from .welcome import LoushangWelcomePanel as LoushangWelcomePanel
 from .welcome import loushang_welcome_theme as loushang_welcome_theme
-from .widgets import Button as Button
-from .widgets import ButtonKind as ButtonKind
 from .widgets import Badge as Badge
 from .widgets import BadgeKind as BadgeKind
+from .widgets import Button as Button
+from .widgets import ButtonKind as ButtonKind
 from .widgets import Checkbox as Checkbox
 from .widgets import Choice as Choice
 from .widgets import ConfirmDialog as ConfirmDialog

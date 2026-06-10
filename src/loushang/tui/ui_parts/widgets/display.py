@@ -4,7 +4,11 @@ from collections.abc import Sequence
 from dataclasses import dataclass
 from typing import Literal
 
-from loushang.tui.cell_width import autowrap_safe_width, truncate_to_width, visible_width
+from loushang.tui.cell_width import (
+    autowrap_safe_width,
+    truncate_to_width,
+    visible_width,
+)
 from loushang.tui.core import RenderConstraints, RenderLine, RenderResult
 from loushang.tui.theme import ThemeResolver
 from loushang.tui.ui_parts.widgets._utils import style_text
