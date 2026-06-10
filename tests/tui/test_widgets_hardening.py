@@ -132,3 +132,49 @@ def test_all_p0a_widgets_respect_narrow_short_render_constraints() -> None:
         lines = render_lines(control, width=6, height=2)
         assert len(lines) <= 2
         assert_widths_within(lines, 6)
+
+
+def test_text_field_themes_label_help_and_error_with_error_precedence() -> None:
+    theme = ThemeResolver(
+        defaults={
+            "widget.field.label": {"color": "cyan"},
+            "widget.field.help": {"dim": True},
+            "widget.error": {"color": "red"},
+        }
+    )
+    field = TextField(label="Name", value="tower", help_text="Helpful", error="Required", theme=theme)
+    field.focus()
+
+    raw = render_lines(field, width=24, height=4)
+
+    assert raw[0].startswith("\x1b[36m")
+    assert raw[2].startswith("\x1b[31m")
+    assert tuple(strip_control_sequences(line) for line in raw) == ("Name", "tower", "Required")
+    assert all(visible_width(line) <= 24 for line in raw)
+
+
+def test_text_field_cursor_row_stays_on_input_when_height_truncates_detail() -> None:
+    field = TextField(label="Name", value="tower", help_text="Helpful")
+    field.focus()
+
+    result = field.render(RenderConstraints(width=24, max_height=2))
+
+    assert tuple(strip_control_sequences(line.text) for line in result.lines) == ("Name", "tower")
+    assert result.cursor is not None
+    assert (result.cursor.row, result.cursor.column) == (1, len("tower"))
+
+
+def test_form_themes_validation_errors_without_changing_values() -> None:
+    theme = ThemeResolver(defaults={"widget.error": {"color": "red"}})
+    form = Form(
+        [FormRow("name", TextField(value=""), validator=lambda value: "Name required" if not value else None)],
+        theme=theme,
+    )
+
+    result = form.validate()
+    raw = render_lines(form, width=24, height=4)
+
+    assert result.errors == {"name": "Name required"}
+    assert raw[-1].startswith("\x1b[31m")
+    assert strip_control_sequences(raw[-1]) == "Name required"
+    assert form.values() == {"name": ""}

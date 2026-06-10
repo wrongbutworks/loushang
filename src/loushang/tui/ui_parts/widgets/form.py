@@ -5,6 +5,8 @@ from dataclasses import dataclass, field
 
 from loushang.tui.cell_width import autowrap_safe_width, truncate_to_width
 from loushang.tui.core import RenderConstraints, RenderLine, RenderResult
+from loushang.tui.theme import ThemeResolver
+from loushang.tui.ui_parts.widgets._utils import style_text
 
 
 @dataclass(frozen=True, slots=True)
@@ -29,6 +31,7 @@ class FormRow:
 class Form:
     rows: list[FormRow] | tuple[FormRow, ...]
     focused: bool = False
+    theme: ThemeResolver | None = None
     _active_index: int = field(default=0, init=False, repr=False)
 
     def focus(self) -> None:
@@ -95,7 +98,8 @@ class Form:
                 result = render(RenderConstraints(width=constraints.width, max_height=constraints.max_height - len(lines)))
                 lines.extend(result.lines[: constraints.max_height - len(lines)])
             if row.error and len(lines) < constraints.max_height:
-                lines.append(RenderLine(truncate_to_width(row.error, max_width=target_width, ellipsis="")))
+                error = truncate_to_width(row.error, max_width=target_width, ellipsis="")
+                lines.append(RenderLine(style_text(error, self.theme, "widget.error")))
         return RenderResult.from_lines(lines, constraints=constraints)
 
     def _active_control(self) -> object | None:
