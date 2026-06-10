@@ -103,3 +103,52 @@ def test_radio_group_moves_active_option_and_commits_selection() -> None:
     assert seen == ["safe"]
     assert group.handle_input(InputEvent(kind="key", key="down")) is True
     assert group.active_value == "fast"
+
+
+def test_text_field_delegates_editing_and_cursor_to_text_input() -> None:
+    field = TextField(label="Name", value="tower", help_text="Required")
+    field.focus()
+
+    assert field.handle_input(InputEvent(kind="text", text="!")) is True
+    assert field.value == "tower!"
+
+    result = field.render(RenderConstraints(width=24, max_height=4))
+    lines = tuple(strip_control_sequences(line.text) for line in result.lines)
+    assert lines == ("Name", "tower!", "Required")
+    assert result.cursor is not None
+    assert (result.cursor.row, result.cursor.column) == (1, len("tower!"))
+
+
+def test_text_field_editor_input_target_preserves_text_input_undo() -> None:
+    field = TextField(value="")
+    target = field.editor_input_target()
+
+    target.insert_text("abc")
+    target.delete_backward()
+
+    assert field.value == "ab"
+    assert field.undo()
+    assert field.value == "abc"
+
+
+def test_text_field_inserts_printable_space_as_text() -> None:
+    field = TextField(value="a")
+
+    assert field.handle_input(InputEvent(kind="text", text=" ")) is True
+
+    assert field.value == "a "
+
+
+def test_select_list_delegates_navigation_and_selection_without_default_escape_close() -> None:
+    select = SelectList([SelectItem("Kimi"), SelectItem("Qwen")], max_visible=2)
+
+    assert select.handle_input(InputEvent(kind="key", key="down")) is True
+    assert select.selected_value == "Qwen"
+    assert select.handle_input(InputEvent(kind="key", key="enter")) == InputIntent(kind="select", text="Qwen")
+    assert select.handle_input(InputEvent(kind="key", key="escape")) is None
+
+
+def test_select_list_can_emit_surface_close_for_popup_usage() -> None:
+    select = SelectList([SelectItem("Kimi")], close_on_escape=True)
+
+    assert select.handle_input(InputEvent(kind="key", key="escape")) == InputIntent(kind="surface_close")
