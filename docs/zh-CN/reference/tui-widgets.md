@@ -82,6 +82,22 @@ table = Table(
 table.focus()
 ```
 
+## P1B 文本控件
+
+| 控件 | 用途 |
+| --- | --- |
+| `TextArea` | 带确定性光标和 viewport 行为的多行表单文本。 |
+
+`TextArea` 保留换行，普通 `enter` 插入新行，并且可以通过
+`editor_input_target()` 嵌入 `Form` 和 `Dialog`。
+
+```python
+from loushang.tui import TextArea
+
+notes = TextArea(label="Notes", placeholder="Write notes", height=5)
+notes.focus()
+```
+
 ## 表单
 
 ```python
@@ -126,7 +142,7 @@ Dialog 会先处理 `escape` 和 `ctrl+c`，再委派给内部字段。body 焦�
 
 ## 主题 Token
 
-支持样式的 P0A、P0B、P0C 与 P1A 控件可以接收 `ThemeResolver`。第一批稳定 token 如下：
+支持样式的 P0A、P0B、P0C、P1A 与 P1B 控件可以接收 `ThemeResolver`。第一批稳定 token 如下：
 
 | Token | 作用范围 |
 | --- | --- |
@@ -174,10 +190,15 @@ Dialog 会先处理 `escape` 和 `ctrl+c`，再委派给内部字段。body 焦�
 | `widget.table.focus` | 获得焦点的激活 table 行。 |
 | `widget.table.disabled` | 禁用 table 行。 |
 | `widget.table.empty` | table 空状态文本。 |
+| `widget.textArea.label` | `TextArea` 标签行。 |
+| `widget.textArea.placeholder` | `TextArea` placeholder 文本。 |
+| `widget.textArea.text` | `TextArea` 正文文本。 |
+| `widget.textArea.error` | `TextArea` 错误行。 |
+| `widget.textArea.help` | `TextArea` 帮助信息行。 |
 
 ## 计划中的控件目录
 
-`Popover`、`PromptDialog`、`TreeView`、`Toast` 和 `TextArea` 是计划中的目录项，
+`Popover`、`PromptDialog`、`TreeView` 和 `Toast` 是计划中的目录项，
 不属于当前 widget 实现范围。
 
 ## 示例
@@ -190,3 +211,5 @@ Dialog 会先处理 `escape` 和 `ctrl+c`，再委派给内部字段。body 焦�
   一个组合 menu、tabs 和 spinner 的轻量控件示例。
 - [examples/tui/46_widgets_table.py](../../../examples/tui/46_widgets_table.py)：
   一个带键盘行选择的密集 table 组合示例。
+- [examples/tui/47_widgets_textarea.py](../../../examples/tui/47_widgets_textarea.py)：
+  一个在小型表单中进行多行文本输入的示例。

@@ -1,10 +1,14 @@
 from __future__ import annotations
 
+import runpy
 from typing import Any
 
 import pytest
 
 from loushang.tui import (
+    Dialog,
+    Form,
+    FormRow,
     InputEvent,
     RenderConstraints,
     TextArea,
@@ -210,3 +214,37 @@ def test_text_area_selection_highlight_uses_editor_selection_theme_token() -> No
 
     assert strip_control_sequences(raw) == "cd"
     assert "\x1b[1;36md\x1b[22;39m" in raw
+
+
+def test_text_area_integrates_with_form_values_and_editor_target() -> None:
+    area = TextArea(value="")
+    form = Form([FormRow("notes", area)])
+    form.focus()
+
+    assert form.handle_input(InputEvent(kind="text", text="one\ntwo")) is True
+    assert form.values() == {"notes": "one\ntwo"}
+
+    target = form.editor_input_target()
+    assert target is not None
+    target.insert_text("\nthree")
+
+    assert area.value == "one\ntwo\nthree"
+
+
+def test_text_area_dialog_delegates_active_editor_target() -> None:
+    area = TextArea(value="")
+    form = Form([FormRow("notes", area)])
+    dialog = Dialog(title="Edit notes", body=form)
+    dialog.focus()
+
+    target = dialog.editor_input_target()
+    assert target is not None
+    target.insert_text("alpha\nbeta")
+
+    assert area.value == "alpha\nbeta"
+
+
+def test_widgets_textarea_example_imports() -> None:
+    namespace = runpy.run_path("examples/tui/47_widgets_textarea.py", run_name="__test__")
+
+    assert callable(namespace["build_app"])

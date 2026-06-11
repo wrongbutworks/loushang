@@ -84,6 +84,22 @@ table = Table(
 table.focus()
 ```
 
+## P1B Text Controls
+
+| Widget | Use it for |
+| --- | --- |
+| `TextArea` | Multi-line form text with deterministic cursor and viewport behavior. |
+
+`TextArea` preserves newlines, uses plain `enter` for newline insertion, and
+can be embedded in `Form` and `Dialog` through `editor_input_target()`.
+
+```python
+from loushang.tui import TextArea
+
+notes = TextArea(label="Notes", placeholder="Write notes", height=5)
+notes.focus()
+```
+
 ## Forms
 
 ```python
@@ -131,7 +147,7 @@ body focus is active.
 
 ## Theme Tokens
 
-P0A, P0B, P0C, and P1A widgets accept `ThemeResolver` where styling is supported.
+P0A, P0B, P0C, P1A, and P1B widgets accept `ThemeResolver` where styling is supported.
 Initial stable tokens are:
 
 | Token | Applies to |
@@ -180,11 +196,16 @@ Initial stable tokens are:
 | `widget.table.focus` | Focused active table row. |
 | `widget.table.disabled` | Disabled table rows. |
 | `widget.table.empty` | Table empty-state text. |
+| `widget.textArea.label` | `TextArea` label rows. |
+| `widget.textArea.placeholder` | `TextArea` placeholder text. |
+| `widget.textArea.text` | `TextArea` body text. |
+| `widget.textArea.error` | `TextArea` error rows. |
+| `widget.textArea.help` | `TextArea` help rows. |
 
 ## Planned Catalog
 
-`Popover`, `PromptDialog`, `TreeView`, `Toast`, and `TextArea` are planned
-catalog entries. They are not part of the current widget implementation.
+`Popover`, `PromptDialog`, `TreeView`, and `Toast` are planned catalog entries.
+They are not part of the current widget implementation.
 
 ## Example
 
@@ -196,3 +217,5 @@ catalog entries. They are not part of the current widget implementation.
   light menu, tabs, and spinner composition.
 - [examples/tui/46_widgets_table.py](../../../examples/tui/46_widgets_table.py):
   dense table composition with keyboard row selection.
+- [examples/tui/47_widgets_textarea.py](../../../examples/tui/47_widgets_textarea.py):
+  multi-line text entry inside a small form.
