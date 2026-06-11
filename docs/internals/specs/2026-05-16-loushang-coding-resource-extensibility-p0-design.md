@@ -335,7 +335,7 @@ Stabilize configuration slices before the corresponding heavy behaviors land.
 
 ### Current Problem
 
-Today [ControlConfig](/home/dev/workspace/loushang/src/loushang/coding/types.py:12) only carries:
+Today [ControlConfig](/home/dev/workspace/loushang/src/loushang/coding/control/types.py:88) only carries:
 
 - `default_model`
 - `thinking_level`
