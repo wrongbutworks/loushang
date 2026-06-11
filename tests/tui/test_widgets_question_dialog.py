@@ -195,3 +195,90 @@ def test_question_dialog_custom_validator_error_then_success() -> None:
         ("surface_close", "", ""),
     )
     assert "Too short" not in plain_lines(dialog, width=30, height=6)
+
+
+def test_question_dialog_renders_title_question_body_actions_and_cursor_offset() -> None:
+    dialog = QuestionDialog(title="Ask", question="Why?", value="alpha\nbeta", height=3)
+    dialog.focus()
+
+    result = render_result(dialog, width=30, height=7)
+
+    assert tuple(strip_control_sequences(line.text) for line in result.lines) == (
+        "Ask",
+        "Why?",
+        "alpha",
+        "beta",
+        "",
+        "  [Submit]  [Cancel]",
+    )
+    assert result.cursor is not None
+    assert (result.cursor.row, result.cursor.column) == (3, len("beta"))
+
+
+def test_question_dialog_action_row_marks_active_action_without_layout_shift() -> None:
+    dialog = QuestionDialog(title="Ask", value="ok")
+    dialog.focus()
+
+    assert dialog.handle_input(InputEvent(kind="key", key="tab")) is True
+    assert plain_lines(dialog, width=30, height=6)[-1] == "> [Submit]  [Cancel]"
+
+    assert dialog.handle_input(InputEvent(kind="key", key="right")) is True
+    assert plain_lines(dialog, width=30, height=6)[-1] == "  [Submit]  > [Cancel]"
+
+
+def test_question_dialog_respects_width_and_height_constraints() -> None:
+    dialog = QuestionDialog(
+        title="Very long title",
+        question="Very long question",
+        value="Very long answer",
+        help_text="Very long help",
+    )
+    dialog.focus()
+
+    lines = render_lines(dialog, width=8, height=4)
+
+    assert len(lines) <= 4
+    assert_widths_within(lines, 8)
+    assert plain_lines(dialog, width=8, height=1) == ("Very lo",)
+
+
+def test_question_dialog_omits_actions_when_body_needs_final_row() -> None:
+    dialog = QuestionDialog(title="Ask", question="Why?", value="answer", height=3)
+    dialog.focus()
+
+    assert plain_lines(dialog, width=20, height=3) == ("Ask", "Why?", "answer")
+
+
+def test_question_dialog_omits_cursor_when_body_cannot_render() -> None:
+    dialog = QuestionDialog(title="Ask", question="Why?", value="answer")
+    dialog.focus()
+
+    result = render_result(dialog, width=20, height=2)
+
+    assert tuple(strip_control_sequences(line.text) for line in result.lines) == ("Ask", "Why?")
+    assert result.cursor is None
+
+
+def test_question_dialog_themes_title_question_and_action_rows() -> None:
+    theme = ThemeResolver(
+        defaults={
+            "widget.question.title": {"bold": True},
+            "widget.question.text": {"color": "cyan"},
+            "widget.question.action": {"color": "yellow"},
+            "widget.question.focus": {"color": "green"},
+            "widget.textArea.text": {"color": "magenta"},
+        }
+    )
+    dialog = QuestionDialog(title="Ask", question="Why?", value="ok", theme=theme)
+
+    raw = render_lines(dialog, width=30, height=6)
+
+    assert raw[0].startswith("\x1b[1m")
+    assert raw[1].startswith("\x1b[36m")
+    assert raw[2].startswith("\x1b[35m")
+    assert raw[-1].startswith("\x1b[33m")
+
+    dialog.focus()
+    dialog.handle_input(InputEvent(kind="key", key="tab"))
+    focused = render_lines(dialog, width=30, height=6)
+    assert focused[-1].startswith("\x1b[32m")
