@@ -5,7 +5,7 @@ from dataclasses import dataclass, field
 from typing import ClassVar, Literal
 
 from loushang.tui.cell_width import autowrap_safe_width, truncate_to_width
-from loushang.tui.core import RenderConstraints, RenderLine, RenderResult
+from loushang.tui.core import CursorDeclaration, RenderConstraints, RenderLine, RenderResult
 from loushang.tui.keybindings import normalize_key_id
 from loushang.tui.theme import ThemeResolver
 from loushang.tui.ui_parts.widgets._utils import style_text
@@ -120,11 +120,22 @@ class QuestionDialog:
         self._text_area.blur()
 
     def handle_input(self, event: object) -> object:
-        if getattr(event, "kind", "") != "key":
+        kind = getattr(event, "kind", "")
+        if kind == "text" and self._focus_slot == "actions" and getattr(event, "text", "") == " ":
+            return self._activate_action()
+        if kind != "key":
             return self._delegate_body_input(event)
         key = normalize_key_id(getattr(event, "key", ""))
         if key in {"escape", "ctrl+c"}:
             return self._cancel()
+        if key in {"tab", "shift+tab"}:
+            return self._focus_body() if self._focus_slot == "actions" else self._focus_actions()
+        if self._focus_slot == "actions":
+            if key in {"left", "right"}:
+                return self._toggle_action()
+            if key in {"enter", "space"}:
+                return self._activate_action()
+            return None
         return self._delegate_body_input(event)
 
     def editor_input_target(self) -> object | None:
@@ -133,18 +144,58 @@ class QuestionDialog:
         return self._text_area.editor_input_target()
 
     def render(self, constraints: RenderConstraints) -> RenderResult:
+        if constraints.max_height <= 0:
+            return RenderResult.from_lines([], constraints=constraints)
         title = truncate_to_width(self.title, max_width=autowrap_safe_width(constraints.width), ellipsis="")
+        lines = [RenderLine(style_text(title, self.theme, "widget.question.title"))]
+        cursor: CursorDeclaration | None = None
+        remaining = constraints.max_height - len(lines)
+        if remaining > 0:
+            self._sync_text_area_detail()
+            body = self._text_area.render(RenderConstraints(width=constraints.width, max_height=remaining))
+            body_start = len(lines)
+            lines.extend(body.lines[:remaining])
+            if body.cursor is not None:
+                cursor = CursorDeclaration(row=body_start + body.cursor.row, column=body.cursor.column)
         return RenderResult.from_lines(
-            [RenderLine(style_text(title, self.theme, "widget.question.title"))],
+            lines[: constraints.max_height],
             constraints=constraints,
+            cursor=cursor,
         )
 
     def _mark_pending_submit(self, _value: str) -> None:
         self._pending_submit = True
 
+    def _focus_actions(self) -> bool:
+        self._focus_slot = "actions"
+        self._active_action = "submit"
+        self._text_area.blur()
+        return True
+
+    def _focus_body(self) -> bool:
+        self._focus_slot = "body"
+        self._text_area.focus()
+        return True
+
+    def _toggle_action(self) -> bool:
+        self._active_action = "cancel" if self._active_action == "submit" else "submit"
+        return True
+
+    def _activate_action(self) -> object:
+        if self._active_action == "cancel":
+            return self._cancel()
+        return self._submit_current_value()
+
     def _submit_current_value(self) -> object:
         from loushang.tui.input import InputIntent
 
+        error = self._validation_error()
+        if error is not None:
+            self.error = error
+            self._sync_text_area_detail()
+            return True
+        self.error = ""
+        self._sync_text_area_detail()
         submit = InputIntent(kind="question_submit", text=self.value)
         if not self.close_on_submit:
             return submit
@@ -157,6 +208,14 @@ class QuestionDialog:
         if not self.close_on_cancel:
             return cancel
         return (cancel, InputIntent(kind="surface_close"))
+
+    def _validation_error(self) -> str | None:
+        value = self.value
+        if self.required and not value.strip():
+            return self.required_message
+        if self.validator is not None:
+            return self.validator(value)
+        return None
 
     def _sync_text_area_detail(self) -> None:
         self._text_area.error = self.error
