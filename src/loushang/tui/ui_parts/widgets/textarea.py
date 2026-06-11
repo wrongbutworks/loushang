@@ -21,7 +21,10 @@ from loushang.tui.editor_buffer import EditorBuffer
 from loushang.tui.keybindings import KeybindingConfig, KeybindingManager
 from loushang.tui.kill_ring import KillRing
 from loushang.tui.selection_controller import SelectionController
-from loushang.tui.selection_rendering import DEFAULT_SELECTION_STYLE
+from loushang.tui.selection_rendering import (
+    DEFAULT_SELECTION_STYLE,
+    highlight_selection_by_columns,
+)
 from loushang.tui.theme import ThemeResolver, ThemeStyle
 from loushang.tui.ui_parts.widgets._utils import style_text
 
@@ -542,6 +545,14 @@ class TextArea:
                 continue
             raw = "" if span is None else span.text
             visible = slice_by_column(raw, start=self._scroll_column, length=width).text
+            if span is not None:
+                selection = self._line_selection_display_range(span)
+                if selection is not None:
+                    visible = highlight_selection_by_columns(
+                        visible,
+                        selection_range=(selection[0] - self._scroll_column, selection[1] - self._scroll_column),
+                        selection_style=self._selection_style(),
+                    )
             visible = truncate_to_width(visible, max_width=width, ellipsis="")
             rendered.append(RenderLine(style_text(visible, self.theme, "widget.textArea.text")))
         return rendered
@@ -566,6 +577,21 @@ class TextArea:
         elif cursor_column > self._scroll_column + width:
             self._scroll_column = cursor_column - width
         self._scroll_column = max(0, self._scroll_column)
+
+    def _line_selection_display_range(self, span: _LineSpan) -> tuple[int, int] | None:
+        selection = self.selected_range
+        if selection is None:
+            return None
+        start, end = selection
+        overlap_start = max(start, span.start)
+        overlap_end = min(end, span.end)
+        if overlap_start >= overlap_end:
+            return None
+        display_start = visible_width(self._range_text(span.start, overlap_start))
+        display_end = visible_width(self._range_text(span.start, overlap_end))
+        if display_start == display_end:
+            return None
+        return display_start, display_end
 
     def _push_kill(self, text: str, *, prepend: bool) -> None:
         self._kill_ring.push(text, prepend=prepend, accumulate=self._last_action == "kill")

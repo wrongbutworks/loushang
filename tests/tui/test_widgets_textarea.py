@@ -8,6 +8,7 @@ from loushang.tui import (
     InputEvent,
     RenderConstraints,
     TextArea,
+    ThemeResolver,
     strip_control_sequences,
     visible_width,
 )
@@ -175,3 +176,37 @@ def test_text_area_placeholder_does_not_move_cursor() -> None:
     assert plain_lines(area, width=20, height=3) == ("Type notes", "", "")
     assert result.cursor is not None
     assert (result.cursor.row, result.cursor.column) == (0, 0)
+
+
+def test_text_area_scrolls_vertically_to_keep_cursor_visible() -> None:
+    area = TextArea(value="one\ntwo\nthree\nfour", height=2)
+
+    result = render_result(area, width=20, height=2)
+
+    assert plain_lines(area, width=20, height=2) == ("three", "four")
+    assert result.cursor is not None
+    assert (result.cursor.row, result.cursor.column) == (1, len("four"))
+
+
+def test_text_area_scrolls_horizontally_across_visible_body_rows() -> None:
+    area = TextArea(value="abcdef\n123456", height=2)
+
+    result = render_result(area, width=4, height=2)
+
+    assert plain_lines(area, width=4, height=2) == ("def", "456")
+    assert result.cursor is not None
+    assert (result.cursor.row, result.cursor.column) == (1, 3)
+
+
+def test_text_area_selection_highlight_uses_editor_selection_theme_token() -> None:
+    area = TextArea(
+        value="ab\ncd",
+        theme=ThemeResolver(defaults={"editor.selection": {"color": "cyan", "bold": True}}),
+    )
+    target = area.editor_input_target()
+    target.select_char_left()
+
+    raw = render_lines(area, width=20, height=3)[1]
+
+    assert strip_control_sequences(raw) == "cd"
+    assert "\x1b[1;36md\x1b[22;39m" in raw
