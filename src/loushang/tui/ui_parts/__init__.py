@@ -51,6 +51,9 @@ from .widgets import TableRow as TableRow
 from .widgets import Tabs as Tabs
 from .widgets import TextArea as TextArea
 from .widgets import TextField as TextField
+from .widgets import Toast as Toast
+from .widgets import ToastKind as ToastKind
+from .widgets import ToastStack as ToastStack
 from .widgets import Toggle as Toggle
 from .widgets import Toolbar as Toolbar
 from .widgets import ToolbarAction as ToolbarAction
@@ -111,6 +114,9 @@ __all__ = [
     "Toggle",
     "Toolbar",
     "ToolbarAction",
+    "Toast",
+    "ToastKind",
+    "ToastStack",
     "TreeNode",
     "TreeView",
     "WorkingLine",

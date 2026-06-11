@@ -33,6 +33,9 @@ from .table import TableRow as TableRow
 from .tabs import TabItem as TabItem
 from .tabs import Tabs as Tabs
 from .textarea import TextArea as TextArea
+from .toast import Toast as Toast
+from .toast import ToastKind as ToastKind
+from .toast import ToastStack as ToastStack
 from .toolbar import Toolbar as Toolbar
 from .toolbar import ToolbarAction as ToolbarAction
 from .tree import TreeNode as TreeNode
@@ -74,6 +77,9 @@ __all__ = [
     "Toggle",
     "Toolbar",
     "ToolbarAction",
+    "Toast",
+    "ToastKind",
+    "ToastStack",
     "TreeNode",
     "TreeView",
 ]
