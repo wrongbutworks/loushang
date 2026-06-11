@@ -18,6 +18,7 @@ from loushang.tui import (
     SelectList,
     Surface,
     SurfaceHost,
+    TextArea,
     TextField,
     ThemeResolver,
     Toggle,
@@ -115,6 +116,7 @@ def p0a_constraint_cases() -> list[object]:
         Toggle("Very long label", focused=True),
         RadioGroup([Choice("a", "Very long label")], value="a", focused=True),
         TextField(label="Very long label", value="Very long value", help_text="Very long help"),
+        TextArea(label="Very long label", value="Very long value\nNext", help_text="Very long help"),
         SelectList([SelectItem("Very long label")], max_visible=1),
         Form([FormRow("name", TextField(label="Very long label", value="Very long value"))]),
         Dialog(title="Very long dialog title", body="Very long dialog body"),
@@ -153,6 +155,27 @@ def test_text_field_themes_label_help_and_error_with_error_precedence() -> None:
     assert raw[2].startswith("\x1b[31m")
     assert tuple(strip_control_sequences(line) for line in raw) == ("Name", "tower", "Required")
     assert all(visible_width(line) <= 24 for line in raw)
+
+
+def test_text_area_themes_label_body_placeholder_help_and_error() -> None:
+    theme = ThemeResolver(
+        defaults={
+            "widget.textArea.label": {"color": "cyan"},
+            "widget.textArea.text": {"color": "green"},
+            "widget.textArea.placeholder": {"dim": True},
+            "widget.textArea.help": {"color": "yellow"},
+            "widget.textArea.error": {"color": "red"},
+        }
+    )
+    area = TextArea(label="Notes", value="", placeholder="Type", help_text="Helpful", error="Required", theme=theme)
+
+    raw = render_lines(area, width=20, height=4)
+
+    assert raw[0].startswith("\x1b[36m")
+    assert raw[1].startswith("\x1b[2m")
+    assert raw[-1].startswith("\x1b[31m")
+    assert tuple(strip_control_sequences(line) for line in raw) == ("Notes", "Type", "", "Required")
+    assert all(visible_width(line) <= 20 for line in raw)
 
 
 def test_text_field_cursor_row_stays_on_input_when_height_truncates_detail() -> None:

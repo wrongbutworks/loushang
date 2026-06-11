@@ -48,6 +48,7 @@ from .widgets import TableAlign as TableAlign
 from .widgets import TableColumn as TableColumn
 from .widgets import TableRow as TableRow
 from .widgets import Tabs as Tabs
+from .widgets import TextArea as TextArea
 from .widgets import TextField as TextField
 from .widgets import Toggle as Toggle
 from .widgets import Toolbar as Toolbar
@@ -100,6 +101,7 @@ __all__ = [
     "TableRow",
     "TabItem",
     "Tabs",
+    "TextArea",
     "TextField",
     "TextInput",
     "Toggle",
