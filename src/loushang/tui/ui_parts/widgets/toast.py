@@ -5,8 +5,10 @@ from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field, replace
 from typing import Literal
 
-from loushang.tui.core import RenderConstraints, RenderResult
+from loushang.tui.cell_width import autowrap_safe_width, truncate_to_width
+from loushang.tui.core import RenderConstraints, RenderLine, RenderResult
 from loushang.tui.theme import ThemeResolver
+from loushang.tui.ui_parts.widgets._utils import style_text
 
 ToastKind = Literal["info", "success", "warning", "danger"]
 _NowMs = Callable[[], int]
@@ -17,6 +19,10 @@ __all__ = ["Toast", "ToastKind", "ToastStack"]
 
 def _monotonic_ms() -> int:
     return int(time.monotonic() * 1000)
+
+
+def _single_line_text(text: str) -> str:
+    return text.replace("\r\n", " ").replace("\r", " ").replace("\n", " ")
 
 
 @dataclass(frozen=True, slots=True)
@@ -143,5 +149,32 @@ class ToastStack:
     def clear(self) -> None:
         self.toasts = ()
 
+    def _toast_line(self, toast: Toast, target_width: int) -> str:
+        prefix = style_text(f"[{toast.kind}]", self.theme, f"widget.toast.{toast.kind}")
+        title = style_text(_single_line_text(toast.title), self.theme, "widget.toast.title") if toast.title else ""
+        message = (
+            style_text(_single_line_text(toast.message), self.theme, "widget.toast.message")
+            if toast.message
+            else ""
+        )
+        if title and message:
+            line = f"{prefix} {title}: {message}"
+        elif title:
+            line = f"{prefix} {title}"
+        elif message:
+            line = f"{prefix} {message}"
+        else:
+            line = prefix
+        return truncate_to_width(line, max_width=target_width, ellipsis="")
+
     def render(self, constraints: RenderConstraints) -> RenderResult:
-        return RenderResult.from_lines([], constraints=constraints)
+        target_width = autowrap_safe_width(constraints.width)
+        height = max(0, constraints.max_height)
+        if height == 0:
+            return RenderResult.from_lines([], constraints=constraints)
+        visible = self._visible_toasts_at(self.now_ms())
+        if not visible:
+            empty_count = min(self.empty_height, height)
+            return RenderResult.from_lines([RenderLine("") for _ in range(empty_count)], constraints=constraints)
+        lines = [RenderLine(self._toast_line(toast, target_width)) for toast in visible[:height]]
+        return RenderResult.from_lines(lines, constraints=constraints)

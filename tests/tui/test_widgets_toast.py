@@ -66,6 +66,24 @@ def test_toast_stack_renders_title_message_and_empty_message_rows() -> None:
     )
 
 
+def test_toast_stack_normalizes_newlines_to_single_render_line() -> None:
+    stack = ToastStack(
+        (
+            Toast(
+                "Saved\nagain",
+                title="Config\rName",
+                kind="success",
+                value="save",
+                duration_ms=None,
+            ),
+        ),
+        newest_on_top=False,
+    )
+
+    assert plain_lines(stack, width=80, height=1) == ("[success] Config Name: Saved again",)
+    assert len(render_lines(stack, width=80, height=1)) == 1
+
+
 def test_toast_stack_respects_width_height_and_empty_height() -> None:
     empty = ToastStack(empty_height=1)
     assert plain_lines(empty, width=10, height=3) == ("",)
