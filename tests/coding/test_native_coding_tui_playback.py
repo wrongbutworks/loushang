@@ -446,6 +446,39 @@ def test_native_tui_playback_smokes_terminal_context_model_selector_and_resize()
     assert steps[-1].diagnostics.operation_class == "resize_repaint"
 
 
+def test_native_tui_model_selector_ignores_key_release_events() -> None:
+    session = _Session(
+        models=(
+            ModelSelection(provider="moonshot", model_id="kimi-for-coding"),
+            ModelSelection(provider="openai", model_id="gpt-5.4"),
+            ModelSelection(provider="anthropic", model_id="claude-sonnet"),
+        )
+    )
+    app = _app()
+    playback = _NativeInteractivePlayback(
+        app,
+        _manager(app, session),
+        columns=100,
+        rows=18,
+    )
+
+    steps = playback.play(
+        [
+            PlaybackEvent.input("/model\r"),
+            # Down press followed by a release event from an enhanced keyboard protocol.
+            PlaybackEvent.input("\x1b[1;1B\x1b[1;1:3B"),
+            PlaybackEvent.input("\r"),
+        ]
+    )
+
+    assert all(step.flush_succeeded for step in steps)
+    assert session.current_model == ModelSelection(provider="openai", model_id="gpt-5.4")
+    assert app.state.model_label == "openai/gpt-5.4"
+    lines = _plain_lines(steps[-1].diagnostics)
+    assert "Model set: openai/gpt-5.4" in lines[-1]
+    assert not any("claude-sonnet" in line for line in lines)
+
+
 def test_native_loop_filters_terminal_control_responses_before_routing() -> None:
     events = _input_events_for_chunk(InputReader(), "\x1b[?7uhello")
 
@@ -651,9 +684,18 @@ class _PlaybackTerminalContext:
 
 
 class _Session:
-    def __init__(self, *, cwd: Path | None = None) -> None:
+    def __init__(
+        self,
+        *,
+        cwd: Path | None = None,
+        models: tuple[ModelSelection, ...] | None = None,
+    ) -> None:
         self.session_manager = SimpleNamespace(get_cwd=lambda: str(cwd)) if cwd is not None else None
         self.current_model = ModelSelection(provider="moonshot", model_id="kimi-for-coding")
+        self.models = models or (
+            ModelSelection(provider="moonshot", model_id="kimi-for-coding"),
+            ModelSelection(provider="openai", model_id="gpt-5.4"),
+        )
 
     def list_commands(self) -> list[object]:
         return [
@@ -667,10 +709,7 @@ class _Session:
         return self.current_model
 
     def get_available_models(self) -> list[object]:
-        return [
-            ModelSelection(provider="moonshot", model_id="kimi-for-coding"),
-            ModelSelection(provider="openai", model_id="gpt-5.4"),
-        ]
+        return list(self.models)
 
     async def set_model(self, selection: object) -> None:
         self.current_model = selection

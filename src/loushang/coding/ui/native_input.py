@@ -72,6 +72,8 @@ class NativeInputRouter:
         self._composer_target = ComposerInputTarget(self.app.composer)
 
     def handle(self, event: InputEvent) -> NativeInputResult:
+        if event.kind == "key" and event.event_type == "release":
+            return NativeInputResult(render_requested=False)
         if self._runtime_surface_active():
             return self._route_runtime_surface(event)
         if self.app.active_surface is not None:
@@ -93,7 +95,7 @@ class NativeInputRouter:
             if event.rows:
                 self.height = event.rows
             return NativeInputResult()
-        if event.kind != "key" or event.event_type == "release":
+        if event.kind != "key":
             return NativeInputResult(render_requested=False)
 
         keybindings = self._keybindings()
