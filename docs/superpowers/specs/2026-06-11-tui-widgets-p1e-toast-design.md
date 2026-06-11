@@ -145,7 +145,7 @@ can still pass explicit timestamps such as `created_at_ms=0`.
 ## Expiration And Visibility
 
 Expiration is computed only when callers ask for it through `visible_toasts()`,
-`prune_expired()`, or `render()`.
+`prune_expired()`, `dismiss_oldest()`, or `render()`.
 
 Each expiration-sensitive operation must sample `now_ms()` exactly once and use
 that sampled value for the full operation. This keeps boundary behavior stable
@@ -295,13 +295,15 @@ Focused tests should cover:
 - duplicate explicit value rejection;
 - invalid kind and negative duration rejection;
 - `push(Toast(...), **overrides)` replacement semantics;
-- single-sample `now_ms()` behavior for visibility, pruning, and render;
+- single-sample `now_ms()` behavior for visibility, pruning,
+  `dismiss_oldest()`, and render;
 - `visible_toasts()` expiration filtering without mutation;
 - `prune_expired()` mutation and return count;
 - `duration_ms=None` persistence;
 - expiration boundary at `created_at_ms + duration_ms`;
 - `max_visible` and `newest_on_top` ordering;
 - `dismiss(value)`, `dismiss_oldest()`, non-dismissible behavior, and `clear()`;
+- `dismiss_oldest()` skipping expired toasts without pruning them;
 - deterministic rendering for title/no-title rows;
 - empty stack rendering with `empty_height=0` and `empty_height=1`;
 - width and height constraints, including very narrow widths;
