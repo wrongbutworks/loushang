@@ -6,7 +6,11 @@ from dataclasses import dataclass, field
 from loushang.tui.cell_width import autowrap_safe_width, truncate_to_width
 from loushang.tui.core import RenderConstraints, RenderLine, RenderResult
 from loushang.tui.theme import ThemeResolver
-from loushang.tui.ui_parts.widgets._utils import callback_result, is_activation_event, style_text
+from loushang.tui.ui_parts.widgets._utils import (
+    callback_result,
+    is_activation_event,
+    style_text,
+)
 
 __all__ = ["TreeNode", "TreeView"]
 
