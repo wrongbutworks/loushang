@@ -11,6 +11,7 @@ if TYPE_CHECKING:
 class ModelSelection:
     provider: str
     model_id: str
+    endpoint_id: str | None = None
 
 
 def __getattr__(name: str):

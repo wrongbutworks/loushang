@@ -1451,6 +1451,15 @@ class ExtensionRunner:
             ],
         }
 
+    def list_extensions(self) -> list[dict[str, object]]:
+        return [
+            _extension_visibility_snapshot(extension, diagnostics=self._diagnostics)
+            for extension in self._extensions
+        ]
+
+    def listExtensions(self) -> list[dict[str, object]]:
+        return self.list_extensions()
+
     def discover_resources(self, bundle: ResourceBundle, *, reason: str = "refresh") -> ResourceBundle:
         del reason
         merged = bundle
@@ -2269,6 +2278,150 @@ def _normalize_provider_response_headers(headers: object) -> dict[str, str]:
     for key, value in items:
         normalized[str(key)] = str(value)
     return normalized
+
+
+def _extension_visibility_snapshot(
+    extension: LoadedExtension,
+    *,
+    diagnostics: list[ResourceDiagnostic],
+) -> dict[str, object]:
+    manifest = extension.manifest
+    policy = extension.policy
+    source_info = _source_info_from_extension(extension)
+    extension_id = manifest.id if manifest is not None else extension.name
+    extension_name = manifest.name if manifest is not None else extension.name
+    manifest_path = _extension_manifest_path(extension)
+    return {
+        "id": extension_id,
+        "name": extension_name,
+        "runtimeName": extension.name,
+        "version": manifest.version if manifest is not None else None,
+        "description": manifest.description if manifest is not None else None,
+        "sourcePath": source_info.path.as_posix(),
+        "manifestPath": manifest_path.as_posix() if manifest_path is not None else None,
+        "enabled": policy.enabled if policy is not None else True,
+        "permissionLevel": (
+            policy.permission_level
+            if policy is not None
+            else manifest.permissions.level
+            if manifest is not None
+            else "safe"
+        ),
+        "capabilities": list(
+            policy.capabilities
+            if policy is not None
+            else manifest.permissions.capabilities
+            if manifest is not None
+            else ()
+        ),
+        "contributions": [
+            _serialize_contribution(contribution)
+            for contribution in extension.contributions
+        ],
+        "diagnostics": [
+            _serialize_diagnostic(diagnostic)
+            for diagnostic in _extension_visibility_diagnostics(
+                extension,
+                diagnostics=diagnostics,
+                manifest_path=manifest_path,
+            )
+        ],
+    }
+
+
+def _serialize_contribution(contribution: object) -> dict[str, object]:
+    metadata = getattr(contribution, "metadata", {})
+    source = metadata.get("source") if isinstance(metadata, dict) else None
+    return {
+        "type": str(getattr(contribution, "type", "")),
+        "name": str(getattr(contribution, "name", "")),
+        "active": bool(getattr(contribution, "active", True)),
+        "priority": int(getattr(contribution, "priority", 0)),
+        "source": source if isinstance(source, str) else "",
+        "sourcePath": _path_text(getattr(contribution, "source_path", None)),
+        "diagnostics": [
+            _serialize_diagnostic(diagnostic)
+            for diagnostic in getattr(contribution, "diagnostics", ())
+            if isinstance(diagnostic, ResourceDiagnostic)
+        ],
+    }
+
+
+def _extension_visibility_diagnostics(
+    extension: LoadedExtension,
+    *,
+    diagnostics: list[ResourceDiagnostic],
+    manifest_path: Path | None,
+) -> list[ResourceDiagnostic]:
+    source_paths = {
+        path
+        for path in (
+            extension.source_path,
+            extension.entry_path,
+            manifest_path,
+            *_extension_manifest_candidate_paths(extension),
+        )
+        if path is not None
+    }
+    result: list[ResourceDiagnostic] = []
+    seen: set[tuple[str, str, str | None]] = set()
+    for diagnostic in extension.diagnostics:
+        result, seen = _append_extension_diagnostic(result, seen, diagnostic)
+    for diagnostic in diagnostics:
+        if diagnostic.source_path is None or diagnostic.source_path not in source_paths:
+            continue
+        result, seen = _append_extension_diagnostic(result, seen, diagnostic)
+    return result
+
+
+def _append_extension_diagnostic(
+    result: list[ResourceDiagnostic],
+    seen: set[tuple[str, str, str | None]],
+    diagnostic: ResourceDiagnostic,
+) -> tuple[list[ResourceDiagnostic], set[tuple[str, str, str | None]]]:
+    key = (
+        diagnostic.code,
+        diagnostic.message,
+        diagnostic.source_path.as_posix() if diagnostic.source_path is not None else None,
+    )
+    if key not in seen:
+        seen.add(key)
+        result.append(diagnostic)
+    return result, seen
+
+
+def _serialize_diagnostic(diagnostic: ResourceDiagnostic) -> dict[str, object]:
+    return {
+        "code": diagnostic.code,
+        "message": diagnostic.message,
+        "sourcePath": diagnostic.source_path.as_posix() if diagnostic.source_path is not None else None,
+        "resourceId": diagnostic.resource_id,
+        "resourceType": diagnostic.resource_type,
+        "sourceKind": diagnostic.source_kind,
+        "metadata": dict(diagnostic.metadata),
+    }
+
+
+def _extension_manifest_path(extension: LoadedExtension) -> Path | None:
+    for candidate in _extension_manifest_candidate_paths(extension):
+        if candidate.is_file():
+            return candidate
+    return None
+
+
+def _extension_manifest_candidate_paths(extension: LoadedExtension) -> tuple[Path, ...]:
+    candidates: list[Path] = []
+    if extension.source_path.suffix:
+        candidates.append(extension.source_path.with_name("loushang-extension.toml"))
+    else:
+        candidates.append(extension.source_path / "loushang-extension.toml")
+    if extension.entry_path is not None:
+        candidates.append(extension.entry_path.parent / "loushang-extension.toml")
+    return tuple(dict.fromkeys(candidates))
+
+
+def _path_text(value: object) -> str:
+    return value.as_posix() if isinstance(value, Path) else str(value or "")
 
 
 def _source_info_from_extension(extension: LoadedExtension) -> SourceInfo:

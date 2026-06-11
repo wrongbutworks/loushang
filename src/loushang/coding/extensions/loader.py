@@ -9,6 +9,9 @@ from dataclasses import replace
 from pathlib import Path
 
 from loushang.coding.extensions.api import ExtensionAPI
+from loushang.coding.extensions.contributions import contributions_from_loaded_extension
+from loushang.coding.extensions.manifest import parse_extension_manifest
+from loushang.coding.extensions.policy import policy_from_manifest
 from loushang.coding.extensions.types import LoadedExtension
 from loushang.coding.loader import ExtensionDescriptor, ResourceDiagnostic
 from loushang.coding.tools import ToolDefinition
@@ -31,16 +34,22 @@ class ExtensionLoader:
         return loaded_extensions
 
     def load_extension(self, descriptor: ExtensionDescriptor) -> LoadedExtension | None:
+        manifest, manifest_diagnostics = _load_descriptor_manifest(descriptor)
+        self._diagnostics.extend(manifest_diagnostics)
         metadata = descriptor.metadata if isinstance(descriptor.metadata, Mapping) else {}
         if "extension" in metadata:
             try:
-                return _with_descriptor_source_info(
-                    _adapt_legacy_extension_object(
-                        descriptor=descriptor,
-                        entry_path=descriptor.entry_path or descriptor.source_path,
-                        extension_object=metadata["extension"],
+                return _finalize_loaded_extension(
+                    _with_descriptor_source_info(
+                        _adapt_legacy_extension_object(
+                            descriptor=descriptor,
+                            entry_path=descriptor.entry_path or descriptor.source_path,
+                            extension_object=metadata["extension"],
+                        ),
+                        descriptor,
                     ),
-                    descriptor,
+                    manifest=manifest,
+                    enabled=descriptor.enabled,
                 )
             except Exception as exc:
                 self._diagnostics.append(
@@ -90,7 +99,11 @@ class ExtensionLoader:
                 )
                 return None
             if loaded is not None:
-                return _with_descriptor_source_info(loaded, descriptor)
+                return _finalize_loaded_extension(
+                    _with_descriptor_source_info(loaded, descriptor),
+                    manifest=manifest,
+                    enabled=descriptor.enabled,
+                )
             return None
 
         builder = getattr(module, "build_extension", None)
@@ -116,13 +129,17 @@ class ExtensionLoader:
                 )
                 return None
             try:
-                return _with_descriptor_source_info(
-                    _adapt_legacy_extension_object(
-                        descriptor=descriptor,
-                        entry_path=entry_path,
-                        extension_object=extension_object,
+                return _finalize_loaded_extension(
+                    _with_descriptor_source_info(
+                        _adapt_legacy_extension_object(
+                            descriptor=descriptor,
+                            entry_path=entry_path,
+                            extension_object=extension_object,
+                        ),
+                        descriptor,
                     ),
-                    descriptor,
+                    manifest=manifest,
+                    enabled=descriptor.enabled,
                 )
             except Exception as exc:
                 self._diagnostics.append(
@@ -136,13 +153,17 @@ class ExtensionLoader:
 
         if hasattr(module, "EXTENSION"):
             try:
-                return _with_descriptor_source_info(
-                    _adapt_legacy_extension_object(
-                        descriptor=descriptor,
-                        entry_path=entry_path,
-                        extension_object=getattr(module, "EXTENSION"),
+                return _finalize_loaded_extension(
+                    _with_descriptor_source_info(
+                        _adapt_legacy_extension_object(
+                            descriptor=descriptor,
+                            entry_path=entry_path,
+                            extension_object=getattr(module, "EXTENSION"),
+                        ),
+                        descriptor,
                     ),
-                    descriptor,
+                    manifest=manifest,
+                    enabled=descriptor.enabled,
                 )
             except Exception as exc:
                 self._diagnostics.append(
@@ -179,6 +200,42 @@ def _with_descriptor_source_info(loaded: LoadedExtension, descriptor: ExtensionD
         source_scope=descriptor.source_scope,
         source_root=descriptor.source_root,
     )
+
+
+def _finalize_loaded_extension(
+    loaded: LoadedExtension,
+    *,
+    manifest,
+    enabled: bool,
+) -> LoadedExtension:
+    with_policy = replace(
+        loaded,
+        manifest=manifest,
+        policy=policy_from_manifest(manifest, enabled=enabled),
+    )
+    return replace(with_policy, contributions=list(contributions_from_loaded_extension(with_policy)))
+
+
+def _load_descriptor_manifest(descriptor: ExtensionDescriptor):
+    manifest_path = _descriptor_manifest_path(descriptor)
+    if manifest_path is None:
+        return None, []
+    result = parse_extension_manifest(manifest_path)
+    return result.manifest, result.diagnostics
+
+
+def _descriptor_manifest_path(descriptor: ExtensionDescriptor) -> Path | None:
+    candidates: list[Path] = []
+    if descriptor.source_path.is_dir():
+        candidates.append(descriptor.source_path / "loushang-extension.toml")
+    if descriptor.entry_path is not None:
+        candidates.append(descriptor.entry_path.parent / "loushang-extension.toml")
+    if descriptor.source_path.is_file():
+        candidates.append(descriptor.source_path.with_name("loushang-extension.toml"))
+    for candidate in candidates:
+        if candidate.is_file():
+            return candidate
+    return None
 
 
 def _adapt_legacy_extension_object(

@@ -4,11 +4,11 @@ from collections.abc import Iterable
 from collections.abc import Mapping as MappingABC
 from pathlib import Path
 
-from loushang.coding.frontmatter import FrontmatterParseError, parse_frontmatter
-from loushang.coding.loader import DefaultResourceLoader
 from loushang.method.applicability import applicability_from_frontmatter, primary_domain
+from loushang.method.resources import SkillResourceLoader, discover_skill_resources
 from loushang.method.skill_adapter import method_from_skill
 from loushang.method.types import MethodDescriptor
+from loushang.resource.frontmatter import FrontmatterParseError, parse_frontmatter
 
 _METHOD_ELEMENT_TYPES = frozenset({"phase", "activity", "task", "role", "guidance", "workproduct"})
 
@@ -16,17 +16,21 @@ _METHOD_ELEMENT_TYPES = frozenset({"phase", "activity", "task", "role", "guidanc
 class MethodLoader:
     def __init__(
         self,
-        resource_loader: DefaultResourceLoader | None = None,
+        resource_loader: SkillResourceLoader | None = None,
         package_roots: tuple[str | Path, ...] = (),
     ) -> None:
         self._package_roots = tuple(Path(root) for root in package_roots)
-        self._resource_loader = resource_loader or DefaultResourceLoader(package_roots=self._package_roots)
+        self._resource_loader = resource_loader
         self._methods: tuple[MethodDescriptor, ...] = ()
         self._cwd: Path | None = None
 
     def discover_methods(self, cwd: str | Path) -> list[MethodDescriptor]:
         root = Path(cwd)
-        skill_methods = [method_from_skill(skill) for skill in self._resource_loader.discover_resources(root).skills]
+        if self._resource_loader is None:
+            skills = discover_skill_resources(root, package_roots=self._package_roots)
+        else:
+            skills = self._resource_loader.discover_resources(root).skills
+        skill_methods = [method_from_skill(skill) for skill in skills]
         package_method_resources: list[MethodDescriptor] = []
         for index, package_root in enumerate(self._package_roots):
             package_method_resources.extend(

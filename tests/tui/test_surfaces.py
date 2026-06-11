@@ -188,6 +188,18 @@ def test_selection_surface_search_can_use_fuzzy_filtering() -> None:
     assert lines[:3] == ("Search: ms", "", "> Model Selection")
 
 
+def test_selection_surface_consumed_paths_return_true_without_intents() -> None:
+    surface = SelectionSurface(
+        [SelectItem("Alpha"), SelectItem("Model")],
+        enable_search=True,
+        filter_mode="contains",
+    )
+
+    assert surface.handle_input(InputEvent(kind="text", text="mo")) is True
+    assert surface.handle_input(InputEvent(kind="key", key="backspace")) is True
+    assert surface.handle_input(InputEvent(kind="key", key="down")) is True
+
+
 def test_selection_surface_page_navigation_keeps_selected_item_visible() -> None:
     surface = SelectionSurface([SelectItem(f"item-{index}") for index in range(8)], max_visible=3)
 
@@ -264,7 +276,7 @@ def test_selection_surface_mouse_press_selects_visible_row_after_render() -> Non
         )
     )
 
-    assert intent is None
+    assert intent is True
     assert surface.selected_index == 4
     assert surface.handle_input(InputEvent(kind="key", key="enter")) == InputIntent(kind="select", text="item-4")
 
@@ -273,8 +285,8 @@ def test_selection_surface_empty_state_ignores_enter_and_mouse() -> None:
     surface = SelectionSurface([], empty_text="No items")
 
     assert tuple(strip_control_sequences(line) for line in rendered_text(surface, width=20, height=4)) == ("No items",)
-    assert surface.handle_input(InputEvent(kind="key", key="enter")) is None
-    assert surface.handle_input(InputEvent(kind="mouse", mouse_button=0, mouse_row=0, mouse_action="press")) is None
+    assert surface.handle_input(InputEvent(kind="key", key="enter")) is True
+    assert surface.handle_input(InputEvent(kind="mouse", mouse_button=0, mouse_row=0, mouse_action="press")) is True
     assert surface.selected_item() is None
 
 
@@ -395,7 +407,7 @@ def test_settings_surface_can_delegate_value_selection_to_submenu() -> None:
         ],
     )
 
-    assert surface.handle_input(InputEvent(kind="key", key="enter")) is None
+    assert surface.handle_input(InputEvent(kind="key", key="enter")) is True
     assert tuple(strip_control_sequences(line) for line in rendered_text(surface, width=20, height=3)) == ("> GPT",)
     assert surface.handle_input(InputEvent(kind="key", key="enter")) == InputIntent(
         kind="setting",
@@ -434,6 +446,20 @@ def test_settings_surface_search_filters_with_text_and_backspace() -> None:
         "",
         "> Theme  dark",
     )
+
+
+def test_settings_surface_consumed_paths_return_true_without_intents() -> None:
+    surface = SettingsSurface(
+        [
+            SettingItem(id="theme", label="Theme", current_value="dark"),
+            SettingItem(id="model", label="Model", current_value="kimi"),
+        ],
+        enable_search=True,
+    )
+
+    assert surface.handle_input(InputEvent(kind="text", text="mo")) is True
+    assert surface.handle_input(InputEvent(kind="key", key="backspace")) is True
+    assert surface.handle_input(InputEvent(kind="key", key="down")) is True
 
 
 def test_settings_surface_search_uses_fuzzy_matching() -> None:

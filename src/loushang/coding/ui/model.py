@@ -28,9 +28,10 @@ def normalize_model_selection(selection: object | None) -> ModelSelection | None
         return None
     provider = _string_attr(selection, "provider", "provider_id", "providerId")
     model_id = _string_attr(selection, "model_id", "modelId", "id")
+    endpoint_id = _string_attr(selection, "endpoint_id", "endpoint", "endpointId")
     if provider is None or model_id is None:
         return None
-    return ModelSelection(provider=provider, model_id=model_id)
+    return ModelSelection(provider=provider, model_id=model_id, endpoint_id=endpoint_id)
 
 
 def is_usable_model_selection(selection: object | None) -> bool:
@@ -82,7 +83,7 @@ async def iter_available_model_selections(session: Any) -> list[ModelSelection]:
         selection = normalize_model_selection(raw_model)
         if selection is None or not is_usable_model_selection(selection):
             continue
-        key = (selection.provider, selection.model_id)
+        key = (selection.provider, selection.endpoint_id or "", selection.model_id)
         if key in seen:
             continue
         seen.add(key)
@@ -101,7 +102,7 @@ async def iter_scoped_model_selections(session: Any) -> list[ModelSelection]:
         selection = normalize_model_selection(scoped_model)
         if selection is None or not is_usable_model_selection(selection):
             continue
-        key = (selection.provider, selection.model_id)
+        key = (selection.provider, selection.endpoint_id or "", selection.model_id)
         if key in seen:
             continue
         seen.add(key)

@@ -51,6 +51,26 @@ class FocusTarget(FocusableMixin):
         return f"{self.name}:{event}"
 
 
+class ReturningFocusTarget(FocusableMixin):
+    def __init__(self, result: Any) -> None:
+        super().__init__()
+        self.result = result
+        self.events: list[Any] = []
+
+    def handle_input(self, event: Any) -> Any:
+        self.events.append(event)
+        return self.result
+
+
+class EditorProviderFocusTarget(FocusTarget):
+    def __init__(self, name: str, target: object | None) -> None:
+        super().__init__(name)
+        self.target = target
+
+    def editor_input_target(self) -> object | None:
+        return self.target
+
+
 @dataclass
 class BaselineResetRenderable(TextRenderable):
     reset_reason: str | None = None
@@ -150,6 +170,70 @@ def test_surface_host_routes_close_intent_and_restores_base_focus() -> None:
     assert command.focused is False
     assert composer.focused is True
     assert handle.entry.close_reason == "surface_close"
+
+
+def test_surface_host_route_input_result_preserves_consumption_without_changing_route_input() -> None:
+    cases: tuple[tuple[Any, tuple[Any, ...], bool], ...] = (
+        (None, (), False),
+        (False, (), False),
+        (True, (), True),
+        ("handled", ("handled",), True),
+        (("handled",), ("handled",), True),
+    )
+    for result, expected_intents, expected_consumed in cases:
+        target = ReturningFocusTarget(result)
+        host = SurfaceHost()
+        host.open_surface(Surface(renderable=TextRenderable(("surface",), []), focus_target=target))
+
+        routed = host.route_input_result("x")
+
+        assert routed.intents == expected_intents
+        assert routed.consumed is expected_consumed
+        assert host.route_input("x") == expected_intents
+
+
+def test_surface_host_route_input_result_closes_on_close_intent() -> None:
+    target = ReturningFocusTarget(InputIntent(kind="surface_close"))
+    host = SurfaceHost()
+    handle = host.open_surface(Surface(renderable=TextRenderable(("surface",), []), focus_target=target))
+
+    routed = host.route_input_result(InputEvent(kind="key", key="escape"))
+
+    assert routed.intents == (InputIntent(kind="surface_close"),)
+    assert routed.consumed is True
+    assert host.entries == []
+    assert handle.entry.close_reason == "surface_close"
+
+
+def test_surface_host_returns_current_visible_surface_editor_target() -> None:
+    editor_target = object()
+    focus = EditorProviderFocusTarget("editor", editor_target)
+    host = SurfaceHost()
+    host.open_surface(Surface(renderable=TextRenderable(("editor",), []), focus_target=focus))
+
+    assert host.current_editor_target() is editor_target
+
+
+def test_surface_host_ignores_base_hidden_and_closed_editor_targets() -> None:
+    base_target = object()
+    base = EditorProviderFocusTarget("base", base_target)
+    base.focus()
+    focus = EditorProviderFocusTarget("editor", object())
+    host = SurfaceHost(base_focus=base)
+
+    assert host.current_editor_target() is None
+
+    handle = host.open_surface(Surface(renderable=TextRenderable(("editor",), []), focus_target=focus))
+    assert host.current_editor_target() is focus.target
+
+    handle.set_hidden(True)
+    assert host.current_editor_target() is None
+
+    handle.set_hidden(False)
+    assert host.current_editor_target() is focus.target
+
+    handle.close("done")
+    assert host.current_editor_target() is None
 
 
 def test_surface_host_translates_overlay_mouse_coordinates_to_focus_target() -> None:

@@ -20,6 +20,10 @@ class ModelChoice:
     value: str
     selection: object
     endpoint_id: str = ""
+    region: str = ""
+    lane: str = ""
+    api: str = ""
+    preferred_endpoint: bool = False
     description: str = ""
 
 
@@ -104,6 +108,11 @@ async def select_available_model(session: Any, *, query: str = "", choose: Model
 async def available_model_choices(session: Any) -> list[ModelChoice]:
     current_identity = await _current_model_identity(session)
     detail_choices = _model_choices_from_details(await _available_model_details(session))
+    current_detail_value = _selected_current_choice_value(detail_choices, current_identity)
+    detail_choices = _dedupe_preferred_detail_choices(
+        detail_choices,
+        current_value=current_detail_value,
+    )
     selection_choices = [
         ModelChoice(label=label, value=label, selection=selection)
         for selection in await iter_available_model_selections(session)
@@ -239,10 +248,46 @@ def _model_choices_from_details(details: list[object]) -> list[ModelChoice]:
                 value=value,
                 selection=detail,
                 endpoint_id=endpoint_id or "",
+                region=_string_attr(detail, "region") or "",
+                lane=_string_attr(detail, "lane") or "",
+                api=_string_attr(detail, "api") or "",
+                preferred_endpoint=_bool_attr(
+                    detail,
+                    "preferred_endpoint",
+                    "preferredEndpoint",
+                    "preferred",
+                ),
                 description=_model_detail_description(detail),
             )
         )
     return choices
+
+
+def _dedupe_preferred_detail_choices(
+    choices: list[ModelChoice],
+    *,
+    current_value: str | None,
+) -> list[ModelChoice]:
+    by_label: dict[str, list[ModelChoice]] = {}
+    for choice in choices:
+        by_label.setdefault(choice.label, []).append(choice)
+
+    result: list[ModelChoice] = []
+    for choice in choices:
+        group = by_label[choice.label]
+        if len(group) == 1:
+            result.append(choice)
+            continue
+        preferred = [item for item in group if item.preferred_endpoint]
+        if len(preferred) != 1:
+            result.append(choice)
+            continue
+        keep_values = {preferred[0].value}
+        if current_value in {item.value for item in group}:
+            keep_values.add(str(current_value))
+        if choice.value in keep_values:
+            result.append(choice)
+    return result
 
 
 def _model_choice_value(
@@ -255,6 +300,14 @@ def _model_choice_value(
     if provider and endpoint_id and model_id:
         return f"{provider}:{endpoint_id}:{model_id}"
     return fallback
+
+
+def _bool_attr(value: object, *names: str) -> bool:
+    for name in names:
+        attr = getattr(value, name, None)
+        if isinstance(attr, bool):
+            return attr
+    return False
 
 
 def _choice_matches_text(choice: ModelChoice, needle: str) -> bool:
@@ -272,6 +325,12 @@ def _choice_description(choice: ModelChoice, *, current_value: str | None) -> st
         parts.append("current")
     if choice.endpoint_id:
         parts.append(f"endpoint: {choice.endpoint_id}")
+    if choice.region:
+        parts.append(f"region: {choice.region}")
+    if choice.lane:
+        parts.append(f"lane: {choice.lane}")
+    if choice.api:
+        parts.append(f"protocol: {choice.api}")
     if choice.description:
         parts.append(choice.description)
     return " - ".join(parts)

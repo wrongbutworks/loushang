@@ -193,6 +193,24 @@ prompt-toolkit/Rich 设计只保留在 TUI history 文档中。
 - 不要求逐字 API 兼容
 - 更强调语义兼容与 Python 化实现
 
+### 10. `coding` 是产品线，不是通用 agent/work/method 层
+
+`loushang-coding` 与 future `loushang.research`、`loushang.ppt`、
+`loushang.cowork` 是并列产品线。`cowork` 在这里表示一个 future product
+vertical，不是 `work` 的协作语义层名称。
+
+因此：
+
+- `coding` 可以直接使用 `loushang.agent.harness` 执行普通 headless agent run
+  （该 harness 引入后）
+- `coding` 可以直接写入或投影到 `loushang.work`
+- `method` 是结构化 / guided work 的可选组织层，不是所有 coding turn 的必经层
+- `coding` 不应把自己的 tools、slash commands、AGENTS.md prompt assembly、TUI
+  adapter、package/plugin/extension policy 上提到 `agent`
+
+详见
+[Agent Harness and Product Adapter Boundaries](../agent/ARD-001-agent-harness-and-product-adapters.md)。
+
 ## Rationale
 
 本次决定采用“先稳住产品骨架，再后置跨边界协议层”的策略，理由是：

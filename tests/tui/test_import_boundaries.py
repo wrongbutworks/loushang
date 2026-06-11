@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import importlib
 import os
 import subprocess
 import sys
@@ -9,23 +8,55 @@ from pathlib import Path
 
 
 def test_import_loushang_tui_does_not_import_legacy_rendering_libraries() -> None:
-    _drop_modules_with_prefix("loushang.tui")
-    for module_name in ("prompt_toolkit", "rich", "pygments"):
-        sys.modules.pop(module_name, None)
+    _assert_loushang_tui_import_boundary_in_subprocess()
 
-    tui_module = importlib.import_module("loushang.tui")
 
-    assert "prompt_toolkit" not in sys.modules
-    assert "rich" not in sys.modules
-    assert "pygments" not in sys.modules
-    assert tui_module.MarkdownRenderer.__module__ == "loushang.tui.markdown.renderer"
+def test_import_boundary_check_does_not_replace_loaded_tui_classes() -> None:
+    import loushang.coding.ui.command_list as command_list
+    import loushang.coding.ui.renderer as renderer
+    from loushang.tui import CompletionItem
+    from loushang.tui.render import MarkdownBlock
 
-    content_module = importlib.import_module("loushang.tui.content")
-    markdown_module = importlib.import_module("loushang.tui.markdown")
-    assert content_module.MarkdownRenderer is tui_module.MarkdownRenderer
-    assert markdown_module.MarkdownRenderer is tui_module.MarkdownRenderer
-    assert "rich" not in sys.modules
-    assert "pygments" not in sys.modules
+    original_completion_item = command_list.CompletionItem
+    original_markdown_block = renderer.MarkdownBlock
+    assert original_completion_item is CompletionItem
+    assert original_markdown_block is MarkdownBlock
+
+    _assert_loushang_tui_import_boundary_in_subprocess()
+
+    from loushang.tui import CompletionItem as current_completion_item
+    from loushang.tui.render import MarkdownBlock as current_markdown_block
+
+    assert original_completion_item is current_completion_item
+    assert original_markdown_block is current_markdown_block
+
+
+def _assert_loushang_tui_import_boundary_in_subprocess() -> None:
+    result = _run_python_import_boundary_check(
+        """
+import importlib
+import sys
+
+for module_name in ("prompt_toolkit", "rich", "pygments"):
+    sys.modules.pop(module_name, None)
+
+tui_module = importlib.import_module("loushang.tui")
+
+assert "prompt_toolkit" not in sys.modules
+assert "rich" not in sys.modules
+assert "pygments" not in sys.modules
+assert tui_module.MarkdownRenderer.__module__ == "loushang.tui.markdown.renderer"
+
+content_module = importlib.import_module("loushang.tui.content")
+markdown_module = importlib.import_module("loushang.tui.markdown")
+assert content_module.MarkdownRenderer is tui_module.MarkdownRenderer
+assert markdown_module.MarkdownRenderer is tui_module.MarkdownRenderer
+assert "rich" not in sys.modules
+assert "pygments" not in sys.modules
+"""
+    )
+
+    assert result.returncode == 0, result.stderr
 
 
 def test_import_loushang_tui_without_posix_terminal_modules() -> None:
@@ -85,10 +116,18 @@ def test_pyproject_does_not_declare_legacy_tui_dependencies() -> None:
     assert not any(dependency.startswith("rich") for dependency in normalized_dependencies)
 
 
-def _drop_modules_with_prefix(prefix: str) -> None:
-    for module_name in tuple(sys.modules):
-        if module_name == prefix or module_name.startswith(f"{prefix}."):
-            sys.modules.pop(module_name, None)
+def _run_python_import_boundary_check(script: str) -> subprocess.CompletedProcess[str]:
+    env = os.environ.copy()
+    src_path = str(Path.cwd() / "src")
+    env["PYTHONPATH"] = src_path if not env.get("PYTHONPATH") else f"{src_path}{os.pathsep}{env['PYTHONPATH']}"
+    return subprocess.run(
+        [sys.executable, "-c", script],
+        cwd=Path.cwd(),
+        env=env,
+        text=True,
+        capture_output=True,
+        check=False,
+    )
 
 
 def _run_python_without_posix_terminal_modules(script: str) -> subprocess.CompletedProcess[str]:

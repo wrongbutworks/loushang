@@ -43,6 +43,7 @@ from loushang.tui import (
     ApprovalSurface,
     CommandPalette,
     CommandSurface,
+    CursorDeclaration,
     FocusableMixin,
     InfoPanel,
     InputEvent,
@@ -81,6 +82,9 @@ class NativeSurfaceView(FocusableMixin):
     subtitle: str = ""
     presentation: NativeSurfacePresentation = "bottom"
     _last_content_start_row: int = field(default=0, init=False, repr=False)
+    _info_scroll_offset: int = field(default=0, init=False, repr=False)
+    _last_info_body_height: int = field(default=0, init=False, repr=False)
+    _last_info_body_line_count: int = field(default=0, init=False, repr=False)
 
     def __post_init__(self) -> None:
         FocusableMixin.__init__(self)
@@ -95,15 +99,18 @@ class NativeSurfaceView(FocusableMixin):
         if self.purpose == "info":
             if event.kind == "key" and event.key in {"enter", "space"}:
                 return InputIntent(kind="surface_close")
+            if event.kind == "key":
+                return self._handle_info_scroll_input(event.key)
             return None
         handler = getattr(self.content, "handle_input", None)
         if callable(handler):
-            return handler(self._translate_content_input_event(event))
+            return _native_input_intent_or_none(handler(self._translate_content_input_event(event)))
         return None
 
     def render(self, constraints: RenderConstraints) -> RenderResult:
         width = constraints.width
         lines = [truncate_to_width(self.title, max_width=width)]
+        cursor: CursorDeclaration | None = None
         if self.subtitle:
             lines.append(truncate_to_width(self.subtitle, max_width=width))
         lines.append("")
@@ -113,21 +120,74 @@ class NativeSurfaceView(FocusableMixin):
             max_height=max(1, constraints.max_height - len(lines) - reserved_footer_lines),
         )
         if isinstance(self.content, InfoPanel):
+            body_lines: list[str] = []
             for raw_line in self.content.text.splitlines():
-                lines.extend(wrap_cells(raw_line, width=width) or [""])
+                body_lines.extend(wrap_cells(raw_line, width=width) or [""])
+            self._last_info_body_height = body_constraints.max_height
+            self._last_info_body_line_count = len(body_lines)
+            max_offset = self._max_info_scroll_offset()
+            self._info_scroll_offset = max(0, min(self._info_scroll_offset, max_offset))
+            visible_body_lines = body_lines[self._info_scroll_offset : self._info_scroll_offset + body_constraints.max_height]
+            body_start_row = len(lines)
+            lines.extend(visible_body_lines)
+            if visible_body_lines:
+                cursor = CursorDeclaration(row=body_start_row + len(visible_body_lines) - 1, column=0)
         else:
             self._last_content_start_row = len(lines)
             result = self.content.render(body_constraints)
             lines.extend(line.text for line in result.lines)
-        if self.footer and len(lines) < constraints.max_height:
-            lines.append("")
-            lines.append(truncate_to_width(self.footer, max_width=width))
-        return RenderResult.from_lines([RenderLine(line) for line in lines[: constraints.max_height]], constraints=constraints)
+        footer = self._footer_text()
+        if footer and len(lines) < constraints.max_height:
+            if len(lines) + 1 < constraints.max_height:
+                lines.append("")
+            lines.append(truncate_to_width(footer, max_width=width))
+        return RenderResult.from_lines(
+            [RenderLine(line) for line in lines[: constraints.max_height]],
+            constraints=constraints,
+            cursor=cursor,
+        )
 
     def _translate_content_input_event(self, event: InputEvent) -> InputEvent:
         if event.kind != "mouse" or event.mouse_row is None:
             return event
         return replace(event, mouse_row=event.mouse_row - self._last_content_start_row)
+
+    def _handle_info_scroll_input(self, key: str) -> InputIntent | None:
+        page = max(1, self._last_info_body_height)
+        if key == "down":
+            return self._scroll_info(1)
+        if key == "up":
+            return self._scroll_info(-1)
+        if key == "pageDown":
+            return self._scroll_info(page)
+        if key == "pageUp":
+            return self._scroll_info(-page)
+        if key == "home":
+            return self._set_info_scroll(0)
+        if key == "end":
+            return self._set_info_scroll(self._max_info_scroll_offset())
+        return None
+
+    def _scroll_info(self, delta: int) -> InputIntent | None:
+        return self._set_info_scroll(self._info_scroll_offset + delta)
+
+    def _set_info_scroll(self, offset: int) -> InputIntent | None:
+        max_offset = self._max_info_scroll_offset()
+        next_offset = max(0, min(offset, max_offset))
+        if next_offset == self._info_scroll_offset:
+            return None
+        self._info_scroll_offset = next_offset
+        return InputIntent(kind="consumed", note="info_scroll")
+
+    def _max_info_scroll_offset(self) -> int:
+        return max(0, self._last_info_body_line_count - self._last_info_body_height)
+
+    def _footer_text(self) -> str:
+        if not self.footer:
+            return ""
+        if self.purpose == "info" and self._max_info_scroll_offset() > 0:
+            return f"Up/Down/Page to scroll - {self.footer}"
+        return self.footer
 
 
 @dataclass(frozen=True, slots=True)
@@ -179,7 +239,7 @@ class ModelSelectorSurface:
             self._pending_ordinal = ""
         intent = self._surface.handle_input(event)
         self._filter_text = self._surface.filter_text
-        return intent
+        return _native_input_intent_or_none(intent)
 
     def render(self, constraints: RenderConstraints) -> RenderResult:
         if not self.scoped_items:
@@ -344,7 +404,12 @@ class NativeSurfaceManager:
         if command.name == "model" and isinstance(intent, ModelSelectIntent):
             await self._handle_model_intent(intent)
         elif command.name == "models" and isinstance(intent, ModelsIntent):
-            self._open_info("Models", await format_available_models(self.session, query=intent.query))
+            models_text = await format_available_models(self.session, query=intent.query)
+            self._open_info(
+                "Available Models",
+                _models_info_body(models_text),
+                presentation="bottom-exclusive",
+            )
         elif command.name == "command" and isinstance(intent, CommandSelectIntent):
             await self._handle_command_intent(intent)
         elif command.name == "commands" and isinstance(intent, CommandsIntent):
@@ -526,13 +591,20 @@ class NativeSurfaceManager:
             )
         )
 
-    def _open_info(self, title: str, text: str) -> None:
+    def _open_info(
+        self,
+        title: str,
+        text: str,
+        *,
+        presentation: NativeSurfacePresentation = "bottom",
+    ) -> None:
         self._open_surface(
             NativeSurfaceView(
                 title=title,
                 purpose="info",
                 content=InfoPanel.from_text(title=title, text=text, footer=""),
                 footer="Enter/Esc to close",
+                presentation=presentation,
             )
         )
 
@@ -659,6 +731,12 @@ def _model_choice_selector_description(choice: ModelChoice, *, current_value: st
         parts.append("current")
     if choice.endpoint_id:
         parts.append(f"endpoint: {choice.endpoint_id}")
+    if choice.region:
+        parts.append(f"region: {choice.region}")
+    if choice.lane:
+        parts.append(f"lane: {choice.lane}")
+    if choice.api:
+        parts.append(f"protocol: {choice.api}")
     if choice.description:
         parts.append(choice.description)
     return " - ".join(parts)
@@ -678,11 +756,31 @@ def _recoverable_surface_error(error: Exception) -> str:
     return f"Error: {message}"
 
 
+def _models_info_body(text: str) -> str:
+    prefix = "Available models:\n"
+    if text.startswith(prefix):
+        return text[len(prefix) :]
+    return text
+
+
 def _session_commands_provider(session: Any) -> Callable[[], Any] | None:
     getter = getattr(session, "list_commands", None)
     if not callable(getter):
         return None
     return getter
+
+
+def _native_input_intent_or_none(result: object) -> InputIntent | None:
+    if isinstance(result, InputIntent):
+        return result
+    kind = getattr(result, "kind", None)
+    if not isinstance(kind, str):
+        return None
+    return InputIntent(
+        kind=kind,
+        text=str(getattr(result, "text", "")),
+        note=str(getattr(result, "note", "")),
+    )
 
 
 __all__ = ["NativeSurfaceManager", "NativeSurfaceView"]

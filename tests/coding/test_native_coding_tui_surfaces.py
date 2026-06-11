@@ -209,6 +209,102 @@ def test_native_surface_manager_opens_non_model_surfaces_in_runtime_overlay_host
         assert app.surface_host.entries == []
 
 
+def test_native_surface_manager_opens_models_info_in_bottom_frame_with_runtime_overlay_host() -> None:
+    app = _app()
+    app.surface_host = SurfaceHost()
+    manager = _manager(app, _Session())
+
+    asyncio.run(manager.handle_text("/models"))
+
+    assert isinstance(app.active_surface, NativeSurfaceView)
+    assert app.active_surface.title == "Available Models"
+    assert app.active_surface.presentation == "bottom-exclusive"
+    assert app.active_surface.exclusive_bottom is True
+    assert app.surface_host.entries == []
+
+    rendered = app.active_surface.render(RenderConstraints(width=100, max_height=10))
+    plain_lines = tuple(strip_control_sequences(line.text) for line in rendered.lines)
+    assert plain_lines[0] == "Available Models"
+    assert "Available models:" not in plain_lines
+    assert any("moonshot/kimi-for-coding" in line for line in plain_lines)
+    assert plain_lines[-1] == "Enter/Esc to close"
+
+
+def test_native_surface_models_info_keeps_footer_when_content_overflows() -> None:
+    session = _Session()
+    session.models = [
+        ModelSelection(provider="moonshot", model_id="kimi-for-coding"),
+        *(ModelSelection(provider="provider", model_id=f"model-{index:02d}") for index in range(12)),
+    ]
+    app = _app()
+    app.surface_host = SurfaceHost()
+    manager = _manager(app, session)
+
+    asyncio.run(manager.handle_text("/models"))
+
+    assert isinstance(app.active_surface, NativeSurfaceView)
+    rendered = app.active_surface.render(RenderConstraints(width=100, max_height=8))
+    plain_lines = tuple(strip_control_sequences(line.text) for line in rendered.lines)
+
+    assert plain_lines[-2:] == ("", "Up/Down/Page to scroll - Enter/Esc to close")
+    assert any("provider/model-00" in line for line in plain_lines)
+    assert not any("provider/model-08" in line for line in plain_lines)
+
+
+def test_native_surface_models_info_scrolls_with_page_keys() -> None:
+    session = _Session()
+    session.models = [
+        ModelSelection(provider="moonshot", model_id="kimi-for-coding"),
+        *(ModelSelection(provider="provider", model_id=f"model-{index:02d}") for index in range(12)),
+    ]
+    app = _app()
+    app.surface_host = SurfaceHost()
+    manager = _manager(app, session)
+
+    asyncio.run(manager.handle_text("/models"))
+
+    assert isinstance(app.active_surface, NativeSurfaceView)
+    before = tuple(
+        strip_control_sequences(line.text)
+        for line in app.active_surface.render(RenderConstraints(width=100, max_height=8)).lines
+    )
+    intent = app.active_surface.handle_input(InputEvent(kind="key", key="pageDown"))
+    after = tuple(
+        strip_control_sequences(line.text)
+        for line in app.active_surface.render(RenderConstraints(width=100, max_height=8)).lines
+    )
+
+    assert intent == InputIntent(kind="consumed", note="info_scroll")
+    assert any("provider/model-00" in line for line in before)
+    assert not any("provider/model-00" in line for line in after)
+    assert any("provider/model-03" in line for line in after)
+    assert after[-2:] == ("", "Up/Down/Page to scroll - Enter/Esc to close")
+
+
+def test_native_surface_models_info_cursor_stays_on_last_visible_body_line() -> None:
+    session = _Session()
+    session.models = [
+        ModelSelection(provider="moonshot", model_id="kimi-for-coding"),
+        *(ModelSelection(provider="provider", model_id=f"model-{index:02d}") for index in range(12)),
+    ]
+    app = _app()
+    app.surface_host = SurfaceHost()
+    manager = _manager(app, session)
+
+    asyncio.run(manager.handle_text("/models"))
+
+    assert isinstance(app.active_surface, NativeSurfaceView)
+    before = app.active_surface.render(RenderConstraints(width=100, max_height=8))
+    intent = app.active_surface.handle_input(InputEvent(kind="key", key="down"))
+    after = app.active_surface.render(RenderConstraints(width=100, max_height=8))
+
+    assert intent == InputIntent(kind="consumed", note="info_scroll")
+    assert before.cursor is not None
+    assert after.cursor is not None
+    assert before.cursor.row == 5
+    assert after.cursor.row == 5
+
+
 def test_native_surface_manager_opens_settings_in_bottom_frame_with_runtime_overlay_host() -> None:
     app = _app()
     app.surface_host = SurfaceHost()

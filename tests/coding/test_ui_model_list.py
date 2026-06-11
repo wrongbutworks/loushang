@@ -59,12 +59,18 @@ class _DuplicateEndpointSession(_Session):
                 provider_id="dashscope",
                 endpoint_id="openai-responses",
                 id="qwen3.6-plus",
+                api="openai-responses",
+                region="cn",
+                preferred_endpoint=True,
                 name="Qwen 3.6 Plus",
             ),
             SimpleNamespace(
                 provider_id="dashscope",
                 endpoint_id="openai-completions:cn",
                 id="qwen3.6-plus",
+                api="openai-completions",
+                region="cn",
+                lane="coding",
                 name="Qwen 3.6 Plus",
             ),
         ]
@@ -90,6 +96,13 @@ class _DuplicateEndpointAgentModelSession(_DuplicateEndpointSession):
         super().__init__()
         self.selection = ModelSelection(provider="dashscope", model_id="qwen3.6-plus")
         self.agent = SimpleNamespace(model=self.model_details[1])
+
+
+class _AmbiguousDuplicateEndpointSession(_DuplicateEndpointSession):
+    def __init__(self) -> None:
+        super().__init__()
+        for detail in self.model_details:
+            detail.preferred_endpoint = False
 
 
 def test_format_available_models_marks_current_model() -> None:
@@ -285,10 +298,20 @@ def test_select_available_model_uses_full_identity_for_duplicate_endpoint_choice
     assert session.set_model_calls == [session.model_details[0]]
 
 
-def test_select_available_model_reports_duplicate_endpoint_label_as_ambiguous() -> None:
+def test_select_available_model_uses_preferred_endpoint_for_duplicate_label() -> None:
     from loushang.coding.ui.model_list import select_available_model
 
     session = _DuplicateEndpointSession()
+    text = asyncio.run(select_available_model(session, query="dashscope/qwen3.6-plus"))
+
+    assert text == "Model set: dashscope/qwen3.6-plus (endpoint: openai-responses)"
+    assert session.set_model_calls == [session.model_details[0]]
+
+
+def test_select_available_model_reports_duplicate_endpoint_label_as_ambiguous_without_preferred() -> None:
+    from loushang.coding.ui.model_list import select_available_model
+
+    session = _AmbiguousDuplicateEndpointSession()
     text = asyncio.run(select_available_model(session, query="dashscope/qwen3.6-plus"))
 
     assert text == (
@@ -309,8 +332,14 @@ def test_available_model_completion_provider_marks_only_current_endpoint() -> No
         "dashscope:openai-completions:cn:qwen3.6-plus",
         "dashscope:openai-responses:qwen3.6-plus",
     ]
-    assert provider.items[0].description == "current - endpoint: openai-completions:cn - Qwen 3.6 Plus"
-    assert provider.items[1].description == "endpoint: openai-responses - Qwen 3.6 Plus"
+    assert (
+        provider.items[0].description
+        == "current - endpoint: openai-completions:cn - region: cn - lane: coding - protocol: openai-completions - Qwen 3.6 Plus"
+    )
+    assert (
+        provider.items[1].description
+        == "endpoint: openai-responses - region: cn - protocol: openai-responses - Qwen 3.6 Plus"
+    )
 
 
 def test_available_model_completion_provider_uses_agent_model_endpoint_for_current() -> None:
@@ -322,5 +351,25 @@ def test_available_model_completion_provider_uses_agent_model_endpoint_for_curre
         "dashscope:openai-completions:cn:qwen3.6-plus",
         "dashscope:openai-responses:qwen3.6-plus",
     ]
-    assert provider.items[0].description == "current - endpoint: openai-completions:cn - Qwen 3.6 Plus"
-    assert provider.items[1].description == "endpoint: openai-responses - Qwen 3.6 Plus"
+    assert (
+        provider.items[0].description
+        == "current - endpoint: openai-completions:cn - region: cn - lane: coding - protocol: openai-completions - Qwen 3.6 Plus"
+    )
+    assert (
+        provider.items[1].description
+        == "endpoint: openai-responses - region: cn - protocol: openai-responses - Qwen 3.6 Plus"
+    )
+
+
+def test_available_model_completion_provider_dedupes_to_preferred_endpoint() -> None:
+    from loushang.coding.ui.model_list import available_model_completion_provider
+
+    provider = asyncio.run(available_model_completion_provider(_DuplicateEndpointSession()))
+
+    assert [item.value for item in provider.items] == [
+        "dashscope:openai-responses:qwen3.6-plus",
+    ]
+    assert (
+        provider.items[0].description
+        == "endpoint: openai-responses - region: cn - protocol: openai-responses - Qwen 3.6 Plus"
+    )

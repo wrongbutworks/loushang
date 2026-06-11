@@ -92,6 +92,9 @@ class TextInput:
     def clear_selection(self) -> None:
         self._selection_controller.clear()
 
+    def editor_input_target(self) -> object:
+        return _TextInputEditorTarget(self)
+
     def handle_input(
         self,
         event: Any,
@@ -478,6 +481,89 @@ class TextInput:
             if resolved:
                 return resolved
         return DEFAULT_SELECTION_STYLE
+
+
+@dataclass(frozen=True, slots=True)
+class _TextInputEditorTarget:
+    field: TextInput
+
+    def insert_text(self, text: str) -> None:
+        changed = self.field._apply_edit(lambda: self.field.insert_text(text))
+        if changed:
+            self.field._last_action = "type-word"
+
+    def paste(self, text: str) -> None:
+        changed = self.field._apply_edit(lambda: self.field.insert_text(text))
+        if changed:
+            self.field._last_action = None
+
+    def move_left(self) -> None:
+        self.field.move_left()
+
+    def move_right(self) -> None:
+        self.field.move_right()
+
+    def move_word_left(self) -> None:
+        self.field.move_word_left()
+
+    def move_word_right(self) -> None:
+        self.field.move_word_right()
+
+    def move_to_line_start(self) -> None:
+        self.field.move_to_start()
+
+    def move_to_line_end(self) -> None:
+        self.field.move_to_end()
+
+    def select_char_left(self) -> None:
+        self.field.select_char_left()
+
+    def select_char_right(self) -> None:
+        self.field.select_char_right()
+
+    def select_word_left(self) -> None:
+        self.field.select_word_left()
+
+    def select_word_right(self) -> None:
+        self.field.select_word_right()
+
+    def select_line_start(self) -> None:
+        self.field.select_line_start()
+
+    def select_line_end(self) -> None:
+        self.field.select_line_end()
+
+    def delete_backward(self) -> None:
+        self.field._last_action = None
+        self.field._apply_edit(self.field.delete_backward)
+
+    def delete_forward(self) -> None:
+        self.field._last_action = None
+        self.field._apply_edit(self.field.delete_forward)
+
+    def delete_word_backward(self) -> None:
+        self.field.delete_word_backward()
+
+    def delete_word_forward(self) -> None:
+        self.field.delete_word_forward()
+
+    def kill_to_line_start(self) -> None:
+        self.field.kill_to_start()
+
+    def kill_to_line_end(self) -> None:
+        self.field.kill_to_end()
+
+    def yank(self) -> None:
+        self.field.yank()
+
+    def yank_pop(self) -> None:
+        self.field.yank_pop()
+
+    def undo(self) -> None:
+        self.field.undo()
+
+    def redo(self) -> None:
+        self.field.redo()
 
 
 def _single_line_text(text: str) -> str:

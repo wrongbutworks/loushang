@@ -41,6 +41,7 @@ class ThinkingLevelChangeEntry(SessionEntryBase):
 class ModelChangeEntry(SessionEntryBase):
     provider: str
     model_id: str
+    endpoint_id: str | None = None
 
 
 @dataclass(frozen=True)

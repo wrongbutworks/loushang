@@ -67,6 +67,106 @@ def resolve_model_api(
     return endpoint.api
 
 
+def format_model_ref(model: Model) -> str:
+    return f"{model.provider_id}:{model.endpoint_id}:{model.id}"
+
+
+def _parse_explicit_model_ref(ref: str) -> tuple[str, str, str] | None:
+    if ref.count(":") < 2:
+        return None
+    provider, rest = ref.split(":", 1)
+    endpoint, model_id = rest.rsplit(":", 1)
+    if not provider or not endpoint or not model_id:
+        return None
+    return provider, endpoint, model_id
+
+
+class AmbiguousModelReference(ValueError):
+    def __init__(self, ref: str, candidates: list[Model]) -> None:
+        self.ref = ref
+        self.candidates = tuple(format_model_ref(model) for model in candidates)
+        message = (
+            f"Ambiguous model reference {ref!r}; use one of: "
+            + ", ".join(self.candidates)
+        )
+        super().__init__(message)
+
+
+class AmbiguousPreferredModelReference(ValueError):
+    def __init__(self, ref: str, candidates: list[Model]) -> None:
+        self.ref = ref
+        self.candidates = tuple(format_model_ref(model) for model in candidates)
+        message = (
+            f"Ambiguous preferred endpoint for model reference {ref!r}; "
+            "catalog marks multiple preferred endpoints: "
+            + ", ".join(self.candidates)
+        )
+        super().__init__(message)
+
+
+def resolve_model_ref(
+    registry: "ModelRegistry",
+    ref: str,
+    *,
+    provider: str | None = None,
+    endpoint: str | None = None,
+    api: str | None = None,
+) -> Model:
+    if explicit_ref := _parse_explicit_model_ref(ref):
+        p, e, mid = explicit_ref
+        return registry.get_model(p, e, mid)
+    if "/" in ref and provider is None and endpoint is None:
+        p, mid = ref.split("/", 1)
+        if p and mid:
+            return _resolve_provider_model_ref(registry, p, mid)
+    if provider and endpoint:
+        return registry.get_model(provider, endpoint, ref)
+    if provider:
+        return _resolve_provider_model_ref(registry, provider, ref)
+    if api:
+        candidates = [
+            model
+            for model in registry.list_models(model_id=ref)
+            if resolve_model_api(model, registry=registry) == api
+        ]
+        return _resolve_candidates(registry, ref, candidates)
+    return registry.get_model(ref)
+
+
+def _resolve_provider_model_ref(
+    registry: "ModelRegistry",
+    provider: str,
+    model_id: str,
+) -> Model:
+    candidates = registry.list_models(provider=provider, model_id=model_id)
+    return _resolve_candidates(registry, f"{provider}/{model_id}", candidates)
+
+
+def _resolve_candidates(
+    registry: "ModelRegistry",
+    ref: str,
+    candidates: list[Model],
+) -> Model:
+    if not candidates:
+        raise KeyError(ref)
+    if len(candidates) == 1:
+        return candidates[0]
+    preferred = [
+        model
+        for model in candidates
+        if (
+            endpoint := registry.get_endpoint(model.provider_id, model.endpoint_id)
+        )
+        is not None
+        and endpoint.preferred
+    ]
+    if len(preferred) == 1:
+        return preferred[0]
+    if len(preferred) > 1:
+        raise AmbiguousPreferredModelReference(ref, preferred)
+    raise AmbiguousModelReference(ref, candidates)
+
+
 class ModelRegistry:
     def __init__(self, providers: dict[str, Provider] | None = None) -> None:
         self._providers = dict(providers or {})

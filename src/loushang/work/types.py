@@ -24,6 +24,22 @@ WorkStepStatus: TypeAlias = Literal[
 ]
 
 DeliveryHint: TypeAlias = Literal["immediate", "coalesce", "final_only"]
+ArtifactStatus: TypeAlias = Literal["planned", "created", "updated", "deleted", "failed"]
+
+
+@dataclass(frozen=True)
+class ArtifactRef:
+    artifact_id: str
+    kind: str
+    uri: str | None = None
+    title: str | None = None
+    domain: str | None = None
+    produced_by_run_id: str | None = None
+    produced_by_step_id: str | None = None
+    expected_artifact: str | None = None
+    media_type: str | None = None
+    status: ArtifactStatus = "created"
+    metadata: Mapping[str, object] = field(default_factory=dict)
 
 
 @dataclass(frozen=True)
@@ -109,6 +125,8 @@ class WorkEvent:
 
 
 __all__ = [
+    "ArtifactRef",
+    "ArtifactStatus",
     "DeliveryHint",
     "WorkEvent",
     "WorkOperation",

@@ -19,6 +19,7 @@
 
 - `loushang.ai`
 - `loushang.agent`
+- `loushang.channel`
 - `loushang.coding`
 - `loushang.method`
 - `loushang.tui`
@@ -27,10 +28,10 @@
 - `loushang.observability`
 - `loushang.ontology`
 
-`loushang.channel` 仍是重要的目标架构层，但当前没有 `src/loushang/channel/`
-包。现有 RPC/JSONL 能力先作为 `loushang.coding.mode.RpcMode` 的
-transitional surface 存在；后续 channel 层成熟后再上提为
-`loushang.channel.rpc_jsonl` 等 adapter。
+`loushang.channel` 已有最小协议类型包，用于承载 `WorkOperation` /
+`WorkEvent` 边界消息。现有 RPC/JSONL 能力仍先作为
+`loushang.coding.mode.RpcMode` 的 transitional surface 存在；后续 channel
+层成熟后再上提为 `loushang.channel.rpc_jsonl` 等 adapter。
 
 当前仓库结构应按已落地包理解：
 
@@ -41,6 +42,7 @@ loushang/
     loushang/
       ai/
       agent/
+      channel/
       coding/
       method/
       tui/
@@ -79,7 +81,7 @@ CLI / TUI
   log 与 plan/step projection
 - `loushang.tui` 提供通用 terminal-native UI primitives，`loushang.coding.ui`
   将 coding session 状态适配到 TUI
-- `loushang.channel` 是未来边界协议层，不是当前 V1 起步前置条件
+- `loushang.channel` 提供最小边界协议类型；具体 transport adapter 仍是后续工作
 
 其中：
 
@@ -89,13 +91,14 @@ CLI / TUI
 - `work` 提供 run/event/log/projection
 - `tui` 提供通用终端 UI primitives
 - `coding` 提供产品化装配，并通过 `loushang.coding.ui` 连接 coding core 与 `loushang.tui`
-- `channel` 定义目标边界通信协议，待独立落地
+- `channel` 定义边界通信协议类型，当前已落地最小 envelope / endpoint surface
 
 ## Agent and Channel Documentation
 
 当前 agent / channel 相关文档包括：
 
 - [Loushang-AI Architecture](./ai/README.md)
+- [Loushang Channel Architecture](./channel/README.md)
 - [Loushang AI Glossary](../glossary/loushang-ai.md)
 - [Loushang AI Types](../glossary/loushang-ai-types.md)
 - [Loushang Agent](../glossary/loushang-agent.md)
@@ -108,6 +111,6 @@ CLI / TUI
 下一步建议继续完善：
 
 1. `loushang.work` 与 method plan/step failure projection 的硬化
-2. `loushang.channel` 的最小边界协议和 `rpc_jsonl` adapter 草案
+2. `loushang.channel.rpc_jsonl` adapter 草案和 operation/event delivery 行为
 3. TUI method status layer 与 `WorkEvent` / `WorkPlanRun` projection
 4. public CLI reference 对 method/work/package surface 的补齐

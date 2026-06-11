@@ -17,6 +17,22 @@ in this order:
 4. product adapter command routing
 5. global keybindings
 
+The generic prompt route uses a `PromptInputTarget` boundary. `InputRouter`
+owns routing priority and prompt intents, while concrete editors provide
+operations through target adapters such as `ComposerInputTarget`. Product
+adapters may reuse target helper functions, but they keep their own routing
+order when product semantics differ.
+
+Focused surface editors may expose an editor target through
+`editor_input_target()`. `SurfaceHost.route_input_result()` distinguishes
+surface intents from consumed events without changing the compatibility
+`route_input()` return value. Generic `InputRouter` routing stays
+surface-first: surface intents win, consumed surface events stop fallback, and
+only declined events may route ordinary text, paste, selection, and editing keys
+to the focused editor target. Prompt-only actions such as submit, newline,
+history, completion, queue editing, and jump setup do not mutate prompt state
+while a focused editor target owns the editing lane.
+
 Keybindings are configuration-owned by the runtime or product adapter. The
 coding product adapter loads configured keybindings from settings and passes
 them into the native input router. UI parts may handle routed events, but they
@@ -82,7 +98,7 @@ normalized input events:
 - paste marker is an editor atom that may stand in for a large payload while the
   full payload remains available for submission
 
-These editor primitives are local to the focused composer until the product
+These editor primitives are local to the focused prompt target until the product
 adapter receives a submit, steer, or follow-up intent.
 
 ## Test Obligations
@@ -99,3 +115,7 @@ adapter receives a submit, steer, or follow-up intent.
 - capability query responses do not leak as prompt text
 - composer cursor mapping remains correct after wrapping
 - resize signals trigger render invalidation, not prompt submission
+- focused surface editor targets receive ordinary text/editing only after the
+  surface declines the event
+- consumed surface text, search, and navigation events do not leak into prompt
+  editing

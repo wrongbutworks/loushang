@@ -34,6 +34,26 @@ await agent.prompt("Hello")
 - `AgentLoopConfig`: loop execution config
 - `AgentEvent`: lifecycle and tool execution events
 
+## Harness Direction
+
+`loushang.agent.harness` is the headless execution scaffolding above the
+low-level loop. It is not a testing-only harness.
+
+The initial harness exposes a thin product-adapter surface:
+`AgentRunSpec`, `AgentRunResult`, and `run_agent()`. `AgentRunSpec` may carry an
+`event_sink` so stateful hosts can keep their existing event lifecycle while
+delegating loop execution to the harness. The harness reuses the existing agent
+loop and keeps coding, work, method, research, ppt, and cowork product semantics
+outside `loushang.agent`.
+
+The harness API is intentionally imported from `loushang.agent.harness`; it is
+not re-exported from `loushang.agent.__init__` while the adapter contract
+settles.
+
+See [ARD-001: Agent Harness and Product Adapter Boundaries](ARD-001-agent-harness-and-product-adapters.md).
+The current P1 module ownership inventory is
+[Agent Harness Module Ownership Inventory](agent-harness-module-ownership-inventory.md).
+
 ## Event Flow
 
 Calling `await agent.prompt(...)` emits events in this shape:

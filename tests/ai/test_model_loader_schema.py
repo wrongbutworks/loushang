@@ -98,6 +98,131 @@ def test_model_registry_schema_accepts_auth_on_provider_endpoint_and_model() -> 
     validate_model_registry_raw(raw)
 
 
+def test_model_registry_schema_accepts_endpoint_preferred_flag() -> None:
+    raw = {
+        "providers": {
+            "custom": {
+                "endpoints": {
+                    "openai-responses": {
+                        "api": "openai-responses",
+                        "preferred": True,
+                        "models": {
+                            "model-a": {
+                                "capabilities": {
+                                    "input": ["text"],
+                                    "output": ["text"],
+                                },
+                            }
+                        },
+                    }
+                },
+            }
+        }
+    }
+
+    validate_model_registry_raw(raw)
+
+
+def test_model_registry_schema_accepts_colons_in_endpoint_keys() -> None:
+    raw = {
+        "providers": {
+            "custom": {
+                "endpoints": {
+                    "openai-completions:cn:coding": {
+                        "api": "openai-completions",
+                        "models": {
+                            "model-a": {
+                                "capabilities": {
+                                    "input": ["text"],
+                                    "output": ["text"],
+                                },
+                            }
+                        },
+                    }
+                },
+            }
+        }
+    }
+
+    validate_model_registry_raw(raw)
+
+
+def test_model_registry_schema_rejects_colons_in_provider_keys() -> None:
+    raw = {
+        "providers": {
+            "custom:cn": {
+                "endpoints": {
+                    "openai-responses": {
+                        "api": "openai-responses",
+                        "models": {
+                            "model-a": {
+                                "capabilities": {
+                                    "input": ["text"],
+                                    "output": ["text"],
+                                },
+                            }
+                        },
+                    }
+                },
+            }
+        }
+    }
+
+    with pytest.raises(ValueError, match="must not contain ':'"):
+        validate_model_registry_raw(raw)
+
+
+def test_model_registry_schema_rejects_colons_in_model_keys() -> None:
+    raw = {
+        "providers": {
+            "custom": {
+                "endpoints": {
+                    "openai-responses": {
+                        "api": "openai-responses",
+                        "models": {
+                            "model:a": {
+                                "capabilities": {
+                                    "input": ["text"],
+                                    "output": ["text"],
+                                },
+                            }
+                        },
+                    }
+                },
+            }
+        }
+    }
+
+    with pytest.raises(ValueError, match="must not contain ':'"):
+        validate_model_registry_raw(raw)
+
+
+def test_model_registry_schema_rejects_non_boolean_endpoint_preferred_flag() -> None:
+    raw = {
+        "providers": {
+            "custom": {
+                "endpoints": {
+                    "openai-responses": {
+                        "api": "openai-responses",
+                        "preferred": "yes",
+                        "models": {
+                            "model-a": {
+                                "capabilities": {
+                                    "input": ["text"],
+                                    "output": ["text"],
+                                },
+                            }
+                        },
+                    }
+                },
+            }
+        }
+    }
+
+    with pytest.raises(ValueError, match="preferred"):
+        validate_model_registry_raw(raw)
+
+
 def test_model_registry_schema_accepts_legacy_auth_override() -> None:
     raw = {
         "providers": {
