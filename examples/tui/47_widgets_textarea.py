@@ -27,7 +27,7 @@ class TextAreaApp(FocusableMixin):
     form: Form = field(init=False)
 
     def __post_init__(self) -> None:
-        super().__init__()
+        FocusableMixin.__init__(self)
         self.form = Form([FormRow("notes", self.notes)])
         self.form.focus()
 

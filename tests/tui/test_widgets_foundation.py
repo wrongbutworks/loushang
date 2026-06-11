@@ -280,4 +280,8 @@ def test_dialog_tabs_from_form_edge_to_actions_and_delegates_editor_target() -> 
 def test_widgets_foundation_example_imports() -> None:
     namespace = runpy.run_path("examples/tui/43_widgets_foundation.py", run_name="__test__")
 
-    assert "build_app" in namespace
+    build_app = namespace["build_app"]
+    assert callable(build_app)
+    app = build_app()
+    result = app.render(RenderConstraints(width=80, max_height=20))
+    assert result.lines

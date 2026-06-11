@@ -32,7 +32,7 @@ class QuestionDialogApp(FocusableMixin):
     message: str = "Escape cancels. Press q to quit."
 
     def __post_init__(self) -> None:
-        super().__init__()
+        FocusableMixin.__init__(self)
         self.dialog.focus()
 
     def render(self, constraints: RenderConstraints) -> RenderResult:

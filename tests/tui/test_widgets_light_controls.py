@@ -294,4 +294,8 @@ def test_spinner_applies_theme_tokens_without_width_growth() -> None:
 def test_widgets_light_controls_example_imports() -> None:
     namespace = runpy.run_path("examples/tui/45_widgets_light_controls.py", run_name="__test__")
 
-    assert "build_app" in namespace
+    build_app = namespace["build_app"]
+    assert callable(build_app)
+    app = build_app()
+    result = app.render(RenderConstraints(width=80, max_height=20))
+    assert result.lines

@@ -315,4 +315,8 @@ def test_question_dialog_themes_title_question_and_action_rows() -> None:
 def test_widgets_question_dialog_example_imports() -> None:
     namespace = runpy.run_path("examples/tui/48_widgets_question_dialog.py", run_name="__test__")
 
-    assert callable(namespace["build_app"])
+    build_app = namespace["build_app"]
+    assert callable(build_app)
+    app = build_app()
+    result = app.render(RenderConstraints(width=80, max_height=20))
+    assert result.lines

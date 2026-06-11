@@ -257,4 +257,8 @@ def test_table_empty_state_uses_theme_and_width_rules() -> None:
 def test_widgets_table_example_imports() -> None:
     namespace = runpy.run_path("examples/tui/46_widgets_table.py", run_name="__test__")
 
-    assert "build_app" in namespace
+    build_app = namespace["build_app"]
+    assert callable(build_app)
+    app = build_app()
+    result = app.render(RenderConstraints(width=80, max_height=20))
+    assert result.lines

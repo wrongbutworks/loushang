@@ -25,7 +25,7 @@ class TreeViewApp(FocusableMixin):
     message: str = "Use arrows to navigate. Enter selects. Press q to quit."
 
     def __post_init__(self) -> None:
-        super().__init__()
+        FocusableMixin.__init__(self)
         self.tree.focus()
 
     def render(self, constraints: RenderConstraints) -> RenderResult:

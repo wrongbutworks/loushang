@@ -30,7 +30,7 @@ class LightControlsApp(FocusableMixin):
     message: str = "Ready"
 
     def __post_init__(self) -> None:
-        super().__init__()
+        FocusableMixin.__init__(self)
         self.tabs.focus()
         self.menu.focus()
 

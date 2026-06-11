@@ -247,4 +247,8 @@ def test_text_area_dialog_delegates_active_editor_target() -> None:
 def test_widgets_textarea_example_imports() -> None:
     namespace = runpy.run_path("examples/tui/47_widgets_textarea.py", run_name="__test__")
 
-    assert callable(namespace["build_app"])
+    build_app = namespace["build_app"]
+    assert callable(build_app)
+    app = build_app()
+    result = app.render(RenderConstraints(width=80, max_height=20))
+    assert result.lines

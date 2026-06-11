@@ -31,7 +31,7 @@ class SmallControlsApp(FocusableMixin):
     toolbar: Toolbar = field(default_factory=lambda: Toolbar(_actions()))
 
     def __post_init__(self) -> None:
-        super().__init__()
+        FocusableMixin.__init__(self)
         self.toolbar.focus()
 
     def render(self, constraints: RenderConstraints) -> RenderResult:

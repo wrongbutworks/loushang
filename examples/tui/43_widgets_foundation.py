@@ -34,7 +34,7 @@ class WidgetsApp(FocusableMixin):
     open_confirm: Callable[[], None] | None = None
 
     def __post_init__(self) -> None:
-        super().__init__()
+        FocusableMixin.__init__(self)
         self.form.focus()
 
     def render(self, constraints: RenderConstraints) -> RenderResult:

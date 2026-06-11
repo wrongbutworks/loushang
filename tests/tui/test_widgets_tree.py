@@ -287,4 +287,8 @@ def test_tree_view_applies_theme_tokens() -> None:
 def test_widgets_tree_example_imports() -> None:
     namespace = runpy.run_path("examples/tui/49_widgets_tree.py", run_name="__test__")
 
-    assert callable(namespace["build_app"])
+    build_app = namespace["build_app"]
+    assert callable(build_app)
+    app = build_app()
+    result = app.render(RenderConstraints(width=80, max_height=20))
+    assert result.lines
