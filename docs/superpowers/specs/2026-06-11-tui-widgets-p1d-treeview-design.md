@@ -112,6 +112,14 @@ Initial expansion state is the union of:
 - each `TreeNode(expanded=True)`;
 - `TreeView(expanded_values=...)`.
 
+Initial expansion normalization:
+
+- unknown values in `expanded_values` raise `ValueError`;
+- leaf values in `expanded_values` are ignored;
+- `TreeNode(expanded=True)` on a leaf is ignored;
+- `expanded_value_set` contains only branch node values that are currently
+  expanded, so it stays consistent with `is_expanded(leaf) == False`.
+
 Initial active state:
 
 - if `active_value` names an enabled visible node, use it;
