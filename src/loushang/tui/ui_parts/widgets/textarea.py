@@ -7,15 +7,23 @@ from typing import Any, ClassVar, Literal
 from loushang.tui.cell_width import (
     autowrap_safe_width,
     grapheme_clusters,
+    slice_by_column,
     truncate_to_width,
+    visible_width,
 )
-from loushang.tui.core import RenderConstraints, RenderLine, RenderResult
+from loushang.tui.core import (
+    CursorDeclaration,
+    RenderConstraints,
+    RenderLine,
+    RenderResult,
+)
 from loushang.tui.editor_buffer import EditorBuffer
 from loushang.tui.keybindings import KeybindingConfig, KeybindingManager
 from loushang.tui.kill_ring import KillRing
 from loushang.tui.selection_controller import SelectionController
 from loushang.tui.selection_rendering import DEFAULT_SELECTION_STYLE
 from loushang.tui.theme import ThemeResolver, ThemeStyle
+from loushang.tui.ui_parts.widgets._utils import style_text
 
 __all__ = ["TextArea"]
 
@@ -146,8 +154,49 @@ class TextArea:
 
     def render(self, constraints: RenderConstraints) -> RenderResult:
         target_width = autowrap_safe_width(constraints.width)
-        rows = [RenderLine(truncate_to_width(self.label, max_width=target_width, ellipsis=""))] if self.label else []
-        return RenderResult.from_lines(rows[: constraints.max_height], constraints=constraints)
+        lines: list[RenderLine] = []
+        cursor: CursorDeclaration | None = None
+
+        if self.label and len(lines) < constraints.max_height:
+            label = truncate_to_width(self.label, max_width=target_width, ellipsis="")
+            lines.append(RenderLine(style_text(label, self.theme, "widget.textArea.label")))
+
+        remaining = constraints.max_height - len(lines)
+        if remaining <= 0:
+            return RenderResult.from_lines(lines, constraints=constraints)
+
+        detail = self.error or self.help_text
+        detail_rows = 1 if detail and remaining >= 2 else 0
+        body_rows = min(self.height, remaining - detail_rows)
+        if body_rows <= 0:
+            return RenderResult.from_lines(lines, constraints=constraints)
+
+        spans = self._line_spans()
+        cursor_line, cursor_column = self._cursor_location(spans)
+        self._ensure_cursor_visible(
+            cursor_line,
+            cursor_column,
+            visible_rows=body_rows,
+            width=target_width,
+            total_lines=len(spans),
+        )
+
+        body_start_row = len(lines)
+        lines.extend(self._render_body_lines(spans, rows=body_rows, width=target_width))
+
+        relative_cursor_row = cursor_line - self._first_visible_line
+        if 0 <= relative_cursor_row < body_rows:
+            rendered_line = lines[body_start_row + relative_cursor_row].text
+            cursor_col = max(0, cursor_column - self._scroll_column)
+            cursor_col = min(cursor_col, visible_width(rendered_line))
+            cursor = CursorDeclaration(row=body_start_row + relative_cursor_row, column=cursor_col)
+
+        if detail_rows:
+            detail_token = "widget.textArea.error" if self.error else "widget.textArea.help"
+            rendered_detail = truncate_to_width(detail, max_width=target_width, ellipsis="")
+            lines.append(RenderLine(style_text(rendered_detail, self.theme, detail_token)))
+
+        return RenderResult.from_lines(lines[: constraints.max_height], constraints=constraints, cursor=cursor)
 
     def handle_input(
         self,
@@ -457,6 +506,66 @@ class TextArea:
     def _notify_change_if_needed(self, before: str) -> None:
         if self.value != before and self.on_change is not None:
             self.on_change(self.value)
+
+    def _line_spans(self) -> tuple[_LineSpan, ...]:
+        clusters = list(grapheme_clusters(self.value))
+        spans: list[_LineSpan] = []
+        start = 0
+        current: list[str] = []
+        for index, cluster in enumerate(clusters):
+            if cluster == "\n":
+                spans.append(_LineSpan(len(spans), start, index, "".join(current)))
+                start = index + 1
+                current = []
+            else:
+                current.append(cluster)
+        spans.append(_LineSpan(len(spans), start, len(clusters), "".join(current)))
+        return tuple(spans)
+
+    def _cursor_location(self, spans: tuple[_LineSpan, ...]) -> tuple[int, int]:
+        cursor = self._buffer.cursor
+        for span in spans:
+            if span.start <= cursor <= span.end:
+                column = visible_width(self._range_text(span.start, cursor))
+                return span.index, column
+        last = spans[-1]
+        return last.index, visible_width(last.text)
+
+    def _render_body_lines(self, spans: tuple[_LineSpan, ...], *, rows: int, width: int) -> list[RenderLine]:
+        rendered: list[RenderLine] = []
+        for offset in range(rows):
+            line_index = self._first_visible_line + offset
+            span = spans[line_index] if line_index < len(spans) else None
+            if not self.value and offset == 0:
+                text = truncate_to_width(self.placeholder, max_width=width, ellipsis="")
+                rendered.append(RenderLine(style_text(text, self.theme, "widget.textArea.placeholder")))
+                continue
+            raw = "" if span is None else span.text
+            visible = slice_by_column(raw, start=self._scroll_column, length=width).text
+            visible = truncate_to_width(visible, max_width=width, ellipsis="")
+            rendered.append(RenderLine(style_text(visible, self.theme, "widget.textArea.text")))
+        return rendered
+
+    def _ensure_cursor_visible(
+        self,
+        cursor_line: int,
+        cursor_column: int,
+        *,
+        visible_rows: int,
+        width: int,
+        total_lines: int,
+    ) -> None:
+        if cursor_line < self._first_visible_line:
+            self._first_visible_line = cursor_line
+        elif cursor_line >= self._first_visible_line + visible_rows:
+            self._first_visible_line = cursor_line - visible_rows + 1
+        self._first_visible_line = max(0, min(self._first_visible_line, max(0, total_lines - visible_rows)))
+
+        if cursor_column < self._scroll_column:
+            self._scroll_column = cursor_column
+        elif cursor_column > self._scroll_column + width:
+            self._scroll_column = cursor_column - width
+        self._scroll_column = max(0, self._scroll_column)
 
     def _push_kill(self, text: str, *, prepend: bool) -> None:
         self._kill_ring.push(text, prepend=prepend, accumulate=self._last_action == "kill")

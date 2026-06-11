@@ -138,3 +138,40 @@ def test_text_area_multiline_selection_replaces_atomically() -> None:
     assert area.selected_range is None
     assert area.undo() is True
     assert area.value == "ab\ncd"
+
+
+def test_text_area_renders_label_body_placeholder_and_detail_with_height_precedence() -> None:
+    area = TextArea(label="Notes", placeholder="Type notes", error="Required", height=4)
+
+    assert plain_lines(area, width=20, height=5) == ("Notes", "Type notes", "", "", "Required")
+    assert plain_lines(area, width=20, height=2) == ("Notes", "Type notes")
+
+
+def test_text_area_error_takes_precedence_over_help_and_visible_width_is_constrained() -> None:
+    area = TextArea(label="Very long label", value="Very long value", help_text="Helpful", error="Required", height=2)
+    area.editor_input_target().move_to_line_start()
+
+    lines = render_lines(area, width=8, height=4)
+
+    assert plain_lines(area, width=8, height=4) == ("Very lo", "Very lo", "", "Require")
+    assert_widths_within(lines, 8)
+
+
+def test_text_area_cursor_maps_to_body_row_after_label() -> None:
+    area = TextArea(label="Notes", value="ab\ncd", height=4)
+
+    result = render_result(area, width=20, height=6)
+
+    assert plain_lines(area, width=20, height=6)[:3] == ("Notes", "ab", "cd")
+    assert result.cursor is not None
+    assert (result.cursor.row, result.cursor.column) == (2, 2)
+
+
+def test_text_area_placeholder_does_not_move_cursor() -> None:
+    area = TextArea(placeholder="Type notes", height=3)
+
+    result = render_result(area, width=20, height=3)
+
+    assert plain_lines(area, width=20, height=3) == ("Type notes", "", "")
+    assert result.cursor is not None
+    assert (result.cursor.row, result.cursor.column) == (0, 0)
