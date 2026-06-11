@@ -223,7 +223,35 @@ def test_question_dialog_action_row_marks_active_action_without_layout_shift() -
     assert plain_lines(dialog, width=30, height=6)[-1] == "> [Submit]  [Cancel]"
 
     assert dialog.handle_input(InputEvent(kind="key", key="right")) is True
-    assert plain_lines(dialog, width=30, height=6)[-1] == "  [Submit]  > [Cancel]"
+    assert plain_lines(dialog, width=30, height=6)[-1] == "  [Submit]> [Cancel]"
+
+
+def test_question_dialog_action_row_visible_width_stays_stable_across_focus_states() -> None:
+    dialog = QuestionDialog(title="Ask", value="ok")
+    dialog.focus()
+
+    body_row = render_lines(dialog, width=30, height=6)[-1]
+    assert dialog.handle_input(InputEvent(kind="key", key="tab")) is True
+    submit_row = render_lines(dialog, width=30, height=6)[-1]
+    assert dialog.handle_input(InputEvent(kind="key", key="right")) is True
+    cancel_row = render_lines(dialog, width=30, height=6)[-1]
+
+    assert visible_width(body_row) == visible_width(submit_row) == visible_width(cancel_row)
+
+
+@pytest.mark.parametrize("key", ["s", "space", " "])
+def test_question_dialog_rejects_text_event_submit_keys(key: str) -> None:
+    with pytest.raises(ValueError):
+        QuestionDialog(title="Ask", submit_key=key)
+
+
+def test_question_dialog_suppresses_body_cursor_while_actions_are_focused() -> None:
+    dialog = QuestionDialog(title="Ask", value="ok")
+    dialog.focus()
+
+    assert render_result(dialog, width=30, height=6).cursor is not None
+    assert dialog.handle_input(InputEvent(kind="key", key="tab")) is True
+    assert render_result(dialog, width=30, height=6).cursor is None
 
 
 def test_question_dialog_respects_width_and_height_constraints() -> None:

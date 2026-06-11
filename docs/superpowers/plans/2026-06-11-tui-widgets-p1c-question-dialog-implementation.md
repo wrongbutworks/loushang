@@ -527,6 +527,12 @@ def test_question_dialog_rejects_reserved_submit_keys(key: str) -> None:
         QuestionDialog(title="Ask", submit_key=key)
 
 
+@pytest.mark.parametrize("key", ["s", "space", " "])
+def test_question_dialog_rejects_text_event_submit_keys(key: str) -> None:
+    with pytest.raises(ValueError):
+        QuestionDialog(title="Ask", submit_key=key)
+
+
 def test_question_dialog_accepts_custom_non_reserved_submit_key() -> None:
     dialog = QuestionDialog(title="Ask", value="ok", submit_key="ctrl+s")
     dialog.focus()
@@ -757,7 +763,7 @@ def test_question_dialog_action_row_marks_active_action_without_layout_shift() -
     assert plain_lines(dialog, width=30, height=6)[-1] == "> [Submit]  [Cancel]"
 
     assert dialog.handle_input(InputEvent(kind="key", key="right")) is True
-    assert plain_lines(dialog, width=30, height=6)[-1] == "  [Submit]  > [Cancel]"
+    assert plain_lines(dialog, width=30, height=6)[-1] == "  [Submit]> [Cancel]"
 ```
 
 - [ ] **Step 3: Add height and width constraint tests**

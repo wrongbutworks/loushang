@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from collections.abc import Callable
 from dataclasses import dataclass, field
+from string import printable
 from typing import ClassVar, Literal
 
 from loushang.tui.cell_width import autowrap_safe_width, truncate_to_width
@@ -43,6 +44,16 @@ class QuestionDialog:
     _reserved_submit_keys: ClassVar[frozenset[str]] = frozenset(
         {"enter", "shift+enter", "alt+enter", "ctrl+j", "escape", "ctrl+c", "tab", "shift+tab"}
     )
+    _text_event_submit_keys: ClassVar[frozenset[str]] = frozenset(
+        {
+            "space",
+            *(
+                key
+                for key in printable
+                if len(key) == 1 and key.isprintable()
+            ),
+        }
+    )
     _text_area: TextArea = field(init=False, repr=False)
     _focus_slot: _FocusSlot = field(default="body", init=False, repr=False)
     _active_action: _Action = field(default="submit", init=False, repr=False)
@@ -69,7 +80,7 @@ class QuestionDialog:
         focused: bool = False,
     ) -> None:
         normalized_submit = normalize_key_id(submit_key)
-        if normalized_submit in self._reserved_submit_keys:
+        if normalized_submit in self._reserved_submit_keys or normalized_submit in self._text_event_submit_keys:
             raise ValueError(f"submit_key is reserved for QuestionDialog: {submit_key!r}")
         self.title = title
         self.question = question
@@ -167,7 +178,7 @@ class QuestionDialog:
             body = self._text_area.render(RenderConstraints(width=constraints.width, max_height=body_height))
             body_start = len(lines)
             lines.extend(body.lines[:body_height])
-            if body.cursor is not None:
+            if self._focus_slot == "body" and body.cursor is not None:
                 cursor = CursorDeclaration(row=body_start + body.cursor.row, column=body.cursor.column)
 
         if reserve_action and len(lines) < constraints.max_height:
@@ -189,10 +200,15 @@ class QuestionDialog:
 
     def _action_text(self) -> str:
         if self._focus_slot != "actions":
-            return f"  [{self.confirm_label}]  [{self.cancel_label}]"
-        if self._active_action == "submit":
-            return f"> [{self.confirm_label}]  [{self.cancel_label}]"
-        return f"  [{self.confirm_label}]  > [{self.cancel_label}]"
+            submit_marker = " "
+            cancel_marker = " "
+        elif self._active_action == "submit":
+            submit_marker = ">"
+            cancel_marker = " "
+        else:
+            submit_marker = " "
+            cancel_marker = ">"
+        return f"{submit_marker} [{self.confirm_label}]{cancel_marker} [{self.cancel_label}]"
 
     def _action_line(self, width: int) -> RenderLine:
         token = "widget.question.focus" if self._focus_slot == "actions" else "widget.question.action"

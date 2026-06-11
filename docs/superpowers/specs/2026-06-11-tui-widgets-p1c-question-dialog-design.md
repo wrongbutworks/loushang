@@ -188,6 +188,8 @@ movement:
 - `ctrl+c`
 - `tab`
 - `shift+tab`
+- unmodified printable/text-event keys, such as `s`, `space`, and literal
+  space
 
 If `submit_key` normalizes to one of those keys, `QuestionDialog.__init__()`
 raises `ValueError`. Other explicit key choices are allowed; if they overlap
@@ -250,7 +252,7 @@ Action row rendering:
 - Suggested plain text:
   - Body focused: `"  [Submit]  [Cancel]"`
   - Submit active: `"> [Submit]  [Cancel]"`
-  - Cancel active: `"  [Submit]  > [Cancel]"`
+  - Cancel active: `"  [Submit]> [Cancel]"`
 - If the row is too narrow, truncate to the safe width.
 
 ## Theme Tokens
