@@ -63,7 +63,7 @@ from loushang.coding.tools.read import (
     image_exceeds_inline_limits,
 )
 from loushang.coding.types import ModelSelection
-from loushang.coding.ui import run_coding_tui
+from loushang.coding.ui.mode import run_coding_tui
 from loushang.coding.workflow import (
     load_workflow,
     resolve_workflow_files,
