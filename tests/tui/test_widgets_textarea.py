@@ -5,6 +5,7 @@ from typing import Any
 import pytest
 
 from loushang.tui import (
+    InputEvent,
     RenderConstraints,
     TextArea,
     strip_control_sequences,
@@ -55,3 +56,85 @@ def test_text_area_programmatic_text_methods_preserve_newlines_and_clear_undo() 
 
     assert area.value == ""
     assert area.undo() is False
+
+
+def test_text_area_handles_text_paste_enter_submit_and_escape() -> None:
+    submits: list[str] = []
+    escapes: list[str] = []
+    changes: list[str] = []
+    area = TextArea(on_submit=submits.append, on_escape=lambda: escapes.append("escape"), on_change=changes.append)
+
+    assert area.handle_input(InputEvent(kind="text", text="alpha\nbeta")) is True
+    assert area.value == "alpha\nbeta"
+
+    assert area.handle_input(InputEvent(kind="key", key="enter")) is True
+    assert area.value == "alpha\nbeta\n"
+    assert submits == []
+
+    assert area.handle_input(InputEvent(kind="paste", text="gamma\ndelta")) is True
+    assert area.value == "alpha\nbeta\ngamma\ndelta"
+
+    assert area.handle_input(
+        InputEvent(kind="key", key="ctrl+enter"),
+        keybindings={"tui.input.submit": ("ctrl+enter",)},
+    ) is True
+    assert submits == ["alpha\nbeta\ngamma\ndelta"]
+
+    assert area.handle_input(InputEvent(kind="key", key="escape")) is True
+    assert escapes == ["escape"]
+    assert changes == ["alpha\nbeta", "alpha\nbeta\n", "alpha\nbeta\ngamma\ndelta"]
+
+
+def test_text_area_leaves_up_and_down_available_to_parent_containers() -> None:
+    area = TextArea(value="alpha\nbeta")
+
+    assert area.handle_input(InputEvent(kind="key", key="up")) is False
+    assert area.handle_input(InputEvent(kind="key", key="down")) is False
+
+
+def test_text_area_editor_target_preserves_multiline_edits_and_undo() -> None:
+    changes: list[str] = []
+    area = TextArea(on_change=changes.append)
+    target = area.editor_input_target()
+
+    target.insert_text("alpha")
+    target.paste("\nbeta")
+    target.delete_backward()
+
+    assert area.value == "alpha\nbet"
+    assert changes == ["alpha", "alpha\nbeta", "alpha\nbet"]
+    assert area.undo() is True
+    assert area.value == "alpha\nbeta"
+
+
+def test_text_area_line_boundaries_kill_and_delete_respect_current_logical_line() -> None:
+    area = TextArea(value="alpha\nbeta")
+    target = area.editor_input_target()
+
+    target.move_to_line_start()
+    target.delete_backward()
+    assert area.value == "alphabeta"
+    assert area.undo() is True
+    assert area.value == "alpha\nbeta"
+
+    target.move_to_line_end()
+    target.kill_to_line_start()
+    assert area.value == "alpha\n"
+    assert area.kill_ring == ("beta",)
+
+
+def test_text_area_multiline_selection_replaces_atomically() -> None:
+    area = TextArea(value="ab\ncd")
+    target = area.editor_input_target()
+
+    target.select_char_left()
+    target.select_char_left()
+    target.select_char_left()
+    assert area.selected_range == (2, 5)
+
+    target.insert_text("X")
+
+    assert area.value == "abX"
+    assert area.selected_range is None
+    assert area.undo() is True
+    assert area.value == "ab\ncd"
