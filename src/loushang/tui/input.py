@@ -25,6 +25,8 @@ InputIntentKind = Literal[
     "reject",
     "dialog_confirm",
     "dialog_cancel",
+    "question_submit",
+    "question_cancel",
     "consumed",
 ]
 SubmitMode = Literal["submit", "follow_up", "steer"]

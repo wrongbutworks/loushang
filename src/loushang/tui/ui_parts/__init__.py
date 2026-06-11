@@ -37,6 +37,7 @@ from .widgets import KeyValueList as KeyValueList
 from .widgets import Menu as Menu
 from .widgets import MenuItem as MenuItem
 from .widgets import ProgressBar as ProgressBar
+from .widgets import QuestionDialog as QuestionDialog
 from .widgets import RadioGroup as RadioGroup
 from .widgets import SelectList as SelectList
 from .widgets import Spinner as Spinner
@@ -84,6 +85,7 @@ __all__ = [
     "PendingQueueView",
     "PendingSection",
     "ProgressBar",
+    "QuestionDialog",
     "RadioGroup",
     "RegionRenderable",
     "ScreenLayout",
