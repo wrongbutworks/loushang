@@ -31,6 +31,7 @@ from .table import TableColumn as TableColumn
 from .table import TableRow as TableRow
 from .tabs import TabItem as TabItem
 from .tabs import Tabs as Tabs
+from .textarea import TextArea as TextArea
 from .toolbar import Toolbar as Toolbar
 from .toolbar import ToolbarAction as ToolbarAction
 
@@ -64,6 +65,7 @@ __all__ = [
     "TableRow",
     "TabItem",
     "Tabs",
+    "TextArea",
     "TextField",
     "Toggle",
     "Toolbar",
