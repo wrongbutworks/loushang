@@ -144,24 +144,55 @@ class QuestionDialog:
         return self._text_area.editor_input_target()
 
     def render(self, constraints: RenderConstraints) -> RenderResult:
+        width = autowrap_safe_width(constraints.width)
         if constraints.max_height <= 0:
             return RenderResult.from_lines([], constraints=constraints)
-        title = truncate_to_width(self.title, max_width=autowrap_safe_width(constraints.width), ellipsis="")
-        lines = [RenderLine(style_text(title, self.theme, "widget.question.title"))]
+
+        lines = [self._title_line(width)]
+        if self.question and len(lines) < constraints.max_height:
+            lines.append(self._question_line(width))
+
         cursor: CursorDeclaration | None = None
         remaining = constraints.max_height - len(lines)
-        if remaining > 0:
+        reserve_action = remaining >= 2
+        body_height = remaining - (1 if reserve_action else 0)
+
+        if body_height > 0:
             self._sync_text_area_detail()
-            body = self._text_area.render(RenderConstraints(width=constraints.width, max_height=remaining))
+            body = self._text_area.render(RenderConstraints(width=constraints.width, max_height=body_height))
             body_start = len(lines)
-            lines.extend(body.lines[:remaining])
+            lines.extend(body.lines[:body_height])
             if body.cursor is not None:
                 cursor = CursorDeclaration(row=body_start + body.cursor.row, column=body.cursor.column)
+
+        if reserve_action and len(lines) < constraints.max_height:
+            lines.append(self._action_line(width))
+
         return RenderResult.from_lines(
             lines[: constraints.max_height],
             constraints=constraints,
             cursor=cursor,
         )
+
+    def _title_line(self, width: int) -> RenderLine:
+        text = truncate_to_width(self.title, max_width=width, ellipsis="")
+        return RenderLine(style_text(text, self.theme, "widget.question.title"))
+
+    def _question_line(self, width: int) -> RenderLine:
+        text = truncate_to_width(self.question, max_width=width, ellipsis="")
+        return RenderLine(style_text(text, self.theme, "widget.question.text"))
+
+    def _action_text(self) -> str:
+        if self._focus_slot != "actions":
+            return f"  [{self.confirm_label}]  [{self.cancel_label}]"
+        if self._active_action == "submit":
+            return f"> [{self.confirm_label}]  [{self.cancel_label}]"
+        return f"  [{self.confirm_label}]  > [{self.cancel_label}]"
+
+    def _action_line(self, width: int) -> RenderLine:
+        token = "widget.question.focus" if self._focus_slot == "actions" else "widget.question.action"
+        text = truncate_to_width(self._action_text(), max_width=width, ellipsis="")
+        return RenderLine(style_text(text, self.theme, token))
 
     def _mark_pending_submit(self, _value: str) -> None:
         self._pending_submit = True
