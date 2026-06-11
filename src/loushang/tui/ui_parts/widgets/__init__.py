@@ -35,6 +35,8 @@ from .tabs import Tabs as Tabs
 from .textarea import TextArea as TextArea
 from .toolbar import Toolbar as Toolbar
 from .toolbar import ToolbarAction as ToolbarAction
+from .tree import TreeNode as TreeNode
+from .tree import TreeView as TreeView
 
 __all__ = [
     "Button",
@@ -72,4 +74,6 @@ __all__ = [
     "Toggle",
     "Toolbar",
     "ToolbarAction",
+    "TreeNode",
+    "TreeView",
 ]
