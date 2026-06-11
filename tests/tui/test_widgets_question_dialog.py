@@ -282,3 +282,9 @@ def test_question_dialog_themes_title_question_and_action_rows() -> None:
     dialog.handle_input(InputEvent(kind="key", key="tab"))
     focused = render_lines(dialog, width=30, height=6)
     assert focused[-1].startswith("\x1b[32m")
+
+
+def test_widgets_question_dialog_example_imports() -> None:
+    namespace = runpy.run_path("examples/tui/48_widgets_question_dialog.py", run_name="__test__")
+
+    assert callable(namespace["build_app"])

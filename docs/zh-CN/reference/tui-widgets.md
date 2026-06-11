@@ -98,6 +98,28 @@ notes = TextArea(label="Notes", placeholder="Write notes", height=5)
 notes.focus()
 ```
 
+## P1C 对话输入控件
+
+| 控件 | 用途 |
+| --- | --- |
+| `QuestionDialog` | 返回结构化 intent 的多行问答输入。 |
+
+`QuestionDialog` 内嵌 `TextArea`：普通 `enter` 插入新行，默认
+`ctrl+enter` 提交，`escape` / `ctrl+c` 取消。提交会返回
+`question_submit` intent，由调用方决定如何使用答案。
+
+```python
+from loushang.tui import QuestionDialog
+
+dialog = QuestionDialog(
+    title="Add note",
+    question="What should be remembered?",
+    placeholder="Write a multi-line answer",
+    required=True,
+)
+dialog.focus()
+```
+
 ## 表单
 
 ```python
@@ -142,7 +164,7 @@ Dialog 会先处理 `escape` 和 `ctrl+c`，再委派给内部字段。body 焦�
 
 ## 主题 Token
 
-支持样式的 P0A、P0B、P0C、P1A 与 P1B 控件可以接收 `ThemeResolver`。第一批稳定 token 如下：
+支持样式的 P0A、P0B、P0C、P1A、P1B 与 P1C 控件可以接收 `ThemeResolver`。第一批稳定 token 如下：
 
 | Token | 作用范围 |
 | --- | --- |
@@ -157,6 +179,10 @@ Dialog 会先处理 `escape` 和 `ctrl+c`，再委派给内部字段。body 焦�
 | `widget.button.ghost` | ghost button。 |
 | `widget.dialog.title` | dialog 标题。 |
 | `widget.dialog.action` | dialog action 行。 |
+| `widget.question.title` | `QuestionDialog` 标题行。 |
+| `widget.question.text` | `QuestionDialog` 问题行。 |
+| `widget.question.action` | `QuestionDialog` 非激活 action 行。 |
+| `widget.question.focus` | `QuestionDialog` 激活 action 行。 |
 | `widget.badge.default` | default badge。 |
 | `widget.badge.info` | informational badge。 |
 | `widget.badge.success` | successful badge。 |
@@ -198,8 +224,7 @@ Dialog 会先处理 `escape` 和 `ctrl+c`，再委派给内部字段。body 焦�
 
 ## 计划中的控件目录
 
-`Popover`、`PromptDialog`、`TreeView` 和 `Toast` 是计划中的目录项，
-不属于当前 widget 实现范围。
+`Popover`、`TreeView` 和 `Toast` 是计划中的目录项，不属于当前 widget 实现范围。
 
 ## 示例
 
@@ -213,3 +238,5 @@ Dialog 会先处理 `escape` 和 `ctrl+c`，再委派给内部字段。body 焦�
   一个带键盘行选择的密集 table 组合示例。
 - [examples/tui/47_widgets_textarea.py](../../../examples/tui/47_widgets_textarea.py)：
   一个在小型表单中进行多行文本输入的示例。
+- [examples/tui/48_widgets_question_dialog.py](../../../examples/tui/48_widgets_question_dialog.py)：
+  一个返回结构化提交与取消 intent 的多行问答对话框示例。

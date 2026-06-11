@@ -100,6 +100,28 @@ notes = TextArea(label="Notes", placeholder="Write notes", height=5)
 notes.focus()
 ```
 
+## P1C Dialog Inputs
+
+| Widget | Use it for |
+| --- | --- |
+| `QuestionDialog` | Multi-line question-and-answer prompts that return structured intents. |
+
+`QuestionDialog` embeds `TextArea`: plain `enter` inserts a newline, the default
+`ctrl+enter` submits, and `escape` / `ctrl+c` cancel. Submits return
+`question_submit` intents; callers decide how to use the answer.
+
+```python
+from loushang.tui import QuestionDialog
+
+dialog = QuestionDialog(
+    title="Add note",
+    question="What should be remembered?",
+    placeholder="Write a multi-line answer",
+    required=True,
+)
+dialog.focus()
+```
+
 ## Forms
 
 ```python
@@ -147,8 +169,8 @@ body focus is active.
 
 ## Theme Tokens
 
-P0A, P0B, P0C, P1A, and P1B widgets accept `ThemeResolver` where styling is supported.
-Initial stable tokens are:
+P0A, P0B, P0C, P1A, P1B, and P1C widgets accept `ThemeResolver` where styling is
+supported. Initial stable tokens are:
 
 | Token | Applies to |
 | --- | --- |
@@ -163,6 +185,10 @@ Initial stable tokens are:
 | `widget.button.ghost` | Ghost buttons. |
 | `widget.dialog.title` | Dialog titles. |
 | `widget.dialog.action` | Dialog action rows. |
+| `widget.question.title` | `QuestionDialog` title rows. |
+| `widget.question.text` | `QuestionDialog` question rows. |
+| `widget.question.action` | Inactive `QuestionDialog` action rows. |
+| `widget.question.focus` | Active `QuestionDialog` action rows. |
 | `widget.badge.default` | Default badges. |
 | `widget.badge.info` | Informational badges. |
 | `widget.badge.success` | Successful badges. |
@@ -204,8 +230,8 @@ Initial stable tokens are:
 
 ## Planned Catalog
 
-`Popover`, `PromptDialog`, `TreeView`, and `Toast` are planned catalog entries.
-They are not part of the current widget implementation.
+`Popover`, `TreeView`, and `Toast` are planned catalog entries. They are not
+part of the current widget implementation.
 
 ## Example
 
@@ -219,3 +245,5 @@ They are not part of the current widget implementation.
   dense table composition with keyboard row selection.
 - [examples/tui/47_widgets_textarea.py](../../../examples/tui/47_widgets_textarea.py):
   multi-line text entry inside a small form.
+- [examples/tui/48_widgets_question_dialog.py](../../../examples/tui/48_widgets_question_dialog.py):
+  multi-line question dialog with structured submit and cancel intents.
