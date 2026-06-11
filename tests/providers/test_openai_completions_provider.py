@@ -157,6 +157,30 @@ def test_openai_completions_payload_maps_user_image_assistant_toolcall_and_tool_
     assert _FakeAsyncOpenAI.last_create_kwargs["tool_choice"] == "required"
 
 
+def test_openai_completions_uses_upstream_model_id(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _fake_openai_module(monkeypatch)
+    _patch_resolved_request(
+        monkeypatch,
+        compat={"upstreamModelId": "openai/gpt-oss-120b:free"},
+        reasoning_effort=None,
+    )
+    provider = OpenAICompletionsProvider()
+
+    asyncio.run(
+        _collect_parts(
+            provider._stream_raw_parts(
+                _Model(id="openai/gpt-oss-120b_free"),
+                {"messages": [UserMessage(role="user", content="hello", timestamp=0.0)]},
+                OpenAICompletionsOptions(api_key="test-key"),
+            )
+        )
+    )
+
+    assert _FakeAsyncOpenAI.last_create_kwargs["model"] == "openai/gpt-oss-120b:free"
+
+
 def test_openai_completions_caps_model_max_tokens_default(
 	monkeypatch: pytest.MonkeyPatch,
 ) -> None:

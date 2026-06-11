@@ -31,6 +31,7 @@ CODEX_INCLUDE_CONVERSATION_ID = "codexIncludeConversationId"
 CODEX_PROMPT_CACHE_RETENTION = "codexPromptCacheRetention"
 CODEX_ORIGINATOR = "codexOriginator"
 CODEX_USER_AGENT = "codexUserAgent"
+UPSTREAM_MODEL_ID = "upstreamModelId"
 
 COMPAT_DEFAULTS: dict[str, object] = {
     SUPPORTS_STORE: False,
@@ -59,6 +60,7 @@ COMPAT_DEFAULTS: dict[str, object] = {
     CODEX_PROMPT_CACHE_RETENTION: None,
     CODEX_ORIGINATOR: None,
     CODEX_USER_AGENT: None,
+    UPSTREAM_MODEL_ID: None,
 }
 
 
@@ -172,6 +174,7 @@ def resolve_openai_completions_compat(
             OPENROUTER_ROUTING,
             VERCEL_GATEWAY_ROUTING,
             CACHE_CONTROL_FORMAT,
+            UPSTREAM_MODEL_ID,
         ),
     )
 
@@ -197,6 +200,7 @@ def resolve_openai_responses_compat(
             SUPPORTS_DEVELOPER_ROLE,
             REQUIRES_ASSISTANT_AFTER_TOOL_RESULT,
         ),
+        value_keys=(UPSTREAM_MODEL_ID,),
     )
 
 

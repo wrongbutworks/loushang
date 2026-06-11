@@ -56,6 +56,13 @@ class OpenAIResponsesOptions(ModelCallOptions):
 
 
 @dataclass(frozen=True)
+class AzureOpenAIResponsesOptions(OpenAIResponsesOptions):
+    azure_api_version: str | None = None
+    azure_base_url: str | None = None
+    azure_deployment_name: str | None = None
+
+
+@dataclass(frozen=True)
 class OpenAICodexResponsesOptions(ModelCallOptions):
     reasoning: str | None = None
     reasoning_summary: str | None = None

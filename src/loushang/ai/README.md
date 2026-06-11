@@ -42,6 +42,15 @@
 - `registry` 负责组织和查询
 - `loader` 只负责初始化装载
 
+模型 ID 规则：
+
+- catalog 中的 `provider`、`endpoint`、`model` 三段用于本地查询和 CLI 展示
+- 上游模型 ID 如果包含 `:`，catalog 的公开 `model` ID 使用 `_` 替换 `:`
+- 真实上游 ID 存在 `model.compat["upstreamModelId"]`
+- provider adapter 发请求时使用 `upstreamModelId`，没有该字段时使用 `model.id`
+
+例如 OpenRouter 上游模型 `openai/gpt-oss-120b:free` 在本地写作 `openai/gpt-oss-120b_free`。
+
 ### `provider/`
 
 统一 provider 边界层。
@@ -65,9 +74,21 @@
 - `openai_completions.py`
 - `openai_responses.py`
 - `openai_codex_responses.py`
+- `azure_openai_responses.py`
+- `bedrock_converse.py`
 - `faux.py`
 
 这里负责真正发请求、消费 SDK、映射 raw stream events。
+
+当前内置 provider family：
+
+- OpenAI-compatible chat completions：`openai-completions`
+- OpenAI Responses：`openai-responses`
+- Anthropic Messages：`anthropic-messages`
+- Azure OpenAI Responses：`azure-openai-responses`
+- Amazon Bedrock Converse：`bedrock-converse-stream`
+
+其中 Mistral、Google Gemini API、Google Vertex OpenAI-compatible、Cloudflare AI Gateway / Workers AI 通过现有 OpenAI-compatible 或 Anthropic Messages adapter 接入。Cloudflare 和 Vertex 的 `baseUrl` 可以包含 `{ENV_NAME}` 模板，运行时由 `provider.resolution` 从环境变量展开；缺少变量时直接报错。
 
 ### `context.py` 与 `messages.py`
 

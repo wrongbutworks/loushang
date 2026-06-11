@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+import re
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -204,11 +205,27 @@ def _resolve_base_url(
     endpoint: ResolvedEndpoint,
     env: dict[str, str] | None,
 ) -> str | None:
+    resolved_env = env or {}
     if endpoint.base_url_env:
-        value = (env or {}).get(endpoint.base_url_env)
+        value = resolved_env.get(endpoint.base_url_env)
         if isinstance(value, str) and value:
             return value
-    return endpoint.base_url
+    if endpoint.base_url is None:
+        return None
+    return _expand_env_template(endpoint.base_url, resolved_env)
+
+
+def _expand_env_template(value: str, env: dict[str, str]) -> str:
+    def _replace(match: re.Match[str]) -> str:
+        name = match.group(1)
+        replacement = env.get(name)
+        if not isinstance(replacement, str) or not replacement:
+            raise ValueError(
+                f"Environment variable {name} is required by baseUrl template"
+            )
+        return replacement
+
+    return re.sub(r"\{([A-Z_][A-Z0-9_]*)\}", _replace, value)
 
 
 def _resolve_compat_for_api(

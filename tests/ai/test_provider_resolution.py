@@ -139,6 +139,80 @@ def test_resolve_request_uses_os_environ_for_base_url_env(
     assert resolved.base_url == os.environ["CUSTOM_BASE_URL"]
 
 
+def test_resolve_request_expands_base_url_env_template() -> None:
+    endpoint = Endpoint(
+        id="openai-completions",
+        provider="cloudflare-workers-ai",
+        api="openai-completions",
+        base_url=(
+            "https://api.cloudflare.com/client/v4/accounts/"
+            "{CLOUDFLARE_ACCOUNT_ID}/ai/v1"
+        ),
+        models={
+            "model-a": Model(
+                id="model-a",
+                provider="cloudflare-workers-ai",
+                endpoint="openai-completions",
+            )
+        },
+    )
+    registry = ModelRegistry.from_providers(
+        {
+            "cloudflare-workers-ai": Provider(
+                id="cloudflare-workers-ai",
+                endpoints={endpoint.id: endpoint},
+            )
+        }
+    )
+    model = registry.get_model(
+        "cloudflare-workers-ai", "openai-completions", "model-a"
+    )
+
+    resolved = resolve_request_for_model(
+        model,
+        registry=registry,
+        env={"CLOUDFLARE_ACCOUNT_ID": "acct_123"},
+    )
+
+    assert (
+        resolved.base_url
+        == "https://api.cloudflare.com/client/v4/accounts/acct_123/ai/v1"
+    )
+
+
+def test_resolve_request_rejects_missing_base_url_env_template() -> None:
+    endpoint = Endpoint(
+        id="openai-completions",
+        provider="cloudflare-workers-ai",
+        api="openai-completions",
+        base_url=(
+            "https://api.cloudflare.com/client/v4/accounts/"
+            "{CLOUDFLARE_ACCOUNT_ID}/ai/v1"
+        ),
+        models={
+            "model-a": Model(
+                id="model-a",
+                provider="cloudflare-workers-ai",
+                endpoint="openai-completions",
+            )
+        },
+    )
+    registry = ModelRegistry.from_providers(
+        {
+            "cloudflare-workers-ai": Provider(
+                id="cloudflare-workers-ai",
+                endpoints={endpoint.id: endpoint},
+            )
+        }
+    )
+    model = registry.get_model(
+        "cloudflare-workers-ai", "openai-completions", "model-a"
+    )
+
+    with pytest.raises(ValueError, match="CLOUDFLARE_ACCOUNT_ID"):
+        resolve_request_for_model(model, registry=registry, env={})
+
+
 def test_resolve_request_selects_matching_region_endpoint() -> None:
     cn_endpoint = Endpoint(
         id="openai-responses",

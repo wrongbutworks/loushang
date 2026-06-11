@@ -23,6 +23,38 @@ def test_model_lookup_example_targets_public_kimi_model() -> None:
     assert module.MODEL_ID == "kimi-k2.5"
 
 
+def test_provider_matrix_example_targets_new_provider_models() -> None:
+    module = _load_module(
+        Path("examples/ai/provider_matrix.py"), "examples_ai_provider_matrix"
+    )
+
+    examples = {
+        (item.provider_id, item.endpoint_id, item.model_id): item.env_vars
+        for item in module.PROVIDER_EXAMPLES
+    }
+
+    assert examples[("openrouter", "openai-completions", "openai/gpt-oss-120b_free")]
+    assert examples[("azure-openai-responses", "azure-openai-responses", "gpt-4o-mini")]
+    assert examples[
+        (
+            "amazon-bedrock",
+            "bedrock-converse-stream",
+            "anthropic.claude-sonnet-4-5-20250929-v1_0",
+        )
+    ]
+
+
+def test_provider_matrix_example_formats_upstream_model_id() -> None:
+    module = _load_module(
+        Path("examples/ai/provider_matrix.py"), "examples_ai_provider_matrix_format"
+    )
+
+    line = module._format_model_line(module.PROVIDER_EXAMPLES[0])
+
+    assert "openai/gpt-oss-120b_free" in line
+    assert "upstream=openai/gpt-oss-120b:free" in line
+
+
 def test_complete_example_builds_expected_context() -> None:
     module = _load_module(Path("examples/ai/complete.py"), "examples_ai_complete")
 
