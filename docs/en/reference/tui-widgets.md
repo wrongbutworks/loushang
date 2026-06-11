@@ -122,6 +122,30 @@ dialog = QuestionDialog(
 dialog.focus()
 ```
 
+## P1D Tree Controls
+
+| Widget | Use it for |
+| --- | --- |
+| `TreeNode` / `TreeView` | Static hierarchical data with local active-row navigation and expansion state. |
+
+`TreeView` flattens visible nodes in preorder. `right` expands a collapsed
+branch or moves to the first enabled direct child; `left` collapses an expanded
+branch or moves to the nearest enabled visible parent. Activating an enabled
+node returns `InputIntent(kind="select", text=value)` unless the node defines
+`on_select`.
+
+```python
+from loushang.tui import TreeNode, TreeView
+
+tree = TreeView(
+    (
+        TreeNode("src", "src", expanded=True, children=(TreeNode("widgets", "widgets"),)),
+        TreeNode("tests", "tests"),
+    )
+)
+tree.focus()
+```
+
 ## Forms
 
 ```python
@@ -222,6 +246,10 @@ supported. Initial stable tokens are:
 | `widget.table.focus` | Focused active table row. |
 | `widget.table.disabled` | Disabled table rows. |
 | `widget.table.empty` | Table empty-state text. |
+| `widget.tree.row` | Enabled inactive tree rows. |
+| `widget.tree.focus` | Focused active tree row. |
+| `widget.tree.disabled` | Disabled tree rows. |
+| `widget.tree.empty` | Tree empty-state text. |
 | `widget.textArea.label` | `TextArea` label rows. |
 | `widget.textArea.placeholder` | `TextArea` placeholder text. |
 | `widget.textArea.text` | `TextArea` body text. |
@@ -230,8 +258,8 @@ supported. Initial stable tokens are:
 
 ## Planned Catalog
 
-`Popover`, `TreeView`, and `Toast` are planned catalog entries. They are not
-part of the current widget implementation.
+`Popover` and `Toast` are planned catalog entries. They are not part of the
+current widget implementation.
 
 ## Example
 
@@ -247,3 +275,5 @@ part of the current widget implementation.
   multi-line text entry inside a small form.
 - [examples/tui/48_widgets_question_dialog.py](../../../examples/tui/48_widgets_question_dialog.py):
   multi-line question dialog with structured submit and cancel intents.
+- [examples/tui/49_widgets_tree.py](../../../examples/tui/49_widgets_tree.py):
+  static hierarchical tree with keyboard expansion and selection.

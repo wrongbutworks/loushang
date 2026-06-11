@@ -120,6 +120,28 @@ dialog = QuestionDialog(
 dialog.focus()
 ```
 
+## P1D 树控件
+
+| 控件 | 用途 |
+| --- | --- |
+| `TreeNode` / `TreeView` | 带局部 active-row 导航和展开状态的静态层级数据。 |
+
+`TreeView` 以 preorder 展平可见节点。`right` 会展开折叠分支，或移动到第一个可用的直接子节点；
+`left` 会折叠已展开分支，或移动到最近的可用可见父节点。激活可用节点时，除非节点定义了
+`on_select`，否则返回 `InputIntent(kind="select", text=value)`。
+
+```python
+from loushang.tui import TreeNode, TreeView
+
+tree = TreeView(
+    (
+        TreeNode("src", "src", expanded=True, children=(TreeNode("widgets", "widgets"),)),
+        TreeNode("tests", "tests"),
+    )
+)
+tree.focus()
+```
+
 ## 表单
 
 ```python
@@ -216,6 +238,10 @@ Dialog 会先处理 `escape` 和 `ctrl+c`，再委派给内部字段。body 焦�
 | `widget.table.focus` | 获得焦点的激活 table 行。 |
 | `widget.table.disabled` | 禁用 table 行。 |
 | `widget.table.empty` | table 空状态文本。 |
+| `widget.tree.row` | 可用的非激活 tree 行。 |
+| `widget.tree.focus` | 获得焦点的激活 tree 行。 |
+| `widget.tree.disabled` | 禁用 tree 行。 |
+| `widget.tree.empty` | tree 空状态文本。 |
 | `widget.textArea.label` | `TextArea` 标签行。 |
 | `widget.textArea.placeholder` | `TextArea` placeholder 文本。 |
 | `widget.textArea.text` | `TextArea` 正文文本。 |
@@ -224,7 +250,7 @@ Dialog 会先处理 `escape` 和 `ctrl+c`，再委派给内部字段。body 焦�
 
 ## 计划中的控件目录
 
-`Popover`、`TreeView` 和 `Toast` 是计划中的目录项，不属于当前 widget 实现范围。
+`Popover` 和 `Toast` 是计划中的目录项，不属于当前 widget 实现范围。
 
 ## 示例
 
@@ -240,3 +266,5 @@ Dialog 会先处理 `escape` 和 `ctrl+c`，再委派给内部字段。body 焦�
   一个在小型表单中进行多行文本输入的示例。
 - [examples/tui/48_widgets_question_dialog.py](../../../examples/tui/48_widgets_question_dialog.py)：
   一个返回结构化提交与取消 intent 的多行问答对话框示例。
+- [examples/tui/49_widgets_tree.py](../../../examples/tui/49_widgets_tree.py)：
+  一个带键盘展开和选择行为的静态层级树示例。

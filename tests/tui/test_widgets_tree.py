@@ -282,3 +282,9 @@ def test_tree_view_applies_theme_tokens() -> None:
     assert raw[1].startswith("\x1b[37m      widgets")
     assert raw[2].startswith("\x1b[2m      runtime")
     assert render_lines(TreeView((), theme=theme), width=10, height=1)[0].startswith("\x1b[90mNo nodes")
+
+
+def test_widgets_tree_example_imports() -> None:
+    namespace = runpy.run_path("examples/tui/49_widgets_tree.py", run_name="__test__")
+
+    assert callable(namespace["build_app"])
