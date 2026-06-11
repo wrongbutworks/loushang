@@ -6,6 +6,7 @@ import pytest
 
 from loushang.tui import (
     RenderConstraints,
+    ThemeResolver,
     Toast,
     ToastKind,
     ToastStack,
@@ -46,6 +47,74 @@ def plain_lines(part: Any, *, width: int = 40, height: int = 8) -> tuple[str, ..
 
 def assert_widths_within(lines: tuple[str, ...], width: int) -> None:
     assert all(visible_width(line) <= width for line in lines)
+
+
+def test_toast_stack_renders_title_message_and_empty_message_rows() -> None:
+    stack = ToastStack(
+        (
+            Toast("Saved", title="Config", kind="success", value="save", duration_ms=None),
+            Toast("", title="Warning", kind="warning", value="warn", duration_ms=None),
+            Toast("Plain", kind="info", value="plain", duration_ms=None),
+        ),
+        newest_on_top=False,
+    )
+
+    assert plain_lines(stack, width=40, height=5) == (
+        "[success] Config: Saved",
+        "[warning] Warning",
+        "[info] Plain",
+    )
+
+
+def test_toast_stack_respects_width_height_and_empty_height() -> None:
+    empty = ToastStack(empty_height=1)
+    assert plain_lines(empty, width=10, height=3) == ("",)
+    assert plain_lines(ToastStack(empty_height=2), width=10, height=1) == ("",)
+    assert plain_lines(ToastStack(), width=10, height=3) == ()
+
+    stack = ToastStack(
+        (
+            Toast("Very long message", kind="info", value="a", duration_ms=None),
+            Toast("Second", kind="danger", value="b", duration_ms=None),
+        ),
+        newest_on_top=False,
+    )
+    lines = render_lines(stack, width=12, height=1)
+
+    assert plain_lines(stack, width=12, height=1) == ("[info] Very",)
+    assert_widths_within(lines, 12)
+    assert_widths_within(render_lines(stack, width=1, height=3), 1)
+
+
+def test_toast_stack_applies_theme_tokens_and_preserves_visible_width() -> None:
+    theme = ThemeResolver(
+        defaults={
+            "widget.toast.success": {"color": "green"},
+            "widget.toast.title": {"bold": True},
+            "widget.toast.message": {"color": "white"},
+        }
+    )
+    stack = ToastStack(
+        (Toast("Saved", title="Config", kind="success", value="save", duration_ms=None),),
+        theme=theme,
+    )
+
+    raw = render_lines(stack, width=40, height=2)
+
+    assert len(raw) == 1
+    line = raw[0]
+    assert line.startswith("\x1b[32m[success]")
+    assert "\x1b[1mConfig" in line
+    assert "\x1b[37mSaved" in line
+    assert_widths_within(raw, 40)
+
+
+def test_toast_render_samples_now_once() -> None:
+    clock = Clock(100, 101, 102)
+    stack = ToastStack((Toast("A", value="a", created_at_ms=0, duration_ms=101),), now_ms=clock)
+
+    assert plain_lines(stack, width=20, height=2) == ("[info] A",)
+    assert clock.calls == 1
 
 
 def test_toast_widgets_are_reexported_from_public_modules() -> None:
