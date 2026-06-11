@@ -142,6 +142,36 @@ tree = TreeView(
 tree.focus()
 ```
 
+## P1E Toast 控件
+
+| 控件 | 用途 |
+| --- | --- |
+| `Toast` / `ToastStack` | 带队列、过期和关闭行为的内联临时消息。 |
+
+`Toast` 是消息载荷。`ToastStack` 拥有队列，并在调用方放置的位置渲染当前可见
+toast。Toast 控件不会自动打开 overlay；如果需要 overlay 展示，调用方应自行把
+`ToastStack` 放入 overlay 或 surface。
+`ToastStack` 是纯 renderable：它不会启动计时器、调度渲染、打开 overlay，也不会自动清理过期
+toast。
+
+队列操作都是显式的。`push()` 追加一个 `Toast` 或字符串消息，并返回稳定的 toast
+value。`dismiss(value)` 移除可关闭 toast，`dismiss_oldest()` 移除最旧的可见可关闭
+toast，`clear()` 清空所有排队 toast，`prune_expired()` 会修改队列并丢弃过期 toast。
+`all_toasts()` 返回已存储队列；`visible_toasts()` 会过滤过期项、应用 `max_visible`，
+并遵守 `newest_on_top`。
+
+过期时间基于 `created_at_ms + duration_ms`。默认 duration 是 4000 ms；
+`duration_ms=None` 会让 toast 一直可见，直到被关闭或清空。渲染和
+`visible_toasts()` 会隐藏过期 toast，但不会修改队列；需要移除已存储的过期项时，
+调用 `prune_expired()`。
+
+```python
+from loushang.tui import ToastStack
+
+stack = ToastStack()
+stack.push("Saved", kind="success", title="Config")
+```
+
 ## 表单
 
 ```python
@@ -186,7 +216,8 @@ Dialog 会先处理 `escape` 和 `ctrl+c`，再委派给内部字段。body 焦�
 
 ## 主题 Token
 
-支持样式的 P0A、P0B、P0C、P1A、P1B 与 P1C 控件可以接收 `ThemeResolver`。第一批稳定 token 如下：
+支持样式的 P0A、P0B、P0C、P1A、P1B、P1C、P1D 与 P1E 控件可以接收
+`ThemeResolver`。第一批稳定 token 如下：
 
 | Token | 作用范围 |
 | --- | --- |
@@ -242,6 +273,12 @@ Dialog 会先处理 `escape` 和 `ctrl+c`，再委派给内部字段。body 焦�
 | `widget.tree.focus` | 获得焦点的激活 tree 行。 |
 | `widget.tree.disabled` | 禁用 tree 行。 |
 | `widget.tree.empty` | tree 空状态文本。 |
+| `widget.toast.info` | informational toast 前缀。 |
+| `widget.toast.success` | successful toast 前缀。 |
+| `widget.toast.warning` | warning toast 前缀。 |
+| `widget.toast.danger` | dangerous 或 failed toast 前缀。 |
+| `widget.toast.title` | Toast 标题片段。 |
+| `widget.toast.message` | Toast 消息片段。 |
 | `widget.textArea.label` | `TextArea` 标签行。 |
 | `widget.textArea.placeholder` | `TextArea` placeholder 文本。 |
 | `widget.textArea.text` | `TextArea` 正文文本。 |
@@ -250,7 +287,7 @@ Dialog 会先处理 `escape` 和 `ctrl+c`，再委派给内部字段。body 焦�
 
 ## 计划中的控件目录
 
-`Popover` 和 `Toast` 是计划中的目录项，不属于当前 widget 实现范围。
+`Popover` 是计划中的目录项，不属于当前 widget 实现范围。
 
 ## 示例
 
@@ -268,3 +305,5 @@ Dialog 会先处理 `escape` 和 `ctrl+c`，再委派给内部字段。body 焦�
   一个返回结构化提交与取消 intent 的多行问答对话框示例。
 - [examples/tui/49_widgets_tree.py](../../../examples/tui/49_widgets_tree.py)：
   一个带键盘展开和选择行为的静态层级树示例。
+- [examples/tui/50_widgets_toast.py](../../../examples/tui/50_widgets_toast.py)：
+  一个带队列、关闭和清空动作的内联 toast stack 示例。

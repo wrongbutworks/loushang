@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import runpy
 from typing import Any
 
 import pytest
@@ -143,6 +144,16 @@ def test_toast_widgets_are_reexported_from_public_modules() -> None:
     assert ToastKind is UiToastKind
     assert ToastKind is WidgetToastKind
     assert Toast("Saved").message == "Saved"
+
+
+def test_widgets_toast_example_imports() -> None:
+    namespace = runpy.run_path("examples/tui/50_widgets_toast.py", run_name="__test__")
+
+    build_app = namespace["build_app"]
+    assert callable(build_app)
+    app = build_app()
+    result = app.render(RenderConstraints(width=60, max_height=8))
+    assert result.lines
 
 
 def test_toast_stack_normalizes_generated_values_and_timestamps() -> None:
