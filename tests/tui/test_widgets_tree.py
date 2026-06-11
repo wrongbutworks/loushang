@@ -230,3 +230,55 @@ def test_tree_view_activation_returns_callback_or_select_intent() -> None:
     assert intent_tuple(tree.handle_input(InputEvent(kind="key", key="enter"))) == ("select", "plain", "")
     assert intent_tuple(tree.handle_input(InputEvent(kind="key", key="space"))) == ("select", "plain", "")
     assert intent_tuple(tree.handle_input(InputEvent(kind="text", text=" "))) == ("select", "plain", "")
+
+
+def test_tree_view_renders_indentation_markers_focus_and_disabled_rows() -> None:
+    tree = TreeView(sample_nodes())
+    tree.focus()
+
+    assert plain_lines(tree, width=30, height=6) == (
+        "> - src",
+        "      widgets",
+        "      runtime",
+        "  + tests",
+    )
+
+
+def test_tree_view_respects_width_empty_and_height_viewport() -> None:
+    empty = TreeView((), empty_text="Nothing here")
+    assert plain_lines(empty, width=8, height=3) == ("Nothing",)
+
+    tree = TreeView(
+        tuple(TreeNode(str(index), f"Item {index}") for index in range(6)),
+        active_value="5",
+    )
+    tree.focus()
+
+    lines = render_lines(tree, width=8, height=3)
+
+    assert plain_lines(tree, width=8, height=3) == (
+        "    Item",
+        "    Item",
+        ">   Item",
+    )
+    assert_widths_within(lines, 8)
+
+
+def test_tree_view_applies_theme_tokens() -> None:
+    theme = ThemeResolver(
+        defaults={
+            "widget.tree.row": {"color": "white"},
+            "widget.tree.focus": {"bold": True, "color": "green"},
+            "widget.tree.disabled": {"dim": True},
+            "widget.tree.empty": {"color": "bright_black"},
+        }
+    )
+    tree = TreeView(sample_nodes(), theme=theme)
+    tree.focus()
+
+    raw = render_lines(tree, width=30, height=4)
+
+    assert raw[0].startswith("\x1b[1;32m> - src")
+    assert raw[1].startswith("\x1b[37m      widgets")
+    assert raw[2].startswith("\x1b[2m      runtime")
+    assert render_lines(TreeView((), theme=theme), width=10, height=1)[0].startswith("\x1b[90mNo nodes")
