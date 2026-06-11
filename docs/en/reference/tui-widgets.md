@@ -146,6 +146,40 @@ tree = TreeView(
 tree.focus()
 ```
 
+## P1E Toast Controls
+
+| Widget | Use it for |
+| --- | --- |
+| `Toast` / `ToastStack` | Inline transient messages with queueing, expiration, and dismissal. |
+
+`Toast` is the message payload. `ToastStack` owns the queue and renders the
+currently visible toasts wherever the caller places it. Toast controls do not
+open overlays automatically; callers that want overlay presentation should put a
+`ToastStack` in their own overlay or surface.
+`ToastStack` is a pure renderable: it does not start timers, schedule renders,
+open overlays, or prune expired toasts automatically.
+
+Queue operations are explicit. `push()` appends a `Toast` or string message and
+returns the stable toast value. `dismiss(value)` removes a dismissible toast,
+`dismiss_oldest()` removes the oldest visible dismissible toast, `clear()`
+removes all queued toasts, and `prune_expired()` mutates the queue by dropping
+expired toasts. `all_toasts()` returns the stored queue, while
+`visible_toasts()` filters expired entries, applies `max_visible`, and respects
+`newest_on_top`.
+
+Expiration is based on `created_at_ms + duration_ms`. The default duration is
+4000 ms; `duration_ms=None` keeps a toast visible until it is dismissed or
+cleared. Rendering and `visible_toasts()` hide expired toasts without mutating
+the queue, so call `prune_expired()` when stored expired entries should be
+removed.
+
+```python
+from loushang.tui import ToastStack
+
+stack = ToastStack()
+stack.push("Saved", kind="success", title="Config")
+```
+
 ## Forms
 
 ```python
@@ -193,8 +227,8 @@ body focus is active.
 
 ## Theme Tokens
 
-P0A, P0B, P0C, P1A, P1B, and P1C widgets accept `ThemeResolver` where styling is
-supported. Initial stable tokens are:
+P0A, P0B, P0C, P1A, P1B, P1C, P1D, and P1E widgets accept `ThemeResolver`
+where styling is supported. Initial stable tokens are:
 
 | Token | Applies to |
 | --- | --- |
@@ -250,6 +284,12 @@ supported. Initial stable tokens are:
 | `widget.tree.focus` | Focused active tree row. |
 | `widget.tree.disabled` | Disabled tree rows. |
 | `widget.tree.empty` | Tree empty-state text. |
+| `widget.toast.info` | Informational toast prefix. |
+| `widget.toast.success` | Successful toast prefix. |
+| `widget.toast.warning` | Warning toast prefix. |
+| `widget.toast.danger` | Dangerous or failed toast prefix. |
+| `widget.toast.title` | Toast title segment. |
+| `widget.toast.message` | Toast message segment. |
 | `widget.textArea.label` | `TextArea` label rows. |
 | `widget.textArea.placeholder` | `TextArea` placeholder text. |
 | `widget.textArea.text` | `TextArea` body text. |
@@ -258,8 +298,8 @@ supported. Initial stable tokens are:
 
 ## Planned Catalog
 
-`Popover` and `Toast` are planned catalog entries. They are not part of the
-current widget implementation.
+`Popover` is a planned catalog entry. It is not part of the current widget
+implementation.
 
 ## Example
 
@@ -277,3 +317,5 @@ current widget implementation.
   multi-line question dialog with structured submit and cancel intents.
 - [examples/tui/49_widgets_tree.py](../../../examples/tui/49_widgets_tree.py):
   static hierarchical tree with keyboard expansion and selection.
+- [examples/tui/50_widgets_toast.py](../../../examples/tui/50_widgets_toast.py):
+  inline toast stack with queue, dismissal, and clear actions.
