@@ -54,6 +54,8 @@ from .widgets import TextField as TextField
 from .widgets import Toggle as Toggle
 from .widgets import Toolbar as Toolbar
 from .widgets import ToolbarAction as ToolbarAction
+from .widgets import TreeNode as TreeNode
+from .widgets import TreeView as TreeView
 
 __all__ = [
     "Badge",
@@ -109,5 +111,7 @@ __all__ = [
     "Toggle",
     "Toolbar",
     "ToolbarAction",
+    "TreeNode",
+    "TreeView",
     "WorkingLine",
 ]

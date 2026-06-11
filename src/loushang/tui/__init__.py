@@ -283,6 +283,8 @@ from loushang.tui.ui_parts import (
     Toggle,
     Toolbar,
     ToolbarAction,
+    TreeNode,
+    TreeView,
     WorkingLine,
     loushang_welcome_theme,
 )
@@ -475,6 +477,8 @@ __all__ = [
     "TranscriptBuffer",
     "TranscriptView",
     "TruncatedText",
+    "TreeNode",
+    "TreeView",
     "TuiInputHandler",
     "TuiInputResult",
     "TuiRunContext",
