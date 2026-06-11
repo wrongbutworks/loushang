@@ -90,6 +90,18 @@ The first public API should also expose:
 - `expand(value)`, `collapse(value)`, and `toggle(value)`.
 - `is_expanded(value)`.
 
+Programmatic state methods use exact return semantics:
+
+- Unknown `value` raises `ValueError`.
+- `expand(value)` returns `True` when a branch changes from collapsed to
+  expanded, `False` when the node is already expanded or is a leaf.
+- `collapse(value)` returns `True` when a branch changes from expanded to
+  collapsed, `False` when the node is already collapsed or is a leaf.
+- `toggle(value)` returns the result of `collapse(value)` when expanded and
+  `expand(value)` when collapsed.
+- `is_expanded(value)` returns `False` for leaves and raises `ValueError` for
+  unknown values.
+
 `TreeView` normalizes `nodes` to immutable internal entries in `__post_init__`.
 Node `value` values must be unique across the tree. Duplicate values raise
 `ValueError` during construction because expansion, active row, and selection
@@ -116,10 +128,10 @@ Default keys:
 | `down` | Move to next enabled visible node. |
 | `home` | Move to first enabled visible node. |
 | `end` | Move to last enabled visible node. |
-| `right` | Expand collapsed active branch, or move to first enabled child when already expanded. |
+| `right` | Expand collapsed active branch, or move to first enabled direct child when already expanded. |
 | `left` | Collapse expanded active branch, or move to nearest enabled visible parent. |
 | `enter` / `space` | Activate active node. |
-| text event containing literal space | Activate active node. |
+| exact text event `text == " "` | Activate active node. |
 
 Movement returns:
 
@@ -136,15 +148,30 @@ Activation returns:
 `right` semantics:
 
 1. If active node has children and is collapsed, expand it and return `True`.
-2. If active node is expanded, move to the first enabled visible descendant that
-   is now immediately under that branch and return `True`.
+2. If active node is expanded, move to the first enabled direct child and
+   return `True`.
 3. If neither applies, return `False`.
+
+`right` does not skip disabled direct children to reach enabled grandchildren.
+If all direct children are disabled, it returns `False`.
 
 `left` semantics:
 
 1. If active node has children and is expanded, collapse it and return `True`.
 2. Otherwise move to the nearest enabled visible parent and return `True`.
 3. If there is no enabled visible parent, return `False`.
+
+Collapse active fallback:
+
+- Keyboard collapse and `collapse(value)` use the same fallback rules.
+- If the current active node remains visible after collapse, keep it.
+- If the collapse hides the active node, prefer the collapsed branch when it is
+  enabled.
+- If the collapsed branch is disabled, search visible enabled nodes in this
+  deterministic order: previous visible rows before the collapsed branch,
+  nearest first; then following visible rows after the collapsed branch, nearest
+  first.
+- If no enabled visible node exists, set active value to `""`.
 
 Disabled nodes:
 
@@ -189,10 +216,11 @@ Viewport behavior:
 
 - `TreeView` keeps `_first_visible_index` so the active row stays in view.
 - The visible window is based on flattened visible rows, not total node count.
-- Collapsing a branch that hides the active node moves active state to the
-  collapsed branch if that branch is enabled; otherwise to the nearest enabled
-  visible node.
-- `constraints.max_height <= 0` renders no lines.
+- Collapsing a branch that hides the active node uses the collapse active
+  fallback rules from input behavior.
+- `constraints.max_height <= 0` is handled defensively by rendering no lines,
+  although normal `RenderConstraints` construction already rejects non-positive
+  heights.
 
 ## Theme Tokens
 
