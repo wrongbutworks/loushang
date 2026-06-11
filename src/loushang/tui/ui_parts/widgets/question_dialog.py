@@ -5,7 +5,12 @@ from dataclasses import dataclass, field
 from typing import ClassVar, Literal
 
 from loushang.tui.cell_width import autowrap_safe_width, truncate_to_width
-from loushang.tui.core import CursorDeclaration, RenderConstraints, RenderLine, RenderResult
+from loushang.tui.core import (
+    CursorDeclaration,
+    RenderConstraints,
+    RenderLine,
+    RenderResult,
+)
 from loushang.tui.keybindings import normalize_key_id
 from loushang.tui.theme import ThemeResolver
 from loushang.tui.ui_parts.widgets._utils import style_text
