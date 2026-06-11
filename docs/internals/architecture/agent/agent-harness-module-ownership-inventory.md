@@ -58,7 +58,8 @@ loushang.coding -> loushang.method
 Current transitional compatibility exports:
 
 ```text
-loushang.work.CodingWorkShell remains as a compatibility export for the coding-owned implementation.
+loushang.work.coding.CodingWorkShell remains as an explicit compatibility module for the coding-owned implementation.
+loushang.work no longer re-exports CodingWorkShell from the package root.
 ```
 
 These couplings do not block P2 harness work because `agent.harness` must not
