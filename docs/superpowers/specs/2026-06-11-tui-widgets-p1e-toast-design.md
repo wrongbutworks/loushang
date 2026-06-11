@@ -61,7 +61,7 @@ from dataclasses import dataclass
 from typing import Literal
 
 ToastKind = Literal["info", "success", "warning", "danger"]
-NowMs = Callable[[], int]
+_NowMs = Callable[[], int]
 
 
 @dataclass(frozen=True, slots=True)
@@ -82,7 +82,7 @@ class ToastStack:
     newest_on_top: bool = True
     empty_height: int = 0
     theme: ThemeResolver | None = None
-    now_ms: NowMs = _monotonic_ms
+    now_ms: _NowMs = _monotonic_ms
 ```
 
 `Toast` is the immutable data item. `ToastStack` is the renderable widget and
@@ -105,6 +105,16 @@ passed, `overrides` may set any `Toast` field except `message`, for example:
 ```python
 stack.push("Saved", kind="success", title="Config")
 ```
+
+When a `Toast` is passed with overrides, apply the overrides with
+`dataclasses.replace()` before normalization:
+
+```python
+stack.push(Toast("Saved", value="save"), kind="success")
+```
+
+Invalid override names should raise the normal `TypeError` produced by
+`Toast(...)` or `dataclasses.replace()`.
 
 `push()` returns the stored toast value so callers can dismiss generated-value
 toasts later.
@@ -136,6 +146,10 @@ can still pass explicit timestamps such as `created_at_ms=0`.
 
 Expiration is computed only when callers ask for it through `visible_toasts()`,
 `prune_expired()`, or `render()`.
+
+Each expiration-sensitive operation must sample `now_ms()` exactly once and use
+that sampled value for the full operation. This keeps boundary behavior stable
+when a caller-provided clock changes between calls.
 
 A toast is expired when:
 
@@ -280,6 +294,8 @@ Focused tests should cover:
 - construction and normalization of generated values and timestamps;
 - duplicate explicit value rejection;
 - invalid kind and negative duration rejection;
+- `push(Toast(...), **overrides)` replacement semantics;
+- single-sample `now_ms()` behavior for visibility, pruning, and render;
 - `visible_toasts()` expiration filtering without mutation;
 - `prune_expired()` mutation and return count;
 - `duration_ms=None` persistence;
@@ -295,7 +311,7 @@ Focused tests should cover:
 Adjacent tests should include existing small-control and hardening suites:
 
 ```bash
-uv --cache-dir .uv-cache run --extra dev pytest tests/tui/test_widgets_light_controls.py tests/tui/test_widgets_hardening.py -q
+uv --cache-dir .uv-cache run --extra dev pytest tests/tui/test_widgets_small_controls.py tests/tui/test_widgets_hardening.py -q
 ```
 
 Run full TUI tests before PR:
