@@ -366,6 +366,7 @@ class Endpoint:
     preferred: bool = False
     docs: str | None = None
     auth: Auth | None = None
+    _auth_inherited: bool = False
     compat: Compat = field(default_factory=Compat)
     defaults: Defaults = field(default_factory=Defaults)
     models: dict[str, Model] = field(default_factory=dict)
@@ -417,7 +418,7 @@ class Endpoint:
             raw["preferred"] = self.preferred
         if self.docs is not None:
             raw["docs"] = self.docs
-        if self.auth is not None:
+        if self.auth is not None and not self._auth_inherited:
             raw["auth"] = self.auth.to_raw()
         return raw
 

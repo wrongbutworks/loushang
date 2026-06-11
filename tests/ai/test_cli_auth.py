@@ -61,14 +61,18 @@ def test_auth_show_outputs_stored_flag(
     capsys: pytest.CaptureFixture[str],
 ) -> None:
     monkeypatch.setattr(
-        "loushang.ai.cli.__main__.load_credentials",
+        "loushang.ai.cli.__main__.load_credential_store",
         lambda: {
-            "openai-codex": OAuthCredentials(
-                provider="openai-codex",
-                access_token="token",
-                expires_at=123.0,
-                extra={"account_id": "acc_1"},
-            )
+            "providers": {
+                "openai-codex": OAuthCredentials(
+                    provider="openai-codex",
+                    access_token="token",
+                    expires_at=123.0,
+                    extra={"account_id": "acc_1"},
+                )
+            },
+            "endpoints": {},
+            "models": {},
         },
     )
 
@@ -86,8 +90,10 @@ def test_auth_login_uses_oauth_login(
 ) -> None:
     monkeypatch.setattr("builtins.input", lambda _prompt="": "")
 
-    async def _fake_login(provider_id, callbacks, *, persist=True):
+    async def _fake_login(provider_id, callbacks, *, endpoint_id=None, model_id=None, persist=True):
         assert provider_id == "openai-codex"
+        assert endpoint_id is None
+        assert model_id is None
         assert persist is True
         callbacks.on_auth({"url": "https://chatgpt.com", "instructions": "Sign in"})
         callbacks.on_progress("Waiting")
@@ -116,8 +122,10 @@ def test_auth_login_can_prompt_for_provider_selection(
     responses = iter(["1", ""])
     monkeypatch.setattr("builtins.input", lambda _prompt="": next(responses))
 
-    async def _fake_login(provider_id, callbacks, *, persist=True):
+    async def _fake_login(provider_id, callbacks, *, endpoint_id=None, model_id=None, persist=True):
         assert provider_id == "openai-codex"
+        assert endpoint_id is None
+        assert model_id is None
         assert persist is True
         return OAuthCredentials(
             provider="openai-codex",

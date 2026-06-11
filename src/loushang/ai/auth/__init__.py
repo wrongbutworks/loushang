@@ -1,6 +1,7 @@
 from loushang.ai.auth.env import get_env_api_key, get_env_oauth_credentials
 from loushang.ai.auth.facade import (
     clear_oauth_providers,
+    ensure_builtin_oauth_providers,
     get_oauth_provider,
     list_oauth_providers,
     oauth_login,
@@ -47,6 +48,7 @@ __all__ = [
     "OpenAICodexOAuthProvider",
     "OAuthProviderRegistry",
     "clear_oauth_providers",
+    "ensure_builtin_oauth_providers",
     "get_env_api_key",
     "get_env_oauth_credentials",
     "get_default_oauth_registry",
