@@ -107,3 +107,157 @@ def test_toast_stack_push_applies_toast_overrides_and_rejects_message_override_f
 
     with pytest.raises(TypeError):
         stack.push("Saved", message="Other")  # type: ignore[call-arg]
+
+
+def test_toast_visible_toasts_filters_expired_without_mutating() -> None:
+    clock = Clock(100)
+    stack = ToastStack(
+        (
+            Toast("Old", value="old", created_at_ms=0, duration_ms=100),
+            Toast("Pinned", value="pin", created_at_ms=0, duration_ms=None),
+            Toast("Fresh", value="fresh", created_at_ms=50, duration_ms=100),
+        ),
+        newest_on_top=False,
+        now_ms=clock,
+    )
+
+    assert stack.visible_toasts() == (
+        Toast("Pinned", value="pin", duration_ms=None, created_at_ms=0),
+        Toast("Fresh", value="fresh", created_at_ms=50, duration_ms=100),
+    )
+    assert tuple(toast.value for toast in stack.all_toasts()) == ("old", "pin", "fresh")
+
+
+def test_toast_expiration_boundary_is_expired() -> None:
+    stack = ToastStack(
+        (Toast("Boundary", value="b", created_at_ms=10, duration_ms=90),),
+        now_ms=Clock(100),
+    )
+
+    assert stack.visible_toasts() == ()
+
+
+def test_toast_prune_expired_mutates_and_returns_count() -> None:
+    stack = ToastStack(
+        (
+            Toast("Old", value="old", created_at_ms=0, duration_ms=10),
+            Toast("Fresh", value="fresh", created_at_ms=50, duration_ms=100),
+        ),
+        now_ms=Clock(100),
+    )
+
+    assert stack.prune_expired() == 1
+    assert stack.all_toasts() == (
+        Toast("Fresh", value="fresh", created_at_ms=50, duration_ms=100),
+    )
+
+
+def test_toast_expiration_operations_sample_now_once() -> None:
+    visible_clock = Clock(100, 101, 102)
+    stack = ToastStack(
+        (Toast("A", value="a", created_at_ms=0, duration_ms=101),),
+        now_ms=visible_clock,
+    )
+
+    assert tuple(toast.value for toast in stack.visible_toasts()) == ("a",)
+    assert visible_clock.calls == 1
+
+    prune_clock = Clock(100, 101, 102)
+    stack = ToastStack(
+        (Toast("A", value="a", created_at_ms=0, duration_ms=101),),
+        now_ms=prune_clock,
+    )
+    assert stack.prune_expired() == 0
+    assert prune_clock.calls == 1
+
+
+def test_toast_ordering_and_max_visible() -> None:
+    toasts = tuple(
+        Toast(str(index), value=str(index), created_at_ms=index, duration_ms=None)
+        for index in range(5)
+    )
+
+    newest = ToastStack(toasts, max_visible=3, newest_on_top=True, now_ms=Clock(10))
+    oldest = ToastStack(toasts, max_visible=3, newest_on_top=False, now_ms=Clock(10))
+
+    assert tuple(toast.value for toast in newest.visible_toasts()) == ("4", "3", "2")
+    assert tuple(toast.value for toast in oldest.visible_toasts()) == ("0", "1", "2")
+    assert ToastStack(toasts, max_visible=0).visible_toasts() == ()
+
+
+def test_toast_dismiss_clear_and_non_dismissible_behavior() -> None:
+    stack = ToastStack(
+        (
+            Toast("A", value="a"),
+            Toast("B", value="b", dismissible=False),
+            Toast("C", value="c"),
+        )
+    )
+
+    assert stack.dismiss("missing") is False
+    assert stack.dismiss("b") is False
+    assert tuple(toast.value for toast in stack.all_toasts()) == ("a", "b", "c")
+    assert stack.dismiss("a") is True
+    assert tuple(toast.value for toast in stack.all_toasts()) == ("b", "c")
+    stack.clear()
+    assert stack.all_toasts() == ()
+
+
+def test_toast_dismiss_oldest_skips_expired_and_non_dismissible_without_pruning() -> None:
+    stack = ToastStack(
+        (
+            Toast("Expired", value="expired", created_at_ms=0, duration_ms=10),
+            Toast(
+                "Pinned",
+                value="pinned",
+                dismissible=False,
+                created_at_ms=90,
+                duration_ms=100,
+            ),
+            Toast("Fresh", value="fresh", created_at_ms=90, duration_ms=100),
+        ),
+        now_ms=Clock(100),
+    )
+
+    assert stack.dismiss_oldest() is True
+    assert tuple(toast.value for toast in stack.all_toasts()) == ("expired", "pinned")
+    assert stack.dismiss_oldest() is False
+    assert tuple(toast.value for toast in stack.all_toasts()) == ("expired", "pinned")
+
+
+def test_toast_dismiss_oldest_samples_now_once() -> None:
+    clock = Clock(100, 101, 102)
+    stack = ToastStack(
+        (Toast("A", value="a", created_at_ms=0, duration_ms=101),),
+        now_ms=clock,
+    )
+
+    assert stack.dismiss_oldest() is True
+    assert clock.calls == 1
+
+
+def test_toast_dismiss_oldest_only_considers_visible_window() -> None:
+    toasts = tuple(
+        Toast(str(index), value=str(index), created_at_ms=index, duration_ms=None)
+        for index in range(5)
+    )
+
+    hidden_oldest = ToastStack(toasts, max_visible=2, newest_on_top=True)
+    assert tuple(toast.value for toast in hidden_oldest.visible_toasts()) == ("4", "3")
+    assert hidden_oldest.dismiss_oldest() is True
+    assert tuple(toast.value for toast in hidden_oldest.all_toasts()) == (
+        "0",
+        "1",
+        "2",
+        "4",
+    )
+
+    no_visible = ToastStack(toasts, max_visible=0)
+    assert no_visible.dismiss_oldest() is False
+    assert tuple(toast.value for toast in no_visible.all_toasts()) == (
+        "0",
+        "1",
+        "2",
+        "3",
+        "4",
+    )
