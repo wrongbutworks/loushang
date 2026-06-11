@@ -23,6 +23,7 @@ from .form import FormRow as FormRow
 from .form import FormValidationResult as FormValidationResult
 from .menu import Menu as Menu
 from .menu import MenuItem as MenuItem
+from .question_dialog import QuestionDialog as QuestionDialog
 from .selection import SelectList as SelectList
 from .spinner import Spinner as Spinner
 from .table import Table as Table
@@ -54,6 +55,7 @@ __all__ = [
     "Menu",
     "MenuItem",
     "ProgressBar",
+    "QuestionDialog",
     "RadioGroup",
     "SelectList",
     "Spinner",
