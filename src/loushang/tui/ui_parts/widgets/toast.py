@@ -83,6 +83,19 @@ class ToastStack:
     def all_toasts(self) -> tuple[Toast, ...]:
         return tuple(self.toasts)
 
+    def _is_expired(self, toast: Toast, *, now_ms: int) -> bool:
+        if toast.duration_ms is None:
+            return False
+        return now_ms - int(toast.created_at_ms or 0) >= toast.duration_ms
+
+    def _visible_toasts_at(self, now_ms: int) -> tuple[Toast, ...]:
+        if self.max_visible <= 0:
+            return ()
+        visible = tuple(toast for toast in self.toasts if not self._is_expired(toast, now_ms=now_ms))
+        if self.newest_on_top:
+            visible = tuple(reversed(visible))
+        return visible[: self.max_visible]
+
     def push(self, toast: Toast | str, **overrides: object) -> str:
         if isinstance(toast, str):
             if "message" in overrides:
@@ -99,10 +112,14 @@ class ToastStack:
         return normalized.value
 
     def visible_toasts(self) -> tuple[Toast, ...]:
-        return tuple(self.toasts)
+        return self._visible_toasts_at(self.now_ms())
 
     def prune_expired(self) -> int:
-        return 0
+        now_ms = self.now_ms()
+        kept = tuple(toast for toast in self.toasts if not self._is_expired(toast, now_ms=now_ms))
+        removed = len(tuple(self.toasts)) - len(kept)
+        self.toasts = kept
+        return removed
 
     def dismiss(self, value: str) -> bool:
         for toast in self.toasts:
@@ -114,6 +131,13 @@ class ToastStack:
         return False
 
     def dismiss_oldest(self) -> bool:
+        now_ms = self.now_ms()
+        visible_values = {toast.value for toast in self._visible_toasts_at(now_ms)}
+        for toast in self.toasts:
+            if toast.value not in visible_values or not toast.dismissible:
+                continue
+            self.toasts = tuple(item for item in self.toasts if item.value != toast.value)
+            return True
         return False
 
     def clear(self) -> None:
