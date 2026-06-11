@@ -7,6 +7,7 @@ from loushang.tui import (
     Checkbox,
     Choice,
     ConfirmDialog,
+    CursorDeclaration,
     Dialog,
     Form,
     FormRow,
@@ -152,6 +153,16 @@ def test_text_field_inserts_printable_space_as_text() -> None:
     assert field.value == "a "
 
 
+def test_form_render_exposes_active_child_cursor() -> None:
+    form = Form([FormRow("name", TextField(label="Name", value="tower")), FormRow("enabled", Checkbox("Enabled"))])
+    form.focus()
+
+    result = form.render(RenderConstraints(width=40, max_height=8))
+
+    assert result.cursor is not None
+    assert (result.cursor.row, result.cursor.column) == (1, len("tower"))
+
+
 def test_select_list_delegates_navigation_and_selection_without_default_escape_close() -> None:
     select = SelectList([SelectItem("Kimi"), SelectItem("Qwen")], max_visible=2)
 
@@ -165,6 +176,18 @@ def test_select_list_can_emit_surface_close_for_popup_usage() -> None:
     select = SelectList([SelectItem("Kimi")], close_on_escape=True)
 
     assert intent_tuple(select.handle_input(InputEvent(kind="key", key="escape"))) == ("surface_close", "", "")
+
+
+def test_select_list_only_shows_focus_marker_when_focused() -> None:
+    select = SelectList([SelectItem("Kimi"), SelectItem("Qwen")], max_visible=2)
+
+    assert rendered_text(select, width=20, height=2) == ("  Kimi", "  Qwen")
+
+    select.focus()
+    assert rendered_text(select, width=20, height=2) == ("> Kimi", "  Qwen")
+
+    select.blur()
+    assert rendered_text(select, width=20, height=2) == ("  Kimi", "  Qwen")
 
 
 def test_form_tabs_between_focusable_rows_and_delegates_input() -> None:
@@ -285,3 +308,12 @@ def test_widgets_foundation_example_imports() -> None:
     app = build_app()
     result = app.render(RenderConstraints(width=80, max_height=20))
     assert result.lines
+
+
+def test_widgets_foundation_example_offsets_name_cursor_after_header() -> None:
+    namespace = runpy.run_path("examples/tui/43_widgets_foundation.py", run_name="__test__")
+
+    app = namespace["build_app"]()
+    result = app.render(RenderConstraints(width=80, max_height=20))
+
+    assert result.cursor == CursorDeclaration(row=3, column=len("tower"))

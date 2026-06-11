@@ -9,6 +9,7 @@ from loushang.tui import (
     Checkbox,
     Choice,
     ConfirmDialog,
+    CursorDeclaration,
     FocusableMixin,
     Form,
     FormRow,
@@ -39,6 +40,7 @@ class WidgetsApp(FocusableMixin):
 
     def render(self, constraints: RenderConstraints) -> RenderResult:
         rows = [RenderLine("Loushang TUI Widgets"), RenderLine("")]
+        form_start_row = len(rows)
         form_result = self.form.render(RenderConstraints(width=constraints.width, max_height=max(0, constraints.max_height - 5)))
         rows.extend(form_result.lines)
         rows.extend(
@@ -48,7 +50,15 @@ class WidgetsApp(FocusableMixin):
                 RenderLine("[tab] move  [ctrl+s] confirm  [q] quit"),
             ]
         )
-        return RenderResult.from_lines(rows[: constraints.max_height], constraints=constraints, cursor=form_result.cursor)
+        cursor = None
+        if form_result.cursor is not None:
+            cursor = CursorDeclaration(
+                row=form_start_row + form_result.cursor.row,
+                column=form_result.cursor.column,
+            )
+            if cursor.row >= min(len(rows), constraints.max_height):
+                cursor = None
+        return RenderResult.from_lines(rows[: constraints.max_height], constraints=constraints, cursor=cursor)
 
     def handle_input(self, event: Any) -> object:
         if not isinstance(event, InputEvent):

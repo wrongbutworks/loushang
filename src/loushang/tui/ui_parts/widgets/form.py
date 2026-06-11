@@ -4,7 +4,12 @@ from collections.abc import Callable
 from dataclasses import dataclass, field
 
 from loushang.tui.cell_width import autowrap_safe_width, truncate_to_width
-from loushang.tui.core import RenderConstraints, RenderLine, RenderResult
+from loushang.tui.core import (
+    CursorDeclaration,
+    RenderConstraints,
+    RenderLine,
+    RenderResult,
+)
 from loushang.tui.theme import ThemeResolver
 from loushang.tui.ui_parts.widgets._utils import style_text
 
@@ -90,17 +95,23 @@ class Form:
     def render(self, constraints: RenderConstraints) -> RenderResult:
         target_width = autowrap_safe_width(constraints.width)
         lines: list[RenderLine] = []
+        cursor: CursorDeclaration | None = None
+        active = self._active_control() if self.focused else None
         for row in self.rows:
             if len(lines) >= constraints.max_height:
                 break
             render = getattr(row.control, "render", None)
             if callable(render):
+                start_row = len(lines)
                 result = render(RenderConstraints(width=constraints.width, max_height=constraints.max_height - len(lines)))
-                lines.extend(result.lines[: constraints.max_height - len(lines)])
+                rendered_lines = result.lines[: constraints.max_height - len(lines)]
+                lines.extend(rendered_lines)
+                if row.control is active and result.cursor is not None and result.cursor.row < len(rendered_lines):
+                    cursor = CursorDeclaration(row=start_row + result.cursor.row, column=result.cursor.column)
             if row.error and len(lines) < constraints.max_height:
                 error = truncate_to_width(row.error, max_width=target_width, ellipsis="")
                 lines.append(RenderLine(style_text(error, self.theme, "widget.error")))
-        return RenderResult.from_lines(lines, constraints=constraints)
+        return RenderResult.from_lines(lines, constraints=constraints, cursor=cursor)
 
     def _active_control(self) -> object | None:
         if not self.rows:
