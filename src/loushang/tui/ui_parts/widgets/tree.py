@@ -181,7 +181,136 @@ class TreeView:
     def toggle(self, value: str) -> bool:
         return self.collapse(value) if self.is_expanded(value) else self.expand(value)
 
+    def _move_active(self, delta: int) -> bool | None:
+        enabled = tuple(entry.value for entry in self._enabled_visible_entries())
+        if not enabled:
+            return None
+        if self._active_value not in enabled:
+            self._active_value = enabled[0]
+            return True
+        position = enabled.index(self._active_value)
+        next_position = position + delta
+        if self.wrap:
+            next_position %= len(enabled)
+        elif next_position < 0 or next_position >= len(enabled):
+            return False
+        next_value = enabled[next_position]
+        if next_value == self._active_value:
+            return False
+        self._active_value = next_value
+        return True
+
+    def _jump_active(self, *, first: bool) -> bool | None:
+        enabled = tuple(entry.value for entry in self._enabled_visible_entries())
+        if not enabled:
+            return None
+        target = enabled[0] if first else enabled[-1]
+        if target == self._active_value:
+            return False
+        self._active_value = target
+        return True
+
+    def _active_entry(self) -> _TreeEntry | None:
+        if not self._active_value:
+            return None
+        entry = self._entries.get(self._active_value)
+        return None if entry is None or entry.disabled else entry
+
+    def _first_enabled_direct_child(self, entry: _TreeEntry) -> str:
+        for value in entry.children:
+            child = self._entries[value]
+            if not child.disabled:
+                return value
+        return ""
+
+    def _nearest_enabled_visible_parent(self, entry: _TreeEntry) -> str:
+        parent = entry.parent
+        while parent:
+            candidate = self._entries[parent]
+            if not candidate.disabled and parent in self.visible_values:
+                return parent
+            parent = candidate.parent
+        return ""
+
+    def _repair_active_after_collapse(self, collapsed_value: str) -> None:
+        visible_values = self.visible_values
+        if self._active_value in visible_values:
+            return
+        collapsed = self._entries[collapsed_value]
+        if not collapsed.disabled:
+            self._active_value = collapsed_value
+            return
+        try:
+            collapsed_index = visible_values.index(collapsed_value)
+        except ValueError:
+            collapsed_index = 0
+        visible = self._visible_entries()
+        for index in range(collapsed_index - 1, -1, -1):
+            if not visible[index].disabled:
+                self._active_value = visible[index].value
+                return
+        for index in range(collapsed_index + 1, len(visible)):
+            if not visible[index].disabled:
+                self._active_value = visible[index].value
+                return
+        self._active_value = ""
+
+    def _expand_or_move_child(self) -> bool | None:
+        entry = self._active_entry()
+        if entry is None:
+            return None
+        if not entry.children:
+            return False
+        if entry.value not in self._expanded_values:
+            self._expanded_values.add(entry.value)
+            return True
+        child = self._first_enabled_direct_child(entry)
+        if not child:
+            return False
+        if child == self._active_value:
+            return False
+        self._active_value = child
+        return True
+
+    def _collapse_or_move_parent(self) -> bool | None:
+        entry = self._active_entry()
+        if entry is None:
+            return None
+        if entry.children and entry.value in self._expanded_values:
+            return self.collapse(entry.value)
+        parent = self._nearest_enabled_visible_parent(entry)
+        if not parent:
+            return False
+        self._active_value = parent
+        return True
+
+    def _activate(self) -> object:
+        entry = self._active_entry()
+        if entry is None:
+            return None
+        if entry.on_select is not None:
+            return callback_result(entry.on_select())
+        from loushang.tui.input import InputIntent
+
+        return InputIntent(kind="select", text=entry.value)
+
     def handle_input(self, event: object) -> object:
+        if getattr(event, "kind", "") == "key":
+            key = getattr(event, "key", "")
+            if key == "up":
+                return self._move_active(-1)
+            if key == "down":
+                return self._move_active(1)
+            if key == "home":
+                return self._jump_active(first=True)
+            if key == "end":
+                return self._jump_active(first=False)
+            if key == "right":
+                return self._expand_or_move_child()
+            if key == "left":
+                return self._collapse_or_move_parent()
+        if is_activation_event(event):
+            return self._activate()
         return None
 
     def render(self, constraints: RenderConstraints) -> RenderResult:
