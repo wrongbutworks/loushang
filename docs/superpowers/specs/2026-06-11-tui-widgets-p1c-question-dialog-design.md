@@ -63,13 +63,12 @@ Add `src/loushang/tui/ui_parts/widgets/question_dialog.py`.
 
 ```python
 from collections.abc import Callable
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 
-@dataclass(slots=True)
+@dataclass(init=False, slots=True)
 class QuestionDialog:
     title: str
     question: str = ""
-    value: str = ""
     placeholder: str = ""
     help_text: str = ""
     error: str = ""
@@ -88,10 +87,13 @@ class QuestionDialog:
 
 The first public API should also expose:
 
-- `value` as a read-only property backed by the internal `TextArea`.
+- `__init__(..., value: str = "", ...)`.
+- `value` as a read-only property backed by the internal `TextArea`; after
+  initialization, the answer text lives only in the internal `TextArea`, not in
+  separate dataclass state.
 - `set_text(text)` and `clear()` delegating to `TextArea`.
 - `focus()` and `blur()`.
-- `handle_input(event, *, keybindings=None)`.
+- `handle_input(event)`.
 - `editor_input_target()` returning the internal `TextArea` editor target while
   the body is focused.
 - `render(constraints)`.
@@ -151,9 +153,21 @@ text_area.handle_input(
 Plain `enter` must still insert a newline. The implementation should not change
 `DEFAULT_KEYBINDINGS`.
 
+`QuestionDialog.handle_input(event)` does not accept caller-supplied keybindings
+in P1C. The dialog owns its body submit mapping by passing only
+`{"tui.input.submit": (self.submit_key,)}` to the internal `TextArea`. This
+keeps `submit_key` deterministic and avoids merging ambiguity with application
+keybinding overrides. Other TextArea editing keys continue to use the default
+TextArea keybindings. A future slice can add explicit keybinding injection if a
+real caller needs it.
+
 When the focus slot is `"actions"`, editor input is not delegated to the
 `TextArea`; only action navigation and activation are handled. When the focus
 slot is `"body"`, `editor_input_target()` returns the text area target.
+
+`focus()` starts in the `"body"` focus slot. The first transition to the action
+row sets the active action to submit. `left` and `right` toggle the active action
+between submit and cancel.
 
 ## Validation
 
@@ -170,8 +184,8 @@ Submit flow:
 Validation errors should be rendered through the internal `TextArea.error` row.
 `help_text` is shown when there is no active error. Explicit `error` passed to
 the constructor is initial display state. Once submit validation runs, the
-dialog owns the active validation error state until `set_text()` or a later
-successful submit clears it.
+dialog owns the active validation error state until `set_text()`, `clear()`, or
+a later successful submit clears it.
 
 ## Rendering
 
