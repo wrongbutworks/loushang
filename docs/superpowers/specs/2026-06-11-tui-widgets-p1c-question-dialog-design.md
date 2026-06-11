@@ -141,17 +141,32 @@ Default keys:
 | text / paste / editor keys while body focused | Delegate to `TextArea`. |
 
 `submit_key` defaults to `"ctrl+enter"` and is implemented through the
-`keybindings` argument passed to `TextArea.handle_input()`:
+`keybindings` argument passed to `TextArea.handle_input()`. The internal
+`TextArea` is constructed with an `on_submit` callback that records a private
+pending-submit flag. `QuestionDialog.handle_input()` clears that flag before
+delegating body input, calls `TextArea.handle_input()`, then checks the flag to
+distinguish submit from ordinary consumed edits:
 
 ```python
-text_area.handle_input(
+self._pending_submit = False
+consumed = self._text_area.handle_input(
     event,
     keybindings={"tui.input.submit": (self.submit_key,)},
 )
+if self._pending_submit:
+    return self._submit_current_value()
+if consumed:
+    return True
+return None
 ```
 
 Plain `enter` must still insert a newline. The implementation should not change
 `DEFAULT_KEYBINDINGS`.
+
+`escape` and `ctrl+c` are intercepted by `QuestionDialog.handle_input()` before
+body delegation. The dialog must not rely on `TextArea.handle_input()` or
+`TextArea.on_escape` to produce cancel intents, because `TextArea.handle_input()`
+only returns a boolean consumed marker.
 
 `QuestionDialog.handle_input(event)` does not accept caller-supplied keybindings
 in P1C. The dialog owns its body submit mapping by passing only
@@ -160,6 +175,24 @@ keeps `submit_key` deterministic and avoids merging ambiguity with application
 keybinding overrides. Other TextArea editing keys continue to use the default
 TextArea keybindings. A future slice can add explicit keybinding injection if a
 real caller needs it.
+
+`submit_key` is normalized with `normalize_key_id()` during initialization. It
+must not be any key that the dialog guarantees for newline, cancel, or focus
+movement:
+
+- `enter`
+- `shift+enter`
+- `alt+enter`
+- `ctrl+j`
+- `escape` / `esc`
+- `ctrl+c`
+- `tab`
+- `shift+tab`
+
+If `submit_key` normalizes to one of those keys, `QuestionDialog.__init__()`
+raises `ValueError`. Other explicit key choices are allowed; if they overlap
+with ordinary TextArea editing commands, submit wins because `TextArea` checks
+`tui.input.submit` before editor movement keys.
 
 When the focus slot is `"actions"`, editor input is not delegated to the
 `TextArea`; only action navigation and activation are handled. When the focus
