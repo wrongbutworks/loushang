@@ -294,6 +294,34 @@ class TreeView:
 
         return InputIntent(kind="select", text=entry.value)
 
+    def _ensure_active_visible(self, height: int) -> None:
+        visible = self._visible_entries()
+        if height <= 0 or not visible or not self._active_value:
+            return
+        index_by_value = {entry.value: index for index, entry in enumerate(visible)}
+        active_index = index_by_value.get(self._active_value)
+        if active_index is None:
+            return
+        if active_index < self._first_visible_index:
+            self._first_visible_index = active_index
+        elif active_index >= self._first_visible_index + height:
+            self._first_visible_index = active_index - height + 1
+        max_first = max(0, len(visible) - height)
+        self._first_visible_index = max(0, min(self._first_visible_index, max_first))
+
+    def _marker(self, entry: _TreeEntry) -> str:
+        if not entry.children:
+            return self.leaf_marker
+        return self.expanded_marker if entry.value in self._expanded_values else self.collapsed_marker
+
+    def _row_line(self, entry: _TreeEntry, width: int) -> str:
+        focused_row = self.focused and entry.value == self._active_value and not entry.disabled
+        prefix = "> " if focused_row else "  "
+        indent = " " * (entry.depth * self.indent)
+        text = truncate_to_width(f"{prefix}{indent}{self._marker(entry)} {entry.label}", max_width=width, ellipsis="")
+        token = "widget.tree.disabled" if entry.disabled else "widget.tree.focus" if focused_row else "widget.tree.row"
+        return style_text(text, self.theme, token)
+
     def handle_input(self, event: object) -> object:
         if getattr(event, "kind", "") == "key":
             key = getattr(event, "key", "")
@@ -318,12 +346,14 @@ class TreeView:
         height = max(0, constraints.max_height)
         if height == 0:
             return RenderResult.from_lines([], constraints=constraints)
-        rows = self._visible_entries()
-        if not rows:
+        visible = self._visible_entries()
+        if not visible:
             empty = truncate_to_width(self.empty_text, max_width=width, ellipsis="")
             return RenderResult.from_lines(
                 [RenderLine(style_text(empty, self.theme, "widget.tree.empty"))],
                 constraints=constraints,
             )
-        lines = [RenderLine(truncate_to_width(entry.label, max_width=width, ellipsis="")) for entry in rows[:height]]
+        self._ensure_active_visible(height)
+        rows = visible[self._first_visible_index : self._first_visible_index + height]
+        lines = [RenderLine(self._row_line(entry, width)) for entry in rows]
         return RenderResult.from_lines(lines, constraints=constraints)

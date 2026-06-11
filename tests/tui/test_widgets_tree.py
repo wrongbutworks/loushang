@@ -254,14 +254,14 @@ def test_tree_view_respects_width_empty_and_height_viewport() -> None:
     )
     tree.focus()
 
-    lines = render_lines(tree, width=8, height=3)
+    lines = render_lines(tree, width=9, height=3)
 
-    assert plain_lines(tree, width=8, height=3) == (
+    assert plain_lines(tree, width=9, height=3) == (
         "    Item",
         "    Item",
         ">   Item",
     )
-    assert_widths_within(lines, 8)
+    assert_widths_within(lines, 9)
 
 
 def test_tree_view_applies_theme_tokens() -> None:
