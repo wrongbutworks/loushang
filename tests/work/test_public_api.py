@@ -7,7 +7,6 @@ def test_work_public_api_exposes_current_work_surface_without_multi_agent_types(
     assert set(work.__all__) == {
         "ArtifactRef",
         "ArtifactStatus",
-        "CodingWorkShell",
         "DeliveryHint",
         "EventLogBackend",
         "EventLogEntry",
@@ -30,4 +29,5 @@ def test_work_public_api_exposes_current_work_surface_without_multi_agent_types(
     assert not hasattr(work, "AgentLane")
     assert not hasattr(work, "TaskLedger")
     assert not hasattr(work, "CollaborationBus")
+    assert not hasattr(work, "CodingWorkShell")
     assert not hasattr(work, "PromptSession")

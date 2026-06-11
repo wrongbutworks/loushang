@@ -33,7 +33,8 @@ class FakePromptSession:
 
 
 def test_coding_work_shell_wraps_prompt_and_logs_operation_run_and_projected_events() -> None:
-    from loushang.work import CodingWorkShell, InMemoryEventLogBackend
+    from loushang.coding.work_shell import CodingWorkShell
+    from loushang.work import InMemoryEventLogBackend
 
     async def scenario() -> None:
         event_log = InMemoryEventLogBackend()
@@ -91,7 +92,8 @@ def test_coding_work_shell_wraps_prompt_and_logs_operation_run_and_projected_eve
 
 
 def test_coding_work_shell_logs_tool_policy_and_approval_audit_events() -> None:
-    from loushang.work import CodingWorkShell, InMemoryEventLogBackend
+    from loushang.coding.work_shell import CodingWorkShell
+    from loushang.work import InMemoryEventLogBackend
 
     async def scenario() -> None:
         event_log = InMemoryEventLogBackend()
@@ -164,7 +166,8 @@ def test_coding_work_shell_logs_tool_policy_and_approval_audit_events() -> None:
 
 def test_coding_work_shell_jsonl_log_can_replay_persisted_turn(tmp_path) -> None:
     from loushang.ai.types import AssistantMessage, TextPart, Usage
-    from loushang.work import CodingWorkShell, JsonlEventLogBackend
+    from loushang.coding.work_shell import CodingWorkShell
+    from loushang.work import JsonlEventLogBackend
 
     usage = Usage(input=0, output=0, cache_read=0, cache_write=0, total_tokens=0, cost={})
     assistant = AssistantMessage(
@@ -221,7 +224,8 @@ def test_coding_work_shell_jsonl_log_can_replay_persisted_turn(tmp_path) -> None
 
 
 def test_coding_work_shell_records_method_id_as_metadata_only() -> None:
-    from loushang.work import CodingWorkShell, InMemoryEventLogBackend
+    from loushang.coding.work_shell import CodingWorkShell
+    from loushang.work import InMemoryEventLogBackend
 
     async def scenario() -> None:
         event_log = InMemoryEventLogBackend()
@@ -252,7 +256,8 @@ def test_coding_work_shell_records_method_id_as_metadata_only() -> None:
 
 
 def test_coding_work_shell_records_plan_and_step_lifecycle_events() -> None:
-    from loushang.work import CodingWorkShell, InMemoryEventLogBackend
+    from loushang.coding.work_shell import CodingWorkShell
+    from loushang.work import InMemoryEventLogBackend
 
     async def scenario() -> None:
         event_log = InMemoryEventLogBackend()
@@ -344,7 +349,8 @@ def test_coding_work_shell_records_plan_and_step_lifecycle_events() -> None:
 
 
 def test_coding_work_shell_can_suppress_plan_boundaries_for_middle_step() -> None:
-    from loushang.work import CodingWorkShell, InMemoryEventLogBackend
+    from loushang.coding.work_shell import CodingWorkShell
+    from loushang.work import InMemoryEventLogBackend
 
     async def scenario() -> None:
         event_log = InMemoryEventLogBackend()
@@ -383,7 +389,8 @@ def test_coding_work_shell_can_suppress_plan_boundaries_for_middle_step() -> Non
 
 
 def test_coding_work_shell_records_plan_failure_even_when_plan_boundaries_are_suppressed() -> None:
-    from loushang.work import CodingWorkShell, InMemoryEventLogBackend
+    from loushang.coding.work_shell import CodingWorkShell
+    from loushang.work import InMemoryEventLogBackend
 
     async def scenario() -> None:
         event_log = InMemoryEventLogBackend()
@@ -427,7 +434,8 @@ def test_coding_work_shell_records_plan_failure_even_when_plan_boundaries_are_su
 
 
 def test_coding_work_shell_records_step_and_plan_failures_before_run_failure() -> None:
-    from loushang.work import CodingWorkShell, InMemoryEventLogBackend
+    from loushang.coding.work_shell import CodingWorkShell
+    from loushang.work import InMemoryEventLogBackend
 
     async def scenario() -> None:
         event_log = InMemoryEventLogBackend()

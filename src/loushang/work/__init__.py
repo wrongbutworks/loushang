@@ -27,7 +27,6 @@ from loushang.work.types import (
 __all__ = [
     "ArtifactRef",
     "ArtifactStatus",
-    "CodingWorkShell",
     "DeliveryHint",
     "EventLogBackend",
     "EventLogEntry",
@@ -46,11 +45,3 @@ __all__ = [
     "project_agent_event_to_work_events",
     "project_work_plan_runs",
 ]
-
-
-def __getattr__(name: str) -> object:
-    if name == "CodingWorkShell":
-        from loushang.coding.work_shell import CodingWorkShell
-
-        return CodingWorkShell
-    raise AttributeError(f"module 'loushang.work' has no attribute {name!r}")
