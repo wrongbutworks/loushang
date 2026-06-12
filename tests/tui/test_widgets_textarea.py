@@ -18,6 +18,7 @@ from loushang.tui import (
 )
 from loushang.tui.ui_parts import TextArea as UiTextArea
 from loushang.tui.ui_parts.widgets import TextArea as WidgetTextArea
+from tests.tui.widget_example_playback import play_example
 
 
 def render_result(part: Any, *, width: int = 40, height: int = 8):
@@ -252,3 +253,31 @@ def test_widgets_textarea_example_imports() -> None:
     app = build_app()
     result = app.render(RenderConstraints(width=80, max_height=20))
     assert result.lines
+
+
+def test_widgets_textarea_example_playback_snapshots() -> None:
+    frames = play_example(
+        "examples/tui/47_widgets_textarea.py",
+        events=(
+            ("type note", InputEvent(kind="text", text="Plan release")),
+            ("enter", InputEvent(kind="key", key="enter")),
+            ("type next", InputEvent(kind="text", text="Ship docs")),
+        ),
+    )
+
+    assert frames[0].lines[:11] == (
+        "Release Note Draft",
+        "",
+        "Title         Weekly deploy notes",
+        "",
+        "Notes",
+        "Write notes",
+        "",
+        "",
+        "",
+        "",
+        "Status        0 lines / unsaved",
+    )
+    assert "Status        1 line / unsaved" in frames[1].lines
+    assert "Status        2 lines / unsaved" in frames[3].lines
+    assert frames[0].cursor == (5, 0)
