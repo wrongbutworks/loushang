@@ -15,6 +15,7 @@ from loushang.tui import (
 )
 from loushang.tui.ui_parts import QuestionDialog as UiQuestionDialog
 from loushang.tui.ui_parts.widgets import QuestionDialog as WidgetQuestionDialog
+from tests.tui.widget_example_playback import play_example
 
 
 def render_result(part: Any, *, width: int = 40, height: int = 8):
@@ -320,3 +321,46 @@ def test_widgets_question_dialog_example_imports() -> None:
     app = build_app()
     result = app.render(RenderConstraints(width=80, max_height=20))
     assert result.lines
+
+
+def test_widgets_question_dialog_example_playback_snapshots() -> None:
+    frames = play_example(
+        "examples/tui/48_widgets_question_dialog.py",
+        events=(
+            ("type answer", InputEvent(kind="text", text="Cache warmup before deploy")),
+            ("tab", InputEvent(kind="key", key="tab")),
+            ("enter", InputEvent(kind="key", key="enter")),
+        ),
+    )
+
+    assert frames[0].lines[:15] == (
+        "Notes Inbox",
+        "",
+        "Recent",
+        "  Cache deploy checklist",
+        "  Follow up on flaky test",
+        "",
+        "New Note",
+        "Add note",
+        "What should be remembered?",
+        "Write a multi-line answer",
+        "",
+        "",
+        "",
+        "Enter adds a line. Ctrl+Enter submits.",
+        "  [Submit]  [Cancel]",
+    )
+    assert "Status        Drafting" in frames[0].lines
+    assert "> [Submit]  [Cancel]" in frames[2].lines
+    assert "Status        Submitted: Cache warmup before deploy" in frames[3].lines
+
+    cancel_frames = play_example(
+        "examples/tui/48_widgets_question_dialog.py",
+        events=(
+            ("tab", InputEvent(kind="key", key="tab")),
+            ("right", InputEvent(kind="key", key="right")),
+            ("enter", InputEvent(kind="key", key="enter")),
+        ),
+    )
+    assert any("[Submit]> [Cancel]" in line for line in cancel_frames[2].lines)
+    assert "Status        Cancelled" in cancel_frames[3].lines
