@@ -6,6 +6,7 @@ from typing import Any
 import pytest
 
 from loushang.tui import (
+    InputEvent,
     RenderConstraints,
     ThemeResolver,
     Toast,
@@ -20,6 +21,7 @@ from loushang.tui.ui_parts import ToastStack as UiToastStack
 from loushang.tui.ui_parts.widgets import Toast as WidgetToast
 from loushang.tui.ui_parts.widgets import ToastKind as WidgetToastKind
 from loushang.tui.ui_parts.widgets import ToastStack as WidgetToastStack
+from tests.tui.widget_example_playback import play_example
 
 
 class Clock:
@@ -154,6 +156,35 @@ def test_widgets_toast_example_imports() -> None:
     app = build_app()
     result = app.render(RenderConstraints(width=60, max_height=8))
     assert result.lines
+
+
+def test_widgets_toast_example_playback_snapshots() -> None:
+    frames = play_example(
+        "examples/tui/50_widgets_toast.py",
+        events=(
+            ("warning", InputEvent(kind="text", text="w")),
+            ("success", InputEvent(kind="text", text="s")),
+            ("dismiss", InputEvent(kind="text", text="x")),
+            ("clear", InputEvent(kind="text", text="c")),
+        ),
+    )
+
+    assert frames[0].lines[:9] == (
+        "Deploy Console",
+        "",
+        "Pipeline      api-server",
+        "Status        waiting",
+        "Last event    none",
+        "",
+        "Notifications",
+        "[success] Changes saved",
+        "[info] Loushang: Welcome",
+    )
+    assert "Last event    warning toast added" in frames[1].lines
+    assert "[warning] Toast 1" in frames[1].lines
+    assert "Last event    success toast added" in frames[2].lines
+    assert "Last event    dismissed oldest" in frames[3].lines
+    assert "Last event    cleared notifications" in frames[4].lines
 
 
 def test_toast_stack_normalizes_generated_values_and_timestamps() -> None:
