@@ -159,7 +159,6 @@ from __future__ import annotations
 
 import runpy
 from dataclasses import dataclass
-from typing import Any
 
 from loushang.tui import (
     FakeTerminalPort,
@@ -343,7 +342,7 @@ def test_widgets_light_controls_example_playback_snapshots() -> None:
         "Actions",
         "                Open  current view",
         "                Refresh",
-        "                Archive",
+        "                Archive  disabled",
         "",
         "Status        Ready",
         "",
@@ -434,7 +433,7 @@ Activity      | Syncing
 Actions
                 Open  current view
                 Refresh
-                Archive
+                Archive  disabled
 
 Status        Ready
 
@@ -443,6 +442,12 @@ Status        Ready
 
 When actions are focused, `Tabs.render()` must not show a `>` and `Menu.render()`
 must show a single focused action row.
+
+Modify `_menu_items()` so the archive item carries visible disabled context:
+
+```python
+MenuItem("archive", "Archive", description="disabled", disabled=True)
+```
 
 - [ ] **Step 6: Run light controls tests**
 
@@ -754,6 +759,17 @@ def test_widgets_question_dialog_example_playback_snapshots() -> None:
     assert "Status        Drafting" in frames[0].lines
     assert "> [Submit]  [Cancel]" in frames[2].lines
     assert "Status        Submitted: Cache warmup before deploy" in frames[3].lines
+
+    cancel_frames = play_example(
+        "examples/tui/48_widgets_question_dialog.py",
+        events=(
+            ("tab", InputEvent(kind="key", key="tab")),
+            ("right", InputEvent(kind="key", key="right")),
+            ("enter", InputEvent(kind="key", key="enter")),
+        ),
+    )
+    assert "[Submit] > [Cancel]" in cancel_frames[2].lines
+    assert "Status        Cancelled" in cancel_frames[3].lines
 ```
 
 - [ ] **Step 2: Run focused test and verify it fails**
@@ -949,7 +965,8 @@ git commit -m "feat(tui): polish tree example"
 
 - [ ] **Step 1: Write failing playback test**
 
-Add to `tests/tui/test_widgets_toast.py`:
+Add `InputEvent` to the existing `from loushang.tui import (...)` import list,
+then add this playback test to `tests/tui/test_widgets_toast.py`:
 
 ```python
 from tests.tui.widget_example_playback import play_example
