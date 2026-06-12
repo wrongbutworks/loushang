@@ -18,11 +18,27 @@ from loushang.tui import (
     truncate_to_width,
 )
 
+LABEL_WIDTH = 14
+
+NODE_DETAILS = {
+    "src": ("src", "folder", "expanded"),
+    "widgets": ("src/widgets", "folder", "leaf"),
+    "runtime": ("src/runtime", "folder", "leaf"),
+    "tests": ("tests", "folder", "collapsed"),
+    "unit": ("tests/unit", "folder", "leaf"),
+    "integration": ("tests/integration", "folder", "leaf"),
+}
+
+
+def _field(label: str, value: str, *, width: int) -> RenderLine:
+    text = f"{label:<{LABEL_WIDTH}}{value}"
+    return RenderLine(truncate_to_width(text, max_width=width, ellipsis=""))
+
 
 @dataclass(slots=True)
 class TreeViewApp(FocusableMixin):
     tree: TreeView = field(default_factory=lambda: TreeView(_nodes()))
-    message: str = "Use arrows to navigate. Enter selects. Press q to quit."
+    selected_value: str = ""
 
     def __post_init__(self) -> None:
         FocusableMixin.__init__(self)
@@ -30,19 +46,37 @@ class TreeViewApp(FocusableMixin):
 
     def render(self, constraints: RenderConstraints) -> RenderResult:
         tree_result = self.tree.render(
-            RenderConstraints(width=constraints.width, max_height=max(1, constraints.max_height - 2))
+            RenderConstraints(width=constraints.width, max_height=max(1, constraints.max_height - 9))
         )
+        active_value = self.tree.active_value
+        path, kind, status = NODE_DETAILS.get(active_value, ("", "", ""))
+        if self.selected_value == active_value:
+            status = f"Selected: {path}"
         rows = [
+            RenderLine(truncate_to_width("Project Explorer", max_width=constraints.width, ellipsis="")),
+            RenderLine(""),
+            RenderLine("Tree"),
             *tree_result.lines,
             RenderLine(""),
-            RenderLine(truncate_to_width(self.message, max_width=constraints.width, ellipsis="")),
+            RenderLine("Details"),
+            _field("Path", path, width=constraints.width),
+            _field("Kind", kind, width=constraints.width),
+            _field("Status", status, width=constraints.width),
+            RenderLine(""),
+            RenderLine(
+                truncate_to_width(
+                    "[up/down] node  [enter] select/toggle  [q] quit",
+                    max_width=constraints.width,
+                    ellipsis="",
+                )
+            ),
         ]
         return RenderResult.from_lines(rows[: constraints.max_height], constraints=constraints)
 
     def handle_input(self, event: Any) -> object:
         result = self.tree.handle_input(event)
         if getattr(result, "kind", "") == "select":
-            self.message = f"Selected: {getattr(result, 'text', '')}"
+            self.selected_value = getattr(result, "text", "")
         return result
 
 

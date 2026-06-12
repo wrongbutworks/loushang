@@ -18,6 +18,7 @@ from loushang.tui.ui_parts import TreeNode as UiTreeNode
 from loushang.tui.ui_parts import TreeView as UiTreeView
 from loushang.tui.ui_parts.widgets import TreeNode as WidgetTreeNode
 from loushang.tui.ui_parts.widgets import TreeView as WidgetTreeView
+from tests.tui.widget_example_playback import play_example
 
 
 def render_lines(part: Any, *, width: int = 40, height: int = 8) -> tuple[str, ...]:
@@ -292,3 +293,30 @@ def test_widgets_tree_example_imports() -> None:
     app = build_app()
     result = app.render(RenderConstraints(width=80, max_height=20))
     assert result.lines
+
+
+def test_widgets_tree_example_playback_snapshots() -> None:
+    frames = play_example(
+        "examples/tui/49_widgets_tree.py",
+        events=(
+            ("down", InputEvent(kind="key", key="down")),
+            ("enter", InputEvent(kind="key", key="enter")),
+        ),
+    )
+
+    assert frames[0].lines[:12] == (
+        "Project Explorer",
+        "",
+        "Tree",
+        "> - src",
+        "      widgets",
+        "      runtime",
+        "  + tests",
+        "",
+        "Details",
+        "Path          src",
+        "Kind          folder",
+        "Status        expanded",
+    )
+    assert "Path          src/widgets" in frames[1].lines
+    assert "Status        Selected: src/widgets" in frames[2].lines
