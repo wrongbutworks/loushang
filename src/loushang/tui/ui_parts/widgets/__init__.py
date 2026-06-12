@@ -7,6 +7,7 @@ from .choice import Checkbox as Checkbox
 from .choice import Choice as Choice
 from .choice import RadioGroup as RadioGroup
 from .choice import Toggle as Toggle
+from .command_palette import CommandPaletteView as CommandPaletteView
 from .dialog import ConfirmDialog as ConfirmDialog
 from .dialog import Dialog as Dialog
 from .dialog import DialogAction as DialogAction
@@ -48,6 +49,7 @@ __all__ = [
     "BadgeKind",
     "Checkbox",
     "Choice",
+    "CommandPaletteView",
     "ConfirmDialog",
     "Dialog",
     "DialogAction",

@@ -172,6 +172,34 @@ stack = ToastStack()
 stack.push("Saved", kind="success", title="Config")
 ```
 
+## P2A 命令面板
+
+| 控件 | 用途 |
+| --- | --- |
+| `CommandPaletteView` | 基于 `CommandPalette` 数据的可搜索动作/模型选择器。 |
+
+`CommandPalette` 仍然是 coding adapter 使用的数据模型。`CommandPaletteView`
+是可聚焦 widget：它渲染这些条目，用简单的大小写不敏感子串匹配过滤，并返回结构化
+intent。选择可用条目会返回 `command_select`；取消会返回 `command_cancel`。启用
+close flag 时，widget 还会额外返回 `surface_close`。
+
+禁用命令在 `CommandPaletteView` 中保持可见，但键盘导航会跳过它们，激活时不返回
+内容。legacy coding palette adapter 在这个 slice 中不会消费 `disabled` 标记。
+
+```python
+from loushang.tui import CommandPalette, CommandPaletteItem, CommandPaletteView
+
+palette = CommandPalette(
+    (
+        CommandPaletteItem("deploy", "Deploy service", "Run deployment pipeline"),
+        CommandPaletteItem("archive", "Archive release", "unavailable", disabled=True),
+    ),
+    title="Commands",
+)
+view = CommandPaletteView(palette)
+view.focus()
+```
+
 ## 表单
 
 ```python
@@ -216,7 +244,7 @@ Dialog 会先处理 `escape` 和 `ctrl+c`，再委派给内部字段。body 焦�
 
 ## 主题 Token
 
-支持样式的 P0A、P0B、P0C、P1A、P1B、P1C、P1D 与 P1E 控件可以接收
+支持样式的 P0A、P0B、P0C、P1A、P1B、P1C、P1D、P1E 与 P2A 控件可以接收
 `ThemeResolver`。第一批稳定 token 如下：
 
 | Token | 作用范围 |
@@ -279,6 +307,17 @@ Dialog 会先处理 `escape` 和 `ctrl+c`，再委派给内部字段。body 焦�
 | `widget.toast.danger` | dangerous 或 failed toast 前缀。 |
 | `widget.toast.title` | Toast 标题片段。 |
 | `widget.toast.message` | Toast 消息片段。 |
+| `widget.commandPalette.title` | `CommandPaletteView` 标题行。 |
+| `widget.commandPalette.queryLabel` | `CommandPaletteView` 搜索标签。 |
+| `widget.commandPalette.queryText` | `CommandPaletteView` 查询文本。 |
+| `widget.commandPalette.placeholder` | `CommandPaletteView` placeholder 文本。 |
+| `widget.commandPalette.section` | `CommandPaletteView` 分区标签。 |
+| `widget.commandPalette.item` | 可用的非激活命令行。 |
+| `widget.commandPalette.focus` | 获得焦点的激活命令行。 |
+| `widget.commandPalette.disabled` | 禁用命令行。 |
+| `widget.commandPalette.description` | 命令描述。 |
+| `widget.commandPalette.empty` | 命令面板空状态文本。 |
+| `widget.commandPalette.footer` | 命令面板 footer 行。 |
 | `widget.textArea.label` | `TextArea` 标签行。 |
 | `widget.textArea.placeholder` | `TextArea` placeholder 文本。 |
 | `widget.textArea.text` | `TextArea` 正文文本。 |
@@ -307,3 +346,5 @@ Dialog 会先处理 `escape` 和 `ctrl+c`，再委派给内部字段。body 焦�
   一个带键盘展开和选择行为的静态层级树示例。
 - [examples/tui/50_widgets_toast.py](../../../examples/tui/50_widgets_toast.py)：
   一个带队列、关闭和清空动作的内联 toast stack 示例。
+- [examples/tui/51_widgets_command_palette.py](../../../examples/tui/51_widgets_command_palette.py)：
+  一个带过滤、导航、选择和取消行为的可搜索命令面板示例。

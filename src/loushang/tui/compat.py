@@ -87,6 +87,7 @@ class CommandPaletteItem:
     value: str
     label: str = ""
     description: str = ""
+    disabled: bool = False
 
     def display_label(self) -> str:
         return self.label or self.value

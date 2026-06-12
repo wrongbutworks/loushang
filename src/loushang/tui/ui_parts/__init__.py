@@ -25,6 +25,7 @@ from .widgets import Button as Button
 from .widgets import ButtonKind as ButtonKind
 from .widgets import Checkbox as Checkbox
 from .widgets import Choice as Choice
+from .widgets import CommandPaletteView as CommandPaletteView
 from .widgets import ConfirmDialog as ConfirmDialog
 from .widgets import Dialog as Dialog
 from .widgets import DialogAction as DialogAction
@@ -68,6 +69,7 @@ __all__ = [
     "ButtonKind",
     "Checkbox",
     "Choice",
+    "CommandPaletteView",
     "Composer",
     "ConfirmDialog",
     "Dialog",
