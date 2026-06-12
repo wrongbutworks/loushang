@@ -768,7 +768,7 @@ def test_widgets_question_dialog_example_playback_snapshots() -> None:
             ("enter", InputEvent(kind="key", key="enter")),
         ),
     )
-    assert "[Submit] > [Cancel]" in cancel_frames[2].lines
+    assert "[Submit]> [Cancel]" in cancel_frames[2].lines
     assert "Status        Cancelled" in cancel_frames[3].lines
 ```
 
