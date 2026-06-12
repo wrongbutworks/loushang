@@ -26,7 +26,7 @@ contract.
   - `src/loushang/coding/commands`
   - `src/loushang/coding/tools`
   - `src/loushang/tui/extensions.py`
-- Record the contribution matrix:
+- Record the extension surface matrix:
   - current support
   - target support
   - owner subsystem
@@ -35,7 +35,7 @@ contract.
 - Record final decisions for:
   - manifest format
   - permission model
-  - contribution conflicts
+  - surface conflicts
   - hook classes
   - UI bridge boundary
   - dependency scope
@@ -52,18 +52,18 @@ contract.
 - New manifest parser.
 - New UI.
 
-## P1: Manifest, Policy, And Contribution Registry Skeleton
+## P1: Manifest, Policy, And Extension Inventory Projection
 
 ### Objective
 
-Add structured extension metadata and contribution projection without changing
+Add structured extension metadata and inventory projection without changing
 user-visible runtime behavior.
 
 ### Implementation
 
 - Add an internal extension manifest model for `loushang-extension.toml`.
 - Add parser diagnostics for invalid TOML, unknown required fields, unsupported
-  contribution sections, and invalid permission levels.
+  surface declaration sections, and invalid permission levels.
 - Parse and store dependency declarations, but do not install or resolve them in
   P1.
 - Reserve internal dependency resolution state for future isolated import paths;
@@ -73,19 +73,21 @@ user-visible runtime behavior.
   - permission level
   - internal capabilities
   - managed-hooks-only decision
-- Add `ContributionRegistry` or equivalent projection with contribution
-  descriptors for commands, tools, prompts, skills, hooks, models/providers,
-  UI, autocomplete, and resource roots.
-- Wire the loader to produce contribution descriptors in addition to existing
-  loaded extension data.
+- Add `ExtensionInventory`, `ExtensionSurfaceSnapshot`, or an equivalent
+  inventory-only projection with descriptors for commands, tools, prompts,
+  skills, hooks, models/providers, UI, autocomplete, and resource roots.
+- If the interim code keeps the `ContributionRegistry` name, document and test it
+  as read-only inventory rather than an activation or arbitration layer.
+- Wire the loader to produce surface descriptors in addition to existing loaded
+  extension data.
 - Keep existing `register(api)` runtime compatibility.
 
 ### Tests
 
 - Manifest parser accepts minimal valid TOML.
 - Invalid manifest produces extension diagnostics, not an uncaught exception.
-- Policy-disabled extension remains visible but contributes no active entries.
-- Registry records source info and inactive reasons.
+- Policy-disabled extension remains visible but exposes no runtime surfaces.
+- Inventory records source info and inactive reasons.
 
 ### Not In Scope
 
@@ -97,23 +99,25 @@ user-visible runtime behavior.
 
 ### Objective
 
-Route the main user-facing contribution types through the registry.
+Keep main user-facing surfaces on their owning resolvers while projecting their
+state into the extension inventory.
 
 ### Implementation
 
-- Mount extension commands through the command catalog using contribution
-  metadata and source diagnostics.
+- Mount extension commands through the command resolver using source metadata and
+  diagnostics from the extension runtime.
 - Mount extension tools only after policy evaluation, conflict resolution, and
-  denied-tool filtering.
-- Preserve existing prompt and skill resource loader precedence; add registry
-  diagnostics that explain collisions and inactive resources.
+  denied-tool filtering in the tool surface.
+- Preserve existing prompt and skill resource loader precedence; project loader
+  diagnostics into the inventory so collisions and inactive resources remain
+  explainable.
 - Add `/extensions` as the first management surface.
   - Register it as a built-in core management command, not as an
     extension-contributed command.
   - Route its output through the existing command plane and diagnostics
     projection.
-  - It should list active tools, commands, hooks, prompts, skills, permissions,
-    conflicts, and load warnings.
+  - It should list exposed tools, commands, hooks, prompts, skills,
+    permissions, conflicts, and load warnings.
   - It should not install, update, or remove extensions in this phase.
 
 ### Tests
@@ -122,7 +126,7 @@ Route the main user-facing contribution types through the registry.
   exists.
 - Denied tool does not appear in model-visible tool list.
 - Duplicate command names are visible with disambiguation diagnostics.
-- `/extensions` prints active tools and inactive reasons without the
+- `/extensions` prints exposed tools and inactive reasons without the
   `? thinking:` transcript artifact.
 
 ### Not In Scope
@@ -183,7 +187,7 @@ Expose extension UI integration through controlled bridge APIs.
 
 - Extend the existing TUI extension host into an `ExtensionUiBridge`-style
   runtime surface.
-- Allow extension contributions for:
+- Allow controlled extension UI surfaces for:
   - status
   - footer/header
   - surfaces/modals
@@ -194,7 +198,7 @@ Expose extension UI integration through controlled bridge APIs.
   - message renderers
 - Route keyboard and command palette integration through an action registry.
 - Keep raw screen/layout/key access private to the TUI implementation.
-- Surface UI contribution diagnostics in `/extensions`.
+- Surface UI diagnostics in `/extensions`.
 
 ### Tests
 
@@ -238,7 +242,7 @@ Add dependency semantics with conservative installation boundaries.
   global environment.
 - Missing binary produces a non-fatal diagnostic.
 - Unsupported system capability produces diagnostic-only status.
-- Dependency failures disable dependent contributions without hiding the whole
+- Dependency failures disable dependent surfaces without hiding the whole
   extension.
 
 ### Not In Scope
@@ -275,13 +279,13 @@ Each implementation PR should include:
 
 Each phase should keep a narrow rollback path:
 
-- P1 can disable the new manifest and contribution projection while leaving
+- P1 can disable the new manifest and inventory projection while leaving
   existing `register(api)` loading active.
 - P2 can hide `/extensions` and fall back to current command/tool/resource
   registration paths.
 - P3 must keep compatibility wrappers around existing hook event names until
   all call sites are routed through the dispatcher and tested.
-- P4 can disable UI bridge contributions while preserving non-UI extension
+- P4 can disable UI bridge surfaces while preserving non-UI extension
   runtime behavior.
 - P5 can disable dependency resolution and leave dependency declarations as
   diagnostics-only metadata.
@@ -294,7 +298,7 @@ extension author APIs during rollback.
 Implementation PRs should include lightweight performance checks or explicit
 review evidence for hot paths:
 
-- contribution lookup is indexed by contribution type and id
+- inventory lookup is indexed by surface type and id
 - tool exposure is recomputed on extension/tool state changes, not per render
   frame
 - hook dispatch has deterministic ordering and timeout behavior for blocking
@@ -307,7 +311,7 @@ review evidence for hot paths:
 
 The platform integration work is complete when:
 
-- `/extensions` can explain enabled extensions, inactive contributions,
+- `/extensions` can explain enabled extensions, inactive or rejected surfaces,
   permissions, conflicts, dependencies, and hook declarations.
 - Extension tools are filtered before model exposure.
 - Hook semantics are centrally declared and dispatched.

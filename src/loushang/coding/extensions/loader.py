@@ -9,7 +9,7 @@ from dataclasses import replace
 from pathlib import Path
 
 from loushang.coding.extensions.api import ExtensionAPI
-from loushang.coding.extensions.contributions import contributions_from_loaded_extension
+from loushang.coding.extensions.contributions import surfaces_from_loaded_extension
 from loushang.coding.extensions.manifest import parse_extension_manifest
 from loushang.coding.extensions.policy import policy_from_manifest
 from loushang.coding.extensions.types import LoadedExtension
@@ -213,7 +213,7 @@ def _finalize_loaded_extension(
         manifest=manifest,
         policy=policy_from_manifest(manifest, enabled=enabled),
     )
-    return replace(with_policy, contributions=list(contributions_from_loaded_extension(with_policy)))
+    return replace(with_policy, contributions=list(surfaces_from_loaded_extension(with_policy)))
 
 
 def _load_descriptor_manifest(descriptor: ExtensionDescriptor):

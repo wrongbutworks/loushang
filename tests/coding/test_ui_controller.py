@@ -218,8 +218,8 @@ def test_controller_prefers_session_command_display_text_for_status() -> None:
                     "source": "builtin",
                     "command": invocation_name,
                     "status": "ok",
-                    "message": "Extensions: acme.review (standard, 2 contributions)",
-                    "display": "Extensions:\n- acme.review - Acme Review [standard]\n  Contributions: command acme-review, tool review_lookup",
+                    "message": "Extensions: acme.review (standard, 2 surfaces)",
+                    "display": "Extensions:\n- acme.review - Acme Review [standard]\n  Surfaces: command acme-review, tool review_lookup",
                 },
             )
 
@@ -231,7 +231,7 @@ def test_controller_prefers_session_command_display_text_for_status() -> None:
     assert result.status_message == (
         "Extensions:\n"
         "- acme.review - Acme Review [standard]\n"
-        "  Contributions: command acme-review, tool review_lookup"
+        "  Surfaces: command acme-review, tool review_lookup"
     )
 
 

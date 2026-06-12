@@ -2291,6 +2291,7 @@ def _extension_visibility_snapshot(
     extension_id = manifest.id if manifest is not None else extension.name
     extension_name = manifest.name if manifest is not None else extension.name
     manifest_path = _extension_manifest_path(extension)
+    surfaces = [_serialize_surface(surface) for surface in extension.surfaces]
     return {
         "id": extension_id,
         "name": extension_name,
@@ -2314,10 +2315,8 @@ def _extension_visibility_snapshot(
             if manifest is not None
             else ()
         ),
-        "contributions": [
-            _serialize_contribution(contribution)
-            for contribution in extension.contributions
-        ],
+        "surfaces": surfaces,
+        "contributions": list(surfaces),
         "diagnostics": [
             _serialize_diagnostic(diagnostic)
             for diagnostic in _extension_visibility_diagnostics(
@@ -2329,19 +2328,19 @@ def _extension_visibility_snapshot(
     }
 
 
-def _serialize_contribution(contribution: object) -> dict[str, object]:
-    metadata = getattr(contribution, "metadata", {})
+def _serialize_surface(surface: object) -> dict[str, object]:
+    metadata = getattr(surface, "metadata", {})
     source = metadata.get("source") if isinstance(metadata, dict) else None
     return {
-        "type": str(getattr(contribution, "type", "")),
-        "name": str(getattr(contribution, "name", "")),
-        "active": bool(getattr(contribution, "active", True)),
-        "priority": int(getattr(contribution, "priority", 0)),
+        "type": str(getattr(surface, "type", "")),
+        "name": str(getattr(surface, "name", "")),
+        "active": bool(getattr(surface, "active", True)),
+        "priority": int(getattr(surface, "priority", 0)),
         "source": source if isinstance(source, str) else "",
-        "sourcePath": _path_text(getattr(contribution, "source_path", None)),
+        "sourcePath": _path_text(getattr(surface, "source_path", None)),
         "diagnostics": [
             _serialize_diagnostic(diagnostic)
-            for diagnostic in getattr(contribution, "diagnostics", ())
+            for diagnostic in getattr(surface, "diagnostics", ())
             if isinstance(diagnostic, ResourceDiagnostic)
         ],
     }

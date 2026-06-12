@@ -80,7 +80,7 @@ level = "root"
     assert result.diagnostics[0].resource_type == "extension"
 
 
-def test_extension_manifest_parser_keeps_manifest_for_partial_contribution_errors(tmp_path) -> None:
+def test_extension_manifest_parser_keeps_manifest_for_partial_surface_declaration_errors(tmp_path) -> None:
     from loushang.coding.extensions.manifest import parse_extension_manifest
 
     manifest_path = tmp_path / "loushang-extension.toml"
@@ -111,7 +111,7 @@ name = "valid_tool"
     ]
 
 
-def test_extension_loader_attaches_manifest_policy_and_contributions(tmp_path) -> None:
+def test_extension_loader_attaches_manifest_policy_and_surface_snapshot(tmp_path) -> None:
     from loushang.coding.extensions.loader import ExtensionLoader
     from loushang.coding.loader import ExtensionDescriptor
 
@@ -186,13 +186,14 @@ kind = "augment"
     assert extension.policy is not None
     assert extension.policy.permission_level == "standard"
     assert extension.policy.capabilities == ("filesystem",)
-    assert sorted((contribution.type, contribution.name) for contribution in extension.contributions) == [
+    assert sorted((surface.type, surface.name) for surface in extension.surfaces) == [
         ("command", "acme-review"),
         ("hook", "before_agent_start"),
         ("hook", "session_start"),
         ("tool", "manifest_lookup"),
         ("tool", "runtime_lookup"),
     ]
+    assert extension.contributions == extension.surfaces
     assert loader.get_diagnostics() == []
 
 
@@ -200,11 +201,11 @@ def test_extension_runner_lists_extension_visibility_snapshot() -> None:
     from pathlib import Path
 
     from loushang.coding.extensions import (
-        ContributionDescriptor,
         ExtensionManifest,
         ExtensionPermissionDeclaration,
         ExtensionPolicyDecision,
         ExtensionRunner,
+        ExtensionSurfaceDescriptor,
         LoadedExtension,
     )
     from loushang.coding.loader import ResourceDiagnostic
@@ -222,14 +223,14 @@ def test_extension_runner_lists_extension_visibility_snapshot() -> None:
         manifest=manifest,
         policy=ExtensionPolicyDecision(permission_level="standard", capabilities=("filesystem",)),
         contributions=[
-            ContributionDescriptor(
+            ExtensionSurfaceDescriptor(
                 type="command",
                 name="acme-review",
                 extension_id="acme.review",
                 source_path=Path("/tmp/project/extensions/review/extension.py"),
                 metadata={"source": "manifest"},
             ),
-            ContributionDescriptor(
+            ExtensionSurfaceDescriptor(
                 type="tool",
                 name="review_lookup",
                 extension_id="acme.review",
@@ -260,6 +261,26 @@ def test_extension_runner_lists_extension_visibility_snapshot() -> None:
             "enabled": True,
             "permissionLevel": "standard",
             "capabilities": ["filesystem"],
+            "surfaces": [
+                {
+                    "type": "command",
+                    "name": "acme-review",
+                    "active": True,
+                    "priority": 0,
+                    "source": "manifest",
+                    "sourcePath": "/tmp/project/extensions/review/extension.py",
+                    "diagnostics": [],
+                },
+                {
+                    "type": "tool",
+                    "name": "review_lookup",
+                    "active": True,
+                    "priority": 0,
+                    "source": "runtime",
+                    "sourcePath": "/tmp/project/extensions/review/extension.py",
+                    "diagnostics": [],
+                },
+            ],
             "contributions": [
                 {
                     "type": "command",
@@ -295,12 +316,12 @@ def test_extension_runner_lists_extension_visibility_snapshot() -> None:
     ]
 
 
-def test_contribution_registry_indexes_loaded_extension_contributions(tmp_path) -> None:
+def test_extension_inventory_indexes_loaded_extension_surfaces(tmp_path) -> None:
     from pathlib import Path
 
     from loushang.coding.extensions.contributions import (
-        ContributionDescriptor,
-        ContributionRegistry,
+        ExtensionInventory,
+        ExtensionSurfaceDescriptor,
     )
     from loushang.coding.extensions.types import LoadedExtension
 
@@ -308,13 +329,13 @@ def test_contribution_registry_indexes_loaded_extension_contributions(tmp_path) 
         name="review",
         source_path=Path("/tmp/review/extension.py"),
         contributions=[
-            ContributionDescriptor(
+            ExtensionSurfaceDescriptor(
                 type="tool",
                 name="lookup",
                 extension_id="review",
                 source_path=Path("/tmp/review/extension.py"),
             ),
-            ContributionDescriptor(
+            ExtensionSurfaceDescriptor(
                 type="command",
                 name="review",
                 extension_id="review",
@@ -323,47 +344,47 @@ def test_contribution_registry_indexes_loaded_extension_contributions(tmp_path) 
         ],
     )
 
-    registry = ContributionRegistry.from_extensions([extension])
+    inventory = ExtensionInventory.from_extensions([extension])
 
-    assert [contribution.name for contribution in registry.by_type("tool")] == ["lookup"]
-    assert [contribution.name for contribution in registry.by_extension("review")] == [
+    assert [surface.name for surface in inventory.by_type("tool")] == ["lookup"]
+    assert [surface.name for surface in inventory.by_extension("review")] == [
         "lookup",
         "review",
     ]
-    assert registry.get("tool", "lookup").extension_id == "review"
+    assert inventory.get("tool", "lookup").extension_id == "review"
 
 
-def test_contribution_registry_does_not_silently_overwrite_duplicate_keys() -> None:
+def test_extension_inventory_does_not_silently_overwrite_duplicate_keys() -> None:
     from pathlib import Path
 
     import pytest
 
     from loushang.coding.extensions.contributions import (
-        ContributionDescriptor,
-        ContributionRegistry,
-        DuplicateContributionKeyError,
+        DuplicateExtensionSurfaceKeyError,
+        ExtensionInventory,
+        ExtensionSurfaceDescriptor,
     )
 
-    first = ContributionDescriptor(
+    first = ExtensionSurfaceDescriptor(
         type="command",
         name="review",
         extension_id="one",
         source_path=Path("/tmp/one.py"),
     )
-    second = ContributionDescriptor(
+    second = ExtensionSurfaceDescriptor(
         type="command",
         name="review",
         extension_id="two",
         source_path=Path("/tmp/two.py"),
     )
 
-    registry = ContributionRegistry()
-    registry.add(first)
-    registry.add(second)
+    inventory = ExtensionInventory()
+    inventory.add(first)
+    inventory.add(second)
 
-    assert [contribution.extension_id for contribution in registry.by_key("command", "review")] == [
+    assert [surface.extension_id for surface in inventory.by_key("command", "review")] == [
         "one",
         "two",
     ]
-    with pytest.raises(DuplicateContributionKeyError):
-        registry.get("command", "review")
+    with pytest.raises(DuplicateExtensionSurfaceKeyError):
+        inventory.get("command", "review")

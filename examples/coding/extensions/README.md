@@ -9,7 +9,7 @@ These examples demonstrate the current `loushang-coding` `ExtensionAPI v1` surfa
 ### Examples
 
 - `01_lifecycle.py`: `session_start`, `before_agent_start`, `session_shutdown`
-- `02_dynamic_resources.py`: `resources_discover` with prompt and skill contributions
+- `02_dynamic_resources.py`: `resources_discover` with prompt and skill resource additions
 - `03_custom_tool.py`: `@tool` and tool execution through a session
 - `04_tool_guard.py`: `tool_call` and `tool_result` interception
 - `05_manifest_visibility.py`: `loushang-extension.toml`, `/extensions`, and extension tool source visibility
