@@ -3,18 +3,17 @@ from __future__ import annotations
 import inspect
 from collections.abc import Callable, Mapping, Sequence
 from copy import deepcopy
-from dataclasses import dataclass, field, replace
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import cast
 
 from loushang.agent.types import (
     AfterToolCallResult,
     AgentMessage,
-    AgentToolResult,
     BeforeToolCallResult,
 )
-from loushang.ai.types import ToolCall
 from loushang.coding.exec import ExecResult, ExecUpdateCallback
+from loushang.coding.extensions.hooks import HookDispatcher
 from loushang.coding.extensions.loader import ExtensionLoader
 from loushang.coding.extensions.types import (
     BeforeAgentStartResult,
@@ -35,8 +34,6 @@ from loushang.coding.extensions.types import (
     SessionBeforeTreeResult,
     SessionRefreshEvent,
     SourceInfo,
-    ToolCallDecision,
-    ToolResultDecision,
 )
 from loushang.coding.extensions.wrapper import wrap_registered_tool_definition
 from loushang.coding.loader import (
@@ -1714,119 +1711,21 @@ class ExtensionRunner:
         return current_messages
 
     async def before_tool_call(self, event, signal: object | None = None) -> BeforeToolCallResult | None:
-        current_event = event
-        changed = False
-        context = self._context_from_runtime(fallback_cwd=_context_from_agent_event(event).cwd)
-        for extension in self._extensions:
-            for handler in extension.hooks.get("tool_call", []):
-                try:
-                    decision = handler(current_event, context)
-                    if inspect.isawaitable(decision):
-                        decision = await decision
-                except Exception as exc:
-                    self._diagnostics.append(
-                        ResourceDiagnostic(
-                            code="extension_tool_call_failed",
-                            message=f"Extension hook 'tool_call' failed: {exc}",
-                            source_path=extension.source_path,
-                        )
-                    )
-                    self._emit_runtime_error(extension=extension, event="tool_call", error=exc)
-                    continue
-                if decision is None:
-                    continue
-                if not isinstance(decision, ToolCallDecision):
-                    self._diagnostics.append(
-                        ResourceDiagnostic(
-                            code="invalid_extension_tool_call_decision",
-                            message="tool_call hooks must return ToolCallDecision or None.",
-                            source_path=extension.source_path,
-                        )
-                    )
-                    continue
-                if decision.diagnostics:
-                    self._diagnostics.extend(decision.diagnostics)
-                rewritten_tool_name = decision.tool_name or current_event.tool_call.name
-                rewritten_arguments = decision.arguments if decision.arguments is not None else current_event.args
-                if rewritten_tool_name != current_event.tool_call.name or rewritten_arguments != current_event.args:
-                    changed = True
-                    current_event = replace(
-                        current_event,
-                        tool_call=ToolCall(
-                            type="toolCall",
-                            id=current_event.tool_call.id,
-                            name=rewritten_tool_name,
-                            arguments=rewritten_arguments,
-                            thought_signature=current_event.tool_call.thought_signature,
-                        ),
-                        args=rewritten_arguments,
-                    )
-                if decision.block:
-                    return BeforeToolCallResult(
-                        block=True,
-                        reason=decision.reason,
-                        tool_name=current_event.tool_call.name if changed else None,
-                        arguments=current_event.args if changed else None,
-                    )
-        if not changed:
-            return None
-        return BeforeToolCallResult(
-            tool_name=current_event.tool_call.name,
-            arguments=current_event.args,
-        )
+        return await self._tool_hook_dispatcher(_context_from_agent_event(event).cwd).before_tool_call(event, signal)
 
     async def after_tool_call(self, event, signal: object | None = None) -> AfterToolCallResult | None:
-        current_event = event
-        changed = False
-        context = self._context_from_runtime(fallback_cwd=_context_from_agent_event(event).cwd)
-        for extension in self._extensions:
-            for handler in extension.hooks.get("tool_result", []):
-                try:
-                    decision = handler(current_event, context)
-                    if inspect.isawaitable(decision):
-                        decision = await decision
-                except Exception as exc:
-                    self._diagnostics.append(
-                        ResourceDiagnostic(
-                            code="extension_tool_result_failed",
-                            message=f"Extension hook 'tool_result' failed: {exc}",
-                            source_path=extension.source_path,
-                        )
-                    )
-                    self._emit_runtime_error(extension=extension, event="tool_result", error=exc)
-                    continue
-                if decision is None:
-                    continue
-                if not isinstance(decision, ToolResultDecision):
-                    self._diagnostics.append(
-                        ResourceDiagnostic(
-                            code="invalid_extension_tool_result_decision",
-                            message="tool_result hooks must return ToolResultDecision or None.",
-                            source_path=extension.source_path,
-                        )
-                    )
-                    continue
-                if decision.diagnostics:
-                    self._diagnostics.extend(decision.diagnostics)
-                if decision.result is None:
-                    continue
-                if not isinstance(decision.result, AgentToolResult):
-                    self._diagnostics.append(
-                        ResourceDiagnostic(
-                            code="invalid_extension_tool_result_decision",
-                            message="tool_result decisions must return AgentToolResult instances when overriding results.",
-                            source_path=extension.source_path,
-                        )
-                    )
-                    continue
-                changed = True
-                current_event = replace(current_event, result=decision.result)
-        if not changed:
-            return None
-        return AfterToolCallResult(
-            content=current_event.result.content,
-            details=current_event.result.details,
-            terminate=current_event.result.terminate,
+        return await self._tool_hook_dispatcher(_context_from_agent_event(event).cwd).after_tool_call(event, signal)
+
+    def _tool_hook_dispatcher(self, fallback_cwd: str) -> HookDispatcher:
+        return HookDispatcher(
+            self._extensions,
+            context_factory=lambda _extension: self._context_from_runtime(fallback_cwd=fallback_cwd),
+            diagnostics=self._diagnostics,
+            runtime_error_handler=lambda extension, event, error: self._emit_runtime_error(
+                extension=extension,
+                event=event,
+                error=error,
+            ),
         )
 
     def _apply_resource_handlers(

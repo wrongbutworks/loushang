@@ -9,6 +9,7 @@ from loushang.coding.extensions.contributions import (
     ExtensionSurfaceType,
     surfaces_from_loaded_extension,
 )
+from loushang.coding.extensions.hooks import HookDispatcher, HookKind
 from loushang.coding.extensions.loader import ExtensionLoader
 from loushang.coding.extensions.manifest import (
     ExtensionDependencyDeclaration,
@@ -81,6 +82,8 @@ __all__ = [
     "ExtensionInventory",
     "ExtensionSurfaceDescriptor",
     "ExtensionSurfaceType",
+    "HookDispatcher",
+    "HookKind",
     "InputEvent",
     "InputEventResult",
     "InputSource",
