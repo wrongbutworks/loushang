@@ -5,17 +5,36 @@ from dataclasses import dataclass, field
 from typing import Any
 
 from loushang.tui import (
+    CursorDeclaration,
     FocusableMixin,
     InputEvent,
     QuestionDialog,
     RenderConstraints,
     RenderLine,
     RenderResult,
+    ThemeResolver,
     Tui,
     TuiInputResult,
     TuiRunner,
     truncate_to_width,
 )
+
+LABEL_WIDTH = 14
+QUESTION_DIALOG_EXAMPLE_THEME = ThemeResolver(
+    defaults={
+        "widget.question.action": {"color": "white"},
+        "widget.question.focus": {"bold": True, "color": "cyan"},
+        "widget.question.text": {"color": "cyan"},
+        "widget.question.title": {"bold": True},
+        "widget.textArea.placeholder": {"color": "bright_black"},
+        "widget.textArea.text": {"color": "white"},
+    }
+)
+
+
+def _field(label: str, value: str, *, width: int) -> RenderLine:
+    text = f"{label:<{LABEL_WIDTH}}{value}"
+    return RenderLine(truncate_to_width(text, max_width=width, ellipsis=""))
 
 
 @dataclass(slots=True)
@@ -25,33 +44,68 @@ class QuestionDialogApp(FocusableMixin):
             title="Add note",
             question="What should be remembered?",
             placeholder="Write a multi-line answer",
-            help_text="Enter adds a line. Ctrl+Enter submits.",
+            help_text="Enter adds a line. Tab to Submit/Cancel.",
             required=True,
+            theme=QUESTION_DIALOG_EXAMPLE_THEME,
         )
     )
-    message: str = "Escape cancels. Press q to quit."
+    recent_notes: tuple[str, ...] = (
+        "Cache deploy checklist",
+        "Follow up on flaky test",
+    )
+    status: str = "Drafting"
 
     def __post_init__(self) -> None:
-        super().__init__()
+        FocusableMixin.__init__(self)
         self.dialog.focus()
 
     def render(self, constraints: RenderConstraints) -> RenderResult:
-        body = self.dialog.render(RenderConstraints(width=constraints.width, max_height=max(1, constraints.max_height - 2)))
+        prefix = [
+            RenderLine(truncate_to_width("Notes Inbox", max_width=constraints.width, ellipsis="")),
+            RenderLine(""),
+            RenderLine("Recent"),
+            *(
+                RenderLine(truncate_to_width(f"  {note}", max_width=constraints.width, ellipsis=""))
+                for note in self.recent_notes[:2]
+            ),
+            RenderLine(""),
+            RenderLine("New Note"),
+        ]
+        body = self.dialog.render(
+            RenderConstraints(width=constraints.width, max_height=max(1, constraints.max_height - len(prefix) - 4))
+        )
         rows = [
+            *prefix,
             *body.lines,
             RenderLine(""),
-            RenderLine(truncate_to_width(self.message, max_width=constraints.width, ellipsis="")),
+            _field("Status", self.status, width=constraints.width),
+            RenderLine(""),
+            RenderLine(
+                truncate_to_width(
+                    "Escape cancels. [tab] buttons  [enter] choose  [q] quit",
+                    max_width=constraints.width,
+                    ellipsis="",
+                )
+            ),
         ]
-        return RenderResult.from_lines(rows[: constraints.max_height], constraints=constraints, cursor=body.cursor)
+        visible_rows = rows[: constraints.max_height]
+        cursor = None
+        if body.cursor is not None:
+            cursor_row = body.cursor.row + len(prefix)
+            if cursor_row < len(visible_rows):
+                cursor = CursorDeclaration(row=cursor_row, column=body.cursor.column)
+        return RenderResult.from_lines(visible_rows, constraints=constraints, cursor=cursor)
 
     def handle_input(self, event: Any) -> object:
         result = self.dialog.handle_input(event)
         intents = result if isinstance(result, tuple) else (() if result is None else (result,))
         for intent in intents:
             if getattr(intent, "kind", "") == "question_submit":
-                self.message = f"Submitted: {getattr(intent, 'text', '')}"
+                text = getattr(intent, "text", "")
+                self.recent_notes = (text, *self.recent_notes)
+                self.status = f"Submitted: {text}"
             elif getattr(intent, "kind", "") == "question_cancel":
-                self.message = "Cancelled"
+                self.status = "Cancelled"
         return result
 
 

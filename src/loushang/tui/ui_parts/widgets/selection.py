@@ -22,6 +22,7 @@ class SelectList:
         self._surface = SelectionSurface(
             self.items,
             max_visible=self.max_visible,
+            show_selection_when_unfocused=False,
             theme=self.theme,
         )
         if self.focused:

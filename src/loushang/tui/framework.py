@@ -83,13 +83,20 @@ class Container:
 
     def render(self, constraints: RenderConstraints) -> RenderResult:
         rendered_lines: list[RenderLine] = []
+        cursor: CursorDeclaration | None = None
         for child in self.children:
             remaining_height = constraints.max_height - len(rendered_lines)
             if remaining_height <= 0:
                 break
+            start_row = len(rendered_lines)
             child_result = child.render(RenderConstraints(width=constraints.width, max_height=remaining_height))
             rendered_lines.extend(child_result.lines)
-        return RenderResult.from_lines(rendered_lines, constraints=constraints)
+            if child_result.cursor is not None:
+                cursor = CursorDeclaration(
+                    row=start_row + child_result.cursor.row,
+                    column=child_result.cursor.column,
+                )
+        return RenderResult.from_lines(rendered_lines, constraints=constraints, cursor=cursor)
 
 
 @dataclass(slots=True)

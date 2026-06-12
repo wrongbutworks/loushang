@@ -7,6 +7,7 @@ from loushang.tui import (
     Checkbox,
     Choice,
     ConfirmDialog,
+    CursorDeclaration,
     Dialog,
     Form,
     FormRow,
@@ -118,6 +119,16 @@ def test_radio_group_moves_active_option_and_commits_selection() -> None:
     assert group.active_value == "fast"
 
 
+def test_radio_group_can_render_horizontal_options() -> None:
+    group = RadioGroup([Choice("fast", "Fast"), Choice("safe", "Safe")], value="fast", orientation="horizontal")
+    group.focus()
+
+    assert rendered_text(group, width=40, height=4) == ("> (x) Fast    ( ) Safe",)
+
+    assert group.handle_input(InputEvent(kind="key", key="down")) is True
+    assert rendered_text(group, width=40, height=4) == ("  (x) Fast  > ( ) Safe",)
+
+
 def test_text_field_delegates_editing_and_cursor_to_text_input() -> None:
     field = TextField(label="Name", value="tower", help_text="Required")
     field.focus()
@@ -152,6 +163,16 @@ def test_text_field_inserts_printable_space_as_text() -> None:
     assert field.value == "a "
 
 
+def test_form_render_exposes_active_child_cursor() -> None:
+    form = Form([FormRow("name", TextField(label="Name", value="tower")), FormRow("enabled", Checkbox("Enabled"))])
+    form.focus()
+
+    result = form.render(RenderConstraints(width=40, max_height=8))
+
+    assert result.cursor is not None
+    assert (result.cursor.row, result.cursor.column) == (1, len("tower"))
+
+
 def test_select_list_delegates_navigation_and_selection_without_default_escape_close() -> None:
     select = SelectList([SelectItem("Kimi"), SelectItem("Qwen")], max_visible=2)
 
@@ -165,6 +186,18 @@ def test_select_list_can_emit_surface_close_for_popup_usage() -> None:
     select = SelectList([SelectItem("Kimi")], close_on_escape=True)
 
     assert intent_tuple(select.handle_input(InputEvent(kind="key", key="escape"))) == ("surface_close", "", "")
+
+
+def test_select_list_only_shows_focus_marker_when_focused() -> None:
+    select = SelectList([SelectItem("Kimi"), SelectItem("Qwen")], max_visible=2)
+
+    assert rendered_text(select, width=20, height=2) == ("  Kimi", "  Qwen")
+
+    select.focus()
+    assert rendered_text(select, width=20, height=2) == ("> Kimi", "  Qwen")
+
+    select.blur()
+    assert rendered_text(select, width=20, height=2) == ("  Kimi", "  Qwen")
 
 
 def test_form_tabs_between_focusable_rows_and_delegates_input() -> None:
@@ -280,4 +313,44 @@ def test_dialog_tabs_from_form_edge_to_actions_and_delegates_editor_target() -> 
 def test_widgets_foundation_example_imports() -> None:
     namespace = runpy.run_path("examples/tui/43_widgets_foundation.py", run_name="__test__")
 
-    assert "build_app" in namespace
+    build_app = namespace["build_app"]
+    assert callable(build_app)
+    app = build_app()
+    result = app.render(RenderConstraints(width=80, max_height=20))
+    assert result.lines
+
+
+def test_widgets_foundation_example_uses_two_column_field_layout() -> None:
+    namespace = runpy.run_path("examples/tui/43_widgets_foundation.py", run_name="__test__")
+
+    app = namespace["build_app"]()
+    result = app.render(RenderConstraints(width=80, max_height=20))
+    lines = tuple(strip_control_sequences(line.text) for line in result.lines)
+
+    assert lines[:9] == (
+        "Loushang TUI Widgets",
+        "",
+        "Name          tower",
+        "Cache           [x] Enable cache",
+        "Mode            (x) Fast    ( ) Safe",
+        "Approval        [off] Auto approve",
+        "Model           Kimi",
+        "                Qwen",
+        "",
+    )
+
+    app.handle_input(InputEvent(kind="key", key="tab"))
+    app.handle_input(InputEvent(kind="key", key="tab"))
+    result = app.render(RenderConstraints(width=80, max_height=20))
+    lines = tuple(strip_control_sequences(line.text) for line in result.lines)
+
+    assert lines[4] == "Mode          > (x) Fast    ( ) Safe"
+
+
+def test_widgets_foundation_example_offsets_name_cursor_after_header() -> None:
+    namespace = runpy.run_path("examples/tui/43_widgets_foundation.py", run_name="__test__")
+
+    app = namespace["build_app"]()
+    result = app.render(RenderConstraints(width=80, max_height=20))
+
+    assert result.cursor == CursorDeclaration(row=2, column=len("Name          tower"))

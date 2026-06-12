@@ -18,6 +18,7 @@ from loushang.tui.ui_parts import TreeNode as UiTreeNode
 from loushang.tui.ui_parts import TreeView as UiTreeView
 from loushang.tui.ui_parts.widgets import TreeNode as WidgetTreeNode
 from loushang.tui.ui_parts.widgets import TreeView as WidgetTreeView
+from tests.tui.widget_example_playback import play_example
 
 
 def render_lines(part: Any, *, width: int = 40, height: int = 8) -> tuple[str, ...]:
@@ -287,4 +288,51 @@ def test_tree_view_applies_theme_tokens() -> None:
 def test_widgets_tree_example_imports() -> None:
     namespace = runpy.run_path("examples/tui/49_widgets_tree.py", run_name="__test__")
 
-    assert callable(namespace["build_app"])
+    build_app = namespace["build_app"]
+    assert callable(build_app)
+    app = build_app()
+    result = app.render(RenderConstraints(width=80, max_height=20))
+    assert result.lines
+
+
+def test_widgets_tree_example_playback_snapshots() -> None:
+    frames = play_example(
+        "examples/tui/49_widgets_tree.py",
+        events=(
+            ("down", InputEvent(kind="key", key="down")),
+            ("enter", InputEvent(kind="key", key="enter")),
+        ),
+    )
+
+    assert frames[0].lines[:12] == (
+        "Project Explorer",
+        "",
+        "Tree",
+        "> - src",
+        "      widgets",
+        "      runtime",
+        "  + tests",
+        "",
+        "Details",
+        "Path          src",
+        "Kind          folder",
+        "Status        expanded",
+    )
+    assert "Path          src/widgets" in frames[1].lines
+    assert "Status        Selected: src/widgets" in frames[2].lines
+
+
+def test_widgets_tree_example_highlights_active_node() -> None:
+    namespace = runpy.run_path("examples/tui/49_widgets_tree.py", run_name="__test__")
+    tui = namespace["build_app"]()
+
+    initial = tui.render(RenderConstraints(width=80, max_height=20))
+    initial_lines = tuple(line.text for line in initial.lines)
+
+    assert "\x1b[1;36m> - src" in initial_lines[3]
+
+    tui.handle_input(InputEvent(kind="key", key="down"))
+    moved = tui.render(RenderConstraints(width=80, max_height=20))
+    moved_lines = tuple(line.text for line in moved.lines)
+
+    assert "\x1b[1;36m>     widgets" in moved_lines[4]

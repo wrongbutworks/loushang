@@ -25,6 +25,7 @@ from loushang.tui.ui_parts.widgets import MenuItem as WidgetMenuItem
 from loushang.tui.ui_parts.widgets import Spinner as WidgetSpinner
 from loushang.tui.ui_parts.widgets import TabItem as WidgetTabItem
 from loushang.tui.ui_parts.widgets import Tabs as WidgetTabs
+from tests.tui.widget_example_playback import play_example
 
 
 def render_lines(part: Any, *, width: int = 40, height: int = 8) -> tuple[str, ...]:
@@ -294,4 +295,59 @@ def test_spinner_applies_theme_tokens_without_width_growth() -> None:
 def test_widgets_light_controls_example_imports() -> None:
     namespace = runpy.run_path("examples/tui/45_widgets_light_controls.py", run_name="__test__")
 
-    assert "build_app" in namespace
+    build_app = namespace["build_app"]
+    assert callable(build_app)
+    app = build_app()
+    result = app.render(RenderConstraints(width=80, max_height=20))
+    assert result.lines
+
+
+def test_widgets_light_controls_example_playback_snapshots() -> None:
+    frames = play_example(
+        "examples/tui/45_widgets_light_controls.py",
+        events=(
+            ("right", InputEvent(kind="key", key="right")),
+            ("tab", InputEvent(kind="key", key="tab")),
+            ("down", InputEvent(kind="key", key="down")),
+            ("enter", InputEvent(kind="key", key="enter")),
+        ),
+    )
+
+    assert frames[0].lines[:12] == (
+        "View Switcher",
+        "",
+        "Views         > [Overview]    [Logs 3]    [Settings]",
+        "Activity      | Syncing",
+        "",
+        "Actions",
+        "                Open  current view",
+        "                Refresh",
+        "                Archive  disabled",
+        "",
+        "Status        Ready",
+        "",
+    )
+    assert "Views           [Overview]  > [Logs 3]    [Settings]" in frames[1].lines
+    assert "              > Open  current view" in frames[2].lines
+    assert "              > Refresh" in frames[3].lines
+    assert "Status        Refreshed" in frames[4].lines
+    assert sum(line.count(">") for line in frames[0].lines) == 1
+    assert sum(line.count(">") for line in frames[2].lines) == 1
+
+
+def test_widgets_light_controls_example_highlights_active_region() -> None:
+    namespace = runpy.run_path("examples/tui/45_widgets_light_controls.py", run_name="__test__")
+    tui = namespace["build_app"]()
+
+    initial = tui.render(RenderConstraints(width=80, max_height=20))
+    initial_lines = tuple(line.text for line in initial.lines)
+
+    assert "\x1b[1;36m> [Overview]" in initial_lines[2]
+    assert "\x1b[1;36m> Open" not in initial_lines[6]
+
+    tui.handle_input(InputEvent(kind="key", key="tab"))
+    actions = tui.render(RenderConstraints(width=80, max_height=20))
+    action_lines = tuple(line.text for line in actions.lines)
+
+    assert "\x1b[1;36m> [Overview]" not in action_lines[2]
+    assert "\x1b[1;36m> Open" in action_lines[6]

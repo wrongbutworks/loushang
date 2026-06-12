@@ -5,43 +5,85 @@ from dataclasses import dataclass, field
 from typing import Any
 
 from loushang.tui import (
+    CursorDeclaration,
     FocusableMixin,
-    Form,
-    FormRow,
     InputEvent,
     RenderConstraints,
     RenderLine,
     RenderResult,
     TextArea,
+    ThemeResolver,
     Tui,
     TuiInputResult,
     TuiRunner,
     truncate_to_width,
 )
 
+LABEL_WIDTH = 14
+TEXTAREA_EXAMPLE_THEME = ThemeResolver(
+    defaults={
+        "widget.textArea.placeholder": {"color": "bright_black"},
+        "widget.textArea.text": {"color": "white"},
+    }
+)
+
+
+def _field(label: str, value: str, *, width: int) -> RenderLine:
+    text = f"{label:<{LABEL_WIDTH}}{value}"
+    return RenderLine(truncate_to_width(text, max_width=width, ellipsis=""))
+
+
+def _line_count(value: str) -> int:
+    if not value:
+        return 0
+    return value.count("\n") + 1
+
+
+def _line_count_label(count: int) -> str:
+    return f"{count} line / unsaved" if count == 1 else f"{count} lines / unsaved"
+
 
 @dataclass(slots=True)
 class TextAreaApp(FocusableMixin):
-    notes: TextArea = field(default_factory=lambda: TextArea(label="Notes", placeholder="Write notes", height=5))
-    message: str = "Enter adds a line. Press q to quit."
-    form: Form = field(init=False)
+    notes: TextArea = field(
+        default_factory=lambda: TextArea(placeholder="Write notes", height=5, theme=TEXTAREA_EXAMPLE_THEME)
+    )
+    message: str = ""
 
     def __post_init__(self) -> None:
-        super().__init__()
-        self.form = Form([FormRow("notes", self.notes)])
-        self.form.focus()
+        FocusableMixin.__init__(self)
+        self.notes.focus()
 
     def render(self, constraints: RenderConstraints) -> RenderResult:
-        body = self.form.render(RenderConstraints(width=constraints.width, max_height=max(1, constraints.max_height - 2)))
-        rows = [
-            *body.lines,
+        body = self.notes.render(RenderConstraints(width=constraints.width, max_height=5))
+        status = _line_count_label(_line_count(self.notes.value))
+        prefix = [
+            RenderLine(truncate_to_width("Release Note Draft", max_width=constraints.width, ellipsis="")),
             RenderLine(""),
-            RenderLine(truncate_to_width(self.message, max_width=constraints.width, ellipsis="")),
+            _field("Title", "Weekly deploy notes", width=constraints.width),
+            RenderLine(""),
+            RenderLine("Notes"),
         ]
-        return RenderResult.from_lines(rows[: constraints.max_height], constraints=constraints, cursor=body.cursor)
+        rows = [
+            *prefix,
+            *body.lines,
+            _field("Status", status, width=constraints.width),
+            RenderLine(""),
+            RenderLine(
+                truncate_to_width(
+                    "[enter] newline  [type] edit  [q] quit",
+                    max_width=constraints.width,
+                    ellipsis="",
+                )
+            ),
+        ]
+        cursor = None
+        if body.cursor is not None:
+            cursor = CursorDeclaration(row=body.cursor.row + len(prefix), column=body.cursor.column)
+        return RenderResult.from_lines(rows[: constraints.max_height], constraints=constraints, cursor=cursor)
 
     def handle_input(self, event: Any) -> object:
-        return self.form.handle_input(event)
+        return self.notes.handle_input(event)
 
 
 def build_app() -> Tui:

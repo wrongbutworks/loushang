@@ -200,15 +200,15 @@ class QuestionDialog:
 
     def _action_text(self) -> str:
         if self._focus_slot != "actions":
-            submit_marker = " "
-            cancel_marker = " "
+            submit_marker = "  "
+            cancel_marker = "  "
         elif self._active_action == "submit":
-            submit_marker = ">"
-            cancel_marker = " "
+            submit_marker = "> "
+            cancel_marker = "  "
         else:
-            submit_marker = " "
-            cancel_marker = ">"
-        return f"{submit_marker} [{self.confirm_label}]{cancel_marker} [{self.cancel_label}]"
+            submit_marker = "  "
+            cancel_marker = "> "
+        return f"{submit_marker}[{self.confirm_label}]  {cancel_marker}[{self.cancel_label}]"
 
     def _action_line(self, width: int) -> RenderLine:
         token = "widget.question.focus" if self._focus_slot == "actions" else "widget.question.action"

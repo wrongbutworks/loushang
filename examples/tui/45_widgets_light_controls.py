@@ -15,45 +15,101 @@ from loushang.tui import (
     Spinner,
     TabItem,
     Tabs,
+    ThemeResolver,
     Tui,
     TuiInputResult,
     TuiRunner,
     truncate_to_width,
 )
 
+LABEL_WIDTH = 14
+LIGHT_CONTROLS_THEME = ThemeResolver(
+    defaults={
+        "widget.tabs.focus": {"bold": True, "color": "cyan"},
+        "widget.tabs.selected": {"color": "green"},
+        "widget.menu.focus": {"bold": True, "color": "cyan"},
+        "widget.menu.disabled": {"dim": True},
+        "widget.menu.description": {"color": "bright_black"},
+    }
+)
+
+
+def _field(label: str, value: str, *, width: int) -> RenderLine:
+    text = f"{label:<{LABEL_WIDTH}}{value}"
+    return RenderLine(truncate_to_width(text, max_width=width, ellipsis=""))
+
 
 @dataclass(slots=True)
 class LightControlsApp(FocusableMixin):
-    tabs: Tabs = field(default_factory=lambda: Tabs(_tabs()))
-    menu: Menu = field(default_factory=lambda: Menu(_menu_items()))
+    tabs: Tabs = field(default_factory=lambda: Tabs(_tabs(), theme=LIGHT_CONTROLS_THEME))
+    menu: Menu = field(default_factory=lambda: Menu(_menu_items(), theme=LIGHT_CONTROLS_THEME))
     spinner_frame: int = 0
     message: str = "Ready"
+    focus_region: str = "views"
 
     def __post_init__(self) -> None:
-        super().__init__()
-        self.tabs.focus()
+        FocusableMixin.__init__(self)
+        self._sync_region_focus()
+
+    def _sync_region_focus(self) -> None:
+        if self.focus_region == "views":
+            self.tabs.focus()
+            self.menu.blur()
+            return
+        self.tabs.blur()
         self.menu.focus()
 
     def render(self, constraints: RenderConstraints) -> RenderResult:
+        value_width = max(1, constraints.width - LABEL_WIDTH)
+        tab_result = self.tabs.render(RenderConstraints(width=value_width, max_height=1))
+        tab_text = tab_result.lines[0].text if tab_result.lines else ""
+        activity_result = Spinner(label="Syncing", frame=self.spinner_frame).render(
+            RenderConstraints(width=value_width, max_height=1)
+        )
+        activity_text = activity_result.lines[0].text if activity_result.lines else ""
+        menu_lines = self.menu.render(RenderConstraints(width=value_width, max_height=4)).lines
+        menu_indent = " " * LABEL_WIDTH
         rows = [
-            RenderLine(truncate_to_width("Light Controls", max_width=constraints.width, ellipsis="")),
+            RenderLine(truncate_to_width("View Switcher", max_width=constraints.width, ellipsis="")),
             RenderLine(""),
-            *self.tabs.render(RenderConstraints(width=constraints.width, max_height=1)).lines,
-            *Spinner(label="Syncing", frame=self.spinner_frame).render(
-                RenderConstraints(width=constraints.width, max_height=1)
-            ).lines,
+            _field("Views", tab_text, width=constraints.width),
+            _field("Activity", activity_text, width=constraints.width),
             RenderLine(""),
-            *self.menu.render(RenderConstraints(width=constraints.width, max_height=4)).lines,
-            RenderLine(truncate_to_width(self.message, max_width=constraints.width, ellipsis="")),
+            RenderLine("Actions"),
+            *(
+                RenderLine(
+                    truncate_to_width(
+                        f"{menu_indent}{line.text}",
+                        max_width=constraints.width,
+                        ellipsis="",
+                    )
+                )
+                for line in menu_lines
+            ),
+            RenderLine(""),
+            _field("Status", self.message, width=constraints.width),
+            RenderLine(""),
+            RenderLine(
+                truncate_to_width(
+                    "[tab] region  [left/right] view  [up/down] action  [enter] run  [q] quit",
+                    max_width=constraints.width,
+                    ellipsis="",
+                )
+            ),
         ]
         return RenderResult.from_lines(rows[: constraints.max_height], constraints=constraints)
 
     def handle_input(self, event: Any) -> object:
-        if getattr(event, "kind", "") == "key" and getattr(event, "key", "") in {"left", "right"}:
-            result = self.tabs.handle_input(event)
-            if result is not None:
-                self.message = f"View: {self.tabs.value}"
-                return True
+        if getattr(event, "kind", "") == "key" and getattr(event, "key", "") == "tab":
+            self.focus_region = "actions" if self.focus_region == "views" else "views"
+            self._sync_region_focus()
+            return True
+        if self.focus_region == "views":
+            if getattr(event, "kind", "") == "key" and getattr(event, "key", "") in {"left", "right"}:
+                result = self.tabs.handle_input(event)
+                if result is not None:
+                    self.message = f"View: {self.tabs.value}"
+                    return True
             return None
         result = self.menu.handle_input(event)
         if result == "refresh":
@@ -98,7 +154,7 @@ def _menu_items() -> list[MenuItem]:
     return [
         MenuItem("open", "Open", description="current view"),
         MenuItem("refresh", "Refresh"),
-        MenuItem("archive", "Archive", disabled=True),
+        MenuItem("archive", "Archive", description="disabled", disabled=True),
     ]
 
 

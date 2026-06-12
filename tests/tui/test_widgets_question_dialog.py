@@ -15,6 +15,7 @@ from loushang.tui import (
 )
 from loushang.tui.ui_parts import QuestionDialog as UiQuestionDialog
 from loushang.tui.ui_parts.widgets import QuestionDialog as WidgetQuestionDialog
+from tests.tui.widget_example_playback import play_example
 
 
 def render_result(part: Any, *, width: int = 40, height: int = 8):
@@ -209,7 +210,7 @@ def test_question_dialog_renders_title_question_body_actions_and_cursor_offset()
         "alpha",
         "beta",
         "",
-        "  [Submit]  [Cancel]",
+        "  [Submit]    [Cancel]",
     )
     assert result.cursor is not None
     assert (result.cursor.row, result.cursor.column) == (3, len("beta"))
@@ -220,10 +221,10 @@ def test_question_dialog_action_row_marks_active_action_without_layout_shift() -
     dialog.focus()
 
     assert dialog.handle_input(InputEvent(kind="key", key="tab")) is True
-    assert plain_lines(dialog, width=30, height=6)[-1] == "> [Submit]  [Cancel]"
+    assert plain_lines(dialog, width=30, height=6)[-1] == "> [Submit]    [Cancel]"
 
     assert dialog.handle_input(InputEvent(kind="key", key="right")) is True
-    assert plain_lines(dialog, width=30, height=6)[-1] == "  [Submit]> [Cancel]"
+    assert plain_lines(dialog, width=30, height=6)[-1] == "  [Submit]  > [Cancel]"
 
 
 def test_question_dialog_action_row_visible_width_stays_stable_across_focus_states() -> None:
@@ -315,4 +316,67 @@ def test_question_dialog_themes_title_question_and_action_rows() -> None:
 def test_widgets_question_dialog_example_imports() -> None:
     namespace = runpy.run_path("examples/tui/48_widgets_question_dialog.py", run_name="__test__")
 
-    assert callable(namespace["build_app"])
+    build_app = namespace["build_app"]
+    assert callable(build_app)
+    app = build_app()
+    result = app.render(RenderConstraints(width=80, max_height=20))
+    assert result.lines
+
+
+def test_widgets_question_dialog_example_playback_snapshots() -> None:
+    frames = play_example(
+        "examples/tui/48_widgets_question_dialog.py",
+        events=(
+            ("type answer", InputEvent(kind="text", text="Cache warmup before deploy")),
+            ("tab", InputEvent(kind="key", key="tab")),
+            ("enter", InputEvent(kind="key", key="enter")),
+        ),
+    )
+
+    assert frames[0].lines[:15] == (
+        "Notes Inbox",
+        "",
+        "Recent",
+        "  Cache deploy checklist",
+        "  Follow up on flaky test",
+        "",
+        "New Note",
+        "Add note",
+        "What should be remembered?",
+        "Write a multi-line answer",
+        "",
+        "",
+        "",
+        "Enter adds a line. Tab to Submit/Cancel.",
+        "  [Submit]    [Cancel]",
+    )
+    assert "Status        Drafting" in frames[0].lines
+    assert "> [Submit]    [Cancel]" in frames[2].lines
+    assert "Status        Submitted: Cache warmup before deploy" in frames[3].lines
+
+    cancel_frames = play_example(
+        "examples/tui/48_widgets_question_dialog.py",
+        events=(
+            ("tab", InputEvent(kind="key", key="tab")),
+            ("right", InputEvent(kind="key", key="right")),
+            ("enter", InputEvent(kind="key", key="enter")),
+        ),
+    )
+    assert any("[Submit]  > [Cancel]" in line for line in cancel_frames[2].lines)
+    assert "Status        Cancelled" in cancel_frames[3].lines
+
+
+def test_widgets_question_dialog_example_highlights_action_focus() -> None:
+    namespace = runpy.run_path("examples/tui/48_widgets_question_dialog.py", run_name="__test__")
+    tui = namespace["build_app"]()
+
+    initial = tui.render(RenderConstraints(width=80, max_height=20))
+    initial_lines = tuple(line.text for line in initial.lines)
+
+    assert "\x1b[1;36m> [Submit]" not in initial_lines[14]
+
+    tui.handle_input(InputEvent(kind="key", key="tab"))
+    actions = tui.render(RenderConstraints(width=80, max_height=20))
+    action_lines = tuple(line.text for line in actions.lines)
+
+    assert "\x1b[1;36m> [Submit]" in action_lines[14]

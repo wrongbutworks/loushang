@@ -19,6 +19,7 @@ from loushang.tui.ui_parts import TableRow as UiTableRow
 from loushang.tui.ui_parts.widgets import Table as WidgetTable
 from loushang.tui.ui_parts.widgets import TableColumn as WidgetTableColumn
 from loushang.tui.ui_parts.widgets import TableRow as WidgetTableRow
+from tests.tui.widget_example_playback import play_example
 
 
 def render_lines(part: Any, *, width: int = 60, height: int = 8) -> tuple[str, ...]:
@@ -257,4 +258,47 @@ def test_table_empty_state_uses_theme_and_width_rules() -> None:
 def test_widgets_table_example_imports() -> None:
     namespace = runpy.run_path("examples/tui/46_widgets_table.py", run_name="__test__")
 
-    assert "build_app" in namespace
+    build_app = namespace["build_app"]
+    assert callable(build_app)
+    app = build_app()
+    result = app.render(RenderConstraints(width=80, max_height=20))
+    assert result.lines
+
+
+def test_widgets_table_example_playback_snapshots() -> None:
+    frames = play_example(
+        "examples/tui/46_widgets_table.py",
+        events=(
+            ("down", InputEvent(kind="key", key="down")),
+            ("enter", InputEvent(kind="key", key="enter")),
+        ),
+    )
+
+    assert frames[0].lines[:8] == (
+        "Job Queue  (3 jobs)",
+        "",
+        "  Job           Status                                                     Runs",
+        "> Build         ready                                                        12",
+        "  Deploy        blocked                                                       3",
+        "  Archive       disabled                                                      0",
+        "",
+        "Selected      Build is ready, 12 runs",
+    )
+    assert "> Deploy        blocked" in "\n".join(frames[1].lines)
+    assert "Selected      Deploy is blocked, 3 runs" in frames[2].lines
+
+
+def test_widgets_table_example_highlights_active_row() -> None:
+    namespace = runpy.run_path("examples/tui/46_widgets_table.py", run_name="__test__")
+    tui = namespace["build_app"]()
+
+    initial = tui.render(RenderConstraints(width=80, max_height=20))
+    initial_lines = tuple(line.text for line in initial.lines)
+
+    assert "\x1b[1;36m> Build" in initial_lines[3]
+
+    tui.handle_input(InputEvent(kind="key", key="down"))
+    moved = tui.render(RenderConstraints(width=80, max_height=20))
+    moved_lines = tuple(line.text for line in moved.lines)
+
+    assert "\x1b[1;36m> Deploy" in moved_lines[4]

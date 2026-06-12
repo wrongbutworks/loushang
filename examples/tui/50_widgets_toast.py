@@ -10,6 +10,7 @@ from loushang.tui import (
     RenderConstraints,
     RenderLine,
     RenderResult,
+    ThemeResolver,
     Toast,
     ToastStack,
     Tui,
@@ -17,6 +18,23 @@ from loushang.tui import (
     TuiRunner,
     truncate_to_width,
 )
+
+LABEL_WIDTH = 14
+TOAST_EXAMPLE_THEME = ThemeResolver(
+    defaults={
+        "widget.toast.danger": {"color": "red"},
+        "widget.toast.info": {"color": "cyan"},
+        "widget.toast.message": {"color": "white"},
+        "widget.toast.success": {"color": "green"},
+        "widget.toast.title": {"bold": True},
+        "widget.toast.warning": {"color": "yellow"},
+    }
+)
+
+
+def _field(label: str, value: str, *, width: int) -> RenderLine:
+    text = f"{label:<{LABEL_WIDTH}}{value}"
+    return RenderLine(truncate_to_width(text, max_width=width, ellipsis=""))
 
 
 @dataclass(slots=True)
@@ -28,9 +46,12 @@ class ToastApp(FocusableMixin):
                 Toast("Changes saved", kind="success", duration_ms=None),
             ),
             newest_on_top=True,
+            theme=TOAST_EXAMPLE_THEME,
         )
     )
     counter: int = 0
+    last_event: str = "none"
+    pipeline_status: str = "waiting"
 
     def __post_init__(self) -> None:
         FocusableMixin.__init__(self)
@@ -40,17 +61,22 @@ class ToastApp(FocusableMixin):
         toast_result = self.stack.render(
             RenderConstraints(
                 width=constraints.width,
-                max_height=max(1, constraints.max_height - 3),
+                max_height=max(1, constraints.max_height - 9),
             )
         )
         rows = [
-            RenderLine(truncate_to_width("Toast Stack", max_width=constraints.width, ellipsis="")),
+            RenderLine(truncate_to_width("Deploy Console", max_width=constraints.width, ellipsis="")),
             RenderLine(""),
+            _field("Pipeline", "api-server", width=constraints.width),
+            _field("Status", self.pipeline_status, width=constraints.width),
+            _field("Last event", self.last_event, width=constraints.width),
+            RenderLine(""),
+            RenderLine("Notifications"),
             *toast_result.lines,
             RenderLine(""),
             RenderLine(
                 truncate_to_width(
-                    "Press i/s/w/d to add, x to dismiss oldest, c to clear, q to quit.",
+                    "[i] info  [s] success  [w] warning  [d] danger  [x] dismiss  [c] clear  [q] quit",
                     max_width=constraints.width,
                     ellipsis="",
                 )
@@ -64,15 +90,19 @@ class ToastApp(FocusableMixin):
         key = getattr(event, "text", "").lower()
         if key == "c":
             self.stack.clear()
+            self.last_event = "cleared notifications"
             return True
         if key == "x":
-            return self.stack.dismiss_oldest()
+            dismissed = self.stack.dismiss_oldest()
+            self.last_event = "dismissed oldest" if dismissed else "nothing to dismiss"
+            return dismissed
         kinds = {"i": "info", "s": "success", "w": "warning", "d": "danger"}
         kind = kinds.get(key)
         if kind is None:
             return None
         self.counter += 1
         self.stack.push(f"Toast {self.counter}", kind=kind)
+        self.last_event = f"{kind} toast added"
         return True
 
 

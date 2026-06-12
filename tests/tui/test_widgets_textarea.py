@@ -18,6 +18,7 @@ from loushang.tui import (
 )
 from loushang.tui.ui_parts import TextArea as UiTextArea
 from loushang.tui.ui_parts.widgets import TextArea as WidgetTextArea
+from tests.tui.widget_example_playback import play_example
 
 
 def render_result(part: Any, *, width: int = 40, height: int = 8):
@@ -247,4 +248,52 @@ def test_text_area_dialog_delegates_active_editor_target() -> None:
 def test_widgets_textarea_example_imports() -> None:
     namespace = runpy.run_path("examples/tui/47_widgets_textarea.py", run_name="__test__")
 
-    assert callable(namespace["build_app"])
+    build_app = namespace["build_app"]
+    assert callable(build_app)
+    app = build_app()
+    result = app.render(RenderConstraints(width=80, max_height=20))
+    assert result.lines
+
+
+def test_widgets_textarea_example_playback_snapshots() -> None:
+    frames = play_example(
+        "examples/tui/47_widgets_textarea.py",
+        events=(
+            ("type note", InputEvent(kind="text", text="Plan release")),
+            ("enter", InputEvent(kind="key", key="enter")),
+            ("type next", InputEvent(kind="text", text="Ship docs")),
+        ),
+    )
+
+    assert frames[0].lines[:11] == (
+        "Release Note Draft",
+        "",
+        "Title         Weekly deploy notes",
+        "",
+        "Notes",
+        "Write notes",
+        "",
+        "",
+        "",
+        "",
+        "Status        0 lines / unsaved",
+    )
+    assert "Status        1 line / unsaved" in frames[1].lines
+    assert "Status        2 lines / unsaved" in frames[3].lines
+    assert frames[0].cursor == (5, 0)
+
+
+def test_widgets_textarea_example_styles_placeholder_and_text() -> None:
+    namespace = runpy.run_path("examples/tui/47_widgets_textarea.py", run_name="__test__")
+    tui = namespace["build_app"]()
+
+    initial = tui.render(RenderConstraints(width=80, max_height=20))
+    initial_lines = tuple(line.text for line in initial.lines)
+
+    assert "\x1b[90mWrite notes" in initial_lines[5]
+
+    tui.handle_input(InputEvent(kind="text", text="Plan release"))
+    edited = tui.render(RenderConstraints(width=80, max_height=20))
+    edited_lines = tuple(line.text for line in edited.lines)
+
+    assert "\x1b[37mPlan release" in edited_lines[5]

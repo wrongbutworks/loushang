@@ -19,6 +19,7 @@ from loushang.tui import (
 )
 from loushang.tui.ui_parts import Badge as UiBadge
 from loushang.tui.ui_parts.widgets import Badge as WidgetBadge
+from tests.tui.widget_example_playback import ExampleFrame, play_example
 
 
 def render_lines(part: Any, *, width: int = 40, height: int = 8) -> tuple[str, ...]:
@@ -216,4 +217,52 @@ def test_toolbar_applies_theme_tokens_and_respects_width() -> None:
 def test_widgets_small_controls_example_imports() -> None:
     namespace = runpy.run_path("examples/tui/44_widgets_small_controls.py", run_name="__test__")
 
-    assert "build_app" in namespace
+    build_app = namespace["build_app"]
+    assert callable(build_app)
+    app = build_app()
+    result = app.render(RenderConstraints(width=80, max_height=20))
+    assert result.lines
+
+
+def test_widgets_small_controls_example_playback_snapshots() -> None:
+    frames = play_example(
+        "examples/tui/44_widgets_small_controls.py",
+        events=(
+            ("right", InputEvent(kind="key", key="right")),
+            ("enter", InputEvent(kind="key", key="enter")),
+        ),
+    )
+
+    assert [frame.label for frame in frames] == ["initial", "right", "enter"]
+    assert all(isinstance(frame, ExampleFrame) for frame in frames)
+    assert frames[0].lines[:11] == (
+        "Indexing Job  [beta]  (ready)",
+        "",
+        "Progress      Indexing [#####-------] 42%",
+        "",
+        "Details",
+        "Model         Kimi",
+        "Mode          safe  current",
+        "Queue         3 pending",
+        "",
+        "Actions       > [Refresh]  [Cancel]",
+        "Status        Ready",
+    )
+    assert "Actions       [Refresh]  > [Cancel]" in frames[1].lines
+    assert "Status        Cancelled" in frames[2].lines
+
+
+def test_widgets_small_controls_example_highlights_toolbar_focus() -> None:
+    namespace = runpy.run_path("examples/tui/44_widgets_small_controls.py", run_name="__test__")
+    tui = namespace["build_app"]()
+
+    initial = tui.render(RenderConstraints(width=80, max_height=20))
+    initial_lines = tuple(line.text for line in initial.lines)
+
+    assert "\x1b[1;36m> [Refresh]" in initial_lines[9]
+
+    tui.handle_input(InputEvent(kind="key", key="right"))
+    moved = tui.render(RenderConstraints(width=80, max_height=20))
+    moved_lines = tuple(line.text for line in moved.lines)
+
+    assert "\x1b[1;36m> [Cancel]" in moved_lines[9]

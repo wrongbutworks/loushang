@@ -48,6 +48,7 @@ class SelectionSurface:
     focused: bool = False
     show_scroll_info: bool = True
     selected_style: ThemeStyle | None = None
+    show_selection_when_unfocused: bool = True
     theme: ThemeResolver | None = None
     selected_theme_token: str = "selection.selected"
     enable_search: bool = False
@@ -178,11 +179,12 @@ class SelectionSurface:
         self._last_visible_start = start
         self._last_visible_count = max(0, end - start)
 
+        show_selection = self.focused or self.show_selection_when_unfocused
         lines = [
             RenderLine(
                 _render_select_item(
                     self._filtered_items[index],
-                    selected=index == self.selected_index,
+                    selected=show_selection and index == self.selected_index,
                     width=constraints.width,
                     primary_column_width=self.primary_column_width or _select_primary_column_width(self._filtered_items),
                     min_description_width=self.min_description_width,

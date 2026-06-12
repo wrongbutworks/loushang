@@ -106,6 +106,16 @@ def test_container_renders_children_in_order_and_propagates_remaining_constraint
     assert second.seen_constraints == [RenderConstraints(width=10, max_height=1)]
 
 
+def test_container_offsets_child_cursor_by_previous_children() -> None:
+    first = TextRenderable(("one", "two"), [])
+    second = CursorRenderable(("edit",), [], cursor=CursorDeclaration(row=0, column=4))
+    container = Container([first, second])
+
+    result = container.render(RenderConstraints(width=10, max_height=3))
+
+    assert result.cursor == CursorDeclaration(row=2, column=4)
+
+
 def test_screen_root_preserves_base_cursor_when_no_surface_is_visible() -> None:
     base = CursorRenderable(("› ", "", "status"), [], cursor=CursorDeclaration(row=0, column=2))
     screen_root = ScreenRoot(base=base, surface_host=SurfaceHost())
