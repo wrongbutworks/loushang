@@ -527,7 +527,7 @@ Each slice should keep tests green independently.
 - Examples `44-50` have clearer first screens with task-oriented titles.
 - Each example has exactly one obvious active focus region at a time.
 - Footer hints match actual example behavior.
-- Playback or render snapshot tests cover initial, navigation, and state-change
+- Playback-like snapshot tests cover initial, navigation, and state-change
   frames for each polished example.
 - No public API churn is introduced solely for example polish.
 - `tests/tui -q`, targeted widget tests, Ruff, and `git diff --check` pass.
