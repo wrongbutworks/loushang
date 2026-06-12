@@ -331,6 +331,10 @@ Implementation details:
 - If `palette` is a `CommandPalette`, set `_items = tuple(palette.items)` and `_title = palette.title if title is None else title`.
 - If `palette` is a sequence, set `_items = tuple(palette)` and `_title = "Command Palette" if title is None else title`.
 - Construct `_query_input = TextInput(placeholder=placeholder, theme=theme, focused=focused)`.
+- Set `self._active_index = 0` and `self._first_visible_index = 0` explicitly in
+  `__init__` before calling `_repair_active(...)`. Because the class uses
+  `@dataclass(slots=True, init=False)`, field defaults are not assigned by a
+  generated initializer.
 - Call `_query_input.set_text(query)` followed by `_repair_active(previous_value="")`.
 - Do not import `InputIntent` from `loushang.tui.input` at module import time.
   Import it lazily inside `_select_active()` and `_cancel()` to avoid circular

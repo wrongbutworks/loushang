@@ -128,6 +128,9 @@ of `CommandPaletteItem` values:
 `CommandPaletteView` should not keep the original `palette` object as public
 mutable state. The widget owns a private item tuple and private title string so
 render/input behavior is deterministic after construction.
+Because the widget uses a custom initializer with slots, `__init__` must
+explicitly initialize local active and visible-window fields before repairing
+the active result.
 
 The public surface should expose:
 
