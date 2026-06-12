@@ -15,6 +15,7 @@ from loushang.tui import (
     Spinner,
     TabItem,
     Tabs,
+    ThemeResolver,
     Tui,
     TuiInputResult,
     TuiRunner,
@@ -22,6 +23,15 @@ from loushang.tui import (
 )
 
 LABEL_WIDTH = 14
+LIGHT_CONTROLS_THEME = ThemeResolver(
+    defaults={
+        "widget.tabs.focus": {"bold": True, "color": "cyan"},
+        "widget.tabs.selected": {"color": "green"},
+        "widget.menu.focus": {"bold": True, "color": "cyan"},
+        "widget.menu.disabled": {"dim": True},
+        "widget.menu.description": {"color": "bright_black"},
+    }
+)
 
 
 def _field(label: str, value: str, *, width: int) -> RenderLine:
@@ -31,8 +41,8 @@ def _field(label: str, value: str, *, width: int) -> RenderLine:
 
 @dataclass(slots=True)
 class LightControlsApp(FocusableMixin):
-    tabs: Tabs = field(default_factory=lambda: Tabs(_tabs()))
-    menu: Menu = field(default_factory=lambda: Menu(_menu_items()))
+    tabs: Tabs = field(default_factory=lambda: Tabs(_tabs(), theme=LIGHT_CONTROLS_THEME))
+    menu: Menu = field(default_factory=lambda: Menu(_menu_items(), theme=LIGHT_CONTROLS_THEME))
     spinner_frame: int = 0
     message: str = "Ready"
     focus_region: str = "views"

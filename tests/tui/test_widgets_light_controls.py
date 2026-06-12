@@ -333,3 +333,21 @@ def test_widgets_light_controls_example_playback_snapshots() -> None:
     assert "Status        Refreshed" in frames[4].lines
     assert sum(line.count(">") for line in frames[0].lines) == 1
     assert sum(line.count(">") for line in frames[2].lines) == 1
+
+
+def test_widgets_light_controls_example_highlights_active_region() -> None:
+    namespace = runpy.run_path("examples/tui/45_widgets_light_controls.py", run_name="__test__")
+    tui = namespace["build_app"]()
+
+    initial = tui.render(RenderConstraints(width=80, max_height=20))
+    initial_lines = tuple(line.text for line in initial.lines)
+
+    assert "\x1b[1;36m> [Overview]" in initial_lines[2]
+    assert "\x1b[1;36m> Open" not in initial_lines[6]
+
+    tui.handle_input(InputEvent(kind="key", key="tab"))
+    actions = tui.render(RenderConstraints(width=80, max_height=20))
+    action_lines = tuple(line.text for line in actions.lines)
+
+    assert "\x1b[1;36m> [Overview]" not in action_lines[2]
+    assert "\x1b[1;36m> Open" in action_lines[6]
