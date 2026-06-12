@@ -210,7 +210,7 @@ def test_question_dialog_renders_title_question_body_actions_and_cursor_offset()
         "alpha",
         "beta",
         "",
-        "  [Submit]  [Cancel]",
+        "  [Submit]    [Cancel]",
     )
     assert result.cursor is not None
     assert (result.cursor.row, result.cursor.column) == (3, len("beta"))
@@ -221,10 +221,10 @@ def test_question_dialog_action_row_marks_active_action_without_layout_shift() -
     dialog.focus()
 
     assert dialog.handle_input(InputEvent(kind="key", key="tab")) is True
-    assert plain_lines(dialog, width=30, height=6)[-1] == "> [Submit]  [Cancel]"
+    assert plain_lines(dialog, width=30, height=6)[-1] == "> [Submit]    [Cancel]"
 
     assert dialog.handle_input(InputEvent(kind="key", key="right")) is True
-    assert plain_lines(dialog, width=30, height=6)[-1] == "  [Submit]> [Cancel]"
+    assert plain_lines(dialog, width=30, height=6)[-1] == "  [Submit]  > [Cancel]"
 
 
 def test_question_dialog_action_row_visible_width_stays_stable_across_focus_states() -> None:
@@ -347,11 +347,11 @@ def test_widgets_question_dialog_example_playback_snapshots() -> None:
         "",
         "",
         "",
-        "Enter adds a line. Ctrl+Enter submits.",
-        "  [Submit]  [Cancel]",
+        "Enter adds a line. Tab to Submit/Cancel.",
+        "  [Submit]    [Cancel]",
     )
     assert "Status        Drafting" in frames[0].lines
-    assert "> [Submit]  [Cancel]" in frames[2].lines
+    assert "> [Submit]    [Cancel]" in frames[2].lines
     assert "Status        Submitted: Cache warmup before deploy" in frames[3].lines
 
     cancel_frames = play_example(
@@ -362,7 +362,7 @@ def test_widgets_question_dialog_example_playback_snapshots() -> None:
             ("enter", InputEvent(kind="key", key="enter")),
         ),
     )
-    assert any("[Submit]> [Cancel]" in line for line in cancel_frames[2].lines)
+    assert any("[Submit]  > [Cancel]" in line for line in cancel_frames[2].lines)
     assert "Status        Cancelled" in cancel_frames[3].lines
 
 

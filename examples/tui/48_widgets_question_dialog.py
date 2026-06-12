@@ -44,7 +44,7 @@ class QuestionDialogApp(FocusableMixin):
             title="Add note",
             question="What should be remembered?",
             placeholder="Write a multi-line answer",
-            help_text="Enter adds a line. Ctrl+Enter submits.",
+            help_text="Enter adds a line. Tab to Submit/Cancel.",
             required=True,
             theme=QUESTION_DIALOG_EXAMPLE_THEME,
         )
@@ -82,7 +82,7 @@ class QuestionDialogApp(FocusableMixin):
             RenderLine(""),
             RenderLine(
                 truncate_to_width(
-                    "Escape cancels. [tab] actions  [ctrl+enter] submit  [q] quit",
+                    "Escape cancels. [tab] buttons  [enter] choose  [q] quit",
                     max_width=constraints.width,
                     ellipsis="",
                 )
