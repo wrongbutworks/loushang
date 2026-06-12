@@ -79,38 +79,63 @@ Add `src/loushang/tui/ui_parts/widgets/command_palette.py`.
 
 ```python
 from collections.abc import Sequence
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 
 from loushang.tui import CommandPalette, CommandPaletteItem
 from loushang.tui.input import InputIntent
+from loushang.tui.theme import ThemeResolver
+from loushang.tui.ui_parts.text_input import TextInput
 
 
-@dataclass(slots=True)
+@dataclass(slots=True, init=False)
 class CommandPaletteView:
-    palette: CommandPalette | Sequence[CommandPaletteItem]
-    title: str = ""
+    _items: tuple[CommandPaletteItem, ...]
+    _title: str
+    _query_input: TextInput
     placeholder: str = "Search commands"
-    query: str = ""
     max_visible: int = 8
     empty_text: str = "No commands"
     close_on_select: bool = True
     close_on_cancel: bool = True
     theme: ThemeResolver | None = None
     focused: bool = False
+
+    def __init__(
+        self,
+        palette: CommandPalette | Sequence[CommandPaletteItem],
+        *,
+        title: str | None = None,
+        placeholder: str = "Search commands",
+        query: str = "",
+        max_visible: int = 8,
+        empty_text: str = "No commands",
+        close_on_select: bool = True,
+        close_on_cancel: bool = True,
+        theme: ThemeResolver | None = None,
+        focused: bool = False,
+    ) -> None: ...
 ```
 
 The constructor accepts either an existing `CommandPalette` object or a sequence
 of `CommandPaletteItem` values:
 
-- When passed a `CommandPalette`, use its `title` unless an explicit `title` is
-  supplied.
-- When passed a sequence, normalize it into a private tuple and use the supplied
-  `title` or `"Command Palette"`.
+- When passed a `CommandPalette`, copy `palette.items` into private `_items`.
+  Use `palette.title` when `title is None`; use the supplied title otherwise,
+  including an explicitly blank `title=""`.
+- When passed a sequence, normalize it into private `_items`. Use
+  `"Command Palette"` when `title is None`; use the supplied title otherwise,
+  including an explicitly blank `title=""`.
+
+`CommandPaletteView` should not keep the original `palette` object as public
+mutable state. The widget owns a private item tuple and private title string so
+render/input behavior is deterministic after construction.
 
 The public surface should expose:
 
 - `focus() -> None`
 - `blur() -> None`
+- `title -> str`
+- `query -> str`
 - `filtered_items -> tuple[CommandPaletteItem, ...]`
 - `active_value -> str`
 - `set_query(query: str) -> None`
@@ -120,6 +145,11 @@ The public surface should expose:
 
 `editor_input_target()` should delegate to an internal `TextInput` or
 `TextField` adapter instead of forking text editing behavior.
+
+`query` is a read-only property backed by the internal editor. The internal
+editor is the single source of truth for query text. Constructor `query` and
+`set_query()` both update that editor, then repair the active result. Tests
+should not mutate a public `query` field because no such field exists.
 
 ## Intents
 
@@ -160,6 +190,9 @@ When `close_on_cancel=True`, cancel returns:
 
 This mirrors `QuestionDialog`, where a semantic intent can be paired with a
 surface close intent. Embedded callers can set the close flags to `False`.
+`SurfaceHost` already handles tuple intent returns. Coding `NativeSurfaceView`
+does not currently flatten tuple returns, which is acceptable because coding UI
+adoption is explicitly outside P2A.
 
 ## Filtering
 
@@ -176,7 +209,10 @@ any of:
 Filtering preserves original item order. It does not sort or score matches.
 
 Disabled items remain visible when they match, but navigation skips them and
-activation ignores them.
+activation ignores them. In P2A, `disabled` is honored only by
+`CommandPaletteView`. Existing coding UI adapters that convert
+`CommandPaletteItem` to legacy `SelectItem` keep their current behavior and do
+not gain disabled selection semantics in this slice.
 
 ## Active Result Repair
 
@@ -186,7 +222,7 @@ Rules:
 
 - Initial active item is the first enabled filtered item.
 - `up/down` move among enabled filtered items.
-- `home/end` jump to first/last enabled filtered item.
+- `ctrl+home` and `ctrl+end` jump to the first and last enabled filtered item.
 - If `query` changes and the previous active item remains enabled and visible,
   keep it active.
 - If the previous active item disappears or becomes disabled, move to the first
@@ -206,14 +242,18 @@ Input behavior:
 | Input | Behavior |
 | --- | --- |
 | text / paste | Insert into query through the internal editor target. |
-| backspace/delete/cursor editing | Delegate to the internal editor target. |
+| backspace/delete/left/right/home/end/cursor editing | Delegate to the internal editor target. |
 | up/down | Move active result. |
-| home/end | If query editor does not consume the key, jump active result. |
+| ctrl+home / ctrl+end | Jump to the first/last enabled result. |
 | enter | Select active enabled result. |
 | escape / esc / ctrl+c | Cancel. |
 
 If the internal editor target consumes input and changes query text, repair the
 active result after the edit.
+
+Plain `home` and `end` belong to query editing. They must not also navigate
+result rows because the existing `TextInput` consumes line-start and line-end
+editing keys even when the cursor position does not change.
 
 Printable space is query text, not activation.
 
@@ -334,16 +374,24 @@ Coverage should include:
 - Existing `CommandPalette.from_completion_provider()` still works and existing
   coding UI tests remain compatible.
 - `CommandPaletteItem.disabled` defaults to `False`.
+- Palette title inheritance, sequence default title, and explicitly blank
+  `title=""` all behave distinctly.
+- Constructor `query`, `set_query()`, text input, and paste stay synchronized
+  through the internal editor-backed `query` property.
 - Blank query shows all items.
 - Text input filters by value, label, and description.
 - Filtering is case-insensitive and preserves original order.
 - Active result is repaired when query changes.
 - Disabled items render but are skipped by navigation.
+- Existing coding palette adapters keep current behavior when a compat item has
+  `disabled=True`; disabled selection semantics are not silently promised there.
 - `enter` returns `command_select` and optional `surface_close`.
 - `escape`, `esc`, and `ctrl+c` return `command_cancel` and optional
   `surface_close`.
 - `close_on_select=False` and `close_on_cancel=False` suppress surface close
   intents.
+- Plain `home/end` edit the query cursor; `ctrl+home/ctrl+end` move the active
+  result to the first/last enabled item.
 - Width and height constraints are respected.
 - Cursor maps to the query row.
 - Theme tokens apply without changing visible width.
@@ -363,6 +411,11 @@ Document that:
 - `CommandPaletteView` is the focusable widget.
 - The widget can be embedded directly or used as a `SurfaceHost` overlay content.
 - First-match filtering is simple substring matching, not fuzzy ranking.
+- Selection returns `command_select`; cancel returns `command_cancel`; optional
+  `surface_close` intents are emitted according to the close flags.
+- Disabled commands stay visible in `CommandPaletteView` but are skipped and not
+  activatable. Legacy coding palette adapters do not consume the disabled flag
+  in P2A.
 
 ## Success Criteria
 
