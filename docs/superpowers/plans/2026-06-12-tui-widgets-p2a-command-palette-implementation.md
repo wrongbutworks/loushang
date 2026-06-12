@@ -332,7 +332,7 @@ Implementation details:
 - If `palette` is a `CommandPalette`, set `_items = tuple(palette.items)` and `_title = palette.title if title is None else title`.
 - If `palette` is a sequence, set `_items = tuple(palette)` and `_title = "Command Palette" if title is None else title`.
 - Construct `_query_input = TextInput(placeholder=placeholder, theme=theme, focused=focused)`.
-- Call `self.set_query(query)` or `_query_input.set_text(query)` followed by `_repair_active()`.
+- Call `_query_input.set_text(query)` followed by `_repair_active(previous_value="")`.
 - Add read-only properties:
 
 ```python
@@ -358,8 +358,14 @@ def active_value(self) -> str:
 ```
 
 - Add `_matches(item, needle)` over `value`, `display_label()`, and `description`.
-- Add `_enabled_indices(filtered)` and `_repair_active(previous_active=None)`.
-- In `_repair_active`, treat the "previous active item remains visible" spec phrase as "still present in filtered results and enabled".
+- Add `_enabled_indices(filtered)` and `_repair_active(previous_value: str = "")`.
+- `_repair_active()` must preserve the previous active item by value when that
+  value remains present in `filtered_items` and the item is still enabled.
+- If `previous_value` is empty or no longer enabled in the filtered results,
+  `_repair_active()` moves to the first enabled filtered item.
+- In `_repair_active`, treat the "previous active item remains visible" spec phrase as "still present in filtered results and enabled"; the visible render window is handled separately by `_ensure_active_visible()`.
+- `set_query(query)` must capture `previous_value = self.active_value` before
+  changing `_query_input`, then call `_repair_active(previous_value=previous_value)`.
 
 - [ ] **Step 4: Verify constructor and filtering tests pass**
 
@@ -382,7 +388,7 @@ def test_command_palette_view_disabled_items_render_but_navigation_skips_them() 
 
     view.set_query("archive")
     assert view.active_value == ""
-    assert view.handle_input(InputEvent(kind="key", key="enter")) is True
+    assert view.handle_input(InputEvent(kind="key", key="enter")) is None
     assert plain_lines(view, width=60, height=10).count("> Archive release") == 0
     assert any("Archive release" in line for line in plain_lines(view, width=60, height=10))
 
@@ -421,6 +427,9 @@ def test_command_palette_view_select_and_cancel_intents_with_close_flags() -> No
     assert intent_tuples(stay_open.handle_input(InputEvent(kind="key", key="escape"))) == (
         ("command_cancel", "", ""),
     )
+    assert intent_tuples(stay_open.handle_input(InputEvent(kind="key", key="esc"))) == (
+        ("command_cancel", "", ""),
+    )
     assert intent_tuples(view.handle_input(InputEvent(kind="key", key="ctrl+c"))) == (
         ("command_cancel", "", ""),
         ("surface_close", "", ""),
@@ -438,6 +447,27 @@ def test_command_palette_view_home_end_edit_query_ctrl_edges_move_results() -> N
     view.set_query("")
     assert view.handle_input(InputEvent(kind="key", key="ctrl+end")) is True
     assert view.active_value == "worker"
+
+
+def test_command_palette_view_preserves_active_value_across_query_changes() -> None:
+    view = CommandPaletteView(_items())
+
+    assert view.handle_input(InputEvent(kind="key", key="down")) is True
+    assert view.active_value == "logs"
+
+    view.set_query("log")
+    assert view.active_value == "logs"
+
+    view.set_query("run")
+    assert view.active_value == "deploy"
+
+
+def test_command_palette_view_paste_updates_query_and_repairs_active() -> None:
+    view = CommandPaletteView(_items())
+
+    assert view.handle_input(InputEvent(kind="paste", text="cache")) is True
+    assert view.query == "cache"
+    assert view.active_value == "cache"
 
 
 def test_command_palette_view_respects_width_height_cursor_and_empty_state() -> None:
@@ -477,9 +507,10 @@ def handle_input(self, event: object) -> object:
     kind = getattr(event, "kind", "")
     if kind in {"text", "paste"}:
         before = self.query
+        previous_value = self.active_value
         handled = self._query_input.handle_input(event)
         if handled and self.query != before:
-            self._repair_active()
+            self._repair_active(previous_value=previous_value)
         return handled or None
     if kind != "key":
         return None
@@ -497,13 +528,15 @@ def handle_input(self, event: object) -> object:
     if key == "ctrl+end":
         return self._jump_active(first=False)
     before = self.query
+    previous_value = self.active_value
     handled = self._query_input.handle_editing_key(key)
     if handled and self.query != before:
-        self._repair_active()
+        self._repair_active(previous_value=previous_value)
     return True if handled else None
 ```
 
-- `_select_active()` returns `True` when there is no enabled active item, so `enter` is consumed but nothing activates.
+- `_select_active()` returns `None` when there is no enabled active item, so
+  all-disabled/no-match activation consumes nothing.
 - `_cancel()` and `_select_active()` return tuple intents according to close flags.
 - `_ensure_active_visible(height)` mirrors `Menu._ensure_active_visible()` but uses filtered result length.
 - Rendering should build bounded rows:
@@ -724,6 +757,7 @@ def test_widgets_command_palette_example_playback_snapshots() -> None:
     frames = play_example(
         "examples/tui/51_widgets_command_palette.py",
         events=(
+            ("down", InputEvent(kind="key", key="down")),
             ("type log", InputEvent(kind="text", text="log")),
             ("enter", InputEvent(kind="key", key="enter")),
             ("escape", InputEvent(kind="key", key="escape")),
@@ -745,8 +779,9 @@ def test_widgets_command_palette_example_playback_snapshots() -> None:
         "> Deploy service  Run deployment pipeline",
     )
     assert any(line == "> Open logs  Show latest logs" for line in frames[1].lines)
-    assert any("Selected: Open logs" in line for line in frames[2].lines)
-    assert any("Cancelled" in line for line in frames[3].lines)
+    assert any(line == "> Open logs  Show latest logs" for line in frames[2].lines)
+    assert any("Selected: Open logs" in line for line in frames[3].lines)
+    assert any("Cancelled" in line for line in frames[4].lines)
 ```
 
 Adjust exact expected lines after the example render shape is implemented. Keep stripped-text snapshots stable and assert only high-signal rows if the bounded layout changes by one separator line.
