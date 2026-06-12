@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from collections.abc import Callable
 from dataclasses import dataclass, field
+from typing import Literal
 
 from loushang.tui.cell_width import autowrap_safe_width, truncate_to_width
 from loushang.tui.core import RenderConstraints, RenderLine, RenderResult
@@ -91,6 +92,7 @@ class RadioGroup:
     options: list[Choice] | tuple[Choice, ...]
     value: str = ""
     on_change: Callable[[str], object] | None = None
+    orientation: Literal["vertical", "horizontal"] = "vertical"
     theme: ThemeResolver | None = None
     focused: bool = False
     _active_index: int = field(default=0, init=False, repr=False)
@@ -120,6 +122,10 @@ class RadioGroup:
         return None
 
     def render(self, constraints: RenderConstraints) -> RenderResult:
+        if self.orientation == "horizontal":
+            return self._render_horizontal(constraints)
+        if self.orientation != "vertical":
+            raise ValueError("orientation must be 'vertical' or 'horizontal'")
         target_width = autowrap_safe_width(constraints.width)
         lines: list[RenderLine] = []
         for index, option in enumerate(self.options):
@@ -140,6 +146,26 @@ class RadioGroup:
             if len(lines) >= constraints.max_height:
                 break
         return RenderResult.from_lines(lines, constraints=constraints)
+
+    def _render_horizontal(self, constraints: RenderConstraints) -> RenderResult:
+        target_width = autowrap_safe_width(constraints.width)
+        segments: list[str] = []
+        for index, option in enumerate(self.options):
+            prefix = _focus_prefix(self.focused and index == self._active_index)
+            marker = "x" if option.value == self.value else " "
+            text = f"{prefix}({marker}) {option.label}"
+            if option.description:
+                text = f"{text}  {option.description}"
+            state_token = (
+                "widget.disabled"
+                if option.disabled
+                else "widget.focus"
+                if self.focused and index == self._active_index
+                else None
+            )
+            segments.append(style_text(text, self.theme, state_token))
+        rendered = truncate_to_width("  ".join(segments), max_width=target_width, ellipsis="")
+        return RenderResult.from_lines([RenderLine(rendered)][: constraints.max_height], constraints=constraints)
 
     def _initial_active_index(self) -> int:
         for index, option in enumerate(self.options):

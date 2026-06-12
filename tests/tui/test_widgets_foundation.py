@@ -119,6 +119,16 @@ def test_radio_group_moves_active_option_and_commits_selection() -> None:
     assert group.active_value == "fast"
 
 
+def test_radio_group_can_render_horizontal_options() -> None:
+    group = RadioGroup([Choice("fast", "Fast"), Choice("safe", "Safe")], value="fast", orientation="horizontal")
+    group.focus()
+
+    assert rendered_text(group, width=40, height=4) == ("> (x) Fast    ( ) Safe",)
+
+    assert group.handle_input(InputEvent(kind="key", key="down")) is True
+    assert rendered_text(group, width=40, height=4) == ("  (x) Fast  > ( ) Safe",)
+
+
 def test_text_field_delegates_editing_and_cursor_to_text_input() -> None:
     field = TextField(label="Name", value="tower", help_text="Required")
     field.focus()
@@ -310,10 +320,37 @@ def test_widgets_foundation_example_imports() -> None:
     assert result.lines
 
 
+def test_widgets_foundation_example_uses_two_column_field_layout() -> None:
+    namespace = runpy.run_path("examples/tui/43_widgets_foundation.py", run_name="__test__")
+
+    app = namespace["build_app"]()
+    result = app.render(RenderConstraints(width=80, max_height=20))
+    lines = tuple(strip_control_sequences(line.text) for line in result.lines)
+
+    assert lines[:9] == (
+        "Loushang TUI Widgets",
+        "",
+        "Name          tower",
+        "Cache           [x] Enable cache",
+        "Mode            (x) Fast    ( ) Safe",
+        "Approval        [off] Auto approve",
+        "Model           Kimi",
+        "                Qwen",
+        "",
+    )
+
+    app.handle_input(InputEvent(kind="key", key="tab"))
+    app.handle_input(InputEvent(kind="key", key="tab"))
+    result = app.render(RenderConstraints(width=80, max_height=20))
+    lines = tuple(strip_control_sequences(line.text) for line in result.lines)
+
+    assert lines[4] == "Mode          > (x) Fast    ( ) Safe"
+
+
 def test_widgets_foundation_example_offsets_name_cursor_after_header() -> None:
     namespace = runpy.run_path("examples/tui/43_widgets_foundation.py", run_name="__test__")
 
     app = namespace["build_app"]()
     result = app.render(RenderConstraints(width=80, max_height=20))
 
-    assert result.cursor == CursorDeclaration(row=3, column=len("tower"))
+    assert result.cursor == CursorDeclaration(row=2, column=len("Name          tower"))

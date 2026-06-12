@@ -25,7 +25,17 @@ from loushang.tui import (
     Tui,
     TuiInputResult,
     TuiRunner,
+    truncate_to_width,
 )
+
+FIELD_LABEL_WIDTH = 14
+FIELD_LABELS = {
+    "name": "Name",
+    "cache": "Cache",
+    "mode": "Mode",
+    "auto": "Approval",
+    "model": "Model",
+}
 
 
 @dataclass(slots=True)
@@ -41,13 +51,16 @@ class WidgetsApp(FocusableMixin):
     def render(self, constraints: RenderConstraints) -> RenderResult:
         rows = [RenderLine("Loushang TUI Widgets"), RenderLine("")]
         form_start_row = len(rows)
-        form_result = self.form.render(RenderConstraints(width=constraints.width, max_height=max(0, constraints.max_height - 5)))
+        form_result = _render_form_grid(
+            self.form,
+            RenderConstraints(width=constraints.width, max_height=max(1, constraints.max_height - 5)),
+        )
         rows.extend(form_result.lines)
         rows.extend(
             [
                 RenderLine(""),
-                RenderLine(self.message[: constraints.width]),
-                RenderLine("[tab] move  [ctrl+s] confirm  [q] quit"),
+                RenderLine(truncate_to_width(self.message, max_width=constraints.width, ellipsis="")),
+                RenderLine(truncate_to_width("[tab] field  [up/down] option  [space] toggle/select  [ctrl+s] confirm  [q] quit", max_width=constraints.width, ellipsis="")),
             ]
         )
         cursor = None
@@ -105,12 +118,37 @@ async def main() -> int:
 
 def _rows() -> list[FormRow]:
     return [
-        FormRow("name", TextField(label="Name", value="tower")),
+        FormRow("name", TextField(value="tower")),
         FormRow("cache", Checkbox("Enable cache", checked=True)),
-        FormRow("mode", RadioGroup([Choice("fast", "Fast"), Choice("safe", "Safe")], value="fast")),
+        FormRow("mode", RadioGroup([Choice("fast", "Fast"), Choice("safe", "Safe")], value="fast", orientation="horizontal")),
         FormRow("auto", Toggle("Auto approve")),
         FormRow("model", SelectList([SelectItem("Kimi"), SelectItem("Qwen")], max_visible=2)),
     ]
+
+
+def _render_form_grid(form: Form, constraints: RenderConstraints) -> RenderResult:
+    lines: list[RenderLine] = []
+    cursor: CursorDeclaration | None = None
+    control_width = max(1, constraints.width - FIELD_LABEL_WIDTH)
+    for row in form.rows:
+        if len(lines) >= constraints.max_height:
+            break
+        render = getattr(row.control, "render", None)
+        if not callable(render):
+            continue
+        start_row = len(lines)
+        result = render(RenderConstraints(width=control_width, max_height=constraints.max_height - len(lines)))
+        rendered_lines = result.lines[: constraints.max_height - len(lines)]
+        for index, line in enumerate(rendered_lines):
+            label = FIELD_LABELS.get(row.field_id, row.field_id) if index == 0 else ""
+            text = truncate_to_width(f"{label:<{FIELD_LABEL_WIDTH}}{line.text}", max_width=constraints.width, ellipsis="")
+            lines.append(RenderLine(text))
+        if getattr(row.control, "focused", False) and result.cursor is not None and result.cursor.row < len(rendered_lines):
+            cursor = CursorDeclaration(
+                row=start_row + result.cursor.row,
+                column=FIELD_LABEL_WIDTH + result.cursor.column,
+            )
+    return RenderResult.from_lines(lines, constraints=constraints, cursor=cursor)
 
 
 if __name__ == "__main__":
