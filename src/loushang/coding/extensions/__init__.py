@@ -2,6 +2,12 @@ from loushang.coding.extensions.api import ExtensionAPI
 from loushang.coding.extensions.contributions import (
     ContributionDescriptor,
     ContributionRegistry,
+    DuplicateContributionKeyError,
+    DuplicateExtensionSurfaceKeyError,
+    ExtensionInventory,
+    ExtensionSurfaceDescriptor,
+    ExtensionSurfaceType,
+    surfaces_from_loaded_extension,
 )
 from loushang.coding.extensions.loader import ExtensionLoader
 from loushang.coding.extensions.manifest import (
@@ -57,6 +63,8 @@ __all__ = [
     "ContextResult",
     "ContributionDescriptor",
     "ContributionRegistry",
+    "DuplicateContributionKeyError",
+    "DuplicateExtensionSurfaceKeyError",
     "ExtensionAPI",
     "ExtensionContext",
     "ExtensionCommandContext",
@@ -70,6 +78,9 @@ __all__ = [
     "ExtensionPolicyDecision",
     "ExtensionResourceContribution",
     "ExtensionRuntimeBindings",
+    "ExtensionInventory",
+    "ExtensionSurfaceDescriptor",
+    "ExtensionSurfaceType",
     "InputEvent",
     "InputEventResult",
     "InputSource",
@@ -93,6 +104,7 @@ __all__ = [
     "SessionRefreshEvent",
     "SessionShutdownEvent",
     "SessionStartEvent",
+    "surfaces_from_loaded_extension",
     "ToolCallDecision",
     "ToolResultDecision",
     "VALID_EXTENSION_EVENTS",

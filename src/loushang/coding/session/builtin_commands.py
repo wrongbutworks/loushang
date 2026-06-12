@@ -503,10 +503,10 @@ def _extensions_summary_message(extensions: list[dict[str, object]]) -> str:
 
 
 def _extension_summary(extension: Mapping[str, object]) -> str:
-    contribution_count = len(_list_field(extension, "contributions"))
+    surface_count = len(_surface_records(extension))
     diagnostic_count = len(_list_field(extension, "diagnostics"))
     details = [_string_mapping_field(extension, "permissionLevel", default="safe")]
-    details.append(f"{contribution_count} {_pluralize('contribution', contribution_count)}")
+    details.append(f"{surface_count} {_pluralize('surface', surface_count)}")
     if diagnostic_count:
         details.append(f"{diagnostic_count} {_pluralize('diagnostic', diagnostic_count)}")
     return f"{_extension_id(extension)} ({', '.join(details)})"
@@ -528,9 +528,9 @@ def _extension_list_display_lines(extension: Mapping[str, object]) -> list[str]:
     source_path = _string_mapping_field(extension, "sourcePath")
     if source_path:
         lines.append(f"  Source: {source_path}")
-    contributions = _list_field(extension, "contributions")
-    if contributions:
-        lines.append(f"  Contributions: {_contributions_summary(contributions)}")
+    surfaces = _surface_records(extension)
+    if surfaces:
+        lines.append(f"  Surfaces: {_surfaces_summary(surfaces)}")
     diagnostics = _list_field(extension, "diagnostics")
     if diagnostics:
         lines.append(f"  Diagnostics: {len(diagnostics)}")
@@ -557,35 +557,42 @@ def _extension_detail_display(extension: Mapping[str, object]) -> str:
     manifest_path = _string_mapping_field(extension, "manifestPath")
     if manifest_path:
         lines.append(f"Manifest: {manifest_path}")
-    lines.extend(_contributions_detail_lines(_list_field(extension, "contributions")))
+    lines.extend(_surfaces_detail_lines(_surface_records(extension)))
     lines.extend(_diagnostic_detail_lines(_list_field(extension, "diagnostics")))
     return "\n".join(lines)
 
 
-def _contributions_summary(contributions: list[object]) -> str:
+def _surface_records(extension: Mapping[str, object]) -> list[object]:
+    surfaces = _list_field(extension, "surfaces")
+    if surfaces:
+        return surfaces
+    return _list_field(extension, "contributions")
+
+
+def _surfaces_summary(surfaces: list[object]) -> str:
     parts: list[str] = []
-    for contribution in contributions:
-        if not isinstance(contribution, Mapping):
+    for surface in surfaces:
+        if not isinstance(surface, Mapping):
             continue
-        contribution_type = _string_mapping_field(contribution, "type", default="contribution")
-        name = _string_mapping_field(contribution, "name")
+        surface_type = _string_mapping_field(surface, "type", default="surface")
+        name = _string_mapping_field(surface, "name")
         if name:
-            parts.append(f"{contribution_type} {name}")
+            parts.append(f"{surface_type} {name}")
     return ", ".join(parts) if parts else "(none)"
 
 
-def _contributions_detail_lines(contributions: list[object]) -> list[str]:
-    if not contributions:
-        return ["Contributions:", "- (none)"]
-    lines = ["Contributions:"]
-    for contribution in contributions:
-        if not isinstance(contribution, Mapping):
+def _surfaces_detail_lines(surfaces: list[object]) -> list[str]:
+    if not surfaces:
+        return ["Surfaces:", "- (none)"]
+    lines = ["Surfaces:"]
+    for surface in surfaces:
+        if not isinstance(surface, Mapping):
             continue
-        contribution_type = _string_mapping_field(contribution, "type", default="contribution")
-        name = _string_mapping_field(contribution, "name", default="(unnamed)")
-        source = _string_mapping_field(contribution, "source")
+        surface_type = _string_mapping_field(surface, "type", default="surface")
+        name = _string_mapping_field(surface, "name", default="(unnamed)")
+        source = _string_mapping_field(surface, "source")
         suffix = f" ({source})" if source else ""
-        lines.append(f"- {contribution_type} {name}{suffix}")
+        lines.append(f"- {surface_type} {name}{suffix}")
     return lines
 
 

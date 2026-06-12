@@ -10,7 +10,7 @@ from loushang.agent import AgentMessage, ThinkingLevel
 from loushang.coding.commands import SessionCommandDescriptor
 from loushang.coding.compaction import BranchSummaryResult, CompactionResult
 from loushang.coding.exec import ExecResult, ExecUpdateCallback
-from loushang.coding.extensions.contributions import ContributionDescriptor
+from loushang.coding.extensions.contributions import ExtensionSurfaceDescriptor
 from loushang.coding.extensions.manifest import ExtensionManifest
 from loushang.coding.extensions.policy import ExtensionPolicyDecision
 from loushang.coding.loader import (
@@ -775,7 +775,11 @@ class LoadedExtension:
     api: object | None = None
     manifest: ExtensionManifest | None = None
     policy: ExtensionPolicyDecision | None = None
-    contributions: list[ContributionDescriptor] = field(default_factory=list)
+    contributions: list[ExtensionSurfaceDescriptor] = field(default_factory=list)
+
+    @property
+    def surfaces(self) -> list[ExtensionSurfaceDescriptor]:
+        return list(self.contributions)
 
 
 @dataclass(frozen=True)

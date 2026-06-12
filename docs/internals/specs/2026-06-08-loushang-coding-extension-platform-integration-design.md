@@ -10,7 +10,7 @@ The platform should make extensions a first-class product surface across:
 - commands
 - tools
 - prompts and skills
-- model/provider contributions
+- model/provider runtime surfaces
 - runtime hooks
 - TUI UI and autocomplete
 - plugin/package distribution
@@ -36,9 +36,10 @@ capabilities in one phase.
 
 The current gap is not whether extensions can run. The gap is that extension
 capabilities are still registered and surfaced through several separate paths.
-Authors and users need a unified mental model, and the runtime needs a single
-place to project extension contributions, conflicts, permissions, and
-diagnostics.
+Authors and users need a unified mental model, and management surfaces need a
+single read model for extension surfaces, conflicts, permissions, and
+diagnostics. Runtime activation remains owned by each surface-specific
+controller or dispatcher.
 
 ## Relationship To Existing Designs
 
@@ -55,8 +56,9 @@ supersede them.
   prompts, skills, themes, and resource roots.
 
 This design adds the missing platform layer above those documents: a manifest,
-policy, contribution registry, diagnostics projection, and staged integration
-plan that tie the existing subsystems together.
+policy, extension inventory projection, diagnostics projection, and staged
+integration plan that tie the existing subsystems together without replacing
+surface-specific runtime owners.
 
 ## Boundary Decisions
 
@@ -96,7 +98,7 @@ It owns:
 
 - author-facing registration APIs
 - runtime hooks
-- command/tool/UI/model/prompt/skill contributions
+- command/tool/UI/model/prompt/skill runtime surfaces
 - extension diagnostics
 - extension policy and permissions
 
@@ -175,7 +177,7 @@ Use a hybrid permission model:
   `session_mutation`, `ui_mutation`, `tool_mutation`
 
 The level is what users and management UI should display. The capabilities are
-what loader, registry, and runtime enforcement should use.
+what loader, inventory projection, and runtime enforcement should use.
 
 Recommended default mapping:
 
@@ -185,9 +187,10 @@ Recommended default mapping:
 - `powerful`: `standard` plus exec, network, session mutation, tool mutation, or
   provider/model mutation
 
-Policy should be evaluated before contributions become active. A denied
+Policy should be evaluated before runtime surfaces are exposed. A denied
 extension should remain visible in diagnostics and management surfaces, but its
-runtime contributions should not be exposed.
+tools, commands, hooks, provider registrations, resources, and UI surfaces
+should be filtered by their owning runtime controllers or dispatchers.
 
 Add a policy switch equivalent in meaning to:
 
@@ -205,17 +208,17 @@ For this policy:
 - managed hooks are hook declarations loaded from enabled extensions delivered
   by accepted plugin/package sources or managed configuration
 - unmanaged hooks are local project, user, or session hook definitions that are
-  not tied to a loaded extension contribution
+  not tied to a loaded extension declaration
 
-## Contribution Registry
+## Extension Inventory Projection
 
-Introduce a `ContributionRegistry` as the central projection of extension
-capabilities.
+Introduce an `ExtensionInventory` or equivalent read model as the central
+projection of extension runtime surfaces.
 
-It should store normalized contributions with:
+It should store normalized surface records with:
 
-- contribution id
-- contribution type
+- surface id
+- surface type
 - extension id
 - source info
 - scope
@@ -224,12 +227,26 @@ It should store normalized contributions with:
 - conflict policy
 - diagnostics
 
-The registry should not execute extension code. It is a projection and
-arbitration layer between extension loading and product/runtime surfaces.
+The inventory must not execute extension code, activate runtime behavior, or
+arbitrate winners directly. It is a management and diagnostics projection over
+decisions made by the owning runtime surfaces:
 
-### Contribution Types
+- tools remain owned by the tool registry and extension runner
+- commands remain owned by the command resolver
+- prompts, skills, themes, and resource roots remain owned by the resource
+  loader and resource refresh pipeline
+- hooks remain owned by the hook dispatcher
+- model/providers remain owned by provider-specific controllers
+- UI and autocomplete remain owned by the TUI bridge and action/autocomplete
+  registries
 
-Initial contribution types:
+If an interim implementation keeps the `ContributionRegistry` name for
+compatibility, its contract is still inventory-only. It must not become the
+activation path for tools, commands, hooks, resources, providers, or UI.
+
+### Surface Record Types
+
+Initial surface record types:
 
 - command
 - tool
@@ -241,9 +258,9 @@ Initial contribution types:
 - autocomplete
 - resource_root
 
-### Conflict Policy
+### Conflict Visibility
 
-Use contribution-type-specific policies:
+Use surface-specific policies in the owning resolver or dispatcher:
 
 - commands: allow duplicate display names; disambiguate in UI and diagnostics;
   allow user-configured default winner later
@@ -255,9 +272,10 @@ Use contribution-type-specific policies:
   targets
 - model/provider entries: require explicit override for duplicate ids
 
-Never drop an entire extension solely because one contribution conflicts. Drop
-or disable the conflicting contribution and keep the rest of the extension
-visible.
+The inventory records the resulting winner, rejection, inactive reason, or
+diagnostic. Never drop an entire extension solely because one surface conflicts.
+The owning resolver may reject or disable the conflicting surface while the rest
+of the extension remains visible.
 
 ## Tools
 
@@ -267,11 +285,12 @@ the model.
 The required order is:
 
 1. load extension
-2. normalize tool contribution
+2. collect runtime tool registrations and manifest tool declarations
 3. evaluate extension policy and permission capabilities
-4. resolve tool conflicts
+4. resolve tool conflicts in the tool surface
 5. filter denied tools
-6. expose active tools to the model/tool registry
+6. expose allowed tools to the model/tool registry
+7. project the resulting tool state into the extension inventory
 
 Call-time permission checks remain necessary, but they are not sufficient. A
 tool denied by policy should not appear in the model-visible tool list.
@@ -372,8 +391,8 @@ manifest.
 Extension platform plumbing sits near hot paths, so implementation phases should
 keep these constraints visible:
 
-- contribution lookup should use indexed maps rather than repeated linear scans
-  over all extensions
+- inventory lookup should use indexed maps rather than repeated linear scans over
+  all extensions
 - model-visible tool filtering should be computed when extension/tool state
   changes, not on every token or render event
 - hook dispatch should run with deterministic ordering and explicit timeouts for
@@ -395,8 +414,8 @@ Minimum visible fields:
 - source
 - enabled/disabled state
 - permission level
-- active contributions
-- inactive contributions with reasons
+- exposed runtime surfaces
+- inactive or rejected surfaces with reasons
 - conflicts
 - dependency diagnostics
 - hook declarations

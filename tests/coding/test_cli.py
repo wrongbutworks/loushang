@@ -1584,11 +1584,13 @@ def test_main_uses_process_argv_when_argv_is_omitted(monkeypatch) -> None:
     assert "prompt is required" not in stderr.getvalue()
 
 
-def test_cli_package_lazily_exports_main_and_run_cli() -> None:
+def test_cli_package_exports_args_without_entrypoint_shims() -> None:
     from loushang.coding import cli
 
-    assert cli.main
-    assert cli.run_cli
+    assert set(cli.__all__) == {"CliArgs", "parse_args"}
+    assert cli.parse_args
+    assert not hasattr(cli, "main")
+    assert not hasattr(cli, "run_cli")
 
 
 def test_loushang_tui_entrypoint_forces_tui(monkeypatch) -> None:

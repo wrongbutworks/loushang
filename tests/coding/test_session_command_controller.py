@@ -373,7 +373,7 @@ def test_command_controller_executes_builtin_extensions_list_and_detail(tmp_path
             "sourcePath": "/tmp/project/extensions/review/extension.py",
             "permissionLevel": "standard",
             "capabilities": ["filesystem"],
-            "contributions": [
+            "surfaces": [
                 {"type": "command", "name": "acme-review", "active": True, "source": "manifest"},
                 {"type": "tool", "name": "review_lookup", "active": True, "source": "runtime"},
             ],
@@ -403,12 +403,12 @@ def test_command_controller_executes_builtin_extensions_list_and_detail(tmp_path
         "command": "extensions",
         "status": "ok",
         "extensions": extensions,
-        "message": "Extensions: acme.review (standard, 2 contributions, 1 diagnostic)",
+        "message": "Extensions: acme.review (standard, 2 surfaces, 1 diagnostic)",
         "display": (
             "Extensions:\n"
             "- acme.review - Acme Review [standard]\n"
             "  Source: /tmp/project/extensions/review/extension.py\n"
-            "  Contributions: command acme-review, tool review_lookup\n"
+            "  Surfaces: command acme-review, tool review_lookup\n"
             "  Diagnostics: 1"
         ),
     }
@@ -427,7 +427,7 @@ def test_command_controller_executes_builtin_extensions_list_and_detail(tmp_path
             "Permission: standard\n"
             "Capabilities: filesystem\n"
             "Source: /tmp/project/extensions/review/extension.py\n"
-            "Contributions:\n"
+            "Surfaces:\n"
             "- command acme-review (manifest)\n"
             "- tool review_lookup (runtime)\n"
             "Diagnostics:\n"
