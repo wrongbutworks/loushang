@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import runpy
 from typing import Any, get_args
 
 from loushang.tui import (
@@ -13,6 +14,7 @@ from loushang.tui import (
 from loushang.tui.compat import CompletionItem, CompletionProvider
 from loushang.tui.input import InputIntentKind
 from loushang.tui.ui_parts.widgets.command_palette import CommandPaletteView
+from tests.tui.widget_example_playback import play_example
 
 
 def intent_tuple(intent: object) -> tuple[str, str, str]:
@@ -285,3 +287,45 @@ def test_command_palette_view_theme_tokens_apply_without_width_changes() -> None
     assert "\x1b[1;36m> Deploy service" in "\n".join(raw)
     assert all(visible_width(line) <= 60 for line in raw)
     assert all(visible_width(line) <= 60 for line in plain)
+
+
+def test_widgets_command_palette_example_imports() -> None:
+    namespace = runpy.run_path("examples/tui/51_widgets_command_palette.py", run_name="__test__")
+
+    build_app = namespace["build_app"]
+    app = build_app()
+    result = app.render(RenderConstraints(width=80, max_height=20))
+
+    assert callable(build_app)
+    assert result.lines
+
+
+def test_widgets_command_palette_example_playback_snapshots() -> None:
+    frames = play_example(
+        "examples/tui/51_widgets_command_palette.py",
+        events=(
+            ("down", InputEvent(kind="key", key="down")),
+            ("type log", InputEvent(kind="text", text="log")),
+            ("enter", InputEvent(kind="key", key="enter")),
+            ("escape", InputEvent(kind="key", key="escape")),
+        ),
+        width=80,
+        height=20,
+    )
+
+    assert frames[0].lines[:10] == (
+        "Operations Console",
+        "",
+        "Status        Ready",
+        "",
+        "Commands",
+        "Command Palette",
+        "",
+        "Search        Search commands",
+        "",
+        "Results",
+    )
+    assert any(line == "> Open logs  Show latest logs" for line in frames[1].lines)
+    assert any(line == "> Open logs  Show latest logs" for line in frames[2].lines)
+    assert any("Selected: Open logs" in line for line in frames[3].lines)
+    assert any("Cancelled" in line for line in frames[4].lines)
