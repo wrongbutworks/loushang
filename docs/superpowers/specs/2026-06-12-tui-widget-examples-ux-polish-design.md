@@ -201,13 +201,25 @@ Views         > [Overview]    [Logs 3]    [Settings]
 Activity      | Syncing
 
 Actions
-              > Open      current view
+                Open      current view
                 Refresh
                 Archive   disabled
 
 Status        Ready
 
 [tab] region  [left/right] view  [up/down] action  [enter] run  [q] quit
+```
+
+After Tab to the actions region:
+
+```text
+Views           [Overview]    [Logs 3]    [Settings]
+Activity      | Syncing
+
+Actions
+              > Open      current view
+                Refresh
+                Archive   disabled
 ```
 
 Interaction:
@@ -286,6 +298,9 @@ Status        0 lines / unsaved
 
 [enter] newline  [type] edit  [q] quit
 ```
+
+`Write notes` is placeholder text, not initial textarea content. The initial
+draft has zero user-entered lines.
 
 After typing:
 
