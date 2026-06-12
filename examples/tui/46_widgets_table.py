@@ -20,32 +20,61 @@ from loushang.tui import (
 )
 
 
+LABEL_WIDTH = 14
+
+JOB_DETAILS = {
+    "build": "Build is ready, 12 runs",
+    "deploy": "Deploy is blocked, 3 runs",
+    "archive": "Archive is disabled, 0 runs",
+}
+
+
+def _field(label: str, value: str, *, width: int) -> RenderLine:
+    text = f"{label:<{LABEL_WIDTH}}{value}"
+    return RenderLine(truncate_to_width(text, max_width=width, ellipsis=""))
+
+
+def _selected_detail(table: Table) -> str:
+    return JOB_DETAILS.get(table.active_value, "Select a job")
+
+
 @dataclass(slots=True)
 class TableApp(FocusableMixin):
     table: Table = field(default_factory=lambda: Table(_columns(), _rows()))
-    message: str = "Select a job"
+    message: str = ""
 
     def __post_init__(self) -> None:
         FocusableMixin.__init__(self)
         self.table.focus()
 
     def render(self, constraints: RenderConstraints) -> RenderResult:
+        detail = self.message or _selected_detail(self.table)
         rows = [
-            RenderLine(truncate_to_width("Table", max_width=constraints.width, ellipsis="")),
+            RenderLine(truncate_to_width("Job Queue  (3 jobs)", max_width=constraints.width, ellipsis="")),
             RenderLine(""),
             *self.table.render(
-                RenderConstraints(width=constraints.width, max_height=max(1, constraints.max_height - 4))
+                RenderConstraints(width=constraints.width, max_height=max(1, constraints.max_height - 6))
             ).lines,
             RenderLine(""),
-            RenderLine(truncate_to_width(self.message, max_width=constraints.width, ellipsis="")),
+            _field("Selected", detail, width=constraints.width),
+            RenderLine(""),
+            RenderLine(
+                truncate_to_width(
+                    "[up/down] row  [enter] select  [q] quit",
+                    max_width=constraints.width,
+                    ellipsis="",
+                )
+            ),
         ]
         return RenderResult.from_lines(rows[: constraints.max_height], constraints=constraints)
 
     def handle_input(self, event: Any) -> object:
         result = self.table.handle_input(event)
         if isinstance(result, str):
-            self.message = f"Selected {result}"
+            self.message = JOB_DETAILS.get(result, "Select a job")
             return True
+        if result is True and getattr(event, "kind", "") == "key" and getattr(event, "key", "") in {"up", "down"}:
+            self.message = ""
         return result
 
 

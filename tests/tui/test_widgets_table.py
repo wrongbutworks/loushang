@@ -19,6 +19,7 @@ from loushang.tui.ui_parts import TableRow as UiTableRow
 from loushang.tui.ui_parts.widgets import Table as WidgetTable
 from loushang.tui.ui_parts.widgets import TableColumn as WidgetTableColumn
 from loushang.tui.ui_parts.widgets import TableRow as WidgetTableRow
+from tests.tui.widget_example_playback import play_example
 
 
 def render_lines(part: Any, *, width: int = 60, height: int = 8) -> tuple[str, ...]:
@@ -262,3 +263,26 @@ def test_widgets_table_example_imports() -> None:
     app = build_app()
     result = app.render(RenderConstraints(width=80, max_height=20))
     assert result.lines
+
+
+def test_widgets_table_example_playback_snapshots() -> None:
+    frames = play_example(
+        "examples/tui/46_widgets_table.py",
+        events=(
+            ("down", InputEvent(kind="key", key="down")),
+            ("enter", InputEvent(kind="key", key="enter")),
+        ),
+    )
+
+    assert frames[0].lines[:8] == (
+        "Job Queue  (3 jobs)",
+        "",
+        "  Job           Status                                                     Runs",
+        "> Build         ready                                                        12",
+        "  Deploy        blocked                                                       3",
+        "  Archive       disabled                                                      0",
+        "",
+        "Selected      Build is ready, 12 runs",
+    )
+    assert "> Deploy        blocked" in "\n".join(frames[1].lines)
+    assert "Selected      Deploy is blocked, 3 runs" in frames[2].lines
