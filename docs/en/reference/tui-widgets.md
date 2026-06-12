@@ -180,6 +180,37 @@ stack = ToastStack()
 stack.push("Saved", kind="success", title="Config")
 ```
 
+## P2A Command Palette
+
+| Widget | Use it for |
+| --- | --- |
+| `CommandPaletteView` | Searchable action/model pickers backed by `CommandPalette` data. |
+
+`CommandPalette` remains the data model used by coding adapters.
+`CommandPaletteView` is the focusable widget that renders those items,
+filters them with simple case-insensitive substring matching, and returns
+structured intents. Selecting an enabled item returns `command_select`; cancel
+returns `command_cancel`. When the close flags are enabled, the widget also
+emits `surface_close`.
+
+Disabled commands stay visible in `CommandPaletteView`, but keyboard navigation
+skips them and activation returns nothing. Legacy coding palette adapters do
+not consume the `disabled` flag in this slice.
+
+```python
+from loushang.tui import CommandPalette, CommandPaletteItem, CommandPaletteView
+
+palette = CommandPalette(
+    (
+        CommandPaletteItem("deploy", "Deploy service", "Run deployment pipeline"),
+        CommandPaletteItem("archive", "Archive release", "unavailable", disabled=True),
+    ),
+    title="Commands",
+)
+view = CommandPaletteView(palette)
+view.focus()
+```
+
 ## Forms
 
 ```python
@@ -227,7 +258,7 @@ body focus is active.
 
 ## Theme Tokens
 
-P0A, P0B, P0C, P1A, P1B, P1C, P1D, and P1E widgets accept `ThemeResolver`
+P0A, P0B, P0C, P1A, P1B, P1C, P1D, P1E, and P2A widgets accept `ThemeResolver`
 where styling is supported. Initial stable tokens are:
 
 | Token | Applies to |
@@ -290,6 +321,17 @@ where styling is supported. Initial stable tokens are:
 | `widget.toast.danger` | Dangerous or failed toast prefix. |
 | `widget.toast.title` | Toast title segment. |
 | `widget.toast.message` | Toast message segment. |
+| `widget.commandPalette.title` | `CommandPaletteView` title rows. |
+| `widget.commandPalette.queryLabel` | `CommandPaletteView` search labels. |
+| `widget.commandPalette.queryText` | `CommandPaletteView` query text. |
+| `widget.commandPalette.placeholder` | `CommandPaletteView` placeholder text. |
+| `widget.commandPalette.section` | `CommandPaletteView` section labels. |
+| `widget.commandPalette.item` | Enabled inactive command rows. |
+| `widget.commandPalette.focus` | Focused active command rows. |
+| `widget.commandPalette.disabled` | Disabled command rows. |
+| `widget.commandPalette.description` | Command descriptions. |
+| `widget.commandPalette.empty` | Command palette empty-state text. |
+| `widget.commandPalette.footer` | Command palette footer rows. |
 | `widget.textArea.label` | `TextArea` label rows. |
 | `widget.textArea.placeholder` | `TextArea` placeholder text. |
 | `widget.textArea.text` | `TextArea` body text. |
@@ -319,3 +361,5 @@ implementation.
   static hierarchical tree with keyboard expansion and selection.
 - [examples/tui/50_widgets_toast.py](../../../examples/tui/50_widgets_toast.py):
   inline toast stack with queue, dismissal, and clear actions.
+- [examples/tui/51_widgets_command_palette.py](../../../examples/tui/51_widgets_command_palette.py):
+  searchable command palette with filtering, navigation, selection, and cancel.

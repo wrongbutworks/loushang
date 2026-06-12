@@ -244,3 +244,44 @@ def test_command_palette_view_respects_width_height_cursor_and_empty_state() -> 
     assert all(visible_width(line) <= 18 for line in lines)
     assert any("No commands" in line for line in lines)
     assert result.cursor is not None
+
+
+def test_command_palette_view_is_reexported_from_public_modules() -> None:
+    from loushang.tui import CommandPaletteView
+    from loushang.tui.ui_parts import CommandPaletteView as UiCommandPaletteView
+    from loushang.tui.ui_parts.widgets import (
+        CommandPaletteView as WidgetCommandPaletteView,
+    )
+
+    assert CommandPaletteView is UiCommandPaletteView
+    assert CommandPaletteView is WidgetCommandPaletteView
+
+
+def test_command_palette_view_theme_tokens_apply_without_width_changes() -> None:
+    from loushang.tui import ThemeResolver
+
+    theme = ThemeResolver(
+        defaults={
+            "widget.commandPalette.title": {"bold": True},
+            "widget.commandPalette.queryLabel": {"color": "cyan"},
+            "widget.commandPalette.queryText": {"color": "white"},
+            "widget.commandPalette.placeholder": {"color": "bright_black"},
+            "widget.commandPalette.section": {"bold": True},
+            "widget.commandPalette.item": {"color": "white"},
+            "widget.commandPalette.focus": {"bold": True, "color": "cyan"},
+            "widget.commandPalette.disabled": {"dim": True},
+            "widget.commandPalette.description": {"color": "bright_black"},
+            "widget.commandPalette.empty": {"color": "bright_black"},
+            "widget.commandPalette.footer": {"color": "bright_black"},
+        }
+    )
+    view = CommandPaletteView(_items(), theme=theme)
+    view.focus()
+
+    raw = render_lines(view, width=60, height=10)
+    plain = tuple(strip_control_sequences(line) for line in raw)
+
+    assert raw[0].startswith("\x1b[1m")
+    assert "\x1b[1;36m> Deploy service" in "\n".join(raw)
+    assert all(visible_width(line) <= 60 for line in raw)
+    assert all(visible_width(line) <= 60 for line in plain)
