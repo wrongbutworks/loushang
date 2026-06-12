@@ -81,7 +81,7 @@ Add `src/loushang/tui/ui_parts/widgets/command_palette.py`.
 from collections.abc import Sequence
 from dataclasses import dataclass
 
-from loushang.tui import CommandPalette, CommandPaletteItem
+from loushang.tui.compat import CommandPalette, CommandPaletteItem
 from loushang.tui.input import InputIntent
 from loushang.tui.theme import ThemeResolver
 from loushang.tui.ui_parts.text_input import TextInput
@@ -151,6 +151,10 @@ editor is the single source of truth for query text. Constructor `query` and
 `set_query()` both update that editor, then repair the active result. Tests
 should not mutate a public `query` field because no such field exists.
 
+The widget module should import compat data objects from
+`loushang.tui.compat`, not from top-level `loushang.tui`, to avoid circular
+imports while `loushang.tui.__init__` re-exports `ui_parts`.
+
 ## Intents
 
 Add two `InputIntentKind` values:
@@ -217,6 +221,7 @@ not gain disabled selection semantics in this slice.
 ## Active Result Repair
 
 `CommandPaletteView` owns a local active result index within filtered results.
+It should also own a local visible result window start.
 
 Rules:
 
@@ -229,6 +234,10 @@ Rules:
   enabled filtered item.
 - If there are no enabled filtered items, `active_value == ""` and activation
   consumes nothing.
+- After navigation or query repair, clamp the visible result window so the
+  active enabled item is always inside the rendered slice.
+- Preserve the current visible window when the active item still fits; otherwise
+  shift the window just enough to reveal the active item.
 
 No-match and all-disabled states should be deterministic and renderable.
 
@@ -254,6 +263,10 @@ active result after the edit.
 Plain `home` and `end` belong to query editing. They must not also navigate
 result rows because the existing `TextInput` consumes line-start and line-end
 editing keys even when the cursor position does not change.
+
+Implementation should route text and editor keys through the owned `TextInput`
+or `route_editor_editing_key()` after handling palette-specific keys; do not
+assume `EditorInputTarget` has a generic `handle_input()` method.
 
 Printable space is query text, not activation.
 
@@ -282,6 +295,8 @@ Rendering rules:
 - Placeholder is visually distinct through theme but strips to plain text.
 - Render a `Results` label before result rows when height permits.
 - Render at most `max_visible` result rows and never exceed remaining height.
+- Keep the active enabled result visible in the rendered result slice after
+  repeated navigation.
 - Render `empty_text` when the filter has no matching rows.
 - Render disabled rows visibly disabled and without a focus marker.
 - Render footer only when height permits.
@@ -382,6 +397,8 @@ Coverage should include:
 - Text input filters by value, label, and description.
 - Filtering is case-insensitive and preserves original order.
 - Active result is repaired when query changes.
+- Repeated navigation beyond `max_visible` keeps the active result visible in
+  the rendered slice and preserves a single focus marker.
 - Disabled items render but are skipped by navigation.
 - Existing coding palette adapters keep current behavior when a compat item has
   `disabled=True`; disabled selection semantics are not silently promised there.
