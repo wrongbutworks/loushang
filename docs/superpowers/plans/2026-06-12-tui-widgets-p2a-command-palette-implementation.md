@@ -295,7 +295,6 @@ from dataclasses import dataclass, field
 from loushang.tui.cell_width import autowrap_safe_width, truncate_to_width, visible_width
 from loushang.tui.compat import CommandPalette, CommandPaletteItem
 from loushang.tui.core import CursorDeclaration, RenderConstraints, RenderLine, RenderResult
-from loushang.tui.input import InputIntent
 from loushang.tui.keybindings import normalize_key_id
 from loushang.tui.theme import ThemeResolver
 from loushang.tui.ui_parts.text_input import TextInput
@@ -333,6 +332,9 @@ Implementation details:
 - If `palette` is a sequence, set `_items = tuple(palette)` and `_title = "Command Palette" if title is None else title`.
 - Construct `_query_input = TextInput(placeholder=placeholder, theme=theme, focused=focused)`.
 - Call `_query_input.set_text(query)` followed by `_repair_active(previous_value="")`.
+- Do not import `InputIntent` from `loushang.tui.input` at module import time.
+  Import it lazily inside `_select_active()` and `_cancel()` to avoid circular
+  imports once `CommandPaletteView` is re-exported through `ui_parts`.
 - Add read-only properties:
 
 ```python
@@ -389,8 +391,9 @@ def test_command_palette_view_disabled_items_render_but_navigation_skips_them() 
     view.set_query("archive")
     assert view.active_value == ""
     assert view.handle_input(InputEvent(kind="key", key="enter")) is None
-    assert plain_lines(view, width=60, height=10).count("> Archive release") == 0
-    assert any("Archive release" in line for line in plain_lines(view, width=60, height=10))
+    lines = plain_lines(view, width=60, height=10)
+    assert not any(line.startswith("> Archive release") for line in lines)
+    assert any("Archive release" in line for line in lines)
 
 
 def test_command_palette_view_navigation_repairs_active_and_visible_window() -> None:
@@ -537,7 +540,8 @@ def handle_input(self, event: object) -> object:
 
 - `_select_active()` returns `None` when there is no enabled active item, so
   all-disabled/no-match activation consumes nothing.
-- `_cancel()` and `_select_active()` return tuple intents according to close flags.
+- `_cancel()` and `_select_active()` import `InputIntent` inside the method and
+  return tuple intents according to close flags.
 - `_ensure_active_visible(height)` mirrors `Menu._ensure_active_visible()` but uses filtered result length.
 - Rendering should build bounded rows:
   - optional title row if `self.title` is non-empty and height remains

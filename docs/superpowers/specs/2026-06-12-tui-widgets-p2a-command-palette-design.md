@@ -82,7 +82,6 @@ from collections.abc import Sequence
 from dataclasses import dataclass
 
 from loushang.tui.compat import CommandPalette, CommandPaletteItem
-from loushang.tui.input import InputIntent
 from loushang.tui.theme import ThemeResolver
 from loushang.tui.ui_parts.text_input import TextInput
 
@@ -154,6 +153,9 @@ should not mutate a public `query` field because no such field exists.
 The widget module should import compat data objects from
 `loushang.tui.compat`, not from top-level `loushang.tui`, to avoid circular
 imports while `loushang.tui.__init__` re-exports `ui_parts`.
+It should also avoid module-level imports from `loushang.tui.input`; import
+`InputIntent` lazily inside selection/cancel helpers to keep the public export
+chain acyclic.
 
 ## Intents
 
