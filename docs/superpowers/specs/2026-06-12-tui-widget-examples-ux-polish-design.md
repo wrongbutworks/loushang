@@ -54,8 +54,8 @@ applications while keeping the underlying widget APIs stable.
   - which keys affect region focus versus item navigation;
   - what happens after activation.
 - Remove confusing simultaneous focus cues, especially in `45`.
-- Use deterministic playback snapshots to verify the first screen and key
-  interaction frames for each example.
+- Use deterministic playback-like snapshots to verify the first screen and key
+  interaction frames for every polished example.
 - Keep examples public-facing and readable. They should teach usage patterns
   without requiring knowledge of internal render plumbing.
 - Keep implementation local to examples and tests unless a very small existing
@@ -329,6 +329,8 @@ Write a multi-line answer
 Enter adds a line. Ctrl+Enter submits.
   [Submit]  [Cancel]
 
+Status        Drafting
+
 Escape cancels. [tab] actions  [ctrl+enter] submit  [q] quit
 ```
 
@@ -337,8 +339,9 @@ Interaction:
 - Dialog remains focused.
 - Typing edits the answer.
 - Tab moves to dialog actions.
-- Submit updates the recent notes and status.
-- Cancel updates status without adding a note.
+- Submit adds the answer to recent notes and sets
+  `Status        Submitted: <answer>`.
+- Cancel keeps recent notes unchanged and sets `Status        Cancelled`.
 
 Implementation notes:
 
@@ -410,7 +413,10 @@ Interaction:
 - `i/s/w/d` push toast notifications and update `Last event`.
 - `x` dismisses the oldest visible dismissible toast.
 - `c` clears all notifications.
-- Status line reflects the last action.
+- `Status` reflects the deploy console state and stays stable unless the
+  example explicitly changes pipeline state in a later slice.
+- `Last event` reflects toast actions, such as `warning toast added`,
+  `dismissed oldest`, or `cleared notifications`.
 
 Implementation notes:
 
@@ -440,11 +446,19 @@ For each example:
    or `tui.handle_input(...)`.
 6. Assert a focused/navigation frame and an activation/state-change frame.
 
-At least one test should use `TuiRuntime + FakeTerminalPort` for a playback-like
-snapshot of an example with cursor or composed-screen behavior. The current
-test suite already has strong render-only coverage; this slice should add
-enough playback coverage to catch confusing focus markers such as `45`'s
+Every polished example should have a playback-like test helper using
+`TuiRuntime + FakeTerminalPort` or an equivalent direct `RenderLoop` setup. The
+helper should capture stripped `current_logical_lines`, the logical cursor, and
+the operation class for each scripted frame. Render-only assertions may still
+cover small pure-widget details, but the example UX contract is the playback
+snapshot because it catches confusing composed-screen states such as `45`'s
 simultaneous tabs/menu focus.
+
+For each example, the playback snapshot test must cover:
+
+- initial frame;
+- navigation frame;
+- activation or state-change frame.
 
 Run before completion:
 
