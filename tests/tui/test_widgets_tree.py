@@ -320,3 +320,19 @@ def test_widgets_tree_example_playback_snapshots() -> None:
     )
     assert "Path          src/widgets" in frames[1].lines
     assert "Status        Selected: src/widgets" in frames[2].lines
+
+
+def test_widgets_tree_example_highlights_active_node() -> None:
+    namespace = runpy.run_path("examples/tui/49_widgets_tree.py", run_name="__test__")
+    tui = namespace["build_app"]()
+
+    initial = tui.render(RenderConstraints(width=80, max_height=20))
+    initial_lines = tuple(line.text for line in initial.lines)
+
+    assert "\x1b[1;36m> - src" in initial_lines[3]
+
+    tui.handle_input(InputEvent(kind="key", key="down"))
+    moved = tui.render(RenderConstraints(width=80, max_height=20))
+    moved_lines = tuple(line.text for line in moved.lines)
+
+    assert "\x1b[1;36m>     widgets" in moved_lines[4]

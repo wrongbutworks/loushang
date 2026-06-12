@@ -10,6 +10,7 @@ from loushang.tui import (
     RenderConstraints,
     RenderLine,
     RenderResult,
+    ThemeResolver,
     TreeNode,
     TreeView,
     Tui,
@@ -19,6 +20,13 @@ from loushang.tui import (
 )
 
 LABEL_WIDTH = 14
+TREE_EXAMPLE_THEME = ThemeResolver(
+    defaults={
+        "widget.tree.row": {"color": "white"},
+        "widget.tree.focus": {"bold": True, "color": "cyan"},
+        "widget.tree.disabled": {"dim": True},
+    }
+)
 
 NODE_DETAILS = {
     "src": ("src", "folder", "expanded"),
@@ -37,7 +45,7 @@ def _field(label: str, value: str, *, width: int) -> RenderLine:
 
 @dataclass(slots=True)
 class TreeViewApp(FocusableMixin):
-    tree: TreeView = field(default_factory=lambda: TreeView(_nodes()))
+    tree: TreeView = field(default_factory=lambda: TreeView(_nodes(), theme=TREE_EXAMPLE_THEME))
     selected_value: str = ""
 
     def __post_init__(self) -> None:

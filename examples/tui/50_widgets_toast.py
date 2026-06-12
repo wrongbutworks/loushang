@@ -10,6 +10,7 @@ from loushang.tui import (
     RenderConstraints,
     RenderLine,
     RenderResult,
+    ThemeResolver,
     Toast,
     ToastStack,
     Tui,
@@ -19,6 +20,16 @@ from loushang.tui import (
 )
 
 LABEL_WIDTH = 14
+TOAST_EXAMPLE_THEME = ThemeResolver(
+    defaults={
+        "widget.toast.danger": {"color": "red"},
+        "widget.toast.info": {"color": "cyan"},
+        "widget.toast.message": {"color": "white"},
+        "widget.toast.success": {"color": "green"},
+        "widget.toast.title": {"bold": True},
+        "widget.toast.warning": {"color": "yellow"},
+    }
+)
 
 
 def _field(label: str, value: str, *, width: int) -> RenderLine:
@@ -35,6 +46,7 @@ class ToastApp(FocusableMixin):
                 Toast("Changes saved", kind="success", duration_ms=None),
             ),
             newest_on_top=True,
+            theme=TOAST_EXAMPLE_THEME,
         )
     )
     counter: int = 0

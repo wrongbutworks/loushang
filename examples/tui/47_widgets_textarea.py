@@ -12,6 +12,7 @@ from loushang.tui import (
     RenderLine,
     RenderResult,
     TextArea,
+    ThemeResolver,
     Tui,
     TuiInputResult,
     TuiRunner,
@@ -19,6 +20,12 @@ from loushang.tui import (
 )
 
 LABEL_WIDTH = 14
+TEXTAREA_EXAMPLE_THEME = ThemeResolver(
+    defaults={
+        "widget.textArea.placeholder": {"color": "bright_black"},
+        "widget.textArea.text": {"color": "white"},
+    }
+)
 
 
 def _field(label: str, value: str, *, width: int) -> RenderLine:
@@ -38,7 +45,9 @@ def _line_count_label(count: int) -> str:
 
 @dataclass(slots=True)
 class TextAreaApp(FocusableMixin):
-    notes: TextArea = field(default_factory=lambda: TextArea(placeholder="Write notes", height=5))
+    notes: TextArea = field(
+        default_factory=lambda: TextArea(placeholder="Write notes", height=5, theme=TEXTAREA_EXAMPLE_THEME)
+    )
     message: str = ""
 
     def __post_init__(self) -> None:

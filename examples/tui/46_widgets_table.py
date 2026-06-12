@@ -13,6 +13,7 @@ from loushang.tui import (
     Table,
     TableColumn,
     TableRow,
+    ThemeResolver,
     Tui,
     TuiInputResult,
     TuiRunner,
@@ -20,6 +21,14 @@ from loushang.tui import (
 )
 
 LABEL_WIDTH = 14
+TABLE_EXAMPLE_THEME = ThemeResolver(
+    defaults={
+        "widget.table.header": {"color": "bright_black"},
+        "widget.table.row": {"color": "white"},
+        "widget.table.focus": {"bold": True, "color": "cyan"},
+        "widget.table.disabled": {"dim": True},
+    }
+)
 
 JOB_DETAILS = {
     "build": "Build is ready, 12 runs",
@@ -39,7 +48,7 @@ def _selected_detail(table: Table) -> str:
 
 @dataclass(slots=True)
 class TableApp(FocusableMixin):
-    table: Table = field(default_factory=lambda: Table(_columns(), _rows()))
+    table: Table = field(default_factory=lambda: Table(_columns(), _rows(), theme=TABLE_EXAMPLE_THEME))
     message: str = ""
 
     def __post_init__(self) -> None:

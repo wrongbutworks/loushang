@@ -13,6 +13,7 @@ from loushang.tui import (
     RenderLine,
     RenderResult,
     StatusPill,
+    ThemeResolver,
     Toolbar,
     ToolbarAction,
     Tui,
@@ -22,6 +23,13 @@ from loushang.tui import (
 )
 
 LABEL_WIDTH = 14
+SMALL_CONTROLS_THEME = ThemeResolver(
+    defaults={
+        "widget.toolbar.action": {"color": "white"},
+        "widget.toolbar.focus": {"bold": True, "color": "cyan"},
+        "widget.toolbar.disabled": {"dim": True},
+    }
+)
 
 
 def _field(label: str, value: str, *, width: int) -> RenderLine:
@@ -33,7 +41,7 @@ def _field(label: str, value: str, *, width: int) -> RenderLine:
 class SmallControlsApp(FocusableMixin):
     progress: int = 42
     message: str = "Ready"
-    toolbar: Toolbar = field(default_factory=lambda: Toolbar(_actions()))
+    toolbar: Toolbar = field(default_factory=lambda: Toolbar(_actions(), theme=SMALL_CONTROLS_THEME))
 
     def __post_init__(self) -> None:
         FocusableMixin.__init__(self)

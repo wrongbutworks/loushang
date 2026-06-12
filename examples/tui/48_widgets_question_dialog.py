@@ -12,6 +12,7 @@ from loushang.tui import (
     RenderConstraints,
     RenderLine,
     RenderResult,
+    ThemeResolver,
     Tui,
     TuiInputResult,
     TuiRunner,
@@ -19,6 +20,16 @@ from loushang.tui import (
 )
 
 LABEL_WIDTH = 14
+QUESTION_DIALOG_EXAMPLE_THEME = ThemeResolver(
+    defaults={
+        "widget.question.action": {"color": "white"},
+        "widget.question.focus": {"bold": True, "color": "cyan"},
+        "widget.question.text": {"color": "cyan"},
+        "widget.question.title": {"bold": True},
+        "widget.textArea.placeholder": {"color": "bright_black"},
+        "widget.textArea.text": {"color": "white"},
+    }
+)
 
 
 def _field(label: str, value: str, *, width: int) -> RenderLine:
@@ -35,6 +46,7 @@ class QuestionDialogApp(FocusableMixin):
             placeholder="Write a multi-line answer",
             help_text="Enter adds a line. Ctrl+Enter submits.",
             required=True,
+            theme=QUESTION_DIALOG_EXAMPLE_THEME,
         )
     )
     recent_notes: tuple[str, ...] = (

@@ -286,3 +286,19 @@ def test_widgets_table_example_playback_snapshots() -> None:
     )
     assert "> Deploy        blocked" in "\n".join(frames[1].lines)
     assert "Selected      Deploy is blocked, 3 runs" in frames[2].lines
+
+
+def test_widgets_table_example_highlights_active_row() -> None:
+    namespace = runpy.run_path("examples/tui/46_widgets_table.py", run_name="__test__")
+    tui = namespace["build_app"]()
+
+    initial = tui.render(RenderConstraints(width=80, max_height=20))
+    initial_lines = tuple(line.text for line in initial.lines)
+
+    assert "\x1b[1;36m> Build" in initial_lines[3]
+
+    tui.handle_input(InputEvent(kind="key", key="down"))
+    moved = tui.render(RenderConstraints(width=80, max_height=20))
+    moved_lines = tuple(line.text for line in moved.lines)
+
+    assert "\x1b[1;36m> Deploy" in moved_lines[4]

@@ -187,6 +187,23 @@ def test_widgets_toast_example_playback_snapshots() -> None:
     assert "Last event    cleared notifications" in frames[4].lines
 
 
+def test_widgets_toast_example_styles_notification_kinds() -> None:
+    namespace = runpy.run_path("examples/tui/50_widgets_toast.py", run_name="__test__")
+    tui = namespace["build_app"]()
+
+    initial = tui.render(RenderConstraints(width=80, max_height=20))
+    initial_lines = tuple(line.text for line in initial.lines)
+
+    assert initial_lines[7].startswith("\x1b[32m[success]")
+    assert initial_lines[8].startswith("\x1b[36m[info]")
+
+    tui.handle_input(InputEvent(kind="text", text="w"))
+    warning = tui.render(RenderConstraints(width=80, max_height=20))
+    warning_lines = tuple(line.text for line in warning.lines)
+
+    assert warning_lines[7].startswith("\x1b[33m[warning]")
+
+
 def test_toast_stack_normalizes_generated_values_and_timestamps() -> None:
     clock = Clock(100)
     stack = ToastStack(

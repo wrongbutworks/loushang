@@ -364,3 +364,19 @@ def test_widgets_question_dialog_example_playback_snapshots() -> None:
     )
     assert any("[Submit]> [Cancel]" in line for line in cancel_frames[2].lines)
     assert "Status        Cancelled" in cancel_frames[3].lines
+
+
+def test_widgets_question_dialog_example_highlights_action_focus() -> None:
+    namespace = runpy.run_path("examples/tui/48_widgets_question_dialog.py", run_name="__test__")
+    tui = namespace["build_app"]()
+
+    initial = tui.render(RenderConstraints(width=80, max_height=20))
+    initial_lines = tuple(line.text for line in initial.lines)
+
+    assert "\x1b[1;36m> [Submit]" not in initial_lines[14]
+
+    tui.handle_input(InputEvent(kind="key", key="tab"))
+    actions = tui.render(RenderConstraints(width=80, max_height=20))
+    action_lines = tuple(line.text for line in actions.lines)
+
+    assert "\x1b[1;36m> [Submit]" in action_lines[14]

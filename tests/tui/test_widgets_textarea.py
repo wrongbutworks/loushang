@@ -281,3 +281,19 @@ def test_widgets_textarea_example_playback_snapshots() -> None:
     assert "Status        1 line / unsaved" in frames[1].lines
     assert "Status        2 lines / unsaved" in frames[3].lines
     assert frames[0].cursor == (5, 0)
+
+
+def test_widgets_textarea_example_styles_placeholder_and_text() -> None:
+    namespace = runpy.run_path("examples/tui/47_widgets_textarea.py", run_name="__test__")
+    tui = namespace["build_app"]()
+
+    initial = tui.render(RenderConstraints(width=80, max_height=20))
+    initial_lines = tuple(line.text for line in initial.lines)
+
+    assert "\x1b[90mWrite notes" in initial_lines[5]
+
+    tui.handle_input(InputEvent(kind="text", text="Plan release"))
+    edited = tui.render(RenderConstraints(width=80, max_height=20))
+    edited_lines = tuple(line.text for line in edited.lines)
+
+    assert "\x1b[37mPlan release" in edited_lines[5]

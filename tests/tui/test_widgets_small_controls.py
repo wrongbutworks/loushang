@@ -250,3 +250,19 @@ def test_widgets_small_controls_example_playback_snapshots() -> None:
     )
     assert "Actions       [Refresh]  > [Cancel]" in frames[1].lines
     assert "Status        Cancelled" in frames[2].lines
+
+
+def test_widgets_small_controls_example_highlights_toolbar_focus() -> None:
+    namespace = runpy.run_path("examples/tui/44_widgets_small_controls.py", run_name="__test__")
+    tui = namespace["build_app"]()
+
+    initial = tui.render(RenderConstraints(width=80, max_height=20))
+    initial_lines = tuple(line.text for line in initial.lines)
+
+    assert "\x1b[1;36m> [Refresh]" in initial_lines[9]
+
+    tui.handle_input(InputEvent(kind="key", key="right"))
+    moved = tui.render(RenderConstraints(width=80, max_height=20))
+    moved_lines = tuple(line.text for line in moved.lines)
+
+    assert "\x1b[1;36m> [Cancel]" in moved_lines[9]
