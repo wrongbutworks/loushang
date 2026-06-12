@@ -19,7 +19,6 @@ from loushang.tui import (
     truncate_to_width,
 )
 
-
 LABEL_WIDTH = 14
 
 JOB_DETAILS = {
