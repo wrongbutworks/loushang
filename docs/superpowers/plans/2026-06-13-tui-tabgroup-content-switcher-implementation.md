@@ -1265,9 +1265,9 @@ List behavior:
             return self._move_active(-1)
         if key == "down":
             return self._move_active(1)
-        if key == "pageup":
+        if key == "pageUp":
             return self._move_active(-max(1, self._last_visible_count))
-        if key == "pagedown":
+        if key == "pageDown":
             return self._move_active(max(1, self._last_visible_count))
         if key == "home":
             return self._jump_active(first=True)
@@ -1507,9 +1507,9 @@ def test_tabgroup_searchable_list_example_playback_page_keys_and_edges() -> None
         "examples/tui/52_widgets_tabgroup_searchable_list.py",
         events=(
             ("down to list", InputEvent(kind="key", key="down")),
-            ("page down", InputEvent(kind="key", key="pagedown")),
+            ("page down", InputEvent(kind="key", key="pageDown")),
             ("end", InputEvent(kind="key", key="end")),
-            ("page up", InputEvent(kind="key", key="pageup")),
+            ("page up", InputEvent(kind="key", key="pageUp")),
             ("home", InputEvent(kind="key", key="home")),
         ),
         width=100,
@@ -1531,8 +1531,8 @@ def test_tabgroup_searchable_list_example_playback_preserves_list_state_across_t
         "examples/tui/52_widgets_tabgroup_searchable_list.py",
         events=(
             ("down to list", InputEvent(kind="key", key="down")),
-            ("page down", InputEvent(kind="key", key="pagedown")),
-            ("page down again", InputEvent(kind="key", key="pagedown")),
+            ("page down", InputEvent(kind="key", key="pageDown")),
+            ("page down again", InputEvent(kind="key", key="pageDown")),
             ("shift tab to top tabs", InputEvent(kind="key", key="shift+tab")),
             ("right models", InputEvent(kind="key", key="right")),
             ("left workspace", InputEvent(kind="key", key="left")),
