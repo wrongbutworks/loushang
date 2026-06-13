@@ -25,6 +25,9 @@ from .form import FormValidationResult as FormValidationResult
 from .menu import Menu as Menu
 from .menu import MenuItem as MenuItem
 from .question_dialog import QuestionDialog as QuestionDialog
+from .searchable_list import SearchableList as SearchableList
+from .searchable_list import SearchableListItem as SearchableListItem
+from .searchable_list import SearchableListSelect as SearchableListSelect
 from .selection import SelectList as SelectList
 from .spinner import Spinner as Spinner
 from .table import Table as Table
@@ -66,6 +69,9 @@ __all__ = [
     "ProgressBar",
     "QuestionDialog",
     "RadioGroup",
+    "SearchableList",
+    "SearchableListItem",
+    "SearchableListSelect",
     "SelectList",
     "Spinner",
     "StatusKind",

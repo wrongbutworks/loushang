@@ -40,6 +40,9 @@ from .widgets import MenuItem as MenuItem
 from .widgets import ProgressBar as ProgressBar
 from .widgets import QuestionDialog as QuestionDialog
 from .widgets import RadioGroup as RadioGroup
+from .widgets import SearchableList as SearchableList
+from .widgets import SearchableListItem as SearchableListItem
+from .widgets import SearchableListSelect as SearchableListSelect
 from .widgets import SelectList as SelectList
 from .widgets import Spinner as Spinner
 from .widgets import StatusKind as StatusKind
@@ -100,6 +103,9 @@ __all__ = [
     "ScreenLayout",
     "ScreenRegion",
     "ScreenRegionStack",
+    "SearchableList",
+    "SearchableListItem",
+    "SearchableListSelect",
     "SelectList",
     "Spinner",
     "StatusBar",
