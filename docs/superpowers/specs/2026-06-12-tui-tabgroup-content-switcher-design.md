@@ -103,6 +103,8 @@ copy the exact settings fields, visual layout, colors, or text.
 - Do not add setting value editors, persistence, config file writes, or product
   settings integration in this slice.
 - Do not copy Claude Code's settings visual design or exact settings data.
+- Do not publicly export `ContentSwitcher` in the first slice. It should remain
+  an internal helper until another public caller exists.
 - Do not require mouse support in the first slice.
 - Do not support draggable tabs, closable tabs, tab reordering, lazy async page
   loading, or dynamic add/remove in the first slice.
@@ -278,8 +280,9 @@ states, but it should not learn about page content.
 
 ### ContentSwitcher
 
-`ContentSwitcher` is a small internal or public helper that renders one selected
-content object. It should be deterministic and terminal-pure.
+`ContentSwitcher` is an internal helper in the first slice. It renders one
+selected content object and should be deterministic and terminal-pure. It should
+not be top-level exported until a concrete public caller needs it.
 
 Responsibilities:
 
@@ -329,8 +332,8 @@ When `focused=True` and `header_focused=True`:
 - `home` / `end` jump to the first or last enabled tab
 - `down` attempts to focus selected page content
 - `enter` also attempts to focus selected page content when the content is
-  focusable; otherwise it returns the selected value or tab-change callback
-  result according to existing `Tabs` semantics
+  focusable; if the content is not focusable, `enter` returns `False` as a
+  handled boundary no-op because the selected value has not changed
 
 When `focused=True` and `header_focused=False`:
 
@@ -605,7 +608,8 @@ Assertions:
 - header text is present
 - selected top-level tab token is not header-focused
 - search field is focused
-- list has no active row until `down`
+- list has no visual active cursor until `down`; `active_item` may still point
+  at the first enabled filtered item for activation repair and state retention
 
 ### 2. Query Filters A Single Item
 
