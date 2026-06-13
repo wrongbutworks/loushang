@@ -24,14 +24,15 @@ Important decisions from the spec:
 - `SearchableList` is reusable widget page content, not a new settings schema.
 - `SearchableList` first-slice filtering is case-insensitive substring matching over item keys and labels.
 - Existing `widget.tabs.tab` must stay in the fallback chain for enabled unselected tabs.
-- Public exports include `TabGroup`, `TabPage`, `TabChange`, `SearchableList`, `SearchableListItem`, and `SearchableListSelect`.
+- Public convenience exports include `TabGroup`, `TabPage`, `SearchableList`, `SearchableListItem`, and `SearchableListSelect`.
+- `TabChange` remains defined in `src/loushang/tui/ui_parts/widgets/tab_group.py` as the local structured return object, but it is not re-exported through `loushang.tui`, `loushang.tui.ui_parts`, or `loushang.tui.ui_parts.widgets`.
 
 ## File Structure
 
 Create:
 
 - `src/loushang/tui/ui_parts/widgets/tab_group.py`
-  - Owns `TabPage`, `TabChange`, `TabGroup`, and private `_ContentSwitcher`.
+  - Owns `TabPage`, local `TabChange`, `TabGroup`, and private `_ContentSwitcher`.
   - Delegates tab header behavior to existing `Tabs`.
   - Delegates rendering, input, focus, blur, and editor target to selected page content.
 
@@ -41,7 +42,7 @@ Create:
   - Owns filtered items, active index, scroll offset, focus region, and overflow counts.
 
 - `tests/tui/test_widgets_tab_group.py`
-  - Unit tests for `TabGroup`, `TabPage`, `TabChange`, `_ContentSwitcher` behavior through `TabGroup`, nested tab focus, and theme fallback.
+  - Unit tests for `TabGroup`, `TabPage`, local `TabChange`, `_ContentSwitcher` behavior through `TabGroup`, nested tab focus, and theme fallback.
 
 - `tests/tui/test_widgets_searchable_list.py`
   - Unit tests for `SearchableList` filtering, active repair, focus transitions, viewport scrolling, disabled items, exports, and empty states.
@@ -72,6 +73,9 @@ Modify:
 
 - `docs/internals/architecture/tui/native-terminal-core/ui-parts/README.md`
   - Add the new UI part family to the inventory.
+
+- `docs/internals/architecture/tui/native-terminal-core/ui-parts/tabgroup-content-switcher.md`
+  - Move the stable architecture guidance from the superpowers spec into the long-term internal UI part document.
 
 Do not create or export a public `ContentSwitcher` in this slice.
 
@@ -293,12 +297,19 @@ def test_tab_group_offsets_selected_content_cursor() -> None:
     assert result.cursor == CursorDeclaration(row=1, column=2)
 ```
 
+```python
+def test_tab_group_renders_header_only_when_no_content_height_remains() -> None:
+    group = TabGroup([TabPage("one", "One", StaticPage(("content",)))])
+
+    assert plain_lines(group, width=20, height=1) == ("* [One]",)
+```
+
 - [ ] **Step 5: Run tests to verify they fail**
 
 Run:
 
 ```bash
-pytest tests/tui/test_widgets_tab_group.py -q
+uv run pytest tests/tui/test_widgets_tab_group.py -q
 ```
 
 Expected: fail with `ModuleNotFoundError` for `loushang.tui.ui_parts.widgets.tab_group` or missing classes.
@@ -335,7 +346,7 @@ from loushang.tui.theme import ThemeResolver
 from loushang.tui.ui_parts.widgets._utils import callback_result
 from loushang.tui.ui_parts.widgets.tabs import TabItem, Tabs
 
-__all__ = ["TabChange", "TabGroup", "TabPage"]
+__all__ = ["TabGroup", "TabPage"]
 
 
 @dataclass(frozen=True, slots=True)
@@ -552,6 +563,8 @@ Append:
         self._sync_tabs()
         header = self._tabs.render(RenderConstraints(width=constraints.width, max_height=1, visible_height=constraints.visible_height))
         remaining_height = max(0, constraints.max_height - len(header.lines))
+        if remaining_height <= 0:
+            return RenderResult.from_lines(header.lines[: constraints.max_height], constraints=constraints)
         content = self._switcher.render(
             None if self.selected_page is None else self.selected_page.content,
             RenderConstraints(width=constraints.width, max_height=remaining_height, visible_height=constraints.visible_height),
@@ -579,27 +592,26 @@ Append:
         self._tabs.focused = self.focused and self.header_focused
 ```
 
-This implementation intentionally starts without level-aware token arguments. Task 3 adds those to `Tabs` and updates `_make_tabs()` / `_sync_tabs()` to pass them.
+This implementation intentionally starts without level-aware token arguments. Task 3 adds those to `Tabs` and updates `_make_tabs()` / `_sync_tabs()` to pass them. `TabChange` is intentionally defined in this module but omitted from `__all__`; tests can import it from the concrete module, but convenience exports should not expose it as public API.
 
 - [ ] **Step 6: Add public re-exports**
 
 Modify the three export files:
 
 ```python
-from .tab_group import TabChange as TabChange
 from .tab_group import TabGroup as TabGroup
 from .tab_group import TabPage as TabPage
 ```
 
-Add `"TabChange"`, `"TabGroup"`, and `"TabPage"` to each relevant `__all__`.
+Add `"TabGroup"` and `"TabPage"` to each relevant `__all__`. Do not re-export `TabChange` through `loushang.tui`, `loushang.tui.ui_parts`, or `loushang.tui.ui_parts.widgets`.
 
 - [ ] **Step 7: Run core tests**
 
 Run:
 
 ```bash
-pytest tests/tui/test_widgets_tab_group.py -q
-pytest tests/tui/test_widgets_light_controls.py -q
+uv run pytest tests/tui/test_widgets_tab_group.py -q
+uv run pytest tests/tui/test_widgets_light_controls.py -q
 ```
 
 Expected: all pass. If an existing `Tabs` test fails, preserve existing `Tabs` behavior and adjust only `TabGroup`.
@@ -663,7 +675,7 @@ def test_tab_group_uses_distinct_header_and_content_focus_tokens() -> None:
 Run:
 
 ```bash
-pytest tests/tui/test_widgets_light_controls.py::test_tabs_level_tokens_fallback_to_legacy_tab_token tests/tui/test_widgets_tab_group.py::test_tab_group_uses_distinct_header_and_content_focus_tokens -q
+uv run pytest tests/tui/test_widgets_light_controls.py::test_tabs_level_tokens_fallback_to_legacy_tab_token tests/tui/test_widgets_tab_group.py::test_tab_group_uses_distinct_header_and_content_focus_tokens -q
 ```
 
 Expected: fail because `Tabs` has no level-aware token state yet.
@@ -759,7 +771,7 @@ tabs.selected_focus = selected_focus
 Run:
 
 ```bash
-pytest tests/tui/test_widgets_light_controls.py tests/tui/test_widgets_tab_group.py -q
+uv run pytest tests/tui/test_widgets_light_controls.py tests/tui/test_widgets_tab_group.py -q
 ```
 
 Expected: all pass.
@@ -826,7 +838,7 @@ def test_nested_tab_switch_does_not_change_parent_value() -> None:
 Run:
 
 ```bash
-pytest tests/tui/test_widgets_tab_group.py::test_nested_tab_group_keeps_parent_selected_content_focus tests/tui/test_widgets_tab_group.py::test_nested_tab_switch_does_not_change_parent_value -q
+uv run pytest tests/tui/test_widgets_tab_group.py::test_nested_tab_group_keeps_parent_selected_content_focus tests/tui/test_widgets_tab_group.py::test_nested_tab_switch_does_not_change_parent_value -q
 ```
 
 Expected: fail if `TabGroup.focus()` always forces header focus or if nested input is not delegated cleanly.
@@ -842,7 +854,7 @@ If tests fail because render does not show nested content, ensure `TabGroup.rend
 Run:
 
 ```bash
-pytest tests/tui/test_widgets_tab_group.py -q
+uv run pytest tests/tui/test_widgets_tab_group.py -q
 ```
 
 Expected: all pass.
@@ -997,7 +1009,7 @@ def test_searchable_list_renders_bounded_viewport_and_overflow_counts() -> None:
 Run:
 
 ```bash
-pytest tests/tui/test_widgets_searchable_list.py -q
+uv run pytest tests/tui/test_widgets_searchable_list.py -q
 ```
 
 Expected: fail with missing module/classes.
@@ -1326,9 +1338,9 @@ Add names to `__all__`.
 Run:
 
 ```bash
-pytest tests/tui/test_widgets_searchable_list.py -q
-pytest tests/tui/test_widgets_command_palette.py -q
-pytest tests/tui/test_surfaces.py -q
+uv run pytest tests/tui/test_widgets_searchable_list.py -q
+uv run pytest tests/tui/test_widgets_command_palette.py -q
+uv run pytest tests/tui/test_surfaces.py -q
 ```
 
 Expected: all pass. If `test_surfaces.py` fails, the new widget leaked behavior into existing surfaces; revert that coupling.
@@ -1347,6 +1359,7 @@ git commit -m "feat(tui): add searchable list widget"
 - Create: `examples/tui/52_widgets_tabgroup_searchable_list.py`
 - Modify: `tests/tui/test_widgets_tab_group.py`
 - Modify: `tests/tui/test_widgets_searchable_list.py` if example-specific assertions belong there instead
+- Reference: `tests/tui/widget_example_playback.py`
 - Reference: `examples/tui/45_widgets_light_controls.py`
 - Reference: `examples/tui/51_widgets_command_palette.py`
 
@@ -1408,9 +1421,19 @@ Type to filter · Enter/down to select · Up to tabs · Esc to clear
 
 Keep example text ASCII-only.
 
-- [ ] **Step 3: Add playback test for initial render and filtering**
+- [ ] **Step 3: Add playback test imports**
 
-Add to an appropriate test file:
+Add these imports to `tests/tui/test_widgets_tab_group.py`:
+
+```python
+from tests.tui.widget_example_playback import play_example
+```
+
+The file should already import `InputEvent`. If not, import it from `loushang.tui`.
+
+- [ ] **Step 4: Add playback test for initial render and filtering**
+
+Add to `tests/tui/test_widgets_tab_group.py`:
 
 ```python
 def test_tabgroup_searchable_list_example_playback_filters_settings() -> None:
@@ -1432,7 +1455,7 @@ def test_tabgroup_searchable_list_example_playback_filters_settings() -> None:
     assert any("Model" in line or "mode" in line for line in filtered)
 ```
 
-- [ ] **Step 4: Add playback test for tab and nested tab switching**
+- [ ] **Step 5: Add playback test for tab and nested tab switching**
 
 Add:
 
@@ -1456,7 +1479,7 @@ def test_tabgroup_searchable_list_example_playback_switches_nested_tabs() -> Non
     assert any("Tokens per Day" in line or "Model usage" in line for line in frames[-1].lines)
 ```
 
-- [ ] **Step 5: Add playback test for long-list bounded viewport**
+- [ ] **Step 6: Add playback test for long-list bounded viewport**
 
 Add:
 
@@ -1474,27 +1497,76 @@ def test_tabgroup_searchable_list_example_playback_scrolls_long_list_without_lay
     assert any("more below" in line.lower() or "more above" in line.lower() for line in frames[-1].lines)
 ```
 
-- [ ] **Step 6: Run playback tests**
+- [ ] **Step 7: Add playback test for long-list page keys**
+
+Add:
+
+```python
+def test_tabgroup_searchable_list_example_playback_page_keys_and_edges() -> None:
+    frames = play_example(
+        "examples/tui/52_widgets_tabgroup_searchable_list.py",
+        events=(
+            ("down to list", InputEvent(kind="key", key="down")),
+            ("page down", InputEvent(kind="key", key="pagedown")),
+            ("end", InputEvent(kind="key", key="end")),
+            ("page up", InputEvent(kind="key", key="pageup")),
+            ("home", InputEvent(kind="key", key="home")),
+        ),
+        width=100,
+        height=24,
+    )
+
+    assert any("more below" in line.lower() for line in frames[0].lines)
+    assert any("more above" in line.lower() or "more below" in line.lower() for line in frames[2].lines)
+    assert any("more below" in line.lower() for line in frames[-1].lines)
+```
+
+- [ ] **Step 8: Add playback test for state preservation across tab switches**
+
+Add:
+
+```python
+def test_tabgroup_searchable_list_example_playback_preserves_list_state_across_tabs() -> None:
+    frames = play_example(
+        "examples/tui/52_widgets_tabgroup_searchable_list.py",
+        events=(
+            ("down to list", InputEvent(kind="key", key="down")),
+            ("page down", InputEvent(kind="key", key="pagedown")),
+            ("page down again", InputEvent(kind="key", key="pagedown")),
+            ("shift tab to top tabs", InputEvent(kind="key", key="shift+tab")),
+            ("right models", InputEvent(kind="key", key="right")),
+            ("left workspace", InputEvent(kind="key", key="left")),
+            ("down content", InputEvent(kind="key", key="down")),
+        ),
+        width=100,
+        height=24,
+    )
+
+    final = "\n".join(frames[-1].lines).lower()
+    assert "more above" in final
+```
+
+- [ ] **Step 9: Run playback tests**
 
 Run:
 
 ```bash
-pytest tests/tui/test_widgets_tab_group.py tests/tui/test_widgets_searchable_list.py -q
+uv run pytest tests/tui/test_widgets_tab_group.py tests/tui/test_widgets_searchable_list.py -q
 ```
 
 Expected: all pass.
 
-- [ ] **Step 7: Run the example manually as a smoke command**
+- [ ] **Step 10: Run the example manually as a smoke command**
 
 Run:
 
 ```bash
-python examples/tui/52_widgets_tabgroup_searchable_list.py
+uv run python examples/tui/52_widgets_tabgroup_searchable_list.py
 ```
 
 Expected: opens an interactive TUI. Quit with `q`. If running in a non-interactive automation context, skip this command and rely on playback tests.
 
-- [ ] **Step 8: Commit**
+- [ ] **Step 11: Commit**
 
 ```bash
 git add examples/tui/52_widgets_tabgroup_searchable_list.py tests/tui/test_widgets_tab_group.py tests/tui/test_widgets_searchable_list.py
@@ -1508,6 +1580,7 @@ git commit -m "test(tui): add tab group searchable list playback"
 - Modify: `docs/en/reference/tui-widgets.md`
 - Modify: `docs/zh-CN/reference/tui-widgets.md`
 - Modify: `docs/internals/architecture/tui/native-terminal-core/ui-parts/README.md`
+- Create: `docs/internals/architecture/tui/native-terminal-core/ui-parts/tabgroup-content-switcher.md`
 
 - [ ] **Step 1: Add English reference section**
 
@@ -1522,8 +1595,8 @@ Add a new section after P2A or as P2B:
 | `SearchableList` / `SearchableListItem` | Searchable long lists that can live inside a tab page. |
 
 `TabGroup` composes existing `Tabs` with persistent page content. It keeps
-`ContentSwitcher` internal and returns `TabChange` when the selected page
-changes without a callback.
+`ContentSwitcher` internal and returns a structured tab-change object when the
+selected page changes without a callback.
 
 `SearchableList` owns query text, filtered items, active row, viewport offset,
 and structured selection. It does not edit settings or write configuration.
@@ -1533,7 +1606,56 @@ and structured selection. It does not edit settings or write configuration.
 
 Mirror the English content in `docs/zh-CN/reference/tui-widgets.md`.
 
-- [ ] **Step 3: Update internal UI part inventory**
+- [ ] **Step 3: Create long-term internal architecture document**
+
+Create `docs/internals/architecture/tui/native-terminal-core/ui-parts/tabgroup-content-switcher.md` with stable guidance distilled from the spec:
+
+```markdown
+# TabGroup And SearchableList UI Parts
+
+## Purpose
+
+`TabGroup` composes a tab header with persistent page content. `SearchableList`
+provides a reusable searchable long-list page widget. `ContentSwitcher` remains
+an internal helper for fixed-height selected-content rendering.
+
+## Inputs And State
+
+- `TabPage(value, label, content, disabled=False, badge="")`
+- `TabGroup(pages, value="", level=0, content_height=None, focused=False)`
+- `SearchableListItem(key, label, value="", description="", disabled=False)`
+- `SearchableList(items, query="", focus_region="search", focused=False)`
+
+## Render Constraints
+
+Both widgets must respect `RenderConstraints.width` and
+`RenderConstraints.max_height`. Long logical lists render only the visible slice.
+
+## Focus Behavior
+
+`TabGroup` switches between header focus and selected content focus.
+`SearchableList` switches between search focus and list focus.
+
+## Events
+
+`TabGroup` value changes return a local structured tab-change object unless an
+`on_change` callback is supplied. `SearchableList` activation returns
+`SearchableListSelect` unless `on_select` is supplied.
+
+## Theme Tokens
+
+Tab theme resolution must preserve legacy `widget.tabs.tab` fallback while
+supporting level-aware selected header/content focus tokens.
+
+## Test Obligations
+
+Unit tests cover selection, focus, fixed-height rendering, nested tabs,
+search/filter repair, viewport scrolling, disabled items, and exports. Playback
+tests cover settings-style search, nested tabs, long-list scroll keys, footer
+stability, and state preservation across tab switches.
+```
+
+- [ ] **Step 4: Update internal UI part inventory**
 
 Add to `docs/internals/architecture/tui/native-terminal-core/ui-parts/README.md`:
 
@@ -1542,22 +1664,22 @@ Add to `docs/internals/architecture/tui/native-terminal-core/ui-parts/README.md`
 | Lists | SelectList, SearchableList |
 ```
 
-Adjust existing rows instead of duplicating table categories if the inventory already has a better grouping.
+Adjust existing rows instead of duplicating table categories if the inventory already has a better grouping. Link `TabGroup` or the family name to `./tabgroup-content-switcher.md`.
 
-- [ ] **Step 4: Run docs-related smoke tests**
+- [ ] **Step 5: Run docs-related smoke tests**
 
 Run:
 
 ```bash
-pytest tests/tui/test_widgets_light_controls.py tests/tui/test_widgets_command_palette.py tests/tui/test_widgets_tab_group.py tests/tui/test_widgets_searchable_list.py -q
+uv run pytest tests/tui/test_widgets_light_controls.py tests/tui/test_widgets_command_palette.py tests/tui/test_widgets_tab_group.py tests/tui/test_widgets_searchable_list.py -q
 ```
 
 Expected: all pass.
 
-- [ ] **Step 5: Commit**
+- [ ] **Step 6: Commit**
 
 ```bash
-git add docs/en/reference/tui-widgets.md docs/zh-CN/reference/tui-widgets.md docs/internals/architecture/tui/native-terminal-core/ui-parts/README.md
+git add docs/en/reference/tui-widgets.md docs/zh-CN/reference/tui-widgets.md docs/internals/architecture/tui/native-terminal-core/ui-parts/README.md docs/internals/architecture/tui/native-terminal-core/ui-parts/tabgroup-content-switcher.md
 git commit -m "docs(tui): document tab group widgets"
 ```
 
@@ -1572,7 +1694,7 @@ git commit -m "docs(tui): document tab group widgets"
 Run:
 
 ```bash
-pytest tests/tui/test_widgets_light_controls.py tests/tui/test_widgets_command_palette.py tests/tui/test_widgets_tab_group.py tests/tui/test_widgets_searchable_list.py tests/tui/test_surfaces.py -q
+uv run pytest tests/tui/test_widgets_light_controls.py tests/tui/test_widgets_command_palette.py tests/tui/test_widgets_tab_group.py tests/tui/test_widgets_searchable_list.py tests/tui/test_surfaces.py -q
 ```
 
 Expected: all pass.
@@ -1582,7 +1704,7 @@ Expected: all pass.
 Run:
 
 ```bash
-pytest tests/tui/test_widgets_foundation.py tests/tui/test_widgets_table.py tests/tui/test_widgets_textarea.py tests/tui/test_widgets_tree.py tests/tui/test_widgets_question_dialog.py tests/tui/test_widgets_toast.py -q
+uv run pytest tests/tui/test_widgets_foundation.py tests/tui/test_widgets_table.py tests/tui/test_widgets_textarea.py tests/tui/test_widgets_tree.py tests/tui/test_widgets_question_dialog.py tests/tui/test_widgets_toast.py -q
 ```
 
 Expected: all pass.
@@ -1592,8 +1714,8 @@ Expected: all pass.
 Run:
 
 ```bash
-python - <<'PY'
-from loushang.tui import TabGroup, TabPage, TabChange, SearchableList, SearchableListItem, SearchableListSelect
+uv run python - <<'PY'
+from loushang.tui import TabGroup, TabPage, SearchableList, SearchableListItem, SearchableListSelect
 from loushang.tui.ui_parts import TabGroup as UiTabGroup
 from loushang.tui.ui_parts.widgets import TabGroup as WidgetTabGroup
 assert TabGroup is UiTabGroup is WidgetTabGroup
@@ -1601,7 +1723,7 @@ print("exports ok")
 PY
 ```
 
-Expected: prints `exports ok`.
+Expected: prints `exports ok`. `TabChange` should remain importable from `loushang.tui.ui_parts.widgets.tab_group` for local tests, but it should not be part of the convenience export chain.
 
 - [ ] **Step 4: Check git status**
 
