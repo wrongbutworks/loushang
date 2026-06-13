@@ -355,7 +355,7 @@ def test_native_tui_playback_command_surface_filters_and_selects_command() -> No
         step.assert_no_clear_scrollback()
 
 
-def test_native_tui_playback_settings_surface_toggles_statusline() -> None:
+def test_native_tui_playback_settings_page_toggles_statusline_and_exits() -> None:
     session = _Session()
     app = _app()
     playback = _NativeInteractivePlayback(
@@ -369,6 +369,7 @@ def test_native_tui_playback_settings_surface_toggles_statusline() -> None:
         [
             PlaybackEvent.input("/settings\r"),
             PlaybackEvent.input("\r"),
+            PlaybackEvent.input("\x1b"),
         ]
     )
 
@@ -383,7 +384,7 @@ def test_native_tui_playback_settings_surface_toggles_statusline() -> None:
         step.assert_no_clear_scrollback()
 
 
-def test_native_tui_playback_settings_surface_searches_when_opened_by_command() -> None:
+def test_native_tui_playback_settings_page_searches_when_opened_by_command() -> None:
     session = _Session()
     app = _app()
     playback = _NativeInteractivePlayback(
@@ -403,9 +404,62 @@ def test_native_tui_playback_settings_surface_searches_when_opened_by_command() 
     assert all(step.flush_succeeded for step in steps)
     lines = _plain_lines(steps[-1].diagnostics)
     assert "Settings" in lines
-    assert "Search: zz" in lines
-    assert "  No matching settings" in lines
+    assert "zz" in lines
+    assert "No matching settings" in lines
     assert app.state.statusline_visible is True
+    for step in steps:
+        step.assert_no_clear_scrollback()
+
+
+def test_native_tui_playback_settings_page_q_is_search_text() -> None:
+    session = _Session()
+    app = _app()
+    playback = _NativeInteractivePlayback(
+        app,
+        _manager(app, session),
+        columns=100,
+        rows=18,
+    )
+
+    steps = playback.play(
+        [
+            PlaybackEvent.input("/settings\r"),
+            PlaybackEvent.input("q"),
+        ]
+    )
+
+    assert all(step.flush_succeeded for step in steps)
+    assert app.active_surface is not None
+    lines = _plain_lines(steps[-1].diagnostics)
+    assert "q" in lines
+    assert "No matching settings" in lines
+    for step in steps:
+        step.assert_no_clear_scrollback()
+
+
+def test_native_tui_playback_settings_page_model_tab_is_available() -> None:
+    session = _Session()
+    app = _app()
+    playback = _NativeInteractivePlayback(
+        app,
+        _manager(app, session),
+        columns=100,
+        rows=18,
+    )
+
+    steps = playback.play(
+        [
+            PlaybackEvent.input("/settings\r"),
+            PlaybackEvent.input("\x1b[A"),
+            PlaybackEvent.input("\x1b[C"),
+            PlaybackEvent.input("\x1b[B"),
+        ]
+    )
+
+    assert all(step.flush_succeeded for step in steps)
+    lines = _plain_lines(steps[-1].diagnostics)
+    assert "Search models..." in lines
+    assert any("moonshot/kimi-for-coding" in line for line in lines)
     for step in steps:
         step.assert_no_clear_scrollback()
 

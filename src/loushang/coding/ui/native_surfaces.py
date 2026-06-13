@@ -37,6 +37,7 @@ from loushang.coding.ui.model_list import (
     select_available_model,
 )
 from loushang.coding.ui.native_app import NativeCodingTuiApp
+from loushang.coding.ui.settings_page import SettingsPageView
 from loushang.coding.ui.status_provider import CodingTuiStatusProvider
 from loushang.runtime.commands import CommandDef, CommandKind
 from loushang.tui import (
@@ -58,7 +59,6 @@ from loushang.tui import (
     apply_theme_style,
 )
 from loushang.tui.cell_width import truncate_to_width, wrap_cells
-from loushang.tui.surfaces import SettingsSurface
 
 NativeSurfacePurpose = Literal["info", "model", "command", "settings", "dialog", "approval"]
 NativeSurfacePresentation = Literal["bottom", "bottom-exclusive"]
@@ -93,18 +93,24 @@ class NativeSurfaceView(FocusableMixin):
     def exclusive_bottom(self) -> bool:
         return self.presentation == "bottom-exclusive"
 
+    def editor_input_target(self) -> object | None:
+        target = getattr(self.content, "editor_input_target", None)
+        return target() if callable(target) else None
+
     def handle_input(self, event: InputEvent) -> InputIntent | None:
-        if event.kind == "key" and event.key in {"escape", "esc"}:
-            return InputIntent(kind="surface_close")
         if self.purpose == "info":
-            if event.kind == "key" and event.key in {"enter", "space"}:
+            if event.kind == "key" and event.key in {"enter", "space", "escape", "esc"}:
                 return InputIntent(kind="surface_close")
             if event.kind == "key":
                 return self._handle_info_scroll_input(event.key)
             return None
         handler = getattr(self.content, "handle_input", None)
         if callable(handler):
-            return _native_input_intent_or_none(handler(self._translate_content_input_event(event)))
+            intent = _native_input_intent_or_none(handler(self._translate_content_input_event(event)))
+            if intent is not None:
+                return intent
+        if event.kind == "key" and event.key in {"escape", "esc"}:
+            return InputIntent(kind="surface_close")
         return None
 
     def render(self, constraints: RenderConstraints) -> RenderResult:
@@ -136,6 +142,10 @@ class NativeSurfaceView(FocusableMixin):
             self._last_content_start_row = len(lines)
             result = self.content.render(body_constraints)
             lines.extend(line.text for line in result.lines)
+            if result.cursor is not None:
+                cursor_row = self._last_content_start_row + result.cursor.row
+                if cursor_row < constraints.max_height:
+                    cursor = CursorDeclaration(row=cursor_row, column=result.cursor.column)
         footer = self._footer_text()
         if footer and len(lines) < constraints.max_height:
             if len(lines) + 1 < constraints.max_height:
@@ -428,7 +438,7 @@ class NativeSurfaceManager:
         elif command.name == "hotkeys" and isinstance(intent, HotkeysIntent):
             self._open_info("Hotkeys", format_hotkeys())
         elif command.name == "settings" and isinstance(intent, SettingsIntent):
-            self._open_settings()
+            await self._open_settings()
         elif command.name == "statusline" and isinstance(intent, StatuslineIntent):
             setter = self.set_statusline_visible or self.status_provider.set_visible
             message = setter(intent.enabled)
@@ -515,6 +525,18 @@ class NativeSurfaceManager:
         self.close_surface()
 
     async def _handle_settings_submit(self, payload: dict[str, str]) -> None:
+        surface = self._current_surface()
+        page = surface.content if isinstance(surface, NativeSurfaceView) else None
+        apply_setting = getattr(page, "apply_setting", None)
+        if callable(apply_setting):
+            result = await apply_setting(payload["id"], payload.get("value", ""))
+            if result.statusline_visible is not None:
+                self.app.set_statusline_visible(result.statusline_visible)
+            if result.refresh_model_label:
+                await self._refresh_model_label()
+            self.app.set_status(result.message)
+            return
+
         updated = self.status_provider.settings_list().toggle(payload["id"])
         self.close_surface()
         message = self.status_provider.apply_settings(updated)
@@ -613,8 +635,13 @@ class NativeSurfaceManager:
         text = provider() if provider is not None else "Terminal diagnostics are not available outside an active TUI session."
         self._open_info("Terminal", text)
 
-    def _open_settings(self) -> None:
-        surface = SettingsSurface(list(self.status_provider.settings_list().items), max_visible=8, enable_search=True)
+    async def _open_settings(self) -> None:
+        surface = await SettingsPageView.create(
+            session=self.session,
+            status_provider=self.status_provider,
+            settings_manager=getattr(self.session, "settings_manager", None),
+            session_settings=getattr(self.session, "settings_controller", None),
+        )
         self._open_surface(
             NativeSurfaceView(
                 title="Settings",

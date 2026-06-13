@@ -10,13 +10,65 @@ from loushang.coding.ui.native_surfaces import NativeSurfaceManager, NativeSurfa
 from loushang.coding.ui.status_provider import CodingTuiStatusProvider
 from loushang.tui import (
     ApprovalSurface,
+    CursorDeclaration,
     DialogSurface,
     InputEvent,
     InputIntent,
     RenderConstraints,
+    RenderLine,
+    RenderResult,
+    SettingsSurface,
     SurfaceHost,
 )
 from loushang.tui.cell_width import strip_control_sequences
+
+
+class _CursorContent:
+    def render(self, constraints: RenderConstraints) -> RenderResult:
+        return RenderResult.from_lines(
+            [RenderLine("query")],
+            constraints=constraints,
+            cursor=CursorDeclaration(row=0, column=3),
+        )
+
+
+class _EditorTargetContent(_CursorContent):
+    def __init__(self) -> None:
+        self.target = object()
+
+    def editor_input_target(self) -> object:
+        return self.target
+
+
+class _EscContent(_CursorContent):
+    def handle_input(self, event: InputEvent) -> InputIntent | bool | None:
+        if event.kind == "key" and event.key in {"esc", "escape"}:
+            return InputIntent(kind="consumed", note="child_escape")
+        return None
+
+
+def test_native_surface_view_delegates_editor_input_target() -> None:
+    content = _EditorTargetContent()
+    view = NativeSurfaceView(title="Settings", purpose="settings", content=content)
+
+    assert view.editor_input_target() is content.target
+
+
+def test_native_surface_view_preserves_content_cursor_with_offset() -> None:
+    view = NativeSurfaceView(title="Settings", purpose="settings", content=_CursorContent(), footer="")
+
+    rendered = view.render(RenderConstraints(width=40, max_height=8))
+
+    assert rendered.cursor == CursorDeclaration(row=2, column=3)
+
+
+def test_native_surface_view_delegates_escape_to_non_info_content_first() -> None:
+    view = NativeSurfaceView(title="Settings", purpose="settings", content=_EscContent())
+
+    assert view.handle_input(InputEvent(kind="key", key="escape")) == InputIntent(
+        kind="consumed",
+        note="child_escape",
+    )
 
 
 def test_native_surface_manager_opens_model_surface_and_selects_model() -> None:
@@ -319,9 +371,56 @@ def test_native_surface_manager_opens_settings_in_bottom_frame_with_runtime_over
 
     rendered = app.active_surface.render(RenderConstraints(width=100, max_height=10))
     plain = tuple(strip_control_sequences(line.text) for line in rendered.lines)
-    assert plain.count("  Enter/Space to change - Esc to cancel") == 1
+    assert any("Status" in line and "Config" in line and "Model" in line for line in plain)
+    assert any("Search settings" in line for line in plain)
+    assert any("Status line" in line for line in plain)
     assert "Enter/Space to change - Esc to close" not in plain
     assert "  show footer" not in plain
+
+
+def test_native_surface_manager_settings_page_submit_keeps_surface_open() -> None:
+    app = _app()
+    manager = _manager(app, _Session())
+
+    asyncio.run(manager.handle_text("/settings"))
+    assert isinstance(app.active_surface, NativeSurfaceView)
+    intent = app.active_surface.handle_input(InputEvent(kind="key", key="enter"))
+
+    assert intent == InputIntent(kind="setting", text="statusline", note="false")
+    asyncio.run(manager.handle_surface_intent(intent))
+
+    assert isinstance(app.active_surface, NativeSurfaceView)
+    assert app.state.statusline_visible is False
+    assert app.state.status_message == "Status line: off"
+
+
+def test_native_surface_manager_legacy_settings_surface_still_closes_on_submit() -> None:
+    app = _app()
+    manager = _manager(app, _Session())
+    app.active_surface = NativeSurfaceView(
+        title="Settings",
+        purpose="settings",
+        content=SettingsSurface(list(manager.status_provider.settings_list().items), enable_search=True),
+        presentation="bottom-exclusive",
+    )
+
+    asyncio.run(manager.handle_surface_intent(InputIntent(kind="setting", text="statusline", note="false")))
+
+    assert app.active_surface is None
+    assert app.state.statusline_visible is False
+
+
+def test_native_surface_manager_settings_page_model_submit_uses_model_selection() -> None:
+    session = _Session()
+    app = _app()
+    manager = _manager(app, session)
+
+    asyncio.run(manager.handle_text("/settings"))
+    asyncio.run(manager.handle_surface_intent(InputIntent(kind="setting", text="model.current", note="openai/gpt-5.4")))
+
+    assert isinstance(app.active_surface, NativeSurfaceView)
+    assert session.set_model_calls
+    assert app.state.model_label == "openai/gpt-5.4"
 
 
 def test_native_surface_manager_runtime_overlay_escape_and_close_are_idempotent() -> None:
@@ -710,7 +809,7 @@ def test_native_surface_manager_opens_status_info_and_closes_with_escape() -> No
     assert app.active_surface is None
 
 
-def test_native_surface_manager_applies_settings_surface() -> None:
+def test_native_surface_manager_applies_settings_page_statusline_change() -> None:
     app = _app()
     manager = _manager(app, _Session())
 
@@ -718,11 +817,11 @@ def test_native_surface_manager_applies_settings_surface() -> None:
 
     assert isinstance(app.active_surface, NativeSurfaceView)
     intent = app.active_surface.handle_input(InputEvent(kind="key", key="enter"))
-    assert intent == InputIntent(kind="setting", text="statusline", note="true")
+    assert intent == InputIntent(kind="setting", text="statusline", note="false")
 
     asyncio.run(manager.handle_surface_intent(intent))
 
-    assert app.active_surface is None
+    assert isinstance(app.active_surface, NativeSurfaceView)
     assert app.state.status_message == "Status line: off"
     rendered = tuple(strip_control_sequences(line.text) for line in app.render(RenderConstraints(width=100, max_height=12)).lines)
     assert not any("moonshot/kimi-for-coding | repo | main | abcd | idle" in line for line in rendered)
