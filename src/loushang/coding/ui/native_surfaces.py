@@ -37,6 +37,7 @@ from loushang.coding.ui.model_list import (
     select_available_model,
 )
 from loushang.coding.ui.native_app import NativeCodingTuiApp
+from loushang.coding.ui.settings_page import SettingsPageView
 from loushang.coding.ui.status_provider import CodingTuiStatusProvider
 from loushang.runtime.commands import CommandDef, CommandKind
 from loushang.tui import (
@@ -438,7 +439,7 @@ class NativeSurfaceManager:
         elif command.name == "hotkeys" and isinstance(intent, HotkeysIntent):
             self._open_info("Hotkeys", format_hotkeys())
         elif command.name == "settings" and isinstance(intent, SettingsIntent):
-            self._open_settings()
+            await self._open_settings()
         elif command.name == "statusline" and isinstance(intent, StatuslineIntent):
             setter = self.set_statusline_visible or self.status_provider.set_visible
             message = setter(intent.enabled)
@@ -525,6 +526,18 @@ class NativeSurfaceManager:
         self.close_surface()
 
     async def _handle_settings_submit(self, payload: dict[str, str]) -> None:
+        surface = self._current_surface()
+        page = surface.content if isinstance(surface, NativeSurfaceView) else None
+        apply_setting = getattr(page, "apply_setting", None)
+        if callable(apply_setting):
+            result = await apply_setting(payload["id"], payload.get("value", ""))
+            if result.statusline_visible is not None:
+                self.app.set_statusline_visible(result.statusline_visible)
+            if result.refresh_model_label:
+                await self._refresh_model_label()
+            self.app.set_status(result.message)
+            return
+
         updated = self.status_provider.settings_list().toggle(payload["id"])
         self.close_surface()
         message = self.status_provider.apply_settings(updated)
@@ -623,8 +636,13 @@ class NativeSurfaceManager:
         text = provider() if provider is not None else "Terminal diagnostics are not available outside an active TUI session."
         self._open_info("Terminal", text)
 
-    def _open_settings(self) -> None:
-        surface = SettingsSurface(list(self.status_provider.settings_list().items), max_visible=8, enable_search=True)
+    async def _open_settings(self) -> None:
+        surface = await SettingsPageView.create(
+            session=self.session,
+            status_provider=self.status_provider,
+            settings_manager=getattr(self.session, "settings_manager", None),
+            session_settings=getattr(self.session, "settings_controller", None),
+        )
         self._open_surface(
             NativeSurfaceView(
                 title="Settings",
