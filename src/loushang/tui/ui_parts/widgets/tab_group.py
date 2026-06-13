@@ -251,6 +251,8 @@ class TabGroup:
             wrap=self.wrap,
             theme=self.theme,
             focused=self.focused and self.header_focused,
+            level=self.level,
+            selected_focus=self._selected_focus_state(),
         )
 
     def _sync_tabs(self) -> None:
@@ -259,3 +261,10 @@ class TabGroup:
         self._tabs.wrap = self.wrap
         self._tabs.theme = self.theme
         self._tabs.focused = self.focused and self.header_focused
+        self._tabs.level = self.level
+        self._tabs.selected_focus = self._selected_focus_state()
+
+    def _selected_focus_state(self) -> str:
+        if not self.focused:
+            return "none"
+        return "header" if self.header_focused else "content"

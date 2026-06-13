@@ -9,6 +9,7 @@ from loushang.tui import (
     RenderConstraints,
     RenderLine,
     RenderResult,
+    ThemeResolver,
     strip_control_sequences,
 )
 from loushang.tui.ui_parts.widgets.tab_group import TabChange, TabGroup, TabPage
@@ -194,3 +195,22 @@ def test_tab_group_renders_header_only_when_no_content_height_remains() -> None:
     group = TabGroup([TabPage("one", "One", StaticPage(("content",)))])
 
     assert plain_lines(group, width=20, height=1) == ("* [One]",)
+
+
+def test_tab_group_uses_distinct_header_and_content_focus_tokens() -> None:
+    theme = ThemeResolver(
+        defaults={
+            "widget.tabs.level0.selected_header_focus": {"color": "cyan"},
+            "widget.tabs.level0.selected_content_focus": {"color": "green"},
+            "widget.tabs.tab": {"color": "white"},
+        }
+    )
+    page = FocusablePage(("content",))
+    group = TabGroup([TabPage("main", "Main", page)], focused=True, theme=theme)
+
+    header_raw = render_lines(group, width=40, height=3)[0]
+    assert header_raw.startswith("\x1b[36m")
+
+    assert group.focus_content() is True
+    content_raw = render_lines(group, width=40, height=3)[0]
+    assert content_raw.startswith("\x1b[32m")
