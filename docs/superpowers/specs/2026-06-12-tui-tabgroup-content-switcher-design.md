@@ -64,17 +64,36 @@ not a new interaction model.
 It is an overlay/surface primitive, so it is not the right public object to
 embed directly inside `TabPage` content.
 
+`SettingItem` and `SettingsList` in `src/loushang/tui/compat.py` already define
+the settings data model:
+
+- `SettingItem.id`
+- `SettingItem.label`
+- `SettingItem.enabled`
+- `SettingItem.description`
+- `SettingItem.current_value`
+- `SettingItem.values`
+- `SettingItem.submenu`
+- `SettingsList.set_enabled()`
+- `SettingsList.toggle()`
+
+No future settings page should introduce a second settings schema unless the
+existing compat model first proves insufficient.
+
 `SettingsSurface` in `src/loushang/tui/surfaces.py` already demonstrates the
-settings-specific version:
+settings-specific interaction layer:
 
 - search input
 - settings item filtering
 - long-list viewport slicing
 - selected setting activation via `InputIntent(kind="setting")`
+- value cycling through `SettingItem.values`
 - submenu support
 
-It is product-shaped and legacy-surface-oriented. It proves the settings
-scenario but should not become the general tab page widget.
+It is product-shaped and surface-oriented. It proves the settings scenario and
+should remain useful for transient overlay settings flows, but it should not be
+embedded directly as general `TabPage` content because a surface owns overlay
+lifecycle concerns such as close semantics and focus capture.
 
 `CommandPaletteView` in
 `src/loushang/tui/ui_parts/widgets/command_palette.py` is the closest current
@@ -255,6 +274,8 @@ The first `SearchableList` implementation is intentionally narrow:
 This resolves the long-list scope for planning: the first implementation must
 include a reusable `SearchableList` widget sufficient to prove long settings
 lists inside a `TabGroup`. Product-specific settings editing is a later slice.
+That later slice should reuse `SettingItem` and `SettingsList`; it should not
+invent a new `SettingRow` or second settings schema.
 
 The implementation should not blindly duplicate `SelectionSurface`,
 `SettingsSurface`, and `CommandPaletteView`. It should either reuse small local
@@ -475,6 +496,7 @@ widget.tabs.nested.selected_content_focus
 widget.tabs.nested.selected_header_focus
 widget.tabs.nested.disabled
 widget.tabs.normal
+widget.tabs.tab
 widget.tabs.selected
 widget.tabs.focus
 widget.tabs.disabled
@@ -484,6 +506,8 @@ Rules:
 
 - top-level tabs should read stronger than nested tabs
 - nested tabs should use indentation plus weaker semantic colors
+- `widget.tabs.tab` is the legacy normal token for enabled unselected tabs and
+  must remain in the fallback chain for existing theme compatibility
 - only one tab header in the active focus path should use a
   `selected_header_focus` token at a time
 - a parent selected tab should use `selected_content_focus` when focus is inside
@@ -588,6 +612,43 @@ The example should exercise:
 - nested tab switching
 - fixed-height content canvas
 - footer stability
+
+## Settings Page View Follow-Up
+
+Inline settings editing is intentionally outside the first `TabGroup` and
+`SearchableList` slice, but the design should reserve the path for it.
+
+The follow-up widget should be named `SettingsPageView` or another view-oriented
+name, not `SettingsList`, because `SettingsList` already exists as a data model
+in `loushang.tui.compat`.
+
+`SettingsPageView` should:
+
+- use existing `SettingItem` and `SettingsList` data objects
+- reuse or extract the search, filtering, viewport, value cycling, and submenu
+  behavior proven by `SettingsSurface`
+- follow the widget-shaped API style of `CommandPaletteView` and
+  `SearchableList`
+- be embeddable as `TabPage.content`
+- avoid `surface_close` and other overlay lifecycle assumptions
+- preserve page-local query, selected row, scroll offset, and in-progress edit
+  state across tab switches
+
+The intended settings editing behavior is control-panel style inline editing:
+
+- boolean settings toggle in place
+- enum settings cycle in place through `SettingItem.values`
+- text and number settings can enter a row-local editor in a later slice
+- locked or externally controlled settings should render as non-editable rows
+  with a reason
+- dialogs are reserved for destructive, multi-field, long-form, path-picking,
+  authentication, or otherwise complex settings
+
+Settings changes should continue to be structured. A `SettingsPageView` may
+return existing `InputIntent(kind="setting", text=item.id, note=value)` for
+compatibility, or a future typed change event if a product integration needs
+more detail. The first implementation plan for that follow-up must decide this
+return shape explicitly.
 
 ## Structured Events
 
@@ -907,6 +968,14 @@ Regression tests:
   `docs/internals/architecture/tui/native-terminal-core/ui-parts/tabgroup-content-switcher.md`
 - update the UI part inventory
 - keep this superpowers spec as the development record
+
+### Future Phase: SettingsPageView
+
+- do not add a new settings schema
+- reuse `SettingItem` and `SettingsList`
+- extract reusable settings behavior from `SettingsSurface` where practical
+- implement a page-embedded `SettingsPageView` for inline settings editing
+- keep `SettingsSurface` available for transient overlay settings flows
 
 ## Naming Decision
 

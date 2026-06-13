@@ -8,6 +8,13 @@ These documents explore method ontology, roles, phases, conductor behavior, and
 multi-agent methodology concepts. They are design inputs for `loushang.method`
 and future orchestration work, not current runtime contracts.
 
+## Notes
+
+- [Decision-Oriented Review Requirements](./decision-oriented-review-requirements.md)
+  captures requirements for reviewing long specs through decision indexes,
+  review ledgers, grouped human review, side-conversation recovery, and
+  role-based agent review.
+
 ## Reading Rule
 
 - Preserve `methods/**` examples as experimental methodology layout examples.
