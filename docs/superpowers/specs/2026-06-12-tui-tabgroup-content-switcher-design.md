@@ -2,7 +2,7 @@
 
 ## Status
 
-Draft for spec review.
+Ready for implementation planning review.
 
 This document is the temporary execution spec for the next TUI widget slice.
 The long-term internal architecture document should live at:
@@ -87,8 +87,8 @@ copy the exact settings fields, visual layout, colors, or text.
 - Support recursive composition for nested tabs.
 - Explicitly model focus between tab header and selected page content.
 - Distinguish tab state with semantic theme tokens, including nested levels.
-- Support settings-style pages with long searchable lists through composable
-  page content.
+- Add a reusable `SearchableList` page-content widget for settings-style long
+  lists.
 - Emit structured events for tab changes and page-level actions.
 - Add playback scenarios for tab switching, nested tabs, filtering, long list
   scrolling, and focus transitions.
@@ -100,6 +100,8 @@ copy the exact settings fields, visual layout, colors, or text.
   message bus.
 - Do not add a Prompt Toolkit-style global `Layout` focus stack.
 - Do not make `TabGroup` responsible for arbitrary long-list virtualization.
+- Do not add setting value editors, persistence, config file writes, or product
+  settings integration in this slice.
 - Do not copy Claude Code's settings visual design or exact settings data.
 - Do not require mouse support in the first slice.
 - Do not support draggable tabs, closable tabs, tab reordering, lazy async page
@@ -154,7 +156,60 @@ class TabGroup:
     theme: ThemeResolver | None = None
 ```
 
-The public surface should expose:
+Add `src/loushang/tui/ui_parts/widgets/searchable_list.py` in the same slice.
+
+```python
+from collections.abc import Callable, Sequence
+from dataclasses import dataclass
+
+from loushang.tui.theme import ThemeResolver
+
+
+@dataclass(frozen=True, slots=True)
+class SearchableListItem:
+    key: str
+    label: str
+    value: str = ""
+    description: str = ""
+    disabled: bool = False
+
+
+@dataclass(frozen=True, slots=True)
+class SearchableListSelect:
+    key: str
+    label: str
+    value: str = ""
+
+
+@dataclass(slots=True)
+class SearchableList:
+    items: Sequence[SearchableListItem]
+    query: str = ""
+    active_index: int = 0
+    focus_region: str = "search"
+    placeholder: str = "Search"
+    empty_text: str = "No matching items"
+    on_select: Callable[[SearchableListItem], object] | None = None
+    theme: ThemeResolver | None = None
+    focused: bool = False
+```
+
+The first `SearchableList` implementation is intentionally narrow:
+
+- one embedded search text input
+- one filtered result list
+- one selected row at a time
+- bounded viewport rendering
+- no value editing
+- no grouped sections
+- no fuzzy ranking
+- no multi-select
+
+This resolves the long-list scope for planning: the first implementation must
+include a reusable `SearchableList` widget sufficient to prove long settings
+lists inside a `TabGroup`. Product-specific settings editing is a later slice.
+
+`TabGroup` should expose:
 
 - `selected_value -> str`
 - `selected_page -> TabPage | None`
@@ -162,6 +217,24 @@ The public surface should expose:
 - `blur() -> None`
 - `focus_header() -> None`
 - `focus_content() -> bool`
+- `handle_input(event) -> object`
+- `editor_input_target() -> EditorInputTarget | None`
+- `render(constraints) -> RenderResult`
+
+`SearchableList` should expose:
+
+- `query -> str`
+- `filtered_items -> tuple[SearchableListItem, ...]`
+- `active_item -> SearchableListItem | None`
+- `active_key -> str`
+- `scroll_offset -> int`
+- `more_above -> int`
+- `more_below -> int`
+- `set_query(query: str) -> None`
+- `focus() -> None`
+- `blur() -> None`
+- `focus_search() -> None`
+- `focus_list() -> bool`
 - `handle_input(event) -> object`
 - `editor_input_target() -> EditorInputTarget | None`
 - `render(constraints) -> RenderResult`
@@ -225,10 +298,10 @@ Non-responsibilities:
 
 ### Settings-Style Long Lists
 
-Long settings lists should be implemented by a page content widget such as
-`SearchableList` or `SettingsList`, not by `TabGroup` itself.
+Long settings lists should be implemented by the reusable `SearchableList`
+page-content widget, not by `TabGroup` itself.
 
-That page content should own:
+`SearchableList` owns:
 
 - query text
 - filtered items
@@ -236,7 +309,7 @@ That page content should own:
 - scroll offset
 - viewport slicing
 - overflow hints
-- row activation intents
+- row activation events
 
 This keeps `TabGroup` reusable for pages that are not lists.
 
@@ -373,9 +446,10 @@ Focus inside nested content:
 ## Long List Requirements
 
 Settings-style tab pages must support long logical lists while rendering only a
-bounded visible slice.
+bounded visible slice. This slice includes a reusable `SearchableList` widget to
+provide that behavior.
 
-The long-list page content should provide:
+`SearchableList` should provide:
 
 - `items`: logical item list, potentially hundreds of rows
 - `query`: text filter state
@@ -402,6 +476,8 @@ Behavior:
 - `home` and `end` jump to list boundaries when the list has focus
 - switching away from and back to the tab preserves query, active row, and
   scroll offset because page content objects are persistent
+- activation returns `SearchableListSelect` when `on_select is None`
+- when `on_select` is provided, activation returns `callback_result(on_select(item))`
 
 Hard requirement:
 
@@ -452,11 +528,11 @@ The example should exercise:
 
 ## Structured Events
 
-`TabGroup` should return structured data when it has a semantic action. It can
-use callbacks first, and only add global `InputIntentKind` values if a concrete
-surface integration needs them.
+`TabGroup` should return structured data when it has a semantic action. It
+should use callbacks when supplied, and only add global `InputIntentKind` values
+if a concrete surface integration needs them.
 
-Initial event shape can be a small dataclass local to the widget module:
+The default tab-change event is a small dataclass local to the widget module:
 
 ```python
 @dataclass(frozen=True, slots=True)
@@ -466,20 +542,29 @@ class TabChange:
     level: int = 0
 ```
 
-If `on_change` is provided, `TabGroup` should return the callback result. If no
-callback is provided, it may return `TabChange` for a selected-value change or
-`True` for consumed focus movement. This should be decided in implementation
-planning based on existing widget conventions.
+Return contract:
 
-Page content such as `SettingsList` can return its own structured events, for
-example:
+- selected-value changes return `TabChange` when `on_change is None`
+- selected-value changes call `on_change(value)` when supplied and return
+  `callback_result(on_change(value))`
+- focus-only transitions return `True`
+- handled boundary no-ops return `False`
+- unhandled input returns `None`
+- selected page events pass through unchanged
+
+This intentionally differs from primitive `Tabs`, which returns `True` for
+unadorned value changes. `TabGroup` is a higher-level container, and the
+structured `TabChange` makes playback and integration assertions precise without
+requiring callers to parse rendered text.
+
+`SearchableList` returns its own structured selection event by default:
 
 ```python
 @dataclass(frozen=True, slots=True)
-class SettingSelect:
+class SearchableListSelect:
     key: str
     label: str
-    value: object
+    value: str = ""
 ```
 
 `TabGroup` should pass page-level events through unchanged.
@@ -737,8 +822,13 @@ Regression tests:
 - add nested `TabGroup` tests
 - update reference docs for tab state tokens
 
-### Phase 3: Settings-Style Long List Example
+### Phase 3: Searchable Long List And Example
 
+- add `SearchableListItem`
+- add `SearchableListSelect`
+- add `SearchableList`
+- add unit tests for filtering, viewport scrolling, activation, and focus
+  transitions
 - add or update a runnable example with search, long list, top-level tabs, and
   nested tabs
 - add playback tests for the scenario matrix
@@ -751,15 +841,10 @@ Regression tests:
 - update the UI part inventory
 - keep this superpowers spec as the development record
 
-## Open Questions
+## Naming Decision
 
-- Should the public name be `TabGroup` / `TabPage`, or should it mirror Textual
-  with `TabbedContent` / `TabPane`? This spec recommends `TabGroup` / `TabPage`
-  because it matches the user's vocabulary and keeps `Tabs` as the primitive.
-- Should first-slice `TabGroup` return a `TabChange` dataclass by default, or
-  only return callback results and `True` for consumed navigation? This should
-  follow existing widget conventions during implementation planning.
-- Should long-list support be a reusable `SearchableList` widget in the same
-  PR, or should the first PR add `TabGroup` only and use a small example-local
-  page object? This spec recommends `TabGroup` first, then a long-list page
-  widget if the implementation stays small enough.
+The public names should be `TabGroup` and `TabPage`.
+
+Do not mirror Textual's `TabbedContent` / `TabPane` names in the first public
+API. `TabGroup` matches the user's vocabulary, keeps `Tabs` as the primitive,
+and avoids implying that the widget owns a Textual-style DOM container model.
