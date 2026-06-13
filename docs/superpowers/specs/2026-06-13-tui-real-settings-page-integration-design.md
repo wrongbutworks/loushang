@@ -110,6 +110,12 @@ These are host-level compatibility fixes, not `SettingsPageView`-specific
 shortcuts. Existing surfaces should keep their current visual behavior unless
 they already return a cursor.
 
+Bottom-exclusive active surfaces still route input through
+`NativeSurfaceView.handle_input()` and the hosted content's `handle_input()`.
+`SettingsPageView.handle_input()` must therefore delegate text, paste, and
+editing keys to the focused page content directly. `editor_input_target()` is a
+host compatibility and cursor-editing hook, not the only path for search input.
+
 The initial page structure:
 
 ```text
@@ -149,8 +155,11 @@ Responsibilities:
 - Hide the hardware cursor unless the selected content declares a real text
   input cursor.
 - Translate Config page selection results into `InputIntent(kind="setting")`.
-- Treat `q`, Esc, and Escape as close keys by returning
-  `InputIntent(kind="surface_close")`.
+- Delegate close keys to the focused child first. If the child does not consume
+  the key, Esc/Escape close the page. Search fields may consume Esc to clear a
+  non-empty query, matching `SearchableList`.
+- Treat `q` as close only when focus is on tab headers, static pages, or list
+  rows. Search/text-input focus must accept printable `q` as query text.
 - Keep the surface open after Config changes and Model selections so users can
   make multiple changes in one visit.
 - Expose `apply_setting(id, value)` as the single owner for new-page Config and
@@ -165,9 +174,10 @@ The view should use the same focus rules proven by
 - Up from the first Config list item returns to search.
 - Left/right move only the focused tab header.
 - Nested Stats tabs use their own level-1 focus and colors.
-- Interactive page wrappers consume left/right/home/end while their search or
-  list content is focused, so the current `TabGroup` fallback tab navigation
-  cannot switch top-level pages from inside an editing/list region.
+- Interactive page wrappers delegate to the focused child first. Only if the
+  child does not handle left/right/home/end should the wrapper consume the key
+  to prevent parent `TabGroup` fallback navigation. Search fields must keep
+  normal cursor movement and home/end editing behavior.
 
 ### ConfigSettingsPage
 
@@ -389,7 +399,10 @@ Add native playback tests for the real `/settings` command:
 - left/right on focused tabs switches top-level pages;
 - Model appears as a top-level tab and shows the current model;
 - Stats page exposes `Overview / Model Usage` nested tabs;
-- `q` or Esc exits the page.
+- `q` exits from tabs/static/list focus but is inserted while search is
+  focused;
+- Esc closes when the focused child does not consume it, while search can use
+  Esc to clear a non-empty query.
 
 Add manager/host tests:
 
@@ -404,6 +417,11 @@ Add manager/host tests:
 - `NativeSurfaceView.editor_input_target()` delegates to hosted content.
 - `NativeSurfaceView.render()` offsets and preserves non-`InfoPanel` content
   cursors.
+- `SettingsPageView.handle_input()` routes text/paste/editing keys through the
+  selected page content even when hosted as a bottom-exclusive active surface.
+- `q` close behavior is focus-region aware.
+- left/right/home/end work inside search fields and do not switch parent tabs
+  when interactive content focus does not handle them.
 - No new `InputIntentKind` is added for model selection.
 - The standalone `/model` command and `ModelSelectorSurface` behavior remain
   covered by existing tests or a focused regression.
