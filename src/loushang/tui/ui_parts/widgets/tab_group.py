@@ -3,7 +3,12 @@ from __future__ import annotations
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field
 
-from loushang.tui.core import CursorDeclaration, RenderConstraints, RenderLine, RenderResult
+from loushang.tui.core import (
+    CursorDeclaration,
+    RenderConstraints,
+    RenderLine,
+    RenderResult,
+)
 from loushang.tui.theme import ThemeResolver
 from loushang.tui.ui_parts.widgets._utils import callback_result
 from loushang.tui.ui_parts.widgets.tabs import TabItem, Tabs
@@ -162,7 +167,7 @@ class TabGroup:
                 visible_height=constraints.visible_height,
             ),
         )
-        cursor = None
+        cursor = header.cursor
         if content.cursor is not None and len(header.lines) + content.cursor.row < constraints.max_height:
             cursor = CursorDeclaration(
                 row=len(header.lines) + content.cursor.row,

@@ -4,8 +4,17 @@ from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 from typing import Literal
 
-from loushang.tui.cell_width import autowrap_safe_width, truncate_to_width
-from loushang.tui.core import RenderConstraints, RenderLine, RenderResult
+from loushang.tui.cell_width import (
+    autowrap_safe_width,
+    truncate_to_width,
+    visible_width,
+)
+from loushang.tui.core import (
+    CursorDeclaration,
+    RenderConstraints,
+    RenderLine,
+    RenderResult,
+)
 from loushang.tui.theme import ThemeResolver
 from loushang.tui.ui_parts.widgets._utils import (
     callback_result,
@@ -72,9 +81,18 @@ class Tabs:
         if not self.tabs:
             return RenderResult.from_lines([], constraints=constraints)
         target_width = autowrap_safe_width(constraints.width)
-        parts = [_tab_segment(self, tab) for tab in self.tabs]
+        parts: list[str] = []
+        cursor_column: int | None = None
+        current_column = 0
+        for tab in self.tabs:
+            segment = _tab_segment(self, tab)
+            if self.focused and tab.value == self.value and not tab.disabled:
+                cursor_column = min(current_column, max(0, target_width - 1))
+            parts.append(segment)
+            current_column += visible_width(segment) + 2
         line = truncate_to_width("  ".join(parts), max_width=target_width, ellipsis="")
-        return RenderResult.from_lines([RenderLine(line)][: constraints.max_height], constraints=constraints)
+        cursor = None if cursor_column is None else CursorDeclaration(row=0, column=cursor_column)
+        return RenderResult.from_lines([RenderLine(line)][: constraints.max_height], constraints=constraints, cursor=cursor)
 
     def _enabled_indices(self) -> tuple[int, ...]:
         return tuple(index for index, tab in enumerate(self.tabs) if not tab.disabled)
@@ -142,7 +160,7 @@ class Tabs:
 def _tab_segment(tabs: Tabs, tab: TabItem) -> str:
     selected = tab.value == tabs.value and not tab.disabled
     focus_state = _selected_focus_state(tabs)
-    prefix = "> " if selected and focus_state in {"header", "content"} else "* " if selected else "  "
+    prefix = ">" if selected and focus_state in {"header", "content"} else "*" if selected else " "
     text = f"{prefix}[{tab.display_label}]"
     return style_text(text, tabs.theme, *_tab_tokens(tabs, selected=selected, disabled=tab.disabled))
 

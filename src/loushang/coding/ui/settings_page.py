@@ -23,6 +23,7 @@ from loushang.tui import (
     SearchableListSelect,
     TabGroup,
     TabPage,
+    ThemeResolver,
     truncate_to_width,
 )
 
@@ -49,6 +50,82 @@ class ConfigRow:
     value: str
     description: str = ""
     disabled: bool = False
+
+
+@dataclass(frozen=True, slots=True)
+class _ManagerBoolConfig:
+    id: str
+    label: str
+    getter: str
+    setter: str
+    status_label: str
+
+
+SETTINGS_VALUE_COLUMN = 42
+
+SETTINGS_PAGE_THEME = ThemeResolver(
+    defaults={
+        "widget.tabs.tab": {"color": "white"},
+        "widget.tabs.selected": {"bold": True, "color": "green"},
+        "widget.tabs.level0.selected_header_focus": {"bold": True, "color": "cyan"},
+        "widget.tabs.level0.selected_content_focus": {"bold": True, "color": "green"},
+        "widget.tabs.level1.selected_header_focus": {"bold": True, "color": "magenta"},
+        "widget.tabs.level1.selected_content_focus": {"bold": True, "color": "yellow"},
+        "widget.searchableList.search": {"color": "white"},
+        "widget.searchableList.placeholder": {"color": "bright_black"},
+        "widget.searchableList.item": {"color": "white"},
+        "widget.searchableList.focus": {"bold": True, "color": "cyan"},
+        "widget.searchableList.disabled": {"dim": True},
+        "widget.searchableList.description": {"color": "bright_black"},
+        "widget.searchableList.empty": {"color": "bright_black"},
+        "widget.searchableList.overflow": {"color": "bright_black"},
+    }
+)
+
+_MANAGER_BOOL_CONFIGS = (
+    _ManagerBoolConfig(
+        "terminal.progress",
+        "Terminal progress",
+        "get_show_terminal_progress",
+        "set_show_terminal_progress",
+        "Terminal progress",
+    ),
+    _ManagerBoolConfig(
+        "terminal.show_images",
+        "Show images",
+        "get_show_images",
+        "set_show_images",
+        "Show images",
+    ),
+    _ManagerBoolConfig(
+        "terminal.clear_on_shrink",
+        "Clear on shrink",
+        "get_clear_on_shrink",
+        "set_clear_on_shrink",
+        "Clear on shrink",
+    ),
+    _ManagerBoolConfig(
+        "images.auto_resize",
+        "Image auto-resize",
+        "get_image_auto_resize",
+        "set_image_auto_resize",
+        "Image auto-resize",
+    ),
+    _ManagerBoolConfig(
+        "images.block_images",
+        "Block images",
+        "get_block_images",
+        "set_block_images",
+        "Block images",
+    ),
+    _ManagerBoolConfig(
+        "retry.enabled",
+        "Retry",
+        "get_retry_enabled",
+        "set_retry_enabled",
+        "Retry",
+    ),
+)
 
 
 @dataclass(slots=True)
@@ -116,15 +193,15 @@ class ConfigSettingsPage:
     def render(self, constraints: RenderConstraints) -> RenderResult:
         if constraints.max_height <= 0:
             return RenderResult.from_lines([], constraints=constraints)
-        if constraints.max_height <= 2:
+        if constraints.max_height <= 4:
             return self.settings.render(constraints)
         result = self.settings.render(
             RenderConstraints(width=constraints.width, max_height=max(1, constraints.max_height - 2))
         )
         header = RenderLine(_settings_header(constraints.width))
-        rows = [result.lines[0], RenderLine(_separator(constraints.width)), header, *result.lines[1:]]
+        rows = [*result.lines[:3], RenderLine(""), header, *result.lines[3:]]
         cursor = result.cursor
-        if cursor is not None and cursor.row > 0:
+        if cursor is not None and cursor.row >= 3:
             cursor = CursorDeclaration(row=cursor.row + 2, column=cursor.column)
         return RenderResult.from_lines(rows[: constraints.max_height], constraints=constraints, cursor=cursor)
 
@@ -134,6 +211,9 @@ class ConfigSettingsPage:
             placeholder="Search settings...",
             empty_text="No matching settings",
             focused=focused,
+            search_box=True,
+            detail_column=SETTINGS_VALUE_COLUMN,
+            theme=SETTINGS_PAGE_THEME,
         )
 
     def _setting_intent(self, key: str) -> InputIntent | None:
@@ -206,6 +286,9 @@ class ModelPage:
             placeholder="Search models...",
             empty_text="No matching models",
             focused=focused,
+            search_box=True,
+            detail_column=SETTINGS_VALUE_COLUMN,
+            theme=SETTINGS_PAGE_THEME,
         )
 
 
@@ -254,16 +337,17 @@ class SettingsPageView:
             self._refresh_status_page()
             self._refresh_config_rows(preserve_active_key="statusline")
             return SettingsApplyResult(message, statusline_visible=self.status_provider.is_visible())
-        if item_id == "terminal.progress":
+        config = _manager_bool_config(item_id)
+        if config is not None:
             enabled = _as_bool(value)
             if enabled is None:
-                return SettingsApplyResult("Invalid terminal progress value.")
-            setter = getattr(self.settings_manager, "set_show_terminal_progress", None)
+                return SettingsApplyResult(f"Invalid {config.label} value.")
+            setter = getattr(self.settings_manager, config.setter, None)
             if not callable(setter):
-                return SettingsApplyResult("Terminal progress is not available.")
+                return SettingsApplyResult(f"{config.status_label} is not available.")
             setter(enabled)
-            self._refresh_config_rows(preserve_active_key="terminal.progress")
-            return SettingsApplyResult(f"Terminal progress: {'on' if enabled else 'off'}")
+            self._refresh_config_rows(preserve_active_key=config.id)
+            return SettingsApplyResult(f"{config.status_label}: {'on' if enabled else 'off'}")
         if item_id == "model.current":
             message = await select_available_model(self.session, query=value)
             await self._refresh_model_page()
@@ -295,11 +379,13 @@ class SettingsPageView:
     def render(self, constraints: RenderConstraints) -> RenderResult:
         if constraints.max_height <= 0:
             return RenderResult.from_lines([], constraints=constraints)
-        body_height = max(1, constraints.max_height - 1)
+        body_height = max(1, constraints.max_height - 2)
         result = self.tabs.render(RenderConstraints(width=constraints.width, max_height=body_height))
         rows = _with_separator(result.lines, width=constraints.width)
         cursor = _offset_cursor_after_separator(result.cursor)
         footer = _footer_text(self._focus_context(), width=constraints.width)
+        while len(rows) < constraints.max_height - 1:
+            rows.append(RenderLine(""))
         if len(rows) < constraints.max_height:
             rows.append(RenderLine(footer))
         return RenderResult.from_lines(rows[: constraints.max_height], constraints=constraints, cursor=cursor)
@@ -317,6 +403,7 @@ class SettingsPageView:
             ),
             value="overview",
             level=1,
+            theme=SETTINGS_PAGE_THEME,
         )
         self.tabs = TabGroup(
             (
@@ -327,6 +414,7 @@ class SettingsPageView:
                 TabPage("stats", "Stats", self.stats_page),
             ),
             value="config",
+            theme=SETTINGS_PAGE_THEME,
         )
 
     def _refresh_status_page(self) -> None:
@@ -370,10 +458,10 @@ def _config_rows(status_provider: CodingTuiStatusProvider, settings_manager: obj
         ConfigRow("statusline", "Status line", _bool_text(status_provider.is_visible())),
     ]
     if settings_manager is not None:
-        terminal_progress = getattr(settings_manager, "get_show_terminal_progress", None)
-        if callable(terminal_progress):
-            rows.append(ConfigRow("terminal.progress", "Terminal progress", _bool_text(bool(terminal_progress()))))
-    rows.append(ConfigRow("model.current", "Current model", "Use Model tab", disabled=True))
+        for config in _MANAGER_BOOL_CONFIGS:
+            getter = getattr(settings_manager, config.getter, None)
+            if callable(getter):
+                rows.append(ConfigRow(config.id, config.label, _bool_text(bool(getter()))))
     return tuple(rows)
 
 
@@ -456,7 +544,8 @@ def _model_usage_lines(current_value: str | None) -> tuple[str, ...]:
 
 
 def _settings_header(width: int) -> str:
-    return truncate_to_width("Setting                                    Value", max_width=width, ellipsis="")
+    value_column = max(8, min(SETTINGS_VALUE_COLUMN, max(8, width - 8)))
+    return truncate_to_width(f"{'Setting':<{value_column}}Value", max_width=width, ellipsis="")
 
 
 def _separator(width: int) -> str:
@@ -479,14 +568,21 @@ def _offset_cursor_after_separator(cursor: CursorDeclaration | None) -> CursorDe
 
 def _footer_text(focus_context: str, *, width: int) -> str:
     if focus_context == "search":
-        text = "Search | type filter | Down list | Up tabs | Esc clear/close"
+        text = "Type to filter · Enter/↓ to select · ↑ to tabs · Esc to clear"
     elif focus_context in {"settings-list", "model-list"}:
-        text = "List | Up/Down move | Enter select | Space toggle | q close"
+        text = "↑/↓ to move · Enter/Space to select · ↑ on first row to search · q to close"
     elif focus_context == "tabs":
-        text = "Tabs | Left/Right switch | Down content | q close"
+        text = "←/→ to switch tabs · ↓ to enter · q to close"
     else:
-        text = "Page | Up tabs | q close"
+        text = "↑ to tabs · q to close"
     return truncate_to_width(text, max_width=width, ellipsis="")
+
+
+def _manager_bool_config(item_id: str) -> _ManagerBoolConfig | None:
+    for config in _MANAGER_BOOL_CONFIGS:
+        if config.id == item_id:
+            return config
+    return None
 
 
 def _bool_text(value: bool) -> str:

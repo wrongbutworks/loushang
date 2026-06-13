@@ -51,6 +51,8 @@ class SearchableList:
     on_select: Callable[[SearchableListItem], object] | None
     theme: ThemeResolver | None
     focused: bool
+    search_box: bool
+    detail_column: int | None
 
     def __init__(
         self,
@@ -64,6 +66,8 @@ class SearchableList:
         on_select: Callable[[SearchableListItem], object] | None = None,
         theme: ThemeResolver | None = None,
         focused: bool = False,
+        search_box: bool = False,
+        detail_column: int | None = None,
     ) -> None:
         self._items = tuple(items)
         self.placeholder = placeholder
@@ -71,6 +75,8 @@ class SearchableList:
         self.on_select = on_select
         self.theme = theme
         self.focused = focused
+        self.search_box = search_box
+        self.detail_column = detail_column
         self.focus_region = focus_region if focus_region in {"search", "list"} else "search"
         self._active_index = max(0, active_index)
         self._scroll_offset = 0
@@ -170,9 +176,15 @@ class SearchableList:
         lines: list[RenderLine] = []
         cursor: CursorDeclaration | None = None
         query_line, query_cursor_column = self._query_line(target_width)
-        lines.append(query_line)
+        if self.search_box:
+            lines.extend(_boxed_query_lines(query_line.text, target_width))
+            query_cursor_row = 1
+            query_cursor_column += 2
+        else:
+            lines.append(query_line)
+            query_cursor_row = 0
         if self.focused and self.focus_region == "search":
-            cursor = CursorDeclaration(row=0, column=query_cursor_column)
+            cursor = CursorDeclaration(row=query_cursor_row, column=query_cursor_column)
 
         item_height = max(0, constraints.max_height - len(lines))
         if item_height > 0:
@@ -352,7 +364,6 @@ def _matches(item: SearchableListItem, needle: str) -> bool:
 def _item_line(view: SearchableList, index: int, item: SearchableListItem, width: int) -> str:
     is_focused_item = view.focused and view.focus_region == "list" and index == view._active_index and not item.disabled
     prefix = "> " if is_focused_item else "  "
-    label = truncate_to_width(f"{prefix}{item.label}", max_width=width, ellipsis="")
     item_token = (
         "widget.searchableList.disabled"
         if item.disabled
@@ -360,8 +371,19 @@ def _item_line(view: SearchableList, index: int, item: SearchableListItem, width
         if is_focused_item
         else "widget.searchableList.item"
     )
-    remaining = max(0, width - visible_width(label))
     detail = item.value or item.description
+    if view.detail_column is not None and detail:
+        detail_column = max(4, min(view.detail_column, max(4, width - 1)))
+        label = truncate_to_width(f"{prefix}{item.label}", max_width=detail_column, ellipsis="")
+        rendered = style_text(label, view.theme, item_token)
+        padding = " " * max(1, detail_column - visible_width(label))
+        detail_text = truncate_to_width(detail, max_width=max(0, width - detail_column), ellipsis="")
+        if detail_text:
+            rendered = f"{rendered}{padding}{style_text(detail_text, view.theme, 'widget.searchableList.description')}"
+        return truncate_to_width(rendered, max_width=width, ellipsis="")
+
+    label = truncate_to_width(f"{prefix}{item.label}", max_width=width, ellipsis="")
+    remaining = max(0, width - visible_width(label))
     rendered = style_text(label, view.theme, item_token)
     if detail and remaining >= 3:
         detail_text = truncate_to_width(detail, max_width=remaining - 2, ellipsis="")
@@ -373,10 +395,25 @@ def _item_line(view: SearchableList, index: int, item: SearchableListItem, width
 def _overflow_line(view: SearchableList, width: int) -> RenderLine | None:
     parts: list[str] = []
     if view.more_above:
-        parts.append(f"{view.more_above} more above")
+        parts.append(f"↑ {view.more_above} more above")
     if view.more_below:
-        parts.append(f"{view.more_below} more below")
+        parts.append(f"↓ {view.more_below} more below")
     if not parts:
         return None
     text = truncate_to_width(f"  {' / '.join(parts)}", max_width=width, ellipsis="")
     return RenderLine(style_text(text, view.theme, "widget.searchableList.overflow"))
+
+
+def _boxed_query_lines(text: str, width: int) -> list[RenderLine]:
+    if width <= 0:
+        return []
+    if width < 4:
+        return [RenderLine(truncate_to_width(text, max_width=width, ellipsis=""))]
+    inner_width = max(0, width - 4)
+    visible_text = truncate_to_width(text, max_width=inner_width, ellipsis="")
+    padding = " " * max(0, inner_width - visible_width(visible_text))
+    return [
+        RenderLine("╭" + "─" * (width - 2) + "╮"),
+        RenderLine(f"│ {visible_text}{padding} │"),
+        RenderLine("╰" + "─" * (width - 2) + "╯"),
+    ]

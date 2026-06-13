@@ -81,6 +81,7 @@ class NativeSurfaceView(FocusableMixin):
     footer: str = "Enter to select - Esc to close"
     subtitle: str = ""
     presentation: NativeSurfacePresentation = "bottom"
+    preferred_height: int | None = None
     _last_content_start_row: int = field(default=0, init=False, repr=False)
     _info_scroll_offset: int = field(default=0, init=False, repr=False)
     _last_info_body_height: int = field(default=0, init=False, repr=False)
@@ -649,6 +650,7 @@ class NativeSurfaceManager:
                 content=surface,
                 footer="",
                 presentation="bottom-exclusive",
+                preferred_height=24,
             )
         )
 

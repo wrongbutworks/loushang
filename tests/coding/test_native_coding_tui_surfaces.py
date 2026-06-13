@@ -47,6 +47,14 @@ class _EscContent(_CursorContent):
         return None
 
 
+class _TallContent:
+    def render(self, constraints: RenderConstraints) -> RenderResult:
+        return RenderResult.from_lines(
+            [RenderLine(f"line {index}") for index in range(constraints.max_height)],
+            constraints=constraints,
+        )
+
+
 def test_native_surface_view_delegates_editor_input_target() -> None:
     content = _EditorTargetContent()
     view = NativeSurfaceView(title="Settings", purpose="settings", content=content)
@@ -69,6 +77,25 @@ def test_native_surface_view_delegates_escape_to_non_info_content_first() -> Non
         kind="consumed",
         note="child_escape",
     )
+
+
+def test_native_app_uses_active_surface_preferred_height_for_bottom_frame() -> None:
+    app = _app()
+    app.active_surface = NativeSurfaceView(
+        title="Settings",
+        purpose="settings",
+        content=_TallContent(),
+        footer="",
+        presentation="bottom-exclusive",
+        preferred_height=22,
+    )
+
+    rendered = app.render(RenderConstraints(width=80, max_height=30))
+    plain_lines = tuple(strip_control_sequences(line.text) for line in rendered.lines)
+
+    assert len(plain_lines) == 22
+    assert plain_lines[0] == "Settings"
+    assert plain_lines[-1] == "line 19"
 
 
 def test_native_surface_manager_opens_model_surface_and_selects_model() -> None:
@@ -369,7 +396,7 @@ def test_native_surface_manager_opens_settings_in_bottom_frame_with_runtime_over
     assert app.active_surface.presentation == "bottom-exclusive"
     assert app.surface_host.entries == []
 
-    rendered = app.active_surface.render(RenderConstraints(width=100, max_height=10))
+    rendered = app.active_surface.render(RenderConstraints(width=100, max_height=14))
     plain = tuple(strip_control_sequences(line.text) for line in rendered.lines)
     assert any("Status" in line and "Config" in line and "Model" in line for line in plain)
     assert any("Search settings" in line for line in plain)
