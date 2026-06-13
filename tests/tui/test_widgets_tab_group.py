@@ -13,6 +13,7 @@ from loushang.tui import (
     strip_control_sequences,
 )
 from loushang.tui.ui_parts.widgets.tab_group import TabChange, TabGroup, TabPage
+from tests.tui.widget_example_playback import play_example
 
 
 def render_lines(part: Any, *, width: int = 40, height: int = 8) -> tuple[str, ...]:
@@ -247,3 +248,96 @@ def test_nested_tab_switch_does_not_change_parent_value() -> None:
     assert result == TabChange(value="models", previous_value="overview", level=1)
     assert outer.selected_value == "stats"
     assert nested.selected_value == "models"
+
+
+def test_tabgroup_searchable_list_example_playback_filters_settings() -> None:
+    frames = play_example(
+        "examples/tui/52_widgets_tabgroup_searchable_list.py",
+        events=(
+            ("type mode", InputEvent(kind="text", text="mode")),
+        ),
+        width=100,
+        height=24,
+    )
+
+    initial = frames[0].lines
+    filtered = frames[-1].lines
+
+    assert any("Workspace" in line and "Activity" in line for line in initial)
+    assert any("Search" in line for line in initial)
+    assert any("mode" in line.lower() for line in filtered)
+    assert any("Model" in line or "mode" in line for line in filtered)
+
+
+def test_tabgroup_searchable_list_example_playback_switches_nested_tabs() -> None:
+    frames = play_example(
+        "examples/tui/52_widgets_tabgroup_searchable_list.py",
+        events=(
+            ("up to tabs", InputEvent(kind="key", key="up")),
+            ("right models", InputEvent(kind="key", key="right")),
+            ("right permissions", InputEvent(kind="key", key="right")),
+            ("right activity", InputEvent(kind="key", key="right")),
+            ("down nested", InputEvent(kind="key", key="down")),
+            ("right nested models", InputEvent(kind="key", key="right")),
+        ),
+        width=100,
+        height=24,
+    )
+
+    assert any("Overview" in line and "Models" in line for line in frames[-1].lines)
+    assert any("Tokens per Day" in line or "Model usage" in line for line in frames[-1].lines)
+
+
+def test_tabgroup_searchable_list_example_playback_scrolls_long_list_without_layout_jump() -> None:
+    frames = play_example(
+        "examples/tui/52_widgets_tabgroup_searchable_list.py",
+        events=tuple((f"down {index}", InputEvent(kind="key", key="down")) for index in range(18)),
+        width=100,
+        height=24,
+    )
+
+    footer_rows = [
+        next(index for index, line in enumerate(frame.lines) if "Enter" in line or "filter" in line)
+        for frame in frames
+    ]
+    assert len(set(footer_rows)) == 1
+    assert any("more below" in line.lower() or "more above" in line.lower() for line in frames[-1].lines)
+
+
+def test_tabgroup_searchable_list_example_playback_page_keys_and_edges() -> None:
+    frames = play_example(
+        "examples/tui/52_widgets_tabgroup_searchable_list.py",
+        events=(
+            ("down to list", InputEvent(kind="key", key="down")),
+            ("page down", InputEvent(kind="key", key="pageDown")),
+            ("end", InputEvent(kind="key", key="end")),
+            ("page up", InputEvent(kind="key", key="pageUp")),
+            ("home", InputEvent(kind="key", key="home")),
+        ),
+        width=100,
+        height=24,
+    )
+
+    assert any("more below" in line.lower() for line in frames[0].lines)
+    assert any("more above" in line.lower() or "more below" in line.lower() for line in frames[2].lines)
+    assert any("more below" in line.lower() for line in frames[-1].lines)
+
+
+def test_tabgroup_searchable_list_example_playback_preserves_list_state_across_tabs() -> None:
+    frames = play_example(
+        "examples/tui/52_widgets_tabgroup_searchable_list.py",
+        events=(
+            ("down to list", InputEvent(kind="key", key="down")),
+            ("page down", InputEvent(kind="key", key="pageDown")),
+            ("page down again", InputEvent(kind="key", key="pageDown")),
+            ("shift tab to top tabs", InputEvent(kind="key", key="shift+tab")),
+            ("right models", InputEvent(kind="key", key="right")),
+            ("left workspace", InputEvent(kind="key", key="left")),
+            ("down content", InputEvent(kind="key", key="down")),
+        ),
+        width=100,
+        height=24,
+    )
+
+    final = "\n".join(frames[-1].lines).lower()
+    assert "more above" in final
