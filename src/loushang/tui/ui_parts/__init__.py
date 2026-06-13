@@ -45,6 +45,8 @@ from .widgets import Spinner as Spinner
 from .widgets import StatusKind as StatusKind
 from .widgets import StatusPill as StatusPill
 from .widgets import TabItem as TabItem
+from .widgets import TabGroup as TabGroup
+from .widgets import TabPage as TabPage
 from .widgets import Table as Table
 from .widgets import TableAlign as TableAlign
 from .widgets import TableColumn as TableColumn
@@ -109,6 +111,8 @@ __all__ = [
     "TableColumn",
     "TableRow",
     "TabItem",
+    "TabGroup",
+    "TabPage",
     "Tabs",
     "TextArea",
     "TextField",

@@ -33,6 +33,8 @@ from .table import TableColumn as TableColumn
 from .table import TableRow as TableRow
 from .tabs import TabItem as TabItem
 from .tabs import Tabs as Tabs
+from .tab_group import TabGroup as TabGroup
+from .tab_group import TabPage as TabPage
 from .textarea import TextArea as TextArea
 from .toast import Toast as Toast
 from .toast import ToastKind as ToastKind
@@ -73,6 +75,8 @@ __all__ = [
     "TableColumn",
     "TableRow",
     "TabItem",
+    "TabGroup",
+    "TabPage",
     "Tabs",
     "TextArea",
     "TextField",
