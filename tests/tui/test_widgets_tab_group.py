@@ -214,3 +214,36 @@ def test_tab_group_uses_distinct_header_and_content_focus_tokens() -> None:
     assert group.focus_content() is True
     content_raw = render_lines(group, width=40, height=3)[0]
     assert content_raw.startswith("\x1b[32m")
+
+
+def test_nested_tab_group_keeps_parent_selected_content_focus() -> None:
+    nested_page = FocusablePage(("nested content",))
+    nested = TabGroup([TabPage("overview", "Overview", nested_page)], level=1)
+    outer = TabGroup([TabPage("stats", "Stats", nested)], focused=True)
+
+    assert outer.focus_content() is True
+    assert nested.focused is True
+    assert nested.header_focused is True
+    assert outer.header_focused is False
+
+    raw = render_lines(outer, width=60, height=6)
+    assert "Stats" in strip_control_sequences(raw[0])
+    assert "Overview" in strip_control_sequences(raw[1])
+
+
+def test_nested_tab_switch_does_not_change_parent_value() -> None:
+    nested = TabGroup(
+        [
+            TabPage("overview", "Overview", StaticPage(("overview",))),
+            TabPage("models", "Models", StaticPage(("models",))),
+        ],
+        level=1,
+    )
+    outer = TabGroup([TabPage("stats", "Stats", nested)], focused=True)
+
+    outer.focus_content()
+    result = outer.handle_input(InputEvent(kind="key", key="right"))
+
+    assert result == TabChange(value="models", previous_value="overview", level=1)
+    assert outer.selected_value == "stats"
+    assert nested.selected_value == "models"
