@@ -59,7 +59,6 @@ from loushang.tui import (
     apply_theme_style,
 )
 from loushang.tui.cell_width import truncate_to_width, wrap_cells
-from loushang.tui.surfaces import SettingsSurface
 
 NativeSurfacePurpose = Literal["info", "model", "command", "settings", "dialog", "approval"]
 NativeSurfacePresentation = Literal["bottom", "bottom-exclusive"]
