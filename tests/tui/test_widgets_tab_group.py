@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import runpy
 from dataclasses import dataclass
 from typing import Any
 
@@ -264,9 +265,12 @@ def test_tabgroup_searchable_list_example_playback_filters_settings() -> None:
     filtered = frames[-1].lines
 
     assert any("Workspace" in line and "Activity" in line for line in initial)
+    assert initial[0].startswith("> [Workspace]")
     assert any("Search" in line for line in initial)
     assert any("mode" in line.lower() for line in filtered)
     assert any("Model" in line or "mode" in line for line in filtered)
+    assert any("Setting" in line and "Value" in line for line in initial)
+    assert any(set(line) == {"-"} for line in initial)
 
 
 def test_tabgroup_searchable_list_example_playback_switches_nested_tabs() -> None:
@@ -341,3 +345,44 @@ def test_tabgroup_searchable_list_example_playback_preserves_list_state_across_t
 
     final = "\n".join(frames[-1].lines).lower()
     assert "more above" in final
+
+
+def test_tabgroup_searchable_list_example_playback_selects_and_toggles_settings() -> None:
+    frames = play_example(
+        "examples/tui/52_widgets_tabgroup_searchable_list.py",
+        events=(
+            ("enter select", InputEvent(kind="key", key="enter")),
+            ("type compact", InputEvent(kind="text", text="compact")),
+            ("space toggle", InputEvent(kind="key", key="space")),
+        ),
+        width=100,
+        height=24,
+    )
+
+    assert any("Selected: Model" in line for line in frames[1].lines)
+    assert any("Auto-compact" in line and "true" in line for line in frames[-1].lines)
+    assert any("Toggled: Auto-compact" in line for line in frames[-1].lines)
+
+
+def test_tabgroup_searchable_list_example_printable_space_toggles_setting() -> None:
+    frames = play_example(
+        "examples/tui/52_widgets_tabgroup_searchable_list.py",
+        events=(
+            ("type compact", InputEvent(kind="text", text="compact")),
+            ("space toggle", InputEvent(kind="text", text=" ")),
+        ),
+        width=100,
+        height=24,
+    )
+
+    assert any("Auto-compact" in line and "true" in line for line in frames[-1].lines)
+    assert any("Toggled: Auto-compact" in line for line in frames[-1].lines)
+
+
+def test_tabgroup_searchable_list_example_quit_keys_are_global() -> None:
+    namespace = runpy.run_path("examples/tui/52_widgets_tabgroup_searchable_list.py", run_name="__test__")
+    should_quit = namespace["_should_quit"]
+
+    assert should_quit(InputEvent(kind="text", text="q"))
+    assert should_quit(InputEvent(kind="key", key="q"))
+    assert should_quit(InputEvent(kind="key", key="ctrl+c"))

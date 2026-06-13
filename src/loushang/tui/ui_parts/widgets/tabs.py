@@ -141,7 +141,8 @@ class Tabs:
 
 def _tab_segment(tabs: Tabs, tab: TabItem) -> str:
     selected = tab.value == tabs.value and not tab.disabled
-    prefix = "> " if tabs.focused and selected else "* " if selected else "  "
+    focus_state = _selected_focus_state(tabs)
+    prefix = "> " if selected and focus_state in {"header", "content"} else "* " if selected else "  "
     text = f"{prefix}[{tab.display_label}]"
     return style_text(text, tabs.theme, *_tab_tokens(tabs, selected=selected, disabled=tab.disabled))
 

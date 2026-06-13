@@ -1,10 +1,11 @@
 from __future__ import annotations
 
 import asyncio
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from typing import Any
 
 from loushang.tui import (
+    CursorDeclaration,
     FocusableMixin,
     InputEvent,
     RenderConstraints,
@@ -23,7 +24,7 @@ from loushang.tui import (
 )
 
 CONTENT_HEIGHT = 20
-FOOTER_TEXT = "Type to filter | Enter/down to select | Up to tabs | Esc to clear"
+SETTING_LABEL_WIDTH = 42
 
 TABGROUP_SEARCH_THEME = ThemeResolver(
     defaults={
@@ -46,16 +47,12 @@ TABGROUP_SEARCH_THEME = ThemeResolver(
 
 @dataclass(slots=True)
 class SettingsListPage(FocusableMixin):
-    settings: SearchableList = field(
-        default_factory=lambda: SearchableList(
-            _settings_items(),
-            placeholder="Search settings...",
-            theme=TABGROUP_SEARCH_THEME,
-        )
-    )
+    items: tuple[SearchableListItem, ...] = field(default_factory=lambda: _settings_items())
+    settings: SearchableList = field(init=False)
 
     def __post_init__(self) -> None:
         FocusableMixin.__init__(self)
+        self.settings = self._make_settings(focused=False)
 
     def focus(self) -> None:
         self.focused = True
@@ -69,10 +66,58 @@ class SettingsListPage(FocusableMixin):
         return self.settings.editor_input_target()
 
     def handle_input(self, event: Any) -> object:
+        if getattr(event, "kind", "") == "key" and getattr(event, "key", "") in {"enter", "space"}:
+            return self._activate_current()
+        if getattr(event, "kind", "") == "text" and getattr(event, "text", "") == " ":
+            return self._activate_current()
         return self.settings.handle_input(event)
 
     def render(self, constraints: RenderConstraints) -> RenderResult:
-        return self.settings.render(constraints)
+        if constraints.max_height <= 2:
+            return self.settings.render(constraints)
+        settings = self.settings.render(
+            RenderConstraints(width=constraints.width, max_height=max(1, constraints.max_height - 2))
+        )
+        rows = list(settings.lines[:1])
+        rows.append(RenderLine(_separator(constraints.width)))
+        rows.append(RenderLine(_settings_header(constraints.width)))
+        rows.extend(settings.lines[1:])
+        return RenderResult.from_lines(
+            rows[: constraints.max_height],
+            constraints=constraints,
+            cursor=settings.cursor,
+        )
+
+    def _activate_current(self) -> str | None:
+        item = self.settings.active_item
+        if item is None:
+            return "Unavailable"
+        boolean_value = _boolean_value(item.value)
+        if boolean_value is None:
+            return f"Selected: {item.label}"
+        next_value = "false" if boolean_value else "true"
+        self.items = tuple(replace(existing, value=next_value) if existing.key == item.key else existing for existing in self.items)
+        query = self.settings.query
+        focus_region = self.settings.focus_region
+        focused = self.settings.focused
+        self.settings = self._make_settings(query=query, focus_region=focus_region, focused=focused)
+        return f"Toggled: {item.label} -> {next_value}"
+
+    def _make_settings(
+        self,
+        *,
+        query: str = "",
+        focus_region: str = "search",
+        focused: bool,
+    ) -> SearchableList:
+        return SearchableList(
+            self.items,
+            query=query,
+            focus_region=focus_region,
+            placeholder="Search settings...",
+            theme=TABGROUP_SEARCH_THEME,
+            focused=focused,
+        )
 
 
 @dataclass(slots=True)
@@ -108,19 +153,26 @@ class SettingsPanelsApp(FocusableMixin):
         return self.tabs.editor_input_target()
 
     def render(self, constraints: RenderConstraints) -> RenderResult:
-        group_height = max(1, min(constraints.max_height - 1, CONTENT_HEIGHT + 1))
+        body_height = max(1, min(constraints.max_height - 2, CONTENT_HEIGHT + 2))
+        group_height = max(1, body_height - 1)
         group = self.tabs.render(RenderConstraints(width=constraints.width, max_height=group_height))
-        rows = list(group.lines)
-        while len(rows) < group_height:
+        rows = _with_top_separator(group.lines, width=constraints.width)
+        cursor = _offset_cursor_after_top_separator(group.cursor)
+        while len(rows) < body_height:
             rows.append(RenderLine(""))
-        footer = truncate_to_width(FOOTER_TEXT, max_width=constraints.width, ellipsis="")
-        rows.append(RenderLine(footer))
-        return RenderResult.from_lines(rows[: constraints.max_height], constraints=constraints, cursor=group.cursor)
+        if len(rows) < constraints.max_height:
+            rows.append(RenderLine(_separator(constraints.width)))
+        if len(rows) < constraints.max_height:
+            rows.append(RenderLine(_footer_text(self.status, width=constraints.width)))
+        return RenderResult.from_lines(rows[: constraints.max_height], constraints=constraints, cursor=cursor)
 
     def handle_input(self, event: Any) -> object:
         result = self.tabs.handle_input(event)
         if isinstance(result, SearchableListSelect):
             self.status = f"Selected: {result.label}"
+            return True
+        if isinstance(result, str):
+            self.status = result
             return True
         return True if result is not None else None
 
@@ -137,7 +189,7 @@ async def main() -> int:
     tui = build_app()
 
     async def on_input(event: InputEvent, context: Any) -> TuiInputResult:
-        if event.kind == "text" and "q" in event.text.lower():
+        if _should_quit(event):
             return context.stop(0)
         context.tui.handle_input(event)
         return TuiInputResult()
@@ -200,6 +252,52 @@ def _settings_items() -> tuple[SearchableListItem, ...]:
         SearchableListItem("archive", "Archive old sessions", "disabled", disabled=True),
     )
     return base
+
+
+def _boolean_value(value: str) -> bool | None:
+    normalized = value.casefold()
+    if normalized == "true":
+        return True
+    if normalized == "false":
+        return False
+    return None
+
+
+def _separator(width: int) -> str:
+    return "-" * max(1, width)
+
+
+def _settings_header(width: int) -> str:
+    label_width = max(8, min(SETTING_LABEL_WIDTH, width - 8))
+    text = f"{'Setting':<{label_width}}Value"
+    return truncate_to_width(text, max_width=width, ellipsis="")
+
+
+def _with_top_separator(lines: tuple[RenderLine, ...], *, width: int) -> list[RenderLine]:
+    if not lines:
+        return []
+    return [lines[0], RenderLine(_separator(width)), *lines[1:]]
+
+
+def _offset_cursor_after_top_separator(cursor: CursorDeclaration | None) -> CursorDeclaration | None:
+    if cursor is None:
+        return None
+    if cursor.row == 0:
+        return cursor
+    return CursorDeclaration(row=cursor.row + 1, column=cursor.column)
+
+
+def _footer_text(status: str, *, width: int) -> str:
+    text = f"{status} | Type to filter | Enter select/toggle | Space toggle | Esc clear | q quit"
+    return truncate_to_width(text, max_width=width, ellipsis="")
+
+
+def _should_quit(event: InputEvent) -> bool:
+    if event.kind == "text" and "q" in event.text.casefold():
+        return True
+    if event.kind == "key" and event.key in {"q", "ctrl+c"}:
+        return True
+    return False
 
 
 def _model_lines() -> tuple[str, ...]:

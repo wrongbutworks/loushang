@@ -1135,7 +1135,7 @@ def _render_then_position_cursor(
 ) -> tuple[TerminalOperation, ...]:
     render_operations = _wrap_synchronized(operations)
     if cursor is None:
-        return render_operations
+        return (TerminalOperation.hide_cursor(), *render_operations)
     return (
         TerminalOperation.hide_cursor(),
         *render_operations,
