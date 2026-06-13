@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass
+from typing import Literal
 
 from loushang.tui.cell_width import autowrap_safe_width, truncate_to_width
 from loushang.tui.core import RenderConstraints, RenderLine, RenderResult
@@ -11,6 +12,8 @@ from loushang.tui.ui_parts.widgets._utils import (
     is_activation_event,
     style_text,
 )
+
+TabFocusState = Literal["auto", "header", "content", "none"]
 
 
 @dataclass(frozen=True, slots=True)
@@ -33,6 +36,8 @@ class Tabs:
     on_change: Callable[[str], object] | None = None
     theme: ThemeResolver | None = None
     focused: bool = False
+    level: int = 0
+    selected_focus: TabFocusState = "auto"
 
     def __post_init__(self) -> None:
         self.tabs = tuple(self.tabs)
@@ -136,15 +141,63 @@ class Tabs:
 
 def _tab_segment(tabs: Tabs, tab: TabItem) -> str:
     selected = tab.value == tabs.value and not tab.disabled
-    prefix = "> " if tabs.focused and selected else "* " if selected else "  "
+    focus_state = _selected_focus_state(tabs)
+    prefix = "> " if selected and focus_state in {"header", "content"} else "* " if selected else "  "
     text = f"{prefix}[{tab.display_label}]"
-    token = (
-        "widget.tabs.disabled"
-        if tab.disabled
-        else "widget.tabs.focus"
-        if tabs.focused and selected
-        else "widget.tabs.selected"
-        if selected
-        else "widget.tabs.tab"
+    return style_text(text, tabs.theme, *_tab_tokens(tabs, selected=selected, disabled=tab.disabled))
+
+
+def _selected_focus_state(tabs: Tabs) -> str:
+    if tabs.selected_focus != "auto":
+        return tabs.selected_focus
+    return "header" if tabs.focused else "none"
+
+
+def _tab_tokens(tabs: Tabs, *, selected: bool, disabled: bool) -> tuple[str, ...]:
+    level = max(0, tabs.level)
+    nested_prefix = "widget.tabs.nested" if level > 0 else ""
+    level_prefix = f"widget.tabs.level{level}"
+    if disabled:
+        return tuple(
+            token
+            for token in (
+                "widget.tabs.disabled",
+                f"{nested_prefix}.disabled" if nested_prefix else "",
+                f"{level_prefix}.disabled",
+            )
+            if token
+        )
+    if selected:
+        focus_state = _selected_focus_state(tabs)
+        if focus_state == "header":
+            return tuple(
+                token
+                for token in (
+                    "widget.tabs.selected",
+                    "widget.tabs.focus",
+                    f"{nested_prefix}.selected_header_focus" if nested_prefix else "",
+                    f"{level_prefix}.selected_header_focus",
+                )
+                if token
+            )
+        if focus_state == "content":
+            return tuple(
+                token
+                for token in (
+                    "widget.tabs.selected",
+                    f"{nested_prefix}.selected_content_focus" if nested_prefix else "",
+                    f"{level_prefix}.selected_content_focus",
+                )
+                if token
+            )
+        return ("widget.tabs.selected",)
+    return tuple(
+        token
+        for token in (
+            "widget.tabs.tab",
+            "widget.tabs.normal",
+            f"{nested_prefix}.normal" if nested_prefix else "",
+            f"{level_prefix}.normal",
+        )
+        if token
     )
-    return style_text(text, tabs.theme, token)

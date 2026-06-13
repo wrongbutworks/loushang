@@ -190,6 +190,15 @@ def test_tabs_normalize_value_render_theme_and_width() -> None:
     assert_widths_within(render_lines(tabs, width=10, height=1), 10)
 
 
+def test_tabs_level_tokens_fallback_to_legacy_tab_token() -> None:
+    theme = ThemeResolver(defaults={"widget.tabs.tab": {"color": "red"}})
+    tabs = Tabs([TabItem("one", "One"), TabItem("two", "Two")], theme=theme)
+
+    raw = render_lines(tabs, width=40, height=1)[0]
+
+    assert "\x1b[31m  [Two]" in raw
+
+
 def test_tabs_navigation_changes_value_callbacks_and_activation_forms() -> None:
     calls: list[str] = []
 

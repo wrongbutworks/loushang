@@ -69,8 +69,20 @@ def test_first_render_flushes_full_logical_lines_without_clearing_scrollback() -
     assert step.diagnostics.previous_rendered_lines == ()
     assert step.diagnostics.clear_scrollback_emitted is False
     assert step.frame is not None
-    assert step.frame.serialized_output == "\x1b[?2026hhello\r\nstatus\x1b[?2026l"
+    assert step.frame.serialized_output == "\x1b[?25l\x1b[?2026hhello\r\nstatus\x1b[?2026l"
     assert step.frame.screen_after.visible_lines[:2] == ("hello", "status")
+
+
+def test_first_render_without_declared_cursor_hides_hardware_cursor() -> None:
+    runtime = TuiRuntime(
+        render_loop=RenderLoop(StaticRoot(("hello", "status"))),
+        terminal=FakeTerminalPort(size=TerminalSize(columns=20, rows=5)),
+    )
+
+    step = runtime.render_now()
+
+    assert step.diagnostics.current_logical_lines == ("hello", "status")
+    assert TerminalOperation.hide_cursor() in step.diagnostics.operations
 
 
 def test_runtime_render_now_emits_tui_render_frame_diagnostics() -> None:
@@ -229,6 +241,7 @@ def test_append_update_writes_only_appended_lines_and_preserves_previous_snapsho
     assert step.diagnostics.append_start == 1
     assert step.diagnostics.appended_lines == 1
     assert step.diagnostics.operations == (
+        TerminalOperation.hide_cursor(),
         TerminalOperation.begin_synchronized_update(),
         TerminalOperation.newline(),
         TerminalOperation.write("two"),
@@ -251,6 +264,7 @@ def test_append_update_scrolls_below_visible_viewport_without_repaint() -> None:
     assert step.diagnostics.previous_viewport_top == 2
     assert step.diagnostics.viewport_top == 3
     assert step.diagnostics.operations == (
+        TerminalOperation.hide_cursor(),
         TerminalOperation.begin_synchronized_update(),
         TerminalOperation.newline(),
         TerminalOperation.write("line 5"),
@@ -357,6 +371,7 @@ def test_changed_range_update_rewrites_only_visible_changed_rows() -> None:
     step.assert_operation_class("changed_range_update")
     assert step.diagnostics.changed_line_range == (1, 1)
     assert step.diagnostics.operations == (
+        TerminalOperation.hide_cursor(),
         TerminalOperation.begin_synchronized_update(),
         TerminalOperation.move_relative(lines=-1),
         TerminalOperation.carriage_return(),
@@ -396,7 +411,8 @@ def test_changed_range_update_uses_pi_style_relative_cursor_movement_inside_view
     assert first.diagnostics.hardware_cursor_row == 4
     step.assert_operation_class("changed_range_update")
     assert step.diagnostics.previous_viewport_top == 2
-    assert step.diagnostics.operations[:4] == (
+    assert step.diagnostics.operations[:5] == (
+        TerminalOperation.hide_cursor(),
         TerminalOperation.begin_synchronized_update(),
         TerminalOperation.move_relative(lines=-1),
         TerminalOperation.carriage_return(),
@@ -559,7 +575,7 @@ def test_render_finalization_adds_reset_and_osc8_close_after_styled_lines() -> N
 
     assert step.diagnostics.current_logical_lines == ("\x1b[31mred\x1b[0m\x1b]8;;\x07", "plain")
     assert step.frame is not None
-    assert step.frame.serialized_output == "\x1b[?2026h\x1b[31mred\x1b[0m\x1b]8;;\x07\r\nplain\x1b[?2026l"
+    assert step.frame.serialized_output == "\x1b[?25l\x1b[?2026h\x1b[31mred\x1b[0m\x1b]8;;\x07\r\nplain\x1b[?2026l"
     assert step.frame.screen_after.cell_style(row=1, column=0).foreground is None
 
 
@@ -572,7 +588,7 @@ def test_render_finalization_preserves_terminal_image_lines_without_reset_suffix
 
     assert step.diagnostics.current_logical_lines == (image_line,)
     assert step.frame is not None
-    assert step.frame.serialized_output == f"\x1b[?2026h{image_line}\x1b[?2026l"
+    assert step.frame.serialized_output == f"\x1b[?25l\x1b[?2026h{image_line}\x1b[?2026l"
 
 
 def test_changed_range_update_deletes_previous_kitty_image_id_before_replacing_line() -> None:
@@ -703,7 +719,8 @@ def test_width_or_height_change_uses_pi_style_resize_repaint_with_clear_scrollba
     assert step.diagnostics.width_changed is True
     assert step.diagnostics.height_changed is True
     assert step.diagnostics.repaint_kind == "resize"
-    assert step.diagnostics.operations[:3] == (
+    assert step.diagnostics.operations[:4] == (
+        TerminalOperation.hide_cursor(),
         TerminalOperation.begin_synchronized_update(),
         TerminalOperation.clear_screen(),
         TerminalOperation.clear_scrollback(),

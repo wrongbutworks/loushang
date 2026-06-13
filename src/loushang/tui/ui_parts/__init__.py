@@ -40,11 +40,16 @@ from .widgets import MenuItem as MenuItem
 from .widgets import ProgressBar as ProgressBar
 from .widgets import QuestionDialog as QuestionDialog
 from .widgets import RadioGroup as RadioGroup
+from .widgets import SearchableList as SearchableList
+from .widgets import SearchableListItem as SearchableListItem
+from .widgets import SearchableListSelect as SearchableListSelect
 from .widgets import SelectList as SelectList
 from .widgets import Spinner as Spinner
 from .widgets import StatusKind as StatusKind
 from .widgets import StatusPill as StatusPill
 from .widgets import TabItem as TabItem
+from .widgets import TabGroup as TabGroup
+from .widgets import TabPage as TabPage
 from .widgets import Table as Table
 from .widgets import TableAlign as TableAlign
 from .widgets import TableColumn as TableColumn
@@ -98,6 +103,9 @@ __all__ = [
     "ScreenLayout",
     "ScreenRegion",
     "ScreenRegionStack",
+    "SearchableList",
+    "SearchableListItem",
+    "SearchableListSelect",
     "SelectList",
     "Spinner",
     "StatusBar",
@@ -109,6 +117,8 @@ __all__ = [
     "TableColumn",
     "TableRow",
     "TabItem",
+    "TabGroup",
+    "TabPage",
     "Tabs",
     "TextArea",
     "TextField",
