@@ -211,6 +211,20 @@ view = CommandPaletteView(palette)
 view.focus()
 ```
 
+## P2B Tabbed Content
+
+| Widget | Use it for |
+| --- | --- |
+| `TabGroup` / `TabPage` | Tab header plus persistent page content. |
+| `SearchableList` / `SearchableListItem` | Searchable long lists that can live inside a tab page. |
+
+`TabGroup` composes existing `Tabs` with persistent page content. It keeps
+`ContentSwitcher` internal and returns a structured tab-change object when the
+selected page changes without a callback.
+
+`SearchableList` owns query text, filtered items, active row, viewport offset,
+and structured selection. It does not edit settings or write configuration.
+
 ## Forms
 
 ```python

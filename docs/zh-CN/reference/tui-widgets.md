@@ -200,6 +200,19 @@ view = CommandPaletteView(palette)
 view.focus()
 ```
 
+## P2B 标签页内容
+
+| 控件 | 用途 |
+| --- | --- |
+| `TabGroup` / `TabPage` | 标签头加持久化页面内容。 |
+| `SearchableList` / `SearchableListItem` | 可放入标签页的可搜索长列表。 |
+
+`TabGroup` 组合现有 `Tabs` 与持久化页面内容。`ContentSwitcher` 保持内部实现；
+没有提供回调时，选中页面变化会返回结构化 tab-change 对象。
+
+`SearchableList` 拥有查询文本、过滤结果、active 行、viewport offset 和结构化选择结果。
+它不编辑设置，也不写入配置。
+
 ## 表单
 
 ```python
