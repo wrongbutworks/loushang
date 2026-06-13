@@ -1,0 +1,196 @@
+from __future__ import annotations
+
+from dataclasses import dataclass
+from typing import Any
+
+from loushang.tui import (
+    CursorDeclaration,
+    InputEvent,
+    RenderConstraints,
+    RenderLine,
+    RenderResult,
+    strip_control_sequences,
+)
+from loushang.tui.ui_parts.widgets.tab_group import TabChange, TabGroup, TabPage
+
+
+def render_lines(part: Any, *, width: int = 40, height: int = 8) -> tuple[str, ...]:
+    result = part.render(RenderConstraints(width=width, max_height=height))
+    return tuple(line.text for line in result.lines)
+
+
+def plain_lines(part: Any, *, width: int = 40, height: int = 8) -> tuple[str, ...]:
+    return tuple(strip_control_sequences(line) for line in render_lines(part, width=width, height=height))
+
+
+@dataclass(slots=True)
+class StaticPage:
+    lines: tuple[str, ...]
+
+    def render(self, constraints: RenderConstraints) -> RenderResult:
+        return RenderResult.from_lines(
+            [RenderLine(line[: constraints.width]) for line in self.lines[: constraints.max_height]],
+            constraints=constraints,
+        )
+
+
+@dataclass(slots=True)
+class FocusablePage(StaticPage):
+    focused: bool = False
+    events: list[str] | None = None
+
+    def focus(self) -> None:
+        self.focused = True
+
+    def blur(self) -> None:
+        self.focused = False
+
+    def handle_input(self, event: object) -> object:
+        key = getattr(event, "key", "")
+        if key:
+            if self.events is not None:
+                self.events.append(key)
+            if key == "handled":
+                return "page-handled"
+            if key == "up":
+                return None
+        return None
+
+
+def test_tab_group_normalizes_value_and_renders_selected_page() -> None:
+    group = TabGroup(
+        [
+            TabPage("overview", "Overview", StaticPage(("Overview page",))),
+            TabPage("logs", "Logs", StaticPage(("Logs page",))),
+        ],
+        value="missing",
+        content_height=2,
+    )
+
+    assert group.selected_value == "overview"
+    assert group.selected_page is not None
+    assert plain_lines(group, width=40, height=4) == (
+        "* [Overview]    [Logs]",
+        "Overview page",
+        "",
+    )
+
+
+def test_tab_group_fixed_content_height_pads_and_clips() -> None:
+    group = TabGroup(
+        [TabPage("long", "Long", StaticPage(("one", "two", "three")))],
+        content_height=2,
+    )
+
+    assert plain_lines(group, width=20, height=5) == (
+        "* [Long]",
+        "one",
+        "two",
+    )
+
+    short = TabGroup([TabPage("short", "Short", StaticPage(("one",)))], content_height=3)
+    assert plain_lines(short, width=20, height=5) == (
+        "* [Short]",
+        "one",
+        "",
+        "",
+    )
+
+
+def test_tab_group_returns_tab_change_without_callback() -> None:
+    group = TabGroup(
+        [
+            TabPage("one", "One", StaticPage(("One",))),
+            TabPage("two", "Two", StaticPage(("Two",))),
+        ],
+        focused=True,
+    )
+
+    result = group.handle_input(InputEvent(kind="key", key="right"))
+
+    assert result == TabChange(value="two", previous_value="one", level=0)
+    assert group.selected_value == "two"
+
+
+def test_tab_group_callback_result_takes_precedence() -> None:
+    calls: list[str] = []
+    group = TabGroup(
+        [
+            TabPage("one", "One", StaticPage(("One",))),
+            TabPage("two", "Two", StaticPage(("Two",))),
+        ],
+        focused=True,
+        on_change=lambda value: calls.append(value),
+    )
+
+    assert group.handle_input(InputEvent(kind="key", key="right")) is True
+    assert calls == ["two"]
+
+
+def test_tab_group_down_enters_content_and_up_returns_to_header() -> None:
+    page = FocusablePage(("content",), events=[])
+    group = TabGroup([TabPage("page", "Page", page)], focused=True)
+
+    assert group.handle_input(InputEvent(kind="key", key="down")) is True
+    assert group.header_focused is False
+    assert page.focused is True
+
+    assert group.handle_input(InputEvent(kind="key", key="handled")) == "page-handled"
+    assert page.events == ["handled"]
+
+    assert group.handle_input(InputEvent(kind="key", key="up")) is True
+    assert group.header_focused is True
+    assert page.focused is False
+
+
+def test_tab_group_preserves_page_objects_across_switches() -> None:
+    first = FocusablePage(("first",), events=[])
+    second = FocusablePage(("second",), events=[])
+    group = TabGroup(
+        [TabPage("first", "First", first), TabPage("second", "Second", second)],
+        focused=True,
+    )
+
+    group.focus_content()
+    assert first.focused is True
+    assert group.handle_input(InputEvent(kind="key", key="right")) == TabChange("second", "first", 0)
+    assert first.focused is False
+    assert second.focused is True
+
+    group.handle_input(InputEvent(kind="key", key="left"))
+    assert first is group.selected_page.content
+    assert first.focused is True
+
+
+def test_tab_group_editor_target_delegates_only_when_content_focused() -> None:
+    class EditorPage(FocusablePage):
+        def editor_input_target(self) -> object | None:
+            return "editor-target" if self.focused else None
+
+    group = TabGroup([TabPage("edit", "Edit", EditorPage(("edit",)))], focused=True)
+
+    assert group.editor_input_target() is None
+    assert group.focus_content() is True
+    assert group.editor_input_target() == "editor-target"
+
+
+def test_tab_group_offsets_selected_content_cursor() -> None:
+    class CursorPage(StaticPage):
+        def render(self, constraints: RenderConstraints) -> RenderResult:
+            return RenderResult.from_lines(
+                [RenderLine("abc")],
+                constraints=constraints,
+                cursor=CursorDeclaration(row=0, column=2),
+            )
+
+    group = TabGroup([TabPage("edit", "Edit", CursorPage(("abc",)))], focused=True)
+
+    result = group.render(RenderConstraints(width=20, max_height=3))
+
+    assert result.cursor == CursorDeclaration(row=1, column=2)
+
+
+def test_tab_group_renders_header_only_when_no_content_height_remains() -> None:
+    group = TabGroup([TabPage("one", "One", StaticPage(("content",)))])
+
+    assert plain_lines(group, width=20, height=1) == ("* [One]",)
