@@ -103,3 +103,21 @@ def test_searchable_list_renders_bounded_viewport_and_overflow_counts() -> None:
     plain_lines(view, width=40, height=6)
     assert view.more_above > 0
     assert view.more_below > 0
+
+
+def test_searchable_list_can_preserve_active_key_when_items_are_replaced() -> None:
+    items = (
+        SearchableListItem("auto-compact", "Auto-compact", "false"),
+        SearchableListItem("reduce-motion", "Reduce motion", "false"),
+    )
+    view = SearchableList(items, query="compact", focus_region="list", focused=True)
+    replacement = (
+        SearchableListItem("auto-compact", "Auto-compact", "true"),
+        SearchableListItem("reduce-motion", "Reduce motion", "false"),
+    )
+
+    view.set_items(replacement, preserve_active_key="auto-compact")
+
+    assert view.focus_region == "list"
+    assert view.active_key == "auto-compact"
+    assert any(line.startswith("> Auto-compact") and "true" in line for line in plain_lines(view))

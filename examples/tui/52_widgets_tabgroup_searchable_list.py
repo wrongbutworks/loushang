@@ -29,6 +29,7 @@ SETTING_LABEL_WIDTH = 42
 TABGROUP_SEARCH_THEME = ThemeResolver(
     defaults={
         "widget.tabs.tab": {"color": "white"},
+        "widget.tabs.selected": {"bold": True, "color": "green"},
         "widget.tabs.level0.selected_header_focus": {"bold": True, "color": "cyan"},
         "widget.tabs.level0.selected_content_focus": {"bold": True, "color": "green"},
         "widget.tabs.level1.selected_header_focus": {"bold": True, "color": "magenta"},
@@ -97,10 +98,9 @@ class SettingsListPage(FocusableMixin):
             return f"Selected: {item.label}"
         next_value = "false" if boolean_value else "true"
         self.items = tuple(replace(existing, value=next_value) if existing.key == item.key else existing for existing in self.items)
-        query = self.settings.query
-        focus_region = self.settings.focus_region
-        focused = self.settings.focused
-        self.settings = self._make_settings(query=query, focus_region=focus_region, focused=focused)
+        self.settings.set_items(self.items, preserve_active_key=item.key)
+        if self.settings.focused:
+            self.settings.focus_list()
         return f"Toggled: {item.label} -> {next_value}"
 
     def _make_settings(
@@ -134,7 +134,13 @@ class StaticPage:
 
 @dataclass(slots=True)
 class SettingsPanelsApp(FocusableMixin):
-    tabs: TabGroup = field(default_factory=lambda: TabGroup(_top_pages(), content_height=CONTENT_HEIGHT))
+    tabs: TabGroup = field(
+        default_factory=lambda: TabGroup(
+            _top_pages(),
+            content_height=CONTENT_HEIGHT,
+            theme=TABGROUP_SEARCH_THEME,
+        )
+    )
     status: str = "Ready"
 
     def __post_init__(self) -> None:
@@ -163,7 +169,7 @@ class SettingsPanelsApp(FocusableMixin):
         if len(rows) < constraints.max_height:
             rows.append(RenderLine(_separator(constraints.width)))
         if len(rows) < constraints.max_height:
-            rows.append(RenderLine(_footer_text(self.status, width=constraints.width)))
+            rows.append(RenderLine(_footer_text(_focus_context(self.tabs), self.status, width=constraints.width)))
         return RenderResult.from_lines(rows[: constraints.max_height], constraints=constraints, cursor=cursor)
 
     def handle_input(self, event: Any) -> object:
@@ -287,8 +293,27 @@ def _offset_cursor_after_top_separator(cursor: CursorDeclaration | None) -> Curs
     return CursorDeclaration(row=cursor.row + 1, column=cursor.column)
 
 
-def _footer_text(status: str, *, width: int) -> str:
-    text = f"{status} | Type to filter | Enter select/toggle | Space toggle | Esc clear | q quit"
+def _focus_context(tabs: TabGroup) -> str:
+    if tabs.header_focused:
+        return "tabs"
+    page = tabs.selected_page
+    content = page.content if page is not None else None
+    if isinstance(content, SettingsListPage):
+        return "settings" if content.settings.focus_region == "list" else "search"
+    if isinstance(content, TabGroup) and content.header_focused:
+        return "tabs"
+    return "page"
+
+
+def _footer_text(focus_context: str, status: str, *, width: int) -> str:
+    if focus_context == "search":
+        text = f"Search | {status} | type filter | Down list | Up tabs | Esc clear | q quit"
+    elif focus_context == "settings":
+        text = f"Settings | {status} | Up/Down move | Enter select | Space toggle | q quit"
+    elif focus_context == "tabs":
+        text = f"Tabs | {status} | Left/Right switch | Down content | q quit"
+    else:
+        text = f"{status} | Up tabs | q quit"
     return truncate_to_width(text, max_width=width, ellipsis="")
 
 
