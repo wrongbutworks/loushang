@@ -31,6 +31,8 @@ surface without replacing every settings and stats data source in one change.
 ## Goals
 
 - Upgrade the real `/settings` native TUI path to a tabbed control-center page.
+- Keep the existing `/model` command and `ModelSelectorSurface` behavior
+  unchanged, except for optional shared helper reuse.
 - Use `TabGroup` for the top-level `Status / Config / Model / Usage / Stats`
   sections.
 - Use `SearchableList` for the Config page, including long-list viewport
@@ -62,6 +64,7 @@ surface without replacing every settings and stats data source in one change.
   set.
 - Do not rewrite model registry, provider configuration, or model metadata
   management in this slice.
+- Do not remove or degrade the standalone `/model` selector path.
 
 ## Proposed Architecture
 
@@ -78,13 +81,34 @@ widgets into the coding product page:
   changes;
 - returns `InputIntent(kind="setting", text="model.current", note=<choice>)`
   when the Model page selects a model;
+- exposes `async apply_setting(id, value)` so `NativeSurfaceManager` can
+  delegate new-page setting/model side effects back to the page instead of
+  duplicating adapter routing;
 - returns `InputIntent(kind="surface_close")` for close keys;
 - exposes an `editor_input_target()` so text input reaches the focused
   `SearchableList` search box.
 
-`NativeSurfaceManager._open_settings()` should instantiate this view and keep
-using `NativeSurfaceView(purpose="settings")`. That preserves the existing
-surface lifecycle and `_normalize_surface_intent()` handling.
+`NativeSurfaceManager._open_settings()` should become async and be awaited from
+`handle_text()`, matching the existing async command handling used by model
+selection. It should instantiate this view and keep using
+`NativeSurfaceView(purpose="settings")`. That preserves the existing surface
+lifecycle and `_normalize_surface_intent()` handling.
+
+`SettingsPageView` should be created through an async builder or equivalent
+factory that loads a model-choice snapshot from existing async model helpers. If
+model choices cannot be loaded, the Model page renders an unavailable state and
+the standalone `/model` command remains the fallback.
+
+`NativeSurfaceView` needs two compatible delegation changes for this integration:
+
+- `editor_input_target()` delegates to hosted content when content exposes that
+  method.
+- `render()` offsets and returns non-`InfoPanel` content cursors, rather than
+  dropping them.
+
+These are host-level compatibility fixes, not `SettingsPageView`-specific
+shortcuts. Existing surfaces should keep their current visual behavior unless
+they already return a cursor.
 
 The initial page structure:
 
@@ -96,7 +120,7 @@ Config page:
   Setting                                    Value
   Status line                                true
   Auto compaction                            true
-  Provider retry                             true
+  Auto retry                                 true
   Terminal progress                          false
   ...
 
@@ -125,8 +149,12 @@ Responsibilities:
 - Hide the hardware cursor unless the selected content declares a real text
   input cursor.
 - Translate Config page selection results into `InputIntent(kind="setting")`.
-- Avoid closing the surface after a boolean toggle unless future user testing
-  shows close-on-change is preferred.
+- Treat `q`, Esc, and Escape as close keys by returning
+  `InputIntent(kind="surface_close")`.
+- Keep the surface open after Config changes and Model selections so users can
+  make multiple changes in one visit.
+- Expose `apply_setting(id, value)` as the single owner for new-page Config and
+  Model side effects.
 
 The view should use the same focus rules proven by
 `examples/tui/52_widgets_tabgroup_searchable_list.py`:
@@ -137,6 +165,9 @@ The view should use the same focus rules proven by
 - Up from the first Config list item returns to search.
 - Left/right move only the focused tab header.
 - Nested Stats tabs use their own level-1 focus and colors.
+- Interactive page wrappers consume left/right/home/end while their search or
+  list content is focused, so the current `TabGroup` fallback tab navigation
+  cannot switch top-level pages from inside an editing/list region.
 
 ### ConfigSettingsPage
 
@@ -161,8 +192,8 @@ existing getters/setters:
 - status line visibility, through `CodingTuiStatusProvider`;
 - auto compaction, through `SessionSettingsController` if available;
 - auto retry, through `SessionSettingsController` if available;
-- terminal progress, through `SettingsManager.get_terminal_settings()` and
-  `update_settings()`;
+- terminal progress, through `SettingsManager.get_show_terminal_progress()` and
+  `set_show_terminal_progress()`;
 - theme, read-only or cycle-through only if the existing accepted values are
   explicit.
 
@@ -197,11 +228,13 @@ keep `/model` as the fallback path.
 ### StatusPage
 
 The Status page should be read-only in the first slice. It should show compact
-runtime facts that already exist:
+runtime facts from a small explicit snapshot API, not by parsing rendered
+toolbar text or reaching into private provider fields.
+
+Add or inject a read-only status snapshot with:
 
 - current model label;
-- current cwd and branch from the status provider snapshot inputs when
-  available;
+- current cwd and branch;
 - session label;
 - thinking level;
 - running/idle state;
@@ -213,8 +246,9 @@ guessing.
 ### UsagePage
 
 The Usage page should be read-only in the first slice. It should render current
-context usage using `current_context_usage()` or the same snapshot data already
-available to session status logic.
+context usage only through an explicit optional usage snapshot/provider.
+`current_context_usage()` requires messages, branch entries, and model inputs;
+the page should not discover those by broad session introspection.
 
 Minimum useful rows:
 
@@ -224,8 +258,8 @@ Minimum useful rows:
 - compaction threshold if available;
 - source, such as estimated or assistant usage.
 
-If usage cannot be computed from the current session object, render
-`Usage data unavailable` and keep the page navigable.
+If the usage provider is absent or cannot compute a snapshot from explicit
+inputs, render `Usage data unavailable` and keep the page navigable.
 
 ### StatsPage
 
@@ -243,13 +277,17 @@ session totals and explicitly state that historical stats are unavailable.
 
 Opening `/settings`:
 
-1. `NativeSurfaceManager.handle_text("/settings")` calls `_open_settings()`.
-2. `_open_settings()` builds `SettingsPageView` with:
+1. `NativeSurfaceManager.handle_text("/settings")` awaits `_open_settings()`.
+2. `_open_settings()` loads the model-choice snapshot with existing async model
+   helpers. Failures become a Model page unavailable state.
+3. `_open_settings()` builds `SettingsPageView` with:
    - `CodingTuiStatusProvider`;
    - the current session;
-   - a model-choice snapshot when it can be loaded without blocking render;
+   - the model-choice snapshot or unavailable state;
+   - a read-only status snapshot provider;
+   - an optional usage snapshot provider;
    - optional `SessionSettingsController` or `SettingsManager` accessors.
-3. `NativeSurfaceView` hosts the page with `purpose="settings"`.
+4. `NativeSurfaceView` hosts the page with `purpose="settings"`.
 
 Changing a setting:
 
@@ -259,26 +297,35 @@ Changing a setting:
 3. The page returns `InputIntent(kind="setting", text=row.id, note=new_value)`.
 4. `NativeSurfaceManager._normalize_surface_intent()` keeps producing a
    settings submit event.
-5. `_handle_settings_submit()` routes the payload to the relevant adapter, or
-   to model selection when `id == "model.current"`.
-6. The surface remains open, the row value refreshes, and the app status line
-   shows a concise result.
-
-The current manager closes the settings surface after submit. The integration
-should adjust this for the new page only: Config toggles should keep the page
-open so users can change multiple settings. Legacy `SettingsSurface` behavior
-can remain close-on-submit.
+5. `_handle_settings_submit()` checks the current surface content.
+6. If the content is `SettingsPageView`, the manager calls
+   `await page.apply_setting(id, value)`, keeps the surface open, refreshes
+   app status/statusline/model label from the result, and does not duplicate
+   adapter logic.
+7. If the content is legacy `SettingsSurface`, the manager preserves existing
+   close-on-submit behavior.
 
 Changing the model:
 
 1. `ModelPage` activates the current enabled model row.
 2. The page returns `InputIntent(kind="setting", text="model.current",
    note=<choice>)`.
-3. `NativeSurfaceManager._handle_settings_submit()` routes that payload to
-   `select_available_model()`, matching the existing `/model` selector
-   behavior.
-4. The page remains open, the current model marker refreshes, and the app
+3. `NativeSurfaceManager._handle_settings_submit()` delegates to
+   `SettingsPageView.apply_setting("model.current", choice)`.
+4. The page method calls `select_available_model()`, matching the existing
+   `/model` selector behavior.
+5. The page remains open, the current model marker refreshes, and the app
    status/model label updates.
+
+`SettingsPageView.apply_setting()` should return a small result object or
+equivalent tuple containing:
+
+- user-facing status message;
+- optional status line visibility;
+- whether the app model label should be refreshed;
+- whether the page rows were refreshed successfully.
+
+Adapter write failures return a recoverable message and keep the page open.
 
 ## Visual And Focus States
 
@@ -326,7 +373,11 @@ Add unit tests for the new product page content:
 - selecting an enabled model emits the expected model action;
 - read-only/disabled rows are visible but skipped by navigation;
 - Stats renders nested level-1 tabs;
-- tiny render heights do not crash.
+- tiny render heights do not crash;
+- `SettingsPageView.apply_setting()` keeps the page open, refreshes rows, and
+  returns a status result for successful Config changes.
+- `SettingsPageView.apply_setting("model.current", value)` calls the model
+  selection path without requiring a new `InputIntentKind`.
 
 Add native playback tests for the real `/settings` command:
 
@@ -339,6 +390,23 @@ Add native playback tests for the real `/settings` command:
 - Model appears as a top-level tab and shows the current model;
 - Stats page exposes `Overview / Model Usage` nested tabs;
 - `q` or Esc exits the page.
+
+Add manager/host tests:
+
+- `_open_settings()` is async and `handle_text("/settings")` awaits it.
+- `_normalize_surface_intent()` still maps
+  `InputIntent(kind="setting", text="model.current", note=value)` through the
+  settings submit path.
+- `_handle_settings_submit()` delegates to `SettingsPageView.apply_setting()`
+  and keeps the surface open for the new page.
+- `_handle_settings_submit()` preserves legacy `SettingsSurface`
+  close-on-submit behavior.
+- `NativeSurfaceView.editor_input_target()` delegates to hosted content.
+- `NativeSurfaceView.render()` offsets and preserves non-`InfoPanel` content
+  cursors.
+- No new `InputIntentKind` is added for model selection.
+- The standalone `/model` command and `ModelSelectorSurface` behavior remain
+  covered by existing tests or a focused regression.
 
 Keep existing `SettingsSurface` tests. Add one explicit test proving the legacy
 surface remains importable and still renders searchable settings.
@@ -360,11 +428,7 @@ the slice.
 
 ## Open Decisions
 
-1. Whether Config toggles should keep the page open for all settings or only
-   for the new `SettingsPageView`.
-2. Which `SettingsManager` fields are safe enough to expose as writable in the
+1. Which `SettingsManager` fields are safe enough to expose as writable in the
    first implementation plan.
-3. Whether Model selection inside `/settings` should close the page after
-   success or keep the page open like Config toggles.
-4. Whether `/settings` should be renamed in UI copy to `Config` while keeping
+2. Whether `/settings` should be renamed in UI copy to `Config` while keeping
    the slash command unchanged.
