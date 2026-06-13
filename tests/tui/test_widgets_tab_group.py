@@ -73,7 +73,7 @@ def test_tab_group_normalizes_value_and_renders_selected_page() -> None:
     assert group.selected_value == "overview"
     assert group.selected_page is not None
     assert plain_lines(group, width=40, height=4) == (
-        "* [Overview]    [Logs]",
+        "*[Overview]   [Logs]",
         "Overview page",
         "",
     )
@@ -86,14 +86,14 @@ def test_tab_group_fixed_content_height_pads_and_clips() -> None:
     )
 
     assert plain_lines(group, width=20, height=5) == (
-        "* [Long]",
+        "*[Long]",
         "one",
         "two",
     )
 
     short = TabGroup([TabPage("short", "Short", StaticPage(("one",)))], content_height=3)
     assert plain_lines(short, width=20, height=5) == (
-        "* [Short]",
+        "*[Short]",
         "one",
         "",
         "",
@@ -196,7 +196,7 @@ def test_tab_group_offsets_selected_content_cursor() -> None:
 def test_tab_group_renders_header_only_when_no_content_height_remains() -> None:
     group = TabGroup([TabPage("one", "One", StaticPage(("content",)))])
 
-    assert plain_lines(group, width=20, height=1) == ("* [One]",)
+    assert plain_lines(group, width=20, height=1) == ("*[One]",)
 
 
 def test_tab_group_uses_distinct_header_and_content_focus_tokens() -> None:
@@ -265,7 +265,7 @@ def test_tabgroup_searchable_list_example_playback_filters_settings() -> None:
     filtered = frames[-1].lines
 
     assert any("Workspace" in line and "Activity" in line for line in initial)
-    assert initial[0].startswith("> [Workspace]")
+    assert initial[0].startswith(">[Workspace]")
     assert any("Search" in line for line in initial)
     assert any("mode" in line.lower() for line in filtered)
     assert any("Model" in line or "mode" in line for line in filtered)
@@ -279,7 +279,7 @@ def test_tabgroup_searchable_list_example_styles_top_level_selected_tab() -> Non
 
     initial = tui.render(RenderConstraints(width=100, max_height=24)).lines[0].text
     assert "\x1b[" in initial
-    assert "> [Workspace]" in initial
+    assert ">[Workspace]" in initial
 
     for event in (
         InputEvent(kind="key", key="up"),
@@ -291,7 +291,7 @@ def test_tabgroup_searchable_list_example_styles_top_level_selected_tab() -> Non
 
     activity = tui.render(RenderConstraints(width=100, max_height=24)).lines[0].text
     assert "\x1b[" in activity
-    assert "> [Activity]" in activity
+    assert ">[Activity]" in activity
 
 
 def test_tabgroup_searchable_list_example_playback_switches_nested_tabs() -> None:
@@ -311,7 +311,7 @@ def test_tabgroup_searchable_list_example_playback_switches_nested_tabs() -> Non
 
     assert any("Overview" in line and "Models" in line for line in frames[-1].lines)
     assert any("Tokens per Day" in line or "Model usage" in line for line in frames[-1].lines)
-    assert any("Overview" in line and "> [Models]" in line for line in frames[-1].lines)
+    assert any("Overview" in line and ">[Models]" in line for line in frames[-1].lines)
 
 
 def test_tabgroup_searchable_list_example_up_to_tabs_down_returns_to_search() -> None:
@@ -325,7 +325,7 @@ def test_tabgroup_searchable_list_example_up_to_tabs_down_returns_to_search() ->
         height=24,
     )
 
-    assert frames[-1].lines[0].startswith("> [Workspace]")
+    assert frames[-1].lines[0].startswith(">[Workspace]")
     assert frames[-1].lines[2] == "Search settings..."
     assert not any(line.startswith("> Model") for line in frames[-1].lines)
     assert frames[-1].lines[-1].startswith("Search |")

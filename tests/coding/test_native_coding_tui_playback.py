@@ -404,7 +404,7 @@ def test_native_tui_playback_settings_page_searches_when_opened_by_command() -> 
     assert all(step.flush_succeeded for step in steps)
     lines = _plain_lines(steps[-1].diagnostics)
     assert "Settings" in lines
-    assert "zz" in lines
+    assert any("zz" in line for line in lines)
     assert "No matching settings" in lines
     assert app.state.statusline_visible is True
     for step in steps:
@@ -431,10 +431,40 @@ def test_native_tui_playback_settings_page_q_is_search_text() -> None:
     assert all(step.flush_succeeded for step in steps)
     assert app.active_surface is not None
     lines = _plain_lines(steps[-1].diagnostics)
-    assert "q" in lines
+    assert any("q" in line for line in lines)
     assert "No matching settings" in lines
     for step in steps:
         step.assert_no_clear_scrollback()
+
+
+def test_native_tui_playback_settings_escape_restores_single_prompt_with_status_gap() -> None:
+    session = _Session()
+    app = _app()
+    playback = _NativeInteractivePlayback(
+        app,
+        _manager(app, session),
+        columns=100,
+        rows=18,
+    )
+
+    steps = playback.play(
+        [
+            PlaybackEvent.input("/settings\r"),
+            PlaybackEvent.input("\x1b"),
+        ]
+    )
+
+    assert all(step.flush_succeeded for step in steps)
+    assert app.active_surface is None
+    lines = _plain_lines(steps[-1].diagnostics)
+    prompt_rows = [index for index, line in enumerate(lines) if line.startswith("›")]
+    status_rows = [
+        index
+        for index, line in enumerate(lines)
+        if "moonshot/kimi-for-coding | repo | main | abcd | idle" in line
+    ]
+    assert prompt_rows == [status_rows[0] - 2]
+    assert lines[prompt_rows[0] + 1] == ""
 
 
 def test_native_tui_playback_settings_page_model_tab_is_available() -> None:
@@ -458,7 +488,7 @@ def test_native_tui_playback_settings_page_model_tab_is_available() -> None:
 
     assert all(step.flush_succeeded for step in steps)
     lines = _plain_lines(steps[-1].diagnostics)
-    assert "Search models..." in lines
+    assert any("Search models..." in line for line in lines)
     assert any("moonshot/kimi-for-coding" in line for line in lines)
     for step in steps:
         step.assert_no_clear_scrollback()

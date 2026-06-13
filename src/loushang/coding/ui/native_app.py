@@ -261,8 +261,7 @@ class NativeCodingTuiApp:
 
     def render(self, constraints: RenderConstraints) -> RenderResult:
         visible_height = constraints.visible_height or constraints.max_height
-        editor_height = 16 if self._expanded_bottom_frame() else 12
-        editor_height = max(1, min(editor_height, visible_height))
+        editor_height = self._bottom_frame_height(visible_height)
         self._transcript_region.records = self.state.records
         self._transcript_region.draft = None
         self._transcript_region.draft_buffer = self.state.assistant_draft_buffer
@@ -311,6 +310,15 @@ class NativeCodingTuiApp:
             or bool(self.state.pending_followups)
             or bool(self.state.interruption_message)
         )
+
+    def _bottom_frame_height(self, visible_height: int) -> int:
+        height = 12
+        if self._expanded_bottom_frame():
+            height = 16
+            preferred = getattr(self.active_surface, "preferred_height", None)
+            if isinstance(preferred, int) and preferred > 0:
+                height = max(height, preferred)
+        return max(1, min(height, visible_height))
 
     def _request_render(self, kind: RenderRequestKind) -> None:
         if self.render_requester is not None:
