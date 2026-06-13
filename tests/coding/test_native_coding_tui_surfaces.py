@@ -10,13 +10,64 @@ from loushang.coding.ui.native_surfaces import NativeSurfaceManager, NativeSurfa
 from loushang.coding.ui.status_provider import CodingTuiStatusProvider
 from loushang.tui import (
     ApprovalSurface,
+    CursorDeclaration,
     DialogSurface,
     InputEvent,
     InputIntent,
     RenderConstraints,
+    RenderLine,
+    RenderResult,
     SurfaceHost,
 )
 from loushang.tui.cell_width import strip_control_sequences
+
+
+class _CursorContent:
+    def render(self, constraints: RenderConstraints) -> RenderResult:
+        return RenderResult.from_lines(
+            [RenderLine("query")],
+            constraints=constraints,
+            cursor=CursorDeclaration(row=0, column=3),
+        )
+
+
+class _EditorTargetContent(_CursorContent):
+    def __init__(self) -> None:
+        self.target = object()
+
+    def editor_input_target(self) -> object:
+        return self.target
+
+
+class _EscContent(_CursorContent):
+    def handle_input(self, event: InputEvent) -> InputIntent | bool | None:
+        if event.kind == "key" and event.key in {"esc", "escape"}:
+            return InputIntent(kind="consumed", note="child_escape")
+        return None
+
+
+def test_native_surface_view_delegates_editor_input_target() -> None:
+    content = _EditorTargetContent()
+    view = NativeSurfaceView(title="Settings", purpose="settings", content=content)
+
+    assert view.editor_input_target() is content.target
+
+
+def test_native_surface_view_preserves_content_cursor_with_offset() -> None:
+    view = NativeSurfaceView(title="Settings", purpose="settings", content=_CursorContent(), footer="")
+
+    rendered = view.render(RenderConstraints(width=40, max_height=8))
+
+    assert rendered.cursor == CursorDeclaration(row=2, column=3)
+
+
+def test_native_surface_view_delegates_escape_to_non_info_content_first() -> None:
+    view = NativeSurfaceView(title="Settings", purpose="settings", content=_EscContent())
+
+    assert view.handle_input(InputEvent(kind="key", key="escape")) == InputIntent(
+        kind="consumed",
+        note="child_escape",
+    )
 
 
 def test_native_surface_manager_opens_model_surface_and_selects_model() -> None:
