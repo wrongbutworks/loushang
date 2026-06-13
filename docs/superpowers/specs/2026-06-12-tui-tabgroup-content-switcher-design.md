@@ -46,6 +46,51 @@ The next missing foundation is tabbed content:
 This is the correct primitive for tab headers. It should remain small and should
 not become a page container.
 
+### Existing Loushang Searchable Lists
+
+Loushang already has searchable list behavior in three places. `SearchableList`
+is an extraction of that existing behavior into a reusable page-content widget,
+not a new interaction model.
+
+`SelectionSurface` in `src/loushang/tui/surfaces.py` already provides:
+
+- optional search input
+- prefix, contains, and fuzzy filter modes
+- filtered items
+- selected index
+- bounded visible window and scroll info
+- enter-to-select via `InputIntent(kind="select")`
+
+It is an overlay/surface primitive, so it is not the right public object to
+embed directly inside `TabPage` content.
+
+`SettingsSurface` in `src/loushang/tui/surfaces.py` already demonstrates the
+settings-specific version:
+
+- search input
+- settings item filtering
+- long-list viewport slicing
+- selected setting activation via `InputIntent(kind="setting")`
+- submenu support
+
+It is product-shaped and legacy-surface-oriented. It proves the settings
+scenario but should not become the general tab page widget.
+
+`CommandPaletteView` in
+`src/loushang/tui/ui_parts/widgets/command_palette.py` is the closest current
+widget pattern:
+
+- private item snapshot
+- internal `TextInput` as query source of truth
+- `query`, `filtered_items`, `active_value`, and `set_query()`
+- active repair when the query changes
+- disabled items visible but skipped by navigation
+- bounded visible window
+- structured selection/cancel results
+
+`SearchableList` should borrow this widget shape and consolidate the reusable
+list mechanics currently split across the two surface classes.
+
 ### Textual
 
 Textual separates the same responsibilities into three layers:
@@ -211,6 +256,12 @@ This resolves the long-list scope for planning: the first implementation must
 include a reusable `SearchableList` widget sufficient to prove long settings
 lists inside a `TabGroup`. Product-specific settings editing is a later slice.
 
+The implementation should not blindly duplicate `SelectionSurface`,
+`SettingsSurface`, and `CommandPaletteView`. It should either reuse small local
+helpers where they are already cleanly factored, or extract private helper
+functions for filtering, active repair, and visible-window calculation when
+that reduces duplication without widening public APIs.
+
 `TabGroup` should expose:
 
 - `selected_value -> str`
@@ -303,6 +354,15 @@ Non-responsibilities:
 
 Long settings lists should be implemented by the reusable `SearchableList`
 page-content widget, not by `TabGroup` itself.
+
+This is a widgetization of existing surface behavior:
+
+- use `SelectionSurface` as the behavior reference for filtering modes,
+  selected-index movement, and visible-window bounds
+- use `SettingsSurface` as the scenario reference for dense settings rows and
+  settings search
+- use `CommandPaletteView` as the API reference for private item snapshots,
+  query repair, disabled item navigation, and structured return values
 
 `SearchableList` owns:
 
@@ -828,6 +888,9 @@ Regression tests:
 
 ### Phase 3: Searchable Long List And Example
 
+- audit `SelectionSurface`, `SettingsSurface`, and `CommandPaletteView` for
+  reusable filtering, active repair, and viewport helpers before adding new
+  code
 - add `SearchableListItem`
 - add `SearchableListSelect`
 - add `SearchableList`
