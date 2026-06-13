@@ -290,6 +290,24 @@ def test_tabgroup_searchable_list_example_playback_switches_nested_tabs() -> Non
 
     assert any("Overview" in line and "Models" in line for line in frames[-1].lines)
     assert any("Tokens per Day" in line or "Model usage" in line for line in frames[-1].lines)
+    assert any("Overview" in line and "> [Models]" in line for line in frames[-1].lines)
+
+
+def test_tabgroup_searchable_list_example_up_to_tabs_down_returns_to_search() -> None:
+    frames = play_example(
+        "examples/tui/52_widgets_tabgroup_searchable_list.py",
+        events=(
+            ("up to tabs", InputEvent(kind="key", key="up")),
+            ("down to search", InputEvent(kind="key", key="down")),
+        ),
+        width=100,
+        height=24,
+    )
+
+    assert frames[-1].lines[0].startswith("> [Workspace]")
+    assert frames[-1].lines[2] == "Search settings..."
+    assert not any(line.startswith("> Model") for line in frames[-1].lines)
+    assert frames[-1].lines[-1].startswith("Search |")
 
 
 def test_tabgroup_searchable_list_example_playback_scrolls_long_list_without_layout_jump() -> None:
@@ -375,8 +393,9 @@ def test_tabgroup_searchable_list_example_printable_space_toggles_setting() -> N
         height=24,
     )
 
-    assert any("Auto-compact" in line and "true" in line for line in frames[-1].lines)
+    assert any(line.startswith("> Auto-compact") and "true" in line for line in frames[-1].lines)
     assert any("Toggled: Auto-compact" in line for line in frames[-1].lines)
+    assert frames[-1].lines[-1].startswith("Settings |")
 
 
 def test_tabgroup_searchable_list_example_quit_keys_are_global() -> None:

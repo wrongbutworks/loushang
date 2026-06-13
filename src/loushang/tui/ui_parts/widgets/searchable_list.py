@@ -3,8 +3,17 @@ from __future__ import annotations
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field
 
-from loushang.tui.cell_width import autowrap_safe_width, truncate_to_width, visible_width
-from loushang.tui.core import CursorDeclaration, RenderConstraints, RenderLine, RenderResult
+from loushang.tui.cell_width import (
+    autowrap_safe_width,
+    truncate_to_width,
+    visible_width,
+)
+from loushang.tui.core import (
+    CursorDeclaration,
+    RenderConstraints,
+    RenderLine,
+    RenderResult,
+)
 from loushang.tui.keybindings import normalize_key_id
 from loushang.tui.theme import ThemeResolver
 from loushang.tui.ui_parts.text_input import TextInput
@@ -114,6 +123,13 @@ class SearchableList:
         previous_key = self.active_key
         self._query_input.set_text(query)
         self._repair_active(previous_key=previous_key)
+
+    def set_items(self, items: Sequence[SearchableListItem], *, preserve_active_key: str = "") -> None:
+        previous_key = preserve_active_key or self.active_key
+        self._items = tuple(items)
+        self._repair_active(previous_key=previous_key)
+        if self.focus_region == "list" and self.active_item is None:
+            self.focus_search()
 
     def focus(self) -> None:
         self.focused = True
