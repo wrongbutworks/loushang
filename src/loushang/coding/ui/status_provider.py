@@ -1,9 +1,21 @@
 from __future__ import annotations
 
 from collections.abc import Callable
+from dataclasses import dataclass
 
 from loushang.coding.ui.toolbar import ToolbarSnapshot, render_toolbar
 from loushang.tui import SettingItem, SettingsList, SettingsListRenderer
+
+
+@dataclass(frozen=True, slots=True)
+class StatusSnapshot:
+    model_label: str | None
+    cwd: str
+    branch: str | None
+    session_label: str | None
+    thinking_level: str | None
+    running: bool
+    statusline_visible: bool
 
 
 class CodingTuiStatusProvider:
@@ -40,6 +52,17 @@ class CodingTuiStatusProvider:
     def is_visible(self) -> bool:
         return self._visible
 
+    def snapshot(self) -> StatusSnapshot:
+        return StatusSnapshot(
+            model_label=self._model_label,
+            cwd=self._cwd,
+            branch=self._branch,
+            session_label=self._session_label(),
+            thinking_level=self._thinking_level(),
+            running=self._running(),
+            statusline_visible=self._visible,
+        )
+
     def set_visible(self, visible: bool | None) -> str:
         if visible is not None:
             self._visible = visible
@@ -67,4 +90,4 @@ class CodingTuiStatusProvider:
         return "".join(fragment for _style, fragment in SettingsListRenderer(title="Settings").render(self.settings_list()))
 
 
-__all__ = ["CodingTuiStatusProvider"]
+__all__ = ["CodingTuiStatusProvider", "StatusSnapshot"]
