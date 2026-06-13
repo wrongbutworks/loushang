@@ -254,6 +254,16 @@ class SettingsPageView:
             self._refresh_status_page()
             self._refresh_config_rows(preserve_active_key="statusline")
             return SettingsApplyResult(message, statusline_visible=self.status_provider.is_visible())
+        if item_id == "terminal.progress":
+            enabled = _as_bool(value)
+            if enabled is None:
+                return SettingsApplyResult("Invalid terminal progress value.")
+            setter = getattr(self.settings_manager, "set_show_terminal_progress", None)
+            if not callable(setter):
+                return SettingsApplyResult("Terminal progress is not available.")
+            setter(enabled)
+            self._refresh_config_rows(preserve_active_key="terminal.progress")
+            return SettingsApplyResult(f"Terminal progress: {'on' if enabled else 'off'}")
         if item_id == "model.current":
             message = await select_available_model(self.session, query=value)
             await self._refresh_model_page()
