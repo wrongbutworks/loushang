@@ -134,7 +134,13 @@ class StaticPage:
 
 @dataclass(slots=True)
 class SettingsPanelsApp(FocusableMixin):
-    tabs: TabGroup = field(default_factory=lambda: TabGroup(_top_pages(), content_height=CONTENT_HEIGHT))
+    tabs: TabGroup = field(
+        default_factory=lambda: TabGroup(
+            _top_pages(),
+            content_height=CONTENT_HEIGHT,
+            theme=TABGROUP_SEARCH_THEME,
+        )
+    )
     status: str = "Ready"
 
     def __post_init__(self) -> None:

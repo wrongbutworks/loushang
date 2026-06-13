@@ -273,6 +273,27 @@ def test_tabgroup_searchable_list_example_playback_filters_settings() -> None:
     assert any(set(line) == {"-"} for line in initial)
 
 
+def test_tabgroup_searchable_list_example_styles_top_level_selected_tab() -> None:
+    namespace = runpy.run_path("examples/tui/52_widgets_tabgroup_searchable_list.py", run_name="__test__")
+    tui = namespace["build_app"]()
+
+    initial = tui.render(RenderConstraints(width=100, max_height=24)).lines[0].text
+    assert "\x1b[" in initial
+    assert "> [Workspace]" in initial
+
+    for event in (
+        InputEvent(kind="key", key="up"),
+        InputEvent(kind="key", key="right"),
+        InputEvent(kind="key", key="right"),
+        InputEvent(kind="key", key="right"),
+    ):
+        tui.handle_input(event)
+
+    activity = tui.render(RenderConstraints(width=100, max_height=24)).lines[0].text
+    assert "\x1b[" in activity
+    assert "> [Activity]" in activity
+
+
 def test_tabgroup_searchable_list_example_playback_switches_nested_tabs() -> None:
     frames = play_example(
         "examples/tui/52_widgets_tabgroup_searchable_list.py",
