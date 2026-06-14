@@ -17,11 +17,13 @@ from .layout import RegionRenderable
 class StatusField:
     text: str
     priority: int = 0
+    token: str = ""
 
 
 @dataclass(slots=True)
 class StatusBar:
     fields: list[StatusField] | tuple[StatusField, ...] = field(default_factory=list)
+    separator: str = " | "
 
     def render(self, constraints: RenderConstraints) -> RenderResult:
         target_width = autowrap_safe_width(constraints.width)
@@ -29,10 +31,10 @@ class StatusBar:
         selected: list[StatusField] = []
         for status_field in ordered:
             candidate = selected + [status_field]
-            text = _join_status(candidate)
+            text = _join_status(candidate, separator=self.separator)
             if visible_width(text) <= target_width:
                 selected = candidate
-        text = _join_status(selected)
+        text = _join_status(selected, separator=self.separator)
         if not text and ordered:
             text = ordered[0].text
         line = truncate_to_width(text, max_width=target_width)
@@ -120,8 +122,8 @@ class WorkingLine:
         return RenderResult.from_lines([RenderLine(line)], constraints=constraints)
 
 
-def _join_status(fields: list[StatusField]) -> str:
-    return " | ".join(field.text for field in fields)
+def _join_status(fields: list[StatusField], *, separator: str) -> str:
+    return separator.join(field.text for field in fields)
 
 
 def _footer_fields_fit(fields: list[FooterField], *, width: int, separator: str, min_gap: int) -> bool:
