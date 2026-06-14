@@ -10,6 +10,13 @@ from loushang.coding.ui.model_list import (
     current_model_choice_value,
     select_available_model,
 )
+from loushang.coding.ui.status_line import (
+    StatusLinePreviewSnapshot,
+    StatusLineSettings,
+    status_line_fields,
+    status_line_separator,
+    status_line_style_mode,
+)
 from loushang.coding.ui.status_provider import CodingTuiStatusProvider, StatusSnapshot
 from loushang.tui import (
     CursorDeclaration,
@@ -21,6 +28,7 @@ from loushang.tui import (
     SearchableList,
     SearchableListItem,
     SearchableListSelect,
+    StatusBar,
     TabGroup,
     TabPage,
     ThemeResolver,
@@ -40,6 +48,7 @@ __all__ = [
 class SettingsApplyResult:
     message: str
     statusline_visible: bool | None = None
+    statusline_settings: StatusLineSettings | None = None
     refresh_model_label: bool = False
 
 
@@ -225,6 +234,83 @@ class ConfigSettingsPage:
 
 
 @dataclass(slots=True)
+class StatusLineSettingsPage:
+    statusline_settings: StatusLineSettings
+    statusline_preview: Callable[[], StatusLinePreviewSnapshot]
+    focused: bool = False
+    settings: SearchableList = field(init=False)
+
+    def __post_init__(self) -> None:
+        self.settings = self._make_list(focused=False)
+
+    def focus(self) -> None:
+        self.focused = True
+        self.settings.focus()
+
+    def blur(self) -> None:
+        self.focused = False
+        self.settings.blur()
+
+    def editor_input_target(self) -> object | None:
+        return self.settings.editor_input_target()
+
+    def set_statusline_settings(self, settings: StatusLineSettings, *, preserve_active_key: str = "") -> None:
+        self.statusline_settings = settings
+        self.settings.set_items(_config_items(_statusline_rows(settings)), preserve_active_key=preserve_active_key)
+
+    def handle_input(self, event: object) -> object:
+        result = self.settings.handle_input(event)
+        if isinstance(result, SearchableListSelect):
+            return self._setting_intent(result.key)
+        if result is not None:
+            return result
+        if self.settings.focus_region == "list" and _is_space_event(event):
+            item = self.settings.active_item
+            if item is not None:
+                return self._setting_intent(item.key)
+        if _is_tab_fallback_key(event):
+            return True
+        return None
+
+    def render(self, constraints: RenderConstraints) -> RenderResult:
+        if constraints.max_height <= 0:
+            return RenderResult.from_lines([], constraints=constraints)
+        if constraints.max_height <= 6:
+            return self.settings.render(constraints)
+        result = self.settings.render(
+            RenderConstraints(width=constraints.width, max_height=max(1, constraints.max_height - 4))
+        )
+        header = RenderLine(_settings_header(constraints.width))
+        preview = _statusline_preview_lines(
+            self.statusline_preview(),
+            self.statusline_settings,
+            width=constraints.width,
+        )
+        rows = [*result.lines[:3], RenderLine(""), header, *result.lines[3:], RenderLine(""), *preview]
+        cursor = result.cursor
+        if cursor is not None and cursor.row >= 3:
+            cursor = CursorDeclaration(row=cursor.row + 2, column=cursor.column)
+        return RenderResult.from_lines(rows[: constraints.max_height], constraints=constraints, cursor=cursor)
+
+    def _make_list(self, *, focused: bool) -> SearchableList:
+        return SearchableList(
+            _config_items(_statusline_rows(self.statusline_settings)),
+            placeholder="Search status line...",
+            empty_text="No matching status line settings",
+            focused=focused,
+            search_box=True,
+            detail_column=SETTINGS_VALUE_COLUMN,
+            theme=SETTINGS_PAGE_THEME,
+        )
+
+    def _setting_intent(self, key: str) -> InputIntent | None:
+        row = _row_for_key(_statusline_rows(self.statusline_settings), key)
+        if row is None or row.disabled:
+            return None
+        return InputIntent(kind="setting", text=row.id, note=_next_statusline_value(row.id, row.value))
+
+
+@dataclass(slots=True)
 class ModelPage:
     choices: tuple[ModelChoice, ...]
     current_value: str | None = None
@@ -301,10 +387,12 @@ class SettingsPageView:
     status_page: StaticLinesPage = field(init=False)
     config_page: ConfigSettingsPage = field(init=False)
     model_page: ModelPage = field(init=False)
+    statusline_page: StatusLineSettingsPage = field(init=False)
     usage_page: StaticLinesPage = field(init=False)
     stats_page: TabGroup = field(init=False)
     tabs: TabGroup = field(init=False)
     focused: bool = field(default=False, init=False)
+    statusline_preview: Callable[[], StatusLinePreviewSnapshot] | None = None
 
     @classmethod
     async def create(
@@ -315,6 +403,7 @@ class SettingsPageView:
         usage_provider: Callable[[], object | None] | None = None,
         settings_manager: object | None = None,
         session_settings: object | None = None,
+        statusline_preview: Callable[[], StatusLinePreviewSnapshot] | None = None,
     ) -> SettingsPageView:
         del session_settings
         view = cls(
@@ -322,21 +411,23 @@ class SettingsPageView:
             status_provider=status_provider,
             settings_manager=settings_manager,
             usage_provider=usage_provider,
+            statusline_preview=statusline_preview,
         )
         await view._build()
         view.focus()
         return view
 
     async def apply_setting(self, item_id: str, value: str) -> SettingsApplyResult:
-        if item_id == "statusline":
-            enabled = _as_bool(value)
-            if enabled is None:
-                return SettingsApplyResult("Invalid status line value.")
-            settings = self.status_provider.settings_list().set_enabled("statusline", enabled)
-            message = self.status_provider.apply_settings(settings)
+        if item_id == "statusline" or item_id.startswith("statusline."):
+            message = self.status_provider.apply_statusline_setting(item_id, value)
             self._refresh_status_page()
-            self._refresh_config_rows(preserve_active_key="statusline")
-            return SettingsApplyResult(message, statusline_visible=self.status_provider.is_visible())
+            self._refresh_statusline_page(preserve_active_key=item_id)
+            settings = self.status_provider.statusline_settings()
+            return SettingsApplyResult(
+                message,
+                statusline_visible=settings.enabled,
+                statusline_settings=settings,
+            )
         config = _manager_bool_config(item_id)
         if config is not None:
             enabled = _as_bool(value)
@@ -395,6 +486,10 @@ class SettingsPageView:
         self.config_page = ConfigSettingsPage(_config_rows(self.status_provider, self.settings_manager))
         choices, current_value, error = await _load_model_choices(self.session)
         self.model_page = ModelPage(choices, current_value=current_value, error=error)
+        self.statusline_page = StatusLineSettingsPage(
+            self.status_provider.statusline_settings(),
+            self._statusline_preview_snapshot,
+        )
         self.usage_page = StaticLinesPage(_usage_lines(self.usage_provider))
         self.stats_page = TabGroup(
             (
@@ -410,6 +505,7 @@ class SettingsPageView:
                 TabPage("status", "Status", self.status_page),
                 TabPage("config", "Config", self.config_page),
                 TabPage("model", "Model", self.model_page),
+                TabPage("status-line", "Status Line", self.statusline_page),
                 TabPage("usage", "Usage", self.usage_page),
                 TabPage("stats", "Stats", self.stats_page),
             ),
@@ -422,6 +518,12 @@ class SettingsPageView:
 
     def _refresh_config_rows(self, *, preserve_active_key: str = "") -> None:
         self.config_page.set_rows(_config_rows(self.status_provider, self.settings_manager), preserve_active_key=preserve_active_key)
+
+    def _refresh_statusline_page(self, *, preserve_active_key: str = "") -> None:
+        self.statusline_page.set_statusline_settings(
+            self.status_provider.statusline_settings(),
+            preserve_active_key=preserve_active_key,
+        )
 
     async def _refresh_model_page(self) -> None:
         choices, current_value, error = await _load_model_choices(self.session)
@@ -437,11 +539,25 @@ class SettingsPageView:
         content = page.content if page is not None else None
         if isinstance(content, ConfigSettingsPage):
             return "search" if content.settings.focus_region == "search" else "settings-list"
+        if isinstance(content, StatusLineSettingsPage):
+            return "search" if content.settings.focus_region == "search" else "settings-list"
         if isinstance(content, ModelPage):
             return "search" if content.models.focus_region == "search" else "model-list"
         if isinstance(content, TabGroup):
             return "tabs" if content.header_focused else "page"
         return "page"
+
+    def _statusline_preview_snapshot(self) -> StatusLinePreviewSnapshot:
+        if self.statusline_preview is not None:
+            return self.statusline_preview()
+        snapshot = self.status_provider.snapshot()
+        return StatusLinePreviewSnapshot(
+            model_label=snapshot.model_label,
+            cwd=snapshot.cwd,
+            branch=snapshot.branch,
+            session_label=snapshot.session_label,
+            running=snapshot.running,
+        )
 
 
 async def _load_model_choices(session: Any) -> tuple[tuple[ModelChoice, ...], str | None, str]:
@@ -453,16 +569,29 @@ async def _load_model_choices(session: Any) -> tuple[tuple[ModelChoice, ...], st
     return tuple(choices), current_value, ""
 
 
-def _config_rows(status_provider: CodingTuiStatusProvider, settings_manager: object | None) -> tuple[ConfigRow, ...]:
-    rows = [
-        ConfigRow("statusline", "Status line", _bool_text(status_provider.is_visible())),
-    ]
+def _config_rows(_status_provider: CodingTuiStatusProvider, settings_manager: object | None) -> tuple[ConfigRow, ...]:
+    rows = []
     if settings_manager is not None:
         for config in _MANAGER_BOOL_CONFIGS:
             getter = getattr(settings_manager, config.getter, None)
             if callable(getter):
                 rows.append(ConfigRow(config.id, config.label, _bool_text(bool(getter()))))
     return tuple(rows)
+
+
+def _statusline_rows(settings: StatusLineSettings) -> tuple[ConfigRow, ...]:
+    return (
+        ConfigRow("statusline.enabled", "Enabled", _bool_text(settings.enabled)),
+        ConfigRow("statusline.field.model", "Model", _bool_text(settings.model)),
+        ConfigRow("statusline.field.workspace", "Workspace", _bool_text(settings.workspace)),
+        ConfigRow("statusline.field.branch", "Branch", _bool_text(settings.branch)),
+        ConfigRow("statusline.field.session", "Session", _bool_text(settings.session)),
+        ConfigRow("statusline.field.runtime", "Runtime", _bool_text(settings.runtime)),
+        ConfigRow("statusline.field.queue", "Queue", settings.queue),
+        ConfigRow("statusline.field.message", "Message", settings.message),
+        ConfigRow("statusline.separator", "Separator", settings.separator),
+        ConfigRow("statusline.style", "Style", settings.style),
+    )
 
 
 def _config_items(rows: tuple[ConfigRow, ...]) -> tuple[SearchableListItem, ...]:
@@ -543,6 +672,21 @@ def _model_usage_lines(current_value: str | None) -> tuple[str, ...]:
     )
 
 
+def _statusline_preview_lines(
+    snapshot: StatusLinePreviewSnapshot,
+    settings: StatusLineSettings,
+    *,
+    width: int,
+) -> tuple[RenderLine, ...]:
+    result = StatusBar(
+        status_line_fields(snapshot, settings),
+        separator=status_line_separator(settings),
+        style_mode=status_line_style_mode(settings),
+    ).render(RenderConstraints(width=width, max_height=1))
+    line = result.lines[0].text if result.lines else ""
+    return (RenderLine("Preview"), RenderLine(line))
+
+
 def _settings_header(width: int) -> str:
     value_column = max(8, min(SETTINGS_VALUE_COLUMN, max(8, width - 8)))
     return truncate_to_width(f"{'Setting':<{value_column}}Value", max_width=width, ellipsis="")
@@ -603,6 +747,25 @@ def _next_value(value: str) -> str:
     if current is None:
         return value
     return _bool_text(not current)
+
+
+def _next_statusline_value(item_id: str, value: str) -> str:
+    if item_id in {
+        "statusline.enabled",
+        "statusline.field.model",
+        "statusline.field.workspace",
+        "statusline.field.branch",
+        "statusline.field.session",
+        "statusline.field.runtime",
+    }:
+        return _next_value(value)
+    if item_id in {"statusline.field.queue", "statusline.field.message"}:
+        return {"auto": "true", "true": "false", "false": "auto"}.get(value, value)
+    if item_id == "statusline.separator":
+        return "dot" if value == "pipe" else "pipe"
+    if item_id == "statusline.style":
+        return {"codex-like": "muted", "muted": "plain", "plain": "codex-like"}.get(value, value)
+    return value
 
 
 def _is_space_event(event: object) -> bool:

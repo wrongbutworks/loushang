@@ -3,6 +3,7 @@ from __future__ import annotations
 from collections.abc import Iterable
 from dataclasses import dataclass, field
 
+from loushang.coding.ui.status_line import StatusLineSettings
 from loushang.tui.transcript import (
     AssistantMessageRecord,
     DisplayRecord,
@@ -36,6 +37,7 @@ class NativeCodingTuiState:
     branch: str | None = None
     session_label: str | None = None
     statusline_visible: bool = True
+    statusline_settings: StatusLineSettings = field(default_factory=StatusLineSettings)
     _assistant_draft_buffer: StreamingTextBuffer | None = field(default=None, init=False, repr=False)
     _tool_record_indices: dict[str, int] = field(default_factory=dict, repr=False)
     _pending_user_echo: str | None = field(default=None, init=False, repr=False)

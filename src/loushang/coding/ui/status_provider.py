@@ -1,8 +1,9 @@
 from __future__ import annotations
 
 from collections.abc import Callable
-from dataclasses import dataclass
+from dataclasses import dataclass, field, replace
 
+from loushang.coding.ui.status_line import StatusLineSettings
 from loushang.coding.ui.toolbar import ToolbarSnapshot, render_toolbar
 from loushang.tui import SettingItem, SettingsList, SettingsListRenderer
 
@@ -16,6 +17,7 @@ class StatusSnapshot:
     thinking_level: str | None
     running: bool
     statusline_visible: bool
+    statusline_settings: StatusLineSettings = field(default_factory=StatusLineSettings)
 
 
 class CodingTuiStatusProvider:
@@ -35,7 +37,7 @@ class CodingTuiStatusProvider:
         self._session_label = session_label
         self._thinking_level = thinking_level
         self._running = running
-        self._visible = True
+        self._statusline_settings = StatusLineSettings()
 
     def render(self) -> str:
         return render_toolbar(
@@ -50,7 +52,10 @@ class CodingTuiStatusProvider:
         )
 
     def is_visible(self) -> bool:
-        return self._visible
+        return self._statusline_settings.enabled
+
+    def statusline_settings(self) -> StatusLineSettings:
+        return self._statusline_settings
 
     def snapshot(self) -> StatusSnapshot:
         return StatusSnapshot(
@@ -60,13 +65,50 @@ class CodingTuiStatusProvider:
             session_label=self._session_label(),
             thinking_level=self._thinking_level(),
             running=self._running(),
-            statusline_visible=self._visible,
+            statusline_visible=self.is_visible(),
+            statusline_settings=self._statusline_settings,
         )
 
     def set_visible(self, visible: bool | None) -> str:
         if visible is not None:
-            self._visible = visible
-        return f"Status line: {'on' if self._visible else 'off'}"
+            self._statusline_settings = replace(self._statusline_settings, enabled=visible)
+        return f"Status line: {'on' if self.is_visible() else 'off'}"
+
+    def apply_statusline_settings(self, settings: StatusLineSettings) -> str:
+        self._statusline_settings = settings
+        return self.set_visible(None)
+
+    def apply_statusline_setting(self, item_id: str, value: str) -> str:
+        normalized = value.casefold()
+        if item_id in {"statusline", "statusline.enabled"}:
+            enabled = _as_bool(normalized)
+            if enabled is None:
+                return "Invalid status line enabled value."
+            return self.set_visible(enabled)
+        bool_field = _bool_statusline_field(item_id)
+        if bool_field is not None:
+            enabled = _as_bool(normalized)
+            if enabled is None:
+                return f"Invalid status line {bool_field.replace('_', ' ')} value."
+            self._statusline_settings = replace(self._statusline_settings, **{bool_field: enabled})
+            return f"Status line {bool_field.replace('_', ' ')}: {normalized}"
+        if item_id in {"statusline.field.queue", "statusline.field.message"}:
+            field_name = item_id.rsplit(".", 1)[-1]
+            if normalized not in {"auto", "true", "false"}:
+                return f"Invalid status line {field_name} value."
+            self._statusline_settings = replace(self._statusline_settings, **{field_name: normalized})
+            return f"Status line {field_name}: {normalized}"
+        if item_id == "statusline.separator":
+            if normalized not in {"pipe", "dot"}:
+                return "Invalid status line separator value."
+            self._statusline_settings = replace(self._statusline_settings, separator=normalized)
+            return f"Status line separator: {normalized}"
+        if item_id == "statusline.style":
+            if normalized not in {"codex-like", "muted", "plain"}:
+                return "Invalid status line style value."
+            self._statusline_settings = replace(self._statusline_settings, style=normalized)
+            return f"Status line style: {normalized}"
+        return f"Unknown status line setting: {item_id}"
 
     def settings_list(self) -> SettingsList:
         return SettingsList(
@@ -74,7 +116,7 @@ class CodingTuiStatusProvider:
                 SettingItem(
                     id="statusline",
                     label="Status line",
-                    enabled=self._visible,
+                    enabled=self.is_visible(),
                 ),
             )
         )
@@ -82,12 +124,30 @@ class CodingTuiStatusProvider:
     def apply_settings(self, settings: SettingsList) -> str:
         for item in settings.items:
             if item.id == "statusline":
-                self._visible = item.enabled
+                self._statusline_settings = replace(self._statusline_settings, enabled=item.enabled)
                 break
         return self.set_visible(None)
 
     def settings_text(self) -> str:
         return "".join(fragment for _style, fragment in SettingsListRenderer(title="Settings").render(self.settings_list()))
+
+
+def _as_bool(value: str) -> bool | None:
+    if value == "true":
+        return True
+    if value == "false":
+        return False
+    return None
+
+
+def _bool_statusline_field(item_id: str) -> str | None:
+    return {
+        "statusline.field.model": "model",
+        "statusline.field.workspace": "workspace",
+        "statusline.field.branch": "branch",
+        "statusline.field.session": "session",
+        "statusline.field.runtime": "runtime",
+    }.get(item_id)
 
 
 __all__ = ["CodingTuiStatusProvider", "StatusSnapshot"]

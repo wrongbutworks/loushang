@@ -4,6 +4,7 @@ import asyncio
 
 from loushang.coding.types import ModelSelection
 from loushang.coding.ui.settings_page import SettingsPageView
+from loushang.coding.ui.status_line import StatusLinePreviewSnapshot
 from loushang.coding.ui.status_provider import CodingTuiStatusProvider
 from loushang.tui import InputEvent, InputIntent, RenderConstraints
 from loushang.tui.cell_width import strip_control_sequences
@@ -107,12 +108,30 @@ def _status_provider() -> CodingTuiStatusProvider:
     )
 
 
-def _page(settings_manager: object | None = None) -> SettingsPageView:
+def _preview_snapshot(**overrides: object) -> StatusLinePreviewSnapshot:
+    from dataclasses import replace
+
+    snapshot = StatusLinePreviewSnapshot(
+        model_label="moonshot/kimi-for-coding",
+        cwd="/repo",
+        branch="main",
+        session_label="abcd",
+        running=False,
+    )
+    return replace(snapshot, **overrides)
+
+
+def _page(
+    settings_manager: object | None = None,
+    *,
+    statusline_preview: object | None = None,
+) -> SettingsPageView:
     return asyncio.run(
         SettingsPageView.create(
             session=_Session(),
             status_provider=_status_provider(),
             settings_manager=settings_manager,
+            statusline_preview=statusline_preview,
         )
     )
 
@@ -130,10 +149,17 @@ def test_settings_page_opens_config_tab_with_search_focus() -> None:
     page = _page()
     lines = _plain(page)
 
-    assert any("Status" in line and "Config" in line and "Model" in line for line in lines)
+    assert any("Status" in line and "Config" in line and "Model" in line and "Status Line" in line for line in lines)
+    assert ">[Config]" in lines[0]
     assert any("Search settings" in line for line in lines)
-    assert any("Status line" in line for line in lines)
+    assert not any("Status line" in line for line in lines[2:])
     assert page.editor_input_target() is not None
+
+
+def test_settings_page_config_no_longer_shows_old_statusline_row() -> None:
+    page = _page(settings_manager=_SettingsManager())
+
+    assert not any("Status line" in line for line in _plain(page, width=96, height=24)[2:])
 
 
 def test_settings_page_config_uses_boxed_search_table_columns_footer_and_styles() -> None:
@@ -154,34 +180,77 @@ def test_settings_page_config_uses_boxed_search_table_columns_footer_and_styles(
 
     header = next(line for line in lines if "Setting" in line and "Value" in line)
     value_column = header.index("Value")
-    status_line = next(line for line in lines if "Status line" in line)
     terminal_line = next(line for line in lines if "Terminal progress" in line)
-    assert status_line.index("true") >= value_column
     assert terminal_line.index("false") >= value_column
 
 
 def test_settings_page_search_filters_config_rows() -> None:
-    page = _page()
+    page = _page(settings_manager=_SettingsManager())
 
-    assert page.handle_input(InputEvent(kind="text", text="status")) is True
+    assert page.handle_input(InputEvent(kind="text", text="progress")) is True
     lines = _plain(page)
 
-    assert any("Status line" in line for line in lines)
-    assert not any("Terminal progress" in line for line in lines)
+    assert any("Terminal progress" in line for line in lines)
+    assert not any("Show images" in line for line in lines)
 
 
-def test_settings_page_statusline_toggle_returns_setting_intent_and_apply_updates_rows() -> None:
+def test_settings_page_statusline_tab_rows_search_cycles_and_preview() -> None:
     page = _page()
+    page.tabs.focus_header()
+    page.handle_input(InputEvent(kind="key", key="right"))
+    page.handle_input(InputEvent(kind="key", key="right"))
     page.handle_input(InputEvent(kind="key", key="down"))
+
+    assert page.tabs.value == "status-line"
+    lines = _plain(page, width=120, height=24)
+    assert any("Search status line..." in line for line in lines)
+    for label in (
+        "Enabled",
+        "Model",
+        "Workspace",
+        "Branch",
+        "Session",
+        "Runtime",
+        "Queue",
+        "Message",
+        "Separator",
+        "Style",
+    ):
+        assert any(label in line for line in lines)
+    assert any("moonshot/kimi-for-coding" in line and "repo" in line for line in lines)
+
+    assert page.handle_input(InputEvent(kind="text", text="style")) is True
     intent = page.handle_input(InputEvent(kind="key", key="enter"))
 
-    assert intent == InputIntent(kind="setting", text="statusline", note="false")
+    assert intent == InputIntent(kind="setting", text="statusline.style", note="muted")
 
-    result = asyncio.run(page.apply_setting("statusline", "false"))
+
+def test_settings_page_statusline_apply_updates_rows_and_preview() -> None:
+    page = _page(statusline_preview=lambda: _preview_snapshot(pending_followups=1, pending_steers=2))
+    page.tabs.focus_header()
+    page.handle_input(InputEvent(kind="key", key="right"))
+    page.handle_input(InputEvent(kind="key", key="right"))
+    page.handle_input(InputEvent(kind="key", key="down"))
+
+    result = asyncio.run(page.apply_setting("statusline.separator", "dot"))
+
+    assert result.statusline_settings is not None
+    assert result.statusline_settings.separator == "dot"
+    assert result.message == "Status line separator: dot"
+    lines = _plain(page, width=120, height=24)
+    assert any("Separator" in line and "dot" in line for line in lines)
+    assert any("moonshot/kimi-for-coding · repo · main · abcd · idle · queued=1 steer=2" in line for line in lines)
+
+
+def test_settings_page_statusline_enabled_toggle_returns_visibility_result() -> None:
+    page = _page()
+
+    result = asyncio.run(page.apply_setting("statusline.enabled", "false"))
 
     assert result.statusline_visible is False
+    assert result.statusline_settings is not None
+    assert result.statusline_settings.enabled is False
     assert result.message == "Status line: off"
-    assert any("Status line" in line and "false" in line for line in _plain(page))
 
 
 def test_settings_page_terminal_progress_apply_updates_settings_manager_and_rows() -> None:
@@ -199,7 +268,6 @@ def test_settings_page_down_moves_past_terminal_progress_when_more_config_rows_a
     page = _page(settings_manager=_SettingsManager())
 
     assert page.handle_input(InputEvent(kind="key", key="down")) is True
-    assert page.handle_input(InputEvent(kind="key", key="down")) is True
     assert page.config_page.settings.active_key == "terminal.progress"
 
     assert page.handle_input(InputEvent(kind="key", key="down")) is True
@@ -214,7 +282,7 @@ def test_settings_page_q_is_search_text_but_closes_from_list_focus() -> None:
     assert search_page.handle_input(InputEvent(kind="text", text="q")) is True
     assert any("q" in line for line in _plain(search_page))
 
-    list_page = _page()
+    list_page = _page(settings_manager=_SettingsManager())
     list_page.handle_input(InputEvent(kind="key", key="down"))
 
     assert list_page.handle_input(InputEvent(kind="text", text="q")) == InputIntent(kind="surface_close")
