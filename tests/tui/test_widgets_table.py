@@ -4,6 +4,7 @@ import runpy
 from typing import Any
 
 from loushang.tui import (
+    CursorDeclaration,
     InputEvent,
     RenderConstraints,
     Table,
@@ -143,6 +144,40 @@ def test_table_can_hide_header() -> None:
     )
 
     assert plain_lines(table, width=12, height=2) == ("  One",)
+
+
+def test_table_declares_cursor_on_focused_active_body_row() -> None:
+    table = Table(
+        [TableColumn("name", "Name")],
+        [
+            TableRow("one", {"name": "One"}),
+            TableRow("two", {"name": "Two"}),
+        ],
+        active_index=1,
+    )
+    table.focus()
+
+    result = table.render(RenderConstraints(width=20, max_height=4))
+
+    assert result.cursor == CursorDeclaration(row=2, column=0)
+
+
+def test_table_cursor_tracks_scrolled_active_body_row() -> None:
+    table = Table(
+        [TableColumn("name", "Name")],
+        [TableRow(str(index), {"name": f"Item {index}"}) for index in range(6)],
+        active_index=5,
+    )
+    table.focus()
+
+    result = table.render(RenderConstraints(width=20, max_height=3))
+
+    assert plain_lines(table, width=20, height=3) == (
+        "  Name",
+        "  Item 4",
+        "> Item 5",
+    )
+    assert result.cursor == CursorDeclaration(row=2, column=0)
 
 
 def test_table_navigation_activation_callbacks_and_space_forms() -> None:
@@ -302,3 +337,51 @@ def test_widgets_table_example_highlights_active_row() -> None:
     moved_lines = tuple(line.text for line in moved.lines)
 
     assert "\x1b[1;36m> Deploy" in moved_lines[4]
+
+
+def test_widgets_table_page_scaffold_example_imports_and_offsets_cursor() -> None:
+    namespace = runpy.run_path("examples/tui/56_widgets_table_page_scaffold.py", run_name="__test__")
+    app = namespace["build_app"]()
+
+    result = app.render(RenderConstraints(width=96, max_height=22))
+    lines = tuple(strip_control_sequences(line.text).rstrip() for line in result.lines)
+
+    assert lines[0].startswith("*[Jobs]")
+    assert "Job table" in lines
+    assert any("Selected      Build is ready" in line for line in lines)
+    assert result.cursor == CursorDeclaration(row=5, column=0)
+
+
+def test_widgets_table_page_scaffold_example_playback_switches_focus_and_tabs() -> None:
+    frames = play_example(
+        "examples/tui/56_widgets_table_page_scaffold.py",
+        events=(
+            ("up to tabs", InputEvent(kind="key", key="up")),
+            ("right runs", InputEvent(kind="key", key="right")),
+            ("down to table", InputEvent(kind="key", key="down")),
+            ("down row", InputEvent(kind="key", key="down")),
+            ("enter select", InputEvent(kind="key", key="enter")),
+        ),
+        width=96,
+        height=22,
+    )
+
+    initial = frames[0].lines
+    tabs = frames[1].lines
+    runs = frames[2].lines
+    body = frames[3].lines
+    moved = frames[4].lines
+    selected = frames[5].lines
+
+    assert initial[0].startswith("*[Jobs]")
+    assert initial[-1].startswith("Table |")
+    assert tabs[0].startswith(">[Jobs]")
+    assert tabs[-1].startswith("Tabs |")
+    assert ">[Runs]" in runs[0]
+    assert "*[Runs]" in body[0]
+    assert "Run table" in body
+    assert "> deploy" in "\n".join(moved)
+    assert any("Selected:" in line for line in selected)
+    assert frames[0].cursor == (5, 0)
+    assert frames[1].cursor == (0, 0)
+    assert frames[3].cursor[0] > 3
