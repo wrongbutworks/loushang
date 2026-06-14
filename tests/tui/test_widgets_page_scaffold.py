@@ -5,6 +5,7 @@ from typing import Any
 
 from loushang.tui import (
     CursorDeclaration,
+    InputEvent,
     RenderConstraints,
     RenderLine,
     RenderResult,
@@ -132,3 +133,122 @@ def test_page_scaffold_uses_header_cursor_without_body_offset() -> None:
     result = scaffold.render(RenderConstraints(width=20, max_height=4))
 
     assert result.cursor == CursorDeclaration(row=0, column=1)
+
+
+@dataclass(slots=True)
+class FocusablePart(StaticPart):
+    focused: bool = False
+    blurred: bool = False
+    handled_keys: tuple[str, ...] = ()
+    editor_target: object | None = None
+
+    def focus(self) -> None:
+        self.focused = True
+        self.blurred = False
+
+    def blur(self) -> None:
+        self.focused = False
+        self.blurred = True
+
+    def handle_input(self, event: object) -> object:
+        key = getattr(event, "key", "")
+        if key in self.handled_keys:
+            return f"handled:{key}"
+        return None
+
+    def editor_input_target(self) -> object | None:
+        return self.editor_target if self.focused else None
+
+
+def test_page_scaffold_focus_and_blur_delegate_to_active_slot() -> None:
+    header = FocusablePart(("header",))
+    body = FocusablePart(("body",))
+    scaffold = PageScaffold(header=header, body=body, focus_region="body")
+
+    scaffold.focus()
+    assert scaffold.focused is True
+    assert body.focused is True
+    assert header.focused is False
+
+    scaffold.blur()
+    assert scaffold.focused is False
+    assert body.blurred is True
+    assert header.blurred is True
+
+
+def test_page_scaffold_down_and_enter_from_header_focus_body_before_header_delegation() -> None:
+    header = FocusablePart(("header",), handled_keys=("enter", "down"))
+    body = FocusablePart(("body",))
+    scaffold = PageScaffold(header=header, body=body, focused=True, focus_region="header")
+    scaffold.focus_header()
+
+    assert scaffold.handle_input(InputEvent(kind="key", key="enter")) is True
+    assert scaffold.focus_region == "body"
+    assert body.focused is True
+    assert header.focused is False
+
+
+def test_page_scaffold_unhandled_up_and_shift_tab_from_body_focus_header() -> None:
+    header = FocusablePart(("header",))
+    body = FocusablePart(("body",))
+    scaffold = PageScaffold(header=header, body=body, focused=True, focus_region="body")
+    scaffold.focus_body()
+
+    assert scaffold.handle_input(InputEvent(kind="key", key="up")) is True
+    assert scaffold.focus_region == "header"
+    assert header.focused is True
+    assert body.focused is False
+
+    assert scaffold.handle_input(InputEvent(kind="key", key="down")) is True
+    assert scaffold.handle_input(InputEvent(kind="key", key="shift+tab")) is True
+    assert scaffold.focus_region == "header"
+
+
+def test_page_scaffold_does_not_steal_handled_body_input() -> None:
+    header = FocusablePart(("header",))
+    body = FocusablePart(("body",), handled_keys=("up",))
+    scaffold = PageScaffold(header=header, body=body, focused=True, focus_region="body")
+    scaffold.focus_body()
+
+    assert scaffold.handle_input(InputEvent(kind="key", key="up")) == "handled:up"
+    assert scaffold.focus_region == "body"
+
+
+def test_page_scaffold_editor_target_delegates_to_current_focus_region() -> None:
+    header_target = object()
+    body_target = object()
+    header = FocusablePart(("header",), editor_target=header_target)
+    body = FocusablePart(("body",), editor_target=body_target)
+    scaffold = PageScaffold(header=header, body=body, focused=True, focus_region="body")
+
+    scaffold.focus_body()
+    assert scaffold.editor_input_target() is body_target
+
+    scaffold.focus_header()
+    assert scaffold.editor_input_target() is header_target
+
+
+def test_page_scaffold_footer_callable_receives_focus_context() -> None:
+    body = FocusablePart(("body",))
+    header = FocusablePart(("header",))
+
+    def footer(context: object) -> str:
+        return (
+            f"{context.focus_region}:"
+            f"{context.header_focused}:"
+            f"{context.body_focused}"
+        )
+
+    scaffold = PageScaffold(header=header, body=body, footer=footer, focused=True, focus_region="body")
+
+    assert plain_lines(scaffold, width=40, height=4)[-1] == "body:False:True"
+    scaffold.focus_header()
+    assert plain_lines(scaffold, width=40, height=4)[-1] == "header:True:False"
+
+
+def test_page_scaffold_missing_optional_methods_do_not_crash() -> None:
+    scaffold = PageScaffold(header=object(), body=object(), footer="footer", focused=True)
+
+    assert plain_lines(scaffold, width=20, height=3)[-1] == "footer"
+    assert scaffold.handle_input(InputEvent(kind="key", key="up")) in {False, None}
+    assert scaffold.editor_input_target() is None

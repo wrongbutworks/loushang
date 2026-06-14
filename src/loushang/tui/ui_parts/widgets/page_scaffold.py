@@ -5,7 +5,13 @@ from dataclasses import dataclass
 from typing import Literal
 
 from loushang.tui.cell_width import truncate_to_width
-from loushang.tui.core import CursorDeclaration, RenderConstraints, RenderLine, RenderResult
+from loushang.tui.core import (
+    CursorDeclaration,
+    RenderConstraints,
+    RenderLine,
+    RenderResult,
+)
+from loushang.tui.keybindings import normalize_key_id
 
 PageScaffoldFocusRegion = Literal["header", "body"]
 
@@ -29,6 +35,59 @@ class PageScaffold:
     focus_region: PageScaffoldFocusRegion = "body"
     separator_after_header: bool = False
     reserve_footer: bool = True
+
+    def focus(self) -> None:
+        self.focused = True
+        if self.focus_region == "header" and self.focus_header():
+            return
+        if self.focus_body():
+            return
+        self.focus_header()
+
+    def blur(self) -> None:
+        self.focused = False
+        _call(self.header, "blur")
+        _call(self.body, "blur")
+
+    def focus_header(self) -> bool:
+        if self.header is None or not _has_method(self.header, "focus"):
+            return False
+        _call(self.body, "blur")
+        _call(self.header, "focus")
+        self.focused = True
+        self.focus_region = "header"
+        return True
+
+    def focus_body(self) -> bool:
+        if not _has_method(self.body, "focus"):
+            return False
+        _call(self.header, "blur")
+        _call(self.body, "focus")
+        self.focused = True
+        self.focus_region = "body"
+        return True
+
+    def editor_input_target(self) -> object | None:
+        if not self.focused:
+            return None
+        target = self.header if self.focus_region == "header" else self.body
+        method = getattr(target, "editor_input_target", None)
+        return method() if callable(method) else None
+
+    def handle_input(self, event: object) -> object:
+        if not self.focused:
+            return None
+        key = normalize_key_id(getattr(event, "key", "")) if getattr(event, "kind", "") == "key" else ""
+        if self.focus_region == "header":
+            if key in {"down", "enter"}:
+                return True if self.focus_body() else False
+            return _handle(self.header, event)
+        result = _handle(self.body, event)
+        if result is not None:
+            return result
+        if key in {"up", "shift+tab"}:
+            return True if self.focus_header() else False
+        return None
 
     def render(self, constraints: RenderConstraints) -> RenderResult:
         width = constraints.width
@@ -124,3 +183,17 @@ def _render_part(
         return render(constraints)
     line_count = min(max(0, missing_render_lines), max(0, constraints.max_height))
     return RenderResult.from_lines([RenderLine("") for _ in range(line_count)], constraints=constraints)
+
+
+def _has_method(part: object | None, name: str) -> bool:
+    return callable(getattr(part, name, None))
+
+
+def _call(part: object | None, name: str) -> object:
+    method = getattr(part, name, None)
+    return method() if callable(method) else None
+
+
+def _handle(part: object | None, event: object) -> object:
+    method = getattr(part, "handle_input", None)
+    return method(event) if callable(method) else None
