@@ -199,7 +199,8 @@ def _run_settings_search() -> object:
 
     result.assert_exit_code(0)
     result.assert_text_contains("Settings")
-    result.assert_text_contains("Search: zz")
+    result.assert_text_contains("Search settings...")
+    result.assert_text_contains("│ zz")
     result.assert_text_contains("No matching settings")
     result.assert_text_not_contains("Status line: off")
     result.assert_no_clear_screen()

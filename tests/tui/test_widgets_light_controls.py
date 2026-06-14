@@ -181,12 +181,12 @@ def test_tabs_normalize_value_render_theme_and_width() -> None:
     assert tabs.value == "overview"
     assert tabs.selected_value == "overview"
     assert changes == []
-    assert plain_lines(tabs, width=60, height=1) == ("* [Overview]    [Logs 3]    [Settings]",)
+    assert plain_lines(tabs, width=60, height=1) == ("*[Overview]   [Logs 3]   [Settings]",)
 
     tabs.focus()
     raw = render_lines(tabs, width=60, height=1)[0]
-    assert raw.startswith("\x1b[1;36m> [Overview]")
-    assert "\x1b[2m  [Settings]" in raw
+    assert raw.startswith("\x1b[1;36m>[Overview]")
+    assert "\x1b[2m [Settings]" in raw
     assert_widths_within(render_lines(tabs, width=10, height=1), 10)
 
 
@@ -196,7 +196,7 @@ def test_tabs_level_tokens_fallback_to_legacy_tab_token() -> None:
 
     raw = render_lines(tabs, width=40, height=1)[0]
 
-    assert "\x1b[31m  [Two]" in raw
+    assert "\x1b[31m [Two]" in raw
 
 
 def test_tabs_navigation_changes_value_callbacks_and_activation_forms() -> None:
@@ -325,7 +325,7 @@ def test_widgets_light_controls_example_playback_snapshots() -> None:
     assert frames[0].lines[:12] == (
         "View Switcher",
         "",
-        "Views         > [Overview]    [Logs 3]    [Settings]",
+        "Views         >[Overview]   [Logs 3]   [Settings]",
         "Activity      | Syncing",
         "",
         "Actions",
@@ -336,7 +336,7 @@ def test_widgets_light_controls_example_playback_snapshots() -> None:
         "Status        Ready",
         "",
     )
-    assert "Views           [Overview]  > [Logs 3]    [Settings]" in frames[1].lines
+    assert "Views          [Overview]  >[Logs 3]   [Settings]" in frames[1].lines
     assert "              > Open  current view" in frames[2].lines
     assert "              > Refresh" in frames[3].lines
     assert "Status        Refreshed" in frames[4].lines
@@ -351,12 +351,12 @@ def test_widgets_light_controls_example_highlights_active_region() -> None:
     initial = tui.render(RenderConstraints(width=80, max_height=20))
     initial_lines = tuple(line.text for line in initial.lines)
 
-    assert "\x1b[1;36m> [Overview]" in initial_lines[2]
+    assert "\x1b[1;36m>[Overview]" in initial_lines[2]
     assert "\x1b[1;36m> Open" not in initial_lines[6]
 
     tui.handle_input(InputEvent(kind="key", key="tab"))
     actions = tui.render(RenderConstraints(width=80, max_height=20))
     action_lines = tuple(line.text for line in actions.lines)
 
-    assert "\x1b[1;36m> [Overview]" not in action_lines[2]
+    assert "\x1b[1;36m>[Overview]" not in action_lines[2]
     assert "\x1b[1;36m> Open" in action_lines[6]
