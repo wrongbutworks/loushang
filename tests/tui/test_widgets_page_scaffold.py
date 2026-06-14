@@ -143,6 +143,52 @@ def test_page_scaffold_reserves_footer_height_under_long_body_content() -> None:
     assert "row 9" not in lines
 
 
+def test_page_scaffold_renders_body_padding_inside_reserved_footer_area() -> None:
+    scaffold = PageScaffold(
+        header=StaticPart(("header",)),
+        body=StaticPart(("body",)),
+        footer="footer",
+        separator_after_header=True,
+        body_padding_top=1,
+        body_padding_bottom=2,
+    )
+
+    assert plain_lines(scaffold, width=12, height=7) == (
+        "header",
+        "------------",
+        "",
+        "body",
+        "",
+        "",
+        "footer",
+    )
+
+
+def test_page_scaffold_body_padding_yields_to_body_and_footer_when_height_is_tight() -> None:
+    scaffold = PageScaffold(
+        body=StaticPart(("body",)),
+        footer="footer",
+        body_padding_top=3,
+        body_padding_bottom=3,
+    )
+
+    assert plain_lines(scaffold, width=20, height=2) == ("body", "footer")
+
+
+def test_page_scaffold_body_padding_counts_against_body_viewport_budget() -> None:
+    scaffold = PageScaffold(
+        body=StaticPart(tuple(f"row {index}" for index in range(10))),
+        footer="footer",
+        body_padding_top=1,
+        body_padding_bottom=1,
+    )
+
+    lines = plain_lines(scaffold, width=20, height=6)
+
+    assert lines == ("", "row 0", "row 1", "row 2", "", "footer")
+    assert "row 3" not in lines
+
+
 def test_page_scaffold_uses_visible_height_for_footer_padding() -> None:
     scaffold = PageScaffold(
         body=StaticPart(tuple(f"row {index}" for index in range(10))),
@@ -180,6 +226,22 @@ def test_page_scaffold_offsets_body_cursor_after_header_and_separator() -> None:
     result = scaffold.render(RenderConstraints(width=20, max_height=5))
 
     assert result.cursor == CursorDeclaration(row=2, column=2)
+
+
+def test_page_scaffold_offsets_body_cursor_after_body_top_padding() -> None:
+    scaffold = PageScaffold(
+        header=StaticPart(("header",)),
+        body=CursorPart(("body",), CursorDeclaration(row=0, column=3)),
+        footer="footer",
+        focused=True,
+        focus_region="body",
+        separator_after_header=True,
+        body_padding_top=2,
+    )
+
+    result = scaffold.render(RenderConstraints(width=20, max_height=7))
+
+    assert result.cursor == CursorDeclaration(row=4, column=3)
 
 
 def test_page_scaffold_uses_header_cursor_without_body_offset() -> None:

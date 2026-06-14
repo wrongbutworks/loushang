@@ -112,9 +112,12 @@ class PageScaffold:
     body: object
     header: object | None = None
     footer: PageScaffoldFooter = ""
+    theme: ThemeResolver | None = None
     focused: bool = False
     focus_region: Literal["header", "body"] = "body"
     separator_after_header: bool = False
+    body_padding_top: int = 0
+    body_padding_bottom: int = 0
     reserve_footer: bool = True
 ```
 
@@ -126,9 +129,17 @@ a smaller static widget.
 `footer` can be a fixed string or a callable. The callable receives
 `PageScaffoldContext` and returns a string for the current focus state.
 
-The first version does not need theme tokens. It should render plain separator
-and footer text. A later visual styling slice can add `widget.pageScaffold.*`
-tokens once the layout/focus contract is stable.
+`theme` applies only to scaffold-owned chrome. It must not style child-rendered
+header or body lines.
+
+`body_padding_top` and `body_padding_bottom` add best-effort blank rows inside
+the body region. Padding yields to at least one body row and to reserved footer
+space when height is tight.
+
+The supported scaffold theme tokens are:
+
+- `widget.pageScaffold.separator`
+- `widget.pageScaffold.footer`
 
 ## Focus Behavior
 
@@ -333,9 +344,12 @@ Add a short internals page or section explaining that:
 
 ## Open Decisions
 
-The first implementation should defer theme tokens. The class name and API
-should leave room for later styling, but adding `widget.pageScaffold.*` tokens
-before there is more than one consumer would be premature.
+Resolved: PageScaffold supports scaffold-owned chrome theme tokens for the
+separator and footer. Header and body styling remain owned by child widgets.
+
+Resolved: PageScaffold supports top and bottom body padding as a small layout
+hook. It does not yet support title bands, fixed body regions, or specialized
+search/footer widgets.
 
 The first implementation should not add specialized `SearchBox`, `PageFooter`,
 or `OverflowHint` widgets. `SearchableList` already covers boxed search and

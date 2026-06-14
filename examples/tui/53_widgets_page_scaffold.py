@@ -71,6 +71,8 @@ class PageScaffoldDemo(FocusableMixin):
             focused=True,
             focus_region="body",
             separator_after_header=True,
+            body_padding_top=1,
+            body_padding_bottom=1,
         )
         self.focus()
 
