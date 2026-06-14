@@ -389,7 +389,8 @@ def test_tabgroup_searchable_list_example_up_to_tabs_down_returns_to_search() ->
     )
 
     assert frames[-1].lines[0].startswith("*[Workspace]")
-    assert frames[-1].lines[2] == "Search settings..."
+    assert frames[-1].lines[2].startswith("╭")
+    assert "Search settings..." in frames[-1].lines[3]
     assert not any(line.startswith("> Model") for line in frames[-1].lines)
     assert frames[-1].lines[-1].startswith("Search |")
 

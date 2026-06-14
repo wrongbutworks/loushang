@@ -2,7 +2,12 @@ from __future__ import annotations
 
 from typing import Any
 
-from loushang.tui import InputEvent, RenderConstraints, strip_control_sequences
+from loushang.tui import (
+    InputEvent,
+    RenderConstraints,
+    ThemeResolver,
+    strip_control_sequences,
+)
 from loushang.tui.ui_parts.widgets.searchable_list import (
     SearchableList,
     SearchableListItem,
@@ -103,6 +108,77 @@ def test_searchable_list_renders_bounded_viewport_and_overflow_counts() -> None:
     plain_lines(view, width=40, height=6)
     assert view.more_above > 0
     assert view.more_below > 0
+
+
+def test_searchable_list_renders_settings_style_box_headers_overflow_and_footer_hint() -> None:
+    items = tuple(SearchableListItem(f"setting-{index}", f"Setting {index}", f"value-{index}") for index in range(8))
+    view = SearchableList(
+        items,
+        search_box=True,
+        detail_column=22,
+        column_headers=("Setting", "Value"),
+        footer_hint="Type to filter | Enter/down to select | Up to tabs | Esc to clear",
+        focused=True,
+    )
+
+    assert plain_lines(view, width=50, height=9) == (
+        "╭───────────────────────────────────────────────╮",
+        "│ Search                                        │",
+        "╰───────────────────────────────────────────────╯",
+        "Setting               Value",
+        "  Setting 0           value-0",
+        "  Setting 1           value-1",
+        "  Setting 2           value-2",
+        "  ↓ 5 more below",
+        "Type to filter | Enter/down to select | Up to tab",
+    )
+
+
+def test_searchable_list_themes_box_header_and_footer_without_changing_plain_text() -> None:
+    theme = ThemeResolver(
+        defaults={
+            "widget.searchableList.box": {"color": "bright_black"},
+            "widget.searchableList.header": {"color": "cyan"},
+            "widget.searchableList.footer": {"dim": True},
+        }
+    )
+    view = SearchableList(
+        _items(),
+        search_box=True,
+        column_headers=("Setting", "Value"),
+        footer_hint="Type to filter",
+        theme=theme,
+    )
+
+    raw = render_lines(view, width=32, height=7)
+
+    assert raw[0].startswith("\x1b[90m")
+    assert raw[3].startswith("\x1b[36m")
+    assert raw[-1].startswith("\x1b[2m")
+    assert tuple(strip_control_sequences(line) for line in raw) == plain_lines(view, width=32, height=7)
+
+
+def test_searchable_list_space_selects_active_item_when_list_focused() -> None:
+    view = SearchableList(_items(), focused=True)
+    view.focus_list()
+
+    assert view.handle_input(InputEvent(kind="key", key="space")) == SearchableListSelect(
+        key="model",
+        label="Model",
+        value="kimi-for-coding",
+    )
+
+
+def test_searchable_list_footer_hint_reserves_result_height() -> None:
+    items = tuple(SearchableListItem(f"item-{index}", f"Item {index}") for index in range(6))
+    view = SearchableList(items, footer_hint="Footer", focused=True)
+    view.focus_list()
+
+    lines = plain_lines(view, width=30, height=5)
+
+    assert lines[-1] == "Footer"
+    assert any("more below" in line for line in lines)
+    assert not any("Item 5" in line for line in lines)
 
 
 def test_searchable_list_can_preserve_active_key_when_items_are_replaced() -> None:

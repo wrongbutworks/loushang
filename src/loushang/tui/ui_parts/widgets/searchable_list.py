@@ -53,6 +53,8 @@ class SearchableList:
     focused: bool
     search_box: bool
     detail_column: int | None
+    column_headers: tuple[str, str] | None
+    footer_hint: str
 
     def __init__(
         self,
@@ -68,6 +70,8 @@ class SearchableList:
         focused: bool = False,
         search_box: bool = False,
         detail_column: int | None = None,
+        column_headers: tuple[str, str] | None = None,
+        footer_hint: str = "",
     ) -> None:
         self._items = tuple(items)
         self.placeholder = placeholder
@@ -77,6 +81,8 @@ class SearchableList:
         self.focused = focused
         self.search_box = search_box
         self.detail_column = detail_column
+        self.column_headers = column_headers
+        self.footer_hint = footer_hint
         self.focus_region = focus_region if focus_region in {"search", "list"} else "search"
         self._active_index = max(0, active_index)
         self._scroll_offset = 0
@@ -177,7 +183,7 @@ class SearchableList:
         cursor: CursorDeclaration | None = None
         query_line, query_cursor_column = self._query_line(target_width)
         if self.search_box:
-            lines.extend(_boxed_query_lines(query_line.text, target_width))
+            lines.extend(_boxed_query_lines(query_line.text, target_width, self.theme))
             query_cursor_row = 1
             query_cursor_column += 2
         else:
@@ -186,11 +192,18 @@ class SearchableList:
         if self.focused and self.focus_region == "search":
             cursor = CursorDeclaration(row=query_cursor_row, column=query_cursor_column)
 
-        item_height = max(0, constraints.max_height - len(lines))
+        if self.column_headers is not None and len(lines) < constraints.max_height:
+            lines.append(_column_header_line(self, target_width))
+
+        remaining_height = max(0, constraints.max_height - len(lines))
+        footer_reserved = 1 if self.footer_hint and remaining_height >= 2 else 0
+        item_height = max(0, remaining_height - footer_reserved)
         if item_height > 0:
             lines.extend(self._result_lines(target_width, item_height))
         else:
             self._last_visible_count = 0
+        if footer_reserved and len(lines) < constraints.max_height:
+            lines.append(_footer_hint_line(self, target_width))
 
         return RenderResult.from_lines(lines[: constraints.max_height], constraints=constraints, cursor=cursor)
 
@@ -223,7 +236,10 @@ class SearchableList:
         return True if handled else None
 
     def _handle_list_input(self, event: object) -> object:
-        if getattr(event, "kind", "") != "key":
+        kind = getattr(event, "kind", "")
+        if kind == "text" and getattr(event, "text", "") == " ":
+            return self._select_active()
+        if kind != "key":
             return None
         key = normalize_key_id(getattr(event, "key", ""))
         if key == "up" and self._at_first_enabled_item():
@@ -241,7 +257,7 @@ class SearchableList:
             return self._jump_active(first=True)
         if key == "end":
             return self._jump_active(first=False)
-        if key == "enter":
+        if key in {"enter", "space"}:
             return self._select_active()
         return None
 
@@ -392,6 +408,22 @@ def _item_line(view: SearchableList, index: int, item: SearchableListItem, width
     return truncate_to_width(rendered, max_width=width, ellipsis="")
 
 
+def _column_header_line(view: SearchableList, width: int) -> RenderLine:
+    if view.column_headers is None:
+        return RenderLine("")
+    label_header, detail_header = view.column_headers
+    if view.detail_column is not None and detail_header:
+        detail_column = max(4, min(view.detail_column, max(4, width - 1)))
+        label = truncate_to_width(label_header, max_width=detail_column, ellipsis="")
+        padding = " " * max(1, detail_column - visible_width(label))
+        detail = truncate_to_width(detail_header, max_width=max(0, width - detail_column), ellipsis="")
+        text = truncate_to_width(f"{label}{padding}{detail}", max_width=width, ellipsis="")
+    else:
+        parts = label_header if not detail_header else f"{label_header}  {detail_header}"
+        text = truncate_to_width(parts, max_width=width, ellipsis="")
+    return RenderLine(style_text(text, view.theme, "widget.searchableList.header"))
+
+
 def _overflow_line(view: SearchableList, width: int) -> RenderLine | None:
     parts: list[str] = []
     if view.more_above:
@@ -404,7 +436,12 @@ def _overflow_line(view: SearchableList, width: int) -> RenderLine | None:
     return RenderLine(style_text(text, view.theme, "widget.searchableList.overflow"))
 
 
-def _boxed_query_lines(text: str, width: int) -> list[RenderLine]:
+def _footer_hint_line(view: SearchableList, width: int) -> RenderLine:
+    text = truncate_to_width(view.footer_hint, max_width=width, ellipsis="")
+    return RenderLine(style_text(text, view.theme, "widget.searchableList.footer"))
+
+
+def _boxed_query_lines(text: str, width: int, theme: ThemeResolver | None) -> list[RenderLine]:
     if width <= 0:
         return []
     if width < 4:
@@ -412,8 +449,12 @@ def _boxed_query_lines(text: str, width: int) -> list[RenderLine]:
     inner_width = max(0, width - 4)
     visible_text = truncate_to_width(text, max_width=inner_width, ellipsis="")
     padding = " " * max(0, inner_width - visible_width(visible_text))
+    top = "╭" + "─" * (width - 2) + "╮"
+    bottom = "╰" + "─" * (width - 2) + "╯"
+    left = style_text("│ ", theme, "widget.searchableList.box")
+    right = style_text(" │", theme, "widget.searchableList.box")
     return [
-        RenderLine("╭" + "─" * (width - 2) + "╮"),
-        RenderLine(f"│ {visible_text}{padding} │"),
-        RenderLine("╰" + "─" * (width - 2) + "╯"),
+        RenderLine(style_text(top, theme, "widget.searchableList.box")),
+        RenderLine(f"{left}{visible_text}{padding}{right}"),
+        RenderLine(style_text(bottom, theme, "widget.searchableList.box")),
     ]

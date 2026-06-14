@@ -36,12 +36,15 @@ TABGROUP_SEARCH_THEME = ThemeResolver(
         "widget.tabs.level1.selected_content_focus": {"bold": True, "color": "yellow"},
         "widget.searchableList.search": {"color": "white"},
         "widget.searchableList.placeholder": {"color": "bright_black"},
+        "widget.searchableList.box": {"color": "bright_black"},
+        "widget.searchableList.header": {"color": "bright_black"},
         "widget.searchableList.item": {"color": "white"},
         "widget.searchableList.focus": {"bold": True, "color": "cyan"},
         "widget.searchableList.disabled": {"dim": True},
         "widget.searchableList.description": {"color": "bright_black"},
         "widget.searchableList.empty": {"color": "bright_black"},
         "widget.searchableList.overflow": {"color": "bright_black"},
+        "widget.searchableList.footer": {"color": "bright_black"},
     }
 )
 
@@ -74,20 +77,7 @@ class SettingsListPage(FocusableMixin):
         return self.settings.handle_input(event)
 
     def render(self, constraints: RenderConstraints) -> RenderResult:
-        if constraints.max_height <= 2:
-            return self.settings.render(constraints)
-        settings = self.settings.render(
-            RenderConstraints(width=constraints.width, max_height=max(1, constraints.max_height - 2))
-        )
-        rows = list(settings.lines[:1])
-        rows.append(RenderLine(_separator(constraints.width)))
-        rows.append(RenderLine(_settings_header(constraints.width)))
-        rows.extend(settings.lines[1:])
-        return RenderResult.from_lines(
-            rows[: constraints.max_height],
-            constraints=constraints,
-            cursor=settings.cursor,
-        )
+        return self.settings.render(constraints)
 
     def _activate_current(self) -> str | None:
         item = self.settings.active_item
@@ -117,6 +107,10 @@ class SettingsListPage(FocusableMixin):
             placeholder="Search settings...",
             theme=TABGROUP_SEARCH_THEME,
             focused=focused,
+            search_box=True,
+            detail_column=SETTING_LABEL_WIDTH,
+            column_headers=("Setting", "Value"),
+            footer_hint="Type to filter | Enter/down to select | Up to tabs | Esc clear",
         )
 
 
@@ -271,12 +265,6 @@ def _boolean_value(value: str) -> bool | None:
 
 def _separator(width: int) -> str:
     return "-" * max(1, width)
-
-
-def _settings_header(width: int) -> str:
-    label_width = max(8, min(SETTING_LABEL_WIDTH, width - 8))
-    text = f"{'Setting':<{label_width}}Value"
-    return truncate_to_width(text, max_width=width, ellipsis="")
 
 
 def _with_top_separator(lines: tuple[RenderLine, ...], *, width: int) -> list[RenderLine]:

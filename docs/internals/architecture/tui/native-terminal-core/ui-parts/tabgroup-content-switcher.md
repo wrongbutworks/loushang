@@ -1,17 +1,16 @@
-# TabGroup And SearchableList UI Parts
+# TabGroup And Content Switcher UI Parts
 
 ## Purpose
 
-`TabGroup` composes a tab header with persistent page content. `SearchableList`
-provides a reusable searchable long-list page widget. `ContentSwitcher` remains
-an internal helper for fixed-height selected-content rendering.
+`TabGroup` composes a tab header with persistent page content.
+`ContentSwitcher` remains an internal helper for fixed-height selected-content
+rendering. Searchable long-list content is covered by
+[SearchableList](./searchable-list.md).
 
 ## Inputs And State
 
 - `TabPage(value, label, content, disabled=False, badge="")`
 - `TabGroup(pages, value="", level=0, content_height=None, focused=False)`
-- `SearchableListItem(key, label, value="", description="", disabled=False)`
-- `SearchableList(items, query="", focus_region="search", focused=False)`
 
 ## Render Constraints
 
@@ -20,8 +19,9 @@ Both widgets must respect `RenderConstraints.width` and
 
 ## Focus Behavior
 
-`TabGroup` switches between header focus and selected content focus.
-`SearchableList` switches between search focus and list focus.
+`TabGroup` switches between header focus and selected content focus. When a
+selected content widget returns `None` for upward navigation, the parent
+TabGroup can move focus back to the tab header.
 
 ## Tab Marker Contract
 
@@ -53,8 +53,8 @@ Only one `TabGroup` in a nested active focus path should render `>`.
 ## Events
 
 `TabGroup` value changes return a local structured tab-change object unless an
-`on_change` callback is supplied. `SearchableList` activation returns
-`SearchableListSelect` unless `on_select` is supplied.
+`on_change` callback is supplied. Selected content owns its own structured
+intents; for SearchableList content, see [SearchableList](./searchable-list.md).
 
 ## Theme Tokens
 
