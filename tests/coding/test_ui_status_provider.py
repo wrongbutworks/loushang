@@ -144,7 +144,7 @@ def test_status_provider_rejects_invalid_statusline_setting_values() -> None:
     assert saved == []
 
 
-def test_status_provider_formats_settings_summary() -> None:
+def test_status_provider_formats_legacy_settings_summary() -> None:
     from loushang.coding.ui.status_provider import CodingTuiStatusProvider
     from loushang.tui import SettingItem, SettingsList
 
@@ -157,9 +157,9 @@ def test_status_provider_formats_settings_summary() -> None:
         running=lambda: False,
     )
 
-    assert provider.settings_list() == SettingsList(
+    assert provider.legacy_settings_list() == SettingsList(
         (SettingItem(id="statusline", label="Status line", enabled=True),)
     )
-    assert provider.settings_text() == "Settings\n> [x] Status line"
+    assert provider.legacy_settings_text() == "Settings\n> [x] Status line"
     provider.set_visible(False)
-    assert provider.settings_text() == "Settings\n> [ ] Status line"
+    assert provider.legacy_settings_text() == "Settings\n> [ ] Status line"

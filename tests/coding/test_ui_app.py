@@ -213,7 +213,7 @@ def test_build_coding_tui_app_wires_command_palette_chooser() -> None:
     assert seen and seen[0].title == "Commands"
 
 
-def test_build_coding_tui_app_wires_settings_list_presenter() -> None:
+def test_build_coding_tui_app_wires_legacy_settings_list_presenter() -> None:
     from loushang.coding.ui.app import build_coding_tui_app
     from loushang.tui import SettingsList
 
@@ -263,7 +263,7 @@ def test_build_coding_tui_app_wires_settings_list_presenter() -> None:
         now=lambda: 10.0,
         enable_debug=lambda *, session, scopes: "/tmp/debug.log",
         disable_debug=lambda: None,
-        settings_list_presenter=present,
+        legacy_settings_list_presenter=present,
     )
 
     result = asyncio.run(app.handlers.handle_prompt("/settings"))

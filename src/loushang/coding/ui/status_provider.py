@@ -117,7 +117,7 @@ class CodingTuiStatusProvider:
             return f"Status line style: {normalized}"
         return f"Unknown status line setting: {item_id}"
 
-    def settings_list(self) -> SettingsList:
+    def legacy_settings_list(self) -> SettingsList:
         return SettingsList(
             (
                 SettingItem(
@@ -128,15 +128,18 @@ class CodingTuiStatusProvider:
             )
         )
 
-    def apply_settings(self, settings: SettingsList) -> str:
+    def apply_legacy_settings(self, settings: SettingsList) -> str:
         for item in settings.items:
             if item.id == "statusline":
                 self._set_statusline_settings(replace(self._statusline_settings, enabled=item.enabled))
                 break
         return self.set_visible(None)
 
-    def settings_text(self) -> str:
-        return "".join(fragment for _style, fragment in SettingsListRenderer(title="Settings").render(self.settings_list()))
+    def legacy_settings_text(self) -> str:
+        return "".join(
+            fragment
+            for _style, fragment in SettingsListRenderer(title="Settings").render(self.legacy_settings_list())
+        )
 
     def _set_statusline_settings(self, settings: StatusLineSettings) -> None:
         self._statusline_settings = settings

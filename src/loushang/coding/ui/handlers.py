@@ -64,15 +64,15 @@ class CommandSelectFn(Protocol):
     def __call__(self, query: str) -> Awaitable[str]: ...
 
 
-class SettingsFn(Protocol):
+class LegacySettingsTextFn(Protocol):
     def __call__(self) -> str: ...
 
 
-class SettingsListFn(Protocol):
+class LegacySettingsListFn(Protocol):
     def __call__(self) -> SettingsList: ...
 
 
-class ApplySettingsFn(Protocol):
+class ApplyLegacySettingsFn(Protocol):
     def __call__(self, settings: SettingsList) -> str: ...
 
 
@@ -80,7 +80,7 @@ class InfoPanelPresenter(Protocol):
     def __call__(self, panel: InfoPanel) -> bool | Awaitable[bool]: ...
 
 
-class SettingsListPresenter(Protocol):
+class LegacySettingsListPresenter(Protocol):
     def __call__(self, settings: SettingsList) -> SettingsList | None | Awaitable[SettingsList | None]: ...
 
 
@@ -110,10 +110,10 @@ class CodingTuiHandlers:
         command_select: CommandSelectFn | None = None,
         commands: CommandsFn | None = None,
         hotkeys: Callable[[], str] = lambda: "",
-        settings: SettingsFn | None = None,
-        settings_list: SettingsListFn | None = None,
-        apply_settings: ApplySettingsFn | None = None,
-        present_settings_list: SettingsListPresenter | None = None,
+        legacy_settings_text: LegacySettingsTextFn | None = None,
+        legacy_settings_list: LegacySettingsListFn | None = None,
+        apply_legacy_settings: ApplyLegacySettingsFn | None = None,
+        present_legacy_settings_list: LegacySettingsListPresenter | None = None,
         statusline: Callable[[bool | None], str] = lambda _enabled: "",
         now: Callable[[], float],
         session_running: Callable[[], bool],
@@ -141,10 +141,10 @@ class CodingTuiHandlers:
         self._command_select = command_select or _empty_command_select
         self._commands = commands or _empty_commands
         self._hotkeys = hotkeys
-        self._settings = settings or _empty_settings
-        self._settings_list = settings_list
-        self._apply_settings = apply_settings
-        self._present_settings_list = present_settings_list
+        self._legacy_settings_text = legacy_settings_text or _empty_legacy_settings
+        self._legacy_settings_list = legacy_settings_list
+        self._apply_legacy_settings = apply_legacy_settings
+        self._present_legacy_settings_list = present_legacy_settings_list
         self._statusline = statusline
         self._now = now
         self._session_running = session_running
@@ -219,9 +219,9 @@ class CodingTuiHandlers:
             await self._show_info("Hotkeys", self._hotkeys(), label="hotkeys:show", local=True)
             return None
         if route is PromptRoute.SETTINGS:
-            if await self._show_settings_list():
+            if await self._show_legacy_settings_list():
                 return None
-            await self._emit(lambda: self._render_info("Settings", self._settings()), label="settings:show")
+            await self._emit(lambda: self._render_info("Settings", self._legacy_settings_text()), label="settings:show")
             return None
         if route is PromptRoute.STATUSLINE:
             enabled = intent.enabled if isinstance(intent, StatuslineIntent) else None
@@ -261,9 +261,9 @@ class CodingTuiHandlers:
             await self._show_info("Hotkeys", self._hotkeys(), label="hotkeys:show", local=True)
             return True
         if command_name == "settings":
-            if await self._show_settings_list():
+            if await self._show_legacy_settings_list():
                 return True
-            await self._emit(lambda: self._render_info("Settings", self._settings()), label="settings:show")
+            await self._emit(lambda: self._render_info("Settings", self._legacy_settings_text()), label="settings:show")
             return True
         if command_name == "statusline":
             enabled = intent.enabled if isinstance(intent, StatuslineIntent) else None
@@ -315,13 +315,17 @@ class CodingTuiHandlers:
             return
         self._render_info_panel(panel)
 
-    async def _show_settings_list(self) -> bool:
-        if self._settings_list is None or self._apply_settings is None or self._present_settings_list is None:
+    async def _show_legacy_settings_list(self) -> bool:
+        if (
+            self._legacy_settings_list is None
+            or self._apply_legacy_settings is None
+            or self._present_legacy_settings_list is None
+        ):
             return False
-        settings = await _resolve(self._present_settings_list(self._settings_list()))
+        settings = await _resolve(self._present_legacy_settings_list(self._legacy_settings_list()))
         if settings is None:
             return True
-        message = self._apply_settings(settings)
+        message = self._apply_legacy_settings(settings)
         await self._emit(lambda: self._render_status(message), label="settings:set")
         return True
 
@@ -342,7 +346,7 @@ async def _empty_command_select(_query: str) -> str:
     return "Command selection is not available."
 
 
-def _empty_settings() -> str:
+def _empty_legacy_settings() -> str:
     return "No settings available."
 
 
