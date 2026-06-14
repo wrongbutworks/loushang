@@ -17,10 +17,18 @@ from loushang.tui import (
     SearchableListSelect,
     TabItem,
     Tabs,
+    ThemeResolver,
     Tui,
     TuiInputResult,
     TuiRunner,
     truncate_to_width,
+)
+
+PAGE_SCAFFOLD_THEME = ThemeResolver(
+    defaults={
+        "widget.pageScaffold.separator": {"color": "bright_black"},
+        "widget.pageScaffold.footer": {"color": "bright_black"},
+    }
 )
 
 
@@ -59,6 +67,7 @@ class PageScaffoldDemo(FocusableMixin):
             header=self.tabs,
             body=self.bodies[self.tabs.value],
             footer=self._footer,
+            theme=PAGE_SCAFFOLD_THEME,
             focused=True,
             focus_region="body",
             separator_after_header=True,
