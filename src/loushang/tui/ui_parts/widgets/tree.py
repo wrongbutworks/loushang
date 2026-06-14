@@ -4,7 +4,12 @@ from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field
 
 from loushang.tui.cell_width import autowrap_safe_width, truncate_to_width
-from loushang.tui.core import RenderConstraints, RenderLine, RenderResult
+from loushang.tui.core import (
+    CursorDeclaration,
+    RenderConstraints,
+    RenderLine,
+    RenderResult,
+)
 from loushang.tui.theme import ThemeResolver
 from loushang.tui.ui_parts.widgets._utils import (
     callback_result,
@@ -360,4 +365,10 @@ class TreeView:
         self._ensure_active_visible(height)
         rows = visible[self._first_visible_index : self._first_visible_index + height]
         lines = [RenderLine(self._row_line(entry, width)) for entry in rows]
-        return RenderResult.from_lines(lines, constraints=constraints)
+        cursor: CursorDeclaration | None = None
+        if self.focused and self._active_value:
+            for index, entry in enumerate(rows):
+                if entry.value == self._active_value and not entry.disabled:
+                    cursor = CursorDeclaration(row=index, column=0)
+                    break
+        return RenderResult.from_lines(lines, constraints=constraints, cursor=cursor)
