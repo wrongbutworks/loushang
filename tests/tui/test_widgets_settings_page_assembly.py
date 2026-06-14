@@ -93,7 +93,6 @@ def test_settings_page_assembly_renders_nested_stats_tabs_with_single_header_foc
             ("right usage", InputEvent(kind="key", key="right")),
             ("right stats", InputEvent(kind="key", key="right")),
             ("down stats", InputEvent(kind="key", key="down")),
-            ("up nested tabs", InputEvent(kind="key", key="up")),
             ("right nested models", InputEvent(kind="key", key="right")),
         ),
         width=100,
@@ -105,3 +104,25 @@ def test_settings_page_assembly_renders_nested_stats_tabs_with_single_header_foc
     assert any("Overview" in line and ">[Models]" in line for line in final)
     assert any("Model usage" in line or "kimi-for-coding" in line for line in final)
     assert sum(line.count(">") for line in final) == 1
+
+
+def test_settings_page_assembly_nested_stats_content_focus_cursor_leaves_tab_header() -> None:
+    frames = play_example(
+        EXAMPLE_PATH,
+        events=(
+            ("up tabs", InputEvent(kind="key", key="up")),
+            ("right model", InputEvent(kind="key", key="right")),
+            ("right usage", InputEvent(kind="key", key="right")),
+            ("right stats", InputEvent(kind="key", key="right")),
+            ("down stats", InputEvent(kind="key", key="down")),
+            ("right nested models", InputEvent(kind="key", key="right")),
+            ("down nested content", InputEvent(kind="key", key="down")),
+        ),
+        width=100,
+        height=26,
+    )
+
+    final = frames[-1]
+    nested_header_row = next(index for index, line in enumerate(final.lines) if "[Overview]" in line and "*[Models]" in line)
+    assert final.cursor[0] > nested_header_row
+    assert final.lines[final.cursor[0]].startswith("Model usage")

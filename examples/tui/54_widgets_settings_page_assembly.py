@@ -158,7 +158,8 @@ class StaticPage(FocusableMixin):
             RenderLine(truncate_to_width(line, max_width=constraints.width, ellipsis=""))
             for line in self.lines[: constraints.max_height]
         ]
-        return RenderResult.from_lines(rows, constraints=constraints)
+        cursor = CursorDeclaration(row=0, column=0) if self.focused and rows else None
+        return RenderResult.from_lines(rows, constraints=constraints, cursor=cursor)
 
 
 @dataclass(slots=True)
@@ -170,7 +171,7 @@ class StatsPage(FocusableMixin):
 
     def focus(self) -> None:
         self.focused = True
-        self.group.focus_content()
+        self.group.focus()
 
     def blur(self) -> None:
         self.focused = False
