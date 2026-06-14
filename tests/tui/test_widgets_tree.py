@@ -6,6 +6,7 @@ from typing import Any
 import pytest
 
 from loushang.tui import (
+    CursorDeclaration,
     InputEvent,
     RenderConstraints,
     ThemeResolver,
@@ -245,6 +246,32 @@ def test_tree_view_renders_indentation_markers_focus_and_disabled_rows() -> None
     )
 
 
+def test_tree_view_declares_cursor_on_focused_active_row() -> None:
+    tree = TreeView(sample_nodes(), active_value="widgets")
+    tree.focus()
+
+    result = tree.render(RenderConstraints(width=30, max_height=6))
+
+    assert result.cursor == CursorDeclaration(row=1, column=0)
+
+
+def test_tree_view_cursor_tracks_scrolled_active_row() -> None:
+    tree = TreeView(
+        tuple(TreeNode(str(index), f"Item {index}") for index in range(6)),
+        active_value="5",
+    )
+    tree.focus()
+
+    result = tree.render(RenderConstraints(width=9, max_height=3))
+
+    assert plain_lines(tree, width=9, height=3) == (
+        "    Item",
+        "    Item",
+        ">   Item",
+    )
+    assert result.cursor == CursorDeclaration(row=2, column=0)
+
+
 def test_tree_view_respects_width_empty_and_height_viewport() -> None:
     empty = TreeView((), empty_text="Nothing here")
     assert plain_lines(empty, width=8, height=3) == ("Nothing",)
@@ -336,3 +363,52 @@ def test_widgets_tree_example_highlights_active_node() -> None:
     moved_lines = tuple(line.text for line in moved.lines)
 
     assert "\x1b[1;36m>     widgets" in moved_lines[4]
+
+
+def test_widgets_tree_page_scaffold_example_imports_and_offsets_cursor() -> None:
+    namespace = runpy.run_path("examples/tui/55_widgets_tree_page_scaffold.py", run_name="__test__")
+    app = namespace["build_app"]()
+
+    result = app.render(RenderConstraints(width=96, max_height=22))
+    lines = tuple(strip_control_sequences(line.text).rstrip() for line in result.lines)
+
+    assert lines[0].startswith("*[Files]")
+    assert "Project tree" in lines
+    assert any("Path          src" in line for line in lines)
+    assert result.cursor == CursorDeclaration(row=4, column=0)
+
+
+def test_widgets_tree_page_scaffold_example_playback_switches_focus_and_tree_tabs() -> None:
+    frames = play_example(
+        "examples/tui/55_widgets_tree_page_scaffold.py",
+        events=(
+            ("up to tabs", InputEvent(kind="key", key="up")),
+            ("right settings", InputEvent(kind="key", key="right")),
+            ("down to tree", InputEvent(kind="key", key="down")),
+            ("right expand", InputEvent(kind="key", key="right")),
+            ("down first child", InputEvent(kind="key", key="down")),
+            ("enter select", InputEvent(kind="key", key="enter")),
+        ),
+        width=96,
+        height=22,
+    )
+
+    initial = frames[0].lines
+    tabs = frames[1].lines
+    settings = frames[2].lines
+    body = frames[3].lines
+    child = frames[5].lines
+    selected = frames[6].lines
+
+    assert initial[0].startswith("*[Files]")
+    assert initial[-1].startswith("Tree |")
+    assert tabs[0].startswith(">[Files]")
+    assert tabs[-1].startswith("Tabs |")
+    assert ">[Settings]" in settings[0]
+    assert "*[Settings]" in body[0]
+    assert "Project tree" in body
+    assert any("Config" in line for line in child)
+    assert any("Selected:" in line for line in selected)
+    assert frames[0].cursor == (4, 0)
+    assert frames[1].cursor == (0, 0)
+    assert frames[3].cursor[0] > 2
