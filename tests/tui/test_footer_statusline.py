@@ -14,6 +14,8 @@ from loushang.tui import (
     StatusField,
     visible_width,
 )
+from loushang.tui.theme import ThemeResolver
+from loushang.tui.ui_parts.status import _render_extension_statuses
 
 
 @dataclass(slots=True)
@@ -75,6 +77,20 @@ def test_footer_view_prefers_primary_line_under_height_pressure() -> None:
     )
 
     assert rendered_text(footer, width=24, height=1) == ("primary",)
+
+
+def test_footer_view_preserves_extension_status_tokens_when_sanitizing() -> None:
+    theme = ThemeResolver(defaults={"statusBar.model": {"foreground": "red"}})
+    lines = _render_extension_statuses(
+        (
+            StatusField("bad\nmodel\ttext", priority=100, token="model"),
+        ),
+        RenderConstraints(width=40, max_height=1),
+        style_mode="codex-like",
+        theme=theme,
+    )
+
+    assert lines == ["\x1b[31mbad model text\x1b[39m"]
 
 
 def test_extension_api_can_replace_custom_footer_and_dispose_it() -> None:

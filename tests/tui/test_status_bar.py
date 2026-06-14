@@ -74,3 +74,58 @@ def test_status_bar_plain_mode_ignores_theme_tokens() -> None:
     )
 
     assert rendered_text(status, width=30) == "model | running"
+
+
+def test_status_bar_codex_like_mode_applies_builtin_field_styles_without_theme() -> None:
+    status = StatusBar(
+        [
+            StatusField("model", priority=100, token="model"),
+            StatusField("idle", priority=80, token="runtime.idle"),
+        ],
+        style_mode="codex-like",
+    )
+
+    line = rendered_text(status, width=30)
+
+    assert "\x1b[36mmodel\x1b[39m" in line
+    assert "\x1b[2midle\x1b[22m" in line
+
+
+def test_status_bar_codex_like_mode_styles_separator_without_theme() -> None:
+    status = StatusBar(
+        [
+            StatusField("model", priority=100, token="model"),
+            StatusField("branch", priority=80, token="branch"),
+        ],
+        style_mode="codex-like",
+    )
+
+    line = rendered_text(status, width=30)
+
+    assert "\x1b[2m | \x1b[22m" in line
+
+
+def test_status_bar_muted_mode_applies_builtin_styles_without_theme() -> None:
+    status = StatusBar(
+        [
+            StatusField("model", priority=100, token="model"),
+            StatusField("branch", priority=80, token="branch"),
+        ],
+        style_mode="muted",
+    )
+
+    line = rendered_text(status, width=30)
+
+    assert "\x1b[2mmodel\x1b[22m" in line
+    assert "\x1b[2m | \x1b[22m" in line
+
+
+def test_status_bar_theme_override_beats_builtin_style() -> None:
+    theme = ThemeResolver(defaults={"statusBar.codexLike.model": {"foreground": "red"}})
+    status = StatusBar(
+        [StatusField("model", priority=100, token="model")],
+        style_mode="codex-like",
+        theme=theme,
+    )
+
+    assert rendered_text(status, width=20) == "\x1b[31mmodel\x1b[39m"
