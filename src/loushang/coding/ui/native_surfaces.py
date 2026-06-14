@@ -527,22 +527,16 @@ class NativeSurfaceManager:
         surface = self._current_surface()
         page = surface.content if isinstance(surface, NativeSurfaceView) else None
         apply_setting = getattr(page, "apply_setting", None)
-        if callable(apply_setting):
-            result = await apply_setting(payload["id"], payload.get("value", ""))
-            if result.statusline_settings is not None:
-                self.app.set_statusline_settings(result.statusline_settings)
-            elif result.statusline_visible is not None:
-                self.app.set_statusline_visible(result.statusline_visible)
-            if result.refresh_model_label:
-                await self._refresh_model_label()
-            self.app.request_render("product")
+        if not callable(apply_setting):
             return
-
-        updated = self.status_provider.settings_list().toggle(payload["id"])
-        self.close_surface()
-        message = self.status_provider.apply_settings(updated)
-        self.app.set_statusline_settings(self.status_provider.statusline_settings())
-        self.app.set_status(message)
+        result = await apply_setting(payload["id"], payload.get("value", ""))
+        if result.statusline_settings is not None:
+            self.app.set_statusline_settings(result.statusline_settings)
+        elif result.statusline_visible is not None:
+            self.app.set_statusline_visible(result.statusline_visible)
+        if result.refresh_model_label:
+            await self._refresh_model_label()
+        self.app.request_render("product")
 
     async def _handle_dialog_submit(self, _payload: Any | None = None) -> None:
         self.close_surface()

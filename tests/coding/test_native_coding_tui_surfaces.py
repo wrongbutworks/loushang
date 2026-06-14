@@ -498,20 +498,22 @@ def test_native_surface_manager_settings_page_statusline_submit_persists_setting
     assert app.state.statusline_settings.style == "muted"
 
 
-def test_native_surface_manager_legacy_settings_surface_still_closes_on_submit() -> None:
+def test_native_surface_manager_ignores_legacy_settings_surface_submit() -> None:
     app = _app()
     manager = _manager(app, _Session())
-    app.active_surface = NativeSurfaceView(
+    legacy_surface = NativeSurfaceView(
         title="Settings",
         purpose="settings",
         content=SettingsSurface(list(manager.status_provider.settings_list().items), enable_search=True),
         presentation="bottom-exclusive",
     )
+    app.active_surface = legacy_surface
 
     asyncio.run(manager.handle_surface_intent(InputIntent(kind="setting", text="statusline", note="false")))
 
-    assert app.active_surface is None
-    assert app.state.statusline_visible is False
+    assert app.active_surface is legacy_surface
+    assert app.state.statusline_visible is True
+    assert app.state.status_message is None
 
 
 def test_native_surface_manager_settings_page_model_submit_uses_model_selection() -> None:
