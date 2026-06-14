@@ -24,6 +24,10 @@ it arranges optional header, body, and footer slots and owns focus movement
 between header and body. Concrete product pages still own business state,
 selected content, and actions.
 
+Settings-style pages should compose existing widgets rather than owning custom
+layout logic. See [Settings Page Composition](./settings-page-composition.md)
+for the recommended `PageScaffold` + tabs + `SearchableList` shape.
+
 ## Spec Template
 
 Each UI part spec should include:
