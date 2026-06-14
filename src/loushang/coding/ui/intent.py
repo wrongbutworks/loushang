@@ -116,7 +116,7 @@ def parse_prompt_intent(text: str) -> CodingUiIntent | None:
         return StatusIntent()
     if stripped == "/terminal":
         return TerminalDiagnosticsIntent()
-    if stripped == "/settings":
+    if stripped in {"/settings", "/config"}:
         return SettingsIntent()
     if stripped == "/model" or stripped.startswith("/model "):
         return ModelSelectIntent(query=stripped[len("/model") :].strip())

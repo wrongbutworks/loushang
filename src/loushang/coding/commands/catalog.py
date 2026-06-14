@@ -171,6 +171,13 @@ _LOCAL_COMMANDS_BY_ROUTE_VALUE: dict[str, CommandDef] = {
         description="Open settings",
         source="local",
     ),
+    "config": CommandDef(
+        id="coding.ui.config",
+        name="config",
+        kind=CommandKind.LOCAL_UI,
+        description="Open settings",
+        source="local",
+    ),
     "statusline": CommandDef(
         id="coding.ui.statusline",
         name="statusline",

@@ -405,6 +405,21 @@ def test_native_surface_manager_opens_settings_in_bottom_frame_with_runtime_over
     assert "  show footer" not in plain
 
 
+def test_native_surface_manager_config_alias_opens_settings() -> None:
+    app = _app()
+    manager = _manager(app, _Session())
+
+    asyncio.run(manager.handle_text("/config"))
+
+    assert isinstance(app.active_surface, NativeSurfaceView)
+    assert app.active_surface.title == "Settings"
+    plain = tuple(
+        strip_control_sequences(line.text)
+        for line in app.active_surface.render(RenderConstraints(width=100, max_height=14)).lines
+    )
+    assert any("Search settings" in line for line in plain)
+
+
 def test_native_surface_manager_settings_page_submit_keeps_surface_open() -> None:
     app = _app()
     manager = _manager(app, _Session())

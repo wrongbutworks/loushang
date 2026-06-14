@@ -59,6 +59,7 @@ def test_coding_command_catalog_preserves_local_command_argument_rules() -> None
 
     assert catalog.lookup("/model kimi").name == "model"
     assert catalog.lookup("/commands model").name == "commands"
+    assert catalog.lookup("/config").name == "config"
     assert catalog.lookup("/status extra") is None
     assert catalog.lookup("/terminal extra") is None
 
@@ -83,3 +84,4 @@ def test_coding_command_catalog_lists_local_and_session_commands_once() -> None:
     assert by_name["deploy"].kind is CommandKind.SESSION
     assert by_name["deploy"].source == "extension"
     assert by_name["settings"].kind is CommandKind.LOCAL_UI
+    assert by_name["config"].kind is CommandKind.LOCAL_UI
