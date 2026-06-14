@@ -145,6 +145,16 @@ def _raw(page: SettingsPageView, *, width: int = 100, height: int = 18) -> tuple
     return tuple(line.text for line in page.render(RenderConstraints(width=width, max_height=height)).lines)
 
 
+def test_settings_page_tab_modules_export_page_components() -> None:
+    from loushang.coding.ui.settings_config import ConfigSettingsPage
+    from loushang.coding.ui.settings_status_line import StatusLineSettingsPage
+
+    page = _page()
+
+    assert isinstance(page.config_page, ConfigSettingsPage)
+    assert isinstance(page.statusline_page, StatusLineSettingsPage)
+
+
 def test_settings_page_opens_config_tab_with_search_focus() -> None:
     page = _page()
     lines = _plain(page)

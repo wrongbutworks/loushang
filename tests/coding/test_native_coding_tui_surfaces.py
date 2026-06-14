@@ -436,7 +436,9 @@ def test_native_surface_manager_settings_page_submit_keeps_surface_open() -> Non
     assert app.state.statusline_visible is False
     assert app.state.statusline_settings.enabled is False
     assert manager.status_provider.statusline_settings().enabled is False
-    assert app.state.status_message == "Status line: off"
+    assert app.state.status_message is None
+    plain = _surface_plain_lines(app.active_surface)
+    assert any("Status line: off" in line for line in plain)
 
 
 def test_native_surface_manager_settings_page_submit_mirrors_statusline_settings_into_app() -> None:
@@ -454,7 +456,9 @@ def test_native_surface_manager_settings_page_submit_mirrors_statusline_settings
 
     assert app.state.statusline_settings.style == "muted"
     assert manager.status_provider.statusline_settings().style == "muted"
-    assert app.state.status_message == "Status line style: muted"
+    assert app.state.status_message is None
+    plain = _surface_plain_lines(app.active_surface)
+    assert any("Status line style: muted" in line for line in plain)
 
 
 def test_native_surface_manager_statusline_command_persists_settings(tmp_path) -> None:
@@ -923,7 +927,8 @@ def test_native_surface_manager_applies_settings_page_statusline_change() -> Non
     asyncio.run(manager.handle_surface_intent(intent))
 
     assert isinstance(app.active_surface, NativeSurfaceView)
-    assert app.state.status_message == "Status line: off"
+    assert app.state.status_message is None
+    assert any("Status line: off" in line for line in _surface_plain_lines(app.active_surface))
     rendered = tuple(strip_control_sequences(line.text) for line in app.render(RenderConstraints(width=100, max_height=12)).lines)
     assert not any("moonshot/kimi-for-coding | repo | main | abcd | idle" in line for line in rendered)
 
@@ -1105,6 +1110,11 @@ def _manager(
         session=session,
         status_provider=_status_provider(app, settings_manager=settings_manager),
     )
+
+
+def _surface_plain_lines(surface: NativeSurfaceView, *, width: int = 100, height: int = 24) -> tuple[str, ...]:
+    rendered = surface.render(RenderConstraints(width=width, max_height=height))
+    return tuple(strip_control_sequences(line.text) for line in rendered.lines)
 
 
 def _status_provider(

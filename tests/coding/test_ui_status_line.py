@@ -129,7 +129,7 @@ def test_native_app_statusline_preview_snapshot_includes_live_queue_and_message_
     )
     app.queue_followup("next prompt")
     app.queue_steer("interrupt")
-    app.set_status("Status line: on")
+    app.set_status("Saved")
 
     assert app.statusline_preview_snapshot() == StatusLinePreviewSnapshot(
         model_label="moonshot/kimi-for-coding",
@@ -139,7 +139,7 @@ def test_native_app_statusline_preview_snapshot_includes_live_queue_and_message_
         running=False,
         pending_followups=1,
         pending_steers=1,
-        status_message="Status line: on",
+        status_message="Saved",
     )
 
 

@@ -535,7 +535,7 @@ class NativeSurfaceManager:
                 self.app.set_statusline_visible(result.statusline_visible)
             if result.refresh_model_label:
                 await self._refresh_model_label()
-            self.app.set_status(result.message)
+            self.app.request_render("product")
             return
 
         updated = self.status_provider.settings_list().toggle(payload["id"])

@@ -380,9 +380,12 @@ def test_native_tui_playback_settings_page_toggles_statusline_and_exits() -> Non
     assert all(step.flush_succeeded for step in steps)
     assert app.active_surface is None
     assert app.state.statusline_visible is False
-    assert app.state.status_message == "Status line: off"
+    assert app.state.status_message is None
+    before_close_lines = _plain_lines(steps[-2].diagnostics)
+    assert any("Status line: off" in line for line in before_close_lines)
     lines = _plain_lines(steps[-1].diagnostics)
     assert "Settings" not in lines
+    assert not any("Status line: off" in line for line in lines)
     assert not any("moonshot/kimi-for-coding | repo | main | abcd | idle" in line for line in lines)
     for step in steps:
         step.assert_no_clear_scrollback()
@@ -413,9 +416,10 @@ def test_native_tui_playback_settings_page_toggles_statusline_style() -> None:
     assert all(step.flush_succeeded for step in steps)
     assert app.active_surface is not None
     assert app.state.statusline_settings.style == "muted"
-    assert app.state.status_message == "Status line style: muted"
+    assert app.state.status_message is None
     lines = _plain_lines(steps[-1].diagnostics)
     assert any("Style" in line and "muted" in line for line in lines)
+    assert any("Status line style: muted" in line for line in lines)
     for step in steps:
         step.assert_no_clear_scrollback()
 
@@ -445,10 +449,11 @@ def test_native_tui_playback_settings_page_toggles_statusline_field() -> None:
     assert all(step.flush_succeeded for step in steps)
     assert app.active_surface is not None
     assert app.state.statusline_settings.queue == "true"
-    assert app.state.status_message == "Status line queue: true"
+    assert app.state.status_message is None
     lines = _plain_lines(steps[-1].diagnostics)
     assert any("Queue" in line and "true" in line for line in lines)
     assert any("queued=0 steer=0" in line for line in lines)
+    assert any("Status line queue: true" in line for line in lines)
     for step in steps:
         step.assert_no_clear_scrollback()
 
