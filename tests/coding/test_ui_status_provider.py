@@ -44,6 +44,7 @@ def test_status_provider_tracks_statusline_visibility() -> None:
     from loushang.coding.ui.status_line import StatusLineSettings
     from loushang.coding.ui.status_provider import CodingTuiStatusProvider
 
+    saved: list[StatusLineSettings] = []
     provider = CodingTuiStatusProvider(
         model_label=None,
         cwd="/repo",
@@ -51,23 +52,24 @@ def test_status_provider_tracks_statusline_visibility() -> None:
         session_label=lambda: None,
         thinking_level=lambda: None,
         running=lambda: False,
+        statusline_settings=StatusLineSettings(enabled=False, style="muted"),
+        on_statusline_settings_changed=saved.append,
     )
 
-    assert provider.is_visible() is True
-    assert provider.statusline_settings() == StatusLineSettings()
-    assert provider.set_visible(False) == "Status line: off"
     assert provider.is_visible() is False
-    assert provider.statusline_settings().enabled is False
+    assert provider.statusline_settings() == StatusLineSettings(enabled=False, style="muted")
     assert provider.set_visible(True) == "Status line: on"
     assert provider.is_visible() is True
     assert provider.statusline_settings().enabled is True
     assert provider.set_visible(None) == "Status line: on"
+    assert saved == [StatusLineSettings(enabled=True, style="muted")]
 
 
 def test_status_provider_applies_full_statusline_settings() -> None:
     from loushang.coding.ui.status_line import StatusLineSettings
     from loushang.coding.ui.status_provider import CodingTuiStatusProvider
 
+    saved: list[StatusLineSettings] = []
     provider = CodingTuiStatusProvider(
         model_label=None,
         cwd="/repo",
@@ -75,6 +77,7 @@ def test_status_provider_applies_full_statusline_settings() -> None:
         session_label=lambda: None,
         thinking_level=lambda: None,
         running=lambda: False,
+        on_statusline_settings_changed=saved.append,
     )
     settings = StatusLineSettings(enabled=False, queue="true", message="false", separator="dot", style="muted")
 
@@ -82,11 +85,14 @@ def test_status_provider_applies_full_statusline_settings() -> None:
 
     assert provider.statusline_settings() == settings
     assert provider.is_visible() is False
+    assert saved == [settings]
 
 
 def test_status_provider_applies_individual_statusline_settings() -> None:
+    from loushang.coding.ui.status_line import StatusLineSettings
     from loushang.coding.ui.status_provider import CodingTuiStatusProvider
 
+    saved: list[StatusLineSettings] = []
     provider = CodingTuiStatusProvider(
         model_label=None,
         cwd="/repo",
@@ -94,6 +100,7 @@ def test_status_provider_applies_individual_statusline_settings() -> None:
         session_label=lambda: None,
         thinking_level=lambda: None,
         running=lambda: False,
+        on_statusline_settings_changed=saved.append,
     )
 
     assert provider.apply_statusline_setting("statusline.enabled", "false") == "Status line: off"
@@ -106,11 +113,19 @@ def test_status_provider_applies_individual_statusline_settings() -> None:
     assert settings.queue == "true"
     assert settings.separator == "dot"
     assert settings.style == "plain"
+    assert saved == [
+        StatusLineSettings(enabled=False),
+        StatusLineSettings(enabled=False, queue="true"),
+        StatusLineSettings(enabled=False, queue="true", separator="dot"),
+        StatusLineSettings(enabled=False, queue="true", separator="dot", style="plain"),
+    ]
 
 
 def test_status_provider_rejects_invalid_statusline_setting_values() -> None:
+    from loushang.coding.ui.status_line import StatusLineSettings
     from loushang.coding.ui.status_provider import CodingTuiStatusProvider
 
+    saved: list[StatusLineSettings] = []
     provider = CodingTuiStatusProvider(
         model_label=None,
         cwd="/repo",
@@ -118,6 +133,7 @@ def test_status_provider_rejects_invalid_statusline_setting_values() -> None:
         session_label=lambda: None,
         thinking_level=lambda: None,
         running=lambda: False,
+        on_statusline_settings_changed=saved.append,
     )
 
     assert provider.apply_statusline_setting("statusline.field.queue", "maybe") == "Invalid status line queue value."
@@ -125,6 +141,7 @@ def test_status_provider_rejects_invalid_statusline_setting_values() -> None:
     assert provider.apply_statusline_setting("statusline.unknown", "true") == "Unknown status line setting: statusline.unknown"
     assert provider.statusline_settings().queue == "auto"
     assert provider.statusline_settings().separator == "pipe"
+    assert saved == []
 
 
 def test_status_provider_formats_settings_summary() -> None:

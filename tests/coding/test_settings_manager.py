@@ -123,6 +123,121 @@ def test_settings_manager_persists_method_settings_updates(tmp_path) -> None:
     assert reloaded.get_method_settings() == MethodSettings(mode="off", selected_method=None)
 
 
+def test_settings_manager_loads_statusline_settings_with_project_precedence(tmp_path) -> None:
+    from loushang.coding.control import SettingsManager, StatusLineControlSettings
+
+    global_settings_path = tmp_path / "global-settings.json"
+    project_settings_path = tmp_path / "project-settings.json"
+    global_settings_path.write_text(
+        json.dumps(
+            {
+                "statusline": {
+                    "enabled": False,
+                    "queue": "true",
+                    "style": "muted",
+                }
+            }
+        ),
+        encoding="utf-8",
+    )
+    project_settings_path.write_text(
+        json.dumps(
+            {
+                "statusline": {
+                    "model": False,
+                    "separator": "dot",
+                }
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    manager = SettingsManager(
+        global_settings_path=global_settings_path,
+        project_settings_path=project_settings_path,
+    )
+
+    assert manager.get_statusline_settings() == StatusLineControlSettings(
+        enabled=False,
+        model=False,
+        queue="true",
+        separator="dot",
+        style="muted",
+    )
+    assert manager.get_settings().statusline == manager.get_statusline_settings()
+
+
+def test_settings_manager_persists_statusline_settings_updates(tmp_path) -> None:
+    from loushang.coding.control import SettingsManager, StatusLineControlSettings
+
+    settings_path = tmp_path / "settings.json"
+    manager = SettingsManager(global_settings_path=settings_path)
+
+    manager.set_statusline_settings(
+        StatusLineControlSettings(
+            enabled=False,
+            workspace=False,
+            queue="true",
+            message="false",
+            separator="dot",
+            style="plain",
+        ),
+        scope="global",
+    )
+
+    reloaded = SettingsManager(global_settings_path=settings_path)
+
+    assert reloaded.get_global_settings() == {
+        "statusline": {
+            "enabled": False,
+            "model": True,
+            "workspace": False,
+            "branch": True,
+            "session": True,
+            "runtime": True,
+            "queue": "true",
+            "message": "false",
+            "separator": "dot",
+            "style": "plain",
+        }
+    }
+    assert reloaded.get_statusline_settings() == StatusLineControlSettings(
+        enabled=False,
+        workspace=False,
+        queue="true",
+        message="false",
+        separator="dot",
+        style="plain",
+    )
+
+
+def test_settings_manager_ignores_invalid_statusline_patch_without_dropping_other_settings(tmp_path) -> None:
+    from loushang.coding.control import SettingsManager, StatusLineControlSettings
+
+    settings_path = tmp_path / "settings.json"
+    settings_path.write_text(
+        json.dumps(
+            {
+                "thinking_level": "high",
+                "statusline": {
+                    "enabled": False,
+                    "queue": "maybe",
+                },
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    manager = SettingsManager(global_settings_path=settings_path)
+
+    assert manager.get_settings().thinking_level == "high"
+    assert manager.get_statusline_settings() == StatusLineControlSettings()
+    errors = manager.drain_errors()
+    assert len(errors) == 1
+    assert errors[0].scope == "global"
+    assert "statusline.queue" in errors[0].message
+
+
 def test_settings_manager_persists_scoped_updates_and_notifies_subscribers(tmp_path) -> None:
     from loushang.coding.control import (
         BranchSummarySettings,
@@ -130,6 +245,7 @@ def test_settings_manager_persists_scoped_updates_and_notifies_subscribers(tmp_p
         ImageSettings,
         MarkdownSettings,
         SettingsManager,
+        StatusLineControlSettings,
         TerminalSettings,
         ToolSettings,
         WarningSettings,
@@ -180,6 +296,7 @@ def test_settings_manager_persists_scoped_updates_and_notifies_subscribers(tmp_p
             clear_on_shrink=True,
             show_terminal_progress=True,
         ),
+        statusline=StatusLineControlSettings(enabled=False, queue="true", style="muted"),
         markdown=MarkdownSettings(code_block_indent="    "),
         warnings=WarningSettings(anthropic_extra_usage=False),
         package_roots=("/tmp/shared-packages",),
@@ -248,6 +365,7 @@ def test_settings_manager_persists_scoped_updates_and_notifies_subscribers(tmp_p
         clear_on_shrink=True,
         show_terminal_progress=True,
     )
+    assert reloaded.get_settings().statusline == StatusLineControlSettings(enabled=False, queue="true", style="muted")
     assert reloaded.get_settings().markdown == MarkdownSettings(code_block_indent="    ")
     assert reloaded.get_settings().warnings == WarningSettings(anthropic_extra_usage=False)
     assert reloaded.get_settings().package_roots == ("/tmp/shared-packages",)

@@ -35,7 +35,11 @@ from loushang.coding.ui.session_view import (
     session_label,
     thinking_level,
 )
-from loushang.coding.ui.status_provider import CodingTuiStatusProvider
+from loushang.coding.ui.status_provider import (
+    CodingTuiStatusProvider,
+    statusline_settings_from_settings_manager,
+    statusline_settings_persistence_callback,
+)
 from loushang.coding.ui.steer import SteerHandler
 from loushang.tui import CompletionProvider
 
@@ -134,6 +138,7 @@ def build_coding_tui_app(
         now=now,
         trace=trace,
     )
+    settings_manager = getattr(session, "settings_manager", None)
     status_provider = CodingTuiStatusProvider(
         model_label=model_label,
         cwd=cwd,
@@ -141,6 +146,8 @@ def build_coding_tui_app(
         session_label=lambda: session_label(session),
         thinking_level=lambda: thinking_level(session),
         running=lambda: lifecycle.visible_running(session_running=is_running(session)),
+        statusline_settings=statusline_settings_from_settings_manager(settings_manager),
+        on_statusline_settings_changed=statusline_settings_persistence_callback(settings_manager),
     )
     handlers = CodingTuiHandlers(
         lifecycle=lifecycle,

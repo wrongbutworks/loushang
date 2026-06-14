@@ -13,6 +13,9 @@ DoubleEscapeAction = Literal["fork", "tree", "none"]
 TreeFilterMode = Literal["default", "no-tools", "user-only", "labeled-only", "all"]
 ExternalToolPolicy = Literal["never", "auto", "required"]
 HeadlessApprovalMode = Literal["allow", "deny"]
+StatusLineAutoValue = Literal["auto", "true", "false"]
+StatusLineSeparator = Literal["pipe", "dot"]
+StatusLineStyle = Literal["codex-like", "muted", "plain"]
 KeybindingValue = str | tuple[str, ...] | None
 
 
@@ -85,6 +88,20 @@ class ToolSettings:
 
 
 @dataclass(frozen=True)
+class StatusLineControlSettings:
+    enabled: bool = True
+    model: bool = True
+    workspace: bool = True
+    branch: bool = True
+    session: bool = True
+    runtime: bool = True
+    queue: StatusLineAutoValue = "auto"
+    message: StatusLineAutoValue = "auto"
+    separator: StatusLineSeparator = "pipe"
+    style: StatusLineStyle = "codex-like"
+
+
+@dataclass(frozen=True)
 class ControlConfig:
     default_model: ModelSelection | None = None
     thinking_level: ThinkingLevel = "off"
@@ -118,6 +135,7 @@ class ControlConfig:
     warnings: WarningSettings = field(default_factory=WarningSettings)
     method: MethodSettings = field(default_factory=MethodSettings)
     tools: ToolSettings = field(default_factory=ToolSettings)
+    statusline: StatusLineControlSettings = field(default_factory=StatusLineControlSettings)
     session_dir: str | None = None
     resource_roots: tuple[str, ...] = ()
     package_roots: tuple[str, ...] = ()
@@ -139,6 +157,10 @@ __all__ = [
     "MethodSettings",
     "QueueMode",
     "RetrySettings",
+    "StatusLineAutoValue",
+    "StatusLineControlSettings",
+    "StatusLineSeparator",
+    "StatusLineStyle",
     "TerminalSettings",
     "ToolSettings",
     "TreeFilterMode",

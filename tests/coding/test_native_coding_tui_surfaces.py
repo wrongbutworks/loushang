@@ -457,6 +457,43 @@ def test_native_surface_manager_settings_page_submit_mirrors_statusline_settings
     assert app.state.status_message == "Status line style: muted"
 
 
+def test_native_surface_manager_statusline_command_persists_settings(tmp_path) -> None:
+    from loushang.coding.control import SettingsManager
+
+    settings_path = tmp_path / "settings.json"
+    settings_manager = SettingsManager(global_settings_path=settings_path)
+    app = _app()
+    manager = _manager(app, _Session(), settings_manager=settings_manager)
+
+    asyncio.run(manager.handle_text("/statusline off"))
+
+    reloaded = SettingsManager(global_settings_path=settings_path)
+    assert settings_manager.get_statusline_settings().enabled is False
+    assert reloaded.get_statusline_settings().enabled is False
+    assert app.state.statusline_visible is False
+
+
+def test_native_surface_manager_settings_page_statusline_submit_persists_settings(tmp_path) -> None:
+    from loushang.coding.control import SettingsManager
+
+    settings_path = tmp_path / "settings.json"
+    settings_manager = SettingsManager(global_settings_path=settings_path)
+    app = _app()
+    manager = _manager(app, _Session(), settings_manager=settings_manager)
+
+    asyncio.run(manager.handle_text("/settings"))
+    assert isinstance(app.active_surface, NativeSurfaceView)
+    _focus_statusline_tab(app.active_surface)
+    assert app.active_surface.content.handle_input(InputEvent(kind="text", text="style")) is True
+    intent = app.active_surface.handle_input(InputEvent(kind="key", key="enter"))
+    asyncio.run(manager.handle_surface_intent(intent))
+
+    reloaded = SettingsManager(global_settings_path=settings_path)
+    assert settings_manager.get_statusline_settings().style == "muted"
+    assert reloaded.get_statusline_settings().style == "muted"
+    assert app.state.statusline_settings.style == "muted"
+
+
 def test_native_surface_manager_legacy_settings_surface_still_closes_on_submit() -> None:
     app = _app()
     manager = _manager(app, _Session())
@@ -1057,15 +1094,40 @@ def _app() -> NativeCodingTuiApp:
     )
 
 
-def _manager(app: NativeCodingTuiApp, session: _Session) -> NativeSurfaceManager:
+def _manager(
+    app: NativeCodingTuiApp,
+    session: _Session,
+    *,
+    settings_manager: object | None = None,
+) -> NativeSurfaceManager:
     return NativeSurfaceManager(
         app=app,
         session=session,
-        status_provider=_status_provider(app),
+        status_provider=_status_provider(app, settings_manager=settings_manager),
     )
 
 
-def _status_provider(app: NativeCodingTuiApp) -> CodingTuiStatusProvider:
+def _status_provider(
+    app: NativeCodingTuiApp,
+    *,
+    settings_manager: object | None = None,
+) -> CodingTuiStatusProvider:
+    from loushang.coding.ui.status_line import (
+        status_line_settings_from_control,
+        status_line_settings_to_patch,
+    )
+
+    statusline_settings = None
+    on_statusline_settings_changed = None
+    if settings_manager is not None:
+        statusline_settings = status_line_settings_from_control(settings_manager.get_statusline_settings())
+
+        def on_statusline_settings_changed(settings) -> None:
+            settings_manager.set_statusline_settings(
+                status_line_settings_to_patch(settings),
+                scope="global",
+            )
+
     return CodingTuiStatusProvider(
         model_label=app.state.model_label,
         cwd=app.state.cwd,
@@ -1073,6 +1135,8 @@ def _status_provider(app: NativeCodingTuiApp) -> CodingTuiStatusProvider:
         session_label=lambda: app.state.session_label,
         thinking_level=lambda: None,
         running=lambda: app.state.running,
+        statusline_settings=statusline_settings,
+        on_statusline_settings_changed=on_statusline_settings_changed,
     )
 
 

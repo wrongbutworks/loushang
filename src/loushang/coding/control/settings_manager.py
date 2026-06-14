@@ -25,6 +25,10 @@ from loushang.coding.control.types import (
     MethodSettings,
     QueueMode,
     RetrySettings,
+    StatusLineAutoValue,
+    StatusLineControlSettings,
+    StatusLineSeparator,
+    StatusLineStyle,
     TerminalSettings,
     ToolSettings,
     TreeFilterMode,
@@ -169,6 +173,24 @@ def _deserialize_headless_approval_mode(value: object) -> HeadlessApprovalMode |
     return value
 
 
+def _deserialize_statusline_auto_value(value: object, field_name: str) -> StatusLineAutoValue:
+    if value not in {"auto", "true", "false"}:
+        raise ValueError(f"{field_name} must be 'auto', 'true', or 'false'")
+    return value
+
+
+def _deserialize_statusline_separator(value: object, field_name: str) -> StatusLineSeparator:
+    if value not in {"pipe", "dot"}:
+        raise ValueError(f"{field_name} must be 'pipe' or 'dot'")
+    return value
+
+
+def _deserialize_statusline_style(value: object, field_name: str) -> StatusLineStyle:
+    if value not in {"codex-like", "muted", "plain"}:
+        raise ValueError(f"{field_name} must be 'codex-like', 'muted', or 'plain'")
+    return value
+
+
 def _optional_string(value: object, field_name: str) -> str | None:
     if value is None:
         return None
@@ -286,6 +308,27 @@ def _serialize_tool_settings(value: object) -> dict[str, Any]:
     return patch
 
 
+def _serialize_statusline_settings(value: object) -> dict[str, Any]:
+    if isinstance(value, StatusLineControlSettings):
+        return _serialize_dataclass_slice(value)
+    if not isinstance(value, Mapping):
+        raise TypeError("statusline must be a JSON object")
+    normalized: dict[str, Any] = {}
+    for key, item in value.items():
+        field_name = f"statusline.{key}"
+        if key in {"enabled", "model", "workspace", "branch", "session", "runtime"}:
+            normalized[key] = _bool_value(item, field_name)
+        elif key in {"queue", "message"}:
+            normalized[key] = _deserialize_statusline_auto_value(item, field_name)
+        elif key == "separator":
+            normalized[key] = _deserialize_statusline_separator(item, field_name)
+        elif key == "style":
+            normalized[key] = _deserialize_statusline_style(item, field_name)
+        else:
+            raise ValueError(f"Unknown statusline setting: {field_name}")
+    return normalized
+
+
 def _serialize_dataclass_slice(value: object) -> dict[str, Any]:
     return dict(asdict(value))
 
@@ -374,6 +417,9 @@ def _control_config_to_patch(config: ControlConfig) -> dict[str, Any]:
     tools_patch = _diff_dataclass_slice(config.tools, defaults.tools)
     if tools_patch:
         patch["tools"] = tools_patch
+    statusline_patch = _diff_dataclass_slice(config.statusline, defaults.statusline)
+    if statusline_patch:
+        patch["statusline"] = statusline_patch
     if config.session_dir != defaults.session_dir:
         patch["session_dir"] = config.session_dir
     if config.resource_roots != defaults.resource_roots:
@@ -443,7 +489,21 @@ def _apply_tool_settings_patch(current: ToolSettings, patch_value: object) -> To
     return next_settings
 
 
-def _apply_patch(config: ControlConfig, patch: Mapping[str, Any]) -> ControlConfig:
+def _apply_statusline_settings_patch(
+    current: StatusLineControlSettings,
+    patch_value: object,
+) -> StatusLineControlSettings:
+    patch = _serialize_statusline_settings(patch_value)
+    return replace(current, **patch)
+
+
+def _apply_patch(
+    config: ControlConfig,
+    patch: Mapping[str, Any],
+    *,
+    scope: SettingsScope | None = None,
+    errors: list[SettingsError] | None = None,
+) -> ControlConfig:
     next_config = config
     if "default_model" in patch:
         next_config = replace(next_config, default_model=_deserialize_model_selection(patch["default_model"]))
@@ -542,6 +602,16 @@ def _apply_patch(config: ControlConfig, patch: Mapping[str, Any]) -> ControlConf
         next_config = replace(next_config, method=_apply_dataclass_patch(next_config.method, patch["method"], "method"))
     if "tools" in patch:
         next_config = replace(next_config, tools=_apply_tool_settings_patch(next_config.tools, patch["tools"]))
+    if "statusline" in patch:
+        try:
+            next_config = replace(
+                next_config,
+                statusline=_apply_statusline_settings_patch(next_config.statusline, patch["statusline"]),
+            )
+        except Exception as exc:
+            if errors is None or scope is None:
+                raise
+            errors.append(SettingsError(scope=scope, message=str(exc), error=exc))
     if "session_dir" in patch:
         session_dir = patch["session_dir"]
         if session_dir is not None and not isinstance(session_dir, str):
@@ -677,6 +747,7 @@ class SettingsManager:
         warnings: WarningSettings | object = _UNSET,
         method: MethodSettings | Mapping[str, object] | object = _UNSET,
         tools: ToolSettings | Mapping[str, object] | object = _UNSET,
+        statusline: StatusLineControlSettings | Mapping[str, object] | object = _UNSET,
         session_dir: str | None | object = _UNSET,
         resource_roots: Iterable[str] | object = _UNSET,
         package_roots: Iterable[str] | object = _UNSET,
@@ -757,6 +828,8 @@ class SettingsManager:
             patch["method"] = _serialize_settings_slice(method)
         if tools is not _UNSET:
             patch["tools"] = _serialize_tool_settings(tools)
+        if statusline is not _UNSET:
+            patch["statusline"] = _serialize_statusline_settings(statusline)
         if session_dir is not _UNSET:
             patch["session_dir"] = session_dir
         if resource_roots is not _UNSET:
@@ -983,6 +1056,17 @@ class SettingsManager:
     def get_tool_settings(self) -> ToolSettings:
         return self._settings.tools
 
+    def get_statusline_settings(self) -> StatusLineControlSettings:
+        return self._settings.statusline
+
+    def set_statusline_settings(
+        self,
+        settings: StatusLineControlSettings | Mapping[str, object],
+        *,
+        scope: SettingsScope = "global",
+    ) -> None:
+        self.update_settings(scope=scope, statusline=settings)
+
     def get_external_tool_policy(self) -> ExternalToolPolicy:
         return self._settings.tools.external_tool_policy
 
@@ -1120,9 +1204,9 @@ class SettingsManager:
 
     def _compose_settings(self) -> ControlConfig:
         config = ControlConfig()
-        config = _apply_patch(config, self._global_patch)
-        config = _apply_patch(config, self._project_patch)
-        config = _apply_patch(config, self._session_patch)
+        config = _apply_patch(config, self._global_patch, scope="global", errors=self._errors)
+        config = _apply_patch(config, self._project_patch, scope="project", errors=self._errors)
+        config = _apply_patch(config, self._session_patch, scope="session", errors=self._errors)
         return config
 
     def _load_patch(
