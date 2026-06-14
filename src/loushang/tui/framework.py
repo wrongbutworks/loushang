@@ -89,7 +89,17 @@ class Container:
             if remaining_height <= 0:
                 break
             start_row = len(rendered_lines)
-            child_result = child.render(RenderConstraints(width=constraints.width, max_height=remaining_height))
+            remaining_visible_height = _remaining_visible_height(
+                constraints.visible_height,
+                consumed_lines=len(rendered_lines),
+            )
+            child_result = child.render(
+                RenderConstraints(
+                    width=constraints.width,
+                    max_height=remaining_height,
+                    visible_height=remaining_visible_height,
+                )
+            )
             rendered_lines.extend(child_result.lines)
             if child_result.cursor is not None:
                 cursor = CursorDeclaration(
@@ -97,6 +107,13 @@ class Container:
                     column=child_result.cursor.column,
                 )
         return RenderResult.from_lines(rendered_lines, constraints=constraints, cursor=cursor)
+
+
+def _remaining_visible_height(visible_height: int | None, *, consumed_lines: int) -> int | None:
+    if visible_height is None:
+        return None
+    remaining = visible_height - consumed_lines
+    return remaining if remaining > 0 else None
 
 
 @dataclass(slots=True)
