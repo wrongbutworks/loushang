@@ -150,7 +150,7 @@ def test_settings_page_opens_config_tab_with_search_focus() -> None:
     lines = _plain(page)
 
     assert any("Status" in line and "Config" in line and "Model" in line and "Status Line" in line for line in lines)
-    assert ">[Config]" in lines[0]
+    assert "*[Config]" in lines[0]
     assert any("Search settings" in line for line in lines)
     assert not any("Status line" in line for line in lines[2:])
     assert page.editor_input_target() is not None
@@ -168,7 +168,7 @@ def test_settings_page_config_uses_boxed_search_table_columns_footer_and_styles(
     lines = tuple(strip_control_sequences(line) for line in raw_lines)
 
     assert "\x1b[" in raw_lines[0]
-    assert ">[Config]" in lines[0]
+    assert "*[Config]" in lines[0]
     assert "> [Config]" not in lines[0]
     assert any(line.startswith("╭") for line in lines)
     search_index = next(index for index, line in enumerate(lines) if "Search settings..." in line)

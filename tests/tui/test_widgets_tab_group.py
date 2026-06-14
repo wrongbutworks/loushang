@@ -233,6 +233,63 @@ def test_nested_tab_group_keeps_parent_selected_content_focus() -> None:
     assert "Overview" in strip_control_sequences(raw[1])
 
 
+def test_nested_tab_group_markers_follow_active_focus_path() -> None:
+    nested_page = FocusablePage(("nested content",))
+    nested = TabGroup(
+        [
+            TabPage("overview", "Overview", nested_page),
+            TabPage("models", "Models", StaticPage(("models",))),
+        ],
+        level=1,
+    )
+    outer = TabGroup([TabPage("stats", "Stats", nested)], focused=True)
+
+    parent_header = plain_lines(outer, width=80, height=5)
+    assert parent_header[0].startswith(">[Stats]")
+    assert parent_header[1].startswith("*[Overview]")
+    assert sum(line.count(">") for line in parent_header) == 1
+
+    assert outer.focus_content() is True
+    child_header = plain_lines(outer, width=80, height=5)
+    assert child_header[0].startswith("*[Stats]")
+    assert child_header[1].startswith(">[Overview]")
+    assert sum(line.count(">") for line in child_header) == 1
+
+    assert outer.handle_input(InputEvent(kind="key", key="down")) is True
+    child_content = plain_lines(outer, width=80, height=5)
+    assert child_content[0].startswith("*[Stats]")
+    assert child_content[1].startswith("*[Overview]")
+    assert sum(line.count(">") for line in child_content) == 0
+
+    outer.focus_header()
+    parent_header_again = plain_lines(outer, width=80, height=5)
+    assert parent_header_again[0].startswith(">[Stats]")
+    assert parent_header_again[1].startswith("*[Overview]")
+    assert sum(line.count(">") for line in parent_header_again) == 1
+
+
+def test_nested_tab_group_uses_parent_content_and_child_header_tokens() -> None:
+    theme = ThemeResolver(
+        defaults={
+            "widget.tabs.level0.selected_content_focus": {"color": "green"},
+            "widget.tabs.level1.selected_header_focus": {"color": "magenta"},
+            "widget.tabs.level1.selected_content_focus": {"color": "yellow"},
+        }
+    )
+    nested = TabGroup([TabPage("overview", "Overview", FocusablePage(("nested",)))], level=1, theme=theme)
+    outer = TabGroup([TabPage("stats", "Stats", nested)], focused=True, theme=theme)
+
+    assert outer.focus_content() is True
+    child_header_raw = render_lines(outer, width=80, height=5)
+    assert child_header_raw[0].startswith("\x1b[32m*[Stats]")
+    assert child_header_raw[1].startswith("\x1b[35m>[Overview]")
+
+    assert outer.handle_input(InputEvent(kind="key", key="down")) is True
+    child_content_raw = render_lines(outer, width=80, height=5)
+    assert child_content_raw[0].startswith("\x1b[32m*[Stats]")
+    assert child_content_raw[1].startswith("\x1b[33m*[Overview]")
+
+
 def test_nested_tab_switch_does_not_change_parent_value() -> None:
     nested = TabGroup(
         [
@@ -265,7 +322,7 @@ def test_tabgroup_searchable_list_example_playback_filters_settings() -> None:
     filtered = frames[-1].lines
 
     assert any("Workspace" in line and "Activity" in line for line in initial)
-    assert initial[0].startswith(">[Workspace]")
+    assert initial[0].startswith("*[Workspace]")
     assert any("Search" in line for line in initial)
     assert any("mode" in line.lower() for line in filtered)
     assert any("Model" in line or "mode" in line for line in filtered)
@@ -279,7 +336,7 @@ def test_tabgroup_searchable_list_example_styles_top_level_selected_tab() -> Non
 
     initial = tui.render(RenderConstraints(width=100, max_height=24)).lines[0].text
     assert "\x1b[" in initial
-    assert ">[Workspace]" in initial
+    assert "*[Workspace]" in strip_control_sequences(initial)
 
     for event in (
         InputEvent(kind="key", key="up"),
@@ -291,7 +348,8 @@ def test_tabgroup_searchable_list_example_styles_top_level_selected_tab() -> Non
 
     activity = tui.render(RenderConstraints(width=100, max_height=24)).lines[0].text
     assert "\x1b[" in activity
-    assert ">[Activity]" in activity
+    assert ">[Activity]" in strip_control_sequences(activity)
+    assert "> [Activity]" not in strip_control_sequences(activity)
 
 
 def test_tabgroup_searchable_list_example_playback_switches_nested_tabs() -> None:
@@ -312,6 +370,11 @@ def test_tabgroup_searchable_list_example_playback_switches_nested_tabs() -> Non
     assert any("Overview" in line and "Models" in line for line in frames[-1].lines)
     assert any("Tokens per Day" in line or "Model usage" in line for line in frames[-1].lines)
     assert any("Overview" in line and ">[Models]" in line for line in frames[-1].lines)
+    final = frames[-1].lines
+    assert any("*[Activity]" in line for line in final)
+    assert any(line.startswith(" [Overview]") and ">[Models]" in line for line in final)
+    assert sum(line.count(">") for line in final) == 1
+    assert not any("> [" in line for line in final)
 
 
 def test_tabgroup_searchable_list_example_up_to_tabs_down_returns_to_search() -> None:
@@ -325,7 +388,7 @@ def test_tabgroup_searchable_list_example_up_to_tabs_down_returns_to_search() ->
         height=24,
     )
 
-    assert frames[-1].lines[0].startswith(">[Workspace]")
+    assert frames[-1].lines[0].startswith("*[Workspace]")
     assert frames[-1].lines[2] == "Search settings..."
     assert not any(line.startswith("> Model") for line in frames[-1].lines)
     assert frames[-1].lines[-1].startswith("Search |")

@@ -23,6 +23,13 @@ from loushang.tui.ui_parts.widgets._utils import (
 )
 
 TabFocusState = Literal["auto", "header", "content", "none"]
+TabRenderState = Literal[
+    "normal",
+    "selected_unfocused",
+    "selected_content_focus",
+    "selected_header_focus",
+    "disabled",
+]
 
 
 @dataclass(frozen=True, slots=True)
@@ -158,11 +165,31 @@ class Tabs:
 
 
 def _tab_segment(tabs: Tabs, tab: TabItem) -> str:
+    state = _tab_render_state(tabs, tab)
+    text = f"{_tab_marker(state)}[{tab.display_label}]"
+    return style_text(text, tabs.theme, *_tab_tokens(tabs, state=state))
+
+
+def _tab_render_state(tabs: Tabs, tab: TabItem) -> TabRenderState:
     selected = tab.value == tabs.value and not tab.disabled
+    if tab.disabled:
+        return "disabled"
+    if not selected:
+        return "normal"
     focus_state = _selected_focus_state(tabs)
-    prefix = ">" if selected and focus_state in {"header", "content"} else "*" if selected else " "
-    text = f"{prefix}[{tab.display_label}]"
-    return style_text(text, tabs.theme, *_tab_tokens(tabs, selected=selected, disabled=tab.disabled))
+    if focus_state == "header":
+        return "selected_header_focus"
+    if focus_state == "content":
+        return "selected_content_focus"
+    return "selected_unfocused"
+
+
+def _tab_marker(state: TabRenderState) -> str:
+    if state == "selected_header_focus":
+        return ">"
+    if state in {"selected_unfocused", "selected_content_focus"}:
+        return "*"
+    return " "
 
 
 def _selected_focus_state(tabs: Tabs) -> str:
@@ -171,11 +198,11 @@ def _selected_focus_state(tabs: Tabs) -> str:
     return "header" if tabs.focused else "none"
 
 
-def _tab_tokens(tabs: Tabs, *, selected: bool, disabled: bool) -> tuple[str, ...]:
+def _tab_tokens(tabs: Tabs, *, state: TabRenderState) -> tuple[str, ...]:
     level = max(0, tabs.level)
     nested_prefix = "widget.tabs.nested" if level > 0 else ""
     level_prefix = f"widget.tabs.level{level}"
-    if disabled:
+    if state == "disabled":
         return tuple(
             token
             for token in (
@@ -185,29 +212,28 @@ def _tab_tokens(tabs: Tabs, *, selected: bool, disabled: bool) -> tuple[str, ...
             )
             if token
         )
-    if selected:
-        focus_state = _selected_focus_state(tabs)
-        if focus_state == "header":
-            return tuple(
-                token
-                for token in (
-                    "widget.tabs.selected",
-                    "widget.tabs.focus",
-                    f"{nested_prefix}.selected_header_focus" if nested_prefix else "",
-                    f"{level_prefix}.selected_header_focus",
-                )
-                if token
+    if state == "selected_header_focus":
+        return tuple(
+            token
+            for token in (
+                "widget.tabs.selected",
+                "widget.tabs.focus",
+                f"{nested_prefix}.selected_header_focus" if nested_prefix else "",
+                f"{level_prefix}.selected_header_focus",
             )
-        if focus_state == "content":
-            return tuple(
-                token
-                for token in (
-                    "widget.tabs.selected",
-                    f"{nested_prefix}.selected_content_focus" if nested_prefix else "",
-                    f"{level_prefix}.selected_content_focus",
-                )
-                if token
+            if token
+        )
+    if state == "selected_content_focus":
+        return tuple(
+            token
+            for token in (
+                "widget.tabs.selected",
+                f"{nested_prefix}.selected_content_focus" if nested_prefix else "",
+                f"{level_prefix}.selected_content_focus",
             )
+            if token
+        )
+    if state == "selected_unfocused":
         return ("widget.tabs.selected",)
     return tuple(
         token
