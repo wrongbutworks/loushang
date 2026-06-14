@@ -233,6 +233,63 @@ def test_nested_tab_group_keeps_parent_selected_content_focus() -> None:
     assert "Overview" in strip_control_sequences(raw[1])
 
 
+def test_nested_tab_group_markers_follow_active_focus_path() -> None:
+    nested_page = FocusablePage(("nested content",))
+    nested = TabGroup(
+        [
+            TabPage("overview", "Overview", nested_page),
+            TabPage("models", "Models", StaticPage(("models",))),
+        ],
+        level=1,
+    )
+    outer = TabGroup([TabPage("stats", "Stats", nested)], focused=True)
+
+    parent_header = plain_lines(outer, width=80, height=5)
+    assert parent_header[0].startswith(">[Stats]")
+    assert parent_header[1].startswith("*[Overview]")
+    assert sum(line.count(">") for line in parent_header) == 1
+
+    assert outer.focus_content() is True
+    child_header = plain_lines(outer, width=80, height=5)
+    assert child_header[0].startswith("*[Stats]")
+    assert child_header[1].startswith(">[Overview]")
+    assert sum(line.count(">") for line in child_header) == 1
+
+    assert outer.handle_input(InputEvent(kind="key", key="down")) is True
+    child_content = plain_lines(outer, width=80, height=5)
+    assert child_content[0].startswith("*[Stats]")
+    assert child_content[1].startswith("*[Overview]")
+    assert sum(line.count(">") for line in child_content) == 0
+
+    outer.focus_header()
+    parent_header_again = plain_lines(outer, width=80, height=5)
+    assert parent_header_again[0].startswith(">[Stats]")
+    assert parent_header_again[1].startswith("*[Overview]")
+    assert sum(line.count(">") for line in parent_header_again) == 1
+
+
+def test_nested_tab_group_uses_parent_content_and_child_header_tokens() -> None:
+    theme = ThemeResolver(
+        defaults={
+            "widget.tabs.level0.selected_content_focus": {"color": "green"},
+            "widget.tabs.level1.selected_header_focus": {"color": "magenta"},
+            "widget.tabs.level1.selected_content_focus": {"color": "yellow"},
+        }
+    )
+    nested = TabGroup([TabPage("overview", "Overview", FocusablePage(("nested",)))], level=1, theme=theme)
+    outer = TabGroup([TabPage("stats", "Stats", nested)], focused=True, theme=theme)
+
+    assert outer.focus_content() is True
+    child_header_raw = render_lines(outer, width=80, height=5)
+    assert child_header_raw[0].startswith("\x1b[32m*[Stats]")
+    assert child_header_raw[1].startswith("\x1b[35m>[Overview]")
+
+    assert outer.handle_input(InputEvent(kind="key", key="down")) is True
+    child_content_raw = render_lines(outer, width=80, height=5)
+    assert child_content_raw[0].startswith("\x1b[32m*[Stats]")
+    assert child_content_raw[1].startswith("\x1b[33m*[Overview]")
+
+
 def test_nested_tab_switch_does_not_change_parent_value() -> None:
     nested = TabGroup(
         [
