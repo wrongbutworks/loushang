@@ -217,9 +217,17 @@ def _style_for_status_part(
 
 
 def _normalize_status_token(token: str, *, style_mode: StatusBarStyleMode) -> tuple[str, tuple[str, ...]]:
-    del style_mode
     normalized = token.strip()
-    return (normalized or "field"), ()
+    if not normalized:
+        return "field", ()
+    mode_prefix = _MODE_TOKEN_PREFIX.get(style_mode, "")
+    if mode_prefix and normalized.startswith(f"statusBar.{mode_prefix}."):
+        semantic = normalized[len(f"statusBar.{mode_prefix}.") :]
+        return semantic or "field", (normalized,)
+    if normalized.startswith("statusBar."):
+        semantic = normalized[len("statusBar.") :]
+        return semantic or "field", ()
+    return normalized, ()
 
 
 def _status_token_candidates(
@@ -231,7 +239,16 @@ def _status_token_candidates(
 ) -> tuple[str, ...]:
     mode_prefix = _MODE_TOKEN_PREFIX[style_mode]
     token = "separator" if separator else semantic_token
-    candidates = [*exact_tokens, f"statusBar.{mode_prefix}.{token}", f"statusBar.{token}"]
+    if separator:
+        candidates = [*exact_tokens, f"statusBar.{mode_prefix}.{token}", f"statusBar.{token}"]
+    else:
+        candidates = [
+            *exact_tokens,
+            f"statusBar.{mode_prefix}.{token}",
+            f"statusBar.{token}",
+            f"statusBar.{mode_prefix}.field",
+            "statusBar.field",
+        ]
     return tuple(dict.fromkeys(candidates))
 
 

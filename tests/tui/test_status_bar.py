@@ -129,3 +129,52 @@ def test_status_bar_theme_override_beats_builtin_style() -> None:
     )
 
     assert rendered_text(status, width=20) == "\x1b[31mmodel\x1b[39m"
+
+
+def test_status_bar_width_fitting_ignores_ansi_sequences() -> None:
+    status = StatusBar(
+        [
+            StatusField("model", priority=100, token="model"),
+            StatusField("very-long-branch-name", priority=10, token="branch"),
+            StatusField("running", priority=80, token="runtime.running"),
+        ],
+        style_mode="codex-like",
+    )
+
+    line = rendered_text(status, width=16)
+
+    assert "very-long-branch-name" not in line
+    assert visible_width(line) == 15
+    assert "model" in line
+    assert "running" in line
+
+
+def test_status_bar_unknown_token_falls_back_to_generic_field_style() -> None:
+    theme = ThemeResolver(defaults={"statusBar.field": {"foreground": "blue"}})
+    status = StatusBar(
+        [StatusField("custom", priority=100, token="unknown")],
+        style_mode="codex-like",
+        theme=theme,
+    )
+
+    assert rendered_text(status, width=20) == "\x1b[34mcustom\x1b[39m"
+
+
+def test_status_bar_fully_qualified_token_behaves_like_semantic_token() -> None:
+    status = StatusBar(
+        [StatusField("model", priority=100, token="statusBar.model")],
+        style_mode="codex-like",
+    )
+
+    assert rendered_text(status, width=20) == "\x1b[36mmodel\x1b[39m"
+
+
+def test_status_bar_mode_qualified_token_resolves_exact_token_first() -> None:
+    theme = ThemeResolver(defaults={"statusBar.codexLike.model": {"foreground": "red"}})
+    status = StatusBar(
+        [StatusField("model", priority=100, token="statusBar.codexLike.model")],
+        style_mode="codex-like",
+        theme=theme,
+    )
+
+    assert rendered_text(status, width=20) == "\x1b[31mmodel\x1b[39m"
