@@ -91,6 +91,7 @@ def test_parse_prompt_intent_routes_settings_command() -> None:
     from loushang.coding.ui.intent import SettingsIntent, parse_prompt_intent
 
     assert parse_prompt_intent("/settings") == SettingsIntent()
+    assert parse_prompt_intent("/config") == SettingsIntent()
 
 
 def test_parse_prompt_intent_routes_models_command() -> None:

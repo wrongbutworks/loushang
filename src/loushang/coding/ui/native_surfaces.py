@@ -438,7 +438,7 @@ class NativeSurfaceManager:
             self._open_terminal_diagnostics()
         elif command.name == "hotkeys" and isinstance(intent, HotkeysIntent):
             self._open_info("Hotkeys", format_hotkeys())
-        elif command.name == "settings" and isinstance(intent, SettingsIntent):
+        elif command.name in {"settings", "config"} and isinstance(intent, SettingsIntent):
             await self._open_settings()
         elif command.name == "statusline" and isinstance(intent, StatuslineIntent):
             message = self.status_provider.set_visible(intent.enabled)
