@@ -322,7 +322,7 @@ def test_tabgroup_searchable_list_example_playback_filters_settings() -> None:
     filtered = frames[-1].lines
 
     assert any("Workspace" in line and "Activity" in line for line in initial)
-    assert initial[0].startswith(">[Workspace]")
+    assert initial[0].startswith("*[Workspace]")
     assert any("Search" in line for line in initial)
     assert any("mode" in line.lower() for line in filtered)
     assert any("Model" in line or "mode" in line for line in filtered)
@@ -336,7 +336,7 @@ def test_tabgroup_searchable_list_example_styles_top_level_selected_tab() -> Non
 
     initial = tui.render(RenderConstraints(width=100, max_height=24)).lines[0].text
     assert "\x1b[" in initial
-    assert ">[Workspace]" in initial
+    assert "*[Workspace]" in strip_control_sequences(initial)
 
     for event in (
         InputEvent(kind="key", key="up"),
@@ -348,7 +348,8 @@ def test_tabgroup_searchable_list_example_styles_top_level_selected_tab() -> Non
 
     activity = tui.render(RenderConstraints(width=100, max_height=24)).lines[0].text
     assert "\x1b[" in activity
-    assert ">[Activity]" in activity
+    assert ">[Activity]" in strip_control_sequences(activity)
+    assert "> [Activity]" not in strip_control_sequences(activity)
 
 
 def test_tabgroup_searchable_list_example_playback_switches_nested_tabs() -> None:
@@ -369,6 +370,11 @@ def test_tabgroup_searchable_list_example_playback_switches_nested_tabs() -> Non
     assert any("Overview" in line and "Models" in line for line in frames[-1].lines)
     assert any("Tokens per Day" in line or "Model usage" in line for line in frames[-1].lines)
     assert any("Overview" in line and ">[Models]" in line for line in frames[-1].lines)
+    final = frames[-1].lines
+    assert any("*[Activity]" in line for line in final)
+    assert any(line.startswith(" [Overview]") and ">[Models]" in line for line in final)
+    assert sum(line.count(">") for line in final) == 1
+    assert not any("> [" in line for line in final)
 
 
 def test_tabgroup_searchable_list_example_up_to_tabs_down_returns_to_search() -> None:
@@ -382,7 +388,7 @@ def test_tabgroup_searchable_list_example_up_to_tabs_down_returns_to_search() ->
         height=24,
     )
 
-    assert frames[-1].lines[0].startswith(">[Workspace]")
+    assert frames[-1].lines[0].startswith("*[Workspace]")
     assert frames[-1].lines[2] == "Search settings..."
     assert not any(line.startswith("> Model") for line in frames[-1].lines)
     assert frames[-1].lines[-1].startswith("Search |")
