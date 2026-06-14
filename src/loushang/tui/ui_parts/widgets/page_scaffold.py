@@ -37,6 +37,8 @@ class PageScaffold:
     focused: bool = False
     focus_region: PageScaffoldFocusRegion = "body"
     separator_after_header: bool = False
+    body_padding_top: int = 0
+    body_padding_bottom: int = 0
     reserve_footer: bool = True
 
     def focus(self) -> None:
@@ -116,13 +118,20 @@ class PageScaffold:
 
         remaining_after_chrome = page_height - len(rows)
         footer_reserved = 1 if self.reserve_footer and footer_text and remaining_after_chrome >= 2 else 0
-        body_budget = max(0, page_height - len(rows) - footer_reserved)
-        if body_budget <= 0 and not rows:
-            body_budget = page_height
+        body_region_budget = max(0, page_height - len(rows) - footer_reserved)
+        if body_region_budget <= 0 and not rows:
+            body_region_budget = page_height
+        top_padding, body_budget, bottom_padding = _allocate_body_region(
+            body_region_budget,
+            self.body_padding_top,
+            self.body_padding_bottom,
+        )
 
         body_start = len(rows)
         body_line_count = 0
-        if body_budget > 0 and len(rows) < page_height:
+        if body_region_budget > 0 and len(rows) < page_height:
+            rows.extend(RenderLine("") for _ in range(top_padding))
+            body_start = len(rows)
             body_result = _render_part(
                 self.body,
                 RenderConstraints(
@@ -135,6 +144,7 @@ class PageScaffold:
             body_lines = list(body_result.lines[:body_budget])
             body_line_count = len(body_lines)
             rows.extend(body_lines)
+            rows.extend(RenderLine("") for _ in range(bottom_padding))
         else:
             body_result = RenderResult.from_lines([], constraints=constraints)
 
@@ -204,6 +214,17 @@ def _render_part(
         return render(constraints)
     line_count = min(max(0, missing_render_lines), max(0, constraints.max_height))
     return RenderResult.from_lines([RenderLine("") for _ in range(line_count)], constraints=constraints)
+
+
+def _allocate_body_region(region_height: int, top_padding: int, bottom_padding: int) -> tuple[int, int, int]:
+    if region_height <= 0:
+        return 0, 0, 0
+    padding_budget = max(0, region_height - 1)
+    top_count = min(max(0, top_padding), padding_budget)
+    padding_budget -= top_count
+    bottom_count = min(max(0, bottom_padding), padding_budget)
+    body_budget = region_height - top_count - bottom_count
+    return top_count, body_budget, bottom_count
 
 
 def _has_method(part: object | None, name: str) -> bool:
