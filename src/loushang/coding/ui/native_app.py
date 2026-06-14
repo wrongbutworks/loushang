@@ -14,6 +14,13 @@ from loushang.coding.tools.output_preview import (
     prefers_tail_tool_output,
 )
 from loushang.coding.ui.native_state import NativeCodingTuiState, NativeTranscriptWindow
+from loushang.coding.ui.status_line import (
+    StatusLinePreviewSnapshot,
+    StatusLineSettings,
+    status_line_fields,
+    status_line_separator,
+    status_line_style_mode,
+)
 from loushang.coding.ui.transcript_reader import TranscriptReaderSurface
 from loushang.coding.ui.transcript_source import (
     ActiveWindowTranscriptSource,
@@ -32,7 +39,6 @@ from loushang.tui import (
     RenderResult,
     ScreenLayout,
     StatusBar,
-    StatusField,
     Surface,
     SurfaceHost,
     TerminalRuntimeCapabilities,
@@ -172,8 +178,24 @@ class NativeCodingTuiApp:
         self._request_render("product")
 
     def set_statusline_visible(self, visible: bool) -> None:
-        self.state.statusline_visible = visible
+        self.set_statusline_settings(replace(self.state.statusline_settings, enabled=visible))
+
+    def set_statusline_settings(self, settings: StatusLineSettings) -> None:
+        self.state.statusline_settings = settings
+        self.state.statusline_visible = settings.enabled
         self._request_render("product")
+
+    def statusline_preview_snapshot(self) -> StatusLinePreviewSnapshot:
+        return StatusLinePreviewSnapshot(
+            model_label=self.state.model_label,
+            cwd=self.state.cwd,
+            branch=self.state.branch,
+            session_label=self.state.session_label,
+            running=self.state.running,
+            pending_followups=len(self.state.pending_followups),
+            pending_steers=len(self.state.pending_steers),
+            status_message=self.state.status_message,
+        )
 
     def open_transcript_reader(self) -> bool:
         if self.surface_host is None:
@@ -369,24 +391,12 @@ class NativeCodingTuiApp:
         return PendingQueueView(sections=tuple(sections))
 
     def _status_bar(self) -> StatusBar:
-        status = "running" if self.state.running else "idle"
-        fields = [
-            StatusField(self.state.model_label or "model", priority=100),
-            StatusField(_cwd_label(self.state.cwd), priority=90),
-            StatusField(self.state.branch or "no-branch", priority=80),
-            StatusField(self.state.session_label or "no-session", priority=70),
-            StatusField(status, priority=60),
-        ]
-        if self.state.pending_followups or self.state.pending_steers:
-            fields.append(
-                StatusField(
-                    f"queued={len(self.state.pending_followups)} steer={len(self.state.pending_steers)}",
-                    priority=50,
-                )
-            )
-        if self.state.status_message:
-            fields.append(StatusField(self.state.status_message, priority=40))
-        return StatusBar(fields)
+        settings = self.state.statusline_settings
+        return StatusBar(
+            status_line_fields(self.statusline_preview_snapshot(), settings),
+            separator=status_line_separator(settings),
+            style_mode=status_line_style_mode(settings),
+        )
 
 
 @dataclass(slots=True)

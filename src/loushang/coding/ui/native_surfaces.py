@@ -441,12 +441,10 @@ class NativeSurfaceManager:
         elif command.name == "settings" and isinstance(intent, SettingsIntent):
             await self._open_settings()
         elif command.name == "statusline" and isinstance(intent, StatuslineIntent):
-            setter = self.set_statusline_visible or self.status_provider.set_visible
-            message = setter(intent.enabled)
-            if intent.enabled is not None:
-                self.app.set_statusline_visible(intent.enabled)
-            else:
-                self.app.set_statusline_visible(self.status_provider.is_visible())
+            message = self.status_provider.set_visible(intent.enabled)
+            if self.set_statusline_visible is not None:
+                message = self.set_statusline_visible(intent.enabled)
+            self.app.set_statusline_settings(self.status_provider.statusline_settings())
             self.app.set_status(message)
         return None
 
@@ -531,7 +529,9 @@ class NativeSurfaceManager:
         apply_setting = getattr(page, "apply_setting", None)
         if callable(apply_setting):
             result = await apply_setting(payload["id"], payload.get("value", ""))
-            if result.statusline_visible is not None:
+            if result.statusline_settings is not None:
+                self.app.set_statusline_settings(result.statusline_settings)
+            elif result.statusline_visible is not None:
                 self.app.set_statusline_visible(result.statusline_visible)
             if result.refresh_model_label:
                 await self._refresh_model_label()
@@ -541,7 +541,7 @@ class NativeSurfaceManager:
         updated = self.status_provider.settings_list().toggle(payload["id"])
         self.close_surface()
         message = self.status_provider.apply_settings(updated)
-        self.app.set_statusline_visible(self.status_provider.is_visible())
+        self.app.set_statusline_settings(self.status_provider.statusline_settings())
         self.app.set_status(message)
 
     async def _handle_dialog_submit(self, _payload: Any | None = None) -> None:
@@ -642,6 +642,7 @@ class NativeSurfaceManager:
             status_provider=self.status_provider,
             settings_manager=getattr(self.session, "settings_manager", None),
             session_settings=getattr(self.session, "settings_controller", None),
+            statusline_preview=self.app.statusline_preview_snapshot,
         )
         self._open_surface(
             NativeSurfaceView(

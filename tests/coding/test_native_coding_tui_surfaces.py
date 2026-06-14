@@ -398,9 +398,9 @@ def test_native_surface_manager_opens_settings_in_bottom_frame_with_runtime_over
 
     rendered = app.active_surface.render(RenderConstraints(width=100, max_height=14))
     plain = tuple(strip_control_sequences(line.text) for line in rendered.lines)
-    assert any("Status" in line and "Config" in line and "Model" in line for line in plain)
+    assert any("Status" in line and "Config" in line and "Model" in line and "Status Line" in line for line in plain)
     assert any("Search settings" in line for line in plain)
-    assert any("Status line" in line for line in plain)
+    assert not any("Status line" in line for line in plain[2:])
     assert "Enter/Space to change - Esc to close" not in plain
     assert "  show footer" not in plain
 
@@ -411,14 +411,35 @@ def test_native_surface_manager_settings_page_submit_keeps_surface_open() -> Non
 
     asyncio.run(manager.handle_text("/settings"))
     assert isinstance(app.active_surface, NativeSurfaceView)
+    _focus_statusline_tab(app.active_surface)
     intent = app.active_surface.handle_input(InputEvent(kind="key", key="enter"))
 
-    assert intent == InputIntent(kind="setting", text="statusline", note="false")
+    assert intent == InputIntent(kind="setting", text="statusline.enabled", note="false")
     asyncio.run(manager.handle_surface_intent(intent))
 
     assert isinstance(app.active_surface, NativeSurfaceView)
     assert app.state.statusline_visible is False
+    assert app.state.statusline_settings.enabled is False
+    assert manager.status_provider.statusline_settings().enabled is False
     assert app.state.status_message == "Status line: off"
+
+
+def test_native_surface_manager_settings_page_submit_mirrors_statusline_settings_into_app() -> None:
+    app = _app()
+    manager = _manager(app, _Session())
+
+    asyncio.run(manager.handle_text("/settings"))
+    assert isinstance(app.active_surface, NativeSurfaceView)
+    _focus_statusline_tab(app.active_surface)
+    assert app.active_surface.content.handle_input(InputEvent(kind="text", text="style")) is True
+    intent = app.active_surface.handle_input(InputEvent(kind="key", key="enter"))
+
+    assert intent == InputIntent(kind="setting", text="statusline.style", note="muted")
+    asyncio.run(manager.handle_surface_intent(intent))
+
+    assert app.state.statusline_settings.style == "muted"
+    assert manager.status_provider.statusline_settings().style == "muted"
+    assert app.state.status_message == "Status line style: muted"
 
 
 def test_native_surface_manager_legacy_settings_surface_still_closes_on_submit() -> None:
@@ -843,8 +864,9 @@ def test_native_surface_manager_applies_settings_page_statusline_change() -> Non
     asyncio.run(manager.handle_text("/settings"))
 
     assert isinstance(app.active_surface, NativeSurfaceView)
+    _focus_statusline_tab(app.active_surface)
     intent = app.active_surface.handle_input(InputEvent(kind="key", key="enter"))
-    assert intent == InputIntent(kind="setting", text="statusline", note="false")
+    assert intent == InputIntent(kind="setting", text="statusline.enabled", note="false")
 
     asyncio.run(manager.handle_surface_intent(intent))
 
@@ -1037,6 +1059,13 @@ def _status_provider(app: NativeCodingTuiApp) -> CodingTuiStatusProvider:
         thinking_level=lambda: None,
         running=lambda: app.state.running,
     )
+
+
+def _focus_statusline_tab(view: NativeSurfaceView) -> None:
+    assert view.content.handle_input(InputEvent(kind="key", key="up")) is True
+    assert view.content.handle_input(InputEvent(kind="key", key="right")) is not None
+    assert view.content.handle_input(InputEvent(kind="key", key="right")) is not None
+    assert view.content.handle_input(InputEvent(kind="key", key="down")) is True
 
 
 def _only_overlay_view(app: NativeCodingTuiApp) -> NativeSurfaceView:

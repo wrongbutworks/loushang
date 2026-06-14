@@ -368,6 +368,10 @@ def test_native_tui_playback_settings_page_toggles_statusline_and_exits() -> Non
     steps = playback.play(
         [
             PlaybackEvent.input("/settings\r"),
+            PlaybackEvent.input("\x1b[A"),
+            PlaybackEvent.input("\x1b[C"),
+            PlaybackEvent.input("\x1b[C"),
+            PlaybackEvent.input("\x1b[B"),
             PlaybackEvent.input("\r"),
             PlaybackEvent.input("\x1b"),
         ]
@@ -380,6 +384,71 @@ def test_native_tui_playback_settings_page_toggles_statusline_and_exits() -> Non
     lines = _plain_lines(steps[-1].diagnostics)
     assert "Settings" not in lines
     assert not any("moonshot/kimi-for-coding | repo | main | abcd | idle" in line for line in lines)
+    for step in steps:
+        step.assert_no_clear_scrollback()
+
+
+def test_native_tui_playback_settings_page_toggles_statusline_style() -> None:
+    session = _Session()
+    app = _app()
+    playback = _NativeInteractivePlayback(
+        app,
+        _manager(app, session),
+        columns=110,
+        rows=24,
+    )
+
+    steps = playback.play(
+        [
+            PlaybackEvent.input("/settings\r"),
+            PlaybackEvent.input("\x1b[A"),
+            PlaybackEvent.input("\x1b[C"),
+            PlaybackEvent.input("\x1b[C"),
+            PlaybackEvent.input("\x1b[B"),
+            PlaybackEvent.input("style"),
+            PlaybackEvent.input("\r"),
+        ]
+    )
+
+    assert all(step.flush_succeeded for step in steps)
+    assert app.active_surface is not None
+    assert app.state.statusline_settings.style == "muted"
+    assert app.state.status_message == "Status line style: muted"
+    lines = _plain_lines(steps[-1].diagnostics)
+    assert any("Style" in line and "muted" in line for line in lines)
+    for step in steps:
+        step.assert_no_clear_scrollback()
+
+
+def test_native_tui_playback_settings_page_toggles_statusline_field() -> None:
+    session = _Session()
+    app = _app()
+    playback = _NativeInteractivePlayback(
+        app,
+        _manager(app, session),
+        columns=110,
+        rows=24,
+    )
+
+    steps = playback.play(
+        [
+            PlaybackEvent.input("/settings\r"),
+            PlaybackEvent.input("\x1b[A"),
+            PlaybackEvent.input("\x1b[C"),
+            PlaybackEvent.input("\x1b[C"),
+            PlaybackEvent.input("\x1b[B"),
+            PlaybackEvent.input("queue"),
+            PlaybackEvent.input("\r"),
+        ]
+    )
+
+    assert all(step.flush_succeeded for step in steps)
+    assert app.active_surface is not None
+    assert app.state.statusline_settings.queue == "true"
+    assert app.state.status_message == "Status line queue: true"
+    lines = _plain_lines(steps[-1].diagnostics)
+    assert any("Queue" in line and "true" in line for line in lines)
+    assert any("queued=0 steer=0" in line for line in lines)
     for step in steps:
         step.assert_no_clear_scrollback()
 
