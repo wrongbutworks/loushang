@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import runpy
 from dataclasses import dataclass
 from typing import Any
 
@@ -12,6 +13,7 @@ from loushang.tui import (
     strip_control_sequences,
 )
 from loushang.tui.ui_parts.widgets.page_scaffold import PageScaffold
+from tests.tui.widget_example_playback import play_example
 
 
 def render_lines(part: Any, *, width: int = 40, height: int = 8) -> tuple[str, ...]:
@@ -95,6 +97,19 @@ def test_page_scaffold_reserves_footer_height_under_long_body_content() -> None:
     assert "row 9" not in lines
 
 
+def test_page_scaffold_uses_visible_height_for_footer_padding() -> None:
+    scaffold = PageScaffold(
+        body=StaticPart(tuple(f"row {index}" for index in range(10))),
+        footer="footer",
+    )
+
+    result = scaffold.render(RenderConstraints(width=20, max_height=1000, visible_height=4))
+    lines = tuple(line.text for line in result.lines)
+
+    assert len(lines) == 4
+    assert lines[-1] == "footer"
+
+
 def test_page_scaffold_tiny_heights_prioritize_header_body_then_footer() -> None:
     scaffold = PageScaffold(
         header=StaticPart(("header",)),
@@ -133,6 +148,21 @@ def test_page_scaffold_uses_header_cursor_without_body_offset() -> None:
     result = scaffold.render(RenderConstraints(width=20, max_height=4))
 
     assert result.cursor == CursorDeclaration(row=0, column=1)
+
+
+def test_page_scaffold_fallback_cursor_stays_in_focused_body_region() -> None:
+    scaffold = PageScaffold(
+        header=StaticPart(("header",)),
+        body=StaticPart(("body",)),
+        footer="footer",
+        focused=True,
+        focus_region="body",
+        separator_after_header=True,
+    )
+
+    result = scaffold.render(RenderConstraints(width=20, max_height=5))
+
+    assert result.cursor == CursorDeclaration(row=2, column=0)
 
 
 @dataclass(slots=True)
@@ -282,3 +312,43 @@ def test_page_scaffold_public_exports() -> None:
     assert PublicPageScaffoldFooter is PageScaffoldFooter
     assert PublicPageScaffoldFooter is WidgetPageScaffoldFooter
     assert UiPageScaffoldFooter is WidgetPageScaffoldFooter
+
+
+def test_page_scaffold_example_imports_and_renders() -> None:
+    namespace = runpy.run_path("examples/tui/53_widgets_page_scaffold.py", run_name="__test__")
+    app = namespace["build_app"]()
+    result = app.render(RenderConstraints(width=96, max_height=20))
+
+    assert result.lines
+
+
+def test_page_scaffold_example_playback_switches_focus_and_keeps_footer() -> None:
+    frames = play_example(
+        "examples/tui/53_widgets_page_scaffold.py",
+        events=(
+            ("up to header", InputEvent(kind="key", key="up")),
+            ("right models", InputEvent(kind="key", key="right")),
+            ("down to body", InputEvent(kind="key", key="down")),
+            ("down list", InputEvent(kind="key", key="down")),
+            ("page down", InputEvent(kind="key", key="pageDown")),
+        ),
+        width=96,
+        height=20,
+    )
+
+    initial = frames[0].lines
+    header = frames[1].lines
+    models = frames[2].lines
+    body = frames[3].lines
+    scrolled = frames[-1].lines
+
+    assert initial[0].startswith("*[Config]")
+    assert initial[-1].startswith("Body |")
+    assert header[0].startswith(">[Config]")
+    assert header[-1].startswith("Header |")
+    assert ">[Models]" in models[0]
+    assert "*[Models]" in body[0]
+    assert body[-1].startswith("Body |")
+    assert scrolled[-1].startswith("Body |")
+    assert any("more below" in line.lower() or "more above" in line.lower() for line in scrolled)
+    assert frames[-1].cursor[0] < 19

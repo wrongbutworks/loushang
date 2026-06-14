@@ -91,6 +91,7 @@ class PageScaffold:
 
     def render(self, constraints: RenderConstraints) -> RenderResult:
         width = constraints.width
+        page_height = min(constraints.max_height, constraints.visible_height or constraints.max_height)
         footer_text = self._footer_text(width)
         rows: list[RenderLine] = []
 
@@ -98,25 +99,27 @@ class PageScaffold:
             self.header,
             RenderConstraints(
                 width=width,
-                max_height=constraints.max_height,
+                max_height=page_height,
                 visible_height=constraints.visible_height,
             ),
             missing_render_lines=0,
         )
         header_lines = list(header_result.lines)
+        header_line_count = min(len(header_lines), page_height)
         if header_lines:
-            rows.extend(header_lines[: constraints.max_height])
-        if self.separator_after_header and header_lines and len(rows) < constraints.max_height:
+            rows.extend(header_lines[:page_height])
+        if self.separator_after_header and header_lines and len(rows) < page_height:
             rows.append(RenderLine("-" * max(1, width)))
 
-        remaining_after_chrome = constraints.max_height - len(rows)
+        remaining_after_chrome = page_height - len(rows)
         footer_reserved = 1 if self.reserve_footer and footer_text and remaining_after_chrome >= 2 else 0
-        body_budget = max(0, constraints.max_height - len(rows) - footer_reserved)
+        body_budget = max(0, page_height - len(rows) - footer_reserved)
         if body_budget <= 0 and not rows:
-            body_budget = constraints.max_height
+            body_budget = page_height
 
         body_start = len(rows)
-        if body_budget > 0 and len(rows) < constraints.max_height:
+        body_line_count = 0
+        if body_budget > 0 and len(rows) < page_height:
             body_result = _render_part(
                 self.body,
                 RenderConstraints(
@@ -126,24 +129,28 @@ class PageScaffold:
                 ),
                 missing_render_lines=1,
             )
-            rows.extend(list(body_result.lines[:body_budget]))
+            body_lines = list(body_result.lines[:body_budget])
+            body_line_count = len(body_lines)
+            rows.extend(body_lines)
         else:
             body_result = RenderResult.from_lines([], constraints=constraints)
 
-        if footer_text and len(rows) < constraints.max_height:
+        if footer_text and len(rows) < page_height:
             if self.reserve_footer:
-                while len(rows) < constraints.max_height - 1:
+                while len(rows) < page_height - 1:
                     rows.append(RenderLine(""))
-            if len(rows) < constraints.max_height:
+            if len(rows) < page_height:
                 rows.append(RenderLine(footer_text))
 
         cursor = self._offset_cursor(
             header_result.cursor,
             body_result.cursor,
             body_start,
+            header_line_count,
+            body_line_count,
             len(rows),
         )
-        return RenderResult.from_lines(rows[: constraints.max_height], constraints=constraints, cursor=cursor)
+        return RenderResult.from_lines(rows[:page_height], constraints=constraints, cursor=cursor)
 
     def _context(self) -> PageScaffoldContext:
         return PageScaffoldContext(
@@ -161,15 +168,23 @@ class PageScaffold:
         header_cursor: CursorDeclaration | None,
         body_cursor: CursorDeclaration | None,
         body_start: int,
+        header_line_count: int,
+        body_line_count: int,
         row_count: int,
     ) -> CursorDeclaration | None:
         cursor = header_cursor if self.focus_region == "header" else body_cursor
-        if cursor is None:
+        if cursor is not None:
+            row = cursor.row if self.focus_region == "header" else body_start + cursor.row
+            if row < 0 or row >= row_count:
+                return None
+            return CursorDeclaration(row=row, column=cursor.column)
+        if not self.focused:
             return None
-        row = cursor.row if self.focus_region == "header" else body_start + cursor.row
-        if row < 0 or row >= row_count:
-            return None
-        return CursorDeclaration(row=row, column=cursor.column)
+        if self.focus_region == "header" and header_line_count > 0:
+            return CursorDeclaration(row=0, column=0)
+        if self.focus_region == "body" and body_line_count > 0 and body_start < row_count:
+            return CursorDeclaration(row=body_start, column=0)
+        return None
 
 
 def _render_part(
