@@ -193,6 +193,7 @@ def _jobs_table() -> Table:
             TableRow("build", {"job": "Build", "status": "ready", "runs": 12}),
             TableRow("deploy", {"job": "Deploy", "status": "blocked", "runs": 3}),
             TableRow("archive", {"job": "Archive", "status": "disabled", "runs": 0}, disabled=True),
+            TableRow("release", {"job": "Release", "status": "ready", "runs": 7}),
         ),
         theme=TABLE_PAGE_THEME,
         wrap=False,
@@ -221,6 +222,7 @@ def _job_details() -> dict[str, str]:
         "build": "Build is ready, 12 runs",
         "deploy": "Deploy is blocked, 3 runs",
         "archive": "Archive is disabled, 0 runs",
+        "release": "Release is ready, 7 runs",
     }
 
 

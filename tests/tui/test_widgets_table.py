@@ -352,6 +352,28 @@ def test_widgets_table_page_scaffold_example_imports_and_offsets_cursor() -> Non
     assert result.cursor == CursorDeclaration(row=5, column=0)
 
 
+def test_widgets_table_page_scaffold_example_jobs_show_disabled_skip_target() -> None:
+    frames = play_example(
+        "examples/tui/56_widgets_table_page_scaffold.py",
+        events=(
+            ("down deploy", InputEvent(kind="key", key="down")),
+            ("down release", InputEvent(kind="key", key="down")),
+            ("enter select", InputEvent(kind="key", key="enter")),
+        ),
+        width=96,
+        height=22,
+    )
+
+    deploy = frames[1].lines
+    release = frames[2].lines
+    selected = frames[3].lines
+
+    assert "> Deploy" in "\n".join(deploy)
+    assert "  Archive" in "\n".join(release)
+    assert "> Release" in "\n".join(release)
+    assert any("Selected: Release is ready" in line for line in selected)
+
+
 def test_widgets_table_page_scaffold_example_playback_switches_focus_and_tabs() -> None:
     frames = play_example(
         "examples/tui/56_widgets_table_page_scaffold.py",
