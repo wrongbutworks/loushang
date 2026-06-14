@@ -1,7 +1,8 @@
 from __future__ import annotations
 
+from collections.abc import Mapping
 from dataclasses import dataclass
-from typing import Literal
+from typing import Literal, cast
 
 from loushang.tui import StatusField
 
@@ -76,10 +77,51 @@ def status_line_style_mode(settings: StatusLineSettings) -> StatusLineStyle:
     return settings.style if settings.style in {"codex-like", "muted", "plain"} else "codex-like"
 
 
+def status_line_settings_from_control(settings: object | None) -> StatusLineSettings:
+    if settings is None:
+        return StatusLineSettings()
+    if isinstance(settings, StatusLineSettings):
+        return settings
+    defaults = StatusLineSettings()
+    return StatusLineSettings(
+        enabled=bool(_setting_value(settings, "enabled", defaults.enabled)),
+        model=bool(_setting_value(settings, "model", defaults.model)),
+        workspace=bool(_setting_value(settings, "workspace", defaults.workspace)),
+        branch=bool(_setting_value(settings, "branch", defaults.branch)),
+        session=bool(_setting_value(settings, "session", defaults.session)),
+        runtime=bool(_setting_value(settings, "runtime", defaults.runtime)),
+        queue=cast(StatusLineAutoValue, _setting_value(settings, "queue", defaults.queue)),
+        message=cast(StatusLineAutoValue, _setting_value(settings, "message", defaults.message)),
+        separator=cast(StatusLineSeparator, _setting_value(settings, "separator", defaults.separator)),
+        style=cast(StatusLineStyle, _setting_value(settings, "style", defaults.style)),
+    )
+
+
+def status_line_settings_to_patch(settings: StatusLineSettings) -> dict[str, object]:
+    return {
+        "enabled": settings.enabled,
+        "model": settings.model,
+        "workspace": settings.workspace,
+        "branch": settings.branch,
+        "session": settings.session,
+        "runtime": settings.runtime,
+        "queue": settings.queue,
+        "message": settings.message,
+        "separator": settings.separator,
+        "style": settings.style,
+    }
+
+
 def cwd_label(cwd: str) -> str:
     if not cwd:
         return "cwd"
     return cwd.rstrip("/").rsplit("/", 1)[-1] or cwd
+
+
+def _setting_value(settings: object, key: str, default: object) -> object:
+    if isinstance(settings, Mapping):
+        return settings.get(key, default)
+    return getattr(settings, key, default)
 
 
 def _show_auto_field(value: StatusLineAutoValue, has_data: bool) -> bool:
@@ -95,6 +137,8 @@ __all__ = [
     "StatusLineSettings",
     "cwd_label",
     "status_line_fields",
+    "status_line_settings_from_control",
+    "status_line_settings_to_patch",
     "status_line_separator",
     "status_line_style_mode",
 ]

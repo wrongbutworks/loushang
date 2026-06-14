@@ -3,7 +3,11 @@ from __future__ import annotations
 from collections.abc import Callable
 from dataclasses import dataclass, field, replace
 
-from loushang.coding.ui.status_line import StatusLineSettings
+from loushang.coding.ui.status_line import (
+    StatusLineSettings,
+    status_line_settings_from_control,
+    status_line_settings_to_patch,
+)
 from loushang.coding.ui.toolbar import ToolbarSnapshot, render_toolbar
 from loushang.tui import SettingItem, SettingsList, SettingsListRenderer
 
@@ -30,6 +34,8 @@ class CodingTuiStatusProvider:
         session_label: Callable[[], str | None],
         thinking_level: Callable[[], str | None],
         running: Callable[[], bool],
+        statusline_settings: StatusLineSettings | None = None,
+        on_statusline_settings_changed: Callable[[StatusLineSettings], None] | None = None,
     ) -> None:
         self._model_label = model_label
         self._cwd = cwd
@@ -37,7 +43,8 @@ class CodingTuiStatusProvider:
         self._session_label = session_label
         self._thinking_level = thinking_level
         self._running = running
-        self._statusline_settings = StatusLineSettings()
+        self._statusline_settings = statusline_settings or StatusLineSettings()
+        self._on_statusline_settings_changed = on_statusline_settings_changed
 
     def render(self) -> str:
         return render_toolbar(
@@ -71,11 +78,11 @@ class CodingTuiStatusProvider:
 
     def set_visible(self, visible: bool | None) -> str:
         if visible is not None:
-            self._statusline_settings = replace(self._statusline_settings, enabled=visible)
+            self._set_statusline_settings(replace(self._statusline_settings, enabled=visible))
         return f"Status line: {'on' if self.is_visible() else 'off'}"
 
     def apply_statusline_settings(self, settings: StatusLineSettings) -> str:
-        self._statusline_settings = settings
+        self._set_statusline_settings(settings)
         return self.set_visible(None)
 
     def apply_statusline_setting(self, item_id: str, value: str) -> str:
@@ -90,23 +97,23 @@ class CodingTuiStatusProvider:
             enabled = _as_bool(normalized)
             if enabled is None:
                 return f"Invalid status line {bool_field.replace('_', ' ')} value."
-            self._statusline_settings = replace(self._statusline_settings, **{bool_field: enabled})
+            self._set_statusline_settings(replace(self._statusline_settings, **{bool_field: enabled}))
             return f"Status line {bool_field.replace('_', ' ')}: {normalized}"
         if item_id in {"statusline.field.queue", "statusline.field.message"}:
             field_name = item_id.rsplit(".", 1)[-1]
             if normalized not in {"auto", "true", "false"}:
                 return f"Invalid status line {field_name} value."
-            self._statusline_settings = replace(self._statusline_settings, **{field_name: normalized})
+            self._set_statusline_settings(replace(self._statusline_settings, **{field_name: normalized}))
             return f"Status line {field_name}: {normalized}"
         if item_id == "statusline.separator":
             if normalized not in {"pipe", "dot"}:
                 return "Invalid status line separator value."
-            self._statusline_settings = replace(self._statusline_settings, separator=normalized)
+            self._set_statusline_settings(replace(self._statusline_settings, separator=normalized))
             return f"Status line separator: {normalized}"
         if item_id == "statusline.style":
             if normalized not in {"codex-like", "muted", "plain"}:
                 return "Invalid status line style value."
-            self._statusline_settings = replace(self._statusline_settings, style=normalized)
+            self._set_statusline_settings(replace(self._statusline_settings, style=normalized))
             return f"Status line style: {normalized}"
         return f"Unknown status line setting: {item_id}"
 
@@ -124,12 +131,17 @@ class CodingTuiStatusProvider:
     def apply_settings(self, settings: SettingsList) -> str:
         for item in settings.items:
             if item.id == "statusline":
-                self._statusline_settings = replace(self._statusline_settings, enabled=item.enabled)
+                self._set_statusline_settings(replace(self._statusline_settings, enabled=item.enabled))
                 break
         return self.set_visible(None)
 
     def settings_text(self) -> str:
         return "".join(fragment for _style, fragment in SettingsListRenderer(title="Settings").render(self.settings_list()))
+
+    def _set_statusline_settings(self, settings: StatusLineSettings) -> None:
+        self._statusline_settings = settings
+        if self._on_statusline_settings_changed is not None:
+            self._on_statusline_settings_changed(settings)
 
 
 def _as_bool(value: str) -> bool | None:
@@ -150,4 +162,35 @@ def _bool_statusline_field(item_id: str) -> str | None:
     }.get(item_id)
 
 
-__all__ = ["CodingTuiStatusProvider", "StatusSnapshot"]
+def statusline_settings_from_settings_manager(settings_manager: object | None) -> StatusLineSettings | None:
+    if settings_manager is None:
+        return None
+    getter = getattr(settings_manager, "get_statusline_settings", None)
+    if not callable(getter):
+        return None
+    return status_line_settings_from_control(getter())
+
+
+def statusline_settings_persistence_callback(
+    settings_manager: object | None,
+    *,
+    scope: str = "global",
+) -> Callable[[StatusLineSettings], None] | None:
+    if settings_manager is None:
+        return None
+    setter = getattr(settings_manager, "set_statusline_settings", None)
+    if not callable(setter):
+        return None
+
+    def _save(settings: StatusLineSettings) -> None:
+        setter(status_line_settings_to_patch(settings), scope=scope)
+
+    return _save
+
+
+__all__ = [
+    "CodingTuiStatusProvider",
+    "StatusSnapshot",
+    "statusline_settings_from_settings_manager",
+    "statusline_settings_persistence_callback",
+]

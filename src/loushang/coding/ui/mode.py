@@ -28,7 +28,11 @@ from loushang.coding.ui.startup import (
     CodingTuiStartupSnapshot,
     load_coding_tui_startup_snapshot,
 )
-from loushang.coding.ui.status_provider import CodingTuiStatusProvider
+from loushang.coding.ui.status_provider import (
+    CodingTuiStatusProvider,
+    statusline_settings_from_settings_manager,
+    statusline_settings_persistence_callback,
+)
 from loushang.coding.ui.transcript_source import SessionTranscriptSource
 from loushang.observability import get_log, log_context
 from loushang.tui import CompletionProvider
@@ -117,6 +121,7 @@ async def _run_native_interactive_tui(
         if callable(sink):
             await _maybe_await(sink(event))
 
+    settings_manager = getattr(session, "settings_manager", None)
     status_provider = CodingTuiStatusProvider(
         model_label=snapshot.model_label,
         cwd=snapshot.cwd,
@@ -124,7 +129,10 @@ async def _run_native_interactive_tui(
         session_label=lambda: session_label(session),
         thinking_level=lambda: thinking_level(session),
         running=lambda: app.state.running or is_running(session),
+        statusline_settings=statusline_settings_from_settings_manager(settings_manager),
+        on_statusline_settings_changed=statusline_settings_persistence_callback(settings_manager),
     )
+    app.set_statusline_settings(status_provider.statusline_settings())
     surface_manager = NativeSurfaceManager(
         app=app,
         session=session,
