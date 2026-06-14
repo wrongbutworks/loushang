@@ -190,6 +190,76 @@ def test_tabs_normalize_value_render_theme_and_width() -> None:
     assert_widths_within(render_lines(tabs, width=10, height=1), 10)
 
 
+def test_tabs_selected_focus_states_use_distinct_markers_and_tokens() -> None:
+    theme = ThemeResolver(
+        defaults={
+            "widget.tabs.selected": {"color": "green"},
+            "widget.tabs.focus": {"bold": True},
+            "widget.tabs.level0.selected_header_focus": {"color": "cyan"},
+            "widget.tabs.level0.selected_content_focus": {"color": "yellow"},
+            "widget.tabs.tab": {"color": "white"},
+        }
+    )
+    tabs = Tabs(
+        [TabItem("config", "Config"), TabItem("model", "Model")],
+        value="config",
+        theme=theme,
+    )
+
+    assert plain_lines(tabs, width=40, height=1) == ("*[Config]   [Model]",)
+
+    tabs.focus()
+    header_raw = render_lines(tabs, width=40, height=1)[0]
+    assert strip_control_sequences(header_raw).startswith(">[Config]")
+    assert header_raw.startswith("\x1b[1;36m>[Config]")
+
+    tabs.selected_focus = "content"
+    content_raw = render_lines(tabs, width=40, height=1)[0]
+    assert strip_control_sequences(content_raw).startswith("*[Config]")
+    assert ">[Config]" not in strip_control_sequences(content_raw)
+    assert content_raw.startswith("\x1b[33m*[Config]")
+
+    tabs.selected_focus = "none"
+    assert plain_lines(tabs, width=40, height=1)[0].startswith("*[Config]")
+
+
+def test_tabs_level2_marker_and_token_fallbacks_are_stable() -> None:
+    theme = ThemeResolver(
+        defaults={
+            "widget.tabs.tab": {"color": "red"},
+            "widget.tabs.normal": {"color": "white"},
+            "widget.tabs.nested.normal": {"color": "blue"},
+            "widget.tabs.level2.normal": {"color": "magenta"},
+            "widget.tabs.selected": {"color": "green"},
+            "widget.tabs.nested.selected_content_focus": {"color": "yellow"},
+            "widget.tabs.level2.selected_header_focus": {"color": "cyan"},
+        }
+    )
+
+    content = Tabs(
+        [TabItem("one", "One"), TabItem("two", "Two")],
+        value="one",
+        level=2,
+        selected_focus="content",
+        theme=theme,
+    )
+    content_raw = render_lines(content, width=40, height=1)[0]
+    assert strip_control_sequences(content_raw).startswith("*[One]")
+    assert content_raw.startswith("\x1b[33m*[One]")
+    assert "\x1b[35m [Two]" in content_raw
+
+    header = Tabs(
+        [TabItem("one", "One"), TabItem("two", "Two")],
+        value="one",
+        level=2,
+        selected_focus="header",
+        theme=theme,
+    )
+    header_raw = render_lines(header, width=40, height=1)[0]
+    assert strip_control_sequences(header_raw).startswith(">[One]")
+    assert header_raw.startswith("\x1b[36m>[One]")
+
+
 def test_tabs_level_tokens_fallback_to_legacy_tab_token() -> None:
     theme = ThemeResolver(defaults={"widget.tabs.tab": {"color": "red"}})
     tabs = Tabs([TabItem("one", "One"), TabItem("two", "Two")], theme=theme)
