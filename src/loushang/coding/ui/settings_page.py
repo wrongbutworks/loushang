@@ -169,6 +169,7 @@ class SettingsPageView:
     tabs: TabGroup = field(init=False)
     focused: bool = field(default=False, init=False)
     statusline_preview: Callable[[], StatusLinePreviewSnapshot] | None = None
+    feedback_message: str | None = field(default=None, init=False)
 
     @classmethod
     async def create(
@@ -199,6 +200,7 @@ class SettingsPageView:
             self._refresh_status_page()
             self._refresh_statusline_page(preserve_active_key=item_id)
             settings = self.status_provider.statusline_settings()
+            self.feedback_message = message
             return SettingsApplyResult(
                 message,
                 statusline_visible=settings.enabled,
@@ -208,19 +210,28 @@ class SettingsPageView:
         if config is not None:
             enabled = as_bool(value)
             if enabled is None:
-                return SettingsApplyResult(f"Invalid {config.label} value.")
+                message = f"Invalid {config.label} value."
+                self.feedback_message = message
+                return SettingsApplyResult(message)
             setter = getattr(self.settings_manager, config.setter, None)
             if not callable(setter):
-                return SettingsApplyResult(f"{config.status_label} is not available.")
+                message = f"{config.status_label} is not available."
+                self.feedback_message = message
+                return SettingsApplyResult(message)
             setter(enabled)
             self._refresh_config_rows(preserve_active_key=config.id)
-            return SettingsApplyResult(f"{config.status_label}: {'on' if enabled else 'off'}")
+            message = f"{config.status_label}: {'on' if enabled else 'off'}"
+            self.feedback_message = message
+            return SettingsApplyResult(message)
         if item_id == "model.current":
             message = await select_available_model(self.session, query=value)
             await self._refresh_model_page()
             self._refresh_status_page()
+            self.feedback_message = message
             return SettingsApplyResult(message, refresh_model_label=True)
-        return SettingsApplyResult(f"Unknown setting: {item_id}")
+        message = f"Unknown setting: {item_id}"
+        self.feedback_message = message
+        return SettingsApplyResult(message)
 
     def focus(self) -> None:
         self.focused = True
@@ -250,7 +261,7 @@ class SettingsPageView:
         result = self.tabs.render(RenderConstraints(width=constraints.width, max_height=body_height))
         rows = _with_separator(result.lines, width=constraints.width)
         cursor = _offset_cursor_after_separator(result.cursor)
-        footer = _footer_text(self._focus_context(), width=constraints.width)
+        footer = _footer_text(self._focus_context(), self.feedback_message, width=constraints.width)
         while len(rows) < constraints.max_height - 1:
             rows.append(RenderLine(""))
         if len(rows) < constraints.max_height:
@@ -427,7 +438,7 @@ def _offset_cursor_after_separator(cursor: CursorDeclaration | None) -> CursorDe
     return CursorDeclaration(row=cursor.row + 1, column=cursor.column)
 
 
-def _footer_text(focus_context: str, *, width: int) -> str:
+def _footer_text(focus_context: str, feedback_message: str | None = None, *, width: int) -> str:
     if focus_context == "search":
         text = "Type to filter · Enter/↓ to select · ↑ to tabs · Esc to clear"
     elif focus_context in {"settings-list", "model-list"}:
@@ -436,6 +447,8 @@ def _footer_text(focus_context: str, *, width: int) -> str:
         text = "←/→ to switch tabs · ↓ to enter · q to close"
     else:
         text = "↑ to tabs · q to close"
+    if feedback_message:
+        text = f"{feedback_message} · {text}"
     return truncate_to_width(text, max_width=width, ellipsis="")
 
 

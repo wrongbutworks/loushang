@@ -185,6 +185,9 @@ class NativeCodingTuiApp:
         self.state.statusline_visible = settings.enabled
         self._request_render("product")
 
+    def request_render(self, kind: RenderRequestKind = "product") -> None:
+        self._request_render(kind)
+
     def statusline_preview_snapshot(self) -> StatusLinePreviewSnapshot:
         return StatusLinePreviewSnapshot(
             model_label=self.state.model_label,
