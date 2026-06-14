@@ -13,7 +13,6 @@ from loushang.tui.theme import ThemeResolver, ThemeStyle, apply_theme_style
 
 from .layout import RegionRenderable
 
-
 StatusBarStyleMode = Literal["plain", "muted", "codex-like"]
 
 _MODE_TOKEN_PREFIX = {

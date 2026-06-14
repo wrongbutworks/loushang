@@ -1,7 +1,11 @@
 from __future__ import annotations
 
 from loushang.tui import RenderConstraints, StatusBar, StatusField, visible_width
+from loushang.tui import StatusBar as PublicStatusBar
+from loushang.tui import StatusField as PublicStatusField
 from loushang.tui.theme import ThemeResolver
+from loushang.tui.ui_parts.status import StatusBar as ModuleStatusBar
+from loushang.tui.ui_parts.status import StatusField as ModuleStatusField
 
 
 def rendered_text(status: StatusBar, *, width: int = 40) -> str:
@@ -178,3 +182,9 @@ def test_status_bar_mode_qualified_token_resolves_exact_token_first() -> None:
     )
 
     assert rendered_text(status, width=20) == "\x1b[31mmodel\x1b[39m"
+
+
+def test_status_bar_public_exports_are_updated_classes() -> None:
+    assert PublicStatusBar is ModuleStatusBar
+    assert PublicStatusField is ModuleStatusField
+    assert PublicStatusField("x", token="model").token == "model"
