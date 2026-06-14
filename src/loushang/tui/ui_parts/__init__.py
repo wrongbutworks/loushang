@@ -37,6 +37,9 @@ from .widgets import KeyValueItem as KeyValueItem
 from .widgets import KeyValueList as KeyValueList
 from .widgets import Menu as Menu
 from .widgets import MenuItem as MenuItem
+from .widgets import PageScaffold as PageScaffold
+from .widgets import PageScaffoldContext as PageScaffoldContext
+from .widgets import PageScaffoldFooter as PageScaffoldFooter
 from .widgets import ProgressBar as ProgressBar
 from .widgets import QuestionDialog as QuestionDialog
 from .widgets import RadioGroup as RadioGroup
@@ -47,13 +50,13 @@ from .widgets import SelectList as SelectList
 from .widgets import Spinner as Spinner
 from .widgets import StatusKind as StatusKind
 from .widgets import StatusPill as StatusPill
-from .widgets import TabItem as TabItem
 from .widgets import TabGroup as TabGroup
-from .widgets import TabPage as TabPage
+from .widgets import TabItem as TabItem
 from .widgets import Table as Table
 from .widgets import TableAlign as TableAlign
 from .widgets import TableColumn as TableColumn
 from .widgets import TableRow as TableRow
+from .widgets import TabPage as TabPage
 from .widgets import Tabs as Tabs
 from .widgets import TextArea as TextArea
 from .widgets import TextField as TextField
@@ -90,6 +93,9 @@ __all__ = [
     "KeyValueList",
     "Menu",
     "MenuItem",
+    "PageScaffold",
+    "PageScaffoldContext",
+    "PageScaffoldFooter",
     "LOUSHANG_BANNER_LOGO",
     "LOUSHANG_GUANQUE_TOWER_LOGO",
     "LoushangWelcomePanel",

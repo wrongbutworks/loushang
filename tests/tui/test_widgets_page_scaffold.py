@@ -252,3 +252,33 @@ def test_page_scaffold_missing_optional_methods_do_not_crash() -> None:
     assert plain_lines(scaffold, width=20, height=3)[-1] == "footer"
     assert scaffold.handle_input(InputEvent(kind="key", key="up")) in {False, None}
     assert scaffold.editor_input_target() is None
+
+
+def test_page_scaffold_public_exports() -> None:
+    from loushang.tui import PageScaffold as PublicPageScaffold
+    from loushang.tui import PageScaffoldContext as PublicPageScaffoldContext
+    from loushang.tui import PageScaffoldFooter as PublicPageScaffoldFooter
+    from loushang.tui.ui_parts import PageScaffold as UiPageScaffold
+    from loushang.tui.ui_parts import PageScaffoldContext as UiPageScaffoldContext
+    from loushang.tui.ui_parts import PageScaffoldFooter as UiPageScaffoldFooter
+    from loushang.tui.ui_parts.widgets import PageScaffold as WidgetPageScaffold
+    from loushang.tui.ui_parts.widgets import (
+        PageScaffoldContext as WidgetPageScaffoldContext,
+    )
+    from loushang.tui.ui_parts.widgets import (
+        PageScaffoldFooter as WidgetPageScaffoldFooter,
+    )
+    from loushang.tui.ui_parts.widgets.page_scaffold import (
+        PageScaffoldContext,
+        PageScaffoldFooter,
+    )
+
+    assert PublicPageScaffold is PageScaffold
+    assert UiPageScaffold is PageScaffold
+    assert WidgetPageScaffold is PageScaffold
+    assert PublicPageScaffoldContext is PageScaffoldContext
+    assert PublicPageScaffoldContext is WidgetPageScaffoldContext
+    assert UiPageScaffoldContext is WidgetPageScaffoldContext
+    assert PublicPageScaffoldFooter is PageScaffoldFooter
+    assert PublicPageScaffoldFooter is WidgetPageScaffoldFooter
+    assert UiPageScaffoldFooter is WidgetPageScaffoldFooter

@@ -24,20 +24,23 @@ from .form import FormRow as FormRow
 from .form import FormValidationResult as FormValidationResult
 from .menu import Menu as Menu
 from .menu import MenuItem as MenuItem
+from .page_scaffold import PageScaffold as PageScaffold
+from .page_scaffold import PageScaffoldContext as PageScaffoldContext
+from .page_scaffold import PageScaffoldFooter as PageScaffoldFooter
 from .question_dialog import QuestionDialog as QuestionDialog
 from .searchable_list import SearchableList as SearchableList
 from .searchable_list import SearchableListItem as SearchableListItem
 from .searchable_list import SearchableListSelect as SearchableListSelect
 from .selection import SelectList as SelectList
 from .spinner import Spinner as Spinner
+from .tab_group import TabGroup as TabGroup
+from .tab_group import TabPage as TabPage
 from .table import Table as Table
 from .table import TableAlign as TableAlign
 from .table import TableColumn as TableColumn
 from .table import TableRow as TableRow
 from .tabs import TabItem as TabItem
 from .tabs import Tabs as Tabs
-from .tab_group import TabGroup as TabGroup
-from .tab_group import TabPage as TabPage
 from .textarea import TextArea as TextArea
 from .toast import Toast as Toast
 from .toast import ToastKind as ToastKind
@@ -66,6 +69,9 @@ __all__ = [
     "KeyValueList",
     "Menu",
     "MenuItem",
+    "PageScaffold",
+    "PageScaffoldContext",
+    "PageScaffoldFooter",
     "ProgressBar",
     "QuestionDialog",
     "RadioGroup",
