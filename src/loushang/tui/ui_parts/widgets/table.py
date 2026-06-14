@@ -9,7 +9,12 @@ from loushang.tui.cell_width import (
     truncate_to_width,
     visible_width,
 )
-from loushang.tui.core import RenderConstraints, RenderLine, RenderResult
+from loushang.tui.core import (
+    CursorDeclaration,
+    RenderConstraints,
+    RenderLine,
+    RenderResult,
+)
 from loushang.tui.theme import ThemeResolver
 from loushang.tui.ui_parts.widgets._utils import (
     callback_result,
@@ -116,15 +121,19 @@ class Table:
             lines.append(RenderLine(_table_header_line(self, widths, prefix_width, target_width)))
 
         body_height = max(0, height - len(lines))
+        cursor: CursorDeclaration | None = None
+        body_start = len(lines)
         if self._rows:
             self._ensure_active_visible(body_height)
             indexed_rows = tuple(enumerate(self._rows))
             visible_rows = indexed_rows[self._first_visible_index : self._first_visible_index + body_height]
-            for index, row in visible_rows:
+            for offset, (index, row) in enumerate(visible_rows):
+                if self.focused and index == self._active_index and not row.disabled:
+                    cursor = CursorDeclaration(row=body_start + offset, column=0)
                 lines.append(RenderLine(_table_body_line(self, index, row, widths, prefix_width, target_width)))
         elif len(lines) < height:
             lines.append(RenderLine(_table_empty_line(self, widths, prefix_width, target_width)))
-        return RenderResult.from_lines(lines[:height], constraints=constraints)
+        return RenderResult.from_lines(lines[:height], constraints=constraints, cursor=cursor)
 
     def _enabled_indices(self) -> tuple[int, ...]:
         return tuple(index for index, row in enumerate(self._rows) if not row.disabled)
