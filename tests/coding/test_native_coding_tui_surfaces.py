@@ -504,7 +504,7 @@ def test_native_surface_manager_ignores_legacy_settings_surface_submit() -> None
     legacy_surface = NativeSurfaceView(
         title="Settings",
         purpose="settings",
-        content=SettingsSurface(list(manager.status_provider.settings_list().items), enable_search=True),
+        content=SettingsSurface(list(manager.status_provider.legacy_settings_list().items), enable_search=True),
         presentation="bottom-exclusive",
     )
     app.active_surface = legacy_surface

@@ -466,7 +466,7 @@ def test_coding_tui_handlers_renders_settings_command() -> None:
         restore_queue=lambda _text: _async_none(),
         emit=emit,
         render_status=lambda text: statuses.append(text),
-        settings=lambda: "settings",
+        legacy_settings_text=lambda: "settings",
         now=lambda: 10.0,
         session_running=lambda: False,
         trace=lambda _name, **_data: None,
@@ -479,7 +479,7 @@ def test_coding_tui_handlers_renders_settings_command() -> None:
     assert statuses == ["settings"]
 
 
-def test_coding_tui_handlers_prefers_local_settings_list_presenter() -> None:
+def test_coding_tui_handlers_prefers_legacy_settings_list_presenter() -> None:
     from loushang.coding.ui.handlers import CodingTuiHandlers
     from loushang.coding.ui.intent import SettingsIntent
     from loushang.coding.ui.prompt_routing import PromptRoute
@@ -515,10 +515,10 @@ def test_coding_tui_handlers_prefers_local_settings_list_presenter() -> None:
         restore_queue=lambda _text: _async_none(),
         emit=emit,
         render_status=statuses.append,
-        settings=lambda: "fallback settings",
-        settings_list=lambda: SettingsList((SettingItem(id="statusline", label="Status line", enabled=True),)),
-        apply_settings=apply,
-        present_settings_list=present,
+        legacy_settings_text=lambda: "fallback settings",
+        legacy_settings_list=lambda: SettingsList((SettingItem(id="statusline", label="Status line", enabled=True),)),
+        apply_legacy_settings=apply,
+        present_legacy_settings_list=present,
         now=lambda: 10.0,
         session_running=lambda: False,
         trace=lambda _name, **_data: None,
