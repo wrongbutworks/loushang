@@ -10,6 +10,7 @@ from loushang.tui import (
     RenderConstraints,
     RenderLine,
     RenderResult,
+    ThemeResolver,
     strip_control_sequences,
 )
 from loushang.tui.ui_parts.widgets.page_scaffold import PageScaffold
@@ -82,6 +83,51 @@ def test_page_scaffold_renders_header_separator_body_padding_and_footer() -> Non
         "",
         "footer",
     )
+
+
+def test_page_scaffold_themes_separator_and_footer_without_changing_plain_text() -> None:
+    theme = ThemeResolver(
+        defaults={
+            "widget.pageScaffold.separator": {"color": "bright_black"},
+            "widget.pageScaffold.footer": {"dim": True},
+        }
+    )
+    scaffold = PageScaffold(
+        header=StaticPart(("header",)),
+        body=StaticPart(("body",)),
+        footer="footer",
+        separator_after_header=True,
+        theme=theme,
+    )
+
+    raw = render_lines(scaffold, width=12, height=5)
+
+    assert raw[1].startswith("\x1b[90m")
+    assert raw[1].endswith("\x1b[39m")
+    assert raw[-1].startswith("\x1b[2m")
+    assert raw[-1].endswith("\x1b[22m")
+    assert tuple(strip_control_sequences(line) for line in raw) == (
+        "header",
+        "------------",
+        "body",
+        "",
+        "footer",
+    )
+
+
+def test_page_scaffold_themed_footer_truncates_to_visible_width() -> None:
+    theme = ThemeResolver(defaults={"widget.pageScaffold.footer": {"color": "bright_black"}})
+    scaffold = PageScaffold(
+        body=StaticPart(("body",)),
+        footer="very long footer",
+        theme=theme,
+    )
+
+    raw = render_lines(scaffold, width=8, height=3)
+
+    assert raw[-1].startswith("\x1b[90m")
+    assert raw[-1].endswith("\x1b[39m")
+    assert strip_control_sequences(raw[-1]) == "very lon"
 
 
 def test_page_scaffold_reserves_footer_height_under_long_body_content() -> None:
@@ -320,6 +366,7 @@ def test_page_scaffold_example_imports_and_renders() -> None:
     result = app.render(RenderConstraints(width=96, max_height=20))
 
     assert result.lines
+    assert any("\x1b[" in line.text for line in result.lines)
 
 
 def test_page_scaffold_example_playback_switches_focus_and_keeps_footer() -> None:

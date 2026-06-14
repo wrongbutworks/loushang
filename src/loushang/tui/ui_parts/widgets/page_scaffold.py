@@ -12,6 +12,8 @@ from loushang.tui.core import (
     RenderResult,
 )
 from loushang.tui.keybindings import normalize_key_id
+from loushang.tui.theme import ThemeResolver
+from loushang.tui.ui_parts.widgets._utils import style_text
 
 PageScaffoldFocusRegion = Literal["header", "body"]
 
@@ -31,6 +33,7 @@ class PageScaffold:
     body: object
     header: object | None = None
     footer: PageScaffoldFooter = ""
+    theme: ThemeResolver | None = None
     focused: bool = False
     focus_region: PageScaffoldFocusRegion = "body"
     separator_after_header: bool = False
@@ -109,7 +112,7 @@ class PageScaffold:
         if header_lines:
             rows.extend(header_lines[:page_height])
         if self.separator_after_header and header_lines and len(rows) < page_height:
-            rows.append(RenderLine("-" * max(1, width)))
+            rows.append(RenderLine(style_text("-" * max(1, width), self.theme, "widget.pageScaffold.separator")))
 
         remaining_after_chrome = page_height - len(rows)
         footer_reserved = 1 if self.reserve_footer and footer_text and remaining_after_chrome >= 2 else 0
@@ -161,7 +164,10 @@ class PageScaffold:
 
     def _footer_text(self, width: int) -> str:
         value = self.footer(self._context()) if callable(self.footer) else self.footer
-        return truncate_to_width(str(value), max_width=width, ellipsis="") if value else ""
+        if not value:
+            return ""
+        text = truncate_to_width(str(value), max_width=width, ellipsis="")
+        return style_text(text, self.theme, "widget.pageScaffold.footer")
 
     def _offset_cursor(
         self,
