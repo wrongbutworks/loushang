@@ -106,6 +106,17 @@ def test_container_renders_children_in_order_and_propagates_remaining_constraint
     assert second.seen_constraints == [RenderConstraints(width=10, max_height=1)]
 
 
+def test_container_propagates_remaining_visible_height_to_children() -> None:
+    first = TextRenderable(("one",), [])
+    second = TextRenderable(("two",), [])
+    container = Container([first, second])
+
+    container.render(RenderConstraints(width=10, max_height=1000, visible_height=4))
+
+    assert first.seen_constraints == [RenderConstraints(width=10, max_height=1000, visible_height=4)]
+    assert second.seen_constraints == [RenderConstraints(width=10, max_height=999, visible_height=3)]
+
+
 def test_container_offsets_child_cursor_by_previous_children() -> None:
     first = TextRenderable(("one", "two"), [])
     second = CursorRenderable(("edit",), [], cursor=CursorDeclaration(row=0, column=4))
