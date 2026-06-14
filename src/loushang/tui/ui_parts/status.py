@@ -9,8 +9,12 @@ from loushang.tui.cell_width import (
     visible_width,
 )
 from loushang.tui.core import RenderConstraints, RenderLine, RenderResult
+from loushang.tui.theme import ThemeResolver
 
 from .layout import RegionRenderable
+
+
+StatusBarStyleMode = Literal["plain", "muted", "codex-like"]
 
 
 @dataclass(frozen=True, slots=True)
@@ -24,6 +28,8 @@ class StatusField:
 class StatusBar:
     fields: list[StatusField] | tuple[StatusField, ...] = field(default_factory=list)
     separator: str = " | "
+    style_mode: StatusBarStyleMode = "plain"
+    theme: ThemeResolver | None = None
 
     def render(self, constraints: RenderConstraints) -> RenderResult:
         target_width = autowrap_safe_width(constraints.width)

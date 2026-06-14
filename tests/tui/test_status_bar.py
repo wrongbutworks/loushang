@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from loushang.tui import RenderConstraints, StatusBar, StatusField, visible_width
+from loushang.tui.theme import ThemeResolver
 
 
 def rendered_text(status: StatusBar, *, width: int = 40) -> str:
@@ -53,3 +54,23 @@ def test_status_bar_priority_fitting_uses_custom_separator() -> None:
 
     assert line == "model · running"
     assert visible_width(line) == 15
+
+
+def test_status_bar_plain_mode_ignores_theme_tokens() -> None:
+    theme = ThemeResolver(
+        defaults={
+            "statusBar.model": {"foreground": "red"},
+            "statusBar.field": {"foreground": "green"},
+            "statusBar.separator": {"foreground": "yellow"},
+        }
+    )
+    status = StatusBar(
+        [
+            StatusField("model", priority=100, token="model"),
+            StatusField("running", priority=80, token="runtime.running"),
+        ],
+        theme=theme,
+        style_mode="plain",
+    )
+
+    assert rendered_text(status, width=30) == "model | running"
