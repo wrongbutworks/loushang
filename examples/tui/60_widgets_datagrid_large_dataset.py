@@ -15,6 +15,9 @@ from loushang.tui import (
     FocusableMixin,
     InputEvent,
     NumberFormatter,
+    PageNavigation,
+    PageNavigationError,
+    PageNavigator,
     RenderConstraints,
     RenderLine,
     RenderResult,
@@ -61,7 +64,7 @@ class LargeDataGridExampleApp(FocusableMixin):
     search_input: TextInput = field(default_factory=lambda: TextInput(theme=DATA_GRID_THEME))
     sector_input: TextInput = field(default_factory=lambda: TextInput(theme=DATA_GRID_THEME))
     min_price_input: TextInput = field(default_factory=lambda: TextInput(theme=DATA_GRID_THEME))
-    goto_input: TextInput = field(default_factory=lambda: TextInput(theme=DATA_GRID_THEME))
+    page_navigator: PageNavigator = field(default_factory=lambda: PageNavigator(theme=DATA_GRID_THEME))
     focus_region: str = "grid"
     status: str = "Ready"
     page_size: int = 1
@@ -79,7 +82,7 @@ class LargeDataGridExampleApp(FocusableMixin):
         self.focused = False
         self.grid.blur()
         self._blur_filter_inputs()
-        self.goto_input.blur()
+        self.page_navigator.blur()
 
     def render(self, constraints: RenderConstraints) -> RenderResult:
         width = constraints.width
@@ -93,11 +96,13 @@ class LargeDataGridExampleApp(FocusableMixin):
             self._sync_goto_value()
 
         grid_result = self.grid.render(RenderConstraints(width=width, max_height=grid_height))
+        self.page_navigator.detail_text = f"Row {_active_row_number(self)}/{self.grid.filtered_row_count}"
+        page_result = self.page_navigator.render(RenderConstraints(width=width, max_height=1))
         rows: list[RenderLine] = [
             RenderLine(_style(truncate_to_width(f"Large DataGrid | {ROW_COUNT:,} rows", max_width=width, ellipsis=""), "example.dataGrid.title")),
             RenderLine(_filter_line(self, width, ("search", "sector"))),
             RenderLine(_filter_line(self, width, ("min_price",))),
-            RenderLine(_control_line(self, width)),
+            page_result.lines[0] if page_result.lines else RenderLine(""),
             RenderLine(_style("-" * max(1, width), "example.dataGrid.meta")),
         ]
         grid_start = len(rows)
@@ -115,10 +120,8 @@ class LargeDataGridExampleApp(FocusableMixin):
             input_column = input_result.cursor.column if input_result.cursor else 0
             row, column = _filter_field_position(self.focus_region)
             cursor = _cursor_if_visible(rows, row=row, column=column + input_column)
-        elif self.focus_region == "goto":
-            input_result = self.goto_input.render(RenderConstraints(width=_goto_field_width(self), max_height=1))
-            input_column = input_result.cursor.column if input_result.cursor else 0
-            cursor = _cursor_if_visible(rows, row=3, column=_goto_field_start(self) + input_column)
+        elif self.focus_region == "goto" and page_result.cursor is not None:
+            cursor = _cursor_if_visible(rows, row=3, column=page_result.cursor.column)
         elif grid_result.cursor is not None:
             cursor = CursorDeclaration(row=grid_start + grid_result.cursor.row, column=grid_result.cursor.column)
         return RenderResult.from_lines(rows[:height], constraints=constraints, cursor=cursor)
@@ -163,7 +166,7 @@ class LargeDataGridExampleApp(FocusableMixin):
             if key == "shift+tab":
                 self._focus_filter("min_price")
                 return True
-            return self.goto_input.handle_input(event)
+            return self.page_navigator.handle_input(event)
 
         if key == "tab":
             self._focus_search()
@@ -190,7 +193,7 @@ class LargeDataGridExampleApp(FocusableMixin):
     def _focus_grid(self) -> None:
         self.focus_region = "grid"
         self._blur_filter_inputs()
-        self.goto_input.blur()
+        self.page_navigator.blur()
         if self.focused:
             self.grid.focus()
 
@@ -200,7 +203,7 @@ class LargeDataGridExampleApp(FocusableMixin):
     def _focus_filter(self, region: str) -> None:
         self.focus_region = region
         self.grid.blur()
-        self.goto_input.blur()
+        self.page_navigator.blur()
         self._blur_filter_inputs()
         active_input = self._filter_input(region)
         active_input.focus()
@@ -211,9 +214,8 @@ class LargeDataGridExampleApp(FocusableMixin):
         self.focus_region = "goto"
         self.grid.blur()
         self._blur_filter_inputs()
-        self.goto_input.focus()
-        self.goto_input.set_text(str(_current_page(self)))
-        self.goto_input.set_selection(0, len(self.goto_input.value))
+        self.page_navigator.set_page(_current_page(self), total_pages=_total_pages(self))
+        self.page_navigator.focus()
         self.status = "Enter page"
 
     def _focus_next(self, delta: int) -> None:
@@ -241,9 +243,7 @@ class LargeDataGridExampleApp(FocusableMixin):
         self.min_price_input.blur()
 
     def _sync_goto_value(self) -> None:
-        value = str(_current_page(self))
-        if self.goto_input.value != value:
-            self.goto_input.set_text(value)
+        self.page_navigator.set_page(_current_page(self), total_pages=_total_pages(self))
 
     def _apply_search(self, value: str) -> None:
         self._apply_filters(search=value)
@@ -289,14 +289,12 @@ class LargeDataGridExampleApp(FocusableMixin):
                 return
 
     def _submit_page(self) -> bool:
-        raw_value = self.goto_input.value.strip()
-        try:
-            requested = int(raw_value)
-        except ValueError:
-            self.status = "Invalid page"
-            return True
-        self._go_to_page(requested)
-        self._focus_grid()
+        result = self.page_navigator.handle_input(InputEvent(kind="key", key="enter"))
+        if isinstance(result, PageNavigation):
+            self._go_to_page(result.page)
+            self._focus_grid()
+        elif isinstance(result, PageNavigationError):
+            self.status = result.message
         return True
 
     def _jump_pages(self, delta: int) -> bool:
@@ -397,15 +395,6 @@ def _delta_token(value: object) -> str | None:
     return "widget.dataGrid.neutral"
 
 
-def _control_line(app: LargeDataGridExampleApp, width: int) -> str:
-    input_width = _goto_field_width(app)
-    input_result = app.goto_input.render(RenderConstraints(width=input_width, max_height=1))
-    input_text = _pad_visible(input_result.lines[0].text if input_result.lines else "", input_width)
-    prefix = "> " if app.focus_region == "goto" else "  "
-    suffix = f"] / {_total_pages(app)}    Row {_active_row_number(app)}/{app.grid.filtered_row_count}"
-    return truncate_to_width(f"{prefix}Go to page: [{input_text}{suffix}", max_width=width, ellipsis="")
-
-
 def _filter_line(app: LargeDataGridExampleApp, width: int, regions: tuple[str, ...]) -> str:
     prefix = "> " if app.focus_region in regions else "  "
     parts = [_filter_part(app, region, _filter_label(region)) for region in regions]
@@ -466,15 +455,6 @@ def _filter_field_position(region: str) -> tuple[int, int]:
             return row, start + visible_width(f"{_filter_label(item)}: [")
         start += visible_width(f"{_filter_label(item)}: [") + _filter_input_width(item) + visible_width("]  ")
     return row, start
-
-
-def _goto_field_width(app: LargeDataGridExampleApp) -> int:
-    return max(4, len(str(_total_pages(app))) + 1)
-
-
-def _goto_field_start(app: LargeDataGridExampleApp) -> int:
-    prefix = "> " if app.focus_region == "goto" else "  "
-    return visible_width(f"{prefix}Go to page: [")
 
 
 def _cursor_if_visible(lines: list[RenderLine], *, row: int, column: int) -> CursorDeclaration | None:

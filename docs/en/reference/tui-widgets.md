@@ -53,16 +53,21 @@ toolbar.focus()
 | `Menu` / `MenuItem` | Short vertical action lists with local focus and activation. |
 | `Tabs` / `TabItem` | Horizontal selected-value controls for view switching. |
 | `Spinner` | Static caller-driven activity indicators. |
+| `PageNavigator` | Single-line page jump input for paged lists and data grids. |
 
-`Menu` and `Tabs` handle only their local state. `Spinner` is display-only: the
-caller passes `frame` and decides when to request another render.
+`Menu`, `Tabs`, and `PageNavigator` handle only their local state. `Spinner` is
+display-only: the caller passes `frame` and decides when to request another
+render. `PageNavigator` returns `PageNavigation` on valid Enter submissions and
+`PageNavigationError` on invalid page text; callers decide how to move the
+underlying list or grid.
 
 ```python
-from loushang.tui import Menu, MenuItem, Spinner, TabItem, Tabs
+from loushang.tui import Menu, MenuItem, PageNavigator, Spinner, TabItem, Tabs
 
 tabs = Tabs([TabItem("overview", "Overview"), TabItem("logs", "Logs")])
 menu = Menu([MenuItem("open", "Open"), MenuItem("refresh", "Refresh")])
 spinner = Spinner(label="Syncing", frame=1)
+navigator = PageNavigator(current_page=3, total_pages=42, detail_text="Row 41/800")
 ```
 
 ## P1A Data Controls
@@ -369,6 +374,8 @@ where styling is supported. Initial stable tokens are:
 | `widget.tabs.disabled` | Disabled tabs. |
 | `widget.spinner.frame` | Spinner frame glyph. |
 | `widget.spinner.label` | Spinner label text. |
+| `widget.pageNavigator` | PageNavigator control line. |
+| `widget.pageNavigator.error` | PageNavigator line when invalid page text is present. |
 | `widget.table.header` | Table header rows. |
 | `widget.table.row` | Enabled inactive table rows. |
 | `widget.table.focus` | Focused active table row. |

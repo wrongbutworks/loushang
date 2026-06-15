@@ -52,16 +52,20 @@ toolbar.focus()
 | `Menu` / `MenuItem` | 带局部焦点和激活行为的短纵向动作列表。 |
 | `Tabs` / `TabItem` | 用于视图切换的横向 selected-value 控件。 |
 | `Spinner` | 由调用方驱动 frame 的静态活动指示器。 |
+| `PageNavigator` | 用于分页列表和表格的单行页码跳转输入。 |
 
-`Menu` 和 `Tabs` 只处理自己的局部状态。`Spinner` 只负责显示：调用方传入
-`frame`，并决定何时请求下一次渲染。
+`Menu`、`Tabs` 和 `PageNavigator` 只处理自己的局部状态。`Spinner`
+只负责显示：调用方传入 `frame`，并决定何时请求下一次渲染。`PageNavigator`
+在 Enter 提交有效页码时返回 `PageNavigation`，提交无效文本时返回
+`PageNavigationError`；底层 list 或 grid 如何移动仍由调用方决定。
 
 ```python
-from loushang.tui import Menu, MenuItem, Spinner, TabItem, Tabs
+from loushang.tui import Menu, MenuItem, PageNavigator, Spinner, TabItem, Tabs
 
 tabs = Tabs([TabItem("overview", "Overview"), TabItem("logs", "Logs")])
 menu = Menu([MenuItem("open", "Open"), MenuItem("refresh", "Refresh")])
 spinner = Spinner(label="Syncing", frame=1)
+navigator = PageNavigator(current_page=3, total_pages=42, detail_text="Row 41/800")
 ```
 
 ## P1A 数据控件
@@ -349,6 +353,8 @@ Dialog 会先处理 `escape` 和 `ctrl+c`，再委派给内部字段。body 焦�
 | `widget.tabs.disabled` | 禁用 tab。 |
 | `widget.spinner.frame` | spinner frame 字符。 |
 | `widget.spinner.label` | spinner 标签文本。 |
+| `widget.pageNavigator` | PageNavigator 控制行。 |
+| `widget.pageNavigator.error` | PageNavigator 存在无效页码文本时的控制行。 |
 | `widget.table.header` | table header 行。 |
 | `widget.table.row` | 可用的非激活 table 行。 |
 | `widget.table.focus` | 获得焦点的激活 table 行。 |

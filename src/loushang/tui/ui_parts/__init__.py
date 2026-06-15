@@ -66,6 +66,9 @@ from .widgets import KeyValueList as KeyValueList
 from .widgets import Menu as Menu
 from .widgets import MenuItem as MenuItem
 from .widgets import NumberFormatter as NumberFormatter
+from .widgets import PageNavigation as PageNavigation
+from .widgets import PageNavigationError as PageNavigationError
+from .widgets import PageNavigator as PageNavigator
 from .widgets import PageScaffold as PageScaffold
 from .widgets import PageScaffoldContext as PageScaffoldContext
 from .widgets import PageScaffoldFooter as PageScaffoldFooter
@@ -155,6 +158,9 @@ __all__ = [
     "Menu",
     "MenuItem",
     "NumberFormatter",
+    "PageNavigation",
+    "PageNavigationError",
+    "PageNavigator",
     "PageScaffold",
     "PageScaffoldContext",
     "PageScaffoldFooter",
