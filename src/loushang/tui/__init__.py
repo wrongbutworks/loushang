@@ -26,9 +26,6 @@ from loushang.tui.compat import (
     CompletionProvider,
     CompletionSuggestions,
     InfoPanel,
-    SettingItem,
-    SettingsList,
-    SettingsListRenderer,
 )
 from loushang.tui.completion import (
     CombinedCompletionProvider,
@@ -142,7 +139,6 @@ from loushang.tui.surfaces import (
     DialogSurface,
     SelectionSurface,
     SelectItem,
-    SettingsSurface,
 )
 from loushang.tui.terminal import (
     FakeCellStyle,
@@ -440,10 +436,6 @@ __all__ = [
     "SelectionRange",
     "SelectionController",
     "SelectionSurface",
-    "SettingsSurface",
-    "SettingItem",
-    "SettingsList",
-    "SettingsListRenderer",
     "SlashCommand",
     "SlashCommandCompletionProvider",
     "Spinner",

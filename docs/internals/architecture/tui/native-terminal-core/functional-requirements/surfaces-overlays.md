@@ -39,7 +39,7 @@ the highlighted command, Tab to apply without submitting, and Esc to close.
 
 Related: SC-SO-001, KD-011
 
-## FR-SO-004: Settings Surface
+## FR-SO-004: Settings Page Surface
 
 Settings UI must be represented as a surface or surface group hosted by the
 runtime. It must not start a nested terminal application.

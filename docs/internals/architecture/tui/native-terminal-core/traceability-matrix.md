@@ -30,13 +30,13 @@ Detailed UI part specs may add finer-grained rows later.
 | FR-SO-001 | Surface host | SC-SO-001, SC-SO-002 | KD-005 | SurfaceHost, Overlay, Focusable | test_surface_host.py | Slice 7 |
 | FR-SO-002 | Autocomplete surface | SC-SO-001 | KD-005, KD-011 | AutocompleteSurface, Composer | test_autocomplete_surface.py | Slice 7 |
 | FR-SO-003 | Command surface | SC-SO-001 | KD-005, KD-011 | CommandSurface, SelectionSurface | test_command_surface.py | Slice 7 |
-| FR-SO-004 | Settings surface | SC-SO-002 | KD-005 | SettingsSurface, SettingsList | test_settings_surface.py | Slice 7 |
+| FR-SO-004 | Settings page surface | SC-SO-002 | KD-005 | SurfaceHost, PageScaffold, SearchableList | test_widgets_settings_page_assembly.py | Slice 7 |
 | FR-SO-005 | Dialog surface | SC-SO-002 | KD-005 | DialogSurface | test_dialog_surface.py | Slice 7 |
 | FR-SO-006 | Surface Esc handling | SC-CI-003, SC-SO-002 | KD-002, KD-003, KD-005 | SurfaceHost, TuiRuntime | test_input_priority.py | Slice 7 |
 | FR-SO-007 | Selection surface | SC-SO-001, SC-SO-002, SC-SO-004 | KD-005, KD-011 | SelectionSurface, SelectList | test_selection_surface.py | Slice 7 |
 | FR-SO-008 | Approval surface | SC-SO-002, SC-CI-003 | KD-005 | ApprovalSurface, ApprovalPrompt | test_approval_surface.py | Slice 7 |
 | FR-SO-009 | Surface stacking | SC-SO-005 | KD-005 | SurfaceHost, OverlayStack | test_surface_stacking.py | Slice 7 |
-| FR-SO-010 | Constrained surface scrolling | SC-SO-005 | KD-005, KD-008 | SurfaceHost, SelectionSurface, SettingsSurface | test_constrained_surface_scrolling.py | Slice 7 |
+| FR-SO-010 | Constrained surface scrolling | SC-SO-005 | KD-005, KD-008 | SurfaceHost, SelectionSurface | test_constrained_surface_scrolling.py | Slice 7 |
 | FR-CR-001 | Markdown rendering | SC-CR-001 | KD-006 | MarkdownRenderer, CellWidth | test_markdown_rendering.py | Slice 9 |
 | FR-CR-002 | Code blocks | SC-CR-001 | KD-006, KD-009 | CodeBlock, CodeRenderer | test_code_block_rendering.py | Slice 9 |
 | FR-CR-003 | Diff blocks | SC-CR-001 | KD-006, KD-009 | DiffBlock, DiffRenderer | test_diff_block_rendering.py | Slice 9 |

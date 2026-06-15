@@ -231,7 +231,7 @@ PRODUCT_SCENARIOS = (
     ),
     NativePlaybackScenarioSpec(
         name="product-streaming-control-flow",
-        description="Exercise long streaming transcript controls with follow-up, steer, settings surface, resize, and abort.",
+        description="Exercise long streaming transcript controls with follow-up, steer, settings page, resize, and abort.",
         run=_run_product_streaming_control_flow,
         tags=(
             "product",

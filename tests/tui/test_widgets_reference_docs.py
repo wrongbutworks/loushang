@@ -3,15 +3,21 @@ from __future__ import annotations
 from pathlib import Path
 
 
-def test_widget_reference_marks_settings_surface_as_legacy_compatibility() -> None:
+def test_widget_reference_recommends_composed_settings_pages_without_legacy_primitives() -> None:
+    removed_names = (
+        "SettingsSurface",
+        "SettingItem",
+        "SettingsList",
+        "SettingsListRenderer",
+    )
+
     for path in (
         Path("docs/en/reference/tui-widgets.md"),
         Path("docs/zh-CN/reference/tui-widgets.md"),
     ):
         text = path.read_text(encoding="utf-8")
 
-        assert "SettingsSurface" in text
-        assert "legacy compatibility" in text.casefold()
         assert "PageScaffold" in text
         assert "SearchableList" in text
-        assert "SettingsList" in text
+        for name in removed_names:
+            assert name not in text

@@ -1,16 +1,14 @@
 from __future__ import annotations
 
 from collections.abc import Callable
-from dataclasses import dataclass, field, replace
-from typing import Any, Literal
+from dataclasses import dataclass, field
+from typing import Literal
 
 from loushang.tui.cell_width import (
     autowrap_safe_width,
     truncate_to_width,
     visible_width,
-    wrap_cells,
 )
-from loushang.tui.compat import SettingItem
 from loushang.tui.core import RenderConstraints, RenderLine, RenderResult
 from loushang.tui.fuzzy import fuzzy_match
 from loushang.tui.input import InputEvent, InputIntent, InputIntentKind
@@ -303,243 +301,6 @@ class CommandSurface(SelectionSurface):
             self.set_filter(query)
 
 
-class SettingsSurface(SelectionSurface):
-    """Legacy compatibility surface for old settings-list workflows.
-
-    New settings pages should compose PageScaffold with SearchableList and
-    product-owned setting adapters instead of depending on this surface.
-    """
-
-    def __init__(
-        self,
-        items: list[SelectItem | SettingItem] | tuple[SelectItem | SettingItem, ...],
-        *,
-        max_visible: int = 8,
-        enable_search: bool = False,
-    ) -> None:
-        self._settings_items = [item for item in items if isinstance(item, SettingItem)]
-        self._search_enabled = enable_search
-        self._search_input = TextInput(prompt="Search: ") if enable_search else None
-        self._submenu_component: Any | None = None
-        self._submenu_item_id: str | None = None
-        self._submenu_item_index: int | None = None
-        self._pending_submenu_intent: InputIntent | None = None
-        if self._settings_items and len(self._settings_items) == len(items):
-            super().__init__(items=[], max_visible=max_visible, select_kind="setting")
-            self._filtered_items = []
-            return
-        super().__init__(items=[item for item in items if isinstance(item, SelectItem)], max_visible=max_visible, select_kind="setting")
-
-    def set_filter(self, query: str) -> None:
-        if self._settings_items:
-            if self._search_input is not None:
-                self._search_input.set_text(query)
-            self.selected_index = 0
-            return
-        super().set_filter(query)
-
-    def handle_input(self, event: InputEvent) -> InputIntent | bool | None:
-        if self._submenu_component is not None:
-            return self._handle_submenu_input(event)
-        if not self._settings_items:
-            return super().handle_input(event)
-        if event.kind == "text" and event.text == " " and not self._search_enabled:
-            return self._activate_setting()
-        if event.kind == "text" and self._search_enabled:
-            if self._search_input is not None:
-                self._search_input.insert_text(event.text)
-            self.selected_index = 0
-            return True
-        if event.kind != "key":
-            return None
-        if self._search_enabled and _handle_text_input_key(self._search_input, event.key):
-            self.selected_index = 0
-            return True
-        if event.key == "up":
-            self._move_settings(-1)
-            return True
-        if event.key == "down":
-            self._move_settings(1)
-            return True
-        if event.key == "pageUp":
-            self._move_settings(-max(1, self.max_visible))
-            return True
-        if event.key == "pageDown":
-            self._move_settings(max(1, self.max_visible))
-            return True
-        if event.key in {"enter", "space"} or event.text == " ":
-            return self._activate_setting() or True
-        if event.key in {"esc", "escape"}:
-            return InputIntent(kind="surface_close")
-        return None
-
-    def selected_setting(self) -> SettingItem | None:
-        items = self._display_settings()
-        if not items:
-            return None
-        return items[self.selected_index]
-
-    def render(self, constraints: RenderConstraints) -> RenderResult:
-        if self._submenu_component is not None:
-            render = getattr(self._submenu_component, "render", None)
-            if callable(render):
-                return render(constraints)
-        if not self._settings_items:
-            return self._render_legacy_select_settings(constraints)
-        target_width = autowrap_safe_width(constraints.width)
-        rendered: list[str] = []
-        cursor = None
-        if self._search_enabled:
-            search_input = self._search_input or TextInput(prompt="Search: ")
-            search_result = search_input.render(
-                RenderConstraints(
-                    width=target_width,
-                    max_height=1,
-                    visible_height=constraints.visible_height,
-                )
-            )
-            rendered.extend(line.text for line in search_result.lines)
-            cursor = search_result.cursor
-            rendered.append("")
-        display_items = self._display_settings()
-        if not display_items:
-            rendered.append(truncate_to_width("  No matching settings", max_width=target_width, ellipsis=""))
-            return RenderResult.from_lines(
-                [RenderLine(line) for line in rendered[: constraints.max_height]],
-                constraints=constraints,
-                cursor=cursor,
-            )
-        self.selected_index = _clamp_setting_index(self.selected_index, display_items)
-        item_budget = max(1, min(self.max_visible, constraints.max_height - len(rendered)))
-        start = _scroll_start(self.selected_index, len(display_items), item_budget)
-        end = min(start + item_budget, len(display_items))
-        label_width = _settings_label_width(self._settings_items)
-        for index in range(start, end):
-            item = display_items[index]
-            rendered.append(_render_setting_item(item, selected=index == self.selected_index, label_width=label_width, width=target_width))
-        if start > 0 or end < len(display_items):
-            rendered.append(truncate_to_width(f"  ({self.selected_index + 1}/{len(display_items)})", max_width=target_width, ellipsis=""))
-        selected = display_items[self.selected_index]
-        if selected.description and len(rendered) + 2 <= constraints.max_height:
-            rendered.append("")
-            description_budget = max(0, constraints.max_height - len(rendered))
-            rendered.extend(_wrap_setting_description(selected.description, width=target_width)[:description_budget])
-        if len(rendered) + 2 <= constraints.max_height:
-            rendered.append("")
-            rendered.append(truncate_to_width("  Enter/Space to change - Esc to cancel", max_width=target_width, ellipsis=""))
-        return RenderResult.from_lines(
-            [RenderLine(line) for line in rendered[: constraints.max_height]],
-            constraints=constraints,
-            cursor=cursor,
-        )
-
-    def _render_legacy_select_settings(self, constraints: RenderConstraints) -> RenderResult:
-        if not self._filtered_items:
-            line = truncate_to_width(self.empty_text, max_width=autowrap_safe_width(constraints.width))
-            return RenderResult.from_lines([RenderLine(line)], constraints=constraints)
-        visible_budget = max(1, min(self.max_visible, constraints.max_height))
-        start = _scroll_start(self.selected_index, len(self._filtered_items), visible_budget)
-        end = min(start + visible_budget, len(self._filtered_items))
-        lines = [
-            RenderLine(
-                _render_legacy_settings_item(
-                    self._filtered_items[index],
-                    selected=index == self.selected_index,
-                    width=constraints.width,
-                )
-            )
-            for index in range(start, end)
-        ]
-        return RenderResult.from_lines(lines, constraints=constraints)
-
-    def _display_settings(self) -> list[SettingItem]:
-        search_query = self._search_input.value if self._search_input is not None else ""
-        if not self._search_enabled or not search_query:
-            return list(self._settings_items)
-        query = search_query.lower()
-        return [item for item in self._settings_items if _setting_item_matches_search(item, query)]
-
-    def _move_settings(self, delta: int) -> None:
-        items = self._display_settings()
-        if not items:
-            return
-        self.selected_index = (self.selected_index + delta) % len(items)
-
-    def _activate_setting(self) -> InputIntent | None:
-        selected = self.selected_setting()
-        if selected is None:
-            return None
-        if selected.submenu is not None:
-            self._submenu_item_id = selected.id
-            self._submenu_item_index = self.selected_index
-            self._pending_submenu_intent = None
-            self._submenu_component = selected.submenu(selected.current_value, self._complete_submenu_from_callback)
-            return None
-        if selected.values:
-            try:
-                current_index = selected.values.index(selected.current_value)
-            except ValueError:
-                current_index = -1
-            new_value = selected.values[(current_index + 1) % len(selected.values)]
-            self._settings_items = [
-                replace(item, current_value=new_value) if item.id == selected.id else item
-                for item in self._settings_items
-            ]
-            return InputIntent(kind="setting", text=selected.id, note=new_value)
-        if selected.current_value:
-            return InputIntent(kind="setting", text=selected.id, note=selected.current_value)
-        return InputIntent(kind="setting", text=selected.id, note="true" if selected.enabled else "false")
-
-    def _handle_submenu_input(self, event: InputEvent) -> InputIntent | bool | None:
-        component = self._submenu_component
-        handle_input = getattr(component, "handle_input", None)
-        result = handle_input(event) if callable(handle_input) else None
-        pending = self._consume_pending_submenu_intent()
-        if pending is not None:
-            return pending
-        intents = _normalize_submenu_result(result)
-        for intent in intents:
-            if intent.kind in {"select", "complete", "setting"}:
-                selected_value = intent.note or intent.text
-                return self._complete_submenu(selected_value)
-            if intent.kind in {"surface_close", "dialog_cancel"}:
-                self._close_submenu()
-                return True
-        if result is True:
-            return True
-        return result if isinstance(result, InputIntent) else None
-
-    def _complete_submenu_from_callback(self, selected_value: str | None = None) -> None:
-        if selected_value is None:
-            self._close_submenu()
-            return
-        self._pending_submenu_intent = self._complete_submenu(selected_value)
-
-    def _consume_pending_submenu_intent(self) -> InputIntent | None:
-        intent = self._pending_submenu_intent
-        self._pending_submenu_intent = None
-        return intent
-
-    def _complete_submenu(self, selected_value: str) -> InputIntent | None:
-        item_id = self._submenu_item_id
-        if item_id is None:
-            self._close_submenu()
-            return None
-        self._settings_items = [
-            replace(item, current_value=selected_value) if item.id == item_id else item
-            for item in self._settings_items
-        ]
-        self._close_submenu()
-        return InputIntent(kind="setting", text=item_id, note=selected_value)
-
-    def _close_submenu(self) -> None:
-        self._submenu_component = None
-        if self._submenu_item_index is not None:
-            self.selected_index = self._submenu_item_index
-        self._submenu_item_id = None
-        self._submenu_item_index = None
-
-
 @dataclass(slots=True)
 class ApprovalSurface:
     action: str
@@ -670,16 +431,6 @@ def _select_item_matches_filter(item: SelectItem, query: str, *, mode: Literal["
     return any(haystack.startswith(query) for haystack in haystacks[:2])
 
 
-def _setting_item_matches_search(item: SettingItem, query: str) -> bool:
-    haystacks = (
-        item.label.lower(),
-        item.id.lower(),
-        item.description.lower(),
-        item.current_value.lower(),
-    )
-    return _fuzzy_matches_any(query, haystacks)
-
-
 def _fuzzy_matches_any(query: str, haystacks: tuple[str, ...]) -> bool:
     tokens = tuple(token for token in query.split() if token)
     if not tokens:
@@ -690,74 +441,16 @@ def _fuzzy_matches_any(query: str, haystacks: tuple[str, ...]) -> bool:
     )
 
 
-def _wrap_setting_description(description: str, *, width: int) -> list[str]:
-    body_width = max(1, width - 2)
-    wrapped: list[str] = []
-    for logical_line in description.splitlines():
-        words = logical_line.split()
-        if not words:
-            wrapped.append("  ")
-            continue
-        current = ""
-        for word in words:
-            if visible_width(word) > body_width:
-                if current:
-                    wrapped.append(f"  {current}")
-                    current = ""
-                wrapped.extend(f"  {chunk}" for chunk in wrap_cells(word, width=body_width))
-                continue
-            candidate = word if not current else f"{current} {word}"
-            if visible_width(candidate) <= body_width:
-                current = candidate
-                continue
-            wrapped.append(f"  {current}")
-            current = word
-        if current:
-            wrapped.append(f"  {current}")
-    return wrapped or ["  "]
-
-
-def _render_setting_item(item: SettingItem, *, selected: bool, label_width: int, width: int) -> str:
-    prefix = "> " if selected else "  "
-    label = item.label + (" " * max(0, label_width - visible_width(item.label)))
-    value = item.current_value or ("on" if item.enabled else "off")
-    line = truncate_to_width(f"{prefix}{label}  {value}", max_width=width, ellipsis="")
-    return _style_selected_line(line, selected=selected, selected_style=DEFAULT_SELECTED_STYLE)
-
-
-def _render_legacy_settings_item(item: SelectItem, *, selected: bool, width: int) -> str:
-    prefix = "> " if selected else "  "
-    suffix = f"  {_normalize_single_line(item.description)}" if item.description else ""
-    line = truncate_to_width(f"{prefix}{item.label}{suffix}", max_width=autowrap_safe_width(width))
-    return _style_selected_line(line, selected=selected, selected_style=DEFAULT_SELECTED_STYLE)
-
-
 def _style_selected_line(line: str, *, selected: bool, selected_style: ThemeStyle | None) -> str:
     if not selected or selected_style is None:
         return line
     return apply_theme_style(line, selected_style)
 
 
-def _settings_label_width(items: list[SettingItem]) -> int:
-    if not items:
-        return 1
-    return min(30, max(visible_width(item.label) for item in items))
-
-
 def _handle_text_input_key(text_input: TextInput | None, key: str) -> bool:
     if text_input is None:
         return False
     return text_input.handle_editing_key(key)
-
-
-def _normalize_submenu_result(result: Any) -> tuple[InputIntent, ...]:
-    if result is None:
-        return ()
-    if isinstance(result, InputIntent):
-        return (result,)
-    if isinstance(result, tuple) and all(isinstance(item, InputIntent) for item in result):
-        return result
-    return ()
 
 
 def _scroll_start(selected_index: int, total: int, item_budget: int) -> int:
@@ -768,12 +461,6 @@ def _scroll_start(selected_index: int, total: int, item_budget: int) -> int:
 
 
 def _clamp_index(index: int, items: list[SelectItem]) -> int:
-    if not items:
-        return 0
-    return max(0, min(index, len(items) - 1))
-
-
-def _clamp_setting_index(index: int, items: list[SettingItem]) -> int:
     if not items:
         return 0
     return max(0, min(index, len(items) - 1))

@@ -225,16 +225,12 @@ selected page changes without a callback.
 `SearchableList` owns query text, filtered items, active row, viewport offset,
 and structured selection. It does not edit settings or write configuration.
 
-## Settings Pages And Legacy Compatibility
+## Settings Pages
 
 Build new settings pages by composing `PageScaffold`, `Tabs` or `TabGroup`,
 `SearchableList`, and focused controls such as `Toggle`, `RadioGroup`, and
 `SelectList`. Product adapters should own setting ids, value cycling,
 persistence, and side effects.
-
-`SettingsSurface`, `SettingItem`, `SettingsList`, and `SettingsListRenderer`
-remain public for legacy compatibility with older settings-list callers. They
-are not the recommended path for new page-level settings UI.
 
 ## Forms
 

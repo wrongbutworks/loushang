@@ -11,6 +11,21 @@ def test_import_loushang_tui_does_not_import_legacy_rendering_libraries() -> Non
     _assert_loushang_tui_import_boundary_in_subprocess()
 
 
+def test_loushang_tui_does_not_export_legacy_settings_primitives() -> None:
+    import loushang.tui as tui
+
+    removed_names = (
+        "SettingItem",
+        "SettingsList",
+        "SettingsListRenderer",
+        "SettingsSurface",
+    )
+
+    for name in removed_names:
+        assert not hasattr(tui, name)
+        assert name not in tui.__all__
+
+
 def test_import_boundary_check_does_not_replace_loaded_tui_classes() -> None:
     import loushang.coding.ui.command_list as command_list
     import loushang.coding.ui.renderer as renderer
