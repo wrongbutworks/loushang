@@ -19,7 +19,8 @@ workspace, repository root, session state, or `.gitignore` semantics.
 - `path_filter(path)`: inclusion predicate for absolute lexical paths.
 - `ignore_matcher(path)`: exclusion predicate for absolute lexical paths.
 - `sort_key(path)`: optional sort key within directory and file groups.
-- `empty_text`: label for empty expanded directories.
+- `empty_text`: label for empty expanded directories. `None` or `""` hides the
+  synthetic empty row.
 - `max_entries`: global cap on admitted real entries below root, normalized to
   at least 1.
 - `wrap`, `theme`, and `focused`: passed through to the composed `TreeView`.
@@ -39,6 +40,9 @@ clipping. It includes real rows plus disabled synthetic rows:
 - `empty`: expanded directory has no visible children
 - `error`: filesystem scan error for a root or child directory
 - `sentinel`: more real entries were omitted by `max_entries`
+
+Synthetic labels are prefixed so they are visually distinct even without theme
+color: `· No files`, `· more entries omitted`, and `! <error>`.
 
 `visible_paths` includes only real file and directory paths, excluding all
 synthetic rows.
@@ -82,8 +86,21 @@ DirectoryTree reuses `TreeView` tokens:
 | `widget.tree.disabled` | Empty, error, sentinel, and other disabled rows |
 | `widget.tree.empty` | Fallback empty TreeView state |
 
-Directory/file-specific tokens are deferred until product usage justifies a
-row-style composition rule.
+It also provides semantic per-row tokens through `TreeNode.theme_token`:
+
+| Token | Applies to |
+| --- | --- |
+| `widget.directoryTree.directory` | Real directory rows |
+| `widget.directoryTree.file` | Real file rows |
+| `widget.directoryTree.empty` | Empty synthetic rows |
+| `widget.directoryTree.error` | Error synthetic rows |
+| `widget.directoryTree.sentinel` | Entry-cap sentinel rows |
+
+`TreeView` composes base and semantic styles. Focused rows apply
+`widget.tree.row`, then the semantic token, then `widget.tree.focus`, so focus
+styling wins over directory/file color. Disabled rows apply
+`widget.tree.disabled` plus the semantic token, so a theme can dim synthetic
+rows while still giving empty/error/sentinel rows distinct colors.
 
 ## Test Obligations
 

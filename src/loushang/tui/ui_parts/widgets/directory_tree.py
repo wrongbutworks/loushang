@@ -58,6 +58,15 @@ class _RootScanError(Exception):
     pass
 
 
+_THEME_TOKENS_BY_KIND: dict[DirectoryTreeEntryKind, str] = {
+    "directory": "widget.directoryTree.directory",
+    "file": "widget.directoryTree.file",
+    "empty": "widget.directoryTree.empty",
+    "error": "widget.directoryTree.error",
+    "sentinel": "widget.directoryTree.sentinel",
+}
+
+
 @dataclass(init=False, slots=True)
 class DirectoryTree:
     root: str | Path
@@ -65,7 +74,7 @@ class DirectoryTree:
     path_filter: PathFilter | None = None
     ignore_matcher: PathFilter | None = None
     sort_key: PathSortKey | None = None
-    empty_text: str = "No files"
+    empty_text: str | None = "No files"
     max_entries: int = 2000
     wrap: bool = True
     theme: ThemeResolver | None = None
@@ -87,7 +96,7 @@ class DirectoryTree:
         path_filter: PathFilter | None = None,
         ignore_matcher: PathFilter | None = None,
         sort_key: PathSortKey | None = None,
-        empty_text: str = "No files",
+        empty_text: str | None = "No files",
         max_entries: int = 2000,
         wrap: bool = True,
         theme: ThemeResolver | None = None,
@@ -239,7 +248,7 @@ class DirectoryTree:
             (root_node,),
             active_value=active_value,
             expanded_values=tuple(dict.fromkeys(expanded_values)),
-            empty_text=self.empty_text,
+            empty_text=self.empty_text or "",
             wrap=self.wrap,
             theme=self.theme,
             focused=self.focused,
@@ -273,16 +282,19 @@ class DirectoryTree:
         except (FileNotFoundError, OSError, PermissionError) as exc:
             if is_root:
                 raise _RootScanError(str(exc)) from exc
-            return (self._synthetic_node(parent, "error", str(exc), index=0, path=parent),)
+            message = str(exc)
+            return (self._synthetic_node(parent, "error", f"! {message}", index=0, path=parent, message=message),)
         visible = [path for path in candidates if self._passes_filters(path)]
         if not visible:
-            return (self._synthetic_node(parent, "empty", self.empty_text, index=0),)
+            if not self.empty_text:
+                return ()
+            return (self._synthetic_node(parent, "empty", f"· {self.empty_text}", index=0),)
         directories = [path for path in visible if path.is_dir()]
         files = [path for path in visible if not path.is_dir()]
         nodes: list[_DirectoryModelNode] = []
         for child in (*sorted(directories, key=self._sort_tuple), *sorted(files, key=self._sort_tuple)):
             if budget.remaining <= 0:
-                nodes.append(self._synthetic_node(parent, "sentinel", "more entries omitted", index=len(nodes)))
+                nodes.append(self._synthetic_node(parent, "sentinel", "· more entries omitted", index=len(nodes)))
                 break
             budget.remaining -= 1
             kind = self._entry_kind(child)
@@ -324,9 +336,10 @@ class DirectoryTree:
         *,
         index: int,
         path: Path | None = None,
+        message: str | None = None,
     ) -> _DirectoryModelNode:
         return _DirectoryModelNode(
-            entry=DirectoryTreeEntry(path=path, kind=kind, label=label, disabled=True, message=label),
+            entry=DirectoryTreeEntry(path=path, kind=kind, label=label, disabled=True, message=label if message is None else message),
             tree_value=_synthetic_value(parent, kind, index),
         )
 
@@ -341,6 +354,7 @@ class DirectoryTree:
             label=node.entry.label,
             children=tuple(self._tree_node(child) for child in node.children),
             disabled=node.entry.disabled,
+            theme_token=_THEME_TOKENS_BY_KIND[node.entry.kind],
         )
 
     def _sync_public_state_from_tree(self) -> None:
@@ -357,8 +371,8 @@ class DirectoryTree:
         self._path_to_value = {}
         self._traversable_paths = set()
         self._tree = TreeView(
-            (TreeNode(value=value, label=message, disabled=True),),
-            empty_text=self.empty_text,
+            (TreeNode(value=value, label=message, disabled=True, theme_token=_THEME_TOKENS_BY_KIND["error"]),),
+            empty_text=self.empty_text or "",
             wrap=self.wrap,
             theme=self.theme,
             focused=self.focused,

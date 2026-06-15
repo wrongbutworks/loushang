@@ -14,11 +14,39 @@ from loushang.tui import (
     RenderConstraints,
     RenderLine,
     RenderResult,
+    ThemeResolver,
     Tui,
     TuiInputResult,
     TuiRunner,
+    apply_theme_style,
     truncate_to_width,
 )
+
+DIRECTORY_TREE_THEME = ThemeResolver(
+    defaults={
+        "example.directoryTree.title": {"color": "cyan", "bold": True},
+        "example.directoryTree.meta": {"color": "bright_black"},
+        "example.directoryTree.status": {"color": "green"},
+        "example.directoryTree.footer": {"color": "bright_black"},
+        "widget.tree.row": {"color": "white"},
+        "widget.tree.focus": {"color": "cyan", "bold": True},
+        "widget.tree.disabled": {"dim": True},
+        "widget.tree.empty": {"color": "bright_black"},
+        "widget.directoryTree.directory": {"color": "cyan"},
+        "widget.directoryTree.file": {"color": "white"},
+        "widget.directoryTree.empty": {"color": "bright_black", "dim": True},
+        "widget.directoryTree.sentinel": {"color": "yellow", "dim": True},
+        "widget.directoryTree.error": {"color": "red", "dim": True},
+    }
+)
+
+
+def _style(text: str, token: str) -> str:
+    return apply_theme_style(text, DIRECTORY_TREE_THEME.resolve(token))
+
+
+def _styled_line(text: str, token: str, *, width: int) -> RenderLine:
+    return RenderLine(_style(truncate_to_width(text, max_width=width, ellipsis=""), token))
 
 
 @dataclass(slots=True)
@@ -43,25 +71,28 @@ class DirectoryTreeExampleApp(FocusableMixin):
             active_path=active_path,
             expanded_paths=(self.root, self.root / "src", self.root / "empty"),
             show_hidden=self.show_hidden,
+            theme=DIRECTORY_TREE_THEME,
         )
 
     def render(self, constraints: RenderConstraints) -> RenderResult:
         tree_height = max(1, constraints.max_height - 8)
         tree_result = self.tree.render(RenderConstraints(width=constraints.width, max_height=tree_height))
         rows = [
-            RenderLine(truncate_to_width("Directory Tree", max_width=constraints.width, ellipsis="")),
-            RenderLine(truncate_to_width(f"Root {self.root}", max_width=constraints.width, ellipsis="")),
-            RenderLine(truncate_to_width(f"Hidden {'on' if self.show_hidden else 'off'}", max_width=constraints.width, ellipsis="")),
+            _styled_line("Directory Tree", "example.directoryTree.title", width=constraints.width),
+            _styled_line(f"Root {self.root}", "example.directoryTree.meta", width=constraints.width),
+            _styled_line(
+                f"Hidden {'on' if self.show_hidden else 'off'}",
+                "example.directoryTree.meta",
+                width=constraints.width,
+            ),
             RenderLine(""),
             *tree_result.lines,
             RenderLine(""),
-            RenderLine(truncate_to_width(self.status, max_width=constraints.width, ellipsis="")),
-            RenderLine(
-                truncate_to_width(
-                    "[up/down] move  [enter/space] select  [h] hidden  [r] reload  [q] quit",
-                    max_width=constraints.width,
-                    ellipsis="",
-                )
+            _styled_line(self.status, "example.directoryTree.status", width=constraints.width),
+            _styled_line(
+                "[up/down] move  [enter/space] select  [h] hidden  [r] reload  [q] quit",
+                "example.directoryTree.footer",
+                width=constraints.width,
             ),
         ]
         return RenderResult.from_lines(rows[: constraints.max_height], constraints=constraints)

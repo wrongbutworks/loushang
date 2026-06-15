@@ -116,7 +116,7 @@ def test_directory_tree_scans_root_directory_first_and_exposes_visible_entries(t
         tmp_path.name,
         "build",
         "empty",
-        "No files",
+        "· No files",
         "src",
         "widgets",
         "main.py",
@@ -373,6 +373,68 @@ def test_directory_tree_reuses_tree_theme_tokens(tmp_path: Path) -> None:
     assert any(line.startswith("\x1b[2m") and "No files" in line for line in raw)
 
 
+def test_directory_tree_can_hide_empty_rows_with_empty_text_none(tmp_path: Path) -> None:
+    build_tree_fixture(tmp_path)
+
+    tree = DirectoryTree(root=tmp_path, expanded_paths=(tmp_path / "empty",), empty_text=None)
+
+    assert all(entry.kind != "empty" for entry in tree.visible_entries)
+    assert tmp_path / "empty" in tree.visible_paths
+
+
+def test_directory_tree_applies_semantic_theme_tokens(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    build_tree_fixture(tmp_path)
+    original_iterdir = Path.iterdir
+
+    def fail_src(path: Path):
+        if path == tmp_path / "src":
+            raise PermissionError("blocked")
+        return original_iterdir(path)
+
+    monkeypatch.setattr(Path, "iterdir", fail_src)
+    theme = ThemeResolver(
+        defaults={
+            "widget.tree.row": {"color": "white"},
+            "widget.tree.focus": {"bold": True, "color": "green"},
+            "widget.tree.disabled": {"dim": True},
+            "widget.directoryTree.directory": {"color": "cyan"},
+            "widget.directoryTree.file": {"color": "white"},
+            "widget.directoryTree.empty": {"color": "bright_black", "dim": True},
+            "widget.directoryTree.error": {"color": "red", "dim": True},
+        }
+    )
+    tree = DirectoryTree(
+        root=tmp_path,
+        expanded_paths=(tmp_path / "empty", tmp_path / "src"),
+        theme=theme,
+    )
+
+    raw = tuple(line.text for line in tree.render(RenderConstraints(width=80, max_height=20)).lines)
+
+    assert any(line.startswith("\x1b[36m") and "empty" in line for line in raw)
+    assert any(line.startswith("\x1b[37m") and "README.md" in line for line in raw)
+    assert any(line.startswith("\x1b[2;90m") and "· No files" in line for line in raw)
+    assert any(line.startswith("\x1b[2;31m") and "! blocked" in line for line in raw)
+
+
+def test_directory_tree_applies_sentinel_theme_token(tmp_path: Path) -> None:
+    build_tree_fixture(tmp_path)
+    theme = ThemeResolver(
+        defaults={
+            "widget.tree.disabled": {"dim": True},
+            "widget.directoryTree.sentinel": {"color": "yellow", "dim": True},
+        }
+    )
+    tree = DirectoryTree(root=tmp_path, max_entries=1, theme=theme)
+
+    raw = tuple(line.text for line in tree.render(RenderConstraints(width=80, max_height=20)).lines)
+
+    assert any(line.startswith("\x1b[2;33m") and "· more entries omitted" in line for line in raw)
+
+
 def test_directory_tree_max_entries_inserts_sentinels_and_counts_collapsed_descendants(tmp_path: Path) -> None:
     (tmp_path / "alpha" / "nested").mkdir(parents=True)
     (tmp_path / "alpha" / "nested" / "deep.txt").write_text("", encoding="utf-8")
@@ -476,6 +538,18 @@ def test_widgets_directory_tree_example_imports() -> None:
 
     assert callable(build_app)
     assert result.lines
+
+
+def test_widgets_directory_tree_example_applies_theme_colors() -> None:
+    namespace = runpy.run_path("examples/tui/57_widgets_directory_tree.py", run_name="__test__")
+
+    app = namespace["build_app"]()
+    raw = tuple(line.text for line in app.render(RenderConstraints(width=90, max_height=24)).lines)
+
+    assert raw[0].startswith("\x1b[1;36mDirectory Tree")
+    assert raw[1].startswith("\x1b[90mRoot ")
+    assert any(line.startswith("\x1b[1;36m> - ") for line in raw)
+    assert raw[-1].startswith("\x1b[90m[up/down]")
 
 
 def test_widgets_directory_tree_example_playback_selects_and_toggles_hidden_files() -> None:
