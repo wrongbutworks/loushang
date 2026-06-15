@@ -265,6 +265,9 @@ class DataGrid:
     _sort_state: tuple[str, DataGridSortDirection] | None = field(default=None, init=False, repr=False)
     _next_generated_index: int = field(default=0, init=False, repr=False)
     _first_visible_row_index: int = field(default=0, init=False, repr=False)
+    _editing_cell_key: DataGridCellKey | None = field(default=None, init=False, repr=False)
+    _edit_buffer: str = field(default="", init=False, repr=False)
+    _edit_buffer_selected: bool = field(default=False, init=False, repr=False)
 
     def __init__(
         self,
@@ -303,6 +306,9 @@ class DataGrid:
         self._sort_state = None
         self._next_generated_index = 0
         self._first_visible_row_index = 0
+        self._editing_cell_key = None
+        self._edit_buffer = ""
+        self._edit_buffer_selected = False
         self._columns = _normalize_columns(self.columns)
         self._rows = self._normalize_rows(self.rows)
         self._active_row_key = self._repair_row_key(active_row_key)
@@ -334,6 +340,10 @@ class DataGrid:
     def sort_state(self) -> tuple[str, DataGridSortDirection] | None:
         return self._sort_state
 
+    @property
+    def editing_cell_key(self) -> DataGridCellKey | None:
+        return self._editing_cell_key
+
     def cell_value(self, row_key: str, column_key: str) -> object | None:
         row = self._row_by_key(row_key)
         if row is None:
@@ -353,8 +363,11 @@ class DataGrid:
 
     def blur(self) -> None:
         self.focused = False
+        self.cancel_edit()
 
     def handle_input(self, event: object) -> object:
+        if self._editing_cell_key is not None:
+            return self._handle_editing_input(event)
         if getattr(event, "kind", "") == "text" and getattr(event, "text", "") == " ":
             return None if self.cursor_mode == "none" else self._handle_selection_input()
         if getattr(event, "kind", "") != "key":
@@ -363,9 +376,13 @@ class DataGrid:
             return None
         key = normalize_key_id(getattr(event, "key", ""))
         if key == "enter":
+            if self._should_enter_start_edit():
+                return self.start_edit(str(self._active_row_key), str(self._active_column_key))
             return self._activate()
         if key == "space":
             return self._handle_selection_input()
+        if key == "e" and self.cursor_mode == "cell" and self._active_row_key and self._active_column_key:
+            return self.start_edit(str(self._active_row_key), str(self._active_column_key))
         if self.cursor_mode == "row":
             return self._handle_row_navigation(key)
         if self.cursor_mode == "cell":
@@ -496,6 +513,12 @@ class DataGrid:
                 return row
         return None
 
+    def _column_by_key(self, key: str) -> DataGridColumn | None:
+        for column in self._columns:
+            if column.key == key:
+                return column
+        return None
+
     def _active_row(self) -> _NormalizedRow | None:
         if self._active_row_key is None:
             return None
@@ -611,6 +634,121 @@ class DataGrid:
         if key in {"up", "down", "pageUp", "pageDown"}:
             return False if self._visible_columns() else None
         return None
+
+    def _should_enter_start_edit(self) -> bool:
+        if self.cursor_mode != "cell" or self._active_row_key is None or self._active_column_key is None:
+            return False
+        column = self._column_by_key(self._active_column_key)
+        if column is None or column.enter_behavior != "edit":
+            return False
+        return self._is_editable_cell(self._active_row_key, self._active_column_key)
+
+    def start_edit(self, row_key: str, column_key: str) -> bool:
+        row = self._row_by_key(row_key)
+        column = self._column_by_key(column_key)
+        self.cursor_mode = "cell"
+        if row is not None:
+            self._active_row_key = row.key
+        if column is not None and not column.hidden:
+            self._active_column_key = column.key
+        if row is None or column is None or column.hidden or not self._is_editable_cell(row.key, column.key):
+            self.cancel_edit()
+            return False
+        cell = row.cells[column.key]
+        self._editing_cell_key = (row.key, column.key)
+        self._edit_buffer = "" if cell.value is None else str(cell.value)
+        self._edit_buffer_selected = True
+        self.editing_error = None
+        return True
+
+    def cancel_edit(self) -> bool:
+        if self._editing_cell_key is None and self.editing_error is None:
+            return False
+        self._editing_cell_key = None
+        self._edit_buffer = ""
+        self._edit_buffer_selected = False
+        self.editing_error = None
+        return True
+
+    def commit_edit(self) -> DataGridEdit | None:
+        if self._editing_cell_key is None:
+            return None
+        row_key, column_key = self._editing_cell_key
+        row = self._row_by_key(row_key)
+        column = self._column_by_key(column_key)
+        if row is None or column is None:
+            self.cancel_edit()
+            return None
+        old_value = row.cells[column_key].value
+        try:
+            new_value = column.parser(self._edit_buffer) if column.parser is not None else self._edit_buffer
+        except Exception as exc:
+            self.editing_error = str(exc) or exc.__class__.__name__
+            return None
+        if column.validator is not None:
+            error = column.validator(new_value)
+            if error is not None:
+                self.editing_error = error
+                return None
+        if not column.edit_accepts_unchanged and new_value == old_value:
+            self.cancel_edit()
+            return None
+        self._set_cell_value(row_key, column_key, new_value)
+        result = DataGridEdit(row_key=row_key, column_key=column_key, old_value=old_value, new_value=new_value)
+        self.cancel_edit()
+        if column.edit_next_column_key is not None:
+            self.start_edit(row_key, column.edit_next_column_key)
+        return result
+
+    def _handle_editing_input(self, event: object) -> object:
+        kind = getattr(event, "kind", "")
+        if kind in {"text", "paste"}:
+            text = getattr(event, "text", "")
+            if self._edit_buffer_selected:
+                self._edit_buffer = text
+                self._edit_buffer_selected = False
+            else:
+                self._edit_buffer += text
+            self.editing_error = None
+            return True
+        if kind != "key":
+            return None
+        key = normalize_key_id(getattr(event, "key", ""))
+        if key == "enter":
+            return self.commit_edit()
+        if key == "escape":
+            return self.cancel_edit()
+        if key == "backspace":
+            if self._edit_buffer_selected:
+                self._edit_buffer = ""
+                self._edit_buffer_selected = False
+            else:
+                self._edit_buffer = self._edit_buffer[:-1]
+            self.editing_error = None
+            return True
+        return None
+
+    def _is_editable_cell(self, row_key: str, column_key: str) -> bool:
+        if not self._is_enabled_cell(row_key, column_key):
+            return False
+        row = self._row_by_key(row_key)
+        column = self._column_by_key(column_key)
+        if row is None or column is None:
+            return False
+        cell = row.cells[column_key]
+        return column.editable if cell.editable is None else cell.editable
+
+    def _set_cell_value(self, row_key: str, column_key: str, value: object) -> None:
+        row = self._row_by_key(row_key)
+        if row is None or column_key not in row.cells:
+            return
+        cell = row.cells[column_key]
+        row.cells[column_key] = _NormalizedCell(
+            value=value,
+            disabled=cell.disabled,
+            editable=cell.editable,
+            theme_token=cell.theme_token,
+        )
 
     def _activate(self) -> object:
         if self.cursor_mode == "row":
@@ -1001,7 +1139,10 @@ class DataGrid:
         cell_tokens: list[str | None] = []
         for column in columns:
             cell = row.cells[column.key]
-            formatted = _format_grid_cell(cell.value, column)
+            if self._editing_cell_key == (row.key, column.key):
+                formatted = _FormattedCell(self._edit_buffer, "widget.dataGrid.editing")
+            else:
+                formatted = _format_grid_cell(cell.value, column)
             values.append(formatted.text)
             cell_tokens.append(formatted.theme_token or column.theme_token or cell.theme_token)
         active_row = self.focused and row.key == self._active_row_key and row.pinned is None and not row.disabled

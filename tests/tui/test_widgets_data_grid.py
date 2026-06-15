@@ -11,6 +11,7 @@ from loushang.tui import (
     DataGrid,
     DataGridCell,
     DataGridColumn,
+    DataGridEdit,
     DataGridFormatResult,
     DataGridRow,
     DataGridSelect,
@@ -515,3 +516,77 @@ def test_data_grid_multi_selection_and_select_all_skip_disabled_targets() -> Non
     assert row_grid.selected_row_keys == frozenset({"build", "deploy"})
     assert row_grid.clear_selection() is True
     assert row_grid.selected_row_keys == frozenset()
+
+
+def test_data_grid_editing_replaces_initial_buffer_and_commits_parsed_values() -> None:
+    grid = DataGrid(
+        [
+            DataGridColumn("code", "Code", editable=True),
+            DataGridColumn("qty", "Qty", editable=True, parser=int),
+        ],
+        [DataGridRow("line", {"code": "AAPL", "qty": 1})],
+        cursor_mode="cell",
+        active_column_key="code",
+    )
+
+    assert grid.handle_input(InputEvent(kind="key", key="e")) is True
+    assert grid.editing_cell_key == ("line", "code")
+    assert grid.handle_input(InputEvent(kind="text", text="M")) is True
+    assert grid.handle_input(InputEvent(kind="text", text="SFT")) is True
+    assert grid.handle_input(InputEvent(kind="key", key="enter")) == DataGridEdit("line", "code", "AAPL", "MSFT")
+    assert grid.cell_value("line", "code") == "MSFT"
+    assert grid.editing_cell_key is None
+
+    assert grid.handle_input(InputEvent(kind="key", key="right")) is True
+    assert grid.handle_input(InputEvent(kind="key", key="e")) is True
+    assert grid.handle_input(InputEvent(kind="key", key="backspace")) is True
+    assert grid.handle_input(InputEvent(kind="text", text="12")) is True
+    assert grid.handle_input(InputEvent(kind="key", key="enter")) == DataGridEdit("line", "qty", 1, 12)
+    assert grid.cell_value("line", "qty") == 12
+
+
+def test_data_grid_enter_to_edit_accepts_defaults_and_advances_to_next_column() -> None:
+    grid = DataGrid(
+        [
+            DataGridColumn("code", "Code", editable=True, enter_behavior="edit", edit_next_column_key="qty"),
+            DataGridColumn("qty", "Qty", editable=True, parser=int),
+        ],
+        [DataGridRow("line", {"code": "", "qty": 1})],
+        cursor_mode="cell",
+        active_column_key="code",
+    )
+
+    assert grid.handle_input(InputEvent(kind="key", key="enter")) is True
+    assert grid.editing_cell_key == ("line", "code")
+    assert grid.handle_input(InputEvent(kind="text", text="AAPL")) is True
+    assert grid.handle_input(InputEvent(kind="key", key="enter")) == DataGridEdit("line", "code", "", "AAPL")
+    assert grid.editing_cell_key == ("line", "qty")
+    assert grid.handle_input(InputEvent(kind="key", key="enter")) == DataGridEdit("line", "qty", 1, 1)
+    assert grid.editing_cell_key is None
+    assert grid.cell_value("line", "qty") == 1
+
+
+def test_data_grid_editing_keeps_errors_open_and_escape_cancels() -> None:
+    grid = DataGrid(
+        [
+            DataGridColumn(
+                "qty",
+                "Qty",
+                editable=True,
+                parser=int,
+                validator=lambda value: "must be positive" if value <= 0 else None,
+            )
+        ],
+        [DataGridRow("line", {"qty": 5})],
+        cursor_mode="cell",
+    )
+
+    assert grid.start_edit("line", "qty") is True
+    assert grid.handle_input(InputEvent(kind="text", text="0")) is True
+    assert grid.handle_input(InputEvent(kind="key", key="enter")) is None
+    assert grid.editing_cell_key == ("line", "qty")
+    assert grid.editing_error == "must be positive"
+    assert grid.cell_value("line", "qty") == 5
+    assert grid.handle_input(InputEvent(kind="key", key="escape")) is True
+    assert grid.editing_cell_key is None
+    assert grid.editing_error is None
