@@ -80,9 +80,10 @@ class _DirectoryModelNode:
     traversable_directory: bool = False
 ```
 
-- Use deterministic TreeView values:
-  - real rows: `path.as_posix()`
-  - synthetic rows: `f"{parent.as_posix()}::<directory-tree:{kind}:{index}>"`
+- Use deterministic, collision-free private `TreeView` values. POSIX filenames
+  cannot contain NUL, so prefix generated values with `"\0"`:
+  - real rows: `f"\0real:{path.as_posix()}"`
+  - synthetic rows: `f"\0synthetic:{parent.as_posix()}:{kind}:{index}"`
 - Keep these private indexes:
   - `_value_to_entry: dict[str, DirectoryTreeEntry]`
   - `_path_to_value: dict[Path, str]`
@@ -112,6 +113,7 @@ Create `tests/tui/test_widgets_directory_tree.py` with shared helpers and these 
 ```python
 from __future__ import annotations
 
+import ast
 import inspect
 import runpy
 import shutil
@@ -197,7 +199,15 @@ def test_directory_tree_rejects_relative_outside_and_dotdot_public_paths(tmp_pat
 def test_directory_tree_tui_widget_has_no_coding_imports() -> None:
     import loushang.tui.ui_parts.widgets.directory_tree as module
 
-    assert "loushang.coding" not in inspect.getsource(module)
+    source = ast.parse(inspect.getsource(module))
+    imports: list[str] = []
+    for node in ast.walk(source):
+        if isinstance(node, ast.Import):
+            imports.extend(alias.name for alias in node.names)
+        elif isinstance(node, ast.ImportFrom) and node.module:
+            imports.append(node.module)
+
+    assert not any(name == "loushang.coding" or name.startswith("loushang.coding.") for name in imports)
 ```
 
 - [ ] **Step 2: Run the focused tests and verify the expected failure**
@@ -251,8 +261,6 @@ PathSortKey = Callable[[Path], object]
 @dataclass(init=False, slots=True)
 class DirectoryTree:
     root: str | Path
-    active_path: str | Path | None = None
-    expanded_paths: Sequence[str | Path] = ()
     show_hidden: bool = False
     path_filter: PathFilter | None = None
     ignore_matcher: PathFilter | None = None
@@ -263,6 +271,8 @@ class DirectoryTree:
     theme: ThemeResolver | None = None
     focused: bool = False
     _root_path: Path = field(init=False, repr=False)
+    _active_path: Path | None = field(default=None, init=False, repr=False)
+    _initial_expanded_paths: tuple[Path, ...] = field(default=(), init=False, repr=False)
 
     def __init__(
         self,
@@ -280,8 +290,6 @@ class DirectoryTree:
         focused: bool = False,
     ) -> None:
         self.root = root
-        self.active_path = active_path
-        self.expanded_paths = tuple(expanded_paths)
         self.show_hidden = show_hidden
         self.path_filter = path_filter
         self.ignore_matcher = ignore_matcher
@@ -296,14 +304,21 @@ class DirectoryTree:
             raise ValueError(f"DirectoryTree root is missing: {self._root_path}")
         if not self._root_path.is_dir():
             raise ValueError(f"DirectoryTree root is not a directory: {self._root_path}")
-        if active_path is not None:
-            self._normalize_under_root(Path(active_path), label="active_path")
-        for path in self.expanded_paths:
+        self._active_path = (
+            None if active_path is None else self._normalize_under_root(Path(active_path), label="active_path")
+        )
+        self._initial_expanded_paths = tuple(
             self._normalize_under_root(Path(path), label="expanded_paths")
+            for path in expanded_paths
+        )
 
     @property
     def root_path(self) -> Path:
         return self._root_path
+
+    @property
+    def active_path(self) -> Path | None:
+        return self._active_path
 
     def _normalize_under_root(self, path: Path, *, label: str) -> Path:
         normalized = _normalize_absolute_lexical(path, label=label)
@@ -518,6 +533,16 @@ git commit -m "feat(tui): scan directory tree entries"
 Append tests:
 
 ```python
+def assert_root_error_model(tree: DirectoryTree, root: Path) -> None:
+    assert len(tree.visible_entries) == 1
+    assert tree.visible_entries[0].kind == "error"
+    assert tree.visible_entries[0].path == root
+    assert tree.visible_entries[0].disabled is True
+    assert tree.visible_paths == ()
+    assert tree.active_path is None
+    assert tree.expanded_path_set == frozenset()
+
+
 def test_directory_tree_initial_active_and_expanded_paths_repair(tmp_path: Path) -> None:
     build_tree_fixture(tmp_path)
 
@@ -547,10 +572,14 @@ def test_directory_tree_expansion_methods_validate_paths_and_repair_active(tmp_p
     assert tree.toggle_path(tmp_path / "src") is True
     assert tree.expand_path(tmp_path / "README.md") is False
 
-    with pytest.raises(ValueError):
-        tree.expand_path(Path("relative"))
-    with pytest.raises(ValueError):
-        tree.expand_path(tmp_path.parent / "outside")
+    for method_name in ("expand_path", "collapse_path", "toggle_path", "is_expanded"):
+        method = getattr(tree, method_name)
+        with pytest.raises(ValueError):
+            method(Path("relative"))
+        with pytest.raises(ValueError):
+            method(tmp_path.parent / "outside")
+        with pytest.raises(ValueError):
+            method(tmp_path / ".." / tmp_path.name)
 
 
 def test_directory_tree_reload_preserves_valid_state_and_repairs_removed_paths(tmp_path: Path) -> None:
@@ -573,13 +602,38 @@ def test_directory_tree_reload_root_invalidation_uses_disabled_error_model(tmp_p
     shutil.rmtree(tmp_path)
     tree.reload()
 
-    assert len(tree.visible_entries) == 1
-    assert tree.visible_entries[0].kind == "error"
-    assert tree.visible_entries[0].path == tmp_path
-    assert tree.visible_entries[0].disabled is True
-    assert tree.visible_paths == ()
-    assert tree.active_path is None
-    assert tree.expanded_path_set == frozenset()
+    assert_root_error_model(tree, tmp_path)
+
+
+def test_directory_tree_reload_root_becomes_file_uses_disabled_error_model(tmp_path: Path) -> None:
+    build_tree_fixture(tmp_path)
+    tree = DirectoryTree(root=tmp_path)
+
+    shutil.rmtree(tmp_path)
+    tmp_path.write_text("now a file", encoding="utf-8")
+    tree.reload()
+
+    assert_root_error_model(tree, tmp_path)
+
+
+def test_directory_tree_reload_unreadable_root_uses_disabled_error_model(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    build_tree_fixture(tmp_path)
+    tree = DirectoryTree(root=tmp_path)
+    original_iterdir = Path.iterdir
+
+    def fail_root(path: Path):
+        if path == tmp_path:
+            raise PermissionError("blocked")
+        return original_iterdir(path)
+
+    monkeypatch.setattr(Path, "iterdir", fail_root)
+
+    tree.reload()
+
+    assert_root_error_model(tree, tmp_path)
 
 
 def test_directory_tree_unreadable_root_construction_uses_disabled_error_model(
@@ -597,13 +651,7 @@ def test_directory_tree_unreadable_root_construction_uses_disabled_error_model(
 
     tree = DirectoryTree(root=tmp_path)
 
-    assert len(tree.visible_entries) == 1
-    assert tree.visible_entries[0].kind == "error"
-    assert tree.visible_entries[0].path == tmp_path
-    assert tree.visible_entries[0].disabled is True
-    assert tree.visible_paths == ()
-    assert tree.active_path is None
-    assert tree.expanded_path_set == frozenset()
+    assert_root_error_model(tree, tmp_path)
 ```
 
 - [ ] **Step 2: Run tests and verify expected failures**
@@ -807,6 +855,18 @@ def test_directory_tree_max_entries_inserts_sentinels_and_counts_collapsed_desce
     assert any(entry.kind == "sentinel" and entry.disabled for entry in tree.visible_entries)
 
 
+def test_directory_tree_max_entries_below_one_normalizes_to_one(tmp_path: Path) -> None:
+    (tmp_path / "alpha").mkdir()
+    (tmp_path / "beta").mkdir()
+
+    tree = DirectoryTree(root=tmp_path, max_entries=0)
+
+    assert tmp_path in tree.visible_paths
+    assert tmp_path / "alpha" in tree.visible_paths
+    assert tmp_path / "beta" not in tree.visible_paths
+    assert any(entry.kind == "sentinel" for entry in tree.visible_entries)
+
+
 def test_directory_tree_nested_sentinel_can_exist_with_parent_sentinel(tmp_path: Path) -> None:
     (tmp_path / "alpha" / "a").mkdir(parents=True)
     (tmp_path / "alpha" / "b").mkdir()
@@ -814,8 +874,11 @@ def test_directory_tree_nested_sentinel_can_exist_with_parent_sentinel(tmp_path:
 
     tree = DirectoryTree(root=tmp_path, expanded_paths=(tmp_path / "alpha",), max_entries=2)
 
-    sentinel_labels = [entry.label for entry in tree.visible_entries if entry.kind == "sentinel"]
-    assert len(sentinel_labels) == 2
+    sentinels = [entry for entry in tree.visible_entries if entry.kind == "sentinel"]
+    assert len(sentinels) == 2
+    assert all(entry.path is None for entry in sentinels)
+    assert all(entry.disabled for entry in sentinels)
+    assert all(entry.path not in tree.visible_paths for entry in sentinels)
 
 
 def test_directory_tree_root_symlink_is_traversed_but_public_paths_stay_lexical(tmp_path: Path) -> None:
@@ -1064,7 +1127,7 @@ Expected: PASS.
 Run:
 
 ```bash
-uv --cache-dir .uv-cache run --extra dev ruff check src/loushang/tui/ui_parts/widgets/directory_tree.py tests/tui/test_widgets_directory_tree.py examples/tui/57_widgets_directory_tree.py
+uv --cache-dir .uv-cache run --extra dev ruff check src/loushang/tui/ui_parts/widgets/directory_tree.py src/loushang/tui/ui_parts/widgets/__init__.py src/loushang/tui/ui_parts/__init__.py src/loushang/tui/__init__.py tests/tui/test_widgets_directory_tree.py examples/tui/57_widgets_directory_tree.py
 ```
 
 Expected: PASS.

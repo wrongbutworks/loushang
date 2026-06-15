@@ -111,7 +111,7 @@ Possible product pages may still use names such as `FileExplorerPage` or
 
 ## Public API
 
-First slice:
+First slice constructor shape:
 
 ```python
 from collections.abc import Callable, Sequence
@@ -169,7 +169,10 @@ Required public methods and properties:
 - `expand_path(path)`, `collapse_path(path)`, `toggle_path(path)`
 - `is_expanded(path)`
 
-`DirectoryTree` may internally create `TreeNode` values from normalized path
+The constructor accepts `str | Path` inputs for caller convenience. Public
+properties expose normalized lexical `Path` values: `root_path`,
+`active_path`, `expanded_path_set`, and `visible_paths` never return raw input
+strings. `DirectoryTree` may internally create `TreeNode` values from private
 strings, but the public API exposes `Path` objects and `DirectoryTreeEntry`
 objects rather than string node values. `visible_paths` includes only real file
 and directory rows. `visible_entries` includes real rows plus disabled
