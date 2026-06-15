@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import ast
 import inspect
+import runpy
 import shutil
 from pathlib import Path
 from typing import Any
@@ -24,6 +25,7 @@ from loushang.tui import (
 )
 from loushang.tui.ui_parts import DirectoryTree as UiDirectoryTree
 from loushang.tui.ui_parts.widgets import DirectoryTree as WidgetDirectoryTree
+from tests.tui.widget_example_playback import play_example
 
 
 def render_plain(part: Any, *, width: int = 50, height: int = 10) -> tuple[str, ...]:
@@ -463,3 +465,33 @@ def test_directory_tree_runtime_scan_error_renders_disabled_error_row(
     tree = DirectoryTree(root=tmp_path, expanded_paths=(tmp_path / "src",))
 
     assert any(entry.kind == "error" and entry.disabled and entry.path == tmp_path / "src" for entry in tree.visible_entries)
+
+
+def test_widgets_directory_tree_example_imports() -> None:
+    namespace = runpy.run_path("examples/tui/57_widgets_directory_tree.py", run_name="__test__")
+
+    build_app = namespace["build_app"]
+    app = build_app()
+    result = app.render(RenderConstraints(width=90, max_height=24))
+
+    assert callable(build_app)
+    assert result.lines
+
+
+def test_widgets_directory_tree_example_playback_selects_and_toggles_hidden_files() -> None:
+    frames = play_example(
+        "examples/tui/57_widgets_directory_tree.py",
+        events=(
+            ("down", InputEvent(kind="key", key="down")),
+            ("enter select", InputEvent(kind="key", key="enter")),
+            ("hidden toggle", InputEvent(kind="text", text="h")),
+            ("reload", InputEvent(kind="text", text="r")),
+        ),
+        width=90,
+        height=24,
+    )
+
+    assert "Directory Tree" in frames[0].lines[0]
+    assert any("Selected:" in line for line in frames[2].lines)
+    assert any(".env" in line for line in frames[3].lines)
+    assert any("Reloaded" in line for line in frames[4].lines)
