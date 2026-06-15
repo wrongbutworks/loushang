@@ -101,6 +101,19 @@ grid = DataGrid(
 grid.focus()
 ```
 
+对于常见数据源，`DataGrid` 也提供显式 adapter 构造入口。
+`from_records()` 接受 mapping records，并按首次出现的 key 顺序推断列。
+`from_json()` 接受 JSON 文本、顶层 record list，或包含 `records` list 的对象。
+`from_csv()` 使用标准库 CSV parser 读取 header row，CSV 单元格值保持为字符串。
+
+```python
+grid = DataGrid.from_csv(
+    "symbol,price\nAAPL,196.45\nMSFT,421.10\n",
+    row_key_field="symbol",
+    cursor_mode="cell",
+)
+```
+
 在 `cell` 模式下，可编辑 active cell 上的可打印输入会直接进入编辑。
 编辑中左右键只移动编辑缓冲区内的光标；Enter 提交，Escape 取消，Tab
 提交并尝试进入下一个可编辑单元格。即使列的展示态是右对齐，编辑缓冲区
@@ -411,3 +424,19 @@ Dialog 会先处理 `escape` 和 `ctrl+c`，再委派给内部字段。body 焦�
   一个带队列、关闭和清空动作的内联 toast stack 示例。
 - [examples/tui/51_widgets_command_palette.py](../../../examples/tui/51_widgets_command_palette.py)：
   一个带过滤、导航、选择和取消行为的可搜索命令面板示例。
+- [examples/tui/52_widgets_tabgroup_searchable_list.py](../../../examples/tui/52_widgets_tabgroup_searchable_list.py)：
+  带 tab 和可搜索长列表的 settings 风格页面示例。
+- [examples/tui/53_widgets_page_scaffold.py](../../../examples/tui/53_widgets_page_scaffold.py)：
+  带 header、body、footer 和焦点路由的可复用页面脚手架示例。
+- [examples/tui/54_widgets_settings_page_assembly.py](../../../examples/tui/54_widgets_settings_page_assembly.py)：
+  使用 page、tabs 和 searchable list 组合 settings 页面。
+- [examples/tui/55_widgets_tree_page_scaffold.py](../../../examples/tui/55_widgets_tree_page_scaffold.py)：
+  将 tree view 放入可复用页面脚手架的示例。
+- [examples/tui/56_widgets_table_page_scaffold.py](../../../examples/tui/56_widgets_table_page_scaffold.py)：
+  将 table view 放入可复用页面脚手架的示例。
+- [examples/tui/57_widgets_directory_tree.py](../../../examples/tui/57_widgets_directory_tree.py)：
+  directory tree 渲染和导航示例。
+- [examples/tui/58_widgets_datagrid.py](../../../examples/tui/58_widgets_datagrid.py)：
+  展示编辑、排序、固定列和突变能力的交互式 DataGrid 示例。
+- [examples/tui/59_widgets_datagrid_adapters.py](../../../examples/tui/59_widgets_datagrid_adapters.py)：
+  从 records、JSON 和 CSV 数据源构造 DataGrid 的示例。
