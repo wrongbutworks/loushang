@@ -113,7 +113,8 @@ class DataGridExampleApp(FocusableMixin):
             right = grid_result.lines[index].text if index < len(grid_result.lines) else ""
             rows.append(RenderLine(_combine(left, right, width=width)))
         rows.append(RenderLine(""))
-        rows.append(RenderLine(_style(truncate_to_width(_footer(self), max_width=width, ellipsis=""), "example.dataGrid.meta")))
+        footer_token = "widget.dataGrid.error" if self.active_scenario.grid.editing_error else "example.dataGrid.meta"
+        rows.append(RenderLine(_style(truncate_to_width(_footer(self), max_width=width, ellipsis=""), footer_token)))
         cursor = None
         if self.focus_region == "grid" and grid_result.cursor is not None:
             cursor = CursorDeclaration(row=2 + grid_result.cursor.row, column=LEFT_WIDTH + 3 + grid_result.cursor.column)
@@ -209,10 +210,17 @@ class DataGridExampleApp(FocusableMixin):
         row_key = grid.active_row_key
         if row_key is None or row_key == "total":
             return False
+        preferred_column = grid.active_column_key or "code"
+        editable_rows = tuple(key for key in grid.row_keys if key != "total")
+        deleted_index = editable_rows.index(row_key) if row_key in editable_rows else 0
         if not grid.remove_row(row_key):
             return False
         _ensure_order_entry_line(grid)
         _refresh_order_total(grid)
+        next_rows = tuple(key for key in grid.row_keys if key != "total")
+        if next_rows:
+            target_index = min(deleted_index, len(next_rows) - 1)
+            grid.activate_cell(next_rows[target_index], preferred_column)
         self.status = f"Deleted {row_key}"
         return True
 
@@ -232,18 +240,23 @@ class DataGridExampleApp(FocusableMixin):
 
 
 def build_app() -> Tui:
+    tui, _app = _build_app_parts()
+    return tui
+
+
+def _build_app_parts() -> tuple[Tui, DataGridExampleApp]:
     tui = Tui()
     app = DataGridExampleApp()
     tui.add_child(app)
     tui.set_focus(app)
-    return tui
+    return tui, app
 
 
 async def main() -> int:
-    tui = build_app()
+    tui, app = _build_app_parts()
 
     async def on_input(event: InputEvent, context: Any) -> TuiInputResult:
-        if _should_quit(event):
+        if _should_quit(event, app):
             return context.stop(0)
         context.tui.handle_input(event)
         return TuiInputResult()
@@ -296,7 +309,7 @@ def _order_grid() -> DataGrid:
         (
             DataGridColumn("code", "Code", width=8, editable=True, enter_behavior="edit", edit_next_column_key="qty"),
             DataGridColumn("name", "Name", width=12),
-            DataGridColumn("qty", "Qty", width=5, align="right", editable=True, parser=int),
+            DataGridColumn("qty", "Qty", width=5, align="right", editable=True, parser=_parse_qty),
             DataGridColumn("price", "Price", width=8, align="right", formatter=NumberFormatter(precision=2)),
             DataGridColumn("total", "Total", width=9, align="right", formatter=NumberFormatter(precision=2)),
         ),
@@ -443,6 +456,13 @@ def _style(text: str, token: str) -> str:
 
 
 def _footer(app: DataGridExampleApp) -> str:
+    error = app.active_scenario.grid.editing_error
+    if error:
+        return truncate_to_width(
+            f"{app.active_scenario.title} | Error: {error} | fix value, Enter retry, Esc cancel",
+            max_width=120,
+            ellipsis="",
+        )
     return truncate_to_width(
         f"{app.active_scenario.title} | tab panes | list: up/down, enter/right grid | grid: type/e edit, enter commit, delete/ctrl+d row | q quit | {app.status}",
         max_width=120,
@@ -450,12 +470,32 @@ def _footer(app: DataGridExampleApp) -> str:
     )
 
 
-def _should_quit(event: InputEvent) -> bool:
+def _parse_qty(text: str) -> int:
+    try:
+        value = int(text)
+    except ValueError as exc:
+        raise ValueError("Qty must be a whole number") from exc
+    if value < 0:
+        raise ValueError("Qty must be 0 or greater")
+    return value
+
+
+def _should_quit(event: InputEvent, app: DataGridExampleApp | None = None) -> bool:
+    if event.kind == "text" and _is_editing_cell(app):
+        return False
     return (
         event.kind == "key"
         and event.key in {"q", "ctrl+c"}
         or event.kind == "text"
         and event.text.lower() == "q"
+    )
+
+
+def _is_editing_cell(app: DataGridExampleApp | None) -> bool:
+    return (
+        app is not None
+        and app.focus_region == "grid"
+        and app.active_scenario.grid.editing_cell_key is not None
     )
 
 
