@@ -17,8 +17,6 @@ from loushang.coding.ui.intent import (
     ModelSelectIntent,
     ModelsIntent,
     SettingsIntent,
-    StatusIntent,
-    StatuslineIntent,
     TerminalDiagnosticsIntent,
     parse_prompt_intent,
 )
@@ -387,7 +385,6 @@ class NativeSurfaceManager:
     session: Any
     status_provider: CodingTuiStatusProvider
     on_approval: Callable[[dict[str, Any]], Awaitable[None]] | None = None
-    set_statusline_visible: Callable[[bool | None], str] | None = None
     command_catalog: NativeCommandCatalog | None = None
     _handlers: dict[SurfaceEventSource, Callable[[Any], Awaitable[None]]] = field(init=False, repr=False)
     _active_overlay_view: NativeSurfaceView | None = None
@@ -432,20 +429,12 @@ class NativeSurfaceManager:
                     command_catalog=self._list_command_catalog(),
                 ),
             )
-        elif command.name == "status" and isinstance(intent, StatusIntent):
-            self._open_info("Status", self.status_provider.render())
         elif command.name == "terminal" and isinstance(intent, TerminalDiagnosticsIntent):
             self._open_terminal_diagnostics()
         elif command.name == "hotkeys" and isinstance(intent, HotkeysIntent):
             self._open_info("Hotkeys", format_hotkeys())
         elif command.name in {"settings", "config"} and isinstance(intent, SettingsIntent):
             await self._open_settings()
-        elif command.name == "statusline" and isinstance(intent, StatuslineIntent):
-            message = self.status_provider.set_visible(intent.enabled)
-            if self.set_statusline_visible is not None:
-                message = self.set_statusline_visible(intent.enabled)
-            self.app.set_statusline_settings(self.status_provider.statusline_settings())
-            self.app.set_status(message)
         return None
 
     def _lookup_local_command(self, text: str) -> CommandDef | None:

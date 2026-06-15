@@ -83,8 +83,6 @@ def test_native_tui_playback_composer_scenarios_live_in_composer_module() -> Non
 def test_native_tui_playback_surface_scenarios_live_in_surface_module() -> None:
     assert [scenario.name for scenario in SURFACE_SCENARIOS] == [
         "active-surface",
-        "status-surface",
-        "statusline-command",
         "command-palette-select",
         "command-palette-session-command",
         "commands-info-surface",
@@ -172,8 +170,6 @@ def test_native_tui_playback_runner_lists_default_scenarios(capsys) -> None:
     assert "unknown-slash-prompt" in captured.out
     assert "non-executable-session-command" in captured.out
     assert "running-follow-up-queued" in captured.out
-    assert "status-surface" in captured.out
-    assert "statusline-command" in captured.out
     assert "command-palette-select" in captured.out
     assert "command-palette-session-command" in captured.out
     assert "commands-info-surface" in captured.out
@@ -406,11 +402,10 @@ def test_native_tui_playback_runner_runs_settings_search_scenario(capsys) -> Non
 
 
 def test_native_tui_playback_runner_runs_info_surface_scenarios(capsys) -> None:
-    exit_code = run_playback_cli(["status-surface", "commands-info-surface"])
+    exit_code = run_playback_cli(["commands-info-surface"])
 
     captured = capsys.readouterr()
     assert exit_code == 0
-    assert "PASS status-surface" in captured.out
     assert "PASS commands-info-surface" in captured.out
 
 
@@ -422,14 +417,6 @@ def test_native_tui_playback_runner_runs_commands_info_session_command_scenario(
     captured = capsys.readouterr()
     assert exit_code == 0
     assert "PASS commands-info-session-command" in captured.out
-
-
-def test_native_tui_playback_runner_runs_statusline_command_scenario(capsys) -> None:
-    exit_code = run_playback_cli(["statusline-command"])
-
-    captured = capsys.readouterr()
-    assert exit_code == 0
-    assert "PASS statusline-command" in captured.out
 
 
 def test_native_tui_playback_runner_runs_command_palette_select_scenario(

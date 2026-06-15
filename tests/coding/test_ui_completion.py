@@ -12,7 +12,7 @@ class _Session:
         return [
             SimpleNamespace(name="model", description="Select model", source="builtin"),
             SimpleNamespace(name="models", description="List models", source="builtin"),
-            SimpleNamespace(name="status", description="Show status", source="builtin"),
+            SimpleNamespace(name="report", description="Show report", source="builtin"),
         ]
 
     def get_model_selection(self) -> ModelSelection:

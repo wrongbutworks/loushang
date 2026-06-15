@@ -5,7 +5,7 @@ from types import SimpleNamespace
 
 def test_coding_command_catalog_classifies_local_and_session_commands() -> None:
     from loushang.coding.commands.catalog import CodingCommandCatalog
-    from loushang.coding.ui.intent import PromptIntent, StatusIntent
+    from loushang.coding.ui.intent import PromptIntent, SettingsIntent
     from loushang.coding.ui.prompt_routing import PromptRoute
     from loushang.runtime.commands import CommandEffectKind, CommandKind
 
@@ -21,11 +21,11 @@ def test_coding_command_catalog_classifies_local_and_session_commands() -> None:
         ]
     )
 
-    status_effect = catalog.effect_for_route(PromptRoute.STATUS, StatusIntent())
-    assert status_effect is not None
-    assert status_effect.kind is CommandEffectKind.LOCAL_UI
-    assert status_effect.command.kind is CommandKind.LOCAL_UI
-    assert status_effect.command.id == "coding.ui.status"
+    settings_effect = catalog.effect_for_route(PromptRoute.SETTINGS, SettingsIntent())
+    assert settings_effect is not None
+    assert settings_effect.kind is CommandEffectKind.LOCAL_UI
+    assert settings_effect.command.kind is CommandKind.LOCAL_UI
+    assert settings_effect.command.id == "coding.ui.settings"
 
     name_effect = catalog.effect_for_route(PromptRoute.DISPATCH, PromptIntent("/name Project Alpha"))
     assert name_effect is not None
@@ -60,7 +60,6 @@ def test_coding_command_catalog_preserves_local_command_argument_rules() -> None
     assert catalog.lookup("/model kimi").name == "model"
     assert catalog.lookup("/commands model").name == "commands"
     assert catalog.lookup("/config").name == "config"
-    assert catalog.lookup("/status extra") is None
     assert catalog.lookup("/terminal extra") is None
 
 
@@ -70,7 +69,7 @@ def test_coding_command_catalog_lists_local_and_session_commands_once() -> None:
 
     catalog = CodingCommandCatalog(
         session_commands=lambda: [
-            SimpleNamespace(name="status", description="Session status", source="builtin"),
+            SimpleNamespace(name="report", description="Session report", source="builtin"),
             SimpleNamespace(name="deploy", description="Deploy app", source="extension"),
         ]
     )
@@ -78,9 +77,9 @@ def test_coding_command_catalog_lists_local_and_session_commands_once() -> None:
     commands = catalog.commands()
     by_name = {command.name: command for command in commands}
 
-    assert len([command for command in commands if command.name == "status"]) == 1
-    assert by_name["status"].kind is CommandKind.SESSION
-    assert by_name["status"].source == "builtin"
+    assert len([command for command in commands if command.name == "report"]) == 1
+    assert by_name["report"].kind is CommandKind.SESSION
+    assert by_name["report"].source == "builtin"
     assert by_name["deploy"].kind is CommandKind.SESSION
     assert by_name["deploy"].source == "extension"
     assert by_name["settings"].kind is CommandKind.LOCAL_UI

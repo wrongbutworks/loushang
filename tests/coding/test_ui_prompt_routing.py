@@ -13,8 +13,6 @@ def test_prompt_routing_keeps_running_inputs_pi_style() -> None:
         PromptIntent,
         QuitIntent,
         SettingsIntent,
-        StatusIntent,
-        StatuslineIntent,
     )
     from loushang.coding.ui.lifecycle import RunLifecycle
     from loushang.coding.ui.prompt_routing import PromptRoute, route_prompt_intent
@@ -25,12 +23,10 @@ def test_prompt_routing_keeps_running_inputs_pi_style() -> None:
     assert route_prompt_intent(FollowUpIntent("later"), lifecycle) is PromptRoute.FOLLOW_UP
     assert route_prompt_intent(PromptIntent("steer"), lifecycle) is PromptRoute.STEER
     assert route_prompt_intent(DebugIntent(), lifecycle) is PromptRoute.STEER
-    assert route_prompt_intent(StatusIntent(), lifecycle) is PromptRoute.STATUS
     assert route_prompt_intent(ModelSelectIntent(), lifecycle) is PromptRoute.MODEL_SELECT
     assert route_prompt_intent(ModelsIntent(), lifecycle) is PromptRoute.MODELS
     assert route_prompt_intent(HotkeysIntent(), lifecycle) is PromptRoute.HOTKEYS
     assert route_prompt_intent(SettingsIntent(), lifecycle) is PromptRoute.SETTINGS
-    assert route_prompt_intent(StatuslineIntent(), lifecycle) is PromptRoute.STATUSLINE
     assert route_prompt_intent(CommandSelectIntent(), lifecycle) is PromptRoute.COMMAND_SELECT
     assert route_prompt_intent(CommandsIntent(), lifecycle) is PromptRoute.COMMANDS
     assert route_prompt_intent(QuitIntent(), lifecycle) is PromptRoute.DISPATCH
@@ -63,8 +59,6 @@ def test_prompt_routing_dispatches_idle_intents_except_debug_and_follow_up() -> 
         PromptIntent,
         QuitIntent,
         SettingsIntent,
-        StatusIntent,
-        StatuslineIntent,
     )
     from loushang.coding.ui.lifecycle import RunLifecycle
     from loushang.coding.ui.prompt_routing import PromptRoute, route_prompt_intent
@@ -72,12 +66,10 @@ def test_prompt_routing_dispatches_idle_intents_except_debug_and_follow_up() -> 
     lifecycle = RunLifecycle()
 
     assert route_prompt_intent(DebugIntent(), lifecycle) is PromptRoute.DEBUG
-    assert route_prompt_intent(StatusIntent(), lifecycle) is PromptRoute.STATUS
     assert route_prompt_intent(ModelSelectIntent(), lifecycle) is PromptRoute.MODEL_SELECT
     assert route_prompt_intent(ModelsIntent(), lifecycle) is PromptRoute.MODELS
     assert route_prompt_intent(HotkeysIntent(), lifecycle) is PromptRoute.HOTKEYS
     assert route_prompt_intent(SettingsIntent(), lifecycle) is PromptRoute.SETTINGS
-    assert route_prompt_intent(StatuslineIntent(), lifecycle) is PromptRoute.STATUSLINE
     assert route_prompt_intent(CommandSelectIntent(), lifecycle) is PromptRoute.COMMAND_SELECT
     assert route_prompt_intent(CommandsIntent(), lifecycle) is PromptRoute.COMMANDS
     assert route_prompt_intent(FollowUpIntent("later"), lifecycle) is PromptRoute.FOLLOW_UP

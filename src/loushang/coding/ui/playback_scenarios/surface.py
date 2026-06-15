@@ -37,33 +37,12 @@ def _run_active_surface() -> NativeTuiInputPlaybackResult:
     return result
 
 
-def _run_status_surface() -> object:
-    playback = NativeTuiLoopPlayback(width=100, height=18, model_label="moonshot/kimi-for-coding")
-    manager = _surface_manager(playback.app)
-
-    result = playback.run(
-        (0.00, "/status\r"),
-        (0.01, "\r"),
-        (0.03, ""),
-        handle_local=manager.handle_text,
-        handle_surface_intent=manager.handle_surface_intent,
-        is_local_command=manager.is_local_command,
-    )
-
-    result.assert_exit_code(0)
-    result.assert_text_contains("Status")
-    result.assert_text_contains("moonshot/kimi-for-coding")
-    result.assert_no_clear_screen()
-    assert result.app.active_surface is None
-    return result
-
-
 def _run_commands_info_surface() -> object:
     playback = NativeTuiLoopPlayback(width=100, height=18, model_label="moonshot/kimi-for-coding")
     manager = _surface_manager(playback.app)
 
     result = playback.run(
-        (0.00, "/commands status\r"),
+        (0.00, "/commands terminal\r"),
         (0.01, "\r"),
         (0.03, ""),
         handle_local=manager.handle_text,
@@ -73,7 +52,7 @@ def _run_commands_info_surface() -> object:
 
     result.assert_exit_code(0)
     result.assert_text_contains("Commands")
-    result.assert_text_contains("/status - Show current status (local)")
+    result.assert_text_contains("/terminal - Show terminal diagnostics (local)")
     result.assert_text_not_contains("/settings - Open settings (local)")
     result.assert_no_clear_screen()
     assert result.app.active_surface is None
@@ -97,44 +76,12 @@ def _run_commands_info_session_command() -> object:
     result.assert_exit_code(0)
     result.assert_text_contains("Commands")
     result.assert_text_contains("/name <name> - Set session display name (builtin)")
-    result.assert_text_not_contains("/status - Show current status (local)")
+    result.assert_text_not_contains("/terminal - Show terminal diagnostics (local)")
     result.assert_no_clear_screen()
     assert session.commands == []
     assert session.prompts == []
     assert result.app.active_surface is None
     return result
-
-
-def _run_statusline_command() -> object:
-    playback = NativeTuiLoopPlayback(width=100, height=18, model_label="moonshot/kimi-for-coding")
-    manager = _surface_manager(playback.app)
-
-    off_result = playback.run(
-        (0.00, "/statusline off\r"),
-        (0.02, ""),
-        handle_local=manager.handle_text,
-        is_local_command=manager.is_local_command,
-    )
-
-    off_result.assert_exit_code(0)
-    assert playback.app.state.statusline_visible is False
-    assert playback.app.state.status_message == "Status line: off"
-    off_result.assert_no_clear_screen()
-
-    on_result = playback.run(
-        (0.00, "/statusline on\r"),
-        (0.02, ""),
-        handle_local=manager.handle_text,
-        is_local_command=manager.is_local_command,
-    )
-
-    on_result.assert_exit_code(0)
-    assert playback.app.state.statusline_visible is True
-    assert playback.app.state.status_message == "Status line: on"
-    on_result.assert_text_contains("Status line: on")
-    on_result.assert_text_contains("moonshot/kimi-for-coding | repo | main | abcd | idle")
-    on_result.assert_no_clear_screen()
-    return on_result
 
 
 def _run_command_palette_select() -> object:
@@ -143,7 +90,7 @@ def _run_command_palette_select() -> object:
 
     result = playback.run(
         (0.00, "/command\r"),
-        (0.01, "sta"),
+        (0.01, "ter"),
         (0.03, "\r"),
         (0.05, ""),
         handle_local=manager.handle_text,
@@ -152,8 +99,8 @@ def _run_command_palette_select() -> object:
     )
 
     result.assert_exit_code(0)
-    result.assert_composer_text("/status ")
-    result.assert_text_contains("Command selected: /status")
+    result.assert_composer_text("/terminal ")
+    result.assert_text_contains("Command selected: /terminal")
     result.assert_no_clear_screen()
     assert result.app.active_surface is None
     return result
@@ -380,18 +327,6 @@ SURFACE_SCENARIOS = (
         name="active-surface",
         description="Route enter to an active surface before the composer.",
         run=_run_active_surface,
-    ),
-    NativePlaybackScenarioSpec(
-        name="status-surface",
-        description="Open and close the native status info surface through the local command path.",
-        run=_run_status_surface,
-        tags=("command", "surface"),
-    ),
-    NativePlaybackScenarioSpec(
-        name="statusline-command",
-        description="Toggle the native status line through the local command path.",
-        run=_run_statusline_command,
-        tags=("command", "local"),
     ),
     NativePlaybackScenarioSpec(
         name="command-palette-select",

@@ -13,7 +13,6 @@ from loushang.coding.ui.intent import (
     ModelSelectIntent,
     ModelsIntent,
     QuitIntent,
-    StatuslineIntent,
     parse_prompt_intent,
 )
 from loushang.coding.ui.lifecycle import RunLifecycle
@@ -92,14 +91,12 @@ class CodingTuiHandlers:
         render_status: Callable[[str], None],
         render_info_panel: Callable[[InfoPanel], None] | None = None,
         present_info_panel: InfoPanelPresenter | None = None,
-        status: Callable[[], str] = lambda: "",
         model_select: ModelSelectFn | None = None,
         models: ModelsFn | None = None,
         command_select: CommandSelectFn | None = None,
         commands: CommandsFn | None = None,
         hotkeys: Callable[[], str] = lambda: "",
         settings_text: SettingsTextFn | None = None,
-        statusline: Callable[[bool | None], str] = lambda _enabled: "",
         now: Callable[[], float],
         session_running: Callable[[], bool],
         trace: TraceFn,
@@ -120,14 +117,12 @@ class CodingTuiHandlers:
         self._render_status = render_status
         self._render_info_panel = render_info_panel
         self._present_info_panel = present_info_panel
-        self._status = status
         self._model_select = model_select or _empty_model_select
         self._models = models or _empty_models
         self._command_select = command_select or _empty_command_select
         self._commands = commands or _empty_commands
         self._hotkeys = hotkeys
         self._settings_text = settings_text or _empty_settings
-        self._statusline = statusline
         self._now = now
         self._session_running = session_running
         self._trace = trace
@@ -174,9 +169,6 @@ class CodingTuiHandlers:
             )
             if effect.kind is CommandEffectKind.LOCAL_UI and await self._handle_local_command_effect(effect, intent):
                 return None
-        if route is PromptRoute.STATUS:
-            await self._show_info("Status", self._status(), label="status:show", local=True)
-            return None
         if route is PromptRoute.MODEL_SELECT:
             query = intent.query if isinstance(intent, ModelSelectIntent) else ""
             text = await self._model_select(query)
@@ -203,20 +195,12 @@ class CodingTuiHandlers:
         if route is PromptRoute.SETTINGS:
             await self._emit(lambda: self._render_info("Settings", self._settings_text()), label="settings:show")
             return None
-        if route is PromptRoute.STATUSLINE:
-            enabled = intent.enabled if isinstance(intent, StatuslineIntent) else None
-            message = self._statusline(enabled)
-            await self._emit(lambda: self._render_status(message), label="statusline:set")
-            return None
 
         outcome = await self._dispatch(intent)
         return await self._result(outcome, prompt_started=prompt_started)
 
     async def _handle_local_command_effect(self, effect: CommandEffect, intent: CodingUiIntent) -> bool:
         command_name = effect.command.name
-        if command_name == "status":
-            await self._show_info("Status", self._status(), label="status:show", local=True)
-            return True
         if command_name == "model":
             query = intent.query if isinstance(intent, ModelSelectIntent) else ""
             text = await self._model_select(query)
@@ -242,11 +226,6 @@ class CodingTuiHandlers:
             return True
         if command_name == "settings":
             await self._emit(lambda: self._render_info("Settings", self._settings_text()), label="settings:show")
-            return True
-        if command_name == "statusline":
-            enabled = intent.enabled if isinstance(intent, StatuslineIntent) else None
-            message = self._statusline(enabled)
-            await self._emit(lambda: self._render_status(message), label="statusline:set")
             return True
         return False
 

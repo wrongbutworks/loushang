@@ -340,19 +340,19 @@ def test_native_tui_playback_command_surface_filters_and_selects_command() -> No
     steps = playback.play(
         [
             PlaybackEvent.input("/command\r"),
-            PlaybackEvent.input("sta\r"),
+            PlaybackEvent.input("rep\r"),
         ]
     )
 
     assert all(step.flush_succeeded for step in steps)
-    assert app.composer.value == "/status "
+    assert app.composer.value == "/report "
     assert app.active_surface is None
     assert app.surface_host is not None
     assert app.surface_host.entries == []
     lines = _plain_lines(steps[-1].diagnostics)
     assert "Commands" not in lines
-    assert "› /status " in lines
-    assert "Command selected: /status" in lines[-1]
+    assert "› /report " in lines
+    assert "Command selected: /report" in lines[-1]
     for step in steps:
         step.assert_no_clear_scrollback()
 
@@ -861,7 +861,7 @@ class _Session:
         return [
             SimpleNamespace(name="model", description="Select model", source="builtin"),
             SimpleNamespace(name="models", description="List models", source="builtin"),
-            SimpleNamespace(name="status", description="Show status", source="builtin"),
+            SimpleNamespace(name="report", description="Show report", source="builtin"),
             SimpleNamespace(name="terminal", description="Show terminal diagnostics", source="builtin"),
         ]
 
