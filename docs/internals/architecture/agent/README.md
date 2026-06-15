@@ -36,22 +36,21 @@ await agent.prompt("Hello")
 
 ## Harness Direction
 
-`loushang.agent.harness` is the headless execution scaffolding above the
-low-level loop. It is not a testing-only harness.
+`loushang.agent` remains the low-level runtime package for `Agent`, agent
+primitives, and the agent loop.
 
-The initial harness exposes a thin product-adapter surface:
-`AgentRunSpec`, `AgentRunResult`, and `run_agent()`. `AgentRunSpec` may carry an
-`event_sink` so stateful hosts can keep their existing event lifecycle while
-delegating loop execution to the harness. The harness reuses the existing agent
-loop and keeps coding, work, method, research, ppt, and cowork product semantics
-outside `loushang.agent`.
+`loushang.harness` owns the prepared-run contract shared by product adapters:
+`AgentRunSpec`, `AgentRunResult`, and `run_agent()`. These are the single
+prepared-run contract, not a second `HarnessRunSpec` layer. `loushang.harness`
+depends on `loushang.agent`; `loushang.agent` must not depend on
+`loushang.harness`.
 
-The harness API is intentionally imported from `loushang.agent.harness`; it is
-not re-exported from `loushang.agent.__init__` while the adapter contract
-settles.
+`src/loushang/agent/harness` / `loushang.agent.harness` is a deprecated
+temporary compatibility re-export. New code should import from
+`loushang.harness`.
 
 See [ARD-001: Agent Harness and Product Adapter Boundaries](ARD-001-agent-harness-and-product-adapters.md).
-The current P1 module ownership inventory is
+The current module ownership inventory is
 [Agent Harness Module Ownership Inventory](agent-harness-module-ownership-inventory.md).
 
 ## Event Flow

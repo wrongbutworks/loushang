@@ -59,8 +59,8 @@ Runtime execution observability is projected through `loushang.work`.
 `loushang.method` is optional for product execution.
 
 Product packages such as `loushang.coding`, and future `loushang.research`,
-`loushang.ppt`, and `loushang.cowork`, may call `loushang.agent.harness`
-directly for lightweight turns. They may also write or project through
+`loushang.ppt`, and `loushang.cowork`, may call `loushang.harness` directly for
+lightweight turns. They may also write or project through
 `loushang.work` directly.
 
 Use `method` when the product needs structured work: planning, staged execution,
