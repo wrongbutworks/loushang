@@ -332,7 +332,7 @@ class DirectoryTree:
 
     def _tree_node(self, node: _DirectoryModelNode) -> TreeNode:
         self._value_to_entry[node.tree_value] = node.entry
-        if node.entry.path is not None:
+        if node.entry.path is not None and node.entry.kind in ("directory", "file"):
             self._path_to_value[node.entry.path] = node.tree_value
             if node.traversable_directory:
                 self._traversable_paths.add(node.entry.path)

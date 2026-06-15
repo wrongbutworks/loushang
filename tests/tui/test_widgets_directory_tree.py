@@ -369,3 +369,97 @@ def test_directory_tree_reuses_tree_theme_tokens(tmp_path: Path) -> None:
 
     assert any(line.startswith("\x1b[1;32m> ") and "empty" in line for line in raw)
     assert any(line.startswith("\x1b[2m") and "No files" in line for line in raw)
+
+
+def test_directory_tree_max_entries_inserts_sentinels_and_counts_collapsed_descendants(tmp_path: Path) -> None:
+    (tmp_path / "alpha" / "nested").mkdir(parents=True)
+    (tmp_path / "alpha" / "nested" / "deep.txt").write_text("", encoding="utf-8")
+    (tmp_path / "beta").mkdir()
+    (tmp_path / "gamma.txt").write_text("", encoding="utf-8")
+
+    tree = DirectoryTree(
+        root=tmp_path,
+        expanded_paths=(tmp_path / "alpha", tmp_path / "alpha" / "nested"),
+        max_entries=2,
+    )
+
+    assert tmp_path in tree.visible_paths
+    assert tmp_path / "alpha" in tree.visible_paths
+    assert tmp_path / "alpha" / "nested" in tree.visible_paths
+    assert tmp_path / "alpha" / "nested" / "deep.txt" not in tree.visible_paths
+    assert any(entry.kind == "sentinel" and entry.disabled for entry in tree.visible_entries)
+
+
+def test_directory_tree_max_entries_below_one_normalizes_to_one(tmp_path: Path) -> None:
+    (tmp_path / "alpha").mkdir()
+    (tmp_path / "beta").mkdir()
+
+    tree = DirectoryTree(root=tmp_path, max_entries=0)
+
+    assert tmp_path in tree.visible_paths
+    assert tmp_path / "alpha" in tree.visible_paths
+    assert tmp_path / "beta" not in tree.visible_paths
+    assert any(entry.kind == "sentinel" for entry in tree.visible_entries)
+
+
+def test_directory_tree_nested_sentinel_can_exist_with_parent_sentinel(tmp_path: Path) -> None:
+    (tmp_path / "alpha" / "a").mkdir(parents=True)
+    (tmp_path / "alpha" / "b").mkdir()
+    (tmp_path / "omega").mkdir()
+
+    tree = DirectoryTree(root=tmp_path, expanded_paths=(tmp_path / "alpha",), max_entries=2)
+
+    sentinels = [entry for entry in tree.visible_entries if entry.kind == "sentinel"]
+    assert len(sentinels) == 2
+    assert all(entry.path is None for entry in sentinels)
+    assert all(entry.disabled for entry in sentinels)
+    assert all(entry.path not in tree.visible_paths for entry in sentinels)
+
+
+def test_directory_tree_root_symlink_is_traversed_but_public_paths_stay_lexical(tmp_path: Path) -> None:
+    target = tmp_path / "target"
+    target.mkdir()
+    (target / "child.txt").write_text("", encoding="utf-8")
+    link = tmp_path / "link-root"
+    link.symlink_to(target, target_is_directory=True)
+
+    tree = DirectoryTree(root=link)
+
+    assert tree.root_path == link
+    assert link / "child.txt" in tree.visible_paths
+    assert target / "child.txt" not in tree.visible_paths
+
+
+def test_directory_tree_descendant_symlink_directory_is_selectable_leaf(tmp_path: Path) -> None:
+    real = tmp_path / "real"
+    real.mkdir()
+    (real / "inside.txt").write_text("", encoding="utf-8")
+    link = tmp_path / "linked"
+    link.symlink_to(real, target_is_directory=True)
+
+    tree = DirectoryTree(root=tmp_path, expanded_paths=(link,), active_path=link)
+    tree.focus()
+
+    assert link in tree.visible_paths
+    assert link / "inside.txt" not in tree.visible_paths
+    assert tree.expand_path(link) is False
+    assert tree.handle_input(InputEvent(kind="key", key="enter")) == DirectoryTreeSelect(path=link, kind="directory")
+
+
+def test_directory_tree_runtime_scan_error_renders_disabled_error_row(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    build_tree_fixture(tmp_path)
+    original_iterdir = Path.iterdir
+
+    def fail_src(path: Path):
+        if path == tmp_path / "src":
+            raise PermissionError("blocked")
+        return original_iterdir(path)
+
+    monkeypatch.setattr(Path, "iterdir", fail_src)
+
+    tree = DirectoryTree(root=tmp_path, expanded_paths=(tmp_path / "src",))
+
+    assert any(entry.kind == "error" and entry.disabled and entry.path == tmp_path / "src" for entry in tree.visible_entries)
