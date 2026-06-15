@@ -572,10 +572,14 @@ def test_directory_tree_expansion_methods_validate_paths_and_repair_active(tmp_p
     assert tree.toggle_path(tmp_path / "src") is True
     assert tree.expand_path(tmp_path / "README.md") is False
 
-    with pytest.raises(ValueError):
-        tree.expand_path(Path("relative"))
-    with pytest.raises(ValueError):
-        tree.expand_path(tmp_path.parent / "outside")
+    for method_name in ("expand_path", "collapse_path", "toggle_path", "is_expanded"):
+        method = getattr(tree, method_name)
+        with pytest.raises(ValueError):
+            method(Path("relative"))
+        with pytest.raises(ValueError):
+            method(tmp_path.parent / "outside")
+        with pytest.raises(ValueError):
+            method(tmp_path / ".." / tmp_path.name)
 
 
 def test_directory_tree_reload_preserves_valid_state_and_repairs_removed_paths(tmp_path: Path) -> None:
