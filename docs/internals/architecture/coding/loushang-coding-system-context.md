@@ -69,7 +69,7 @@
 
 - `loushang-tui`
   - `loushang-coding` 的终端交互相邻子系统
-  - 为 native coding TUI 提供 terminal primitives、render loop、input、surfaces、layout 与编辑基础设施
+  - 为 coding screen UI 提供 terminal primitives、render loop、input、surfaces、layout 与编辑基础设施
 
 ### Actors
 
@@ -144,7 +144,7 @@
 
 ### loushang-tui
 
-`loushang-tui` 是 native coding TUI 的下游通用交互子系统。
+`loushang-tui` 是 coding screen UI 的下游通用交互子系统。
 
 它不负责 coding runtime，也不负责 agent loop。
 它应只负责：
@@ -169,7 +169,7 @@ flowchart LR
     METHOD["loushang-method (internal)"]
     WORK["loushang-work (internal)"]
     CHANNEL["loushang-channel (target, future package)"]
-    TUI["loushang-tui (internal, current native TUI)"]
+    TUI["loushang-tui (internal, current screen UI)"]
     AGENT["loushang-agent (internal)"]
     AI["loushang-ai (internal)"]
 
@@ -256,7 +256,7 @@ flowchart LR
 
 ### loushang-coding -> loushang-tui
 
-这条依赖关系当前已经成立，由 `loushang.coding.ui` 适配 coding session/runtime 状态到 native terminal TUI。
+这条依赖关系当前已经成立，由 `loushang.coding.ui` 适配 coding session/runtime 状态到 screen terminal UI。
 
 ## Information Flow Relations
 
@@ -386,7 +386,7 @@ flowchart LR
 
 ### loushang-coding <-> loushang-tui
 
-当前 native TUI 中：
+当前 screen UI 中：
 
 - `coding` 向 `tui` 输入可渲染的状态、事件与交互请求
 - `tui` 向 `coding` 返回用户输入、选择、确认与界面动作
@@ -460,7 +460,7 @@ flowchart LR
 
 `loushang-tui` 应承载：
 
-- native terminal TUI runtime
+- screen terminal UI runtime
 - render loop / input / surface / layout / status primitives
 - terminal interaction rendering
 
@@ -532,7 +532,7 @@ flowchart LR
 
 1. `loushang-coding` 前期不依赖 `loushang-channel`
 2. `loushang-channel` 不并入 `loushang-coding`
-3. native TUI 属于 `coding` product adapter，但 generic primitives 归属 `loushang.tui`
+3. screen UI 属于 `coding` product adapter，但 generic primitives 归属 `loushang.tui`
 4. `loushang-tui` 保持独立子系统定位
 5. `loushang.method` / `loushang.work` 不并入 `loushang-coding`
 6. 当前不在 `coding` 中单列 `context`

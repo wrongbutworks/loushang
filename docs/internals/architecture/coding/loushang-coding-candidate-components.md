@@ -8,7 +8,7 @@
 
 - 语言为 Python
 - 目录前缀采用 `loushang/coding/`
-- native TUI 已作为 `loushang.coding.ui` product adapter 落地
+- screen UI 已作为 `loushang.coding.ui` product adapter 落地
 - 组件识别应同步当前代码包边界，并保留目标架构边界
 
 本文档不讨论：

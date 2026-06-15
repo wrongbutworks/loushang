@@ -9,7 +9,7 @@
 - `print mode`
 - `json mode`
 - `rpc mode`
-- native `tui` / `interactive` mode
+- `tui` / `interactive` screen mode
 
 本文档目标是回答：
 
@@ -342,13 +342,13 @@ sequenceDiagram
   TUI-->>App: InputEvent / intent
   App->>Controller: dispatch PromptIntent / AbortIntent / FollowUpIntent
   Controller->>Session: prompt / steer / follow_up / abort
-  Session-->>App: AgentSessionEvent / native event projection
+  Session-->>App: AgentSessionEvent / screen event projection
   App->>TUI: update display records / bottom frame / surfaces
 ```
 
 ### Reading Notes
 
-- native TUI 是当前最重的 local product surface
+- screen TUI 是当前最重的 local product surface
 - 在对象层由 `loushang.coding.ui` 承担 UI orchestration，而不是把 generic TUI 变成 coding runtime
 - 它仍应：
   - 依赖 `AgentSessionRuntime`
