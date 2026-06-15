@@ -429,6 +429,10 @@ class DataGrid:
         if self.cursor_mode == "none":
             return None
         key = normalize_key_id(getattr(event, "key", ""))
+        if key in {"ctrl+f", "ctrl-f"}:
+            key = "pageDown"
+        elif key in {"ctrl+b", "ctrl-b"}:
+            key = "pageUp"
         if key == "enter":
             if self._should_enter_start_edit():
                 return self.start_edit(str(self._active_row_key), str(self._active_column_key))
@@ -737,6 +741,23 @@ class DataGrid:
         self._active_row_key = row.key
         self._active_column_key = column.key
         return True
+
+    def activate_row(self, row_key: str) -> bool:
+        row = self._row_by_key(row_key)
+        if row is None or row.disabled or row.pinned is not None:
+            return False
+        was_editing = self._editing_cell_key is not None or self.editing_error is not None
+        self.cancel_edit()
+        changed = row.key != self._active_row_key
+        self._active_row_key = row.key
+        if self.cursor_mode == "cell":
+            next_column = self._nearest_enabled_column_in_row(row, self._active_column_key)
+            if next_column is None:
+                changed = self._repair_active_cell() or changed
+            else:
+                changed = next_column != self._active_column_key or changed
+                self._active_column_key = next_column
+        return changed or was_editing
 
     def commit_edit(self) -> DataGridEdit | None:
         if self._editing_cell_key is None:

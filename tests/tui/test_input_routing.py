@@ -254,13 +254,14 @@ def test_input_reader_normalizes_arrow_escape_sequences() -> None:
 def test_input_reader_normalizes_common_editor_control_keys() -> None:
     reader = InputReader()
 
-    events = reader.feed("\x7f\x1b[3~\x01\x05\x0a\x0b\x0f\x15\x16\x17\x19\x1bu\x1br\x1by\x1b\r\x1b[13;2~\x1b[1;3A")
+    events = reader.feed("\x7f\x1b[3~\x01\x05\x07\x0a\x0b\x0f\x15\x16\x17\x19\x1bu\x1br\x1by\x1b\r\x1b[13;2~\x1b[1;3A")
 
     assert events == (
         InputEvent(kind="key", key="backspace"),
         InputEvent(kind="key", key="delete"),
         InputEvent(kind="key", key="ctrl+a"),
         InputEvent(kind="key", key="ctrl+e"),
+        InputEvent(kind="key", key="ctrl+g"),
         InputEvent(kind="key", key="ctrl+j"),
         InputEvent(kind="key", key="ctrl+k"),
         InputEvent(kind="key", key="ctrl+o"),

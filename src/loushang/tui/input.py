@@ -229,6 +229,7 @@ _CONTROL_KEY_MAP = {
     "\x04": "ctrl+d",
     "\x05": "ctrl+e",
     "\x06": "ctrl+f",
+    "\x07": "ctrl+g",
     "\x08": "backspace",
     "\x09": "tab",
     "\x0a": "ctrl+j",

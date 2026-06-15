@@ -67,6 +67,7 @@ _ALIASES = {
     "ctrl_d": "ctrl+d",
     "ctrl_e": "ctrl+e",
     "ctrl_f": "ctrl+f",
+    "ctrl_g": "ctrl+g",
     "ctrl_j": "ctrl+j",
     "ctrl_k": "ctrl+k",
     "ctrl_o": "ctrl+o",

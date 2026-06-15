@@ -71,6 +71,10 @@ Space is the selection input. Single selection replaces the current row/cell
 selection. Multi selection toggles rows, cells, or all enabled cells in the
 active column.
 
+`ctrl-f` and `ctrl-b` are DataGrid navigation aliases for `pageDown` and
+`pageUp` in non-editing row and cell modes. Editing cells keep the edit buffer
+focused; those shortcuts are not treated as grid paging while an edit is open.
+
 ## Editing
 
 Inline editing is intentionally text-based. `start_edit()` initializes the edit
