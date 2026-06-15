@@ -18,6 +18,7 @@
 - Keep V1 ASCII by default. Examples may use visual separators already common in TUI examples, but widget fallback text should be ASCII.
 - Do not migrate real product pages in this plan.
 - Do not add mouse, drag resize, variable row height, Rich cell renderables, async loaders, or a domain-specific stock widget.
+- Future input adapters should be a separate adapter layer, not implicit constructor guessing. Likely entry points are explicit helpers such as `from_records`, `from_json`, `from_csv`, and later a Pandas/DataFrame adapter. Keep the core widget contract on normalized columns and rows.
 
 ## Reference Documents
 
