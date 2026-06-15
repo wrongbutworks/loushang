@@ -64,6 +64,16 @@ buffer from the raw cell value. The first printable input replaces that selected
 initial buffer; later text appends. Enter parses, validates, updates the raw
 cell value, and returns `DataGridEdit`. Escape cancels.
 
+In `cell` mode, printable text on an editable active cell starts editing
+immediately. While editing, left/right/home/end move the text cursor inside the
+edit buffer; they do not leave the cell. Up/down/page keys are consumed without
+moving grid focus. Tab and shift+tab commit and try to continue editing the
+next or previous editable cell. Editing cells render their edit buffer
+left-aligned even when the column display alignment is right or center aligned,
+so terminal block cursors move predictably as text is typed. `activate_cell(row_key,
+column_key)` lets a wrapper move focus to an enabled cell without entering
+editing.
+
 Column parsers and validators belong to `DataGridColumn`. Product code handles
 domain side effects after it receives `DataGridEdit`.
 
@@ -106,6 +116,8 @@ Core tokens:
 - `widget.dataGrid.rowAlternate`
 - `widget.dataGrid.focusRow`
 - `widget.dataGrid.focusCell`
+- `widget.dataGrid.editable`
+- `widget.dataGrid.focusEditable`
 - `widget.dataGrid.focusColumn`
 - `widget.dataGrid.selectedRow`
 - `widget.dataGrid.selectedCell`

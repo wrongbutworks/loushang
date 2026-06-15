@@ -104,6 +104,11 @@ grid = DataGrid(
 grid.focus()
 ```
 
+In `cell` mode, printable text on an editable active cell starts editing.
+During editing, left/right move inside the edit buffer; Enter commits, Escape
+cancels, and Tab commits toward the next editable cell. Edit buffers render
+left-aligned even for right-aligned display columns.
+
 ## P1B Text Controls
 
 | Widget | Use it for |
@@ -357,6 +362,8 @@ where styling is supported. Initial stable tokens are:
 | `widget.dataGrid.rowAlternate` | Alternating DataGrid body rows when zebra stripes are enabled. |
 | `widget.dataGrid.focusRow` | Focused active DataGrid row. |
 | `widget.dataGrid.focusCell` | Focused active DataGrid cell. |
+| `widget.dataGrid.editable` | Editable DataGrid cells when not actively editing. |
+| `widget.dataGrid.focusEditable` | Focused editable DataGrid cell before editing starts. |
 | `widget.dataGrid.focusColumn` | Focused active DataGrid column/header. |
 | `widget.dataGrid.selectedRow` | Selected DataGrid rows. |
 | `widget.dataGrid.selectedCell` | Selected DataGrid cells. |

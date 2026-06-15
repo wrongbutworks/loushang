@@ -8,6 +8,7 @@ from typing import Literal
 
 from loushang.tui.cell_width import (
     autowrap_safe_width,
+    grapheme_clusters,
     truncate_to_width,
     visible_width,
 )
@@ -267,6 +268,7 @@ class DataGrid:
     _first_visible_row_index: int = field(default=0, init=False, repr=False)
     _editing_cell_key: DataGridCellKey | None = field(default=None, init=False, repr=False)
     _edit_buffer: str = field(default="", init=False, repr=False)
+    _edit_cursor: int = field(default=0, init=False, repr=False)
     _edit_buffer_selected: bool = field(default=False, init=False, repr=False)
 
     def __init__(
@@ -308,6 +310,7 @@ class DataGrid:
         self._first_visible_row_index = 0
         self._editing_cell_key = None
         self._edit_buffer = ""
+        self._edit_cursor = 0
         self._edit_buffer_selected = False
         self._columns = _normalize_columns(self.columns)
         self._rows = self._normalize_rows(self.rows)
@@ -370,6 +373,11 @@ class DataGrid:
             return self._handle_editing_input(event)
         if getattr(event, "kind", "") == "text" and getattr(event, "text", "") == " ":
             return None if self.cursor_mode == "none" else self._handle_selection_input()
+        if self._should_text_start_edit(event):
+            started = self.start_edit(str(self._active_row_key), str(self._active_column_key))
+            if not started:
+                return None
+            return self._handle_editing_input(event)
         if getattr(event, "kind", "") != "key":
             return None
         if self.cursor_mode == "none":
@@ -439,7 +447,12 @@ class DataGrid:
             ):
                 cursor_column = 0
                 if self.cursor_mode == "cell" and self._active_column_key in cell_starts:
-                    cursor_column = cell_starts[str(self._active_column_key)]
+                    cursor_column = self._active_cell_cursor_column(
+                        row,
+                        render_columns,
+                        widths,
+                        cell_starts,
+                    )
                 cursor = CursorDeclaration(row=line_index, column=cursor_column)
             lines.append(RenderLine(self._row_line(row, render_columns, widths, target_width, label_width=label_width)))
 
@@ -657,6 +670,7 @@ class DataGrid:
         cell = row.cells[column.key]
         self._editing_cell_key = (row.key, column.key)
         self._edit_buffer = "" if cell.value is None else str(cell.value)
+        self._edit_cursor = len(tuple(grapheme_clusters(self._edit_buffer)))
         self._edit_buffer_selected = True
         self.editing_error = None
         return True
@@ -666,8 +680,20 @@ class DataGrid:
             return False
         self._editing_cell_key = None
         self._edit_buffer = ""
+        self._edit_cursor = 0
         self._edit_buffer_selected = False
         self.editing_error = None
+        return True
+
+    def activate_cell(self, row_key: str, column_key: str) -> bool:
+        row = self._row_by_key(row_key)
+        column = self._column_by_key(column_key)
+        if row is None or column is None or not self._is_enabled_cell(row.key, column.key):
+            return False
+        self.cancel_edit()
+        self.cursor_mode = "cell"
+        self._active_row_key = row.key
+        self._active_column_key = column.key
         return True
 
     def commit_edit(self) -> DataGridEdit | None:
@@ -705,10 +731,10 @@ class DataGrid:
         if kind in {"text", "paste"}:
             text = getattr(event, "text", "")
             if self._edit_buffer_selected:
-                self._edit_buffer = text
+                self._replace_edit_buffer(text)
                 self._edit_buffer_selected = False
             else:
-                self._edit_buffer += text
+                self._insert_edit_text(text)
             self.editing_error = None
             return True
         if kind != "key":
@@ -718,15 +744,127 @@ class DataGrid:
             return self.commit_edit()
         if key == "escape":
             return self.cancel_edit()
+        if key in {"up", "down", "pageUp", "pageDown"}:
+            return False
+        if key == "left":
+            return self._move_edit_cursor(-1)
+        if key == "right":
+            return self._move_edit_cursor(1)
+        if key == "home":
+            return self._move_edit_cursor_to_start()
+        if key == "end":
+            return self._move_edit_cursor_to_end()
+        if key in {"tab", "shift+tab"}:
+            return self._commit_and_move_edit(-1 if key == "shift+tab" else 1)
         if key == "backspace":
             if self._edit_buffer_selected:
-                self._edit_buffer = ""
+                self._replace_edit_buffer("")
                 self._edit_buffer_selected = False
             else:
-                self._edit_buffer = self._edit_buffer[:-1]
+                self._delete_edit_backward()
+            self.editing_error = None
+            return True
+        if key == "delete":
+            if self._edit_buffer_selected:
+                self._replace_edit_buffer("")
+                self._edit_buffer_selected = False
+            else:
+                self._delete_edit_forward()
             self.editing_error = None
             return True
         return None
+
+    def _should_text_start_edit(self, event: object) -> bool:
+        kind = getattr(event, "kind", "")
+        if kind not in {"text", "paste"} or self.cursor_mode != "cell":
+            return False
+        text = getattr(event, "text", "")
+        return (
+            bool(text)
+            and self._active_row_key is not None
+            and self._active_column_key is not None
+            and self._is_editable_cell(self._active_row_key, self._active_column_key)
+        )
+
+    def _replace_edit_buffer(self, text: str) -> None:
+        self._edit_buffer = text
+        self._edit_cursor = len(tuple(grapheme_clusters(text)))
+
+    def _insert_edit_text(self, text: str) -> None:
+        clusters = list(grapheme_clusters(self._edit_buffer))
+        inserted = list(grapheme_clusters(text))
+        if not inserted:
+            return
+        cursor = max(0, min(self._edit_cursor, len(clusters)))
+        clusters[cursor:cursor] = inserted
+        self._edit_buffer = "".join(clusters)
+        self._edit_cursor = cursor + len(inserted)
+
+    def _delete_edit_backward(self) -> bool:
+        clusters = list(grapheme_clusters(self._edit_buffer))
+        if self._edit_cursor <= 0:
+            return False
+        cursor = max(0, min(self._edit_cursor, len(clusters)))
+        del clusters[cursor - 1]
+        self._edit_buffer = "".join(clusters)
+        self._edit_cursor = cursor - 1
+        return True
+
+    def _delete_edit_forward(self) -> bool:
+        clusters = list(grapheme_clusters(self._edit_buffer))
+        cursor = max(0, min(self._edit_cursor, len(clusters)))
+        if cursor >= len(clusters):
+            return False
+        del clusters[cursor]
+        self._edit_buffer = "".join(clusters)
+        self._edit_cursor = cursor
+        return True
+
+    def _move_edit_cursor(self, delta: int) -> bool:
+        if self._edit_buffer_selected:
+            self._edit_buffer_selected = False
+            self._edit_cursor = 0 if delta < 0 else len(tuple(grapheme_clusters(self._edit_buffer)))
+            return True
+        length = len(tuple(grapheme_clusters(self._edit_buffer)))
+        next_cursor = max(0, min(length, self._edit_cursor + delta))
+        if next_cursor == self._edit_cursor:
+            return False
+        self._edit_cursor = next_cursor
+        return True
+
+    def _move_edit_cursor_to_start(self) -> bool:
+        self._edit_buffer_selected = False
+        if self._edit_cursor == 0:
+            return False
+        self._edit_cursor = 0
+        return True
+
+    def _move_edit_cursor_to_end(self) -> bool:
+        self._edit_buffer_selected = False
+        end = len(tuple(grapheme_clusters(self._edit_buffer)))
+        if self._edit_cursor == end:
+            return False
+        self._edit_cursor = end
+        return True
+
+    def _commit_and_move_edit(self, delta: int) -> object:
+        previous = self._editing_cell_key
+        result = self.commit_edit()
+        if result is None:
+            return None
+        if self._editing_cell_key is None and previous is not None:
+            self._start_adjacent_edit(previous, delta)
+        return result
+
+    def _start_adjacent_edit(self, previous: DataGridCellKey, delta: int) -> bool:
+        editable = self._editable_cell_keys()
+        if previous not in editable:
+            return False
+        position = editable.index(previous) + delta
+        if position < 0 or position >= len(editable):
+            return False
+        row_key, column_key = editable[position]
+        return self.start_edit(row_key, column_key)
 
     def _is_editable_cell(self, row_key: str, column_key: str) -> bool:
         if not self._is_enabled_cell(row_key, column_key):
@@ -1031,6 +1169,14 @@ class DataGrid:
                 result.append((row.key, column_key))
         return tuple(result)
 
+    def _editable_cell_keys(self) -> tuple[DataGridCellKey, ...]:
+        result: list[DataGridCellKey] = []
+        for row in self._enabled_rows():
+            for column in self._visible_columns():
+                if self._is_editable_cell(row.key, column.key):
+                    result.append((row.key, column.key))
+        return tuple(result)
+
     def _apply_sort_state(self) -> None:
         if self._sort_state is None:
             return
@@ -1273,20 +1419,30 @@ class DataGrid:
         label_width: int,
     ) -> str:
         values: list[str] = []
-        cell_tokens: list[str | None] = []
-        for column in columns:
+        cell_token_sets: list[tuple[str | None, ...]] = []
+        active_row = self.focused and row.key == self._active_row_key and row.pinned is None and not row.disabled
+        for column, width in zip(columns, widths, strict=True):
             cell = row.cells[column.key]
             if self._editing_cell_key == (row.key, column.key):
-                formatted = _FormattedCell(self._edit_buffer, "widget.dataGrid.editing")
+                formatted = _FormattedCell(_edit_cell_display_text(self._edit_buffer, width), "widget.dataGrid.editing")
             else:
                 formatted = _format_grid_cell(cell.value, column)
             values.append(formatted.text)
-            cell_tokens.append(formatted.theme_token or column.theme_token or cell.theme_token)
-        active_row = self.focused and row.key == self._active_row_key and row.pinned is None and not row.disabled
+            cell_token_sets.append(self._cell_theme_tokens(row, column, cell, formatted, active_row=active_row))
         focus_row = active_row and self.cursor_mode in {"row", "cell"}
         prefix = "> " if focus_row else "  "
         label = row.label or row.key if self.show_row_labels else ""
-        text = _grid_line(tuple(values), columns, widths, target_width, prefix=prefix, label=label, label_width=label_width)
+        text = _grid_line(
+            tuple(values),
+            columns,
+            widths,
+            target_width,
+            prefix=prefix,
+            label=label,
+            label_width=label_width,
+            theme=self.theme,
+            cell_token_sets=tuple(cell_token_sets),
+        )
         row_token = (
             "widget.dataGrid.disabled"
             if row.disabled
@@ -1294,8 +1450,57 @@ class DataGrid:
             if focus_row
             else "widget.dataGrid.row"
         )
-        semantic_tokens = () if focus_row or row.disabled else tuple(cell_tokens)
-        return style_text(text, self.theme, row_token, row.theme_token, *semantic_tokens)
+        return style_text(text, self.theme, row_token, row.theme_token)
+
+    def _cell_theme_tokens(
+        self,
+        row: _NormalizedRow,
+        column: DataGridColumn,
+        cell: _NormalizedCell,
+        formatted: _FormattedCell,
+        *,
+        active_row: bool,
+    ) -> tuple[str | None, ...]:
+        if row.disabled:
+            return ()
+        if self._editing_cell_key == (row.key, column.key):
+            return ("widget.dataGrid.editing",)
+        active_cell = active_row and self.cursor_mode == "cell" and self._active_column_key == column.key
+        editable = self._is_editable_cell(row.key, column.key)
+        interaction_token = (
+            "widget.dataGrid.focusEditable"
+            if active_cell and editable
+            else "widget.dataGrid.editable"
+            if editable
+            else "widget.dataGrid.focusCell"
+            if active_cell
+            else None
+        )
+        return (formatted.theme_token, column.theme_token, cell.theme_token, interaction_token)
+
+    def _active_cell_cursor_column(
+        self,
+        row: _NormalizedRow,
+        columns: Sequence[DataGridColumn],
+        widths: Sequence[int],
+        cell_starts: Mapping[str, int],
+    ) -> int:
+        column_key = str(self._active_column_key)
+        start = cell_starts.get(column_key, 0)
+        for column, width in zip(columns, widths, strict=True):
+            if column.key != column_key or width <= 0:
+                continue
+            cell = row.cells[column.key]
+            if self._editing_cell_key == (row.key, column.key):
+                return start + min(width, visible_width(self._edit_text_before_cursor()))
+            text = _format_grid_cell(cell.value, column).text
+            return start + _cell_content_offset(text, width, column.align)
+        return start
+
+    def _edit_text_before_cursor(self) -> str:
+        clusters = tuple(grapheme_clusters(self._edit_buffer))
+        cursor = max(0, min(self._edit_cursor, len(clusters)))
+        return "".join(clusters[:cursor])
 
 
 def _normalize_columns(columns: Sequence[DataGridColumn]) -> tuple[DataGridColumn, ...]:
@@ -1527,13 +1732,20 @@ def _grid_line(
     prefix: str = "  ",
     label: str = "",
     label_width: int = 0,
+    theme: ThemeResolver | None = None,
+    cell_token_sets: Sequence[Sequence[str | None]] = (),
 ) -> str:
     rendered: list[str] = []
     visible_cells = [
-        (cell, width, column) for cell, width, column in zip(cells, widths, columns, strict=True) if width > 0
+        (index, cell, width, column)
+        for index, (cell, width, column) in enumerate(zip(cells, widths, columns, strict=True))
+        if width > 0
     ]
-    for offset, (cell, width, column) in enumerate(visible_cells):
-        rendered.append(_format_cell_text(cell, width, column.align, pad_right=offset < len(visible_cells) - 1))
+    for offset, (index, cell, width, column) in enumerate(visible_cells):
+        rendered_cell = _format_cell_text(cell, width, column.align, pad_right=offset < len(visible_cells) - 1)
+        if index < len(cell_token_sets):
+            rendered_cell = style_text(rendered_cell, theme, *cell_token_sets[index])
+        rendered.append(rendered_cell)
     prefix_text = truncate_to_width(prefix, max_width=2, ellipsis="")
     label_text = ""
     if label_width > 0:
@@ -1556,3 +1768,20 @@ def _format_cell_text(text: str, width: int, align: DataGridAlign, *, pad_right:
         right = padding_width - left
         return f"{' ' * left}{clipped}{' ' * right}" if pad_right else f"{' ' * left}{clipped}"
     return f"{clipped}{' ' * padding_width}" if pad_right else clipped
+
+
+def _edit_cell_display_text(text: str, width: int) -> str:
+    if width <= 0:
+        return ""
+    clipped = truncate_to_width(text, max_width=width, ellipsis="")
+    return f"{clipped}{' ' * max(0, width - visible_width(clipped))}"
+
+
+def _cell_content_offset(text: str, width: int, align: DataGridAlign) -> int:
+    clipped = truncate_to_width(text, max_width=width, ellipsis="")
+    padding_width = max(0, width - visible_width(clipped))
+    if align == "right":
+        return padding_width
+    if align == "center":
+        return padding_width // 2
+    return 0

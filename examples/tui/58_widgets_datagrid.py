@@ -24,6 +24,7 @@ from loushang.tui import (
     TuiInputResult,
     TuiRunner,
     apply_theme_style,
+    normalize_key_id,
     truncate_to_width,
     visible_width,
 )
@@ -41,6 +42,8 @@ DATAGRID_THEME = ThemeResolver(
         "widget.dataGrid.row": {"color": "white"},
         "widget.dataGrid.focusRow": {"bold": True, "color": "cyan"},
         "widget.dataGrid.focusCell": {"bold": True, "color": "cyan"},
+        "widget.dataGrid.editable": {"underline": True},
+        "widget.dataGrid.focusEditable": {"bold": True, "underline": True},
         "widget.dataGrid.focusColumn": {"bold": True, "color": "cyan"},
         "widget.dataGrid.disabled": {"dim": True},
         "widget.dataGrid.empty": {"color": "bright_black"},
@@ -65,6 +68,7 @@ class Scenario:
 class DataGridExampleApp(FocusableMixin):
     scenarios: tuple[Scenario, ...] = field(default_factory=tuple)
     active_index: int = 0
+    focus_region: str = "sidebar"
     status: str = "Ready"
 
     def __post_init__(self) -> None:
@@ -84,7 +88,7 @@ class DataGridExampleApp(FocusableMixin):
 
     def focus(self) -> None:
         self.focused = True
-        self.active_scenario.grid.focus()
+        self._sync_grid_focus()
 
     def blur(self) -> None:
         self.focused = False
@@ -111,40 +115,114 @@ class DataGridExampleApp(FocusableMixin):
         rows.append(RenderLine(""))
         rows.append(RenderLine(_style(truncate_to_width(_footer(self), max_width=width, ellipsis=""), "example.dataGrid.meta")))
         cursor = None
-        if grid_result.cursor is not None:
+        if self.focus_region == "grid" and grid_result.cursor is not None:
             cursor = CursorDeclaration(row=2 + grid_result.cursor.row, column=LEFT_WIDTH + 3 + grid_result.cursor.column)
+        elif self.focus_region == "sidebar":
+            cursor = CursorDeclaration(row=2 + self.active_index, column=0)
         return RenderResult.from_lines(rows[:height], constraints=constraints, cursor=cursor)
 
     def handle_input(self, event: Any) -> object:
-        if getattr(event, "kind", "") == "text":
-            text = getattr(event, "text", "")
-            if text in {scenario.key for scenario in self.scenarios}:
-                self._select_scenario(text)
-                return True
+        key = normalize_key_id(getattr(event, "key", "")) if getattr(event, "kind", "") == "key" else ""
+        if key == "tab":
+            self._set_focus_region("sidebar" if self.focus_region == "grid" else "grid")
+            return True
+        if self.focus_region == "sidebar":
+            return self._handle_sidebar_input(event, key)
+        if key == "escape" and self.active_scenario.grid.editing_cell_key is None:
+            self._set_focus_region("sidebar")
+            return True
+        if (
+            key in {"delete", "ctrl+d"}
+            and self.active_scenario.key == "2"
+            and self.active_scenario.grid.editing_cell_key is None
+        ):
+            return self._delete_order_row()
         result = self.active_scenario.grid.handle_input(event)
         if isinstance(result, DataGridEdit):
             self.status = f"Edited {result.row_key}.{result.column_key}"
             if self.active_scenario.key == "2":
-                _refresh_order_total(self.active_scenario.grid)
+                self._apply_order_edit(result)
             return True
         if result is not None:
             self.status = str(result)
             return True
         return None
 
+    def _handle_sidebar_input(self, event: Any, key: str) -> object:
+        if key == "up":
+            return self._move_sidebar(-1)
+        if key == "down":
+            return self._move_sidebar(1)
+        if key in {"enter", "right"}:
+            self._set_focus_region("grid")
+            return True
+        if getattr(event, "kind", "") == "text":
+            text = getattr(event, "text", "")
+            if text in {scenario.key for scenario in self.scenarios}:
+                self._select_scenario(text)
+                return True
+        return None
+
+    def _move_sidebar(self, delta: int) -> bool:
+        next_index = max(0, min(len(self.scenarios) - 1, self.active_index + delta))
+        if next_index == self.active_index:
+            return False
+        self.active_scenario.grid.blur()
+        self.active_index = next_index
+        self._sync_grid_focus()
+        self.status = self.active_scenario.title
+        return True
+
     def _select_scenario(self, key: str) -> None:
         for index, scenario in enumerate(self.scenarios):
             if scenario.key == key:
                 self.active_scenario.grid.blur()
                 self.active_index = index
-                self.active_scenario.grid.focus()
+                self._sync_grid_focus()
                 self.status = scenario.title
                 return
+
+    def _set_focus_region(self, region: str) -> None:
+        if region == self.focus_region:
+            return
+        self.focus_region = region
+        self._sync_grid_focus()
+        self.status = "Scenario list" if region == "sidebar" else self.active_scenario.title
+
+    def _sync_grid_focus(self) -> None:
+        if self.focused and self.focus_region == "grid":
+            self.active_scenario.grid.focus()
+        else:
+            self.active_scenario.grid.blur()
+
+    def _apply_order_edit(self, edit: DataGridEdit) -> None:
+        grid = self.active_scenario.grid
+        if edit.column_key == "code":
+            _apply_order_code_lookup(grid, edit.row_key, str(edit.new_value))
+        _refresh_order_total(grid)
+        if edit.column_key == "qty" and _is_last_order_line(grid, edit.row_key):
+            _append_order_line(grid)
+            self.status = "Added order line"
+
+    def _delete_order_row(self) -> bool:
+        grid = self.active_scenario.grid
+        row_key = grid.active_row_key
+        if row_key is None or row_key == "total":
+            return False
+        if not grid.remove_row(row_key):
+            return False
+        _ensure_order_entry_line(grid)
+        _refresh_order_total(grid)
+        self.status = f"Deleted {row_key}"
+        return True
 
     def _sidebar_lines(self, height: int) -> list[str]:
         lines: list[str] = []
         for index, scenario in enumerate(self.scenarios):
-            prefix = "> " if index == self.active_index else "  "
+            if index == self.active_index:
+                prefix = "> " if self.focus_region == "sidebar" else "* "
+            else:
+                prefix = "  "
             text = truncate_to_width(f"{prefix}{scenario.key} {scenario.title}", max_width=LEFT_WIDTH, ellipsis="")
             token = "example.dataGrid.sidebarActive" if index == self.active_index else "example.dataGrid.sidebar"
             lines.append(_style(text, token))
@@ -211,8 +289,8 @@ def _watchlist_grid() -> DataGrid:
 def _order_grid() -> DataGrid:
     rows = (
         DataGridRow("line-1", {"code": "A100", "name": "Adapter", "qty": 2, "price": 19.5, "total": 39.0}),
-        DataGridRow("line-2", {"code": "B200", "name": "Bracket", "qty": 1, "price": 42.0, "total": 42.0}),
-        DataGridRow("total", {"code": "", "name": "Total", "qty": "", "price": "", "total": 81.0}, pinned="bottom"),
+        DataGridRow("line-2", {"code": "", "name": "", "qty": 1, "price": "", "total": 0.0}),
+        DataGridRow("total", {"code": "", "name": "Total", "qty": "", "price": "", "total": 39.0}, pinned="bottom"),
     )
     grid = DataGrid(
         (
@@ -223,6 +301,8 @@ def _order_grid() -> DataGrid:
             DataGridColumn("total", "Total", width=9, align="right", formatter=NumberFormatter(precision=2)),
         ),
         rows,
+        active_row_key="line-2",
+        active_column_key="code",
         cursor_mode="cell",
         theme=DATAGRID_THEME,
         wrap_rows=False,
@@ -300,6 +380,38 @@ def _refresh_order_total(grid: DataGrid) -> None:
     grid.update_cell("total", "total", total)
 
 
+def _apply_order_code_lookup(grid: DataGrid, row_key: str, code: str) -> None:
+    name, price = _ORDER_CATALOG.get(code.upper(), ("Custom", 0.0))
+    grid.update_cell(row_key, "code", code.upper())
+    grid.update_cell(row_key, "name", name)
+    grid.update_cell(row_key, "price", price)
+
+
+def _is_last_order_line(grid: DataGrid, row_key: str) -> bool:
+    editable_rows = tuple(key for key in grid.row_keys if key != "total")
+    return bool(editable_rows) and editable_rows[-1] == row_key and bool(grid.cell_value(row_key, "code"))
+
+
+def _append_order_line(grid: DataGrid) -> None:
+    next_number = 1
+    while f"line-{next_number}" in grid.row_keys:
+        next_number += 1
+    total_index = grid.row_keys.index("total") if "total" in grid.row_keys else None
+    row_key = grid.add_row(
+        DataGridRow(f"line-{next_number}", {"code": "", "name": "", "qty": 1, "price": "", "total": 0.0}),
+        index=total_index,
+        activate=True,
+    )
+    grid.activate_cell(row_key, "code")
+
+
+def _ensure_order_entry_line(grid: DataGrid) -> None:
+    editable_rows = tuple(key for key in grid.row_keys if key != "total")
+    if editable_rows:
+        return
+    _append_order_line(grid)
+
+
 def _delta_token(value: object) -> str | None:
     try:
         number = float(value)
@@ -332,7 +444,7 @@ def _style(text: str, token: str) -> str:
 
 def _footer(app: DataGridExampleApp) -> str:
     return truncate_to_width(
-        f"{app.active_scenario.title} | 1-5 scenarios | arrows move | e edit | enter activate/commit | space select | q quit | {app.status}",
+        f"{app.active_scenario.title} | tab panes | list: up/down, enter/right grid | grid: type/e edit, enter commit, delete/ctrl+d row | q quit | {app.status}",
         max_width=120,
         ellipsis="",
     )
@@ -345,6 +457,14 @@ def _should_quit(event: InputEvent) -> bool:
         or event.kind == "text"
         and event.text.lower() == "q"
     )
+
+
+_ORDER_CATALOG = {
+    "A100": ("Adapter", 19.5),
+    "B200": ("Bracket", 42.0),
+    "C300": ("Clamp", 7.25),
+    "D400": ("Driver", 13.75),
+}
 
 
 if __name__ == "__main__":

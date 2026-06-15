@@ -101,6 +101,11 @@ grid = DataGrid(
 grid.focus()
 ```
 
+在 `cell` 模式下，可编辑 active cell 上的可打印输入会直接进入编辑。
+编辑中左右键只移动编辑缓冲区内的光标；Enter 提交，Escape 取消，Tab
+提交并尝试进入下一个可编辑单元格。即使列的展示态是右对齐，编辑缓冲区
+也会按左对齐渲染。
+
 ## P1B 文本控件
 
 | 控件 | 用途 |
@@ -340,6 +345,8 @@ Dialog 会先处理 `escape` 和 `ctrl+c`，再委派给内部字段。body 焦�
 | `widget.dataGrid.rowAlternate` | zebra stripes 启用时的 DataGrid 交替 body 行。 |
 | `widget.dataGrid.focusRow` | 获得焦点的激活 DataGrid 行。 |
 | `widget.dataGrid.focusCell` | 获得焦点的激活 DataGrid 单元格。 |
+| `widget.dataGrid.editable` | 尚未进入编辑态的可编辑 DataGrid 单元格。 |
+| `widget.dataGrid.focusEditable` | 进入编辑前获得焦点的可编辑 DataGrid 单元格。 |
 | `widget.dataGrid.focusColumn` | 获得焦点的激活 DataGrid 列/header。 |
 | `widget.dataGrid.selectedRow` | 选中的 DataGrid 行。 |
 | `widget.dataGrid.selectedCell` | 选中的 DataGrid 单元格。 |

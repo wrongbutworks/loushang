@@ -295,8 +295,25 @@ def test_data_grid_cell_and_column_modes_declare_cursor_without_confusing_row_pr
         "  Code   Qty",
         "  AAPL     5",
     )
-    assert cell_result.cursor == CursorDeclaration(row=1, column=9)
+    assert cell_result.cursor == CursorDeclaration(row=1, column=11)
     assert column_result.cursor == CursorDeclaration(row=0, column=9)
+
+
+def test_data_grid_cell_cursor_tracks_visible_start_for_right_aligned_values() -> None:
+    grid = DataGrid(
+        [DataGridColumn("code", "Code", width=5), DataGridColumn("qty", "Qty", width=5, align="right")],
+        [DataGridRow("line", {"code": "A1", "qty": 2})],
+        active_row_key="line",
+        active_column_key="qty",
+        cursor_mode="cell",
+        focused=True,
+    )
+
+    result = grid.render(RenderConstraints(width=18, max_height=3))
+    lines = tuple(strip_control_sequences(line.text).rstrip() for line in result.lines)
+
+    assert lines[1] == "> A1         2"
+    assert result.cursor == CursorDeclaration(row=1, column=lines[1].index("2"))
 
 
 def test_data_grid_renders_row_labels_pinned_rows_and_body_viewport() -> None:
@@ -397,6 +414,38 @@ def test_data_grid_theme_tokens_and_width_constraints_are_applied() -> None:
         "  Skip         0.0",
     )
     assert all(visible_width(line) <= 20 for line in raw)
+
+
+def test_data_grid_editable_cells_use_cell_level_theme_tokens() -> None:
+    theme = ThemeResolver(
+        defaults={
+            "widget.dataGrid.row": {"color": "white"},
+            "widget.dataGrid.focusRow": {"color": "cyan"},
+            "widget.dataGrid.editable": {"color": "yellow"},
+            "widget.dataGrid.focusEditable": {"reverse": True},
+        }
+    )
+    grid = DataGrid(
+        [
+            DataGridColumn("code", "Code", width=5, editable=True),
+            DataGridColumn("name", "Name", width=7),
+            DataGridColumn("qty", "Qty", width=5, align="right", editable=True),
+        ],
+        [DataGridRow("line", {"code": "A100", "name": "Adapter", "qty": 2})],
+        active_column_key="qty",
+        cursor_mode="cell",
+        focused=True,
+        theme=theme,
+    )
+
+    raw = render_lines(grid, width=28, height=3)
+    body = raw[1]
+
+    assert strip_control_sequences(body).rstrip() == "> A100   Adapter      2"
+    assert "\x1b[33mA100 " in body
+    assert "\x1b[7m    2" in body
+    assert "\x1b[33mAdapter" not in body
+    assert "\x1b[7mAdapter" not in body
 
 
 def test_data_grid_activation_returns_callbacks_or_structured_targets() -> None:
@@ -545,6 +594,69 @@ def test_data_grid_editing_replaces_initial_buffer_and_commits_parsed_values() -
     assert grid.handle_input(InputEvent(kind="text", text="12")) is True
     assert grid.handle_input(InputEvent(kind="key", key="enter")) == DataGridEdit("line", "qty", 1, 12)
     assert grid.cell_value("line", "qty") == 12
+
+
+def test_data_grid_printable_text_starts_editing_and_cursor_tracks_buffer_end() -> None:
+    grid = DataGrid(
+        [DataGridColumn("code", "Code", width=8, editable=True)],
+        [DataGridRow("line", {"code": ""})],
+        cursor_mode="cell",
+        active_column_key="code",
+        focused=True,
+    )
+
+    assert grid.handle_input(InputEvent(kind="text", text="C100")) is True
+    assert grid.editing_cell_key == ("line", "code")
+    result = grid.render(RenderConstraints(width=16, max_height=3))
+    lines = tuple(strip_control_sequences(line.text).rstrip() for line in result.lines)
+
+    assert lines[1] == "> C100"
+    assert result.cursor == CursorDeclaration(row=1, column=6)
+
+
+def test_data_grid_editing_arrow_keys_move_text_cursor_without_leaving_cell() -> None:
+    grid = DataGrid(
+        [DataGridColumn("code", "Code", width=8, editable=True), DataGridColumn("qty", "Qty", editable=True)],
+        [DataGridRow("line", {"code": "", "qty": 1})],
+        cursor_mode="cell",
+        active_column_key="code",
+    )
+
+    assert grid.handle_input(InputEvent(kind="text", text="C100")) is True
+    assert grid.handle_input(InputEvent(kind="key", key="left")) is True
+    assert grid.handle_input(InputEvent(kind="key", key="left")) is True
+    assert grid.handle_input(InputEvent(kind="text", text="X")) is True
+    assert grid.handle_input(InputEvent(kind="key", key="up")) is False
+    assert (grid.active_row_key, grid.active_column_key) == ("line", "code")
+    assert grid.editing_cell_key == ("line", "code")
+
+    assert grid.handle_input(InputEvent(kind="key", key="enter")) == DataGridEdit("line", "code", "", "C1X00")
+    assert grid.cell_value("line", "code") == "C1X00"
+
+
+def test_data_grid_right_aligned_cells_edit_left_aligned_so_cursor_tracks_typing() -> None:
+    grid = DataGrid(
+        [DataGridColumn("qty", "Qty", width=5, align="right", editable=True, parser=int)],
+        [DataGridRow("line", {"qty": 1})],
+        cursor_mode="cell",
+        focused=True,
+    )
+
+    assert grid.start_edit("line", "qty") is True
+    assert grid.handle_input(InputEvent(kind="text", text="3")) is True
+    one_digit = grid.render(RenderConstraints(width=12, max_height=3))
+    one_digit_lines = tuple(strip_control_sequences(line.text).rstrip() for line in one_digit.lines)
+
+    assert one_digit_lines[1] == "> 3"
+    assert one_digit.cursor == CursorDeclaration(row=1, column=one_digit_lines[1].index("3") + 1)
+
+    assert grid.handle_input(InputEvent(kind="text", text="2")) is True
+    two_digits = grid.render(RenderConstraints(width=12, max_height=3))
+    two_digit_lines = tuple(strip_control_sequences(line.text).rstrip() for line in two_digits.lines)
+
+    assert two_digit_lines[1] == "> 32"
+    assert two_digits.cursor == CursorDeclaration(row=1, column=two_digit_lines[1].index("32") + 2)
+    assert two_digits.cursor.column == one_digit.cursor.column + 1
 
 
 def test_data_grid_enter_to_edit_accepts_defaults_and_advances_to_next_column() -> None:
@@ -716,10 +828,10 @@ def test_widgets_datagrid_example_playback_switches_scenarios() -> None:
     frames = play_example(
         "examples/tui/58_widgets_datagrid.py",
         events=(
-            ("order", InputEvent(kind="text", text="2")),
-            ("jobs", InputEvent(kind="text", text="3")),
-            ("usage", InputEvent(kind="text", text="4")),
-            ("diagnostics", InputEvent(kind="text", text="5")),
+            ("order", InputEvent(kind="key", key="down")),
+            ("jobs", InputEvent(kind="key", key="down")),
+            ("usage", InputEvent(kind="key", key="down")),
+            ("diagnostics", InputEvent(kind="key", key="down")),
         ),
         width=104,
         height=24,
@@ -731,3 +843,108 @@ def test_widgets_datagrid_example_playback_switches_scenarios() -> None:
     assert any("Job status" in line for line in frames[2].lines)
     assert any("Token usage" in line for line in frames[3].lines)
     assert any("Diagnostics" in line for line in frames[4].lines)
+
+
+def test_widgets_datagrid_example_routes_text_to_grid_after_entering_right_pane() -> None:
+    frames = play_example(
+        "examples/tui/58_widgets_datagrid.py",
+        events=(
+            ("order", InputEvent(kind="key", key="down")),
+            ("enter grid", InputEvent(kind="key", key="enter")),
+            ("edit code", InputEvent(kind="key", key="enter")),
+            ("type A", InputEvent(kind="text", text="A")),
+            ("type 1", InputEvent(kind="text", text="1")),
+        ),
+        width=104,
+        height=24,
+    )
+
+    assert any("Order entry" in line for line in frames[-1].lines)
+    assert any("A1" in line for line in frames[-1].lines)
+    assert any("* 2 Order entry" in line for line in frames[-1].lines)
+    assert not any("AAPL" in line for line in frames[-1].lines)
+
+
+def test_widgets_datagrid_example_order_entry_lookup_total_and_adds_next_line() -> None:
+    namespace = runpy.run_path("examples/tui/58_widgets_datagrid.py", run_name="__test__")
+    app = namespace["DataGridExampleApp"]()
+
+    app.handle_input(InputEvent(kind="key", key="down"))
+    app.handle_input(InputEvent(kind="key", key="enter"))
+    app.handle_input(InputEvent(kind="key", key="down"))
+    assert app.active_scenario.key == "2"
+    grid = app.active_scenario.grid
+    assert (grid.active_row_key, grid.active_column_key) == ("line-2", "code")
+
+    app.handle_input(InputEvent(kind="key", key="enter"))
+    app.handle_input(InputEvent(kind="text", text="C300"))
+    app.handle_input(InputEvent(kind="key", key="enter"))
+
+    assert grid.cell_value("line-2", "name") == "Clamp"
+    assert grid.cell_value("line-2", "price") == 7.25
+    assert grid.editing_cell_key == ("line-2", "qty")
+
+    app.handle_input(InputEvent(kind="key", key="enter"))
+
+    assert grid.row_keys == ("line-1", "line-2", "line-3", "total")
+    assert grid.editing_cell_key is None
+    assert (grid.active_row_key, grid.active_column_key) == ("line-3", "code")
+    app.handle_input(InputEvent(kind="key", key="up"))
+    assert (grid.active_row_key, grid.active_column_key) == ("line-2", "code")
+    assert grid.cell_value("line-2", "total") == 7.25
+    assert grid.cell_value("total", "total") == 46.25
+
+
+def test_widgets_datagrid_example_deletes_order_rows_from_navigation_state() -> None:
+    namespace = runpy.run_path("examples/tui/58_widgets_datagrid.py", run_name="__test__")
+    app = namespace["DataGridExampleApp"]()
+
+    app.handle_input(InputEvent(kind="key", key="down"))
+    app.handle_input(InputEvent(kind="key", key="enter"))
+    grid = app.active_scenario.grid
+    assert (grid.active_row_key, grid.active_column_key) == ("line-2", "code")
+
+    app.handle_input(InputEvent(kind="text", text="C300"))
+    app.handle_input(InputEvent(kind="key", key="enter"))
+    app.handle_input(InputEvent(kind="key", key="enter"))
+    app.handle_input(InputEvent(kind="key", key="up"))
+    app.handle_input(InputEvent(kind="key", key="delete"))
+
+    assert grid.row_keys == ("line-1", "line-3", "total")
+    assert grid.cell_value("total", "total") == 39.0
+
+
+def test_widgets_datagrid_example_backspace_does_not_delete_order_rows_from_navigation_state() -> None:
+    namespace = runpy.run_path("examples/tui/58_widgets_datagrid.py", run_name="__test__")
+    app = namespace["DataGridExampleApp"]()
+
+    app.handle_input(InputEvent(kind="key", key="down"))
+    app.handle_input(InputEvent(kind="key", key="enter"))
+    grid = app.active_scenario.grid
+
+    app.handle_input(InputEvent(kind="text", text="C300"))
+    app.handle_input(InputEvent(kind="key", key="enter"))
+    app.handle_input(InputEvent(kind="key", key="enter"))
+    app.handle_input(InputEvent(kind="key", key="up"))
+    app.handle_input(InputEvent(kind="key", key="backspace"))
+
+    assert grid.row_keys == ("line-1", "line-2", "line-3", "total")
+    assert grid.cell_value("total", "total") == 46.25
+
+
+def test_widgets_datagrid_example_ctrl_d_deletes_order_rows_from_navigation_state() -> None:
+    namespace = runpy.run_path("examples/tui/58_widgets_datagrid.py", run_name="__test__")
+    app = namespace["DataGridExampleApp"]()
+
+    app.handle_input(InputEvent(kind="key", key="down"))
+    app.handle_input(InputEvent(kind="key", key="enter"))
+    grid = app.active_scenario.grid
+
+    app.handle_input(InputEvent(kind="text", text="C300"))
+    app.handle_input(InputEvent(kind="key", key="enter"))
+    app.handle_input(InputEvent(kind="key", key="enter"))
+    app.handle_input(InputEvent(kind="key", key="up"))
+    app.handle_input(InputEvent(kind="key", key="ctrl+d"))
+
+    assert grid.row_keys == ("line-1", "line-3", "total")
+    assert grid.cell_value("total", "total") == 39.0
