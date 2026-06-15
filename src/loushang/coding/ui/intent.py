@@ -34,11 +34,6 @@ class DebugIntent:
 
 
 @dataclass(frozen=True)
-class StatusIntent:
-    pass
-
-
-@dataclass(frozen=True)
 class TerminalDiagnosticsIntent:
     pass
 
@@ -64,11 +59,6 @@ class HotkeysIntent:
 
 
 @dataclass(frozen=True)
-class StatuslineIntent:
-    enabled: bool | None = None
-
-
-@dataclass(frozen=True)
 class CommandsIntent:
     query: str = ""
 
@@ -89,13 +79,11 @@ CodingUiIntent: TypeAlias = (
     | FollowUpIntent
     | AbortIntent
     | DebugIntent
-    | StatusIntent
     | TerminalDiagnosticsIntent
     | SettingsIntent
     | ModelsIntent
     | ModelSelectIntent
     | HotkeysIntent
-    | StatuslineIntent
     | CommandsIntent
     | CommandSelectIntent
     | QuitIntent
@@ -112,8 +100,6 @@ def parse_prompt_intent(text: str) -> CodingUiIntent | None:
         return AbortIntent()
     if stripped == "/debug" or stripped.startswith("/debug "):
         return _parse_debug_intent(stripped)
-    if stripped == "/status":
-        return StatusIntent()
     if stripped == "/terminal":
         return TerminalDiagnosticsIntent()
     if stripped in {"/settings", "/config"}:
@@ -124,8 +110,6 @@ def parse_prompt_intent(text: str) -> CodingUiIntent | None:
         return ModelsIntent(query=stripped[len("/models"):].strip())
     if stripped == "/hotkeys":
         return HotkeysIntent()
-    if stripped == "/statusline" or stripped.startswith("/statusline "):
-        return _parse_statusline_intent(stripped)
     if stripped == "/command" or stripped.startswith("/command "):
         return CommandSelectIntent(query=stripped[len("/command"):].strip())
     if stripped == "/commands" or stripped.startswith("/commands "):
@@ -159,15 +143,6 @@ def _parse_debug_intent(stripped: str) -> DebugIntent:
     return DebugIntent(scopes=scopes)
 
 
-def _parse_statusline_intent(stripped: str) -> StatuslineIntent:
-    arg = stripped[len("/statusline"):].strip().lower()
-    if arg in {"on", "enable", "enabled"}:
-        return StatuslineIntent(enabled=True)
-    if arg in {"off", "disable", "disabled"}:
-        return StatuslineIntent(enabled=False)
-    return StatuslineIntent()
-
-
 __all__ = [
     "AbortIntent",
     "BashIntent",
@@ -182,8 +157,6 @@ __all__ = [
     "PromptIntent",
     "QuitIntent",
     "SettingsIntent",
-    "StatusIntent",
-    "StatuslineIntent",
     "TerminalDiagnosticsIntent",
     "parse_prompt_intent",
 ]

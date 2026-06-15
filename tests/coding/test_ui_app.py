@@ -10,7 +10,7 @@ def test_build_coding_tui_app_wires_prompt_handler_and_status() -> None:
     emitted: list[str] = []
     traces: list[str] = []
     enabled_debug: list[tuple[object, tuple[str, ...]]] = []
-    completion_provider = CompletionProvider((CompletionItem(value="/status"),))
+    completion_provider = CompletionProvider((CompletionItem(value="/terminal"),))
 
     class Session:
         session_id = "sid"

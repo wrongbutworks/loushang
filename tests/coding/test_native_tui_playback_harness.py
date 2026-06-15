@@ -151,18 +151,18 @@ def test_native_tui_input_scenario_applies_tab_completion_without_screen_clear()
 def test_native_tui_input_scenario_captures_local_command_without_prompt_echo() -> None:
     result = (
         NativeTuiInputScenario(width=80, height=12)
-        .with_local_commands("/status")
+        .with_local_commands("/local")
         .render()
-        .type_text("/status")
+        .type_text("/local")
         .enter()
         .run()
     )
 
     with result.write_artifacts_on_failure_from_env(basename="native-input-local-command", include_frames=True):
-        result.assert_local_texts("/status")
+        result.assert_local_texts("/local")
         result.assert_prompt_texts()
         result.assert_composer_text("")
-        result.assert_visible_not_contains("› /status")
+        result.assert_visible_not_contains("› /local")
         result.assert_no_clear_screen()
         result.assert_cursor_matches_diagnostics()
     _assert_interaction_frame_budget(result, "native-input-local-command")

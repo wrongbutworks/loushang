@@ -267,15 +267,13 @@ def test_native_surface_manager_opens_model_surface_in_bottom_frame_with_runtime
 
 
 def test_native_surface_manager_opens_non_model_surfaces_in_runtime_overlay_host() -> None:
-    session = _Session()
-    session.commands = [SimpleNamespace(name="status", description="Show status", source="core")]
     app = _app()
     app.surface_host = SurfaceHost()
-    manager = _manager(app, session)
+    manager = _manager(app, _Session())
 
     for command, expected_title in (
-        ("/status", "Status"),
-        ("/command", "Commands"),
+        ("/terminal", "Terminal"),
+        ("/hotkeys", "Hotkeys"),
     ):
         asyncio.run(manager.handle_text(command))
 
@@ -460,22 +458,6 @@ def test_native_surface_manager_settings_page_submit_mirrors_statusline_settings
     assert any("Status line style: muted" in line for line in plain)
 
 
-def test_native_surface_manager_statusline_command_persists_settings(tmp_path) -> None:
-    from loushang.coding.control import SettingsManager
-
-    settings_path = tmp_path / "settings.json"
-    settings_manager = SettingsManager(global_settings_path=settings_path)
-    app = _app()
-    manager = _manager(app, _Session(), settings_manager=settings_manager)
-
-    asyncio.run(manager.handle_text("/statusline off"))
-
-    reloaded = SettingsManager(global_settings_path=settings_path)
-    assert settings_manager.get_statusline_settings().enabled is False
-    assert reloaded.get_statusline_settings().enabled is False
-    assert app.state.statusline_visible is False
-
-
 def test_native_surface_manager_settings_page_statusline_submit_persists_settings(tmp_path) -> None:
     from loushang.coding.control import SettingsManager
 
@@ -533,7 +515,7 @@ def test_native_surface_manager_runtime_overlay_escape_and_close_are_idempotent(
     app.surface_host = SurfaceHost()
     manager = _manager(app, _Session())
 
-    asyncio.run(manager.handle_text("/status"))
+    asyncio.run(manager.handle_text("/terminal"))
     assert len(app.surface_host.entries) == 1
 
     intents = app.surface_host.route_input(
@@ -583,12 +565,12 @@ def test_native_surface_manager_routes_local_commands_through_command_catalog() 
 
         def lookup(self, text: str) -> CommandDef | None:
             self.lookups.append(text)
-            if text == "/status":
+            if text == "/terminal":
                 return CommandDef(
-                    id="coding.ui.status",
-                    name="status",
+                    id="coding.ui.terminal",
+                    name="terminal",
                     kind=CommandKind.LOCAL_UI,
-                    description="Show current status",
+                    description="Show terminal diagnostics",
                 )
             return None
 
@@ -602,14 +584,14 @@ def test_native_surface_manager_routes_local_commands_through_command_catalog() 
         command_catalog=catalog,
     )
 
-    assert manager.is_local_command("/status") is True
-    assert manager.is_local_command("/status extra") is False
+    assert manager.is_local_command("/terminal") is True
+    assert manager.is_local_command("/terminal extra") is False
 
-    asyncio.run(manager.handle_text("/status"))
+    asyncio.run(manager.handle_text("/terminal"))
 
     view = _only_overlay_view(app)
-    assert view.title == "Status"
-    assert catalog.lookups == ["/status", "/status extra", "/status"]
+    assert view.title == "Terminal"
+    assert catalog.lookups == ["/terminal", "/terminal extra", "/terminal"]
 
 
 def test_native_surface_model_selector_filters_by_typed_search() -> None:
@@ -896,24 +878,6 @@ def test_native_surface_view_translates_mouse_row_to_selection_content() -> None
     assert view.handle_input(InputEvent(kind="key", key="enter")) == InputIntent(kind="select", text="two")
 
 
-def test_native_surface_manager_opens_status_info_and_closes_with_escape() -> None:
-    app = _app()
-    manager = _manager(app, _Session())
-
-    asyncio.run(manager.handle_text("/status"))
-
-    assert isinstance(app.active_surface, NativeSurfaceView)
-    rendered = app.active_surface.render(RenderConstraints(width=80, max_height=8))
-    assert "Status" in rendered.lines[0].text
-    assert any("moonshot/kimi-for-coding" in line.text for line in rendered.lines)
-
-    intent = app.active_surface.handle_input(InputEvent(kind="key", key="escape"))
-    assert intent == InputIntent(kind="surface_close")
-    asyncio.run(manager.handle_surface_intent(intent))
-
-    assert app.active_surface is None
-
-
 def test_native_surface_manager_applies_settings_page_statusline_change() -> None:
     app = _app()
     manager = _manager(app, _Session())
@@ -937,7 +901,7 @@ def test_native_surface_manager_applies_settings_page_statusline_change() -> Non
 def test_native_surface_manager_command_surface_inserts_selected_command() -> None:
     session = _Session()
     session.commands = [
-        SimpleNamespace(name="status", description="Show status", source="core"),
+        SimpleNamespace(name="report", description="Show report", source="core"),
         SimpleNamespace(name="model", description="Switch model", source="core"),
     ]
     app = _app()
@@ -1043,7 +1007,7 @@ def test_native_surface_manager_ignores_unmapped_surface_intent() -> None:
     app = _app()
     manager = _manager(app, _Session())
 
-    asyncio.run(manager.handle_text("/status"))
+    asyncio.run(manager.handle_text("/hotkeys"))
     surface = app.active_surface
     assert surface is not None
 

@@ -13,8 +13,6 @@ from loushang.coding.ui.intent import (
     ModelsIntent,
     QuitIntent,
     SettingsIntent,
-    StatusIntent,
-    StatuslineIntent,
 )
 from loushang.coding.ui.lifecycle import RunLifecycle
 
@@ -30,8 +28,6 @@ class PromptRoute(Enum):
     MODEL_SELECT = "model_select"
     MODELS = "models"
     SETTINGS = "settings"
-    STATUS = "status"
-    STATUSLINE = "statusline"
     STEER = "steer"
 
 
@@ -50,10 +46,6 @@ def route_prompt_intent(intent: CodingUiIntent, lifecycle: RunLifecycle) -> Prom
         return PromptRoute.HOTKEYS
     if isinstance(intent, SettingsIntent):
         return PromptRoute.SETTINGS
-    if isinstance(intent, StatuslineIntent):
-        return PromptRoute.STATUSLINE
-    if isinstance(intent, StatusIntent):
-        return PromptRoute.STATUS
     if lifecycle.active and isinstance(intent, FollowUpIntent):
         return PromptRoute.FOLLOW_UP
     if lifecycle.active and not isinstance(intent, QuitIntent):

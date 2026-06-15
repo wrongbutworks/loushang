@@ -75,12 +75,6 @@ def test_parse_prompt_intent_routes_debug_off() -> None:
     assert parse_prompt_intent("/debug off") == DebugIntent(enabled=False, scopes=())
 
 
-def test_parse_prompt_intent_routes_status_command() -> None:
-    from loushang.coding.ui.intent import StatusIntent, parse_prompt_intent
-
-    assert parse_prompt_intent("/status") == StatusIntent()
-
-
 def test_parse_prompt_intent_routes_terminal_diagnostics_command() -> None:
     from loushang.coding.ui.intent import TerminalDiagnosticsIntent, parse_prompt_intent
 
@@ -112,14 +106,6 @@ def test_parse_prompt_intent_routes_hotkeys_command() -> None:
     from loushang.coding.ui.intent import HotkeysIntent, parse_prompt_intent
 
     assert parse_prompt_intent("/hotkeys") == HotkeysIntent()
-
-
-def test_parse_prompt_intent_routes_statusline_command() -> None:
-    from loushang.coding.ui.intent import StatuslineIntent, parse_prompt_intent
-
-    assert parse_prompt_intent("/statusline") == StatuslineIntent()
-    assert parse_prompt_intent("/statusline on") == StatuslineIntent(enabled=True)
-    assert parse_prompt_intent("/statusline off") == StatuslineIntent(enabled=False)
 
 
 def test_parse_prompt_intent_routes_commands_command() -> None:

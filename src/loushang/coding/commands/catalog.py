@@ -122,13 +122,6 @@ def _session_command_def(raw_command: object) -> CommandDef | None:
 
 
 _LOCAL_COMMANDS_BY_ROUTE_VALUE: dict[str, CommandDef] = {
-    "status": CommandDef(
-        id="coding.ui.status",
-        name="status",
-        kind=CommandKind.LOCAL_UI,
-        description="Show current status",
-        source="local",
-    ),
     "model_select": CommandDef(
         id="coding.ui.model",
         name="model",
@@ -178,13 +171,6 @@ _LOCAL_COMMANDS_BY_ROUTE_VALUE: dict[str, CommandDef] = {
         description="Open settings",
         source="local",
     ),
-    "statusline": CommandDef(
-        id="coding.ui.statusline",
-        name="statusline",
-        kind=CommandKind.LOCAL_UI,
-        description="Configure status line visibility",
-        source="local",
-    ),
     "terminal": CommandDef(
         id="coding.ui.terminal",
         name="terminal",
@@ -196,7 +182,7 @@ _LOCAL_COMMANDS_BY_ROUTE_VALUE: dict[str, CommandDef] = {
 _LOCAL_COMMANDS_BY_NAME: dict[str, CommandDef] = {
     command.name: command for command in _LOCAL_COMMANDS_BY_ROUTE_VALUE.values()
 }
-_LOCAL_COMMANDS_ACCEPT_ARGS = frozenset({"command", "commands", "model", "models", "statusline"})
+_LOCAL_COMMANDS_ACCEPT_ARGS = frozenset({"command", "commands", "model", "models"})
 
 
 __all__ = ["CodingCommandCatalog", "SessionCommandsProvider"]
