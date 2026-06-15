@@ -30,6 +30,7 @@ DataGridCursorMode = Literal["row", "cell", "column", "none"]
 DataGridSelectionMode = Literal["none", "single", "multi"]
 DataGridEnterBehavior = Literal["activate", "edit"]
 DataGridSortDirection = Literal["asc", "desc"]
+DataGridFilterMode = Literal["contains", "prefix"]
 DataGridCellKey = tuple[str, str]
 
 DATA_GRID_SEPARATOR = "  "
@@ -44,10 +45,13 @@ __all__ = [
     "DataGridCursorMode",
     "DataGridEdit",
     "DataGridEnterBehavior",
+    "DataGridFilterMode",
+    "DataGridFilterPredicate",
     "DataGridFormatResult",
     "DataGridFormatter",
     "DataGridParser",
     "DataGridRow",
+    "DataGridRowView",
     "DataGridSelect",
     "DataGridSelectionChange",
     "DataGridSelectionMode",
@@ -74,6 +78,17 @@ DataGridThemeResolver = Callable[[object], str | None]
 
 
 @dataclass(frozen=True, slots=True)
+class DataGridRowView:
+    key: str
+    values: Mapping[str, object]
+    label: str | None = None
+    disabled: bool = False
+
+
+DataGridFilterPredicate = Callable[[DataGridRowView], bool]
+
+
+@dataclass(frozen=True, slots=True)
 class DataGridColumn:
     key: str
     header: str
@@ -90,6 +105,7 @@ class DataGridColumn:
     formatter: DataGridFormatter | None = None
     parser: DataGridParser | None = None
     validator: DataGridValidator | None = None
+    searchable: bool = True
     theme_token: str | None = None
     theme_token_for_value: DataGridThemeResolver | None = None
 
@@ -267,6 +283,11 @@ class DataGrid:
     _selected_row_keys: frozenset[str] = field(default_factory=frozenset, init=False, repr=False)
     _selected_cell_keys: frozenset[DataGridCellKey] = field(default_factory=frozenset, init=False, repr=False)
     _sort_state: tuple[str, DataGridSortDirection] | None = field(default=None, init=False, repr=False)
+    _filter_query: str = field(default="", init=False, repr=False)
+    _filter_query_columns: tuple[str, ...] | None = field(default=None, init=False, repr=False)
+    _filter_mode: DataGridFilterMode = field(default="contains", init=False, repr=False)
+    _filter_case_sensitive: bool = field(default=False, init=False, repr=False)
+    _filter_predicate: DataGridFilterPredicate | None = field(default=None, init=False, repr=False)
     _next_generated_index: int = field(default=0, init=False, repr=False)
     _first_visible_row_index: int = field(default=0, init=False, repr=False)
     _editing_cell_key: DataGridCellKey | None = field(default=None, init=False, repr=False)
@@ -307,6 +328,11 @@ class DataGrid:
         self._selected_row_keys = frozenset()
         self._selected_cell_keys = frozenset()
         self._sort_state = None
+        self._filter_query = ""
+        self._filter_query_columns = None
+        self._filter_mode = "contains"
+        self._filter_case_sensitive = False
+        self._filter_predicate = None
         self._next_generated_index = 0
         self._first_visible_row_index = 0
         self._editing_cell_key = None
@@ -388,6 +414,38 @@ class DataGrid:
     @property
     def sort_state(self) -> tuple[str, DataGridSortDirection] | None:
         return self._sort_state
+
+    @property
+    def filter_query(self) -> str:
+        return self._filter_query
+
+    @property
+    def filter_query_columns(self) -> tuple[str, ...] | None:
+        return self._filter_query_columns
+
+    @property
+    def filter_mode(self) -> DataGridFilterMode:
+        return self._filter_mode
+
+    @property
+    def filter_case_sensitive(self) -> bool:
+        return self._filter_case_sensitive
+
+    @property
+    def has_filter(self) -> bool:
+        return bool(self._filter_query) or self._filter_predicate is not None
+
+    @property
+    def view_row_keys(self) -> tuple[str, ...]:
+        return tuple(row.key for row in self._view_body_rows())
+
+    @property
+    def filtered_row_count(self) -> int:
+        return len(self.view_row_keys)
+
+    @property
+    def total_body_row_count(self) -> int:
+        return len(self._body_rows())
 
     @property
     def editing_cell_key(self) -> DataGridCellKey | None:
@@ -575,6 +633,18 @@ class DataGrid:
             if row.key == key:
                 return row
         return None
+
+    def _body_rows(self) -> tuple[_NormalizedRow, ...]:
+        return tuple(row for row in self._rows if row.pinned is None)
+
+    def _pinned_top_rows(self) -> tuple[_NormalizedRow, ...]:
+        return tuple(row for row in self._rows if row.pinned == "top")
+
+    def _pinned_bottom_rows(self) -> tuple[_NormalizedRow, ...]:
+        return tuple(row for row in self._rows if row.pinned == "bottom")
+
+    def _view_body_rows(self) -> tuple[_NormalizedRow, ...]:
+        return self._body_rows()
 
     def _column_by_key(self, key: str) -> DataGridColumn | None:
         for column in self._columns:

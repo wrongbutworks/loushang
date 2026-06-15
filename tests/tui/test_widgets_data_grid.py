@@ -14,7 +14,9 @@ from loushang.tui import (
     DataGridColumn,
     DataGridEdit,
     DataGridFormatResult,
+    DataGridFilterMode,
     DataGridRow,
+    DataGridRowView,
     DataGridSelect,
     DataGridSelectionChange,
     DeltaFormatter,
@@ -48,6 +50,26 @@ def test_data_grid_is_reexported_from_public_modules() -> None:
     assert DataGridColumn("code", "Code").key == "code"
     assert DataGridCell("AAPL").value == "AAPL"
     assert DataGridRow("row-1", {"code": "AAPL"}).key == "row-1"
+    assert DataGridRowView("row-1", {"code": "AAPL"}).key == "row-1"
+    mode: DataGridFilterMode = "contains"
+    assert mode == "contains"
+
+
+def test_data_grid_filter_state_defaults_and_column_searchable_flag() -> None:
+    grid = DataGrid(
+        [DataGridColumn("code", "Code"), DataGridColumn("secret", "Secret", searchable=False)],
+        [DataGridRow("a", {"code": "AAPL", "secret": "hidden"})],
+    )
+
+    assert grid.filter_query == ""
+    assert grid.filter_query_columns is None
+    assert grid.filter_mode == "contains"
+    assert grid.filter_case_sensitive is False
+    assert grid.has_filter is False
+    assert grid.view_row_keys == ("a",)
+    assert grid.filtered_row_count == 1
+    assert grid.total_body_row_count == 1
+    assert grid.columns[1].searchable is False
 
 
 def test_data_grid_formatters_cover_text_number_percent_delta_and_compact_values() -> None:

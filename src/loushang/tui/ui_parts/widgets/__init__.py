@@ -17,10 +17,13 @@ from .data_grid import DataGridColumn as DataGridColumn
 from .data_grid import DataGridCursorMode as DataGridCursorMode
 from .data_grid import DataGridEdit as DataGridEdit
 from .data_grid import DataGridEnterBehavior as DataGridEnterBehavior
+from .data_grid import DataGridFilterMode as DataGridFilterMode
+from .data_grid import DataGridFilterPredicate as DataGridFilterPredicate
 from .data_grid import DataGridFormatResult as DataGridFormatResult
 from .data_grid import DataGridFormatter as DataGridFormatter
 from .data_grid import DataGridParser as DataGridParser
 from .data_grid import DataGridRow as DataGridRow
+from .data_grid import DataGridRowView as DataGridRowView
 from .data_grid import DataGridSelect as DataGridSelect
 from .data_grid import DataGridSelectionChange as DataGridSelectionChange
 from .data_grid import DataGridSelectionMode as DataGridSelectionMode
@@ -98,10 +101,13 @@ __all__ = [
     "DataGridCursorMode",
     "DataGridEdit",
     "DataGridEnterBehavior",
+    "DataGridFilterMode",
+    "DataGridFilterPredicate",
     "DataGridFormatResult",
     "DataGridFormatter",
     "DataGridParser",
     "DataGridRow",
+    "DataGridRowView",
     "DataGridSelect",
     "DataGridSelectionChange",
     "DataGridSelectionMode",
