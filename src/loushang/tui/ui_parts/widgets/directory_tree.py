@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from collections.abc import Callable, Sequence
+from collections.abc import Callable, Iterable, Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Literal
@@ -52,6 +52,10 @@ class _DirectoryModelNode:
 @dataclass(slots=True)
 class _ScanBudget:
     remaining: int
+
+
+class _RootScanError(Exception):
+    pass
 
 
 @dataclass(init=False, slots=True)
@@ -144,6 +148,45 @@ class DirectoryTree:
             if entry.path is not None and entry.kind in ("directory", "file")
         )
 
+    def focus(self) -> None:
+        self.focused = True
+        self._tree.focus()
+
+    def blur(self) -> None:
+        self.focused = False
+        self._tree.blur()
+
+    def reload(self) -> None:
+        self._rebuild_tree(preferred_active=self._active_path, preferred_expanded=self.expanded_path_set)
+
+    def expand_path(self, path: str | Path) -> bool:
+        value = self._expandable_value(path)
+        if value is None:
+            return False
+        changed = self._tree.expand(value)
+        self._sync_public_state_from_tree()
+        return changed
+
+    def collapse_path(self, path: str | Path) -> bool:
+        value = self._expandable_value(path)
+        if value is None:
+            return False
+        changed = self._tree.collapse(value)
+        self._sync_public_state_from_tree()
+        return changed
+
+    def toggle_path(self, path: str | Path) -> bool:
+        value = self._expandable_value(path)
+        if value is None:
+            return False
+        changed = self._tree.toggle(value)
+        self._sync_public_state_from_tree()
+        return changed
+
+    def is_expanded(self, path: str | Path) -> bool:
+        value = self._expandable_value(path)
+        return False if value is None else self._tree.is_expanded(value)
+
     def _normalize_under_root(self, path: Path, *, label: str) -> Path:
         normalized = _normalize_absolute_lexical(path, label=label)
         try:
@@ -155,11 +198,24 @@ class DirectoryTree:
     def render(self, constraints: RenderConstraints) -> RenderResult:
         return self._tree.render(constraints)
 
-    def _rebuild_tree(self, *, preferred_active: Path | None, preferred_expanded: Sequence[Path]) -> None:
+    def _expandable_value(self, path: str | Path) -> str | None:
+        normalized = self._normalize_under_root(Path(path), label="path")
+        if normalized not in self._traversable_paths:
+            return None
+        return self._path_to_value.get(normalized)
+
+    def _rebuild_tree(self, *, preferred_active: Path | None, preferred_expanded: Iterable[Path]) -> None:
         self._value_to_entry = {}
         self._path_to_value = {}
         self._traversable_paths = set()
-        model = self._build_model()
+        if not self._root_path.exists() or not self._root_path.is_dir():
+            self._set_root_error_model(f"DirectoryTree root is unavailable: {self._root_path}")
+            return
+        try:
+            model = self._build_model()
+        except _RootScanError as exc:
+            self._set_root_error_model(str(exc))
+            return
         root_node = self._tree_node(model)
         expanded_values = [
             self._path_to_value[path]
@@ -187,7 +243,7 @@ class DirectoryTree:
             label=self._root_path.name or str(self._root_path),
         )
         root_value = _real_value(self._root_path)
-        children = self._scan_children(self._root_path, _ScanBudget(self.max_entries))
+        children = self._scan_children(self._root_path, _ScanBudget(self.max_entries), is_root=True)
         return _DirectoryModelNode(
             entry=root_entry,
             tree_value=root_value,
@@ -195,11 +251,19 @@ class DirectoryTree:
             traversable_directory=True,
         )
 
-    def _scan_children(self, parent: Path, budget: _ScanBudget) -> tuple[_DirectoryModelNode, ...]:
+    def _scan_children(
+        self,
+        parent: Path,
+        budget: _ScanBudget,
+        *,
+        is_root: bool = False,
+    ) -> tuple[_DirectoryModelNode, ...]:
         try:
             candidates = tuple(parent.iterdir())
         except (FileNotFoundError, OSError, PermissionError) as exc:
-            return (self._synthetic_node(parent, "error", str(exc), index=0),)
+            if is_root:
+                raise _RootScanError(str(exc)) from exc
+            return (self._synthetic_node(parent, "error", str(exc), index=0, path=parent),)
         visible = [path for path in candidates if self._passes_filters(path)]
         if not visible:
             return (self._synthetic_node(parent, "empty", self.empty_text, index=0),)
@@ -249,9 +313,10 @@ class DirectoryTree:
         label: str,
         *,
         index: int,
+        path: Path | None = None,
     ) -> _DirectoryModelNode:
         return _DirectoryModelNode(
-            entry=DirectoryTreeEntry(path=None, kind=kind, label=label, disabled=True, message=label),
+            entry=DirectoryTreeEntry(path=path, kind=kind, label=label, disabled=True, message=label),
             tree_value=_synthetic_value(parent, kind, index),
         )
 
@@ -274,6 +339,21 @@ class DirectoryTree:
             self._active_path = None
         else:
             self._active_path = entry.path
+
+    def _set_root_error_model(self, message: str) -> None:
+        value = _real_value(self._root_path)
+        entry = DirectoryTreeEntry(path=self._root_path, kind="error", label=message, disabled=True, message=message)
+        self._value_to_entry = {value: entry}
+        self._path_to_value = {}
+        self._traversable_paths = set()
+        self._tree = TreeView(
+            (TreeNode(value=value, label=message, disabled=True),),
+            empty_text=self.empty_text,
+            wrap=self.wrap,
+            theme=self.theme,
+            focused=self.focused,
+        )
+        self._active_path = None
 
 
 def _normalize_absolute_lexical(path: Path, *, label: str) -> Path:

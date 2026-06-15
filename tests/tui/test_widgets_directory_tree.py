@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import ast
 import inspect
+import shutil
 from pathlib import Path
 from typing import Any
 
@@ -181,3 +182,124 @@ def test_directory_tree_does_not_descend_into_filtered_directories(
     tree = DirectoryTree(root=tmp_path, path_filter=lambda path: path.name != "build")
 
     assert tmp_path / "build" not in tree.visible_paths
+
+
+def assert_root_error_model(tree: DirectoryTree, root: Path) -> None:
+    assert len(tree.visible_entries) == 1
+    assert tree.visible_entries[0].kind == "error"
+    assert tree.visible_entries[0].path == root
+    assert tree.visible_entries[0].disabled is True
+    assert tree.visible_paths == ()
+    assert tree.active_path is None
+    assert tree.expanded_path_set == frozenset()
+
+
+def test_directory_tree_initial_active_and_expanded_paths_repair(tmp_path: Path) -> None:
+    build_tree_fixture(tmp_path)
+
+    tree = DirectoryTree(
+        root=tmp_path,
+        active_path=tmp_path / "missing.py",
+        expanded_paths=(tmp_path / "src", tmp_path / "README.md", tmp_path / "missing"),
+    )
+
+    assert tree.active_path == tmp_path
+    assert tree.expanded_path_set == frozenset({tmp_path, tmp_path / "src"})
+
+
+def test_directory_tree_expansion_methods_validate_paths_and_repair_active(tmp_path: Path) -> None:
+    build_tree_fixture(tmp_path)
+    tree = DirectoryTree(
+        root=tmp_path,
+        active_path=tmp_path / "src" / "widgets",
+        expanded_paths=(tmp_path / "src",),
+    )
+
+    assert tree.is_expanded(tmp_path / "src") is True
+    assert tree.expand_path(tmp_path / "src") is False
+    assert tree.collapse_path(tmp_path / "src") is True
+    assert tree.active_path == tmp_path / "src"
+    assert tree.toggle_path(tmp_path / "src") is True
+    assert tree.toggle_path(tmp_path / "src") is True
+    assert tree.expand_path(tmp_path / "README.md") is False
+
+    for method_name in ("expand_path", "collapse_path", "toggle_path", "is_expanded"):
+        method = getattr(tree, method_name)
+        with pytest.raises(ValueError):
+            method(Path("relative"))
+        with pytest.raises(ValueError):
+            method(tmp_path.parent / "outside")
+        with pytest.raises(ValueError):
+            method(tmp_path / ".." / tmp_path.name)
+
+
+def test_directory_tree_reload_preserves_valid_state_and_repairs_removed_paths(tmp_path: Path) -> None:
+    build_tree_fixture(tmp_path)
+    tree = DirectoryTree(root=tmp_path, active_path=tmp_path / "src" / "main.py", expanded_paths=(tmp_path / "src",))
+
+    assert tree.active_path == tmp_path / "src" / "main.py"
+    (tmp_path / "src" / "main.py").unlink()
+    tree.reload()
+
+    assert tree.active_path in tree.visible_paths
+    assert tmp_path / "src" in tree.expanded_path_set
+    assert tmp_path / "src" / "main.py" not in tree.visible_paths
+
+
+def test_directory_tree_reload_root_invalidation_uses_disabled_error_model(tmp_path: Path) -> None:
+    build_tree_fixture(tmp_path)
+    tree = DirectoryTree(root=tmp_path)
+
+    shutil.rmtree(tmp_path)
+    tree.reload()
+
+    assert_root_error_model(tree, tmp_path)
+
+
+def test_directory_tree_reload_root_becomes_file_uses_disabled_error_model(tmp_path: Path) -> None:
+    build_tree_fixture(tmp_path)
+    tree = DirectoryTree(root=tmp_path)
+
+    shutil.rmtree(tmp_path)
+    tmp_path.write_text("now a file", encoding="utf-8")
+    tree.reload()
+
+    assert_root_error_model(tree, tmp_path)
+
+
+def test_directory_tree_reload_unreadable_root_uses_disabled_error_model(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    build_tree_fixture(tmp_path)
+    tree = DirectoryTree(root=tmp_path)
+    original_iterdir = Path.iterdir
+
+    def fail_root(path: Path):
+        if path == tmp_path:
+            raise PermissionError("blocked")
+        return original_iterdir(path)
+
+    monkeypatch.setattr(Path, "iterdir", fail_root)
+
+    tree.reload()
+
+    assert_root_error_model(tree, tmp_path)
+
+
+def test_directory_tree_unreadable_root_construction_uses_disabled_error_model(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    original_iterdir = Path.iterdir
+
+    def fail_root(path: Path):
+        if path == tmp_path:
+            raise PermissionError("blocked")
+        return original_iterdir(path)
+
+    monkeypatch.setattr(Path, "iterdir", fail_root)
+
+    tree = DirectoryTree(root=tmp_path)
+
+    assert_root_error_model(tree, tmp_path)
