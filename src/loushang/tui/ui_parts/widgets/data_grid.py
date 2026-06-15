@@ -11,7 +11,12 @@ from loushang.tui.cell_width import (
     truncate_to_width,
     visible_width,
 )
-from loushang.tui.core import RenderConstraints, RenderLine, RenderResult
+from loushang.tui.core import (
+    CursorDeclaration,
+    RenderConstraints,
+    RenderLine,
+    RenderResult,
+)
 from loushang.tui.keybindings import normalize_key_id
 from loushang.tui.theme import ThemeResolver
 from loushang.tui.ui_parts.widgets._utils import style_text
@@ -259,6 +264,7 @@ class DataGrid:
     _selected_cell_keys: frozenset[DataGridCellKey] = field(default_factory=frozenset, init=False, repr=False)
     _sort_state: tuple[str, DataGridSortDirection] | None = field(default=None, init=False, repr=False)
     _next_generated_index: int = field(default=0, init=False, repr=False)
+    _first_visible_row_index: int = field(default=0, init=False, repr=False)
 
     def __init__(
         self,
@@ -296,6 +302,7 @@ class DataGrid:
         self._selected_cell_keys = frozenset()
         self._sort_state = None
         self._next_generated_index = 0
+        self._first_visible_row_index = 0
         self._columns = _normalize_columns(self.columns)
         self._rows = self._normalize_rows(self.rows)
         self._active_row_key = self._repair_row_key(active_row_key)
@@ -366,32 +373,59 @@ class DataGrid:
         height = max(0, constraints.max_height)
         if height == 0:
             return RenderResult.from_lines([], constraints=constraints)
-        visible_columns = self._visible_columns()
-        if not visible_columns:
+        label_width = self._row_label_width(target_width)
+        render_columns = self._render_columns(target_width, label_width)
+        if not render_columns:
             empty = truncate_to_width(self.empty_text, max_width=target_width, ellipsis="")
             return RenderResult.from_lines(
                 [RenderLine(style_text(empty, self.theme, "widget.dataGrid.empty"))],
                 constraints=constraints,
             )
 
-        widths = _column_widths(visible_columns, target_width)
+        widths = _column_widths(render_columns, _grid_target_width(target_width, label_width))
+        cell_starts = _cell_start_columns(render_columns, widths, label_width)
         lines: list[RenderLine] = []
+        cursor: CursorDeclaration | None = None
         if self.show_header and len(lines) < height:
-            headers = tuple(column.header for column in visible_columns)
-            header_text = _grid_line(headers, visible_columns, widths, target_width)
-            lines.append(RenderLine(style_text(header_text, self.theme, "widget.dataGrid.header")))
+            headers = tuple(column.header for column in render_columns)
+            header_text = _grid_line(headers, render_columns, widths, target_width, label_width=label_width)
+            header_tokens = ["widget.dataGrid.header"]
+            if self.focused and self.cursor_mode == "column" and self._active_column_key in cell_starts:
+                header_tokens.append("widget.dataGrid.focusColumn")
+                cursor = CursorDeclaration(row=len(lines), column=cell_starts[str(self._active_column_key)])
+            lines.append(RenderLine(style_text(header_text, self.theme, *header_tokens)))
 
-        for row in self._rows:
+        top_rows = tuple(row for row in self._rows if row.pinned == "top")
+        body_rows = tuple(row for row in self._rows if row.pinned is None)
+        bottom_rows = tuple(row for row in self._rows if row.pinned == "bottom")
+        reserved_for_pinned = len(top_rows) + len(bottom_rows)
+        body_budget = max(0, height - len(lines) - reserved_for_pinned)
+        self._ensure_active_body_visible(body_rows, body_budget)
+        body_rows = body_rows[self._first_visible_row_index : self._first_visible_row_index + body_budget]
+
+        for row in (*top_rows, *body_rows, *bottom_rows):
             if len(lines) >= height:
                 break
-            lines.append(RenderLine(self._row_line(row, visible_columns, widths, target_width)))
+            line_index = len(lines)
+            row_is_active = row.key == self._active_row_key and row.pinned is None and not row.disabled
+            if (
+                self.focused
+                and row_is_active
+                and self.cursor_mode in {"row", "cell"}
+                and cursor is None
+            ):
+                cursor_column = 0
+                if self.cursor_mode == "cell" and self._active_column_key in cell_starts:
+                    cursor_column = cell_starts[str(self._active_column_key)]
+                cursor = CursorDeclaration(row=line_index, column=cursor_column)
+            lines.append(RenderLine(self._row_line(row, render_columns, widths, target_width, label_width=label_width)))
 
         if not self._rows and len(lines) < height:
-            empty_cells = (self.empty_text,) + tuple("" for _ in visible_columns[1:])
-            text = _grid_line(empty_cells, visible_columns, widths, target_width)
+            empty_cells = (self.empty_text,) + tuple("" for _ in render_columns[1:])
+            text = _grid_line(empty_cells, render_columns, widths, target_width, label_width=label_width)
             lines.append(RenderLine(style_text(text, self.theme, "widget.dataGrid.empty")))
 
-        return RenderResult.from_lines(lines[:height], constraints=constraints)
+        return RenderResult.from_lines(lines[:height], constraints=constraints, cursor=cursor)
 
     def _normalize_rows(
         self,
@@ -458,6 +492,39 @@ class DataGrid:
 
     def _visible_columns(self) -> tuple[DataGridColumn, ...]:
         return tuple(column for column in self._columns if not column.hidden)
+
+    def _row_label_width(self, target_width: int) -> int:
+        if not self.show_row_labels:
+            return 0
+        labels = tuple(row.label or row.key for row in self._rows)
+        if not labels:
+            return 0
+        max_label = max(visible_width(label) for label in labels)
+        return max(0, min(max_label, max(0, target_width - 4)))
+
+    def _render_columns(self, target_width: int, label_width: int) -> tuple[DataGridColumn, ...]:
+        visible_columns = self._visible_columns()
+        if not visible_columns:
+            return ()
+        grid_width = max(0, _grid_target_width(target_width, label_width) - 2)
+        if _preferred_occupied_width(visible_columns) <= grid_width:
+            return visible_columns
+
+        fixed_count = min(self.fixed_columns, len(visible_columns))
+        fixed_columns = visible_columns[:fixed_count]
+        scroll_columns = visible_columns[fixed_count:]
+        if not scroll_columns:
+            return fixed_columns
+
+        scroll_keys = tuple(column.key for column in scroll_columns)
+        start = scroll_keys.index(str(self._active_column_key)) if self._active_column_key in scroll_keys else 0
+        selected = [*fixed_columns, scroll_columns[start]]
+        for column in scroll_columns[start + 1 :]:
+            candidate = (*selected, column)
+            if _preferred_occupied_width(candidate) > grid_width:
+                break
+            selected.append(column)
+        return tuple(selected)
 
     def _enabled_rows(self) -> tuple[_NormalizedRow, ...]:
         return tuple(row for row in self._rows if not row.disabled and row.pinned is None)
@@ -726,12 +793,30 @@ class DataGrid:
                 return column_key
         return columns[0]
 
+    def _ensure_active_body_visible(self, body_rows: Sequence[_NormalizedRow], height: int) -> None:
+        if height <= 0 or not body_rows or self._active_row_key is None:
+            self._first_visible_row_index = 0
+            return
+        index_by_key = {row.key: index for index, row in enumerate(body_rows)}
+        active_index = index_by_key.get(self._active_row_key)
+        if active_index is None:
+            self._first_visible_row_index = max(0, min(self._first_visible_row_index, max(0, len(body_rows) - height)))
+            return
+        if active_index < self._first_visible_row_index:
+            self._first_visible_row_index = active_index
+        elif active_index >= self._first_visible_row_index + height:
+            self._first_visible_row_index = active_index - height + 1
+        max_first = max(0, len(body_rows) - height)
+        self._first_visible_row_index = max(0, min(self._first_visible_row_index, max_first))
+
     def _row_line(
         self,
         row: _NormalizedRow,
         columns: Sequence[DataGridColumn],
         widths: Sequence[int],
         target_width: int,
+        *,
+        label_width: int,
     ) -> str:
         values: list[str] = []
         cell_tokens: list[str | None] = []
@@ -740,9 +825,20 @@ class DataGrid:
             formatted = _format_grid_cell(cell.value, column)
             values.append(formatted.text)
             cell_tokens.append(formatted.theme_token or column.theme_token or cell.theme_token)
-        text = _grid_line(tuple(values), columns, widths, target_width)
-        row_token = "widget.dataGrid.disabled" if row.disabled else "widget.dataGrid.row"
-        return style_text(text, self.theme, row_token, row.theme_token, *cell_tokens)
+        active_row = self.focused and row.key == self._active_row_key and row.pinned is None and not row.disabled
+        focus_row = active_row and self.cursor_mode in {"row", "cell"}
+        prefix = "> " if focus_row else "  "
+        label = row.label or row.key if self.show_row_labels else ""
+        text = _grid_line(tuple(values), columns, widths, target_width, prefix=prefix, label=label, label_width=label_width)
+        row_token = (
+            "widget.dataGrid.disabled"
+            if row.disabled
+            else "widget.dataGrid.focusRow"
+            if focus_row
+            else "widget.dataGrid.row"
+        )
+        semantic_tokens = () if focus_row or row.disabled else tuple(cell_tokens)
+        return style_text(text, self.theme, row_token, row.theme_token, *semantic_tokens)
 
 
 def _normalize_columns(columns: Sequence[DataGridColumn]) -> tuple[DataGridColumn, ...]:
@@ -923,20 +1019,63 @@ def _shrink_widths_to_fit(widths: Sequence[int], grid_width: int) -> list[int]:
     return result
 
 
+def _grid_target_width(target_width: int, label_width: int) -> int:
+    label_extra = label_width + len(DATA_GRID_SEPARATOR) if label_width > 0 else 0
+    return max(0, target_width - label_extra)
+
+
+def _preferred_width(column: DataGridColumn) -> int:
+    if column.width is not None:
+        return max(column.width, column.min_width)
+    return column.min_width
+
+
+def _preferred_occupied_width(columns: Sequence[DataGridColumn]) -> int:
+    widths = tuple(_preferred_width(column) for column in columns)
+    return _occupied_grid_width(widths)
+
+
+def _cell_start_columns(
+    columns: Sequence[DataGridColumn],
+    widths: Sequence[int],
+    label_width: int,
+) -> dict[str, int]:
+    offset = 2
+    if label_width > 0:
+        offset += label_width + len(DATA_GRID_SEPARATOR)
+    starts: dict[str, int] = {}
+    visible = [(column, width) for column, width in zip(columns, widths, strict=True) if width > 0]
+    for index, (column, width) in enumerate(visible):
+        starts[column.key] = offset
+        offset += width
+        if index < len(visible) - 1:
+            offset += len(DATA_GRID_SEPARATOR)
+    return starts
+
+
 def _grid_line(
     cells: Sequence[str],
     columns: Sequence[DataGridColumn],
     widths: Sequence[int],
     target_width: int,
+    *,
+    prefix: str = "  ",
+    label: str = "",
+    label_width: int = 0,
 ) -> str:
-    prefix = "  "
     rendered: list[str] = []
     visible_cells = [
         (cell, width, column) for cell, width, column in zip(cells, widths, columns, strict=True) if width > 0
     ]
     for offset, (cell, width, column) in enumerate(visible_cells):
         rendered.append(_format_cell_text(cell, width, column.align, pad_right=offset < len(visible_cells) - 1))
-    text = f"{prefix}{DATA_GRID_SEPARATOR.join(rendered)}"
+    prefix_text = truncate_to_width(prefix, max_width=2, ellipsis="")
+    label_text = ""
+    if label_width > 0:
+        label_text = _format_cell_text(label, label_width, "left")
+        if rendered:
+            label_text = f"{label_text}{DATA_GRID_SEPARATOR}"
+    text = f"{prefix_text}{label_text}{DATA_GRID_SEPARATOR.join(rendered)}"
     return truncate_to_width(text, max_width=target_width, ellipsis="")
 
 

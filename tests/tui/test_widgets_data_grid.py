@@ -7,6 +7,7 @@ import pytest
 
 from loushang.tui import (
     CompactNumberFormatter,
+    CursorDeclaration,
     DataGrid,
     DataGridCell,
     DataGridColumn,
@@ -18,7 +19,9 @@ from loushang.tui import (
     PercentFormatter,
     RenderConstraints,
     TextFormatter,
+    ThemeResolver,
     strip_control_sequences,
+    visible_width,
 )
 from loushang.tui.ui_parts import DataGrid as UiDataGrid
 from loushang.tui.ui_parts.widgets import DataGrid as WidgetDataGrid
@@ -27,6 +30,11 @@ from loushang.tui.ui_parts.widgets import DataGrid as WidgetDataGrid
 def plain_lines(part: Any, *, width: int = 80, height: int = 8) -> tuple[str, ...]:
     result = part.render(RenderConstraints(width=width, max_height=height))
     return tuple(strip_control_sequences(line.text).rstrip() for line in result.lines)
+
+
+def render_lines(part: Any, *, width: int = 80, height: int = 8) -> tuple[str, ...]:
+    result = part.render(RenderConstraints(width=width, max_height=height))
+    return tuple(line.text for line in result.lines)
 
 
 def test_data_grid_is_reexported_from_public_modules() -> None:
@@ -230,3 +238,157 @@ def test_data_grid_none_mode_repairs_public_state_but_consumes_no_navigation() -
     assert (grid.active_row_key, grid.active_column_key) == ("build", "code")
     assert grid.handle_input(InputEvent(kind="key", key="down")) is None
     assert (grid.active_row_key, grid.active_column_key) == ("build", "code")
+
+
+def test_data_grid_row_rendering_scrolls_active_row_and_declares_cursor() -> None:
+    grid = DataGrid(
+        [DataGridColumn("name", "Name", width=8)],
+        [DataGridRow(str(index), {"name": f"Item {index}"}) for index in range(6)],
+        active_row_key="5",
+        focused=True,
+        wrap_rows=False,
+    )
+
+    result = grid.render(RenderConstraints(width=16, max_height=3))
+    lines = tuple(strip_control_sequences(line.text).rstrip() for line in result.lines)
+
+    assert lines == (
+        "  Name",
+        "  Item 4",
+        "> Item 5",
+    )
+    assert result.cursor == CursorDeclaration(row=2, column=0)
+
+
+def test_data_grid_cell_and_column_modes_declare_cursor_without_confusing_row_prefixes() -> None:
+    cell_grid = DataGrid(
+        [DataGridColumn("code", "Code", width=5), DataGridColumn("qty", "Qty", width=3, align="right")],
+        [DataGridRow("a", {"code": "AAPL", "qty": 5})],
+        active_row_key="a",
+        active_column_key="qty",
+        cursor_mode="cell",
+        focused=True,
+    )
+    column_grid = DataGrid(
+        [DataGridColumn("code", "Code", width=5), DataGridColumn("qty", "Qty", width=3, align="right")],
+        [DataGridRow("a", {"code": "AAPL", "qty": 5})],
+        active_column_key="qty",
+        cursor_mode="column",
+        focused=True,
+    )
+
+    cell_result = cell_grid.render(RenderConstraints(width=16, max_height=3))
+    column_result = column_grid.render(RenderConstraints(width=16, max_height=3))
+    cell_lines = tuple(strip_control_sequences(line.text).rstrip() for line in cell_result.lines)
+    column_lines = tuple(strip_control_sequences(line.text).rstrip() for line in column_result.lines)
+
+    assert cell_lines == (
+        "  Code   Qty",
+        "> AAPL     5",
+    )
+    assert column_lines == (
+        "  Code   Qty",
+        "  AAPL     5",
+    )
+    assert cell_result.cursor == CursorDeclaration(row=1, column=9)
+    assert column_result.cursor == CursorDeclaration(row=0, column=9)
+
+
+def test_data_grid_renders_row_labels_pinned_rows_and_body_viewport() -> None:
+    grid = DataGrid(
+        [DataGridColumn("qty", "Qty", width=3, align="right")],
+        [
+            DataGridRow("top", {"qty": 99}, label="Top", pinned="top"),
+            *[DataGridRow(f"r{index}", {"qty": index}, label=f"R{index}") for index in range(6)],
+            DataGridRow("total", {"qty": 15}, label="Total", pinned="bottom"),
+        ],
+        active_row_key="r5",
+        show_row_labels=True,
+        focused=True,
+        wrap_rows=False,
+    )
+
+    result = grid.render(RenderConstraints(width=18, max_height=5))
+    lines = tuple(strip_control_sequences(line.text).rstrip() for line in result.lines)
+
+    assert lines == (
+        "         Qty",
+        "  Top     99",
+        "  R4       4",
+        "> R5       5",
+        "  Total   15",
+    )
+    assert result.cursor == CursorDeclaration(row=3, column=0)
+
+
+def test_data_grid_fixed_columns_keep_identity_while_horizontal_window_tracks_active_column() -> None:
+    grid = DataGrid(
+        [
+            DataGridColumn("id", "ID", width=3),
+            DataGridColumn("name", "Name", width=6),
+            DataGridColumn("note", "Note", width=6),
+            DataGridColumn("owner", "Owner", width=5),
+        ],
+        [DataGridRow("a", {"id": "A1", "name": "Alpha", "note": "Queued", "owner": "Mina"})],
+        active_row_key="a",
+        active_column_key="owner",
+        cursor_mode="cell",
+        fixed_columns=1,
+        focused=True,
+    )
+
+    lines = plain_lines(grid, width=18, height=3)
+
+    assert lines == (
+        "  ID   Owner",
+        "> A1   Mina",
+    )
+    assert "Name" not in "\n".join(lines)
+    assert "Note" not in "\n".join(lines)
+
+
+def test_data_grid_theme_tokens_and_width_constraints_are_applied() -> None:
+    theme = ThemeResolver(
+        defaults={
+            "widget.dataGrid.header": {"color": "cyan"},
+            "widget.dataGrid.row": {"color": "white"},
+            "widget.dataGrid.rowAlternate": {"color": "bright_black"},
+            "widget.dataGrid.focusRow": {"bold": True, "color": "green"},
+            "widget.dataGrid.disabled": {"dim": True},
+            "widget.dataGrid.positive": {"color": "green"},
+        }
+    )
+    grid = DataGrid(
+        [
+            DataGridColumn("name", "Name", width=8),
+            DataGridColumn(
+                "delta",
+                "Delta",
+                width=6,
+                align="right",
+                formatter=DeltaFormatter(precision=1),
+                theme_token_for_value=lambda value: "widget.dataGrid.positive" if value > 0 else None,
+            ),
+        ],
+        [
+            DataGridRow("build", {"name": "Build", "delta": 1.2}),
+            DataGridRow("skip", {"name": "Skip", "delta": 0}, disabled=True),
+        ],
+        active_row_key="build",
+        focused=True,
+        zebra_stripes=True,
+        theme=theme,
+    )
+
+    raw = render_lines(grid, width=20, height=3)
+    plain = tuple(strip_control_sequences(line).rstrip() for line in raw)
+
+    assert raw[0].startswith("\x1b[36m  Name")
+    assert raw[1].startswith("\x1b[1;32m> Build")
+    assert raw[2].startswith("\x1b[2m  Skip")
+    assert plain == (
+        "  Name       Delta",
+        "> Build       +1.2",
+        "  Skip         0.0",
+    )
+    assert all(visible_width(line) <= 20 for line in raw)
