@@ -882,6 +882,122 @@ class DataGrid:
         self._selected_cell_keys = frozenset()
         return True
 
+    def sort_by(self, column_key: str, direction: DataGridSortDirection = "asc") -> bool:
+        column = self._column_by_key(column_key)
+        if column is None or column.hidden or not column.sortable or direction not in {"asc", "desc"}:
+            return False
+        self._sort_state = (column.key, direction)
+        self._apply_sort_state()
+        self._repair_state_after_data_change()
+        return True
+
+    def clear_sort(self) -> bool:
+        if self._sort_state is None:
+            return False
+        self._sort_state = None
+        self._rows = tuple(sorted(self._rows, key=lambda row: row.insertion_order))
+        self._repair_state_after_data_change()
+        return True
+
+    def add_row(
+        self,
+        row: DataGridRow | Mapping[str, object] | list[object] | tuple[object, ...],
+        *,
+        index: int | None = None,
+        activate: bool = False,
+        edit_column_key: str | None = None,
+    ) -> str:
+        used_keys = set(self.row_keys)
+        explicit_keys = {str(row.key)} if isinstance(row, DataGridRow) else set()
+        insertion_order = (max((existing.insertion_order for existing in self._rows), default=-1) + 1)
+        normalized = self._normalize_row(row, explicit_keys, used_keys, insertion_order)
+        if normalized.key in used_keys:
+            raise ValueError(f"duplicate row key: {normalized.key!r}")
+        rows = list(self._rows)
+        if index is None:
+            rows.append(normalized)
+        else:
+            rows.insert(max(0, min(index, len(rows))), normalized)
+        self._rows = tuple(rows)
+        if activate:
+            self._active_row_key = normalized.key
+        self._repair_state_after_data_change()
+        if activate and edit_column_key is not None:
+            self.start_edit(normalized.key, edit_column_key)
+        return normalized.key
+
+    def replace_rows(
+        self,
+        rows: Sequence[DataGridRow | Mapping[str, object] | list[object] | tuple[object, ...]],
+    ) -> None:
+        self.rows = tuple(rows)
+        self._rows = self._normalize_rows(self.rows)
+        self._apply_sort_state()
+        self._repair_state_after_data_change()
+
+    def remove_row(self, row_key: str) -> bool:
+        if row_key not in self.row_keys:
+            return False
+        self._rows = tuple(row for row in self._rows if row.key != row_key)
+        if self._editing_cell_key is not None and self._editing_cell_key[0] == row_key:
+            self.cancel_edit()
+        self._repair_state_after_data_change()
+        return True
+
+    def add_column(self, column: DataGridColumn, *, index: int | None = None, default: object | DataGridCell = "") -> bool:
+        if self._column_by_key(column.key) is not None:
+            return False
+        columns = list(self._columns)
+        if index is None:
+            columns.append(column)
+        else:
+            columns.insert(max(0, min(index, len(columns))), column)
+        self._columns = tuple(columns)
+        self.columns = self._columns
+        default_cell = _normalize_cell(default)
+        for row in self._rows:
+            row.cells[column.key] = default_cell
+        self._repair_state_after_data_change()
+        return True
+
+    def remove_column(self, column_key: str) -> bool:
+        if self._column_by_key(column_key) is None:
+            return False
+        if self._sort_state is not None and self._sort_state[0] == column_key:
+            self._sort_state = None
+        self._columns = tuple(column for column in self._columns if column.key != column_key)
+        self.columns = self._columns
+        for row in self._rows:
+            row.cells.pop(column_key, None)
+        self._selected_cell_keys = frozenset(
+            cell_key for cell_key in self._selected_cell_keys if cell_key[1] != column_key
+        )
+        if self._editing_cell_key is not None and self._editing_cell_key[1] == column_key:
+            self.cancel_edit()
+        self._repair_state_after_data_change()
+        return True
+
+    def update_cell(self, row_key: str, column_key: str, value: object | DataGridCell) -> bool:
+        row = self._row_by_key(row_key)
+        if row is None or self._column_by_key(column_key) is None:
+            return False
+        row.cells[column_key] = _normalize_cell(value)
+        if self._editing_cell_key == (row_key, column_key):
+            self.cancel_edit()
+        self._repair_state_after_data_change()
+        return True
+
+    def clear(self) -> None:
+        self._rows = ()
+        self.rows = ()
+        self._selected_row_keys = frozenset()
+        self._selected_cell_keys = frozenset()
+        self._sort_state = None
+        self._active_row_key = None
+        self._active_column_key = self._repair_column_key(self._active_column_key)
+        self._first_visible_row_index = 0
+        self.cancel_edit()
+
     def _toggle_active_column_cells(self) -> bool:
         if self._active_column_key is None:
             return False
@@ -914,6 +1030,27 @@ class DataGrid:
             if self._is_enabled_cell(row.key, column_key):
                 result.append((row.key, column_key))
         return tuple(result)
+
+    def _apply_sort_state(self) -> None:
+        if self._sort_state is None:
+            return
+        column_key, direction = self._sort_state
+        top_rows = tuple(row for row in self._rows if row.pinned == "top")
+        body_rows = tuple(row for row in self._rows if row.pinned is None)
+        bottom_rows = tuple(row for row in self._rows if row.pinned == "bottom")
+        reverse = direction == "desc"
+        sorted_body = tuple(sorted(body_rows, key=lambda row: _sortable_value(row.cells[column_key].value), reverse=reverse))
+        self._rows = (*top_rows, *sorted_body, *bottom_rows)
+
+    def _repair_state_after_data_change(self) -> None:
+        self._active_row_key = self._repair_row_key(self._active_row_key)
+        self._active_column_key = self._repair_column_key(self._active_column_key)
+        if self.cursor_mode == "cell":
+            self._repair_active_cell()
+        enabled_rows = {row.key for row in self._enabled_rows()}
+        enabled_cells = set(self._enabled_cell_keys())
+        self._selected_row_keys = frozenset(key for key in self._selected_row_keys if key in enabled_rows)
+        self._selected_cell_keys = frozenset(key for key in self._selected_cell_keys if key in enabled_cells)
 
     def _move_active_row(self, delta: int, *, wrap: bool) -> bool | None:
         enabled = self._enabled_row_keys()
@@ -1279,6 +1416,14 @@ def _format_decimal_trimmed(value: Decimal, precision: int) -> str:
     quantized = value.quantize(places, rounding=ROUND_HALF_UP)
     text = format(quantized, f".{max(0, precision)}f")
     return text.rstrip("0").rstrip(".") if "." in text else text
+
+
+def _sortable_value(value: object) -> tuple[int, object]:
+    if value is None:
+        return (1, "")
+    if isinstance(value, (int, float, Decimal)):
+        return (0, Decimal(str(value)))
+    return (0, str(value))
 
 
 def _column_widths(columns: Sequence[DataGridColumn], target_width: int) -> tuple[int, ...]:

@@ -590,3 +590,88 @@ def test_data_grid_editing_keeps_errors_open_and_escape_cancels() -> None:
     assert grid.handle_input(InputEvent(kind="key", key="escape")) is True
     assert grid.editing_cell_key is None
     assert grid.editing_error is None
+
+
+def test_data_grid_sort_by_and_clear_sort_are_stable() -> None:
+    grid = DataGrid(
+        [DataGridColumn("name", "Name"), DataGridColumn("qty", "Qty")],
+        [
+            DataGridRow("a", {"name": "Alpha", "qty": 2}),
+            DataGridRow("b", {"name": "Beta", "qty": 1}),
+            DataGridRow("c", {"name": "Charlie", "qty": 2}),
+        ],
+    )
+
+    assert grid.sort_by("qty", direction="asc") is True
+    assert grid.sort_state == ("qty", "asc")
+    assert grid.row_keys == ("b", "a", "c")
+    assert grid.sort_by("qty", direction="desc") is True
+    assert grid.row_keys == ("a", "c", "b")
+    assert grid.clear_sort() is True
+    assert grid.sort_state is None
+    assert grid.row_keys == ("a", "b", "c")
+    assert grid.sort_by("missing") is False
+
+
+def test_data_grid_replace_rows_preserves_explicit_keys_and_rekeys_shorthand_rows() -> None:
+    grid = DataGrid(
+        [DataGridColumn("name", "Name"), DataGridColumn("qty", "Qty")],
+        [
+            DataGridRow("a", {"name": "Alpha", "qty": 2}),
+            DataGridRow("b", {"name": "Beta", "qty": 1}),
+            DataGridRow("c", {"name": "Charlie", "qty": 3}),
+        ],
+        active_row_key="c",
+        selection_mode="multi",
+    )
+    assert grid.select_row("b") is True
+    assert grid.sort_by("qty") is True
+
+    grid.replace_rows(
+        [
+            DataGridRow("b", {"name": "Beta", "qty": 5}),
+            DataGridRow("c", {"name": "Charlie", "qty": 0}),
+        ]
+    )
+
+    assert grid.row_keys == ("c", "b")
+    assert grid.active_row_key == "c"
+    assert grid.selected_row_keys == frozenset({"b"})
+
+    shorthand = DataGrid([DataGridColumn("name", "Name")], [{"name": "Old"}])
+    assert shorthand.row_keys == ("row-0",)
+    shorthand.replace_rows([{"name": "New"}])
+    assert shorthand.row_keys == ("row-1",)
+
+
+def test_data_grid_mutation_apis_repair_state_and_selection() -> None:
+    grid = DataGrid(
+        [DataGridColumn("name", "Name"), DataGridColumn("qty", "Qty", editable=True, parser=int)],
+        [DataGridRow("build", {"name": "Build", "qty": 1})],
+        cursor_mode="cell",
+        selection_mode="multi",
+    )
+
+    new_key = grid.add_row({"name": "Deploy", "qty": 3}, activate=True, edit_column_key="qty")
+    assert new_key == "row-0"
+    assert grid.active_row_key == "row-0"
+    assert grid.editing_cell_key == ("row-0", "qty")
+    assert grid.update_cell("row-0", "qty", 4) is True
+    assert grid.cell_value("row-0", "qty") == 4
+    assert grid.editing_cell_key is None
+
+    assert grid.add_column(DataGridColumn("status", "Status"), default=DataGridCell("ready", disabled=True)) is True
+    assert grid.cell_value("build", "status") == "ready"
+    assert grid.cell_disabled("build", "status") is True
+    assert grid.select_cell("build", "name") is True
+    assert grid.remove_column("name") is True
+    assert grid.selected_cell_keys == frozenset()
+    assert grid.active_column_key == "qty"
+
+    assert grid.remove_row("row-0") is True
+    assert grid.active_row_key == "build"
+    grid.clear()
+    assert grid.row_keys == ()
+    assert grid.active_row_key is None
+    assert grid.selected_row_keys == frozenset()
+    assert grid.sort_state is None
