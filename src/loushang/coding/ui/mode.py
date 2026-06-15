@@ -8,10 +8,10 @@ from typing import Any, TextIO
 
 from loushang.ai.types import ImagePart
 from loushang.coding.observability import disable_session_debug, enable_session_debug
-from loushang.coding.ui.app import build_coding_tui_app
 from loushang.coding.ui.completion import coding_inline_completion_provider
 from loushang.coding.ui.controller import CodingUiController, ControllerResult
 from loushang.coding.ui.intent import AbortIntent, QuitIntent, parse_prompt_intent
+from loushang.coding.ui.plain_app import build_plain_coding_tui_app
 from loushang.coding.ui.plain_events import PlainCodingEventRenderer
 from loushang.coding.ui.plain_renderer import PlainCodingUiRenderer
 from loushang.coding.ui.run_context import (
@@ -201,7 +201,7 @@ async def _run_plain_tui(
             log_context_factory=log_context,
             trace=_trace,
         )
-        app = build_coding_tui_app(
+        app = build_plain_coding_tui_app(
             runtime=runtime,
             session=session,
             renderer=renderer,

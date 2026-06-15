@@ -56,13 +56,13 @@ DisableDebug = Callable[[], None]
 
 
 @dataclass(frozen=True)
-class CodingTuiApp:
+class PlainCodingTuiApp:
     lifecycle: RunLifecycle
     handlers: CodingTuiHandlers
     completion_provider: CompletionProvider | None = None
 
 
-def build_coding_tui_app(
+def build_plain_coding_tui_app(
     *,
     runtime: Any,
     session: Any,
@@ -82,7 +82,7 @@ def build_coding_tui_app(
     model_palette_chooser: ModelPaletteChooser | None = None,
     command_palette_chooser: CommandPaletteChooser | None = None,
     info_panel_presenter: InfoPanelPresenter | None = None,
-) -> CodingTuiApp:
+) -> PlainCodingTuiApp:
     lifecycle = RunLifecycle()
     controller = CodingUiController(runtime=runtime, session=session, verbose=verbose)
     follow_up_queue = FollowUpQueueHandler(
@@ -168,11 +168,11 @@ def build_coding_tui_app(
         session_running=lambda: is_running(session),
         trace=trace,
     )
-    return CodingTuiApp(
+    return PlainCodingTuiApp(
         lifecycle=lifecycle,
         handlers=handlers,
         completion_provider=completion_provider,
     )
 
 
-__all__ = ["CodingTuiApp", "build_coding_tui_app"]
+__all__ = ["PlainCodingTuiApp", "build_plain_coding_tui_app"]

@@ -2,7 +2,7 @@
 
 This report records the current `loushang.coding.ui` boundary after the screen UI
 naming cleanup, the explicit plain renderer naming cleanup, and the explicit
-plain event projection naming cleanup.
+plain event projection and app assembly naming cleanups.
 
 ## Scope
 
@@ -46,13 +46,13 @@ plain-specific:
 | `plain_renderer.py` | Renders stable line-oriented coding output and optional transcript records. | Keep. This is the plain surface renderer. |
 | `plain_toolbar.py` | Formats compact toolbar/status text for plain output. | Keep. This is plain output presentation. |
 | `plain_events.py` | Projects session events into `PlainCodingUiRenderer`. | Keep. This is the plain event projector. |
-| `app.py` | Builds the current plain prompt-loop app around shared handlers. | Rename to `plain_app.py`; rename `CodingTuiApp` to `PlainCodingTuiApp`; rename `build_coding_tui_app` to `build_plain_coding_tui_app`. |
+| `plain_app.py` | Builds the current plain prompt-loop app around shared handlers. | Keep. This is the plain app assembly. |
 
 Evidence:
 
 - `plain_events.py` imports `PlainCodingUiRenderer` and calls only plain rendering
   methods.
-- `app.py` requires `PlainCodingUiRenderer`, wires `CodingTuiHandlers`, and is
+- `plain_app.py` requires `PlainCodingUiRenderer`, wires `CodingTuiHandlers`, and is
   used by `_run_plain_tui`.
 - `prompt_command.py` directly uses `PlainCodingUiRenderer` plus
   `PlainCodingEventRenderer` to render one-shot prompt output.
@@ -153,24 +153,22 @@ The event projection boundary is explicit:
 
 This was low risk because the class already required `PlainCodingUiRenderer`.
 
-### 1. Rename Plain App Assembly
+### Completed: Rename Plain App Assembly
 
-Make the plain prompt-loop app assembly explicit:
+The plain prompt-loop app assembly boundary is explicit:
 
-- `src/loushang/coding/ui/app.py` -> `plain_app.py`
-- `CodingTuiApp` -> `PlainCodingTuiApp`
-- `build_coding_tui_app` -> `build_plain_coding_tui_app`
-- update imports in:
+- `src/loushang/coding/ui/plain_app.py`
+- `PlainCodingTuiApp`
+- `build_plain_coding_tui_app`
+- imports updated in:
   - `mode.py`
-  - `tests/coding/test_ui_app.py`
-- consider renaming `tests/coding/test_ui_app.py` to
   `tests/coding/test_ui_plain_app.py`
-- add an import-boundary assertion that `loushang.coding.ui.app` is removed
+- import-boundary assertion added for removed `loushang.coding.ui.app`
 
 This makes `screen_app.py` and `plain_app.py` symmetrical without changing
 runtime behavior.
 
-### 2. Hold Shared Handlers Stable
+### 1. Hold Shared Handlers Stable
 
 Do not rename these in the same pass:
 
@@ -185,7 +183,7 @@ They should remain neutral until a later audit proves they are plain-only. A
 premature rename would make the architecture look cleaner than the actual
 ownership model and could cause screen semantics to fork unnecessarily.
 
-### 3. Avoid New Subpackages For Now
+### 2. Avoid New Subpackages For Now
 
 Do not introduce `ui/plain/` and `ui/screen/` subpackages yet. The flat module
 layout with explicit `plain_*` and `screen_*` names is currently simpler:
@@ -196,7 +194,7 @@ layout with explicit `plain_*` and `screen_*` names is currently simpler:
 - it still gives enough visual separation in file listings and tests.
 
 Revisit subpackages only if both surfaces continue to grow after the plain app
-and plain event renames.
+and plain event rename cleanups.
 
 ## Non-Goals
 
@@ -211,7 +209,7 @@ This audit does not recommend:
 
 ## Validation For Follow-Up PRs
 
-For the remaining recommended rename PR, use targeted red/green validation:
+For future rename PRs, use targeted red/green validation:
 
 - import-boundary test for the removed old module name
 - focused plain renderer/app tests
@@ -222,14 +220,14 @@ Suggested commands:
 
 ```bash
 uv --cache-dir /tmp/uv-cache run --extra dev pytest tests/coding/test_ui_plain_renderer.py tests/coding/test_ui_mode.py tests/coding/test_ui_import_boundaries.py -q
-uv --cache-dir /tmp/uv-cache run --extra dev pytest tests/coding/test_ui_app.py tests/coding/test_cli.py -k tui -q
+uv --cache-dir /tmp/uv-cache run --extra dev pytest tests/coding/test_ui_plain_app.py tests/coding/test_cli.py -k tui -q
 uv --cache-dir /tmp/uv-cache run --extra dev ruff check src/loushang/coding tests/coding
 git diff --check
 ```
 
 ## Recommendation
 
-Proceed with the remaining plain app assembly rename as a small
-behavior-preserving PR. Keep plain as a first-class capability, keep screen as
-the interactive shell, and keep `loushang.tui` clean by letting it provide
-reusable terminal components rather than product-specific coding UI surfaces.
+Treat the plain/screen naming cleanup as complete for the current flat module
+layout. Keep plain as a first-class capability, keep screen as the interactive
+shell, and keep `loushang.tui` clean by letting it provide reusable terminal
+components rather than product-specific coding UI surfaces.
