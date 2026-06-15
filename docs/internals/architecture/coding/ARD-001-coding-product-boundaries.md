@@ -13,7 +13,7 @@ Accepted
 - 先设计完整组件边界，再分阶段实现
 
 截至当前实现，headless CLI/mode、session/runtime/store、extensions、tools、
-diagnostics、package/plugin、native TUI、method-guided non-interactive path 与
+diagnostics、package/plugin、screen TUI、method-guided non-interactive path 与
 work-log/projection 都已有主干。`--method` 与 TUI/RPC 仍保持互斥，原因见
 [ARD-006](./ARD-006-tui-method-integration-constraints.md)。
 

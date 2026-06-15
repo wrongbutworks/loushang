@@ -132,7 +132,7 @@ This contract is not TUI or RPC method integration.
 
 It does not:
 
-- enable `--method` in Native TUI
+- enable `--method` in screen TUI
 - enable `--method` in RPC mode
 - add TUI method pickers or step status rendering
 - change agent-loop or multi-agent scheduling semantics

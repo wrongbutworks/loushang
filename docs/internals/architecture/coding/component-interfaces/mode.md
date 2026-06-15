@@ -8,7 +8,7 @@
 
 - 用户可见运行形态：`text / print / json / rpc / tui / interactive`
 - `ModeAdapter` 抽象边界
-- `PrintMode` / `RpcMode` / native TUI runner 等 adapter object
+- `PrintMode` / `RpcMode` / screen TUI runner 等 adapter object
 - `json` 作为 `PrintMode` 的结构化输出 projection
 - runtime event 到输出投影的规则
 

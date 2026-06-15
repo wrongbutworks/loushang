@@ -30,7 +30,7 @@ if args.tui:
 
 ### 1. TUI + method 暂不打通，保持互斥
 
-当前 TUI mode 与 `--method` 的互斥是**架构层面的正确选择**，不是临时限制。互斥的原因不是 method 缺少基础 step 语义，而是 TUI 仍围绕单次 `session.prompt()` 生命周期和 native/session event rendering 工作，尚未具备 method plan projection、step 状态展示、step-level 干预和 replay 对齐。
+当前 TUI mode 与 `--method` 的互斥是**架构层面的正确选择**，不是临时限制。互斥的原因不是 method 缺少基础 step 语义，而是 TUI 仍围绕单次 `session.prompt()` 生命周期和 session/screen event rendering 工作，尚未具备 method plan projection、step 状态展示、step-level 干预和 replay 对齐。
 
 ### 2. 打通需要三个前置阶段
 
@@ -60,7 +60,7 @@ TUI 必须达到以下稳定状态：
 
 在 Phase 1 和 Phase 2 完成后，解除 TUI/method 互斥，实现：
 
-- TUI 的 method status layer 消费 `WorkEvent` / `WorkPlanRun` projection；过渡期 transcript/tool rendering 可继续消费 native/session events
+- TUI 的 method status layer 消费 `WorkEvent` / `WorkPlanRun` projection；过渡期 transcript/tool rendering 可继续消费 session/screen events
 - TUI 显示 method step 进度：当前步索引、总步数、步骤标题
 - TUI 支持 step-level 干预：step cancel/abort、step steer、step retry
 - TUI 显示 step deviation 和 approval gate
@@ -182,7 +182,7 @@ def _method_runtime_error(args: CliArgs, *, effective_tui: bool) -> str | None:
 
 - [ ] `WorkEvent` 投影层和 `work-log-inspect` plan replay 已完成 failure hardening
 - [ ] TUI method status layer 已消费 `WorkEvent` / `WorkPlanRun` projection
-- [ ] transcript/tool rendering 与 method status layer 的 event 边界已明确，过渡期允许 native/session events 与 WorkEvent projection 并存
+- [ ] transcript/tool rendering 与 method status layer 的 event 边界已明确，过渡期允许 session/screen events 与 WorkEvent projection 并存
 - [ ] TUI 的 abort/queue/steer 状态机已支持 step-level 语义
 - [ ] method step 的 `WorkStepStarted` / `WorkStepCompleted` / `WorkStepFailed` 以及 deviation metadata 在 TUI 中正确渲染
 - [ ] 回归测试覆盖：method plan 在 TUI 中完整运行、abort、steer、replay
