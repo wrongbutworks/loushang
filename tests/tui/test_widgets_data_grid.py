@@ -989,6 +989,55 @@ def test_widgets_datagrid_example_routes_text_to_grid_after_entering_right_pane(
     assert not any("AAPL" in line for line in frames[-1].lines)
 
 
+def test_widgets_datagrid_example_q_text_does_not_quit_while_editing_cell() -> None:
+    namespace = runpy.run_path("examples/tui/58_widgets_datagrid.py", run_name="__test__")
+    app = namespace["DataGridExampleApp"]()
+    should_quit = namespace["_should_quit"]
+
+    assert should_quit(InputEvent(kind="text", text="q"), app) is True
+
+    app.handle_input(InputEvent(kind="key", key="down"))
+    app.handle_input(InputEvent(kind="key", key="enter"))
+    app.handle_input(InputEvent(kind="key", key="enter"))
+    assert app.active_scenario.grid.editing_cell_key == ("line-2", "code")
+
+    assert should_quit(InputEvent(kind="text", text="q"), app) is False
+    assert should_quit(InputEvent(kind="key", key="ctrl+c"), app) is True
+
+
+def test_widgets_datagrid_example_qty_error_is_visible_and_clears_after_success() -> None:
+    namespace = runpy.run_path("examples/tui/58_widgets_datagrid.py", run_name="__test__")
+    app = namespace["DataGridExampleApp"]()
+
+    app.handle_input(InputEvent(kind="key", key="down"))
+    app.handle_input(InputEvent(kind="key", key="enter"))
+    grid = app.active_scenario.grid
+
+    app.handle_input(InputEvent(kind="text", text="C300"))
+    app.handle_input(InputEvent(kind="key", key="enter"))
+    assert grid.editing_cell_key == ("line-2", "qty")
+
+    app.handle_input(InputEvent(kind="text", text="q"))
+    app.handle_input(InputEvent(kind="key", key="enter"))
+
+    lines = plain_lines(app, width=120, height=24)
+    raw_lines = render_lines(app, width=120, height=24)
+    assert grid.editing_cell_key == ("line-2", "qty")
+    assert grid.editing_error == "Qty must be a whole number"
+    assert any("Error: Qty must be a whole number" in line for line in lines)
+    assert any("\x1b[31m" in line and "Error: Qty must be a whole number" in line for line in raw_lines)
+
+    app.handle_input(InputEvent(kind="key", key="backspace"))
+    app.handle_input(InputEvent(kind="text", text="3"))
+    app.handle_input(InputEvent(kind="key", key="enter"))
+
+    lines = plain_lines(app, width=120, height=24)
+    assert grid.editing_cell_key is None
+    assert grid.editing_error is None
+    assert not any("Error:" in line for line in lines)
+    assert grid.cell_value("line-2", "qty") == 3
+
+
 def test_widgets_datagrid_example_order_entry_lookup_total_and_adds_next_line() -> None:
     namespace = runpy.run_path("examples/tui/58_widgets_datagrid.py", run_name="__test__")
     app = namespace["DataGridExampleApp"]()
@@ -1035,6 +1084,7 @@ def test_widgets_datagrid_example_deletes_order_rows_from_navigation_state() -> 
     app.handle_input(InputEvent(kind="key", key="delete"))
 
     assert grid.row_keys == ("line-1", "line-3", "total")
+    assert (grid.active_row_key, grid.active_column_key) == ("line-3", "code")
     assert grid.cell_value("total", "total") == 39.0
 
 
@@ -1071,4 +1121,21 @@ def test_widgets_datagrid_example_ctrl_d_deletes_order_rows_from_navigation_stat
     app.handle_input(InputEvent(kind="key", key="ctrl+d"))
 
     assert grid.row_keys == ("line-1", "line-3", "total")
+    assert (grid.active_row_key, grid.active_column_key) == ("line-3", "code")
+    assert grid.cell_value("total", "total") == 39.0
+
+
+def test_widgets_datagrid_example_delete_last_order_row_focuses_previous_row() -> None:
+    namespace = runpy.run_path("examples/tui/58_widgets_datagrid.py", run_name="__test__")
+    app = namespace["DataGridExampleApp"]()
+
+    app.handle_input(InputEvent(kind="key", key="down"))
+    app.handle_input(InputEvent(kind="key", key="enter"))
+    grid = app.active_scenario.grid
+    assert (grid.active_row_key, grid.active_column_key) == ("line-2", "code")
+
+    app.handle_input(InputEvent(kind="key", key="delete"))
+
+    assert grid.row_keys == ("line-1", "total")
+    assert (grid.active_row_key, grid.active_column_key) == ("line-1", "code")
     assert grid.cell_value("total", "total") == 39.0

@@ -11,7 +11,6 @@ from typing import Literal, TextIO
 
 from loushang.tui.cell_width import (
     autowrap_safe_width,
-    grapheme_clusters,
     truncate_to_width,
     visible_width,
 )
@@ -23,6 +22,7 @@ from loushang.tui.core import (
 )
 from loushang.tui.keybindings import normalize_key_id
 from loushang.tui.theme import ThemeResolver
+from loushang.tui.ui_parts.widgets._inline_edit_buffer import InlineEditBuffer
 from loushang.tui.ui_parts.widgets._utils import callback_result, style_text
 
 DataGridAlign = Literal["left", "right", "center"]
@@ -270,9 +270,7 @@ class DataGrid:
     _next_generated_index: int = field(default=0, init=False, repr=False)
     _first_visible_row_index: int = field(default=0, init=False, repr=False)
     _editing_cell_key: DataGridCellKey | None = field(default=None, init=False, repr=False)
-    _edit_buffer: str = field(default="", init=False, repr=False)
-    _edit_cursor: int = field(default=0, init=False, repr=False)
-    _edit_buffer_selected: bool = field(default=False, init=False, repr=False)
+    _edit_buffer: InlineEditBuffer | None = field(default=None, init=False, repr=False)
 
     def __init__(
         self,
@@ -312,9 +310,7 @@ class DataGrid:
         self._next_generated_index = 0
         self._first_visible_row_index = 0
         self._editing_cell_key = None
-        self._edit_buffer = ""
-        self._edit_cursor = 0
-        self._edit_buffer_selected = False
+        self._edit_buffer = None
         self._columns = _normalize_columns(self.columns)
         self._rows = self._normalize_rows(self.rows)
         self._active_row_key = self._repair_row_key(active_row_key)
@@ -719,9 +715,7 @@ class DataGrid:
             return False
         cell = row.cells[column.key]
         self._editing_cell_key = (row.key, column.key)
-        self._edit_buffer = "" if cell.value is None else str(cell.value)
-        self._edit_cursor = len(tuple(grapheme_clusters(self._edit_buffer)))
-        self._edit_buffer_selected = True
+        self._edit_buffer = InlineEditBuffer.from_value(cell.value)
         self.editing_error = None
         return True
 
@@ -729,9 +723,7 @@ class DataGrid:
         if self._editing_cell_key is None and self.editing_error is None:
             return False
         self._editing_cell_key = None
-        self._edit_buffer = ""
-        self._edit_cursor = 0
-        self._edit_buffer_selected = False
+        self._edit_buffer = None
         self.editing_error = None
         return True
 
@@ -756,8 +748,9 @@ class DataGrid:
             self.cancel_edit()
             return None
         old_value = row.cells[column_key].value
+        edit_text = "" if self._edit_buffer is None else self._edit_buffer.text
         try:
-            new_value = column.parser(self._edit_buffer) if column.parser is not None else self._edit_buffer
+            new_value = column.parser(edit_text) if column.parser is not None else edit_text
         except Exception as exc:
             self.editing_error = str(exc) or exc.__class__.__name__
             return None
@@ -777,14 +770,13 @@ class DataGrid:
         return result
 
     def _handle_editing_input(self, event: object) -> object:
+        buffer = self._edit_buffer
+        if buffer is None:
+            return None
         kind = getattr(event, "kind", "")
         if kind in {"text", "paste"}:
             text = getattr(event, "text", "")
-            if self._edit_buffer_selected:
-                self._replace_edit_buffer(text)
-                self._edit_buffer_selected = False
-            else:
-                self._insert_edit_text(text)
+            buffer.insert_text(text)
             self.editing_error = None
             return True
         if kind != "key":
@@ -797,29 +789,21 @@ class DataGrid:
         if key in {"up", "down", "pageUp", "pageDown"}:
             return False
         if key == "left":
-            return self._move_edit_cursor(-1)
+            return buffer.move_left()
         if key == "right":
-            return self._move_edit_cursor(1)
+            return buffer.move_right()
         if key == "home":
-            return self._move_edit_cursor_to_start()
+            return buffer.move_home()
         if key == "end":
-            return self._move_edit_cursor_to_end()
+            return buffer.move_end()
         if key in {"tab", "shift+tab"}:
             return self._commit_and_move_edit(-1 if key == "shift+tab" else 1)
         if key == "backspace":
-            if self._edit_buffer_selected:
-                self._replace_edit_buffer("")
-                self._edit_buffer_selected = False
-            else:
-                self._delete_edit_backward()
+            buffer.delete_backward()
             self.editing_error = None
             return True
         if key == "delete":
-            if self._edit_buffer_selected:
-                self._replace_edit_buffer("")
-                self._edit_buffer_selected = False
-            else:
-                self._delete_edit_forward()
+            buffer.delete_forward()
             self.editing_error = None
             return True
         return None
@@ -835,67 +819,6 @@ class DataGrid:
             and self._active_column_key is not None
             and self._is_editable_cell(self._active_row_key, self._active_column_key)
         )
-
-    def _replace_edit_buffer(self, text: str) -> None:
-        self._edit_buffer = text
-        self._edit_cursor = len(tuple(grapheme_clusters(text)))
-
-    def _insert_edit_text(self, text: str) -> None:
-        clusters = list(grapheme_clusters(self._edit_buffer))
-        inserted = list(grapheme_clusters(text))
-        if not inserted:
-            return
-        cursor = max(0, min(self._edit_cursor, len(clusters)))
-        clusters[cursor:cursor] = inserted
-        self._edit_buffer = "".join(clusters)
-        self._edit_cursor = cursor + len(inserted)
-
-    def _delete_edit_backward(self) -> bool:
-        clusters = list(grapheme_clusters(self._edit_buffer))
-        if self._edit_cursor <= 0:
-            return False
-        cursor = max(0, min(self._edit_cursor, len(clusters)))
-        del clusters[cursor - 1]
-        self._edit_buffer = "".join(clusters)
-        self._edit_cursor = cursor - 1
-        return True
-
-    def _delete_edit_forward(self) -> bool:
-        clusters = list(grapheme_clusters(self._edit_buffer))
-        cursor = max(0, min(self._edit_cursor, len(clusters)))
-        if cursor >= len(clusters):
-            return False
-        del clusters[cursor]
-        self._edit_buffer = "".join(clusters)
-        self._edit_cursor = cursor
-        return True
-
-    def _move_edit_cursor(self, delta: int) -> bool:
-        if self._edit_buffer_selected:
-            self._edit_buffer_selected = False
-            self._edit_cursor = 0 if delta < 0 else len(tuple(grapheme_clusters(self._edit_buffer)))
-            return True
-        length = len(tuple(grapheme_clusters(self._edit_buffer)))
-        next_cursor = max(0, min(length, self._edit_cursor + delta))
-        if next_cursor == self._edit_cursor:
-            return False
-        self._edit_cursor = next_cursor
-        return True
-
-    def _move_edit_cursor_to_start(self) -> bool:
-        self._edit_buffer_selected = False
-        if self._edit_cursor == 0:
-            return False
-        self._edit_cursor = 0
-        return True
-
-    def _move_edit_cursor_to_end(self) -> bool:
-        self._edit_buffer_selected = False
-        end = len(tuple(grapheme_clusters(self._edit_buffer)))
-        if self._edit_cursor == end:
-            return False
-        self._edit_cursor = end
-        return True
 
     def _commit_and_move_edit(self, delta: int) -> object:
         previous = self._editing_cell_key
@@ -1474,7 +1397,8 @@ class DataGrid:
         for column, width in zip(columns, widths, strict=True):
             cell = row.cells[column.key]
             if self._editing_cell_key == (row.key, column.key):
-                formatted = _FormattedCell(_edit_cell_display_text(self._edit_buffer, width), "widget.dataGrid.editing")
+                edit_text = "" if self._edit_buffer is None else self._edit_buffer.text
+                formatted = _FormattedCell(_edit_cell_display_text(edit_text, width), "widget.dataGrid.editing")
             else:
                 formatted = _format_grid_cell(cell.value, column)
             values.append(formatted.text)
@@ -1542,15 +1466,11 @@ class DataGrid:
                 continue
             cell = row.cells[column.key]
             if self._editing_cell_key == (row.key, column.key):
-                return start + min(width, visible_width(self._edit_text_before_cursor()))
+                edit_text = "" if self._edit_buffer is None else self._edit_buffer.text_before_cursor()
+                return start + min(width, visible_width(edit_text))
             text = _format_grid_cell(cell.value, column).text
             return start + _cell_content_offset(text, width, column.align)
         return start
-
-    def _edit_text_before_cursor(self) -> str:
-        clusters = tuple(grapheme_clusters(self._edit_buffer))
-        cursor = max(0, min(self._edit_cursor, len(clusters)))
-        return "".join(clusters[:cursor])
 
 
 def _normalize_adapter_records(records: Iterable[Mapping[str, object]]) -> tuple[dict[str, object], ...]:
