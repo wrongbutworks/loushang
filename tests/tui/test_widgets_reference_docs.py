@@ -19,6 +19,7 @@ def test_widget_reference_recommends_composed_settings_pages_without_legacy_prim
 
         assert "PageScaffold" in text
         assert "PageNavigator" in text
+        assert "FilterBar" in text
         assert "SearchableList" in text
         assert "DataGrid" in text
         assert "DataGridColumn" in text

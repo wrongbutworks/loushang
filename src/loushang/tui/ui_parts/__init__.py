@@ -57,6 +57,11 @@ from .widgets import DirectoryTreeEntry as DirectoryTreeEntry
 from .widgets import DirectoryTreeEntryKind as DirectoryTreeEntryKind
 from .widgets import DirectoryTreeRealKind as DirectoryTreeRealKind
 from .widgets import DirectoryTreeSelect as DirectoryTreeSelect
+from .widgets import FilterApply as FilterApply
+from .widgets import FilterBar as FilterBar
+from .widgets import FilterBoundary as FilterBoundary
+from .widgets import FilterField as FilterField
+from .widgets import FilterFocusChange as FilterFocusChange
 from .widgets import Form as Form
 from .widgets import FormRow as FormRow
 from .widgets import FormValidationResult as FormValidationResult
@@ -146,6 +151,11 @@ __all__ = [
     "DirectoryTreeEntryKind",
     "DirectoryTreeRealKind",
     "DirectoryTreeSelect",
+    "FilterApply",
+    "FilterBar",
+    "FilterBoundary",
+    "FilterField",
+    "FilterFocusChange",
     "FooterField",
     "FooterStatusLine",
     "FooterView",

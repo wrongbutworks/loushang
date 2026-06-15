@@ -9,7 +9,7 @@ are built from renderables but are described at the product-facing UI level.
 | --- | --- |
 | Basic | [Text, TruncatedText, Spacer, Box, Rule, DynamicBorder, Loader, CancellableLoader, WorkedDivider](./basic.md) |
 | Frame | BottomFrame, StatusBar, WorkingLine, PendingQueueView, WidgetSlot |
-| Input | Composer, TextInput, AutocompleteSurface |
+| Input | Composer, TextInput, FilterBar, AutocompleteSurface |
 | Navigation | Tabs, [TabGroup, TabPage](./tabgroup-content-switcher.md), [PageScaffold](./page-scaffold.md), PageNavigator |
 | Lists | SelectList, [SearchableList](./searchable-list.md), [Table](./table.md), [DataGrid](./data-grid.md), [TreeView](./tree.md), [DirectoryTree](./directory-tree.md) |
 | Surfaces | CommandSurface, SelectionSurface, ApprovalSurface, DialogSurface, HelpViewer, ChangelogViewer |
