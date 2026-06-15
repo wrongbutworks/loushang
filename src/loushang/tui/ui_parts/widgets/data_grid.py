@@ -527,7 +527,7 @@ class DataGrid:
         lines: list[RenderLine] = []
         cursor: CursorDeclaration | None = None
         if self.show_header and len(lines) < height:
-            headers = tuple(column.header for column in render_columns)
+            headers = tuple(self._header_text(column) for column in render_columns)
             header_text = _grid_line(headers, render_columns, widths, target_width, label_width=label_width)
             header_tokens = ["widget.dataGrid.header"]
             if self.focused and self.cursor_mode == "column" and self._active_column_key in cell_starts:
@@ -793,6 +793,12 @@ class DataGrid:
 
     def _visible_column_keys(self) -> tuple[str, ...]:
         return tuple(column.key for column in self._visible_columns())
+
+    def _header_text(self, column: DataGridColumn) -> str:
+        if self._sort_state is None or self._sort_state[0] != column.key:
+            return column.header
+        marker = "^" if self._sort_state[1] == "asc" else "v"
+        return f"{column.header} {marker}"
 
     def _repair_row_key(self, preferred: str | None) -> str | None:
         enabled = self._enabled_rows()
@@ -1231,6 +1237,19 @@ class DataGrid:
         self._filter_predicate = None
         self._repair_state_after_view_change()
         return had_filter or old_keys != self.view_row_keys
+
+    def cycle_sort(self, column_key: str | None = None) -> bool:
+        key = column_key if column_key is not None else self._active_column_key
+        if key is None:
+            return False
+        column = self._column_by_key(str(key))
+        if column is None or column.hidden or not column.sortable:
+            return False
+        if self._sort_state is None or self._sort_state[0] != column.key:
+            return self.sort_by(column.key, "asc")
+        if self._sort_state[1] == "asc":
+            return self.sort_by(column.key, "desc")
+        return self.clear_sort()
 
     def sort_by(self, column_key: str, direction: DataGridSortDirection = "asc") -> bool:
         column = self._column_by_key(column_key)

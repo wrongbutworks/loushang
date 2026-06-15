@@ -1100,6 +1100,46 @@ def test_data_grid_sort_by_and_clear_sort_are_stable() -> None:
     assert grid.sort_by("missing") is False
 
 
+def test_data_grid_cycle_sort_cycles_column_state_and_preserves_filters() -> None:
+    grid = DataGrid(
+        [DataGridColumn("symbol", "Symbol"), DataGridColumn("price", "Price", align="right")],
+        [
+            DataGridRow("b", {"symbol": "B", "price": 2}),
+            DataGridRow("a", {"symbol": "A", "price": 1}),
+        ],
+        cursor_mode="cell",
+        active_column_key="price",
+    )
+    assert grid.set_filter_query("A", columns=("symbol",)) is True
+
+    assert grid.cycle_sort() is True
+    assert grid.sort_state == ("price", "asc")
+    assert grid.view_row_keys == ("a",)
+
+    assert grid.cycle_sort() is True
+    assert grid.sort_state == ("price", "desc")
+
+    assert grid.cycle_sort() is True
+    assert grid.sort_state is None
+    assert grid.has_filter is True
+
+
+def test_data_grid_sort_header_markers_render_and_pinned_rows_stay_pinned() -> None:
+    grid = DataGrid(
+        [DataGridColumn("job", "Job", width=8), DataGridColumn("runs", "Runs", width=6, align="right")],
+        [
+            DataGridRow("top", {"job": "Top", "runs": 0}, pinned="top"),
+            DataGridRow("b", {"job": "Build", "runs": 12}),
+            DataGridRow("d", {"job": "Deploy", "runs": 3}),
+            DataGridRow("bottom", {"job": "Bottom", "runs": 0}, pinned="bottom"),
+        ],
+    )
+
+    assert grid.sort_by("runs", "asc") is True
+    assert grid.row_keys == ("top", "d", "b", "bottom")
+    assert "Runs ^" in plain_lines(grid, width=32, height=6)[0]
+
+
 def test_data_grid_replace_rows_preserves_explicit_keys_and_rekeys_shorthand_rows() -> None:
     grid = DataGrid(
         [DataGridColumn("name", "Name"), DataGridColumn("qty", "Qty")],
