@@ -1440,12 +1440,32 @@ def test_widgets_datagrid_large_dataset_search_filters_pages() -> None:
     assert app.focus_region == "search"
     assert app.handle_input(InputEvent(kind="text", text="STK199")) is True
 
+    assert app.grid.filtered_row_count == namespace["ROW_COUNT"]
+    assert app.status == "Enter to apply filters"
+
+    assert app.handle_input(InputEvent(kind="key", key="enter")) is True
     assert app.grid.filtered_row_count < namespace["ROW_COUNT"]
     assert app.grid.view_row_keys
     assert app.grid.active_row_key == app.grid.view_row_keys[0]
+    assert app.focus_region == "grid"
 
     lines = plain_lines(app, width=110, height=24)
     assert any("filtered from 2,000" in line for line in lines)
+
+
+def test_widgets_datagrid_large_dataset_filter_cursor_stays_visible_when_filter_line_truncates() -> None:
+    namespace = runpy.run_path("examples/tui/60_widgets_datagrid_large_dataset.py", run_name="__test__")
+
+    app = namespace["LargeDataGridExampleApp"]()
+    app.render(RenderConstraints(width=56, max_height=24))
+    assert app.handle_input(InputEvent(kind="key", key="tab")) is True
+    assert app.handle_input(InputEvent(kind="key", key="tab")) is True
+    assert app.handle_input(InputEvent(kind="text", text="ai")) is True
+    assert app.handle_input(InputEvent(kind="key", key="tab")) is True
+
+    result = app.render(RenderConstraints(width=56, max_height=24))
+
+    assert result.cursor is None or result.cursor.column < 56
 
 
 def test_widgets_datagrid_large_dataset_page_uses_filtered_view_keys() -> None:

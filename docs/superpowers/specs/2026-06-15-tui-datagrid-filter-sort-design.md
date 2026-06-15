@@ -497,17 +497,18 @@ Keyboard behavior:
 - `Tab` moves to the next control.
 - `Shift+Tab` moves to the previous control.
 - `Ctrl+G` moves to the page input.
-- `Esc` from any filter input returns focus to the grid without clearing the
-  filter.
+- `Enter`, `Esc`, `Down`, `Tab`, `Shift+Tab`, and `Ctrl+G` commit pending filter
+  input before moving focus.
 - Backspace and printable text are owned by the focused input, not by global
   shortcuts.
 - `q` quits only when no text input or edit buffer owns the key.
 
-Filter controls apply live on text changes. Invalid numeric filter text should
-show a red status line in the example and preserve the last valid parsed value
-for that numeric clause. If the numeric input is the only changed control, the
-filtered view remains unchanged. The status text should make this explicit, for
-example:
+Filter text is draft input until a commit key is pressed. This avoids rescanning
+large row sets on every character. Invalid numeric filter text should show a red
+status line in the example, keep focus in the filter input, and preserve the last
+valid parsed value for that numeric clause. If the numeric input is the only
+changed control, the filtered view remains unchanged. The status text should make
+this explicit, for example:
 
 ```text
 Error: Min price must be a number; filters unchanged
@@ -542,7 +543,7 @@ Use the existing large dataset shape:
 
 It should verify:
 
-- typing a search filters rows
+- typing a search and pressing Enter filters rows
 - page count changes under filtering
 - page input clamps to filtered pages
 - active row repairs when the previous active row is filtered out

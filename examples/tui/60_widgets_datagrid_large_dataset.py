@@ -112,11 +112,11 @@ class LargeDataGridExampleApp(FocusableMixin):
             active_input = self._filter_input(self.focus_region)
             input_result = active_input.render(RenderConstraints(width=_filter_input_width(self.focus_region), max_height=1))
             input_column = input_result.cursor.column if input_result.cursor else 0
-            cursor = CursorDeclaration(row=1, column=_filter_field_start(self.focus_region) + input_column)
+            cursor = _cursor_if_visible(rows, row=1, column=_filter_field_start(self.focus_region) + input_column)
         elif self.focus_region == "goto":
             input_result = self.goto_input.render(RenderConstraints(width=_goto_field_width(self), max_height=1))
             input_column = input_result.cursor.column if input_result.cursor else 0
-            cursor = CursorDeclaration(row=2, column=_goto_field_start(self) + input_column)
+            cursor = _cursor_if_visible(rows, row=2, column=_goto_field_start(self) + input_column)
         elif grid_result.cursor is not None:
             cursor = CursorDeclaration(row=grid_start + grid_result.cursor.row, column=grid_result.cursor.column)
         return RenderResult.from_lines(rows[:height], constraints=constraints, cursor=cursor)
@@ -125,21 +125,27 @@ class LargeDataGridExampleApp(FocusableMixin):
         key = normalize_key_id(getattr(event, "key", "")) if getattr(event, "kind", "") == "key" else ""
         if self.focus_region in FILTER_FOCUS_REGIONS:
             if key in {"ctrl+g", "ctrl-g", "ctrl_g"}:
+                if not self._apply_filters():
+                    return True
                 self._focus_goto()
                 return True
             if key in {"enter", "escape", "down"}:
-                self._focus_grid()
-                self.status = "Ready"
+                if self._apply_filters():
+                    self._focus_grid()
                 return True
             if key == "tab":
+                if not self._apply_filters():
+                    return True
                 self._focus_next(1)
                 return True
             if key == "shift+tab":
+                if not self._apply_filters():
+                    return True
                 self._focus_next(-1)
                 return True
             handled = self._filter_input(self.focus_region).handle_input(event)
             if handled:
-                self._apply_filters()
+                self.status = "Enter to apply filters"
             return handled
 
         if self.focus_region == "goto":
@@ -250,7 +256,7 @@ class LargeDataGridExampleApp(FocusableMixin):
         sector: str | None = None,
         status: str | None = None,
         min_price_text: str | None = None,
-    ) -> None:
+    ) -> bool:
         if search is not None and self.search_input.value != search:
             self.search_input.set_text(search)
         if sector is not None and self.sector_input.value != sector:
@@ -266,6 +272,7 @@ class LargeDataGridExampleApp(FocusableMixin):
         self._repair_filtered_page()
         self._sync_goto_value()
         self.status = min_price_status or _page_status(self)
+        return min_price_status is None
 
     def _update_min_price_value(self) -> str | None:
         raw_value = self.min_price_input.value.strip()
@@ -460,6 +467,14 @@ def _goto_field_width(app: LargeDataGridExampleApp) -> int:
 def _goto_field_start(app: LargeDataGridExampleApp) -> int:
     prefix = "> " if app.focus_region == "goto" else "  "
     return visible_width(f"{prefix}Go to page: [")
+
+
+def _cursor_if_visible(lines: list[RenderLine], *, row: int, column: int) -> CursorDeclaration | None:
+    if row < 0 or row >= len(lines):
+        return None
+    if column < 0 or column > lines[row].width:
+        return None
+    return CursorDeclaration(row=row, column=column)
 
 
 def _pad_visible(text: str, width: int) -> str:
