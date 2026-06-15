@@ -144,7 +144,7 @@ for step in prepared_turns:
 # 但 TUI 的 running/abort/queue 状态与 method step 没有衔接
 ```
 
-原因：`NativeCodingEventProjector` 和 `CodingUiController` 假设一次交互运行对应一个 `session.prompt()` 生命周期。虽然 non-interactive CLI 已能按 step 调用多次 prompt 并写入 work log，但 TUI 的 running flag、active_task、pending queue、composer state、surface overlay 还没有与 plan/step attempt 生命周期对齐；直接遍历 `prepared_turns` 会让 abort/steer/retry 行为不可预测。
+原因：`ScreenCodingEventProjector` 和 `CodingUiController` 假设一次交互运行对应一个 `session.prompt()` 生命周期。虽然 non-interactive CLI 已能按 step 调用多次 prompt 并写入 work log，但 TUI 的 running flag、active_task、pending queue、composer state、surface overlay 还没有与 plan/step attempt 生命周期对齐；直接遍历 `prepared_turns` 会让 abort/steer/retry 行为不可预测。
 
 #### 禁止 D：通过 CLI 参数绕过互斥
 
@@ -189,11 +189,11 @@ def _method_runtime_error(args: CliArgs, *, effective_tui: bool) -> str | None:
 
 ## Rationale
 
-1. **TUI 当前假设单 prompt 生命周期**：`NativeCodingEventProjector`、`CodingUiController`、`NativeCodingTuiState` 都围绕一次 `session.prompt()` 设计。method 的多步骤 `prepared_turns` 打破这个假设。
+1. **TUI 当前假设单 prompt 生命周期**：`ScreenCodingEventProjector`、`CodingUiController`、`ScreenCodingTuiState` 都围绕一次 `session.prompt()` 设计。method 的多步骤 `prepared_turns` 打破这个假设。
 
-2. **Method 在 non-interactive path 已有窄 run protocol，但 TUI 尚未接入**：`CodingDomainApp.prepare_turns()` 可返回带 `method_id`、`plan_id`、`step_id`、step policy metadata 的 prepared turns；CLI 通过 work shell 逐步执行并记录 lifecycle。TUI 目前仍只能看到用户 prompt 与 session/native events，不能可靠呈现 plan/step attempt 边界。
+2. **Method 在 non-interactive path 已有窄 run protocol，但 TUI 尚未接入**：`CodingDomainApp.prepare_turns()` 可返回带 `method_id`、`plan_id`、`step_id`、step policy metadata 的 prepared turns；CLI 通过 work shell 逐步执行并记录 lifecycle。TUI 目前仍只能看到用户 prompt 与 session/screen events，不能可靠呈现 plan/step attempt 边界。
 
-3. **WorkEvent / WorkPlanRun projection 是 method UI 的正确中介层**：TUI 的 method status layer 不应直接消费 `MethodPlan` 或裸 `prepared_turns`，而应消费 `WorkEvent` / `WorkPlanRun` projection。底层 transcript/tool rendering 可在迁移期继续使用 native/session events，直到 channel/work 边界进一步稳定。
+3. **WorkEvent / WorkPlanRun projection 是 method UI 的正确中介层**：TUI 的 method status layer 不应直接消费 `MethodPlan` 或裸 `prepared_turns`，而应消费 `WorkEvent` / `WorkPlanRun` projection。底层 transcript/tool rendering 可在迁移期继续使用 screen/session events，直到 channel/work 边界进一步稳定。
 
 4. **禁止过渡方案比允许更关键**：每步重启 TUI、伪方法化、直接消费 prepared_turns 等方案看似能快速 demo，但会制造深层债务。用户一旦形成"TUI 支持 method"的预期，后续修正成本极高。
 
@@ -222,9 +222,9 @@ def _method_runtime_error(args: CliArgs, *, effective_tui: bool) -> str | None:
 ## Impacted Code
 
 - `src/loushang/coding/cli/__main__.py`（互斥检查保留）
-- `src/loushang/coding/ui/native_events.py`（未来需与 method status projection 明确边界）
+- `src/loushang/coding/ui/screen_events.py`（未来需与 method status projection 明确边界）
 - `src/loushang/coding/ui/controller.py`（未来需支持 step-level 干预）
-- `src/loushang/coding/ui/native_app.py`（未来需支持 method step 状态显示）
+- `src/loushang/coding/ui/screen_app.py`（未来需支持 method step 状态显示）
 - `src/loushang/coding/domain/app.py`（未来需暴露 method step 运行时状态）
 - `src/loushang/work/types.py`（需保持 WorkStep/WorkPlan lifecycle 与 deviation metadata schema 稳定）
 

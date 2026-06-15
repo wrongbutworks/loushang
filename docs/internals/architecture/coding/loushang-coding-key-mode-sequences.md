@@ -311,7 +311,7 @@ sequenceDiagram
   - `channel` 有长期价值
   - 但不是 `rpc mode` 的前置实现条件
 
-## 4. Native TUI / `interactive mode`
+## 4. Screen TUI / `interactive mode`
 
 ### Intent
 
@@ -327,7 +327,7 @@ sequenceDiagram
   autonumber
   participant User as Terminal User
   participant CLI as CLI / tui runner
-  participant App as NativeCodingApp
+  participant App as ScreenCodingApp
   participant Controller as CodingUiController
   participant Runtime as AgentSessionRuntime
   participant Session as AgentSession
@@ -336,7 +336,7 @@ sequenceDiagram
   User->>CLI: loushang --tui / interactive resume
   CLI->>Runtime: create / restore / switch session
   Runtime-->>CLI: Session
-  CLI->>App: create native coding app
+  CLI->>App: create screen coding app
   App->>TUI: render transcript / composer / surfaces
   User->>TUI: key input / paste / surface action
   TUI-->>App: InputEvent / intent

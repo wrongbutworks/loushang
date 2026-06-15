@@ -1,6 +1,7 @@
-# Native TUI Playback Regression Tests
+# Screen TUI Playback Regression Tests
 
-Use `tests/coding/native_tui_playback.py` when a native TUI change can affect terminal behavior, not just pure component rendering.
+Use the `tests/coding/test_screen_tui_playback_*` tests when a screen TUI
+change can affect terminal behavior, not just pure component rendering.
 
 Good candidates include:
 
@@ -16,7 +17,9 @@ Good candidates include:
 - streaming product control flows that combine long transcripts, live assistant
   draft, follow-up queueing, steering, resize, surfaces, and abort
 
-Prefer focused component tests for pure rendering functions. Use the playback harness when the test needs a `NativeCodingTuiApp`, `TuiRuntime`, and `FakeTerminalPort` together.
+Prefer focused component tests for pure rendering functions. Use the playback
+harness when the test needs a `ScreenCodingTuiApp`, `TuiRuntime`, and
+`FakeTerminalPort` together.
 
 Useful assertions:
 
