@@ -675,3 +675,22 @@ def test_data_grid_mutation_apis_repair_state_and_selection() -> None:
     assert grid.active_row_key is None
     assert grid.selected_row_keys == frozenset()
     assert grid.sort_state is None
+
+
+def test_data_grid_large_viewport_formats_only_visible_rows() -> None:
+    formatted: list[int] = []
+
+    def counted_formatter(value: object) -> str:
+        formatted.append(int(value))
+        return f"Item {value}"
+
+    grid = DataGrid(
+        [DataGridColumn("name", "Name", formatter=counted_formatter)],
+        [DataGridRow(str(index), {"name": index}) for index in range(10_000)],
+        active_row_key="9999",
+    )
+
+    lines = plain_lines(grid, width=24, height=4)
+
+    assert any("Item 9999" in line for line in lines)
+    assert formatted == [9997, 9998, 9999]
