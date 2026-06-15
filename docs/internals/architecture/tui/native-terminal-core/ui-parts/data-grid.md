@@ -28,6 +28,20 @@ Rows can be explicit `DataGridRow` objects or shorthand mapping/list/tuple rows.
 Shorthand rows receive generated `row-<n>` keys; durable refresh state should
 use explicit keys.
 
+Convenience adapters are available when callers already have common data
+shapes:
+
+- `DataGrid.from_records(records, columns=None, row_key_field=None, **grid_options)`
+- `DataGrid.from_json(data, records_key="records", columns=None, row_key_field=None, **grid_options)`
+- `DataGrid.from_csv(data, columns=None, row_key_field=None, dialect="excel", csv_options=None, **grid_options)`
+
+`from_records()` accepts mapping records and infers columns from first-seen key
+order when columns are not supplied. `from_json()` accepts a JSON text payload,
+a top-level record list, or an object containing a `records` list. `from_csv()`
+uses `csv.DictReader`, expects a header row, and keeps cell values as strings.
+The adapters are thin constructor helpers; they do not infer numeric types,
+formatters, validators, or editing rules.
+
 ## Rendering
 
 Rendering owns:
@@ -104,8 +118,9 @@ Built-in formatters are display-only:
 - `DeltaFormatter`
 - `CompactNumberFormatter`
 
-They do not mutate state. CSV/JSON/DataFrame input adapters should remain a
-separate future adapter layer instead of implicit constructor guessing.
+They do not mutate state. Records, JSON, and CSV input adapters are explicit
+classmethods instead of implicit constructor guessing. DataFrame support remains
+future work and should not add a pandas dependency to the base TUI package.
 
 ## Theme Tokens
 

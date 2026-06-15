@@ -94,6 +94,97 @@ def test_data_grid_normalizes_mapping_list_tuple_rows_and_cell_metadata() -> Non
     assert "Hidden" not in "\n".join(lines)
 
 
+def test_data_grid_from_records_infers_columns_and_preserves_first_seen_order() -> None:
+    grid = DataGrid.from_records(
+        [
+            {"symbol": "AAPL", "price": 196.45},
+            {"price": 421.10, "symbol": "MSFT", "change_pct": 0.014},
+        ],
+        cursor_mode="cell",
+    )
+
+    assert tuple(column.key for column in grid.columns) == ("symbol", "price", "change_pct")
+    assert tuple(column.header for column in grid.columns) == ("Symbol", "Price", "Change Pct")
+    assert grid.row_keys == ("row-0", "row-1")
+    assert grid.active_row_key == "row-0"
+    assert grid.active_column_key == "symbol"
+    assert grid.cell_value("row-0", "change_pct") == ""
+    assert grid.cell_value("row-1", "change_pct") == 0.014
+
+
+def test_data_grid_from_records_uses_explicit_columns_and_row_key_field() -> None:
+    grid = DataGrid.from_records(
+        [
+            {"id": "aapl", "symbol": "AAPL", "price": 196.45, "ignored": True},
+            {"id": "msft", "symbol": "MSFT", "price": 421.10, "ignored": True},
+        ],
+        columns=[
+            DataGridColumn("symbol", "Ticker"),
+            DataGridColumn("price", "Last", align="right", formatter=NumberFormatter(precision=2)),
+        ],
+        row_key_field="id",
+    )
+
+    assert tuple(column.header for column in grid.columns) == ("Ticker", "Last")
+    assert grid.row_keys == ("aapl", "msft")
+    assert grid.cell_value("aapl", "symbol") == "AAPL"
+    assert grid.cell_value("aapl", "price") == 196.45
+    assert grid.cell_value("aapl", "ignored") is None
+
+
+def test_data_grid_from_json_accepts_top_level_records_and_record_wrappers() -> None:
+    top_level = DataGrid.from_json('[{"job": "Build", "runs": 12}]')
+    wrapped = DataGrid.from_json({"records": [{"job": "Deploy", "runs": 3}]})
+
+    assert tuple(column.key for column in top_level.columns) == ("job", "runs")
+    assert top_level.cell_value("row-0", "job") == "Build"
+    assert wrapped.cell_value("row-0", "job") == "Deploy"
+    assert wrapped.cell_value("row-0", "runs") == 3
+
+
+def test_data_grid_from_csv_reads_headers_and_rows() -> None:
+    grid = DataGrid.from_csv(
+        "symbol,price,change_pct\nAAPL,196.45,0.014\nMSFT,421.10,-0.003\n",
+        row_key_field="symbol",
+    )
+
+    assert tuple(column.key for column in grid.columns) == ("symbol", "price", "change_pct")
+    assert grid.row_keys == ("AAPL", "MSFT")
+    assert grid.cell_value("AAPL", "price") == "196.45"
+    assert grid.cell_value("MSFT", "change_pct") == "-0.003"
+
+
+def test_data_grid_from_csv_accepts_csv_options_and_grid_options() -> None:
+    grid = DataGrid.from_csv(
+        "symbol;price\nAAPL;196.45\n",
+        csv_options={"delimiter": ";"},
+        cursor_mode="cell",
+        show_header=False,
+    )
+
+    assert tuple(column.key for column in grid.columns) == ("symbol", "price")
+    assert grid.cell_value("row-0", "price") == "196.45"
+    assert grid.cursor_mode == "cell"
+    assert grid.show_header is False
+
+
+def test_data_grid_adapters_reject_unsupported_shapes() -> None:
+    with pytest.raises(TypeError, match="records must contain mappings"):
+        DataGrid.from_records([{"job": "Build"}, ["Deploy"]])  # type: ignore[list-item]
+
+    with pytest.raises(ValueError, match="row_key_field"):
+        DataGrid.from_records([{"job": "Build"}], row_key_field="id")
+
+    with pytest.raises(ValueError, match="JSON"):
+        DataGrid.from_json("{")
+
+    with pytest.raises(ValueError, match="records"):
+        DataGrid.from_json({"items": [{"job": "Build"}]})
+
+    with pytest.raises(ValueError, match="header"):
+        DataGrid.from_csv("")
+
+
 def test_data_grid_applies_custom_formatter_results_to_rendered_text() -> None:
     def status_formatter(value: object) -> DataGridFormatResult:
         return DataGridFormatResult(text=f"[{value}]", theme_token="example.status")
@@ -822,6 +913,39 @@ def test_widgets_datagrid_example_imports() -> None:
     assert "DataGrid examples" in lines[0]
     assert any("Market watchlist" in line for line in lines)
     assert any("AAPL" in line for line in lines)
+
+
+def test_widgets_datagrid_adapter_example_imports() -> None:
+    namespace = runpy.run_path("examples/tui/59_widgets_datagrid_adapters.py", run_name="__test__")
+
+    build_app = namespace["build_app"]
+    app = build_app()
+    result = app.render(RenderConstraints(width=96, max_height=20))
+    lines = tuple(strip_control_sequences(line.text).rstrip() for line in result.lines)
+
+    assert callable(build_app)
+    assert "DataGrid adapter examples" in lines[0]
+    assert any("Records" in line for line in lines)
+    assert any("AAPL" in line for line in lines)
+
+
+def test_widgets_datagrid_adapter_example_playback_switches_sources() -> None:
+    frames = play_example(
+        "examples/tui/59_widgets_datagrid_adapters.py",
+        events=(
+            ("json", InputEvent(kind="key", key="down")),
+            ("csv", InputEvent(kind="key", key="down")),
+        ),
+        width=104,
+        height=20,
+    )
+
+    assert any("Records" in line for line in frames[0].lines)
+    assert any("AAPL" in line for line in frames[0].lines)
+    assert any("JSON" in line for line in frames[1].lines)
+    assert any("Deploy" in line for line in frames[1].lines)
+    assert any("CSV" in line for line in frames[2].lines)
+    assert any("MSFT" in line for line in frames[2].lines)
 
 
 def test_widgets_datagrid_example_playback_switches_scenarios() -> None:

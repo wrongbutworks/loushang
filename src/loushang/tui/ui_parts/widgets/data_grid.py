@@ -1,10 +1,13 @@
 from __future__ import annotations
 
-from collections.abc import Callable, Mapping, Sequence
+import csv
+import io
+import json
+from collections.abc import Callable, Iterable, Mapping, Sequence
 from dataclasses import dataclass, field
 from decimal import ROUND_HALF_UP, Decimal, InvalidOperation
 from math import isfinite
-from typing import Literal
+from typing import Literal, TextIO
 
 from loushang.tui.cell_width import (
     autowrap_safe_width,
@@ -318,6 +321,53 @@ class DataGrid:
         self._active_column_key = self._repair_column_key(active_column_key)
         if self.cursor_mode == "cell":
             self._repair_active_cell()
+
+    @classmethod
+    def from_records(
+        cls,
+        records: Iterable[Mapping[str, object]],
+        *,
+        columns: Sequence[DataGridColumn] | None = None,
+        row_key_field: str | None = None,
+        **grid_options: object,
+    ) -> DataGrid:
+        normalized_records = _normalize_adapter_records(records)
+        grid_columns = tuple(columns) if columns is not None else _columns_from_records(normalized_records)
+        rows = _rows_from_records(normalized_records, row_key_field=row_key_field)
+        return cls(grid_columns, rows, **grid_options)
+
+    @classmethod
+    def from_json(
+        cls,
+        data: str | bytes | bytearray | Sequence[Mapping[str, object]] | Mapping[str, object],
+        *,
+        records_key: str = "records",
+        columns: Sequence[DataGridColumn] | None = None,
+        row_key_field: str | None = None,
+        **grid_options: object,
+    ) -> DataGrid:
+        payload = _json_payload(data)
+        records = _records_from_json_payload(payload, records_key=records_key)
+        return cls.from_records(records, columns=columns, row_key_field=row_key_field, **grid_options)
+
+    @classmethod
+    def from_csv(
+        cls,
+        data: str | TextIO,
+        *,
+        columns: Sequence[DataGridColumn] | None = None,
+        row_key_field: str | None = None,
+        dialect: str = "excel",
+        csv_options: Mapping[str, object] | None = None,
+        **grid_options: object,
+    ) -> DataGrid:
+        records, header_columns = _records_from_csv(data, dialect=dialect, csv_options=csv_options)
+        return cls.from_records(
+            records,
+            columns=columns if columns is not None else header_columns,
+            row_key_field=row_key_field,
+            **grid_options,
+        )
 
     @property
     def row_keys(self) -> tuple[str, ...]:
@@ -1501,6 +1551,111 @@ class DataGrid:
         clusters = tuple(grapheme_clusters(self._edit_buffer))
         cursor = max(0, min(self._edit_cursor, len(clusters)))
         return "".join(clusters[:cursor])
+
+
+def _normalize_adapter_records(records: Iterable[Mapping[str, object]]) -> tuple[dict[str, object], ...]:
+    if isinstance(records, (str, bytes)):
+        raise TypeError("DataGrid records must contain mappings")
+    normalized: list[dict[str, object]] = []
+    for record in records:
+        if not isinstance(record, Mapping):
+            raise TypeError("DataGrid records must contain mappings")
+        normalized.append(_string_key_record(record))
+    return tuple(normalized)
+
+
+def _string_key_record(record: Mapping[object, object]) -> dict[str, object]:
+    result: dict[str, object] = {}
+    for key, value in record.items():
+        text_key = str(key)
+        if text_key in result:
+            raise ValueError(f"duplicate record key after string conversion: {text_key!r}")
+        result[text_key] = value
+    return result
+
+
+def _columns_from_records(records: Sequence[Mapping[str, object]]) -> tuple[DataGridColumn, ...]:
+    keys: list[str] = []
+    seen: set[str] = set()
+    for record in records:
+        for key in record:
+            if key in seen:
+                continue
+            seen.add(key)
+            keys.append(key)
+    return tuple(_column_from_key(key) for key in keys)
+
+
+def _column_from_key(key: str) -> DataGridColumn:
+    return DataGridColumn(key, _header_from_key(key))
+
+
+def _header_from_key(key: str) -> str:
+    words = str(key).replace("_", " ").replace("-", " ").split()
+    return " ".join(word[:1].upper() + word[1:] for word in words) if words else str(key)
+
+
+def _rows_from_records(
+    records: Sequence[Mapping[str, object]],
+    *,
+    row_key_field: str | None,
+) -> tuple[DataGridRow | Mapping[str, object], ...]:
+    if row_key_field is None:
+        return tuple(records)
+    rows: list[DataGridRow] = []
+    key_field = str(row_key_field)
+    for index, record in enumerate(records):
+        if key_field not in record:
+            raise ValueError(f"row_key_field {key_field!r} is missing from record {index}")
+        rows.append(DataGridRow(str(record[key_field]), record))
+    return tuple(rows)
+
+
+def _json_payload(
+    data: str | bytes | bytearray | Sequence[Mapping[str, object]] | Mapping[str, object],
+) -> object:
+    if isinstance(data, (str, bytes, bytearray)):
+        try:
+            return json.loads(data)
+        except json.JSONDecodeError as exc:
+            raise ValueError(f"invalid JSON data: {exc.msg}") from exc
+    return data
+
+
+def _records_from_json_payload(payload: object, *, records_key: str) -> Sequence[Mapping[str, object]]:
+    if isinstance(payload, list):
+        return payload
+    if isinstance(payload, Mapping):
+        if records_key not in payload:
+            raise ValueError(f"JSON object must contain a {records_key!r} records key")
+        records = payload[records_key]
+        if not isinstance(records, list):
+            raise TypeError(f"JSON {records_key!r} value must be a list of records")
+        return records
+    raise TypeError("JSON data must be a list of records or an object containing records")
+
+
+def _records_from_csv(
+    data: str | TextIO,
+    *,
+    dialect: str,
+    csv_options: Mapping[str, object] | None,
+) -> tuple[tuple[Mapping[str, object], ...], tuple[DataGridColumn, ...]]:
+    stream = io.StringIO(data) if isinstance(data, str) else data
+    if not hasattr(stream, "read"):
+        raise TypeError("CSV data must be a string or text stream")
+    reader = csv.DictReader(stream, dialect=dialect, **dict(csv_options or {}))
+    if not reader.fieldnames:
+        raise ValueError("CSV input must include a header row")
+    fieldnames = tuple(str(field) for field in reader.fieldnames)
+    if any(not field for field in fieldnames):
+        raise ValueError("CSV header names must be non-empty")
+    records: list[Mapping[str, object]] = []
+    for row in reader:
+        if None in row:
+            raise ValueError("CSV row has more fields than the header")
+        records.append({str(key): "" if value is None else value for key, value in row.items()})
+    return tuple(records), tuple(_column_from_key(field) for field in fieldnames)
 
 
 def _normalize_columns(columns: Sequence[DataGridColumn]) -> tuple[DataGridColumn, ...]:

@@ -104,6 +104,20 @@ grid = DataGrid(
 grid.focus()
 ```
 
+For common data sources, `DataGrid` also has explicit adapter constructors.
+`from_records()` accepts mapping records and infers columns from first-seen key
+order. `from_json()` accepts JSON text, a top-level record list, or an object
+with a `records` list. `from_csv()` reads a header row with the standard
+library CSV parser and keeps CSV cell values as strings.
+
+```python
+grid = DataGrid.from_csv(
+    "symbol,price\nAAPL,196.45\nMSFT,421.10\n",
+    row_key_field="symbol",
+    cursor_mode="cell",
+)
+```
+
 In `cell` mode, printable text on an editable active cell starts editing.
 During editing, left/right move inside the edit buffer; Enter commits, Escape
 cancels, and Tab commits toward the next editable cell. Edit buffers render
@@ -429,3 +443,19 @@ implementation.
   inline toast stack with queue, dismissal, and clear actions.
 - [examples/tui/51_widgets_command_palette.py](../../../examples/tui/51_widgets_command_palette.py):
   searchable command palette with filtering, navigation, selection, and cancel.
+- [examples/tui/52_widgets_tabgroup_searchable_list.py](../../../examples/tui/52_widgets_tabgroup_searchable_list.py):
+  tabbed settings-style pages with searchable long lists.
+- [examples/tui/53_widgets_page_scaffold.py](../../../examples/tui/53_widgets_page_scaffold.py):
+  reusable page chrome with header, body, footer, and focus routing.
+- [examples/tui/54_widgets_settings_page_assembly.py](../../../examples/tui/54_widgets_settings_page_assembly.py):
+  settings page assembly using page, tabs, and searchable list widgets.
+- [examples/tui/55_widgets_tree_page_scaffold.py](../../../examples/tui/55_widgets_tree_page_scaffold.py):
+  tree view inside a reusable page scaffold.
+- [examples/tui/56_widgets_table_page_scaffold.py](../../../examples/tui/56_widgets_table_page_scaffold.py):
+  table view inside a reusable page scaffold.
+- [examples/tui/57_widgets_directory_tree.py](../../../examples/tui/57_widgets_directory_tree.py):
+  directory tree rendering and navigation.
+- [examples/tui/58_widgets_datagrid.py](../../../examples/tui/58_widgets_datagrid.py):
+  interactive DataGrid scenarios with editing, sorting, fixed columns, and mutation.
+- [examples/tui/59_widgets_datagrid_adapters.py](../../../examples/tui/59_widgets_datagrid_adapters.py):
+  DataGrid construction from records, JSON, and CSV sources.
