@@ -112,10 +112,9 @@ example-ai-advanced-openai-codex-login:
 # Binary build / install (cross-platform)
 # ---------------------------------------------------------------------------
 
-build-binary:
-	uv pip install pyinstaller
-	uv pip install -e .
-	uv run pyinstaller --onefile --name loushang --collect-data loushang --paths src src/loushang/coding/cli/__main__.py
+build-binary: bootstrap
+	uv pip install --python .venv/bin/python pyinstaller
+	. .venv/bin/activate && uv run python -m PyInstaller --onefile --name loushang --collect-data loushang --paths src src/loushang/coding/cli/__main__.py
 
 install-binary: build-binary
 ifeq ($(DETECTED_OS),Windows)
