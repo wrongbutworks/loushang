@@ -13,8 +13,8 @@ from loushang.tui import (
     DataGridCell,
     DataGridColumn,
     DataGridEdit,
-    DataGridFormatResult,
     DataGridFilterMode,
+    DataGridFormatResult,
     DataGridRow,
     DataGridRowView,
     DataGridSelect,
@@ -1417,6 +1417,12 @@ def test_widgets_datagrid_large_dataset_focus_shortcuts_and_input_width() -> Non
     assert lines[1].startswith("> Search:")
 
     assert app.handle_input(InputEvent(kind="key", key="tab")) is True
+    assert app.focus_region == "sector"
+    assert app.handle_input(InputEvent(kind="key", key="tab")) is True
+    assert app.focus_region == "status"
+    assert app.handle_input(InputEvent(kind="key", key="tab")) is True
+    assert app.focus_region == "min_price"
+    assert app.handle_input(InputEvent(kind="key", key="tab")) is True
     assert app.focus_region == "goto"
 
     assert app.handle_input(InputEvent(kind="text", text="106")) is True
@@ -1454,6 +1460,38 @@ def test_widgets_datagrid_large_dataset_page_uses_filtered_view_keys() -> None:
     assert app.handle_input(InputEvent(kind="key", key="enter")) is True
 
     assert app.grid.active_row_key in app.grid.view_row_keys
+
+
+def test_widgets_datagrid_large_dataset_filter_bar_and_sort() -> None:
+    namespace = runpy.run_path("examples/tui/60_widgets_datagrid_large_dataset.py", run_name="__test__")
+
+    app = namespace["LargeDataGridExampleApp"]()
+    app.render(RenderConstraints(width=120, max_height=24))
+
+    app._apply_filters(search="STK0", sector="AI", status="active", min_price_text="50")
+    assert 0 < app.grid.filtered_row_count < namespace["ROW_COUNT"]
+
+    assert app.grid.activate_cell(str(app.grid.active_row_key), "price") is True
+    assert app.handle_input(InputEvent(kind="key", key="s")) is True
+    assert app.grid.sort_state == ("price", "asc")
+
+    lines = plain_lines(app, width=120, height=24)
+    assert any("Search:" in line and "Sector:" in line for line in lines)
+    assert any("Sort Price asc" in line for line in lines)
+
+
+def test_widgets_datagrid_large_dataset_invalid_min_price_preserves_last_valid_filter() -> None:
+    namespace = runpy.run_path("examples/tui/60_widgets_datagrid_large_dataset.py", run_name="__test__")
+
+    app = namespace["LargeDataGridExampleApp"]()
+
+    app._apply_filters(min_price_text="100")
+    before = app.grid.view_row_keys
+    app._apply_filters(min_price_text="abc")
+
+    assert app.grid.view_row_keys == before
+    assert "Min price" in app.status
+    assert "filters unchanged" in app.status
 
 
 def test_widgets_datagrid_adapter_example_column_controls() -> None:
