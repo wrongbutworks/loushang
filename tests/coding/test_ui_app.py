@@ -3,7 +3,7 @@ from __future__ import annotations
 import asyncio
 
 
-def test_build_coding_tui_app_wires_prompt_handler_and_status() -> None:
+def test_build_coding_tui_app_wires_prompt_handler_without_legacy_status_api() -> None:
     from loushang.coding.ui.app import build_coding_tui_app
     from loushang.tui import CompletionItem, CompletionProvider
 
@@ -66,9 +66,8 @@ def test_build_coding_tui_app_wires_prompt_handler_and_status() -> None:
     assert result is None
     assert session.prompts == ["hello"]
     assert "worked:0.0" in emitted
-    assert "model=moonshot/kimi" in app.status()
-    assert "session=session-name" in app.status()
-    assert "thinking=high" in app.status()
+    assert not hasattr(app, "status")
+    assert not hasattr(app, "status_visible")
     assert "prompt.dispatch.start" in traces
     assert enabled_debug == []
     assert app.completion_provider is completion_provider
@@ -263,7 +262,7 @@ def test_build_coding_tui_app_renders_plain_settings_summary() -> None:
 
     assert result is None
     assert emitted == ["settings:show", "status:Settings\nStatus line: true"]
-    assert app.status_visible() is True
+    assert not hasattr(app, "status_visible")
 
 
 def test_build_coding_tui_app_wires_info_panel_presenter() -> None:

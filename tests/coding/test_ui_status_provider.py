@@ -1,45 +1,6 @@
 from __future__ import annotations
 
 
-def test_status_provider_renders_toolbar_snapshot_from_session_state() -> None:
-    from loushang.coding.ui.status_provider import CodingTuiStatusProvider
-
-    provider = CodingTuiStatusProvider(
-        model_label="moonshot/kimi",
-        cwd="/repo",
-        branch="main",
-        session_label=lambda: "session-name",
-        thinking_level=lambda: "high",
-        running=lambda: True,
-    )
-
-    status = provider.render()
-
-    assert "model=moonshot/kimi" in status
-    assert "cwd=/repo" in status
-    assert "branch=main" in status
-    assert "session=session-name" in status
-    assert "thinking=high" in status
-    assert "running" in status
-
-
-def test_status_provider_omits_missing_optional_values() -> None:
-    from loushang.coding.ui.status_provider import CodingTuiStatusProvider
-
-    provider = CodingTuiStatusProvider(
-        model_label=None,
-        cwd="/repo",
-        branch=None,
-        session_label=lambda: None,
-        thinking_level=lambda: None,
-        running=lambda: False,
-    )
-
-    status = provider.render()
-
-    assert status == "cwd=/repo"
-
-
 def test_status_provider_tracks_statusline_visibility() -> None:
     from loushang.coding.ui.status_line import StatusLineSettings
     from loushang.coding.ui.status_provider import CodingTuiStatusProvider
