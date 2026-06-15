@@ -112,6 +112,10 @@ class DataGridAdapterExampleApp(FocusableMixin):
 
     def handle_input(self, event: Any) -> object:
         key = normalize_key_id(getattr(event, "key", "")) if getattr(event, "kind", "") == "key" else ""
+        if getattr(event, "kind", "") == "text" and self._handle_column_control(getattr(event, "text", "")):
+            return True
+        if key in {"[", "]", ",", "."} and self._handle_column_control(key):
+            return True
         if key == "tab":
             self._set_focus_region("sidebar" if self.focus_region == "grid" else "grid")
             return True
@@ -168,6 +172,63 @@ class DataGridAdapterExampleApp(FocusableMixin):
             self.active_scenario.grid.focus()
         else:
             self.active_scenario.grid.blur()
+
+    def _handle_column_control(self, action: str) -> bool:
+        if action == "v":
+            return self._toggle_change_percent_column()
+        if action == "[":
+            return self._adjust_price_width(-1)
+        if action == "]":
+            return self._adjust_price_width(1)
+        if action == ",":
+            return self._move_price_column(-1)
+        if action == ".":
+            return self._move_price_column(1)
+        return False
+
+    def _toggle_change_percent_column(self) -> bool:
+        grid = self.active_scenario.grid
+        column = _column_by_key(grid, "change_pct")
+        if column is None:
+            self.status = "No Change % column"
+            return True
+        grid.toggle_column("change_pct")
+        next_column = _column_by_key(grid, "change_pct")
+        state = "hidden" if next_column is not None and next_column.hidden else "visible"
+        self.status = f"Change % {state}"
+        return True
+
+    def _adjust_price_width(self, delta: int) -> bool:
+        grid = self.active_scenario.grid
+        column = _column_by_key(grid, "price")
+        if column is None:
+            self.status = "No Price column"
+            return True
+        width = column.width if column.width is not None else 9
+        grid.set_column_width("price", max(3, width + delta))
+        next_column = _column_by_key(grid, "price")
+        self.status = f"Price width {next_column.width if next_column is not None else width}"
+        return True
+
+    def _move_price_column(self, delta: int) -> bool:
+        grid = self.active_scenario.grid
+        visible = [column.key for column in grid.columns if not column.hidden]
+        if "price" not in visible:
+            self.status = "No visible Price column"
+            return True
+        position = visible.index("price")
+        next_position = max(0, min(len(visible) - 1, position + delta))
+        if next_position == position:
+            self.status = "Price column edge"
+            return True
+        target = visible[next_position]
+        moved = (
+            grid.move_column("price", before=target)
+            if next_position < position
+            else grid.move_column("price", after=target)
+        )
+        self.status = "Price column moved" if moved else "Price column unchanged"
+        return True
 
     def _sidebar_lines(self, height: int) -> list[str]:
         lines: list[str] = []
@@ -301,9 +362,16 @@ def _style(text: str, token: str) -> str:
     return apply_theme_style(text, ADAPTER_THEME.resolve(token))
 
 
+def _column_by_key(grid: DataGrid, key: str) -> DataGridColumn | None:
+    for column in grid.columns:
+        if column.key == key:
+            return column
+    return None
+
+
 def _footer(app: DataGridAdapterExampleApp) -> str:
     return truncate_to_width(
-        f"{app.active_scenario.title} | list: up/down, enter/right grid | tab panes | q quit | {app.status}",
+        f"{app.active_scenario.title} | v hide %, [/ ] width, ,/. move | tab panes | q quit | {app.status}",
         max_width=120,
         ellipsis="",
     )

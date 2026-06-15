@@ -4,7 +4,7 @@ import csv
 import io
 import json
 from collections.abc import Callable, Iterable, Mapping, Sequence
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from decimal import ROUND_HALF_UP, Decimal, InvalidOperation
 from math import isfinite
 from typing import Literal, TextIO
@@ -1085,6 +1085,76 @@ class DataGrid:
         )
         if self._editing_cell_key is not None and self._editing_cell_key[1] == column_key:
             self.cancel_edit()
+        self._repair_state_after_data_change()
+        return True
+
+    def set_column_hidden(self, column_key: str, hidden: bool = True) -> bool:
+        column = self._column_by_key(column_key)
+        if column is None or column.hidden == hidden:
+            return False
+        if hidden and self._sort_state is not None and self._sort_state[0] == column.key:
+            self._sort_state = None
+        self._columns = tuple(replace(item, hidden=hidden) if item.key == column.key else item for item in self._columns)
+        self.columns = self._columns
+        if hidden and self._editing_cell_key is not None and self._editing_cell_key[1] == column.key:
+            self.cancel_edit()
+        self._repair_state_after_data_change()
+        return True
+
+    def toggle_column(self, column_key: str) -> bool:
+        column = self._column_by_key(column_key)
+        if column is None:
+            return False
+        return self.set_column_hidden(column.key, not column.hidden)
+
+    def move_column(
+        self,
+        column_key: str,
+        *,
+        index: int | None = None,
+        before: str | None = None,
+        after: str | None = None,
+    ) -> bool:
+        requested_targets = sum(target is not None for target in (index, before, after))
+        if requested_targets != 1:
+            return False
+        current = list(self._columns)
+        keys = [column.key for column in current]
+        if column_key not in keys:
+            return False
+        current_index = keys.index(column_key)
+        column = current.pop(current_index)
+        remaining_keys = [item.key for item in current]
+
+        if index is not None:
+            insert_at = max(0, min(index, len(current)))
+        elif before is not None:
+            if before == column_key or before not in remaining_keys:
+                return False
+            insert_at = remaining_keys.index(before)
+        else:
+            if after == column_key or after not in remaining_keys:
+                return False
+            insert_at = remaining_keys.index(str(after)) + 1
+
+        current.insert(insert_at, column)
+        next_columns = tuple(current)
+        if next_columns == self._columns:
+            return False
+        self._columns = next_columns
+        self.columns = self._columns
+        self._repair_state_after_data_change()
+        return True
+
+    def set_column_width(self, column_key: str, width: int | None) -> bool:
+        column = self._column_by_key(column_key)
+        if column is None:
+            return False
+        next_width = None if width is None else max(0, width)
+        if column.width == next_width:
+            return False
+        self._columns = tuple(replace(item, width=next_width) if item.key == column.key else item for item in self._columns)
+        self.columns = self._columns
         self._repair_state_after_data_change()
         return True
 

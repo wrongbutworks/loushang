@@ -882,6 +882,96 @@ def test_data_grid_mutation_apis_repair_state_and_selection() -> None:
     assert grid.sort_state is None
 
 
+def test_data_grid_column_visibility_controls_repair_active_state_and_selection() -> None:
+    grid = DataGrid(
+        [
+            DataGridColumn("code", "Code"),
+            DataGridColumn("qty", "Qty", editable=True, parser=int),
+            DataGridColumn("note", "Note"),
+        ],
+        [DataGridRow("line", {"code": "A1", "qty": 2, "note": "ready"})],
+        active_column_key="qty",
+        cursor_mode="cell",
+        selection_mode="multi",
+    )
+    grid.focus()
+
+    assert grid.select_cell("line", "qty") is True
+    assert grid.start_edit("line", "qty") is True
+    assert grid.set_column_hidden("qty") is True
+
+    assert tuple(column.hidden for column in grid.columns) == (False, True, False)
+    assert grid.active_column_key == "code"
+    assert grid.selected_cell_keys == frozenset()
+    assert grid.editing_cell_key is None
+    assert grid.sort_by("qty") is False
+    assert "Qty" not in "\n".join(plain_lines(grid, width=48, height=4))
+
+    assert grid.set_column_hidden("qty", False) is True
+    assert tuple(column.hidden for column in grid.columns) == (False, False, False)
+    assert grid.toggle_column("qty") is True
+    assert tuple(column.hidden for column in grid.columns) == (False, True, False)
+    assert grid.toggle_column("missing") is False
+
+
+def test_data_grid_hiding_all_columns_renders_empty_text() -> None:
+    grid = DataGrid(
+        [DataGridColumn("code", "Code"), DataGridColumn("qty", "Qty")],
+        [DataGridRow("line", {"code": "A1", "qty": 2})],
+        active_column_key="qty",
+        cursor_mode="cell",
+        empty_text="No visible columns",
+    )
+
+    assert grid.set_column_hidden("code") is True
+    assert grid.set_column_hidden("qty") is True
+
+    assert grid.active_column_key is None
+    assert plain_lines(grid, width=40, height=4) == ("No visible columns",)
+
+
+def test_data_grid_move_column_preserves_data_and_active_column_key() -> None:
+    grid = DataGrid(
+        [
+            DataGridColumn("symbol", "Symbol"),
+            DataGridColumn("price", "Price"),
+            DataGridColumn("change", "Change"),
+        ],
+        [DataGridRow("aapl", {"symbol": "AAPL", "price": 213.41, "change": 2.18})],
+        active_column_key="price",
+        cursor_mode="column",
+        fixed_columns=1,
+    )
+
+    assert grid.move_column("change", index=0) is True
+    assert tuple(column.key for column in grid.columns) == ("change", "symbol", "price")
+    assert grid.active_column_key == "price"
+    assert grid.cell_value("aapl", "price") == 213.41
+
+    assert grid.move_column("price", before="symbol") is True
+    assert tuple(column.key for column in grid.columns) == ("change", "price", "symbol")
+    assert grid.move_column("change", after="symbol") is True
+    assert tuple(column.key for column in grid.columns) == ("price", "symbol", "change")
+    assert grid.move_column("missing", index=0) is False
+    assert grid.move_column("price") is False
+
+
+def test_data_grid_set_column_width_updates_and_unsets_fixed_width() -> None:
+    grid = DataGrid(
+        [DataGridColumn("symbol", "Symbol"), DataGridColumn("price", "Price", width=9, align="right")],
+        [DataGridRow("aapl", {"symbol": "AAPL", "price": 213.41})],
+    )
+
+    assert grid.set_column_width("price", 4) is True
+    assert tuple(column.width for column in grid.columns) == (None, 4)
+    assert grid.set_column_width("price", 4) is False
+    assert grid.set_column_width("price", -2) is True
+    assert tuple(column.width for column in grid.columns) == (None, 0)
+    assert grid.set_column_width("price", None) is True
+    assert tuple(column.width for column in grid.columns) == (None, None)
+    assert grid.set_column_width("missing", 8) is False
+
+
 def test_data_grid_large_viewport_formats_only_visible_rows() -> None:
     formatted: list[int] = []
 
@@ -927,6 +1017,23 @@ def test_widgets_datagrid_adapter_example_imports() -> None:
     assert "DataGrid adapter examples" in lines[0]
     assert any("Records" in line for line in lines)
     assert any("AAPL" in line for line in lines)
+
+
+def test_widgets_datagrid_adapter_example_column_controls() -> None:
+    namespace = runpy.run_path("examples/tui/59_widgets_datagrid_adapters.py", run_name="__test__")
+
+    app = namespace["DataGridAdapterExampleApp"]()
+    grid = app.active_scenario.grid
+
+    assert app.handle_input(InputEvent(kind="text", text="v")) is True
+    assert next(column for column in grid.columns if column.key == "change_pct").hidden is True
+    assert "Change %" not in "\n".join(plain_lines(grid, width=72, height=8))
+
+    assert app.handle_input(InputEvent(kind="text", text="]")) is True
+    assert next(column for column in grid.columns if column.key == "price").width == 10
+
+    assert app.handle_input(InputEvent(kind="text", text=".")) is True
+    assert tuple(column.key for column in grid.columns) == ("symbol", "change", "price", "change_pct")
 
 
 def test_widgets_datagrid_adapter_example_playback_switches_sources() -> None:

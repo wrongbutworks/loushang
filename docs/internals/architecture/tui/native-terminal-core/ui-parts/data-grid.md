@@ -100,6 +100,10 @@ The mutation API includes:
 - `remove_row()`
 - `add_column()`
 - `remove_column()`
+- `set_column_hidden()`
+- `toggle_column()`
+- `move_column()`
+- `set_column_width()`
 - `update_cell()`
 - `clear()`
 - `sort_by()`
@@ -107,6 +111,9 @@ The mutation API includes:
 
 Mutations repair active state and selection by key. `replace_rows()` preserves
 explicit keys when they still exist; shorthand replacement rows are new rows.
+Column controls hide and reveal columns without dropping cell data, reorder
+columns by key, and switch a column between fixed and flexible width. Hidden
+columns are skipped by rendering, navigation, editing, selection, and sorting.
 
 ## Formatters
 
