@@ -153,6 +153,9 @@ These decisions are fixed for implementation planning:
   callers can add a row, focus an editable code column, commit edits, update
   dependent cells such as name, advance to quantity, and handle later
   activation in product code.
+- Read-only refreshing grids are supported: callers can keep all columns
+  non-editable, refresh rows repeatedly, preserve active/selected keys when
+  possible, and use activation to navigate to detail pages or other views.
 - `cursor_mode="none"` is display-only for input handling: no navigation,
   activation, selection, or editing input is consumed.
 
@@ -807,6 +810,34 @@ next Enter activates the cell or row so product code can trigger backend work.
 If the new row initializes `quantity` to `1`, pressing Enter immediately
 accepts `1`; typing `5` before Enter commits `5`.
 
+## Read-Only Refreshing Workflow
+
+`DataGrid` should also work as a pure display and navigation grid. In this mode,
+columns are not editable, edits are never started, and rows may be replaced
+frequently by product code.
+
+Typical flow:
+
+1. Product code builds rows from current state, remote data, or background job
+   snapshots.
+2. Grid renders the rows and supports row or cell focus.
+3. Product code periodically calls `replace_rows(new_rows)`.
+4. Grid preserves `active_row_key`, `active_column_key`, and selected keys when
+   those keys still exist and remain enabled.
+5. If the active row disappears, the grid repairs focus to the nearest enabled
+   row.
+6. User presses Enter on a row or cell.
+7. Grid returns `DataGridSelect`.
+8. Product code handles that selection by navigating to a detail page, opening a
+   side panel, or switching tabs.
+
+`DataGrid` does not own the detail page or navigation stack. It only returns
+structured activation results.
+
+This supports dashboards such as model lists, session lists, job lists, quote
+lists, diagnostics, and usage grids that refresh while preserving the user's
+place.
+
 ## Sorting
 
 Sorting is explicit and never occurs during render.
@@ -846,6 +877,7 @@ Required methods:
 
 - `add_row(row: DataGridRow | Mapping[str, object] | Sequence[object], *, index: int | None = None, activate: bool = False, edit_column_key: str | None = None) -> str`
 - `remove_row(row_key: str) -> bool`
+- `replace_rows(rows: Sequence[DataGridRow | Mapping[str, object] | Sequence[object]]) -> None`
 - `add_column(column: DataGridColumn, *, index: int | None = None, default: object = "") -> bool`
 - `remove_column(column_key: str) -> bool`
 - `update_cell(row_key: str, column_key: str, value: object | DataGridCell) -> bool`
@@ -858,6 +890,11 @@ Mutation rules:
 - `edit_column_key` implies `activate=True`, switches cursor mode to `cell`,
   moves active column state to that column, and starts editing when the cell is
   editable and enabled
+- `replace_rows()` replaces normal and pinned rows in one operation, preserves
+  columns and configuration, preserves active/selected row and cell keys when
+  those keys still exist and remain enabled, repairs missing keys, cancels
+  editing, and preserves sort state by reapplying the active explicit sort after
+  replacement
 - removing active row/column repairs active state
 - removing selected rows/cells removes them from selection sets
 - adding rows while a sort is active does not auto-sort; caller can call
@@ -995,6 +1032,14 @@ Add focused tests for:
   they update non-active cells
 - final-cell activation followed by product-side row append and pinned total
   row update
+- read-only grids with all columns non-editable never enter edit mode through
+  Enter
+- `replace_rows()` preserves active and selected keys across refresh when keys
+  still exist
+- `replace_rows()` repairs active state when refreshed data removes the active
+  row
+- row/cell activation from a read-only grid returns `DataGridSelect` suitable
+  for product-side detail navigation
 - sort state, stable sort, disabled/hidden/unsortable handling, active/selection
   preservation after sort
 - add/remove/update/clear mutation and active/selection repair
