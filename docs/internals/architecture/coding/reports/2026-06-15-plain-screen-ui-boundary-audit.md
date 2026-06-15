@@ -1,7 +1,8 @@
 # 2026-06-15 Plain And Screen UI Boundary Audit
 
 This report records the current `loushang.coding.ui` boundary after the screen UI
-naming cleanup and the explicit plain renderer naming cleanup.
+naming cleanup, the explicit plain renderer naming cleanup, and the explicit
+plain event projection naming cleanup.
 
 ## Scope
 
@@ -44,17 +45,17 @@ plain-specific:
 | --- | --- | --- |
 | `plain_renderer.py` | Renders stable line-oriented coding output and optional transcript records. | Keep. This is the plain surface renderer. |
 | `plain_toolbar.py` | Formats compact toolbar/status text for plain output. | Keep. This is plain output presentation. |
-| `events.py` | Projects session events into `PlainCodingUiRenderer`. | Rename to `plain_events.py`; rename `CodingUiEventRenderer` to `PlainCodingEventRenderer`. |
+| `plain_events.py` | Projects session events into `PlainCodingUiRenderer`. | Keep. This is the plain event projector. |
 | `app.py` | Builds the current plain prompt-loop app around shared handlers. | Rename to `plain_app.py`; rename `CodingTuiApp` to `PlainCodingTuiApp`; rename `build_coding_tui_app` to `build_plain_coding_tui_app`. |
 
 Evidence:
 
-- `events.py` imports `PlainCodingUiRenderer` and calls only plain rendering
+- `plain_events.py` imports `PlainCodingUiRenderer` and calls only plain rendering
   methods.
 - `app.py` requires `PlainCodingUiRenderer`, wires `CodingTuiHandlers`, and is
   used by `_run_plain_tui`.
 - `prompt_command.py` directly uses `PlainCodingUiRenderer` plus
-  `CodingUiEventRenderer` to render one-shot prompt output.
+  `PlainCodingEventRenderer` to render one-shot prompt output.
 
 ### Screen-Specific
 
@@ -136,23 +137,23 @@ Future changes should preserve this direction. Product-specific settings rows,
 status text, coding session labels, queue state, prompt intents, and playback
 scenarios should stay out of `loushang.tui`.
 
-## Recommended Cleanup Sequence
+## Cleanup Sequence
 
-### 1. Rename Plain Event Projection
+### Completed: Rename Plain Event Projection
 
-Make the event projection boundary explicit:
+The event projection boundary is explicit:
 
-- `src/loushang/coding/ui/events.py` -> `plain_events.py`
-- `CodingUiEventRenderer` -> `PlainCodingEventRenderer`
-- update imports in:
+- `src/loushang/coding/ui/plain_events.py`
+- `PlainCodingEventRenderer`
+- imports updated in:
   - `mode.py`
   - `prompt_command.py`
   - `tests/coding/test_ui_plain_renderer.py`
-- add an import-boundary assertion that `loushang.coding.ui.events` is removed
+- import-boundary assertion added for removed `loushang.coding.ui.events`
 
-This is low risk because the class already requires `PlainCodingUiRenderer`.
+This was low risk because the class already required `PlainCodingUiRenderer`.
 
-### 2. Rename Plain App Assembly
+### 1. Rename Plain App Assembly
 
 Make the plain prompt-loop app assembly explicit:
 
@@ -169,7 +170,7 @@ Make the plain prompt-loop app assembly explicit:
 This makes `screen_app.py` and `plain_app.py` symmetrical without changing
 runtime behavior.
 
-### 3. Hold Shared Handlers Stable
+### 2. Hold Shared Handlers Stable
 
 Do not rename these in the same pass:
 
@@ -184,7 +185,7 @@ They should remain neutral until a later audit proves they are plain-only. A
 premature rename would make the architecture look cleaner than the actual
 ownership model and could cause screen semantics to fork unnecessarily.
 
-### 4. Avoid New Subpackages For Now
+### 3. Avoid New Subpackages For Now
 
 Do not introduce `ui/plain/` and `ui/screen/` subpackages yet. The flat module
 layout with explicit `plain_*` and `screen_*` names is currently simpler:
@@ -210,7 +211,7 @@ This audit does not recommend:
 
 ## Validation For Follow-Up PRs
 
-For the two recommended rename PRs, use targeted red/green validation:
+For the remaining recommended rename PR, use targeted red/green validation:
 
 - import-boundary test for the removed old module name
 - focused plain renderer/app tests
@@ -228,7 +229,7 @@ git diff --check
 
 ## Recommendation
 
-Proceed with the rename sequence above as two small behavior-preserving PRs.
-Keep plain as a first-class capability, keep screen as the interactive shell,
-and keep `loushang.tui` clean by letting it provide reusable terminal components
-rather than product-specific coding UI surfaces.
+Proceed with the remaining plain app assembly rename as a small
+behavior-preserving PR. Keep plain as a first-class capability, keep screen as
+the interactive shell, and keep `loushang.tui` clean by letting it provide
+reusable terminal components rather than product-specific coding UI surfaces.

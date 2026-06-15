@@ -11,8 +11,8 @@ from loushang.coding.observability import disable_session_debug, enable_session_
 from loushang.coding.ui.app import build_coding_tui_app
 from loushang.coding.ui.completion import coding_inline_completion_provider
 from loushang.coding.ui.controller import CodingUiController, ControllerResult
-from loushang.coding.ui.events import CodingUiEventRenderer
 from loushang.coding.ui.intent import AbortIntent, QuitIntent, parse_prompt_intent
+from loushang.coding.ui.plain_events import PlainCodingEventRenderer
 from loushang.coding.ui.plain_renderer import PlainCodingUiRenderer
 from loushang.coding.ui.run_context import (
     open_coding_tui_run_context,
@@ -192,7 +192,7 @@ async def _run_plain_tui(
     run_context = None
     try:
         snapshot = await load_coding_tui_startup_snapshot(runtime=runtime, session=session)
-        event_renderer = CodingUiEventRenderer(renderer, tool_definition_resolver=_tool_definition_resolver(session))
+        event_renderer = PlainCodingEventRenderer(renderer, tool_definition_resolver=_tool_definition_resolver(session))
         run_context = open_coding_tui_run_context(
             session=session,
             snapshot=snapshot,
