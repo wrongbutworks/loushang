@@ -4,13 +4,13 @@ from dataclasses import dataclass, field
 from typing import Any
 
 from loushang.coding.tools import ToolDefinitionResolver
-from loushang.coding.ui.renderer import CodingUiRenderer, extract_text
+from loushang.coding.ui.plain_renderer import PlainCodingUiRenderer, extract_text
 from loushang.coding.ui.tool_blocks import ToolCallSnapshot, ToolTranscriptProjector
 
 
 @dataclass
 class CodingUiEventRenderer:
-    renderer: CodingUiRenderer
+    renderer: PlainCodingUiRenderer
     tool_definition_resolver: ToolDefinitionResolver | None = None
     max_tool_body_lines: int = 8
     tool_calls: dict[str, ToolCallSnapshot] = field(default_factory=dict)

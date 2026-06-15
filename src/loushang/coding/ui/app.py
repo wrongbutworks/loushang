@@ -25,9 +25,9 @@ from loushang.coding.ui.model_list import (
     format_available_models,
     select_available_model,
 )
+from loushang.coding.ui.plain_renderer import PlainCodingUiRenderer
 from loushang.coding.ui.prompt_dispatch import PromptDispatchHandler
 from loushang.coding.ui.prompt_result import PromptResultHandler
-from loushang.coding.ui.renderer import CodingUiRenderer
 from loushang.coding.ui.session_view import (
     is_running,
     session_error_message,
@@ -66,7 +66,7 @@ def build_coding_tui_app(
     *,
     runtime: Any,
     session: Any,
-    renderer: CodingUiRenderer,
+    renderer: PlainCodingUiRenderer,
     event_renderer: Any,
     stderr: TextIO,
     verbose: bool,

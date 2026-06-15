@@ -13,7 +13,7 @@ from loushang.coding.ui.completion import coding_inline_completion_provider
 from loushang.coding.ui.controller import CodingUiController, ControllerResult
 from loushang.coding.ui.events import CodingUiEventRenderer
 from loushang.coding.ui.intent import AbortIntent, QuitIntent, parse_prompt_intent
-from loushang.coding.ui.renderer import CodingUiRenderer
+from loushang.coding.ui.plain_renderer import PlainCodingUiRenderer
 from loushang.coding.ui.run_context import (
     open_coding_tui_run_context,
     subscribe_session_events,
@@ -188,7 +188,7 @@ async def _run_plain_tui(
     stderr: TextIO,
     verbose: bool,
 ) -> int:
-    renderer = CodingUiRenderer(stdout=stdout, stderr=stderr, verbose=verbose)
+    renderer = PlainCodingUiRenderer(stdout=stdout, stderr=stderr, verbose=verbose)
     run_context = None
     try:
         snapshot = await load_coding_tui_startup_snapshot(runtime=runtime, session=session)
