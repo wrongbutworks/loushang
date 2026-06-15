@@ -133,6 +133,23 @@ Do not retrofit `Table` into `DataGrid`. Some width and alignment helpers may be
 shared later if duplication becomes meaningful, but V1 should prefer a clear
 new contract over premature coupling.
 
+## V1 Decisions
+
+These decisions are fixed for implementation planning:
+
+- Enter activates the current target. It does not start editing. Editing starts
+  with `e` in cell mode or through `start_edit(row_key, column_key)`.
+- Space is the only default keyboard selection action. Cursor movement never
+  implicitly changes persistent selection.
+- Column cursor selection selects all enabled cells in the active visible
+  column. Disabled rows and disabled cells are skipped.
+- Built-in formatter invalid values default to empty text. Examples may choose
+  explicit ASCII placeholders such as `N/A`.
+- Constructor shorthand rows get deterministic generated keys. Callers that
+  need long-lived semantic keys should pass `DataGridRow`.
+- `cursor_mode="none"` is display-only for input handling: no navigation,
+  activation, selection, or editing input is consumed.
+
 ## Public API
 
 First version:
@@ -235,6 +252,30 @@ class DataGrid:
 Duplicate column keys or row keys raise `ValueError`. Hidden columns stay in
 the data model but do not participate in render or navigation.
 
+Row key normalization:
+
+- `DataGridRow.key` is used as-is after `str()` conversion.
+- Mapping and sequence rows receive generated keys of the form `row-<n>`, where
+  `n` is the row's construction-order index.
+- `add_row()` for a mapping or sequence row uses the next monotonically
+  increasing generated key and returns it.
+- Generated keys are never reused after row removal during the lifetime of the
+  grid.
+- If a generated key would collide with an explicit `DataGridRow.key`, the grid
+  advances the generated counter until it finds an unused key.
+- Mixed explicit and shorthand rows are allowed, but explicit `DataGridRow`
+  should be used for durable product state, persisted selection, or callbacks.
+
+Cell normalization:
+
+- Mapping rows resolve cells by column key.
+- Sequence rows resolve cells by visible and hidden column order.
+- Missing mapping keys and short sequences produce empty string cell values.
+- `DataGridCell` preserves its metadata. Plain cell values are wrapped as
+  enabled, column-default-editability cells.
+- Hidden columns still receive normalized cell values so they can later be
+  shown or updated.
+
 ## Formatter API
 
 Formatters convert raw values to display text and optional semantic theme
@@ -283,6 +324,37 @@ Numeric formatters should accept `int`, `float`, and `Decimal`. `None`,
 `NaN`, and infinity render as configured fallback text. The fallback default is
 empty string, not a Unicode dash, to keep the widget ASCII by default. Product
 examples may choose a visible fallback when useful.
+
+Concrete built-in formatter rules:
+
+- Numeric conversion uses `Decimal(str(value))` for `int`, `float`, and
+  `Decimal` inputs.
+- `None` renders `none_text`.
+- conversion failure, `NaN`, and infinity render `invalid_text`.
+- `NumberFormatter(precision=None)` renders the normalized decimal without
+  forced fractional digits.
+- `NumberFormatter(precision=n)` renders exactly `n` fractional digits using
+  half-up rounding.
+- `thousands=True` adds comma grouping to the integer part.
+- `sign=True` prefixes positive values with `+`; zero has no sign.
+- `PercentFormatter` multiplies the numeric value by `scale`, formats with
+  exactly `precision` fractional digits, then appends `%`.
+- `DeltaFormatter` follows `NumberFormatter` with `sign=True` by default.
+  `zero_sign=True` renders zero with `+`.
+- `CompactNumberFormatter` uses suffixes `K`, `M`, `B`, and `T` at thresholds
+  `1_000`, `1_000_000`, `1_000_000_000`, and `1_000_000_000_000`. Values below
+  `1_000` render as normal numbers with at most `precision` fractional digits.
+- Compact formatting preserves the sign before the compacted number.
+
+Example outputs:
+
+| Formatter | Input | Output |
+| --- | --- | --- |
+| `NumberFormatter(precision=2)` | `1234.5` | `1234.50` |
+| `NumberFormatter(precision=2, thousands=True)` | `1234.5` | `1,234.50` |
+| `PercentFormatter(precision=2, sign=True)` | `0.0345` | `+3.45%` |
+| `DeltaFormatter(precision=2)` | `-1.2` | `-1.20` |
+| `CompactNumberFormatter(precision=1)` | `1250000` | `1.3M` |
 
 Stock-like grids are expressed through generic columns:
 
@@ -374,6 +446,45 @@ Cursor declaration:
   header is visible; otherwise it declares no cursor
 - cursor mode `none` declares no cursor
 
+## Active State And Repair
+
+Active state is stored by keys, not indexes.
+
+Enabled targets:
+
+- an enabled row is a non-disabled row
+- an enabled cell is a cell in an enabled row, visible non-hidden column, and
+  non-disabled cell
+- an enabled column is a visible non-hidden column
+
+Initial repair:
+
+- `active_row_key` is accepted when it names an enabled row. Otherwise the grid
+  chooses the first enabled row, or `None` when no enabled row exists.
+- `active_column_key` is accepted when it names a visible non-hidden column.
+  Otherwise the grid chooses the first visible non-hidden column, or `None`
+  when no visible column exists.
+- in cell mode, if the active row/column pair is not an enabled cell, the grid
+  chooses the first enabled cell in row-major order.
+- in row mode, `active_column_key` may still be repaired for future mode
+  changes, but activation and cursor declaration use only `active_row_key`.
+- in column mode, `active_row_key` may remain repaired for future mode changes,
+  but activation and cursor declaration use only `active_column_key`.
+- in none mode, active keys are repaired for public state consistency but no
+  cursor is rendered and no input is consumed.
+
+Mutation repair:
+
+- removing the active row repairs to the nearest enabled row after the removed
+  row's previous position, then before it, then `None`
+- removing the active column repairs to the nearest visible column after the
+  removed column's previous position, then before it, then `None`
+- disabling an active row or cell triggers the same repair as removal
+- hiding an active column triggers the same repair as removal
+- if no enabled cell exists in cell mode, both active row and column remain as
+  best-effort repaired keys, but cell navigation, activation, selection, and
+  editing return `None`
+
 ## Input Behavior
 
 Focus:
@@ -396,7 +507,7 @@ Navigation keys:
 
 Return values:
 
-- `True` when active cursor or selection changed
+- navigation returns `True` when the active cursor changed
 - `False` when input was understood but cursor did not move because of a
   boundary or disabled target
 - `None` when there is no enabled target or the input is not consumed
@@ -415,6 +526,10 @@ Activation:
 - activation returns `DataGridSelect` unless the row has `on_select`, in which
   case it returns `callback_result(row.on_select())`
 - disabled rows and disabled cells do not activate
+- in column mode, activation returns
+  `DataGridSelect(row_key=None, column_key=<active column>, value=None,
+  cursor_mode="column")`
+- in none mode, input activation returns `None`
 
 ## Selection
 
@@ -452,8 +567,30 @@ Required public selection properties and methods:
 - `select_all() -> bool`
 - `clear_selection() -> bool`
 
-The grid may return `DataGridSelectionChange` from explicit selection inputs.
-Programmatic selection methods return bool for mutation success.
+The grid returns `DataGridSelectionChange` from explicit selection inputs when
+selection changes. Programmatic selection methods return bool for mutation
+success.
+
+Selection input return rules:
+
+- Space returns `DataGridSelectionChange` when selection changed.
+- Space returns `False` when the target is already selected in single-selection
+  mode.
+- Space returns `None` when there is no selectable target or
+  `selection_mode="none"` and activation also has no target.
+- `selection_mode="none"` never stores selection and Space follows activation
+  return rules.
+
+Selection target rules:
+
+- row mode targets the active enabled row
+- cell mode targets the active enabled cell
+- column mode targets all enabled cells in the active visible column
+- hidden columns are never selected by `select_all()` or column selection
+- disabled rows and disabled cells are never selected
+- `select_all()` selects rows in row mode, cells in cell mode, and all enabled
+  cells in the active column in column mode
+- `select_all()` in none mode returns `False`
 
 ## Inline Editing
 
@@ -462,13 +599,15 @@ Editing is intentionally simple text editing, not a full nested editor.
 Editing entry:
 
 - `e` starts editing the active editable cell in cell mode
-- `enter` starts editing an editable cell when `activate_edits=True` is added
-  in a future slice; V1 should keep Enter as activation to avoid ambiguity
+- `enter` does not start editing in V1; it commits only when editing is already
+  active
 - programmatic `start_edit(row_key, column_key) -> bool`
 
 Editing state:
 
 - V1 keeps a single editing buffer string
+- the buffer initializes to `""` for `None`, otherwise `str(raw_value)`
+- formatting is not used to initialize the edit buffer
 - while editing, printable text appends to the buffer
 - `backspace` removes one cell-width-safe character from the buffer
 - `left` and `right` within the buffer are out of scope for V1
@@ -487,11 +626,16 @@ Validation:
 - a cell is editable when the column is editable and the row/cell are enabled
 - `DataGridCell.editable` overrides column editability when not `None`
 - parser receives the buffer string and returns the new raw value
+- when no parser is configured, the committed raw value is the buffer string
 - parser exceptions become validation errors; they do not crash render
 - validator returns `None` for valid or a message string for invalid
+- parser exception text is used as `editing_error`, falling back to
+  `"Invalid value"` when the exception has no message
 - invalid commit leaves editing active and exposes
   `editing_error: str | None`
 - successful commit updates the cell value and returns `DataGridEdit`
+- successful commit preserves existing `DataGridCell` metadata while replacing
+  only its `value`
 
 Editing is disabled in row and column cursor modes unless the caller starts an
 edit programmatically for a specific cell.
@@ -516,6 +660,12 @@ Rules:
 - active row, selected rows, and selected cells are preserved by row/cell key
 - if the active row no longer exists after mutation, active state repairs to
   the nearest enabled visible row
+- `clear_sort()` restores insertion order for remaining rows, clears
+  `sort_state`, preserves active/selection by key, and returns `True` only when
+  a sort was active
+- rows added while a sort is active receive insertion-order positions after all
+  existing rows, but are displayed in current order until the caller sorts or
+  clears sort
 
 Custom sort functions are out of scope for the first implementation. If needed,
 they can be added to `DataGridColumn` later without changing the V1
@@ -541,6 +691,12 @@ Mutation rules:
   `sort_by()` again
 - mutation during editing cancels editing unless the mutation is the successful
   edit commit for the active cell
+- `clear()` removes all rows, clears selection, clears editing state, clears
+  `sort_state`, and sets `active_row_key=None`
+- `clear()` preserves columns, column configuration, `active_column_key` repair,
+  cursor mode, selection mode, viewport settings, theme, and focus state
+- callers remove columns with `remove_column()`; a future slice may add
+  `clear_columns()` if needed
 
 ## Large Data Contract
 
@@ -599,10 +755,12 @@ Composition order should make focus visible:
 3. fixed column token
 4. row theme token
 5. column theme token
-6. formatted value or cell theme token
-7. selected token
-8. focus token
-9. editing or edit-error token
+6. `theme_token_for_value`
+7. formatter result token
+8. cell theme token
+9. selected token
+10. focus token
+11. editing or edit-error token
 
 Later tokens override earlier tokens.
 
@@ -687,14 +845,10 @@ Use existing utilities where they fit:
 - `callback_result`
 - `is_activation_event`
 
-## Open Decisions For Review
+## Review Decisions Closed
 
-1. Should Enter start editing editable cells in V1, or should editing require
-   `e` so Enter remains activation everywhere?
-2. Should column cursor mode selection select all enabled cells in the column,
-   or should it only return a `DataGridSelect` for the column header?
-3. Should formatter invalid numeric values default to empty text or a visible
-   placeholder in the built-in examples?
-4. Should `selection_mode="single"` default to selecting rows in row mode and
-   cells in cell mode, or should it remain activation-only until Space is
-   pressed?
+The initial spec review raised blockers around unresolved V1 decisions, row-key
+normalization, active-state repair, selection return contracts, edit buffer
+semantics, formatter output, and `clear_sort()` / `clear()` behavior. This
+revision resolves those decisions in the sections above so implementation
+planning can derive deterministic tasks and tests.
