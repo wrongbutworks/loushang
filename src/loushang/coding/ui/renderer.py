@@ -6,8 +6,8 @@ from collections.abc import Sequence
 from dataclasses import dataclass
 from typing import TextIO
 
+from loushang.coding.ui.plain_toolbar import PlainToolbarSnapshot, render_plain_toolbar
 from loushang.coding.ui.tool_blocks import ToolTranscriptBlock
-from loushang.coding.ui.toolbar import ToolbarSnapshot, render_toolbar
 from loushang.coding.ui.transcript_projection import tool_block_to_record
 from loushang.tui import InfoPanel, RenderConstraints, RenderLine, RenderResult
 from loushang.tui.cell_width import strip_control_sequences
@@ -59,8 +59,8 @@ class CodingUiRenderer:
         del project_label
         self._write_line("Loushang TUI")
         self._write_line(
-            render_toolbar(
-                ToolbarSnapshot(
+            render_plain_toolbar(
+                PlainToolbarSnapshot(
                     model=model_label,
                     cwd=cwd,
                     branch=branch,
