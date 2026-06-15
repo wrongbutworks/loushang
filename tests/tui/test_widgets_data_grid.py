@@ -204,6 +204,70 @@ def test_data_grid_filtered_large_viewport_formats_only_visible_rows() -> None:
     assert formatted == [9997, 9998, 9999]
 
 
+def test_data_grid_filter_blocks_activation_for_filtered_disabled_and_pinned_rows() -> None:
+    grid = DataGrid(
+        [DataGridColumn("job", "Job"), DataGridColumn("runs", "Runs")],
+        [
+            DataGridRow("top", {"job": "Top", "runs": 0}, pinned="top"),
+            DataGridRow("build", {"job": "Build", "runs": 12}),
+            DataGridRow("skip", {"job": "Skip", "runs": 0}, disabled=True),
+            DataGridRow("deploy", {"job": "Deploy", "runs": 3}),
+        ],
+        cursor_mode="cell",
+    )
+
+    assert grid.set_filter_query("build") is True
+    assert grid.activate_row("deploy") is False
+    assert grid.activate_cell("deploy", "job") is False
+    assert grid.activate_row("skip") is False
+    assert grid.activate_row("top") is False
+    assert grid.activate_row("build") is False
+
+
+def test_data_grid_filter_scopes_selection_and_preserves_hidden_selection_keys() -> None:
+    grid = DataGrid(
+        [DataGridColumn("job", "Job")],
+        [DataGridRow("build", {"job": "Build"}), DataGridRow("deploy", {"job": "Deploy"})],
+        selection_mode="multi",
+    )
+
+    assert grid.select_row("deploy") is True
+    assert grid.set_filter_query("build") is True
+    assert grid.selected_row_keys == frozenset({"deploy"})
+    assert grid.select_all() is True
+    assert grid.selected_row_keys == frozenset({"build"})
+
+
+def test_data_grid_filter_cancels_edit_when_editing_row_is_filtered_out() -> None:
+    grid = DataGrid(
+        [DataGridColumn("code", "Code", editable=True)],
+        [DataGridRow("a", {"code": "AAPL"}), DataGridRow("m", {"code": "MSFT"})],
+        cursor_mode="cell",
+    )
+
+    assert grid.start_edit("m", "code") is True
+    assert grid.set_filter_query("AAPL") is True
+    assert grid.editing_cell_key is None
+
+
+def test_data_grid_filter_query_columns_repair_when_columns_hidden_or_removed() -> None:
+    grid = DataGrid(
+        [DataGridColumn("symbol", "Symbol"), DataGridColumn("sector", "Sector")],
+        [DataGridRow("a", {"symbol": "AAPL", "sector": "AI"})],
+    )
+
+    assert grid.set_filter_query("AI", columns=("sector",)) is True
+    assert grid.view_row_keys == ("a",)
+    assert grid.set_column_hidden("sector") is True
+    assert grid.filter_query_columns == ()
+    assert grid.view_row_keys == ()
+
+    assert grid.set_filter_query("AAPL", columns=("symbol",)) is True
+    assert grid.remove_column("symbol") is True
+    assert grid.filter_query_columns == ()
+    assert grid.view_row_keys == ()
+
+
 def test_data_grid_formatters_cover_text_number_percent_delta_and_compact_values() -> None:
     assert TextFormatter()(None) == ""
     assert TextFormatter(none_text="N/A")(None) == "N/A"

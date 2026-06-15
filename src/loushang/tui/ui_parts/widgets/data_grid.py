@@ -666,6 +666,11 @@ class DataGrid:
             seen.add(column.key)
         return tuple(accepted)
 
+    def _repair_filter_query_columns(self) -> None:
+        if self._filter_query_columns is None:
+            return
+        self._filter_query_columns = self._accepted_query_columns(self._filter_query_columns)
+
     def _query_columns(self) -> tuple[DataGridColumn, ...]:
         if self._filter_query_columns is not None:
             keys = set(self._filter_query_columns)
@@ -898,7 +903,7 @@ class DataGrid:
 
     def activate_row(self, row_key: str) -> bool:
         row = self._row_by_key(row_key)
-        if row is None or row.disabled or row.pinned is not None:
+        if row is None or row.disabled or row.pinned is not None or row.key not in self.view_row_keys:
             return False
         was_editing = self._editing_cell_key is not None or self.editing_error is not None
         self.cancel_edit()
@@ -1082,7 +1087,7 @@ class DataGrid:
         if self.selection_mode == "none":
             return False
         row = self._row_by_key(row_key)
-        if row is None or row.disabled or row.pinned is not None:
+        if row is None or row.disabled or row.pinned is not None or row.key not in self.view_row_keys:
             return False
         if self.selection_mode == "single":
             next_rows = frozenset({row.key})
@@ -1098,7 +1103,13 @@ class DataGrid:
 
     def toggle_row(self, row_key: str) -> bool:
         row = self._row_by_key(row_key)
-        if row is None or row.disabled or row.pinned is not None or self.selection_mode == "none":
+        if (
+            row is None
+            or row.disabled
+            or row.pinned is not None
+            or row.key not in self.view_row_keys
+            or self.selection_mode == "none"
+        ):
             return False
         if self.selection_mode == "single":
             return self.select_row(row_key)
@@ -1313,6 +1324,7 @@ class DataGrid:
         )
         if self._editing_cell_key is not None and self._editing_cell_key[1] == column_key:
             self.cancel_edit()
+        self._repair_filter_query_columns()
         self._repair_state_after_data_change()
         return True
 
@@ -1326,6 +1338,7 @@ class DataGrid:
         self.columns = self._columns
         if hidden and self._editing_cell_key is not None and self._editing_cell_key[1] == column.key:
             self.cancel_edit()
+        self._repair_filter_query_columns()
         self._repair_state_after_data_change()
         return True
 
@@ -1440,6 +1453,16 @@ class DataGrid:
                 result.append((row.key, column_key))
         return tuple(result)
 
+    def _source_enabled_rows(self) -> tuple[_NormalizedRow, ...]:
+        return tuple(row for row in self._body_rows() if not row.disabled)
+
+    def _source_enabled_cell_keys(self) -> tuple[DataGridCellKey, ...]:
+        result: list[DataGridCellKey] = []
+        for row in self._source_enabled_rows():
+            for column in self._enabled_columns_for_row(row):
+                result.append((row.key, column.key))
+        return tuple(result)
+
     def _editable_cell_keys(self) -> tuple[DataGridCellKey, ...]:
         result: list[DataGridCellKey] = []
         for row in self._enabled_rows():
@@ -1460,12 +1483,9 @@ class DataGrid:
         self._rows = (*top_rows, *sorted_body, *bottom_rows)
 
     def _repair_state_after_data_change(self) -> None:
-        self._active_row_key = self._repair_row_key(self._active_row_key)
-        self._active_column_key = self._repair_column_key(self._active_column_key)
-        if self.cursor_mode == "cell":
-            self._repair_active_cell()
-        enabled_rows = {row.key for row in self._enabled_rows()}
-        enabled_cells = set(self._enabled_cell_keys())
+        self._repair_state_after_view_change()
+        enabled_rows = {row.key for row in self._source_enabled_rows()}
+        enabled_cells = set(self._source_enabled_cell_keys())
         self._selected_row_keys = frozenset(key for key in self._selected_row_keys if key in enabled_rows)
         self._selected_cell_keys = frozenset(key for key in self._selected_cell_keys if key in enabled_cells)
 
@@ -1552,7 +1572,7 @@ class DataGrid:
         if row_key is None or column_key is None:
             return False
         row = self._row_by_key(row_key)
-        if row is None or row.disabled or row.pinned is not None:
+        if row is None or row.disabled or row.pinned is not None or row.key not in self.view_row_keys:
             return False
         if column_key not in self._visible_column_keys():
             return False
