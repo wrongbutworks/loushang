@@ -12,7 +12,7 @@ from loushang.coding.platform.clipboard_image import (
     extension_for_image_mime_type,
     read_clipboard_image,
 )
-from loushang.coding.ui.native_app import NativeCodingTuiApp
+from loushang.coding.ui.screen_app import ScreenCodingTuiApp
 from loushang.tui.input import (
     ComposerInputTarget,
     InputEvent,
@@ -35,7 +35,7 @@ class _PendingClipboardImage:
 
 
 @dataclass(frozen=True, slots=True)
-class NativeInputResult:
+class ScreenInputResult:
     prompt_text: str | None = None
     prompt_images: tuple[ImagePart, ...] | None = None
     local_text: str | None = None
@@ -50,8 +50,8 @@ class NativeInputResult:
 
 
 @dataclass(slots=True)
-class NativeInputRouter:
-    app: NativeCodingTuiApp
+class ScreenInputRouter:
+    app: ScreenCodingTuiApp
     should_exit: Callable[[str], bool]
     is_local_command: Callable[[str], bool] = lambda _text: False
     keybindings: KeybindingManager | KeybindingConfig | None = None
@@ -71,9 +71,9 @@ class NativeInputRouter:
             self.keybindings = KeybindingManager(self.keybindings)
         self._composer_target = ComposerInputTarget(self.app.composer)
 
-    def handle(self, event: InputEvent) -> NativeInputResult:
+    def handle(self, event: InputEvent) -> ScreenInputResult:
         if event.kind == "key" and event.event_type == "release":
-            return NativeInputResult(render_requested=False)
+            return ScreenInputResult(render_requested=False)
         if self._runtime_surface_active():
             return self._route_runtime_surface(event)
         if self.app.active_surface is not None:
@@ -82,21 +82,21 @@ class NativeInputRouter:
             if self._jump_mode is not None:
                 self.app.composer.jump_to_char(event.text, direction=self._jump_mode)
                 self._jump_mode = None
-                return NativeInputResult()
+                return ScreenInputResult()
             self.app.composer.insert_text(event.text)
-            return NativeInputResult()
+            return ScreenInputResult()
         if event.kind == "paste":
             self._jump_mode = None
             self.app.composer.paste(event.text)
-            return NativeInputResult()
+            return ScreenInputResult()
         if event.kind == "resize":
             if event.columns:
                 self.width = event.columns
             if event.rows:
                 self.height = event.rows
-            return NativeInputResult()
+            return ScreenInputResult()
         if event.kind != "key":
-            return NativeInputResult(render_requested=False)
+            return ScreenInputResult(render_requested=False)
 
         keybindings = self._keybindings()
         if self._jump_mode is not None:
@@ -105,122 +105,122 @@ class NativeInputRouter:
                 "tui.editor.jumpBackward",
             ):
                 self._jump_mode = None
-                return NativeInputResult()
+                return ScreenInputResult()
             self._jump_mode = None
         if keybindings.matches(event.key, "tui.queue.editLast"):
             self._restore_queued_messages()
-            return NativeInputResult()
+            return ScreenInputResult()
         if keybindings.matches(event.key, "tui.transcript.open"):
-            return NativeInputResult(render_requested=self.app.open_transcript_reader())
+            return ScreenInputResult(render_requested=self.app.open_transcript_reader())
         if route_editor_selection_key(self._composer_target, event.key, keybindings=keybindings):
-            return NativeInputResult()
+            return ScreenInputResult()
         if self.app.composer.has_completions and keybindings.matches(event.key, "tui.input.submit"):
             return self._submit_selected_completion()
         if self.app.composer.has_completions and self._route_completion_key(event, keybindings):
-            return NativeInputResult()
+            return ScreenInputResult()
         if keybindings.matches(event.key, "tui.select.cancel"):
             return self._abort_or_clear()
         if keybindings.matches(event.key, "tui.input.tab"):
             self.app.composer.refresh_completions(force=True, explicit=True)
             if self.app.composer.has_completions:
                 self.app.composer.apply_selected_completion()
-            return NativeInputResult()
+            return ScreenInputResult()
         if keybindings.matches(event.key, "app.clipboard.pasteImage"):
             return self._paste_clipboard_image()
         if keybindings.matches(event.key, "tui.editor.jumpForward"):
             self._jump_mode = "forward"
-            return NativeInputResult()
+            return ScreenInputResult()
         if keybindings.matches(event.key, "tui.editor.jumpBackward"):
             self._jump_mode = "backward"
-            return NativeInputResult()
+            return ScreenInputResult()
         if keybindings.matches(event.key, "tui.editor.cursorUp"):
             if self.app.composer.browsing_history:
                 self.app.composer.history_previous()
             elif not self.app.composer.value or not self.app.composer.move_visual_up(width=self.width):
                 self.app.composer.history_previous()
-            return NativeInputResult()
+            return ScreenInputResult()
         if keybindings.matches(event.key, "tui.editor.cursorDown"):
             if self.app.composer.browsing_history:
                 self.app.composer.history_next()
             elif not self.app.composer.value or not self.app.composer.move_visual_down(width=self.width):
                 self.app.composer.history_next()
-            return NativeInputResult()
+            return ScreenInputResult()
         if keybindings.matches(event.key, "tui.editor.pageUp"):
             self.app.composer.move_visual_page_up(width=self.width, visible_lines=self._composer_page_lines())
-            return NativeInputResult()
+            return ScreenInputResult()
         if keybindings.matches(event.key, "tui.editor.pageDown"):
             self.app.composer.move_visual_page_down(width=self.width, visible_lines=self._composer_page_lines())
-            return NativeInputResult()
+            return ScreenInputResult()
         if self.app.state.running and event.key in self.follow_up_keys:
             return self._submit_running(mode="follow_up")
         if keybindings.matches(event.key, "tui.input.newLine"):
             self.app.composer.insert_newline()
-            return NativeInputResult()
+            return ScreenInputResult()
         if keybindings.matches(event.key, "tui.input.submit"):
             return self._submit()
         if route_editor_editing_key(self._composer_target, event.key, keybindings=keybindings):
-            return NativeInputResult()
-        return NativeInputResult(render_requested=False)
+            return ScreenInputResult()
+        return ScreenInputResult(render_requested=False)
 
     def _route_completion_key(self, event: InputEvent, keybindings: KeybindingManager) -> bool:
         return route_prompt_completion_key(self._composer_target, event.key, keybindings=keybindings)
 
-    def _submit_selected_completion(self) -> NativeInputResult:
+    def _submit_selected_completion(self) -> ScreenInputResult:
         should_submit_after_completion = self.app.composer.value.lstrip().startswith("/")
         self.app.composer.apply_selected_completion()
         if should_submit_after_completion:
             return self._submit()
-        return NativeInputResult()
+        return ScreenInputResult()
 
-    def _abort_or_clear(self) -> NativeInputResult:
+    def _abort_or_clear(self) -> ScreenInputResult:
         if self.app.state.running:
-            return NativeInputResult(abort_requested=True)
+            return ScreenInputResult(abort_requested=True)
         if self.app.state.pending_steers:
             pending_steer = self.app.state.pending_steers.pop(0)
-            return NativeInputResult(steer_text=pending_steer)
+            return ScreenInputResult(steer_text=pending_steer)
         if self.app.composer.value:
             self.app.composer.clear()
             self._clear_prompt_attachments()
-            return NativeInputResult()
-        return NativeInputResult(render_requested=False)
+            return ScreenInputResult()
+        return ScreenInputResult(render_requested=False)
 
     def _restore_queued_messages(self) -> None:
         text = self.app.state.restore_queued_to_text()
         if text:
             self.app.composer.set_text(text)
 
-    def _submit(self) -> NativeInputResult:
+    def _submit(self) -> ScreenInputResult:
         text = self.app.composer.value
         if not text.strip():
-            return NativeInputResult(render_requested=False)
+            return ScreenInputResult(render_requested=False)
         if self.should_exit(text.strip()):
             self.app.composer.clear()
             self._clear_prompt_attachments()
-            return NativeInputResult(exit_code=0)
+            return ScreenInputResult(exit_code=0)
         if self.app.state.running:
             return self._submit_running(mode=self.running_submit_mode)
         if self.is_local_command(text.strip()):
             self.app.composer.clear()
             self._clear_prompt_attachments()
-            return NativeInputResult(local_text=text.strip())
+            return ScreenInputResult(local_text=text.strip())
         images = self._prompt_images_for_text(text)
         self.app.start_prompt(text)
         self._clear_prompt_attachments()
-        return NativeInputResult(prompt_text=text, prompt_images=images)
+        return ScreenInputResult(prompt_text=text, prompt_images=images)
 
-    def _submit_running(self, *, mode: RunningSubmitMode) -> NativeInputResult:
+    def _submit_running(self, *, mode: RunningSubmitMode) -> ScreenInputResult:
         text = self.app.composer.value
         if not text.strip():
-            return NativeInputResult(render_requested=False)
+            return ScreenInputResult(render_requested=False)
         images = self._prompt_images_for_text(text)
         self.app.composer.add_history(text)
         self.app.composer.clear()
         self._clear_prompt_attachments()
         if mode == "follow_up":
             self.app.queue_followup(text)
-            return NativeInputResult(followup_text=text, followup_images=images)
+            return ScreenInputResult(followup_text=text, followup_images=images)
         self.app.queue_steer(text)
-        return NativeInputResult(steer_text=text, steer_images=images)
+        return ScreenInputResult(steer_text=text, steer_images=images)
 
     def _keybindings(self) -> KeybindingManager:
         return self.keybindings if isinstance(self.keybindings, KeybindingManager) else KeybindingManager(self.keybindings)
@@ -228,51 +228,51 @@ class NativeInputRouter:
     def _composer_page_lines(self) -> int:
         return max(2, min(10, self.height))
 
-    def _route_active_surface(self, event: InputEvent) -> NativeInputResult:
+    def _route_active_surface(self, event: InputEvent) -> ScreenInputResult:
         handler = getattr(self.app.active_surface, "handle_input", None)
         if not callable(handler):
-            return NativeInputResult(render_requested=False)
+            return ScreenInputResult(render_requested=False)
         intent = handler(event)
         if isinstance(intent, InputIntent):
             if intent.kind == "consumed":
-                return NativeInputResult()
-            return NativeInputResult(surface_intent=intent)
-        return NativeInputResult()
+                return ScreenInputResult()
+            return ScreenInputResult(surface_intent=intent)
+        return ScreenInputResult()
 
     def _runtime_surface_active(self) -> bool:
         surface_host = self.app.surface_host
         return surface_host is not None and bool(surface_host.entries)
 
-    def _route_runtime_surface(self, event: InputEvent) -> NativeInputResult:
+    def _route_runtime_surface(self, event: InputEvent) -> ScreenInputResult:
         surface_host = self.app.surface_host
         if surface_host is None:
-            return NativeInputResult(render_requested=False)
+            return ScreenInputResult(render_requested=False)
         intents = surface_host.route_input(event, close_on_intents=("surface_close", "dialog_cancel"))
         for intent in intents:
             if isinstance(intent, InputIntent):
                 if intent.kind == "consumed":
-                    return NativeInputResult()
-                return NativeInputResult(surface_intent=intent)
-        return NativeInputResult()
+                    return ScreenInputResult()
+                return ScreenInputResult(surface_intent=intent)
+        return ScreenInputResult()
 
-    def _paste_clipboard_image(self) -> NativeInputResult:
+    def _paste_clipboard_image(self) -> ScreenInputResult:
         try:
             image = self.clipboard_image_reader()
         except Exception as error:  # noqa: BLE001 - platform clipboard commands can fail in many ways.
             self.app.set_status(f"Unable to read clipboard image: {_exception_message(error)}")
-            return NativeInputResult()
+            return ScreenInputResult()
         if image is None:
             self.app.set_status("No clipboard image found.")
-            return NativeInputResult()
+            return ScreenInputResult()
         extension = extension_for_image_mime_type(image.mime_type)
         if extension is None:
             self.app.set_status(f"Unsupported clipboard image type: {image.mime_type or 'unknown'}")
-            return NativeInputResult()
+            return ScreenInputResult()
         try:
             path = self._write_clipboard_image(image, extension=extension)
         except OSError as error:
             self.app.set_status(f"Unable to attach clipboard image: {error}")
-            return NativeInputResult()
+            return ScreenInputResult()
         marker_path = _display_path(path, cwd=Path(self.app.cwd))
         marker = f"@{marker_path}"
         self.app.composer.paste(f"{marker} ")
@@ -287,7 +287,7 @@ class NativeInputRouter:
             )
         )
         self.app.set_status(f"Attached clipboard image: {marker_path}")
-        return NativeInputResult()
+        return ScreenInputResult()
 
     def _write_clipboard_image(self, image: ClipboardImage, *, extension: str) -> Path:
         directory = Path(self.clipboard_image_dir) if self.clipboard_image_dir is not None else Path(self.app.cwd) / ".loushang" / "clipboard"
@@ -336,4 +336,4 @@ def _base_mime_type(mime_type: str) -> str:
     return mime_type.split(";", 1)[0].strip().lower()
 
 
-__all__ = ["NativeInputResult", "NativeInputRouter", "RunningSubmitMode"]
+__all__ = ["ScreenInputResult", "ScreenInputRouter", "RunningSubmitMode"]

@@ -3,25 +3,25 @@ from __future__ import annotations
 from collections.abc import Callable
 
 from loushang.coding.types import ModelSelection
-from loushang.coding.ui.native_surfaces import NativeSurfaceManager, NativeSurfaceView
 from loushang.coding.ui.playback import (
-    NativeTuiInputPlaybackResult,
-    NativeTuiInputScenario,
-    NativeTuiLoopPlayback,
+    ScreenTuiInputPlaybackResult,
+    ScreenTuiInputScenario,
+    ScreenTuiLoopPlayback,
 )
 from loushang.coding.ui.playback_fakes import (
     ModelPlaybackSession,
     SessionCommandPlaybackSession,
 )
 from loushang.coding.ui.playback_scenarios.budgets import INTERACTION_FRAME_BUDGET
-from loushang.coding.ui.playback_suite import NativePlaybackScenarioSpec
+from loushang.coding.ui.playback_suite import ScreenPlaybackScenarioSpec
+from loushang.coding.ui.screen_surfaces import ScreenSurfaceManager, ScreenSurfaceView
 from loushang.coding.ui.status_provider import CodingTuiStatusProvider
 from loushang.tui import DialogSurface, SelectionSurface, SelectItem
 
 
-def _run_active_surface() -> NativeTuiInputPlaybackResult:
+def _run_active_surface() -> ScreenTuiInputPlaybackResult:
     result = (
-        NativeTuiInputScenario(width=80, height=12)
+        ScreenTuiInputScenario(width=80, height=12)
         .with_active_surface(SelectionSurface([SelectItem("Choose me", value="chosen")]))
         .with_composer_text("draft")
         .render()
@@ -38,7 +38,7 @@ def _run_active_surface() -> NativeTuiInputPlaybackResult:
 
 
 def _run_commands_info_surface() -> object:
-    playback = NativeTuiLoopPlayback(width=100, height=18, model_label="moonshot/kimi-for-coding")
+    playback = ScreenTuiLoopPlayback(width=100, height=18, model_label="moonshot/kimi-for-coding")
     manager = _surface_manager(playback.app)
 
     result = playback.run(
@@ -60,7 +60,7 @@ def _run_commands_info_surface() -> object:
 
 
 def _run_commands_info_session_command() -> object:
-    playback = NativeTuiLoopPlayback(width=100, height=18, model_label="moonshot/kimi-for-coding")
+    playback = ScreenTuiLoopPlayback(width=100, height=18, model_label="moonshot/kimi-for-coding")
     session = SessionCommandPlaybackSession()
     manager = _surface_manager(playback.app, session=session)
 
@@ -85,7 +85,7 @@ def _run_commands_info_session_command() -> object:
 
 
 def _run_command_palette_select() -> object:
-    playback = NativeTuiLoopPlayback(width=100, height=18, model_label="moonshot/kimi-for-coding")
+    playback = ScreenTuiLoopPlayback(width=100, height=18, model_label="moonshot/kimi-for-coding")
     manager = _surface_manager(playback.app)
 
     result = playback.run(
@@ -107,7 +107,7 @@ def _run_command_palette_select() -> object:
 
 
 def _run_command_palette_session_command() -> object:
-    playback = NativeTuiLoopPlayback(width=100, height=18, model_label="moonshot/kimi-for-coding")
+    playback = ScreenTuiLoopPlayback(width=100, height=18, model_label="moonshot/kimi-for-coding")
     session = SessionCommandPlaybackSession()
     manager = _surface_manager(playback.app, session=session)
 
@@ -132,7 +132,7 @@ def _run_command_palette_session_command() -> object:
 
 
 def _run_settings_search() -> object:
-    playback = NativeTuiLoopPlayback(width=100, height=18, model_label="moonshot/kimi-for-coding")
+    playback = ScreenTuiLoopPlayback(width=100, height=18, model_label="moonshot/kimi-for-coding")
     manager = _surface_manager(playback.app)
 
     result = playback.run(
@@ -155,7 +155,7 @@ def _run_settings_search() -> object:
 
 
 def _run_model_select() -> object:
-    playback = NativeTuiLoopPlayback(width=100, height=18, model_label="moonshot/kimi-for-coding")
+    playback = ScreenTuiLoopPlayback(width=100, height=18, model_label="moonshot/kimi-for-coding")
     session = ModelPlaybackSession()
     manager = _surface_manager(playback.app, session=session)
 
@@ -180,7 +180,7 @@ def _run_model_select() -> object:
 
 
 def _run_model_select_search() -> object:
-    playback = NativeTuiLoopPlayback(width=100, height=18, model_label="moonshot/kimi-for-coding")
+    playback = ScreenTuiLoopPlayback(width=100, height=18, model_label="moonshot/kimi-for-coding")
     session = ModelPlaybackSession()
     manager = _surface_manager(playback.app, session=session)
 
@@ -213,7 +213,7 @@ def _run_approval_reject_surface() -> object:
 
 
 def _run_approval_surface_response(*, input_text: str, approved: bool, expected_status: str) -> object:
-    playback = NativeTuiLoopPlayback(width=100, height=18, model_label="moonshot/kimi-for-coding")
+    playback = ScreenTuiLoopPlayback(width=100, height=18, model_label="moonshot/kimi-for-coding")
     approvals: list[dict[str, object]] = []
 
     async def on_approval(payload: dict[str, object]) -> None:
@@ -246,9 +246,9 @@ def _run_approval_surface_response(*, input_text: str, approved: bool, expected_
 
 
 def _run_dialog_surface() -> object:
-    playback = NativeTuiLoopPlayback(width=100, height=18, model_label="moonshot/kimi-for-coding")
+    playback = ScreenTuiLoopPlayback(width=100, height=18, model_label="moonshot/kimi-for-coding")
     manager = _surface_manager(playback.app)
-    playback.app.active_surface = NativeSurfaceView(
+    playback.app.active_surface = ScreenSurfaceView(
         title="Confirm",
         purpose="dialog",
         content=DialogSurface(title="Confirm", message="Proceed?"),
@@ -270,7 +270,7 @@ def _run_dialog_surface() -> object:
     return result
 
 
-def _run_mouse_select_active_surface() -> NativeTuiInputPlaybackResult:
+def _run_mouse_select_active_surface() -> ScreenTuiInputPlaybackResult:
     surface = SelectionSurface(
         [
             SelectItem("First option", value="first"),
@@ -280,7 +280,7 @@ def _run_mouse_select_active_surface() -> NativeTuiInputPlaybackResult:
         max_visible=3,
     )
     result = (
-        NativeTuiInputScenario(width=80, height=12)
+        ScreenTuiInputScenario(width=80, height=12)
         .with_active_surface(surface)
         .render()
         .key("\x1b[<0;1;2M")
@@ -301,8 +301,8 @@ def _surface_manager(
     *,
     session: object | None = None,
     on_approval: Callable[[dict[str, object]], object] | None = None,
-) -> NativeSurfaceManager:
-    return NativeSurfaceManager(
+) -> ScreenSurfaceManager:
+    return ScreenSurfaceManager(
         app=app,
         session=object() if session is None else session,
         status_provider=_status_provider(app),
@@ -323,66 +323,66 @@ def _status_provider(app: object) -> CodingTuiStatusProvider:
 
 
 SURFACE_SCENARIOS = (
-    NativePlaybackScenarioSpec(
+    ScreenPlaybackScenarioSpec(
         name="active-surface",
         description="Route enter to an active surface before the composer.",
         run=_run_active_surface,
     ),
-    NativePlaybackScenarioSpec(
+    ScreenPlaybackScenarioSpec(
         name="command-palette-select",
-        description="Search the native command palette and insert the selected command.",
+        description="Search the screen command palette and insert the selected command.",
         run=_run_command_palette_select,
         tags=("command", "surface"),
     ),
-    NativePlaybackScenarioSpec(
+    ScreenPlaybackScenarioSpec(
         name="command-palette-session-command",
-        description="Select a session command from the native command palette without executing it.",
+        description="Select a session command from the screen command palette without executing it.",
         run=_run_command_palette_session_command,
         tags=("command", "surface", "session"),
     ),
-    NativePlaybackScenarioSpec(
+    ScreenPlaybackScenarioSpec(
         name="commands-info-surface",
-        description="Open and close the native commands info surface through the local command path.",
+        description="Open and close the screen commands info surface through the local command path.",
         run=_run_commands_info_surface,
         tags=("command", "surface"),
     ),
-    NativePlaybackScenarioSpec(
+    ScreenPlaybackScenarioSpec(
         name="commands-info-session-command",
-        description="Show session commands in the native commands info surface without executing them.",
+        description="Show session commands in the screen commands info surface without executing them.",
         run=_run_commands_info_session_command,
         tags=("command", "surface", "session"),
     ),
-    NativePlaybackScenarioSpec(
+    ScreenPlaybackScenarioSpec(
         name="settings-search",
-        description="Search the settings page opened through the native command path.",
+        description="Search the settings page opened through the screen command path.",
         run=_run_settings_search,
     ),
-    NativePlaybackScenarioSpec(
+    ScreenPlaybackScenarioSpec(
         name="model-select",
-        description="Open the native model selector and switch models without clearing the screen.",
+        description="Open the screen model selector and switch models without clearing the screen.",
         run=_run_model_select,
     ),
-    NativePlaybackScenarioSpec(
+    ScreenPlaybackScenarioSpec(
         name="model-select-search",
-        description="Search the native model selector and select the filtered model.",
+        description="Search the screen model selector and select the filtered model.",
         run=_run_model_select_search,
     ),
-    NativePlaybackScenarioSpec(
+    ScreenPlaybackScenarioSpec(
         name="approval-surface",
-        description="Approve an active native approval surface and verify its callback payload.",
+        description="Approve an active screen approval surface and verify its callback payload.",
         run=_run_approval_surface,
     ),
-    NativePlaybackScenarioSpec(
+    ScreenPlaybackScenarioSpec(
         name="approval-reject-surface",
-        description="Reject an active native approval surface and verify its callback payload.",
+        description="Reject an active screen approval surface and verify its callback payload.",
         run=_run_approval_reject_surface,
     ),
-    NativePlaybackScenarioSpec(
+    ScreenPlaybackScenarioSpec(
         name="dialog-surface",
-        description="Confirm an active native dialog surface without repainting the screen.",
+        description="Confirm an active screen dialog surface without repainting the screen.",
         run=_run_dialog_surface,
     ),
-    NativePlaybackScenarioSpec(
+    ScreenPlaybackScenarioSpec(
         name="mouse-select-active-surface",
         description="Route raw SGR mouse press events to an active selection surface.",
         run=_run_mouse_select_active_surface,

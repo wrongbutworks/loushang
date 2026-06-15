@@ -6,7 +6,7 @@ from time import perf_counter
 from typing import Any
 
 from loushang.coding.store.session_manager import SessionManager
-from loushang.coding.ui.native_app import NativeCodingTuiApp
+from loushang.coding.ui.screen_app import ScreenCodingTuiApp
 from loushang.coding.ui.session_history import session_history_records
 from loushang.tui import RenderConstraints, RenderLoop, TerminalSize
 from loushang.tui.transcript import (
@@ -55,7 +55,7 @@ def build_synthetic_long_transcript_records(
 
 
 def characterize_long_transcript_rendering(
-    app: NativeCodingTuiApp,
+    app: ScreenCodingTuiApp,
     *,
     width: int,
     height: int,

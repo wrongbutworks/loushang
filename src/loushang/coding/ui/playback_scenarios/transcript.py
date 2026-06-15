@@ -4,18 +4,18 @@ from io import StringIO
 from types import SimpleNamespace
 
 from loushang.coding.ui.controller import CodingUiController
-from loushang.coding.ui.mode import _native_prompt_handler
+from loushang.coding.ui.mode import _screen_prompt_handler
 from loushang.coding.ui.perf_probe import build_synthetic_long_transcript_records
 from loushang.coding.ui.playback import (
-    NativeTuiInputPlaybackResult,
-    NativeTuiInputScenario,
-    NativeTuiLoopPlayback,
+    ScreenTuiInputPlaybackResult,
+    ScreenTuiInputScenario,
+    ScreenTuiLoopPlayback,
 )
 from loushang.coding.ui.playback_scenarios.budgets import (
     INTERACTION_FRAME_BUDGET,
     LONG_TRANSCRIPT_FRAME_BUDGET,
 )
-from loushang.coding.ui.playback_suite import NativePlaybackScenarioSpec
+from loushang.coding.ui.playback_suite import ScreenPlaybackScenarioSpec
 from loushang.tui import strip_control_sequences
 from loushang.tui.transcript import (
     AssistantMessageRecord,
@@ -25,9 +25,9 @@ from loushang.tui.transcript import (
 )
 
 
-def _run_long_transcript_input() -> NativeTuiInputPlaybackResult:
+def _run_long_transcript_input() -> ScreenTuiInputPlaybackResult:
     result = (
-        NativeTuiInputScenario(width=100, height=18)
+        ScreenTuiInputScenario(width=100, height=18)
         .with_records(build_synthetic_long_transcript_records(turns=40, tail_tool_output_lines=300))
         .render()
         .type_chars("fresh input")
@@ -41,9 +41,9 @@ def _run_long_transcript_input() -> NativeTuiInputPlaybackResult:
     return result
 
 
-def _run_tool_output_preview() -> NativeTuiInputPlaybackResult:
+def _run_tool_output_preview() -> ScreenTuiInputPlaybackResult:
     result = (
-        NativeTuiInputScenario(width=100, height=16)
+        ScreenTuiInputScenario(width=100, height=16)
         .with_records(
             (
                 ToolExecutionRecord(
@@ -71,9 +71,9 @@ def _run_tool_output_preview() -> NativeTuiInputPlaybackResult:
     return result
 
 
-def _run_transcript_reader_modal() -> NativeTuiInputPlaybackResult:
+def _run_transcript_reader_modal() -> ScreenTuiInputPlaybackResult:
     result = (
-        NativeTuiInputScenario(width=72, height=8)
+        ScreenTuiInputScenario(width=72, height=8)
         .with_records(
             (
                 AssistantMessageRecord(
@@ -115,7 +115,7 @@ def _run_transcript_reader_modal() -> NativeTuiInputPlaybackResult:
 
 
 def _run_transcript_reader_copy_command() -> object:
-    playback = NativeTuiLoopPlayback(width=72, height=9)
+    playback = ScreenTuiLoopPlayback(width=72, height=9)
     playback.app.state.records.extend(
         (
             AssistantMessageRecord("reader-visible latest answer"),
@@ -136,7 +136,7 @@ def _run_transcript_reader_copy_command() -> object:
         (0.02, "\x0f"),
         (0.03, "/copy 2\r"),
         (0.05, ""),
-        handle_prompt=_native_prompt_handler(
+        handle_prompt=_screen_prompt_handler(
             app=playback.app,
             controller=controller,
             stderr=StringIO(),
@@ -155,9 +155,9 @@ def _run_transcript_reader_copy_command() -> object:
     return result
 
 
-def _run_transcript_reader_live_draft() -> NativeTuiInputPlaybackResult:
+def _run_transcript_reader_live_draft() -> ScreenTuiInputPlaybackResult:
     scenario = (
-        NativeTuiInputScenario(width=78, height=10)
+        ScreenTuiInputScenario(width=78, height=10)
         .with_records(
             (
                 UserPromptRecord("previous question"),
@@ -193,9 +193,9 @@ def _run_transcript_reader_live_draft() -> NativeTuiInputPlaybackResult:
     return result
 
 
-def _run_transcript_reader_render_modes() -> NativeTuiInputPlaybackResult:
+def _run_transcript_reader_render_modes() -> ScreenTuiInputPlaybackResult:
     result = (
-        NativeTuiInputScenario(width=88, height=12)
+        ScreenTuiInputScenario(width=88, height=12)
         .with_records(
             (
                 AssistantMessageRecord("Use **markdown** literally.", stable=True),
@@ -235,9 +235,9 @@ def _run_transcript_reader_render_modes() -> NativeTuiInputPlaybackResult:
     return result
 
 
-def _run_transcript_reader_search() -> NativeTuiInputPlaybackResult:
+def _run_transcript_reader_search() -> ScreenTuiInputPlaybackResult:
     result = (
-        NativeTuiInputScenario(width=82, height=10)
+        ScreenTuiInputScenario(width=82, height=10)
         .with_records(
             (
                 AssistantMessageRecord(
@@ -290,7 +290,7 @@ def _run_transcript_reader_search() -> NativeTuiInputPlaybackResult:
     return result
 
 
-def _step_screen(result: NativeTuiInputPlaybackResult, step_index: int) -> str:
+def _step_screen(result: ScreenTuiInputPlaybackResult, step_index: int) -> str:
     step = result.steps[step_index]
     assert step.frame is not None
     return strip_control_sequences("\n".join(step.frame.screen_after.visible_lines))
@@ -335,40 +335,40 @@ class _CopyCommandPlaybackSession:
 
 
 TRANSCRIPT_SCENARIOS = (
-    NativePlaybackScenarioSpec(
+    ScreenPlaybackScenarioSpec(
         name="long-transcript-input",
         description="Echo input after a long transcript using bounded frame updates.",
         run=_run_long_transcript_input,
     ),
-    NativePlaybackScenarioSpec(
+    ScreenPlaybackScenarioSpec(
         name="tool-output-preview",
         description="Render long tool output as head, hidden-count, and tail without flicker.",
         run=_run_tool_output_preview,
     ),
-    NativePlaybackScenarioSpec(
+    ScreenPlaybackScenarioSpec(
         name="transcript-reader-modal",
         description="Open the transcript reader, keep input modal, close it, and resume composing.",
         run=_run_transcript_reader_modal,
     ),
-    NativePlaybackScenarioSpec(
+    ScreenPlaybackScenarioSpec(
         name="transcript-reader-copy-command",
         description="Open and close the transcript reader, then copy the second assistant response from structured history.",
         run=_run_transcript_reader_copy_command,
         tags=("transcript", "command"),
     ),
-    NativePlaybackScenarioSpec(
+    ScreenPlaybackScenarioSpec(
         name="transcript-reader-live-draft",
         description="Open the transcript reader during assistant streaming and keep the live draft visible.",
         run=_run_transcript_reader_live_draft,
         tags=("transcript",),
     ),
-    NativePlaybackScenarioSpec(
+    ScreenPlaybackScenarioSpec(
         name="transcript-reader-render-modes",
         description="Toggle transcript reader detail and raw modes without changing the composer.",
         run=_run_transcript_reader_render_modes,
         tags=("transcript",),
     ),
-    NativePlaybackScenarioSpec(
+    ScreenPlaybackScenarioSpec(
         name="transcript-reader-search",
         description="Search within the transcript reader, navigate matches, and return to composing.",
         run=_run_transcript_reader_search,

@@ -15,9 +15,9 @@ from loushang.coding.ui.playback_scenarios.surface import SURFACE_SCENARIOS
 from loushang.coding.ui.playback_scenarios.terminal import TERMINAL_SCENARIOS
 from loushang.coding.ui.playback_scenarios.transcript import TRANSCRIPT_SCENARIOS
 from loushang.coding.ui.playback_suite import (
-    NativePlaybackScenarioResult,
-    NativePlaybackScenarioSpec,
-    NativePlaybackSuite,
+    ScreenPlaybackScenarioResult,
+    ScreenPlaybackScenarioSpec,
+    ScreenPlaybackSuite,
 )
 from loushang.coding.ui.playback_suite import (
     run_playback_scenarios as _run_playback_scenarios,
@@ -25,9 +25,9 @@ from loushang.coding.ui.playback_suite import (
 
 __all__ = [
     "DEFAULT_SUITE",
-    "NativePlaybackScenarioResult",
-    "NativePlaybackScenarioSpec",
-    "NativePlaybackSuite",
+    "ScreenPlaybackScenarioResult",
+    "ScreenPlaybackScenarioSpec",
+    "ScreenPlaybackSuite",
     "run_playback_cli",
     "run_playback_scenarios",
 ]
@@ -37,10 +37,10 @@ def run_playback_scenarios(
     names: Sequence[str] = (),
     *,
     tags: Sequence[str] = (),
-    suite: NativePlaybackSuite | None = None,
+    suite: ScreenPlaybackSuite | None = None,
     artifacts_dir: str | Path | None = None,
     include_frames: bool = False,
-) -> tuple[NativePlaybackScenarioResult, ...]:
+) -> tuple[ScreenPlaybackScenarioResult, ...]:
     suite = DEFAULT_SUITE if suite is None else suite
     return _run_playback_scenarios(
         names,
@@ -56,7 +56,7 @@ def run_playback_cli(
     *,
     stdout: TextIO | None = None,
     stderr: TextIO | None = None,
-    suite: NativePlaybackSuite | None = None,
+    suite: ScreenPlaybackSuite | None = None,
 ) -> int:
     stdout = sys.stdout if stdout is None else stdout
     stderr = sys.stderr if stderr is None else stderr
@@ -101,7 +101,7 @@ def main(argv: Sequence[str] | None = None) -> None:
 def _build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="python -m loushang.coding.ui.playback_runner",
-        description="Run native TUI playback regression scenarios.",
+        description="Run screen TUI playback regression scenarios.",
     )
     parser.add_argument(
         "scenarios", nargs="*", help="Scenario names to run. Defaults to all scenarios."
@@ -130,13 +130,13 @@ def _build_parser() -> argparse.ArgumentParser:
 
 
 def _write_scenario_list(
-    suite: NativePlaybackSuite, stdout: TextIO, *, tags: Sequence[str] = ()
+    suite: ScreenPlaybackSuite, stdout: TextIO, *, tags: Sequence[str] = ()
 ) -> None:
     for scenario in suite.selected((), tags=tags):
         stdout.write(f"{scenario.name}\t{scenario.description}\n")
 
 
-def _json_summary(results: Sequence[NativePlaybackScenarioResult]) -> dict[str, object]:
+def _json_summary(results: Sequence[ScreenPlaybackScenarioResult]) -> dict[str, object]:
     return {
         "ok": all(result.ok for result in results),
         "results": [
@@ -152,7 +152,7 @@ def _json_summary(results: Sequence[NativePlaybackScenarioResult]) -> dict[str, 
     }
 
 
-DEFAULT_SUITE = NativePlaybackSuite(
+DEFAULT_SUITE = ScreenPlaybackSuite(
     (
         *COMPOSER_SCENARIOS,
         *LIFECYCLE_SCENARIOS,

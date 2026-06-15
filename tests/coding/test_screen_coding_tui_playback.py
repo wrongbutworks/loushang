@@ -8,17 +8,17 @@ from typing import Any
 
 from loushang.coding.types import ModelSelection
 from loushang.coding.ui.completion import coding_inline_completion_provider
-from loushang.coding.ui.native_app import NativeCodingTuiApp
-from loushang.coding.ui.native_input import NativeInputRouter
-from loushang.coding.ui.native_loop import (
+from loushang.coding.ui.playback import ScreenTuiInputPlayback
+from loushang.coding.ui.screen_app import ScreenCodingTuiApp
+from loushang.coding.ui.screen_input import ScreenInputRouter
+from loushang.coding.ui.screen_loop import (
     _flush_pending_input,
     _format_terminal_diagnostics,
     _input_events_for_chunk,
     _poll_terminal_runtime,
     _terminal_runtime_wakeup_ms,
 )
-from loushang.coding.ui.native_surfaces import NativeSurfaceManager
-from loushang.coding.ui.playback import NativeTuiInputPlayback
+from loushang.coding.ui.screen_surfaces import ScreenSurfaceManager
 from loushang.coding.ui.status_provider import CodingTuiStatusProvider
 from loushang.tui import (
     FakeTerminalPort,
@@ -41,11 +41,11 @@ from loushang.tui import (
 )
 
 
-def test_native_tui_playback_applies_model_argument_completion() -> None:
+def test_screen_tui_playback_applies_model_argument_completion() -> None:
     session = _Session()
     app = _app()
     app.composer.set_completion_provider(asyncio.run(coding_inline_completion_provider(session)))
-    playback = NativeTuiInputPlayback(app)
+    playback = ScreenTuiInputPlayback(app)
 
     steps = playback.play([PlaybackEvent.input("/model gpt\t")])
 
@@ -56,13 +56,13 @@ def test_native_tui_playback_applies_model_argument_completion() -> None:
     assert lines[-1] == "moonshot/kimi-for-coding | repo | main | abcd | idle"
 
 
-def test_native_tui_playback_applies_recursive_at_file_completion(tmp_path: Path) -> None:
+def test_screen_tui_playback_applies_recursive_at_file_completion(tmp_path: Path) -> None:
     (tmp_path / "src" / "tests").mkdir(parents=True)
     (tmp_path / "src" / "tests" / "test_completion.py").write_text("", encoding="utf-8")
     session = _Session(cwd=tmp_path)
     app = _app(cwd=str(tmp_path))
     app.composer.set_completion_provider(asyncio.run(coding_inline_completion_provider(session)))
-    playback = NativeTuiInputPlayback(app)
+    playback = ScreenTuiInputPlayback(app)
 
     steps = playback.play([PlaybackEvent.input("@test\t")])
 
@@ -71,11 +71,11 @@ def test_native_tui_playback_applies_recursive_at_file_completion(tmp_path: Path
     assert "› @src/tests/test_completion.py " in _plain_lines(steps[-1].diagnostics)
 
 
-def test_native_tui_playback_browses_history_from_non_empty_single_line_draft() -> None:
+def test_screen_tui_playback_browses_history_from_non_empty_single_line_draft() -> None:
     app = _app()
     app.composer.add_history("first prompt")
     app.composer.add_history("second prompt")
-    playback = NativeTuiInputPlayback(app)
+    playback = ScreenTuiInputPlayback(app)
 
     result = playback.play(
         [
@@ -101,10 +101,10 @@ def test_native_tui_playback_browses_history_from_non_empty_single_line_draft() 
         step.assert_no_clear_scrollback()
 
 
-def test_native_tui_playback_uses_visual_up_before_history_for_multiline_draft() -> None:
+def test_screen_tui_playback_uses_visual_up_before_history_for_multiline_draft() -> None:
     app = _app()
     app.composer.add_history("previous prompt")
-    playback = NativeTuiInputPlayback(app, columns=80, rows=12)
+    playback = ScreenTuiInputPlayback(app, columns=80, rows=12)
 
     result = playback.play(
         [
@@ -125,10 +125,10 @@ def test_native_tui_playback_uses_visual_up_before_history_for_multiline_draft()
         step.assert_no_clear_scrollback()
 
 
-def test_native_tui_playback_routes_composer_page_keys() -> None:
+def test_screen_tui_playback_routes_composer_page_keys() -> None:
     app = _app()
     app.composer.set_text("one\ntwo\nthree\nfour\nfive")
-    playback = NativeTuiInputPlayback(app, columns=20, rows=3)
+    playback = ScreenTuiInputPlayback(app, columns=20, rows=3)
 
     page_up_steps = playback.play([PlaybackEvent.input("\x1b[5~")])
     page_up = app.composer.render(RenderConstraints(width=20, max_height=5))
@@ -147,11 +147,11 @@ def test_native_tui_playback_routes_composer_page_keys() -> None:
         step.assert_no_clear_scrollback()
 
 
-def test_native_tui_playback_completion_navigation_wins_over_history_navigation() -> None:
+def test_screen_tui_playback_completion_navigation_wins_over_history_navigation() -> None:
     app = _app()
     app.composer.add_history("history prompt")
     app.composer.set_completion_provider(asyncio.run(coding_inline_completion_provider(_Session())))
-    playback = NativeTuiInputPlayback(app)
+    playback = ScreenTuiInputPlayback(app)
 
     result = playback.play(
         [
@@ -172,9 +172,9 @@ def test_native_tui_playback_completion_navigation_wins_over_history_navigation(
         step.assert_no_clear_scrollback()
 
 
-def test_native_tui_playback_shift_selection_replaces_selected_text() -> None:
+def test_screen_tui_playback_shift_selection_replaces_selected_text() -> None:
     app = _app()
-    playback = NativeTuiInputPlayback(app)
+    playback = ScreenTuiInputPlayback(app)
 
     result = playback.play(
         [
@@ -193,9 +193,9 @@ def test_native_tui_playback_shift_selection_replaces_selected_text() -> None:
         step.assert_no_clear_scrollback()
 
 
-def test_native_tui_playback_escape_clears_idle_draft_without_abort() -> None:
+def test_screen_tui_playback_escape_clears_idle_draft_without_abort() -> None:
     app = _app()
-    playback = NativeTuiInputPlayback(app)
+    playback = ScreenTuiInputPlayback(app)
 
     result = playback.play(
         [
@@ -212,7 +212,7 @@ def test_native_tui_playback_escape_clears_idle_draft_without_abort() -> None:
         step.assert_no_clear_scrollback()
 
 
-def test_native_tui_playback_edits_settings_search_with_text_input_cursor() -> None:
+def test_screen_tui_playback_edits_settings_search_with_text_input_cursor() -> None:
     app = _app()
     app.active_surface = SearchableList(
         [
@@ -223,7 +223,7 @@ def test_native_tui_playback_edits_settings_search_with_text_input_cursor() -> N
         placeholder="Search settings...",
         detail_column=24,
     )
-    playback = NativeTuiInputPlayback(app)
+    playback = ScreenTuiInputPlayback(app)
 
     steps = playback.play([PlaybackEvent.input("mo\x1b[Dx")])
 
@@ -254,9 +254,9 @@ def test_tui_playback_renders_auto_terminal_image_and_text_fallback(monkeypatch:
     assert "\x1b_G" not in output
 
 
-def test_native_tui_playback_resizes_cleanly_after_drain() -> None:
+def test_screen_tui_playback_resizes_cleanly_after_drain() -> None:
     app = _app()
-    playback = NativeTuiInputPlayback(app, columns=80, rows=12)
+    playback = ScreenTuiInputPlayback(app, columns=80, rows=12)
 
     drained = drain_input(StringIO("stale buffered input"))
     steps = playback.play(
@@ -275,7 +275,7 @@ def test_native_tui_playback_resizes_cleanly_after_drain() -> None:
     assert playback.harness.port.screen.size == TerminalSize(columns=42, rows=8)
 
 
-def test_native_tui_playback_smokes_surfaces_editor_and_image_fallback(monkeypatch: Any) -> None:
+def test_screen_tui_playback_smokes_surfaces_editor_and_image_fallback(monkeypatch: Any) -> None:
     _clear_image_protocol_env(monkeypatch)
     session = _Session()
     app = _app()
@@ -285,7 +285,7 @@ def test_native_tui_playback_smokes_surfaces_editor_and_image_fallback(monkeypat
         "cell_size: 9x18"
     )
     app.composer.set_completion_provider(asyncio.run(coding_inline_completion_provider(session)))
-    playback = _NativeInteractivePlayback(
+    playback = _ScreenInteractivePlayback(
         app,
         _manager(app, session),
         columns=100,
@@ -327,10 +327,10 @@ def test_native_tui_playback_smokes_surfaces_editor_and_image_fallback(monkeypat
     assert "\x1b_G" not in output
 
 
-def test_native_tui_playback_command_surface_filters_and_selects_command() -> None:
+def test_screen_tui_playback_command_surface_filters_and_selects_command() -> None:
     session = _Session()
     app = _app()
-    playback = _NativeInteractivePlayback(
+    playback = _ScreenInteractivePlayback(
         app,
         _manager(app, session),
         columns=100,
@@ -357,10 +357,10 @@ def test_native_tui_playback_command_surface_filters_and_selects_command() -> No
         step.assert_no_clear_scrollback()
 
 
-def test_native_tui_playback_settings_page_toggles_statusline_and_exits() -> None:
+def test_screen_tui_playback_settings_page_toggles_statusline_and_exits() -> None:
     session = _Session()
     app = _app()
-    playback = _NativeInteractivePlayback(
+    playback = _ScreenInteractivePlayback(
         app,
         _manager(app, session),
         columns=100,
@@ -393,10 +393,10 @@ def test_native_tui_playback_settings_page_toggles_statusline_and_exits() -> Non
         step.assert_no_clear_scrollback()
 
 
-def test_native_tui_playback_settings_page_toggles_statusline_style() -> None:
+def test_screen_tui_playback_settings_page_toggles_statusline_style() -> None:
     session = _Session()
     app = _app()
-    playback = _NativeInteractivePlayback(
+    playback = _ScreenInteractivePlayback(
         app,
         _manager(app, session),
         columns=110,
@@ -426,10 +426,10 @@ def test_native_tui_playback_settings_page_toggles_statusline_style() -> None:
         step.assert_no_clear_scrollback()
 
 
-def test_native_tui_playback_settings_page_toggles_statusline_field() -> None:
+def test_screen_tui_playback_settings_page_toggles_statusline_field() -> None:
     session = _Session()
     app = _app()
-    playback = _NativeInteractivePlayback(
+    playback = _ScreenInteractivePlayback(
         app,
         _manager(app, session),
         columns=110,
@@ -460,10 +460,10 @@ def test_native_tui_playback_settings_page_toggles_statusline_field() -> None:
         step.assert_no_clear_scrollback()
 
 
-def test_native_tui_playback_settings_page_searches_when_opened_by_command() -> None:
+def test_screen_tui_playback_settings_page_searches_when_opened_by_command() -> None:
     session = _Session()
     app = _app()
-    playback = _NativeInteractivePlayback(
+    playback = _ScreenInteractivePlayback(
         app,
         _manager(app, session),
         columns=100,
@@ -487,10 +487,10 @@ def test_native_tui_playback_settings_page_searches_when_opened_by_command() -> 
         step.assert_no_clear_scrollback()
 
 
-def test_native_tui_playback_settings_page_q_is_search_text() -> None:
+def test_screen_tui_playback_settings_page_q_is_search_text() -> None:
     session = _Session()
     app = _app()
-    playback = _NativeInteractivePlayback(
+    playback = _ScreenInteractivePlayback(
         app,
         _manager(app, session),
         columns=100,
@@ -513,10 +513,10 @@ def test_native_tui_playback_settings_page_q_is_search_text() -> None:
         step.assert_no_clear_scrollback()
 
 
-def test_native_tui_playback_settings_escape_restores_single_prompt_with_status_gap() -> None:
+def test_screen_tui_playback_settings_escape_restores_single_prompt_with_status_gap() -> None:
     session = _Session()
     app = _app()
-    playback = _NativeInteractivePlayback(
+    playback = _ScreenInteractivePlayback(
         app,
         _manager(app, session),
         columns=100,
@@ -543,10 +543,10 @@ def test_native_tui_playback_settings_escape_restores_single_prompt_with_status_
     assert lines[prompt_rows[0] + 1] == ""
 
 
-def test_native_tui_playback_settings_page_model_tab_is_available() -> None:
+def test_screen_tui_playback_settings_page_model_tab_is_available() -> None:
     session = _Session()
     app = _app()
-    playback = _NativeInteractivePlayback(
+    playback = _ScreenInteractivePlayback(
         app,
         _manager(app, session),
         columns=100,
@@ -570,13 +570,13 @@ def test_native_tui_playback_settings_page_model_tab_is_available() -> None:
         step.assert_no_clear_scrollback()
 
 
-def test_native_tui_playback_smokes_terminal_context_model_selector_and_resize() -> None:
+def test_screen_tui_playback_smokes_terminal_context_model_selector_and_resize() -> None:
     context = _PlaybackTerminalContext()
     session = _Session()
     app = _app()
     app.terminal_diagnostics_provider = lambda: _format_terminal_diagnostics(context)
     app.composer.set_completion_provider(asyncio.run(coding_inline_completion_provider(session)))
-    playback = _NativeInteractivePlayback(
+    playback = _ScreenInteractivePlayback(
         app,
         _manager(app, session),
         columns=100,
@@ -606,7 +606,7 @@ def test_native_tui_playback_smokes_terminal_context_model_selector_and_resize()
     assert steps[-1].diagnostics.operation_class == "resize_repaint"
 
 
-def test_native_tui_model_selector_ignores_key_release_events() -> None:
+def test_screen_tui_model_selector_ignores_key_release_events() -> None:
     session = _Session(
         models=(
             ModelSelection(provider="moonshot", model_id="kimi-for-coding"),
@@ -615,7 +615,7 @@ def test_native_tui_model_selector_ignores_key_release_events() -> None:
         )
     )
     app = _app()
-    playback = _NativeInteractivePlayback(
+    playback = _ScreenInteractivePlayback(
         app,
         _manager(app, session),
         columns=100,
@@ -639,7 +639,7 @@ def test_native_tui_model_selector_ignores_key_release_events() -> None:
     assert not any("claude-sonnet" in line for line in lines)
 
 
-def test_native_loop_filters_terminal_control_responses_before_routing() -> None:
+def test_screen_loop_filters_terminal_control_responses_before_routing() -> None:
     events = _input_events_for_chunk(InputReader(), "\x1b[?7uhello")
 
     assert len(events) == 1
@@ -647,7 +647,7 @@ def test_native_loop_filters_terminal_control_responses_before_routing() -> None
     assert events[0].text == "hello"
 
 
-def test_native_loop_filters_split_terminal_control_responses_before_routing() -> None:
+def test_screen_loop_filters_split_terminal_control_responses_before_routing() -> None:
     reader = InputReader()
     context = _ControlContext()
 
@@ -663,7 +663,7 @@ def test_native_loop_filters_split_terminal_control_responses_before_routing() -
     assert context.events[0].text == "7"
 
 
-def test_native_loop_keeps_split_escape_sequence_pending_until_complete() -> None:
+def test_screen_loop_keeps_split_escape_sequence_pending_until_complete() -> None:
     reader = InputReader()
 
     first = _input_events_for_chunk(reader, "\x1b")
@@ -675,7 +675,7 @@ def test_native_loop_keeps_split_escape_sequence_pending_until_complete() -> Non
     assert second[0].key == "up"
 
 
-def test_native_loop_flushes_pending_escape_explicitly() -> None:
+def test_screen_loop_flushes_pending_escape_explicitly() -> None:
     reader = InputReader()
 
     first = _input_events_for_chunk(reader, "\x1b")
@@ -687,7 +687,7 @@ def test_native_loop_flushes_pending_escape_explicitly() -> None:
     assert flushed[0].key == "escape"
 
 
-def test_native_loop_passes_terminal_control_events_to_context() -> None:
+def test_screen_loop_passes_terminal_control_events_to_context() -> None:
     context = _ControlContext()
 
     events = _input_events_for_chunk(InputReader(), "\x1b[6;18;9t", terminal_context=context)
@@ -697,25 +697,25 @@ def test_native_loop_passes_terminal_control_events_to_context() -> None:
     assert context.events[0].signal == "cell_size"
 
 
-def test_native_loop_reads_terminal_runtime_wakeup_delay() -> None:
+def test_screen_loop_reads_terminal_runtime_wakeup_delay() -> None:
     context = _RuntimeWakeupContext(delay_ms=42)
 
     assert _terminal_runtime_wakeup_ms(context) == 42
     assert context.wakeup_calls == 1
 
 
-def test_native_loop_polls_terminal_runtime_fallback() -> None:
+def test_screen_loop_polls_terminal_runtime_fallback() -> None:
     context = _RuntimeWakeupContext(delay_ms=0)
 
     assert _poll_terminal_runtime(context) is True
     assert context.poll_calls == 1
 
 
-class _NativeInteractivePlayback:
+class _ScreenInteractivePlayback:
     def __init__(
         self,
-        app: NativeCodingTuiApp,
-        surface_manager: NativeSurfaceManager,
+        app: ScreenCodingTuiApp,
+        surface_manager: ScreenSurfaceManager,
         *,
         columns: int = 80,
         rows: int = 12,
@@ -731,7 +731,7 @@ class _NativeInteractivePlayback:
             terminal=self.terminal,
         )
         self.app.surface_host = self.runtime.overlay_host()
-        self.router = NativeInputRouter(
+        self.router = ScreenInputRouter(
             app,
             should_exit=lambda _text: False,
             is_local_command=surface_manager.is_local_command,
@@ -875,8 +875,8 @@ class _Session:
         self.current_model = selection
 
 
-def _app(*, cwd: str = "/repo") -> NativeCodingTuiApp:
-    return NativeCodingTuiApp(
+def _app(*, cwd: str = "/repo") -> ScreenCodingTuiApp:
+    return ScreenCodingTuiApp(
         model_label="moonshot/kimi-for-coding",
         cwd=cwd,
         branch="main",
@@ -885,8 +885,8 @@ def _app(*, cwd: str = "/repo") -> NativeCodingTuiApp:
     )
 
 
-def _manager(app: NativeCodingTuiApp, session: _Session) -> NativeSurfaceManager:
-    return NativeSurfaceManager(
+def _manager(app: ScreenCodingTuiApp, session: _Session) -> ScreenSurfaceManager:
+    return ScreenSurfaceManager(
         app=app,
         session=session,
         status_provider=CodingTuiStatusProvider(

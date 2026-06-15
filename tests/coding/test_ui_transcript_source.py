@@ -3,7 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from loushang.ai.types import AssistantMessage, TextPart, Usage, UserMessage
-from loushang.coding.ui.native_state import NativeCodingTuiState
+from loushang.coding.ui.screen_state import ScreenCodingTuiState
 from loushang.coding.ui.transcript_source import (
     ActiveWindowTranscriptSource,
     SessionTranscriptSource,
@@ -12,6 +12,7 @@ from loushang.tui.transcript import (
     AssistantMessageRecord,
     ToolExecutionRecord,
     UserPromptRecord,
+    WorkedDividerRecord,
 )
 
 
@@ -21,7 +22,7 @@ class _Session:
 
 
 def test_active_window_transcript_source_returns_snapshot_metadata() -> None:
-    state = NativeCodingTuiState(model_label="model", cwd="/tmp/project", branch=None, session_label=None)
+    state = ScreenCodingTuiState(model_label="model", cwd="/tmp/project", branch=None, session_label=None)
     state.replace_transcript_window(
         (
             UserPromptRecord("hello"),
@@ -39,7 +40,7 @@ def test_active_window_transcript_source_returns_snapshot_metadata() -> None:
 
 
 def test_active_window_transcript_source_includes_live_assistant_draft() -> None:
-    state = NativeCodingTuiState(model_label="model", cwd="/tmp/project", branch=None, session_label=None)
+    state = ScreenCodingTuiState(model_label="model", cwd="/tmp/project", branch=None, session_label=None)
     state.replace_transcript_window(
         (
             UserPromptRecord("hello"),
@@ -61,7 +62,7 @@ def test_active_window_transcript_source_includes_live_assistant_draft() -> None
 
 
 def test_active_window_transcript_source_recent_assistant_texts_are_filtered_newest_first() -> None:
-    state = NativeCodingTuiState(model_label="model", cwd="/tmp/project", branch=None, session_label=None)
+    state = ScreenCodingTuiState(model_label="model", cwd="/tmp/project", branch=None, session_label=None)
     state.records.extend(
         [
             AssistantMessageRecord("first"),
@@ -113,7 +114,7 @@ def test_session_transcript_source_merges_live_active_window_records() -> None:
             _assistant_message("full answer", timestamp=2.0),
         ]
     )
-    state = NativeCodingTuiState(model_label="model", cwd="/tmp/project", branch=None, session_label=None)
+    state = ScreenCodingTuiState(model_label="model", cwd="/tmp/project", branch=None, session_label=None)
     state.replace_transcript_window(
         (
             UserPromptRecord("full question"),
@@ -134,6 +135,39 @@ def test_session_transcript_source_merges_live_active_window_records() -> None:
     )
 
 
+def test_session_transcript_source_deduplicates_decorated_active_window_history() -> None:
+    session = _Session(
+        messages=[
+            UserMessage(role="user", content=[TextPart(type="text", text="first question")], timestamp=1.0),
+            _assistant_message("first answer", timestamp=2.0),
+            UserMessage(role="user", content=[TextPart(type="text", text="second question")], timestamp=3.0),
+            _assistant_message("second answer", timestamp=4.0),
+        ]
+    )
+    state = ScreenCodingTuiState(model_label="model", cwd="/tmp/project", branch=None, session_label=None)
+    state.replace_transcript_window(
+        (
+            UserPromptRecord("first question"),
+            AssistantMessageRecord("first answer", stable=True),
+            WorkedDividerRecord(1.0),
+            UserPromptRecord("second question"),
+            AssistantMessageRecord("second answer", stable=True),
+            WorkedDividerRecord(2.0),
+        )
+    )
+
+    snapshot = SessionTranscriptSource(session, active_window_state=state).snapshot()
+
+    assert snapshot.records == (
+        UserPromptRecord("first question"),
+        AssistantMessageRecord("first answer", stable=True),
+        WorkedDividerRecord(1.0),
+        UserPromptRecord("second question"),
+        AssistantMessageRecord("second answer", stable=True),
+        WorkedDividerRecord(2.0),
+    )
+
+
 def test_session_transcript_source_merges_live_assistant_draft() -> None:
     session = _Session(
         messages=[
@@ -141,7 +175,7 @@ def test_session_transcript_source_merges_live_assistant_draft() -> None:
             _assistant_message("full answer", timestamp=2.0),
         ]
     )
-    state = NativeCodingTuiState(model_label="model", cwd="/tmp/project", branch=None, session_label=None)
+    state = ScreenCodingTuiState(model_label="model", cwd="/tmp/project", branch=None, session_label=None)
     state.replace_transcript_window(
         (
             UserPromptRecord("full question"),
@@ -169,12 +203,12 @@ def test_transcript_source_boundary_matrix() -> None:
             _assistant_message("full answer", timestamp=2.0),
         ]
     )
-    active_state = NativeCodingTuiState(model_label="model", cwd="/tmp/project", branch=None, session_label=None)
+    active_state = ScreenCodingTuiState(model_label="model", cwd="/tmp/project", branch=None, session_label=None)
     active_state.replace_transcript_window((AssistantMessageRecord("active answer"),))
     active_state.begin_run(started_at=3.0)
     active_state.append_assistant_chunk("active draft")
 
-    running_tool_state = NativeCodingTuiState(model_label="model", cwd="/tmp/project", branch=None, session_label=None)
+    running_tool_state = ScreenCodingTuiState(model_label="model", cwd="/tmp/project", branch=None, session_label=None)
     running_tool_state.replace_transcript_window(
         (
             UserPromptRecord("full question"),
@@ -183,7 +217,7 @@ def test_transcript_source_boundary_matrix() -> None:
         )
     )
 
-    draft_state = NativeCodingTuiState(model_label="model", cwd="/tmp/project", branch=None, session_label=None)
+    draft_state = ScreenCodingTuiState(model_label="model", cwd="/tmp/project", branch=None, session_label=None)
     draft_state.replace_transcript_window(
         (
             UserPromptRecord("full question"),

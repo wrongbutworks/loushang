@@ -13,15 +13,15 @@ from loushang.coding.ui.completion import coding_inline_completion_provider
 from loushang.coding.ui.controller import CodingUiController, ControllerResult
 from loushang.coding.ui.events import CodingUiEventRenderer
 from loushang.coding.ui.intent import AbortIntent, QuitIntent, parse_prompt_intent
-from loushang.coding.ui.native_app import NativeCodingTuiApp
-from loushang.coding.ui.native_events import NativeCodingEventProjector
-from loushang.coding.ui.native_loop import run_native_coding_tui
-from loushang.coding.ui.native_surfaces import NativeSurfaceManager
 from loushang.coding.ui.renderer import CodingUiRenderer
 from loushang.coding.ui.run_context import (
     open_coding_tui_run_context,
     subscribe_session_events,
 )
+from loushang.coding.ui.screen_app import ScreenCodingTuiApp
+from loushang.coding.ui.screen_events import ScreenCodingEventProjector
+from loushang.coding.ui.screen_loop import run_screen_coding_tui
+from loushang.coding.ui.screen_surfaces import ScreenSurfaceManager
 from loushang.coding.ui.session_history import session_history_records
 from loushang.coding.ui.session_view import is_running, session_label, thinking_level
 from loushang.coding.ui.startup import (
@@ -53,7 +53,7 @@ async def run_coding_tui(
     interactive = _is_interactive(stdin=stdin, stdout=stdout)
     try:
         if interactive:
-            return await _run_native_interactive_tui(
+            return await _run_screen_interactive_tui(
                 runtime=runtime,
                 session=session,
                 stdin=stdin,
@@ -78,7 +78,7 @@ async def run_coding_tui(
         return 1
 
 
-async def _run_native_interactive_tui(
+async def _run_screen_interactive_tui(
     *,
     runtime: Any,
     session: Any,
@@ -88,7 +88,7 @@ async def _run_native_interactive_tui(
     verbose: bool,
 ) -> int:
     snapshot = await load_coding_tui_startup_snapshot(runtime=runtime, session=session)
-    app = NativeCodingTuiApp(
+    app = ScreenCodingTuiApp(
         model_label=snapshot.model_label,
         cwd=snapshot.cwd,
         branch=snapshot.branch,
@@ -117,7 +117,7 @@ async def _run_native_interactive_tui(
     controller = CodingUiController(runtime=runtime, session=session, verbose=verbose)
 
     async def _handle_approval(event: dict[str, object]) -> None:
-        sink = getattr(session, "handle_native_approval", None)
+        sink = getattr(session, "handle_screen_approval", None)
         if callable(sink):
             await _maybe_await(sink(event))
 
@@ -133,13 +133,13 @@ async def _run_native_interactive_tui(
         on_statusline_settings_changed=statusline_settings_persistence_callback(settings_manager),
     )
     app.set_statusline_settings(status_provider.statusline_settings())
-    surface_manager = NativeSurfaceManager(
+    surface_manager = ScreenSurfaceManager(
         app=app,
         session=session,
         status_provider=status_provider,
         on_approval=_handle_approval,
     )
-    projector = NativeCodingEventProjector(
+    projector = ScreenCodingEventProjector(
         app,
         tool_definition_resolver=_tool_definition_resolver(session),
         read_pending_steers=_queue_reader(session, "get_steering_messages"),
@@ -155,17 +155,17 @@ async def _run_native_interactive_tui(
     try:
         _trace_start(snapshot, interactive=True)
         unsubscribe = subscribe_session_events(session, projector.handle)
-        exit_code = await run_native_coding_tui(
+        exit_code = await run_screen_coding_tui(
             app=app,
             stdin=stdin,
             stdout=stdout,
-            handle_prompt=_native_prompt_handler(app=app, controller=controller, stderr=stderr, verbose=verbose),
+            handle_prompt=_screen_prompt_handler(app=app, controller=controller, stderr=stderr, verbose=verbose),
             handle_local=surface_manager.handle_text,
-            handle_steer=_native_text_handler(app=app, dispatch=controller.steer, label="Steering failed"),
-            handle_followup=_native_text_handler(app=app, dispatch=controller.follow_up, label="Follow-up failed"),
+            handle_steer=_screen_text_handler(app=app, dispatch=controller.steer, label="Steering failed"),
+            handle_followup=_screen_text_handler(app=app, dispatch=controller.follow_up, label="Follow-up failed"),
             handle_surface_intent=surface_manager.handle_surface_intent,
-            on_abort=_native_abort_handler(controller),
-            should_exit=_native_should_exit,
+            on_abort=_screen_abort_handler(controller),
+            should_exit=_screen_should_exit,
             is_local_command=surface_manager.is_local_command,
             keybindings=_session_keybindings(session),
         )
@@ -230,9 +230,9 @@ async def _run_plain_tui(
             run_context.close()
 
 
-def _native_prompt_handler(
+def _screen_prompt_handler(
     *,
-    app: NativeCodingTuiApp,
+    app: ScreenCodingTuiApp,
     controller: CodingUiController,
     stderr: TextIO,
     verbose: bool,
@@ -252,9 +252,9 @@ def _native_prompt_handler(
     return handle
 
 
-def _native_text_handler(
+def _screen_text_handler(
     *,
-    app: NativeCodingTuiApp,
+    app: ScreenCodingTuiApp,
     dispatch: Any,
     label: str,
 ):
@@ -271,7 +271,7 @@ def _native_text_handler(
     return handle
 
 
-def _native_abort_handler(controller: CodingUiController):
+def _screen_abort_handler(controller: CodingUiController):
     async def handle() -> None:
         await controller.dispatch(AbortIntent())
         await controller.wait_for_idle()
@@ -281,7 +281,7 @@ def _native_abort_handler(controller: CodingUiController):
 
 def _record_controller_result(
     *,
-    app: NativeCodingTuiApp,
+    app: ScreenCodingTuiApp,
     result: ControllerResult,
     stderr: TextIO | None,
     verbose: bool,
@@ -298,7 +298,7 @@ def _record_controller_result(
         stderr.flush()
 
 
-def _native_should_exit(text: str) -> bool:
+def _screen_should_exit(text: str) -> bool:
     return isinstance(parse_prompt_intent(text), QuitIntent)
 
 

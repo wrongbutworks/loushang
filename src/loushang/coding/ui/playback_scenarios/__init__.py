@@ -1,2 +1,2 @@
-"""Grouped native TUI playback scenario definitions."""
+"""Grouped screen TUI playback scenario definitions."""
 

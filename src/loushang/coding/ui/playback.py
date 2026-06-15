@@ -12,9 +12,9 @@ from io import StringIO
 from pathlib import Path
 from typing import Any
 
-from loushang.coding.ui.native_app import NativeCodingTuiApp
-from loushang.coding.ui.native_input import NativeInputResult, NativeInputRouter
-from loushang.coding.ui.native_loop import run_native_coding_tui
+from loushang.coding.ui.screen_app import ScreenCodingTuiApp
+from loushang.coding.ui.screen_input import ScreenInputResult, ScreenInputRouter
+from loushang.coding.ui.screen_loop import run_screen_coding_tui
 from loushang.tui import (
     CompletionItem,
     CompletionProvider,
@@ -35,19 +35,19 @@ from loushang.tui import (
 )
 from loushang.tui.transcript import DisplayRecord
 
-NativeTuiHandler = Callable[..., Awaitable[int | None] | int | None]
-NativeTuiAbortHandler = Callable[[], Awaitable[object] | object]
+ScreenTuiHandler = Callable[..., Awaitable[int | None] | int | None]
+ScreenTuiAbortHandler = Callable[[], Awaitable[object] | object]
 
 
 @dataclass(frozen=True, slots=True)
-class NativeTuiLoopArtifacts:
+class ScreenTuiLoopArtifacts:
     raw: Path
     text: Path
     state: Path
 
 
 @dataclass(slots=True)
-class NativeTuiScenario:
+class ScreenTuiScenario:
     width: int = 80
     height: int = 24
     model_label: str = "kimi"
@@ -55,12 +55,12 @@ class NativeTuiScenario:
     branch: str | None = "main"
     session_label: str = "abcd"
     now: float = 0.0
-    app: NativeCodingTuiApp = field(init=False)
+    app: ScreenCodingTuiApp = field(init=False)
     port: FakeTerminalPort = field(init=False)
     runtime: TuiRuntime = field(init=False)
 
     def __post_init__(self) -> None:
-        self.app = NativeCodingTuiApp(
+        self.app = ScreenCodingTuiApp(
             model_label=self.model_label,
             cwd=self.cwd,
             branch=self.branch,
@@ -73,11 +73,11 @@ class NativeTuiScenario:
     def render(self) -> PlaybackStep:
         return self.runtime.render_now()
 
-    def type_text(self, text: str) -> NativeTuiScenario:
+    def type_text(self, text: str) -> ScreenTuiScenario:
         self.app.composer.set_text(text)
         return self
 
-    def advance_time(self, seconds: float) -> NativeTuiScenario:
+    def advance_time(self, seconds: float) -> ScreenTuiScenario:
         self.now += seconds
         return self
 
@@ -103,10 +103,10 @@ class NativeTuiScenario:
         assert step.frame.screen_after.cursor_column == step.diagnostics.hardware_cursor_column
 
 
-class NativeTuiInputPlayback:
+class ScreenTuiInputPlayback:
     def __init__(
         self,
-        app: NativeCodingTuiApp,
+        app: ScreenCodingTuiApp,
         *,
         columns: int = 80,
         rows: int = 12,
@@ -115,10 +115,10 @@ class NativeTuiInputPlayback:
     ) -> None:
         self.app = app
         self.reader = InputReader()
-        self.input_results: list[NativeInputResult] = []
-        self.step_input_results: list[tuple[NativeInputResult, ...]] = []
+        self.input_results: list[ScreenInputResult] = []
+        self.step_input_results: list[tuple[ScreenInputResult, ...]] = []
         self.step_coding_states: list[dict[str, Any]] = []
-        self.router = NativeInputRouter(
+        self.router = ScreenInputRouter(
             app,
             should_exit=should_exit or (lambda _text: False),
             is_local_command=is_local_command or (lambda _text: False),
@@ -146,7 +146,7 @@ class NativeTuiInputPlayback:
         size: TerminalSize,
         _previous: RenderDiagnostics | None,
     ) -> RenderDiagnostics:
-        step_input_results: list[NativeInputResult] = []
+        step_input_results: list[ScreenInputResult] = []
         if event.kind == "resize":
             self.router.width = size.columns
             self.router.height = size.rows
@@ -169,11 +169,11 @@ class NativeTuiInputPlayback:
 
 
 @dataclass(frozen=True, slots=True)
-class NativeTuiInputPlaybackResult(PlaybackResult):
-    input_results: tuple[NativeInputResult, ...]
-    step_input_results: tuple[tuple[NativeInputResult, ...], ...]
+class ScreenTuiInputPlaybackResult(PlaybackResult):
+    input_results: tuple[ScreenInputResult, ...]
+    step_input_results: tuple[tuple[ScreenInputResult, ...], ...]
     step_coding_states: tuple[dict[str, Any], ...]
-    app: NativeCodingTuiApp
+    app: ScreenCodingTuiApp
 
     def assert_composer_text(self, expected: str) -> None:
         assert self.app.composer.value == expected
@@ -219,7 +219,7 @@ class NativeTuiInputPlaybackResult(PlaybackResult):
 
 
 @dataclass(slots=True)
-class NativeTuiInputScenario(PlaybackScenario):
+class ScreenTuiInputScenario(PlaybackScenario):
     width: int = 80
     height: int = 12
     model_label: str = "kimi"
@@ -227,54 +227,54 @@ class NativeTuiInputScenario(PlaybackScenario):
     branch: str | None = "main"
     session_label: str = "abcd"
     now: float = 0.0
-    app: NativeCodingTuiApp = field(init=False)
-    playback: NativeTuiInputPlayback = field(init=False)
+    app: ScreenCodingTuiApp = field(init=False)
+    playback: ScreenTuiInputPlayback = field(init=False)
 
     def __post_init__(self) -> None:
-        self.app = NativeCodingTuiApp(
+        self.app = ScreenCodingTuiApp(
             model_label=self.model_label,
             cwd=self.cwd,
             branch=self.branch,
             session_label=self.session_label,
             now=lambda: self.now,
         )
-        self.playback = NativeTuiInputPlayback(self.app, columns=self.width, rows=self.height)
+        self.playback = ScreenTuiInputPlayback(self.app, columns=self.width, rows=self.height)
 
-    def with_running_prompt(self, text: str) -> NativeTuiInputScenario:
+    def with_running_prompt(self, text: str) -> ScreenTuiInputScenario:
         self.app.start_prompt(text, started_at=self.now)
         return self
 
-    def with_pending_steers(self, *texts: str) -> NativeTuiInputScenario:
+    def with_pending_steers(self, *texts: str) -> ScreenTuiInputScenario:
         for text in texts:
             self.app.queue_steer(text)
         return self
 
-    def with_history(self, *texts: str) -> NativeTuiInputScenario:
+    def with_history(self, *texts: str) -> ScreenTuiInputScenario:
         for text in texts:
             self.app.composer.add_history(text)
         return self
 
-    def with_active_surface(self, surface: object) -> NativeTuiInputScenario:
+    def with_active_surface(self, surface: object) -> ScreenTuiInputScenario:
         self.app.active_surface = surface
         return self
 
-    def with_composer_text(self, text: str) -> NativeTuiInputScenario:
+    def with_composer_text(self, text: str) -> ScreenTuiInputScenario:
         self.app.composer.set_text(text)
         return self
 
-    def with_records(self, records: tuple[DisplayRecord, ...] | list[DisplayRecord]) -> NativeTuiInputScenario:
+    def with_records(self, records: tuple[DisplayRecord, ...] | list[DisplayRecord]) -> ScreenTuiInputScenario:
         self.app.state.records.extend(records)
         return self
 
-    def with_completion_items(self, *values: str) -> NativeTuiInputScenario:
+    def with_completion_items(self, *values: str) -> ScreenTuiInputScenario:
         self.app.composer.set_completion_provider(
             CompletionProvider(tuple(CompletionItem(value=value) for value in values))
         )
         return self
 
-    def with_local_commands(self, *commands: str) -> NativeTuiInputScenario:
+    def with_local_commands(self, *commands: str) -> ScreenTuiInputScenario:
         command_set = set(commands)
-        self.playback = NativeTuiInputPlayback(
+        self.playback = ScreenTuiInputPlayback(
             self.app,
             columns=self.width,
             rows=self.height,
@@ -282,8 +282,8 @@ class NativeTuiInputScenario(PlaybackScenario):
         )
         return self
 
-    def run(self) -> NativeTuiInputPlaybackResult:
-        return NativeTuiInputPlaybackResult(
+    def run(self) -> ScreenTuiInputPlaybackResult:
+        return ScreenTuiInputPlaybackResult(
             steps=self.playback.play(self.events),
             port=self.playback.port,
             input_results=tuple(self.playback.input_results),
@@ -294,10 +294,10 @@ class NativeTuiInputScenario(PlaybackScenario):
 
 
 @dataclass(frozen=True, slots=True)
-class NativeTuiLoopPlaybackResult:
+class ScreenTuiLoopPlaybackResult:
     exit_code: int
     output: str
-    app: NativeCodingTuiApp
+    app: ScreenCodingTuiApp
 
     @property
     def text(self) -> str:
@@ -335,8 +335,8 @@ class NativeTuiLoopPlaybackResult:
         self,
         directory: str | Path,
         *,
-        basename: str = "native-loop",
-    ) -> NativeTuiLoopArtifacts:
+        basename: str = "screen-loop",
+    ) -> ScreenTuiLoopArtifacts:
         output_dir = Path(directory)
         output_dir.mkdir(parents=True, exist_ok=True)
         raw_path = output_dir / f"{basename}-raw.txt"
@@ -345,14 +345,14 @@ class NativeTuiLoopPlaybackResult:
         raw_path.write_text(self.output, encoding="utf-8")
         text_path.write_text(self.text, encoding="utf-8")
         state_path.write_text(json.dumps(self._state_payload(), ensure_ascii=False, indent=2), encoding="utf-8")
-        return NativeTuiLoopArtifacts(raw=raw_path, text=text_path, state=state_path)
+        return ScreenTuiLoopArtifacts(raw=raw_path, text=text_path, state=state_path)
 
     @contextmanager
     def write_artifacts_on_failure(
         self,
         directory: str | Path,
         *,
-        basename: str = "native-loop",
+        basename: str = "screen-loop",
     ) -> Iterator[None]:
         try:
             yield
@@ -364,7 +364,7 @@ class NativeTuiLoopPlaybackResult:
     def write_artifacts_on_failure_from_env(
         self,
         *,
-        basename: str = "native-loop",
+        basename: str = "screen-loop",
         env: Mapping[str, str] | None = None,
     ) -> Iterator[None]:
         try:
@@ -382,7 +382,7 @@ class NativeTuiLoopPlaybackResult:
 
 
 @dataclass(slots=True)
-class NativeTuiLoopPlayback:
+class ScreenTuiLoopPlayback:
     width: int = 80
     height: int = 24
     model_label: str = "kimi"
@@ -390,10 +390,10 @@ class NativeTuiLoopPlayback:
     branch: str | None = "main"
     session_label: str = "abcd"
     now: float = 10.0
-    app: NativeCodingTuiApp = field(init=False)
+    app: ScreenCodingTuiApp = field(init=False)
 
     def __post_init__(self) -> None:
-        self.app = NativeCodingTuiApp(
+        self.app = ScreenCodingTuiApp(
             model_label=self.model_label,
             cwd=self.cwd,
             branch=self.branch,
@@ -404,20 +404,20 @@ class NativeTuiLoopPlayback:
     def run(
         self,
         *chunks: tuple[float, str],
-        handle_prompt: NativeTuiHandler | None = None,
-        handle_local: NativeTuiHandler | None = None,
-        handle_steer: NativeTuiHandler | None = None,
-        handle_followup: NativeTuiHandler | None = None,
-        handle_surface_intent: NativeTuiHandler | None = None,
-        on_abort: NativeTuiAbortHandler | None = None,
+        handle_prompt: ScreenTuiHandler | None = None,
+        handle_local: ScreenTuiHandler | None = None,
+        handle_steer: ScreenTuiHandler | None = None,
+        handle_followup: ScreenTuiHandler | None = None,
+        handle_surface_intent: ScreenTuiHandler | None = None,
+        on_abort: ScreenTuiAbortHandler | None = None,
         should_exit: Callable[[str], bool] | None = None,
         is_local_command: Callable[[str], bool] | None = None,
         terminal_mode_factory: Callable[..., object] | None = None,
-    ) -> NativeTuiLoopPlaybackResult:
+    ) -> ScreenTuiLoopPlaybackResult:
         stdout = StringIO()
         stdin = _TimedTtyChunkInput(*chunks) if chunks else StringIO("")
         exit_code = asyncio.run(
-            run_native_coding_tui(
+            run_screen_coding_tui(
                 app=self.app,
                 stdin=stdin,
                 stdout=stdout,
@@ -433,72 +433,72 @@ class NativeTuiLoopPlayback:
                 is_local_command=is_local_command,
             )
         )
-        return NativeTuiLoopPlaybackResult(exit_code=exit_code, output=stdout.getvalue(), app=self.app)
+        return ScreenTuiLoopPlaybackResult(exit_code=exit_code, output=stdout.getvalue(), app=self.app)
 
 
 @dataclass(slots=True)
-class NativeTuiLoopScenario:
-    """Script timed native TUI input without repeating pipe/thread setup in tests."""
+class ScreenTuiLoopScenario:
+    """Script timed screen TUI input without repeating pipe/thread setup in tests."""
 
-    playback: NativeTuiLoopPlayback = field(default_factory=NativeTuiLoopPlayback)
+    playback: ScreenTuiLoopPlayback = field(default_factory=ScreenTuiLoopPlayback)
     _time: float = 0.0
     _chunks: list[tuple[float, str]] = field(default_factory=list)
 
     @property
-    def app(self) -> NativeCodingTuiApp:
+    def app(self) -> ScreenCodingTuiApp:
         return self.playback.app
 
-    def with_pending_steers(self, *texts: str) -> NativeTuiLoopScenario:
+    def with_pending_steers(self, *texts: str) -> ScreenTuiLoopScenario:
         for text in texts:
             self.app.queue_steer(text)
         return self
 
-    def with_composer_text(self, text: str) -> NativeTuiLoopScenario:
+    def with_composer_text(self, text: str) -> ScreenTuiLoopScenario:
         self.app.composer.set_text(text)
         return self
 
-    def type_text(self, text: str) -> NativeTuiLoopScenario:
+    def type_text(self, text: str) -> ScreenTuiLoopScenario:
         self._chunks.append((self._time, text))
         return self
 
-    def type_chars(self, text: str) -> NativeTuiLoopScenario:
+    def type_chars(self, text: str) -> ScreenTuiLoopScenario:
         for character in text:
             self._chunks.append((self._time, character))
         return self
 
-    def enter(self) -> NativeTuiLoopScenario:
+    def enter(self) -> ScreenTuiLoopScenario:
         return self.key("\r")
 
-    def escape(self) -> NativeTuiLoopScenario:
+    def escape(self) -> ScreenTuiLoopScenario:
         return self.key("\x1b")
 
-    def ctrl_c(self) -> NativeTuiLoopScenario:
+    def ctrl_c(self) -> ScreenTuiLoopScenario:
         return self.key("\x03")
 
-    def key(self, raw: str) -> NativeTuiLoopScenario:
+    def key(self, raw: str) -> ScreenTuiLoopScenario:
         self._chunks.append((self._time, raw))
         return self
 
-    def wait(self, seconds: float) -> NativeTuiLoopScenario:
+    def wait(self, seconds: float) -> ScreenTuiLoopScenario:
         self._time += max(0.0, seconds)
         return self
 
-    def end_input(self) -> NativeTuiLoopScenario:
+    def end_input(self) -> ScreenTuiLoopScenario:
         self._chunks.append((self._time, ""))
         return self
 
     def run(
         self,
         *,
-        handle_prompt: NativeTuiHandler | None = None,
-        handle_local: NativeTuiHandler | None = None,
-        handle_steer: NativeTuiHandler | None = None,
-        handle_followup: NativeTuiHandler | None = None,
-        handle_surface_intent: NativeTuiHandler | None = None,
-        on_abort: NativeTuiAbortHandler | None = None,
+        handle_prompt: ScreenTuiHandler | None = None,
+        handle_local: ScreenTuiHandler | None = None,
+        handle_steer: ScreenTuiHandler | None = None,
+        handle_followup: ScreenTuiHandler | None = None,
+        handle_surface_intent: ScreenTuiHandler | None = None,
+        on_abort: ScreenTuiAbortHandler | None = None,
         should_exit: Callable[[str], bool] | None = None,
         is_local_command: Callable[[str], bool] | None = None,
-    ) -> NativeTuiLoopPlaybackResult:
+    ) -> ScreenTuiLoopPlaybackResult:
         return self.playback.run(
             *self._chunks,
             handle_prompt=handle_prompt,
@@ -551,7 +551,7 @@ class _TimedTtyChunkInput:
         return ""
 
 
-def _input_result_payload(result: NativeInputResult) -> dict[str, Any]:
+def _input_result_payload(result: ScreenInputResult) -> dict[str, Any]:
     return {
         "prompt_text": result.prompt_text,
         "local_text": result.local_text,
@@ -564,13 +564,13 @@ def _input_result_payload(result: NativeInputResult) -> dict[str, Any]:
     }
 
 
-def _surface_intent_payload(result: NativeInputResult) -> dict[str, str] | None:
+def _surface_intent_payload(result: ScreenInputResult) -> dict[str, str] | None:
     if result.surface_intent is None:
         return None
     return {"kind": result.surface_intent.kind, "text": result.surface_intent.text}
 
 
-def _coding_state_payload(app: NativeCodingTuiApp) -> dict[str, Any]:
+def _coding_state_payload(app: ScreenCodingTuiApp) -> dict[str, Any]:
     return {
         "composer_text": app.composer.value,
         "running": app.state.running,

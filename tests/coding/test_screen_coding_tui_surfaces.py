@@ -5,8 +5,8 @@ from types import SimpleNamespace
 
 from loushang.ai import Model
 from loushang.coding.types import ModelSelection
-from loushang.coding.ui.native_app import NativeCodingTuiApp
-from loushang.coding.ui.native_surfaces import NativeSurfaceManager, NativeSurfaceView
+from loushang.coding.ui.screen_app import ScreenCodingTuiApp
+from loushang.coding.ui.screen_surfaces import ScreenSurfaceManager, ScreenSurfaceView
 from loushang.coding.ui.status_provider import CodingTuiStatusProvider
 from loushang.tui import (
     ApprovalSurface,
@@ -54,23 +54,23 @@ class _TallContent:
         )
 
 
-def test_native_surface_view_delegates_editor_input_target() -> None:
+def test_screen_surface_view_delegates_editor_input_target() -> None:
     content = _EditorTargetContent()
-    view = NativeSurfaceView(title="Settings", purpose="settings", content=content)
+    view = ScreenSurfaceView(title="Settings", purpose="settings", content=content)
 
     assert view.editor_input_target() is content.target
 
 
-def test_native_surface_view_preserves_content_cursor_with_offset() -> None:
-    view = NativeSurfaceView(title="Settings", purpose="settings", content=_CursorContent(), footer="")
+def test_screen_surface_view_preserves_content_cursor_with_offset() -> None:
+    view = ScreenSurfaceView(title="Settings", purpose="settings", content=_CursorContent(), footer="")
 
     rendered = view.render(RenderConstraints(width=40, max_height=8))
 
     assert rendered.cursor == CursorDeclaration(row=2, column=3)
 
 
-def test_native_surface_view_delegates_escape_to_non_info_content_first() -> None:
-    view = NativeSurfaceView(title="Settings", purpose="settings", content=_EscContent())
+def test_screen_surface_view_delegates_escape_to_non_info_content_first() -> None:
+    view = ScreenSurfaceView(title="Settings", purpose="settings", content=_EscContent())
 
     assert view.handle_input(InputEvent(kind="key", key="escape")) == InputIntent(
         kind="consumed",
@@ -78,9 +78,9 @@ def test_native_surface_view_delegates_escape_to_non_info_content_first() -> Non
     )
 
 
-def test_native_app_uses_active_surface_preferred_height_for_bottom_frame() -> None:
+def test_screen_app_uses_active_surface_preferred_height_for_bottom_frame() -> None:
     app = _app()
-    app.active_surface = NativeSurfaceView(
+    app.active_surface = ScreenSurfaceView(
         title="Settings",
         purpose="settings",
         content=_TallContent(),
@@ -97,14 +97,14 @@ def test_native_app_uses_active_surface_preferred_height_for_bottom_frame() -> N
     assert plain_lines[-1] == "line 19"
 
 
-def test_native_surface_manager_opens_model_surface_and_selects_model() -> None:
+def test_screen_surface_manager_opens_model_surface_and_selects_model() -> None:
     session = _Session()
     app = _app()
     manager = _manager(app, session)
 
     asyncio.run(manager.handle_text("/model"))
 
-    assert isinstance(app.active_surface, NativeSurfaceView)
+    assert isinstance(app.active_surface, ScreenSurfaceView)
     assert app.active_surface.title == "Select Model"
     assert app.active_surface.presentation == "bottom-exclusive"
     assert app.active_surface.exclusive_bottom is True
@@ -133,7 +133,7 @@ def test_native_surface_manager_opens_model_surface_and_selects_model() -> None:
     assert app.state.model_label == "openai/gpt-5.4"
 
 
-def test_native_surface_model_selector_displays_endpoint_and_selects_full_identity() -> None:
+def test_screen_surface_model_selector_displays_endpoint_and_selects_full_identity() -> None:
     session = _Session()
     session.models = [
         ModelSelection(provider="dashscope", model_id="qwen3.6-plus"),
@@ -152,7 +152,7 @@ def test_native_surface_model_selector_displays_endpoint_and_selects_full_identi
 
     asyncio.run(manager.handle_text("/model"))
 
-    assert isinstance(app.active_surface, NativeSurfaceView)
+    assert isinstance(app.active_surface, ScreenSurfaceView)
     rendered = app.active_surface.render(RenderConstraints(width=96, max_height=10))
     plain_lines = tuple(strip_control_sequences(line.text) for line in rendered.lines)
     assert "openai-responses" in plain_lines[3]
@@ -167,7 +167,7 @@ def test_native_surface_model_selector_displays_endpoint_and_selects_full_identi
     assert app.state.status_message == "Model set: dashscope/qwen3.6-plus (endpoint: openai-responses)"
 
 
-def test_native_surface_model_selector_marks_only_current_endpoint() -> None:
+def test_screen_surface_model_selector_marks_only_current_endpoint() -> None:
     session = _Session()
     responses_model = Model(id="qwen3.6-plus", provider="dashscope", endpoint="openai-responses", name="Qwen 3.6 Plus")
     completions_model = Model(
@@ -187,7 +187,7 @@ def test_native_surface_model_selector_marks_only_current_endpoint() -> None:
 
     asyncio.run(manager.handle_text("/model"))
 
-    assert isinstance(app.active_surface, NativeSurfaceView)
+    assert isinstance(app.active_surface, ScreenSurfaceView)
     rendered = app.active_surface.render(RenderConstraints(width=100, max_height=10))
     plain_lines = tuple(strip_control_sequences(line.text) for line in rendered.lines)
     model_lines = [line for line in plain_lines if "dashscope/qwen3.6-plus" in line]
@@ -198,7 +198,7 @@ def test_native_surface_model_selector_marks_only_current_endpoint() -> None:
     assert any("endpoint: openai-responses" in line and "current" not in line for line in model_lines)
 
 
-def test_native_surface_model_selector_uses_agent_model_endpoint_for_current() -> None:
+def test_screen_surface_model_selector_uses_agent_model_endpoint_for_current() -> None:
     session = _Session()
     coding_model = Model(id="kimi-for-coding", provider="moonshot", endpoint="coding", name="Kimi for Coding")
     anthropic_model = Model(id="kimi-for-coding", provider="moonshot", endpoint="kimi-code-anthropic", name="Kimi for Coding")
@@ -214,7 +214,7 @@ def test_native_surface_model_selector_uses_agent_model_endpoint_for_current() -
 
     asyncio.run(manager.handle_text("/model"))
 
-    assert isinstance(app.active_surface, NativeSurfaceView)
+    assert isinstance(app.active_surface, ScreenSurfaceView)
     rendered = app.active_surface.render(RenderConstraints(width=100, max_height=10))
     plain_lines = tuple(strip_control_sequences(line.text) for line in rendered.lines)
     model_lines = [line for line in plain_lines if "moonshot/kimi-for-coding" in line]
@@ -225,24 +225,24 @@ def test_native_surface_model_selector_uses_agent_model_endpoint_for_current() -
     assert any("endpoint: coding" in line and "current" not in line for line in model_lines)
 
 
-def test_native_surface_model_selection_error_stays_in_tui() -> None:
+def test_screen_surface_model_selection_error_stays_in_tui() -> None:
     session = _FailingModelSession()
     app = _app()
     manager = _manager(app, session)
 
     asyncio.run(manager.handle_text("/model"))
 
-    assert isinstance(app.active_surface, NativeSurfaceView)
+    assert isinstance(app.active_surface, ScreenSurfaceView)
     intent = app.active_surface.handle_input(InputEvent(kind="key", key="enter"))
     assert intent == InputIntent(kind="select", text="moonshot/kimi-for-coding")
 
     asyncio.run(manager.handle_surface_intent(intent))
 
-    assert isinstance(app.active_surface, NativeSurfaceView)
+    assert isinstance(app.active_surface, ScreenSurfaceView)
     assert app.state.status_message == "Error: model switch failed"
 
 
-def test_native_surface_manager_opens_model_surface_in_bottom_frame_with_runtime_overlay_host() -> None:
+def test_screen_surface_manager_opens_model_surface_in_bottom_frame_with_runtime_overlay_host() -> None:
     session = _Session()
     app = _app()
     app.surface_host = SurfaceHost()
@@ -250,7 +250,7 @@ def test_native_surface_manager_opens_model_surface_in_bottom_frame_with_runtime
 
     asyncio.run(manager.handle_text("/model"))
 
-    assert isinstance(app.active_surface, NativeSurfaceView)
+    assert isinstance(app.active_surface, ScreenSurfaceView)
     assert app.active_surface.title == "Select Model"
     assert app.active_surface.presentation == "bottom-exclusive"
     assert app.surface_host.entries == []
@@ -266,7 +266,7 @@ def test_native_surface_manager_opens_model_surface_in_bottom_frame_with_runtime
     assert app.state.model_label == "openai/gpt-5.4"
 
 
-def test_native_surface_manager_opens_non_model_surfaces_in_runtime_overlay_host() -> None:
+def test_screen_surface_manager_opens_non_model_surfaces_in_runtime_overlay_host() -> None:
     app = _app()
     app.surface_host = SurfaceHost()
     manager = _manager(app, _Session())
@@ -285,14 +285,14 @@ def test_native_surface_manager_opens_non_model_surfaces_in_runtime_overlay_host
         assert app.surface_host.entries == []
 
 
-def test_native_surface_manager_opens_models_info_in_bottom_frame_with_runtime_overlay_host() -> None:
+def test_screen_surface_manager_opens_models_info_in_bottom_frame_with_runtime_overlay_host() -> None:
     app = _app()
     app.surface_host = SurfaceHost()
     manager = _manager(app, _Session())
 
     asyncio.run(manager.handle_text("/models"))
 
-    assert isinstance(app.active_surface, NativeSurfaceView)
+    assert isinstance(app.active_surface, ScreenSurfaceView)
     assert app.active_surface.title == "Available Models"
     assert app.active_surface.presentation == "bottom-exclusive"
     assert app.active_surface.exclusive_bottom is True
@@ -306,7 +306,7 @@ def test_native_surface_manager_opens_models_info_in_bottom_frame_with_runtime_o
     assert plain_lines[-1] == "Enter/Esc to close"
 
 
-def test_native_surface_models_info_keeps_footer_when_content_overflows() -> None:
+def test_screen_surface_models_info_keeps_footer_when_content_overflows() -> None:
     session = _Session()
     session.models = [
         ModelSelection(provider="moonshot", model_id="kimi-for-coding"),
@@ -318,7 +318,7 @@ def test_native_surface_models_info_keeps_footer_when_content_overflows() -> Non
 
     asyncio.run(manager.handle_text("/models"))
 
-    assert isinstance(app.active_surface, NativeSurfaceView)
+    assert isinstance(app.active_surface, ScreenSurfaceView)
     rendered = app.active_surface.render(RenderConstraints(width=100, max_height=8))
     plain_lines = tuple(strip_control_sequences(line.text) for line in rendered.lines)
 
@@ -327,7 +327,7 @@ def test_native_surface_models_info_keeps_footer_when_content_overflows() -> Non
     assert not any("provider/model-08" in line for line in plain_lines)
 
 
-def test_native_surface_models_info_scrolls_with_page_keys() -> None:
+def test_screen_surface_models_info_scrolls_with_page_keys() -> None:
     session = _Session()
     session.models = [
         ModelSelection(provider="moonshot", model_id="kimi-for-coding"),
@@ -339,7 +339,7 @@ def test_native_surface_models_info_scrolls_with_page_keys() -> None:
 
     asyncio.run(manager.handle_text("/models"))
 
-    assert isinstance(app.active_surface, NativeSurfaceView)
+    assert isinstance(app.active_surface, ScreenSurfaceView)
     before = tuple(
         strip_control_sequences(line.text)
         for line in app.active_surface.render(RenderConstraints(width=100, max_height=8)).lines
@@ -357,7 +357,7 @@ def test_native_surface_models_info_scrolls_with_page_keys() -> None:
     assert after[-2:] == ("", "Up/Down/Page to scroll - Enter/Esc to close")
 
 
-def test_native_surface_models_info_cursor_stays_on_last_visible_body_line() -> None:
+def test_screen_surface_models_info_cursor_stays_on_last_visible_body_line() -> None:
     session = _Session()
     session.models = [
         ModelSelection(provider="moonshot", model_id="kimi-for-coding"),
@@ -369,7 +369,7 @@ def test_native_surface_models_info_cursor_stays_on_last_visible_body_line() -> 
 
     asyncio.run(manager.handle_text("/models"))
 
-    assert isinstance(app.active_surface, NativeSurfaceView)
+    assert isinstance(app.active_surface, ScreenSurfaceView)
     before = app.active_surface.render(RenderConstraints(width=100, max_height=8))
     intent = app.active_surface.handle_input(InputEvent(kind="key", key="down"))
     after = app.active_surface.render(RenderConstraints(width=100, max_height=8))
@@ -381,14 +381,14 @@ def test_native_surface_models_info_cursor_stays_on_last_visible_body_line() -> 
     assert after.cursor.row == 5
 
 
-def test_native_surface_manager_opens_settings_in_bottom_frame_with_runtime_overlay_host() -> None:
+def test_screen_surface_manager_opens_settings_in_bottom_frame_with_runtime_overlay_host() -> None:
     app = _app()
     app.surface_host = SurfaceHost()
     manager = _manager(app, _Session())
 
     asyncio.run(manager.handle_text("/settings"))
 
-    assert isinstance(app.active_surface, NativeSurfaceView)
+    assert isinstance(app.active_surface, ScreenSurfaceView)
     assert app.active_surface.title == "Settings"
     assert app.active_surface.presentation == "bottom-exclusive"
     assert app.surface_host.entries == []
@@ -402,13 +402,13 @@ def test_native_surface_manager_opens_settings_in_bottom_frame_with_runtime_over
     assert "  show footer" not in plain
 
 
-def test_native_surface_manager_config_alias_opens_settings() -> None:
+def test_screen_surface_manager_config_alias_opens_settings() -> None:
     app = _app()
     manager = _manager(app, _Session())
 
     asyncio.run(manager.handle_text("/config"))
 
-    assert isinstance(app.active_surface, NativeSurfaceView)
+    assert isinstance(app.active_surface, ScreenSurfaceView)
     assert app.active_surface.title == "Settings"
     plain = tuple(
         strip_control_sequences(line.text)
@@ -417,19 +417,19 @@ def test_native_surface_manager_config_alias_opens_settings() -> None:
     assert any("Search settings" in line for line in plain)
 
 
-def test_native_surface_manager_settings_page_submit_keeps_surface_open() -> None:
+def test_screen_surface_manager_settings_page_submit_keeps_surface_open() -> None:
     app = _app()
     manager = _manager(app, _Session())
 
     asyncio.run(manager.handle_text("/settings"))
-    assert isinstance(app.active_surface, NativeSurfaceView)
+    assert isinstance(app.active_surface, ScreenSurfaceView)
     _focus_statusline_tab(app.active_surface)
     intent = app.active_surface.handle_input(InputEvent(kind="key", key="enter"))
 
     assert intent == InputIntent(kind="setting", text="statusline.enabled", note="false")
     asyncio.run(manager.handle_surface_intent(intent))
 
-    assert isinstance(app.active_surface, NativeSurfaceView)
+    assert isinstance(app.active_surface, ScreenSurfaceView)
     assert app.state.statusline_visible is False
     assert app.state.statusline_settings.enabled is False
     assert manager.status_provider.statusline_settings().enabled is False
@@ -438,12 +438,12 @@ def test_native_surface_manager_settings_page_submit_keeps_surface_open() -> Non
     assert any("Status line: off" in line for line in plain)
 
 
-def test_native_surface_manager_settings_page_submit_mirrors_statusline_settings_into_app() -> None:
+def test_screen_surface_manager_settings_page_submit_mirrors_statusline_settings_into_app() -> None:
     app = _app()
     manager = _manager(app, _Session())
 
     asyncio.run(manager.handle_text("/settings"))
-    assert isinstance(app.active_surface, NativeSurfaceView)
+    assert isinstance(app.active_surface, ScreenSurfaceView)
     _focus_statusline_tab(app.active_surface)
     assert app.active_surface.content.handle_input(InputEvent(kind="text", text="style")) is True
     intent = app.active_surface.handle_input(InputEvent(kind="key", key="enter"))
@@ -458,7 +458,7 @@ def test_native_surface_manager_settings_page_submit_mirrors_statusline_settings
     assert any("Status line style: muted" in line for line in plain)
 
 
-def test_native_surface_manager_settings_page_statusline_submit_persists_settings(tmp_path) -> None:
+def test_screen_surface_manager_settings_page_statusline_submit_persists_settings(tmp_path) -> None:
     from loushang.coding.control import SettingsManager
 
     settings_path = tmp_path / "settings.json"
@@ -467,7 +467,7 @@ def test_native_surface_manager_settings_page_statusline_submit_persists_setting
     manager = _manager(app, _Session(), settings_manager=settings_manager)
 
     asyncio.run(manager.handle_text("/settings"))
-    assert isinstance(app.active_surface, NativeSurfaceView)
+    assert isinstance(app.active_surface, ScreenSurfaceView)
     _focus_statusline_tab(app.active_surface)
     assert app.active_surface.content.handle_input(InputEvent(kind="text", text="style")) is True
     intent = app.active_surface.handle_input(InputEvent(kind="key", key="enter"))
@@ -479,10 +479,10 @@ def test_native_surface_manager_settings_page_statusline_submit_persists_setting
     assert app.state.statusline_settings.style == "muted"
 
 
-def test_native_surface_manager_ignores_setting_submit_without_settings_page() -> None:
+def test_screen_surface_manager_ignores_setting_submit_without_settings_page() -> None:
     app = _app()
     manager = _manager(app, _Session())
-    generic_surface = NativeSurfaceView(
+    generic_surface = ScreenSurfaceView(
         title="Settings",
         purpose="settings",
         content=_CursorContent(),
@@ -497,7 +497,7 @@ def test_native_surface_manager_ignores_setting_submit_without_settings_page() -
     assert app.state.status_message is None
 
 
-def test_native_surface_manager_settings_page_model_submit_uses_model_selection() -> None:
+def test_screen_surface_manager_settings_page_model_submit_uses_model_selection() -> None:
     session = _Session()
     app = _app()
     manager = _manager(app, session)
@@ -505,12 +505,12 @@ def test_native_surface_manager_settings_page_model_submit_uses_model_selection(
     asyncio.run(manager.handle_text("/settings"))
     asyncio.run(manager.handle_surface_intent(InputIntent(kind="setting", text="model.current", note="openai/gpt-5.4")))
 
-    assert isinstance(app.active_surface, NativeSurfaceView)
+    assert isinstance(app.active_surface, ScreenSurfaceView)
     assert session.set_model_calls
     assert app.state.model_label == "openai/gpt-5.4"
 
 
-def test_native_surface_manager_runtime_overlay_escape_and_close_are_idempotent() -> None:
+def test_screen_surface_manager_runtime_overlay_escape_and_close_are_idempotent() -> None:
     app = _app()
     app.surface_host = SurfaceHost()
     manager = _manager(app, _Session())
@@ -533,7 +533,7 @@ def test_native_surface_manager_runtime_overlay_escape_and_close_are_idempotent(
     assert app.surface_host.entries == []
 
 
-def test_native_surface_manager_opens_terminal_diagnostics_surface() -> None:
+def test_screen_surface_manager_opens_terminal_diagnostics_surface() -> None:
     app = _app()
     app.surface_host = SurfaceHost()
     app.terminal_diagnostics_provider = lambda: (
@@ -556,7 +556,7 @@ def test_native_surface_manager_opens_terminal_diagnostics_surface() -> None:
     assert "cell_size: 9x18" in plain_lines
 
 
-def test_native_surface_manager_routes_local_commands_through_command_catalog() -> None:
+def test_screen_surface_manager_routes_local_commands_through_command_catalog() -> None:
     from loushang.runtime.commands import CommandDef, CommandKind
 
     class Catalog:
@@ -577,7 +577,7 @@ def test_native_surface_manager_routes_local_commands_through_command_catalog() 
     app = _app()
     app.surface_host = SurfaceHost()
     catalog = Catalog()
-    manager = NativeSurfaceManager(
+    manager = ScreenSurfaceManager(
         app=app,
         session=_Session(),
         status_provider=_status_provider(app),
@@ -594,14 +594,14 @@ def test_native_surface_manager_routes_local_commands_through_command_catalog() 
     assert catalog.lookups == ["/terminal", "/terminal extra", "/terminal"]
 
 
-def test_native_surface_model_selector_filters_by_typed_search() -> None:
+def test_screen_surface_model_selector_filters_by_typed_search() -> None:
     session = _Session()
     app = _app()
     manager = _manager(app, session)
 
     asyncio.run(manager.handle_text("/model"))
 
-    assert isinstance(app.active_surface, NativeSurfaceView)
+    assert isinstance(app.active_surface, ScreenSurfaceView)
     assert app.active_surface.handle_input(InputEvent(kind="text", text="gpt")) is None
     rendered = app.active_surface.render(RenderConstraints(width=80, max_height=10))
     plain_lines = tuple(strip_control_sequences(line.text) for line in rendered.lines)
@@ -614,7 +614,7 @@ def test_native_surface_model_selector_filters_by_typed_search() -> None:
     assert intent == InputIntent(kind="select", text="openai/gpt-5.4")
 
 
-def test_native_surface_model_selector_uses_model_detail_descriptions() -> None:
+def test_screen_surface_model_selector_uses_model_detail_descriptions() -> None:
     session = _Session()
     session.model_details = [
         Model(id="gpt-5.4", provider="openai", endpoint="responses", name="Strong model for everyday coding."),
@@ -624,7 +624,7 @@ def test_native_surface_model_selector_uses_model_detail_descriptions() -> None:
 
     asyncio.run(manager.handle_text("/model"))
 
-    assert isinstance(app.active_surface, NativeSurfaceView)
+    assert isinstance(app.active_surface, ScreenSurfaceView)
     rendered = app.active_surface.render(RenderConstraints(width=100, max_height=10))
     plain_lines = tuple(strip_control_sequences(line.text) for line in rendered.lines)
     assert any(
@@ -633,7 +633,7 @@ def test_native_surface_model_selector_uses_model_detail_descriptions() -> None:
     )
 
 
-def test_native_surface_model_selector_lists_current_model_first() -> None:
+def test_screen_surface_model_selector_lists_current_model_first() -> None:
     session = _Session()
     session.current_model = ModelSelection(provider="openai", model_id="gpt-5.4")
     app = _app()
@@ -641,7 +641,7 @@ def test_native_surface_model_selector_lists_current_model_first() -> None:
 
     asyncio.run(manager.handle_text("/model"))
 
-    assert isinstance(app.active_surface, NativeSurfaceView)
+    assert isinstance(app.active_surface, ScreenSurfaceView)
     rendered = app.active_surface.render(RenderConstraints(width=100, max_height=10))
     plain_lines = tuple(strip_control_sequences(line.text) for line in rendered.lines)
 
@@ -650,7 +650,7 @@ def test_native_surface_model_selector_lists_current_model_first() -> None:
     assert any(line.startswith("  2. moonshot/kimi-for-coding") for line in plain_lines)
 
 
-def test_native_surface_model_selector_number_key_selects_current_scope_ordinal() -> None:
+def test_screen_surface_model_selector_number_key_selects_current_scope_ordinal() -> None:
     session = _Session()
     session.models.append(ModelSelection(provider="anthropic", model_id="claude-sonnet"))
     app = _app()
@@ -658,13 +658,13 @@ def test_native_surface_model_selector_number_key_selects_current_scope_ordinal(
 
     asyncio.run(manager.handle_text("/model"))
 
-    assert isinstance(app.active_surface, NativeSurfaceView)
+    assert isinstance(app.active_surface, ScreenSurfaceView)
     intent = app.active_surface.handle_input(InputEvent(kind="text", text="2"))
 
     assert intent == InputIntent(kind="select", text="openai/gpt-5.4")
 
 
-def test_native_surface_model_selector_zero_key_selects_tenth_model() -> None:
+def test_screen_surface_model_selector_zero_key_selects_tenth_model() -> None:
     session = _Session()
     session.models = [
         ModelSelection(provider="p", model_id=f"model-{index}")
@@ -675,13 +675,13 @@ def test_native_surface_model_selector_zero_key_selects_tenth_model() -> None:
 
     asyncio.run(manager.handle_text("/model"))
 
-    assert isinstance(app.active_surface, NativeSurfaceView)
+    assert isinstance(app.active_surface, ScreenSurfaceView)
     intent = app.active_surface.handle_input(InputEvent(kind="text", text="0"))
 
     assert intent == InputIntent(kind="select", text="p/model-10")
 
 
-def test_native_surface_model_selector_multidigit_number_selects_ordinal() -> None:
+def test_screen_surface_model_selector_multidigit_number_selects_ordinal() -> None:
     session = _Session()
     session.models = [
         ModelSelection(provider="p", model_id=f"model-{index}")
@@ -692,14 +692,14 @@ def test_native_surface_model_selector_multidigit_number_selects_ordinal() -> No
 
     asyncio.run(manager.handle_text("/model"))
 
-    assert isinstance(app.active_surface, NativeSurfaceView)
+    assert isinstance(app.active_surface, ScreenSurfaceView)
     assert app.active_surface.handle_input(InputEvent(kind="text", text="1")) is None
     intent = app.active_surface.handle_input(InputEvent(kind="text", text="2"))
 
     assert intent == InputIntent(kind="select", text="p/model-12")
 
 
-def test_native_surface_model_selector_enter_confirms_pending_single_digit_ordinal() -> None:
+def test_screen_surface_model_selector_enter_confirms_pending_single_digit_ordinal() -> None:
     session = _Session()
     session.models = [
         ModelSelection(provider="p", model_id=f"model-{index}")
@@ -710,14 +710,14 @@ def test_native_surface_model_selector_enter_confirms_pending_single_digit_ordin
 
     asyncio.run(manager.handle_text("/model"))
 
-    assert isinstance(app.active_surface, NativeSurfaceView)
+    assert isinstance(app.active_surface, ScreenSurfaceView)
     assert app.active_surface.handle_input(InputEvent(kind="text", text="1")) is None
     intent = app.active_surface.handle_input(InputEvent(kind="key", key="enter"))
 
     assert intent == InputIntent(kind="select", text="p/model-1")
 
 
-def test_native_surface_model_selector_number_key_extends_active_search() -> None:
+def test_screen_surface_model_selector_number_key_extends_active_search() -> None:
     session = _Session()
     session.models.append(ModelSelection(provider="openai", model_id="gpt-5.4-mini"))
     app = _app()
@@ -725,7 +725,7 @@ def test_native_surface_model_selector_number_key_extends_active_search() -> Non
 
     asyncio.run(manager.handle_text("/model"))
 
-    assert isinstance(app.active_surface, NativeSurfaceView)
+    assert isinstance(app.active_surface, ScreenSurfaceView)
     assert app.active_surface.handle_input(InputEvent(kind="text", text="gpt-")) is None
     assert app.active_surface.handle_input(InputEvent(kind="text", text="5")) is None
     rendered = app.active_surface.render(RenderConstraints(width=100, max_height=12))
@@ -735,19 +735,19 @@ def test_native_surface_model_selector_number_key_extends_active_search() -> Non
     assert any("openai/gpt-5.4" in line for line in plain_lines)
 
 
-def test_native_surface_model_selector_home_end_move_selection_before_search_is_visible() -> None:
+def test_screen_surface_model_selector_home_end_move_selection_before_search_is_visible() -> None:
     session = _Session()
     app = _app()
     manager = _manager(app, session)
 
     asyncio.run(manager.handle_text("/model"))
 
-    assert isinstance(app.active_surface, NativeSurfaceView)
+    assert isinstance(app.active_surface, ScreenSurfaceView)
     assert app.active_surface.handle_input(InputEvent(kind="key", key="end")) is None
     assert app.active_surface.handle_input(InputEvent(kind="key", key="enter")) == InputIntent(kind="select", text="openai/gpt-5.4")
 
 
-def test_native_surface_model_selector_switches_between_scoped_and_all_models_with_tab() -> None:
+def test_screen_surface_model_selector_switches_between_scoped_and_all_models_with_tab() -> None:
     session = _Session()
     session.models.append(ModelSelection(provider="anthropic", model_id="claude-sonnet"))
     session.scoped_models = [
@@ -759,7 +759,7 @@ def test_native_surface_model_selector_switches_between_scoped_and_all_models_wi
 
     asyncio.run(manager.handle_text("/model"))
 
-    assert isinstance(app.active_surface, NativeSurfaceView)
+    assert isinstance(app.active_surface, ScreenSurfaceView)
     scoped_lines = tuple(
         strip_control_sequences(line.text)
         for line in app.active_surface.render(RenderConstraints(width=100, max_height=12)).lines
@@ -778,7 +778,7 @@ def test_native_surface_model_selector_switches_between_scoped_and_all_models_wi
     assert any("anthropic/claude-sonnet" in line for line in all_lines)
 
 
-def test_native_surface_model_selector_preserves_search_when_scope_changes() -> None:
+def test_screen_surface_model_selector_preserves_search_when_scope_changes() -> None:
     session = _Session()
     session.models.extend(
         [
@@ -795,7 +795,7 @@ def test_native_surface_model_selector_preserves_search_when_scope_changes() -> 
 
     asyncio.run(manager.handle_text("/model"))
 
-    assert isinstance(app.active_surface, NativeSurfaceView)
+    assert isinstance(app.active_surface, ScreenSurfaceView)
     assert app.active_surface.handle_input(InputEvent(kind="text", text="gpt")) is None
     assert app.active_surface.handle_input(InputEvent(kind="key", key="tab")) is None
     all_lines = tuple(
@@ -808,7 +808,7 @@ def test_native_surface_model_selector_preserves_search_when_scope_changes() -> 
     assert not any("anthropic/claude-sonnet" in line for line in all_lines)
 
 
-def test_native_surface_model_selector_switches_scope_with_left_and_right() -> None:
+def test_screen_surface_model_selector_switches_scope_with_left_and_right() -> None:
     session = _Session()
     session.models.append(ModelSelection(provider="anthropic", model_id="claude-sonnet"))
     session.scoped_models = [
@@ -820,7 +820,7 @@ def test_native_surface_model_selector_switches_scope_with_left_and_right() -> N
 
     asyncio.run(manager.handle_text("/model"))
 
-    assert isinstance(app.active_surface, NativeSurfaceView)
+    assert isinstance(app.active_surface, ScreenSurfaceView)
     assert app.active_surface.handle_input(InputEvent(kind="key", key="right")) is None
     all_lines = tuple(
         strip_control_sequences(line.text)
@@ -838,7 +838,7 @@ def test_native_surface_model_selector_switches_scope_with_left_and_right() -> N
     assert not any("anthropic/claude-sonnet" in line for line in scoped_lines)
 
 
-def test_native_surface_model_selector_aligns_multi_digit_ordinals() -> None:
+def test_screen_surface_model_selector_aligns_multi_digit_ordinals() -> None:
     session = _Session()
     session.models = [
         ModelSelection(provider="p", model_id=f"model-{index}")
@@ -849,7 +849,7 @@ def test_native_surface_model_selector_aligns_multi_digit_ordinals() -> None:
 
     asyncio.run(manager.handle_text("/model"))
 
-    assert isinstance(app.active_surface, NativeSurfaceView)
+    assert isinstance(app.active_surface, ScreenSurfaceView)
     rendered = app.active_surface.render(RenderConstraints(width=100, max_height=16))
     plain_lines = tuple(strip_control_sequences(line.text) for line in rendered.lines)
     first_model_line = next(line for line in plain_lines if "p/model-1" in line)
@@ -857,7 +857,7 @@ def test_native_surface_model_selector_aligns_multi_digit_ordinals() -> None:
     assert first_model_line.index("p/model-1") == tenth_model_line.index("p/model-10")
 
 
-def test_native_surface_view_translates_mouse_row_to_selection_content() -> None:
+def test_screen_surface_view_translates_mouse_row_to_selection_content() -> None:
     from loushang.tui import SelectionSurface, SelectItem
 
     surface = SelectionSurface(
@@ -868,7 +868,7 @@ def test_native_surface_view_translates_mouse_row_to_selection_content() -> None
         ],
         max_visible=3,
     )
-    view = NativeSurfaceView(title="Models", purpose="model", content=surface, footer="Enter")
+    view = ScreenSurfaceView(title="Models", purpose="model", content=surface, footer="Enter")
     view.render(RenderConstraints(width=40, max_height=8))
 
     intent = view.handle_input(InputEvent(kind="mouse", mouse_button=0, mouse_row=3, mouse_action="press"))
@@ -878,27 +878,27 @@ def test_native_surface_view_translates_mouse_row_to_selection_content() -> None
     assert view.handle_input(InputEvent(kind="key", key="enter")) == InputIntent(kind="select", text="two")
 
 
-def test_native_surface_manager_applies_settings_page_statusline_change() -> None:
+def test_screen_surface_manager_applies_settings_page_statusline_change() -> None:
     app = _app()
     manager = _manager(app, _Session())
 
     asyncio.run(manager.handle_text("/settings"))
 
-    assert isinstance(app.active_surface, NativeSurfaceView)
+    assert isinstance(app.active_surface, ScreenSurfaceView)
     _focus_statusline_tab(app.active_surface)
     intent = app.active_surface.handle_input(InputEvent(kind="key", key="enter"))
     assert intent == InputIntent(kind="setting", text="statusline.enabled", note="false")
 
     asyncio.run(manager.handle_surface_intent(intent))
 
-    assert isinstance(app.active_surface, NativeSurfaceView)
+    assert isinstance(app.active_surface, ScreenSurfaceView)
     assert app.state.status_message is None
     assert any("Status line: off" in line for line in _surface_plain_lines(app.active_surface))
     rendered = tuple(strip_control_sequences(line.text) for line in app.render(RenderConstraints(width=100, max_height=12)).lines)
     assert not any("moonshot/kimi-for-coding | repo | main | abcd | idle" in line for line in rendered)
 
 
-def test_native_surface_manager_command_surface_inserts_selected_command() -> None:
+def test_screen_surface_manager_command_surface_inserts_selected_command() -> None:
     session = _Session()
     session.commands = [
         SimpleNamespace(name="report", description="Show report", source="core"),
@@ -909,7 +909,7 @@ def test_native_surface_manager_command_surface_inserts_selected_command() -> No
 
     asyncio.run(manager.handle_text("/command"))
 
-    assert isinstance(app.active_surface, NativeSurfaceView)
+    assert isinstance(app.active_surface, ScreenSurfaceView)
     intent = app.active_surface.handle_input(InputEvent(kind="key", key="enter"))
     assert intent == InputIntent(kind="command", text="/model")
 
@@ -919,11 +919,11 @@ def test_native_surface_manager_command_surface_inserts_selected_command() -> No
     assert app.composer.value == "/model "
 
 
-def test_native_surface_manager_handles_dialog_surface_confirm() -> None:
+def test_screen_surface_manager_handles_dialog_surface_confirm() -> None:
     app = _app()
     manager = _manager(app, _Session())
 
-    app.active_surface = NativeSurfaceView(
+    app.active_surface = ScreenSurfaceView(
         title="Confirm",
         purpose="dialog",
         content=DialogSurface(title="Confirm", message="Proceed?"),
@@ -935,21 +935,21 @@ def test_native_surface_manager_handles_dialog_surface_confirm() -> None:
     assert app.active_surface is None
 
 
-def test_native_surface_manager_handles_approval_submit() -> None:
+def test_screen_surface_manager_handles_approval_submit() -> None:
     app = _app()
     events: list[dict[str, object]] = []
 
     async def on_approval(event: dict[str, object]) -> None:
         events.append(event)
 
-    manager = NativeSurfaceManager(
+    manager = ScreenSurfaceManager(
         app=app,
         session=_Session(),
         status_provider=_status_provider(app),
         on_approval=on_approval,
     )
 
-    app.active_surface = NativeSurfaceView(
+    app.active_surface = ScreenSurfaceView(
         title="Approval",
         purpose="approval",
         content=ApprovalSurface(action="delete cache", action_id="clear-cache-01"),
@@ -969,21 +969,21 @@ def test_native_surface_manager_handles_approval_submit() -> None:
     ]
 
 
-def test_native_surface_manager_handles_approval_reject() -> None:
+def test_screen_surface_manager_handles_approval_reject() -> None:
     app = _app()
     events: list[dict[str, object]] = []
 
     async def on_approval(event: dict[str, object]) -> None:
         events.append(event)
 
-    manager = NativeSurfaceManager(
+    manager = ScreenSurfaceManager(
         app=app,
         session=_Session(),
         status_provider=_status_provider(app),
         on_approval=on_approval,
     )
 
-    app.active_surface = NativeSurfaceView(
+    app.active_surface = ScreenSurfaceView(
         title="Approval",
         purpose="approval",
         content=ApprovalSurface(action="delete cache", action_id="clear-cache-01"),
@@ -1003,7 +1003,7 @@ def test_native_surface_manager_handles_approval_reject() -> None:
     ]
 
 
-def test_native_surface_manager_ignores_unmapped_surface_intent() -> None:
+def test_screen_surface_manager_ignores_unmapped_surface_intent() -> None:
     app = _app()
     manager = _manager(app, _Session())
 
@@ -1054,8 +1054,8 @@ class _FailingModelSession(_Session):
         raise ValueError("model switch failed")
 
 
-def _app() -> NativeCodingTuiApp:
-    return NativeCodingTuiApp(
+def _app() -> ScreenCodingTuiApp:
+    return ScreenCodingTuiApp(
         model_label="moonshot/kimi-for-coding",
         cwd="/repo",
         branch="main",
@@ -1065,25 +1065,25 @@ def _app() -> NativeCodingTuiApp:
 
 
 def _manager(
-    app: NativeCodingTuiApp,
+    app: ScreenCodingTuiApp,
     session: _Session,
     *,
     settings_manager: object | None = None,
-) -> NativeSurfaceManager:
-    return NativeSurfaceManager(
+) -> ScreenSurfaceManager:
+    return ScreenSurfaceManager(
         app=app,
         session=session,
         status_provider=_status_provider(app, settings_manager=settings_manager),
     )
 
 
-def _surface_plain_lines(surface: NativeSurfaceView, *, width: int = 100, height: int = 24) -> tuple[str, ...]:
+def _surface_plain_lines(surface: ScreenSurfaceView, *, width: int = 100, height: int = 24) -> tuple[str, ...]:
     rendered = surface.render(RenderConstraints(width=width, max_height=height))
     return tuple(strip_control_sequences(line.text) for line in rendered.lines)
 
 
 def _status_provider(
-    app: NativeCodingTuiApp,
+    app: ScreenCodingTuiApp,
     *,
     settings_manager: object | None = None,
 ) -> CodingTuiStatusProvider:
@@ -1115,16 +1115,16 @@ def _status_provider(
     )
 
 
-def _focus_statusline_tab(view: NativeSurfaceView) -> None:
+def _focus_statusline_tab(view: ScreenSurfaceView) -> None:
     assert view.content.handle_input(InputEvent(kind="key", key="up")) is True
     assert view.content.handle_input(InputEvent(kind="key", key="right")) is not None
     assert view.content.handle_input(InputEvent(kind="key", key="right")) is not None
     assert view.content.handle_input(InputEvent(kind="key", key="down")) is True
 
 
-def _only_overlay_view(app: NativeCodingTuiApp) -> NativeSurfaceView:
+def _only_overlay_view(app: ScreenCodingTuiApp) -> ScreenSurfaceView:
     assert app.surface_host is not None
     assert len(app.surface_host.entries) == 1
     view = app.surface_host.entries[0].surface.renderable
-    assert isinstance(view, NativeSurfaceView)
+    assert isinstance(view, ScreenSurfaceView)
     return view

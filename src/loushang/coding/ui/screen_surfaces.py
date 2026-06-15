@@ -34,7 +34,7 @@ from loushang.coding.ui.model_list import (
     model_detail_descriptions_by_label,
     select_available_model,
 )
-from loushang.coding.ui.native_app import NativeCodingTuiApp
+from loushang.coding.ui.screen_app import ScreenCodingTuiApp
 from loushang.coding.ui.settings_page import SettingsPageView
 from loushang.coding.ui.status_provider import CodingTuiStatusProvider
 from loushang.runtime.commands import CommandDef, CommandKind
@@ -58,27 +58,27 @@ from loushang.tui import (
 )
 from loushang.tui.cell_width import truncate_to_width, wrap_cells
 
-NativeSurfacePurpose = Literal["info", "model", "command", "settings", "dialog", "approval"]
-NativeSurfacePresentation = Literal["bottom", "bottom-exclusive"]
+ScreenSurfacePurpose = Literal["info", "model", "command", "settings", "dialog", "approval"]
+ScreenSurfacePresentation = Literal["bottom", "bottom-exclusive"]
 SurfaceEventKind = Literal["surface_submit", "surface_close"]
 SurfaceEventSource = Literal["model", "command", "settings", "dialog", "approval"]
 MODEL_SELECTOR_SELECTED_STYLE = {"color": 33, "bold": True}
 
 
-class NativeCommandCatalog(Protocol):
+class ScreenCommandCatalog(Protocol):
     def lookup(self, text: str) -> CommandDef | None: ...
 
     def commands(self) -> tuple[CommandDef, ...]: ...
 
 
 @dataclass(slots=True)
-class NativeSurfaceView(FocusableMixin):
+class ScreenSurfaceView(FocusableMixin):
     title: str
-    purpose: NativeSurfacePurpose
+    purpose: ScreenSurfacePurpose
     content: Any
     footer: str = "Enter to select - Esc to close"
     subtitle: str = ""
-    presentation: NativeSurfacePresentation = "bottom"
+    presentation: ScreenSurfacePresentation = "bottom"
     preferred_height: int | None = None
     _last_content_start_row: int = field(default=0, init=False, repr=False)
     _info_scroll_offset: int = field(default=0, init=False, repr=False)
@@ -105,7 +105,7 @@ class NativeSurfaceView(FocusableMixin):
             return None
         handler = getattr(self.content, "handle_input", None)
         if callable(handler):
-            intent = _native_input_intent_or_none(handler(self._translate_content_input_event(event)))
+            intent = _screen_input_intent_or_none(handler(self._translate_content_input_event(event)))
             if intent is not None:
                 return intent
         if event.kind == "key" and event.key in {"escape", "esc"}:
@@ -248,7 +248,7 @@ class ModelSelectorSurface:
             self._pending_ordinal = ""
         intent = self._surface.handle_input(event)
         self._filter_text = self._surface.filter_text
-        return _native_input_intent_or_none(intent)
+        return _screen_input_intent_or_none(intent)
 
     def render(self, constraints: RenderConstraints) -> RenderResult:
         if not self.scoped_items:
@@ -380,14 +380,14 @@ class ModelSelectorSurface:
 
 
 @dataclass(slots=True)
-class NativeSurfaceManager:
-    app: NativeCodingTuiApp
+class ScreenSurfaceManager:
+    app: ScreenCodingTuiApp
     session: Any
     status_provider: CodingTuiStatusProvider
     on_approval: Callable[[dict[str, Any]], Awaitable[None]] | None = None
-    command_catalog: NativeCommandCatalog | None = None
+    command_catalog: ScreenCommandCatalog | None = None
     _handlers: dict[SurfaceEventSource, Callable[[Any], Awaitable[None]]] = field(init=False, repr=False)
-    _active_overlay_view: NativeSurfaceView | None = None
+    _active_overlay_view: ScreenSurfaceView | None = None
     _active_overlay_handle: SurfaceHandle | None = None
 
     def __post_init__(self) -> None:
@@ -450,7 +450,7 @@ class NativeSurfaceManager:
 
     async def handle_surface_intent(self, intent: InputIntent) -> int | None:
         surface = self._current_surface()
-        if not isinstance(surface, NativeSurfaceView):
+        if not isinstance(surface, ScreenSurfaceView):
             return None
 
         event = self._normalize_surface_intent(intent, surface)
@@ -465,7 +465,7 @@ class NativeSurfaceManager:
         await handler(event.payload)
         return None
 
-    def _normalize_surface_intent(self, intent: InputIntent, surface: NativeSurfaceView) -> SurfaceEvent | None:
+    def _normalize_surface_intent(self, intent: InputIntent, surface: ScreenSurfaceView) -> SurfaceEvent | None:
         if intent.kind in {"surface_close", "dialog_cancel"}:
             return SurfaceEvent(kind="surface_close", source=None)
         if surface.purpose == "model" and intent.kind in {"command", "select"}:
@@ -514,7 +514,7 @@ class NativeSurfaceManager:
 
     async def _handle_settings_submit(self, payload: dict[str, str]) -> None:
         surface = self._current_surface()
-        page = surface.content if isinstance(surface, NativeSurfaceView) else None
+        page = surface.content if isinstance(surface, ScreenSurfaceView) else None
         apply_setting = getattr(page, "apply_setting", None)
         if not callable(apply_setting):
             return
@@ -572,7 +572,7 @@ class NativeSurfaceManager:
 
     def _open_palette(self, title: str, palette: CommandPalette, *, purpose: Literal["model", "command"]) -> None:
         surface = CommandSurface(_palette_items(palette), max_visible=8)
-        self._open_surface(NativeSurfaceView(title=title, purpose=purpose, content=surface))
+        self._open_surface(ScreenSurfaceView(title=title, purpose=purpose, content=surface))
 
     async def _open_model_selector(self) -> None:
         current_label = model_label_from_selection(await get_session_model_selection(self.session))
@@ -587,7 +587,7 @@ class NativeSurfaceManager:
             max_visible=10,
         )
         self._open_surface(
-            NativeSurfaceView(
+            ScreenSurfaceView(
                 title="Select Model",
                 subtitle="Access legacy models by running loushang --model <provider/model>.",
                 purpose="model",
@@ -602,10 +602,10 @@ class NativeSurfaceManager:
         title: str,
         text: str,
         *,
-        presentation: NativeSurfacePresentation = "bottom",
+        presentation: ScreenSurfacePresentation = "bottom",
     ) -> None:
         self._open_surface(
-            NativeSurfaceView(
+            ScreenSurfaceView(
                 title=title,
                 purpose="info",
                 content=InfoPanel.from_text(title=title, text=text, footer=""),
@@ -628,7 +628,7 @@ class NativeSurfaceManager:
             statusline_preview=self.app.statusline_preview_snapshot,
         )
         self._open_surface(
-            NativeSurfaceView(
+            ScreenSurfaceView(
                 title="Settings",
                 purpose="settings",
                 content=surface,
@@ -640,7 +640,7 @@ class NativeSurfaceManager:
 
     def open_approval(self, *, action: str, risk: str = "", action_id: str | None = None) -> None:
         self._open_surface(
-            NativeSurfaceView(
+            ScreenSurfaceView(
                 title="Approval",
                 purpose="approval",
                 content=ApprovalSurface(action=action, risk=risk, action_id=action_id),
@@ -649,7 +649,7 @@ class NativeSurfaceManager:
             )
         )
 
-    def _open_surface(self, view: NativeSurfaceView) -> None:
+    def _open_surface(self, view: ScreenSurfaceView) -> None:
         self.close_surface()
         surface_host = self.app.surface_host
         if surface_host is None or view.exclusive_bottom:
@@ -668,7 +668,7 @@ class NativeSurfaceManager:
             )
         )
 
-    def _current_surface(self) -> NativeSurfaceView | Any | None:
+    def _current_surface(self) -> ScreenSurfaceView | Any | None:
         return self._active_overlay_view if self._active_overlay_view is not None else self.app.active_surface
 
     async def _refresh_model_label(self) -> None:
@@ -783,7 +783,7 @@ def _session_commands_provider(session: Any) -> Callable[[], Any] | None:
     return getter
 
 
-def _native_input_intent_or_none(result: object) -> InputIntent | None:
+def _screen_input_intent_or_none(result: object) -> InputIntent | None:
     if isinstance(result, InputIntent):
         return result
     kind = getattr(result, "kind", None)
@@ -796,4 +796,4 @@ def _native_input_intent_or_none(result: object) -> InputIntent | None:
     )
 
 
-__all__ = ["NativeSurfaceManager", "NativeSurfaceView"]
+__all__ = ["ScreenSurfaceManager", "ScreenSurfaceView"]

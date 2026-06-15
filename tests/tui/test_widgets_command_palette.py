@@ -45,7 +45,7 @@ def test_command_palette_intent_kinds_are_declared() -> None:
 
 
 def test_existing_coding_palette_adapter_keeps_disabled_out_of_scope() -> None:
-    from loushang.coding.ui.native_surfaces import _palette_items
+    from loushang.coding.ui.screen_surfaces import _palette_items
 
     items = _palette_items(
         CommandPalette(

@@ -12,12 +12,12 @@ from loushang.coding.types import ModelSelection
 from loushang.tui import strip_control_sequences
 
 
-def test_native_loop_prints_welcome_panel_to_scrollback_once() -> None:
-    from loushang.coding.ui.native_app import NativeCodingTuiApp
-    from loushang.coding.ui.native_loop import run_native_coding_tui
+def test_screen_loop_prints_welcome_panel_to_scrollback_once() -> None:
+    from loushang.coding.ui.screen_app import ScreenCodingTuiApp
+    from loushang.coding.ui.screen_loop import run_screen_coding_tui
 
     stdout = StringIO()
-    app = NativeCodingTuiApp(
+    app = ScreenCodingTuiApp(
         model_label="moonshot/kimi-for-coding",
         cwd="/home/dev/workspace/loushang",
         branch="main",
@@ -26,7 +26,7 @@ def test_native_loop_prints_welcome_panel_to_scrollback_once() -> None:
     )
 
     result = asyncio.run(
-        run_native_coding_tui(
+        run_screen_coding_tui(
             app=app,
             stdin=StringIO("/quit\r"),
             stdout=stdout,
@@ -46,12 +46,12 @@ def test_native_loop_prints_welcome_panel_to_scrollback_once() -> None:
     assert rendered.find("Welcome to Loushang CLI") < rendered.rfind("› ")
 
 
-def test_native_loop_enters_terminal_mode_before_welcome_panel() -> None:
-    from loushang.coding.ui.native_app import NativeCodingTuiApp
-    from loushang.coding.ui.native_loop import run_native_coding_tui
+def test_screen_loop_enters_terminal_mode_before_welcome_panel() -> None:
+    from loushang.coding.ui.screen_app import ScreenCodingTuiApp
+    from loushang.coding.ui.screen_loop import run_screen_coding_tui
 
     stdout = StringIO()
-    app = NativeCodingTuiApp(
+    app = ScreenCodingTuiApp(
         model_label="moonshot/kimi-for-coding",
         cwd="/repo",
         branch="main",
@@ -60,7 +60,7 @@ def test_native_loop_enters_terminal_mode_before_welcome_panel() -> None:
     )
 
     result = asyncio.run(
-        run_native_coding_tui(
+        run_screen_coding_tui(
             app=app,
             stdin=StringIO("/quit\r"),
             stdout=stdout,
@@ -77,12 +77,12 @@ def test_native_loop_enters_terminal_mode_before_welcome_panel() -> None:
     assert output.find("[mode-enter]") < output.find("Welcome to Loushang CLI")
 
 
-def test_native_loop_runs_prompt_to_worked_divider_without_stale_working() -> None:
-    from loushang.coding.ui.native_app import NativeCodingTuiApp
-    from loushang.coding.ui.native_loop import run_native_coding_tui
+def test_screen_loop_runs_prompt_to_worked_divider_without_stale_working() -> None:
+    from loushang.coding.ui.screen_app import ScreenCodingTuiApp
+    from loushang.coding.ui.screen_loop import run_screen_coding_tui
 
     stdout = StringIO()
-    app = NativeCodingTuiApp(model_label="kimi", cwd="/repo", branch="main", session_label="abcd", now=_Clock([10.0, 10.5, 11.0]))
+    app = ScreenCodingTuiApp(model_label="kimi", cwd="/repo", branch="main", session_label="abcd", now=_Clock([10.0, 10.5, 11.0]))
 
     async def handle_prompt(text: str) -> int | None:
         app.begin_assistant()
@@ -91,7 +91,7 @@ def test_native_loop_runs_prompt_to_worked_divider_without_stale_working() -> No
         return None
 
     result = asyncio.run(
-        run_native_coding_tui(
+        run_screen_coding_tui(
             app=app,
             stdin=StringIO("你好\r"),
             stdout=stdout,
@@ -109,8 +109,8 @@ def test_native_loop_runs_prompt_to_worked_divider_without_stale_working() -> No
     assert rendered.rfind("Working") < rendered.rfind("Worked for")
 
 
-def test_native_loop_passes_prompt_images_to_handler() -> None:
-    from loushang.coding.ui.native_loop import _run_prompt_handler
+def test_screen_loop_passes_prompt_images_to_handler() -> None:
+    from loushang.coding.ui.screen_loop import _run_prompt_handler
 
     seen: dict[str, object] = {}
     image = ImagePart(type="image", data="abc", mime_type="image/png")
@@ -126,12 +126,12 @@ def test_native_loop_passes_prompt_images_to_handler() -> None:
     assert seen == {"text": "describe", "images": (image,)}
 
 
-def test_native_loop_scripted_prompt_then_quit_exits_without_status_residue() -> None:
-    from loushang.coding.ui.native_app import NativeCodingTuiApp
-    from loushang.coding.ui.native_loop import run_native_coding_tui
+def test_screen_loop_scripted_prompt_then_quit_exits_without_status_residue() -> None:
+    from loushang.coding.ui.screen_app import ScreenCodingTuiApp
+    from loushang.coding.ui.screen_loop import run_screen_coding_tui
 
     stdout = StringIO()
-    app = NativeCodingTuiApp(
+    app = ScreenCodingTuiApp(
         model_label="kimi",
         cwd="/repo",
         branch="main",
@@ -146,7 +146,7 @@ def test_native_loop_scripted_prompt_then_quit_exits_without_status_residue() ->
         return None
 
     result = asyncio.run(
-        run_native_coding_tui(
+        run_screen_coding_tui(
             app=app,
             stdin=StringIO("你好\r/quit\r"),
             stdout=stdout,
@@ -168,15 +168,15 @@ def test_native_loop_scripted_prompt_then_quit_exits_without_status_residue() ->
     _assert_exit_cleanup_clears_bottom_frame(raw_output)
 
 
-def test_native_loop_exits_on_quit_command() -> None:
-    from loushang.coding.ui.native_app import NativeCodingTuiApp
-    from loushang.coding.ui.native_loop import run_native_coding_tui
+def test_screen_loop_exits_on_quit_command() -> None:
+    from loushang.coding.ui.screen_app import ScreenCodingTuiApp
+    from loushang.coding.ui.screen_loop import run_screen_coding_tui
 
     stdout = StringIO()
-    app = NativeCodingTuiApp(model_label="kimi", cwd="/repo", branch="main", session_label="abcd", now=lambda: 1.0)
+    app = ScreenCodingTuiApp(model_label="kimi", cwd="/repo", branch="main", session_label="abcd", now=lambda: 1.0)
 
     result = asyncio.run(
-        run_native_coding_tui(
+        run_screen_coding_tui(
             app=app,
             stdin=StringIO("/quit\r"),
             stdout=stdout,
@@ -191,15 +191,15 @@ def test_native_loop_exits_on_quit_command() -> None:
     _assert_exit_cleanup_clears_bottom_frame(stdout.getvalue())
 
 
-def test_native_loop_clears_completion_area_before_exit() -> None:
-    from loushang.coding.ui.native_app import NativeCodingTuiApp
-    from loushang.coding.ui.native_loop import run_native_coding_tui
+def test_screen_loop_clears_completion_area_before_exit() -> None:
+    from loushang.coding.ui.screen_app import ScreenCodingTuiApp
+    from loushang.coding.ui.screen_loop import run_screen_coding_tui
 
     stdout = StringIO()
-    app = NativeCodingTuiApp(model_label="kimi", cwd="/repo", branch="main", session_label="abcd", now=lambda: 1.0)
+    app = ScreenCodingTuiApp(model_label="kimi", cwd="/repo", branch="main", session_label="abcd", now=lambda: 1.0)
 
     result = asyncio.run(
-        run_native_coding_tui(
+        run_screen_coding_tui(
             app=app,
             stdin=StringIO("/quit\r"),
             stdout=stdout,
@@ -218,13 +218,13 @@ def test_native_loop_clears_completion_area_before_exit() -> None:
     _assert_exit_cleanup_clears_bottom_frame(stdout.getvalue())
 
 
-def test_native_loop_escape_cancels_standalone_completion_chunk() -> None:
-    from loushang.coding.ui.native_app import NativeCodingTuiApp
-    from loushang.coding.ui.native_loop import run_native_coding_tui
+def test_screen_loop_escape_cancels_standalone_completion_chunk() -> None:
+    from loushang.coding.ui.screen_app import ScreenCodingTuiApp
+    from loushang.coding.ui.screen_loop import run_screen_coding_tui
     from loushang.tui import CompletionItem, CompletionProvider
 
     stdout = StringIO()
-    app = NativeCodingTuiApp(model_label="kimi", cwd="/repo", branch="main", session_label="abcd", now=lambda: 1.0)
+    app = ScreenCodingTuiApp(model_label="kimi", cwd="/repo", branch="main", session_label="abcd", now=lambda: 1.0)
     app.composer.set_completion_provider(
         CompletionProvider(
             (
@@ -235,7 +235,7 @@ def test_native_loop_escape_cancels_standalone_completion_chunk() -> None:
     )
 
     result = asyncio.run(
-        run_native_coding_tui(
+        run_screen_coding_tui(
             app=app,
             stdin=StringIO("/\x1b"),
             stdout=stdout,
@@ -254,13 +254,13 @@ def test_native_loop_escape_cancels_standalone_completion_chunk() -> None:
     assert "kimi | repo | main | abcd | idle" in rendered[rendered.rfind("› /") :]
 
 
-def test_native_loop_enter_executes_selected_slash_completion() -> None:
-    from loushang.coding.ui.native_app import NativeCodingTuiApp
-    from loushang.coding.ui.native_loop import run_native_coding_tui
+def test_screen_loop_enter_executes_selected_slash_completion() -> None:
+    from loushang.coding.ui.screen_app import ScreenCodingTuiApp
+    from loushang.coding.ui.screen_loop import run_screen_coding_tui
     from loushang.tui import CompletionItem, CompletionProvider
 
     stdout = StringIO()
-    app = NativeCodingTuiApp(model_label="kimi", cwd="/repo", branch="main", session_label="abcd", now=lambda: 1.0)
+    app = ScreenCodingTuiApp(model_label="kimi", cwd="/repo", branch="main", session_label="abcd", now=lambda: 1.0)
     app.composer.set_completion_provider(
         CompletionProvider(
             (
@@ -276,7 +276,7 @@ def test_native_loop_enter_executes_selected_slash_completion() -> None:
         return text in {"/quit", "/exit"}
 
     result = asyncio.run(
-        run_native_coding_tui(
+        run_screen_coding_tui(
             app=app,
             stdin=StringIO("/q\r"),
             stdout=stdout,
@@ -292,20 +292,20 @@ def test_native_loop_enter_executes_selected_slash_completion() -> None:
     assert app.composer.value == ""
 
 
-def test_native_loop_routes_runtime_overlay_surface_input() -> None:
-    from loushang.coding.ui.native_app import NativeCodingTuiApp
-    from loushang.coding.ui.native_loop import run_native_coding_tui
-    from loushang.coding.ui.native_surfaces import NativeSurfaceView
+def test_screen_loop_routes_runtime_overlay_surface_input() -> None:
+    from loushang.coding.ui.screen_app import ScreenCodingTuiApp
+    from loushang.coding.ui.screen_loop import run_screen_coding_tui
+    from loushang.coding.ui.screen_surfaces import ScreenSurfaceView
     from loushang.tui import CommandSurface, InputIntent, SelectItem, Surface
 
     stdout = StringIO()
-    app = NativeCodingTuiApp(model_label="kimi", cwd="/repo", branch="main", session_label="abcd", now=lambda: 1.0)
+    app = ScreenCodingTuiApp(model_label="kimi", cwd="/repo", branch="main", session_label="abcd", now=lambda: 1.0)
     surface_intents: list[InputIntent] = []
 
     def handle_local(text: str) -> None:
         assert text == "/surface"
         assert app.surface_host is not None
-        view = NativeSurfaceView(
+        view = ScreenSurfaceView(
             title="Commands",
             purpose="command",
             content=CommandSurface([SelectItem("/model", value="/model")]),
@@ -316,7 +316,7 @@ def test_native_loop_routes_runtime_overlay_surface_input() -> None:
         surface_intents.append(intent)
 
     result = asyncio.run(
-        run_native_coding_tui(
+        run_screen_coding_tui(
             app=app,
             stdin=StringIO("/surface\r\r"),
             stdout=stdout,
@@ -334,16 +334,16 @@ def test_native_loop_routes_runtime_overlay_surface_input() -> None:
     assert app.surface_host is None
 
 
-def test_native_loop_escape_closes_model_surface_and_restores_prompt() -> None:
-    from loushang.coding.ui.native_app import NativeCodingTuiApp
-    from loushang.coding.ui.native_loop import run_native_coding_tui
-    from loushang.coding.ui.native_surfaces import NativeSurfaceManager
+def test_screen_loop_escape_closes_model_surface_and_restores_prompt() -> None:
+    from loushang.coding.ui.screen_app import ScreenCodingTuiApp
+    from loushang.coding.ui.screen_loop import run_screen_coding_tui
+    from loushang.coding.ui.screen_surfaces import ScreenSurfaceManager
     from loushang.coding.ui.status_provider import CodingTuiStatusProvider
 
     stdout = StringIO()
-    app = NativeCodingTuiApp(model_label="moonshot/kimi-for-coding", cwd="/repo", branch="main", session_label="abcd", now=lambda: 1.0)
+    app = ScreenCodingTuiApp(model_label="moonshot/kimi-for-coding", cwd="/repo", branch="main", session_label="abcd", now=lambda: 1.0)
     session = _ModelSurfaceSession()
-    manager = NativeSurfaceManager(
+    manager = ScreenSurfaceManager(
         app=app,
         session=session,
         status_provider=CodingTuiStatusProvider(
@@ -357,7 +357,7 @@ def test_native_loop_escape_closes_model_surface_and_restores_prompt() -> None:
     )
 
     result = asyncio.run(
-        run_native_coding_tui(
+        run_screen_coding_tui(
             app=app,
             stdin=_TimedTtyChunkInput((0.0, "/model\r"), (0.01, "\x1b")),
             stdout=stdout,
@@ -379,9 +379,9 @@ def test_native_loop_escape_closes_model_surface_and_restores_prompt() -> None:
     assert rendered.rfind("moonshot/kimi-for-coding | repo | main | abcd | idle") > rendered.rfind("Select Model")
 
 
-def test_native_loop_exposes_terminal_diagnostics_provider_while_running() -> None:
-    from loushang.coding.ui.native_app import NativeCodingTuiApp
-    from loushang.coding.ui.native_loop import run_native_coding_tui
+def test_screen_loop_exposes_terminal_diagnostics_provider_while_running() -> None:
+    from loushang.coding.ui.screen_app import ScreenCodingTuiApp
+    from loushang.coding.ui.screen_loop import run_screen_coding_tui
     from loushang.tui import TerminalRuntimeCapabilities
 
     class _Mode:
@@ -408,7 +408,7 @@ def test_native_loop_exposes_terminal_diagnostics_provider_while_running() -> No
             )
 
     stdout = StringIO()
-    app = NativeCodingTuiApp(model_label="kimi", cwd="/repo", branch="main", session_label="abcd", now=lambda: 1.0)
+    app = ScreenCodingTuiApp(model_label="kimi", cwd="/repo", branch="main", session_label="abcd", now=lambda: 1.0)
     diagnostics_text: list[str] = []
     runtime_capabilities: list[TerminalRuntimeCapabilities | None] = []
 
@@ -419,7 +419,7 @@ def test_native_loop_exposes_terminal_diagnostics_provider_while_running() -> No
         runtime_capabilities.append(app.terminal_capabilities)
 
     result = asyncio.run(
-        run_native_coding_tui(
+        run_screen_coding_tui(
             app=app,
             stdin=StringIO("/probe\r"),
             stdout=stdout,
@@ -444,8 +444,8 @@ def test_native_loop_exposes_terminal_diagnostics_provider_while_running() -> No
     assert "tmux_passthrough_active: true" in diagnostics_text[-1]
 
 
-def test_native_loop_normalizes_terminal_input_before_reader_parses_events() -> None:
-    from loushang.coding.ui.native_loop import _input_events_for_chunk
+def test_screen_loop_normalizes_terminal_input_before_reader_parses_events() -> None:
+    from loushang.coding.ui.screen_loop import _input_events_for_chunk
     from loushang.tui.input import InputReader
 
     class _Context:
@@ -459,12 +459,12 @@ def test_native_loop_normalizes_terminal_input_before_reader_parses_events() -> 
     assert events[0].key == "shift+enter"
 
 
-def test_native_loop_dispatches_steer_and_followup_handlers() -> None:
-    from loushang.coding.ui.native_app import NativeCodingTuiApp
-    from loushang.coding.ui.native_loop import run_native_coding_tui
+def test_screen_loop_dispatches_steer_and_followup_handlers() -> None:
+    from loushang.coding.ui.screen_app import ScreenCodingTuiApp
+    from loushang.coding.ui.screen_loop import run_screen_coding_tui
 
     stdout = StringIO()
-    app = NativeCodingTuiApp(model_label="kimi", cwd="/repo", branch="main", session_label="abcd", now=_Clock([10.0, 10.5]))
+    app = ScreenCodingTuiApp(model_label="kimi", cwd="/repo", branch="main", session_label="abcd", now=_Clock([10.0, 10.5]))
     steers: list[tuple[str, str]] = []
     followups: list[str] = []
     prompts: list[str] = []
@@ -487,7 +487,7 @@ def test_native_loop_dispatches_steer_and_followup_handlers() -> None:
         return None
 
     result = asyncio.run(
-        run_native_coding_tui(
+        run_screen_coding_tui(
             app=app,
             stdin=StringIO("start\rsteer\rfollow\x1b\r\x03"),
             stdout=stdout,
@@ -505,12 +505,12 @@ def test_native_loop_dispatches_steer_and_followup_handlers() -> None:
     assert followups == ["follow"]
 
 
-def test_native_loop_dispatches_pending_steer_from_escape_when_idle() -> None:
-    from loushang.coding.ui.native_app import NativeCodingTuiApp
-    from loushang.coding.ui.native_loop import run_native_coding_tui
+def test_screen_loop_dispatches_pending_steer_from_escape_when_idle() -> None:
+    from loushang.coding.ui.screen_app import ScreenCodingTuiApp
+    from loushang.coding.ui.screen_loop import run_screen_coding_tui
 
     stdout = StringIO()
-    app = NativeCodingTuiApp(model_label="kimi", cwd="/repo", branch="main", session_label="abcd", now=lambda: 10.0)
+    app = ScreenCodingTuiApp(model_label="kimi", cwd="/repo", branch="main", session_label="abcd", now=lambda: 10.0)
     app.state.pending_steers.append("你好")
     app.composer.set_text("draft")
     steers: list[str] = []
@@ -520,7 +520,7 @@ def test_native_loop_dispatches_pending_steer_from_escape_when_idle() -> None:
         return None
 
     result = asyncio.run(
-        run_native_coding_tui(
+        run_screen_coding_tui(
             app=app,
             stdin=StringIO("\x1b"),
             stdout=stdout,
@@ -536,12 +536,12 @@ def test_native_loop_dispatches_pending_steer_from_escape_when_idle() -> None:
     assert app.composer.value == "draft"
 
 
-def test_native_loop_executes_queued_steer_after_running_escape() -> None:
-    from loushang.coding.ui.native_app import NativeCodingTuiApp
-    from loushang.coding.ui.native_loop import run_native_coding_tui
+def test_screen_loop_executes_queued_steer_after_running_escape() -> None:
+    from loushang.coding.ui.screen_app import ScreenCodingTuiApp
+    from loushang.coding.ui.screen_loop import run_screen_coding_tui
 
     stdout = StringIO()
-    app = NativeCodingTuiApp(model_label="kimi", cwd="/repo", branch="main", session_label="abcd", now=_Clock([10.0, 10.5, 11.0]))
+    app = ScreenCodingTuiApp(model_label="kimi", cwd="/repo", branch="main", session_label="abcd", now=_Clock([10.0, 10.5, 11.0]))
     app.state.pending_steers.append("follow")
     prompts: list[str] = []
 
@@ -553,7 +553,7 @@ def test_native_loop_executes_queued_steer_after_running_escape() -> None:
         return None
 
     result = asyncio.run(
-        run_native_coding_tui(
+        run_screen_coding_tui(
             app=app,
             stdin=StringIO("开始\r\x1b"),
             stdout=stdout,
@@ -567,12 +567,12 @@ def test_native_loop_executes_queued_steer_after_running_escape() -> None:
     assert prompts == ["follow"]
 
 
-def test_native_loop_executes_queued_steer_after_running_escape_with_delay() -> None:
-    from loushang.coding.ui.native_app import NativeCodingTuiApp
-    from loushang.coding.ui.native_loop import run_native_coding_tui
+def test_screen_loop_executes_queued_steer_after_running_escape_with_delay() -> None:
+    from loushang.coding.ui.screen_app import ScreenCodingTuiApp
+    from loushang.coding.ui.screen_loop import run_screen_coding_tui
 
     stdout = StringIO()
-    app = NativeCodingTuiApp(
+    app = ScreenCodingTuiApp(
         model_label="kimi",
         cwd="/repo",
         branch="main",
@@ -597,7 +597,7 @@ def test_native_loop_executes_queued_steer_after_running_escape_with_delay() -> 
         return None
 
     result = asyncio.run(
-        run_native_coding_tui(
+        run_screen_coding_tui(
             app=app,
             stdin=_TimedTtyChunkInput(
                 (0.0, "start\r"),
@@ -618,12 +618,12 @@ def test_native_loop_executes_queued_steer_after_running_escape_with_delay() -> 
     assert prompts == ["follow-up"]
 
 
-def test_native_loop_escape_runs_pending_steer_before_unsubmitted_composer_text() -> None:
-    from loushang.coding.ui.native_app import NativeCodingTuiApp
-    from loushang.coding.ui.native_loop import run_native_coding_tui
+def test_screen_loop_escape_runs_pending_steer_before_unsubmitted_composer_text() -> None:
+    from loushang.coding.ui.screen_app import ScreenCodingTuiApp
+    from loushang.coding.ui.screen_loop import run_screen_coding_tui
 
     stdout = StringIO()
-    app = NativeCodingTuiApp(
+    app = ScreenCodingTuiApp(
         model_label="kimi",
         cwd="/repo",
         branch="main",
@@ -641,7 +641,7 @@ def test_native_loop_escape_runs_pending_steer_before_unsubmitted_composer_text(
         return None
 
     result = asyncio.run(
-        run_native_coding_tui(
+        run_screen_coding_tui(
             app=app,
             stdin=_TimedTtyChunkInput(
                 (0.0, "start\r"),
@@ -661,12 +661,12 @@ def test_native_loop_escape_runs_pending_steer_before_unsubmitted_composer_text(
     assert app.composer.value == "draft"
 
 
-def test_native_loop_renders_pending_steer_stream_after_escape_interrupt() -> None:
-    from loushang.coding.ui.native_app import NativeCodingTuiApp
-    from loushang.coding.ui.native_loop import run_native_coding_tui
+def test_screen_loop_renders_pending_steer_stream_after_escape_interrupt() -> None:
+    from loushang.coding.ui.screen_app import ScreenCodingTuiApp
+    from loushang.coding.ui.screen_loop import run_screen_coding_tui
 
     stdout = StringIO()
-    app = NativeCodingTuiApp(
+    app = ScreenCodingTuiApp(
         model_label="kimi",
         cwd="/repo",
         branch="main",
@@ -686,7 +686,7 @@ def test_native_loop_renders_pending_steer_stream_after_escape_interrupt() -> No
         return None
 
     result = asyncio.run(
-        run_native_coding_tui(
+        run_screen_coding_tui(
             app=app,
             stdin=_TimedTtyChunkInput((0.0, "start\r"), (0.01, "\x1b"), (0.2, "")),
             stdout=stdout,
@@ -703,12 +703,12 @@ def test_native_loop_renders_pending_steer_stream_after_escape_interrupt() -> No
     assert "queued response done" in rendered
 
 
-def test_native_loop_ignores_running_steer_duplicate_on_interrupt() -> None:
-    from loushang.coding.ui.native_app import NativeCodingTuiApp
-    from loushang.coding.ui.native_loop import run_native_coding_tui
+def test_screen_loop_ignores_running_steer_duplicate_on_interrupt() -> None:
+    from loushang.coding.ui.screen_app import ScreenCodingTuiApp
+    from loushang.coding.ui.screen_loop import run_screen_coding_tui
 
     stdout = StringIO()
-    app = NativeCodingTuiApp(model_label="kimi", cwd="/repo", branch="main", session_label="abcd", now=_Clock([10.0, 10.5, 11.0]))
+    app = ScreenCodingTuiApp(model_label="kimi", cwd="/repo", branch="main", session_label="abcd", now=_Clock([10.0, 10.5, 11.0]))
     prompts: list[str] = []
     steers: list[str] = []
 
@@ -724,7 +724,7 @@ def test_native_loop_ignores_running_steer_duplicate_on_interrupt() -> None:
         return None
 
     result = asyncio.run(
-        run_native_coding_tui(
+        run_screen_coding_tui(
             app=app,
             stdin=_TimedTtyChunkInput((0.0, "start\r"), (0.01, "follow\r"), (0.02, "\x1b")),
             stdout=stdout,
@@ -741,12 +741,12 @@ def test_native_loop_ignores_running_steer_duplicate_on_interrupt() -> None:
     assert prompts == ["follow"]
 
 
-def test_native_loop_abort_uses_first_pending_steer_before_running_steer() -> None:
-    from loushang.coding.ui.native_app import NativeCodingTuiApp
-    from loushang.coding.ui.native_loop import run_native_coding_tui
+def test_screen_loop_abort_uses_first_pending_steer_before_running_steer() -> None:
+    from loushang.coding.ui.screen_app import ScreenCodingTuiApp
+    from loushang.coding.ui.screen_loop import run_screen_coding_tui
 
     stdout = StringIO()
-    app = NativeCodingTuiApp(model_label="kimi", cwd="/repo", branch="main", session_label="abcd", now=_Clock([10.0, 10.5, 11.0]))
+    app = ScreenCodingTuiApp(model_label="kimi", cwd="/repo", branch="main", session_label="abcd", now=_Clock([10.0, 10.5, 11.0]))
     app.state.pending_steers.append("预先排队")
     prompts: list[str] = []
     steers: list[str] = []
@@ -763,7 +763,7 @@ def test_native_loop_abort_uses_first_pending_steer_before_running_steer() -> No
         return None
 
     result = asyncio.run(
-        run_native_coding_tui(
+        run_screen_coding_tui(
             app=app,
             stdin=_TimedTtyChunkInput((0.0, "start\r"), (0.01, "follow\r"), (0.02, "\x1b")),
             stdout=stdout,
@@ -781,16 +781,16 @@ def test_native_loop_abort_uses_first_pending_steer_before_running_steer() -> No
     assert app.state.pending_steers == ["follow"]
 
 
-def test_native_loop_waits_for_abort_settle_before_running_popped_pending_steer() -> None:
+def test_screen_loop_waits_for_abort_settle_before_running_popped_pending_steer() -> None:
     from loushang.coding.ui.controller import CodingUiController
     from loushang.coding.ui.mode import (
-        _native_abort_handler,
-        _native_prompt_handler,
-        _native_text_handler,
+        _screen_abort_handler,
+        _screen_prompt_handler,
+        _screen_text_handler,
     )
-    from loushang.coding.ui.playback import NativeTuiLoopPlayback
+    from loushang.coding.ui.playback import ScreenTuiLoopPlayback
 
-    playback = NativeTuiLoopPlayback()
+    playback = ScreenTuiLoopPlayback()
     session = _AbortSettlingSession()
     controller = CodingUiController(session=session)
     fresh_prompt = "浪潮楼上平台介绍一下，只回答楼上平台，不要回答上一轮问题"
@@ -800,9 +800,9 @@ def test_native_loop_waits_for_abort_settle_before_running_popped_pending_steer(
         (0.01, f"{fresh_prompt}\r"),
         (0.02, "\x1b"),
         (0.12, ""),
-        handle_prompt=_native_prompt_handler(app=playback.app, controller=controller, stderr=StringIO(), verbose=False),
-        handle_steer=_native_text_handler(app=playback.app, dispatch=controller.steer, label="Steering failed"),
-        on_abort=_native_abort_handler(controller),
+        handle_prompt=_screen_prompt_handler(app=playback.app, controller=controller, stderr=StringIO(), verbose=False),
+        handle_steer=_screen_text_handler(app=playback.app, dispatch=controller.steer, label="Steering failed"),
+        on_abort=_screen_abort_handler(controller),
     )
 
     assert result.exit_code == 0
@@ -815,18 +815,18 @@ def test_native_loop_waits_for_abort_settle_before_running_popped_pending_steer(
     assert "Request cancelled" not in result.text
 
 
-def test_native_loop_dispatches_session_command_without_prompting_agent() -> None:
+def test_screen_loop_dispatches_session_command_without_prompting_agent() -> None:
     from loushang.coding.ui.controller import CodingUiController
-    from loushang.coding.ui.mode import _native_prompt_handler
-    from loushang.coding.ui.playback import NativeTuiLoopPlayback
+    from loushang.coding.ui.mode import _screen_prompt_handler
+    from loushang.coding.ui.playback import ScreenTuiLoopPlayback
 
-    playback = NativeTuiLoopPlayback()
+    playback = ScreenTuiLoopPlayback()
     session = _NameCommandSession()
     controller = CodingUiController(session=session)
 
     result = playback.run(
         (0.0, "/name Project Alpha\r"),
-        handle_prompt=_native_prompt_handler(app=playback.app, controller=controller, stderr=StringIO(), verbose=False),
+        handle_prompt=_screen_prompt_handler(app=playback.app, controller=controller, stderr=StringIO(), verbose=False),
     )
 
     assert result.exit_code == 0
@@ -837,32 +837,32 @@ def test_native_loop_dispatches_session_command_without_prompting_agent() -> Non
 
 
 def test_pop_interrupt_pending_steer_returns_none_when_queue_empty() -> None:
-    from loushang.coding.ui.native_app import NativeCodingTuiApp
-    from loushang.coding.ui.native_loop import _pop_interrupt_pending_steer
+    from loushang.coding.ui.screen_app import ScreenCodingTuiApp
+    from loushang.coding.ui.screen_loop import _pop_interrupt_pending_steer
 
-    app = NativeCodingTuiApp(model_label="kimi", cwd="/repo", branch="main", session_label="abcd")
+    app = ScreenCodingTuiApp(model_label="kimi", cwd="/repo", branch="main", session_label="abcd")
 
     assert _pop_interrupt_pending_steer(app) is None
 
 
 def test_pop_interrupt_pending_steer_uses_queue_fifo() -> None:
-    from loushang.coding.ui.native_app import NativeCodingTuiApp
-    from loushang.coding.ui.native_loop import _pop_interrupt_pending_steer
+    from loushang.coding.ui.screen_app import ScreenCodingTuiApp
+    from loushang.coding.ui.screen_loop import _pop_interrupt_pending_steer
 
-    app = NativeCodingTuiApp(model_label="kimi", cwd="/repo", branch="main", session_label="abcd")
+    app = ScreenCodingTuiApp(model_label="kimi", cwd="/repo", branch="main", session_label="abcd")
     app.state.pending_steers.extend(["预先排队", "follow"])
 
     assert _pop_interrupt_pending_steer(app) == "预先排队"
     assert app.state.pending_steers == ["follow"]
 
 
-def test_native_loop_renders_streaming_updates_without_waiting_for_keyboard() -> None:
-    from loushang.coding.ui.native_app import NativeCodingTuiApp
-    from loushang.coding.ui.native_loop import run_native_coding_tui
+def test_screen_loop_renders_streaming_updates_without_waiting_for_keyboard() -> None:
+    from loushang.coding.ui.screen_app import ScreenCodingTuiApp
+    from loushang.coding.ui.screen_loop import run_screen_coding_tui
 
     stdout = StringIO()
     stdin = _TimedTtyChunkInput((0.0, "go\r"), (0.2, ""))
-    app = NativeCodingTuiApp(model_label="kimi", cwd="/repo", branch="main", session_label="abcd")
+    app = ScreenCodingTuiApp(model_label="kimi", cwd="/repo", branch="main", session_label="abcd")
 
     async def handle_prompt(_text: str) -> int | None:
         app.begin_assistant()
@@ -872,7 +872,7 @@ def test_native_loop_renders_streaming_updates_without_waiting_for_keyboard() ->
         return None
 
     result = asyncio.run(
-        run_native_coding_tui(
+        run_screen_coding_tui(
             app=app,
             stdin=stdin,
             stdout=stdout,
@@ -889,13 +889,13 @@ def test_native_loop_renders_streaming_updates_without_waiting_for_keyboard() ->
     assert "first chunk second chunk" in rendered
 
 
-def test_native_loop_wakes_stream_render_before_active_interval() -> None:
-    from loushang.coding.ui.native_app import NativeCodingTuiApp
-    from loushang.coding.ui.native_loop import run_native_coding_tui
+def test_screen_loop_wakes_stream_render_before_active_interval() -> None:
+    from loushang.coding.ui.screen_app import ScreenCodingTuiApp
+    from loushang.coding.ui.screen_loop import run_screen_coding_tui
 
     stdout = StringIO()
     stdin = _TimedTtyChunkInput((0.0, "go\r"), (0.1, ""))
-    app = NativeCodingTuiApp(model_label="kimi", cwd="/repo", branch="main", session_label="abcd")
+    app = ScreenCodingTuiApp(model_label="kimi", cwd="/repo", branch="main", session_label="abcd")
 
     async def handle_prompt(_text: str) -> int | None:
         app.begin_assistant()
@@ -905,7 +905,7 @@ def test_native_loop_wakes_stream_render_before_active_interval() -> None:
         return None
 
     result = asyncio.run(
-        run_native_coding_tui(
+        run_screen_coding_tui(
             app=app,
             stdin=stdin,
             stdout=stdout,

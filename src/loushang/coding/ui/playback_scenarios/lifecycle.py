@@ -3,17 +3,17 @@ from __future__ import annotations
 import asyncio
 
 from loushang.coding.ui.playback import (
-    NativeTuiInputPlaybackResult,
-    NativeTuiInputScenario,
-    NativeTuiLoopScenario,
+    ScreenTuiInputPlaybackResult,
+    ScreenTuiInputScenario,
+    ScreenTuiLoopScenario,
 )
 from loushang.coding.ui.playback_scenarios.budgets import INTERACTION_FRAME_BUDGET
-from loushang.coding.ui.playback_suite import NativePlaybackScenarioSpec
+from loushang.coding.ui.playback_suite import ScreenPlaybackScenarioSpec
 
 
-def _run_idle_escape_clears_draft() -> NativeTuiInputPlaybackResult:
+def _run_idle_escape_clears_draft() -> ScreenTuiInputPlaybackResult:
     result = (
-        NativeTuiInputScenario(width=80, height=12)
+        ScreenTuiInputScenario(width=80, height=12)
         .render()
         .type_text("draft")
         .escape()
@@ -28,9 +28,9 @@ def _run_idle_escape_clears_draft() -> NativeTuiInputPlaybackResult:
     return result
 
 
-def _run_running_steer_queued() -> NativeTuiInputPlaybackResult:
+def _run_running_steer_queued() -> ScreenTuiInputPlaybackResult:
     result = (
-        NativeTuiInputScenario(width=80, height=12)
+        ScreenTuiInputScenario(width=80, height=12)
         .with_running_prompt("old")
         .render()
         .type_text("change")
@@ -48,9 +48,9 @@ def _run_running_steer_queued() -> NativeTuiInputPlaybackResult:
     return result
 
 
-def _run_running_escape_keeps_queued_steer() -> NativeTuiInputPlaybackResult:
+def _run_running_escape_keeps_queued_steer() -> ScreenTuiInputPlaybackResult:
     result = (
-        NativeTuiInputScenario(width=80, height=12)
+        ScreenTuiInputScenario(width=80, height=12)
         .with_running_prompt("old")
         .with_pending_steers("queued")
         .render()
@@ -67,8 +67,8 @@ def _run_running_escape_keeps_queued_steer() -> NativeTuiInputPlaybackResult:
     return result
 
 
-def _run_idle_escape_pops_pending_steer() -> NativeTuiInputPlaybackResult:
-    result = NativeTuiInputScenario(width=80, height=12).with_pending_steers("queued").render().escape().run()
+def _run_idle_escape_pops_pending_steer() -> ScreenTuiInputPlaybackResult:
+    result = ScreenTuiInputScenario(width=80, height=12).with_pending_steers("queued").render().escape().run()
     result.assert_steer_texts("queued")
     result.assert_pending_steers()
     result.assert_visible_not_contains("Messages to be submitted after next tool call")
@@ -79,7 +79,7 @@ def _run_idle_escape_pops_pending_steer() -> NativeTuiInputPlaybackResult:
 
 
 def _run_escape_pending_steer() -> object:
-    scenario = NativeTuiLoopScenario()
+    scenario = ScreenTuiLoopScenario()
     prompts: list[str] = []
     steers: list[str] = []
 
@@ -123,7 +123,7 @@ def _run_escape_pending_steer() -> object:
 
 
 def _run_escape_pending_steer_fifo() -> object:
-    scenario = NativeTuiLoopScenario().with_pending_steers("prequeued")
+    scenario = ScreenTuiLoopScenario().with_pending_steers("prequeued")
     prompts: list[str] = []
     steers: list[str] = []
 
@@ -159,7 +159,7 @@ def _run_escape_pending_steer_fifo() -> object:
 
 
 def _run_escape_pending_steer_preserves_draft() -> object:
-    scenario = NativeTuiLoopScenario().with_pending_steers("queued")
+    scenario = ScreenTuiLoopScenario().with_pending_steers("queued")
     prompts: list[str] = []
 
     async def handle_prompt(text: str) -> None:
@@ -187,8 +187,8 @@ def _run_escape_pending_steer_preserves_draft() -> object:
     return result
 
 
-def _run_native_loop_ctrl_c_abort_running() -> object:
-    scenario = NativeTuiLoopScenario()
+def _run_screen_loop_ctrl_c_abort_running() -> object:
+    scenario = ScreenTuiLoopScenario()
     prompts: list[str] = []
     aborts: list[str] = []
 
@@ -220,9 +220,9 @@ def _run_native_loop_ctrl_c_abort_running() -> object:
     return result
 
 
-def _run_running_follow_up_queued() -> NativeTuiInputPlaybackResult:
+def _run_running_follow_up_queued() -> ScreenTuiInputPlaybackResult:
     result = (
-        NativeTuiInputScenario(width=80, height=12)
+        ScreenTuiInputScenario(width=80, height=12)
         .with_running_prompt("old")
         .render()
         .type_text("follow")
@@ -239,9 +239,9 @@ def _run_running_follow_up_queued() -> NativeTuiInputPlaybackResult:
     return result
 
 
-def _run_keyboard_alt_enter_follow_up() -> NativeTuiInputPlaybackResult:
+def _run_keyboard_alt_enter_follow_up() -> ScreenTuiInputPlaybackResult:
     result = (
-        NativeTuiInputScenario(width=80, height=12)
+        ScreenTuiInputScenario(width=80, height=12)
         .with_running_prompt("active")
         .render()
         .type_text("follow-up through raw alt enter")
@@ -259,52 +259,52 @@ def _run_keyboard_alt_enter_follow_up() -> NativeTuiInputPlaybackResult:
 
 
 LIFECYCLE_SCENARIOS = (
-    NativePlaybackScenarioSpec(
+    ScreenPlaybackScenarioSpec(
         name="idle-escape-clears-draft",
         description="Clear an idle composer draft with ESC without aborting a run.",
         run=_run_idle_escape_clears_draft,
     ),
-    NativePlaybackScenarioSpec(
+    ScreenPlaybackScenarioSpec(
         name="running-steer-queued",
         description="Queue a submitted steer while a prompt is running.",
         run=_run_running_steer_queued,
     ),
-    NativePlaybackScenarioSpec(
+    ScreenPlaybackScenarioSpec(
         name="running-escape-keeps-queued-steer",
         description="Abort a running prompt without dropping an existing queued steer.",
         run=_run_running_escape_keeps_queued_steer,
     ),
-    NativePlaybackScenarioSpec(
+    ScreenPlaybackScenarioSpec(
         name="idle-escape-pops-pending-steer",
         description="Pop and execute the first pending steer when ESC is pressed while idle.",
         run=_run_idle_escape_pops_pending_steer,
     ),
-    NativePlaybackScenarioSpec(
+    ScreenPlaybackScenarioSpec(
         name="escape-pending-steer",
-        description="Exercise ESC with a queued steer through the native loop.",
+        description="Exercise ESC with a queued steer through the screen loop.",
         run=_run_escape_pending_steer,
     ),
-    NativePlaybackScenarioSpec(
+    ScreenPlaybackScenarioSpec(
         name="escape-pending-steer-fifo",
         description="Preserve pending steer FIFO order when ESC interrupts a running prompt.",
         run=_run_escape_pending_steer_fifo,
     ),
-    NativePlaybackScenarioSpec(
+    ScreenPlaybackScenarioSpec(
         name="escape-pending-steer-preserves-draft",
         description="Run an interrupt pending steer without clearing an unsubmitted composer draft.",
         run=_run_escape_pending_steer_preserves_draft,
     ),
-    NativePlaybackScenarioSpec(
-        name="native-loop-ctrl-c-abort-running",
-        description="Abort a running native loop prompt via raw Ctrl-C without clearing the screen.",
-        run=_run_native_loop_ctrl_c_abort_running,
+    ScreenPlaybackScenarioSpec(
+        name="screen-loop-ctrl-c-abort-running",
+        description="Abort a running screen loop prompt via raw Ctrl-C without clearing the screen.",
+        run=_run_screen_loop_ctrl_c_abort_running,
     ),
-    NativePlaybackScenarioSpec(
+    ScreenPlaybackScenarioSpec(
         name="running-follow-up-queued",
         description="Queue a follow-up while a prompt is running.",
         run=_run_running_follow_up_queued,
     ),
-    NativePlaybackScenarioSpec(
+    ScreenPlaybackScenarioSpec(
         name="keyboard-alt-enter-follow-up",
         description="Route raw Alt+Enter to follow-up submission while running.",
         run=_run_keyboard_alt_enter_follow_up,

@@ -118,10 +118,10 @@ def test_status_line_separator_and_style_mapping() -> None:
     assert status_line_style_mode(StatusLineSettings(style="plain")) == "plain"
 
 
-def test_native_app_statusline_preview_snapshot_includes_live_queue_and_message_state() -> None:
-    from loushang.coding.ui.native_app import NativeCodingTuiApp
+def test_screen_app_statusline_preview_snapshot_includes_live_queue_and_message_state() -> None:
+    from loushang.coding.ui.screen_app import ScreenCodingTuiApp
 
-    app = NativeCodingTuiApp(
+    app = ScreenCodingTuiApp(
         model_label="moonshot/kimi-for-coding",
         cwd="/repo",
         branch="main",
@@ -143,10 +143,10 @@ def test_native_app_statusline_preview_snapshot_includes_live_queue_and_message_
     )
 
 
-def test_native_app_real_status_bar_uses_shared_status_line_builder() -> None:
-    from loushang.coding.ui.native_app import NativeCodingTuiApp
+def test_screen_app_real_status_bar_uses_shared_status_line_builder() -> None:
+    from loushang.coding.ui.screen_app import ScreenCodingTuiApp
 
-    app = NativeCodingTuiApp(
+    app = ScreenCodingTuiApp(
         model_label="moonshot/kimi-for-coding",
         cwd="/repo",
         branch="main",

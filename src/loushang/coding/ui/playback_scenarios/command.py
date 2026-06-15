@@ -4,22 +4,22 @@ from collections.abc import Callable
 from io import StringIO
 
 from loushang.coding.ui.controller import CodingUiController
-from loushang.coding.ui.mode import _native_prompt_handler
-from loushang.coding.ui.native_surfaces import NativeSurfaceManager
+from loushang.coding.ui.mode import _screen_prompt_handler
 from loushang.coding.ui.playback import (
-    NativeTuiInputPlaybackResult,
-    NativeTuiInputScenario,
-    NativeTuiLoopPlayback,
+    ScreenTuiInputPlaybackResult,
+    ScreenTuiInputScenario,
+    ScreenTuiLoopPlayback,
 )
 from loushang.coding.ui.playback_fakes import SessionCommandPlaybackSession
 from loushang.coding.ui.playback_scenarios.budgets import INTERACTION_FRAME_BUDGET
-from loushang.coding.ui.playback_suite import NativePlaybackScenarioSpec
+from loushang.coding.ui.playback_suite import ScreenPlaybackScenarioSpec
+from loushang.coding.ui.screen_surfaces import ScreenSurfaceManager
 from loushang.coding.ui.status_provider import CodingTuiStatusProvider
 
 
-def _run_local_command() -> NativeTuiInputPlaybackResult:
+def _run_local_command() -> ScreenTuiInputPlaybackResult:
     result = (
-        NativeTuiInputScenario(width=80, height=12)
+        ScreenTuiInputScenario(width=80, height=12)
         .with_local_commands("/local")
         .render()
         .type_text("/local")
@@ -37,7 +37,7 @@ def _run_local_command() -> NativeTuiInputPlaybackResult:
 
 
 def _run_session_name_command() -> object:
-    playback = NativeTuiLoopPlayback(width=100, height=18, model_label="moonshot/kimi-for-coding")
+    playback = ScreenTuiLoopPlayback(width=100, height=18, model_label="moonshot/kimi-for-coding")
     session = SessionCommandPlaybackSession()
     controller = CodingUiController(session=session)
     manager = _surface_manager(playback.app, session=session)
@@ -45,7 +45,7 @@ def _run_session_name_command() -> object:
     result = playback.run(
         (0.00, "/name Project Alpha\r"),
         (0.03, ""),
-        handle_prompt=_native_prompt_handler(
+        handle_prompt=_screen_prompt_handler(
             app=playback.app,
             controller=controller,
             stderr=StringIO(),
@@ -66,7 +66,7 @@ def _run_session_name_command() -> object:
 
 
 def _run_session_command_error() -> object:
-    playback = NativeTuiLoopPlayback(width=100, height=18, model_label="moonshot/kimi-for-coding")
+    playback = ScreenTuiLoopPlayback(width=100, height=18, model_label="moonshot/kimi-for-coding")
     session = SessionCommandPlaybackSession()
     controller = CodingUiController(session=session)
     manager = _surface_manager(playback.app, session=session)
@@ -74,7 +74,7 @@ def _run_session_command_error() -> object:
     result = playback.run(
         (0.00, "/export /root/out.jsonl\r"),
         (0.03, ""),
-        handle_prompt=_native_prompt_handler(
+        handle_prompt=_screen_prompt_handler(
             app=playback.app,
             controller=controller,
             stderr=StringIO(),
@@ -95,7 +95,7 @@ def _run_session_command_error() -> object:
 
 
 def _run_unknown_slash_prompt() -> object:
-    playback = NativeTuiLoopPlayback(width=100, height=18, model_label="moonshot/kimi-for-coding")
+    playback = ScreenTuiLoopPlayback(width=100, height=18, model_label="moonshot/kimi-for-coding")
     session = SessionCommandPlaybackSession()
     controller = CodingUiController(session=session)
     manager = _surface_manager(playback.app, session=session)
@@ -103,7 +103,7 @@ def _run_unknown_slash_prompt() -> object:
     result = playback.run(
         (0.00, "/unknown keep me\r"),
         (0.03, ""),
-        handle_prompt=_native_prompt_handler(
+        handle_prompt=_screen_prompt_handler(
             app=playback.app,
             controller=controller,
             stderr=StringIO(),
@@ -123,7 +123,7 @@ def _run_unknown_slash_prompt() -> object:
 
 
 def _run_non_executable_session_command() -> object:
-    playback = NativeTuiLoopPlayback(width=100, height=18, model_label="moonshot/kimi-for-coding")
+    playback = ScreenTuiLoopPlayback(width=100, height=18, model_label="moonshot/kimi-for-coding")
     session = SessionCommandPlaybackSession()
     controller = CodingUiController(session=session)
     manager = _surface_manager(playback.app, session=session)
@@ -132,7 +132,7 @@ def _run_non_executable_session_command() -> object:
         (0.00, "/review check dispatch\r"),
         (0.04, "/debugging trace queue\r"),
         (0.08, ""),
-        handle_prompt=_native_prompt_handler(
+        handle_prompt=_screen_prompt_handler(
             app=playback.app,
             controller=controller,
             stderr=StringIO(),
@@ -157,8 +157,8 @@ def _surface_manager(
     *,
     session: object | None = None,
     on_approval: Callable[[dict[str, object]], object] | None = None,
-) -> NativeSurfaceManager:
-    return NativeSurfaceManager(
+) -> ScreenSurfaceManager:
+    return ScreenSurfaceManager(
         app=app,
         session=object() if session is None else session,
         status_provider=_status_provider(app),
@@ -179,33 +179,33 @@ def _status_provider(app: object) -> CodingTuiStatusProvider:
 
 
 COMMAND_ROUTING_SCENARIOS = (
-    NativePlaybackScenarioSpec(
+    ScreenPlaybackScenarioSpec(
         name="local-command",
         description="Route a local command without echoing it as a prompt.",
         run=_run_local_command,
         tags=("command", "local"),
     ),
-    NativePlaybackScenarioSpec(
+    ScreenPlaybackScenarioSpec(
         name="session-name-command",
-        description="Dispatch /name through the native session command path without prompting the agent.",
+        description="Dispatch /name through the screen session command path without prompting the agent.",
         run=_run_session_name_command,
         tags=("command", "session"),
     ),
-    NativePlaybackScenarioSpec(
+    ScreenPlaybackScenarioSpec(
         name="session-command-error",
-        description="Render session command errors through the native command path without prompting the agent.",
+        description="Render session command errors through the screen command path without prompting the agent.",
         run=_run_session_command_error,
         tags=("command", "session"),
     ),
-    NativePlaybackScenarioSpec(
+    ScreenPlaybackScenarioSpec(
         name="unknown-slash-prompt",
         description="Leave unknown slash-prefixed prompts on the agent prompt path.",
         run=_run_unknown_slash_prompt,
         tags=("command", "prompt"),
     ),
-    NativePlaybackScenarioSpec(
+    ScreenPlaybackScenarioSpec(
         name="non-executable-session-command",
-        description="Leave prompt and skill slash commands on the agent prompt path in native TUI.",
+        description="Leave prompt and skill slash commands on the agent prompt path in screen TUI.",
         run=_run_non_executable_session_command,
         tags=("command", "session", "prompt"),
     ),
