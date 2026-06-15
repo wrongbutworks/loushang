@@ -304,6 +304,12 @@ class CommandSurface(SelectionSurface):
 
 
 class SettingsSurface(SelectionSurface):
+    """Legacy compatibility surface for old settings-list workflows.
+
+    New settings pages should compose PageScaffold with SearchableList and
+    product-owned setting adapters instead of depending on this surface.
+    """
+
     def __init__(
         self,
         items: list[SelectItem | SettingItem] | tuple[SelectItem | SettingItem, ...],
