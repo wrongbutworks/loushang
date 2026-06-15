@@ -28,6 +28,11 @@ Settings-style pages should compose existing widgets rather than owning custom
 layout logic. See [Settings Page Composition](./settings-page-composition.md)
 for the recommended `PageScaffold` + tabs + `SearchableList` shape.
 
+Dense data pages should use `DataGrid` when they need cell/column focus,
+filtering, sorting, fixed columns, mutation, or inline editing. Filter controls
+remain page composition; the grid owns row-view semantics and active-state
+repair.
+
 ## Spec Template
 
 Each UI part spec should include:
