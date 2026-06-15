@@ -1,4 +1,4 @@
-from loushang.harness.runner import run_agent
+# ruff: noqa: I001
 from loushang.harness.types import (
     AgentEventSink,
     AgentRunMode,
@@ -6,6 +6,7 @@ from loushang.harness.types import (
     AgentRunSpec,
     AgentRunStatus,
 )
+from loushang.harness.runner import run_agent
 
 __all__ = [
     "AgentEventSink",
