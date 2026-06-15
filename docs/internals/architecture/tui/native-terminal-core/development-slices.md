@@ -124,7 +124,6 @@ Deliver:
 - AutocompleteSurface
 - CommandSurface
 - SelectionSurface
-- SettingsSurface
 - ApprovalSurface
 - DialogSurface
 

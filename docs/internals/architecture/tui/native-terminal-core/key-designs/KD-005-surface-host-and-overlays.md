@@ -61,7 +61,7 @@ and terminal writer boundaries.
 - autocomplete surface
 - command surface
 - selection surface
-- settings surface
+- settings page hosted as a product surface
 - approval surface
 - dialog surface
 - help and changelog viewer surfaces

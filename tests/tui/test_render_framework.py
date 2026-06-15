@@ -19,8 +19,6 @@ from loushang.tui import (
     RenderResult,
     ScreenRoot,
     SelectItem,
-    SettingItem,
-    SettingsSurface,
     Surface,
     SurfaceHost,
     TerminalSize,
@@ -288,8 +286,13 @@ def test_surface_host_can_close_on_call_site_intent_policy() -> None:
     host.open_surface(Surface(renderable=command, focus_target=command))
     command_intents = host.route_input(InputEvent(kind="key", key="enter"), close_on_intents=("command",))
 
-    settings = SettingsSurface([SettingItem(id="statusline", label="Status line", enabled=True)])
-    host.open_surface(Surface(renderable=settings, focus_target=settings))
+    settings_target = ReturningFocusTarget(InputIntent(kind="setting", text="statusline", note="true"))
+    host.open_surface(
+        Surface(
+            renderable=TextRenderable(("statusline",), []),
+            focus_target=settings_target,
+        )
+    )
     setting_intents = host.route_input(InputEvent(kind="key", key="enter"), close_on_intents=("setting",))
 
     approval = ApprovalSurface(action="Run command")

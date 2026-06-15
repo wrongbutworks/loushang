@@ -17,8 +17,6 @@ from loushang.tui import (
     RenderConstraints,
     RenderLine,
     RenderResult,
-    SettingItem,
-    SettingsSurface,
     SurfaceHost,
 )
 from loushang.tui.cell_width import strip_control_sequences
@@ -499,20 +497,20 @@ def test_native_surface_manager_settings_page_statusline_submit_persists_setting
     assert app.state.statusline_settings.style == "muted"
 
 
-def test_native_surface_manager_ignores_legacy_settings_surface_submit() -> None:
+def test_native_surface_manager_ignores_setting_submit_without_settings_page() -> None:
     app = _app()
     manager = _manager(app, _Session())
-    legacy_surface = NativeSurfaceView(
+    generic_surface = NativeSurfaceView(
         title="Settings",
         purpose="settings",
-        content=SettingsSurface((SettingItem(id="statusline", label="Status line", enabled=True),), enable_search=True),
+        content=_CursorContent(),
         presentation="bottom-exclusive",
     )
-    app.active_surface = legacy_surface
+    app.active_surface = generic_surface
 
     asyncio.run(manager.handle_surface_intent(InputIntent(kind="setting", text="statusline", note="false")))
 
-    assert app.active_surface is legacy_surface
+    assert app.active_surface is generic_surface
     assert app.state.statusline_visible is True
     assert app.state.status_message is None
 
