@@ -5,8 +5,8 @@ import time
 import traceback
 from typing import Any, Mapping, Sequence, TextIO
 
-from loushang.coding.ui.events import CodingUiEventRenderer
 from loushang.coding.ui.model import ensure_usable_session_model
+from loushang.coding.ui.plain_events import PlainCodingEventRenderer
 from loushang.coding.ui.plain_renderer import PlainCodingUiRenderer
 from loushang.coding.work_shell import CodingWorkShell
 from loushang.work import EventLogBackend
@@ -39,7 +39,7 @@ async def run_prompt_command(
     """Run one product prompt and render the stable coding transcript."""
 
     renderer = PlainCodingUiRenderer(stdout=stdout, stderr=stderr)
-    event_renderer = CodingUiEventRenderer(renderer, render_user_messages=False)
+    event_renderer = PlainCodingEventRenderer(renderer, render_user_messages=False)
 
     def unsubscribe() -> None:
         return None
@@ -110,7 +110,7 @@ async def run_prompt_command(
 async def _run_turn(
     session: Any,
     renderer: PlainCodingUiRenderer,
-    event_renderer: CodingUiEventRenderer,
+    event_renderer: PlainCodingEventRenderer,
     prompt: str,
     *,
     images: list[object] | None = None,

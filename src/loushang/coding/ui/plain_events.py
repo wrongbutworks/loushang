@@ -9,7 +9,7 @@ from loushang.coding.ui.tool_blocks import ToolCallSnapshot, ToolTranscriptProje
 
 
 @dataclass
-class CodingUiEventRenderer:
+class PlainCodingEventRenderer:
     renderer: PlainCodingUiRenderer
     tool_definition_resolver: ToolDefinitionResolver | None = None
     max_tool_body_lines: int = 8
@@ -146,4 +146,4 @@ def _is_intentional_abort_error(stop_reason: object, error_message: object) -> b
     } or "aborted" in normalized
 
 
-__all__ = ["CodingUiEventRenderer"]
+__all__ = ["PlainCodingEventRenderer"]
