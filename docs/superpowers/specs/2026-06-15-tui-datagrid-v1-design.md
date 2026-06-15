@@ -142,7 +142,8 @@ These decisions are fixed for implementation planning:
 - Space is the only default keyboard selection action. Cursor movement never
   implicitly changes persistent selection.
 - Column cursor selection selects all enabled cells in the active visible
-  column. Disabled rows and disabled cells are skipped.
+  column only when `selection_mode="multi"`. Disabled rows and disabled cells
+  are skipped.
 - Built-in formatter invalid values default to empty text. Examples may choose
   explicit ASCII placeholders such as `N/A`.
 - Constructor shorthand rows get deterministic generated keys. Callers that
@@ -159,6 +160,8 @@ from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
 from decimal import Decimal
 from typing import Literal
+
+from loushang.tui.theme import ThemeResolver
 
 DataGridAlign = Literal["left", "right", "center"]
 DataGridCursorMode = Literal["row", "cell", "column", "none"]
@@ -528,8 +531,8 @@ Activation:
 - `enter` activates the current row/cell/column unless editing is active
 - printable text `" "` or key `"space"` toggles selection when selection is
   enabled; otherwise it activates
-- activation returns `DataGridSelect` unless the row has `on_select`, in which
-  case it returns `callback_result(row.on_select())`
+- row-mode activation returns `callback_result(row.on_select())` when the row
+  has `on_select`; cell and column activation always return `DataGridSelect`
 - disabled rows and disabled cells do not activate
 - in row mode, activation returns
   `DataGridSelect(row_key=<active row>, column_key=None, value=None,
@@ -557,8 +560,8 @@ Selection mode controls persistent selection, separate from the active cursor.
 - selecting a row or cell replaces the previous selection
 - row cursor mode selects rows
 - cell cursor mode selects cells
-- column cursor mode selects all enabled cells in the column as a single user
-  action, represented as cell selection
+- column cursor mode does not persist selection because V1 has no
+  selected-column state and single mode cannot select multiple cells
 
 `selection_mode="multi"`:
 
@@ -587,6 +590,8 @@ Selection input return rules:
 - Space returns `DataGridSelectionChange` when selection changed.
 - Space returns `False` when the target is already selected in single-selection
   mode.
+- Space returns `False` in `selection_mode="single"` with
+  `cursor_mode="column"` because V1 has no selected-column state.
 - Space returns `None` when there is no selectable target or
   `selection_mode="none"` and activation also has no target.
 - `selection_mode="none"` never stores selection and Space follows activation
