@@ -108,7 +108,7 @@ class PageScaffoldDemo(FocusableMixin):
         if context.focus_region == "header":
             text = f"Header | {self.status} | Left/Right switch | Down/Enter body | q quit"
         else:
-            text = f"Body | {self.status} | Type filter | Down list | Up tabs | Enter select | q quit"
+            text = f"Body | {self.status} | Type filter | Down list | Up tabs | Enter | q quit"
         return text
 
     def _sync_tab_focus_state(self) -> None:
