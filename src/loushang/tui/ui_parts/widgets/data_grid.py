@@ -535,40 +535,48 @@ class DataGrid:
                 cursor = CursorDeclaration(row=len(lines), column=cell_starts[str(self._active_column_key)])
             lines.append(RenderLine(style_text(header_text, self.theme, *header_tokens)))
 
-        top_rows = tuple(row for row in self._rows if row.pinned == "top")
-        body_rows = tuple(row for row in self._rows if row.pinned is None)
-        bottom_rows = tuple(row for row in self._rows if row.pinned == "bottom")
+        top_rows = self._pinned_top_rows()
+        body_rows = self._view_body_rows()
+        bottom_rows = self._pinned_bottom_rows()
         reserved_for_pinned = len(top_rows) + len(bottom_rows)
         body_budget = max(0, height - len(lines) - reserved_for_pinned)
         self._ensure_active_body_visible(body_rows, body_budget)
-        body_rows = body_rows[self._first_visible_row_index : self._first_visible_row_index + body_budget]
+        visible_body_rows = body_rows[self._first_visible_row_index : self._first_visible_row_index + body_budget]
 
-        for row in (*top_rows, *body_rows, *bottom_rows):
+        for row in top_rows:
             if len(lines) >= height:
                 break
-            line_index = len(lines)
-            row_is_active = row.key == self._active_row_key and row.pinned is None and not row.disabled
-            if (
-                self.focused
-                and row_is_active
-                and self.cursor_mode in {"row", "cell"}
-                and cursor is None
-            ):
-                cursor_column = 0
-                if self.cursor_mode == "cell" and self._active_column_key in cell_starts:
-                    cursor_column = self._active_cell_cursor_column(
-                        row,
-                        render_columns,
-                        widths,
-                        cell_starts,
-                    )
-                cursor = CursorDeclaration(row=line_index, column=cursor_column)
             lines.append(RenderLine(self._row_line(row, render_columns, widths, target_width, label_width=label_width)))
 
-        if not self._rows and len(lines) < height:
-            empty_cells = (self.empty_text,) + tuple("" for _ in render_columns[1:])
-            text = _grid_line(empty_cells, render_columns, widths, target_width, label_width=label_width)
-            lines.append(RenderLine(style_text(text, self.theme, "widget.dataGrid.empty")))
+        if visible_body_rows:
+            for row in visible_body_rows:
+                if len(lines) >= height:
+                    break
+                line_index = len(lines)
+                row_is_active = row.key == self._active_row_key and row.pinned is None and not row.disabled
+                if (
+                    self.focused
+                    and row_is_active
+                    and self.cursor_mode in {"row", "cell"}
+                    and cursor is None
+                ):
+                    cursor_column = 0
+                    if self.cursor_mode == "cell" and self._active_column_key in cell_starts:
+                        cursor_column = self._active_cell_cursor_column(
+                            row,
+                            render_columns,
+                            widths,
+                            cell_starts,
+                        )
+                    cursor = CursorDeclaration(row=line_index, column=cursor_column)
+                lines.append(RenderLine(self._row_line(row, render_columns, widths, target_width, label_width=label_width)))
+        elif len(lines) < height:
+            lines.append(self._empty_row_line(render_columns, widths, target_width, label_width=label_width))
+
+        for row in bottom_rows:
+            if len(lines) >= height:
+                break
+            lines.append(RenderLine(self._row_line(row, render_columns, widths, target_width, label_width=label_width)))
 
         return RenderResult.from_lines(lines[:height], constraints=constraints, cursor=cursor)
 
@@ -695,9 +703,20 @@ class DataGrid:
         return False
 
     def _repair_state_after_view_change(self) -> None:
+        if self._editing_cell_key is not None and self._editing_cell_key[0] not in self.view_row_keys:
+            self.cancel_edit()
         self._active_row_key = self._repair_row_key(self._active_row_key)
-        if not self._view_body_rows():
+        self._active_column_key = self._repair_column_key(self._active_column_key)
+        if self.cursor_mode == "cell":
+            self._repair_active_cell()
+        body_rows = self._view_body_rows()
+        if not body_rows:
             self._first_visible_row_index = 0
+        else:
+            self._first_visible_row_index = max(
+                0,
+                min(self._first_visible_row_index, max(0, len(body_rows) - 1)),
+            )
 
     def _column_by_key(self, key: str) -> DataGridColumn | None:
         for column in self._columns:
@@ -709,7 +728,7 @@ class DataGrid:
         if self._active_row_key is None:
             return None
         row = self._row_by_key(self._active_row_key)
-        if row is None or row.disabled or row.pinned is not None:
+        if row is None or row.disabled or row.pinned is not None or row.key not in self.view_row_keys:
             return None
         return row
 
@@ -750,7 +769,19 @@ class DataGrid:
         return tuple(selected)
 
     def _enabled_rows(self) -> tuple[_NormalizedRow, ...]:
-        return tuple(row for row in self._rows if not row.disabled and row.pinned is None)
+        return tuple(row for row in self._view_body_rows() if not row.disabled)
+
+    def _empty_row_line(
+        self,
+        columns: Sequence[DataGridColumn],
+        widths: Sequence[int],
+        target_width: int,
+        *,
+        label_width: int,
+    ) -> RenderLine:
+        empty_cells = (self.empty_text,) + tuple("" for _ in columns[1:])
+        text = _grid_line(empty_cells, columns, widths, target_width, label_width=label_width)
+        return RenderLine(style_text(text, self.theme, "widget.dataGrid.empty"))
 
     def _enabled_row_keys(self) -> tuple[str, ...]:
         return tuple(row.key for row in self._enabled_rows())

@@ -152,6 +152,58 @@ def test_data_grid_filter_predicate_exceptions_propagate() -> None:
         grid.set_filter_predicate(lambda row: (_ for _ in ()).throw(RuntimeError("bad predicate")))
 
 
+def test_data_grid_filter_render_navigation_and_empty_body_view() -> None:
+    grid = DataGrid(
+        [DataGridColumn("job", "Job")],
+        [
+            DataGridRow("top", {"job": "Pinned top"}, pinned="top"),
+            DataGridRow("build", {"job": "Build"}),
+            DataGridRow("deploy", {"job": "Deploy"}),
+            DataGridRow("bottom", {"job": "Pinned bottom"}, pinned="bottom"),
+        ],
+        active_row_key="deploy",
+        empty_text="No matches",
+        wrap_rows=False,
+    )
+
+    assert grid.set_filter_query("build") is True
+    assert grid.active_row_key == "build"
+    assert grid.view_row_keys == ("build",)
+    assert grid.handle_input(InputEvent(kind="key", key="down")) is False
+
+    lines = plain_lines(grid, width=32, height=6)
+    assert any("Pinned top" in line for line in lines)
+    assert any("Build" in line for line in lines)
+    assert any("Pinned bottom" in line for line in lines)
+    assert not any("Deploy" in line for line in lines)
+
+    assert grid.set_filter_query("missing") is True
+    assert grid.active_row_key is None
+    lines = plain_lines(grid, width=32, height=6)
+    assert any("Pinned top" in line for line in lines)
+    assert any("No matches" in line for line in lines)
+
+
+def test_data_grid_filtered_large_viewport_formats_only_visible_rows() -> None:
+    formatted: list[int] = []
+
+    def counted_formatter(value: object) -> str:
+        formatted.append(int(value))
+        return f"Item {value}"
+
+    grid = DataGrid(
+        [DataGridColumn("name", "Name", formatter=counted_formatter)],
+        [DataGridRow(str(index), {"name": index}) for index in range(10_000)],
+        active_row_key="9999",
+    )
+
+    assert grid.set_filter_predicate(lambda row: int(row.values["name"]) >= 9_997) is True
+    lines = plain_lines(grid, width=24, height=4)
+
+    assert any("Item 9999" in line for line in lines)
+    assert formatted == [9997, 9998, 9999]
+
+
 def test_data_grid_formatters_cover_text_number_percent_delta_and_compact_values() -> None:
     assert TextFormatter()(None) == ""
     assert TextFormatter(none_text="N/A")(None) == "N/A"
