@@ -11,6 +11,13 @@ from .command_palette import CommandPaletteView as CommandPaletteView
 from .dialog import ConfirmDialog as ConfirmDialog
 from .dialog import Dialog as Dialog
 from .dialog import DialogAction as DialogAction
+from .directory_tree import DirectoryTree as DirectoryTree
+from .directory_tree import DirectoryTreeEntry as DirectoryTreeEntry
+from .directory_tree import DirectoryTreeEntryKind as DirectoryTreeEntryKind
+from .directory_tree import DirectoryTreeRealKind as DirectoryTreeRealKind
+from .directory_tree import DirectoryTreeSelect as DirectoryTreeSelect
+from .directory_tree import PathFilter as PathFilter
+from .directory_tree import PathSortKey as PathSortKey
 from .display import Badge as Badge
 from .display import BadgeKind as BadgeKind
 from .display import KeyValueItem as KeyValueItem
@@ -61,6 +68,11 @@ __all__ = [
     "ConfirmDialog",
     "Dialog",
     "DialogAction",
+    "DirectoryTree",
+    "DirectoryTreeEntry",
+    "DirectoryTreeEntryKind",
+    "DirectoryTreeRealKind",
+    "DirectoryTreeSelect",
     "Form",
     "FormRow",
     "FormValidationResult",
@@ -72,6 +84,8 @@ __all__ = [
     "PageScaffold",
     "PageScaffoldContext",
     "PageScaffoldFooter",
+    "PathFilter",
+    "PathSortKey",
     "ProgressBar",
     "QuestionDialog",
     "RadioGroup",

@@ -312,6 +312,41 @@ def test_tree_view_applies_theme_tokens() -> None:
     assert render_lines(TreeView((), theme=theme), width=10, height=1)[0].startswith("\x1b[90mNo nodes")
 
 
+def test_tree_view_applies_node_theme_tokens_with_focus_priority() -> None:
+    theme = ThemeResolver(
+        defaults={
+            "widget.tree.row": {"color": "white"},
+            "widget.tree.focus": {"bold": True, "color": "green"},
+            "widget.tree.disabled": {"dim": True},
+            "node.folder": {"color": "cyan"},
+            "node.file": {"color": "yellow"},
+            "node.error": {"color": "red"},
+        }
+    )
+    tree = TreeView(
+        (
+            TreeNode(
+                "folder",
+                "folder",
+                expanded=True,
+                theme_token="node.folder",
+                children=(
+                    TreeNode("file", "file", theme_token="node.file"),
+                    TreeNode("disabled", "disabled", disabled=True, theme_token="node.error"),
+                ),
+            ),
+        ),
+        theme=theme,
+    )
+    tree.focus()
+
+    raw = render_lines(tree, width=30, height=4)
+
+    assert raw[0].startswith("\x1b[1;32m> - folder")
+    assert raw[1].startswith("\x1b[33m      file")
+    assert raw[2].startswith("\x1b[2;31m      disabled")
+
+
 def test_widgets_tree_example_imports() -> None:
     namespace = runpy.run_path("examples/tui/49_widgets_tree.py", run_name="__test__")
 

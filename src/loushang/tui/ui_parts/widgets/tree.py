@@ -28,6 +28,7 @@ class TreeNode:
     disabled: bool = False
     expanded: bool = False
     on_select: Callable[[], object] | None = None
+    theme_token: str | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -40,6 +41,7 @@ class _TreeEntry:
     disabled: bool
     expanded: bool
     on_select: Callable[[], object] | None
+    theme_token: str | None
 
 
 @dataclass(init=False, slots=True)
@@ -117,6 +119,7 @@ class TreeView:
             disabled=node.disabled,
             expanded=node.expanded,
             on_select=node.on_select,
+            theme_token=node.theme_token,
         )
         for child in node.children:
             self._add_node(child, depth=depth + 1, parent=node.value)
@@ -328,8 +331,11 @@ class TreeView:
         prefix = "> " if focused_row else "  "
         indent = " " * (entry.depth * self.indent)
         text = truncate_to_width(f"{prefix}{indent}{self._marker(entry)} {entry.label}", max_width=width, ellipsis="")
-        token = "widget.tree.disabled" if entry.disabled else "widget.tree.focus" if focused_row else "widget.tree.row"
-        return style_text(text, self.theme, token)
+        if focused_row:
+            return style_text(text, self.theme, "widget.tree.row", entry.theme_token, "widget.tree.focus")
+        if entry.disabled:
+            return style_text(text, self.theme, "widget.tree.disabled", entry.theme_token)
+        return style_text(text, self.theme, "widget.tree.row", entry.theme_token)
 
     def handle_input(self, event: object) -> object:
         if getattr(event, "kind", "") == "key":
