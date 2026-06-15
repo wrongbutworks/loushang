@@ -91,6 +91,45 @@ def test_coding_ui_does_not_depend_on_legacy_settings_list_primitives() -> None:
     assert offenders == []
 
 
+def test_active_coding_ui_surfaces_do_not_use_legacy_native_product_names() -> None:
+    forbidden = (
+        "NativeCoding",
+        "NativeSurface",
+        "NativeInput",
+        "src/loushang/coding/ui/native_",
+        "tests/coding/test_native_coding_tui",
+        "native_app",
+        "native_events",
+        "native_input",
+        "native_loop",
+        "native_state",
+        "native_surfaces",
+        "native_tui",
+        "test_native_tui",
+    )
+    offenders: list[str] = []
+    roots = (
+        Path("src/loushang/coding/ui"),
+        Path("tests/coding"),
+        Path("docs/internals/architecture/coding"),
+        Path("docs/internals/testing"),
+    )
+    for root in roots:
+        for path in root.rglob("*"):
+            if not path.is_file() or path.suffix not in {".py", ".md"}:
+                continue
+            if path.resolve() == Path(__file__).resolve():
+                continue
+            if "archive" in path.parts or "history" in path.parts:
+                continue
+            text = path.read_text(encoding="utf-8")
+            for token in forbidden:
+                if token in text:
+                    offenders.append(f"{path}:{token}")
+
+    assert offenders == []
+
+
 def _run_python_import_boundary_check(script: str) -> subprocess.CompletedProcess[str]:
     env = os.environ.copy()
     src_path = str(Path.cwd() / "src")

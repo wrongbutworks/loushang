@@ -3,6 +3,11 @@ from __future__ import annotations
 from pathlib import Path
 
 
+def test_testing_docs_use_screen_tui_playback_name() -> None:
+    assert Path("docs/internals/testing/screen-tui-playback.md").exists()
+    assert not Path("docs/internals/testing/native-tui-playback.md").exists()
+
+
 def test_testing_strategy_documents_composer_selection_manual_smoke() -> None:
     text = Path(
         "docs/internals/architecture/tui/native-terminal-core/testing-strategy.md"
@@ -22,7 +27,7 @@ def test_testing_strategy_documents_product_composed_playback() -> None:
     strategy = Path(
         "docs/internals/architecture/tui/native-terminal-core/testing-strategy.md"
     ).read_text(encoding="utf-8")
-    playback = Path("docs/internals/testing/native-tui-playback.md").read_text(
+    playback = Path("docs/internals/testing/screen-tui-playback.md").read_text(
         encoding="utf-8"
     )
 
@@ -39,7 +44,7 @@ def test_testing_strategy_documents_streaming_control_and_live_smoke() -> None:
     strategy = Path(
         "docs/internals/architecture/tui/native-terminal-core/testing-strategy.md"
     ).read_text(encoding="utf-8")
-    playback = Path("docs/internals/testing/native-tui-playback.md").read_text(
+    playback = Path("docs/internals/testing/screen-tui-playback.md").read_text(
         encoding="utf-8"
     )
 
