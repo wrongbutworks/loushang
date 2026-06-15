@@ -5,8 +5,9 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Literal
 
-from loushang.tui.core import RenderConstraints, RenderLine, RenderResult
+from loushang.tui.core import RenderConstraints, RenderResult
 from loushang.tui.theme import ThemeResolver
+from loushang.tui.ui_parts.widgets.tree import TreeNode, TreeView
 
 DirectoryTreeRealKind = Literal["directory", "file"]
 DirectoryTreeEntryKind = Literal["directory", "file", "empty", "error", "sentinel"]
@@ -40,6 +41,19 @@ class DirectoryTreeSelect:
     kind: DirectoryTreeRealKind
 
 
+@dataclass(frozen=True, slots=True)
+class _DirectoryModelNode:
+    entry: DirectoryTreeEntry
+    tree_value: str
+    children: tuple["_DirectoryModelNode", ...] = ()
+    traversable_directory: bool = False
+
+
+@dataclass(slots=True)
+class _ScanBudget:
+    remaining: int
+
+
 @dataclass(init=False, slots=True)
 class DirectoryTree:
     root: str | Path
@@ -55,6 +69,10 @@ class DirectoryTree:
     _root_path: Path = field(init=False, repr=False)
     _active_path: Path | None = field(default=None, init=False, repr=False)
     _initial_expanded_paths: tuple[Path, ...] = field(default=(), init=False, repr=False)
+    _value_to_entry: dict[str, DirectoryTreeEntry] = field(default_factory=dict, init=False, repr=False)
+    _path_to_value: dict[Path, str] = field(default_factory=dict, init=False, repr=False)
+    _traversable_paths: set[Path] = field(default_factory=set, init=False, repr=False)
+    _tree: TreeView = field(init=False, repr=False)
 
     def __init__(
         self,
@@ -92,6 +110,7 @@ class DirectoryTree:
         self._initial_expanded_paths = tuple(
             self._normalize_under_root(Path(path), label="expanded_paths") for path in expanded_paths
         )
+        self._rebuild_tree(preferred_active=self._active_path, preferred_expanded=self._initial_expanded_paths)
 
     @property
     def root_path(self) -> Path:
@@ -100,6 +119,30 @@ class DirectoryTree:
     @property
     def active_path(self) -> Path | None:
         return self._active_path
+
+    @property
+    def expanded_path_set(self) -> frozenset[Path]:
+        return frozenset(
+            entry.path
+            for value in self._tree.expanded_value_set
+            if (entry := self._value_to_entry.get(value)) is not None and entry.path is not None
+        )
+
+    @property
+    def visible_entries(self) -> tuple[DirectoryTreeEntry, ...]:
+        return tuple(
+            entry
+            for value in self._tree.visible_values
+            if (entry := self._value_to_entry.get(value)) is not None
+        )
+
+    @property
+    def visible_paths(self) -> tuple[Path, ...]:
+        return tuple(
+            entry.path
+            for entry in self.visible_entries
+            if entry.path is not None and entry.kind in ("directory", "file")
+        )
 
     def _normalize_under_root(self, path: Path, *, label: str) -> Path:
         normalized = _normalize_absolute_lexical(path, label=label)
@@ -110,8 +153,127 @@ class DirectoryTree:
         return normalized
 
     def render(self, constraints: RenderConstraints) -> RenderResult:
-        label = self._root_path.name or str(self._root_path)
-        return RenderResult.from_lines([RenderLine(label)][: constraints.max_height], constraints=constraints)
+        return self._tree.render(constraints)
+
+    def _rebuild_tree(self, *, preferred_active: Path | None, preferred_expanded: Sequence[Path]) -> None:
+        self._value_to_entry = {}
+        self._path_to_value = {}
+        self._traversable_paths = set()
+        model = self._build_model()
+        root_node = self._tree_node(model)
+        expanded_values = [
+            self._path_to_value[path]
+            for path in (self._root_path, *preferred_expanded)
+            if path in self._traversable_paths and path in self._path_to_value
+        ]
+        active_value = ""
+        if preferred_active is not None and preferred_active in self._path_to_value:
+            active_value = self._path_to_value[preferred_active]
+        self._tree = TreeView(
+            (root_node,),
+            active_value=active_value,
+            expanded_values=tuple(dict.fromkeys(expanded_values)),
+            empty_text=self.empty_text,
+            wrap=self.wrap,
+            theme=self.theme,
+            focused=self.focused,
+        )
+        self._sync_public_state_from_tree()
+
+    def _build_model(self) -> _DirectoryModelNode:
+        root_entry = DirectoryTreeEntry(
+            path=self._root_path,
+            kind="directory",
+            label=self._root_path.name or str(self._root_path),
+        )
+        root_value = _real_value(self._root_path)
+        children = self._scan_children(self._root_path, _ScanBudget(self.max_entries))
+        return _DirectoryModelNode(
+            entry=root_entry,
+            tree_value=root_value,
+            children=children,
+            traversable_directory=True,
+        )
+
+    def _scan_children(self, parent: Path, budget: _ScanBudget) -> tuple[_DirectoryModelNode, ...]:
+        try:
+            candidates = tuple(parent.iterdir())
+        except (FileNotFoundError, OSError, PermissionError) as exc:
+            return (self._synthetic_node(parent, "error", str(exc), index=0),)
+        visible = [path for path in candidates if self._passes_filters(path)]
+        if not visible:
+            return (self._synthetic_node(parent, "empty", self.empty_text, index=0),)
+        directories = [path for path in visible if path.is_dir()]
+        files = [path for path in visible if not path.is_dir()]
+        nodes: list[_DirectoryModelNode] = []
+        for child in (*sorted(directories, key=self._sort_tuple), *sorted(files, key=self._sort_tuple)):
+            if budget.remaining <= 0:
+                nodes.append(self._synthetic_node(parent, "sentinel", "more entries omitted", index=len(nodes)))
+                break
+            budget.remaining -= 1
+            kind = self._entry_kind(child)
+            traversable = kind == "directory" and not self._is_descendant_symlink_directory(child)
+            children = self._scan_children(child, budget) if traversable else ()
+            nodes.append(
+                _DirectoryModelNode(
+                    entry=DirectoryTreeEntry(path=child, kind=kind, label=child.name),
+                    tree_value=_real_value(child),
+                    children=children,
+                    traversable_directory=traversable,
+                )
+            )
+        return tuple(nodes)
+
+    def _passes_filters(self, path: Path) -> bool:
+        if not self.show_hidden and path.name.startswith("."):
+            return False
+        if self.path_filter is not None and not self.path_filter(path):
+            return False
+        return not (self.ignore_matcher is not None and self.ignore_matcher(path))
+
+    def _sort_tuple(self, path: Path) -> object:
+        if self.sort_key is not None:
+            return (self.sort_key(path), path.name.casefold(), path.name)
+        return (path.name.casefold(), path.name)
+
+    def _entry_kind(self, path: Path) -> DirectoryTreeRealKind:
+        return "directory" if path.is_dir() else "file"
+
+    def _is_descendant_symlink_directory(self, path: Path) -> bool:
+        return path != self._root_path and path.is_symlink() and path.is_dir()
+
+    def _synthetic_node(
+        self,
+        parent: Path,
+        kind: Literal["empty", "error", "sentinel"],
+        label: str,
+        *,
+        index: int,
+    ) -> _DirectoryModelNode:
+        return _DirectoryModelNode(
+            entry=DirectoryTreeEntry(path=None, kind=kind, label=label, disabled=True, message=label),
+            tree_value=_synthetic_value(parent, kind, index),
+        )
+
+    def _tree_node(self, node: _DirectoryModelNode) -> TreeNode:
+        self._value_to_entry[node.tree_value] = node.entry
+        if node.entry.path is not None:
+            self._path_to_value[node.entry.path] = node.tree_value
+            if node.traversable_directory:
+                self._traversable_paths.add(node.entry.path)
+        return TreeNode(
+            value=node.tree_value,
+            label=node.entry.label,
+            children=tuple(self._tree_node(child) for child in node.children),
+            disabled=node.entry.disabled,
+        )
+
+    def _sync_public_state_from_tree(self) -> None:
+        entry = self._value_to_entry.get(self._tree.active_value)
+        if entry is None or entry.disabled or entry.path is None:
+            self._active_path = None
+        else:
+            self._active_path = entry.path
 
 
 def _normalize_absolute_lexical(path: Path, *, label: str) -> Path:
@@ -120,3 +282,11 @@ def _normalize_absolute_lexical(path: Path, *, label: str) -> Path:
     if ".." in path.parts:
         raise ValueError(f"{label} must not contain '..' path segments")
     return Path(*path.parts)
+
+
+def _real_value(path: Path) -> str:
+    return f"\0real:{path.as_posix()}"
+
+
+def _synthetic_value(parent: Path, kind: str, index: int) -> str:
+    return f"\0synthetic:{parent.as_posix()}:{kind}:{index}"

@@ -2,30 +2,24 @@ from __future__ import annotations
 
 import ast
 import inspect
-import runpy
-import shutil
 from pathlib import Path
 from typing import Any
 
 import pytest
 
 from loushang.tui import (
-    CursorDeclaration,
     DirectoryTree,
     DirectoryTreeEntry,
     DirectoryTreeEntryKind,
     DirectoryTreeRealKind,
     DirectoryTreeSelect,
-    InputEvent,
     PathFilter,
     PathSortKey,
     RenderConstraints,
-    ThemeResolver,
     strip_control_sequences,
 )
 from loushang.tui.ui_parts import DirectoryTree as UiDirectoryTree
 from loushang.tui.ui_parts.widgets import DirectoryTree as WidgetDirectoryTree
-from tests.tui.widget_example_playback import play_example
 
 
 def render_plain(part: Any, *, width: int = 50, height: int = 10) -> tuple[str, ...]:
@@ -95,3 +89,95 @@ def test_directory_tree_tui_widget_has_no_coding_imports() -> None:
             imports.append(node.module)
 
     assert not any(name == "loushang.coding" or name.startswith("loushang.coding.") for name in imports)
+
+
+def build_tree_fixture(root: Path) -> None:
+    (root / "src" / "widgets").mkdir(parents=True)
+    (root / "src" / "main.py").write_text("", encoding="utf-8")
+    (root / "README.md").write_text("", encoding="utf-8")
+    (root / ".env").write_text("", encoding="utf-8")
+    (root / "build").mkdir()
+    (root / "build" / "artifact.bin").write_text("", encoding="utf-8")
+    (root / "empty").mkdir()
+
+
+def test_directory_tree_scans_root_directory_first_and_exposes_visible_entries(tmp_path: Path) -> None:
+    build_tree_fixture(tmp_path)
+
+    tree = DirectoryTree(root=tmp_path, expanded_paths=(tmp_path / "src", tmp_path / "empty"))
+
+    assert [entry.label for entry in tree.visible_entries] == [
+        tmp_path.name,
+        "build",
+        "empty",
+        "No files",
+        "src",
+        "widgets",
+        "main.py",
+        "README.md",
+    ]
+    assert tree.visible_paths == (
+        tmp_path,
+        tmp_path / "build",
+        tmp_path / "empty",
+        tmp_path / "src",
+        tmp_path / "src" / "widgets",
+        tmp_path / "src" / "main.py",
+        tmp_path / "README.md",
+    )
+
+
+def test_directory_tree_hides_hidden_paths_by_default_and_can_show_them(tmp_path: Path) -> None:
+    build_tree_fixture(tmp_path)
+
+    hidden = DirectoryTree(root=tmp_path)
+    shown = DirectoryTree(root=tmp_path, show_hidden=True)
+
+    assert tmp_path / ".env" not in hidden.visible_paths
+    assert tmp_path / ".env" in shown.visible_paths
+
+
+def test_directory_tree_filter_ignore_and_sort_callbacks_receive_absolute_lexical_paths(tmp_path: Path) -> None:
+    build_tree_fixture(tmp_path)
+    seen_filter: list[Path] = []
+    seen_ignore: list[Path] = []
+    seen_sort: list[Path] = []
+
+    def include(path: Path) -> bool:
+        seen_filter.append(path)
+        return path.name != "build"
+
+    def ignore(path: Path) -> bool:
+        seen_ignore.append(path)
+        return path.name == "README.md"
+
+    def sort_key(path: Path) -> object:
+        seen_sort.append(path)
+        return path.name
+
+    tree = DirectoryTree(root=tmp_path, path_filter=include, ignore_matcher=ignore, sort_key=sort_key)
+
+    assert tmp_path / "build" not in tree.visible_paths
+    assert tmp_path / "README.md" not in tree.visible_paths
+    assert all(path.is_absolute() and path.is_relative_to(tmp_path) for path in seen_filter)
+    assert all(path.is_absolute() and path.is_relative_to(tmp_path) for path in seen_ignore)
+    assert all(path.is_absolute() and path.is_relative_to(tmp_path) for path in seen_sort)
+
+
+def test_directory_tree_does_not_descend_into_filtered_directories(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    build_tree_fixture(tmp_path)
+    original_iterdir = Path.iterdir
+
+    def fail_if_build_is_traversed(path: Path):
+        if path == tmp_path / "build":
+            raise AssertionError("filtered directory was traversed")
+        return original_iterdir(path)
+
+    monkeypatch.setattr(Path, "iterdir", fail_if_build_is_traversed)
+
+    tree = DirectoryTree(root=tmp_path, path_filter=lambda path: path.name != "build")
+
+    assert tmp_path / "build" not in tree.visible_paths
