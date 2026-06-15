@@ -7,7 +7,7 @@ from loushang.tui.text_utils import fixed_width
 
 
 @dataclass(frozen=True)
-class ToolbarSnapshot:
+class PlainToolbarSnapshot:
     model: str | None = None
     cwd: str | None = None
     branch: str | None = None
@@ -20,7 +20,7 @@ class ToolbarSnapshot:
     running: bool = False
 
 
-def render_toolbar(snapshot: ToolbarSnapshot, *, width: int | None = None) -> str:
+def render_plain_toolbar(snapshot: PlainToolbarSnapshot, *, width: int | None = None) -> str:
     parts: list[str] = []
     _append_part(parts, "model", snapshot.model)
     _append_part(parts, "cwd", snapshot.cwd)
@@ -45,4 +45,4 @@ def _append_part(parts: list[str], name: str, value: str | None) -> None:
         parts.append(f"{name}={value}")
 
 
-__all__ = ["ToolbarSnapshot", "render_toolbar"]
+__all__ = ["PlainToolbarSnapshot", "render_plain_toolbar"]
