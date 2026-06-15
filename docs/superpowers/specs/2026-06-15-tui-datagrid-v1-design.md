@@ -248,6 +248,11 @@ class DataGrid:
     focused: bool = False
 ```
 
+`DataGrid.handle_input(event) -> object` follows the existing widget pattern:
+navigation returns booleans or `None`, activation returns structured selection
+objects or callback results, selection returns `DataGridSelectionChange` when
+state changes, and editing returns edit-specific results described below.
+
 `DataGrid` normalizes columns and rows during construction and after mutation.
 Duplicate column keys or row keys raise `ValueError`. Hidden columns stay in
 the data model but do not participate in render or navigation.
@@ -470,8 +475,8 @@ Initial repair:
   changes, but activation and cursor declaration use only `active_row_key`.
 - in column mode, `active_row_key` may remain repaired for future mode changes,
   but activation and cursor declaration use only `active_column_key`.
-- in none mode, active keys are repaired for public state consistency but no
-  cursor is rendered and no input is consumed.
+- in `cursor_mode="none"`, active keys are repaired for public state
+  consistency but no cursor is rendered and no input is consumed.
 
 Mutation repair:
 
@@ -526,10 +531,16 @@ Activation:
 - activation returns `DataGridSelect` unless the row has `on_select`, in which
   case it returns `callback_result(row.on_select())`
 - disabled rows and disabled cells do not activate
+- in row mode, activation returns
+  `DataGridSelect(row_key=<active row>, column_key=None, value=None,
+  cursor_mode="row")`
+- in cell mode, activation returns
+  `DataGridSelect(row_key=<active row>, column_key=<active column>,
+  value=<raw cell value>, cursor_mode="cell")`
 - in column mode, activation returns
   `DataGridSelect(row_key=None, column_key=<active column>, value=None,
   cursor_mode="column")`
-- in none mode, input activation returns `None`
+- in `cursor_mode="none"`, input activation returns `None`
 
 ## Selection
 
@@ -588,9 +599,16 @@ Selection target rules:
 - column mode targets all enabled cells in the active visible column
 - hidden columns are never selected by `select_all()` or column selection
 - disabled rows and disabled cells are never selected
-- `select_all()` selects rows in row mode, cells in cell mode, and all enabled
-  cells in the active column in column mode
-- `select_all()` in none mode returns `False`
+- `selection_mode="single"` never selects multiple targets; programmatic
+  `select_all()` returns `False`
+- `selection_mode="multi"` enables `select_all()`
+- `select_all()` in multi-selection row cursor mode selects all enabled rows
+- `select_all()` in multi-selection cell cursor mode selects all enabled cells
+  in visible columns
+- `select_all()` in multi-selection column cursor mode selects all enabled
+  cells in the active visible column
+- `select_all()` returns `False` when `selection_mode="none"` or
+  `cursor_mode="none"`
 
 ## Inline Editing
 
@@ -620,6 +638,19 @@ Commit/cancel:
 - `esc` cancels
 - `commit_edit() -> DataGridEdit | None`
 - `cancel_edit() -> bool`
+
+Editing input return rules:
+
+- `e` returns `True` when it starts editing
+- `e` returns `False` when cell mode has an active cell but that cell is not
+  editable
+- `e` returns `None` outside cell mode
+- printable text while editing returns `True`
+- `backspace` while editing returns `True` when the buffer changed and `False`
+  when the buffer was already empty
+- `enter` while editing returns `DataGridEdit` on successful commit and
+  `False` on parser or validation failure
+- `esc` while editing returns `True` when it cancels an edit
 
 Validation:
 
