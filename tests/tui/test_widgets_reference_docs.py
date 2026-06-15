@@ -18,6 +18,7 @@ def test_widget_reference_recommends_composed_settings_pages_without_legacy_prim
         text = path.read_text(encoding="utf-8")
 
         assert "PageScaffold" in text
+        assert "PageNavigator" in text
         assert "SearchableList" in text
         assert "DataGrid" in text
         assert "DataGridColumn" in text
