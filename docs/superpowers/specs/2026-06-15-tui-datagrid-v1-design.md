@@ -284,8 +284,13 @@ Row key normalization:
   grid.
 - If a generated key would collide with an explicit `DataGridRow.key`, the grid
   advances the generated counter until it finds an unused key.
+- `replace_rows()` follows the same generated-key policy and continues the
+  monotonic counter; shorthand replacement rows should be treated as new rows,
+  not stable refresh identities.
 - Mixed explicit and shorthand rows are allowed, but explicit `DataGridRow`
   should be used for durable product state, persisted selection, or callbacks.
+- Read-only refreshing grids that need to preserve active row or selection
+  across refreshes must use explicit `DataGridRow.key` values.
 
 Cell normalization:
 
@@ -423,6 +428,10 @@ Rendering order:
 
 Every rendered line must fit `constraints.width` and `constraints.max_height`.
 The effective width is `autowrap_safe_width(constraints.width)`.
+When header plus pinned rows exceed available height, rendering preserves order
+and truncates from the bottom after producing as many earlier lines as fit.
+Scrollable body rows receive only the height left after header and pinned-row
+reservation.
 
 Row prefix:
 
@@ -487,7 +496,7 @@ Active state is stored by keys, not indexes.
 
 Enabled targets:
 
-- an enabled row is a non-disabled row
+- an enabled row is a non-disabled, non-pinned row
 - an enabled cell is a cell in an enabled row, visible non-hidden column, and
   non-disabled cell
 - an enabled column is a visible non-hidden column
@@ -580,6 +589,13 @@ Enter-to-edit rule:
 - requires the active column to set `enter_behavior="edit"`
 - returns the same result as `start_edit(row_key, column_key)`
 - editing state still uses Enter for commit once editing has started
+- when the active column has `enter_behavior="edit"` but the active cell is not
+  editable because row/cell state disables editing, Enter falls back to normal
+  activation
+- `start_edit(row_key, column_key)` switches to cell cursor mode, repairs active
+  keys to the requested row and column, scrolls the target into the visible
+  row/column viewport on the next render, and returns `False` if the target is
+  not editable
 
 ## Selection
 
@@ -667,8 +683,13 @@ Editing state:
 - V1 keeps a single editing buffer string
 - the buffer initializes to `""` for `None`, otherwise `str(raw_value)`;
   default cell values therefore appear in the edit buffer
+- the initialized buffer starts selected
+- the first printable text input after editing starts replaces the selected
+  buffer
+- `backspace` while the initialized buffer is selected clears the buffer
 - formatting is not used to initialize the edit buffer
-- while editing, printable text appends to the buffer
+- while editing, printable text appends to the buffer after the selected state
+  has been cleared
 - `backspace` removes one cell-width-safe character from the buffer
 - `left` and `right` within the buffer are out of scope for V1
 - editing render shows the buffer in the active cell with
@@ -688,6 +709,8 @@ Editing input return rules:
   editable
 - `e` returns `None` outside cell mode
 - printable text while editing returns `True`
+- `backspace` while the initialized buffer is selected clears the buffer and
+  returns `True`
 - `backspace` while editing returns `True` when the buffer changed and `False`
   when the buffer was already empty
 - `enter` while editing returns `DataGridEdit` on successful commit and
@@ -895,6 +918,8 @@ Mutation rules:
   those keys still exist and remain enabled, repairs missing keys, cancels
   editing, and preserves sort state by reapplying the active explicit sort after
   replacement
+- when `replace_rows()` reapplies an active sort, active-row repair uses the
+  post-sort visible row order to choose the nearest enabled row
 - removing active row/column repairs active state
 - removing selected rows/cells removes them from selection sets
 - adding rows while a sort is active does not auto-sort; caller can call
@@ -1006,6 +1031,9 @@ Add focused tests for:
 - hidden columns excluded from render/navigation
 - pinned top/bottom rows render in fixed regions and are skipped by
   navigation, sorting, selection, editing, and activation
+- pinned rows are excluded from enabled-target repair even when
+  `disabled=False`
+- height-constrained rendering with header and pinned rows
 - row cursor navigation, wrapping, disabled-row skipping, home/end/page keys
 - cell cursor navigation, wrapping, disabled-cell skipping
 - column cursor navigation and header cursor declaration
@@ -1025,6 +1053,7 @@ Add focused tests for:
 - `add_row(..., edit_column_key=...)` starts editing a new row's target cell
 - prefilled editable cells accept unchanged default values on Enter when
   `edit_accepts_unchanged=True`
+- first printable input replaces the selected initial edit buffer
 - `edit_next_column_key` can skip display-only columns
 - edit commit followed by product-side `update_cell()` for dependent cells such
   as code-to-name lookup
@@ -1036,8 +1065,12 @@ Add focused tests for:
   Enter
 - `replace_rows()` preserves active and selected keys across refresh when keys
   still exist
+- shorthand rows in `replace_rows()` use fresh generated keys and do not
+  preserve active/selection by position
 - `replace_rows()` repairs active state when refreshed data removes the active
   row
+- `replace_rows()` active repair uses post-sort order when an active sort is
+  reapplied
 - row/cell activation from a read-only grid returns `DataGridSelect` suitable
   for product-side detail navigation
 - sort state, stable sort, disabled/hidden/unsortable handling, active/selection
