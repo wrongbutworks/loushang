@@ -17,7 +17,6 @@ from loushang.coding.ui.follow_up_queue import FollowUpQueueHandler
 from loushang.coding.ui.handlers import (
     CodingTuiHandlers,
     InfoPanelPresenter,
-    LegacySettingsListPresenter,
 )
 from loushang.coding.ui.hotkeys import format_hotkeys
 from loushang.coding.ui.lifecycle import RunLifecycle
@@ -85,7 +84,6 @@ def build_coding_tui_app(
     model_palette_chooser: ModelPaletteChooser | None = None,
     command_palette_chooser: CommandPaletteChooser | None = None,
     info_panel_presenter: InfoPanelPresenter | None = None,
-    legacy_settings_list_presenter: LegacySettingsListPresenter | None = None,
 ) -> CodingTuiApp:
     lifecycle = RunLifecycle()
     controller = CodingUiController(runtime=runtime, session=session, verbose=verbose)
@@ -168,10 +166,7 @@ def build_coding_tui_app(
         command_select=lambda query: select_coding_command(session, query=query, choose=command_palette_chooser),
         commands=lambda query: format_coding_commands(session, query=query),
         hotkeys=format_hotkeys,
-        legacy_settings_text=status_provider.legacy_settings_text,
-        legacy_settings_list=status_provider.legacy_settings_list,
-        apply_legacy_settings=status_provider.apply_legacy_settings,
-        present_legacy_settings_list=legacy_settings_list_presenter,
+        settings_text=status_provider.settings_summary_text,
         statusline=status_provider.set_visible,
         now=now,
         session_running=lambda: is_running(session),

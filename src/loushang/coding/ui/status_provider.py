@@ -9,7 +9,6 @@ from loushang.coding.ui.status_line import (
     status_line_settings_to_patch,
 )
 from loushang.coding.ui.toolbar import ToolbarSnapshot, render_toolbar
-from loushang.tui import SettingItem, SettingsList, SettingsListRenderer
 
 
 @dataclass(frozen=True, slots=True)
@@ -117,29 +116,8 @@ class CodingTuiStatusProvider:
             return f"Status line style: {normalized}"
         return f"Unknown status line setting: {item_id}"
 
-    def legacy_settings_list(self) -> SettingsList:
-        return SettingsList(
-            (
-                SettingItem(
-                    id="statusline",
-                    label="Status line",
-                    enabled=self.is_visible(),
-                ),
-            )
-        )
-
-    def apply_legacy_settings(self, settings: SettingsList) -> str:
-        for item in settings.items:
-            if item.id == "statusline":
-                self._set_statusline_settings(replace(self._statusline_settings, enabled=item.enabled))
-                break
-        return self.set_visible(None)
-
-    def legacy_settings_text(self) -> str:
-        return "".join(
-            fragment
-            for _style, fragment in SettingsListRenderer(title="Settings").render(self.legacy_settings_list())
-        )
+    def settings_summary_text(self) -> str:
+        return f"Settings\nStatus line: {'true' if self.is_visible() else 'false'}"
 
     def _set_statusline_settings(self, settings: StatusLineSettings) -> None:
         self._statusline_settings = settings
