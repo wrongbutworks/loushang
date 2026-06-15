@@ -25,6 +25,14 @@ from .widgets import Button as Button
 from .widgets import ButtonKind as ButtonKind
 from .widgets import Checkbox as Checkbox
 from .widgets import Choice as Choice
+from .widgets import ColumnChooser as ColumnChooser
+from .widgets import ColumnChooserClose as ColumnChooserClose
+from .widgets import ColumnChooserColumn as ColumnChooserColumn
+from .widgets import ColumnChooserMove as ColumnChooserMove
+from .widgets import ColumnChooserSelect as ColumnChooserSelect
+from .widgets import ColumnChooserSort as ColumnChooserSort
+from .widgets import ColumnChooserToggle as ColumnChooserToggle
+from .widgets import ColumnChooserWidthChange as ColumnChooserWidthChange
 from .widgets import CommandPaletteView as CommandPaletteView
 from .widgets import CompactNumberFormatter as CompactNumberFormatter
 from .widgets import ConfirmDialog as ConfirmDialog
@@ -118,6 +126,14 @@ __all__ = [
     "ButtonKind",
     "Checkbox",
     "Choice",
+    "ColumnChooser",
+    "ColumnChooserClose",
+    "ColumnChooserColumn",
+    "ColumnChooserMove",
+    "ColumnChooserSelect",
+    "ColumnChooserSort",
+    "ColumnChooserToggle",
+    "ColumnChooserWidthChange",
     "CommandPaletteView",
     "CompactNumberFormatter",
     "Composer",
