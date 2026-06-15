@@ -13,6 +13,8 @@ from loushang.tui import (
     SelectionSurface,
     SelectItem,
     SettingItem,
+    SettingsList,
+    SettingsListRenderer,
     SettingsSurface,
     ThemeResolver,
     strip_control_sequences,
@@ -22,6 +24,13 @@ from loushang.tui import (
 def rendered_text(surface: Any, *, width: int = 30, height: int = 5) -> tuple[str, ...]:
     result = surface.render(RenderConstraints(width=width, max_height=height))
     return tuple(line.text for line in result.lines)
+
+
+def test_settings_primitives_are_marked_legacy_compatibility() -> None:
+    for primitive in (SettingItem, SettingsList, SettingsListRenderer, SettingsSurface):
+        assert "legacy compatibility" in (primitive.__doc__ or "").casefold()
+        assert "PageScaffold" in (primitive.__doc__ or "")
+        assert "SearchableList" in (primitive.__doc__ or "")
 
 
 def test_selection_surface_wraps_navigation_and_scrolls_selected_item_visible() -> None:
