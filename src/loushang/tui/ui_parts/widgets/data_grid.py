@@ -7,6 +7,7 @@ from collections.abc import Callable, Iterable, Mapping, Sequence
 from dataclasses import dataclass, field, replace
 from decimal import ROUND_HALF_UP, Decimal, InvalidOperation
 from math import isfinite
+from types import MappingProxyType
 from typing import Literal, TextIO
 
 from loushang.tui.cell_width import (
@@ -30,6 +31,7 @@ DataGridCursorMode = Literal["row", "cell", "column", "none"]
 DataGridSelectionMode = Literal["none", "single", "multi"]
 DataGridEnterBehavior = Literal["activate", "edit"]
 DataGridSortDirection = Literal["asc", "desc"]
+DataGridFilterMode = Literal["contains", "prefix"]
 DataGridCellKey = tuple[str, str]
 
 DATA_GRID_SEPARATOR = "  "
@@ -44,10 +46,13 @@ __all__ = [
     "DataGridCursorMode",
     "DataGridEdit",
     "DataGridEnterBehavior",
+    "DataGridFilterMode",
+    "DataGridFilterPredicate",
     "DataGridFormatResult",
     "DataGridFormatter",
     "DataGridParser",
     "DataGridRow",
+    "DataGridRowView",
     "DataGridSelect",
     "DataGridSelectionChange",
     "DataGridSelectionMode",
@@ -74,6 +79,17 @@ DataGridThemeResolver = Callable[[object], str | None]
 
 
 @dataclass(frozen=True, slots=True)
+class DataGridRowView:
+    key: str
+    values: Mapping[str, object]
+    label: str | None = None
+    disabled: bool = False
+
+
+DataGridFilterPredicate = Callable[[DataGridRowView], bool]
+
+
+@dataclass(frozen=True, slots=True)
 class DataGridColumn:
     key: str
     header: str
@@ -90,6 +106,7 @@ class DataGridColumn:
     formatter: DataGridFormatter | None = None
     parser: DataGridParser | None = None
     validator: DataGridValidator | None = None
+    searchable: bool = True
     theme_token: str | None = None
     theme_token_for_value: DataGridThemeResolver | None = None
 
@@ -267,6 +284,16 @@ class DataGrid:
     _selected_row_keys: frozenset[str] = field(default_factory=frozenset, init=False, repr=False)
     _selected_cell_keys: frozenset[DataGridCellKey] = field(default_factory=frozenset, init=False, repr=False)
     _sort_state: tuple[str, DataGridSortDirection] | None = field(default=None, init=False, repr=False)
+    _filter_query: str = field(default="", init=False, repr=False)
+    _filter_query_columns: tuple[str, ...] | None = field(default=None, init=False, repr=False)
+    _filter_mode: DataGridFilterMode = field(default="contains", init=False, repr=False)
+    _filter_case_sensitive: bool = field(default=False, init=False, repr=False)
+    _filter_predicate: DataGridFilterPredicate | None = field(default=None, init=False, repr=False)
+    _body_rows_cache: tuple[_NormalizedRow, ...] | None = field(default=None, init=False, repr=False)
+    _pinned_top_rows_cache: tuple[_NormalizedRow, ...] | None = field(default=None, init=False, repr=False)
+    _pinned_bottom_rows_cache: tuple[_NormalizedRow, ...] | None = field(default=None, init=False, repr=False)
+    _view_body_rows_cache: tuple[_NormalizedRow, ...] | None = field(default=None, init=False, repr=False)
+    _view_row_keys_cache: tuple[str, ...] | None = field(default=None, init=False, repr=False)
     _next_generated_index: int = field(default=0, init=False, repr=False)
     _first_visible_row_index: int = field(default=0, init=False, repr=False)
     _editing_cell_key: DataGridCellKey | None = field(default=None, init=False, repr=False)
@@ -307,6 +334,16 @@ class DataGrid:
         self._selected_row_keys = frozenset()
         self._selected_cell_keys = frozenset()
         self._sort_state = None
+        self._filter_query = ""
+        self._filter_query_columns = None
+        self._filter_mode = "contains"
+        self._filter_case_sensitive = False
+        self._filter_predicate = None
+        self._body_rows_cache = None
+        self._pinned_top_rows_cache = None
+        self._pinned_bottom_rows_cache = None
+        self._view_body_rows_cache = None
+        self._view_row_keys_cache = None
         self._next_generated_index = 0
         self._first_visible_row_index = 0
         self._editing_cell_key = None
@@ -390,6 +427,40 @@ class DataGrid:
         return self._sort_state
 
     @property
+    def filter_query(self) -> str:
+        return self._filter_query
+
+    @property
+    def filter_query_columns(self) -> tuple[str, ...] | None:
+        return self._filter_query_columns
+
+    @property
+    def filter_mode(self) -> DataGridFilterMode:
+        return self._filter_mode
+
+    @property
+    def filter_case_sensitive(self) -> bool:
+        return self._filter_case_sensitive
+
+    @property
+    def has_filter(self) -> bool:
+        return bool(self._filter_query) or self._filter_predicate is not None
+
+    @property
+    def view_row_keys(self) -> tuple[str, ...]:
+        if self._view_row_keys_cache is None:
+            self._view_row_keys_cache = tuple(row.key for row in self._view_body_rows())
+        return self._view_row_keys_cache
+
+    @property
+    def filtered_row_count(self) -> int:
+        return len(self._view_body_rows())
+
+    @property
+    def total_body_row_count(self) -> int:
+        return len(self._body_rows())
+
+    @property
     def editing_cell_key(self) -> DataGridCellKey | None:
         return self._editing_cell_key
 
@@ -468,7 +539,7 @@ class DataGrid:
         lines: list[RenderLine] = []
         cursor: CursorDeclaration | None = None
         if self.show_header and len(lines) < height:
-            headers = tuple(column.header for column in render_columns)
+            headers = tuple(self._header_text(column) for column in render_columns)
             header_text = _grid_line(headers, render_columns, widths, target_width, label_width=label_width)
             header_tokens = ["widget.dataGrid.header"]
             if self.focused and self.cursor_mode == "column" and self._active_column_key in cell_starts:
@@ -476,40 +547,48 @@ class DataGrid:
                 cursor = CursorDeclaration(row=len(lines), column=cell_starts[str(self._active_column_key)])
             lines.append(RenderLine(style_text(header_text, self.theme, *header_tokens)))
 
-        top_rows = tuple(row for row in self._rows if row.pinned == "top")
-        body_rows = tuple(row for row in self._rows if row.pinned is None)
-        bottom_rows = tuple(row for row in self._rows if row.pinned == "bottom")
+        top_rows = self._pinned_top_rows()
+        body_rows = self._view_body_rows()
+        bottom_rows = self._pinned_bottom_rows()
         reserved_for_pinned = len(top_rows) + len(bottom_rows)
         body_budget = max(0, height - len(lines) - reserved_for_pinned)
         self._ensure_active_body_visible(body_rows, body_budget)
-        body_rows = body_rows[self._first_visible_row_index : self._first_visible_row_index + body_budget]
+        visible_body_rows = body_rows[self._first_visible_row_index : self._first_visible_row_index + body_budget]
 
-        for row in (*top_rows, *body_rows, *bottom_rows):
+        for row in top_rows:
             if len(lines) >= height:
                 break
-            line_index = len(lines)
-            row_is_active = row.key == self._active_row_key and row.pinned is None and not row.disabled
-            if (
-                self.focused
-                and row_is_active
-                and self.cursor_mode in {"row", "cell"}
-                and cursor is None
-            ):
-                cursor_column = 0
-                if self.cursor_mode == "cell" and self._active_column_key in cell_starts:
-                    cursor_column = self._active_cell_cursor_column(
-                        row,
-                        render_columns,
-                        widths,
-                        cell_starts,
-                    )
-                cursor = CursorDeclaration(row=line_index, column=cursor_column)
             lines.append(RenderLine(self._row_line(row, render_columns, widths, target_width, label_width=label_width)))
 
-        if not self._rows and len(lines) < height:
-            empty_cells = (self.empty_text,) + tuple("" for _ in render_columns[1:])
-            text = _grid_line(empty_cells, render_columns, widths, target_width, label_width=label_width)
-            lines.append(RenderLine(style_text(text, self.theme, "widget.dataGrid.empty")))
+        if visible_body_rows:
+            for row in visible_body_rows:
+                if len(lines) >= height:
+                    break
+                line_index = len(lines)
+                row_is_active = row.key == self._active_row_key and row.pinned is None and not row.disabled
+                if (
+                    self.focused
+                    and row_is_active
+                    and self.cursor_mode in {"row", "cell"}
+                    and cursor is None
+                ):
+                    cursor_column = 0
+                    if self.cursor_mode == "cell" and self._active_column_key in cell_starts:
+                        cursor_column = self._active_cell_cursor_column(
+                            row,
+                            render_columns,
+                            widths,
+                            cell_starts,
+                        )
+                    cursor = CursorDeclaration(row=line_index, column=cursor_column)
+                lines.append(RenderLine(self._row_line(row, render_columns, widths, target_width, label_width=label_width)))
+        elif len(lines) < height:
+            lines.append(self._empty_row_line(render_columns, widths, target_width, label_width=label_width))
+
+        for row in bottom_rows:
+            if len(lines) >= height:
+                break
+            lines.append(RenderLine(self._row_line(row, render_columns, widths, target_width, label_width=label_width)))
 
         return RenderResult.from_lines(lines[:height], constraints=constraints, cursor=cursor)
 
@@ -576,6 +655,110 @@ class DataGrid:
                 return row
         return None
 
+    def _body_rows(self) -> tuple[_NormalizedRow, ...]:
+        if self._body_rows_cache is None:
+            self._body_rows_cache = tuple(row for row in self._rows if row.pinned is None)
+        return self._body_rows_cache
+
+    def _pinned_top_rows(self) -> tuple[_NormalizedRow, ...]:
+        if self._pinned_top_rows_cache is None:
+            self._pinned_top_rows_cache = tuple(row for row in self._rows if row.pinned == "top")
+        return self._pinned_top_rows_cache
+
+    def _pinned_bottom_rows(self) -> tuple[_NormalizedRow, ...]:
+        if self._pinned_bottom_rows_cache is None:
+            self._pinned_bottom_rows_cache = tuple(row for row in self._rows if row.pinned == "bottom")
+        return self._pinned_bottom_rows_cache
+
+    def _view_body_rows(self) -> tuple[_NormalizedRow, ...]:
+        if self._view_body_rows_cache is None:
+            body_rows = self._body_rows()
+            self._view_body_rows_cache = (
+                tuple(row for row in body_rows if self._row_matches_filters(row))
+                if self.has_filter
+                else body_rows
+            )
+        return self._view_body_rows_cache
+
+    def _invalidate_row_caches(self) -> None:
+        self._body_rows_cache = None
+        self._pinned_top_rows_cache = None
+        self._pinned_bottom_rows_cache = None
+        self._invalidate_view_cache()
+
+    def _invalidate_view_cache(self) -> None:
+        self._view_body_rows_cache = None
+        self._view_row_keys_cache = None
+
+    def _accepted_query_columns(self, columns: Sequence[str]) -> tuple[str, ...]:
+        accepted: list[str] = []
+        seen: set[str] = set()
+        for key in columns:
+            column = self._column_by_key(str(key))
+            if column is None or column.hidden or not column.searchable or column.key in seen:
+                continue
+            accepted.append(column.key)
+            seen.add(column.key)
+        return tuple(accepted)
+
+    def _repair_filter_query_columns(self) -> None:
+        if self._filter_query_columns is None:
+            return
+        self._filter_query_columns = self._accepted_query_columns(self._filter_query_columns)
+
+    def _query_columns(self) -> tuple[DataGridColumn, ...]:
+        if self._filter_query_columns is not None:
+            keys = set(self._filter_query_columns)
+            return tuple(
+                column
+                for column in self._columns
+                if column.key in keys and not column.hidden and column.searchable
+            )
+        return tuple(column for column in self._visible_columns() if column.searchable)
+
+    def _row_view(self, row: _NormalizedRow) -> DataGridRowView:
+        values = {key: cell.value for key, cell in row.cells.items()}
+        return DataGridRowView(row.key, MappingProxyType(values), row.label, row.disabled)
+
+    def _row_matches_filters(self, row: _NormalizedRow) -> bool:
+        if self._filter_query and not self._row_matches_query(row):
+            return False
+        if self._filter_predicate is not None and not self._filter_predicate(self._row_view(row)):
+            return False
+        return True
+
+    def _row_matches_query(self, row: _NormalizedRow) -> bool:
+        columns = self._query_columns()
+        if not columns:
+            return False
+        needle = self._filter_query if self._filter_case_sensitive else self._filter_query.casefold()
+        for column in columns:
+            value = row.cells[column.key].value
+            cell_text = "" if value is None else str(value)
+            haystack = cell_text if self._filter_case_sensitive else cell_text.casefold()
+            if self._filter_mode == "prefix" and haystack.startswith(needle):
+                return True
+            if self._filter_mode == "contains" and needle in haystack:
+                return True
+        return False
+
+    def _repair_state_after_view_change(self) -> None:
+        self._invalidate_view_cache()
+        if self._editing_cell_key is not None and self._editing_cell_key[0] not in self.view_row_keys:
+            self.cancel_edit()
+        self._active_row_key = self._repair_row_key(self._active_row_key)
+        self._active_column_key = self._repair_column_key(self._active_column_key)
+        if self.cursor_mode == "cell":
+            self._repair_active_cell()
+        body_rows = self._view_body_rows()
+        if not body_rows:
+            self._first_visible_row_index = 0
+        else:
+            self._first_visible_row_index = max(
+                0,
+                min(self._first_visible_row_index, max(0, len(body_rows) - 1)),
+            )
+
     def _column_by_key(self, key: str) -> DataGridColumn | None:
         for column in self._columns:
             if column.key == key:
@@ -586,7 +769,7 @@ class DataGrid:
         if self._active_row_key is None:
             return None
         row = self._row_by_key(self._active_row_key)
-        if row is None or row.disabled or row.pinned is not None:
+        if row is None or row.disabled or row.pinned is not None or row.key not in self.view_row_keys:
             return None
         return row
 
@@ -627,13 +810,31 @@ class DataGrid:
         return tuple(selected)
 
     def _enabled_rows(self) -> tuple[_NormalizedRow, ...]:
-        return tuple(row for row in self._rows if not row.disabled and row.pinned is None)
+        return tuple(row for row in self._view_body_rows() if not row.disabled)
+
+    def _empty_row_line(
+        self,
+        columns: Sequence[DataGridColumn],
+        widths: Sequence[int],
+        target_width: int,
+        *,
+        label_width: int,
+    ) -> RenderLine:
+        empty_cells = (self.empty_text,) + tuple("" for _ in columns[1:])
+        text = _grid_line(empty_cells, columns, widths, target_width, label_width=label_width)
+        return RenderLine(style_text(text, self.theme, "widget.dataGrid.empty"))
 
     def _enabled_row_keys(self) -> tuple[str, ...]:
         return tuple(row.key for row in self._enabled_rows())
 
     def _visible_column_keys(self) -> tuple[str, ...]:
         return tuple(column.key for column in self._visible_columns())
+
+    def _header_text(self, column: DataGridColumn) -> str:
+        if self._sort_state is None or self._sort_state[0] != column.key:
+            return column.header
+        marker = "^" if self._sort_state[1] == "asc" else "v"
+        return f"{column.header} {marker}"
 
     def _repair_row_key(self, preferred: str | None) -> str | None:
         enabled = self._enabled_rows()
@@ -744,7 +945,7 @@ class DataGrid:
 
     def activate_row(self, row_key: str) -> bool:
         row = self._row_by_key(row_key)
-        if row is None or row.disabled or row.pinned is not None:
+        if row is None or row.disabled or row.pinned is not None or row.key not in self.view_row_keys:
             return False
         was_editing = self._editing_cell_key is not None or self.editing_error is not None
         self.cancel_edit()
@@ -881,6 +1082,7 @@ class DataGrid:
             editable=cell.editable,
             theme_token=cell.theme_token,
         )
+        self._invalidate_row_caches()
 
     def _activate(self) -> object:
         if self.cursor_mode == "row":
@@ -928,7 +1130,7 @@ class DataGrid:
         if self.selection_mode == "none":
             return False
         row = self._row_by_key(row_key)
-        if row is None or row.disabled or row.pinned is not None:
+        if row is None or row.disabled or row.pinned is not None or row.key not in self.view_row_keys:
             return False
         if self.selection_mode == "single":
             next_rows = frozenset({row.key})
@@ -944,7 +1146,13 @@ class DataGrid:
 
     def toggle_row(self, row_key: str) -> bool:
         row = self._row_by_key(row_key)
-        if row is None or row.disabled or row.pinned is not None or self.selection_mode == "none":
+        if (
+            row is None
+            or row.disabled
+            or row.pinned is not None
+            or row.key not in self.view_row_keys
+            or self.selection_mode == "none"
+        ):
             return False
         if self.selection_mode == "single":
             return self.select_row(row_key)
@@ -1013,6 +1221,72 @@ class DataGrid:
         self._selected_row_keys = frozenset()
         self._selected_cell_keys = frozenset()
         return True
+
+    def set_filter_query(
+        self,
+        query: str,
+        *,
+        columns: Sequence[str] | None = None,
+        mode: DataGridFilterMode = "contains",
+        case_sensitive: bool = False,
+    ) -> bool:
+        if mode not in {"contains", "prefix"}:
+            return False
+        old_keys = self.view_row_keys
+        old_state = (
+            self._filter_query,
+            self._filter_query_columns,
+            self._filter_mode,
+            self._filter_case_sensitive,
+        )
+        effective_query = str(query).strip()
+        accepted_columns = None if columns is None else self._accepted_query_columns(columns)
+        if not effective_query:
+            accepted_columns = None
+            mode = "contains"
+            case_sensitive = False
+        self._filter_query = effective_query
+        self._filter_query_columns = accepted_columns
+        self._filter_mode = mode
+        self._filter_case_sensitive = bool(case_sensitive)
+        self._repair_state_after_view_change()
+        return old_state != (
+            self._filter_query,
+            self._filter_query_columns,
+            self._filter_mode,
+            self._filter_case_sensitive,
+        ) or old_keys != self.view_row_keys
+
+    def set_filter_predicate(self, predicate: DataGridFilterPredicate | None) -> bool:
+        old_keys = self.view_row_keys
+        old_predicate = self._filter_predicate
+        self._filter_predicate = predicate
+        self._repair_state_after_view_change()
+        return old_predicate is not predicate or old_keys != self.view_row_keys
+
+    def clear_filter(self) -> bool:
+        old_keys = self.view_row_keys
+        had_filter = self.has_filter
+        self._filter_query = ""
+        self._filter_query_columns = None
+        self._filter_mode = "contains"
+        self._filter_case_sensitive = False
+        self._filter_predicate = None
+        self._repair_state_after_view_change()
+        return had_filter or old_keys != self.view_row_keys
+
+    def cycle_sort(self, column_key: str | None = None) -> bool:
+        key = column_key if column_key is not None else self._active_column_key
+        if key is None:
+            return False
+        column = self._column_by_key(str(key))
+        if column is None or column.hidden or not column.sortable:
+            return False
+        if self._sort_state is None or self._sort_state[0] != column.key:
+            return self.sort_by(column.key, "asc")
+        if self._sort_state[1] == "asc":
+            return self.sort_by(column.key, "desc")
+        return self.clear_sort()
 
     def sort_by(self, column_key: str, direction: DataGridSortDirection = "asc") -> bool:
         column = self._column_by_key(column_key)
@@ -1106,6 +1380,7 @@ class DataGrid:
         )
         if self._editing_cell_key is not None and self._editing_cell_key[1] == column_key:
             self.cancel_edit()
+        self._repair_filter_query_columns()
         self._repair_state_after_data_change()
         return True
 
@@ -1119,6 +1394,7 @@ class DataGrid:
         self.columns = self._columns
         if hidden and self._editing_cell_key is not None and self._editing_cell_key[1] == column.key:
             self.cancel_edit()
+        self._repair_filter_query_columns()
         self._repair_state_after_data_change()
         return True
 
@@ -1199,6 +1475,7 @@ class DataGrid:
         self._active_column_key = self._repair_column_key(self._active_column_key)
         self._first_visible_row_index = 0
         self.cancel_edit()
+        self._invalidate_row_caches()
 
     def _toggle_active_column_cells(self) -> bool:
         if self._active_column_key is None:
@@ -1233,6 +1510,16 @@ class DataGrid:
                 result.append((row.key, column_key))
         return tuple(result)
 
+    def _source_enabled_rows(self) -> tuple[_NormalizedRow, ...]:
+        return tuple(row for row in self._body_rows() if not row.disabled)
+
+    def _source_enabled_cell_keys(self) -> tuple[DataGridCellKey, ...]:
+        result: list[DataGridCellKey] = []
+        for row in self._source_enabled_rows():
+            for column in self._enabled_columns_for_row(row):
+                result.append((row.key, column.key))
+        return tuple(result)
+
     def _editable_cell_keys(self) -> tuple[DataGridCellKey, ...]:
         result: list[DataGridCellKey] = []
         for row in self._enabled_rows():
@@ -1253,12 +1540,10 @@ class DataGrid:
         self._rows = (*top_rows, *sorted_body, *bottom_rows)
 
     def _repair_state_after_data_change(self) -> None:
-        self._active_row_key = self._repair_row_key(self._active_row_key)
-        self._active_column_key = self._repair_column_key(self._active_column_key)
-        if self.cursor_mode == "cell":
-            self._repair_active_cell()
-        enabled_rows = {row.key for row in self._enabled_rows()}
-        enabled_cells = set(self._enabled_cell_keys())
+        self._invalidate_row_caches()
+        self._repair_state_after_view_change()
+        enabled_rows = {row.key for row in self._source_enabled_rows()}
+        enabled_cells = set(self._source_enabled_cell_keys())
         self._selected_row_keys = frozenset(key for key in self._selected_row_keys if key in enabled_rows)
         self._selected_cell_keys = frozenset(key for key in self._selected_cell_keys if key in enabled_cells)
 
@@ -1345,7 +1630,7 @@ class DataGrid:
         if row_key is None or column_key is None:
             return False
         row = self._row_by_key(row_key)
-        if row is None or row.disabled or row.pinned is not None:
+        if row is None or row.disabled or row.pinned is not None or row.key not in self.view_row_keys:
             return False
         if column_key not in self._visible_column_keys():
             return False

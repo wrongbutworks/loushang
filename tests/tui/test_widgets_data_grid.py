@@ -13,8 +13,10 @@ from loushang.tui import (
     DataGridCell,
     DataGridColumn,
     DataGridEdit,
+    DataGridFilterMode,
     DataGridFormatResult,
     DataGridRow,
+    DataGridRowView,
     DataGridSelect,
     DataGridSelectionChange,
     DeltaFormatter,
@@ -48,6 +50,249 @@ def test_data_grid_is_reexported_from_public_modules() -> None:
     assert DataGridColumn("code", "Code").key == "code"
     assert DataGridCell("AAPL").value == "AAPL"
     assert DataGridRow("row-1", {"code": "AAPL"}).key == "row-1"
+    assert DataGridRowView("row-1", {"code": "AAPL"}).key == "row-1"
+    mode: DataGridFilterMode = "contains"
+    assert mode == "contains"
+
+
+def test_data_grid_filter_state_defaults_and_column_searchable_flag() -> None:
+    grid = DataGrid(
+        [DataGridColumn("code", "Code"), DataGridColumn("secret", "Secret", searchable=False)],
+        [DataGridRow("a", {"code": "AAPL", "secret": "hidden"})],
+    )
+
+    assert grid.filter_query == ""
+    assert grid.filter_query_columns is None
+    assert grid.filter_mode == "contains"
+    assert grid.filter_case_sensitive is False
+    assert grid.has_filter is False
+    assert grid.view_row_keys == ("a",)
+    assert grid.filtered_row_count == 1
+    assert grid.total_body_row_count == 1
+    assert grid.columns[1].searchable is False
+
+
+def test_data_grid_filter_query_matches_visible_searchable_raw_values() -> None:
+    grid = DataGrid(
+        [
+            DataGridColumn("symbol", "Symbol"),
+            DataGridColumn("sector", "Sector"),
+            DataGridColumn("hidden", "Hidden", hidden=True),
+            DataGridColumn("secret", "Secret", searchable=False),
+        ],
+        [
+            DataGridRow("a", {"symbol": "AAPL", "sector": "AI", "hidden": "ghost", "secret": "private"}),
+            DataGridRow("m", {"symbol": "MSFT", "sector": "Cloud", "hidden": "x", "secret": "AAPL"}),
+            DataGridRow("n", {"symbol": "NVDA", "sector": None, "hidden": "aapl", "secret": "x"}),
+        ],
+    )
+
+    assert grid.set_filter_query("aap") is True
+    assert grid.view_row_keys == ("a",)
+    assert grid.row_keys == ("a", "m", "n")
+
+    assert grid.set_filter_query("A", columns=("sector",), mode="prefix") is True
+    assert grid.filter_query_columns == ("sector",)
+    assert grid.view_row_keys == ("a",)
+
+    assert grid.set_filter_query("a", columns=("hidden", "secret", "missing")) is True
+    assert grid.filter_query_columns == ()
+    assert grid.view_row_keys == ()
+
+
+def test_data_grid_filter_query_case_sensitive_and_none_normalization() -> None:
+    grid = DataGrid(
+        [DataGridColumn("value", "Value")],
+        [DataGridRow("upper", {"value": "AAPL"}), DataGridRow("none", {"value": None})],
+    )
+
+    assert grid.set_filter_query("aapl", case_sensitive=True) is True
+    assert grid.view_row_keys == ()
+
+    assert grid.set_filter_query("   ", case_sensitive=True, mode="prefix", columns=("value",)) is True
+    assert grid.filter_query == ""
+    assert grid.filter_query_columns is None
+    assert grid.filter_mode == "contains"
+    assert grid.filter_case_sensitive is False
+
+    assert grid.set_filter_query("none") is True
+    assert grid.view_row_keys == ()
+
+
+def test_data_grid_filter_predicate_combines_with_query_and_uses_row_view() -> None:
+    seen: list[tuple[str, dict[str, object], bool]] = []
+    grid = DataGrid(
+        [
+            DataGridColumn("symbol", "Symbol"),
+            DataGridColumn("price", "Price"),
+            DataGridColumn("hidden", "Hidden", hidden=True),
+        ],
+        [
+            DataGridRow("a", {"symbol": "AAPL", "price": 210, "hidden": "visible-to-predicate"}),
+            DataGridRow("m", {"symbol": "MSFT", "price": 420, "hidden": "x"}, disabled=True),
+            DataGridRow("n", {"symbol": "NVDA", "price": 120, "hidden": "x"}),
+        ],
+    )
+
+    def predicate(row: DataGridRowView) -> bool:
+        seen.append((row.key, dict(row.values), row.disabled))
+        return float(row.values["price"]) >= 200
+
+    assert grid.set_filter_query("t") is True
+    assert grid.set_filter_predicate(predicate) is True
+
+    assert grid.view_row_keys == ("m",)
+    assert ("m", {"symbol": "MSFT", "price": 420, "hidden": "x"}, True) in seen
+
+
+def test_data_grid_filter_predicate_exceptions_propagate() -> None:
+    grid = DataGrid([DataGridColumn("name", "Name")], [DataGridRow("a", {"name": "A"})])
+
+    with pytest.raises(RuntimeError, match="bad predicate"):
+        grid.set_filter_predicate(lambda row: (_ for _ in ()).throw(RuntimeError("bad predicate")))
+
+
+def test_data_grid_filter_render_navigation_and_empty_body_view() -> None:
+    grid = DataGrid(
+        [DataGridColumn("job", "Job")],
+        [
+            DataGridRow("top", {"job": "Pinned top"}, pinned="top"),
+            DataGridRow("build", {"job": "Build"}),
+            DataGridRow("deploy", {"job": "Deploy"}),
+            DataGridRow("bottom", {"job": "Pinned bottom"}, pinned="bottom"),
+        ],
+        active_row_key="deploy",
+        empty_text="No matches",
+        wrap_rows=False,
+    )
+
+    assert grid.set_filter_query("build") is True
+    assert grid.active_row_key == "build"
+    assert grid.view_row_keys == ("build",)
+    assert grid.handle_input(InputEvent(kind="key", key="down")) is False
+
+    lines = plain_lines(grid, width=32, height=6)
+    assert any("Pinned top" in line for line in lines)
+    assert any("Build" in line for line in lines)
+    assert any("Pinned bottom" in line for line in lines)
+    assert not any("Deploy" in line for line in lines)
+
+    assert grid.set_filter_query("missing") is True
+    assert grid.active_row_key is None
+    lines = plain_lines(grid, width=32, height=6)
+    assert any("Pinned top" in line for line in lines)
+    assert any("No matches" in line for line in lines)
+
+
+def test_data_grid_filtered_large_viewport_formats_only_visible_rows() -> None:
+    formatted: list[int] = []
+
+    def counted_formatter(value: object) -> str:
+        formatted.append(int(value))
+        return f"Item {value}"
+
+    grid = DataGrid(
+        [DataGridColumn("name", "Name", formatter=counted_formatter)],
+        [DataGridRow(str(index), {"name": index}) for index in range(10_000)],
+        active_row_key="9999",
+    )
+
+    assert grid.set_filter_predicate(lambda row: int(row.values["name"]) >= 9_997) is True
+    lines = plain_lines(grid, width=24, height=4)
+
+    assert any("Item 9999" in line for line in lines)
+    assert formatted == [9997, 9998, 9999]
+
+
+def test_data_grid_filter_view_is_cached_until_filter_or_data_changes() -> None:
+    calls = 0
+
+    def predicate(row: DataGridRowView) -> bool:
+        nonlocal calls
+        calls += 1
+        return int(row.values["value"]) >= 50
+
+    grid = DataGrid(
+        [DataGridColumn("value", "Value")],
+        [DataGridRow(f"row-{index}", {"value": index}) for index in range(100)],
+        focused=True,
+    )
+    assert grid.set_filter_predicate(predicate) is True
+
+    calls = 0
+    assert grid.filtered_row_count == 50
+    assert len(grid.view_row_keys) == 50
+    grid.render(RenderConstraints(width=40, max_height=8))
+    grid.render(RenderConstraints(width=40, max_height=8))
+    assert calls == 0
+
+    assert grid.update_cell("row-0", "value", 100) is True
+    assert grid.filtered_row_count == 51
+    assert calls == 100
+
+
+def test_data_grid_filter_blocks_activation_for_filtered_disabled_and_pinned_rows() -> None:
+    grid = DataGrid(
+        [DataGridColumn("job", "Job"), DataGridColumn("runs", "Runs")],
+        [
+            DataGridRow("top", {"job": "Top", "runs": 0}, pinned="top"),
+            DataGridRow("build", {"job": "Build", "runs": 12}),
+            DataGridRow("skip", {"job": "Skip", "runs": 0}, disabled=True),
+            DataGridRow("deploy", {"job": "Deploy", "runs": 3}),
+        ],
+        cursor_mode="cell",
+    )
+
+    assert grid.set_filter_query("build") is True
+    assert grid.activate_row("deploy") is False
+    assert grid.activate_cell("deploy", "job") is False
+    assert grid.activate_row("skip") is False
+    assert grid.activate_row("top") is False
+    assert grid.activate_row("build") is False
+
+
+def test_data_grid_filter_scopes_selection_and_preserves_hidden_selection_keys() -> None:
+    grid = DataGrid(
+        [DataGridColumn("job", "Job")],
+        [DataGridRow("build", {"job": "Build"}), DataGridRow("deploy", {"job": "Deploy"})],
+        selection_mode="multi",
+    )
+
+    assert grid.select_row("deploy") is True
+    assert grid.set_filter_query("build") is True
+    assert grid.selected_row_keys == frozenset({"deploy"})
+    assert grid.select_all() is True
+    assert grid.selected_row_keys == frozenset({"build"})
+
+
+def test_data_grid_filter_cancels_edit_when_editing_row_is_filtered_out() -> None:
+    grid = DataGrid(
+        [DataGridColumn("code", "Code", editable=True)],
+        [DataGridRow("a", {"code": "AAPL"}), DataGridRow("m", {"code": "MSFT"})],
+        cursor_mode="cell",
+    )
+
+    assert grid.start_edit("m", "code") is True
+    assert grid.set_filter_query("AAPL") is True
+    assert grid.editing_cell_key is None
+
+
+def test_data_grid_filter_query_columns_repair_when_columns_hidden_or_removed() -> None:
+    grid = DataGrid(
+        [DataGridColumn("symbol", "Symbol"), DataGridColumn("sector", "Sector")],
+        [DataGridRow("a", {"symbol": "AAPL", "sector": "AI"})],
+    )
+
+    assert grid.set_filter_query("AI", columns=("sector",)) is True
+    assert grid.view_row_keys == ("a",)
+    assert grid.set_column_hidden("sector") is True
+    assert grid.filter_query_columns == ()
+    assert grid.view_row_keys == ()
+
+    assert grid.set_filter_query("AAPL", columns=("symbol",)) is True
+    assert grid.remove_column("symbol") is True
+    assert grid.filter_query_columns == ()
+    assert grid.view_row_keys == ()
 
 
 def test_data_grid_formatters_cover_text_number_percent_delta_and_compact_values() -> None:
@@ -882,6 +1127,46 @@ def test_data_grid_sort_by_and_clear_sort_are_stable() -> None:
     assert grid.sort_by("missing") is False
 
 
+def test_data_grid_cycle_sort_cycles_column_state_and_preserves_filters() -> None:
+    grid = DataGrid(
+        [DataGridColumn("symbol", "Symbol"), DataGridColumn("price", "Price", align="right")],
+        [
+            DataGridRow("b", {"symbol": "B", "price": 2}),
+            DataGridRow("a", {"symbol": "A", "price": 1}),
+        ],
+        cursor_mode="cell",
+        active_column_key="price",
+    )
+    assert grid.set_filter_query("A", columns=("symbol",)) is True
+
+    assert grid.cycle_sort() is True
+    assert grid.sort_state == ("price", "asc")
+    assert grid.view_row_keys == ("a",)
+
+    assert grid.cycle_sort() is True
+    assert grid.sort_state == ("price", "desc")
+
+    assert grid.cycle_sort() is True
+    assert grid.sort_state is None
+    assert grid.has_filter is True
+
+
+def test_data_grid_sort_header_markers_render_and_pinned_rows_stay_pinned() -> None:
+    grid = DataGrid(
+        [DataGridColumn("job", "Job", width=8), DataGridColumn("runs", "Runs", width=6, align="right")],
+        [
+            DataGridRow("top", {"job": "Top", "runs": 0}, pinned="top"),
+            DataGridRow("b", {"job": "Build", "runs": 12}),
+            DataGridRow("d", {"job": "Deploy", "runs": 3}),
+            DataGridRow("bottom", {"job": "Bottom", "runs": 0}, pinned="bottom"),
+        ],
+    )
+
+    assert grid.sort_by("runs", "asc") is True
+    assert grid.row_keys == ("top", "d", "b", "bottom")
+    assert "Runs ^" in plain_lines(grid, width=32, height=6)[0]
+
+
 def test_data_grid_replace_rows_preserves_explicit_keys_and_rekeys_shorthand_rows() -> None:
     grid = DataGrid(
         [DataGridColumn("name", "Name"), DataGridColumn("qty", "Qty")],
@@ -1094,6 +1379,7 @@ def test_widgets_datagrid_large_dataset_example_imports() -> None:
     assert callable(build_app)
     assert "Large DataGrid" in lines[0]
     assert any("2,000 rows" in line for line in lines)
+    assert any("Search:" in line for line in lines)
     assert any("Go to page" in line for line in lines)
     assert any("Rows 1-" in line for line in lines)
 
@@ -1138,24 +1424,144 @@ def test_widgets_datagrid_large_dataset_focus_shortcuts_and_input_width() -> Non
 
     assert app.handle_input(InputEvent(kind="text", text="g")) is None
     assert app.focus_region == "grid"
-    assert "  Go to page: [1   ] / 106" in lines[1]
+    total_pages = namespace["_total_pages"](app)
+    assert "  Search: [" in lines[1]
+    assert f"  Go to page: [1   ] / {total_pages}" in lines[3]
     assert "g page" not in lines[-1]
 
     assert app.handle_input(InputEvent(kind="key", key="ctrl_g")) is True
     result = app.render(RenderConstraints(width=100, max_height=24))
     lines = tuple(strip_control_sequences(line.text).rstrip() for line in result.lines)
     assert app.focus_region == "goto"
-    assert lines[1].startswith("> Go to page:")
+    assert lines[3].startswith("> Go to page:")
 
     assert app.handle_input(InputEvent(kind="key", key="tab")) is True
     assert app.focus_region == "grid"
+    assert app.handle_input(InputEvent(kind="key", key="tab")) is True
+    assert app.focus_region == "search"
+    result = app.render(RenderConstraints(width=100, max_height=24))
+    lines = tuple(strip_control_sequences(line.text).rstrip() for line in result.lines)
+    assert lines[1].startswith("> Search:")
+
+    assert app.handle_input(InputEvent(kind="key", key="tab")) is True
+    assert app.focus_region == "sector"
+    assert app.handle_input(InputEvent(kind="key", key="tab")) is True
+    assert app.focus_region == "min_price"
     assert app.handle_input(InputEvent(kind="key", key="tab")) is True
     assert app.focus_region == "goto"
 
     assert app.handle_input(InputEvent(kind="text", text="106")) is True
     result = app.render(RenderConstraints(width=100, max_height=24))
     lines = tuple(strip_control_sequences(line.text).rstrip() for line in result.lines)
-    assert "> Go to page: [106 ] / 106" in lines[1]
+    assert f"> Go to page: [106 ] / {total_pages}" in lines[3]
+
+
+def test_widgets_datagrid_large_dataset_search_filters_pages() -> None:
+    namespace = runpy.run_path("examples/tui/60_widgets_datagrid_large_dataset.py", run_name="__test__")
+
+    app = namespace["LargeDataGridExampleApp"]()
+    app.render(RenderConstraints(width=110, max_height=24))
+    assert app.handle_input(InputEvent(kind="key", key="tab")) is True
+    assert app.focus_region == "search"
+    assert app.handle_input(InputEvent(kind="text", text="STK199")) is True
+
+    assert app.grid.filtered_row_count == namespace["ROW_COUNT"]
+    assert app.status == "Enter to apply filters"
+
+    assert app.handle_input(InputEvent(kind="key", key="enter")) is True
+    assert app.grid.filtered_row_count < namespace["ROW_COUNT"]
+    assert app.grid.view_row_keys
+    assert app.grid.active_row_key == app.grid.view_row_keys[0]
+    assert app.focus_region == "grid"
+
+    lines = plain_lines(app, width=110, height=24)
+    assert any("/2,000" in line for line in lines)
+
+
+def test_widgets_datagrid_large_dataset_filter_cursor_stays_visible_when_filter_line_truncates() -> None:
+    namespace = runpy.run_path("examples/tui/60_widgets_datagrid_large_dataset.py", run_name="__test__")
+
+    app = namespace["LargeDataGridExampleApp"]()
+    app.render(RenderConstraints(width=56, max_height=24))
+    assert app.handle_input(InputEvent(kind="key", key="tab")) is True
+    assert app.handle_input(InputEvent(kind="key", key="tab")) is True
+    assert app.handle_input(InputEvent(kind="text", text="ai")) is True
+    assert app.handle_input(InputEvent(kind="key", key="tab")) is True
+
+    result = app.render(RenderConstraints(width=56, max_height=24))
+
+    assert result.cursor is None or result.cursor.column < 56
+
+
+def test_widgets_datagrid_large_dataset_uses_responsive_filter_and_footer_lines() -> None:
+    namespace = runpy.run_path("examples/tui/60_widgets_datagrid_large_dataset.py", run_name="__test__")
+
+    app = namespace["LargeDataGridExampleApp"]()
+    app.render(RenderConstraints(width=80, max_height=24))
+    assert app.handle_input(InputEvent(kind="key", key="tab")) is True
+    assert app.handle_input(InputEvent(kind="text", text="ai")) is True
+    assert app.handle_input(InputEvent(kind="key", key="enter")) is True
+
+    lines = plain_lines(app, width=80, height=24)
+
+    assert "Search: [ai" in lines[1]
+    assert "Sector:" in lines[1]
+    assert "Matches 334/2,000" in lines[1]
+    assert "Min price:" in lines[2]
+    assert "[        ]" in lines[2]
+    assert "Status: [" not in "\n".join(lines)
+    assert "Sort none" in lines[-3]
+    assert "Status:" in lines[-2]
+    assert "Ctrl-B/F" in lines[-1]
+    assert "q quit" in lines[-1]
+    assert not any(line.endswith("Ctrl-") or line.endswith("Min price:") for line in lines)
+
+
+def test_widgets_datagrid_large_dataset_page_uses_filtered_view_keys() -> None:
+    namespace = runpy.run_path("examples/tui/60_widgets_datagrid_large_dataset.py", run_name="__test__")
+
+    app = namespace["LargeDataGridExampleApp"]()
+    app.render(RenderConstraints(width=110, max_height=24))
+    app._apply_search("STK19")
+    app.render(RenderConstraints(width=110, max_height=8))
+    assert app.handle_input(InputEvent(kind="key", key="ctrl+g")) is True
+    assert app.handle_input(InputEvent(kind="text", text="2")) is True
+    assert app.handle_input(InputEvent(kind="key", key="enter")) is True
+
+    assert app.grid.active_row_key in app.grid.view_row_keys
+
+
+def test_widgets_datagrid_large_dataset_filter_bar_and_sort() -> None:
+    namespace = runpy.run_path("examples/tui/60_widgets_datagrid_large_dataset.py", run_name="__test__")
+
+    app = namespace["LargeDataGridExampleApp"]()
+    app.render(RenderConstraints(width=120, max_height=24))
+
+    app._apply_filters(search="STK0", sector="AI", min_price_text="50")
+    assert 0 < app.grid.filtered_row_count < namespace["ROW_COUNT"]
+
+    assert app.grid.activate_cell(str(app.grid.active_row_key), "price") is True
+    assert app.handle_input(InputEvent(kind="key", key="s")) is True
+    assert app.grid.sort_state == ("price", "asc")
+
+    lines = plain_lines(app, width=120, height=24)
+    assert any("Search:" in line and "Sector:" in line for line in lines)
+    assert "Status: [" not in "\n".join(lines)
+    assert any("Sort Price asc" in line for line in lines)
+
+
+def test_widgets_datagrid_large_dataset_invalid_min_price_preserves_last_valid_filter() -> None:
+    namespace = runpy.run_path("examples/tui/60_widgets_datagrid_large_dataset.py", run_name="__test__")
+
+    app = namespace["LargeDataGridExampleApp"]()
+
+    app._apply_filters(min_price_text="100")
+    before = app.grid.view_row_keys
+    app._apply_filters(min_price_text="abc")
+
+    assert app.grid.view_row_keys == before
+    assert "Min price" in app.status
+    assert "filters unchanged" in app.status
 
 
 def test_widgets_datagrid_adapter_example_column_controls() -> None:
