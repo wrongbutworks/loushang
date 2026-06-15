@@ -12,7 +12,7 @@ def test_importing_coding_ui_state_does_not_load_tui_mode_entrypoint() -> None:
 import importlib
 import sys
 
-importlib.import_module("loushang.coding.ui.native_state")
+importlib.import_module("loushang.coding.ui.screen_state")
 
 assert "loushang.coding.ui.mode" not in sys.modules
 assert "loushang.coding.ui.renderer" not in sys.modules

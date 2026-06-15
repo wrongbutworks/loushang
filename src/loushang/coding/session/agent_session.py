@@ -471,7 +471,7 @@ class AgentSession:
             return
         self._approval_resolver.set_request_presenter(presenter)
 
-    async def handle_native_approval(self, event: Mapping[str, object]) -> None:
+    async def handle_screen_approval(self, event: Mapping[str, object]) -> None:
         if self._approval_resolver is None:
             return
         action_id = event.get("action_id")

@@ -2,11 +2,11 @@ from __future__ import annotations
 
 from io import StringIO
 
-from loushang.coding.ui.native_app import NativeCodingTuiApp
-from loushang.coding.ui.native_input import NativeInputRouter
-from loushang.coding.ui.native_loop import _finish_tui_exit
 from loushang.coding.ui.perf_probe import build_synthetic_long_transcript_records
-from loushang.coding.ui.playback import NativeTuiScenario
+from loushang.coding.ui.playback import ScreenTuiScenario
+from loushang.coding.ui.screen_app import ScreenCodingTuiApp
+from loushang.coding.ui.screen_input import ScreenInputRouter
+from loushang.coding.ui.screen_loop import _finish_tui_exit
 from loushang.tui import (
     CompletionItem,
     CompletionProvider,
@@ -22,7 +22,7 @@ from loushang.tui import (
 from loushang.tui.theme import ThemeResolver
 
 
-def test_native_coding_tui_streaming_uses_differential_updates_without_clearing_screen() -> None:
+def test_screen_coding_tui_streaming_uses_differential_updates_without_clearing_screen() -> None:
     app = _app()
     runtime, _port = _runtime(app, height=18)
 
@@ -41,7 +41,7 @@ def test_native_coding_tui_streaming_uses_differential_updates_without_clearing_
     assert all(TerminalOperation.clear_scrollback() not in step.diagnostics.operations for step in streaming_steps)
 
 
-def test_native_coding_tui_overlay_host_preserves_composer_cursor() -> None:
+def test_screen_coding_tui_overlay_host_preserves_composer_cursor() -> None:
     app = _app()
     runtime, port = _runtime(app, height=10)
     app.surface_host = runtime.overlay_host()
@@ -55,7 +55,7 @@ def test_native_coding_tui_overlay_host_preserves_composer_cursor() -> None:
     assert first.frame.screen_after.cursor_column == 2
 
 
-def test_native_coding_tui_exit_cleanup_clears_bottom_frame_status() -> None:
+def test_screen_coding_tui_exit_cleanup_clears_bottom_frame_status() -> None:
     app = _app()
     runtime, port = _runtime(app, width=80, height=12)
 
@@ -80,7 +80,7 @@ def test_native_coding_tui_exit_cleanup_clears_bottom_frame_status() -> None:
     assert port.screen.cursor_column == 0
 
 
-def test_native_coding_tui_transcript_uses_runtime_hyperlink_capability() -> None:
+def test_screen_coding_tui_transcript_uses_runtime_hyperlink_capability() -> None:
     app = _app()
     app.transcript_theme = ThemeResolver(
         defaults={
@@ -105,7 +105,7 @@ def test_native_coding_tui_transcript_uses_runtime_hyperlink_capability() -> Non
     assert "docs (https://example.com)" in plain
 
 
-def test_native_coding_tui_long_stream_keeps_pi_style_diff_without_recovery_repaints() -> None:
+def test_screen_coding_tui_long_stream_keeps_pi_style_diff_without_recovery_repaints() -> None:
     app = _app()
     runtime, _port = _runtime(app, width=100, height=18)
 
@@ -123,7 +123,7 @@ def test_native_coding_tui_long_stream_keeps_pi_style_diff_without_recovery_repa
     assert all(step.diagnostics.operation_class != "baseline_repaint" for step in streaming_steps)
 
 
-def test_native_coding_tui_long_stream_uses_protected_bottom_frame_append() -> None:
+def test_screen_coding_tui_long_stream_uses_protected_bottom_frame_append() -> None:
     app = _app()
     runtime, port = _runtime(app, width=100, height=18)
 
@@ -144,7 +144,7 @@ def test_native_coding_tui_long_stream_uses_protected_bottom_frame_append() -> N
     assert all(TerminalOperation.clear_screen() not in step.diagnostics.operations for step in protected_steps)
 
 
-def test_native_coding_tui_completion_close_keeps_footer_height_and_cursor_anchor() -> None:
+def test_screen_coding_tui_completion_close_keeps_footer_height_and_cursor_anchor() -> None:
     app = _app()
     app.composer.set_completion_provider(
         CompletionProvider(
@@ -159,7 +159,7 @@ def test_native_coding_tui_completion_close_keeps_footer_height_and_cursor_ancho
     app.append_assistant_chunk("done")
     app.end_assistant()
     app.complete_run(elapsed_seconds=1.0)
-    router = NativeInputRouter(app, should_exit=lambda text: text == "/quit", is_local_command=lambda text: text.startswith("/"))
+    router = ScreenInputRouter(app, should_exit=lambda text: text == "/quit", is_local_command=lambda text: text.startswith("/"))
     runtime, port = _runtime(app, width=80, height=18)
 
     runtime.render_now()
@@ -180,8 +180,8 @@ def test_native_coding_tui_completion_close_keeps_footer_height_and_cursor_ancho
     assert visible.count("kimi | repo | main | abcd | idle") == 1
 
 
-def test_native_coding_tui_active_window_trim_rewrites_viewport_without_clearing_screen() -> None:
-    app = NativeCodingTuiApp(
+def test_screen_coding_tui_active_window_trim_rewrites_viewport_without_clearing_screen() -> None:
+    app = ScreenCodingTuiApp(
         model_label="kimi",
         cwd="/repo",
         branch="main",
@@ -207,8 +207,8 @@ def test_native_coding_tui_active_window_trim_rewrites_viewport_without_clearing
     assert TerminalOperation.clear_scrollback() not in step.diagnostics.operations
 
 
-def test_native_coding_tui_complete_run_does_not_repaint_for_active_window_trim() -> None:
-    app = NativeCodingTuiApp(
+def test_screen_coding_tui_complete_run_does_not_repaint_for_active_window_trim() -> None:
+    app = ScreenCodingTuiApp(
         model_label="kimi",
         cwd="/repo",
         branch="main",
@@ -232,7 +232,7 @@ def test_native_coding_tui_complete_run_does_not_repaint_for_active_window_trim(
     assert app.state.evicted_prefix_record_count == 0
 
 
-def test_native_coding_tui_markdown_assistant_commit_does_not_rewrite_streamed_body() -> None:
+def test_screen_coding_tui_markdown_assistant_commit_does_not_rewrite_streamed_body() -> None:
     app = _app()
     runtime, _port = _runtime(app, width=100, height=18)
 
@@ -251,7 +251,7 @@ def test_native_coding_tui_markdown_assistant_commit_does_not_rewrite_streamed_b
     assert step.diagnostics.changed_line_range[0] > 35
 
 
-def test_native_coding_tui_completion_replaces_working_with_one_worked_divider() -> None:
+def test_screen_coding_tui_completion_replaces_working_with_one_worked_divider() -> None:
     app = _app()
     runtime, port = _runtime(app)
 
@@ -272,7 +272,7 @@ def test_native_coding_tui_completion_replaces_working_with_one_worked_divider()
     assert sum("Worked for 2.32s" in line for line in step.diagnostics.current_logical_lines) == 1
 
 
-def test_native_coding_tui_keeps_unsubmitted_draft_in_live_composer_only() -> None:
+def test_screen_coding_tui_keeps_unsubmitted_draft_in_live_composer_only() -> None:
     app = _app()
     runtime, port = _runtime(app)
 
@@ -295,7 +295,7 @@ def test_native_coding_tui_keeps_unsubmitted_draft_in_live_composer_only() -> No
     assert "› 你" not in visible_lines
 
 
-def test_native_coding_tui_resize_repaints_without_replaying_working_or_composer_duplicates() -> None:
+def test_screen_coding_tui_resize_repaints_without_replaying_working_or_composer_duplicates() -> None:
     app = _app()
     runtime, port = _runtime(app, width=60, height=16)
 
@@ -313,7 +313,7 @@ def test_native_coding_tui_resize_repaints_without_replaying_working_or_composer
     assert visible.count("Working") == 1
 
 
-def test_native_coding_tui_starts_below_existing_shell_output() -> None:
+def test_screen_coding_tui_starts_below_existing_shell_output() -> None:
     app = _app()
     runtime, port = _runtime(app, height=10)
     port.screen = port.screen.apply(
@@ -332,8 +332,8 @@ def test_native_coding_tui_starts_below_existing_shell_output() -> None:
     assert "kimi | repo | main | abcd | idle" in port.screen.visible_lines[8]
 
 
-def test_native_coding_tui_renders_pending_steer_and_followup_below_working_line() -> None:
-    scenario = NativeTuiScenario(width=140, height=16, now=3.0)
+def test_screen_coding_tui_renders_pending_steer_and_followup_below_working_line() -> None:
+    scenario = ScreenTuiScenario(width=140, height=16, now=3.0)
     app = scenario.app
 
     app.start_prompt("current task", started_at=0.0)
@@ -353,8 +353,8 @@ def test_native_coding_tui_renders_pending_steer_and_followup_below_working_line
     assert "    alt + ↑ edit last queued message" in visible_lines
 
 
-def test_native_coding_tui_resumed_long_transcript_input_echo_uses_bounded_fake_terminal_update() -> None:
-    scenario = NativeTuiScenario(width=100, height=30, now=3.0)
+def test_screen_coding_tui_resumed_long_transcript_input_echo_uses_bounded_fake_terminal_update() -> None:
+    scenario = ScreenTuiScenario(width=100, height=30, now=3.0)
     app = scenario.app
     app.replace_transcript_window(
         build_synthetic_long_transcript_records(turns=180, tail_tool_output_lines=2400),
@@ -372,8 +372,8 @@ def test_native_coding_tui_resumed_long_transcript_input_echo_uses_bounded_fake_
     scenario.assert_visible_contains("› x")
 
 
-def test_native_coding_tui_resumed_long_transcript_working_timer_uses_bounded_fake_terminal_update() -> None:
-    scenario = NativeTuiScenario(width=100, height=30, now=0.0)
+def test_screen_coding_tui_resumed_long_transcript_working_timer_uses_bounded_fake_terminal_update() -> None:
+    scenario = ScreenTuiScenario(width=100, height=30, now=0.0)
     app = scenario.app
     app.replace_transcript_window(
         build_synthetic_long_transcript_records(turns=180, tail_tool_output_lines=2400),
@@ -392,8 +392,8 @@ def test_native_coding_tui_resumed_long_transcript_working_timer_uses_bounded_fa
     scenario.assert_visible_contains("Working 0.20s")
 
 
-def test_native_coding_tui_resumed_long_transcript_input_and_timer_share_bounded_update_path() -> None:
-    scenario = NativeTuiScenario(width=100, height=30, now=0.0)
+def test_screen_coding_tui_resumed_long_transcript_input_and_timer_share_bounded_update_path() -> None:
+    scenario = ScreenTuiScenario(width=100, height=30, now=0.0)
     app = scenario.app
     app.replace_transcript_window(
         build_synthetic_long_transcript_records(turns=180, tail_tool_output_lines=2400),
@@ -419,8 +419,8 @@ def test_native_coding_tui_resumed_long_transcript_input_and_timer_share_bounded
     scenario.assert_visible_contains("› x")
 
 
-def _app() -> NativeCodingTuiApp:
-    return NativeCodingTuiApp(
+def _app() -> ScreenCodingTuiApp:
+    return ScreenCodingTuiApp(
         model_label="kimi",
         cwd="/repo",
         branch="main",
@@ -430,7 +430,7 @@ def _app() -> NativeCodingTuiApp:
 
 
 def _runtime(
-    app: NativeCodingTuiApp, *, width: int = 80, height: int = 24
+    app: ScreenCodingTuiApp, *, width: int = 80, height: int = 24
 ) -> tuple[TuiRuntime, FakeTerminalPort]:
     port = FakeTerminalPort(size=TerminalSize(columns=width, rows=height))
     runtime = TuiRuntime(render_loop=RenderLoop(app), terminal=port)

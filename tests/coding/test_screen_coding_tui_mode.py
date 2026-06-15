@@ -18,8 +18,8 @@ from loushang.ai import (
 from loushang.coding.message import CompactionSummaryMessage
 from loushang.coding.message.entries import SessionContext
 from loushang.coding.types import ModelSelection
-from loushang.coding.ui.native_surfaces import NativeSurfaceManager
 from loushang.coding.ui.perf_probe import characterize_long_transcript_rendering
+from loushang.coding.ui.screen_surfaces import ScreenSurfaceManager
 from loushang.observability import configure_debug_logging, reset_observability
 from loushang.tui import RenderLoop, TerminalSize
 from loushang.tui.transcript import (
@@ -140,18 +140,18 @@ class _Session:
         return None
 
 
-def test_run_coding_tui_interactive_uses_native_loop(monkeypatch) -> None:
+def test_run_coding_tui_interactive_uses_screen_loop(monkeypatch) -> None:
     from loushang.coding.ui import mode
 
     session = _Session()
     captured: dict[str, object] = {}
 
-    async def fake_native_loop(**kwargs):
+    async def fake_screen_loop(**kwargs):
         captured.update(kwargs)
         await kwargs["handle_prompt"]("hello")
         return 0
 
-    monkeypatch.setattr(mode, "run_native_coding_tui", fake_native_loop)
+    monkeypatch.setattr(mode, "run_screen_coding_tui", fake_screen_loop)
 
     exit_code = asyncio.run(
         mode.run_coding_tui(
@@ -163,8 +163,8 @@ def test_run_coding_tui_interactive_uses_native_loop(monkeypatch) -> None:
         )
     )
 
-    native_app = captured["app"]
-    records = getattr(native_app, "state").records
+    screen_app = captured["app"]
+    records = getattr(screen_app, "state").records
     assistant_records = [record for record in records if isinstance(record, AssistantMessageRecord)]
     assert exit_code == 0
     assert session.prompts == ["hello"]
@@ -177,10 +177,10 @@ def test_run_coding_tui_interactive_prints_resume_hint_on_clean_exit(monkeypatch
     session = _Session()
     stdout = _TTYStringIO()
 
-    async def fake_native_loop(**kwargs):
+    async def fake_screen_loop(**kwargs):
         return 0
 
-    monkeypatch.setattr(mode, "run_native_coding_tui", fake_native_loop)
+    monkeypatch.setattr(mode, "run_screen_coding_tui", fake_screen_loop)
 
     exit_code = asyncio.run(
         mode.run_coding_tui(
@@ -229,11 +229,11 @@ def test_run_coding_tui_interactive_replays_resumed_session_history(monkeypatch)
     ]
     captured: dict[str, object] = {}
 
-    async def fake_native_loop(**kwargs):
+    async def fake_screen_loop(**kwargs):
         captured.update(kwargs)
         return 0
 
-    monkeypatch.setattr(mode, "run_native_coding_tui", fake_native_loop)
+    monkeypatch.setattr(mode, "run_screen_coding_tui", fake_screen_loop)
 
     exit_code = asyncio.run(
         mode.run_coding_tui(
@@ -291,11 +291,11 @@ def test_run_coding_tui_interactive_bounds_resumed_long_transcript_render_window
         )
     captured: dict[str, object] = {}
 
-    async def fake_native_loop(**kwargs):
+    async def fake_screen_loop(**kwargs):
         captured.update(kwargs)
         return 0
 
-    monkeypatch.setattr(mode, "run_native_coding_tui", fake_native_loop)
+    monkeypatch.setattr(mode, "run_screen_coding_tui", fake_screen_loop)
 
     exit_code = asyncio.run(
         mode.run_coding_tui(
@@ -362,11 +362,11 @@ def test_run_coding_tui_interactive_long_transcript_input_frame_does_not_clear_s
         )
     captured: dict[str, object] = {}
 
-    async def fake_native_loop(**kwargs):
+    async def fake_screen_loop(**kwargs):
         captured.update(kwargs)
         return 0
 
-    monkeypatch.setattr(mode, "run_native_coding_tui", fake_native_loop)
+    monkeypatch.setattr(mode, "run_screen_coding_tui", fake_screen_loop)
 
     exit_code = asyncio.run(
         mode.run_coding_tui(
@@ -416,11 +416,11 @@ def test_run_coding_tui_interactive_long_transcript_working_timer_frame_stays_bo
         )
     captured: dict[str, object] = {}
 
-    async def fake_native_loop(**kwargs):
+    async def fake_screen_loop(**kwargs):
         captured.update(kwargs)
         return 0
 
-    monkeypatch.setattr(mode, "run_native_coding_tui", fake_native_loop)
+    monkeypatch.setattr(mode, "run_screen_coding_tui", fake_screen_loop)
 
     exit_code = asyncio.run(
         mode.run_coding_tui(
@@ -476,11 +476,11 @@ def test_run_coding_tui_interactive_traces_resumed_transcript_window_trim(monkey
     sink = _RecordingDebugSink()
     captured: dict[str, object] = {}
 
-    async def fake_native_loop(**kwargs):
+    async def fake_screen_loop(**kwargs):
         captured.update(kwargs)
         return 0
 
-    monkeypatch.setattr(mode, "run_native_coding_tui", fake_native_loop)
+    monkeypatch.setattr(mode, "run_screen_coding_tui", fake_screen_loop)
     reset_observability()
     configure_debug_logging(debug_sink=sink, debug_scopes=("tui",))
     try:
@@ -505,19 +505,19 @@ def test_run_coding_tui_interactive_traces_resumed_transcript_window_trim(monkey
     assert event.data["trimmed"] is True
 
 
-def test_run_coding_tui_interactive_native_loop_dispatches_steer_and_followup(monkeypatch) -> None:
+def test_run_coding_tui_interactive_screen_loop_dispatches_steer_and_followup(monkeypatch) -> None:
     from loushang.coding.ui import mode
 
     session = _Session()
     captured: dict[str, object] = {}
 
-    async def fake_native_loop(**kwargs):
+    async def fake_screen_loop(**kwargs):
         captured.update(kwargs)
         await kwargs["handle_steer"]("steer this")
         await kwargs["handle_followup"]("follow this")
         return 0
 
-    monkeypatch.setattr(mode, "run_native_coding_tui", fake_native_loop)
+    monkeypatch.setattr(mode, "run_screen_coding_tui", fake_screen_loop)
 
     exit_code = asyncio.run(
         mode.run_coding_tui(
@@ -540,17 +540,17 @@ def test_run_coding_tui_injects_on_approval_callback(monkeypatch) -> None:
     session = _Session()
     captured: dict[str, object] = {}
 
-    class RecordingSurfaceManager(NativeSurfaceManager):
+    class RecordingSurfaceManager(ScreenSurfaceManager):
         def __init__(self, *args: object, **kwargs: object) -> None:
             captured["on_approval"] = kwargs.get("on_approval")
             super().__init__(*args, **kwargs)
 
-    async def fake_native_loop(**kwargs: object) -> int:
+    async def fake_screen_loop(**kwargs: object) -> int:
         captured["loop_kwargs"] = kwargs
         return 0
 
-    monkeypatch.setattr(mode, "NativeSurfaceManager", RecordingSurfaceManager)
-    monkeypatch.setattr(mode, "run_native_coding_tui", fake_native_loop)
+    monkeypatch.setattr(mode, "ScreenSurfaceManager", RecordingSurfaceManager)
+    monkeypatch.setattr(mode, "run_screen_coding_tui", fake_screen_loop)
 
     exit_code = asyncio.run(
         mode.run_coding_tui(
@@ -574,15 +574,15 @@ def test_run_coding_tui_non_interactive_keeps_plain_prompt_loop(monkeypatch) -> 
     session = _Session()
     captured: dict[str, object] = {}
 
-    async def fail_native_loop(**_kwargs):
-        raise AssertionError("non-interactive mode should not enter native terminal loop")
+    async def fail_screen_loop(**_kwargs):
+        raise AssertionError("non-interactive mode should not enter screen terminal loop")
 
     async def fake_prompt_loop(**kwargs):
         captured.update(kwargs)
         await kwargs["handle_prompt"]("hello")
         return 0
 
-    monkeypatch.setattr(mode, "run_native_coding_tui", fail_native_loop)
+    monkeypatch.setattr(mode, "run_screen_coding_tui", fail_screen_loop)
     monkeypatch.setattr(mode, "run_non_interactive_prompt_loop", fake_prompt_loop)
 
     exit_code = asyncio.run(
@@ -600,7 +600,7 @@ def test_run_coding_tui_non_interactive_keeps_plain_prompt_loop(monkeypatch) -> 
     assert set(captured) == {"stdin", "stdout", "handle_prompt"}
 
 
-def test_native_event_projection_skips_duplicate_user_messages(monkeypatch) -> None:
+def test_screen_event_projection_skips_duplicate_user_messages(monkeypatch) -> None:
     from loushang.coding.ui import mode
 
     session = _Session()
@@ -617,14 +617,14 @@ def test_native_event_projection_skips_duplicate_user_messages(monkeypatch) -> N
     session.prompt = prompt_with_user_event  # type: ignore[method-assign]
     captured: dict[str, object] = {}
 
-    async def fake_native_loop(**kwargs):
+    async def fake_screen_loop(**kwargs):
         captured.update(kwargs)
         app = kwargs["app"]
         app.start_prompt("hello")
         await kwargs["handle_prompt"]("hello")
         return 0
 
-    monkeypatch.setattr(mode, "run_native_coding_tui", fake_native_loop)
+    monkeypatch.setattr(mode, "run_screen_coding_tui", fake_screen_loop)
 
     exit_code = asyncio.run(
         mode.run_coding_tui(

@@ -192,7 +192,7 @@ class CodingUiRenderer:
             [record],
             verbose_errors=self.verbose,
             # The coding renderer keeps its current plain terminal output by
-            # default. The native TUI path owns themed rendering.
+            # default. The screen TUI path owns themed rendering.
             theme=self.transcript_theme or ThemeResolver(),
             capabilities=self.transcript_capabilities,
             code_highlighter=self.code_highlighter,

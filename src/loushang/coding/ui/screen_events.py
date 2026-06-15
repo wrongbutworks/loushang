@@ -5,7 +5,7 @@ from collections.abc import Callable
 from dataclasses import dataclass, field
 from typing import Any
 
-from loushang.coding.ui.native_app import NativeCodingTuiApp
+from loushang.coding.ui.screen_app import ScreenCodingTuiApp
 from loushang.coding.ui.tool_blocks import (
     ToolCallSnapshot,
     ToolTranscriptBlock,
@@ -19,8 +19,8 @@ TraceFn = Callable[[str], None]
 
 
 @dataclass(slots=True)
-class NativeCodingEventProjector:
-    app: NativeCodingTuiApp
+class ScreenCodingEventProjector:
+    app: ScreenCodingTuiApp
     tool_definition_resolver: Any | None = None
     max_tool_body_lines: int = 8
     read_pending_steers: QueueReader = tuple
@@ -220,4 +220,4 @@ def _user_record(text: str):
     return UserPromptRecord(text)
 
 
-__all__ = ["NativeCodingEventProjector"]
+__all__ = ["ScreenCodingEventProjector"]

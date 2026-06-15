@@ -8,8 +8,8 @@ from contextlib import AbstractContextManager
 from typing import Any, TextIO
 
 from loushang.ai.types import ImagePart
-from loushang.coding.ui.native_app import NativeCodingTuiApp
-from loushang.coding.ui.native_input import NativeInputRouter
+from loushang.coding.ui.screen_app import ScreenCodingTuiApp
+from loushang.coding.ui.screen_input import ScreenInputRouter
 from loushang.tui import _runner_utils
 from loushang.tui.core import RenderConstraints
 from loushang.tui.input import InputIntent, InputReader
@@ -41,9 +41,9 @@ _request_runtime_render = _runner_utils.request_runtime_render
 _terminal_runtime_wakeup_ms = _runner_utils.terminal_runtime_wakeup_ms
 
 
-async def run_native_coding_tui(
+async def run_screen_coding_tui(
     *,
-    app: NativeCodingTuiApp,
+    app: ScreenCodingTuiApp,
     stdin: TextIO,
     stdout: TextIO,
     handle_prompt: PromptHandler,
@@ -61,7 +61,7 @@ async def run_native_coding_tui(
     reader = InputReader()
     size_provider = terminal_size_provider or _terminal_size
     initial_size = size_provider()
-    router = NativeInputRouter(
+    router = ScreenInputRouter(
         app,
         should_exit=should_exit,
         is_local_command=is_local_command or (lambda _text: False),
@@ -198,7 +198,7 @@ async def run_native_coding_tui(
 
 async def _finish_active_task(
     *,
-    app: NativeCodingTuiApp,
+    app: ScreenCodingTuiApp,
     active_task: asyncio.Task[int | None],
     started_at: float | None,
 ) -> int | None:
@@ -215,7 +215,7 @@ async def _finish_active_task(
     return result if isinstance(result, int) else None
 
 
-def _write_startup_welcome(*, app: NativeCodingTuiApp, runtime: TuiRuntime, stdout: TextIO) -> None:
+def _write_startup_welcome(*, app: ScreenCodingTuiApp, runtime: TuiRuntime, stdout: TextIO) -> None:
     if app.state.records or app.state.running or app.state.assistant_draft_buffer is not None:
         return
     size = runtime.terminal.size()
@@ -229,7 +229,7 @@ def _write_startup_welcome(*, app: NativeCodingTuiApp, runtime: TuiRuntime, stdo
     stdout.flush()
 
 
-def _configure_runtime_for_terminal_context(runtime: TuiRuntime, app: NativeCodingTuiApp, terminal_context: object) -> None:
+def _configure_runtime_for_terminal_context(runtime: TuiRuntime, app: ScreenCodingTuiApp, terminal_context: object) -> None:
     capabilities = getattr(terminal_context, "capabilities", None)
     if capabilities is not None:
         app.terminal_capabilities = capabilities
@@ -287,7 +287,7 @@ def _format_cell_size(value: object) -> str:
 
 async def _abort_active(
     *,
-    app: NativeCodingTuiApp,
+    app: ScreenCodingTuiApp,
     active_task: asyncio.Task[int | None] | None,
     on_abort: AbortHandler,
 ) -> None:
@@ -303,7 +303,7 @@ async def _abort_active(
     app.state.abort(message="Conversation interrupted - tell the model what to do differently.", elapsed_seconds=app.elapsed_seconds())
 
 
-def _elapsed_since(app: NativeCodingTuiApp, started_at: float | None) -> float:
+def _elapsed_since(app: ScreenCodingTuiApp, started_at: float | None) -> float:
     if started_at is None:
         return app.elapsed_seconds()
     return max(0.0, app.now() - started_at)
@@ -329,7 +329,7 @@ async def _run_text_handler(
     return result if isinstance(result, int) else None
 
 
-def _pop_interrupt_pending_steer(app: NativeCodingTuiApp) -> str | None:
+def _pop_interrupt_pending_steer(app: ScreenCodingTuiApp) -> str | None:
     if not app.state.pending_steers:
         return None
     pending_steer = app.state.pending_steers.pop(0)
@@ -374,4 +374,4 @@ def _terminal_size() -> TerminalSize:
     return TerminalSize(columns=size.columns, rows=size.lines)
 
 
-__all__ = ["run_native_coding_tui"]
+__all__ = ["run_screen_coding_tui"]

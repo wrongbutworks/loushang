@@ -17,13 +17,13 @@ from loushang.tui.transcript import (
 
 
 @dataclass(frozen=True, slots=True)
-class NativeTranscriptWindow:
+class ScreenTranscriptWindow:
     records: tuple[DisplayRecord, ...] = ()
     evicted_prefix_record_count: int = 0
 
 
 @dataclass(slots=True)
-class NativeCodingTuiState:
+class ScreenCodingTuiState:
     records: list[DisplayRecord] = field(default_factory=list)
     transcript_window_generation: int = 0
     evicted_prefix_record_count: int = 0
@@ -58,14 +58,14 @@ class NativeCodingTuiState:
 
     def replace_transcript_window(
         self,
-        records: Iterable[DisplayRecord] | NativeTranscriptWindow,
+        records: Iterable[DisplayRecord] | ScreenTranscriptWindow,
         *,
         evicted_prefix_record_count: int = 0,
     ) -> None:
-        if isinstance(records, NativeTranscriptWindow):
+        if isinstance(records, ScreenTranscriptWindow):
             window = records
         else:
-            window = NativeTranscriptWindow(
+            window = ScreenTranscriptWindow(
                 records=tuple(records),
                 evicted_prefix_record_count=evicted_prefix_record_count,
             )
@@ -201,4 +201,4 @@ class NativeCodingTuiState:
         self.records.append(record)
 
 
-__all__ = ["NativeCodingTuiState", "NativeTranscriptWindow"]
+__all__ = ["ScreenCodingTuiState", "ScreenTranscriptWindow"]

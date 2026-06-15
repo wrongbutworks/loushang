@@ -4,14 +4,14 @@ import asyncio
 
 from loushang.coding.ui.completion import coding_inline_completion_provider
 from loushang.coding.ui.playback import (
-    NativeTuiInputPlaybackResult,
-    NativeTuiInputScenario,
+    ScreenTuiInputPlaybackResult,
+    ScreenTuiInputScenario,
 )
 from loushang.coding.ui.playback_fakes import (
     SessionCommandPlaybackSession as _SessionCommandSession,
 )
 from loushang.coding.ui.playback_scenarios.budgets import INTERACTION_FRAME_BUDGET
-from loushang.coding.ui.playback_suite import NativePlaybackScenarioSpec
+from loushang.coding.ui.playback_suite import ScreenPlaybackScenarioSpec
 from loushang.tui import (
     CompletionItem,
     CompletionProvider,
@@ -21,9 +21,9 @@ from loushang.tui import (
 from loushang.tui.input import BRACKETED_PASTE_END, BRACKETED_PASTE_START
 
 
-def _run_completion_tab() -> NativeTuiInputPlaybackResult:
+def _run_completion_tab() -> ScreenTuiInputPlaybackResult:
     result = (
-        NativeTuiInputScenario(width=80, height=12)
+        ScreenTuiInputScenario(width=80, height=12)
         .with_completion_items("/model", "/models")
         .render()
         .type_text("/mod")
@@ -38,9 +38,9 @@ def _run_completion_tab() -> NativeTuiInputPlaybackResult:
     return result
 
 
-def _run_completion_session_command() -> NativeTuiInputPlaybackResult:
+def _run_completion_session_command() -> ScreenTuiInputPlaybackResult:
     session = _SessionCommandSession()
-    scenario = NativeTuiInputScenario(width=80, height=12)
+    scenario = ScreenTuiInputScenario(width=80, height=12)
     scenario.app.composer.set_completion_provider(asyncio.run(coding_inline_completion_provider(session)))
 
     result = scenario.render().type_text("/na").tab().run()
@@ -55,9 +55,9 @@ def _run_completion_session_command() -> NativeTuiInputPlaybackResult:
     return result
 
 
-def _run_completion_navigation_priority() -> NativeTuiInputPlaybackResult:
+def _run_completion_navigation_priority() -> ScreenTuiInputPlaybackResult:
     result = (
-        NativeTuiInputScenario(width=80, height=12)
+        ScreenTuiInputScenario(width=80, height=12)
         .with_history("history prompt")
         .with_completion_items("/model", "/models")
         .render()
@@ -74,9 +74,9 @@ def _run_completion_navigation_priority() -> NativeTuiInputPlaybackResult:
     return result
 
 
-def _run_completion_escape_cancel() -> NativeTuiInputPlaybackResult:
+def _run_completion_escape_cancel() -> ScreenTuiInputPlaybackResult:
     result = (
-        NativeTuiInputScenario(width=80, height=12)
+        ScreenTuiInputScenario(width=80, height=12)
         .with_completion_items("/help", "/history")
         .render()
         .type_text("/h")
@@ -93,9 +93,9 @@ def _run_completion_escape_cancel() -> NativeTuiInputPlaybackResult:
     return result
 
 
-def _run_completion_prefix_refresh() -> NativeTuiInputPlaybackResult:
+def _run_completion_prefix_refresh() -> ScreenTuiInputPlaybackResult:
     result = (
-        NativeTuiInputScenario(width=80, height=12)
+        ScreenTuiInputScenario(width=80, height=12)
         .with_completion_items("/help", "/history", "/model")
         .render()
         .type_text("/")
@@ -113,9 +113,9 @@ def _run_completion_prefix_refresh() -> NativeTuiInputPlaybackResult:
     return result
 
 
-def _run_completion_enter_submits_command() -> NativeTuiInputPlaybackResult:
+def _run_completion_enter_submits_command() -> ScreenTuiInputPlaybackResult:
     result = (
-        NativeTuiInputScenario(width=80, height=12)
+        ScreenTuiInputScenario(width=80, height=12)
         .with_completion_items("/model", "/models")
         .with_local_commands("/model")
         .render()
@@ -133,9 +133,9 @@ def _run_completion_enter_submits_command() -> NativeTuiInputPlaybackResult:
     return result
 
 
-def _run_history_navigation() -> NativeTuiInputPlaybackResult:
+def _run_history_navigation() -> ScreenTuiInputPlaybackResult:
     result = (
-        NativeTuiInputScenario(width=80, height=12)
+        ScreenTuiInputScenario(width=80, height=12)
         .with_history("first prompt", "second prompt")
         .render()
         .type_text("draft")
@@ -160,10 +160,10 @@ def _run_history_navigation() -> NativeTuiInputPlaybackResult:
     return result
 
 
-def _run_bracketed_paste_large_marker() -> NativeTuiInputPlaybackResult:
+def _run_bracketed_paste_large_marker() -> ScreenTuiInputPlaybackResult:
     pasted = "\n".join(f"line {index}" for index in range(10))
     result = (
-        NativeTuiInputScenario(width=80, height=12)
+        ScreenTuiInputScenario(width=80, height=12)
         .render()
         .key(f"{BRACKETED_PASTE_START}{pasted}{BRACKETED_PASTE_END}")
         .run()
@@ -176,9 +176,9 @@ def _run_bracketed_paste_large_marker() -> NativeTuiInputPlaybackResult:
     return result
 
 
-def _run_resize_reflow_stable() -> NativeTuiInputPlaybackResult:
+def _run_resize_reflow_stable() -> ScreenTuiInputPlaybackResult:
     result = (
-        NativeTuiInputScenario(width=80, height=12)
+        ScreenTuiInputScenario(width=80, height=12)
         .render()
         .type_text("resize keeps composer stable")
         .resize(width=42, height=8)
@@ -196,9 +196,9 @@ def _run_resize_reflow_stable() -> NativeTuiInputPlaybackResult:
     return result
 
 
-def _run_wide_char_input_cursor() -> NativeTuiInputPlaybackResult:
+def _run_wide_char_input_cursor() -> ScreenTuiInputPlaybackResult:
     result = (
-        NativeTuiInputScenario(width=32, height=10)
+        ScreenTuiInputScenario(width=32, height=10)
         .render()
         .type_chars("你好🙂 terminal")
         .run()
@@ -211,9 +211,9 @@ def _run_wide_char_input_cursor() -> NativeTuiInputPlaybackResult:
     return result
 
 
-def _run_keyboard_shift_enter_newline() -> NativeTuiInputPlaybackResult:
+def _run_keyboard_shift_enter_newline() -> ScreenTuiInputPlaybackResult:
     result = (
-        NativeTuiInputScenario(width=80, height=12)
+        ScreenTuiInputScenario(width=80, height=12)
         .render()
         .type_text("first line")
         .key("\x1b[13;2u")
@@ -230,9 +230,9 @@ def _run_keyboard_shift_enter_newline() -> NativeTuiInputPlaybackResult:
     return result
 
 
-def _run_editor_key_editing() -> NativeTuiInputPlaybackResult:
+def _run_editor_key_editing() -> ScreenTuiInputPlaybackResult:
     result = (
-        NativeTuiInputScenario(width=80, height=12)
+        ScreenTuiInputScenario(width=80, height=12)
         .render()
         .type_text("alpha beta gamma")
         .key("\x01say ")
@@ -249,8 +249,8 @@ def _run_editor_key_editing() -> NativeTuiInputPlaybackResult:
     return result
 
 
-def _run_page_navigation() -> NativeTuiInputPlaybackResult:
-    scenario = NativeTuiInputScenario(width=20, height=3).with_composer_text("one\ntwo\nthree\nfour\nfive")
+def _run_page_navigation() -> ScreenTuiInputPlaybackResult:
+    scenario = ScreenTuiInputScenario(width=20, height=3).with_composer_text("one\ntwo\nthree\nfour\nfive")
     playback = scenario.playback
 
     playback.play((PlaybackEvent("render"), PlaybackEvent.input("\x1b[5~")))
@@ -271,10 +271,10 @@ def _run_page_navigation() -> NativeTuiInputPlaybackResult:
     return result
 
 
-def _run_paste_marker_delete_undo() -> NativeTuiInputPlaybackResult:
+def _run_paste_marker_delete_undo() -> ScreenTuiInputPlaybackResult:
     pasted = "\n".join(f"line {index}" for index in range(10))
     result = (
-        NativeTuiInputScenario(width=80, height=12)
+        ScreenTuiInputScenario(width=80, height=12)
         .render()
         .key(f"{BRACKETED_PASTE_START}{pasted}{BRACKETED_PASTE_END}")
         .key("\x7f")
@@ -289,9 +289,9 @@ def _run_paste_marker_delete_undo() -> NativeTuiInputPlaybackResult:
     return result
 
 
-def _run_composer_selection_replace() -> NativeTuiInputPlaybackResult:
+def _run_composer_selection_replace() -> ScreenTuiInputPlaybackResult:
     result = (
-        NativeTuiInputScenario(width=80, height=12)
+        ScreenTuiInputScenario(width=80, height=12)
         .render()
         .type_text("abc")
         .key("\x1b[1;2D")
@@ -308,8 +308,8 @@ def _run_composer_selection_replace() -> NativeTuiInputPlaybackResult:
     return result
 
 
-def _run_composer_selection_stress() -> NativeTuiInputPlaybackResult:
-    scenario = NativeTuiInputScenario(width=80, height=12)
+def _run_composer_selection_stress() -> ScreenTuiInputPlaybackResult:
+    scenario = ScreenTuiInputScenario(width=80, height=12)
     playback = scenario.playback
 
     playback.play(
@@ -380,9 +380,9 @@ def _run_composer_selection_stress() -> NativeTuiInputPlaybackResult:
     return result
 
 
-def _result_from_scenario(scenario: NativeTuiInputScenario) -> NativeTuiInputPlaybackResult:
+def _result_from_scenario(scenario: ScreenTuiInputScenario) -> ScreenTuiInputPlaybackResult:
     playback = scenario.playback
-    return NativeTuiInputPlaybackResult(
+    return ScreenTuiInputPlaybackResult(
         steps=playback.harness.steps,
         port=playback.port,
         input_results=tuple(playback.input_results),
@@ -393,90 +393,90 @@ def _result_from_scenario(scenario: NativeTuiInputScenario) -> NativeTuiInputPla
 
 
 COMPOSER_SCENARIOS = (
-    NativePlaybackScenarioSpec(
+    ScreenPlaybackScenarioSpec(
         name="completion-tab",
         description="Apply tab completion without clearing or repainting the screen.",
         run=_run_completion_tab,
     ),
-    NativePlaybackScenarioSpec(
+    ScreenPlaybackScenarioSpec(
         name="completion-session-command",
         description="Apply session command completion without executing the selected command.",
         run=_run_completion_session_command,
         tags=("completion", "command", "session"),
     ),
-    NativePlaybackScenarioSpec(
+    ScreenPlaybackScenarioSpec(
         name="completion-navigation-priority",
         description="Route completion navigation before history navigation.",
         run=_run_completion_navigation_priority,
     ),
-    NativePlaybackScenarioSpec(
+    ScreenPlaybackScenarioSpec(
         name="completion-escape-cancel",
         description="Cancel visible completions without clearing the composer draft.",
         run=_run_completion_escape_cancel,
         tags=("completion", "editor", "composer"),
     ),
-    NativePlaybackScenarioSpec(
+    ScreenPlaybackScenarioSpec(
         name="completion-prefix-refresh",
         description="Refresh visible completions when the composer prefix changes.",
         run=_run_completion_prefix_refresh,
         tags=("completion", "editor", "composer"),
     ),
-    NativePlaybackScenarioSpec(
+    ScreenPlaybackScenarioSpec(
         name="completion-enter-submits-command",
         description="Apply a selected slash command completion before local command submission.",
         run=_run_completion_enter_submits_command,
         tags=("completion", "command", "composer"),
     ),
-    NativePlaybackScenarioSpec(
+    ScreenPlaybackScenarioSpec(
         name="history-navigation",
         description="Browse prompt history from a non-empty draft and restore the draft.",
         run=_run_history_navigation,
     ),
-    NativePlaybackScenarioSpec(
+    ScreenPlaybackScenarioSpec(
         name="bracketed-paste-large-marker",
         description="Render a large bracketed paste as a stable composer marker.",
         run=_run_bracketed_paste_large_marker,
     ),
-    NativePlaybackScenarioSpec(
+    ScreenPlaybackScenarioSpec(
         name="resize-reflow-stable",
         description="Keep composer text and cursor stable across terminal resizes.",
         run=_run_resize_reflow_stable,
     ),
-    NativePlaybackScenarioSpec(
+    ScreenPlaybackScenarioSpec(
         name="wide-char-input-cursor",
         description="Keep CJK and emoji input cursor diagnostics aligned.",
         run=_run_wide_char_input_cursor,
     ),
-    NativePlaybackScenarioSpec(
+    ScreenPlaybackScenarioSpec(
         name="keyboard-shift-enter-newline",
         description="Route raw Shift+Enter to composer newline before submission.",
         run=_run_keyboard_shift_enter_newline,
     ),
-    NativePlaybackScenarioSpec(
+    ScreenPlaybackScenarioSpec(
         name="editor-key-editing",
         description="Route common editor keys for line movement, kill/yank, and undo.",
         run=_run_editor_key_editing,
         tags=("editor", "composer"),
     ),
-    NativePlaybackScenarioSpec(
+    ScreenPlaybackScenarioSpec(
         name="page-navigation",
         description="Route composer PageUp and PageDown using playback terminal dimensions.",
         run=_run_page_navigation,
         tags=("editor", "composer"),
     ),
-    NativePlaybackScenarioSpec(
+    ScreenPlaybackScenarioSpec(
         name="paste-marker-delete-undo",
         description="Delete a large paste marker atomically and restore it with undo.",
         run=_run_paste_marker_delete_undo,
         tags=("editor", "paste", "composer"),
     ),
-    NativePlaybackScenarioSpec(
+    ScreenPlaybackScenarioSpec(
         name="composer-selection-replace",
         description="Extend composer selection with Shift+Left and replace it through typed input.",
         run=_run_composer_selection_replace,
         tags=("editor", "selection", "composer"),
     ),
-    NativePlaybackScenarioSpec(
+    ScreenPlaybackScenarioSpec(
         name="composer-selection-stress",
         description="Stress composer selection across wide text, paste markers, kill/yank, undo, and completions.",
         run=_run_composer_selection_stress,

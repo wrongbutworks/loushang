@@ -8,7 +8,7 @@ from pathlib import Path
 
 
 @dataclass(frozen=True, slots=True)
-class NativePlaybackScenarioSpec:
+class ScreenPlaybackScenarioSpec:
     name: str
     description: str
     run: Callable[[], object]
@@ -16,7 +16,7 @@ class NativePlaybackScenarioSpec:
 
 
 @dataclass(frozen=True, slots=True)
-class NativePlaybackScenarioResult:
+class ScreenPlaybackScenarioResult:
     name: str
     ok: bool
     elapsed_ms: float
@@ -24,26 +24,26 @@ class NativePlaybackScenarioResult:
     error: str | None = None
 
 
-class NativePlaybackSuite:
-    def __init__(self, scenarios: Sequence[NativePlaybackScenarioSpec]) -> None:
+class ScreenPlaybackSuite:
+    def __init__(self, scenarios: Sequence[ScreenPlaybackScenarioSpec]) -> None:
         self._scenarios = tuple(scenarios)
         self._by_name = {scenario.name: scenario for scenario in self._scenarios}
 
     @property
-    def scenarios(self) -> tuple[NativePlaybackScenarioSpec, ...]:
+    def scenarios(self) -> tuple[ScreenPlaybackScenarioSpec, ...]:
         return self._scenarios
 
     def names(self) -> tuple[str, ...]:
         return tuple(scenario.name for scenario in self._scenarios)
 
-    def selected(self, names: Sequence[str], *, tags: Sequence[str] = ()) -> tuple[NativePlaybackScenarioSpec, ...]:
+    def selected(self, names: Sequence[str], *, tags: Sequence[str] = ()) -> tuple[ScreenPlaybackScenarioSpec, ...]:
         scenarios = self._scenarios if not names else tuple(self.get(name) for name in names)
         tag_filter = normalized_tags(tags)
         if not tag_filter:
             return scenarios
         return tuple(scenario for scenario in scenarios if tag_filter.issubset(normalized_tags(scenario.tags)))
 
-    def get(self, name: str) -> NativePlaybackScenarioSpec:
+    def get(self, name: str) -> ScreenPlaybackScenarioSpec:
         try:
             return self._by_name[name]
         except KeyError as error:
@@ -54,11 +54,11 @@ def run_playback_scenarios(
     names: Sequence[str] = (),
     *,
     tags: Sequence[str] = (),
-    suite: NativePlaybackSuite,
+    suite: ScreenPlaybackSuite,
     artifacts_dir: str | Path | None = None,
     include_frames: bool = False,
-) -> tuple[NativePlaybackScenarioResult, ...]:
-    results: list[NativePlaybackScenarioResult] = []
+) -> tuple[ScreenPlaybackScenarioResult, ...]:
+    results: list[ScreenPlaybackScenarioResult] = []
     for scenario in suite.selected(tuple(names), tags=tuple(tags)):
         started = time.perf_counter()
         try:
@@ -70,7 +70,7 @@ def run_playback_scenarios(
                 include_frames=include_frames,
             )
             results.append(
-                NativePlaybackScenarioResult(
+                ScreenPlaybackScenarioResult(
                     name=scenario.name,
                     ok=True,
                     elapsed_ms=_elapsed_ms(started),
@@ -85,7 +85,7 @@ def run_playback_scenarios(
                 include_frames=include_frames,
             )
             results.append(
-                NativePlaybackScenarioResult(
+                ScreenPlaybackScenarioResult(
                     name=scenario.name,
                     ok=False,
                     elapsed_ms=_elapsed_ms(started),
@@ -164,9 +164,9 @@ def _elapsed_ms(started: float) -> float:
 
 
 __all__ = [
-    "NativePlaybackScenarioResult",
-    "NativePlaybackScenarioSpec",
-    "NativePlaybackSuite",
+    "ScreenPlaybackScenarioResult",
+    "ScreenPlaybackScenarioSpec",
+    "ScreenPlaybackSuite",
     "normalized_tags",
     "run_playback_scenarios",
 ]

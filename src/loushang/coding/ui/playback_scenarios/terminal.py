@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from loushang.coding.ui.playback import NativeTuiLoopPlayback
+from loushang.coding.ui.playback import ScreenTuiLoopPlayback
 from loushang.coding.ui.playback_fakes import (
     AppleShiftEnterTerminalContext as _AppleShiftEnterTerminalContext,
 )
@@ -11,7 +11,7 @@ from loushang.coding.ui.playback_fakes import (
     RecordingTerminalMode as _RecordingTerminalMode,
 )
 from loushang.coding.ui.playback_fakes import recording_drain as _recording_drain
-from loushang.coding.ui.playback_suite import NativePlaybackScenarioSpec
+from loushang.coding.ui.playback_suite import ScreenPlaybackScenarioSpec
 from loushang.tui.input import BRACKETED_PASTE_END, BRACKETED_PASTE_START
 from loushang.tui.keyboard_protocol import (
     KITTY_DISABLE_SEQUENCE,
@@ -26,8 +26,8 @@ from loushang.tui.terminal_session import (
 )
 
 
-def _run_native_loop_split_bracketed_paste() -> object:
-    playback = NativeTuiLoopPlayback(width=80, height=12)
+def _run_screen_loop_split_bracketed_paste() -> object:
+    playback = ScreenTuiLoopPlayback(width=80, height=12)
     pasted = "alpha\nbeta\ngamma"
     prompts: list[str] = []
 
@@ -55,7 +55,7 @@ def _run_native_loop_split_bracketed_paste() -> object:
 
 
 def _run_terminal_control_response_hidden() -> object:
-    playback = NativeTuiLoopPlayback(width=80, height=12)
+    playback = ScreenTuiLoopPlayback(width=80, height=12)
     contexts: list[_RecordingTerminalContext] = []
     prompts: list[str] = []
 
@@ -94,8 +94,8 @@ def _run_terminal_control_response_hidden() -> object:
     return result
 
 
-def _run_native_loop_terminal_session_cleanup() -> object:
-    playback = NativeTuiLoopPlayback(width=80, height=12)
+def _run_screen_loop_terminal_session_cleanup() -> object:
+    playback = ScreenTuiLoopPlayback(width=80, height=12)
     prompts: list[str] = []
     cleanup_calls: list[str] = []
     mode = _RecordingTerminalMode(cleanup_calls)
@@ -150,7 +150,7 @@ def _run_native_loop_terminal_session_cleanup() -> object:
 
 
 def _run_apple_shift_enter_normalized() -> object:
-    playback = NativeTuiLoopPlayback(width=80, height=12)
+    playback = ScreenTuiLoopPlayback(width=80, height=12)
     contexts: list[_AppleShiftEnterTerminalContext] = []
     prompts: list[str] = []
 
@@ -185,22 +185,22 @@ def _run_apple_shift_enter_normalized() -> object:
 
 
 TERMINAL_SCENARIOS = (
-    NativePlaybackScenarioSpec(
-        name="native-loop-split-bracketed-paste",
-        description="Keep split native bracketed paste atomic until the end marker arrives.",
-        run=_run_native_loop_split_bracketed_paste,
+    ScreenPlaybackScenarioSpec(
+        name="screen-loop-split-bracketed-paste",
+        description="Keep split screen bracketed paste atomic until the end marker arrives.",
+        run=_run_screen_loop_split_bracketed_paste,
     ),
-    NativePlaybackScenarioSpec(
+    ScreenPlaybackScenarioSpec(
         name="terminal-control-response-hidden",
         description="Consume terminal control responses without echoing them as user input.",
         run=_run_terminal_control_response_hidden,
     ),
-    NativePlaybackScenarioSpec(
-        name="native-loop-terminal-session-cleanup",
-        description="Run native loop through TerminalSession startup, control responses, and cleanup.",
-        run=_run_native_loop_terminal_session_cleanup,
+    ScreenPlaybackScenarioSpec(
+        name="screen-loop-terminal-session-cleanup",
+        description="Run screen loop through TerminalSession startup, control responses, and cleanup.",
+        run=_run_screen_loop_terminal_session_cleanup,
     ),
-    NativePlaybackScenarioSpec(
+    ScreenPlaybackScenarioSpec(
         name="apple-shift-enter-normalized",
         description="Normalize Apple Terminal Shift+Enter to a composer newline before submit.",
         run=_run_apple_shift_enter_normalized,

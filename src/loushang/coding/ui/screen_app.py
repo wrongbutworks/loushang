@@ -13,7 +13,7 @@ from loushang.coding.tools.output_preview import (
     drop_tool_timing_tail_line,
     prefers_tail_tool_output,
 )
-from loushang.coding.ui.native_state import NativeCodingTuiState, NativeTranscriptWindow
+from loushang.coding.ui.screen_state import ScreenCodingTuiState, ScreenTranscriptWindow
 from loushang.coding.ui.status_line import (
     StatusLinePreviewSnapshot,
     StatusLineSettings,
@@ -95,14 +95,14 @@ def _terminal_transcript_theme() -> ThemeResolver:
 
 
 @dataclass(slots=True)
-class NativeCodingTuiApp:
+class ScreenCodingTuiApp:
     model_label: str | None
     cwd: str
     branch: str | None
     session_label: str | None
     now: Callable[[], float] = time.monotonic
     composer: Composer = field(default_factory=lambda: Composer(prompt="› ", continuation_prompt="  "))
-    state: NativeCodingTuiState = field(init=False)
+    state: ScreenCodingTuiState = field(init=False)
     active_surface: Any | None = None
     surface_host: SurfaceHost | None = None
     transcript_theme: ThemeResolver = field(default_factory=_terminal_transcript_theme)
@@ -113,18 +113,18 @@ class NativeCodingTuiApp:
     terminal_diagnostics_provider: Callable[[], str] | None = None
     terminal_capabilities: TerminalRuntimeCapabilities | None = None
     transcript_source_factory: Callable[[], TranscriptSource] | None = None
-    _transcript_region: _NativeTranscriptRegion = field(init=False, repr=False)
+    _transcript_region: _ScreenTranscriptRegion = field(init=False, repr=False)
     _bottom_frame_component: BottomFrame = field(init=False, repr=False)
     _render_baseline_reset_reason: str | None = field(default=None, init=False, repr=False)
 
     def __post_init__(self) -> None:
-        self.state = NativeCodingTuiState(
+        self.state = ScreenCodingTuiState(
             model_label=self.model_label,
             cwd=self.cwd,
             branch=self.branch,
             session_label=self.session_label,
         )
-        self._transcript_region = _NativeTranscriptRegion(theme=self.transcript_theme)
+        self._transcript_region = _ScreenTranscriptRegion(theme=self.transcript_theme)
         self._bottom_frame_component = BottomFrame(composer=self.composer)
 
     def start_prompt(self, text: str, *, started_at: float | None = None) -> None:
@@ -230,7 +230,7 @@ class NativeCodingTuiApp:
 
     def replace_transcript_window(
         self,
-        records: Iterable[DisplayRecord] | NativeTranscriptWindow,
+        records: Iterable[DisplayRecord] | ScreenTranscriptWindow,
         *,
         evicted_prefix_record_count: int = 0,
         reason: str = "replace",
@@ -320,7 +320,7 @@ class NativeCodingTuiApp:
         if not changed:
             return
         self.state.replace_transcript_window(
-            NativeTranscriptWindow(
+            ScreenTranscriptWindow(
                 records=records,
                 evicted_prefix_record_count=self.state.evicted_prefix_record_count + evicted_count,
             )
@@ -403,7 +403,7 @@ class NativeCodingTuiApp:
 
 
 @dataclass(slots=True)
-class _NativeTranscriptRegion:
+class _ScreenTranscriptRegion:
     records: list[DisplayRecord] = field(default_factory=list)
     draft: AssistantMessageRecord | None = None
     draft_buffer: StreamingTextBuffer | None = None
@@ -437,7 +437,7 @@ class _NativeTranscriptRegion:
 
     def render(self, constraints: RenderConstraints) -> RenderResult:
         self._reset_cache_if_window_changed()
-        style_signature = (*_native_transcript_style_signature(self.theme, self.capabilities), self.cwd)
+        style_signature = (*_screen_transcript_style_signature(self.theme, self.capabilities), self.cwd)
         rows = self._render_tail_rows(
             max_height=constraints.max_height,
             width=constraints.width,
@@ -516,8 +516,8 @@ class _NativeTranscriptRegion:
         return rendered
 
     def _render_record_uncached(self, record: DisplayRecord, *, width: int) -> tuple[str, ...]:
-        display_record = _native_coding_display_record(record, cwd=self.cwd)
-        render_width = _native_transcript_record_render_width(display_record, width=width)
+        display_record = _screen_coding_display_record(record, cwd=self.cwd)
+        render_width = _screen_transcript_record_render_width(display_record, width=width)
         view = TranscriptView(
             [display_record],
             theme=self.theme,
@@ -684,7 +684,7 @@ def _coding_line(
     return apply_coding_transcript_style(line, record, theme=theme, capabilities=capabilities)
 
 
-def _native_coding_display_record(record: DisplayRecord, *, cwd: str = "") -> DisplayRecord:
+def _screen_coding_display_record(record: DisplayRecord, *, cwd: str = "") -> DisplayRecord:
     if not isinstance(record, ToolExecutionRecord):
         return record
     name = _compact_display_paths(record.name, cwd=cwd)
@@ -779,7 +779,7 @@ def _style_tool_body_line(
     return apply_coding_transcript_style(line, record, theme=theme, capabilities=capabilities)
 
 
-def _native_transcript_record_render_width(record: DisplayRecord, *, width: int) -> int:
+def _screen_transcript_record_render_width(record: DisplayRecord, *, width: int) -> int:
     if isinstance(record, ToolExecutionRecord):
         return max(1, width - 2)
     return width
@@ -789,7 +789,7 @@ def _streaming_buffer_render_text(buffer: StreamingTextBuffer) -> str:
     return "\n".join(buffer.logical_lines())
 
 
-def _native_transcript_style_signature(theme: ThemeResolver | None, capabilities: Any | None) -> tuple[object, ...]:
+def _screen_transcript_style_signature(theme: ThemeResolver | None, capabilities: Any | None) -> tuple[object, ...]:
     capabilities_signature: tuple[bool, bool] | None = None
     if capabilities is not None:
         capabilities_signature = (bool(capabilities.truecolor), bool(capabilities.hyperlinks))
@@ -958,4 +958,4 @@ def _cwd_label(cwd: str) -> str:
     return cwd.rstrip("/").rsplit("/", 1)[-1] or cwd
 
 
-__all__ = ["NativeCodingTuiApp"]
+__all__ = ["ScreenCodingTuiApp"]

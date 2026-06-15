@@ -4,10 +4,10 @@ from collections.abc import Callable
 
 from loushang.coding.ui.perf_probe import build_synthetic_long_transcript_records
 from loushang.coding.ui.playback import (
-    NativeTuiInputPlaybackResult,
-    NativeTuiInputScenario,
+    ScreenTuiInputPlaybackResult,
+    ScreenTuiInputScenario,
 )
-from loushang.coding.ui.playback_suite import NativePlaybackScenarioSpec
+from loushang.coding.ui.playback_suite import ScreenPlaybackScenarioSpec
 from loushang.tui import (
     PlaybackEvent,
     PlaybackFrameBudget,
@@ -33,9 +33,9 @@ PRODUCT_STREAMING_CONTROL_FRAME_BUDGET = PlaybackFrameBudget(
 )
 
 
-def _run_product_composed_interaction() -> NativeTuiInputPlaybackResult:
+def _run_product_composed_interaction() -> ScreenTuiInputPlaybackResult:
     scenario = (
-        NativeTuiInputScenario(width=100, height=18)
+        ScreenTuiInputScenario(width=100, height=18)
         .with_records(
             build_synthetic_long_transcript_records(
                 turns=24, tail_tool_output_lines=120
@@ -100,9 +100,9 @@ def _run_product_composed_interaction() -> NativeTuiInputPlaybackResult:
     return result
 
 
-def _run_product_streaming_control_flow() -> NativeTuiInputPlaybackResult:
+def _run_product_streaming_control_flow() -> ScreenTuiInputPlaybackResult:
     scenario = (
-        NativeTuiInputScenario(width=104, height=20)
+        ScreenTuiInputScenario(width=104, height=20)
         .with_records(
             build_synthetic_long_transcript_records(
                 turns=36,
@@ -185,9 +185,9 @@ def _run_product_streaming_control_flow() -> NativeTuiInputPlaybackResult:
 
 
 def _result_from_scenario(
-    scenario: NativeTuiInputScenario,
-) -> NativeTuiInputPlaybackResult:
-    return NativeTuiInputPlaybackResult(
+    scenario: ScreenTuiInputScenario,
+) -> ScreenTuiInputPlaybackResult:
+    return ScreenTuiInputPlaybackResult(
         steps=scenario.playback.harness.steps,
         port=scenario.playback.port,
         input_results=tuple(scenario.playback.input_results),
@@ -197,7 +197,7 @@ def _result_from_scenario(
     )
 
 
-def _assert_visible_contains(scenario: NativeTuiInputScenario, expected: str) -> None:
+def _assert_visible_contains(scenario: ScreenTuiInputScenario, expected: str) -> None:
     visible = strip_control_sequences(
         "\n".join(scenario.playback.port.screen.visible_lines)
     )
@@ -205,7 +205,7 @@ def _assert_visible_contains(scenario: NativeTuiInputScenario, expected: str) ->
 
 
 def _assert_with_review_artifacts(
-    result: NativeTuiInputPlaybackResult,
+    result: ScreenTuiInputPlaybackResult,
     assertion: Callable[[], None],
 ) -> None:
     try:
@@ -216,7 +216,7 @@ def _assert_with_review_artifacts(
 
 
 PRODUCT_SCENARIOS = (
-    NativePlaybackScenarioSpec(
+    ScreenPlaybackScenarioSpec(
         name="product-composed-interaction",
         description="Exercise long transcript, running queue, settings search, completion, and selection in one playback.",
         run=_run_product_composed_interaction,
@@ -229,7 +229,7 @@ PRODUCT_SCENARIOS = (
             "selection",
         ),
     ),
-    NativePlaybackScenarioSpec(
+    ScreenPlaybackScenarioSpec(
         name="product-streaming-control-flow",
         description="Exercise long streaming transcript controls with follow-up, steer, settings page, resize, and abort.",
         run=_run_product_streaming_control_flow,

@@ -380,7 +380,7 @@ def test_renderer_buffers_deltas_then_projects_final_assistant_record() -> None:
     assert "• Result" in stdout.getvalue()
 
 
-def test_renderer_collects_native_transcript_without_stdout_writes() -> None:
+def test_renderer_collects_screen_transcript_without_stdout_writes() -> None:
     from loushang.coding.ui.renderer import CodingUiRenderer
     from loushang.tui import (
         RenderConstraints,

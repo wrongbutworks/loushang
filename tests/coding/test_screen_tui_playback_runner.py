@@ -6,8 +6,8 @@ import sys
 from loushang.coding.ui import playback_runner
 from loushang.coding.ui.playback_fakes import SessionCommandPlaybackSession
 from loushang.coding.ui.playback_runner import (
-    NativePlaybackScenarioSpec,
-    NativePlaybackSuite,
+    ScreenPlaybackScenarioSpec,
+    ScreenPlaybackSuite,
     run_playback_cli,
     run_playback_scenarios,
 )
@@ -18,7 +18,7 @@ from loushang.coding.ui.playback_scenarios.product import PRODUCT_SCENARIOS
 from loushang.coding.ui.playback_scenarios.surface import SURFACE_SCENARIOS
 from loushang.coding.ui.playback_scenarios.terminal import TERMINAL_SCENARIOS
 from loushang.coding.ui.playback_scenarios.transcript import TRANSCRIPT_SCENARIOS
-from loushang.coding.ui.playback_suite import NativePlaybackSuite as SuiteFromModule
+from loushang.coding.ui.playback_suite import ScreenPlaybackSuite as SuiteFromModule
 from loushang.tui import (
     FakeTerminalPort,
     PlaybackEvent,
@@ -30,13 +30,13 @@ from loushang.tui import (
 )
 
 
-def test_native_tui_playback_runner_reexports_suite_types_from_playback_suite_module() -> (
+def test_screen_tui_playback_runner_reexports_suite_types_from_playback_suite_module() -> (
     None
 ):
-    assert NativePlaybackSuite is SuiteFromModule
+    assert ScreenPlaybackSuite is SuiteFromModule
 
 
-def test_native_tui_playback_fake_session_lists_command_sources() -> None:
+def test_screen_tui_playback_fake_session_lists_command_sources() -> None:
     session = SessionCommandPlaybackSession()
 
     commands = session.list_commands()
@@ -49,7 +49,7 @@ def test_native_tui_playback_fake_session_lists_command_sources() -> None:
     ]
 
 
-def test_native_tui_playback_command_scenarios_live_in_command_module() -> None:
+def test_screen_tui_playback_command_scenarios_live_in_command_module() -> None:
     assert [scenario.name for scenario in COMMAND_ROUTING_SCENARIOS] == [
         "local-command",
         "session-name-command",
@@ -59,7 +59,7 @@ def test_native_tui_playback_command_scenarios_live_in_command_module() -> None:
     ]
 
 
-def test_native_tui_playback_composer_scenarios_live_in_composer_module() -> None:
+def test_screen_tui_playback_composer_scenarios_live_in_composer_module() -> None:
     assert [scenario.name for scenario in COMPOSER_SCENARIOS] == [
         "completion-tab",
         "completion-session-command",
@@ -80,7 +80,7 @@ def test_native_tui_playback_composer_scenarios_live_in_composer_module() -> Non
     ]
 
 
-def test_native_tui_playback_surface_scenarios_live_in_surface_module() -> None:
+def test_screen_tui_playback_surface_scenarios_live_in_surface_module() -> None:
     assert [scenario.name for scenario in SURFACE_SCENARIOS] == [
         "active-surface",
         "command-palette-select",
@@ -97,7 +97,7 @@ def test_native_tui_playback_surface_scenarios_live_in_surface_module() -> None:
     ]
 
 
-def test_native_tui_playback_lifecycle_scenarios_live_in_lifecycle_module() -> None:
+def test_screen_tui_playback_lifecycle_scenarios_live_in_lifecycle_module() -> None:
     assert [scenario.name for scenario in LIFECYCLE_SCENARIOS] == [
         "idle-escape-clears-draft",
         "running-steer-queued",
@@ -106,29 +106,29 @@ def test_native_tui_playback_lifecycle_scenarios_live_in_lifecycle_module() -> N
         "escape-pending-steer",
         "escape-pending-steer-fifo",
         "escape-pending-steer-preserves-draft",
-        "native-loop-ctrl-c-abort-running",
+        "screen-loop-ctrl-c-abort-running",
         "running-follow-up-queued",
         "keyboard-alt-enter-follow-up",
     ]
 
 
-def test_native_tui_playback_product_scenarios_live_in_product_module() -> None:
+def test_screen_tui_playback_product_scenarios_live_in_product_module() -> None:
     assert [scenario.name for scenario in PRODUCT_SCENARIOS] == [
         "product-composed-interaction",
         "product-streaming-control-flow",
     ]
 
 
-def test_native_tui_playback_terminal_scenarios_live_in_terminal_module() -> None:
+def test_screen_tui_playback_terminal_scenarios_live_in_terminal_module() -> None:
     assert [scenario.name for scenario in TERMINAL_SCENARIOS] == [
-        "native-loop-split-bracketed-paste",
+        "screen-loop-split-bracketed-paste",
         "terminal-control-response-hidden",
-        "native-loop-terminal-session-cleanup",
+        "screen-loop-terminal-session-cleanup",
         "apple-shift-enter-normalized",
     ]
 
 
-def test_native_tui_playback_transcript_scenarios_live_in_transcript_module() -> None:
+def test_screen_tui_playback_transcript_scenarios_live_in_transcript_module() -> None:
     assert [scenario.name for scenario in TRANSCRIPT_SCENARIOS] == [
         "long-transcript-input",
         "tool-output-preview",
@@ -140,7 +140,7 @@ def test_native_tui_playback_transcript_scenarios_live_in_transcript_module() ->
     ]
 
 
-def test_native_tui_playback_runner_lists_default_scenarios(capsys) -> None:
+def test_screen_tui_playback_runner_lists_default_scenarios(capsys) -> None:
     exit_code = run_playback_cli(["--list"])
 
     captured = capsys.readouterr()
@@ -189,14 +189,14 @@ def test_native_tui_playback_runner_lists_default_scenarios(capsys) -> None:
     assert "terminal-control-response-hidden" in captured.out
     assert "apple-shift-enter-normalized" in captured.out
     assert "mouse-select-active-surface" in captured.out
-    assert "native-loop-split-bracketed-paste" in captured.out
-    assert "native-loop-terminal-session-cleanup" in captured.out
-    assert "native-loop-ctrl-c-abort-running" in captured.out
+    assert "screen-loop-split-bracketed-paste" in captured.out
+    assert "screen-loop-terminal-session-cleanup" in captured.out
+    assert "screen-loop-ctrl-c-abort-running" in captured.out
     assert "product-composed-interaction" in captured.out
     assert "product-streaming-control-flow" in captured.out
 
 
-def test_native_tui_playback_runner_runs_named_scenario(capsys) -> None:
+def test_screen_tui_playback_runner_runs_named_scenario(capsys) -> None:
     exit_code = run_playback_cli(["completion-tab"])
 
     captured = capsys.readouterr()
@@ -205,7 +205,7 @@ def test_native_tui_playback_runner_runs_named_scenario(capsys) -> None:
     assert "long-transcript-input" not in captured.out
 
 
-def test_native_tui_playback_runner_runs_tagged_command_scenarios(capsys) -> None:
+def test_screen_tui_playback_runner_runs_tagged_command_scenarios(capsys) -> None:
     exit_code = run_playback_cli(["--tag", "command"])
 
     captured = capsys.readouterr()
@@ -217,7 +217,7 @@ def test_native_tui_playback_runner_runs_tagged_command_scenarios(capsys) -> Non
     assert "PASS long-transcript-input" not in captured.out
 
 
-def test_native_tui_playback_runner_runs_tagged_product_scenarios(capsys) -> None:
+def test_screen_tui_playback_runner_runs_tagged_product_scenarios(capsys) -> None:
     exit_code = run_playback_cli(["--tag", "product"])
 
     captured = capsys.readouterr()
@@ -227,7 +227,7 @@ def test_native_tui_playback_runner_runs_tagged_product_scenarios(capsys) -> Non
     assert "PASS completion-tab" not in captured.out
 
 
-def test_native_tui_playback_runner_lists_tagged_command_scenarios(capsys) -> None:
+def test_screen_tui_playback_runner_lists_tagged_command_scenarios(capsys) -> None:
     exit_code = run_playback_cli(["--list", "--tag", "command"])
 
     captured = capsys.readouterr()
@@ -238,7 +238,7 @@ def test_native_tui_playback_runner_lists_tagged_command_scenarios(capsys) -> No
     assert "long-transcript-input" not in captured.out
 
 
-def test_native_tui_playback_runner_runs_completion_session_command_scenario(
+def test_screen_tui_playback_runner_runs_completion_session_command_scenario(
     capsys,
 ) -> None:
     exit_code = run_playback_cli(["completion-session-command"])
@@ -248,7 +248,7 @@ def test_native_tui_playback_runner_runs_completion_session_command_scenario(
     assert "PASS completion-session-command" in captured.out
 
 
-def test_native_tui_playback_runner_runs_completion_detail_scenarios(capsys) -> None:
+def test_screen_tui_playback_runner_runs_completion_detail_scenarios(capsys) -> None:
     exit_code = run_playback_cli(
         [
             "completion-escape-cancel",
@@ -264,7 +264,7 @@ def test_native_tui_playback_runner_runs_completion_detail_scenarios(capsys) -> 
     assert "PASS completion-enter-submits-command" in captured.out
 
 
-def test_native_tui_playback_runner_runs_composer_selection_scenario(capsys) -> None:
+def test_screen_tui_playback_runner_runs_composer_selection_scenario(capsys) -> None:
     exit_code = run_playback_cli(["composer-selection-replace"])
 
     captured = capsys.readouterr()
@@ -272,7 +272,7 @@ def test_native_tui_playback_runner_runs_composer_selection_scenario(capsys) -> 
     assert "PASS composer-selection-replace" in captured.out
 
 
-def test_native_tui_playback_runner_runs_composer_selection_stress_scenario(
+def test_screen_tui_playback_runner_runs_composer_selection_stress_scenario(
     capsys,
 ) -> None:
     exit_code = run_playback_cli(["composer-selection-stress"])
@@ -282,7 +282,7 @@ def test_native_tui_playback_runner_runs_composer_selection_stress_scenario(
     assert "PASS composer-selection-stress" in captured.out
 
 
-def test_native_tui_playback_runner_runs_transcript_reader_scenario(capsys) -> None:
+def test_screen_tui_playback_runner_runs_transcript_reader_scenario(capsys) -> None:
     exit_code = run_playback_cli(["transcript-reader-modal"])
 
     captured = capsys.readouterr()
@@ -290,7 +290,7 @@ def test_native_tui_playback_runner_runs_transcript_reader_scenario(capsys) -> N
     assert "PASS transcript-reader-modal" in captured.out
 
 
-def test_native_tui_playback_runner_runs_transcript_reader_copy_scenario(
+def test_screen_tui_playback_runner_runs_transcript_reader_copy_scenario(
     capsys,
 ) -> None:
     exit_code = run_playback_cli(["transcript-reader-copy-command"])
@@ -300,7 +300,7 @@ def test_native_tui_playback_runner_runs_transcript_reader_copy_scenario(
     assert "PASS transcript-reader-copy-command" in captured.out
 
 
-def test_native_tui_playback_runner_runs_transcript_reader_live_draft_scenario(
+def test_screen_tui_playback_runner_runs_transcript_reader_live_draft_scenario(
     capsys,
 ) -> None:
     exit_code = run_playback_cli(["transcript-reader-live-draft"])
@@ -310,7 +310,7 @@ def test_native_tui_playback_runner_runs_transcript_reader_live_draft_scenario(
     assert "PASS transcript-reader-live-draft" in captured.out
 
 
-def test_native_tui_playback_runner_runs_transcript_reader_render_modes_scenario(
+def test_screen_tui_playback_runner_runs_transcript_reader_render_modes_scenario(
     capsys,
 ) -> None:
     exit_code = run_playback_cli(["transcript-reader-render-modes"])
@@ -320,7 +320,7 @@ def test_native_tui_playback_runner_runs_transcript_reader_render_modes_scenario
     assert "PASS transcript-reader-render-modes" in captured.out
 
 
-def test_native_tui_playback_runner_runs_transcript_reader_search_scenario(
+def test_screen_tui_playback_runner_runs_transcript_reader_search_scenario(
     capsys,
 ) -> None:
     exit_code = run_playback_cli(["transcript-reader-search"])
@@ -330,7 +330,7 @@ def test_native_tui_playback_runner_runs_transcript_reader_search_scenario(
     assert "PASS transcript-reader-search" in captured.out
 
 
-def test_native_tui_playback_runner_runs_product_composed_interaction_scenario(
+def test_screen_tui_playback_runner_runs_product_composed_interaction_scenario(
     capsys,
 ) -> None:
     exit_code = run_playback_cli(["product-composed-interaction"])
@@ -340,7 +340,7 @@ def test_native_tui_playback_runner_runs_product_composed_interaction_scenario(
     assert "PASS product-composed-interaction" in captured.out
 
 
-def test_native_tui_playback_runner_runs_product_streaming_control_flow_scenario(
+def test_screen_tui_playback_runner_runs_product_streaming_control_flow_scenario(
     capsys,
 ) -> None:
     exit_code = run_playback_cli(["product-streaming-control-flow"])
@@ -350,7 +350,7 @@ def test_native_tui_playback_runner_runs_product_streaming_control_flow_scenario
     assert "PASS product-streaming-control-flow" in captured.out
 
 
-def test_native_tui_playback_runner_runs_lifecycle_scenario(capsys) -> None:
+def test_screen_tui_playback_runner_runs_lifecycle_scenario(capsys) -> None:
     exit_code = run_playback_cli(["running-steer-queued"])
 
     captured = capsys.readouterr()
@@ -359,7 +359,7 @@ def test_native_tui_playback_runner_runs_lifecycle_scenario(capsys) -> None:
     assert "PASS completion-tab" not in captured.out
 
 
-def test_native_tui_playback_runner_runs_session_name_command_scenario(capsys) -> None:
+def test_screen_tui_playback_runner_runs_session_name_command_scenario(capsys) -> None:
     exit_code = run_playback_cli(["session-name-command"])
 
     captured = capsys.readouterr()
@@ -367,7 +367,7 @@ def test_native_tui_playback_runner_runs_session_name_command_scenario(capsys) -
     assert "PASS session-name-command" in captured.out
 
 
-def test_native_tui_playback_runner_runs_session_command_error_scenario(capsys) -> None:
+def test_screen_tui_playback_runner_runs_session_command_error_scenario(capsys) -> None:
     exit_code = run_playback_cli(["session-command-error"])
 
     captured = capsys.readouterr()
@@ -375,7 +375,7 @@ def test_native_tui_playback_runner_runs_session_command_error_scenario(capsys) 
     assert "PASS session-command-error" in captured.out
 
 
-def test_native_tui_playback_runner_runs_unknown_slash_prompt_scenario(capsys) -> None:
+def test_screen_tui_playback_runner_runs_unknown_slash_prompt_scenario(capsys) -> None:
     exit_code = run_playback_cli(["unknown-slash-prompt"])
 
     captured = capsys.readouterr()
@@ -383,7 +383,7 @@ def test_native_tui_playback_runner_runs_unknown_slash_prompt_scenario(capsys) -
     assert "PASS unknown-slash-prompt" in captured.out
 
 
-def test_native_tui_playback_runner_runs_non_executable_session_command_scenario(
+def test_screen_tui_playback_runner_runs_non_executable_session_command_scenario(
     capsys,
 ) -> None:
     exit_code = run_playback_cli(["non-executable-session-command"])
@@ -393,7 +393,7 @@ def test_native_tui_playback_runner_runs_non_executable_session_command_scenario
     assert "PASS non-executable-session-command" in captured.out
 
 
-def test_native_tui_playback_runner_runs_settings_search_scenario(capsys) -> None:
+def test_screen_tui_playback_runner_runs_settings_search_scenario(capsys) -> None:
     exit_code = run_playback_cli(["settings-search"])
 
     captured = capsys.readouterr()
@@ -401,7 +401,7 @@ def test_native_tui_playback_runner_runs_settings_search_scenario(capsys) -> Non
     assert "PASS settings-search" in captured.out
 
 
-def test_native_tui_playback_runner_runs_info_surface_scenarios(capsys) -> None:
+def test_screen_tui_playback_runner_runs_info_surface_scenarios(capsys) -> None:
     exit_code = run_playback_cli(["commands-info-surface"])
 
     captured = capsys.readouterr()
@@ -409,7 +409,7 @@ def test_native_tui_playback_runner_runs_info_surface_scenarios(capsys) -> None:
     assert "PASS commands-info-surface" in captured.out
 
 
-def test_native_tui_playback_runner_runs_commands_info_session_command_scenario(
+def test_screen_tui_playback_runner_runs_commands_info_session_command_scenario(
     capsys,
 ) -> None:
     exit_code = run_playback_cli(["commands-info-session-command"])
@@ -419,7 +419,7 @@ def test_native_tui_playback_runner_runs_commands_info_session_command_scenario(
     assert "PASS commands-info-session-command" in captured.out
 
 
-def test_native_tui_playback_runner_runs_command_palette_select_scenario(
+def test_screen_tui_playback_runner_runs_command_palette_select_scenario(
     capsys,
 ) -> None:
     exit_code = run_playback_cli(["command-palette-select"])
@@ -429,7 +429,7 @@ def test_native_tui_playback_runner_runs_command_palette_select_scenario(
     assert "PASS command-palette-select" in captured.out
 
 
-def test_native_tui_playback_runner_runs_command_palette_session_command_scenario(
+def test_screen_tui_playback_runner_runs_command_palette_session_command_scenario(
     capsys,
 ) -> None:
     exit_code = run_playback_cli(["command-palette-session-command"])
@@ -439,7 +439,7 @@ def test_native_tui_playback_runner_runs_command_palette_session_command_scenari
     assert "PASS command-palette-session-command" in captured.out
 
 
-def test_native_tui_playback_runner_runs_model_select_scenario(capsys) -> None:
+def test_screen_tui_playback_runner_runs_model_select_scenario(capsys) -> None:
     exit_code = run_playback_cli(["model-select"])
 
     captured = capsys.readouterr()
@@ -447,7 +447,7 @@ def test_native_tui_playback_runner_runs_model_select_scenario(capsys) -> None:
     assert "PASS model-select" in captured.out
 
 
-def test_native_tui_playback_runner_runs_model_select_search_scenario(capsys) -> None:
+def test_screen_tui_playback_runner_runs_model_select_search_scenario(capsys) -> None:
     exit_code = run_playback_cli(["model-select-search"])
 
     captured = capsys.readouterr()
@@ -455,7 +455,7 @@ def test_native_tui_playback_runner_runs_model_select_search_scenario(capsys) ->
     assert "PASS model-select-search" in captured.out
 
 
-def test_native_tui_playback_runner_runs_approval_surface_scenario(capsys) -> None:
+def test_screen_tui_playback_runner_runs_approval_surface_scenario(capsys) -> None:
     exit_code = run_playback_cli(["approval-surface"])
 
     captured = capsys.readouterr()
@@ -463,7 +463,7 @@ def test_native_tui_playback_runner_runs_approval_surface_scenario(capsys) -> No
     assert "PASS approval-surface" in captured.out
 
 
-def test_native_tui_playback_runner_runs_approval_reject_surface_scenario(
+def test_screen_tui_playback_runner_runs_approval_reject_surface_scenario(
     capsys,
 ) -> None:
     exit_code = run_playback_cli(["approval-reject-surface"])
@@ -473,7 +473,7 @@ def test_native_tui_playback_runner_runs_approval_reject_surface_scenario(
     assert "PASS approval-reject-surface" in captured.out
 
 
-def test_native_tui_playback_runner_runs_dialog_surface_scenario(capsys) -> None:
+def test_screen_tui_playback_runner_runs_dialog_surface_scenario(capsys) -> None:
     exit_code = run_playback_cli(["dialog-surface"])
 
     captured = capsys.readouterr()
@@ -481,7 +481,7 @@ def test_native_tui_playback_runner_runs_dialog_surface_scenario(capsys) -> None
     assert "PASS dialog-surface" in captured.out
 
 
-def test_native_tui_playback_runner_writes_artifacts(tmp_path, capsys) -> None:
+def test_screen_tui_playback_runner_writes_artifacts(tmp_path, capsys) -> None:
     exit_code = run_playback_cli(
         ["completion-tab", "--artifacts", str(tmp_path), "--include-frames"]
     )
@@ -497,7 +497,7 @@ def test_native_tui_playback_runner_writes_artifacts(tmp_path, capsys) -> None:
     assert "visible_lines" in row
 
 
-def test_native_tui_playback_runner_writes_json_summary(tmp_path, capsys) -> None:
+def test_screen_tui_playback_runner_writes_json_summary(tmp_path, capsys) -> None:
     exit_code = run_playback_cli(
         ["completion-tab", "--json", "--artifacts", str(tmp_path)]
     )
@@ -525,7 +525,7 @@ def test_native_tui_playback_runner_writes_json_summary(tmp_path, capsys) -> Non
     assert "PASS completion-tab" not in captured.out
 
 
-def test_native_tui_playback_runner_writes_artifacts_for_all_default_scenarios(
+def test_screen_tui_playback_runner_writes_artifacts_for_all_default_scenarios(
     tmp_path, capsys
 ) -> None:
     exit_code = run_playback_cli(["--artifacts", str(tmp_path), "--include-frames"])
@@ -541,7 +541,7 @@ def test_native_tui_playback_runner_writes_artifacts_for_all_default_scenarios(
     assert (tmp_path / "escape-pending-steer-fifo-text.txt").exists()
 
 
-def test_native_tui_playback_runner_reports_unknown_scenario(capsys) -> None:
+def test_screen_tui_playback_runner_reports_unknown_scenario(capsys) -> None:
     exit_code = run_playback_cli(["missing-scenario"])
 
     captured = capsys.readouterr()
@@ -549,13 +549,13 @@ def test_native_tui_playback_runner_reports_unknown_scenario(capsys) -> None:
     assert "Unknown scenario: missing-scenario" in captured.err
 
 
-def test_native_tui_playback_runner_reports_failed_scenario(tmp_path, capsys) -> None:
+def test_screen_tui_playback_runner_reports_failed_scenario(tmp_path, capsys) -> None:
     def failing_run() -> None:
         raise AssertionError("forced failure")
 
-    suite = NativePlaybackSuite(
+    suite = ScreenPlaybackSuite(
         (
-            NativePlaybackScenarioSpec(
+            ScreenPlaybackScenarioSpec(
                 name="forced-failure",
                 description="Fails for runner testing.",
                 run=failing_run,
@@ -577,7 +577,7 @@ def test_native_tui_playback_runner_reports_failed_scenario(tmp_path, capsys) ->
     ) == "forced failure\n"
 
 
-def test_native_tui_playback_runner_writes_review_artifacts_for_playback_failure(
+def test_screen_tui_playback_runner_writes_review_artifacts_for_playback_failure(
     tmp_path,
 ) -> None:
     def failing_run() -> None:
@@ -586,9 +586,9 @@ def test_native_tui_playback_runner_writes_review_artifacts_for_playback_failure
         error.playback_result = result
         raise error
 
-    suite = NativePlaybackSuite(
+    suite = ScreenPlaybackSuite(
         (
-            NativePlaybackScenarioSpec(
+            ScreenPlaybackScenarioSpec(
                 name="forced-review-failure",
                 description="Fails after producing playback frames.",
                 run=failing_run,
@@ -626,15 +626,15 @@ def test_native_tui_playback_runner_writes_review_artifacts_for_playback_failure
     assert row["serialized_output"] == "reviewable failure frame"
 
 
-def test_native_tui_playback_runner_writes_failed_json_summary(
+def test_screen_tui_playback_runner_writes_failed_json_summary(
     tmp_path, capsys
 ) -> None:
     def failing_run() -> None:
         raise AssertionError("forced failure")
 
-    suite = NativePlaybackSuite(
+    suite = ScreenPlaybackSuite(
         (
-            NativePlaybackScenarioSpec(
+            ScreenPlaybackScenarioSpec(
                 name="forced-failure",
                 description="Fails for runner testing.",
                 run=failing_run,
@@ -663,7 +663,7 @@ def test_native_tui_playback_runner_writes_failed_json_summary(
     ]
 
 
-def test_native_tui_playback_runner_module_main_exits(monkeypatch) -> None:
+def test_screen_tui_playback_runner_module_main_exits(monkeypatch) -> None:
     calls = []
 
     def fake_run_playback_cli(argv=None) -> int:
@@ -681,7 +681,7 @@ def test_native_tui_playback_runner_module_main_exits(monkeypatch) -> None:
     assert calls == [["completion-tab"]]
 
 
-def test_native_tui_playback_runner_main_uses_process_argv(monkeypatch, capsys) -> None:
+def test_screen_tui_playback_runner_main_uses_process_argv(monkeypatch, capsys) -> None:
     monkeypatch.setattr(sys, "argv", ["playback-runner", "completion-tab"])
 
     try:
@@ -696,7 +696,7 @@ def test_native_tui_playback_runner_main_uses_process_argv(monkeypatch, capsys) 
     assert "long-transcript-input" not in captured.out
 
 
-def test_native_tui_playback_runner_main_can_emit_json(monkeypatch, capsys) -> None:
+def test_screen_tui_playback_runner_main_can_emit_json(monkeypatch, capsys) -> None:
     monkeypatch.setattr(sys, "argv", ["playback-runner", "completion-tab", "--json"])
 
     try:

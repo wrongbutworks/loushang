@@ -4,9 +4,15 @@ from collections.abc import Iterable
 from dataclasses import dataclass
 from typing import Any, Protocol
 
-from loushang.coding.ui.native_state import NativeCodingTuiState
+from loushang.coding.ui.screen_state import ScreenCodingTuiState
 from loushang.coding.ui.session_history import session_history_records
-from loushang.tui.transcript import AssistantMessageRecord, DisplayRecord
+from loushang.tui.transcript import (
+    AssistantMessageRecord,
+    ContextCompactionRecord,
+    DisplayRecord,
+    ToolExecutionRecord,
+    UserPromptRecord,
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -29,7 +35,7 @@ class TranscriptSource(Protocol):
 # - session + live window: full history with active UI-only suffix records.
 @dataclass(frozen=True, slots=True)
 class ActiveWindowTranscriptSource:
-    state: NativeCodingTuiState
+    state: ScreenCodingTuiState
 
     def snapshot(self) -> TranscriptSnapshot:
         return TranscriptSnapshot(
@@ -49,7 +55,7 @@ class SessionTranscriptSource:
     tool_definition_resolver: Any | None = None
     max_tool_body_lines: int = 8
     source_label: str = "Full transcript"
-    active_window_state: NativeCodingTuiState | None = None
+    active_window_state: ScreenCodingTuiState | None = None
 
     def snapshot(self) -> TranscriptSnapshot:
         session_records = session_history_records(
@@ -88,7 +94,7 @@ def _recent_assistant_texts(records: Iterable[DisplayRecord]) -> tuple[str, ...]
     return tuple(texts)
 
 
-def _active_window_records(state: NativeCodingTuiState) -> tuple[DisplayRecord, ...]:
+def _active_window_records(state: ScreenCodingTuiState) -> tuple[DisplayRecord, ...]:
     records = tuple(state.records)
     assistant_draft = state.assistant_draft
     if assistant_draft is not None:
@@ -102,21 +108,32 @@ def _merge_active_window_records(
 ) -> tuple[DisplayRecord, ...]:
     if not active_records:
         return session_records
-    overlap_count = _suffix_prefix_overlap_count(session_records, active_records)
-    if overlap_count == len(active_records):
-        return session_records
-    return (*session_records, *active_records[overlap_count:])
+    overlap = _decorated_suffix_prefix_overlap(session_records, active_records)
+    if overlap is None:
+        return (*session_records, *active_records)
+    session_start, active_start = overlap
+    return (*session_records[:session_start], *active_records[active_start:])
 
 
-def _suffix_prefix_overlap_count(
+def _decorated_suffix_prefix_overlap(
     left: tuple[DisplayRecord, ...],
     right: tuple[DisplayRecord, ...],
-) -> int:
-    max_overlap = min(len(left), len(right))
+) -> tuple[int, int] | None:
+    right_history_records = tuple(
+        (index, record) for index, record in enumerate(right) if _history_projected_record(record)
+    )
+    max_overlap = min(len(left), len(right_history_records))
     for overlap_count in range(max_overlap, 0, -1):
-        if left[-overlap_count:] == right[:overlap_count]:
-            return overlap_count
-    return 0
+        right_prefix = tuple(record for _, record in right_history_records[:overlap_count])
+        if left[-overlap_count:] == right_prefix:
+            return len(left) - overlap_count, 0
+    return None
+
+
+def _history_projected_record(record: DisplayRecord) -> bool:
+    if isinstance(record, AssistantMessageRecord):
+        return record.stable
+    return isinstance(record, (UserPromptRecord, ToolExecutionRecord, ContextCompactionRecord))
 
 
 __all__ = [

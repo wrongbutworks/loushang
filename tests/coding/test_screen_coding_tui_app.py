@@ -26,10 +26,10 @@ def _raw_lines(value: Any, *, width: int = 80, height: int = 24) -> list[str]:
     return [line.text for line in result.lines]
 
 
-def test_native_coding_tui_state_commits_turn_without_stale_working() -> None:
-    from loushang.coding.ui.native_app import NativeCodingTuiApp
+def test_screen_coding_tui_state_commits_turn_without_stale_working() -> None:
+    from loushang.coding.ui.screen_app import ScreenCodingTuiApp
 
-    app = NativeCodingTuiApp(
+    app = ScreenCodingTuiApp(
         model_label="kimi",
         cwd="/repo",
         branch="main",
@@ -57,10 +57,10 @@ def test_native_coding_tui_state_commits_turn_without_stale_working() -> None:
     assert "Working" not in rendered[rendered.rfind("Worked for 3.25s") :]
 
 
-def test_native_coding_tui_status_message_is_not_rendered_as_thinking() -> None:
-    from loushang.coding.ui.native_app import NativeCodingTuiApp
+def test_screen_coding_tui_status_message_is_not_rendered_as_thinking() -> None:
+    from loushang.coding.ui.screen_app import ScreenCodingTuiApp
 
-    app = NativeCodingTuiApp(
+    app = ScreenCodingTuiApp(
         model_label="kimi",
         cwd="/repo",
         branch="main",
@@ -76,10 +76,10 @@ def test_native_coding_tui_status_message_is_not_rendered_as_thinking() -> None:
     assert "? thinking:" not in rendered
 
 
-def test_native_coding_tui_styles_tool_heading_marker_verb_and_flags() -> None:
-    from loushang.coding.ui.native_app import NativeCodingTuiApp
+def test_screen_coding_tui_styles_tool_heading_marker_verb_and_flags() -> None:
+    from loushang.coding.ui.screen_app import ScreenCodingTuiApp
 
-    app = NativeCodingTuiApp(
+    app = ScreenCodingTuiApp(
         model_label="kimi",
         cwd="/repo",
         branch="main",
@@ -105,11 +105,11 @@ def test_native_coding_tui_styles_tool_heading_marker_verb_and_flags() -> None:
     assert "\x1b[2;90mtook 0.00s\x1b[22;39m" in line
 
 
-def test_native_coding_tui_compacts_repo_paths_in_tool_heading_only() -> None:
-    from loushang.coding.ui.native_app import NativeCodingTuiApp
+def test_screen_coding_tui_compacts_repo_paths_in_tool_heading_only() -> None:
+    from loushang.coding.ui.screen_app import ScreenCodingTuiApp
 
     cwd = "/home/dev/workspace/loushang"
-    app = NativeCodingTuiApp(
+    app = ScreenCodingTuiApp(
         model_label="kimi",
         cwd=cwd,
         branch="main",
@@ -129,11 +129,11 @@ def test_native_coding_tui_compacts_repo_paths_in_tool_heading_only() -> None:
     assert record.name == f"read {cwd}/README.md"
 
 
-def test_native_coding_tui_compacts_home_paths_in_tool_heading_only() -> None:
-    from loushang.coding.ui.native_app import NativeCodingTuiApp
+def test_screen_coding_tui_compacts_home_paths_in_tool_heading_only() -> None:
+    from loushang.coding.ui.screen_app import ScreenCodingTuiApp
 
     home = str(Path.home())
-    app = NativeCodingTuiApp(
+    app = ScreenCodingTuiApp(
         model_label="kimi",
         cwd=f"{home}/workspace/loushang",
         branch="main",
@@ -153,11 +153,11 @@ def test_native_coding_tui_compacts_home_paths_in_tool_heading_only() -> None:
     assert record.name == f"read {home}/.config/loushang/config.toml"
 
 
-def test_native_coding_tui_keeps_tool_command_and_output_paths_uncompacted() -> None:
-    from loushang.coding.ui.native_app import NativeCodingTuiApp
+def test_screen_coding_tui_keeps_tool_command_and_output_paths_uncompacted() -> None:
+    from loushang.coding.ui.screen_app import ScreenCodingTuiApp
 
     cwd = "/home/dev/workspace/loushang"
-    app = NativeCodingTuiApp(
+    app = ScreenCodingTuiApp(
         model_label="kimi",
         cwd=cwd,
         branch="main",
@@ -181,10 +181,10 @@ def test_native_coding_tui_keeps_tool_command_and_output_paths_uncompacted() -> 
     assert f"  └ {cwd}/README.md" in plain
 
 
-def test_native_coding_tui_styles_error_records_red() -> None:
-    from loushang.coding.ui.native_app import NativeCodingTuiApp
+def test_screen_coding_tui_styles_error_records_red() -> None:
+    from loushang.coding.ui.screen_app import ScreenCodingTuiApp
 
-    app = NativeCodingTuiApp(
+    app = ScreenCodingTuiApp(
         model_label="kimi",
         cwd="/repo",
         branch="main",
@@ -200,10 +200,10 @@ def test_native_coding_tui_styles_error_records_red() -> None:
     assert line.startswith("\x1b[31m■ Error: provider failed\x1b[39m")
 
 
-def test_native_coding_tui_styles_tool_connectors_and_metadata() -> None:
-    from loushang.coding.ui.native_app import NativeCodingTuiApp
+def test_screen_coding_tui_styles_tool_connectors_and_metadata() -> None:
+    from loushang.coding.ui.screen_app import ScreenCodingTuiApp
 
-    app = NativeCodingTuiApp(
+    app = ScreenCodingTuiApp(
         model_label="kimi",
         cwd="/repo",
         branch="main",
@@ -230,10 +230,10 @@ def test_native_coding_tui_styles_tool_connectors_and_metadata() -> None:
     assert "\x1b[2;90m… +4 lines\x1b[22;39m" in collapsed_line
 
 
-def test_native_coding_tui_styles_tool_activity_actions() -> None:
-    from loushang.coding.ui.native_app import NativeCodingTuiApp
+def test_screen_coding_tui_styles_tool_activity_actions() -> None:
+    from loushang.coding.ui.screen_app import ScreenCodingTuiApp
 
-    app = NativeCodingTuiApp(
+    app = ScreenCodingTuiApp(
         model_label="kimi",
         cwd="/repo",
         branch="main",
@@ -259,10 +259,10 @@ def test_native_coding_tui_styles_tool_activity_actions() -> None:
     assert "\x1b[96mSearch\x1b[39m" in search_line
 
 
-def test_native_coding_tui_structures_tool_command_and_output_body() -> None:
-    from loushang.coding.ui.native_app import NativeCodingTuiApp
+def test_screen_coding_tui_structures_tool_command_and_output_body() -> None:
+    from loushang.coding.ui.screen_app import ScreenCodingTuiApp
 
-    app = NativeCodingTuiApp(
+    app = ScreenCodingTuiApp(
         model_label="kimi",
         cwd="/repo",
         branch="main",
@@ -302,10 +302,10 @@ def test_native_coding_tui_structures_tool_command_and_output_body() -> None:
     assert "\x1b[2;90mnothing added to commit but untracked files present" in nothing_line
 
 
-def test_native_coding_tui_summarizes_long_tool_output_with_head_and_tail() -> None:
-    from loushang.coding.ui.native_app import NativeCodingTuiApp
+def test_screen_coding_tui_summarizes_long_tool_output_with_head_and_tail() -> None:
+    from loushang.coding.ui.screen_app import ScreenCodingTuiApp
 
-    app = NativeCodingTuiApp(
+    app = ScreenCodingTuiApp(
         model_label="kimi",
         cwd="/repo",
         branch="main",
@@ -338,10 +338,10 @@ def test_native_coding_tui_summarizes_long_tool_output_with_head_and_tail() -> N
     assert "\x1b[2;90m... (6 hidden lines)\x1b[22;39m" in collapsed_line
 
 
-def test_native_coding_tui_keeps_restyled_tool_output_within_screen_width() -> None:
-    from loushang.coding.ui.native_app import NativeCodingTuiApp
+def test_screen_coding_tui_keeps_restyled_tool_output_within_screen_width() -> None:
+    from loushang.coding.ui.screen_app import ScreenCodingTuiApp
 
-    app = NativeCodingTuiApp(
+    app = ScreenCodingTuiApp(
         model_label="kimi",
         cwd="/repo",
         branch="main",
@@ -366,10 +366,10 @@ def test_native_coding_tui_keeps_restyled_tool_output_within_screen_width() -> N
     assert sum(line.count("z") for line in plain) == 196
 
 
-def test_native_coding_tui_does_not_shred_long_tool_output_paths() -> None:
-    from loushang.coding.ui.native_app import NativeCodingTuiApp
+def test_screen_coding_tui_does_not_shred_long_tool_output_paths() -> None:
+    from loushang.coding.ui.screen_app import ScreenCodingTuiApp
 
-    app = NativeCodingTuiApp(
+    app = ScreenCodingTuiApp(
         model_label="kimi",
         cwd="/repo",
         branch="main",
@@ -394,10 +394,10 @@ def test_native_coding_tui_does_not_shred_long_tool_output_paths() -> None:
     assert "    -tool-semantics-design.md" in plain
 
 
-def test_native_coding_tui_keeps_non_duplicate_tool_command_detail() -> None:
-    from loushang.coding.ui.native_app import NativeCodingTuiApp
+def test_screen_coding_tui_keeps_non_duplicate_tool_command_detail() -> None:
+    from loushang.coding.ui.screen_app import ScreenCodingTuiApp
 
-    app = NativeCodingTuiApp(
+    app = ScreenCodingTuiApp(
         model_label="kimi",
         cwd="/repo",
         branch="main",
@@ -421,10 +421,10 @@ def test_native_coding_tui_keeps_non_duplicate_tool_command_detail() -> None:
     assert "\x1b[2;90m│\x1b[22;39m" in command_line
 
 
-def test_native_coding_tui_styles_worked_divider_as_dim_neutral() -> None:
-    from loushang.coding.ui.native_app import NativeCodingTuiApp
+def test_screen_coding_tui_styles_worked_divider_as_dim_neutral() -> None:
+    from loushang.coding.ui.screen_app import ScreenCodingTuiApp
 
-    app = NativeCodingTuiApp(
+    app = ScreenCodingTuiApp(
         model_label="kimi",
         cwd="/repo",
         branch="main",
@@ -441,11 +441,11 @@ def test_native_coding_tui_styles_worked_divider_as_dim_neutral() -> None:
     assert line.endswith("\x1b[22;39m")
 
 
-def test_native_coding_tui_app_requests_stream_render_for_assistant_chunks() -> None:
-    from loushang.coding.ui.native_app import NativeCodingTuiApp
+def test_screen_coding_tui_app_requests_stream_render_for_assistant_chunks() -> None:
+    from loushang.coding.ui.screen_app import ScreenCodingTuiApp
 
     requested: list[str] = []
-    app = NativeCodingTuiApp(
+    app = ScreenCodingTuiApp(
         model_label="kimi",
         cwd="/repo",
         branch="main",
@@ -459,10 +459,10 @@ def test_native_coding_tui_app_requests_stream_render_for_assistant_chunks() -> 
     assert requested[-1] == "stream"
 
 
-def test_native_coding_tui_keeps_unsubmitted_draft_in_composer_only() -> None:
-    from loushang.coding.ui.native_app import NativeCodingTuiApp
+def test_screen_coding_tui_keeps_unsubmitted_draft_in_composer_only() -> None:
+    from loushang.coding.ui.screen_app import ScreenCodingTuiApp
 
-    app = NativeCodingTuiApp(
+    app = ScreenCodingTuiApp(
         model_label="kimi",
         cwd="/repo",
         branch="main",
@@ -482,10 +482,10 @@ def test_native_coding_tui_keeps_unsubmitted_draft_in_composer_only() -> None:
     assert [record.text for record in app.state.records if isinstance(record, UserPromptRecord)] == ["你好"]
 
 
-def test_native_coding_tui_pending_sections_follow_working_line() -> None:
-    from loushang.coding.ui.native_app import NativeCodingTuiApp
+def test_screen_coding_tui_pending_sections_follow_working_line() -> None:
+    from loushang.coding.ui.screen_app import ScreenCodingTuiApp
 
-    app = NativeCodingTuiApp(
+    app = ScreenCodingTuiApp(
         model_label="kimi",
         cwd="/repo",
         branch="main",
@@ -508,11 +508,11 @@ def test_native_coding_tui_pending_sections_follow_working_line() -> None:
     assert "    alt + ↑ edit last queued message" in rendered
 
 
-def test_native_coding_tui_requests_animation_frames_while_running() -> None:
-    from loushang.coding.ui.native_app import NativeCodingTuiApp
+def test_screen_coding_tui_requests_animation_frames_while_running() -> None:
+    from loushang.coding.ui.screen_app import ScreenCodingTuiApp
     from loushang.tui import FakeTerminalPort, RenderLoop, TerminalSize, TuiRuntime
 
-    app = NativeCodingTuiApp(
+    app = ScreenCodingTuiApp(
         model_label="kimi",
         cwd="/repo",
         branch="main",
@@ -536,10 +536,10 @@ def test_native_coding_tui_requests_animation_frames_while_running() -> None:
     assert decision.delay_ms > 0
 
 
-def test_native_coding_tui_reuses_stable_transcript_render_cache() -> None:
-    from loushang.coding.ui.native_app import NativeCodingTuiApp
+def test_screen_coding_tui_reuses_stable_transcript_render_cache() -> None:
+    from loushang.coding.ui.screen_app import ScreenCodingTuiApp
 
-    app = NativeCodingTuiApp(
+    app = ScreenCodingTuiApp(
         model_label="kimi",
         cwd="/repo",
         branch="main",
@@ -561,10 +561,10 @@ def test_native_coding_tui_reuses_stable_transcript_render_cache() -> None:
     assert app._transcript_region._stable_line_cache == cached
 
 
-def test_native_coding_tui_reuses_unchanged_streaming_draft_cache() -> None:
-    from loushang.coding.ui.native_app import NativeCodingTuiApp
+def test_screen_coding_tui_reuses_unchanged_streaming_draft_cache() -> None:
+    from loushang.coding.ui.screen_app import ScreenCodingTuiApp
 
-    app = NativeCodingTuiApp(
+    app = ScreenCodingTuiApp(
         model_label="kimi",
         cwd="/repo",
         branch="main",
@@ -583,8 +583,8 @@ def test_native_coding_tui_reuses_unchanged_streaming_draft_cache() -> None:
     assert app._transcript_region._transient_line_cache_lines is first_cached
 
 
-def test_native_coding_tui_reuses_stable_streaming_markdown_blocks(monkeypatch) -> None:
-    from loushang.coding.ui.native_app import NativeCodingTuiApp
+def test_screen_coding_tui_reuses_stable_streaming_markdown_blocks(monkeypatch) -> None:
+    from loushang.coding.ui.screen_app import ScreenCodingTuiApp
 
     rendered_code_blocks: list[tuple[str, ...]] = []
     original = markdown_renderer_module._render_markdown_block
@@ -599,7 +599,7 @@ def test_native_coding_tui_reuses_stable_streaming_markdown_blocks(monkeypatch) 
 
     monkeypatch.setattr(markdown_renderer_module, "_render_markdown_block", render_markdown_block)
 
-    app = NativeCodingTuiApp(
+    app = ScreenCodingTuiApp(
         model_label="kimi",
         cwd="/repo",
         branch="main",
@@ -619,8 +619,8 @@ def test_native_coding_tui_reuses_stable_streaming_markdown_blocks(monkeypatch) 
     ]
 
 
-def test_native_coding_tui_rerenders_current_streaming_table_block(monkeypatch) -> None:
-    from loushang.coding.ui.native_app import NativeCodingTuiApp
+def test_screen_coding_tui_rerenders_current_streaming_table_block(monkeypatch) -> None:
+    from loushang.coding.ui.screen_app import ScreenCodingTuiApp
 
     rendered_tables = 0
     original = markdown_renderer_module._render_markdown_block
@@ -636,7 +636,7 @@ def test_native_coding_tui_rerenders_current_streaming_table_block(monkeypatch) 
 
     monkeypatch.setattr(markdown_renderer_module, "_render_markdown_block", render_markdown_block)
 
-    app = NativeCodingTuiApp(
+    app = ScreenCodingTuiApp(
         model_label="kimi",
         cwd="/repo",
         branch="main",
@@ -658,10 +658,10 @@ def test_native_coding_tui_rerenders_current_streaming_table_block(monkeypatch) 
     assert rendered_tables == 3
 
 
-def test_native_coding_tui_clears_transient_draft_cache_after_assistant_commit() -> None:
-    from loushang.coding.ui.native_app import NativeCodingTuiApp
+def test_screen_coding_tui_clears_transient_draft_cache_after_assistant_commit() -> None:
+    from loushang.coding.ui.screen_app import ScreenCodingTuiApp
 
-    app = NativeCodingTuiApp(
+    app = ScreenCodingTuiApp(
         model_label="kimi",
         cwd="/repo",
         branch="main",
@@ -681,10 +681,10 @@ def test_native_coding_tui_clears_transient_draft_cache_after_assistant_commit()
     assert app._transcript_region._transient_line_cache_lines is None
 
 
-def test_native_coding_tui_promotes_streaming_draft_cache_after_assistant_commit() -> None:
-    from loushang.coding.ui.native_app import NativeCodingTuiApp
+def test_screen_coding_tui_promotes_streaming_draft_cache_after_assistant_commit() -> None:
+    from loushang.coding.ui.screen_app import ScreenCodingTuiApp
 
-    app = NativeCodingTuiApp(
+    app = ScreenCodingTuiApp(
         model_label="kimi",
         cwd="/repo",
         branch="main",
@@ -705,10 +705,10 @@ def test_native_coding_tui_promotes_streaming_draft_cache_after_assistant_commit
     assert app._transcript_region._transient_line_cache_lines is None
 
 
-def test_native_coding_tui_complete_run_does_not_trim_active_transcript_line_window() -> None:
-    from loushang.coding.ui.native_app import NativeCodingTuiApp
+def test_screen_coding_tui_complete_run_does_not_trim_active_transcript_line_window() -> None:
+    from loushang.coding.ui.screen_app import ScreenCodingTuiApp
 
-    app = NativeCodingTuiApp(
+    app = ScreenCodingTuiApp(
         model_label="kimi",
         cwd="/repo",
         branch="main",
@@ -732,10 +732,10 @@ def test_native_coding_tui_complete_run_does_not_trim_active_transcript_line_win
     assert "turn 0 line 0" in rendered
 
 
-def test_native_coding_tui_explicit_active_window_trim_keeps_recent_tail() -> None:
-    from loushang.coding.ui.native_app import NativeCodingTuiApp
+def test_screen_coding_tui_explicit_active_window_trim_keeps_recent_tail() -> None:
+    from loushang.coding.ui.screen_app import ScreenCodingTuiApp
 
-    app = NativeCodingTuiApp(
+    app = ScreenCodingTuiApp(
         model_label="kimi",
         cwd="/repo",
         branch="main",
@@ -760,10 +760,10 @@ def test_native_coding_tui_explicit_active_window_trim_keeps_recent_tail() -> No
     assert "turn 0 line 0" not in rendered
 
 
-def test_native_coding_tui_streaming_draft_render_keeps_full_append_stable_lines() -> None:
-    from loushang.coding.ui.native_app import NativeCodingTuiApp
+def test_screen_coding_tui_streaming_draft_render_keeps_full_append_stable_lines() -> None:
+    from loushang.coding.ui.screen_app import ScreenCodingTuiApp
 
-    app = NativeCodingTuiApp(
+    app = ScreenCodingTuiApp(
         model_label="kimi",
         cwd="/repo",
         branch="main",
@@ -782,10 +782,10 @@ def test_native_coding_tui_streaming_draft_render_keeps_full_append_stable_lines
     assert "draft line 0" in rendered
 
 
-def test_native_coding_tui_streaming_draft_uses_markdown_visuals_for_append_chunks() -> None:
-    from loushang.coding.ui.native_app import NativeCodingTuiApp
+def test_screen_coding_tui_streaming_draft_uses_markdown_visuals_for_append_chunks() -> None:
+    from loushang.coding.ui.screen_app import ScreenCodingTuiApp
 
-    app = NativeCodingTuiApp(
+    app = ScreenCodingTuiApp(
         model_label="kimi",
         cwd="/repo",
         branch="main",
@@ -806,10 +806,10 @@ def test_native_coding_tui_streaming_draft_uses_markdown_visuals_for_append_chun
     assert "[link " not in rendered
 
 
-def test_native_coding_tui_assistant_markdown_tables_use_block_renderer() -> None:
-    from loushang.coding.ui.native_app import NativeCodingTuiApp
+def test_screen_coding_tui_assistant_markdown_tables_use_block_renderer() -> None:
+    from loushang.coding.ui.screen_app import ScreenCodingTuiApp
 
-    app = NativeCodingTuiApp(
+    app = ScreenCodingTuiApp(
         model_label="kimi",
         cwd="/repo",
         branch="main",
@@ -837,10 +837,10 @@ def test_native_coding_tui_assistant_markdown_tables_use_block_renderer() -> Non
     assert "|---|---|" not in rendered
 
 
-def test_native_coding_tui_code_diagrams_do_not_wrap_right_border_with_default_width() -> None:
-    from loushang.coding.ui.native_app import NativeCodingTuiApp
+def test_screen_coding_tui_code_diagrams_do_not_wrap_right_border_with_default_width() -> None:
+    from loushang.coding.ui.screen_app import ScreenCodingTuiApp
 
-    app = NativeCodingTuiApp(
+    app = ScreenCodingTuiApp(
         model_label="kimi",
         cwd="/repo",
         branch="main",
@@ -863,10 +863,10 @@ def test_native_coding_tui_code_diagrams_do_not_wrap_right_border_with_default_w
     assert all(line.strip() != "│" for line in lines)
 
 
-def test_native_coding_tui_streaming_draft_buffers_chunks_until_materialized() -> None:
-    from loushang.coding.ui.native_app import NativeCodingTuiApp
+def test_screen_coding_tui_streaming_draft_buffers_chunks_until_materialized() -> None:
+    from loushang.coding.ui.screen_app import ScreenCodingTuiApp
 
-    app = NativeCodingTuiApp(
+    app = ScreenCodingTuiApp(
         model_label="kimi",
         cwd="/repo",
         branch="main",
@@ -897,10 +897,10 @@ def test_native_coding_tui_streaming_draft_buffers_chunks_until_materialized() -
     assert "- Line 9: chunk" in app.state.records[-1].text
 
 
-def test_native_coding_tui_render_streaming_draft_without_materializing_full_text() -> None:
-    from loushang.coding.ui.native_app import NativeCodingTuiApp
+def test_screen_coding_tui_render_streaming_draft_without_materializing_full_text() -> None:
+    from loushang.coding.ui.screen_app import ScreenCodingTuiApp
 
-    app = NativeCodingTuiApp(
+    app = ScreenCodingTuiApp(
         model_label="kimi",
         cwd="/repo",
         branch="main",
@@ -922,10 +922,10 @@ def test_native_coding_tui_render_streaming_draft_without_materializing_full_tex
     assert buffer.materialize_count == 0
 
 
-def test_native_coding_tui_stable_render_cache_has_entry_limit() -> None:
-    from loushang.coding.ui.native_app import NativeCodingTuiApp
+def test_screen_coding_tui_stable_render_cache_has_entry_limit() -> None:
+    from loushang.coding.ui.screen_app import ScreenCodingTuiApp
 
-    app = NativeCodingTuiApp(
+    app = ScreenCodingTuiApp(
         model_label="kimi",
         cwd="/repo",
         branch="main",
@@ -940,10 +940,10 @@ def test_native_coding_tui_stable_render_cache_has_entry_limit() -> None:
     assert len(app._transcript_region._stable_line_cache) <= 2
 
 
-def test_native_coding_tui_long_stream_keeps_latest_tail_visible() -> None:
-    from loushang.coding.ui.native_app import NativeCodingTuiApp
+def test_screen_coding_tui_long_stream_keeps_latest_tail_visible() -> None:
+    from loushang.coding.ui.screen_app import ScreenCodingTuiApp
 
-    app = NativeCodingTuiApp(
+    app = ScreenCodingTuiApp(
         model_label="kimi",
         cwd="/repo",
         branch="main",
@@ -960,10 +960,10 @@ def test_native_coding_tui_long_stream_keeps_latest_tail_visible() -> None:
     assert not any("line 0" in line for line in rendered)
 
 
-def test_native_coding_tui_many_records_render_recent_tail_not_prefix() -> None:
-    from loushang.coding.ui.native_app import NativeCodingTuiApp
+def test_screen_coding_tui_many_records_render_recent_tail_not_prefix() -> None:
+    from loushang.coding.ui.screen_app import ScreenCodingTuiApp
 
-    app = NativeCodingTuiApp(
+    app = ScreenCodingTuiApp(
         model_label="kimi",
         cwd="/repo",
         branch="main",
@@ -981,10 +981,10 @@ def test_native_coding_tui_many_records_render_recent_tail_not_prefix() -> None:
     assert "• recent answer" in rendered
 
 
-def test_native_coding_tui_default_terminal_theme_styles_headings_like_pi() -> None:
-    from loushang.coding.ui.native_app import NativeCodingTuiApp
+def test_screen_coding_tui_default_terminal_theme_styles_headings_like_pi() -> None:
+    from loushang.coding.ui.screen_app import ScreenCodingTuiApp
 
-    app = NativeCodingTuiApp(
+    app = ScreenCodingTuiApp(
         model_label="kimi",
         cwd="/repo",
         branch="main",
@@ -1007,10 +1007,10 @@ def test_native_coding_tui_default_terminal_theme_styles_headings_like_pi() -> N
     assert "\x1b[1;" in subheading
 
 
-def test_native_coding_tui_default_welcome_panel_is_colored() -> None:
-    from loushang.coding.ui.native_app import NativeCodingTuiApp
+def test_screen_coding_tui_default_welcome_panel_is_colored() -> None:
+    from loushang.coding.ui.screen_app import ScreenCodingTuiApp
 
-    app = NativeCodingTuiApp(
+    app = ScreenCodingTuiApp(
         model_label="kimi",
         cwd="/repo",
         branch="main",
@@ -1030,11 +1030,11 @@ def test_native_coding_tui_default_welcome_panel_is_colored() -> None:
     assert "\x1b[36m   ▀██▀" in rendered
 
 
-def test_native_coding_tui_preserves_markdown_ansi_when_replacing_assistant_prefix() -> None:
-    from loushang.coding.ui.native_app import NativeCodingTuiApp
+def test_screen_coding_tui_preserves_markdown_ansi_when_replacing_assistant_prefix() -> None:
+    from loushang.coding.ui.screen_app import ScreenCodingTuiApp
     from loushang.tui.theme import ThemeResolver
 
-    app = NativeCodingTuiApp(
+    app = ScreenCodingTuiApp(
         model_label="kimi",
         cwd="/repo",
         branch="main",
@@ -1054,10 +1054,10 @@ def test_native_coding_tui_preserves_markdown_ansi_when_replacing_assistant_pref
     assert "\x1b[1;36m### Heading" in heading
 
 
-def test_native_coding_tui_installs_active_transcript_window_without_rendering_evicted_prefix() -> None:
-    from loushang.coding.ui.native_app import NativeCodingTuiApp
+def test_screen_coding_tui_installs_active_transcript_window_without_rendering_evicted_prefix() -> None:
+    from loushang.coding.ui.screen_app import ScreenCodingTuiApp
 
-    app = NativeCodingTuiApp(
+    app = ScreenCodingTuiApp(
         model_label="kimi",
         cwd="/repo",
         branch="main",
@@ -1086,11 +1086,11 @@ def test_native_coding_tui_installs_active_transcript_window_without_rendering_e
     assert "old prompt" not in rendered
 
 
-def test_native_coding_tui_runtime_consumes_transcript_window_reset_as_baseline_repaint() -> None:
-    from loushang.coding.ui.native_app import NativeCodingTuiApp
+def test_screen_coding_tui_runtime_consumes_transcript_window_reset_as_baseline_repaint() -> None:
+    from loushang.coding.ui.screen_app import ScreenCodingTuiApp
     from loushang.tui import FakeTerminalPort, RenderLoop, TerminalSize, TuiRuntime
 
-    app = NativeCodingTuiApp(
+    app = ScreenCodingTuiApp(
         model_label="kimi",
         cwd="/repo",
         branch="main",

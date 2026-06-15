@@ -13,7 +13,7 @@ import pytest
 from loushang.tui import strip_control_sequences
 
 
-def test_native_tui_cli_pty_smoke_quit_cleans_bottom_frame() -> None:
+def test_screen_tui_cli_pty_smoke_quit_cleans_bottom_frame() -> None:
     if os.name == "nt":
         pytest.skip("PTY smoke uses POSIX pty")
 

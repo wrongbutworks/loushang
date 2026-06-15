@@ -6,14 +6,14 @@ from loushang.tui import CompletionItem, InputEvent, InputIntent
 from loushang.tui.transcript import UserPromptRecord
 
 
-def test_native_input_router_idle_enter_starts_prompt_and_clears_composer() -> None:
-    from loushang.coding.ui.native_app import NativeCodingTuiApp
-    from loushang.coding.ui.native_input import NativeInputRouter
+def test_screen_input_router_idle_enter_starts_prompt_and_clears_composer() -> None:
+    from loushang.coding.ui.screen_app import ScreenCodingTuiApp
+    from loushang.coding.ui.screen_input import ScreenInputRouter
 
-    app = NativeCodingTuiApp(model_label="kimi", cwd="/repo", branch="main", session_label="abcd", now=lambda: 10.0)
+    app = ScreenCodingTuiApp(model_label="kimi", cwd="/repo", branch="main", session_label="abcd", now=lambda: 10.0)
     app.composer.set_text("你好")
 
-    result = NativeInputRouter(app, should_exit=lambda text: False).handle(InputEvent(kind="key", key="enter"))
+    result = ScreenInputRouter(app, should_exit=lambda text: False).handle(InputEvent(kind="key", key="enter"))
 
     assert result.prompt_text == "你好"
     assert app.composer.value == ""
@@ -22,15 +22,15 @@ def test_native_input_router_idle_enter_starts_prompt_and_clears_composer() -> N
     assert app.state.records[0].text == "你好"
 
 
-def test_native_input_router_running_enter_queues_steer() -> None:
-    from loushang.coding.ui.native_app import NativeCodingTuiApp
-    from loushang.coding.ui.native_input import NativeInputRouter
+def test_screen_input_router_running_enter_queues_steer() -> None:
+    from loushang.coding.ui.screen_app import ScreenCodingTuiApp
+    from loushang.coding.ui.screen_input import ScreenInputRouter
 
-    app = NativeCodingTuiApp(model_label="kimi", cwd="/repo", branch="main", session_label="abcd", now=lambda: 12.0)
+    app = ScreenCodingTuiApp(model_label="kimi", cwd="/repo", branch="main", session_label="abcd", now=lambda: 12.0)
     app.start_prompt("当前代码有啥？", started_at=10.0)
     app.composer.set_text("请用中文")
 
-    result = NativeInputRouter(app, should_exit=lambda text: False).handle(InputEvent(kind="key", key="enter"))
+    result = ScreenInputRouter(app, should_exit=lambda text: False).handle(InputEvent(kind="key", key="enter"))
 
     assert result.prompt_text is None
     assert result.steer_text == "请用中文"
@@ -38,61 +38,61 @@ def test_native_input_router_running_enter_queues_steer() -> None:
     assert app.state.pending_steers == ["请用中文"]
 
 
-def test_native_input_router_idle_escape_submits_pending_steer() -> None:
-    from loushang.coding.ui.native_app import NativeCodingTuiApp
-    from loushang.coding.ui.native_input import NativeInputRouter
+def test_screen_input_router_idle_escape_submits_pending_steer() -> None:
+    from loushang.coding.ui.screen_app import ScreenCodingTuiApp
+    from loushang.coding.ui.screen_input import ScreenInputRouter
 
-    app = NativeCodingTuiApp(model_label="kimi", cwd="/repo", branch="main", session_label="abcd", now=lambda: 12.0)
+    app = ScreenCodingTuiApp(model_label="kimi", cwd="/repo", branch="main", session_label="abcd", now=lambda: 12.0)
     app.state.pending_steers.append("你好")
 
-    result = NativeInputRouter(app, should_exit=lambda text: False).handle(InputEvent(kind="key", key="escape"))
+    result = ScreenInputRouter(app, should_exit=lambda text: False).handle(InputEvent(kind="key", key="escape"))
 
     assert result.prompt_text is None
     assert result.steer_text == "你好"
     assert app.state.pending_steers == []
 
 
-def test_native_input_router_idle_interrupt_message_prefers_pending_steer() -> None:
-    from loushang.coding.ui.native_app import NativeCodingTuiApp
-    from loushang.coding.ui.native_input import NativeInputRouter
+def test_screen_input_router_idle_interrupt_message_prefers_pending_steer() -> None:
+    from loushang.coding.ui.screen_app import ScreenCodingTuiApp
+    from loushang.coding.ui.screen_input import ScreenInputRouter
 
-    app = NativeCodingTuiApp(model_label="kimi", cwd="/repo", branch="main", session_label="abcd", now=lambda: 12.0)
+    app = ScreenCodingTuiApp(model_label="kimi", cwd="/repo", branch="main", session_label="abcd", now=lambda: 12.0)
     app.state.pending_steers.append("你好")
     app.state.interruption_message = "Conversation interrupted - tell the model what to do differently."
     app.composer.set_text("草稿")
 
-    result = NativeInputRouter(app, should_exit=lambda text: False).handle(InputEvent(kind="key", key="escape"))
+    result = ScreenInputRouter(app, should_exit=lambda text: False).handle(InputEvent(kind="key", key="escape"))
 
     assert result.steer_text == "你好"
     assert app.state.pending_steers == []
     assert app.composer.value == "草稿"
 
 
-def test_native_input_router_running_alt_enter_queues_followup() -> None:
-    from loushang.coding.ui.native_app import NativeCodingTuiApp
-    from loushang.coding.ui.native_input import NativeInputRouter
+def test_screen_input_router_running_alt_enter_queues_followup() -> None:
+    from loushang.coding.ui.screen_app import ScreenCodingTuiApp
+    from loushang.coding.ui.screen_input import ScreenInputRouter
 
-    app = NativeCodingTuiApp(model_label="kimi", cwd="/repo", branch="main", session_label="abcd", now=lambda: 12.0)
+    app = ScreenCodingTuiApp(model_label="kimi", cwd="/repo", branch="main", session_label="abcd", now=lambda: 12.0)
     app.start_prompt("当前代码有啥？", started_at=10.0)
     app.composer.set_text("继续")
 
-    result = NativeInputRouter(app, should_exit=lambda text: False).handle(InputEvent(kind="key", key="alt+enter"))
+    result = ScreenInputRouter(app, should_exit=lambda text: False).handle(InputEvent(kind="key", key="alt+enter"))
 
     assert result.followup_text == "继续"
     assert app.composer.value == ""
     assert app.state.pending_followups == ["继续"]
 
 
-def test_native_input_router_escape_closes_completion_before_running_abort() -> None:
-    from loushang.coding.ui.native_app import NativeCodingTuiApp
-    from loushang.coding.ui.native_input import NativeInputRouter
+def test_screen_input_router_escape_closes_completion_before_running_abort() -> None:
+    from loushang.coding.ui.screen_app import ScreenCodingTuiApp
+    from loushang.coding.ui.screen_input import ScreenInputRouter
 
-    app = NativeCodingTuiApp(model_label="kimi", cwd="/repo", branch="main", session_label="abcd", now=lambda: 12.0)
+    app = ScreenCodingTuiApp(model_label="kimi", cwd="/repo", branch="main", session_label="abcd", now=lambda: 12.0)
     app.start_prompt("当前代码有啥？", started_at=10.0)
     app.composer.set_text("/he")
     app.composer.set_completion_items((CompletionItem(value="/help", label="/help"),))
 
-    result = NativeInputRouter(app, should_exit=lambda text: False).handle(InputEvent(kind="key", key="escape"))
+    result = ScreenInputRouter(app, should_exit=lambda text: False).handle(InputEvent(kind="key", key="escape"))
 
     assert result.abort_requested is False
     assert app.state.running is True
@@ -100,15 +100,15 @@ def test_native_input_router_escape_closes_completion_before_running_abort() -> 
     assert not app.composer.has_completions
 
 
-def test_native_input_router_enter_applies_slash_completion_before_submit() -> None:
-    from loushang.coding.ui.native_app import NativeCodingTuiApp
-    from loushang.coding.ui.native_input import NativeInputRouter
+def test_screen_input_router_enter_applies_slash_completion_before_submit() -> None:
+    from loushang.coding.ui.screen_app import ScreenCodingTuiApp
+    from loushang.coding.ui.screen_input import ScreenInputRouter
 
-    app = NativeCodingTuiApp(model_label="kimi", cwd="/repo", branch="main", session_label="abcd", now=lambda: 12.0)
+    app = ScreenCodingTuiApp(model_label="kimi", cwd="/repo", branch="main", session_label="abcd", now=lambda: 12.0)
     app.composer.set_text("/mo")
     app.composer.set_completion_items((CompletionItem(value="/model", label="/model"),))
 
-    result = NativeInputRouter(
+    result = ScreenInputRouter(
         app,
         should_exit=lambda text: False,
         is_local_command=lambda text: text == "/model",
@@ -118,28 +118,28 @@ def test_native_input_router_enter_applies_slash_completion_before_submit() -> N
     assert app.composer.value == ""
 
 
-def test_native_input_router_restores_queued_messages_to_composer() -> None:
-    from loushang.coding.ui.native_app import NativeCodingTuiApp
-    from loushang.coding.ui.native_input import NativeInputRouter
+def test_screen_input_router_restores_queued_messages_to_composer() -> None:
+    from loushang.coding.ui.screen_app import ScreenCodingTuiApp
+    from loushang.coding.ui.screen_input import ScreenInputRouter
 
-    app = NativeCodingTuiApp(model_label="kimi", cwd="/repo", branch="main", session_label="abcd", now=lambda: 12.0)
+    app = ScreenCodingTuiApp(model_label="kimi", cwd="/repo", branch="main", session_label="abcd", now=lambda: 12.0)
     app.queue_steer("先回答")
     app.queue_followup("再继续")
 
-    NativeInputRouter(app, should_exit=lambda text: False).handle(InputEvent(kind="key", key="alt+up"))
+    ScreenInputRouter(app, should_exit=lambda text: False).handle(InputEvent(kind="key", key="alt+up"))
 
     assert app.state.pending_steers == []
     assert app.state.pending_followups == []
     assert app.composer.value == "先回答\n再继续"
 
 
-def test_native_input_router_uses_configured_editor_keybindings() -> None:
-    from loushang.coding.ui.native_app import NativeCodingTuiApp
-    from loushang.coding.ui.native_input import NativeInputRouter
+def test_screen_input_router_uses_configured_editor_keybindings() -> None:
+    from loushang.coding.ui.screen_app import ScreenCodingTuiApp
+    from loushang.coding.ui.screen_input import ScreenInputRouter
 
-    app = NativeCodingTuiApp(model_label="kimi", cwd="/repo", branch="main", session_label="abcd", now=lambda: 12.0)
+    app = ScreenCodingTuiApp(model_label="kimi", cwd="/repo", branch="main", session_label="abcd", now=lambda: 12.0)
     app.composer.set_text("ab")
-    router = NativeInputRouter(
+    router = ScreenInputRouter(
         app,
         should_exit=lambda text: False,
         keybindings={
@@ -154,14 +154,14 @@ def test_native_input_router_uses_configured_editor_keybindings() -> None:
     assert app.composer.value == "a"
 
 
-def test_native_input_router_jump_mode_moves_to_next_or_previous_character() -> None:
-    from loushang.coding.ui.native_app import NativeCodingTuiApp
-    from loushang.coding.ui.native_input import NativeInputRouter
+def test_screen_input_router_jump_mode_moves_to_next_or_previous_character() -> None:
+    from loushang.coding.ui.screen_app import ScreenCodingTuiApp
+    from loushang.coding.ui.screen_input import ScreenInputRouter
 
-    app = NativeCodingTuiApp(model_label="kimi", cwd="/repo", branch="main", session_label="abcd", now=lambda: 12.0)
+    app = ScreenCodingTuiApp(model_label="kimi", cwd="/repo", branch="main", session_label="abcd", now=lambda: 12.0)
     app.composer.set_text("abc def abc")
     app.composer.move_to_line_start()
-    router = NativeInputRouter(app, should_exit=lambda text: False)
+    router = ScreenInputRouter(app, should_exit=lambda text: False)
 
     assert router.handle(InputEvent(kind="key", key="ctrl+]")).render_requested is True
     router.handle(InputEvent(kind="text", text="d"))
@@ -174,14 +174,14 @@ def test_native_input_router_jump_mode_moves_to_next_or_previous_character() -> 
     assert app.composer.value == "bc ef abc"
 
 
-def test_native_input_router_visual_up_down_uses_configured_width() -> None:
-    from loushang.coding.ui.native_app import NativeCodingTuiApp
-    from loushang.coding.ui.native_input import NativeInputRouter
+def test_screen_input_router_visual_up_down_uses_configured_width() -> None:
+    from loushang.coding.ui.screen_app import ScreenCodingTuiApp
+    from loushang.coding.ui.screen_input import ScreenInputRouter
     from loushang.tui import RenderConstraints
 
-    app = NativeCodingTuiApp(model_label="kimi", cwd="/repo", branch="main", session_label="abcd", now=lambda: 12.0)
+    app = ScreenCodingTuiApp(model_label="kimi", cwd="/repo", branch="main", session_label="abcd", now=lambda: 12.0)
     app.composer.set_text("abcd efgh ij")
-    router = NativeInputRouter(app, should_exit=lambda text: False, width=7)
+    router = ScreenInputRouter(app, should_exit=lambda text: False, width=7)
 
     router.handle(InputEvent(kind="key", key="up"))
 
@@ -190,14 +190,14 @@ def test_native_input_router_visual_up_down_uses_configured_width() -> None:
     assert (result.cursor.row, result.cursor.column) == (1, 4)
 
 
-def test_native_input_router_resize_updates_visual_movement_width() -> None:
-    from loushang.coding.ui.native_app import NativeCodingTuiApp
-    from loushang.coding.ui.native_input import NativeInputRouter
+def test_screen_input_router_resize_updates_visual_movement_width() -> None:
+    from loushang.coding.ui.screen_app import ScreenCodingTuiApp
+    from loushang.coding.ui.screen_input import ScreenInputRouter
     from loushang.tui import RenderConstraints
 
-    app = NativeCodingTuiApp(model_label="kimi", cwd="/repo", branch="main", session_label="abcd", now=lambda: 12.0)
+    app = ScreenCodingTuiApp(model_label="kimi", cwd="/repo", branch="main", session_label="abcd", now=lambda: 12.0)
     app.composer.set_text("abcd efgh ij")
-    router = NativeInputRouter(app, should_exit=lambda text: False)
+    router = ScreenInputRouter(app, should_exit=lambda text: False)
 
     router.handle(InputEvent(kind="resize", columns=7, rows=12))
     router.handle(InputEvent(kind="key", key="up"))
@@ -207,14 +207,14 @@ def test_native_input_router_resize_updates_visual_movement_width() -> None:
     assert (result.cursor.row, result.cursor.column) == (1, 4)
 
 
-def test_native_input_router_pastes_clipboard_image_as_attachment(tmp_path) -> None:
+def test_screen_input_router_pastes_clipboard_image_as_attachment(tmp_path) -> None:
     from loushang.coding.platform.clipboard_image import ClipboardImage
-    from loushang.coding.ui.native_app import NativeCodingTuiApp
-    from loushang.coding.ui.native_input import NativeInputRouter
+    from loushang.coding.ui.screen_app import ScreenCodingTuiApp
+    from loushang.coding.ui.screen_input import ScreenInputRouter
 
     payload = b"fake png bytes"
-    app = NativeCodingTuiApp(model_label="kimi", cwd=str(tmp_path), branch="main", session_label="abcd", now=lambda: 12.0)
-    router = NativeInputRouter(
+    app = ScreenCodingTuiApp(model_label="kimi", cwd=str(tmp_path), branch="main", session_label="abcd", now=lambda: 12.0)
+    router = ScreenInputRouter(
         app,
         should_exit=lambda text: False,
         clipboard_image_reader=lambda: ClipboardImage(bytes=payload, mime_type="image/png"),
@@ -239,12 +239,12 @@ def test_native_input_router_pastes_clipboard_image_as_attachment(tmp_path) -> N
     assert submit_result.prompt_images[0].data == base64.b64encode(payload).decode("ascii")
 
 
-def test_native_input_router_reports_empty_clipboard_image_without_editing(tmp_path) -> None:
-    from loushang.coding.ui.native_app import NativeCodingTuiApp
-    from loushang.coding.ui.native_input import NativeInputRouter
+def test_screen_input_router_reports_empty_clipboard_image_without_editing(tmp_path) -> None:
+    from loushang.coding.ui.screen_app import ScreenCodingTuiApp
+    from loushang.coding.ui.screen_input import ScreenInputRouter
 
-    app = NativeCodingTuiApp(model_label="kimi", cwd=str(tmp_path), branch="main", session_label="abcd", now=lambda: 12.0)
-    router = NativeInputRouter(
+    app = ScreenCodingTuiApp(model_label="kimi", cwd=str(tmp_path), branch="main", session_label="abcd", now=lambda: 12.0)
+    router = ScreenInputRouter(
         app,
         should_exit=lambda text: False,
         clipboard_image_reader=lambda: None,
@@ -259,15 +259,15 @@ def test_native_input_router_reports_empty_clipboard_image_without_editing(tmp_p
     assert not (tmp_path / ".clips").exists()
 
 
-def test_native_input_router_reports_clipboard_image_read_failure_without_crashing(tmp_path) -> None:
-    from loushang.coding.ui.native_app import NativeCodingTuiApp
-    from loushang.coding.ui.native_input import NativeInputRouter
+def test_screen_input_router_reports_clipboard_image_read_failure_without_crashing(tmp_path) -> None:
+    from loushang.coding.ui.screen_app import ScreenCodingTuiApp
+    from loushang.coding.ui.screen_input import ScreenInputRouter
 
     def fail_to_read_clipboard_image():
         raise RuntimeError("clipboard command failed")
 
-    app = NativeCodingTuiApp(model_label="kimi", cwd=str(tmp_path), branch="main", session_label="abcd", now=lambda: 12.0)
-    router = NativeInputRouter(
+    app = ScreenCodingTuiApp(model_label="kimi", cwd=str(tmp_path), branch="main", session_label="abcd", now=lambda: 12.0)
+    router = ScreenInputRouter(
         app,
         should_exit=lambda text: False,
         clipboard_image_reader=fail_to_read_clipboard_image,
@@ -282,15 +282,15 @@ def test_native_input_router_reports_clipboard_image_read_failure_without_crashi
     assert not (tmp_path / ".clips").exists()
 
 
-def test_native_input_router_reports_clipboard_image_write_failure_without_crashing(tmp_path) -> None:
+def test_screen_input_router_reports_clipboard_image_write_failure_without_crashing(tmp_path) -> None:
     from loushang.coding.platform.clipboard_image import ClipboardImage
-    from loushang.coding.ui.native_app import NativeCodingTuiApp
-    from loushang.coding.ui.native_input import NativeInputRouter
+    from loushang.coding.ui.screen_app import ScreenCodingTuiApp
+    from loushang.coding.ui.screen_input import ScreenInputRouter
 
     blocked_path = tmp_path / "not-a-directory"
     blocked_path.write_text("file", encoding="utf-8")
-    app = NativeCodingTuiApp(model_label="kimi", cwd=str(tmp_path), branch="main", session_label="abcd", now=lambda: 12.0)
-    router = NativeInputRouter(
+    app = ScreenCodingTuiApp(model_label="kimi", cwd=str(tmp_path), branch="main", session_label="abcd", now=lambda: 12.0)
+    router = ScreenInputRouter(
         app,
         should_exit=lambda text: False,
         clipboard_image_reader=lambda: ClipboardImage(bytes=b"PNG", mime_type="image/png"),
@@ -304,14 +304,14 @@ def test_native_input_router_reports_clipboard_image_write_failure_without_crash
     assert app.state.status_message.startswith("Unable to attach clipboard image:")
 
 
-def test_native_input_router_sanitizes_clipboard_image_filename_token(tmp_path) -> None:
+def test_screen_input_router_sanitizes_clipboard_image_filename_token(tmp_path) -> None:
     from loushang.coding.platform.clipboard_image import ClipboardImage
-    from loushang.coding.ui.native_app import NativeCodingTuiApp
-    from loushang.coding.ui.native_input import NativeInputRouter
+    from loushang.coding.ui.screen_app import ScreenCodingTuiApp
+    from loushang.coding.ui.screen_input import ScreenInputRouter
 
     payload = b"PNG"
-    app = NativeCodingTuiApp(model_label="kimi", cwd=str(tmp_path), branch="main", session_label="abcd", now=lambda: 12.0)
-    router = NativeInputRouter(
+    app = ScreenCodingTuiApp(model_label="kimi", cwd=str(tmp_path), branch="main", session_label="abcd", now=lambda: 12.0)
+    router = ScreenInputRouter(
         app,
         should_exit=lambda text: False,
         clipboard_image_reader=lambda: ClipboardImage(bytes=payload, mime_type="image/png"),
@@ -328,10 +328,10 @@ def test_native_input_router_sanitizes_clipboard_image_filename_token(tmp_path) 
     assert app.state.status_message == "Attached clipboard image: .clips/clipboard-bad_name.png"
 
 
-def test_native_input_router_orders_clipboard_images_by_marker_position(tmp_path) -> None:
+def test_screen_input_router_orders_clipboard_images_by_marker_position(tmp_path) -> None:
     from loushang.coding.platform.clipboard_image import ClipboardImage
-    from loushang.coding.ui.native_app import NativeCodingTuiApp
-    from loushang.coding.ui.native_input import NativeInputRouter
+    from loushang.coding.ui.screen_app import ScreenCodingTuiApp
+    from loushang.coding.ui.screen_input import ScreenInputRouter
 
     images = iter(
         [
@@ -340,8 +340,8 @@ def test_native_input_router_orders_clipboard_images_by_marker_position(tmp_path
         ]
     )
     names = iter(["first", "second"])
-    app = NativeCodingTuiApp(model_label="kimi", cwd=str(tmp_path), branch="main", session_label="abcd", now=lambda: 12.0)
-    router = NativeInputRouter(
+    app = ScreenCodingTuiApp(model_label="kimi", cwd=str(tmp_path), branch="main", session_label="abcd", now=lambda: 12.0)
+    router = ScreenInputRouter(
         app,
         should_exit=lambda text: False,
         clipboard_image_reader=lambda: next(images),
@@ -362,27 +362,27 @@ def test_native_input_router_orders_clipboard_images_by_marker_position(tmp_path
     ]
 
 
-def test_native_input_router_exit_command_returns_exit_code_without_transcript() -> None:
-    from loushang.coding.ui.native_app import NativeCodingTuiApp
-    from loushang.coding.ui.native_input import NativeInputRouter
+def test_screen_input_router_exit_command_returns_exit_code_without_transcript() -> None:
+    from loushang.coding.ui.screen_app import ScreenCodingTuiApp
+    from loushang.coding.ui.screen_input import ScreenInputRouter
 
-    app = NativeCodingTuiApp(model_label="kimi", cwd="/repo", branch="main", session_label="abcd", now=lambda: 10.0)
+    app = ScreenCodingTuiApp(model_label="kimi", cwd="/repo", branch="main", session_label="abcd", now=lambda: 10.0)
     app.composer.set_text("/quit")
 
-    result = NativeInputRouter(app, should_exit=lambda text: text in {"/quit", "/exit"}).handle(InputEvent(kind="key", key="enter"))
+    result = ScreenInputRouter(app, should_exit=lambda text: text in {"/quit", "/exit"}).handle(InputEvent(kind="key", key="enter"))
 
     assert result.exit_code == 0
     assert app.state.records == []
 
 
-def test_native_input_router_routes_local_slash_command_without_starting_prompt() -> None:
-    from loushang.coding.ui.native_app import NativeCodingTuiApp
-    from loushang.coding.ui.native_input import NativeInputRouter
+def test_screen_input_router_routes_local_slash_command_without_starting_prompt() -> None:
+    from loushang.coding.ui.screen_app import ScreenCodingTuiApp
+    from loushang.coding.ui.screen_input import ScreenInputRouter
 
-    app = NativeCodingTuiApp(model_label="kimi", cwd="/repo", branch="main", session_label="abcd", now=lambda: 10.0)
+    app = ScreenCodingTuiApp(model_label="kimi", cwd="/repo", branch="main", session_label="abcd", now=lambda: 10.0)
     app.composer.set_text("/model")
 
-    result = NativeInputRouter(app, should_exit=lambda text: False, is_local_command=lambda text: text == "/model").handle(
+    result = ScreenInputRouter(app, should_exit=lambda text: False, is_local_command=lambda text: text == "/model").handle(
         InputEvent(kind="key", key="enter")
     )
 
@@ -392,9 +392,9 @@ def test_native_input_router_routes_local_slash_command_without_starting_prompt(
     assert app.state.running is False
 
 
-def test_native_input_router_routes_active_surface_before_composer() -> None:
-    from loushang.coding.ui.native_app import NativeCodingTuiApp
-    from loushang.coding.ui.native_input import NativeInputRouter
+def test_screen_input_router_routes_active_surface_before_composer() -> None:
+    from loushang.coding.ui.screen_app import ScreenCodingTuiApp
+    from loushang.coding.ui.screen_input import ScreenInputRouter
 
     class Surface:
         def handle_input(self, event: InputEvent) -> InputIntent | None:
@@ -404,26 +404,26 @@ def test_native_input_router_routes_active_surface_before_composer() -> None:
         def render(self, _constraints):
             raise AssertionError("not rendered")
 
-    app = NativeCodingTuiApp(model_label="kimi", cwd="/repo", branch="main", session_label="abcd", now=lambda: 10.0)
+    app = ScreenCodingTuiApp(model_label="kimi", cwd="/repo", branch="main", session_label="abcd", now=lambda: 10.0)
     app.active_surface = Surface()
     app.composer.set_text("draft")
 
-    result = NativeInputRouter(app, should_exit=lambda text: False).handle(InputEvent(kind="key", key="enter"))
+    result = ScreenInputRouter(app, should_exit=lambda text: False).handle(InputEvent(kind="key", key="enter"))
 
     assert result.surface_intent == InputIntent(kind="select", text="chosen")
     assert app.composer.value == "draft"
     assert app.state.records == []
 
 
-def test_native_input_router_routes_runtime_overlay_before_composer() -> None:
-    from loushang.coding.ui.native_app import NativeCodingTuiApp
-    from loushang.coding.ui.native_input import NativeInputRouter
-    from loushang.coding.ui.native_surfaces import NativeSurfaceView
+def test_screen_input_router_routes_runtime_overlay_before_composer() -> None:
+    from loushang.coding.ui.screen_app import ScreenCodingTuiApp
+    from loushang.coding.ui.screen_input import ScreenInputRouter
+    from loushang.coding.ui.screen_surfaces import ScreenSurfaceView
     from loushang.tui import CommandSurface, SelectItem, Surface, SurfaceHost
 
-    app = NativeCodingTuiApp(model_label="kimi", cwd="/repo", branch="main", session_label="abcd", now=lambda: 10.0)
+    app = ScreenCodingTuiApp(model_label="kimi", cwd="/repo", branch="main", session_label="abcd", now=lambda: 10.0)
     app.surface_host = SurfaceHost()
-    view = NativeSurfaceView(
+    view = ScreenSurfaceView(
         title="Commands",
         purpose="command",
         content=CommandSurface([SelectItem("/model", value="/model")]),
@@ -431,26 +431,26 @@ def test_native_input_router_routes_runtime_overlay_before_composer() -> None:
     app.surface_host.open_surface(Surface(renderable=view, focus_target=view))
     app.composer.set_text("draft")
 
-    result = NativeInputRouter(app, should_exit=lambda text: False).handle(InputEvent(kind="key", key="enter"))
+    result = ScreenInputRouter(app, should_exit=lambda text: False).handle(InputEvent(kind="key", key="enter"))
 
     assert result.surface_intent == InputIntent(kind="command", text="/model")
     assert app.composer.value == "draft"
     assert app.state.records == []
 
 
-def test_native_input_router_ctrl_o_opens_transcript_reader_overlay() -> None:
-    from loushang.coding.ui.native_app import NativeCodingTuiApp
-    from loushang.coding.ui.native_input import NativeInputRouter
+def test_screen_input_router_ctrl_o_opens_transcript_reader_overlay() -> None:
+    from loushang.coding.ui.screen_app import ScreenCodingTuiApp
+    from loushang.coding.ui.screen_input import ScreenInputRouter
     from loushang.coding.ui.transcript_reader import TranscriptReaderSurface
     from loushang.tui import SurfaceHost
     from loushang.tui.transcript import AssistantMessageRecord
 
-    app = NativeCodingTuiApp(model_label="kimi", cwd="/repo", branch="main", session_label="abcd", now=lambda: 10.0)
+    app = ScreenCodingTuiApp(model_label="kimi", cwd="/repo", branch="main", session_label="abcd", now=lambda: 10.0)
     app.surface_host = SurfaceHost()
     app.state.records.append(AssistantMessageRecord("answer"))
     app.composer.set_text("draft")
 
-    result = NativeInputRouter(app, should_exit=lambda text: False).handle(InputEvent(kind="key", key="ctrl+o"))
+    result = ScreenInputRouter(app, should_exit=lambda text: False).handle(InputEvent(kind="key", key="ctrl+o"))
 
     assert result.render_requested is True
     assert result.surface_intent is None
@@ -460,14 +460,14 @@ def test_native_input_router_ctrl_o_opens_transcript_reader_overlay() -> None:
     assert app.state.records[-1] == AssistantMessageRecord("answer")
 
 
-def test_native_input_router_ctrl_o_fallback_reader_includes_streaming_assistant_draft() -> None:
-    from loushang.coding.ui.native_app import NativeCodingTuiApp
-    from loushang.coding.ui.native_input import NativeInputRouter
+def test_screen_input_router_ctrl_o_fallback_reader_includes_streaming_assistant_draft() -> None:
+    from loushang.coding.ui.screen_app import ScreenCodingTuiApp
+    from loushang.coding.ui.screen_input import ScreenInputRouter
     from loushang.coding.ui.transcript_reader import TranscriptReaderSurface
     from loushang.tui import RenderConstraints, SurfaceHost, strip_control_sequences
     from loushang.tui.transcript import AssistantMessageRecord, UserPromptRecord
 
-    app = NativeCodingTuiApp(model_label="kimi", cwd="/repo", branch="main", session_label="abcd", now=lambda: 10.0)
+    app = ScreenCodingTuiApp(model_label="kimi", cwd="/repo", branch="main", session_label="abcd", now=lambda: 10.0)
     app.surface_host = SurfaceHost()
     app.replace_transcript_window(
         (
@@ -479,7 +479,7 @@ def test_native_input_router_ctrl_o_fallback_reader_includes_streaming_assistant
     app.begin_run(started_at=3.0)
     app.append_assistant_chunk("streaming fallback draft")
 
-    result = NativeInputRouter(app, should_exit=lambda text: False).handle(InputEvent(kind="key", key="ctrl+o"))
+    result = ScreenInputRouter(app, should_exit=lambda text: False).handle(InputEvent(kind="key", key="ctrl+o"))
 
     assert result.render_requested is True
     assert app.surface_host.entries
@@ -492,9 +492,9 @@ def test_native_input_router_ctrl_o_fallback_reader_includes_streaming_assistant
     assert any("streaming fallback draft" in line for line in lines)
 
 
-def test_native_input_router_ctrl_o_uses_transcript_source_factory() -> None:
-    from loushang.coding.ui.native_app import NativeCodingTuiApp
-    from loushang.coding.ui.native_input import NativeInputRouter
+def test_screen_input_router_ctrl_o_uses_transcript_source_factory() -> None:
+    from loushang.coding.ui.screen_app import ScreenCodingTuiApp
+    from loushang.coding.ui.screen_input import ScreenInputRouter
     from loushang.coding.ui.transcript_reader import TranscriptReaderSurface
     from loushang.coding.ui.transcript_source import TranscriptSnapshot
     from loushang.tui import SurfaceHost
@@ -512,12 +512,12 @@ def test_native_input_router_ctrl_o_uses_transcript_source_factory() -> None:
             return ("full session answer",)
 
     source = _Source()
-    app = NativeCodingTuiApp(model_label="kimi", cwd="/repo", branch="main", session_label="abcd", now=lambda: 10.0)
+    app = ScreenCodingTuiApp(model_label="kimi", cwd="/repo", branch="main", session_label="abcd", now=lambda: 10.0)
     app.surface_host = SurfaceHost()
     app.transcript_source_factory = lambda: source
     app.state.records.append(AssistantMessageRecord("active window answer"))
 
-    result = NativeInputRouter(app, should_exit=lambda text: False).handle(InputEvent(kind="key", key="ctrl+o"))
+    result = ScreenInputRouter(app, should_exit=lambda text: False).handle(InputEvent(kind="key", key="ctrl+o"))
 
     assert result.render_requested is True
     assert app.surface_host.entries
@@ -526,12 +526,12 @@ def test_native_input_router_ctrl_o_uses_transcript_source_factory() -> None:
     assert reader.source is source
 
 
-def test_native_input_router_ctrl_o_session_reader_includes_running_tool_record() -> None:
+def test_screen_input_router_ctrl_o_session_reader_includes_running_tool_record() -> None:
     from dataclasses import dataclass
 
     from loushang.ai.types import AssistantMessage, TextPart, Usage, UserMessage
-    from loushang.coding.ui.native_app import NativeCodingTuiApp
-    from loushang.coding.ui.native_input import NativeInputRouter
+    from loushang.coding.ui.screen_app import ScreenCodingTuiApp
+    from loushang.coding.ui.screen_input import ScreenInputRouter
     from loushang.coding.ui.transcript_reader import TranscriptReaderSurface
     from loushang.coding.ui.transcript_source import SessionTranscriptSource
     from loushang.tui import RenderConstraints, SurfaceHost, strip_control_sequences
@@ -562,7 +562,7 @@ def test_native_input_router_ctrl_o_session_reader_includes_running_tool_record(
             ),
         ]
     )
-    app = NativeCodingTuiApp(model_label="kimi", cwd="/repo", branch="main", session_label="abcd", now=lambda: 10.0)
+    app = ScreenCodingTuiApp(model_label="kimi", cwd="/repo", branch="main", session_label="abcd", now=lambda: 10.0)
     app.surface_host = SurfaceHost()
     app.replace_transcript_window(
         (
@@ -575,7 +575,7 @@ def test_native_input_router_ctrl_o_session_reader_includes_running_tool_record(
     app.begin_run(started_at=3.0)
     app.transcript_source_factory = lambda: SessionTranscriptSource(session, active_window_state=app.state)
 
-    result = NativeInputRouter(app, should_exit=lambda text: False).handle(InputEvent(kind="key", key="ctrl+o"))
+    result = ScreenInputRouter(app, should_exit=lambda text: False).handle(InputEvent(kind="key", key="ctrl+o"))
 
     assert result.render_requested is True
     assert app.surface_host.entries
@@ -588,12 +588,12 @@ def test_native_input_router_ctrl_o_session_reader_includes_running_tool_record(
     assert any("live output" in line for line in lines)
 
 
-def test_native_input_router_ctrl_o_session_reader_includes_streaming_assistant_draft() -> None:
+def test_screen_input_router_ctrl_o_session_reader_includes_streaming_assistant_draft() -> None:
     from dataclasses import dataclass
 
     from loushang.ai.types import AssistantMessage, TextPart, Usage, UserMessage
-    from loushang.coding.ui.native_app import NativeCodingTuiApp
-    from loushang.coding.ui.native_input import NativeInputRouter
+    from loushang.coding.ui.screen_app import ScreenCodingTuiApp
+    from loushang.coding.ui.screen_input import ScreenInputRouter
     from loushang.coding.ui.transcript_reader import TranscriptReaderSurface
     from loushang.coding.ui.transcript_source import SessionTranscriptSource
     from loushang.tui import RenderConstraints, SurfaceHost, strip_control_sequences
@@ -620,7 +620,7 @@ def test_native_input_router_ctrl_o_session_reader_includes_streaming_assistant_
             ),
         ]
     )
-    app = NativeCodingTuiApp(model_label="kimi", cwd="/repo", branch="main", session_label="abcd", now=lambda: 10.0)
+    app = ScreenCodingTuiApp(model_label="kimi", cwd="/repo", branch="main", session_label="abcd", now=lambda: 10.0)
     app.surface_host = SurfaceHost()
     app.replace_transcript_window(
         (
@@ -633,7 +633,7 @@ def test_native_input_router_ctrl_o_session_reader_includes_streaming_assistant_
     app.append_assistant_chunk("streaming draft")
     app.transcript_source_factory = lambda: SessionTranscriptSource(session, active_window_state=app.state)
 
-    result = NativeInputRouter(app, should_exit=lambda text: False).handle(InputEvent(kind="key", key="ctrl+o"))
+    result = ScreenInputRouter(app, should_exit=lambda text: False).handle(InputEvent(kind="key", key="ctrl+o"))
 
     assert result.render_requested is True
     assert app.surface_host.entries
@@ -646,18 +646,18 @@ def test_native_input_router_ctrl_o_session_reader_includes_streaming_assistant_
     assert any("streaming draft" in line for line in lines)
 
 
-def test_native_input_router_reader_strict_modal_consumes_tab_without_completion() -> None:
-    from loushang.coding.ui.native_app import NativeCodingTuiApp
-    from loushang.coding.ui.native_input import NativeInputRouter
+def test_screen_input_router_reader_strict_modal_consumes_tab_without_completion() -> None:
+    from loushang.coding.ui.screen_app import ScreenCodingTuiApp
+    from loushang.coding.ui.screen_input import ScreenInputRouter
     from loushang.tui import SurfaceHost
     from loushang.tui.transcript import AssistantMessageRecord
 
-    app = NativeCodingTuiApp(model_label="kimi", cwd="/repo", branch="main", session_label="abcd", now=lambda: 10.0)
+    app = ScreenCodingTuiApp(model_label="kimi", cwd="/repo", branch="main", session_label="abcd", now=lambda: 10.0)
     app.surface_host = SurfaceHost()
     app.state.records.append(AssistantMessageRecord("answer"))
     app.composer.set_text("/mo")
     app.composer.set_completion_items((CompletionItem(value="/model", label="/model"),))
-    router = NativeInputRouter(app, should_exit=lambda text: False)
+    router = ScreenInputRouter(app, should_exit=lambda text: False)
 
     router.handle(InputEvent(kind="key", key="ctrl+o"))
     result = router.handle(InputEvent(kind="key", key="tab"))
@@ -669,16 +669,16 @@ def test_native_input_router_reader_strict_modal_consumes_tab_without_completion
     assert app.composer.has_completions
 
 
-def test_native_input_router_reader_ctrl_c_closes_then_text_routes_to_composer() -> None:
-    from loushang.coding.ui.native_app import NativeCodingTuiApp
-    from loushang.coding.ui.native_input import NativeInputRouter
+def test_screen_input_router_reader_ctrl_c_closes_then_text_routes_to_composer() -> None:
+    from loushang.coding.ui.screen_app import ScreenCodingTuiApp
+    from loushang.coding.ui.screen_input import ScreenInputRouter
     from loushang.tui import SurfaceHost
     from loushang.tui.transcript import AssistantMessageRecord
 
-    app = NativeCodingTuiApp(model_label="kimi", cwd="/repo", branch="main", session_label="abcd", now=lambda: 10.0)
+    app = ScreenCodingTuiApp(model_label="kimi", cwd="/repo", branch="main", session_label="abcd", now=lambda: 10.0)
     app.surface_host = SurfaceHost()
     app.state.records.append(AssistantMessageRecord("answer"))
-    router = NativeInputRouter(app, should_exit=lambda text: False)
+    router = ScreenInputRouter(app, should_exit=lambda text: False)
 
     router.handle(InputEvent(kind="key", key="ctrl+o"))
     close_result = router.handle(InputEvent(kind="key", key="ctrl+c"))
@@ -690,20 +690,20 @@ def test_native_input_router_reader_ctrl_c_closes_then_text_routes_to_composer()
     assert app.composer.value == "x"
 
 
-def test_native_input_router_reader_page_up_scrolls_without_moving_composer() -> None:
-    from loushang.coding.ui.native_app import NativeCodingTuiApp
-    from loushang.coding.ui.native_input import NativeInputRouter
+def test_screen_input_router_reader_page_up_scrolls_without_moving_composer() -> None:
+    from loushang.coding.ui.screen_app import ScreenCodingTuiApp
+    from loushang.coding.ui.screen_input import ScreenInputRouter
     from loushang.coding.ui.transcript_reader import TranscriptReaderSurface
     from loushang.tui import RenderConstraints, SurfaceHost
     from loushang.tui.transcript import AssistantMessageRecord
 
-    app = NativeCodingTuiApp(model_label="kimi", cwd="/repo", branch="main", session_label="abcd", now=lambda: 10.0)
+    app = ScreenCodingTuiApp(model_label="kimi", cwd="/repo", branch="main", session_label="abcd", now=lambda: 10.0)
     app.surface_host = SurfaceHost()
     app.state.records.append(AssistantMessageRecord("\n".join(f"line {index}" for index in range(12))))
     app.composer.set_text("one\ntwo\nthree")
     app.composer.move_to_line_start()
     cursor_before = app.composer.render(RenderConstraints(width=20, max_height=5)).cursor
-    router = NativeInputRouter(app, should_exit=lambda text: False, width=20, height=5)
+    router = ScreenInputRouter(app, should_exit=lambda text: False, width=20, height=5)
 
     router.handle(InputEvent(kind="key", key="ctrl+o"))
     assert app.surface_host.entries

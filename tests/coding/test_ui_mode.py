@@ -64,20 +64,20 @@ class _Session:
         return None
 
 
-def test_run_coding_tui_uses_native_loop_for_interactive_terminal(monkeypatch) -> None:
+def test_run_coding_tui_uses_screen_loop_for_interactive_terminal(monkeypatch) -> None:
     from loushang.coding.ui import mode
 
     session = _Session()
     captured: dict[str, object] = {}
 
-    async def fake_native_loop(**kwargs):
+    async def fake_screen_loop(**kwargs):
         captured.update(kwargs)
         return 0
 
     async def fail_prompt_loop(**_kwargs):
         raise AssertionError("interactive mode should not use non-interactive prompt loop")
 
-    monkeypatch.setattr(mode, "run_native_coding_tui", fake_native_loop)
+    monkeypatch.setattr(mode, "run_screen_coding_tui", fake_screen_loop)
     monkeypatch.setattr(mode, "run_non_interactive_prompt_loop", fail_prompt_loop)
 
     exit_code = asyncio.run(
@@ -91,7 +91,7 @@ def test_run_coding_tui_uses_native_loop_for_interactive_terminal(monkeypatch) -
     )
 
     assert exit_code == 0
-    assert captured["app"].__class__.__name__ == "NativeCodingTuiApp"
+    assert captured["app"].__class__.__name__ == "ScreenCodingTuiApp"
     assert callable(captured["handle_prompt"])
     assert callable(captured["handle_steer"])
     assert callable(captured["handle_followup"])
@@ -103,15 +103,15 @@ def test_run_coding_tui_non_interactive_keeps_plain_prompt_loop(monkeypatch) -> 
     session = _Session()
     captured: dict[str, object] = {}
 
-    async def fail_native_loop(**_kwargs):
-        raise AssertionError("non-interactive mode should not enter native terminal loop")
+    async def fail_screen_loop(**_kwargs):
+        raise AssertionError("non-interactive mode should not enter screen terminal loop")
 
     async def fake_prompt_loop(**kwargs):
         captured.update(kwargs)
         await kwargs["handle_prompt"]("hello")
         return 0
 
-    monkeypatch.setattr(mode, "run_native_coding_tui", fail_native_loop)
+    monkeypatch.setattr(mode, "run_screen_coding_tui", fail_screen_loop)
     monkeypatch.setattr(mode, "run_non_interactive_prompt_loop", fake_prompt_loop)
 
     exit_code = asyncio.run(

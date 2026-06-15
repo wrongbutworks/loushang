@@ -1,16 +1,16 @@
 from __future__ import annotations
 
-from loushang.coding.ui.native_app import NativeCodingTuiApp
 from loushang.coding.ui.perf_probe import (
     build_synthetic_long_transcript_records,
     characterize_long_transcript_rendering,
 )
+from loushang.coding.ui.screen_app import ScreenCodingTuiApp
 from loushang.tui import RenderLoop
 
 
 def test_long_transcript_probe_shows_render_loop_plans_beyond_visible_height() -> None:
     records = build_synthetic_long_transcript_records(turns=180, tail_tool_output_lines=2400)
-    app = NativeCodingTuiApp(
+    app = ScreenCodingTuiApp(
         model_label="fake-model",
         cwd="/repo",
         branch="main",
@@ -44,7 +44,7 @@ def test_long_transcript_probe_shows_render_loop_plans_beyond_visible_height() -
 
 def test_long_transcript_probe_stays_bounded_after_active_window_trim() -> None:
     records = build_synthetic_long_transcript_records(turns=180, tail_tool_output_lines=2400)
-    app = NativeCodingTuiApp(
+    app = ScreenCodingTuiApp(
         model_label="fake-model",
         cwd="/repo",
         branch="main",
