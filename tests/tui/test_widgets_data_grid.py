@@ -204,6 +204,33 @@ def test_data_grid_filtered_large_viewport_formats_only_visible_rows() -> None:
     assert formatted == [9997, 9998, 9999]
 
 
+def test_data_grid_filter_view_is_cached_until_filter_or_data_changes() -> None:
+    calls = 0
+
+    def predicate(row: DataGridRowView) -> bool:
+        nonlocal calls
+        calls += 1
+        return int(row.values["value"]) >= 50
+
+    grid = DataGrid(
+        [DataGridColumn("value", "Value")],
+        [DataGridRow(f"row-{index}", {"value": index}) for index in range(100)],
+        focused=True,
+    )
+    assert grid.set_filter_predicate(predicate) is True
+
+    calls = 0
+    assert grid.filtered_row_count == 50
+    assert len(grid.view_row_keys) == 50
+    grid.render(RenderConstraints(width=40, max_height=8))
+    grid.render(RenderConstraints(width=40, max_height=8))
+    assert calls == 0
+
+    assert grid.update_cell("row-0", "value", 100) is True
+    assert grid.filtered_row_count == 51
+    assert calls == 100
+
+
 def test_data_grid_filter_blocks_activation_for_filtered_disabled_and_pinned_rows() -> None:
     grid = DataGrid(
         [DataGridColumn("job", "Job"), DataGridColumn("runs", "Runs")],
@@ -1399,14 +1426,14 @@ def test_widgets_datagrid_large_dataset_focus_shortcuts_and_input_width() -> Non
     assert app.focus_region == "grid"
     total_pages = namespace["_total_pages"](app)
     assert "  Search: [" in lines[1]
-    assert f"  Go to page: [1   ] / {total_pages}" in lines[2]
+    assert f"  Go to page: [1   ] / {total_pages}" in lines[3]
     assert "g page" not in lines[-1]
 
     assert app.handle_input(InputEvent(kind="key", key="ctrl_g")) is True
     result = app.render(RenderConstraints(width=100, max_height=24))
     lines = tuple(strip_control_sequences(line.text).rstrip() for line in result.lines)
     assert app.focus_region == "goto"
-    assert lines[2].startswith("> Go to page:")
+    assert lines[3].startswith("> Go to page:")
 
     assert app.handle_input(InputEvent(kind="key", key="tab")) is True
     assert app.focus_region == "grid"
@@ -1428,7 +1455,7 @@ def test_widgets_datagrid_large_dataset_focus_shortcuts_and_input_width() -> Non
     assert app.handle_input(InputEvent(kind="text", text="106")) is True
     result = app.render(RenderConstraints(width=100, max_height=24))
     lines = tuple(strip_control_sequences(line.text).rstrip() for line in result.lines)
-    assert f"> Go to page: [106 ] / {total_pages}" in lines[2]
+    assert f"> Go to page: [106 ] / {total_pages}" in lines[3]
 
 
 def test_widgets_datagrid_large_dataset_search_filters_pages() -> None:
@@ -1450,7 +1477,7 @@ def test_widgets_datagrid_large_dataset_search_filters_pages() -> None:
     assert app.focus_region == "grid"
 
     lines = plain_lines(app, width=110, height=24)
-    assert any("filtered from 2,000" in line for line in lines)
+    assert any("/2,000" in line for line in lines)
 
 
 def test_widgets_datagrid_large_dataset_filter_cursor_stays_visible_when_filter_line_truncates() -> None:
@@ -1466,6 +1493,30 @@ def test_widgets_datagrid_large_dataset_filter_cursor_stays_visible_when_filter_
     result = app.render(RenderConstraints(width=56, max_height=24))
 
     assert result.cursor is None or result.cursor.column < 56
+
+
+def test_widgets_datagrid_large_dataset_uses_responsive_filter_and_footer_lines() -> None:
+    namespace = runpy.run_path("examples/tui/60_widgets_datagrid_large_dataset.py", run_name="__test__")
+
+    app = namespace["LargeDataGridExampleApp"]()
+    app.render(RenderConstraints(width=80, max_height=24))
+    assert app.handle_input(InputEvent(kind="key", key="tab")) is True
+    assert app.handle_input(InputEvent(kind="text", text="ai")) is True
+    assert app.handle_input(InputEvent(kind="key", key="enter")) is True
+
+    lines = plain_lines(app, width=80, height=24)
+
+    assert "Search: [ai" in lines[1]
+    assert "Sector:" in lines[1]
+    assert "Matches 334/2,000" in lines[1]
+    assert "Status:" in lines[2]
+    assert "Min price:" in lines[2]
+    assert "[        ]" in lines[2]
+    assert "Sort none" in lines[-3]
+    assert "Status:" in lines[-2]
+    assert "Ctrl-B/F" in lines[-1]
+    assert "q quit" in lines[-1]
+    assert not any(line.endswith("Ctrl-") or line.endswith("Min price:") for line in lines)
 
 
 def test_widgets_datagrid_large_dataset_page_uses_filtered_view_keys() -> None:

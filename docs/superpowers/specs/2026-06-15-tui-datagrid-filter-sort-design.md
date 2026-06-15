@@ -518,10 +518,21 @@ If there is no previous valid numeric value, the invalid numeric control does
 not add a numeric clause. Other valid controls can continue to update their
 query or predicate state while the numeric clause remains frozen or absent.
 
-The footer should include both row counts and sort state:
+The example should keep all filter inputs visible at an 80-column terminal
+width. It may split controls over multiple rows, for example:
 
 ```text
-Rows 41-60 of 327 filtered from 2,000 | Page 3/17 | Sort Price desc | Tab filters | s sort | q quit
+Search: [query           ]  Sector: [ai      ]  Matches 327/2,000
+Status: [active  ]  Min price: [50      ]
+```
+
+The footer should keep row counts, sort state, status, and help readable without
+truncating key tokens:
+
+```text
+Rows 41-60 of 327/2,000 | Page 3/17 | Sort Price desc
+Status: Page 3/17
+PgUp/PgDn | Ctrl-B/F | Home/End | Tab filters | Ctrl-G page | q quit
 ```
 
 When no rows match, the grid renders `empty_text` and the footer should still
@@ -647,6 +658,10 @@ stock-specific widget.
 - `replace_rows()` should preserve filter state and reapply it to the new rows.
 - `clear()` should clear filter state along with rows, selection, editing, and
   sort state.
+- Cache the filtered body view and `view_row_keys` until filter state, row data,
+  row order, or filter-relevant column state changes. Rendering and property
+  reads must not rescan the whole source row set after a filter has already been
+  applied.
 - Avoid calling formatters during filter matching. Formatters remain
   display-only.
 - Keep all new public exports aligned across:
@@ -660,7 +675,7 @@ stock-specific widget.
 | --- | --- |
 | Filtering accidentally changes `row_keys`. | Add direct tests that `row_keys` remains all rows under filtering. |
 | Selection disappears under filtering. | Keep selection sets keyed to source rows and only scope selection actions to the current view. |
-| Large filters become expensive. | Accept O(n) row scans on filter changes, but do not format/render all rows. |
+| Large filters become expensive. | Accept O(n) row scans on filter changes, cache the resulting body view, and do not format/render all rows. |
 | Header filter row becomes a layout trap. | Keep V1 filter controls caller-owned and demonstrate composition above the grid. |
 | Sort/filter order confuses users. | Preserve existing sort semantics, then project filters over the current logical order. |
 | Text inputs intercept global shortcuts inconsistently. | Example input routing must let focused inputs own printable text and Backspace before app shortcuts. |

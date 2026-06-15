@@ -289,6 +289,11 @@ class DataGrid:
     _filter_mode: DataGridFilterMode = field(default="contains", init=False, repr=False)
     _filter_case_sensitive: bool = field(default=False, init=False, repr=False)
     _filter_predicate: DataGridFilterPredicate | None = field(default=None, init=False, repr=False)
+    _body_rows_cache: tuple[_NormalizedRow, ...] | None = field(default=None, init=False, repr=False)
+    _pinned_top_rows_cache: tuple[_NormalizedRow, ...] | None = field(default=None, init=False, repr=False)
+    _pinned_bottom_rows_cache: tuple[_NormalizedRow, ...] | None = field(default=None, init=False, repr=False)
+    _view_body_rows_cache: tuple[_NormalizedRow, ...] | None = field(default=None, init=False, repr=False)
+    _view_row_keys_cache: tuple[str, ...] | None = field(default=None, init=False, repr=False)
     _next_generated_index: int = field(default=0, init=False, repr=False)
     _first_visible_row_index: int = field(default=0, init=False, repr=False)
     _editing_cell_key: DataGridCellKey | None = field(default=None, init=False, repr=False)
@@ -334,6 +339,11 @@ class DataGrid:
         self._filter_mode = "contains"
         self._filter_case_sensitive = False
         self._filter_predicate = None
+        self._body_rows_cache = None
+        self._pinned_top_rows_cache = None
+        self._pinned_bottom_rows_cache = None
+        self._view_body_rows_cache = None
+        self._view_row_keys_cache = None
         self._next_generated_index = 0
         self._first_visible_row_index = 0
         self._editing_cell_key = None
@@ -438,11 +448,13 @@ class DataGrid:
 
     @property
     def view_row_keys(self) -> tuple[str, ...]:
-        return tuple(row.key for row in self._view_body_rows())
+        if self._view_row_keys_cache is None:
+            self._view_row_keys_cache = tuple(row.key for row in self._view_body_rows())
+        return self._view_row_keys_cache
 
     @property
     def filtered_row_count(self) -> int:
-        return len(self.view_row_keys)
+        return len(self._view_body_rows())
 
     @property
     def total_body_row_count(self) -> int:
@@ -644,16 +656,39 @@ class DataGrid:
         return None
 
     def _body_rows(self) -> tuple[_NormalizedRow, ...]:
-        return tuple(row for row in self._rows if row.pinned is None)
+        if self._body_rows_cache is None:
+            self._body_rows_cache = tuple(row for row in self._rows if row.pinned is None)
+        return self._body_rows_cache
 
     def _pinned_top_rows(self) -> tuple[_NormalizedRow, ...]:
-        return tuple(row for row in self._rows if row.pinned == "top")
+        if self._pinned_top_rows_cache is None:
+            self._pinned_top_rows_cache = tuple(row for row in self._rows if row.pinned == "top")
+        return self._pinned_top_rows_cache
 
     def _pinned_bottom_rows(self) -> tuple[_NormalizedRow, ...]:
-        return tuple(row for row in self._rows if row.pinned == "bottom")
+        if self._pinned_bottom_rows_cache is None:
+            self._pinned_bottom_rows_cache = tuple(row for row in self._rows if row.pinned == "bottom")
+        return self._pinned_bottom_rows_cache
 
     def _view_body_rows(self) -> tuple[_NormalizedRow, ...]:
-        return tuple(row for row in self._body_rows() if self._row_matches_filters(row))
+        if self._view_body_rows_cache is None:
+            body_rows = self._body_rows()
+            self._view_body_rows_cache = (
+                tuple(row for row in body_rows if self._row_matches_filters(row))
+                if self.has_filter
+                else body_rows
+            )
+        return self._view_body_rows_cache
+
+    def _invalidate_row_caches(self) -> None:
+        self._body_rows_cache = None
+        self._pinned_top_rows_cache = None
+        self._pinned_bottom_rows_cache = None
+        self._invalidate_view_cache()
+
+    def _invalidate_view_cache(self) -> None:
+        self._view_body_rows_cache = None
+        self._view_row_keys_cache = None
 
     def _accepted_query_columns(self, columns: Sequence[str]) -> tuple[str, ...]:
         accepted: list[str] = []
@@ -708,6 +743,7 @@ class DataGrid:
         return False
 
     def _repair_state_after_view_change(self) -> None:
+        self._invalidate_view_cache()
         if self._editing_cell_key is not None and self._editing_cell_key[0] not in self.view_row_keys:
             self.cancel_edit()
         self._active_row_key = self._repair_row_key(self._active_row_key)
@@ -1046,6 +1082,7 @@ class DataGrid:
             editable=cell.editable,
             theme_token=cell.theme_token,
         )
+        self._invalidate_row_caches()
 
     def _activate(self) -> object:
         if self.cursor_mode == "row":
@@ -1438,6 +1475,7 @@ class DataGrid:
         self._active_column_key = self._repair_column_key(self._active_column_key)
         self._first_visible_row_index = 0
         self.cancel_edit()
+        self._invalidate_row_caches()
 
     def _toggle_active_column_cells(self) -> bool:
         if self._active_column_key is None:
@@ -1502,6 +1540,7 @@ class DataGrid:
         self._rows = (*top_rows, *sorted_body, *bottom_rows)
 
     def _repair_state_after_data_change(self) -> None:
+        self._invalidate_row_caches()
         self._repair_state_after_view_change()
         enabled_rows = {row.key for row in self._source_enabled_rows()}
         enabled_cells = set(self._source_enabled_cell_keys())

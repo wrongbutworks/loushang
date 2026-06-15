@@ -88,7 +88,7 @@ class LargeDataGridExampleApp(FocusableMixin):
         if height <= 0:
             return RenderResult.from_lines([], constraints=constraints)
 
-        grid_height = max(1, height - 5)
+        grid_height = max(1, height - 8)
         self.page_size = max(1, grid_height - 1)
         if self.focus_region == "grid":
             self._sync_goto_value()
@@ -96,27 +96,30 @@ class LargeDataGridExampleApp(FocusableMixin):
         grid_result = self.grid.render(RenderConstraints(width=width, max_height=grid_height))
         rows: list[RenderLine] = [
             RenderLine(_style(truncate_to_width(f"Large DataGrid | {ROW_COUNT:,} rows", max_width=width, ellipsis=""), "example.dataGrid.title")),
-            RenderLine(_search_line(self, width)),
+            RenderLine(_filter_line(self, width, ("search", "sector"))),
+            RenderLine(_filter_line(self, width, ("status", "min_price"))),
             RenderLine(_control_line(self, width)),
             RenderLine(_style("-" * max(1, width), "example.dataGrid.meta")),
         ]
         grid_start = len(rows)
         rows.extend(grid_result.lines[:grid_height])
-        while len(rows) < height - 1:
+        while len(rows) < height - 3:
             rows.append(RenderLine(""))
-        footer_token = "example.dataGrid.error" if self.status == "Invalid page" else "example.dataGrid.meta"
-        rows.append(RenderLine(_style(truncate_to_width(_footer(self), max_width=width, ellipsis=""), footer_token)))
+        rows.append(RenderLine(_style(truncate_to_width(_footer_summary(self), max_width=width, ellipsis=""), "example.dataGrid.meta")))
+        rows.append(RenderLine(_style(truncate_to_width(_footer_status(self), max_width=width, ellipsis=""), _footer_status_token(self))))
+        rows.append(RenderLine(_style(truncate_to_width(_footer_help(), max_width=width, ellipsis=""), "example.dataGrid.meta")))
 
         cursor = None
         if self.focus_region in FILTER_FOCUS_REGIONS:
             active_input = self._filter_input(self.focus_region)
             input_result = active_input.render(RenderConstraints(width=_filter_input_width(self.focus_region), max_height=1))
             input_column = input_result.cursor.column if input_result.cursor else 0
-            cursor = _cursor_if_visible(rows, row=1, column=_filter_field_start(self.focus_region) + input_column)
+            row, column = _filter_field_position(self.focus_region)
+            cursor = _cursor_if_visible(rows, row=row, column=column + input_column)
         elif self.focus_region == "goto":
             input_result = self.goto_input.render(RenderConstraints(width=_goto_field_width(self), max_height=1))
             input_column = input_result.cursor.column if input_result.cursor else 0
-            cursor = _cursor_if_visible(rows, row=2, column=_goto_field_start(self) + input_column)
+            cursor = _cursor_if_visible(rows, row=3, column=_goto_field_start(self) + input_column)
         elif grid_result.cursor is not None:
             cursor = CursorDeclaration(row=grid_start + grid_result.cursor.row, column=grid_result.cursor.column)
         return RenderResult.from_lines(rows[:height], constraints=constraints, cursor=cursor)
@@ -406,20 +409,26 @@ def _control_line(app: LargeDataGridExampleApp, width: int) -> str:
     input_result = app.goto_input.render(RenderConstraints(width=input_width, max_height=1))
     input_text = _pad_visible(input_result.lines[0].text if input_result.lines else "", input_width)
     prefix = "> " if app.focus_region == "goto" else "  "
-    suffix = f"] / {_total_pages(app)}    Row {_active_row_number(app)}/{app.grid.filtered_row_count}    {app.status}"
+    suffix = f"] / {_total_pages(app)}    Row {_active_row_number(app)}/{app.grid.filtered_row_count}"
     return truncate_to_width(f"{prefix}Go to page: [{input_text}{suffix}", max_width=width, ellipsis="")
 
 
-def _search_line(app: LargeDataGridExampleApp, width: int) -> str:
-    prefix = "> " if app.focus_region in FILTER_FOCUS_REGIONS else "  "
-    parts = [
-        _filter_part(app, "search", "Search"),
-        _filter_part(app, "sector", "Sector"),
-        _filter_part(app, "status", "Status"),
-        _filter_part(app, "min_price", "Min price"),
-        f"Matches {app.grid.filtered_row_count:,}/{ROW_COUNT:,}",
-    ]
+def _filter_line(app: LargeDataGridExampleApp, width: int, regions: tuple[str, ...]) -> str:
+    prefix = "> " if app.focus_region in regions else "  "
+    parts = [_filter_part(app, region, _filter_label(region)) for region in regions]
+    if "search" in regions:
+        parts.append(f"Matches {app.grid.filtered_row_count:,}/{ROW_COUNT:,}")
     return truncate_to_width(f"{prefix}{'  '.join(parts)}", max_width=width, ellipsis="")
+
+
+def _filter_label(region: str) -> str:
+    labels = {
+        "search": "Search",
+        "sector": "Sector",
+        "status": "Status",
+        "min_price": "Min price",
+    }
+    return labels[region]
 
 
 def _filter_part(app: LargeDataGridExampleApp, region: str, label: str) -> str:
@@ -429,35 +438,42 @@ def _filter_part(app: LargeDataGridExampleApp, region: str, label: str) -> str:
     return f"{label}: [{input_text}]"
 
 
-def _footer(app: LargeDataGridExampleApp) -> str:
+def _footer_summary(app: LargeDataGridExampleApp) -> str:
     page = _current_page(app)
     total = app.grid.filtered_row_count
     start = 0 if total == 0 else (page - 1) * app.page_size + 1
     end = min(total, page * app.page_size)
-    count_text = f"{total:,} filtered from {ROW_COUNT:,}" if app.grid.has_filter else f"{ROW_COUNT:,}"
-    return (
-        f"Rows {start}-{end} of {count_text} | Page {page}/{_total_pages(app)} | {_sort_status(app)} | "
-        "PgUp/PgDn | Ctrl-B/Ctrl-F | Home/End | Tab filters | Ctrl-G page | q quit"
-    )
+    count_text = f"{total:,}/{ROW_COUNT:,}" if app.grid.has_filter else f"{ROW_COUNT:,}"
+    return f"Rows {start}-{end} of {count_text} | Page {page}/{_total_pages(app)} | {_sort_status(app)}"
+
+
+def _footer_status(app: LargeDataGridExampleApp) -> str:
+    return f"Status: {app.status}"
+
+
+def _footer_status_token(app: LargeDataGridExampleApp) -> str:
+    if app.status == "Invalid page" or app.status.startswith("Error:"):
+        return "example.dataGrid.error"
+    return "example.dataGrid.meta"
+
+
+def _footer_help() -> str:
+    return "PgUp/PgDn | Ctrl-B/F | Home/End | Tab filters | Ctrl-G page | q quit"
 
 
 def _filter_input_width(region: str) -> int:
     return FILTER_INPUT_WIDTHS[region]
 
 
-def _filter_field_start(region: str) -> int:
-    labels = {
-        "search": "Search",
-        "sector": "Sector",
-        "status": "Status",
-        "min_price": "Min price",
-    }
+def _filter_field_position(region: str) -> tuple[int, int]:
+    row = 1 if region in {"search", "sector"} else 2
+    regions = ("search", "sector") if row == 1 else ("status", "min_price")
     start = visible_width("> ")
-    for item in FILTER_FOCUS_REGIONS:
+    for item in regions:
         if item == region:
-            return start + visible_width(f"{labels[item]}: [")
-        start += visible_width(f"{labels[item]}: [") + _filter_input_width(item) + visible_width("]  ")
-    return start
+            return row, start + visible_width(f"{_filter_label(item)}: [")
+        start += visible_width(f"{_filter_label(item)}: [") + _filter_input_width(item) + visible_width("]  ")
+    return row, start
 
 
 def _goto_field_width(app: LargeDataGridExampleApp) -> int:
