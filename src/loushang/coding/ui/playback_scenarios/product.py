@@ -11,8 +11,8 @@ from loushang.coding.ui.playback_suite import NativePlaybackScenarioSpec
 from loushang.tui import (
     PlaybackEvent,
     PlaybackFrameBudget,
-    SettingItem,
-    SettingsSurface,
+    SearchableList,
+    SearchableListItem,
     strip_control_sequences,
 )
 
@@ -56,12 +56,14 @@ def _run_product_composed_interaction() -> NativeTuiInputPlaybackResult:
     _assert_visible_contains(scenario, "Queued follow-up inputs")
     _assert_visible_contains(scenario, "follow one")
 
-    scenario.app.active_surface = SettingsSurface(
+    scenario.app.active_surface = SearchableList(
         (
-            SettingItem(id="memory", label="Memory", current_value="on"),
-            SettingItem(id="model", label="Model", current_value="kimi"),
+            SearchableListItem("memory", "Memory", "on"),
+            SearchableListItem("model", "Model", "kimi"),
         ),
-        enable_search=True,
+        focused=True,
+        placeholder="Search settings...",
+        detail_column=24,
     )
     scenario.playback.play(
         (
@@ -69,8 +71,8 @@ def _run_product_composed_interaction() -> NativeTuiInputPlaybackResult:
             PlaybackEvent.input("mo\x1b[Dx"),
         )
     )
-    _assert_visible_contains(scenario, "Search: mxo")
-    _assert_visible_contains(scenario, "No matching settings")
+    _assert_visible_contains(scenario, "mxo")
+    _assert_visible_contains(scenario, "No matching items")
 
     scenario.app.active_surface = None
     scenario.playback.play(
@@ -136,13 +138,15 @@ def _run_product_streaming_control_flow() -> NativeTuiInputPlaybackResult:
     _assert_visible_contains(scenario, "Messages to be submitted after next tool call")
     _assert_visible_contains(scenario, "steer before next tool")
 
-    scenario.app.active_surface = SettingsSurface(
+    scenario.app.active_surface = SearchableList(
         (
-            SettingItem(id="memory", label="Memory", current_value="on"),
-            SettingItem(id="model", label="Model", current_value="kimi"),
-            SettingItem(id="theme", label="Theme", current_value="system"),
+            SearchableListItem("memory", "Memory", "on"),
+            SearchableListItem("model", "Model", "kimi"),
+            SearchableListItem("theme", "Theme", "system"),
         ),
-        enable_search=True,
+        focused=True,
+        placeholder="Search settings...",
+        detail_column=24,
     )
     scenario.playback.play(
         (
@@ -150,7 +154,7 @@ def _run_product_streaming_control_flow() -> NativeTuiInputPlaybackResult:
             PlaybackEvent.input("mem"),
         )
     )
-    _assert_visible_contains(scenario, "Search: mem")
+    _assert_visible_contains(scenario, "mem")
     _assert_visible_contains(scenario, "Memory")
 
     scenario.app.active_surface = None

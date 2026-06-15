@@ -213,12 +213,10 @@ def test_build_coding_tui_app_wires_command_palette_chooser() -> None:
     assert seen and seen[0].title == "Commands"
 
 
-def test_build_coding_tui_app_wires_legacy_settings_list_presenter() -> None:
+def test_build_coding_tui_app_renders_plain_settings_summary() -> None:
     from loushang.coding.ui.app import build_coding_tui_app
-    from loushang.tui import SettingsList
 
     emitted: list[str] = []
-    seen: list[SettingsList] = []
 
     class Session:
         session_id = "sid"
@@ -244,10 +242,6 @@ def test_build_coding_tui_app_wires_legacy_settings_list_presenter() -> None:
         emitted.append(label)
         write()
 
-    async def present(settings: SettingsList) -> SettingsList:
-        seen.append(settings)
-        return settings.set_enabled("statusline", False)
-
     app = build_coding_tui_app(
         runtime=None,
         session=Session(),
@@ -263,16 +257,13 @@ def test_build_coding_tui_app_wires_legacy_settings_list_presenter() -> None:
         now=lambda: 10.0,
         enable_debug=lambda *, session, scopes: "/tmp/debug.log",
         disable_debug=lambda: None,
-        legacy_settings_list_presenter=present,
     )
 
     result = asyncio.run(app.handlers.handle_prompt("/settings"))
 
     assert result is None
-    assert emitted == ["settings:set", "status:Status line: off"]
-    assert seen
-    assert seen[0].items[0].enabled is True
-    assert app.status_visible() is False
+    assert emitted == ["settings:show", "status:Settings\nStatus line: true"]
+    assert app.status_visible() is True
 
 
 def test_build_coding_tui_app_wires_info_panel_presenter() -> None:
