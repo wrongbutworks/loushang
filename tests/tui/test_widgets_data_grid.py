@@ -262,6 +262,20 @@ def test_data_grid_row_navigation_wraps_when_enabled() -> None:
     assert grid.active_row_key == "build"
 
 
+def test_data_grid_row_mode_ctrl_f_and_ctrl_b_page_rows() -> None:
+    grid = DataGrid(
+        [DataGridColumn("job", "Job")],
+        [DataGridRow(f"row-{index}", {"job": f"Job {index}"}) for index in range(12)],
+        wrap_rows=False,
+    )
+
+    assert grid.active_row_key == "row-0"
+    assert grid.handle_input(InputEvent(kind="key", key="ctrl-f")) is True
+    assert grid.active_row_key == "row-5"
+    assert grid.handle_input(InputEvent(kind="key", key="ctrl-b")) is True
+    assert grid.active_row_key == "row-0"
+
+
 def test_data_grid_cell_mode_repairs_and_navigates_enabled_cells() -> None:
     grid = DataGrid(
         [
@@ -289,6 +303,22 @@ def test_data_grid_cell_mode_repairs_and_navigates_enabled_cells() -> None:
     assert (grid.active_row_key, grid.active_column_key) == ("b", "note")
     assert grid.handle_input(InputEvent(kind="key", key="home")) is True
     assert (grid.active_row_key, grid.active_column_key) == ("b", "qty")
+
+
+def test_data_grid_cell_mode_ctrl_f_and_ctrl_b_page_rows() -> None:
+    grid = DataGrid(
+        [DataGridColumn("code", "Code"), DataGridColumn("qty", "Qty")],
+        [DataGridRow(f"row-{index}", {"code": f"C{index}", "qty": index}) for index in range(12)],
+        active_column_key="qty",
+        cursor_mode="cell",
+        wrap_rows=False,
+    )
+
+    assert (grid.active_row_key, grid.active_column_key) == ("row-0", "qty")
+    assert grid.handle_input(InputEvent(kind="key", key="ctrl_f")) is True
+    assert (grid.active_row_key, grid.active_column_key) == ("row-5", "qty")
+    assert grid.handle_input(InputEvent(kind="key", key="ctrl_b")) is True
+    assert (grid.active_row_key, grid.active_column_key) == ("row-0", "qty")
 
 
 def test_data_grid_column_mode_moves_only_visible_columns() -> None:
@@ -584,6 +614,40 @@ def test_data_grid_activation_returns_callbacks_or_structured_targets() -> None:
         cursor_mode="column",
     )
     assert none_grid.handle_input(InputEvent(kind="key", key="enter")) is None
+
+
+def test_data_grid_activate_row_sets_active_row_and_repairs_cell_column() -> None:
+    row_grid = DataGrid(
+        [DataGridColumn("job", "Job")],
+        [
+            DataGridRow("summary", {"job": "Summary"}, pinned="top"),
+            DataGridRow("build", {"job": "Build"}),
+            DataGridRow("skip", {"job": "Skip"}, disabled=True),
+            DataGridRow("deploy", {"job": "Deploy"}),
+        ],
+    )
+
+    assert row_grid.activate_row("deploy") is True
+    assert row_grid.active_row_key == "deploy"
+    assert row_grid.activate_row("deploy") is False
+    assert row_grid.activate_row("summary") is False
+    assert row_grid.activate_row("skip") is False
+    assert row_grid.activate_row("missing") is False
+
+    cell_grid = DataGrid(
+        [DataGridColumn("code", "Code", editable=True), DataGridColumn("qty", "Qty")],
+        [
+            DataGridRow("a", {"code": "A", "qty": 1}),
+            DataGridRow("b", {"code": "B", "qty": DataGridCell(2, disabled=True)}),
+        ],
+        active_column_key="qty",
+        cursor_mode="cell",
+    )
+
+    assert cell_grid.start_edit("a", "code") is True
+    assert cell_grid.activate_row("b") is True
+    assert (cell_grid.active_row_key, cell_grid.active_column_key) == ("b", "code")
+    assert cell_grid.editing_cell_key is None
 
 
 def test_data_grid_single_selection_replaces_row_or_cell_targets() -> None:
@@ -1017,6 +1081,81 @@ def test_widgets_datagrid_adapter_example_imports() -> None:
     assert "DataGrid adapter examples" in lines[0]
     assert any("Records" in line for line in lines)
     assert any("AAPL" in line for line in lines)
+
+
+def test_widgets_datagrid_large_dataset_example_imports() -> None:
+    namespace = runpy.run_path("examples/tui/60_widgets_datagrid_large_dataset.py", run_name="__test__")
+
+    build_app = namespace["build_app"]
+    app = build_app()
+    result = app.render(RenderConstraints(width=100, max_height=24))
+    lines = tuple(strip_control_sequences(line.text).rstrip() for line in result.lines)
+
+    assert callable(build_app)
+    assert "Large DataGrid" in lines[0]
+    assert any("2,000 rows" in line for line in lines)
+    assert any("Go to page" in line for line in lines)
+    assert any("Rows 1-" in line for line in lines)
+
+
+def test_widgets_datagrid_large_dataset_go_to_page() -> None:
+    namespace = runpy.run_path("examples/tui/60_widgets_datagrid_large_dataset.py", run_name="__test__")
+
+    app = namespace["LargeDataGridExampleApp"]()
+    app.render(RenderConstraints(width=100, max_height=24))
+    page_size = app.page_size
+
+    assert app.handle_input(InputEvent(kind="key", key="ctrl+g")) is True
+    assert app.handle_input(InputEvent(kind="text", text="10")) is True
+    assert app.handle_input(InputEvent(kind="key", key="enter")) is True
+
+    assert app.grid.active_row_key == f"row-{(10 - 1) * page_size}"
+    assert app.focus_region == "grid"
+    assert "Page 10/" in app.status
+
+
+def test_widgets_datagrid_large_dataset_invalid_page_stays_in_input() -> None:
+    namespace = runpy.run_path("examples/tui/60_widgets_datagrid_large_dataset.py", run_name="__test__")
+
+    app = namespace["LargeDataGridExampleApp"]()
+    app.render(RenderConstraints(width=100, max_height=24))
+
+    assert app.handle_input(InputEvent(kind="key", key="ctrl+g")) is True
+    assert app.handle_input(InputEvent(kind="text", text="abc")) is True
+    assert app.handle_input(InputEvent(kind="key", key="enter")) is True
+
+    assert app.grid.active_row_key == "row-0"
+    assert app.focus_region == "goto"
+    assert app.status == "Invalid page"
+
+
+def test_widgets_datagrid_large_dataset_focus_shortcuts_and_input_width() -> None:
+    namespace = runpy.run_path("examples/tui/60_widgets_datagrid_large_dataset.py", run_name="__test__")
+
+    app = namespace["LargeDataGridExampleApp"]()
+    result = app.render(RenderConstraints(width=100, max_height=24))
+    lines = tuple(strip_control_sequences(line.text).rstrip() for line in result.lines)
+
+    assert app.handle_input(InputEvent(kind="text", text="g")) is None
+    assert app.focus_region == "grid"
+    assert "  Go to page: [1   ] / 106" in lines[1]
+    assert "g page" not in lines[-1]
+
+    assert app.handle_input(InputEvent(kind="key", key="ctrl_g")) is True
+    result = app.render(RenderConstraints(width=100, max_height=24))
+    lines = tuple(strip_control_sequences(line.text).rstrip() for line in result.lines)
+    assert app.focus_region == "goto"
+    assert lines[1].startswith("> Go to page:")
+
+    assert app.handle_input(InputEvent(kind="key", key="tab")) is True
+    assert app.focus_region == "grid"
+    assert app.handle_input(InputEvent(kind="key", key="tab")) is True
+    assert app.focus_region == "goto"
+
+    assert app.handle_input(InputEvent(kind="text", text="106")) is True
+    result = app.render(RenderConstraints(width=100, max_height=24))
+    lines = tuple(strip_control_sequences(line.text).rstrip() for line in result.lines)
+    assert "> Go to page: [106 ] / 106" in lines[1]
 
 
 def test_widgets_datagrid_adapter_example_column_controls() -> None:

@@ -123,6 +123,8 @@ In `cell` mode, printable text on an editable active cell starts editing.
 During editing, left/right move inside the edit buffer; Enter commits, Escape
 cancels, and Tab commits toward the next editable cell. Edit buffers render
 left-aligned even for right-aligned display columns.
+Outside editing, `ctrl-f` and `ctrl-b` page forward and backward like
+`pageDown` and `pageUp`.
 
 ## P1B Text Controls
 

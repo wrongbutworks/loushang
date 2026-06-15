@@ -118,6 +118,7 @@ grid = DataGrid.from_csv(
 编辑中左右键只移动编辑缓冲区内的光标；Enter 提交，Escape 取消，Tab
 提交并尝试进入下一个可编辑单元格。即使列的展示态是右对齐，编辑缓冲区
 也会按左对齐渲染。
+非编辑状态下，`ctrl-f` 和 `ctrl-b` 分别等价于 `pageDown` 和 `pageUp`。
 
 ## P1B 文本控件
 
