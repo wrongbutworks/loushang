@@ -197,6 +197,7 @@ class DataGridColumn:
     editable: bool = False
     enter_behavior: DataGridEnterBehavior = "activate"
     edit_next_column_key: str | None = None
+    edit_accepts_unchanged: bool = True
     sortable: bool = True
     hidden: bool = False
     formatter: DataGridFormatter | None = None
@@ -646,7 +647,8 @@ Editing entry:
 Editing state:
 
 - V1 keeps a single editing buffer string
-- the buffer initializes to `""` for `None`, otherwise `str(raw_value)`
+- the buffer initializes to `""` for `None`, otherwise `str(raw_value)`;
+  default cell values therefore appear in the edit buffer
 - formatting is not used to initialize the edit buffer
 - while editing, printable text appends to the buffer
 - `backspace` removes one cell-width-safe character from the buffer
@@ -686,6 +688,11 @@ Validation:
   `"Invalid value"` when the exception has no message
 - invalid commit leaves editing active and exposes
   `editing_error: str | None`
+- when the user presses Enter without changing a prefilled buffer,
+  `edit_accepts_unchanged=True` commits the existing raw value and continues
+  the edit flow
+- when `edit_accepts_unchanged=False`, unchanged commit returns `False` and
+  leaves editing active
 - successful commit updates the cell value and returns `DataGridEdit`
 - successful commit preserves existing `DataGridCell` metadata while replacing
   only its `value`
@@ -696,6 +703,9 @@ Validation:
   `enter_behavior`
 - if the next column is missing, hidden, disabled, or not editable, the grid
   repairs active state but does not start another edit
+- if the next cell has a default value, its edit buffer starts with that value;
+  pressing Enter immediately accepts the default when
+  `edit_accepts_unchanged=True`
 
 Editing is disabled in row and column cursor modes unless the caller starts an
 edit programmatically for a specific cell.
@@ -711,8 +721,10 @@ business logic. A product page should be able to implement this pattern:
 4. Grid commits the code and returns `DataGridEdit`.
 5. Product code handles the edit result, looks up the name, and calls
    `update_cell(row_key, "name", looked_up_name)`.
-6. Grid advances to the configured `quantity` cell and starts editing it.
-7. User types quantity and presses Enter.
+6. Grid advances to the configured `quantity` cell and starts editing it. The
+   quantity cell may already contain a default value such as `1`.
+7. User either presses Enter to accept the default quantity or types a new
+   quantity and presses Enter.
 8. Grid commits quantity and returns `DataGridEdit`.
 9. The next Enter activates the row or cell, returning `DataGridSelect`; product
    code can trigger backend processing.
@@ -720,6 +732,9 @@ business logic. A product page should be able to implement this pattern:
 
 The generic widget owns focus, edit buffer, commit, and next-cell movement. It
 does not own code lookup, backend actions, inventory rules, or row factories.
+`edit_next_column_key` may point to any visible editable column in the same row;
+it is not limited to adjacent columns, so products can skip display-only
+columns such as `name`.
 
 Column configuration for this pattern:
 
@@ -740,6 +755,7 @@ DataGridColumn(
     key="quantity",
     header="Qty",
     editable=True,
+    edit_accepts_unchanged=True,
     parser=int,
 )
 ```
@@ -748,6 +764,8 @@ In this example, `quantity` intentionally keeps the default
 `enter_behavior="activate"`. The `code` commit still advances into quantity
 editing through `edit_next_column_key`, but after quantity is committed, the
 next Enter activates the cell or row so product code can trigger backend work.
+If the new row initializes `quantity` to `1`, pressing Enter immediately
+accepts `1`; typing `5` before Enter commits `5`.
 
 ## Sorting
 
@@ -924,6 +942,9 @@ Add focused tests for:
   failure, and successful mutation
 - column `enter_behavior="edit"` and `edit_next_column_key` data-entry flow
 - `add_row(..., edit_column_key=...)` starts editing a new row's target cell
+- prefilled editable cells accept unchanged default values on Enter when
+  `edit_accepts_unchanged=True`
+- `edit_next_column_key` can skip display-only columns
 - edit commit followed by product-side `update_cell()` for dependent cells such
   as code-to-name lookup
 - sort state, stable sort, disabled/hidden/unsortable handling, active/selection
