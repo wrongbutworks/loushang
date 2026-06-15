@@ -187,6 +187,16 @@ class DirectoryTree:
         value = self._expandable_value(path)
         return False if value is None else self._tree.is_expanded(value)
 
+    def handle_input(self, event: object) -> DirectoryTreeSelect | bool | None:
+        result = self._tree.handle_input(event)
+        self._sync_public_state_from_tree()
+        if getattr(result, "kind", "") == "select":
+            entry = self._value_to_entry.get(getattr(result, "text", ""))
+            if entry is None or entry.disabled or entry.path is None or entry.kind not in ("directory", "file"):
+                return None
+            return DirectoryTreeSelect(path=entry.path, kind=entry.kind)
+        return result if result in (True, False, None) else None
+
     def _normalize_under_root(self, path: Path, *, label: str) -> Path:
         normalized = _normalize_absolute_lexical(path, label=label)
         try:

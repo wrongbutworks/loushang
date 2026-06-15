@@ -9,14 +9,17 @@ from typing import Any
 import pytest
 
 from loushang.tui import (
+    CursorDeclaration,
     DirectoryTree,
     DirectoryTreeEntry,
     DirectoryTreeEntryKind,
     DirectoryTreeRealKind,
     DirectoryTreeSelect,
+    InputEvent,
     PathFilter,
     PathSortKey,
     RenderConstraints,
+    ThemeResolver,
     strip_control_sequences,
 )
 from loushang.tui.ui_parts import DirectoryTree as UiDirectoryTree
@@ -303,3 +306,66 @@ def test_directory_tree_unreadable_root_construction_uses_disabled_error_model(
     tree = DirectoryTree(root=tmp_path)
 
     assert_root_error_model(tree, tmp_path)
+
+
+def test_directory_tree_activation_returns_structured_file_and_directory_selection(tmp_path: Path) -> None:
+    build_tree_fixture(tmp_path)
+    tree = DirectoryTree(root=tmp_path, expanded_paths=(tmp_path / "src",), active_path=tmp_path / "src")
+    tree.focus()
+
+    assert tree.handle_input(InputEvent(kind="key", key="enter")) == DirectoryTreeSelect(
+        path=tmp_path / "src",
+        kind="directory",
+    )
+    assert tree.handle_input(InputEvent(kind="key", key="down")) is True
+    assert tree.handle_input(InputEvent(kind="key", key="down")) is True
+    assert tree.handle_input(InputEvent(kind="key", key="space")) == DirectoryTreeSelect(
+        path=tmp_path / "src" / "main.py",
+        kind="file",
+    )
+    assert tree.handle_input(InputEvent(kind="text", text=" ")) == DirectoryTreeSelect(
+        path=tmp_path / "src" / "main.py",
+        kind="file",
+    )
+
+
+def test_directory_tree_does_not_leak_treeview_input_intent(tmp_path: Path) -> None:
+    build_tree_fixture(tmp_path)
+    tree = DirectoryTree(root=tmp_path)
+    tree.focus()
+
+    result = tree.handle_input(InputEvent(kind="key", key="enter"))
+
+    assert isinstance(result, DirectoryTreeSelect)
+    assert getattr(result, "kind", "") == "directory"
+
+
+def test_directory_tree_renders_through_treeview_and_declares_cursor(tmp_path: Path) -> None:
+    build_tree_fixture(tmp_path)
+    tree = DirectoryTree(root=tmp_path, active_path=tmp_path / "src")
+    tree.focus()
+
+    lines = render_plain(tree, width=40, height=5)
+    result = tree.render(RenderConstraints(width=40, max_height=5))
+
+    assert lines[0].startswith("  - ")
+    assert any("> " in line and "src" in line for line in lines)
+    assert result.cursor == CursorDeclaration(row=3, column=0)
+
+
+def test_directory_tree_reuses_tree_theme_tokens(tmp_path: Path) -> None:
+    build_tree_fixture(tmp_path)
+    theme = ThemeResolver(
+        defaults={
+            "widget.tree.row": {"color": "white"},
+            "widget.tree.focus": {"bold": True, "color": "green"},
+            "widget.tree.disabled": {"dim": True},
+        }
+    )
+    tree = DirectoryTree(root=tmp_path, expanded_paths=(tmp_path / "empty",), active_path=tmp_path / "empty", theme=theme)
+    tree.focus()
+
+    raw = tuple(line.text for line in tree.render(RenderConstraints(width=60, max_height=8)).lines)
+
+    assert any(line.startswith("\x1b[1;32m> ") and "empty" in line for line in raw)
+    assert any(line.startswith("\x1b[2m") and "No files" in line for line in raw)
