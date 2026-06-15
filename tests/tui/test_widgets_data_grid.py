@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import runpy
 from decimal import Decimal
 from typing import Any
 
@@ -28,6 +29,7 @@ from loushang.tui import (
 )
 from loushang.tui.ui_parts import DataGrid as UiDataGrid
 from loushang.tui.ui_parts.widgets import DataGrid as WidgetDataGrid
+from tests.tui.widget_example_playback import play_example
 
 
 def plain_lines(part: Any, *, width: int = 80, height: int = 8) -> tuple[str, ...]:
@@ -694,3 +696,38 @@ def test_data_grid_large_viewport_formats_only_visible_rows() -> None:
 
     assert any("Item 9999" in line for line in lines)
     assert formatted == [9997, 9998, 9999]
+
+
+def test_widgets_datagrid_example_imports() -> None:
+    namespace = runpy.run_path("examples/tui/58_widgets_datagrid.py", run_name="__test__")
+
+    build_app = namespace["build_app"]
+    app = build_app()
+    result = app.render(RenderConstraints(width=96, max_height=24))
+    lines = tuple(strip_control_sequences(line.text).rstrip() for line in result.lines)
+
+    assert callable(build_app)
+    assert "DataGrid examples" in lines[0]
+    assert any("Market watchlist" in line for line in lines)
+    assert any("AAPL" in line for line in lines)
+
+
+def test_widgets_datagrid_example_playback_switches_scenarios() -> None:
+    frames = play_example(
+        "examples/tui/58_widgets_datagrid.py",
+        events=(
+            ("order", InputEvent(kind="text", text="2")),
+            ("jobs", InputEvent(kind="text", text="3")),
+            ("usage", InputEvent(kind="text", text="4")),
+            ("diagnostics", InputEvent(kind="text", text="5")),
+        ),
+        width=104,
+        height=24,
+    )
+
+    assert any("Market watchlist" in line for line in frames[0].lines)
+    assert any("Order entry" in line for line in frames[1].lines)
+    assert any("Total" in line for line in frames[1].lines)
+    assert any("Job status" in line for line in frames[2].lines)
+    assert any("Token usage" in line for line in frames[3].lines)
+    assert any("Diagnostics" in line for line in frames[4].lines)
