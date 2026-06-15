@@ -59,8 +59,6 @@ DisableDebug = Callable[[], None]
 class CodingTuiApp:
     lifecycle: RunLifecycle
     handlers: CodingTuiHandlers
-    status: Callable[[], str]
-    status_visible: Callable[[], bool]
     completion_provider: CompletionProvider | None = None
 
 
@@ -173,8 +171,6 @@ def build_coding_tui_app(
     return CodingTuiApp(
         lifecycle=lifecycle,
         handlers=handlers,
-        status=status_provider.render,
-        status_visible=status_provider.is_visible,
         completion_provider=completion_provider,
     )
 

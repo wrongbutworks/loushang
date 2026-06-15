@@ -8,7 +8,6 @@ from loushang.coding.ui.status_line import (
     status_line_settings_from_control,
     status_line_settings_to_patch,
 )
-from loushang.coding.ui.toolbar import ToolbarSnapshot, render_toolbar
 
 
 @dataclass(frozen=True, slots=True)
@@ -44,18 +43,6 @@ class CodingTuiStatusProvider:
         self._running = running
         self._statusline_settings = statusline_settings or StatusLineSettings()
         self._on_statusline_settings_changed = on_statusline_settings_changed
-
-    def render(self) -> str:
-        return render_toolbar(
-            ToolbarSnapshot(
-                model=self._model_label,
-                cwd=self._cwd,
-                branch=self._branch,
-                session=self._session_label(),
-                thinking=self._thinking_level(),
-                running=self._running(),
-            )
-        )
 
     def is_visible(self) -> bool:
         return self._statusline_settings.enabled
