@@ -219,6 +219,7 @@ class DataGridRow:
     cells: Mapping[str, object | DataGridCell] | Sequence[object | DataGridCell]
     label: str | None = None
     disabled: bool = False
+    pinned: Literal["top", "bottom"] | None = None
     theme_token: str | None = None
     on_select: Callable[[], object] | None = None
 
@@ -292,6 +293,18 @@ Cell normalization:
   enabled, column-default-editability cells.
 - Hidden columns still receive normalized cell values so they can later be
   shown or updated.
+
+Pinned rows:
+
+- `DataGridRow.pinned=None` is a normal scrollable data row.
+- `pinned="top"` renders before the scrollable body.
+- `pinned="bottom"` renders after the scrollable body.
+- pinned rows are intended for summaries, totals, section headers, or other
+  derived rows.
+- pinned rows default to non-interactive behavior: they are skipped by
+  navigation, selection, sorting, editing, and activation unless a future slice
+  adds explicit opt-in interactivity.
+- pinned rows still use normal cells, formatters, and theme tokens.
 
 ## Formatter API
 
@@ -400,8 +413,10 @@ cost, and duration columns without making the grid domain-specific.
 Rendering order:
 
 1. optional header row
-2. visible body rows
-3. one empty row when there are columns but no rows
+2. pinned top rows
+3. visible scrollable body rows
+4. pinned bottom rows
+5. one empty row when there are columns but no rows
 
 Every rendered line must fit `constraints.width` and `constraints.max_height`.
 The effective width is `autowrap_safe_width(constraints.width)`.
@@ -453,7 +468,7 @@ Zebra stripes:
 
 - when `zebra_stripes=True`, odd visible body rows receive
   `widget.dataGrid.rowAlternate` before any row/cell semantic token
-- zebra styling never applies to header or empty rows
+- zebra styling never applies to header, pinned rows, or empty rows
 
 Cursor declaration:
 
@@ -719,8 +734,9 @@ business logic. A product page should be able to implement this pattern:
 2. Focus the `code` cell and start editing immediately.
 3. User types a code and presses Enter.
 4. Grid commits the code and returns `DataGridEdit`.
-5. Product code handles the edit result, looks up the name, and calls
-   `update_cell(row_key, "name", looked_up_name)`.
+5. Product code handles the edit result, looks up data synchronously or
+   asynchronously, and calls `update_cell()` for dependent cells such as name,
+   price, unit, or tax rate.
 6. Grid advances to the configured `quantity` cell and starts editing it. The
    quantity cell may already contain a default value such as `1`.
 7. User either presses Enter to accept the default quantity or types a new
@@ -728,13 +744,37 @@ business logic. A product page should be able to implement this pattern:
 8. Grid commits quantity and returns `DataGridEdit`.
 9. The next Enter activates the row or cell, returning `DataGridSelect`; product
    code can trigger backend processing.
-10. Product code can add the next blank row and start editing its `code` cell.
+10. Product code can append the next blank row, update pinned total rows, and
+   start editing the new row's `code` cell.
 
 The generic widget owns focus, edit buffer, commit, and next-cell movement. It
 does not own code lookup, backend actions, inventory rules, or row factories.
 `edit_next_column_key` may point to any visible editable column in the same row;
 it is not limited to adjacent columns, so products can skip display-only
 columns such as `name`.
+
+Product-side dependent updates:
+
+- after a `DataGridEdit`, product code may update any other cells in the same
+  row with `update_cell()`
+- those updates may happen synchronously before the next render or
+  asynchronously after backend lookup returns
+- updating non-active cells must not cancel the current edit-next flow
+- updating the active editing cell cancels the edit unless it is the successful
+  commit for that same cell
+- product code may recompute summary values and update a pinned bottom row
+  after each edit or activation
+
+Append-after-submit pattern:
+
+- the grid does not automatically create rows after a final column; product
+  code owns that decision
+- after final-cell edit or row/cell activation, product code may call
+  `add_row(..., activate=True, edit_column_key="code")`
+- summary or total rows should be represented as `DataGridRow(pinned="bottom",
+  disabled=True, ...)` and updated by product code
+- pinned total rows are excluded from `select_all()`, sorting, editing, and
+  normal navigation
 
 Column configuration for this pattern:
 
@@ -784,6 +824,8 @@ Rules:
 - sort keys use the raw cell value by default
 - `None` sorts after real values in ascending order
 - sort is stable
+- sorting reorders only normal scrollable rows; pinned top and bottom rows keep
+  their pinned regions and relative insertion order
 - active row, selected rows, and selected cells are preserved by row/cell key
 - if the active row no longer exists after mutation, active state repairs to
   the nearest enabled visible row
@@ -822,8 +864,8 @@ Mutation rules:
   `sort_by()` again
 - mutation during editing cancels editing unless the mutation is the successful
   edit commit for the active cell
-- `clear()` removes all rows, clears selection, clears editing state, clears
-  `sort_state`, and sets `active_row_key=None`
+- `clear()` removes all rows including pinned rows, clears selection, clears
+  editing state, clears `sort_state`, and sets `active_row_key=None`
 - `clear()` preserves columns, column configuration, `active_column_key` repair,
   cursor mode, selection mode, viewport settings, theme, and focus state
 - callers remove columns with `remove_column()`; a future slice may add
@@ -925,6 +967,8 @@ Add focused tests for:
 - duplicate row/column key validation
 - mapping, sequence, and `DataGridRow` normalization
 - hidden columns excluded from render/navigation
+- pinned top/bottom rows render in fixed regions and are skipped by
+  navigation, sorting, selection, editing, and activation
 - row cursor navigation, wrapping, disabled-row skipping, home/end/page keys
 - cell cursor navigation, wrapping, disabled-cell skipping
 - column cursor navigation and header cursor declaration
@@ -947,6 +991,10 @@ Add focused tests for:
 - `edit_next_column_key` can skip display-only columns
 - edit commit followed by product-side `update_cell()` for dependent cells such
   as code-to-name lookup
+- asynchronous-style dependent cell updates do not cancel edit-next flow when
+  they update non-active cells
+- final-cell activation followed by product-side row append and pinned total
+  row update
 - sort state, stable sort, disabled/hidden/unsortable handling, active/selection
   preservation after sort
 - add/remove/update/clear mutation and active/selection repair
