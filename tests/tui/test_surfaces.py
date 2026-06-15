@@ -12,10 +12,6 @@ from loushang.tui import (
     RenderConstraints,
     SelectionSurface,
     SelectItem,
-    SettingItem,
-    SettingsList,
-    SettingsListRenderer,
-    SettingsSurface,
     ThemeResolver,
     strip_control_sequences,
 )
@@ -24,13 +20,6 @@ from loushang.tui import (
 def rendered_text(surface: Any, *, width: int = 30, height: int = 5) -> tuple[str, ...]:
     result = surface.render(RenderConstraints(width=width, max_height=height))
     return tuple(line.text for line in result.lines)
-
-
-def test_settings_primitives_are_marked_legacy_compatibility() -> None:
-    for primitive in (SettingItem, SettingsList, SettingsListRenderer, SettingsSurface):
-        assert "legacy compatibility" in (primitive.__doc__ or "").casefold()
-        assert "PageScaffold" in (primitive.__doc__ or "")
-        assert "SearchableList" in (primitive.__doc__ or "")
 
 
 def test_selection_surface_wraps_navigation_and_scrolls_selected_item_visible() -> None:
@@ -335,181 +324,6 @@ def test_command_surface_searches_from_typed_text() -> None:
         "> /status",
     )
     assert surface.handle_input(InputEvent(kind="key", key="enter")) == InputIntent(kind="command", text="/status")
-
-
-def test_settings_surface_renders_description_and_returns_setting_intent() -> None:
-    surface = SettingsSurface([SelectItem("Theme", value="theme", description="Change color theme")])
-
-    assert tuple(strip_control_sequences(line) for line in rendered_text(surface, width=50, height=3)) == ("> Theme  Change color theme",)
-    assert surface.handle_input(InputEvent(kind="key", key="enter")) == InputIntent(kind="setting", text="theme")
-
-
-def test_settings_surface_cycles_values_and_reports_new_value() -> None:
-    surface = SettingsSurface(
-        [
-            SettingItem(
-                id="theme",
-                label="Theme",
-                current_value="dark",
-                values=("dark", "light"),
-                description="Terminal color theme",
-            )
-        ],
-        max_visible=5,
-    )
-
-    assert tuple(strip_control_sequences(line) for line in rendered_text(surface, width=44, height=6)) == (
-        "> Theme  dark",
-        "",
-        "  Terminal color theme",
-        "",
-        "  Enter/Space to change - Esc to cancel",
-    )
-
-    assert surface.handle_input(InputEvent(kind="key", key="enter")) == InputIntent(
-        kind="setting",
-        text="theme",
-        note="light",
-    )
-    assert strip_control_sequences(rendered_text(surface, width=44, height=3)[0]) == "> Theme  light"
-    assert surface.handle_input(InputEvent(kind="text", text=" ")) == InputIntent(
-        kind="setting",
-        text="theme",
-        note="dark",
-    )
-
-
-def test_settings_surface_wraps_selected_description() -> None:
-    surface = SettingsSurface(
-        [
-            SettingItem(
-                id="theme",
-                label="Theme",
-                current_value="dark",
-                description="Controls how terminal color themes are rendered in compact layouts",
-            )
-        ],
-        max_visible=5,
-    )
-
-    assert tuple(strip_control_sequences(line) for line in rendered_text(surface, width=28, height=5)) == (
-        "> Theme  dark",
-        "",
-        "  Controls how terminal",
-        "  color themes are rendered",
-        "  in compact layouts",
-    )
-
-
-def test_settings_surface_can_delegate_value_selection_to_submenu() -> None:
-    def submenu(_current: str, _done: Any) -> SelectionSurface:
-        return SelectionSurface([SelectItem("GPT", value="gpt")])
-
-    surface = SettingsSurface(
-        [
-            SettingItem(
-                id="model",
-                label="Model",
-                current_value="kimi",
-                submenu=submenu,
-            )
-        ],
-    )
-
-    assert surface.handle_input(InputEvent(kind="key", key="enter")) is True
-    assert tuple(strip_control_sequences(line) for line in rendered_text(surface, width=20, height=3)) == ("> GPT",)
-    assert surface.handle_input(InputEvent(kind="key", key="enter")) == InputIntent(
-        kind="setting",
-        text="model",
-        note="gpt",
-    )
-    assert surface.selected_setting() == SettingItem(
-        id="model",
-        label="Model",
-        current_value="gpt",
-        submenu=submenu,
-    )
-
-
-def test_settings_surface_search_filters_with_text_and_backspace() -> None:
-    surface = SettingsSurface(
-        [
-            SettingItem(id="theme", label="Theme", current_value="dark"),
-            SettingItem(id="model", label="Model", current_value="kimi"),
-        ],
-        enable_search=True,
-    )
-
-    surface.handle_input(InputEvent(kind="text", text="mo"))
-
-    assert tuple(strip_control_sequences(line) for line in rendered_text(surface, width=36, height=5)[:3]) == (
-        "Search: mo",
-        "",
-        "> Model  kimi",
-    )
-
-    surface.handle_input(InputEvent(kind="key", key="backspace"))
-
-    assert tuple(strip_control_sequences(line) for line in rendered_text(surface, width=36, height=5)[:3]) == (
-        "Search: m",
-        "",
-        "> Theme  dark",
-    )
-
-
-def test_settings_surface_consumed_paths_return_true_without_intents() -> None:
-    surface = SettingsSurface(
-        [
-            SettingItem(id="theme", label="Theme", current_value="dark"),
-            SettingItem(id="model", label="Model", current_value="kimi"),
-        ],
-        enable_search=True,
-    )
-
-    assert surface.handle_input(InputEvent(kind="text", text="mo")) is True
-    assert surface.handle_input(InputEvent(kind="key", key="backspace")) is True
-    assert surface.handle_input(InputEvent(kind="key", key="down")) is True
-
-
-def test_settings_surface_search_uses_fuzzy_matching() -> None:
-    surface = SettingsSurface(
-        [
-            SettingItem(id="model", label="Model Selection", current_value="gpt-5"),
-            SettingItem(id="theme", label="Theme", current_value="dark"),
-        ],
-        enable_search=True,
-    )
-
-    surface.handle_input(InputEvent(kind="text", text="ms"))
-
-    assert tuple(strip_control_sequences(line) for line in rendered_text(surface, width=40, height=5)[:3]) == (
-        "Search: ms",
-        "",
-        "> Model Selection  gpt-5",
-    )
-
-
-def test_settings_surface_search_uses_text_input_cursor_editing() -> None:
-    surface = SettingsSurface(
-        [
-            SettingItem(id="memory", label="Memory", current_value="on"),
-            SettingItem(id="model", label="Model", current_value="kimi"),
-        ],
-        enable_search=True,
-    )
-
-    surface.handle_input(InputEvent(kind="text", text="mo"))
-    surface.handle_input(InputEvent(kind="key", key="left"))
-    surface.handle_input(InputEvent(kind="text", text="x"))
-    result = surface.render(RenderConstraints(width=36, max_height=5))
-
-    assert tuple(line.text for line in result.lines)[:3] == (
-        "Search: mxo",
-        "",
-        "  No matching settings",
-    )
-    assert result.cursor is not None
-    assert (result.cursor.row, result.cursor.column) == (0, len("Search: mx"))
 
 
 def test_approval_surface_returns_explicit_approval_or_rejection() -> None:

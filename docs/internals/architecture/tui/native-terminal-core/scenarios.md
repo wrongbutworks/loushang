@@ -138,10 +138,10 @@ And closing the surface restores composer focus
 And Enter executes the highlighted slash command
 And Tab applies the highlighted command without submitting.
 
-## SC-SO-002: Settings Surface
+## SC-SO-002: Settings Page Surface
 
 Given a settings command is selected
-When the settings surface opens
+When the product settings page opens as a surface
 Then it captures focus
 And user changes are returned as intents or callbacks
 And Esc closes the surface without submitting prompt text.

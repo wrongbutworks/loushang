@@ -419,7 +419,7 @@ SURFACE_SCENARIOS = (
     ),
     NativePlaybackScenarioSpec(
         name="settings-search",
-        description="Search the settings surface opened through the native command path.",
+        description="Search the settings page opened through the native command path.",
         run=_run_settings_search,
     ),
     NativePlaybackScenarioSpec(

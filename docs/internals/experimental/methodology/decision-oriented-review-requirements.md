@@ -186,7 +186,7 @@ decision: >
   SearchableList extracts existing searchable-list behavior into a reusable
   page-content widget.
 rationale:
-  - Avoid duplicating SelectionSurface, SettingsSurface, and CommandPaletteView behavior.
+  - Avoid duplicating SelectionSurface, SearchableList, and CommandPaletteView behavior.
   - Make long-list behavior embeddable in tab pages.
 alternatives:
   - Reuse SelectionSurface directly.
@@ -248,7 +248,7 @@ status: changes_requested
 summary: Existing searchable-list behavior already exists and should be cited.
 patch_needed: true
 ledger_update:
-  note: Mention SelectionSurface, SettingsSurface, and CommandPaletteView.
+  note: Mention SelectionSurface, SearchableList, and CommandPaletteView.
 ```
 
 The main thread should ingest the delta, update the ledger, and patch the spec

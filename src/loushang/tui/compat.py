@@ -1,8 +1,6 @@
 from __future__ import annotations
 
-from collections.abc import Callable
-from dataclasses import dataclass, replace
-from typing import Any
+from dataclasses import dataclass
 
 
 @dataclass(frozen=True, slots=True)
@@ -128,63 +126,6 @@ class InfoPanel:
         if self.footer:
             parts.append(self.footer)
         return "\n".join(part for part in parts if part)
-
-
-@dataclass(frozen=True, slots=True)
-class SettingItem:
-    """Legacy compatibility data model for old settings-list flows.
-
-    New settings pages should compose PageScaffold with SearchableList and
-    product-owned setting adapters instead of depending on this model.
-    """
-
-    id: str
-    label: str
-    enabled: bool = False
-    description: str = ""
-    current_value: str = ""
-    values: tuple[str, ...] = ()
-    submenu: Callable[[str, Callable[[str | None], None]], Any] | None = None
-
-
-@dataclass(frozen=True, slots=True)
-class SettingsList:
-    """Legacy compatibility container for old settings-list flows.
-
-    New settings pages should compose PageScaffold with SearchableList and
-    product-owned setting adapters instead of depending on this container.
-    """
-
-    items: tuple[SettingItem, ...]
-
-    def set_enabled(self, item_id: str, enabled: bool) -> SettingsList:
-        return SettingsList(tuple(replace(item, enabled=enabled) if item.id == item_id else item for item in self.items))
-
-    def toggle(self, item_id: str) -> SettingsList:
-        for item in self.items:
-            if item.id == item_id:
-                return self.set_enabled(item_id, not item.enabled)
-        return self
-
-
-@dataclass(frozen=True, slots=True)
-class SettingsListRenderer:
-    """Legacy compatibility text renderer for SettingsList.
-
-    New settings pages should compose PageScaffold with SearchableList and
-    product-owned setting adapters instead of depending on this renderer.
-    """
-
-    title: str = "Settings"
-
-    def render(self, settings: SettingsList) -> tuple[tuple[str, str], ...]:
-        lines = [self.title]
-        for index, item in enumerate(settings.items):
-            prefix = ">" if index == 0 else " "
-            check = "[x]" if item.enabled else "[ ]"
-            suffix = f" - {item.description}" if item.description else ""
-            lines.append(f"{prefix} {check} {item.label}{suffix}")
-        return tuple(("", line + ("\n" if index < len(lines) - 1 else "")) for index, line in enumerate(lines))
 
 
 def _completion_matches(item: CompletionItem, needle: str) -> bool:
