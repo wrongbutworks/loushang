@@ -144,9 +144,8 @@ def test_status_provider_rejects_invalid_statusline_setting_values() -> None:
     assert saved == []
 
 
-def test_status_provider_formats_legacy_settings_summary() -> None:
+def test_status_provider_formats_plain_settings_summary_without_legacy_tui_models() -> None:
     from loushang.coding.ui.status_provider import CodingTuiStatusProvider
-    from loushang.tui import SettingItem, SettingsList
 
     provider = CodingTuiStatusProvider(
         model_label="moonshot/kimi",
@@ -157,9 +156,8 @@ def test_status_provider_formats_legacy_settings_summary() -> None:
         running=lambda: False,
     )
 
-    assert provider.legacy_settings_list() == SettingsList(
-        (SettingItem(id="statusline", label="Status line", enabled=True),)
-    )
-    assert provider.legacy_settings_text() == "Settings\n> [x] Status line"
+    assert provider.settings_summary_text() == "Settings\nStatus line: true"
+    assert not hasattr(provider, "legacy_settings_list")
+    assert not hasattr(provider, "legacy_settings_text")
     provider.set_visible(False)
-    assert provider.legacy_settings_text() == "Settings\n> [ ] Status line"
+    assert provider.settings_summary_text() == "Settings\nStatus line: false"

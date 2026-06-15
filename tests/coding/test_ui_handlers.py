@@ -466,7 +466,7 @@ def test_coding_tui_handlers_renders_settings_command() -> None:
         restore_queue=lambda _text: _async_none(),
         emit=emit,
         render_status=lambda text: statuses.append(text),
-        legacy_settings_text=lambda: "settings",
+        settings_text=lambda: "settings",
         now=lambda: 10.0,
         session_running=lambda: False,
         trace=lambda _name, **_data: None,
@@ -477,60 +477,6 @@ def test_coding_tui_handlers_renders_settings_command() -> None:
     assert result is None
     assert emitted == ["settings:show"]
     assert statuses == ["settings"]
-
-
-def test_coding_tui_handlers_prefers_legacy_settings_list_presenter() -> None:
-    from loushang.coding.ui.handlers import CodingTuiHandlers
-    from loushang.coding.ui.intent import SettingsIntent
-    from loushang.coding.ui.prompt_routing import PromptRoute
-    from loushang.tui import SettingItem, SettingsList
-
-    emitted: list[str] = []
-    statuses: list[str] = []
-    presented: list[SettingsList] = []
-    applied: list[SettingsList] = []
-
-    async def emit(write, *, label: str):
-        emitted.append(label)
-        write()
-
-    async def present(settings: SettingsList) -> SettingsList:
-        presented.append(settings)
-        return settings.set_enabled("statusline", False)
-
-    def apply(settings: SettingsList) -> str:
-        applied.append(settings)
-        return "Status line: off"
-
-    handlers = CodingTuiHandlers(
-        lifecycle=_Lifecycle(),
-        parse_prompt=lambda _text: SettingsIntent(),
-        route_prompt=lambda _intent, _lifecycle: PromptRoute.SETTINGS,
-        follow_up=lambda _text, *, source: _async_none(),
-        steer=lambda _text: _async_none(),
-        debug=lambda _intent: _async_none(),
-        dispatch=lambda _intent: _async_none(),
-        result=lambda _outcome, *, prompt_started: _async_none(),
-        abort=lambda: _async_none(),
-        restore_queue=lambda _text: _async_none(),
-        emit=emit,
-        render_status=statuses.append,
-        legacy_settings_text=lambda: "fallback settings",
-        legacy_settings_list=lambda: SettingsList((SettingItem(id="statusline", label="Status line", enabled=True),)),
-        apply_legacy_settings=apply,
-        present_legacy_settings_list=present,
-        now=lambda: 10.0,
-        session_running=lambda: False,
-        trace=lambda _name, **_data: None,
-    )
-
-    result = asyncio.run(handlers.handle_prompt("/settings"))
-
-    assert result is None
-    assert emitted == ["settings:set"]
-    assert statuses == ["Status line: off"]
-    assert presented and presented[0].items[0].enabled is True
-    assert applied and applied[0].items[0].enabled is False
 
 
 def test_coding_tui_handlers_handles_statusline_command() -> None:

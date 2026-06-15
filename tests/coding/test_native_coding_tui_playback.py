@@ -31,8 +31,8 @@ from loushang.tui import (
     RenderConstraints,
     RenderDiagnostics,
     RenderLoop,
-    SettingItem,
-    SettingsSurface,
+    SearchableList,
+    SearchableListItem,
     TerminalRuntimeCapabilities,
     TerminalSize,
     TuiRuntime,
@@ -214,12 +214,14 @@ def test_native_tui_playback_escape_clears_idle_draft_without_abort() -> None:
 
 def test_native_tui_playback_edits_settings_search_with_text_input_cursor() -> None:
     app = _app()
-    app.active_surface = SettingsSurface(
+    app.active_surface = SearchableList(
         [
-            SettingItem(id="memory", label="Memory", current_value="on"),
-            SettingItem(id="model", label="Model", current_value="kimi"),
+            SearchableListItem("memory", "Memory", "on"),
+            SearchableListItem("model", "Model", "kimi"),
         ],
-        enable_search=True,
+        focused=True,
+        placeholder="Search settings...",
+        detail_column=24,
     )
     playback = NativeTuiInputPlayback(app)
 
@@ -227,8 +229,8 @@ def test_native_tui_playback_edits_settings_search_with_text_input_cursor() -> N
 
     assert all(step.flush_succeeded for step in steps)
     lines = _plain_lines(steps[-1].diagnostics)
-    assert "Search: mxo" in lines
-    assert "  No matching settings" in lines
+    assert "mxo" in lines
+    assert "No matching items" in lines
 
 
 def test_tui_playback_renders_auto_terminal_image_and_text_fallback(monkeypatch: Any) -> None:
