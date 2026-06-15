@@ -137,8 +137,9 @@ new contract over premature coupling.
 
 These decisions are fixed for implementation planning:
 
-- Enter activates the current target. It does not start editing. Editing starts
-  with `e` in cell mode or through `start_edit(row_key, column_key)`.
+- Enter activates the current target by default. Editable columns may opt in to
+  `enter_behavior="edit"` so Enter starts editing that column in cell mode.
+  Editing can also start with `e` or through `start_edit(row_key, column_key)`.
 - Space is the only default keyboard selection action. Cursor movement never
   implicitly changes persistent selection.
 - Column cursor selection selects all enabled cells in the active visible
@@ -148,6 +149,10 @@ These decisions are fixed for implementation planning:
   explicit ASCII placeholders such as `N/A`.
 - Constructor shorthand rows get deterministic generated keys. Callers that
   need long-lived semantic keys should pass `DataGridRow`.
+- Data-entry flows are supported without making the grid domain-specific:
+  callers can add a row, focus an editable code column, commit edits, update
+  dependent cells such as name, advance to quantity, and handle later
+  activation in product code.
 - `cursor_mode="none"` is display-only for input handling: no navigation,
   activation, selection, or editing input is consumed.
 
@@ -166,6 +171,7 @@ from loushang.tui.theme import ThemeResolver
 DataGridAlign = Literal["left", "right", "center"]
 DataGridCursorMode = Literal["row", "cell", "column", "none"]
 DataGridSelectionMode = Literal["none", "single", "multi"]
+DataGridEnterBehavior = Literal["activate", "edit"]
 DataGridSortDirection = Literal["asc", "desc"]
 
 DataGridCellKey = tuple[str, str]  # row_key, column_key
@@ -189,6 +195,8 @@ class DataGridColumn:
     max_width: int | None = None
     align: DataGridAlign = "left"
     editable: bool = False
+    enter_behavior: DataGridEnterBehavior = "activate"
+    edit_next_column_key: str | None = None
     sortable: bool = True
     hidden: bool = False
     formatter: DataGridFormatter | None = None
@@ -528,7 +536,8 @@ Wrapping:
 
 Activation:
 
-- `enter` activates the current row/cell/column unless editing is active
+- `enter` activates the current row/cell/column unless editing is active or the
+  active cell's column has `enter_behavior="edit"`
 - printable text `" "` or key `"space"` toggles selection when selection is
   enabled; otherwise it activates
 - row-mode activation returns `callback_result(row.on_select())` when the row
@@ -544,6 +553,14 @@ Activation:
   `DataGridSelect(row_key=None, column_key=<active column>, value=None,
   cursor_mode="column")`
 - in `cursor_mode="none"`, input activation returns `None`
+
+Enter-to-edit rule:
+
+- applies only in cell mode
+- requires an active enabled editable cell
+- requires the active column to set `enter_behavior="edit"`
+- returns the same result as `start_edit(row_key, column_key)`
+- editing state still uses Enter for commit once editing has started
 
 ## Selection
 
@@ -622,8 +639,8 @@ Editing is intentionally simple text editing, not a full nested editor.
 Editing entry:
 
 - `e` starts editing the active editable cell in cell mode
-- `enter` does not start editing in V1; it commits only when editing is already
-  active
+- `enter` starts editing only when the active editable cell's column has
+  `enter_behavior="edit"`
 - programmatic `start_edit(row_key, column_key) -> bool`
 
 Editing state:
@@ -672,9 +689,65 @@ Validation:
 - successful commit updates the cell value and returns `DataGridEdit`
 - successful commit preserves existing `DataGridCell` metadata while replacing
   only its `value`
+- when the committed column has `edit_next_column_key`, successful commit moves
+  the active cell to that column in the same row after updating the value
+- if the next column is editable and the next cell is enabled, the grid starts
+  editing the next cell immediately, regardless of that next column's
+  `enter_behavior`
+- if the next column is missing, hidden, disabled, or not editable, the grid
+  repairs active state but does not start another edit
 
 Editing is disabled in row and column cursor modes unless the caller starts an
 edit programmatically for a specific cell.
+
+## Data Entry Workflow
+
+`DataGrid` should support fast keyboard entry workflows without embedding
+business logic. A product page should be able to implement this pattern:
+
+1. Add a blank row.
+2. Focus the `code` cell and start editing immediately.
+3. User types a code and presses Enter.
+4. Grid commits the code and returns `DataGridEdit`.
+5. Product code handles the edit result, looks up the name, and calls
+   `update_cell(row_key, "name", looked_up_name)`.
+6. Grid advances to the configured `quantity` cell and starts editing it.
+7. User types quantity and presses Enter.
+8. Grid commits quantity and returns `DataGridEdit`.
+9. The next Enter activates the row or cell, returning `DataGridSelect`; product
+   code can trigger backend processing.
+10. Product code can add the next blank row and start editing its `code` cell.
+
+The generic widget owns focus, edit buffer, commit, and next-cell movement. It
+does not own code lookup, backend actions, inventory rules, or row factories.
+
+Column configuration for this pattern:
+
+```python
+DataGridColumn(
+    key="code",
+    header="Code",
+    editable=True,
+    enter_behavior="edit",
+    edit_next_column_key="quantity",
+)
+DataGridColumn(
+    key="name",
+    header="Name",
+    editable=False,
+)
+DataGridColumn(
+    key="quantity",
+    header="Qty",
+    editable=True,
+    parser=int,
+)
+```
+
+In this example, `quantity` intentionally keeps the default
+`enter_behavior="activate"`. The `code` commit still advances into quantity
+editing through `edit_next_column_key`, but after quantity is committed, the
+next Enter activates the cell or row so product code can trigger backend work.
 
 ## Sorting
 
@@ -711,7 +784,7 @@ interaction model.
 
 Required methods:
 
-- `add_row(row: DataGridRow | Mapping[str, object] | Sequence[object], *, index: int | None = None) -> str`
+- `add_row(row: DataGridRow | Mapping[str, object] | Sequence[object], *, index: int | None = None, activate: bool = False, edit_column_key: str | None = None) -> str`
 - `remove_row(row_key: str) -> bool`
 - `add_column(column: DataGridColumn, *, index: int | None = None, default: object = "") -> bool`
 - `remove_column(column_key: str) -> bool`
@@ -721,6 +794,10 @@ Required methods:
 Mutation rules:
 
 - row and column keys must remain unique
+- `activate=True` moves active row state to the added row
+- `edit_column_key` implies `activate=True`, switches cursor mode to `cell`,
+  moves active column state to that column, and starts editing when the cell is
+  editable and enabled
 - removing active row/column repairs active state
 - removing selected rows/cells removes them from selection sets
 - adding rows while a sort is active does not auto-sort; caller can call
@@ -845,6 +922,10 @@ Add focused tests for:
 - row `on_select` callback behavior
 - inline edit start, buffer input, commit, cancel, parser failure, validation
   failure, and successful mutation
+- column `enter_behavior="edit"` and `edit_next_column_key` data-entry flow
+- `add_row(..., edit_column_key=...)` starts editing a new row's target cell
+- edit commit followed by product-side `update_cell()` for dependent cells such
+  as code-to-name lookup
 - sort state, stable sort, disabled/hidden/unsortable handling, active/selection
   preservation after sort
 - add/remove/update/clear mutation and active/selection repair
