@@ -35,7 +35,7 @@ from loushang.tui.transcript import (
 
 
 @dataclass
-class CodingUiRenderer:
+class PlainCodingUiRenderer:
     stdout: TextIO
     stderr: TextIO | None = None
     max_payload_chars: int = 1200
@@ -191,7 +191,7 @@ class CodingUiRenderer:
         view = TranscriptView(
             [record],
             verbose_errors=self.verbose,
-            # The coding renderer keeps its current plain terminal output by
+            # The plain renderer keeps its current terminal output by
             # default. The screen TUI path owns themed rendering.
             theme=self.transcript_theme or ThemeResolver(),
             capabilities=self.transcript_capabilities,
@@ -282,15 +282,15 @@ class CodingUiRenderer:
             constraints=constraints,
         )
 
-    def transcript_renderable(self) -> _CodingTranscriptRenderable | None:
+    def transcript_renderable(self) -> _PlainCodingTranscriptRenderable | None:
         if self.transcript_buffer is None:
             return None
-        return _CodingTranscriptRenderable(self)
+        return _PlainCodingTranscriptRenderable(self)
 
 
 @dataclass(frozen=True, slots=True)
-class _CodingTranscriptRenderable:
-    renderer: CodingUiRenderer
+class _PlainCodingTranscriptRenderable:
+    renderer: PlainCodingUiRenderer
 
     def render(self, constraints: RenderConstraints) -> RenderResult:
         return self.renderer.render_transcript(constraints)
@@ -342,4 +342,4 @@ def _coding_line(line: str, record: DisplayRecord) -> str:
     return line
 
 
-__all__ = ["CodingUiRenderer", "extract_text"]
+__all__ = ["PlainCodingUiRenderer", "extract_text"]

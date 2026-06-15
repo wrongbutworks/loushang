@@ -15,7 +15,24 @@ import sys
 importlib.import_module("loushang.coding.ui.screen_state")
 
 assert "loushang.coding.ui.mode" not in sys.modules
-assert "loushang.coding.ui.renderer" not in sys.modules
+assert "loushang.coding.ui.plain_renderer" not in sys.modules
+"""
+    )
+
+    assert result.returncode == 0, result.stderr
+
+
+def test_old_coding_ui_renderer_module_is_removed() -> None:
+    result = _run_python_import_boundary_check(
+        """
+import importlib
+
+try:
+    importlib.import_module("loushang.coding.ui.renderer")
+except ModuleNotFoundError:
+    pass
+else:
+    raise AssertionError("loushang.coding.ui.renderer should be named plain_renderer")
 """
     )
 

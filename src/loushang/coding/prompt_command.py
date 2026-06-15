@@ -7,7 +7,7 @@ from typing import Any, Mapping, Sequence, TextIO
 
 from loushang.coding.ui.events import CodingUiEventRenderer
 from loushang.coding.ui.model import ensure_usable_session_model
-from loushang.coding.ui.renderer import CodingUiRenderer
+from loushang.coding.ui.plain_renderer import PlainCodingUiRenderer
 from loushang.coding.work_shell import CodingWorkShell
 from loushang.work import EventLogBackend
 
@@ -38,7 +38,7 @@ async def run_prompt_command(
 ) -> int:
     """Run one product prompt and render the stable coding transcript."""
 
-    renderer = CodingUiRenderer(stdout=stdout, stderr=stderr)
+    renderer = PlainCodingUiRenderer(stdout=stdout, stderr=stderr)
     event_renderer = CodingUiEventRenderer(renderer, render_user_messages=False)
 
     def unsubscribe() -> None:
@@ -109,7 +109,7 @@ async def run_prompt_command(
 
 async def _run_turn(
     session: Any,
-    renderer: CodingUiRenderer,
+    renderer: PlainCodingUiRenderer,
     event_renderer: CodingUiEventRenderer,
     prompt: str,
     *,
