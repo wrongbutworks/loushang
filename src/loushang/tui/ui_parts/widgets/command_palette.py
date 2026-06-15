@@ -8,7 +8,7 @@ from loushang.tui.cell_width import (
     truncate_to_width,
     visible_width,
 )
-from loushang.tui.compat import CommandPalette, CommandPaletteItem
+from loushang.tui.command_palette import CommandPalette, CommandPaletteItem
 from loushang.tui.core import (
     CursorDeclaration,
     RenderConstraints,

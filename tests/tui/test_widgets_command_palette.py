@@ -6,12 +6,13 @@ from typing import Any, get_args
 from loushang.tui import (
     CommandPalette,
     CommandPaletteItem,
+    CompletionItem,
+    CompletionProvider,
     InputEvent,
     RenderConstraints,
     strip_control_sequences,
     visible_width,
 )
-from loushang.tui.compat import CompletionItem, CompletionProvider
 from loushang.tui.input import InputIntentKind
 from loushang.tui.ui_parts.widgets.command_palette import CommandPaletteView
 from tests.tui.widget_example_playback import play_example

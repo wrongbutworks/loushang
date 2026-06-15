@@ -26,6 +26,24 @@ def test_loushang_tui_does_not_export_legacy_settings_primitives() -> None:
         assert name not in tui.__all__
 
 
+def test_loushang_tui_public_models_are_not_owned_by_compat_module() -> None:
+    import loushang.tui as tui
+
+    expected_modules = {
+        "CompletionItem": "loushang.tui.completion_models",
+        "CompletionSuggestions": "loushang.tui.completion_models",
+        "CompletionApplication": "loushang.tui.completion_models",
+        "CompletionProvider": "loushang.tui.completion_models",
+        "CommandPaletteItem": "loushang.tui.command_palette",
+        "CommandPalette": "loushang.tui.command_palette",
+        "InfoPanel": "loushang.tui.info_panel",
+    }
+
+    assert not Path("src/loushang/tui/compat.py").exists()
+    for name, module_name in expected_modules.items():
+        assert getattr(tui, name).__module__ == module_name
+
+
 def test_import_boundary_check_does_not_replace_loaded_tui_classes() -> None:
     import loushang.coding.ui.command_list as command_list
     import loushang.coding.ui.renderer as renderer

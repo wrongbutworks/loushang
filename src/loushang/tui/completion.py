@@ -10,7 +10,7 @@ from fnmatch import fnmatch
 from pathlib import Path, PurePosixPath
 from typing import Any, Sequence
 
-from loushang.tui.compat import (
+from loushang.tui.completion_models import (
     CompletionApplication,
     CompletionItem,
     CompletionSuggestions,
