@@ -72,6 +72,86 @@ def test_data_grid_filter_state_defaults_and_column_searchable_flag() -> None:
     assert grid.columns[1].searchable is False
 
 
+def test_data_grid_filter_query_matches_visible_searchable_raw_values() -> None:
+    grid = DataGrid(
+        [
+            DataGridColumn("symbol", "Symbol"),
+            DataGridColumn("sector", "Sector"),
+            DataGridColumn("hidden", "Hidden", hidden=True),
+            DataGridColumn("secret", "Secret", searchable=False),
+        ],
+        [
+            DataGridRow("a", {"symbol": "AAPL", "sector": "AI", "hidden": "ghost", "secret": "private"}),
+            DataGridRow("m", {"symbol": "MSFT", "sector": "Cloud", "hidden": "x", "secret": "AAPL"}),
+            DataGridRow("n", {"symbol": "NVDA", "sector": None, "hidden": "aapl", "secret": "x"}),
+        ],
+    )
+
+    assert grid.set_filter_query("aap") is True
+    assert grid.view_row_keys == ("a",)
+    assert grid.row_keys == ("a", "m", "n")
+
+    assert grid.set_filter_query("A", columns=("sector",), mode="prefix") is True
+    assert grid.filter_query_columns == ("sector",)
+    assert grid.view_row_keys == ("a",)
+
+    assert grid.set_filter_query("a", columns=("hidden", "secret", "missing")) is True
+    assert grid.filter_query_columns == ()
+    assert grid.view_row_keys == ()
+
+
+def test_data_grid_filter_query_case_sensitive_and_none_normalization() -> None:
+    grid = DataGrid(
+        [DataGridColumn("value", "Value")],
+        [DataGridRow("upper", {"value": "AAPL"}), DataGridRow("none", {"value": None})],
+    )
+
+    assert grid.set_filter_query("aapl", case_sensitive=True) is True
+    assert grid.view_row_keys == ()
+
+    assert grid.set_filter_query("   ", case_sensitive=True, mode="prefix", columns=("value",)) is True
+    assert grid.filter_query == ""
+    assert grid.filter_query_columns is None
+    assert grid.filter_mode == "contains"
+    assert grid.filter_case_sensitive is False
+
+    assert grid.set_filter_query("none") is True
+    assert grid.view_row_keys == ()
+
+
+def test_data_grid_filter_predicate_combines_with_query_and_uses_row_view() -> None:
+    seen: list[tuple[str, dict[str, object], bool]] = []
+    grid = DataGrid(
+        [
+            DataGridColumn("symbol", "Symbol"),
+            DataGridColumn("price", "Price"),
+            DataGridColumn("hidden", "Hidden", hidden=True),
+        ],
+        [
+            DataGridRow("a", {"symbol": "AAPL", "price": 210, "hidden": "visible-to-predicate"}),
+            DataGridRow("m", {"symbol": "MSFT", "price": 420, "hidden": "x"}, disabled=True),
+            DataGridRow("n", {"symbol": "NVDA", "price": 120, "hidden": "x"}),
+        ],
+    )
+
+    def predicate(row: DataGridRowView) -> bool:
+        seen.append((row.key, dict(row.values), row.disabled))
+        return float(row.values["price"]) >= 200
+
+    assert grid.set_filter_query("t") is True
+    assert grid.set_filter_predicate(predicate) is True
+
+    assert grid.view_row_keys == ("m",)
+    assert ("m", {"symbol": "MSFT", "price": 420, "hidden": "x"}, True) in seen
+
+
+def test_data_grid_filter_predicate_exceptions_propagate() -> None:
+    grid = DataGrid([DataGridColumn("name", "Name")], [DataGridRow("a", {"name": "A"})])
+
+    with pytest.raises(RuntimeError, match="bad predicate"):
+        grid.set_filter_predicate(lambda row: (_ for _ in ()).throw(RuntimeError("bad predicate")))
+
+
 def test_data_grid_formatters_cover_text_number_percent_delta_and_compact_values() -> None:
     assert TextFormatter()(None) == ""
     assert TextFormatter(none_text="N/A")(None) == "N/A"

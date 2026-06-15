@@ -7,6 +7,7 @@ from collections.abc import Callable, Iterable, Mapping, Sequence
 from dataclasses import dataclass, field, replace
 from decimal import ROUND_HALF_UP, Decimal, InvalidOperation
 from math import isfinite
+from types import MappingProxyType
 from typing import Literal, TextIO
 
 from loushang.tui.cell_width import (
@@ -644,7 +645,59 @@ class DataGrid:
         return tuple(row for row in self._rows if row.pinned == "bottom")
 
     def _view_body_rows(self) -> tuple[_NormalizedRow, ...]:
-        return self._body_rows()
+        return tuple(row for row in self._body_rows() if self._row_matches_filters(row))
+
+    def _accepted_query_columns(self, columns: Sequence[str]) -> tuple[str, ...]:
+        accepted: list[str] = []
+        seen: set[str] = set()
+        for key in columns:
+            column = self._column_by_key(str(key))
+            if column is None or column.hidden or not column.searchable or column.key in seen:
+                continue
+            accepted.append(column.key)
+            seen.add(column.key)
+        return tuple(accepted)
+
+    def _query_columns(self) -> tuple[DataGridColumn, ...]:
+        if self._filter_query_columns is not None:
+            keys = set(self._filter_query_columns)
+            return tuple(
+                column
+                for column in self._columns
+                if column.key in keys and not column.hidden and column.searchable
+            )
+        return tuple(column for column in self._visible_columns() if column.searchable)
+
+    def _row_view(self, row: _NormalizedRow) -> DataGridRowView:
+        values = {key: cell.value for key, cell in row.cells.items()}
+        return DataGridRowView(row.key, MappingProxyType(values), row.label, row.disabled)
+
+    def _row_matches_filters(self, row: _NormalizedRow) -> bool:
+        if self._filter_query and not self._row_matches_query(row):
+            return False
+        if self._filter_predicate is not None and not self._filter_predicate(self._row_view(row)):
+            return False
+        return True
+
+    def _row_matches_query(self, row: _NormalizedRow) -> bool:
+        columns = self._query_columns()
+        if not columns:
+            return False
+        needle = self._filter_query if self._filter_case_sensitive else self._filter_query.casefold()
+        for column in columns:
+            value = row.cells[column.key].value
+            cell_text = "" if value is None else str(value)
+            haystack = cell_text if self._filter_case_sensitive else cell_text.casefold()
+            if self._filter_mode == "prefix" and haystack.startswith(needle):
+                return True
+            if self._filter_mode == "contains" and needle in haystack:
+                return True
+        return False
+
+    def _repair_state_after_view_change(self) -> None:
+        self._active_row_key = self._repair_row_key(self._active_row_key)
+        if not self._view_body_rows():
+            self._first_visible_row_index = 0
 
     def _column_by_key(self, key: str) -> DataGridColumn | None:
         for column in self._columns:
@@ -1083,6 +1136,59 @@ class DataGrid:
         self._selected_row_keys = frozenset()
         self._selected_cell_keys = frozenset()
         return True
+
+    def set_filter_query(
+        self,
+        query: str,
+        *,
+        columns: Sequence[str] | None = None,
+        mode: DataGridFilterMode = "contains",
+        case_sensitive: bool = False,
+    ) -> bool:
+        if mode not in {"contains", "prefix"}:
+            return False
+        old_keys = self.view_row_keys
+        old_state = (
+            self._filter_query,
+            self._filter_query_columns,
+            self._filter_mode,
+            self._filter_case_sensitive,
+        )
+        effective_query = str(query).strip()
+        accepted_columns = None if columns is None else self._accepted_query_columns(columns)
+        if not effective_query:
+            accepted_columns = None
+            mode = "contains"
+            case_sensitive = False
+        self._filter_query = effective_query
+        self._filter_query_columns = accepted_columns
+        self._filter_mode = mode
+        self._filter_case_sensitive = bool(case_sensitive)
+        self._repair_state_after_view_change()
+        return old_state != (
+            self._filter_query,
+            self._filter_query_columns,
+            self._filter_mode,
+            self._filter_case_sensitive,
+        ) or old_keys != self.view_row_keys
+
+    def set_filter_predicate(self, predicate: DataGridFilterPredicate | None) -> bool:
+        old_keys = self.view_row_keys
+        old_predicate = self._filter_predicate
+        self._filter_predicate = predicate
+        self._repair_state_after_view_change()
+        return old_predicate is not predicate or old_keys != self.view_row_keys
+
+    def clear_filter(self) -> bool:
+        old_keys = self.view_row_keys
+        had_filter = self.has_filter
+        self._filter_query = ""
+        self._filter_query_columns = None
+        self._filter_mode = "contains"
+        self._filter_case_sensitive = False
+        self._filter_predicate = None
+        self._repair_state_after_view_change()
+        return had_filter or old_keys != self.view_row_keys
 
     def sort_by(self, column_key: str, direction: DataGridSortDirection = "asc") -> bool:
         column = self._column_by_key(column_key)
