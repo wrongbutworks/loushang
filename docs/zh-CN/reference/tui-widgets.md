@@ -84,8 +84,8 @@ table.focus()
 ```
 
 `DataGrid` 是更重的 data control。需要单元格焦点、横向 viewport、固定列、
-pinned 汇总行、选择、内联编辑、排序或实时行/单元格突变时使用它；简单 active-row
-列表仍优先用 `Table`。
+pinned 汇总行、选择、内联编辑、排序、实时行/单元格突变，或隐藏/显示、移动、
+调整宽度这类列控制时使用它；简单 active-row 列表仍优先用 `Table`。
 
 ```python
 from loushang.tui import DataGrid, DataGridColumn, DataGridRow, NumberFormatter

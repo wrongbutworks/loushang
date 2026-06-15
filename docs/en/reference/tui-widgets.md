@@ -87,8 +87,9 @@ table.focus()
 
 `DataGrid` is the heavier data-control option. Use it when callers need cell
 focus, horizontal viewport behavior, fixed columns, pinned summary rows,
-selection, inline editing, sorting, or live row/cell mutation. `Table` remains
-the smaller row-focused control.
+selection, inline editing, sorting, live row/cell mutation, or column controls
+such as hide/show, move, and width changes. `Table` remains the smaller
+row-focused control.
 
 ```python
 from loushang.tui import DataGrid, DataGridColumn, DataGridRow, NumberFormatter
