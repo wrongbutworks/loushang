@@ -5,7 +5,7 @@ import time
 from collections.abc import Mapping
 from typing import Any, Awaitable, Callable
 
-from loushang.agent.harness import AgentRunResult, AgentRunSpec, run_agent
+from loushang.agent.agent_loop import run_agent_loop, run_agent_loop_continue
 from loushang.agent.types import (
     AfterToolCallContext,
     AfterToolCallResult,
@@ -83,14 +83,6 @@ def _default_convert_to_llm(messages: list[AgentMessage]) -> list[Message]:
         or isinstance(message, AssistantMessage)
         or getattr(message, "role", None) == "toolResult"
     ]
-
-
-def _raise_failed_run(result: AgentRunResult) -> None:
-    if result.status != "failed":
-        return
-    if result.error is not None:
-        raise result.error
-    raise RuntimeError("Agent run failed")
 
 
 class AbortSignal:
@@ -439,33 +431,26 @@ class Agent:
 
     async def _run_prompt_messages(self, messages: list[AgentMessage], skip_initial_steering_poll: bool = False) -> None:
         async def executor(signal: AbortSignal) -> None:
-            result = await run_agent(
-                AgentRunSpec(
-                    prompts=tuple(messages),
-                    context=self._create_context_snapshot(),
-                    config=self._create_loop_config(skip_initial_steering_poll=skip_initial_steering_poll),
-                    signal=signal,
-                    stream_fn=self.stream_fn,
-                    event_sink=self._process_event,
-                )
+            await run_agent_loop(
+                list(messages),
+                self._create_context_snapshot(),
+                self._create_loop_config(skip_initial_steering_poll=skip_initial_steering_poll),
+                self._process_event,
+                signal=signal,
+                stream_fn=self.stream_fn,
             )
-            _raise_failed_run(result)
 
         await self._run_with_lifecycle(executor)
 
     async def _run_continuation(self) -> None:
         async def executor(signal: AbortSignal) -> None:
-            result = await run_agent(
-                AgentRunSpec(
-                    context=self._create_context_snapshot(),
-                    config=self._create_loop_config(),
-                    mode="continue",
-                    signal=signal,
-                    stream_fn=self.stream_fn,
-                    event_sink=self._process_event,
-                )
+            await run_agent_loop_continue(
+                self._create_context_snapshot(),
+                self._create_loop_config(),
+                self._process_event,
+                signal=signal,
+                stream_fn=self.stream_fn,
             )
-            _raise_failed_run(result)
 
         await self._run_with_lifecycle(executor)
 
