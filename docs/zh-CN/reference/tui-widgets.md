@@ -213,6 +213,16 @@ view.focus()
 `SearchableList` 拥有查询文本、过滤结果、active 行、viewport offset 和结构化选择结果。
 它不编辑设置，也不写入配置。
 
+## 设置页与 Legacy Compatibility
+
+新的设置页应组合 `PageScaffold`、`Tabs` 或 `TabGroup`、`SearchableList`，
+以及 `Toggle`、`RadioGroup`、`SelectList` 等可聚焦控件。产品 adapter 应拥有
+setting id、value cycle、持久化和副作用。
+
+`SettingsSurface`、`SettingItem`、`SettingsList` 和 `SettingsListRenderer`
+仍作为 legacy compatibility public API 保留，用于兼容旧 settings-list 调用方。
+它们不是新 page-level settings UI 的推荐路径。
+
 ## 表单
 
 ```python

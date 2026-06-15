@@ -132,6 +132,12 @@ class InfoPanel:
 
 @dataclass(frozen=True, slots=True)
 class SettingItem:
+    """Legacy compatibility data model for old settings-list flows.
+
+    New settings pages should compose PageScaffold with SearchableList and
+    product-owned setting adapters instead of depending on this model.
+    """
+
     id: str
     label: str
     enabled: bool = False
@@ -143,6 +149,12 @@ class SettingItem:
 
 @dataclass(frozen=True, slots=True)
 class SettingsList:
+    """Legacy compatibility container for old settings-list flows.
+
+    New settings pages should compose PageScaffold with SearchableList and
+    product-owned setting adapters instead of depending on this container.
+    """
+
     items: tuple[SettingItem, ...]
 
     def set_enabled(self, item_id: str, enabled: bool) -> SettingsList:
@@ -157,6 +169,12 @@ class SettingsList:
 
 @dataclass(frozen=True, slots=True)
 class SettingsListRenderer:
+    """Legacy compatibility text renderer for SettingsList.
+
+    New settings pages should compose PageScaffold with SearchableList and
+    product-owned setting adapters instead of depending on this renderer.
+    """
+
     title: str = "Settings"
 
     def render(self, settings: SettingsList) -> tuple[tuple[str, str], ...]:
