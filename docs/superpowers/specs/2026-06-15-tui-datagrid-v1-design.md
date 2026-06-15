@@ -596,6 +596,9 @@ Enter-to-edit rule:
   keys to the requested row and column, scrolls the target into the visible
   row/column viewport on the next render, and returns `False` if the target is
   not editable
+- failed `start_edit()` attempts still move cursor state to the requested valid
+  row and column when those keys exist; failure only means editing did not
+  start
 
 ## Selection
 
