@@ -119,18 +119,21 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Literal
 
-DirectoryTreeEntryKind = Literal["directory", "file"]
+DirectoryTreeRealKind = Literal["directory", "file"]
+DirectoryTreeEntryKind = Literal["directory", "file", "empty", "error", "sentinel"]
 
 @dataclass(frozen=True, slots=True)
 class DirectoryTreeEntry:
-    path: Path
+    path: Path | None
     kind: DirectoryTreeEntryKind
     label: str
+    disabled: bool = False
+    message: str = ""
 
 @dataclass(frozen=True, slots=True)
 class DirectoryTreeSelect:
     path: Path
-    kind: DirectoryTreeEntryKind
+    kind: DirectoryTreeRealKind
 
 PathFilter = Callable[[Path], bool]
 PathSortKey = Callable[[Path], object]
@@ -140,7 +143,6 @@ class DirectoryTree:
     root: str | Path
     active_path: str | Path | None = None
     expanded_paths: Sequence[str | Path] = ()
-    show_root: bool = True
     show_hidden: bool = False
     path_filter: PathFilter | None = None
     ignore_matcher: PathFilter | None = None
@@ -155,32 +157,62 @@ class DirectoryTree:
 Required public methods and properties:
 
 - `focus()` / `blur()`
-- `handle_input(event)`
+- `handle_input(event) -> DirectoryTreeSelect | bool | None`
 - `render(constraints)`
 - `editor_input_target()` is not needed in P0
 - `root_path: Path`
 - `active_path: Path | None`
 - `expanded_path_set: frozenset[Path]`
 - `visible_paths: tuple[Path, ...]`
+- `visible_entries: tuple[DirectoryTreeEntry, ...]`
 - `reload()`
 - `expand_path(path)`, `collapse_path(path)`, `toggle_path(path)`
 - `is_expanded(path)`
 
 `DirectoryTree` may internally create `TreeNode` values from normalized path
-strings, but the public API should expose `Path` objects rather than string node
-values.
+strings, but the public API exposes `Path` objects and `DirectoryTreeEntry`
+objects rather than string node values. `visible_paths` includes only real file
+and directory rows. `visible_entries` includes real rows plus disabled
+synthetic empty/error/sentinel rows.
+
+Both `visible_entries` and `visible_paths` expose the expansion-aware flattened
+visible projection before render viewport clipping. When the root is valid,
+`visible_entries` starts with the root directory entry and
+`visible_paths[0] == root_path`. Synthetic entries never appear in
+`visible_paths`.
 
 ## Root Contract
 
-`root` is required. It is normalized to an absolute `Path` during
-construction.
+`root` is required and must be absolute. Relative roots raise `ValueError`
+rather than being resolved through process `cwd`. This preserves the rule that
+generic TUI code never guesses current-directory, workspace, git-root, or
+session semantics.
+
+The stored `root_path` is a normalized absolute lexical `Path` supplied by the
+caller. P0 should not expose root-relative paths and should not expose
+symlink-resolved paths as public values.
+
+Lexical normalization is symlink-preserving:
+
+- reject roots and public path inputs containing `..` path segments
+- normalize redundant `.` path segments and separators
+- validate under-root membership against the normalized lexical `root_path`
+- do not use resolved paths to reject a normalized lexical child path
+
+Internal implementation may use resolved paths only to avoid unsafe descent or
+cycle traversal.
 
 Root behavior:
 
+- relative root raises `ValueError`
+- root containing `..` segments raises `ValueError`
 - missing root raises `ValueError`
 - non-directory root raises `ValueError`
-- unreadable root does not crash render; it produces an empty/error row in the
-  tree body and records the error for selection/refresh tests
+- a root symlink to a directory is allowed; `root_path` remains the lexical
+  symlink path supplied by the caller, and root symlink traversal is the P0
+  exception to the descendant-symlink rule
+- unreadable root does not crash render; construction creates the same
+  root-level error model that `reload()` uses for root invalidation
 
 The widget never defaults to:
 
@@ -192,6 +224,13 @@ The widget never defaults to:
 If product code wants workspace semantics, it passes `DirectoryTree(root=...)`
 from the product layer.
 
+All other public path inputs (`active_path`, `expanded_paths`, and path methods)
+must also be absolute paths under `root_path`. Relative paths and paths outside
+root raise `ValueError`. Inputs containing `..` path segments also raise
+`ValueError`. Paths under root that are currently missing, filtered, hidden,
+omitted by `max_entries`, or files when a directory is required do not raise for
+normal state methods; they repair or return `False` as specified below.
+
 ## Filtering And Ignore Contract
 
 Filtering is caller-controlled:
@@ -199,6 +238,18 @@ Filtering is caller-controlled:
 - `show_hidden=False` hides paths whose basename starts with `"."`.
 - `path_filter(path)` is an inclusion predicate. `False` hides the path.
 - `ignore_matcher(path)` is an exclusion predicate. `True` hides the path.
+
+Both callbacks receive the same public path form used everywhere else:
+absolute lexical `Path` objects under `root_path`. They do not receive
+root-relative paths or symlink-resolved paths. A product layer that wants
+root-relative matching should wrap its matcher:
+
+```python
+DirectoryTree(root=root, ignore_matcher=lambda path: matcher(path.relative_to(root)))
+```
+
+`sort_key(path)` receives the same absolute lexical `Path` form after hidden,
+filter, and ignore rules are applied.
 
 Evaluation order:
 
@@ -233,15 +284,100 @@ out.
 Sorting must be deterministic across platforms for tests. Symlinks should be
 classified using `Path.is_dir()` with normal Python semantics in P0.
 
+## Display And Expansion
+
+P0 always renders the root row. There is no `show_root=False` option in the
+first slice. If callers need a rootless presentation later, that behavior should
+get a separate design because it changes active fallback, selection, expansion,
+and visible-entry semantics.
+
+Root display:
+
+- root row label is `root_path.name`, falling back to `str(root_path)` when the
+  name is empty
+- child row labels are plain `path.name`
+- an expanded directory with no visible child rows receives one disabled
+  synthetic empty row labeled with `empty_text`
+- empty rows have `kind="empty"`, `path=None`, `disabled=True`, and are excluded
+  from `visible_paths`
+- no file/folder icons or marker-prefixed labels are required in P0
+- root is expanded by default
+- `expanded_path_set` includes `root_path` while root is expanded
+
+Initial active state:
+
+- relative or outside-root `active_path` raises `ValueError`
+- an active path under root is used only when it exists, is visible, is enabled,
+  and is not omitted by `max_entries`
+- otherwise active falls back to the first visible enabled real entry
+- disabled error/sentinel rows are never active
+
+Initial expanded state:
+
+- root is always included when the root is valid
+- relative or outside-root entries in `expanded_paths` raise `ValueError`
+- under-root entries are preserved only when they exist, are visible, are
+  traversable directories, and are not omitted by `max_entries`
+- under-root missing paths, files, filtered paths, hidden paths, omitted paths,
+  and symlink directory leaves are silently dropped from the initial expanded
+  set
+
+Expansion methods:
+
+- relative or outside-root method paths raise `ValueError`
+- `expand_path(path)` returns `True` when a visible directory changes from
+  collapsed to expanded
+- `expand_path(path)` returns `False` for files, missing paths, filtered paths,
+  hidden paths, omitted paths, symlink directories that are not traversed,
+  already-expanded directories, and disabled synthetic rows
+- `collapse_path(path)` returns `True` when a visible expanded directory changes
+  to collapsed
+- `collapse_path(path)` returns `False` for files, missing paths, filtered
+  paths, hidden paths, omitted paths, already-collapsed directories, and
+  disabled synthetic rows
+- `toggle_path(path)` delegates to collapse when expanded and expand when
+  collapsed
+- `is_expanded(path)` returns `True` only for visible expanded directories and
+  `False` for all other valid-under-root paths
+
+Collapsing a directory that hides the active path should use the same repair
+rules as `TreeView`: prefer the collapsed directory when enabled, otherwise
+fall back to the nearest visible enabled real entry.
+
 ## Scan Model
 
-P0 scan model is synchronous and eager for the visible model:
+P0 scan model is synchronous and eager for the admitted tree model.
 
-- Construct or reload scans the root subtree up to a conservative limit.
-- The default limit should prevent pathological huge trees from blocking tests
-  or demos.
-- When the limit is reached, insert a disabled sentinel row such as
-  `"more entries omitted"` under the affected directory.
+Terms:
+
+- admitted tree model: the bounded tree of real and synthetic entries produced
+  by scanning
+- flattened visible projection: expansion-aware preorder rows exposed by
+  `visible_entries`, `visible_paths`, and render
+
+`max_entries` applies to the admitted tree model, not only to expanded rows.
+Collapsed descendants that are admitted still consume the global real-entry
+budget.
+
+- Construct or reload scans the root subtree into a bounded model.
+- Traversal order is deterministic preorder depth-first search. Each
+  directory's child list is filtered, grouped, sorted, and then scanned in that
+  order before moving to the next sibling.
+- `max_entries` is a global cap on admitted real entries below the root.
+- The root row itself does not consume the limit.
+- Disabled synthetic empty/error/sentinel rows do not consume the limit.
+- Filtered and ignored paths do not consume the limit.
+- When a directory's child scan still has candidate children but no remaining
+  real-entry budget, insert one disabled sentinel row such as
+  `"more entries omitted"` under that directory and stop that directory's child
+  scan.
+- Sentinel insertion is per truncated child list. It is valid for both a child
+  directory and its parent directory to receive sentinels when the global limit
+  is reached during nested scanning.
+- Sentinels under collapsed directories are hidden until that directory is
+  expanded, matching normal tree visibility.
+- Sentinel rows have `kind="sentinel"`, `path=None`, `disabled=True`, and are
+  excluded from `visible_paths`.
 
 This is intentionally simpler than lazy loading. Lazy loading can be a P1
 extension once we have product usage.
@@ -249,6 +385,19 @@ extension once we have product usage.
 `max_entries` is part of the P0 public API. Values below 1 are normalized to 1.
 The count applies to scanned entries below the root; the required root itself
 does not consume the limit.
+
+The bound is on the rendered in-memory model, not a hard cap on filesystem I/O.
+For deterministic sorting, P0 may still enumerate a single large directory
+before choosing which admitted entries fit under `max_entries`.
+
+Symlink handling in P0:
+
+- a root symlink to a directory is traversed as the root while preserving the
+  lexical `root_path`
+- symlink files are treated as file rows
+- symlink directories may report `kind="directory"` for selection
+- symlink directories are not traversed for children in P0
+- a symlink directory is therefore a leaf for expand/collapse purposes
 
 ## Selection Semantics
 
@@ -258,14 +407,19 @@ Activation should return a structured object:
 DirectoryTreeSelect(path=path, kind="file" | "directory")
 ```
 
-`enter` and `space` activate the active visible path. Expand/collapse remains
-owned by left/right keys through the underlying tree behavior.
+`enter`, `space` key events, and exact printable text event `text == " "`
+activate the active visible path. Expand/collapse remains owned by left/right
+keys through the underlying tree behavior.
 
 Selection result rules:
 
 - file rows return `kind="file"`
 - directory rows return `kind="directory"`
-- disabled sentinel/error rows return `None`
+- disabled empty/sentinel/error rows return `None`
+- navigation and expand/collapse inputs return `True`, `False`, or `None`
+  following the underlying `TreeView` state-change contract
+- raw `InputIntent` values from the internal `TreeView` must not leak out of
+  `DirectoryTree`
 
 Directory activation does not implicitly expand/collapse in P0. This keeps
 activation distinct from navigation and matches current `TreeView` behavior.
@@ -274,15 +428,34 @@ activation distinct from navigation and matches current `TreeView` behavior.
 
 `reload()` rescans the whole root and repairs state:
 
-- preserve expanded paths that still exist and are directories
-- preserve active path if it still exists and remains visible/enabled
-- otherwise fall back to the first visible enabled path
+- preserve expanded paths that still exist, are under root, are real directory
+  entries, are visible under the current filters, and are not omitted by
+  `max_entries`
+- preserve active path if it still exists, is under root, is a real file or
+  directory entry, is enabled, is visible under the current filters, and is not
+  omitted by `max_entries`
+- otherwise fall back to the first visible enabled real entry
 
 P0 does not watch the filesystem. Product code or examples call reload
 explicitly.
 
 Per-directory reload is deferred. `reload_path(path)` can be added later if a
 product page needs it and tests can show a meaningful benefit over full reload.
+
+If construction finds that `root_path` is unreadable, or if `reload()` finds
+that `root_path` is now missing, no longer a directory, or unreadable, it does
+not raise. It replaces the admitted tree model and flattened visible projection
+with a single disabled root-level error entry:
+
+- `DirectoryTreeEntry(path=root_path, kind="error", disabled=True, ...)`
+- `visible_entries == (root_error_entry,)`
+- `visible_paths == ()`
+- `active_path is None`
+- `expanded_path_set == frozenset()`
+
+Construction still raises for missing or non-directory roots. The non-raising
+construction case is limited to unreadable roots because permission can be
+environment-dependent and should remain renderable for diagnostics.
 
 ## Error Handling
 
@@ -293,8 +466,9 @@ Expected filesystem errors should render as disabled rows rather than crashing:
 - `OSError` while reading directory entries
 
 Root validation errors still fail fast during construction when the root itself
-is invalid. Runtime errors under a valid root should be localized to the
-affected directory.
+is missing or not a directory. Runtime errors under a valid root should be
+localized to the affected directory. Error rows have `kind="error"`, are
+disabled, and are excluded from `visible_paths`.
 
 ## Theme Tokens
 
@@ -304,8 +478,8 @@ P0 should reuse underlying `TreeView` tokens:
 | --- | --- |
 | `widget.tree.row` | Normal enabled rows |
 | `widget.tree.focus` | Active row while focused |
-| `widget.tree.disabled` | Error/sentinel rows and other disabled rows |
-| `widget.tree.empty` | Empty directory tree row |
+| `widget.tree.disabled` | Synthetic empty/error/sentinel rows and other disabled rows |
+| `widget.tree.empty` | Reserved fallback if the internal TreeView has no nodes |
 
 Directory/file-specific styling is deferred. Adding tokens such as
 `widget.directoryTree.directory`, `widget.directoryTree.file`, or
@@ -359,41 +533,70 @@ The generic TUI widget owns only filesystem tree presentation and selection.
 Focused TUI tests should cover:
 
 - root is required and invalid roots fail fast
+- relative root is rejected and never resolved through process cwd
+- roots and public path inputs containing `..` segments raise `ValueError`
 - no default workspace/current-directory behavior
 - deterministic directory-first sorting
 - hidden filtering
 - `path_filter` inclusion
 - `ignore_matcher` exclusion
+- filter and ignore callbacks receive absolute lexical paths
+- `sort_key` receives absolute lexical paths
 - traversal does not descend into filtered directories
+- outside-root `active_path`, `expanded_paths`, and method paths raise
+  `ValueError`
+- under-root non-expandable `expanded_paths` entries are dropped
+- root is included in `visible_entries` and `visible_paths` when valid
+- `visible_entries` includes disabled synthetic rows while `visible_paths`
+  excludes them
+- empty directories render a disabled synthetic empty row
 - file vs directory selection result
+- `enter`, `space` key, and exact text `" "` activation parity
+- `handle_input` returns `DirectoryTreeSelect | bool | None` and does not leak
+  internal `InputIntent`
 - expand/collapse and active repair through `TreeView`
 - reload preserves valid expanded/active paths
+- reload root invalidation produces a disabled error model without raising
+- unreadable-root construction produces the same disabled root error model
 - runtime scan errors render disabled error rows
 - max-entry sentinel behavior
+- collapsed descendants count against `max_entries` after admission
+- nested max-entry sentinel placement
+- root symlink to a directory preserves lexical public root path and shows child
+  rows through that lexical path
+- symlink directories under root are selectable directory rows but not traversed
+- public TUI implementation does not import from `loushang.coding`
 - public exports
 - example import and playback
 
 Coding-layer tests should not be added in this TUI slice. A later coding slice
 should test workspace root passing and gitignore matcher construction.
 
-## Open Decisions
+## P0 Decisions
 
-1. Should P0 labels be plain names, marker-prefixed names, or caller-formatted
-   labels?
-2. Should `show_root=False` flatten root children as top-level rows while still
-   keeping root expansion state internal?
-3. Should symlink directories be traversed, shown as files, or shown as
-   non-descending directory rows?
+- `root` must be absolute and explicit.
+- Public path validation is lexical against `root_path`; symlink-resolved paths
+  are never exposed.
+- Path inputs containing `..` segments are rejected.
+- Root is always rendered and expanded by default.
+- A root symlink to a directory is traversed as the root while preserving the
+  lexical `root_path`.
+- Descendant symlink directories are selectable leaves and are not traversed.
+- Labels are plain names with no icon requirement.
+- `visible_entries` is the authoritative rendered model inspection API.
+- `visible_paths` includes only real file/directory paths and excludes
+  empty/error/sentinel rows.
+- `max_entries: int = 2000` is public and normalized to at least 1.
+- `reload()` degrades root invalidation to a disabled error model instead of
+  raising.
+- Styling reuses `widget.tree.*`.
+- P0 includes `reload()` only.
 
-## Recommended P0 Decisions
+## Post-P0 Extensions
 
-- Expose `max_entries: int = 2000`; it is a practical guardrail and easy to
-  test.
-- Render plain labels first, with no icons required. Let callers customize
-  labels in a later slice if needed.
-- Keep `show_root=True` as the default and cover `show_root=False` in tests.
-- Treat symlink directories according to `Path.is_dir()` in P0, but rely on
-  `max_entries` and visited-path tracking to prevent cycles.
-- Defer path-kind styling; correctness and generic boundaries matter more than
-  icon/color polish.
-- Include only `reload()` in P0 and defer `reload_path(path)`.
+- rootless display, equivalent to a future `show_root=False`
+- caller-provided label formatting or icons
+- directory/file-specific theme tokens
+- per-directory `reload_path(path)`
+- lazy loading or async scanning
+- symlink traversal policy beyond non-descending leaf rows
