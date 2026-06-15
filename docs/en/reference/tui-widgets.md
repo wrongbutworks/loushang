@@ -54,19 +54,23 @@ toolbar.focus()
 | `Tabs` / `TabItem` | Horizontal selected-value controls for view switching. |
 | `Spinner` | Static caller-driven activity indicators. |
 | `PageNavigator` | Single-line page jump input for paged lists and data grids. |
+| `FilterBar` / `FilterField` | One or more focused filter inputs for lists and data grids. |
 
-`Menu`, `Tabs`, and `PageNavigator` handle only their local state. `Spinner` is
-display-only: the caller passes `frame` and decides when to request another
-render. `PageNavigator` returns `PageNavigation` on valid Enter submissions and
+`Menu`, `Tabs`, `FilterBar`, and `PageNavigator` handle only their local state.
+`Spinner` is display-only: the caller passes `frame` and decides when to
+request another render. `FilterBar` returns structured apply/focus/boundary
+results; callers decide when and how to update the underlying list or grid.
+`PageNavigator` returns `PageNavigation` on valid Enter submissions and
 `PageNavigationError` on invalid page text; callers decide how to move the
 underlying list or grid.
 
 ```python
-from loushang.tui import Menu, MenuItem, PageNavigator, Spinner, TabItem, Tabs
+from loushang.tui import FilterBar, FilterField, Menu, MenuItem, PageNavigator, Spinner, TabItem, Tabs
 
 tabs = Tabs([TabItem("overview", "Overview"), TabItem("logs", "Logs")])
 menu = Menu([MenuItem("open", "Open"), MenuItem("refresh", "Refresh")])
 spinner = Spinner(label="Syncing", frame=1)
+filters = FilterBar((FilterField("query", "Search", width=16), FilterField("status", "Status", width=8)))
 navigator = PageNavigator(current_page=3, total_pages=42, detail_text="Row 41/800")
 ```
 
@@ -374,6 +378,7 @@ where styling is supported. Initial stable tokens are:
 | `widget.tabs.disabled` | Disabled tabs. |
 | `widget.spinner.frame` | Spinner frame glyph. |
 | `widget.spinner.label` | Spinner label text. |
+| `widget.filterBar` | FilterBar rows and field labels. |
 | `widget.pageNavigator` | PageNavigator control line. |
 | `widget.pageNavigator.error` | PageNavigator line when invalid page text is present. |
 | `widget.table.header` | Table header rows. |

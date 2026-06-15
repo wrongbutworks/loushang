@@ -53,18 +53,21 @@ toolbar.focus()
 | `Tabs` / `TabItem` | 用于视图切换的横向 selected-value 控件。 |
 | `Spinner` | 由调用方驱动 frame 的静态活动指示器。 |
 | `PageNavigator` | 用于分页列表和表格的单行页码跳转输入。 |
+| `FilterBar` / `FilterField` | 用于列表和表格的一组可聚焦过滤输入框。 |
 
-`Menu`、`Tabs` 和 `PageNavigator` 只处理自己的局部状态。`Spinner`
-只负责显示：调用方传入 `frame`，并决定何时请求下一次渲染。`PageNavigator`
-在 Enter 提交有效页码时返回 `PageNavigation`，提交无效文本时返回
-`PageNavigationError`；底层 list 或 grid 如何移动仍由调用方决定。
+`Menu`、`Tabs`、`FilterBar` 和 `PageNavigator` 只处理自己的局部状态。
+`Spinner` 只负责显示：调用方传入 `frame`，并决定何时请求下一次渲染。
+`FilterBar` 返回结构化 apply/focus/boundary 结果；调用方决定何时、如何更新底层
+list 或 grid。`PageNavigator` 在 Enter 提交有效页码时返回 `PageNavigation`，
+提交无效文本时返回 `PageNavigationError`；底层 list 或 grid 如何移动仍由调用方决定。
 
 ```python
-from loushang.tui import Menu, MenuItem, PageNavigator, Spinner, TabItem, Tabs
+from loushang.tui import FilterBar, FilterField, Menu, MenuItem, PageNavigator, Spinner, TabItem, Tabs
 
 tabs = Tabs([TabItem("overview", "Overview"), TabItem("logs", "Logs")])
 menu = Menu([MenuItem("open", "Open"), MenuItem("refresh", "Refresh")])
 spinner = Spinner(label="Syncing", frame=1)
+filters = FilterBar((FilterField("query", "Search", width=16), FilterField("status", "Status", width=8)))
 navigator = PageNavigator(current_page=3, total_pages=42, detail_text="Row 41/800")
 ```
 
@@ -353,6 +356,7 @@ Dialog 会先处理 `escape` 和 `ctrl+c`，再委派给内部字段。body 焦�
 | `widget.tabs.disabled` | 禁用 tab。 |
 | `widget.spinner.frame` | spinner frame 字符。 |
 | `widget.spinner.label` | spinner 标签文本。 |
+| `widget.filterBar` | FilterBar 行和字段标签。 |
 | `widget.pageNavigator` | PageNavigator 控制行。 |
 | `widget.pageNavigator.error` | PageNavigator 存在无效页码文本时的控制行。 |
 | `widget.table.header` | table header 行。 |

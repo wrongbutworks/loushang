@@ -1438,15 +1438,18 @@ def test_widgets_datagrid_large_dataset_focus_shortcuts_and_input_width() -> Non
     assert app.handle_input(InputEvent(kind="key", key="tab")) is True
     assert app.focus_region == "grid"
     assert app.handle_input(InputEvent(kind="key", key="tab")) is True
-    assert app.focus_region == "search"
+    assert app.focus_region == "filters"
+    assert app.filter_bar.active_key == "search"
     result = app.render(RenderConstraints(width=100, max_height=24))
     lines = tuple(strip_control_sequences(line.text).rstrip() for line in result.lines)
     assert lines[1].startswith("> Search:")
 
     assert app.handle_input(InputEvent(kind="key", key="tab")) is True
-    assert app.focus_region == "sector"
+    assert app.focus_region == "filters"
+    assert app.filter_bar.active_key == "sector"
     assert app.handle_input(InputEvent(kind="key", key="tab")) is True
-    assert app.focus_region == "min_price"
+    assert app.focus_region == "filters"
+    assert app.filter_bar.active_key == "min_price"
     assert app.handle_input(InputEvent(kind="key", key="tab")) is True
     assert app.focus_region == "goto"
 
@@ -1462,7 +1465,8 @@ def test_widgets_datagrid_large_dataset_search_filters_pages() -> None:
     app = namespace["LargeDataGridExampleApp"]()
     app.render(RenderConstraints(width=110, max_height=24))
     assert app.handle_input(InputEvent(kind="key", key="tab")) is True
-    assert app.focus_region == "search"
+    assert app.focus_region == "filters"
+    assert app.filter_bar.active_key == "search"
     assert app.handle_input(InputEvent(kind="text", text="STK199")) is True
 
     assert app.grid.filtered_row_count == namespace["ROW_COUNT"]

@@ -52,6 +52,11 @@ from .display import ProgressBar as ProgressBar
 from .display import StatusKind as StatusKind
 from .display import StatusPill as StatusPill
 from .field import TextField as TextField
+from .filter_bar import FilterApply as FilterApply
+from .filter_bar import FilterBar as FilterBar
+from .filter_bar import FilterBoundary as FilterBoundary
+from .filter_bar import FilterField as FilterField
+from .filter_bar import FilterFocusChange as FilterFocusChange
 from .form import Form as Form
 from .form import FormRow as FormRow
 from .form import FormValidationResult as FormValidationResult
@@ -125,6 +130,11 @@ __all__ = [
     "DirectoryTreeEntryKind",
     "DirectoryTreeRealKind",
     "DirectoryTreeSelect",
+    "FilterApply",
+    "FilterBar",
+    "FilterBoundary",
+    "FilterField",
+    "FilterFocusChange",
     "Form",
     "FormRow",
     "FormValidationResult",
