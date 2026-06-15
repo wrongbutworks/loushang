@@ -14,15 +14,15 @@ from loushang.tui.cell_width import (
     truncate_to_width,
     visible_width,
 )
-from loushang.tui.compat import (
-    CompletionApplication,
-    CompletionItem,
-    CompletionSuggestions,
-)
 from loushang.tui.completion import (
     CompletionCancellationToken,
     CompletionContext,
     get_completion_suggestions,
+)
+from loushang.tui.completion_models import (
+    CompletionApplication,
+    CompletionItem,
+    CompletionSuggestions,
 )
 from loushang.tui.composer_edit_buffer import (
     ComposerAtom as _Atom,

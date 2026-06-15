@@ -18,14 +18,9 @@ from loushang.tui.cell_width import (
     wrap_ansi,
     wrap_cells,
 )
-from loushang.tui.compat import (
+from loushang.tui.command_palette import (
     CommandPalette,
     CommandPaletteItem,
-    CompletionApplication,
-    CompletionItem,
-    CompletionProvider,
-    CompletionSuggestions,
-    InfoPanel,
 )
 from loushang.tui.completion import (
     CombinedCompletionProvider,
@@ -35,6 +30,12 @@ from loushang.tui.completion import (
     SlashCommand,
     SlashCommandCompletionProvider,
     get_completion_suggestions,
+)
+from loushang.tui.completion_models import (
+    CompletionApplication,
+    CompletionItem,
+    CompletionProvider,
+    CompletionSuggestions,
 )
 from loushang.tui.content import (
     CapabilityAwareCodeHighlighter,
@@ -82,6 +83,7 @@ from loushang.tui.framework import (
     surface_presentation,
 )
 from loushang.tui.fuzzy import FuzzyMatch, fuzzy_filter, fuzzy_match
+from loushang.tui.info_panel import InfoPanel
 from loushang.tui.input import (
     InputBatch,
     InputEvent,

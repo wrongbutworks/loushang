@@ -80,54 +80,6 @@ class CompletionProvider:
         )
 
 
-@dataclass(frozen=True, slots=True)
-class CommandPaletteItem:
-    value: str
-    label: str = ""
-    description: str = ""
-    disabled: bool = False
-
-    def display_label(self) -> str:
-        return self.label or self.value
-
-
-@dataclass(frozen=True, slots=True)
-class CommandPalette:
-    items: tuple[CommandPaletteItem, ...]
-    title: str = "Commands"
-
-    @classmethod
-    def from_completion_provider(cls, provider: CompletionProvider, *, title: str = "Commands") -> CommandPalette:
-        return cls(
-            tuple(
-                CommandPaletteItem(value=item.value, label=item.display_label(), description=item.description)
-                for item in provider.items
-            ),
-            title=title,
-        )
-
-
-@dataclass(frozen=True, slots=True)
-class InfoPanel:
-    title: str
-    text: str
-    footer: str = ""
-
-    @classmethod
-    def from_text(cls, *, title: str, text: str, footer: str = "") -> InfoPanel:
-        return cls(title=title, text=text, footer=footer)
-
-    @property
-    def lines(self) -> tuple[str, ...]:
-        return tuple(self.text.splitlines())
-
-    def plain_text(self) -> str:
-        parts = [self.title, self.text]
-        if self.footer:
-            parts.append(self.footer)
-        return "\n".join(part for part in parts if part)
-
-
 def _completion_matches(item: CompletionItem, needle: str) -> bool:
     if " " in needle:
         command, argument = needle.split(None, 1)
