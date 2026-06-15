@@ -55,22 +55,26 @@ toolbar.focus()
 | `Spinner` | Static caller-driven activity indicators. |
 | `PageNavigator` | Single-line page jump input for paged lists and data grids. |
 | `FilterBar` / `FilterField` | One or more focused filter inputs for lists and data grids. |
+| `ColumnChooser` / `ColumnChooserColumn` | Column visibility, ordering, width, and sort control panels. |
 
-`Menu`, `Tabs`, `FilterBar`, and `PageNavigator` handle only their local state.
-`Spinner` is display-only: the caller passes `frame` and decides when to
-request another render. `FilterBar` returns structured apply/focus/boundary
-results; callers decide when and how to update the underlying list or grid.
+`Menu`, `Tabs`, `FilterBar`, `ColumnChooser`, and `PageNavigator` handle only
+their local state. `Spinner` is display-only: the caller passes `frame` and
+decides when to request another render. `FilterBar` returns structured
+apply/focus/boundary results; callers decide when and how to update the
+underlying list or grid. `ColumnChooser` returns structured column-control
+results; callers apply them to a `DataGrid` or another table model.
 `PageNavigator` returns `PageNavigation` on valid Enter submissions and
 `PageNavigationError` on invalid page text; callers decide how to move the
 underlying list or grid.
 
 ```python
-from loushang.tui import FilterBar, FilterField, Menu, MenuItem, PageNavigator, Spinner, TabItem, Tabs
+from loushang.tui import ColumnChooser, ColumnChooserColumn, FilterBar, FilterField, Menu, MenuItem, PageNavigator, Spinner, TabItem, Tabs
 
 tabs = Tabs([TabItem("overview", "Overview"), TabItem("logs", "Logs")])
 menu = Menu([MenuItem("open", "Open"), MenuItem("refresh", "Refresh")])
 spinner = Spinner(label="Syncing", frame=1)
 filters = FilterBar((FilterField("query", "Search", width=16), FilterField("status", "Status", width=8)))
+columns = ColumnChooser((ColumnChooserColumn("symbol", "Symbol", width=8),))
 navigator = PageNavigator(current_page=3, total_pages=42, detail_text="Row 41/800")
 ```
 
@@ -379,6 +383,11 @@ where styling is supported. Initial stable tokens are:
 | `widget.spinner.frame` | Spinner frame glyph. |
 | `widget.spinner.label` | Spinner label text. |
 | `widget.filterBar` | FilterBar rows and field labels. |
+| `widget.columnChooser.row` | Enabled inactive ColumnChooser rows. |
+| `widget.columnChooser.focus` | Focused active ColumnChooser row. |
+| `widget.columnChooser.hidden` | Hidden ColumnChooser rows. |
+| `widget.columnChooser.disabled` | Disabled ColumnChooser rows. |
+| `widget.columnChooser.empty` | ColumnChooser empty-state text. |
 | `widget.pageNavigator` | PageNavigator control line. |
 | `widget.pageNavigator.error` | PageNavigator line when invalid page text is present. |
 | `widget.table.header` | Table header rows. |
@@ -474,3 +483,7 @@ implementation.
   interactive DataGrid scenarios with editing, sorting, fixed columns, and mutation.
 - [examples/tui/59_widgets_datagrid_adapters.py](../../../examples/tui/59_widgets_datagrid_adapters.py):
   DataGrid construction from records, JSON, and CSV sources.
+- [examples/tui/60_widgets_datagrid_large_dataset.py](../../../examples/tui/60_widgets_datagrid_large_dataset.py):
+  large DataGrid with filters, paging, sorting, and page navigation.
+- [examples/tui/61_widgets_datagrid_column_chooser.py](../../../examples/tui/61_widgets_datagrid_column_chooser.py):
+  DataGrid column control with a reusable ColumnChooser panel.

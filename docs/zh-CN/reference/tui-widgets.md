@@ -54,20 +54,24 @@ toolbar.focus()
 | `Spinner` | 由调用方驱动 frame 的静态活动指示器。 |
 | `PageNavigator` | 用于分页列表和表格的单行页码跳转输入。 |
 | `FilterBar` / `FilterField` | 用于列表和表格的一组可聚焦过滤输入框。 |
+| `ColumnChooser` / `ColumnChooserColumn` | 控制列显示、顺序、宽度和排序的面板。 |
 
-`Menu`、`Tabs`、`FilterBar` 和 `PageNavigator` 只处理自己的局部状态。
-`Spinner` 只负责显示：调用方传入 `frame`，并决定何时请求下一次渲染。
-`FilterBar` 返回结构化 apply/focus/boundary 结果；调用方决定何时、如何更新底层
-list 或 grid。`PageNavigator` 在 Enter 提交有效页码时返回 `PageNavigation`，
+`Menu`、`Tabs`、`FilterBar`、`ColumnChooser` 和 `PageNavigator`
+只处理自己的局部状态。`Spinner` 只负责显示：调用方传入 `frame`，
+并决定何时请求下一次渲染。`FilterBar` 返回结构化 apply/focus/boundary 结果；
+调用方决定何时、如何更新底层 list 或 grid。`ColumnChooser`
+返回结构化列控制结果；调用方把它们应用到 `DataGrid` 或其他 table model。
+`PageNavigator` 在 Enter 提交有效页码时返回 `PageNavigation`，
 提交无效文本时返回 `PageNavigationError`；底层 list 或 grid 如何移动仍由调用方决定。
 
 ```python
-from loushang.tui import FilterBar, FilterField, Menu, MenuItem, PageNavigator, Spinner, TabItem, Tabs
+from loushang.tui import ColumnChooser, ColumnChooserColumn, FilterBar, FilterField, Menu, MenuItem, PageNavigator, Spinner, TabItem, Tabs
 
 tabs = Tabs([TabItem("overview", "Overview"), TabItem("logs", "Logs")])
 menu = Menu([MenuItem("open", "Open"), MenuItem("refresh", "Refresh")])
 spinner = Spinner(label="Syncing", frame=1)
 filters = FilterBar((FilterField("query", "Search", width=16), FilterField("status", "Status", width=8)))
+columns = ColumnChooser((ColumnChooserColumn("symbol", "Symbol", width=8),))
 navigator = PageNavigator(current_page=3, total_pages=42, detail_text="Row 41/800")
 ```
 
@@ -357,6 +361,11 @@ Dialog 会先处理 `escape` 和 `ctrl+c`，再委派给内部字段。body 焦�
 | `widget.spinner.frame` | spinner frame 字符。 |
 | `widget.spinner.label` | spinner 标签文本。 |
 | `widget.filterBar` | FilterBar 行和字段标签。 |
+| `widget.columnChooser.row` | 可用的非激活 ColumnChooser 行。 |
+| `widget.columnChooser.focus` | 获得焦点的激活 ColumnChooser 行。 |
+| `widget.columnChooser.hidden` | 隐藏列对应的 ColumnChooser 行。 |
+| `widget.columnChooser.disabled` | 禁用 ColumnChooser 行。 |
+| `widget.columnChooser.empty` | ColumnChooser 空状态文本。 |
 | `widget.pageNavigator` | PageNavigator 控制行。 |
 | `widget.pageNavigator.error` | PageNavigator 存在无效页码文本时的控制行。 |
 | `widget.table.header` | table header 行。 |
@@ -451,3 +460,7 @@ Dialog 会先处理 `escape` 和 `ctrl+c`，再委派给内部字段。body 焦�
   展示编辑、排序、固定列和突变能力的交互式 DataGrid 示例。
 - [examples/tui/59_widgets_datagrid_adapters.py](../../../examples/tui/59_widgets_datagrid_adapters.py)：
   从 records、JSON 和 CSV 数据源构造 DataGrid 的示例。
+- [examples/tui/60_widgets_datagrid_large_dataset.py](../../../examples/tui/60_widgets_datagrid_large_dataset.py)：
+  带过滤、分页、排序和页码跳转的大数据量 DataGrid 示例。
+- [examples/tui/61_widgets_datagrid_column_chooser.py](../../../examples/tui/61_widgets_datagrid_column_chooser.py)：
+  使用可复用 ColumnChooser 面板控制 DataGrid 列的示例。

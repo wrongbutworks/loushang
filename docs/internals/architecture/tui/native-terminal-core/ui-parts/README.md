@@ -11,7 +11,7 @@ are built from renderables but are described at the product-facing UI level.
 | Frame | BottomFrame, StatusBar, WorkingLine, PendingQueueView, WidgetSlot |
 | Input | Composer, TextInput, FilterBar, AutocompleteSurface |
 | Navigation | Tabs, [TabGroup, TabPage](./tabgroup-content-switcher.md), [PageScaffold](./page-scaffold.md), PageNavigator |
-| Lists | SelectList, [SearchableList](./searchable-list.md), [Table](./table.md), [DataGrid](./data-grid.md), [TreeView](./tree.md), [DirectoryTree](./directory-tree.md) |
+| Lists | SelectList, [SearchableList](./searchable-list.md), [Table](./table.md), [DataGrid](./data-grid.md), ColumnChooser, [TreeView](./tree.md), [DirectoryTree](./directory-tree.md) |
 | Surfaces | CommandSurface, SelectionSurface, ApprovalSurface, DialogSurface, HelpViewer, ChangelogViewer |
 | Transcript | ChatTranscript, UserPromptView, AssistantMessageView, ThinkingView, ToolExecutionView, ErrorView, WorkedDivider |
 | Content | MarkdownBlock, CodeBlock, DiffBlock, ImageBlock |

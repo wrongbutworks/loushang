@@ -1585,6 +1585,49 @@ def test_widgets_datagrid_adapter_example_column_controls() -> None:
     assert tuple(column.key for column in grid.columns) == ("symbol", "change", "price", "change_pct")
 
 
+def test_widgets_datagrid_column_chooser_example_applies_column_actions() -> None:
+    namespace = runpy.run_path("examples/tui/61_widgets_datagrid_column_chooser.py", run_name="__test__")
+
+    app = namespace["DataGridColumnChooserExampleApp"]()
+    grid = app.grid
+
+    assert app.focus_region == "columns"
+    assert app.column_chooser.active_key == "symbol"
+
+    assert app.handle_input(InputEvent(kind="key", key="down")) is True
+    assert app.column_chooser.active_key == "price"
+    assert app.handle_input(InputEvent(kind="key", key="]")) is True
+    assert next(column for column in grid.columns if column.key == "price").width == 10
+
+    assert app.handle_input(InputEvent(kind="key", key="ctrl+down")) is True
+    assert tuple(column.key for column in grid.columns) == ("symbol", "change", "price", "change_pct")
+    assert app.column_chooser.active_key == "price"
+
+    assert app.handle_input(InputEvent(kind="key", key="s")) is True
+    assert grid.sort_state == ("price", "asc")
+
+    assert app.handle_input(InputEvent(kind="key", key="down")) is True
+    assert app.column_chooser.active_key == "change_pct"
+    assert app.handle_input(InputEvent(kind="key", key="space")) is True
+    assert next(column for column in grid.columns if column.key == "change_pct").hidden is True
+
+
+def test_widgets_datagrid_column_chooser_example_renders_and_switches_focus() -> None:
+    namespace = runpy.run_path("examples/tui/61_widgets_datagrid_column_chooser.py", run_name="__test__")
+
+    app = namespace["DataGridColumnChooserExampleApp"]()
+    lines = plain_lines(app, width=110, height=18)
+
+    assert "DataGrid column chooser" in lines[0]
+    assert any("Column chooser" in line for line in lines)
+    assert any("[x] Symbol" in line for line in lines)
+
+    assert app.handle_input(InputEvent(kind="key", key="tab")) is True
+    assert app.focus_region == "grid"
+    assert app.handle_input(InputEvent(kind="key", key="escape")) is True
+    assert app.focus_region == "columns"
+
+
 def test_widgets_datagrid_adapter_example_playback_switches_sources() -> None:
     frames = play_example(
         "examples/tui/59_widgets_datagrid_adapters.py",
