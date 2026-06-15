@@ -10,6 +10,18 @@ The user guide explains the product surfaces that are currently relevant for `lo
 
 Use `loushang --tui` to start the terminal UI product surface when you want an interactive coding session. The installed `loushang-tui` command is a convenience entry point for the same TUI mode.
 
+TUI mode has two runtime surfaces. With TTY stdin/stdout, `loushang --tui` and
+`loushang-tui` open the screen surface. With piped or redirected stdio under
+`--tui`, the same mode uses the plain prompt loop, which is useful for smoke
+tests:
+
+```bash
+printf "hi\n/quit\n" | loushang --tui
+```
+
+There is no separate UI selector flag for plain output. Use `--tui` and let
+terminal interactivity choose the surface.
+
 Useful starting commands:
 
 ```bash
@@ -18,6 +30,7 @@ loushang --list-models
 loushang --list-commands
 loushang --list-sessions
 loushang --tui
+loushang-tui
 loushang -p "Summarize the current project."
 ```
 

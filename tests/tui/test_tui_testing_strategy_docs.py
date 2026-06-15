@@ -8,6 +8,35 @@ def test_testing_docs_use_screen_tui_playback_name() -> None:
     assert not Path("docs/internals/testing/native-tui-playback.md").exists()
 
 
+def test_public_user_guides_document_coding_tui_entrypoints() -> None:
+    english = Path("docs/en/user-guide/README.md").read_text(encoding="utf-8")
+    chinese = Path("docs/zh-CN/user-guide/README.md").read_text(encoding="utf-8")
+
+    for text in (english, chinese):
+        assert "`loushang --tui`" in text
+        assert "`loushang-tui`" in text
+        assert 'printf "hi\\n/quit\\n" | loushang --tui' in text
+        assert "`--ui plain`" not in text
+
+    assert "screen surface" in english
+    assert "plain prompt loop" in english
+    assert "screen 交互面" in chinese
+    assert "plain prompt loop" in chinese
+
+
+def test_screen_tui_playback_docs_document_manual_entrypoint_smoke() -> None:
+    text = Path("docs/internals/testing/screen-tui-playback.md").read_text(
+        encoding="utf-8"
+    )
+
+    assert "Manual entrypoint smoke" in text
+    assert "loushang --tui" in text
+    assert "loushang-tui" in text
+    assert 'printf "hi\\n/quit\\n" | loushang --tui' in text
+    assert "plain prompt loop" in text
+    assert "`--ui plain`" not in text
+
+
 def test_testing_strategy_documents_composer_selection_manual_smoke() -> None:
     text = Path(
         "docs/internals/architecture/tui/native-terminal-core/testing-strategy.md"

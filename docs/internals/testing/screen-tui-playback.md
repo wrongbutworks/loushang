@@ -42,6 +42,22 @@ result to the `AssertionError` as `playback_result`. The scenario runner will
 write the normal error file plus the JSONL trace and final screen artifact, so
 reviewers can inspect the last frames without rerunning the scenario locally.
 
+## Manual entrypoint smoke
+
+Use these commands to separate product entrypoint problems from playback harness
+regressions:
+
+```bash
+loushang --tui
+loushang-tui
+printf "hi\n/quit\n" | loushang --tui
+```
+
+The first two commands should open the screen surface in an interactive terminal.
+The piped command runs through the same TUI mode but falls back to the plain prompt loop
+because stdin is not interactive. Do not use a separate UI selector flag for this
+smoke path.
+
 Useful direct smoke commands:
 
 ```bash

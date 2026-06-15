@@ -10,6 +10,16 @@
 
 需要交互式 coding session 时，可以使用 `loushang --tui` 启动终端 UI 产品面。已安装的 `loushang-tui` 命令是同一 TUI 模式的便捷入口。
 
+TUI 模式当前有两个运行面。在 stdin/stdout 都是 TTY 时，`loushang --tui` 和
+`loushang-tui` 会打开 screen 交互面。在 `--tui` 下使用管道或重定向 stdio 时，同一模式会使用
+plain prompt loop，适合做快速 smoke test：
+
+```bash
+printf "hi\n/quit\n" | loushang --tui
+```
+
+plain 输出没有单独的 UI selector flag。继续使用 `--tui`，由终端交互性决定具体运行面。
+
 常用起始命令：
 
 ```bash
@@ -18,6 +28,7 @@ loushang --list-models
 loushang --list-commands
 loushang --list-sessions
 loushang --tui
+loushang-tui
 loushang -p "Summarize the current project."
 ```
 
