@@ -22,7 +22,7 @@ global search box. Other pages need a small filter bar with 1-n controls, such
 as:
 
 ```text
-Search: [cloud]    Sector: [AI]    Status: [active]    Min price: [100]
+Search: [cloud]    Sector: [AI]    Min price: [100]
 Go to page: [1   ] / 12
 ```
 
@@ -163,7 +163,6 @@ grid.set_filter_query(search_input.value, columns=("symbol", "sector", "status")
 grid.set_filter_predicate(
     lambda row: (
         _sector_matches(row.values, sector_input.value)
-        and _status_matches(row.values, status_input.value)
         and _min_price_matches(row.values, min_price_input.value)
     )
 )
@@ -489,7 +488,7 @@ V1 should demonstrate filter composition in an example, but not add a public
 Recommended example focus order:
 
 ```text
-Search -> Sector -> Status -> Min price -> Go to page -> DataGrid
+Search -> Sector -> Min price -> Go to page -> DataGrid
 ```
 
 Keyboard behavior:
@@ -523,7 +522,7 @@ width. It may split controls over multiple rows, for example:
 
 ```text
 Search: [query           ]  Sector: [ai      ]  Matches 327/2,000
-Status: [active  ]  Min price: [50      ]
+Min price: [50      ]
 ```
 
 The footer should keep row counts, sort state, status, and help readable without

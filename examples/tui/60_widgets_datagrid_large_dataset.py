@@ -31,8 +31,8 @@ from loushang.tui import (
 )
 
 ROW_COUNT = 2_000
-FILTER_FOCUS_REGIONS = ("search", "sector", "status", "min_price")
-FOCUS_ORDER = ("grid", "search", "sector", "status", "min_price", "goto")
+FILTER_FOCUS_REGIONS = ("search", "sector", "min_price")
+FOCUS_ORDER = ("grid", "search", "sector", "min_price", "goto")
 FILTER_INPUT_WIDTHS = {
     "search": 16,
     "sector": 8,
@@ -60,7 +60,6 @@ class LargeDataGridExampleApp(FocusableMixin):
     grid: DataGrid = field(default_factory=lambda: _large_grid(ROW_COUNT))
     search_input: TextInput = field(default_factory=lambda: TextInput(theme=DATA_GRID_THEME))
     sector_input: TextInput = field(default_factory=lambda: TextInput(theme=DATA_GRID_THEME))
-    status_input: TextInput = field(default_factory=lambda: TextInput(theme=DATA_GRID_THEME))
     min_price_input: TextInput = field(default_factory=lambda: TextInput(theme=DATA_GRID_THEME))
     goto_input: TextInput = field(default_factory=lambda: TextInput(theme=DATA_GRID_THEME))
     focus_region: str = "grid"
@@ -97,7 +96,7 @@ class LargeDataGridExampleApp(FocusableMixin):
         rows: list[RenderLine] = [
             RenderLine(_style(truncate_to_width(f"Large DataGrid | {ROW_COUNT:,} rows", max_width=width, ellipsis=""), "example.dataGrid.title")),
             RenderLine(_filter_line(self, width, ("search", "sector"))),
-            RenderLine(_filter_line(self, width, ("status", "min_price"))),
+            RenderLine(_filter_line(self, width, ("min_price",))),
             RenderLine(_control_line(self, width)),
             RenderLine(_style("-" * max(1, width), "example.dataGrid.meta")),
         ]
@@ -232,8 +231,6 @@ class LargeDataGridExampleApp(FocusableMixin):
             return self.search_input
         if region == "sector":
             return self.sector_input
-        if region == "status":
-            return self.status_input
         if region == "min_price":
             return self.min_price_input
         raise ValueError(f"unknown filter input: {region}")
@@ -241,7 +238,6 @@ class LargeDataGridExampleApp(FocusableMixin):
     def _blur_filter_inputs(self) -> None:
         self.search_input.blur()
         self.sector_input.blur()
-        self.status_input.blur()
         self.min_price_input.blur()
 
     def _sync_goto_value(self) -> None:
@@ -257,15 +253,12 @@ class LargeDataGridExampleApp(FocusableMixin):
         *,
         search: str | None = None,
         sector: str | None = None,
-        status: str | None = None,
         min_price_text: str | None = None,
     ) -> bool:
         if search is not None and self.search_input.value != search:
             self.search_input.set_text(search)
         if sector is not None and self.sector_input.value != sector:
             self.sector_input.set_text(sector)
-        if status is not None and self.status_input.value != status:
-            self.status_input.set_text(status)
         if min_price_text is not None and self.min_price_input.value != min_price_text:
             self.min_price_input.set_text(min_price_text)
 
@@ -425,7 +418,6 @@ def _filter_label(region: str) -> str:
     labels = {
         "search": "Search",
         "sector": "Sector",
-        "status": "Status",
         "min_price": "Min price",
     }
     return labels[region]
@@ -467,7 +459,7 @@ def _filter_input_width(region: str) -> int:
 
 def _filter_field_position(region: str) -> tuple[int, int]:
     row = 1 if region in {"search", "sector"} else 2
-    regions = ("search", "sector") if row == 1 else ("status", "min_price")
+    regions = ("search", "sector") if row == 1 else ("min_price",)
     start = visible_width("> ")
     for item in regions:
         if item == region:
@@ -527,7 +519,6 @@ def _filter_status(region: str) -> str:
     labels = {
         "search": "Search",
         "sector": "Sector",
-        "status": "Status",
         "min_price": "Min price",
     }
     return labels.get(region, "Ready")
@@ -535,16 +526,13 @@ def _filter_status(region: str) -> str:
 
 def _filter_predicate(app: LargeDataGridExampleApp) -> object:
     sector_value = app.sector_input.value.strip().casefold()
-    status_value = app.status_input.value.strip().casefold()
     min_price = app.min_price_value
-    if not sector_value and not status_value and min_price is None:
+    if not sector_value and min_price is None:
         return None
 
     def predicate(row: DataGridRowView) -> bool:
         values = row.values
         if sector_value and sector_value not in str(values["sector"]).casefold():
-            return False
-        if status_value and status_value not in str(values["status"]).casefold():
             return False
         if min_price is not None and float(values["price"]) < min_price:
             return False

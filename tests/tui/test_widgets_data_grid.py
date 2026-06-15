@@ -1446,8 +1446,6 @@ def test_widgets_datagrid_large_dataset_focus_shortcuts_and_input_width() -> Non
     assert app.handle_input(InputEvent(kind="key", key="tab")) is True
     assert app.focus_region == "sector"
     assert app.handle_input(InputEvent(kind="key", key="tab")) is True
-    assert app.focus_region == "status"
-    assert app.handle_input(InputEvent(kind="key", key="tab")) is True
     assert app.focus_region == "min_price"
     assert app.handle_input(InputEvent(kind="key", key="tab")) is True
     assert app.focus_region == "goto"
@@ -1509,9 +1507,9 @@ def test_widgets_datagrid_large_dataset_uses_responsive_filter_and_footer_lines(
     assert "Search: [ai" in lines[1]
     assert "Sector:" in lines[1]
     assert "Matches 334/2,000" in lines[1]
-    assert "Status:" in lines[2]
     assert "Min price:" in lines[2]
     assert "[        ]" in lines[2]
+    assert "Status: [" not in "\n".join(lines)
     assert "Sort none" in lines[-3]
     assert "Status:" in lines[-2]
     assert "Ctrl-B/F" in lines[-1]
@@ -1539,7 +1537,7 @@ def test_widgets_datagrid_large_dataset_filter_bar_and_sort() -> None:
     app = namespace["LargeDataGridExampleApp"]()
     app.render(RenderConstraints(width=120, max_height=24))
 
-    app._apply_filters(search="STK0", sector="AI", status="active", min_price_text="50")
+    app._apply_filters(search="STK0", sector="AI", min_price_text="50")
     assert 0 < app.grid.filtered_row_count < namespace["ROW_COUNT"]
 
     assert app.grid.activate_cell(str(app.grid.active_row_key), "price") is True
@@ -1548,6 +1546,7 @@ def test_widgets_datagrid_large_dataset_filter_bar_and_sort() -> None:
 
     lines = plain_lines(app, width=120, height=24)
     assert any("Search:" in line and "Sector:" in line for line in lines)
+    assert "Status: [" not in "\n".join(lines)
     assert any("Sort Price asc" in line for line in lines)
 
 
