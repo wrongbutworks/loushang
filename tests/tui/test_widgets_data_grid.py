@@ -13,6 +13,7 @@ from loushang.tui import (
     DataGridFormatResult,
     DataGridRow,
     DeltaFormatter,
+    InputEvent,
     NumberFormatter,
     PercentFormatter,
     RenderConstraints,
@@ -112,3 +113,120 @@ def test_data_grid_rejects_duplicate_keys_and_string_rows() -> None:
 
     with pytest.raises(TypeError, match="mapping, list, tuple, or DataGridRow"):
         DataGrid([DataGridColumn("code", "Code")], ["AAPL"])  # type: ignore[list-item]
+
+
+def test_data_grid_row_mode_navigation_skips_disabled_and_pinned_rows() -> None:
+    grid = DataGrid(
+        [DataGridColumn("job", "Job")],
+        [
+            DataGridRow("summary", {"job": "Summary"}, pinned="top"),
+            DataGridRow("build", {"job": "Build"}),
+            DataGridRow("archive", {"job": "Archive"}, disabled=True),
+            DataGridRow("deploy", {"job": "Deploy"}),
+            DataGridRow("total", {"job": "Total"}, pinned="bottom"),
+        ],
+        wrap_rows=False,
+    )
+
+    assert grid.active_row_key == "build"
+    assert grid.handle_input(InputEvent(kind="key", key="down")) is True
+    assert grid.active_row_key == "deploy"
+    assert grid.handle_input(InputEvent(kind="key", key="down")) is False
+    assert grid.active_row_key == "deploy"
+    assert grid.handle_input(InputEvent(kind="key", key="up")) is True
+    assert grid.active_row_key == "build"
+    assert grid.handle_input(InputEvent(kind="key", key="left")) is False
+    assert grid.handle_input(InputEvent(kind="key", key="end")) is True
+    assert grid.active_row_key == "deploy"
+    assert grid.handle_input(InputEvent(kind="key", key="home")) is True
+    assert grid.active_row_key == "build"
+
+
+def test_data_grid_row_navigation_wraps_when_enabled() -> None:
+    grid = DataGrid(
+        [DataGridColumn("job", "Job")],
+        [
+            DataGridRow("build", {"job": "Build"}),
+            DataGridRow("deploy", {"job": "Deploy"}),
+        ],
+    )
+
+    assert grid.active_row_key == "build"
+    assert grid.handle_input(InputEvent(kind="key", key="up")) is True
+    assert grid.active_row_key == "deploy"
+    assert grid.handle_input(InputEvent(kind="key", key="down")) is True
+    assert grid.active_row_key == "build"
+
+
+def test_data_grid_cell_mode_repairs_and_navigates_enabled_cells() -> None:
+    grid = DataGrid(
+        [
+            DataGridColumn("code", "Code"),
+            DataGridColumn("qty", "Qty"),
+            DataGridColumn("hidden", "Hidden", hidden=True),
+            DataGridColumn("note", "Note"),
+        ],
+        [
+            DataGridRow("a", {"code": "AAPL", "qty": DataGridCell(5, disabled=True), "note": "buy"}),
+            DataGridRow("b", {"code": DataGridCell("MSFT", disabled=True), "qty": 2, "note": "hold"}),
+        ],
+        active_row_key="a",
+        active_column_key="qty",
+        cursor_mode="cell",
+        wrap_columns=False,
+    )
+
+    assert (grid.active_row_key, grid.active_column_key) == ("a", "code")
+    assert grid.handle_input(InputEvent(kind="key", key="right")) is True
+    assert (grid.active_row_key, grid.active_column_key) == ("a", "note")
+    assert grid.handle_input(InputEvent(kind="key", key="right")) is False
+    assert (grid.active_row_key, grid.active_column_key) == ("a", "note")
+    assert grid.handle_input(InputEvent(kind="key", key="down")) is True
+    assert (grid.active_row_key, grid.active_column_key) == ("b", "note")
+    assert grid.handle_input(InputEvent(kind="key", key="home")) is True
+    assert (grid.active_row_key, grid.active_column_key) == ("b", "qty")
+
+
+def test_data_grid_column_mode_moves_only_visible_columns() -> None:
+    grid = DataGrid(
+        [
+            DataGridColumn("code", "Code"),
+            DataGridColumn("hidden", "Hidden", hidden=True),
+            DataGridColumn("qty", "Qty"),
+        ],
+        [{"code": "AAPL", "hidden": "secret", "qty": 5}],
+        active_column_key="hidden",
+        cursor_mode="column",
+        wrap_columns=False,
+    )
+
+    assert grid.active_row_key == "row-0"
+    assert grid.active_column_key == "code"
+    assert grid.handle_input(InputEvent(kind="key", key="down")) is False
+    assert grid.active_row_key == "row-0"
+    assert grid.handle_input(InputEvent(kind="key", key="right")) is True
+    assert grid.active_column_key == "qty"
+    assert grid.handle_input(InputEvent(kind="key", key="right")) is False
+    assert grid.active_column_key == "qty"
+    assert grid.handle_input(InputEvent(kind="key", key="home")) is True
+    assert grid.active_column_key == "code"
+
+
+def test_data_grid_none_mode_repairs_public_state_but_consumes_no_navigation() -> None:
+    grid = DataGrid(
+        [
+            DataGridColumn("hidden", "Hidden", hidden=True),
+            DataGridColumn("code", "Code"),
+        ],
+        [
+            DataGridRow("skip", {"code": "Skip"}, disabled=True),
+            DataGridRow("build", {"code": "Build"}),
+        ],
+        active_row_key="skip",
+        active_column_key="hidden",
+        cursor_mode="none",
+    )
+
+    assert (grid.active_row_key, grid.active_column_key) == ("build", "code")
+    assert grid.handle_input(InputEvent(kind="key", key="down")) is None
+    assert (grid.active_row_key, grid.active_column_key) == ("build", "code")

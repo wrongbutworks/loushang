@@ -12,6 +12,7 @@ from loushang.tui.cell_width import (
     visible_width,
 )
 from loushang.tui.core import RenderConstraints, RenderLine, RenderResult
+from loushang.tui.keybindings import normalize_key_id
 from loushang.tui.theme import ThemeResolver
 from loushang.tui.ui_parts.widgets._utils import style_text
 
@@ -299,6 +300,8 @@ class DataGrid:
         self._rows = self._normalize_rows(self.rows)
         self._active_row_key = self._repair_row_key(active_row_key)
         self._active_column_key = self._repair_column_key(active_column_key)
+        if self.cursor_mode == "cell":
+            self._repair_active_cell()
 
     @property
     def row_keys(self) -> tuple[str, ...]:
@@ -345,6 +348,17 @@ class DataGrid:
         self.focused = False
 
     def handle_input(self, event: object) -> object:
+        if getattr(event, "kind", "") != "key":
+            return None
+        if self.cursor_mode == "none":
+            return None
+        key = normalize_key_id(getattr(event, "key", ""))
+        if self.cursor_mode == "row":
+            return self._handle_row_navigation(key)
+        if self.cursor_mode == "cell":
+            return self._handle_cell_navigation(key)
+        if self.cursor_mode == "column":
+            return self._handle_column_navigation(key)
         return None
 
     def render(self, constraints: RenderConstraints) -> RenderResult:
@@ -448,6 +462,12 @@ class DataGrid:
     def _enabled_rows(self) -> tuple[_NormalizedRow, ...]:
         return tuple(row for row in self._rows if not row.disabled and row.pinned is None)
 
+    def _enabled_row_keys(self) -> tuple[str, ...]:
+        return tuple(row.key for row in self._enabled_rows())
+
+    def _visible_column_keys(self) -> tuple[str, ...]:
+        return tuple(column.key for column in self._visible_columns())
+
     def _repair_row_key(self, preferred: str | None) -> str | None:
         enabled = self._enabled_rows()
         enabled_keys = {row.key for row in enabled}
@@ -461,6 +481,250 @@ class DataGrid:
         if preferred is not None and str(preferred) in visible_keys:
             return str(preferred)
         return None if not visible else visible[0].key
+
+    def _handle_row_navigation(self, key: str) -> bool | None:
+        if key == "up":
+            return self._move_active_row(-1, wrap=self.wrap_rows)
+        if key == "down":
+            return self._move_active_row(1, wrap=self.wrap_rows)
+        if key == "home":
+            return self._jump_active_row(first=True)
+        if key == "end":
+            return self._jump_active_row(first=False)
+        if key == "pageUp":
+            return self._move_active_row(-5, wrap=False)
+        if key == "pageDown":
+            return self._move_active_row(5, wrap=False)
+        if key in {"left", "right"}:
+            return False if self._enabled_rows() else None
+        return None
+
+    def _handle_cell_navigation(self, key: str) -> bool | None:
+        if key == "left":
+            return self._move_active_cell_column(-1)
+        if key == "right":
+            return self._move_active_cell_column(1)
+        if key == "up":
+            return self._move_active_cell_row(-1, wrap=self.wrap_rows)
+        if key == "down":
+            return self._move_active_cell_row(1, wrap=self.wrap_rows)
+        if key == "home":
+            return self._jump_active_cell_column(first=True)
+        if key == "end":
+            return self._jump_active_cell_column(first=False)
+        if key == "pageUp":
+            return self._move_active_cell_row(-5, wrap=False)
+        if key == "pageDown":
+            return self._move_active_cell_row(5, wrap=False)
+        return None
+
+    def _handle_column_navigation(self, key: str) -> bool | None:
+        if key == "left":
+            return self._move_active_column(-1)
+        if key == "right":
+            return self._move_active_column(1)
+        if key == "home":
+            return self._jump_active_column(first=True)
+        if key == "end":
+            return self._jump_active_column(first=False)
+        if key in {"up", "down", "pageUp", "pageDown"}:
+            return False if self._visible_columns() else None
+        return None
+
+    def _move_active_row(self, delta: int, *, wrap: bool) -> bool | None:
+        enabled = self._enabled_row_keys()
+        if not enabled:
+            return None
+        if self._active_row_key not in enabled:
+            self._active_row_key = enabled[0]
+            return True
+        position = enabled.index(self._active_row_key)
+        next_position = position + delta
+        if wrap:
+            next_position %= len(enabled)
+        elif next_position < 0 or next_position >= len(enabled):
+            return False
+        else:
+            next_position = max(0, min(next_position, len(enabled) - 1))
+        next_key = enabled[next_position]
+        if next_key == self._active_row_key:
+            return False
+        self._active_row_key = next_key
+        return True
+
+    def _jump_active_row(self, *, first: bool) -> bool | None:
+        enabled = self._enabled_row_keys()
+        if not enabled:
+            return None
+        next_key = enabled[0] if first else enabled[-1]
+        if next_key == self._active_row_key:
+            return False
+        self._active_row_key = next_key
+        return True
+
+    def _move_active_column(self, delta: int) -> bool | None:
+        columns = self._visible_column_keys()
+        if not columns:
+            return None
+        if self._active_column_key not in columns:
+            self._active_column_key = columns[0]
+            return True
+        position = columns.index(self._active_column_key)
+        next_position = position + delta
+        if self.wrap_columns:
+            next_position %= len(columns)
+        elif next_position < 0 or next_position >= len(columns):
+            return False
+        next_key = columns[next_position]
+        if next_key == self._active_column_key:
+            return False
+        self._active_column_key = next_key
+        return True
+
+    def _jump_active_column(self, *, first: bool) -> bool | None:
+        columns = self._visible_column_keys()
+        if not columns:
+            return None
+        next_key = columns[0] if first else columns[-1]
+        if next_key == self._active_column_key:
+            return False
+        self._active_column_key = next_key
+        return True
+
+    def _repair_active_cell(self) -> bool:
+        if self._is_enabled_cell(self._active_row_key, self._active_column_key):
+            return False
+        first_cell = self._first_enabled_cell()
+        if first_cell is None:
+            return False
+        row_key, column_key = first_cell
+        changed = (row_key, column_key) != (self._active_row_key, self._active_column_key)
+        self._active_row_key = row_key
+        self._active_column_key = column_key
+        return changed
+
+    def _first_enabled_cell(self) -> DataGridCellKey | None:
+        for row in self._enabled_rows():
+            columns = self._enabled_columns_for_row(row)
+            if columns:
+                return row.key, columns[0].key
+        return None
+
+    def _is_enabled_cell(self, row_key: str | None, column_key: str | None) -> bool:
+        if row_key is None or column_key is None:
+            return False
+        row = self._row_by_key(row_key)
+        if row is None or row.disabled or row.pinned is not None:
+            return False
+        if column_key not in self._visible_column_keys():
+            return False
+        cell = row.cells.get(column_key)
+        return cell is not None and not cell.disabled
+
+    def _enabled_rows_with_cells(self) -> tuple[_NormalizedRow, ...]:
+        return tuple(row for row in self._enabled_rows() if self._enabled_columns_for_row(row))
+
+    def _enabled_columns_for_row(self, row: _NormalizedRow) -> tuple[DataGridColumn, ...]:
+        if row.disabled or row.pinned is not None:
+            return ()
+        return tuple(
+            column
+            for column in self._visible_columns()
+            if (cell := row.cells.get(column.key)) is not None and not cell.disabled
+        )
+
+    def _move_active_cell_column(self, delta: int) -> bool | None:
+        repair_result = self._ensure_active_cell_for_navigation()
+        if repair_result is not False:
+            return repair_result
+        row = self._row_by_key(str(self._active_row_key))
+        if row is None:
+            return None
+        columns = tuple(column.key for column in self._enabled_columns_for_row(row))
+        if not columns:
+            return None
+        if self._active_column_key not in columns:
+            self._active_column_key = columns[0]
+            return True
+        position = columns.index(self._active_column_key)
+        next_position = position + delta
+        if self.wrap_columns:
+            next_position %= len(columns)
+        elif next_position < 0 or next_position >= len(columns):
+            return False
+        next_key = columns[next_position]
+        if next_key == self._active_column_key:
+            return False
+        self._active_column_key = next_key
+        return True
+
+    def _move_active_cell_row(self, delta: int, *, wrap: bool) -> bool | None:
+        repair_result = self._ensure_active_cell_for_navigation()
+        if repair_result is not False:
+            return repair_result
+        rows = self._enabled_rows_with_cells()
+        if not rows:
+            return None
+        row_keys = tuple(row.key for row in rows)
+        if self._active_row_key not in row_keys:
+            first = rows[0]
+            self._active_row_key = first.key
+            self._active_column_key = self._enabled_columns_for_row(first)[0].key
+            return True
+        position = row_keys.index(str(self._active_row_key))
+        next_position = position + delta
+        if wrap:
+            next_position %= len(rows)
+        elif next_position < 0 or next_position >= len(rows):
+            return False
+        else:
+            next_position = max(0, min(next_position, len(rows) - 1))
+        target_row = rows[next_position]
+        target_column = self._nearest_enabled_column_in_row(target_row, self._active_column_key)
+        if target_column is None:
+            return False
+        next_state = (target_row.key, target_column)
+        if next_state == (self._active_row_key, self._active_column_key):
+            return False
+        self._active_row_key, self._active_column_key = next_state
+        return True
+
+    def _jump_active_cell_column(self, *, first: bool) -> bool | None:
+        repair_result = self._ensure_active_cell_for_navigation()
+        if repair_result is not False:
+            return repair_result
+        row = self._row_by_key(str(self._active_row_key))
+        if row is None:
+            return None
+        columns = tuple(column.key for column in self._enabled_columns_for_row(row))
+        if not columns:
+            return None
+        next_key = columns[0] if first else columns[-1]
+        if next_key == self._active_column_key:
+            return False
+        self._active_column_key = next_key
+        return True
+
+    def _ensure_active_cell_for_navigation(self) -> bool | None:
+        if self._is_enabled_cell(self._active_row_key, self._active_column_key):
+            return False
+        return True if self._repair_active_cell() else None
+
+    def _nearest_enabled_column_in_row(self, row: _NormalizedRow, preferred: str | None) -> str | None:
+        columns = tuple(column.key for column in self._enabled_columns_for_row(row))
+        if not columns:
+            return None
+        if preferred in columns:
+            return str(preferred)
+        visible_keys = self._visible_column_keys()
+        preferred_index = visible_keys.index(preferred) if preferred in visible_keys else 0
+        for column_key in visible_keys[preferred_index + 1 :]:
+            if column_key in columns:
+                return column_key
+        for column_key in reversed(visible_keys[:preferred_index]):
+            if column_key in columns:
+                return column_key
+        return columns[0]
 
     def _row_line(
         self,
