@@ -1,0 +1,690 @@
+from __future__ import annotations
+
+from collections.abc import Callable, Mapping, Sequence
+from dataclasses import dataclass, field
+from decimal import ROUND_HALF_UP, Decimal, InvalidOperation
+from math import isfinite
+from typing import Literal
+
+from loushang.tui.cell_width import (
+    autowrap_safe_width,
+    truncate_to_width,
+    visible_width,
+)
+from loushang.tui.core import RenderConstraints, RenderLine, RenderResult
+from loushang.tui.theme import ThemeResolver
+from loushang.tui.ui_parts.widgets._utils import style_text
+
+DataGridAlign = Literal["left", "right", "center"]
+DataGridCursorMode = Literal["row", "cell", "column", "none"]
+DataGridSelectionMode = Literal["none", "single", "multi"]
+DataGridEnterBehavior = Literal["activate", "edit"]
+DataGridSortDirection = Literal["asc", "desc"]
+DataGridCellKey = tuple[str, str]
+
+DATA_GRID_SEPARATOR = "  "
+
+__all__ = [
+    "CompactNumberFormatter",
+    "DataGrid",
+    "DataGridAlign",
+    "DataGridCell",
+    "DataGridCellKey",
+    "DataGridColumn",
+    "DataGridCursorMode",
+    "DataGridEdit",
+    "DataGridEnterBehavior",
+    "DataGridFormatResult",
+    "DataGridFormatter",
+    "DataGridParser",
+    "DataGridRow",
+    "DataGridSelect",
+    "DataGridSelectionChange",
+    "DataGridSelectionMode",
+    "DataGridSortDirection",
+    "DataGridThemeResolver",
+    "DataGridValidator",
+    "DeltaFormatter",
+    "NumberFormatter",
+    "PercentFormatter",
+    "TextFormatter",
+]
+
+
+@dataclass(frozen=True, slots=True)
+class DataGridFormatResult:
+    text: str
+    theme_token: str | None = None
+
+
+DataGridFormatter = Callable[[object], str | DataGridFormatResult]
+DataGridParser = Callable[[str], object]
+DataGridValidator = Callable[[object], str | None]
+DataGridThemeResolver = Callable[[object], str | None]
+
+
+@dataclass(frozen=True, slots=True)
+class DataGridColumn:
+    key: str
+    header: str
+    width: int | None = None
+    min_width: int = 1
+    max_width: int | None = None
+    align: DataGridAlign = "left"
+    editable: bool = False
+    enter_behavior: DataGridEnterBehavior = "activate"
+    edit_next_column_key: str | None = None
+    edit_accepts_unchanged: bool = True
+    sortable: bool = True
+    hidden: bool = False
+    formatter: DataGridFormatter | None = None
+    parser: DataGridParser | None = None
+    validator: DataGridValidator | None = None
+    theme_token: str | None = None
+    theme_token_for_value: DataGridThemeResolver | None = None
+
+    def __post_init__(self) -> None:
+        object.__setattr__(self, "key", str(self.key))
+        object.__setattr__(self, "min_width", max(0, self.min_width))
+        if self.width is not None:
+            object.__setattr__(self, "width", max(0, self.width))
+        if self.max_width is not None:
+            object.__setattr__(self, "max_width", max(0, self.max_width))
+
+
+@dataclass(frozen=True, slots=True)
+class DataGridCell:
+    value: object
+    disabled: bool = False
+    editable: bool | None = None
+    theme_token: str | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class DataGridRow:
+    key: str
+    cells: Mapping[str, object | DataGridCell] | list[object | DataGridCell] | tuple[object | DataGridCell, ...]
+    label: str | None = None
+    disabled: bool = False
+    pinned: Literal["top", "bottom"] | None = None
+    theme_token: str | None = None
+    on_select: Callable[[], object] | None = None
+
+    def __post_init__(self) -> None:
+        object.__setattr__(self, "key", str(self.key))
+
+
+@dataclass(frozen=True, slots=True)
+class DataGridSelect:
+    row_key: str | None
+    column_key: str | None
+    value: object | None
+    cursor_mode: DataGridCursorMode
+
+
+@dataclass(frozen=True, slots=True)
+class DataGridSelectionChange:
+    selected_rows: frozenset[str]
+    selected_cells: frozenset[DataGridCellKey]
+
+
+@dataclass(frozen=True, slots=True)
+class DataGridEdit:
+    row_key: str
+    column_key: str
+    old_value: object | None
+    new_value: object
+
+
+@dataclass(frozen=True, slots=True)
+class TextFormatter:
+    none_text: str = ""
+
+    def __call__(self, value: object) -> str:
+        return self.none_text if value is None else str(value)
+
+
+@dataclass(frozen=True, slots=True)
+class NumberFormatter:
+    precision: int | None = None
+    thousands: bool = False
+    sign: bool = False
+    none_text: str = ""
+    invalid_text: str = ""
+
+    def __call__(self, value: object) -> str:
+        decimal = _decimal_from_value(value)
+        if decimal is None:
+            return self.none_text if value is None else self.invalid_text
+        return _format_decimal(decimal, precision=self.precision, thousands=self.thousands, sign=self.sign)
+
+
+@dataclass(frozen=True, slots=True)
+class PercentFormatter:
+    precision: int = 2
+    scale: float = 100.0
+    sign: bool = False
+    none_text: str = ""
+    invalid_text: str = ""
+
+    def __call__(self, value: object) -> str:
+        decimal = _decimal_from_value(value)
+        if decimal is None:
+            return self.none_text if value is None else self.invalid_text
+        scaled = decimal * Decimal(str(self.scale))
+        text = _format_decimal(scaled, precision=self.precision, thousands=False, sign=self.sign)
+        return f"{text}%"
+
+
+@dataclass(frozen=True, slots=True)
+class DeltaFormatter:
+    precision: int = 2
+    sign: bool = True
+    zero_sign: bool = False
+    none_text: str = ""
+    invalid_text: str = ""
+
+    def __call__(self, value: object) -> str:
+        decimal = _decimal_from_value(value)
+        if decimal is None:
+            return self.none_text if value is None else self.invalid_text
+        text = _format_decimal(decimal, precision=self.precision, thousands=False, sign=self.sign)
+        if self.zero_sign and decimal == 0 and not text.startswith(("+", "-")):
+            return f"+{text}"
+        return text
+
+
+@dataclass(frozen=True, slots=True)
+class CompactNumberFormatter:
+    precision: int = 1
+    sign: bool = False
+    none_text: str = ""
+    invalid_text: str = ""
+
+    def __call__(self, value: object) -> str:
+        decimal = _decimal_from_value(value)
+        if decimal is None:
+            return self.none_text if value is None else self.invalid_text
+        return _format_compact_decimal(decimal, precision=self.precision, sign=self.sign)
+
+
+@dataclass(frozen=True, slots=True)
+class _FormattedCell:
+    text: str
+    theme_token: str | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class _NormalizedCell:
+    value: object
+    disabled: bool = False
+    editable: bool | None = None
+    theme_token: str | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class _NormalizedRow:
+    key: str
+    cells: dict[str, _NormalizedCell]
+    label: str | None
+    disabled: bool
+    pinned: Literal["top", "bottom"] | None
+    theme_token: str | None
+    on_select: Callable[[], object] | None
+    insertion_order: int
+
+
+@dataclass(init=False, slots=True)
+class DataGrid:
+    columns: Sequence[DataGridColumn]
+    rows: Sequence[DataGridRow | Mapping[str, object] | list[object] | tuple[object, ...]]
+    cursor_mode: DataGridCursorMode
+    selection_mode: DataGridSelectionMode
+    show_header: bool
+    show_row_labels: bool
+    fixed_columns: int
+    zebra_stripes: bool
+    empty_text: str
+    wrap_rows: bool
+    wrap_columns: bool
+    theme: ThemeResolver | None
+    focused: bool
+    editing_error: str | None = field(default=None, init=False)
+    _columns: tuple[DataGridColumn, ...] = field(default=(), init=False, repr=False)
+    _rows: tuple[_NormalizedRow, ...] = field(default=(), init=False, repr=False)
+    _active_row_key: str | None = field(default=None, init=False, repr=False)
+    _active_column_key: str | None = field(default=None, init=False, repr=False)
+    _selected_row_keys: frozenset[str] = field(default_factory=frozenset, init=False, repr=False)
+    _selected_cell_keys: frozenset[DataGridCellKey] = field(default_factory=frozenset, init=False, repr=False)
+    _sort_state: tuple[str, DataGridSortDirection] | None = field(default=None, init=False, repr=False)
+    _next_generated_index: int = field(default=0, init=False, repr=False)
+
+    def __init__(
+        self,
+        columns: Sequence[DataGridColumn],
+        rows: Sequence[DataGridRow | Mapping[str, object] | list[object] | tuple[object, ...]],
+        active_row_key: str | None = None,
+        active_column_key: str | None = None,
+        cursor_mode: DataGridCursorMode = "row",
+        selection_mode: DataGridSelectionMode = "single",
+        show_header: bool = True,
+        show_row_labels: bool = False,
+        fixed_columns: int = 0,
+        zebra_stripes: bool = False,
+        empty_text: str = "No rows",
+        wrap_rows: bool = True,
+        wrap_columns: bool = False,
+        theme: ThemeResolver | None = None,
+        focused: bool = False,
+    ) -> None:
+        self.columns = tuple(columns)
+        self.rows = tuple(rows)
+        self.cursor_mode = cursor_mode
+        self.selection_mode = selection_mode
+        self.show_header = show_header
+        self.show_row_labels = show_row_labels
+        self.fixed_columns = max(0, fixed_columns)
+        self.zebra_stripes = zebra_stripes
+        self.empty_text = empty_text
+        self.wrap_rows = wrap_rows
+        self.wrap_columns = wrap_columns
+        self.theme = theme
+        self.focused = focused
+        self.editing_error = None
+        self._selected_row_keys = frozenset()
+        self._selected_cell_keys = frozenset()
+        self._sort_state = None
+        self._next_generated_index = 0
+        self._columns = _normalize_columns(self.columns)
+        self._rows = self._normalize_rows(self.rows)
+        self._active_row_key = self._repair_row_key(active_row_key)
+        self._active_column_key = self._repair_column_key(active_column_key)
+
+    @property
+    def row_keys(self) -> tuple[str, ...]:
+        return tuple(row.key for row in self._rows)
+
+    @property
+    def active_row_key(self) -> str | None:
+        return self._active_row_key
+
+    @property
+    def active_column_key(self) -> str | None:
+        return self._active_column_key
+
+    @property
+    def selected_row_keys(self) -> frozenset[str]:
+        return self._selected_row_keys
+
+    @property
+    def selected_cell_keys(self) -> frozenset[DataGridCellKey]:
+        return self._selected_cell_keys
+
+    @property
+    def sort_state(self) -> tuple[str, DataGridSortDirection] | None:
+        return self._sort_state
+
+    def cell_value(self, row_key: str, column_key: str) -> object | None:
+        row = self._row_by_key(row_key)
+        if row is None:
+            return None
+        cell = row.cells.get(column_key)
+        return None if cell is None else cell.value
+
+    def cell_disabled(self, row_key: str, column_key: str) -> bool:
+        row = self._row_by_key(row_key)
+        if row is None:
+            return False
+        cell = row.cells.get(column_key)
+        return False if cell is None else cell.disabled
+
+    def focus(self) -> None:
+        self.focused = True
+
+    def blur(self) -> None:
+        self.focused = False
+
+    def handle_input(self, event: object) -> object:
+        return None
+
+    def render(self, constraints: RenderConstraints) -> RenderResult:
+        target_width = autowrap_safe_width(constraints.width)
+        height = max(0, constraints.max_height)
+        if height == 0:
+            return RenderResult.from_lines([], constraints=constraints)
+        visible_columns = self._visible_columns()
+        if not visible_columns:
+            empty = truncate_to_width(self.empty_text, max_width=target_width, ellipsis="")
+            return RenderResult.from_lines(
+                [RenderLine(style_text(empty, self.theme, "widget.dataGrid.empty"))],
+                constraints=constraints,
+            )
+
+        widths = _column_widths(visible_columns, target_width)
+        lines: list[RenderLine] = []
+        if self.show_header and len(lines) < height:
+            headers = tuple(column.header for column in visible_columns)
+            header_text = _grid_line(headers, visible_columns, widths, target_width)
+            lines.append(RenderLine(style_text(header_text, self.theme, "widget.dataGrid.header")))
+
+        for row in self._rows:
+            if len(lines) >= height:
+                break
+            lines.append(RenderLine(self._row_line(row, visible_columns, widths, target_width)))
+
+        if not self._rows and len(lines) < height:
+            empty_cells = (self.empty_text,) + tuple("" for _ in visible_columns[1:])
+            text = _grid_line(empty_cells, visible_columns, widths, target_width)
+            lines.append(RenderLine(style_text(text, self.theme, "widget.dataGrid.empty")))
+
+        return RenderResult.from_lines(lines[:height], constraints=constraints)
+
+    def _normalize_rows(
+        self,
+        rows: Sequence[DataGridRow | Mapping[str, object] | list[object] | tuple[object, ...]],
+    ) -> tuple[_NormalizedRow, ...]:
+        explicit_keys = {str(row.key) for row in rows if isinstance(row, DataGridRow)}
+        used_keys: set[str] = set()
+        normalized: list[_NormalizedRow] = []
+        for insertion_order, row in enumerate(rows):
+            normalized_row = self._normalize_row(row, explicit_keys, used_keys, insertion_order)
+            if normalized_row.key in used_keys:
+                raise ValueError(f"duplicate row key: {normalized_row.key!r}")
+            used_keys.add(normalized_row.key)
+            normalized.append(normalized_row)
+        return tuple(normalized)
+
+    def _normalize_row(
+        self,
+        row: DataGridRow | Mapping[str, object] | list[object] | tuple[object, ...],
+        explicit_keys: set[str],
+        used_keys: set[str],
+        insertion_order: int,
+    ) -> _NormalizedRow:
+        if isinstance(row, DataGridRow):
+            key = row.key
+            cells_source = row.cells
+            label = row.label
+            disabled = row.disabled
+            pinned = row.pinned
+            theme_token = row.theme_token
+            on_select = row.on_select
+        else:
+            key = self._next_generated_key(explicit_keys | used_keys)
+            cells_source = row
+            label = None
+            disabled = False
+            pinned = None
+            theme_token = None
+            on_select = None
+        cells = _cells_from_source(cells_source, self._columns)
+        return _NormalizedRow(
+            key=key,
+            cells=cells,
+            label=label,
+            disabled=disabled,
+            pinned=pinned,
+            theme_token=theme_token,
+            on_select=on_select,
+            insertion_order=insertion_order,
+        )
+
+    def _next_generated_key(self, blocked_keys: set[str]) -> str:
+        while True:
+            key = f"row-{self._next_generated_index}"
+            self._next_generated_index += 1
+            if key not in blocked_keys:
+                return key
+
+    def _row_by_key(self, key: str) -> _NormalizedRow | None:
+        for row in self._rows:
+            if row.key == key:
+                return row
+        return None
+
+    def _visible_columns(self) -> tuple[DataGridColumn, ...]:
+        return tuple(column for column in self._columns if not column.hidden)
+
+    def _enabled_rows(self) -> tuple[_NormalizedRow, ...]:
+        return tuple(row for row in self._rows if not row.disabled and row.pinned is None)
+
+    def _repair_row_key(self, preferred: str | None) -> str | None:
+        enabled = self._enabled_rows()
+        enabled_keys = {row.key for row in enabled}
+        if preferred is not None and str(preferred) in enabled_keys:
+            return str(preferred)
+        return None if not enabled else enabled[0].key
+
+    def _repair_column_key(self, preferred: str | None) -> str | None:
+        visible = self._visible_columns()
+        visible_keys = {column.key for column in visible}
+        if preferred is not None and str(preferred) in visible_keys:
+            return str(preferred)
+        return None if not visible else visible[0].key
+
+    def _row_line(
+        self,
+        row: _NormalizedRow,
+        columns: Sequence[DataGridColumn],
+        widths: Sequence[int],
+        target_width: int,
+    ) -> str:
+        values: list[str] = []
+        cell_tokens: list[str | None] = []
+        for column in columns:
+            cell = row.cells[column.key]
+            formatted = _format_grid_cell(cell.value, column)
+            values.append(formatted.text)
+            cell_tokens.append(formatted.theme_token or column.theme_token or cell.theme_token)
+        text = _grid_line(tuple(values), columns, widths, target_width)
+        row_token = "widget.dataGrid.disabled" if row.disabled else "widget.dataGrid.row"
+        return style_text(text, self.theme, row_token, row.theme_token, *cell_tokens)
+
+
+def _normalize_columns(columns: Sequence[DataGridColumn]) -> tuple[DataGridColumn, ...]:
+    normalized = tuple(columns)
+    seen: set[str] = set()
+    for column in normalized:
+        if column.key in seen:
+            raise ValueError(f"duplicate column key: {column.key!r}")
+        seen.add(column.key)
+    return normalized
+
+
+def _cells_from_source(
+    source: Mapping[str, object | DataGridCell] | list[object | DataGridCell] | tuple[object | DataGridCell, ...],
+    columns: Sequence[DataGridColumn],
+) -> dict[str, _NormalizedCell]:
+    if isinstance(source, Mapping):
+        return {
+            column.key: _normalize_cell(source.get(column.key, ""))
+            for column in columns
+        }
+    if isinstance(source, (str, bytes)):
+        raise TypeError("DataGrid row cells must be a mapping, list, tuple, or DataGridRow")
+    if isinstance(source, (list, tuple)):
+        return {
+            column.key: _normalize_cell(source[index] if index < len(source) else "")
+            for index, column in enumerate(columns)
+        }
+    raise TypeError("DataGrid row cells must be a mapping, list, tuple, or DataGridRow")
+
+
+def _normalize_cell(value: object | DataGridCell) -> _NormalizedCell:
+    if isinstance(value, DataGridCell):
+        return _NormalizedCell(
+            value=value.value,
+            disabled=value.disabled,
+            editable=value.editable,
+            theme_token=value.theme_token,
+        )
+    return _NormalizedCell(value=value)
+
+
+def _format_grid_cell(value: object, column: DataGridColumn) -> _FormattedCell:
+    if column.formatter is not None:
+        formatted = column.formatter(value)
+    else:
+        formatted = TextFormatter()(value)
+    if isinstance(formatted, DataGridFormatResult):
+        return _FormattedCell(formatted.text, formatted.theme_token)
+    theme_token = column.theme_token_for_value(value) if column.theme_token_for_value is not None else None
+    return _FormattedCell(str(formatted), theme_token)
+
+
+def _decimal_from_value(value: object) -> Decimal | None:
+    if value is None:
+        return None
+    if isinstance(value, float) and not isfinite(value):
+        return None
+    try:
+        decimal = Decimal(str(value))
+    except (InvalidOperation, ValueError):
+        return None
+    return decimal if decimal.is_finite() else None
+
+
+def _format_decimal(
+    value: Decimal,
+    *,
+    precision: int | None,
+    thousands: bool,
+    sign: bool,
+) -> str:
+    prefix = ""
+    if value < 0:
+        prefix = "-"
+    elif sign and value > 0:
+        prefix = "+"
+    magnitude = abs(value)
+    if precision is None:
+        text = format(magnitude.normalize(), "f")
+        if "." in text:
+            text = text.rstrip("0").rstrip(".")
+        if thousands:
+            whole, dot, fraction = text.partition(".")
+            whole = f"{int(whole):,}" if whole else "0"
+            text = f"{whole}{dot}{fraction}" if dot else whole
+        return f"{prefix}{text}"
+
+    places = Decimal("1").scaleb(-max(0, precision))
+    quantized = magnitude.quantize(places, rounding=ROUND_HALF_UP)
+    grouping = "," if thousands else ""
+    text = format(quantized, f"{grouping}.{max(0, precision)}f")
+    return f"{prefix}{text}"
+
+
+def _format_compact_decimal(value: Decimal, *, precision: int, sign: bool) -> str:
+    prefix = ""
+    if value < 0:
+        prefix = "-"
+    elif sign and value > 0:
+        prefix = "+"
+    magnitude = abs(value)
+    thresholds = (
+        (Decimal("1000000000000"), "T"),
+        (Decimal("1000000000"), "B"),
+        (Decimal("1000000"), "M"),
+        (Decimal("1000"), "K"),
+    )
+    for threshold, suffix in thresholds:
+        if magnitude >= threshold:
+            compact = magnitude / threshold
+            return f"{prefix}{_format_decimal_trimmed(compact, precision)}{suffix}"
+    return f"{prefix}{_format_decimal_trimmed(magnitude, precision)}"
+
+
+def _format_decimal_trimmed(value: Decimal, precision: int) -> str:
+    places = Decimal("1").scaleb(-max(0, precision))
+    quantized = value.quantize(places, rounding=ROUND_HALF_UP)
+    text = format(quantized, f".{max(0, precision)}f")
+    return text.rstrip("0").rstrip(".") if "." in text else text
+
+
+def _column_widths(columns: Sequence[DataGridColumn], target_width: int) -> tuple[int, ...]:
+    if not columns or target_width <= 0:
+        return tuple(0 for _ in columns)
+    prefix_width = min(2, target_width)
+    grid_width = max(0, target_width - prefix_width)
+    if grid_width == 0:
+        return tuple(0 for _ in columns)
+
+    widths: list[int] = []
+    flexible_indices: list[int] = []
+    for index, column in enumerate(columns):
+        if column.width is None:
+            widths.append(column.min_width)
+            flexible_indices.append(index)
+        else:
+            widths.append(max(column.width, column.min_width))
+
+    remaining = grid_width - _occupied_grid_width(widths)
+    if remaining > 0 and flexible_indices:
+        expandable = list(flexible_indices)
+        while remaining > 0 and expandable:
+            next_expandable: list[int] = []
+            for index in expandable:
+                if remaining <= 0:
+                    break
+                column = columns[index]
+                if column.max_width is not None and widths[index] >= column.max_width:
+                    continue
+                widths[index] += 1
+                remaining -= 1
+                next_expandable.append(index)
+            expandable = next_expandable
+    if _occupied_grid_width(widths) > grid_width:
+        widths = _shrink_widths_to_fit(widths, grid_width)
+    return tuple(widths)
+
+
+def _occupied_grid_width(widths: Sequence[int]) -> int:
+    visible_count = sum(1 for width in widths if width > 0)
+    separator_width = max(0, visible_count - 1) * len(DATA_GRID_SEPARATOR)
+    return sum(max(0, width) for width in widths) + separator_width
+
+
+def _shrink_widths_to_fit(widths: Sequence[int], grid_width: int) -> list[int]:
+    result = [max(0, width) for width in widths]
+    overflow = _occupied_grid_width(result) - max(0, grid_width)
+    while overflow > 0 and any(width > 0 for width in result):
+        for index in range(len(result) - 1, -1, -1):
+            if result[index] <= 0:
+                continue
+            reduction = min(result[index], overflow)
+            result[index] -= reduction
+            overflow = _occupied_grid_width(result) - max(0, grid_width)
+            if overflow <= 0:
+                break
+    return result
+
+
+def _grid_line(
+    cells: Sequence[str],
+    columns: Sequence[DataGridColumn],
+    widths: Sequence[int],
+    target_width: int,
+) -> str:
+    prefix = "  "
+    rendered: list[str] = []
+    visible_cells = [
+        (cell, width, column) for cell, width, column in zip(cells, widths, columns, strict=True) if width > 0
+    ]
+    for offset, (cell, width, column) in enumerate(visible_cells):
+        rendered.append(_format_cell_text(cell, width, column.align, pad_right=offset < len(visible_cells) - 1))
+    text = f"{prefix}{DATA_GRID_SEPARATOR.join(rendered)}"
+    return truncate_to_width(text, max_width=target_width, ellipsis="")
+
+
+def _format_cell_text(text: str, width: int, align: DataGridAlign, *, pad_right: bool = True) -> str:
+    if width <= 0:
+        return ""
+    clipped = truncate_to_width(text, max_width=width, ellipsis="")
+    padding_width = max(0, width - visible_width(clipped))
+    if align == "right":
+        return f"{' ' * padding_width}{clipped}"
+    if align == "center":
+        left = padding_width // 2
+        right = padding_width - left
+        return f"{' ' * left}{clipped}{' ' * right}" if pad_right else f"{' ' * left}{clipped}"
+    return f"{clipped}{' ' * padding_width}" if pad_right else clipped
