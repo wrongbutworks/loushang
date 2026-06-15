@@ -19,7 +19,7 @@ from loushang.tui.core import (
 )
 from loushang.tui.keybindings import normalize_key_id
 from loushang.tui.theme import ThemeResolver
-from loushang.tui.ui_parts.widgets._utils import style_text
+from loushang.tui.ui_parts.widgets._utils import callback_result, style_text
 
 DataGridAlign = Literal["left", "right", "center"]
 DataGridCursorMode = Literal["row", "cell", "column", "none"]
@@ -355,11 +355,17 @@ class DataGrid:
         self.focused = False
 
     def handle_input(self, event: object) -> object:
+        if getattr(event, "kind", "") == "text" and getattr(event, "text", "") == " ":
+            return None if self.cursor_mode == "none" else self._handle_selection_input()
         if getattr(event, "kind", "") != "key":
             return None
         if self.cursor_mode == "none":
             return None
         key = normalize_key_id(getattr(event, "key", ""))
+        if key == "enter":
+            return self._activate()
+        if key == "space":
+            return self._handle_selection_input()
         if self.cursor_mode == "row":
             return self._handle_row_navigation(key)
         if self.cursor_mode == "cell":
@@ -490,6 +496,14 @@ class DataGrid:
                 return row
         return None
 
+    def _active_row(self) -> _NormalizedRow | None:
+        if self._active_row_key is None:
+            return None
+        row = self._row_by_key(self._active_row_key)
+        if row is None or row.disabled or row.pinned is not None:
+            return None
+        return row
+
     def _visible_columns(self) -> tuple[DataGridColumn, ...]:
         return tuple(column for column in self._columns if not column.hidden)
 
@@ -597,6 +611,171 @@ class DataGrid:
         if key in {"up", "down", "pageUp", "pageDown"}:
             return False if self._visible_columns() else None
         return None
+
+    def _activate(self) -> object:
+        if self.cursor_mode == "row":
+            row = self._active_row()
+            if row is None:
+                return None
+            if row.on_select is not None:
+                return callback_result(row.on_select())
+            return DataGridSelect(row_key=row.key, column_key=None, value=None, cursor_mode="row")
+        if self.cursor_mode == "cell":
+            if not self._is_enabled_cell(self._active_row_key, self._active_column_key):
+                return None
+            row_key = str(self._active_row_key)
+            column_key = str(self._active_column_key)
+            return DataGridSelect(
+                row_key=row_key,
+                column_key=column_key,
+                value=self.cell_value(row_key, column_key),
+                cursor_mode="cell",
+            )
+        if self.cursor_mode == "column":
+            if self._active_column_key not in self._visible_column_keys():
+                return None
+            return DataGridSelect(row_key=None, column_key=self._active_column_key, value=None, cursor_mode="column")
+        return None
+
+    def _handle_selection_input(self) -> object:
+        if self.selection_mode == "none":
+            return self._activate()
+        changed = False
+        if self.cursor_mode == "row":
+            changed = self.toggle_row(str(self._active_row_key)) if self._active_row_key is not None else False
+        elif self.cursor_mode == "cell":
+            if self._active_row_key is not None and self._active_column_key is not None:
+                changed = self.toggle_cell(str(self._active_row_key), str(self._active_column_key))
+        elif self.cursor_mode == "column":
+            if self.selection_mode == "single":
+                return False
+            changed = self._toggle_active_column_cells()
+        if not changed:
+            return False if self.selection_mode in {"single", "multi"} else None
+        return DataGridSelectionChange(self._selected_row_keys, self._selected_cell_keys)
+
+    def select_row(self, row_key: str) -> bool:
+        if self.selection_mode == "none":
+            return False
+        row = self._row_by_key(row_key)
+        if row is None or row.disabled or row.pinned is not None:
+            return False
+        if self.selection_mode == "single":
+            next_rows = frozenset({row.key})
+            if next_rows == self._selected_row_keys and not self._selected_cell_keys:
+                return False
+            self._selected_row_keys = next_rows
+            self._selected_cell_keys = frozenset()
+            return True
+        if row.key in self._selected_row_keys:
+            return False
+        self._selected_row_keys = frozenset((*self._selected_row_keys, row.key))
+        return True
+
+    def toggle_row(self, row_key: str) -> bool:
+        row = self._row_by_key(row_key)
+        if row is None or row.disabled or row.pinned is not None or self.selection_mode == "none":
+            return False
+        if self.selection_mode == "single":
+            return self.select_row(row_key)
+        selected = set(self._selected_row_keys)
+        if row.key in selected:
+            selected.remove(row.key)
+        else:
+            selected.add(row.key)
+        next_rows = frozenset(selected)
+        if next_rows == self._selected_row_keys:
+            return False
+        self._selected_row_keys = next_rows
+        return True
+
+    def select_cell(self, row_key: str, column_key: str) -> bool:
+        if self.selection_mode == "none" or not self._is_enabled_cell(row_key, column_key):
+            return False
+        cell_key = (row_key, column_key)
+        if self.selection_mode == "single":
+            next_cells = frozenset({cell_key})
+            if next_cells == self._selected_cell_keys and not self._selected_row_keys:
+                return False
+            self._selected_cell_keys = next_cells
+            self._selected_row_keys = frozenset()
+            return True
+        if cell_key in self._selected_cell_keys:
+            return False
+        self._selected_cell_keys = frozenset((*self._selected_cell_keys, cell_key))
+        return True
+
+    def toggle_cell(self, row_key: str, column_key: str) -> bool:
+        if self.selection_mode == "none" or not self._is_enabled_cell(row_key, column_key):
+            return False
+        if self.selection_mode == "single":
+            return self.select_cell(row_key, column_key)
+        selected = set(self._selected_cell_keys)
+        cell_key = (row_key, column_key)
+        if cell_key in selected:
+            selected.remove(cell_key)
+        else:
+            selected.add(cell_key)
+        next_cells = frozenset(selected)
+        if next_cells == self._selected_cell_keys:
+            return False
+        self._selected_cell_keys = next_cells
+        return True
+
+    def select_all(self) -> bool:
+        if self.selection_mode != "multi":
+            return False
+        if self.cursor_mode == "row":
+            next_rows = frozenset(row.key for row in self._enabled_rows())
+            if next_rows == self._selected_row_keys:
+                return False
+            self._selected_row_keys = next_rows
+            return True
+        next_cells = frozenset(self._enabled_cell_keys())
+        if next_cells == self._selected_cell_keys:
+            return False
+        self._selected_cell_keys = next_cells
+        return True
+
+    def clear_selection(self) -> bool:
+        if not self._selected_row_keys and not self._selected_cell_keys:
+            return False
+        self._selected_row_keys = frozenset()
+        self._selected_cell_keys = frozenset()
+        return True
+
+    def _toggle_active_column_cells(self) -> bool:
+        if self._active_column_key is None:
+            return False
+        column_cells = frozenset(self._enabled_cell_keys_for_column(self._active_column_key))
+        if not column_cells:
+            return False
+        selected = set(self._selected_cell_keys)
+        if column_cells.issubset(selected):
+            selected.difference_update(column_cells)
+        else:
+            selected.update(column_cells)
+        next_cells = frozenset(selected)
+        if next_cells == self._selected_cell_keys:
+            return False
+        self._selected_cell_keys = next_cells
+        return True
+
+    def _enabled_cell_keys(self) -> tuple[DataGridCellKey, ...]:
+        result: list[DataGridCellKey] = []
+        for row in self._enabled_rows():
+            for column in self._enabled_columns_for_row(row):
+                result.append((row.key, column.key))
+        return tuple(result)
+
+    def _enabled_cell_keys_for_column(self, column_key: str) -> tuple[DataGridCellKey, ...]:
+        if column_key not in self._visible_column_keys():
+            return ()
+        result: list[DataGridCellKey] = []
+        for row in self._enabled_rows():
+            if self._is_enabled_cell(row.key, column_key):
+                result.append((row.key, column_key))
+        return tuple(result)
 
     def _move_active_row(self, delta: int, *, wrap: bool) -> bool | None:
         enabled = self._enabled_row_keys()

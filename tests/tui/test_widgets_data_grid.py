@@ -13,6 +13,8 @@ from loushang.tui import (
     DataGridColumn,
     DataGridFormatResult,
     DataGridRow,
+    DataGridSelect,
+    DataGridSelectionChange,
     DeltaFormatter,
     InputEvent,
     NumberFormatter,
@@ -392,3 +394,124 @@ def test_data_grid_theme_tokens_and_width_constraints_are_applied() -> None:
         "  Skip         0.0",
     )
     assert all(visible_width(line) <= 20 for line in raw)
+
+
+def test_data_grid_activation_returns_callbacks_or_structured_targets() -> None:
+    calls: list[str] = []
+    row_grid = DataGrid(
+        [DataGridColumn("job", "Job")],
+        [
+            DataGridRow("build", {"job": "Build"}, on_select=lambda: calls.append("build")),
+            DataGridRow("deploy", {"job": "Deploy"}),
+        ],
+    )
+    cell_grid = DataGrid(
+        [DataGridColumn("job", "Job"), DataGridColumn("runs", "Runs")],
+        [DataGridRow("build", {"job": "Build", "runs": 12})],
+        active_column_key="runs",
+        cursor_mode="cell",
+    )
+    column_grid = DataGrid(
+        [DataGridColumn("job", "Job"), DataGridColumn("runs", "Runs")],
+        [DataGridRow("build", {"job": "Build", "runs": 12})],
+        active_column_key="runs",
+        cursor_mode="column",
+    )
+    none_grid = DataGrid([DataGridColumn("job", "Job")], [{"job": "Build"}], cursor_mode="none")
+
+    assert row_grid.handle_input(InputEvent(kind="key", key="enter")) is True
+    assert calls == ["build"]
+    assert row_grid.handle_input(InputEvent(kind="key", key="down")) is True
+    assert row_grid.handle_input(InputEvent(kind="key", key="enter")) == DataGridSelect(
+        row_key="deploy",
+        column_key=None,
+        value=None,
+        cursor_mode="row",
+    )
+    assert cell_grid.handle_input(InputEvent(kind="key", key="enter")) == DataGridSelect(
+        row_key="build",
+        column_key="runs",
+        value=12,
+        cursor_mode="cell",
+    )
+    assert column_grid.handle_input(InputEvent(kind="key", key="enter")) == DataGridSelect(
+        row_key=None,
+        column_key="runs",
+        value=None,
+        cursor_mode="column",
+    )
+    assert none_grid.handle_input(InputEvent(kind="key", key="enter")) is None
+
+
+def test_data_grid_single_selection_replaces_row_or_cell_targets() -> None:
+    row_grid = DataGrid(
+        [DataGridColumn("job", "Job")],
+        [DataGridRow("build", {"job": "Build"}), DataGridRow("deploy", {"job": "Deploy"})],
+        selection_mode="single",
+    )
+    cell_grid = DataGrid(
+        [DataGridColumn("job", "Job"), DataGridColumn("runs", "Runs")],
+        [DataGridRow("build", {"job": "Build", "runs": 12})],
+        active_column_key="runs",
+        cursor_mode="cell",
+        selection_mode="single",
+    )
+
+    row_result = row_grid.handle_input(InputEvent(kind="key", key="space"))
+    assert row_result == DataGridSelectionChange(frozenset({"build"}), frozenset())
+    assert row_grid.selected_row_keys == frozenset({"build"})
+    assert row_grid.handle_input(InputEvent(kind="text", text=" ")) is False
+    assert row_grid.handle_input(InputEvent(kind="key", key="down")) is True
+    assert row_grid.handle_input(InputEvent(kind="key", key="space")) == DataGridSelectionChange(
+        frozenset({"deploy"}),
+        frozenset(),
+    )
+
+    cell_result = cell_grid.handle_input(InputEvent(kind="key", key="space"))
+    assert cell_result == DataGridSelectionChange(frozenset(), frozenset({("build", "runs")}))
+    assert cell_grid.selected_cell_keys == frozenset({("build", "runs")})
+
+
+def test_data_grid_multi_selection_and_select_all_skip_disabled_targets() -> None:
+    grid = DataGrid(
+        [DataGridColumn("job", "Job"), DataGridColumn("runs", "Runs")],
+        [
+            DataGridRow("build", {"job": "Build", "runs": 12}),
+            DataGridRow("skip", {"job": "Skip", "runs": 0}, disabled=True),
+            DataGridRow("deploy", {"job": "Deploy", "runs": DataGridCell(3, disabled=True)}),
+            DataGridRow("release", {"job": "Release", "runs": 4}),
+        ],
+        active_column_key="runs",
+        cursor_mode="column",
+        selection_mode="multi",
+    )
+    single_column = DataGrid(
+        [DataGridColumn("job", "Job"), DataGridColumn("runs", "Runs")],
+        [DataGridRow("build", {"job": "Build", "runs": 12})],
+        active_column_key="runs",
+        cursor_mode="column",
+        selection_mode="single",
+    )
+
+    assert single_column.handle_input(InputEvent(kind="key", key="space")) is False
+    result = grid.handle_input(InputEvent(kind="key", key="space"))
+
+    assert result == DataGridSelectionChange(
+        frozenset(),
+        frozenset({("build", "runs"), ("release", "runs")}),
+    )
+    assert grid.selected_cell_keys == frozenset({("build", "runs"), ("release", "runs")})
+
+    row_grid = DataGrid(
+        [DataGridColumn("job", "Job")],
+        [
+            DataGridRow("build", {"job": "Build"}),
+            DataGridRow("skip", {"job": "Skip"}, disabled=True),
+            DataGridRow("deploy", {"job": "Deploy"}),
+        ],
+        selection_mode="multi",
+    )
+    assert row_grid.select_all() is True
+    assert row_grid.selected_row_keys == frozenset({"build", "deploy"})
+    assert row_grid.clear_selection() is True
+    assert row_grid.selected_row_keys == frozenset()
