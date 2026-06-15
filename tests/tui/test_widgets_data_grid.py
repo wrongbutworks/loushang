@@ -1312,6 +1312,7 @@ def test_widgets_datagrid_large_dataset_example_imports() -> None:
     assert callable(build_app)
     assert "Large DataGrid" in lines[0]
     assert any("2,000 rows" in line for line in lines)
+    assert any("Search:" in line for line in lines)
     assert any("Go to page" in line for line in lines)
     assert any("Rows 1-" in line for line in lines)
 
@@ -1356,24 +1357,63 @@ def test_widgets_datagrid_large_dataset_focus_shortcuts_and_input_width() -> Non
 
     assert app.handle_input(InputEvent(kind="text", text="g")) is None
     assert app.focus_region == "grid"
-    assert "  Go to page: [1   ] / 106" in lines[1]
+    total_pages = namespace["_total_pages"](app)
+    assert "  Search: [" in lines[1]
+    assert f"  Go to page: [1   ] / {total_pages}" in lines[2]
     assert "g page" not in lines[-1]
 
     assert app.handle_input(InputEvent(kind="key", key="ctrl_g")) is True
     result = app.render(RenderConstraints(width=100, max_height=24))
     lines = tuple(strip_control_sequences(line.text).rstrip() for line in result.lines)
     assert app.focus_region == "goto"
-    assert lines[1].startswith("> Go to page:")
+    assert lines[2].startswith("> Go to page:")
 
     assert app.handle_input(InputEvent(kind="key", key="tab")) is True
     assert app.focus_region == "grid"
+    assert app.handle_input(InputEvent(kind="key", key="tab")) is True
+    assert app.focus_region == "search"
+    result = app.render(RenderConstraints(width=100, max_height=24))
+    lines = tuple(strip_control_sequences(line.text).rstrip() for line in result.lines)
+    assert lines[1].startswith("> Search:")
+
     assert app.handle_input(InputEvent(kind="key", key="tab")) is True
     assert app.focus_region == "goto"
 
     assert app.handle_input(InputEvent(kind="text", text="106")) is True
     result = app.render(RenderConstraints(width=100, max_height=24))
     lines = tuple(strip_control_sequences(line.text).rstrip() for line in result.lines)
-    assert "> Go to page: [106 ] / 106" in lines[1]
+    assert f"> Go to page: [106 ] / {total_pages}" in lines[2]
+
+
+def test_widgets_datagrid_large_dataset_search_filters_pages() -> None:
+    namespace = runpy.run_path("examples/tui/60_widgets_datagrid_large_dataset.py", run_name="__test__")
+
+    app = namespace["LargeDataGridExampleApp"]()
+    app.render(RenderConstraints(width=110, max_height=24))
+    assert app.handle_input(InputEvent(kind="key", key="tab")) is True
+    assert app.focus_region == "search"
+    assert app.handle_input(InputEvent(kind="text", text="STK199")) is True
+
+    assert app.grid.filtered_row_count < namespace["ROW_COUNT"]
+    assert app.grid.view_row_keys
+    assert app.grid.active_row_key == app.grid.view_row_keys[0]
+
+    lines = plain_lines(app, width=110, height=24)
+    assert any("filtered from 2,000" in line for line in lines)
+
+
+def test_widgets_datagrid_large_dataset_page_uses_filtered_view_keys() -> None:
+    namespace = runpy.run_path("examples/tui/60_widgets_datagrid_large_dataset.py", run_name="__test__")
+
+    app = namespace["LargeDataGridExampleApp"]()
+    app.render(RenderConstraints(width=110, max_height=24))
+    app._apply_search("STK19")
+    app.render(RenderConstraints(width=110, max_height=8))
+    assert app.handle_input(InputEvent(kind="key", key="ctrl+g")) is True
+    assert app.handle_input(InputEvent(kind="text", text="2")) is True
+    assert app.handle_input(InputEvent(kind="key", key="enter")) is True
+
+    assert app.grid.active_row_key in app.grid.view_row_keys
 
 
 def test_widgets_datagrid_adapter_example_column_controls() -> None:
