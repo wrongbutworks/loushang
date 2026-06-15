@@ -29,6 +29,11 @@ from .widgets import CommandPaletteView as CommandPaletteView
 from .widgets import ConfirmDialog as ConfirmDialog
 from .widgets import Dialog as Dialog
 from .widgets import DialogAction as DialogAction
+from .widgets import DirectoryTree as DirectoryTree
+from .widgets import DirectoryTreeEntry as DirectoryTreeEntry
+from .widgets import DirectoryTreeEntryKind as DirectoryTreeEntryKind
+from .widgets import DirectoryTreeRealKind as DirectoryTreeRealKind
+from .widgets import DirectoryTreeSelect as DirectoryTreeSelect
 from .widgets import Form as Form
 from .widgets import FormRow as FormRow
 from .widgets import FormValidationResult as FormValidationResult
@@ -40,6 +45,8 @@ from .widgets import MenuItem as MenuItem
 from .widgets import PageScaffold as PageScaffold
 from .widgets import PageScaffoldContext as PageScaffoldContext
 from .widgets import PageScaffoldFooter as PageScaffoldFooter
+from .widgets import PathFilter as PathFilter
+from .widgets import PathSortKey as PathSortKey
 from .widgets import ProgressBar as ProgressBar
 from .widgets import QuestionDialog as QuestionDialog
 from .widgets import RadioGroup as RadioGroup
@@ -82,6 +89,11 @@ __all__ = [
     "ConfirmDialog",
     "Dialog",
     "DialogAction",
+    "DirectoryTree",
+    "DirectoryTreeEntry",
+    "DirectoryTreeEntryKind",
+    "DirectoryTreeRealKind",
+    "DirectoryTreeSelect",
     "FooterField",
     "FooterStatusLine",
     "FooterView",
@@ -96,6 +108,8 @@ __all__ = [
     "PageScaffold",
     "PageScaffoldContext",
     "PageScaffoldFooter",
+    "PathFilter",
+    "PathSortKey",
     "LOUSHANG_BANNER_LOGO",
     "LOUSHANG_GUANQUE_TOWER_LOGO",
     "LoushangWelcomePanel",
