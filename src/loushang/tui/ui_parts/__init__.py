@@ -26,7 +26,27 @@ from .widgets import ButtonKind as ButtonKind
 from .widgets import Checkbox as Checkbox
 from .widgets import Choice as Choice
 from .widgets import CommandPaletteView as CommandPaletteView
+from .widgets import CompactNumberFormatter as CompactNumberFormatter
 from .widgets import ConfirmDialog as ConfirmDialog
+from .widgets import DataGrid as DataGrid
+from .widgets import DataGridAlign as DataGridAlign
+from .widgets import DataGridCell as DataGridCell
+from .widgets import DataGridCellKey as DataGridCellKey
+from .widgets import DataGridColumn as DataGridColumn
+from .widgets import DataGridCursorMode as DataGridCursorMode
+from .widgets import DataGridEdit as DataGridEdit
+from .widgets import DataGridEnterBehavior as DataGridEnterBehavior
+from .widgets import DataGridFormatResult as DataGridFormatResult
+from .widgets import DataGridFormatter as DataGridFormatter
+from .widgets import DataGridParser as DataGridParser
+from .widgets import DataGridRow as DataGridRow
+from .widgets import DataGridSelect as DataGridSelect
+from .widgets import DataGridSelectionChange as DataGridSelectionChange
+from .widgets import DataGridSelectionMode as DataGridSelectionMode
+from .widgets import DataGridSortDirection as DataGridSortDirection
+from .widgets import DataGridThemeResolver as DataGridThemeResolver
+from .widgets import DataGridValidator as DataGridValidator
+from .widgets import DeltaFormatter as DeltaFormatter
 from .widgets import Dialog as Dialog
 from .widgets import DialogAction as DialogAction
 from .widgets import DirectoryTree as DirectoryTree
@@ -42,11 +62,13 @@ from .widgets import KeyValueItem as KeyValueItem
 from .widgets import KeyValueList as KeyValueList
 from .widgets import Menu as Menu
 from .widgets import MenuItem as MenuItem
+from .widgets import NumberFormatter as NumberFormatter
 from .widgets import PageScaffold as PageScaffold
 from .widgets import PageScaffoldContext as PageScaffoldContext
 from .widgets import PageScaffoldFooter as PageScaffoldFooter
 from .widgets import PathFilter as PathFilter
 from .widgets import PathSortKey as PathSortKey
+from .widgets import PercentFormatter as PercentFormatter
 from .widgets import ProgressBar as ProgressBar
 from .widgets import QuestionDialog as QuestionDialog
 from .widgets import RadioGroup as RadioGroup
@@ -67,6 +89,7 @@ from .widgets import TabPage as TabPage
 from .widgets import Tabs as Tabs
 from .widgets import TextArea as TextArea
 from .widgets import TextField as TextField
+from .widgets import TextFormatter as TextFormatter
 from .widgets import Toast as Toast
 from .widgets import ToastKind as ToastKind
 from .widgets import ToastStack as ToastStack
@@ -85,8 +108,28 @@ __all__ = [
     "Checkbox",
     "Choice",
     "CommandPaletteView",
+    "CompactNumberFormatter",
     "Composer",
     "ConfirmDialog",
+    "DataGrid",
+    "DataGridAlign",
+    "DataGridCell",
+    "DataGridCellKey",
+    "DataGridColumn",
+    "DataGridCursorMode",
+    "DataGridEdit",
+    "DataGridEnterBehavior",
+    "DataGridFormatResult",
+    "DataGridFormatter",
+    "DataGridParser",
+    "DataGridRow",
+    "DataGridSelect",
+    "DataGridSelectionChange",
+    "DataGridSelectionMode",
+    "DataGridSortDirection",
+    "DataGridThemeResolver",
+    "DataGridValidator",
+    "DeltaFormatter",
     "Dialog",
     "DialogAction",
     "DirectoryTree",
@@ -105,11 +148,13 @@ __all__ = [
     "KeyValueList",
     "Menu",
     "MenuItem",
+    "NumberFormatter",
     "PageScaffold",
     "PageScaffoldContext",
     "PageScaffoldFooter",
     "PathFilter",
     "PathSortKey",
+    "PercentFormatter",
     "LOUSHANG_BANNER_LOGO",
     "LOUSHANG_GUANQUE_TOWER_LOGO",
     "LoushangWelcomePanel",
@@ -142,6 +187,7 @@ __all__ = [
     "Tabs",
     "TextArea",
     "TextField",
+    "TextFormatter",
     "TextInput",
     "Toggle",
     "Toolbar",

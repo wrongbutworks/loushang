@@ -70,6 +70,7 @@ spinner = Spinner(label="Syncing", frame=1)
 | Widget | Use it for |
 | --- | --- |
 | `Table` / `TableColumn` / `TableRow` | Dense row/column data with local active-row navigation. |
+| `DataGrid` / `DataGridColumn` / `DataGridRow` | Interactive grids with row, cell, and column cursors, selection, editing, sorting, and mutation. |
 
 `Table` supports fixed and flexible columns, left and right alignment, disabled
 rows, local keyboard navigation, and row activation.
@@ -83,6 +84,30 @@ table = Table(
 )
 table.focus()
 ```
+
+`DataGrid` is the heavier data-control option. Use it when callers need cell
+focus, horizontal viewport behavior, fixed columns, pinned summary rows,
+selection, inline editing, sorting, or live row/cell mutation. `Table` remains
+the smaller row-focused control.
+
+```python
+from loushang.tui import DataGrid, DataGridColumn, DataGridRow, NumberFormatter
+
+grid = DataGrid(
+    [
+        DataGridColumn("job", "Job"),
+        DataGridColumn("runs", "Runs", align="right", formatter=NumberFormatter(precision=0)),
+    ],
+    [DataGridRow("build", {"job": "Build", "runs": 12})],
+    cursor_mode="cell",
+)
+grid.focus()
+```
+
+In `cell` mode, printable text on an editable active cell starts editing.
+During editing, left/right move inside the edit buffer; Enter commits, Escape
+cancels, and Tab commits toward the next editable cell. Edit buffers render
+left-aligned even for right-aligned display columns.
 
 ## P1B Text Controls
 
@@ -332,6 +357,26 @@ where styling is supported. Initial stable tokens are:
 | `widget.table.focus` | Focused active table row. |
 | `widget.table.disabled` | Disabled table rows. |
 | `widget.table.empty` | Table empty-state text. |
+| `widget.dataGrid.header` | DataGrid header rows. |
+| `widget.dataGrid.row` | Enabled inactive DataGrid body rows. |
+| `widget.dataGrid.rowAlternate` | Alternating DataGrid body rows when zebra stripes are enabled. |
+| `widget.dataGrid.focusRow` | Focused active DataGrid row. |
+| `widget.dataGrid.focusCell` | Focused active DataGrid cell. |
+| `widget.dataGrid.editable` | Editable DataGrid cells when not actively editing. |
+| `widget.dataGrid.focusEditable` | Focused editable DataGrid cell before editing starts. |
+| `widget.dataGrid.focusColumn` | Focused active DataGrid column/header. |
+| `widget.dataGrid.selectedRow` | Selected DataGrid rows. |
+| `widget.dataGrid.selectedCell` | Selected DataGrid cells. |
+| `widget.dataGrid.disabled` | Disabled DataGrid rows and cells. |
+| `widget.dataGrid.empty` | DataGrid empty-state text. |
+| `widget.dataGrid.fixedColumn` | DataGrid fixed columns. |
+| `widget.dataGrid.editing` | DataGrid editing cell. |
+| `widget.dataGrid.editError` | DataGrid editing validation errors. |
+| `widget.dataGrid.positive` | Positive numeric or semantic DataGrid values. |
+| `widget.dataGrid.negative` | Negative numeric or semantic DataGrid values. |
+| `widget.dataGrid.neutral` | Neutral DataGrid values. |
+| `widget.dataGrid.warning` | Warning DataGrid states. |
+| `widget.dataGrid.error` | Error DataGrid states. |
 | `widget.tree.row` | Enabled inactive tree rows. |
 | `widget.tree.focus` | Focused active tree row. |
 | `widget.tree.disabled` | Disabled tree rows. |

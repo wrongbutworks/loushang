@@ -69,6 +69,7 @@ spinner = Spinner(label="Syncing", frame=1)
 | 控件 | 用途 |
 | --- | --- |
 | `Table` / `TableColumn` / `TableRow` | 带局部 active-row 导航的密集行列数据。 |
+| `DataGrid` / `DataGridColumn` / `DataGridRow` | 带行、单元格、列光标，以及选择、编辑、排序和突变 API 的交互式表格。 |
 
 `Table` 支持固定和弹性列、左/右对齐、禁用行、局部键盘导航和行激活。
 
@@ -81,6 +82,29 @@ table = Table(
 )
 table.focus()
 ```
+
+`DataGrid` 是更重的 data control。需要单元格焦点、横向 viewport、固定列、
+pinned 汇总行、选择、内联编辑、排序或实时行/单元格突变时使用它；简单 active-row
+列表仍优先用 `Table`。
+
+```python
+from loushang.tui import DataGrid, DataGridColumn, DataGridRow, NumberFormatter
+
+grid = DataGrid(
+    [
+        DataGridColumn("job", "Job"),
+        DataGridColumn("runs", "Runs", align="right", formatter=NumberFormatter(precision=0)),
+    ],
+    [DataGridRow("build", {"job": "Build", "runs": 12})],
+    cursor_mode="cell",
+)
+grid.focus()
+```
+
+在 `cell` 模式下，可编辑 active cell 上的可打印输入会直接进入编辑。
+编辑中左右键只移动编辑缓冲区内的光标；Enter 提交，Escape 取消，Tab
+提交并尝试进入下一个可编辑单元格。即使列的展示态是右对齐，编辑缓冲区
+也会按左对齐渲染。
 
 ## P1B 文本控件
 
@@ -316,6 +340,26 @@ Dialog 会先处理 `escape` 和 `ctrl+c`，再委派给内部字段。body 焦�
 | `widget.table.focus` | 获得焦点的激活 table 行。 |
 | `widget.table.disabled` | 禁用 table 行。 |
 | `widget.table.empty` | table 空状态文本。 |
+| `widget.dataGrid.header` | DataGrid header 行。 |
+| `widget.dataGrid.row` | 可用的非激活 DataGrid body 行。 |
+| `widget.dataGrid.rowAlternate` | zebra stripes 启用时的 DataGrid 交替 body 行。 |
+| `widget.dataGrid.focusRow` | 获得焦点的激活 DataGrid 行。 |
+| `widget.dataGrid.focusCell` | 获得焦点的激活 DataGrid 单元格。 |
+| `widget.dataGrid.editable` | 尚未进入编辑态的可编辑 DataGrid 单元格。 |
+| `widget.dataGrid.focusEditable` | 进入编辑前获得焦点的可编辑 DataGrid 单元格。 |
+| `widget.dataGrid.focusColumn` | 获得焦点的激活 DataGrid 列/header。 |
+| `widget.dataGrid.selectedRow` | 选中的 DataGrid 行。 |
+| `widget.dataGrid.selectedCell` | 选中的 DataGrid 单元格。 |
+| `widget.dataGrid.disabled` | 禁用 DataGrid 行和单元格。 |
+| `widget.dataGrid.empty` | DataGrid 空状态文本。 |
+| `widget.dataGrid.fixedColumn` | DataGrid 固定列。 |
+| `widget.dataGrid.editing` | DataGrid 编辑中的单元格。 |
+| `widget.dataGrid.editError` | DataGrid 编辑校验错误。 |
+| `widget.dataGrid.positive` | 正向数值或语义值。 |
+| `widget.dataGrid.negative` | 负向数值或语义值。 |
+| `widget.dataGrid.neutral` | 中性 DataGrid 值。 |
+| `widget.dataGrid.warning` | DataGrid warning 状态。 |
+| `widget.dataGrid.error` | DataGrid error 状态。 |
 | `widget.tree.row` | 可用的非激活 tree 行。 |
 | `widget.tree.focus` | 获得焦点的激活 tree 行。 |
 | `widget.tree.disabled` | 禁用 tree 行。 |
