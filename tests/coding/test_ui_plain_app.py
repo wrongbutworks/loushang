@@ -3,8 +3,8 @@ from __future__ import annotations
 import asyncio
 
 
-def test_build_coding_tui_app_wires_prompt_handler_without_legacy_status_api() -> None:
-    from loushang.coding.ui.app import build_coding_tui_app
+def test_build_plain_coding_tui_app_wires_prompt_handler_without_legacy_status_api() -> None:
+    from loushang.coding.ui.plain_app import build_plain_coding_tui_app
     from loushang.tui import CompletionItem, CompletionProvider
 
     emitted: list[str] = []
@@ -43,7 +43,7 @@ def test_build_coding_tui_app_wires_prompt_handler_without_legacy_status_api() -
         write()
 
     session = Session()
-    app = build_coding_tui_app(
+    app = build_plain_coding_tui_app(
         runtime=None,
         session=session,
         renderer=Renderer(),
@@ -73,9 +73,9 @@ def test_build_coding_tui_app_wires_prompt_handler_without_legacy_status_api() -
     assert app.completion_provider is completion_provider
 
 
-def test_build_coding_tui_app_wires_model_palette_chooser() -> None:
+def test_build_plain_coding_tui_app_wires_model_palette_chooser() -> None:
     from loushang.coding.types import ModelSelection
-    from loushang.coding.ui.app import build_coding_tui_app
+    from loushang.coding.ui.plain_app import build_plain_coding_tui_app
     from loushang.tui import CommandPalette
 
     emitted: list[str] = []
@@ -124,7 +124,7 @@ def test_build_coding_tui_app_wires_model_palette_chooser() -> None:
         return "openai/gpt-5.4"
 
     session = Session()
-    app = build_coding_tui_app(
+    app = build_plain_coding_tui_app(
         runtime=None,
         session=session,
         renderer=Renderer(),
@@ -150,10 +150,10 @@ def test_build_coding_tui_app_wires_model_palette_chooser() -> None:
     assert seen
 
 
-def test_build_coding_tui_app_wires_command_palette_chooser() -> None:
+def test_build_plain_coding_tui_app_wires_command_palette_chooser() -> None:
     from types import SimpleNamespace
 
-    from loushang.coding.ui.app import build_coding_tui_app
+    from loushang.coding.ui.plain_app import build_plain_coding_tui_app
     from loushang.tui import CommandPalette
 
     emitted: list[str] = []
@@ -187,7 +187,7 @@ def test_build_coding_tui_app_wires_command_palette_chooser() -> None:
         seen.append(palette)
         return "/demo"
 
-    app = build_coding_tui_app(
+    app = build_plain_coding_tui_app(
         runtime=None,
         session=Session(),
         renderer=Renderer(),
@@ -212,8 +212,8 @@ def test_build_coding_tui_app_wires_command_palette_chooser() -> None:
     assert seen and seen[0].title == "Commands"
 
 
-def test_build_coding_tui_app_renders_plain_settings_summary() -> None:
-    from loushang.coding.ui.app import build_coding_tui_app
+def test_build_plain_coding_tui_app_renders_plain_settings_summary() -> None:
+    from loushang.coding.ui.plain_app import build_plain_coding_tui_app
 
     emitted: list[str] = []
 
@@ -241,7 +241,7 @@ def test_build_coding_tui_app_renders_plain_settings_summary() -> None:
         emitted.append(label)
         write()
 
-    app = build_coding_tui_app(
+    app = build_plain_coding_tui_app(
         runtime=None,
         session=Session(),
         renderer=Renderer(),
@@ -265,8 +265,8 @@ def test_build_coding_tui_app_renders_plain_settings_summary() -> None:
     assert not hasattr(app, "status_visible")
 
 
-def test_build_coding_tui_app_wires_info_panel_presenter() -> None:
-    from loushang.coding.ui.app import build_coding_tui_app
+def test_build_plain_coding_tui_app_wires_info_panel_presenter() -> None:
+    from loushang.coding.ui.plain_app import build_plain_coding_tui_app
     from loushang.tui import InfoPanel
 
     emitted: list[str] = []
@@ -300,7 +300,7 @@ def test_build_coding_tui_app_wires_info_panel_presenter() -> None:
         seen.append(panel)
         return True
 
-    app = build_coding_tui_app(
+    app = build_plain_coding_tui_app(
         runtime=None,
         session=Session(),
         renderer=Renderer(),

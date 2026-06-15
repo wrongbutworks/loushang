@@ -56,6 +56,23 @@ else:
     assert result.returncode == 0, result.stderr
 
 
+def test_old_coding_ui_app_module_is_removed() -> None:
+    result = _run_python_import_boundary_check(
+        """
+import importlib
+
+try:
+    importlib.import_module("loushang.coding.ui.app")
+except ModuleNotFoundError:
+    pass
+else:
+    raise AssertionError("loushang.coding.ui.app should be named plain_app")
+"""
+    )
+
+    assert result.returncode == 0, result.stderr
+
+
 def test_coding_ui_does_not_depend_on_legacy_settings_list_primitives() -> None:
     forbidden = (
         "SettingItem",
