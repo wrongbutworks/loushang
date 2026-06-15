@@ -165,7 +165,7 @@ First version:
 
 ```python
 from collections.abc import Callable, Mapping, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from decimal import Decimal
 from typing import Literal
 
@@ -219,7 +219,11 @@ class DataGridCell:
 @dataclass(frozen=True, slots=True)
 class DataGridRow:
     key: str
-    cells: Mapping[str, object | DataGridCell] | Sequence[object | DataGridCell]
+    cells: (
+        Mapping[str, object | DataGridCell]
+        | list[object | DataGridCell]
+        | tuple[object | DataGridCell, ...]
+    )
     label: str | None = None
     disabled: bool = False
     pinned: Literal["top", "bottom"] | None = None
@@ -245,10 +249,10 @@ class DataGridEdit:
     old_value: object | None
     new_value: object
 
-@dataclass(slots=True)
+@dataclass(init=False, slots=True)
 class DataGrid:
     columns: Sequence[DataGridColumn]
-    rows: Sequence[DataGridRow | Mapping[str, object] | Sequence[object]]
+    rows: Sequence[DataGridRow | Mapping[str, object] | list[object] | tuple[object, ...]]
     active_row_key: str | None = None
     active_column_key: str | None = None
     cursor_mode: DataGridCursorMode = "row"
@@ -262,6 +266,10 @@ class DataGrid:
     wrap_columns: bool = False
     theme: ThemeResolver | None = None
     focused: bool = False
+    editing_error: str | None = field(default=None, init=False)
+    sort_state: tuple[str, DataGridSortDirection] | None = field(default=None, init=False)
+    selected_row_keys: frozenset[str] = field(default_factory=frozenset, init=False)
+    selected_cell_keys: frozenset[DataGridCellKey] = field(default_factory=frozenset, init=False)
 ```
 
 `DataGrid.handle_input(event) -> object` follows the existing widget pattern:
@@ -272,6 +280,13 @@ state changes, and editing returns edit-specific results described below.
 `DataGrid` normalizes columns and rows during construction and after mutation.
 Duplicate column keys or row keys raise `ValueError`. Hidden columns stay in
 the data model but do not participate in render or navigation.
+
+`DataGrid` is a mutable, stateful widget. The `dataclass(init=False, slots=True)`
+shape is a local implementation convenience for slots and field declarations,
+matching other complex widgets in this package. The public constructor should
+accept the configuration fields shown above, while runtime state such as
+selection sets, sort state, edit buffers, viewport offsets, and validation
+errors is owned internally and exposed through properties or mutation methods.
 
 Row key normalization:
 
@@ -295,12 +310,18 @@ Row key normalization:
 Cell normalization:
 
 - Mapping rows resolve cells by column key.
-- Sequence rows resolve cells by visible and hidden column order.
+- List and tuple rows resolve cells by visible and hidden column order.
+- `str`, `bytes`, and other arbitrary `Sequence` values are not valid shorthand
+  cell rows; callers should pass a mapping, `list`, `tuple`, or `DataGridRow`.
 - Missing mapping keys and short sequences produce empty string cell values.
 - `DataGridCell` preserves its metadata. Plain cell values are wrapped as
   enabled, column-default-editability cells.
 - Hidden columns still receive normalized cell values so they can later be
   shown or updated.
+
+`DataGridRow.on_select` intentionally returns `object`: row-mode activation
+passes the callback through `callback_result()`, matching existing widget
+patterns and allowing product pages to return their own intents.
 
 Pinned rows:
 
@@ -437,6 +458,8 @@ Row prefix:
 
 - focused active row in row/cell mode uses `"> "`
 - inactive rows use `"  "`
+- column mode does not mark body rows with `"> "`; body rows keep the inactive
+  prefix while the active header column receives column focus styling
 - header reserves the same prefix width
 - when width is too narrow, prefixes truncate rather than overflowing
 
@@ -456,6 +479,9 @@ Column layout:
 - fixed columns keep their relative order
 - horizontal navigation ensures the active column is visible in the scrollable
   viewport
+- horizontal navigation includes fixed and scrollable visible columns; when
+  `wrap_columns=True`, moving right from the last visible column wraps to the
+  first visible column, which may be fixed
 - if fixed columns consume all available width, scrollable columns may be
   fully hidden, but row navigation still works
 
@@ -467,6 +493,8 @@ Width allocation:
 - remaining width is distributed left to right across flexible visible columns
 - if minimum width exceeds available width, shrink from right to left within
   the scrollable window before shrinking fixed columns
+- fixed columns are last to shrink and remain in the fixed region even when
+  narrowed or omitted at zero width
 - cells assigned zero width are omitted
 - all truncation uses visible cell width, not raw string length
 
@@ -548,6 +576,10 @@ Navigation keys:
 | `end` | last enabled row | last enabled cell in row | last enabled column |
 | `pageup` | previous page of rows | previous page of rows | no-op boundary result |
 | `pagedown` | next page of rows | next page of rows | no-op boundary result |
+
+In cell mode, `pageup` and `pagedown` preserve the active column when the
+target row has an enabled cell in that column. If that cell is disabled, active
+state repairs to the nearest enabled cell in the target row.
 
 Return values:
 
@@ -656,7 +688,9 @@ Selection target rules:
 
 - row mode targets the active enabled row
 - cell mode targets the active enabled cell
-- column mode targets all enabled cells in the active visible column
+- column mode has no selection target in single-selection mode
+- column mode targets all enabled cells in the active visible column only in
+  multi-selection mode
 - hidden columns are never selected by `select_all()` or column selection
 - disabled rows and disabled cells are never selected
 - `selection_mode="single"` never selects multiple targets; programmatic
@@ -870,7 +904,7 @@ Sorting is explicit and never occurs during render.
 
 Required API:
 
-- `sort_by(column_key: str, reverse: bool = False) -> bool`
+- `sort_by(column_key: str, direction: DataGridSortDirection = "asc") -> bool`
 - `clear_sort() -> bool`
 - `sort_state: tuple[str, DataGridSortDirection] | None`
 
@@ -901,10 +935,10 @@ interaction model.
 
 Required methods:
 
-- `add_row(row: DataGridRow | Mapping[str, object] | Sequence[object], *, index: int | None = None, activate: bool = False, edit_column_key: str | None = None) -> str`
+- `add_row(row: DataGridRow | Mapping[str, object] | list[object] | tuple[object, ...], *, index: int | None = None, activate: bool = False, edit_column_key: str | None = None) -> str`
 - `remove_row(row_key: str) -> bool`
-- `replace_rows(rows: Sequence[DataGridRow | Mapping[str, object] | Sequence[object]]) -> None`
-- `add_column(column: DataGridColumn, *, index: int | None = None, default: object = "") -> bool`
+- `replace_rows(rows: Sequence[DataGridRow | Mapping[str, object] | list[object] | tuple[object, ...]]) -> None`
+- `add_column(column: DataGridColumn, *, index: int | None = None, default: object | DataGridCell = "") -> bool`
 - `remove_column(column_key: str) -> bool`
 - `update_cell(row_key: str, column_key: str, value: object | DataGridCell) -> bool`
 - `clear() -> None`
@@ -925,6 +959,8 @@ Mutation rules:
   post-sort visible row order to choose the nearest enabled row
 - removing active row/column repairs active state
 - removing selected rows/cells removes them from selection sets
+- removing or hiding a column removes selected cells for that column from
+  `selected_cell_keys`
 - adding rows while a sort is active does not auto-sort; caller can call
   `sort_by()` again
 - mutation during editing cancels editing unless the mutation is the successful
@@ -957,6 +993,10 @@ Non-binding target:
   benchmark gate or external data provider API.
 
 ## Theme Tokens
+
+The token namespace uses the existing multiword widget-token style already used
+by `widget.searchableList`, `widget.directoryTree`, and
+`widget.pageScaffold`.
 
 Base tokens:
 
@@ -1004,25 +1044,45 @@ Later tokens override earlier tokens.
 
 ## Example
 
-Create `examples/tui/58_widgets_datagrid.py`.
+Create `examples/tui/58_widgets_datagrid.py` as the primary manual-validation
+example.
 
-The example should demonstrate:
+The primary example should use a split layout:
 
-- a stock-like watchlist, but named generically enough to show the widget is
-  not stock-specific
-- columns: symbol, price, change, change percent, volume, status
-- right-aligned numeric columns
-- percent and compact-number formatters
-- positive/negative/neutral theme tokens
-- row and cell cursor mode toggling
+- left pane: a selectable scenario list
+- right pane: the active `DataGrid`
+- footer: focus-sensitive key hints
+
+This keeps manual playback compact while showing several data shapes without
+duplicating boilerplate across many files. The scenario list should include at
+least five datasets:
+
+1. Quote/watchlist grid: symbol, price, delta, percent, volume, status;
+   right-aligned numeric columns, positive/negative/neutral tokens, fixed
+   symbol column, sorting, and no sparklines.
+2. Order-entry grid: code, name, quantity, price, amount, pinned total row,
+   `enter_behavior="edit"`, `edit_next_column_key`, default quantity acceptance,
+   and product-side dependent cell updates.
+3. Read-only refreshing jobs grid: stable explicit row keys,
+   `replace_rows()`, disabled rows, status colors, and Enter-to-detail
+   activation.
+4. Usage/model grid: model name, input tokens, output tokens, cost, latency,
+   percent share; compact-number and percent formatters.
+5. Diagnostics/results grid: severity, path/test, duration, message; row labels,
+   horizontal viewport, multi-select, and pinned summary.
+
+The example should also demonstrate:
+
+- row, cell, and column cursor mode toggling
 - multi-select with Space
-- simple editing for a notes/status column
-- sorting by price or percent change
-- fixed symbol column
-- enough rows to show vertical and horizontal viewport behavior
-- footer text with key hints
+- simple editing for an editable notes/status column
+- sorting by at least two columns
+- fixed columns plus horizontal scrolling
+- enough rows to show vertical viewport behavior
 
-The example should not draw sparklines or price charts.
+If implementation complexity makes the split-view example too large, a second
+minimal example may be added for focused API smoke testing, but the split-view
+example remains the required V1 manual validation surface.
 
 ## Testing Obligations
 
@@ -1079,6 +1139,10 @@ Add focused tests for:
 - sort state, stable sort, disabled/hidden/unsortable handling, active/selection
   preservation after sort
 - add/remove/update/clear mutation and active/selection repair
+- split-view example playback switches between at least five DataGrid
+  scenarios
+- example scenarios cover quote/watchlist, order entry with totals, read-only
+  refreshing jobs, usage/model metrics, and diagnostics/results
 - built-in text, number, percent, delta, and compact-number formatters
 - formatter fallback for `None`, `NaN`, and infinity
 - semantic positive/negative/neutral theme tokens
