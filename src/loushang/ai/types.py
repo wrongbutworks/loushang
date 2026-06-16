@@ -194,9 +194,7 @@ class ErrorEvent(TypedDict):
     type: Literal["error"]
     reason: Literal["aborted", "error"]
     error: AssistantMessage
-    code: NotRequired[str]
-    source: NotRequired[str]
-    retryable: NotRequired[bool]
+    code: NotRequired[int]
 
 
 AssistantMessageEvent = (

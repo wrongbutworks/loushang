@@ -269,9 +269,6 @@ class OpenAICompletionsProvider:
                     yield {
                         "type": "response_error",
                         "message": f"inactivity timeout after {inactivity_timeout}s",
-                        "code": "timeout",
-                        "source": self.api,
-                        "retryable": True,
                     }
                     yield {"type": "response_done"}
                     break
@@ -481,9 +478,6 @@ class OpenAICompletionsProvider:
                         yield {
                             "type": "response_error",
                             "message": f"provider finish_reason={finish}",
-                            "code": "provider_error",
-                            "source": self.api,
-                            "retryable": False,
                         }
             # 正常结束：上游结束迭代后，补发 response_done 以关闭装配器
             if active_tool_call_id is not None:
@@ -737,7 +731,9 @@ def _build_messages(
             if getattr(model, "reasoning", False) and supports_developer_role
             else "system"
         )
-        messages_param.append({"role": role, "content": sanitize_surrogates(system_prompt)})
+        messages_param.append(
+            {"role": role, "content": sanitize_surrogates(system_prompt)}
+        )
 
     messages = normalized.get("messages", [])
     last_role: str | None = None

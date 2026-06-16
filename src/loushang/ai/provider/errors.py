@@ -1,13 +1,11 @@
 from __future__ import annotations
 
-from typing import TypedDict
+from typing import NotRequired, TypedDict
 
 
 class ProviderErrorInfo(TypedDict):
     message: str
-    code: str
-    source: str
-    retryable: bool
+    code: NotRequired[int]
 
 
 def map_provider_error(error: Exception) -> str:
@@ -19,32 +17,14 @@ def classify_provider_error(
     *,
     source: str = "provider",
 ) -> ProviderErrorInfo:
-    status_code = getattr(error, "status_code", None) or getattr(error, "status", None)
-    name = type(error).__name__.lower()
-    message = str(error)
-
-    if status_code in {401, 403} or "auth" in name or "permission" in name:
-        code = "auth_error"
-        retryable = False
-    elif status_code == 429 or "rate" in name:
-        code = "rate_limit"
-        retryable = True
-    elif status_code in {408, 504} or "timeout" in name:
-        code = "timeout"
-        retryable = True
-    elif status_code is not None and int(status_code) >= 500:
-        code = "provider_error"
-        retryable = True
-    else:
-        code = "provider_error"
-        retryable = False
-
-    return {
-        "message": message,
-        "code": code,
-        "source": source,
-        "retryable": retryable,
-    }
+    del source
+    info: ProviderErrorInfo = {"message": str(error)}
+    status_code = _http_status_code(getattr(error, "status_code", None))
+    if status_code is None:
+        status_code = _http_status_code(getattr(error, "status", None))
+    if status_code is not None:
+        info["code"] = status_code
+    return info
 
 
 def provider_error_part(
@@ -54,3 +34,23 @@ def provider_error_part(
 ) -> dict[str, object]:
     info = classify_provider_error(error, source=source)
     return {"type": "response_error", **info}
+
+
+def _http_status_code(value: object) -> int | None:
+    if isinstance(value, bool):
+        return None
+    if isinstance(value, int):
+        code = value
+    elif isinstance(value, str) and value.isdecimal():
+        code = int(value)
+    else:
+        return None
+    if is_http_status_code(code):
+        return code
+    return None
+
+
+def is_http_status_code(value: object) -> bool:
+    return (
+        isinstance(value, int) and not isinstance(value, bool) and 100 <= value <= 599
+    )

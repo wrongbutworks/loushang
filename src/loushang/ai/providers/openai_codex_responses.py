@@ -24,7 +24,7 @@ from loushang.ai.model.compat_schema import (
 from loushang.ai.options import PairingMode
 from loushang.ai.provider import resolve_request_for_model
 from loushang.ai.provider.cancellation import is_signal_cancelled
-from loushang.ai.provider.errors import provider_error_part
+from loushang.ai.provider.errors import is_http_status_code, provider_error_part
 from loushang.ai.providers.openai_responses_shared import (
     convert_responses_messages,
     convert_responses_tools,
@@ -205,10 +205,15 @@ class OpenAICodexResponsesProvider:
                         ):
                             await _retry_sleep(attempt, options)
                             continue
-                        raise RuntimeError(
-                            error_text
-                            or f"Codex request failed with status {status_code}"
-                        )
+                        error_part: dict[str, object] = {
+                            "type": "response_error",
+                            "message": error_text
+                            or f"Codex request failed with status {status_code}",
+                        }
+                        if is_http_status_code(status_code):
+                            error_part["code"] = status_code
+                        yield error_part
+                        return
                     async for part in process_responses_stream(
                         _map_codex_events(_parse_sse_lines(response)), options=options
                     ):

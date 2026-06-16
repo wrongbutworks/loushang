@@ -55,6 +55,16 @@ def test_provider_matrix_example_formats_upstream_model_id() -> None:
     assert "upstream=openai/gpt-oss-120b:free" in line
 
 
+def test_provider_matrix_example_formats_all_provider_entries() -> None:
+    module = _load_module(
+        Path("examples/ai/provider_matrix.py"), "examples_ai_provider_matrix_all"
+    )
+
+    lines = [module._format_model_line(example) for example in module.PROVIDER_EXAMPLES]
+
+    assert len(lines) == len(module.PROVIDER_EXAMPLES)
+
+
 def test_complete_example_builds_expected_context() -> None:
     module = _load_module(Path("examples/ai/complete.py"), "examples_ai_complete")
 
@@ -82,3 +92,35 @@ def test_typed_context_example_uses_public_types() -> None:
     assert context.messages[0].role == "user"
     assert context.tools is not None
     assert context.tools[0].name == "add"
+
+
+def test_usage_online_example_defaults_to_moonshot_public_route(monkeypatch) -> None:
+    module = _load_module(Path("examples/ai/usage_online.py"), "examples_ai_usage_online")
+
+    monkeypatch.setattr(sys, "argv", ["usage_online.py"])
+
+    assert module.parse_args().route == "moonshot-openai"
+
+
+def test_usage_online_kimi_code_routes_require_kimi_credentials() -> None:
+    module = _load_module(
+        Path("examples/ai/usage_online.py"), "examples_ai_usage_online_routes"
+    )
+
+    assert module.ROUTES["kimi-code-anthropic"].api_key_envs == (
+        "KIMI_API_KEY",
+        "KIMI_AUTH_TOKEN",
+    )
+    assert module.ROUTES["kimi-code-openai"].api_key_envs == (
+        "KIMI_API_KEY",
+        "KIMI_AUTH_TOKEN",
+    )
+
+
+def test_usage_online_routes_exist_in_model_catalog() -> None:
+    module = _load_module(
+        Path("examples/ai/usage_online.py"), "examples_ai_usage_online_catalog"
+    )
+
+    for route in module.ROUTES.values():
+        module.get_model(route.provider, route.endpoint, route.model)

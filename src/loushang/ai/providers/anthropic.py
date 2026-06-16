@@ -44,9 +44,7 @@ def _build_anthropic_message_payloads(
         system_param = [{"type": "text", "text": sanitize_surrogates(system_prompt)}]
     for msg in normalized.get("messages", []):
         role = (
-            getattr(msg, "role", None)
-            if not isinstance(msg, dict)
-            else msg.get("role")
+            getattr(msg, "role", None) if not isinstance(msg, dict) else msg.get("role")
         )
         if role == "user":
             content = (
@@ -143,7 +141,9 @@ def _build_anthropic_message_payloads(
                                 }
                             )
                         continue
-                    payload = AnthropicProviderBase.assistant_block_to_anthropic_payload(p)
+                    payload = (
+                        AnthropicProviderBase.assistant_block_to_anthropic_payload(p)
+                    )
                     if payload is not None:
                         if is_oauth_token and payload.get("type") == "tool_use":
                             payload = {
@@ -777,7 +777,9 @@ class AnthropicProvider(AnthropicProviderBase):
                         if active_tool_block:
                             snapshot = getattr(event, "snapshot", None)
                             if snapshot is not None:
-                                active_tool_last_snapshot = _summarize_tool_snapshot(snapshot)
+                                active_tool_last_snapshot = _summarize_tool_snapshot(
+                                    snapshot
+                                )
                         if (
                             delta is not None
                             and getattr(delta, "type", None) == "text_delta"
@@ -815,7 +817,10 @@ class AnthropicProvider(AnthropicProviderBase):
                                 if not active_tool_args_from_start:
                                     active_tool_args_source = "input_json_delta"
                                     active_tool_arg_chunks.append(partial)
-                                    yield {"type": "tool_call_args_delta", "delta": partial}
+                                    yield {
+                                        "type": "tool_call_args_delta",
+                                        "delta": partial,
+                                    }
                         elif active_tool_block and delta is not None:
                             active_tool_last_delta = _summarize_tool_delta(delta)
                         continue
@@ -858,9 +863,6 @@ class AnthropicProvider(AnthropicProviderBase):
                                 yield {
                                     "type": "response_error",
                                     "message": f"provider stop_reason={stop_reason}",
-                                    "code": "provider_error",
-                                    "source": self.api,
-                                    "retryable": False,
                                 }
                         usage = getattr(event, "usage", None)
                         if usage:
@@ -892,9 +894,6 @@ class AnthropicProvider(AnthropicProviderBase):
                         yield {
                             "type": "response_error",
                             "message": msg or "Unknown error",
-                            "code": "provider_error",
-                            "source": self.api,
-                            "retryable": False,
                         }
         except Exception as e:
             _debug("stream_iter_error", {"message": str(e)})

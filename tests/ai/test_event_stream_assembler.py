@@ -166,7 +166,7 @@ def test_event_stream_result_preserves_producer_exception() -> None:
         raise AssertionError("expected producer exception")
 
 
-def test_raw_assembler_preserves_typed_error_fields() -> None:
+def test_raw_assembler_preserves_http_error_code() -> None:
     stream = AssistantMessageEventStream()
     assembler = RawAssembler(
         stream=stream,
@@ -179,26 +179,57 @@ def test_raw_assembler_preserves_typed_error_fields() -> None:
         {
             "type": "response_error",
             "message": "rate limited",
-            "code": "rate_limit",
-            "source": "openai-responses",
-            "retryable": True,
+            "code": 429,
         }
     )
 
     events = asyncio.run(_collect_events(stream))
 
     assert events[-1]["type"] == "error"
-    assert events[-1]["code"] == "rate_limit"
-    assert events[-1]["source"] == "openai-responses"
-    assert events[-1]["retryable"] is True
+    assert events[-1]["code"] == 429
+    assert "source" not in events[-1]
+    assert "retryable" not in events[-1]
+
+
+def test_raw_assembler_omits_non_http_error_code() -> None:
+    stream = AssistantMessageEventStream()
+    assembler = RawAssembler(
+        stream=stream,
+        api="openai-responses",
+        provider="openai",
+        model="gpt-test",
+    )
+
+    assembler.feed(
+        {
+            "type": "response_error",
+            "message": "rate limited",
+            "code": "rate_limit",  # type: ignore[typeddict-item]
+        }
+    )
+
+    events = asyncio.run(_collect_events(stream))
+
+    assert events[-1]["type"] == "error"
+    assert "code" not in events[-1]
 
 
 def test_raw_assembler_derives_total_tokens_when_provider_omits_total() -> None:
     stream = AssistantMessageEventStream()
-    assembler = RawAssembler(stream=stream, api="test", provider="test", model="test-model")
+    assembler = RawAssembler(
+        stream=stream, api="test", provider="test", model="test-model"
+    )
 
     assembler.feed({"type": "response_start", "response_id": "resp-1"})
-    assembler.feed({"type": "usage_delta", "input": 10, "output": 4, "cache_read": 3, "cache_write": 2})
+    assembler.feed(
+        {
+            "type": "usage_delta",
+            "input": 10,
+            "output": 4,
+            "cache_read": 3,
+            "cache_write": 2,
+        }
+    )
     assembler.feed({"type": "response_done"})
 
     message = asyncio.run(stream.result())
@@ -210,12 +241,18 @@ def test_raw_assembler_derives_total_tokens_when_provider_omits_total() -> None:
     assert message.usage.total_tokens == 19
 
 
-def test_raw_assembler_recomputes_total_tokens_for_incremental_usage_without_total() -> None:
+def test_raw_assembler_recomputes_total_tokens_for_incremental_usage_without_total() -> (
+    None
+):
     stream = AssistantMessageEventStream()
-    assembler = RawAssembler(stream=stream, api="test", provider="test", model="test-model")
+    assembler = RawAssembler(
+        stream=stream, api="test", provider="test", model="test-model"
+    )
 
     assembler.feed({"type": "response_start", "response_id": "resp-1"})
-    assembler.feed({"type": "usage_delta", "input": 10, "output": 1, "total_tokens": 11})
+    assembler.feed(
+        {"type": "usage_delta", "input": 10, "output": 1, "total_tokens": 11}
+    )
     assembler.feed({"type": "usage_delta", "output": 4})
     assembler.feed({"type": "response_done"})
 
@@ -228,10 +265,14 @@ def test_raw_assembler_recomputes_total_tokens_for_incremental_usage_without_tot
 
 def test_raw_assembler_preserves_provider_total_tokens_when_present() -> None:
     stream = AssistantMessageEventStream()
-    assembler = RawAssembler(stream=stream, api="test", provider="test", model="test-model")
+    assembler = RawAssembler(
+        stream=stream, api="test", provider="test", model="test-model"
+    )
 
     assembler.feed({"type": "response_start", "response_id": "resp-1"})
-    assembler.feed({"type": "usage_delta", "input": 10, "output": 4, "total_tokens": 42})
+    assembler.feed(
+        {"type": "usage_delta", "input": 10, "output": 4, "total_tokens": 42}
+    )
     assembler.feed({"type": "response_done"})
 
     message = asyncio.run(stream.result())
@@ -241,10 +282,20 @@ def test_raw_assembler_preserves_provider_total_tokens_when_present() -> None:
 
 def test_raw_assembler_never_reports_total_below_usage_components() -> None:
     stream = AssistantMessageEventStream()
-    assembler = RawAssembler(stream=stream, api="test", provider="test", model="test-model")
+    assembler = RawAssembler(
+        stream=stream, api="test", provider="test", model="test-model"
+    )
 
     assembler.feed({"type": "response_start", "response_id": "resp-1"})
-    assembler.feed({"type": "usage_delta", "input": 0, "output": 7, "cache_read": 36, "total_tokens": 7})
+    assembler.feed(
+        {
+            "type": "usage_delta",
+            "input": 0,
+            "output": 7,
+            "cache_read": 36,
+            "total_tokens": 7,
+        }
+    )
     assembler.feed({"type": "response_done"})
 
     message = asyncio.run(stream.result())
