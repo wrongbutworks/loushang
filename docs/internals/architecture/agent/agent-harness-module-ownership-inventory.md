@@ -75,19 +75,9 @@ resource-loader / product-adapter cleanup.
 | `agent/agent.py` | Stateful `Agent` facade, queues, active run lifecycle, subscriptions | Keep | Keep lifecycle here; call the low-level loop directly. Do not route `Agent` through harness. |
 | `agent/proxy.py` | Proxy stream adapter | Keep | No boundary change. |
 | `agent/__init__.py` | Stable public exports | Keep | Do not re-export harness API. |
-| `agent/harness/*` | Deprecated compatibility modules | Transitional compatibility | Re-export `loushang.harness` only. New code must import `loushang.harness`. |
 
-Compatibility modules:
-
-```text
-src/loushang/agent/harness/__init__.py
-src/loushang/agent/harness/types.py
-src/loushang/agent/harness/runner.py
-```
-
-`src/loushang/agent/harness` / `loushang.agent.harness` is a deprecated
-temporary compatibility re-export. New code should import from
-`loushang.harness`.
+The former `src/loushang/agent/harness` / `loushang.agent.harness`
+compatibility path has been removed. Code should import from `loushang.harness`.
 
 ## `loushang.harness`
 
@@ -246,7 +236,8 @@ These names are intentionally excluded from `loushang.harness`:
 
 ## Current Follow-up Sequence
 
-1. Completed: add thin `loushang.harness` facade and compatibility tests.
+1. Completed: add thin `loushang.harness` facade and remove the temporary
+   `loushang.agent.harness` compatibility path.
 2. Completed: add `loushang.work.ArtifactRef`.
 3. Completed: move coding runtime imports to the `loushang.coding.work_shell` adapter.
 4. Completed: keep `Agent` prompt and continuation execution on the low-level loop while preserving the stateful lifecycle.

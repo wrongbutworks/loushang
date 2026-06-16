@@ -45,9 +45,8 @@ prepared-run contract, not a second `HarnessRunSpec` layer. `loushang.harness`
 depends on `loushang.agent`; `loushang.agent` must not depend on
 `loushang.harness`.
 
-`src/loushang/agent/harness` / `loushang.agent.harness` is a deprecated
-temporary compatibility re-export. New code should import from
-`loushang.harness`.
+The former `src/loushang/agent/harness` / `loushang.agent.harness`
+compatibility path has been removed. Code should import from `loushang.harness`.
 
 See [ARD-001: Agent Harness and Product Adapter Boundaries](ARD-001-agent-harness-and-product-adapters.md).
 The current module ownership inventory is

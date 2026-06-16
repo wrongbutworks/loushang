@@ -70,9 +70,9 @@ second `HarnessRunSpec` layer. They are the single prepared-run contract.
 `run_agent()` must reuse the existing low-level loop instead of implementing a
 second loop.
 
-Compatibility note: `src/loushang/agent/harness` /
-`loushang.agent.harness` is a deprecated temporary re-export of
-`loushang.harness`. New code should import from `loushang.harness`.
+Removal note: the former `src/loushang/agent/harness` /
+`loushang.agent.harness` compatibility path has been removed. Code should
+import from `loushang.harness`.
 
 ### 3. Treat coding, research, ppt, and cowork as product adapters
 

@@ -100,10 +100,9 @@ agent 运行内核。
 `loushang.harness` 位于 low-level agent loop 之上，依赖 `loushang.agent` 并
 复用现有 loop，不另写第二套 loop。`loushang.agent` 不依赖
 `loushang.harness`。`AgentRunSpec`、`AgentRunResult` 和 `run_agent()` 是唯一
-prepared-run contract，不引入第二套 `HarnessRunSpec`。
-`src/loushang/agent/harness` / `loushang.agent.harness` 只是 deprecated
-temporary compatibility re-export；new code should import from
-`loushang.harness`。详见
+prepared-run contract，不引入第二套 `HarnessRunSpec`。原
+`src/loushang/agent/harness` / `loushang.agent.harness` compatibility path 已删除；
+新代码应从 `loushang.harness` import。详见
 [Agent Harness and Product Adapter Boundaries](./agent/ARD-001-agent-harness-and-product-adapters.md)。
 
 ### loushang-channel (target)
