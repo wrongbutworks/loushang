@@ -11,6 +11,7 @@
 
 - `loushang.ai`
 - `loushang.agent`
+- `loushang.harness`
 - `loushang.coding`
 - `loushang.method`
 - `loushang.tui`
@@ -68,18 +69,41 @@ agent 运行内核。
 - `AgentTool`
 - `AgentContext`
 - `AgentState`
-- `agent.harness` headless 执行脚手架
 
 不负责：
 
 - provider 接入细节
+- prepared agent run contract
 - UI 渲染
 - 跨边界 transport
 - coding / research / ppt / cowork 产品语义
 - work / method 投影语义
 
-`agent.harness` 的职责是承载跨产品的 headless agent run 编排。它位于
-low-level agent loop 之上，复用现有 loop，不另写第二套 loop。详见
+### loushang-harness
+
+跨产品的 prepared agent run contract。
+
+负责：
+
+- `AgentRunSpec`
+- `AgentRunResult`
+- `run_agent()`
+- headless agent run 编排
+
+不负责：
+
+- `Agent` 生命周期
+- low-level agent loop ownership
+- coding / research / ppt / cowork 产品语义
+- work / method 投影语义
+
+`loushang.harness` 位于 low-level agent loop 之上，依赖 `loushang.agent` 并
+复用现有 loop，不另写第二套 loop。`loushang.agent` 不依赖
+`loushang.harness`。`AgentRunSpec`、`AgentRunResult` 和 `run_agent()` 是唯一
+prepared-run contract，不引入第二套 `HarnessRunSpec`。
+`src/loushang/agent/harness` / `loushang.agent.harness` 只是 deprecated
+temporary compatibility re-export；new code should import from
+`loushang.harness`。详见
 [Agent Harness and Product Adapter Boundaries](./agent/ARD-001-agent-harness-and-product-adapters.md)。
 
 ### loushang-channel (target)
@@ -160,7 +184,7 @@ host 装配，不由 channel core 直接 import。
 - 普通产品 turn 的强制执行路径
 
 `method` 是可选的结构化工作组织层。产品线可以在 plan / guided / staged
-workflows 中使用 `method`，但轻量 turn 可以直接使用 `agent.harness` 和
+workflows 中使用 `method`，但轻量 turn 可以直接使用 `loushang.harness` 和
 `work`。
 
 ### loushang-work
@@ -222,7 +246,7 @@ Artifact 分层规则：
 - 通用边界协议定义
 - 通用 terminal UI primitives
 
-`coding` 可以直接依赖 `agent.harness` 和 `work` 处理普通 coding turn；只有
+`coding` 可以直接依赖 `loushang.harness` 和 `work` 处理普通 coding turn；只有
 结构化 / guided 工作需要通过 `method`。
 
 ## Layer Relationship
@@ -247,7 +271,9 @@ loushang.coding.ui -> loushang.tui
 ```text
 loushang.ai
   <- loushang.agent
-  <- loushang.agent.harness
+
+loushang.agent
+  <- loushang.harness
   <- loushang.coding / loushang.research / loushang.ppt / loushang.cowork
 ```
 
@@ -272,7 +298,7 @@ external host/client -> loushang.channel -> loushang.work -> domain app
 
 - `ai` 提供模型接入能力
 - `agent` 提供运行语义
-- `agent.harness` 提供跨产品 headless 执行脚手架
+- `harness` 提供跨产品 prepared-run contract
 - `channel` 提供目标边界通信，当前未作为源码包落地
 - `tui` 提供通用终端交互原语
 - `method` 提供可选的方法组织与 plan/projection
@@ -296,8 +322,8 @@ agent -> ai
 product packages -> ai
   # only for product-level helper AI calls
 
-agent.harness -> agent
-product packages -> agent.harness
+harness -> agent
+product packages -> harness
 product packages -> agent
   # only through stable agent primitives when bypassing harness is justified
 
@@ -334,7 +360,7 @@ TUI / WebUI / AppUI / SDK / RPC client
   -> channel server / host assembly
   -> WorkOperation / WorkEvent
   -> product adapter
-  -> agent.harness
+  -> harness
 ```
 
 The channel core transports and replays work operations/events. It does not

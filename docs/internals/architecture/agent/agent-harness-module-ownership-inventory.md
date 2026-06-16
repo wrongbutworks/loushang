@@ -2,18 +2,18 @@
 
 ## Status
 
-Planning inventory for P1 of
+Ownership inventory for
 [ARD-001: Agent Harness and Product Adapter Boundaries](ARD-001-agent-harness-and-product-adapters.md).
 
-This document records current module ownership before adding
-`loushang.agent.harness`. It is intentionally an inventory, not an implementation
-plan.
+This document records module ownership for the prepared agent run contract. It is
+intentionally an inventory, not an implementation plan.
 
 ## Scope
 
 Covered packages:
 
 - `loushang.agent`
+- `loushang.harness`
 - `loushang.coding`
 - `loushang.work`
 - `loushang.method`
@@ -31,13 +31,13 @@ Out of scope:
 | Category | Meaning |
 | --- | --- |
 | Keep | Current package is the right owner. |
-| Harness input | Existing object should be consumed by `agent.harness` without moving it. |
-| Harness candidate | Future harness code should live here, usually as a thin facade. |
+| Harness input | Existing object should be consumed by `loushang.harness` without moving it. |
+| Harness owner | Prepared-run code lives in `loushang.harness`, usually as a thin facade. |
 | Product adapter | Product-specific assembly; keep out of `agent` and `work` primitives. |
 | Work primitive | Cross-product work event/log/projection ownership. |
 | Method primitive | Cross-product structured-work ownership. |
 | Transitional coupling | Current dependency or location is accepted for now, but should not expand. |
-| Do not move | Explicitly excluded from `agent.harness` migration. |
+| Do not move | Explicitly excluded from harness migration. |
 
 ## Current Dependency Observations
 
@@ -62,22 +62,22 @@ loushang.work.coding.CodingWorkShell remains as an explicit compatibility module
 loushang.work no longer re-exports CodingWorkShell from the package root.
 ```
 
-These couplings do not block P2 harness work because `agent.harness` must not
+These couplings do not block harness work because `loushang.harness` must not
 depend on `method`, `work`, or `coding`. They should be isolated in later
 resource-loader / product-adapter cleanup.
 
 ## `loushang.agent`
 
-| Module | Current responsibility | Ownership | P2 action |
+| Module | Current responsibility | Ownership | Boundary action |
 | --- | --- | --- | --- |
-| `agent/types.py` | Agent messages, tool protocols, loop config, event types, state types | Keep / Harness input | Reuse types from harness. Do not move. |
+| `agent/types.py` | Agent messages, tool protocols, loop config, event types, state types | Keep / Harness input | Consumed by `loushang.harness`; do not move. |
 | `agent/agent_loop.py` | Low-level run loop, event emission, model stream and tool execution orchestration | Keep / Harness input | `run_agent()` should call existing loop functions. Do not duplicate the loop. |
-| `agent/agent.py` | Stateful `Agent` facade, queues, active run lifecycle, subscriptions | Keep / Harness host | Keep lifecycle here; delegate prompt and continuation loop execution through `agent.harness`. |
-| `agent/proxy.py` | Proxy stream adapter | Keep | No P2 change. |
-| `agent/__init__.py` | Stable public exports | Keep | Do not re-export harness API in P2. |
-| `agent/harness/*` | Headless run scaffolding for product adapters | Harness candidate | Add in P2 as a thin facade only. |
+| `agent/agent.py` | Stateful `Agent` facade, queues, active run lifecycle, subscriptions | Keep | Keep lifecycle here; call the low-level loop directly. Do not route `Agent` through harness. |
+| `agent/proxy.py` | Proxy stream adapter | Keep | No boundary change. |
+| `agent/__init__.py` | Stable public exports | Keep | Do not re-export harness API. |
+| `agent/harness/*` | Deprecated compatibility modules | Transitional compatibility | Re-export `loushang.harness` only. New code must import `loushang.harness`. |
 
-P2 allowed additions:
+Compatibility modules:
 
 ```text
 src/loushang/agent/harness/__init__.py
@@ -85,7 +85,20 @@ src/loushang/agent/harness/types.py
 src/loushang/agent/harness/runner.py
 ```
 
-P2 harness must not import:
+`src/loushang/agent/harness` / `loushang.agent.harness` is a deprecated
+temporary compatibility re-export. New code should import from
+`loushang.harness`.
+
+## `loushang.harness`
+
+`loushang.harness` owns the prepared agent run contract. It depends on
+`loushang.agent`; `loushang.agent` must not depend on `loushang.harness`.
+
+| Module | Current responsibility | Ownership | Boundary action |
+| --- | --- | --- | --- |
+| `src/loushang/harness/*` | Prepared agent run contract for product adapters | Harness owner | Own `AgentRunSpec`, `AgentRunResult`, and `run_agent()`. Reuse `loushang.agent` primitives; do not import product packages. |
+
+`loushang.harness` must not import:
 
 ```text
 loushang.coding
@@ -99,11 +112,11 @@ loushang.tui
 `loushang.coding` remains the coding product adapter. Most modules are explicitly
 not harness candidates.
 
-| Component | Current responsibility | Ownership | P2 action |
+| Component | Current responsibility | Ownership | Boundary action |
 | --- | --- | --- | --- |
 | `bootstrap` | Default product assembly | Product adapter | Do not move. Later may call harness. |
 | `cli` / `sdk_surface` / `mode` | Product entry points and I/O modes | Product adapter | Do not move. |
-| `runtime` | Current coding session lifecycle host | Product adapter | Do not move in P2. Later may use harness internally. |
+| `runtime` | Current coding session lifecycle host | Product adapter | Do not move. Later may use harness internally. |
 | `session` | Single coding session facade and controllers | Product adapter | Do not move. |
 | `store` | Coding transcript/session persistence | Product adapter | Do not move. |
 | `message` | Coding session entries, custom messages, JSONL transforms | Product adapter | Do not move. Agent message primitives already live in `agent`. |
@@ -114,7 +127,7 @@ not harness candidates.
 | `prompt` | Coding prompt assembly, preflight, templates | Product adapter | Do not move. |
 | `loader` / `resources` / `skill` | Coding resource discovery and injection | Product adapter | Do not move. May later split shared resource loader if method needs it. |
 | `package` / `plugin` | Coding package/plugin lifecycle and materialization | Product adapter | Do not move. |
-| `extensions` | Coding extension API, runner, policy, contributions | Product adapter | Do not move to agent in P2. |
+| `extensions` | Coding extension API, runner, policy, contributions | Product adapter | Do not move to agent. |
 | `domain` | Method-to-coding prepared turn bridge | Product adapter | Keep as product bridge. |
 | `control` | Settings, model controls, auth integration | Product adapter | Do not move. |
 | `compaction` | Coding transcript compaction and summaries | Product adapter | Do not move. |
@@ -123,7 +136,7 @@ not harness candidates.
 | `workflow` | Prompt workflow loader/runner | Product adapter | Do not move. |
 | `ui` | Coding TUI adapter and playback scenarios | Product adapter | Do not move to `agent` or `tui`. |
 
-Explicit non-goals for P2:
+Explicit non-goals:
 
 - no migration of read / ls / find / grep / bash / edit / write tools
 - no migration of slash commands
@@ -175,9 +188,9 @@ Known method cleanup candidates:
 - keep method expected artifacts as method metadata; do not record actual
   artifact refs in `method`
 
-## P2 Harness Inputs
+## Harness Inputs
 
-The P2 harness can be built from existing agent primitives:
+The harness is built from existing agent primitives:
 
 | Needed by harness | Existing source |
 | --- | --- |
@@ -190,17 +203,20 @@ The P2 harness can be built from existing agent primitives:
 | cancellation | existing `signal` argument / abort signal shape |
 | custom stream function | existing `StreamFn` |
 
-The P2 `AgentRunSpec` should mostly package these existing inputs. It should not
+`AgentRunSpec` should mostly package these existing inputs. It should not
 invent product concepts such as session ids, work run ids, command names, or UI
 surfaces.
 
-The P2 `AgentRunResult` should return agent-level facts only:
+`AgentRunResult` should return agent-level facts only:
 
 - status / stop reason
 - new messages
 - collected agent events
 - error, if any
 - usage if already available from emitted agent events
+
+`AgentRunSpec`, `AgentRunResult`, and `run_agent()` are the single prepared-run
+contract. Do not add a second `HarnessRunSpec` or duplicate result layer.
 
 Work projection remains a product or work-layer concern:
 
@@ -210,7 +226,7 @@ AgentRunResult -> product adapter -> WorkEvent
 
 ## Do Not Move List
 
-These names are intentionally excluded from `loushang.agent.harness`:
+These names are intentionally excluded from `loushang.harness`:
 
 - `AgentSession`
 - `AgentSessionRuntime`
@@ -230,10 +246,10 @@ These names are intentionally excluded from `loushang.agent.harness`:
 
 ## Current Follow-up Sequence
 
-1. Completed: add thin `loushang.agent.harness` facade and tests.
+1. Completed: add thin `loushang.harness` facade and compatibility tests.
 2. Completed: add `loushang.work.ArtifactRef`.
 3. Completed: move coding runtime imports to the `loushang.coding.work_shell` adapter.
-4. Completed: route `Agent` prompt and continuation execution through `agent.harness` while preserving the stateful lifecycle.
+4. Completed: keep `Agent` prompt and continuation execution on the low-level loop while preserving the stateful lifecycle.
 5. Completed: isolate method resource loading from `loushang.coding.loader`.
 6. Completed: move `CodingWorkShell` implementation ownership to `loushang.coding.work_shell`.
 7. Completed: add architecture import boundary tests for agent, harness, work, method, and channel.

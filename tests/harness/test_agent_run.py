@@ -1,8 +1,13 @@
+from __future__ import annotations
+
 import asyncio
+from collections.abc import Awaitable, Callable
+from typing import get_type_hints
 
 from loushang.ai.event_stream.stream import AssistantMessageEventStream
 from loushang.ai.model import Capabilities, Model
 from loushang.ai.types import AssistantMessage, TextPart, Usage, UserMessage
+from loushang.harness import AgentRunResult, AgentRunSpec, run_agent
 
 
 def _model() -> Model:
@@ -50,8 +55,22 @@ def _stream_with_final_message(message: AssistantMessage) -> AssistantMessageEve
     stream = AssistantMessageEventStream()
     stream.push({"type": "start", "partial": message})
     stream.push({"type": "text_start", "content_index": 0, "partial": message})
-    stream.push({"type": "text_delta", "content_index": 0, "delta": message.content[0].text, "partial": message})
-    stream.push({"type": "text_end", "content_index": 0, "content": message.content[0].text, "partial": message})
+    stream.push(
+        {
+            "type": "text_delta",
+            "content_index": 0,
+            "delta": message.content[0].text,
+            "partial": message,
+        }
+    )
+    stream.push(
+        {
+            "type": "text_end",
+            "content_index": 0,
+            "content": message.content[0].text,
+            "partial": message,
+        }
+    )
     stream.push({"type": "done", "reason": message.stop_reason, "message": message})  # type: ignore[typeddict-item]
     return stream
 
@@ -70,13 +89,37 @@ def _config():
     )
 
 
+def test_agent_run_type_hints_resolve_for_runtime_introspection() -> None:
+    from loushang.agent.types import (
+        AgentContext,
+        AgentEvent,
+        AgentLoopConfig,
+        AgentMessage,
+        StreamFn,
+    )
+
+    spec_hints = get_type_hints(AgentRunSpec)
+    result_hints = get_type_hints(AgentRunResult)
+
+    assert spec_hints["context"] is AgentContext
+    assert spec_hints["config"] is AgentLoopConfig
+    assert spec_hints["prompts"] == tuple[AgentMessage, ...]
+    assert spec_hints["stream_fn"] == StreamFn | None
+    assert spec_hints["event_sink"] == (
+        Callable[[AgentEvent], Awaitable[None] | None] | None
+    )
+    assert result_hints["new_messages"] == tuple[AgentMessage, ...]
+    assert result_hints["events"] == tuple[AgentEvent, ...]
+
+
 def test_run_agent_collects_events_and_new_messages_for_prompt_run() -> None:
-    from loushang.agent.harness import AgentRunSpec, run_agent
     from loushang.agent.types import AgentContext
 
     async def stream_fn(model, context, options=None):
         assert context.system_prompt == "system"
-        assert [getattr(message, "role", None) for message in context.messages] == ["user"]
+        assert [getattr(message, "role", None) for message in context.messages] == [
+            "user"
+        ]
         return _stream_with_final_message(_assistant_text_message("hello"))
 
     prompt = UserMessage(role="user", content="hi", timestamp=0.0)
@@ -105,12 +148,14 @@ def test_run_agent_collects_events_and_new_messages_for_prompt_run() -> None:
         "turn_end",
         "agent_end",
     ]
-    assert [getattr(message, "role", None) for message in result.new_messages] == ["user", "assistant"]
+    assert [getattr(message, "role", None) for message in result.new_messages] == [
+        "user",
+        "assistant",
+    ]
     assert result.new_messages[-1].content[0].text == "hello"
 
 
 def test_run_agent_forwards_events_to_external_sink() -> None:
-    from loushang.agent.harness import AgentRunSpec, run_agent
     from loushang.agent.types import AgentContext
 
     forwarded_events: list[str] = []
@@ -137,11 +182,12 @@ def test_run_agent_forwards_events_to_external_sink() -> None:
 
 
 def test_run_agent_can_continue_from_existing_context() -> None:
-    from loushang.agent.harness import AgentRunSpec, run_agent
     from loushang.agent.types import AgentContext
 
     async def stream_fn(model, context, options=None):
-        assert [getattr(message, "role", None) for message in context.messages] == ["user"]
+        assert [getattr(message, "role", None) for message in context.messages] == [
+            "user"
+        ]
         return _stream_with_final_message(_assistant_text_message("continued"))
 
     context = AgentContext(
@@ -158,12 +204,13 @@ def test_run_agent_can_continue_from_existing_context() -> None:
     result = asyncio.run(run_agent(spec))
 
     assert result.status == "completed"
-    assert [getattr(message, "role", None) for message in result.new_messages] == ["assistant"]
+    assert [getattr(message, "role", None) for message in result.new_messages] == [
+        "assistant"
+    ]
     assert result.new_messages[-1].content[0].text == "continued"
 
 
 def test_run_agent_returns_failed_result_when_loop_raises() -> None:
-    from loushang.agent.harness import AgentRunSpec, run_agent
     from loushang.agent.types import AgentContext
 
     async def stream_fn(model, context, options=None):

@@ -47,15 +47,16 @@ It must not own:
 - work or method domain projection
 - research, ppt, or cowork product semantics
 
-### 2. Add `loushang.agent.harness` as the headless execution scaffolding
+### 2. Use `loushang.harness` as the prepared-run contract
 
 `harness` here means execution scaffolding / carrying structure, not a
 test-only harness.
 
-`loushang.agent.harness` is the layer above the low-level loop that prepares and
-runs a headless agent execution for product adapters.
+`loushang.harness` owns the prepared agent run contract shared by product
+adapters. It depends on `loushang.agent`; `loushang.agent` must not depend on
+`loushang.harness`.
 
-The initial surface should be intentionally thin:
+The surface is intentionally thin:
 
 ```text
 AgentRunSpec
@@ -63,10 +64,15 @@ AgentRunResult
 run_agent(spec)
 ```
 
+`AgentRunSpec`, `AgentRunResult`, and `run_agent()` are not duplicated as a
+second `HarnessRunSpec` layer. They are the single prepared-run contract.
+
 `run_agent()` must reuse the existing low-level loop instead of implementing a
-second loop. The first implementation should not be re-exported from
-`loushang.agent.__init__`, so the public stability commitment stays narrow while
-the adapter contract settles.
+second loop.
+
+Compatibility note: `src/loushang/agent/harness` /
+`loushang.agent.harness` is a deprecated temporary re-export of
+`loushang.harness`. New code should import from `loushang.harness`.
 
 ### 3. Treat coding, research, ppt, and cowork as product adapters
 
@@ -89,8 +95,7 @@ Each product adapter may provide its own:
 - extension policy
 - projection back into product state
 
-Product adapters may use `loushang.agent.harness` directly for ordinary agent
-runs.
+Product adapters may use `loushang.harness` directly for ordinary agent runs.
 
 ### 4. Keep `loushang.work` as the cross-product work abstraction
 
@@ -139,7 +144,7 @@ moving product behavior into `work`.
 - method policy hints and gates
 
 `method` is optional for product execution. A product adapter can bypass
-`method` and call `agent.harness` plus `work` directly for lightweight runs.
+`method` and call `loushang.harness` plus `work` directly for lightweight runs.
 
 Use `method` for structured or guided work, such as planning, staged execution,
 review gates, or method-specific acceptance criteria. Do not force every
@@ -147,27 +152,32 @@ ordinary product turn through `method`.
 
 ### 6. Define the dependency direction
 
-Target dependency direction:
+Target dependency direction (`A -> B` means `A` may depend on `B`):
 
 ```text
-loushang.ai
-  <- loushang.agent
-  <- loushang.agent.harness
-  <- product adapters
+loushang.agent.Agent
+  -> loushang.agent.agent_loop
+  -> loushang.ai
 
-loushang.work
-  <- loushang.method
-  <- product adapters
+loushang.harness
+  -> loushang.agent
 
-loushang.work
-  <- product adapters
+product adapters
+  -> loushang.harness
+
+loushang.method
+  -> loushang.work
+
+product adapters
+  -> loushang.method   # optional, only for structured work
+  -> loushang.work
 ```
 
 Expanded product view:
 
 ```text
 coding / research / ppt / cowork
-  -> loushang.agent.harness
+  -> loushang.harness
   -> loushang.work
   -> loushang.method   # optional, only for structured work
 ```
@@ -175,8 +185,8 @@ coding / research / ppt / cowork
 Forbidden directions:
 
 ```text
-loushang.agent -> loushang.coding / work / method / research / ppt / cowork
-loushang.agent.harness -> product packages
+loushang.agent -> loushang.harness / loushang.coding / work / method / research / ppt / cowork
+loushang.harness -> product packages
 loushang.work -> product packages
 loushang.work -> loushang.method
 product package -> peer product package, unless through an explicit adapter/protocol
@@ -202,7 +212,7 @@ UI client / SDK / RPC client
   -> channel server / host assembly
   -> WorkOperation / WorkEvent
   -> product adapter
-  -> agent.harness
+  -> loushang.harness
 ```
 
 ## Consequences
@@ -227,12 +237,12 @@ UI client / SDK / RPC client
 
 ## Initial Implementation Scope
 
-The first implementation phase should only include:
+The implementation includes:
 
 1. Boundary documentation and dependency direction.
 2. A module ownership inventory for current `coding`, `agent`, `work`, and
    `method` code.
-3. A thin `loushang.agent.harness` facade with `AgentRunSpec`,
+3. A thin `loushang.harness` facade with `AgentRunSpec`,
    `AgentRunResult`, and `run_agent()`.
 
 It should not include:
@@ -245,5 +255,5 @@ It should not include:
 - top-level extension marketplace or dependency isolation
 - work/method projection inside `agent`
 
-The P1 ownership inventory is tracked in
+The ownership inventory is tracked in
 [Agent Harness Module Ownership Inventory](agent-harness-module-ownership-inventory.md).
