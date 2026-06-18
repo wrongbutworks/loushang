@@ -1654,6 +1654,36 @@ def test_widgets_datagrid_column_chooser_overlay_example_uses_surface_host() -> 
     assert grid.focused is True
 
 
+def test_widgets_datagrid_header_menu_example_sorts_and_hides_active_column() -> None:
+    namespace = runpy.run_path("examples/tui/63_widgets_datagrid_header_menu.py", run_name="__test__")
+
+    tui, app = namespace["build_app_parts"]()
+    grid = app.grid
+
+    assert tui.handle_input(InputEvent(kind="key", key="right")) == ()
+    assert grid.active_column_key == "price"
+
+    assert tui.handle_input(InputEvent(kind="text", text="m")) == ()
+    assert len(tui.surface_host.entries) == 1
+    assert grid.focused is False
+
+    overlay_lines = plain_lines(tui, width=96, height=16)
+    assert "Header menu" in "\n".join(overlay_lines)
+    assert "Price" in "\n".join(overlay_lines)
+
+    assert tui.handle_input(InputEvent(kind="key", key="enter"))[0].kind == "surface_close"
+    assert grid.sort_state == ("price", "asc")
+    assert tui.surface_host.entries == []
+    assert grid.focused is True
+
+    assert tui.handle_input(InputEvent(kind="text", text="m")) == ()
+    assert tui.handle_input(InputEvent(kind="key", key="down")) == ()
+    assert tui.handle_input(InputEvent(kind="key", key="down")) == ()
+    assert tui.handle_input(InputEvent(kind="key", key="enter"))[0].kind == "surface_close"
+    assert next(column for column in grid.columns if column.key == "price").hidden is True
+    assert grid.focused is True
+
+
 def test_widgets_datagrid_adapter_example_playback_switches_sources() -> None:
     frames = play_example(
         "examples/tui/59_widgets_datagrid_adapters.py",
