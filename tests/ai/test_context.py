@@ -159,6 +159,133 @@ def test_normalize_context_accepts_pi_style_assistant_and_tool_result_dicts() ->
     assert tool_result.details == {"source": "test"}
 
 
+def test_normalize_context_preserves_unknown_usage_cost() -> None:
+    normalized = normalize_context(
+        {
+            "messages": [
+                {
+                    "role": "assistant",
+                    "content": [{"type": "text", "text": "hello"}],
+                    "api": "openai-responses",
+                    "provider": "openai",
+                    "model": "gpt-4.1",
+                    "responseId": "resp_1",
+                    "usage": {
+                        "input": 1,
+                        "output": 2,
+                        "cacheRead": 0,
+                        "cacheWrite": 0,
+                        "totalTokens": 3,
+                    },
+                    "stopReason": "stop",
+                    "timestamp": 123.0,
+                }
+            ],
+        }
+    )
+
+    assistant = normalized["messages"][0]
+
+    assert isinstance(assistant, AssistantMessage)
+    assert assistant.usage.cost is None
+
+
+@pytest.mark.parametrize(
+    "cost",
+    [
+        {},
+        {"input": 0.1},
+        {
+            "input": -0.1,
+            "output": 0.2,
+            "cacheRead": 0.0,
+            "cacheWrite": 0.0,
+            "total": 0.1,
+        },
+        {
+            "input": float("nan"),
+            "output": 0.2,
+            "cacheRead": 0.0,
+            "cacheWrite": 0.0,
+            "total": 0.2,
+        },
+    ],
+)
+def test_normalize_context_rejects_invalid_usage_cost(
+    cost: dict[str, float],
+) -> None:
+    normalized = normalize_context(
+        {
+            "messages": [
+                {
+                    "role": "assistant",
+                    "content": [{"type": "text", "text": "hello"}],
+                    "api": "openai-responses",
+                    "provider": "openai",
+                    "model": "gpt-4.1",
+                    "usage": {
+                        "input": 1,
+                        "output": 2,
+                        "cacheRead": 0,
+                        "cacheWrite": 0,
+                        "totalTokens": 3,
+                        "cost": cost,
+                    },
+                    "stopReason": "stop",
+                    "timestamp": 123.0,
+                }
+            ],
+        }
+    )
+
+    assistant = normalized["messages"][0]
+    assert isinstance(assistant, AssistantMessage)
+    assert assistant.usage.cost is None
+
+
+def test_normalize_context_canonicalizes_usage_cost_aliases() -> None:
+    normalized = normalize_context(
+        {
+            "messages": [
+                {
+                    "role": "assistant",
+                    "content": [{"type": "text", "text": "hello"}],
+                    "api": "openai-responses",
+                    "provider": "openai",
+                    "model": "gpt-4.1",
+                    "usage": {
+                        "input": 1,
+                        "output": 2,
+                        "cacheRead": 0,
+                        "cacheWrite": 0,
+                        "totalTokens": 3,
+                        "cost": {
+                            "input": 0.1,
+                            "output": 0.2,
+                            "cache_read": 0.0,
+                            "cache_write": 0.0,
+                            "total": 0.3,
+                        },
+                    },
+                    "stopReason": "stop",
+                    "timestamp": 123.0,
+                }
+            ],
+        }
+    )
+
+    assistant = normalized["messages"][0]
+
+    assert isinstance(assistant, AssistantMessage)
+    assert assistant.usage.cost == {
+        "input": 0.1,
+        "output": 0.2,
+        "cacheRead": 0.0,
+        "cacheWrite": 0.0,
+        "total": 0.3,
+    }
+
+
 def test_normalize_context_accepts_string_assistant_dict_content() -> None:
     normalized = normalize_context(
         {

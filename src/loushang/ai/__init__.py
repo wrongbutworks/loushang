@@ -50,6 +50,7 @@ from loushang.ai.types import (
     ToolCall,
     ToolResultMessage,
     Usage,
+    UsageCost,
     UserMessage,
 )
 from loushang.ai.utils import (
@@ -148,6 +149,7 @@ __all__ = [
     "ToolResultMessage",
     "UserMessage",
     "Usage",
+    "UsageCost",
     "calculate_cost",
     "clear_api_providers",
     "complete",

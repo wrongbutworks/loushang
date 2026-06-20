@@ -87,7 +87,7 @@ class RawAssembler:
             cache_read=0,
             cache_write=0,
             total_tokens=0,
-            cost={},
+            cost=None,
         )
         self._usage_cost_multiplier = 1.0
         self._final_message: AssistantMessage | None = None
@@ -524,6 +524,8 @@ class RawAssembler:
                 self._usage,
                 multiplier=self._usage_cost_multiplier,
             )
+            if computed is None:
+                return
             self._usage = Usage(
                 input=self._usage.input,
                 output=self._usage.output,

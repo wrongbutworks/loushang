@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import importlib.util
 import json
 import sys
@@ -19,7 +20,9 @@ def _load_module(path: Path, name: str):
 
 
 def test_model_lookup_example_targets_public_kimi_model() -> None:
-    module = _load_module(Path("examples/ai/model_lookup.py"), "examples_ai_model_lookup")
+    module = _load_module(
+        Path("examples/ai/model_lookup.py"), "examples_ai_model_lookup"
+    )
 
     assert module.PROVIDER_ID == "moonshot"
     assert module.ENDPOINT_ID == "openai-completions"
@@ -66,6 +69,61 @@ def test_provider_matrix_example_formats_all_provider_entries() -> None:
     lines = [module._format_model_line(example) for example in module.PROVIDER_EXAMPLES]
 
     assert len(lines) == len(module.PROVIDER_EXAMPLES)
+
+
+def test_usage_online_example_marks_unknown_cost() -> None:
+    module = _load_module(
+        Path("examples/ai/usage_online.py"), "examples_ai_usage_online"
+    )
+
+    assert module._cost_payload(None) == {"known": False}
+    assert module._cost_payload({"input": 0.1, "total": 0.1}) == {
+        "known": True,
+        "input": 0.1,
+        "total": 0.1,
+    }
+
+
+def test_usage_online_example_prints_unknown_cost(capsys, monkeypatch) -> None:
+    from loushang.ai.types import AssistantMessage, TextPart, Usage
+
+    module = _load_module(
+        Path("examples/ai/usage_online.py"), "examples_ai_usage_online_main"
+    )
+
+    class FakeModel:
+        pricing = None
+
+        async def complete(self, context, options):
+            return AssistantMessage(
+                role="assistant",
+                content=[TextPart(type="text", text="ok")],
+                api="openai-completions",
+                provider="moonshot",
+                model="kimi-k2.5",
+                response_id="resp_1",
+                usage=Usage(
+                    input=1,
+                    output=1,
+                    cache_read=0,
+                    cache_write=0,
+                    total_tokens=2,
+                    cost=None,
+                ),
+                stop_reason="stop",
+                error_message=None,
+                timestamp=0.0,
+            )
+
+    monkeypatch.setattr(sys, "argv", ["usage_online.py", "--api-key", "test-key"])
+    monkeypatch.setattr(module, "get_model", lambda *_args: FakeModel())
+
+    assert asyncio.run(module.main()) == 0
+
+    cost_line = next(
+        line for line in capsys.readouterr().out.splitlines() if line.startswith("cost: ")
+    )
+    assert json.loads(cost_line.removeprefix("cost: ")) == {"known": False}
 
 
 def test_advanced_inspect_endpoint_contract_formats_protocol_facts(
@@ -150,9 +208,7 @@ def test_advanced_inspect_endpoint_contract_formats_protocol_facts(
     }
     assert contract["modelEffectiveLegacyCompat"]["supportsReasoningEffort"] is True
     assert "thinkingFormat" in contract["legacyCompatKeys"]
-    assert "supportsStreamReasoningDelta" in contract[
-        "modelEffectiveLegacyCompatKeys"
-    ]
+    assert "supportsStreamReasoningDelta" in contract["modelEffectiveLegacyCompatKeys"]
 
     module.main()
     payload = json.loads(capsys.readouterr().out)
@@ -184,9 +240,7 @@ def test_advanced_inspect_endpoint_contract_runs_against_builtin_catalog() -> No
     assert contract["transport"] == {}
     assert contract["routing"] == {}
     assert contract["modelEffectiveLegacyCompat"]["supportsReasoningEffort"] is True
-    assert "supportsStreamReasoningDelta" in contract[
-        "modelEffectiveLegacyCompatKeys"
-    ]
+    assert "supportsStreamReasoningDelta" in contract["modelEffectiveLegacyCompatKeys"]
 
 
 def test_advanced_custom_catalog_uses_typed_upstream_binding() -> None:
@@ -262,7 +316,9 @@ def test_tools_example_declares_add_tool() -> None:
 
 
 def test_typed_context_example_uses_public_types() -> None:
-    module = _load_module(Path("examples/ai/typed_context.py"), "examples_ai_typed_context")
+    module = _load_module(
+        Path("examples/ai/typed_context.py"), "examples_ai_typed_context"
+    )
 
     context = module._build_context()
 
@@ -273,7 +329,9 @@ def test_typed_context_example_uses_public_types() -> None:
 
 
 def test_usage_online_example_defaults_to_moonshot_public_route(monkeypatch) -> None:
-    module = _load_module(Path("examples/ai/usage_online.py"), "examples_ai_usage_online")
+    module = _load_module(
+        Path("examples/ai/usage_online.py"), "examples_ai_usage_online"
+    )
 
     monkeypatch.setattr(sys, "argv", ["usage_online.py"])
 

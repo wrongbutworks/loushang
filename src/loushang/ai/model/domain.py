@@ -817,30 +817,43 @@ class Auth:
 @dataclass(frozen=True)
 class Pricing:
     currency: str | None = None
-    input: float | int = 0
-    output: float | int = 0
-    cache_read: float | int = 0
-    cache_write: float | int = 0
+    input: float | int | None = None
+    output: float | int | None = None
+    cache_read: float | int | None = None
+    cache_write: float | int | None = None
+
+    def __post_init__(self) -> None:
+        for attr in ("input", "output", "cache_read", "cache_write"):
+            value = getattr(self, attr)
+            if value is not None and (
+                isinstance(value, bool)
+                or not isinstance(value, int | float)
+                or not isfinite(value)
+                or value < 0
+            ):
+                raise ValueError(f"pricing field must be a non-negative number: {attr}")
 
     @classmethod
-    def from_raw(cls, raw: Mapping[str, object] | None) -> "Pricing":
-        raw = raw or {}
+    def from_raw(cls, raw: Mapping[str, object] | None) -> "Pricing | None":
+        if raw is None:
+            return None
         return cls(
             currency=_as_optional_str(raw.get("currency")),
-            input=_as_number(raw.get("input")),
-            output=_as_number(raw.get("output")),
-            cache_read=_as_number(raw.get("cacheRead")),
-            cache_write=_as_number(raw.get("cacheWrite")),
+            input=_as_optional_number(raw.get("input")),
+            output=_as_optional_number(raw.get("output")),
+            cache_read=_as_optional_number(raw.get("cacheRead")),
+            cache_write=_as_optional_number(raw.get("cacheWrite")),
         )
 
     def to_raw(self) -> dict[str, object]:
-        return {
+        raw = {
             "currency": self.currency,
             "input": self.input,
             "output": self.output,
             "cacheRead": self.cache_read,
             "cacheWrite": self.cache_write,
         }
+        return {key: value for key, value in raw.items() if value is not None}
 
 
 @dataclass(frozen=True)
@@ -996,7 +1009,7 @@ class Model:
     release_date: str | None = None
     last_updated: str | None = None
     capabilities: Capabilities = field(default_factory=Capabilities)
-    pricing: Pricing = field(default_factory=Pricing)
+    pricing: Pricing | None = None
     compat: Compat = field(default_factory=Compat)
     defaults: Defaults = field(default_factory=Defaults)
     transport: EndpointTransport = field(default_factory=EndpointTransport)
@@ -1200,11 +1213,12 @@ class Model:
             "knowledge": self.knowledge,
             "releaseDate": self.release_date,
             "lastUpdated": self.last_updated,
-            "pricing": self.pricing.to_raw(),
             "compat": self.compat.to_raw(),
             "defaults": self.defaults.to_raw(),
         }
         raw.update(self.capabilities.to_raw())
+        if self.pricing is not None:
+            raw["pricing"] = self.pricing.to_raw()
         if self.auth is not None and not self._auth_inherited:
             raw["auth"] = self.auth.to_raw()
         if self.upstream_id is not None:
@@ -1469,6 +1483,16 @@ def _as_optional_str(value: object) -> str | None:
 
 def _as_optional_int(value: object) -> int | None:
     return value if isinstance(value, int) else None
+
+
+def _as_optional_number(value: object) -> float | int | None:
+    return (
+        value
+        if not isinstance(value, bool)
+        and isinstance(value, int | float)
+        and isfinite(value)
+        else None
+    )
 
 
 def _as_number(value: object) -> float | int:

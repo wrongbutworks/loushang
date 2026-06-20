@@ -209,11 +209,7 @@ def validate_model_registry_raw(raw: dict[str, Any]) -> None:
                     ALLOWED_DEFAULT_KEYS,
                     f"{model_path}.defaults",
                 )
-                _validate_keyed_mapping(
-                    model.get("pricing"),
-                    ALLOWED_PRICING_KEYS,
-                    f"{model_path}.pricing",
-                )
+                _validate_pricing_mapping(model.get("pricing"), f"{model_path}.pricing")
                 capabilities = _require_mapping(
                     model.get("capabilities"),
                     f"{model_path}.capabilities",
@@ -287,6 +283,20 @@ def _validate_positive_number(value: object, path: str) -> None:
         raise ValueError(f"models registry field must be a positive number: {path}")
 
 
+def _validate_optional_non_negative_number(value: object, path: str) -> None:
+    if value is None:
+        return
+    if (
+        isinstance(value, bool)
+        or not isinstance(value, int | float)
+        or not isfinite(value)
+        or value < 0
+    ):
+        raise ValueError(
+            f"models registry field must be a non-negative number or null: {path}"
+        )
+
+
 def _validate_ref_segment_key(value: object, path: str) -> None:
     if not isinstance(value, str) or not value:
         raise ValueError(f"models registry key must be a non-empty string: {path}")
@@ -338,6 +348,20 @@ def _validate_auth_fields(raw: dict[str, Any], path: str) -> None:
         )
     _validate_auth_mapping(auth, f"{path}.auth")
     _validate_auth_mapping(legacy_auth, f"{path}.authOverride")
+
+
+def _validate_pricing_mapping(value: object, path: str) -> None:
+    if value is None:
+        return
+    mapping = _require_mapping(value, path)
+    unknown = sorted(set(mapping) - ALLOWED_PRICING_KEYS)
+    if unknown:
+        raise ValueError(f"models registry field has unknown keys at {path}: {unknown}")
+    if "currency" in mapping and mapping["currency"] is not None:
+        _require_str(mapping["currency"], f"{path}.currency")
+    for key in ("input", "output", "cacheRead", "cacheWrite"):
+        if key in mapping:
+            _validate_optional_non_negative_number(mapping[key], f"{path}.{key}")
 
 
 def _validate_protocol_mapping(
@@ -583,7 +607,8 @@ def _normalize_model_compat(model_raw: dict[str, Any]) -> Compat:
             key: value
             for key, value in compat.items()
             if key
-            not in LEGACY_TRANSPORT_ROUTING_COMPAT_KEYS | LEGACY_MODEL_BINDING_COMPAT_KEYS
+            not in LEGACY_TRANSPORT_ROUTING_COMPAT_KEYS
+            | LEGACY_MODEL_BINDING_COMPAT_KEYS
         }
     )
 
@@ -903,8 +928,8 @@ def _build_registry(raw: dict[str, Any]) -> ModelRegistry:
             endpoint_routing_legacy_raw = _routing_raw_from_legacy_compat(
                 endpoint_legacy_compat
             )
-            endpoint_routing_legacy_compat_raw = (
-                _routing_compat_raw_from_legacy_compat(endpoint_legacy_compat)
+            endpoint_routing_legacy_compat_raw = _routing_compat_raw_from_legacy_compat(
+                endpoint_legacy_compat
             )
             endpoint_routing = _endpoint_routing(
                 endpoint_raw,

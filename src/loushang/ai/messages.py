@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from collections.abc import Mapping
+from math import isfinite
 from typing import Any, cast
 
 from loushang.ai.model.registry import resolve_model_api
@@ -20,6 +22,7 @@ from loushang.ai.types import (
     ToolCall,
     ToolResultMessage,
     Usage,
+    UsageCost,
     UserMessage,
 )
 
@@ -112,10 +115,14 @@ def _assistant_message_from_dict(message: dict[str, Any]) -> AssistantMessage:
         api=str(message.get("api", "")),
         provider=str(message.get("provider", "")),
         model=str(message.get("model", "")),
-        response_id=_optional_str(message.get("response_id", message.get("responseId"))),
+        response_id=_optional_str(
+            message.get("response_id", message.get("responseId"))
+        ),
         usage=_usage_from_dict(message.get("usage")),
         stop_reason=message.get("stop_reason", message.get("stopReason", "stop")),  # type: ignore[arg-type]
-        error_message=_optional_str(message.get("error_message", message.get("errorMessage"))),
+        error_message=_optional_str(
+            message.get("error_message", message.get("errorMessage"))
+        ),
         timestamp=_float_or_default(message.get("timestamp")),
         response_model=_optional_str(
             message.get("response_model", message.get("responseModel"))
@@ -178,7 +185,7 @@ def _content_parts(content: object) -> list[Any]:
 
 
 def _assistant_content_part(
-    part: dict[str, Any] | TextPart | ThinkingPart | ToolCall | ImagePart
+    part: dict[str, Any] | TextPart | ThinkingPart | ToolCall | ImagePart,
 ) -> TextPart | ThinkingPart | ToolCall | ImagePart:
     if isinstance(part, dict):
         return _assistant_content_part_from_dict(part)
@@ -192,18 +199,62 @@ def _usage_from_dict(value: object) -> Usage:
         return value
     if not isinstance(value, dict):
         value = {}
+    cost_raw = value.get("cost")
+    cost = _canonical_cost(cost_raw if isinstance(cost_raw, dict) else None)
     return Usage(
         input=_int_or_default(value.get("input")),
         output=_int_or_default(value.get("output")),
         cache_read=_int_or_default(value.get("cache_read", value.get("cacheRead"))),
-        cache_write=_int_or_default(
-            value.get("cache_write", value.get("cacheWrite"))
-        ),
+        cache_write=_int_or_default(value.get("cache_write", value.get("cacheWrite"))),
         total_tokens=_int_or_default(
             value.get("total_tokens", value.get("totalTokens"))
         ),
-        cost=dict(value.get("cost") or {}),
+        cost=cost,
     )
+
+
+def _canonical_cost(cost: Mapping[str, object] | None) -> UsageCost | None:
+    if cost is None:
+        return None
+    input_cost = _cost_number(cost, "input")
+    output_cost = _cost_number(cost, "output")
+    cache_read = _cost_number(cost, "cacheRead", "cache_read")
+    cache_write = _cost_number(cost, "cacheWrite", "cache_write")
+    total = _cost_number(cost, "total")
+    if (
+        input_cost is None
+        or output_cost is None
+        or cache_read is None
+        or cache_write is None
+        or total is None
+    ):
+        return None
+    return {
+        "input": input_cost,
+        "output": output_cost,
+        "cacheRead": cache_read,
+        "cacheWrite": cache_write,
+        "total": total,
+    }
+
+
+def _cost_number(
+    cost: Mapping[str, object], key: str, alias: str | None = None
+) -> float | None:
+    if key in cost:
+        value = cost[key]
+    elif alias is not None and alias in cost:
+        value = cost[alias]
+    else:
+        return None
+    if (
+        isinstance(value, bool)
+        or not isinstance(value, int | float)
+        or not isfinite(value)
+        or value < 0
+    ):
+        return None
+    return float(value)
 
 
 def _optional_str(value: object) -> str | None:

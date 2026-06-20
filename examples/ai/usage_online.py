@@ -88,18 +88,35 @@ USER_PROMPT = "请用一句中文回答：你是否可以返回 usage？"
 
 
 def parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="Call an online model and print normalized usage.")
+    parser = argparse.ArgumentParser(
+        description="Call an online model and print normalized usage."
+    )
     parser.add_argument("--route", choices=sorted(ROUTES), default="moonshot-openai")
-    parser.add_argument("--provider", help="Override provider id from the selected route.")
-    parser.add_argument("--endpoint", help="Override endpoint id from the selected route.")
+    parser.add_argument(
+        "--provider", help="Override provider id from the selected route."
+    )
+    parser.add_argument(
+        "--endpoint", help="Override endpoint id from the selected route."
+    )
     parser.add_argument("--model", help="Override model id from the selected route.")
     parser.add_argument("--api-key-env", help="Override API key environment variable.")
-    parser.add_argument("--api-key", help="Explicit API key. Prefer env vars for normal use.")
+    parser.add_argument(
+        "--api-key", help="Explicit API key. Prefer env vars for normal use."
+    )
     parser.add_argument("--prompt", default=USER_PROMPT)
     parser.add_argument("--system-prompt", default=SYSTEM_PROMPT)
     parser.add_argument("--max-tokens", type=int, default=128)
-    parser.add_argument("--timeout", type=float, default=30.0, help="Provider request timeout in seconds.")
-    parser.add_argument("--stream", action="store_true", help="Use model.stream instead of model.complete.")
+    parser.add_argument(
+        "--timeout",
+        type=float,
+        default=30.0,
+        help="Provider request timeout in seconds.",
+    )
+    parser.add_argument(
+        "--stream",
+        action="store_true",
+        help="Use model.stream instead of model.complete.",
+    )
     parser.add_argument(
         "--strict",
         action="store_true",
@@ -120,7 +137,9 @@ def _resolve_route(args: argparse.Namespace) -> Route:
     )
 
 
-def _resolve_api_key(*, explicit_api_key: str | None, env_names: tuple[str, ...]) -> tuple[str, str]:
+def _resolve_api_key(
+    *, explicit_api_key: str | None, env_names: tuple[str, ...]
+) -> tuple[str, str]:
     if explicit_api_key:
         return explicit_api_key, "<explicit>"
     for env_name in env_names:
@@ -134,14 +153,18 @@ def _resolve_api_key(*, explicit_api_key: str | None, env_names: tuple[str, ...]
 def _build_options(
     route: Route, *, api_key: str, max_tokens: int, timeout: float
 ) -> ModelCallOptions:
-    value = route.options_factory(api_key=api_key, max_tokens=max_tokens, timeout=timeout)
+    value = route.options_factory(
+        api_key=api_key, max_tokens=max_tokens, timeout=timeout
+    )
     if route.model != "kimi-for-coding":
         return value
     headers = {
         **dict(getattr(value, "headers", {}) or {}),
         "User-Agent": "KimiCLI/1.5",
     }
-    return route.options_factory(api_key=api_key, max_tokens=max_tokens, timeout=timeout, headers=headers)
+    return route.options_factory(
+        api_key=api_key, max_tokens=max_tokens, timeout=timeout, headers=headers
+    )
 
 
 def _build_context(*, system_prompt: str, user_prompt: str) -> dict[str, object]:
@@ -178,6 +201,12 @@ def _usage_payload(usage: Usage | None) -> dict[str, object]:
     }
 
 
+def _cost_payload(cost: dict[str, float] | None) -> dict[str, object]:
+    if cost is None:
+        return {"known": False}
+    return {"known": True, **cost}
+
+
 def _iter_text(parts: Iterable[object]) -> str:
     texts: list[str] = []
     for part in parts:
@@ -211,9 +240,13 @@ async def _stream(
 async def main() -> int:
     args = parse_args()
     route = _resolve_route(args)
-    api_key, api_key_source = _resolve_api_key(explicit_api_key=args.api_key, env_names=route.api_key_envs)
+    api_key, api_key_source = _resolve_api_key(
+        explicit_api_key=args.api_key, env_names=route.api_key_envs
+    )
     model = get_model(route.provider, route.endpoint, route.model)
-    options = _build_options(route, api_key=api_key, max_tokens=args.max_tokens, timeout=args.timeout)
+    options = _build_options(
+        route, api_key=api_key, max_tokens=args.max_tokens, timeout=args.timeout
+    )
     context = _build_context(system_prompt=args.system_prompt, user_prompt=args.prompt)
 
     _print_json(
@@ -229,10 +262,16 @@ async def main() -> int:
         },
     )
 
-    message = await (_stream(model, context, options) if args.stream else _complete(model, context, options))
+    message = await (
+        _stream(model, context, options)
+        if args.stream
+        else _complete(model, context, options)
+    )
     usage = getattr(message, "usage", None)
     usage_payload = _usage_payload(usage)
-    cost_payload: dict[str, object] | None = calculate_cost(model, usage) if usage is not None else None
+    cost_payload = _cost_payload(
+        calculate_cost(model, usage) if usage is not None else None
+    )
 
     _print_json(
         "message",
@@ -240,12 +279,13 @@ async def main() -> int:
             "stop_reason": message.stop_reason,
             "error_message": message.error_message,
             "response_id": message.response_id,
-            "content_types": [getattr(part, "type", "unknown") for part in message.content],
+            "content_types": [
+                getattr(part, "type", "unknown") for part in message.content
+            ],
         },
     )
     _print_json("usage", usage_payload)
-    if cost_payload is not None:
-        _print_json("cost", cost_payload)
+    _print_json("cost", cost_payload)
     print("text:", " ".join(_iter_text(message.content).split())[:240])
 
     if args.strict and not usage_payload["total_positive"]:

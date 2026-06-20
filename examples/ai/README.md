@@ -10,6 +10,8 @@
   最常见的完整返回调用
 - [stream.py](/home/chester/Workspace/ai/loushang/examples/ai/stream.py)
   流式消费事件并读取最终结果
+- [usage_online.py](/home/chester/Workspace/ai/loushang/examples/ai/usage_online.py)
+  在线检查 usage；当 catalog 缺少价格事实时，cost 输出为 `{"known": false}`
 - [tools.py](/home/chester/Workspace/ai/loushang/examples/ai/tools.py)
   工具调用和 `ToolResultMessage` 往返
 - [typed_context.py](/home/chester/Workspace/ai/loushang/examples/ai/typed_context.py)

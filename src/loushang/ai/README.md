@@ -197,6 +197,7 @@
 - `ImagePart`
 - `ThinkingPart`
 - `Usage`
+- `UsageCost`
 - `StopReason`
 - `AssistantMessageEvent`
 - `AssistantMessageEventStream`
@@ -221,6 +222,10 @@
 - `normalize_tool_call_id_for_model(...)`
 - `calculate_cost(...)`
 - `models_are_equal(...)`
+
+`calculate_cost(model, usage)` returns `None` when the model has no pricing
+metadata, or when a used token component has no known price. Explicit zero
+prices remain valid and produce a zero cost.
 
 ## Advanced API
 
@@ -264,6 +269,7 @@
 - 兼容项：`compat`
 - 默认值：`defaults`
 - 价格：`pricing`
+  - `None` 表示价格未知；缺失的 price component 不会被当成 0
 
 其中：
 

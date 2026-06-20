@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 
 from loushang.ai.event_stream import AssistantMessageEventStream, RawAssembler
+from loushang.ai.model import Pricing
 from loushang.ai.types import AssistantMessage, Usage
 
 
@@ -239,6 +240,39 @@ def test_raw_assembler_derives_total_tokens_when_provider_omits_total() -> None:
     assert message.usage.cache_read == 3
     assert message.usage.cache_write == 2
     assert message.usage.total_tokens == 19
+    assert message.usage.cost is None
+
+
+def test_raw_assembler_leaves_cost_unknown_without_pricing() -> None:
+    stream = AssistantMessageEventStream()
+    assembler = RawAssembler(
+        stream=stream, api="test", provider="test", model="test-model"
+    )
+
+    assembler.feed({"type": "usage_delta", "input": 10, "output": 4})
+    assembler.feed({"type": "response_done"})
+
+    message = asyncio.run(stream.result())
+
+    assert message.usage.cost is None
+
+
+def test_raw_assembler_leaves_cost_unknown_for_used_unknown_price_component() -> None:
+    stream = AssistantMessageEventStream()
+    assembler = RawAssembler(
+        stream=stream,
+        api="test",
+        provider="test",
+        model="test-model",
+        pricing=Pricing(input=1.0, output=None),
+    )
+
+    assembler.feed({"type": "usage_delta", "input": 10, "output": 4})
+    assembler.feed({"type": "response_done"})
+
+    message = asyncio.run(stream.result())
+
+    assert message.usage.cost is None
 
 
 def test_raw_assembler_recomputes_total_tokens_for_incremental_usage_without_total() -> (

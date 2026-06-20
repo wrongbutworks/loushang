@@ -65,7 +65,7 @@ src/loushang/coding/runtime/agent_session_runtime.py
 
 
 def _usage() -> Usage:
-    return Usage(input=20, output=10, cache_read=0, cache_write=0, total_tokens=30, cost={})
+    return Usage(input=20, output=10, cache_read=0, cache_write=0, total_tokens=30, cost=None)
 
 
 def _fixed_preparation() -> CompactionPreparation:

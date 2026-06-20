@@ -56,11 +56,11 @@ class UsagePayload:
     cache_read: int
     cache_write: int
     total_tokens: int
-    cost_input: float
-    cost_output: float
-    cost_cache_read: float
-    cost_cache_write: float
-    cost_total: float
+    cost_input: float | None
+    cost_output: float | None
+    cost_cache_read: float | None
+    cost_cache_write: float | None
+    cost_total: float | None
 
 
 def _to_int(value: Any, *, default: int = 0) -> int:
@@ -75,6 +75,12 @@ def _to_float(value: Any, *, default: float = 0.0) -> float:
         return float(value)
     except Exception:
         return default
+
+
+def _cost_value(cost: dict[str, float] | None, key: str) -> float | None:
+    if cost is None or key not in cost:
+        return None
+    return _to_float(cost[key])
 
 
 def _usage_from_response(
@@ -92,13 +98,7 @@ def _usage_from_response(
         getattr(usage, "total_tokens", None),
         default=input_tokens + output_tokens + cache_read + cache_write,
     )
-    cost = {
-        "input": 0.0,
-        "output": 0.0,
-        "cacheRead": 0.0,
-        "cacheWrite": 0.0,
-        "total": 0.0,
-    }
+    cost = None
     try:
         computed = calculate_cost(model_obj, usage)
         if isinstance(computed, dict):
@@ -111,11 +111,11 @@ def _usage_from_response(
         cache_read=cache_read,
         cache_write=cache_write,
         total_tokens=total_tokens,
-        cost_input=_to_float(cost.get("input")),
-        cost_output=_to_float(cost.get("output")),
-        cost_cache_read=_to_float(cost.get("cacheRead")),
-        cost_cache_write=_to_float(cost.get("cacheWrite")),
-        cost_total=_to_float(cost.get("total")),
+        cost_input=_cost_value(cost, "input"),
+        cost_output=_cost_value(cost, "output"),
+        cost_cache_read=_cost_value(cost, "cacheRead"),
+        cost_cache_write=_cost_value(cost, "cacheWrite"),
+        cost_total=_cost_value(cost, "total"),
     )
 
 

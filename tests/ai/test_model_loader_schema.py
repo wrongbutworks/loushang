@@ -554,6 +554,74 @@ def test_model_registry_loads_model_legacy_upstream_id_from_compat(
     }
 
 
+def test_model_registry_loads_unknown_pricing_as_absent(tmp_path) -> None:
+    raw = _minimal_registry_raw(schema_version=1)
+    path = tmp_path / "models.json"
+    path.write_text(json.dumps(raw), encoding="utf-8")
+
+    registry = load_model_registry_from_file(path)
+    model_contract = registry.get_model("custom", "openai-completions", "model-a")
+
+    assert model_contract.pricing is None
+    assert "pricing" not in model_contract.to_raw()
+
+
+def test_model_registry_loads_partial_pricing_without_default_zero(tmp_path) -> None:
+    raw = _minimal_registry_raw(schema_version=1)
+    model = raw["providers"]["custom"]["endpoints"]["openai-completions"]["models"][
+        "model-a"
+    ]
+    model["pricing"] = {"input": 0, "output": 2.0, "cacheRead": None}
+    path = tmp_path / "models.json"
+    path.write_text(json.dumps(raw), encoding="utf-8")
+
+    registry = load_model_registry_from_file(path)
+    model_contract = registry.get_model("custom", "openai-completions", "model-a")
+
+    assert model_contract.pricing is not None
+    assert model_contract.pricing.input == 0
+    assert model_contract.pricing.output == 2.0
+    assert model_contract.pricing.cache_read is None
+    assert model_contract.pricing.cache_write is None
+    assert model_contract.to_raw()["pricing"] == {"input": 0, "output": 2.0}
+
+
+def test_model_registry_schema_rejects_invalid_pricing_value() -> None:
+    raw = _minimal_registry_raw(schema_version=1)
+    model = raw["providers"]["custom"]["endpoints"]["openai-completions"]["models"][
+        "model-a"
+    ]
+    model["pricing"] = {"input": "free"}
+
+    with pytest.raises(ValueError, match="non-negative number or null"):
+        validate_model_registry_raw(raw)
+
+
+@pytest.mark.parametrize("value", [True, float("nan"), float("inf"), float("-inf")])
+def test_model_registry_schema_rejects_non_numeric_pricing_values(
+    value: object,
+) -> None:
+    raw = _minimal_registry_raw(schema_version=1)
+    model = raw["providers"]["custom"]["endpoints"]["openai-completions"]["models"][
+        "model-a"
+    ]
+    model["pricing"] = {"input": value}
+
+    with pytest.raises(ValueError, match="non-negative number or null"):
+        validate_model_registry_raw(raw)
+
+
+def test_model_registry_schema_rejects_legacy_unknown_pricing_sentinel() -> None:
+    raw = _minimal_registry_raw(schema_version=1)
+    model = raw["providers"]["custom"]["endpoints"]["openai-completions"]["models"][
+        "model-a"
+    ]
+    model["pricing"] = {"input": -1000000}
+
+    with pytest.raises(ValueError, match="non-negative number or null"):
+        validate_model_registry_raw(raw)
+
+
 def test_model_registry_loads_model_typed_transport_routing(tmp_path) -> None:
     raw = _minimal_registry_raw(schema_version=2)
     model = raw["providers"]["custom"]["endpoints"]["openai-completions"]["models"][

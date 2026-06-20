@@ -1,14 +1,28 @@
-from loushang.ai.model.domain import Model
-from loushang.ai.types import Usage
+from loushang.ai.model.domain import Model, Pricing
+from loushang.ai.types import Usage, UsageCost
 
 
 def calculate_usage_cost(
-    pricing, usage: Usage, *, multiplier: float = 1.0
-) -> dict[str, float]:
-    input_cost = float(pricing.input) * usage.input / 1_000_000
-    output_cost = float(pricing.output) * usage.output / 1_000_000
-    cache_read_cost = float(pricing.cache_read) * usage.cache_read / 1_000_000
-    cache_write_cost = float(pricing.cache_write) * usage.cache_write / 1_000_000
+    pricing: Pricing | None, usage: Usage, *, multiplier: float = 1.0
+) -> UsageCost | None:
+    if pricing is None:
+        return None
+    known_component_tokens = (
+        usage.input + usage.output + usage.cache_read + usage.cache_write
+    )
+    if usage.total_tokens > known_component_tokens:
+        return None
+    input_cost = _component_cost(pricing.input, usage.input)
+    output_cost = _component_cost(pricing.output, usage.output)
+    cache_read_cost = _component_cost(pricing.cache_read, usage.cache_read)
+    cache_write_cost = _component_cost(pricing.cache_write, usage.cache_write)
+    if (
+        input_cost is None
+        or output_cost is None
+        or cache_read_cost is None
+        or cache_write_cost is None
+    ):
+        return None
     if multiplier != 1.0:
         input_cost *= multiplier
         output_cost *= multiplier
@@ -24,6 +38,14 @@ def calculate_usage_cost(
     }
 
 
+def _component_cost(price_per_million: float | int | None, tokens: int) -> float | None:
+    if tokens <= 0:
+        return 0.0
+    if price_per_million is None:
+        return None
+    return float(price_per_million) * tokens / 1_000_000
+
+
 def models_are_equal(left: Model | None, right: Model | None) -> bool:
     if left is None or right is None:
         return False
@@ -34,5 +56,5 @@ def models_are_equal(left: Model | None, right: Model | None) -> bool:
     )
 
 
-def calculate_cost(model: Model, usage: Usage) -> dict[str, float]:
+def calculate_cost(model: Model, usage: Usage) -> UsageCost | None:
     return calculate_usage_cost(model.pricing, usage)

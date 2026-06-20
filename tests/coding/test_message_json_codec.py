@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import pytest
+
 from loushang.coding.message import SessionHeader
 
 
@@ -96,6 +98,156 @@ def test_assistant_message_roundtrip_preserves_response_model_and_signatures() -
 
     restored = deserialize_agent_message(payload)
     assert restored == message
+
+
+def test_assistant_message_roundtrip_preserves_unknown_usage_cost() -> None:
+    from loushang.ai.types import AssistantMessage, TextPart, Usage
+    from loushang.coding.message.json_codec import (
+        deserialize_agent_message,
+        serialize_agent_message,
+    )
+
+    message = AssistantMessage(
+        role="assistant",
+        content=[TextPart(type="text", text="answer")],
+        api="openai-responses",
+        provider="openai",
+        model="gpt-4.1",
+        response_id=None,
+        usage=Usage(
+            input=1,
+            output=2,
+            cache_read=0,
+            cache_write=0,
+            total_tokens=3,
+            cost=None,
+        ),
+        stop_reason="stop",
+        error_message=None,
+        timestamp=123.0,
+    )
+
+    payload = serialize_agent_message(message)
+    assert payload["usage"]["cost"] is None
+
+    restored = deserialize_agent_message(payload)
+    assert isinstance(restored, AssistantMessage)
+    assert restored.usage.cost is None
+    assert restored == message
+
+
+def test_deserialize_usage_missing_cost_preserves_unknown_cost() -> None:
+    from loushang.coding.message.json_codec import deserialize_usage
+
+    usage = deserialize_usage(
+        {
+            "input": 1,
+            "output": 2,
+            "cacheRead": 0,
+            "cacheWrite": 0,
+            "totalTokens": 3,
+        }
+    )
+
+    assert usage.cost is None
+
+
+def test_serialize_usage_partial_cost_preserves_unknown_cost() -> None:
+    from loushang.ai.types import Usage
+    from loushang.coding.message.json_codec import serialize_usage
+
+    usage = Usage(
+        input=1,
+        output=2,
+        cache_read=0,
+        cache_write=0,
+        total_tokens=3,
+        cost={"input": 0.1},
+    )
+
+    assert serialize_usage(usage)["cost"] is None
+
+
+def test_deserialize_usage_empty_or_partial_cost_preserves_unknown_cost() -> None:
+    from loushang.coding.message.json_codec import deserialize_usage
+
+    base_payload = {
+        "input": 1,
+        "output": 2,
+        "cacheRead": 0,
+        "cacheWrite": 0,
+        "totalTokens": 3,
+    }
+
+    assert deserialize_usage({**base_payload, "cost": {}}).cost is None
+    assert deserialize_usage({**base_payload, "cost": {"input": 0.1}}).cost is None
+
+
+@pytest.mark.parametrize(
+    "cost",
+    [
+        {
+            "input": -0.1,
+            "output": 0.2,
+            "cacheRead": 0.0,
+            "cacheWrite": 0.0,
+            "total": 0.1,
+        },
+        {
+            "input": float("inf"),
+            "output": 0.2,
+            "cacheRead": 0.0,
+            "cacheWrite": 0.0,
+            "total": 0.2,
+        },
+    ],
+)
+def test_deserialize_usage_invalid_cost_preserves_unknown_cost(
+    cost: dict[str, float],
+) -> None:
+    from loushang.coding.message.json_codec import deserialize_usage
+
+    usage = deserialize_usage(
+        {
+            "input": 1,
+            "output": 2,
+            "cacheRead": 0,
+            "cacheWrite": 0,
+            "totalTokens": 3,
+            "cost": cost,
+        }
+    )
+
+    assert usage.cost is None
+
+
+def test_deserialize_usage_canonicalizes_snake_case_cost_aliases() -> None:
+    from loushang.coding.message.json_codec import deserialize_usage
+
+    usage = deserialize_usage(
+        {
+            "input": 1,
+            "output": 2,
+            "cacheRead": 0,
+            "cacheWrite": 0,
+            "totalTokens": 3,
+            "cost": {
+                "input": 0.1,
+                "output": 0.2,
+                "cache_read": 0.0,
+                "cache_write": 0.0,
+                "total": 0.3,
+            },
+        }
+    )
+
+    assert usage.cost == {
+        "input": 0.1,
+        "output": 0.2,
+        "cacheRead": 0.0,
+        "cacheWrite": 0.0,
+        "total": 0.3,
+    }
 
 
 def test_tool_result_and_custom_messages_roundtrip_with_images_and_details() -> None:

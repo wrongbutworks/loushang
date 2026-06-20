@@ -34,7 +34,7 @@ def _usage() -> Usage:
         cache_read=0,
         cache_write=0,
         total_tokens=3,
-        cost={},
+        cost=None,
     )
 
 
@@ -80,6 +80,7 @@ def test_process_proxy_event_reconstructs_partial_message() -> None:
     done = _process_proxy_event({"type": "done", "reason": "toolUse", "usage": _usage()}, partial)
 
     assert start_event["type"] == "start"
+    assert start_event["partial"].usage.cost is None
     assert text_start["type"] == "text_start"
     assert text_delta["type"] == "text_delta"
     assert text_end["type"] == "text_end"
@@ -145,6 +146,7 @@ def test_stream_proxy_emits_error_event_for_non_ok_response() -> None:
         assert error_event["reason"] == "error"
         assert error_event["error"].error_message == "Proxy error: bad token"
         assert error_event["error"].stop_reason == "error"
+        assert error_event["error"].usage.cost is None
         assert client.last_path == "/api/stream"
         assert client.last_headers == {
             "Authorization": "Bearer secret",
@@ -202,6 +204,7 @@ def test_stream_proxy_reconstructs_sse_success_path() -> None:
         assert result.content[0].text_signature == "sig-1"
         assert result.content[1].thinking == "Plan"
         assert result.content[1].thinking_signature == "think-1"
+        assert result.usage.cost is None
 
     asyncio.run(scenario())
 
@@ -272,8 +275,10 @@ def test_stream_proxy_stops_on_proxy_error_event() -> None:
 
         assert [event["type"] for event in events] == ["start", "error"]
         assert events[-1]["error"].error_message == "proxy failed"
+        assert events[-1]["error"].usage.cost is None
         assert result.stop_reason == "error"
         assert result.error_message == "proxy failed"
+        assert result.usage.cost is None
 
     asyncio.run(scenario())
 

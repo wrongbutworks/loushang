@@ -3,7 +3,9 @@ from __future__ import annotations
 import asyncio
 import json
 import time
+from collections.abc import Mapping
 from dataclasses import dataclass, field, replace
+from math import isfinite
 from typing import Any
 
 from loushang.agent.types import ProxyAssistantMessageEvent, ProxyStreamOptions
@@ -19,6 +21,7 @@ from loushang.ai.types import (
     ThinkingPart,
     ToolCall,
     Usage,
+    UsageCost,
 )
 
 
@@ -32,7 +35,16 @@ class _MutablePartialMessage:
     content: list[TextPart | ThinkingPart | ToolCall | ImagePart] = field(default_factory=list)
     stop_reason: str = "stop"
     response_id: str | None = None
-    usage: Usage = field(default_factory=lambda: Usage(input=0, output=0, cache_read=0, cache_write=0, total_tokens=0, cost={}))
+    usage: Usage = field(
+        default_factory=lambda: Usage(
+            input=0,
+            output=0,
+            cache_read=0,
+            cache_write=0,
+            total_tokens=0,
+            cost=None,
+        )
+    )
     error_message: str | None = None
     _toolcall_partial_json: dict[int, str] = field(default_factory=dict)
 
@@ -269,7 +281,7 @@ def _process_proxy_event(
 
     if event_type == "done":
         partial.stop_reason = proxy_event["reason"]
-        partial.usage = proxy_event["usage"]
+        partial.usage = _usage_from_proxy_value(proxy_event["usage"])
         return {
             "type": "done",
             "reason": proxy_event["reason"],
@@ -278,7 +290,7 @@ def _process_proxy_event(
 
     if event_type == "error":
         partial.stop_reason = proxy_event["reason"]
-        partial.usage = proxy_event["usage"]
+        partial.usage = _usage_from_proxy_value(proxy_event["usage"])
         partial.error_message = proxy_event.get("error_message")
         return {
             "type": "error",
@@ -287,6 +299,72 @@ def _process_proxy_event(
         }
 
     return None
+
+
+def _usage_from_proxy_value(value: object) -> Usage:
+    if isinstance(value, Usage):
+        return value if value.cost else replace(value, cost=None)
+    if isinstance(value, dict):
+        return Usage(
+            input=_int_value(value.get("input")),
+            output=_int_value(value.get("output")),
+            cache_read=_int_value(value.get("cache_read", value.get("cacheRead"))),
+            cache_write=_int_value(value.get("cache_write", value.get("cacheWrite"))),
+            total_tokens=_int_value(value.get("total_tokens", value.get("totalTokens"))),
+            cost=_usage_cost_from_proxy_value(value.get("cost")),
+        )
+    return Usage(input=0, output=0, cache_read=0, cache_write=0, total_tokens=0, cost=None)
+
+
+def _usage_cost_from_proxy_value(value: object) -> UsageCost | None:
+    if not isinstance(value, Mapping):
+        return None
+    input_cost = _cost_number(value, "input")
+    output_cost = _cost_number(value, "output")
+    cache_read = _cost_number(value, "cacheRead", "cache_read")
+    cache_write = _cost_number(value, "cacheWrite", "cache_write")
+    total = _cost_number(value, "total")
+    if (
+        input_cost is None
+        or output_cost is None
+        or cache_read is None
+        or cache_write is None
+        or total is None
+    ):
+        return None
+    return {
+        "input": input_cost,
+        "output": output_cost,
+        "cacheRead": cache_read,
+        "cacheWrite": cache_write,
+        "total": total,
+    }
+
+
+def _cost_number(
+    cost: Mapping[str, object], key: str, alias: str | None = None
+) -> float | None:
+    if key in cost:
+        value = cost[key]
+    elif alias is not None and alias in cost:
+        value = cost[alias]
+    else:
+        return None
+    if (
+        isinstance(value, bool)
+        or not isinstance(value, int | float)
+        or not isfinite(value)
+        or value < 0
+    ):
+        return None
+    return float(value)
+
+
+def _int_value(value: object) -> int:
+    try:
+        return int(value)  # type: ignore[arg-type]
+    except (TypeError, ValueError):
+        return 0
 
 
 def _attach_abort_listener(signal: object | None):

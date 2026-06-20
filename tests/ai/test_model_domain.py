@@ -20,6 +20,7 @@ from loushang.ai.model import (
     EndpointTransport,
     EndpointWireDialect,
     Model,
+    Pricing,
     SupportStatus,
 )
 
@@ -288,6 +289,24 @@ def test_endpoint_routing_rejects_invalid_request_overrides() -> None:
         EndpointRouting.from_raw({"requestOverrides": True})
     with pytest.raises(ValueError, match="requestOverrides entries must be objects"):
         EndpointRouting.from_raw({"requestOverrides": {"openrouter": True}})
+
+
+def test_model_omits_unknown_pricing_from_raw() -> None:
+    model = Model(id="public-model", provider="custom", endpoint="openai-completions")
+
+    raw = model.to_raw()
+
+    assert model.pricing is None
+    assert "pricing" not in raw
+
+
+def test_pricing_round_trip_preserves_unknown_and_zero_components() -> None:
+    pricing = Pricing.from_raw({"input": 0, "output": 2.0})
+
+    assert pricing == Pricing(input=0, output=2.0)
+    assert pricing.cache_read is None
+    assert pricing.cache_write is None
+    assert pricing.to_raw() == {"input": 0, "output": 2.0}
 
 
 def test_model_upstream_id_round_trip() -> None:

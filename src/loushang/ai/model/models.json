@@ -13385,10 +13385,10 @@
               "family": "openrouter",
               "pricing": {
                 "currency": "USD",
-                "input": -1000000,
-                "output": -1000000,
-                "cacheRead": 0,
-                "cacheWrite": 0
+                "input": null,
+                "output": null,
+                "cacheRead": null,
+                "cacheWrite": null
               },
               "capabilities": {
                 "reasoning": true,

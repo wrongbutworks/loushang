@@ -43,6 +43,7 @@ ROOT_EXPORTS_BASELINE = [
     "ToolResultMessage",
     "UserMessage",
     "Usage",
+    "UsageCost",
     "calculate_cost",
     "clear_api_providers",
     "complete",
@@ -155,7 +156,7 @@ KNOWN_BASELINE_DEBT = {
 
 def test_root_exports_baseline_snapshot() -> None:
     assert ai.__all__ == ROOT_EXPORTS_BASELINE
-    assert len(ai.__all__) == 55
+    assert len(ai.__all__) == 56
 
 
 def test_builtin_provider_and_catalog_count_baseline() -> None:
@@ -187,7 +188,7 @@ def test_test_and_example_inventory_baseline() -> None:
     provider_test_files = sorted((REPO_ROOT / "tests/providers").rglob("test_*.py"))
     example_files = sorted((REPO_ROOT / "examples/ai").rglob("*.py"))
 
-    assert len(ai_test_files) == 32
+    assert len(ai_test_files) == 33
     assert len(provider_test_files) == 6
     assert len(example_files) == 13
 

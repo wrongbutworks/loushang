@@ -4,6 +4,14 @@ from dataclasses import dataclass, field
 from typing import Any, Literal, NotRequired, TypedDict
 
 
+class UsageCost(TypedDict):
+    input: float
+    output: float
+    cacheRead: float
+    cacheWrite: float
+    total: float
+
+
 @dataclass(frozen=True)
 class Usage:
     input: int
@@ -11,7 +19,7 @@ class Usage:
     cache_read: int
     cache_write: int
     total_tokens: int
-    cost: dict[str, float]
+    cost: UsageCost | None
 
 
 @dataclass(frozen=True)
