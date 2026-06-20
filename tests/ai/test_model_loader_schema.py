@@ -1,9 +1,11 @@
 from __future__ import annotations
 
+import json
 from typing import Any
 
 import pytest
 
+from loushang.ai.model import SupportStatus
 from loushang.ai.model.loader import (
     load_layered_model_registry,
     load_model_registry,
@@ -132,6 +134,201 @@ def test_model_registry_schema_rejects_unknown_version() -> None:
         validate_model_registry_raw(raw)
 
 
+def test_model_registry_schema_accepts_endpoint_protocol_features() -> None:
+    raw = _minimal_registry_raw(schema_version=2)
+    endpoint = raw["providers"]["custom"]["endpoints"]["openai-completions"]
+    endpoint["protocol"] = {
+        "roles": {"developer": "supported"},
+        "streaming": {
+            "usage": "supported",
+            "reasoningDelta": "unsupported",
+        },
+        "reasoning": {"effort": "unknown", "effortMap": {"off": None, "minimal": "low"}},
+        "tools": {"strictSchema": "supported"},
+        "cache": {"longRetention": "supported"},
+        "session": {"idHeader": "supported"},
+        "store": "unsupported",
+    }
+
+    validate_model_registry_raw(raw)
+
+
+def test_model_registry_schema_rejects_endpoint_protocol_before_v2() -> None:
+    raw = _minimal_registry_raw(schema_version=1)
+    endpoint = raw["providers"]["custom"]["endpoints"]["openai-completions"]
+    endpoint["protocol"] = {"roles": {"developer": "supported"}}
+
+    with pytest.raises(ValueError, match="requires schemaVersion 2"):
+        validate_model_registry_raw(raw)
+
+
+def test_model_registry_schema_rejects_model_protocol_features() -> None:
+    raw = _minimal_registry_raw(schema_version=2)
+    model = raw["providers"]["custom"]["endpoints"]["openai-completions"]["models"][
+        "model-a"
+    ]
+    model["protocol"] = {"reasoning": {"effort": "supported"}}
+
+    with pytest.raises(ValueError, match="only supported on endpoints"):
+        validate_model_registry_raw(raw)
+
+
+def test_model_registry_loads_legacy_reasoning_effort_map_into_protocol(tmp_path) -> None:
+    raw = _minimal_registry_raw(schema_version=1)
+    endpoint = raw["providers"]["custom"]["endpoints"]["openai-completions"]
+    endpoint["compat"] = {
+        "supportsReasoningEffort": True,
+        "reasoningEffortMap": {"off": None, "minimal": "low"},
+    }
+    path = tmp_path / "models.json"
+    path.write_text(json.dumps(raw), encoding="utf-8")
+
+    registry = load_model_registry_from_file(path)
+    endpoint_contract = registry.get_endpoint("custom", "openai-completions")
+
+    assert endpoint_contract is not None
+    assert endpoint_contract.protocol.to_raw()["reasoning"] == {
+        "effort": "supported",
+        "effortMap": {"off": None, "minimal": "low"},
+    }
+    endpoint_raw = endpoint_contract.to_raw()
+    assert "protocol" not in endpoint_raw
+
+    validate_model_registry_raw(
+        {
+            "schemaVersion": 1,
+            "providers": {
+                "custom": {
+                    "endpoints": {
+                        "openai-completions": endpoint_raw,
+                    }
+                }
+            },
+        }
+    )
+
+
+def test_model_registry_loads_explicit_protocol_into_compat_bridge(tmp_path) -> None:
+    raw = _minimal_registry_raw(schema_version=2)
+    endpoint = raw["providers"]["custom"]["endpoints"]["openai-completions"]
+    endpoint["compat"] = {"supportsDeveloperRole": True}
+    endpoint["protocol"] = {
+        "roles": {"developer": "unsupported"},
+        "streaming": {"reasoningDelta": "supported"},
+        "tools": {"strictSchema": "unsupported"},
+        "reasoning": {
+            "effort": "supported",
+            "effortMap": {"off": None, "minimal": "low"},
+        },
+    }
+    path = tmp_path / "models.v2.json"
+    path.write_text(json.dumps(raw), encoding="utf-8")
+
+    registry = load_model_registry_from_file(path)
+    endpoint_contract = registry.get_endpoint("custom", "openai-completions")
+
+    assert endpoint_contract is not None
+    assert endpoint_contract.protocol.to_raw() == {
+        "roles": {"developer": "unsupported"},
+        "streaming": {"reasoningDelta": "supported"},
+        "reasoning": {
+            "effort": "supported",
+            "effortMap": {"off": None, "minimal": "low"},
+        },
+        "tools": {"strictSchema": "unsupported"},
+    }
+    assert endpoint_contract.compat["supportsDeveloperRole"] is False
+    assert endpoint_contract.compat["supportsStreamReasoningDelta"] is True
+    assert endpoint_contract.compat["supportsReasoningEffort"] is True
+    assert endpoint_contract.compat["supportsStrictMode"] is False
+    assert endpoint_contract.compat["reasoningEffortMap"] == {
+        "off": None,
+        "minimal": "low",
+    }
+
+
+def test_model_registry_preserves_explicit_unknown_protocol_on_to_raw(
+    tmp_path,
+) -> None:
+    raw = _minimal_registry_raw(schema_version=2)
+    endpoint = raw["providers"]["custom"]["endpoints"]["openai-completions"]
+    endpoint["protocol"] = {
+        "store": "unknown",
+        "roles": {"developer": "unknown"},
+        "tools": {"strictSchema": "unknown"},
+    }
+    path = tmp_path / "models.v2.json"
+    path.write_text(json.dumps(raw), encoding="utf-8")
+
+    registry = load_model_registry_from_file(path)
+    endpoint_contract = registry.get_endpoint("custom", "openai-completions")
+
+    assert endpoint_contract is not None
+    endpoint_raw = endpoint_contract.to_raw()
+    assert endpoint_raw["protocol"] == {
+        "store": "unknown",
+        "roles": {"developer": "unknown"},
+        "tools": {"strictSchema": "unknown"},
+    }
+    assert endpoint_raw["compat"]["supportsStore"] is False
+    assert endpoint_raw["compat"]["supportsDeveloperRole"] is False
+    assert endpoint_raw["compat"]["supportsStrictMode"] is False
+
+    roundtrip_path = tmp_path / "roundtrip.v2.json"
+    roundtrip_path.write_text(
+        json.dumps(
+            {
+                "schemaVersion": 2,
+                "providers": {
+                    "custom": {
+                        "endpoints": {
+                            "openai-completions": endpoint_raw,
+                        }
+                    }
+                },
+            }
+        ),
+        encoding="utf-8",
+    )
+    roundtrip_registry = load_model_registry_from_file(roundtrip_path)
+    roundtrip_endpoint = roundtrip_registry.get_endpoint(
+        "custom",
+        "openai-completions",
+    )
+
+    assert roundtrip_endpoint is not None
+    assert roundtrip_endpoint.protocol.store is SupportStatus.UNKNOWN
+    assert roundtrip_endpoint.protocol.roles.developer is SupportStatus.UNKNOWN
+    assert roundtrip_endpoint.protocol.tools.strict_schema is SupportStatus.UNKNOWN
+
+
+def test_model_registry_schema_rejects_invalid_protocol_status() -> None:
+    raw = _minimal_registry_raw(schema_version=2)
+    endpoint = raw["providers"]["custom"]["endpoints"]["openai-completions"]
+    endpoint["protocol"] = {"roles": {"developer": "yes"}}
+
+    with pytest.raises(ValueError, match="invalid support status"):
+        validate_model_registry_raw(raw)
+
+
+def test_model_registry_schema_rejects_unknown_protocol_key() -> None:
+    raw = _minimal_registry_raw(schema_version=2)
+    endpoint = raw["providers"]["custom"]["endpoints"]["openai-completions"]
+    endpoint["protocol"] = {"streaming": {"usageEvents": "supported"}}
+
+    with pytest.raises(ValueError, match="unknown keys"):
+        validate_model_registry_raw(raw)
+
+
+def test_model_registry_schema_rejects_invalid_protocol_effort_map() -> None:
+    raw = _minimal_registry_raw(schema_version=2)
+    endpoint = raw["providers"]["custom"]["endpoints"]["openai-completions"]
+    endpoint["protocol"] = {"reasoning": {"effortMap": {"minimal": 1}}}
+
+    with pytest.raises(ValueError, match="string-or-null map"):
+        validate_model_registry_raw(raw)
+
+
 def test_model_registry_schema_rejects_non_integer_version() -> None:
     raw = _minimal_registry_raw(schema_version=None)
     raw["schemaVersion"] = "2"
@@ -173,6 +370,81 @@ def test_layered_model_registry_loads_v2_overlay_without_version_stamping(tmp_pa
 
     assert registry.get_model("custom", "openai-completions", "model-a")
     assert registry.get_model("moonshot", "kimi-code-anthropic", "kimi-for-coding")
+
+
+def test_layered_model_registry_loads_v2_overlay_protocol(tmp_path) -> None:
+    user_dir = tmp_path / "models"
+    user_dir.mkdir()
+    (user_dir / "custom.json").write_text(
+        """
+        {
+          "schemaVersion": 2,
+          "providers": {
+            "custom": {
+              "endpoints": {
+                "openai-completions": {
+                  "api": "openai-completions",
+                  "protocol": {
+                    "roles": {"developer": "unsupported"}
+                  },
+                  "models": {
+                    "model-a": {
+                      "capabilities": {
+                        "input": ["text"],
+                        "output": ["text"]
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+        """,
+        encoding="utf-8",
+    )
+
+    registry = load_layered_model_registry(user_dir=user_dir)
+    endpoint = registry.get_endpoint("custom", "openai-completions")
+
+    assert endpoint is not None
+    assert endpoint.protocol.roles.developer is SupportStatus.UNSUPPORTED
+
+
+def test_layered_model_registry_rejects_v1_overlay_protocol(tmp_path) -> None:
+    user_dir = tmp_path / "models"
+    user_dir.mkdir()
+    (user_dir / "custom.json").write_text(
+        """
+        {
+          "schemaVersion": 1,
+          "providers": {
+            "custom": {
+              "endpoints": {
+                "openai-completions": {
+                  "api": "openai-completions",
+                  "protocol": {
+                    "roles": {"developer": "unsupported"}
+                  },
+                  "models": {
+                    "model-a": {
+                      "capabilities": {
+                        "input": ["text"],
+                        "output": ["text"]
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+        """,
+        encoding="utf-8",
+    )
+
+    with pytest.raises(ValueError, match="requires schemaVersion 2"):
+        load_layered_model_registry(user_dir=user_dir)
 
 
 def test_layered_model_registry_rejects_unknown_overlay_version(tmp_path) -> None:

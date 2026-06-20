@@ -143,6 +143,7 @@ def _build_resolved_endpoint(
             compat=dict(getattr(model, "compat", {})),
             defaults=dict(getattr(model, "defaults", {})),
         )
+    endpoint_compat = endpoint.compat.merged(endpoint.protocol.to_compat())
     return ResolvedEndpoint(
         provider=endpoint.provider_id,
         endpoint=endpoint.id,
@@ -153,7 +154,7 @@ def _build_resolved_endpoint(
         if endpoint.region and endpoint.base_url
         else {},
         default_region=endpoint.region,
-        compat=dict(endpoint.compat),
+        compat=dict(endpoint_compat),
         defaults=dict(endpoint.defaults),
     )
 

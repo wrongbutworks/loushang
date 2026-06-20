@@ -2,10 +2,377 @@ from __future__ import annotations
 
 from collections.abc import Iterator, Mapping
 from dataclasses import InitVar, dataclass, field, replace
+from enum import Enum
 from typing import Literal, cast
+
+from loushang.ai.model.compat_schema import (
+    PROTOCOL_COMPAT_STATUS_MAPPINGS,
+    REASONING_EFFORT_MAP,
+)
 
 Modality = Literal["text", "image", "video", "audio", "vector"]
 ALLOWED_MODALITIES: tuple[Modality, ...] = ("text", "image", "video", "audio", "vector")
+
+
+class SupportStatus(str, Enum):
+    SUPPORTED = "supported"
+    UNSUPPORTED = "unsupported"
+    UNKNOWN = "unknown"
+
+    @classmethod
+    def from_raw(cls, raw: object) -> "SupportStatus":
+        if isinstance(raw, SupportStatus):
+            return raw
+        if isinstance(raw, str):
+            try:
+                return cls(raw)
+            except ValueError as error:
+                raise ValueError(f"unsupported support status: {raw!r}") from error
+        raise ValueError(f"support status must be a string: {raw!r}")
+
+
+def _status_from_raw(raw: Mapping[str, object], key: str) -> SupportStatus:
+    if key not in raw:
+        return SupportStatus.UNKNOWN
+    return SupportStatus.from_raw(raw[key])
+
+
+def _status_to_raw(status: SupportStatus, *, explicit: bool = False) -> str | None:
+    if status is SupportStatus.UNKNOWN and not explicit:
+        return None
+    return status.value
+
+
+def _explicit_keys(raw: Mapping[str, object], keys: tuple[str, ...]) -> frozenset[str]:
+    return frozenset(key for key in keys if key in raw)
+
+
+def _protocol_status_to_compat_bool(value: object) -> bool:
+    return SupportStatus.from_raw(value) is SupportStatus.SUPPORTED
+
+
+def _normalize_status_attrs(instance: object, *attrs: str) -> None:
+    for attr in attrs:
+        object.__setattr__(
+            instance,
+            attr,
+            SupportStatus.from_raw(getattr(instance, attr)),
+        )
+
+
+@dataclass(frozen=True)
+class EndpointProtocolRoles:
+    developer: SupportStatus = SupportStatus.UNKNOWN
+    _explicit_keys: frozenset[str] = field(
+        default_factory=frozenset,
+        compare=False,
+        repr=False,
+    )
+
+    def __post_init__(self) -> None:
+        _normalize_status_attrs(self, "developer")
+
+    @classmethod
+    def from_raw(cls, raw: Mapping[str, object] | None) -> "EndpointProtocolRoles":
+        raw = raw or {}
+        return cls(
+            developer=_status_from_raw(raw, "developer"),
+            _explicit_keys=_explicit_keys(raw, ("developer",)),
+        )
+
+    def to_raw(self) -> dict[str, object]:
+        raw: dict[str, object] = {}
+        if value := _status_to_raw(
+            self.developer,
+            explicit="developer" in self._explicit_keys,
+        ):
+            raw["developer"] = value
+        return raw
+
+
+@dataclass(frozen=True)
+class EndpointProtocolStreaming:
+    usage: SupportStatus = SupportStatus.UNKNOWN
+    reasoning_delta: SupportStatus = SupportStatus.UNKNOWN
+    _explicit_keys: frozenset[str] = field(
+        default_factory=frozenset,
+        compare=False,
+        repr=False,
+    )
+
+    def __post_init__(self) -> None:
+        _normalize_status_attrs(self, "usage", "reasoning_delta")
+
+    @classmethod
+    def from_raw(cls, raw: Mapping[str, object] | None) -> "EndpointProtocolStreaming":
+        raw = raw or {}
+        return cls(
+            usage=_status_from_raw(raw, "usage"),
+            reasoning_delta=_status_from_raw(raw, "reasoningDelta"),
+            _explicit_keys=_explicit_keys(raw, ("usage", "reasoningDelta")),
+        )
+
+    def to_raw(self) -> dict[str, object]:
+        raw: dict[str, object] = {}
+        if value := _status_to_raw(
+            self.usage,
+            explicit="usage" in self._explicit_keys,
+        ):
+            raw["usage"] = value
+        if value := _status_to_raw(
+            self.reasoning_delta,
+            explicit="reasoningDelta" in self._explicit_keys,
+        ):
+            raw["reasoningDelta"] = value
+        return raw
+
+
+@dataclass(frozen=True)
+class EndpointProtocolReasoning:
+    effort: SupportStatus = SupportStatus.UNKNOWN
+    effort_map: dict[str, str | None] = field(default_factory=dict)
+    interleaved: SupportStatus = SupportStatus.UNKNOWN
+    _explicit_keys: frozenset[str] = field(
+        default_factory=frozenset,
+        compare=False,
+        repr=False,
+    )
+
+    def __post_init__(self) -> None:
+        _normalize_status_attrs(self, "effort", "interleaved")
+
+    @classmethod
+    def from_raw(cls, raw: Mapping[str, object] | None) -> "EndpointProtocolReasoning":
+        raw = raw or {}
+        return cls(
+            effort=_status_from_raw(raw, "effort"),
+            effort_map=_as_optional_str_dict(raw.get("effortMap")),
+            interleaved=_status_from_raw(raw, "interleaved"),
+            _explicit_keys=_explicit_keys(raw, ("effort", "effortMap", "interleaved")),
+        )
+
+    def to_raw(self) -> dict[str, object]:
+        raw: dict[str, object] = {}
+        if value := _status_to_raw(
+            self.effort,
+            explicit="effort" in self._explicit_keys,
+        ):
+            raw["effort"] = value
+        if self.effort_map or "effortMap" in self._explicit_keys:
+            raw["effortMap"] = dict(self.effort_map)
+        if value := _status_to_raw(
+            self.interleaved,
+            explicit="interleaved" in self._explicit_keys,
+        ):
+            raw["interleaved"] = value
+        return raw
+
+
+@dataclass(frozen=True)
+class EndpointProtocolTools:
+    strict_schema: SupportStatus = SupportStatus.UNKNOWN
+    eager_input_stream: SupportStatus = SupportStatus.UNKNOWN
+    fine_grained: SupportStatus = SupportStatus.UNKNOWN
+    _explicit_keys: frozenset[str] = field(
+        default_factory=frozenset,
+        compare=False,
+        repr=False,
+    )
+
+    def __post_init__(self) -> None:
+        _normalize_status_attrs(
+            self,
+            "strict_schema",
+            "eager_input_stream",
+            "fine_grained",
+        )
+
+    @classmethod
+    def from_raw(cls, raw: Mapping[str, object] | None) -> "EndpointProtocolTools":
+        raw = raw or {}
+        return cls(
+            strict_schema=_status_from_raw(raw, "strictSchema"),
+            eager_input_stream=_status_from_raw(raw, "eagerInputStream"),
+            fine_grained=_status_from_raw(raw, "fineGrained"),
+            _explicit_keys=_explicit_keys(
+                raw,
+                ("strictSchema", "eagerInputStream", "fineGrained"),
+            ),
+        )
+
+    def to_raw(self) -> dict[str, object]:
+        raw: dict[str, object] = {}
+        if value := _status_to_raw(
+            self.strict_schema,
+            explicit="strictSchema" in self._explicit_keys,
+        ):
+            raw["strictSchema"] = value
+        if value := _status_to_raw(
+            self.eager_input_stream,
+            explicit="eagerInputStream" in self._explicit_keys,
+        ):
+            raw["eagerInputStream"] = value
+        if value := _status_to_raw(
+            self.fine_grained,
+            explicit="fineGrained" in self._explicit_keys,
+        ):
+            raw["fineGrained"] = value
+        return raw
+
+
+@dataclass(frozen=True)
+class EndpointProtocolCache:
+    on_tools: SupportStatus = SupportStatus.UNKNOWN
+    long_retention: SupportStatus = SupportStatus.UNKNOWN
+    _explicit_keys: frozenset[str] = field(
+        default_factory=frozenset,
+        compare=False,
+        repr=False,
+    )
+
+    def __post_init__(self) -> None:
+        _normalize_status_attrs(self, "on_tools", "long_retention")
+
+    @classmethod
+    def from_raw(cls, raw: Mapping[str, object] | None) -> "EndpointProtocolCache":
+        raw = raw or {}
+        return cls(
+            on_tools=_status_from_raw(raw, "onTools"),
+            long_retention=_status_from_raw(raw, "longRetention"),
+            _explicit_keys=_explicit_keys(raw, ("onTools", "longRetention")),
+        )
+
+    def to_raw(self) -> dict[str, object]:
+        raw: dict[str, object] = {}
+        if value := _status_to_raw(
+            self.on_tools,
+            explicit="onTools" in self._explicit_keys,
+        ):
+            raw["onTools"] = value
+        if value := _status_to_raw(
+            self.long_retention,
+            explicit="longRetention" in self._explicit_keys,
+        ):
+            raw["longRetention"] = value
+        return raw
+
+
+@dataclass(frozen=True)
+class EndpointProtocolSession:
+    id_header: SupportStatus = SupportStatus.UNKNOWN
+    affinity_headers: SupportStatus = SupportStatus.UNKNOWN
+    _explicit_keys: frozenset[str] = field(
+        default_factory=frozenset,
+        compare=False,
+        repr=False,
+    )
+
+    def __post_init__(self) -> None:
+        _normalize_status_attrs(self, "id_header", "affinity_headers")
+
+    @classmethod
+    def from_raw(cls, raw: Mapping[str, object] | None) -> "EndpointProtocolSession":
+        raw = raw or {}
+        return cls(
+            id_header=_status_from_raw(raw, "idHeader"),
+            affinity_headers=_status_from_raw(raw, "affinityHeaders"),
+            _explicit_keys=_explicit_keys(raw, ("idHeader", "affinityHeaders")),
+        )
+
+    def to_raw(self) -> dict[str, object]:
+        raw: dict[str, object] = {}
+        if value := _status_to_raw(
+            self.id_header,
+            explicit="idHeader" in self._explicit_keys,
+        ):
+            raw["idHeader"] = value
+        if value := _status_to_raw(
+            self.affinity_headers,
+            explicit="affinityHeaders" in self._explicit_keys,
+        ):
+            raw["affinityHeaders"] = value
+        return raw
+
+
+@dataclass(frozen=True)
+class EndpointProtocolFeatures:
+    store: SupportStatus = SupportStatus.UNKNOWN
+    roles: EndpointProtocolRoles = field(default_factory=EndpointProtocolRoles)
+    streaming: EndpointProtocolStreaming = field(default_factory=EndpointProtocolStreaming)
+    reasoning: EndpointProtocolReasoning = field(default_factory=EndpointProtocolReasoning)
+    tools: EndpointProtocolTools = field(default_factory=EndpointProtocolTools)
+    cache: EndpointProtocolCache = field(default_factory=EndpointProtocolCache)
+    session: EndpointProtocolSession = field(default_factory=EndpointProtocolSession)
+    _explicit_keys: frozenset[str] = field(
+        default_factory=frozenset,
+        compare=False,
+        repr=False,
+    )
+
+    def __post_init__(self) -> None:
+        _normalize_status_attrs(self, "store")
+
+    @classmethod
+    def from_raw(
+        cls, raw: Mapping[str, object] | None
+    ) -> "EndpointProtocolFeatures":
+        raw = raw or {}
+        return cls(
+            store=_status_from_raw(raw, "store"),
+            roles=EndpointProtocolRoles.from_raw(_mapping_or_none(raw.get("roles"))),
+            streaming=EndpointProtocolStreaming.from_raw(
+                _mapping_or_none(raw.get("streaming"))
+            ),
+            reasoning=EndpointProtocolReasoning.from_raw(
+                _mapping_or_none(raw.get("reasoning"))
+            ),
+            tools=EndpointProtocolTools.from_raw(_mapping_or_none(raw.get("tools"))),
+            cache=EndpointProtocolCache.from_raw(_mapping_or_none(raw.get("cache"))),
+            session=EndpointProtocolSession.from_raw(
+                _mapping_or_none(raw.get("session"))
+            ),
+            _explicit_keys=_explicit_keys(raw, ("store",)),
+        )
+
+    def to_raw(self) -> dict[str, object]:
+        raw: dict[str, object] = {}
+        if store_value := _status_to_raw(
+            self.store,
+            explicit="store" in self._explicit_keys,
+        ):
+            raw["store"] = store_value
+        for key, section_raw in (
+            ("roles", self.roles.to_raw()),
+            ("streaming", self.streaming.to_raw()),
+            ("reasoning", self.reasoning.to_raw()),
+            ("tools", self.tools.to_raw()),
+            ("cache", self.cache.to_raw()),
+            ("session", self.session.to_raw()),
+        ):
+            if section_raw:
+                raw[key] = section_raw
+        return raw
+
+    def to_compat(self) -> dict[str, object]:
+        raw = self.to_raw()
+        compat: dict[str, object] = {}
+        for compat_key, section, protocol_key in PROTOCOL_COMPAT_STATUS_MAPPINGS:
+            if section is None:
+                if protocol_key not in raw:
+                    continue
+                value = raw[protocol_key]
+            else:
+                section_raw = raw.get(section)
+                if not isinstance(section_raw, dict) or protocol_key not in section_raw:
+                    continue
+                value = section_raw[protocol_key]
+            # The legacy compat bridge has no third state, so explicit
+            # "unknown" projects conservatively to False.
+            compat[compat_key] = _protocol_status_to_compat_bool(value)
+        reasoning_raw = raw.get("reasoning")
+        if isinstance(reasoning_raw, dict) and "effortMap" in reasoning_raw:
+            compat[REASONING_EFFORT_MAP] = dict(reasoning_raw["effortMap"])
+        return compat
 
 
 @dataclass(frozen=True)
@@ -299,6 +666,7 @@ class Model:
     def with_endpoint(self, endpoint: "Endpoint") -> "Model":
         inherits_auth = self.auth is None or self._auth_inherited
         auth = endpoint.auth if inherits_auth else self.auth
+        endpoint_compat = endpoint.compat.merged(endpoint.protocol.to_compat())
         return replace(
             self,
             _endpoint_key=endpoint.endpoint_key,
@@ -310,7 +678,7 @@ class Model:
             preferred_endpoint=endpoint.preferred,
             auth=auth,
             _auth_inherited=inherits_auth and auth is not None,
-            compat=endpoint.compat.merged(self.compat),
+            compat=endpoint_compat.merged(self.compat),
             defaults=endpoint.defaults.merged(self.defaults),
         )
 
@@ -370,6 +738,8 @@ class Endpoint:
     compat: Compat = field(default_factory=Compat)
     defaults: Defaults = field(default_factory=Defaults)
     models: dict[str, Model] = field(default_factory=dict)
+    protocol: EndpointProtocolFeatures = field(default_factory=EndpointProtocolFeatures)
+    _protocol_explicit: bool = field(default=True, compare=False, repr=False)
 
     def __post_init__(self, provider: str | None) -> None:
         if self._provider_key:
@@ -420,6 +790,8 @@ class Endpoint:
             raw["docs"] = self.docs
         if self.auth is not None and not self._auth_inherited:
             raw["auth"] = self.auth.to_raw()
+        if self._protocol_explicit and (protocol_raw := self.protocol.to_raw()):
+            raw["protocol"] = protocol_raw
         return raw
 
 
@@ -503,6 +875,20 @@ def _as_str_dict(value: object) -> dict[str, str]:
         if isinstance(key, str) and isinstance(entry, str):
             result[key] = entry
     return result
+
+
+def _as_optional_str_dict(value: object) -> dict[str, str | None]:
+    if not isinstance(value, Mapping):
+        return {}
+    result: dict[str, str | None] = {}
+    for key, entry in value.items():
+        if isinstance(key, str) and (entry is None or isinstance(entry, str)):
+            result[key] = entry
+    return result
+
+
+def _mapping_or_none(value: object) -> Mapping[str, object] | None:
+    return value if isinstance(value, Mapping) else None
 
 
 def _as_str_tuple(value: object) -> tuple[str, ...]:

@@ -8,6 +8,7 @@ SUPPORTS_DEVELOPER_ROLE = "supportsDeveloperRole"
 SUPPORTS_REASONING_EFFORT = "supportsReasoningEffort"
 REASONING_EFFORT_MAP = "reasoningEffortMap"
 SUPPORTS_USAGE_IN_STREAMING = "supportsUsageInStreaming"
+SUPPORTS_STREAM_REASONING_DELTA = "supportsStreamReasoningDelta"
 MAX_TOKENS_FIELD = "maxTokensField"
 REQUIRES_TOOL_RESULT_NAME = "requiresToolResultName"
 REQUIRES_ASSISTANT_AFTER_TOOL_RESULT = "requiresAssistantAfterToolResult"
@@ -26,6 +27,8 @@ SEND_SESSION_ID_HEADER = "sendSessionIdHeader"
 SUPPORTS_LONG_CACHE_RETENTION = "supportsLongCacheRetention"
 SUPPORTS_EAGER_TOOL_INPUT_STREAMING = "supportsEagerToolInputStreaming"
 SUPPORTS_CACHE_CONTROL_ON_TOOLS = "supportsCacheControlOnTools"
+FINE_GRAINED_TOOLS = "fineGrainedTools"
+INTERLEAVED_THINKING = "interleavedThinking"
 CODEX_INCLUDE_CLIENT_REQUEST_ID = "codexIncludeClientRequestId"
 CODEX_INCLUDE_CONVERSATION_ID = "codexIncludeConversationId"
 CODEX_PROMPT_CACHE_RETENTION = "codexPromptCacheRetention"
@@ -33,12 +36,29 @@ CODEX_ORIGINATOR = "codexOriginator"
 CODEX_USER_AGENT = "codexUserAgent"
 UPSTREAM_MODEL_ID = "upstreamModelId"
 
+PROTOCOL_COMPAT_STATUS_MAPPINGS: tuple[tuple[str, str | None, str], ...] = (
+    (SUPPORTS_STORE, None, "store"),
+    (SUPPORTS_DEVELOPER_ROLE, "roles", "developer"),
+    (SUPPORTS_USAGE_IN_STREAMING, "streaming", "usage"),
+    (SUPPORTS_STREAM_REASONING_DELTA, "streaming", "reasoningDelta"),
+    (SUPPORTS_REASONING_EFFORT, "reasoning", "effort"),
+    (INTERLEAVED_THINKING, "reasoning", "interleaved"),
+    (SUPPORTS_STRICT_MODE, "tools", "strictSchema"),
+    (SUPPORTS_EAGER_TOOL_INPUT_STREAMING, "tools", "eagerInputStream"),
+    (FINE_GRAINED_TOOLS, "tools", "fineGrained"),
+    (SUPPORTS_CACHE_CONTROL_ON_TOOLS, "cache", "onTools"),
+    (SUPPORTS_LONG_CACHE_RETENTION, "cache", "longRetention"),
+    (SEND_SESSION_AFFINITY_HEADERS, "session", "affinityHeaders"),
+    (SEND_SESSION_ID_HEADER, "session", "idHeader"),
+)
+
 COMPAT_DEFAULTS: dict[str, object] = {
     SUPPORTS_STORE: False,
     SUPPORTS_DEVELOPER_ROLE: True,
     SUPPORTS_REASONING_EFFORT: False,
     REASONING_EFFORT_MAP: {},
     SUPPORTS_USAGE_IN_STREAMING: True,
+    SUPPORTS_STREAM_REASONING_DELTA: False,
     MAX_TOKENS_FIELD: "max_tokens",
     REQUIRES_TOOL_RESULT_NAME: False,
     REQUIRES_ASSISTANT_AFTER_TOOL_RESULT: False,
@@ -55,6 +75,7 @@ COMPAT_DEFAULTS: dict[str, object] = {
     SUPPORTS_LONG_CACHE_RETENTION: True,
     SUPPORTS_EAGER_TOOL_INPUT_STREAMING: True,
     SUPPORTS_CACHE_CONTROL_ON_TOOLS: True,
+    FINE_GRAINED_TOOLS: False,
     CODEX_INCLUDE_CLIENT_REQUEST_ID: False,
     CODEX_INCLUDE_CONVERSATION_ID: False,
     CODEX_PROMPT_CACHE_RETENTION: None,
@@ -112,6 +133,7 @@ def _merge_detected_compat(
     enabled_keys: tuple[str, ...] = (),
     bool_keys: tuple[str, ...] = (),
     value_keys: tuple[str, ...] = (),
+    optional_value_keys: tuple[str, ...] = (),
 ) -> dict[str, object]:
     merged: dict[str, object] = {}
     for key in enabled_keys:
@@ -120,6 +142,15 @@ def _merge_detected_compat(
         merged[key] = bool(_compat_override(overrides, detected, key))
     for key in value_keys:
         merged[key] = _compat_override(overrides, detected, key)
+    for key in optional_value_keys:
+        if key in overrides:
+            merged[key] = overrides[key]
+        elif key in detected:
+            merged[key] = detected[key]
+        elif key in COMPAT_DEFAULTS:
+            value = COMPAT_DEFAULTS[key]
+            if value is not None:
+                merged[key] = value
     return merged
 
 
@@ -172,6 +203,7 @@ def resolve_openai_completions_compat(
             MAX_TOKENS_FIELD,
             THINKING_FORMAT,
             OPENROUTER_ROUTING,
+            SUPPORTS_STREAM_REASONING_DELTA,
             VERCEL_GATEWAY_ROUTING,
             CACHE_CONTROL_FORMAT,
             UPSTREAM_MODEL_ID,
@@ -231,6 +263,12 @@ def resolve_anthropic_messages_compat(
             SUPPORTS_CACHE_CONTROL_ON_TOOLS,
         ),
         bool_keys=(SEND_SESSION_AFFINITY_HEADERS,),
+        value_keys=(
+            FINE_GRAINED_TOOLS,
+        ),
+        optional_value_keys=(
+            INTERLEAVED_THINKING,
+        ),
     )
 
 

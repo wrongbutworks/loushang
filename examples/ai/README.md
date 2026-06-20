@@ -17,6 +17,9 @@
 
 `examples/ai/advanced/` 放协议观察、faux provider、本地 registry 注入这类高级样例，不作为第一次接入的推荐入口。
 
+- [advanced/inspect_endpoint_contract.py](advanced/inspect_endpoint_contract.py)
+  查看 endpoint 的 typed protocol facts 和仍然存在的 legacy compat keys
+
 ## Provider 配置速查
 
 模型调用使用三元组定位：`provider:endpoint:model`。如果上游模型 ID 自身包含冒号，内置 catalog 的公开 `model` ID 会把冒号替换为下划线，并在 `model.compat["upstreamModelId"]` 保存真实上游 ID。

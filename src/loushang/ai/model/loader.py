@@ -9,7 +9,10 @@ from typing import Any
 from loushang.ai.model.compat_schema import (
     COMPAT_DEFAULTS,
     MAX_TOKENS_FIELD,
+    PROTOCOL_COMPAT_STATUS_MAPPINGS,
+    REASONING_EFFORT_MAP,
     SUPPORTS_REASONING_EFFORT,
+    SUPPORTS_STREAM_REASONING_DELTA,
     compat_bool,
 )
 from loushang.ai.model.domain import (
@@ -19,9 +22,11 @@ from loushang.ai.model.domain import (
     Compat,
     Defaults,
     Endpoint,
+    EndpointProtocolFeatures,
     Model,
     Pricing,
     Provider,
+    SupportStatus,
 )
 from loushang.ai.model.registry import ModelRegistry
 from loushang.ai.output_budget import default_output_tokens_from_capability
@@ -31,7 +36,7 @@ ALLOWED_COMPAT_KEYS = frozenset(COMPAT_DEFAULTS) | {
     "interleavedThinking",
     "providerTransport",
     "supportsJsonSchemaStructuredOutput",
-    "supportsStreamReasoningDelta",
+    SUPPORTS_STREAM_REASONING_DELTA,
 }
 ALLOWED_DEFAULT_KEYS = frozenset(
     {
@@ -62,13 +67,24 @@ ALLOWED_PRICING_KEYS = frozenset(
 ALLOWED_AUTH_KEYS = frozenset(
     {"kind", "apiKeyEnv", "apiKeyEnvs", "header", "prefix", "extraHeaders"}
 )
+ALLOWED_PROTOCOL_KEYS = frozenset(
+    {"store", "roles", "streaming", "reasoning", "tools", "cache", "session"}
+)
+ALLOWED_PROTOCOL_SECTION_KEYS: dict[str, frozenset[str]] = {
+    "roles": frozenset({"developer"}),
+    "streaming": frozenset({"usage", "reasoningDelta"}),
+    "reasoning": frozenset({"effort", "effortMap", "interleaved"}),
+    "tools": frozenset({"strictSchema", "eagerInputStream", "fineGrained"}),
+    "cache": frozenset({"onTools", "longRetention"}),
+    "session": frozenset({"idHeader", "affinityHeaders"}),
+}
 DEFAULT_SCHEMA_VERSION = 1
 SUPPORTED_SCHEMA_VERSIONS = frozenset({1, 2})
 
 
 def validate_model_registry_raw(raw: dict[str, Any]) -> None:
     root = _require_mapping(raw, "<root>")
-    _schema_version(root)
+    schema_version = _schema_version(root)
     providers = _require_mapping(root.get("providers"), "providers")
     for provider_id, provider_raw in providers.items():
         provider_path = f"providers.{provider_id}"
@@ -89,6 +105,11 @@ def validate_model_registry_raw(raw: dict[str, Any]) -> None:
                 ALLOWED_COMPAT_KEYS,
                 f"{endpoint_path}.compat",
             )
+            _validate_protocol_mapping(
+                endpoint.get("protocol"),
+                f"{endpoint_path}.protocol",
+                schema_version=schema_version,
+            )
             _validate_keyed_mapping(
                 endpoint.get("defaults"),
                 ALLOWED_DEFAULT_KEYS,
@@ -100,6 +121,11 @@ def validate_model_registry_raw(raw: dict[str, Any]) -> None:
                 _validate_ref_segment_key(model_id, model_path)
                 model = _require_mapping(model_raw, model_path)
                 _validate_auth_fields(model, model_path)
+                if "protocol" in model:
+                    raise ValueError(
+                        "models registry field is only supported on endpoints: "
+                        f"{model_path}.protocol"
+                    )
                 _validate_keyed_mapping(
                     model.get("compat"),
                     ALLOWED_COMPAT_KEYS,
@@ -224,11 +250,85 @@ def _validate_auth_fields(raw: dict[str, Any], path: str) -> None:
     _validate_auth_mapping(legacy_auth, f"{path}.authOverride")
 
 
+def _validate_protocol_mapping(
+    value: object,
+    path: str,
+    *,
+    schema_version: int,
+) -> None:
+    if value is None:
+        return
+    if schema_version < 2:
+        raise ValueError(
+            f"models registry field requires schemaVersion 2 or newer: {path}"
+        )
+    mapping = _require_mapping(value, path)
+    unknown = sorted(set(mapping) - ALLOWED_PROTOCOL_KEYS)
+    if unknown:
+        raise ValueError(f"models registry field has unknown keys at {path}: {unknown}")
+    if "store" in mapping:
+        _validate_support_status(mapping["store"], f"{path}.store")
+    for section, allowed_keys in ALLOWED_PROTOCOL_SECTION_KEYS.items():
+        if section not in mapping:
+            continue
+        section_mapping = _require_mapping(mapping[section], f"{path}.{section}")
+        section_unknown = sorted(set(section_mapping) - allowed_keys)
+        if section_unknown:
+            raise ValueError(
+                f"models registry field has unknown keys at {path}.{section}: "
+                f"{section_unknown}"
+            )
+        for key, entry in section_mapping.items():
+            if section == "reasoning" and key == "effortMap":
+                _as_optional_str_mapping(entry, f"{path}.{section}.{key}")
+                continue
+            _validate_support_status(entry, f"{path}.{section}.{key}")
+
+
+def _validate_support_status(value: object, path: str) -> None:
+    try:
+        SupportStatus.from_raw(value)
+    except ValueError as error:
+        raise ValueError(f"models registry field has invalid support status: {path}") from error
+
+
+def _validate_protocol_schema_version(raw: dict[str, Any], schema_version: int) -> None:
+    if schema_version >= 2:
+        return
+    providers = raw.get("providers")
+    if not isinstance(providers, dict):
+        return
+    for provider_id, provider_raw in providers.items():
+        if not isinstance(provider_raw, dict):
+            continue
+        endpoints = provider_raw.get("endpoints")
+        if not isinstance(endpoints, dict):
+            continue
+        for endpoint_key, endpoint_raw in endpoints.items():
+            if isinstance(endpoint_raw, dict) and "protocol" in endpoint_raw:
+                raise ValueError(
+                    "models registry field requires schemaVersion 2 or newer: "
+                    f"providers.{provider_id}.endpoints.{endpoint_key}.protocol"
+                )
+
+
 def _as_str_mapping(value: object, path: str) -> dict[str, str]:
     mapping = _require_mapping(value, path)
     if not all(isinstance(key, str) and isinstance(entry, str) for key, entry in mapping.items()):
         raise ValueError(f"models registry field must be a string map: {path}")
     return mapping
+
+
+def _as_optional_str_mapping(value: object, path: str) -> dict[str, str | None]:
+    mapping = _require_mapping(value, path)
+    result: dict[str, str | None] = {}
+    for key, entry in mapping.items():
+        if not isinstance(key, str) or not (entry is None or isinstance(entry, str)):
+            raise ValueError(
+                f"models registry field must be a string-or-null map: {path}"
+            )
+        result[key] = entry
+    return result
 
 
 def _validate_modalities(value: object, path: str) -> None:
@@ -245,7 +345,84 @@ def _normalize_endpoint_compat(endpoint_raw: dict[str, Any]) -> Compat:
     values = dict(compat)
     if str(endpoint_raw.get("api", "")) == "openai-completions":
         values.setdefault(MAX_TOKENS_FIELD, "max_completion_tokens")
+    values.update(_compat_raw_from_protocol(endpoint_raw.get("protocol")))
     return Compat(items_by_key=values)
+
+
+def _status_from_legacy_bool(value: object) -> str | None:
+    if not isinstance(value, bool):
+        return None
+    return SupportStatus.SUPPORTED.value if value else SupportStatus.UNSUPPORTED.value
+
+
+def _set_protocol_status(
+    raw: dict[str, object],
+    section: str | None,
+    key: str,
+    value: object,
+) -> None:
+    status = _status_from_legacy_bool(value)
+    if status is None:
+        return
+    if section is None:
+        raw[key] = status
+        return
+    section_raw = raw.setdefault(section, {})
+    if isinstance(section_raw, dict):
+        section_raw[key] = status
+
+
+def _set_protocol_string_or_none_mapping(
+    raw: dict[str, object],
+    section: str,
+    key: str,
+    value: object,
+) -> None:
+    if not isinstance(value, dict):
+        return
+    mapping = {
+        item_key: item_value
+        for item_key, item_value in value.items()
+        if isinstance(item_key, str)
+        and (item_value is None or isinstance(item_value, str))
+    }
+    if not mapping:
+        return
+    section_raw = raw.setdefault(section, {})
+    if isinstance(section_raw, dict):
+        section_raw[key] = mapping
+
+
+def _compat_raw_from_protocol(value: object) -> dict[str, object]:
+    if not isinstance(value, dict):
+        return {}
+    return EndpointProtocolFeatures.from_raw(value).to_compat()
+
+
+def _protocol_raw_from_legacy_compat(compat: Compat) -> dict[str, object]:
+    raw: dict[str, object] = {}
+    for compat_key, section, protocol_key in PROTOCOL_COMPAT_STATUS_MAPPINGS:
+        if compat_key in compat:
+            _set_protocol_status(raw, section, protocol_key, compat[compat_key])
+    if REASONING_EFFORT_MAP in compat:
+        _set_protocol_string_or_none_mapping(
+            raw,
+            "reasoning",
+            "effortMap",
+            compat[REASONING_EFFORT_MAP],
+        )
+    return raw
+
+
+def _endpoint_protocol_features(
+    endpoint_raw: dict[str, Any],
+    compat: Compat,
+) -> EndpointProtocolFeatures:
+    legacy_raw = _protocol_raw_from_legacy_compat(compat)
+    explicit_raw = endpoint_raw.get("protocol")
+    if isinstance(explicit_raw, dict):
+        return EndpointProtocolFeatures.from_raw(_deep_merge_dict(legacy_raw, explicit_raw))
+    return EndpointProtocolFeatures.from_raw(legacy_raw)
 
 
 def _derive_model_defaults(
@@ -319,6 +496,7 @@ def _build_registry(raw: dict[str, Any]) -> ModelRegistry:
                 endpoint_specific_auth_raw,
             )
             endpoint_auth = Auth.from_raw(endpoint_auth_raw)
+            endpoint_compat = _normalize_endpoint_compat(endpoint_raw)
             endpoint = Endpoint(
                 id=endpoint_id,
                 provider=provider_id,
@@ -332,7 +510,9 @@ def _build_registry(raw: dict[str, Any]) -> ModelRegistry:
                 docs=endpoint_raw.get("docs"),
                 auth=endpoint_auth,
                 _auth_inherited=endpoint_specific_auth_raw is None and endpoint_auth is not None,
-                compat=_normalize_endpoint_compat(endpoint_raw),
+                protocol=_endpoint_protocol_features(endpoint_raw, endpoint_compat),
+                _protocol_explicit=isinstance(endpoint_raw.get("protocol"), dict),
+                compat=endpoint_compat,
                 defaults=Defaults.from_raw(endpoint_raw.get("defaults")),
             )
             models: dict[str, Model] = {}
@@ -455,17 +635,20 @@ def _deep_merge_dict(base: dict[str, Any], override: dict[str, Any]) -> dict[str
     return result
 
 
-def _load_directory_raw(path: Path) -> dict[str, Any] | None:
+def _load_directory_raw(path: Path) -> tuple[dict[str, Any], int] | None:
     if not path.is_dir():
         return None
     merged: dict[str, Any] = {}
+    merged_schema_version = DEFAULT_SCHEMA_VERSION
     for child in sorted(path.glob("*.json")):
         raw = _load_json_file(child)
-        _schema_version(raw)
+        schema_version = _schema_version(raw)
+        _validate_protocol_schema_version(raw, schema_version)
+        merged_schema_version = max(merged_schema_version, schema_version)
         mergeable_raw = dict(raw)
         mergeable_raw.pop("schemaVersion", None)
         merged = _deep_merge_dict(merged, mergeable_raw)
-    return merged if merged else None
+    return (merged, merged_schema_version) if merged else None
 
 
 def load_layered_model_registry(
@@ -474,12 +657,19 @@ def load_layered_model_registry(
     project_dir: Path | None = None,
 ) -> ModelRegistry:
     raw = _load_builtin_raw()
-    user_raw = _load_directory_raw(user_dir) if user_dir is not None else None
-    project_raw = _load_directory_raw(project_dir) if project_dir is not None else None
-    if user_raw is not None:
+    schema_version = _schema_version(raw)
+    user_layer = _load_directory_raw(user_dir) if user_dir is not None else None
+    project_layer = _load_directory_raw(project_dir) if project_dir is not None else None
+    if user_layer is not None:
+        user_raw, user_schema_version = user_layer
         raw = _deep_merge_dict(raw, user_raw)
-    if project_raw is not None:
+        schema_version = max(schema_version, user_schema_version)
+    if project_layer is not None:
+        project_raw, project_schema_version = project_layer
         raw = _deep_merge_dict(raw, project_raw)
+        schema_version = max(schema_version, project_schema_version)
+    if schema_version != DEFAULT_SCHEMA_VERSION:
+        raw["schemaVersion"] = schema_version
     return _build_registry(raw)
 
 

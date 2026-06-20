@@ -5,11 +5,102 @@ import os
 
 import pytest
 
-from loushang.ai.model import Auth, Endpoint, Model, ModelRegistry, Provider
+from loushang.ai.model import (
+    Auth,
+    Endpoint,
+    EndpointProtocolFeatures,
+    Model,
+    ModelRegistry,
+    Provider,
+    SupportStatus,
+)
+from loushang.ai.model.compat_schema import (
+    FINE_GRAINED_TOOLS,
+    INTERLEAVED_THINKING,
+    SUPPORTS_STREAM_REASONING_DELTA,
+    UPSTREAM_MODEL_ID,
+    resolve_anthropic_messages_compat,
+    resolve_openai_completions_compat,
+    resolve_openai_responses_compat,
+)
 from loushang.ai.model.loader import load_model_registry, load_model_registry_from_file
 from loushang.ai.model.registry import clear_default_model_registry, resolve_model_api
 from loushang.ai.options import OpenAICompletionsOptions
 from loushang.ai.provider import resolve_request_for_model
+
+
+def test_openai_completions_stream_reasoning_delta_defaults_to_bool() -> None:
+    compat = resolve_openai_completions_compat(
+        provider_id="custom",
+        model_id="model-a",
+        base_url=None,
+    )
+
+    assert compat[SUPPORTS_STREAM_REASONING_DELTA] is False
+
+
+def test_nullable_resolver_value_keys_preserve_none_defaults() -> None:
+    openai_completions = resolve_openai_completions_compat(
+        provider_id="custom",
+        model_id="model-a",
+        base_url=None,
+    )
+    openai_responses = resolve_openai_responses_compat({})
+
+    assert openai_completions[UPSTREAM_MODEL_ID] is None
+    assert openai_responses[UPSTREAM_MODEL_ID] is None
+
+
+def test_anthropic_messages_protocol_flags_default_to_bool_or_absent() -> None:
+    compat = resolve_anthropic_messages_compat(
+        provider_id="custom",
+        base_url=None,
+    )
+
+    assert compat[FINE_GRAINED_TOOLS] is False
+    assert INTERLEAVED_THINKING not in compat
+
+
+def test_anthropic_messages_protocol_flags_preserve_explicit_booleans() -> None:
+    compat = resolve_anthropic_messages_compat(
+        provider_id="custom",
+        base_url=None,
+        raw={INTERLEAVED_THINKING: True},
+    )
+
+    assert compat[INTERLEAVED_THINKING] is True
+
+
+def test_resolve_request_uses_in_memory_endpoint_protocol_bridge() -> None:
+    endpoint = Endpoint(
+        id="openai-completions",
+        provider="custom",
+        api="openai-completions",
+        protocol=EndpointProtocolFeatures.from_raw(
+            {
+                "roles": {"developer": "unsupported"},
+                "reasoning": {"effort": "unsupported"},
+                "tools": {"strictSchema": "unsupported"},
+            }
+        ),
+        models={
+            "model-a": Model(
+                id="model-a",
+                provider="custom",
+                endpoint="openai-completions",
+            )
+        },
+    )
+    registry = ModelRegistry.from_providers(
+        {"custom": Provider(id="custom", endpoints={endpoint.id: endpoint})}
+    )
+    model = registry.get_model("custom", "openai-completions", "model-a")
+
+    resolved = resolve_request_for_model(model, registry=registry, env={})
+
+    assert resolved.compat["supportsDeveloperRole"] is False
+    assert resolved.compat["supportsReasoningEffort"] is False
+    assert resolved.compat["supportsStrictMode"] is False
 
 
 def test_resolve_request_uses_base_url_env_override() -> None:
@@ -211,6 +302,259 @@ def test_resolve_request_rejects_missing_base_url_env_template() -> None:
 
     with pytest.raises(ValueError, match="CLOUDFLARE_ACCOUNT_ID"):
         resolve_request_for_model(model, registry=registry, env={})
+
+
+def test_resolve_request_uses_explicit_protocol_compat_bridge(tmp_path) -> None:
+    path = tmp_path / "models.v2.json"
+    path.write_text(
+        json.dumps(
+            {
+                "schemaVersion": 2,
+                "providers": {
+                    "custom": {
+                        "endpoints": {
+                            "openai-completions": {
+                                "api": "openai-completions",
+                                "baseUrl": "https://api.openai.com/v1",
+                                "protocol": {
+                                    "store": "unsupported",
+                                    "roles": {"developer": "unsupported"},
+                                    "streaming": {
+                                        "usage": "unsupported",
+                                        "reasoningDelta": "supported",
+                                    },
+                                    "reasoning": {"effort": "supported"},
+                                    "tools": {"strictSchema": "unsupported"},
+                                    "cache": {"longRetention": "unsupported"},
+                                    "session": {"affinityHeaders": "supported"},
+                                },
+                                "models": {
+                                    "model-a": {
+                                        "capabilities": {
+                                            "input": ["text"],
+                                            "output": ["text"],
+                                            "toolUse": True,
+                                            "reasoning": True,
+                                        }
+                                    }
+                                },
+                            }
+                        }
+                    }
+                },
+            }
+        ),
+        encoding="utf-8",
+    )
+    registry = load_model_registry_from_file(path)
+    model = registry.get_model("custom", "openai-completions", "model-a")
+
+    resolved = resolve_request_for_model(model, registry=registry, env={})
+
+    assert resolved.compat["supportsStore"] is False
+    assert resolved.compat["supportsDeveloperRole"] is False
+    assert resolved.compat["supportsUsageInStreaming"] is False
+    assert resolved.compat["supportsReasoningEffort"] is True
+    assert resolved.compat["supportsStrictMode"] is False
+    assert resolved.compat["supportsStreamReasoningDelta"] is True
+    assert resolved.compat["supportsLongCacheRetention"] is False
+    assert resolved.compat["sendSessionAffinityHeaders"] is True
+
+
+def test_resolve_request_preserves_model_compat_override_over_endpoint_protocol(
+    tmp_path,
+) -> None:
+    path = tmp_path / "models.v2.json"
+    path.write_text(
+        json.dumps(
+            {
+                "schemaVersion": 2,
+                "providers": {
+                    "custom": {
+                        "endpoints": {
+                            "openai-completions": {
+                                "api": "openai-completions",
+                                "baseUrl": "https://api.openai.com/v1",
+                                "protocol": {
+                                    "reasoning": {"effort": "unsupported"},
+                                },
+                                "models": {
+                                    "model-a": {
+                                        "compat": {"supportsReasoningEffort": True},
+                                        "capabilities": {
+                                            "input": ["text"],
+                                            "output": ["text"],
+                                            "reasoning": True,
+                                        },
+                                    }
+                                },
+                            }
+                        }
+                    }
+                },
+            }
+        ),
+        encoding="utf-8",
+    )
+    registry = load_model_registry_from_file(path)
+    model = registry.get_model("custom", "openai-completions", "model-a")
+
+    resolved = resolve_request_for_model(model, registry=registry, env={})
+
+    assert model.compat["supportsReasoningEffort"] is True
+    assert resolved.compat["supportsReasoningEffort"] is True
+
+
+def test_resolve_request_preserves_openai_responses_protocol_bridge_keys(
+    tmp_path,
+) -> None:
+    path = tmp_path / "models.v2.json"
+    path.write_text(
+        json.dumps(
+            {
+                "schemaVersion": 2,
+                "providers": {
+                    "custom": {
+                        "endpoints": {
+                            "openai-responses": {
+                                "api": "openai-responses",
+                                "baseUrl": "https://api.openai.com/v1",
+                                "protocol": {
+                                    "roles": {"developer": "unsupported"},
+                                    "cache": {"longRetention": "unsupported"},
+                                    "session": {"idHeader": "unsupported"},
+                                },
+                                "models": {
+                                    "model-a": {
+                                        "capabilities": {
+                                            "input": ["text"],
+                                            "output": ["text"],
+                                        }
+                                    }
+                                },
+                            }
+                        }
+                    }
+                },
+            }
+        ),
+        encoding="utf-8",
+    )
+    registry = load_model_registry_from_file(path)
+    model = registry.get_model("custom", "openai-responses", "model-a")
+
+    resolved = resolve_request_for_model(model, registry=registry, env={})
+
+    assert resolved.compat["supportsDeveloperRole"] is False
+    assert resolved.compat["supportsLongCacheRetention"] is False
+    assert resolved.compat["sendSessionIdHeader"] is False
+
+
+def test_resolve_request_treats_explicit_unknown_protocol_as_runtime_unsupported(
+    tmp_path,
+) -> None:
+    path = tmp_path / "models.v2.json"
+    path.write_text(
+        json.dumps(
+            {
+                "schemaVersion": 2,
+                "providers": {
+                    "custom": {
+                        "endpoints": {
+                            "openai-completions": {
+                                "api": "openai-completions",
+                                "baseUrl": "https://api.openai.com/v1",
+                                "protocol": {
+                                    "store": "unknown",
+                                    "roles": {"developer": "unknown"},
+                                    "tools": {"strictSchema": "unknown"},
+                                },
+                                "models": {
+                                    "model-a": {
+                                        "capabilities": {
+                                            "input": ["text"],
+                                            "output": ["text"],
+                                            "toolUse": True,
+                                            "reasoning": True,
+                                        }
+                                    }
+                                },
+                            }
+                        }
+                    }
+                },
+            }
+        ),
+        encoding="utf-8",
+    )
+    registry = load_model_registry_from_file(path)
+    endpoint = registry.get_endpoint("custom", "openai-completions")
+    model = registry.get_model("custom", "openai-completions", "model-a")
+
+    resolved = resolve_request_for_model(model, registry=registry, env={})
+
+    assert endpoint is not None
+    assert endpoint.protocol.store is SupportStatus.UNKNOWN
+    assert endpoint.protocol.roles.developer is SupportStatus.UNKNOWN
+    assert endpoint.protocol.tools.strict_schema is SupportStatus.UNKNOWN
+    assert resolved.compat["supportsStore"] is False
+    assert resolved.compat["supportsDeveloperRole"] is False
+    assert resolved.compat["supportsStrictMode"] is False
+
+
+def test_resolve_request_preserves_anthropic_protocol_bridge_keys(tmp_path) -> None:
+    path = tmp_path / "models.v2.json"
+    path.write_text(
+        json.dumps(
+            {
+                "schemaVersion": 2,
+                "providers": {
+                    "custom": {
+                        "endpoints": {
+                            "anthropic-messages": {
+                                "api": "anthropic-messages",
+                                "baseUrl": "https://api.anthropic.com",
+                                "protocol": {
+                                    "reasoning": {"interleaved": "supported"},
+                                    "tools": {
+                                        "eagerInputStream": "unsupported",
+                                        "fineGrained": "supported",
+                                    },
+                                    "cache": {
+                                        "onTools": "unsupported",
+                                        "longRetention": "unsupported",
+                                    },
+                                    "session": {"affinityHeaders": "supported"},
+                                },
+                                "models": {
+                                    "model-a": {
+                                        "capabilities": {
+                                            "input": ["text"],
+                                            "output": ["text"],
+                                            "toolUse": True,
+                                            "reasoning": True,
+                                        }
+                                    }
+                                },
+                            }
+                        }
+                    }
+                },
+            }
+        ),
+        encoding="utf-8",
+    )
+    registry = load_model_registry_from_file(path)
+    model = registry.get_model("custom", "anthropic-messages", "model-a")
+
+    resolved = resolve_request_for_model(model, registry=registry, env={})
+
+    assert resolved.compat["supportsEagerToolInputStreaming"] is False
+    assert resolved.compat["fineGrainedTools"] is True
+    assert resolved.compat["interleavedThinking"] is True
+    assert resolved.compat["supportsCacheControlOnTools"] is False
+    assert resolved.compat["supportsLongCacheRetention"] is False
+    assert resolved.compat["sendSessionAffinityHeaders"] is True
 
 
 def test_resolve_request_selects_matching_region_endpoint() -> None:

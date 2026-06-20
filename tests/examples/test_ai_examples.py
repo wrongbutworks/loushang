@@ -1,8 +1,11 @@
 from __future__ import annotations
 
 import importlib.util
+import json
 import sys
 from pathlib import Path
+
+from loushang.ai.model import load_model_registry_from_file
 
 
 def _load_module(path: Path, name: str):
@@ -63,6 +66,135 @@ def test_provider_matrix_example_formats_all_provider_entries() -> None:
     lines = [module._format_model_line(example) for example in module.PROVIDER_EXAMPLES]
 
     assert len(lines) == len(module.PROVIDER_EXAMPLES)
+
+
+def test_advanced_inspect_endpoint_contract_formats_protocol_facts(
+    capsys,
+    monkeypatch,
+    tmp_path,
+) -> None:
+    module = _load_module(
+        Path("examples/ai/advanced/inspect_endpoint_contract.py"),
+        "examples_ai_advanced_inspect_endpoint_contract",
+    )
+    path = tmp_path / "models.v2.json"
+    path.write_text(
+        json.dumps(
+            {
+                "schemaVersion": 2,
+                "providers": {
+                    "moonshot": {
+                        "endpoints": {
+                            "openai-completions": {
+                                "api": "openai-completions",
+                                "baseUrl": "https://example.invalid/v1",
+                                "compat": {"thinkingFormat": "example"},
+                                "protocol": {
+                                    "roles": {"developer": "unsupported"},
+                                    "reasoning": {"effort": "unsupported"},
+                                },
+                                "models": {
+                                    "kimi-k2.5": {
+                                        "compat": {
+                                            "supportsReasoningEffort": True,
+                                            "supportsStreamReasoningDelta": True
+                                        },
+                                        "capabilities": {
+                                            "input": ["text"],
+                                            "output": ["text"],
+                                        },
+                                    }
+                                },
+                            }
+                        }
+                    }
+                },
+            }
+        ),
+        encoding="utf-8",
+    )
+    registry = load_model_registry_from_file(path)
+    monkeypatch.setattr(module, "load_builtin_model_registry", lambda: registry)
+
+    contract = module.inspect_endpoint_contract()
+
+    assert contract["provider"] == "moonshot"
+    assert contract["endpoint"] == "openai-completions"
+    assert contract["api"] == "openai-completions"
+    assert contract["protocolScope"] == "endpoint-default"
+    assert contract["model"] == "kimi-k2.5"
+    assert contract["protocol"] == {
+        "roles": {"developer": "unsupported"},
+        "reasoning": {"effort": "unsupported"},
+    }
+    assert contract["modelEffectiveLegacyCompat"]["supportsReasoningEffort"] is True
+    assert "thinkingFormat" in contract["legacyCompatKeys"]
+    assert "supportsStreamReasoningDelta" in contract[
+        "modelEffectiveLegacyCompatKeys"
+    ]
+
+    module.main()
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["protocolScope"] == "endpoint-default"
+
+
+def test_advanced_inspect_endpoint_contract_runs_against_builtin_catalog() -> None:
+    module = _load_module(
+        Path("examples/ai/advanced/inspect_endpoint_contract.py"),
+        "examples_ai_advanced_inspect_endpoint_contract_builtin",
+    )
+
+    contract = module.inspect_endpoint_contract()
+
+    assert contract["provider"] == "moonshot"
+    assert contract["endpoint"] == "openai-completions"
+    assert contract["model"] == "kimi-k2.5"
+    assert contract["protocol"] == {
+        "roles": {"developer": "unsupported"},
+        "reasoning": {"effort": "unsupported"},
+    }
+    assert contract["modelEffectiveLegacyCompat"]["supportsReasoningEffort"] is True
+    assert "supportsStreamReasoningDelta" in contract[
+        "modelEffectiveLegacyCompatKeys"
+    ]
+
+
+def test_advanced_inspect_endpoint_contract_rejects_missing_model(
+    monkeypatch,
+    tmp_path,
+) -> None:
+    module = _load_module(
+        Path("examples/ai/advanced/inspect_endpoint_contract.py"),
+        "examples_ai_advanced_inspect_endpoint_contract_missing_model",
+    )
+    path = tmp_path / "models.v2.json"
+    path.write_text(
+        json.dumps(
+            {
+                "schemaVersion": 2,
+                "providers": {
+                    "moonshot": {
+                        "endpoints": {
+                            "openai-completions": {
+                                "api": "openai-completions",
+                                "models": {},
+                            }
+                        }
+                    }
+                },
+            }
+        ),
+        encoding="utf-8",
+    )
+    registry = load_model_registry_from_file(path)
+    monkeypatch.setattr(module, "load_builtin_model_registry", lambda: registry)
+
+    try:
+        module.inspect_endpoint_contract(model_id="missing")
+    except KeyError as error:
+        assert error.args == (("moonshot", "openai-completions", "missing"),)
+    else:
+        raise AssertionError("missing model should raise KeyError")
 
 
 def test_complete_example_builds_expected_context() -> None:
