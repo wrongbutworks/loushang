@@ -52,7 +52,7 @@ coverage.xml
 cover/
 
 # Local generated artifacts
-.codex
+.artifacts/
 .loushang/
 .loushang-sessions/
 .worktrees/
@@ -209,9 +209,13 @@ cython_debug/
 .cursorignore
 .cursorindexingignore
 
-# Codex local workspace state
-.codex
-.codex/
+# Codex project agent configuration and local workspace state
+.codex/*
+!.codex/
+!.codex/config.toml
+!.codex/agents/
+.codex/agents/*
+!.codex/agents/*.toml
 
 # Loushang runtime state (global/project + examples)
 .loushang/
