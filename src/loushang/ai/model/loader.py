@@ -1,11 +1,11 @@
 from __future__ import annotations
 
 import json
-from dataclasses import replace
+from dataclasses import dataclass, replace
 from importlib.resources import files
 from math import isfinite
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 
 from loushang.ai.model.compat_schema import (
     COMPAT_DEFAULTS,
@@ -16,6 +16,7 @@ from loushang.ai.model.compat_schema import (
     PROTOCOL_COMPAT_STATUS_MAPPINGS,
     PROVIDER_TRANSPORT,
     REASONING_EFFORT_MAP,
+    SUPPORTS_JSON_SCHEMA_STRUCTURED_OUTPUT,
     SUPPORTS_REASONING_EFFORT,
     SUPPORTS_STREAM_REASONING_DELTA,
     UPSTREAM_MODEL_ID,
@@ -41,6 +42,7 @@ from loushang.ai.model.domain import (
 from loushang.ai.model.registry import ModelRegistry
 from loushang.ai.output_budget import default_output_tokens_from_capability
 
+LEGACY_COMPAT_DIAGNOSTIC_CODE = "legacy_compat_deprecated"
 LEGACY_TRANSPORT_ROUTING_COMPAT_KEYS = frozenset(
     {
         PROVIDER_TRANSPORT,
@@ -49,13 +51,14 @@ LEGACY_TRANSPORT_ROUTING_COMPAT_KEYS = frozenset(
     }
 )
 LEGACY_MODEL_BINDING_COMPAT_KEYS = frozenset({UPSTREAM_MODEL_ID})
+LEGACY_CAPABILITY_COMPAT_KEYS = frozenset({SUPPORTS_JSON_SCHEMA_STRUCTURED_OUTPUT})
 ALLOWED_ENDPOINT_COMPAT_KEYS = (
     frozenset(COMPAT_DEFAULTS)
     | LEGACY_TRANSPORT_ROUTING_COMPAT_KEYS
+    | LEGACY_CAPABILITY_COMPAT_KEYS
     | {
         "fineGrainedTools",
         "interleavedThinking",
-        "supportsJsonSchemaStructuredOutput",
         SUPPORTS_STREAM_REASONING_DELTA,
     }
 )
@@ -116,6 +119,54 @@ ALLOWED_TRANSPORT_KEYS = frozenset({"kind", "stream", "fallback", "timeout"})
 ALLOWED_ROUTING_KEYS = frozenset({"requestOverrides"})
 DEFAULT_SCHEMA_VERSION = 1
 SUPPORTED_SCHEMA_VERSIONS = frozenset({1, 2})
+
+
+def _nested_target(prefix: str, section: str | None, key: str) -> str:
+    return f"{prefix}.{key}" if section is None else f"{prefix}.{section}.{key}"
+
+
+LEGACY_COMPAT_TRANSLATION_TARGETS: dict[str, str] = {
+    **{
+        compat_key: _nested_target("protocol", section, target_key)
+        for compat_key, section, target_key in PROTOCOL_COMPAT_STATUS_MAPPINGS
+    },
+    REASONING_EFFORT_MAP: "protocol.reasoning.effortMap",
+    **{
+        compat_key: _nested_target("dialect", section, target_key)
+        for compat_key, section, target_key in DIALECT_COMPAT_BOOL_MAPPINGS
+    },
+    **{
+        compat_key: _nested_target("dialect", section, target_key)
+        for compat_key, section, target_key in DIALECT_COMPAT_VALUE_MAPPINGS
+    },
+    OPENROUTER_ROUTING: "routing.requestOverrides.openrouter",
+    VERCEL_GATEWAY_ROUTING: "routing.requestOverrides.vercelGateway",
+    PROVIDER_TRANSPORT: "transport.kind",
+    SUPPORTS_JSON_SCHEMA_STRUCTURED_OUTPUT: "capabilities.structuredOutput",
+    UPSTREAM_MODEL_ID: "model.upstreamId",
+}
+DEPRECATED_LEGACY_COMPAT_KEYS = frozenset(LEGACY_COMPAT_TRANSLATION_TARGETS)
+MODEL_LEVEL_DEPRECATED_LEGACY_COMPAT_KEYS = (
+    LEGACY_TRANSPORT_ROUTING_COMPAT_KEYS
+    | LEGACY_MODEL_BINDING_COMPAT_KEYS
+    | LEGACY_CAPABILITY_COMPAT_KEYS
+)
+
+
+@dataclass(frozen=True)
+class ModelRegistryLoadDiagnostic:
+    code: str
+    path: str
+    legacy_key: str
+    target: str
+    message: str
+    level: Literal["warning"] = "warning"
+
+
+@dataclass(frozen=True)
+class ModelRegistryLoadResult:
+    registry: ModelRegistry
+    diagnostics: tuple[ModelRegistryLoadDiagnostic, ...] = ()
 
 
 def validate_model_registry_raw(raw: dict[str, Any]) -> None:
@@ -591,7 +642,8 @@ def _normalize_endpoint_compat(endpoint_raw: dict[str, Any]) -> Compat:
         key: value
         for key, value in compat.items()
         if key
-        not in LEGACY_TRANSPORT_ROUTING_COMPAT_KEYS | LEGACY_MODEL_BINDING_COMPAT_KEYS
+        not in LEGACY_TRANSPORT_ROUTING_COMPAT_KEYS
+        | LEGACY_MODEL_BINDING_COMPAT_KEYS
     }
     if str(endpoint_raw.get("api", "")) == "openai-completions":
         values.setdefault(MAX_TOKENS_FIELD, "max_completion_tokens")
@@ -611,6 +663,50 @@ def _normalize_model_compat(model_raw: dict[str, Any]) -> Compat:
             | LEGACY_MODEL_BINDING_COMPAT_KEYS
         }
     )
+
+
+def _legacy_structured_output_value(compat: Compat) -> bool | None:
+    value = compat.get(SUPPORTS_JSON_SCHEMA_STRUCTURED_OUTPUT)
+    return value if isinstance(value, bool) else None
+
+
+def _model_has_typed_structured_output(model_raw: dict[str, Any]) -> bool:
+    capabilities_raw = model_raw.get("capabilities")
+    if isinstance(capabilities_raw, dict):
+        return "structuredOutput" in capabilities_raw
+    return "structuredOutput" in model_raw
+
+
+def _model_capabilities_from_raw(
+    model_raw: dict[str, Any],
+    *,
+    model_legacy_compat: Compat,
+    endpoint_legacy_compat: Compat,
+) -> Capabilities:
+    if _model_has_typed_structured_output(model_raw):
+        return Capabilities.from_raw(model_raw)
+    value = _legacy_structured_output_value(model_legacy_compat)
+    if value is None:
+        value = _legacy_structured_output_value(endpoint_legacy_compat)
+    if value is None:
+        return Capabilities.from_raw(model_raw)
+    capabilities_raw = model_raw.get("capabilities")
+    if isinstance(capabilities_raw, dict):
+        merged_capabilities = dict(capabilities_raw)
+        merged_capabilities["structuredOutput"] = value
+        return Capabilities.from_raw({**model_raw, "capabilities": merged_capabilities})
+    return Capabilities.from_raw({**model_raw, "structuredOutput": value})
+
+
+def _model_compat_with_effective_capabilities(
+    compat: Compat,
+    capabilities: Capabilities,
+) -> Compat:
+    if SUPPORTS_JSON_SCHEMA_STRUCTURED_OUTPUT not in compat:
+        return compat
+    values = compat.to_raw()
+    values[SUPPORTS_JSON_SCHEMA_STRUCTURED_OUTPUT] = capabilities.structured_output
+    return Compat(items_by_key=values)
 
 
 def _status_from_legacy_bool(value: object) -> str | None:
@@ -880,15 +976,110 @@ def _derive_endpoint_id(
     return api
 
 
-def _build_registry(raw: dict[str, Any]) -> ModelRegistry:
+def _legacy_compat_diagnostics(
+    raw: dict[str, Any],
+    path: str,
+    *,
+    location: Literal["endpoint", "model"],
+) -> tuple[ModelRegistryLoadDiagnostic, ...]:
+    compat_raw = raw.get("compat")
+    if not isinstance(compat_raw, dict):
+        return ()
+    diagnostics: list[ModelRegistryLoadDiagnostic] = []
+    for legacy_key in sorted(compat_raw):
+        target = _legacy_compat_diagnostic_target(legacy_key, location=location)
+        if target is None:
+            continue
+        diagnostics.append(
+            ModelRegistryLoadDiagnostic(
+                code=LEGACY_COMPAT_DIAGNOSTIC_CODE,
+                path=f"{path}.compat.{legacy_key}",
+                legacy_key=legacy_key,
+                target=target,
+                message=(
+                    f"Legacy compat key {legacy_key!r} maps to {target!r}; "
+                    "write the typed catalog field instead."
+                ),
+            )
+        )
+    return tuple(diagnostics)
+
+
+def _legacy_compat_diagnostic_target(
+    legacy_key: str,
+    *,
+    location: Literal["endpoint", "model"],
+) -> str | None:
+    if legacy_key not in DEPRECATED_LEGACY_COMPAT_KEYS:
+        return None
+    if location == "model" and legacy_key not in MODEL_LEVEL_DEPRECATED_LEGACY_COMPAT_KEYS:
+        return None
+    return LEGACY_COMPAT_TRANSLATION_TARGETS[legacy_key]
+
+
+def _legacy_compat_diagnostics_by_provider(
+    raw: dict[str, Any],
+) -> dict[str, tuple[ModelRegistryLoadDiagnostic, ...]]:
+    providers_raw = raw.get("providers")
+    if not isinstance(providers_raw, dict):
+        return {}
+    diagnostics_by_provider: dict[str, tuple[ModelRegistryLoadDiagnostic, ...]] = {}
+    for provider_id, provider_raw in providers_raw.items():
+        if not isinstance(provider_id, str) or not isinstance(provider_raw, dict):
+            continue
+        provider_path = f"providers.{provider_id}"
+        provider_diagnostics: list[ModelRegistryLoadDiagnostic] = []
+        endpoints_raw = provider_raw.get("endpoints")
+        if not isinstance(endpoints_raw, dict):
+            continue
+        for endpoint_key, endpoint_raw in endpoints_raw.items():
+            if not isinstance(endpoint_key, str) or not isinstance(endpoint_raw, dict):
+                continue
+            endpoint_path = f"{provider_path}.endpoints.{endpoint_key}"
+            provider_diagnostics.extend(
+                _legacy_compat_diagnostics(
+                    endpoint_raw,
+                    endpoint_path,
+                    location="endpoint",
+                )
+            )
+            models_raw = endpoint_raw.get("models")
+            if not isinstance(models_raw, dict):
+                continue
+            for model_id, model_raw in models_raw.items():
+                if not isinstance(model_id, str) or not isinstance(model_raw, dict):
+                    continue
+                model_path = f"{endpoint_path}.models.{model_id}"
+                provider_diagnostics.extend(
+                    _legacy_compat_diagnostics(
+                        model_raw,
+                        model_path,
+                        location="model",
+                    )
+                )
+        diagnostics_by_provider[provider_id] = tuple(provider_diagnostics)
+    return diagnostics_by_provider
+
+
+def _build_registry_result(raw: dict[str, Any]) -> ModelRegistryLoadResult:
     validate_model_registry_raw(raw)
     schema_version = _schema_version(raw)
+    diagnostics: list[ModelRegistryLoadDiagnostic] = []
     providers: dict[str, Provider] = {}
     for provider_id, provider_raw in raw.get("providers", {}).items():
+        provider_path = f"providers.{provider_id}"
         provider_auth_raw = _auth_raw(provider_raw)
         provider_auth = Auth.from_raw(provider_auth_raw)
         endpoints: dict[str, Endpoint] = {}
         for endpoint_key, endpoint_raw in provider_raw.get("endpoints", {}).items():
+            endpoint_path = f"{provider_path}.endpoints.{endpoint_key}"
+            diagnostics.extend(
+                _legacy_compat_diagnostics(
+                    endpoint_raw,
+                    endpoint_path,
+                    location="endpoint",
+                )
+            )
             endpoint_api = str(endpoint_raw.get("api", ""))
             endpoint_id = _derive_endpoint_id(
                 endpoint_key,
@@ -993,6 +1184,14 @@ def _build_registry(raw: dict[str, Any]) -> ModelRegistry:
             )
             models: dict[str, Model] = {}
             for model_id, model_raw in endpoint_raw.get("models", {}).items():
+                model_path = f"{endpoint_path}.models.{model_id}"
+                diagnostics.extend(
+                    _legacy_compat_diagnostics(
+                        model_raw,
+                        model_path,
+                        location="model",
+                    )
+                )
                 model_auth_raw = _auth_raw(model_raw)
                 model_auth = (
                     Auth.from_raw(_merge_auth_raw(endpoint_auth_raw, model_auth_raw))
@@ -1059,7 +1258,15 @@ def _build_registry(raw: dict[str, Any]) -> ModelRegistry:
                     and model_routing_legacy_compat_raw
                     else None
                 )
-                compat = endpoint.compat.merged(_normalize_model_compat(model_raw))
+                capabilities = _model_capabilities_from_raw(
+                    model_raw,
+                    model_legacy_compat=model_legacy_compat,
+                    endpoint_legacy_compat=endpoint_legacy_compat,
+                )
+                compat = _model_compat_with_effective_capabilities(
+                    endpoint.compat.merged(_normalize_model_compat(model_raw)),
+                    capabilities,
+                )
                 defaults = _derive_model_defaults(
                     endpoint.api,
                     endpoint.lane,
@@ -1076,7 +1283,7 @@ def _build_registry(raw: dict[str, Any]) -> ModelRegistry:
                     alias=model_raw.get("alias"),
                     upstream_id=model_upstream_id,
                     _upstream_id_legacy_raw=model_upstream_legacy_source,
-                    capabilities=Capabilities.from_raw(model_raw),
+                    capabilities=capabilities,
                     knowledge=model_raw.get("knowledge"),
                     release_date=model_raw.get("releaseDate"),
                     last_updated=model_raw.get("lastUpdated"),
@@ -1104,7 +1311,60 @@ def _build_registry(raw: dict[str, Any]) -> ModelRegistry:
             auth=provider_auth,
             endpoints=endpoints,
         )
-    return ModelRegistry.from_providers(providers)
+    return ModelRegistryLoadResult(
+        registry=ModelRegistry.from_providers(providers),
+        diagnostics=tuple(diagnostics),
+    )
+
+
+def _build_registry(raw: dict[str, Any]) -> ModelRegistry:
+    return _build_registry_result(raw).registry
+
+
+def _raw_with_schema_version(
+    raw: dict[str, Any],
+    schema_version: int,
+) -> dict[str, Any]:
+    result = dict(raw)
+    if schema_version != DEFAULT_SCHEMA_VERSION:
+        result["schemaVersion"] = schema_version
+    return result
+
+
+def _provider_only_raw(
+    provider_id: str,
+    provider_raw: dict[str, Any],
+    schema_version: int,
+) -> dict[str, Any]:
+    return _raw_with_schema_version(
+        {"providers": {provider_id: provider_raw}},
+        schema_version,
+    )
+
+
+def _build_registry_results_by_provider(
+    raw: dict[str, Any],
+) -> dict[str, ModelRegistryLoadResult]:
+    validate_model_registry_raw(raw)
+    schema_version = _schema_version(raw)
+    providers_raw = _require_mapping(raw.get("providers"), "providers")
+    return {
+        provider_id: _build_registry_result(
+            _provider_only_raw(provider_id, provider_raw, schema_version)
+        )
+        for provider_id, provider_raw in providers_raw.items()
+    }
+
+
+def _diagnostics_for_provider_order(
+    provider_order: list[str],
+    diagnostics_by_provider: dict[str, tuple[ModelRegistryLoadDiagnostic, ...]],
+) -> tuple[ModelRegistryLoadDiagnostic, ...]:
+    return tuple(
+        diagnostic
+        for provider_id in provider_order
+        for diagnostic in diagnostics_by_provider.get(provider_id, ())
+    )
 
 
 def _auth_raw(raw: dict[str, Any]) -> dict[str, Any] | None:
@@ -1153,11 +1413,25 @@ def load_builtin_model_registry() -> ModelRegistry:
     return _build_registry(_load_builtin_raw())
 
 
+def load_builtin_model_registry_with_diagnostics() -> ModelRegistryLoadResult:
+    raw = _load_builtin_raw()
+    return ModelRegistryLoadResult(registry=_build_registry(raw))
+
+
 def load_model_registry_from_file(path: str | Path) -> ModelRegistry:
     resolved = Path(path)
     if not resolved.is_file():
         raise FileNotFoundError(str(resolved))
     return _build_registry(_load_json_file(resolved))
+
+
+def load_model_registry_from_file_with_diagnostics(
+    path: str | Path,
+) -> ModelRegistryLoadResult:
+    resolved = Path(path)
+    if not resolved.is_file():
+        raise FileNotFoundError(str(resolved))
+    return _build_registry_result(_load_json_file(resolved))
 
 
 def load_model_registry_from_directory(path: str | Path) -> ModelRegistry:
@@ -1169,6 +1443,31 @@ def load_model_registry_from_directory(path: str | Path) -> ModelRegistry:
         child_registry = _build_registry(_load_json_file(child))
         providers.update(child_registry.providers)
     return ModelRegistry.from_providers(providers)
+
+
+def load_model_registry_from_directory_with_diagnostics(
+    path: str | Path,
+) -> ModelRegistryLoadResult:
+    resolved = Path(path)
+    if not resolved.is_dir():
+        raise FileNotFoundError(str(resolved))
+    providers: dict[str, Provider] = {}
+    diagnostics_by_provider: dict[str, tuple[ModelRegistryLoadDiagnostic, ...]] = {}
+    for child in sorted(resolved.glob("*.json")):
+        for provider_id, child_result in _build_registry_results_by_provider(
+            _load_json_file(child)
+        ).items():
+            provider = child_result.registry.providers[provider_id]
+            providers[provider_id] = provider
+            diagnostics_by_provider[provider_id] = child_result.diagnostics
+    diagnostics = _diagnostics_for_provider_order(
+        list(providers),
+        diagnostics_by_provider,
+    )
+    return ModelRegistryLoadResult(
+        registry=ModelRegistry.from_providers(providers),
+        diagnostics=diagnostics,
+    )
 
 
 def _deep_merge_dict(base: dict[str, Any], override: dict[str, Any]) -> dict[str, Any]:
@@ -1202,8 +1501,20 @@ def load_layered_model_registry(
     user_dir: Path | None = None,
     project_dir: Path | None = None,
 ) -> ModelRegistry:
+    return load_layered_model_registry_with_diagnostics(
+        user_dir=user_dir,
+        project_dir=project_dir,
+    ).registry
+
+
+def load_layered_model_registry_with_diagnostics(
+    *,
+    user_dir: Path | None = None,
+    project_dir: Path | None = None,
+) -> ModelRegistryLoadResult:
     raw = _load_builtin_raw()
     schema_version = _schema_version(raw)
+    external_raw: dict[str, Any] = {}
     user_layer = _load_directory_raw(user_dir) if user_dir is not None else None
     project_layer = (
         _load_directory_raw(project_dir) if project_dir is not None else None
@@ -1211,25 +1522,38 @@ def load_layered_model_registry(
     if user_layer is not None:
         user_raw, user_schema_version = user_layer
         raw = _deep_merge_dict(raw, user_raw)
+        external_raw = _deep_merge_dict(external_raw, user_raw)
         schema_version = max(schema_version, user_schema_version)
     if project_layer is not None:
         project_raw, project_schema_version = project_layer
         raw = _deep_merge_dict(raw, project_raw)
+        external_raw = _deep_merge_dict(external_raw, project_raw)
         schema_version = max(schema_version, project_schema_version)
     if schema_version != DEFAULT_SCHEMA_VERSION:
         raw["schemaVersion"] = schema_version
-    return _build_registry(raw)
+    registry = _build_registry(raw)
+    diagnostics = _diagnostics_for_provider_order(
+        list(registry.providers),
+        _legacy_compat_diagnostics_by_provider(external_raw),
+    )
+    return ModelRegistryLoadResult(registry=registry, diagnostics=diagnostics)
 
 
 def load_model_registry(
     path: str | Path | None = None,
 ) -> ModelRegistry:
+    return load_model_registry_with_diagnostics(path).registry
+
+
+def load_model_registry_with_diagnostics(
+    path: str | Path | None = None,
+) -> ModelRegistryLoadResult:
     if path is None:
-        return load_builtin_model_registry()
+        return load_builtin_model_registry_with_diagnostics()
 
     resolved = Path(path)
     if resolved.is_file():
-        return load_model_registry_from_file(resolved)
+        return load_model_registry_from_file_with_diagnostics(resolved)
     if resolved.is_dir():
-        return load_model_registry_from_directory(resolved)
+        return load_model_registry_from_directory_with_diagnostics(resolved)
     raise FileNotFoundError(str(resolved))

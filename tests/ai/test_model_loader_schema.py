@@ -6,7 +6,15 @@ from typing import Any
 
 import pytest
 
-from loushang.ai.model import EndpointWireDialect, SupportStatus
+from loushang.ai.model import (
+    LEGACY_COMPAT_TRANSLATION_TARGETS,
+    EndpointWireDialect,
+    SupportStatus,
+    load_builtin_model_registry_with_diagnostics,
+    load_layered_model_registry_with_diagnostics,
+    load_model_registry_from_directory_with_diagnostics,
+    load_model_registry_from_file_with_diagnostics,
+)
 from loushang.ai.model.loader import (
     load_layered_model_registry,
     load_model_registry,
@@ -14,6 +22,38 @@ from loushang.ai.model.loader import (
     load_model_registry_from_file,
     validate_model_registry_raw,
 )
+
+EXPECTED_LEGACY_COMPAT_TRANSLATION_TARGETS = {
+    "supportsStore": "protocol.store",
+    "supportsDeveloperRole": "protocol.roles.developer",
+    "supportsReasoningEffort": "protocol.reasoning.effort",
+    "reasoningEffortMap": "protocol.reasoning.effortMap",
+    "supportsUsageInStreaming": "protocol.streaming.usage",
+    "supportsStreamReasoningDelta": "protocol.streaming.reasoningDelta",
+    "maxTokensField": "dialect.maxOutputTokensField",
+    "requiresToolResultName": "dialect.tools.resultNameRequired",
+    "requiresAssistantAfterToolResult": "dialect.tools.assistantBridgeRequired",
+    "requiresThinkingAsText": "dialect.reasoning.thinkingAsText",
+    "thinkingFormat": "dialect.reasoning.wireFormat",
+    "supportsStrictMode": "protocol.tools.strictSchema",
+    "requiresReasoningContentOnAssistantMessages": (
+        "dialect.reasoning.assistantContentRequired"
+    ),
+    "openRouterRouting": "routing.requestOverrides.openrouter",
+    "vercelGatewayRouting": "routing.requestOverrides.vercelGateway",
+    "zaiToolStream": "dialect.tools.streamFlag",
+    "cacheControlFormat": "dialect.cache.controlFormat",
+    "sendSessionAffinityHeaders": "protocol.session.affinityHeaders",
+    "sendSessionIdHeader": "protocol.session.idHeader",
+    "supportsLongCacheRetention": "protocol.cache.longRetention",
+    "supportsEagerToolInputStreaming": "protocol.tools.eagerInputStream",
+    "supportsCacheControlOnTools": "protocol.cache.onTools",
+    "fineGrainedTools": "protocol.tools.fineGrained",
+    "interleavedThinking": "protocol.reasoning.interleaved",
+    "providerTransport": "transport.kind",
+    "supportsJsonSchemaStructuredOutput": "capabilities.structuredOutput",
+    "upstreamModelId": "model.upstreamId",
+}
 
 
 def _minimal_registry_raw(*, schema_version: int | None = 1) -> dict[str, Any]:
@@ -39,6 +79,16 @@ def _minimal_registry_raw(*, schema_version: int | None = 1) -> dict[str, Any]:
     if schema_version is not None:
         raw["schemaVersion"] = schema_version
     return raw
+
+
+def _diagnostics_by_key(result) -> dict[str, object]:
+    return {diagnostic.legacy_key: diagnostic for diagnostic in result.diagnostics}
+
+
+def test_legacy_compat_translation_target_table_covers_plan_keys() -> None:
+    assert LEGACY_COMPAT_TRANSLATION_TARGETS == (
+        EXPECTED_LEGACY_COMPAT_TRANSLATION_TARGETS
+    )
 
 
 def test_builtin_model_registry_matches_schema() -> None:
@@ -361,6 +411,293 @@ def test_model_registry_loads_legacy_reasoning_effort_map_into_protocol(
             },
         }
     )
+
+
+def test_model_registry_reports_legacy_compat_translation_diagnostics(
+    tmp_path,
+) -> None:
+    raw = _minimal_registry_raw(schema_version=1)
+    endpoint = raw["providers"]["custom"]["endpoints"]["openai-completions"]
+    endpoint["compat"] = {
+        "supportsStore": True,
+        "supportsReasoningEffort": True,
+        "reasoningEffortMap": {"minimal": "low"},
+        "maxTokensField": "max_completion_tokens",
+        "providerTransport": "httpx",
+        "openRouterRouting": {"only": ["anthropic"]},
+    }
+    model = endpoint["models"]["model-a"]
+    model["compat"] = {
+        "supportsJsonSchemaStructuredOutput": True,
+        "upstreamModelId": "vendor/model-a:latest",
+        "codexUserAgent": "loushang-test",
+    }
+    path = tmp_path / "models.json"
+    path.write_text(json.dumps(raw), encoding="utf-8")
+
+    result = load_model_registry_from_file_with_diagnostics(path)
+    diagnostics = _diagnostics_by_key(result)
+    registry = result.registry
+    endpoint_contract = registry.get_endpoint("custom", "openai-completions")
+    model_contract = registry.get_model("custom", "openai-completions", "model-a")
+
+    assert endpoint_contract is not None
+    assert endpoint_contract.protocol.store is SupportStatus.SUPPORTED
+    assert endpoint_contract.protocol.reasoning.effort is SupportStatus.SUPPORTED
+    assert endpoint_contract.protocol.reasoning.effort_map == {"minimal": "low"}
+    assert endpoint_contract.dialect.max_output_tokens_field == (
+        "max_completion_tokens"
+    )
+    assert endpoint_contract.transport.to_raw() == {"kind": "httpx"}
+    assert endpoint_contract.routing.to_raw() == {
+        "requestOverrides": {"openrouter": {"only": ["anthropic"]}}
+    }
+    assert model_contract.supports_structured_output is True
+    assert model_contract.upstream_id == "vendor/model-a:latest"
+    assert model_contract.compat["supportsJsonSchemaStructuredOutput"] is True
+    assert model_contract.compat["codexUserAgent"] == "loushang-test"
+
+    expected_keys = {
+        "supportsStore",
+        "supportsReasoningEffort",
+        "reasoningEffortMap",
+        "maxTokensField",
+        "providerTransport",
+        "openRouterRouting",
+        "supportsJsonSchemaStructuredOutput",
+        "upstreamModelId",
+    }
+    assert set(diagnostics) == expected_keys
+    assert "codexUserAgent" not in diagnostics
+    for legacy_key in expected_keys:
+        diagnostic = diagnostics[legacy_key]
+        assert diagnostic.code == "legacy_compat_deprecated"
+        assert diagnostic.level == "warning"
+        assert diagnostic.target == LEGACY_COMPAT_TRANSLATION_TARGETS[legacy_key]
+        assert diagnostic.path.endswith(f".compat.{legacy_key}")
+        assert legacy_key in diagnostic.message
+
+
+def test_endpoint_legacy_structured_output_compat_applies_to_models(
+    tmp_path,
+) -> None:
+    raw = _minimal_registry_raw(schema_version=1)
+    endpoint = raw["providers"]["custom"]["endpoints"]["openai-completions"]
+    endpoint["compat"] = {"supportsJsonSchemaStructuredOutput": True}
+    path = tmp_path / "models.json"
+    path.write_text(json.dumps(raw), encoding="utf-8")
+
+    result = load_model_registry_from_file_with_diagnostics(path)
+    model_contract = result.registry.get_model(
+        "custom",
+        "openai-completions",
+        "model-a",
+    )
+
+    assert model_contract.supports_structured_output is True
+    assert model_contract.compat["supportsJsonSchemaStructuredOutput"] is True
+    assert [diagnostic.legacy_key for diagnostic in result.diagnostics] == [
+        "supportsJsonSchemaStructuredOutput"
+    ]
+
+
+def test_legacy_structured_output_compat_does_not_override_typed_capability(
+    tmp_path,
+) -> None:
+    raw = _minimal_registry_raw(schema_version=1)
+    model = raw["providers"]["custom"]["endpoints"]["openai-completions"]["models"][
+        "model-a"
+    ]
+    model["capabilities"]["structuredOutput"] = False
+    model["compat"] = {"supportsJsonSchemaStructuredOutput": True}
+    path = tmp_path / "models.json"
+    path.write_text(json.dumps(raw), encoding="utf-8")
+
+    result = load_model_registry_from_file_with_diagnostics(path)
+    model_contract = result.registry.get_model(
+        "custom",
+        "openai-completions",
+        "model-a",
+    )
+
+    assert model_contract.supports_structured_output is False
+    assert model_contract.compat["supportsJsonSchemaStructuredOutput"] is False
+    assert [diagnostic.legacy_key for diagnostic in result.diagnostics] == [
+        "supportsJsonSchemaStructuredOutput"
+    ]
+
+
+def test_builtin_model_registry_with_diagnostics_suppresses_builtin_warnings() -> None:
+    result = load_builtin_model_registry_with_diagnostics()
+
+    assert result.registry.get_model("moonshot", "kimi-code-anthropic", "kimi-for-coding")
+    assert result.diagnostics == ()
+
+
+def test_legacy_compat_diagnostics_preserve_per_path_entries(tmp_path) -> None:
+    raw = _minimal_registry_raw(schema_version=1)
+    endpoint = raw["providers"]["custom"]["endpoints"]["openai-completions"]
+    endpoint["compat"] = {"supportsJsonSchemaStructuredOutput": True}
+    endpoint["models"]["model-a"]["compat"] = {
+        "supportsJsonSchemaStructuredOutput": False
+    }
+    path = tmp_path / "models.json"
+    path.write_text(json.dumps(raw), encoding="utf-8")
+
+    result = load_model_registry_from_file_with_diagnostics(path)
+
+    assert [
+        diagnostic.path for diagnostic in result.diagnostics
+    ] == [
+        "providers.custom.endpoints.openai-completions.compat.supportsJsonSchemaStructuredOutput",
+        "providers.custom.endpoints.openai-completions.models.model-a.compat.supportsJsonSchemaStructuredOutput",
+    ]
+
+
+def test_model_level_endpoint_only_compat_does_not_emit_invalid_target(
+    tmp_path,
+) -> None:
+    raw = _minimal_registry_raw(schema_version=1)
+    model = raw["providers"]["custom"]["endpoints"]["openai-completions"]["models"][
+        "model-a"
+    ]
+    model["compat"] = {"supportsStore": False}
+    path = tmp_path / "models.json"
+    path.write_text(json.dumps(raw), encoding="utf-8")
+
+    result = load_model_registry_from_file_with_diagnostics(path)
+    model_contract = result.registry.get_model(
+        "custom",
+        "openai-completions",
+        "model-a",
+    )
+
+    assert model_contract.compat["supportsStore"] is False
+    assert result.diagnostics == ()
+
+
+def test_directory_diagnostics_follow_last_provider_wins(
+    tmp_path,
+) -> None:
+    first = _minimal_registry_raw(schema_version=1)
+    first["providers"]["custom"]["endpoints"]["openai-completions"]["compat"] = {
+        "supportsStore": True
+    }
+    second = _minimal_registry_raw(schema_version=1)
+    (tmp_path / "a.json").write_text(json.dumps(first), encoding="utf-8")
+    (tmp_path / "b.json").write_text(json.dumps(second), encoding="utf-8")
+
+    result = load_model_registry_from_directory_with_diagnostics(tmp_path)
+    endpoint_contract = result.registry.get_endpoint("custom", "openai-completions")
+
+    assert endpoint_contract is not None
+    assert endpoint_contract.protocol.store is SupportStatus.UNKNOWN
+    assert result.diagnostics == ()
+
+
+def test_directory_diagnostics_do_not_match_dotted_provider_prefix(
+    tmp_path,
+) -> None:
+    raw = {
+        "schemaVersion": 1,
+        "providers": {
+            "foo": {
+                "endpoints": {
+                    "openai-completions": {
+                        "api": "openai-completions",
+                        "models": {
+                            "model-a": {
+                                "capabilities": {
+                                    "input": ["text"],
+                                    "output": ["text"],
+                                }
+                            }
+                        },
+                    }
+                }
+            },
+            "foo.bar": {
+                "endpoints": {
+                    "openai-completions": {
+                        "api": "openai-completions",
+                        "compat": {"supportsStore": True},
+                        "models": {
+                            "model-a": {
+                                "capabilities": {
+                                    "input": ["text"],
+                                    "output": ["text"],
+                                }
+                            }
+                        },
+                    }
+                }
+            },
+        },
+    }
+    (tmp_path / "models.json").write_text(json.dumps(raw), encoding="utf-8")
+
+    result = load_model_registry_from_directory_with_diagnostics(tmp_path)
+
+    assert [diagnostic.path for diagnostic in result.diagnostics] == [
+        "providers.foo.bar.endpoints.openai-completions.compat.supportsStore"
+    ]
+
+
+def test_layered_model_registry_with_diagnostics_reports_external_overlay(
+    tmp_path,
+) -> None:
+    project_dir = tmp_path / "models"
+    project_dir.mkdir()
+    raw = _minimal_registry_raw(schema_version=1)
+    raw["providers"]["custom"]["endpoints"]["openai-completions"]["compat"] = {
+        "supportsStore": True
+    }
+    (project_dir / "models.json").write_text(json.dumps(raw), encoding="utf-8")
+
+    result = load_layered_model_registry_with_diagnostics(project_dir=project_dir)
+
+    assert result.registry.get_model("custom", "openai-completions", "model-a")
+    assert result.registry.get_model("moonshot", "kimi-code-anthropic", "kimi-for-coding")
+    assert [diagnostic.path for diagnostic in result.diagnostics] == [
+        "providers.custom.endpoints.openai-completions.compat.supportsStore"
+    ]
+
+
+def test_layered_model_registry_with_diagnostics_preserves_merged_overlay_warning(
+    tmp_path,
+) -> None:
+    user_dir = tmp_path / "user-models"
+    project_dir = tmp_path / "project-models"
+    user_dir.mkdir()
+    project_dir.mkdir()
+    user_raw = _minimal_registry_raw(schema_version=1)
+    user_raw["providers"]["custom"]["endpoints"]["openai-completions"]["compat"] = {
+        "supportsStore": True
+    }
+    project_raw = _minimal_registry_raw(schema_version=1)
+    project_raw["providers"]["custom"]["endpoints"]["openai-completions"]["models"][
+        "model-a"
+    ]["displayName"] = "Project override"
+    (user_dir / "models.json").write_text(json.dumps(user_raw), encoding="utf-8")
+    (project_dir / "models.json").write_text(json.dumps(project_raw), encoding="utf-8")
+
+    result = load_layered_model_registry_with_diagnostics(
+        user_dir=user_dir,
+        project_dir=project_dir,
+    )
+    endpoint_contract = result.registry.get_endpoint("custom", "openai-completions")
+    model_contract = result.registry.get_model(
+        "custom",
+        "openai-completions",
+        "model-a",
+    )
+
+    assert endpoint_contract is not None
+    assert endpoint_contract.protocol.store is SupportStatus.SUPPORTED
+    assert model_contract.name == "Project override"
+    assert [diagnostic.path for diagnostic in result.diagnostics] == [
+        "providers.custom.endpoints.openai-completions.compat.supportsStore"
+    ]
 
 
 def test_model_registry_loads_legacy_wire_dialect_from_compat(tmp_path) -> None:

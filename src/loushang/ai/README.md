@@ -33,6 +33,7 @@
   - 默认入口：`get_default_model_registry()`
 - `loader.py`
   - 从内置 `models.json` 或显式文件/目录路径装载 registry
+  - 显式文件、目录和外部 overlay 的 `*_with_diagnostics()` 变体返回 legacy `compat` 到类型化字段的 deprecation diagnostics；内置 catalog 自身的迁移 warning 不向普通装载调用暴露
 - `models.json`
   - 内置模型事实源
 
