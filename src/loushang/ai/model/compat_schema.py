@@ -18,6 +18,7 @@ SUPPORTS_STRICT_MODE = "supportsStrictMode"
 REQUIRES_REASONING_CONTENT_ON_ASSISTANT_MESSAGES = (
     "requiresReasoningContentOnAssistantMessages"
 )
+PROVIDER_TRANSPORT = "providerTransport"
 OPENROUTER_ROUTING = "openRouterRouting"
 VERCEL_GATEWAY_ROUTING = "vercelGatewayRouting"
 ZAI_TOOL_STREAM = "zaiToolStream"
@@ -84,8 +85,6 @@ COMPAT_DEFAULTS: dict[str, object] = {
     REQUIRES_REASONING_CONTENT_ON_ASSISTANT_MESSAGES: False,
     THINKING_FORMAT: None,
     SUPPORTS_STRICT_MODE: False,
-    OPENROUTER_ROUTING: {},
-    VERCEL_GATEWAY_ROUTING: {},
     ZAI_TOOL_STREAM: False,
     CACHE_CONTROL_FORMAT: None,
     SEND_SESSION_AFFINITY_HEADERS: False,
@@ -220,11 +219,13 @@ def resolve_openai_completions_compat(
             REASONING_EFFORT_MAP,
             MAX_TOKENS_FIELD,
             THINKING_FORMAT,
-            OPENROUTER_ROUTING,
             SUPPORTS_STREAM_REASONING_DELTA,
-            VERCEL_GATEWAY_ROUTING,
             CACHE_CONTROL_FORMAT,
             UPSTREAM_MODEL_ID,
+        ),
+        optional_value_keys=(
+            OPENROUTER_ROUTING,
+            VERCEL_GATEWAY_ROUTING,
         ),
     )
 
@@ -281,12 +282,8 @@ def resolve_anthropic_messages_compat(
             SUPPORTS_CACHE_CONTROL_ON_TOOLS,
         ),
         bool_keys=(SEND_SESSION_AFFINITY_HEADERS,),
-        value_keys=(
-            FINE_GRAINED_TOOLS,
-        ),
-        optional_value_keys=(
-            INTERLEAVED_THINKING,
-        ),
+        value_keys=(FINE_GRAINED_TOOLS,),
+        optional_value_keys=(INTERLEAVED_THINKING,),
     )
 
 
@@ -382,8 +379,6 @@ def _detect_openai_completions_compat(
         REQUIRES_THINKING_AS_TEXT: False,
         REQUIRES_REASONING_CONTENT_ON_ASSISTANT_MESSAGES: is_deepseek,
         THINKING_FORMAT: thinking_format,
-        OPENROUTER_ROUTING: {},
-        VERCEL_GATEWAY_ROUTING: {},
         ZAI_TOOL_STREAM: False,
         SUPPORTS_STRICT_MODE: not (
             is_moonshot or is_together or is_cloudflare_ai_gateway

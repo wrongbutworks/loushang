@@ -14,6 +14,8 @@ from loushang.ai.model import (
     EndpointProtocolSession,
     EndpointProtocolStreaming,
     EndpointProtocolTools,
+    EndpointRouting,
+    EndpointTransport,
     EndpointWireDialect,
     SupportStatus,
 )
@@ -193,7 +195,9 @@ def test_endpoint_wire_dialect_round_trip() -> None:
 def test_endpoint_wire_dialect_constructors_reject_invalid_values() -> None:
     with pytest.raises(ValueError, match="wire dialect field must be a boolean"):
         EndpointDialectTools(result_name_required="yes")
-    with pytest.raises(ValueError, match="wire dialect field must be a non-empty string"):
+    with pytest.raises(
+        ValueError, match="wire dialect field must be a non-empty string"
+    ):
         EndpointWireDialect(max_output_tokens_field="")
 
 
@@ -204,3 +208,80 @@ def test_endpoint_wire_dialect_rejects_non_object_sections(section: str) -> None
         match=f"wire dialect section must be an object: {section}",
     ):
         EndpointWireDialect.from_raw({section: True})
+
+
+def test_endpoint_transport_round_trip() -> None:
+    transport = EndpointTransport.from_raw(
+        {
+            "kind": "httpx",
+            "stream": "sse",
+            "fallback": True,
+            "timeout": 30,
+        }
+    )
+    endpoint = Endpoint(
+        id="anthropic-messages",
+        provider="custom",
+        api="anthropic-messages",
+        transport=transport,
+    )
+
+    raw = endpoint.to_raw()["transport"]
+
+    assert raw == {
+        "kind": "httpx",
+        "stream": "sse",
+        "fallback": True,
+        "timeout": 30,
+    }
+    assert EndpointTransport.from_raw(raw) == transport
+
+
+def test_endpoint_transport_rejects_invalid_values() -> None:
+    with pytest.raises(ValueError, match="transport field must be a non-empty string"):
+        EndpointTransport(kind="")
+    with pytest.raises(ValueError, match="transport field must be a boolean"):
+        EndpointTransport(fallback="yes")
+
+
+@pytest.mark.parametrize("timeout", [0, float("nan"), float("inf"), float("-inf")])
+def test_endpoint_transport_rejects_invalid_timeout(timeout: float) -> None:
+    with pytest.raises(ValueError, match="transport field must be a positive number"):
+        EndpointTransport(timeout=timeout)
+    with pytest.raises(ValueError, match="transport field must be a positive number"):
+        EndpointTransport.from_raw({"timeout": timeout})
+
+
+def test_endpoint_routing_round_trip_defensively_copies_raw() -> None:
+    routing = EndpointRouting.from_raw(
+        {
+            "requestOverrides": {
+                "openrouter": {"only": ["anthropic"]},
+                "vercelGateway": {"order": ["openai", "anthropic"]},
+            }
+        }
+    )
+    endpoint = Endpoint(
+        id="openai-completions",
+        provider="custom",
+        api="openai-completions",
+        routing=routing,
+    )
+
+    raw = endpoint.to_raw()["routing"]
+    raw["requestOverrides"]["openrouter"]["only"].append("openai")
+
+    assert routing.to_raw() == {
+        "requestOverrides": {
+            "openrouter": {"only": ["anthropic"]},
+            "vercelGateway": {"order": ["openai", "anthropic"]},
+        }
+    }
+    assert EndpointRouting.from_raw(endpoint.to_raw()["routing"]) == routing
+
+
+def test_endpoint_routing_rejects_invalid_request_overrides() -> None:
+    with pytest.raises(ValueError, match="routing field must be an object"):
+        EndpointRouting.from_raw({"requestOverrides": True})
+    with pytest.raises(ValueError, match="requestOverrides entries must be objects"):
+        EndpointRouting.from_raw({"requestOverrides": {"openrouter": True}})

@@ -2,18 +2,30 @@ from __future__ import annotations
 
 import os
 import re
+from collections.abc import Mapping
 from dataclasses import dataclass, field
 from typing import Any
 
 from loushang.ai.auth.support import resolve_auth_for_model
 from loushang.ai.model import Model
 from loushang.ai.model.compat_schema import (
+    OPENROUTER_ROUTING,
+    PROVIDER_TRANSPORT,
+    VERCEL_GATEWAY_ROUTING,
     resolve_anthropic_messages_compat,
     resolve_openai_completions_compat,
     resolve_openai_responses_compat,
 )
-from loushang.ai.model.domain import Endpoint
+from loushang.ai.model.domain import Endpoint, EndpointRouting, EndpointTransport
 from loushang.ai.model.registry import ModelRegistry, get_default_model_registry
+
+LEGACY_TRANSPORT_ROUTING_COMPAT_KEYS = frozenset(
+    {
+        PROVIDER_TRANSPORT,
+        OPENROUTER_ROUTING,
+        VERCEL_GATEWAY_ROUTING,
+    }
+)
 
 
 @dataclass(frozen=True)
@@ -27,6 +39,8 @@ class ResolvedEndpoint:
     default_region: str | None = None
     compat: dict[str, object] = field(default_factory=dict)
     defaults: dict[str, object] = field(default_factory=dict)
+    transport: EndpointTransport = field(default_factory=EndpointTransport)
+    routing: EndpointRouting = field(default_factory=EndpointRouting)
 
 
 @dataclass(frozen=True)
@@ -40,6 +54,8 @@ class ResolvedRequest:
     headers: dict[str, str] = field(default_factory=dict)
     compat: dict[str, object] = field(default_factory=dict)
     defaults: dict[str, object] = field(default_factory=dict)
+    transport: EndpointTransport = field(default_factory=EndpointTransport)
+    routing: EndpointRouting = field(default_factory=EndpointRouting)
     max_tokens: int | None = None
     reasoning_effort: str | None = None
     temperature: float | int | None = None
@@ -85,13 +101,25 @@ def resolve_request_for_model(
         endpoint_model = endpoint.get_model(model.id)
         if endpoint_model is not None:
             request_model = endpoint.bind_model(endpoint_model)
-    resolved_endpoint = _build_resolved_endpoint(model, endpoint)
+    override_model = (
+        model
+        if endpoint is not None
+        and endpoint.id == model.endpoint_id
+        and request_model is not model
+        else None
+    )
+    resolved_endpoint = _build_resolved_endpoint(
+        request_model,
+        endpoint,
+        override_model=override_model,
+    )
     base_url = _resolve_base_url(resolved_endpoint, resolved_env)
     raw_compat = dict(getattr(request_model, "compat", {}))
     defaults = dict(getattr(request_model, "defaults", {}))
     if endpoint is None or endpoint.id == model.endpoint_id:
         raw_compat.update(dict(getattr(model, "compat", {})))
         defaults.update(dict(getattr(model, "defaults", {})))
+    raw_compat = _strip_legacy_transport_routing_compat(raw_compat)
     compat = _resolve_compat_for_api(
         api=resolved_endpoint.api,
         provider_id=resolved_endpoint.provider,
@@ -123,14 +151,29 @@ def resolve_request_for_model(
         headers=headers,
         compat=compat,
         defaults=defaults,
+        transport=resolved_endpoint.transport,
+        routing=resolved_endpoint.routing,
         max_tokens=max_tokens,
         reasoning_effort=reasoning_effort,
         temperature=temperature,
     )
 
 
+def _strip_legacy_transport_routing_compat(
+    raw: Mapping[str, object],
+) -> dict[str, object]:
+    return {
+        key: value
+        for key, value in raw.items()
+        if key not in LEGACY_TRANSPORT_ROUTING_COMPAT_KEYS
+    }
+
+
 def _build_resolved_endpoint(
-    model: Model, endpoint: Endpoint | None
+    model: Model,
+    endpoint: Endpoint | None,
+    *,
+    override_model: Model | None = None,
 ) -> ResolvedEndpoint:
     if endpoint is None:
         return ResolvedEndpoint(
@@ -140,14 +183,36 @@ def _build_resolved_endpoint(
             base_url=getattr(model, "base_url", None),
             base_url_env=getattr(model, "base_url_env", None),
             default_region=getattr(model, "region", None),
-            compat=dict(getattr(model, "compat", {})),
+            compat=_strip_legacy_transport_routing_compat(
+                getattr(model, "compat", {})
+            ),
             defaults=dict(getattr(model, "defaults", {})),
+            transport=_model_transport(model),
+            routing=_model_routing(model),
         )
-    endpoint_compat = (
-        endpoint.compat.merged(endpoint.protocol.to_compat()).merged(
-            endpoint.dialect.to_compat()
-        )
+    endpoint_compat = endpoint.compat.merged(endpoint.protocol.to_compat()).merged(
+        endpoint.dialect.to_compat()
     )
+    transport_raw = _deep_merge_raw_mapping(
+        endpoint.transport.to_raw(),
+        _model_transport_raw(model, own_only=True),
+    )
+    if override_model is not None:
+        transport_raw = _deep_merge_raw_mapping(
+            transport_raw,
+            _model_transport_raw(override_model, own_only=True),
+        )
+    routing_raw = _deep_merge_raw_mapping(
+        endpoint.routing.to_raw(),
+        _model_routing_raw(model, own_only=True),
+    )
+    if override_model is not None:
+        routing_raw = _deep_merge_raw_mapping(
+            routing_raw,
+            _model_routing_raw(override_model, own_only=True),
+        )
+    transport = EndpointTransport.from_raw(transport_raw)
+    routing = EndpointRouting.from_raw(routing_raw)
     return ResolvedEndpoint(
         provider=endpoint.provider_id,
         endpoint=endpoint.id,
@@ -160,7 +225,96 @@ def _build_resolved_endpoint(
         default_region=endpoint.region,
         compat=dict(endpoint_compat),
         defaults=dict(endpoint.defaults),
+        transport=transport,
+        routing=routing,
     )
+
+
+def _model_transport(model: Model) -> EndpointTransport:
+    return EndpointTransport.from_raw(_model_transport_raw(model, own_only=False))
+
+
+def _model_routing(model: Model) -> EndpointRouting:
+    return EndpointRouting.from_raw(_model_routing_raw(model, own_only=False))
+
+
+def _model_transport_raw(model: Model, *, own_only: bool) -> dict[str, object]:
+    raw = _deep_merge_raw_mapping(
+        _transport_raw_from_legacy_compat(
+            getattr(model, "_transport_legacy_raw", None)
+        ),
+        _transport_raw_from_legacy_compat(getattr(model, "compat", {})),
+    )
+    own_raw = getattr(model, "_transport_own_raw", None)
+    if own_only and isinstance(own_raw, Mapping):
+        transport_raw = dict(own_raw)
+    elif own_only:
+        transport_raw = {}
+    else:
+        transport = getattr(model, "transport", None)
+        transport_raw = (
+            transport.to_raw() if isinstance(transport, EndpointTransport) else {}
+        )
+    return _deep_merge_raw_mapping(raw, transport_raw)
+
+
+def _model_routing_raw(model: Model, *, own_only: bool) -> dict[str, object]:
+    raw = _deep_merge_raw_mapping(
+        _routing_raw_from_legacy_compat(getattr(model, "_routing_legacy_raw", None)),
+        _routing_raw_from_legacy_compat(getattr(model, "compat", {})),
+    )
+    own_raw = getattr(model, "_routing_own_raw", None)
+    if own_only and isinstance(own_raw, Mapping):
+        routing_raw = dict(own_raw)
+    elif own_only:
+        routing_raw = {}
+    else:
+        routing = getattr(model, "routing", None)
+        routing_raw = routing.to_raw() if isinstance(routing, EndpointRouting) else {}
+    return _deep_merge_raw_mapping(raw, routing_raw)
+
+
+def _transport_raw_from_legacy_compat(
+    compat: Mapping[str, object] | None,
+) -> dict[str, object]:
+    if compat is None:
+        return {}
+    value = compat.get(PROVIDER_TRANSPORT)
+    if not isinstance(value, str) or not value:
+        return {}
+    return {"kind": value}
+
+
+def _routing_raw_from_legacy_compat(
+    compat: Mapping[str, object] | None,
+) -> dict[str, object]:
+    if compat is None:
+        return {}
+    request_overrides: dict[str, object] = {}
+    for compat_key, routing_key in (
+        (OPENROUTER_ROUTING, "openrouter"),
+        (VERCEL_GATEWAY_ROUTING, "vercelGateway"),
+    ):
+        value = compat.get(compat_key)
+        if isinstance(value, Mapping) and value:
+            request_overrides[routing_key] = dict(value)
+    if not request_overrides:
+        return {}
+    return {"requestOverrides": request_overrides}
+
+
+def _deep_merge_raw_mapping(
+    base: Mapping[str, object],
+    override: Mapping[str, object],
+) -> dict[str, object]:
+    merged = dict(base)
+    for key, value in override.items():
+        current = merged.get(key)
+        if isinstance(current, Mapping) and isinstance(value, Mapping):
+            merged[key] = _deep_merge_raw_mapping(current, value)
+            continue
+        merged[key] = value
+    return merged
 
 
 def _merge_option_headers(

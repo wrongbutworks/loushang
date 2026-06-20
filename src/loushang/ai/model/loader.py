@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 from dataclasses import replace
 from importlib.resources import files
+from math import isfinite
 from pathlib import Path
 from typing import Any
 
@@ -11,10 +12,13 @@ from loushang.ai.model.compat_schema import (
     DIALECT_COMPAT_BOOL_MAPPINGS,
     DIALECT_COMPAT_VALUE_MAPPINGS,
     MAX_TOKENS_FIELD,
+    OPENROUTER_ROUTING,
     PROTOCOL_COMPAT_STATUS_MAPPINGS,
+    PROVIDER_TRANSPORT,
     REASONING_EFFORT_MAP,
     SUPPORTS_REASONING_EFFORT,
     SUPPORTS_STREAM_REASONING_DELTA,
+    VERCEL_GATEWAY_ROUTING,
     compat_bool,
 )
 from loushang.ai.model.domain import (
@@ -25,6 +29,8 @@ from loushang.ai.model.domain import (
     Defaults,
     Endpoint,
     EndpointProtocolFeatures,
+    EndpointRouting,
+    EndpointTransport,
     EndpointWireDialect,
     Model,
     Pricing,
@@ -34,13 +40,23 @@ from loushang.ai.model.domain import (
 from loushang.ai.model.registry import ModelRegistry
 from loushang.ai.output_budget import default_output_tokens_from_capability
 
-ALLOWED_COMPAT_KEYS = frozenset(COMPAT_DEFAULTS) | {
-    "fineGrainedTools",
-    "interleavedThinking",
-    "providerTransport",
-    "supportsJsonSchemaStructuredOutput",
-    SUPPORTS_STREAM_REASONING_DELTA,
-}
+LEGACY_TRANSPORT_ROUTING_COMPAT_KEYS = frozenset(
+    {
+        PROVIDER_TRANSPORT,
+        OPENROUTER_ROUTING,
+        VERCEL_GATEWAY_ROUTING,
+    }
+)
+ALLOWED_COMPAT_KEYS = (
+    frozenset(COMPAT_DEFAULTS)
+    | LEGACY_TRANSPORT_ROUTING_COMPAT_KEYS
+    | {
+        "fineGrainedTools",
+        "interleavedThinking",
+        "supportsJsonSchemaStructuredOutput",
+        SUPPORTS_STREAM_REASONING_DELTA,
+    }
+)
 ALLOWED_DEFAULT_KEYS = frozenset(
     {
         "contextWindow",
@@ -85,14 +101,14 @@ ALLOWED_DIALECT_KEYS = frozenset(
     {"maxOutputTokensField", "tools", "reasoning", "cache"}
 )
 ALLOWED_DIALECT_SECTION_KEYS: dict[str, frozenset[str]] = {
-    "tools": frozenset(
-        {"resultNameRequired", "assistantBridgeRequired", "streamFlag"}
-    ),
+    "tools": frozenset({"resultNameRequired", "assistantBridgeRequired", "streamFlag"}),
     "reasoning": frozenset(
         {"wireFormat", "thinkingAsText", "assistantContentRequired"}
     ),
     "cache": frozenset({"controlFormat"}),
 }
+ALLOWED_TRANSPORT_KEYS = frozenset({"kind", "stream", "fallback", "timeout"})
+ALLOWED_ROUTING_KEYS = frozenset({"requestOverrides"})
 DEFAULT_SCHEMA_VERSION = 1
 SUPPORTED_SCHEMA_VERSIONS = frozenset({1, 2})
 
@@ -113,7 +129,9 @@ def validate_model_registry_raw(raw: dict[str, Any]) -> None:
             endpoint_path = f"{provider_path}.endpoints.{endpoint_key}"
             endpoint = _require_mapping(endpoint_raw, endpoint_path)
             _require_str(endpoint.get("api"), f"{endpoint_path}.api")
-            _validate_optional_bool(endpoint.get("preferred"), f"{endpoint_path}.preferred")
+            _validate_optional_bool(
+                endpoint.get("preferred"), f"{endpoint_path}.preferred"
+            )
             _validate_auth_fields(endpoint, endpoint_path)
             _validate_keyed_mapping(
                 endpoint.get("compat"),
@@ -128,6 +146,16 @@ def validate_model_registry_raw(raw: dict[str, Any]) -> None:
             _validate_dialect_mapping(
                 endpoint.get("dialect"),
                 f"{endpoint_path}.dialect",
+                schema_version=schema_version,
+            )
+            _validate_transport_mapping(
+                endpoint.get("transport"),
+                f"{endpoint_path}.transport",
+                schema_version=schema_version,
+            )
+            _validate_routing_mapping(
+                endpoint.get("routing"),
+                f"{endpoint_path}.routing",
                 schema_version=schema_version,
             )
             _validate_keyed_mapping(
@@ -151,6 +179,16 @@ def validate_model_registry_raw(raw: dict[str, Any]) -> None:
                         "models registry field is only supported on endpoints: "
                         f"{model_path}.dialect"
                     )
+                _validate_transport_mapping(
+                    model.get("transport"),
+                    f"{model_path}.transport",
+                    schema_version=schema_version,
+                )
+                _validate_routing_mapping(
+                    model.get("routing"),
+                    f"{model_path}.routing",
+                    schema_version=schema_version,
+                )
                 _validate_keyed_mapping(
                     model.get("compat"),
                     ALLOWED_COMPAT_KEYS,
@@ -206,11 +244,12 @@ def _schema_version(raw: dict[str, Any]) -> int:
     value = raw["schemaVersion"]
     if not isinstance(value, int) or isinstance(value, bool):
         raise ValueError(
-            "models registry schemaVersion must be an integer: "
-            "<root>.schemaVersion"
+            "models registry schemaVersion must be an integer: <root>.schemaVersion"
         )
     if value not in SUPPORTED_SCHEMA_VERSIONS:
-        supported = ", ".join(str(version) for version in sorted(SUPPORTED_SCHEMA_VERSIONS))
+        supported = ", ".join(
+            str(version) for version in sorted(SUPPORTED_SCHEMA_VERSIONS)
+        )
         raise ValueError(
             f"unsupported models registry schemaVersion: {value}; "
             f"supported versions: {supported}"
@@ -228,13 +267,22 @@ def _validate_bool(value: object, path: str) -> None:
         raise ValueError(f"models registry field must be a boolean: {path}")
 
 
+def _validate_positive_number(value: object, path: str) -> None:
+    if (
+        isinstance(value, bool)
+        or not isinstance(value, int | float)
+        or not isfinite(value)
+        or value <= 0
+    ):
+        raise ValueError(f"models registry field must be a positive number: {path}")
+
+
 def _validate_ref_segment_key(value: object, path: str) -> None:
     if not isinstance(value, str) or not value:
         raise ValueError(f"models registry key must be a non-empty string: {path}")
     if ":" in value:
         raise ValueError(
-            "models registry provider and model keys must not contain ':': "
-            f"{path}"
+            f"models registry provider and model keys must not contain ':': {path}"
         )
 
 
@@ -263,7 +311,9 @@ def _validate_auth_mapping(value: object, path: str) -> None:
         not isinstance(api_key_envs, list)
         or not all(isinstance(item, str) for item in api_key_envs)
     ):
-        raise ValueError(f"models registry field must be a string list: {path}.apiKeyEnvs")
+        raise ValueError(
+            f"models registry field must be a string list: {path}.apiKeyEnvs"
+        )
     extra_headers = mapping.get("extraHeaders")
     if extra_headers is not None:
         _as_str_mapping(extra_headers, f"{path}.extraHeaders")
@@ -350,14 +400,74 @@ def _validate_dialect_mapping(
             _validate_bool(entry, f"{path}.{section}.{key}")
 
 
+def _validate_transport_mapping(
+    value: object,
+    path: str,
+    *,
+    schema_version: int,
+) -> None:
+    if value is None:
+        return
+    if schema_version < 2:
+        raise ValueError(
+            f"models registry field requires schemaVersion 2 or newer: {path}"
+        )
+    mapping = _require_mapping(value, path)
+    unknown = sorted(set(mapping) - ALLOWED_TRANSPORT_KEYS)
+    if unknown:
+        raise ValueError(f"models registry field has unknown keys at {path}: {unknown}")
+    for key in ("kind", "stream"):
+        if key in mapping:
+            _require_str(mapping[key], f"{path}.{key}")
+    if "fallback" in mapping:
+        _validate_bool(mapping["fallback"], f"{path}.fallback")
+    if "timeout" in mapping:
+        _validate_positive_number(mapping["timeout"], f"{path}.timeout")
+
+
+def _validate_routing_mapping(
+    value: object,
+    path: str,
+    *,
+    schema_version: int,
+) -> None:
+    if value is None:
+        return
+    if schema_version < 2:
+        raise ValueError(
+            f"models registry field requires schemaVersion 2 or newer: {path}"
+        )
+    mapping = _require_mapping(value, path)
+    unknown = sorted(set(mapping) - ALLOWED_ROUTING_KEYS)
+    if unknown:
+        raise ValueError(f"models registry field has unknown keys at {path}: {unknown}")
+    if "requestOverrides" not in mapping:
+        return
+    overrides = _require_mapping(
+        mapping["requestOverrides"], f"{path}.requestOverrides"
+    )
+    for key, entry in overrides.items():
+        if not isinstance(key, str) or not key:
+            raise ValueError(
+                "models registry key must be a non-empty string: "
+                f"{path}.requestOverrides"
+            )
+        _require_mapping(entry, f"{path}.requestOverrides.{key}")
+
+
 def _validate_support_status(value: object, path: str) -> None:
     try:
         SupportStatus.from_raw(value)
     except ValueError as error:
-        raise ValueError(f"models registry field has invalid support status: {path}") from error
+        raise ValueError(
+            f"models registry field has invalid support status: {path}"
+        ) from error
 
 
-def _validate_protocol_schema_version(raw: dict[str, Any], schema_version: int) -> None:
+def _validate_typed_schema_version(
+    raw: dict[str, Any],
+    schema_version: int,
+) -> None:
     if schema_version >= 2:
         return
     providers = raw.get("providers")
@@ -372,17 +482,33 @@ def _validate_protocol_schema_version(raw: dict[str, Any], schema_version: int) 
         for endpoint_key, endpoint_raw in endpoints.items():
             if not isinstance(endpoint_raw, dict):
                 continue
-            for field in ("protocol", "dialect"):
+            for field in ("protocol", "dialect", "transport", "routing"):
                 if field in endpoint_raw:
                     raise ValueError(
                         "models registry field requires schemaVersion 2 or newer: "
                         f"providers.{provider_id}.endpoints.{endpoint_key}.{field}"
                     )
+            models = endpoint_raw.get("models")
+            if not isinstance(models, dict):
+                continue
+            for model_id, model_raw in models.items():
+                if not isinstance(model_raw, dict):
+                    continue
+                for field in ("transport", "routing"):
+                    if field in model_raw:
+                        raise ValueError(
+                            "models registry field requires schemaVersion 2 or newer: "
+                            f"providers.{provider_id}.endpoints."
+                            f"{endpoint_key}.models.{model_id}.{field}"
+                        )
 
 
 def _as_str_mapping(value: object, path: str) -> dict[str, str]:
     mapping = _require_mapping(value, path)
-    if not all(isinstance(key, str) and isinstance(entry, str) for key, entry in mapping.items()):
+    if not all(
+        isinstance(key, str) and isinstance(entry, str)
+        for key, entry in mapping.items()
+    ):
         raise ValueError(f"models registry field must be a string map: {path}")
     return mapping
 
@@ -410,12 +536,27 @@ def _validate_modalities(value: object, path: str) -> None:
 
 def _normalize_endpoint_compat(endpoint_raw: dict[str, Any]) -> Compat:
     compat = Compat.from_raw(endpoint_raw.get("compat"))
-    values = dict(compat)
+    values = {
+        key: value
+        for key, value in compat.items()
+        if key not in LEGACY_TRANSPORT_ROUTING_COMPAT_KEYS
+    }
     if str(endpoint_raw.get("api", "")) == "openai-completions":
         values.setdefault(MAX_TOKENS_FIELD, "max_completion_tokens")
     values.update(_compat_raw_from_protocol(endpoint_raw.get("protocol")))
     values.update(_compat_raw_from_dialect(endpoint_raw.get("dialect")))
     return Compat(items_by_key=values)
+
+
+def _normalize_model_compat(model_raw: dict[str, Any]) -> Compat:
+    compat = Compat.from_raw(model_raw.get("compat"))
+    return Compat(
+        items_by_key={
+            key: value
+            for key, value in compat.items()
+            if key not in LEGACY_TRANSPORT_ROUTING_COMPAT_KEYS
+        }
+    )
 
 
 def _status_from_legacy_bool(value: object) -> str | None:
@@ -529,6 +670,44 @@ def _dialect_raw_from_legacy_compat(compat: Compat) -> dict[str, object]:
     return raw
 
 
+def _transport_raw_from_legacy_compat(compat: Compat) -> dict[str, object]:
+    raw: dict[str, object] = {}
+    value = compat.get(PROVIDER_TRANSPORT)
+    if isinstance(value, str) and value:
+        raw["kind"] = value
+    return raw
+
+
+def _transport_compat_raw_from_legacy_compat(compat: Compat) -> dict[str, object]:
+    value = compat.get(PROVIDER_TRANSPORT)
+    if isinstance(value, str) and value:
+        return {PROVIDER_TRANSPORT: value}
+    return {}
+
+
+def _routing_raw_from_legacy_compat(compat: Compat) -> dict[str, object]:
+    request_overrides: dict[str, object] = {}
+    for compat_key, routing_key in (
+        (OPENROUTER_ROUTING, "openrouter"),
+        (VERCEL_GATEWAY_ROUTING, "vercelGateway"),
+    ):
+        value = compat.get(compat_key)
+        if isinstance(value, dict) and value:
+            request_overrides[routing_key] = dict(value)
+    if not request_overrides:
+        return {}
+    return {"requestOverrides": request_overrides}
+
+
+def _routing_compat_raw_from_legacy_compat(compat: Compat) -> dict[str, object]:
+    raw: dict[str, object] = {}
+    for compat_key in (OPENROUTER_ROUTING, VERCEL_GATEWAY_ROUTING):
+        value = compat.get(compat_key)
+        if isinstance(value, dict) and value:
+            raw[compat_key] = dict(value)
+    return raw
+
+
 def _endpoint_protocol_features(
     endpoint_raw: dict[str, Any],
     compat: Compat,
@@ -536,7 +715,9 @@ def _endpoint_protocol_features(
     legacy_raw = _protocol_raw_from_legacy_compat(compat)
     explicit_raw = endpoint_raw.get("protocol")
     if isinstance(explicit_raw, dict):
-        return EndpointProtocolFeatures.from_raw(_deep_merge_dict(legacy_raw, explicit_raw))
+        return EndpointProtocolFeatures.from_raw(
+            _deep_merge_dict(legacy_raw, explicit_raw)
+        )
     return EndpointProtocolFeatures.from_raw(legacy_raw)
 
 
@@ -549,6 +730,28 @@ def _endpoint_wire_dialect(
     if isinstance(explicit_raw, dict):
         return EndpointWireDialect.from_raw(_deep_merge_dict(legacy_raw, explicit_raw))
     return EndpointWireDialect.from_raw(legacy_raw)
+
+
+def _endpoint_transport(
+    endpoint_raw: dict[str, Any],
+    compat: Compat,
+) -> EndpointTransport:
+    legacy_raw = _transport_raw_from_legacy_compat(compat)
+    explicit_raw = endpoint_raw.get("transport")
+    if isinstance(explicit_raw, dict):
+        return EndpointTransport.from_raw(_deep_merge_dict(legacy_raw, explicit_raw))
+    return EndpointTransport.from_raw(legacy_raw)
+
+
+def _endpoint_routing(
+    endpoint_raw: dict[str, Any],
+    compat: Compat,
+) -> EndpointRouting:
+    legacy_raw = _routing_raw_from_legacy_compat(compat)
+    explicit_raw = endpoint_raw.get("routing")
+    if isinstance(explicit_raw, dict):
+        return EndpointRouting.from_raw(_deep_merge_dict(legacy_raw, explicit_raw))
+    return EndpointRouting.from_raw(legacy_raw)
 
 
 def _derive_model_defaults(
@@ -565,7 +768,9 @@ def _derive_model_defaults(
     context_window = capabilities.context_window
     supports_temperature = capabilities.temperature
     if endpoint_api == "anthropic-messages":
-        defaults.setdefault("maxTokens", default_output_tokens_from_capability(max_tokens))
+        defaults.setdefault(
+            "maxTokens", default_output_tokens_from_capability(max_tokens)
+        )
     elif endpoint_lane == "coding" and endpoint_api == "openai-completions":
         if isinstance(max_tokens, int):
             defaults.setdefault(
@@ -603,6 +808,7 @@ def _derive_endpoint_id(
 
 def _build_registry(raw: dict[str, Any]) -> ModelRegistry:
     validate_model_registry_raw(raw)
+    schema_version = _schema_version(raw)
     providers: dict[str, Provider] = {}
     for provider_id, provider_raw in raw.get("providers", {}).items():
         provider_auth_raw = _auth_raw(provider_raw)
@@ -622,9 +828,46 @@ def _build_registry(raw: dict[str, Any]) -> ModelRegistry:
                 endpoint_specific_auth_raw,
             )
             endpoint_auth = Auth.from_raw(endpoint_auth_raw)
+            endpoint_legacy_compat = Compat.from_raw(endpoint_raw.get("compat"))
             endpoint_compat = _normalize_endpoint_compat(endpoint_raw)
             endpoint_dialect_raw = endpoint_raw.get("dialect")
             endpoint_dialect = _endpoint_wire_dialect(endpoint_raw, endpoint_compat)
+            endpoint_transport_raw = endpoint_raw.get("transport")
+            endpoint_transport_legacy_raw = _transport_raw_from_legacy_compat(
+                endpoint_legacy_compat
+            )
+            endpoint_transport_legacy_compat_raw = (
+                _transport_compat_raw_from_legacy_compat(endpoint_legacy_compat)
+            )
+            endpoint_transport = _endpoint_transport(
+                endpoint_raw,
+                endpoint_legacy_compat,
+            )
+            endpoint_transport_legacy_source = (
+                endpoint_transport_legacy_compat_raw
+                if schema_version < 2
+                and not isinstance(endpoint_transport_raw, dict)
+                and endpoint_transport_legacy_compat_raw
+                else None
+            )
+            endpoint_routing_raw = endpoint_raw.get("routing")
+            endpoint_routing_legacy_raw = _routing_raw_from_legacy_compat(
+                endpoint_legacy_compat
+            )
+            endpoint_routing_legacy_compat_raw = (
+                _routing_compat_raw_from_legacy_compat(endpoint_legacy_compat)
+            )
+            endpoint_routing = _endpoint_routing(
+                endpoint_raw,
+                endpoint_legacy_compat,
+            )
+            endpoint_routing_legacy_source = (
+                endpoint_routing_legacy_compat_raw
+                if schema_version < 2
+                and not isinstance(endpoint_routing_raw, dict)
+                and endpoint_routing_legacy_compat_raw
+                else None
+            )
             endpoint = Endpoint(
                 id=endpoint_id,
                 provider=provider_id,
@@ -637,7 +880,8 @@ def _build_registry(raw: dict[str, Any]) -> ModelRegistry:
                 preferred=bool(endpoint_raw.get("preferred", False)),
                 docs=endpoint_raw.get("docs"),
                 auth=endpoint_auth,
-                _auth_inherited=endpoint_specific_auth_raw is None and endpoint_auth is not None,
+                _auth_inherited=endpoint_specific_auth_raw is None
+                and endpoint_auth is not None,
                 protocol=_endpoint_protocol_features(endpoint_raw, endpoint_compat),
                 _protocol_explicit=isinstance(endpoint_raw.get("protocol"), dict),
                 dialect=endpoint_dialect,
@@ -648,6 +892,28 @@ def _build_registry(raw: dict[str, Any]) -> ModelRegistry:
                 _dialect_raw_source=endpoint_dialect
                 if isinstance(endpoint_dialect_raw, dict)
                 else None,
+                transport=endpoint_transport,
+                _transport_explicit=isinstance(endpoint_transport_raw, dict)
+                or (schema_version >= 2 and bool(endpoint_transport_legacy_raw)),
+                _transport_raw=dict(endpoint_transport_raw)
+                if isinstance(endpoint_transport_raw, dict)
+                else None,
+                _transport_raw_source=endpoint_transport
+                if isinstance(endpoint_transport_raw, dict)
+                and not endpoint_transport_legacy_raw
+                else None,
+                _transport_legacy_raw=endpoint_transport_legacy_source,
+                routing=endpoint_routing,
+                _routing_explicit=isinstance(endpoint_routing_raw, dict)
+                or (schema_version >= 2 and bool(endpoint_routing_legacy_raw)),
+                _routing_raw=dict(endpoint_routing_raw)
+                if isinstance(endpoint_routing_raw, dict)
+                else None,
+                _routing_raw_source=endpoint_routing
+                if isinstance(endpoint_routing_raw, dict)
+                and not endpoint_routing_legacy_raw
+                else None,
+                _routing_legacy_raw=endpoint_routing_legacy_source,
                 compat=endpoint_compat,
                 defaults=Defaults.from_raw(endpoint_raw.get("defaults")),
             )
@@ -659,9 +925,56 @@ def _build_registry(raw: dict[str, Any]) -> ModelRegistry:
                     if model_auth_raw is not None
                     else None
                 )
-                compat = endpoint.compat.merged(
-                    Compat.from_raw(model_raw.get("compat"))
+                model_legacy_compat = Compat.from_raw(model_raw.get("compat"))
+                model_transport_raw = (
+                    model_raw.get("transport")
+                    if isinstance(model_raw.get("transport"), dict)
+                    else {}
                 )
+                model_transport_legacy_raw = _transport_raw_from_legacy_compat(
+                    model_legacy_compat
+                )
+                model_transport_legacy_compat_raw = (
+                    _transport_compat_raw_from_legacy_compat(model_legacy_compat)
+                )
+                model_transport = EndpointTransport.from_raw(
+                    _deep_merge_dict(
+                        model_transport_legacy_raw,
+                        model_transport_raw,
+                    )
+                )
+                model_transport_legacy_source = (
+                    model_transport_legacy_compat_raw
+                    if schema_version < 2
+                    and not model_transport_raw
+                    and model_transport_legacy_compat_raw
+                    else None
+                )
+                model_routing_raw = (
+                    model_raw.get("routing")
+                    if isinstance(model_raw.get("routing"), dict)
+                    else {}
+                )
+                model_routing_legacy_raw = _routing_raw_from_legacy_compat(
+                    model_legacy_compat
+                )
+                model_routing_legacy_compat_raw = (
+                    _routing_compat_raw_from_legacy_compat(model_legacy_compat)
+                )
+                model_routing = EndpointRouting.from_raw(
+                    _deep_merge_dict(
+                        model_routing_legacy_raw,
+                        model_routing_raw,
+                    )
+                )
+                model_routing_legacy_source = (
+                    model_routing_legacy_compat_raw
+                    if schema_version < 2
+                    and not model_routing_raw
+                    and model_routing_legacy_compat_raw
+                    else None
+                )
+                compat = endpoint.compat.merged(_normalize_model_compat(model_raw))
                 defaults = _derive_model_defaults(
                     endpoint.api,
                     endpoint.lane,
@@ -684,6 +997,16 @@ def _build_registry(raw: dict[str, Any]) -> ModelRegistry:
                     pricing=Pricing.from_raw(model_raw.get("pricing")),
                     compat=compat,
                     defaults=defaults,
+                    transport=model_transport,
+                    _transport_own_raw=None
+                    if model_transport_legacy_source is not None
+                    else model_transport.to_raw(),
+                    _transport_legacy_raw=model_transport_legacy_source,
+                    routing=model_routing,
+                    _routing_own_raw=None
+                    if model_routing_legacy_source is not None
+                    else model_routing.to_raw(),
+                    _routing_legacy_raw=model_routing_legacy_source,
                 )
                 models[model_id] = endpoint.bind_model(model)
             endpoints[endpoint.id] = replace(endpoint, models=models)
@@ -779,7 +1102,7 @@ def _load_directory_raw(path: Path) -> tuple[dict[str, Any], int] | None:
     for child in sorted(path.glob("*.json")):
         raw = _load_json_file(child)
         schema_version = _schema_version(raw)
-        _validate_protocol_schema_version(raw, schema_version)
+        _validate_typed_schema_version(raw, schema_version)
         merged_schema_version = max(merged_schema_version, schema_version)
         mergeable_raw = dict(raw)
         mergeable_raw.pop("schemaVersion", None)
@@ -795,7 +1118,9 @@ def load_layered_model_registry(
     raw = _load_builtin_raw()
     schema_version = _schema_version(raw)
     user_layer = _load_directory_raw(user_dir) if user_dir is not None else None
-    project_layer = _load_directory_raw(project_dir) if project_dir is not None else None
+    project_layer = (
+        _load_directory_raw(project_dir) if project_dir is not None else None
+    )
     if user_layer is not None:
         user_raw, user_schema_version = user_layer
         raw = _deep_merge_dict(raw, user_raw)

@@ -3,6 +3,7 @@ from __future__ import annotations
 from collections.abc import Iterator, Mapping
 from dataclasses import InitVar, dataclass, field, replace
 from enum import Enum
+from math import isfinite
 from typing import Literal, cast
 
 from loushang.ai.model.compat_schema import (
@@ -76,6 +77,32 @@ def _normalize_optional_str_attrs(instance: object, *attrs: str) -> None:
             raise ValueError(f"wire dialect field must be a non-empty string: {attr}")
 
 
+def _normalize_optional_transport_str_attrs(instance: object, *attrs: str) -> None:
+    for attr in attrs:
+        value = getattr(instance, attr)
+        if value is not None and (not isinstance(value, str) or not value):
+            raise ValueError(f"transport field must be a non-empty string: {attr}")
+
+
+def _normalize_optional_transport_bool_attrs(instance: object, *attrs: str) -> None:
+    for attr in attrs:
+        value = getattr(instance, attr)
+        if value is not None and not isinstance(value, bool):
+            raise ValueError(f"transport field must be a boolean: {attr}")
+
+
+def _normalize_optional_transport_number_attrs(instance: object, *attrs: str) -> None:
+    for attr in attrs:
+        value = getattr(instance, attr)
+        if value is not None and (
+            isinstance(value, bool)
+            or not isinstance(value, int | float)
+            or not isfinite(value)
+            or value <= 0
+        ):
+            raise ValueError(f"transport field must be a positive number: {attr}")
+
+
 def _optional_bool_from_raw(raw: Mapping[str, object], key: str) -> bool | None:
     if key not in raw:
         return None
@@ -92,6 +119,47 @@ def _optional_str_from_raw(raw: Mapping[str, object], key: str) -> str | None:
     if isinstance(value, str) and value:
         return value
     raise ValueError(f"wire dialect field must be a non-empty string: {key}")
+
+
+def _optional_transport_str_from_raw(
+    raw: Mapping[str, object],
+    key: str,
+) -> str | None:
+    if key not in raw:
+        return None
+    value = raw[key]
+    if isinstance(value, str) and value:
+        return value
+    raise ValueError(f"transport field must be a non-empty string: {key}")
+
+
+def _optional_transport_bool_from_raw(
+    raw: Mapping[str, object],
+    key: str,
+) -> bool | None:
+    if key not in raw:
+        return None
+    value = raw[key]
+    if isinstance(value, bool):
+        return value
+    raise ValueError(f"transport field must be a boolean: {key}")
+
+
+def _optional_transport_number_from_raw(
+    raw: Mapping[str, object],
+    key: str,
+) -> float | int | None:
+    if key not in raw:
+        return None
+    value = raw[key]
+    if (
+        isinstance(value, bool)
+        or not isinstance(value, int | float)
+        or not isfinite(value)
+        or value <= 0
+    ):
+        raise ValueError(f"transport field must be a positive number: {key}")
+    return value
 
 
 def _optional_dialect_section_from_raw(
@@ -116,6 +184,53 @@ def _copy_raw_value(value: object) -> object:
 
 def _copy_raw_mapping(value: Mapping[str, object]) -> dict[str, object]:
     return {key: _copy_raw_value(entry) for key, entry in value.items()}
+
+
+def _deep_merge_raw_mapping(
+    base: Mapping[str, object],
+    override: Mapping[str, object],
+) -> dict[str, object]:
+    result = _copy_raw_mapping(base)
+    for key, value in override.items():
+        existing = result.get(key)
+        if isinstance(existing, Mapping) and isinstance(value, Mapping):
+            result[key] = _deep_merge_raw_mapping(existing, value)
+            continue
+        result[key] = _copy_raw_value(value)
+    return result
+
+
+def _routing_request_overrides_from_raw(
+    raw: Mapping[str, object],
+) -> dict[str, dict[str, object]]:
+    if "requestOverrides" not in raw:
+        return {}
+    value = raw["requestOverrides"]
+    if not isinstance(value, Mapping):
+        raise ValueError("routing field must be an object: requestOverrides")
+    overrides: dict[str, dict[str, object]] = {}
+    for key, entry in value.items():
+        if not isinstance(key, str) or not key:
+            raise ValueError("routing requestOverrides keys must be non-empty strings")
+        if not isinstance(entry, Mapping):
+            raise ValueError(
+                "routing requestOverrides entries must be objects: "
+                f"requestOverrides.{key}"
+            )
+        overrides[key] = _copy_raw_mapping(entry)
+    return overrides
+
+
+def _legacy_transport_routing_compat_raw(
+    transport_raw: Mapping[str, object] | None,
+    routing_raw: Mapping[str, object] | None,
+) -> dict[str, object]:
+    raw: dict[str, object] = {}
+    if transport_raw is not None:
+        raw.update(_copy_raw_mapping(transport_raw))
+    if routing_raw is not None:
+        raw.update(_copy_raw_mapping(routing_raw))
+    return raw
 
 
 @dataclass(frozen=True)
@@ -356,8 +471,12 @@ class EndpointProtocolSession:
 class EndpointProtocolFeatures:
     store: SupportStatus = SupportStatus.UNKNOWN
     roles: EndpointProtocolRoles = field(default_factory=EndpointProtocolRoles)
-    streaming: EndpointProtocolStreaming = field(default_factory=EndpointProtocolStreaming)
-    reasoning: EndpointProtocolReasoning = field(default_factory=EndpointProtocolReasoning)
+    streaming: EndpointProtocolStreaming = field(
+        default_factory=EndpointProtocolStreaming
+    )
+    reasoning: EndpointProtocolReasoning = field(
+        default_factory=EndpointProtocolReasoning
+    )
     tools: EndpointProtocolTools = field(default_factory=EndpointProtocolTools)
     cache: EndpointProtocolCache = field(default_factory=EndpointProtocolCache)
     session: EndpointProtocolSession = field(default_factory=EndpointProtocolSession)
@@ -371,9 +490,7 @@ class EndpointProtocolFeatures:
         _normalize_status_attrs(self, "store")
 
     @classmethod
-    def from_raw(
-        cls, raw: Mapping[str, object] | None
-    ) -> "EndpointProtocolFeatures":
+    def from_raw(cls, raw: Mapping[str, object] | None) -> "EndpointProtocolFeatures":
         raw = raw or {}
         return cls(
             store=_status_from_raw(raw, "store"),
@@ -530,7 +647,9 @@ class EndpointDialectCache:
 class EndpointWireDialect:
     max_output_tokens_field: str | None = None
     tools: EndpointDialectTools = field(default_factory=EndpointDialectTools)
-    reasoning: EndpointDialectReasoning = field(default_factory=EndpointDialectReasoning)
+    reasoning: EndpointDialectReasoning = field(
+        default_factory=EndpointDialectReasoning
+    )
     cache: EndpointDialectCache = field(default_factory=EndpointDialectCache)
 
     def __post_init__(self) -> None:
@@ -584,6 +703,81 @@ class EndpointWireDialect:
             if isinstance(section_raw, dict) and dialect_key in section_raw:
                 compat[compat_key] = section_raw[dialect_key]
         return compat
+
+
+@dataclass(frozen=True)
+class EndpointTransport:
+    kind: str | None = None
+    stream: str | None = None
+    fallback: bool | None = None
+    timeout: float | int | None = None
+
+    def __post_init__(self) -> None:
+        _normalize_optional_transport_str_attrs(self, "kind", "stream")
+        _normalize_optional_transport_bool_attrs(self, "fallback")
+        _normalize_optional_transport_number_attrs(self, "timeout")
+
+    @classmethod
+    def from_raw(cls, raw: Mapping[str, object] | None) -> "EndpointTransport":
+        raw = raw or {}
+        return cls(
+            kind=_optional_transport_str_from_raw(raw, "kind"),
+            stream=_optional_transport_str_from_raw(raw, "stream"),
+            fallback=_optional_transport_bool_from_raw(raw, "fallback"),
+            timeout=_optional_transport_number_from_raw(raw, "timeout"),
+        )
+
+    def to_raw(self) -> dict[str, object]:
+        raw: dict[str, object] = {}
+        if self.kind is not None:
+            raw["kind"] = self.kind
+        if self.stream is not None:
+            raw["stream"] = self.stream
+        if self.fallback is not None:
+            raw["fallback"] = self.fallback
+        if self.timeout is not None:
+            raw["timeout"] = self.timeout
+        return raw
+
+
+@dataclass(frozen=True)
+class EndpointRouting:
+    request_overrides: dict[str, dict[str, object]] = field(default_factory=dict)
+
+    def __post_init__(self) -> None:
+        for key, value in self.request_overrides.items():
+            if not isinstance(key, str) or not key:
+                raise ValueError(
+                    "routing requestOverrides keys must be non-empty strings"
+                )
+            if not isinstance(value, Mapping):
+                raise ValueError(
+                    "routing requestOverrides entries must be objects: "
+                    f"requestOverrides.{key}"
+                )
+        object.__setattr__(
+            self,
+            "request_overrides",
+            {
+                key: _copy_raw_mapping(value)
+                for key, value in self.request_overrides.items()
+            },
+        )
+
+    @classmethod
+    def from_raw(cls, raw: Mapping[str, object] | None) -> "EndpointRouting":
+        raw = raw or {}
+        return cls(request_overrides=_routing_request_overrides_from_raw(raw))
+
+    def to_raw(self) -> dict[str, object]:
+        if not self.request_overrides:
+            return {}
+        return {
+            "requestOverrides": {
+                key: _copy_raw_mapping(value)
+                for key, value in self.request_overrides.items()
+            }
+        }
 
 
 @dataclass(frozen=True)
@@ -804,15 +998,40 @@ class Model:
     pricing: Pricing = field(default_factory=Pricing)
     compat: Compat = field(default_factory=Compat)
     defaults: Defaults = field(default_factory=Defaults)
+    transport: EndpointTransport = field(default_factory=EndpointTransport)
+    _transport_own_raw: dict[str, object] | None = field(
+        default=None,
+        compare=False,
+        repr=False,
+    )
+    _transport_legacy_raw: dict[str, object] | None = field(
+        default=None,
+        compare=False,
+        repr=False,
+    )
+    routing: EndpointRouting = field(default_factory=EndpointRouting)
+    _routing_own_raw: dict[str, object] | None = field(
+        default=None,
+        compare=False,
+        repr=False,
+    )
+    _routing_legacy_raw: dict[str, object] | None = field(
+        default=None,
+        compare=False,
+        repr=False,
+    )
 
     def __post_init__(self, provider: str | None, endpoint: str | None) -> None:
-        if self._endpoint_key:
-            return
-        if provider is None or endpoint is None:
-            return
-        object.__setattr__(
-            self, "_endpoint_key", build_endpoint_key(provider, endpoint)
-        )
+        if self._transport_own_raw is None and self._transport_legacy_raw is None:
+            object.__setattr__(self, "_transport_own_raw", self.transport.to_raw())
+        if self._routing_own_raw is None and self._routing_legacy_raw is None:
+            object.__setattr__(self, "_routing_own_raw", self.routing.to_raw())
+        if not self._endpoint_key and provider is not None and endpoint is not None:
+            object.__setattr__(
+                self,
+                "_endpoint_key",
+                build_endpoint_key(provider, endpoint),
+            )
 
     @property
     def provider_id(self) -> str:
@@ -877,10 +1096,34 @@ class Model:
     def with_endpoint(self, endpoint: "Endpoint") -> "Model":
         inherits_auth = self.auth is None or self._auth_inherited
         auth = endpoint.auth if inherits_auth else self.auth
-        endpoint_compat = (
-            endpoint.compat.merged(endpoint.protocol.to_compat()).merged(
-                endpoint.dialect.to_compat()
-            )
+        endpoint_compat = endpoint.compat.merged(endpoint.protocol.to_compat()).merged(
+            endpoint.dialect.to_compat()
+        )
+        model_transport_raw = self.transport.to_raw()
+        model_transport_own_raw = (
+            _copy_raw_mapping(self._transport_own_raw)
+            if self._transport_own_raw is not None
+            else None
+        )
+        if model_transport_own_raw is not None:
+            model_transport_raw = model_transport_own_raw
+        elif self._transport_legacy_raw is None:
+            model_transport_own_raw = model_transport_raw
+        model_routing_raw = self.routing.to_raw()
+        model_routing_own_raw = (
+            _copy_raw_mapping(self._routing_own_raw)
+            if self._routing_own_raw is not None
+            else None
+        )
+        if model_routing_own_raw is not None:
+            model_routing_raw = model_routing_own_raw
+        elif self._routing_legacy_raw is None:
+            model_routing_own_raw = model_routing_raw
+        transport = EndpointTransport.from_raw(
+            _deep_merge_raw_mapping(endpoint.transport.to_raw(), model_transport_raw)
+        )
+        routing = EndpointRouting.from_raw(
+            _deep_merge_raw_mapping(endpoint.routing.to_raw(), model_routing_raw)
         )
         return replace(
             self,
@@ -895,6 +1138,16 @@ class Model:
             _auth_inherited=inherits_auth and auth is not None,
             compat=endpoint_compat.merged(self.compat),
             defaults=endpoint.defaults.merged(self.defaults),
+            transport=transport,
+            _transport_own_raw=model_transport_own_raw,
+            _transport_legacy_raw=_copy_raw_mapping(self._transport_legacy_raw)
+            if self._transport_legacy_raw is not None
+            else None,
+            routing=routing,
+            _routing_own_raw=model_routing_own_raw,
+            _routing_legacy_raw=_copy_raw_mapping(self._routing_legacy_raw)
+            if self._routing_legacy_raw is not None
+            else None,
         )
 
     async def stream(self, context, options=None, *, registry=None):
@@ -932,6 +1185,32 @@ class Model:
         raw.update(self.capabilities.to_raw())
         if self.auth is not None and not self._auth_inherited:
             raw["auth"] = self.auth.to_raw()
+        if (
+            self._transport_legacy_raw is not None
+            or self._routing_legacy_raw is not None
+        ):
+            raw["compat"] = {
+                **cast(dict[str, object], raw["compat"]),
+                **_legacy_transport_routing_compat_raw(
+                    self._transport_legacy_raw,
+                    self._routing_legacy_raw,
+                ),
+            }
+        else:
+            transport_raw = (
+                _copy_raw_mapping(self._transport_own_raw)
+                if self._transport_own_raw is not None
+                else self.transport.to_raw()
+            )
+            if transport_raw:
+                raw["transport"] = transport_raw
+            routing_raw = (
+                _copy_raw_mapping(self._routing_own_raw)
+                if self._routing_own_raw is not None
+                else self.routing.to_raw()
+            )
+            if routing_raw:
+                raw["routing"] = routing_raw
         return {key: value for key, value in raw.items() if value is not None}
 
 
@@ -967,6 +1246,40 @@ class Endpoint:
         compare=False,
         repr=False,
     )
+    transport: EndpointTransport = field(default_factory=EndpointTransport)
+    _transport_explicit: bool = field(default=True, compare=False, repr=False)
+    _transport_raw: dict[str, object] | None = field(
+        default=None,
+        compare=False,
+        repr=False,
+    )
+    _transport_raw_source: EndpointTransport | None = field(
+        default=None,
+        compare=False,
+        repr=False,
+    )
+    _transport_legacy_raw: dict[str, object] | None = field(
+        default=None,
+        compare=False,
+        repr=False,
+    )
+    routing: EndpointRouting = field(default_factory=EndpointRouting)
+    _routing_explicit: bool = field(default=True, compare=False, repr=False)
+    _routing_raw: dict[str, object] | None = field(
+        default=None,
+        compare=False,
+        repr=False,
+    )
+    _routing_raw_source: EndpointRouting | None = field(
+        default=None,
+        compare=False,
+        repr=False,
+    )
+    _routing_legacy_raw: dict[str, object] | None = field(
+        default=None,
+        compare=False,
+        repr=False,
+    )
 
     def __post_init__(self, provider: str | None) -> None:
         if self._provider_key:
@@ -993,9 +1306,20 @@ class Endpoint:
         return model.with_endpoint(self)
 
     def to_raw(self) -> dict[str, object]:
+        compat_raw = self.compat.to_raw()
+        if (
+            self._transport_legacy_raw is not None
+            or self._routing_legacy_raw is not None
+        ):
+            compat_raw.update(
+                _legacy_transport_routing_compat_raw(
+                    self._transport_legacy_raw,
+                    self._routing_legacy_raw,
+                )
+            )
         raw: dict[str, object] = {
             "api": self.api,
-            "compat": self.compat.to_raw(),
+            "compat": compat_raw,
             "defaults": self.defaults.to_raw(),
             "models": {
                 model_id: model.to_raw() for model_id, model in self.models.items()
@@ -1028,6 +1352,24 @@ class Endpoint:
             )
             if dialect_raw:
                 raw["dialect"] = dialect_raw
+        if self._transport_legacy_raw is None and self._transport_explicit:
+            transport_raw = (
+                _copy_raw_mapping(self._transport_raw)
+                if self._transport_raw is not None
+                and self._transport_raw_source == self.transport
+                else self.transport.to_raw()
+            )
+            if transport_raw:
+                raw["transport"] = transport_raw
+        if self._routing_legacy_raw is None and self._routing_explicit:
+            routing_raw = (
+                _copy_raw_mapping(self._routing_raw)
+                if self._routing_raw is not None
+                and self._routing_raw_source == self.routing
+                else self.routing.to_raw()
+            )
+            if routing_raw:
+                raw["routing"] = routing_raw
         return raw
 
 

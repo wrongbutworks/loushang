@@ -454,6 +454,7 @@ class AnthropicProvider(AnthropicProviderBase):
         need_fg = self.should_inject_fine_grained_tools(
             compat=compat,
             headers=default_headers,
+            transport_kind=getattr(getattr(resolved, "transport", None), "kind", None),
         )
         if need_ilt or need_fg:
             default_headers = self.apply_beta_headers(

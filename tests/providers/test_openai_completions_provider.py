@@ -11,7 +11,12 @@ import pytest
 from loushang.ai import get_model
 from loushang.ai.model import Capabilities, Model
 from loushang.ai.model.compat_schema import resolve_openai_completions_compat
-from loushang.ai.model.domain import Endpoint, EndpointWireDialect
+from loushang.ai.model.domain import (
+    Endpoint,
+    EndpointRouting,
+    EndpointTransport,
+    EndpointWireDialect,
+)
 from loushang.ai.model.registry import (
     clear_default_model_registry,
     get_default_model_registry,
@@ -526,13 +531,16 @@ def test_openai_completions_compat_maps_qwen_chat_template_thinking(
     assert "reasoning_effort" not in _FakeAsyncOpenAI.last_create_kwargs
 
 
-def test_openai_completions_compat_maps_openrouter_reasoning_and_routing(
+def test_openai_completions_typed_routing_maps_openrouter_provider_payload(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     _fake_openai_module(monkeypatch)
     _patch_resolved_request(
         monkeypatch,
-        compat={"openRouterRouting": {"only": ["anthropic"]}},
+        compat={},
+        routing=EndpointRouting(
+            request_overrides={"openrouter": {"only": ["anthropic"]}}
+        ),
         reasoning_effort="high",
         base_url="https://openrouter.ai/api/v1",
     )
@@ -655,13 +663,16 @@ def test_openai_completions_builtin_moonshot_uses_system_role_not_developer(
     }
 
 
-def test_openai_completions_compat_maps_vercel_gateway_routing(
+def test_openai_completions_typed_routing_maps_vercel_gateway_payload(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     _fake_openai_module(monkeypatch)
     _patch_resolved_request(
         monkeypatch,
-        compat={"vercelGatewayRouting": {"order": ["openai", "anthropic"]}},
+        compat={},
+        routing=EndpointRouting(
+            request_overrides={"vercelGateway": {"order": ["openai", "anthropic"]}}
+        ),
         reasoning_effort=None,
         base_url="https://ai-gateway.vercel.sh/v1",
     )
@@ -821,6 +832,31 @@ def test_openai_completions_payload_synthesizes_missing_tool_result_for_assistan
     ]
 
 
+def test_openai_completions_uses_transport_timeout_when_options_omits_timeout(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _fake_openai_module(monkeypatch)
+    _patch_resolved_request(
+        monkeypatch,
+        compat={},
+        reasoning_effort=None,
+        transport=EndpointTransport(timeout=12),
+    )
+    provider = OpenAICompletionsProvider()
+
+    asyncio.run(
+        _collect_parts(
+            provider._stream_raw_parts(
+                _Model(),
+                {"messages": [{"role": "user", "content": "hello"}]},
+                OpenAICompletionsOptions(api_key="test-key"),
+            )
+        )
+    )
+
+    assert _FakeAsyncOpenAI.last_init_kwargs["timeout"] == 12
+
+
 def test_openai_completions_stream_maps_thinking_tool_calls_and_reasoning_details(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -935,6 +971,8 @@ def _patch_resolved_request(
     base_url: str = "https://api.openai.test/v1",
     extra_headers: dict[str, str] | None = None,
     max_tokens: int | None = 1024,
+    routing: EndpointRouting | None = None,
+    transport: EndpointTransport | None = None,
 ) -> None:
     def _resolve(_model, options=None):
         headers = {}
@@ -955,6 +993,8 @@ def _patch_resolved_request(
             ),
             max_tokens=max_tokens,
             reasoning_effort=reasoning_effort,
+            routing=routing or EndpointRouting(),
+            transport=transport or EndpointTransport(),
         )
 
     monkeypatch.setattr(

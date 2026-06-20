@@ -9,6 +9,8 @@ from loushang.ai.model import (
     Auth,
     Endpoint,
     EndpointProtocolFeatures,
+    EndpointRouting,
+    EndpointTransport,
     EndpointWireDialect,
     Model,
     ModelRegistry,
@@ -18,8 +20,10 @@ from loushang.ai.model import (
 from loushang.ai.model.compat_schema import (
     FINE_GRAINED_TOOLS,
     INTERLEAVED_THINKING,
+    OPENROUTER_ROUTING,
     SUPPORTS_STREAM_REASONING_DELTA,
     UPSTREAM_MODEL_ID,
+    VERCEL_GATEWAY_ROUTING,
     resolve_anthropic_messages_compat,
     resolve_openai_completions_compat,
     resolve_openai_responses_compat,
@@ -50,6 +54,21 @@ def test_nullable_resolver_value_keys_preserve_none_defaults() -> None:
 
     assert openai_completions[UPSTREAM_MODEL_ID] is None
     assert openai_responses[UPSTREAM_MODEL_ID] is None
+
+
+def test_openai_completions_compat_preserves_legacy_routing_overrides() -> None:
+    compat = resolve_openai_completions_compat(
+        provider_id="custom",
+        model_id="model-a",
+        base_url="https://openrouter.ai/api/v1",
+        raw={
+            OPENROUTER_ROUTING: {"only": ["anthropic"]},
+            VERCEL_GATEWAY_ROUTING: {"order": ["openai", "anthropic"]},
+        },
+    )
+
+    assert compat[OPENROUTER_ROUTING] == {"only": ["anthropic"]}
+    assert compat[VERCEL_GATEWAY_ROUTING] == {"order": ["openai", "anthropic"]}
 
 
 def test_anthropic_messages_protocol_flags_default_to_bool_or_absent() -> None:
@@ -194,6 +213,271 @@ def test_resolve_endpoint_uses_in_memory_endpoint_dialect_bridge() -> None:
     assert resolved.compat["thinkingFormat"] == "moonshot"
     assert resolved.compat["zaiToolStream"] is True
     assert resolved.compat["cacheControlFormat"] == "anthropic"
+
+
+def test_resolve_request_exposes_in_memory_endpoint_transport_routing() -> None:
+    endpoint = Endpoint(
+        id="openai-completions",
+        provider="custom",
+        api="openai-completions",
+        transport=EndpointTransport(kind="httpx", stream="sse"),
+        routing=EndpointRouting(
+            request_overrides={
+                "openrouter": {"only": ["anthropic"]},
+                "vercelGateway": {"order": ["openai", "anthropic"]},
+            }
+        ),
+        models={
+            "model-a": Model(
+                id="model-a",
+                provider="custom",
+                endpoint="openai-completions",
+            )
+        },
+    )
+    registry = ModelRegistry.from_providers(
+        {"custom": Provider(id="custom", endpoints={endpoint.id: endpoint})}
+    )
+    model = registry.get_model("custom", "openai-completions", "model-a")
+
+    resolved = resolve_request_for_model(model, registry=registry, env={})
+
+    assert resolved.transport == EndpointTransport(kind="httpx", stream="sse")
+    assert resolved.routing == EndpointRouting(
+        request_overrides={
+            "openrouter": {"only": ["anthropic"]},
+            "vercelGateway": {"order": ["openai", "anthropic"]},
+        }
+    )
+    assert "openRouterRouting" not in resolved.compat
+    assert "vercelGatewayRouting" not in resolved.compat
+
+
+def test_resolve_request_uses_bound_transport_routing_with_empty_registry() -> None:
+    endpoint = Endpoint(
+        id="openai-completions",
+        provider="custom",
+        api="openai-completions",
+        transport=EndpointTransport(kind="httpx"),
+        routing=EndpointRouting(
+            request_overrides={"openrouter": {"only": ["anthropic"]}}
+        ),
+        models={
+            "model-a": Model(
+                id="model-a",
+                provider="custom",
+                endpoint="openai-completions",
+            )
+        },
+    )
+    registry = ModelRegistry.from_providers(
+        {"custom": Provider(id="custom", endpoints={endpoint.id: endpoint})}
+    )
+    model = registry.get_model("custom", "openai-completions", "model-a")
+
+    resolved = resolve_request_for_model(
+        model,
+        registry=ModelRegistry.from_providers({}),
+        env={},
+    )
+
+    assert resolved.transport == EndpointTransport(kind="httpx")
+    assert resolved.routing == EndpointRouting(
+        request_overrides={"openrouter": {"only": ["anthropic"]}}
+    )
+
+
+def test_resolve_request_does_not_use_stale_bound_endpoint_transport_routing() -> None:
+    old_endpoint = Endpoint(
+        id="openai-completions",
+        provider="custom",
+        api="openai-completions",
+        transport=EndpointTransport(timeout=10),
+        routing=EndpointRouting(request_overrides={"openrouter": {"only": ["old"]}}),
+        models={
+            "model-a": Model(
+                id="model-a",
+                provider="custom",
+                endpoint="openai-completions",
+            )
+        },
+    )
+    new_endpoint = Endpoint(
+        id="openai-completions",
+        provider="custom",
+        api="openai-completions",
+        transport=EndpointTransport(timeout=20),
+        routing=EndpointRouting(request_overrides={"openrouter": {"only": ["new"]}}),
+        models={
+            "model-a": Model(
+                id="model-a",
+                provider="custom",
+                endpoint="openai-completions",
+            )
+        },
+    )
+    old_registry = ModelRegistry.from_providers(
+        {"custom": Provider(id="custom", endpoints={old_endpoint.id: old_endpoint})}
+    )
+    new_registry = ModelRegistry.from_providers(
+        {"custom": Provider(id="custom", endpoints={new_endpoint.id: new_endpoint})}
+    )
+    model = old_registry.get_model("custom", "openai-completions", "model-a")
+
+    resolved = resolve_request_for_model(model, registry=new_registry, env={})
+
+    assert resolved.transport == EndpointTransport(timeout=20)
+    assert resolved.routing == EndpointRouting(
+        request_overrides={"openrouter": {"only": ["new"]}}
+    )
+
+
+def test_resolve_request_bridges_direct_model_legacy_transport_routing() -> None:
+    endpoint = Endpoint(
+        id="openai-completions",
+        provider="openrouter",
+        api="openai-completions",
+        base_url="https://openrouter.ai/api/v1",
+    )
+    registry = ModelRegistry.from_providers(
+        {"openrouter": Provider(id="openrouter", endpoints={endpoint.id: endpoint})}
+    )
+    model = Model(
+        id="dynamic",
+        provider="openrouter",
+        endpoint="openai-completions",
+        compat={
+            "providerTransport": "httpx",
+            "openRouterRouting": {"only": ["anthropic"]},
+            "vercelGatewayRouting": {"order": ["openai", "anthropic"]},
+        },
+    )
+
+    resolved = resolve_request_for_model(model, registry=registry, env={})
+
+    assert resolved.transport == EndpointTransport(kind="httpx")
+    assert resolved.routing == EndpointRouting(
+        request_overrides={
+            "openrouter": {"only": ["anthropic"]},
+            "vercelGateway": {"order": ["openai", "anthropic"]},
+        }
+    )
+    assert "openRouterRouting" not in resolved.compat
+    assert "vercelGatewayRouting" not in resolved.compat
+
+
+def test_resolve_endpoint_strips_direct_model_legacy_transport_routing() -> None:
+    model = Model(
+        id="dynamic",
+        provider="openrouter",
+        endpoint="openai-completions",
+        compat={
+            "providerTransport": "httpx",
+            "openRouterRouting": {"only": ["anthropic"]},
+            "vercelGatewayRouting": {"order": ["openai", "anthropic"]},
+        },
+    )
+
+    resolved = resolve_endpoint_for_model(
+        model,
+        registry=ModelRegistry.from_providers({}),
+    )
+
+    assert resolved.transport == EndpointTransport(kind="httpx")
+    assert resolved.routing == EndpointRouting(
+        request_overrides={
+            "openrouter": {"only": ["anthropic"]},
+            "vercelGateway": {"order": ["openai", "anthropic"]},
+        }
+    )
+    assert "providerTransport" not in resolved.compat
+    assert "openRouterRouting" not in resolved.compat
+    assert "vercelGatewayRouting" not in resolved.compat
+
+
+def test_resolve_request_merges_dynamic_model_transport_routing_with_endpoint() -> None:
+    endpoint = Endpoint(
+        id="openai-completions",
+        provider="custom",
+        api="openai-completions",
+        transport=EndpointTransport(kind="httpx", stream="sse"),
+        routing=EndpointRouting(
+            request_overrides={
+                "openrouter": {"only": ["endpoint"]},
+                "vercelGateway": {"order": ["endpoint"]},
+            }
+        ),
+    )
+    registry = ModelRegistry.from_providers(
+        {"custom": Provider(id="custom", endpoints={endpoint.id: endpoint})}
+    )
+    model = Model(
+        id="dynamic",
+        provider="custom",
+        endpoint="openai-completions",
+        transport=EndpointTransport(timeout=5),
+        routing=EndpointRouting(request_overrides={"openrouter": {"order": ["model"]}}),
+    )
+
+    resolved = resolve_request_for_model(model, registry=registry, env={})
+
+    assert resolved.transport == EndpointTransport(
+        kind="httpx",
+        stream="sse",
+        timeout=5,
+    )
+    assert resolved.routing == EndpointRouting(
+        request_overrides={
+            "openrouter": {"only": ["endpoint"], "order": ["model"]},
+            "vercelGateway": {"order": ["endpoint"]},
+        }
+    )
+
+
+def test_resolve_request_preserves_direct_overrides_for_catalog_model_id() -> None:
+    endpoint = Endpoint(
+        id="openai-completions",
+        provider="custom",
+        api="openai-completions",
+        transport=EndpointTransport(kind="httpx", stream="sse"),
+        routing=EndpointRouting(
+            request_overrides={"openrouter": {"only": ["endpoint"]}}
+        ),
+        models={
+            "model-a": Model(
+                id="model-a",
+                provider="custom",
+                endpoint="openai-completions",
+            )
+        },
+    )
+    registry = ModelRegistry.from_providers(
+        {"custom": Provider(id="custom", endpoints={endpoint.id: endpoint})}
+    )
+    model = Model(
+        id="model-a",
+        provider="custom",
+        endpoint="openai-completions",
+        transport=EndpointTransport(timeout=5),
+        routing=EndpointRouting(
+            request_overrides={"openrouter": {"order": ["caller"]}}
+        ),
+        compat={"vercelGatewayRouting": {"order": ["openai", "anthropic"]}},
+    )
+
+    resolved = resolve_request_for_model(model, registry=registry, env={})
+
+    assert resolved.transport == EndpointTransport(
+        kind="httpx",
+        stream="sse",
+        timeout=5,
+    )
+    assert resolved.routing == EndpointRouting(
+        request_overrides={
+            "openrouter": {"only": ["endpoint"], "order": ["caller"]},
+            "vercelGateway": {"order": ["openai", "anthropic"]},
+        }
+    )
 
 
 def test_resolve_request_uses_base_url_env_override() -> None:
@@ -348,9 +632,7 @@ def test_resolve_request_expands_base_url_env_template() -> None:
             )
         }
     )
-    model = registry.get_model(
-        "cloudflare-workers-ai", "openai-completions", "model-a"
-    )
+    model = registry.get_model("cloudflare-workers-ai", "openai-completions", "model-a")
 
     resolved = resolve_request_for_model(
         model,
@@ -389,9 +671,7 @@ def test_resolve_request_rejects_missing_base_url_env_template() -> None:
             )
         }
     )
-    model = registry.get_model(
-        "cloudflare-workers-ai", "openai-completions", "model-a"
-    )
+    model = registry.get_model("cloudflare-workers-ai", "openai-completions", "model-a")
 
     with pytest.raises(ValueError, match="CLOUDFLARE_ACCOUNT_ID"):
         resolve_request_for_model(model, registry=registry, env={})
@@ -753,6 +1033,58 @@ def test_resolve_request_preserves_anthropic_protocol_bridge_keys(tmp_path) -> N
     assert resolved.compat["sendSessionAffinityHeaders"] is True
 
 
+def test_resolve_request_uses_legacy_transport_routing_as_typed_contract(
+    tmp_path,
+) -> None:
+    path = tmp_path / "models.json"
+    path.write_text(
+        json.dumps(
+            {
+                "schemaVersion": 1,
+                "providers": {
+                    "custom": {
+                        "endpoints": {
+                            "openai-completions": {
+                                "api": "openai-completions",
+                                "baseUrl": "https://gateway.example/v1",
+                                "compat": {
+                                    "providerTransport": "httpx",
+                                    "openRouterRouting": {"only": ["anthropic"]},
+                                    "vercelGatewayRouting": {
+                                        "order": ["openai", "anthropic"]
+                                    },
+                                },
+                                "models": {
+                                    "model-a": {
+                                        "capabilities": {
+                                            "input": ["text"],
+                                            "output": ["text"],
+                                        }
+                                    }
+                                },
+                            }
+                        }
+                    }
+                },
+            }
+        ),
+        encoding="utf-8",
+    )
+    registry = load_model_registry_from_file(path)
+    model = registry.get_model("custom", "openai-completions", "model-a")
+
+    resolved = resolve_request_for_model(model, registry=registry, env={})
+
+    assert resolved.transport.kind == "httpx"
+    assert resolved.routing.request_overrides == {
+        "openrouter": {"only": ["anthropic"]},
+        "vercelGateway": {"order": ["openai", "anthropic"]},
+    }
+    assert "providerTransport" not in resolved.compat
+    assert "openRouterRouting" not in resolved.compat
+    assert "vercelGatewayRouting" not in resolved.compat
+
+
 def test_resolve_request_selects_matching_region_endpoint() -> None:
     cn_endpoint = Endpoint(
         id="openai-completions",
@@ -767,6 +1099,8 @@ def test_resolve_request_selects_matching_region_endpoint() -> None:
                 "reasoning": {"wireFormat": "deepseek"},
             }
         ),
+        transport=EndpointTransport(kind="httpx", timeout=10),
+        routing=EndpointRouting(request_overrides={"openrouter": {"only": ["cn"]}}),
         models={
             "qwen": Model(
                 id="qwen",
@@ -788,6 +1122,8 @@ def test_resolve_request_selects_matching_region_endpoint() -> None:
                 "reasoning": {"wireFormat": "moonshot"},
             }
         ),
+        transport=EndpointTransport(kind="sdk", timeout=20),
+        routing=EndpointRouting(request_overrides={"openrouter": {"only": ["us"]}}),
         models={
             "qwen": Model(
                 id="qwen", provider="dashscope", endpoint="openai-completions-us"
@@ -823,6 +1159,10 @@ def test_resolve_request_selects_matching_region_endpoint() -> None:
     assert resolved.headers["Authorization"] == "Bearer us-secret"
     assert resolved.compat["maxTokensField"] == "max_completion_tokens"
     assert resolved.compat["thinkingFormat"] == "moonshot"
+    assert resolved.transport == EndpointTransport(kind="sdk", timeout=20)
+    assert resolved.routing == EndpointRouting(
+        request_overrides={"openrouter": {"only": ["us"]}}
+    )
 
 
 def test_resolve_request_reports_actual_region_when_region_falls_back() -> None:
@@ -973,7 +1313,9 @@ def test_resolve_request_uses_model_endpoint_provider_auth_precedence(tmp_path) 
     assert resolved.headers["x-provider"] == "yes"
 
 
-def test_resolve_request_merges_auth_extra_headers_with_child_override(tmp_path) -> None:
+def test_resolve_request_merges_auth_extra_headers_with_child_override(
+    tmp_path,
+) -> None:
     raw = {
         "providers": {
             "gateway": {

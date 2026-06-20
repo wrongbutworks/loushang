@@ -10,7 +10,7 @@ from types import ModuleType, SimpleNamespace
 import pytest
 
 from loushang.ai.auth.types import OAuthCredentials
-from loushang.ai.model.domain import Endpoint, Model
+from loushang.ai.model.domain import Endpoint, EndpointTransport, Model
 from loushang.ai.model.registry import (
     clear_default_model_registry,
     get_default_model_registry,
@@ -45,6 +45,72 @@ def test_output_config_injected_for_adaptive_thinking():
     assert base.supports_adaptive_thinking("claude-opus-4-6-latest") is True
     # 映射 effort
     assert base.map_thinking_level_to_effort("high", "claude-opus-4-6") == "high"
+
+
+def test_fine_grained_tool_beta_uses_typed_transport_kind() -> None:
+    from loushang.ai.providers.anthropic_base import AnthropicProviderBase
+
+    assert (
+        AnthropicProviderBase.should_inject_fine_grained_tools(
+            compat={},
+            headers={},
+            transport_kind="httpx",
+        )
+        is True
+    )
+    assert (
+        AnthropicProviderBase.should_inject_fine_grained_tools(
+            compat={"providerTransport": "httpx"},
+            headers={},
+            transport_kind=None,
+        )
+        is False
+    )
+
+
+def test_anthropic_provider_uses_typed_transport_for_fine_grained_beta(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _fake_anthropic_module(monkeypatch, [SimpleNamespace(type="message_stop")])
+    clear_default_model_registry()
+    registry = get_default_model_registry()
+    registry.register_endpoint(
+        "anthropic",
+        Endpoint(
+            id="anthropic-messages",
+            provider="anthropic",
+            api="anthropic-messages",
+            transport=EndpointTransport(kind="httpx"),
+            models={
+                "claude-sonnet-4-5": Model(
+                    id="claude-sonnet-4-5",
+                    provider="anthropic",
+                    endpoint="anthropic-messages",
+                )
+            },
+        ),
+    )
+    model = registry.get_model("anthropic", "anthropic-messages", "claude-sonnet-4-5")
+    provider = AnthropicProvider()
+
+    asyncio.run(
+        _collect_parts(
+            provider._stream_raw_parts(
+                model,
+                {
+                    "messages": [
+                        UserMessage(role="user", content="hello", timestamp=0.0)
+                    ]
+                },
+                AnthropicOptions(api_key="test-key"),
+            )
+        )
+    )
+
+    assert (
+        "fine-grained-tool-streaming-2025-05-14"
+        in _FakeAsyncAnthropic.last_init_kwargs["default_headers"]["anthropic-beta"]
+    )
 
 
 def test_assistant_block_to_payload_maps_signed_thinking() -> None:

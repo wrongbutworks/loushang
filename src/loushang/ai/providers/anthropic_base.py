@@ -118,7 +118,11 @@ class AnthropicProviderBase:
 
     @classmethod
     def should_inject_fine_grained_tools(
-        cls, *, compat: dict[str, object] | None, headers: dict[str, str] | None
+        cls,
+        *,
+        compat: dict[str, object] | None,
+        headers: dict[str, str] | None,
+        transport_kind: str | None = None,
     ) -> bool:
         # 若已存在 anthropic-beta，则允许合并（不强制新增）
         if headers:
@@ -129,8 +133,8 @@ class AnthropicProviderBase:
         # 显式开启
         if c.get("fineGrainedTools") is True:
             return True
-        # 当 endpoint 声明 providerTransport 为 httpx 时默认开启
-        if c.get("providerTransport") == "httpx":
+        # HTTP transport requires Anthropic fine-grained tool streaming beta.
+        if transport_kind == "httpx":
             return True
         # 默认不注入，避免破坏既有单测/代理不识别 beta 的情况
         return False

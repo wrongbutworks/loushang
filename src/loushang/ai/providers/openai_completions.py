@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import asyncio
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Mapping
 from typing import Any, cast
 
 from loushang.ai.context import ensure_normalized_context
@@ -9,7 +9,6 @@ from loushang.ai.event_stream import AssistantMessageEventStream, RawAssembler
 from loushang.ai.model.compat_schema import (
     CACHE_CONTROL_FORMAT,
     MAX_TOKENS_FIELD,
-    OPENROUTER_ROUTING,
     REASONING_EFFORT_MAP,
     REQUIRES_ASSISTANT_AFTER_TOOL_RESULT,
     REQUIRES_REASONING_CONTENT_ON_ASSISTANT_MESSAGES,
@@ -24,7 +23,6 @@ from loushang.ai.model.compat_schema import (
     SUPPORTS_USAGE_IN_STREAMING,
     THINKING_FORMAT,
     UPSTREAM_MODEL_ID,
-    VERCEL_GATEWAY_ROUTING,
     ZAI_TOOL_STREAM,
     compat_bool,
     compat_dict,
@@ -118,8 +116,6 @@ class OpenAICompletionsProvider:
             dict[str, str], compat_dict(compat, REASONING_EFFORT_MAP)
         )
         supports_reasoning_effort = compat_bool(compat, SUPPORTS_REASONING_EFFORT)
-        openrouter_routing = compat_dict(compat, OPENROUTER_ROUTING)
-        vercel_gateway_routing = compat_dict(compat, VERCEL_GATEWAY_ROUTING)
 
         # OpenAI Python SDK
         try:
@@ -162,8 +158,7 @@ class OpenAICompletionsProvider:
                 include_affinity=True,
             )
 
-        # 传递超时（若提供）
-        timeout_s = getattr(options, "timeout", None) if options is not None else None
+        timeout_s = _resolve_timeout_seconds(options, resolved)
         # 优先使用 provider 的 base_url（如果提供），否则使用 resolved 的 base_url
         effective_base_url = (
             self._base_url if self._base_url is not None else resolved.base_url
@@ -231,8 +226,11 @@ class OpenAICompletionsProvider:
         _apply_provider_routing(
             params,
             base_url=getattr(resolved, "base_url", None),
-            openrouter_routing=openrouter_routing,
-            vercel_gateway_routing=vercel_gateway_routing,
+            request_overrides=getattr(
+                getattr(resolved, "routing", None),
+                "request_overrides",
+                {},
+            ),
         )
         if extra_body:
             params["extra_body"] = extra_body
@@ -600,12 +598,14 @@ def _apply_provider_routing(
     params: dict[str, Any],
     *,
     base_url: str | None,
-    openrouter_routing: dict[str, object],
-    vercel_gateway_routing: dict[str, object],
+    request_overrides: Mapping[str, Mapping[str, object]] | None,
 ) -> None:
+    overrides = request_overrides or {}
     base_url_text = str(base_url or "")
+    openrouter_routing = overrides.get("openrouter")
     if "openrouter.ai" in base_url_text and openrouter_routing:
-        params["provider"] = openrouter_routing
+        params["provider"] = dict(openrouter_routing)
+    vercel_gateway_routing = overrides.get("vercelGateway")
     if "ai-gateway.vercel.sh" not in base_url_text or not vercel_gateway_routing:
         return
     gateway: dict[str, Any] = {}
@@ -615,6 +615,22 @@ def _apply_provider_routing(
         gateway["order"] = vercel_gateway_routing["order"]
     if gateway:
         params["providerOptions"] = {"gateway": gateway}
+
+
+def _resolve_timeout_seconds(options, resolved) -> float | int | None:
+    option_timeout = (
+        getattr(options, "timeout", None) if options is not None else None
+    )
+    if isinstance(option_timeout, int | float) and option_timeout > 0:
+        return option_timeout
+    transport_timeout = getattr(
+        getattr(resolved, "transport", None),
+        "timeout",
+        None,
+    )
+    if isinstance(transport_timeout, int | float) and transport_timeout > 0:
+        return transport_timeout
+    return None
 
 
 def _get_compat_cache_control(

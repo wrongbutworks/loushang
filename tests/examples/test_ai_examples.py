@@ -97,11 +97,17 @@ def test_advanced_inspect_endpoint_contract_formats_protocol_facts(
                                     "maxOutputTokensField": "max_completion_tokens",
                                     "reasoning": {"wireFormat": "moonshot"},
                                 },
+                                "transport": {"kind": "httpx"},
+                                "routing": {
+                                    "requestOverrides": {
+                                        "openrouter": {"only": ["anthropic"]}
+                                    }
+                                },
                                 "models": {
                                     "kimi-k2.5": {
                                         "compat": {
                                             "supportsReasoningEffort": True,
-                                            "supportsStreamReasoningDelta": True
+                                            "supportsStreamReasoningDelta": True,
                                         },
                                         "capabilities": {
                                             "input": ["text"],
@@ -136,6 +142,12 @@ def test_advanced_inspect_endpoint_contract_formats_protocol_facts(
         "maxOutputTokensField": "max_completion_tokens",
         "reasoning": {"wireFormat": "moonshot"},
     }
+    assert contract["transportScope"] == "endpoint-default"
+    assert contract["transport"] == {"kind": "httpx"}
+    assert contract["routingScope"] == "endpoint-default"
+    assert contract["routing"] == {
+        "requestOverrides": {"openrouter": {"only": ["anthropic"]}}
+    }
     assert contract["modelEffectiveLegacyCompat"]["supportsReasoningEffort"] is True
     assert "thinkingFormat" in contract["legacyCompatKeys"]
     assert "supportsStreamReasoningDelta" in contract[
@@ -146,6 +158,8 @@ def test_advanced_inspect_endpoint_contract_formats_protocol_facts(
     payload = json.loads(capsys.readouterr().out)
     assert payload["protocolScope"] == "endpoint-default"
     assert payload["dialectScope"] == "endpoint-default"
+    assert payload["transportScope"] == "endpoint-default"
+    assert payload["routingScope"] == "endpoint-default"
 
 
 def test_advanced_inspect_endpoint_contract_runs_against_builtin_catalog() -> None:
@@ -167,6 +181,8 @@ def test_advanced_inspect_endpoint_contract_runs_against_builtin_catalog() -> No
         "maxOutputTokensField": "max_completion_tokens",
         "reasoning": {"wireFormat": "moonshot"},
     }
+    assert contract["transport"] == {}
+    assert contract["routing"] == {}
     assert contract["modelEffectiveLegacyCompat"]["supportsReasoningEffort"] is True
     assert "supportsStreamReasoningDelta" in contract[
         "modelEffectiveLegacyCompatKeys"

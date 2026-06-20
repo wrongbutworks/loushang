@@ -18,7 +18,7 @@
 `examples/ai/advanced/` 放协议观察、faux provider、本地 registry 注入这类高级样例，不作为第一次接入的推荐入口。
 
 - [advanced/inspect_endpoint_contract.py](advanced/inspect_endpoint_contract.py)
-  查看 endpoint 的 typed protocol/dialect facts 和仍然存在的 legacy compat keys
+  查看 endpoint 的 typed protocol/dialect/transport/routing facts 和仍然存在的 legacy compat keys
 
 ## Provider 配置速查
 

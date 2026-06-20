@@ -144,7 +144,10 @@ def test_model_registry_schema_accepts_endpoint_protocol_features() -> None:
             "usage": "supported",
             "reasoningDelta": "unsupported",
         },
-        "reasoning": {"effort": "unknown", "effortMap": {"off": None, "minimal": "low"}},
+        "reasoning": {
+            "effort": "unknown",
+            "effortMap": {"off": None, "minimal": "low"},
+        },
         "tools": {"strictSchema": "supported"},
         "cache": {"longRetention": "supported"},
         "session": {"idHeader": "supported"},
@@ -215,7 +218,71 @@ def test_model_registry_schema_rejects_model_wire_dialect() -> None:
         validate_model_registry_raw(raw)
 
 
-def test_model_registry_loads_legacy_reasoning_effort_map_into_protocol(tmp_path) -> None:
+def test_model_registry_schema_accepts_endpoint_transport_and_routing() -> None:
+    raw = _minimal_registry_raw(schema_version=2)
+    endpoint = raw["providers"]["custom"]["endpoints"]["openai-completions"]
+    endpoint["transport"] = {
+        "kind": "httpx",
+        "stream": "sse",
+        "fallback": True,
+        "timeout": 30,
+    }
+    endpoint["routing"] = {
+        "requestOverrides": {
+            "openrouter": {"only": ["anthropic"]},
+            "vercelGateway": {"order": ["openai", "anthropic"]},
+        }
+    }
+
+    validate_model_registry_raw(raw)
+
+
+def test_model_registry_schema_rejects_endpoint_transport_before_v2() -> None:
+    raw = _minimal_registry_raw(schema_version=1)
+    endpoint = raw["providers"]["custom"]["endpoints"]["openai-completions"]
+    endpoint["transport"] = {"kind": "httpx"}
+
+    with pytest.raises(ValueError, match="requires schemaVersion 2"):
+        validate_model_registry_raw(raw)
+
+
+def test_model_registry_schema_rejects_endpoint_routing_before_v2() -> None:
+    raw = _minimal_registry_raw(schema_version=1)
+    endpoint = raw["providers"]["custom"]["endpoints"]["openai-completions"]
+    endpoint["routing"] = {"requestOverrides": {"openrouter": {"only": ["anthropic"]}}}
+
+    with pytest.raises(ValueError, match="requires schemaVersion 2"):
+        validate_model_registry_raw(raw)
+
+
+@pytest.mark.parametrize("field", ["transport", "routing"])
+def test_model_registry_schema_rejects_model_transport_routing_before_v2(
+    field: str,
+) -> None:
+    raw = _minimal_registry_raw(schema_version=1)
+    model = raw["providers"]["custom"]["endpoints"]["openai-completions"]["models"][
+        "model-a"
+    ]
+    model[field] = {}
+
+    with pytest.raises(ValueError, match="requires schemaVersion 2"):
+        validate_model_registry_raw(raw)
+
+
+def test_model_registry_schema_accepts_model_transport_routing() -> None:
+    raw = _minimal_registry_raw(schema_version=2)
+    model = raw["providers"]["custom"]["endpoints"]["openai-completions"]["models"][
+        "model-a"
+    ]
+    model["transport"] = {"timeout": 30}
+    model["routing"] = {"requestOverrides": {"openrouter": {"only": ["anthropic"]}}}
+
+    validate_model_registry_raw(raw)
+
+
+def test_model_registry_loads_legacy_reasoning_effort_map_into_protocol(
+    tmp_path,
+) -> None:
     raw = _minimal_registry_raw(schema_version=1)
     endpoint = raw["providers"]["custom"]["endpoints"]["openai-completions"]
     endpoint["compat"] = {
@@ -286,6 +353,159 @@ def test_model_registry_loads_legacy_wire_dialect_from_compat(tmp_path) -> None:
     }
     endpoint_raw = endpoint_contract.to_raw()
     assert "dialect" not in endpoint_raw
+
+
+def test_model_registry_loads_legacy_transport_routing_from_compat(tmp_path) -> None:
+    raw = _minimal_registry_raw(schema_version=1)
+    endpoint = raw["providers"]["custom"]["endpoints"]["openai-completions"]
+    endpoint["compat"] = {
+        "providerTransport": "httpx",
+        "openRouterRouting": {"only": ["anthropic"]},
+        "vercelGatewayRouting": {"order": ["openai", "anthropic"]},
+    }
+    path = tmp_path / "models.json"
+    path.write_text(json.dumps(raw), encoding="utf-8")
+
+    registry = load_model_registry_from_file(path)
+    endpoint_contract = registry.get_endpoint("custom", "openai-completions")
+
+    assert endpoint_contract is not None
+    assert endpoint_contract.transport.to_raw() == {"kind": "httpx"}
+    assert endpoint_contract.routing.to_raw() == {
+        "requestOverrides": {
+            "openrouter": {"only": ["anthropic"]},
+            "vercelGateway": {"order": ["openai", "anthropic"]},
+        }
+    }
+    assert "providerTransport" not in endpoint_contract.compat
+    assert "openRouterRouting" not in endpoint_contract.compat
+    assert "vercelGatewayRouting" not in endpoint_contract.compat
+    endpoint_raw = endpoint_contract.to_raw()
+    assert "transport" not in endpoint_raw
+    assert "routing" not in endpoint_raw
+    assert endpoint_raw["compat"] == {
+        "maxTokensField": "max_completion_tokens",
+        "providerTransport": "httpx",
+        "openRouterRouting": {"only": ["anthropic"]},
+        "vercelGatewayRouting": {"order": ["openai", "anthropic"]},
+    }
+    roundtrip_path = tmp_path / "roundtrip.v1.json"
+    roundtrip_path.write_text(
+        json.dumps(
+            {
+                "schemaVersion": 1,
+                "providers": {
+                    "custom": {
+                        "endpoints": {
+                            "openai-completions": endpoint_raw,
+                        }
+                    }
+                },
+            }
+        ),
+        encoding="utf-8",
+    )
+    roundtrip_registry = load_model_registry_from_file(roundtrip_path)
+    roundtrip_endpoint = roundtrip_registry.get_endpoint(
+        "custom",
+        "openai-completions",
+    )
+    assert roundtrip_endpoint is not None
+    assert roundtrip_endpoint.transport.to_raw() == {"kind": "httpx"}
+    assert roundtrip_endpoint.routing.to_raw() == {
+        "requestOverrides": {
+            "openrouter": {"only": ["anthropic"]},
+            "vercelGateway": {"order": ["openai", "anthropic"]},
+        }
+    }
+
+
+def test_model_registry_round_trips_mixed_legacy_and_typed_transport_routing(
+    tmp_path,
+) -> None:
+    raw = _minimal_registry_raw(schema_version=2)
+    endpoint = raw["providers"]["custom"]["endpoints"]["openai-completions"]
+    endpoint["compat"] = {
+        "providerTransport": "httpx",
+        "openRouterRouting": {"only": ["anthropic"]},
+    }
+    endpoint["transport"] = {"timeout": 45}
+    endpoint["routing"] = {"requestOverrides": {"openrouter": {"order": ["openai"]}}}
+    path = tmp_path / "models.v2.json"
+    path.write_text(json.dumps(raw), encoding="utf-8")
+
+    registry = load_model_registry_from_file(path)
+    endpoint_contract = registry.get_endpoint("custom", "openai-completions")
+
+    assert endpoint_contract is not None
+    endpoint_raw = endpoint_contract.to_raw()
+    assert endpoint_raw["transport"] == {"kind": "httpx", "timeout": 45}
+    assert endpoint_raw["routing"] == {
+        "requestOverrides": {"openrouter": {"only": ["anthropic"], "order": ["openai"]}}
+    }
+
+
+def test_model_registry_loads_model_legacy_transport_routing_from_compat(
+    tmp_path,
+) -> None:
+    raw = _minimal_registry_raw(schema_version=1)
+    model = raw["providers"]["custom"]["endpoints"]["openai-completions"]["models"][
+        "model-a"
+    ]
+    model["compat"] = {
+        "providerTransport": "httpx",
+        "openRouterRouting": {"only": ["anthropic"]},
+        "vercelGatewayRouting": {"order": ["openai", "anthropic"]},
+    }
+    path = tmp_path / "models.json"
+    path.write_text(json.dumps(raw), encoding="utf-8")
+
+    registry = load_model_registry_from_file(path)
+    model_contract = registry.get_model("custom", "openai-completions", "model-a")
+
+    assert model_contract.transport.to_raw() == {"kind": "httpx"}
+    assert model_contract.routing.to_raw() == {
+        "requestOverrides": {
+            "openrouter": {"only": ["anthropic"]},
+            "vercelGateway": {"order": ["openai", "anthropic"]},
+        }
+    }
+    assert "providerTransport" not in model_contract.compat
+    assert "openRouterRouting" not in model_contract.compat
+    assert "vercelGatewayRouting" not in model_contract.compat
+    model_raw = model_contract.to_raw()
+    assert "transport" not in model_raw
+    assert "routing" not in model_raw
+    assert model_raw["compat"] == {
+        "maxTokensField": "max_completion_tokens",
+        "providerTransport": "httpx",
+        "openRouterRouting": {"only": ["anthropic"]},
+        "vercelGatewayRouting": {"order": ["openai", "anthropic"]},
+    }
+
+
+def test_model_registry_loads_model_typed_transport_routing(tmp_path) -> None:
+    raw = _minimal_registry_raw(schema_version=2)
+    model = raw["providers"]["custom"]["endpoints"]["openai-completions"]["models"][
+        "model-a"
+    ]
+    model["transport"] = {"stream": "sse", "timeout": 30}
+    model["routing"] = {"requestOverrides": {"openrouter": {"order": ["openai"]}}}
+    path = tmp_path / "models.v2.json"
+    path.write_text(json.dumps(raw), encoding="utf-8")
+
+    registry = load_model_registry_from_file(path)
+    model_contract = registry.get_model("custom", "openai-completions", "model-a")
+
+    assert model_contract.transport.to_raw() == {"stream": "sse", "timeout": 30}
+    assert model_contract.routing.to_raw() == {
+        "requestOverrides": {"openrouter": {"order": ["openai"]}}
+    }
+    model_raw = model_contract.to_raw()
+    assert model_raw["transport"] == {"stream": "sse", "timeout": 30}
+    assert model_raw["routing"] == {
+        "requestOverrides": {"openrouter": {"order": ["openai"]}}
+    }
 
 
 def test_model_registry_loads_explicit_protocol_into_compat_bridge(tmp_path) -> None:
@@ -361,12 +581,39 @@ def test_model_registry_loads_explicit_dialect_into_compat_bridge(tmp_path) -> N
     assert endpoint_contract.compat["requiresAssistantAfterToolResult"] is True
     assert endpoint_contract.compat["requiresThinkingAsText"] is True
     assert (
-        endpoint_contract.compat["requiresReasoningContentOnAssistantMessages"]
-        is True
+        endpoint_contract.compat["requiresReasoningContentOnAssistantMessages"] is True
     )
     assert endpoint_contract.compat["thinkingFormat"] == "moonshot"
     assert endpoint_contract.compat["zaiToolStream"] is False
     assert endpoint_contract.compat["cacheControlFormat"] == "anthropic"
+
+
+def test_model_registry_loads_explicit_transport_routing(tmp_path) -> None:
+    raw = _minimal_registry_raw(schema_version=2)
+    endpoint = raw["providers"]["custom"]["endpoints"]["openai-completions"]
+    endpoint["transport"] = {"kind": "httpx", "stream": "sse", "timeout": 45}
+    endpoint["routing"] = {
+        "requestOverrides": {
+            "openrouter": {"only": ["anthropic"]},
+            "vercelGateway": {"order": ["openai", "anthropic"]},
+        }
+    }
+    path = tmp_path / "models.v2.json"
+    path.write_text(json.dumps(raw), encoding="utf-8")
+
+    registry = load_model_registry_from_file(path)
+    endpoint_contract = registry.get_endpoint("custom", "openai-completions")
+
+    assert endpoint_contract is not None
+    assert endpoint_contract.transport.to_raw() == endpoint["transport"]
+    assert endpoint_contract.routing.to_raw() == endpoint["routing"]
+    endpoint_raw = endpoint_contract.to_raw()
+    assert endpoint_raw["transport"] == endpoint["transport"]
+    assert endpoint_raw["routing"] == endpoint["routing"]
+    model_compat = endpoint_raw["models"]["model-a"]["compat"]
+    assert "providerTransport" not in model_compat
+    assert "openRouterRouting" not in model_compat
+    assert "vercelGatewayRouting" not in model_compat
 
 
 def test_model_registry_preserves_explicit_dialect_on_to_raw(tmp_path) -> None:
@@ -593,6 +840,81 @@ def test_model_registry_schema_rejects_invalid_dialect_strings(
         validate_model_registry_raw(raw)
 
 
+def test_model_registry_schema_rejects_unknown_transport_key() -> None:
+    raw = _minimal_registry_raw(schema_version=2)
+    endpoint = raw["providers"]["custom"]["endpoints"]["openai-completions"]
+    endpoint["transport"] = {"sdk": "openai"}
+
+    with pytest.raises(ValueError, match="unknown keys"):
+        validate_model_registry_raw(raw)
+
+
+@pytest.mark.parametrize(
+    "transport",
+    [
+        {"kind": ""},
+        {"stream": 12},
+    ],
+)
+def test_model_registry_schema_rejects_invalid_transport_strings(
+    transport: dict[str, object],
+) -> None:
+    raw = _minimal_registry_raw(schema_version=2)
+    endpoint = raw["providers"]["custom"]["endpoints"]["openai-completions"]
+    endpoint["transport"] = transport
+
+    with pytest.raises(ValueError, match="must be a non-empty string"):
+        validate_model_registry_raw(raw)
+
+
+@pytest.mark.parametrize("timeout", [0, float("nan"), float("inf"), float("-inf")])
+def test_model_registry_schema_rejects_invalid_transport_timeout(
+    timeout: float,
+) -> None:
+    raw = _minimal_registry_raw(schema_version=2)
+    endpoint = raw["providers"]["custom"]["endpoints"]["openai-completions"]
+    endpoint["transport"] = {"timeout": timeout}
+
+    with pytest.raises(ValueError, match="must be a positive number"):
+        validate_model_registry_raw(raw)
+
+
+def test_model_registry_schema_rejects_invalid_transport_fallback() -> None:
+    raw = _minimal_registry_raw(schema_version=2)
+    endpoint = raw["providers"]["custom"]["endpoints"]["openai-completions"]
+    endpoint["transport"] = {"fallback": "yes"}
+
+    with pytest.raises(ValueError, match="must be a boolean"):
+        validate_model_registry_raw(raw)
+
+
+def test_model_registry_schema_rejects_unknown_routing_key() -> None:
+    raw = _minimal_registry_raw(schema_version=2)
+    endpoint = raw["providers"]["custom"]["endpoints"]["openai-completions"]
+    endpoint["routing"] = {"provider": {"only": ["anthropic"]}}
+
+    with pytest.raises(ValueError, match="unknown keys"):
+        validate_model_registry_raw(raw)
+
+
+@pytest.mark.parametrize(
+    "routing",
+    [
+        {"requestOverrides": True},
+        {"requestOverrides": {"openrouter": True}},
+    ],
+)
+def test_model_registry_schema_rejects_invalid_routing_request_overrides(
+    routing: dict[str, object],
+) -> None:
+    raw = _minimal_registry_raw(schema_version=2)
+    endpoint = raw["providers"]["custom"]["endpoints"]["openai-completions"]
+    endpoint["routing"] = routing
+
+    with pytest.raises(ValueError, match="must be an object"):
+        validate_model_registry_raw(raw)
+
+
 def test_model_registry_schema_rejects_non_integer_version() -> None:
     raw = _minimal_registry_raw(schema_version=None)
     raw["schemaVersion"] = "2"
@@ -601,7 +923,9 @@ def test_model_registry_schema_rejects_non_integer_version() -> None:
         validate_model_registry_raw(raw)
 
 
-def test_layered_model_registry_loads_v2_overlay_without_version_stamping(tmp_path) -> None:
+def test_layered_model_registry_loads_v2_overlay_without_version_stamping(
+    tmp_path,
+) -> None:
     user_dir = tmp_path / "models"
     user_dir.mkdir()
     (user_dir / "custom.json").write_text(
@@ -779,6 +1103,129 @@ def test_layered_model_registry_rejects_v1_overlay_dialect(tmp_path) -> None:
           }
         }
         """,
+        encoding="utf-8",
+    )
+
+    with pytest.raises(ValueError, match="requires schemaVersion 2"):
+        load_layered_model_registry(user_dir=user_dir)
+
+
+def test_layered_model_registry_loads_v2_overlay_transport_routing(tmp_path) -> None:
+    user_dir = tmp_path / "models"
+    user_dir.mkdir()
+    (user_dir / "custom.json").write_text(
+        """
+        {
+          "schemaVersion": 2,
+          "providers": {
+            "custom": {
+              "endpoints": {
+                "openai-completions": {
+                  "api": "openai-completions",
+                  "transport": {"kind": "httpx"},
+                  "routing": {
+                    "requestOverrides": {
+                      "openrouter": {"only": ["anthropic"]}
+                    }
+                  },
+                  "models": {
+                    "model-a": {
+                      "capabilities": {
+                        "input": ["text"],
+                        "output": ["text"]
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+        """,
+        encoding="utf-8",
+    )
+
+    registry = load_layered_model_registry(user_dir=user_dir)
+    endpoint = registry.get_endpoint("custom", "openai-completions")
+
+    assert endpoint is not None
+    assert endpoint.transport.kind == "httpx"
+    assert endpoint.routing.request_overrides == {"openrouter": {"only": ["anthropic"]}}
+
+
+@pytest.mark.parametrize("field", ["transport", "routing"])
+def test_layered_model_registry_rejects_v1_overlay_transport_routing(
+    field: str,
+    tmp_path,
+) -> None:
+    user_dir = tmp_path / "models"
+    user_dir.mkdir()
+    (user_dir / "custom.json").write_text(
+        json.dumps(
+            {
+                "schemaVersion": 1,
+                "providers": {
+                    "custom": {
+                        "endpoints": {
+                            "openai-completions": {
+                                "api": "openai-completions",
+                                field: {},
+                                "models": {
+                                    "model-a": {
+                                        "capabilities": {
+                                            "input": ["text"],
+                                            "output": ["text"],
+                                        }
+                                    }
+                                },
+                            }
+                        }
+                    }
+                },
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    with pytest.raises(ValueError, match="requires schemaVersion 2"):
+        load_layered_model_registry(user_dir=user_dir)
+
+
+@pytest.mark.parametrize("field", ["transport", "routing"])
+def test_layered_model_registry_rejects_v1_overlay_model_transport_routing(
+    field: str,
+    tmp_path,
+) -> None:
+    user_dir = tmp_path / "models"
+    user_dir.mkdir()
+    (user_dir / "00-version.json").write_text(
+        json.dumps({"schemaVersion": 2, "providers": {}}),
+        encoding="utf-8",
+    )
+    (user_dir / "10-custom.json").write_text(
+        json.dumps(
+            {
+                "schemaVersion": 1,
+                "providers": {
+                    "custom": {
+                        "endpoints": {
+                            "openai-completions": {
+                                "api": "openai-completions",
+                                "models": {
+                                    "model-a": {
+                                        field: {},
+                                        "capabilities": {
+                                            "input": ["text"],
+                                            "output": ["text"],
+                                        },
+                                    }
+                                },
+                            }
+                        }
+                    }
+                },
+            }
+        ),
         encoding="utf-8",
     )
 
