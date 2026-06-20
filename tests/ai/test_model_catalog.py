@@ -105,7 +105,8 @@ def test_builtin_catalog_normalizes_model_ids_with_colons() -> None:
     assert registry.find_model(
         "openrouter", "openai-completions", "openai/gpt-oss-120b:free"
     ) is None
-    assert model.compat.get("upstreamModelId") == "openai/gpt-oss-120b:free"
+    assert model.upstream_id == "openai/gpt-oss-120b:free"
+    assert "upstreamModelId" not in model.compat
 
 
 def test_builtin_catalog_includes_framework_gap_providers() -> None:
@@ -128,14 +129,13 @@ def test_builtin_catalog_includes_framework_gap_providers() -> None:
     vertex = registry.get_model(
         "google-vertex", "openai-completions", "gemini-2.5-flash"
     )
-    assert vertex.compat.get("upstreamModelId") == "google/gemini-2.5-flash"
+    assert vertex.upstream_id == "google/gemini-2.5-flash"
+    assert "upstreamModelId" not in vertex.compat
     bedrock = registry.get_model(
         "amazon-bedrock",
         "bedrock-converse-stream",
         "anthropic.claude-sonnet-4-5-20250929-v1_0",
     )
     assert bedrock.api == "bedrock-converse-stream"
-    assert (
-        bedrock.compat.get("upstreamModelId")
-        == "anthropic.claude-sonnet-4-5-20250929-v1:0"
-    )
+    assert bedrock.upstream_id == "anthropic.claude-sonnet-4-5-20250929-v1:0"
+    assert "upstreamModelId" not in bedrock.compat

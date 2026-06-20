@@ -148,7 +148,7 @@ KNOWN_BASELINE_DEBT = {
     },
     "legacy_compat_is_still_present": {
         "endpoints": 38,
-        "models": 658,
+        "models": 618,
     },
 }
 
@@ -169,7 +169,7 @@ def test_builtin_provider_and_catalog_count_baseline() -> None:
     assert len(endpoints) == 56
     assert len(models) == 1000
     assert sum(1 for endpoint in endpoints if endpoint.compat) == 38
-    assert sum(1 for model in models if model.compat) == 658
+    assert sum(1 for model in models if model.compat) == 618
 
 
 def test_registered_provider_api_baseline_snapshot() -> None:
@@ -189,7 +189,7 @@ def test_test_and_example_inventory_baseline() -> None:
 
     assert len(ai_test_files) == 32
     assert len(provider_test_files) == 6
-    assert len(example_files) == 12
+    assert len(example_files) == 13
 
 
 def test_known_baseline_debt_snapshot() -> None:

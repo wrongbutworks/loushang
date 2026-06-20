@@ -343,8 +343,9 @@ provider adapter strategy 需要明确承接当前已冻结的 cancellation 方�
 因此 catalog 不直接暴露包含 `:` 的 model ID。规则是：
 
 - 公开 `model.id` 将 `:` 替换为 `_`
-- 真实上游模型 ID 存入 `compat.upstreamModelId`
-- provider adapter 发请求时优先使用 `compat.upstreamModelId`
+- 真实上游模型 ID 存入 `model.upstream_id`
+- provider resolver 输出 `ResolvedRequest.upstream_model_id`
+- provider adapter 发请求时优先使用 `ResolvedRequest.upstream_model_id`
 
 这个规则同时适用于 OpenRouter 的 `:free` 模型和 Bedrock 的 `:0` 模型。
 

@@ -104,6 +104,58 @@ def test_openai_codex_responses_builds_request_body_and_headers() -> None:
     }
 
 
+def test_openai_codex_responses_uses_upstream_model_id() -> None:
+    client = _FakeCodexClient(
+        events=[
+            {"type": "response.completed", "response": {"status": "completed"}},
+        ]
+    )
+    provider = OpenAICodexResponsesProvider(client=client)
+    token = _build_fake_jwt("acc_test")
+    clear_default_model_registry()
+    registry = get_default_model_registry()
+    registry.register_endpoint(
+        "openai-codex",
+        Endpoint(
+            id="openai-codex-responses",
+            provider="openai-codex",
+            api="openai-codex-responses",
+            compat=Compat.from_raw(
+                {
+                    "codexIncludeClientRequestId": True,
+                    "codexPromptCacheRetention": "in-memory",
+                    "codexOriginator": "loushang",
+                    "codexUserAgent": "loushang",
+                }
+            ),
+            models={
+                "gpt-5.3-codex_public": Model(
+                    id="gpt-5.3-codex_public",
+                    provider="openai-codex",
+                    endpoint="openai-codex-responses",
+                    upstream_id="gpt-5.3-codex",
+                )
+            },
+        ),
+    )
+
+    asyncio.run(
+        _collect_parts(
+            provider._stream_raw_parts(
+                _Model(id="gpt-5.3-codex_public"),
+                {
+                    "messages": [
+                        UserMessage(role="user", content="hello", timestamp=0.0)
+                    ],
+                },
+                OpenAICodexResponsesOptions(api_key=token),
+            )
+        )
+    )
+
+    assert client.last_json["model"] == "gpt-5.3-codex"
+
+
 def test_openai_codex_responses_omits_optional_request_fields_when_unused() -> None:
     client = _FakeCodexClient(
         events=[

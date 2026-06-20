@@ -19,10 +19,12 @@
 
 - [advanced/inspect_endpoint_contract.py](advanced/inspect_endpoint_contract.py)
   查看 endpoint 的 typed protocol/dialect/transport/routing facts 和仍然存在的 legacy compat keys
+- [advanced/custom_catalog.py](advanced/custom_catalog.py)
+  从自定义 schema v2 catalog 读取 `upstreamId`，并查看最终 provider 请求绑定
 
 ## Provider 配置速查
 
-模型调用使用三元组定位：`provider:endpoint:model`。如果上游模型 ID 自身包含冒号，内置 catalog 的公开 `model` ID 会把冒号替换为下划线，并在 `model.compat["upstreamModelId"]` 保存真实上游 ID。
+模型调用使用三元组定位：`provider:endpoint:model`。如果上游模型 ID 自身包含冒号，内置 catalog 的公开 `model` ID 会把冒号替换为下划线，并在 `model.upstream_id` 保存真实上游 ID。自定义 schema v2 catalog 可直接写模型字段 `upstreamId`。
 
 例如 OpenRouter 的上游模型 `openai/gpt-oss-120b:free` 在本地查询时写作：
 

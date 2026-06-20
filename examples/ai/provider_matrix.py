@@ -73,7 +73,7 @@ PROVIDER_EXAMPLES = (
 
 def _format_model_line(example: ProviderExample) -> str:
     model = get_model(example.provider_id, example.endpoint_id, example.model_id)
-    upstream = model.compat.get("upstreamModelId")
+    upstream = model.upstream_id
     suffix = f" upstream={upstream}" if isinstance(upstream, str) else ""
     env = ",".join(example.env_vars)
     return (

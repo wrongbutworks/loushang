@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import inspect
+
 import pytest
 
 from loushang.ai.model import (
@@ -17,6 +19,7 @@ from loushang.ai.model import (
     EndpointRouting,
     EndpointTransport,
     EndpointWireDialect,
+    Model,
     SupportStatus,
 )
 
@@ -285,3 +288,41 @@ def test_endpoint_routing_rejects_invalid_request_overrides() -> None:
         EndpointRouting.from_raw({"requestOverrides": True})
     with pytest.raises(ValueError, match="requestOverrides entries must be objects"):
         EndpointRouting.from_raw({"requestOverrides": {"openrouter": True}})
+
+
+def test_model_upstream_id_round_trip() -> None:
+    model = Model(
+        id="public-model",
+        provider="custom",
+        endpoint="openai-completions",
+        upstream_id="vendor/public-model:latest",
+    )
+
+    raw = model.to_raw()
+
+    assert raw["upstreamId"] == "vendor/public-model:latest"
+    assert "upstreamModelId" not in raw["compat"]
+
+
+def test_model_constructor_keeps_existing_fields_before_upstream_id() -> None:
+    parameters = list(inspect.signature(Model).parameters)
+
+    assert parameters.index("knowledge") < parameters.index("upstream_id")
+    assert parameters.index("_routing_legacy_raw") < parameters.index("upstream_id")
+
+
+def test_model_rejects_invalid_upstream_id() -> None:
+    with pytest.raises(ValueError, match="upstream_id must be a non-empty string"):
+        Model(
+            id="public-model",
+            provider="custom",
+            endpoint="openai-completions",
+            upstream_id="",
+        )
+    with pytest.raises(ValueError, match="upstream_id must be a non-empty string"):
+        Model(
+            id="public-model",
+            provider="custom",
+            endpoint="openai-completions",
+            upstream_id=" ",
+        )

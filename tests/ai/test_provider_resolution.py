@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import inspect
 import json
 import os
 
@@ -7,6 +8,7 @@ import pytest
 
 from loushang.ai.model import (
     Auth,
+    Compat,
     Endpoint,
     EndpointProtocolFeatures,
     EndpointRouting,
@@ -22,16 +24,19 @@ from loushang.ai.model.compat_schema import (
     INTERLEAVED_THINKING,
     OPENROUTER_ROUTING,
     SUPPORTS_STREAM_REASONING_DELTA,
-    UPSTREAM_MODEL_ID,
     VERCEL_GATEWAY_ROUTING,
     resolve_anthropic_messages_compat,
     resolve_openai_completions_compat,
-    resolve_openai_responses_compat,
 )
 from loushang.ai.model.loader import load_model_registry, load_model_registry_from_file
 from loushang.ai.model.registry import clear_default_model_registry, resolve_model_api
 from loushang.ai.options import OpenAICompletionsOptions
-from loushang.ai.provider import resolve_endpoint_for_model, resolve_request_for_model
+from loushang.ai.provider import (
+    ResolvedEndpoint,
+    ResolvedRequest,
+    resolve_endpoint_for_model,
+    resolve_request_for_model,
+)
 
 
 def test_openai_completions_stream_reasoning_delta_defaults_to_bool() -> None:
@@ -44,16 +49,16 @@ def test_openai_completions_stream_reasoning_delta_defaults_to_bool() -> None:
     assert compat[SUPPORTS_STREAM_REASONING_DELTA] is False
 
 
-def test_nullable_resolver_value_keys_preserve_none_defaults() -> None:
-    openai_completions = resolve_openai_completions_compat(
-        provider_id="custom",
-        model_id="model-a",
-        base_url=None,
-    )
-    openai_responses = resolve_openai_responses_compat({})
+def test_resolver_constructor_keeps_existing_fields_before_upstream_model_id() -> None:
+    endpoint_parameters = list(inspect.signature(ResolvedEndpoint).parameters)
+    request_parameters = list(inspect.signature(ResolvedRequest).parameters)
 
-    assert openai_completions[UPSTREAM_MODEL_ID] is None
-    assert openai_responses[UPSTREAM_MODEL_ID] is None
+    assert endpoint_parameters.index("routing") < endpoint_parameters.index(
+        "upstream_model_id"
+    )
+    assert request_parameters.index("temperature") < request_parameters.index(
+        "upstream_model_id"
+    )
 
 
 def test_openai_completions_compat_preserves_legacy_routing_overrides() -> None:
@@ -364,6 +369,84 @@ def test_resolve_request_bridges_direct_model_legacy_transport_routing() -> None
     )
     assert "openRouterRouting" not in resolved.compat
     assert "vercelGatewayRouting" not in resolved.compat
+
+
+def test_resolve_request_bridges_direct_model_legacy_upstream_binding() -> None:
+    endpoint = Endpoint(
+        id="openai-completions",
+        provider="openrouter",
+        api="openai-completions",
+        base_url="https://openrouter.ai/api/v1",
+    )
+    registry = ModelRegistry.from_providers(
+        {"openrouter": Provider(id="openrouter", endpoints={endpoint.id: endpoint})}
+    )
+    model = Model(
+        id="openai/gpt-oss-120b_free",
+        provider="openrouter",
+        endpoint="openai-completions",
+        compat={"upstreamModelId": "openai/gpt-oss-120b:free"},
+    )
+
+    resolved = resolve_request_for_model(model, registry=registry, env={})
+
+    assert resolved.upstream_model_id == "openai/gpt-oss-120b:free"
+    assert "upstreamModelId" not in resolved.compat
+
+
+def test_resolve_request_ignores_endpoint_legacy_upstream_binding() -> None:
+    endpoint = Endpoint(
+        id="openai-completions",
+        provider="openrouter",
+        api="openai-completions",
+        base_url="https://openrouter.ai/api/v1",
+        compat=Compat.from_raw({"upstreamModelId": "openai/gpt-oss-120b:free"}),
+        models={
+            "openai/gpt-oss-120b_free": Model(
+                id="openai/gpt-oss-120b_free",
+                provider="openrouter",
+                endpoint="openai-completions",
+            )
+        },
+    )
+    registry = ModelRegistry.from_providers(
+        {"openrouter": Provider(id="openrouter", endpoints={endpoint.id: endpoint})}
+    )
+    model = registry.get_model(
+        "openrouter", "openai-completions", "openai/gpt-oss-120b_free"
+    )
+
+    resolved_endpoint = resolve_endpoint_for_model(model, registry=registry)
+    resolved = resolve_request_for_model(model, registry=registry, env={})
+
+    assert "upstreamModelId" not in model.compat
+    assert resolved_endpoint.upstream_model_id is None
+    assert "upstreamModelId" not in resolved_endpoint.compat
+    assert resolved.upstream_model_id == "openai/gpt-oss-120b_free"
+    assert "upstreamModelId" not in resolved.compat
+
+
+def test_resolve_request_uses_first_class_upstream_binding() -> None:
+    endpoint = Endpoint(
+        id="openai-completions",
+        provider="openrouter",
+        api="openai-completions",
+        base_url="https://openrouter.ai/api/v1",
+    )
+    registry = ModelRegistry.from_providers(
+        {"openrouter": Provider(id="openrouter", endpoints={endpoint.id: endpoint})}
+    )
+    model = Model(
+        id="openai/gpt-oss-120b_free",
+        provider="openrouter",
+        endpoint="openai-completions",
+        upstream_id="openai/gpt-oss-120b:free",
+    )
+
+    resolved = resolve_request_for_model(model, registry=registry, env={})
+
+    assert resolved.upstream_model_id == "openai/gpt-oss-120b:free"
+    assert "upstreamModelId" not in resolved.compat
 
 
 def test_resolve_endpoint_strips_direct_model_legacy_transport_routing() -> None:

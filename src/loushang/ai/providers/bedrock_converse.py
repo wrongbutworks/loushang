@@ -14,7 +14,6 @@ import httpx
 
 from loushang.ai.context import ensure_normalized_context
 from loushang.ai.event_stream import AssistantMessageEventStream, RawAssembler
-from loushang.ai.model.compat_schema import UPSTREAM_MODEL_ID, compat_str
 from loushang.ai.options import PairingMode
 from loushang.ai.output_budget import resolve_output_token_budget
 from loushang.ai.provider import resolve_request_for_model
@@ -76,8 +75,7 @@ class BedrockConverseProvider:
         resolved = resolve_request_for_model(model, options=options)
         if not resolved.base_url:
             raise ValueError("Bedrock base URL is required")
-        compat = dict(getattr(resolved, "compat", {}) or {})
-        upstream_model_id = compat_str(compat, UPSTREAM_MODEL_ID) or model.id
+        upstream_model_id = getattr(resolved, "upstream_model_id", None) or model.id
         body = _build_converse_body(model, normalized, resolved, options)
         url = (
             resolved.base_url.rstrip("/")

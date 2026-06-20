@@ -98,7 +98,6 @@ COMPAT_DEFAULTS: dict[str, object] = {
     CODEX_PROMPT_CACHE_RETENTION: None,
     CODEX_ORIGINATOR: None,
     CODEX_USER_AGENT: None,
-    UPSTREAM_MODEL_ID: None,
 }
 
 
@@ -221,7 +220,6 @@ def resolve_openai_completions_compat(
             THINKING_FORMAT,
             SUPPORTS_STREAM_REASONING_DELTA,
             CACHE_CONTROL_FORMAT,
-            UPSTREAM_MODEL_ID,
         ),
         optional_value_keys=(
             OPENROUTER_ROUTING,
@@ -251,7 +249,6 @@ def resolve_openai_responses_compat(
             SUPPORTS_DEVELOPER_ROLE,
             REQUIRES_ASSISTANT_AFTER_TOOL_RESULT,
         ),
-        value_keys=(UPSTREAM_MODEL_ID,),
     )
 
 

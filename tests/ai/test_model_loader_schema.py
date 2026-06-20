@@ -280,6 +280,52 @@ def test_model_registry_schema_accepts_model_transport_routing() -> None:
     validate_model_registry_raw(raw)
 
 
+def test_model_registry_schema_accepts_model_upstream_id() -> None:
+    raw = _minimal_registry_raw(schema_version=2)
+    model = raw["providers"]["custom"]["endpoints"]["openai-completions"]["models"][
+        "model-a"
+    ]
+    model["upstreamId"] = "vendor/model-a:latest"
+
+    validate_model_registry_raw(raw)
+
+
+def test_model_registry_schema_rejects_model_upstream_id_before_v2() -> None:
+    raw = _minimal_registry_raw(schema_version=1)
+    model = raw["providers"]["custom"]["endpoints"]["openai-completions"]["models"][
+        "model-a"
+    ]
+    model["upstreamId"] = "vendor/model-a:latest"
+
+    with pytest.raises(ValueError, match="requires schemaVersion 2"):
+        validate_model_registry_raw(raw)
+
+
+def test_model_registry_schema_rejects_endpoint_legacy_upstream_id() -> None:
+    raw = _minimal_registry_raw(schema_version=1)
+    endpoint = raw["providers"]["custom"]["endpoints"]["openai-completions"]
+    endpoint["compat"] = {"upstreamModelId": "vendor/model-a:latest"}
+
+    with pytest.raises(ValueError, match="unknown keys"):
+        validate_model_registry_raw(raw)
+
+
+def test_model_registry_schema_rejects_invalid_model_upstream_id() -> None:
+    raw = _minimal_registry_raw(schema_version=2)
+    model = raw["providers"]["custom"]["endpoints"]["openai-completions"]["models"][
+        "model-a"
+    ]
+    model["upstreamId"] = ""
+
+    with pytest.raises(ValueError, match="must be a non-empty string"):
+        validate_model_registry_raw(raw)
+
+    model["upstreamId"] = " "
+
+    with pytest.raises(ValueError, match="must be a non-empty string"):
+        validate_model_registry_raw(raw)
+
+
 def test_model_registry_loads_legacy_reasoning_effort_map_into_protocol(
     tmp_path,
 ) -> None:
@@ -484,6 +530,30 @@ def test_model_registry_loads_model_legacy_transport_routing_from_compat(
     }
 
 
+def test_model_registry_loads_model_legacy_upstream_id_from_compat(
+    tmp_path,
+) -> None:
+    raw = _minimal_registry_raw(schema_version=1)
+    model = raw["providers"]["custom"]["endpoints"]["openai-completions"]["models"][
+        "model-a"
+    ]
+    model["compat"] = {"upstreamModelId": "vendor/model-a:latest"}
+    path = tmp_path / "models.json"
+    path.write_text(json.dumps(raw), encoding="utf-8")
+
+    registry = load_model_registry_from_file(path)
+    model_contract = registry.get_model("custom", "openai-completions", "model-a")
+
+    assert model_contract.upstream_id == "vendor/model-a:latest"
+    assert "upstreamModelId" not in model_contract.compat
+    model_raw = model_contract.to_raw()
+    assert "upstreamId" not in model_raw
+    assert model_raw["compat"] == {
+        "maxTokensField": "max_completion_tokens",
+        "upstreamModelId": "vendor/model-a:latest",
+    }
+
+
 def test_model_registry_loads_model_typed_transport_routing(tmp_path) -> None:
     raw = _minimal_registry_raw(schema_version=2)
     model = raw["providers"]["custom"]["endpoints"]["openai-completions"]["models"][
@@ -506,6 +576,26 @@ def test_model_registry_loads_model_typed_transport_routing(tmp_path) -> None:
     assert model_raw["routing"] == {
         "requestOverrides": {"openrouter": {"order": ["openai"]}}
     }
+
+
+def test_model_registry_loads_model_typed_upstream_id(tmp_path) -> None:
+    raw = _minimal_registry_raw(schema_version=2)
+    model = raw["providers"]["custom"]["endpoints"]["openai-completions"]["models"][
+        "model-a"
+    ]
+    model["compat"] = {"upstreamModelId": "legacy/model-a"}
+    model["upstreamId"] = "vendor/model-a:latest"
+    path = tmp_path / "models.v2.json"
+    path.write_text(json.dumps(raw), encoding="utf-8")
+
+    registry = load_model_registry_from_file(path)
+    model_contract = registry.get_model("custom", "openai-completions", "model-a")
+
+    assert model_contract.upstream_id == "vendor/model-a:latest"
+    assert "upstreamModelId" not in model_contract.compat
+    model_raw = model_contract.to_raw()
+    assert model_raw["upstreamId"] == "vendor/model-a:latest"
+    assert "upstreamModelId" not in model_raw["compat"]
 
 
 def test_model_registry_loads_explicit_protocol_into_compat_bridge(tmp_path) -> None:

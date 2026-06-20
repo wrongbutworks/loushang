@@ -37,6 +37,7 @@ def test_provider_docs_cover_new_provider_configuration() -> None:
 def test_ai_readme_documents_upstream_model_id_rule() -> None:
     docs = Path("src/loushang/ai/README.md").read_text(encoding="utf-8")
 
-    assert "upstreamModelId" in docs
+    assert "model.upstream_id" in docs
+    assert "ResolvedRequest.upstream_model_id" in docs
     assert "openai/gpt-oss-120b_free" in docs
     assert "bedrock-converse-stream" in docs

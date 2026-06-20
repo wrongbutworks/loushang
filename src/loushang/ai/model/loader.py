@@ -18,6 +18,7 @@ from loushang.ai.model.compat_schema import (
     REASONING_EFFORT_MAP,
     SUPPORTS_REASONING_EFFORT,
     SUPPORTS_STREAM_REASONING_DELTA,
+    UPSTREAM_MODEL_ID,
     VERCEL_GATEWAY_ROUTING,
     compat_bool,
 )
@@ -47,7 +48,8 @@ LEGACY_TRANSPORT_ROUTING_COMPAT_KEYS = frozenset(
         VERCEL_GATEWAY_ROUTING,
     }
 )
-ALLOWED_COMPAT_KEYS = (
+LEGACY_MODEL_BINDING_COMPAT_KEYS = frozenset({UPSTREAM_MODEL_ID})
+ALLOWED_ENDPOINT_COMPAT_KEYS = (
     frozenset(COMPAT_DEFAULTS)
     | LEGACY_TRANSPORT_ROUTING_COMPAT_KEYS
     | {
@@ -56,6 +58,9 @@ ALLOWED_COMPAT_KEYS = (
         "supportsJsonSchemaStructuredOutput",
         SUPPORTS_STREAM_REASONING_DELTA,
     }
+)
+ALLOWED_MODEL_COMPAT_KEYS = (
+    ALLOWED_ENDPOINT_COMPAT_KEYS | LEGACY_MODEL_BINDING_COMPAT_KEYS
 )
 ALLOWED_DEFAULT_KEYS = frozenset(
     {
@@ -135,7 +140,7 @@ def validate_model_registry_raw(raw: dict[str, Any]) -> None:
             _validate_auth_fields(endpoint, endpoint_path)
             _validate_keyed_mapping(
                 endpoint.get("compat"),
-                ALLOWED_COMPAT_KEYS,
+                ALLOWED_ENDPOINT_COMPAT_KEYS,
                 f"{endpoint_path}.compat",
             )
             _validate_protocol_mapping(
@@ -189,9 +194,14 @@ def validate_model_registry_raw(raw: dict[str, Any]) -> None:
                     f"{model_path}.routing",
                     schema_version=schema_version,
                 )
+                _validate_upstream_id(
+                    model.get("upstreamId"),
+                    f"{model_path}.upstreamId",
+                    schema_version=schema_version,
+                )
                 _validate_keyed_mapping(
                     model.get("compat"),
-                    ALLOWED_COMPAT_KEYS,
+                    ALLOWED_MODEL_COMPAT_KEYS,
                     f"{model_path}.compat",
                 )
                 _validate_keyed_mapping(
@@ -455,6 +465,23 @@ def _validate_routing_mapping(
         _require_mapping(entry, f"{path}.requestOverrides.{key}")
 
 
+def _validate_upstream_id(
+    value: object,
+    path: str,
+    *,
+    schema_version: int,
+) -> None:
+    if value is None:
+        return
+    if schema_version < 2:
+        raise ValueError(
+            f"models registry field requires schemaVersion 2 or newer: {path}"
+        )
+    upstream_id = _require_str(value, path)
+    if not upstream_id.strip():
+        raise ValueError(f"models registry field must be a non-empty string: {path}")
+
+
 def _validate_support_status(value: object, path: str) -> None:
     try:
         SupportStatus.from_raw(value)
@@ -494,7 +521,7 @@ def _validate_typed_schema_version(
             for model_id, model_raw in models.items():
                 if not isinstance(model_raw, dict):
                     continue
-                for field in ("transport", "routing"):
+                for field in ("transport", "routing", "upstreamId"):
                     if field in model_raw:
                         raise ValueError(
                             "models registry field requires schemaVersion 2 or newer: "
@@ -539,7 +566,8 @@ def _normalize_endpoint_compat(endpoint_raw: dict[str, Any]) -> Compat:
     values = {
         key: value
         for key, value in compat.items()
-        if key not in LEGACY_TRANSPORT_ROUTING_COMPAT_KEYS
+        if key
+        not in LEGACY_TRANSPORT_ROUTING_COMPAT_KEYS | LEGACY_MODEL_BINDING_COMPAT_KEYS
     }
     if str(endpoint_raw.get("api", "")) == "openai-completions":
         values.setdefault(MAX_TOKENS_FIELD, "max_completion_tokens")
@@ -554,7 +582,8 @@ def _normalize_model_compat(model_raw: dict[str, Any]) -> Compat:
         items_by_key={
             key: value
             for key, value in compat.items()
-            if key not in LEGACY_TRANSPORT_ROUTING_COMPAT_KEYS
+            if key
+            not in LEGACY_TRANSPORT_ROUTING_COMPAT_KEYS | LEGACY_MODEL_BINDING_COMPAT_KEYS
         }
     )
 
@@ -706,6 +735,26 @@ def _routing_compat_raw_from_legacy_compat(compat: Compat) -> dict[str, object]:
         if isinstance(value, dict) and value:
             raw[compat_key] = dict(value)
     return raw
+
+
+def _upstream_id_from_legacy_compat(compat: Compat) -> str | None:
+    value = compat.get(UPSTREAM_MODEL_ID)
+    return value if isinstance(value, str) and value.strip() else None
+
+
+def _upstream_id_compat_raw_from_legacy_compat(compat: Compat) -> dict[str, object]:
+    value = _upstream_id_from_legacy_compat(compat)
+    return {UPSTREAM_MODEL_ID: value} if value is not None else {}
+
+
+def _model_upstream_id(
+    model_raw: dict[str, Any],
+    compat: Compat,
+) -> str | None:
+    explicit = model_raw.get("upstreamId")
+    if isinstance(explicit, str) and explicit.strip():
+        return explicit
+    return _upstream_id_from_legacy_compat(compat)
 
 
 def _endpoint_protocol_features(
@@ -926,6 +975,17 @@ def _build_registry(raw: dict[str, Any]) -> ModelRegistry:
                     else None
                 )
                 model_legacy_compat = Compat.from_raw(model_raw.get("compat"))
+                model_upstream_id = _model_upstream_id(model_raw, model_legacy_compat)
+                model_upstream_legacy_raw = _upstream_id_compat_raw_from_legacy_compat(
+                    model_legacy_compat
+                )
+                model_upstream_legacy_source = (
+                    model_upstream_legacy_raw
+                    if schema_version < 2
+                    and "upstreamId" not in model_raw
+                    and model_upstream_legacy_raw
+                    else None
+                )
                 model_transport_raw = (
                     model_raw.get("transport")
                     if isinstance(model_raw.get("transport"), dict)
@@ -989,6 +1049,8 @@ def _build_registry(raw: dict[str, Any]) -> ModelRegistry:
                     endpoint=endpoint.id,
                     family=model_raw.get("family"),
                     alias=model_raw.get("alias"),
+                    upstream_id=model_upstream_id,
+                    _upstream_id_legacy_raw=model_upstream_legacy_source,
                     capabilities=Capabilities.from_raw(model_raw),
                     knowledge=model_raw.get("knowledge"),
                     release_date=model_raw.get("releaseDate"),

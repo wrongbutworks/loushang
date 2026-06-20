@@ -11,6 +11,7 @@ from loushang.ai.model.compat_schema import (
     DIALECT_COMPAT_VALUE_MAPPINGS,
     PROTOCOL_COMPAT_STATUS_MAPPINGS,
     REASONING_EFFORT_MAP,
+    UPSTREAM_MODEL_ID,
 )
 
 Modality = Literal["text", "image", "video", "audio", "vector"]
@@ -1020,8 +1021,18 @@ class Model:
         compare=False,
         repr=False,
     )
+    upstream_id: str | None = None
+    _upstream_id_legacy_raw: dict[str, object] | None = field(
+        default=None,
+        compare=False,
+        repr=False,
+    )
 
     def __post_init__(self, provider: str | None, endpoint: str | None) -> None:
+        if self.upstream_id is not None and (
+            not isinstance(self.upstream_id, str) or not self.upstream_id.strip()
+        ):
+            raise ValueError("model upstream_id must be a non-empty string")
         if self._transport_own_raw is None and self._transport_legacy_raw is None:
             object.__setattr__(self, "_transport_own_raw", self.transport.to_raw())
         if self._routing_own_raw is None and self._routing_legacy_raw is None:
@@ -1099,6 +1110,13 @@ class Model:
         endpoint_compat = endpoint.compat.merged(endpoint.protocol.to_compat()).merged(
             endpoint.dialect.to_compat()
         )
+        endpoint_compat = Compat(
+            items_by_key={
+                key: value
+                for key, value in endpoint_compat.items()
+                if key != UPSTREAM_MODEL_ID
+            }
+        )
         model_transport_raw = self.transport.to_raw()
         model_transport_own_raw = (
             _copy_raw_mapping(self._transport_own_raw)
@@ -1138,6 +1156,10 @@ class Model:
             _auth_inherited=inherits_auth and auth is not None,
             compat=endpoint_compat.merged(self.compat),
             defaults=endpoint.defaults.merged(self.defaults),
+            upstream_id=self.upstream_id,
+            _upstream_id_legacy_raw=_copy_raw_mapping(self._upstream_id_legacy_raw)
+            if self._upstream_id_legacy_raw is not None
+            else None,
             transport=transport,
             _transport_own_raw=model_transport_own_raw,
             _transport_legacy_raw=_copy_raw_mapping(self._transport_legacy_raw)
@@ -1185,6 +1207,14 @@ class Model:
         raw.update(self.capabilities.to_raw())
         if self.auth is not None and not self._auth_inherited:
             raw["auth"] = self.auth.to_raw()
+        if self.upstream_id is not None:
+            if self._upstream_id_legacy_raw is not None:
+                raw["compat"] = {
+                    **cast(dict[str, object], raw["compat"]),
+                    **_copy_raw_mapping(self._upstream_id_legacy_raw),
+                }
+            else:
+                raw["upstreamId"] = self.upstream_id
         if (
             self._transport_legacy_raw is not None
             or self._routing_legacy_raw is not None

@@ -189,6 +189,22 @@ def test_advanced_inspect_endpoint_contract_runs_against_builtin_catalog() -> No
     ]
 
 
+def test_advanced_custom_catalog_uses_typed_upstream_binding() -> None:
+    module = _load_module(
+        Path("examples/ai/advanced/custom_catalog.py"),
+        "examples_ai_advanced_custom_catalog",
+    )
+
+    summary = module.inspect_custom_catalog()
+
+    assert summary == {
+        "model": "custom-provider:openai-completions:public-model",
+        "upstreamId": "vendor/public-model:latest",
+        "resolvedUpstreamModelId": "vendor/public-model:latest",
+        "baseUrl": "https://api.example.invalid/v1",
+    }
+
+
 def test_advanced_inspect_endpoint_contract_rejects_missing_model(
     monkeypatch,
     tmp_path,

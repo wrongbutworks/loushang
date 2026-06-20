@@ -169,7 +169,8 @@ def test_openai_completions_uses_upstream_model_id(
     _fake_openai_module(monkeypatch)
     _patch_resolved_request(
         monkeypatch,
-        compat={"upstreamModelId": "openai/gpt-oss-120b:free"},
+        compat={},
+        upstream_model_id="openai/gpt-oss-120b:free",
         reasoning_effort=None,
     )
     provider = OpenAICompletionsProvider()
@@ -973,6 +974,7 @@ def _patch_resolved_request(
     max_tokens: int | None = 1024,
     routing: EndpointRouting | None = None,
     transport: EndpointTransport | None = None,
+    upstream_model_id: str | None = None,
 ) -> None:
     def _resolve(_model, options=None):
         headers = {}
@@ -995,6 +997,7 @@ def _patch_resolved_request(
             reasoning_effort=reasoning_effort,
             routing=routing or EndpointRouting(),
             transport=transport or EndpointTransport(),
+            upstream_model_id=upstream_model_id,
         )
 
     monkeypatch.setattr(

@@ -497,6 +497,7 @@ class AnthropicProvider(AnthropicProviderBase):
             normalized,
             is_oauth_token=is_oauth_token,
         )
+        upstream_model_id = getattr(resolved, "upstream_model_id", None) or model.id
 
         tools_param = None
         if normalized.get("tools"):
@@ -556,7 +557,7 @@ class AnthropicProvider(AnthropicProviderBase):
             pass
 
         params: dict[str, Any] = {
-            "model": model.id,
+            "model": upstream_model_id,
             "messages": messages_param,
             "max_tokens": max(1, int(max_tokens)),
         }

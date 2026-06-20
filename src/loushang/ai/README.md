@@ -46,8 +46,9 @@
 
 - catalog 中的 `provider`、`endpoint`、`model` 三段用于本地查询和 CLI 展示
 - 上游模型 ID 如果包含 `:`，catalog 的公开 `model` ID 使用 `_` 替换 `:`
-- 真实上游 ID 存在 `model.compat["upstreamModelId"]`
-- provider adapter 发请求时使用 `upstreamModelId`，没有该字段时使用 `model.id`
+- 真实上游 ID 存在 `model.upstream_id`
+- provider 解析层输出 `ResolvedRequest.upstream_model_id`
+- provider adapter 发请求时使用 `ResolvedRequest.upstream_model_id`，没有该字段时使用 `model.id`
 
 例如 OpenRouter 上游模型 `openai/gpt-oss-120b:free` 在本地写作 `openai/gpt-oss-120b_free`。
 

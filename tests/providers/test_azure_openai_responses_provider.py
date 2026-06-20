@@ -45,6 +45,55 @@ def test_azure_openai_responses_uses_azure_client_and_deployment_map(
     ]
 
 
+def test_azure_openai_responses_maps_upstream_model_id(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _fake_openai_module(monkeypatch)
+    monkeypatch.setenv(
+        "AZURE_OPENAI_DEPLOYMENT_NAME_MAP", "vendor/gpt-4o-mini=dep-upstream"
+    )
+    _patch_resolved_request(monkeypatch, upstream_model_id="vendor/gpt-4o-mini")
+    provider = AzureOpenAIResponsesProvider()
+
+    asyncio.run(
+        _collect_parts(
+            provider._stream_raw_parts(
+                _Model(id="gpt-4o-mini_public"),
+                {"messages": [UserMessage(role="user", content="hello", timestamp=0.0)]},
+                AzureOpenAIResponsesOptions(
+                    api_key="test-key",
+                    azure_base_url="https://example.openai.azure.com/openai/v1",
+                ),
+            )
+        )
+    )
+
+    assert _FakeAsyncAzureOpenAI.last_create_kwargs["model"] == "dep-upstream"
+
+
+def test_azure_openai_responses_falls_back_to_upstream_model_id(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _fake_openai_module(monkeypatch)
+    _patch_resolved_request(monkeypatch, upstream_model_id="vendor/gpt-4o-mini")
+    provider = AzureOpenAIResponsesProvider()
+
+    asyncio.run(
+        _collect_parts(
+            provider._stream_raw_parts(
+                _Model(id="gpt-4o-mini_public"),
+                {"messages": [UserMessage(role="user", content="hello", timestamp=0.0)]},
+                AzureOpenAIResponsesOptions(
+                    api_key="test-key",
+                    azure_base_url="https://example.openai.azure.com/openai/v1",
+                ),
+            )
+        )
+    )
+
+    assert _FakeAsyncAzureOpenAI.last_create_kwargs["model"] == "vendor/gpt-4o-mini"
+
+
 async def _collect_parts(source) -> list[dict]:
     return [part async for part in source]
 
@@ -57,7 +106,11 @@ def _fake_openai_module(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setitem(sys.modules, "openai", module)
 
 
-def _patch_resolved_request(monkeypatch: pytest.MonkeyPatch) -> None:
+def _patch_resolved_request(
+    monkeypatch: pytest.MonkeyPatch,
+    *,
+    upstream_model_id: str | None = None,
+) -> None:
     def _resolve(_model, options=None):
         headers = {}
         api_key = getattr(options, "api_key", None) if options is not None else None
@@ -70,6 +123,7 @@ def _patch_resolved_request(monkeypatch: pytest.MonkeyPatch) -> None:
             compat={},
             max_tokens=1024,
             reasoning_effort=None,
+            upstream_model_id=upstream_model_id,
         )
 
     monkeypatch.setattr(

@@ -73,7 +73,7 @@ def test_openai_responses_uses_upstream_model_id(
     _patch_resolved_request(
         monkeypatch,
         base_url="https://api.openai.test/v1",
-        compat={"upstreamModelId": "openai/gpt-oss-120b:free"},
+        upstream_model_id="openai/gpt-oss-120b:free",
     )
     provider = OpenAIResponsesProvider()
 
@@ -824,6 +824,7 @@ def _patch_resolved_request(
     compat: dict[str, object] | None = None,
     extra_headers: dict[str, str] | None = None,
     max_tokens: int | None = 1024,
+    upstream_model_id: str | None = None,
 ) -> None:
     def _resolve(_model, options=None):
         headers = {}
@@ -838,6 +839,7 @@ def _patch_resolved_request(
             base_url=base_url,
             compat=compat or {},
             max_tokens=max_tokens,
+            upstream_model_id=upstream_model_id,
         )
 
     monkeypatch.setattr(

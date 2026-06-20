@@ -11,6 +11,7 @@ from loushang.ai.model import Model
 from loushang.ai.model.compat_schema import (
     OPENROUTER_ROUTING,
     PROVIDER_TRANSPORT,
+    UPSTREAM_MODEL_ID,
     VERCEL_GATEWAY_ROUTING,
     resolve_anthropic_messages_compat,
     resolve_openai_completions_compat,
@@ -19,10 +20,11 @@ from loushang.ai.model.compat_schema import (
 from loushang.ai.model.domain import Endpoint, EndpointRouting, EndpointTransport
 from loushang.ai.model.registry import ModelRegistry, get_default_model_registry
 
-LEGACY_TRANSPORT_ROUTING_COMPAT_KEYS = frozenset(
+LEGACY_MODEL_CONTRACT_COMPAT_KEYS = frozenset(
     {
         PROVIDER_TRANSPORT,
         OPENROUTER_ROUTING,
+        UPSTREAM_MODEL_ID,
         VERCEL_GATEWAY_ROUTING,
     }
 )
@@ -41,6 +43,7 @@ class ResolvedEndpoint:
     defaults: dict[str, object] = field(default_factory=dict)
     transport: EndpointTransport = field(default_factory=EndpointTransport)
     routing: EndpointRouting = field(default_factory=EndpointRouting)
+    upstream_model_id: str | None = None
 
 
 @dataclass(frozen=True)
@@ -59,6 +62,7 @@ class ResolvedRequest:
     max_tokens: int | None = None
     reasoning_effort: str | None = None
     temperature: float | int | None = None
+    upstream_model_id: str | None = None
 
 
 def resolve_endpoint_for_model(
@@ -119,7 +123,7 @@ def resolve_request_for_model(
     if endpoint is None or endpoint.id == model.endpoint_id:
         raw_compat.update(dict(getattr(model, "compat", {})))
         defaults.update(dict(getattr(model, "defaults", {})))
-    raw_compat = _strip_legacy_transport_routing_compat(raw_compat)
+    raw_compat = _strip_legacy_model_contract_compat(raw_compat)
     compat = _resolve_compat_for_api(
         api=resolved_endpoint.api,
         provider_id=resolved_endpoint.provider,
@@ -151,6 +155,7 @@ def resolve_request_for_model(
         headers=headers,
         compat=compat,
         defaults=defaults,
+        upstream_model_id=resolved_endpoint.upstream_model_id or model.id,
         transport=resolved_endpoint.transport,
         routing=resolved_endpoint.routing,
         max_tokens=max_tokens,
@@ -159,13 +164,13 @@ def resolve_request_for_model(
     )
 
 
-def _strip_legacy_transport_routing_compat(
+def _strip_legacy_model_contract_compat(
     raw: Mapping[str, object],
 ) -> dict[str, object]:
     return {
         key: value
         for key, value in raw.items()
-        if key not in LEGACY_TRANSPORT_ROUTING_COMPAT_KEYS
+        if key not in LEGACY_MODEL_CONTRACT_COMPAT_KEYS
     }
 
 
@@ -183,10 +188,9 @@ def _build_resolved_endpoint(
             base_url=getattr(model, "base_url", None),
             base_url_env=getattr(model, "base_url_env", None),
             default_region=getattr(model, "region", None),
-            compat=_strip_legacy_transport_routing_compat(
-                getattr(model, "compat", {})
-            ),
+            compat=_strip_legacy_model_contract_compat(getattr(model, "compat", {})),
             defaults=dict(getattr(model, "defaults", {})),
+            upstream_model_id=_model_upstream_id(model),
             transport=_model_transport(model),
             routing=_model_routing(model),
         )
@@ -211,6 +215,9 @@ def _build_resolved_endpoint(
             routing_raw,
             _model_routing_raw(override_model, own_only=True),
         )
+    upstream_model_id = _model_upstream_id(model)
+    if override_model is not None:
+        upstream_model_id = _model_upstream_id(override_model) or upstream_model_id
     transport = EndpointTransport.from_raw(transport_raw)
     routing = EndpointRouting.from_raw(routing_raw)
     return ResolvedEndpoint(
@@ -223,8 +230,9 @@ def _build_resolved_endpoint(
         if endpoint.region and endpoint.base_url
         else {},
         default_region=endpoint.region,
-        compat=dict(endpoint_compat),
+        compat=_strip_legacy_model_contract_compat(endpoint_compat),
         defaults=dict(endpoint.defaults),
+        upstream_model_id=upstream_model_id,
         transport=transport,
         routing=routing,
     )
@@ -236,6 +244,19 @@ def _model_transport(model: Model) -> EndpointTransport:
 
 def _model_routing(model: Model) -> EndpointRouting:
     return EndpointRouting.from_raw(_model_routing_raw(model, own_only=False))
+
+
+def _model_upstream_id(model: Model) -> str | None:
+    value = getattr(model, "upstream_id", None)
+    if isinstance(value, str) and value.strip():
+        return value
+    compat = getattr(model, "compat", {})
+    legacy_value = compat.get(UPSTREAM_MODEL_ID) if isinstance(compat, Mapping) else None
+    return (
+        legacy_value
+        if isinstance(legacy_value, str) and legacy_value.strip()
+        else None
+    )
 
 
 def _model_transport_raw(model: Model, *, own_only: bool) -> dict[str, object]:

@@ -111,7 +111,13 @@ class OpenAICodexResponsesProvider:
 
         api_key = _extract_api_key(headers)
         account_id = _resolve_account_id(headers, api_key=api_key, auth_view=auth_view)
-        body = _build_request_body(model, normalized, options, compat=compat)
+        body = _build_request_body(
+            model,
+            normalized,
+            options,
+            compat=compat,
+            upstream_model_id=getattr(resolved, "upstream_model_id", None),
+        )
         url = _resolve_codex_url(resolved.base_url)
         session_id = getattr(options, "session_id", None)
         request_headers = _build_sse_headers(
@@ -343,6 +349,7 @@ def _build_request_body(
     options,
     *,
     compat: dict[str, Any] | None = None,
+    upstream_model_id: str | None = None,
 ) -> dict[str, Any]:
     compat = compat or {}
     input_items = convert_responses_messages(
@@ -354,7 +361,7 @@ def _build_request_body(
         {},
     )
     body: dict[str, Any] = {
-        "model": model.id,
+        "model": upstream_model_id or model.id,
         "store": False,
         "stream": True,
         "input": input_items,

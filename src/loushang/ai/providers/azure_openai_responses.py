@@ -7,10 +7,6 @@ from typing import Any
 
 from loushang.ai.context import ensure_normalized_context
 from loushang.ai.event_stream import AssistantMessageEventStream, RawAssembler
-from loushang.ai.model.compat_schema import (
-    UPSTREAM_MODEL_ID,
-    compat_str,
-)
 from loushang.ai.options import PairingMode
 from loushang.ai.output_budget import resolve_output_token_budget
 from loushang.ai.provider import resolve_request_for_model
@@ -96,7 +92,11 @@ class AzureOpenAIResponsesProvider:
         )
         azure_endpoint = _resolve_azure_endpoint(resolved.base_url, options)
         api_version = _resolve_api_version(options)
-        deployment_name = _resolve_deployment_name(model, compat, options)
+        deployment_name = _resolve_deployment_name(
+            model,
+            getattr(resolved, "upstream_model_id", None),
+            options,
+        )
         client = self._client or AsyncAzureOpenAI(  # type: ignore[call-arg]
             api_key=api_key,
             azure_endpoint=azure_endpoint,
@@ -163,7 +163,7 @@ def _resolve_api_version(options: object | None) -> str:
 
 def _resolve_deployment_name(
     model,
-    compat: dict[str, object],
+    upstream_model_id: str | None,
     options: object | None,
 ) -> str:
     explicit = (
@@ -176,7 +176,6 @@ def _resolve_deployment_name(
     mapping = _parse_deployment_map(os.getenv("AZURE_OPENAI_DEPLOYMENT_NAME_MAP"))
     if model.id in mapping:
         return mapping[model.id]
-    upstream_model_id = compat_str(compat, UPSTREAM_MODEL_ID)
     if upstream_model_id and upstream_model_id in mapping:
         return mapping[upstream_model_id]
     return upstream_model_id or model.id

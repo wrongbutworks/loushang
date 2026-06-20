@@ -113,6 +113,50 @@ def test_anthropic_provider_uses_typed_transport_for_fine_grained_beta(
     )
 
 
+def test_anthropic_provider_uses_upstream_model_id(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _fake_anthropic_module(monkeypatch, [SimpleNamespace(type="message_stop")])
+    clear_default_model_registry()
+    registry = get_default_model_registry()
+    registry.register_endpoint(
+        "anthropic",
+        Endpoint(
+            id="anthropic-messages",
+            provider="anthropic",
+            api="anthropic-messages",
+            models={
+                "claude-sonnet-4-5_public": Model(
+                    id="claude-sonnet-4-5_public",
+                    provider="anthropic",
+                    endpoint="anthropic-messages",
+                    upstream_id="claude-sonnet-4-5",
+                )
+            },
+        ),
+    )
+    model = registry.get_model(
+        "anthropic", "anthropic-messages", "claude-sonnet-4-5_public"
+    )
+    provider = AnthropicProvider()
+
+    asyncio.run(
+        _collect_parts(
+            provider._stream_raw_parts(
+                model,
+                {
+                    "messages": [
+                        UserMessage(role="user", content="hello", timestamp=0.0)
+                    ]
+                },
+                AnthropicOptions(api_key="test-key"),
+            )
+        )
+    )
+
+    assert _FakeAsyncAnthropic.last_stream_kwargs["model"] == "claude-sonnet-4-5"
+
+
 def test_assistant_block_to_payload_maps_signed_thinking() -> None:
     from loushang.ai.providers.anthropic_base import AnthropicProviderBase
 

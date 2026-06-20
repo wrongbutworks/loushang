@@ -51,13 +51,10 @@ def _patch_resolved_request(monkeypatch: pytest.MonkeyPatch) -> None:
                 "api": "bedrock-converse-stream",
                 "headers": {},
                 "base_url": "https://bedrock-runtime.us-east-1.amazonaws.com",
-                "compat": {
-                    "upstreamModelId": (
-                        "anthropic.claude-sonnet-4-5-20250929-v1:0"
-                    )
-                },
+                "compat": {},
                 "max_tokens": 1024,
                 "reasoning_effort": None,
+                "upstream_model_id": "anthropic.claude-sonnet-4-5-20250929-v1:0",
             },
         )()
 
