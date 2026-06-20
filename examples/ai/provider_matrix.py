@@ -35,7 +35,7 @@ PROVIDER_EXAMPLES = (
     ProviderExample(
         "cloudflare-ai-gateway",
         "openai-completions",
-        "workers-ai/@cf/openai/gpt-oss-120b",
+        "workers-ai/@cf/moonshotai/kimi-k2.5",
         ("CLOUDFLARE_API_KEY", "CLOUDFLARE_ACCOUNT_ID", "CLOUDFLARE_GATEWAY_ID"),
     ),
     ProviderExample(

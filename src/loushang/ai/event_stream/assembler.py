@@ -24,6 +24,7 @@ from loushang.ai.event_stream.raw_parts import (
 )
 from loushang.ai.event_stream.stream import AssistantMessageEventStream
 from loushang.ai.pricing import calculate_usage_cost
+from loushang.ai.provider.errors import is_http_status_code
 from loushang.ai.types import (
     AssistantMessage,
     DoneEvent,
@@ -500,12 +501,9 @@ class RawAssembler:
                 "reason": "error",
                 "error": message,
             }
-            if "code" in response_error_part:
-                error_event["code"] = response_error_part["code"]
-            if "source" in response_error_part:
-                error_event["source"] = response_error_part["source"]
-            if "retryable" in response_error_part:
-                error_event["retryable"] = response_error_part["retryable"]
+            code = _http_status_code(response_error_part.get("code"))
+            if code is not None:
+                error_event["code"] = code
             self._final_message = message
             self._stream.push(error_event)
             return
@@ -641,6 +639,13 @@ class RawAssembler:
             or self._thinking_signature_chunks
             or self._thinking_redacted
         )
+
+
+def _http_status_code(value: object) -> int | None:
+    if is_http_status_code(value):
+        assert isinstance(value, int)
+        return value
+    return None
 
 
 def _done_reason(stop_reason: str) -> str:

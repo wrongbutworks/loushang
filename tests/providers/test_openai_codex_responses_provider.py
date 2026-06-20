@@ -618,6 +618,48 @@ def test_openai_codex_responses_retries_retryable_sse_failure() -> None:
     assert events[-1]["message"].content[0].text == "Hello"
 
 
+def test_openai_codex_responses_surfaces_http_error_code() -> None:
+    client = _FakeCodexClient(
+        stream_behaviors=[_FakeStreamBehavior(status_code=401, text="Unauthorized")]
+    )
+    provider = OpenAICodexResponsesProvider(client=client)
+    stream = asyncio.run(
+        provider.stream(
+            _Model(reasoning=False),
+            {"messages": [UserMessage(role="user", content="hello", timestamp=0.0)]},
+            OpenAICodexResponsesOptions(api_key=_build_fake_jwt("acc_test")),
+        )
+    )
+
+    events = asyncio.run(_collect_stream_events(stream))
+
+    assert events[-1]["type"] == "error"
+    assert events[-1]["code"] == 401
+    assert events[-1]["error"].error_message == "Unauthorized"
+
+
+def test_openai_codex_responses_omits_non_http_error_code() -> None:
+    client = _FakeCodexClient(
+        stream_behaviors=[
+            _FakeStreamBehavior(status_code=700, text="non-standard status")
+        ]
+    )
+    provider = OpenAICodexResponsesProvider(client=client)
+    stream = asyncio.run(
+        provider.stream(
+            _Model(reasoning=False),
+            {"messages": [UserMessage(role="user", content="hello", timestamp=0.0)]},
+            OpenAICodexResponsesOptions(api_key=_build_fake_jwt("acc_test")),
+        )
+    )
+
+    events = asyncio.run(_collect_stream_events(stream))
+
+    assert events[-1]["type"] == "error"
+    assert "code" not in events[-1]
+    assert events[-1]["error"].error_message == "non-standard status"
+
+
 def test_openai_codex_responses_surfaces_parsed_error_message() -> None:
     client = _FakeCodexClient(
         stream_behaviors=[

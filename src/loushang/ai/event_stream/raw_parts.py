@@ -15,9 +15,7 @@ class ResponseDonePart(TypedDict):
 class ResponseErrorPart(TypedDict):
     type: Literal["response_error"]
     message: str
-    code: NotRequired[str]
-    source: NotRequired[str]
-    retryable: NotRequired[bool]
+    code: NotRequired[int]
 
 
 class TextDeltaPart(TypedDict):

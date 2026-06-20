@@ -50,14 +50,14 @@ ROUTES: dict[str, Route] = {
         provider="moonshot",
         endpoint="kimi-code-anthropic",
         model="kimi-for-coding",
-        api_key_envs=("KIMI_API_KEY", "KIMI_AUTH_TOKEN", "MOONSHOT_API_KEY"),
+        api_key_envs=("KIMI_API_KEY", "KIMI_AUTH_TOKEN"),
         options_factory=AnthropicOptions,
     ),
     "kimi-code-openai": Route(
         provider="moonshot",
-        endpoint="openai-completions:cn:coding",
+        endpoint="coding",
         model="kimi-for-coding",
-        api_key_envs=("KIMI_API_KEY", "KIMI_AUTH_TOKEN", "MOONSHOT_API_KEY"),
+        api_key_envs=("KIMI_API_KEY", "KIMI_AUTH_TOKEN"),
         options_factory=OpenAICompletionsOptions,
     ),
     "moonshot-openai": Route(
@@ -69,14 +69,14 @@ ROUTES: dict[str, Route] = {
     ),
     "moonshot-anthropic": Route(
         provider="moonshot",
-        endpoint="anthropic-messages:cn",
+        endpoint="anthropic-messages",
         model="kimi-k2.5",
         api_key_envs=("MOONSHOT_API_KEY",),
         options_factory=AnthropicOptions,
     ),
     "dashscope-responses": Route(
         provider="dashscope",
-        endpoint="openai-responses:cn",
+        endpoint="openai-responses",
         model="qwen3.6-plus",
         api_key_envs=("DASHSCOPE_API_KEY",),
         options_factory=OpenAIResponsesOptions,
@@ -89,7 +89,7 @@ USER_PROMPT = "请用一句中文回答：你是否可以返回 usage？"
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Call an online model and print normalized usage.")
-    parser.add_argument("--route", choices=sorted(ROUTES), default="kimi-code-anthropic")
+    parser.add_argument("--route", choices=sorted(ROUTES), default="moonshot-openai")
     parser.add_argument("--provider", help="Override provider id from the selected route.")
     parser.add_argument("--endpoint", help="Override endpoint id from the selected route.")
     parser.add_argument("--model", help="Override model id from the selected route.")

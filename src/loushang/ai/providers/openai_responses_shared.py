@@ -42,7 +42,9 @@ def convert_responses_messages(
     system_prompt = normalized.get("system_prompt")
     if isinstance(system_prompt, str) and system_prompt.strip():
         role = "developer" if _supports_developer_role(model, compat) else "system"
-        input_items.append({"role": role, "content": sanitize_surrogates(system_prompt)})
+        input_items.append(
+            {"role": role, "content": sanitize_surrogates(system_prompt)}
+        )
 
     messages = normalized.get("messages", [])
     last_role: str | None = None
@@ -326,9 +328,6 @@ async def process_responses_stream(openai_stream, *, options=None):
             yield {
                 "type": "response_error",
                 "message": err,
-                "code": str(code or "provider_error"),
-                "source": "openai-responses",
-                "retryable": False,
             }
         elif etype == "response.failed":
             response = getattr(event, "response", None)
@@ -345,9 +344,6 @@ async def process_responses_stream(openai_stream, *, options=None):
             yield {
                 "type": "response_error",
                 "message": msg,
-                "code": "provider_error",
-                "source": "openai-responses",
-                "retryable": False,
             }
 
     yield {"type": "response_done"}
