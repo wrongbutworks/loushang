@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import sys
+from collections.abc import Iterator
 from dataclasses import dataclass, field
 from types import ModuleType, SimpleNamespace
 
@@ -10,7 +11,7 @@ import pytest
 from loushang.ai import get_model
 from loushang.ai.model import Capabilities, Model
 from loushang.ai.model.compat_schema import resolve_openai_completions_compat
-from loushang.ai.model.domain import Endpoint
+from loushang.ai.model.domain import Endpoint, EndpointWireDialect
 from loushang.ai.model.registry import (
     clear_default_model_registry,
     get_default_model_registry,
@@ -290,6 +291,144 @@ def test_openai_completions_payload_respects_bridge_tool_name_developer_role_and
     assert "stream_options" not in _FakeAsyncOpenAI.last_create_kwargs
     assert _FakeAsyncOpenAI.last_create_kwargs["max_tokens"] == 128
     assert _FakeAsyncOpenAI.last_create_kwargs["reasoning_effort"] == "high"
+
+
+def test_openai_completions_payload_uses_typed_endpoint_dialect(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _fake_openai_module(monkeypatch)
+    registry = get_default_model_registry()
+    registry.register_endpoint(
+        "typed",
+        Endpoint(
+            id="openai-completions",
+            provider="typed",
+            api="openai-completions",
+            base_url="https://api.openai.test/v1",
+            dialect=EndpointWireDialect.from_raw(
+                {
+                    "maxOutputTokensField": "max_tokens",
+                    "tools": {
+                        "resultNameRequired": True,
+                        "assistantBridgeRequired": True,
+                        "streamFlag": True,
+                    },
+                    "reasoning": {
+                        "wireFormat": "moonshot",
+                        "thinkingAsText": True,
+                        "assistantContentRequired": True,
+                    },
+                    "cache": {
+                        "controlFormat": "anthropic",
+                    },
+                }
+            ),
+            models={
+                "gpt-test": Model(
+                    id="gpt-test",
+                    provider="typed",
+                    endpoint="openai-completions",
+                    capabilities=Capabilities(reasoning=True, tool_use=True),
+                )
+            },
+        ),
+    )
+    model = registry.get_model("typed", "openai-completions", "gpt-test")
+    provider = OpenAICompletionsProvider()
+    assistant = AssistantMessage(
+        role="assistant",
+        content=[
+            ThinkingPart(
+                type="thinking",
+                thinking="plan",
+                thinking_signature="reasoning_content",
+            ),
+            ToolCall(type="toolCall", id="call_1", name="calc", arguments={"x": 1})
+        ],
+        api="openai-completions",
+        provider="typed",
+        model="gpt-test",
+        response_id="resp_1",
+        usage=Usage(
+            input=0, output=0, cache_read=0, cache_write=0, total_tokens=0, cost={}
+        ),
+        stop_reason="toolUse",
+        error_message=None,
+        timestamp=0.0,
+    )
+    tool_result = ToolResultMessage(
+        role="toolResult",
+        tool_call_id="call_1",
+        tool_name="calc",
+        content=[TextPart(type="text", text="42")],
+        is_error=False,
+        timestamp=0.0,
+    )
+
+    asyncio.run(
+        _collect_parts(
+            provider._stream_raw_parts(
+                model,
+                {
+                    "system_prompt": "You are helpful.",
+                    "messages": [
+                        assistant,
+                        tool_result,
+                        UserMessage(role="user", content="next", timestamp=0.0),
+                    ],
+                    "tools": [
+                        Tool(
+                            name="calc",
+                            description="Calculate values",
+                            parameters={"type": "object"},
+                        ),
+                    ],
+                },
+                OpenAICompletionsOptions(
+                    api_key="test-key",
+                    max_tokens=128,
+                    reasoning="high",
+                    cache_retention="long",
+                    session_id="session-1",
+                ),
+            )
+        )
+    )
+
+    assert _FakeAsyncOpenAI.last_create_kwargs["max_tokens"] == 128
+    assert "max_completion_tokens" not in _FakeAsyncOpenAI.last_create_kwargs
+    assert _FakeAsyncOpenAI.last_create_kwargs["tool_stream"] is True
+    assert _FakeAsyncOpenAI.last_create_kwargs["extra_body"] == {
+        "thinking": {"type": "enabled"}
+    }
+    assert _FakeAsyncOpenAI.last_create_kwargs["prompt_cache_key"] == "session-1"
+    assert _FakeAsyncOpenAI.last_create_kwargs["prompt_cache_retention"] == "24h"
+    assert _FakeAsyncOpenAI.last_create_kwargs["tools"][0]["cache_control"] == {
+        "type": "ephemeral",
+        "ttl": "1h",
+    }
+    assert _FakeAsyncOpenAI.last_create_kwargs["messages"][1] == {
+        "role": "assistant",
+        "content": "plan",
+        "reasoning_content": "",
+        "tool_calls": [
+            {
+                "id": "call_1",
+                "type": "function",
+                "function": {"name": "calc", "arguments": '{"x": 1}'},
+            }
+        ],
+    }
+    assert _FakeAsyncOpenAI.last_create_kwargs["messages"][2] == {
+        "role": "tool",
+        "tool_call_id": "call_1",
+        "name": "calc",
+        "content": "42",
+    }
+    assert _FakeAsyncOpenAI.last_create_kwargs["messages"][3] == {
+        "role": "assistant",
+        "content": "I have processed the tool results.",
+    }
 
 
 def test_openai_completions_compat_detects_zai_thinking_format(
@@ -872,7 +1011,7 @@ class _Model:
 
 
 @pytest.fixture(autouse=True)
-def _default_registry() -> None:
+def _default_registry() -> Iterator[None]:
     def _endpoint(provider_id: str) -> Endpoint:
         return Endpoint(
             id="openai-completions",
@@ -897,3 +1036,5 @@ def _default_registry() -> None:
         "github-copilot",
     ]:
         registry.register_endpoint(provider_id, _endpoint(provider_id))
+    yield
+    clear_default_model_registry()

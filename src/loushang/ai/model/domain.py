@@ -6,6 +6,8 @@ from enum import Enum
 from typing import Literal, cast
 
 from loushang.ai.model.compat_schema import (
+    DIALECT_COMPAT_BOOL_MAPPINGS,
+    DIALECT_COMPAT_VALUE_MAPPINGS,
     PROTOCOL_COMPAT_STATUS_MAPPINGS,
     REASONING_EFFORT_MAP,
 )
@@ -58,6 +60,62 @@ def _normalize_status_attrs(instance: object, *attrs: str) -> None:
             attr,
             SupportStatus.from_raw(getattr(instance, attr)),
         )
+
+
+def _normalize_optional_bool_attrs(instance: object, *attrs: str) -> None:
+    for attr in attrs:
+        value = getattr(instance, attr)
+        if value is not None and not isinstance(value, bool):
+            raise ValueError(f"wire dialect field must be a boolean: {attr}")
+
+
+def _normalize_optional_str_attrs(instance: object, *attrs: str) -> None:
+    for attr in attrs:
+        value = getattr(instance, attr)
+        if value is not None and (not isinstance(value, str) or not value):
+            raise ValueError(f"wire dialect field must be a non-empty string: {attr}")
+
+
+def _optional_bool_from_raw(raw: Mapping[str, object], key: str) -> bool | None:
+    if key not in raw:
+        return None
+    value = raw[key]
+    if isinstance(value, bool):
+        return value
+    raise ValueError(f"wire dialect field must be a boolean: {key}")
+
+
+def _optional_str_from_raw(raw: Mapping[str, object], key: str) -> str | None:
+    if key not in raw:
+        return None
+    value = raw[key]
+    if isinstance(value, str) and value:
+        return value
+    raise ValueError(f"wire dialect field must be a non-empty string: {key}")
+
+
+def _optional_dialect_section_from_raw(
+    raw: Mapping[str, object],
+    key: str,
+) -> Mapping[str, object] | None:
+    if key not in raw:
+        return None
+    value = raw[key]
+    if isinstance(value, Mapping):
+        return value
+    raise ValueError(f"wire dialect section must be an object: {key}")
+
+
+def _copy_raw_value(value: object) -> object:
+    if isinstance(value, Mapping):
+        return {key: _copy_raw_value(entry) for key, entry in value.items()}
+    if isinstance(value, list):
+        return [_copy_raw_value(entry) for entry in value]
+    return value
+
+
+def _copy_raw_mapping(value: Mapping[str, object]) -> dict[str, object]:
+    return {key: _copy_raw_value(entry) for key, entry in value.items()}
 
 
 @dataclass(frozen=True)
@@ -376,6 +434,159 @@ class EndpointProtocolFeatures:
 
 
 @dataclass(frozen=True)
+class EndpointDialectTools:
+    result_name_required: bool | None = None
+    assistant_bridge_required: bool | None = None
+    stream_flag: bool | None = None
+
+    def __post_init__(self) -> None:
+        _normalize_optional_bool_attrs(
+            self,
+            "result_name_required",
+            "assistant_bridge_required",
+            "stream_flag",
+        )
+
+    @classmethod
+    def from_raw(cls, raw: Mapping[str, object] | None) -> "EndpointDialectTools":
+        raw = raw or {}
+        return cls(
+            result_name_required=_optional_bool_from_raw(raw, "resultNameRequired"),
+            assistant_bridge_required=_optional_bool_from_raw(
+                raw,
+                "assistantBridgeRequired",
+            ),
+            stream_flag=_optional_bool_from_raw(raw, "streamFlag"),
+        )
+
+    def to_raw(self) -> dict[str, object]:
+        raw: dict[str, object] = {}
+        if self.result_name_required is not None:
+            raw["resultNameRequired"] = self.result_name_required
+        if self.assistant_bridge_required is not None:
+            raw["assistantBridgeRequired"] = self.assistant_bridge_required
+        if self.stream_flag is not None:
+            raw["streamFlag"] = self.stream_flag
+        return raw
+
+
+@dataclass(frozen=True)
+class EndpointDialectReasoning:
+    wire_format: str | None = None
+    thinking_as_text: bool | None = None
+    assistant_content_required: bool | None = None
+
+    def __post_init__(self) -> None:
+        _normalize_optional_str_attrs(self, "wire_format")
+        _normalize_optional_bool_attrs(
+            self,
+            "thinking_as_text",
+            "assistant_content_required",
+        )
+
+    @classmethod
+    def from_raw(cls, raw: Mapping[str, object] | None) -> "EndpointDialectReasoning":
+        raw = raw or {}
+        return cls(
+            wire_format=_optional_str_from_raw(raw, "wireFormat"),
+            thinking_as_text=_optional_bool_from_raw(raw, "thinkingAsText"),
+            assistant_content_required=_optional_bool_from_raw(
+                raw,
+                "assistantContentRequired",
+            ),
+        )
+
+    def to_raw(self) -> dict[str, object]:
+        raw: dict[str, object] = {}
+        if self.wire_format is not None:
+            raw["wireFormat"] = self.wire_format
+        if self.thinking_as_text is not None:
+            raw["thinkingAsText"] = self.thinking_as_text
+        if self.assistant_content_required is not None:
+            raw["assistantContentRequired"] = self.assistant_content_required
+        return raw
+
+
+@dataclass(frozen=True)
+class EndpointDialectCache:
+    control_format: str | None = None
+
+    def __post_init__(self) -> None:
+        _normalize_optional_str_attrs(self, "control_format")
+
+    @classmethod
+    def from_raw(cls, raw: Mapping[str, object] | None) -> "EndpointDialectCache":
+        raw = raw or {}
+        return cls(control_format=_optional_str_from_raw(raw, "controlFormat"))
+
+    def to_raw(self) -> dict[str, object]:
+        raw: dict[str, object] = {}
+        if self.control_format is not None:
+            raw["controlFormat"] = self.control_format
+        return raw
+
+
+@dataclass(frozen=True)
+class EndpointWireDialect:
+    max_output_tokens_field: str | None = None
+    tools: EndpointDialectTools = field(default_factory=EndpointDialectTools)
+    reasoning: EndpointDialectReasoning = field(default_factory=EndpointDialectReasoning)
+    cache: EndpointDialectCache = field(default_factory=EndpointDialectCache)
+
+    def __post_init__(self) -> None:
+        _normalize_optional_str_attrs(self, "max_output_tokens_field")
+
+    @classmethod
+    def from_raw(cls, raw: Mapping[str, object] | None) -> "EndpointWireDialect":
+        raw = raw or {}
+        return cls(
+            max_output_tokens_field=_optional_str_from_raw(
+                raw,
+                "maxOutputTokensField",
+            ),
+            tools=EndpointDialectTools.from_raw(
+                _optional_dialect_section_from_raw(raw, "tools")
+            ),
+            reasoning=EndpointDialectReasoning.from_raw(
+                _optional_dialect_section_from_raw(raw, "reasoning")
+            ),
+            cache=EndpointDialectCache.from_raw(
+                _optional_dialect_section_from_raw(raw, "cache")
+            ),
+        )
+
+    def to_raw(self) -> dict[str, object]:
+        raw: dict[str, object] = {}
+        if self.max_output_tokens_field is not None:
+            raw["maxOutputTokensField"] = self.max_output_tokens_field
+        for key, section_raw in (
+            ("tools", self.tools.to_raw()),
+            ("reasoning", self.reasoning.to_raw()),
+            ("cache", self.cache.to_raw()),
+        ):
+            if section_raw:
+                raw[key] = section_raw
+        return raw
+
+    def to_compat(self) -> dict[str, object]:
+        raw = self.to_raw()
+        compat: dict[str, object] = {}
+        for compat_key, section, dialect_key in DIALECT_COMPAT_BOOL_MAPPINGS:
+            section_raw = raw.get(section)
+            if isinstance(section_raw, dict) and dialect_key in section_raw:
+                compat[compat_key] = section_raw[dialect_key]
+        for compat_key, value_section, dialect_key in DIALECT_COMPAT_VALUE_MAPPINGS:
+            if value_section is None:
+                if dialect_key in raw:
+                    compat[compat_key] = raw[dialect_key]
+                continue
+            section_raw = raw.get(value_section)
+            if isinstance(section_raw, dict) and dialect_key in section_raw:
+                compat[compat_key] = section_raw[dialect_key]
+        return compat
+
+
+@dataclass(frozen=True)
 class Auth:
     kind: str = "apiKey"
     api_key_env: str | None = None
@@ -666,7 +877,11 @@ class Model:
     def with_endpoint(self, endpoint: "Endpoint") -> "Model":
         inherits_auth = self.auth is None or self._auth_inherited
         auth = endpoint.auth if inherits_auth else self.auth
-        endpoint_compat = endpoint.compat.merged(endpoint.protocol.to_compat())
+        endpoint_compat = (
+            endpoint.compat.merged(endpoint.protocol.to_compat()).merged(
+                endpoint.dialect.to_compat()
+            )
+        )
         return replace(
             self,
             _endpoint_key=endpoint.endpoint_key,
@@ -740,6 +955,18 @@ class Endpoint:
     models: dict[str, Model] = field(default_factory=dict)
     protocol: EndpointProtocolFeatures = field(default_factory=EndpointProtocolFeatures)
     _protocol_explicit: bool = field(default=True, compare=False, repr=False)
+    dialect: EndpointWireDialect = field(default_factory=EndpointWireDialect)
+    _dialect_explicit: bool = field(default=True, compare=False, repr=False)
+    _dialect_raw: dict[str, object] | None = field(
+        default=None,
+        compare=False,
+        repr=False,
+    )
+    _dialect_raw_source: EndpointWireDialect | None = field(
+        default=None,
+        compare=False,
+        repr=False,
+    )
 
     def __post_init__(self, provider: str | None) -> None:
         if self._provider_key:
@@ -792,6 +1019,15 @@ class Endpoint:
             raw["auth"] = self.auth.to_raw()
         if self._protocol_explicit and (protocol_raw := self.protocol.to_raw()):
             raw["protocol"] = protocol_raw
+        if self._dialect_explicit:
+            dialect_raw = (
+                _copy_raw_mapping(self._dialect_raw)
+                if self._dialect_raw is not None
+                and self._dialect_raw_source == self.dialect
+                else self.dialect.to_raw()
+            )
+            if dialect_raw:
+                raw["dialect"] = dialect_raw
         return raw
 
 

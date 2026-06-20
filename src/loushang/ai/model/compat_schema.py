@@ -52,6 +52,24 @@ PROTOCOL_COMPAT_STATUS_MAPPINGS: tuple[tuple[str, str | None, str], ...] = (
     (SEND_SESSION_ID_HEADER, "session", "idHeader"),
 )
 
+DIALECT_COMPAT_BOOL_MAPPINGS: tuple[tuple[str, str, str], ...] = (
+    (REQUIRES_TOOL_RESULT_NAME, "tools", "resultNameRequired"),
+    (REQUIRES_ASSISTANT_AFTER_TOOL_RESULT, "tools", "assistantBridgeRequired"),
+    (REQUIRES_THINKING_AS_TEXT, "reasoning", "thinkingAsText"),
+    (
+        REQUIRES_REASONING_CONTENT_ON_ASSISTANT_MESSAGES,
+        "reasoning",
+        "assistantContentRequired",
+    ),
+    (ZAI_TOOL_STREAM, "tools", "streamFlag"),
+)
+
+DIALECT_COMPAT_VALUE_MAPPINGS: tuple[tuple[str, str | None, str], ...] = (
+    (MAX_TOKENS_FIELD, None, "maxOutputTokensField"),
+    (THINKING_FORMAT, "reasoning", "wireFormat"),
+    (CACHE_CONTROL_FORMAT, "cache", "controlFormat"),
+)
+
 COMPAT_DEFAULTS: dict[str, object] = {
     SUPPORTS_STORE: False,
     SUPPORTS_DEVELOPER_ROLE: True,

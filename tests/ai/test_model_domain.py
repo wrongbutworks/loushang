@@ -4,6 +4,9 @@ import pytest
 
 from loushang.ai.model import (
     Endpoint,
+    EndpointDialectCache,
+    EndpointDialectReasoning,
+    EndpointDialectTools,
     EndpointProtocolCache,
     EndpointProtocolFeatures,
     EndpointProtocolReasoning,
@@ -11,6 +14,7 @@ from loushang.ai.model import (
     EndpointProtocolSession,
     EndpointProtocolStreaming,
     EndpointProtocolTools,
+    EndpointWireDialect,
     SupportStatus,
 )
 
@@ -128,3 +132,75 @@ def test_endpoint_protocol_constructors_normalize_raw_status_strings() -> None:
 def test_endpoint_protocol_constructors_reject_invalid_status_strings() -> None:
     with pytest.raises(ValueError, match="unsupported support status"):
         EndpointProtocolTools(strict_schema="yes")
+
+
+def test_endpoint_wire_dialect_round_trip() -> None:
+    dialect = EndpointWireDialect.from_raw(
+        {
+            "maxOutputTokensField": "max_completion_tokens",
+            "tools": {
+                "resultNameRequired": True,
+                "assistantBridgeRequired": False,
+                "streamFlag": True,
+            },
+            "reasoning": {
+                "wireFormat": "moonshot",
+                "thinkingAsText": True,
+                "assistantContentRequired": False,
+            },
+            "cache": {"controlFormat": "anthropic"},
+        }
+    )
+    endpoint = Endpoint(
+        id="openai-completions",
+        provider="custom",
+        api="openai-completions",
+        dialect=dialect,
+    )
+
+    raw = endpoint.to_raw()["dialect"]
+
+    assert raw == {
+        "maxOutputTokensField": "max_completion_tokens",
+        "tools": {
+            "resultNameRequired": True,
+            "assistantBridgeRequired": False,
+            "streamFlag": True,
+        },
+        "reasoning": {
+            "wireFormat": "moonshot",
+            "thinkingAsText": True,
+            "assistantContentRequired": False,
+        },
+        "cache": {"controlFormat": "anthropic"},
+    }
+    assert EndpointWireDialect.from_raw(raw) == EndpointWireDialect(
+        max_output_tokens_field="max_completion_tokens",
+        tools=EndpointDialectTools(
+            result_name_required=True,
+            assistant_bridge_required=False,
+            stream_flag=True,
+        ),
+        reasoning=EndpointDialectReasoning(
+            wire_format="moonshot",
+            thinking_as_text=True,
+            assistant_content_required=False,
+        ),
+        cache=EndpointDialectCache(control_format="anthropic"),
+    )
+
+
+def test_endpoint_wire_dialect_constructors_reject_invalid_values() -> None:
+    with pytest.raises(ValueError, match="wire dialect field must be a boolean"):
+        EndpointDialectTools(result_name_required="yes")
+    with pytest.raises(ValueError, match="wire dialect field must be a non-empty string"):
+        EndpointWireDialect(max_output_tokens_field="")
+
+
+@pytest.mark.parametrize("section", ["tools", "reasoning", "cache"])
+def test_endpoint_wire_dialect_rejects_non_object_sections(section: str) -> None:
+    with pytest.raises(
+        ValueError,
+        match=f"wire dialect section must be an object: {section}",
+    ):
+        EndpointWireDialect.from_raw({section: True})

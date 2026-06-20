@@ -9,6 +9,7 @@ from loushang.ai.model import (
     Auth,
     Endpoint,
     EndpointProtocolFeatures,
+    EndpointWireDialect,
     Model,
     ModelRegistry,
     Provider,
@@ -26,7 +27,7 @@ from loushang.ai.model.compat_schema import (
 from loushang.ai.model.loader import load_model_registry, load_model_registry_from_file
 from loushang.ai.model.registry import clear_default_model_registry, resolve_model_api
 from loushang.ai.options import OpenAICompletionsOptions
-from loushang.ai.provider import resolve_request_for_model
+from loushang.ai.provider import resolve_endpoint_for_model, resolve_request_for_model
 
 
 def test_openai_completions_stream_reasoning_delta_defaults_to_bool() -> None:
@@ -101,6 +102,98 @@ def test_resolve_request_uses_in_memory_endpoint_protocol_bridge() -> None:
     assert resolved.compat["supportsDeveloperRole"] is False
     assert resolved.compat["supportsReasoningEffort"] is False
     assert resolved.compat["supportsStrictMode"] is False
+
+
+def test_resolve_request_uses_in_memory_endpoint_dialect_bridge() -> None:
+    endpoint = Endpoint(
+        id="openai-completions",
+        provider="custom",
+        api="openai-completions",
+        dialect=EndpointWireDialect.from_raw(
+            {
+                "maxOutputTokensField": "max_completion_tokens",
+                "tools": {
+                    "resultNameRequired": True,
+                    "assistantBridgeRequired": True,
+                    "streamFlag": True,
+                },
+                "reasoning": {
+                    "wireFormat": "moonshot",
+                    "thinkingAsText": True,
+                    "assistantContentRequired": True,
+                },
+                "cache": {"controlFormat": "anthropic"},
+            }
+        ),
+        models={
+            "model-a": Model(
+                id="model-a",
+                provider="custom",
+                endpoint="openai-completions",
+            )
+        },
+    )
+    registry = ModelRegistry.from_providers(
+        {"custom": Provider(id="custom", endpoints={endpoint.id: endpoint})}
+    )
+    model = registry.get_model("custom", "openai-completions", "model-a")
+
+    resolved = resolve_request_for_model(model, registry=registry, env={})
+
+    assert resolved.compat["maxTokensField"] == "max_completion_tokens"
+    assert resolved.compat["requiresToolResultName"] is True
+    assert resolved.compat["requiresAssistantAfterToolResult"] is True
+    assert resolved.compat["requiresThinkingAsText"] is True
+    assert resolved.compat["requiresReasoningContentOnAssistantMessages"] is True
+    assert resolved.compat["thinkingFormat"] == "moonshot"
+    assert resolved.compat["zaiToolStream"] is True
+    assert resolved.compat["cacheControlFormat"] == "anthropic"
+
+
+def test_resolve_endpoint_uses_in_memory_endpoint_dialect_bridge() -> None:
+    endpoint = Endpoint(
+        id="openai-completions",
+        provider="custom",
+        api="openai-completions",
+        dialect=EndpointWireDialect.from_raw(
+            {
+                "maxOutputTokensField": "max_completion_tokens",
+                "tools": {
+                    "resultNameRequired": True,
+                    "assistantBridgeRequired": True,
+                    "streamFlag": True,
+                },
+                "reasoning": {
+                    "wireFormat": "moonshot",
+                    "thinkingAsText": True,
+                    "assistantContentRequired": True,
+                },
+                "cache": {"controlFormat": "anthropic"},
+            }
+        ),
+        models={
+            "model-a": Model(
+                id="model-a",
+                provider="custom",
+                endpoint="openai-completions",
+            )
+        },
+    )
+    registry = ModelRegistry.from_providers(
+        {"custom": Provider(id="custom", endpoints={endpoint.id: endpoint})}
+    )
+    model = registry.get_model("custom", "openai-completions", "model-a")
+
+    resolved = resolve_endpoint_for_model(model, registry=registry)
+
+    assert resolved.compat["maxTokensField"] == "max_completion_tokens"
+    assert resolved.compat["requiresToolResultName"] is True
+    assert resolved.compat["requiresAssistantAfterToolResult"] is True
+    assert resolved.compat["requiresThinkingAsText"] is True
+    assert resolved.compat["requiresReasoningContentOnAssistantMessages"] is True
+    assert resolved.compat["thinkingFormat"] == "moonshot"
+    assert resolved.compat["zaiToolStream"] is True
+    assert resolved.compat["cacheControlFormat"] == "anthropic"
 
 
 def test_resolve_request_uses_base_url_env_override() -> None:
@@ -405,6 +498,109 @@ def test_resolve_request_preserves_model_compat_override_over_endpoint_protocol(
     assert resolved.compat["supportsReasoningEffort"] is True
 
 
+def test_resolve_request_uses_explicit_dialect_compat_bridge(tmp_path) -> None:
+    path = tmp_path / "models.v2.json"
+    path.write_text(
+        json.dumps(
+            {
+                "schemaVersion": 2,
+                "providers": {
+                    "custom": {
+                        "endpoints": {
+                            "openai-completions": {
+                                "api": "openai-completions",
+                                "baseUrl": "https://api.openai.com/v1",
+                                "dialect": {
+                                    "maxOutputTokensField": "max_completion_tokens",
+                                    "tools": {
+                                        "resultNameRequired": True,
+                                        "assistantBridgeRequired": True,
+                                        "streamFlag": False,
+                                    },
+                                    "reasoning": {
+                                        "wireFormat": "moonshot",
+                                        "thinkingAsText": True,
+                                        "assistantContentRequired": True,
+                                    },
+                                    "cache": {"controlFormat": "anthropic"},
+                                },
+                                "models": {
+                                    "model-a": {
+                                        "capabilities": {
+                                            "input": ["text"],
+                                            "output": ["text"],
+                                            "toolUse": True,
+                                            "reasoning": True,
+                                        }
+                                    }
+                                },
+                            }
+                        }
+                    }
+                },
+            }
+        ),
+        encoding="utf-8",
+    )
+    registry = load_model_registry_from_file(path)
+    model = registry.get_model("custom", "openai-completions", "model-a")
+
+    resolved = resolve_request_for_model(model, registry=registry, env={})
+
+    assert resolved.compat["maxTokensField"] == "max_completion_tokens"
+    assert resolved.compat["requiresToolResultName"] is True
+    assert resolved.compat["requiresAssistantAfterToolResult"] is True
+    assert resolved.compat["requiresThinkingAsText"] is True
+    assert resolved.compat["requiresReasoningContentOnAssistantMessages"] is True
+    assert resolved.compat["thinkingFormat"] == "moonshot"
+    assert resolved.compat["zaiToolStream"] is False
+    assert resolved.compat["cacheControlFormat"] == "anthropic"
+
+
+def test_resolve_request_preserves_model_compat_override_over_endpoint_dialect(
+    tmp_path,
+) -> None:
+    path = tmp_path / "models.v2.json"
+    path.write_text(
+        json.dumps(
+            {
+                "schemaVersion": 2,
+                "providers": {
+                    "custom": {
+                        "endpoints": {
+                            "openai-completions": {
+                                "api": "openai-completions",
+                                "baseUrl": "https://api.openai.com/v1",
+                                "dialect": {
+                                    "reasoning": {"wireFormat": "moonshot"},
+                                },
+                                "models": {
+                                    "model-a": {
+                                        "compat": {"thinkingFormat": "deepseek"},
+                                        "capabilities": {
+                                            "input": ["text"],
+                                            "output": ["text"],
+                                            "reasoning": True,
+                                        },
+                                    }
+                                },
+                            }
+                        }
+                    }
+                },
+            }
+        ),
+        encoding="utf-8",
+    )
+    registry = load_model_registry_from_file(path)
+    model = registry.get_model("custom", "openai-completions", "model-a")
+
+    resolved = resolve_request_for_model(model, registry=registry, env={})
+
+    assert model.compat["thinkingFormat"] == "deepseek"
+    assert resolved.compat["thinkingFormat"] == "deepseek"
+
+
 def test_resolve_request_preserves_openai_responses_protocol_bridge_keys(
     tmp_path,
 ) -> None:
@@ -559,26 +755,42 @@ def test_resolve_request_preserves_anthropic_protocol_bridge_keys(tmp_path) -> N
 
 def test_resolve_request_selects_matching_region_endpoint() -> None:
     cn_endpoint = Endpoint(
-        id="openai-responses",
+        id="openai-completions",
         provider="dashscope",
-        api="openai-responses",
+        api="openai-completions",
         base_url="https://cn.example/v1",
         region="cn",
         auth=Auth(api_key_env="CN_API_KEY"),
+        dialect=EndpointWireDialect.from_raw(
+            {
+                "maxOutputTokensField": "max_tokens",
+                "reasoning": {"wireFormat": "deepseek"},
+            }
+        ),
         models={
-            "qwen": Model(id="qwen", provider="dashscope", endpoint="openai-responses")
+            "qwen": Model(
+                id="qwen",
+                provider="dashscope",
+                endpoint="openai-completions",
+            )
         },
     )
     us_endpoint = Endpoint(
-        id="openai-responses-us",
+        id="openai-completions-us",
         provider="dashscope",
-        api="openai-responses",
+        api="openai-completions",
         base_url="https://us.example/v1",
         region="us",
         auth=Auth(api_key_env="US_API_KEY"),
+        dialect=EndpointWireDialect.from_raw(
+            {
+                "maxOutputTokensField": "max_completion_tokens",
+                "reasoning": {"wireFormat": "moonshot"},
+            }
+        ),
         models={
             "qwen": Model(
-                id="qwen", provider="dashscope", endpoint="openai-responses-us"
+                id="qwen", provider="dashscope", endpoint="openai-completions-us"
             )
         },
     )
@@ -593,7 +805,7 @@ def test_resolve_request_selects_matching_region_endpoint() -> None:
             )
         }
     )
-    model = registry.get_model("dashscope", "openai-responses", "qwen")
+    model = registry.get_model("dashscope", "openai-completions", "qwen")
 
     resolved = resolve_request_for_model(
         model,
@@ -605,10 +817,12 @@ def test_resolve_request_selects_matching_region_endpoint() -> None:
         },
     )
 
-    assert resolved.endpoint == "openai-responses-us"
+    assert resolved.endpoint == "openai-completions-us"
     assert resolved.region == "us"
     assert resolved.base_url == "https://us.example/v1"
     assert resolved.headers["Authorization"] == "Bearer us-secret"
+    assert resolved.compat["maxTokensField"] == "max_completion_tokens"
+    assert resolved.compat["thinkingFormat"] == "moonshot"
 
 
 def test_resolve_request_reports_actual_region_when_region_falls_back() -> None:

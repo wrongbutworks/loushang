@@ -93,6 +93,10 @@ def test_advanced_inspect_endpoint_contract_formats_protocol_facts(
                                     "roles": {"developer": "unsupported"},
                                     "reasoning": {"effort": "unsupported"},
                                 },
+                                "dialect": {
+                                    "maxOutputTokensField": "max_completion_tokens",
+                                    "reasoning": {"wireFormat": "moonshot"},
+                                },
                                 "models": {
                                     "kimi-k2.5": {
                                         "compat": {
@@ -127,6 +131,11 @@ def test_advanced_inspect_endpoint_contract_formats_protocol_facts(
         "roles": {"developer": "unsupported"},
         "reasoning": {"effort": "unsupported"},
     }
+    assert contract["dialectScope"] == "endpoint-default"
+    assert contract["dialect"] == {
+        "maxOutputTokensField": "max_completion_tokens",
+        "reasoning": {"wireFormat": "moonshot"},
+    }
     assert contract["modelEffectiveLegacyCompat"]["supportsReasoningEffort"] is True
     assert "thinkingFormat" in contract["legacyCompatKeys"]
     assert "supportsStreamReasoningDelta" in contract[
@@ -136,6 +145,7 @@ def test_advanced_inspect_endpoint_contract_formats_protocol_facts(
     module.main()
     payload = json.loads(capsys.readouterr().out)
     assert payload["protocolScope"] == "endpoint-default"
+    assert payload["dialectScope"] == "endpoint-default"
 
 
 def test_advanced_inspect_endpoint_contract_runs_against_builtin_catalog() -> None:
@@ -152,6 +162,10 @@ def test_advanced_inspect_endpoint_contract_runs_against_builtin_catalog() -> No
     assert contract["protocol"] == {
         "roles": {"developer": "unsupported"},
         "reasoning": {"effort": "unsupported"},
+    }
+    assert contract["dialect"] == {
+        "maxOutputTokensField": "max_completion_tokens",
+        "reasoning": {"wireFormat": "moonshot"},
     }
     assert contract["modelEffectiveLegacyCompat"]["supportsReasoningEffort"] is True
     assert "supportsStreamReasoningDelta" in contract[

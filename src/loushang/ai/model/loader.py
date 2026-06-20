@@ -8,6 +8,8 @@ from typing import Any
 
 from loushang.ai.model.compat_schema import (
     COMPAT_DEFAULTS,
+    DIALECT_COMPAT_BOOL_MAPPINGS,
+    DIALECT_COMPAT_VALUE_MAPPINGS,
     MAX_TOKENS_FIELD,
     PROTOCOL_COMPAT_STATUS_MAPPINGS,
     REASONING_EFFORT_MAP,
@@ -23,6 +25,7 @@ from loushang.ai.model.domain import (
     Defaults,
     Endpoint,
     EndpointProtocolFeatures,
+    EndpointWireDialect,
     Model,
     Pricing,
     Provider,
@@ -78,6 +81,18 @@ ALLOWED_PROTOCOL_SECTION_KEYS: dict[str, frozenset[str]] = {
     "cache": frozenset({"onTools", "longRetention"}),
     "session": frozenset({"idHeader", "affinityHeaders"}),
 }
+ALLOWED_DIALECT_KEYS = frozenset(
+    {"maxOutputTokensField", "tools", "reasoning", "cache"}
+)
+ALLOWED_DIALECT_SECTION_KEYS: dict[str, frozenset[str]] = {
+    "tools": frozenset(
+        {"resultNameRequired", "assistantBridgeRequired", "streamFlag"}
+    ),
+    "reasoning": frozenset(
+        {"wireFormat", "thinkingAsText", "assistantContentRequired"}
+    ),
+    "cache": frozenset({"controlFormat"}),
+}
 DEFAULT_SCHEMA_VERSION = 1
 SUPPORTED_SCHEMA_VERSIONS = frozenset({1, 2})
 
@@ -110,6 +125,11 @@ def validate_model_registry_raw(raw: dict[str, Any]) -> None:
                 f"{endpoint_path}.protocol",
                 schema_version=schema_version,
             )
+            _validate_dialect_mapping(
+                endpoint.get("dialect"),
+                f"{endpoint_path}.dialect",
+                schema_version=schema_version,
+            )
             _validate_keyed_mapping(
                 endpoint.get("defaults"),
                 ALLOWED_DEFAULT_KEYS,
@@ -125,6 +145,11 @@ def validate_model_registry_raw(raw: dict[str, Any]) -> None:
                     raise ValueError(
                         "models registry field is only supported on endpoints: "
                         f"{model_path}.protocol"
+                    )
+                if "dialect" in model:
+                    raise ValueError(
+                        "models registry field is only supported on endpoints: "
+                        f"{model_path}.dialect"
                     )
                 _validate_keyed_mapping(
                     model.get("compat"),
@@ -195,6 +220,11 @@ def _schema_version(raw: dict[str, Any]) -> int:
 
 def _validate_optional_bool(value: object, path: str) -> None:
     if value is not None and not isinstance(value, bool):
+        raise ValueError(f"models registry field must be a boolean: {path}")
+
+
+def _validate_bool(value: object, path: str) -> None:
+    if not isinstance(value, bool):
         raise ValueError(f"models registry field must be a boolean: {path}")
 
 
@@ -285,6 +315,41 @@ def _validate_protocol_mapping(
             _validate_support_status(entry, f"{path}.{section}.{key}")
 
 
+def _validate_dialect_mapping(
+    value: object,
+    path: str,
+    *,
+    schema_version: int,
+) -> None:
+    if value is None:
+        return
+    if schema_version < 2:
+        raise ValueError(
+            f"models registry field requires schemaVersion 2 or newer: {path}"
+        )
+    mapping = _require_mapping(value, path)
+    unknown = sorted(set(mapping) - ALLOWED_DIALECT_KEYS)
+    if unknown:
+        raise ValueError(f"models registry field has unknown keys at {path}: {unknown}")
+    if "maxOutputTokensField" in mapping:
+        _require_str(mapping["maxOutputTokensField"], f"{path}.maxOutputTokensField")
+    for section, allowed_keys in ALLOWED_DIALECT_SECTION_KEYS.items():
+        if section not in mapping:
+            continue
+        section_mapping = _require_mapping(mapping[section], f"{path}.{section}")
+        section_unknown = sorted(set(section_mapping) - allowed_keys)
+        if section_unknown:
+            raise ValueError(
+                f"models registry field has unknown keys at {path}.{section}: "
+                f"{section_unknown}"
+            )
+        for key, entry in section_mapping.items():
+            if key in {"wireFormat", "controlFormat"}:
+                _require_str(entry, f"{path}.{section}.{key}")
+                continue
+            _validate_bool(entry, f"{path}.{section}.{key}")
+
+
 def _validate_support_status(value: object, path: str) -> None:
     try:
         SupportStatus.from_raw(value)
@@ -305,11 +370,14 @@ def _validate_protocol_schema_version(raw: dict[str, Any], schema_version: int) 
         if not isinstance(endpoints, dict):
             continue
         for endpoint_key, endpoint_raw in endpoints.items():
-            if isinstance(endpoint_raw, dict) and "protocol" in endpoint_raw:
-                raise ValueError(
-                    "models registry field requires schemaVersion 2 or newer: "
-                    f"providers.{provider_id}.endpoints.{endpoint_key}.protocol"
-                )
+            if not isinstance(endpoint_raw, dict):
+                continue
+            for field in ("protocol", "dialect"):
+                if field in endpoint_raw:
+                    raise ValueError(
+                        "models registry field requires schemaVersion 2 or newer: "
+                        f"providers.{provider_id}.endpoints.{endpoint_key}.{field}"
+                    )
 
 
 def _as_str_mapping(value: object, path: str) -> dict[str, str]:
@@ -346,6 +414,7 @@ def _normalize_endpoint_compat(endpoint_raw: dict[str, Any]) -> Compat:
     if str(endpoint_raw.get("api", "")) == "openai-completions":
         values.setdefault(MAX_TOKENS_FIELD, "max_completion_tokens")
     values.update(_compat_raw_from_protocol(endpoint_raw.get("protocol")))
+    values.update(_compat_raw_from_dialect(endpoint_raw.get("dialect")))
     return Compat(items_by_key=values)
 
 
@@ -393,10 +462,45 @@ def _set_protocol_string_or_none_mapping(
         section_raw[key] = mapping
 
 
+def _set_dialect_bool(
+    raw: dict[str, object],
+    section: str,
+    key: str,
+    value: object,
+) -> None:
+    if not isinstance(value, bool):
+        return
+    section_raw = raw.setdefault(section, {})
+    if isinstance(section_raw, dict):
+        section_raw[key] = value
+
+
+def _set_dialect_value(
+    raw: dict[str, object],
+    section: str | None,
+    key: str,
+    value: object,
+) -> None:
+    if not isinstance(value, str) or not value:
+        return
+    if section is None:
+        raw[key] = value
+        return
+    section_raw = raw.setdefault(section, {})
+    if isinstance(section_raw, dict):
+        section_raw[key] = value
+
+
 def _compat_raw_from_protocol(value: object) -> dict[str, object]:
     if not isinstance(value, dict):
         return {}
     return EndpointProtocolFeatures.from_raw(value).to_compat()
+
+
+def _compat_raw_from_dialect(value: object) -> dict[str, object]:
+    if not isinstance(value, dict):
+        return {}
+    return EndpointWireDialect.from_raw(value).to_compat()
 
 
 def _protocol_raw_from_legacy_compat(compat: Compat) -> dict[str, object]:
@@ -414,6 +518,17 @@ def _protocol_raw_from_legacy_compat(compat: Compat) -> dict[str, object]:
     return raw
 
 
+def _dialect_raw_from_legacy_compat(compat: Compat) -> dict[str, object]:
+    raw: dict[str, object] = {}
+    for compat_key, section, dialect_key in DIALECT_COMPAT_BOOL_MAPPINGS:
+        if compat_key in compat:
+            _set_dialect_bool(raw, section, dialect_key, compat[compat_key])
+    for compat_key, value_section, dialect_key in DIALECT_COMPAT_VALUE_MAPPINGS:
+        if compat_key in compat:
+            _set_dialect_value(raw, value_section, dialect_key, compat[compat_key])
+    return raw
+
+
 def _endpoint_protocol_features(
     endpoint_raw: dict[str, Any],
     compat: Compat,
@@ -423,6 +538,17 @@ def _endpoint_protocol_features(
     if isinstance(explicit_raw, dict):
         return EndpointProtocolFeatures.from_raw(_deep_merge_dict(legacy_raw, explicit_raw))
     return EndpointProtocolFeatures.from_raw(legacy_raw)
+
+
+def _endpoint_wire_dialect(
+    endpoint_raw: dict[str, Any],
+    compat: Compat,
+) -> EndpointWireDialect:
+    legacy_raw = _dialect_raw_from_legacy_compat(compat)
+    explicit_raw = endpoint_raw.get("dialect")
+    if isinstance(explicit_raw, dict):
+        return EndpointWireDialect.from_raw(_deep_merge_dict(legacy_raw, explicit_raw))
+    return EndpointWireDialect.from_raw(legacy_raw)
 
 
 def _derive_model_defaults(
@@ -497,6 +623,8 @@ def _build_registry(raw: dict[str, Any]) -> ModelRegistry:
             )
             endpoint_auth = Auth.from_raw(endpoint_auth_raw)
             endpoint_compat = _normalize_endpoint_compat(endpoint_raw)
+            endpoint_dialect_raw = endpoint_raw.get("dialect")
+            endpoint_dialect = _endpoint_wire_dialect(endpoint_raw, endpoint_compat)
             endpoint = Endpoint(
                 id=endpoint_id,
                 provider=provider_id,
@@ -512,6 +640,14 @@ def _build_registry(raw: dict[str, Any]) -> ModelRegistry:
                 _auth_inherited=endpoint_specific_auth_raw is None and endpoint_auth is not None,
                 protocol=_endpoint_protocol_features(endpoint_raw, endpoint_compat),
                 _protocol_explicit=isinstance(endpoint_raw.get("protocol"), dict),
+                dialect=endpoint_dialect,
+                _dialect_explicit=isinstance(endpoint_dialect_raw, dict),
+                _dialect_raw=dict(endpoint_dialect_raw)
+                if isinstance(endpoint_dialect_raw, dict)
+                else None,
+                _dialect_raw_source=endpoint_dialect
+                if isinstance(endpoint_dialect_raw, dict)
+                else None,
                 compat=endpoint_compat,
                 defaults=Defaults.from_raw(endpoint_raw.get("defaults")),
             )

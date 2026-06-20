@@ -1,9 +1,9 @@
-"""Inspect typed endpoint protocol facts from the built-in catalog.
+"""Inspect typed endpoint protocol and dialect facts from the built-in catalog.
 
 This advanced example is offline. It reads the model catalog and prints the
-typed endpoint-default protocol contract alongside the remaining legacy compat
-keys. Model-level effective protocol facts still flow through legacy compat
-during the migration.
+typed endpoint-default protocol and wire dialect contracts alongside the
+remaining legacy compat keys. Model-level effective protocol and dialect facts
+still flow through legacy compat during the migration.
 """
 
 from __future__ import annotations
@@ -33,6 +33,8 @@ def inspect_endpoint_contract(
         "api": endpoint.api,
         "protocolScope": "endpoint-default",
         "protocol": endpoint.protocol.to_raw(),
+        "dialectScope": "endpoint-default",
+        "dialect": endpoint.dialect.to_raw(),
         "legacyCompatKeys": sorted(endpoint.compat),
     }
     if model_id is not None:

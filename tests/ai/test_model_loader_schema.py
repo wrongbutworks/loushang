@@ -1,11 +1,12 @@
 from __future__ import annotations
 
 import json
+from dataclasses import replace
 from typing import Any
 
 import pytest
 
-from loushang.ai.model import SupportStatus
+from loushang.ai.model import EndpointWireDialect, SupportStatus
 from loushang.ai.model.loader import (
     load_layered_model_registry,
     load_model_registry,
@@ -173,6 +174,47 @@ def test_model_registry_schema_rejects_model_protocol_features() -> None:
         validate_model_registry_raw(raw)
 
 
+def test_model_registry_schema_accepts_endpoint_wire_dialect() -> None:
+    raw = _minimal_registry_raw(schema_version=2)
+    endpoint = raw["providers"]["custom"]["endpoints"]["openai-completions"]
+    endpoint["dialect"] = {
+        "maxOutputTokensField": "max_completion_tokens",
+        "tools": {
+            "resultNameRequired": True,
+            "assistantBridgeRequired": False,
+            "streamFlag": True,
+        },
+        "reasoning": {
+            "wireFormat": "moonshot",
+            "thinkingAsText": True,
+            "assistantContentRequired": False,
+        },
+        "cache": {"controlFormat": "anthropic"},
+    }
+
+    validate_model_registry_raw(raw)
+
+
+def test_model_registry_schema_rejects_endpoint_dialect_before_v2() -> None:
+    raw = _minimal_registry_raw(schema_version=1)
+    endpoint = raw["providers"]["custom"]["endpoints"]["openai-completions"]
+    endpoint["dialect"] = {"reasoning": {"wireFormat": "moonshot"}}
+
+    with pytest.raises(ValueError, match="requires schemaVersion 2"):
+        validate_model_registry_raw(raw)
+
+
+def test_model_registry_schema_rejects_model_wire_dialect() -> None:
+    raw = _minimal_registry_raw(schema_version=2)
+    model = raw["providers"]["custom"]["endpoints"]["openai-completions"]["models"][
+        "model-a"
+    ]
+    model["dialect"] = {"reasoning": {"wireFormat": "moonshot"}}
+
+    with pytest.raises(ValueError, match="only supported on endpoints"):
+        validate_model_registry_raw(raw)
+
+
 def test_model_registry_loads_legacy_reasoning_effort_map_into_protocol(tmp_path) -> None:
     raw = _minimal_registry_raw(schema_version=1)
     endpoint = raw["providers"]["custom"]["endpoints"]["openai-completions"]
@@ -206,6 +248,44 @@ def test_model_registry_loads_legacy_reasoning_effort_map_into_protocol(tmp_path
             },
         }
     )
+
+
+def test_model_registry_loads_legacy_wire_dialect_from_compat(tmp_path) -> None:
+    raw = _minimal_registry_raw(schema_version=1)
+    endpoint = raw["providers"]["custom"]["endpoints"]["openai-completions"]
+    endpoint["compat"] = {
+        "maxTokensField": "max_completion_tokens",
+        "requiresToolResultName": True,
+        "requiresAssistantAfterToolResult": True,
+        "requiresThinkingAsText": True,
+        "requiresReasoningContentOnAssistantMessages": True,
+        "thinkingFormat": "moonshot",
+        "zaiToolStream": True,
+        "cacheControlFormat": "anthropic",
+    }
+    path = tmp_path / "models.json"
+    path.write_text(json.dumps(raw), encoding="utf-8")
+
+    registry = load_model_registry_from_file(path)
+    endpoint_contract = registry.get_endpoint("custom", "openai-completions")
+
+    assert endpoint_contract is not None
+    assert endpoint_contract.dialect.to_raw() == {
+        "maxOutputTokensField": "max_completion_tokens",
+        "tools": {
+            "resultNameRequired": True,
+            "assistantBridgeRequired": True,
+            "streamFlag": True,
+        },
+        "reasoning": {
+            "wireFormat": "moonshot",
+            "thinkingAsText": True,
+            "assistantContentRequired": True,
+        },
+        "cache": {"controlFormat": "anthropic"},
+    }
+    endpoint_raw = endpoint_contract.to_raw()
+    assert "dialect" not in endpoint_raw
 
 
 def test_model_registry_loads_explicit_protocol_into_compat_bridge(tmp_path) -> None:
@@ -244,6 +324,121 @@ def test_model_registry_loads_explicit_protocol_into_compat_bridge(tmp_path) -> 
     assert endpoint_contract.compat["reasoningEffortMap"] == {
         "off": None,
         "minimal": "low",
+    }
+
+
+def test_model_registry_loads_explicit_dialect_into_compat_bridge(tmp_path) -> None:
+    raw = _minimal_registry_raw(schema_version=2)
+    endpoint = raw["providers"]["custom"]["endpoints"]["openai-completions"]
+    endpoint["compat"] = {
+        "maxTokensField": "max_tokens",
+        "thinkingFormat": "openai",
+    }
+    endpoint["dialect"] = {
+        "maxOutputTokensField": "max_completion_tokens",
+        "tools": {
+            "resultNameRequired": True,
+            "assistantBridgeRequired": True,
+            "streamFlag": False,
+        },
+        "reasoning": {
+            "wireFormat": "moonshot",
+            "thinkingAsText": True,
+            "assistantContentRequired": True,
+        },
+        "cache": {"controlFormat": "anthropic"},
+    }
+    path = tmp_path / "models.v2.json"
+    path.write_text(json.dumps(raw), encoding="utf-8")
+
+    registry = load_model_registry_from_file(path)
+    endpoint_contract = registry.get_endpoint("custom", "openai-completions")
+
+    assert endpoint_contract is not None
+    assert endpoint_contract.dialect.to_raw() == endpoint["dialect"]
+    assert endpoint_contract.compat["maxTokensField"] == "max_completion_tokens"
+    assert endpoint_contract.compat["requiresToolResultName"] is True
+    assert endpoint_contract.compat["requiresAssistantAfterToolResult"] is True
+    assert endpoint_contract.compat["requiresThinkingAsText"] is True
+    assert (
+        endpoint_contract.compat["requiresReasoningContentOnAssistantMessages"]
+        is True
+    )
+    assert endpoint_contract.compat["thinkingFormat"] == "moonshot"
+    assert endpoint_contract.compat["zaiToolStream"] is False
+    assert endpoint_contract.compat["cacheControlFormat"] == "anthropic"
+
+
+def test_model_registry_preserves_explicit_dialect_on_to_raw(tmp_path) -> None:
+    raw = _minimal_registry_raw(schema_version=2)
+    endpoint = raw["providers"]["custom"]["endpoints"]["openai-completions"]
+    endpoint["dialect"] = {
+        "tools": {"resultNameRequired": True},
+        "reasoning": {"wireFormat": "moonshot"},
+    }
+    path = tmp_path / "models.v2.json"
+    path.write_text(json.dumps(raw), encoding="utf-8")
+
+    registry = load_model_registry_from_file(path)
+    endpoint_contract = registry.get_endpoint("custom", "openai-completions")
+
+    assert endpoint_contract is not None
+    effective_dialect = {
+        "maxOutputTokensField": "max_completion_tokens",
+        "tools": {"resultNameRequired": True},
+        "reasoning": {"wireFormat": "moonshot"},
+    }
+    assert endpoint_contract.dialect.to_raw() == effective_dialect
+    endpoint_raw = endpoint_contract.to_raw()
+    assert endpoint_raw["dialect"] == endpoint["dialect"]
+
+    roundtrip_path = tmp_path / "roundtrip.v2.json"
+    roundtrip_path.write_text(
+        json.dumps(
+            {
+                "schemaVersion": 2,
+                "providers": {
+                    "custom": {
+                        "endpoints": {
+                            "openai-completions": endpoint_raw,
+                        }
+                    }
+                },
+            }
+        ),
+        encoding="utf-8",
+    )
+    roundtrip_registry = load_model_registry_from_file(roundtrip_path)
+    roundtrip_endpoint = roundtrip_registry.get_endpoint(
+        "custom",
+        "openai-completions",
+    )
+
+    assert roundtrip_endpoint is not None
+    assert roundtrip_endpoint.dialect.to_raw() == effective_dialect
+    assert roundtrip_endpoint.compat["maxTokensField"] == "max_completion_tokens"
+    assert roundtrip_endpoint.compat["requiresToolResultName"] is True
+    assert roundtrip_endpoint.compat["thinkingFormat"] == "moonshot"
+
+
+def test_model_registry_to_raw_uses_replaced_dialect(tmp_path) -> None:
+    raw = _minimal_registry_raw(schema_version=2)
+    endpoint = raw["providers"]["custom"]["endpoints"]["openai-completions"]
+    endpoint["dialect"] = {"reasoning": {"wireFormat": "moonshot"}}
+    path = tmp_path / "models.v2.json"
+    path.write_text(json.dumps(raw), encoding="utf-8")
+
+    registry = load_model_registry_from_file(path)
+    endpoint_contract = registry.get_endpoint("custom", "openai-completions")
+
+    assert endpoint_contract is not None
+    updated_endpoint = replace(
+        endpoint_contract,
+        dialect=EndpointWireDialect.from_raw({"maxOutputTokensField": "max_tokens"}),
+    )
+
+    assert updated_endpoint.to_raw()["dialect"] == {
+        "maxOutputTokensField": "max_tokens"
     }
 
 
@@ -326,6 +521,75 @@ def test_model_registry_schema_rejects_invalid_protocol_effort_map() -> None:
     endpoint["protocol"] = {"reasoning": {"effortMap": {"minimal": 1}}}
 
     with pytest.raises(ValueError, match="string-or-null map"):
+        validate_model_registry_raw(raw)
+
+
+def test_model_registry_schema_rejects_unknown_dialect_key() -> None:
+    raw = _minimal_registry_raw(schema_version=2)
+    endpoint = raw["providers"]["custom"]["endpoints"]["openai-completions"]
+    endpoint["dialect"] = {"reasoning": {"wireFormatAlias": "moonshot"}}
+
+    with pytest.raises(ValueError, match="unknown keys"):
+        validate_model_registry_raw(raw)
+
+
+@pytest.mark.parametrize(
+    "dialect",
+    [
+        True,
+        {"tools": True},
+        {"reasoning": []},
+        {"cache": "anthropic"},
+    ],
+)
+def test_model_registry_schema_rejects_non_object_dialect_containers(
+    dialect: object,
+) -> None:
+    raw = _minimal_registry_raw(schema_version=2)
+    endpoint = raw["providers"]["custom"]["endpoints"]["openai-completions"]
+    endpoint["dialect"] = dialect
+
+    with pytest.raises(ValueError, match="must be an object"):
+        validate_model_registry_raw(raw)
+
+
+def test_model_registry_schema_rejects_invalid_dialect_bool() -> None:
+    raw = _minimal_registry_raw(schema_version=2)
+    endpoint = raw["providers"]["custom"]["endpoints"]["openai-completions"]
+    endpoint["dialect"] = {"tools": {"resultNameRequired": "yes"}}
+
+    with pytest.raises(ValueError, match="must be a boolean"):
+        validate_model_registry_raw(raw)
+
+
+def test_model_registry_schema_rejects_null_dialect_bool() -> None:
+    raw = _minimal_registry_raw(schema_version=2)
+    endpoint = raw["providers"]["custom"]["endpoints"]["openai-completions"]
+    endpoint["dialect"] = {"tools": {"resultNameRequired": None}}
+
+    with pytest.raises(ValueError, match="must be a boolean"):
+        validate_model_registry_raw(raw)
+
+
+@pytest.mark.parametrize(
+    "dialect",
+    [
+        {"maxOutputTokensField": ""},
+        {"maxOutputTokensField": 1024},
+        {"reasoning": {"wireFormat": ""}},
+        {"reasoning": {"wireFormat": None}},
+        {"cache": {"controlFormat": ""}},
+        {"cache": {"controlFormat": False}},
+    ],
+)
+def test_model_registry_schema_rejects_invalid_dialect_strings(
+    dialect: dict[str, object],
+) -> None:
+    raw = _minimal_registry_raw(schema_version=2)
+    endpoint = raw["providers"]["custom"]["endpoints"]["openai-completions"]
+    endpoint["dialect"] = dialect
+
+    with pytest.raises(ValueError, match="must be a non-empty string"):
         validate_model_registry_raw(raw)
 
 
@@ -425,6 +689,81 @@ def test_layered_model_registry_rejects_v1_overlay_protocol(tmp_path) -> None:
                   "api": "openai-completions",
                   "protocol": {
                     "roles": {"developer": "unsupported"}
+                  },
+                  "models": {
+                    "model-a": {
+                      "capabilities": {
+                        "input": ["text"],
+                        "output": ["text"]
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+        """,
+        encoding="utf-8",
+    )
+
+    with pytest.raises(ValueError, match="requires schemaVersion 2"):
+        load_layered_model_registry(user_dir=user_dir)
+
+
+def test_layered_model_registry_loads_v2_overlay_dialect(tmp_path) -> None:
+    user_dir = tmp_path / "models"
+    user_dir.mkdir()
+    (user_dir / "custom.json").write_text(
+        """
+        {
+          "schemaVersion": 2,
+          "providers": {
+            "custom": {
+              "endpoints": {
+                "openai-completions": {
+                  "api": "openai-completions",
+                  "dialect": {
+                    "reasoning": {"wireFormat": "moonshot"}
+                  },
+                  "models": {
+                    "model-a": {
+                      "capabilities": {
+                        "input": ["text"],
+                        "output": ["text"]
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+        """,
+        encoding="utf-8",
+    )
+
+    registry = load_layered_model_registry(user_dir=user_dir)
+    endpoint = registry.get_endpoint("custom", "openai-completions")
+
+    assert endpoint is not None
+    assert endpoint.dialect.reasoning.wire_format == "moonshot"
+
+
+def test_layered_model_registry_rejects_v1_overlay_dialect(tmp_path) -> None:
+    user_dir = tmp_path / "models"
+    user_dir.mkdir()
+    (user_dir / "custom.json").write_text(
+        """
+        {
+          "schemaVersion": 1,
+          "providers": {
+            "custom": {
+              "endpoints": {
+                "openai-completions": {
+                  "api": "openai-completions",
+                  "dialect": {
+                    "reasoning": {"wireFormat": "moonshot"}
                   },
                   "models": {
                     "model-a": {
