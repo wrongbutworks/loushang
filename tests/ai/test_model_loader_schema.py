@@ -1,14 +1,195 @@
 from __future__ import annotations
 
+from typing import Any
+
 import pytest
 
-from loushang.ai.model.loader import load_model_registry, validate_model_registry_raw
+from loushang.ai.model.loader import (
+    load_layered_model_registry,
+    load_model_registry,
+    load_model_registry_from_directory,
+    load_model_registry_from_file,
+    validate_model_registry_raw,
+)
+
+
+def _minimal_registry_raw(*, schema_version: int | None = 1) -> dict[str, Any]:
+    raw: dict[str, Any] = {
+        "providers": {
+            "custom": {
+                "endpoints": {
+                    "openai-completions": {
+                        "api": "openai-completions",
+                        "models": {
+                            "model-a": {
+                                "capabilities": {
+                                    "input": ["text"],
+                                    "output": ["text"],
+                                }
+                            }
+                        },
+                    }
+                }
+            }
+        }
+    }
+    if schema_version is not None:
+        raw["schemaVersion"] = schema_version
+    return raw
 
 
 def test_builtin_model_registry_matches_schema() -> None:
     registry = load_model_registry()
 
-    assert registry.list_models()
+    assert registry.get_model("moonshot", "kimi-code-anthropic", "kimi-for-coding")
+
+
+def test_model_registry_schema_accepts_implicit_v1_catalog() -> None:
+    raw = _minimal_registry_raw(schema_version=None)
+
+    validate_model_registry_raw(raw)
+
+
+def test_model_registry_schema_accepts_explicit_v1_catalog() -> None:
+    raw = _minimal_registry_raw(schema_version=1)
+
+    validate_model_registry_raw(raw)
+
+
+def test_model_registry_schema_loads_v2_catalog_file(tmp_path) -> None:
+    path = tmp_path / "models.v2.json"
+    path.write_text(
+        """
+        {
+          "schemaVersion": 2,
+          "providers": {
+            "custom": {
+              "endpoints": {
+                "openai-completions": {
+                  "api": "openai-completions",
+                  "models": {
+                    "model-a": {
+                      "capabilities": {
+                        "input": ["text"],
+                        "output": ["text"],
+                        "stream": true
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+        """,
+        encoding="utf-8",
+    )
+
+    registry = load_model_registry_from_file(path)
+
+    model = registry.get_model("custom", "openai-completions", "model-a")
+    assert model.supports_stream is True
+
+
+def test_model_registry_schema_loads_v2_catalog_directory(tmp_path) -> None:
+    path = tmp_path / "catalog"
+    path.mkdir()
+    (path / "models.v2.json").write_text(
+        """
+        {
+          "schemaVersion": 2,
+          "providers": {
+            "custom": {
+              "endpoints": {
+                "openai-completions": {
+                  "api": "openai-completions",
+                  "models": {
+                    "model-a": {
+                      "capabilities": {
+                        "input": ["text"],
+                        "output": ["text"]
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+        """,
+        encoding="utf-8",
+    )
+
+    registry = load_model_registry_from_directory(path)
+
+    assert registry.get_model("custom", "openai-completions", "model-a")
+
+
+def test_model_registry_schema_rejects_unknown_version() -> None:
+    raw = _minimal_registry_raw(schema_version=3)
+
+    with pytest.raises(ValueError, match="unsupported models registry schemaVersion"):
+        validate_model_registry_raw(raw)
+
+
+def test_model_registry_schema_rejects_non_integer_version() -> None:
+    raw = _minimal_registry_raw(schema_version=None)
+    raw["schemaVersion"] = "2"
+
+    with pytest.raises(ValueError, match="schemaVersion must be an integer"):
+        validate_model_registry_raw(raw)
+
+
+def test_layered_model_registry_loads_v2_overlay_without_version_stamping(tmp_path) -> None:
+    user_dir = tmp_path / "models"
+    user_dir.mkdir()
+    (user_dir / "custom.json").write_text(
+        """
+        {
+          "schemaVersion": 2,
+          "providers": {
+            "custom": {
+              "endpoints": {
+                "openai-completions": {
+                  "api": "openai-completions",
+                  "models": {
+                    "model-a": {
+                      "capabilities": {
+                        "input": ["text"],
+                        "output": ["text"]
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+        """,
+        encoding="utf-8",
+    )
+
+    registry = load_layered_model_registry(user_dir=user_dir)
+
+    assert registry.get_model("custom", "openai-completions", "model-a")
+    assert registry.get_model("moonshot", "kimi-code-anthropic", "kimi-for-coding")
+
+
+def test_layered_model_registry_rejects_unknown_overlay_version(tmp_path) -> None:
+    user_dir = tmp_path / "models"
+    user_dir.mkdir()
+    (user_dir / "custom.json").write_text(
+        """
+        {
+          "schemaVersion": 99,
+          "providers": {}
+        }
+        """,
+        encoding="utf-8",
+    )
+
+    with pytest.raises(ValueError, match="unsupported models registry schemaVersion"):
+        load_layered_model_registry(user_dir=user_dir)
 
 
 def test_model_registry_schema_rejects_unknown_compat_key() -> None:

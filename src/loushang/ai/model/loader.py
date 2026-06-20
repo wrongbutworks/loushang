@@ -62,10 +62,13 @@ ALLOWED_PRICING_KEYS = frozenset(
 ALLOWED_AUTH_KEYS = frozenset(
     {"kind", "apiKeyEnv", "apiKeyEnvs", "header", "prefix", "extraHeaders"}
 )
+DEFAULT_SCHEMA_VERSION = 1
+SUPPORTED_SCHEMA_VERSIONS = frozenset({1, 2})
 
 
 def validate_model_registry_raw(raw: dict[str, Any]) -> None:
     root = _require_mapping(raw, "<root>")
+    _schema_version(root)
     providers = _require_mapping(root.get("providers"), "providers")
     for provider_id, provider_raw in providers.items():
         provider_path = f"providers.{provider_id}"
@@ -143,6 +146,24 @@ def _validate_optional_mapping(value: object, path: str) -> None:
 def _require_str(value: object, path: str) -> str:
     if not isinstance(value, str) or not value:
         raise ValueError(f"models registry field must be a non-empty string: {path}")
+    return value
+
+
+def _schema_version(raw: dict[str, Any]) -> int:
+    if "schemaVersion" not in raw:
+        return DEFAULT_SCHEMA_VERSION
+    value = raw["schemaVersion"]
+    if not isinstance(value, int) or isinstance(value, bool):
+        raise ValueError(
+            "models registry schemaVersion must be an integer: "
+            "<root>.schemaVersion"
+        )
+    if value not in SUPPORTED_SCHEMA_VERSIONS:
+        supported = ", ".join(str(version) for version in sorted(SUPPORTED_SCHEMA_VERSIONS))
+        raise ValueError(
+            f"unsupported models registry schemaVersion: {value}; "
+            f"supported versions: {supported}"
+        )
     return value
 
 
@@ -440,7 +461,10 @@ def _load_directory_raw(path: Path) -> dict[str, Any] | None:
     merged: dict[str, Any] = {}
     for child in sorted(path.glob("*.json")):
         raw = _load_json_file(child)
-        merged = _deep_merge_dict(merged, raw)
+        _schema_version(raw)
+        mergeable_raw = dict(raw)
+        mergeable_raw.pop("schemaVersion", None)
+        merged = _deep_merge_dict(merged, mergeable_raw)
     return merged if merged else None
 
 
