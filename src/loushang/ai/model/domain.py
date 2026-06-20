@@ -16,6 +16,7 @@ from loushang.ai.model.compat_schema import (
 
 Modality = Literal["text", "image", "video", "audio", "vector"]
 ALLOWED_MODALITIES: tuple[Modality, ...] = ("text", "image", "video", "audio", "vector")
+_CONTRACT_OVERRIDE_UNSET = object()
 
 
 class SupportStatus(str, Enum):
@@ -1000,6 +1001,12 @@ class Model:
     region: str | None = None
     lane: str | None = None
     preferred_endpoint: bool = False
+    _endpoint_ref: Endpoint | None = field(
+        default=None,
+        init=False,
+        compare=False,
+        repr=False,
+    )
     auth: Auth | None = None
     _auth_inherited: bool = False
     name: str | None = None
@@ -1011,6 +1018,12 @@ class Model:
     capabilities: Capabilities = field(default_factory=Capabilities)
     pricing: Pricing | None = None
     compat: Compat = field(default_factory=Compat)
+    _compat_overrides: Compat = field(
+        default_factory=Compat,
+        init=False,
+        compare=False,
+        repr=False,
+    )
     defaults: Defaults = field(default_factory=Defaults)
     transport: EndpointTransport = field(default_factory=EndpointTransport)
     _transport_own_raw: dict[str, object] | None = field(
@@ -1040,12 +1053,27 @@ class Model:
         compare=False,
         repr=False,
     )
+    _capabilities_overrides: Capabilities | None = field(
+        default=None,
+        init=False,
+        compare=False,
+        repr=False,
+    )
 
     def __post_init__(self, provider: str | None, endpoint: str | None) -> None:
         if self.upstream_id is not None and (
             not isinstance(self.upstream_id, str) or not self.upstream_id.strip()
         ):
             raise ValueError("model upstream_id must be a non-empty string")
+        if not isinstance(self.compat, Compat):
+            object.__setattr__(self, "compat", Compat.from_raw(self.compat))
+        object.__setattr__(self, "_compat_overrides", Compat.from_raw(self.compat))
+        if self.capabilities != Capabilities():
+            object.__setattr__(
+                self,
+                "_capabilities_overrides",
+                self.capabilities,
+            )
         if self._transport_own_raw is None and self._transport_legacy_raw is None:
             object.__setattr__(self, "_transport_own_raw", self.transport.to_raw())
         if self._routing_own_raw is None and self._routing_legacy_raw is None:
@@ -1117,6 +1145,36 @@ class Model:
     def supports_image_output(self) -> bool:
         return self.capabilities.supports_image_output
 
+    @property
+    def contract_compat(self) -> Compat:
+        return Compat.from_raw(self._compat_overrides)
+
+    @property
+    def contract_capabilities(self) -> Capabilities | None:
+        return self._capabilities_overrides
+
+    def with_contract_overrides(
+        self,
+        *,
+        compat: Mapping[str, object] | None | object = _CONTRACT_OVERRIDE_UNSET,
+        capabilities: Capabilities | None | object = _CONTRACT_OVERRIDE_UNSET,
+    ) -> "Model":
+        model = replace(self)
+        object.__setattr__(model, "_endpoint_ref", self._endpoint_ref)
+        resolved_compat = (
+            self.contract_compat
+            if compat is _CONTRACT_OVERRIDE_UNSET
+            else Compat.from_raw(cast(Mapping[str, object] | None, compat))
+        )
+        resolved_capabilities = (
+            self.contract_capabilities
+            if capabilities is _CONTRACT_OVERRIDE_UNSET
+            else cast(Capabilities | None, capabilities)
+        )
+        object.__setattr__(model, "_compat_overrides", resolved_compat)
+        object.__setattr__(model, "_capabilities_overrides", resolved_capabilities)
+        return model
+
     def with_endpoint(self, endpoint: "Endpoint") -> "Model":
         inherits_auth = self.auth is None or self._auth_inherited
         auth = endpoint.auth if inherits_auth else self.auth
@@ -1156,7 +1214,7 @@ class Model:
         routing = EndpointRouting.from_raw(
             _deep_merge_raw_mapping(endpoint.routing.to_raw(), model_routing_raw)
         )
-        return replace(
+        model = replace(
             self,
             _endpoint_key=endpoint.endpoint_key,
             api=endpoint.api,
@@ -1184,6 +1242,14 @@ class Model:
             if self._routing_legacy_raw is not None
             else None,
         )
+        object.__setattr__(model, "_compat_overrides", self.contract_compat)
+        object.__setattr__(
+            model,
+            "_capabilities_overrides",
+            self.contract_capabilities,
+        )
+        object.__setattr__(model, "_endpoint_ref", endpoint)
+        return model
 
     async def stream(self, context, options=None, *, registry=None):
         from loushang.ai.api.streaming import stream

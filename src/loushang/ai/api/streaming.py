@@ -1,10 +1,16 @@
 from __future__ import annotations
 
+from types import SimpleNamespace
+
 from loushang.ai.api_registry import get_default_api_provider_registry
 from loushang.ai.bootstrap import register_builtin_ai_providers
 from loushang.ai.context import normalize_context
-from loushang.ai.model.registry import resolve_model_api
 from loushang.ai.options import PairingMode
+from loushang.ai.provider import resolve_request_for_model
+from loushang.ai.provider.invocation import (
+    call_api_provider_stream,
+    call_api_provider_stream_simple,
+)
 from loushang.ai.types import ImagePart, ToolResultMessage, UserMessage
 
 
@@ -35,8 +41,9 @@ def _requests_thinking(normalized_context: dict, options) -> bool:
     return False
 
 
-def _validate_capability(model, normalized_context: dict, options) -> None:
-    capabilities = getattr(model, "capabilities", None)
+def _validate_capability(
+    model, capabilities, normalized_context: dict, options
+) -> None:
     supports_image_input = bool(getattr(capabilities, "supports_image_input", False))
     if _has_image_input(normalized_context) and not supports_image_input:
         raise ValueError(f"Model {model.id!r} does not support image input")
@@ -64,16 +71,26 @@ def _resolve_pairing_mode(options) -> PairingMode:
     return "repair"
 
 
+def _normalization_model(model, resolved):
+    return SimpleNamespace(
+        api=resolved.api,
+        provider_id=resolved.provider,
+        id=model.id,
+    )
+
+
 async def stream(model, context, options=None, *, registry=None):
-    api = resolve_model_api(model)
+    resolved = resolve_request_for_model(model, options=options)
     normalized = normalize_context(
         context,
-        model=model,
+        model=_normalization_model(model, resolved),
         pairing_mode=_resolve_pairing_mode(options),
     )
-    _validate_capability(model, normalized, options)
-    provider = _resolve_api_provider_registry(registry).get_api_provider(api)
-    return await provider.stream(model, normalized, options)
+    _validate_capability(model, resolved.capabilities, normalized, options)
+    provider = _resolve_api_provider_registry(registry).get_api_provider(resolved.api)
+    return await call_api_provider_stream(
+        provider, model, normalized, options, resolved
+    )
 
 
 async def complete(model, context, options=None, *, registry=None):
@@ -82,15 +99,21 @@ async def complete(model, context, options=None, *, registry=None):
 
 
 async def stream_simple(model, context, options=None, *, registry=None):
-    api = resolve_model_api(model)
+    resolved = resolve_request_for_model(model, options=options)
     normalized = normalize_context(
         context,
-        model=model,
+        model=_normalization_model(model, resolved),
         pairing_mode=_resolve_pairing_mode(options),
     )
-    _validate_capability(model, normalized, options)
-    provider = _resolve_api_provider_registry(registry).get_api_provider(api)
-    return await provider.stream_simple(model, normalized, options)
+    _validate_capability(model, resolved.capabilities, normalized, options)
+    provider = _resolve_api_provider_registry(registry).get_api_provider(resolved.api)
+    return await call_api_provider_stream_simple(
+        provider,
+        model,
+        normalized,
+        options,
+        resolved,
+    )
 
 
 async def complete_simple(model, context, options=None, *, registry=None):

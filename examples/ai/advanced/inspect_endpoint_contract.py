@@ -1,17 +1,19 @@
-"""Inspect typed endpoint contract facts from the built-in catalog.
+"""Inspect typed provider request facts from the built-in catalog.
 
 This advanced example is offline. It reads the model catalog and prints the
-typed endpoint-default protocol, wire dialect, transport, and routing contracts
-alongside the remaining legacy compat keys. Model-level effective protocol and
-dialect facts still flow through legacy compat during the migration.
+typed endpoint-default protocol, wire dialect, transport, and routing contracts,
+then shows the model-effective request contract and adapter-effective request
+facts produced by provider resolution.
 """
 
 from __future__ import annotations
 
 import json
+import re
 from typing import Any
 
-from loushang.ai.model import load_builtin_model_registry
+from loushang.ai.model import Endpoint, load_builtin_model_registry
+from loushang.ai.provider import resolve_request_for_model
 
 DEFAULT_PROVIDER = "moonshot"
 DEFAULT_ENDPOINT = "openai-completions"
@@ -45,10 +47,40 @@ def inspect_endpoint_contract(
         model = registry.find_model(provider_id, endpoint_id, model_id)
         if model is None:
             raise KeyError((provider_id, endpoint_id, model_id))
+        resolved = resolve_request_for_model(
+            model,
+            registry=registry,
+            env=_offline_template_env(endpoint),
+        )
         contract["model"] = model_id
-        contract["modelEffectiveLegacyCompat"] = dict(sorted(model.compat.items()))
-        contract["modelEffectiveLegacyCompatKeys"] = sorted(model.compat)
+        contract["requestProtocolScope"] = "model-effective"
+        contract["requestProtocol"] = resolved.protocol.to_raw()
+        contract["requestDialectScope"] = "model-effective"
+        contract["requestDialect"] = resolved.dialect.to_raw()
+        contract["adapterProtocolScope"] = "adapter-effective"
+        contract["adapterProtocol"] = resolved.adapter_protocol.to_raw()
+        contract["adapterDialectScope"] = "adapter-effective"
+        contract["adapterDialect"] = resolved.adapter_dialect.to_raw()
+        contract["requestTransportScope"] = "model-effective"
+        contract["requestTransport"] = resolved.transport.to_raw()
+        contract["requestRoutingScope"] = "model-effective"
+        contract["requestRouting"] = resolved.routing.to_raw()
     return contract
+
+
+def _offline_template_env(endpoint: Endpoint) -> dict[str, str]:
+    env: dict[str, str] = {}
+    for value in _endpoint_template_values(endpoint):
+        for name in re.findall(r"\{([A-Z_][A-Z0-9_]*)\}", value):
+            env.setdefault(name, f"example-{name.lower()}")
+    return env
+
+
+def _endpoint_template_values(endpoint: Endpoint) -> tuple[str, ...]:
+    values: list[str] = []
+    if endpoint.base_url:
+        values.append(endpoint.base_url)
+    return tuple(values)
 
 
 def main() -> None:

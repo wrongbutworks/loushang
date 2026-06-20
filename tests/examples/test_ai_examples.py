@@ -121,7 +121,9 @@ def test_usage_online_example_prints_unknown_cost(capsys, monkeypatch) -> None:
     assert asyncio.run(module.main()) == 0
 
     cost_line = next(
-        line for line in capsys.readouterr().out.splitlines() if line.startswith("cost: ")
+        line
+        for line in capsys.readouterr().out.splitlines()
+        if line.startswith("cost: ")
     )
     assert json.loads(cost_line.removeprefix("cost: ")) == {"known": False}
 
@@ -206,9 +208,26 @@ def test_advanced_inspect_endpoint_contract_formats_protocol_facts(
     assert contract["routing"] == {
         "requestOverrides": {"openrouter": {"only": ["anthropic"]}}
     }
-    assert contract["modelEffectiveLegacyCompat"]["supportsReasoningEffort"] is True
+    assert contract["requestProtocolScope"] == "model-effective"
+    assert contract["requestProtocol"]["roles"]["developer"] == "unsupported"
+    assert contract["requestProtocol"]["streaming"]["reasoningDelta"] == "supported"
+    assert contract["requestProtocol"]["reasoning"]["effort"] == "supported"
+    assert contract["requestDialectScope"] == "model-effective"
+    assert contract["requestDialect"]["maxOutputTokensField"] == "max_completion_tokens"
+    assert contract["requestDialect"]["reasoning"]["wireFormat"] == "moonshot"
+    assert contract["adapterProtocolScope"] == "adapter-effective"
+    assert contract["adapterProtocol"]["roles"]["developer"] == "unsupported"
+    assert contract["adapterProtocol"]["reasoning"]["effort"] == "supported"
+    assert contract["adapterDialectScope"] == "adapter-effective"
+    assert contract["adapterDialect"]["maxOutputTokensField"] == "max_completion_tokens"
+    assert contract["adapterDialect"]["reasoning"]["wireFormat"] == "moonshot"
+    assert contract["requestTransportScope"] == "model-effective"
+    assert contract["requestTransport"] == {"kind": "httpx"}
+    assert contract["requestRoutingScope"] == "model-effective"
+    assert contract["requestRouting"] == {
+        "requestOverrides": {"openrouter": {"only": ["anthropic"]}}
+    }
     assert "thinkingFormat" in contract["legacyCompatKeys"]
-    assert "supportsStreamReasoningDelta" in contract["modelEffectiveLegacyCompatKeys"]
 
     module.main()
     payload = json.loads(capsys.readouterr().out)
@@ -216,6 +235,10 @@ def test_advanced_inspect_endpoint_contract_formats_protocol_facts(
     assert payload["dialectScope"] == "endpoint-default"
     assert payload["transportScope"] == "endpoint-default"
     assert payload["routingScope"] == "endpoint-default"
+    assert payload["requestProtocolScope"] == "model-effective"
+    assert payload["requestDialectScope"] == "model-effective"
+    assert payload["adapterProtocolScope"] == "adapter-effective"
+    assert payload["adapterDialectScope"] == "adapter-effective"
 
 
 def test_advanced_inspect_endpoint_contract_runs_against_builtin_catalog() -> None:
@@ -239,8 +262,29 @@ def test_advanced_inspect_endpoint_contract_runs_against_builtin_catalog() -> No
     }
     assert contract["transport"] == {}
     assert contract["routing"] == {}
-    assert contract["modelEffectiveLegacyCompat"]["supportsReasoningEffort"] is True
-    assert "supportsStreamReasoningDelta" in contract["modelEffectiveLegacyCompatKeys"]
+    assert contract["requestProtocol"]["reasoning"]["effort"] == "supported"
+    assert contract["adapterProtocol"]["reasoning"]["effort"] == "supported"
+
+
+def test_advanced_inspect_endpoint_contract_handles_templated_base_url() -> None:
+    module = _load_module(
+        Path("examples/ai/advanced/inspect_endpoint_contract.py"),
+        "examples_ai_advanced_inspect_endpoint_contract_template",
+    )
+
+    contract = module.inspect_endpoint_contract(
+        "cloudflare-workers-ai",
+        "openai-completions",
+        "@cf/google/gemma-4-26b-a4b-it",
+    )
+
+    assert contract["provider"] == "cloudflare-workers-ai"
+    assert contract["endpoint"] == "openai-completions"
+    assert contract["model"] == "@cf/google/gemma-4-26b-a4b-it"
+    assert contract["requestProtocolScope"] == "model-effective"
+    assert contract["requestDialectScope"] == "model-effective"
+    assert contract["adapterProtocolScope"] == "adapter-effective"
+    assert contract["adapterDialectScope"] == "adapter-effective"
 
 
 def test_advanced_custom_catalog_uses_typed_upstream_binding() -> None:

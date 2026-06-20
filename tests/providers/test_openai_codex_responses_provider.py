@@ -13,6 +13,7 @@ from loushang.ai.model.registry import (
     get_default_model_registry,
 )
 from loushang.ai.options import OpenAICodexResponsesOptions
+from loushang.ai.provider import ResolvedRequest
 from loushang.ai.providers.openai_codex_responses import OpenAICodexResponsesProvider
 from loushang.ai.types import Tool, UserMessage
 
@@ -310,6 +311,41 @@ def test_openai_codex_responses_prefers_oauth_account_binding_over_token_parsing
 
     assert client.last_headers["Authorization"] == "Bearer not-a-jwt"
     assert client.last_headers["chatgpt-account-id"] == "acc_from_oauth"
+
+
+def test_openai_codex_responses_uses_resolved_request_account_binding() -> None:
+    client = _FakeCodexClient(
+        events=[
+            {"type": "response.completed", "response": {"status": "completed"}},
+        ]
+    )
+    provider = OpenAICodexResponsesProvider(client=client)
+    request = ResolvedRequest(
+        provider="openai-codex",
+        endpoint="openai-codex-responses",
+        api="openai-codex-responses",
+        base_url=None,
+        headers={"Authorization": "Bearer not-a-jwt"},
+        auth_account_id="acc_from_resolved",
+    )
+
+    asyncio.run(
+        _collect_parts(
+            provider._stream_raw_parts(
+                _Model(reasoning=False),
+                {
+                    "messages": [
+                        UserMessage(role="user", content="hello", timestamp=0.0)
+                    ],
+                },
+                OpenAICodexResponsesOptions(),
+                request,
+            )
+        )
+    )
+
+    assert client.last_headers["Authorization"] == "Bearer not-a-jwt"
+    assert client.last_headers["chatgpt-account-id"] == "acc_from_resolved"
 
 
 def test_openai_codex_responses_header_override_keeps_account_consistent() -> None:

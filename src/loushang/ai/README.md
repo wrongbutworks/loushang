@@ -312,7 +312,7 @@ prices remain valid and produce a zero cost.
 
 - `Model`
 - runtime `options`
-- auth / compat / defaults
+- auth / typed protocol/dialect / capabilities / defaults
 
 收敛为 provider 侧可直接消费的请求解析结果。
 
@@ -323,11 +323,30 @@ prices remain valid and produce a zero cost.
 - `api`
 - `base_url`
 - `headers`
-- `compat`
+- `protocol`
+- `dialect`
+- `capabilities`
+- `adapter_protocol`
+- `adapter_dialect`
+- `adapter_compat`
 - `defaults`
+- `transport`
+- `routing`
 - `max_tokens`
 - `reasoning_effort`
 - `temperature`
+
+AIQ-012 起，`ResolvedEndpoint` / `ResolvedRequest` 的推荐字段改为 typed
+`protocol` / `dialect` / `capabilities` / `transport` / `routing`；构造参数
+仍兼容接受 `compat`，但它只是已弃用的 `adapter_compat` 初始化别名。旧的
+`.compat` 也只保留为只读、已弃用的 `adapter_compat` 读取别名。
+`protocol` / `dialect` 只表达 catalog / programmatic
+contract 中显式声明或由 legacy compat 迁移得到的事实；provider / base URL
+推断出的 runtime heuristic 不会投射为 public contract。
+
+provider adapter 侧的执行事实单独放在 `adapter_protocol` / `adapter_dialect` /
+`adapter_compat`。其中 `adapter_compat` 是核心 adapter 迁移完成前的内部桥接字段；
+新代码应优先依赖 typed `adapter_protocol` / `adapter_dialect`。
 
 ## 最小调用链
 

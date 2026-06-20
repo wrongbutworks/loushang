@@ -5,6 +5,7 @@ from typing import Any, Protocol, runtime_checkable
 from loushang.ai.event_stream import AssistantMessageEventStream
 from loushang.ai.model import Model
 from loushang.ai.options import ModelCallOptions
+from loushang.ai.provider.resolution import ResolvedRequest
 from loushang.ai.types import Context
 
 ProviderContext = Context | dict[str, Any]
@@ -27,4 +28,25 @@ class ApiProvider(Protocol):
         model: Model,
         context: ProviderContext,
         options: ProviderOptions,
+    ) -> AssistantMessageEventStream: ...
+
+
+@runtime_checkable
+class RequestAwareApiProvider(Protocol):
+    api: str
+
+    async def stream(
+        self,
+        model: Model,
+        context: ProviderContext,
+        options: ProviderOptions,
+        request: ResolvedRequest | None = None,
+    ) -> AssistantMessageEventStream: ...
+
+    async def stream_simple(
+        self,
+        model: Model,
+        context: ProviderContext,
+        options: ProviderOptions,
+        request: ResolvedRequest | None = None,
     ) -> AssistantMessageEventStream: ...

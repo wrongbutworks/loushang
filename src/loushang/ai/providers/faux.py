@@ -2,15 +2,21 @@ from __future__ import annotations
 
 from loushang.ai.context import ensure_normalized_context
 from loushang.ai.event_stream import AssistantMessageEventStream, RawAssembler
-from loushang.ai.model.registry import resolve_model_api
 from loushang.ai.options import PairingMode
+from loushang.ai.provider import resolve_provider_request
 from loushang.ai.types import TextPart, ToolResultMessage
 
 
 class FauxProvider:
     api = "anthropic-messages"
 
-    async def stream(self, model, context, options):
+    async def stream(self, model, context, options, request=None):
+        resolved = resolve_provider_request(
+            self.api,
+            model,
+            options=options,
+            request=request,
+        )
         pairing_mode: PairingMode = "repair"
         if options is not None:
             candidate = getattr(options, "pairing_mode", "repair")
@@ -24,7 +30,7 @@ class FauxProvider:
         stream = AssistantMessageEventStream()
         assembler = RawAssembler(
             stream=stream,
-            api=resolve_model_api(model),
+            api=resolved.api,
             provider=model.provider_id,
             model=model.id,
             pricing=getattr(model, "pricing", None),
@@ -63,8 +69,8 @@ class FauxProvider:
         assembler.feed({"type": "response_done"})
         return stream
 
-    async def stream_simple(self, model, context, options):
-        return await self.stream(model, context, options)
+    async def stream_simple(self, model, context, options, request=None):
+        return await self.stream(model, context, options, request)
 
     def _extract_tool_result_text(self, messages: list[object]) -> str | None:
         for message in reversed(messages):

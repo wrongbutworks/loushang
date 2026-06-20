@@ -9,7 +9,7 @@ from loushang.ai.context import ensure_normalized_context
 from loushang.ai.event_stream import AssistantMessageEventStream, RawAssembler
 from loushang.ai.options import PairingMode
 from loushang.ai.output_budget import resolve_output_token_budget
-from loushang.ai.provider import resolve_request_for_model
+from loushang.ai.provider import resolve_provider_request
 from loushang.ai.provider.cancellation import is_signal_cancelled
 from loushang.ai.provider.errors import provider_error_part
 from loushang.ai.providers.openai_responses_shared import (
@@ -28,8 +28,13 @@ class AzureOpenAIResponsesProvider:
     def __init__(self, *, client: Any | None = None) -> None:
         self._client = client
 
-    async def stream(self, model, context, options):
-        resolved = resolve_request_for_model(model, options=options)
+    async def stream(self, model, context, options, request=None):
+        resolved = resolve_provider_request(
+            self.api,
+            model,
+            options=options,
+            request=request,
+        )
         stream = AssistantMessageEventStream()
         assembler = RawAssembler(
             stream=stream,
@@ -45,7 +50,9 @@ class AzureOpenAIResponsesProvider:
                 assembler.feed({"type": "aborted"})
                 return
             try:
-                async for part in self._stream_raw_parts(model, context, options):
+                async for part in self._stream_raw_parts(
+                    model, context, options, resolved
+                ):
                     if is_signal_cancelled(signal):
                         assembler.feed({"type": "aborted"})
                         return
@@ -56,10 +63,12 @@ class AzureOpenAIResponsesProvider:
         stream.attach_task(asyncio.create_task(_run()))
         return stream
 
-    async def stream_simple(self, model, context, options):
-        return await self.stream(model, context, options)
+    async def stream_simple(self, model, context, options, request=None):
+        return await self.stream(model, context, options, request)
 
-    async def _stream_raw_parts(self, model, context, options) -> AsyncIterator[dict]:
+    async def _stream_raw_parts(
+        self, model, context, options, request=None
+    ) -> AsyncIterator[dict]:
         def _pairing_mode() -> PairingMode:
             if options is None:
                 return "repair"
@@ -73,8 +82,13 @@ class AzureOpenAIResponsesProvider:
             model=model,
             pairing_mode=_pairing_mode(),
         )
-        resolved = resolve_request_for_model(model, options=options)
-        compat = dict(getattr(resolved, "compat", {}) or {})
+        resolved = resolve_provider_request(
+            self.api,
+            model,
+            options=options,
+            request=request,
+        )
+        compat = dict(getattr(resolved, "adapter_compat", {}) or {})
 
         try:
             from openai import AsyncAzureOpenAI  # type: ignore
@@ -105,13 +119,17 @@ class AzureOpenAIResponsesProvider:
 
         params: dict[str, Any] = {
             "model": deployment_name,
-            "input": convert_responses_messages(model, normalized, compat),
+            "input": convert_responses_messages(
+                model,
+                normalized,
+                compat,
+                getattr(resolved, "capabilities", None),
+            ),
             "stream": True,
             "store": False,
             "max_output_tokens": resolve_output_token_budget(
                 model,
                 resolved,
-                options,
             ).value,
         }
         tools_src: list[Any] = []
@@ -126,9 +144,7 @@ class AzureOpenAIResponsesProvider:
         if reasoning_effort:
             params["reasoning"] = {"effort": reasoning_effort}
         reasoning_summary = (
-            getattr(options, "reasoning_summary", None)
-            if options is not None
-            else None
+            getattr(options, "reasoning_summary", None) if options is not None else None
         )
         if reasoning_summary:
             params.setdefault("reasoning", {})["summary"] = reasoning_summary
@@ -167,9 +183,7 @@ def _resolve_deployment_name(
     options: object | None,
 ) -> str:
     explicit = (
-        getattr(options, "azure_deployment_name", None)
-        if options is not None
-        else None
+        getattr(options, "azure_deployment_name", None) if options is not None else None
     )
     if isinstance(explicit, str) and explicit:
         return explicit

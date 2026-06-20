@@ -20,7 +20,7 @@
 `examples/ai/advanced/` 放协议观察、faux provider、本地 registry 注入这类高级样例，不作为第一次接入的推荐入口。
 
 - [advanced/inspect_endpoint_contract.py](advanced/inspect_endpoint_contract.py)
-  查看 endpoint 的 typed protocol/dialect/transport/routing facts 和仍然存在的 legacy compat keys
+  查看 endpoint 默认 facts 和模型最终 resolved request 的 typed contract
 - [advanced/custom_catalog.py](advanced/custom_catalog.py)
   从自定义 schema v2 catalog 读取 `upstreamId`，并查看最终 provider 请求绑定
 

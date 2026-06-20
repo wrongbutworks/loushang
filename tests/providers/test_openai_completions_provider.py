@@ -22,6 +22,7 @@ from loushang.ai.model.registry import (
     get_default_model_registry,
 )
 from loushang.ai.options import OpenAICompletionsOptions
+from loushang.ai.provider import ResolvedRequest
 from loushang.ai.providers.openai_completions import OpenAICompletionsProvider
 from loushang.ai.types import (
     AssistantMessage,
@@ -163,6 +164,81 @@ def test_openai_completions_payload_maps_user_image_assistant_toolcall_and_tool_
     assert _FakeAsyncOpenAI.last_create_kwargs["tool_choice"] == "required"
 
 
+def test_openai_completions_payload_uses_resolved_capabilities_for_images(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _fake_openai_module(monkeypatch)
+    _patch_resolved_request(
+        monkeypatch,
+        compat={},
+        reasoning_effort=None,
+        capabilities=Capabilities(input=("text", "image")),
+    )
+    provider = OpenAICompletionsProvider()
+    tool_result = ToolResultMessage(
+        role="toolResult",
+        tool_call_id="call_1",
+        tool_name="read",
+        content=[ImagePart(type="image", data="dG9vbA==", mime_type="image/png")],
+        is_error=False,
+        timestamp=0.0,
+    )
+
+    asyncio.run(
+        _collect_parts(
+            provider._stream_raw_parts(
+                _Model(input=("text",)),
+                {
+                    "messages": [
+                        UserMessage(
+                            role="user",
+                            content=[
+                                TextPart(type="text", text="look"),
+                                ImagePart(
+                                    type="image",
+                                    data="dXNlcg==",
+                                    mime_type="image/png",
+                                ),
+                            ],
+                            timestamp=0.0,
+                        ),
+                        tool_result,
+                    ],
+                },
+                OpenAICompletionsOptions(api_key="test-key"),
+            )
+        )
+    )
+
+    assert _FakeAsyncOpenAI.last_create_kwargs["messages"] == [
+        {
+            "role": "user",
+            "content": [
+                {"type": "text", "text": "look"},
+                {
+                    "type": "image_url",
+                    "image_url": {"url": "data:image/png;base64,dXNlcg=="},
+                },
+            ],
+        },
+        {
+            "role": "tool",
+            "tool_call_id": "call_1",
+            "content": "(see attached image)",
+        },
+        {
+            "role": "user",
+            "content": [
+                {"type": "text", "text": "Attached image(s) from tool result:"},
+                {
+                    "type": "image_url",
+                    "image_url": {"url": "data:image/png;base64,dG9vbA=="},
+                },
+            ],
+        },
+    ]
+
+
 def test_openai_completions_uses_upstream_model_id(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -179,7 +255,11 @@ def test_openai_completions_uses_upstream_model_id(
         _collect_parts(
             provider._stream_raw_parts(
                 _Model(id="openai/gpt-oss-120b_free"),
-                {"messages": [UserMessage(role="user", content="hello", timestamp=0.0)]},
+                {
+                    "messages": [
+                        UserMessage(role="user", content="hello", timestamp=0.0)
+                    ]
+                },
                 OpenAICompletionsOptions(api_key="test-key"),
             )
         )
@@ -189,28 +269,62 @@ def test_openai_completions_uses_upstream_model_id(
 
 
 def test_openai_completions_caps_model_max_tokens_default(
-	monkeypatch: pytest.MonkeyPatch,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-	_fake_openai_module(monkeypatch)
-	_patch_resolved_request(
-		monkeypatch,
-		compat={"maxTokensField": "max_tokens"},
-		reasoning_effort=None,
-		max_tokens=None,
-	)
-	provider = OpenAICompletionsProvider()
+    _fake_openai_module(monkeypatch)
+    _patch_resolved_request(
+        monkeypatch,
+        compat={"maxTokensField": "max_tokens"},
+        reasoning_effort=None,
+        max_tokens=None,
+    )
+    provider = OpenAICompletionsProvider()
 
-	asyncio.run(
-		_collect_parts(
-			provider._stream_raw_parts(
-				_Model(max_tokens=32768),
-				{"messages": [UserMessage(role="user", content="hello", timestamp=0.0)]},
-				OpenAICompletionsOptions(api_key="test-key"),
-			)
-		)
-	)
+    asyncio.run(
+        _collect_parts(
+            provider._stream_raw_parts(
+                _Model(max_tokens=32768),
+                {
+                    "messages": [
+                        UserMessage(role="user", content="hello", timestamp=0.0)
+                    ]
+                },
+                OpenAICompletionsOptions(api_key="test-key"),
+            )
+        )
+    )
 
-	assert _FakeAsyncOpenAI.last_create_kwargs["max_tokens"] == 32000
+    assert _FakeAsyncOpenAI.last_create_kwargs["max_tokens"] == 32000
+
+
+def test_openai_completions_uses_resolved_capability_max_tokens(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _fake_openai_module(monkeypatch)
+    _patch_resolved_request(
+        monkeypatch,
+        compat={"maxTokensField": "max_tokens"},
+        reasoning_effort=None,
+        max_tokens=None,
+        capabilities=Capabilities(max_tokens=2048),
+    )
+    provider = OpenAICompletionsProvider()
+
+    asyncio.run(
+        _collect_parts(
+            provider._stream_raw_parts(
+                _Model(max_tokens=1024),
+                {
+                    "messages": [
+                        UserMessage(role="user", content="hello", timestamp=0.0)
+                    ]
+                },
+                OpenAICompletionsOptions(api_key="test-key"),
+            )
+        )
+    )
+
+    assert _FakeAsyncOpenAI.last_create_kwargs["max_tokens"] == 2048
 
 
 def test_openai_completions_payload_respects_bridge_tool_name_developer_role_and_reasoning_effort(
@@ -299,6 +413,44 @@ def test_openai_completions_payload_respects_bridge_tool_name_developer_role_and
     assert _FakeAsyncOpenAI.last_create_kwargs["reasoning_effort"] == "high"
 
 
+def test_openai_completions_payload_uses_resolved_capabilities_for_reasoning(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _fake_openai_module(monkeypatch)
+    _patch_resolved_request(
+        monkeypatch,
+        compat={
+            "supportsDeveloperRole": True,
+            "supportsReasoningEffort": True,
+            "maxTokensField": "max_tokens",
+        },
+        reasoning_effort="high",
+        capabilities=Capabilities(reasoning=True),
+    )
+    provider = OpenAICompletionsProvider()
+
+    asyncio.run(
+        _collect_parts(
+            provider._stream_raw_parts(
+                _Model(reasoning=False),
+                {
+                    "system_prompt": "You reason carefully.",
+                    "messages": [
+                        UserMessage(role="user", content="hello", timestamp=0.0)
+                    ],
+                },
+                OpenAICompletionsOptions(api_key="test-key"),
+            )
+        )
+    )
+
+    assert _FakeAsyncOpenAI.last_create_kwargs["messages"][0] == {
+        "role": "developer",
+        "content": "You reason carefully.",
+    }
+    assert _FakeAsyncOpenAI.last_create_kwargs["reasoning_effort"] == "high"
+
+
 def test_openai_completions_payload_uses_typed_endpoint_dialect(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -349,7 +501,7 @@ def test_openai_completions_payload_uses_typed_endpoint_dialect(
                 thinking="plan",
                 thinking_signature="reasoning_content",
             ),
-            ToolCall(type="toolCall", id="call_1", name="calc", arguments={"x": 1})
+            ToolCall(type="toolCall", id="call_1", name="calc", arguments={"x": 1}),
         ],
         api="openai-completions",
         provider="typed",
@@ -972,28 +1124,50 @@ def _patch_resolved_request(
     base_url: str = "https://api.openai.test/v1",
     extra_headers: dict[str, str] | None = None,
     max_tokens: int | None = 1024,
+    capabilities: Capabilities | None = None,
     routing: EndpointRouting | None = None,
     transport: EndpointTransport | None = None,
     upstream_model_id: str | None = None,
 ) -> None:
-    def _resolve(_model, options=None):
+    def _resolve(provider_api, _model, *, options=None, request=None):
+        if request is not None:
+            if request.api != provider_api:
+                raise ValueError(
+                    f"Mismatched api: provider={provider_api!r} request.api={request.api!r}"
+                )
+            return request
         headers = {}
         api_key = getattr(options, "api_key", None) if options is not None else None
         if isinstance(api_key, str) and api_key:
             headers["Authorization"] = f"Bearer {api_key}"
         if extra_headers:
             headers.update(extra_headers)
-        return SimpleNamespace(
-            api=_model.endpoint_id,
-            headers=headers,
+        option_max_tokens = (
+            getattr(options, "max_tokens", None) if options is not None else None
+        )
+        resolved_max_tokens = (
+            max(1, option_max_tokens)
+            if isinstance(option_max_tokens, int)
+            else max_tokens
+        )
+        return ResolvedRequest(
+            provider=getattr(_model, "provider_id", ""),
+            endpoint=getattr(_model, "endpoint_id", ""),
+            api=provider_api,
             base_url=base_url,
-            compat=resolve_openai_completions_compat(
+            headers=headers,
+            adapter_compat=resolve_openai_completions_compat(
                 provider_id=getattr(_model, "provider_id", ""),
                 model_id=getattr(_model, "id", ""),
                 base_url=base_url,
                 raw=compat,
             ),
-            max_tokens=max_tokens,
+            max_tokens=resolved_max_tokens,
+            capabilities=capabilities
+            or Capabilities(
+                input=tuple(getattr(_model, "input", ("text",))),
+                reasoning=bool(getattr(_model, "reasoning", False)),
+            ),
             reasoning_effort=reasoning_effort,
             routing=routing or EndpointRouting(),
             transport=transport or EndpointTransport(),
@@ -1001,7 +1175,7 @@ def _patch_resolved_request(
         )
 
     monkeypatch.setattr(
-        "loushang.ai.providers.openai_completions.resolve_request_for_model",
+        "loushang.ai.providers.openai_completions.resolve_provider_request",
         _resolve,
     )
 

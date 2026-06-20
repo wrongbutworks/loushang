@@ -3,12 +3,16 @@ from __future__ import annotations
 import inspect
 import json
 import os
+from dataclasses import asdict, fields
 
 import pytest
 
+import loushang.ai.model.registry as model_registry_module
 from loushang.ai.model import (
     Auth,
+    Capabilities,
     Compat,
+    Defaults,
     Endpoint,
     EndpointProtocolFeatures,
     EndpointRouting,
@@ -20,21 +24,30 @@ from loushang.ai.model import (
     SupportStatus,
 )
 from loushang.ai.model.compat_schema import (
+    CACHE_CONTROL_FORMAT,
     FINE_GRAINED_TOOLS,
     INTERLEAVED_THINKING,
     OPENROUTER_ROUTING,
+    REASONING_EFFORT_MAP,
     SUPPORTS_STREAM_REASONING_DELTA,
+    THINKING_FORMAT,
     VERCEL_GATEWAY_ROUTING,
     resolve_anthropic_messages_compat,
     resolve_openai_completions_compat,
 )
 from loushang.ai.model.loader import load_model_registry, load_model_registry_from_file
-from loushang.ai.model.registry import clear_default_model_registry, resolve_model_api
+from loushang.ai.model.registry import (
+    clear_default_model_registry,
+    get_default_model_registry,
+    resolve_model_api,
+    resolve_model_endpoint,
+)
 from loushang.ai.options import OpenAICompletionsOptions
 from loushang.ai.provider import (
     ResolvedEndpoint,
     ResolvedRequest,
     resolve_endpoint_for_model,
+    resolve_provider_request,
     resolve_request_for_model,
 )
 
@@ -53,12 +66,167 @@ def test_resolver_constructor_keeps_existing_fields_before_upstream_model_id() -
     endpoint_parameters = list(inspect.signature(ResolvedEndpoint).parameters)
     request_parameters = list(inspect.signature(ResolvedRequest).parameters)
 
+    assert endpoint_parameters[:8] == [
+        "provider",
+        "endpoint",
+        "api",
+        "base_url",
+        "base_url_env",
+        "regions",
+        "default_region",
+        "compat",
+    ]
     assert endpoint_parameters.index("routing") < endpoint_parameters.index(
         "upstream_model_id"
     )
+    assert endpoint_parameters.index("upstream_model_id") < endpoint_parameters.index(
+        "protocol"
+    )
+    assert endpoint_parameters.index("dialect") < endpoint_parameters.index(
+        "adapter_compat"
+    )
+    assert request_parameters[:8] == [
+        "provider",
+        "endpoint",
+        "api",
+        "base_url",
+        "region",
+        "candidate_base_urls",
+        "headers",
+        "compat",
+    ]
     assert request_parameters.index("temperature") < request_parameters.index(
         "upstream_model_id"
     )
+    assert request_parameters.index("upstream_model_id") < request_parameters.index(
+        "protocol"
+    )
+    assert request_parameters.index("capabilities") < request_parameters.index(
+        "adapter_protocol"
+    )
+
+
+def test_model_constructor_keeps_endpoint_snapshot_fields_private() -> None:
+    parameters = inspect.signature(Model).parameters
+
+    assert "_endpoint_ref" not in parameters
+
+
+def test_resolved_request_accepts_deprecated_compat_init_alias() -> None:
+    endpoint = ResolvedEndpoint(
+        provider="custom",
+        endpoint="openai-completions",
+        api="openai-completions",
+        compat={"supportsDeveloperRole": False},
+    )
+    request = ResolvedRequest(
+        provider="custom",
+        endpoint="openai-completions",
+        api="openai-completions",
+        base_url=None,
+        compat={"maxTokensField": "max_tokens"},
+    )
+
+    assert endpoint.adapter_compat == {"supportsDeveloperRole": False}
+    assert endpoint.compat == {"supportsDeveloperRole": False}
+    assert request.adapter_compat == {"maxTokensField": "max_tokens"}
+    assert request.compat == {"maxTokensField": "max_tokens"}
+
+
+def test_resolve_provider_request_validates_supplied_request_api() -> None:
+    model = Model(id="model-a", provider="custom", endpoint="openai-responses")
+    request = ResolvedRequest(
+        provider="custom",
+        endpoint="openai-responses",
+        api="openai-completions",
+        base_url=None,
+    )
+
+    with pytest.raises(ValueError, match="Mismatched api"):
+        resolve_provider_request("openai-responses", model, request=request)
+
+
+def test_resolve_provider_request_returns_matching_supplied_request() -> None:
+    model = Model(id="model-a", provider="custom", endpoint="openai-responses")
+    request = ResolvedRequest(
+        provider="custom",
+        endpoint="openai-responses",
+        api="openai-responses",
+        base_url=None,
+    )
+
+    assert resolve_provider_request("openai-responses", model, request=request) is request
+
+
+def test_resolved_request_rejects_conflicting_compat_aliases() -> None:
+    with pytest.raises(TypeError, match="adapter_compat or compat"):
+        ResolvedEndpoint(
+            provider="custom",
+            endpoint="openai-completions",
+            api="openai-completions",
+            compat={"supportsDeveloperRole": False},
+            adapter_compat={"supportsDeveloperRole": True},
+        )
+    with pytest.raises(TypeError, match="adapter_compat or compat"):
+        ResolvedRequest(
+            provider="custom",
+            endpoint="openai-completions",
+            api="openai-completions",
+            base_url=None,
+            compat={"maxTokensField": "max_tokens"},
+            adapter_compat={"maxTokensField": "max_completion_tokens"},
+        )
+
+
+def test_resolved_request_keeps_deprecated_compat_dataclass_field() -> None:
+    endpoint = ResolvedEndpoint(
+        provider="custom",
+        endpoint="openai-completions",
+        api="openai-completions",
+        compat={"supportsDeveloperRole": False},
+    )
+    request = ResolvedRequest(
+        provider="custom",
+        endpoint="openai-completions",
+        api="openai-completions",
+        base_url=None,
+        adapter_compat={"maxTokensField": "max_tokens"},
+    )
+
+    assert "compat" in {field.name for field in fields(ResolvedEndpoint)}
+    assert "compat" in {field.name for field in fields(ResolvedRequest)}
+    assert asdict(endpoint)["compat"] == {"supportsDeveloperRole": False}
+    assert asdict(request)["compat"] == {"maxTokensField": "max_tokens"}
+
+
+def test_resolved_request_accepts_deprecated_positional_compat_slot() -> None:
+    endpoint = ResolvedEndpoint(
+        "custom",
+        "openai-completions",
+        "openai-completions",
+        None,
+        None,
+        {},
+        None,
+        {"supportsDeveloperRole": False},
+    )
+    request = ResolvedRequest(
+        "custom",
+        "openai-completions",
+        "openai-completions",
+        None,
+        None,
+        (),
+        {},
+        {"maxTokensField": "max_tokens"},
+    )
+
+    assert isinstance(endpoint.protocol, EndpointProtocolFeatures)
+    assert endpoint.adapter_compat == {"supportsDeveloperRole": False}
+    assert endpoint.compat == {"supportsDeveloperRole": False}
+    assert isinstance(request.protocol, EndpointProtocolFeatures)
+    assert request.adapter_compat == {"maxTokensField": "max_tokens"}
+    assert request.compat == {"maxTokensField": "max_tokens"}
 
 
 def test_openai_completions_compat_preserves_legacy_routing_overrides() -> None:
@@ -123,9 +291,201 @@ def test_resolve_request_uses_in_memory_endpoint_protocol_bridge() -> None:
 
     resolved = resolve_request_for_model(model, registry=registry, env={})
 
-    assert resolved.compat["supportsDeveloperRole"] is False
-    assert resolved.compat["supportsReasoningEffort"] is False
-    assert resolved.compat["supportsStrictMode"] is False
+    assert resolved.protocol.roles.developer is SupportStatus.UNSUPPORTED
+    assert resolved.protocol.reasoning.effort is SupportStatus.UNSUPPORTED
+    assert resolved.protocol.tools.strict_schema is SupportStatus.UNSUPPORTED
+    assert resolved.compat == resolved.adapter_compat
+    assert resolved.adapter_compat["supportsDeveloperRole"] is False
+    assert resolved.adapter_compat["supportsReasoningEffort"] is False
+    assert resolved.adapter_compat["supportsStrictMode"] is False
+
+
+def test_resolve_request_splits_contract_from_adapter_detection() -> None:
+    endpoint = Endpoint(
+        id="openai-completions",
+        provider="moonshot",
+        api="openai-completions",
+        base_url="https://api.moonshot.ai/v1",
+        models={
+            "model-a": Model(
+                id="model-a",
+                provider="moonshot",
+                endpoint="openai-completions",
+            )
+        },
+    )
+    registry = ModelRegistry.from_providers(
+        {"moonshot": Provider(id="moonshot", endpoints={endpoint.id: endpoint})}
+    )
+    model = registry.get_model("moonshot", "openai-completions", "model-a")
+
+    resolved = resolve_request_for_model(model, registry=registry, env={})
+
+    assert resolved.adapter_compat["supportsDeveloperRole"] is False
+    assert resolved.adapter_compat["maxTokensField"] == "max_tokens"
+    assert resolved.protocol.roles.developer is SupportStatus.UNKNOWN
+    assert resolved.dialect.max_output_tokens_field is None
+    assert resolved.adapter_protocol.roles.developer is SupportStatus.UNSUPPORTED
+    assert resolved.adapter_dialect.max_output_tokens_field == "max_tokens"
+
+
+def test_resolve_request_explicit_unknown_overrides_provider_detection() -> None:
+    endpoint = Endpoint(
+        id="openai-completions",
+        provider="moonshot",
+        api="openai-completions",
+        base_url="https://api.moonshot.ai/v1",
+        protocol=EndpointProtocolFeatures.from_raw({"roles": {"developer": "unknown"}}),
+        models={
+            "model-a": Model(
+                id="model-a",
+                provider="moonshot",
+                endpoint="openai-completions",
+            )
+        },
+    )
+    registry = ModelRegistry.from_providers(
+        {"moonshot": Provider(id="moonshot", endpoints={endpoint.id: endpoint})}
+    )
+    model = registry.get_model("moonshot", "openai-completions", "model-a")
+
+    resolved = resolve_request_for_model(model, registry=registry, env={})
+
+    assert resolved.adapter_compat["supportsDeveloperRole"] is False
+    assert resolved.protocol.roles.developer is SupportStatus.UNKNOWN
+    assert resolved.adapter_protocol.roles.developer is SupportStatus.UNSUPPORTED
+
+
+def test_resolve_request_rejects_non_bool_protocol_compat_override() -> None:
+    model = Model(
+        id="dynamic",
+        provider="custom",
+        endpoint="openai-completions",
+        compat={"supportsReasoningEffort": "true"},
+    )
+
+    with pytest.raises(ValueError, match="supportsReasoningEffort"):
+        resolve_request_for_model(
+            model,
+            registry=ModelRegistry.from_providers({}),
+            env={},
+        )
+
+
+def test_resolve_request_rejects_non_bool_endpoint_protocol_compat() -> None:
+    endpoint = Endpoint(
+        id="openai-completions",
+        provider="custom",
+        api="openai-completions",
+        compat=Compat.from_raw({"supportsReasoningEffort": "true"}),
+        models={
+            "model-a": Model(
+                id="model-a",
+                provider="custom",
+                endpoint="openai-completions",
+            )
+        },
+    )
+    registry = ModelRegistry.from_providers(
+        {"custom": Provider(id="custom", endpoints={endpoint.id: endpoint})}
+    )
+    model = registry.get_model("custom", "openai-completions", "model-a")
+
+    with pytest.raises(ValueError, match="supportsReasoningEffort"):
+        resolve_request_for_model(model, registry=registry, env={})
+
+
+def test_resolve_request_rejects_non_string_dialect_compat_override() -> None:
+    model = Model(
+        id="dynamic",
+        provider="custom",
+        endpoint="openai-completions",
+        compat={"maxTokensField": 123},
+    )
+
+    with pytest.raises(ValueError, match="maxTokensField"):
+        resolve_request_for_model(
+            model,
+            registry=ModelRegistry.from_providers({}),
+            env={},
+        )
+
+
+def test_resolve_request_accepts_none_for_optional_dialect_compat_override() -> None:
+    model = Model(
+        id="dynamic",
+        provider="custom",
+        endpoint="openai-completions",
+        compat={
+            THINKING_FORMAT: None,
+            CACHE_CONTROL_FORMAT: None,
+        },
+    )
+
+    resolved = resolve_request_for_model(
+        model,
+        registry=ModelRegistry.from_providers({}),
+        env={},
+    )
+
+    assert resolved.adapter_compat[THINKING_FORMAT] is None
+    assert resolved.adapter_compat[CACHE_CONTROL_FORMAT] is None
+    assert resolved.adapter_dialect.reasoning.wire_format is None
+    assert resolved.adapter_dialect.cache.control_format is None
+
+
+def test_resolve_request_none_dialect_compat_clears_inherited_typed_dialect() -> None:
+    endpoint = Endpoint(
+        id="openai-completions",
+        provider="custom",
+        api="openai-completions",
+        dialect=EndpointWireDialect.from_raw(
+            {
+                "reasoning": {"wireFormat": "moonshot"},
+                "cache": {"controlFormat": "anthropic"},
+            }
+        ),
+        models={
+            "dynamic": Model(
+                id="dynamic",
+                provider="custom",
+                endpoint="openai-completions",
+                compat={
+                    THINKING_FORMAT: None,
+                    CACHE_CONTROL_FORMAT: None,
+                },
+            )
+        },
+    )
+    registry = ModelRegistry.from_providers(
+        {"custom": Provider(id="custom", endpoints={endpoint.id: endpoint})}
+    )
+    model = registry.get_model("custom", "openai-completions", "dynamic")
+
+    resolved = resolve_request_for_model(model, registry=registry, env={})
+
+    assert resolved.adapter_compat[THINKING_FORMAT] is None
+    assert resolved.adapter_compat[CACHE_CONTROL_FORMAT] is None
+    assert resolved.dialect.reasoning.wire_format is None
+    assert resolved.dialect.cache.control_format is None
+    assert resolved.adapter_dialect.reasoning.wire_format is None
+    assert resolved.adapter_dialect.cache.control_format is None
+
+
+def test_resolve_request_rejects_invalid_reasoning_effort_map_override() -> None:
+    model = Model(
+        id="dynamic",
+        provider="custom",
+        endpoint="openai-completions",
+        compat={REASONING_EFFORT_MAP: {"low": 1}},
+    )
+
+    with pytest.raises(ValueError, match=REASONING_EFFORT_MAP):
+        resolve_request_for_model(
+            model,
+            registry=ModelRegistry.from_providers({}),
+            env={},
+        )
 
 
 def test_resolve_request_uses_in_memory_endpoint_dialect_bridge() -> None:
@@ -164,14 +524,24 @@ def test_resolve_request_uses_in_memory_endpoint_dialect_bridge() -> None:
 
     resolved = resolve_request_for_model(model, registry=registry, env={})
 
-    assert resolved.compat["maxTokensField"] == "max_completion_tokens"
-    assert resolved.compat["requiresToolResultName"] is True
-    assert resolved.compat["requiresAssistantAfterToolResult"] is True
-    assert resolved.compat["requiresThinkingAsText"] is True
-    assert resolved.compat["requiresReasoningContentOnAssistantMessages"] is True
-    assert resolved.compat["thinkingFormat"] == "moonshot"
-    assert resolved.compat["zaiToolStream"] is True
-    assert resolved.compat["cacheControlFormat"] == "anthropic"
+    assert resolved.dialect.max_output_tokens_field == "max_completion_tokens"
+    assert resolved.dialect.tools.result_name_required is True
+    assert resolved.dialect.tools.assistant_bridge_required is True
+    assert resolved.dialect.tools.stream_flag is True
+    assert resolved.dialect.reasoning.wire_format == "moonshot"
+    assert resolved.dialect.reasoning.thinking_as_text is True
+    assert resolved.dialect.reasoning.assistant_content_required is True
+    assert resolved.dialect.cache.control_format == "anthropic"
+    assert resolved.adapter_compat["maxTokensField"] == "max_completion_tokens"
+    assert resolved.adapter_compat["requiresToolResultName"] is True
+    assert resolved.adapter_compat["requiresAssistantAfterToolResult"] is True
+    assert resolved.adapter_compat["requiresThinkingAsText"] is True
+    assert (
+        resolved.adapter_compat["requiresReasoningContentOnAssistantMessages"] is True
+    )
+    assert resolved.adapter_compat["thinkingFormat"] == "moonshot"
+    assert resolved.adapter_compat["zaiToolStream"] is True
+    assert resolved.adapter_compat["cacheControlFormat"] == "anthropic"
 
 
 def test_resolve_endpoint_uses_in_memory_endpoint_dialect_bridge() -> None:
@@ -210,14 +580,57 @@ def test_resolve_endpoint_uses_in_memory_endpoint_dialect_bridge() -> None:
 
     resolved = resolve_endpoint_for_model(model, registry=registry)
 
-    assert resolved.compat["maxTokensField"] == "max_completion_tokens"
-    assert resolved.compat["requiresToolResultName"] is True
-    assert resolved.compat["requiresAssistantAfterToolResult"] is True
-    assert resolved.compat["requiresThinkingAsText"] is True
-    assert resolved.compat["requiresReasoningContentOnAssistantMessages"] is True
-    assert resolved.compat["thinkingFormat"] == "moonshot"
-    assert resolved.compat["zaiToolStream"] is True
-    assert resolved.compat["cacheControlFormat"] == "anthropic"
+    assert resolved.dialect.max_output_tokens_field == "max_completion_tokens"
+    assert resolved.dialect.tools.result_name_required is True
+    assert resolved.dialect.tools.assistant_bridge_required is True
+    assert resolved.dialect.tools.stream_flag is True
+    assert resolved.dialect.reasoning.wire_format == "moonshot"
+    assert resolved.dialect.reasoning.thinking_as_text is True
+    assert resolved.dialect.reasoning.assistant_content_required is True
+    assert resolved.dialect.cache.control_format == "anthropic"
+    assert resolved.adapter_compat["maxTokensField"] == "max_completion_tokens"
+    assert resolved.adapter_compat["requiresToolResultName"] is True
+    assert resolved.adapter_compat["requiresAssistantAfterToolResult"] is True
+    assert resolved.adapter_compat["requiresThinkingAsText"] is True
+    assert (
+        resolved.adapter_compat["requiresReasoningContentOnAssistantMessages"] is True
+    )
+    assert resolved.adapter_compat["thinkingFormat"] == "moonshot"
+    assert resolved.adapter_compat["zaiToolStream"] is True
+    assert resolved.adapter_compat["cacheControlFormat"] == "anthropic"
+
+
+def test_resolve_endpoint_projects_programmatic_compat_to_typed_contract() -> None:
+    endpoint = Endpoint(
+        id="openai-completions",
+        provider="custom",
+        api="openai-completions",
+        compat=Compat.from_raw(
+            {
+                "supportsDeveloperRole": False,
+                "thinkingFormat": "moonshot",
+            }
+        ),
+        models={
+            "model-a": Model(
+                id="model-a",
+                provider="custom",
+                endpoint="openai-completions",
+            )
+        },
+    )
+    registry = ModelRegistry.from_providers(
+        {"custom": Provider(id="custom", endpoints={endpoint.id: endpoint})}
+    )
+    model = registry.get_model("custom", "openai-completions", "model-a")
+
+    resolved = resolve_endpoint_for_model(model, registry=registry)
+
+    assert resolved.protocol.roles.developer is SupportStatus.UNSUPPORTED
+    assert resolved.dialect.reasoning.wire_format == "moonshot"
+    assert resolved.compat == resolved.adapter_compat
+    assert resolved.adapter_compat["supportsDeveloperRole"] is False
+    assert resolved.adapter_compat["thinkingFormat"] == "moonshot"
 
 
 def test_resolve_request_exposes_in_memory_endpoint_transport_routing() -> None:
@@ -254,8 +667,8 @@ def test_resolve_request_exposes_in_memory_endpoint_transport_routing() -> None:
             "vercelGateway": {"order": ["openai", "anthropic"]},
         }
     )
-    assert "openRouterRouting" not in resolved.compat
-    assert "vercelGatewayRouting" not in resolved.compat
+    assert "openRouterRouting" not in resolved.adapter_compat
+    assert "vercelGatewayRouting" not in resolved.adapter_compat
 
 
 def test_resolve_request_uses_bound_transport_routing_with_empty_registry() -> None:
@@ -367,8 +780,8 @@ def test_resolve_request_bridges_direct_model_legacy_transport_routing() -> None
             "vercelGateway": {"order": ["openai", "anthropic"]},
         }
     )
-    assert "openRouterRouting" not in resolved.compat
-    assert "vercelGatewayRouting" not in resolved.compat
+    assert "openRouterRouting" not in resolved.adapter_compat
+    assert "vercelGatewayRouting" not in resolved.adapter_compat
 
 
 def test_resolve_request_bridges_direct_model_legacy_upstream_binding() -> None:
@@ -391,7 +804,7 @@ def test_resolve_request_bridges_direct_model_legacy_upstream_binding() -> None:
     resolved = resolve_request_for_model(model, registry=registry, env={})
 
     assert resolved.upstream_model_id == "openai/gpt-oss-120b:free"
-    assert "upstreamModelId" not in resolved.compat
+    assert "upstreamModelId" not in resolved.adapter_compat
 
 
 def test_resolve_request_ignores_endpoint_legacy_upstream_binding() -> None:
@@ -421,9 +834,9 @@ def test_resolve_request_ignores_endpoint_legacy_upstream_binding() -> None:
 
     assert "upstreamModelId" not in model.compat
     assert resolved_endpoint.upstream_model_id is None
-    assert "upstreamModelId" not in resolved_endpoint.compat
+    assert "upstreamModelId" not in resolved_endpoint.adapter_compat
     assert resolved.upstream_model_id == "openai/gpt-oss-120b_free"
-    assert "upstreamModelId" not in resolved.compat
+    assert "upstreamModelId" not in resolved.adapter_compat
 
 
 def test_resolve_request_uses_first_class_upstream_binding() -> None:
@@ -446,7 +859,7 @@ def test_resolve_request_uses_first_class_upstream_binding() -> None:
     resolved = resolve_request_for_model(model, registry=registry, env={})
 
     assert resolved.upstream_model_id == "openai/gpt-oss-120b:free"
-    assert "upstreamModelId" not in resolved.compat
+    assert "upstreamModelId" not in resolved.adapter_compat
 
 
 def test_resolve_endpoint_strips_direct_model_legacy_transport_routing() -> None:
@@ -473,9 +886,9 @@ def test_resolve_endpoint_strips_direct_model_legacy_transport_routing() -> None
             "vercelGateway": {"order": ["openai", "anthropic"]},
         }
     )
-    assert "providerTransport" not in resolved.compat
-    assert "openRouterRouting" not in resolved.compat
-    assert "vercelGatewayRouting" not in resolved.compat
+    assert "providerTransport" not in resolved.adapter_compat
+    assert "openRouterRouting" not in resolved.adapter_compat
+    assert "vercelGatewayRouting" not in resolved.adapter_compat
 
 
 def test_resolve_request_merges_dynamic_model_transport_routing_with_endpoint() -> None:
@@ -483,6 +896,15 @@ def test_resolve_request_merges_dynamic_model_transport_routing_with_endpoint() 
         id="openai-completions",
         provider="custom",
         api="openai-completions",
+        protocol=EndpointProtocolFeatures.from_raw(
+            {
+                "roles": {"developer": "unsupported"},
+                "tools": {"strictSchema": "unsupported"},
+            }
+        ),
+        dialect=EndpointWireDialect.from_raw(
+            {"maxOutputTokensField": "max_completion_tokens"}
+        ),
         transport=EndpointTransport(kind="httpx", stream="sse"),
         routing=EndpointRouting(
             request_overrides={
@@ -515,6 +937,11 @@ def test_resolve_request_merges_dynamic_model_transport_routing_with_endpoint() 
             "vercelGateway": {"order": ["endpoint"]},
         }
     )
+    assert resolved.adapter_compat["supportsDeveloperRole"] is False
+    assert resolved.adapter_compat["supportsStrictMode"] is False
+    assert resolved.adapter_compat["maxTokensField"] == "max_completion_tokens"
+    assert resolved.protocol.roles.developer is SupportStatus.UNSUPPORTED
+    assert resolved.dialect.max_output_tokens_field == "max_completion_tokens"
 
 
 def test_resolve_request_preserves_direct_overrides_for_catalog_model_id() -> None:
@@ -546,6 +973,12 @@ def test_resolve_request_preserves_direct_overrides_for_catalog_model_id() -> No
             request_overrides={"openrouter": {"order": ["caller"]}}
         ),
         compat={"vercelGatewayRouting": {"order": ["openai", "anthropic"]}},
+        capabilities=Capabilities(
+            input=("text", "image"),
+            context_window=8192,
+            tool_use=True,
+            reasoning=True,
+        ),
     )
 
     resolved = resolve_request_for_model(model, registry=registry, env={})
@@ -561,6 +994,437 @@ def test_resolve_request_preserves_direct_overrides_for_catalog_model_id() -> No
             "vercelGateway": {"order": ["openai", "anthropic"]},
         }
     )
+    assert resolved.capabilities == model.capabilities
+    assert resolved.capabilities.context_window == 8192
+    assert resolved.capabilities.supports_image_input is True
+
+
+def test_resolve_request_preserves_direct_overrides_when_region_switches() -> None:
+    cn_endpoint = Endpoint(
+        id="openai-completions",
+        provider="dashscope",
+        api="openai-completions",
+        base_url="https://cn.example/v1",
+        region="cn",
+        transport=EndpointTransport(kind="httpx", timeout=10),
+        models={
+            "qwen": Model(
+                id="qwen",
+                provider="dashscope",
+                endpoint="openai-completions",
+            )
+        },
+    )
+    us_endpoint = Endpoint(
+        id="openai-completions-us",
+        provider="dashscope",
+        api="openai-completions",
+        base_url="https://us.example/v1",
+        region="us",
+        dialect=EndpointWireDialect.from_raw(
+            {"maxOutputTokensField": "max_completion_tokens"}
+        ),
+        routing=EndpointRouting(request_overrides={"openrouter": {"only": ["us"]}}),
+        models={
+            "qwen": Model(
+                id="qwen",
+                provider="dashscope",
+                endpoint="openai-completions-us",
+            )
+        },
+    )
+    registry = ModelRegistry.from_providers(
+        {
+            "dashscope": Provider(
+                id="dashscope",
+                endpoints={
+                    cn_endpoint.id: cn_endpoint,
+                    us_endpoint.id: us_endpoint,
+                },
+            )
+        }
+    )
+    model = Model(
+        id="qwen",
+        provider="dashscope",
+        endpoint="openai-completions",
+        compat={"thinkingFormat": "caller"},
+        defaults={"maxOutputTokens": 123},
+        transport=EndpointTransport(timeout=5),
+        routing=EndpointRouting(request_overrides={"openrouter": {"order": ["model"]}}),
+        capabilities=Capabilities(context_window=8192, input=("text", "image")),
+    )
+
+    resolved = resolve_request_for_model(
+        model,
+        registry=registry,
+        env={"LOUSHANG_REGION": "us"},
+    )
+
+    assert resolved.endpoint == "openai-completions-us"
+    assert resolved.adapter_compat["maxTokensField"] == "max_completion_tokens"
+    assert resolved.adapter_compat["thinkingFormat"] == "caller"
+    assert resolved.max_tokens == 123
+    assert resolved.transport == EndpointTransport(kind=None, timeout=5)
+    assert resolved.routing == EndpointRouting(
+        request_overrides={"openrouter": {"only": ["us"], "order": ["model"]}}
+    )
+    assert resolved.capabilities.context_window == 8192
+    assert resolved.capabilities.supports_image_input is True
+
+
+def test_resolve_request_keeps_catalog_capabilities_without_direct_override() -> None:
+    endpoint = Endpoint(
+        id="openai-completions",
+        provider="custom",
+        api="openai-completions",
+        models={
+            "model-a": Model(
+                id="model-a",
+                provider="custom",
+                endpoint="openai-completions",
+                capabilities=Capabilities(
+                    context_window=4096,
+                    tool_use=True,
+                    reasoning=True,
+                ),
+            )
+        },
+    )
+    registry = ModelRegistry.from_providers(
+        {"custom": Provider(id="custom", endpoints={endpoint.id: endpoint})}
+    )
+    model = Model(
+        id="model-a",
+        provider="custom",
+        endpoint="openai-completions",
+    )
+
+    resolved = resolve_request_for_model(model, registry=registry, env={})
+
+    assert resolved.capabilities.context_window == 4096
+    assert resolved.capabilities.tool_use is True
+    assert resolved.capabilities.reasoning is True
+
+
+def test_resolve_request_applies_explicit_default_capability_override() -> None:
+    endpoint = Endpoint(
+        id="openai-completions",
+        provider="custom",
+        api="openai-completions",
+        models={
+            "model-a": Model(
+                id="model-a",
+                provider="custom",
+                endpoint="openai-completions",
+                capabilities=Capabilities(
+                    context_window=4096,
+                    tool_use=True,
+                    reasoning=True,
+                ),
+            )
+        },
+    )
+    registry = ModelRegistry.from_providers(
+        {"custom": Provider(id="custom", endpoints={endpoint.id: endpoint})}
+    )
+    model = Model(
+        id="model-a",
+        provider="custom",
+        endpoint="openai-completions",
+        capabilities=Capabilities(),
+    ).with_contract_overrides(
+        capabilities=Capabilities(),
+    )
+
+    resolved = resolve_request_for_model(model, registry=registry, env={})
+
+    assert resolved.capabilities == Capabilities()
+    assert resolved.capabilities.context_window is None
+    assert resolved.capabilities.tool_use is False
+    assert resolved.capabilities.reasoning is False
+
+
+def test_with_contract_overrides_preserves_omitted_compat_override() -> None:
+    model = Model(
+        id="model-a",
+        provider="custom",
+        endpoint="openai-completions",
+        compat={"supportsReasoningEffort": True},
+    ).with_contract_overrides(capabilities=Capabilities())
+
+    assert model.contract_compat["supportsReasoningEffort"] is True
+    assert model.contract_capabilities == Capabilities()
+
+
+def test_resolve_request_uses_bound_model_snapshot_when_registry_omitted() -> None:
+    default_endpoint = Endpoint(
+        id="openai-completions",
+        provider="custom",
+        api="openai-completions",
+        protocol=EndpointProtocolFeatures.from_raw(
+            {"roles": {"developer": "supported"}}
+        ),
+        models={
+            "model-a": Model(
+                id="model-a",
+                provider="custom",
+                endpoint="openai-completions",
+            )
+        },
+    )
+    custom_endpoint = Endpoint(
+        id="openai-completions",
+        provider="custom",
+        api="openai-completions",
+        protocol=EndpointProtocolFeatures.from_raw(
+            {"roles": {"developer": "unsupported"}}
+        ),
+        models={
+            "model-a": Model(
+                id="model-a",
+                provider="custom",
+                endpoint="openai-completions",
+            )
+        },
+    )
+    default_registry = ModelRegistry.from_providers(
+        {
+            "custom": Provider(
+                id="custom", endpoints={default_endpoint.id: default_endpoint}
+            )
+        }
+    )
+    custom_registry = ModelRegistry.from_providers(
+        {
+            "custom": Provider(
+                id="custom", endpoints={custom_endpoint.id: custom_endpoint}
+            )
+        }
+    )
+    model = custom_registry.get_model("custom", "openai-completions", "model-a")
+    previous_registry = get_default_model_registry()
+    try:
+        clear_default_model_registry()
+        get_default_model_registry().replace_providers(default_registry.providers)
+
+        resolved = resolve_request_for_model(model, env={})
+    finally:
+        clear_default_model_registry()
+        get_default_model_registry().replace_providers(previous_registry.providers)
+
+    assert resolved.protocol.roles.developer is SupportStatus.UNSUPPORTED
+
+
+def test_resolve_request_uses_default_catalog_for_plain_api_hint() -> None:
+    endpoint = Endpoint(
+        id="openai-completions",
+        provider="custom",
+        api="openai-completions",
+        base_url="https://catalog.example/v1",
+        auth=Auth(api_key_env="CUSTOM_API_KEY"),
+        protocol=EndpointProtocolFeatures.from_raw(
+            {"roles": {"developer": "unsupported"}}
+        ),
+        dialect=EndpointWireDialect.from_raw(
+            {"maxOutputTokensField": "max_completion_tokens"}
+        ),
+        transport=EndpointTransport(kind="httpx", timeout=10),
+        models={
+            "model-a": Model(
+                id="model-a",
+                provider="custom",
+                endpoint="openai-completions",
+                capabilities=Capabilities(context_window=4096),
+            )
+        },
+    )
+    catalog = ModelRegistry.from_providers(
+        {"custom": Provider(id="custom", endpoints={endpoint.id: endpoint})}
+    )
+    model = Model(
+        id="model-a",
+        provider="custom",
+        endpoint="openai-completions",
+        api="openai-completions",
+    )
+    previous_registry = get_default_model_registry()
+    try:
+        clear_default_model_registry()
+        get_default_model_registry().replace_providers(catalog.providers)
+
+        resolved = resolve_request_for_model(
+            model,
+            env={"CUSTOM_API_KEY": "secret"},
+        )
+        snapshot = resolve_model_endpoint(model)
+    finally:
+        clear_default_model_registry()
+        get_default_model_registry().replace_providers(previous_registry.providers)
+
+    assert snapshot is not None
+    assert snapshot.base_url == "https://catalog.example/v1"
+    assert resolved.base_url == "https://catalog.example/v1"
+    assert resolved.headers["Authorization"] == "Bearer secret"
+    assert resolved.protocol.roles.developer is SupportStatus.UNSUPPORTED
+    assert resolved.dialect.max_output_tokens_field == "max_completion_tokens"
+    assert resolved.transport == EndpointTransport(kind="httpx", timeout=10)
+    assert resolved.capabilities.context_window == 4096
+
+
+def test_resolve_request_preserves_direct_api_endpoint_snapshot() -> None:
+    endpoint = Endpoint(
+        id="openai-completions",
+        provider="custom",
+        api="openai-completions",
+        base_url="https://catalog.example/v1",
+        models={
+            "model-a": Model(
+                id="model-a",
+                provider="custom",
+                endpoint="openai-completions",
+            )
+        },
+    )
+    catalog = ModelRegistry.from_providers(
+        {"custom": Provider(id="custom", endpoints={endpoint.id: endpoint})}
+    )
+    model = Model(
+        id="model-a",
+        provider="custom",
+        endpoint="openai-completions",
+        api="openai-completions",
+        base_url="https://direct.example/v1",
+    )
+    previous_registry = get_default_model_registry()
+    try:
+        clear_default_model_registry()
+        get_default_model_registry().replace_providers(catalog.providers)
+
+        resolved = resolve_request_for_model(model, env={})
+        snapshot = resolve_model_endpoint(model)
+    finally:
+        clear_default_model_registry()
+        get_default_model_registry().replace_providers(previous_registry.providers)
+
+    assert snapshot is not None
+    assert snapshot.base_url == "https://direct.example/v1"
+    assert resolved.base_url == "https://direct.example/v1"
+
+
+def test_bound_endpoint_snapshot_keeps_endpoint_defaults_separate_from_request() -> (
+    None
+):
+    endpoint = Endpoint(
+        id="openai-completions",
+        provider="custom",
+        api="openai-completions",
+        compat=Compat.from_raw({"supportsReasoningEffort": False}),
+        defaults=Defaults.from_raw({"maxOutputTokens": 100}),
+        protocol=EndpointProtocolFeatures.from_raw(
+            {"roles": {"developer": "unsupported"}}
+        ),
+        models={
+            "model-a": Model(
+                id="model-a",
+                provider="custom",
+                endpoint="openai-completions",
+                compat={"supportsReasoningEffort": True},
+                defaults={"maxOutputTokens": 200},
+            )
+        },
+    )
+    registry = ModelRegistry.from_providers(
+        {"custom": Provider(id="custom", endpoints={endpoint.id: endpoint})}
+    )
+    model = registry.get_model("custom", "openai-completions", "model-a")
+
+    snapshot = resolve_model_endpoint(model)
+    resolved_endpoint = resolve_endpoint_for_model(model)
+    resolved_request = resolve_request_for_model(model, env={})
+
+    assert snapshot is not None
+    assert snapshot.compat["supportsReasoningEffort"] is False
+    assert snapshot.defaults["maxOutputTokens"] == 100
+    assert resolved_endpoint.adapter_compat["supportsReasoningEffort"] is False
+    assert resolved_endpoint.defaults["maxOutputTokens"] == 100
+    assert resolved_endpoint.protocol.roles.developer is SupportStatus.UNSUPPORTED
+    assert resolved_request.adapter_compat["supportsReasoningEffort"] is True
+    assert resolved_request.defaults["maxOutputTokens"] == 200
+    assert resolved_request.max_tokens == 200
+    assert resolved_request.protocol.reasoning.effort is SupportStatus.SUPPORTED
+
+
+def test_bound_endpoint_snapshot_keeps_endpoint_transport_routing_separate() -> None:
+    endpoint = Endpoint(
+        id="openai-completions",
+        provider="custom",
+        api="openai-completions",
+        transport=EndpointTransport(kind="httpx", timeout=10),
+        routing=EndpointRouting(request_overrides={"openrouter": {"only": ["base"]}}),
+        models={
+            "model-a": Model(
+                id="model-a",
+                provider="custom",
+                endpoint="openai-completions",
+                transport=EndpointTransport(kind="sdk", timeout=20),
+                routing=EndpointRouting(
+                    request_overrides={"openrouter": {"only": ["model"]}}
+                ),
+            )
+        },
+    )
+    registry = ModelRegistry.from_providers(
+        {"custom": Provider(id="custom", endpoints={endpoint.id: endpoint})}
+    )
+    model = registry.get_model("custom", "openai-completions", "model-a")
+
+    snapshot = resolve_model_endpoint(model)
+    resolved_endpoint = resolve_endpoint_for_model(model)
+    resolved_request = resolve_request_for_model(model, env={})
+
+    assert snapshot is not None
+    assert snapshot.transport == EndpointTransport(kind="httpx", timeout=10)
+    assert snapshot.routing == EndpointRouting(
+        request_overrides={"openrouter": {"only": ["base"]}}
+    )
+    assert resolved_endpoint.transport == EndpointTransport(kind="httpx", timeout=10)
+    assert resolved_endpoint.routing == EndpointRouting(
+        request_overrides={"openrouter": {"only": ["base"]}}
+    )
+    assert resolved_request.transport == EndpointTransport(kind="sdk", timeout=20)
+    assert resolved_request.routing == EndpointRouting(
+        request_overrides={"openrouter": {"only": ["model"]}}
+    )
+
+
+def test_resolve_request_preserves_bound_unknown_protocol_without_registry() -> None:
+    clear_default_model_registry()
+    endpoint = Endpoint(
+        id="openai-completions",
+        provider="custom",
+        api="openai-completions",
+        protocol=EndpointProtocolFeatures.from_raw({"roles": {"developer": "unknown"}}),
+        models={
+            "model-a": Model(
+                id="model-a",
+                provider="custom",
+                endpoint="openai-completions",
+            )
+        },
+    )
+    registry = ModelRegistry.from_providers(
+        {"custom": Provider(id="custom", endpoints={endpoint.id: endpoint})}
+    )
+    model = registry.get_model("custom", "openai-completions", "model-a")
+
+    snapshot = resolve_model_endpoint(model)
+    resolved = resolve_request_for_model(model, env={})
+
+    assert snapshot is not None
+    assert snapshot.protocol.roles.developer is SupportStatus.UNKNOWN
+    assert resolved.protocol.roles.developer is SupportStatus.UNKNOWN
+    assert resolved.adapter_protocol.roles.developer is SupportStatus.UNSUPPORTED
 
 
 def test_resolve_request_uses_base_url_env_override() -> None:
@@ -807,14 +1671,26 @@ def test_resolve_request_uses_explicit_protocol_compat_bridge(tmp_path) -> None:
 
     resolved = resolve_request_for_model(model, registry=registry, env={})
 
-    assert resolved.compat["supportsStore"] is False
-    assert resolved.compat["supportsDeveloperRole"] is False
-    assert resolved.compat["supportsUsageInStreaming"] is False
-    assert resolved.compat["supportsReasoningEffort"] is True
-    assert resolved.compat["supportsStrictMode"] is False
-    assert resolved.compat["supportsStreamReasoningDelta"] is True
-    assert resolved.compat["supportsLongCacheRetention"] is False
-    assert resolved.compat["sendSessionAffinityHeaders"] is True
+    assert resolved.adapter_compat["supportsStore"] is False
+    assert resolved.adapter_compat["supportsDeveloperRole"] is False
+    assert resolved.adapter_compat["supportsUsageInStreaming"] is False
+    assert resolved.adapter_compat["supportsReasoningEffort"] is True
+    assert resolved.adapter_compat["supportsStrictMode"] is False
+    assert resolved.adapter_compat["supportsStreamReasoningDelta"] is True
+    assert resolved.adapter_compat["supportsLongCacheRetention"] is False
+    assert resolved.adapter_compat["sendSessionAffinityHeaders"] is True
+    assert resolved.protocol.to_raw() == {
+        "store": "unsupported",
+        "roles": {"developer": "unsupported"},
+        "streaming": {
+            "usage": "unsupported",
+            "reasoningDelta": "supported",
+        },
+        "reasoning": {"effort": "supported"},
+        "tools": {"strictSchema": "unsupported"},
+        "cache": {"longRetention": "unsupported"},
+        "session": {"affinityHeaders": "supported"},
+    }
 
 
 def test_resolve_request_preserves_model_compat_override_over_endpoint_protocol(
@@ -858,7 +1734,8 @@ def test_resolve_request_preserves_model_compat_override_over_endpoint_protocol(
     resolved = resolve_request_for_model(model, registry=registry, env={})
 
     assert model.compat["supportsReasoningEffort"] is True
-    assert resolved.compat["supportsReasoningEffort"] is True
+    assert resolved.adapter_compat["supportsReasoningEffort"] is True
+    assert resolved.protocol.to_raw()["reasoning"]["effort"] == "supported"
 
 
 def test_resolve_request_uses_explicit_dialect_compat_bridge(tmp_path) -> None:
@@ -910,14 +1787,30 @@ def test_resolve_request_uses_explicit_dialect_compat_bridge(tmp_path) -> None:
 
     resolved = resolve_request_for_model(model, registry=registry, env={})
 
-    assert resolved.compat["maxTokensField"] == "max_completion_tokens"
-    assert resolved.compat["requiresToolResultName"] is True
-    assert resolved.compat["requiresAssistantAfterToolResult"] is True
-    assert resolved.compat["requiresThinkingAsText"] is True
-    assert resolved.compat["requiresReasoningContentOnAssistantMessages"] is True
-    assert resolved.compat["thinkingFormat"] == "moonshot"
-    assert resolved.compat["zaiToolStream"] is False
-    assert resolved.compat["cacheControlFormat"] == "anthropic"
+    assert resolved.adapter_compat["maxTokensField"] == "max_completion_tokens"
+    assert resolved.adapter_compat["requiresToolResultName"] is True
+    assert resolved.adapter_compat["requiresAssistantAfterToolResult"] is True
+    assert resolved.adapter_compat["requiresThinkingAsText"] is True
+    assert (
+        resolved.adapter_compat["requiresReasoningContentOnAssistantMessages"] is True
+    )
+    assert resolved.adapter_compat["thinkingFormat"] == "moonshot"
+    assert resolved.adapter_compat["zaiToolStream"] is False
+    assert resolved.adapter_compat["cacheControlFormat"] == "anthropic"
+    assert resolved.dialect.to_raw() == {
+        "maxOutputTokensField": "max_completion_tokens",
+        "tools": {
+            "resultNameRequired": True,
+            "assistantBridgeRequired": True,
+            "streamFlag": False,
+        },
+        "reasoning": {
+            "wireFormat": "moonshot",
+            "thinkingAsText": True,
+            "assistantContentRequired": True,
+        },
+        "cache": {"controlFormat": "anthropic"},
+    }
 
 
 def test_resolve_request_preserves_model_compat_override_over_endpoint_dialect(
@@ -961,7 +1854,8 @@ def test_resolve_request_preserves_model_compat_override_over_endpoint_dialect(
     resolved = resolve_request_for_model(model, registry=registry, env={})
 
     assert model.compat["thinkingFormat"] == "deepseek"
-    assert resolved.compat["thinkingFormat"] == "deepseek"
+    assert resolved.adapter_compat["thinkingFormat"] == "deepseek"
+    assert resolved.dialect.to_raw()["reasoning"]["wireFormat"] == "deepseek"
 
 
 def test_resolve_request_preserves_openai_responses_protocol_bridge_keys(
@@ -1004,9 +1898,14 @@ def test_resolve_request_preserves_openai_responses_protocol_bridge_keys(
 
     resolved = resolve_request_for_model(model, registry=registry, env={})
 
-    assert resolved.compat["supportsDeveloperRole"] is False
-    assert resolved.compat["supportsLongCacheRetention"] is False
-    assert resolved.compat["sendSessionIdHeader"] is False
+    assert resolved.adapter_compat["supportsDeveloperRole"] is False
+    assert resolved.adapter_compat["supportsLongCacheRetention"] is False
+    assert resolved.adapter_compat["sendSessionIdHeader"] is False
+    assert resolved.protocol.to_raw() == {
+        "roles": {"developer": "unsupported"},
+        "cache": {"longRetention": "unsupported"},
+        "session": {"idHeader": "unsupported"},
+    }
 
 
 def test_resolve_request_treats_explicit_unknown_protocol_as_runtime_unsupported(
@@ -1056,9 +1955,57 @@ def test_resolve_request_treats_explicit_unknown_protocol_as_runtime_unsupported
     assert endpoint.protocol.store is SupportStatus.UNKNOWN
     assert endpoint.protocol.roles.developer is SupportStatus.UNKNOWN
     assert endpoint.protocol.tools.strict_schema is SupportStatus.UNKNOWN
-    assert resolved.compat["supportsStore"] is False
-    assert resolved.compat["supportsDeveloperRole"] is False
-    assert resolved.compat["supportsStrictMode"] is False
+    assert resolved.adapter_compat["supportsStore"] is False
+    assert resolved.adapter_compat["supportsDeveloperRole"] is False
+    assert resolved.adapter_compat["supportsStrictMode"] is False
+    assert resolved.protocol.store is SupportStatus.UNKNOWN
+    assert resolved.protocol.roles.developer is SupportStatus.UNKNOWN
+    assert resolved.protocol.tools.strict_schema is SupportStatus.UNKNOWN
+
+
+def test_resolve_request_model_compat_false_overrides_endpoint_unknown_protocol(
+    tmp_path,
+) -> None:
+    path = tmp_path / "models.v2.json"
+    path.write_text(
+        json.dumps(
+            {
+                "schemaVersion": 2,
+                "providers": {
+                    "custom": {
+                        "endpoints": {
+                            "openai-completions": {
+                                "api": "openai-completions",
+                                "baseUrl": "https://api.openai.com/v1",
+                                "protocol": {
+                                    "roles": {"developer": "unknown"},
+                                },
+                                "models": {
+                                    "model-a": {
+                                        "compat": {
+                                            "supportsDeveloperRole": False,
+                                        },
+                                        "capabilities": {
+                                            "input": ["text"],
+                                            "output": ["text"],
+                                        },
+                                    }
+                                },
+                            }
+                        }
+                    }
+                },
+            }
+        ),
+        encoding="utf-8",
+    )
+    registry = load_model_registry_from_file(path)
+    model = registry.get_model("custom", "openai-completions", "model-a")
+
+    resolved = resolve_request_for_model(model, registry=registry, env={})
+
+    assert resolved.adapter_compat["supportsDeveloperRole"] is False
+    assert resolved.protocol.roles.developer is SupportStatus.UNSUPPORTED
 
 
 def test_resolve_request_preserves_anthropic_protocol_bridge_keys(tmp_path) -> None:
@@ -1108,12 +2055,24 @@ def test_resolve_request_preserves_anthropic_protocol_bridge_keys(tmp_path) -> N
 
     resolved = resolve_request_for_model(model, registry=registry, env={})
 
-    assert resolved.compat["supportsEagerToolInputStreaming"] is False
-    assert resolved.compat["fineGrainedTools"] is True
-    assert resolved.compat["interleavedThinking"] is True
-    assert resolved.compat["supportsCacheControlOnTools"] is False
-    assert resolved.compat["supportsLongCacheRetention"] is False
-    assert resolved.compat["sendSessionAffinityHeaders"] is True
+    assert resolved.adapter_compat["supportsEagerToolInputStreaming"] is False
+    assert resolved.adapter_compat["fineGrainedTools"] is True
+    assert resolved.adapter_compat["interleavedThinking"] is True
+    assert resolved.adapter_compat["supportsCacheControlOnTools"] is False
+    assert resolved.adapter_compat["supportsLongCacheRetention"] is False
+    assert resolved.adapter_compat["sendSessionAffinityHeaders"] is True
+    assert resolved.protocol.to_raw() == {
+        "reasoning": {"interleaved": "supported"},
+        "tools": {
+            "eagerInputStream": "unsupported",
+            "fineGrained": "supported",
+        },
+        "cache": {
+            "onTools": "unsupported",
+            "longRetention": "unsupported",
+        },
+        "session": {"affinityHeaders": "supported"},
+    }
 
 
 def test_resolve_request_uses_legacy_transport_routing_as_typed_contract(
@@ -1163,9 +2122,9 @@ def test_resolve_request_uses_legacy_transport_routing_as_typed_contract(
         "openrouter": {"only": ["anthropic"]},
         "vercelGateway": {"order": ["openai", "anthropic"]},
     }
-    assert "providerTransport" not in resolved.compat
-    assert "openRouterRouting" not in resolved.compat
-    assert "vercelGatewayRouting" not in resolved.compat
+    assert "providerTransport" not in resolved.adapter_compat
+    assert "openRouterRouting" not in resolved.adapter_compat
+    assert "vercelGatewayRouting" not in resolved.adapter_compat
 
 
 def test_resolve_request_selects_matching_region_endpoint() -> None:
@@ -1240,8 +2199,172 @@ def test_resolve_request_selects_matching_region_endpoint() -> None:
     assert resolved.region == "us"
     assert resolved.base_url == "https://us.example/v1"
     assert resolved.headers["Authorization"] == "Bearer us-secret"
-    assert resolved.compat["maxTokensField"] == "max_completion_tokens"
-    assert resolved.compat["thinkingFormat"] == "moonshot"
+    assert resolved.adapter_compat["maxTokensField"] == "max_completion_tokens"
+    assert resolved.adapter_compat["thinkingFormat"] == "moonshot"
+    assert resolved.transport == EndpointTransport(kind="sdk", timeout=20)
+    assert resolved.routing == EndpointRouting(
+        request_overrides={"openrouter": {"only": ["us"]}}
+    )
+
+
+def test_resolve_request_selects_default_registry_region_for_bound_model(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    cn_endpoint = Endpoint(
+        id="openai-completions",
+        provider="dashscope",
+        api="openai-completions",
+        base_url="https://cn.example/v1",
+        region="cn",
+        auth=Auth(api_key_env="CN_API_KEY"),
+        protocol=EndpointProtocolFeatures.from_raw(
+            {"roles": {"developer": "supported"}}
+        ),
+        dialect=EndpointWireDialect.from_raw({"maxOutputTokensField": "max_tokens"}),
+        transport=EndpointTransport(timeout=10),
+        routing=EndpointRouting(request_overrides={"openrouter": {"only": ["cn"]}}),
+        models={
+            "qwen": Model(
+                id="qwen",
+                provider="dashscope",
+                endpoint="openai-completions",
+            )
+        },
+    )
+    us_endpoint = Endpoint(
+        id="openai-completions-us",
+        provider="dashscope",
+        api="openai-completions",
+        base_url="https://us.example/v1",
+        region="us",
+        auth=Auth(api_key_env="US_API_KEY"),
+        protocol=EndpointProtocolFeatures.from_raw(
+            {"roles": {"developer": "unsupported"}}
+        ),
+        dialect=EndpointWireDialect.from_raw(
+            {"maxOutputTokensField": "max_completion_tokens"}
+        ),
+        transport=EndpointTransport(kind="sdk", timeout=20),
+        routing=EndpointRouting(request_overrides={"openrouter": {"only": ["us"]}}),
+        models={
+            "qwen": Model(
+                id="qwen", provider="dashscope", endpoint="openai-completions-us"
+            )
+        },
+    )
+    registry = ModelRegistry.from_providers(
+        {
+            "dashscope": Provider(
+                id="dashscope",
+                endpoints={
+                    cn_endpoint.id: cn_endpoint,
+                    us_endpoint.id: us_endpoint,
+                },
+            )
+        }
+    )
+    monkeypatch.setattr(model_registry_module, "_default_model_registry", registry)
+    model = registry.get_model("dashscope", "openai-completions", "qwen")
+
+    resolved = resolve_request_for_model(
+        model,
+        env={
+            "LOUSHANG_REGION": "us",
+            "CN_API_KEY": "cn-secret",
+            "US_API_KEY": "us-secret",
+        },
+    )
+
+    assert resolved.endpoint == "openai-completions-us"
+    assert resolved.region == "us"
+    assert resolved.base_url == "https://us.example/v1"
+    assert resolved.headers["Authorization"] == "Bearer us-secret"
+    assert resolved.protocol.roles.developer is SupportStatus.UNSUPPORTED
+    assert resolved.dialect.max_output_tokens_field == "max_completion_tokens"
+    assert resolved.transport == EndpointTransport(kind="sdk", timeout=20)
+    assert resolved.routing == EndpointRouting(
+        request_overrides={"openrouter": {"only": ["us"]}}
+    )
+
+
+def test_resolve_request_preserves_bound_contract_overrides_when_region_switches() -> (
+    None
+):
+    cn_endpoint = Endpoint(
+        id="openai-completions",
+        provider="custom",
+        api="openai-completions",
+        base_url="https://cn.example/v1",
+        region="cn",
+        protocol=EndpointProtocolFeatures.from_raw(
+            {"roles": {"developer": "unsupported"}}
+        ),
+        dialect=EndpointWireDialect.from_raw({"maxOutputTokensField": "max_tokens"}),
+        transport=EndpointTransport(timeout=10),
+        routing=EndpointRouting(request_overrides={"openrouter": {"only": ["cn"]}}),
+        models={
+            "qwen": Model(
+                id="qwen",
+                provider="custom",
+                endpoint="openai-completions",
+            )
+        },
+    )
+    us_endpoint = Endpoint(
+        id="openai-completions-us",
+        provider="custom",
+        api="openai-completions",
+        base_url="https://us.example/v1",
+        region="us",
+        protocol=EndpointProtocolFeatures.from_raw(
+            {"roles": {"developer": "unsupported"}}
+        ),
+        dialect=EndpointWireDialect.from_raw(
+            {"maxOutputTokensField": "max_completion_tokens"}
+        ),
+        transport=EndpointTransport(kind="sdk", timeout=20),
+        routing=EndpointRouting(request_overrides={"openrouter": {"only": ["us"]}}),
+        models={
+            "qwen": Model(
+                id="qwen",
+                provider="custom",
+                endpoint="openai-completions-us",
+            )
+        },
+    )
+    registry = ModelRegistry.from_providers(
+        {
+            "custom": Provider(
+                id="custom",
+                endpoints={
+                    cn_endpoint.id: cn_endpoint,
+                    us_endpoint.id: us_endpoint,
+                },
+            )
+        }
+    )
+    model = registry.get_model("custom", "openai-completions", "qwen")
+    model = model.with_contract_overrides(
+        compat={
+            "supportsDeveloperRole": True,
+            "maxTokensField": "max_tokens",
+        },
+        capabilities=Capabilities(input=("text", "image"), reasoning=True),
+    )
+
+    resolved = resolve_request_for_model(
+        model,
+        registry=registry,
+        env={"LOUSHANG_REGION": "us"},
+    )
+
+    assert resolved.endpoint == "openai-completions-us"
+    assert resolved.protocol.roles.developer is SupportStatus.SUPPORTED
+    assert resolved.dialect.max_output_tokens_field == "max_tokens"
+    assert resolved.adapter_compat["supportsDeveloperRole"] is True
+    assert resolved.adapter_compat["maxTokensField"] == "max_tokens"
+    assert resolved.capabilities.supports_image_input is True
+    assert resolved.capabilities.reasoning is True
     assert resolved.transport == EndpointTransport(kind="sdk", timeout=20)
     assert resolved.routing == EndpointRouting(
         request_overrides={"openrouter": {"only": ["us"]}}
@@ -1332,6 +2455,70 @@ def test_bound_model_carries_endpoint_request_context_without_registry() -> None
     assert resolved.base_url == "https://env-custom.example/v1"
     assert resolved.region == "private"
     assert resolved.headers["Authorization"] == "Bearer secret"
+
+
+def test_list_models_returns_endpoint_bound_models_without_default_registry() -> None:
+    clear_default_model_registry()
+    endpoint = Endpoint(
+        id="custom-endpoint",
+        provider="custom",
+        api="openai-completions",
+        base_url_env="CUSTOM_BASE_URL",
+        auth=Auth(api_key_env="CUSTOM_API_KEY"),
+        models={
+            "model-a": Model(
+                id="model-a",
+                provider="custom",
+                endpoint="custom-endpoint",
+            )
+        },
+    )
+    registry = ModelRegistry.from_providers(
+        {"custom": Provider(id="custom", endpoints={endpoint.id: endpoint})}
+    )
+    model = registry.list_models(provider="custom")[0]
+
+    resolved = resolve_request_for_model(
+        model,
+        env={
+            "CUSTOM_BASE_URL": "https://env-custom.example/v1",
+            "CUSTOM_API_KEY": "secret",
+        },
+    )
+
+    assert resolve_model_api(model) == "openai-completions"
+    assert resolved.base_url == "https://env-custom.example/v1"
+    assert resolved.headers["Authorization"] == "Bearer secret"
+
+
+def test_resolve_model_endpoint_returns_bound_snapshot_without_default_registry() -> (
+    None
+):
+    clear_default_model_registry()
+    endpoint = Endpoint(
+        id="custom-endpoint",
+        provider="custom",
+        api="openai-completions",
+        models={
+            "model-a": Model(
+                id="model-a",
+                provider="custom",
+                endpoint="custom-endpoint",
+            )
+        },
+    )
+    registry = ModelRegistry.from_providers(
+        {"custom": Provider(id="custom", endpoints={endpoint.id: endpoint})}
+    )
+    model = registry.get_model("custom", "custom-endpoint", "model-a")
+
+    snapshot = resolve_model_endpoint(model)
+    assert snapshot is not None
+    assert snapshot.id == "custom-endpoint"
+    assert snapshot.provider_id == "custom"
+    assert snapshot.api == "openai-completions"
+    assert snapshot.get_model("model-a") == endpoint.get_model("model-a")
+    assert resolve_model_endpoint(model, registry=registry) == endpoint
 
 
 def test_loader_preserves_model_level_reasoning_defaults() -> None:

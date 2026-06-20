@@ -28,6 +28,7 @@ def convert_responses_messages(
     model,
     normalized: dict[str, Any],
     compat: dict[str, Any] | None = None,
+    capabilities: object | None = None,
 ) -> list[dict[str, Any]]:
     """
     Minimal shared message conversion for the OpenAI Responses provider.
@@ -41,7 +42,11 @@ def convert_responses_messages(
     tool_call_id_map: dict[str, str] = {}
     system_prompt = normalized.get("system_prompt")
     if isinstance(system_prompt, str) and system_prompt.strip():
-        role = "developer" if _supports_developer_role(model, compat) else "system"
+        role = (
+            "developer"
+            if _supports_developer_role(model, compat, capabilities)
+            else "system"
+        )
         input_items.append(
             {"role": role, "content": sanitize_surrogates(system_prompt)}
         )
@@ -64,7 +69,7 @@ def convert_responses_messages(
                         "content": TOOL_RESULTS_PROCESSED_ASSISTANT_TEXT,
                     }
                 )
-            user_payload = _user_message_payload(content, model)
+            user_payload = _user_message_payload(content, model, capabilities)
             if user_payload is not None:
                 input_items.append(user_payload)
                 last_role = "user"
@@ -94,7 +99,12 @@ def convert_responses_messages(
             index += 1
             continue
         if message_role == "toolResult":
-            tool_result_payload = _tool_result_payload(msg, model, tool_call_id_map)
+            tool_result_payload = _tool_result_payload(
+                msg,
+                model,
+                tool_call_id_map,
+                capabilities,
+            )
             if tool_result_payload is not None:
                 input_items.append(tool_result_payload)
                 last_role = "toolResult"
@@ -414,7 +424,9 @@ def _message_content(message: object) -> object:
     )
 
 
-def _user_message_payload(content: object, model) -> dict[str, Any] | None:
+def _user_message_payload(
+    content: object, model, capabilities: object | None = None
+) -> dict[str, Any] | None:
     if not isinstance(content, list):
         return None
 
@@ -425,7 +437,7 @@ def _user_message_payload(content: object, model) -> dict[str, Any] | None:
             text = _part_text(part)
             if isinstance(text, str) and text.strip():
                 parts.append({"type": "input_text", "text": sanitize_surrogates(text)})
-        elif part_type == "image" and "image" in getattr(model, "input", ()):
+        elif part_type == "image" and _supports_image_input(model, capabilities):
             data = _part_data(part)
             mime_type = _part_mime_type(part)
             if (
@@ -556,6 +568,7 @@ def _tool_result_payload(
     message: object,
     model,
     tool_call_id_map: dict[str, str],
+    capabilities: object | None = None,
 ) -> dict[str, Any] | None:
     if not isinstance(message, ToolResultMessage):
         return None
@@ -566,7 +579,7 @@ def _tool_result_payload(
     ]
     has_images = any(_part_type(part) == "image" for part in message.content)
     image_parts: list[dict[str, Any]] = []
-    if "image" in getattr(model, "input", ()):
+    if _supports_image_input(model, capabilities):
         for part in message.content:
             if _part_type(part) != "image":
                 continue
@@ -608,12 +621,30 @@ def _tool_result_payload(
     }
 
 
-def _supports_developer_role(model, compat: dict[str, Any]) -> bool:
+def _supports_image_input(model, capabilities: object | None) -> bool:
+    if capabilities is not None:
+        return bool(getattr(capabilities, "supports_image_input", False))
+    return "image" in getattr(model, "input", ())
+
+
+def _supports_reasoning(model, capabilities: object | None) -> bool:
+    if capabilities is not None:
+        supports_thinking = getattr(capabilities, "supports_thinking", None)
+        if supports_thinking is not None:
+            return bool(supports_thinking)
+        return bool(getattr(capabilities, "reasoning", False))
+    return bool(getattr(model, "supports_thinking", getattr(model, "reasoning", False)))
+
+
+def _supports_developer_role(
+    model, compat: dict[str, Any], capabilities: object | None
+) -> bool:
     if SUPPORTS_DEVELOPER_ROLE in compat:
-        return bool(getattr(model, "reasoning", False)) and compat_bool(
-            compat, SUPPORTS_DEVELOPER_ROLE
+        return _supports_reasoning(model, capabilities) and compat_bool(
+            compat,
+            SUPPORTS_DEVELOPER_ROLE,
         )
-    return bool(getattr(model, "reasoning", False))
+    return _supports_reasoning(model, capabilities)
 
 
 def _normalize_id_part(part: str) -> str:

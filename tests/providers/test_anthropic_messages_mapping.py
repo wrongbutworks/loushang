@@ -10,12 +10,13 @@ from types import ModuleType, SimpleNamespace
 import pytest
 
 from loushang.ai.auth.types import OAuthCredentials
-from loushang.ai.model.domain import Endpoint, EndpointTransport, Model
+from loushang.ai.model.domain import Capabilities, Endpoint, EndpointTransport, Model
 from loushang.ai.model.registry import (
     clear_default_model_registry,
     get_default_model_registry,
 )
 from loushang.ai.options import AnthropicOptions
+from loushang.ai.provider import ResolvedRequest
 from loushang.ai.providers.anthropic import AnthropicProvider
 from loushang.ai.types import (
     ImagePart,
@@ -423,70 +424,74 @@ def test_anthropic_provider_oauth_stream_maps_claude_code_tool_name_back_to_regi
 
 
 def test_anthropic_provider_stream_uses_tool_input_from_content_block_start(
-	monkeypatch: pytest.MonkeyPatch,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-	tool_input = {
-		"path": "tmp/bmi.html",
-		"content": "<!doctype html><html><body>BMI</body></html>",
-	}
-	_fake_anthropic_module(
-		monkeypatch,
-		[
-			SimpleNamespace(
-				type="message_start",
-				message=SimpleNamespace(id="resp_1", usage=None),
-			),
-			SimpleNamespace(
-				type="content_block_start",
-				content_block=SimpleNamespace(
-					type="tool_use",
-					id="call_1",
-					name="write",
-					input=tool_input,
-				),
-			),
-			SimpleNamespace(type="content_block_stop", index=0),
-			SimpleNamespace(
-				type="content_block_start",
-				content_block=SimpleNamespace(type="text"),
-			),
-			SimpleNamespace(
-				type="content_block_delta",
-				delta=SimpleNamespace(type="text_delta", text="done"),
-			),
-			SimpleNamespace(type="content_block_stop", index=1),
-			SimpleNamespace(type="message_stop"),
-		],
-	)
-	provider = AnthropicProvider()
-	trace_events: list[dict] = []
+    tool_input = {
+        "path": "tmp/bmi.html",
+        "content": "<!doctype html><html><body>BMI</body></html>",
+    }
+    _fake_anthropic_module(
+        monkeypatch,
+        [
+            SimpleNamespace(
+                type="message_start",
+                message=SimpleNamespace(id="resp_1", usage=None),
+            ),
+            SimpleNamespace(
+                type="content_block_start",
+                content_block=SimpleNamespace(
+                    type="tool_use",
+                    id="call_1",
+                    name="write",
+                    input=tool_input,
+                ),
+            ),
+            SimpleNamespace(type="content_block_stop", index=0),
+            SimpleNamespace(
+                type="content_block_start",
+                content_block=SimpleNamespace(type="text"),
+            ),
+            SimpleNamespace(
+                type="content_block_delta",
+                delta=SimpleNamespace(type="text_delta", text="done"),
+            ),
+            SimpleNamespace(type="content_block_stop", index=1),
+            SimpleNamespace(type="message_stop"),
+        ],
+    )
+    provider = AnthropicProvider()
+    trace_events: list[dict] = []
 
-	parts = asyncio.run(
-		_collect_parts(
-			provider._stream_raw_parts(
-				_Model(),
-				{
-					"messages": [UserMessage(role="user", content="hello", timestamp=0.0)],
-					"tools": [
-						Tool(name="write", description="Write a file", parameters={"type": "object"}),
-					],
-				},
-				AnthropicOptions(api_key="test-key", trace=trace_events.append),
-			)
-		)
-	)
+    parts = asyncio.run(
+        _collect_parts(
+            provider._stream_raw_parts(
+                _Model(),
+                {
+                    "messages": [
+                        UserMessage(role="user", content="hello", timestamp=0.0)
+                    ],
+                    "tools": [
+                        Tool(
+                            name="write",
+                            description="Write a file",
+                            parameters={"type": "object"},
+                        ),
+                    ],
+                },
+                AnthropicOptions(api_key="test-key", trace=trace_events.append),
+            )
+        )
+    )
 
-	assert [
-		part["delta"] for part in parts if part["type"] == "tool_call_args_delta"
-	] == [json.dumps(tool_input, ensure_ascii=False, separators=(",", ":"))]
-	assert len([part for part in parts if part["type"] == "tool_call_done"]) == 1
-	tool_start_trace = next(
-		event
-		for event in trace_events
-		if event.get("type") == "sdk:tool_start"
-	)
-	assert tool_start_trace["input"]["path"] == "tmp/bmi.html"
-	assert tool_start_trace["input"]["content_chars"] == len(tool_input["content"])
+    assert [
+        part["delta"] for part in parts if part["type"] == "tool_call_args_delta"
+    ] == [json.dumps(tool_input, ensure_ascii=False, separators=(",", ":"))]
+    assert len([part for part in parts if part["type"] == "tool_call_done"]) == 1
+    tool_start_trace = next(
+        event for event in trace_events if event.get("type") == "sdk:tool_start"
+    )
+    assert tool_start_trace["input"]["path"] == "tmp/bmi.html"
+    assert tool_start_trace["input"]["content_chars"] == len(tool_input["content"])
 
 
 def test_anthropic_provider_payload_snapshot_for_mixed_assistant_and_tool_result_context(
@@ -648,6 +653,39 @@ def test_anthropic_provider_respects_explicit_max_tokens(
     assert _FakeAsyncAnthropic.last_stream_kwargs["max_tokens"] == 1234
 
 
+def test_anthropic_provider_uses_resolved_capability_max_tokens(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _fake_anthropic_module(monkeypatch, [SimpleNamespace(type="message_stop")])
+    provider = AnthropicProvider()
+    request = ResolvedRequest(
+        provider="anthropic",
+        endpoint="anthropic-messages",
+        api="anthropic-messages",
+        base_url=None,
+        headers={"x-api-key": "test-key"},
+        capabilities=Capabilities(max_tokens=2048),
+        upstream_model_id="claude-sonnet-4-5",
+    )
+
+    asyncio.run(
+        _collect_parts(
+            provider._stream_raw_parts(
+                _Model(max_tokens=8192),
+                {
+                    "messages": [
+                        UserMessage(role="user", content="hello", timestamp=0.0)
+                    ]
+                },
+                AnthropicOptions(api_key="ignored-options-key"),
+                request,
+            )
+        )
+    )
+
+    assert _FakeAsyncAnthropic.last_stream_kwargs["max_tokens"] == 2048
+
+
 def test_anthropic_provider_clamps_explicit_max_tokens(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -736,113 +774,128 @@ def test_anthropic_compat_fireworks_uses_session_headers_without_long_cache_ttl(
 
 
 def test_anthropic_provider_uses_model_max_tokens_without_scaling(
-	monkeypatch: pytest.MonkeyPatch,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-	_fake_anthropic_module(monkeypatch, [SimpleNamespace(type="message_stop")])
-	provider = AnthropicProvider()
+    _fake_anthropic_module(monkeypatch, [SimpleNamespace(type="message_stop")])
+    provider = AnthropicProvider()
 
-	asyncio.run(
-		_collect_parts(
-			provider._stream_raw_parts(
-				_Model(max_tokens=8192),
-				{"messages": [UserMessage(role="user", content="hello", timestamp=0.0)]},
-				AnthropicOptions(api_key="test-key"),
-			)
-		)
-	)
+    asyncio.run(
+        _collect_parts(
+            provider._stream_raw_parts(
+                _Model(max_tokens=8192),
+                {
+                    "messages": [
+                        UserMessage(role="user", content="hello", timestamp=0.0)
+                    ]
+                },
+                AnthropicOptions(api_key="test-key"),
+            )
+        )
+    )
 
-	assert _FakeAsyncAnthropic.last_stream_kwargs["max_tokens"] == 8192
+    assert _FakeAsyncAnthropic.last_stream_kwargs["max_tokens"] == 8192
 
 
 def test_anthropic_provider_caps_model_max_tokens_default(
-	monkeypatch: pytest.MonkeyPatch,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-	_fake_anthropic_module(monkeypatch, [SimpleNamespace(type="message_stop")])
-	provider = AnthropicProvider()
+    _fake_anthropic_module(monkeypatch, [SimpleNamespace(type="message_stop")])
+    provider = AnthropicProvider()
 
-	asyncio.run(
-		_collect_parts(
-			provider._stream_raw_parts(
-				_Model(max_tokens=32768),
-				{"messages": [UserMessage(role="user", content="hello", timestamp=0.0)]},
-				AnthropicOptions(api_key="test-key"),
-			)
-		)
-	)
+    asyncio.run(
+        _collect_parts(
+            provider._stream_raw_parts(
+                _Model(max_tokens=32768),
+                {
+                    "messages": [
+                        UserMessage(role="user", content="hello", timestamp=0.0)
+                    ]
+                },
+                AnthropicOptions(api_key="test-key"),
+            )
+        )
+    )
 
-	assert _FakeAsyncAnthropic.last_stream_kwargs["max_tokens"] == 32000
+    assert _FakeAsyncAnthropic.last_stream_kwargs["max_tokens"] == 32000
 
 
 def test_anthropic_payload_groups_consecutive_tool_results_from_same_turn() -> None:
-	from loushang.ai.providers.anthropic import _build_anthropic_message_payloads
+    from loushang.ai.providers.anthropic import _build_anthropic_message_payloads
 
-	messages, _system = _build_anthropic_message_payloads(
-		{
-			"messages": [
-				{
-					"role": "assistant",
-					"content": [
-						ToolCall(type="toolCall", id="bad_write", name="write", arguments={}),
-						ToolCall(
-							type="toolCall",
-							id="good_write",
-							name="write",
-							arguments={"path": "tmp/bmi.html", "content": "<!doctype html>"},
-						),
-					],
-				},
-				ToolResultMessage(
-					role="toolResult",
-					tool_call_id="bad_write",
-					tool_name="write",
-					content=[TextPart(type="text", text='Validation failed for tool "write"')],
-					is_error=True,
-					timestamp=0.0,
-				),
-				ToolResultMessage(
-					role="toolResult",
-					tool_call_id="good_write",
-					tool_name="write",
-					content=[TextPart(type="text", text="Wrote tmp/bmi.html")],
-					is_error=False,
-					timestamp=0.0,
-				),
-			],
-		},
-		is_oauth_token=False,
-	)
+    messages, _system = _build_anthropic_message_payloads(
+        {
+            "messages": [
+                {
+                    "role": "assistant",
+                    "content": [
+                        ToolCall(
+                            type="toolCall", id="bad_write", name="write", arguments={}
+                        ),
+                        ToolCall(
+                            type="toolCall",
+                            id="good_write",
+                            name="write",
+                            arguments={
+                                "path": "tmp/bmi.html",
+                                "content": "<!doctype html>",
+                            },
+                        ),
+                    ],
+                },
+                ToolResultMessage(
+                    role="toolResult",
+                    tool_call_id="bad_write",
+                    tool_name="write",
+                    content=[
+                        TextPart(type="text", text='Validation failed for tool "write"')
+                    ],
+                    is_error=True,
+                    timestamp=0.0,
+                ),
+                ToolResultMessage(
+                    role="toolResult",
+                    tool_call_id="good_write",
+                    tool_name="write",
+                    content=[TextPart(type="text", text="Wrote tmp/bmi.html")],
+                    is_error=False,
+                    timestamp=0.0,
+                ),
+            ],
+        },
+        is_oauth_token=False,
+    )
 
-	assert messages == [
-		{
-			"role": "assistant",
-			"content": [
-				{"type": "tool_use", "id": "bad_write", "name": "write", "input": {}},
-				{
-					"type": "tool_use",
-					"id": "good_write",
-					"name": "write",
-					"input": {"path": "tmp/bmi.html", "content": "<!doctype html>"},
-				},
-			],
-		},
-		{
-			"role": "user",
-			"content": [
-				{
-					"type": "tool_result",
-					"tool_use_id": "bad_write",
-					"content": 'Validation failed for tool "write"',
-					"is_error": True,
-				},
-				{
-					"type": "tool_result",
-					"tool_use_id": "good_write",
-					"content": "Wrote tmp/bmi.html",
-					"is_error": False,
-				},
-			],
-		},
-	]
+    assert messages == [
+        {
+            "role": "assistant",
+            "content": [
+                {"type": "tool_use", "id": "bad_write", "name": "write", "input": {}},
+                {
+                    "type": "tool_use",
+                    "id": "good_write",
+                    "name": "write",
+                    "input": {"path": "tmp/bmi.html", "content": "<!doctype html>"},
+                },
+            ],
+        },
+        {
+            "role": "user",
+            "content": [
+                {
+                    "type": "tool_result",
+                    "tool_use_id": "bad_write",
+                    "content": 'Validation failed for tool "write"',
+                    "is_error": True,
+                },
+                {
+                    "type": "tool_result",
+                    "tool_use_id": "good_write",
+                    "content": "Wrote tmp/bmi.html",
+                    "is_error": False,
+                },
+            ],
+        },
+    ]
 
 
 async def _collect_parts(source) -> list[dict]:

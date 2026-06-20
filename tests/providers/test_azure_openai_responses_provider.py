@@ -7,9 +7,18 @@ from types import ModuleType, SimpleNamespace
 
 import pytest
 
+from loushang.ai.model import (
+    Auth,
+    Capabilities,
+    Endpoint,
+    Model,
+    ModelRegistry,
+    Provider,
+)
 from loushang.ai.options import AzureOpenAIResponsesOptions
+from loushang.ai.provider import ResolvedRequest
 from loushang.ai.providers.azure_openai_responses import AzureOpenAIResponsesProvider
-from loushang.ai.types import UserMessage
+from loushang.ai.types import Context, ImagePart, TextPart, UserMessage
 
 
 def test_azure_openai_responses_uses_azure_client_and_deployment_map(
@@ -24,7 +33,11 @@ def test_azure_openai_responses_uses_azure_client_and_deployment_map(
         _collect_parts(
             provider._stream_raw_parts(
                 _Model(id="gpt-4o-mini"),
-                {"messages": [UserMessage(role="user", content="hello", timestamp=0.0)]},
+                {
+                    "messages": [
+                        UserMessage(role="user", content="hello", timestamp=0.0)
+                    ]
+                },
                 AzureOpenAIResponsesOptions(
                     api_key="test-key",
                     azure_base_url="https://example.openai.azure.com/openai/v1",
@@ -59,7 +72,11 @@ def test_azure_openai_responses_maps_upstream_model_id(
         _collect_parts(
             provider._stream_raw_parts(
                 _Model(id="gpt-4o-mini_public"),
-                {"messages": [UserMessage(role="user", content="hello", timestamp=0.0)]},
+                {
+                    "messages": [
+                        UserMessage(role="user", content="hello", timestamp=0.0)
+                    ]
+                },
                 AzureOpenAIResponsesOptions(
                     api_key="test-key",
                     azure_base_url="https://example.openai.azure.com/openai/v1",
@@ -82,7 +99,11 @@ def test_azure_openai_responses_falls_back_to_upstream_model_id(
         _collect_parts(
             provider._stream_raw_parts(
                 _Model(id="gpt-4o-mini_public"),
-                {"messages": [UserMessage(role="user", content="hello", timestamp=0.0)]},
+                {
+                    "messages": [
+                        UserMessage(role="user", content="hello", timestamp=0.0)
+                    ]
+                },
                 AzureOpenAIResponsesOptions(
                     api_key="test-key",
                     azure_base_url="https://example.openai.azure.com/openai/v1",
@@ -92,6 +113,96 @@ def test_azure_openai_responses_falls_back_to_upstream_model_id(
     )
 
     assert _FakeAsyncAzureOpenAI.last_create_kwargs["model"] == "vendor/gpt-4o-mini"
+
+
+def test_azure_openai_responses_uses_resolved_capability_max_tokens(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _fake_openai_module(monkeypatch)
+    _patch_resolved_request(
+        monkeypatch,
+        max_tokens=None,
+        capabilities=Capabilities(max_tokens=2048),
+    )
+    provider = AzureOpenAIResponsesProvider()
+
+    asyncio.run(
+        _collect_parts(
+            provider._stream_raw_parts(
+                _Model(max_tokens=1024),
+                {
+                    "messages": [
+                        UserMessage(role="user", content="hello", timestamp=0.0)
+                    ]
+                },
+                AzureOpenAIResponsesOptions(
+                    api_key="test-key",
+                    azure_base_url="https://example.openai.azure.com/openai/v1",
+                ),
+            )
+        )
+    )
+
+    assert _FakeAsyncAzureOpenAI.last_create_kwargs["max_output_tokens"] == 2048
+
+
+def test_azure_openai_responses_uses_real_resolved_request_boundary(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _fake_openai_module(monkeypatch)
+    monkeypatch.setenv("AZURE_TEST_API_KEY", "catalog-secret")
+    monkeypatch.delenv("AZURE_OPENAI_BASE_URL", raising=False)
+    monkeypatch.delenv("AZURE_OPENAI_API_VERSION", raising=False)
+    monkeypatch.delenv("AZURE_OPENAI_DEPLOYMENT_NAME_MAP", raising=False)
+    model = _bound_azure_model()
+    provider = AzureOpenAIResponsesProvider()
+
+    asyncio.run(
+        _collect_parts(
+            provider._stream_raw_parts(
+                model,
+                Context(
+                    system_prompt=None,
+                    messages=[
+                        UserMessage(
+                            role="user",
+                            content=[
+                                TextPart(type="text", text="look"),
+                                ImagePart(
+                                    type="image",
+                                    data="dXNlcg==",
+                                    mime_type="image/png",
+                                ),
+                            ],
+                            timestamp=0.0,
+                        )
+                    ],
+                ),
+                AzureOpenAIResponsesOptions(),
+            )
+        )
+    )
+
+    assert _FakeAsyncAzureOpenAI.last_init_kwargs == {
+        "api_key": "catalog-secret",
+        "azure_endpoint": "https://catalog.azure.example/openai/v1",
+        "api_version": "v1",
+    }
+    assert _FakeAsyncAzureOpenAI.last_create_kwargs["model"] == "vendor/gpt-4o-mini"
+    assert _FakeAsyncAzureOpenAI.last_create_kwargs["max_output_tokens"] == 2048
+    assert _FakeAsyncAzureOpenAI.last_create_kwargs["input"] == [
+        {
+            "role": "user",
+            "content": [
+                {"type": "input_text", "text": "look"},
+                {
+                    "type": "input_image",
+                    "detail": "auto",
+                    "image_url": "data:image/png;base64,dXNlcg==",
+                },
+            ],
+        }
+    ]
 
 
 async def _collect_parts(source) -> list[dict]:
@@ -110,25 +221,69 @@ def _patch_resolved_request(
     monkeypatch: pytest.MonkeyPatch,
     *,
     upstream_model_id: str | None = None,
+    max_tokens: int | None = 1024,
+    capabilities: Capabilities | None = None,
 ) -> None:
-    def _resolve(_model, options=None):
+    def _resolve(provider_api, _model, *, options=None, request=None):
+        if request is not None:
+            if request.api != provider_api:
+                raise ValueError(
+                    f"Mismatched api: provider={provider_api!r} request.api={request.api!r}"
+                )
+            return request
         headers = {}
         api_key = getattr(options, "api_key", None) if options is not None else None
         if isinstance(api_key, str) and api_key:
             headers["Authorization"] = f"Bearer {api_key}"
-        return SimpleNamespace(
+        option_max_tokens = (
+            getattr(options, "max_tokens", None) if options is not None else None
+        )
+        resolved_max_tokens = (
+            max(1, option_max_tokens)
+            if isinstance(option_max_tokens, int)
+            else max_tokens
+        )
+        return ResolvedRequest(
+            provider=getattr(_model, "provider_id", ""),
+            endpoint=getattr(_model, "endpoint_id", ""),
             api="azure-openai-responses",
-            headers=headers,
             base_url=None,
-            compat={},
-            max_tokens=1024,
+            headers=headers,
+            adapter_compat={},
+            max_tokens=resolved_max_tokens,
+            capabilities=capabilities or Capabilities(),
             reasoning_effort=None,
             upstream_model_id=upstream_model_id,
         )
 
     monkeypatch.setattr(
-        "loushang.ai.providers.azure_openai_responses.resolve_request_for_model",
+        "loushang.ai.providers.azure_openai_responses.resolve_provider_request",
         _resolve,
+    )
+
+
+def _bound_azure_model() -> Model:
+    endpoint = Endpoint(
+        id="azure-openai-responses",
+        provider="azure-openai",
+        api="azure-openai-responses",
+        base_url="https://catalog.azure.example/openai/v1",
+        auth=Auth(api_key_env="AZURE_TEST_API_KEY"),
+        models={
+            "gpt-4o-mini-public": Model(
+                id="gpt-4o-mini-public",
+                provider="azure-openai",
+                endpoint="azure-openai-responses",
+                capabilities=Capabilities(input=("text", "image"), max_tokens=2048),
+                upstream_id="vendor/gpt-4o-mini",
+            )
+        },
+    )
+    registry = ModelRegistry.from_providers(
+        {"azure-openai": Provider(id="azure-openai", endpoints={endpoint.id: endpoint})}
+    )
+    return registry.get_model(
+        "azure-openai", "azure-openai-responses", "gpt-4o-mini-public"
     )
 
 

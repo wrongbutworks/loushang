@@ -642,8 +642,7 @@ def _normalize_endpoint_compat(endpoint_raw: dict[str, Any]) -> Compat:
         key: value
         for key, value in compat.items()
         if key
-        not in LEGACY_TRANSPORT_ROUTING_COMPAT_KEYS
-        | LEGACY_MODEL_BINDING_COMPAT_KEYS
+        not in LEGACY_TRANSPORT_ROUTING_COMPAT_KEYS | LEGACY_MODEL_BINDING_COMPAT_KEYS
     }
     if str(endpoint_raw.get("api", "")) == "openai-completions":
         values.setdefault(MAX_TOKENS_FIELD, "max_completion_tokens")
@@ -1012,7 +1011,10 @@ def _legacy_compat_diagnostic_target(
 ) -> str | None:
     if legacy_key not in DEPRECATED_LEGACY_COMPAT_KEYS:
         return None
-    if location == "model" and legacy_key not in MODEL_LEVEL_DEPRECATED_LEGACY_COMPAT_KEYS:
+    if (
+        location == "model"
+        and legacy_key not in MODEL_LEVEL_DEPRECATED_LEGACY_COMPAT_KEYS
+    ):
         return None
     return LEGACY_COMPAT_TRANSLATION_TARGETS[legacy_key]
 
@@ -1267,6 +1269,10 @@ def _build_registry_result(raw: dict[str, Any]) -> ModelRegistryLoadResult:
                     endpoint.compat.merged(_normalize_model_compat(model_raw)),
                     capabilities,
                 )
+                model_own_compat = _model_compat_with_effective_capabilities(
+                    _normalize_model_compat(model_raw),
+                    capabilities,
+                )
                 defaults = _derive_model_defaults(
                     endpoint.api,
                     endpoint.lane,
@@ -1301,6 +1307,9 @@ def _build_registry_result(raw: dict[str, Any]) -> ModelRegistryLoadResult:
                     if model_routing_legacy_source is not None
                     else model_routing.to_raw(),
                     _routing_legacy_raw=model_routing_legacy_source,
+                ).with_contract_overrides(
+                    compat=model_own_compat,
+                    capabilities=capabilities,
                 )
                 models[model_id] = endpoint.bind_model(model)
             endpoints[endpoint.id] = replace(endpoint, models=models)

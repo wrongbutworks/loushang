@@ -9,7 +9,6 @@ from types import SimpleNamespace
 from typing import Any
 from uuid import uuid4
 
-from loushang.ai.auth.support import resolve_auth_for_model
 from loushang.ai.context import ensure_normalized_context
 from loushang.ai.event_stream import AssistantMessageEventStream, RawAssembler
 from loushang.ai.model.compat_schema import (
@@ -22,7 +21,7 @@ from loushang.ai.model.compat_schema import (
     compat_str,
 )
 from loushang.ai.options import PairingMode
-from loushang.ai.provider import resolve_request_for_model
+from loushang.ai.provider import resolve_provider_request
 from loushang.ai.provider.cancellation import is_signal_cancelled
 from loushang.ai.provider.errors import is_http_status_code, provider_error_part
 from loushang.ai.providers.openai_responses_shared import (
@@ -43,8 +42,13 @@ class OpenAICodexResponsesProvider:
         self._websocket_session_cache: dict[str, _CachedWebSocketConnection] = {}
         self._websocket_cache_ttl_ms = websocket_cache_ttl_ms
 
-    async def stream(self, model, context, options):
-        resolved = resolve_request_for_model(model, options=options)
+    async def stream(self, model, context, options, request=None):
+        resolved = resolve_provider_request(
+            self.api,
+            model,
+            options=options,
+            request=request,
+        )
         stream = AssistantMessageEventStream()
         assembler = RawAssembler(
             stream=stream,
@@ -60,7 +64,9 @@ class OpenAICodexResponsesProvider:
                 assembler.feed({"type": "aborted"})
                 return
             try:
-                async for part in self._stream_raw_parts(model, context, options):
+                async for part in self._stream_raw_parts(
+                    model, context, options, resolved
+                ):
                     if is_signal_cancelled(signal):
                         assembler.feed({"type": "aborted"})
                         return
@@ -71,10 +77,12 @@ class OpenAICodexResponsesProvider:
         stream.attach_task(asyncio.create_task(_run()))
         return stream
 
-    async def stream_simple(self, model, context, options):
-        return await self.stream(model, context, options)
+    async def stream_simple(self, model, context, options, request=None):
+        return await self.stream(model, context, options, request)
 
-    async def _stream_raw_parts(self, model, context, options) -> AsyncIterator[dict]:
+    async def _stream_raw_parts(
+        self, model, context, options, request=None
+    ) -> AsyncIterator[dict]:
         def _pairing_mode() -> PairingMode:
             if options is None:
                 return "repair"
@@ -104,18 +112,27 @@ class OpenAICodexResponsesProvider:
             model=model,
             pairing_mode=_pairing_mode(),
         )
-        resolved = resolve_request_for_model(model, options=options)
-        auth_view = resolve_auth_for_model(model, options=options)
-        headers = dict(resolved.headers or auth_view.headers or {})
-        compat = dict(resolved.compat or {})
+        resolved = resolve_provider_request(
+            self.api,
+            model,
+            options=options,
+            request=request,
+        )
+        headers = dict(resolved.headers or {})
+        compat = dict(getattr(resolved, "adapter_compat", {}) or {})
 
         api_key = _extract_api_key(headers)
-        account_id = _resolve_account_id(headers, api_key=api_key, auth_view=auth_view)
+        account_id = _resolve_account_id(
+            headers,
+            api_key=api_key,
+            auth_account_id=getattr(resolved, "auth_account_id", None),
+        )
         body = _build_request_body(
             model,
             normalized,
             options,
             compat=compat,
+            capabilities=getattr(resolved, "capabilities", None),
             upstream_model_id=getattr(resolved, "upstream_model_id", None),
         )
         url = _resolve_codex_url(resolved.base_url)
@@ -349,6 +366,7 @@ def _build_request_body(
     options,
     *,
     compat: dict[str, Any] | None = None,
+    capabilities: object | None = None,
     upstream_model_id: str | None = None,
 ) -> dict[str, Any]:
     compat = compat or {}
@@ -359,6 +377,7 @@ def _build_request_body(
             "system_prompt": None,
         },
         {},
+        capabilities,
     )
     body: dict[str, Any] = {
         "model": upstream_model_id or model.id,
@@ -467,17 +486,17 @@ def _extract_account_id(token: str) -> str:
         raise ValueError("Failed to extract accountId from token") from exc
 
 
-def _resolve_account_id(headers: dict[str, str], *, api_key: str, auth_view) -> str:
+def _resolve_account_id(
+    headers: dict[str, str],
+    *,
+    api_key: str,
+    auth_account_id: str | None = None,
+) -> str:
     explicit_account_id = _header_value(headers, "chatgpt-account-id")
     if explicit_account_id:
         return explicit_account_id
-
-    auth_headers = getattr(auth_view, "headers", {}) or {}
-    try:
-        if auth_view.account_id and _extract_api_key(auth_headers) == api_key:
-            return auth_view.account_id
-    except ValueError:
-        pass
+    if auth_account_id:
+        return auth_account_id
     return _extract_account_id(api_key)
 
 

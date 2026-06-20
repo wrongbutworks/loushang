@@ -29,7 +29,7 @@ from loushang.ai.model.compat_schema import (
 )
 from loushang.ai.options import PairingMode
 from loushang.ai.output_budget import resolve_output_token_budget
-from loushang.ai.provider import resolve_request_for_model
+from loushang.ai.provider import resolve_provider_request
 from loushang.ai.provider.cancellation import is_signal_cancelled
 from loushang.ai.provider.errors import provider_error_part
 from loushang.ai.providers.openai_responses_shared import build_copilot_dynamic_headers
@@ -57,8 +57,13 @@ class OpenAICompletionsProvider:
         self._client = client
         self._base_url = base_url
 
-    async def stream(self, model, context, options):
-        resolved = resolve_request_for_model(model, options=options)
+    async def stream(self, model, context, options, request=None):
+        resolved = resolve_provider_request(
+            self.api,
+            model,
+            options=options,
+            request=request,
+        )
         stream = AssistantMessageEventStream()
         assembler = RawAssembler(
             stream=stream,
@@ -74,7 +79,9 @@ class OpenAICompletionsProvider:
                 assembler.feed({"type": "aborted"})
                 return
             try:
-                async for part in self._stream_raw_parts(model, context, options):
+                async for part in self._stream_raw_parts(
+                    model, context, options, resolved
+                ):
                     if is_signal_cancelled(signal):
                         assembler.feed({"type": "aborted"})
                         return
@@ -85,10 +92,12 @@ class OpenAICompletionsProvider:
         stream.attach_task(asyncio.create_task(_run()))
         return stream
 
-    async def stream_simple(self, model, context, options):
-        return await self.stream(model, context, options)
+    async def stream_simple(self, model, context, options, request=None):
+        return await self.stream(model, context, options, request)
 
-    async def _stream_raw_parts(self, model, context, options) -> AsyncIterator[dict]:
+    async def _stream_raw_parts(
+        self, model, context, options, request=None
+    ) -> AsyncIterator[dict]:
         def _pairing_mode() -> PairingMode:
             if options is None:
                 return "repair"
@@ -105,8 +114,13 @@ class OpenAICompletionsProvider:
             model=model,
             pairing_mode=_pairing_mode(),
         )
-        resolved = resolve_request_for_model(model, options=options)
-        compat = dict(getattr(resolved, "compat", {}) or {})
+        resolved = resolve_provider_request(
+            self.api,
+            model,
+            options=options,
+            request=request,
+        )
+        compat = dict(getattr(resolved, "adapter_compat", {}) or {})
         supports_usage_in_streaming = compat_bool(compat, SUPPORTS_USAGE_IN_STREAMING)
         supports_store = compat_bool(compat, SUPPORTS_STORE)
         max_tokens_field = compat_str(compat, MAX_TOKENS_FIELD, default="max_tokens")
@@ -172,7 +186,8 @@ class OpenAICompletionsProvider:
         client = self._client or AsyncOpenAI(**client_kwargs)  # type: ignore[call-arg]
         _debug("client", {"base_url": effective_base_url, "headers": default_headers})
 
-        messages_param = _build_messages(model, normalized, compat)
+        capabilities = getattr(resolved, "capabilities", None)
+        messages_param = _build_messages(model, normalized, compat, capabilities)
         tools_param = _build_tools(normalized.get("tools"), compat)
         if tools_param is None and _has_tool_history(normalized.get("messages", [])):
             tools_param = []
@@ -180,7 +195,7 @@ class OpenAICompletionsProvider:
         if cache_control is not None:
             _apply_anthropic_cache_control(messages_param, tools_param, cache_control)
 
-        max_tokens = resolve_output_token_budget(model, resolved, options).value
+        max_tokens = resolve_output_token_budget(model, resolved).value
         upstream_model_id = getattr(resolved, "upstream_model_id", None) or model.id
         params: dict[str, Any] = {
             "model": upstream_model_id,
@@ -221,6 +236,7 @@ class OpenAICompletionsProvider:
             reasoning_effort=reasoning_effort,
             reasoning_effort_map=reasoning_effort_map,
             supports_reasoning_effort=supports_reasoning_effort,
+            capabilities=capabilities,
         )
         _apply_provider_routing(
             params,
@@ -529,8 +545,9 @@ def _apply_reasoning_params(
     reasoning_effort: str | None,
     reasoning_effort_map: dict[str, str],
     supports_reasoning_effort: bool,
+    capabilities: object | None = None,
 ) -> None:
-    if not _supports_reasoning(model):
+    if not _supports_reasoning(model, capabilities):
         return
     if thinking_format in {"zai", "qwen"}:
         params["enable_thinking"] = bool(reasoning_effort)
@@ -617,9 +634,7 @@ def _apply_provider_routing(
 
 
 def _resolve_timeout_seconds(options, resolved) -> float | int | None:
-    option_timeout = (
-        getattr(options, "timeout", None) if options is not None else None
-    )
+    option_timeout = getattr(options, "timeout", None) if options is not None else None
     if isinstance(option_timeout, int | float) and option_timeout > 0:
         return option_timeout
     transport_timeout = getattr(
@@ -721,7 +736,18 @@ def _map_reasoning_effort(
     return reasoning_effort_map.get(effort, effort)
 
 
-def _supports_reasoning(model: object) -> bool:
+def _supports_image_input(model: object, capabilities: object | None = None) -> bool:
+    if capabilities is not None:
+        return bool(getattr(capabilities, "supports_image_input", False))
+    return "image" in getattr(model, "input", ())
+
+
+def _supports_reasoning(model: object, capabilities: object | None = None) -> bool:
+    if capabilities is not None:
+        supports_thinking = getattr(capabilities, "supports_thinking", None)
+        if supports_thinking is not None:
+            return bool(supports_thinking)
+        return bool(getattr(capabilities, "reasoning", False))
     return bool(
         getattr(
             model,
@@ -732,7 +758,10 @@ def _supports_reasoning(model: object) -> bool:
 
 
 def _build_messages(
-    model, normalized: dict[str, Any], compat: dict[str, Any]
+    model,
+    normalized: dict[str, Any],
+    compat: dict[str, Any],
+    capabilities: object | None = None,
 ) -> list[dict[str, Any]]:
     messages_param: list[dict[str, Any]] = []
     system_prompt = normalized.get("system_prompt")
@@ -743,7 +772,7 @@ def _build_messages(
     if isinstance(system_prompt, str) and system_prompt.strip():
         role = (
             "developer"
-            if getattr(model, "reasoning", False) and supports_developer_role
+            if _supports_reasoning(model, capabilities) and supports_developer_role
             else "system"
         )
         messages_param.append(
@@ -769,14 +798,14 @@ def _build_messages(
             )
             last_role = "assistant"
         if message_role == "user":
-            payload = _user_message_payload(msg, model)
+            payload = _user_message_payload(msg, model, capabilities)
             if payload is not None:
                 messages_param.append(payload)
                 last_role = "user"
             index += 1
             continue
         if message_role == "assistant":
-            payload = _assistant_message_payload(msg, compat, model)
+            payload = _assistant_message_payload(msg, compat, model, capabilities)
             if payload is not None:
                 messages_param.append(payload)
                 last_role = "assistant"
@@ -788,7 +817,10 @@ def _build_messages(
                 index < len(messages) and _message_role(messages[index]) == "toolResult"
             ):
                 tool_payload, tool_images = _tool_result_payload(
-                    messages[index], compat, model
+                    messages[index],
+                    compat,
+                    model,
+                    capabilities,
                 )
                 messages_param.append(tool_payload)
                 image_blocks.extend(tool_images)
@@ -872,7 +904,9 @@ def _message_role(message: object) -> str | None:
     )
 
 
-def _user_message_payload(message: object, model) -> dict[str, Any] | None:
+def _user_message_payload(
+    message: object, model, capabilities: object | None = None
+) -> dict[str, Any] | None:
     content = (
         message.get("content")
         if isinstance(message, dict)
@@ -890,7 +924,7 @@ def _user_message_payload(message: object, model) -> dict[str, Any] | None:
                 sanitized_text = sanitize_surrogates(text)
                 text_fragments.append(sanitized_text)
                 parts.append({"type": "text", "text": sanitized_text})
-        elif part_type == "image" and "image" in getattr(model, "input", ()):
+        elif part_type == "image" and _supports_image_input(model, capabilities):
             data = _part_data(part)
             mime_type = _part_mime_type(part)
             if (
@@ -913,7 +947,10 @@ def _user_message_payload(message: object, model) -> dict[str, Any] | None:
 
 
 def _assistant_message_payload(
-    message: object, compat: dict[str, Any], model
+    message: object,
+    compat: dict[str, Any],
+    model,
+    capabilities: object | None = None,
 ) -> dict[str, Any] | None:
     requires_assistant_after_tool_result = compat_bool(
         compat, REQUIRES_ASSISTANT_AFTER_TOOL_RESULT
@@ -1014,7 +1051,7 @@ def _assistant_message_payload(
         payload["reasoning_details"] = reasoning_details
     if (
         compat_bool(compat, REQUIRES_REASONING_CONTENT_ON_ASSISTANT_MESSAGES)
-        and _supports_reasoning(model)
+        and _supports_reasoning(model, capabilities)
         and "reasoning_content" not in payload
     ):
         payload["reasoning_content"] = ""
@@ -1044,7 +1081,10 @@ async def _notify_provider_response(options, response, model) -> None:
 
 
 def _tool_result_payload(
-    message: object, compat: dict[str, Any], model
+    message: object,
+    compat: dict[str, Any],
+    model,
+    capabilities: object | None = None,
 ) -> tuple[dict[str, Any], list[dict[str, Any]]]:
     assert isinstance(message, ToolResultMessage)
     text_parts = [
@@ -1055,7 +1095,7 @@ def _tool_result_payload(
     text_result = "\n".join(text_parts)
     has_images = any(_part_type(part) == "image" for part in message.content)
     image_blocks: list[dict[str, Any]] = []
-    if "image" in getattr(model, "input", ()):
+    if _supports_image_input(model, capabilities):
         for part in message.content:
             if _part_type(part) != "image":
                 continue

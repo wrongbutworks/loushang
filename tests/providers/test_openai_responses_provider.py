@@ -7,9 +7,16 @@ from types import ModuleType, SimpleNamespace
 
 import pytest
 
-from loushang.ai.model import Endpoint, Model, Pricing, get_default_model_registry
+from loushang.ai.model import (
+    Capabilities,
+    Endpoint,
+    Model,
+    Pricing,
+    get_default_model_registry,
+)
 from loushang.ai.model.registry import clear_default_model_registry
 from loushang.ai.options import OpenAIResponsesOptions
+from loushang.ai.provider import ResolvedRequest
 from loushang.ai.providers.openai_responses import OpenAIResponsesProvider
 from loushang.ai.types import (
     AssistantMessage,
@@ -66,6 +73,104 @@ def test_openai_responses_payload_maps_formal_context_and_tools(
     ]
 
 
+def test_openai_responses_payload_uses_resolved_capabilities_for_images(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _fake_openai_module(monkeypatch)
+    _patch_resolved_request(
+        monkeypatch,
+        base_url="https://api.openai.test/v1",
+        capabilities=Capabilities(input=("text", "image")),
+    )
+    provider = OpenAIResponsesProvider()
+
+    asyncio.run(
+        _collect_parts(
+            provider._stream_raw_parts(
+                _Model(input=("text",)),
+                Context(
+                    system_prompt=None,
+                    messages=[
+                        UserMessage(
+                            role="user",
+                            content=[
+                                TextPart(type="text", text="look"),
+                                ImagePart(
+                                    type="image",
+                                    data="dXNlcg==",
+                                    mime_type="image/png",
+                                ),
+                            ],
+                            timestamp=0.0,
+                        ),
+                        ToolResultMessage(
+                            role="toolResult",
+                            tool_call_id="call_1",
+                            tool_name="read",
+                            content=[
+                                ImagePart(
+                                    type="image",
+                                    data="dG9vbA==",
+                                    mime_type="image/png",
+                                )
+                            ],
+                            is_error=False,
+                            timestamp=0.0,
+                        ),
+                    ],
+                ),
+                OpenAIResponsesOptions(api_key="test-key"),
+            )
+        )
+    )
+
+    assert _FakeAsyncOpenAI.last_create_kwargs["input"] == [
+        {
+            "role": "user",
+            "content": [
+                {"type": "input_text", "text": "look"},
+                {
+                    "type": "input_image",
+                    "detail": "auto",
+                    "image_url": "data:image/png;base64,dXNlcg==",
+                },
+            ],
+        },
+        {
+            "type": "function_call_output",
+            "call_id": "call_1",
+            "output": [
+                {
+                    "type": "input_image",
+                    "detail": "auto",
+                    "image_url": "data:image/png;base64,dG9vbA==",
+                }
+            ],
+        },
+    ]
+
+
+def test_openai_responses_direct_stream_rejects_mismatched_request_api() -> None:
+    provider = OpenAIResponsesProvider()
+    request = ResolvedRequest(
+        provider="openai",
+        endpoint="openai-responses",
+        api="openai-completions",
+        base_url=None,
+        capabilities=Capabilities(input=("text",)),
+    )
+
+    with pytest.raises(ValueError, match="Mismatched api"):
+        asyncio.run(
+            provider.stream(
+                _Model(),
+                {"messages": [UserMessage(role="user", content="hello", timestamp=0)]},
+                OpenAIResponsesOptions(),
+                request,
+            )
+        )
+
+
 def test_openai_responses_uses_upstream_model_id(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -94,31 +199,60 @@ def test_openai_responses_uses_upstream_model_id(
 
 
 def test_openai_responses_caps_model_max_tokens_default(
-	monkeypatch: pytest.MonkeyPatch,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-	_fake_openai_module(monkeypatch)
-	_patch_resolved_request(
-		monkeypatch,
-		base_url="https://api.openai.test/v1",
-		max_tokens=None,
-	)
-	provider = OpenAIResponsesProvider()
+    _fake_openai_module(monkeypatch)
+    _patch_resolved_request(
+        monkeypatch,
+        base_url="https://api.openai.test/v1",
+        max_tokens=None,
+    )
+    provider = OpenAIResponsesProvider()
 
-	asyncio.run(
-		_collect_parts(
-			provider._stream_raw_parts(
-				_Model(max_tokens=32768),
-				Context(
-					system_prompt=None,
-					messages=[UserMessage(role="user", content="hello", timestamp=0.0)],
-					tools=[],
-				),
-				OpenAIResponsesOptions(api_key="test-key"),
-			)
-		)
-	)
+    asyncio.run(
+        _collect_parts(
+            provider._stream_raw_parts(
+                _Model(max_tokens=32768),
+                Context(
+                    system_prompt=None,
+                    messages=[UserMessage(role="user", content="hello", timestamp=0.0)],
+                    tools=[],
+                ),
+                OpenAIResponsesOptions(api_key="test-key"),
+            )
+        )
+    )
 
-	assert _FakeAsyncOpenAI.last_create_kwargs["max_output_tokens"] == 32000
+    assert _FakeAsyncOpenAI.last_create_kwargs["max_output_tokens"] == 32000
+
+
+def test_openai_responses_uses_resolved_capability_max_tokens(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _fake_openai_module(monkeypatch)
+    _patch_resolved_request(
+        monkeypatch,
+        base_url="https://api.openai.test/v1",
+        max_tokens=None,
+        capabilities=Capabilities(max_tokens=2048),
+    )
+    provider = OpenAIResponsesProvider()
+
+    asyncio.run(
+        _collect_parts(
+            provider._stream_raw_parts(
+                _Model(max_tokens=1024),
+                Context(
+                    system_prompt=None,
+                    messages=[UserMessage(role="user", content="hello", timestamp=0.0)],
+                    tools=[],
+                ),
+                OpenAIResponsesOptions(api_key="test-key"),
+            )
+        )
+    )
+
+    assert _FakeAsyncOpenAI.last_create_kwargs["max_output_tokens"] == 2048
 
 
 def test_openai_responses_payload_maps_assistant_tool_call_and_synthesizes_missing_result(
@@ -325,6 +459,44 @@ def test_openai_responses_payload_maps_reasoning_option(
         _collect_parts(
             provider._stream_raw_parts(
                 _Model(reasoning=True),
+                {
+                    "messages": [
+                        UserMessage(role="user", content="hello", timestamp=0.0)
+                    ]
+                },
+                OpenAIResponsesOptions(
+                    api_key="test-key",
+                    reasoning="high",
+                    reasoning_summary="detailed",
+                ),
+            )
+        )
+    )
+
+    assert _FakeAsyncOpenAI.last_create_kwargs["reasoning"] == {
+        "effort": "high",
+        "summary": "detailed",
+    }
+    assert _FakeAsyncOpenAI.last_create_kwargs["include"] == [
+        "reasoning.encrypted_content"
+    ]
+
+
+def test_openai_responses_payload_uses_resolved_capabilities_for_reasoning(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _fake_openai_module(monkeypatch)
+    _patch_resolved_request(
+        monkeypatch,
+        base_url="https://api.openai.test/v1",
+        capabilities=Capabilities(reasoning=True),
+    )
+    provider = OpenAIResponsesProvider()
+
+    asyncio.run(
+        _collect_parts(
+            provider._stream_raw_parts(
+                _Model(reasoning=False),
                 {
                     "messages": [
                         UserMessage(role="user", content="hello", timestamp=0.0)
@@ -824,26 +996,48 @@ def _patch_resolved_request(
     compat: dict[str, object] | None = None,
     extra_headers: dict[str, str] | None = None,
     max_tokens: int | None = 1024,
+    capabilities: Capabilities | None = None,
     upstream_model_id: str | None = None,
 ) -> None:
-    def _resolve(_model, options=None):
+    def _resolve(provider_api, _model, *, options=None, request=None):
+        if request is not None:
+            if request.api != provider_api:
+                raise ValueError(
+                    f"Mismatched api: provider={provider_api!r} request.api={request.api!r}"
+                )
+            return request
         headers = {}
         api_key = getattr(options, "api_key", None) if options is not None else None
         if isinstance(api_key, str) and api_key:
             headers["Authorization"] = f"Bearer {api_key}"
         if extra_headers:
             headers.update(extra_headers)
-        return SimpleNamespace(
-            api=_model.endpoint_id,
-            headers=headers,
+        option_max_tokens = (
+            getattr(options, "max_tokens", None) if options is not None else None
+        )
+        resolved_max_tokens = (
+            max(1, option_max_tokens)
+            if isinstance(option_max_tokens, int)
+            else max_tokens
+        )
+        return ResolvedRequest(
+            provider=getattr(_model, "provider_id", ""),
+            endpoint=getattr(_model, "endpoint_id", ""),
+            api=provider_api,
             base_url=base_url,
-            compat=compat or {},
-            max_tokens=max_tokens,
+            headers=headers,
+            adapter_compat=compat or {},
+            max_tokens=resolved_max_tokens,
+            capabilities=capabilities
+            or Capabilities(
+                input=tuple(getattr(_model, "input", ("text",))),
+                reasoning=bool(getattr(_model, "reasoning", False)),
+            ),
             upstream_model_id=upstream_model_id,
         )
 
     monkeypatch.setattr(
-        "loushang.ai.providers.openai_responses.resolve_request_for_model",
+        "loushang.ai.providers.openai_responses.resolve_provider_request",
         _resolve,
     )
 

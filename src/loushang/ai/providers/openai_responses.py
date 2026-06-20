@@ -14,7 +14,7 @@ from loushang.ai.model.compat_schema import (
 )
 from loushang.ai.options import PairingMode
 from loushang.ai.output_budget import resolve_output_token_budget
-from loushang.ai.provider import resolve_request_for_model
+from loushang.ai.provider import resolve_provider_request
 from loushang.ai.provider.cancellation import is_signal_cancelled
 from loushang.ai.provider.errors import provider_error_part
 from loushang.ai.providers.openai_responses_shared import (
@@ -66,8 +66,13 @@ class OpenAIResponsesProvider:
         self._client = client
         self._base_url = base_url
 
-    async def stream(self, model, context, options):
-        resolved = resolve_request_for_model(model, options=options)
+    async def stream(self, model, context, options, request=None):
+        resolved = resolve_provider_request(
+            self.api,
+            model,
+            options=options,
+            request=request,
+        )
         stream = AssistantMessageEventStream()
         assembler = RawAssembler(
             stream=stream,
@@ -83,7 +88,9 @@ class OpenAIResponsesProvider:
                 assembler.feed({"type": "aborted"})
                 return
             try:
-                async for part in self._stream_raw_parts(model, context, options):
+                async for part in self._stream_raw_parts(
+                    model, context, options, resolved
+                ):
                     if is_signal_cancelled(signal):
                         assembler.feed({"type": "aborted"})
                         return
@@ -94,10 +101,12 @@ class OpenAIResponsesProvider:
         stream.attach_task(asyncio.create_task(_run()))
         return stream
 
-    async def stream_simple(self, model, context, options):
-        return await self.stream(model, context, options)
+    async def stream_simple(self, model, context, options, request=None):
+        return await self.stream(model, context, options, request)
 
-    async def _stream_raw_parts(self, model, context, options) -> AsyncIterator[dict]:
+    async def _stream_raw_parts(
+        self, model, context, options, request=None
+    ) -> AsyncIterator[dict]:
         def _pairing_mode() -> PairingMode:
             if options is None:
                 return "repair"
@@ -124,8 +133,13 @@ class OpenAIResponsesProvider:
             model=model,
             pairing_mode=_pairing_mode(),
         )
-        resolved = resolve_request_for_model(model, options=options)
-        compat = dict(getattr(resolved, "compat", {}) or {})
+        resolved = resolve_provider_request(
+            self.api,
+            model,
+            options=options,
+            request=request,
+        )
+        compat = dict(getattr(resolved, "adapter_compat", {}) or {})
 
         # 延迟导入 OpenAI SDK
         try:
@@ -156,7 +170,13 @@ class OpenAIResponsesProvider:
         )
 
         # 构造 Responses API 输入。下一步会继续向 pi-ai 的 shared conversion 收敛。
-        input_items = convert_responses_messages(model, normalized, compat)
+        capabilities = getattr(resolved, "capabilities", None)
+        input_items = convert_responses_messages(
+            model,
+            normalized,
+            compat,
+            capabilities,
+        )
 
         cache_retention = _resolve_cache_retention(options)
         session_id = (
@@ -214,7 +234,6 @@ class OpenAIResponsesProvider:
         params["max_output_tokens"] = resolve_output_token_budget(
             model,
             resolved,
-            options,
         ).value
         # 温度
         if getattr(options, "temperature", None) is not None:
@@ -223,7 +242,7 @@ class OpenAIResponsesProvider:
         if getattr(options, "service_tier", None) is not None:
             params["service_tier"] = getattr(options, "service_tier")
         # 推理配置（最小实现）
-        if getattr(model, "reasoning", False):
+        if _supports_reasoning(capabilities):
             reasoning_effort = (
                 getattr(options, "reasoning_effort", None)
                 or getattr(options, "reasoningEffort", None)
@@ -283,3 +302,12 @@ async def _notify_provider_response(options, response, model) -> None:
             await result
     except Exception:
         pass
+
+
+def _supports_reasoning(capabilities: object | None) -> bool:
+    if capabilities is None:
+        return False
+    supports_thinking = getattr(capabilities, "supports_thinking", None)
+    if supports_thinking is not None:
+        return bool(supports_thinking)
+    return bool(getattr(capabilities, "reasoning", False))

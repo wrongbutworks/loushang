@@ -17,10 +17,10 @@ from loushang.coding.session.extension_provider_controller import (
 class _ApiProvider:
     api = "proxy-api"
 
-    async def stream(self, model, context, options):
+    async def stream(self, model, context, options, request):
         return await asyncio.sleep(0)
 
-    async def stream_simple(self, model, context, options):
+    async def stream_simple(self, model, context, options, request):
         return await asyncio.sleep(0)
 
 
@@ -28,7 +28,9 @@ class _OAuthProvider:
     id = "proxy-oauth"
 
 
-def test_extension_provider_controller_registers_native_provider_against_existing_provider() -> None:
+def test_extension_provider_controller_registers_native_provider_against_existing_provider() -> (
+    None
+):
     ai_registry = AiModelRegistry()
     ai_registry.register_provider(
         Provider(
@@ -75,7 +77,7 @@ def test_extension_provider_controller_registers_native_provider_against_existin
                             "reasoning": True,
                         }
                     },
-                }
+                },
             },
         },
     )
@@ -88,7 +90,9 @@ def test_extension_provider_controller_registers_native_provider_against_existin
     assert endpoint is not None
     assert endpoint.api == "proxy-api"
     assert endpoint.base_url == "https://new.example.com"
-    assert ai_registry.get_model("proxy", "proxy-simple", "old-model").name == "Old Model"
+    assert (
+        ai_registry.get_model("proxy", "proxy-simple", "old-model").name == "Old Model"
+    )
     new_model = ai_registry.get_model("proxy", "proxy-advanced", "new-model")
     assert new_model.name == "New Model"
     assert new_model.supports_image_input is True
@@ -126,7 +130,9 @@ def test_extension_provider_controller_registers_canonical_endpoint_auth() -> No
     assert endpoint.auth.extra_headers == {"x-proxy": "yes"}
 
 
-def test_extension_provider_controller_unregisters_provider_and_source_registrations() -> None:
+def test_extension_provider_controller_unregisters_provider_and_source_registrations() -> (
+    None
+):
     ai_registry = AiModelRegistry({"proxy": Provider(id="proxy")})
     api_registry = ApiProviderRegistry()
     oauth_registry = OAuthProviderRegistry()
