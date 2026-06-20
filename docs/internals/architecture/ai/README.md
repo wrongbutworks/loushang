@@ -6,10 +6,11 @@
 
 - 本目录同时包含当前架构说明、历史设计草案、验证记录。
 - 名称里带 `V1`、`round-1`、`blueprint`、`validation` 的文档，很多是阶段性方案，不一定代表当前代码事实。
-- 当前代码事实优先参考 [`src/loushang/ai/README.md`](../../../src/loushang/ai/README.md) 与本页后半部分。
+- 当前代码事实优先参考 [`src/loushang/ai/README.md`](../../../../src/loushang/ai/README.md) 与本页后半部分。
 
 - [Loushang-AI ARD List](./ARD-list.md)
 - [ARD-001: Async Public Streaming Surface](./ARD-001-async-public-streaming-surface.md)
+- [Loushang AI Quality Hardening Charter](../../plans/2026-06-20-loushang-ai-quality-hardening-charter.md)
 - [Loushang-AI Adaptability NFR](./loushang-ai-adaptability-NFR.md)
 - [Loushang-AI Adaptability Design V1](./loushang-ai-adaptability-design-v1.md)
   - 已补充 `code plan` / `codex-like` 账号态认证接入约束、resolved auth view 约束与 `loushang-ai` 边界说明
@@ -206,23 +207,22 @@
 - 手动构造 `ApiProviderRegistry`
 - protocol 级 tool roundtrip
 
-- [Model Lookup Example](../../examples/ai/model_lookup.py)
-- [Complete Example](../../examples/ai/complete.py)
-- [Stream Example](../../examples/ai/stream.py)
-- [Tools Example](../../examples/ai/tools.py)
-- [Typed Context Example](../../examples/ai/typed_context.py)
-- [Faux Stream Example (Advanced)](../../examples/ai/advanced/faux_stream.py)
-- [Context And Tool Minimal Example (Advanced)](../../examples/ai/advanced/context_tools_minimal.py)
-- [Tool Result Roundtrip Example (Advanced)](../../examples/ai/advanced/tool_result_roundtrip.py)
-- [Moonshot Anthropic Stream Vendor Verification](../../tests/ai/vendors/moonshot/test_kimi_anthropic_stream_live.py)
-- [Moonshot Anthropic Complete Vendor Verification](../../tests/ai/vendors/moonshot/test_kimi_anthropic_complete_live.py)
-- [Moonshot Anthropic Tools Vendor Verification](../../tests/ai/vendors/moonshot/test_kimi_anthropic_tools_live.py)
-- [Moonshot OpenAI-Compatible Stream Vendor Verification](../../tests/ai/vendors/moonshot/test_kimi_openai_stream_live.py)
-- [Moonshot OpenAI-Compatible Complete Vendor Verification](../../tests/ai/vendors/moonshot/test_kimi_openai_complete_live.py)
-- [Moonshot OpenAI-Compatible Tools Vendor Verification](../../tests/ai/vendors/moonshot/test_kimi_openai_tools_live.py)
-- [DashScope OpenAI-Compatible Responses Stream Vendor Verification](../../tests/ai/vendors/dashscope/test_openai_responses_stream_live.py)
-- [DashScope OpenAI-Compatible Responses Tools Vendor Verification](../../tests/ai/vendors/dashscope/test_openai_responses_tools_live.py)
-- [Moonshot Custom OpenAI-Compatible Base URL Verification](../../tests/ai/vendors/moonshot/test_custom_base_url_openai_live.py)
+- [Model Lookup Example](../../../../examples/ai/model_lookup.py)
+- [Complete Example](../../../../examples/ai/complete.py)
+- [Stream Example](../../../../examples/ai/stream.py)
+- [Tools Example](../../../../examples/ai/tools.py)
+- [Typed Context Example](../../../../examples/ai/typed_context.py)
+- [Faux Stream Example (Advanced)](../../../../examples/ai/advanced/faux_stream.py)
+- [Context And Tool Minimal Example (Advanced)](../../../../examples/ai/advanced/context_tools_minimal.py)
+- [Tool Result Roundtrip Example (Advanced)](../../../../examples/ai/advanced/tool_result_roundtrip.py)
+- [Moonshot Anthropic Stream Vendor Verification](../../../../tests/ai/vendors/moonshot/test_kimi_anthropic_stream_live.py)
+- [Moonshot Anthropic Complete Vendor Verification](../../../../tests/ai/vendors/moonshot/test_kimi_anthropic_complete_live.py)
+- [Moonshot Anthropic Tools Vendor Verification](../../../../tests/ai/vendors/moonshot/test_kimi_anthropic_tools_live.py)
+- [Moonshot OpenAI-Compatible Stream Vendor Verification](../../../../tests/ai/vendors/moonshot/test_kimi_openai_stream_live.py)
+- [Moonshot OpenAI-Compatible Complete Vendor Verification](../../../../tests/ai/vendors/moonshot/test_kimi_openai_complete_live.py)
+- [DashScope OpenAI-Compatible Responses Stream Vendor Verification](../../../../tests/ai/vendors/dashscope/test_openai_responses_stream_live.py)
+- [DashScope OpenAI-Compatible Responses Tools Vendor Verification](../../../../tests/ai/vendors/dashscope/test_openai_responses_tools_live.py)
+- [Moonshot Custom OpenAI-Compatible Base URL Verification](../../../../tests/ai/vendors/moonshot/test_custom_base_url_openai_live.py)
 
 说明：
 
