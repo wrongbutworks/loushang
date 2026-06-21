@@ -2,19 +2,19 @@
 
 推荐阅读顺序：
 
-- [model_lookup.py](/home/chester/Workspace/ai/loushang/examples/ai/model_lookup.py)
+- [model_lookup.py](model_lookup.py)
   查看 provider、模型列表，并拿到正式模型句柄
-- [provider_matrix.py](/home/chester/Workspace/ai/loushang/examples/ai/provider_matrix.py)
+- [provider_matrix.py](provider_matrix.py)
   查看新增 provider、endpoint、环境变量和上游模型 ID 映射
-- [complete.py](/home/chester/Workspace/ai/loushang/examples/ai/complete.py)
+- [complete.py](complete.py)
   最常见的完整返回调用
-- [stream.py](/home/chester/Workspace/ai/loushang/examples/ai/stream.py)
+- [stream.py](stream.py)
   流式消费事件并读取最终结果
-- [usage_online.py](/home/chester/Workspace/ai/loushang/examples/ai/usage_online.py)
+- [usage_online.py](usage_online.py)
   在线检查 usage；当 catalog 缺少价格事实时，cost 输出为 `{"known": false}`
-- [tools.py](/home/chester/Workspace/ai/loushang/examples/ai/tools.py)
+- [tools.py](tools.py)
   工具调用和 `ToolResultMessage` 往返
-- [typed_context.py](/home/chester/Workspace/ai/loushang/examples/ai/typed_context.py)
+- [03_typed_context.py](03_typed_context.py)
   显式 `Context` / `Tool` / `UserMessage` 类型构造
 
 `examples/ai/advanced/` 放协议观察、faux provider、本地 registry 注入这类高级样例，不作为第一次接入的推荐入口。
@@ -47,5 +47,5 @@ model = get_model("openrouter", "openai-completions", "openai/gpt-oss-120b_free"
 
 补充：
 
-- [advanced/openai_codex_login.py](/home/chester/Workspace/ai/loushang/examples/ai/advanced/openai_codex_login.py)
+- [advanced/openai_codex_login.py](advanced/openai_codex_login.py)
   用于手工登录 `openai-codex` 并保存本地 credentials

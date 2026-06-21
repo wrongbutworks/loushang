@@ -1,12 +1,18 @@
 from __future__ import annotations
 
+from dataclasses import dataclass
+from types import SimpleNamespace
+
 import pytest
 
 from loushang.ai.context import (
     NORMALIZED_CONTEXT_MARKER,
+    NormalizationResult,
+    NormalizedContext,
     ensure_normalized_context,
     is_normalized_context,
     normalize_context,
+    normalize_context_result,
 )
 from loushang.ai.types import (
     AssistantMessage,
@@ -38,6 +44,18 @@ class _DuckTypedTool:
     parameters = {"type": "object"}
 
 
+class _UnknownMessage:
+    role = "custom"
+
+
+@dataclass(frozen=True)
+class _UncopyablePayload:
+    items: list[dict[str, int]]
+
+    def __deepcopy__(self, memo: object) -> object:
+        raise RuntimeError("blocked")
+
+
 def test_normalize_context_accepts_tool_dataclasses_and_dicts() -> None:
     normalized = normalize_context(
         {
@@ -57,10 +75,10 @@ def test_normalize_context_accepts_tool_dataclasses_and_dicts() -> None:
         }
     )
 
-    assert normalized["tools"] == [
+    assert normalized["tools"] == (
         Tool(name="read", description="Read a file", parameters={"type": "object"}),
         Tool(name="write", description="Write a file", parameters={"type": "object"}),
-    ]
+    )
 
 
 def test_normalize_context_rejects_duck_typed_tools() -> None:
@@ -68,20 +86,221 @@ def test_normalize_context_rejects_duck_typed_tools() -> None:
         normalize_context({"messages": [], "tools": [_DuckTypedTool()]})
 
 
-def test_normalize_context_marks_normalized_payload() -> None:
+def test_normalize_context_rejects_non_string_system_prompt() -> None:
+    with pytest.raises(TypeError, match="Unsupported system_prompt type"):
+        normalize_context({"system_prompt": {"text": "system"}, "messages": []})
+
+
+def test_normalize_context_rejects_unknown_message_objects() -> None:
+    with pytest.raises(TypeError, match="Unsupported message type after normalization"):
+        normalize_context({"messages": [_UnknownMessage()]})
+
+
+def test_normalize_context_returns_immutable_normalized_context() -> None:
     normalized = normalize_context({"messages": []})
 
-    assert normalized[NORMALIZED_CONTEXT_MARKER] is True
+    assert isinstance(normalized, NormalizedContext)
+    assert NORMALIZED_CONTEXT_MARKER not in normalized
     assert is_normalized_context(normalized) is True
+    assert normalized.messages == ()
+    assert normalized["messages"] == ()
+    with pytest.raises(AttributeError):
+        setattr(normalized, "system_prompt", "changed")
 
 
-def test_ensure_normalized_context_is_idempotent_for_normalized_payload() -> None:
+def test_normalize_context_snapshots_mutable_message_and_tool_inputs() -> None:
+    arguments = {"x": 1}
+    assistant = AssistantMessage(
+        role="assistant",
+        content=[
+            ToolCall(type="toolCall", id="call_1", name="calc", arguments=arguments)
+        ],
+        api="openai-responses",
+        provider="openai",
+        model="gpt-test",
+        response_id=None,
+        usage=_usage(),
+        stop_reason="toolUse",
+        error_message=None,
+        timestamp=1.0,
+    )
+    tool_parameters = {
+        "type": "object",
+        "properties": {"x": {"type": "number"}},
+    }
+    tool = Tool(
+        name="calc",
+        description="Calculate values",
+        parameters=tool_parameters,
+    )
+
+    normalized = normalize_context(
+        {
+            "messages": [assistant],
+            "tools": [tool],
+        }
+    )
+    assistant.content.append(TextPart(type="text", text="mutated"))
+    arguments["x"] = 2
+    tool_parameters["properties"]["x"]["type"] = "string"
+
+    snapshot_assistant = normalized.messages[0]
+    assert isinstance(snapshot_assistant, AssistantMessage)
+    assert snapshot_assistant.content == [
+        ToolCall(type="toolCall", id="call_1", name="calc", arguments={"x": 1})
+    ]
+    assert normalized.tools == (
+        Tool(
+            name="calc",
+            description="Calculate values",
+            parameters={
+                "type": "object",
+                "properties": {"x": {"type": "number"}},
+            },
+        ),
+    )
+    with pytest.raises(TypeError, match="NormalizedContext values are immutable"):
+        snapshot_assistant.content.append(TextPart(type="text", text="blocked"))
+    snapshot_tool_call = snapshot_assistant.content[0]
+    assert isinstance(snapshot_tool_call, ToolCall)
+    with pytest.raises(TypeError, match="NormalizedContext values are immutable"):
+        snapshot_tool_call.arguments["x"] = 2
+    frozen_arguments = snapshot_tool_call.arguments
+    with pytest.raises(TypeError, match="NormalizedContext values are immutable"):
+        frozen_arguments |= {"y": 3}
+    assert normalized.tools is not None
+    with pytest.raises(TypeError, match="NormalizedContext values are immutable"):
+        normalized.tools[0].parameters["type"] = "string"
+
+
+def test_normalize_context_rejects_uncopyable_values_without_mutating_input() -> None:
+    payload = _UncopyablePayload(items=[{"x": 1}])
+
+    with pytest.raises(TypeError, match="could not be snapshotted"):
+        normalize_context({"messages": [], "payload": payload})
+
+    assert type(payload.items) is list
+    assert type(payload.items[0]) is dict
+    payload.items[0]["x"] = 2
+    assert payload.items == [{"x": 2}]
+
+
+def test_ensure_normalized_context_is_idempotent_for_normalized_context() -> None:
     normalized = normalize_context({"messages": []})
 
     ensured = ensure_normalized_context(normalized)
 
-    assert ensured == normalized
+    assert ensured is normalized
     assert is_normalized_context(ensured) is True
+
+
+def test_ensure_normalized_context_does_not_trust_legacy_marker_dict() -> None:
+    ensured = ensure_normalized_context(
+        {
+            NORMALIZED_CONTEXT_MARKER: True,
+            "messages": [{"role": "system", "content": "system text"}],
+        }
+    )
+
+    assert isinstance(ensured, NormalizedContext)
+    assert ensured.system_prompt == "system text"
+    assert ensured.messages == ()
+    assert NORMALIZED_CONTEXT_MARKER not in ensured
+
+
+def test_normalize_context_result_wraps_normalized_context() -> None:
+    result = normalize_context_result({"messages": [], "emit_thinking": True})
+
+    assert isinstance(result, NormalizationResult)
+    assert isinstance(result.context, NormalizedContext)
+    assert result.context["emit_thinking"] is True
+    assert result.diagnostics == ()
+
+
+def test_normalize_context_reprojects_normalized_context_for_new_model() -> None:
+    assistant = AssistantMessage(
+        role="assistant",
+        content=[
+            ToolCall(type="toolCall", id="call:1", name="calc", arguments={"x": 1})
+        ],
+        api="openai-responses",
+        provider="openai",
+        model="gpt-test",
+        response_id=None,
+        usage=_usage(),
+        stop_reason="toolUse",
+        error_message=None,
+        timestamp=1.0,
+    )
+    tool_result = ToolResultMessage(
+        role="toolResult",
+        tool_call_id="call:1",
+        tool_name="calc",
+        content=[TextPart(type="text", text="1")],
+        is_error=False,
+        timestamp=2.0,
+    )
+    first = normalize_context({"messages": [assistant, tool_result]})
+
+    reprojected = normalize_context(
+        first,
+        model=SimpleNamespace(
+            api="anthropic-messages",
+            provider_id="anthropic",
+            id="claude-test",
+        ),
+    )
+
+    next_assistant = reprojected.messages[0]
+    next_tool_result = reprojected.messages[1]
+    assert isinstance(next_assistant, AssistantMessage)
+    assert isinstance(next_tool_result, ToolResultMessage)
+    assert next_assistant.content[0] == ToolCall(
+        type="toolCall",
+        id="call_1",
+        name="calc",
+        arguments={"x": 1},
+    )
+    assert next_tool_result.tool_call_id == "call_1"
+
+
+def test_normalize_context_reuses_more_specific_context_for_partial_model_key() -> None:
+    normalized = normalize_context(
+        {"messages": []},
+        model=SimpleNamespace(
+            api="openai-responses",
+            provider_id="custom",
+            id="gpt-test",
+        ),
+    )
+
+    ensured = ensure_normalized_context(
+        normalized,
+        model=SimpleNamespace(provider_id="custom", id="gpt-test"),
+    )
+
+    assert ensured is normalized
+
+
+def test_normalize_context_rejects_pairing_mode_change_after_repair() -> None:
+    assistant = AssistantMessage(
+        role="assistant",
+        content=[
+            ToolCall(type="toolCall", id="call_1", name="calc", arguments={"x": 1})
+        ],
+        api="openai-responses",
+        provider="openai",
+        model="gpt-test",
+        response_id=None,
+        usage=_usage(),
+        stop_reason="toolUse",
+        error_message=None,
+        timestamp=1.0,
+    )
+    repaired = normalize_context({"messages": [assistant]}, pairing_mode="repair")
+
+    with pytest.raises(ValueError, match="different pairing_mode"):
+        normalize_context(repaired, pairing_mode="strict")
 
 
 def test_normalize_context_accepts_pi_style_assistant_and_tool_result_dicts() -> None:
@@ -344,4 +563,8 @@ def test_normalize_context_keeps_malformed_historical_tool_call_recoverable() ->
         }
     )
 
-    assert [getattr(message, "role", None) for message in normalized["messages"]] == ["assistant", "toolResult", "user"]
+    assert [getattr(message, "role", None) for message in normalized["messages"]] == [
+        "assistant",
+        "toolResult",
+        "user",
+    ]

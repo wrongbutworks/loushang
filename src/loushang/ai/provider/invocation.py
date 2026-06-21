@@ -56,10 +56,11 @@ def _resolve_pairing_mode(options) -> PairingMode:
     return "repair"
 
 
-def _normalization_model(model, request: ResolvedRequest):
+def normalization_model_for_request(model, request: ResolvedRequest):
     return SimpleNamespace(
         api=request.api,
         provider_id=request.provider,
+        endpoint_id=getattr(request, "endpoint", getattr(model, "endpoint_id", None)),
         id=model.id,
     )
 
@@ -67,7 +68,7 @@ def _normalization_model(model, request: ResolvedRequest):
 def _normalize_provider_context(model, context, options, request: ResolvedRequest):
     return ensure_normalized_context(
         context,
-        model=_normalization_model(model, request),
+        model=normalization_model_for_request(model, request),
         pairing_mode=_resolve_pairing_mode(options),
     )
 

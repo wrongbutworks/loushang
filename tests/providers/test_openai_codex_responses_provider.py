@@ -7,6 +7,7 @@ from dataclasses import dataclass, field
 import pytest
 
 from loushang.ai.auth.types import OAuthCredentials
+from loushang.ai.context import normalize_context
 from loushang.ai.model.domain import Compat, Endpoint, Model
 from loushang.ai.model.registry import (
     clear_default_model_registry,
@@ -24,6 +25,31 @@ from loushang.ai.types import (
     Usage,
     UserMessage,
 )
+
+
+def _normalized_context(model, context, options=None):
+    pairing_mode = (
+        "strict" if getattr(options, "pairing_mode", "repair") == "strict" else "repair"
+    )
+    return normalize_context(context, model=model, pairing_mode=pairing_mode)
+
+
+def _stream_raw_parts(provider, model, context, options=None, request=None):
+    return provider._stream_raw_parts(
+        model,
+        _normalized_context(model, context, options),
+        options,
+        request,
+    )
+
+
+async def _stream(provider, model, context, options=None, request=None):
+    return await provider.stream(
+        model,
+        _normalized_context(model, context, options),
+        options,
+        request,
+    )
 
 
 def test_openai_codex_responses_builds_request_body_and_headers() -> None:
@@ -50,7 +76,8 @@ def test_openai_codex_responses_builds_request_body_and_headers() -> None:
 
     asyncio.run(
         _collect_parts(
-            provider._stream_raw_parts(
+            _stream_raw_parts(
+                provider,
                 model,
                 {
                     "system_prompt": "You are Codex.",
@@ -148,7 +175,8 @@ def test_openai_codex_responses_preserves_tool_history_payload() -> None:
 
     asyncio.run(
         _collect_parts(
-            provider._stream_raw_parts(
+            _stream_raw_parts(
+                provider,
                 _Model(reasoning=False),
                 {
                     "messages": [
@@ -211,7 +239,8 @@ def test_openai_codex_responses_uses_upstream_model_id() -> None:
 
     asyncio.run(
         _collect_parts(
-            provider._stream_raw_parts(
+            _stream_raw_parts(
+                provider,
                 _Model(id="gpt-5.3-codex_public"),
                 {
                     "messages": [
@@ -237,7 +266,8 @@ def test_openai_codex_responses_omits_optional_request_fields_when_unused() -> N
 
     asyncio.run(
         _collect_parts(
-            provider._stream_raw_parts(
+            _stream_raw_parts(
+                provider,
                 _Model(reasoning=False),
                 {
                     "messages": [
@@ -271,7 +301,8 @@ def test_openai_codex_responses_sends_empty_instructions_when_missing() -> None:
 
     asyncio.run(
         _collect_parts(
-            provider._stream_raw_parts(
+            _stream_raw_parts(
+                provider,
                 _Model(reasoning=False),
                 {
                     "messages": [
@@ -326,7 +357,8 @@ def test_openai_codex_responses_respects_compat_session_headers() -> None:
 
     asyncio.run(
         _collect_parts(
-            provider._stream_raw_parts(
+            _stream_raw_parts(
+                provider,
                 model,
                 {
                     "messages": [
@@ -384,7 +416,8 @@ def test_openai_codex_responses_public_stream_uses_runtime_config_headers() -> N
     provider = OpenAICodexResponsesProvider(client=client)
 
     async def _run() -> list[dict]:
-        stream = await provider.stream(
+        stream = await _stream(
+            provider,
             model,
             {"messages": [UserMessage(role="user", content="hello", timestamp=0.0)]},
             OpenAICodexResponsesOptions(
@@ -417,7 +450,8 @@ def test_openai_codex_responses_prefers_oauth_account_binding_over_token_parsing
 
     asyncio.run(
         _collect_parts(
-            provider._stream_raw_parts(
+            _stream_raw_parts(
+                provider,
                 _Model(reasoning=False),
                 {
                     "messages": [
@@ -459,7 +493,8 @@ def test_openai_codex_responses_uses_resolved_request_account_binding() -> None:
 
     asyncio.run(
         _collect_parts(
-            provider._stream_raw_parts(
+            _stream_raw_parts(
+                provider,
                 _Model(reasoning=False),
                 {
                     "messages": [
@@ -487,7 +522,8 @@ def test_openai_codex_responses_header_override_keeps_account_consistent() -> No
 
     asyncio.run(
         _collect_parts(
-            provider._stream_raw_parts(
+            _stream_raw_parts(
+                provider,
                 _Model(reasoning=False),
                 {
                     "messages": [
@@ -571,7 +607,8 @@ def test_openai_codex_responses_stream_maps_sse_to_final_message() -> None:
     )
     provider = OpenAICodexResponsesProvider(client=client)
     stream = asyncio.run(
-        provider.stream(
+        _stream(
+            provider,
             _Model(reasoning=True),
             {"messages": [UserMessage(role="user", content="hello", timestamp=0.0)]},
             OpenAICodexResponsesOptions(
@@ -643,7 +680,8 @@ def test_openai_codex_responses_stream_handles_incomplete_and_refusal_events() -
     )
     provider = OpenAICodexResponsesProvider(client=client)
     stream = asyncio.run(
-        provider.stream(
+        _stream(
+            provider,
             _Model(reasoning=False),
             {"messages": [UserMessage(role="user", content="hello", timestamp=0.0)]},
             OpenAICodexResponsesOptions(api_key=_build_fake_jwt("acc_test")),
@@ -666,7 +704,8 @@ def test_openai_codex_responses_stream_handles_error_event() -> None:
     )
     provider = OpenAICodexResponsesProvider(client=client)
     stream = asyncio.run(
-        provider.stream(
+        _stream(
+            provider,
             _Model(reasoning=False),
             {"messages": [UserMessage(role="user", content="hello", timestamp=0.0)]},
             OpenAICodexResponsesOptions(api_key=_build_fake_jwt("acc_test")),
@@ -712,7 +751,8 @@ def test_openai_codex_responses_stream_handles_response_done_alias() -> None:
     )
     provider = OpenAICodexResponsesProvider(client=client)
     stream = asyncio.run(
-        provider.stream(
+        _stream(
+            provider,
             _Model(reasoning=False),
             {"messages": [UserMessage(role="user", content="hello", timestamp=0.0)]},
             OpenAICodexResponsesOptions(api_key=_build_fake_jwt("acc_test")),
@@ -765,7 +805,8 @@ def test_openai_codex_responses_stream_handles_function_call_events() -> None:
     )
     provider = OpenAICodexResponsesProvider(client=client)
     stream = asyncio.run(
-        provider.stream(
+        _stream(
+            provider,
             _Model(reasoning=True),
             {
                 "messages": [
@@ -818,7 +859,8 @@ def test_openai_codex_responses_retries_retryable_sse_failure() -> None:
     )
     provider = OpenAICodexResponsesProvider(client=client)
     stream = asyncio.run(
-        provider.stream(
+        _stream(
+            provider,
             _Model(reasoning=False),
             {"messages": [UserMessage(role="user", content="hello", timestamp=0.0)]},
             OpenAICodexResponsesOptions(
@@ -840,7 +882,8 @@ def test_openai_codex_responses_surfaces_http_error_code() -> None:
     )
     provider = OpenAICodexResponsesProvider(client=client)
     stream = asyncio.run(
-        provider.stream(
+        _stream(
+            provider,
             _Model(reasoning=False),
             {"messages": [UserMessage(role="user", content="hello", timestamp=0.0)]},
             OpenAICodexResponsesOptions(api_key=_build_fake_jwt("acc_test")),
@@ -862,7 +905,8 @@ def test_openai_codex_responses_omits_non_http_error_code() -> None:
     )
     provider = OpenAICodexResponsesProvider(client=client)
     stream = asyncio.run(
-        provider.stream(
+        _stream(
+            provider,
             _Model(reasoning=False),
             {"messages": [UserMessage(role="user", content="hello", timestamp=0.0)]},
             OpenAICodexResponsesOptions(api_key=_build_fake_jwt("acc_test")),
@@ -887,7 +931,8 @@ def test_openai_codex_responses_surfaces_parsed_error_message() -> None:
     )
     provider = OpenAICodexResponsesProvider(client=client)
     stream = asyncio.run(
-        provider.stream(
+        _stream(
+            provider,
             _Model(reasoning=False),
             {"messages": [UserMessage(role="user", content="hello", timestamp=0.0)]},
             OpenAICodexResponsesOptions(api_key=_build_fake_jwt("acc_test"), retries=0),
@@ -927,7 +972,8 @@ def test_openai_codex_responses_auto_transport_falls_back_to_sse_when_websocket_
     )
     provider = OpenAICodexResponsesProvider(client=client)
     stream = asyncio.run(
-        provider.stream(
+        _stream(
+            provider,
             _Model(reasoning=False),
             {"messages": [UserMessage(role="user", content="hello", timestamp=0.0)]},
             OpenAICodexResponsesOptions(
@@ -955,7 +1001,8 @@ def test_openai_codex_responses_websocket_transport_does_not_fallback_to_sse() -
     )
     provider = OpenAICodexResponsesProvider(client=client)
     stream = asyncio.run(
-        provider.stream(
+        _stream(
+            provider,
             _Model(reasoning=False),
             {"messages": [UserMessage(role="user", content="hello", timestamp=0.0)]},
             OpenAICodexResponsesOptions(
@@ -1009,7 +1056,8 @@ def test_openai_codex_responses_websocket_uses_runtime_config_headers() -> None:
     provider = OpenAICodexResponsesProvider(client=client)
 
     async def _run() -> list[dict]:
-        stream = await provider.stream(
+        stream = await _stream(
+            provider,
             model,
             {"messages": [UserMessage(role="user", content="hello", timestamp=0.0)]},
             OpenAICodexResponsesOptions(
@@ -1074,7 +1122,8 @@ def test_openai_codex_responses_websocket_reuses_connection_for_same_session() -
     )
 
     first_stream = asyncio.run(
-        provider.stream(
+        _stream(
+            provider,
             _Model(reasoning=False),
             {"messages": [UserMessage(role="user", content="one", timestamp=0.0)]},
             options,
@@ -1083,7 +1132,8 @@ def test_openai_codex_responses_websocket_reuses_connection_for_same_session() -
     first_events = asyncio.run(_collect_stream_events(first_stream))
 
     second_stream = asyncio.run(
-        provider.stream(
+        _stream(
+            provider,
             _Model(reasoning=False),
             {"messages": [UserMessage(role="user", content="two", timestamp=0.0)]},
             options,
@@ -1111,7 +1161,8 @@ def test_openai_codex_responses_websocket_close_before_completion_is_error() -> 
     )
     provider = OpenAICodexResponsesProvider(client=client)
     stream = asyncio.run(
-        provider.stream(
+        _stream(
+            provider,
             _Model(reasoning=False),
             {"messages": [UserMessage(role="user", content="hello", timestamp=0.0)]},
             OpenAICodexResponsesOptions(
@@ -1180,14 +1231,16 @@ def test_openai_codex_responses_websocket_idle_expiry_closes_and_evicts_cached_s
     )
 
     async def _run() -> list[dict]:
-        first_stream = await provider.stream(
+        first_stream = await _stream(
+            provider,
             _Model(reasoning=False),
             {"messages": [UserMessage(role="user", content="one", timestamp=0.0)]},
             options,
         )
         await _collect_stream_events(first_stream)
         await asyncio.sleep(0.05)
-        second_stream = await provider.stream(
+        second_stream = await _stream(
+            provider,
             _Model(reasoning=False),
             {"messages": [UserMessage(role="user", content="two", timestamp=0.0)]},
             options,

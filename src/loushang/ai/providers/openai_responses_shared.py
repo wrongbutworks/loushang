@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import re
+from collections.abc import Mapping, Sequence
 from typing import Any, TypedDict
 
 from loushang.ai.model.domain import (
@@ -26,7 +27,7 @@ class _BufferedTextPart(TypedDict):
 
 def convert_responses_messages(
     model,
-    normalized: dict[str, Any],
+    normalized: Mapping[str, Any],
     protocol: EndpointProtocolFeatures | None = None,
     dialect: EndpointWireDialect | None = None,
     capabilities: object | None = None,
@@ -119,8 +120,10 @@ def convert_responses_messages(
     return input_items
 
 
-def convert_responses_tools(tools: list[Any] | None) -> list[dict[str, Any]] | None:
-    if not isinstance(tools, list) or not tools:
+def convert_responses_tools(
+    tools: Sequence[Any] | None,
+) -> list[dict[str, Any]] | None:
+    if not isinstance(tools, Sequence) or isinstance(tools, str) or not tools:
         return None
     normalized_tools: list[Tool] = []
     for tool in tools:

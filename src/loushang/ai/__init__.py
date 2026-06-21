@@ -5,7 +5,7 @@ from loushang.ai.api_registry import (
 )
 from loushang.ai.auth import get_env_api_key
 from loushang.ai.bootstrap import register_builtin_ai_providers
-from loushang.ai.context import normalize_context
+from loushang.ai.context import NormalizedContext, normalize_context
 from loushang.ai.event_stream import (
     AssistantMessageEventStream,
     EventStream,
@@ -127,6 +127,7 @@ __all__ = [
     "Context",
     "Message",
     "Model",
+    "NormalizedContext",
     "StopReason",
     "ModelCallOptions",
     "StreamOptions",

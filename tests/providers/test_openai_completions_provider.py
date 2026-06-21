@@ -9,6 +9,7 @@ from types import ModuleType, SimpleNamespace
 import pytest
 
 from loushang.ai import get_model
+from loushang.ai.context import normalize_context
 from loushang.ai.model import Capabilities, Compat, Model
 from loushang.ai.model.compat_schema import (
     MAX_TOKENS_FIELD,
@@ -46,6 +47,31 @@ from loushang.ai.types import (
     Usage,
     UserMessage,
 )
+
+
+def _normalized_context(model, context, options=None):
+    pairing_mode = (
+        "strict" if getattr(options, "pairing_mode", "repair") == "strict" else "repair"
+    )
+    return normalize_context(context, model=model, pairing_mode=pairing_mode)
+
+
+def _stream_raw_parts(provider, model, context, options=None, request=None):
+    return provider._stream_raw_parts(
+        model,
+        _normalized_context(model, context, options),
+        options,
+        request,
+    )
+
+
+async def _stream(provider, model, context, options=None, request=None):
+    return await provider.stream(
+        model,
+        _normalized_context(model, context, options),
+        options,
+        request,
+    )
 
 
 def test_openai_completions_payload_maps_user_image_assistant_toolcall_and_tool_result_mixed(
@@ -90,7 +116,8 @@ def test_openai_completions_payload_maps_user_image_assistant_toolcall_and_tool_
 
     asyncio.run(
         _collect_parts(
-            provider._stream_raw_parts(
+            _stream_raw_parts(
+                provider,
                 _Model(),
                 {
                     "system_prompt": "You are helpful.",
@@ -197,7 +224,8 @@ def test_openai_completions_payload_uses_resolved_capabilities_for_images(
 
     asyncio.run(
         _collect_parts(
-            provider._stream_raw_parts(
+            _stream_raw_parts(
+                provider,
                 _Model(input=("text",)),
                 {
                     "messages": [
@@ -264,7 +292,8 @@ def test_openai_completions_uses_upstream_model_id(
 
     asyncio.run(
         _collect_parts(
-            provider._stream_raw_parts(
+            _stream_raw_parts(
+                provider,
                 _Model(id="openai/gpt-oss-120b_free"),
                 {
                     "messages": [
@@ -293,7 +322,8 @@ def test_openai_completions_caps_model_max_tokens_default(
 
     asyncio.run(
         _collect_parts(
-            provider._stream_raw_parts(
+            _stream_raw_parts(
+                provider,
                 _Model(max_tokens=32768),
                 {
                     "messages": [
@@ -323,7 +353,8 @@ def test_openai_completions_uses_resolved_capability_max_tokens(
 
     asyncio.run(
         _collect_parts(
-            provider._stream_raw_parts(
+            _stream_raw_parts(
+                provider,
                 _Model(max_tokens=1024),
                 {
                     "messages": [
@@ -382,7 +413,8 @@ def test_openai_completions_payload_respects_bridge_tool_name_developer_role_and
 
     asyncio.run(
         _collect_parts(
-            provider._stream_raw_parts(
+            _stream_raw_parts(
+                provider,
                 _Model(id="gpt-reasoning", reasoning=True),
                 {
                     "system_prompt": "You reason carefully.",
@@ -442,7 +474,8 @@ def test_openai_completions_payload_uses_resolved_capabilities_for_reasoning(
 
     asyncio.run(
         _collect_parts(
-            provider._stream_raw_parts(
+            _stream_raw_parts(
+                provider,
                 _Model(reasoning=False),
                 {
                     "system_prompt": "You reason carefully.",
@@ -543,7 +576,8 @@ def test_openai_completions_payload_uses_typed_endpoint_dialect(
 
     asyncio.run(
         _collect_parts(
-            provider._stream_raw_parts(
+            _stream_raw_parts(
+                provider,
                 model,
                 {
                     "system_prompt": "You are helpful.",
@@ -628,9 +662,14 @@ def test_openai_completions_supplied_request_compat_projects_to_typed_payload(
 
     asyncio.run(
         _collect_parts(
-            provider._stream_raw_parts(
+            _stream_raw_parts(
+                provider,
                 _Model(),
-                {"messages": [UserMessage(role="user", content="hello", timestamp=0.0)]},
+                {
+                    "messages": [
+                        UserMessage(role="user", content="hello", timestamp=0.0)
+                    ]
+                },
                 OpenAICompletionsOptions(
                     cache_retention="long",
                     session_id="session-supplied",
@@ -663,9 +702,14 @@ def test_openai_completions_supplied_empty_request_uses_legacy_compat_defaults(
 
     asyncio.run(
         _collect_parts(
-            provider._stream_raw_parts(
+            _stream_raw_parts(
+                provider,
                 _Model(),
-                {"messages": [UserMessage(role="user", content="hello", timestamp=0.0)]},
+                {
+                    "messages": [
+                        UserMessage(role="user", content="hello", timestamp=0.0)
+                    ]
+                },
                 OpenAICompletionsOptions(),
                 request=request,
             )
@@ -698,7 +742,8 @@ def test_openai_completions_supplied_request_preserves_explicit_unknown_protocol
 
     asyncio.run(
         _collect_parts(
-            provider._stream_raw_parts(
+            _stream_raw_parts(
+                provider,
                 _Model(reasoning=True),
                 {
                     "system_prompt": "You reason carefully.",
@@ -741,9 +786,14 @@ def test_openai_completions_supplied_request_protocol_and_dialect_project_to_pay
 
     asyncio.run(
         _collect_parts(
-            provider._stream_raw_parts(
+            _stream_raw_parts(
+                provider,
                 _Model(),
-                {"messages": [UserMessage(role="user", content="hello", timestamp=0.0)]},
+                {
+                    "messages": [
+                        UserMessage(role="user", content="hello", timestamp=0.0)
+                    ]
+                },
                 OpenAICompletionsOptions(
                     cache_retention="long",
                     session_id="session-typed",
@@ -784,7 +834,8 @@ def test_openai_completions_public_stream_uses_supplied_typed_request(
     )
 
     async def _run() -> None:
-        stream = await provider.stream(
+        stream = await _stream(
+            provider,
             _Model(),
             {"messages": [UserMessage(role="user", content="hello", timestamp=0.0)]},
             OpenAICompletionsOptions(
@@ -822,9 +873,14 @@ def test_openai_completions_supplied_request_typed_adapter_overrides_stale_compa
 
     asyncio.run(
         _collect_parts(
-            provider._stream_raw_parts(
+            _stream_raw_parts(
+                provider,
                 _Model(),
-                {"messages": [UserMessage(role="user", content="hello", timestamp=0.0)]},
+                {
+                    "messages": [
+                        UserMessage(role="user", content="hello", timestamp=0.0)
+                    ]
+                },
                 OpenAICompletionsOptions(
                     cache_retention="short",
                     session_id="session-stale",
@@ -859,9 +915,14 @@ def test_openai_completions_supplied_request_typed_dialect_overrides_stale_compa
 
     asyncio.run(
         _collect_parts(
-            provider._stream_raw_parts(
+            _stream_raw_parts(
+                provider,
                 _Model(),
-                {"messages": [UserMessage(role="user", content="hello", timestamp=0.0)]},
+                {
+                    "messages": [
+                        UserMessage(role="user", content="hello", timestamp=0.0)
+                    ]
+                },
                 OpenAICompletionsOptions(),
                 request=request,
             )
@@ -885,9 +946,14 @@ def test_openai_completions_prompt_cache_key_uses_explicit_support_flag(
 
     asyncio.run(
         _collect_parts(
-            provider._stream_raw_parts(
+            _stream_raw_parts(
+                provider,
                 _Model(),
-                {"messages": [UserMessage(role="user", content="hello", timestamp=0.0)]},
+                {
+                    "messages": [
+                        UserMessage(role="user", content="hello", timestamp=0.0)
+                    ]
+                },
                 OpenAICompletionsOptions(
                     api_key="test-key",
                     cache_retention="short",
@@ -929,9 +995,14 @@ def test_openai_completions_explicit_prompt_cache_key_reaches_sdk_payload(
 
     asyncio.run(
         _collect_parts(
-            provider._stream_raw_parts(
+            _stream_raw_parts(
+                provider,
                 model,
-                {"messages": [UserMessage(role="user", content="hello", timestamp=0.0)]},
+                {
+                    "messages": [
+                        UserMessage(role="user", content="hello", timestamp=0.0)
+                    ]
+                },
                 OpenAICompletionsOptions(
                     api_key="test-key",
                     cache_retention="long",
@@ -973,9 +1044,14 @@ def test_openai_completions_official_url_requires_prompt_cache_support_flag(
 
     asyncio.run(
         _collect_parts(
-            provider._stream_raw_parts(
+            _stream_raw_parts(
+                provider,
                 model,
-                {"messages": [UserMessage(role="user", content="hello", timestamp=0.0)]},
+                {
+                    "messages": [
+                        UserMessage(role="user", content="hello", timestamp=0.0)
+                    ]
+                },
                 OpenAICompletionsOptions(
                     api_key="test-key",
                     cache_retention="long",
@@ -1021,9 +1097,14 @@ def test_openai_completions_typed_prompt_cache_key_unsupported_disables_payload(
 
     asyncio.run(
         _collect_parts(
-            provider._stream_raw_parts(
+            _stream_raw_parts(
+                provider,
                 model,
-                {"messages": [UserMessage(role="user", content="hello", timestamp=0.0)]},
+                {
+                    "messages": [
+                        UserMessage(role="user", content="hello", timestamp=0.0)
+                    ]
+                },
                 OpenAICompletionsOptions(
                     api_key="test-key",
                     cache_retention="long",
@@ -1046,9 +1127,14 @@ def test_openai_completions_prompt_cache_key_defaults_off_for_short_sessions(
 
     asyncio.run(
         _collect_parts(
-            provider._stream_raw_parts(
+            _stream_raw_parts(
+                provider,
                 _Model(),
-                {"messages": [UserMessage(role="user", content="hello", timestamp=0.0)]},
+                {
+                    "messages": [
+                        UserMessage(role="user", content="hello", timestamp=0.0)
+                    ]
+                },
                 OpenAICompletionsOptions(
                     api_key="test-key",
                     cache_retention="short",
@@ -1075,9 +1161,14 @@ def test_openai_completions_prompt_cache_key_can_be_disabled(
 
     asyncio.run(
         _collect_parts(
-            provider._stream_raw_parts(
+            _stream_raw_parts(
+                provider,
                 _Model(),
-                {"messages": [UserMessage(role="user", content="hello", timestamp=0.0)]},
+                {
+                    "messages": [
+                        UserMessage(role="user", content="hello", timestamp=0.0)
+                    ]
+                },
                 OpenAICompletionsOptions(
                     api_key="test-key",
                     cache_retention="short",
@@ -1107,9 +1198,14 @@ def test_openai_completions_prompt_cache_key_disables_long_retention_params(
 
     asyncio.run(
         _collect_parts(
-            provider._stream_raw_parts(
+            _stream_raw_parts(
+                provider,
                 _Model(),
-                {"messages": [UserMessage(role="user", content="hello", timestamp=0.0)]},
+                {
+                    "messages": [
+                        UserMessage(role="user", content="hello", timestamp=0.0)
+                    ]
+                },
                 OpenAICompletionsOptions(
                     api_key="test-key",
                     cache_retention="long",
@@ -1142,7 +1238,8 @@ def test_openai_completions_explicit_zai_thinking_format(
 
     asyncio.run(
         _collect_parts(
-            provider._stream_raw_parts(
+            _stream_raw_parts(
+                provider,
                 _Model(provider_id="zai", reasoning=True),
                 {
                     "messages": [
@@ -1176,7 +1273,8 @@ def test_openai_completions_explicit_qwen_thinking_format(
 
     asyncio.run(
         _collect_parts(
-            provider._stream_raw_parts(
+            _stream_raw_parts(
+                provider,
                 _Model(provider_id="dashscope", reasoning=True),
                 {
                     "messages": [
@@ -1207,7 +1305,8 @@ def test_openai_completions_compat_maps_qwen_chat_template_thinking(
 
     asyncio.run(
         _collect_parts(
-            provider._stream_raw_parts(
+            _stream_raw_parts(
+                provider,
                 _Model(reasoning=True),
                 {
                     "messages": [
@@ -1246,7 +1345,8 @@ def test_openai_completions_typed_routing_maps_openrouter_provider_payload(
 
     asyncio.run(
         _collect_parts(
-            provider._stream_raw_parts(
+            _stream_raw_parts(
+                provider,
                 _Model(provider_id="openrouter", reasoning=True),
                 {
                     "messages": [
@@ -1283,9 +1383,14 @@ def test_openai_completions_mixed_routing_uses_openrouter_namespace(
 
     asyncio.run(
         _collect_parts(
-            provider._stream_raw_parts(
+            _stream_raw_parts(
+                provider,
                 _Model(provider_id="openrouter"),
-                {"messages": [UserMessage(role="user", content="hello", timestamp=0.0)]},
+                {
+                    "messages": [
+                        UserMessage(role="user", content="hello", timestamp=0.0)
+                    ]
+                },
                 OpenAICompletionsOptions(api_key="test-key"),
             )
         )
@@ -1314,9 +1419,14 @@ def test_openai_completions_mixed_routing_uses_vercel_namespace(
 
     asyncio.run(
         _collect_parts(
-            provider._stream_raw_parts(
+            _stream_raw_parts(
+                provider,
                 _Model(provider_id="vercel-ai-gateway"),
-                {"messages": [UserMessage(role="user", content="hello", timestamp=0.0)]},
+                {
+                    "messages": [
+                        UserMessage(role="user", content="hello", timestamp=0.0)
+                    ]
+                },
                 OpenAICompletionsOptions(api_key="test-key"),
             )
         )
@@ -1347,9 +1457,14 @@ def test_openai_completions_mixed_routing_without_known_provider_is_ignored(
 
     asyncio.run(
         _collect_parts(
-            provider._stream_raw_parts(
+            _stream_raw_parts(
+                provider,
                 _Model(provider_id="custom"),
-                {"messages": [UserMessage(role="user", content="hello", timestamp=0.0)]},
+                {
+                    "messages": [
+                        UserMessage(role="user", content="hello", timestamp=0.0)
+                    ]
+                },
                 OpenAICompletionsOptions(api_key="test-key"),
             )
         )
@@ -1375,9 +1490,14 @@ def test_openai_completions_openrouter_provider_ignores_vercel_only_routing(
 
     asyncio.run(
         _collect_parts(
-            provider._stream_raw_parts(
+            _stream_raw_parts(
+                provider,
                 _Model(provider_id="openrouter"),
-                {"messages": [UserMessage(role="user", content="hello", timestamp=0.0)]},
+                {
+                    "messages": [
+                        UserMessage(role="user", content="hello", timestamp=0.0)
+                    ]
+                },
                 OpenAICompletionsOptions(api_key="test-key"),
             )
         )
@@ -1403,9 +1523,14 @@ def test_openai_completions_vercel_provider_ignores_openrouter_only_routing(
 
     asyncio.run(
         _collect_parts(
-            provider._stream_raw_parts(
+            _stream_raw_parts(
+                provider,
                 _Model(provider_id="vercel-ai-gateway"),
-                {"messages": [UserMessage(role="user", content="hello", timestamp=0.0)]},
+                {
+                    "messages": [
+                        UserMessage(role="user", content="hello", timestamp=0.0)
+                    ]
+                },
                 OpenAICompletionsOptions(api_key="test-key"),
             )
         )
@@ -1436,7 +1561,8 @@ def test_openai_completions_explicit_moonshot_thinking_toggle(
 
     asyncio.run(
         _collect_parts(
-            provider._stream_raw_parts(
+            _stream_raw_parts(
+                provider,
                 _Model(provider_id="moonshot", reasoning=True),
                 {
                     "messages": [
@@ -1475,7 +1601,8 @@ def test_openai_completions_explicit_moonshot_thinking_for_model_definition(
 
     asyncio.run(
         _collect_parts(
-            provider._stream_raw_parts(
+            _stream_raw_parts(
+                provider,
                 Model(
                     id="kimi-k2.5",
                     provider="moonshot",
@@ -1507,7 +1634,8 @@ def test_openai_completions_builtin_moonshot_uses_system_role_not_developer(
 
     asyncio.run(
         _collect_parts(
-            provider._stream_raw_parts(
+            _stream_raw_parts(
+                provider,
                 model,
                 {
                     "system_prompt": "You are helpful.",
@@ -1543,7 +1671,8 @@ def test_openai_completions_typed_routing_maps_vercel_gateway_payload(
 
     asyncio.run(
         _collect_parts(
-            provider._stream_raw_parts(
+            _stream_raw_parts(
+                provider,
                 _Model(provider_id="vercel-ai-gateway"),
                 {
                     "messages": [
@@ -1577,7 +1706,8 @@ def test_openai_completions_typed_routing_uses_explicit_single_namespace(
 
     asyncio.run(
         _collect_parts(
-            provider._stream_raw_parts(
+            _stream_raw_parts(
+                provider,
                 _Model(provider_id="custom"),
                 {
                     "messages": [
@@ -1610,7 +1740,8 @@ def test_openai_completions_provider_adds_github_copilot_dynamic_headers(
 
     asyncio.run(
         _collect_parts(
-            provider._stream_raw_parts(
+            _stream_raw_parts(
+                provider,
                 _Model(provider_id="github-copilot"),
                 {
                     "messages": [
@@ -1702,7 +1833,8 @@ def test_openai_completions_payload_synthesizes_missing_tool_result_for_assistan
 
     asyncio.run(
         _collect_parts(
-            provider._stream_raw_parts(
+            _stream_raw_parts(
+                provider,
                 _Model(),
                 {"messages": [assistant]},
                 OpenAICompletionsOptions(api_key="test-key"),
@@ -1744,7 +1876,8 @@ def test_openai_completions_uses_transport_timeout_when_options_omits_timeout(
 
     asyncio.run(
         _collect_parts(
-            provider._stream_raw_parts(
+            _stream_raw_parts(
+                provider,
                 _Model(),
                 {"messages": [{"role": "user", "content": "hello"}]},
                 OpenAICompletionsOptions(api_key="test-key"),
@@ -1811,7 +1944,8 @@ def test_openai_completions_stream_maps_thinking_tool_calls_and_reasoning_detail
     provider = OpenAICompletionsProvider()
 
     async def _scenario() -> list[dict]:
-        stream = await provider.stream(
+        stream = await _stream(
+            provider,
             _Model(),
             {"messages": [UserMessage(role="user", content="hello", timestamp=0.0)]},
             OpenAICompletionsOptions(api_key="test-key"),

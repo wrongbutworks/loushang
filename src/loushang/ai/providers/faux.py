@@ -1,8 +1,6 @@
 from __future__ import annotations
 
-from loushang.ai.context import ensure_normalized_context
 from loushang.ai.event_stream import AssistantMessageEventStream, RawAssembler
-from loushang.ai.options import PairingMode
 from loushang.ai.provider import resolve_provider_request
 from loushang.ai.types import TextPart, ToolResultMessage
 
@@ -17,16 +15,7 @@ class FauxProvider:
             options=options,
             request=request,
         )
-        pairing_mode: PairingMode = "repair"
-        if options is not None:
-            candidate = getattr(options, "pairing_mode", "repair")
-            if candidate in {"repair", "strict"}:
-                pairing_mode = candidate
-        normalized = ensure_normalized_context(
-            context,
-            model=model,
-            pairing_mode=pairing_mode,
-        )
+        normalized = context
         stream = AssistantMessageEventStream()
         assembler = RawAssembler(
             stream=stream,

@@ -3,16 +3,14 @@ from __future__ import annotations
 import asyncio
 import base64
 import json
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Mapping
 from dataclasses import dataclass
 from types import SimpleNamespace
 from typing import Any
 from uuid import uuid4
 
-from loushang.ai.context import ensure_normalized_context
 from loushang.ai.event_stream import AssistantMessageEventStream, RawAssembler
 from loushang.ai.model.domain import EndpointProtocolFeatures, EndpointWireDialect
-from loushang.ai.options import PairingMode
 from loushang.ai.provider import resolve_provider_request
 from loushang.ai.provider.cancellation import is_signal_cancelled
 from loushang.ai.provider.errors import is_http_status_code, provider_error_part
@@ -83,14 +81,6 @@ class OpenAICodexResponsesProvider:
     async def _stream_raw_parts(
         self, model, context, options, request=None
     ) -> AsyncIterator[dict]:
-        def _pairing_mode() -> PairingMode:
-            if options is None:
-                return "repair"
-            pairing_mode = getattr(options, "pairing_mode", "repair")
-            if pairing_mode == "strict":
-                return "strict"
-            return "repair"
-
         def _debug(event: str, data: dict | None = None) -> None:
             trace_cb = getattr(options, "trace", None) if options is not None else None
             if callable(trace_cb):
@@ -107,11 +97,6 @@ class OpenAICodexResponsesProvider:
                 except Exception:
                     pass
 
-        normalized = ensure_normalized_context(
-            context,
-            model=model,
-            pairing_mode=_pairing_mode(),
-        )
         resolved = resolve_provider_request(
             self.api,
             model,
@@ -119,6 +104,7 @@ class OpenAICodexResponsesProvider:
             request=request,
             adapter_config_resolver=resolve_openai_codex_runtime_config,
         )
+        normalized = context
         headers = dict(resolved.headers or {})
         codex_config = _codex_runtime_config(resolved.adapter_config)
 
@@ -369,7 +355,7 @@ def _codex_runtime_config(value: AdapterRuntimeConfig | None) -> OpenAICodexRunt
 
 def _build_request_body(
     model,
-    normalized: dict[str, Any],
+    normalized: Mapping[str, Any],
     options,
     *,
     codex_config: OpenAICodexRuntimeConfig | None = None,

@@ -94,7 +94,7 @@ example-ai-tools:
 	uv run python examples/ai/tools.py
 
 example-ai-typed-context:
-	uv run python examples/ai/typed_context.py
+	uv run python examples/ai/03_typed_context.py
 
 example-ai-advanced-faux-stream:
 	uv run python examples/ai/advanced/faux_stream.py

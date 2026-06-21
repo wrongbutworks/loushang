@@ -6,15 +6,13 @@ import hashlib
 import hmac
 import json
 import os
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Mapping
 from typing import Any
 from urllib.parse import quote, urlparse
 
 import httpx
 
-from loushang.ai.context import ensure_normalized_context
 from loushang.ai.event_stream import AssistantMessageEventStream, RawAssembler
-from loushang.ai.options import PairingMode
 from loushang.ai.output_budget import resolve_output_token_budget
 from loushang.ai.provider import resolve_provider_request
 from loushang.ai.provider.cancellation import is_signal_cancelled
@@ -71,26 +69,13 @@ class BedrockConverseProvider:
     async def _stream_raw_parts(
         self, model, context, options, request=None
     ) -> AsyncIterator[dict]:
-        def _pairing_mode() -> PairingMode:
-            if options is None:
-                return "repair"
-            return (
-                "strict"
-                if getattr(options, "pairing_mode", "repair") == "strict"
-                else "repair"
-            )
-
-        normalized = ensure_normalized_context(
-            context,
-            model=model,
-            pairing_mode=_pairing_mode(),
-        )
         resolved = resolve_provider_request(
             self.api,
             model,
             options=options,
             request=request,
         )
+        normalized = context
         if not resolved.base_url:
             raise ValueError("Bedrock base URL is required")
         upstream_model_id = getattr(resolved, "upstream_model_id", None) or model.id
@@ -146,7 +131,12 @@ class BedrockConverseProvider:
         yield {"type": "response_done"}
 
 
-def _build_converse_body(model, normalized: dict, resolved, options) -> dict[str, Any]:
+def _build_converse_body(
+    model,
+    normalized: Mapping[str, Any],
+    resolved,
+    options,
+) -> dict[str, Any]:
     body: dict[str, Any] = {"messages": _build_bedrock_messages(normalized)}
     system_prompt = normalized.get("system_prompt")
     if isinstance(system_prompt, str) and system_prompt:
@@ -161,7 +151,7 @@ def _build_converse_body(model, normalized: dict, resolved, options) -> dict[str
     return body
 
 
-def _build_bedrock_messages(normalized: dict) -> list[dict[str, Any]]:
+def _build_bedrock_messages(normalized: Mapping[str, Any]) -> list[dict[str, Any]]:
     messages: list[dict[str, Any]] = []
     for message in normalized.get("messages", []):
         if isinstance(message, UserMessage):

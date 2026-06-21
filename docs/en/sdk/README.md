@@ -27,7 +27,7 @@ Read the runnable examples in [examples/ai](../../../examples/ai/) in this order
 2. `complete.py`
 3. `stream.py`
 4. `tools.py`
-5. `typed_context.py`
+5. `03_typed_context.py`
 
 ## Advanced Topics
 

@@ -2,13 +2,11 @@ from __future__ import annotations
 
 import asyncio
 import json
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Mapping
 from typing import Any
 
-from loushang.ai.context import ensure_normalized_context
 from loushang.ai.event_stream import AssistantMessageEventStream, RawAssembler
 from loushang.ai.model.domain import EndpointProtocolFeatures, SupportStatus
-from loushang.ai.options import PairingMode
 from loushang.ai.output_budget import resolve_output_token_budget
 from loushang.ai.provider import resolve_provider_request
 from loushang.ai.provider.cancellation import is_signal_cancelled
@@ -29,7 +27,7 @@ from loushang.ai.utils import parse_streaming_json, sanitize_surrogates
 
 
 def _build_anthropic_message_payloads(
-    normalized: dict[str, Any],
+    normalized: Mapping[str, Any],
     *,
     is_oauth_token: bool,
 ) -> tuple[list[dict[str, Any]], list[dict[str, str]] | None]:
@@ -402,14 +400,6 @@ class AnthropicProvider(AnthropicProviderBase):
     async def _stream_raw_parts(
         self, model, context, options, request=None
     ) -> AsyncIterator[dict]:
-        def _pairing_mode() -> PairingMode:
-            if options is None:
-                return "repair"
-            pairing_mode = getattr(options, "pairing_mode", "repair")
-            if pairing_mode == "strict":
-                return "strict"
-            return "repair"
-
         """
         将 Anthropic SDK 的 streaming 事件映射到 RawPart。
         当前实现覆盖文本、thinking、signature、redacted thinking、工具增量、usage、stop_reason 与完成事件。
@@ -422,17 +412,13 @@ class AnthropicProvider(AnthropicProviderBase):
                     payload["event_type" if key == "type" else key] = value
             _emit_trace(options, payload)
 
-        normalized = ensure_normalized_context(
-            context,
-            model=model,
-            pairing_mode=_pairing_mode(),
-        )
         resolved = resolve_provider_request(
             self.api,
             model,
             options=options,
             request=request,
         )
+        normalized = context
         protocol = _request_protocol(resolved)
 
         headers = resolved.headers or {}

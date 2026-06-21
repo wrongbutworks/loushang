@@ -1,18 +1,16 @@
 from __future__ import annotations
 
 import asyncio
-from collections.abc import AsyncIterator, Mapping
+from collections.abc import AsyncIterator, Mapping, Sequence
 from typing import Any
 from urllib.parse import urlsplit
 
-from loushang.ai.context import ensure_normalized_context
 from loushang.ai.event_stream import AssistantMessageEventStream, RawAssembler
 from loushang.ai.model.domain import (
     EndpointProtocolFeatures,
     EndpointWireDialect,
     SupportStatus,
 )
-from loushang.ai.options import PairingMode
 from loushang.ai.output_budget import resolve_output_token_budget
 from loushang.ai.provider import resolve_provider_request
 from loushang.ai.provider.cancellation import is_signal_cancelled
@@ -83,28 +81,16 @@ class OpenAICompletionsProvider:
     async def _stream_raw_parts(
         self, model, context, options, request=None
     ) -> AsyncIterator[dict]:
-        def _pairing_mode() -> PairingMode:
-            if options is None:
-                return "repair"
-            pairing_mode = getattr(options, "pairing_mode", "repair")
-            if pairing_mode == "strict":
-                return "strict"
-            return "repair"
-
         def _debug(event: str, data: dict | None = None) -> None:
             _emit_trace(options, {"type": f"sdk:{event}", **(data or {})})
 
-        normalized = ensure_normalized_context(
-            context,
-            model=model,
-            pairing_mode=_pairing_mode(),
-        )
         resolved = resolve_provider_request(
             self.api,
             model,
             options=options,
             request=request,
         )
+        normalized = context
         protocol = _request_protocol(resolved)
         dialect = _request_dialect(resolved)
         supports_usage_in_streaming = _is_supported(protocol.streaming.usage)
@@ -798,7 +784,7 @@ def _supports_reasoning(model: object, capabilities: object | None = None) -> bo
 
 def _build_messages(
     model,
-    normalized: dict[str, Any],
+    normalized: Mapping[str, Any],
     protocol: EndpointProtocolFeatures,
     dialect: EndpointWireDialect,
     capabilities: object | None = None,
@@ -897,7 +883,7 @@ def _build_tools(
     tools: Any,
     protocol: EndpointProtocolFeatures,
 ) -> list[dict[str, Any]] | None:
-    if not isinstance(tools, list) or not tools:
+    if not isinstance(tools, Sequence) or isinstance(tools, str) or not tools:
         return None
     supports_strict_mode = _is_supported(protocol.tools.strict_schema)
     payload: list[dict[str, Any]] = []

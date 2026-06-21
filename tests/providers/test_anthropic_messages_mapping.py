@@ -10,6 +10,7 @@ from types import ModuleType, SimpleNamespace
 import pytest
 
 from loushang.ai.auth.types import OAuthCredentials
+from loushang.ai.context import normalize_context
 from loushang.ai.model.compat_schema import (
     FINE_GRAINED_TOOLS,
     INTERLEAVED_THINKING,
@@ -42,6 +43,31 @@ from loushang.ai.types import (
     ToolResultMessage,
     UserMessage,
 )
+
+
+def _normalized_context(model, context, options=None):
+    pairing_mode = (
+        "strict" if getattr(options, "pairing_mode", "repair") == "strict" else "repair"
+    )
+    return normalize_context(context, model=model, pairing_mode=pairing_mode)
+
+
+def _stream_raw_parts(provider, model, context, options=None, request=None):
+    return provider._stream_raw_parts(
+        model,
+        _normalized_context(model, context, options),
+        options,
+        request,
+    )
+
+
+async def _stream(provider, model, context, options=None, request=None):
+    return await provider.stream(
+        model,
+        _normalized_context(model, context, options),
+        options,
+        request,
+    )
 
 
 def test_stop_reason_mapping_tool_use():
@@ -132,7 +158,8 @@ def test_anthropic_provider_uses_typed_transport_for_fine_grained_beta(
 
     asyncio.run(
         _collect_parts(
-            provider._stream_raw_parts(
+            _stream_raw_parts(
+                provider,
                 model,
                 {
                     "messages": [
@@ -179,7 +206,8 @@ def test_anthropic_provider_uses_upstream_model_id(
 
     asyncio.run(
         _collect_parts(
-            provider._stream_raw_parts(
+            _stream_raw_parts(
+                provider,
                 model,
                 {
                     "messages": [
@@ -348,7 +376,8 @@ def test_anthropic_provider_oauth_request_uses_sdk_headers_and_tool_names(
 
     asyncio.run(
         _collect_parts(
-            provider._stream_raw_parts(
+            _stream_raw_parts(
+                provider,
                 _Model(),
                 {
                     "messages": [
@@ -428,7 +457,8 @@ def test_anthropic_provider_oauth_stream_maps_claude_code_tool_name_back_to_regi
 
     parts = asyncio.run(
         _collect_parts(
-            provider._stream_raw_parts(
+            _stream_raw_parts(
+                provider,
                 _Model(),
                 {
                     "messages": [
@@ -500,7 +530,8 @@ def test_anthropic_provider_stream_uses_tool_input_from_content_block_start(
 
     parts = asyncio.run(
         _collect_parts(
-            provider._stream_raw_parts(
+            _stream_raw_parts(
+                provider,
                 _Model(),
                 {
                     "messages": [
@@ -538,7 +569,8 @@ def test_anthropic_provider_payload_snapshot_for_mixed_assistant_and_tool_result
 
     asyncio.run(
         _collect_parts(
-            provider._stream_raw_parts(
+            _stream_raw_parts(
+                provider,
                 _Model(),
                 {
                     "messages": [
@@ -676,7 +708,8 @@ def test_anthropic_provider_respects_explicit_max_tokens(
 
     provider = AnthropicProvider()
     stream = asyncio.run(
-        provider.stream(
+        _stream(
+            provider,
             Model(
                 id="claude-test", provider="anthropic", endpoint="anthropic-messages"
             ),
@@ -706,7 +739,8 @@ def test_anthropic_provider_uses_resolved_capability_max_tokens(
 
     asyncio.run(
         _collect_parts(
-            provider._stream_raw_parts(
+            _stream_raw_parts(
+                provider,
                 _Model(max_tokens=8192),
                 {
                     "messages": [
@@ -751,7 +785,8 @@ def test_anthropic_provider_uses_typed_protocol_over_stale_false_compat(
 
     asyncio.run(
         _collect_parts(
-            provider._stream_raw_parts(
+            _stream_raw_parts(
+                provider,
                 _Model(),
                 {
                     "messages": [
@@ -815,7 +850,8 @@ def test_anthropic_provider_uses_typed_protocol_over_stale_true_compat(
 
     asyncio.run(
         _collect_parts(
-            provider._stream_raw_parts(
+            _stream_raw_parts(
+                provider,
                 _Model(),
                 {
                     "messages": [
@@ -865,7 +901,8 @@ def test_anthropic_provider_clamps_explicit_max_tokens(
 
     provider = AnthropicProvider()
     stream = asyncio.run(
-        provider.stream(
+        _stream(
+            provider,
             Model(
                 id="claude-test", provider="anthropic", endpoint="anthropic-messages"
             ),
@@ -911,7 +948,8 @@ def test_anthropic_compat_fireworks_uses_session_headers_without_long_cache_ttl(
 
     asyncio.run(
         _collect_parts(
-            provider._stream_raw_parts(
+            _stream_raw_parts(
+                provider,
                 _Model(
                     provider_id="fireworks",
                     base_url="https://api.fireworks.ai/inference/v1",
@@ -952,7 +990,8 @@ def test_anthropic_provider_uses_model_max_tokens_without_scaling(
 
     asyncio.run(
         _collect_parts(
-            provider._stream_raw_parts(
+            _stream_raw_parts(
+                provider,
                 _Model(max_tokens=8192),
                 {
                     "messages": [
@@ -975,7 +1014,8 @@ def test_anthropic_provider_caps_model_max_tokens_default(
 
     asyncio.run(
         _collect_parts(
-            provider._stream_raw_parts(
+            _stream_raw_parts(
+                provider,
                 _Model(max_tokens=32768),
                 {
                     "messages": [

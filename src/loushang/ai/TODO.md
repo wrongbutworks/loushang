@@ -45,7 +45,7 @@
      - Anthropic OAuth-specific tool/header compatibility moved out of the generic provider base surface into a dedicated helper module.
   3. Make normalized context the single source of truth between public API and provider adapters; remove duplicate normalize/fallback behavior.
      Partial:
-     - Normalized context now carries an explicit marker and a single `ensure_normalized_context(...)` compatibility entrypoint.
+     - Normalized context is now an immutable `NormalizedContext` snapshot; marker dicts are no longer trusted as normalized output.
      - Core providers no longer each own their own normalize path; they consume normalized context or explicitly coerce through the shared helper.
      - `openai_responses` no longer falls back to raw `context["tools"]` after normalization.
   4. Revisit default `repair` semantics in tool/message flow and decide whether they are temporary compatibility behavior or explicit public contract.

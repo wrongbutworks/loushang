@@ -5,14 +5,12 @@ import os
 from collections.abc import AsyncIterator
 from typing import Any
 
-from loushang.ai.context import ensure_normalized_context
 from loushang.ai.event_stream import AssistantMessageEventStream, RawAssembler
 from loushang.ai.model.domain import (
     EndpointProtocolFeatures,
     EndpointWireDialect,
     SupportStatus,
 )
-from loushang.ai.options import PairingMode
 from loushang.ai.output_budget import resolve_output_token_budget
 from loushang.ai.provider import resolve_provider_request
 from loushang.ai.provider.cancellation import is_signal_cancelled
@@ -107,14 +105,6 @@ class OpenAIResponsesProvider:
     async def _stream_raw_parts(
         self, model, context, options, request=None
     ) -> AsyncIterator[dict]:
-        def _pairing_mode() -> PairingMode:
-            if options is None:
-                return "repair"
-            pairing_mode = getattr(options, "pairing_mode", "repair")
-            if pairing_mode == "strict":
-                return "strict"
-            return "repair"
-
         def _debug(event: str, data: dict | None = None) -> None:
             # Allow callers to suppress provider SDK trace events explicitly.
             if options is not None:
@@ -128,17 +118,13 @@ class OpenAIResponsesProvider:
                     pass
             _emit_trace(options, {"type": f"sdk:{event}", **(data or {})})
 
-        normalized = ensure_normalized_context(
-            context,
-            model=model,
-            pairing_mode=_pairing_mode(),
-        )
         resolved = resolve_provider_request(
             self.api,
             model,
             options=options,
             request=request,
         )
+        normalized = context
         protocol = _request_protocol(resolved)
         dialect = _request_dialect(resolved)
 
@@ -210,11 +196,7 @@ class OpenAIResponsesProvider:
             "store": False,
         }
         # tools（如果提供）映射到 Responses API，触发结构化 function_call 事件
-        tools_src: list[Any] = []
-        n_tools = normalized.get("tools")
-        if isinstance(n_tools, list):
-            tools_src = n_tools
-        mapped_tools = convert_responses_tools(tools_src)
+        mapped_tools = convert_responses_tools(normalized.get("tools"))
         if isinstance(mapped_tools, list) and mapped_tools:
             params["tools"] = mapped_tools
             # 缺省让服务端自动选择是否调用工具（仅当 tools 非空）

@@ -188,7 +188,8 @@
     - provider tool schema conversion
     - tool argument validation
     - tool message transformation
-  - `normalize_context(...)` 现在只负责 `Context` 形状整理
+  - `normalize_context(...)` 现在只负责 `Context` 形状整理并返回公开的 `NormalizedContext` 不可变 snapshot
+  - `provider.invocation` 是 provider handoff 的最终归一化 guard；内置 adapter 不再二次 normalize
   - 消息规范化与 canonicalization 由 `messages.py` 负责
   - `event_stream/assembler.py` 不再反查 model registry 做 cost enrich
   - `reset_api_providers()` / `register_builtin_ai_providers()` 会按 built-in model registry 自动注册 built-ins
@@ -211,7 +212,7 @@
 - [Complete Example](../../../../examples/ai/complete.py)
 - [Stream Example](../../../../examples/ai/stream.py)
 - [Tools Example](../../../../examples/ai/tools.py)
-- [Typed Context Example](../../../../examples/ai/typed_context.py)
+- [Typed Context Example](../../../../examples/ai/03_typed_context.py)
 - [Faux Stream Example (Advanced)](../../../../examples/ai/advanced/faux_stream.py)
 - [Context And Tool Minimal Example (Advanced)](../../../../examples/ai/advanced/context_tools_minimal.py)
 - [Tool Result Roundtrip Example (Advanced)](../../../../examples/ai/advanced/tool_result_roundtrip.py)

@@ -27,7 +27,7 @@ from loushang.ai import complete, stream, get_model, list_models
 2. `complete.py`
 3. `stream.py`
 4. `tools.py`
-5. `typed_context.py`
+5. `03_typed_context.py`
 
 ## 高级主题
 

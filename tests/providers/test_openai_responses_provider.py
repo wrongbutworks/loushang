@@ -7,6 +7,7 @@ from types import ModuleType, SimpleNamespace
 
 import pytest
 
+from loushang.ai.context import normalize_context
 from loushang.ai.model import (
     Capabilities,
     Endpoint,
@@ -34,6 +35,31 @@ from loushang.ai.types import (
 )
 
 
+def _normalized_context(model, context, options=None):
+    pairing_mode = (
+        "strict" if getattr(options, "pairing_mode", "repair") == "strict" else "repair"
+    )
+    return normalize_context(context, model=model, pairing_mode=pairing_mode)
+
+
+def _stream_raw_parts(provider, model, context, options=None, request=None):
+    return provider._stream_raw_parts(
+        model,
+        _normalized_context(model, context, options),
+        options,
+        request,
+    )
+
+
+async def _stream(provider, model, context, options=None, request=None):
+    return await provider.stream(
+        model,
+        _normalized_context(model, context, options),
+        options,
+        request,
+    )
+
+
 def test_openai_responses_payload_maps_formal_context_and_tools(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -43,7 +69,8 @@ def test_openai_responses_payload_maps_formal_context_and_tools(
 
     asyncio.run(
         _collect_parts(
-            provider._stream_raw_parts(
+            _stream_raw_parts(
+                provider,
                 _Model(),
                 Context(
                     system_prompt="You are helpful.",
@@ -88,7 +115,8 @@ def test_openai_responses_payload_uses_resolved_capabilities_for_images(
 
     asyncio.run(
         _collect_parts(
-            provider._stream_raw_parts(
+            _stream_raw_parts(
+                provider,
                 _Model(input=("text",)),
                 Context(
                     system_prompt=None,
@@ -164,7 +192,8 @@ def test_openai_responses_direct_stream_rejects_mismatched_request_api() -> None
 
     with pytest.raises(ValueError, match="Mismatched api"):
         asyncio.run(
-            provider.stream(
+            _stream(
+                provider,
                 _Model(),
                 {"messages": [UserMessage(role="user", content="hello", timestamp=0)]},
                 OpenAIResponsesOptions(),
@@ -190,13 +219,12 @@ def test_openai_responses_supplied_empty_request_uses_typed_defaults(
 
     asyncio.run(
         _collect_parts(
-            provider._stream_raw_parts(
+            _stream_raw_parts(
+                provider,
                 _Model(reasoning=True),
                 Context(
                     system_prompt="Use terse answers.",
-                    messages=[
-                        UserMessage(role="user", content="hello", timestamp=0.0)
-                    ],
+                    messages=[UserMessage(role="user", content="hello", timestamp=0.0)],
                 ),
                 OpenAIResponsesOptions(
                     cache_retention="long",
@@ -241,7 +269,8 @@ def test_openai_responses_supplied_request_compat_projects_to_typed_payload(
 
     asyncio.run(
         _collect_parts(
-            provider._stream_raw_parts(
+            _stream_raw_parts(
+                provider,
                 _Model(reasoning=True),
                 _tool_result_followed_by_user_context(system_prompt="Use system."),
                 OpenAIResponsesOptions(
@@ -311,7 +340,8 @@ def test_openai_responses_supplied_request_typed_adapter_overrides_stale_compat(
 
     asyncio.run(
         _collect_parts(
-            provider._stream_raw_parts(
+            _stream_raw_parts(
+                provider,
                 _Model(reasoning=True),
                 _tool_result_followed_by_user_context(system_prompt="Use system."),
                 OpenAIResponsesOptions(
@@ -356,7 +386,8 @@ def test_openai_responses_uses_upstream_model_id(
 
     asyncio.run(
         _collect_parts(
-            provider._stream_raw_parts(
+            _stream_raw_parts(
+                provider,
                 _Model(id="openai/gpt-oss-120b_free"),
                 Context(
                     system_prompt=None,
@@ -383,7 +414,8 @@ def test_openai_responses_caps_model_max_tokens_default(
 
     asyncio.run(
         _collect_parts(
-            provider._stream_raw_parts(
+            _stream_raw_parts(
+                provider,
                 _Model(max_tokens=32768),
                 Context(
                     system_prompt=None,
@@ -412,7 +444,8 @@ def test_openai_responses_uses_resolved_capability_max_tokens(
 
     asyncio.run(
         _collect_parts(
-            provider._stream_raw_parts(
+            _stream_raw_parts(
+                provider,
                 _Model(max_tokens=1024),
                 Context(
                     system_prompt=None,
@@ -452,7 +485,8 @@ def test_openai_responses_payload_maps_assistant_tool_call_and_synthesizes_missi
 
     asyncio.run(
         _collect_parts(
-            provider._stream_raw_parts(
+            _stream_raw_parts(
+                provider,
                 _Model(),
                 {"messages": [assistant]},
                 OpenAIResponsesOptions(api_key="test-key"),
@@ -510,7 +544,8 @@ def test_openai_responses_payload_normalizes_cross_provider_tool_call_ids(
 
     asyncio.run(
         _collect_parts(
-            provider._stream_raw_parts(
+            _stream_raw_parts(
+                provider,
                 _Model(),
                 {"messages": [assistant, tool_result]},
                 OpenAIResponsesOptions(api_key="test-key"),
@@ -560,7 +595,8 @@ def test_openai_responses_payload_replays_assistant_thinking_signature(
 
     asyncio.run(
         _collect_parts(
-            provider._stream_raw_parts(
+            _stream_raw_parts(
+                provider,
                 _Model(),
                 {"messages": [assistant]},
                 OpenAIResponsesOptions(api_key="test-key"),
@@ -607,7 +643,8 @@ def test_openai_responses_payload_replays_assistant_text_signature_and_phase(
 
     asyncio.run(
         _collect_parts(
-            provider._stream_raw_parts(
+            _stream_raw_parts(
+                provider,
                 _Model(),
                 {"messages": [assistant]},
                 OpenAIResponsesOptions(api_key="test-key"),
@@ -629,7 +666,8 @@ def test_openai_responses_payload_maps_reasoning_option(
 
     asyncio.run(
         _collect_parts(
-            provider._stream_raw_parts(
+            _stream_raw_parts(
+                provider,
                 _Model(reasoning=True),
                 {
                     "messages": [
@@ -667,7 +705,8 @@ def test_openai_responses_payload_uses_resolved_capabilities_for_reasoning(
 
     asyncio.run(
         _collect_parts(
-            provider._stream_raw_parts(
+            _stream_raw_parts(
+                provider,
                 _Model(reasoning=False),
                 {
                     "messages": [
@@ -732,7 +771,8 @@ def test_openai_responses_payload_maps_tool_result_images_and_bridge(
 
     asyncio.run(
         _collect_parts(
-            provider._stream_raw_parts(
+            _stream_raw_parts(
+                provider,
                 _Model(reasoning=True),
                 {
                     "messages": [
@@ -783,7 +823,8 @@ def test_openai_responses_provider_adds_github_copilot_dynamic_headers(
 
     asyncio.run(
         _collect_parts(
-            provider._stream_raw_parts(
+            _stream_raw_parts(
+                provider,
                 _Model(provider_id="github-copilot"),
                 {
                     "messages": [
@@ -896,7 +937,8 @@ def test_openai_responses_stream_applies_priority_service_tier_cost_multiplier(
     provider = OpenAIResponsesProvider()
 
     stream = asyncio.run(
-        provider.stream(
+        _stream(
+            provider,
             Model(
                 id="gpt-test",
                 provider="openai",
@@ -964,7 +1006,8 @@ def test_openai_responses_stream_retains_thinking_signature_on_final_message(
     provider = OpenAIResponsesProvider()
 
     stream = asyncio.run(
-        provider.stream(
+        _stream(
+            provider,
             _Model(),
             {"messages": [UserMessage(role="user", content="hello", timestamp=0.0)]},
             OpenAIResponsesOptions(api_key="test-key", reasoning="high"),
@@ -1043,7 +1086,8 @@ def test_openai_responses_stream_joins_multiple_reasoning_summary_parts(
     provider = OpenAIResponsesProvider()
 
     stream = asyncio.run(
-        provider.stream(
+        _stream(
+            provider,
             _Model(),
             {"messages": [UserMessage(role="user", content="hello", timestamp=0.0)]},
             OpenAIResponsesOptions(api_key="test-key", reasoning="high"),
@@ -1106,7 +1150,8 @@ def test_openai_responses_stream_retains_text_signature_on_final_message(
     provider = OpenAIResponsesProvider()
 
     stream = asyncio.run(
-        provider.stream(
+        _stream(
+            provider,
             _Model(),
             {"messages": [UserMessage(role="user", content="hello", timestamp=0.0)]},
             OpenAIResponsesOptions(api_key="test-key"),
@@ -1259,9 +1304,7 @@ def _responses_protocol_from_compat(
     return EndpointProtocolFeatures.from_raw(
         {
             "roles": {
-                "developer": _support_status(
-                    compat.get("supportsDeveloperRole", True)
-                )
+                "developer": _support_status(compat.get("supportsDeveloperRole", True))
             },
             "cache": {
                 "longRetention": _support_status(

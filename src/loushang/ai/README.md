@@ -100,6 +100,9 @@
   - 只负责 `Context` 形状整理
   - 提取 `system_prompt`
   - 规范化 `tools`
+  - 产出公开的 `NormalizedContext` 不可变 snapshot，provider 只读取这个归一化边界
+  - `NormalizationResult` 保留在 `context` 模块内，供内部归一化流程承载结果
+  - `provider.invocation` 是 provider handoff 的最终归一化 guard；内置 adapter 不再二次 normalize
 - `messages.py`
   - 负责消息规范化
   - 负责 user content canonicalize
@@ -206,6 +209,7 @@
 ### helper
 
 - `normalize_context(...)`
+  - returns the public `NormalizedContext` immutable mapping contract instead of a marker-tagged dict
   - accepts pi-style dict messages, including camelCase assistant/tool-result fields such as `toolCallId`, `thinkingSignature`, `thoughtSignature`, `mimeType`, and `stopReason`
 - `transform_messages(...)`
   - repairs missing tool results with synthetic error tool results

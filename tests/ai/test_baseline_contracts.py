@@ -21,6 +21,7 @@ ROOT_EXPORTS_BASELINE = [
     "Context",
     "Message",
     "Model",
+    "NormalizedContext",
     "StopReason",
     "ModelCallOptions",
     "StreamOptions",
@@ -156,7 +157,7 @@ KNOWN_BASELINE_DEBT = {
 
 def test_root_exports_baseline_snapshot() -> None:
     assert ai.__all__ == ROOT_EXPORTS_BASELINE
-    assert len(ai.__all__) == 56
+    assert len(ai.__all__) == 57
 
 
 def test_builtin_provider_and_catalog_count_baseline() -> None:

@@ -2,9 +2,26 @@ from __future__ import annotations
 
 import asyncio
 
+from loushang.ai.context import normalize_context
 from loushang.ai.model import Model
 from loushang.ai.providers.faux import FauxProvider
 from loushang.ai.types import UserMessage
+
+
+def _normalized_context(model, context, options=None):
+    pairing_mode = (
+        "strict" if getattr(options, "pairing_mode", "repair") == "strict" else "repair"
+    )
+    return normalize_context(context, model=model, pairing_mode=pairing_mode)
+
+
+async def _stream(provider, model, context, options=None, request=None):
+    return await provider.stream(
+        model,
+        _normalized_context(model, context, options),
+        options,
+        request,
+    )
 
 
 def test_faux_provider_stream_resolves_request_when_omitted() -> None:
@@ -17,7 +34,8 @@ def test_faux_provider_stream_resolves_request_when_omitted() -> None:
     )
 
     stream = asyncio.run(
-        provider.stream(
+        _stream(
+            provider,
             model,
             {"messages": [UserMessage(role="user", content="hello", timestamp=0.0)]},
             None,

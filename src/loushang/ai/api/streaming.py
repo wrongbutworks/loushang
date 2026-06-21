@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+from collections.abc import Mapping
 from types import SimpleNamespace
+from typing import Any
 
 from loushang.ai.api_registry import get_default_api_provider_registry
 from loushang.ai.bootstrap import register_builtin_ai_providers
@@ -14,7 +16,7 @@ from loushang.ai.provider.invocation import (
 from loushang.ai.types import ImagePart, ToolResultMessage, UserMessage
 
 
-def _has_image_input(normalized_context: dict) -> bool:
+def _has_image_input(normalized_context: Mapping[str, Any]) -> bool:
     for message in normalized_context.get("messages", []):
         if isinstance(message, UserMessage) and isinstance(message.content, list):
             if any(isinstance(part, ImagePart) for part in message.content):
@@ -25,7 +27,7 @@ def _has_image_input(normalized_context: dict) -> bool:
     return False
 
 
-def _requests_thinking(normalized_context: dict, options) -> bool:
+def _requests_thinking(normalized_context: Mapping[str, Any], options) -> bool:
     if normalized_context.get("emit_thinking"):
         return True
     if options is None:
@@ -42,7 +44,7 @@ def _requests_thinking(normalized_context: dict, options) -> bool:
 
 
 def _validate_capability(
-    model, capabilities, normalized_context: dict, options
+    model, capabilities, normalized_context: Mapping[str, Any], options
 ) -> None:
     supports_image_input = bool(getattr(capabilities, "supports_image_input", False))
     if _has_image_input(normalized_context) and not supports_image_input:
@@ -75,6 +77,7 @@ def _normalization_model(model, resolved):
     return SimpleNamespace(
         api=resolved.api,
         provider_id=resolved.provider,
+        endpoint_id=getattr(resolved, "endpoint", getattr(model, "endpoint_id", None)),
         id=model.id,
     )
 

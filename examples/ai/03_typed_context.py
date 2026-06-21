@@ -1,4 +1,4 @@
-"""Kimi 显式 Context 类型示例。"""
+"""Kimi explicit Context type example."""
 
 from __future__ import annotations
 
@@ -33,12 +33,12 @@ def _resolve_api_key() -> str:
 def _build_context() -> Context:
     return Context(
         system_prompt=(
-            "你是 Kimi。优先直接回答用户问题；只有在用户明确要求外部工具时才调用工具。"
+            "You are Kimi. Answer directly; only call tools when the user asks for them."
         ),
         messages=[
             UserMessage(
                 role="user",
-                content="请用两句话介绍你自己，并说明 1 + 1 等于几。不要调用工具。",
+                content="Introduce yourself in two sentences and say what 1 + 1 equals. Do not call tools.",
                 timestamp=0.0,
             )
         ],

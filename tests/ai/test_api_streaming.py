@@ -9,7 +9,10 @@ import pytest
 
 from loushang.ai.api.streaming import stream, stream_simple
 from loushang.ai.api_registry import ApiProviderRegistry
-from loushang.ai.context import NORMALIZED_CONTEXT_MARKER
+from loushang.ai.context import (
+    NORMALIZED_CONTEXT_MARKER,
+    NormalizedContext,
+)
 from loushang.ai.model import (
     Capabilities,
     EndpointProtocolFeatures,
@@ -73,6 +76,12 @@ class _Provider:
 
     async def stream_simple(self, model, context, options, request):
         return await self.stream(model, context, options, request)
+
+
+def _assert_normalized_provider_context(context: object) -> NormalizedContext:
+    assert isinstance(context, NormalizedContext)
+    assert NORMALIZED_CONTEXT_MARKER not in context
+    return context
 
 
 class _LegacyProvider:
@@ -208,8 +217,8 @@ def test_stream_passes_normalized_context_to_provider(
         )
     )
 
-    assert provider.context[NORMALIZED_CONTEXT_MARKER] is True
-    assert provider.context["messages"][0].role == "user"
+    normalized = _assert_normalized_provider_context(provider.context)
+    assert normalized["messages"][0].role == "user"
 
 
 def test_stream_passes_request_through_registered_provider(
@@ -233,7 +242,7 @@ def test_stream_passes_request_through_registered_provider(
         )
     )
 
-    assert provider.context[NORMALIZED_CONTEXT_MARKER] is True
+    _assert_normalized_provider_context(provider.context)
     assert provider.request.api == "faux"
 
 
@@ -258,8 +267,8 @@ def test_stream_supports_legacy_registered_provider_signature(
         )
     )
 
-    assert provider.context[NORMALIZED_CONTEXT_MARKER] is True
-    assert provider.context["messages"][0].role == "user"
+    normalized = _assert_normalized_provider_context(provider.context)
+    assert normalized["messages"][0].role == "user"
 
 
 def test_stream_supports_keyword_request_registered_provider_signature(
@@ -279,7 +288,7 @@ def test_stream_supports_keyword_request_registered_provider_signature(
         )
     )
 
-    assert provider.context[NORMALIZED_CONTEXT_MARKER] is True
+    _assert_normalized_provider_context(provider.context)
     assert provider.request.api == "faux"
 
 
@@ -300,7 +309,7 @@ def test_stream_simple_supports_keyword_request_registered_provider_signature(
         )
     )
 
-    assert provider.context[NORMALIZED_CONTEXT_MARKER] is True
+    _assert_normalized_provider_context(provider.context)
     assert provider.request.api == "faux"
 
 
@@ -320,8 +329,8 @@ def test_stream_supports_legacy_provider_from_custom_registry(
         )
     )
 
-    assert provider.context[NORMALIZED_CONTEXT_MARKER] is True
-    assert provider.context["messages"][0].role == "user"
+    normalized = _assert_normalized_provider_context(provider.context)
+    assert normalized["messages"][0].role == "user"
 
 
 def test_stream_simple_supports_legacy_provider_from_custom_registry(
@@ -340,8 +349,8 @@ def test_stream_simple_supports_legacy_provider_from_custom_registry(
         )
     )
 
-    assert provider.context[NORMALIZED_CONTEXT_MARKER] is True
-    assert provider.context["messages"][0].role == "user"
+    normalized = _assert_normalized_provider_context(provider.context)
+    assert normalized["messages"][0].role == "user"
 
 
 def test_get_api_provider_stream_supports_previous_wrapper_signature(
@@ -488,7 +497,7 @@ def test_get_api_provider_stream_normalizes_context_against_resolved_request_api
 
     normalized_assistant = provider.context["messages"][0]
     normalized_tool_result = provider.context["messages"][1]
-    assert provider.context[NORMALIZED_CONTEXT_MARKER] is True
+    _assert_normalized_provider_context(provider.context)
     assert normalized_assistant.content[0].id == "call_1"
     assert normalized_tool_result.tool_call_id == "call_1"
 
@@ -566,7 +575,7 @@ def test_stream_allows_capabilities_after_request_resolution_switches_endpoint(
         )
     )
 
-    assert provider.context[NORMALIZED_CONTEXT_MARKER] is True
+    _assert_normalized_provider_context(provider.context)
 
 
 def test_stream_normalizes_context_against_resolved_request_api(
@@ -705,6 +714,7 @@ def test_stream_public_path_uses_openai_responses_typed_request(
     registry.register_api_provider(OpenAIResponsesProvider())
     model = SimpleNamespace(
         id="gpt-test",
+        api="anthropic-messages",
         provider_id="custom",
         endpoint_id="openai-responses",
         input=("text",),

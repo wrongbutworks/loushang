@@ -6,10 +6,36 @@ from dataclasses import dataclass, field
 
 import pytest
 
+from loushang.ai.context import normalize_context
 from loushang.ai.model import Capabilities, Endpoint, Model, ModelRegistry, Provider
 from loushang.ai.provider import ResolvedRequest
 from loushang.ai.providers.bedrock_converse import BedrockConverseProvider
 from loushang.ai.types import UserMessage
+
+
+def _normalized_context(model, context, options=None):
+    pairing_mode = (
+        "strict" if getattr(options, "pairing_mode", "repair") == "strict" else "repair"
+    )
+    return normalize_context(context, model=model, pairing_mode=pairing_mode)
+
+
+def _stream_raw_parts(provider, model, context, options=None, request=None):
+    return provider._stream_raw_parts(
+        model,
+        _normalized_context(model, context, options),
+        options,
+        request,
+    )
+
+
+async def _stream(provider, model, context, options=None, request=None):
+    return await provider.stream(
+        model,
+        _normalized_context(model, context, options),
+        options,
+        request,
+    )
 
 
 def test_bedrock_converse_uses_upstream_model_id_and_maps_response(
@@ -23,7 +49,8 @@ def test_bedrock_converse_uses_upstream_model_id_and_maps_response(
 
     parts = asyncio.run(
         _collect_parts(
-            provider._stream_raw_parts(
+            _stream_raw_parts(
+                provider,
                 _Model(),
                 {
                     "messages": [
@@ -59,7 +86,8 @@ def test_bedrock_converse_uses_resolved_capability_max_tokens(
 
     asyncio.run(
         _collect_parts(
-            provider._stream_raw_parts(
+            _stream_raw_parts(
+                provider,
                 _Model(max_tokens=1024),
                 {
                     "messages": [
@@ -86,7 +114,8 @@ def test_bedrock_converse_uses_real_resolved_request_boundary(
 
     asyncio.run(
         _collect_parts(
-            provider._stream_raw_parts(
+            _stream_raw_parts(
+                provider,
                 model,
                 {
                     "messages": [

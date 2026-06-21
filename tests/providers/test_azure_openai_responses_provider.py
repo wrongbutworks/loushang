@@ -7,6 +7,7 @@ from types import ModuleType, SimpleNamespace
 
 import pytest
 
+from loushang.ai.context import normalize_context
 from loushang.ai.model import (
     Auth,
     Capabilities,
@@ -27,11 +28,37 @@ from loushang.ai.types import (
     Context,
     ImagePart,
     TextPart,
+    Tool,
     ToolCall,
     ToolResultMessage,
     Usage,
     UserMessage,
 )
+
+
+def _normalized_context(model, context, options=None):
+    pairing_mode = (
+        "strict" if getattr(options, "pairing_mode", "repair") == "strict" else "repair"
+    )
+    return normalize_context(context, model=model, pairing_mode=pairing_mode)
+
+
+def _stream_raw_parts(provider, model, context, options=None, request=None):
+    return provider._stream_raw_parts(
+        model,
+        _normalized_context(model, context, options),
+        options,
+        request,
+    )
+
+
+async def _stream(provider, model, context, options=None, request=None):
+    return await provider.stream(
+        model,
+        _normalized_context(model, context, options),
+        options,
+        request,
+    )
 
 
 def test_azure_openai_responses_uses_azure_client_and_deployment_map(
@@ -44,7 +71,8 @@ def test_azure_openai_responses_uses_azure_client_and_deployment_map(
 
     asyncio.run(
         _collect_parts(
-            provider._stream_raw_parts(
+            _stream_raw_parts(
+                provider,
                 _Model(id="gpt-4o-mini"),
                 {
                     "messages": [
@@ -71,6 +99,57 @@ def test_azure_openai_responses_uses_azure_client_and_deployment_map(
     ]
 
 
+def test_azure_openai_responses_maps_tools_from_normalized_context(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _fake_openai_module(monkeypatch)
+    _patch_resolved_request(monkeypatch)
+    provider = AzureOpenAIResponsesProvider()
+
+    asyncio.run(
+        _collect_parts(
+            _stream_raw_parts(
+                provider,
+                _Model(id="gpt-4o-mini"),
+                {
+                    "messages": [
+                        UserMessage(role="user", content="hello", timestamp=0.0)
+                    ],
+                    "tools": [
+                        Tool(
+                            name="calc",
+                            description="Calculate values",
+                            parameters={
+                                "type": "object",
+                                "properties": {"x": {"type": "number"}},
+                                "required": ["x"],
+                            },
+                        )
+                    ],
+                },
+                AzureOpenAIResponsesOptions(
+                    api_key="test-key",
+                    azure_base_url="https://example.openai.azure.com/openai/v1",
+                ),
+            )
+        )
+    )
+
+    assert _FakeAsyncAzureOpenAI.last_create_kwargs["tools"] == [
+        {
+            "type": "function",
+            "name": "calc",
+            "description": "Calculate values",
+            "parameters": {
+                "type": "object",
+                "properties": {"x": {"type": "number"}},
+                "required": ["x"],
+            },
+        }
+    ]
+    assert _FakeAsyncAzureOpenAI.last_create_kwargs["tool_choice"] == "auto"
+
+
 def test_azure_openai_responses_maps_upstream_model_id(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -83,7 +162,8 @@ def test_azure_openai_responses_maps_upstream_model_id(
 
     asyncio.run(
         _collect_parts(
-            provider._stream_raw_parts(
+            _stream_raw_parts(
+                provider,
                 _Model(id="gpt-4o-mini_public"),
                 {
                     "messages": [
@@ -110,7 +190,8 @@ def test_azure_openai_responses_falls_back_to_upstream_model_id(
 
     asyncio.run(
         _collect_parts(
-            provider._stream_raw_parts(
+            _stream_raw_parts(
+                provider,
                 _Model(id="gpt-4o-mini_public"),
                 {
                     "messages": [
@@ -141,7 +222,8 @@ def test_azure_openai_responses_uses_resolved_capability_max_tokens(
 
     asyncio.run(
         _collect_parts(
-            provider._stream_raw_parts(
+            _stream_raw_parts(
+                provider,
                 _Model(max_tokens=1024),
                 {
                     "messages": [
@@ -181,7 +263,8 @@ def test_azure_openai_responses_supplied_compat_projects_to_typed_payload(
 
     asyncio.run(
         _collect_parts(
-            provider._stream_raw_parts(
+            _stream_raw_parts(
+                provider,
                 _Model(reasoning=True),
                 _tool_result_followed_by_user_context(system_prompt="Use system."),
                 AzureOpenAIResponsesOptions(),
@@ -227,13 +310,12 @@ def test_azure_openai_responses_supplied_empty_request_uses_typed_defaults(
 
     asyncio.run(
         _collect_parts(
-            provider._stream_raw_parts(
+            _stream_raw_parts(
+                provider,
                 _Model(reasoning=True),
                 Context(
                     system_prompt="Use developer instructions.",
-                    messages=[
-                        UserMessage(role="user", content="hello", timestamp=0.0)
-                    ],
+                    messages=[UserMessage(role="user", content="hello", timestamp=0.0)],
                 ),
                 AzureOpenAIResponsesOptions(),
                 request,
@@ -269,7 +351,8 @@ def test_azure_openai_responses_default_catalog_uses_responses_contract(
 
     asyncio.run(
         _collect_parts(
-            provider._stream_raw_parts(
+            _stream_raw_parts(
+                provider,
                 model,
                 _tool_result_followed_by_user_context(
                     system_prompt="Use developer instructions."
@@ -314,7 +397,8 @@ def test_azure_openai_responses_uses_real_resolved_request_boundary(
 
     asyncio.run(
         _collect_parts(
-            provider._stream_raw_parts(
+            _stream_raw_parts(
+                provider,
                 model,
                 Context(
                     system_prompt=None,

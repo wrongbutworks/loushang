@@ -369,7 +369,7 @@ def test_tools_example_declares_add_tool() -> None:
 
 def test_typed_context_example_uses_public_types() -> None:
     module = _load_module(
-        Path("examples/ai/typed_context.py"), "examples_ai_typed_context"
+        Path("examples/ai/03_typed_context.py"), "examples_ai_03_typed_context"
     )
 
     context = module._build_context()
