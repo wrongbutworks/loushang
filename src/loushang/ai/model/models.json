@@ -20,7 +20,10 @@
           "compat": {
             "thinkingFormat": "moonshot",
             "supportsReasoningEffort": false,
-            "supportsDeveloperRole": false
+            "supportsDeveloperRole": false,
+            "supportsStore": false,
+            "maxTokensField": "max_tokens",
+            "supportsStrictMode": false
           },
           "models": {
             "kimi-k2.5": {
@@ -221,7 +224,10 @@
           "compat": {
             "thinkingFormat": "moonshot",
             "supportsReasoningEffort": false,
-            "supportsDeveloperRole": false
+            "supportsDeveloperRole": false,
+            "supportsStore": false,
+            "maxTokensField": "max_tokens",
+            "supportsStrictMode": false
           },
           "models": {
             "kimi-for-coding": {
@@ -3091,6 +3097,10 @@
             "prefix": "Bearer ",
             "apiKeyEnv": "CEREBRAS_API_KEY"
           },
+          "compat": {
+            "supportsStore": false,
+            "supportsDeveloperRole": false
+          },
           "models": {
             "gpt-oss-120b": {
               "displayName": "GPT OSS 120B",
@@ -3191,6 +3201,12 @@
             "prefix": "Bearer ",
             "apiKeyEnv": "DEEPSEEK_API_KEY"
           },
+          "compat": {
+            "supportsStore": false,
+            "supportsDeveloperRole": false,
+            "requiresReasoningContentOnAssistantMessages": true,
+            "thinkingFormat": "deepseek"
+          },
           "models": {
             "deepseek-v4-flash": {
               "displayName": "DeepSeek V4 Flash",
@@ -3286,6 +3302,12 @@
             "prefix": "Bearer ",
             "apiKeyEnv": "FIREWORKS_API_KEY"
           },
+          "compat": {
+            "sendSessionAffinityHeaders": true,
+            "supportsEagerToolInputStreaming": false,
+            "supportsCacheControlOnTools": false,
+            "supportsLongCacheRetention": false
+          },
           "models": {
             "accounts/fireworks/models/deepseek-v4-flash": {
               "displayName": "DeepSeek V4 Flash",
@@ -3296,12 +3318,6 @@
                 "output": 0.28,
                 "cacheRead": 0.03,
                 "cacheWrite": 0
-              },
-              "compat": {
-                "sendSessionAffinityHeaders": true,
-                "supportsEagerToolInputStreaming": false,
-                "supportsCacheControlOnTools": false,
-                "supportsLongCacheRetention": false
               },
               "capabilities": {
                 "reasoning": true,
@@ -3330,12 +3346,6 @@
                 "cacheRead": 0.145,
                 "cacheWrite": 0
               },
-              "compat": {
-                "sendSessionAffinityHeaders": true,
-                "supportsEagerToolInputStreaming": false,
-                "supportsCacheControlOnTools": false,
-                "supportsLongCacheRetention": false
-              },
               "capabilities": {
                 "reasoning": true,
                 "contextWindow": 1000000,
@@ -3362,12 +3372,6 @@
                 "output": 4.4,
                 "cacheRead": 0.26,
                 "cacheWrite": 0
-              },
-              "compat": {
-                "sendSessionAffinityHeaders": true,
-                "supportsEagerToolInputStreaming": false,
-                "supportsCacheControlOnTools": false,
-                "supportsLongCacheRetention": false
               },
               "capabilities": {
                 "reasoning": true,
@@ -3396,12 +3400,6 @@
                 "cacheRead": 0.015,
                 "cacheWrite": 0
               },
-              "compat": {
-                "sendSessionAffinityHeaders": true,
-                "supportsEagerToolInputStreaming": false,
-                "supportsCacheControlOnTools": false,
-                "supportsLongCacheRetention": false
-              },
               "capabilities": {
                 "reasoning": true,
                 "contextWindow": 131072,
@@ -3429,12 +3427,6 @@
                 "cacheRead": 0.035,
                 "cacheWrite": 0
               },
-              "compat": {
-                "sendSessionAffinityHeaders": true,
-                "supportsEagerToolInputStreaming": false,
-                "supportsCacheControlOnTools": false,
-                "supportsLongCacheRetention": false
-              },
               "capabilities": {
                 "reasoning": true,
                 "contextWindow": 131072,
@@ -3461,12 +3453,6 @@
                 "output": 3,
                 "cacheRead": 0.1,
                 "cacheWrite": 0
-              },
-              "compat": {
-                "sendSessionAffinityHeaders": true,
-                "supportsEagerToolInputStreaming": false,
-                "supportsCacheControlOnTools": false,
-                "supportsLongCacheRetention": false
               },
               "capabilities": {
                 "reasoning": true,
@@ -3496,12 +3482,6 @@
                 "cacheRead": 0.16,
                 "cacheWrite": 0
               },
-              "compat": {
-                "sendSessionAffinityHeaders": true,
-                "supportsEagerToolInputStreaming": false,
-                "supportsCacheControlOnTools": false,
-                "supportsLongCacheRetention": false
-              },
               "capabilities": {
                 "reasoning": true,
                 "contextWindow": 262000,
@@ -3530,12 +3510,6 @@
                 "cacheRead": 0.03,
                 "cacheWrite": 0
               },
-              "compat": {
-                "sendSessionAffinityHeaders": true,
-                "supportsEagerToolInputStreaming": false,
-                "supportsCacheControlOnTools": false,
-                "supportsLongCacheRetention": false
-              },
               "capabilities": {
                 "reasoning": true,
                 "contextWindow": 196608,
@@ -3563,12 +3537,6 @@
                 "cacheRead": 0.06,
                 "cacheWrite": 0
               },
-              "compat": {
-                "sendSessionAffinityHeaders": true,
-                "supportsEagerToolInputStreaming": false,
-                "supportsCacheControlOnTools": false,
-                "supportsLongCacheRetention": false
-              },
               "capabilities": {
                 "reasoning": true,
                 "contextWindow": 196608,
@@ -3595,12 +3563,6 @@
                 "output": 3,
                 "cacheRead": 0.1,
                 "cacheWrite": 0
-              },
-              "compat": {
-                "sendSessionAffinityHeaders": true,
-                "supportsEagerToolInputStreaming": false,
-                "supportsCacheControlOnTools": false,
-                "supportsLongCacheRetention": false
               },
               "capabilities": {
                 "reasoning": true,
@@ -3630,12 +3592,6 @@
                 "cacheRead": 0.52,
                 "cacheWrite": 0
               },
-              "compat": {
-                "sendSessionAffinityHeaders": true,
-                "supportsEagerToolInputStreaming": false,
-                "supportsCacheControlOnTools": false,
-                "supportsLongCacheRetention": false
-              },
               "capabilities": {
                 "reasoning": true,
                 "contextWindow": 202800,
@@ -3662,12 +3618,6 @@
                 "output": 8,
                 "cacheRead": 0.3,
                 "cacheWrite": 0
-              },
-              "compat": {
-                "sendSessionAffinityHeaders": true,
-                "supportsEagerToolInputStreaming": false,
-                "supportsCacheControlOnTools": false,
-                "supportsLongCacheRetention": false
               },
               "capabilities": {
                 "reasoning": true,
@@ -3696,12 +3646,6 @@
                 "output": 8,
                 "cacheRead": 0.3,
                 "cacheWrite": 0
-              },
-              "compat": {
-                "sendSessionAffinityHeaders": true,
-                "supportsEagerToolInputStreaming": false,
-                "supportsCacheControlOnTools": false,
-                "supportsLongCacheRetention": false
               },
               "capabilities": {
                 "reasoning": true,
@@ -6003,6 +5947,14 @@
             "prefix": "Bearer ",
             "apiKeyEnv": "MOONSHOT_API_KEY"
           },
+          "compat": {
+            "supportsStore": false,
+            "supportsDeveloperRole": false,
+            "supportsReasoningEffort": false,
+            "maxTokensField": "max_tokens",
+            "thinkingFormat": "moonshot",
+            "supportsStrictMode": false
+          },
           "models": {
             "kimi-k2-0711-preview": {
               "displayName": "Kimi K2 0711",
@@ -6261,6 +6213,14 @@
             "header": "Authorization",
             "prefix": "Bearer ",
             "apiKeyEnv": "MOONSHOT_API_KEY"
+          },
+          "compat": {
+            "supportsStore": false,
+            "supportsDeveloperRole": false,
+            "supportsReasoningEffort": false,
+            "maxTokensField": "max_tokens",
+            "thinkingFormat": "moonshot",
+            "supportsStrictMode": false
           },
           "models": {
             "kimi-k2-0711-preview": {
@@ -7284,6 +7244,10 @@
             "header": "Authorization",
             "prefix": "Bearer ",
             "apiKeyEnv": "OPENCODE_API_KEY"
+          },
+          "compat": {
+            "supportsStore": false,
+            "supportsDeveloperRole": false
           },
           "models": {
             "big-pickle": {
@@ -8555,6 +8519,10 @@
             "prefix": "Bearer ",
             "apiKeyEnv": "OPENCODE_API_KEY"
           },
+          "compat": {
+            "supportsStore": false,
+            "supportsDeveloperRole": false
+          },
           "models": {
             "deepseek-v4-flash": {
               "displayName": "DeepSeek V4 Flash",
@@ -9005,6 +8973,9 @@
             "prefix": "Bearer ",
             "apiKeyEnv": "OPENROUTER_API_KEY"
           },
+          "compat": {
+            "thinkingFormat": "openrouter"
+          },
           "models": {
             "ai21/jamba-large-1.7": {
               "displayName": "AI21: Jamba Large 1.7",
@@ -9182,6 +9153,9 @@
                 "cacheRead": 0.03,
                 "cacheWrite": 0.3
               },
+              "compat": {
+                "cacheControlFormat": "anthropic"
+              },
               "capabilities": {
                 "reasoning": false,
                 "contextWindow": 200000,
@@ -9209,6 +9183,9 @@
                 "output": 4,
                 "cacheRead": 0.08,
                 "cacheWrite": 1
+              },
+              "compat": {
+                "cacheControlFormat": "anthropic"
               },
               "capabilities": {
                 "reasoning": false,
@@ -9238,6 +9215,9 @@
                 "cacheRead": 0.09999999999999999,
                 "cacheWrite": 1.25
               },
+              "compat": {
+                "cacheControlFormat": "anthropic"
+              },
               "capabilities": {
                 "reasoning": true,
                 "contextWindow": 200000,
@@ -9265,6 +9245,9 @@
                 "output": 75,
                 "cacheRead": 1.5,
                 "cacheWrite": 18.75
+              },
+              "compat": {
+                "cacheControlFormat": "anthropic"
               },
               "capabilities": {
                 "reasoning": true,
@@ -9294,6 +9277,9 @@
                 "cacheRead": 1.5,
                 "cacheWrite": 18.75
               },
+              "compat": {
+                "cacheControlFormat": "anthropic"
+              },
               "capabilities": {
                 "reasoning": true,
                 "contextWindow": 200000,
@@ -9321,6 +9307,9 @@
                 "output": 25,
                 "cacheRead": 0.5,
                 "cacheWrite": 6.25
+              },
+              "compat": {
+                "cacheControlFormat": "anthropic"
               },
               "capabilities": {
                 "reasoning": true,
@@ -9353,7 +9342,8 @@
               "compat": {
                 "reasoningEffortMap": {
                   "xhigh": "max"
-                }
+                },
+                "cacheControlFormat": "anthropic"
               },
               "capabilities": {
                 "reasoning": true,
@@ -9386,7 +9376,8 @@
               "compat": {
                 "reasoningEffortMap": {
                   "xhigh": "max"
-                }
+                },
+                "cacheControlFormat": "anthropic"
               },
               "capabilities": {
                 "reasoning": true,
@@ -9419,7 +9410,8 @@
               "compat": {
                 "reasoningEffortMap": {
                   "xhigh": "xhigh"
-                }
+                },
+                "cacheControlFormat": "anthropic"
               },
               "capabilities": {
                 "reasoning": true,
@@ -9452,7 +9444,8 @@
               "compat": {
                 "reasoningEffortMap": {
                   "xhigh": "xhigh"
-                }
+                },
+                "cacheControlFormat": "anthropic"
               },
               "capabilities": {
                 "reasoning": true,
@@ -9485,7 +9478,8 @@
               "compat": {
                 "reasoningEffortMap": {
                   "xhigh": "xhigh"
-                }
+                },
+                "cacheControlFormat": "anthropic"
               },
               "capabilities": {
                 "reasoning": true,
@@ -9518,7 +9512,8 @@
               "compat": {
                 "reasoningEffortMap": {
                   "xhigh": "xhigh"
-                }
+                },
+                "cacheControlFormat": "anthropic"
               },
               "capabilities": {
                 "reasoning": true,
@@ -9548,6 +9543,9 @@
                 "cacheRead": 0.3,
                 "cacheWrite": 3.75
               },
+              "compat": {
+                "cacheControlFormat": "anthropic"
+              },
               "capabilities": {
                 "reasoning": true,
                 "contextWindow": 1000000,
@@ -9576,6 +9574,9 @@
                 "cacheRead": 0.3,
                 "cacheWrite": 3.75
               },
+              "compat": {
+                "cacheControlFormat": "anthropic"
+              },
               "capabilities": {
                 "reasoning": true,
                 "contextWindow": 1000000,
@@ -9603,6 +9604,9 @@
                 "output": 15,
                 "cacheRead": 0.3,
                 "cacheWrite": 3.75
+              },
+              "compat": {
+                "cacheControlFormat": "anthropic"
               },
               "capabilities": {
                 "reasoning": true,
@@ -16196,6 +16200,15 @@
             "prefix": "Bearer ",
             "apiKeyEnv": "TOGETHER_API_KEY"
           },
+          "compat": {
+            "supportsStore": false,
+            "supportsDeveloperRole": false,
+            "supportsReasoningEffort": false,
+            "maxTokensField": "max_tokens",
+            "thinkingFormat": "together",
+            "supportsStrictMode": false,
+            "supportsLongCacheRetention": false
+          },
           "models": {
             "MiniMaxAI/MiniMax-M2.5": {
               "displayName": "MiniMax-M2.5",
@@ -21686,6 +21699,11 @@
             "prefix": "Bearer ",
             "apiKeyEnv": "XAI_API_KEY"
           },
+          "compat": {
+            "supportsStore": false,
+            "supportsDeveloperRole": false,
+            "supportsReasoningEffort": false
+          },
           "models": {
             "grok-3": {
               "displayName": "Grok 3",
@@ -22508,6 +22526,12 @@
             "header": "Authorization",
             "prefix": "Bearer ",
             "apiKeyEnv": "ZAI_API_KEY"
+          },
+          "compat": {
+            "supportsStore": false,
+            "supportsDeveloperRole": false,
+            "supportsReasoningEffort": false,
+            "thinkingFormat": "zai"
           },
           "models": {
             "glm-4.5-air": {
@@ -24777,6 +24801,9 @@
           "baseUrl": "https://gateway.ai.cloudflare.com/v1/{CLOUDFLARE_ACCOUNT_ID}/{CLOUDFLARE_GATEWAY_ID}/anthropic",
           "api": "anthropic-messages",
           "docs": "https://developers.cloudflare.com/ai-gateway/",
+          "compat": {
+            "sendSessionAffinityHeaders": true
+          },
           "models": {
             "claude-3-5-haiku": {
               "displayName": "Claude Haiku 3.5 (latest)",
@@ -25687,6 +25714,13 @@
           "baseUrl": "https://gateway.ai.cloudflare.com/v1/{CLOUDFLARE_ACCOUNT_ID}/{CLOUDFLARE_GATEWAY_ID}/compat",
           "api": "openai-completions",
           "docs": "https://developers.cloudflare.com/ai-gateway/",
+          "compat": {
+            "supportsStore": false,
+            "supportsDeveloperRole": false,
+            "maxTokensField": "max_tokens",
+            "supportsStrictMode": false,
+            "supportsLongCacheRetention": false
+          },
           "models": {
             "workers-ai/@cf/moonshotai/kimi-k2.5": {
               "displayName": "Kimi K2.5",
@@ -25817,6 +25851,11 @@
           "baseUrl": "https://api.cloudflare.com/client/v4/accounts/{CLOUDFLARE_ACCOUNT_ID}/ai/v1",
           "api": "openai-completions",
           "docs": "https://developers.cloudflare.com/workers-ai/",
+          "compat": {
+            "supportsStore": false,
+            "supportsDeveloperRole": false,
+            "supportsLongCacheRetention": false
+          },
           "models": {
             "@cf/google/gemma-4-26b-a4b-it": {
               "displayName": "Gemma 4 26B A4B IT",

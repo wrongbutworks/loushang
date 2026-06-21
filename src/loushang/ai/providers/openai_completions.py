@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 from collections.abc import AsyncIterator, Mapping
 from typing import Any, cast
+from urllib.parse import urlsplit
 
 from loushang.ai.context import ensure_normalized_context
 from loushang.ai.event_stream import AssistantMessageEventStream, RawAssembler
@@ -17,6 +18,7 @@ from loushang.ai.model.compat_schema import (
     SEND_SESSION_AFFINITY_HEADERS,
     SUPPORTS_DEVELOPER_ROLE,
     SUPPORTS_LONG_CACHE_RETENTION,
+    SUPPORTS_PROMPT_CACHE_KEY,
     SUPPORTS_REASONING_EFFORT,
     SUPPORTS_STORE,
     SUPPORTS_STRICT_MODE,
@@ -204,7 +206,6 @@ class OpenAICompletionsProvider:
         }
         _apply_prompt_cache_params(
             params,
-            base_url=getattr(resolved, "base_url", None),
             compat=compat,
             cache_retention=cache_retention,
             session_id=session_id,
@@ -240,7 +241,8 @@ class OpenAICompletionsProvider:
         )
         _apply_provider_routing(
             params,
-            base_url=getattr(resolved, "base_url", None),
+            provider_id=resolved.provider,
+            base_url=effective_base_url,
             request_overrides=getattr(
                 getattr(resolved, "routing", None),
                 "request_overrides",
@@ -518,22 +520,24 @@ def _map_stop_reason(reason: str) -> str:
 def _apply_prompt_cache_params(
     params: dict[str, Any],
     *,
-    base_url: str | None,
     compat: dict[str, Any],
     cache_retention: str | None,
     session_id: str | None,
 ) -> None:
     if cache_retention == "none" or not isinstance(session_id, str) or not session_id:
         return
+    if not _supports_prompt_cache_key(compat):
+        return
     supports_long_retention = compat_bool(
         compat, SUPPORTS_LONG_CACHE_RETENTION, default=True
     )
-    if "api.openai.com" in str(base_url or "") or (
-        cache_retention == "long" and supports_long_retention
-    ):
-        params["prompt_cache_key"] = session_id
+    params["prompt_cache_key"] = session_id
     if cache_retention == "long" and supports_long_retention:
         params["prompt_cache_retention"] = "24h"
+
+
+def _supports_prompt_cache_key(compat: dict[str, Any]) -> bool:
+    return compat_bool(compat, SUPPORTS_PROMPT_CACHE_KEY)
 
 
 def _apply_reasoning_params(
@@ -613,16 +617,20 @@ def _apply_reasoning_effort_if_supported(
 def _apply_provider_routing(
     params: dict[str, Any],
     *,
+    provider_id: str,
     base_url: str | None,
     request_overrides: Mapping[str, Mapping[str, object]] | None,
 ) -> None:
     overrides = request_overrides or {}
-    base_url_text = str(base_url or "")
+    namespace = _active_routing_namespace(provider_id, base_url, overrides)
+    if namespace is None:
+        return
     openrouter_routing = overrides.get("openrouter")
-    if "openrouter.ai" in base_url_text and openrouter_routing:
+    if namespace == "openrouter" and openrouter_routing:
         params["provider"] = dict(openrouter_routing)
+        return
     vercel_gateway_routing = overrides.get("vercelGateway")
-    if "ai-gateway.vercel.sh" not in base_url_text or not vercel_gateway_routing:
+    if namespace != "vercelGateway" or not vercel_gateway_routing:
         return
     gateway: dict[str, Any] = {}
     if vercel_gateway_routing.get("only"):
@@ -631,6 +639,37 @@ def _apply_provider_routing(
         gateway["order"] = vercel_gateway_routing["order"]
     if gateway:
         params["providerOptions"] = {"gateway": gateway}
+
+
+def _active_routing_namespace(
+    provider_id: str,
+    base_url: str | None,
+    request_overrides: Mapping[str, Mapping[str, object]],
+) -> str | None:
+    if provider_id == "openrouter":
+        return "openrouter" if request_overrides.get("openrouter") else None
+    if provider_id == "vercel-ai-gateway":
+        return "vercelGateway" if request_overrides.get("vercelGateway") else None
+    hostname = _base_url_hostname(base_url)
+    if hostname == "openrouter.ai" and request_overrides.get("openrouter"):
+        return "openrouter"
+    if hostname == "ai-gateway.vercel.sh" and request_overrides.get("vercelGateway"):
+        return "vercelGateway"
+    present = [
+        namespace
+        for namespace in ("openrouter", "vercelGateway")
+        if request_overrides.get(namespace)
+    ]
+    if len(present) == 1:
+        return present[0]
+    return None
+
+
+def _base_url_hostname(base_url: str | None) -> str | None:
+    if not isinstance(base_url, str) or not base_url.strip():
+        return None
+    parsed = urlsplit(base_url if "://" in base_url else f"https://{base_url}")
+    return parsed.hostname
 
 
 def _resolve_timeout_seconds(options, resolved) -> float | int | None:

@@ -148,7 +148,11 @@ def test_advanced_inspect_endpoint_contract_formats_protocol_facts(
                             "openai-completions": {
                                 "api": "openai-completions",
                                 "baseUrl": "https://example.invalid/v1",
-                                "compat": {"thinkingFormat": "example"},
+                                "compat": {
+                                    "supportsStore": False,
+                                    "supportsStrictMode": False,
+                                    "thinkingFormat": "example",
+                                },
                                 "protocol": {
                                     "roles": {"developer": "unsupported"},
                                     "reasoning": {"effort": "unsupported"},
@@ -194,8 +198,10 @@ def test_advanced_inspect_endpoint_contract_formats_protocol_facts(
     assert contract["protocolScope"] == "endpoint-default"
     assert contract["model"] == "kimi-k2.5"
     assert contract["protocol"] == {
+        "store": "unsupported",
         "roles": {"developer": "unsupported"},
         "reasoning": {"effort": "unsupported"},
+        "tools": {"strictSchema": "unsupported"},
     }
     assert contract["dialectScope"] == "endpoint-default"
     assert contract["dialect"] == {
@@ -253,11 +259,13 @@ def test_advanced_inspect_endpoint_contract_runs_against_builtin_catalog() -> No
     assert contract["endpoint"] == "openai-completions"
     assert contract["model"] == "kimi-k2.5"
     assert contract["protocol"] == {
+        "store": "unsupported",
         "roles": {"developer": "unsupported"},
         "reasoning": {"effort": "unsupported"},
+        "tools": {"strictSchema": "unsupported"},
     }
     assert contract["dialect"] == {
-        "maxOutputTokensField": "max_completion_tokens",
+        "maxOutputTokensField": "max_tokens",
         "reasoning": {"wireFormat": "moonshot"},
     }
     assert contract["transport"] == {}

@@ -767,7 +767,6 @@ def test_model_registry_loads_legacy_transport_routing_from_compat(tmp_path) -> 
     assert "transport" not in endpoint_raw
     assert "routing" not in endpoint_raw
     assert endpoint_raw["compat"] == {
-        "maxTokensField": "max_completion_tokens",
         "providerTransport": "httpx",
         "openRouterRouting": {"only": ["anthropic"]},
         "vercelGatewayRouting": {"order": ["openai", "anthropic"]},
@@ -860,7 +859,6 @@ def test_model_registry_loads_model_legacy_transport_routing_from_compat(
     assert "transport" not in model_raw
     assert "routing" not in model_raw
     assert model_raw["compat"] == {
-        "maxTokensField": "max_completion_tokens",
         "providerTransport": "httpx",
         "openRouterRouting": {"only": ["anthropic"]},
         "vercelGatewayRouting": {"order": ["openai", "anthropic"]},
@@ -886,7 +884,6 @@ def test_model_registry_loads_model_legacy_upstream_id_from_compat(
     model_raw = model_contract.to_raw()
     assert "upstreamId" not in model_raw
     assert model_raw["compat"] == {
-        "maxTokensField": "max_completion_tokens",
         "upstreamModelId": "vendor/model-a:latest",
     }
 
@@ -1126,7 +1123,6 @@ def test_model_registry_preserves_explicit_dialect_on_to_raw(tmp_path) -> None:
 
     assert endpoint_contract is not None
     effective_dialect = {
-        "maxOutputTokensField": "max_completion_tokens",
         "tools": {"resultNameRequired": True},
         "reasoning": {"wireFormat": "moonshot"},
     }
@@ -1158,7 +1154,6 @@ def test_model_registry_preserves_explicit_dialect_on_to_raw(tmp_path) -> None:
 
     assert roundtrip_endpoint is not None
     assert roundtrip_endpoint.dialect.to_raw() == effective_dialect
-    assert roundtrip_endpoint.compat["maxTokensField"] == "max_completion_tokens"
     assert roundtrip_endpoint.compat["requiresToolResultName"] is True
     assert roundtrip_endpoint.compat["thinkingFormat"] == "moonshot"
 
@@ -1245,6 +1240,23 @@ def test_model_registry_schema_rejects_invalid_protocol_status() -> None:
     endpoint["protocol"] = {"roles": {"developer": "yes"}}
 
     with pytest.raises(ValueError, match="invalid support status"):
+        validate_model_registry_raw(raw)
+
+
+@pytest.mark.parametrize("scope", ["endpoint", "model"])
+def test_model_registry_schema_rejects_non_bool_prompt_cache_compat(
+    scope: str,
+) -> None:
+    raw = _minimal_registry_raw(schema_version=2)
+    endpoint = raw["providers"]["custom"]["endpoints"]["openai-completions"]
+    compat_owner = (
+        endpoint
+        if scope == "endpoint"
+        else endpoint["models"]["model-a"]
+    )
+    compat_owner["compat"] = {"supportsPromptCacheKey": "false"}
+
+    with pytest.raises(ValueError, match="supportsPromptCacheKey"):
         validate_model_registry_raw(raw)
 
 

@@ -9,8 +9,18 @@ from types import ModuleType, SimpleNamespace
 import pytest
 
 from loushang.ai import get_model
-from loushang.ai.model import Capabilities, Model
-from loushang.ai.model.compat_schema import resolve_openai_completions_compat
+from loushang.ai.model import Capabilities, Compat, Model
+from loushang.ai.model.compat_schema import (
+    MAX_TOKENS_FIELD,
+    SUPPORTS_DEVELOPER_ROLE,
+    SUPPORTS_LONG_CACHE_RETENTION,
+    SUPPORTS_PROMPT_CACHE_KEY,
+    SUPPORTS_REASONING_EFFORT,
+    SUPPORTS_STORE,
+    SUPPORTS_STRICT_MODE,
+    THINKING_FORMAT,
+    resolve_openai_completions_compat,
+)
 from loushang.ai.model.domain import (
     Endpoint,
     EndpointRouting,
@@ -481,6 +491,7 @@ def test_openai_completions_payload_uses_typed_endpoint_dialect(
                     },
                 }
             ),
+            compat=Compat.from_raw({SUPPORTS_PROMPT_CACHE_KEY: True}),
             models={
                 "gpt-test": Model(
                     id="gpt-test",
@@ -589,13 +600,222 @@ def test_openai_completions_payload_uses_typed_endpoint_dialect(
     }
 
 
-def test_openai_completions_compat_detects_zai_thinking_format(
+def test_openai_completions_prompt_cache_key_uses_explicit_support_flag(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     _fake_openai_module(monkeypatch)
     _patch_resolved_request(
         monkeypatch,
-        compat={},
+        compat={SUPPORTS_PROMPT_CACHE_KEY: True},
+        reasoning_effort=None,
+    )
+    provider = OpenAICompletionsProvider()
+
+    asyncio.run(
+        _collect_parts(
+            provider._stream_raw_parts(
+                _Model(),
+                {"messages": [UserMessage(role="user", content="hello", timestamp=0.0)]},
+                OpenAICompletionsOptions(
+                    api_key="test-key",
+                    cache_retention="short",
+                    session_id="session-short",
+                ),
+            )
+        )
+    )
+
+    assert _FakeAsyncOpenAI.last_create_kwargs["prompt_cache_key"] == "session-short"
+    assert "prompt_cache_retention" not in _FakeAsyncOpenAI.last_create_kwargs
+
+
+def test_openai_completions_explicit_prompt_cache_key_reaches_sdk_payload(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _fake_openai_module(monkeypatch)
+    registry = get_default_model_registry()
+    registry.register_endpoint(
+        "custom-openai",
+        Endpoint(
+            id="openai-completions",
+            provider="custom-openai",
+            api="openai-completions",
+            base_url="https://api.openai.com/v1",
+            compat=Compat.from_raw({SUPPORTS_PROMPT_CACHE_KEY: True}),
+            models={
+                "gpt-test": Model(
+                    id="gpt-test",
+                    provider="custom-openai",
+                    endpoint="openai-completions",
+                    capabilities=Capabilities(input=("text",), max_tokens=4096),
+                )
+            },
+        ),
+    )
+    model = registry.get_model("custom-openai", "openai-completions", "gpt-test")
+    provider = OpenAICompletionsProvider()
+
+    asyncio.run(
+        _collect_parts(
+            provider._stream_raw_parts(
+                model,
+                {"messages": [UserMessage(role="user", content="hello", timestamp=0.0)]},
+                OpenAICompletionsOptions(
+                    api_key="test-key",
+                    cache_retention="long",
+                    session_id="session-official",
+                ),
+            )
+        )
+    )
+
+    assert _FakeAsyncOpenAI.last_init_kwargs["base_url"] == "https://api.openai.com/v1"
+    assert _FakeAsyncOpenAI.last_create_kwargs["prompt_cache_key"] == "session-official"
+    assert _FakeAsyncOpenAI.last_create_kwargs["prompt_cache_retention"] == "24h"
+
+
+def test_openai_completions_official_url_requires_prompt_cache_support_flag(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _fake_openai_module(monkeypatch)
+    registry = get_default_model_registry()
+    registry.register_endpoint(
+        "custom-openai",
+        Endpoint(
+            id="openai-completions",
+            provider="custom-openai",
+            api="openai-completions",
+            base_url="https://api.openai.com/v1",
+            models={
+                "gpt-test": Model(
+                    id="gpt-test",
+                    provider="custom-openai",
+                    endpoint="openai-completions",
+                    capabilities=Capabilities(input=("text",), max_tokens=4096),
+                )
+            },
+        ),
+    )
+    model = registry.get_model("custom-openai", "openai-completions", "gpt-test")
+    provider = OpenAICompletionsProvider()
+
+    asyncio.run(
+        _collect_parts(
+            provider._stream_raw_parts(
+                model,
+                {"messages": [UserMessage(role="user", content="hello", timestamp=0.0)]},
+                OpenAICompletionsOptions(
+                    api_key="test-key",
+                    cache_retention="long",
+                    session_id="session-official",
+                ),
+            )
+        )
+    )
+
+    assert _FakeAsyncOpenAI.last_init_kwargs["base_url"] == "https://api.openai.com/v1"
+    assert "prompt_cache_key" not in _FakeAsyncOpenAI.last_create_kwargs
+    assert "prompt_cache_retention" not in _FakeAsyncOpenAI.last_create_kwargs
+
+
+def test_openai_completions_prompt_cache_key_defaults_off_for_short_sessions(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _fake_openai_module(monkeypatch)
+    _patch_resolved_request(monkeypatch, compat={}, reasoning_effort=None)
+    provider = OpenAICompletionsProvider()
+
+    asyncio.run(
+        _collect_parts(
+            provider._stream_raw_parts(
+                _Model(),
+                {"messages": [UserMessage(role="user", content="hello", timestamp=0.0)]},
+                OpenAICompletionsOptions(
+                    api_key="test-key",
+                    cache_retention="short",
+                    session_id="session-short",
+                ),
+            )
+        )
+    )
+
+    assert "prompt_cache_key" not in _FakeAsyncOpenAI.last_create_kwargs
+    assert "prompt_cache_retention" not in _FakeAsyncOpenAI.last_create_kwargs
+
+
+def test_openai_completions_prompt_cache_key_can_be_disabled(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _fake_openai_module(monkeypatch)
+    _patch_resolved_request(
+        monkeypatch,
+        compat={SUPPORTS_PROMPT_CACHE_KEY: False},
+        reasoning_effort=None,
+    )
+    provider = OpenAICompletionsProvider()
+
+    asyncio.run(
+        _collect_parts(
+            provider._stream_raw_parts(
+                _Model(),
+                {"messages": [UserMessage(role="user", content="hello", timestamp=0.0)]},
+                OpenAICompletionsOptions(
+                    api_key="test-key",
+                    cache_retention="short",
+                    session_id="session-short",
+                ),
+            )
+        )
+    )
+
+    assert "prompt_cache_key" not in _FakeAsyncOpenAI.last_create_kwargs
+    assert "prompt_cache_retention" not in _FakeAsyncOpenAI.last_create_kwargs
+
+
+def test_openai_completions_prompt_cache_key_disables_long_retention_params(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _fake_openai_module(monkeypatch)
+    _patch_resolved_request(
+        monkeypatch,
+        compat={
+            SUPPORTS_LONG_CACHE_RETENTION: True,
+            SUPPORTS_PROMPT_CACHE_KEY: False,
+        },
+        reasoning_effort=None,
+    )
+    provider = OpenAICompletionsProvider()
+
+    asyncio.run(
+        _collect_parts(
+            provider._stream_raw_parts(
+                _Model(),
+                {"messages": [UserMessage(role="user", content="hello", timestamp=0.0)]},
+                OpenAICompletionsOptions(
+                    api_key="test-key",
+                    cache_retention="long",
+                    session_id="session-long",
+                ),
+            )
+        )
+    )
+
+    assert "prompt_cache_key" not in _FakeAsyncOpenAI.last_create_kwargs
+    assert "prompt_cache_retention" not in _FakeAsyncOpenAI.last_create_kwargs
+
+
+def test_openai_completions_explicit_zai_thinking_format(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _fake_openai_module(monkeypatch)
+    _patch_resolved_request(
+        monkeypatch,
+        compat={
+            THINKING_FORMAT: "zai",
+            SUPPORTS_DEVELOPER_ROLE: False,
+            SUPPORTS_REASONING_EFFORT: False,
+            SUPPORTS_STORE: False,
+        },
         reasoning_effort="high",
         base_url="https://api.z.ai/v1",
     )
@@ -620,13 +840,16 @@ def test_openai_completions_compat_detects_zai_thinking_format(
     assert "store" not in _FakeAsyncOpenAI.last_create_kwargs
 
 
-def test_openai_completions_compat_detects_qwen_thinking_format(
+def test_openai_completions_explicit_qwen_thinking_format(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     _fake_openai_module(monkeypatch)
     _patch_resolved_request(
         monkeypatch,
-        compat={},
+        compat={
+            THINKING_FORMAT: "qwen",
+            SUPPORTS_REASONING_EFFORT: False,
+        },
         reasoning_effort="high",
         base_url="https://dashscope.aliyuncs.com/compatible-mode/v1",
     )
@@ -690,7 +913,10 @@ def test_openai_completions_typed_routing_maps_openrouter_provider_payload(
     _fake_openai_module(monkeypatch)
     _patch_resolved_request(
         monkeypatch,
-        compat={},
+        compat={
+            THINKING_FORMAT: "openrouter",
+            SUPPORTS_REASONING_EFFORT: False,
+        },
         routing=EndpointRouting(
             request_overrides={"openrouter": {"only": ["anthropic"]}}
         ),
@@ -719,13 +945,171 @@ def test_openai_completions_typed_routing_maps_openrouter_provider_payload(
     assert _FakeAsyncOpenAI.last_create_kwargs["store"] is False
 
 
-def test_openai_completions_compat_maps_moonshot_thinking_toggle(
+def test_openai_completions_mixed_routing_uses_openrouter_namespace(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _fake_openai_module(monkeypatch)
+    _patch_resolved_request(
+        monkeypatch,
+        compat={THINKING_FORMAT: "openrouter"},
+        routing=EndpointRouting(
+            request_overrides={
+                "openrouter": {"only": ["anthropic"]},
+                "vercelGateway": {"order": ["openai"]},
+            }
+        ),
+        reasoning_effort=None,
+    )
+    provider = OpenAICompletionsProvider()
+
+    asyncio.run(
+        _collect_parts(
+            provider._stream_raw_parts(
+                _Model(provider_id="openrouter"),
+                {"messages": [UserMessage(role="user", content="hello", timestamp=0.0)]},
+                OpenAICompletionsOptions(api_key="test-key"),
+            )
+        )
+    )
+
+    assert _FakeAsyncOpenAI.last_create_kwargs["provider"] == {"only": ["anthropic"]}
+    assert "providerOptions" not in _FakeAsyncOpenAI.last_create_kwargs
+
+
+def test_openai_completions_mixed_routing_uses_vercel_namespace(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _fake_openai_module(monkeypatch)
+    _patch_resolved_request(
+        monkeypatch,
+        compat={THINKING_FORMAT: "openrouter"},
+        routing=EndpointRouting(
+            request_overrides={
+                "openrouter": {"only": ["anthropic"]},
+                "vercelGateway": {"order": ["openai"]},
+            }
+        ),
+        reasoning_effort=None,
+    )
+    provider = OpenAICompletionsProvider()
+
+    asyncio.run(
+        _collect_parts(
+            provider._stream_raw_parts(
+                _Model(provider_id="vercel-ai-gateway"),
+                {"messages": [UserMessage(role="user", content="hello", timestamp=0.0)]},
+                OpenAICompletionsOptions(api_key="test-key"),
+            )
+        )
+    )
+
+    assert "provider" not in _FakeAsyncOpenAI.last_create_kwargs
+    assert _FakeAsyncOpenAI.last_create_kwargs["providerOptions"] == {
+        "gateway": {"order": ["openai"]}
+    }
+
+
+def test_openai_completions_mixed_routing_without_known_provider_is_ignored(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _fake_openai_module(monkeypatch)
+    _patch_resolved_request(
+        monkeypatch,
+        compat={THINKING_FORMAT: "openrouter"},
+        routing=EndpointRouting(
+            request_overrides={
+                "openrouter": {"only": ["anthropic"]},
+                "vercelGateway": {"order": ["openai"]},
+            }
+        ),
+        reasoning_effort=None,
+    )
+    provider = OpenAICompletionsProvider()
+
+    asyncio.run(
+        _collect_parts(
+            provider._stream_raw_parts(
+                _Model(provider_id="custom"),
+                {"messages": [UserMessage(role="user", content="hello", timestamp=0.0)]},
+                OpenAICompletionsOptions(api_key="test-key"),
+            )
+        )
+    )
+
+    assert "provider" not in _FakeAsyncOpenAI.last_create_kwargs
+    assert "providerOptions" not in _FakeAsyncOpenAI.last_create_kwargs
+
+
+def test_openai_completions_openrouter_provider_ignores_vercel_only_routing(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _fake_openai_module(monkeypatch)
+    _patch_resolved_request(
+        monkeypatch,
+        compat={THINKING_FORMAT: "openrouter"},
+        routing=EndpointRouting(
+            request_overrides={"vercelGateway": {"order": ["openai"]}}
+        ),
+        reasoning_effort=None,
+    )
+    provider = OpenAICompletionsProvider()
+
+    asyncio.run(
+        _collect_parts(
+            provider._stream_raw_parts(
+                _Model(provider_id="openrouter"),
+                {"messages": [UserMessage(role="user", content="hello", timestamp=0.0)]},
+                OpenAICompletionsOptions(api_key="test-key"),
+            )
+        )
+    )
+
+    assert "provider" not in _FakeAsyncOpenAI.last_create_kwargs
+    assert "providerOptions" not in _FakeAsyncOpenAI.last_create_kwargs
+
+
+def test_openai_completions_vercel_provider_ignores_openrouter_only_routing(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     _fake_openai_module(monkeypatch)
     _patch_resolved_request(
         monkeypatch,
         compat={},
+        routing=EndpointRouting(
+            request_overrides={"openrouter": {"only": ["anthropic"]}}
+        ),
+        reasoning_effort=None,
+    )
+    provider = OpenAICompletionsProvider()
+
+    asyncio.run(
+        _collect_parts(
+            provider._stream_raw_parts(
+                _Model(provider_id="vercel-ai-gateway"),
+                {"messages": [UserMessage(role="user", content="hello", timestamp=0.0)]},
+                OpenAICompletionsOptions(api_key="test-key"),
+            )
+        )
+    )
+
+    assert "provider" not in _FakeAsyncOpenAI.last_create_kwargs
+    assert "providerOptions" not in _FakeAsyncOpenAI.last_create_kwargs
+
+
+def test_openai_completions_explicit_moonshot_thinking_toggle(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _fake_openai_module(monkeypatch)
+    _patch_resolved_request(
+        monkeypatch,
+        compat={
+            THINKING_FORMAT: "moonshot",
+            MAX_TOKENS_FIELD: "max_tokens",
+            SUPPORTS_DEVELOPER_ROLE: False,
+            SUPPORTS_REASONING_EFFORT: False,
+            SUPPORTS_STORE: False,
+            SUPPORTS_STRICT_MODE: False,
+        },
         reasoning_effort=None,
         base_url="https://api.moonshot.cn/v1",
     )
@@ -751,13 +1135,20 @@ def test_openai_completions_compat_maps_moonshot_thinking_toggle(
     assert "reasoning_effort" not in _FakeAsyncOpenAI.last_create_kwargs
 
 
-def test_openai_completions_compat_maps_moonshot_thinking_toggle_for_model_definition(
+def test_openai_completions_explicit_moonshot_thinking_for_model_definition(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     _fake_openai_module(monkeypatch)
     _patch_resolved_request(
         monkeypatch,
-        compat={},
+        compat={
+            THINKING_FORMAT: "moonshot",
+            MAX_TOKENS_FIELD: "max_tokens",
+            SUPPORTS_DEVELOPER_ROLE: False,
+            SUPPORTS_REASONING_EFFORT: False,
+            SUPPORTS_STORE: False,
+            SUPPORTS_STRICT_MODE: False,
+        },
         reasoning_effort=None,
         base_url="https://api.moonshot.cn/v1",
     )
@@ -827,14 +1218,14 @@ def test_openai_completions_typed_routing_maps_vercel_gateway_payload(
             request_overrides={"vercelGateway": {"order": ["openai", "anthropic"]}}
         ),
         reasoning_effort=None,
-        base_url="https://ai-gateway.vercel.sh/v1",
+        base_url="https://custom-gateway.example/v1",
     )
     provider = OpenAICompletionsProvider()
 
     asyncio.run(
         _collect_parts(
             provider._stream_raw_parts(
-                _Model(),
+                _Model(provider_id="vercel-ai-gateway"),
                 {
                     "messages": [
                         UserMessage(role="user", content="hello", timestamp=0.0)
@@ -845,6 +1236,41 @@ def test_openai_completions_typed_routing_maps_vercel_gateway_payload(
         )
     )
 
+    assert _FakeAsyncOpenAI.last_create_kwargs["providerOptions"] == {
+        "gateway": {"order": ["openai", "anthropic"]}
+    }
+
+
+def test_openai_completions_typed_routing_uses_explicit_single_namespace(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _fake_openai_module(monkeypatch)
+    _patch_resolved_request(
+        monkeypatch,
+        compat={},
+        routing=EndpointRouting(
+            request_overrides={"vercelGateway": {"order": ["openai", "anthropic"]}}
+        ),
+        reasoning_effort=None,
+        base_url="https://ai-gateway.vercel.sh/v1",
+    )
+    provider = OpenAICompletionsProvider()
+
+    asyncio.run(
+        _collect_parts(
+            provider._stream_raw_parts(
+                _Model(provider_id="custom"),
+                {
+                    "messages": [
+                        UserMessage(role="user", content="hello", timestamp=0.0)
+                    ]
+                },
+                OpenAICompletionsOptions(api_key="test-key"),
+            )
+        )
+    )
+
+    assert "provider" not in _FakeAsyncOpenAI.last_create_kwargs
     assert _FakeAsyncOpenAI.last_create_kwargs["providerOptions"] == {
         "gateway": {"order": ["openai", "anthropic"]}
     }
@@ -1250,6 +1676,8 @@ def _default_registry() -> Iterator[None]:
         "zai",
         "dashscope",
         "openrouter",
+        "vercel-ai-gateway",
+        "custom",
         "github-copilot",
     ]:
         registry.register_endpoint(provider_id, _endpoint(provider_id))

@@ -11,12 +11,12 @@ from loushang.ai.model.compat_schema import (
     COMPAT_DEFAULTS,
     DIALECT_COMPAT_BOOL_MAPPINGS,
     DIALECT_COMPAT_VALUE_MAPPINGS,
-    MAX_TOKENS_FIELD,
     OPENROUTER_ROUTING,
     PROTOCOL_COMPAT_STATUS_MAPPINGS,
     PROVIDER_TRANSPORT,
     REASONING_EFFORT_MAP,
     SUPPORTS_JSON_SCHEMA_STRUCTURED_OUTPUT,
+    SUPPORTS_PROMPT_CACHE_KEY,
     SUPPORTS_REASONING_EFFORT,
     SUPPORTS_STREAM_REASONING_DELTA,
     UPSTREAM_MODEL_ID,
@@ -189,7 +189,7 @@ def validate_model_registry_raw(raw: dict[str, Any]) -> None:
                 endpoint.get("preferred"), f"{endpoint_path}.preferred"
             )
             _validate_auth_fields(endpoint, endpoint_path)
-            _validate_keyed_mapping(
+            _validate_compat_mapping(
                 endpoint.get("compat"),
                 ALLOWED_ENDPOINT_COMPAT_KEYS,
                 f"{endpoint_path}.compat",
@@ -250,7 +250,7 @@ def validate_model_registry_raw(raw: dict[str, Any]) -> None:
                     f"{model_path}.upstreamId",
                     schema_version=schema_version,
                 )
-                _validate_keyed_mapping(
+                _validate_compat_mapping(
                     model.get("compat"),
                     ALLOWED_MODEL_COMPAT_KEYS,
                     f"{model_path}.compat",
@@ -368,6 +368,43 @@ def _validate_keyed_mapping(
     unknown = sorted(set(mapping) - allowed_keys)
     if unknown:
         raise ValueError(f"models registry field has unknown keys at {path}: {unknown}")
+
+
+def _validate_compat_mapping(
+    value: object,
+    allowed_keys: frozenset[str],
+    path: str,
+) -> None:
+    if value is None:
+        return
+    mapping = _require_mapping(value, path)
+    unknown = sorted(set(mapping) - allowed_keys)
+    if unknown:
+        raise ValueError(f"models registry field has unknown keys at {path}: {unknown}")
+    bool_keys = {
+        compat_key for compat_key, _, _ in PROTOCOL_COMPAT_STATUS_MAPPINGS
+    } | {compat_key for compat_key, _, _ in DIALECT_COMPAT_BOOL_MAPPINGS}
+    bool_keys.update(
+        {
+            SUPPORTS_JSON_SCHEMA_STRUCTURED_OUTPUT,
+            SUPPORTS_PROMPT_CACHE_KEY,
+        }
+    )
+    value_keys = {
+        compat_key for compat_key, _, _ in DIALECT_COMPAT_VALUE_MAPPINGS
+    }
+    for key, entry in mapping.items():
+        entry_path = f"{path}.{key}"
+        if key in bool_keys:
+            _validate_bool(entry, entry_path)
+        elif key == REASONING_EFFORT_MAP:
+            _as_optional_str_mapping(entry, entry_path)
+        elif key in value_keys:
+            if key in {"thinkingFormat", "cacheControlFormat"} and entry is None:
+                continue
+            _require_str(entry, entry_path)
+        elif key in {PROVIDER_TRANSPORT, UPSTREAM_MODEL_ID}:
+            _require_str(entry, entry_path)
 
 
 def _validate_auth_mapping(value: object, path: str) -> None:
@@ -644,8 +681,6 @@ def _normalize_endpoint_compat(endpoint_raw: dict[str, Any]) -> Compat:
         if key
         not in LEGACY_TRANSPORT_ROUTING_COMPAT_KEYS | LEGACY_MODEL_BINDING_COMPAT_KEYS
     }
-    if str(endpoint_raw.get("api", "")) == "openai-completions":
-        values.setdefault(MAX_TOKENS_FIELD, "max_completion_tokens")
     values.update(_compat_raw_from_protocol(endpoint_raw.get("protocol")))
     values.update(_compat_raw_from_dialect(endpoint_raw.get("dialect")))
     return Compat(items_by_key=values)

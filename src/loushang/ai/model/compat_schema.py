@@ -26,6 +26,7 @@ CACHE_CONTROL_FORMAT = "cacheControlFormat"
 SEND_SESSION_AFFINITY_HEADERS = "sendSessionAffinityHeaders"
 SEND_SESSION_ID_HEADER = "sendSessionIdHeader"
 SUPPORTS_LONG_CACHE_RETENTION = "supportsLongCacheRetention"
+SUPPORTS_PROMPT_CACHE_KEY = "supportsPromptCacheKey"
 SUPPORTS_EAGER_TOOL_INPUT_STREAMING = "supportsEagerToolInputStreaming"
 SUPPORTS_CACHE_CONTROL_ON_TOOLS = "supportsCacheControlOnTools"
 FINE_GRAINED_TOOLS = "fineGrainedTools"
@@ -91,6 +92,7 @@ COMPAT_DEFAULTS: dict[str, object] = {
     SEND_SESSION_AFFINITY_HEADERS: False,
     SEND_SESSION_ID_HEADER: True,
     SUPPORTS_LONG_CACHE_RETENTION: True,
+    SUPPORTS_PROMPT_CACHE_KEY: False,
     SUPPORTS_EAGER_TOOL_INPUT_STREAMING: True,
     SUPPORTS_CACHE_CONTROL_ON_TOOLS: True,
     FINE_GRAINED_TOOLS: False,
@@ -143,9 +145,52 @@ def compat_dict(values: Mapping[str, object] | None, key: str) -> dict[str, obje
     return dict(value) if isinstance(value, Mapping) else {}
 
 
-def _merge_detected_compat(
+STANDARD_COMPAT_PROFILES: dict[str, dict[str, object]] = {
+    "openai-completions": {
+        SUPPORTS_STORE: True,
+        SUPPORTS_DEVELOPER_ROLE: True,
+        SUPPORTS_REASONING_EFFORT: True,
+        REASONING_EFFORT_MAP: {},
+        SUPPORTS_USAGE_IN_STREAMING: True,
+        SUPPORTS_STREAM_REASONING_DELTA: False,
+        MAX_TOKENS_FIELD: "max_completion_tokens",
+        REQUIRES_TOOL_RESULT_NAME: False,
+        REQUIRES_ASSISTANT_AFTER_TOOL_RESULT: False,
+        REQUIRES_THINKING_AS_TEXT: False,
+        REQUIRES_REASONING_CONTENT_ON_ASSISTANT_MESSAGES: False,
+        THINKING_FORMAT: "openai",
+        ZAI_TOOL_STREAM: False,
+        SUPPORTS_STRICT_MODE: True,
+        CACHE_CONTROL_FORMAT: None,
+        SEND_SESSION_AFFINITY_HEADERS: False,
+        SUPPORTS_LONG_CACHE_RETENTION: True,
+    },
+    "openai-responses": {
+        SUPPORTS_DEVELOPER_ROLE: True,
+        REQUIRES_ASSISTANT_AFTER_TOOL_RESULT: False,
+        SEND_SESSION_ID_HEADER: True,
+        SUPPORTS_LONG_CACHE_RETENTION: True,
+    },
+    "anthropic-messages": {
+        SUPPORTS_EAGER_TOOL_INPUT_STREAMING: True,
+        SUPPORTS_LONG_CACHE_RETENTION: True,
+        SEND_SESSION_AFFINITY_HEADERS: False,
+        SUPPORTS_CACHE_CONTROL_ON_TOOLS: True,
+        FINE_GRAINED_TOOLS: False,
+    },
+}
+
+
+def _standard_profile(name: str) -> dict[str, object]:
+    return {
+        key: dict(value) if isinstance(value, Mapping) else value
+        for key, value in STANDARD_COMPAT_PROFILES[name].items()
+    }
+
+
+def _merge_profile_compat(
     overrides: Mapping[str, object],
-    detected: Mapping[str, object],
+    profile: Mapping[str, object],
     *,
     enabled_keys: tuple[str, ...] = (),
     bool_keys: tuple[str, ...] = (),
@@ -154,16 +199,16 @@ def _merge_detected_compat(
 ) -> dict[str, object]:
     merged: dict[str, object] = {}
     for key in enabled_keys:
-        merged[key] = _compat_override(overrides, detected, key) is not False
+        merged[key] = _compat_override(overrides, profile, key) is not False
     for key in bool_keys:
-        merged[key] = bool(_compat_override(overrides, detected, key))
+        merged[key] = bool(_compat_override(overrides, profile, key))
     for key in value_keys:
-        merged[key] = _compat_override(overrides, detected, key)
+        merged[key] = _compat_override(overrides, profile, key)
     for key in optional_value_keys:
         if key in overrides:
             merged[key] = overrides[key]
-        elif key in detected:
-            merged[key] = detected[key]
+        elif key in profile:
+            merged[key] = profile[key]
         elif key in COMPAT_DEFAULTS:
             value = COMPAT_DEFAULTS[key]
             if value is not None:
@@ -185,20 +230,21 @@ def _compat_override(
 
 def resolve_openai_completions_compat(
     *,
-    provider_id: str,
-    model_id: str,
-    base_url: str | None,
+    provider_id: str = "",
+    model_id: str = "",
+    base_url: str | None = None,
     raw: Mapping[str, object] | None = None,
 ) -> dict[str, object]:
-    detected = _detect_openai_completions_compat(
+    overrides = dict(raw or {})
+    _require_explicit_openai_completions_contract(
         provider_id=provider_id,
         model_id=model_id,
         base_url=base_url,
+        overrides=overrides,
     )
-    overrides = dict(raw or {})
-    return _merge_detected_compat(
+    compat = _merge_profile_compat(
         overrides,
-        detected,
+        _standard_profile("openai-completions"),
         enabled_keys=(
             SUPPORTS_STORE,
             SUPPORTS_REASONING_EFFORT,
@@ -227,21 +273,18 @@ def resolve_openai_completions_compat(
             VERCEL_GATEWAY_ROUTING,
         ),
     )
+    if SUPPORTS_PROMPT_CACHE_KEY in overrides:
+        compat[SUPPORTS_PROMPT_CACHE_KEY] = overrides[SUPPORTS_PROMPT_CACHE_KEY]
+    return compat
 
 
 def resolve_openai_responses_compat(
     raw: Mapping[str, object] | None = None,
 ) -> dict[str, object]:
     overrides = dict(raw or {})
-    detected = {
-        SUPPORTS_DEVELOPER_ROLE: True,
-        REQUIRES_ASSISTANT_AFTER_TOOL_RESULT: False,
-        SEND_SESSION_ID_HEADER: True,
-        SUPPORTS_LONG_CACHE_RETENTION: True,
-    }
-    return _merge_detected_compat(
+    return _merge_profile_compat(
         overrides,
-        detected,
+        _standard_profile("openai-responses"),
         enabled_keys=(
             SEND_SESSION_ID_HEADER,
             SUPPORTS_LONG_CACHE_RETENTION,
@@ -255,25 +298,19 @@ def resolve_openai_responses_compat(
 
 def resolve_anthropic_messages_compat(
     *,
-    provider_id: str,
-    base_url: str | None,
+    provider_id: str = "",
+    base_url: str | None = None,
     raw: Mapping[str, object] | None = None,
 ) -> dict[str, object]:
-    base_url = str(base_url or "")
-    is_fireworks = provider_id == "fireworks"
-    is_cloudflare_gateway = (
-        provider_id == "cloudflare-ai-gateway" and "anthropic" in base_url
-    )
-    detected = {
-        SUPPORTS_EAGER_TOOL_INPUT_STREAMING: not is_fireworks,
-        SUPPORTS_LONG_CACHE_RETENTION: not is_fireworks,
-        SEND_SESSION_AFFINITY_HEADERS: bool(is_fireworks or is_cloudflare_gateway),
-        SUPPORTS_CACHE_CONTROL_ON_TOOLS: not is_fireworks,
-    }
     overrides = dict(raw or {})
-    return _merge_detected_compat(
+    _require_explicit_anthropic_messages_contract(
+        provider_id=provider_id,
+        base_url=base_url,
+        overrides=overrides,
+    )
+    return _merge_profile_compat(
         overrides,
-        detected,
+        _standard_profile("anthropic-messages"),
         enabled_keys=(
             SUPPORTS_EAGER_TOOL_INPUT_STREAMING,
             SUPPORTS_LONG_CACHE_RETENTION,
@@ -285,54 +322,141 @@ def resolve_anthropic_messages_compat(
     )
 
 
-def _detect_openai_completions_compat(
+def _require_explicit_openai_completions_contract(
+    *,
+    provider_id: str,
+    model_id: str,
+    base_url: str | None,
+    overrides: Mapping[str, object],
+) -> None:
+    legacy_contract = _legacy_openai_completions_contract(
+        provider_id=provider_id,
+        model_id=model_id,
+        base_url=base_url,
+    )
+    _require_explicit_legacy_contract_keys(
+        api="openai-completions",
+        provider_id=provider_id,
+        base_url=base_url,
+        overrides=overrides,
+        legacy_contract=legacy_contract,
+        standard_contract=_standard_profile("openai-completions"),
+    )
+
+
+def _require_explicit_anthropic_messages_contract(
+    *,
+    provider_id: str,
+    base_url: str | None,
+    overrides: Mapping[str, object],
+) -> None:
+    legacy_contract = _legacy_anthropic_messages_contract(
+        provider_id=provider_id,
+        base_url=base_url,
+    )
+    _require_explicit_legacy_contract_keys(
+        api="anthropic-messages",
+        provider_id=provider_id,
+        base_url=base_url,
+        overrides=overrides,
+        legacy_contract=legacy_contract,
+        standard_contract=_standard_profile("anthropic-messages"),
+    )
+
+
+def _require_explicit_legacy_contract_keys(
+    *,
+    api: str,
+    provider_id: str,
+    base_url: str | None,
+    overrides: Mapping[str, object],
+    legacy_contract: Mapping[str, object],
+    standard_contract: Mapping[str, object],
+) -> None:
+    missing = sorted(
+        key
+        for key, value in legacy_contract.items()
+        if standard_contract.get(key, COMPAT_DEFAULTS.get(key)) != value
+        and key not in overrides
+    )
+    if not missing:
+        return
+    identity = provider_id or str(base_url or "")
+    raise ValueError(
+        f"{api} endpoint {identity!r} matches a legacy non-standard adapter "
+        "profile; declare explicit compat keys: "
+        + ", ".join(missing)
+    )
+
+
+def _legacy_anthropic_messages_contract(
+    *,
+    provider_id: str,
+    base_url: str | None,
+) -> dict[str, object]:
+    base_url_text = str(base_url or "")
+    is_fireworks = provider_id == "fireworks" or "api.fireworks.ai" in base_url_text
+    is_cloudflare_gateway = (
+        provider_id == "cloudflare-ai-gateway" and "anthropic" in base_url_text
+    )
+    if not is_fireworks and not is_cloudflare_gateway:
+        return {}
+    return {
+        SUPPORTS_EAGER_TOOL_INPUT_STREAMING: not is_fireworks,
+        SUPPORTS_LONG_CACHE_RETENTION: not is_fireworks,
+        SEND_SESSION_AFFINITY_HEADERS: bool(is_fireworks or is_cloudflare_gateway),
+        SUPPORTS_CACHE_CONTROL_ON_TOOLS: not is_fireworks,
+    }
+
+
+def _legacy_openai_completions_contract(
     *,
     provider_id: str,
     model_id: str,
     base_url: str | None,
 ) -> dict[str, object]:
-    base_url = str(base_url or "")
-    is_zai = provider_id == "zai" or "api.z.ai" in base_url
+    base_url_text = str(base_url or "")
+    is_zai = provider_id == "zai" or "api.z.ai" in base_url_text
     is_together = (
         provider_id == "together"
-        or "api.together.ai" in base_url
-        or "api.together.xyz" in base_url
+        or "api.together.ai" in base_url_text
+        or "api.together.xyz" in base_url_text
     )
     is_moonshot = (
         provider_id in {"moonshot", "moonshotai", "moonshotai-cn"}
-        or "api.moonshot." in base_url
+        or "api.moonshot." in base_url_text
     )
     is_cloudflare_workers_ai = (
-        provider_id == "cloudflare-workers-ai" or "api.cloudflare.com" in base_url
+        provider_id == "cloudflare-workers-ai" or "api.cloudflare.com" in base_url_text
     )
     is_cloudflare_ai_gateway = (
         provider_id == "cloudflare-ai-gateway"
-        or "gateway.ai.cloudflare.com" in base_url
+        or "gateway.ai.cloudflare.com" in base_url_text
     )
     is_qwen = (
-        "dashscope.aliyuncs.com/compatible-mode" in base_url
-        or "dashscope-intl.aliyuncs.com/compatible-mode" in base_url
-        or "dashscope-us.aliyuncs.com/compatible-mode" in base_url
+        "dashscope.aliyuncs.com/compatible-mode" in base_url_text
+        or "dashscope-intl.aliyuncs.com/compatible-mode" in base_url_text
+        or "dashscope-us.aliyuncs.com/compatible-mode" in base_url_text
     )
-    is_openrouter = provider_id == "openrouter" or "openrouter.ai" in base_url
-    is_deepseek = provider_id == "deepseek" or "deepseek.com" in base_url
-    is_grok = provider_id == "xai" or "api.x.ai" in base_url
+    is_openrouter = provider_id == "openrouter" or "openrouter.ai" in base_url_text
+    is_deepseek = provider_id == "deepseek" or "deepseek.com" in base_url_text
+    is_grok = provider_id == "xai" or "api.x.ai" in base_url_text
     is_non_standard = (
         provider_id == "cerebras"
-        or "cerebras.ai" in base_url
+        or "cerebras.ai" in base_url_text
         or is_grok
         or is_together
-        or "chutes.ai" in base_url
+        or "chutes.ai" in base_url_text
         or is_deepseek
         or is_zai
         or is_moonshot
         or provider_id == "opencode"
-        or "opencode.ai" in base_url
+        or "opencode.ai" in base_url_text
         or is_cloudflare_workers_ai
         or is_cloudflare_ai_gateway
     )
     use_max_tokens = (
-        "chutes.ai" in base_url
+        "chutes.ai" in base_url_text
         or is_moonshot
         or is_cloudflare_ai_gateway
         or is_together
@@ -345,7 +469,7 @@ def _detect_openai_completions_compat(
             "high": "default",
             "xhigh": "default",
         }
-        if "groq.com" in base_url and model_id == "qwen/qwen3-32b"
+        if "groq.com" in base_url_text and model_id == "qwen/qwen3-32b"
         else {}
     )
     if is_deepseek:
@@ -362,7 +486,13 @@ def _detect_openai_completions_compat(
         thinking_format = "openrouter"
     else:
         thinking_format = "openai"
-
+    if (
+        not is_non_standard
+        and not is_qwen
+        and not is_openrouter
+        and not reasoning_effort_map
+    ):
+        return {}
     return {
         SUPPORTS_STORE: not is_non_standard,
         SUPPORTS_DEVELOPER_ROLE: not is_non_standard,

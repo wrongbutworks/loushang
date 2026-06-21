@@ -10,7 +10,19 @@ from types import ModuleType, SimpleNamespace
 import pytest
 
 from loushang.ai.auth.types import OAuthCredentials
-from loushang.ai.model.domain import Capabilities, Endpoint, EndpointTransport, Model
+from loushang.ai.model.compat_schema import (
+    SEND_SESSION_AFFINITY_HEADERS,
+    SUPPORTS_CACHE_CONTROL_ON_TOOLS,
+    SUPPORTS_EAGER_TOOL_INPUT_STREAMING,
+    SUPPORTS_LONG_CACHE_RETENTION,
+)
+from loushang.ai.model.domain import (
+    Capabilities,
+    Compat,
+    Endpoint,
+    EndpointTransport,
+    Model,
+)
 from loushang.ai.model.registry import (
     clear_default_model_registry,
     get_default_model_registry,
@@ -727,6 +739,14 @@ def test_anthropic_compat_fireworks_uses_session_headers_without_long_cache_ttl(
             provider="fireworks",
             api="anthropic-messages",
             base_url="https://api.fireworks.ai/inference/v1",
+            compat=Compat.from_raw(
+                {
+                    SEND_SESSION_AFFINITY_HEADERS: True,
+                    SUPPORTS_CACHE_CONTROL_ON_TOOLS: False,
+                    SUPPORTS_EAGER_TOOL_INPUT_STREAMING: False,
+                    SUPPORTS_LONG_CACHE_RETENTION: False,
+                }
+            ),
             models={
                 "claude-sonnet-4-5": Model(
                     id="claude-sonnet-4-5",

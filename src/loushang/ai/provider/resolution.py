@@ -15,6 +15,7 @@ from loushang.ai.model.compat_schema import (
     PROTOCOL_COMPAT_STATUS_MAPPINGS,
     PROVIDER_TRANSPORT,
     REASONING_EFFORT_MAP,
+    SUPPORTS_PROMPT_CACHE_KEY,
     UPSTREAM_MODEL_ID,
     VERCEL_GATEWAY_ROUTING,
     resolve_anthropic_messages_compat,
@@ -520,6 +521,7 @@ def _validate_adapter_compat_raw(raw: Mapping[str, object]) -> None:
     bool_keys = {compat_key for compat_key, _, _ in PROTOCOL_COMPAT_STATUS_MAPPINGS} | {
         compat_key for compat_key, _, _ in DIALECT_COMPAT_BOOL_MAPPINGS
     }
+    bool_keys.add(SUPPORTS_PROMPT_CACHE_KEY)
     for key in sorted(bool_keys):
         if key in raw and not isinstance(raw[key], bool):
             raise ValueError(f"compat key {key} must be boolean")

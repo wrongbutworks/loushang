@@ -27,9 +27,17 @@ from loushang.ai.model.compat_schema import (
     CACHE_CONTROL_FORMAT,
     FINE_GRAINED_TOOLS,
     INTERLEAVED_THINKING,
+    MAX_TOKENS_FIELD,
     OPENROUTER_ROUTING,
     REASONING_EFFORT_MAP,
+    SUPPORTS_DEVELOPER_ROLE,
+    SUPPORTS_EAGER_TOOL_INPUT_STREAMING,
+    SUPPORTS_LONG_CACHE_RETENTION,
+    SUPPORTS_PROMPT_CACHE_KEY,
+    SUPPORTS_REASONING_EFFORT,
+    SUPPORTS_STORE,
     SUPPORTS_STREAM_REASONING_DELTA,
+    SUPPORTS_STRICT_MODE,
     THINKING_FORMAT,
     VERCEL_GATEWAY_ROUTING,
     resolve_anthropic_messages_compat,
@@ -60,6 +68,465 @@ def test_openai_completions_stream_reasoning_delta_defaults_to_bool() -> None:
     )
 
     assert compat[SUPPORTS_STREAM_REASONING_DELTA] is False
+
+
+def test_standard_compat_profiles_do_not_infer_from_provider_or_base_url() -> None:
+    standard = resolve_openai_completions_compat(
+        provider_id="custom",
+        model_id="model-a",
+        base_url=None,
+    )
+    anthropic_standard = resolve_anthropic_messages_compat(
+        provider_id="custom",
+        base_url=None,
+    )
+
+    assert standard[SUPPORTS_DEVELOPER_ROLE] is True
+    assert standard[SUPPORTS_REASONING_EFFORT] is True
+    assert standard[MAX_TOKENS_FIELD] == "max_completion_tokens"
+    assert standard[THINKING_FORMAT] == "openai"
+    assert SUPPORTS_PROMPT_CACHE_KEY not in standard
+    assert anthropic_standard[SUPPORTS_EAGER_TOOL_INPUT_STREAMING] is True
+    assert anthropic_standard[SUPPORTS_LONG_CACHE_RETENTION] is True
+    with pytest.raises(ValueError, match="declare explicit compat keys"):
+        resolve_openai_completions_compat(
+            provider_id="moonshot",
+            model_id="kimi-k2.5",
+            base_url="https://api.moonshot.cn/v1",
+        )
+    with pytest.raises(ValueError, match="declare explicit compat keys"):
+        resolve_openai_completions_compat(
+            provider_id="custom",
+            model_id="kimi-k2.5",
+            base_url="https://api.moonshot.cn/v1",
+        )
+    with pytest.raises(ValueError, match="declare explicit compat keys"):
+        resolve_openai_completions_compat(
+            provider_id="zai",
+            model_id="glm-4.6",
+            base_url="https://api.z.ai/api/coding/paas/v4",
+        )
+    with pytest.raises(ValueError, match="declare explicit compat keys"):
+        resolve_openai_completions_compat(
+            provider_id="custom",
+            model_id="qwen-plus",
+            base_url="https://dashscope.aliyuncs.com/compatible-mode/v1",
+        )
+    with pytest.raises(ValueError, match=REASONING_EFFORT_MAP):
+        resolve_openai_completions_compat(
+            provider_id="custom",
+            model_id="qwen/qwen3-32b",
+            base_url="https://api.groq.com/openai/v1",
+        )
+    with pytest.raises(ValueError, match="declare explicit compat keys"):
+        resolve_anthropic_messages_compat(
+            provider_id="fireworks",
+            base_url="https://api.fireworks.ai/inference",
+        )
+    with pytest.raises(ValueError, match="declare explicit compat keys"):
+        resolve_anthropic_messages_compat(
+            provider_id="custom",
+            base_url="https://api.fireworks.ai/inference",
+        )
+
+
+def test_legacy_openai_completions_guard_requires_every_differing_key() -> None:
+    with pytest.raises(ValueError) as exc_info:
+        resolve_openai_completions_compat(
+            provider_id="custom",
+            model_id="kimi-k2.5",
+            base_url="https://api.moonshot.cn/v1",
+            raw={MAX_TOKENS_FIELD: "max_tokens"},
+        )
+
+    message = str(exc_info.value)
+    assert MAX_TOKENS_FIELD not in message
+    assert SUPPORTS_DEVELOPER_ROLE in message
+    assert SUPPORTS_STORE in message
+
+
+def test_loaded_legacy_openai_completions_endpoint_must_declare_max_tokens_field(
+    tmp_path,
+) -> None:
+    raw = {
+        "providers": {
+            "custom": {
+                "endpoints": {
+                    "openai-completions": {
+                        "api": "openai-completions",
+                        "baseUrl": "https://api.moonshot.cn/v1",
+                        "compat": {
+                            "supportsStore": False,
+                            "supportsDeveloperRole": False,
+                            "supportsReasoningEffort": False,
+                            "supportsStrictMode": False,
+                            "thinkingFormat": "moonshot",
+                        },
+                        "models": {
+                            "kimi-k2.5": {
+                                "capabilities": {
+                                    "input": ["text"],
+                                    "output": ["text"],
+                                }
+                            }
+                        },
+                    }
+                }
+            }
+        }
+    }
+    path = tmp_path / "models.json"
+    path.write_text(json.dumps(raw), encoding="utf-8")
+    registry = load_model_registry_from_file(path)
+    model = registry.get_model("custom", "openai-completions", "kimi-k2.5")
+
+    with pytest.raises(ValueError, match=MAX_TOKENS_FIELD):
+        resolve_request_for_model(model, registry=registry, env={})
+
+
+def test_custom_openai_completions_endpoint_prompt_cache_key_is_opt_in() -> None:
+    endpoint = Endpoint(
+        id="openai-completions",
+        provider="custom",
+        api="openai-completions",
+        base_url="https://example.compat/v1",
+        models={
+            "model-a": Model(
+                id="model-a",
+                provider="custom",
+                endpoint="openai-completions",
+            )
+        },
+    )
+    registry = ModelRegistry.from_providers(
+        {"custom": Provider(id="custom", endpoints={endpoint.id: endpoint})}
+    )
+    model = registry.get_model("custom", "openai-completions", "model-a")
+
+    resolved = resolve_request_for_model(model, registry=registry, env={})
+
+    assert resolved.adapter_compat.get(SUPPORTS_PROMPT_CACHE_KEY, False) is False
+
+
+def test_official_openai_completions_url_does_not_project_prompt_cache_key() -> None:
+    endpoint = Endpoint(
+        id="openai-completions",
+        provider="custom",
+        api="openai-completions",
+        base_url="https://api.openai.com/v1",
+        models={
+            "model-a": Model(
+                id="model-a",
+                provider="custom",
+                endpoint="openai-completions",
+            )
+        },
+    )
+    registry = ModelRegistry.from_providers(
+        {"custom": Provider(id="custom", endpoints={endpoint.id: endpoint})}
+    )
+    model = registry.get_model("custom", "openai-completions", "model-a")
+
+    resolved = resolve_request_for_model(model, registry=registry, env={})
+
+    assert SUPPORTS_PROMPT_CACHE_KEY not in resolved.adapter_compat
+
+
+def test_official_openai_completions_prompt_cache_key_can_be_disabled() -> None:
+    endpoint = Endpoint(
+        id="openai-completions",
+        provider="custom",
+        api="openai-completions",
+        base_url="https://api.openai.com/v1",
+        compat=Compat.from_raw({SUPPORTS_PROMPT_CACHE_KEY: False}),
+        models={
+            "model-a": Model(
+                id="model-a",
+                provider="custom",
+                endpoint="openai-completions",
+            )
+        },
+    )
+    registry = ModelRegistry.from_providers(
+        {"custom": Provider(id="custom", endpoints={endpoint.id: endpoint})}
+    )
+    model = registry.get_model("custom", "openai-completions", "model-a")
+
+    resolved = resolve_request_for_model(model, registry=registry, env={})
+
+    assert resolved.adapter_compat[SUPPORTS_PROMPT_CACHE_KEY] is False
+
+
+def test_builtin_catalog_declares_removed_openai_compat_detector_facts() -> None:
+    registry = get_default_model_registry()
+    cases = [
+        (
+            ("moonshot", "openai-completions", "kimi-k2.5"),
+            {
+                "supportsStore": False,
+                "supportsDeveloperRole": False,
+                "supportsReasoningEffort": True,
+                "maxTokensField": "max_tokens",
+                "supportsStrictMode": False,
+                "thinkingFormat": "moonshot",
+            },
+        ),
+        (
+            ("moonshotai", "openai-completions", "kimi-k2.5"),
+            {
+                "supportsStore": False,
+                "supportsDeveloperRole": False,
+                "supportsReasoningEffort": False,
+                "maxTokensField": "max_tokens",
+                "supportsStrictMode": False,
+                "thinkingFormat": "moonshot",
+            },
+        ),
+        (
+            ("moonshotai-cn", "openai-completions", "kimi-k2.5"),
+            {
+                "supportsStore": False,
+                "supportsDeveloperRole": False,
+                "supportsReasoningEffort": False,
+                "maxTokensField": "max_tokens",
+                "supportsStrictMode": False,
+                "thinkingFormat": "moonshot",
+            },
+        ),
+        (
+            ("openrouter", "openai-completions", "anthropic/claude-sonnet-4.5"),
+            {
+                "supportsStore": True,
+                "supportsDeveloperRole": True,
+                "supportsReasoningEffort": True,
+                "maxTokensField": "max_completion_tokens",
+                "supportsStrictMode": True,
+                "thinkingFormat": "openrouter",
+                "cacheControlFormat": "anthropic",
+            },
+        ),
+        (
+            ("deepseek", "openai-completions", "deepseek-v4-flash"),
+            {
+                "supportsStore": False,
+                "supportsDeveloperRole": False,
+                "supportsReasoningEffort": True,
+                "maxTokensField": "max_completion_tokens",
+                "supportsStrictMode": True,
+                "thinkingFormat": "deepseek",
+                "requiresReasoningContentOnAssistantMessages": True,
+            },
+        ),
+        (
+            ("cerebras", "openai-completions", "gpt-oss-120b"),
+            {
+                "supportsStore": False,
+                "supportsDeveloperRole": False,
+                "supportsReasoningEffort": True,
+                "maxTokensField": "max_completion_tokens",
+                "supportsStrictMode": True,
+                "thinkingFormat": "openai",
+            },
+        ),
+        (
+            ("zai", "openai-completions", "glm-4.7"),
+            {
+                "supportsStore": False,
+                "supportsDeveloperRole": False,
+                "supportsReasoningEffort": False,
+                "maxTokensField": "max_completion_tokens",
+                "supportsStrictMode": True,
+                "thinkingFormat": "zai",
+            },
+        ),
+        (
+            ("together", "openai-completions", "MiniMaxAI/MiniMax-M2.5"),
+            {
+                "supportsStore": False,
+                "supportsDeveloperRole": False,
+                "supportsReasoningEffort": False,
+                "maxTokensField": "max_tokens",
+                "supportsStrictMode": False,
+                "thinkingFormat": "together",
+                "supportsLongCacheRetention": False,
+            },
+        ),
+        (
+            ("xai", "openai-completions", "grok-3"),
+            {
+                "supportsStore": False,
+                "supportsDeveloperRole": False,
+                "supportsReasoningEffort": False,
+                "maxTokensField": "max_completion_tokens",
+                "supportsStrictMode": True,
+                "thinkingFormat": "openai",
+            },
+        ),
+        (
+            ("opencode", "openai-completions", "big-pickle"),
+            {
+                "supportsStore": False,
+                "supportsDeveloperRole": False,
+                "supportsReasoningEffort": True,
+                "maxTokensField": "max_completion_tokens",
+                "supportsStrictMode": True,
+                "thinkingFormat": "openai",
+            },
+        ),
+        (
+            ("opencode-go", "openai-completions", "deepseek-v4-flash"),
+            {
+                "supportsStore": False,
+                "supportsDeveloperRole": False,
+                "supportsReasoningEffort": True,
+                "maxTokensField": "max_completion_tokens",
+                "supportsStrictMode": True,
+                "requiresReasoningContentOnAssistantMessages": True,
+                "thinkingFormat": "deepseek",
+            },
+        ),
+        (
+            ("groq", "openai-completions", "qwen/qwen3-32b"),
+            {
+                "supportsStore": True,
+                "supportsDeveloperRole": True,
+                "supportsReasoningEffort": True,
+                "reasoningEffortMap": {
+                    "minimal": None,
+                    "low": None,
+                    "medium": None,
+                    "high": "default",
+                },
+                "maxTokensField": "max_completion_tokens",
+                "supportsStrictMode": True,
+                "thinkingFormat": "openai",
+            },
+        ),
+        (
+            (
+                "cloudflare-ai-gateway",
+                "openai-completions",
+                "workers-ai/@cf/moonshotai/kimi-k2.5",
+            ),
+            {
+                "supportsStore": False,
+                "supportsDeveloperRole": False,
+                "supportsReasoningEffort": True,
+                "maxTokensField": "max_tokens",
+                "supportsStrictMode": False,
+                "thinkingFormat": "openai",
+                "supportsLongCacheRetention": False,
+            },
+        ),
+        (
+            (
+                "cloudflare-workers-ai",
+                "openai-completions",
+                "@cf/google/gemma-4-26b-a4b-it",
+            ),
+            {
+                "supportsStore": False,
+                "supportsDeveloperRole": False,
+                "supportsReasoningEffort": True,
+                "maxTokensField": "max_completion_tokens",
+                "supportsStrictMode": True,
+                "thinkingFormat": "openai",
+                "supportsLongCacheRetention": False,
+            },
+        ),
+    ]
+
+    for spec, expected in cases:
+        model = registry.get_model(*spec)
+        assert model is not None
+        resolved = resolve_request_for_model(
+            model,
+            registry=registry,
+            env={
+                "CLOUDFLARE_ACCOUNT_ID": "example-account",
+                "CLOUDFLARE_GATEWAY_ID": "example-gateway",
+            },
+        )
+
+        assert {
+            key: resolved.adapter_compat.get(key) for key in expected
+        } == expected
+
+
+def test_builtin_openai_compatible_endpoints_do_not_declare_prompt_cache_key() -> None:
+    registry = get_default_model_registry()
+    env = {
+        "CLOUDFLARE_ACCOUNT_ID": "example-account",
+        "CLOUDFLARE_GATEWAY_ID": "example-gateway",
+        "GOOGLE_CLOUD_PROJECT": "example-project",
+        "GOOGLE_CLOUD_LOCATION": "us-central1",
+    }
+
+    for endpoint in registry.list_endpoints():
+        if endpoint.api != "openai-completions" or endpoint.provider_id == "openai":
+            continue
+        for model_id in endpoint.models:
+            model = registry.get_model(endpoint.provider_id, endpoint.id, model_id)
+            resolved = resolve_request_for_model(model, registry=registry, env=env)
+
+            assert resolved.adapter_compat.get(SUPPORTS_PROMPT_CACHE_KEY, False) is False, (
+                endpoint.provider_id,
+                endpoint.id,
+                model_id,
+            )
+            assert SUPPORTS_PROMPT_CACHE_KEY not in resolved.adapter_compat, (
+                endpoint.provider_id,
+                endpoint.id,
+                model_id,
+            )
+
+
+def test_builtin_catalog_declares_removed_anthropic_compat_detector_facts() -> None:
+    registry = get_default_model_registry()
+    env = {
+        "CLOUDFLARE_ACCOUNT_ID": "example-account",
+        "CLOUDFLARE_GATEWAY_ID": "example-gateway",
+    }
+    cases = [
+        (
+            "cloudflare-ai-gateway",
+            "anthropic-messages",
+            "claude-sonnet-4-5",
+            {"sendSessionAffinityHeaders": True},
+        ),
+        (
+            "fireworks",
+            "anthropic-messages",
+            "accounts/fireworks/models/deepseek-v4-flash",
+            {
+                "sendSessionAffinityHeaders": True,
+                "supportsEagerToolInputStreaming": False,
+                "supportsCacheControlOnTools": False,
+                "supportsLongCacheRetention": False,
+            },
+        ),
+    ]
+
+    for provider_id, endpoint_id, model_id, expected in cases:
+        model = registry.get_model(provider_id, endpoint_id, model_id)
+        resolved = resolve_request_for_model(model, registry=registry, env=env)
+
+        assert {
+            key: resolved.adapter_compat.get(key) for key in expected
+        } == expected
+        if expected.get("sendSessionAffinityHeaders") is True:
+            assert resolved.protocol.to_raw()["session"]["affinityHeaders"] == "supported"
+
+    fireworks = registry.get_endpoint("fireworks", "anthropic-messages")
+    assert fireworks is not None
+    for model_id in fireworks.models:
+        model = registry.get_model("fireworks", "anthropic-messages", model_id)
+        resolved = resolve_request_for_model(model, registry=registry, env=env)
+
+        assert resolved.adapter_compat["sendSessionAffinityHeaders"] is True
+        assert resolved.adapter_compat["supportsEagerToolInputStreaming"] is False
+        assert resolved.adapter_compat["supportsCacheControlOnTools"] is False
+        assert resolved.adapter_compat["supportsLongCacheRetention"] is False
 
 
 def test_resolver_constructor_keeps_existing_fields_before_upstream_model_id() -> None:
@@ -236,11 +703,13 @@ def test_openai_completions_compat_preserves_legacy_routing_overrides() -> None:
         base_url="https://openrouter.ai/api/v1",
         raw={
             OPENROUTER_ROUTING: {"only": ["anthropic"]},
+            THINKING_FORMAT: "openrouter",
             VERCEL_GATEWAY_ROUTING: {"order": ["openai", "anthropic"]},
         },
     )
 
     assert compat[OPENROUTER_ROUTING] == {"only": ["anthropic"]}
+    assert compat[THINKING_FORMAT] == "openrouter"
     assert compat[VERCEL_GATEWAY_ROUTING] == {"order": ["openai", "anthropic"]}
 
 
@@ -300,7 +769,7 @@ def test_resolve_request_uses_in_memory_endpoint_protocol_bridge() -> None:
     assert resolved.adapter_compat["supportsStrictMode"] is False
 
 
-def test_resolve_request_splits_contract_from_adapter_detection() -> None:
+def test_resolve_request_does_not_infer_adapter_contract_from_endpoint_identity() -> None:
     endpoint = Endpoint(
         id="openai-completions",
         provider="moonshot",
@@ -319,22 +788,25 @@ def test_resolve_request_splits_contract_from_adapter_detection() -> None:
     )
     model = registry.get_model("moonshot", "openai-completions", "model-a")
 
-    resolved = resolve_request_for_model(model, registry=registry, env={})
-
-    assert resolved.adapter_compat["supportsDeveloperRole"] is False
-    assert resolved.adapter_compat["maxTokensField"] == "max_tokens"
-    assert resolved.protocol.roles.developer is SupportStatus.UNKNOWN
-    assert resolved.dialect.max_output_tokens_field is None
-    assert resolved.adapter_protocol.roles.developer is SupportStatus.UNSUPPORTED
-    assert resolved.adapter_dialect.max_output_tokens_field == "max_tokens"
+    with pytest.raises(ValueError, match="declare explicit compat keys"):
+        resolve_request_for_model(model, registry=registry, env={})
 
 
-def test_resolve_request_explicit_unknown_overrides_provider_detection() -> None:
+def test_resolve_request_explicit_unknown_projects_to_adapter_compat() -> None:
     endpoint = Endpoint(
         id="openai-completions",
         provider="moonshot",
         api="openai-completions",
         base_url="https://api.moonshot.ai/v1",
+        compat=Compat.from_raw(
+            {
+                SUPPORTS_STORE: False,
+                SUPPORTS_REASONING_EFFORT: False,
+                MAX_TOKENS_FIELD: "max_tokens",
+                SUPPORTS_STRICT_MODE: False,
+                THINKING_FORMAT: "moonshot",
+            }
+        ),
         protocol=EndpointProtocolFeatures.from_raw({"roles": {"developer": "unknown"}}),
         models={
             "model-a": Model(
@@ -372,6 +844,22 @@ def test_resolve_request_rejects_non_bool_protocol_compat_override() -> None:
         )
 
 
+def test_resolve_request_rejects_non_bool_prompt_cache_key_override() -> None:
+    model = Model(
+        id="dynamic",
+        provider="custom",
+        endpoint="openai-completions",
+        compat={SUPPORTS_PROMPT_CACHE_KEY: "false"},
+    )
+
+    with pytest.raises(ValueError, match=SUPPORTS_PROMPT_CACHE_KEY):
+        resolve_request_for_model(
+            model,
+            registry=ModelRegistry.from_providers({}),
+            env={},
+        )
+
+
 def test_resolve_request_rejects_non_bool_endpoint_protocol_compat() -> None:
     endpoint = Endpoint(
         id="openai-completions",
@@ -392,6 +880,29 @@ def test_resolve_request_rejects_non_bool_endpoint_protocol_compat() -> None:
     model = registry.get_model("custom", "openai-completions", "model-a")
 
     with pytest.raises(ValueError, match="supportsReasoningEffort"):
+        resolve_request_for_model(model, registry=registry, env={})
+
+
+def test_resolve_request_rejects_non_bool_endpoint_prompt_cache_key() -> None:
+    endpoint = Endpoint(
+        id="openai-completions",
+        provider="custom",
+        api="openai-completions",
+        compat=Compat.from_raw({SUPPORTS_PROMPT_CACHE_KEY: "false"}),
+        models={
+            "model-a": Model(
+                id="model-a",
+                provider="custom",
+                endpoint="openai-completions",
+            )
+        },
+    )
+    registry = ModelRegistry.from_providers(
+        {"custom": Provider(id="custom", endpoints={endpoint.id: endpoint})}
+    )
+    model = registry.get_model("custom", "openai-completions", "model-a")
+
+    with pytest.raises(ValueError, match=SUPPORTS_PROMPT_CACHE_KEY):
         resolve_request_for_model(model, registry=registry, env={})
 
 
@@ -756,6 +1267,7 @@ def test_resolve_request_bridges_direct_model_legacy_transport_routing() -> None
         provider="openrouter",
         api="openai-completions",
         base_url="https://openrouter.ai/api/v1",
+        compat=Compat.from_raw({THINKING_FORMAT: "openrouter"}),
     )
     registry = ModelRegistry.from_providers(
         {"openrouter": Provider(id="openrouter", endpoints={endpoint.id: endpoint})}
@@ -790,6 +1302,7 @@ def test_resolve_request_bridges_direct_model_legacy_upstream_binding() -> None:
         provider="openrouter",
         api="openai-completions",
         base_url="https://openrouter.ai/api/v1",
+        compat=Compat.from_raw({THINKING_FORMAT: "openrouter"}),
     )
     registry = ModelRegistry.from_providers(
         {"openrouter": Provider(id="openrouter", endpoints={endpoint.id: endpoint})}
@@ -813,7 +1326,12 @@ def test_resolve_request_ignores_endpoint_legacy_upstream_binding() -> None:
         provider="openrouter",
         api="openai-completions",
         base_url="https://openrouter.ai/api/v1",
-        compat=Compat.from_raw({"upstreamModelId": "openai/gpt-oss-120b:free"}),
+        compat=Compat.from_raw(
+            {
+                "upstreamModelId": "openai/gpt-oss-120b:free",
+                THINKING_FORMAT: "openrouter",
+            }
+        ),
         models={
             "openai/gpt-oss-120b_free": Model(
                 id="openai/gpt-oss-120b_free",
@@ -845,6 +1363,7 @@ def test_resolve_request_uses_first_class_upstream_binding() -> None:
         provider="openrouter",
         api="openai-completions",
         base_url="https://openrouter.ai/api/v1",
+        compat=Compat.from_raw({THINKING_FORMAT: "openrouter"}),
     )
     registry = ModelRegistry.from_providers(
         {"openrouter": Provider(id="openrouter", endpoints={endpoint.id: endpoint})}
@@ -1562,6 +2081,13 @@ def test_resolve_request_expands_base_url_env_template() -> None:
         base_url=(
             "https://api.cloudflare.com/client/v4/accounts/"
             "{CLOUDFLARE_ACCOUNT_ID}/ai/v1"
+        ),
+        compat=Compat.from_raw(
+            {
+                SUPPORTS_STORE: False,
+                SUPPORTS_DEVELOPER_ROLE: False,
+                SUPPORTS_LONG_CACHE_RETENTION: False,
+            }
         ),
         models={
             "model-a": Model(
