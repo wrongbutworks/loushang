@@ -11,6 +11,8 @@ import pytest
 
 from loushang.ai.auth.types import OAuthCredentials
 from loushang.ai.model.compat_schema import (
+    FINE_GRAINED_TOOLS,
+    INTERLEAVED_THINKING,
     SEND_SESSION_AFFINITY_HEADERS,
     SUPPORTS_CACHE_CONTROL_ON_TOOLS,
     SUPPORTS_EAGER_TOOL_INPUT_STREAMING,
@@ -20,6 +22,7 @@ from loushang.ai.model.domain import (
     Capabilities,
     Compat,
     Endpoint,
+    EndpointProtocolFeatures,
     EndpointTransport,
     Model,
 )
@@ -63,9 +66,28 @@ def test_output_config_injected_for_adaptive_thinking():
 def test_fine_grained_tool_beta_uses_typed_transport_kind() -> None:
     from loushang.ai.providers.anthropic_base import AnthropicProviderBase
 
+    unsupported = EndpointProtocolFeatures.from_raw(
+        {"tools": {"fineGrained": "unsupported"}}
+    )
     assert (
         AnthropicProviderBase.should_inject_fine_grained_tools(
-            compat={},
+            protocol=unsupported,
+            headers={"anthropic-beta": "other-beta"},
+            transport_kind=None,
+        )
+        is False
+    )
+    assert (
+        AnthropicProviderBase.should_inject_fine_grained_tools(
+            protocol=unsupported,
+            headers={},
+            transport_kind="httpx",
+        )
+        is False
+    )
+    assert (
+        AnthropicProviderBase.should_inject_fine_grained_tools(
+            protocol=EndpointProtocolFeatures(),
             headers={},
             transport_kind="httpx",
         )
@@ -73,11 +95,13 @@ def test_fine_grained_tool_beta_uses_typed_transport_kind() -> None:
     )
     assert (
         AnthropicProviderBase.should_inject_fine_grained_tools(
-            compat={"providerTransport": "httpx"},
+            protocol=EndpointProtocolFeatures.from_raw(
+                {"tools": {"fineGrained": "supported"}}
+            ),
             headers={},
             transport_kind=None,
         )
-        is False
+        is True
     )
 
 
@@ -696,6 +720,133 @@ def test_anthropic_provider_uses_resolved_capability_max_tokens(
     )
 
     assert _FakeAsyncAnthropic.last_stream_kwargs["max_tokens"] == 2048
+
+
+def test_anthropic_provider_uses_typed_protocol_over_stale_false_compat(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _fake_anthropic_module(monkeypatch, [SimpleNamespace(type="message_stop")])
+    provider = AnthropicProvider()
+    request = ResolvedRequest(
+        provider="anthropic",
+        endpoint="anthropic-messages",
+        api="anthropic-messages",
+        base_url=None,
+        headers={"x-api-key": "test-key"},
+        compat={
+            SEND_SESSION_AFFINITY_HEADERS: False,
+            SUPPORTS_LONG_CACHE_RETENTION: False,
+            FINE_GRAINED_TOOLS: False,
+            INTERLEAVED_THINKING: False,
+        },
+        adapter_protocol=EndpointProtocolFeatures.from_raw(
+            {
+                "reasoning": {"interleaved": "supported"},
+                "tools": {"fineGrained": "supported"},
+                "cache": {"longRetention": "supported"},
+                "session": {"affinityHeaders": "supported"},
+            }
+        ),
+    )
+
+    asyncio.run(
+        _collect_parts(
+            provider._stream_raw_parts(
+                _Model(),
+                {
+                    "messages": [
+                        UserMessage(
+                            role="user",
+                            content=[TextPart(type="text", text="hello")],
+                            timestamp=0.0,
+                        )
+                    ]
+                },
+                AnthropicOptions(
+                    api_key="ignored-options-key",
+                    cache_retention="long",
+                    session_id="sess_typed",
+                    thinking_enabled=True,
+                ),
+                request,
+            )
+        )
+    )
+
+    headers = _FakeAsyncAnthropic.last_init_kwargs["default_headers"]
+    assert headers["session_id"] == "sess_typed"
+    assert headers["x-client-request-id"] == "sess_typed"
+    assert headers["x-session-affinity"] == "sess_typed"
+    assert "fine-grained-tool-streaming-2025-05-14" in headers["anthropic-beta"]
+    assert "interleaved-thinking-2025-05-14" in headers["anthropic-beta"]
+    payload = _FakeAsyncAnthropic.last_stream_kwargs
+    assert payload["messages"][0]["content"][0]["cache_control"] == {
+        "type": "ephemeral",
+        "ttl": "1h",
+    }
+
+
+def test_anthropic_provider_uses_typed_protocol_over_stale_true_compat(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _fake_anthropic_module(monkeypatch, [SimpleNamespace(type="message_stop")])
+    provider = AnthropicProvider()
+    request = ResolvedRequest(
+        provider="anthropic",
+        endpoint="anthropic-messages",
+        api="anthropic-messages",
+        base_url=None,
+        headers={"x-api-key": "test-key", "anthropic-version": "2023-06-01"},
+        compat={
+            SEND_SESSION_AFFINITY_HEADERS: True,
+            SUPPORTS_LONG_CACHE_RETENTION: True,
+            FINE_GRAINED_TOOLS: True,
+            INTERLEAVED_THINKING: True,
+        },
+        adapter_protocol=EndpointProtocolFeatures.from_raw(
+            {
+                "reasoning": {"interleaved": "unsupported"},
+                "tools": {"fineGrained": "unsupported"},
+                "cache": {"longRetention": "unsupported"},
+                "session": {"affinityHeaders": "unsupported"},
+            }
+        ),
+    )
+
+    asyncio.run(
+        _collect_parts(
+            provider._stream_raw_parts(
+                _Model(),
+                {
+                    "messages": [
+                        UserMessage(
+                            role="user",
+                            content=[TextPart(type="text", text="hello")],
+                            timestamp=0.0,
+                        )
+                    ]
+                },
+                AnthropicOptions(
+                    api_key="ignored-options-key",
+                    cache_retention="long",
+                    session_id="sess_stale",
+                    thinking_enabled=True,
+                ),
+                request,
+            )
+        )
+    )
+
+    headers = _FakeAsyncAnthropic.last_init_kwargs["default_headers"]
+    assert headers == {"anthropic-version": "2023-06-01"}
+    assert "anthropic-beta" not in headers
+    assert "session_id" not in headers
+    assert "x-client-request-id" not in headers
+    assert "x-session-affinity" not in headers
+    payload = _FakeAsyncAnthropic.last_stream_kwargs
+    assert payload["messages"][0]["content"][0]["cache_control"] == {
+        "type": "ephemeral"
+    }
 
 
 def test_anthropic_provider_clamps_explicit_max_tokens(

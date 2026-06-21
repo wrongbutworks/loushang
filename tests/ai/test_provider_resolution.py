@@ -31,6 +31,8 @@ from loushang.ai.model.compat_schema import (
     MAX_TOKENS_FIELD,
     OPENROUTER_ROUTING,
     REASONING_EFFORT_MAP,
+    SEND_SESSION_AFFINITY_HEADERS,
+    SUPPORTS_CACHE_CONTROL_ON_TOOLS,
     SUPPORTS_DEVELOPER_ROLE,
     SUPPORTS_EAGER_TOOL_INPUT_STREAMING,
     SUPPORTS_LONG_CACHE_RETENTION,
@@ -793,6 +795,135 @@ def test_resolve_request_projects_azure_responses_adapter_contract() -> None:
     assert resolved.adapter_compat["sendSessionIdHeader"] is False
 
 
+def test_resolve_provider_request_normalizes_supplied_anthropic_request() -> None:
+    model = Model(id="model-a", provider="custom", endpoint="anthropic-messages")
+    request = ResolvedRequest(
+        provider="custom",
+        endpoint="anthropic-messages",
+        api="anthropic-messages",
+        base_url=None,
+    )
+
+    resolved = resolve_provider_request("anthropic-messages", model, request=request)
+
+    assert resolved is not request
+    assert resolved.adapter_protocol.tools.eager_input_stream is SupportStatus.SUPPORTED
+    assert resolved.adapter_protocol.tools.fine_grained is SupportStatus.UNKNOWN
+    assert resolved.adapter_protocol.cache.on_tools is SupportStatus.SUPPORTED
+    assert resolved.adapter_protocol.cache.long_retention is SupportStatus.SUPPORTED
+    assert (
+        resolved.adapter_protocol.session.affinity_headers
+        is SupportStatus.UNSUPPORTED
+    )
+    assert resolved.adapter_protocol.reasoning.interleaved is SupportStatus.UNKNOWN
+    assert resolved.adapter_compat[SUPPORTS_EAGER_TOOL_INPUT_STREAMING] is True
+    assert FINE_GRAINED_TOOLS not in resolved.adapter_compat
+    assert resolved.adapter_compat[SUPPORTS_CACHE_CONTROL_ON_TOOLS] is True
+    assert resolved.adapter_compat[SUPPORTS_LONG_CACHE_RETENTION] is True
+    assert resolved.adapter_compat[SEND_SESSION_AFFINITY_HEADERS] is False
+
+
+def test_resolve_provider_request_anthropic_typed_overrides_stale_compat() -> None:
+    model = Model(id="model-a", provider="custom", endpoint="anthropic-messages")
+    request = ResolvedRequest(
+        provider="custom",
+        endpoint="anthropic-messages",
+        api="anthropic-messages",
+        base_url=None,
+        compat={
+            SUPPORTS_EAGER_TOOL_INPUT_STREAMING: False,
+            FINE_GRAINED_TOOLS: False,
+            SUPPORTS_CACHE_CONTROL_ON_TOOLS: False,
+            SUPPORTS_LONG_CACHE_RETENTION: False,
+            SEND_SESSION_AFFINITY_HEADERS: False,
+            INTERLEAVED_THINKING: False,
+        },
+        adapter_protocol=EndpointProtocolFeatures.from_raw(
+            {
+                "reasoning": {"interleaved": "supported"},
+                "tools": {
+                    "eagerInputStream": "supported",
+                    "fineGrained": "supported",
+                },
+                "cache": {
+                    "onTools": "supported",
+                    "longRetention": "supported",
+                },
+                "session": {"affinityHeaders": "supported"},
+            }
+        ),
+    )
+
+    resolved = resolve_provider_request("anthropic-messages", model, request=request)
+
+    assert resolved.adapter_protocol.reasoning.interleaved is SupportStatus.SUPPORTED
+    assert resolved.adapter_protocol.tools.eager_input_stream is SupportStatus.SUPPORTED
+    assert resolved.adapter_protocol.tools.fine_grained is SupportStatus.SUPPORTED
+    assert resolved.adapter_protocol.cache.on_tools is SupportStatus.SUPPORTED
+    assert resolved.adapter_protocol.cache.long_retention is SupportStatus.SUPPORTED
+    assert resolved.adapter_protocol.session.affinity_headers is SupportStatus.SUPPORTED
+    assert resolved.adapter_compat[INTERLEAVED_THINKING] is True
+    assert resolved.adapter_compat[SUPPORTS_EAGER_TOOL_INPUT_STREAMING] is True
+    assert resolved.adapter_compat[FINE_GRAINED_TOOLS] is True
+    assert resolved.adapter_compat[SUPPORTS_CACHE_CONTROL_ON_TOOLS] is True
+    assert resolved.adapter_compat[SUPPORTS_LONG_CACHE_RETENTION] is True
+    assert resolved.adapter_compat[SEND_SESSION_AFFINITY_HEADERS] is True
+
+
+def test_resolve_provider_request_anthropic_typed_contract_satisfies_legacy_profile() -> (
+    None
+):
+    model = Model(id="model-a", provider="fireworks", endpoint="anthropic-messages")
+    request = ResolvedRequest(
+        provider="fireworks",
+        endpoint="anthropic-messages",
+        api="anthropic-messages",
+        base_url="https://api.fireworks.ai/inference/v1",
+        adapter_protocol=EndpointProtocolFeatures.from_raw(
+            {
+                "tools": {
+                    "eagerInputStream": "unsupported",
+                    "fineGrained": "unsupported",
+                },
+                "cache": {
+                    "onTools": "unsupported",
+                    "longRetention": "unsupported",
+                },
+                "session": {"affinityHeaders": "supported"},
+            }
+        ),
+    )
+
+    resolved = resolve_provider_request("anthropic-messages", model, request=request)
+
+    assert resolved.adapter_protocol.tools.eager_input_stream is SupportStatus.UNSUPPORTED
+    assert resolved.adapter_protocol.tools.fine_grained is SupportStatus.UNSUPPORTED
+    assert resolved.adapter_protocol.cache.on_tools is SupportStatus.UNSUPPORTED
+    assert resolved.adapter_protocol.cache.long_retention is SupportStatus.UNSUPPORTED
+    assert resolved.adapter_protocol.session.affinity_headers is SupportStatus.SUPPORTED
+    assert resolved.adapter_compat[SUPPORTS_EAGER_TOOL_INPUT_STREAMING] is False
+    assert resolved.adapter_compat[FINE_GRAINED_TOOLS] is False
+    assert resolved.adapter_compat[SUPPORTS_CACHE_CONTROL_ON_TOOLS] is False
+    assert resolved.adapter_compat[SUPPORTS_LONG_CACHE_RETENTION] is False
+    assert resolved.adapter_compat[SEND_SESSION_AFFINITY_HEADERS] is True
+
+
+def test_resolve_provider_request_anthropic_legacy_interleaved_off() -> None:
+    model = Model(id="model-a", provider="custom", endpoint="anthropic-messages")
+    request = ResolvedRequest(
+        provider="custom",
+        endpoint="anthropic-messages",
+        api="anthropic-messages",
+        base_url=None,
+        compat={INTERLEAVED_THINKING: "off"},
+    )
+
+    resolved = resolve_provider_request("anthropic-messages", model, request=request)
+
+    assert resolved.adapter_protocol.reasoning.interleaved is SupportStatus.UNSUPPORTED
+    assert resolved.adapter_compat[INTERLEAVED_THINKING] is False
+
+
 @pytest.mark.parametrize(
     ("api", "compat", "message"),
     [
@@ -806,9 +937,14 @@ def test_resolve_request_projects_azure_responses_adapter_contract() -> None:
             {"sendSessionIdHeader": "yes"},
             "sendSessionIdHeader",
         ),
+        (
+            "anthropic-messages",
+            {SUPPORTS_LONG_CACHE_RETENTION: "yes"},
+            SUPPORTS_LONG_CACHE_RETENTION,
+        ),
     ],
 )
-def test_resolve_provider_request_validates_supplied_responses_compat(
+def test_resolve_provider_request_validates_supplied_adapter_compat(
     api: str,
     compat: dict[str, object],
     message: str,
@@ -1000,7 +1136,7 @@ def test_anthropic_messages_protocol_flags_default_to_bool_or_absent() -> None:
         base_url=None,
     )
 
-    assert compat[FINE_GRAINED_TOOLS] is False
+    assert FINE_GRAINED_TOOLS not in compat
     assert INTERLEAVED_THINKING not in compat
 
 

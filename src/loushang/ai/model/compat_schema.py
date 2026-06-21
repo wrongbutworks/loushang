@@ -183,7 +183,6 @@ STANDARD_COMPAT_PROFILES: dict[str, dict[str, object]] = {
         SUPPORTS_LONG_CACHE_RETENTION: True,
         SEND_SESSION_AFFINITY_HEADERS: False,
         SUPPORTS_CACHE_CONTROL_ON_TOOLS: True,
-        FINE_GRAINED_TOOLS: False,
     },
 }
 
@@ -336,7 +335,7 @@ def resolve_anthropic_messages_compat(
         base_url=base_url,
         overrides=overrides,
     )
-    return _merge_profile_compat(
+    compat = _merge_profile_compat(
         overrides,
         _standard_profile("anthropic-messages"),
         enabled_keys=(
@@ -345,9 +344,11 @@ def resolve_anthropic_messages_compat(
             SUPPORTS_CACHE_CONTROL_ON_TOOLS,
         ),
         bool_keys=(SEND_SESSION_AFFINITY_HEADERS,),
-        value_keys=(FINE_GRAINED_TOOLS,),
         optional_value_keys=(INTERLEAVED_THINKING,),
     )
+    if FINE_GRAINED_TOOLS in overrides:
+        compat[FINE_GRAINED_TOOLS] = overrides[FINE_GRAINED_TOOLS]
+    return compat
 
 
 def _require_explicit_openai_completions_contract(

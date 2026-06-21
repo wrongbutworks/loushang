@@ -7,11 +7,7 @@ from typing import Any
 
 from loushang.ai.context import ensure_normalized_context
 from loushang.ai.event_stream import AssistantMessageEventStream, RawAssembler
-from loushang.ai.model.compat_schema import (
-    SEND_SESSION_AFFINITY_HEADERS,
-    SUPPORTS_LONG_CACHE_RETENTION,
-    compat_bool,
-)
+from loushang.ai.model.domain import EndpointProtocolFeatures, SupportStatus
 from loushang.ai.options import PairingMode
 from loushang.ai.output_budget import resolve_output_token_budget
 from loushang.ai.provider import resolve_provider_request
@@ -437,7 +433,7 @@ class AnthropicProvider(AnthropicProviderBase):
             options=options,
             request=request,
         )
-        compat = dict(getattr(resolved, "adapter_compat", {}) or {})
+        protocol = _request_protocol(resolved)
 
         headers = resolved.headers or {}
         api_key = extract_sdk_api_key(
@@ -459,14 +455,14 @@ class AnthropicProvider(AnthropicProviderBase):
 
         # 仅透传非鉴权头作为默认头（如 anthropic-version），鉴权用 api_key 参数避免重复
         default_headers = sdk_default_headers(headers)
-        # 门闸：按 compat/headers 决定是否注入 beta（与 httpx 对齐）
+        # 门闸：按 typed protocol/headers 决定是否注入 beta（与 httpx 对齐）
         need_ilt = self.should_inject_interleaved_thinking(
             model_id=model.id,
             options=options,
-            compat=compat,
+            protocol=protocol,
         )
         need_fg = self.should_inject_fine_grained_tools(
-            compat=compat,
+            protocol=protocol,
             headers=default_headers,
             transport_kind=getattr(getattr(resolved, "transport", None), "kind", None),
         )
@@ -492,7 +488,7 @@ class AnthropicProvider(AnthropicProviderBase):
             cache_retention != "none"
             and isinstance(session_id, str)
             and session_id
-            and compat_bool(compat, SEND_SESSION_AFFINITY_HEADERS)
+            and _is_supported(protocol.session.affinity_headers)
         ):
             apply_session_headers(
                 default_headers,
@@ -607,8 +603,8 @@ class AnthropicProvider(AnthropicProviderBase):
             cache_retention=getattr(options, "cache_retention", None)
             if options is not None
             else None,
-            supports_long_cache_retention=compat_bool(
-                compat, SUPPORTS_LONG_CACHE_RETENTION, default=True
+            supports_long_cache_retention=_is_supported(
+                protocol.cache.long_retention
             ),
         )
         cache_control = cc.get("cacheControl")
@@ -938,3 +934,14 @@ def _map_stop_reason(reason: str) -> str:
     if reason in {"refusal", "sensitive"}:
         return "error"
     raise ValueError(f"Unhandled stop reason: {reason}")
+
+
+def _request_protocol(request: object) -> EndpointProtocolFeatures:
+    protocol = getattr(request, "adapter_protocol", None)
+    if isinstance(protocol, EndpointProtocolFeatures):
+        return protocol
+    return EndpointProtocolFeatures()
+
+
+def _is_supported(status: SupportStatus) -> bool:
+    return status is SupportStatus.SUPPORTED

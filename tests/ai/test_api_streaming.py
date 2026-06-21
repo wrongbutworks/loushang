@@ -407,7 +407,13 @@ def test_get_api_provider_stream_rejects_mismatched_resolved_request() -> None:
     provider = _Provider()
     registry = ApiProviderRegistry()
     registry.register_api_provider(provider)
-    request = SimpleNamespace(api="other", capabilities=Capabilities(input=("text",)))
+    request = ResolvedRequest(
+        provider="faux",
+        endpoint="other",
+        api="other",
+        base_url=None,
+        capabilities=Capabilities(input=("text",)),
+    )
 
     with pytest.raises(ValueError, match="Mismatched api"):
         asyncio.run(
@@ -430,9 +436,11 @@ def test_get_api_provider_stream_normalizes_context_against_resolved_request_api
     provider = _Provider(api="anthropic-messages")
     registry = ApiProviderRegistry()
     registry.register_api_provider(provider)
-    request = SimpleNamespace(
+    request = ResolvedRequest(
         api="anthropic-messages",
         provider="anthropic",
+        endpoint="anthropic-messages",
+        base_url=None,
         capabilities=Capabilities(input=("text",)),
     )
     assistant = AssistantMessage(

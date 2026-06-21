@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from typing import Any, Literal
 
+from loushang.ai.model.domain import EndpointProtocolFeatures, SupportStatus
 from loushang.ai.options import CacheRetention, ThinkingLevel
 from loushang.ai.providers.anthropic_oauth_compat import AnthropicOAuthCompat
 from loushang.ai.utils import sanitize_surrogates
@@ -120,18 +121,25 @@ class AnthropicProviderBase:
     def should_inject_fine_grained_tools(
         cls,
         *,
-        compat: dict[str, object] | None,
+        protocol: EndpointProtocolFeatures | None,
         headers: dict[str, str] | None,
         transport_kind: str | None = None,
     ) -> bool:
+        if (
+            protocol is not None
+            and protocol.tools.fine_grained is SupportStatus.UNSUPPORTED
+        ):
+            return False
         # 若已存在 anthropic-beta，则允许合并（不强制新增）
         if headers:
             h = {k.lower(): v for k, v in headers.items()}
             if "anthropic-beta" in h:
                 return True
-        c = compat or {}
         # 显式开启
-        if c.get("fineGrainedTools") is True:
+        if (
+            protocol is not None
+            and protocol.tools.fine_grained is SupportStatus.SUPPORTED
+        ):
             return True
         # HTTP transport requires Anthropic fine-grained tool streaming beta.
         if transport_kind == "httpx":
@@ -145,11 +153,12 @@ class AnthropicProviderBase:
         *,
         model_id: str,
         options: object | None,
-        compat: dict[str, object] | None,
+        protocol: EndpointProtocolFeatures | None,
     ) -> bool:
-        c = compat or {}
-        mode = c.get("interleavedThinking", "auto")
-        if mode in (False, "off"):
+        if (
+            protocol is not None
+            and protocol.reasoning.interleaved is SupportStatus.UNSUPPORTED
+        ):
             return False
         # 是否请求了思考：options.thinking_enabled / options.emit_thinking / options.reasoning
         want_thinking = False

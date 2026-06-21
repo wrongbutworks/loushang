@@ -13,6 +13,7 @@ from loushang.ai.model.compat_schema import (
     COMPAT_DEFAULTS,
     DIALECT_COMPAT_BOOL_MAPPINGS,
     DIALECT_COMPAT_VALUE_MAPPINGS,
+    INTERLEAVED_THINKING,
     MAX_TOKENS_FIELD,
     OPENROUTER_ROUTING,
     PROTOCOL_COMPAT_STATUS_MAPPINGS,
@@ -174,6 +175,20 @@ def _normalize_request_for_api(
     elif provider_api == "azure-openai-responses":
         raw_compat = dict(request.adapter_compat or {})
         projection_compat = resolve_azure_openai_responses_compat(raw_compat)
+    elif provider_api == "anthropic-messages":
+        raw_compat = _normalize_anthropic_request_compat(
+            dict(request.adapter_compat or {})
+        )
+        typed_projection_compat = _adapter_compat_from_typed(
+            raw_compat,
+            _merge_protocol_features(request.protocol, request.adapter_protocol),
+            _merge_wire_dialect(request.dialect, request.adapter_dialect),
+        )
+        projection_compat = resolve_anthropic_messages_compat(
+            provider_id=request.provider,
+            base_url=request.base_url,
+            raw=typed_projection_compat,
+        )
     else:
         return request
     _validate_adapter_compat_raw(raw_compat)
@@ -223,6 +238,18 @@ def _normalize_request_for_api(
         adapter_dialect=adapter_dialect,
         adapter_compat=adapter_compat,
     )
+
+
+def _normalize_anthropic_request_compat(
+    raw_compat: Mapping[str, object],
+) -> dict[str, object]:
+    normalized = dict(raw_compat)
+    value = normalized.get(INTERLEAVED_THINKING)
+    if value == "off":
+        normalized[INTERLEAVED_THINKING] = False
+    elif value == "auto":
+        normalized.pop(INTERLEAVED_THINKING, None)
+    return normalized
 
 
 def _openai_completions_compat_with_defaults(
