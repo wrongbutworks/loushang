@@ -4,10 +4,10 @@ import json
 import re
 from typing import Any, TypedDict
 
-from loushang.ai.model.compat_schema import (
-    REQUIRES_ASSISTANT_AFTER_TOOL_RESULT,
-    SUPPORTS_DEVELOPER_ROLE,
-    compat_bool,
+from loushang.ai.model.domain import (
+    EndpointProtocolFeatures,
+    EndpointWireDialect,
+    SupportStatus,
 )
 from loushang.ai.model.registry import resolve_model_api
 from loushang.ai.tool.providers import to_openai_responses_tools
@@ -27,7 +27,8 @@ class _BufferedTextPart(TypedDict):
 def convert_responses_messages(
     model,
     normalized: dict[str, Any],
-    compat: dict[str, Any] | None = None,
+    protocol: EndpointProtocolFeatures | None = None,
+    dialect: EndpointWireDialect | None = None,
     capabilities: object | None = None,
 ) -> list[dict[str, Any]]:
     """
@@ -37,14 +38,17 @@ def convert_responses_messages(
     next steps can iterate toward pi-ai's shared architecture without keeping the
     logic in the orchestration file.
     """
-    compat = compat or {}
+    protocol = protocol if isinstance(protocol, EndpointProtocolFeatures) else None
+    protocol = protocol or EndpointProtocolFeatures()
+    dialect = dialect if isinstance(dialect, EndpointWireDialect) else None
+    dialect = dialect or EndpointWireDialect()
     input_items: list[dict[str, Any]] = []
     tool_call_id_map: dict[str, str] = {}
     system_prompt = normalized.get("system_prompt")
     if isinstance(system_prompt, str) and system_prompt.strip():
         role = (
             "developer"
-            if _supports_developer_role(model, compat, capabilities)
+            if _supports_developer_role(model, protocol, capabilities)
             else "system"
         )
         input_items.append(
@@ -60,7 +64,7 @@ def convert_responses_messages(
         content = _message_content(msg)
         if message_role == "user":
             if (
-                compat_bool(compat, REQUIRES_ASSISTANT_AFTER_TOOL_RESULT)
+                dialect.tools.assistant_bridge_required is True
                 and last_role == "toolResult"
             ):
                 input_items.append(
@@ -637,14 +641,15 @@ def _supports_reasoning(model, capabilities: object | None) -> bool:
 
 
 def _supports_developer_role(
-    model, compat: dict[str, Any], capabilities: object | None
+    model, protocol: EndpointProtocolFeatures, capabilities: object | None
 ) -> bool:
-    if SUPPORTS_DEVELOPER_ROLE in compat:
-        return _supports_reasoning(model, capabilities) and compat_bool(
-            compat,
-            SUPPORTS_DEVELOPER_ROLE,
-        )
-    return _supports_reasoning(model, capabilities)
+    return _supports_reasoning(model, capabilities) and _is_supported(
+        protocol.roles.developer
+    )
+
+
+def _is_supported(status: SupportStatus) -> bool:
+    return status is SupportStatus.SUPPORTED
 
 
 def _normalize_id_part(part: str) -> str:

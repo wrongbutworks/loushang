@@ -20,6 +20,7 @@ from loushang.ai.model.compat_schema import (
     compat_bool,
     compat_str,
 )
+from loushang.ai.model.domain import EndpointProtocolFeatures, EndpointWireDialect
 from loushang.ai.options import PairingMode
 from loushang.ai.provider import resolve_provider_request
 from loushang.ai.provider.cancellation import is_signal_cancelled
@@ -376,7 +377,8 @@ def _build_request_body(
             **normalized,
             "system_prompt": None,
         },
-        {},
+        EndpointProtocolFeatures(),
+        EndpointWireDialect(),
         capabilities,
     )
     body: dict[str, Any] = {

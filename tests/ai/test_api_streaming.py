@@ -15,12 +15,18 @@ from loushang.ai.model import (
     EndpointProtocolFeatures,
     EndpointWireDialect,
 )
-from loushang.ai.options import ModelCallOptions, OpenAICompletionsOptions
+from loushang.ai.options import (
+    ModelCallOptions,
+    OpenAICompletionsOptions,
+    OpenAIResponsesOptions,
+)
 from loushang.ai.provider import ResolvedRequest
 from loushang.ai.providers.openai_completions import OpenAICompletionsProvider
+from loushang.ai.providers.openai_responses import OpenAIResponsesProvider
 from loushang.ai.types import (
     AssistantMessage,
     ImagePart,
+    TextPart,
     Tool,
     ToolCall,
     ToolResultMessage,
@@ -683,6 +689,128 @@ def test_stream_public_path_uses_openai_completions_typed_request(
     assert _FakeAsyncOpenAI.last_create_kwargs["tool_stream"] is True
 
 
+def test_stream_public_path_uses_openai_responses_typed_request(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _fake_openai_module(monkeypatch)
+    registry = ApiProviderRegistry()
+    registry.register_api_provider(OpenAIResponsesProvider())
+    model = SimpleNamespace(
+        id="gpt-test",
+        provider_id="custom",
+        endpoint_id="openai-responses",
+        input=("text",),
+        pricing=None,
+    )
+    request = ResolvedRequest(
+        provider="custom",
+        endpoint="openai-responses",
+        api="openai-responses",
+        base_url="https://api.openai.test/v1",
+        headers={"Authorization": "Bearer test-key"},
+        protocol=EndpointProtocolFeatures.from_raw(
+            {
+                "roles": {"developer": "unsupported"},
+                "cache": {"longRetention": "unsupported"},
+                "session": {"idHeader": "unsupported"},
+            }
+        ),
+        dialect=EndpointWireDialect.from_raw(
+            {"tools": {"assistantBridgeRequired": True}}
+        ),
+        max_tokens=128,
+        capabilities=Capabilities(input=("text",), reasoning=True, max_tokens=4096),
+    )
+
+    def _resolve_request(_model, options=None):
+        return request
+
+    monkeypatch.setattr(
+        "loushang.ai.api.streaming.resolve_request_for_model",
+        _resolve_request,
+    )
+
+    assistant = AssistantMessage(
+        role="assistant",
+        content=[
+            ToolCall(type="toolCall", id="call_1", name="calc", arguments={"x": 1})
+        ],
+        api="openai-responses",
+        provider="custom",
+        model="gpt-test",
+        response_id="resp_1",
+        usage=Usage(
+            input=0, output=0, cache_read=0, cache_write=0, total_tokens=0, cost={}
+        ),
+        stop_reason="toolUse",
+        error_message=None,
+        timestamp=0.0,
+    )
+    tool_result = ToolResultMessage(
+        role="toolResult",
+        tool_call_id="call_1",
+        tool_name="calc",
+        content=[TextPart(type="text", text="42")],
+        is_error=False,
+        timestamp=0.0,
+    )
+
+    async def _run() -> None:
+        event_stream = await stream(
+            model,
+            {
+                "system_prompt": "Use system instructions.",
+                "messages": [
+                    assistant,
+                    tool_result,
+                    UserMessage(role="user", content="next", timestamp=0.0),
+                ],
+                "tools": [
+                    Tool(
+                        name="calc",
+                        description="Calculate values",
+                        parameters={"type": "object"},
+                    )
+                ],
+            },
+            OpenAIResponsesOptions(
+                cache_retention="long",
+                session_id="session-responses",
+            ),
+            registry=registry,
+        )
+        await event_stream.result()
+
+    asyncio.run(_run())
+
+    assert _FakeAsyncOpenAI.last_create_kwargs["max_output_tokens"] == 128
+    assert _FakeAsyncOpenAI.last_create_kwargs["input"] == [
+        {"role": "system", "content": "Use system instructions."},
+        {
+            "type": "function_call",
+            "call_id": "call_1",
+            "name": "calc",
+            "arguments": '{"x": 1}',
+        },
+        {"type": "function_call_output", "call_id": "call_1", "output": "42"},
+        {"role": "assistant", "content": "I have processed the tool results."},
+        {"role": "user", "content": [{"type": "input_text", "text": "next"}]},
+    ]
+    assert _FakeAsyncOpenAI.last_create_kwargs["tools"] == [
+        {
+            "type": "function",
+            "name": "calc",
+            "description": "Calculate values",
+            "parameters": {"type": "object"},
+        }
+    ]
+    assert _FakeAsyncOpenAI.last_create_kwargs["prompt_cache_key"] == (
+        "session-responses"
+    )
+    assert "prompt_cache_retention" not in _FakeAsyncOpenAI.last_create_kwargs
+    assert "session_id" not in _FakeAsyncOpenAI.last_init_kwargs["default_headers"]
+
+
 def _patch_resolved_request(
     monkeypatch: pytest.MonkeyPatch,
     *,
@@ -719,6 +847,20 @@ def _fake_openai_module(monkeypatch: pytest.MonkeyPatch) -> None:
     _FakeAsyncOpenAI.last_init_kwargs = {}
     _FakeAsyncOpenAI.last_create_kwargs = {}
     _FakeAsyncOpenAI.chunks = []
+    _FakeAsyncOpenAI.events = [
+        SimpleNamespace(
+            type="response.completed",
+            response=SimpleNamespace(
+                status="completed",
+                usage=SimpleNamespace(
+                    input_tokens=1,
+                    output_tokens=1,
+                    total_tokens=2,
+                    input_tokens_details=SimpleNamespace(cached_tokens=0),
+                ),
+            ),
+        )
+    ]
     module = ModuleType("openai")
     module.AsyncOpenAI = _FakeAsyncOpenAI
     monkeypatch.setitem(sys.modules, "openai", module)
@@ -728,10 +870,12 @@ class _FakeAsyncOpenAI:
     last_init_kwargs: dict[str, object] = {}
     last_create_kwargs: dict[str, object] = {}
     chunks: list[object] = []
+    events: list[object] = []
 
     def __init__(self, **kwargs) -> None:
         type(self).last_init_kwargs = kwargs
         self.chat = SimpleNamespace(completions=_FakeCompletions(type(self)))
+        self.responses = _FakeResponses(type(self))
 
 
 class _FakeCompletions:
@@ -741,6 +885,15 @@ class _FakeCompletions:
     async def create(self, **kwargs):
         self._owner.last_create_kwargs = kwargs
         return _FakeStream(self._owner.chunks)
+
+
+class _FakeResponses:
+    def __init__(self, owner: type[_FakeAsyncOpenAI]) -> None:
+        self._owner = owner
+
+    async def create(self, **kwargs):
+        self._owner.last_create_kwargs = kwargs
+        return _FakeStream(self._owner.events)
 
 
 class _FakeStream:

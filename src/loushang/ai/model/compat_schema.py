@@ -172,6 +172,12 @@ STANDARD_COMPAT_PROFILES: dict[str, dict[str, object]] = {
         SEND_SESSION_ID_HEADER: True,
         SUPPORTS_LONG_CACHE_RETENTION: True,
     },
+    "azure-openai-responses": {
+        SUPPORTS_DEVELOPER_ROLE: True,
+        REQUIRES_ASSISTANT_AFTER_TOOL_RESULT: False,
+        SEND_SESSION_ID_HEADER: False,
+        SUPPORTS_LONG_CACHE_RETENTION: False,
+    },
     "anthropic-messages": {
         SUPPORTS_EAGER_TOOL_INPUT_STREAMING: True,
         SUPPORTS_LONG_CACHE_RETENTION: True,
@@ -295,6 +301,27 @@ def resolve_openai_responses_compat(
             REQUIRES_ASSISTANT_AFTER_TOOL_RESULT,
         ),
     )
+
+
+def resolve_azure_openai_responses_compat(
+    raw: Mapping[str, object] | None = None,
+) -> dict[str, object]:
+    overrides = dict(raw or {})
+    compat = _merge_profile_compat(
+        overrides,
+        _standard_profile("azure-openai-responses"),
+        bool_keys=(
+            SUPPORTS_DEVELOPER_ROLE,
+            REQUIRES_ASSISTANT_AFTER_TOOL_RESULT,
+            SEND_SESSION_ID_HEADER,
+            SUPPORTS_LONG_CACHE_RETENTION,
+        ),
+    )
+    # The Azure adapter does not currently emit session headers or prompt-cache
+    # retention fields, so those execution facts stay false even for legacy input.
+    compat[SEND_SESSION_ID_HEADER] = False
+    compat[SUPPORTS_LONG_CACHE_RETENTION] = False
+    return compat
 
 
 def resolve_anthropic_messages_compat(

@@ -231,7 +231,8 @@ def test_openai_responses_provider_sanitizes_unpaired_surrogates_in_payload_text
                 ),
             ],
         },
-        {},
+        EndpointProtocolFeatures(),
+        EndpointWireDialect(),
     )
 
     assert payload[0]["content"] == "system  prompt"

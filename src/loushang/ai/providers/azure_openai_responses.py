@@ -7,6 +7,7 @@ from typing import Any
 
 from loushang.ai.context import ensure_normalized_context
 from loushang.ai.event_stream import AssistantMessageEventStream, RawAssembler
+from loushang.ai.model.domain import EndpointProtocolFeatures, EndpointWireDialect
 from loushang.ai.options import PairingMode
 from loushang.ai.output_budget import resolve_output_token_budget
 from loushang.ai.provider import resolve_provider_request
@@ -88,7 +89,8 @@ class AzureOpenAIResponsesProvider:
             options=options,
             request=request,
         )
-        compat = dict(getattr(resolved, "adapter_compat", {}) or {})
+        protocol = _request_protocol(resolved)
+        dialect = _request_dialect(resolved)
 
         try:
             from openai import AsyncAzureOpenAI  # type: ignore
@@ -122,7 +124,8 @@ class AzureOpenAIResponsesProvider:
             "input": convert_responses_messages(
                 model,
                 normalized,
-                compat,
+                protocol,
+                dialect,
                 getattr(resolved, "capabilities", None),
             ),
             "stream": True,
@@ -154,6 +157,20 @@ class AzureOpenAIResponsesProvider:
         sdk_stream = await client.responses.create(**params)
         async for part in process_responses_stream(sdk_stream, options=options):
             yield part
+
+
+def _request_protocol(request: object) -> EndpointProtocolFeatures:
+    protocol = getattr(request, "adapter_protocol", None)
+    if isinstance(protocol, EndpointProtocolFeatures):
+        return protocol
+    return EndpointProtocolFeatures()
+
+
+def _request_dialect(request: object) -> EndpointWireDialect:
+    dialect = getattr(request, "adapter_dialect", None)
+    if isinstance(dialect, EndpointWireDialect):
+        return dialect
+    return EndpointWireDialect()
 
 
 def _resolve_azure_endpoint(base_url: str | None, options: object | None) -> str:

@@ -659,7 +659,9 @@ def test_resolve_provider_request_validates_supplied_request_api() -> None:
         resolve_provider_request("openai-responses", model, request=request)
 
 
-def test_resolve_provider_request_returns_matching_supplied_request() -> None:
+def test_resolve_provider_request_normalizes_supplied_openai_responses_request() -> (
+    None
+):
     model = Model(id="model-a", provider="custom", endpoint="openai-responses")
     request = ResolvedRequest(
         provider="custom",
@@ -668,7 +670,160 @@ def test_resolve_provider_request_returns_matching_supplied_request() -> None:
         base_url=None,
     )
 
-    assert resolve_provider_request("openai-responses", model, request=request) is request
+    resolved = resolve_provider_request("openai-responses", model, request=request)
+
+    assert resolved is not request
+    assert resolved.adapter_protocol.roles.developer is SupportStatus.SUPPORTED
+    assert resolved.adapter_protocol.cache.long_retention is SupportStatus.SUPPORTED
+    assert resolved.adapter_protocol.session.id_header is SupportStatus.SUPPORTED
+    assert resolved.adapter_dialect.tools.assistant_bridge_required is False
+
+
+def test_resolve_provider_request_openai_responses_typed_overrides_stale_compat() -> (
+    None
+):
+    model = Model(id="model-a", provider="custom", endpoint="openai-responses")
+    request = ResolvedRequest(
+        provider="custom",
+        endpoint="openai-responses",
+        api="openai-responses",
+        base_url=None,
+        compat={
+            "supportsDeveloperRole": True,
+            "supportsLongCacheRetention": True,
+            "sendSessionIdHeader": True,
+            "requiresAssistantAfterToolResult": True,
+        },
+        adapter_protocol=EndpointProtocolFeatures.from_raw(
+            {
+                "roles": {"developer": "unsupported"},
+                "cache": {"longRetention": "unsupported"},
+                "session": {"idHeader": "unsupported"},
+            }
+        ),
+        adapter_dialect=EndpointWireDialect.from_raw(
+            {"tools": {"assistantBridgeRequired": False}}
+        ),
+    )
+
+    resolved = resolve_provider_request("openai-responses", model, request=request)
+
+    assert resolved.adapter_protocol.roles.developer is SupportStatus.UNSUPPORTED
+    assert resolved.adapter_protocol.cache.long_retention is SupportStatus.UNSUPPORTED
+    assert resolved.adapter_protocol.session.id_header is SupportStatus.UNSUPPORTED
+    assert resolved.adapter_dialect.tools.assistant_bridge_required is False
+    assert resolved.adapter_compat["supportsDeveloperRole"] is False
+    assert resolved.adapter_compat["supportsLongCacheRetention"] is False
+    assert resolved.adapter_compat["sendSessionIdHeader"] is False
+    assert resolved.adapter_compat["requiresAssistantAfterToolResult"] is False
+
+
+def test_resolve_provider_request_normalizes_supplied_azure_responses_request() -> (
+    None
+):
+    model = Model(id="model-a", provider="custom", endpoint="azure-openai-responses")
+    request = ResolvedRequest(
+        provider="custom",
+        endpoint="azure-openai-responses",
+        api="azure-openai-responses",
+        base_url=None,
+        compat={
+            "supportsDeveloperRole": False,
+            "supportsLongCacheRetention": True,
+            "sendSessionIdHeader": True,
+            "requiresAssistantAfterToolResult": True,
+        },
+        adapter_protocol=EndpointProtocolFeatures.from_raw(
+            {
+                "cache": {"longRetention": "supported"},
+                "session": {"idHeader": "supported"},
+            }
+        ),
+    )
+
+    resolved = resolve_provider_request(
+        "azure-openai-responses",
+        model,
+        request=request,
+    )
+
+    assert resolved.adapter_protocol.roles.developer is SupportStatus.UNSUPPORTED
+    assert resolved.adapter_protocol.cache.long_retention is SupportStatus.UNSUPPORTED
+    assert resolved.adapter_protocol.session.id_header is SupportStatus.UNSUPPORTED
+    assert resolved.adapter_dialect.tools.assistant_bridge_required is True
+    assert resolved.adapter_compat["supportsDeveloperRole"] is False
+    assert resolved.adapter_compat["supportsLongCacheRetention"] is False
+    assert resolved.adapter_compat["sendSessionIdHeader"] is False
+    assert resolved.adapter_compat["requiresAssistantAfterToolResult"] is True
+
+
+def test_resolve_request_projects_azure_responses_adapter_contract() -> None:
+    endpoint = Endpoint(
+        id="azure-openai-responses",
+        provider="azure-openai",
+        api="azure-openai-responses",
+        compat=Compat.from_raw(
+            {
+                "supportsDeveloperRole": False,
+                "supportsLongCacheRetention": True,
+                "sendSessionIdHeader": True,
+                "requiresAssistantAfterToolResult": True,
+            }
+        ),
+        models={
+            "gpt": Model(
+                id="gpt",
+                provider="azure-openai",
+                endpoint="azure-openai-responses",
+            )
+        },
+    )
+    registry = ModelRegistry.from_providers(
+        {"azure-openai": Provider(id="azure-openai", endpoints={endpoint.id: endpoint})}
+    )
+    model = registry.get_model("azure-openai", "azure-openai-responses", "gpt")
+
+    resolved = resolve_request_for_model(model, registry=registry, env={})
+
+    assert resolved.adapter_protocol.roles.developer is SupportStatus.UNSUPPORTED
+    assert resolved.adapter_protocol.cache.long_retention is SupportStatus.UNSUPPORTED
+    assert resolved.adapter_protocol.session.id_header is SupportStatus.UNSUPPORTED
+    assert resolved.adapter_dialect.tools.assistant_bridge_required is True
+    assert resolved.adapter_compat["supportsLongCacheRetention"] is False
+    assert resolved.adapter_compat["sendSessionIdHeader"] is False
+
+
+@pytest.mark.parametrize(
+    ("api", "compat", "message"),
+    [
+        (
+            "openai-responses",
+            {"supportsDeveloperRole": "yes"},
+            "supportsDeveloperRole",
+        ),
+        (
+            "azure-openai-responses",
+            {"sendSessionIdHeader": "yes"},
+            "sendSessionIdHeader",
+        ),
+    ],
+)
+def test_resolve_provider_request_validates_supplied_responses_compat(
+    api: str,
+    compat: dict[str, object],
+    message: str,
+) -> None:
+    model = Model(id="model-a", provider="custom", endpoint=api)
+    request = ResolvedRequest(
+        provider="custom",
+        endpoint=api,
+        api=api,
+        base_url=None,
+        compat=compat,
+    )
+
+    with pytest.raises(ValueError, match=message):
+        resolve_provider_request(api, model, request=request)
 
 
 def test_call_api_provider_helpers_use_normalized_supplied_request() -> None:

@@ -15,10 +15,23 @@ from loushang.ai.model import (
     ModelRegistry,
     Provider,
 )
+from loushang.ai.model.registry import (
+    clear_default_model_registry,
+    get_default_model_registry,
+)
 from loushang.ai.options import AzureOpenAIResponsesOptions
 from loushang.ai.provider import ResolvedRequest
 from loushang.ai.providers.azure_openai_responses import AzureOpenAIResponsesProvider
-from loushang.ai.types import Context, ImagePart, TextPart, UserMessage
+from loushang.ai.types import (
+    AssistantMessage,
+    Context,
+    ImagePart,
+    TextPart,
+    ToolCall,
+    ToolResultMessage,
+    Usage,
+    UserMessage,
+)
 
 
 def test_azure_openai_responses_uses_azure_client_and_deployment_map(
@@ -146,6 +159,148 @@ def test_azure_openai_responses_uses_resolved_capability_max_tokens(
     assert _FakeAsyncAzureOpenAI.last_create_kwargs["max_output_tokens"] == 2048
 
 
+def test_azure_openai_responses_supplied_compat_projects_to_typed_payload(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _fake_openai_module(monkeypatch)
+    request = ResolvedRequest(
+        provider="azure-openai",
+        endpoint="azure-openai-responses",
+        api="azure-openai-responses",
+        base_url="https://example.openai.azure.com/openai/v1",
+        headers={"Authorization": "Bearer test-key"},
+        compat={
+            "supportsDeveloperRole": False,
+            "requiresAssistantAfterToolResult": True,
+        },
+        max_tokens=128,
+        capabilities=Capabilities(input=("text",), reasoning=True),
+        upstream_model_id="dep-mini",
+    )
+    provider = AzureOpenAIResponsesProvider()
+
+    asyncio.run(
+        _collect_parts(
+            provider._stream_raw_parts(
+                _Model(reasoning=True),
+                _tool_result_followed_by_user_context(system_prompt="Use system."),
+                AzureOpenAIResponsesOptions(),
+                request,
+            )
+        )
+    )
+
+    assert _FakeAsyncAzureOpenAI.last_create_kwargs["input"] == [
+        {"role": "system", "content": "Use system."},
+        {
+            "type": "function_call",
+            "call_id": "call_1",
+            "name": "calc",
+            "arguments": '{"x": 1}',
+        },
+        {
+            "type": "function_call_output",
+            "call_id": "call_1",
+            "output": "42",
+        },
+        {"role": "assistant", "content": "I have processed the tool results."},
+        {"role": "user", "content": [{"type": "input_text", "text": "next"}]},
+    ]
+    assert _FakeAsyncAzureOpenAI.last_create_kwargs["max_output_tokens"] == 128
+
+
+def test_azure_openai_responses_supplied_empty_request_uses_typed_defaults(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _fake_openai_module(monkeypatch)
+    request = ResolvedRequest(
+        provider="azure-openai",
+        endpoint="azure-openai-responses",
+        api="azure-openai-responses",
+        base_url="https://example.openai.azure.com/openai/v1",
+        headers={"Authorization": "Bearer test-key"},
+        max_tokens=128,
+        capabilities=Capabilities(input=("text",), reasoning=True),
+        upstream_model_id="dep-mini",
+    )
+    provider = AzureOpenAIResponsesProvider()
+
+    asyncio.run(
+        _collect_parts(
+            provider._stream_raw_parts(
+                _Model(reasoning=True),
+                Context(
+                    system_prompt="Use developer instructions.",
+                    messages=[
+                        UserMessage(role="user", content="hello", timestamp=0.0)
+                    ],
+                ),
+                AzureOpenAIResponsesOptions(),
+                request,
+            )
+        )
+    )
+
+    assert _FakeAsyncAzureOpenAI.last_create_kwargs["input"][0] == {
+        "role": "developer",
+        "content": "Use developer instructions.",
+    }
+    assert _FakeAsyncAzureOpenAI.last_create_kwargs["max_output_tokens"] == 128
+
+
+def test_azure_openai_responses_default_catalog_uses_responses_contract(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _fake_openai_module(monkeypatch)
+    clear_default_model_registry()
+    monkeypatch.setenv("AZURE_OPENAI_API_KEY", "catalog-secret")
+    monkeypatch.setenv(
+        "AZURE_OPENAI_BASE_URL",
+        "https://catalog.azure.example/openai/v1",
+    )
+    monkeypatch.delenv("AZURE_OPENAI_API_VERSION", raising=False)
+    monkeypatch.delenv("AZURE_OPENAI_DEPLOYMENT_NAME_MAP", raising=False)
+    model = get_default_model_registry().get_model(
+        "azure-openai-responses",
+        "azure-openai-responses",
+        "gpt-5",
+    )
+    provider = AzureOpenAIResponsesProvider()
+
+    asyncio.run(
+        _collect_parts(
+            provider._stream_raw_parts(
+                model,
+                _tool_result_followed_by_user_context(
+                    system_prompt="Use developer instructions."
+                ),
+                AzureOpenAIResponsesOptions(),
+            )
+        )
+    )
+
+    assert _FakeAsyncAzureOpenAI.last_init_kwargs == {
+        "api_key": "catalog-secret",
+        "azure_endpoint": "https://catalog.azure.example/openai/v1",
+        "api_version": "v1",
+    }
+    assert _FakeAsyncAzureOpenAI.last_create_kwargs["input"] == [
+        {"role": "developer", "content": "Use developer instructions."},
+        {
+            "type": "function_call",
+            "call_id": "call_1",
+            "name": "calc",
+            "arguments": '{"x": 1}',
+        },
+        {
+            "type": "function_call_output",
+            "call_id": "call_1",
+            "output": "42",
+        },
+        {"role": "user", "content": [{"type": "input_text", "text": "next"}]},
+    ]
+
+
 def test_azure_openai_responses_uses_real_resolved_request_boundary(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -207,6 +362,41 @@ def test_azure_openai_responses_uses_real_resolved_request_boundary(
 
 async def _collect_parts(source) -> list[dict]:
     return [part async for part in source]
+
+
+def _tool_result_followed_by_user_context(*, system_prompt: str) -> Context:
+    assistant = AssistantMessage(
+        role="assistant",
+        content=[
+            ToolCall(type="toolCall", id="call_1", name="calc", arguments={"x": 1})
+        ],
+        api="azure-openai-responses",
+        provider="azure-openai",
+        model="gpt-4o-mini",
+        response_id="resp_1",
+        usage=Usage(
+            input=0, output=0, cache_read=0, cache_write=0, total_tokens=0, cost={}
+        ),
+        stop_reason="toolUse",
+        error_message=None,
+        timestamp=0.0,
+    )
+    tool_result = ToolResultMessage(
+        role="toolResult",
+        tool_call_id="call_1",
+        tool_name="calc",
+        content=[TextPart(type="text", text="42")],
+        is_error=False,
+        timestamp=0.0,
+    )
+    return Context(
+        system_prompt=system_prompt,
+        messages=[
+            assistant,
+            tool_result,
+            UserMessage(role="user", content="next", timestamp=0.0),
+        ],
+    )
 
 
 def _fake_openai_module(monkeypatch: pytest.MonkeyPatch) -> None:

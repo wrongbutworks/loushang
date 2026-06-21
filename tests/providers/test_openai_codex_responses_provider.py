@@ -15,7 +15,15 @@ from loushang.ai.model.registry import (
 from loushang.ai.options import OpenAICodexResponsesOptions
 from loushang.ai.provider import ResolvedRequest
 from loushang.ai.providers.openai_codex_responses import OpenAICodexResponsesProvider
-from loushang.ai.types import Tool, UserMessage
+from loushang.ai.types import (
+    AssistantMessage,
+    TextPart,
+    Tool,
+    ToolCall,
+    ToolResultMessage,
+    Usage,
+    UserMessage,
+)
 
 
 def test_openai_codex_responses_builds_request_body_and_headers() -> None:
@@ -103,6 +111,67 @@ def test_openai_codex_responses_builds_request_body_and_headers() -> None:
         "prompt_cache_retention": "in-memory",
         "reasoning": {"effort": "low", "summary": "concise"},
     }
+
+
+def test_openai_codex_responses_preserves_tool_history_payload() -> None:
+    client = _FakeCodexClient(
+        events=[
+            {"type": "response.completed", "response": {"status": "completed"}},
+        ]
+    )
+    provider = OpenAICodexResponsesProvider(client=client)
+    token = _build_fake_jwt("acc_test")
+    assistant = AssistantMessage(
+        role="assistant",
+        content=[
+            ToolCall(type="toolCall", id="call_1", name="calc", arguments={"x": 1})
+        ],
+        api="openai-codex-responses",
+        provider="openai-codex",
+        model="gpt-5.3-codex",
+        response_id="resp_1",
+        usage=Usage(
+            input=0, output=0, cache_read=0, cache_write=0, total_tokens=0, cost={}
+        ),
+        stop_reason="toolUse",
+        error_message=None,
+        timestamp=0.0,
+    )
+    tool_result = ToolResultMessage(
+        role="toolResult",
+        tool_call_id="call_1",
+        tool_name="calc",
+        content=[TextPart(type="text", text="42")],
+        is_error=False,
+        timestamp=0.0,
+    )
+
+    asyncio.run(
+        _collect_parts(
+            provider._stream_raw_parts(
+                _Model(reasoning=False),
+                {
+                    "messages": [
+                        assistant,
+                        tool_result,
+                        UserMessage(role="user", content="next", timestamp=0.0),
+                    ],
+                },
+                OpenAICodexResponsesOptions(api_key=token),
+            )
+        )
+    )
+
+    assert client.last_json["input"] == [
+        {
+            "type": "function_call",
+            "call_id": "call_1",
+            "name": "calc",
+            "arguments": '{"x": 1}',
+        },
+        {"type": "function_call_output", "call_id": "call_1", "output": "42"},
+        {"role": "user", "content": [{"type": "input_text", "text": "next"}]},
+    ]
 
 
 def test_openai_codex_responses_uses_upstream_model_id() -> None:

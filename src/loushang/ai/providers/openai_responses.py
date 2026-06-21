@@ -7,10 +7,10 @@ from typing import Any
 
 from loushang.ai.context import ensure_normalized_context
 from loushang.ai.event_stream import AssistantMessageEventStream, RawAssembler
-from loushang.ai.model.compat_schema import (
-    SEND_SESSION_ID_HEADER,
-    SUPPORTS_LONG_CACHE_RETENTION,
-    compat_bool,
+from loushang.ai.model.domain import (
+    EndpointProtocolFeatures,
+    EndpointWireDialect,
+    SupportStatus,
 )
 from loushang.ai.options import PairingMode
 from loushang.ai.output_budget import resolve_output_token_budget
@@ -45,7 +45,7 @@ def _resolve_cache_retention(options: object | None) -> str | None:
 def _apply_prompt_cache_params(
     params: dict[str, Any],
     *,
-    compat: dict[str, object],
+    protocol: EndpointProtocolFeatures,
     cache_retention: str | None,
     session_id: str | None,
 ) -> None:
@@ -53,7 +53,7 @@ def _apply_prompt_cache_params(
         return
     if isinstance(session_id, str) and session_id:
         params["prompt_cache_key"] = session_id
-    if cache_retention == "long" and compat_bool(compat, SUPPORTS_LONG_CACHE_RETENTION):
+    if cache_retention == "long" and _is_supported(protocol.cache.long_retention):
         params["prompt_cache_retention"] = "24h"
 
 
@@ -139,7 +139,8 @@ class OpenAIResponsesProvider:
             options=options,
             request=request,
         )
-        compat = dict(getattr(resolved, "adapter_compat", {}) or {})
+        protocol = _request_protocol(resolved)
+        dialect = _request_dialect(resolved)
 
         # 延迟导入 OpenAI SDK
         try:
@@ -174,7 +175,8 @@ class OpenAIResponsesProvider:
         input_items = convert_responses_messages(
             model,
             normalized,
-            compat,
+            protocol,
+            dialect,
             capabilities,
         )
 
@@ -190,9 +192,7 @@ class OpenAIResponsesProvider:
             apply_session_headers(
                 default_headers,
                 session_id,
-                include_session_id=compat_bool(
-                    compat, SEND_SESSION_ID_HEADER, default=True
-                ),
+                include_session_id=_is_supported(protocol.session.id_header),
             )
 
         client = self._client or AsyncOpenAI(  # type: ignore[call-arg]
@@ -227,7 +227,7 @@ class OpenAIResponsesProvider:
                 params["tool_choice"] = "auto"
         _apply_prompt_cache_params(
             params,
-            compat=compat,
+            protocol=protocol,
             cache_retention=cache_retention,
             session_id=session_id,
         )
@@ -311,3 +311,21 @@ def _supports_reasoning(capabilities: object | None) -> bool:
     if supports_thinking is not None:
         return bool(supports_thinking)
     return bool(getattr(capabilities, "reasoning", False))
+
+
+def _request_protocol(request: object) -> EndpointProtocolFeatures:
+    protocol = getattr(request, "adapter_protocol", None)
+    if isinstance(protocol, EndpointProtocolFeatures):
+        return protocol
+    return EndpointProtocolFeatures()
+
+
+def _request_dialect(request: object) -> EndpointWireDialect:
+    dialect = getattr(request, "adapter_dialect", None)
+    if isinstance(dialect, EndpointWireDialect):
+        return dialect
+    return EndpointWireDialect()
+
+
+def _is_supported(status: SupportStatus) -> bool:
+    return status is SupportStatus.SUPPORTED

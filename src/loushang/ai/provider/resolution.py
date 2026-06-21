@@ -36,6 +36,7 @@ from loushang.ai.model.compat_schema import (
     VERCEL_GATEWAY_ROUTING,
     ZAI_TOOL_STREAM,
     resolve_anthropic_messages_compat,
+    resolve_azure_openai_responses_compat,
     resolve_openai_completions_compat,
     resolve_openai_responses_compat,
 )
@@ -84,7 +85,6 @@ OPENAI_COMPLETIONS_COMPAT_DEFAULT_KEYS = frozenset(
         SUPPORTS_LONG_CACHE_RETENTION,
     }
 )
-
 
 @dataclass(frozen=True)
 class ResolvedEndpoint:
@@ -163,9 +163,19 @@ def _normalize_request_for_api(
     provider_api: str,
     request: ResolvedRequest,
 ) -> ResolvedRequest:
-    if provider_api != "openai-completions":
+    if provider_api == "openai-completions":
+        raw_compat = dict(request.adapter_compat or {})
+        projection_compat = _openai_completions_compat_with_defaults(
+            raw_compat
+        )
+    elif provider_api == "openai-responses":
+        raw_compat = dict(request.adapter_compat or {})
+        projection_compat = resolve_openai_responses_compat(raw_compat)
+    elif provider_api == "azure-openai-responses":
+        raw_compat = dict(request.adapter_compat or {})
+        projection_compat = resolve_azure_openai_responses_compat(raw_compat)
+    else:
         return request
-    raw_compat = dict(request.adapter_compat or {})
     _validate_adapter_compat_raw(raw_compat)
     typed_protocol = _merge_protocol_features(
         request.protocol,
@@ -175,7 +185,6 @@ def _normalize_request_for_api(
         request.dialect,
         request.adapter_dialect,
     )
-    projection_compat = _openai_completions_compat_with_defaults(raw_compat)
     adapter_protocol = _merge_protocol_features(
         _protocol_from_compat(projection_compat),
         typed_protocol,
@@ -189,6 +198,16 @@ def _normalize_request_for_api(
         adapter_protocol,
         adapter_dialect,
     )
+    if provider_api == "azure-openai-responses":
+        adapter_compat = resolve_azure_openai_responses_compat(adapter_compat)
+        adapter_protocol = _merge_protocol_features(
+            adapter_protocol,
+            _protocol_from_compat(adapter_compat),
+        )
+        adapter_dialect = _merge_wire_dialect_with_compat(
+            adapter_dialect,
+            adapter_compat,
+        )
     if (
         adapter_protocol == request.adapter_protocol
         and adapter_protocol.to_raw() == request.adapter_protocol.to_raw()
@@ -971,6 +990,8 @@ def _resolve_compat_for_api(
         )
     if api == "openai-responses":
         return resolve_openai_responses_compat(raw)
+    if api == "azure-openai-responses":
+        return resolve_azure_openai_responses_compat(raw)
     if api == "anthropic-messages":
         return resolve_anthropic_messages_compat(
             provider_id=provider_id,
