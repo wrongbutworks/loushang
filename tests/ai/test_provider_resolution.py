@@ -55,6 +55,7 @@ from loushang.ai.model.registry import (
 )
 from loushang.ai.options import OpenAICompletionsOptions
 from loushang.ai.provider import (
+    AdapterRuntimeConfig,
     ResolvedEndpoint,
     ResolvedRequest,
     resolve_endpoint_for_model,
@@ -65,6 +66,14 @@ from loushang.ai.provider.invocation import (
     call_api_provider_stream,
     call_api_provider_stream_simple,
 )
+from loushang.ai.providers.openai_codex_responses import OpenAICodexResponsesProvider
+from loushang.ai.providers.openai_codex_runtime_config import (
+    OpenAICodexRuntimeConfig,
+    resolve_openai_codex_runtime_config,
+)
+
+OPENAI_CODEX_RESPONSES_API = OpenAICodexResponsesProvider.api
+OPENAI_CODEX_RUNTIME_CONFIG_RESOLVER = resolve_openai_codex_runtime_config
 
 
 def test_openai_completions_stream_reasoning_delta_defaults_to_bool() -> None:
@@ -718,6 +727,242 @@ def test_resolve_provider_request_openai_responses_typed_overrides_stale_compat(
     assert resolved.adapter_compat["supportsLongCacheRetention"] is False
     assert resolved.adapter_compat["sendSessionIdHeader"] is False
     assert resolved.adapter_compat["requiresAssistantAfterToolResult"] is False
+
+
+def test_resolve_provider_request_openai_codex_projects_compat_to_runtime_config() -> (
+    None
+):
+    model = Model(id="model-a", provider="openai-codex", endpoint="openai-codex")
+    request = ResolvedRequest(
+        provider="openai-codex",
+        endpoint="openai-codex",
+        api="openai-codex-responses",
+        base_url=None,
+        adapter_compat={
+            "codexIncludeClientRequestId": False,
+            "codexIncludeConversationId": True,
+            "codexPromptCacheRetention": "ephemeral",
+            "codexOriginator": "compat-test",
+            "codexUserAgent": "compat-agent",
+        },
+    )
+
+    resolved = resolve_provider_request(
+        "openai-codex-responses",
+        model,
+        request=request,
+        adapter_config_resolver=OPENAI_CODEX_RUNTIME_CONFIG_RESOLVER,
+    )
+
+    assert isinstance(resolved.adapter_config, OpenAICodexRuntimeConfig)
+    assert resolved.adapter_config.include_client_request_id is False
+    assert resolved.adapter_config.include_conversation_id is True
+    assert resolved.adapter_config.prompt_cache_retention == "ephemeral"
+    assert resolved.adapter_config.originator == "compat-test"
+    assert resolved.adapter_config.user_agent == "compat-agent"
+
+
+def test_resolve_provider_request_openai_codex_rejects_conflicting_runtime_config() -> (
+    None
+):
+    model = Model(id="model-a", provider="openai-codex", endpoint="openai-codex")
+    request = ResolvedRequest(
+        provider="openai-codex",
+        endpoint="openai-codex",
+        api="openai-codex-responses",
+        base_url=None,
+        adapter_compat={
+            "codexOriginator": "fresh",
+            "codexUserAgent": "fresh-agent",
+        },
+        adapter_config=OpenAICodexRuntimeConfig(
+            originator="stale",
+            user_agent="stale-agent",
+        ),
+    )
+
+    with pytest.raises(
+        ValueError,
+        match="adapter_config conflicts with adapter_compat",
+    ):
+        resolve_provider_request(
+            "openai-codex-responses",
+            model,
+            request=request,
+            adapter_config_resolver=OPENAI_CODEX_RUNTIME_CONFIG_RESOLVER,
+        )
+
+
+def test_resolve_provider_request_openai_codex_keeps_runtime_config_input() -> None:
+    model = Model(id="model-a", provider="openai-codex", endpoint="openai-codex")
+    codex_config = OpenAICodexRuntimeConfig(
+        originator="typed",
+        user_agent="typed-agent",
+    )
+    request = ResolvedRequest(
+        provider="openai-codex",
+        endpoint="openai-codex",
+        api="openai-codex-responses",
+        base_url=None,
+        adapter_config=codex_config,
+    )
+
+    resolved = resolve_provider_request(
+        "openai-codex-responses",
+        model,
+        request=request,
+        adapter_config_resolver=OPENAI_CODEX_RUNTIME_CONFIG_RESOLVER,
+    )
+
+    assert resolved.adapter_config == codex_config
+
+
+def test_resolve_provider_request_openai_codex_rejects_foreign_runtime_config() -> (
+    None
+):
+    model = Model(id="model-a", provider="openai-codex", endpoint="openai-codex")
+    request = ResolvedRequest(
+        provider="openai-codex",
+        endpoint="openai-codex",
+        api=OPENAI_CODEX_RESPONSES_API,
+        base_url=None,
+        adapter_config=AdapterRuntimeConfig(),
+    )
+
+    with pytest.raises(
+        TypeError,
+        match="adapter_config for openai-codex-responses must be "
+        "OpenAICodexRuntimeConfig",
+    ):
+        resolve_provider_request(
+            OPENAI_CODEX_RESPONSES_API,
+            model,
+            request=request,
+            adapter_config_resolver=OPENAI_CODEX_RUNTIME_CONFIG_RESOLVER,
+        )
+
+
+def test_resolve_provider_request_unknown_api_preserves_runtime_config() -> None:
+    model = Model(id="model-a", provider="custom", endpoint="custom-api")
+    adapter_config = AdapterRuntimeConfig()
+    request = ResolvedRequest(
+        provider="custom",
+        endpoint="custom-api",
+        api="custom-api",
+        base_url=None,
+        adapter_config=adapter_config,
+    )
+
+    resolved = resolve_provider_request("custom-api", model, request=request)
+
+    assert resolved.adapter_config is adapter_config
+
+
+@pytest.mark.parametrize(
+    ("config_kwargs", "message"),
+    (
+        (
+            {"include_client_request_id": "false"},
+            "include_client_request_id must be boolean",
+        ),
+        (
+            {"include_conversation_id": "true"},
+            "include_conversation_id must be boolean",
+        ),
+        (
+            {"prompt_cache_retention": 123},
+            "prompt_cache_retention must be non-empty string or None",
+        ),
+        (
+            {"originator": ""},
+            "originator must be non-empty string",
+        ),
+        (
+            {"user_agent": None},
+            "user_agent must be non-empty string",
+        ),
+    ),
+)
+def test_openai_codex_runtime_config_rejects_invalid_typed_values(
+    config_kwargs: dict[str, object],
+    message: str,
+) -> None:
+    with pytest.raises(ValueError, match=message):
+        OpenAICodexRuntimeConfig(**config_kwargs)
+
+
+def test_resolve_provider_request_openai_codex_compares_explicit_runtime_keys() -> (
+    None
+):
+    model = Model(id="model-a", provider="openai-codex", endpoint="openai-codex")
+    codex_config = OpenAICodexRuntimeConfig(
+        originator="typed",
+        user_agent="typed-agent",
+    )
+    request = ResolvedRequest(
+        provider="openai-codex",
+        endpoint="openai-codex",
+        api="openai-codex-responses",
+        base_url=None,
+        adapter_compat={
+            "supportsDeveloperRole": True,
+            "codexOriginator": "typed",
+        },
+        adapter_config=codex_config,
+    )
+
+    resolved = resolve_provider_request(
+        "openai-codex-responses",
+        model,
+        request=request,
+        adapter_config_resolver=OPENAI_CODEX_RUNTIME_CONFIG_RESOLVER,
+    )
+
+    assert resolved.adapter_config == codex_config
+
+
+def test_resolve_provider_request_openai_codex_rejects_invalid_runtime_config() -> (
+    None
+):
+    model = Model(id="model-a", provider="openai-codex", endpoint="openai-codex")
+    request = ResolvedRequest(
+        provider="openai-codex",
+        endpoint="openai-codex",
+        api="openai-codex-responses",
+        base_url=None,
+        adapter_compat={
+            "codexIncludeClientRequestId": "false",
+        },
+    )
+
+    with pytest.raises(
+        ValueError,
+        match="codexIncludeClientRequestId must be boolean",
+    ):
+        resolve_provider_request(
+            "openai-codex-responses",
+            model,
+            request=request,
+            adapter_config_resolver=OPENAI_CODEX_RUNTIME_CONFIG_RESOLVER,
+        )
+
+    request = ResolvedRequest(
+        provider="openai-codex",
+        endpoint="openai-codex",
+        api="openai-codex-responses",
+        base_url=None,
+        adapter_compat={
+            "codexUserAgent": 123,
+        },
+    )
+
+    with pytest.raises(ValueError, match="codexUserAgent must be non-empty string"):
+        resolve_provider_request(
+            "openai-codex-responses",
+            model,
+            request=request,
+            adapter_config_resolver=OPENAI_CODEX_RUNTIME_CONFIG_RESOLVER,
+        )
 
 
 def test_resolve_provider_request_normalizes_supplied_azure_responses_request() -> (

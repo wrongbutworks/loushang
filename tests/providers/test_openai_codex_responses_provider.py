@@ -346,6 +346,65 @@ def test_openai_codex_responses_respects_compat_session_headers() -> None:
     assert client.last_json["prompt_cache_retention"] == "ephemeral"
 
 
+def test_openai_codex_responses_public_stream_uses_runtime_config_headers() -> None:
+    client = _FakeCodexClient(
+        events=[
+            {"type": "response.completed", "response": {"status": "completed"}},
+        ]
+    )
+    get_default_model_registry().register_endpoint(
+        "openai-codex",
+        Endpoint(
+            id="openai-codex-responses",
+            provider="openai-codex",
+            api="openai-codex-responses",
+            compat=Compat.from_raw(
+                {
+                    "codexIncludeClientRequestId": False,
+                    "codexIncludeConversationId": True,
+                    "codexPromptCacheRetention": "ephemeral",
+                    "codexOriginator": "compat-public",
+                    "codexUserAgent": "compat-public-agent",
+                }
+            ),
+            models={
+                "gpt-5.3-codex": Model(
+                    id="gpt-5.3-codex",
+                    provider="openai-codex",
+                    endpoint="openai-codex-responses",
+                )
+            },
+        ),
+    )
+    model = get_default_model_registry().get_model(
+        "openai-codex",
+        "openai-codex-responses",
+        "gpt-5.3-codex",
+    )
+    provider = OpenAICodexResponsesProvider(client=client)
+
+    async def _run() -> list[dict]:
+        stream = await provider.stream(
+            model,
+            {"messages": [UserMessage(role="user", content="hello", timestamp=0.0)]},
+            OpenAICodexResponsesOptions(
+                api_key=_build_fake_jwt("acc_test"),
+                session_id="sess_public_config",
+            ),
+        )
+        return await _collect_stream_events(stream)
+
+    events = asyncio.run(_run())
+
+    assert events[-1]["type"] == "done"
+    assert client.last_headers["session_id"] == "sess_public_config"
+    assert client.last_headers["conversation_id"] == "sess_public_config"
+    assert "x-client-request-id" not in client.last_headers
+    assert client.last_headers["originator"] == "compat-public"
+    assert client.last_headers["User-Agent"] == "compat-public-agent"
+    assert client.last_json["prompt_cache_retention"] == "ephemeral"
+
+
 def test_openai_codex_responses_prefers_oauth_account_binding_over_token_parsing() -> (
     None
 ):
@@ -913,6 +972,59 @@ def test_openai_codex_responses_websocket_transport_does_not_fallback_to_sse() -
     assert client.stream_call_count == 0
     assert events[-1]["type"] == "error"
     assert events[-1]["error"].error_message == "WebSocket closed 1011"
+
+
+def test_openai_codex_responses_websocket_uses_runtime_config_headers() -> None:
+    client = _FakeCodexClient(
+        websocket_batches=[
+            [{"type": "response.completed", "response": {"status": "completed"}}]
+        ]
+    )
+    get_default_model_registry().register_endpoint(
+        "openai-codex",
+        Endpoint(
+            id="openai-codex-responses",
+            provider="openai-codex",
+            api="openai-codex-responses",
+            compat=Compat.from_raw(
+                {
+                    "codexOriginator": "compat-ws",
+                    "codexUserAgent": "compat-ws-agent",
+                }
+            ),
+            models={
+                "gpt-5.3-codex": Model(
+                    id="gpt-5.3-codex",
+                    provider="openai-codex",
+                    endpoint="openai-codex-responses",
+                )
+            },
+        ),
+    )
+    model = get_default_model_registry().get_model(
+        "openai-codex",
+        "openai-codex-responses",
+        "gpt-5.3-codex",
+    )
+    provider = OpenAICodexResponsesProvider(client=client)
+
+    async def _run() -> list[dict]:
+        stream = await provider.stream(
+            model,
+            {"messages": [UserMessage(role="user", content="hello", timestamp=0.0)]},
+            OpenAICodexResponsesOptions(
+                api_key=_build_fake_jwt("acc_test"),
+                transport="websocket",
+                session_id="sess_ws_config",
+            ),
+        )
+        return await _collect_stream_events(stream)
+
+    events = asyncio.run(_run())
+
+    assert events[-1]["type"] == "done"
+    assert client.last_headers["originator"] == "compat-ws"
+    assert client.last_headers["User-Agent"] == "compat-ws-agent"
 
 
 def test_openai_codex_responses_websocket_reuses_connection_for_same_session() -> None:

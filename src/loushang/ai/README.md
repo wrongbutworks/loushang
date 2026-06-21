@@ -329,6 +329,7 @@ prices remain valid and produce a zero cost.
 - `adapter_protocol`
 - `adapter_dialect`
 - `adapter_compat`
+- `adapter_config`
 - `defaults`
 - `transport`
 - `routing`
@@ -345,8 +346,16 @@ contract 中显式声明或由 legacy compat 迁移得到的事实；provider / 
 推断出的 runtime heuristic 不会投射为 public contract。
 
 provider adapter 侧的执行事实单独放在 `adapter_protocol` / `adapter_dialect` /
-`adapter_compat`。其中 `adapter_compat` 是核心 adapter 迁移完成前的内部桥接字段；
-新代码应优先依赖 typed `adapter_protocol` / `adapter_dialect`。
+`adapter_compat` / `adapter_config`。其中 `adapter_config` 是
+provider adapter 调用 `resolve_provider_request()` 时通过自己的 runtime config
+resolver 生成或校验后的 provider 专有 typed runtime 配置，承载无法放入通用
+protocol/dialect 的执行参数；具体配置类型由对应 provider 模块拥有。手写
+`ResolvedRequest` 时，如果同时提供 `adapter_compat` 和 provider-specific
+`adapter_config`，二者必须在该 provider 的 runtime key 上投影一致；冲突会在
+resolution 边界报错。无关 compat key 不参与
+`adapter_config` 一致性检查。`adapter_compat` 是核心 adapter 迁移完成前的内部
+桥接字段，provider adapter 新代码应依赖 typed `adapter_protocol` /
+`adapter_dialect` / `adapter_config`，不要读取 raw compat。
 
 ## 最小调用链
 

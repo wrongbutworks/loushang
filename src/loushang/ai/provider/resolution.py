@@ -55,6 +55,11 @@ from loushang.ai.model.registry import (
     has_bound_endpoint_context,
     resolve_model_endpoint,
 )
+from loushang.ai.provider.runtime_config import (
+    AdapterRuntimeConfig,
+    AdapterRuntimeConfigResolver,
+    resolve_adapter_runtime_config,
+)
 
 LEGACY_MODEL_CONTRACT_COMPAT_KEYS = frozenset(
     {
@@ -141,6 +146,7 @@ class ResolvedRequest:
     adapter_dialect: EndpointWireDialect = field(default_factory=EndpointWireDialect)
     adapter_compat: Mapping[str, object] | None = field(default_factory=dict)
     auth_account_id: str | None = None
+    adapter_config: AdapterRuntimeConfig | None = None
 
     def __post_init__(self) -> None:
         compat = dict(self.compat or {})
@@ -163,6 +169,8 @@ def ensure_request_api(provider_api: str, request: ResolvedRequest) -> ResolvedR
 def _normalize_request_for_api(
     provider_api: str,
     request: ResolvedRequest,
+    *,
+    adapter_config_resolver: AdapterRuntimeConfigResolver | None = None,
 ) -> ResolvedRequest:
     if provider_api == "openai-completions":
         raw_compat = dict(request.adapter_compat or {})
@@ -190,7 +198,14 @@ def _normalize_request_for_api(
             raw=typed_projection_compat,
         )
     else:
-        return request
+        adapter_config = resolve_adapter_runtime_config(
+            adapter_config_resolver,
+            dict(request.adapter_compat or {}),
+            current=request.adapter_config,
+        )
+        if adapter_config == request.adapter_config:
+            return request
+        return replace(request, adapter_config=adapter_config)
     _validate_adapter_compat_raw(raw_compat)
     typed_protocol = _merge_protocol_features(
         request.protocol,
@@ -213,6 +228,11 @@ def _normalize_request_for_api(
         adapter_protocol,
         adapter_dialect,
     )
+    adapter_config = resolve_adapter_runtime_config(
+        adapter_config_resolver,
+        adapter_compat,
+        current=request.adapter_config,
+    )
     if provider_api == "azure-openai-responses":
         adapter_compat = resolve_azure_openai_responses_compat(adapter_compat)
         adapter_protocol = _merge_protocol_features(
@@ -228,6 +248,7 @@ def _normalize_request_for_api(
         and adapter_protocol.to_raw() == request.adapter_protocol.to_raw()
         and adapter_dialect == request.adapter_dialect
         and adapter_dialect.to_raw() == request.adapter_dialect.to_raw()
+        and adapter_config == request.adapter_config
         and adapter_compat == dict(request.adapter_compat or {})
     ):
         return request
@@ -236,6 +257,7 @@ def _normalize_request_for_api(
         compat=adapter_compat,
         adapter_protocol=adapter_protocol,
         adapter_dialect=adapter_dialect,
+        adapter_config=adapter_config,
         adapter_compat=adapter_compat,
     )
 
@@ -283,6 +305,7 @@ def resolve_provider_request(
     *,
     options=None,
     request: ResolvedRequest | None = None,
+    adapter_config_resolver: AdapterRuntimeConfigResolver | None = None,
 ) -> ResolvedRequest:
     resolved = (
         request
@@ -292,6 +315,7 @@ def resolve_provider_request(
     return _normalize_request_for_api(
         provider_api,
         ensure_request_api(provider_api, resolved),
+        adapter_config_resolver=adapter_config_resolver,
     )
 
 
@@ -389,7 +413,6 @@ def resolve_request_for_model(
         base_url=base_url,
         raw=raw_compat,
     )
-
     auth_view = resolve_auth_for_model(
         request_model,
         options=options,

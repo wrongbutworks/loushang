@@ -11,20 +11,18 @@ from uuid import uuid4
 
 from loushang.ai.context import ensure_normalized_context
 from loushang.ai.event_stream import AssistantMessageEventStream, RawAssembler
-from loushang.ai.model.compat_schema import (
-    CODEX_INCLUDE_CLIENT_REQUEST_ID,
-    CODEX_INCLUDE_CONVERSATION_ID,
-    CODEX_ORIGINATOR,
-    CODEX_PROMPT_CACHE_RETENTION,
-    CODEX_USER_AGENT,
-    compat_bool,
-    compat_str,
-)
 from loushang.ai.model.domain import EndpointProtocolFeatures, EndpointWireDialect
 from loushang.ai.options import PairingMode
 from loushang.ai.provider import resolve_provider_request
 from loushang.ai.provider.cancellation import is_signal_cancelled
 from loushang.ai.provider.errors import is_http_status_code, provider_error_part
+from loushang.ai.provider.runtime_config import (
+    AdapterRuntimeConfig,
+)
+from loushang.ai.providers.openai_codex_runtime_config import (
+    OpenAICodexRuntimeConfig,
+    resolve_openai_codex_runtime_config,
+)
 from loushang.ai.providers.openai_responses_shared import (
     convert_responses_messages,
     convert_responses_tools,
@@ -49,6 +47,7 @@ class OpenAICodexResponsesProvider:
             model,
             options=options,
             request=request,
+            adapter_config_resolver=resolve_openai_codex_runtime_config,
         )
         stream = AssistantMessageEventStream()
         assembler = RawAssembler(
@@ -118,9 +117,10 @@ class OpenAICodexResponsesProvider:
             model,
             options=options,
             request=request,
+            adapter_config_resolver=resolve_openai_codex_runtime_config,
         )
         headers = dict(resolved.headers or {})
-        compat = dict(getattr(resolved, "adapter_compat", {}) or {})
+        codex_config = _codex_runtime_config(resolved.adapter_config)
 
         api_key = _extract_api_key(headers)
         account_id = _resolve_account_id(
@@ -132,7 +132,7 @@ class OpenAICodexResponsesProvider:
             model,
             normalized,
             options,
-            compat=compat,
+            codex_config=codex_config,
             capabilities=getattr(resolved, "capabilities", None),
             upstream_model_id=getattr(resolved, "upstream_model_id", None),
         )
@@ -143,7 +143,7 @@ class OpenAICodexResponsesProvider:
             api_key=api_key,
             account_id=account_id,
             session_id=session_id,
-            compat=compat,
+            codex_config=codex_config,
         )
         _debug(
             "client",
@@ -173,7 +173,7 @@ class OpenAICodexResponsesProvider:
                             api_key=api_key,
                             account_id=account_id,
                             request_id=session_id or _create_codex_request_id(),
-                            compat=compat,
+                            codex_config=codex_config,
                         ),
                         body,
                         options,
@@ -361,16 +361,22 @@ class OpenAICodexResponsesProvider:
         )
 
 
+def _codex_runtime_config(value: AdapterRuntimeConfig | None) -> OpenAICodexRuntimeConfig:
+    if isinstance(value, OpenAICodexRuntimeConfig):
+        return value
+    return OpenAICodexRuntimeConfig()
+
+
 def _build_request_body(
     model,
     normalized: dict[str, Any],
     options,
     *,
-    compat: dict[str, Any] | None = None,
+    codex_config: OpenAICodexRuntimeConfig | None = None,
     capabilities: object | None = None,
     upstream_model_id: str | None = None,
 ) -> dict[str, Any]:
-    compat = compat or {}
+    codex_config = codex_config or OpenAICodexRuntimeConfig()
     input_items = convert_responses_messages(
         model,
         {
@@ -403,10 +409,7 @@ def _build_request_body(
     session_id = getattr(options, "session_id", None)
     if isinstance(session_id, str) and session_id:
         body["prompt_cache_key"] = session_id
-        prompt_cache_retention = compat_str(
-            compat,
-            CODEX_PROMPT_CACHE_RETENTION,
-        )
+        prompt_cache_retention = codex_config.prompt_cache_retention
         if isinstance(prompt_cache_retention, str) and prompt_cache_retention:
             body["prompt_cache_retention"] = prompt_cache_retention
     reasoning = getattr(options, "reasoning", None)
@@ -516,9 +519,9 @@ def _build_sse_headers(
     api_key: str,
     account_id: str,
     session_id: str | None,
-    compat: dict[str, Any] | None = None,
+    codex_config: OpenAICodexRuntimeConfig | None = None,
 ) -> dict[str, str]:
-    compat = compat or {}
+    codex_config = codex_config or OpenAICodexRuntimeConfig()
     headers: dict[str, str] = {}
     for key, value in init_headers.items():
         if key.lower() in {"authorization", "x-api-key"}:
@@ -526,18 +529,16 @@ def _build_sse_headers(
         headers[key] = value
     headers["Authorization"] = f"Bearer {api_key}"
     headers["chatgpt-account-id"] = account_id
-    originator = compat_str(compat, CODEX_ORIGINATOR, default="loushang")
-    user_agent = compat_str(compat, CODEX_USER_AGENT, default="loushang")
-    headers["originator"] = originator or "loushang"
-    headers["User-Agent"] = user_agent or "loushang"
+    headers["originator"] = codex_config.originator or "loushang"
+    headers["User-Agent"] = codex_config.user_agent or "loushang"
     headers["OpenAI-Beta"] = "responses=experimental"
     headers["accept"] = "text/event-stream"
     headers["content-type"] = "application/json"
     if isinstance(session_id, str) and session_id:
         headers["session_id"] = session_id
-        if compat_bool(compat, CODEX_INCLUDE_CLIENT_REQUEST_ID):
+        if codex_config.include_client_request_id:
             headers["x-client-request-id"] = session_id
-        if compat_bool(compat, CODEX_INCLUDE_CONVERSATION_ID):
+        if codex_config.include_conversation_id:
             headers["conversation_id"] = session_id
     return headers
 
@@ -548,9 +549,9 @@ def _build_websocket_headers(
     api_key: str,
     account_id: str,
     request_id: str,
-    compat: dict[str, Any] | None = None,
+    codex_config: OpenAICodexRuntimeConfig | None = None,
 ) -> dict[str, str]:
-    compat = compat or {}
+    codex_config = codex_config or OpenAICodexRuntimeConfig()
     headers: dict[str, str] = {}
     for key, value in init_headers.items():
         if key.lower() in {
@@ -564,10 +565,8 @@ def _build_websocket_headers(
         headers[key] = value
     headers["Authorization"] = f"Bearer {api_key}"
     headers["chatgpt-account-id"] = account_id
-    originator = compat_str(compat, CODEX_ORIGINATOR, default="loushang")
-    user_agent = compat_str(compat, CODEX_USER_AGENT, default="loushang")
-    headers["originator"] = originator or "loushang"
-    headers["User-Agent"] = user_agent or "loushang"
+    headers["originator"] = codex_config.originator or "loushang"
+    headers["User-Agent"] = codex_config.user_agent or "loushang"
     headers["OpenAI-Beta"] = "responses_websockets=2026-02-06"
     headers["x-client-request-id"] = request_id
     headers["session_id"] = request_id
