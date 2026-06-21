@@ -23,6 +23,7 @@ from loushang.ai.model.compat_schema import (
 )
 from loushang.ai.model.domain import (
     Endpoint,
+    EndpointProtocolFeatures,
     EndpointRouting,
     EndpointTransport,
     EndpointWireDialect,
@@ -32,7 +33,7 @@ from loushang.ai.model.registry import (
     get_default_model_registry,
 )
 from loushang.ai.options import OpenAICompletionsOptions
-from loushang.ai.provider import ResolvedRequest
+from loushang.ai.provider import ResolvedRequest, resolve_provider_request
 from loushang.ai.providers.openai_completions import OpenAICompletionsProvider
 from loushang.ai.types import (
     AssistantMessage,
@@ -473,6 +474,13 @@ def test_openai_completions_payload_uses_typed_endpoint_dialect(
             provider="typed",
             api="openai-completions",
             base_url="https://api.openai.test/v1",
+            protocol=EndpointProtocolFeatures.from_raw(
+                {
+                    "cache": {
+                        "promptKey": "supported",
+                    },
+                }
+            ),
             dialect=EndpointWireDialect.from_raw(
                 {
                     "maxOutputTokensField": "max_tokens",
@@ -491,7 +499,6 @@ def test_openai_completions_payload_uses_typed_endpoint_dialect(
                     },
                 }
             ),
-            compat=Compat.from_raw({SUPPORTS_PROMPT_CACHE_KEY: True}),
             models={
                 "gpt-test": Model(
                     id="gpt-test",
@@ -598,6 +605,271 @@ def test_openai_completions_payload_uses_typed_endpoint_dialect(
         "role": "assistant",
         "content": "I have processed the tool results.",
     }
+
+
+def test_openai_completions_supplied_request_compat_projects_to_typed_payload(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _fake_openai_module(monkeypatch)
+    provider = OpenAICompletionsProvider()
+    request = ResolvedRequest(
+        provider="custom",
+        endpoint="openai-completions",
+        api="openai-completions",
+        base_url="https://api.openai.test/v1",
+        headers={"Authorization": "Bearer test-key"},
+        compat={
+            MAX_TOKENS_FIELD: "max_tokens",
+            SUPPORTS_PROMPT_CACHE_KEY: True,
+        },
+        max_tokens=128,
+        capabilities=Capabilities(input=("text",), max_tokens=4096),
+    )
+
+    asyncio.run(
+        _collect_parts(
+            provider._stream_raw_parts(
+                _Model(),
+                {"messages": [UserMessage(role="user", content="hello", timestamp=0.0)]},
+                OpenAICompletionsOptions(
+                    cache_retention="long",
+                    session_id="session-supplied",
+                ),
+                request=request,
+            )
+        )
+    )
+
+    assert _FakeAsyncOpenAI.last_create_kwargs["max_tokens"] == 128
+    assert "max_completion_tokens" not in _FakeAsyncOpenAI.last_create_kwargs
+    assert _FakeAsyncOpenAI.last_create_kwargs["prompt_cache_key"] == "session-supplied"
+    assert _FakeAsyncOpenAI.last_create_kwargs["prompt_cache_retention"] == "24h"
+
+
+def test_openai_completions_supplied_empty_request_uses_legacy_compat_defaults(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _fake_openai_module(monkeypatch)
+    provider = OpenAICompletionsProvider()
+    request = ResolvedRequest(
+        provider="custom",
+        endpoint="openai-completions",
+        api="openai-completions",
+        base_url="https://api.openai.test/v1",
+        headers={"Authorization": "Bearer test-key"},
+        max_tokens=128,
+        capabilities=Capabilities(input=("text",), max_tokens=4096),
+    )
+
+    asyncio.run(
+        _collect_parts(
+            provider._stream_raw_parts(
+                _Model(),
+                {"messages": [UserMessage(role="user", content="hello", timestamp=0.0)]},
+                OpenAICompletionsOptions(),
+                request=request,
+            )
+        )
+    )
+
+    assert _FakeAsyncOpenAI.last_create_kwargs["max_tokens"] == 128
+    assert "max_completion_tokens" not in _FakeAsyncOpenAI.last_create_kwargs
+    assert _FakeAsyncOpenAI.last_create_kwargs["stream_options"] == {
+        "include_usage": True
+    }
+
+
+def test_openai_completions_supplied_request_preserves_explicit_unknown_protocol(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _fake_openai_module(monkeypatch)
+    provider = OpenAICompletionsProvider()
+    request = ResolvedRequest(
+        provider="custom",
+        endpoint="openai-completions",
+        api="openai-completions",
+        base_url="https://api.openai.test/v1",
+        headers={"Authorization": "Bearer test-key"},
+        adapter_protocol=EndpointProtocolFeatures.from_raw(
+            {"roles": {"developer": "unknown"}}
+        ),
+        capabilities=Capabilities(input=("text",), reasoning=True, max_tokens=4096),
+    )
+
+    asyncio.run(
+        _collect_parts(
+            provider._stream_raw_parts(
+                _Model(reasoning=True),
+                {
+                    "system_prompt": "You reason carefully.",
+                    "messages": [
+                        UserMessage(role="user", content="hello", timestamp=0.0)
+                    ],
+                },
+                OpenAICompletionsOptions(),
+                request=request,
+            )
+        )
+    )
+
+    assert _FakeAsyncOpenAI.last_create_kwargs["messages"][0] == {
+        "role": "system",
+        "content": "You reason carefully.",
+    }
+
+
+def test_openai_completions_supplied_request_protocol_and_dialect_project_to_payload(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _fake_openai_module(monkeypatch)
+    provider = OpenAICompletionsProvider()
+    request = ResolvedRequest(
+        provider="custom",
+        endpoint="openai-completions",
+        api="openai-completions",
+        base_url="https://api.openai.test/v1",
+        headers={"Authorization": "Bearer test-key"},
+        protocol=EndpointProtocolFeatures.from_raw(
+            {"cache": {"promptKey": "supported"}}
+        ),
+        dialect=EndpointWireDialect.from_raw(
+            {"maxOutputTokensField": "max_completion_tokens"}
+        ),
+        max_tokens=128,
+        capabilities=Capabilities(input=("text",), max_tokens=4096),
+    )
+
+    asyncio.run(
+        _collect_parts(
+            provider._stream_raw_parts(
+                _Model(),
+                {"messages": [UserMessage(role="user", content="hello", timestamp=0.0)]},
+                OpenAICompletionsOptions(
+                    cache_retention="long",
+                    session_id="session-typed",
+                ),
+                request=request,
+            )
+        )
+    )
+
+    assert _FakeAsyncOpenAI.last_create_kwargs["max_completion_tokens"] == 128
+    assert "max_tokens" not in _FakeAsyncOpenAI.last_create_kwargs
+    assert _FakeAsyncOpenAI.last_create_kwargs["stream_options"] == {
+        "include_usage": True
+    }
+    assert _FakeAsyncOpenAI.last_create_kwargs["prompt_cache_key"] == "session-typed"
+    assert _FakeAsyncOpenAI.last_create_kwargs["prompt_cache_retention"] == "24h"
+
+
+def test_openai_completions_public_stream_uses_supplied_typed_request(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _fake_openai_module(monkeypatch)
+    provider = OpenAICompletionsProvider()
+    request = ResolvedRequest(
+        provider="custom",
+        endpoint="openai-completions",
+        api="openai-completions",
+        base_url="https://api.openai.test/v1",
+        headers={"Authorization": "Bearer test-key"},
+        protocol=EndpointProtocolFeatures.from_raw(
+            {"cache": {"promptKey": "supported"}}
+        ),
+        dialect=EndpointWireDialect.from_raw(
+            {"maxOutputTokensField": "max_completion_tokens"}
+        ),
+        max_tokens=128,
+        capabilities=Capabilities(input=("text",), max_tokens=4096),
+    )
+
+    async def _run() -> None:
+        stream = await provider.stream(
+            _Model(),
+            {"messages": [UserMessage(role="user", content="hello", timestamp=0.0)]},
+            OpenAICompletionsOptions(
+                cache_retention="short",
+                session_id="session-public",
+            ),
+            request=request,
+        )
+        await stream.result()
+
+    asyncio.run(_run())
+
+    assert _FakeAsyncOpenAI.last_create_kwargs["max_completion_tokens"] == 128
+    assert "max_tokens" not in _FakeAsyncOpenAI.last_create_kwargs
+    assert _FakeAsyncOpenAI.last_create_kwargs["prompt_cache_key"] == "session-public"
+
+
+def test_openai_completions_supplied_request_typed_adapter_overrides_stale_compat(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _fake_openai_module(monkeypatch)
+    provider = OpenAICompletionsProvider()
+    request = ResolvedRequest(
+        provider="custom",
+        endpoint="openai-completions",
+        api="openai-completions",
+        base_url="https://api.openai.test/v1",
+        headers={"Authorization": "Bearer test-key"},
+        adapter_protocol=EndpointProtocolFeatures.from_raw(
+            {"cache": {"promptKey": "unsupported"}}
+        ),
+        compat={SUPPORTS_PROMPT_CACHE_KEY: True},
+        capabilities=Capabilities(input=("text",), max_tokens=4096),
+    )
+
+    asyncio.run(
+        _collect_parts(
+            provider._stream_raw_parts(
+                _Model(),
+                {"messages": [UserMessage(role="user", content="hello", timestamp=0.0)]},
+                OpenAICompletionsOptions(
+                    cache_retention="short",
+                    session_id="session-stale",
+                ),
+                request=request,
+            )
+        )
+    )
+
+    assert _FakeAsyncOpenAI.last_create_kwargs["model"] == "gpt-test"
+    assert "prompt_cache_key" not in _FakeAsyncOpenAI.last_create_kwargs
+
+
+def test_openai_completions_supplied_request_typed_dialect_overrides_stale_compat(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _fake_openai_module(monkeypatch)
+    provider = OpenAICompletionsProvider()
+    request = ResolvedRequest(
+        provider="custom",
+        endpoint="openai-completions",
+        api="openai-completions",
+        base_url="https://api.openai.test/v1",
+        headers={"Authorization": "Bearer test-key"},
+        adapter_dialect=EndpointWireDialect.from_raw(
+            {"maxOutputTokensField": "max_completion_tokens"}
+        ),
+        compat={MAX_TOKENS_FIELD: "max_tokens"},
+        max_tokens=128,
+        capabilities=Capabilities(input=("text",), max_tokens=4096),
+    )
+
+    asyncio.run(
+        _collect_parts(
+            provider._stream_raw_parts(
+                _Model(),
+                {"messages": [UserMessage(role="user", content="hello", timestamp=0.0)]},
+                OpenAICompletionsOptions(),
+                request=request,
+            )
+        )
+    )
+
+    assert _FakeAsyncOpenAI.last_create_kwargs["max_completion_tokens"] == 128
+    assert "max_tokens" not in _FakeAsyncOpenAI.last_create_kwargs
 
 
 def test_openai_completions_prompt_cache_key_uses_explicit_support_flag(
@@ -714,6 +986,53 @@ def test_openai_completions_official_url_requires_prompt_cache_support_flag(
     )
 
     assert _FakeAsyncOpenAI.last_init_kwargs["base_url"] == "https://api.openai.com/v1"
+    assert _FakeAsyncOpenAI.last_create_kwargs["model"] == "gpt-test"
+    assert "prompt_cache_key" not in _FakeAsyncOpenAI.last_create_kwargs
+    assert "prompt_cache_retention" not in _FakeAsyncOpenAI.last_create_kwargs
+
+
+def test_openai_completions_typed_prompt_cache_key_unsupported_disables_payload(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _fake_openai_module(monkeypatch)
+    registry = get_default_model_registry()
+    registry.register_endpoint(
+        "custom-openai",
+        Endpoint(
+            id="openai-completions",
+            provider="custom-openai",
+            api="openai-completions",
+            base_url="https://api.openai.com/v1",
+            protocol=EndpointProtocolFeatures.from_raw(
+                {"cache": {"promptKey": "unsupported"}}
+            ),
+            models={
+                "gpt-test": Model(
+                    id="gpt-test",
+                    provider="custom-openai",
+                    endpoint="openai-completions",
+                    capabilities=Capabilities(input=("text",), max_tokens=4096),
+                )
+            },
+        ),
+    )
+    model = registry.get_model("custom-openai", "openai-completions", "gpt-test")
+    provider = OpenAICompletionsProvider()
+
+    asyncio.run(
+        _collect_parts(
+            provider._stream_raw_parts(
+                model,
+                {"messages": [UserMessage(role="user", content="hello", timestamp=0.0)]},
+                OpenAICompletionsOptions(
+                    api_key="test-key",
+                    cache_retention="long",
+                    session_id="session-official",
+                ),
+            )
+        )
+    )
+
     assert "prompt_cache_key" not in _FakeAsyncOpenAI.last_create_kwargs
     assert "prompt_cache_retention" not in _FakeAsyncOpenAI.last_create_kwargs
 
@@ -1561,7 +1880,12 @@ def _patch_resolved_request(
                 raise ValueError(
                     f"Mismatched api: provider={provider_api!r} request.api={request.api!r}"
                 )
-            return request
+            return resolve_provider_request(
+                provider_api,
+                _model,
+                options=options,
+                request=request,
+            )
         headers = {}
         api_key = getattr(options, "api_key", None) if options is not None else None
         if isinstance(api_key, str) and api_key:
@@ -1576,28 +1900,34 @@ def _patch_resolved_request(
             if isinstance(option_max_tokens, int)
             else max_tokens
         )
-        return ResolvedRequest(
-            provider=getattr(_model, "provider_id", ""),
-            endpoint=getattr(_model, "endpoint_id", ""),
-            api=provider_api,
+        resolved_compat = resolve_openai_completions_compat(
+            provider_id=getattr(_model, "provider_id", ""),
+            model_id=getattr(_model, "id", ""),
             base_url=base_url,
-            headers=headers,
-            adapter_compat=resolve_openai_completions_compat(
-                provider_id=getattr(_model, "provider_id", ""),
-                model_id=getattr(_model, "id", ""),
+            raw=compat,
+        )
+        return resolve_provider_request(
+            provider_api,
+            _model,
+            options=options,
+            request=ResolvedRequest(
+                provider=getattr(_model, "provider_id", ""),
+                endpoint=getattr(_model, "endpoint_id", ""),
+                api=provider_api,
                 base_url=base_url,
-                raw=compat,
+                headers=headers,
+                adapter_compat=resolved_compat,
+                max_tokens=resolved_max_tokens,
+                capabilities=capabilities
+                or Capabilities(
+                    input=tuple(getattr(_model, "input", ("text",))),
+                    reasoning=bool(getattr(_model, "reasoning", False)),
+                ),
+                reasoning_effort=reasoning_effort,
+                routing=routing or EndpointRouting(),
+                transport=transport or EndpointTransport(),
+                upstream_model_id=upstream_model_id,
             ),
-            max_tokens=resolved_max_tokens,
-            capabilities=capabilities
-            or Capabilities(
-                input=tuple(getattr(_model, "input", ("text",))),
-                reasoning=bool(getattr(_model, "reasoning", False)),
-            ),
-            reasoning_effort=reasoning_effort,
-            routing=routing or EndpointRouting(),
-            transport=transport or EndpointTransport(),
-            upstream_model_id=upstream_model_id,
         )
 
     monkeypatch.setattr(

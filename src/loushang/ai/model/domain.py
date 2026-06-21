@@ -399,6 +399,7 @@ class EndpointProtocolTools:
 class EndpointProtocolCache:
     on_tools: SupportStatus = SupportStatus.UNKNOWN
     long_retention: SupportStatus = SupportStatus.UNKNOWN
+    prompt_key: SupportStatus = SupportStatus.UNKNOWN
     _explicit_keys: frozenset[str] = field(
         default_factory=frozenset,
         compare=False,
@@ -406,7 +407,7 @@ class EndpointProtocolCache:
     )
 
     def __post_init__(self) -> None:
-        _normalize_status_attrs(self, "on_tools", "long_retention")
+        _normalize_status_attrs(self, "on_tools", "long_retention", "prompt_key")
 
     @classmethod
     def from_raw(cls, raw: Mapping[str, object] | None) -> "EndpointProtocolCache":
@@ -414,7 +415,11 @@ class EndpointProtocolCache:
         return cls(
             on_tools=_status_from_raw(raw, "onTools"),
             long_retention=_status_from_raw(raw, "longRetention"),
-            _explicit_keys=_explicit_keys(raw, ("onTools", "longRetention")),
+            prompt_key=_status_from_raw(raw, "promptKey"),
+            _explicit_keys=_explicit_keys(
+                raw,
+                ("onTools", "longRetention", "promptKey"),
+            ),
         )
 
     def to_raw(self) -> dict[str, object]:
@@ -429,6 +434,11 @@ class EndpointProtocolCache:
             explicit="longRetention" in self._explicit_keys,
         ):
             raw["longRetention"] = value
+        if value := _status_to_raw(
+            self.prompt_key,
+            explicit="promptKey" in self._explicit_keys,
+        ):
+            raw["promptKey"] = value
         return raw
 
 

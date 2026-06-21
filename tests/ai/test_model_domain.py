@@ -41,6 +41,7 @@ def test_endpoint_protocol_features_round_trip() -> None:
                 "effort": "supported",
                 "effortMap": {"off": None, "minimal": "low"},
             },
+            "cache": {"promptKey": "supported"},
         }
     )
     endpoint = Endpoint(
@@ -66,6 +67,7 @@ def test_endpoint_protocol_features_round_trip() -> None:
             "effort": "supported",
             "effortMap": {"off": None, "minimal": "low"},
         },
+        "cache": {"promptKey": "supported"},
     }
     assert EndpointProtocolFeatures.from_raw(raw) == EndpointProtocolFeatures(
         store=SupportStatus.UNSUPPORTED,
@@ -78,6 +80,7 @@ def test_endpoint_protocol_features_round_trip() -> None:
             effort=SupportStatus.SUPPORTED,
             effort_map={"off": None, "minimal": "low"},
         ),
+        cache=EndpointProtocolCache(prompt_key=SupportStatus.SUPPORTED),
     )
 
 
@@ -101,6 +104,7 @@ def test_endpoint_protocol_constructors_normalize_raw_status_strings() -> None:
         cache=EndpointProtocolCache(
             on_tools="supported",
             long_retention="unsupported",
+            prompt_key="supported",
         ),
         session=EndpointProtocolSession(
             id_header="supported",
@@ -127,6 +131,7 @@ def test_endpoint_protocol_constructors_normalize_raw_status_strings() -> None:
         "cache": {
             "onTools": "supported",
             "longRetention": "unsupported",
+            "promptKey": "supported",
         },
         "session": {
             "idHeader": "supported",

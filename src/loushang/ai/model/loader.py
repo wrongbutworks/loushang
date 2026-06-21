@@ -102,7 +102,7 @@ ALLOWED_PROTOCOL_SECTION_KEYS: dict[str, frozenset[str]] = {
     "streaming": frozenset({"usage", "reasoningDelta"}),
     "reasoning": frozenset({"effort", "effortMap", "interleaved"}),
     "tools": frozenset({"strictSchema", "eagerInputStream", "fineGrained"}),
-    "cache": frozenset({"onTools", "longRetention"}),
+    "cache": frozenset({"onTools", "longRetention", "promptKey"}),
     "session": frozenset({"idHeader", "affinityHeaders"}),
 }
 ALLOWED_DIALECT_KEYS = frozenset(

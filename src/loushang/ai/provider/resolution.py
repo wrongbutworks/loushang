@@ -3,21 +3,38 @@ from __future__ import annotations
 import os
 import re
 from collections.abc import Mapping
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from typing import Any
 
 from loushang.ai.auth.support import resolve_auth_for_model
 from loushang.ai.model import Model
 from loushang.ai.model.compat_schema import (
+    CACHE_CONTROL_FORMAT,
+    COMPAT_DEFAULTS,
     DIALECT_COMPAT_BOOL_MAPPINGS,
     DIALECT_COMPAT_VALUE_MAPPINGS,
+    MAX_TOKENS_FIELD,
     OPENROUTER_ROUTING,
     PROTOCOL_COMPAT_STATUS_MAPPINGS,
     PROVIDER_TRANSPORT,
     REASONING_EFFORT_MAP,
+    REQUIRES_ASSISTANT_AFTER_TOOL_RESULT,
+    REQUIRES_REASONING_CONTENT_ON_ASSISTANT_MESSAGES,
+    REQUIRES_THINKING_AS_TEXT,
+    REQUIRES_TOOL_RESULT_NAME,
+    SEND_SESSION_AFFINITY_HEADERS,
+    SUPPORTS_DEVELOPER_ROLE,
+    SUPPORTS_LONG_CACHE_RETENTION,
     SUPPORTS_PROMPT_CACHE_KEY,
+    SUPPORTS_REASONING_EFFORT,
+    SUPPORTS_STORE,
+    SUPPORTS_STREAM_REASONING_DELTA,
+    SUPPORTS_STRICT_MODE,
+    SUPPORTS_USAGE_IN_STREAMING,
+    THINKING_FORMAT,
     UPSTREAM_MODEL_ID,
     VERCEL_GATEWAY_ROUTING,
+    ZAI_TOOL_STREAM,
     resolve_anthropic_messages_compat,
     resolve_openai_completions_compat,
     resolve_openai_responses_compat,
@@ -43,6 +60,28 @@ LEGACY_MODEL_CONTRACT_COMPAT_KEYS = frozenset(
         OPENROUTER_ROUTING,
         UPSTREAM_MODEL_ID,
         VERCEL_GATEWAY_ROUTING,
+    }
+)
+
+OPENAI_COMPLETIONS_COMPAT_DEFAULT_KEYS = frozenset(
+    {
+        SUPPORTS_STORE,
+        SUPPORTS_DEVELOPER_ROLE,
+        SUPPORTS_REASONING_EFFORT,
+        REASONING_EFFORT_MAP,
+        SUPPORTS_USAGE_IN_STREAMING,
+        SUPPORTS_STREAM_REASONING_DELTA,
+        MAX_TOKENS_FIELD,
+        REQUIRES_TOOL_RESULT_NAME,
+        REQUIRES_ASSISTANT_AFTER_TOOL_RESULT,
+        REQUIRES_THINKING_AS_TEXT,
+        REQUIRES_REASONING_CONTENT_ON_ASSISTANT_MESSAGES,
+        THINKING_FORMAT,
+        SUPPORTS_STRICT_MODE,
+        ZAI_TOOL_STREAM,
+        CACHE_CONTROL_FORMAT,
+        SEND_SESSION_AFFINITY_HEADERS,
+        SUPPORTS_LONG_CACHE_RETENTION,
     }
 )
 
@@ -120,6 +159,78 @@ def ensure_request_api(provider_api: str, request: ResolvedRequest) -> ResolvedR
     return request
 
 
+def _normalize_request_for_api(
+    provider_api: str,
+    request: ResolvedRequest,
+) -> ResolvedRequest:
+    if provider_api != "openai-completions":
+        return request
+    raw_compat = dict(request.adapter_compat or {})
+    _validate_adapter_compat_raw(raw_compat)
+    typed_protocol = _merge_protocol_features(
+        request.protocol,
+        request.adapter_protocol,
+    )
+    typed_dialect = _merge_wire_dialect(
+        request.dialect,
+        request.adapter_dialect,
+    )
+    projection_compat = _openai_completions_compat_with_defaults(raw_compat)
+    adapter_protocol = _merge_protocol_features(
+        _protocol_from_compat(projection_compat),
+        typed_protocol,
+    )
+    adapter_dialect = _merge_wire_dialect(
+        _merge_wire_dialect_with_compat(EndpointWireDialect(), projection_compat),
+        typed_dialect,
+    )
+    adapter_compat = _adapter_compat_from_typed(
+        raw_compat,
+        adapter_protocol,
+        adapter_dialect,
+    )
+    if (
+        adapter_protocol == request.adapter_protocol
+        and adapter_protocol.to_raw() == request.adapter_protocol.to_raw()
+        and adapter_dialect == request.adapter_dialect
+        and adapter_dialect.to_raw() == request.adapter_dialect.to_raw()
+        and adapter_compat == dict(request.adapter_compat or {})
+    ):
+        return request
+    return replace(
+        request,
+        compat=adapter_compat,
+        adapter_protocol=adapter_protocol,
+        adapter_dialect=adapter_dialect,
+        adapter_compat=adapter_compat,
+    )
+
+
+def _openai_completions_compat_with_defaults(
+    raw_compat: Mapping[str, object],
+) -> dict[str, object]:
+    projection_compat = {
+        key: COMPAT_DEFAULTS[key]
+        for key in OPENAI_COMPLETIONS_COMPAT_DEFAULT_KEYS
+        if key in COMPAT_DEFAULTS
+    }
+    projection_compat.update(dict(raw_compat))
+    if SUPPORTS_PROMPT_CACHE_KEY not in raw_compat:
+        projection_compat.pop(SUPPORTS_PROMPT_CACHE_KEY, None)
+    return projection_compat
+
+
+def _adapter_compat_from_typed(
+    raw_compat: Mapping[str, object],
+    adapter_protocol: EndpointProtocolFeatures,
+    adapter_dialect: EndpointWireDialect,
+) -> dict[str, object]:
+    adapter_compat = dict(raw_compat)
+    adapter_compat.update(adapter_protocol.to_compat())
+    adapter_compat.update(adapter_dialect.to_compat())
+    return adapter_compat
+
+
 def resolve_provider_request(
     provider_api: str,
     model: Model,
@@ -132,7 +243,10 @@ def resolve_provider_request(
         if request is not None
         else resolve_request_for_model(model, options=options)
     )
-    return ensure_request_api(provider_api, resolved)
+    return _normalize_request_for_api(
+        provider_api,
+        ensure_request_api(provider_api, resolved),
+    )
 
 
 def resolve_endpoint_for_model(

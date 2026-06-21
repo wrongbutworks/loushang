@@ -8,7 +8,6 @@ from loushang.ai.context import ensure_normalized_context
 from loushang.ai.options import PairingMode
 from loushang.ai.provider.resolution import (
     ResolvedRequest,
-    ensure_request_api,
     resolve_provider_request,
 )
 
@@ -46,10 +45,6 @@ def _provider_call_style(method: Any) -> _ProviderCallStyle:
     ):
         return "positional"
     return "legacy"
-
-
-def _check_request_api(provider_api: str, request: ResolvedRequest) -> None:
-    ensure_request_api(provider_api, request)
 
 
 def _resolve_pairing_mode(options) -> PairingMode:
@@ -100,7 +95,12 @@ async def call_api_provider_stream(
     options,
     request: ResolvedRequest,
 ):
-    _check_request_api(provider.api, request)
+    request = resolve_provider_request(
+        provider.api,
+        model,
+        options=options,
+        request=request,
+    )
     return await _call_provider(
         provider.stream,
         _provider_call_style(provider.stream),
@@ -118,7 +118,12 @@ async def call_api_provider_stream_simple(
     options,
     request: ResolvedRequest,
 ):
-    _check_request_api(provider.api, request)
+    request = resolve_provider_request(
+        provider.api,
+        model,
+        options=options,
+        request=request,
+    )
     return await _call_provider(
         provider.stream_simple,
         _provider_call_style(provider.stream_simple),
@@ -135,9 +140,6 @@ class _RequestAwareProviderInvoker:
         self.api = provider.api
         self._stream_style = _provider_call_style(provider.stream)
         self._stream_simple_style = _provider_call_style(provider.stream_simple)
-
-    def _check_request_api(self, request: ResolvedRequest) -> None:
-        _check_request_api(self.api, request)
 
     def _resolve_request(self, model, options, request: ResolvedRequest | None):
         return resolve_provider_request(

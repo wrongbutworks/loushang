@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import inspect
 import json
 import os
@@ -57,6 +58,10 @@ from loushang.ai.provider import (
     resolve_endpoint_for_model,
     resolve_provider_request,
     resolve_request_for_model,
+)
+from loushang.ai.provider.invocation import (
+    call_api_provider_stream,
+    call_api_provider_stream_simple,
 )
 
 
@@ -204,8 +209,41 @@ def test_custom_openai_completions_endpoint_prompt_cache_key_is_opt_in() -> None
     model = registry.get_model("custom", "openai-completions", "model-a")
 
     resolved = resolve_request_for_model(model, registry=registry, env={})
+    provider_resolved = resolve_provider_request(
+        "openai-completions",
+        model,
+        request=resolved,
+    )
 
     assert resolved.adapter_compat.get(SUPPORTS_PROMPT_CACHE_KEY, False) is False
+    assert resolved.adapter_protocol.cache.prompt_key is SupportStatus.UNKNOWN
+    assert provider_resolved.adapter_protocol.cache.prompt_key is SupportStatus.UNKNOWN
+
+
+def test_custom_openai_completions_prompt_cache_key_projects_to_protocol() -> None:
+    endpoint = Endpoint(
+        id="openai-completions",
+        provider="custom",
+        api="openai-completions",
+        base_url="https://example.compat/v1",
+        compat=Compat.from_raw({SUPPORTS_PROMPT_CACHE_KEY: True}),
+        models={
+            "model-a": Model(
+                id="model-a",
+                provider="custom",
+                endpoint="openai-completions",
+            )
+        },
+    )
+    registry = ModelRegistry.from_providers(
+        {"custom": Provider(id="custom", endpoints={endpoint.id: endpoint})}
+    )
+    model = registry.get_model("custom", "openai-completions", "model-a")
+
+    resolved = resolve_request_for_model(model, registry=registry, env={})
+
+    assert resolved.adapter_compat[SUPPORTS_PROMPT_CACHE_KEY] is True
+    assert resolved.adapter_protocol.cache.prompt_key is SupportStatus.SUPPORTED
 
 
 def test_official_openai_completions_url_does_not_project_prompt_cache_key() -> None:
@@ -228,8 +266,15 @@ def test_official_openai_completions_url_does_not_project_prompt_cache_key() -> 
     model = registry.get_model("custom", "openai-completions", "model-a")
 
     resolved = resolve_request_for_model(model, registry=registry, env={})
+    provider_resolved = resolve_provider_request(
+        "openai-completions",
+        model,
+        request=resolved,
+    )
 
     assert SUPPORTS_PROMPT_CACHE_KEY not in resolved.adapter_compat
+    assert resolved.adapter_protocol.cache.prompt_key is SupportStatus.UNKNOWN
+    assert provider_resolved.adapter_protocol.cache.prompt_key is SupportStatus.UNKNOWN
 
 
 def test_official_openai_completions_prompt_cache_key_can_be_disabled() -> None:
@@ -255,6 +300,7 @@ def test_official_openai_completions_prompt_cache_key_can_be_disabled() -> None:
     resolved = resolve_request_for_model(model, registry=registry, env={})
 
     assert resolved.adapter_compat[SUPPORTS_PROMPT_CACHE_KEY] is False
+    assert resolved.adapter_protocol.cache.prompt_key is SupportStatus.UNSUPPORTED
 
 
 def test_builtin_catalog_declares_removed_openai_compat_detector_facts() -> None:
@@ -623,6 +669,86 @@ def test_resolve_provider_request_returns_matching_supplied_request() -> None:
     )
 
     assert resolve_provider_request("openai-responses", model, request=request) is request
+
+
+def test_call_api_provider_helpers_use_normalized_supplied_request() -> None:
+    provider = _RequestRecordingProvider()
+    model = Model(id="model-a", provider="custom", endpoint="openai-completions")
+    request = ResolvedRequest(
+        provider="custom",
+        endpoint="openai-completions",
+        api="openai-completions",
+        base_url=None,
+        protocol=EndpointProtocolFeatures.from_raw(
+            {"cache": {"promptKey": "supported"}}
+        ),
+    )
+
+    assert (
+        asyncio.run(
+            call_api_provider_stream(
+                provider,
+                model,
+                {"messages": []},
+                OpenAICompletionsOptions(),
+                request,
+            )
+        )
+        == "stream"
+    )
+    assert provider.stream_request is not None
+    assert (
+        provider.stream_request.adapter_protocol.cache.prompt_key
+        is SupportStatus.SUPPORTED
+    )
+
+    assert (
+        asyncio.run(
+            call_api_provider_stream_simple(
+                provider,
+                model,
+                {"messages": []},
+                OpenAICompletionsOptions(),
+                request,
+            )
+        )
+        == "stream_simple"
+    )
+    assert provider.stream_simple_request is not None
+    assert (
+        provider.stream_simple_request.adapter_protocol.cache.prompt_key
+        is SupportStatus.SUPPORTED
+    )
+
+
+def test_resolve_provider_request_validates_supplied_compat() -> None:
+    model = Model(id="model-a", provider="custom", endpoint="openai-completions")
+    request = ResolvedRequest(
+        provider="custom",
+        endpoint="openai-completions",
+        api="openai-completions",
+        base_url=None,
+        compat={SUPPORTS_PROMPT_CACHE_KEY: "true"},
+    )
+
+    with pytest.raises(ValueError, match=SUPPORTS_PROMPT_CACHE_KEY):
+        resolve_provider_request("openai-completions", model, request=request)
+
+
+class _RequestRecordingProvider:
+    api = "openai-completions"
+
+    def __init__(self) -> None:
+        self.stream_request: ResolvedRequest | None = None
+        self.stream_simple_request: ResolvedRequest | None = None
+
+    async def stream(self, _model, _context, _options, request: ResolvedRequest):
+        self.stream_request = request
+        return "stream"
+
+    async def stream_simple(self, _model, _context, _options, request: ResolvedRequest):
+        self.stream_simple_request = request
+        return "stream_simple"
 
 
 def test_resolved_request_rejects_conflicting_compat_aliases() -> None:

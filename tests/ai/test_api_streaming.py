@@ -1,19 +1,27 @@
 from __future__ import annotations
 
 import asyncio
+import sys
 from dataclasses import dataclass, field
-from types import SimpleNamespace
+from types import ModuleType, SimpleNamespace
 
 import pytest
 
 from loushang.ai.api.streaming import stream, stream_simple
 from loushang.ai.api_registry import ApiProviderRegistry
 from loushang.ai.context import NORMALIZED_CONTEXT_MARKER
-from loushang.ai.model import Capabilities
-from loushang.ai.options import ModelCallOptions
+from loushang.ai.model import (
+    Capabilities,
+    EndpointProtocolFeatures,
+    EndpointWireDialect,
+)
+from loushang.ai.options import ModelCallOptions, OpenAICompletionsOptions
+from loushang.ai.provider import ResolvedRequest
+from loushang.ai.providers.openai_completions import OpenAICompletionsProvider
 from loushang.ai.types import (
     AssistantMessage,
     ImagePart,
+    Tool,
     ToolCall,
     ToolResultMessage,
     Usage,
@@ -606,6 +614,75 @@ def test_stream_normalizes_context_against_resolved_request_api(
     assert normalized_tool_result.tool_call_id == "call_1"
 
 
+def test_stream_public_path_uses_openai_completions_typed_request(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _fake_openai_module(monkeypatch)
+    registry = ApiProviderRegistry()
+    registry.register_api_provider(OpenAICompletionsProvider())
+    model = SimpleNamespace(
+        id="gpt-test",
+        provider_id="custom",
+        endpoint_id="openai-completions",
+        input=("text",),
+        pricing=None,
+    )
+    request = ResolvedRequest(
+        provider="custom",
+        endpoint="openai-completions",
+        api="openai-completions",
+        base_url="https://api.openai.test/v1",
+        headers={"Authorization": "Bearer test-key"},
+        protocol=EndpointProtocolFeatures.from_raw(
+            {"cache": {"promptKey": "supported"}}
+        ),
+        dialect=EndpointWireDialect.from_raw(
+            {
+                "maxOutputTokensField": "max_completion_tokens",
+                "tools": {"streamFlag": True},
+            }
+        ),
+        max_tokens=128,
+        capabilities=Capabilities(input=("text",), tool_use=True, max_tokens=4096),
+    )
+
+    def _resolve_request(_model, options=None):
+        return request
+
+    monkeypatch.setattr(
+        "loushang.ai.api.streaming.resolve_request_for_model",
+        _resolve_request,
+    )
+
+    async def _run() -> None:
+        event_stream = await stream(
+            model,
+            {
+                "messages": [UserMessage(role="user", content="hello", timestamp=0.0)],
+                "tools": [
+                    Tool(
+                        name="calc",
+                        description="Calculate values",
+                        parameters={"type": "object"},
+                    )
+                ],
+            },
+            OpenAICompletionsOptions(
+                cache_retention="short",
+                session_id="session-public",
+            ),
+            registry=registry,
+        )
+        await event_stream.result()
+
+    asyncio.run(_run())
+
+    assert _FakeAsyncOpenAI.last_create_kwargs["max_completion_tokens"] == 128
+    assert "max_tokens" not in _FakeAsyncOpenAI.last_create_kwargs
+    assert _FakeAsyncOpenAI.last_create_kwargs["prompt_cache_key"] == "session-public"
+    assert _FakeAsyncOpenAI.last_create_kwargs["tool_stream"] is True
+
+
 def _patch_resolved_request(
     monkeypatch: pytest.MonkeyPatch,
     *,
@@ -636,3 +713,45 @@ def _patch_resolved_request(
         "loushang.ai.provider.invocation.resolve_provider_request",
         _resolve_provider_request,
     )
+
+
+def _fake_openai_module(monkeypatch: pytest.MonkeyPatch) -> None:
+    _FakeAsyncOpenAI.last_init_kwargs = {}
+    _FakeAsyncOpenAI.last_create_kwargs = {}
+    _FakeAsyncOpenAI.chunks = []
+    module = ModuleType("openai")
+    module.AsyncOpenAI = _FakeAsyncOpenAI
+    monkeypatch.setitem(sys.modules, "openai", module)
+
+
+class _FakeAsyncOpenAI:
+    last_init_kwargs: dict[str, object] = {}
+    last_create_kwargs: dict[str, object] = {}
+    chunks: list[object] = []
+
+    def __init__(self, **kwargs) -> None:
+        type(self).last_init_kwargs = kwargs
+        self.chat = SimpleNamespace(completions=_FakeCompletions(type(self)))
+
+
+class _FakeCompletions:
+    def __init__(self, owner: type[_FakeAsyncOpenAI]) -> None:
+        self._owner = owner
+
+    async def create(self, **kwargs):
+        self._owner.last_create_kwargs = kwargs
+        return _FakeStream(self._owner.chunks)
+
+
+class _FakeStream:
+    def __init__(self, chunks: list[object]) -> None:
+        self._iterator = iter(chunks)
+
+    def __aiter__(self):
+        return self
+
+    async def __anext__(self):
+        try:
+            return next(self._iterator)
+        except StopIteration as exc:
+            raise StopAsyncIteration from exc

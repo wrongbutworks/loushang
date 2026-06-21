@@ -2,32 +2,15 @@ from __future__ import annotations
 
 import asyncio
 from collections.abc import AsyncIterator, Mapping
-from typing import Any, cast
+from typing import Any
 from urllib.parse import urlsplit
 
 from loushang.ai.context import ensure_normalized_context
 from loushang.ai.event_stream import AssistantMessageEventStream, RawAssembler
-from loushang.ai.model.compat_schema import (
-    CACHE_CONTROL_FORMAT,
-    MAX_TOKENS_FIELD,
-    REASONING_EFFORT_MAP,
-    REQUIRES_ASSISTANT_AFTER_TOOL_RESULT,
-    REQUIRES_REASONING_CONTENT_ON_ASSISTANT_MESSAGES,
-    REQUIRES_THINKING_AS_TEXT,
-    REQUIRES_TOOL_RESULT_NAME,
-    SEND_SESSION_AFFINITY_HEADERS,
-    SUPPORTS_DEVELOPER_ROLE,
-    SUPPORTS_LONG_CACHE_RETENTION,
-    SUPPORTS_PROMPT_CACHE_KEY,
-    SUPPORTS_REASONING_EFFORT,
-    SUPPORTS_STORE,
-    SUPPORTS_STRICT_MODE,
-    SUPPORTS_USAGE_IN_STREAMING,
-    THINKING_FORMAT,
-    ZAI_TOOL_STREAM,
-    compat_bool,
-    compat_dict,
-    compat_str,
+from loushang.ai.model.domain import (
+    EndpointProtocolFeatures,
+    EndpointWireDialect,
+    SupportStatus,
 )
 from loushang.ai.options import PairingMode
 from loushang.ai.output_budget import resolve_output_token_budget
@@ -122,15 +105,14 @@ class OpenAICompletionsProvider:
             options=options,
             request=request,
         )
-        compat = dict(getattr(resolved, "adapter_compat", {}) or {})
-        supports_usage_in_streaming = compat_bool(compat, SUPPORTS_USAGE_IN_STREAMING)
-        supports_store = compat_bool(compat, SUPPORTS_STORE)
-        max_tokens_field = compat_str(compat, MAX_TOKENS_FIELD, default="max_tokens")
-        thinking_format = compat_str(compat, THINKING_FORMAT)
-        reasoning_effort_map = cast(
-            dict[str, str], compat_dict(compat, REASONING_EFFORT_MAP)
-        )
-        supports_reasoning_effort = compat_bool(compat, SUPPORTS_REASONING_EFFORT)
+        protocol = _request_protocol(resolved)
+        dialect = _request_dialect(resolved)
+        supports_usage_in_streaming = _is_supported(protocol.streaming.usage)
+        supports_store = _is_supported(protocol.store)
+        max_tokens_field = dialect.max_output_tokens_field or "max_tokens"
+        thinking_format = dialect.reasoning.wire_format
+        reasoning_effort_map = dict(protocol.reasoning.effort_map)
+        supports_reasoning_effort = _is_supported(protocol.reasoning.effort)
 
         # OpenAI Python SDK
         try:
@@ -165,7 +147,7 @@ class OpenAICompletionsProvider:
             cache_retention != "none"
             and isinstance(session_id, str)
             and session_id
-            and compat_bool(compat, SEND_SESSION_AFFINITY_HEADERS)
+            and _is_supported(protocol.session.affinity_headers)
         ):
             apply_session_headers(
                 default_headers,
@@ -189,11 +171,17 @@ class OpenAICompletionsProvider:
         _debug("client", {"base_url": effective_base_url, "headers": default_headers})
 
         capabilities = getattr(resolved, "capabilities", None)
-        messages_param = _build_messages(model, normalized, compat, capabilities)
-        tools_param = _build_tools(normalized.get("tools"), compat)
+        messages_param = _build_messages(
+            model,
+            normalized,
+            protocol,
+            dialect,
+            capabilities,
+        )
+        tools_param = _build_tools(normalized.get("tools"), protocol)
         if tools_param is None and _has_tool_history(normalized.get("messages", [])):
             tools_param = []
-        cache_control = _get_compat_cache_control(compat, cache_retention)
+        cache_control = _get_cache_control(protocol, dialect, cache_retention)
         if cache_control is not None:
             _apply_anthropic_cache_control(messages_param, tools_param, cache_control)
 
@@ -206,7 +194,7 @@ class OpenAICompletionsProvider:
         }
         _apply_prompt_cache_params(
             params,
-            compat=compat,
+            protocol=protocol,
             cache_retention=cache_retention,
             session_id=session_id,
         )
@@ -223,7 +211,7 @@ class OpenAICompletionsProvider:
             params["temperature"] = getattr(options, "temperature")
         if tools_param is not None:
             params["tools"] = tools_param
-            if compat_bool(compat, ZAI_TOOL_STREAM):
+            if dialect.tools.stream_flag:
                 params["tool_stream"] = True
         tool_choice = getattr(options, "tool_choice", None)
         if tool_choice is not None:
@@ -505,6 +493,24 @@ class OpenAICompletionsProvider:
             yield {"type": "response_done"}
 
 
+def _request_protocol(request: object) -> EndpointProtocolFeatures:
+    protocol = getattr(request, "adapter_protocol", None)
+    if isinstance(protocol, EndpointProtocolFeatures):
+        return protocol
+    return EndpointProtocolFeatures()
+
+
+def _request_dialect(request: object) -> EndpointWireDialect:
+    dialect = getattr(request, "adapter_dialect", None)
+    if isinstance(dialect, EndpointWireDialect):
+        return dialect
+    return EndpointWireDialect()
+
+
+def _is_supported(status: SupportStatus) -> bool:
+    return status is SupportStatus.SUPPORTED
+
+
 def _map_stop_reason(reason: str) -> str:
     if reason in {"stop", "end"}:
         return "stop"
@@ -520,24 +526,17 @@ def _map_stop_reason(reason: str) -> str:
 def _apply_prompt_cache_params(
     params: dict[str, Any],
     *,
-    compat: dict[str, Any],
+    protocol: EndpointProtocolFeatures,
     cache_retention: str | None,
     session_id: str | None,
 ) -> None:
     if cache_retention == "none" or not isinstance(session_id, str) or not session_id:
         return
-    if not _supports_prompt_cache_key(compat):
+    if not _is_supported(protocol.cache.prompt_key):
         return
-    supports_long_retention = compat_bool(
-        compat, SUPPORTS_LONG_CACHE_RETENTION, default=True
-    )
     params["prompt_cache_key"] = session_id
-    if cache_retention == "long" and supports_long_retention:
+    if cache_retention == "long" and _is_supported(protocol.cache.long_retention):
         params["prompt_cache_retention"] = "24h"
-
-
-def _supports_prompt_cache_key(compat: dict[str, Any]) -> bool:
-    return compat_bool(compat, SUPPORTS_PROMPT_CACHE_KEY)
 
 
 def _apply_reasoning_params(
@@ -547,7 +546,7 @@ def _apply_reasoning_params(
     model,
     thinking_format: str | None,
     reasoning_effort: str | None,
-    reasoning_effort_map: dict[str, str],
+    reasoning_effort_map: Mapping[str, str | None],
     supports_reasoning_effort: bool,
     capabilities: object | None = None,
 ) -> None:
@@ -605,7 +604,7 @@ def _apply_reasoning_params(
 def _apply_reasoning_effort_if_supported(
     params: dict[str, Any],
     reasoning_effort: str | None,
-    reasoning_effort_map: dict[str, str],
+    reasoning_effort_map: Mapping[str, str | None],
     supports_reasoning_effort: bool,
 ) -> None:
     if isinstance(reasoning_effort, str) and supports_reasoning_effort:
@@ -686,18 +685,19 @@ def _resolve_timeout_seconds(options, resolved) -> float | int | None:
     return None
 
 
-def _get_compat_cache_control(
-    compat: dict[str, Any],
+def _get_cache_control(
+    protocol: EndpointProtocolFeatures,
+    dialect: EndpointWireDialect,
     cache_retention: str | None,
 ) -> dict[str, str] | None:
-    if compat_str(compat, CACHE_CONTROL_FORMAT) != "anthropic":
+    if dialect.cache.control_format != "anthropic":
         return None
     if cache_retention == "none":
         return None
     ttl = (
         "1h"
         if cache_retention == "long"
-        and compat_bool(compat, SUPPORTS_LONG_CACHE_RETENTION, default=True)
+        and _is_supported(protocol.cache.long_retention)
         else None
     )
     return {"type": "ephemeral", **({"ttl": ttl} if ttl else {})}
@@ -768,8 +768,8 @@ def _add_cache_control_to_message(
 
 def _map_reasoning_effort(
     effort: str | None,
-    reasoning_effort_map: dict[str, str],
-) -> str:
+    reasoning_effort_map: Mapping[str, str | None],
+) -> str | None:
     if not isinstance(effort, str):
         return "none"
     return reasoning_effort_map.get(effort, effort)
@@ -799,14 +799,15 @@ def _supports_reasoning(model: object, capabilities: object | None = None) -> bo
 def _build_messages(
     model,
     normalized: dict[str, Any],
-    compat: dict[str, Any],
+    protocol: EndpointProtocolFeatures,
+    dialect: EndpointWireDialect,
     capabilities: object | None = None,
 ) -> list[dict[str, Any]]:
     messages_param: list[dict[str, Any]] = []
     system_prompt = normalized.get("system_prompt")
-    supports_developer_role = compat_bool(compat, SUPPORTS_DEVELOPER_ROLE)
-    requires_assistant_after_tool_result = compat_bool(
-        compat, REQUIRES_ASSISTANT_AFTER_TOOL_RESULT
+    supports_developer_role = _is_supported(protocol.roles.developer)
+    requires_assistant_after_tool_result = bool(
+        dialect.tools.assistant_bridge_required
     )
     if isinstance(system_prompt, str) and system_prompt.strip():
         role = (
@@ -844,7 +845,7 @@ def _build_messages(
             index += 1
             continue
         if message_role == "assistant":
-            payload = _assistant_message_payload(msg, compat, model, capabilities)
+            payload = _assistant_message_payload(msg, dialect, model, capabilities)
             if payload is not None:
                 messages_param.append(payload)
                 last_role = "assistant"
@@ -857,7 +858,7 @@ def _build_messages(
             ):
                 tool_payload, tool_images = _tool_result_payload(
                     messages[index],
-                    compat,
+                    dialect,
                     model,
                     capabilities,
                 )
@@ -892,10 +893,13 @@ def _build_messages(
     return messages_param
 
 
-def _build_tools(tools: Any, compat: dict[str, Any]) -> list[dict[str, Any]] | None:
+def _build_tools(
+    tools: Any,
+    protocol: EndpointProtocolFeatures,
+) -> list[dict[str, Any]] | None:
     if not isinstance(tools, list) or not tools:
         return None
-    supports_strict_mode = compat_bool(compat, SUPPORTS_STRICT_MODE)
+    supports_strict_mode = _is_supported(protocol.tools.strict_schema)
     payload: list[dict[str, Any]] = []
     for tool in tools:
         name = (
@@ -987,14 +991,14 @@ def _user_message_payload(
 
 def _assistant_message_payload(
     message: object,
-    compat: dict[str, Any],
+    dialect: EndpointWireDialect,
     model,
     capabilities: object | None = None,
 ) -> dict[str, Any] | None:
-    requires_assistant_after_tool_result = compat_bool(
-        compat, REQUIRES_ASSISTANT_AFTER_TOOL_RESULT
+    requires_assistant_after_tool_result = bool(
+        dialect.tools.assistant_bridge_required
     )
-    requires_thinking_as_text = compat_bool(compat, REQUIRES_THINKING_AS_TEXT)
+    requires_thinking_as_text = bool(dialect.reasoning.thinking_as_text)
     content = (
         message.get("content")
         if isinstance(message, dict)
@@ -1089,7 +1093,7 @@ def _assistant_message_payload(
     if reasoning_details:
         payload["reasoning_details"] = reasoning_details
     if (
-        compat_bool(compat, REQUIRES_REASONING_CONTENT_ON_ASSISTANT_MESSAGES)
+        dialect.reasoning.assistant_content_required
         and _supports_reasoning(model, capabilities)
         and "reasoning_content" not in payload
     ):
@@ -1121,7 +1125,7 @@ async def _notify_provider_response(options, response, model) -> None:
 
 def _tool_result_payload(
     message: object,
-    compat: dict[str, Any],
+    dialect: EndpointWireDialect,
     model,
     capabilities: object | None = None,
 ) -> tuple[dict[str, Any], list[dict[str, Any]]]:
@@ -1158,7 +1162,7 @@ def _tool_result_payload(
         "content": text_result
         or ("(see attached image)" if has_images else MISSING_TOOL_RESULT_TEXT),
     }
-    if compat_bool(compat, REQUIRES_TOOL_RESULT_NAME) and message.tool_name:
+    if dialect.tools.result_name_required and message.tool_name:
         tool_payload["name"] = message.tool_name
     return tool_payload, image_blocks
 

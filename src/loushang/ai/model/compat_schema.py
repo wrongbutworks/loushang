@@ -51,6 +51,7 @@ PROTOCOL_COMPAT_STATUS_MAPPINGS: tuple[tuple[str, str | None, str], ...] = (
     (FINE_GRAINED_TOOLS, "tools", "fineGrained"),
     (SUPPORTS_CACHE_CONTROL_ON_TOOLS, "cache", "onTools"),
     (SUPPORTS_LONG_CACHE_RETENTION, "cache", "longRetention"),
+    (SUPPORTS_PROMPT_CACHE_KEY, "cache", "promptKey"),
     (SEND_SESSION_AFFINITY_HEADERS, "session", "affinityHeaders"),
     (SEND_SESSION_ID_HEADER, "session", "idHeader"),
 )

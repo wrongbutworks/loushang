@@ -50,6 +50,7 @@ EXPECTED_LEGACY_COMPAT_TRANSLATION_TARGETS = {
     "supportsCacheControlOnTools": "protocol.cache.onTools",
     "fineGrainedTools": "protocol.tools.fineGrained",
     "interleavedThinking": "protocol.reasoning.interleaved",
+    "supportsPromptCacheKey": "protocol.cache.promptKey",
     "providerTransport": "transport.kind",
     "supportsJsonSchemaStructuredOutput": "capabilities.structuredOutput",
     "upstreamModelId": "model.upstreamId",
@@ -1012,6 +1013,7 @@ def test_model_registry_loads_explicit_protocol_into_compat_bridge(tmp_path) -> 
             "effort": "supported",
             "effortMap": {"off": None, "minimal": "low"},
         },
+        "cache": {"promptKey": "supported"},
     }
     path = tmp_path / "models.v2.json"
     path.write_text(json.dumps(raw), encoding="utf-8")
@@ -1028,11 +1030,13 @@ def test_model_registry_loads_explicit_protocol_into_compat_bridge(tmp_path) -> 
             "effortMap": {"off": None, "minimal": "low"},
         },
         "tools": {"strictSchema": "unsupported"},
+        "cache": {"promptKey": "supported"},
     }
     assert endpoint_contract.compat["supportsDeveloperRole"] is False
     assert endpoint_contract.compat["supportsStreamReasoningDelta"] is True
     assert endpoint_contract.compat["supportsReasoningEffort"] is True
     assert endpoint_contract.compat["supportsStrictMode"] is False
+    assert endpoint_contract.compat["supportsPromptCacheKey"] is True
     assert endpoint_contract.compat["reasoningEffortMap"] == {
         "off": None,
         "minimal": "low",
