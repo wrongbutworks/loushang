@@ -23,6 +23,8 @@
   查看 endpoint 默认 facts 和模型最终 resolved request 的 typed contract
 - [advanced/custom_catalog.py](advanced/custom_catalog.py)
   从自定义 schema v2 catalog 读取 `upstreamId`，并查看最终 provider 请求绑定
+- [advanced/normalization_diagnostics.py](advanced/normalization_diagnostics.py)
+  离线查看 context/message 归一化产生的 repair、downgrade 和 signature-removal diagnostics
 
 ## Provider 配置速查
 

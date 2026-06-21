@@ -6,7 +6,8 @@ from dataclasses import dataclass, field, fields, is_dataclass
 from types import MappingProxyType
 from typing import Any
 
-from loushang.ai.messages import normalize_messages
+from loushang.ai.diagnostics import NormalizationDiagnostic
+from loushang.ai.messages import normalize_messages_result
 from loushang.ai.options import PairingMode
 from loushang.ai.types import (
     AssistantMessage,
@@ -124,7 +125,7 @@ class NormalizedContext(Mapping[str, Any]):
 @dataclass(frozen=True)
 class NormalizationResult:
     context: NormalizedContext
-    diagnostics: tuple[object, ...] = ()
+    diagnostics: tuple[NormalizationDiagnostic, ...] = ()
 
 
 def normalize_context(
@@ -174,22 +175,22 @@ def normalize_context_result(
 
     if isinstance(context, Context):
         tools = _normalize_tools(context.tools)
+        message_result = normalize_messages_result(
+            list(context.messages),
+            tools=None if tools is None else list(tools),
+            model=model,
+            pairing_mode=pairing_mode,
+        )
         return NormalizationResult(
             context=NormalizedContext(
                 system_prompt=context.system_prompt,
                 messages=tuple(
-                    _validate_normalized_messages(
-                        normalize_messages(
-                            list(context.messages),
-                            tools=None if tools is None else list(tools),
-                            model=model,
-                            pairing_mode=pairing_mode,
-                        )
-                    )
+                    _validate_normalized_messages(message_result.messages)
                 ),
                 tools=tools,
                 normalization_key=normalization_key,
-            )
+            ),
+            diagnostics=message_result.diagnostics,
         )
 
     messages = list(context.get("messages", ()))
@@ -199,13 +200,15 @@ def normalize_context_result(
         _extract_system_prompt(messages),
     )
     tools = _normalize_tools(context.get("tools"))
-    normalized_messages = normalize_messages(
-        _strip_system_messages(messages),
+    stripped_messages, message_paths = _strip_system_messages_with_paths(messages)
+    message_result = normalize_messages_result(
+        stripped_messages,
         tools=None if tools is None else list(tools),
         model=model,
         pairing_mode=pairing_mode,
+        message_paths=message_paths,
     )
-    normalized_messages = _validate_normalized_messages(normalized_messages)
+    normalized_messages = _validate_normalized_messages(message_result.messages)
     extras = {
         key: value
         for key, value in context.items()
@@ -218,7 +221,8 @@ def normalize_context_result(
             tools=tools,
             extras=extras,
             normalization_key=normalization_key,
-        )
+        ),
+        diagnostics=message_result.diagnostics,
     )
 
 
@@ -323,12 +327,21 @@ def _extract_system_prompt(messages: Iterable[object]) -> str | None:
 
 
 def _strip_system_messages(messages: Iterable[object]) -> list[object]:
+    stripped, _paths = _strip_system_messages_with_paths(messages)
+    return stripped
+
+
+def _strip_system_messages_with_paths(
+    messages: Iterable[object],
+) -> tuple[list[object], list[str]]:
     normalized: list[object] = []
-    for message in messages:
+    paths: list[str] = []
+    for index, message in enumerate(messages):
         if isinstance(message, dict) and message.get("role") in {"system", "developer"}:
             continue
         normalized.append(message)
-    return normalized
+        paths.append(f"messages[{index}]")
+    return normalized, paths
 
 
 def _validate_normalized_messages(messages: list[object]) -> list[object]:

@@ -5,7 +5,16 @@ from loushang.ai.api_registry import (
 )
 from loushang.ai.auth import get_env_api_key
 from loushang.ai.bootstrap import register_builtin_ai_providers
-from loushang.ai.context import NormalizedContext, normalize_context
+from loushang.ai.context import (
+    NormalizationResult,
+    NormalizedContext,
+    normalize_context,
+    normalize_context_result,
+)
+from loushang.ai.diagnostics import (
+    NormalizationDiagnostic,
+    NormalizationDiagnosticCode,
+)
 from loushang.ai.event_stream import (
     AssistantMessageEventStream,
     EventStream,
@@ -127,6 +136,9 @@ __all__ = [
     "Context",
     "Message",
     "Model",
+    "NormalizationDiagnostic",
+    "NormalizationDiagnosticCode",
+    "NormalizationResult",
     "NormalizedContext",
     "StopReason",
     "ModelCallOptions",
@@ -166,6 +178,7 @@ __all__ = [
     "list_models",
     "models_are_equal",
     "normalize_context",
+    "normalize_context_result",
     "normalize_tool_call_id_for_model",
     "parse_streaming_json",
     "register_api_provider",

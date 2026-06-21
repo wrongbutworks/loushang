@@ -39,6 +39,13 @@ def _write_tool() -> Tool:
     return Tool(name=definition.name, description=definition.description, parameters=definition.parameters)
 
 
+def _diagnostic_snapshot(result: NormalizationResult) -> list[tuple[str, str, str, str]]:
+    return [
+        (diagnostic.code, diagnostic.path, diagnostic.message, diagnostic.level)
+        for diagnostic in result.diagnostics
+    ]
+
+
 class _DuckTypedTool:
     name = "calc"
     description = "calculate"
@@ -345,6 +352,424 @@ def test_normalize_context_result_wraps_normalized_context() -> None:
     assert isinstance(result.context, NormalizedContext)
     assert result.context["emit_thinking"] is True
     assert result.diagnostics == ()
+
+
+def test_normalize_context_result_reports_missing_tool_result_repair() -> None:
+    assistant = AssistantMessage(
+        role="assistant",
+        content=[
+            ToolCall(type="toolCall", id="call_1", name="calc", arguments={"x": 1})
+        ],
+        api="openai-responses",
+        provider="openai",
+        model="gpt-test",
+        response_id=None,
+        usage=_usage(),
+        stop_reason="toolUse",
+        error_message=None,
+        timestamp=1.0,
+    )
+
+    result = normalize_context_result({"messages": [assistant]}, pairing_mode="repair")
+
+    assert _diagnostic_snapshot(result) == [
+        (
+            "missing_tool_result_repaired",
+            "messages[0].content[0]",
+            "Inserted synthetic error result for missing tool call 'call_1'.",
+            "warning",
+        )
+    ]
+
+
+def test_normalize_context_result_reports_tool_call_id_repairs() -> None:
+    assistant = AssistantMessage(
+        role="assistant",
+        content=[
+            ToolCall(type="toolCall", id="call:1", name="calc", arguments={"x": 1})
+        ],
+        api="openai-responses",
+        provider="openai",
+        model="gpt-test",
+        response_id=None,
+        usage=_usage(),
+        stop_reason="toolUse",
+        error_message=None,
+        timestamp=1.0,
+    )
+    tool_result = ToolResultMessage(
+        role="toolResult",
+        tool_call_id="call:1",
+        tool_name="calc",
+        content=[TextPart(type="text", text="1")],
+        is_error=False,
+        timestamp=2.0,
+    )
+
+    result = normalize_context_result(
+        {"messages": [assistant, tool_result]},
+        model=SimpleNamespace(
+            api="anthropic-messages",
+            provider_id="anthropic",
+            id="claude-test",
+        ),
+    )
+
+    assert _diagnostic_snapshot(result) == [
+        (
+            "tool_call_id_normalized",
+            "messages[0].content[0]",
+            "Normalized tool call id 'call:1' to 'call_1'.",
+            "warning",
+        ),
+        (
+            "tool_result_id_normalized",
+            "messages[1]",
+            "Normalized tool result id 'call:1' to 'call_1'.",
+            "warning",
+        ),
+    ]
+
+
+def test_normalize_context_result_keeps_original_paths_after_system_messages() -> None:
+    result = normalize_context_result(
+        {
+            "messages": [
+                {"role": "system", "content": "system"},
+                {
+                    "role": "assistant",
+                    "content": [{"type": "text", "text": "failed"}],
+                    "stopReason": "error",
+                    "errorMessage": "provider failed",
+                },
+            ]
+        }
+    )
+
+    assert _diagnostic_snapshot(result) == [
+        (
+            "error_assistant_dropped",
+            "messages[1]",
+            "Dropped error assistant message during normalization.",
+            "warning",
+        )
+    ]
+
+
+def test_normalize_context_result_skips_tool_diagnostics_for_dropped_error_assistant() -> None:
+    assistant = AssistantMessage(
+        role="assistant",
+        content=[
+            ToolCall(
+                type="toolCall",
+                id="call:1",
+                name="calc",
+                arguments={"x": 1},
+                thought_signature="thought-sig",
+            )
+        ],
+        api="openai-responses",
+        provider="openai",
+        model="gpt-test",
+        response_id=None,
+        usage=_usage(),
+        stop_reason="error",
+        error_message="provider failed",
+        timestamp=1.0,
+    )
+    tool_result = ToolResultMessage(
+        role="toolResult",
+        tool_call_id="call:1",
+        tool_name="calc",
+        content=[TextPart(type="text", text="1")],
+        is_error=False,
+        timestamp=2.0,
+    )
+
+    result = normalize_context_result(
+        {"messages": [assistant, tool_result]},
+        model=SimpleNamespace(
+            api="anthropic-messages",
+            provider_id="anthropic",
+            id="claude-test",
+        ),
+    )
+
+    assert len(result.context.messages) == 1
+    normalized_result = result.context.messages[0]
+    assert isinstance(normalized_result, ToolResultMessage)
+    assert normalized_result.tool_call_id == "call_1"
+    assert _diagnostic_snapshot(result) == [
+        (
+            "error_assistant_dropped",
+            "messages[0]",
+            "Dropped error assistant message during normalization.",
+            "warning",
+        ),
+        (
+            "tool_result_id_normalized",
+            "messages[1]",
+            "Normalized tool result id 'call:1' to 'call_1'.",
+            "warning",
+        ),
+    ]
+
+
+def test_normalize_context_result_skips_tool_diagnostics_for_aborted_boundary() -> None:
+    assistant = AssistantMessage(
+        role="assistant",
+        content=[
+            ToolCall(
+                type="toolCall",
+                id="call:1",
+                name="calc",
+                arguments={"x": 1},
+                thought_signature="thought-sig",
+            )
+        ],
+        api="openai-responses",
+        provider="openai",
+        model="gpt-test",
+        response_id=None,
+        usage=_usage(),
+        stop_reason="aborted",
+        error_message="Request aborted by user",
+        timestamp=1.0,
+    )
+    tool_result = ToolResultMessage(
+        role="toolResult",
+        tool_call_id="call:1",
+        tool_name="calc",
+        content=[TextPart(type="text", text="1")],
+        is_error=False,
+        timestamp=2.0,
+    )
+
+    result = normalize_context_result(
+        {"messages": [assistant, tool_result]},
+        model=SimpleNamespace(
+            api="anthropic-messages",
+            provider_id="anthropic",
+            id="claude-test",
+        ),
+    )
+
+    assert len(result.context.messages) == 2
+    boundary = result.context.messages[0]
+    assert isinstance(boundary, AssistantMessage)
+    assert boundary.stop_reason == "stop"
+    assert boundary.content == [TextPart(type="text", text="Request aborted by user")]
+    normalized_result = result.context.messages[1]
+    assert isinstance(normalized_result, ToolResultMessage)
+    assert normalized_result.tool_call_id == "call_1"
+    assert _diagnostic_snapshot(result) == [
+        (
+            "aborted_assistant_repaired",
+            "messages[0]",
+            "Repaired aborted assistant message as a text turn boundary.",
+            "warning",
+        ),
+        (
+            "tool_result_id_normalized",
+            "messages[1]",
+            "Normalized tool result id 'call:1' to 'call_1'.",
+            "warning",
+        ),
+    ]
+
+
+def test_normalize_context_result_keeps_repair_paths_when_tool_ids_collide() -> None:
+    assistant = AssistantMessage(
+        role="assistant",
+        content=[
+            ToolCall(type="toolCall", id="call:1", name="calc", arguments={"x": 1}),
+            ToolCall(type="toolCall", id="call_1", name="read", arguments={}),
+        ],
+        api="openai-responses",
+        provider="openai",
+        model="gpt-test",
+        response_id=None,
+        usage=_usage(),
+        stop_reason="toolUse",
+        error_message=None,
+        timestamp=1.0,
+    )
+
+    result = normalize_context_result(
+        {"messages": [assistant]},
+        model=SimpleNamespace(
+            api="anthropic-messages",
+            provider_id="anthropic",
+            id="claude-test",
+        ),
+    )
+
+    normalized = result.context.messages[0]
+    assert isinstance(normalized, AssistantMessage)
+    tool_calls = [part for part in normalized.content if isinstance(part, ToolCall)]
+    assert len(tool_calls) == 2
+    assert tool_calls[1].id == "call_1"
+    assert tool_calls[0].id != "call_1"
+    assert len({tool_call.id for tool_call in tool_calls}) == 2
+
+    synthetic_results = [
+        message
+        for message in result.context.messages
+        if isinstance(message, ToolResultMessage)
+    ]
+    assert [message.tool_call_id for message in synthetic_results] == [
+        tool_call.id for tool_call in tool_calls
+    ]
+    assert _diagnostic_snapshot(result)[:3] == [
+        (
+            "tool_call_id_normalized",
+            "messages[0].content[0]",
+            f"Normalized tool call id 'call:1' to {tool_calls[0].id!r}.",
+            "warning",
+        ),
+        (
+            "missing_tool_result_repaired",
+            "messages[0].content[0]",
+            f"Inserted synthetic error result for missing tool call {tool_calls[0].id!r}.",
+            "warning",
+        ),
+        (
+            "missing_tool_result_repaired",
+            "messages[0].content[1]",
+            "Inserted synthetic error result for missing tool call 'call_1'.",
+            "warning",
+        ),
+    ]
+
+
+def test_normalize_context_result_reports_cross_provider_downgrades_and_signature_removal() -> None:
+    assistant = AssistantMessage(
+        role="assistant",
+        content=[
+            ThinkingPart(
+                type="thinking",
+                thinking="private reasoning",
+                thinking_signature="thinking-sig",
+            ),
+            TextPart(type="text", text="answer", text_signature="text-sig"),
+            ToolCall(
+                type="toolCall",
+                id="call_1",
+                name="calc",
+                arguments={"x": 1},
+                thought_signature="thought-sig",
+            ),
+        ],
+        api="openai-responses",
+        provider="openai",
+        model="gpt-test",
+        response_id=None,
+        usage=_usage(),
+        stop_reason="toolUse",
+        error_message=None,
+        timestamp=1.0,
+    )
+    tool_result = ToolResultMessage(
+        role="toolResult",
+        tool_call_id="call_1",
+        tool_name="calc",
+        content=[TextPart(type="text", text="1")],
+        is_error=False,
+        timestamp=2.0,
+    )
+
+    result = normalize_context_result(
+        {"messages": [assistant, tool_result]},
+        model=SimpleNamespace(
+            api="anthropic-messages",
+            provider_id="anthropic",
+            id="claude-test",
+        ),
+    )
+
+    assert _diagnostic_snapshot(result) == [
+        (
+            "thinking_signature_removed",
+            "messages[0].content[0]",
+            "Removed provider-specific thinking signature.",
+            "warning",
+        ),
+        (
+            "thinking_downgraded_to_text",
+            "messages[0].content[0]",
+            "Downgraded provider-specific thinking to text.",
+            "warning",
+        ),
+        (
+            "text_signature_removed",
+            "messages[0].content[1]",
+            "Removed provider-specific text signature.",
+            "warning",
+        ),
+        (
+            "tool_call_thought_signature_removed",
+            "messages[0].content[2]",
+            "Removed provider-specific tool call thought signature.",
+            "warning",
+        ),
+    ]
+
+
+def test_normalize_context_result_reports_dropped_thinking_blocks() -> None:
+    assistant = AssistantMessage(
+        role="assistant",
+        content=[
+            ThinkingPart(
+                type="thinking",
+                thinking="private reasoning",
+                thinking_signature="thinking-sig",
+                redacted=True,
+            ),
+            ThinkingPart(type="thinking", thinking="   "),
+            TextPart(type="text", text="answer"),
+        ],
+        api="openai-responses",
+        provider="openai",
+        model="gpt-test",
+        response_id=None,
+        usage=_usage(),
+        stop_reason="stop",
+        error_message=None,
+        timestamp=1.0,
+    )
+
+    result = normalize_context_result(
+        {"messages": [assistant]},
+        model=SimpleNamespace(
+            api="anthropic-messages",
+            provider_id="anthropic",
+            id="claude-test",
+        ),
+    )
+
+    normalized = result.context.messages[0]
+    assert isinstance(normalized, AssistantMessage)
+    assert normalized.content == [TextPart(type="text", text="answer")]
+    assert _diagnostic_snapshot(result) == [
+        (
+            "thinking_signature_removed",
+            "messages[0].content[0]",
+            "Removed provider-specific thinking signature.",
+            "warning",
+        ),
+        (
+            "redacted_thinking_dropped",
+            "messages[0].content[0]",
+            "Dropped redacted thinking block while coercing assistant message.",
+            "warning",
+        ),
+        (
+            "empty_thinking_dropped",
+            "messages[0].content[1]",
+            "Dropped empty thinking block while coercing assistant message.",
+            "warning",
+        ),
+    ]
 
 
 def test_normalize_context_reprojects_normalized_context_for_new_model() -> None:

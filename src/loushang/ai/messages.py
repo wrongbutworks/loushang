@@ -1,17 +1,22 @@
 from __future__ import annotations
 
 from collections.abc import Mapping
+from dataclasses import dataclass
 from math import isfinite
 from typing import Any, cast
 
+from loushang.ai.diagnostics import (
+    NormalizationDiagnostic,
+    sort_normalization_diagnostics,
+)
 from loushang.ai.model.registry import resolve_model_api
 from loushang.ai.tool import (
     normalize_tool_call_id_for_model,
-    transform_messages,
 )
 from loushang.ai.tool.transform import (
     PairingMode,
-    coerce_cross_provider_assistant_message,
+    coerce_cross_provider_assistant_message_result,
+    transform_messages_result,
 )
 from loushang.ai.types import (
     AssistantMessage,
@@ -27,6 +32,12 @@ from loushang.ai.types import (
 )
 
 
+@dataclass(frozen=True)
+class MessageNormalizationResult:
+    messages: list[object]
+    diagnostics: tuple[NormalizationDiagnostic, ...] = ()
+
+
 def normalize_messages(
     messages: list[object],
     *,
@@ -34,7 +45,24 @@ def normalize_messages(
     model=None,
     pairing_mode: PairingMode = "repair",
 ) -> list[object]:
+    return normalize_messages_result(
+        messages,
+        tools=tools,
+        model=model,
+        pairing_mode=pairing_mode,
+    ).messages
+
+
+def normalize_messages_result(
+    messages: list[object],
+    *,
+    tools: list[Tool] | None = None,
+    model=None,
+    pairing_mode: PairingMode = "repair",
+    message_paths: list[str] | None = None,
+) -> MessageNormalizationResult:
     messages = [canonicalize_message(message) for message in messages]
+    diagnostics: list[NormalizationDiagnostic] = []
     normalize_tool_call_id = None
     if model is not None:
 
@@ -45,32 +73,43 @@ def normalize_messages(
 
         normalize_tool_call_id = _normalize_tool_call_id
 
-    transformed = transform_messages(
+    transform_result = transform_messages_result(
         messages,
         normalize_tool_call_id=normalize_tool_call_id,
         pairing_mode=pairing_mode,
+        message_paths=message_paths,
     )
+    transformed = transform_result.messages
+    transformed_paths = list(transform_result.message_paths)
+    diagnostics.extend(transform_result.diagnostics)
     transformed = [canonicalize_user_message(message) for message in transformed]
 
     if model is not None:
         target_api = resolve_model_api(model)
         if isinstance(target_api, str) and target_api:
-            transformed = [
-                coerce_cross_provider_assistant_message(
+            coerced: list[object] = []
+            for index, message in enumerate(transformed):
+                if not isinstance(message, AssistantMessage):
+                    coerced.append(message)
+                    continue
+                coercion_result = coerce_cross_provider_assistant_message_result(
                     message,
                     target_api=target_api,
                     target_provider=getattr(model, "provider_id", None),
                     target_model=getattr(model, "id", None),
+                    path=transformed_paths[index],
                 )
-                if isinstance(message, AssistantMessage)
-                else message
-                for message in transformed
-            ]
+                coerced.append(coercion_result.message)
+                diagnostics.extend(coercion_result.diagnostics)
+            transformed = coerced
 
     # Tool arguments are validated before execution. Provider-context projection
     # must keep historical malformed calls recoverable when they already have
     # matching error tool results in the transcript.
-    return transformed
+    return MessageNormalizationResult(
+        messages=transformed,
+        diagnostics=sort_normalization_diagnostics(diagnostics),
+    )
 
 
 def canonicalize_message(message: object) -> object:

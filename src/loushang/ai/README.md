@@ -101,13 +101,14 @@
   - 提取 `system_prompt`
   - 规范化 `tools`
   - 产出公开的 `NormalizedContext` 不可变 snapshot，provider 只读取这个归一化边界
-  - `NormalizationResult` 保留在 `context` 模块内，供内部归一化流程承载结果
+  - `normalize_context_result(...)` 返回 `NormalizationResult`，其中 diagnostics 会稳定报告 repair、downgrade 和 signature-removal
   - `provider.invocation` 是 provider handoff 的最终归一化 guard；内置 adapter 不再二次 normalize
 - `messages.py`
   - 负责消息规范化
   - 将输入 dict 一次性转换为 `UserMessage` / `AssistantMessage` / `ToolResultMessage`
   - 负责 user content canonicalize，adapter 不再读取 dict message/part fallback
   - 负责跨 provider assistant message 处理
+  - diagnostic 顺序按 transcript path 稳定排序；同一路径内保留处理顺序
 
 这个分法直接参考 `pi-mono` 的 `core/messages.ts` 思路。
 
@@ -209,6 +210,8 @@ code should use attribute access instead of dict-style message access.
 - `Usage`
 - `UsageCost`
 - `StopReason`
+- `NormalizationDiagnostic`
+- `NormalizationDiagnosticCode`
 - `AssistantMessageEvent`
 - `AssistantMessageEventStream`
 
@@ -217,6 +220,10 @@ code should use attribute access instead of dict-style message access.
 - `normalize_context(...)`
   - returns the public `NormalizedContext` immutable mapping contract instead of a marker-tagged dict
   - accepts pi-style dict messages, including camelCase assistant/tool-result fields such as `toolCallId`, `thinkingSignature`, `thoughtSignature`, `mimeType`, and `stopReason`
+- `normalize_context_result(...)`
+  - returns the same normalized context plus stable `NormalizationDiagnostic` entries for repairs, cross-provider downgrades, and provider-specific signature removal
+  - consumers should treat `code`, `path`, and `level` as the stable machine-readable diagnostic contract; `message` is human-readable guidance
+  - stable `NormalizationDiagnosticCode` values are `aborted_assistant_repaired`, `empty_thinking_dropped`, `error_assistant_dropped`, `missing_tool_result_repaired`, `redacted_thinking_dropped`, `text_signature_removed`, `thinking_downgraded_to_text`, `thinking_signature_removed`, `tool_call_id_normalized`, `tool_call_thought_signature_removed`, and `tool_result_id_normalized`
 - `transform_messages(...)`
   - repairs missing tool results with synthetic error tool results
   - normalizes tool call ids for provider handoff and applies the same mapping to matching tool results

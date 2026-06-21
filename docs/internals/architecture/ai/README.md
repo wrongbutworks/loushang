@@ -76,6 +76,8 @@
 - `src/loushang/ai/context.py`
 - `src/loushang/ai/pricing.py`
 
+当前 `context.py`/`messages.py` 的归一化边界会通过 `normalize_context_result(...)` 暴露稳定 diagnostics，用于报告 tool-result repair、跨 provider thinking downgrade，以及 provider-specific signature removal；adapter 继续只消费 canonical `NormalizedContext`。
+
 当前 `model/` 组件已包含：
 
 - `models.json`

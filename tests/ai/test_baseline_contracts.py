@@ -21,6 +21,9 @@ ROOT_EXPORTS_BASELINE = [
     "Context",
     "Message",
     "Model",
+    "NormalizationDiagnostic",
+    "NormalizationDiagnosticCode",
+    "NormalizationResult",
     "NormalizedContext",
     "StopReason",
     "ModelCallOptions",
@@ -60,6 +63,7 @@ ROOT_EXPORTS_BASELINE = [
     "list_models",
     "models_are_equal",
     "normalize_context",
+    "normalize_context_result",
     "normalize_tool_call_id_for_model",
     "parse_streaming_json",
     "register_api_provider",
@@ -157,7 +161,7 @@ KNOWN_BASELINE_DEBT = {
 
 def test_root_exports_baseline_snapshot() -> None:
     assert ai.__all__ == ROOT_EXPORTS_BASELINE
-    assert len(ai.__all__) == 57
+    assert len(ai.__all__) == 61
 
 
 def test_builtin_provider_and_catalog_count_baseline() -> None:
@@ -191,7 +195,7 @@ def test_test_and_example_inventory_baseline() -> None:
 
     assert len(ai_test_files) == 34
     assert len(provider_test_files) == 7
-    assert len(example_files) == 13
+    assert len(example_files) == 14
 
 
 def test_known_baseline_debt_snapshot() -> None:

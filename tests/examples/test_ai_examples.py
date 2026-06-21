@@ -311,6 +311,77 @@ def test_advanced_custom_catalog_uses_typed_upstream_binding() -> None:
     }
 
 
+def test_advanced_normalization_diagnostics_reports_stable_payload(capsys) -> None:
+    module = _load_module(
+        Path("examples/ai/advanced/normalization_diagnostics.py"),
+        "examples_ai_advanced_normalization_diagnostics",
+    )
+
+    summary = module.inspect_normalization_diagnostics()
+
+    assert summary["messageRoles"] == ["assistant", "toolResult"]
+    assert summary["normalizedMessages"] == [
+        {
+            "role": "assistant",
+            "content": [
+                {"type": "text", "text": "private reasoning"},
+                {"type": "text", "text": "answer"},
+                {
+                    "type": "toolCall",
+                    "id": "call_1",
+                    "name": "calc",
+                    "arguments": {"x": 1},
+                    "thoughtSignature": None,
+                },
+            ],
+        },
+        {
+            "role": "toolResult",
+            "toolCallId": "call_1",
+            "toolName": "calc",
+            "isError": True,
+            "details": {"synthetic": True, "reason": "missing_tool_result"},
+            "content": [{"type": "text", "text": "No result provided"}],
+        },
+    ]
+    assert summary["diagnostics"] == [
+        {
+            "code": "thinking_signature_removed",
+            "path": "messages[0].content[0]",
+            "level": "warning",
+        },
+        {
+            "code": "thinking_downgraded_to_text",
+            "path": "messages[0].content[0]",
+            "level": "warning",
+        },
+        {
+            "code": "text_signature_removed",
+            "path": "messages[0].content[1]",
+            "level": "warning",
+        },
+        {
+            "code": "tool_call_id_normalized",
+            "path": "messages[0].content[2]",
+            "level": "warning",
+        },
+        {
+            "code": "tool_call_thought_signature_removed",
+            "path": "messages[0].content[2]",
+            "level": "warning",
+        },
+        {
+            "code": "missing_tool_result_repaired",
+            "path": "messages[0].content[2]",
+            "level": "warning",
+        },
+    ]
+
+    module.main()
+    payload = json.loads(capsys.readouterr().out)
+    assert payload == summary
+
+
 def test_advanced_inspect_endpoint_contract_rejects_missing_model(
     monkeypatch,
     tmp_path,
