@@ -173,7 +173,7 @@ def normalize_context_result(
         )
 
     if isinstance(context, Context):
-        tools = None if context.tools is None else tuple(context.tools)
+        tools = _normalize_tools(context.tools)
         return NormalizationResult(
             context=NormalizedContext(
                 system_prompt=context.system_prompt,
@@ -349,16 +349,36 @@ def _normalize_tools(tools: Any) -> tuple[Tool, ...] | None:
     normalized: list[Tool] = []
     for tool in tools:
         if isinstance(tool, Tool):
-            normalized.append(tool)
+            normalized.append(
+                Tool(
+                    name=_normalize_tool_name(tool.name),
+                    description=tool.description,
+                    parameters=_normalize_tool_parameters(tool.parameters),
+                )
+            )
             continue
         if isinstance(tool, dict):
             normalized.append(
                 Tool(
-                    name=tool["name"],
+                    name=_normalize_tool_name(tool.get("name")),
                     description=tool.get("description", ""),
-                    parameters=tool.get("parameters", {"type": "object"}),
+                    parameters=_normalize_tool_parameters(
+                        tool.get("parameters", {"type": "object"})
+                    ),
                 )
             )
             continue
         raise TypeError(f"Unsupported tool type: {type(tool)!r}")
     return tuple(normalized)
+
+
+def _normalize_tool_name(name: object) -> str:
+    if isinstance(name, str) and name:
+        return name
+    raise TypeError(f"Unsupported tool name type: {type(name)!r}")
+
+
+def _normalize_tool_parameters(parameters: object) -> dict[str, Any]:
+    if isinstance(parameters, dict):
+        return parameters
+    raise TypeError(f"Unsupported tool parameters type: {type(parameters)!r}")

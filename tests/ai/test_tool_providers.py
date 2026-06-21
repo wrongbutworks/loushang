@@ -3,6 +3,7 @@ from __future__ import annotations
 from copy import deepcopy
 from types import SimpleNamespace
 
+from loushang.ai.context import normalize_context
 from loushang.ai.model import EndpointProtocolFeatures, EndpointWireDialect
 from loushang.ai.tool.providers import (
     to_anthropic_tools,
@@ -94,11 +95,11 @@ def test_openai_completions_provider_build_tools_strips_schema_meta_keys() -> No
 
     payload = _build_tools(
         [
-            {
-                "name": "probe",
-                "description": "Probe",
-                "parameters": _schema_with_meta_keys(),
-            }
+            Tool(
+                name="probe",
+                description="Probe",
+                parameters=_schema_with_meta_keys(),
+            )
         ],
         EndpointProtocolFeatures(),
     )
@@ -138,7 +139,7 @@ def test_openai_completions_provider_sanitizes_unpaired_surrogates_in_payload_te
 
     payload = _build_messages(
         SimpleNamespace(input=("text",), reasoning=False),
-        {
+        normalize_context({
             "system_prompt": f"system {_UNPAIRED_HIGH_SURROGATE} prompt",
             "messages": [
                 {
@@ -164,7 +165,7 @@ def test_openai_completions_provider_sanitizes_unpaired_surrogates_in_payload_te
                     timestamp=0.0,
                 ),
             ],
-        },
+        }),
         EndpointProtocolFeatures(),
         EndpointWireDialect(),
     )
@@ -204,7 +205,7 @@ def test_openai_responses_provider_sanitizes_unpaired_surrogates_in_payload_text
 
     payload = convert_responses_messages(
         SimpleNamespace(input=("text",), reasoning=False),
-        {
+        normalize_context({
             "system_prompt": f"system {_UNPAIRED_HIGH_SURROGATE} prompt",
             "messages": [
                 {
@@ -230,7 +231,7 @@ def test_openai_responses_provider_sanitizes_unpaired_surrogates_in_payload_text
                     timestamp=0.0,
                 ),
             ],
-        },
+        }),
         EndpointProtocolFeatures(),
         EndpointWireDialect(),
     )
@@ -244,7 +245,7 @@ def test_anthropic_provider_sanitizes_unpaired_surrogates_in_payload_text() -> N
     from loushang.ai.providers.anthropic import _build_anthropic_message_payloads
 
     messages, system = _build_anthropic_message_payloads(
-        {
+        normalize_context({
             "system_prompt": f"system {_UNPAIRED_HIGH_SURROGATE} prompt",
             "messages": [
                 {
@@ -297,7 +298,7 @@ def test_anthropic_provider_sanitizes_unpaired_surrogates_in_payload_text() -> N
                     timestamp=0.0,
                 ),
             ],
-        },
+        }),
         is_oauth_token=False,
     )
 

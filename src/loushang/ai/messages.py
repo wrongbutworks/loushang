@@ -77,11 +77,13 @@ def canonicalize_message(message: object) -> object:
     if not isinstance(message, dict):
         return message
     role = message.get("role")
+    if role == "user":
+        return _user_message_from_dict(message)
     if role == "assistant":
         return _assistant_message_from_dict(message)
     if role == "toolResult":
         return _tool_result_message_from_dict(message)
-    return message
+    raise TypeError(f"Unsupported message role: {role!r}")
 
 
 def canonicalize_user_message(message: object) -> object:
@@ -95,14 +97,21 @@ def canonicalize_user_message(message: object) -> object:
             timestamp=message.timestamp,
         )
 
-    if isinstance(message, dict) and message.get("role") == "user":
-        normalized = dict(message)
-        normalized["content"] = canonicalize_user_content(
-            message.get("content"), prefer_dict_parts=True
-        )
-        return normalized
+    if isinstance(message, dict):
+        return canonicalize_message(message)
 
     return message
+
+
+def _user_message_from_dict(message: dict[str, Any]) -> UserMessage:
+    return UserMessage(
+        role="user",
+        content=cast(
+            list[TextPart | ImagePart],
+            canonicalize_user_content(message.get("content")),
+        ),
+        timestamp=_float_or_default(message.get("timestamp")),
+    )
 
 
 def _assistant_message_from_dict(message: dict[str, Any]) -> AssistantMessage:
@@ -286,38 +295,28 @@ def _float_or_default(value: object, default: float = 0.0) -> float:
 
 def canonicalize_user_content(
     content: object,
-    *,
-    prefer_dict_parts: bool = False,
-) -> list[TextPart | ImagePart] | list[dict[str, Any]]:
+) -> list[TextPart | ImagePart]:
     if isinstance(content, str):
-        if prefer_dict_parts:
-            return [{"type": "text", "text": content}]
         return cast(
             list[TextPart | ImagePart],
             [TextPart(type="text", text=content)],
         )
 
     if isinstance(content, dict):
-        return [dict(content)] if prefer_dict_parts else [_part_from_dict(content)]
+        return [_part_from_dict(content)]
 
     if not isinstance(content, list):
         raise TypeError(f"Unsupported user content type: {type(content)!r}")
-
-    if prefer_dict_parts:
-        normalized_dict_parts: list[dict[str, Any]] = []
-        for part in content:
-            if isinstance(part, dict):
-                normalized_dict_parts.append(dict(part))
-                continue
-            normalized_dict_parts.append(_part_to_dict(part))
-        return normalized_dict_parts
 
     normalized_parts: list[TextPart | ImagePart] = []
     for part in content:
         if isinstance(part, dict):
             normalized_parts.append(_part_from_dict(part))
             continue
-        normalized_parts.append(cast(TextPart | ImagePart, part))
+        if isinstance(part, (TextPart, ImagePart)):
+            normalized_parts.append(part)
+            continue
+        raise TypeError(f"Unsupported user content part object: {type(part)!r}")
     return normalized_parts
 
 
@@ -337,23 +336,3 @@ def _part_from_dict(part: dict[str, Any]) -> TextPart | ImagePart:
             mime_type=str(mime_type or ""),
         )
     raise TypeError(f"Unsupported user content part type: {part_type!r}")
-
-
-def _part_to_dict(part: object) -> dict[str, Any]:
-    part_type = getattr(part, "type", None)
-    if part_type == "text":
-        payload: dict[str, Any] = {
-            "type": "text",
-            "text": getattr(part, "text", ""),
-        }
-        text_signature = getattr(part, "text_signature", None)
-        if text_signature is not None:
-            payload["text_signature"] = text_signature
-        return payload
-    if part_type == "image":
-        return {
-            "type": "image",
-            "data": getattr(part, "data", ""),
-            "mime_type": getattr(part, "mime_type", ""),
-        }
-    raise TypeError(f"Unsupported user content part object: {type(part)!r}")

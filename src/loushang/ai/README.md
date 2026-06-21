@@ -105,7 +105,8 @@
   - `provider.invocation` 是 provider handoff 的最终归一化 guard；内置 adapter 不再二次 normalize
 - `messages.py`
   - 负责消息规范化
-  - 负责 user content canonicalize
+  - 将输入 dict 一次性转换为 `UserMessage` / `AssistantMessage` / `ToolResultMessage`
+  - 负责 user content canonicalize，adapter 不再读取 dict message/part fallback
   - 负责跨 provider assistant message 处理
 
 这个分法直接参考 `pi-mono` 的 `core/messages.ts` 思路。
@@ -187,6 +188,11 @@
 - `clear_api_providers()`
 - `reset_api_providers(...)`
 - `register_builtin_ai_providers(...)`
+
+Custom providers registered through `ApiProviderRegistry` receive a canonical
+`NormalizedContext`: user, assistant, and tool-result messages are dataclasses,
+and tools are `Tool` dataclasses with validated dict parameters. Custom provider
+code should use attribute access instead of dict-style message access.
 
 ### 基础类型
 

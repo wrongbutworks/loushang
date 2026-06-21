@@ -221,6 +221,115 @@ def test_stream_passes_normalized_context_to_provider(
     assert normalized["messages"][0].role == "user"
 
 
+def test_stream_canonicalizes_raw_dict_context_before_provider(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _patch_resolved_request(monkeypatch, capabilities=Capabilities(input=("text", "image")))
+    monkeypatch.setattr("loushang.ai.messages.resolve_model_api", lambda _model: "faux")
+    monkeypatch.setattr(
+        "loushang.ai.tool.transform.resolve_model_api", lambda _model: "faux"
+    )
+    provider = _Provider()
+    registry = _Registry(provider)
+
+    asyncio.run(
+        stream(
+            _Model(),
+            {
+                "systemPrompt": "system text",
+                "messages": [
+                    {
+                        "role": "user",
+                        "content": [
+                            {"type": "text", "text": "hello"},
+                            {
+                                "type": "image",
+                                "data": "aW1n",
+                                "mimeType": "image/png",
+                            },
+                        ],
+                        "timestamp": 12.0,
+                    }
+                ],
+            },
+            ModelCallOptions(),
+            registry=registry,
+        )
+    )
+
+    normalized = _assert_normalized_provider_context(provider.context)
+    message = normalized["messages"][0]
+    assert normalized.system_prompt == "system text"
+    assert isinstance(message, UserMessage)
+    assert message.content == [
+        TextPart(type="text", text="hello"),
+        ImagePart(type="image", data="aW1n", mime_type="image/png"),
+    ]
+    assert message.timestamp == 12.0
+
+
+def test_stream_rejects_raw_dict_tools_with_non_object_parameters_before_provider(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _patch_resolved_request(monkeypatch)
+    provider = _Provider()
+    registry = _Registry(provider)
+
+    with pytest.raises(TypeError, match="Unsupported tool parameters type"):
+        asyncio.run(
+            stream(
+                _Model(),
+                {
+                    "messages": [
+                        UserMessage(role="user", content="hello", timestamp=0.0)
+                    ],
+                    "tools": [
+                        {
+                            "name": "calc",
+                            "description": "Calculate values",
+                            "parameters": "bad",
+                        }
+                    ],
+                },
+                ModelCallOptions(),
+                registry=registry,
+            )
+        )
+
+    assert provider.context is None
+
+
+def test_stream_rejects_raw_dict_tools_with_invalid_names_before_provider(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _patch_resolved_request(monkeypatch)
+    provider = _Provider()
+    registry = _Registry(provider)
+
+    with pytest.raises(TypeError, match="Unsupported tool name type"):
+        asyncio.run(
+            stream(
+                _Model(),
+                {
+                    "messages": [
+                        UserMessage(role="user", content="hello", timestamp=0.0)
+                    ],
+                    "tools": [
+                        {
+                            "name": "",
+                            "description": "bad",
+                            "parameters": {"type": "object"},
+                        }
+                    ],
+                },
+                ModelCallOptions(),
+                registry=registry,
+            )
+        )
+
+    assert provider.context is None
+
+
 def test_stream_passes_request_through_registered_provider(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -683,11 +792,11 @@ def test_stream_public_path_uses_openai_completions_typed_request(
             {
                 "messages": [UserMessage(role="user", content="hello", timestamp=0.0)],
                 "tools": [
-                    Tool(
-                        name="calc",
-                        description="Calculate values",
-                        parameters={"type": "object"},
-                    )
+                    {
+                        "name": "calc",
+                        "description": "Calculate values",
+                        "parameters": {"type": "object"},
+                    }
                 ],
             },
             OpenAICompletionsOptions(
@@ -704,6 +813,16 @@ def test_stream_public_path_uses_openai_completions_typed_request(
     assert "max_tokens" not in _FakeAsyncOpenAI.last_create_kwargs
     assert _FakeAsyncOpenAI.last_create_kwargs["prompt_cache_key"] == "session-public"
     assert _FakeAsyncOpenAI.last_create_kwargs["tool_stream"] is True
+    assert _FakeAsyncOpenAI.last_create_kwargs["tools"] == [
+        {
+            "type": "function",
+            "function": {
+                "name": "calc",
+                "description": "Calculate values",
+                "parameters": {"type": "object"},
+            },
+        }
+    ]
 
 
 def test_stream_public_path_uses_openai_responses_typed_request(

@@ -16,6 +16,7 @@ from loushang.ai.context import (
 )
 from loushang.ai.types import (
     AssistantMessage,
+    Context,
     ImagePart,
     TextPart,
     ThinkingPart,
@@ -46,6 +47,10 @@ class _DuckTypedTool:
 
 class _UnknownMessage:
     role = "custom"
+
+
+class _UnknownPart:
+    type = "custom"
 
 
 @dataclass(frozen=True)
@@ -86,6 +91,112 @@ def test_normalize_context_rejects_duck_typed_tools() -> None:
         normalize_context({"messages": [], "tools": [_DuckTypedTool()]})
 
 
+def test_normalize_context_rejects_dict_tools_with_invalid_names() -> None:
+    with pytest.raises(TypeError, match="Unsupported tool name type"):
+        normalize_context(
+            {
+                "messages": [],
+                "tools": [{"name": "", "description": "bad"}],
+            }
+        )
+
+
+def test_normalize_context_rejects_tool_dataclasses_with_invalid_names() -> None:
+    with pytest.raises(TypeError, match="Unsupported tool name type"):
+        normalize_context(
+            {
+                "messages": [],
+                "tools": [
+                    Tool(
+                        name="",
+                        description="bad",
+                        parameters={"type": "object"},
+                    )
+                ],
+            }
+        )
+
+
+def test_normalize_context_rejects_dict_tools_with_non_object_parameters() -> None:
+    with pytest.raises(TypeError, match="Unsupported tool parameters type"):
+        normalize_context(
+            {
+                "messages": [],
+                "tools": [
+                    {
+                        "name": "calc",
+                        "description": "Calculate values",
+                        "parameters": "bad",
+                    }
+                ],
+            }
+        )
+
+
+def test_normalize_context_rejects_tool_dataclasses_with_non_object_parameters() -> None:
+    with pytest.raises(TypeError, match="Unsupported tool parameters type"):
+        normalize_context(
+            {
+                "messages": [],
+                "tools": [
+                    Tool(
+                        name="calc",
+                        description="Calculate values",
+                        parameters="bad",  # type: ignore[arg-type]
+                    )
+                ],
+            }
+        )
+
+
+def test_normalize_context_rejects_context_tools_with_non_object_parameters() -> None:
+    with pytest.raises(TypeError, match="Unsupported tool parameters type"):
+        normalize_context(
+            Context(
+                messages=[],
+                tools=[
+                    Tool(
+                        name="calc",
+                        description="Calculate values",
+                        parameters="bad",  # type: ignore[arg-type]
+                    )
+                ],
+            )
+        )
+
+
+def test_normalize_context_rejects_context_tools_with_invalid_names() -> None:
+    with pytest.raises(TypeError, match="Unsupported tool name type"):
+        normalize_context(
+            Context(
+                messages=[],
+                tools=[
+                    Tool(
+                        name="",
+                        description="bad",
+                        parameters={"type": "object"},
+                    )
+                ],
+            )
+        )
+
+
+def test_normalize_context_rejects_context_dict_tools_with_non_object_parameters() -> None:
+    with pytest.raises(TypeError, match="Unsupported tool parameters type"):
+        normalize_context(
+            Context(
+                messages=[],
+                tools=[  # type: ignore[list-item]
+                    {
+                        "name": "calc",
+                        "description": "Calculate values",
+                        "parameters": "bad",
+                    }
+                ],
+            )
+        )
+
+
 def test_normalize_context_rejects_non_string_system_prompt() -> None:
     with pytest.raises(TypeError, match="Unsupported system_prompt type"):
         normalize_context({"system_prompt": {"text": "system"}, "messages": []})
@@ -94,6 +205,25 @@ def test_normalize_context_rejects_non_string_system_prompt() -> None:
 def test_normalize_context_rejects_unknown_message_objects() -> None:
     with pytest.raises(TypeError, match="Unsupported message type after normalization"):
         normalize_context({"messages": [_UnknownMessage()]})
+
+
+def test_normalize_context_rejects_unknown_dict_message_roles() -> None:
+    with pytest.raises(TypeError, match="Unsupported message role"):
+        normalize_context({"messages": [{"role": "custom", "content": "hello"}]})
+
+
+def test_normalize_context_rejects_unknown_user_content_parts() -> None:
+    with pytest.raises(TypeError, match="Unsupported user content part type"):
+        normalize_context(
+            {"messages": [{"role": "user", "content": [{"type": "audio"}]}]}
+        )
+
+
+def test_normalize_context_rejects_unknown_user_content_part_objects() -> None:
+    with pytest.raises(TypeError, match="Unsupported user content part object"):
+        normalize_context(
+            {"messages": [{"role": "user", "content": [_UnknownPart()]}]}
+        )
 
 
 def test_normalize_context_returns_immutable_normalized_context() -> None:
@@ -376,6 +506,32 @@ def test_normalize_context_accepts_pi_style_assistant_and_tool_result_dicts() ->
         ImagePart(type="image", data="aW1hZ2U=", mime_type="image/png"),
     ]
     assert tool_result.details == {"source": "test"}
+
+
+def test_normalize_context_canonicalizes_user_dicts_once() -> None:
+    normalized = normalize_context(
+        {
+            "messages": [
+                {
+                    "role": "user",
+                    "content": [
+                        {"type": "text", "text": "Look"},
+                        {"type": "image", "data": "aW1n", "mimeType": "image/png"},
+                    ],
+                    "timestamp": 125.0,
+                }
+            ]
+        }
+    )
+
+    user = normalized["messages"][0]
+
+    assert isinstance(user, UserMessage)
+    assert user.content == [
+        TextPart(type="text", text="Look"),
+        ImagePart(type="image", data="aW1n", mime_type="image/png"),
+    ]
+    assert user.timestamp == 125.0
 
 
 def test_normalize_context_preserves_unknown_usage_cost() -> None:

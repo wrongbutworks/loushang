@@ -27,7 +27,7 @@ from loushang.ai.tool.transform import (
     TOOL_RESULTS_PROCESSED_ASSISTANT_TEXT,
 )
 from loushang.ai.trace import emit_trace as _emit_trace
-from loushang.ai.types import AssistantMessage, TextPart, ToolResultMessage
+from loushang.ai.types import AssistantMessage, TextPart, Tool, ToolResultMessage
 from loushang.ai.utils import sanitize_surrogates
 
 
@@ -880,7 +880,7 @@ def _build_messages(
 
 
 def _build_tools(
-    tools: Any,
+    tools: Sequence[Tool] | None,
     protocol: EndpointProtocolFeatures,
 ) -> list[dict[str, Any]] | None:
     if not isinstance(tools, Sequence) or isinstance(tools, str) or not tools:
@@ -888,25 +888,10 @@ def _build_tools(
     supports_strict_mode = _is_supported(protocol.tools.strict_schema)
     payload: list[dict[str, Any]] = []
     for tool in tools:
-        name = (
-            getattr(tool, "name", None)
-            if not isinstance(tool, dict)
-            else tool.get("name")
-        )
-        description = (
-            getattr(tool, "description", "")
-            if not isinstance(tool, dict)
-            else tool.get("description", "")
-        )
-        parameters = (
-            getattr(tool, "parameters", {"type": "object"})
-            if not isinstance(tool, dict)
-            else tool.get("parameters", {"type": "object"})
-        )
         function_payload = {
-            "name": name,
-            "description": description,
-            "parameters": sanitize_tool_parameters(parameters),
+            "name": tool.name,
+            "description": tool.description,
+            "parameters": sanitize_tool_parameters(tool.parameters),
         }
         if supports_strict_mode:
             function_payload["strict"] = False
@@ -926,21 +911,13 @@ def _has_tool_history(messages: list[object]) -> bool:
 
 
 def _message_role(message: object) -> str | None:
-    return (
-        message.get("role")
-        if isinstance(message, dict)
-        else getattr(message, "role", None)
-    )
+    return getattr(message, "role", None)
 
 
 def _user_message_payload(
     message: object, model, capabilities: object | None = None
 ) -> dict[str, Any] | None:
-    content = (
-        message.get("content")
-        if isinstance(message, dict)
-        else getattr(message, "content", None)
-    )
+    content = getattr(message, "content", None)
     if not isinstance(content, list):
         return None
     parts: list[dict[str, Any]] = []
@@ -985,11 +962,7 @@ def _assistant_message_payload(
         dialect.tools.assistant_bridge_required
     )
     requires_thinking_as_text = bool(dialect.reasoning.thinking_as_text)
-    content = (
-        message.get("content")
-        if isinstance(message, dict)
-        else getattr(message, "content", None)
-    )
+    content = getattr(message, "content", None)
     if not isinstance(content, list):
         return None
     text_blocks: list[str] = []
@@ -1003,16 +976,8 @@ def _assistant_message_payload(
             if isinstance(text, str) and text.strip():
                 text_blocks.append(sanitize_surrogates(text))
         elif part_type == "thinking":
-            thinking = (
-                getattr(part, "thinking", None)
-                if not isinstance(part, dict)
-                else part.get("thinking")
-            )
-            signature = (
-                getattr(part, "thinking_signature", None)
-                if not isinstance(part, dict)
-                else part.get("thinking_signature")
-            )
+            thinking = getattr(part, "thinking", None)
+            signature = getattr(part, "thinking_signature", None)
             if isinstance(thinking, str) and thinking.strip():
                 thinking_blocks.append(
                     (
@@ -1021,21 +986,9 @@ def _assistant_message_payload(
                     )
                 )
         elif part_type == "toolCall":
-            tool_id = (
-                getattr(part, "id", None)
-                if not isinstance(part, dict)
-                else part.get("id")
-            )
-            tool_name = (
-                getattr(part, "name", None)
-                if not isinstance(part, dict)
-                else part.get("name")
-            )
-            tool_args = (
-                getattr(part, "arguments", {})
-                if not isinstance(part, dict)
-                else (part.get("arguments") or {})
-            )
+            tool_id = getattr(part, "id", None)
+            tool_name = getattr(part, "name", None)
+            tool_args = getattr(part, "arguments", {}) or {}
             if isinstance(tool_id, str) and tool_id:
                 tool_calls.append(
                     {
@@ -1047,11 +1000,7 @@ def _assistant_message_payload(
                         },
                     }
                 )
-                thought_signature = (
-                    getattr(part, "thought_signature", None)
-                    if not isinstance(part, dict)
-                    else part.get("thought_signature")
-                )
+                thought_signature = getattr(part, "thought_signature", None)
                 if isinstance(thought_signature, str) and thought_signature:
                     try:
                         reasoning_details.append(
@@ -1154,18 +1103,16 @@ def _tool_result_payload(
 
 
 def _part_type(part: object) -> str | None:
-    return part.get("type") if isinstance(part, dict) else getattr(part, "type", None)
+    return getattr(part, "type", None)
 
 
 def _part_text(part: object) -> str | None:
-    return part.get("text") if isinstance(part, dict) else getattr(part, "text", None)
+    return getattr(part, "text", None)
 
 
 def _part_data(part: object) -> str | None:
-    return part.get("data") if isinstance(part, dict) else getattr(part, "data", None)
+    return getattr(part, "data", None)
 
 
 def _part_mime_type(part: object) -> str | None:
-    if isinstance(part, dict):
-        return part.get("mime_type") or part.get("mimeType")
     return getattr(part, "mime_type", None)

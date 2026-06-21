@@ -37,44 +37,22 @@ def _build_anthropic_message_payloads(
     if isinstance(system_prompt, str) and system_prompt.strip():
         system_param = [{"type": "text", "text": sanitize_surrogates(system_prompt)}]
     for msg in normalized.get("messages", []):
-        role = (
-            getattr(msg, "role", None) if not isinstance(msg, dict) else msg.get("role")
-        )
+        role = getattr(msg, "role", None)
         if role == "user":
-            content = (
-                getattr(msg, "content", None)
-                if not isinstance(msg, dict)
-                else msg.get("content")
-            )
+            content = getattr(msg, "content", None)
             if isinstance(content, list):
                 user_blocks: list[dict[str, object]] = []
                 for p in content:
-                    ptype = (
-                        getattr(p, "type", None)
-                        if not isinstance(p, dict)
-                        else p.get("type")
-                    )
+                    ptype = getattr(p, "type", None)
                     if ptype == "text":
-                        txt = (
-                            getattr(p, "text", "")
-                            if not isinstance(p, dict)
-                            else p.get("text", "")
-                        )
+                        txt = getattr(p, "text", "")
                         if isinstance(txt, str) and txt.strip():
                             user_blocks.append(
                                 {"type": "text", "text": sanitize_surrogates(txt)}
                             )
                     elif ptype == "image":
-                        data = (
-                            getattr(p, "data", "")
-                            if not isinstance(p, dict)
-                            else p.get("data", "")
-                        )
-                        mime = (
-                            getattr(p, "mime_type", "")
-                            if not isinstance(p, dict)
-                            else p.get("mimeType", "")
-                        )
+                        data = getattr(p, "data", "")
+                        mime = getattr(p, "mime_type", "")
                         if (
                             isinstance(data, str)
                             and data
@@ -94,30 +72,14 @@ def _build_anthropic_message_payloads(
                 if user_blocks:
                     messages_param.append({"role": "user", "content": user_blocks})
         elif role == "assistant":
-            content = (
-                getattr(msg, "content", None)
-                if not isinstance(msg, dict)
-                else msg.get("content")
-            )
+            content = getattr(msg, "content", None)
             if isinstance(content, list):
                 assistant_blocks: list[dict[str, object]] = []
                 for p in content:
-                    ptype = (
-                        getattr(p, "type", None)
-                        if not isinstance(p, dict)
-                        else p.get("type")
-                    )
+                    ptype = getattr(p, "type", None)
                     if ptype == "image":
-                        data = (
-                            getattr(p, "data", "")
-                            if not isinstance(p, dict)
-                            else p.get("data", "")
-                        )
-                        mime = (
-                            getattr(p, "mime_type", "")
-                            if not isinstance(p, dict)
-                            else p.get("mimeType", "")
-                        )
+                        data = getattr(p, "data", "")
+                        mime = getattr(p, "mime_type", "")
                         if (
                             isinstance(data, str)
                             and data
@@ -152,21 +114,9 @@ def _build_anthropic_message_payloads(
                         {"role": "assistant", "content": assistant_blocks}
                     )
         elif role == "toolResult":
-            tool_call_id = (
-                getattr(msg, "tool_call_id", None)
-                if not isinstance(msg, dict)
-                else msg.get("toolCallId") or msg.get("tool_call_id")
-            )
-            is_error = (
-                getattr(msg, "is_error", None)
-                if not isinstance(msg, dict)
-                else msg.get("isError")
-            )
-            content = (
-                getattr(msg, "content", None)
-                if not isinstance(msg, dict)
-                else msg.get("content")
-            )
+            tool_call_id = getattr(msg, "tool_call_id", None)
+            is_error = getattr(msg, "is_error", None)
+            content = getattr(msg, "content", None)
             if isinstance(tool_call_id, str) and tool_call_id:
                 _append_tool_result_payload(
                     messages_param,

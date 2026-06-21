@@ -121,39 +121,11 @@ def convert_responses_messages(
 
 
 def convert_responses_tools(
-    tools: Sequence[Any] | None,
+    tools: Sequence[Tool] | None,
 ) -> list[dict[str, Any]] | None:
     if not isinstance(tools, Sequence) or isinstance(tools, str) or not tools:
         return None
-    normalized_tools: list[Tool] = []
-    for tool in tools:
-        if isinstance(tool, dict):
-            name = tool.get("name")
-            description = tool.get("description", "")
-            parameters = tool.get("parameters", {"type": "object"})
-            if isinstance(name, str) and name:
-                normalized_tools.append(
-                    Tool(
-                        name=name,
-                        description=description if isinstance(description, str) else "",
-                        parameters=parameters
-                        if isinstance(parameters, dict)
-                        else {"type": "object"},
-                    )
-                )
-        else:
-            name = getattr(tool, "name", None)
-            if isinstance(name, str) and name:
-                normalized_tools.append(
-                    Tool(
-                        name=name,
-                        description=getattr(tool, "description", "") or "",
-                        parameters=getattr(tool, "parameters", {"type": "object"})
-                        if isinstance(getattr(tool, "parameters", None), dict)
-                        else {"type": "object"},
-                    )
-                )
-    return to_openai_responses_tools(normalized_tools) if normalized_tools else None
+    return to_openai_responses_tools(list(tools))
 
 
 def build_copilot_dynamic_headers(messages: list[object]) -> dict[str, str]:
@@ -416,19 +388,11 @@ def parse_text_signature(
 
 
 def _message_role(message: object) -> str | None:
-    return (
-        message.get("role")
-        if isinstance(message, dict)
-        else getattr(message, "role", None)
-    )
+    return getattr(message, "role", None)
 
 
 def _message_content(message: object) -> object:
-    return (
-        message.get("content")
-        if isinstance(message, dict)
-        else getattr(message, "content", None)
-    )
+    return getattr(message, "content", None)
 
 
 def _user_message_payload(
@@ -511,9 +475,7 @@ def _assistant_message_payload(
                 text_buffer.append(
                     {
                         "text": text,
-                        "text_signature": getattr(part, "text_signature", None)
-                        if not isinstance(part, dict)
-                        else part.get("text_signature"),
+                        "text_signature": getattr(part, "text_signature", None),
                     }
                 )
             continue
@@ -554,20 +516,18 @@ def _assistant_message_payload(
 
 
 def _part_type(part: object) -> str | None:
-    return part.get("type") if isinstance(part, dict) else getattr(part, "type", None)
+    return getattr(part, "type", None)
 
 
 def _part_text(part: object) -> str | None:
-    return part.get("text") if isinstance(part, dict) else getattr(part, "text", None)
+    return getattr(part, "text", None)
 
 
 def _part_data(part: object) -> str | None:
-    return part.get("data") if isinstance(part, dict) else getattr(part, "data", None)
+    return getattr(part, "data", None)
 
 
 def _part_mime_type(part: object) -> str | None:
-    if isinstance(part, dict):
-        return part.get("mime_type") or part.get("mimeType")
     return getattr(part, "mime_type", None)
 
 

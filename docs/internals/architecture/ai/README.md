@@ -190,7 +190,7 @@
     - tool message transformation
   - `normalize_context(...)` 现在只负责 `Context` 形状整理并返回公开的 `NormalizedContext` 不可变 snapshot
   - `provider.invocation` 是 provider handoff 的最终归一化 guard；内置 adapter 不再二次 normalize
-  - 消息规范化与 canonicalization 由 `messages.py` 负责
+  - 消息规范化与 canonicalization 由 `messages.py` 负责，provider adapters 只消费 canonical message dataclass
   - `event_stream/assembler.py` 不再反查 model registry 做 cost enrich
   - `reset_api_providers()` / `register_builtin_ai_providers()` 会按 built-in model registry 自动注册 built-ins
 

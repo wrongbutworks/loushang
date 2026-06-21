@@ -179,37 +179,17 @@ class AnthropicProviderBase:
 
     @staticmethod
     def assistant_block_to_anthropic_payload(block: object) -> dict[str, Any] | None:
-        block_type = (
-            getattr(block, "type", None)
-            if not isinstance(block, dict)
-            else block.get("type")
-        )
+        block_type = getattr(block, "type", None)
         if block_type == "text":
-            text = (
-                getattr(block, "text", "")
-                if not isinstance(block, dict)
-                else block.get("text", "")
-            )
+            text = getattr(block, "text", "")
             if isinstance(text, str) and text.strip():
                 return {"type": "text", "text": sanitize_surrogates(text)}
             return None
 
         if block_type == "toolCall":
-            tool_id = (
-                getattr(block, "id", None)
-                if not isinstance(block, dict)
-                else block.get("id")
-            )
-            tool_name = (
-                getattr(block, "name", None)
-                if not isinstance(block, dict)
-                else block.get("name")
-            )
-            tool_args = (
-                getattr(block, "arguments", {})
-                if not isinstance(block, dict)
-                else (block.get("arguments") or {})
-            )
+            tool_id = getattr(block, "id", None)
+            tool_name = getattr(block, "name", None)
+            tool_args = getattr(block, "arguments", {}) or {}
             if isinstance(tool_id, str) and tool_id:
                 return {
                     "type": "tool_use",
@@ -220,24 +200,12 @@ class AnthropicProviderBase:
             return None
 
         if block_type == "thinking":
-            thinking = (
-                getattr(block, "thinking", "")
-                if not isinstance(block, dict)
-                else block.get("thinking", "")
-            )
+            thinking = getattr(block, "thinking", "")
             if not isinstance(thinking, str) or not thinking.strip():
                 return None
 
-            signature = (
-                getattr(block, "thinking_signature", None)
-                if not isinstance(block, dict)
-                else block.get("thinking_signature")
-            )
-            redacted = (
-                getattr(block, "redacted", False)
-                if not isinstance(block, dict)
-                else bool(block.get("redacted"))
-            )
+            signature = getattr(block, "thinking_signature", None)
+            redacted = getattr(block, "redacted", False)
 
             if redacted:
                 if isinstance(signature, str) and signature.strip():
@@ -262,20 +230,10 @@ class AnthropicProviderBase:
             return "(empty)"
 
         if all(
-            (
-                getattr(part, "type", None)
-                if not isinstance(part, dict)
-                else part.get("type")
-            )
-            == "text"
+            getattr(part, "type", None) == "text"
             for part in content
         ):
-            text_parts = [
-                getattr(part, "text", "")
-                if not isinstance(part, dict)
-                else part.get("text", "")
-                for part in content
-            ]
+            text_parts = [getattr(part, "text", "") for part in content]
             text = "\n".join(
                 part for part in text_parts if isinstance(part, str) and part.strip()
             )
@@ -283,30 +241,14 @@ class AnthropicProviderBase:
 
         blocks: list[dict[str, Any]] = []
         for part in content:
-            part_type = (
-                getattr(part, "type", None)
-                if not isinstance(part, dict)
-                else part.get("type")
-            )
+            part_type = getattr(part, "type", None)
             if part_type == "text":
-                text = (
-                    getattr(part, "text", "")
-                    if not isinstance(part, dict)
-                    else part.get("text", "")
-                )
+                text = getattr(part, "text", "")
                 if isinstance(text, str) and text.strip():
                     blocks.append({"type": "text", "text": sanitize_surrogates(text)})
             elif part_type == "image":
-                data = (
-                    getattr(part, "data", "")
-                    if not isinstance(part, dict)
-                    else part.get("data", "")
-                )
-                mime = (
-                    getattr(part, "mime_type", "")
-                    if not isinstance(part, dict)
-                    else part.get("mimeType") or part.get("mime_type", "")
-                )
+                data = getattr(part, "data", "")
+                mime = getattr(part, "mime_type", "")
                 if isinstance(data, str) and data and isinstance(mime, str) and mime:
                     blocks.append(
                         {

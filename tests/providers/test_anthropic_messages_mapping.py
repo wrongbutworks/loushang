@@ -35,12 +35,14 @@ from loushang.ai.options import AnthropicOptions
 from loushang.ai.provider import ResolvedRequest
 from loushang.ai.providers.anthropic import AnthropicProvider
 from loushang.ai.types import (
+    AssistantMessage,
     ImagePart,
     TextPart,
     ThinkingPart,
     Tool,
     ToolCall,
     ToolResultMessage,
+    Usage,
     UserMessage,
 )
 
@@ -1036,9 +1038,9 @@ def test_anthropic_payload_groups_consecutive_tool_results_from_same_turn() -> N
     messages, _system = _build_anthropic_message_payloads(
         {
             "messages": [
-                {
-                    "role": "assistant",
-                    "content": [
+                AssistantMessage(
+                    role="assistant",
+                    content=[
                         ToolCall(
                             type="toolCall", id="bad_write", name="write", arguments={}
                         ),
@@ -1052,7 +1054,22 @@ def test_anthropic_payload_groups_consecutive_tool_results_from_same_turn() -> N
                             },
                         ),
                     ],
-                },
+                    api="anthropic-messages",
+                    provider="anthropic",
+                    model="claude-test",
+                    response_id=None,
+                    usage=Usage(
+                        input=0,
+                        output=0,
+                        cache_read=0,
+                        cache_write=0,
+                        total_tokens=0,
+                        cost=None,
+                    ),
+                    stop_reason="toolUse",
+                    error_message=None,
+                    timestamp=0.0,
+                ),
                 ToolResultMessage(
                     role="toolResult",
                     tool_call_id="bad_write",
