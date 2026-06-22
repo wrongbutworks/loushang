@@ -70,7 +70,7 @@
 
 ### `providers/`
 
-具体厂商适配层。
+核心协议适配层。
 
 - `anthropic.py`
 - `openai_completions.py`
@@ -86,6 +86,9 @@
 - Anthropic Messages：`anthropic-messages`
 
 其中 Mistral、Google Gemini API、Google Vertex OpenAI-compatible、Cloudflare AI Gateway / Workers AI 通过现有 OpenAI-compatible 或 Anthropic Messages adapter 接入。Cloudflare 和 Vertex 的 `baseUrl` 可以包含 `{ENV_NAME}` 模板，运行时由 `provider.resolution` 从环境变量展开；缺少变量时直接报错。
+
+核心 adapter 集合由 `docs/internals/architecture/ai/core-provider-adapter-contract-matrix.md`
+锁定；新增厂商专用 adapter 必须进入 `contrib` 或外部包，不能默认进入 core。
 
 OpenAI Codex Responses 不在默认 model catalog 和 builtin adapter 注册中；它位于
 `loushang.ai.contrib.openai_codex`，需要调用方显式注册 contrib 后使用。
