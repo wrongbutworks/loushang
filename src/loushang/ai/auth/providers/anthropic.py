@@ -149,13 +149,11 @@ class AnthropicOAuthProvider(OAuthProviderInterface):
                 }
             )
 
-        try:
+        with suppress(Exception):
             opened = self._browser_opener(auth_url)
             if opened:
                 callbacks.on_progress("Opened browser for Anthropic login")
             callbacks.on_progress("Waiting for Anthropic authorization callback")
-        except Exception:
-            pass
 
         try:
             raw_input = (

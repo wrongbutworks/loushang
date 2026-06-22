@@ -25,14 +25,14 @@ items should be closed without expanding the public API.
 | Stable API consistency | 8.5 | 8.7 | Met |
 | Message and tool normalization | 9.0 | 8.8 | Mostly met |
 | Compat and endpoint contract | 9.0 | 8.6 | Mostly met |
-| Error and reliability semantics | 8.5 | 8.4 | Needs cleanup gate |
+| Error and reliability semantics | 8.5 | 8.5 | Met |
 | Streaming and cancellation | 8.5 | 8.6 | Met |
 | Provider consistency | 8.5 | 8.3 | Needs provider-boundary decision |
 | Auth security | 8.0 | 8.1 | Met |
 | Model catalog governance | 9.0 | 9.0 | Met |
 | Tests, examples, and docs | 9.0 | 8.4 | Needs coverage/review gate |
 
-Current composite score: 8.5/10.
+Current composite score: 8.6/10.
 
 ## Evidence Summary
 
@@ -46,7 +46,7 @@ Current composite score: 8.5/10.
 | Public SDK docs | `docs/en/sdk/README.md`, `docs/zh-CN/sdk/README.md`, and the v2 migration guides document the public path, catalog, auth, errors, examples, and migration rules. |
 | Offline examples | `scripts/ai/check_examples.py` executes numbered `examples/ai/[0-9][0-9]_*.py` with live provider keys removed. |
 | Import boundaries | `scripts/ai/check_import_boundaries.py` prevents `loushang.ai` from importing agent/coding layers, prevents removed core providers from returning, and keeps top-level examples on stable AI imports. |
-| AI gate | `make check-ai` runs lint, mypy, catalog checks, import checks, offline examples, and coverage. |
+| AI gate | `make check-ai` runs lint, mypy, catalog checks, import checks, offline examples, and coverage; latest run reached 81.59% AI coverage. |
 | Full offline test suite | `env -u <provider keys> uv run pytest tests -q` passed on 2026-06-22 with 4213 passed and 9 skipped. |
 | Build | `uv build` passed on 2026-06-22 and produced both sdist and wheel artifacts. |
 
@@ -62,7 +62,7 @@ Current composite score: 8.5/10.
 | Core has no provider-id/base-url compat guessing | Mostly met | Compat boundary tests cover provider/runtime leakage; keep any future provider-specific behavior behind endpoint contracts or contrib. |
 | Built-in catalog has no legacy full-catalog runtime path | Met | Package data points to `models.curated.v2.json`; full v1 catalog is archived under docs. |
 | Provider boundary accepts only normalized context/request facts | Partial | `NormalizedContext` is enforced, but the adapter protocol still passes `Model`, `CallOptions`, and `ResolvedRequest` separately rather than a single final `ProviderRequest` object. |
-| Core has no bare `except Exception: pass` | Open | Current source still contains a small set of broad silent catches that need a follow-up cleanup or explicit justification. |
+| Core has no bare `except Exception: pass` | Met | `rg -n -U "except Exception:\n\s*pass" src/loushang/ai tests/ai tests/providers` returns no matches. |
 | Stream queue is bounded | Met | `AssistantMessageEventStream` uses a bounded queue; `tests/ai/test_provider_runtime.py` checks it. |
 | Cancellation closes upstream | Met | Provider runtime closes async sources through `aclose`/`close`; provider runtime tests cover cancellation. |
 | Parallel tool calls can interleave | Met | Tool and provider tests cover multi-tool event assembly and parallel tool examples. |
@@ -152,15 +152,12 @@ provider evidence file records a valid credential-backed run.
    and `ResolvedRequest` into a single `ProviderRequest`; the current protocol
    has normalized context but not the exact final request-object shape described
    in the plan.
-2. Remove or explicitly justify the remaining broad silent catches in
-   `src/loushang/ai`; the final checklist requires no bare
-   `except Exception: pass` in core paths.
-3. Decide how to satisfy `tests/ai/contracts`: either add a compatibility test
+2. Decide how to satisfy `tests/ai/contracts`: either add a compatibility test
    directory/alias or update the release checklist to point at the current
    provider contract suites.
-4. Raise coverage enforcement to the final stated targets, or record an ADR that
+3. Raise coverage enforcement to the final stated targets, or record an ADR that
    the release gate is the current `make check-ai` 80% AI package threshold.
-5. Run a final branch review against `origin/main` and resolve all P0/P1
+4. Run a final branch review against `origin/main` and resolve all P0/P1
    findings.
-6. Perform live provider smoke only with valid credentials; do not treat offline
+5. Perform live provider smoke only with valid credentials; do not treat offline
    catalog checks as live compatibility proof.

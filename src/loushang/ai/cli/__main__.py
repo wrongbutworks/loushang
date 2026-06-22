@@ -5,6 +5,7 @@ import getpass
 import json
 import os
 import sys
+from contextlib import suppress
 from dataclasses import dataclass
 from typing import Any
 
@@ -951,7 +952,7 @@ def main(argv: list[str] | None = None) -> None:
     p_console.set_defaults(func=cmd_console)
 
     args = parser.parse_args(argv)
-    try:
+    with suppress(Exception):
         env_base = os.getenv("LOUSHANG_BASE_URL")
         effective_base = args.base_url or env_base
         if effective_base:
@@ -961,8 +962,6 @@ def main(argv: list[str] | None = None) -> None:
             )
         else:
             reset_api_providers()
-    except Exception:
-        pass
     args.func(args)
 
 

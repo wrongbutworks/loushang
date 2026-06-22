@@ -1069,12 +1069,10 @@ async def _notify_provider_response(options, response, model) -> None:
     callback = getattr(options, "on_response", None) if options is not None else None
     if not callable(callback):
         return
-    try:
+    with suppress(Exception):
         result = callback(response, model)
         if asyncio.iscoroutine(result):
             await result
-    except Exception:
-        pass
 
 
 def _tool_result_payload(

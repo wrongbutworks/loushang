@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import os
 from collections.abc import AsyncIterator
+from contextlib import suppress
 from typing import Any
 
 from loushang.ai.model.domain import (
@@ -76,14 +77,12 @@ class OpenAIResponsesProvider:
         def _debug(event: str, data: dict | None = None) -> None:
             # Allow callers to suppress provider SDK trace events explicitly.
             if options is not None:
-                try:
+                with suppress(Exception):
                     if (
                         getattr(options, "debug", None) is False
                         or getattr(options, "quiet_debug", None) is True
                     ):
                         return
-                except Exception:
-                    pass
             _emit_trace(options, {"type": f"sdk:{event}", **(data or {})})
 
         resolved = resolve_provider_request(
@@ -246,12 +245,10 @@ async def _notify_provider_response(options, response, model) -> None:
     callback = getattr(options, "on_response", None) if options is not None else None
     if not callable(callback):
         return
-    try:
+    with suppress(Exception):
         result = callback(response, model)
         if asyncio.iscoroutine(result):
             await result
-    except Exception:
-        pass
 
 
 def _supports_reasoning(capabilities: object | None) -> bool:

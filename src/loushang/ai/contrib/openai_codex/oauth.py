@@ -168,13 +168,11 @@ class OpenAICodexOAuthProvider(OAuthProviderInterface):
                 }
             )
 
-        try:
+        with suppress(Exception):
             opened = self._browser_opener(auth_url)
             if opened:
                 callbacks.on_progress("Opened browser for OpenAI Codex login")
             callbacks.on_progress("Waiting for OpenAI Codex authorization callback")
-        except Exception:
-            pass
 
         try:
             raw_input = (

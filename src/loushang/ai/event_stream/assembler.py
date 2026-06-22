@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from collections.abc import Callable, Mapping
+from contextlib import suppress
 from dataclasses import dataclass, field
 from time import time
 from typing import cast
@@ -560,7 +561,7 @@ class RawAssembler:
     def _finalize_usage_cost(self) -> None:
         if self._pricing is None:
             return
-        try:
+        with suppress(Exception):
             computed = calculate_usage_cost(
                 self._pricing,
                 self._usage,
@@ -576,8 +577,6 @@ class RawAssembler:
                 total_tokens=self._usage.total_tokens,
                 cost=computed,
             )
-        except Exception:
-            pass
 
     def _build_message(
         self, *, stop_reason: str, error_message: str | None

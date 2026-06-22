@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import json
 from collections.abc import AsyncIterator, Mapping
+from contextlib import suppress
 from typing import Any
 
 from loushang.ai.model.domain import EndpointProtocolFeatures, SupportStatus
@@ -278,12 +279,10 @@ def _summarize_sdk_value(value: object) -> object:
 
     model_dump = getattr(value, "model_dump", None)
     if callable(model_dump):
-        try:
+        with suppress(Exception):
             dumped = model_dump(exclude_none=True)
             if isinstance(dumped, dict):
                 return _summarize_sdk_value(dumped)
-        except Exception:
-            pass
 
     attrs = getattr(value, "__dict__", None)
     if isinstance(attrs, dict):
@@ -428,29 +427,20 @@ class AnthropicProvider(AnthropicProviderBase):
         max_tokens = resolve_output_token_budget(model, resolved).value
         thinking_cfg: dict[str, object] | None = None
         # 思考模式：自适应或预算式；与 temperature 互斥
-        try:
-            want_thinking = normalized.get("emit_thinking") or is_reasoning_requested(
-                options
-            )
-            if want_thinking:
-                if self.supports_adaptive_thinking(model.id):
-                    thinking_cfg = {"type": "adaptive"}
-                else:
-                    thinking_budget_tokens = get_reasoning_budget_tokens(options)
-                    thinking_cfg = {
-                        "type": "enabled",
-                        "budget_tokens": thinking_budget_tokens
-                        if isinstance(thinking_budget_tokens, int)
-                        else 1024,
-                    }
-                # 与思考互斥：移除 temperature
-                if (
-                    options is not None
-                    and getattr(options, "temperature", None) is not None
-                ):
-                    pass  # 不放入 params（下方设置时跳过）
-        except Exception:
-            pass
+        want_thinking = normalized.get("emit_thinking") or is_reasoning_requested(
+            options
+        )
+        if want_thinking:
+            if self.supports_adaptive_thinking(model.id):
+                thinking_cfg = {"type": "adaptive"}
+            else:
+                thinking_budget_tokens = get_reasoning_budget_tokens(options)
+                thinking_cfg = {
+                    "type": "enabled",
+                    "budget_tokens": thinking_budget_tokens
+                    if isinstance(thinking_budget_tokens, int)
+                    else 1024,
+                }
 
         params: dict[str, Any] = {
             "model": upstream_model_id,
@@ -822,12 +812,10 @@ async def _notify_provider_response(options, response, model) -> None:
     callback = getattr(options, "on_response", None) if options is not None else None
     if not callable(callback):
         return
-    try:
+    with suppress(Exception):
         result = callback(response, model)
         if asyncio.iscoroutine(result):
             await result
-    except Exception:
-        pass
 
 
 def _map_stop_reason(reason: str) -> str:
