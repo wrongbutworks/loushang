@@ -13,7 +13,7 @@
 - [06_reasoning.py](06_reasoning.py)
   离线演示 `stream_simple` 如何把 `SimpleCallOptions.reasoning` 映射到统一 reasoning 请求
 - [09_errors_retry.py](09_errors_retry.py)
-  离线演示稳定错误信息的序列化和脱敏；retry 策略会在后续工作包继续补全
+  离线演示稳定错误信息的序列化、脱敏，以及可见输出前的安全 retry
 - [usage_online.py](usage_online.py)
   在线检查 usage；当 catalog 缺少价格事实时，cost 输出为 `{"known": false}`
 - [tools.py](tools.py)

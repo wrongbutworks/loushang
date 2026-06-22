@@ -155,15 +155,27 @@ def test_errors_retry_example_reports_redacted_error_payload(capsys) -> None:
         Path("examples/ai/09_errors_retry.py"), "examples_ai_09_errors_retry"
     )
 
-    payload = module.inspect_error_serialization()
+    payload = module.inspect_errors_retry()
 
-    assert payload["code"] == "authentication"
-    assert payload["retryable"] is False
-    assert payload["details"] == {
+    assert payload["error"]["code"] == "authentication"
+    assert payload["error"]["retryable"] is False
+    assert payload["error"]["details"] == {
         "hint": "Set MOONSHOT_API_KEY.",
         "Authorization": "[redacted]",
         "nested": {"refresh_token": "[redacted]"},
     }
+    assert payload["retry"]["attempts"] == 2
+    assert payload["retry"]["text"] == "retry recovered"
+    assert payload["retry"]["trace"] == [
+        {
+            "type": "runtime:retry",
+            "attempt": 2,
+            "maxAttempts": 2,
+            "delayMs": 0,
+            "reason": "service_unavailable",
+            "statusCode": 503,
+        }
+    ]
 
     module.main()
     assert json.loads(capsys.readouterr().out) == payload
