@@ -16,9 +16,9 @@ from loushang.ai import (
     ToolCall,
     ToolResultMessage,
     Usage,
-    get_model,
 )
 from loushang.ai.context import normalize_context_result
+from loushang.ai.model import load_builtin_model_registry
 
 
 def inspect_normalization_diagnostics() -> dict[str, object]:
@@ -57,7 +57,7 @@ def inspect_normalization_diagnostics() -> dict[str, object]:
     )
     result = normalize_context_result(
         {"messages": [assistant]},
-        model=get_model(
+        model=load_builtin_model_registry().get_model(
             "anthropic",
             "anthropic-messages",
             "claude-3-5-haiku-20241022",

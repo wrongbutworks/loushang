@@ -175,7 +175,7 @@ def test_test_and_example_inventory_baseline() -> None:
 
     assert len(ai_test_files) == 36
     assert len(provider_test_files) == 7
-    assert len(example_files) == 18
+    assert len(example_files) == 19
 
 
 def test_known_baseline_debt_snapshot() -> None:

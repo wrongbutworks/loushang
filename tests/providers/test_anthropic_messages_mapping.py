@@ -562,8 +562,9 @@ def test_anthropic_provider_stream_uses_tool_input_from_content_block_start(
     tool_start_trace = next(
         event for event in trace_events if event.get("type") == "sdk:tool_start"
     )
-    assert tool_start_trace["input"]["path"] == "tmp/bmi.html"
-    assert tool_start_trace["input"]["content_chars"] == len(tool_input["content"])
+    tool_start_data = tool_start_trace["data"]
+    assert tool_start_data["input"]["path"] == "tmp/bmi.html"
+    assert tool_start_data["input"]["content_chars"] == len(tool_input["content"])
 
 
 def test_anthropic_provider_payload_snapshot_for_mixed_assistant_and_tool_result_context(

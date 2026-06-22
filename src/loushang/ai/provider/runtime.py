@@ -71,6 +71,7 @@ def start_provider_runtime(
         signals = _cancellation_signals(options)
         cancellation_task = _create_cancellation_task(signals)
         if _signals_cancelled(signals):
+            _emit_runtime_cancel_trace(options, request=request, model=model)
             await assembler.emit({"type": "aborted"})
             return
         try:
@@ -82,6 +83,13 @@ def start_provider_runtime(
                 retry_next_attempt = False
                 source = None
                 try:
+                    _emit_runtime_request_trace(
+                        options,
+                        request=request,
+                        model=model,
+                        attempt=attempt,
+                        max_attempts=max_attempts,
+                    )
                     source = raw_parts()
                     if inspect.isawaitable(source):
                         source = await _await_or_cancel(source, cancellation_task)
@@ -128,6 +136,13 @@ def start_provider_runtime(
                             or part["type"] in _TERMINAL_RAW_PART_TYPES
                         ):
                             await _flush_pending(assembler, pending)
+                            if part["type"] == "response_error":
+                                _emit_runtime_error_trace(
+                                    options,
+                                    part=part,
+                                    request=request,
+                                    model=model,
+                                )
                             await assembler.emit(part)
                             if part["type"] in _TERMINAL_RAW_PART_TYPES:
                                 return
@@ -143,11 +158,13 @@ def start_provider_runtime(
                     return
                 except _RuntimeCancelled:
                     await _flush_pending(assembler, pending)
+                    _emit_runtime_cancel_trace(options, request=request, model=model)
                     await assembler.emit({"type": "aborted"})
                     return
                 except Exception as error:
                     if _signals_cancelled(signals):
                         await _flush_pending(assembler, pending)
+                        _emit_runtime_cancel_trace(options, request=request, model=model)
                         await assembler.emit({"type": "aborted"})
                         return
                     if (
@@ -168,9 +185,17 @@ def start_provider_runtime(
                         attempt += 1
                         continue
                     await _flush_pending(assembler, pending)
-                    await assembler.emit(
-                        cast(RawPart, provider_error_part(error, source=request.api))
+                    error_part = cast(
+                        RawPart,
+                        provider_error_part(error, source=request.api),
                     )
+                    _emit_runtime_error_trace(
+                        options,
+                        part=error_part,
+                        request=request,
+                        model=model,
+                    )
+                    await assembler.emit(error_part)
                     return
                 finally:
                     await _close_source(source)
@@ -184,6 +209,92 @@ def start_provider_runtime(
 async def _flush_pending(assembler: RawAssembler, pending: list[RawPart]) -> None:
     while pending:
         await assembler.emit(pending.pop(0))
+
+
+def _emit_runtime_request_trace(
+    options: object | None,
+    *,
+    request: ResolvedRequest,
+    model,
+    attempt: int,
+    max_attempts: int,
+) -> None:
+    event: dict[str, object] = {
+        "type": "runtime:request",
+        "api": getattr(request, "api", None),
+        "provider": getattr(request, "provider", None),
+        "model": getattr(model, "id", None),
+        "attempt": attempt,
+        "maxAttempts": max_attempts,
+    }
+    endpoint = getattr(request, "endpoint", None)
+    if endpoint is not None:
+        event["endpoint"] = endpoint
+    upstream_model_id = getattr(request, "upstream_model_id", None)
+    if upstream_model_id is not None:
+        event["upstreamModel"] = upstream_model_id
+    emit_trace(options, event)
+
+
+def _emit_runtime_error_trace(
+    options: object | None,
+    *,
+    part: RawPart,
+    request: ResolvedRequest,
+    model,
+) -> None:
+    try:
+        error_info = provider_error_info_from_raw(
+            cast(Mapping[str, object], part),
+            source=request.api,
+            provider=getattr(request, "provider", None),
+            model=getattr(model, "id", None),
+        )
+    except Exception:
+        emit_trace(
+            options,
+            {
+                "type": "runtime:error",
+                "api": getattr(request, "api", None),
+                "provider": getattr(request, "provider", None),
+                "model": getattr(model, "id", None),
+                "reason": "provider",
+            },
+        )
+        return
+    event: dict[str, object] = {
+        "type": "runtime:error",
+        "api": getattr(request, "api", None),
+        "provider": getattr(request, "provider", None),
+        "model": getattr(model, "id", None),
+        "reason": error_info.code.value
+        if hasattr(error_info.code, "value")
+        else str(error_info.code),
+        "retryable": error_info.retryable,
+    }
+    if error_info.status_code is not None:
+        event["statusCode"] = error_info.status_code
+    if error_info.request_id is not None:
+        event["requestId"] = error_info.request_id
+    emit_trace(options, event)
+
+
+def _emit_runtime_cancel_trace(
+    options: object | None,
+    *,
+    request: ResolvedRequest,
+    model,
+) -> None:
+    emit_trace(
+        options,
+        {
+            "type": "runtime:cancel",
+            "api": getattr(request, "api", None),
+            "provider": getattr(request, "provider", None),
+            "model": getattr(model, "id", None),
+            "reason": "cancelled",
+        },
+    )
 
 
 def _cancellation_signals(options: object | None) -> tuple[object, ...]:

@@ -167,16 +167,31 @@ def test_provider_runtime_retries_retryable_exception_before_visible_output() ->
         "done",
     ]
     assert events[-1]["message"].content[0].text == "recovered"
-    assert trace_events == [
-        {
-            "type": "runtime:retry",
-            "attempt": 2,
-            "maxAttempts": 2,
-            "delayMs": 0,
-            "reason": "service_unavailable",
-            "statusCode": 503,
-        }
+    assert [event["type"] for event in trace_events] == [
+        "runtime:request",
+        "runtime:retry",
+        "runtime:request",
     ]
+    assert trace_events[0]["data"] == {
+        "api": "openai-responses",
+        "provider": "provider-a",
+        "model": "model-a",
+        "attempt": 1,
+        "maxAttempts": 2,
+        "endpoint": "openai-responses",
+    }
+    retry_trace = trace_events[1]
+    assert retry_trace["schema"] == "loushang.ai.trace.v1"
+    assert retry_trace["source"] == "runtime"
+    assert retry_trace["name"] == "retry"
+    assert retry_trace["data"] == {
+        "attempt": 2,
+        "maxAttempts": 2,
+        "delayMs": 0,
+        "reason": "service_unavailable",
+        "statusCode": 503,
+    }
+    assert trace_events[2]["data"]["attempt"] == 2
 
 
 def test_provider_runtime_retries_response_error_before_visible_output() -> None:
@@ -212,6 +227,40 @@ def test_provider_runtime_retries_response_error_before_visible_output() -> None
         "done",
     ]
     assert events[-1]["message"].content[0].text == "ok"
+
+
+def test_provider_runtime_emits_error_trace_for_terminal_error() -> None:
+    trace_events: list[dict[str, object]] = []
+
+    async def _parts():
+        raise _HTTPError("unauthorized", 401, headers={"x-request-id": "req_401"})
+        yield {"type": "response_done"}
+
+    async def _run():
+        stream = start_provider_runtime(
+            _parts,
+            model=_model(),
+            options=CallOptions(trace=trace_events.append),
+            request=_request(),
+        )
+        return [event async for event in stream]
+
+    events = asyncio.run(_run())
+
+    assert [event["type"] for event in events] == ["error"]
+    assert [event["type"] for event in trace_events] == [
+        "runtime:request",
+        "runtime:error",
+    ]
+    assert trace_events[1]["data"] == {
+        "api": "openai-responses",
+        "provider": "provider-a",
+        "model": "model-a",
+        "reason": "authentication",
+        "retryable": False,
+        "statusCode": 401,
+        "requestId": "req_401",
+    }
 
 
 def test_provider_runtime_does_not_retry_nonretryable_error_before_output() -> None:
@@ -340,13 +389,14 @@ def test_provider_runtime_applies_backpressure_to_raw_source() -> None:
 
 def test_provider_runtime_cancellation_signal_aborts_and_closes_source() -> None:
     source = _BlockingRawSource()
+    trace_events: list[dict[str, object]] = []
 
     async def _run():
         signal = asyncio.Event()
         stream = start_provider_runtime(
             lambda: source,
             model=_model(),
-            options=CallOptions(cancellation=signal),
+            options=CallOptions(cancellation=signal, trace=trace_events.append),
             request=_request(),
         )
         await asyncio.wait_for(source.next_started.wait(), timeout=1)
@@ -360,6 +410,16 @@ def test_provider_runtime_cancellation_signal_aborts_and_closes_source() -> None
     assert [event["type"] for event in events] == ["error"]
     assert events[0]["reason"] == "aborted"
     assert events[0]["error"].stop_reason == "aborted"
+    assert [event["type"] for event in trace_events] == [
+        "runtime:request",
+        "runtime:cancel",
+    ]
+    assert trace_events[1]["data"] == {
+        "api": "openai-responses",
+        "provider": "provider-a",
+        "model": "model-a",
+        "reason": "cancelled",
+    }
 
 
 def test_provider_runtime_consumer_close_closes_source_without_leaking_task() -> None:

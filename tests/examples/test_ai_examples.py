@@ -164,17 +164,58 @@ def test_errors_retry_example_reports_redacted_error_payload(capsys) -> None:
         "Authorization": "[redacted]",
         "nested": {"refresh_token": "[redacted]"},
     }
+    assert payload["typedError"] == {
+        "errorType": "AIRateLimitError",
+        "code": "rate_limit",
+        "statusCode": 429,
+        "requestId": "req_error_demo",
+    }
     assert payload["retry"]["attempts"] == 2
     assert payload["retry"]["text"] == "retry recovered"
     assert payload["retry"]["trace"] == [
         {
+            "schema": "loushang.ai.trace.v1",
+            "type": "runtime:request",
+            "source": "runtime",
+            "name": "request",
+            "data": {
+                "api": "anthropic-messages",
+                "provider": "retry-demo",
+                "model": "retry-demo",
+                "attempt": 1,
+                "maxAttempts": 2,
+                "endpoint": "anthropic-messages",
+                "upstreamModel": "retry-demo",
+            },
+        },
+        {
+            "schema": "loushang.ai.trace.v1",
             "type": "runtime:retry",
-            "attempt": 2,
-            "maxAttempts": 2,
-            "delayMs": 0,
-            "reason": "service_unavailable",
-            "statusCode": 503,
-        }
+            "source": "runtime",
+            "name": "retry",
+            "data": {
+                "attempt": 2,
+                "maxAttempts": 2,
+                "delayMs": 0,
+                "reason": "service_unavailable",
+                "statusCode": 503,
+            },
+        },
+        {
+            "schema": "loushang.ai.trace.v1",
+            "type": "runtime:request",
+            "source": "runtime",
+            "name": "request",
+            "data": {
+                "api": "anthropic-messages",
+                "provider": "retry-demo",
+                "model": "retry-demo",
+                "attempt": 2,
+                "maxAttempts": 2,
+                "endpoint": "anthropic-messages",
+                "upstreamModel": "retry-demo",
+            },
+        },
     ]
 
     module.main()
@@ -467,6 +508,44 @@ def test_advanced_cancel_stream_reports_abort_and_source_close() -> None:
         "stopReason": "aborted",
         "sourceClosed": True,
     }
+
+
+def test_advanced_trace_events_reports_schema_and_redaction(capsys) -> None:
+    module = _load_module(
+        Path("examples/ai/advanced/trace_events.py"),
+        "examples_ai_advanced_trace_events",
+    )
+
+    summary = asyncio.run(module.inspect_trace_events())
+
+    assert summary == {
+        "schemas": ["loushang.ai.trace.v1"],
+        "eventTypes": [
+            "runtime:request",
+            "sdk:client",
+            "runtime:retry",
+            "runtime:request",
+            "sdk:client",
+        ],
+        "text": "trace recovered",
+        "redaction": {
+            "authorization": "<redacted>",
+            "apiKey": "<redacted>",
+            "refreshToken": "<redacted>",
+        },
+        "retry": {
+            "attempt": 2,
+            "maxAttempts": 2,
+            "delayMs": 0,
+            "reason": "service_unavailable",
+            "statusCode": 503,
+        },
+    }
+    assert "secret" not in json.dumps(summary, sort_keys=True)
+
+    module.main()
+    payload = json.loads(capsys.readouterr().out)
+    assert payload == summary
 
 
 def test_advanced_inspect_endpoint_contract_rejects_missing_model(

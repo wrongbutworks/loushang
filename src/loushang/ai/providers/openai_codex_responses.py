@@ -31,6 +31,7 @@ from loushang.ai.providers.openai_responses_shared import (
     convert_responses_tools,
     process_responses_stream,
 )
+from loushang.ai.trace import emit_trace as _emit_trace
 from loushang.ai.utils import sanitize_surrogates
 
 
@@ -53,13 +54,7 @@ class OpenAICodexResponsesProvider:
         self, model, context, options, request=None
     ) -> AsyncIterator[dict]:
         def _debug(event: str, data: dict | None = None) -> None:
-            trace_cb = getattr(options, "trace", None) if options is not None else None
-            if callable(trace_cb):
-                try:
-                    trace_cb({"type": f"sdk:{event}", **(data or {})})
-                    return
-                except Exception:
-                    pass
+            _emit_trace(options, {"type": f"sdk:{event}", **(data or {})})
             import os
 
             if os.getenv("LOUSHANG_DEBUG") == "1":
