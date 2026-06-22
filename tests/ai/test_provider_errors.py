@@ -18,6 +18,19 @@ class _HttpErrorWithHeaders(_HttpError):
         self.headers = {"x-request-id": "req_headers"}
 
 
+HttpxReadTimeout = type("ReadTimeout", (Exception,), {"__module__": "httpx"})
+OpenAIAPITimeoutError = type(
+    "APITimeoutError",
+    (Exception,),
+    {"__module__": "openai"},
+)
+AnthropicAPITimeoutError = type(
+    "APITimeoutError",
+    (Exception,),
+    {"__module__": "anthropic"},
+)
+
+
 @pytest.mark.parametrize(
     ("status_code", "code", "retryable"),
     [
@@ -34,7 +47,9 @@ def test_provider_error_part_maps_http_status_codes_to_error_info(
     code: AIErrorCode,
     retryable: bool,
 ) -> None:
-    part = provider_error_part(_HttpError("provider failed", status_code), source="openai")
+    part = provider_error_part(
+        _HttpError("provider failed", status_code), source="openai"
+    )
 
     assert part["type"] == "response_error"
     assert part["message"] == "provider failed"
@@ -51,6 +66,22 @@ def test_provider_error_part_maps_timeout_without_http_status() -> None:
     assert part["type"] == "response_error"
     assert part["message"] == "connection timed out"
     assert "code" not in part
+    assert part["error_info"]["code"] == "timeout"
+    assert part["error_info"]["retryable"] is True
+
+
+@pytest.mark.parametrize(
+    "error",
+    [
+        HttpxReadTimeout("read timed out"),
+        OpenAIAPITimeoutError("request timed out"),
+        AnthropicAPITimeoutError("request timed out"),
+    ],
+)
+def test_provider_error_part_maps_sdk_timeout_exceptions(error: Exception) -> None:
+    part = provider_error_part(error, source="provider")
+
+    assert part["type"] == "response_error"
     assert part["error_info"]["code"] == "timeout"
     assert part["error_info"]["retryable"] is True
 

@@ -15,6 +15,7 @@ from loushang.ai.model.registry import (
     clear_default_model_registry,
     get_default_model_registry,
 )
+from loushang.ai.options import RetryOptions
 from loushang.ai.provider import ResolvedRequest
 from loushang.ai.structured import StructuredOutputOptions
 from loushang.ai.types import (
@@ -869,7 +870,7 @@ def test_openai_codex_responses_stream_handles_function_call_events() -> None:
     assert tool_call.arguments == {"x": 1}
 
 
-def test_openai_codex_responses_retries_retryable_sse_failure() -> None:
+def test_openai_codex_responses_retries_retryable_sse_failure_through_runtime() -> None:
     client = _FakeCodexClient(
         stream_behaviors=[
             _FakeStreamBehavior(status_code=429, text="rate limited"),
@@ -901,7 +902,8 @@ def test_openai_codex_responses_retries_retryable_sse_failure() -> None:
             _Model(reasoning=False),
             {"messages": [UserMessage(role="user", content="hello", timestamp=0.0)]},
             OpenAICodexResponsesOptions(
-                api_key=_build_fake_jwt("acc_test"), retries=1, max_retry_delay_ms=0
+                api_key=_build_fake_jwt("acc_test"),
+                retry=RetryOptions(max_attempts=2, max_delay_seconds=0),
             ),
         )
     )
@@ -911,6 +913,39 @@ def test_openai_codex_responses_retries_retryable_sse_failure() -> None:
     assert client.stream_call_count == 2
     assert events[-1]["type"] == "done"
     assert events[-1]["message"].content[0].text == "Hello"
+
+
+def test_openai_codex_responses_does_not_retry_inside_adapter() -> None:
+    client = _FakeCodexClient(
+        stream_behaviors=[
+            _FakeStreamBehavior(status_code=429, text="rate limited"),
+            _FakeStreamBehavior(
+                events=[
+                    {"type": "response.created", "response": {"id": "resp_retry"}},
+                    {"type": "response.output_text.delta", "delta": "unexpected"},
+                    {"type": "response.completed", "response": {"status": "completed"}},
+                ]
+            ),
+        ]
+    )
+    provider = OpenAICodexResponsesProvider(client=client)
+    stream = asyncio.run(
+        _stream(
+            provider,
+            _Model(reasoning=False),
+            {"messages": [UserMessage(role="user", content="hello", timestamp=0.0)]},
+            OpenAICodexResponsesOptions(
+                api_key=_build_fake_jwt("acc_test"),
+                retry=RetryOptions(max_attempts=1, max_delay_seconds=0),
+            ),
+        )
+    )
+
+    events = asyncio.run(_collect_stream_events(stream))
+
+    assert client.stream_call_count == 1
+    assert events[-1]["type"] == "error"
+    assert events[-1]["error_info"]["statusCode"] == 429
 
 
 def test_openai_codex_responses_surfaces_http_error_code() -> None:

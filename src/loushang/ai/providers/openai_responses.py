@@ -11,7 +11,11 @@ from loushang.ai.model.domain import (
     EndpointWireDialect,
     SupportStatus,
 )
-from loushang.ai.options import get_reasoning_effort, get_reasoning_summary
+from loushang.ai.options import (
+    get_provider_option,
+    get_reasoning_effort,
+    get_reasoning_summary,
+)
 from loushang.ai.output_budget import resolve_output_token_budget
 from loushang.ai.provider import ProviderRequest, resolve_provider_request
 from loushang.ai.provider.errors import provider_error_part
@@ -84,9 +88,7 @@ class OpenAIResponsesProvider:
             )
         )
 
-    async def stream_raw(
-        self, request: ProviderRequest
-    ) -> AsyncIterator[dict]:
+    async def stream_raw(self, request: ProviderRequest) -> AsyncIterator[dict]:
         model = request.model
         options = request.options
         resolved = request.resolved
@@ -221,7 +223,7 @@ class OpenAIResponsesProvider:
 
         # options.on_payload：允许调用方观察/修改最终请求参数（对齐 pi-ai 语义）
         try:
-            cb = getattr(options, "on_payload", None) if options is not None else None
+            cb = get_provider_option(options, "on_payload")
             if callable(cb):
                 next_params = cb(params, model)
                 if asyncio.iscoroutine(next_params):
@@ -253,7 +255,7 @@ class OpenAIResponsesProvider:
 
 
 async def _notify_provider_response(options, response, model) -> None:
-    callback = getattr(options, "on_response", None) if options is not None else None
+    callback = get_provider_option(options, "on_response")
     if not callable(callback):
         return
     with suppress(Exception):

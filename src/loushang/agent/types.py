@@ -1,10 +1,9 @@
 from __future__ import annotations
 
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
 from typing import (
     Any,
-    Awaitable,
-    Callable,
     Generic,
     Literal,
     NotRequired,
@@ -207,6 +206,8 @@ class AgentLoopConfig(SimpleStreamOptions):
     convert_to_llm: ConvertToLlmFn
     transform_context: TransformContextFn | None = None
     get_api_key: GetApiKeyFn | None = None
+    on_payload: object | None = None
+    on_response: object | None = None
     get_steering_messages: Callable[[], Awaitable[list[AgentMessage]]] | None = None
     get_follow_up_messages: Callable[[], Awaitable[list[AgentMessage]]] | None = None
     tool_execution: ToolExecutionMode = "parallel"

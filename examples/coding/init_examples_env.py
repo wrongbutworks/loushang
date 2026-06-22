@@ -7,6 +7,7 @@ import shutil
 from pathlib import Path
 
 ARTIFACT_ROOT_NAME = ".loushang"
+BUILTIN_MODEL_CATALOG = Path("src/loushang/ai/model/models.curated.v2.json")
 
 
 def _detect_repo_root(start: Path) -> Path:
@@ -50,7 +51,7 @@ def _build_default_readme(artifacts_root: Path) -> str:
         "2. `LOUSHANG_EXAMPLES_MODEL_CATALOG`\n"
         "3. `<artifact-root>/models/`（存在 `.json` 文件）\n"
         "4. `<artifact-root>/models.json`\n"
-        "5. 内置 `src/loushang/ai/model/models.json`\n"
+        f"5. 内置 `{BUILTIN_MODEL_CATALOG.as_posix()}`\n"
         "使用 `--copy-model-catalog` 可将内置 catalog 拷贝到 `models/models.json` 作为模板。\n"
     )
 
@@ -63,17 +64,14 @@ def _build_sessions_readme() -> str:
 
 
 def _build_extensions_readme() -> str:
-    return (
-        "# Extensions\n\n"
-        "此目录用于共享的示例扩展脚本（extensions）。\n"
-    )
+    return "# Extensions\n\n此目录用于共享的示例扩展脚本（extensions）。\n"
 
 
 def _build_models_readme() -> str:
     return (
         "# Model Catalogs\n\n"
         "此目录用于放置可被自动发现的模型 catalog，文件名建议形如 `models.xx.json`。\n"
-        "格式要求与 `src/loushang/ai/model/models.json` 兼容。\n"
+        f"格式要求与 `{BUILTIN_MODEL_CATALOG.as_posix()}` 兼容。\n"
     )
 
 
@@ -112,7 +110,7 @@ def run(argv: list[str] | None = None) -> int:
     parser.add_argument(
         "--copy-model-catalog",
         action="store_true",
-        help="Copy src/loushang/ai/model/models.json to <artifacts-root>/models/models.json.",
+        help="Copy src/loushang/ai/model/models.curated.v2.json to <artifacts-root>/models/models.json.",
     )
     parser.add_argument(
         "--skip-session-dir",
@@ -143,7 +141,11 @@ def run(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
     repo_root = _detect_repo_root(args.repo_root)
     examples_root = repo_root / "examples" / "coding"
-    artifacts_root = args.artifacts_root if args.artifacts_root is not None else examples_root / ARTIFACT_ROOT_NAME
+    artifacts_root = (
+        args.artifacts_root
+        if args.artifacts_root is not None
+        else examples_root / ARTIFACT_ROOT_NAME
+    )
 
     sessions_dir = artifacts_root / "sessions"
     extensions_dir = artifacts_root / "extensions"
@@ -166,7 +168,7 @@ def run(argv: list[str] | None = None) -> int:
         add("file ", models_dir / "README.md")
     add("file ", artifacts_root / "README.md")
     if args.copy_model_catalog:
-        add("copy ", (repo_root / "src/loushang/ai/model/models.json"))
+        add("copy ", repo_root / BUILTIN_MODEL_CATALOG)
         add("file ", models_dir / "models.json")
         for src in sorted((examples_root / "models").glob("*.json")):
             if src.name.startswith("README"):
@@ -182,10 +184,18 @@ def run(argv: list[str] | None = None) -> int:
         return 0
 
     artifacts_root.mkdir(parents=True, exist_ok=True)
-    _write_if_missing(artifacts_root / "README.md", _build_default_readme(artifacts_root), overwrite=args.overwrite)
+    _write_if_missing(
+        artifacts_root / "README.md",
+        _build_default_readme(artifacts_root),
+        overwrite=args.overwrite,
+    )
     if not args.skip_session_dir:
         sessions_dir.mkdir(parents=True, exist_ok=True)
-        _write_if_missing(sessions_dir / "README.md", _build_sessions_readme(), overwrite=args.overwrite)
+        _write_if_missing(
+            sessions_dir / "README.md",
+            _build_sessions_readme(),
+            overwrite=args.overwrite,
+        )
     if not args.skip_extensions_dir:
         extensions_dir.mkdir(parents=True, exist_ok=True)
         _write_if_missing(
@@ -195,11 +205,13 @@ def run(argv: list[str] | None = None) -> int:
         )
     if not args.skip_models_dir:
         models_dir.mkdir(parents=True, exist_ok=True)
-        _write_if_missing(models_dir / "README.md", _build_models_readme(), overwrite=args.overwrite)
+        _write_if_missing(
+            models_dir / "README.md", _build_models_readme(), overwrite=args.overwrite
+        )
 
     if args.copy_model_catalog:
         _safe_copy(
-            src=repo_root / "src/loushang/ai/model/models.json",
+            src=repo_root / BUILTIN_MODEL_CATALOG,
             dst=models_dir / "models.json",
             overwrite=args.overwrite,
         )
@@ -231,7 +243,9 @@ def run(argv: list[str] | None = None) -> int:
     print("  source examples/coding/kimicode.env.example")
     print("  python examples/coding/run.py list --count")
     print("  python examples/coding/run.py run legacy-007")
-    print("  python examples/coding/run.py run --artifacts-root <artifacts_root> legacy-001")
+    print(
+        "  python examples/coding/run.py run --artifacts-root <artifacts_root> legacy-001"
+    )
 
     return 0
 

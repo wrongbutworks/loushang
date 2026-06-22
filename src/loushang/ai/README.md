@@ -59,11 +59,11 @@
 
 - `resolution.py`
   - 从 `Model + options` 解析 `ResolvedEndpoint` / `ResolvedRequest`
-- `transforms.py`
-  - 通用 provider payload helper
 - `protocol.py`
   - `ApiProvider` 协议
-- `carrier.py` / `transport.py` / `errors.py`
+- `runtime.py` / `invocation.py`
+  - 统一 provider 调用、重试、取消、raw stream 组装入口
+- `runtime_config.py` / `cancellation.py` / `output_budget.py` / `errors.py`
   - 通用运行时辅助
 
 `provider/` 负责统一边界，不负责具体厂商实现。
@@ -249,6 +249,7 @@ provider-specific options 仍保留在 `loushang.ai.options` / `loushang.ai.adva
 - Context normalization helper 从 `loushang.ai.context` 进入。
 - Tool transform / validation 从 `loushang.ai.tool` 进入。
 - Cost helper 从 `loushang.ai.pricing` 进入。
+- Platform quota helper 从 `loushang.ai.usage` 进入。
 - Overflow 和 streaming JSON repair helper 从 `loushang.ai.utils` 进入。
 
 ### 子模块 helper
@@ -286,7 +287,7 @@ provider-specific options 仍保留在 `loushang.ai.options` / `loushang.ai.adva
 - `loushang.ai.pricing.calculate_cost(...)`
 - `loushang.ai.pricing.models_are_equal(...)`
 - `loushang.ai.usage_observation_from_message(...)`
-- `loushang.ai.query_platform_quota(...)`
+- `loushang.ai.usage.query_platform_quota(...)`
 - `loushang.ai.complete_structured(model, context, output, options=...)`
   - sends `StructuredOutputOptions` through provider-native structured output payloads where the adapter has a stable mapping
   - returns `StructuredOutputResult(raw=AssistantMessage, parsed=...)`

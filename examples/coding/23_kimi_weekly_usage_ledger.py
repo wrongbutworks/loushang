@@ -21,8 +21,9 @@ from _support import (
     resolve_api_key,
 )
 
-from loushang.ai import Context, UserMessage, complete_simple, query_platform_quota
+from loushang.ai import Context, UserMessage, complete_simple
 from loushang.ai.pricing import calculate_cost
+from loushang.ai.usage import query_platform_quota
 
 LEDGER_FILE_NAME = "usage-ledger.jsonl"
 ENV_WEEKLY_QUOTA_TOKENS = "LOUSHANG_WEEKLY_QUOTA_TOKENS"

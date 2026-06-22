@@ -8,6 +8,7 @@ from typing import Any
 
 from loushang.ai.model.domain import EndpointProtocolFeatures, SupportStatus
 from loushang.ai.options import (
+    get_provider_option,
     get_reasoning_budget_tokens,
     get_reasoning_effort,
     is_reasoning_requested,
@@ -325,9 +326,7 @@ class AnthropicProvider(AnthropicProviderBase):
             )
         )
 
-    async def stream_raw(
-        self, request: ProviderRequest
-    ) -> AsyncIterator[dict]:
+    async def stream_raw(self, request: ProviderRequest) -> AsyncIterator[dict]:
         """
         将 Anthropic SDK 的 streaming 事件映射到 RawPart。
         当前实现覆盖文本、thinking、signature、redacted thinking、工具增量、usage、stop_reason 与完成事件。
@@ -464,7 +463,9 @@ class AnthropicProvider(AnthropicProviderBase):
         if thinking_cfg:
             params["thinking"] = thinking_cfg
         # 若存在自适应思考的 effort，注入 output_config
-        want_thinking = normalized.get("emit_thinking") or is_reasoning_requested(options)
+        want_thinking = normalized.get("emit_thinking") or is_reasoning_requested(
+            options
+        )
         if want_thinking and self.supports_adaptive_thinking(model.id):
             effort = self.map_thinking_level_to_effort(
                 get_reasoning_effort(options), model.id
@@ -484,9 +485,7 @@ class AnthropicProvider(AnthropicProviderBase):
             cache_retention=getattr(options, "cache_retention", None)
             if options is not None
             else None,
-            supports_long_cache_retention=_is_supported(
-                protocol.cache.long_retention
-            ),
+            supports_long_cache_retention=_is_supported(protocol.cache.long_retention),
         )
         cache_control = cc.get("cacheControl")
         if cache_control:
@@ -547,7 +546,7 @@ class AnthropicProvider(AnthropicProviderBase):
 
         # on_payload 钩子
         try:
-            onp = getattr(options, "on_payload", None) if options is not None else None
+            onp = get_provider_option(options, "on_payload")
             if callable(onp):
                 next_params = onp(params, model)  # 允许返回替换
                 if asyncio.iscoroutine(next_params):
@@ -819,7 +818,7 @@ class AnthropicProvider(AnthropicProviderBase):
 
 
 async def _notify_provider_response(options, response, model) -> None:
-    callback = getattr(options, "on_response", None) if options is not None else None
+    callback = get_provider_option(options, "on_response")
     if not callable(callback):
         return
     with suppress(Exception):

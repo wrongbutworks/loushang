@@ -65,8 +65,6 @@ class CallOptions:
     timeout: TimeoutOptions | float | int | None = None
     retries: int | None = None
     retry: RetryOptions | None = None
-    on_payload: object | None = None
-    on_response: object | None = None
     trace: object | None = None
     oauth_credentials: dict[str, object] | None = None
     region: str | None = None
@@ -192,6 +190,18 @@ def get_retry_max_delay_ms(options: object | None) -> int | None:
     return value if isinstance(value, int) else None
 
 
+def get_provider_option(options: object | None, name: str) -> object | None:
+    if options is None:
+        return None
+    value = getattr(options, name, None)
+    if value is not None:
+        return value
+    provider_options = getattr(options, "provider_options", None)
+    if isinstance(provider_options, Mapping):
+        return provider_options.get(name)
+    return None
+
+
 @dataclass(frozen=True, slots=True)
 class SimpleCallOptions(CallOptions):
     reasoning: "ThinkingLevel | None" = None
@@ -235,8 +245,6 @@ def simple_options_to_call_options(
         timeout=options.timeout,
         retries=options.retries,
         retry=options.retry,
-        on_payload=options.on_payload,
-        on_response=options.on_response,
         trace=options.trace,
         oauth_credentials=options.oauth_credentials,
         region=options.region,

@@ -12,7 +12,7 @@ from loushang.ai.model.domain import (
     EndpointWireDialect,
     SupportStatus,
 )
-from loushang.ai.options import get_timeout_seconds
+from loushang.ai.options import get_provider_option, get_timeout_seconds
 from loushang.ai.output_budget import resolve_output_token_budget
 from loushang.ai.provider import ProviderRequest, resolve_provider_request
 from loushang.ai.provider.errors import provider_error_part
@@ -61,9 +61,7 @@ class OpenAICompletionsProvider:
             )
         )
 
-    async def stream_raw(
-        self, request: ProviderRequest
-    ) -> AsyncIterator[dict]:
+    async def stream_raw(self, request: ProviderRequest) -> AsyncIterator[dict]:
         model = request.model
         options = request.options
         resolved = request.resolved
@@ -1077,7 +1075,7 @@ def _assistant_message_payload(
 
 
 async def _notify_provider_response(options, response, model) -> None:
-    callback = getattr(options, "on_response", None) if options is not None else None
+    callback = get_provider_option(options, "on_response")
     if not callable(callback):
         return
     with suppress(Exception):

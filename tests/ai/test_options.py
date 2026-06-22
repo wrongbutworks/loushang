@@ -25,6 +25,7 @@ from loushang.ai.options import (
     StreamOptions,
     TimeoutOptions,
     get_max_output_tokens,
+    get_provider_option,
     get_reasoning_budget_tokens,
     get_reasoning_effort,
     get_reasoning_summary,
@@ -72,6 +73,8 @@ def test_call_options_signature_is_provider_neutral() -> None:
         "provider_options",
     } <= field_names
     assert "azure_base_url" not in field_names
+    assert "on_payload" not in field_names
+    assert "on_response" not in field_names
     assert "service_tier" not in field_names
     assert "text_verbosity" not in field_names
 
@@ -152,6 +155,23 @@ def test_provider_specific_options_are_advanced_compatibility_types() -> None:
     )
     assert "OpenAICodexResponsesOptions" not in ai.__all__
     assert not hasattr(ai, "OpenAICodexResponsesOptions")
+    assert "on_payload" in {field.name for field in fields(AnthropicOptions)}
+    assert "on_response" in {field.name for field in fields(OpenAIResponsesOptions)}
+
+
+def test_provider_hooks_are_not_stable_call_options_fields() -> None:
+    marker = object()
+
+    assert (
+        get_provider_option(
+            CallOptions(provider_options={"on_payload": marker}), "on_payload"
+        )
+        is marker
+    )
+    assert (
+        get_provider_option(OpenAIResponsesOptions(on_payload=marker), "on_payload")
+        is marker
+    )
 
 
 def test_provider_specific_options_keep_model_call_fields() -> None:

@@ -23,7 +23,9 @@ class ProviderErrorInfo(TypedDict):
     error_info: NotRequired[dict[str, JSONValue]]
 
 
-_ERROR_CLASS_BY_CODE: dict[AIErrorCode, type[AIProviderError | AIAuthenticationError]] = {
+_ERROR_CLASS_BY_CODE: dict[
+    AIErrorCode, type[AIProviderError | AIAuthenticationError]
+] = {
     AIErrorCode.AUTHENTICATION: AIAuthenticationError,
     AIErrorCode.RATE_LIMIT: AIRateLimitError,
     AIErrorCode.TIMEOUT: AITimeoutError,
@@ -165,9 +167,27 @@ def _request_id_from_headers(headers: object) -> str | None:
 
 
 def _provider_error_code(error: Exception, status_code: int | None) -> AIErrorCode:
-    if isinstance(error, TimeoutError):
+    if _is_timeout_exception(error):
         return AIErrorCode.TIMEOUT
     return _provider_error_code_from_status(status_code)
+
+
+def _is_timeout_exception(error: Exception) -> bool:
+    if isinstance(error, TimeoutError):
+        return True
+    for cls in type(error).__mro__:
+        module = getattr(cls, "__module__", "")
+        name = getattr(cls, "__name__", "")
+        if name in {
+            "APITimeoutError",
+            "ConnectTimeout",
+            "PoolTimeout",
+            "ReadTimeout",
+            "TimeoutException",
+            "WriteTimeout",
+        } and module.startswith(("anthropic", "httpcore", "httpx", "openai")):
+            return True
+    return False
 
 
 def _provider_error_code_from_status(status_code: int | None) -> AIErrorCode:

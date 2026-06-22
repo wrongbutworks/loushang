@@ -9,6 +9,8 @@ from loushang.ai.options import CallOptions, Transport
 class OpenAICodexResponsesOptions(CallOptions):
     """OpenAI Codex contrib request options."""
 
+    on_payload: object | None = None
+    on_response: object | None = None
     reasoning: str | None = None
     reasoning_summary: str | None = None
     text_verbosity: str | None = None

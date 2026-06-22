@@ -43,18 +43,11 @@ ROOT_EXPORTS_BASELINE = [
     "Usage",
     "UsageCost",
     "UsageObservation",
-    "EndpointQuotaQuery",
-    "PlatformQuota",
-    "PlatformQuotaError",
-    "PlatformQuotaUnsupportedError",
     "complete",
     "complete_simple",
     "complete_structured",
-    "endpoint_quota_query_for_model",
     "get_model",
     "list_models",
-    "platform_quota_payload",
-    "query_platform_quota",
     "stream",
     "stream_simple",
     "usage_observation_from_message",
@@ -112,7 +105,7 @@ KNOWN_BASELINE_DEBT = {
 
 def test_root_exports_baseline_snapshot() -> None:
     assert ai.__all__ == ROOT_EXPORTS_BASELINE
-    assert len(ai.__all__) == 46
+    assert len(ai.__all__) == 39
 
 
 def test_advanced_exports_are_not_root_stable_exports() -> None:

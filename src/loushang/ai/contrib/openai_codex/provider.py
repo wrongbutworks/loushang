@@ -18,8 +18,6 @@ from loushang.ai.model.domain import EndpointProtocolFeatures, EndpointWireDiale
 from loushang.ai.options import (
     get_reasoning_effort,
     get_reasoning_summary,
-    get_retry_attempts,
-    get_retry_max_delay_ms,
     get_timeout_seconds,
 )
 from loushang.ai.provider import ProviderRequest, resolve_provider_request
@@ -67,9 +65,7 @@ class OpenAICodexResponsesProvider:
             )
         )
 
-    async def stream_raw(
-        self, request: ProviderRequest
-    ) -> AsyncIterator[dict]:
+    async def stream_raw(self, request: ProviderRequest) -> AsyncIterator[dict]:
         model = request.model
         options = request.options
         resolved = request.resolved
@@ -148,14 +144,14 @@ class OpenAICodexResponsesProvider:
                 except Exception:
                     if transport == "websocket" or websocket_started:
                         raise
-            async for part in self._stream_sse_with_retry(
+            async for part in self._stream_sse_once(
                 client, url, request_headers, body, options, debug_cb=_debug
             ):
                 yield part
         except Exception as exc:
             yield provider_error_part(exc, source=self.api)
 
-    async def _stream_sse_with_retry(
+    async def _stream_sse_once(
         self,
         client,
         url: str,
@@ -165,53 +161,38 @@ class OpenAICodexResponsesProvider:
         *,
         debug_cb=None,
     ) -> AsyncIterator[dict]:
-        retries = get_retry_attempts(options)
-        max_retries = retries if isinstance(retries, int) and retries >= 0 else 3
-        for attempt in range(max_retries + 1):
-            try:
-                async with client.stream(
-                    "POST",
-                    url,
-                    headers=headers,
-                    json=body,
-                    timeout=get_timeout_seconds(options),
-                ) as response:
-                    status_code = getattr(response, "status_code", 200)
-                    if status_code >= 400:
-                        error_text = await _parse_error_response(response)
-                        if callable(debug_cb):
-                            debug_cb(
-                                "response_error",
-                                {
-                                    "status": status_code,
-                                    "headers": _response_headers(response),
-                                    "message": error_text,
-                                },
-                            )
-                        if attempt < max_retries and _is_retryable_error(
-                            status_code, error_text
-                        ):
-                            await _retry_sleep(attempt, options)
-                            continue
-                        error_part: dict[str, object] = {
-                            "type": "response_error",
-                            "message": error_text
-                            or f"Codex request failed with status {status_code}",
-                        }
-                        if is_http_status_code(status_code):
-                            error_part["code"] = status_code
-                        yield error_part
-                        return
-                    async for part in process_responses_stream(
-                        _map_codex_events(_parse_sse_lines(response)), options=options
-                    ):
-                        yield part
-                    return
-            except Exception as exc:
-                if attempt < max_retries and _is_retryable_exception(exc):
-                    await _retry_sleep(attempt, options)
-                    continue
-                raise
+        async with client.stream(
+            "POST",
+            url,
+            headers=headers,
+            json=body,
+            timeout=get_timeout_seconds(options),
+        ) as response:
+            status_code = getattr(response, "status_code", 200)
+            if status_code >= 400:
+                error_text = await _parse_error_response(response)
+                if callable(debug_cb):
+                    debug_cb(
+                        "response_error",
+                        {
+                            "status": status_code,
+                            "headers": _response_headers(response),
+                            "message": error_text,
+                        },
+                    )
+                error_part: dict[str, object] = {
+                    "type": "response_error",
+                    "message": error_text
+                    or f"Codex request failed with status {status_code}",
+                }
+                if is_http_status_code(status_code):
+                    error_part["code"] = status_code
+                yield error_part
+                return
+            async for part in process_responses_stream(
+                _map_codex_events(_parse_sse_lines(response)), options=options
+            ):
+                yield part
 
     async def _stream_websocket_raw_parts(
         self, client, url: str, headers: dict[str, str], body: dict[str, Any], options
@@ -615,17 +596,6 @@ def _create_codex_request_id() -> str:
     return f"codex_{uuid4().hex}"
 
 
-async def _retry_sleep(attempt: int, options) -> None:
-    base_delay_ms = 1000 * (2**attempt)
-    max_delay_ms = get_retry_max_delay_ms(options)
-    if isinstance(max_delay_ms, int):
-        delay_ms = min(base_delay_ms, max_delay_ms)
-    else:
-        delay_ms = base_delay_ms
-    if delay_ms > 0:
-        await asyncio.sleep(delay_ms / 1000.0)
-
-
 async def _response_text(response) -> str:
     text_method = getattr(response, "atext", None)
     if callable(text_method):
@@ -690,29 +660,6 @@ async def _parse_error_response(response) -> str:
     if isinstance(code, str) and code.strip():
         return code.strip()
     return message
-
-
-def _is_retryable_error(status_code: int, message: str) -> bool:
-    if status_code in {429, 500, 502, 503, 504}:
-        return True
-    text = message.lower()
-    return any(
-        token in text
-        for token in (
-            "rate limit",
-            "overloaded",
-            "service unavailable",
-            "connection refused",
-        )
-    )
-
-
-def _is_retryable_exception(exc: Exception) -> bool:
-    message = str(exc).lower()
-    return any(
-        token in message
-        for token in ("connection", "timeout", "temporarily unavailable")
-    )
 
 
 def _objectify(value: Any) -> Any:

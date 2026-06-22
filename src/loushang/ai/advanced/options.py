@@ -10,6 +10,8 @@ from loushang.ai.options import CallOptions, Transport
 class AnthropicOptions(CallOptions):
     """Deprecated provider-specific extension; prefer CallOptions."""
 
+    on_payload: object | None = None
+    on_response: object | None = None
     thinking_enabled: bool = False
     thinking_budget_tokens: int | None = None
     effort: str | None = None
@@ -21,6 +23,8 @@ class AnthropicOptions(CallOptions):
 class OpenAICompletionsOptions(CallOptions):
     """Deprecated provider-specific extension; prefer CallOptions."""
 
+    on_payload: object | None = None
+    on_response: object | None = None
     reasoning: str | None = None
     tool_choice: str | dict[str, Any] | None = None
 
@@ -29,6 +33,8 @@ class OpenAICompletionsOptions(CallOptions):
 class OpenAIResponsesOptions(CallOptions):
     """Deprecated provider-specific extension; prefer CallOptions."""
 
+    on_payload: object | None = None
+    on_response: object | None = None
     reasoning: str | None = None
     reasoning_summary: str | None = None
     service_tier: str | None = None
