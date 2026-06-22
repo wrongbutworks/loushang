@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import inspect
 from types import SimpleNamespace
-from typing import Any, Literal
+from typing import Any
 
 from loushang.ai.context import ensure_normalized_context
 from loushang.ai.options import PairingMode
@@ -13,51 +13,27 @@ from loushang.ai.provider.resolution import (
 )
 from loushang.ai.provider.runtime import start_provider_runtime
 
-_ProviderCallStyle = Literal["request_object", "positional", "keyword", "legacy"]
 
-
-def _provider_call_style(method: Any) -> _ProviderCallStyle:
+def validate_provider_stream_raw_contract(provider: Any) -> None:
+    method = getattr(provider, "stream_raw", None)
+    if not callable(method):
+        raise TypeError("Provider missing required stream_raw method")
     try:
         signature = inspect.signature(method)
     except (TypeError, ValueError):
-        return "legacy"
+        raise TypeError("Provider stream_raw signature is not inspectable") from None
 
-    positional_parameters: list[inspect.Parameter] = []
-    for parameter in signature.parameters.values():
-        if parameter.kind in (
-            inspect.Parameter.POSITIONAL_ONLY,
-            inspect.Parameter.POSITIONAL_OR_KEYWORD,
-        ):
-            positional_parameters.append(parameter)
-            continue
-        if (
-            parameter.kind is inspect.Parameter.KEYWORD_ONLY
-            and parameter.name == "request"
-        ):
-            return "keyword"
-    if (
-        len(positional_parameters) == 1
-        and positional_parameters[0].name in {"request", "provider_request"}
+    parameters = list(signature.parameters.values())
+    if len(parameters) != 1:
+        raise TypeError("Provider stream_raw must accept exactly one ProviderRequest")
+    parameter = parameters[0]
+    if parameter.kind not in (
+        inspect.Parameter.POSITIONAL_ONLY,
+        inspect.Parameter.POSITIONAL_OR_KEYWORD,
     ):
-        return "request_object"
-    if (
-        len(positional_parameters) == 2
-        and positional_parameters[0].name in {"self", "cls"}
-        and positional_parameters[1].name in {"request", "provider_request"}
-    ):
-        return "request_object"
-    request_index = (
-        4
-        if positional_parameters
-        and positional_parameters[0].name in {"self", "cls"}
-        else 3
-    )
-    if (
-        len(positional_parameters) > request_index
-        and positional_parameters[request_index].name == "request"
-    ):
-        return "positional"
-    return "legacy"
+        raise TypeError("Provider stream_raw request must be a positional parameter")
+    if parameter.name not in {"request", "provider_request"}:
+        raise TypeError("Provider stream_raw parameter must be named request")
 
 
 def _resolve_pairing_mode(options) -> PairingMode:
@@ -92,53 +68,21 @@ def _normalize_provider_context(model, context, options, request: ResolvedReques
 
 
 def _call_provider_raw_parts(
-    method: Any,
-    style: _ProviderCallStyle,
+    provider: Any,
     model,
     context,
     options,
     request: ResolvedRequest,
 ):
     context = _normalize_provider_context(model, context, options, request)
-    if style == "request_object":
-        return method(
-            ProviderRequest(
-                model=model,
-                context=context,
-                options=options,
-                resolved=request,
-            )
+    return provider.stream_raw(
+        ProviderRequest(
+            model=model,
+            context=context,
+            options=options,
+            resolved=request,
         )
-    if style == "legacy":
-        return method(model, context, options)
-    if style == "keyword":
-        return method(model, context, options, request=request)
-    return method(model, context, options, request)
-
-
-async def _call_request_aware_provider(
-    method: Any,
-    style: _ProviderCallStyle,
-    model,
-    context,
-    options,
-    request: ResolvedRequest,
-):
-    context = _normalize_provider_context(model, context, options, request)
-    if style == "request_object":
-        return await method(
-            ProviderRequest(
-                model=model,
-                context=context,
-                options=options,
-                resolved=request,
-            )
-        )
-    if style == "legacy":
-        return await method(model, context, options)
-    if style == "keyword":
-        return await method(model, context, options, request=request)
-    return await method(model, context, options, request)
+    )
 
 
 async def call_api_provider_stream(
@@ -160,18 +104,12 @@ async def call_api_provider_stream(
     if not callable(stream_raw_method):
         if not callable(stream_method):
             raise TypeError("Provider missing required stream_raw or stream method")
-        return await _call_request_aware_provider(
-            stream_method,
-            _provider_call_style(stream_method),
-            model,
-            context,
-            options,
-            request,
-        )
+        context = _normalize_provider_context(model, context, options, request)
+        return await stream_method(model, context, options, request)
+    validate_provider_stream_raw_contract(provider)
     return start_provider_runtime(
         lambda: _call_provider_raw_parts(
-            stream_raw_method,
-            _provider_call_style(stream_raw_method),
+            provider,
             model,
             context,
             options,
@@ -187,7 +125,7 @@ class _RequestAwareProviderInvoker:
     def __init__(self, provider: Any) -> None:
         self._provider = provider
         self.api = provider.api
-        self._stream_raw_style = _provider_call_style(provider.stream_raw)
+        validate_provider_stream_raw_contract(provider)
         self._adapter_config_resolver = _adapter_config_resolver(provider)
 
     def _resolve_request(self, model, options, request: ResolvedRequest | None):
@@ -205,8 +143,7 @@ class _RequestAwareProviderInvoker:
         request = self._resolve_request(model, options, request)
         return start_provider_runtime(
             lambda: _call_provider_raw_parts(
-                self._provider.stream_raw,
-                self._stream_raw_style,
+                self._provider,
                 model,
                 context,
                 options,

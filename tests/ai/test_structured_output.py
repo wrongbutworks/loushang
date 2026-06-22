@@ -178,9 +178,8 @@ class _StructuredProvider:
         self.api = api
         self.options = None
 
-    async def stream_raw(self, model, context, options, request):
-        del model, context, request
-        self.options = options
+    async def stream_raw(self, request):
+        self.options = request.options
         yield {"type": "response_start", "response_id": "structured-demo"}
         yield {"type": "text_delta", "text": '{"answer":"ok"}'}
         yield {"type": "stop_reason", "stop_reason": "stop"}

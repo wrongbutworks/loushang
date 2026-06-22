@@ -42,11 +42,11 @@ Current composite score: 8.6/10.
 | Catalog budget | `scripts/ai/check_catalog.py` enforces provider <= 11, model <= 20, evidence files, provider matrix alignment, preferred-endpoint uniqueness, and supported modalities. |
 | Curated provider facts | `docs/internals/architecture/ai/catalog-evidence/*.md` records official docs, included models, omitted facts, and live-smoke status for each curated provider. |
 | Legacy catalog archive | `docs/internals/archive/ai/model-catalog/README.md` records the compressed v1 catalog archive and SHA verification command. |
-| Provider boundary | `ProviderRequest` is the single `stream_raw` argument for core adapters; contract tests lock the signature and builtin registration. |
+| Provider boundary | `ProviderRequest` is the single `stream_raw` argument for registered raw providers; contract tests lock the signature, builtin registration, and legacy-signature rejection. |
 | Public SDK docs | `docs/en/sdk/README.md`, `docs/zh-CN/sdk/README.md`, and the v2 migration guides document the public path, catalog, auth, errors, examples, and migration rules. |
 | Offline examples | `scripts/ai/check_examples.py` executes numbered `examples/ai/[0-9][0-9]_*.py` with live provider keys removed. |
 | Import boundaries | `scripts/ai/check_import_boundaries.py` prevents `loushang.ai` from importing agent/coding layers, prevents removed core providers from returning, and keeps top-level examples on stable AI imports. |
-| AI gate | `make check-ai` runs lint, mypy, catalog checks, import checks, offline examples, package coverage, scoped core coverage, and adapter coverage; latest run reached 83.32% package coverage, 90.03% runtime-core coverage, and 85.65% provider-adapter coverage with 688 passed and 9 live tests deselected. |
+| AI gate | `make check-ai` runs lint, mypy, catalog checks, import checks, offline examples, package coverage, scoped core coverage, and adapter coverage; latest run reached 83.30% package coverage, 90.01% runtime-core coverage, and 85.65% provider-adapter coverage with 688 passed and 9 live tests deselected. |
 | Full offline test suite | `env -u <provider keys> uv run pytest tests -m "not live" -q` passed on 2026-06-22 with 4254 passed and 9 deselected. |
 | Build | `uv build` passed on 2026-06-22 after the final review fixes and produced both sdist and wheel artifacts. |
 | Live provider smoke | DashScope Responses stream/tools and DeepSeek OpenAI-compatible complete/stream passed on 2026-06-22 with valid local credentials. Moonshot was attempted but rejected by the provider with HTTP 401, so it is not counted as live proof. |
@@ -62,7 +62,7 @@ Current composite score: 8.6/10.
 | Codex is contrib and explicitly registered | Met | `loushang.ai.contrib.openai_codex.register_openai_codex_contrib`. |
 | Core has no provider-id/base-url compat guessing | Mostly met | Compat boundary tests cover provider/runtime leakage; keep any future provider-specific behavior behind endpoint contracts or contrib. |
 | Built-in catalog has no legacy full-catalog runtime path | Met | Package data points to `models.curated.v2.json`; full v1 catalog is archived under docs. |
-| Provider boundary accepts only normalized context/request facts | Met | Core adapters receive one `ProviderRequest` object containing `model`, normalized `context`, `options`, and resolved request facts. |
+| Provider boundary accepts only normalized context/request facts | Met | Registered raw providers receive one `ProviderRequest` object containing `model`, normalized `context`, `options`, and resolved request facts; old positional provider signatures are rejected. |
 | Core has no bare `except Exception: pass` | Met | `rg -n -U "except Exception:\n\s*pass" src/loushang/ai tests/ai tests/providers` returns no matches. |
 | Stream queue is bounded | Met | `AssistantMessageEventStream` uses a bounded queue; `tests/ai/test_provider_runtime.py` checks it. |
 | Cancellation closes upstream | Met | Provider runtime closes async sources through `aclose`/`close`; provider runtime tests cover cancellation. |
@@ -105,7 +105,7 @@ Current composite score: 8.6/10.
 | `uv run python scripts/ai/check_catalog.py` passes | Met | Catalog gate. |
 | `uv run python scripts/ai/check_examples.py` passes | Met | Offline example gate. |
 | `uv build` passes | Met | Passed on 2026-06-22 after the final review fixes. |
-| Core coverage >= 90% | Met | `scripts/ai/check_coverage_targets.py` enforces scoped runtime-core coverage; latest `make check-ai` reported 90.03%. Scope is recorded in `ARD-002-ai-coverage-gate-scope.md`. |
+| Core coverage >= 90% | Met | `scripts/ai/check_coverage_targets.py` enforces scoped runtime-core coverage; latest `make check-ai` reported 90.01%. Scope is recorded in `ARD-002-ai-coverage-gate-scope.md`. |
 | Adapter aggregate coverage >= 85% | Met | `scripts/ai/check_coverage_targets.py` enforces retained provider adapter aggregate coverage; latest `make check-ai` reported 85.65%. |
 | No pending asyncio task | Mostly met | Provider runtime tests cover cancellation and close behavior; final full-suite leak check still required. |
 | No secret trace snapshot | Mostly met | Error payload redaction and Codex request-body trace summarization are tested; final artifact scan still required. |
@@ -129,7 +129,7 @@ Current composite score: 8.6/10.
 | Each phase has a range review | Partial | Several phase gates were validated by commands; not every phase has a recorded independent range review. |
 | Final branch has a full review | Met | Three read-only final-review passes on 2026-06-22 found no P0 and surfaced release-blocking P1 items; the follow-up fixes resolved the default offline gate, catalog-copy path, retry/timeout semantics, root quota exports, and stable `CallOptions` hook leakage. |
 | P0/P1 = 0 | Met | No P0 findings in final review; all final-review P1 findings were fixed and covered by targeted tests plus `make check-ai`. |
-| P2 resolved or tracked | Partial | Low-cost docs/example P2s, Codex request-body trace summarization, and default Codex HTTP client close ownership were fixed. Remaining P2 debt is accepted for follow-up: Codex structured-output capability should be derived instead of hard-coded in core, advanced option compatibility still re-exports through `loushang.ai.options`, legacy provider fallback remains unreachable but present, and terminal queue edge cases need a focused stream-runtime patch. |
+| P2 resolved or tracked | Partial | Low-cost docs/example P2s, Codex request-body trace summarization, default Codex HTTP client close ownership, and legacy provider fallback removal were fixed. Remaining P2 debt is accepted for follow-up: Codex structured-output capability should be derived instead of hard-coded in core, advanced option compatibility still re-exports through `loushang.ai.options`, and terminal queue edge cases need a focused stream-runtime patch. |
 
 ## Issue #102-#108 Status
 

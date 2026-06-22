@@ -1047,8 +1047,8 @@ class _RequestRecordingProvider:
     def __init__(self) -> None:
         self.stream_request: ResolvedRequest | None = None
 
-    async def stream_raw(self, _model, _context, _options, request: ResolvedRequest):
-        self.stream_request = request
+    async def stream_raw(self, request):
+        self.stream_request = request.resolved
         yield {"type": "response_done"}
 
 

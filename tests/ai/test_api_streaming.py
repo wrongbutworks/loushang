@@ -72,18 +72,18 @@ class _Provider:
         self.options = None
         self.request = None
 
-    async def stream_raw(self, model, context, options, request):
-        self.context = context
-        self.options = options
-        self.request = request
+    async def stream_raw(self, request):
+        self.context = request.context
+        self.options = request.options
+        self.request = request.resolved
         yield {"type": "response_done"}
 
 
 class _ErrorProvider(_Provider):
-    async def stream_raw(self, model, context, options, request):
-        self.context = context
-        self.options = options
-        self.request = request
+    async def stream_raw(self, request):
+        self.context = request.context
+        self.options = request.options
+        self.request = request.resolved
         yield {
             "type": "response_error",
             "message": "rate limited",
@@ -666,71 +666,28 @@ def test_register_api_provider_rejects_stream_only_provider() -> None:
         registry.register_api_provider(_StreamOnlyProvider())
 
 
-def test_stream_supports_legacy_registered_provider_signature(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    _patch_resolved_request(monkeypatch)
-    monkeypatch.setattr("loushang.ai.messages.resolve_model_api", lambda _model: "faux")
-    monkeypatch.setattr(
-        "loushang.ai.tool.transform.resolve_model_api", lambda _model: "faux"
-    )
+def test_register_api_provider_rejects_legacy_provider_signature() -> None:
     provider = _LegacyProvider()
     registry = ApiProviderRegistry()
-    registry.register_api_provider(provider)
 
-    asyncio.run(
-        stream(
-            _Model(),
-            {"messages": [UserMessage(role="user", content="hello", timestamp=0.0)]},
-            ModelCallOptions(),
-            registry=registry,
-        )
-    )
-
-    normalized = _assert_normalized_provider_context(provider.context)
-    assert normalized["messages"][0].role == "user"
+    with pytest.raises(TypeError, match="exactly one ProviderRequest"):
+        registry.register_api_provider(provider)
 
 
-def test_stream_supports_keyword_request_registered_provider_signature(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    _patch_resolved_request(monkeypatch)
+def test_register_api_provider_rejects_keyword_request_signature() -> None:
     provider = _KeywordRequestProvider()
     registry = ApiProviderRegistry()
-    registry.register_api_provider(provider)
 
-    asyncio.run(
-        stream(
-            _Model(),
-            {"messages": [UserMessage(role="user", content="hello", timestamp=0.0)]},
-            ModelCallOptions(),
-            registry=registry,
-        )
-    )
-
-    _assert_normalized_provider_context(provider.context)
-    assert provider.request.api == "faux"
+    with pytest.raises(TypeError, match="exactly one ProviderRequest"):
+        registry.register_api_provider(provider)
 
 
-def test_stream_simple_supports_keyword_request_registered_provider_signature(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    _patch_resolved_request(monkeypatch)
-    provider = _KeywordRequestProvider()
+def test_register_api_provider_rejects_optional_legacy_argument_signature() -> None:
+    provider = _LegacyProviderWithOptionalDebug()
     registry = ApiProviderRegistry()
-    registry.register_api_provider(provider)
 
-    asyncio.run(
-        stream_simple(
-            _Model(),
-            {"messages": [UserMessage(role="user", content="hello", timestamp=0.0)]},
-            SimpleCallOptions(),
-            registry=registry,
-        )
-    )
-
-    _assert_normalized_provider_context(provider.context)
-    assert provider.request.api == "faux"
+    with pytest.raises(TypeError, match="exactly one ProviderRequest"):
+        registry.register_api_provider(provider)
 
 
 @pytest.mark.parametrize(
@@ -780,47 +737,51 @@ def test_stream_simple_maps_reasoning_options_before_provider_call(
     assert provider.request.api == api
 
 
-def test_stream_supports_legacy_provider_from_custom_registry(
+def test_stream_rejects_legacy_provider_from_custom_registry(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     _patch_resolved_request(monkeypatch)
     provider = _LegacyProvider()
     registry = _Registry(provider)
 
-    asyncio.run(
-        stream(
-            _Model(),
-            {"messages": [UserMessage(role="user", content="hello", timestamp=0.0)]},
-            ModelCallOptions(),
-            registry=registry,
+    with pytest.raises(TypeError, match="exactly one ProviderRequest"):
+        asyncio.run(
+            stream(
+                _Model(),
+                {
+                    "messages": [
+                        UserMessage(role="user", content="hello", timestamp=0.0)
+                    ]
+                },
+                ModelCallOptions(),
+                registry=registry,
+            )
         )
-    )
-
-    normalized = _assert_normalized_provider_context(provider.context)
-    assert normalized["messages"][0].role == "user"
 
 
-def test_stream_simple_supports_legacy_provider_from_custom_registry(
+def test_stream_simple_rejects_legacy_provider_from_custom_registry(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     _patch_resolved_request(monkeypatch)
     provider = _LegacyProvider()
     registry = _Registry(provider)
 
-    asyncio.run(
-        stream_simple(
-            _Model(),
-            {"messages": [UserMessage(role="user", content="hello", timestamp=0.0)]},
-            SimpleCallOptions(),
-            registry=registry,
+    with pytest.raises(TypeError, match="exactly one ProviderRequest"):
+        asyncio.run(
+            stream_simple(
+                _Model(),
+                {
+                    "messages": [
+                        UserMessage(role="user", content="hello", timestamp=0.0)
+                    ]
+                },
+                SimpleCallOptions(),
+                registry=registry,
+            )
         )
-    )
-
-    normalized = _assert_normalized_provider_context(provider.context)
-    assert normalized["messages"][0].role == "user"
 
 
-def test_get_api_provider_stream_supports_previous_wrapper_signature(
+def test_get_api_provider_stream_supports_wrapper_signature_without_request(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     _patch_resolved_request(monkeypatch)
@@ -840,44 +801,20 @@ def test_get_api_provider_stream_supports_previous_wrapper_signature(
     assert provider.context["messages"][0].role == "user"
 
 
-def test_get_api_provider_stream_supports_previous_legacy_provider_signature(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    _patch_resolved_request(monkeypatch)
+def test_get_api_provider_stream_rejects_legacy_provider_signature() -> None:
     provider = _LegacyProvider()
     registry = ApiProviderRegistry()
-    registry.register_api_provider(provider)
 
-    asyncio.run(
-        registry.get_api_provider("faux").stream(
-            _Model(),
-            {"messages": [UserMessage(role="user", content="hello", timestamp=0.0)]},
-            ModelCallOptions(),
-        )
-    )
-
-    assert provider.context["messages"][0].role == "user"
+    with pytest.raises(TypeError, match="exactly one ProviderRequest"):
+        registry.register_api_provider(provider)
 
 
-def test_get_api_provider_stream_does_not_treat_legacy_optional_arg_as_request(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    _patch_resolved_request(monkeypatch)
+def test_get_api_provider_stream_rejects_legacy_optional_arg_signature() -> None:
     provider = _LegacyProviderWithOptionalDebug()
     registry = ApiProviderRegistry()
-    registry.register_api_provider(provider)
 
-    asyncio.run(
-        registry.get_api_provider("faux").stream(
-            _Model(),
-            {"messages": [UserMessage(role="user", content="hello", timestamp=0.0)]},
-            ModelCallOptions(),
-        )
-    )
-
-    assert provider.context["messages"][0].role == "user"
-    assert provider.debug is False
-
+    with pytest.raises(TypeError, match="exactly one ProviderRequest"):
+        registry.register_api_provider(provider)
 
 def test_get_api_provider_stream_rejects_mismatched_resolved_request() -> None:
     provider = _Provider()
