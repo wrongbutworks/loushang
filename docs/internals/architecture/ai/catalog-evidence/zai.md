@@ -1,0 +1,29 @@
+# Provider evidence: zai
+
+- Verified at: 2026-06-22
+- Issue: #103
+- Official docs:
+  - https://docs.z.ai/guides/overview/quick-start
+  - https://docs.z.ai/guides/llm/glm-5.2
+  - https://docs.z.ai/guides/llm/glm-5.1
+  - https://docs.z.ai/guides/overview/pricing
+  - https://docs.z.ai/guides/capabilities/struct-output
+  - https://docs.z.ai/guides/capabilities/function-call
+- Authentication: API key in `ZAI_API_KEY`, sent as an `Authorization: Bearer ...` header.
+- Endpoint: `https://api.z.ai/api/paas/v4/`, OpenAI-compatible Chat Completions protocol.
+- Included models:
+  - `glm-5.2`: current flagship GLM-5 text model with 1,000,000 token context.
+  - `glm-5.1`: GLM-5 text model with 200,000 token context.
+- Verified capabilities:
+  - Quick-start docs establish the OpenAI-compatible base URL and Chat Completions request path.
+  - GLM-5.2 and GLM-5.1 docs list text input/output, 128K maximum output, thinking mode, streaming, tool use, and structured output support.
+  - Pricing docs record both selected models at $1.4 input, $0.26 cached input, and $4.4 output per million tokens.
+- Unknown/omitted facts:
+  - Vision models such as GLM-5V-Turbo are omitted because the current curated text catalog entry does not need image input for AIQ-050.
+  - The coding-plan endpoint is omitted to avoid duplicating `zai-coding-cn`; this entry uses the general OpenAI-compatible endpoint only.
+  - `reasoning.effort` remains unsupported in the shared endpoint contract because the selected models share a stable thinking toggle, while per-model effort differences are not represented in the catalog shape yet.
+  - `cacheWrite` is omitted because pricing presents cached input and storage as separate concepts; this catalog records cached input as `cacheRead` only.
+- Contract tests:
+  - `uv run pytest tests/ai/test_curated_catalog.py tests/providers/test_openai_completions_provider.py -q`
+- Manual live smoke:
+  - Not run on 2026-06-22; no live Z.AI credential was used for this catalog-only commit.

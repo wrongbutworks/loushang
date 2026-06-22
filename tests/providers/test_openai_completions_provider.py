@@ -1310,6 +1310,44 @@ def test_openai_completions_explicit_zai_thinking_format(
     assert "store" not in _FakeAsyncOpenAI.last_create_kwargs
 
 
+def test_openai_completions_explicit_zai_thinking_object_format(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _fake_openai_module(monkeypatch)
+    _patch_resolved_request(
+        monkeypatch,
+        compat={
+            THINKING_FORMAT: "zai-thinking",
+            SUPPORTS_DEVELOPER_ROLE: False,
+            SUPPORTS_REASONING_EFFORT: False,
+            SUPPORTS_STORE: False,
+        },
+        reasoning_effort="high",
+        base_url="https://api.z.ai/api/paas/v4/",
+    )
+    provider = OpenAICompletionsProvider()
+
+    asyncio.run(
+        _collect_parts(
+            _stream_raw_parts(
+                provider,
+                _Model(provider_id="zai", reasoning=True),
+                {
+                    "messages": [
+                        UserMessage(role="user", content="hello", timestamp=0.0)
+                    ]
+                },
+                OpenAICompletionsOptions(api_key="test-key"),
+            )
+        )
+    )
+
+    assert _FakeAsyncOpenAI.last_create_kwargs["thinking"] == {"type": "enabled"}
+    assert "enable_thinking" not in _FakeAsyncOpenAI.last_create_kwargs
+    assert "reasoning_effort" not in _FakeAsyncOpenAI.last_create_kwargs
+    assert "store" not in _FakeAsyncOpenAI.last_create_kwargs
+
+
 def test_openai_completions_explicit_qwen_thinking_format(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

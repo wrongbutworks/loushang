@@ -23,6 +23,7 @@ DASHSCOPE_EVIDENCE_PATH = EVIDENCE_DIR / "dashscope.md"
 MOONSHOT_EVIDENCE_PATH = EVIDENCE_DIR / "moonshot.md"
 OPENAI_EVIDENCE_PATH = EVIDENCE_DIR / "openai.md"
 TENCENT_HUNYUAN_EVIDENCE_PATH = EVIDENCE_DIR / "tencent-hunyuan.md"
+ZAI_EVIDENCE_PATH = EVIDENCE_DIR / "zai.md"
 CURATED_PROVIDER_MATRIX_PATH = (
     REPO_ROOT / "docs/internals/architecture/ai/curated-provider-matrix.md"
 )
@@ -52,6 +53,7 @@ def test_curated_catalog_loads_v2_schema() -> None:
         "moonshot",
         "openai",
         "tencent-hunyuan",
+        "zai",
     ]
 
 
@@ -74,6 +76,9 @@ def test_default_builtin_catalog_still_uses_legacy_catalog() -> None:
     )
     assert len(registry.list_models(provider="tencent-hunyuan")) > len(
         _load_curated_registry().list_models(provider="tencent-hunyuan")
+    )
+    assert len(registry.list_models(provider="zai")) > len(
+        _load_curated_registry().list_models(provider="zai")
     )
 
 
@@ -374,6 +379,89 @@ def test_curated_catalog_includes_verified_tencent_hunyuan_model() -> None:
     assert model.pricing.cache_write is None
 
 
+def test_curated_catalog_includes_verified_zai_glm_models() -> None:
+    registry = _load_curated_registry()
+
+    assert registry.get_provider("zai-coding-cn") is None
+
+    provider = registry.get_provider("zai")
+    assert provider is not None
+    assert provider.name == "Z.AI"
+    assert provider.website == "https://docs.z.ai"
+    assert provider.auth is not None
+    assert provider.auth.api_key_env == "ZAI_API_KEY"
+    assert provider.auth.header == "Authorization"
+    assert provider.auth.prefix == "Bearer "
+
+    endpoint = registry.get_endpoint("zai", "openai-completions")
+    assert endpoint is not None
+    assert endpoint.api == "openai-completions"
+    assert endpoint.base_url == "https://api.z.ai/api/paas/v4/"
+    assert endpoint.preferred is True
+    assert endpoint.auth is not None
+    assert endpoint.auth.api_key_env == "ZAI_API_KEY"
+    assert endpoint.protocol.store is SupportStatus.UNSUPPORTED
+    assert endpoint.protocol.roles.developer is SupportStatus.UNSUPPORTED
+    assert endpoint.protocol.streaming.usage is SupportStatus.SUPPORTED
+    assert endpoint.protocol.streaming.reasoning_delta is SupportStatus.SUPPORTED
+    assert endpoint.protocol.reasoning.effort is SupportStatus.UNSUPPORTED
+    assert endpoint.protocol.tools.strict_schema is SupportStatus.UNSUPPORTED
+    assert endpoint.dialect.max_output_tokens_field == "max_tokens"
+    assert endpoint.dialect.tools.assistant_bridge_required is False
+    assert endpoint.dialect.tools.result_name_required is False
+    assert endpoint.dialect.tools.stream_flag is False
+    assert endpoint.dialect.reasoning.wire_format == "zai-thinking"
+    assert endpoint.dialect.reasoning.thinking_as_text is False
+    assert endpoint.dialect.reasoning.assistant_content_required is False
+    assert endpoint.transport.kind == "http"
+    assert endpoint.transport.stream == "sse"
+
+    models = registry.list_models(provider="zai")
+    assert [model.id for model in models] == ["glm-5.1", "glm-5.2"]
+
+    flagship = registry.get_model("zai", "openai-completions", "glm-5.2")
+    assert flagship is not None
+    assert flagship.name == "GLM-5.2"
+    assert flagship.alias == "default-chat"
+    assert flagship.context_window == 1_000_000
+    assert flagship.max_tokens == 131_072
+    assert flagship.defaults.get("maxOutputTokens") == 4_096
+    assert flagship.capabilities.input == ("text",)
+    assert flagship.capabilities.output == ("text",)
+    assert flagship.reasoning is True
+    assert flagship.supports_stream is True
+    assert flagship.supports_tool_use is True
+    assert flagship.supports_structured_output is True
+    assert flagship.supports_attachment is False
+    assert flagship.supports_temperature is True
+    assert flagship.pricing is not None
+    assert flagship.pricing.currency == "USD"
+    assert flagship.pricing.input == 1.4
+    assert flagship.pricing.output == 4.4
+    assert flagship.pricing.cache_read == 0.26
+    assert flagship.pricing.cache_write is None
+
+    balanced = registry.get_model("zai", "openai-completions", "glm-5.1")
+    assert balanced is not None
+    assert balanced.name == "GLM-5.1"
+    assert balanced.alias == "balanced-chat"
+    assert balanced.context_window == 200_000
+    assert balanced.max_tokens == 131_072
+    assert balanced.defaults.get("maxOutputTokens") == 4_096
+    assert balanced.reasoning is True
+    assert balanced.supports_stream is True
+    assert balanced.supports_tool_use is True
+    assert balanced.supports_structured_output is True
+    assert balanced.supports_attachment is False
+    assert balanced.supports_temperature is True
+    assert balanced.pricing is not None
+    assert balanced.pricing.currency == "USD"
+    assert balanced.pricing.input == 1.4
+    assert balanced.pricing.output == 4.4
+    assert balanced.pricing.cache_read == 0.26
+    assert balanced.pricing.cache_write is None
+
+
 def test_curated_catalog_includes_verified_openai_responses_models() -> None:
     registry = _load_curated_registry()
 
@@ -614,6 +702,31 @@ def test_tencent_hunyuan_evidence_matches_curated_provider_fixture() -> None:
         assert expected in text
 
 
+def test_zai_evidence_matches_curated_provider_fixture() -> None:
+    text = ZAI_EVIDENCE_PATH.read_text(encoding="utf-8")
+
+    for expected in [
+        "# Provider evidence: zai",
+        "- Verified at: 2026-06-22",
+        "- Issue: #103",
+        "https://docs.z.ai/guides/overview/quick-start",
+        "https://docs.z.ai/guides/llm/glm-5.2",
+        "https://docs.z.ai/guides/llm/glm-5.1",
+        "https://docs.z.ai/guides/overview/pricing",
+        "https://docs.z.ai/guides/capabilities/struct-output",
+        "https://docs.z.ai/guides/capabilities/function-call",
+        "`ZAI_API_KEY`",
+        "`https://api.z.ai/api/paas/v4/`",
+        "`glm-5.2`",
+        "`glm-5.1`",
+        "$1.4 input, $0.26 cached input, and $4.4 output",
+        "coding-plan endpoint is omitted",
+        "uv run pytest tests/ai/test_curated_catalog.py tests/providers/test_openai_completions_provider.py -q",
+        "Not run on 2026-06-22",
+    ]:
+        assert expected in text
+
+
 def test_curated_provider_matrix_matches_openai_fixture() -> None:
     text = CURATED_PROVIDER_MATRIX_PATH.read_text(encoding="utf-8")
 
@@ -637,4 +750,8 @@ def test_curated_provider_matrix_matches_openai_fixture() -> None:
     assert "`hunyuan-turbos-latest`" in text
     assert "`HUNYUAN_API_KEY`" in text
     assert "`catalog-evidence/tencent-hunyuan.md`" in text
+    assert "`zai` | `openai-completions` | `openai-completions`" in text
+    assert "`glm-5.2`, `glm-5.1`" in text
+    assert "`ZAI_API_KEY`" in text
+    assert "`catalog-evidence/zai.md`" in text
     assert "load_model_registry_from_file" in text

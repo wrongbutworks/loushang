@@ -534,6 +534,120 @@
           }
         }
       }
+    },
+    "zai": {
+      "displayName": "Z.AI",
+      "website": "https://docs.z.ai",
+      "auth": {
+        "kind": "apiKey",
+        "apiKeyEnv": "ZAI_API_KEY",
+        "header": "Authorization",
+        "prefix": "Bearer "
+      },
+      "endpoints": {
+        "openai-completions": {
+          "displayName": "Z.AI OpenAI-compatible Chat Completions",
+          "api": "openai-completions",
+          "baseUrl": "https://api.z.ai/api/paas/v4/",
+          "preferred": true,
+          "docs": "https://docs.z.ai/guides/overview/quick-start",
+          "protocol": {
+            "store": "unsupported",
+            "roles": {
+              "developer": "unsupported"
+            },
+            "streaming": {
+              "usage": "supported",
+              "reasoningDelta": "supported"
+            },
+            "reasoning": {
+              "effort": "unsupported"
+            },
+            "tools": {
+              "strictSchema": "unsupported"
+            }
+          },
+          "dialect": {
+            "maxOutputTokensField": "max_tokens",
+            "tools": {
+              "assistantBridgeRequired": false,
+              "resultNameRequired": false,
+              "streamFlag": false
+            },
+            "reasoning": {
+              "assistantContentRequired": false,
+              "thinkingAsText": false,
+              "wireFormat": "zai-thinking"
+            }
+          },
+          "transport": {
+            "kind": "http",
+            "stream": "sse"
+          },
+          "models": {
+            "glm-5.2": {
+              "displayName": "GLM-5.2",
+              "family": "glm-5",
+              "alias": "default-chat",
+              "defaults": {
+                "maxOutputTokens": 4096
+              },
+              "capabilities": {
+                "contextWindow": 1000000,
+                "maxTokens": 131072,
+                "input": [
+                  "text"
+                ],
+                "output": [
+                  "text"
+                ],
+                "reasoning": true,
+                "stream": true,
+                "toolUse": true,
+                "structuredOutput": true,
+                "attachment": false,
+                "temperature": true
+              },
+              "pricing": {
+                "currency": "USD",
+                "input": 1.4,
+                "output": 4.4,
+                "cacheRead": 0.26
+              }
+            },
+            "glm-5.1": {
+              "displayName": "GLM-5.1",
+              "family": "glm-5",
+              "alias": "balanced-chat",
+              "defaults": {
+                "maxOutputTokens": 4096
+              },
+              "capabilities": {
+                "contextWindow": 200000,
+                "maxTokens": 131072,
+                "input": [
+                  "text"
+                ],
+                "output": [
+                  "text"
+                ],
+                "reasoning": true,
+                "stream": true,
+                "toolUse": true,
+                "structuredOutput": true,
+                "attachment": false,
+                "temperature": true
+              },
+              "pricing": {
+                "currency": "USD",
+                "input": 1.4,
+                "output": 4.4,
+                "cacheRead": 0.26
+              }
+            }
+          }
+        }
+      }
     }
   }
 }
