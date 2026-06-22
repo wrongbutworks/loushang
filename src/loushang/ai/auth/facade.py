@@ -9,9 +9,9 @@ from loushang.ai.auth.registry import OAuthProviderRegistry, get_default_oauth_r
 from loushang.ai.auth.storage import (
     find_scoped_credential,
     load_credential_store,
-    save_credential_store,
     save_credentials,
     set_scoped_credential,
+    update_credential_store,
 )
 from loushang.ai.auth.types import (
     OAuthCredentials,
@@ -121,14 +121,14 @@ async def oauth_login(
             stored[provider_id] = next_credentials
             save_credentials(stored)
         else:
-            store = load_credential_store()
-            set_scoped_credential(
-                store,
-                next_credentials,
-                endpoint_id=endpoint_id,
-                model_id=model_id,
+            update_credential_store(
+                lambda store: set_scoped_credential(
+                    store,
+                    next_credentials,
+                    endpoint_id=endpoint_id,
+                    model_id=model_id,
+                )
             )
-            save_credential_store(store)
     return next_credentials
 
 
@@ -144,7 +144,7 @@ async def oauth_refresh(
     provider = get_oauth_provider(provider_id, registry=registry)
     if provider is None:
         raise ValueError(f"OAuth provider not found: {provider_id}")
-    store = load_credential_store() if (persist or credentials is None) else None
+    store = load_credential_store() if credentials is None else None
     current = credentials
     if current is None and store is not None:
         current = find_scoped_credential(
@@ -157,15 +157,14 @@ async def oauth_refresh(
         raise ValueError(f"OAuth credentials not found for provider: {provider_id}")
     refreshed = await provider.refresh_token(current)
     if persist:
-        if store is None:
-            store = load_credential_store()
-        set_scoped_credential(
-            store,
-            refreshed,
-            endpoint_id=endpoint_id,
-            model_id=model_id,
+        update_credential_store(
+            lambda next_store: set_scoped_credential(
+                next_store,
+                refreshed,
+                endpoint_id=endpoint_id,
+                model_id=model_id,
+            )
         )
-        save_credential_store(store)
     return refreshed
 
 
@@ -202,11 +201,12 @@ def resolve_oauth_api_key(
     if result is None:
         return None
     if persist_refresh:
-        set_scoped_credential(
-            store,
-            result["newCredentials"],
-            endpoint_id=endpoint_id,
-            model_id=model_id,
+        update_credential_store(
+            lambda next_store: set_scoped_credential(
+                next_store,
+                result["newCredentials"],
+                endpoint_id=endpoint_id,
+                model_id=model_id,
+            )
         )
-        save_credential_store(store)
     return result

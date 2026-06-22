@@ -208,6 +208,25 @@ def test_image_input_example_reports_image_counts(capsys) -> None:
     assert payload == summary
 
 
+def test_oauth_credential_store_example_reports_scopes(capsys) -> None:
+    module = _load_module(
+        Path("examples/ai/advanced/oauth_credential_store.py"),
+        "examples_ai_advanced_oauth_credential_store",
+    )
+
+    summary = module.inspect_oauth_credential_store()
+
+    assert summary["credentialScopes"] == {
+        "providers": 0,
+        "endpoints": 1,
+        "models": 0,
+    }
+    assert summary["selectedCredential"] == "endpoint"
+
+    module.main()
+    assert json.loads(capsys.readouterr().out) == summary
+
+
 def test_errors_retry_example_reports_redacted_error_payload(capsys) -> None:
     module = _load_module(
         Path("examples/ai/09_errors_retry.py"), "examples_ai_09_errors_retry"

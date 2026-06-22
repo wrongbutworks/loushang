@@ -72,6 +72,21 @@ def _registry() -> OAuthProviderRegistry:
     return registry
 
 
+def _capture_store_updates(store, save_calls):
+    def _update(mutator):
+        result = mutator(store)
+        save_calls.append(
+            {
+                "providers": dict(store["providers"]),
+                "endpoints": dict(store["endpoints"]),
+                "models": dict(store["models"]),
+            }
+        )
+        return result
+
+    return _update
+
+
 def test_ensure_builtin_oauth_providers_does_not_reset_registry() -> None:
     registry = _registry()
 
@@ -91,7 +106,9 @@ def test_oauth_login_persists_into_explicit_credentials_map(
         "load_credential_store",
         lambda: pytest.fail("explicit credentials should not load storage"),
     )
-    monkeypatch.setattr(facade, "save_credentials", lambda data: save_calls.append(data))
+    monkeypatch.setattr(
+        facade, "save_credentials", lambda data: save_calls.append(data)
+    )
 
     result = asyncio.run(
         oauth_login(
@@ -112,10 +129,15 @@ def test_oauth_login_persists_provider_scope_by_default(
 ) -> None:
     store = {"providers": {}, "endpoints": {}, "models": {}}
     save_calls: list[dict[str, dict[str, OAuthCredentials]]] = []
-    monkeypatch.setattr(facade, "load_credential_store", lambda: store)
-    monkeypatch.setattr(facade, "save_credential_store", lambda data: save_calls.append(data))
+    monkeypatch.setattr(
+        facade,
+        "update_credential_store",
+        _capture_store_updates(store, save_calls),
+    )
 
-    result = asyncio.run(oauth_login("demo", _Callbacks(), registry=_registry(), persist=True))
+    result = asyncio.run(
+        oauth_login("demo", _Callbacks(), registry=_registry(), persist=True)
+    )
 
     assert result.access_token == "login-token"
     assert save_calls[0]["providers"]["demo"] == result
@@ -128,8 +150,11 @@ def test_oauth_login_persists_model_scope_when_requested(
 ) -> None:
     store = {"providers": {}, "endpoints": {}, "models": {}}
     save_calls: list[dict[str, dict[str, OAuthCredentials]]] = []
-    monkeypatch.setattr(facade, "load_credential_store", lambda: store)
-    monkeypatch.setattr(facade, "save_credential_store", lambda data: save_calls.append(data))
+    monkeypatch.setattr(
+        facade,
+        "update_credential_store",
+        _capture_store_updates(store, save_calls),
+    )
 
     result = asyncio.run(
         oauth_login(
@@ -155,8 +180,8 @@ def test_oauth_login_without_persist_does_not_touch_storage(
     )
     monkeypatch.setattr(
         facade,
-        "save_credential_store",
-        lambda _data: pytest.fail("non-persistent login should not save storage"),
+        "update_credential_store",
+        lambda _mutator: pytest.fail("non-persistent login should not update storage"),
     )
 
     result = asyncio.run(
@@ -178,12 +203,18 @@ def test_oauth_refresh_persists_refreshed_stored_credentials(
     store = {"providers": {"demo": original}, "endpoints": {}, "models": {}}
     save_calls: list[dict[str, dict[str, OAuthCredentials]]] = []
     monkeypatch.setattr(facade, "load_credential_store", lambda: store)
-    monkeypatch.setattr(facade, "save_credential_store", lambda data: save_calls.append(data))
+    monkeypatch.setattr(
+        facade,
+        "update_credential_store",
+        _capture_store_updates(store, save_calls),
+    )
 
     result = asyncio.run(oauth_refresh("demo", registry=_registry(), persist=True))
 
     assert result.access_token == "refreshed-token"
-    assert [asdict(saved["providers"]["demo"]) for saved in save_calls] == [asdict(result)]
+    assert [asdict(saved["providers"]["demo"]) for saved in save_calls] == [
+        asdict(result)
+    ]
 
 
 def test_oauth_refresh_explicit_credentials_without_persist_does_not_touch_storage(
@@ -196,8 +227,10 @@ def test_oauth_refresh_explicit_credentials_without_persist_does_not_touch_stora
     )
     monkeypatch.setattr(
         facade,
-        "save_credential_store",
-        lambda _data: pytest.fail("explicit non-persistent refresh should not save storage"),
+        "update_credential_store",
+        lambda _mutator: pytest.fail(
+            "explicit non-persistent refresh should not update storage"
+        ),
     )
 
     result = asyncio.run(
@@ -243,7 +276,11 @@ def test_resolve_oauth_api_key_prefers_model_scope(
             "models": {"demo:responses:chat": model},
         },
     )
-    monkeypatch.setattr(facade, "save_credential_store", lambda _data: None)
+    monkeypatch.setattr(
+        facade,
+        "update_credential_store",
+        lambda _mutator: pytest.fail("persist_refresh=False should not update storage"),
+    )
 
     result = resolve_oauth_api_key(
         "demo",

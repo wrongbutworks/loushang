@@ -42,6 +42,8 @@
   离线演示 `asyncio.Event` 取消流式调用，并关闭上游 provider source
 - [advanced/trace_events.py](advanced/trace_events.py)
   离线查看版本化 trace event、runtime retry 事件和敏感字段脱敏
+- [advanced/oauth_credential_store.py](advanced/oauth_credential_store.py)
+  离线查看 OAuth scoped credential store 写入、选择和本地文件权限
 
 ## Provider 配置速查
 
