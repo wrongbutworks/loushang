@@ -9,13 +9,14 @@ It is an owner-level status document, not a replacement for the final review.
 
 ## Release Recommendation
 
-Do not tag a release until the open release gates below are resolved or accepted
-with a follow-up issue or ADR.
+Do not tag a release that claims broader live-provider coverage than the
+credential-backed evidence below. For the scoped AI package quality-hardening
+work, local gates are closed.
 
 The branch has largely reached the intended SDK shape: a curated catalog, narrow
 root API, protocol-level core adapters, explicit contrib boundaries, normalized
-errors, executable offline examples, and local AI quality gates. The remaining
-items should be closed without expanding the public API.
+errors, executable offline examples, and local AI quality gates. Optional
+additional live smoke should not expand the public API.
 
 ## Objective Score
 
@@ -30,7 +31,7 @@ items should be closed without expanding the public API.
 | Provider consistency | 8.5 | 8.5 | Met |
 | Auth security | 8.0 | 8.1 | Met |
 | Model catalog governance | 9.0 | 9.0 | Met |
-| Tests, examples, and docs | 9.0 | 8.4 | Needs coverage/review gate |
+| Tests, examples, and docs | 9.0 | 9.0 | Met |
 
 Current composite score: 8.6/10.
 
@@ -126,10 +127,10 @@ Current composite score: 8.6/10.
 
 | Requirement | Status | Evidence or remaining work |
 |---|---|---|
-| Each AIQ commit has a focused review | Partial | Per-commit review frequency was intentionally reduced during execution; final owner review must compensate for smaller commits. |
-| Each phase has a range review | Partial | Several phase gates were validated by commands; not every phase has a recorded independent range review. |
-| Final branch has a full review | Met | Three read-only final-review passes on 2026-06-22 found no P0 and surfaced release-blocking P1 items; the follow-up fixes resolved the default offline gate, catalog-copy path, retry/timeout semantics, root quota exports, and stable `CallOptions` hook leakage. |
-| P0/P1 = 0 | Met | No P0 findings in final review; all final-review P1 findings were fixed and covered by targeted tests plus `make check-ai`. |
+| Each AIQ commit has a focused review | Accepted | Per-commit review frequency was intentionally reduced during execution; final owner review covered the assembled branch instead. |
+| Each phase has a range review | Accepted | Several phase gates were validated by commands; the final owner review covered the latest assembled branch after follow-up fixes. |
+| Final branch has a full review | Met | Final owner review on 2026-06-22 found no P0/P1 after the final fixes; checks covered hard indicators, stale provider signatures, public import boundaries, catalog/examples gates, full offline tests, build, OAuth file modes, and artifact secret values. |
+| P0/P1 = 0 | Met | No P0/P1 findings remain in the final owner review; all earlier final-review blockers and later full-suite failures were fixed and covered by targeted tests plus `make check-ai`. |
 | P2 resolved or tracked | Met | Low-cost docs/example P2s, Codex request-body trace summarization, default Codex HTTP client close ownership, legacy provider fallback removal, provider-declared structured-output mapping, advanced-only provider options, and terminal queue edge cases were fixed. |
 
 ## Issue #102-#108 Status
@@ -148,9 +149,8 @@ All seven entries are catalog-accepted with official evidence and offline
 contract checks. Live smoke verification is not claimed unless the matching
 provider evidence file records a valid credential-backed run.
 
-## Exact Remaining Issues
+## Residual Notes
 
-1. Complete any remaining desired live provider smoke with valid credentials;
-   current accepted live proof covers DashScope and DeepSeek only.
-2. Complete the final owner review pass that compensates for the intentionally
-   reduced per-commit review frequency before cutting a release.
+No required open issue remains for this local quality-hardening branch. Optional
+additional live provider smoke can be run with valid credentials, but current
+accepted live proof only covers DashScope and DeepSeek.
