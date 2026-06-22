@@ -176,7 +176,7 @@ def test_test_and_example_inventory_baseline() -> None:
     provider_test_files = sorted((REPO_ROOT / "tests/providers").rglob("test_*.py"))
     example_files = sorted((REPO_ROOT / "examples/ai").rglob("*.py"))
 
-    assert len(ai_test_files) == 39
+    assert len(ai_test_files) == 40
     assert len(provider_test_files) == 5
     assert len(example_files) == 26
 
