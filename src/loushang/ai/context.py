@@ -132,7 +132,7 @@ def normalize_context(
     context: Context | Mapping[str, Any] | NormalizedContext | None,
     *,
     model=None,
-    pairing_mode: PairingMode = "repair",
+    pairing_mode: PairingMode = "strict",
 ) -> NormalizedContext:
     return normalize_context_result(
         context,
@@ -145,7 +145,7 @@ def normalize_context_result(
     context: Context | Mapping[str, Any] | NormalizedContext | None,
     *,
     model=None,
-    pairing_mode: PairingMode = "repair",
+    pairing_mode: PairingMode = "strict",
 ) -> NormalizationResult:
     normalization_key = _normalization_key(model, pairing_mode)
     if isinstance(context, NormalizedContext):
@@ -230,7 +230,7 @@ def ensure_normalized_context(
     context: Context | Mapping[str, Any] | NormalizedContext | None,
     *,
     model=None,
-    pairing_mode: PairingMode = "repair",
+    pairing_mode: PairingMode = "strict",
 ) -> NormalizedContext:
     return normalize_context(context, model=model, pairing_mode=pairing_mode)
 

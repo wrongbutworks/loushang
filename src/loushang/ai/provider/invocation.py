@@ -49,11 +49,11 @@ def _provider_call_style(method: Any) -> _ProviderCallStyle:
 
 def _resolve_pairing_mode(options) -> PairingMode:
     if options is None:
-        return "repair"
-    pairing_mode = getattr(options, "pairing_mode", "repair")
-    if pairing_mode == "strict":
         return "strict"
-    return "repair"
+    pairing_mode = getattr(options, "pairing_mode", "strict")
+    if pairing_mode == "repair":
+        return "repair"
+    return "strict"
 
 
 def normalization_model_for_request(model, request: ResolvedRequest):

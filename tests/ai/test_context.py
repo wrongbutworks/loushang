@@ -270,10 +270,18 @@ def test_normalize_context_snapshots_mutable_message_and_tool_inputs() -> None:
         description="Calculate values",
         parameters=tool_parameters,
     )
+    tool_result = ToolResultMessage(
+        role="toolResult",
+        tool_call_id="call_1",
+        tool_name="calc",
+        content=[TextPart(type="text", text="1")],
+        is_error=False,
+        timestamp=2.0,
+    )
 
     normalized = normalize_context(
         {
-            "messages": [assistant],
+            "messages": [assistant, tool_result],
             "tools": [tool],
         }
     )
@@ -493,6 +501,7 @@ def test_normalize_context_result_skips_tool_diagnostics_for_dropped_error_assis
             provider_id="anthropic",
             id="claude-test",
         ),
+        pairing_mode="repair",
     )
 
     assert len(result.context.messages) == 1
@@ -552,6 +561,7 @@ def test_normalize_context_result_skips_tool_diagnostics_for_aborted_boundary() 
             provider_id="anthropic",
             id="claude-test",
         ),
+        pairing_mode="repair",
     )
 
     assert len(result.context.messages) == 2
@@ -602,6 +612,7 @@ def test_normalize_context_result_keeps_repair_paths_when_tool_ids_collide() -> 
             provider_id="anthropic",
             id="claude-test",
         ),
+        pairing_mode="repair",
     )
 
     normalized = result.context.messages[0]

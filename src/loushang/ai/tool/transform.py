@@ -40,7 +40,7 @@ def transform_messages(
     messages: list[object],
     *,
     normalize_tool_call_id: Callable[[str, AssistantMessage], str] | None = None,
-    pairing_mode: PairingMode = "repair",
+    pairing_mode: PairingMode = "strict",
 ) -> list[object]:
     return transform_messages_result(
         messages,
@@ -53,7 +53,7 @@ def transform_messages_result(
     messages: list[object],
     *,
     normalize_tool_call_id: Callable[[str, AssistantMessage], str] | None = None,
-    pairing_mode: PairingMode = "repair",
+    pairing_mode: PairingMode = "strict",
     message_paths: list[str] | None = None,
 ) -> MessageTransformResult:
     transformed: list[object] = []
@@ -73,16 +73,21 @@ def transform_messages_result(
         message_path = paths[message_index]
         if isinstance(message, AssistantMessage):
             if pending_tool_calls:
-                if pairing_mode == "strict":
-                    raise ValueError("Missing tool results before next message")
-                _append_synthetic_tool_results(
-                    transformed,
-                    transformed_paths,
-                    diagnostics,
+                missing_tool_calls = _missing_tool_calls(
                     pending_tool_calls,
                     existing_tool_result_ids,
-                    pending_tool_call_paths,
                 )
+                if missing_tool_calls and pairing_mode == "strict":
+                    raise ValueError("Missing tool results before next message")
+                if missing_tool_calls:
+                    _append_synthetic_tool_results(
+                        transformed,
+                        transformed_paths,
+                        diagnostics,
+                        pending_tool_calls,
+                        existing_tool_result_ids,
+                        pending_tool_call_paths,
+                    )
                 closed_tool_call_ids.update(
                     tool_call.id for tool_call in pending_tool_calls
                 )
@@ -259,16 +264,21 @@ def transform_messages_result(
             continue
 
         if pending_tool_calls:
-            if pairing_mode == "strict":
-                raise ValueError("Missing tool results before next message")
-            _append_synthetic_tool_results(
-                transformed,
-                transformed_paths,
-                diagnostics,
+            missing_tool_calls = _missing_tool_calls(
                 pending_tool_calls,
                 existing_tool_result_ids,
-                pending_tool_call_paths,
             )
+            if missing_tool_calls and pairing_mode == "strict":
+                raise ValueError("Missing tool results before next message")
+            if missing_tool_calls:
+                _append_synthetic_tool_results(
+                    transformed,
+                    transformed_paths,
+                    diagnostics,
+                    pending_tool_calls,
+                    existing_tool_result_ids,
+                    pending_tool_call_paths,
+                )
             closed_tool_call_ids.update(
                 tool_call.id for tool_call in pending_tool_calls
             )
@@ -281,16 +291,21 @@ def transform_messages_result(
         transformed_paths.append(message_path)
 
     if pending_tool_calls:
-        if pairing_mode == "strict":
-            raise ValueError("Missing tool results before next message")
-        _append_synthetic_tool_results(
-            transformed,
-            transformed_paths,
-            diagnostics,
+        missing_tool_calls = _missing_tool_calls(
             pending_tool_calls,
             existing_tool_result_ids,
-            pending_tool_call_paths,
         )
+        if missing_tool_calls and pairing_mode == "strict":
+            raise ValueError("Missing tool results before next message")
+        if missing_tool_calls:
+            _append_synthetic_tool_results(
+                transformed,
+                transformed_paths,
+                diagnostics,
+                pending_tool_calls,
+                existing_tool_result_ids,
+                pending_tool_call_paths,
+            )
         closed_tool_call_ids.update(tool_call.id for tool_call in pending_tool_calls)
 
     return MessageTransformResult(
@@ -661,3 +676,14 @@ def _append_synthetic_tool_results(
                 ),
             )
         )
+
+
+def _missing_tool_calls(
+    tool_calls: list[ToolCall],
+    existing_tool_result_ids: set[str],
+) -> list[ToolCall]:
+    return [
+        tool_call
+        for tool_call in tool_calls
+        if tool_call.id not in existing_tool_result_ids
+    ]

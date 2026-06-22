@@ -66,11 +66,11 @@ def _resolve_api_provider_registry(api_provider_registry=None):
 
 def _resolve_pairing_mode(options) -> PairingMode:
     if options is None:
-        return "repair"
-    pairing_mode = getattr(options, "pairing_mode", "repair")
-    if pairing_mode == "strict":
         return "strict"
-    return "repair"
+    pairing_mode = getattr(options, "pairing_mode", "strict")
+    if pairing_mode == "repair":
+        return "repair"
+    return "strict"
 
 
 def _normalization_model(model, resolved):

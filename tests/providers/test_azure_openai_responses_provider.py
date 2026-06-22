@@ -38,7 +38,7 @@ from loushang.ai.types import (
 
 def _normalized_context(model, context, options=None):
     pairing_mode = (
-        "strict" if getattr(options, "pairing_mode", "repair") == "strict" else "repair"
+        "strict" if getattr(options, "pairing_mode", "strict") == "strict" else "repair"
     )
     return normalize_context(context, model=model, pairing_mode=pairing_mode)
 

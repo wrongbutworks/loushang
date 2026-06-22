@@ -24,7 +24,8 @@
 - [advanced/custom_catalog.py](advanced/custom_catalog.py)
   从自定义 schema v2 catalog 读取 `upstreamId`，并查看最终 provider 请求绑定
 - [advanced/normalization_diagnostics.py](advanced/normalization_diagnostics.py)
-  离线查看 context/message 归一化产生的 repair、downgrade 和 signature-removal diagnostics
+  离线查看 context/message 归一化产生的 repair、downgrade 和 signature-removal diagnostics；
+  该示例显式启用 `pairing_mode="repair"` 以演示历史兼容修复
 
 ## Provider 配置速查
 

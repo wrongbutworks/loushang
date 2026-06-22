@@ -3,7 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Any, Literal, TypedDict
 
-PairingMode = Literal["repair", "strict"]
+PairingMode = Literal["strict", "repair"]
 
 
 @dataclass(frozen=True)
@@ -25,7 +25,7 @@ class ModelCallOptions:
     trace: object | None = None
     oauth_credentials: dict[str, object] | None = None
     region: str | None = None
-    pairing_mode: PairingMode = "repair"
+    pairing_mode: PairingMode = "strict"
 
 
 StreamOptions = ModelCallOptions

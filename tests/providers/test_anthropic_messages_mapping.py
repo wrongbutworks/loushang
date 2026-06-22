@@ -49,7 +49,7 @@ from loushang.ai.types import (
 
 def _normalized_context(model, context, options=None):
     pairing_mode = (
-        "strict" if getattr(options, "pairing_mode", "repair") == "strict" else "repair"
+        "strict" if getattr(options, "pairing_mode", "strict") == "strict" else "repair"
     )
     return normalize_context(context, model=model, pairing_mode=pairing_mode)
 
@@ -412,6 +412,7 @@ def test_anthropic_provider_oauth_request_uses_sdk_headers_and_tool_names(
                             expires_at=time.time() + 3600,
                         )
                     },
+                    pairing_mode="repair",
                 ),
             )
         )

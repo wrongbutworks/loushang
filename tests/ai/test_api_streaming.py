@@ -149,7 +149,83 @@ class _DoneStream:
         return None
 
 
-def test_stream_exposes_pairing_mode_through_public_options(
+def test_stream_defaults_to_strict_pairing_and_exposes_repair_option(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _patch_resolved_request(monkeypatch)
+    monkeypatch.setattr("loushang.ai.messages.resolve_model_api", lambda _model: "faux")
+    monkeypatch.setattr(
+        "loushang.ai.tool.transform.resolve_model_api", lambda _model: "faux"
+    )
+    provider = _Provider()
+    registry = _Registry(provider)
+    assistant = AssistantMessage(
+        role="assistant",
+        content=[
+            ToolCall(type="toolCall", id="call_1", name="calc", arguments={"x": 1})
+        ],
+        api="openai-responses",
+        provider="openai",
+        model="gpt-test",
+        response_id="resp_1",
+        usage=Usage(
+            input=0,
+            output=0,
+            cache_read=0,
+            cache_write=0,
+            total_tokens=0,
+            cost={},
+        ),
+        stop_reason="toolUse",
+        error_message=None,
+        timestamp=0.0,
+    )
+
+    with pytest.raises(ValueError, match="Missing tool results before next message"):
+        asyncio.run(
+            stream(
+                _Model(),
+                {
+                    "messages": [
+                        assistant,
+                        UserMessage(role="user", content="next", timestamp=0.0),
+                    ]
+                },
+                ModelCallOptions(),
+                registry=registry,
+            )
+        )
+
+    asyncio.run(
+        stream(
+            _Model(),
+            {
+                "messages": [
+                    assistant,
+                    UserMessage(role="user", content="next", timestamp=0.0),
+                ]
+            },
+            ModelCallOptions(pairing_mode="repair"),
+            registry=registry,
+        )
+    )
+
+    normalized = _assert_normalized_provider_context(provider.context)
+    assert [
+        type(message).__name__
+        for message in normalized.messages
+    ] == [
+        "AssistantMessage",
+        "ToolResultMessage",
+        "UserMessage",
+    ]
+    synthetic = normalized.messages[1]
+    assert isinstance(synthetic, ToolResultMessage)
+    assert synthetic.tool_call_id == "call_1"
+    assert synthetic.is_error is True
+
+
+def test_stream_exposes_strict_pairing_through_public_options(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     _patch_resolved_request(monkeypatch)

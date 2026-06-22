@@ -48,7 +48,7 @@ def _assistant_with_tool_call() -> AssistantMessage:
 
 
 def test_transform_messages_marks_synthetic_tool_results() -> None:
-    transformed = transform_messages([_assistant_with_tool_call()])
+    transformed = transform_messages([_assistant_with_tool_call()], pairing_mode="repair")
 
     synthetic = transformed[1]
     assert synthetic.role == "toolResult"
@@ -208,6 +208,7 @@ def test_transform_messages_normalizes_tool_call_and_matching_result_ids() -> No
         normalize_tool_call_id=lambda tool_call_id, _message: tool_call_id.replace(
             "|", "_"
         ),
+        pairing_mode="repair",
     )
 
     transformed_assistant = transformed[0]
@@ -258,6 +259,7 @@ def test_transform_messages_adds_synthetic_results_only_for_missing_tool_calls()
         normalize_tool_call_id=lambda tool_call_id, _message: tool_call_id.replace(
             "|", "_"
         ),
+        pairing_mode="repair",
     )
 
     synthetic_results = [
@@ -314,7 +316,7 @@ def test_transform_messages_keeps_aborted_assistant_as_turn_boundary() -> None:
         role="user", content=[TextPart(type="text", text="hello")], timestamp=2.0
     )
 
-    transformed = transform_messages([assistant, aborted, user])
+    transformed = transform_messages([assistant, aborted, user], pairing_mode="repair")
 
     assert [getattr(message, "role", None) for message in transformed] == [
         "assistant",

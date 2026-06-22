@@ -62,6 +62,7 @@ def inspect_normalization_diagnostics() -> dict[str, object]:
             "anthropic-messages",
             "claude-3-5-haiku-20241022",
         ),
+        pairing_mode="repair",
     )
     return {
         "messageRoles": [

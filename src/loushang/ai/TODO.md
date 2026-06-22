@@ -48,11 +48,11 @@
      - Normalized context is now an immutable `NormalizedContext` snapshot; marker dicts are no longer trusted as normalized output.
      - Core providers no longer each own their own normalize path; they consume normalized context or explicitly coerce through the shared helper.
      - `openai_responses` no longer falls back to raw `context["tools"]` after normalization.
-  4. Revisit default `repair` semantics in tool/message flow and decide whether they are temporary compatibility behavior or explicit public contract.
-     Partial:
+  4. Done: make tool-call/tool-result pairing strict by default, with explicit repair as the compatibility mode.
      - Synthetic missing-tool-result content and assistant bridge text now come from shared transform-layer constants instead of scattered provider-local strings.
      - Synthetic tool results are now explicitly marked in `ToolResultMessage.details` with `{"synthetic": true, "reason": "missing_tool_result"}`.
      - Pairing strategy is now a public option (`StreamOptions.pairing_mode`) and propagates through API/provider normalization paths.
+     - `ModelCallOptions.pairing_mode` defaults to `strict`; callers must explicitly pass `repair` for legacy transcript repair diagnostics.
   5. Simplify event stream assembly so content ordering/indexing is derived from real content, not hidden assembler layout assumptions.
      Partial:
      - `RawAssembler` no longer forces an empty leading text part for thinking-only or toolcall-only streams.

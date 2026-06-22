@@ -37,7 +37,7 @@ from loushang.ai.types import (
 
 def _normalized_context(model, context, options=None):
     pairing_mode = (
-        "strict" if getattr(options, "pairing_mode", "repair") == "strict" else "repair"
+        "strict" if getattr(options, "pairing_mode", "strict") == "strict" else "repair"
     )
     return normalize_context(context, model=model, pairing_mode=pairing_mode)
 
@@ -149,7 +149,7 @@ def test_openai_responses_payload_uses_resolved_capabilities_for_images(
                         ),
                     ],
                 ),
-                OpenAIResponsesOptions(api_key="test-key"),
+                OpenAIResponsesOptions(api_key="test-key", pairing_mode="repair"),
             )
         )
     )
@@ -489,7 +489,7 @@ def test_openai_responses_payload_maps_assistant_tool_call_and_synthesizes_missi
                 provider,
                 _Model(),
                 {"messages": [assistant]},
-                OpenAIResponsesOptions(api_key="test-key"),
+                OpenAIResponsesOptions(api_key="test-key", pairing_mode="repair"),
             )
         )
     )

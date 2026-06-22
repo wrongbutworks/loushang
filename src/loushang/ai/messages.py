@@ -43,7 +43,7 @@ def normalize_messages(
     *,
     tools: list[Tool] | None = None,
     model=None,
-    pairing_mode: PairingMode = "repair",
+    pairing_mode: PairingMode = "strict",
 ) -> list[object]:
     return normalize_messages_result(
         messages,
@@ -58,7 +58,7 @@ def normalize_messages_result(
     *,
     tools: list[Tool] | None = None,
     model=None,
-    pairing_mode: PairingMode = "repair",
+    pairing_mode: PairingMode = "strict",
     message_paths: list[str] | None = None,
 ) -> MessageNormalizationResult:
     messages = [canonicalize_message(message) for message in messages]

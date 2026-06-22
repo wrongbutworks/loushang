@@ -26,6 +26,35 @@ from loushang.ai.types import (
 _UNPAIRED_HIGH_SURROGATE = "\ud83d"
 
 
+def _assistant_tool_call(api: str) -> AssistantMessage:
+    return AssistantMessage(
+        role="assistant",
+        content=[
+            ToolCall(
+                type="toolCall",
+                id="call_1",
+                name="read",
+                arguments={"path": "README.md"},
+            )
+        ],
+        api=api,
+        provider="openai",
+        model="gpt-test",
+        response_id=None,
+        usage=Usage(
+            input=0,
+            output=0,
+            cache_read=0,
+            cache_write=0,
+            total_tokens=0,
+            cost={},
+        ),
+        stop_reason="toolUse",
+        error_message=None,
+        timestamp=0.0,
+    )
+
+
 def _schema_with_meta_keys() -> dict[str, object]:
     return {
         "$schema": "http://json-schema.org/draft-07/schema#",
@@ -151,6 +180,7 @@ def test_openai_completions_provider_sanitizes_unpaired_surrogates_in_payload_te
                         }
                     ],
                 },
+                _assistant_tool_call("openai-completions"),
                 ToolResultMessage(
                     role="toolResult",
                     tool_call_id="call_1",
@@ -172,7 +202,7 @@ def test_openai_completions_provider_sanitizes_unpaired_surrogates_in_payload_te
 
     assert payload[0]["content"] == "system  prompt"
     assert payload[1]["content"] == "user  text 🙈"
-    assert payload[2]["content"] == "tool  result 🙈"
+    assert payload[-1]["content"] == "tool  result 🙈"
 
 
 def test_openai_responses_provider_uses_image_placeholder_when_model_cannot_accept_images() -> None:
@@ -217,6 +247,7 @@ def test_openai_responses_provider_sanitizes_unpaired_surrogates_in_payload_text
                         }
                     ],
                 },
+                _assistant_tool_call("openai-responses"),
                 ToolResultMessage(
                     role="toolResult",
                     tool_call_id="call_1",
@@ -238,7 +269,7 @@ def test_openai_responses_provider_sanitizes_unpaired_surrogates_in_payload_text
 
     assert payload[0]["content"] == "system  prompt"
     assert payload[1]["content"] == [{"type": "input_text", "text": "user  text 🙈"}]
-    assert payload[2]["output"] == "tool  result 🙈"
+    assert payload[-1]["output"] == "tool  result 🙈"
 
 
 def test_anthropic_provider_sanitizes_unpaired_surrogates_in_payload_text() -> None:
