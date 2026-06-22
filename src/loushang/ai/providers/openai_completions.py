@@ -211,7 +211,9 @@ class OpenAICompletionsProvider:
         try:
             emitted_response_start = False
             emitted_any_text = False
-            active_tool_call_id: str | None = None
+            active_tool_call_ids: list[str] = []
+            active_tool_call_indexes: dict[str, int] = {}
+            tool_call_ids_by_index: dict[int, str] = {}
             while True:
                 try:
                     chunk = await asyncio.wait_for(
@@ -364,7 +366,20 @@ class OpenAICompletionsProvider:
                     tool_calls = getattr(delta, "tool_calls", None)
                     if isinstance(tool_calls, list):
                         for tool_call in tool_calls:
-                            tool_call_id = getattr(tool_call, "id", None)
+                            raw_tool_call_id = getattr(tool_call, "id", None)
+                            tool_call_index = _optional_int(
+                                getattr(tool_call, "index", None)
+                            )
+                            tool_call_id = (
+                                raw_tool_call_id
+                                if isinstance(raw_tool_call_id, str)
+                                and raw_tool_call_id
+                                else None
+                            )
+                            if tool_call_id is None and tool_call_index is not None:
+                                tool_call_id = tool_call_ids_by_index.get(
+                                    tool_call_index
+                                )
                             function = getattr(tool_call, "function", None)
                             tool_call_name = (
                                 getattr(function, "name", None)
@@ -379,30 +394,62 @@ class OpenAICompletionsProvider:
                             if (
                                 isinstance(tool_call_id, str)
                                 and tool_call_id
-                                and tool_call_id != active_tool_call_id
+                                and tool_call_id not in active_tool_call_ids
                             ):
-                                if active_tool_call_id is not None:
-                                    yield {"type": "tool_call_done"}
-                                active_tool_call_id = tool_call_id
-                                yield {
+                                active_tool_call_ids.append(tool_call_id)
+                                if tool_call_index is not None:
+                                    active_tool_call_indexes[tool_call_id] = (
+                                        tool_call_index
+                                    )
+                                    tool_call_ids_by_index[tool_call_index] = (
+                                        tool_call_id
+                                    )
+                                start_part: dict[str, object] = {
                                     "type": "tool_call_start",
                                     "id": tool_call_id,
                                     "name": tool_call_name or "",
                                 }
+                                if tool_call_index is not None:
+                                    start_part["index"] = tool_call_index
+                                yield start_part
+                            elif (
+                                isinstance(tool_call_id, str)
+                                and tool_call_id
+                                and tool_call_index is not None
+                            ):
+                                active_tool_call_indexes.setdefault(
+                                    tool_call_id, tool_call_index
+                                )
+                                tool_call_ids_by_index.setdefault(
+                                    tool_call_index, tool_call_id
+                                )
                             if (
                                 isinstance(tool_call_arguments, str)
                                 and tool_call_arguments
                             ):
-                                yield {
+                                delta_part: dict[str, object] = {
                                     "type": "tool_call_args_delta",
                                     "delta": tool_call_arguments,
                                 }
+                                if isinstance(tool_call_id, str) and tool_call_id:
+                                    delta_part["tool_call_id"] = tool_call_id
+                                elif tool_call_index is not None:
+                                    delta_part["index"] = tool_call_index
+                                yield delta_part
                 # finish reason
                 finish = getattr(choice, "finish_reason", None)
                 if isinstance(finish, str):
-                    if active_tool_call_id is not None:
-                        yield {"type": "tool_call_done"}
-                        active_tool_call_id = None
+                    for tool_call_id in active_tool_call_ids:
+                        done_part: dict[str, object] = {
+                            "type": "tool_call_done",
+                            "tool_call_id": tool_call_id,
+                        }
+                        if tool_call_id in active_tool_call_indexes:
+                            done_part["index"] = active_tool_call_indexes[tool_call_id]
+                        yield done_part
+                    active_tool_call_ids = []
+                    active_tool_call_indexes = {}
+                    tool_call_ids_by_index = {}
                     # 有些上游在流模式下仅在最后一次返回完整 message.content，而不逐字增量
                     if not emitted_any_text:
                         msg_obj = getattr(choice, "message", None)
@@ -434,8 +481,11 @@ class OpenAICompletionsProvider:
                             "message": f"provider finish_reason={finish}",
                         }
             # 正常结束：上游结束迭代后，补发 response_done 以关闭装配器
-            if active_tool_call_id is not None:
-                yield {"type": "tool_call_done"}
+            for tool_call_id in active_tool_call_ids:
+                done_part = {"type": "tool_call_done", "tool_call_id": tool_call_id}
+                if tool_call_id in active_tool_call_indexes:
+                    done_part["index"] = active_tool_call_indexes[tool_call_id]
+                yield done_part
             _debug("stream_done", {})
             yield {"type": "response_done"}
         except Exception as e:
@@ -1083,3 +1133,9 @@ def _part_data(part: object) -> str | None:
 
 def _part_mime_type(part: object) -> str | None:
     return getattr(part, "mime_type", None)
+
+
+def _optional_int(value: object) -> int | None:
+    if isinstance(value, bool):
+        return None
+    return value if isinstance(value, int) else None

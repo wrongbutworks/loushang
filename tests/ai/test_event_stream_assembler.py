@@ -74,6 +74,63 @@ def test_raw_assembler_uses_real_content_index_for_toolcall_only_stream() -> Non
     assert events[-1]["message"].content[0].arguments == {"x": 1}
 
 
+def test_raw_assembler_groups_interleaved_tool_calls_by_id_and_index() -> None:
+    stream = AssistantMessageEventStream()
+    assembler = RawAssembler(
+        stream=stream,
+        api="openai-completions",
+        provider="openai",
+        model="gpt-test",
+    )
+
+    assembler.feed({"type": "response_start", "response_id": "resp_1"})
+    assembler.feed({"type": "tool_call_start", "id": "call_a", "name": "add", "index": 0})
+    assembler.feed({"type": "tool_call_start", "id": "call_b", "name": "mul", "index": 1})
+    assembler.feed(
+        {
+            "type": "tool_call_args_delta",
+            "tool_call_id": "call_a",
+            "index": 1,
+            "delta": '{"a":',
+        }
+    )
+    assembler.feed({"type": "tool_call_args_delta", "index": 1, "delta": '{"x":'})
+    assembler.feed({"type": "tool_call_args_delta", "index": 0, "delta": "1}"})
+    assembler.feed({"type": "tool_call_args_delta", "tool_call_id": "call_b", "delta": "2}"})
+    assembler.feed({"type": "tool_call_done", "index": 1})
+    assembler.feed({"type": "tool_call_done", "tool_call_id": "call_a"})
+    assembler.feed({"type": "response_done"})
+
+    events = asyncio.run(_collect_events(stream))
+
+    assert [event["type"] for event in events] == [
+        "start",
+        "toolcall_start",
+        "toolcall_start",
+        "toolcall_delta",
+        "toolcall_delta",
+        "toolcall_delta",
+        "toolcall_delta",
+        "toolcall_end",
+        "toolcall_end",
+        "done",
+    ]
+    assert [events[index]["content_index"] for index in range(1, 9)] == [
+        0,
+        1,
+        0,
+        1,
+        0,
+        1,
+        1,
+        0,
+    ]
+    done = events[-1]["message"]
+    assert [part.id for part in done.content] == ["call_a", "call_b"]
+    assert done.content[0].arguments == {"a": 1}
+    assert done.content[1].arguments == {"x": 2}
+
+
 def test_raw_assembler_preserves_content_order_across_block_types() -> None:
     stream = AssistantMessageEventStream()
     assembler = RawAssembler(

@@ -150,6 +150,26 @@ def test_reasoning_example_reports_simple_reasoning_mapping(capsys) -> None:
     assert payload == summary
 
 
+def test_parallel_tools_example_groups_interleaved_calls(capsys) -> None:
+    module = _load_module(
+        Path("examples/ai/05_parallel_tools.py"), "examples_ai_05_parallel_tools"
+    )
+
+    summary = asyncio.run(module.inspect_parallel_tools())
+
+    assert summary == {
+        "stopReason": "toolUse",
+        "toolCalls": [
+            {"id": "call_add", "name": "add", "arguments": {"a": 2}},
+            {"id": "call_mul", "name": "multiply", "arguments": {"x": 3}},
+        ],
+    }
+
+    module.main()
+    payload = json.loads(capsys.readouterr().out)
+    assert payload == summary
+
+
 def test_errors_retry_example_reports_redacted_error_payload(capsys) -> None:
     module = _load_module(
         Path("examples/ai/09_errors_retry.py"), "examples_ai_09_errors_retry"

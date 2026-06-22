@@ -50,15 +50,20 @@ class ToolCallStartPart(TypedDict):
     type: Literal["tool_call_start"]
     id: str
     name: str
+    index: NotRequired[int]
 
 
 class ToolCallArgsDeltaPart(TypedDict):
     type: Literal["tool_call_args_delta"]
     delta: str
+    tool_call_id: NotRequired[str]
+    index: NotRequired[int]
 
 
 class ToolCallDonePart(TypedDict):
     type: Literal["tool_call_done"]
+    tool_call_id: NotRequired[str]
+    index: NotRequired[int]
 
 
 class ToolCallThoughtSignaturePart(TypedDict):

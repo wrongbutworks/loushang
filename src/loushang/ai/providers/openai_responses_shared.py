@@ -186,11 +186,16 @@ async def process_responses_stream(openai_stream, *, options=None):
                     "summary": [],
                 }
             elif getattr(item, "type", None) == "function_call":
-                yield {
+                index = _optional_int(getattr(event, "output_index", None))
+                tool_call_id = f"{getattr(item, 'call_id', '')}|{getattr(item, 'id', '')}"
+                start_part: dict[str, object] = {
                     "type": "tool_call_start",
-                    "id": f"{getattr(item, 'call_id', '')}|{getattr(item, 'id', '')}",
+                    "id": tool_call_id,
                     "name": getattr(item, "name", ""),
                 }
+                if index is not None:
+                    start_part["index"] = index
+                yield start_part
         elif etype == "response.reasoning_summary_part.added":
             if current_reasoning_item is not None:
                 part = getattr(event, "part", None)
@@ -234,7 +239,17 @@ async def process_responses_stream(openai_stream, *, options=None):
         elif etype == "response.function_call_arguments.delta":
             delta = getattr(event, "delta", None)
             if isinstance(delta, str) and delta:
-                yield {"type": "tool_call_args_delta", "delta": delta}
+                delta_part: dict[str, object] = {
+                    "type": "tool_call_args_delta",
+                    "delta": delta,
+                }
+                item_id = getattr(event, "item_id", None)
+                if isinstance(item_id, str) and item_id:
+                    delta_part["tool_call_id"] = item_id
+                index = _optional_int(getattr(event, "output_index", None))
+                if index is not None:
+                    delta_part["index"] = index
+                yield delta_part
         elif etype == "response.output_item.done":
             item = getattr(event, "item", None)
             if item is None:
@@ -267,7 +282,15 @@ async def process_responses_stream(openai_stream, *, options=None):
                 }
                 text_closed = True
             elif getattr(item, "type", None) == "function_call":
-                yield {"type": "tool_call_done"}
+                done_part: dict[str, object] = {"type": "tool_call_done"}
+                item_id = getattr(item, "id", None)
+                call_id = getattr(item, "call_id", None)
+                if isinstance(call_id, str) and isinstance(item_id, str):
+                    done_part["tool_call_id"] = f"{call_id}|{item_id}"
+                index = _optional_int(getattr(event, "output_index", None))
+                if index is not None:
+                    done_part["index"] = index
+                yield done_part
         elif etype == "response.completed":
             resp = getattr(event, "response", None)
             if resp is not None:
@@ -615,6 +638,12 @@ def _normalize_id_part(part: str) -> str:
     sanitized = re.sub(r"[^a-zA-Z0-9_-]", "_", part)
     normalized = sanitized[:64] if len(sanitized) > 64 else sanitized
     return re.sub(r"_+$", "", normalized) or "_"
+
+
+def _optional_int(value: object) -> int | None:
+    if isinstance(value, bool):
+        return None
+    return value if isinstance(value, int) else None
 
 
 def _build_foreign_responses_item_id(item_id: str) -> str:

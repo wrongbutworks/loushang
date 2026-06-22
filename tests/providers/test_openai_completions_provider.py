@@ -1978,6 +1978,95 @@ def test_openai_completions_stream_maps_thinking_tool_calls_and_reasoning_detail
     )
 
 
+def test_openai_completions_stream_groups_interleaved_parallel_tool_calls(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _fake_openai_module(
+        monkeypatch,
+        chunks=[
+            SimpleNamespace(
+                id="chatcmpl_1",
+                choices=[
+                    SimpleNamespace(
+                        delta=SimpleNamespace(
+                            tool_calls=[
+                                SimpleNamespace(
+                                    id="call_a",
+                                    index=0,
+                                    function=SimpleNamespace(
+                                        name="add", arguments='{"a":'
+                                    ),
+                                ),
+                                SimpleNamespace(
+                                    id="call_b",
+                                    index=1,
+                                    function=SimpleNamespace(
+                                        name="mul", arguments='{"x":'
+                                    ),
+                                ),
+                            ]
+                        ),
+                        finish_reason=None,
+                    )
+                ],
+                usage=None,
+            ),
+            SimpleNamespace(
+                id="chatcmpl_1",
+                choices=[
+                    SimpleNamespace(
+                        delta=SimpleNamespace(
+                            tool_calls=[
+                                SimpleNamespace(
+                                    index=1,
+                                    function=SimpleNamespace(arguments="2}"),
+                                ),
+                                SimpleNamespace(
+                                    index=0,
+                                    function=SimpleNamespace(arguments="1}"),
+                                ),
+                            ]
+                        ),
+                        finish_reason="tool_calls",
+                    )
+                ],
+                usage=None,
+            ),
+        ],
+    )
+    _patch_resolved_request(monkeypatch, compat={}, reasoning_effort=None)
+    provider = OpenAICompletionsProvider()
+
+    async def _scenario() -> list[dict]:
+        stream = await _stream(
+            provider,
+            _Model(),
+            {"messages": [UserMessage(role="user", content="hello", timestamp=0.0)]},
+            OpenAICompletionsOptions(api_key="test-key"),
+        )
+        return await _collect_stream_events(stream)
+
+    events = asyncio.run(_scenario())
+
+    assert [event["type"] for event in events] == [
+        "start",
+        "toolcall_start",
+        "toolcall_delta",
+        "toolcall_start",
+        "toolcall_delta",
+        "toolcall_delta",
+        "toolcall_delta",
+        "toolcall_end",
+        "toolcall_end",
+        "done",
+    ]
+    done = events[-1]["message"]
+    assert [part.id for part in done.content] == ["call_a", "call_b"]
+    assert [part.name for part in done.content] == ["add", "mul"]
+    assert done.content[0].arguments == {"a": 1}
+    assert done.content[1].arguments == {"x": 2}
+
+
 def test_openai_completions_omits_response_start_when_chunk_id_missing(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

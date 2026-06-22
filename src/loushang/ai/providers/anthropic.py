@@ -614,6 +614,7 @@ class AnthropicProvider(AnthropicProviderBase):
                         continue
                     if etype == "content_block_start":
                         cblk = getattr(event, "content_block", None)
+                        content_index = _optional_int(getattr(event, "index", None))
                         active_tool_block = False
                         active_tool_args_from_start = False
                         active_tool_arg_chunks = []
@@ -655,6 +656,11 @@ class AnthropicProvider(AnthropicProviderBase):
                                     "type": "tool_call_start",
                                     "id": tid,
                                     "name": active_tool_name,
+                                    **(
+                                        {"index": content_index}
+                                        if content_index is not None
+                                        else {}
+                                    ),
                                 }
                                 input_delta = _tool_input_to_json_delta(input_value)
                                 if input_delta:
@@ -664,6 +670,11 @@ class AnthropicProvider(AnthropicProviderBase):
                                     yield {
                                         "type": "tool_call_args_delta",
                                         "delta": input_delta,
+                                        **(
+                                            {"index": content_index}
+                                            if content_index is not None
+                                            else {}
+                                        ),
                                     }
                         elif (
                             cblk is not None
@@ -677,6 +688,7 @@ class AnthropicProvider(AnthropicProviderBase):
                                 }
                         continue
                     if etype == "content_block_delta":
+                        content_index = _optional_int(getattr(event, "index", None))
                         delta = getattr(event, "delta", None)
                         if active_tool_block:
                             snapshot = getattr(event, "snapshot", None)
@@ -724,11 +736,17 @@ class AnthropicProvider(AnthropicProviderBase):
                                     yield {
                                         "type": "tool_call_args_delta",
                                         "delta": partial,
+                                        **(
+                                            {"index": content_index}
+                                            if content_index is not None
+                                            else {}
+                                        ),
                                     }
                         elif active_tool_block and delta is not None:
                             active_tool_last_delta = _summarize_tool_delta(delta)
                         continue
                     if etype == "content_block_stop":
+                        content_index = _optional_int(getattr(event, "index", None))
                         # 工具块结束：发出 tool_call_done（不带 payload，RawAssembler 内部汇总参数）
                         if active_tool_block:
                             tool_trace = {
@@ -746,7 +764,14 @@ class AnthropicProvider(AnthropicProviderBase):
                                 _debug("tool_empty_args", tool_trace)
                             else:
                                 _debug("tool_done", tool_trace)
-                            yield {"type": "tool_call_done"}
+                            yield {
+                                "type": "tool_call_done",
+                                **(
+                                    {"index": content_index}
+                                    if content_index is not None
+                                    else {}
+                                ),
+                            }
                             active_tool_block = False
                             active_tool_args_from_start = False
                             active_tool_arg_chunks = []
@@ -837,3 +862,9 @@ def _request_protocol(request: object) -> EndpointProtocolFeatures:
 
 def _is_supported(status: SupportStatus) -> bool:
     return status is SupportStatus.SUPPORTED
+
+
+def _optional_int(value: object) -> int | None:
+    if isinstance(value, bool):
+        return None
+    return value if isinstance(value, int) else None
