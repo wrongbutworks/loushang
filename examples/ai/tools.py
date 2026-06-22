@@ -6,7 +6,7 @@ import asyncio
 import os
 import sys
 
-from loushang.ai import OpenAICompletionsOptions, TextPart, ToolResultMessage, get_model
+from loushang.ai import CallOptions, TextPart, ToolResultMessage, get_model
 
 API_KEY = ""
 PROVIDER_ID = "moonshot"
@@ -41,8 +41,8 @@ def _build_tools() -> list[dict]:
     ]
 
 
-def _build_options(api_key: str) -> OpenAICompletionsOptions:
-    return OpenAICompletionsOptions(api_key=api_key, max_tokens=MAX_TOKENS)
+def _build_options(api_key: str) -> CallOptions:
+    return CallOptions(api_key=api_key, max_output_tokens=MAX_TOKENS)
 
 
 async def main() -> None:

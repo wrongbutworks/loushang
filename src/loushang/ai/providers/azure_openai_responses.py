@@ -7,6 +7,7 @@ from typing import Any
 
 from loushang.ai.event_stream import AssistantMessageEventStream, RawAssembler
 from loushang.ai.model.domain import EndpointProtocolFeatures, EndpointWireDialect
+from loushang.ai.options import get_reasoning_summary
 from loushang.ai.output_budget import resolve_output_token_budget
 from loushang.ai.provider import resolve_provider_request
 from loushang.ai.provider.cancellation import is_signal_cancelled
@@ -128,9 +129,7 @@ class AzureOpenAIResponsesProvider:
         reasoning_effort = getattr(resolved, "reasoning_effort", None)
         if reasoning_effort:
             params["reasoning"] = {"effort": reasoning_effort}
-        reasoning_summary = (
-            getattr(options, "reasoning_summary", None) if options is not None else None
-        )
+        reasoning_summary = get_reasoning_summary(options)
         if reasoning_summary:
             params.setdefault("reasoning", {})["summary"] = reasoning_summary
         if getattr(options, "temperature", None) is not None:

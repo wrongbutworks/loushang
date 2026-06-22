@@ -7,7 +7,7 @@ from typing import Any
 from loushang.ai.api_registry import get_default_api_provider_registry
 from loushang.ai.bootstrap import register_builtin_ai_providers
 from loushang.ai.context import normalize_context
-from loushang.ai.options import PairingMode
+from loushang.ai.options import CallOptions, PairingMode, is_reasoning_requested
 from loushang.ai.provider import resolve_request_for_model
 from loushang.ai.provider.invocation import (
     call_api_provider_stream,
@@ -34,19 +34,7 @@ def _has_tools(normalized_context: Mapping[str, Any]) -> bool:
 def _requests_reasoning(normalized_context: Mapping[str, Any], options) -> bool:
     if normalized_context.get("emit_thinking"):
         return True
-    if options is None:
-        return False
-    if getattr(options, "reasoning", None):
-        return True
-    if getattr(options, "reasoning_summary", None):
-        return True
-    if getattr(options, "thinking_enabled", False):
-        return True
-    if getattr(options, "thinking_budget_tokens", None):
-        return True
-    if getattr(options, "effort", None):
-        return True
-    return False
+    return is_reasoning_requested(options)
 
 
 def _requests_structured_output(
@@ -168,7 +156,7 @@ def _normalization_model(model, resolved):
 async def _start_stream(
     model,
     context,
-    options=None,
+    options: CallOptions | None = None,
     *,
     registry=None,
     require_stream: bool,
@@ -201,7 +189,7 @@ async def _start_stream(
     )
 
 
-async def stream(model, context, options=None, *, registry=None):
+async def stream(model, context, options: CallOptions | None = None, *, registry=None):
     return await _start_stream(
         model,
         context,
@@ -212,7 +200,7 @@ async def stream(model, context, options=None, *, registry=None):
     )
 
 
-async def complete(model, context, options=None, *, registry=None):
+async def complete(model, context, options: CallOptions | None = None, *, registry=None):
     event_stream = await _start_stream(
         model,
         context,
@@ -224,7 +212,9 @@ async def complete(model, context, options=None, *, registry=None):
     return await event_stream.result()
 
 
-async def stream_simple(model, context, options=None, *, registry=None):
+async def stream_simple(
+    model, context, options: CallOptions | None = None, *, registry=None
+):
     return await _start_stream(
         model,
         context,
@@ -235,7 +225,9 @@ async def stream_simple(model, context, options=None, *, registry=None):
     )
 
 
-async def complete_simple(model, context, options=None, *, registry=None):
+async def complete_simple(
+    model, context, options: CallOptions | None = None, *, registry=None
+):
     event_stream = await _start_stream(
         model,
         context,

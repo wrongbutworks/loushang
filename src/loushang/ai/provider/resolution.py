@@ -55,6 +55,7 @@ from loushang.ai.model.registry import (
     has_bound_endpoint_context,
     resolve_model_endpoint,
 )
+from loushang.ai.options import get_max_output_tokens, get_reasoning_effort
 from loushang.ai.provider.runtime_config import (
     AdapterRuntimeConfig,
     AdapterRuntimeConfigResolver,
@@ -932,7 +933,7 @@ def _merge_option_headers(
     options,
 ) -> dict[str, str]:
     option_headers = getattr(options, "headers", None) if options is not None else None
-    if not isinstance(option_headers, dict) or not option_headers:
+    if not isinstance(option_headers, Mapping) or not option_headers:
         return dict(headers)
     merged = dict(headers)
     merged.update(
@@ -1052,7 +1053,7 @@ def _resolve_compat_for_api(
 
 
 def _resolve_max_tokens(options, defaults: dict[str, object]) -> int | None:
-    value = getattr(options, "max_tokens", None) if options is not None else None
+    value = get_max_output_tokens(options)
     if isinstance(value, int):
         return max(1, value)
     if value is None:
@@ -1068,11 +1069,7 @@ def _resolve_reasoning_effort(
     options,
     defaults: dict[str, Any],
 ) -> str | None:
-    value = None
-    if options is not None:
-        value = getattr(options, "reasoning", None) or getattr(
-            options, "reasoning_effort", None
-        )
+    value = get_reasoning_effort(options)
     if value is None:
         default_value = defaults.get("reasoningEffort")
         if isinstance(default_value, str):

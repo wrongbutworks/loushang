@@ -53,7 +53,7 @@ from loushang.ai.model.registry import (
     resolve_model_api,
     resolve_model_endpoint,
 )
-from loushang.ai.options import OpenAICompletionsOptions
+from loushang.ai.options import CallOptions, OpenAICompletionsOptions, ReasoningOptions
 from loushang.ai.provider import (
     AdapterRuntimeConfig,
     ResolvedEndpoint,
@@ -2286,6 +2286,41 @@ def test_resolve_request_keeps_catalog_capabilities_without_direct_override() ->
     assert resolved.capabilities.context_window == 4096
     assert resolved.capabilities.tool_use is True
     assert resolved.capabilities.reasoning is True
+
+
+def test_resolve_request_accepts_unified_call_options() -> None:
+    endpoint = Endpoint(
+        id="openai-completions",
+        provider="custom",
+        api="openai-completions",
+        base_url="https://example.compat/v1",
+        models={
+            "model-a": Model(
+                id="model-a",
+                provider="custom",
+                endpoint="openai-completions",
+            )
+        },
+    )
+    registry = ModelRegistry.from_providers(
+        {"custom": Provider(id="custom", endpoints={endpoint.id: endpoint})}
+    )
+    model = registry.get_model("custom", "openai-completions", "model-a")
+
+    resolved = resolve_request_for_model(
+        model,
+        options=CallOptions(
+            max_output_tokens=321,
+            reasoning=ReasoningOptions(effort="high"),
+            temperature=0.2,
+        ),
+        registry=registry,
+        env={},
+    )
+
+    assert resolved.max_tokens == 321
+    assert resolved.reasoning_effort == "high"
+    assert resolved.temperature == 0.2
 
 
 def test_resolve_request_applies_explicit_default_capability_override() -> None:

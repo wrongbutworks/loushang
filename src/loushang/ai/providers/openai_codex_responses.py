@@ -11,6 +11,13 @@ from uuid import uuid4
 
 from loushang.ai.event_stream import AssistantMessageEventStream, RawAssembler
 from loushang.ai.model.domain import EndpointProtocolFeatures, EndpointWireDialect
+from loushang.ai.options import (
+    get_reasoning_effort,
+    get_reasoning_summary,
+    get_retry_attempts,
+    get_retry_max_delay_ms,
+    get_timeout_seconds,
+)
 from loushang.ai.provider import resolve_provider_request
 from loushang.ai.provider.cancellation import is_signal_cancelled
 from loushang.ai.provider.errors import is_http_status_code, provider_error_part
@@ -187,7 +194,7 @@ class OpenAICodexResponsesProvider:
         *,
         debug_cb=None,
     ) -> AsyncIterator[dict]:
-        retries = getattr(options, "retries", None)
+        retries = get_retry_attempts(options)
         max_retries = retries if isinstance(retries, int) and retries >= 0 else 3
         for attempt in range(max_retries + 1):
             try:
@@ -196,7 +203,7 @@ class OpenAICodexResponsesProvider:
                     url,
                     headers=headers,
                     json=body,
-                    timeout=getattr(options, "timeout", None),
+                    timeout=get_timeout_seconds(options),
                 ) as response:
                     status_code = getattr(response, "status_code", 200)
                     if status_code >= 400:
@@ -241,7 +248,7 @@ class OpenAICodexResponsesProvider:
         if hasattr(client, "connect_websocket"):
             session_id = getattr(options, "session_id", None)
             socket, release = await self._acquire_websocket(
-                client, url, headers, session_id, getattr(options, "timeout", None)
+                client, url, headers, session_id, get_timeout_seconds(options)
             )
             keep_connection = True
             try:
@@ -263,7 +270,7 @@ class OpenAICodexResponsesProvider:
             url,
             headers=headers,
             json={"type": "response.create", **body},
-            timeout=getattr(options, "timeout", None),
+            timeout=get_timeout_seconds(options),
         )
         async for part in process_responses_stream(
             _map_codex_events(_objectify_events(events)), options=options
@@ -398,8 +405,8 @@ def _build_request_body(
         prompt_cache_retention = codex_config.prompt_cache_retention
         if isinstance(prompt_cache_retention, str) and prompt_cache_retention:
             body["prompt_cache_retention"] = prompt_cache_retention
-    reasoning = getattr(options, "reasoning", None)
-    reasoning_summary = getattr(options, "reasoning_summary", None)
+    reasoning = get_reasoning_effort(options)
+    reasoning_summary = get_reasoning_summary(options)
     if reasoning is not None or reasoning_summary is not None:
         body["reasoning"] = {
             "effort": _clamp_reasoning_effort(model.id, reasoning or "medium"),
@@ -634,7 +641,7 @@ def _create_codex_request_id() -> str:
 
 async def _retry_sleep(attempt: int, options) -> None:
     base_delay_ms = 1000 * (2**attempt)
-    max_delay_ms = getattr(options, "max_retry_delay_ms", None)
+    max_delay_ms = get_retry_max_delay_ms(options)
     if isinstance(max_delay_ms, int):
         delay_ms = min(base_delay_ms, max_delay_ms)
     else:

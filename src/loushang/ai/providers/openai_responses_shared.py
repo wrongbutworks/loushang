@@ -11,6 +11,7 @@ from loushang.ai.model.domain import (
     SupportStatus,
 )
 from loushang.ai.model.registry import resolve_model_api
+from loushang.ai.options import is_reasoning_requested
 from loushang.ai.tool.providers import to_openai_responses_tools
 from loushang.ai.tool.transform import (
     MISSING_TOOL_RESULT_TEXT,
@@ -163,12 +164,7 @@ async def process_responses_stream(openai_stream, *, options=None):
     emit_thinking = False
     if options is not None:
         try:
-            if getattr(options, "emit_thinking", False):
-                emit_thinking = True
-            if getattr(options, "thinking_enabled", False):
-                emit_thinking = True
-            if getattr(options, "reasoning", None) is not None:
-                emit_thinking = True
+            emit_thinking = is_reasoning_requested(options)
         except Exception:
             emit_thinking = False
 

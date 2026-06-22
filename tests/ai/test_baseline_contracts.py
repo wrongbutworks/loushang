@@ -26,6 +26,7 @@ ROOT_EXPORTS_BASELINE = [
     "NormalizationResult",
     "NormalizedContext",
     "StopReason",
+    "CallOptions",
     "ModelCallOptions",
     "StreamOptions",
     "SimpleStreamOptions",
@@ -35,6 +36,9 @@ ROOT_EXPORTS_BASELINE = [
     "OpenAICodexResponsesOptions",
     "OpenAIResponsesOptions",
     "PairingMode",
+    "ReasoningOptions",
+    "RetryOptions",
+    "TimeoutOptions",
     "ThinkingLevel",
     "ThinkingBudgets",
     "CacheRetention",
@@ -161,7 +165,7 @@ KNOWN_BASELINE_DEBT = {
 
 def test_root_exports_baseline_snapshot() -> None:
     assert ai.__all__ == ROOT_EXPORTS_BASELINE
-    assert len(ai.__all__) == 61
+    assert len(ai.__all__) == 65
 
 
 def test_builtin_provider_and_catalog_count_baseline() -> None:

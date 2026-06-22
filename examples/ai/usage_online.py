@@ -22,14 +22,11 @@ import asyncio
 import json
 import os
 import sys
-from collections.abc import Callable, Iterable
+from collections.abc import Iterable
 from dataclasses import dataclass
 
 from loushang.ai import (
-    AnthropicOptions,
-    ModelCallOptions,
-    OpenAICompletionsOptions,
-    OpenAIResponsesOptions,
+    CallOptions,
     calculate_cost,
     get_model,
 )
@@ -42,7 +39,6 @@ class Route:
     endpoint: str
     model: str
     api_key_envs: tuple[str, ...]
-    options_factory: Callable[..., ModelCallOptions]
 
 
 ROUTES: dict[str, Route] = {
@@ -51,35 +47,30 @@ ROUTES: dict[str, Route] = {
         endpoint="kimi-code-anthropic",
         model="kimi-for-coding",
         api_key_envs=("KIMI_API_KEY", "KIMI_AUTH_TOKEN"),
-        options_factory=AnthropicOptions,
     ),
     "kimi-code-openai": Route(
         provider="moonshot",
         endpoint="coding",
         model="kimi-for-coding",
         api_key_envs=("KIMI_API_KEY", "KIMI_AUTH_TOKEN"),
-        options_factory=OpenAICompletionsOptions,
     ),
     "moonshot-openai": Route(
         provider="moonshot",
         endpoint="openai-completions",
         model="kimi-k2.5",
         api_key_envs=("MOONSHOT_API_KEY",),
-        options_factory=OpenAICompletionsOptions,
     ),
     "moonshot-anthropic": Route(
         provider="moonshot",
         endpoint="anthropic-messages",
         model="kimi-k2.5",
         api_key_envs=("MOONSHOT_API_KEY",),
-        options_factory=AnthropicOptions,
     ),
     "dashscope-responses": Route(
         provider="dashscope",
         endpoint="openai-responses",
         model="qwen3.6-plus",
         api_key_envs=("DASHSCOPE_API_KEY",),
-        options_factory=OpenAIResponsesOptions,
     ),
 }
 
@@ -133,7 +124,6 @@ def _resolve_route(args: argparse.Namespace) -> Route:
         endpoint=args.endpoint or base.endpoint,
         model=args.model or base.model,
         api_key_envs=api_key_envs,
-        options_factory=base.options_factory,
     )
 
 
@@ -152,9 +142,9 @@ def _resolve_api_key(
 
 def _build_options(
     route: Route, *, api_key: str, max_tokens: int, timeout: float
-) -> ModelCallOptions:
-    value = route.options_factory(
-        api_key=api_key, max_tokens=max_tokens, timeout=timeout
+) -> CallOptions:
+    value = CallOptions(
+        api_key=api_key, max_output_tokens=max_tokens, timeout=timeout
     )
     if route.model != "kimi-for-coding":
         return value
@@ -162,8 +152,11 @@ def _build_options(
         **dict(getattr(value, "headers", {}) or {}),
         "User-Agent": "KimiCLI/1.5",
     }
-    return route.options_factory(
-        api_key=api_key, max_tokens=max_tokens, timeout=timeout, headers=headers
+    return CallOptions(
+        api_key=api_key,
+        max_output_tokens=max_tokens,
+        timeout=timeout,
+        headers=headers,
     )
 
 
@@ -220,13 +213,13 @@ def _print_json(label: str, payload: dict[str, object]) -> None:
 
 
 async def _complete(
-    model: object, context: dict[str, object], options: ModelCallOptions
+    model: object, context: dict[str, object], options: CallOptions
 ) -> AssistantMessage:
     return await model.complete(context, options)  # type: ignore[attr-defined,no-any-return]
 
 
 async def _stream(
-    model: object, context: dict[str, object], options: ModelCallOptions
+    model: object, context: dict[str, object], options: CallOptions
 ) -> AssistantMessage:
     events = await model.stream(context, options)  # type: ignore[attr-defined]
     async for event in events:

@@ -3,6 +3,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any
 
+from loushang.ai.options import get_max_output_tokens
+
 DEFAULT_MAX_OUTPUT_TOKEN_CAP = 32_000
 DEFAULT_MAX_OUTPUT_TOKEN_FALLBACK = 8_192
 
@@ -30,7 +32,7 @@ def resolve_output_token_budget(
     if default_value is not None:
         return OutputTokenBudget(default_value, "request", True)
 
-    override_raw = getattr(options, "max_tokens", None)
+    override_raw = get_max_output_tokens(options)
     if isinstance(override_raw, int):
         return OutputTokenBudget(max(1, override_raw), "options", True)
 

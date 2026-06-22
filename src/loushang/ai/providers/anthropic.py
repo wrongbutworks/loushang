@@ -7,6 +7,11 @@ from typing import Any
 
 from loushang.ai.event_stream import AssistantMessageEventStream, RawAssembler
 from loushang.ai.model.domain import EndpointProtocolFeatures, SupportStatus
+from loushang.ai.options import (
+    get_reasoning_budget_tokens,
+    get_reasoning_effort,
+    is_reasoning_requested,
+)
 from loushang.ai.output_budget import resolve_output_token_budget
 from loushang.ai.provider import resolve_provider_request
 from loushang.ai.provider.cancellation import is_signal_cancelled
@@ -463,19 +468,16 @@ class AnthropicProvider(AnthropicProviderBase):
         thinking_cfg: dict[str, object] | None = None
         # 思考模式：自适应或预算式；与 temperature 互斥
         try:
-            want_thinking = normalized.get("emit_thinking") or (
-                options is not None and getattr(options, "thinking_enabled", False)
+            want_thinking = normalized.get("emit_thinking") or is_reasoning_requested(
+                options
             )
             if want_thinking:
                 if self.supports_adaptive_thinking(model.id):
                     thinking_cfg = {"type": "adaptive"}
                     # effort 由 reasoning 等级映射
                     effort = self.map_thinking_level_to_effort(
-                        getattr(options, "effort", None), model.id
-                    )  # effort 可直接来自 options.effort
-                    if effort is None:
-                        reasoning = getattr(options, "reasoning", None)
-                        effort = self.map_thinking_level_to_effort(reasoning, model.id)
+                        get_reasoning_effort(options), model.id
+                    )
                     # 将 effort 合并到 output_config
                     if effort:
                         try:
@@ -484,9 +486,7 @@ class AnthropicProvider(AnthropicProviderBase):
                         except Exception:
                             pass
                 else:
-                    thinking_budget_tokens = getattr(
-                        options, "thinking_budget_tokens", None
-                    )
+                    thinking_budget_tokens = get_reasoning_budget_tokens(options)
                     thinking_cfg = {
                         "type": "enabled",
                         "budget_tokens": thinking_budget_tokens
@@ -514,16 +514,11 @@ class AnthropicProvider(AnthropicProviderBase):
         if thinking_cfg:
             params["thinking"] = thinking_cfg
         # 若存在自适应思考的 effort，注入 output_config
-        want_thinking = normalized.get("emit_thinking") or (
-            options is not None and getattr(options, "thinking_enabled", False)
-        )
+        want_thinking = normalized.get("emit_thinking") or is_reasoning_requested(options)
         if want_thinking and self.supports_adaptive_thinking(model.id):
             effort = self.map_thinking_level_to_effort(
-                getattr(options, "effort", None), model.id
+                get_reasoning_effort(options), model.id
             )
-            if effort is None:
-                reasoning = getattr(options, "reasoning", None)
-                effort = self.map_thinking_level_to_effort(reasoning, model.id)
             if effort:
                 params["output_config"] = {"effort": effort}
         # 透传 tool_choice（auto/any/none 或 {type:'tool', name:...}）

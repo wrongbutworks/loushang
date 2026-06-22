@@ -7,7 +7,7 @@ import os
 import sys
 from collections.abc import Iterable
 
-from loushang.ai import OpenAICompletionsOptions, get_model, stream
+from loushang.ai import CallOptions, get_model, stream
 
 API_KEY = ""
 PROVIDER_ID = "moonshot"
@@ -32,8 +32,8 @@ def _build_context() -> dict:
     }
 
 
-def _build_options(api_key: str) -> OpenAICompletionsOptions:
-    return OpenAICompletionsOptions(api_key=api_key, max_tokens=MAX_TOKENS)
+def _build_options(api_key: str) -> CallOptions:
+    return CallOptions(api_key=api_key, max_output_tokens=MAX_TOKENS)
 
 
 def _iter_text(parts: Iterable[object]) -> str:

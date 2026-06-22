@@ -180,6 +180,10 @@
 `stream` capability；`tools`、reasoning、structured output、temperature、image
 input 和 attachment 请求也会在模型未声明支持时直接失败。
 
+通用调用参数使用 `CallOptions`。旧的 `ModelCallOptions`、`StreamOptions` 和
+provider-specific options 仍保留为兼容入口；新示例应优先使用 `CallOptions`，
+provider-specific options 只用于 advanced/deprecated 场景。
+
 ### 模型访问
 
 - `Model`

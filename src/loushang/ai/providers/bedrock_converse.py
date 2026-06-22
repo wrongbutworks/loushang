@@ -13,6 +13,7 @@ from urllib.parse import quote, urlparse
 import httpx
 
 from loushang.ai.event_stream import AssistantMessageEventStream, RawAssembler
+from loushang.ai.options import get_timeout_seconds
 from loushang.ai.output_budget import resolve_output_token_budget
 from loushang.ai.provider import resolve_provider_request
 from loushang.ai.provider.cancellation import is_signal_cancelled
@@ -94,7 +95,7 @@ class BedrockConverseProvider:
             credentials=credentials,
         )
         headers["content-type"] = "application/json"
-        timeout = getattr(options, "timeout", None) if options is not None else None
+        timeout = get_timeout_seconds(options)
         client = self._client or httpx.AsyncClient(timeout=timeout or 120)
         close_client = self._client is None
         try:

@@ -8,8 +8,8 @@ import sys
 from collections.abc import Iterable
 
 from loushang.ai import (
+    CallOptions,
     Context,
-    OpenAICompletionsOptions,
     Tool,
     UserMessage,
     complete,
@@ -60,8 +60,8 @@ def _build_context() -> Context:
     )
 
 
-def _build_options(api_key: str) -> OpenAICompletionsOptions:
-    return OpenAICompletionsOptions(api_key=api_key, max_tokens=MAX_TOKENS)
+def _build_options(api_key: str) -> CallOptions:
+    return CallOptions(api_key=api_key, max_output_tokens=MAX_TOKENS)
 
 
 def _iter_text(parts: Iterable[object]) -> str:

@@ -11,6 +11,7 @@ from loushang.ai.model.domain import (
     EndpointWireDialect,
     SupportStatus,
 )
+from loushang.ai.options import get_timeout_seconds
 from loushang.ai.output_budget import resolve_output_token_budget
 from loushang.ai.provider import resolve_provider_request
 from loushang.ai.provider.cancellation import is_signal_cancelled
@@ -658,8 +659,8 @@ def _base_url_hostname(base_url: str | None) -> str | None:
 
 
 def _resolve_timeout_seconds(options, resolved) -> float | int | None:
-    option_timeout = getattr(options, "timeout", None) if options is not None else None
-    if isinstance(option_timeout, int | float) and option_timeout > 0:
+    option_timeout = get_timeout_seconds(options)
+    if isinstance(option_timeout, int | float):
         return option_timeout
     transport_timeout = getattr(
         getattr(resolved, "transport", None),

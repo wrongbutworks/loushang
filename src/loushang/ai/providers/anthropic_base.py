@@ -3,7 +3,7 @@ from __future__ import annotations
 from typing import Any, Literal
 
 from loushang.ai.model.domain import EndpointProtocolFeatures, SupportStatus
-from loushang.ai.options import CacheRetention, ThinkingLevel
+from loushang.ai.options import CacheRetention, is_reasoning_requested
 from loushang.ai.providers.anthropic_oauth_compat import AnthropicOAuthCompat
 from loushang.ai.utils import sanitize_surrogates
 
@@ -22,7 +22,7 @@ class AnthropicProviderBase:
 
     @staticmethod
     def map_thinking_level_to_effort(
-        level: ThinkingLevel | None, model_id: str
+        level: str | None, model_id: str
     ) -> Literal["low", "medium", "high", "max"] | None:
         if level is None:
             return None
@@ -160,15 +160,7 @@ class AnthropicProviderBase:
             and protocol.reasoning.interleaved is SupportStatus.UNSUPPORTED
         ):
             return False
-        # 是否请求了思考：options.thinking_enabled / options.emit_thinking / options.reasoning
-        want_thinking = False
-        if options is not None:
-            if getattr(options, "thinking_enabled", False):
-                want_thinking = True
-            if getattr(options, "emit_thinking", False):
-                want_thinking = True
-            if getattr(options, "reasoning", None) is not None:
-                want_thinking = True
+        want_thinking = is_reasoning_requested(options)
         if not want_thinking:
             return False
         # 4.6 系列内建，不注入

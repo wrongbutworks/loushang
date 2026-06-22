@@ -11,6 +11,7 @@ from loushang.ai.model.domain import (
     EndpointWireDialect,
     SupportStatus,
 )
+from loushang.ai.options import get_reasoning_effort, get_reasoning_summary
 from loushang.ai.output_budget import resolve_output_token_budget
 from loushang.ai.provider import resolve_provider_request
 from loushang.ai.provider.cancellation import is_signal_cancelled
@@ -225,15 +226,10 @@ class OpenAIResponsesProvider:
             params["service_tier"] = getattr(options, "service_tier")
         # 推理配置（最小实现）
         if _supports_reasoning(capabilities):
-            reasoning_effort = (
-                getattr(options, "reasoning_effort", None)
-                or getattr(options, "reasoningEffort", None)
-                or getattr(options, "reasoning", None)
-                or getattr(resolved, "reasoning_effort", None)
+            reasoning_effort = get_reasoning_effort(options) or getattr(
+                resolved, "reasoning_effort", None
             )
-            reasoning_summary = getattr(options, "reasoning_summary", None) or getattr(
-                options, "reasoningSummary", None
-            )
+            reasoning_summary = get_reasoning_summary(options)
             if reasoning_effort or reasoning_summary:
                 params["reasoning"] = {
                     "effort": reasoning_effort or "medium",

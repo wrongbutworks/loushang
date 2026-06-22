@@ -9,17 +9,19 @@ from dataclasses import dataclass
 from typing import Any
 
 from loushang.ai import (
-    AnthropicOptions,
-    AzureOpenAIResponsesOptions,
-    ModelCallOptions,
-    OpenAICodexResponsesOptions,
-    OpenAICompletionsOptions,
-    OpenAIResponsesOptions,
+    CallOptions,
     complete,
     get_api_provider,
     get_env_api_key,
     list_api_providers,
     stream,
+)
+from loushang.ai.advanced.options import (
+    AnthropicOptions,
+    AzureOpenAIResponsesOptions,
+    OpenAICodexResponsesOptions,
+    OpenAICompletionsOptions,
+    OpenAIResponsesOptions,
 )
 from loushang.ai.api_registry import get_default_api_provider_registry
 from loushang.ai.auth import (
@@ -704,7 +706,7 @@ def _build_console_options(model, *, api: str, auth_result, debug: bool = False)
         option_kwargs["trace"] = _console_trace
     if not option_kwargs:
         return None, auth_source
-    option_cls = _OPTION_CLASS_BY_API.get(api, ModelCallOptions)
+    option_cls = _OPTION_CLASS_BY_API.get(api, CallOptions)
     return option_cls(**option_kwargs), auth_source
 
 

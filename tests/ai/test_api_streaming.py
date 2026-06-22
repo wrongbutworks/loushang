@@ -19,9 +19,11 @@ from loushang.ai.model import (
     EndpointWireDialect,
 )
 from loushang.ai.options import (
+    CallOptions,
     ModelCallOptions,
     OpenAICompletionsOptions,
     OpenAIResponsesOptions,
+    ReasoningOptions,
 )
 from loushang.ai.provider import ResolvedRequest
 from loushang.ai.providers.openai_completions import OpenAICompletionsProvider
@@ -325,6 +327,12 @@ def test_stream_passes_normalized_context_to_provider(
             Capabilities(input=("text",), stream=True, reasoning=False),
             {"messages": [], "emit_thinking": True},
             ModelCallOptions(),
+            "does not support reasoning",
+        ),
+        (
+            Capabilities(input=("text",), stream=True, reasoning=False),
+            {"messages": [UserMessage(role="user", content="hello", timestamp=0.0)]},
+            CallOptions(reasoning=ReasoningOptions(effort="high")),
             "does not support reasoning",
         ),
         (
