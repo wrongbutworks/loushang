@@ -349,9 +349,6 @@ class AnthropicProvider(AnthropicProviderBase):
         stream.attach_task(asyncio.create_task(_run()))
         return stream
 
-    async def stream_simple(self, model, context, options, request=None):
-        return await self.stream(model, context, options, request)
-
     async def _stream_raw_parts(
         self, model, context, options, request=None
     ) -> AsyncIterator[dict]:

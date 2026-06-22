@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from loushang.ai.event_stream import AssistantMessageEventStream, RawAssembler
+from loushang.ai.options import is_reasoning_requested
 from loushang.ai.provider import resolve_provider_request
 from loushang.ai.types import TextPart, ToolResultMessage
 
@@ -28,7 +29,7 @@ class FauxProvider:
         tool_result_text = self._extract_tool_result_text(
             normalized.get("messages", [])
         )
-        if normalized.get("emit_thinking"):
+        if normalized.get("emit_thinking") or is_reasoning_requested(options):
             assembler.feed({"type": "thinking_delta", "text": "reasoning trace"})
         if normalized.get("emit_tool_call"):
             assembler.feed({"type": "tool_call_start", "id": "tc_1", "name": "calc"})
@@ -57,9 +58,6 @@ class FauxProvider:
         assembler.feed({"type": "stop_reason", "stop_reason": "stop"})
         assembler.feed({"type": "response_done"})
         return stream
-
-    async def stream_simple(self, model, context, options, request=None):
-        return await self.stream(model, context, options, request)
 
     def _extract_tool_result_text(self, messages: list[object]) -> str | None:
         for message in reversed(messages):

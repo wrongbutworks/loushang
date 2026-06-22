@@ -137,15 +137,6 @@ def get_reasoning_budget_tokens(options: object | None) -> int | None:
     return value if isinstance(value, int) else None
 
 
-def is_reasoning_enabled(options: object | None) -> bool:
-    if options is None:
-        return False
-    reasoning = get_reasoning_options(options)
-    if reasoning is not None and reasoning.enabled is not None:
-        return reasoning.enabled
-    return bool(getattr(options, "thinking_enabled", False))
-
-
 def is_reasoning_requested(options: object | None) -> bool:
     if options is None:
         return False
@@ -198,10 +189,67 @@ def get_retry_max_delay_ms(options: object | None) -> int | None:
     return value if isinstance(value, int) else None
 
 
-@dataclass(frozen=True)
-class SimpleStreamOptions(CallOptions):
+@dataclass(frozen=True, slots=True)
+class SimpleCallOptions(CallOptions):
     reasoning: "ThinkingLevel | None" = None
     thinking_budgets: "ThinkingBudgets | None" = None
+
+
+SimpleStreamOptions = SimpleCallOptions
+
+
+def simple_options_to_call_options(options: SimpleCallOptions | None) -> CallOptions | None:
+    if options is None:
+        return None
+    if not isinstance(options, SimpleCallOptions):
+        raise TypeError("simple options must be SimpleCallOptions")
+    budget_tokens = _simple_reasoning_budget_tokens(options)
+    reasoning = (
+        ReasoningOptions(
+            enabled=True,
+            effort=options.reasoning,
+            budget_tokens=budget_tokens,
+            expose_summary=True,
+        )
+        if options.reasoning is not None
+        else None
+    )
+    return CallOptions(
+        signal=options.signal,
+        cancellation=options.cancellation,
+        api_key=options.api_key,
+        headers=options.headers,
+        transport=options.transport,
+        cache_retention=options.cache_retention,
+        session_id=options.session_id,
+        max_retry_delay_ms=options.max_retry_delay_ms,
+        metadata=options.metadata,
+        max_tokens=options.max_tokens,
+        max_output_tokens=options.max_output_tokens,
+        temperature=options.temperature,
+        timeout=options.timeout,
+        retries=options.retries,
+        retry=options.retry,
+        on_payload=options.on_payload,
+        on_response=options.on_response,
+        trace=options.trace,
+        oauth_credentials=options.oauth_credentials,
+        region=options.region,
+        pairing_mode=options.pairing_mode,
+        reasoning=reasoning,
+        reasoning_summary=options.reasoning_summary,
+        tool_choice=options.tool_choice,
+        output=options.output,
+        hooks=options.hooks,
+        provider_options=options.provider_options,
+    )
+
+
+def _simple_reasoning_budget_tokens(options: SimpleCallOptions) -> int | None:
+    if options.reasoning is None or options.thinking_budgets is None:
+        return None
+    value = options.thinking_budgets.get(options.reasoning)
+    return value if isinstance(value, int) else None
 
 
 from loushang.ai.advanced.options import (  # noqa: E402
@@ -225,6 +273,7 @@ __all__ = [
     "ProviderStreamOptions",
     "ReasoningOptions",
     "RetryOptions",
+    "SimpleCallOptions",
     "SimpleStreamOptions",
     "StreamOptions",
     "ThinkingBudgets",
@@ -232,4 +281,5 @@ __all__ = [
     "TimeoutOptions",
     "ToolChoice",
     "Transport",
+    "simple_options_to_call_options",
 ]

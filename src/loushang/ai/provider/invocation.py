@@ -112,35 +112,11 @@ async def call_api_provider_stream(
     )
 
 
-async def call_api_provider_stream_simple(
-    provider: Any,
-    model,
-    context,
-    options,
-    request: ResolvedRequest,
-):
-    request = resolve_provider_request(
-        provider.api,
-        model,
-        options=options,
-        request=request,
-    )
-    return await _call_provider(
-        provider.stream_simple,
-        _provider_call_style(provider.stream_simple),
-        model,
-        context,
-        options,
-        request,
-    )
-
-
 class _RequestAwareProviderInvoker:
     def __init__(self, provider: Any) -> None:
         self._provider = provider
         self.api = provider.api
         self._stream_style = _provider_call_style(provider.stream)
-        self._stream_simple_style = _provider_call_style(provider.stream_simple)
 
     def _resolve_request(self, model, options, request: ResolvedRequest | None):
         return resolve_provider_request(
@@ -157,19 +133,6 @@ class _RequestAwareProviderInvoker:
         return await _call_provider(
             self._provider.stream,
             self._stream_style,
-            model,
-            context,
-            options,
-            request,
-        )
-
-    async def stream_simple(
-        self, model, context, options, request: ResolvedRequest | None = None
-    ):
-        request = self._resolve_request(model, options, request)
-        return await _call_provider(
-            self._provider.stream_simple,
-            self._stream_simple_style,
             model,
             context,
             options,

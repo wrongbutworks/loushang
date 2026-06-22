@@ -128,6 +128,28 @@ def test_usage_online_example_prints_unknown_cost(capsys, monkeypatch) -> None:
     assert json.loads(cost_line.removeprefix("cost: ")) == {"known": False}
 
 
+def test_reasoning_example_reports_simple_reasoning_mapping(capsys) -> None:
+    module = _load_module(
+        Path("examples/ai/06_reasoning.py"), "examples_ai_06_reasoning"
+    )
+
+    summary = asyncio.run(module.inspect_reasoning())
+
+    assert summary == {
+        "reasoning": "medium",
+        "budgetTokens": 2048,
+        "events": [
+            {"type": "thinking_delta", "thinking": "reasoning trace"},
+            {"type": "text_delta", "text": "mock hello from faux provider"},
+        ],
+        "stopReason": "stop",
+    }
+
+    module.main()
+    payload = json.loads(capsys.readouterr().out)
+    assert payload == summary
+
+
 def test_advanced_inspect_endpoint_contract_formats_protocol_facts(
     capsys,
     monkeypatch,

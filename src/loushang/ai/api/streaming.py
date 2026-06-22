@@ -7,12 +7,15 @@ from typing import Any
 from loushang.ai.api_registry import get_default_api_provider_registry
 from loushang.ai.bootstrap import register_builtin_ai_providers
 from loushang.ai.context import normalize_context
-from loushang.ai.options import CallOptions, PairingMode, is_reasoning_requested
-from loushang.ai.provider import resolve_request_for_model
-from loushang.ai.provider.invocation import (
-    call_api_provider_stream,
-    call_api_provider_stream_simple,
+from loushang.ai.options import (
+    CallOptions,
+    PairingMode,
+    SimpleCallOptions,
+    is_reasoning_requested,
+    simple_options_to_call_options,
 )
+from loushang.ai.provider import resolve_request_for_model
+from loushang.ai.provider.invocation import call_api_provider_stream
 from loushang.ai.types import ImagePart, ToolResultMessage, UserMessage
 
 
@@ -160,7 +163,6 @@ async def _start_stream(
     *,
     registry=None,
     require_stream: bool,
-    simple: bool,
 ):
     resolved = resolve_request_for_model(model, options=options)
     normalized = normalize_context(
@@ -176,14 +178,6 @@ async def _start_stream(
         require_stream=require_stream,
     )
     provider = _resolve_api_provider_registry(registry).get_api_provider(resolved.api)
-    if simple:
-        return await call_api_provider_stream_simple(
-            provider,
-            model,
-            normalized,
-            options,
-            resolved,
-        )
     return await call_api_provider_stream(
         provider, model, normalized, options, resolved
     )
@@ -196,7 +190,6 @@ async def stream(model, context, options: CallOptions | None = None, *, registry
         options,
         registry=registry,
         require_stream=True,
-        simple=False,
     )
 
 
@@ -207,33 +200,32 @@ async def complete(model, context, options: CallOptions | None = None, *, regist
         options,
         registry=registry,
         require_stream=False,
-        simple=False,
     )
     return await event_stream.result()
 
 
 async def stream_simple(
-    model, context, options: CallOptions | None = None, *, registry=None
+    model, context, options: SimpleCallOptions | None = None, *, registry=None
 ):
+    call_options = simple_options_to_call_options(options)
     return await _start_stream(
         model,
         context,
-        options,
+        call_options,
         registry=registry,
         require_stream=True,
-        simple=True,
     )
 
 
 async def complete_simple(
-    model, context, options: CallOptions | None = None, *, registry=None
+    model, context, options: SimpleCallOptions | None = None, *, registry=None
 ):
+    call_options = simple_options_to_call_options(options)
     event_stream = await _start_stream(
         model,
         context,
-        options,
+        call_options,
         registry=registry,
         require_stream=False,
-        simple=True,
     )
     return await event_stream.result()

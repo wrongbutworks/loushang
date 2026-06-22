@@ -10,6 +10,8 @@
   最常见的完整返回调用
 - [stream.py](stream.py)
   流式消费事件并读取最终结果
+- [06_reasoning.py](06_reasoning.py)
+  离线演示 `stream_simple` 如何把 `SimpleCallOptions.reasoning` 映射到统一 reasoning 请求
 - [usage_online.py](usage_online.py)
   在线检查 usage；当 catalog 缺少价格事实时，cost 输出为 `{"known": false}`
 - [tools.py](tools.py)

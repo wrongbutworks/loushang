@@ -183,6 +183,9 @@ input 和 attachment 请求也会在模型未声明支持时直接失败。
 通用调用参数使用 `CallOptions`。旧的 `ModelCallOptions`、`StreamOptions` 和
 provider-specific options 仍保留为兼容入口；新示例应优先使用 `CallOptions`，
 provider-specific options 只用于 advanced/deprecated 场景。
+`stream_simple` / `complete_simple` 使用更窄的 `SimpleCallOptions`；核心 API 会先
+把 simple reasoning 选项映射为 `CallOptions.reasoning`，provider adapter 只需要
+实现普通 `stream`。
 
 ### 模型访问
 

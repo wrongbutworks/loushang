@@ -64,7 +64,6 @@ from loushang.ai.provider import (
 )
 from loushang.ai.provider.invocation import (
     call_api_provider_stream,
-    call_api_provider_stream_simple,
 )
 from loushang.ai.providers.openai_codex_responses import OpenAICodexResponsesProvider
 from loushang.ai.providers.openai_codex_runtime_config import (
@@ -1238,24 +1237,6 @@ def test_call_api_provider_helpers_use_normalized_supplied_request() -> None:
         is SupportStatus.SUPPORTED
     )
 
-    assert (
-        asyncio.run(
-            call_api_provider_stream_simple(
-                provider,
-                model,
-                {"messages": []},
-                OpenAICompletionsOptions(),
-                request,
-            )
-        )
-        == "stream_simple"
-    )
-    assert provider.stream_simple_request is not None
-    assert (
-        provider.stream_simple_request.adapter_protocol.cache.prompt_key
-        is SupportStatus.SUPPORTED
-    )
-
 
 def test_resolve_provider_request_validates_supplied_compat() -> None:
     model = Model(id="model-a", provider="custom", endpoint="openai-completions")
@@ -1276,15 +1257,10 @@ class _RequestRecordingProvider:
 
     def __init__(self) -> None:
         self.stream_request: ResolvedRequest | None = None
-        self.stream_simple_request: ResolvedRequest | None = None
 
     async def stream(self, _model, _context, _options, request: ResolvedRequest):
         self.stream_request = request
         return "stream"
-
-    async def stream_simple(self, _model, _context, _options, request: ResolvedRequest):
-        self.stream_simple_request = request
-        return "stream_simple"
 
 
 def test_resolved_request_rejects_conflicting_compat_aliases() -> None:

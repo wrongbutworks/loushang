@@ -4,6 +4,7 @@ from dataclasses import fields
 
 from loushang.ai import CallOptions as PublicCallOptions
 from loushang.ai import ModelCallOptions as PublicModelCallOptions
+from loushang.ai import SimpleCallOptions as PublicSimpleCallOptions
 from loushang.ai import StreamOptions as PublicStreamOptions
 from loushang.ai.advanced import AnthropicOptions as AdvancedAnthropicOptions
 from loushang.ai.advanced import (
@@ -19,6 +20,7 @@ from loushang.ai.options import (
     ProviderStreamOptions,
     ReasoningOptions,
     RetryOptions,
+    SimpleCallOptions,
     SimpleStreamOptions,
     StreamOptions,
     TimeoutOptions,
@@ -30,6 +32,7 @@ from loushang.ai.options import (
     get_retry_max_delay_ms,
     get_timeout_seconds,
     is_reasoning_requested,
+    simple_options_to_call_options,
 )
 
 
@@ -40,6 +43,8 @@ def test_call_options_is_public_and_legacy_names_remain_compatible() -> None:
     assert ModelCallOptions is CallOptions
     assert StreamOptions is CallOptions
     assert ProviderStreamOptions is CallOptions
+    assert PublicSimpleCallOptions is SimpleCallOptions
+    assert SimpleStreamOptions is SimpleCallOptions
 
     options = CallOptions(api_key="key", headers={"x-trace": "1"})
 
@@ -107,6 +112,28 @@ def test_nested_call_option_helpers_support_new_and_legacy_shapes() -> None:
     assert get_timeout_seconds(legacy) == 10
 
 
+def test_simple_call_options_map_to_call_options_reasoning() -> None:
+    simple = SimpleCallOptions(
+        api_key="key",
+        max_output_tokens=256,
+        reasoning="medium",
+        thinking_budgets={"medium": 2048},
+    )
+
+    options = simple_options_to_call_options(simple)
+
+    assert isinstance(options, CallOptions)
+    assert not isinstance(options, SimpleCallOptions)
+    assert options.api_key == "key"
+    assert options.max_output_tokens == 256
+    assert options.reasoning == ReasoningOptions(
+        enabled=True,
+        effort="medium",
+        budget_tokens=2048,
+        expose_summary=True,
+    )
+
+
 def test_provider_specific_options_are_advanced_compatibility_types() -> None:
     assert AnthropicOptions is AdvancedAnthropicOptions
     assert OpenAICompletionsOptions is AdvancedOpenAICompletionsOptions
@@ -119,7 +146,7 @@ def test_provider_specific_options_keep_model_call_fields() -> None:
         OpenAICompletionsOptions,
         OpenAIResponsesOptions,
         OpenAICodexResponsesOptions,
-        SimpleStreamOptions,
+        SimpleCallOptions,
     )
 
     for option_type in option_types:

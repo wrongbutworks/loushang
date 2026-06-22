@@ -23,27 +23,12 @@ class ApiProvider(Protocol):
         options: ProviderOptions,
     ) -> AssistantMessageEventStream: ...
 
-    async def stream_simple(
-        self,
-        model: Model,
-        context: ProviderContext,
-        options: ProviderOptions,
-    ) -> AssistantMessageEventStream: ...
-
 
 @runtime_checkable
 class RequestAwareApiProvider(Protocol):
     api: str
 
     async def stream(
-        self,
-        model: Model,
-        context: ProviderContext,
-        options: ProviderOptions,
-        request: ResolvedRequest | None = None,
-    ) -> AssistantMessageEventStream: ...
-
-    async def stream_simple(
         self,
         model: Model,
         context: ProviderContext,

@@ -24,6 +24,7 @@ from loushang.ai.options import (
     OpenAICompletionsOptions,
     OpenAIResponsesOptions,
     ReasoningOptions,
+    SimpleCallOptions,
 )
 from loushang.ai.provider import ResolvedRequest
 from loushang.ai.providers.openai_completions import OpenAICompletionsProvider
@@ -76,9 +77,6 @@ class _Provider:
         self.request = request
         return _DoneStream()
 
-    async def stream_simple(self, model, context, options, request):
-        return await self.stream(model, context, options, request)
-
 
 def _assert_normalized_provider_context(context: object) -> NormalizedContext:
     assert isinstance(context, NormalizedContext)
@@ -99,9 +97,6 @@ class _LegacyProvider:
         self.options = options
         return _DoneStream()
 
-    async def stream_simple(self, model, context, options):
-        return await self.stream(model, context, options)
-
 
 class _LegacyProviderWithOptionalDebug:
     api = "faux"
@@ -115,9 +110,6 @@ class _LegacyProviderWithOptionalDebug:
         self.context = context
         self.debug = debug
         return _DoneStream()
-
-    async def stream_simple(self, model, context, options, debug=False):
-        return await self.stream(model, context, options, debug)
 
 
 class _KeywordRequestProvider:
@@ -134,9 +126,6 @@ class _KeywordRequestProvider:
         self.options = options
         self.request = request
         return _DoneStream()
-
-    async def stream_simple(self, model, context, options, *, request=None):
-        return await self.stream(model, context, options, request=request)
 
 
 class _DoneStream:
@@ -685,13 +674,60 @@ def test_stream_simple_supports_keyword_request_registered_provider_signature(
         stream_simple(
             _Model(),
             {"messages": [UserMessage(role="user", content="hello", timestamp=0.0)]},
-            ModelCallOptions(),
+            SimpleCallOptions(),
             registry=registry,
         )
     )
 
     _assert_normalized_provider_context(provider.context)
     assert provider.request.api == "faux"
+
+
+@pytest.mark.parametrize(
+    "api",
+    (
+        "openai-completions",
+        "openai-responses",
+        "anthropic-messages",
+        "openai-codex-responses",
+    ),
+)
+def test_stream_simple_maps_reasoning_options_before_provider_call(
+    monkeypatch: pytest.MonkeyPatch,
+    api: str,
+) -> None:
+    _patch_resolved_request(
+        monkeypatch,
+        capabilities=Capabilities(input=("text",), stream=True, reasoning=True),
+        api=api,
+        provider="custom",
+    )
+    provider = _Provider(api=api)
+    registry = _Registry(provider)
+
+    asyncio.run(
+        stream_simple(
+            _Model(),
+            {"messages": [UserMessage(role="user", content="hello", timestamp=0.0)]},
+            SimpleCallOptions(
+                reasoning="medium",
+                thinking_budgets={"medium": 2048},
+                max_output_tokens=123,
+            ),
+            registry=registry,
+        )
+    )
+
+    assert isinstance(provider.options, CallOptions)
+    assert not isinstance(provider.options, SimpleCallOptions)
+    assert provider.options.max_output_tokens == 123
+    assert provider.options.reasoning == ReasoningOptions(
+        enabled=True,
+        effort="medium",
+        budget_tokens=2048,
+        expose_summary=True,
+    )
+    assert provider.request.api == api
 
 
 def test_stream_supports_legacy_provider_from_custom_registry(
@@ -725,7 +761,7 @@ def test_stream_simple_supports_legacy_provider_from_custom_registry(
         stream_simple(
             _Model(),
             {"messages": [UserMessage(role="user", content="hello", timestamp=0.0)]},
-            ModelCallOptions(),
+            SimpleCallOptions(),
             registry=registry,
         )
     )

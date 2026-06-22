@@ -23,11 +23,11 @@ class ApiProviderRegistry:
         self, provider: RegisteredApiProvider, *, source_id: str | None = None
     ) -> None:
         provider_any = cast(Any, provider)
-        required = ("api", "stream", "stream_simple")
+        required = ("api", "stream")
         for name in required:
             if not hasattr(provider_any, name):
                 raise TypeError(f"Provider missing required attribute: {name}")
-        for name in ("stream", "stream_simple"):
+        for name in ("stream",):
             if not callable(getattr(provider_any, name)):
                 raise TypeError(f"Provider attribute must be callable: {name}")
         self._providers[provider_any.api] = (

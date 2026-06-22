@@ -29,6 +29,7 @@ ROOT_EXPORTS_BASELINE = [
     "CallOptions",
     "ModelCallOptions",
     "StreamOptions",
+    "SimpleCallOptions",
     "SimpleStreamOptions",
     "AnthropicOptions",
     "AzureOpenAIResponsesOptions",
@@ -165,7 +166,7 @@ KNOWN_BASELINE_DEBT = {
 
 def test_root_exports_baseline_snapshot() -> None:
     assert ai.__all__ == ROOT_EXPORTS_BASELINE
-    assert len(ai.__all__) == 65
+    assert len(ai.__all__) == 66
 
 
 def test_builtin_provider_and_catalog_count_baseline() -> None:
@@ -199,7 +200,7 @@ def test_test_and_example_inventory_baseline() -> None:
 
     assert len(ai_test_files) == 34
     assert len(provider_test_files) == 7
-    assert len(example_files) == 15
+    assert len(example_files) == 16
 
 
 def test_known_baseline_debt_snapshot() -> None:
