@@ -63,6 +63,7 @@ def _apply_prompt_cache_params(
 
 class OpenAIResponsesProvider:
     api = "openai-responses"
+    supports_structured_output = True
 
     def __init__(
         self, *, client: Any | None = None, base_url: str | None = None

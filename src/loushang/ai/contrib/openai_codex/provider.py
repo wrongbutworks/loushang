@@ -38,6 +38,7 @@ from loushang.ai.utils import sanitize_surrogates
 
 class OpenAICodexResponsesProvider:
     api = "openai-codex-responses"
+    supports_structured_output = True
     adapter_config_resolver = staticmethod(resolve_openai_codex_runtime_config)
 
     def __init__(

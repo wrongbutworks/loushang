@@ -125,6 +125,9 @@ class _RequestAwareProviderInvoker:
     def __init__(self, provider: Any) -> None:
         self._provider = provider
         self.api = provider.api
+        self.supports_structured_output = bool(
+            getattr(provider, "supports_structured_output", False)
+        )
         validate_provider_stream_raw_contract(provider)
         self._adapter_config_resolver = _adapter_config_resolver(provider)
 

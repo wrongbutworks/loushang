@@ -148,13 +148,35 @@ def test_complete_structured_returns_raw_and_parsed(
     assert isinstance(provider.options.output, StructuredOutputOptions)
 
 
-def test_complete_structured_rejects_unmapped_provider_api(
+def test_complete_structured_uses_provider_declared_mapping_support(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    provider = _StructuredProvider(api="anthropic-messages")
+    provider = _StructuredProvider(api="custom-structured")
     registry = ApiProviderRegistry()
     registry.register_api_provider(provider)
-    _patch_resolved_request(monkeypatch, api="anthropic-messages")
+    _patch_resolved_request(monkeypatch, api="custom-structured")
+
+    result = asyncio.run(
+        complete_structured(
+            _Model(),
+            {"messages": []},
+            StructuredOutputOptions(mode="json_object"),
+            options=CallOptions(),
+            registry=registry,
+        )
+    )
+
+    assert result.raw.response_id == "structured-demo"
+    assert result.parsed == {"answer": "ok"}
+
+
+def test_complete_structured_rejects_provider_without_mapping_support(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    provider = _StructuredProvider(api="openai-responses", supports_mapping=False)
+    registry = ApiProviderRegistry()
+    registry.register_api_provider(provider)
+    _patch_resolved_request(monkeypatch, api="openai-responses")
 
     with pytest.raises(ValueError, match="does not support structured output mapping"):
         asyncio.run(
@@ -174,8 +196,11 @@ class _Model:
 
 
 class _StructuredProvider:
-    def __init__(self, api: str = "openai-responses") -> None:
+    def __init__(
+        self, api: str = "openai-responses", *, supports_mapping: bool = True
+    ) -> None:
         self.api = api
+        self.supports_structured_output = supports_mapping
         self.options = None
 
     async def stream_raw(self, request):

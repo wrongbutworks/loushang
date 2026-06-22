@@ -25,14 +25,6 @@ from loushang.ai.structured import (
 )
 from loushang.ai.types import ImagePart, ToolResultMessage, UserMessage
 
-_STRUCTURED_OUTPUT_APIS = frozenset(
-    {
-        "openai-codex-responses",
-        "openai-completions",
-        "openai-responses",
-    }
-)
-
 
 def _has_image_input(normalized_context: Mapping[str, Any]) -> bool:
     for message in normalized_context.get("messages", []):
@@ -157,6 +149,10 @@ def _resolve_api_provider_registry(api_provider_registry=None):
     return default_registry
 
 
+def _supports_structured_output_mapping(provider: object) -> bool:
+    return bool(getattr(provider, "supports_structured_output", False))
+
+
 def _resolve_pairing_mode(options) -> PairingMode:
     if options is None:
         return "strict"
@@ -196,14 +192,13 @@ async def _start_stream(
         options,
         require_stream=require_stream,
     )
-    if (
-        get_structured_output_options(options) is not None
-        and resolved.api not in _STRUCTURED_OUTPUT_APIS
-    ):
+    provider = _resolve_api_provider_registry(registry).get_api_provider(resolved.api)
+    if get_structured_output_options(
+        options
+    ) is not None and not _supports_structured_output_mapping(provider):
         raise ValueError(
             f"Provider API {resolved.api!r} does not support structured output mapping"
         )
-    provider = _resolve_api_provider_registry(registry).get_api_provider(resolved.api)
     return await call_api_provider_stream(
         provider, model, normalized, options, resolved
     )

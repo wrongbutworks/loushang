@@ -36,6 +36,7 @@ from loushang.ai.utils import sanitize_surrogates
 
 class OpenAICompletionsProvider:
     api = "openai-completions"
+    supports_structured_output = True
 
     def __init__(
         self, *, client: Any | None = None, base_url: str | None = None
