@@ -1,0 +1,25 @@
+# Provider evidence: minimax
+
+- Verified at: 2026-06-22
+- Issue: #105
+- Official docs:
+  - https://platform.minimax.io/docs/api-reference/api-overview
+  - https://platform.minimax.io/docs/pricing/overview
+  - https://platform.minimax.io/docs/guides/text-models
+- Authentication: API key in `MINIMAX_API_KEY`, sent as an `x-api-key` header.
+- Endpoint: `https://api.minimax.io/anthropic/v1`, Anthropic-compatible Messages protocol.
+- Included models:
+  - `MiniMax-M3`: current MiniMax frontier model selected for the single-model AIQ-052 catalog entry.
+- Verified capabilities:
+  - API overview establishes the Anthropic SDK-compatible base URL and `x-api-key` authentication.
+  - Model docs list `MiniMax-M3` with 1,000,000 token context, text/image/video input, thinking mode, tool use, and structured output.
+  - Pricing docs record MiniMax-M3 long-context pricing at $0.60 input, $0.12 cache hit, and $2.40 output per million tokens for inputs above 512K.
+- Unknown/omitted facts:
+  - Video input is not represented because the current catalog modality shape only supports text/image.
+  - `maxTokens` is omitted because the cited official model docs describe context length, not a stable maximum output token cap.
+  - The lower <=512K pricing tier is omitted because the current catalog pricing shape cannot express tiered pricing; the recorded price uses the higher long-context tier to avoid underestimating large calls.
+  - The China endpoint duplicate is omitted; this curated entry keeps one official global endpoint until deployment-specific regional requirements are documented.
+- Contract tests:
+  - `uv run pytest tests/ai/test_curated_catalog.py tests/providers/test_anthropic_messages_mapping.py -q`
+- Manual live smoke:
+  - Not run on 2026-06-22; no live MiniMax credential was used for this catalog-only commit.

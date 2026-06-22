@@ -337,6 +337,72 @@
         }
       }
     },
+    "minimax": {
+      "displayName": "MiniMax",
+      "website": "https://platform.minimax.io",
+      "auth": {
+        "kind": "apiKey",
+        "apiKeyEnv": "MINIMAX_API_KEY",
+        "header": "x-api-key",
+        "prefix": ""
+      },
+      "endpoints": {
+        "anthropic-messages": {
+          "displayName": "MiniMax Anthropic-compatible Messages",
+          "api": "anthropic-messages",
+          "baseUrl": "https://api.minimax.io/anthropic/v1",
+          "preferred": true,
+          "docs": "https://platform.minimax.io/docs/api-reference/api-overview",
+          "protocol": {
+            "streaming": {
+              "usage": "supported",
+              "reasoningDelta": "supported"
+            }
+          },
+          "dialect": {
+            "maxOutputTokensField": "max_tokens",
+            "reasoning": {
+              "assistantContentRequired": false,
+              "thinkingAsText": false,
+              "wireFormat": "anthropic"
+            }
+          },
+          "transport": {
+            "kind": "http",
+            "stream": "sse"
+          },
+          "models": {
+            "MiniMax-M3": {
+              "displayName": "MiniMax-M3",
+              "family": "MiniMax-M3",
+              "alias": "default-chat",
+              "capabilities": {
+                "contextWindow": 1000000,
+                "input": [
+                  "text",
+                  "image"
+                ],
+                "output": [
+                  "text"
+                ],
+                "reasoning": true,
+                "stream": true,
+                "toolUse": true,
+                "structuredOutput": true,
+                "attachment": false,
+                "temperature": true
+              },
+              "pricing": {
+                "currency": "USD",
+                "input": 0.6,
+                "output": 2.4,
+                "cacheRead": 0.12
+              }
+            }
+          }
+        }
+      }
+    },
     "moonshot": {
       "displayName": "Moonshot AI",
       "website": "https://platform.kimi.ai",

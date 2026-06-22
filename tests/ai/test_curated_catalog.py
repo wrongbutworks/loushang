@@ -21,6 +21,7 @@ EVIDENCE_TEMPLATE_PATH = EVIDENCE_DIR / "_template.md"
 ANTHROPIC_EVIDENCE_PATH = EVIDENCE_DIR / "anthropic.md"
 DASHSCOPE_EVIDENCE_PATH = EVIDENCE_DIR / "dashscope.md"
 DEEPSEEK_EVIDENCE_PATH = EVIDENCE_DIR / "deepseek.md"
+MINIMAX_EVIDENCE_PATH = EVIDENCE_DIR / "minimax.md"
 MOONSHOT_EVIDENCE_PATH = EVIDENCE_DIR / "moonshot.md"
 OPENAI_EVIDENCE_PATH = EVIDENCE_DIR / "openai.md"
 TENCENT_HUNYUAN_EVIDENCE_PATH = EVIDENCE_DIR / "tencent-hunyuan.md"
@@ -52,6 +53,7 @@ def test_curated_catalog_loads_v2_schema() -> None:
         "anthropic",
         "dashscope",
         "deepseek",
+        "minimax",
         "moonshot",
         "openai",
         "tencent-hunyuan",
@@ -75,6 +77,9 @@ def test_default_builtin_catalog_still_uses_legacy_catalog() -> None:
     )
     assert len(registry.list_models(provider="moonshot")) > len(
         _load_curated_registry().list_models(provider="moonshot")
+    )
+    assert len(registry.list_models(provider="minimax")) > len(
+        _load_curated_registry().list_models(provider="minimax")
     )
     assert len(registry.list_models(provider="tencent-hunyuan")) > len(
         _load_curated_registry().list_models(provider="tencent-hunyuan")
@@ -320,6 +325,61 @@ def test_curated_catalog_includes_verified_deepseek_v4_models() -> None:
     assert pro.pricing.output == 0.87
     assert pro.pricing.cache_read == 0.003625
     assert pro.pricing.cache_write is None
+
+
+def test_curated_catalog_includes_verified_minimax_m3_model() -> None:
+    registry = _load_curated_registry()
+
+    assert registry.get_provider("minimax-cn") is None
+
+    provider = registry.get_provider("minimax")
+    assert provider is not None
+    assert provider.name == "MiniMax"
+    assert provider.website == "https://platform.minimax.io"
+    assert provider.auth is not None
+    assert provider.auth.api_key_env == "MINIMAX_API_KEY"
+    assert provider.auth.header == "x-api-key"
+    assert provider.auth.prefix == ""
+
+    endpoint = registry.get_endpoint("minimax", "anthropic-messages")
+    assert endpoint is not None
+    assert endpoint.api == "anthropic-messages"
+    assert endpoint.base_url == "https://api.minimax.io/anthropic/v1"
+    assert endpoint.preferred is True
+    assert endpoint.auth is not None
+    assert endpoint.auth.api_key_env == "MINIMAX_API_KEY"
+    assert endpoint.protocol.streaming.usage is SupportStatus.SUPPORTED
+    assert endpoint.protocol.streaming.reasoning_delta is SupportStatus.SUPPORTED
+    assert endpoint.dialect.max_output_tokens_field == "max_tokens"
+    assert endpoint.dialect.reasoning.wire_format == "anthropic"
+    assert endpoint.dialect.reasoning.thinking_as_text is False
+    assert endpoint.dialect.reasoning.assistant_content_required is False
+    assert endpoint.transport.kind == "http"
+    assert endpoint.transport.stream == "sse"
+
+    models = registry.list_models(provider="minimax")
+    assert [model.id for model in models] == ["MiniMax-M3"]
+
+    model = registry.get_model("minimax", "anthropic-messages", "MiniMax-M3")
+    assert model is not None
+    assert model.name == "MiniMax-M3"
+    assert model.alias == "default-chat"
+    assert model.context_window == 1_000_000
+    assert model.max_tokens is None
+    assert model.capabilities.input == ("text", "image")
+    assert model.capabilities.output == ("text",)
+    assert model.reasoning is True
+    assert model.supports_stream is True
+    assert model.supports_tool_use is True
+    assert model.supports_structured_output is True
+    assert model.supports_attachment is False
+    assert model.supports_temperature is True
+    assert model.pricing is not None
+    assert model.pricing.currency == "USD"
+    assert model.pricing.input == 0.6
+    assert model.pricing.output == 2.4
+    assert model.pricing.cache_read == 0.12
+    assert model.pricing.cache_write is None
 
 
 def test_curated_catalog_includes_verified_moonshot_openai_compatible_models() -> None:
@@ -772,6 +832,28 @@ def test_deepseek_evidence_matches_curated_provider_fixture() -> None:
         assert expected in text
 
 
+def test_minimax_evidence_matches_curated_provider_fixture() -> None:
+    text = MINIMAX_EVIDENCE_PATH.read_text(encoding="utf-8")
+
+    for expected in [
+        "# Provider evidence: minimax",
+        "- Verified at: 2026-06-22",
+        "- Issue: #105",
+        "https://platform.minimax.io/docs/api-reference/api-overview",
+        "https://platform.minimax.io/docs/pricing/overview",
+        "https://platform.minimax.io/docs/guides/text-models",
+        "`MINIMAX_API_KEY`",
+        "`https://api.minimax.io/anthropic/v1`",
+        "`MiniMax-M3`",
+        "1,000,000 token context",
+        "$0.60 input, $0.12 cache hit, and $2.40 output",
+        "lower <=512K pricing tier is omitted",
+        "uv run pytest tests/ai/test_curated_catalog.py tests/providers/test_anthropic_messages_mapping.py -q",
+        "Not run on 2026-06-22",
+    ]:
+        assert expected in text
+
+
 def test_openai_evidence_matches_curated_provider_fixture() -> None:
     text = OPENAI_EVIDENCE_PATH.read_text(encoding="utf-8")
 
@@ -853,6 +935,10 @@ def test_curated_provider_matrix_matches_openai_fixture() -> None:
     assert "`deepseek-v4-flash`, `deepseek-v4-pro`" in text
     assert "`DEEPSEEK_API_KEY`" in text
     assert "`catalog-evidence/deepseek.md`" in text
+    assert "`minimax` | `anthropic-messages` | `anthropic-messages`" in text
+    assert "`MiniMax-M3`" in text
+    assert "`MINIMAX_API_KEY`" in text
+    assert "`catalog-evidence/minimax.md`" in text
     assert "`moonshot` | `openai-completions` | `openai-completions`" in text
     assert "`kimi-k2.6`, `kimi-k2.7-code`" in text
     assert "`MOONSHOT_API_KEY`" in text
