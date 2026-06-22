@@ -100,7 +100,7 @@ Current composite score: 8.6/10.
 |---|---|---|
 | `make check-ai` passes | Met | Required local gate. Refresh after every follow-up commit. |
 | `uv run pytest tests -q` passes | Partial | Offline full suite passed on 2026-06-22 with live provider keys removed; the unmodified environment can still run live Moonshot tests when `MOONSHOT_API_KEY` is present, and those require a valid credential. |
-| `uv run pytest tests/ai/contracts -q` passes | Open | No `tests/ai/contracts` directory is present in this branch; provider contracts are currently distributed across `tests/ai` and `tests/providers`. |
+| `uv run pytest tests/ai/contracts -q` passes | Met | `tests/ai/contracts/test_core_provider_contracts.py` covers the core adapter protocol and builtin registration contract. |
 | `uv run python scripts/ai/check_catalog.py` passes | Met | Catalog gate. |
 | `uv run python scripts/ai/check_examples.py` passes | Met | Offline example gate. |
 | `uv build` passes | Met | Passed on 2026-06-22. Refresh after any packaging or package-data changes. |
@@ -152,12 +152,9 @@ provider evidence file records a valid credential-backed run.
    and `ResolvedRequest` into a single `ProviderRequest`; the current protocol
    has normalized context but not the exact final request-object shape described
    in the plan.
-2. Decide how to satisfy `tests/ai/contracts`: either add a compatibility test
-   directory/alias or update the release checklist to point at the current
-   provider contract suites.
-3. Raise coverage enforcement to the final stated targets, or record an ADR that
+2. Raise coverage enforcement to the final stated targets, or record an ADR that
    the release gate is the current `make check-ai` 80% AI package threshold.
-4. Run a final branch review against `origin/main` and resolve all P0/P1
+3. Run a final branch review against `origin/main` and resolve all P0/P1
    findings.
-5. Perform live provider smoke only with valid credentials; do not treat offline
+4. Perform live provider smoke only with valid credentials; do not treat offline
    catalog checks as live compatibility proof.
