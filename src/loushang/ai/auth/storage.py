@@ -5,10 +5,10 @@ import os
 import tempfile
 import threading
 from collections.abc import Callable
-from contextlib import contextmanager
+from contextlib import contextmanager, suppress
 from dataclasses import asdict, is_dataclass
 from pathlib import Path
-from typing import Any, Dict, Literal, TypedDict, TypeVar
+from typing import Any, Literal, TypedDict, TypeVar
 
 try:  # pragma: no cover - exercised on POSIX in tests.
     import fcntl
@@ -86,11 +86,11 @@ def _storage_path() -> str:
     return os.path.join(base, "oauth.json")
 
 
-def load_credentials() -> Dict[str, OAuthCredentials]:
+def load_credentials() -> dict[str, OAuthCredentials]:
     return load_credential_store()["providers"]
 
 
-def save_credentials(creds: Dict[str, OAuthCredentials]) -> None:
+def save_credentials(creds: dict[str, OAuthCredentials]) -> None:
     save_credential_store({"providers": dict(creds), "endpoints": {}, "models": {}})
 
 
@@ -232,10 +232,8 @@ def _save_credential_store_unlocked(
         ) from error
     finally:
         if tmp_name is not None:
-            try:
+            with suppress(FileNotFoundError):
                 os.unlink(tmp_name)
-            except FileNotFoundError:
-                pass
 
 
 def _load_credential_bucket(value: object, name: str) -> dict[str, OAuthCredentials]:

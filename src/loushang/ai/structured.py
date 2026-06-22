@@ -4,13 +4,16 @@ import json
 import re
 from collections.abc import Mapping
 from dataclasses import dataclass, replace
-from typing import Any, Literal, cast
+from typing import TYPE_CHECKING, Any, Literal, cast
 
 from loushang.ai.errors import AIRequestValidationError
 from loushang.ai.types import AssistantMessage, TextPart
 from loushang.observability.problem import JSONValue, ensure_json_safe_mapping
 
 StructuredOutputMode = Literal["json_object", "json_schema"]
+
+if TYPE_CHECKING:
+    from loushang.ai.options import CallOptions
 
 
 @dataclass(frozen=True, slots=True)
@@ -55,7 +58,7 @@ def get_structured_output_options(
 def with_structured_output_options(
     options: object | None,
     output: StructuredOutputOptions,
-):
+) -> "CallOptions":
     from loushang.ai.options import CallOptions
 
     if options is None:

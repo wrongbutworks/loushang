@@ -7,6 +7,7 @@ from dataclasses import dataclass
 from typing import cast
 
 from loushang.ai.diagnostics import NormalizationDiagnostic
+from loushang.ai.model import Model
 from loushang.ai.model.registry import resolve_model_api
 from loushang.ai.options import PairingMode
 from loushang.ai.types import (
@@ -540,7 +541,7 @@ def merge_adjacent_user_payload_messages(
     return merged
 
 
-def normalize_tool_call_id_for_model(tool_call_id: str, model) -> str:
+def normalize_tool_call_id_for_model(tool_call_id: str, model: Model) -> str:
     if resolve_model_api(model) != "anthropic-messages":
         return tool_call_id
     if _ANTHROPIC_TOOL_CALL_ID_PATTERN.fullmatch(tool_call_id):

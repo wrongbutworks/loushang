@@ -1,7 +1,9 @@
 from __future__ import annotations
 
 import asyncio
+import json
 from collections.abc import AsyncIterator, Mapping, Sequence
+from contextlib import suppress
 from typing import Any
 from urllib.parse import urlsplit
 
@@ -734,9 +736,11 @@ def _add_cache_control_to_last_conversation_message(
     cache_control: dict[str, str],
 ) -> None:
     for message in reversed(messages):
-        if message.get("role") in {"user", "assistant"}:
-            if _add_cache_control_to_message(message, cache_control):
-                return
+        if message.get("role") in {
+            "user",
+            "assistant",
+        } and _add_cache_control_to_message(message, cache_control):
+            return
 
 
 def _add_cache_control_to_last_tool(
@@ -922,9 +926,12 @@ def _has_tool_history(messages: list[object]) -> bool:
         role = _message_role(msg)
         if role == "toolResult":
             return True
-        if role == "assistant" and isinstance(msg, AssistantMessage):
-            if any(getattr(block, "type", None) == "toolCall" for block in msg.content):
-                return True
+        if (
+            role == "assistant"
+            and isinstance(msg, AssistantMessage)
+            and any(getattr(block, "type", None) == "toolCall" for block in msg.content)
+        ):
+            return True
     return False
 
 
@@ -1018,12 +1025,8 @@ def _assistant_message_payload(
                 )
                 thought_signature = getattr(part, "thought_signature", None)
                 if isinstance(thought_signature, str) and thought_signature:
-                    try:
-                        reasoning_details.append(
-                            __import__("json").loads(thought_signature)
-                        )
-                    except Exception:
-                        pass
+                    with suppress(Exception):
+                        reasoning_details.append(json.loads(thought_signature))
     assistant_content = (
         "".join(text_blocks)
         if text_blocks

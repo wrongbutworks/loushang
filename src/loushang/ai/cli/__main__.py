@@ -429,7 +429,7 @@ def cmd_console(args: argparse.Namespace) -> None:
         if system_prompt:
             context["system_prompt"] = system_prompt
         message = _run_async(
-            lambda: _run_console_turn(
+            lambda binding=binding, context=context: _run_console_turn(
                 binding.model,
                 context,
                 binding.options,

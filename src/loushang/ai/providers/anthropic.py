@@ -435,17 +435,6 @@ class AnthropicProvider(AnthropicProviderBase):
             if want_thinking:
                 if self.supports_adaptive_thinking(model.id):
                     thinking_cfg = {"type": "adaptive"}
-                    # effort 由 reasoning 等级映射
-                    effort = self.map_thinking_level_to_effort(
-                        get_reasoning_effort(options), model.id
-                    )
-                    # 将 effort 合并到 output_config
-                    if effort:
-                        try:
-                            # 在 params 构造后统一注入
-                            pass
-                        except Exception:
-                            pass
                 else:
                     thinking_budget_tokens = get_reasoning_budget_tokens(options)
                     thinking_cfg = {

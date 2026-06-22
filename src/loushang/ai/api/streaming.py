@@ -36,12 +36,16 @@ _STRUCTURED_OUTPUT_APIS = frozenset(
 
 def _has_image_input(normalized_context: Mapping[str, Any]) -> bool:
     for message in normalized_context.get("messages", []):
-        if isinstance(message, UserMessage) and isinstance(message.content, list):
-            if any(isinstance(part, ImagePart) for part in message.content):
-                return True
-        if isinstance(message, ToolResultMessage):
-            if any(isinstance(part, ImagePart) for part in message.content):
-                return True
+        if (
+            isinstance(message, UserMessage)
+            and isinstance(message.content, list)
+            and any(isinstance(part, ImagePart) for part in message.content)
+        ):
+            return True
+        if isinstance(message, ToolResultMessage) and any(
+            isinstance(part, ImagePart) for part in message.content
+        ):
+            return True
     return False
 
 

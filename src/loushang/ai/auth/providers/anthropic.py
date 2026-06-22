@@ -5,8 +5,10 @@ import hashlib
 import json
 import secrets
 import time
+from collections.abc import Awaitable, Callable
+from contextlib import suppress
 from dataclasses import replace
-from typing import Any, Awaitable, Callable
+from typing import Any
 from urllib.parse import parse_qs, urlencode, urlparse
 
 from loushang.ai.auth.browser import CallbackWaiter, open_browser, wait_for_callback_url
@@ -135,7 +137,7 @@ class AnthropicOAuthProvider(OAuthProviderInterface):
         )
         auth_url = f"{AUTHORIZE_URL}?{query}"
 
-        try:
+        with suppress(Exception):
             callbacks.on_auth(
                 {
                     "url": auth_url,
@@ -146,8 +148,6 @@ class AnthropicOAuthProvider(OAuthProviderInterface):
                     ),
                 }
             )
-        except Exception:
-            pass
 
         try:
             opened = self._browser_opener(auth_url)
@@ -170,12 +170,10 @@ class AnthropicOAuthProvider(OAuthProviderInterface):
             raw_input = ""
 
         if not raw_input.strip():
-            try:
+            with suppress(Exception):
                 callbacks.on_progress(
                     "Callback not received; waiting for manual code input"
                 )
-            except Exception:
-                pass
         try:
             if not raw_input.strip():
                 raw_input = await callbacks.on_manual_code_input()

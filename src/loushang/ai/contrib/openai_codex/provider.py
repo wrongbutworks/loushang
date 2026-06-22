@@ -4,6 +4,7 @@ import asyncio
 import base64
 import json
 from collections.abc import AsyncIterator, Mapping
+from contextlib import suppress
 from dataclasses import dataclass
 from types import SimpleNamespace
 from typing import Any
@@ -59,10 +60,8 @@ class OpenAICodexResponsesProvider:
             import os
 
             if os.getenv("LOUSHANG_DEBUG") == "1":
-                try:
+                with suppress(Exception):
                     print(f"[sdk:{event}] {data or {}}")
-                except Exception:
-                    pass
 
         resolved = resolve_provider_request(
             self.api,

@@ -142,10 +142,13 @@ def build_copilot_dynamic_headers(messages: list[object]) -> dict[str, str]:
             ):
                 has_images = True
                 break
-        if role == "toolResult" and isinstance(message, ToolResultMessage):
-            if any(_part_type(part) == "image" for part in message.content):
-                has_images = True
-                break
+        if (
+            role == "toolResult"
+            and isinstance(message, ToolResultMessage)
+            and any(_part_type(part) == "image" for part in message.content)
+        ):
+            has_images = True
+            break
     headers = {
         "X-Initiator": "agent" if last_role and last_role != "user" else "user",
         "Openai-Intent": "conversation-edits",

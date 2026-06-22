@@ -215,9 +215,8 @@ def _collect_schema_issues(
         if isinstance(max_length, int) and len(value) > max_length:
             return [_SchemaIssue(path, f"must have maxLength {max_length}")]
         pattern = schema.get("pattern")
-        if isinstance(pattern, str):
-            if re.fullmatch(pattern, value) is None:
-                return [_SchemaIssue(path, f"must match pattern {pattern!r}")]
+        if isinstance(pattern, str) and re.fullmatch(pattern, value) is None:
+            return [_SchemaIssue(path, f"must match pattern {pattern!r}")]
         enum = schema.get("enum")
         if isinstance(enum, list) and value not in enum:
             return [_SchemaIssue(path, f"must be one of {enum!r}")]

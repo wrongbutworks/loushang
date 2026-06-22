@@ -1,8 +1,9 @@
 from __future__ import annotations
 
 import asyncio
-from collections.abc import AsyncIterator, Mapping
-from typing import Callable, Generic, TypeVar, cast
+from collections.abc import AsyncIterator, Callable, Mapping
+from contextlib import suppress
+from typing import Generic, TypeVar, cast
 
 from loushang.ai.errors import (
     AICancelledError,
@@ -135,10 +136,8 @@ class EventStream(Generic[TEvent, TResult]):
             return
         except asyncio.QueueFull:
             pass
-        try:
+        with suppress(asyncio.QueueEmpty):
             self._queue.get_nowait()
-        except asyncio.QueueEmpty:
-            pass
         self._queue.put_nowait(item)
 
 

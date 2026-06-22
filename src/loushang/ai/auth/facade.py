@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Mapping
+from collections.abc import Mapping
 
 from loushang.ai.auth.oauth import GetOAuthApiKeyResult
 from loushang.ai.auth.providers.anthropic import AnthropicOAuthProvider

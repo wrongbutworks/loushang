@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import math
 from collections.abc import Mapping
+from contextlib import suppress
 from pathlib import Path
 from typing import Any
 
@@ -57,21 +58,17 @@ def _emit_options_trace(options: Any | None, event: TraceEvent) -> None:
         return
     handler = getattr(options, "trace", None)
     if callable(handler):
-        try:
+        with suppress(Exception):
             handler(event)
-        except Exception:
-            pass
 
 
 def _emit_observability_trace(event: TraceEvent) -> None:
-    try:
+    with suppress(Exception):
         _log.debug_event(
             "provider",
             _event_name(event),
             event=event,
         )
-    except Exception:
-        pass
 
 
 def _event_name(event: Mapping[str, object]) -> str:
