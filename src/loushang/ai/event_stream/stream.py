@@ -90,6 +90,13 @@ class EventStream(Generic[TEvent, TResult]):
         task = self._producer_task
         if task is not None and not task.done():
             task.cancel()
+            if task is not asyncio.current_task():
+                try:
+                    await task
+                except asyncio.CancelledError:
+                    pass
+                except Exception as exc:
+                    self._producer_error = exc
         self._put_nowait_force(None)
 
     cancel = aclose

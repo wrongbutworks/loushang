@@ -13,6 +13,7 @@ from loushang.ai import (
     complete_structured,
 )
 from loushang.ai.api_registry import ApiProviderRegistry
+from loushang.ai.errors import UnsupportedCapabilityError
 from loushang.ai.model import Capabilities
 from loushang.ai.structured import (
     openai_chat_response_format,
@@ -178,7 +179,10 @@ def test_complete_structured_rejects_provider_without_mapping_support(
     registry.register_api_provider(provider)
     _patch_resolved_request(monkeypatch, api="openai-responses")
 
-    with pytest.raises(ValueError, match="does not support structured output mapping"):
+    with pytest.raises(
+        UnsupportedCapabilityError,
+        match="does not support structured output mapping",
+    ):
         asyncio.run(
             complete_structured(
                 _Model(),

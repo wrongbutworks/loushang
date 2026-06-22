@@ -170,6 +170,7 @@ def _load_credential_store_unlocked(path: Path) -> OAuthCredentialStore:
     if not path.exists():
         return _empty_store()
     try:
+        _chmod_private_file(path)
         with path.open("r", encoding="utf-8") as f:
             raw = json.load(f)
     except json.JSONDecodeError as error:

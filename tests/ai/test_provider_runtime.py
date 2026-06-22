@@ -434,7 +434,7 @@ def test_provider_runtime_consumer_close_closes_source_without_leaking_task() ->
         )
         await asyncio.wait_for(source.next_started.wait(), timeout=1)
         await stream.aclose()
-        await asyncio.wait_for(source.closed.wait(), timeout=1)
+        assert source.closed.is_set()
         task = stream._producer_task
         if task is not None:
             with pytest.raises(asyncio.CancelledError):

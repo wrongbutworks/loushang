@@ -1428,6 +1428,31 @@ def test_openai_codex_responses_websocket_idle_expiry_closes_and_evicts_cached_s
     assert second_events[-1]["message"].content[0].text == "Two"
 
 
+def test_openai_codex_responses_websocket_cancel_closes_cached_socket() -> None:
+    socket = _BlockingWebSocket()
+    client = _FakeCodexClient(websocket_socket=socket)
+    provider = OpenAICodexResponsesProvider(client=client)
+
+    async def scenario() -> None:
+        parts = provider._stream_websocket_raw_parts(
+            client,
+            "wss://example.test/v1/responses",
+            {"Authorization": "Bearer token"},
+            {"model": "gpt-5.3-codex", "input": [], "stream": True},
+            OpenAICodexResponsesOptions(transport="websocket", session_id="session-a"),
+        )
+        task = asyncio.create_task(parts.__anext__())
+        await asyncio.wait_for(socket.events_started.wait(), timeout=1)
+        task.cancel()
+        with pytest.raises(asyncio.CancelledError):
+            await task
+        assert socket.closed is True
+        assert socket.close_reason == "error"
+        assert provider._websocket_session_cache == {}
+
+    asyncio.run(scenario())
+
+
 async def _collect_parts(source) -> list[dict]:
     return [part async for part in source]
 
@@ -1457,12 +1482,14 @@ class _FakeCodexClient:
         websocket_events: list[dict] | None = None,
         websocket_batches: list[list[dict]] | None = None,
         websocket_error: Exception | None = None,
+        websocket_socket: object | None = None,
     ) -> None:
         self._events = events or []
         self._stream_behaviors = list(stream_behaviors or [])
         self._websocket_events = websocket_events or []
         self._websocket_batches = [list(batch) for batch in (websocket_batches or [])]
         self._websocket_error = websocket_error
+        self._websocket_socket = websocket_socket
         self.last_url: str | None = None
         self.last_headers: dict[str, str] | None = None
         self.last_json: dict | None = None
@@ -1511,6 +1538,8 @@ class _FakeCodexClient:
         self.last_headers = headers
         if self._websocket_error is not None:
             raise self._websocket_error
+        if self._websocket_socket is not None:
+            return self._websocket_socket
         return _FakeWebSocket(self._websocket_batches)
 
 
@@ -1574,6 +1603,26 @@ class _FakeWebSocket:
 
     async def close(self, code: int = 1000, reason: str = "done") -> None:
         self.closed = True
+
+
+class _BlockingWebSocket:
+    def __init__(self) -> None:
+        self.sent_payloads: list[dict] = []
+        self.events_started = asyncio.Event()
+        self.closed = False
+        self.close_reason: str | None = None
+
+    async def send(self, payload: dict) -> None:
+        self.sent_payloads.append(payload)
+
+    async def events(self):
+        self.events_started.set()
+        await asyncio.Event().wait()
+        yield {"type": "response.completed", "response": {"status": "completed"}}
+
+    async def close(self, code: int = 1000, reason: str = "done") -> None:
+        self.closed = True
+        self.close_reason = reason
 
 
 @dataclass(frozen=True)

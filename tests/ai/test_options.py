@@ -75,8 +75,8 @@ def test_call_options_signature_is_provider_neutral() -> None:
         "cache_retention",
         "session_id",
         "tool_choice",
-        "provider_options",
     } <= field_names
+    assert "provider_options" not in field_names
     assert "azure_base_url" not in field_names
     assert "on_payload" not in field_names
     assert "on_response" not in field_names
@@ -172,12 +172,7 @@ def test_provider_specific_options_are_advanced_compatibility_types() -> None:
 def test_provider_hooks_are_not_stable_call_options_fields() -> None:
     marker = object()
 
-    assert (
-        get_provider_option(
-            CallOptions(provider_options={"on_payload": marker}), "on_payload"
-        )
-        is marker
-    )
+    assert get_provider_option(CallOptions(), "on_payload") is None
     assert (
         get_provider_option(OpenAIResponsesOptions(on_payload=marker), "on_payload")
         is marker

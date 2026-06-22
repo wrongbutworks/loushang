@@ -113,8 +113,9 @@ def normalize_messages_result(
 
 
 def canonicalize_message(message: object) -> object:
-    if not isinstance(message, dict):
+    if not isinstance(message, Mapping):
         return message
+    message = dict(message)
     role = message.get("role")
     if role == "user":
         return _user_message_from_dict(message)
@@ -136,7 +137,7 @@ def canonicalize_user_message(message: object) -> object:
             timestamp=message.timestamp,
         )
 
-    if isinstance(message, dict):
+    if isinstance(message, Mapping):
         return canonicalize_message(message)
 
     return message
@@ -225,8 +226,8 @@ def _content_parts(content: object) -> list[Any]:
         return []
     if isinstance(content, str):
         return [{"type": "text", "text": content}]
-    if isinstance(content, dict):
-        return [content]
+    if isinstance(content, Mapping):
+        return [dict(content)]
     if not isinstance(content, list):
         raise TypeError(f"Unsupported message content type: {type(content)!r}")
     return list(content)
@@ -235,8 +236,8 @@ def _content_parts(content: object) -> list[Any]:
 def _assistant_content_part(
     part: dict[str, Any] | TextPart | ThinkingPart | ToolCall | ImagePart,
 ) -> TextPart | ThinkingPart | ToolCall | ImagePart:
-    if isinstance(part, dict):
-        return _assistant_content_part_from_dict(part)
+    if isinstance(part, Mapping):
+        return _assistant_content_part_from_dict(dict(part))
     if isinstance(part, (TextPart, ThinkingPart, ToolCall, ImagePart)):
         return part
     raise TypeError(f"Unsupported assistant content part type: {type(part)!r}")
@@ -245,8 +246,10 @@ def _assistant_content_part(
 def _usage_from_dict(value: object) -> Usage:
     if isinstance(value, Usage):
         return value
-    if not isinstance(value, dict):
+    if not isinstance(value, Mapping):
         value = {}
+    else:
+        value = dict(value)
     cost_raw = value.get("cost")
     cost = _canonical_cost(cost_raw if isinstance(cost_raw, dict) else None)
     return Usage(
@@ -341,16 +344,16 @@ def canonicalize_user_content(
             [TextPart(type="text", text=content)],
         )
 
-    if isinstance(content, dict):
-        return [_part_from_dict(content)]
+    if isinstance(content, Mapping):
+        return [_part_from_dict(dict(content))]
 
     if not isinstance(content, list):
         raise TypeError(f"Unsupported user content type: {type(content)!r}")
 
     normalized_parts: list[TextPart | ImagePart] = []
     for part in content:
-        if isinstance(part, dict):
-            normalized_parts.append(_part_from_dict(part))
+        if isinstance(part, Mapping):
+            normalized_parts.append(_part_from_dict(dict(part)))
             continue
         if isinstance(part, (TextPart, ImagePart)):
             normalized_parts.append(part)

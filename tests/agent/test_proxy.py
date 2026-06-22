@@ -287,6 +287,32 @@ def test_stream_proxy_stops_on_proxy_error_event() -> None:
     asyncio.run(scenario())
 
 
+def test_stream_proxy_consumer_close_cancels_proxy_task() -> None:
+    from loushang.agent.proxy import stream_proxy
+
+    context = Context(
+        system_prompt="system",
+        messages=[UserMessage(role="user", content="hi", timestamp=0.0)],
+    )
+    options = ProxyStreamOptions(
+        auth_token="secret",
+        proxy_url="https://proxy.example.com",
+    )
+    response = _BlockingResponse()
+    client = _FakeAsyncClient(response=response)
+
+    async def scenario() -> None:
+        stream = stream_proxy(_model(), context, options, client=client)
+        iterator = stream.__aiter__()
+        assert (await iterator.__anext__())["type"] == "start"
+        await stream.aclose()
+        assert response.closed.is_set()
+        task = stream._producer_task
+        assert task is not None and task.cancelled()
+
+    asyncio.run(scenario())
+
+
 class _FakeResponse:
     def __init__(
         self,
@@ -317,6 +343,19 @@ class _FakeResponse:
 
     async def json(self) -> dict:
         return self._json_body
+
+
+class _BlockingResponse(_FakeResponse):
+    def __init__(self) -> None:
+        super().__init__([])
+        self.closed = asyncio.Event()
+
+    async def aiter_lines(self):
+        try:
+            yield 'data: {"type":"start"}'
+            await asyncio.Event().wait()
+        finally:
+            self.closed.set()
 
 
 class _FakeAsyncClient:

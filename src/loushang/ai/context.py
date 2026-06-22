@@ -317,7 +317,7 @@ def _coalesce_system_prompt(*parts: str | None) -> str | None:
 def _extract_system_prompt(messages: Iterable[object]) -> str | None:
     parts: list[str] = []
     for message in messages:
-        if isinstance(message, dict) and message.get("role") in {"system", "developer"}:
+        if isinstance(message, Mapping) and message.get("role") in {"system", "developer"}:
             content = message.get("content")
             if isinstance(content, str) and content:
                 parts.append(content)
@@ -337,7 +337,7 @@ def _strip_system_messages_with_paths(
     normalized: list[object] = []
     paths: list[str] = []
     for index, message in enumerate(messages):
-        if isinstance(message, dict) and message.get("role") in {"system", "developer"}:
+        if isinstance(message, Mapping) and message.get("role") in {"system", "developer"}:
             continue
         normalized.append(message)
         paths.append(f"messages[{index}]")
@@ -347,8 +347,6 @@ def _strip_system_messages_with_paths(
 def _validate_normalized_messages(messages: list[object]) -> list[object]:
     for message in messages:
         if isinstance(message, (AssistantMessage, ToolResultMessage, UserMessage)):
-            continue
-        if isinstance(message, Mapping):
             continue
         raise TypeError(
             f"Unsupported message type after normalization: {type(message)!r}"

@@ -220,6 +220,9 @@ class OpenAICodexResponsesProvider:
                     options=options,
                 ):
                     yield part
+            except asyncio.CancelledError:
+                keep_connection = False
+                raise
             except Exception:
                 keep_connection = False
                 raise

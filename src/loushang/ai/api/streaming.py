@@ -7,6 +7,7 @@ from typing import Any
 from loushang.ai.api_registry import get_default_api_provider_registry
 from loushang.ai.bootstrap import register_builtin_ai_providers
 from loushang.ai.context import normalize_context
+from loushang.ai.errors import UnsupportedCapabilityError
 from loushang.ai.options import (
     CallOptions,
     PairingMode,
@@ -110,34 +111,62 @@ def _validate_capability(
     require_stream: bool,
 ) -> None:
     if require_stream and not _supports(capabilities, "stream"):
-        raise ValueError(f"Model {model.id!r} does not support streaming")
+        raise UnsupportedCapabilityError(
+            f"Model {model.id!r} does not support streaming",
+            model=getattr(model, "id", None),
+            details={"capability": "stream"},
+        )
 
     if (
         _has_tools(normalized_context) or _requests_tool_choice(options)
     ) and not _supports(capabilities, "tool_use"):
-        raise ValueError(f"Model {model.id!r} does not support tool use")
+        raise UnsupportedCapabilityError(
+            f"Model {model.id!r} does not support tool use",
+            model=getattr(model, "id", None),
+            details={"capability": "tool_use"},
+        )
 
     if _requests_reasoning(normalized_context, options) and not _supports(
         capabilities, "reasoning"
     ):
-        raise ValueError(f"Model {model.id!r} does not support reasoning")
+        raise UnsupportedCapabilityError(
+            f"Model {model.id!r} does not support reasoning",
+            model=getattr(model, "id", None),
+            details={"capability": "reasoning"},
+        )
 
     if _requests_structured_output(normalized_context, options) and not _supports(
         capabilities, "structured_output"
     ):
-        raise ValueError(f"Model {model.id!r} does not support structured output")
+        raise UnsupportedCapabilityError(
+            f"Model {model.id!r} does not support structured output",
+            model=getattr(model, "id", None),
+            details={"capability": "structured_output"},
+        )
 
     if _requests_temperature(options) and not _supports(capabilities, "temperature"):
-        raise ValueError(f"Model {model.id!r} does not support temperature")
+        raise UnsupportedCapabilityError(
+            f"Model {model.id!r} does not support temperature",
+            model=getattr(model, "id", None),
+            details={"capability": "temperature"},
+        )
 
     supports_image_input = bool(getattr(capabilities, "supports_image_input", False))
     if _has_image_input(normalized_context) and not supports_image_input:
-        raise ValueError(f"Model {model.id!r} does not support image input")
+        raise UnsupportedCapabilityError(
+            f"Model {model.id!r} does not support image input",
+            model=getattr(model, "id", None),
+            details={"capability": "image_input"},
+        )
 
     if _requests_attachment(normalized_context, options) and not _supports(
         capabilities, "attachment"
     ):
-        raise ValueError(f"Model {model.id!r} does not support attachment")
+        raise UnsupportedCapabilityError(
+            f"Model {model.id!r} does not support attachment",
+            model=getattr(model, "id", None),
+            details={"capability": "attachment"},
+        )
 
 
 def _resolve_api_provider_registry(api_provider_registry=None):
@@ -196,8 +225,15 @@ async def _start_stream(
     if get_structured_output_options(
         options
     ) is not None and not _supports_structured_output_mapping(provider):
-        raise ValueError(
-            f"Provider API {resolved.api!r} does not support structured output mapping"
+        raise UnsupportedCapabilityError(
+            f"Provider API {resolved.api!r} does not support structured output mapping",
+            provider=getattr(resolved, "provider", None),
+            endpoint=getattr(resolved, "endpoint", None),
+            model=getattr(model, "id", None),
+            details={
+                "capability": "structured_output_mapping",
+                "api": resolved.api,
+            },
         )
     return await call_api_provider_stream(
         provider, model, normalized, options, resolved

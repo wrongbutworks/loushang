@@ -9,23 +9,26 @@ It is an owner-level status document, not a replacement for the final review.
 
 ## Release Recommendation
 
-Do not tag a release that claims broader live-provider coverage than the
-credential-backed evidence below. For the scoped AI package quality-hardening
-work, local gates are closed.
+Do not tag a release that claims broader live-provider coverage or broader
+architecture-boundary completion than the evidence below. Local gates are closed
+for the final-review fix package, but one architecture-boundary item remains
+tracked.
 
 The branch has largely reached the intended SDK shape: a curated catalog, narrow
 root API, protocol-level core adapters, explicit contrib boundaries, normalized
-errors, executable offline examples, and local AI quality gates. Optional
-additional live smoke should not expand the public API.
+errors, executable offline examples, and local AI quality gates. Runtime
+provider/base-url compatibility heuristics still need a focused boundary cleanup
+or an explicit ADR before the branch is described as fully compliant with the
+architecture checklist.
 
 ## Objective Score
 
 | Dimension | Target | Current | Status |
 |---|---:|---:|---|
-| Architecture boundaries | 9.0 | 8.6 | Mostly met |
+| Architecture boundaries | 9.0 | 8.3 | Not fully met |
 | Stable API consistency | 8.5 | 8.7 | Met |
 | Message and tool normalization | 9.0 | 8.8 | Mostly met |
-| Compat and endpoint contract | 9.0 | 8.6 | Mostly met |
+| Compat and endpoint contract | 9.0 | 8.2 | Not fully met |
 | Error and reliability semantics | 8.5 | 8.5 | Met |
 | Streaming and cancellation | 8.5 | 8.6 | Met |
 | Provider consistency | 8.5 | 8.5 | Met |
@@ -33,7 +36,7 @@ additional live smoke should not expand the public API.
 | Model catalog governance | 9.0 | 9.0 | Met |
 | Tests, examples, and docs | 9.0 | 9.0 | Met |
 
-Current composite score: 8.6/10.
+Current composite score: 8.5/10.
 
 ## Evidence Summary
 
@@ -48,9 +51,9 @@ Current composite score: 8.6/10.
 | Public SDK docs | `docs/en/sdk/README.md`, `docs/zh-CN/sdk/README.md`, and the v2 migration guides document the public path, catalog, auth, errors, examples, and migration rules. |
 | Offline examples | `scripts/ai/check_examples.py` executes numbered `examples/ai/[0-9][0-9]_*.py` with live provider keys removed. |
 | Import boundaries | `scripts/ai/check_import_boundaries.py` prevents `loushang.ai` from importing agent/coding layers, prevents removed core providers from returning, and keeps top-level examples on stable AI imports. |
-| AI gate | `make check-ai` runs lint, mypy, catalog checks, import checks, offline examples, package coverage, scoped core coverage, and adapter coverage; latest run reached 83.36% package coverage, 90.09% runtime-core coverage, and 85.66% provider-adapter coverage with 691 passed and 9 live tests deselected. |
-| Full offline test suite | `env -u <provider keys> uv run pytest tests -m "not live" -q` passed on 2026-06-22 with 4260 passed and 9 deselected. |
-| Build | `uv build` passed on 2026-06-22 after the final fixes and produced both sdist and wheel artifacts. |
+| AI gate | `make check-ai` runs lint, mypy, catalog checks, import checks, offline examples, package coverage, scoped core coverage, and adapter coverage; latest run reached 83.62% package coverage, 90.10% runtime-core coverage, 85.84% provider-adapter coverage, and 85.39% production-adapter-module coverage with 696 passed and 9 live tests deselected. |
+| Full offline test suite | `env -u <provider keys> uv run pytest tests -m "not live" -q` passed on 2026-06-22 with 4260 passed and 9 deselected before the final-review P1 fix package. It was not rerun after that package to avoid another broad pass. |
+| Build | `uv build` passed on 2026-06-22 before the final-review P1 fix package and produced both sdist and wheel artifacts. It was not rerun after that package. |
 | Live provider smoke | DashScope Responses stream/tools and DeepSeek OpenAI-compatible complete/stream passed on 2026-06-22 with valid local credentials. Moonshot was attempted but rejected by the provider with HTTP 401, so it is not counted as live proof. |
 
 ## Final Checklist Status
@@ -62,16 +65,16 @@ Current composite score: 8.6/10.
 | Core only has three protocol adapters | Met | `core-provider-adapter-contract-matrix.md`; `loushang.ai.bootstrap.register_builtin_ai_providers`. |
 | Bedrock/Azure not in core | Met | `scripts/ai/check_import_boundaries.py` blocks removed core provider modules. |
 | Codex is contrib and explicitly registered | Met | `loushang.ai.contrib.openai_codex.register_openai_codex_contrib`. |
-| Core has no provider-id/base-url compat guessing | Mostly met | Compat boundary tests cover provider/runtime leakage; keep any future provider-specific behavior behind endpoint contracts or contrib. |
+| Core has no provider-id/base-url compat guessing | Not fully met | Runtime compatibility code still includes provider/base-url heuristics and provider-specific branches. Move these behind endpoint contracts or record an ADR before claiming this requirement complete. |
 | Built-in catalog has no legacy full-catalog runtime path | Met | Package data points to `models.curated.v2.json`; full v1 catalog is archived under docs. |
 | Provider boundary accepts only normalized context/request facts | Met | Registered raw providers receive one `ProviderRequest` object containing `model`, normalized `context`, `options`, and resolved request facts; old positional provider signatures are rejected. |
 | Core has no bare `except Exception: pass` | Met | `rg -n -U "except Exception:\n\s*pass" src/loushang/ai tests/ai tests/providers` returns no matches. |
 | Stream queue is bounded | Met | `AssistantMessageEventStream` uses a bounded queue; provider runtime tests cover backpressure and event stream tests cover full-queue terminal preservation. |
-| Cancellation closes upstream | Met | Provider runtime closes async sources through `aclose`/`close`; provider runtime tests cover cancellation. |
+| Cancellation closes upstream | Met | Provider runtime and event streams close async sources through `aclose`/`close`; targeted tests cover consumer-close cancellation and producer cleanup. |
 | Parallel tool calls can interleave | Met | Tool and provider tests cover multi-tool event assembly and parallel tool examples. |
 | Structured output is verifiable | Met | Structured output API and tests cover schema parsing and errors. |
 | Text/image declarations match implementation | Mostly met | Catalog checker rejects unsupported modalities; advanced video/audio/image-output facts remain omitted. |
-| OAuth files are safe | Met | OAuth storage uses locked atomic writes; local POSIX smoke verified `0o700` credential directories and `0o600` store/lock files. |
+| OAuth files are safe | Met | OAuth storage uses locked atomic writes, hardens existing stores on read, and local POSIX smoke verified `0o700` credential directories and `0o600` store/lock files. POSIX-only lock portability remains tracked as P2. |
 | Unknown pricing is not zero cost | Met | Pricing and assembler tests preserve unknown cost as `None`. |
 
 ### Catalog
@@ -92,8 +95,8 @@ Current composite score: 8.6/10.
 |---|---|---|
 | Root `__all__` has snapshot coverage | Met | `tests/ai/test_options.py`. |
 | Full/simple semantics are clear | Met | SDK docs and option tests document `CallOptions` and `SimpleCallOptions`. |
-| Unsupported parameters fail instead of being silently ignored | Mostly met | Capability and option tests cover major public paths; keep provider-specific additions behind explicit advanced options. |
-| `complete()` raises typed errors | Met | Streaming/API tests cover terminal error conversion to typed `AIError`. |
+| Unsupported parameters fail instead of being silently ignored | Met | Capability, structured-output, and option tests cover public failure paths; stable `CallOptions` no longer exposes a generic `provider_options` escape hatch. |
+| `complete()` raises typed errors | Met | Streaming/API tests cover terminal error conversion and capability preflight failures as typed `AIError`/`UnsupportedCapabilityError`. |
 | Stable error code documented | Met | SDK README and migration guide document `AIError` payload fields and stable codes. |
 | Migration guide complete | Met | `docs/en/sdk/migration-v2.md` and `docs/zh-CN/sdk/migration-v2.md`. |
 
@@ -101,15 +104,15 @@ Current composite score: 8.6/10.
 
 | Requirement | Status | Evidence or remaining work |
 |---|---|---|
-| `make check-ai` passes | Met | Passed on 2026-06-22 with 691 passed and 9 live tests deselected. `test-ai` and `check-ai-coverage` explicitly run `pytest ... -m "not live"` so default AI gates stay offline. |
-| `uv run pytest tests -m "not live" -q` passes | Met | Passed on 2026-06-22 with provider keys removed: 4260 passed, 9 deselected. |
+| `make check-ai` passes | Met | Passed on 2026-06-22 with 696 passed and 9 live tests deselected. `test-ai` and `check-ai-coverage` explicitly run `pytest ... -m "not live"` so default AI gates stay offline. |
+| `uv run pytest tests -m "not live" -q` passes | Previously met | Passed on 2026-06-22 with provider keys removed: 4260 passed, 9 deselected, before the final-review P1 fix package. It was not rerun after that package. |
 | `uv run pytest tests/ai/contracts -q` passes | Met | `tests/ai/contracts/test_core_provider_contracts.py` covers the core adapter protocol and builtin registration contract. |
 | `uv run python scripts/ai/check_catalog.py` passes | Met | Catalog gate. |
 | `uv run python scripts/ai/check_examples.py` passes | Met | Offline example gate. |
-| `uv build` passes | Met | Passed on 2026-06-22 after the final fixes. |
-| Core coverage >= 90% | Met | `scripts/ai/check_coverage_targets.py` enforces scoped runtime-core coverage; latest `make check-ai` reported 90.09%. Scope is recorded in `ARD-002-ai-coverage-gate-scope.md`. |
-| Adapter aggregate coverage >= 85% | Met | `scripts/ai/check_coverage_targets.py` enforces retained provider adapter aggregate coverage; latest `make check-ai` reported 85.66%. |
-| No pending asyncio task | Met | Provider runtime and event stream tests cover cancellation, close behavior, bounded queues, and terminal preservation; current full offline suite passed after those fixes. |
+| `uv build` passes | Previously met | Passed on 2026-06-22 before the final-review P1 fix package. It was not rerun after that package. |
+| Core coverage >= 90% | Met | `scripts/ai/check_coverage_targets.py` enforces scoped runtime-core coverage; latest `make check-ai` reported 90.10%. Scope is recorded in `ARD-002-ai-coverage-gate-scope.md`. |
+| Adapter aggregate coverage >= 85% | Met | `scripts/ai/check_coverage_targets.py` enforces retained provider adapter aggregate coverage; latest `make check-ai` reported 85.84%. Production-adapter-module coverage was 85.39%. |
+| No pending asyncio task | Met | Provider runtime, event stream, proxy, and Codex WebSocket tests cover cancellation, close behavior, bounded queues, and terminal preservation. |
 | No secret trace snapshot | Met | Error payload redaction and Codex request-body trace summarization are tested; `.artifacts` and `dist` were scanned for current provider environment secret values with no matches. |
 
 ### Examples And Docs
@@ -129,9 +132,9 @@ Current composite score: 8.6/10.
 |---|---|---|
 | Each AIQ commit has a focused review | Accepted | Per-commit review frequency was intentionally reduced during execution; final owner review covered the assembled branch instead. |
 | Each phase has a range review | Accepted | Several phase gates were validated by commands; the final owner review covered the latest assembled branch after follow-up fixes. |
-| Final branch has a full review | Met | Final owner review on 2026-06-22 found no P0/P1 after the final fixes; checks covered hard indicators, stale provider signatures, public import boundaries, catalog/examples gates, full offline tests, build, OAuth file modes, and artifact secret values. |
-| P0/P1 = 0 | Met | No P0/P1 findings remain in the final owner review; all earlier final-review blockers and later full-suite failures were fixed and covered by targeted tests plus `make check-ai`. |
-| P2 resolved or tracked | Met | Low-cost docs/example P2s, Codex request-body trace summarization, default Codex HTTP client close ownership, legacy provider fallback removal, provider-declared structured-output mapping, advanced-only provider options, and terminal queue edge cases were fixed. |
+| Final branch has a full review | Met | Final owner review on 2026-06-22 is recorded in `final-owner-review-2026-06-22.md`; it found no P0, fixed several runtime/security/API P1s, and tracks remaining architecture-boundary debt. |
+| P0/P1 = 0 | Not met | P0 = 0. Runtime/security/API P1s from final review were fixed, but the provider/base-url compatibility boundary remains a tracked P1 until refactored or accepted by ADR. |
+| P2 resolved or tracked | Met | Low-cost docs/example P2s, Codex request-body trace summarization, default Codex HTTP client close ownership, legacy provider fallback removal, provider-declared structured-output mapping, advanced-only provider options, terminal queue edge cases, and the remaining final-review P2s are either fixed or tracked in the final owner review. |
 
 ## Issue #102-#108 Status
 
@@ -151,6 +154,8 @@ provider evidence file records a valid credential-backed run.
 
 ## Residual Notes
 
-No required open issue remains for this local quality-hardening branch. Optional
-additional live provider smoke can be run with valid credentials, but current
-accepted live proof only covers DashScope and DeepSeek.
+One architecture-boundary item remains required before claiming full
+execution-plan compliance: remove provider/base-url compatibility heuristics from
+shared runtime paths or accept them through an explicit ADR. Optional additional
+live provider smoke can be run with valid credentials, but current accepted live
+proof only covers DashScope and DeepSeek.

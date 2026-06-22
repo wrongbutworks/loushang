@@ -164,6 +164,8 @@ async def process_responses_stream(openai_stream, *, options=None):
     thinking_closed = False
     text_closed = False
     current_reasoning_item: dict[str, Any] | None = None
+    tool_call_ids_by_item_id: dict[str, str] = {}
+    tool_call_ids_by_index: dict[int, str] = {}
     emit_thinking = False
     if options is not None:
         try:
@@ -190,7 +192,13 @@ async def process_responses_stream(openai_stream, *, options=None):
                 }
             elif getattr(item, "type", None) == "function_call":
                 index = _optional_int(getattr(event, "output_index", None))
-                tool_call_id = f"{getattr(item, 'call_id', '')}|{getattr(item, 'id', '')}"
+                item_id = getattr(item, "id", None)
+                call_id = getattr(item, "call_id", None)
+                tool_call_id = f"{call_id or ''}|{item_id or ''}"
+                if isinstance(item_id, str) and item_id:
+                    tool_call_ids_by_item_id[item_id] = tool_call_id
+                if index is not None:
+                    tool_call_ids_by_index[index] = tool_call_id
                 start_part: dict[str, object] = {
                     "type": "tool_call_start",
                     "id": tool_call_id,
@@ -248,8 +256,15 @@ async def process_responses_stream(openai_stream, *, options=None):
                 }
                 item_id = getattr(event, "item_id", None)
                 if isinstance(item_id, str) and item_id:
-                    delta_part["tool_call_id"] = item_id
+                    delta_part["tool_call_id"] = tool_call_ids_by_item_id.get(
+                        item_id,
+                        item_id,
+                    )
                 index = _optional_int(getattr(event, "output_index", None))
+                if "tool_call_id" not in delta_part and index is not None:
+                    tool_call_id = tool_call_ids_by_index.get(index)
+                    if tool_call_id is not None:
+                        delta_part["tool_call_id"] = tool_call_id
                 if index is not None:
                     delta_part["index"] = index
                 yield delta_part
@@ -290,9 +305,11 @@ async def process_responses_stream(openai_stream, *, options=None):
                 call_id = getattr(item, "call_id", None)
                 if isinstance(call_id, str) and isinstance(item_id, str):
                     done_part["tool_call_id"] = f"{call_id}|{item_id}"
+                    tool_call_ids_by_item_id.pop(item_id, None)
                 index = _optional_int(getattr(event, "output_index", None))
                 if index is not None:
                     done_part["index"] = index
+                    tool_call_ids_by_index.pop(index, None)
                 yield done_part
         elif etype == "response.completed":
             resp = getattr(event, "response", None)

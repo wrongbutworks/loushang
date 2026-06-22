@@ -74,7 +74,6 @@ class CallOptions:
     tool_choice: ToolChoice | None = None
     output: StructuredOutputOptions | None = None
     hooks: object | None = None
-    provider_options: Mapping[str, object] = field(default_factory=dict)
 
 
 ModelCallOptions = CallOptions
@@ -196,9 +195,6 @@ def get_provider_option(options: object | None, name: str) -> object | None:
     value = getattr(options, name, None)
     if value is not None:
         return value
-    provider_options = getattr(options, "provider_options", None)
-    if isinstance(provider_options, Mapping):
-        return provider_options.get(name)
     return None
 
 
@@ -254,7 +250,6 @@ def simple_options_to_call_options(
         tool_choice=options.tool_choice,
         output=options.output,
         hooks=options.hooks,
-        provider_options=options.provider_options,
     )
 
 

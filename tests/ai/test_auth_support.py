@@ -1,0 +1,58 @@
+from __future__ import annotations
+
+from types import SimpleNamespace
+
+import pytest
+
+from loushang.ai.auth.registry import get_default_oauth_registry
+from loushang.ai.auth.support import AuthConfig, resolve_auth_for_model
+from loushang.ai.auth.types import OAuthCredentials
+
+
+class _FailingRefreshProvider:
+    id = "demo"
+    name = "Demo"
+
+    def uses_callback_server(self) -> bool:
+        return False
+
+    async def login(self, callbacks):
+        raise NotImplementedError
+
+    async def refresh_token(self, credentials: OAuthCredentials) -> OAuthCredentials:
+        raise RuntimeError("refresh failed")
+
+    def get_api_key(self, credentials: OAuthCredentials) -> str:
+        return credentials.access_token
+
+    def modify_models(self, models: list[object], credentials: OAuthCredentials) -> list[object]:
+        return models
+
+
+def test_oauth_refresh_failure_does_not_fall_back_to_api_key() -> None:
+    registry = get_default_oauth_registry()
+    registry.reset_oauth_providers()
+    registry.register_oauth_provider(_FailingRefreshProvider(), source_id="test")
+    try:
+        model = SimpleNamespace(
+            provider_id="demo",
+            endpoint_id="demo",
+            id="model-a",
+            auth=AuthConfig(api_key_env="DEMO_API_KEY"),
+        )
+        options = SimpleNamespace(
+            oauth_credentials={
+                "demo": OAuthCredentials(
+                    provider="demo",
+                    access_token="expired",
+                    refresh_token="refresh",
+                    expires_at=0.0,
+                )
+            },
+            api_key="fallback-key",
+        )
+
+        with pytest.raises(RuntimeError, match="refresh failed"):
+            resolve_auth_for_model(model, options=options)
+    finally:
+        registry.reset_oauth_providers()

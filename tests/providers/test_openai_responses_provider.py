@@ -21,6 +21,7 @@ from loushang.ai.model import (
 from loushang.ai.model.registry import clear_default_model_registry
 from loushang.ai.provider import ResolvedRequest
 from loushang.ai.providers.openai_responses import OpenAIResponsesProvider
+from loushang.ai.providers.openai_responses_shared import process_responses_stream
 from loushang.ai.structured import StructuredOutputOptions
 from loushang.ai.types import (
     AssistantMessage,
@@ -42,6 +43,25 @@ def _normalized_context(model, context, options=None):
         "strict" if getattr(options, "pairing_mode", "strict") == "strict" else "repair"
     )
     return normalize_context(context, model=model, pairing_mode=pairing_mode)
+
+
+class _AsyncEventStream:
+    def __init__(self, events: list[SimpleNamespace]) -> None:
+        self._events = events
+
+    def __aiter__(self):
+        return self._iterate()
+
+    async def _iterate(self):
+        for event in self._events:
+            yield event
+
+
+async def _collect_raw_parts(events: list[SimpleNamespace]) -> list[dict[str, object]]:
+    return [
+        part
+        async for part in process_responses_stream(_AsyncEventStream(events))
+    ]
 
 
 def _stream_raw_parts(provider, model, context, options=None, request=None):
@@ -1062,6 +1082,61 @@ def test_openai_responses_stream_retains_thinking_signature_on_final_message(
         events[-1]["message"].content[0].thinking_signature
         == '{"type": "reasoning", "id": "rs_1", "summary": [{"type": "summary_text", "text": "plan"}]}'
     )
+
+
+def test_openai_responses_function_call_delta_uses_composite_call_id() -> None:
+    parts = asyncio.run(
+        _collect_raw_parts(
+            [
+                SimpleNamespace(
+                    type="response.output_item.added",
+                    output_index=1,
+                    item=SimpleNamespace(
+                        type="function_call",
+                        id="fc_1",
+                        call_id="call_1",
+                        name="read",
+                    ),
+                ),
+                SimpleNamespace(
+                    type="response.function_call_arguments.delta",
+                    item_id="fc_1",
+                    output_index=1,
+                    delta='{"path":',
+                ),
+                SimpleNamespace(
+                    type="response.output_item.done",
+                    output_index=1,
+                    item=SimpleNamespace(
+                        type="function_call",
+                        id="fc_1",
+                        call_id="call_1",
+                    ),
+                ),
+            ]
+        )
+    )
+
+    assert parts == [
+        {
+            "type": "tool_call_start",
+            "id": "call_1|fc_1",
+            "name": "read",
+            "index": 1,
+        },
+        {
+            "type": "tool_call_args_delta",
+            "delta": '{"path":',
+            "tool_call_id": "call_1|fc_1",
+            "index": 1,
+        },
+        {
+            "type": "tool_call_done",
+            "tool_call_id": "call_1|fc_1",
+            "index": 1,
+        },
+        {"type": "response_done"},
+    ]
 
 
 def test_openai_responses_stream_joins_multiple_reasoning_summary_parts(

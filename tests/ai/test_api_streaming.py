@@ -14,7 +14,7 @@ from loushang.ai.context import (
     NORMALIZED_CONTEXT_MARKER,
     NormalizedContext,
 )
-from loushang.ai.errors import AIRateLimitError
+from loushang.ai.errors import AIRateLimitError, UnsupportedCapabilityError
 from loushang.ai.model import (
     Capabilities,
     EndpointProtocolFeatures,
@@ -425,7 +425,7 @@ def test_stream_enforces_capability_matrix(
     provider = _Provider()
     registry = _Registry(provider)
 
-    with pytest.raises(ValueError, match=expected_message):
+    with pytest.raises(UnsupportedCapabilityError, match=expected_message):
         asyncio.run(stream(_Model(), context, options, registry=registry))
 
     assert provider.context is None
@@ -918,7 +918,7 @@ def test_stream_validates_resolved_request_capabilities(
     provider = _Provider()
     registry = _Registry(provider)
 
-    with pytest.raises(ValueError, match="does not support image input"):
+    with pytest.raises(UnsupportedCapabilityError, match="does not support image input"):
         asyncio.run(
             stream(
                 _Model(capabilities=_Capabilities(supports_image_input=True)),

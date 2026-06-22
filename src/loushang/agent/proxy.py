@@ -136,7 +136,7 @@ def stream_proxy(
 
                 if partial.stop_reason not in {"error", "aborted"}:
                     stream.end()
-        except Exception as error:  # noqa: BLE001
+        except Exception as error:
             reason = "aborted" if getattr(options.signal, "aborted", False) else "error"
             partial.stop_reason = reason
             partial.error_message = str(error)
@@ -152,7 +152,7 @@ def stream_proxy(
             if owned_client is not None:
                 await owned_client.aclose()
 
-    asyncio.create_task(_run())
+    stream.attach_task(asyncio.create_task(_run()))
     return stream
 
 
@@ -162,7 +162,7 @@ async def _proxy_error_message(response: Any) -> str:
     message = f"Proxy error: {status_code} {status_text}".strip()
     try:
         payload = await response.json()
-    except Exception:  # noqa: BLE001
+    except Exception:
         return message
     if isinstance(payload, dict) and isinstance(payload.get("error"), str):
         return f"Proxy error: {payload['error']}"

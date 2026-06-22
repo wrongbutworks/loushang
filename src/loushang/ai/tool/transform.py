@@ -6,7 +6,10 @@ from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from typing import cast
 
-from loushang.ai.diagnostics import NormalizationDiagnostic
+from loushang.ai.diagnostics import (
+    NormalizationDiagnostic,
+    NormalizationDiagnosticCode,
+)
 from loushang.ai.model import Model
 from loushang.ai.model.registry import resolve_model_api
 from loushang.ai.options import PairingMode
@@ -22,6 +25,13 @@ _ANTHROPIC_TOOL_CALL_ID_PATTERN = re.compile(r"^[A-Za-z0-9_-]{1,64}$")
 MISSING_TOOL_RESULT_TEXT = "No result provided"
 TOOL_RESULTS_PROCESSED_ASSISTANT_TEXT = "I have processed the tool results."
 SYNTHETIC_TOOL_RESULT_REASON = "missing_tool_result"
+
+
+class MessagePairingError(ValueError):
+    def __init__(self, diagnostic: NormalizationDiagnostic) -> None:
+        super().__init__(diagnostic.message)
+        self.diagnostic = diagnostic
+        self.diagnostics = (diagnostic,)
 
 
 @dataclass(frozen=True)
@@ -79,7 +89,15 @@ def transform_messages_result(
                     existing_tool_result_ids,
                 )
                 if missing_tool_calls and pairing_mode == "strict":
-                    raise ValueError("Missing tool results before next message")
+                    _raise_pairing_error(
+                        "missing_tool_result",
+                        _first_tool_call_path(
+                            missing_tool_calls,
+                            pending_tool_call_paths,
+                            fallback=message_path,
+                        ),
+                        "Missing tool results before next message",
+                    )
                 if missing_tool_calls:
                     _append_synthetic_tool_results(
                         transformed,
@@ -230,8 +248,10 @@ def transform_messages_result(
                     details=message.details,
                 )
             if message.tool_call_id in closed_tool_call_ids:
-                raise ValueError(
-                    f"Late tool result for closed tool call: {message.tool_call_id!r}"
+                _raise_pairing_error(
+                    "late_tool_result",
+                    message_path,
+                    f"Late tool result for closed tool call: {message.tool_call_id!r}",
                 )
             matched_tool_call = pending_tool_call_map.get(message.tool_call_id)
             if (
@@ -239,26 +259,36 @@ def transform_messages_result(
                 and not pending_tool_calls
                 and matched_tool_call is None
             ):
-                raise ValueError(
-                    f"Orphaned tool result without pending tool call: {message.tool_call_id!r}"
+                _raise_pairing_error(
+                    "orphaned_tool_result",
+                    message_path,
+                    f"Orphaned tool result without pending tool call: {message.tool_call_id!r}",
                 )
             if pending_tool_calls and matched_tool_call is None:
-                raise ValueError(
-                    f"Unknown tool result for pending tool calls: {message.tool_call_id!r}"
+                _raise_pairing_error(
+                    "unknown_tool_result",
+                    message_path,
+                    f"Unknown tool result for pending tool calls: {message.tool_call_id!r}",
                 )
             if (
                 matched_tool_call is not None
                 and matched_tool_call.name != message.tool_name
             ):
-                raise ValueError(
+                _raise_pairing_error(
+                    "tool_result_name_mismatch",
+                    message_path,
                     f"Tool result name mismatch for {message.tool_call_id!r}: "
-                    f"expected {matched_tool_call.name!r}, got {message.tool_name!r}"
+                    f"expected {matched_tool_call.name!r}, got {message.tool_name!r}",
                 )
             if (
                 matched_tool_call is not None
                 and message.tool_call_id in existing_tool_result_ids
             ):
-                raise ValueError(f"Duplicate tool result for {message.tool_call_id!r}")
+                _raise_pairing_error(
+                    "duplicate_tool_result",
+                    message_path,
+                    f"Duplicate tool result for {message.tool_call_id!r}",
+                )
             existing_tool_result_ids.add(message.tool_call_id)
             transformed.append(message)
             transformed_paths.append(message_path)
@@ -270,7 +300,15 @@ def transform_messages_result(
                 existing_tool_result_ids,
             )
             if missing_tool_calls and pairing_mode == "strict":
-                raise ValueError("Missing tool results before next message")
+                _raise_pairing_error(
+                    "missing_tool_result",
+                    _first_tool_call_path(
+                        missing_tool_calls,
+                        pending_tool_call_paths,
+                        fallback=message_path,
+                    ),
+                    "Missing tool results before next message",
+                )
             if missing_tool_calls:
                 _append_synthetic_tool_results(
                     transformed,
@@ -297,7 +335,15 @@ def transform_messages_result(
             existing_tool_result_ids,
         )
         if missing_tool_calls and pairing_mode == "strict":
-            raise ValueError("Missing tool results before next message")
+            _raise_pairing_error(
+                "missing_tool_result",
+                _first_tool_call_path(
+                    missing_tool_calls,
+                    pending_tool_call_paths,
+                    fallback=paths[-1] if paths else "messages",
+                ),
+                "Missing tool results before next message",
+            )
         if missing_tool_calls:
             _append_synthetic_tool_results(
                 transformed,
@@ -314,6 +360,27 @@ def transform_messages_result(
         diagnostics=tuple(diagnostics),
         message_paths=tuple(transformed_paths),
     )
+
+
+def _raise_pairing_error(
+    code: NormalizationDiagnosticCode,
+    path: str,
+    message: str,
+) -> None:
+    raise MessagePairingError(
+        NormalizationDiagnostic(code=code, path=path, message=message)
+    )
+
+
+def _first_tool_call_path(
+    tool_calls: list[ToolCall],
+    paths: Mapping[int, str],
+    *,
+    fallback: str,
+) -> str:
+    if not tool_calls:
+        return fallback
+    return paths.get(id(tool_calls[0]), fallback)
 
 
 def _aborted_boundary_message(message: AssistantMessage) -> AssistantMessage:

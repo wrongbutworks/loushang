@@ -122,38 +122,32 @@ def _resolve_oauth_auth_view(
 ) -> AuthView | None:
     if not oauth_credentials:
         return None
-    try:
-        from loushang.ai.auth.oauth import get_oauth_api_key
+    from loushang.ai.auth.oauth import get_oauth_api_key
 
-        result = get_oauth_api_key(provider, oauth_credentials)  # type: ignore[arg-type]
-        if result is None:
-            return None
-        credentials = result["newCredentials"]
-        metadata = dict(getattr(credentials, "extra", None) or {})
-        account_id = metadata.get("account_id")
-        if not isinstance(account_id, str) or not account_id:
-            account_id = metadata.get("chatgpt_account_id")
-        if not isinstance(account_id, str) or not account_id:
-            account_id = None
-        return AuthView(
-            headers=resolve_auth_material(bearer_token=result["apiKey"]).headers,
-            account_id=account_id,
-            metadata=metadata,
-        )
-    except Exception:
+    result = get_oauth_api_key(provider, oauth_credentials)  # type: ignore[arg-type]
+    if result is None:
         return None
+    credentials = result["newCredentials"]
+    metadata = dict(getattr(credentials, "extra", None) or {})
+    account_id = metadata.get("account_id")
+    if not isinstance(account_id, str) or not account_id:
+        account_id = metadata.get("chatgpt_account_id")
+    if not isinstance(account_id, str) or not account_id:
+        account_id = None
+    return AuthView(
+        headers=resolve_auth_material(bearer_token=result["apiKey"]).headers,
+        account_id=account_id,
+        metadata=metadata,
+    )
 
 
 def _resolve_env_oauth_auth_view(
     provider: str,
     env: dict[str, str] | None = None,
 ) -> AuthView | None:
-    try:
-        from loushang.ai.auth.env import get_env_oauth_credentials
+    from loushang.ai.auth.env import get_env_oauth_credentials
 
-        credentials = get_env_oauth_credentials(provider, env=env)
-    except Exception:
-        return None
+    credentials = get_env_oauth_credentials(provider, env=env)
     if credentials is None:
         return None
     return _resolve_oauth_auth_view(provider, {provider: credentials})
@@ -165,20 +159,17 @@ def _resolve_stored_oauth_auth_view(
     endpoint_id: str | None = None,
     model_id: str | None = None,
 ) -> AuthView | None:
-    try:
-        from loushang.ai.auth.storage import (
-            find_scoped_credential,
-            load_credential_store,
-        )
+    from loushang.ai.auth.storage import (
+        find_scoped_credential,
+        load_credential_store,
+    )
 
-        credential = find_scoped_credential(
-            load_credential_store(),
-            provider,
-            endpoint_id=endpoint_id,
-            model_id=model_id,
-        )
-    except Exception:
-        return None
+    credential = find_scoped_credential(
+        load_credential_store(),
+        provider,
+        endpoint_id=endpoint_id,
+        model_id=model_id,
+    )
     if credential is None:
         return None
     return _resolve_oauth_auth_view(provider, {provider: credential})

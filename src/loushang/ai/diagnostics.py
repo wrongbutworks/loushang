@@ -9,14 +9,20 @@ NormalizationDiagnosticCode = Literal[
     "aborted_assistant_repaired",
     "empty_thinking_dropped",
     "error_assistant_dropped",
+    "duplicate_tool_result",
+    "late_tool_result",
+    "missing_tool_result",
     "missing_tool_result_repaired",
+    "orphaned_tool_result",
     "redacted_thinking_dropped",
     "text_signature_removed",
     "thinking_downgraded_to_text",
     "thinking_signature_removed",
     "tool_call_id_normalized",
     "tool_call_thought_signature_removed",
+    "tool_result_name_mismatch",
     "tool_result_id_normalized",
+    "unknown_tool_result",
 ]
 
 _PATH_TOKEN_PATTERN = re.compile(r"([A-Za-z_][A-Za-z0-9_]*)|\[(\d+)\]")

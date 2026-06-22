@@ -4,6 +4,7 @@ from loushang.ai.tool.transform import (
     MISSING_TOOL_RESULT_TEXT,
     SYNTHETIC_TOOL_RESULT_REASON,
     TOOL_RESULTS_PROCESSED_ASSISTANT_TEXT,
+    MessagePairingError,
     coerce_cross_provider_assistant_message,
     insert_assistant_bridge_after_tool_results,
     transform_messages,
@@ -86,6 +87,9 @@ def test_transform_messages_strict_mode_rejects_missing_tool_result() -> None:
         )
     except ValueError as error:
         assert str(error) == "Missing tool results before next message"
+        assert isinstance(error, MessagePairingError)
+        assert error.diagnostic.code == "missing_tool_result"
+        assert error.diagnostic.path == "messages[0].content[0]"
         return
 
     raise AssertionError("strict mode should reject missing tool results")

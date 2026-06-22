@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from types import SimpleNamespace
+from types import MappingProxyType, SimpleNamespace
 
 import pytest
 
@@ -217,6 +217,20 @@ def test_normalize_context_rejects_unknown_message_objects() -> None:
 def test_normalize_context_rejects_unknown_dict_message_roles() -> None:
     with pytest.raises(TypeError, match="Unsupported message role"):
         normalize_context({"messages": [{"role": "custom", "content": "hello"}]})
+
+
+def test_normalize_context_canonicalizes_non_dict_mapping_messages() -> None:
+    normalized = normalize_context(
+        {"messages": [MappingProxyType({"role": "user", "content": "hello"})]}
+    )
+
+    assert normalized.messages == (
+        UserMessage(
+            role="user",
+            content=[TextPart(type="text", text="hello")],
+            timestamp=0.0,
+        ),
+    )
 
 
 def test_normalize_context_rejects_unknown_user_content_parts() -> None:
