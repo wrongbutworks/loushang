@@ -128,6 +128,25 @@ def test_usage_online_example_prints_unknown_cost(capsys, monkeypatch) -> None:
     assert json.loads(cost_line.removeprefix("cost: ")) == {"known": False}
 
 
+def test_usage_example_reports_response_observation(capsys) -> None:
+    module = _load_module(Path("examples/ai/10_usage.py"), "examples_ai_10_usage")
+
+    summary = module.inspect_usage_observation()
+
+    assert summary == {
+        "present": True,
+        "input": 120,
+        "output": 30,
+        "cacheRead": 10,
+        "cacheWrite": 0,
+        "totalTokens": 160,
+        "cost": None,
+    }
+
+    module.main()
+    assert json.loads(capsys.readouterr().out) == summary
+
+
 def test_reasoning_example_reports_simple_reasoning_mapping(capsys) -> None:
     module = _load_module(
         Path("examples/ai/06_reasoning.py"), "examples_ai_06_reasoning"
@@ -222,6 +241,27 @@ def test_oauth_credential_store_example_reports_scopes(capsys) -> None:
         "models": 0,
     }
     assert summary["selectedCredential"] == "endpoint"
+
+    module.main()
+    assert json.loads(capsys.readouterr().out) == summary
+
+
+def test_platform_quota_example_reports_endpoint_quota(capsys) -> None:
+    module = _load_module(
+        Path("examples/ai/advanced/platform_quota.py"),
+        "examples_ai_advanced_platform_quota",
+    )
+
+    summary = asyncio.run(module.inspect_platform_quota())
+
+    assert summary == {
+        "present": True,
+        "limit": 1000,
+        "used": 320,
+        "remaining": 680,
+        "resetTime": "2026-06-29T00:00:00Z",
+        "source": "moonshot:coding",
+    }
 
     module.main()
     assert json.loads(capsys.readouterr().out) == summary

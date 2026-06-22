@@ -42,13 +42,23 @@ ROOT_EXPORTS_BASELINE = [
     "UserMessage",
     "Usage",
     "UsageCost",
+    "UsageObservation",
+    "EndpointQuotaQuery",
+    "PlatformQuota",
+    "PlatformQuotaError",
+    "PlatformQuotaUnsupportedError",
     "complete",
     "complete_simple",
     "complete_structured",
+    "endpoint_quota_query_for_model",
     "get_model",
     "list_models",
+    "platform_quota_payload",
+    "query_platform_quota",
     "stream",
     "stream_simple",
+    "usage_observation_from_message",
+    "usage_observation_payload",
 ]
 
 CATALOG_PROVIDER_BASELINE = [
@@ -140,7 +150,7 @@ KNOWN_BASELINE_DEBT = {
 
 def test_root_exports_baseline_snapshot() -> None:
     assert ai.__all__ == ROOT_EXPORTS_BASELINE
-    assert len(ai.__all__) == 36
+    assert len(ai.__all__) == 46
 
 
 def test_advanced_exports_are_not_root_stable_exports() -> None:
@@ -177,9 +187,9 @@ def test_test_and_example_inventory_baseline() -> None:
     provider_test_files = sorted((REPO_ROOT / "tests/providers").rglob("test_*.py"))
     example_files = sorted((REPO_ROOT / "examples/ai").rglob("*.py"))
 
-    assert len(ai_test_files) == 37
+    assert len(ai_test_files) == 38
     assert len(provider_test_files) == 7
-    assert len(example_files) == 23
+    assert len(example_files) == 25
 
 
 def test_known_baseline_debt_snapshot() -> None:

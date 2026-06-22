@@ -1,3 +1,5 @@
+from decimal import Decimal
+
 from loushang.ai.model.domain import Model, Pricing
 from loushang.ai.types import Usage, UsageCost
 
@@ -24,26 +26,30 @@ def calculate_usage_cost(
     ):
         return None
     if multiplier != 1.0:
-        input_cost *= multiplier
-        output_cost *= multiplier
-        cache_read_cost *= multiplier
-        cache_write_cost *= multiplier
+        multiplier_decimal = Decimal(str(multiplier))
+        input_cost *= multiplier_decimal
+        output_cost *= multiplier_decimal
+        cache_read_cost *= multiplier_decimal
+        cache_write_cost *= multiplier_decimal
     total_cost = input_cost + output_cost + cache_read_cost + cache_write_cost
     return {
-        "input": input_cost,
-        "output": output_cost,
-        "cacheRead": cache_read_cost,
-        "cacheWrite": cache_write_cost,
-        "total": total_cost,
+        "input": float(input_cost),
+        "output": float(output_cost),
+        "cacheRead": float(cache_read_cost),
+        "cacheWrite": float(cache_write_cost),
+        "total": float(total_cost),
     }
 
 
-def _component_cost(price_per_million: float | int | None, tokens: int) -> float | None:
+def _component_cost(
+    price_per_million: float | int | None,
+    tokens: int,
+) -> Decimal | None:
     if tokens <= 0:
-        return 0.0
+        return Decimal("0")
     if price_per_million is None:
         return None
-    return float(price_per_million) * tokens / 1_000_000
+    return Decimal(str(price_per_million)) * Decimal(tokens) / Decimal(1_000_000)
 
 
 def models_are_equal(left: Model | None, right: Model | None) -> bool:

@@ -20,6 +20,8 @@
   离线演示多个并行 tool call 的交错增量按 id/index 正确组装
 - [09_errors_retry.py](09_errors_retry.py)
   离线演示稳定错误信息的序列化、脱敏，以及可见输出前的安全 retry
+- [10_usage.py](10_usage.py)
+  离线演示响应级 `UsageObservation`，与账号级平台额度分开
 - [usage_online.py](usage_online.py)
   在线检查 usage；当 catalog 缺少价格事实时，cost 输出为 `{"known": false}`
 - [tools.py](tools.py)
@@ -44,6 +46,8 @@
   离线查看版本化 trace event、runtime retry 事件和敏感字段脱敏
 - [advanced/oauth_credential_store.py](advanced/oauth_credential_store.py)
   离线查看 OAuth scoped credential store 写入、选择和本地文件权限
+- [advanced/platform_quota.py](advanced/platform_quota.py)
+  离线查看 Endpoint 平台额度查询抽象与 `PlatformQuota` 输出
 
 ## Provider 配置速查
 

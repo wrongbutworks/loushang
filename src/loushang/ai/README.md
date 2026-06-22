@@ -280,6 +280,8 @@ provider-specific options 仍保留在 `loushang.ai.options` / `loushang.ai.adva
 - `loushang.ai.tool.normalize_tool_call_id_for_model(...)`
 - `loushang.ai.pricing.calculate_cost(...)`
 - `loushang.ai.pricing.models_are_equal(...)`
+- `loushang.ai.usage_observation_from_message(...)`
+- `loushang.ai.query_platform_quota(...)`
 - `loushang.ai.complete_structured(model, context, output, options=...)`
   - sends `StructuredOutputOptions` through provider-native structured output payloads where the adapter has a stable mapping
   - returns `StructuredOutputResult(raw=AssistantMessage, parsed=...)`
@@ -290,6 +292,11 @@ provider-specific options 仍保留在 `loushang.ai.options` / `loushang.ai.adva
 `calculate_cost(model, usage)` returns `None` when the model has no pricing
 metadata, or when a used token component has no known price. Explicit zero
 prices remain valid and produce a zero cost.
+
+`UsageObservation` is response-level accounting produced by model response
+events. `PlatformQuota` is account-level limit/used/remaining data queried
+through an endpoint-specific optional query descriptor; examples should use the
+query abstraction instead of hardcoding provider quota URLs.
 
 ## Advanced API
 

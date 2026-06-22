@@ -39,7 +39,19 @@ from loushang.ai.types import (
     ToolResultMessage,
     Usage,
     UsageCost,
+    UsageObservation,
     UserMessage,
+)
+from loushang.ai.usage import (
+    EndpointQuotaQuery,
+    PlatformQuota,
+    PlatformQuotaError,
+    PlatformQuotaUnsupportedError,
+    endpoint_quota_query_for_model,
+    platform_quota_payload,
+    query_platform_quota,
+    usage_observation_from_message,
+    usage_observation_payload,
 )
 
 
@@ -94,11 +106,21 @@ __all__ = [
     "UserMessage",
     "Usage",
     "UsageCost",
+    "UsageObservation",
+    "EndpointQuotaQuery",
+    "PlatformQuota",
+    "PlatformQuotaError",
+    "PlatformQuotaUnsupportedError",
     "complete",
     "complete_simple",
     "complete_structured",
+    "endpoint_quota_query_for_model",
     "get_model",
     "list_models",
+    "platform_quota_payload",
+    "query_platform_quota",
     "stream",
     "stream_simple",
+    "usage_observation_from_message",
+    "usage_observation_payload",
 ]

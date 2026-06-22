@@ -70,19 +70,19 @@
 - Normalize indentation and style in a few files.
   Some modules still use tabs instead of the prevailing project style.
 
-- Unify usage/cost observability semantics across providers.
+- Done for AIQ-039: separate response usage and platform quota contracts.
   The response-level usage (`input/output/cache_*`) and platform quota endpoint (`/usages`)
   are currently mixed in example-level scripts; standardize this inside `loushang.ai`:
   define a single usage payload contract, include provider-specific quota-query support
   (e.g., Kimi `/v1/usages` path), and expose it via a stable API for callers.
-  Do not change endpoint catalog files yet; keep this as a design task in `loushang.ai`
-  first, then decide whether endpoint metadata should own quota-query descriptors.
+  Endpoint catalog files were not changed; `loushang.ai.usage` now owns the
+  response usage and endpoint quota-query contracts.
 
 ### Example context for Kimi
 
 - Current examples to validate (`examples/coding`):
   - `22_usage_inspect.py`: demonstrates response-level usage/cost extraction.
-  - `23_kimi_weekly_usage_ledger.py`: writes local weekly ledger and currently queries `/usages` for platform quota.
+  - `23_kimi_weekly_usage_ledger.py`: writes local weekly ledger and now queries platform quota through `loushang.ai.usage`.
   - `21_switch_model_route.py`: validates endpoint/model routing behavior.
   - `17_kimi_env_probe.py`: environment/catalog/key-surface checks.
 - Expected core behavior after fixing:
@@ -96,12 +96,12 @@
   - If adopted, define a dedicated `usage_query` capability section in endpoint metadata
     first (optional, non-breaking), and update callers to use that abstraction later.
 
-### Endpoint metadata design (Kimi /coding case) -- to be done in loushang.ai only first
+### Endpoint metadata design (Kimi /coding case) -- core abstraction added first
 
 - Observation:
   - `https://api.kimi.com/coding/v1/usages` is an account-level query endpoint.
   - It is endpoint-scoped rather than model-scoped, and likely shared by multiple models under same endpoint.
-  - 现网脚本现在通过硬编码 `/v1/usages` 兜底探测，属于示例层耦合。
+  - 现网脚本已改为通过 `query_platform_quota` 使用核心 endpoint 查询描述，避免示例层耦合。
 
 - Proposed endpoint-level schema sketch (deferred):
   - Add optional endpoint capability metadata, but keep behavior backward-compatible:
@@ -110,8 +110,8 @@
     - `usageQuery.path` can be absolute URL when endpoint host differs.
   - `loushang.ai` exposes a stable accessor, examples consume via API call only.
   - Example migration sequence:
-    1) add abstraction in core (`loushang.ai`) for platform_quota
-    2) add Kimi mapping in core/provider layer
+    1) done: add abstraction in core (`loushang.ai`) for platform_quota
+    2) done: add Kimi mapping in core usage layer
     3) keep catalogs unchanged until step 3
     4) optional: surface `usage_query` in catalog metadata and remove special-case script logic
 

@@ -15,13 +15,16 @@ class UsageCost(TypedDict):
 
 
 @dataclass(frozen=True)
-class Usage:
+class UsageObservation:
     input: int
     output: int
     cache_read: int
     cache_write: int
     total_tokens: int
     cost: UsageCost | None
+
+
+Usage = UsageObservation
 
 
 @dataclass(frozen=True)
