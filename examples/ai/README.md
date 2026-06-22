@@ -19,7 +19,7 @@
 - [usage_online.py](usage_online.py)
   在线检查 usage；当 catalog 缺少价格事实时，cost 输出为 `{"known": false}`
 - [tools.py](tools.py)
-  工具调用和 `ToolResultMessage` 往返
+  工具调用、默认 strict 参数校验、显式 coerce diagnostics，以及 `ToolResultMessage` 往返
 - [03_typed_context.py](03_typed_context.py)
   显式 `Context` / `Tool` / `UserMessage` 类型构造
 

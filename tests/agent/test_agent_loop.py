@@ -488,7 +488,7 @@ def test_tool_exception_can_project_structured_error_details() -> None:
     assert new_messages[2].details == tool_end_event["result"].details
 
 
-def test_run_agent_loop_executes_tool_with_validated_and_coerced_arguments() -> None:
+def test_run_agent_loop_rejects_tool_arguments_requiring_implicit_conversion_by_default() -> None:
     from loushang.agent.agent_loop import run_agent_loop
 
     executed: list[dict[str, Any]] = []
@@ -516,9 +516,11 @@ def test_run_agent_loop_executes_tool_with_validated_and_coerced_arguments() -> 
 
     new_messages = asyncio.run(run_agent_loop(prompts, context, _config(stream_fn), emit, stream_fn=stream_fn))
 
-    assert executed == [{"x": 41}]
+    assert executed == []
     assert getattr(new_messages[2], "role", None) == "toolResult"
-    assert new_messages[2].content[0].text == "42"
+    assert new_messages[2].is_error is True
+    assert 'Validation failed for tool "calc":' in new_messages[2].content[0].text
+    assert "x: must be an integer" in new_messages[2].content[0].text
 
 
 def test_tool_execution_update_keeps_raw_arguments_after_prepare_arguments() -> None:

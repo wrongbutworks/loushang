@@ -268,6 +268,12 @@ provider-specific options 仍保留在 `loushang.ai.options` / `loushang.ai.adva
 - Anthropic concrete provider applies the same outgoing text sanitization for system, user, assistant, thinking, and tool-result payload text.
 - `loushang.ai.tool.validate_tool_call(...)`
 - `loushang.ai.tool.validate_tool_arguments(...)`
+- `loushang.ai.tool.validate_tool_call_result(...)`
+- `loushang.ai.tool.validate_tool_arguments_result(...)`
+  - tool argument validation defaults to `validation_policy="strict"` and never performs implicit type conversion
+  - pass `validation_policy="coerce"` only for legacy-compatible paths that need audited primitive conversions; the result helpers return `ToolValidationDiagnostic` entries with `code`, `path`, `from_type`, `to_type`, and `level`
+  - the enforced JSON Schema subset is: `type`, `properties`, `required`, `additionalProperties`, `items`, `prefixItems`, `minItems`, `maxItems`, `minLength`, `maxLength`, `pattern`, `enum`, `oneOf`, `anyOf`, and `allOf`
+  - unsupported JSON Schema keywords are not enforced by this lightweight helper
 - `loushang.ai.tool.normalize_tool_call_id_for_model(...)`
 - `loushang.ai.pricing.calculate_cost(...)`
 - `loushang.ai.pricing.models_are_equal(...)`

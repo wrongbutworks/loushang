@@ -622,6 +622,25 @@ def test_tools_example_declares_add_tool() -> None:
 
     assert tools[0]["name"] == "add"
     assert tools[0]["parameters"]["required"] == ["a", "b"]
+    assert module._inspect_tool_validation() == {
+        "strict": {"a": 2, "b": 3},
+        "strictError": 'Validation failed for tool "add":',
+        "coerce": {"a": 2.0, "b": 3.0},
+        "diagnostics": [
+            {
+                "code": "tool_argument_coerced",
+                "path": "$.a",
+                "fromType": "string",
+                "toType": "number",
+            },
+            {
+                "code": "tool_argument_coerced",
+                "path": "$.b",
+                "fromType": "string",
+                "toType": "number",
+            },
+        ],
+    }
 
 
 def test_typed_context_example_uses_public_types() -> None:

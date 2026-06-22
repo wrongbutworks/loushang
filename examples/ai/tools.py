@@ -6,7 +6,15 @@ import asyncio
 import os
 import sys
 
-from loushang.ai import CallOptions, TextPart, ToolResultMessage, get_model
+from loushang.ai import (
+    CallOptions,
+    TextPart,
+    Tool,
+    ToolCall,
+    ToolResultMessage,
+    get_model,
+)
+from loushang.ai.tool import validate_tool_arguments, validate_tool_arguments_result
 
 API_KEY = ""
 PROVIDER_ID = "moonshot"
@@ -20,25 +28,81 @@ def _resolve_api_key() -> str:
     value = API_KEY or os.getenv("MOONSHOT_API_KEY")
     if value:
         return value
-    raise RuntimeError("Set API_KEY at the top of this file, or export MOONSHOT_API_KEY.")
+    raise RuntimeError(
+        "Set API_KEY at the top of this file, or export MOONSHOT_API_KEY."
+    )
 
 
-def _build_tools() -> list[dict]:
-    return [
-        {
-            "name": "add",
-            "description": "Return the sum of two numbers a and b.",
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "a": {"type": "number", "description": "first number"},
-                    "b": {"type": "number", "description": "second number"},
-                },
-                "required": ["a", "b"],
-                "additionalProperties": False,
+def _add_tool() -> Tool:
+    return Tool(
+        name="add",
+        description="Return the sum of two numbers a and b.",
+        parameters={
+            "type": "object",
+            "properties": {
+                "a": {"type": "number", "description": "first number"},
+                "b": {"type": "number", "description": "second number"},
             },
-        }
-    ]
+            "required": ["a", "b"],
+            "additionalProperties": False,
+        },
+    )
+
+
+def _tool_payload(tool: Tool) -> dict[str, object]:
+    return {
+        "name": tool.name,
+        "description": tool.description,
+        "parameters": tool.parameters,
+    }
+
+
+def _build_tools() -> list[dict[str, object]]:
+    return [_tool_payload(_add_tool())]
+
+
+def _inspect_tool_validation() -> dict[str, object]:
+    tool = _add_tool()
+    strict_call = ToolCall(
+        type="toolCall",
+        id="tc_strict",
+        name="add",
+        arguments={"a": 2, "b": 3},
+    )
+    coerce_call = ToolCall(
+        type="toolCall",
+        id="tc_coerce",
+        name="add",
+        arguments={"a": "2", "b": "3"},
+    )
+
+    strict_arguments = validate_tool_arguments(tool, strict_call)
+    try:
+        validate_tool_arguments(tool, coerce_call)
+    except ValueError as error:
+        strict_error = str(error).splitlines()[0]
+    else:  # pragma: no cover - defensive example guard
+        strict_error = ""
+
+    coerce_result = validate_tool_arguments_result(
+        tool,
+        coerce_call,
+        validation_policy="coerce",
+    )
+    return {
+        "strict": strict_arguments,
+        "strictError": strict_error,
+        "coerce": coerce_result.arguments,
+        "diagnostics": [
+            {
+                "code": diagnostic.code,
+                "path": diagnostic.path,
+                "fromType": diagnostic.from_type,
+                "toType": diagnostic.to_type,
+            }
+            for diagnostic in coerce_result.diagnostics
+        ],
+    }
 
 
 def _build_options(api_key: str) -> CallOptions:
@@ -48,7 +112,8 @@ def _build_options(api_key: str) -> CallOptions:
 async def main() -> None:
     api_key = _resolve_api_key()
     model = get_model(PROVIDER_ID, ENDPOINT_ID, MODEL_ID)
-    tools = _build_tools()
+    tool = _add_tool()
+    tools = [_tool_payload(tool)]
 
     first = await model.complete(
         {
@@ -66,13 +131,8 @@ async def main() -> None:
     if tool_call is None:
         raise RuntimeError("Model did not emit a structured tool call.")
 
-    args = getattr(tool_call, "arguments", {}) or {}
-    a = args.get("a", 0)
-    b = args.get("b", 0)
-    result_text = str(
-        (a if isinstance(a, (int, float)) else 0)
-        + (b if isinstance(b, (int, float)) else 0)
-    )
+    args = validate_tool_arguments(tool, tool_call)
+    result_text = str(args["a"] + args["b"])
 
     print(
         f"TOOL_CALL id={tool_call.id!r} "

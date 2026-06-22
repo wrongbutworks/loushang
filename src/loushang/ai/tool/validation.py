@@ -5,9 +5,28 @@ import math
 import re
 from copy import deepcopy
 from dataclasses import dataclass
-from typing import Any
+from typing import Any, Literal
 
 from loushang.ai.types import Tool, ToolCall
+
+ToolValidationPolicy = Literal["strict", "coerce"]
+ToolValidationDiagnosticCode = Literal["tool_argument_coerced"]
+
+
+@dataclass(frozen=True)
+class ToolValidationDiagnostic:
+    code: ToolValidationDiagnosticCode
+    path: str
+    message: str
+    from_type: str
+    to_type: str
+    level: Literal["info", "warning"] = "warning"
+
+
+@dataclass(frozen=True)
+class ToolValidationResult:
+    arguments: dict[str, Any]
+    diagnostics: tuple[ToolValidationDiagnostic, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -16,23 +35,73 @@ class _SchemaIssue:
     message: str
 
 
-def validate_tool_call(tools: list[Tool], tool_call: ToolCall) -> dict[str, Any]:
+def validate_tool_call(
+    tools: list[Tool],
+    tool_call: ToolCall,
+    *,
+    validation_policy: ToolValidationPolicy = "strict",
+) -> dict[str, Any]:
+    return validate_tool_call_result(
+        tools,
+        tool_call,
+        validation_policy=validation_policy,
+    ).arguments
+
+
+def validate_tool_call_result(
+    tools: list[Tool],
+    tool_call: ToolCall,
+    *,
+    validation_policy: ToolValidationPolicy = "strict",
+) -> ToolValidationResult:
     for tool in tools:
         if tool.name == tool_call.name:
-            return validate_tool_arguments(tool, tool_call)
+            return validate_tool_arguments_result(
+                tool,
+                tool_call,
+                validation_policy=validation_policy,
+            )
     raise ValueError(f"Unknown tool call: {tool_call.name!r}")
 
 
-def validate_tool_arguments(tool: Tool, tool_call: ToolCall) -> dict[str, Any]:
+def validate_tool_arguments(
+    tool: Tool,
+    tool_call: ToolCall,
+    *,
+    validation_policy: ToolValidationPolicy = "strict",
+) -> dict[str, Any]:
+    return validate_tool_arguments_result(
+        tool,
+        tool_call,
+        validation_policy=validation_policy,
+    ).arguments
+
+
+def validate_tool_arguments_result(
+    tool: Tool,
+    tool_call: ToolCall,
+    *,
+    validation_policy: ToolValidationPolicy = "strict",
+) -> ToolValidationResult:
     if tool.name != tool_call.name:
         raise ValueError(
             f"Tool name mismatch: tool={tool.name!r} tool_call={tool_call.name!r}"
         )
-    arguments = _coerce_schema(deepcopy(tool_call.arguments), tool.parameters)
+    if validation_policy not in {"strict", "coerce"}:
+        raise ValueError(f"Unsupported tool validation policy: {validation_policy!r}")
+    arguments = deepcopy(tool_call.arguments)
+    diagnostics: list[ToolValidationDiagnostic] = []
+    if validation_policy == "coerce":
+        arguments = _coerce_schema(
+            arguments,
+            tool.parameters,
+            path="$",
+            diagnostics=diagnostics,
+        )
     issues = _collect_schema_issues(arguments, tool.parameters, path="$")
     if issues:
         raise ValueError(_format_validation_error(tool, tool_call, issues))
-    return arguments
+    return ToolValidationResult(arguments=arguments, diagnostics=tuple(diagnostics))
 
 
 def _validate_schema(value: Any, schema: dict[str, Any], *, path: str) -> None:
@@ -42,13 +111,17 @@ def _validate_schema(value: Any, schema: dict[str, Any], *, path: str) -> None:
         raise ValueError(f"{issue.path} {issue.message}")
 
 
-def _collect_schema_issues(value: Any, schema: dict[str, Any], *, path: str) -> list[_SchemaIssue]:
+def _collect_schema_issues(
+    value: Any, schema: dict[str, Any], *, path: str
+) -> list[_SchemaIssue]:
     # Composite keywords
     if "oneOf" in schema:
         subs = schema.get("oneOf") or []
         matches = 0
         for sub in subs:
-            if isinstance(sub, dict) and not _collect_schema_issues(value, sub, path=path):
+            if isinstance(sub, dict) and not _collect_schema_issues(
+                value, sub, path=path
+            ):
                 matches += 1
         if matches != 1:
             return [_SchemaIssue(path, "must match exactly one schema in oneOf")]
@@ -56,7 +129,9 @@ def _collect_schema_issues(value: Any, schema: dict[str, Any], *, path: str) -> 
     if "anyOf" in schema:
         subs = schema.get("anyOf") or []
         for sub in subs:
-            if isinstance(sub, dict) and not _collect_schema_issues(value, sub, path=path):
+            if isinstance(sub, dict) and not _collect_schema_issues(
+                value, sub, path=path
+            ):
                 return []
         return [_SchemaIssue(path, "must match at least one schema in anyOf")]
     if "allOf" in schema:
@@ -70,7 +145,9 @@ def _collect_schema_issues(value: Any, schema: dict[str, Any], *, path: str) -> 
     schema_type = schema.get("type")
     if isinstance(schema_type, list):
         for item_type in schema_type:
-            if isinstance(item_type, str) and not _collect_schema_issues(value, {**schema, "type": item_type}, path=path):
+            if isinstance(item_type, str) and not _collect_schema_issues(
+                value, {**schema, "type": item_type}, path=path
+            ):
                 return []
         return [_SchemaIssue(path, f"must match one of {schema_type!r}")]
 
@@ -86,11 +163,17 @@ def _collect_schema_issues(value: Any, schema: dict[str, Any], *, path: str) -> 
         additional_properties = schema.get("additionalProperties", True)
         for key, item in value.items():
             if key in properties:
-                issues.extend(_collect_schema_issues(item, properties[key], path=f"{path}.{key}"))
+                issues.extend(
+                    _collect_schema_issues(item, properties[key], path=f"{path}.{key}")
+                )
             elif additional_properties is False:
                 issues.append(_SchemaIssue(f"{path}.{key}", "is not allowed"))
             elif isinstance(additional_properties, dict):
-                issues.extend(_collect_schema_issues(item, additional_properties, path=f"{path}.{key}"))
+                issues.extend(
+                    _collect_schema_issues(
+                        item, additional_properties, path=f"{path}.{key}"
+                    )
+                )
         return issues
 
     if schema_type == "array":
@@ -99,7 +182,9 @@ def _collect_schema_issues(value: Any, schema: dict[str, Any], *, path: str) -> 
         issues = []
         min_items = schema.get("minItems")
         if isinstance(min_items, int) and len(value) < min_items:
-            issues.append(_SchemaIssue(path, f"must contain at least {min_items} items"))
+            issues.append(
+                _SchemaIssue(path, f"must contain at least {min_items} items")
+            )
         max_items = schema.get("maxItems")
         if isinstance(max_items, int) and len(value) > max_items:
             issues.append(_SchemaIssue(path, f"must contain at most {max_items} items"))
@@ -107,11 +192,17 @@ def _collect_schema_issues(value: Any, schema: dict[str, Any], *, path: str) -> 
         if isinstance(prefix_items, list):
             for index, item_schema in enumerate(prefix_items):
                 if index < len(value) and isinstance(item_schema, dict):
-                    issues.extend(_collect_schema_issues(value[index], item_schema, path=f"{path}[{index}]"))
+                    issues.extend(
+                        _collect_schema_issues(
+                            value[index], item_schema, path=f"{path}[{index}]"
+                        )
+                    )
         item_schema = schema.get("items")
         if isinstance(item_schema, dict):
             for index, item in enumerate(value):
-                issues.extend(_collect_schema_issues(item, item_schema, path=f"{path}[{index}]"))
+                issues.extend(
+                    _collect_schema_issues(item, item_schema, path=f"{path}[{index}]")
+                )
         return issues
 
     if schema_type == "string":
@@ -160,12 +251,23 @@ def _collect_schema_issues(value: Any, schema: dict[str, Any], *, path: str) -> 
     return []
 
 
-def _coerce_schema(value: Any, schema: dict[str, Any]) -> Any:
+def _coerce_schema(
+    value: Any,
+    schema: dict[str, Any],
+    *,
+    path: str,
+    diagnostics: list[ToolValidationDiagnostic],
+) -> Any:
     next_value = value
 
     for sub in schema.get("allOf") or []:
         if isinstance(sub, dict):
-            next_value = _coerce_schema(next_value, sub)
+            next_value = _coerce_schema(
+                next_value,
+                sub,
+                path=path,
+                diagnostics=diagnostics,
+            )
 
     for keyword in ("anyOf", "oneOf"):
         subs = schema.get(keyword)
@@ -173,9 +275,16 @@ def _coerce_schema(value: Any, schema: dict[str, Any]) -> Any:
             for sub in subs:
                 if not isinstance(sub, dict):
                     continue
-                candidate = _coerce_schema(deepcopy(next_value), sub)
-                if not _collect_schema_issues(candidate, sub, path="$"):
+                candidate_diagnostics: list[ToolValidationDiagnostic] = []
+                candidate = _coerce_schema(
+                    deepcopy(next_value),
+                    sub,
+                    path=path,
+                    diagnostics=candidate_diagnostics,
+                )
+                if not _collect_schema_issues(candidate, sub, path=path):
                     next_value = candidate
+                    diagnostics.extend(candidate_diagnostics)
                     break
 
     schema_types = _schema_types(schema)
@@ -185,9 +294,14 @@ def _coerce_schema(value: Any, schema: dict[str, Any]) -> Any:
     if schema_types and not matches_union_member:
         for schema_type in schema_types:
             candidate = _coerce_primitive_by_type(next_value, schema_type)
-            if candidate is not next_value and (
-                candidate != next_value or type(candidate) is not type(next_value)
-            ):
+            if _value_changed(next_value, candidate):
+                diagnostics.append(
+                    _coercion_diagnostic(
+                        path=path,
+                        value=next_value,
+                        schema_type=schema_type,
+                    )
+                )
                 next_value = candidate
                 break
 
@@ -196,22 +310,42 @@ def _coerce_schema(value: Any, schema: dict[str, Any]) -> Any:
         if isinstance(properties, dict):
             for key, property_schema in properties.items():
                 if key in next_value and isinstance(property_schema, dict):
-                    next_value[key] = _coerce_schema(next_value[key], property_schema)
+                    next_value[key] = _coerce_schema(
+                        next_value[key],
+                        property_schema,
+                        path=f"{path}.{key}",
+                        diagnostics=diagnostics,
+                    )
         additional_properties = schema.get("additionalProperties")
         if isinstance(additional_properties, dict):
             for key in set(next_value) - set(properties or {}):
-                next_value[key] = _coerce_schema(next_value[key], additional_properties)
+                next_value[key] = _coerce_schema(
+                    next_value[key],
+                    additional_properties,
+                    path=f"{path}.{key}",
+                    diagnostics=diagnostics,
+                )
 
     if "array" in schema_types and isinstance(next_value, list):
         prefix_items = schema.get("prefixItems")
         if isinstance(prefix_items, list):
             for index, item_schema in enumerate(prefix_items):
                 if index < len(next_value) and isinstance(item_schema, dict):
-                    next_value[index] = _coerce_schema(next_value[index], item_schema)
+                    next_value[index] = _coerce_schema(
+                        next_value[index],
+                        item_schema,
+                        path=f"{path}[{index}]",
+                        diagnostics=diagnostics,
+                    )
         item_schema = schema.get("items")
         if isinstance(item_schema, dict):
             for index, item in enumerate(next_value):
-                next_value[index] = _coerce_schema(item, item_schema)
+                next_value[index] = _coerce_schema(
+                    item,
+                    item_schema,
+                    path=f"{path}[{index}]",
+                    diagnostics=diagnostics,
+                )
 
     return next_value
 
@@ -298,11 +432,57 @@ def _coerce_primitive_by_type(value: Any, schema_type: str) -> Any:
     return value
 
 
-def _format_validation_error(tool: Tool, tool_call: ToolCall, issues: list[_SchemaIssue]) -> str:
-    errors = "\n".join(
-        f"  - {_format_validation_path(issue.path)}: {issue.message}"
-        for issue in issues
-    ) or "Unknown validation error"
+def _value_changed(previous: Any, current: Any) -> bool:
+    if current is previous:
+        return False
+    return current != previous or type(current) is not type(previous)
+
+
+def _coercion_diagnostic(
+    *,
+    path: str,
+    value: Any,
+    schema_type: str,
+) -> ToolValidationDiagnostic:
+    from_type = _json_type_name(value)
+    return ToolValidationDiagnostic(
+        code="tool_argument_coerced",
+        path=path,
+        message=f"Coerced tool argument from {from_type} to {schema_type}.",
+        from_type=from_type,
+        to_type=schema_type,
+        level="warning",
+    )
+
+
+def _json_type_name(value: Any) -> str:
+    if value is None:
+        return "null"
+    if isinstance(value, bool):
+        return "boolean"
+    if isinstance(value, int):
+        return "integer"
+    if isinstance(value, float):
+        return "number"
+    if isinstance(value, str):
+        return "string"
+    if isinstance(value, list):
+        return "array"
+    if isinstance(value, dict):
+        return "object"
+    return type(value).__name__
+
+
+def _format_validation_error(
+    tool: Tool, tool_call: ToolCall, issues: list[_SchemaIssue]
+) -> str:
+    errors = (
+        "\n".join(
+            f"  - {_format_validation_path(issue.path)}: {issue.message}"
+            for issue in issues
+        )
+        or "Unknown validation error"
+    )
     return (
         f'Validation failed for tool "{tool.name}":\n'
         f"{errors}\n\n"

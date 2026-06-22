@@ -3,6 +3,7 @@ import asyncio
 import pytest
 
 from loushang.agent.types import ProxyStreamOptions
+from loushang.ai.errors import AIStreamError
 from loushang.ai.model import Capabilities, Model
 from loushang.ai.model.domain import Endpoint
 from loushang.ai.model.registry import (
@@ -271,9 +272,12 @@ def test_stream_proxy_stops_on_proxy_error_event() -> None:
     async def scenario() -> None:
         stream = stream_proxy(_model(), context, options, client=client)
         events = [event async for event in stream]
-        result = await stream.result()
+        with pytest.raises(AIStreamError) as exc_info:
+            await stream.result()
+        result = await stream.final_message()
 
         assert [event["type"] for event in events] == ["start", "error"]
+        assert str(exc_info.value) == "proxy failed"
         assert events[-1]["error"].error_message == "proxy failed"
         assert events[-1]["error"].usage.cost is None
         assert result.stop_reason == "error"
