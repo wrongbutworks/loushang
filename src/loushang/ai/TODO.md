@@ -4,33 +4,22 @@
 
 - Provider/model support follow-up after `issue-add-model`.
   Current branch has added catalog coverage, colon-to-underscore model ID mapping,
-  Cloudflare baseUrl template expansion, Azure OpenAI Responses support, and a
-  lightweight Bedrock Converse adapter. Remaining work:
+  and Cloudflare baseUrl template expansion. Remaining work:
   1. Run live provider verification with real credentials for:
      - OpenRouter colon-normalized models, e.g. `openai/gpt-oss-120b_free`
-     - Azure OpenAI Responses
      - Cloudflare AI Gateway and Workers AI
      - Mistral OpenAI-compatible endpoint
      - Google Gemini OpenAI-compatible endpoint
      - Google Vertex OpenAI-compatible endpoint
-     - Amazon Bedrock Converse
-  2. Complete Bedrock support beyond the current lightweight adapter:
-     - real Bedrock streaming event-stream support
-     - tool use mapping
-     - image input payload mapping
-     - Claude thinking/cache/interleaved-thinking compatibility
-     - richer stop reason and usage mapping
-  3. Improve Google Vertex auth:
+  2. Improve Google Vertex auth:
      - support ADC or service-account based token acquisition
      - keep explicit `GOOGLE_VERTEX_ACCESS_TOKEN` as the simple override path
-  4. Add dedicated CLI flags for provider-specific options where useful:
-     - Azure base URL / API version / deployment name
+  3. Add dedicated CLI flags for provider-specific options where useful:
      - Vertex project / location / token source
-     - Bedrock region / profile or credential source
-  5. Run full repository verification before PR finalization:
+  4. Run full repository verification before PR finalization:
      - `uv run pytest tests -q`
      - keep `make check-ai` as the required AI gate
-  6. Decide whether provider live tests should be checked in as skipped-by-default
+  5. Decide whether provider live tests should be checked in as skipped-by-default
      vendor verification tests, or kept as documented manual verification steps.
 
 - Review follow-up: focus on correcting `loushang.ai` core capability design as a general-purpose AI access package.

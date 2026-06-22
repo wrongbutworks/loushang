@@ -56,12 +56,6 @@ PROVIDER_EXAMPLES = (
         "gemini-2.5-flash",
         ("GOOGLE_VERTEX_ACCESS_TOKEN", "GOOGLE_CLOUD_PROJECT", "GOOGLE_CLOUD_LOCATION"),
     ),
-    ProviderExample(
-        "amazon-bedrock",
-        "bedrock-converse-stream",
-        "anthropic.claude-sonnet-4-5-20250929-v1_0",
-        ("AWS_ACCESS_KEY_ID", "AWS_SECRET_ACCESS_KEY"),
-    ),
 )
 
 

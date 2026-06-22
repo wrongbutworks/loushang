@@ -14,7 +14,7 @@ from loushang.ai.model.registry import (
 )
 
 
-def test_register_builtin_ai_providers_includes_bedrock_and_excludes_azure() -> None:
+def test_register_builtin_ai_providers_excludes_removed_adapters() -> None:
     clear_default_model_registry()
     model_registry = get_default_model_registry()
     model_registry.register_endpoint(
@@ -38,7 +38,7 @@ def test_register_builtin_ai_providers_includes_bedrock_and_excludes_azure() -> 
 
     apis = {provider.api for provider in registry.list_api_providers()}
     assert "azure-openai-responses" not in apis
-    assert "bedrock-converse-stream" in apis
+    assert "bedrock-converse-stream" not in apis
     assert "openai-codex-responses" not in apis
 
 
@@ -46,6 +46,10 @@ def test_azure_openai_provider_module_is_not_in_core() -> None:
     assert importlib.util.find_spec(
         "loushang.ai.providers.azure_openai_responses"
     ) is None
+
+
+def test_bedrock_provider_module_is_not_in_core() -> None:
+    assert importlib.util.find_spec("loushang.ai.providers.bedrock_converse") is None
 
 
 def test_openai_codex_contrib_registers_api_and_catalog_explicitly() -> None:

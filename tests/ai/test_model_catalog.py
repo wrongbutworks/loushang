@@ -142,11 +142,4 @@ def test_builtin_catalog_includes_framework_gap_providers() -> None:
     )
     assert vertex.upstream_id == "google/gemini-2.5-flash"
     assert "upstreamModelId" not in vertex.compat
-    bedrock = registry.get_model(
-        "amazon-bedrock",
-        "bedrock-converse-stream",
-        "anthropic.claude-sonnet-4-5-20250929-v1_0",
-    )
-    assert bedrock.api == "bedrock-converse-stream"
-    assert bedrock.upstream_id == "anthropic.claude-sonnet-4-5-20250929-v1:0"
-    assert "upstreamModelId" not in bedrock.compat
+    assert registry.get_provider("amazon-bedrock") is None

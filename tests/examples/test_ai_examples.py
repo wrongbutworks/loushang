@@ -40,13 +40,7 @@ def test_provider_matrix_example_targets_new_provider_models() -> None:
     }
 
     assert examples[("openrouter", "openai-completions", "openai/gpt-oss-120b_free")]
-    assert examples[
-        (
-            "amazon-bedrock",
-            "bedrock-converse-stream",
-            "anthropic.claude-sonnet-4-5-20250929-v1_0",
-        )
-    ]
+    assert "amazon-bedrock" not in {item.provider_id for item in module.PROVIDER_EXAMPLES}
 
 
 def test_provider_matrix_example_formats_upstream_model_id() -> None:

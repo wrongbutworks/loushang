@@ -69,8 +69,6 @@ model = get_model("openrouter", "openai-completions", "openai/gpt-oss-120b_free"
 - `mistral`: `MISTRAL_API_KEY`
 - `google`: `GEMINI_API_KEY` 或 `GOOGLE_API_KEY`
 - `google-vertex`: `GOOGLE_VERTEX_ACCESS_TOKEN`, `GOOGLE_CLOUD_PROJECT`, `GOOGLE_CLOUD_LOCATION`
-- `amazon-bedrock`: `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, 可选 `AWS_SESSION_TOKEN`
-
 补充：
 
 - [advanced/openai_codex_login.py](advanced/openai_codex_login.py)

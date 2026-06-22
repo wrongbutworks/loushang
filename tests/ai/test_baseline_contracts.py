@@ -62,7 +62,6 @@ ROOT_EXPORTS_BASELINE = [
 ]
 
 CATALOG_PROVIDER_BASELINE = [
-    "amazon-bedrock",
     "ant-ling",
     "anthropic",
     "baidu-qianfan",
@@ -105,7 +104,6 @@ CATALOG_PROVIDER_BASELINE = [
 
 REGISTERED_PROVIDER_APIS_BASELINE = [
     "anthropic-messages",
-    "bedrock-converse-stream",
     "openai-completions",
     "openai-responses",
 ]
@@ -126,13 +124,11 @@ ADVANCED_ROOT_EXPORTS_REMOVED = [
 ]
 
 KNOWN_BASELINE_DEBT = {
-    "core_bootstrap_registers_non_target_adapters": [
-        "bedrock-converse-stream",
-    ],
+    "core_bootstrap_registers_non_target_adapters": [],
     "builtin_catalog_is_over_curated_budget": {
-        "providers": 39,
-        "endpoints": 54,
-        "models": 948,
+        "providers": 38,
+        "endpoints": 52,
+        "models": 854,
     },
     "legacy_compat_is_still_present": {
         "endpoints": 29,
@@ -158,9 +154,9 @@ def test_builtin_provider_and_catalog_count_baseline() -> None:
     models = registry.list_models()
 
     assert [provider.id for provider in providers] == CATALOG_PROVIDER_BASELINE
-    assert len(providers) == 39
-    assert len(endpoints) == 54
-    assert len(models) == 948
+    assert len(providers) == 38
+    assert len(endpoints) == 52
+    assert len(models) == 854
     assert sum(1 for endpoint in endpoints if endpoint.compat) == 29
     assert sum(1 for model in models if model.compat) == 607
 
@@ -181,7 +177,7 @@ def test_test_and_example_inventory_baseline() -> None:
     example_files = sorted((REPO_ROOT / "examples/ai").rglob("*.py"))
 
     assert len(ai_test_files) == 38
-    assert len(provider_test_files) == 6
+    assert len(provider_test_files) == 5
     assert len(example_files) == 26
 
 
@@ -193,17 +189,16 @@ def test_known_baseline_debt_snapshot() -> None:
     endpoints = model_registry.list_endpoints()
     models = model_registry.list_models()
 
-    assert (
-        sorted(
-            provider.api
-            for provider in provider_registry.list_api_providers()
-            if provider.api
-            in {
-                "bedrock-converse-stream",
-            }
-        )
-        == KNOWN_BASELINE_DEBT["core_bootstrap_registers_non_target_adapters"]
-    )
+    assert [
+        provider.api
+        for provider in provider_registry.list_api_providers()
+        if provider.api
+        not in {
+            "anthropic-messages",
+            "openai-completions",
+            "openai-responses",
+        }
+    ] == KNOWN_BASELINE_DEBT["core_bootstrap_registers_non_target_adapters"]
     assert KNOWN_BASELINE_DEBT["builtin_catalog_is_over_curated_budget"] == {
         "providers": len(providers),
         "endpoints": len(endpoints),
