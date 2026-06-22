@@ -95,6 +95,19 @@ def test_builtin_catalog_includes_issue_only_official_providers() -> None:
     assert "STEPFUN_API_KEY" in stepfun.auth.api_key_envs
 
 
+def test_builtin_catalog_only_declares_implemented_modalities() -> None:
+    registry = load_builtin_model_registry()
+
+    modalities = {
+        modality
+        for model in registry.list_models()
+        for modality in (*model.capabilities.input, *model.capabilities.output)
+    }
+
+    assert modalities <= {"text", "image"}
+    assert "image" in modalities
+
+
 def test_builtin_catalog_normalizes_model_ids_with_colons() -> None:
     registry = load_builtin_model_registry()
 

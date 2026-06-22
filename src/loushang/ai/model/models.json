@@ -57,8 +57,7 @@
                 "temperature": true,
                 "input": [
                   "text",
-                  "image",
-                  "video"
+                  "image"
                 ],
                 "output": [
                   "text"
@@ -322,8 +321,7 @@
                 "temperature": true,
                 "input": [
                   "text",
-                  "image",
-                  "video"
+                  "image"
                 ],
                 "output": [
                   "text"
@@ -371,8 +369,7 @@
                 "temperature": true,
                 "input": [
                   "text",
-                  "image",
-                  "video"
+                  "image"
                 ],
                 "output": [
                   "text"
@@ -420,8 +417,7 @@
                 "temperature": true,
                 "input": [
                   "text",
-                  "image",
-                  "video"
+                  "image"
                 ],
                 "output": [
                   "text"
@@ -527,7 +523,7 @@
                   "text"
                 ],
                 "output": [
-                  "vector"
+                  "text"
                 ]
               }
             }
@@ -23449,8 +23445,7 @@
                 "temperature": true,
                 "input": [
                   "text",
-                  "image",
-                  "video"
+                  "image"
                 ],
                 "output": [
                   "text"

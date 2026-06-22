@@ -268,6 +268,7 @@ provider-specific options 仍保留在 `loushang.ai.options` / `loushang.ai.adva
 - OpenAI concrete providers use the same placeholder when a tool result contains images but the target model cannot accept image input.
 - OpenAI concrete providers remove unpaired Unicode surrogate code points from outgoing payload text, matching pi's provider JSON-safety behavior.
 - Anthropic concrete provider applies the same outgoing text sanitization for system, user, assistant, thinking, and tool-result payload text.
+- Built-in model modalities are limited to implemented `text` and `image` declarations. Image input and image tool-result feedback are supported through provider-native payloads when the resolved model supports image input; unsupported image tool-result feedback degrades to the stable `(see attached image)` placeholder.
 - `loushang.ai.tool.validate_tool_call(...)`
 - `loushang.ai.tool.validate_tool_arguments(...)`
 - `loushang.ai.tool.validate_tool_call_result(...)`

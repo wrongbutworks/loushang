@@ -14,6 +14,8 @@
   离线演示 `stream_simple` 如何把 `SimpleCallOptions.reasoning` 映射到统一 reasoning 请求
 - [07_structured_output.py](07_structured_output.py)
   离线演示 `StructuredOutputOptions`、provider payload 映射和 `complete_structured` 解析结果
+- [08_image_input.py](08_image_input.py)
+  离线演示用户图片输入和图片 tool result 回流到 provider context
 - [05_parallel_tools.py](05_parallel_tools.py)
   离线演示多个并行 tool call 的交错增量按 id/index 正确组装
 - [09_errors_retry.py](09_errors_retry.py)

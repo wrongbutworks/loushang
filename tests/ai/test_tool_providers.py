@@ -230,6 +230,37 @@ def test_openai_responses_provider_uses_image_placeholder_when_model_cannot_acce
     }
 
 
+def test_openai_responses_provider_preserves_image_only_tool_result() -> None:
+    from loushang.ai.providers.openai_responses_shared import _tool_result_payload
+
+    message = ToolResultMessage(
+        role="toolResult",
+        tool_call_id="call_1|fc_1",
+        tool_name="read_image",
+        content=[ImagePart(type="image", data="aW1hZ2U=", mime_type="image/png")],
+        is_error=False,
+        timestamp=0.0,
+    )
+
+    payload = _tool_result_payload(
+        message,
+        SimpleNamespace(input=("text", "image")),
+        {"call_1|fc_1": "call_1|fc_1"},
+    )
+
+    assert payload == {
+        "type": "function_call_output",
+        "call_id": "call_1",
+        "output": [
+            {
+                "type": "input_image",
+                "detail": "auto",
+                "image_url": "data:image/png;base64,aW1hZ2U=",
+            }
+        ],
+    }
+
+
 def test_openai_responses_provider_sanitizes_unpaired_surrogates_in_payload_text() -> None:
     from loushang.ai.providers.openai_responses_shared import convert_responses_messages
 

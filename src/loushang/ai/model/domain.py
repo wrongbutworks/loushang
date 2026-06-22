@@ -14,8 +14,8 @@ from loushang.ai.model.compat_schema import (
     UPSTREAM_MODEL_ID,
 )
 
-Modality = Literal["text", "image", "video", "audio", "vector"]
-ALLOWED_MODALITIES: tuple[Modality, ...] = ("text", "image", "video", "audio", "vector")
+Modality = Literal["text", "image"]
+ALLOWED_MODALITIES: tuple[Modality, ...] = ("text", "image")
 _CONTRACT_OVERRIDE_UNSET = object()
 
 
