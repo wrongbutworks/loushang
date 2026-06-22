@@ -2,14 +2,14 @@ from __future__ import annotations
 
 from dataclasses import fields
 
+import loushang.ai as ai
 from loushang.ai import CallOptions as PublicCallOptions
-from loushang.ai import ModelCallOptions as PublicModelCallOptions
 from loushang.ai import SimpleCallOptions as PublicSimpleCallOptions
-from loushang.ai import StreamOptions as PublicStreamOptions
 from loushang.ai.advanced import AnthropicOptions as AdvancedAnthropicOptions
 from loushang.ai.advanced import (
     OpenAICompletionsOptions as AdvancedOpenAICompletionsOptions,
 )
+from loushang.ai.advanced.registry import ApiProviderRegistry
 from loushang.ai.options import (
     AnthropicOptions,
     CallOptions,
@@ -36,15 +36,17 @@ from loushang.ai.options import (
 )
 
 
-def test_call_options_is_public_and_legacy_names_remain_compatible() -> None:
+def test_call_options_is_public_and_legacy_names_remain_module_compatible() -> None:
     assert PublicCallOptions is CallOptions
-    assert PublicModelCallOptions is CallOptions
-    assert PublicStreamOptions is CallOptions
     assert ModelCallOptions is CallOptions
     assert StreamOptions is CallOptions
     assert ProviderStreamOptions is CallOptions
     assert PublicSimpleCallOptions is SimpleCallOptions
     assert SimpleStreamOptions is SimpleCallOptions
+    assert "ModelCallOptions" not in ai.__all__
+    assert "StreamOptions" not in ai.__all__
+    assert not hasattr(ai, "ModelCallOptions")
+    assert not hasattr(ai, "StreamOptions")
 
     options = CallOptions(api_key="key", headers={"x-trace": "1"})
 
@@ -138,6 +140,11 @@ def test_provider_specific_options_are_advanced_compatibility_types() -> None:
     assert AnthropicOptions is AdvancedAnthropicOptions
     assert OpenAICompletionsOptions is AdvancedOpenAICompletionsOptions
     assert AnthropicOptions.__module__ == "loushang.ai.advanced.options"
+    assert ApiProviderRegistry.__module__ == "loushang.ai.api_registry"
+    assert "AnthropicOptions" not in ai.__all__
+    assert "ApiProviderRegistry" not in ai.__all__
+    assert not hasattr(ai, "AnthropicOptions")
+    assert not hasattr(ai, "ApiProviderRegistry")
 
 
 def test_provider_specific_options_keep_model_call_fields() -> None:

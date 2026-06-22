@@ -6,8 +6,8 @@ from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 
 from loushang.agent import AbortController, AbortSignal, Agent
-from loushang.ai import is_context_overflow
 from loushang.ai.types import AssistantMessage
+from loushang.ai.utils import is_context_overflow
 from loushang.coding.control import RetrySettings
 from loushang.coding.event import AgentSessionEvent
 

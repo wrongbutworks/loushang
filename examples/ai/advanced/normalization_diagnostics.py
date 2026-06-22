@@ -17,8 +17,8 @@ from loushang.ai import (
     ToolResultMessage,
     Usage,
     get_model,
-    normalize_context_result,
 )
+from loushang.ai.context import normalize_context_result
 
 
 def inspect_normalization_diagnostics() -> dict[str, object]:

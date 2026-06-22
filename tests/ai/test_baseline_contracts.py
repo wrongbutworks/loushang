@@ -13,37 +13,20 @@ from loushang.ai.model import load_builtin_model_registry
 REPO_ROOT = Path(__file__).resolve().parents[2]
 
 ROOT_EXPORTS_BASELINE = [
-    "ApiProviderRegistry",
     "AssistantMessage",
     "AssistantMessageEvent",
     "AssistantMessageEventStream",
-    "EventStream",
     "Context",
     "Message",
     "Model",
-    "NormalizationDiagnostic",
-    "NormalizationDiagnosticCode",
-    "NormalizationResult",
-    "NormalizedContext",
     "StopReason",
     "CallOptions",
-    "ModelCallOptions",
-    "StreamOptions",
     "SimpleCallOptions",
-    "SimpleStreamOptions",
-    "AnthropicOptions",
-    "AzureOpenAIResponsesOptions",
-    "OpenAICompletionsOptions",
-    "OpenAICodexResponsesOptions",
-    "OpenAIResponsesOptions",
-    "PairingMode",
     "ReasoningOptions",
     "RetryOptions",
     "TimeoutOptions",
     "ThinkingLevel",
     "ThinkingBudgets",
-    "CacheRetention",
-    "Transport",
     "ImagePart",
     "TextPart",
     "ThinkingPart",
@@ -53,32 +36,12 @@ ROOT_EXPORTS_BASELINE = [
     "UserMessage",
     "Usage",
     "UsageCost",
-    "calculate_cost",
-    "clear_api_providers",
     "complete",
     "complete_simple",
-    "create_assistant_message_event_stream",
-    "get_api_provider",
-    "get_env_api_key",
     "get_model",
-    "get_overflow_patterns",
-    "get_providers",
-    "is_context_overflow",
-    "list_api_providers",
     "list_models",
-    "models_are_equal",
-    "normalize_context",
-    "normalize_context_result",
-    "normalize_tool_call_id_for_model",
-    "parse_streaming_json",
-    "register_api_provider",
-    "register_builtin_ai_providers",
-    "reset_api_providers",
     "stream",
     "stream_simple",
-    "transform_messages",
-    "validate_tool_arguments",
-    "validate_tool_call",
 ]
 
 CATALOG_PROVIDER_BASELINE = [
@@ -134,19 +97,23 @@ REGISTERED_PROVIDER_APIS_BASELINE = [
     "openai-responses",
 ]
 
+ADVANCED_ROOT_EXPORTS_REMOVED = [
+    "ApiProviderRegistry",
+    "AnthropicOptions",
+    "AzureOpenAIResponsesOptions",
+    "OpenAICodexResponsesOptions",
+    "OpenAICompletionsOptions",
+    "OpenAIResponsesOptions",
+    "clear_api_providers",
+    "get_api_provider",
+    "get_env_api_key",
+    "get_providers",
+    "list_api_providers",
+    "register_api_provider",
+    "reset_api_providers",
+]
+
 KNOWN_BASELINE_DEBT = {
-    "root_exports_include_advanced_provider_management": [
-        "ApiProviderRegistry",
-        "register_api_provider",
-        "clear_api_providers",
-    ],
-    "root_exports_include_provider_specific_options": [
-        "AnthropicOptions",
-        "AzureOpenAIResponsesOptions",
-        "OpenAICodexResponsesOptions",
-        "OpenAICompletionsOptions",
-        "OpenAIResponsesOptions",
-    ],
     "core_bootstrap_registers_non_target_adapters": [
         "azure-openai-responses",
         "bedrock-converse-stream",
@@ -166,7 +133,12 @@ KNOWN_BASELINE_DEBT = {
 
 def test_root_exports_baseline_snapshot() -> None:
     assert ai.__all__ == ROOT_EXPORTS_BASELINE
-    assert len(ai.__all__) == 66
+    assert len(ai.__all__) == 29
+
+
+def test_advanced_exports_are_not_root_stable_exports() -> None:
+    for export in ADVANCED_ROOT_EXPORTS_REMOVED:
+        assert export not in ai.__all__
 
 
 def test_builtin_provider_and_catalog_count_baseline() -> None:
@@ -210,11 +182,6 @@ def test_known_baseline_debt_snapshot() -> None:
     providers = model_registry.list_providers()
     endpoints = model_registry.list_endpoints()
     models = model_registry.list_models()
-
-    for export in KNOWN_BASELINE_DEBT["root_exports_include_advanced_provider_management"]:
-        assert export in ai.__all__
-    for export in KNOWN_BASELINE_DEBT["root_exports_include_provider_specific_options"]:
-        assert export in ai.__all__
 
     assert sorted(provider.api for provider in provider_registry.list_api_providers() if provider.api in {
         "azure-openai-responses",

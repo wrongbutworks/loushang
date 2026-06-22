@@ -11,9 +11,6 @@ from typing import Any
 from loushang.ai import (
     CallOptions,
     complete,
-    get_api_provider,
-    get_env_api_key,
-    list_api_providers,
     stream,
 )
 from loushang.ai.advanced.options import (
@@ -23,8 +20,14 @@ from loushang.ai.advanced.options import (
     OpenAICompletionsOptions,
     OpenAIResponsesOptions,
 )
+from loushang.ai.advanced.registry import (
+    get_api_provider,
+    list_api_providers,
+    reset_api_providers,
+)
 from loushang.ai.api_registry import get_default_api_provider_registry
 from loushang.ai.auth import (
+    get_env_api_key,
     get_env_oauth_credentials,
     get_oauth_provider,
     list_oauth_providers,
@@ -945,8 +948,6 @@ def main(argv: list[str] | None = None) -> None:
 
     args = parser.parse_args(argv)
     try:
-        from loushang.ai import reset_api_providers
-
         env_base = os.getenv("LOUSHANG_BASE_URL")
         effective_base = args.base_url or env_base
         if effective_base:

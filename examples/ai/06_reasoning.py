@@ -5,7 +5,8 @@ from __future__ import annotations
 import asyncio
 import json
 
-from loushang.ai import ApiProviderRegistry, Model, SimpleCallOptions, stream_simple
+from loushang.ai import Model, SimpleCallOptions, stream_simple
+from loushang.ai.advanced.registry import ApiProviderRegistry
 from loushang.ai.model import Capabilities, Endpoint
 from loushang.ai.model.registry import get_default_model_registry
 from loushang.ai.providers.faux import FauxProvider

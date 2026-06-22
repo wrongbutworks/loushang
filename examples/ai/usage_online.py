@@ -27,9 +27,9 @@ from dataclasses import dataclass
 
 from loushang.ai import (
     CallOptions,
-    calculate_cost,
     get_model,
 )
+from loushang.ai.pricing import calculate_cost
 from loushang.ai.types import AssistantMessage, Usage
 
 

@@ -27,8 +27,8 @@ from loushang.ai import (
     Model,
     TextPart,
     get_model,
-    reset_api_providers,
 )
+from loushang.ai.advanced.registry import reset_api_providers
 
 BASE_URL = "https://api.moonshot.cn/anthropic"
 MODEL_ID = "kimi-k2.5"

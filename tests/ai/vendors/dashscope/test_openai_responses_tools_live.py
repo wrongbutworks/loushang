@@ -21,11 +21,11 @@ import sys
 import pytest
 
 from loushang.ai import (
-    OpenAIResponsesOptions,
     TextPart,
     ToolResultMessage,
     get_model,
 )
+from loushang.ai.advanced import OpenAIResponsesOptions
 
 # 用户可直接修改的配置。
 # 这是高级示例；重点在 tool 协议，不在最短接入路径。

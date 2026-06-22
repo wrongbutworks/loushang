@@ -19,7 +19,9 @@ from collections.abc import Iterable
 
 import pytest
 
-from loushang.ai import OpenAICompletionsOptions, get_model, reset_api_providers
+from loushang.ai import get_model
+from loushang.ai.advanced import OpenAICompletionsOptions
+from loushang.ai.advanced.registry import reset_api_providers
 
 # 用户可直接修改的配置。
 # 这是高级示例；默认正式示例不需要覆盖 `BASE_URL`。

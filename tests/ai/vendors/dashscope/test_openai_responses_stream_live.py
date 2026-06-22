@@ -13,7 +13,8 @@ import sys
 
 import pytest
 
-from loushang.ai import OpenAIResponsesOptions, get_model
+from loushang.ai import get_model
+from loushang.ai.advanced import OpenAIResponsesOptions
 
 # 用户可直接修改的配置。
 # `API_KEY` 是显式认证入口；环境变量只是可选读取来源。

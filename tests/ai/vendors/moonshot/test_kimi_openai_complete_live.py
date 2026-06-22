@@ -22,9 +22,9 @@ from collections.abc import Iterable
 import pytest
 
 from loushang.ai import (
-    OpenAICompletionsOptions,
     get_model,
 )
+from loushang.ai.advanced import OpenAICompletionsOptions
 
 # 用户可直接修改的配置。
 # `API_KEY` 是显式认证入口；环境变量只是可选读取来源，不会在示例中被回写。

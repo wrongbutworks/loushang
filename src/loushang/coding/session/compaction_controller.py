@@ -7,8 +7,8 @@ from datetime import datetime
 from typing import Any
 
 from loushang.agent import Agent
-from loushang.ai import is_context_overflow
 from loushang.ai.types import AssistantMessage
+from loushang.ai.utils import is_context_overflow
 from loushang.coding.compaction import (
     CompactionPreparation,
     CompactionResult,

@@ -161,7 +161,9 @@
 
 ## 根包 API
 
-根包 `loushang.ai` 当前仍然提供一个较宽的 SDK 门面，但已经避免在 import 时抢跑初始化默认 registry。
+根包 `loushang.ai` 是稳定 SDK 门面，只导出最常用的模型调用、模型访问、消息/事件类型和通用 options。
+Provider 管理、provider-specific options、归一化诊断、pricing、tool transform 和 JSON repair 等能力必须从
+对应子模块或 `loushang.ai.advanced` 进入。
 
 主要导出分为：
 
@@ -181,8 +183,8 @@
 input 和 attachment 请求也会在模型未声明支持时直接失败。
 
 通用调用参数使用 `CallOptions`。旧的 `ModelCallOptions`、`StreamOptions` 和
-provider-specific options 仍保留为兼容入口；新示例应优先使用 `CallOptions`，
-provider-specific options 只用于 advanced/deprecated 场景。
+provider-specific options 仍保留在 `loushang.ai.options` / `loushang.ai.advanced` 作为兼容入口，
+但不再属于根包稳定门面；新示例应优先使用 `CallOptions`。
 `stream_simple` / `complete_simple` 使用更窄的 `SimpleCallOptions`；核心 API 会先
 把 simple reasoning 选项映射为 `CallOptions.reasoning`，provider adapter 只需要
 实现普通 `stream`。
@@ -192,21 +194,6 @@ provider-specific options 只用于 advanced/deprecated 场景。
 - `Model`
 - `get_model(...)`
 - `list_models(...)`
-- `get_providers()`
-
-### provider registry
-
-- `register_api_provider(...)`
-- `get_api_provider(...)`
-- `list_api_providers()`
-- `clear_api_providers()`
-- `reset_api_providers(...)`
-- `register_builtin_ai_providers(...)`
-
-Custom providers registered through `ApiProviderRegistry` receive a canonical
-`NormalizedContext`: user, assistant, and tool-result messages are dataclasses,
-and tools are `Tool` dataclasses with validated dict parameters. Custom provider
-code should use attribute access instead of dict-style message access.
 
 ### 基础类型
 
@@ -223,38 +210,57 @@ code should use attribute access instead of dict-style message access.
 - `Usage`
 - `UsageCost`
 - `StopReason`
-- `NormalizationDiagnostic`
-- `NormalizationDiagnosticCode`
 - `AssistantMessageEvent`
 - `AssistantMessageEventStream`
 
-### helper
+### 通用 Options
 
-- `normalize_context(...)`
+- `CallOptions`
+- `SimpleCallOptions`
+- `ReasoningOptions`
+- `RetryOptions`
+- `TimeoutOptions`
+- `ThinkingLevel`
+- `ThinkingBudgets`
+
+### Deprecation policy
+
+本轮契约收敛把根包 `__all__` 视为稳定 API 快照。此前从根包导出的高级能力不再继续占用稳定门面：
+
+- Provider registry 管理入口移到 `loushang.ai.advanced.registry`。
+- Provider-specific options 只从 `loushang.ai.advanced` 或 `loushang.ai.options` 进入。
+- Context normalization helper 从 `loushang.ai.context` 进入。
+- Tool transform / validation 从 `loushang.ai.tool` 进入。
+- Cost helper 从 `loushang.ai.pricing` 进入。
+- Overflow 和 streaming JSON repair helper 从 `loushang.ai.utils` 进入。
+
+### 子模块 helper
+
+- `loushang.ai.context.normalize_context(...)`
   - returns the public `NormalizedContext` immutable mapping contract instead of a marker-tagged dict
   - accepts pi-style dict messages, including camelCase assistant/tool-result fields such as `toolCallId`, `thinkingSignature`, `thoughtSignature`, `mimeType`, and `stopReason`
-- `normalize_context_result(...)`
+- `loushang.ai.context.normalize_context_result(...)`
   - returns the same normalized context plus stable `NormalizationDiagnostic` entries for repairs, cross-provider downgrades, and provider-specific signature removal
   - defaults to strict tool-call/tool-result pairing; pass `pairing_mode="repair"` to synthesize missing tool results for legacy transcripts
   - consumers should treat `code`, `path`, and `level` as the stable machine-readable diagnostic contract; `message` is human-readable guidance
   - stable `NormalizationDiagnosticCode` values are `aborted_assistant_repaired`, `empty_thinking_dropped`, `error_assistant_dropped`, `missing_tool_result_repaired`, `redacted_thinking_dropped`, `text_signature_removed`, `thinking_downgraded_to_text`, `thinking_signature_removed`, `tool_call_id_normalized`, `tool_call_thought_signature_removed`, and `tool_result_id_normalized`
-- `transform_messages(...)`
+- `loushang.ai.tool.transform_messages(...)`
   - enforces strict tool-call/tool-result pairing by default
   - repairs missing tool results with synthetic error tool results only when `pairing_mode="repair"` is explicit
   - normalizes tool call ids for provider handoff and applies the same mapping to matching tool results
   - converts provider-specific thinking blocks to text and removes tool-call thought signatures when crossing provider API boundaries
-- `to_openai_responses_tool_result_input(...)`
+- `loushang.ai.tool.to_openai_responses_tool_result_input(...)`
   - preserves image tool results as `input_image` blocks in function-call outputs
-- `to_openai_completions_tool_result_message(...)`
+- `loushang.ai.tool.to_openai_completions_tool_result_message(...)`
   - degrades image-only tool results to the pi-style `(see attached image)` placeholder
 - OpenAI concrete providers use the same placeholder when a tool result contains images but the target model cannot accept image input.
 - OpenAI concrete providers remove unpaired Unicode surrogate code points from outgoing payload text, matching pi's provider JSON-safety behavior.
 - Anthropic concrete provider applies the same outgoing text sanitization for system, user, assistant, thinking, and tool-result payload text.
-- `validate_tool_call(...)`
-- `validate_tool_arguments(...)`
-- `normalize_tool_call_id_for_model(...)`
-- `calculate_cost(...)`
-- `models_are_equal(...)`
+- `loushang.ai.tool.validate_tool_call(...)`
+- `loushang.ai.tool.validate_tool_arguments(...)`
+- `loushang.ai.tool.normalize_tool_call_id_for_model(...)`
+- `loushang.ai.pricing.calculate_cost(...)`
+- `loushang.ai.pricing.models_are_equal(...)`
 
 `calculate_cost(model, usage)` returns `None` when the model has no pricing
 metadata, or when a used token component has no known price. Explicit zero
@@ -275,6 +281,21 @@ prices remain valid and produce a zero cost.
 - `Compat`
 - `Defaults`
 - `Pricing`
+
+### `loushang.ai.advanced.registry`
+
+- `ApiProviderRegistry`
+- `register_api_provider(...)`
+- `get_api_provider(...)`
+- `list_api_providers()`
+- `clear_api_providers()`
+- `reset_api_providers(...)`
+- `register_builtin_ai_providers(...)`
+
+Custom providers registered through `ApiProviderRegistry` receive a canonical
+`NormalizedContext`: user, assistant, and tool-result messages are dataclasses,
+and tools are `Tool` dataclasses with validated dict parameters. Custom provider
+code should use attribute access instead of dict-style message access.
 
 ### `loushang.ai.provider`
 

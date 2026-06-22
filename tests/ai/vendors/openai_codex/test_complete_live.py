@@ -4,7 +4,8 @@ import asyncio
 
 import pytest
 
-from loushang.ai import OpenAICodexResponsesOptions, get_model
+from loushang.ai import get_model
+from loushang.ai.advanced import OpenAICodexResponsesOptions
 from loushang.ai.auth import (
     load_credentials,
     register_builtin_oauth_providers,
