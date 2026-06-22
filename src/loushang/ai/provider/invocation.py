@@ -6,13 +6,14 @@ from typing import Any, Literal
 
 from loushang.ai.context import ensure_normalized_context
 from loushang.ai.options import PairingMode
+from loushang.ai.provider.protocol import ProviderRequest
 from loushang.ai.provider.resolution import (
     ResolvedRequest,
     resolve_provider_request,
 )
 from loushang.ai.provider.runtime import start_provider_runtime
 
-_ProviderCallStyle = Literal["positional", "keyword", "legacy"]
+_ProviderCallStyle = Literal["request_object", "positional", "keyword", "legacy"]
 
 
 def _provider_call_style(method: Any) -> _ProviderCallStyle:
@@ -34,6 +35,17 @@ def _provider_call_style(method: Any) -> _ProviderCallStyle:
             and parameter.name == "request"
         ):
             return "keyword"
+    if (
+        len(positional_parameters) == 1
+        and positional_parameters[0].name in {"request", "provider_request"}
+    ):
+        return "request_object"
+    if (
+        len(positional_parameters) == 2
+        and positional_parameters[0].name in {"self", "cls"}
+        and positional_parameters[1].name in {"request", "provider_request"}
+    ):
+        return "request_object"
     request_index = (
         4
         if positional_parameters
@@ -55,6 +67,11 @@ def _resolve_pairing_mode(options) -> PairingMode:
     if pairing_mode == "repair":
         return "repair"
     return "strict"
+
+
+def _adapter_config_resolver(provider: Any):
+    resolver = getattr(provider, "adapter_config_resolver", None)
+    return resolver if callable(resolver) else None
 
 
 def normalization_model_for_request(model, request: ResolvedRequest):
@@ -83,6 +100,15 @@ def _call_provider_raw_parts(
     request: ResolvedRequest,
 ):
     context = _normalize_provider_context(model, context, options, request)
+    if style == "request_object":
+        return method(
+            ProviderRequest(
+                model=model,
+                context=context,
+                options=options,
+                resolved=request,
+            )
+        )
     if style == "legacy":
         return method(model, context, options)
     if style == "keyword":
@@ -99,6 +125,15 @@ async def _call_request_aware_provider(
     request: ResolvedRequest,
 ):
     context = _normalize_provider_context(model, context, options, request)
+    if style == "request_object":
+        return await method(
+            ProviderRequest(
+                model=model,
+                context=context,
+                options=options,
+                resolved=request,
+            )
+        )
     if style == "legacy":
         return await method(model, context, options)
     if style == "keyword":
@@ -120,6 +155,7 @@ async def call_api_provider_stream(
         model,
         options=options,
         request=request,
+        adapter_config_resolver=_adapter_config_resolver(provider),
     )
     if not callable(stream_raw_method):
         if not callable(stream_method):
@@ -152,6 +188,7 @@ class _RequestAwareProviderInvoker:
         self._provider = provider
         self.api = provider.api
         self._stream_raw_style = _provider_call_style(provider.stream_raw)
+        self._adapter_config_resolver = _adapter_config_resolver(provider)
 
     def _resolve_request(self, model, options, request: ResolvedRequest | None):
         return resolve_provider_request(
@@ -159,6 +196,7 @@ class _RequestAwareProviderInvoker:
             model,
             options=options,
             request=request,
+            adapter_config_resolver=self._adapter_config_resolver,
         )
 
     async def stream(

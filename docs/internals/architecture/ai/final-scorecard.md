@@ -27,7 +27,7 @@ items should be closed without expanding the public API.
 | Compat and endpoint contract | 9.0 | 8.6 | Mostly met |
 | Error and reliability semantics | 8.5 | 8.5 | Met |
 | Streaming and cancellation | 8.5 | 8.6 | Met |
-| Provider consistency | 8.5 | 8.3 | Needs provider-boundary decision |
+| Provider consistency | 8.5 | 8.5 | Met |
 | Auth security | 8.0 | 8.1 | Met |
 | Model catalog governance | 9.0 | 9.0 | Met |
 | Tests, examples, and docs | 9.0 | 8.4 | Needs coverage/review gate |
@@ -42,7 +42,7 @@ Current composite score: 8.6/10.
 | Catalog budget | `scripts/ai/check_catalog.py` enforces provider <= 11, model <= 20, evidence files, provider matrix alignment, preferred-endpoint uniqueness, and supported modalities. |
 | Curated provider facts | `docs/internals/architecture/ai/catalog-evidence/*.md` records official docs, included models, omitted facts, and live-smoke status for each curated provider. |
 | Legacy catalog archive | `docs/internals/archive/ai/model-catalog/README.md` records the compressed v1 catalog archive and SHA verification command. |
-| Provider boundary | `docs/internals/architecture/ai/core-provider-adapter-contract-matrix.md` records the three core adapters and the contrib/test-only boundaries. |
+| Provider boundary | `ProviderRequest` is the single `stream_raw` argument for core adapters; contract tests lock the signature and builtin registration. |
 | Public SDK docs | `docs/en/sdk/README.md`, `docs/zh-CN/sdk/README.md`, and the v2 migration guides document the public path, catalog, auth, errors, examples, and migration rules. |
 | Offline examples | `scripts/ai/check_examples.py` executes numbered `examples/ai/[0-9][0-9]_*.py` with live provider keys removed. |
 | Import boundaries | `scripts/ai/check_import_boundaries.py` prevents `loushang.ai` from importing agent/coding layers, prevents removed core providers from returning, and keeps top-level examples on stable AI imports. |
@@ -61,7 +61,7 @@ Current composite score: 8.6/10.
 | Codex is contrib and explicitly registered | Met | `loushang.ai.contrib.openai_codex.register_openai_codex_contrib`. |
 | Core has no provider-id/base-url compat guessing | Mostly met | Compat boundary tests cover provider/runtime leakage; keep any future provider-specific behavior behind endpoint contracts or contrib. |
 | Built-in catalog has no legacy full-catalog runtime path | Met | Package data points to `models.curated.v2.json`; full v1 catalog is archived under docs. |
-| Provider boundary accepts only normalized context/request facts | Partial | `NormalizedContext` is enforced, but the adapter protocol still passes `Model`, `CallOptions`, and `ResolvedRequest` separately rather than a single final `ProviderRequest` object. |
+| Provider boundary accepts only normalized context/request facts | Met | Core adapters receive one `ProviderRequest` object containing `model`, normalized `context`, `options`, and resolved request facts. |
 | Core has no bare `except Exception: pass` | Met | `rg -n -U "except Exception:\n\s*pass" src/loushang/ai tests/ai tests/providers` returns no matches. |
 | Stream queue is bounded | Met | `AssistantMessageEventStream` uses a bounded queue; `tests/ai/test_provider_runtime.py` checks it. |
 | Cancellation closes upstream | Met | Provider runtime closes async sources through `aclose`/`close`; provider runtime tests cover cancellation. |
@@ -148,13 +148,9 @@ provider evidence file records a valid credential-backed run.
 
 ## Exact Remaining Issues
 
-1. Decide whether the final adapter protocol must collapse `Model`, `CallOptions`,
-   and `ResolvedRequest` into a single `ProviderRequest`; the current protocol
-   has normalized context but not the exact final request-object shape described
-   in the plan.
-2. Raise coverage enforcement to the final stated targets, or record an ADR that
+1. Raise coverage enforcement to the final stated targets, or record an ADR that
    the release gate is the current `make check-ai` 80% AI package threshold.
-3. Run a final branch review against `origin/main` and resolve all P0/P1
+2. Run a final branch review against `origin/main` and resolve all P0/P1
    findings.
-4. Perform live provider smoke only with valid credentials; do not treat offline
+3. Perform live provider smoke only with valid credentials; do not treat offline
    catalog checks as live compatibility proof.

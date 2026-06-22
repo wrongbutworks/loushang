@@ -1330,7 +1330,14 @@ def _patch_resolved_request(
             capabilities=capabilities or Capabilities(input=("text",), stream=True),
         )
 
-    def _resolve_provider_request(provider_api, _model, *, options=None, request=None):
+    def _resolve_provider_request(
+        provider_api,
+        _model,
+        *,
+        options=None,
+        request=None,
+        adapter_config_resolver=None,
+    ):
         resolved = request if request is not None else _resolve_request(_model, options)
         if resolved.api != provider_api:
             raise ValueError(

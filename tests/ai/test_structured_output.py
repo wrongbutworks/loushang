@@ -200,7 +200,14 @@ def _patch_resolved_request(monkeypatch: pytest.MonkeyPatch, *, api: str) -> Non
             ),
         )
 
-    def _resolve_provider_request(provider_api, _model, *, options=None, request=None):
+    def _resolve_provider_request(
+        provider_api,
+        _model,
+        *,
+        options=None,
+        request=None,
+        adapter_config_resolver=None,
+    ):
         del options
         resolved = request if request is not None else _resolve_request(_model)
         if resolved.api != provider_api:

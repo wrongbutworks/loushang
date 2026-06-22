@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import inspect
 from pathlib import Path
 from typing import NamedTuple
 
@@ -74,6 +75,7 @@ def test_core_production_adapters_implement_api_provider_contract() -> None:
         assert provider.api == case.api
         assert isinstance(provider, ApiProvider)
         assert callable(provider.stream_raw)
+        assert list(inspect.signature(provider.stream_raw).parameters) == ["request"]
         assert not hasattr(provider, "stream_simple")
 
 

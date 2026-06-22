@@ -22,7 +22,7 @@ from loushang.ai.options import (
     get_retry_max_delay_ms,
     get_timeout_seconds,
 )
-from loushang.ai.provider import resolve_provider_request
+from loushang.ai.provider import ProviderRequest, resolve_provider_request
 from loushang.ai.provider.errors import is_http_status_code, provider_error_part
 from loushang.ai.provider.runtime_config import (
     AdapterRuntimeConfig,
@@ -39,6 +39,7 @@ from loushang.ai.utils import sanitize_surrogates
 
 class OpenAICodexResponsesProvider:
     api = "openai-codex-responses"
+    adapter_config_resolver = staticmethod(resolve_openai_codex_runtime_config)
 
     def __init__(
         self, *, client: Any | None = None, websocket_cache_ttl_ms: int = 5 * 60 * 1000
@@ -50,11 +51,29 @@ class OpenAICodexResponsesProvider:
     def _stream_raw_parts(
         self, model, context, options, request=None
     ) -> AsyncIterator[dict]:
-        return self.stream_raw(model, context, options, request)
+        resolved = resolve_provider_request(
+            self.api,
+            model,
+            options=options,
+            request=request,
+            adapter_config_resolver=self.adapter_config_resolver,
+        )
+        return self.stream_raw(
+            ProviderRequest(
+                model=model,
+                context=context,
+                options=options,
+                resolved=resolved,
+            )
+        )
 
     async def stream_raw(
-        self, model, context, options, request=None
+        self, request: ProviderRequest
     ) -> AsyncIterator[dict]:
+        model = request.model
+        options = request.options
+        resolved = request.resolved
+
         def _debug(event: str, data: dict | None = None) -> None:
             _emit_trace(options, {"type": f"sdk:{event}", **(data or {})})
             import os
@@ -63,14 +82,7 @@ class OpenAICodexResponsesProvider:
                 with suppress(Exception):
                     print(f"[sdk:{event}] {data or {}}")
 
-        resolved = resolve_provider_request(
-            self.api,
-            model,
-            options=options,
-            request=request,
-            adapter_config_resolver=resolve_openai_codex_runtime_config,
-        )
-        normalized = context
+        normalized = request.context
         headers = dict(resolved.headers or {})
         codex_config = _codex_runtime_config(resolved.adapter_config)
 

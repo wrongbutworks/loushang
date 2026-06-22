@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from collections.abc import AsyncIterator
+from dataclasses import dataclass
 from typing import Any, Protocol, runtime_checkable
 
 from loushang.ai.context import NormalizedContext
@@ -13,16 +14,21 @@ ProviderContext = NormalizedContext
 ProviderOptions = CallOptions | None
 
 
+@dataclass(frozen=True, slots=True)
+class ProviderRequest:
+    model: Model
+    context: ProviderContext
+    options: ProviderOptions
+    resolved: ResolvedRequest
+
+
 @runtime_checkable
 class ApiProvider(Protocol):
     api: str
 
     def stream_raw(
         self,
-        model: Model,
-        context: ProviderContext,
-        options: ProviderOptions,
-        request: ResolvedRequest,
+        request: ProviderRequest,
     ) -> AsyncIterator[Any]: ...
 
 

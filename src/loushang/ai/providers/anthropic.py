@@ -13,7 +13,7 @@ from loushang.ai.options import (
     is_reasoning_requested,
 )
 from loushang.ai.output_budget import resolve_output_token_budget
-from loushang.ai.provider import resolve_provider_request
+from loushang.ai.provider import ProviderRequest, resolve_provider_request
 from loushang.ai.provider.errors import provider_error_part
 from loushang.ai.providers.anthropic_base import AnthropicProviderBase
 from loushang.ai.providers.provider_helpers import (
@@ -310,15 +310,31 @@ class AnthropicProvider(AnthropicProviderBase):
     def _stream_raw_parts(
         self, model, context, options, request=None
     ) -> AsyncIterator[dict]:
-        return self.stream_raw(model, context, options, request)
+        resolved = resolve_provider_request(
+            self.api,
+            model,
+            options=options,
+            request=request,
+        )
+        return self.stream_raw(
+            ProviderRequest(
+                model=model,
+                context=context,
+                options=options,
+                resolved=resolved,
+            )
+        )
 
     async def stream_raw(
-        self, model, context, options, request=None
+        self, request: ProviderRequest
     ) -> AsyncIterator[dict]:
         """
         将 Anthropic SDK 的 streaming 事件映射到 RawPart。
         当前实现覆盖文本、thinking、signature、redacted thinking、工具增量、usage、stop_reason 与完成事件。
         """
+        model = request.model
+        options = request.options
+        resolved = request.resolved
 
         def _debug(event: str, data: dict | None = None) -> None:
             payload = {"type": f"sdk:{event}"}
@@ -327,13 +343,7 @@ class AnthropicProvider(AnthropicProviderBase):
                     payload["event_type" if key == "type" else key] = value
             _emit_trace(options, payload)
 
-        resolved = resolve_provider_request(
-            self.api,
-            model,
-            options=options,
-            request=request,
-        )
-        normalized = context
+        normalized = request.context
         protocol = _request_protocol(resolved)
 
         headers = resolved.headers or {}

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import inspect
 from typing import NamedTuple
 
 from loushang.ai.api_registry import ApiProviderRegistry
@@ -29,6 +30,7 @@ def test_core_adapters_implement_stream_raw_contract() -> None:
         assert isinstance(provider, ApiProvider)
         assert provider.api == case.api
         assert callable(provider.stream_raw)
+        assert list(inspect.signature(provider.stream_raw).parameters) == ["request"]
         assert not hasattr(provider, "stream_simple")
 
 

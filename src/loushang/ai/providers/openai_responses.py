@@ -13,7 +13,7 @@ from loushang.ai.model.domain import (
 )
 from loushang.ai.options import get_reasoning_effort, get_reasoning_summary
 from loushang.ai.output_budget import resolve_output_token_budget
-from loushang.ai.provider import resolve_provider_request
+from loushang.ai.provider import ProviderRequest, resolve_provider_request
 from loushang.ai.provider.errors import provider_error_part
 from loushang.ai.providers.openai_responses_shared import (
     build_copilot_dynamic_headers,
@@ -69,11 +69,28 @@ class OpenAIResponsesProvider:
     def _stream_raw_parts(
         self, model, context, options, request=None
     ) -> AsyncIterator[dict]:
-        return self.stream_raw(model, context, options, request)
+        resolved = resolve_provider_request(
+            self.api,
+            model,
+            options=options,
+            request=request,
+        )
+        return self.stream_raw(
+            ProviderRequest(
+                model=model,
+                context=context,
+                options=options,
+                resolved=resolved,
+            )
+        )
 
     async def stream_raw(
-        self, model, context, options, request=None
+        self, request: ProviderRequest
     ) -> AsyncIterator[dict]:
+        model = request.model
+        options = request.options
+        resolved = request.resolved
+
         def _debug(event: str, data: dict | None = None) -> None:
             # Allow callers to suppress provider SDK trace events explicitly.
             if options is not None:
@@ -85,13 +102,7 @@ class OpenAIResponsesProvider:
                         return
             _emit_trace(options, {"type": f"sdk:{event}", **(data or {})})
 
-        resolved = resolve_provider_request(
-            self.api,
-            model,
-            options=options,
-            request=request,
-        )
-        normalized = context
+        normalized = request.context
         protocol = _request_protocol(resolved)
         dialect = _request_dialect(resolved)
 

@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from loushang.ai.options import is_reasoning_requested
-from loushang.ai.provider import resolve_provider_request
+from loushang.ai.provider import ProviderRequest, resolve_provider_request
 from loushang.ai.types import TextPart, ToolResultMessage
 
 
@@ -9,11 +9,24 @@ class FauxProvider:
     api = "anthropic-messages"
 
     def _stream_raw_parts(self, model, context, options, request=None):
-        return self.stream_raw(model, context, options, request)
+        resolved = resolve_provider_request(
+            self.api,
+            model,
+            options=options,
+            request=request,
+        )
+        return self.stream_raw(
+            ProviderRequest(
+                model=model,
+                context=context,
+                options=options,
+                resolved=resolved,
+            )
+        )
 
-    async def stream_raw(self, model, context, options, request=None):
-        resolve_provider_request(self.api, model, options=options, request=request)
-        normalized = context
+    async def stream_raw(self, request: ProviderRequest):
+        options = request.options
+        normalized = request.context
         yield {"type": "response_start", "response_id": "faux-response"}
         tool_result_text = self._extract_tool_result_text(
             normalized.get("messages", [])
