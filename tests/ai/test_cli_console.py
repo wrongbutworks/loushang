@@ -4,7 +4,11 @@ import json
 
 import pytest
 
-from loushang.ai.cli.__main__ import _resolve_console_api_key, main
+from loushang.ai.cli.__main__ import (
+    _normalize_global_flags,
+    _resolve_console_api_key,
+    main,
+)
 from loushang.ai.model.domain import Auth, Capabilities, Endpoint, Model, Provider
 from loushang.ai.model.registry import ModelRegistry
 from loushang.ai.types import AssistantMessage, Usage
@@ -123,6 +127,42 @@ def test_models_show_accepts_provider_model_reference(
     assert payload["provider"] == "moonshot"
     assert payload["endpoint"] == "openai-completions"
     assert payload["id"] == "kimi-a"
+
+
+def test_json_flag_is_accepted_after_leaf_command(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    main(["models", "list", "--json"])
+
+    payload = json.loads(capsys.readouterr().out)
+
+    assert payload == ["kimi-a", "kimi-b"]
+
+
+def test_global_flags_normalize_after_leaf_command() -> None:
+    assert _normalize_global_flags(["models", "list", "--json"]) == [
+        "--json",
+        "models",
+        "list",
+    ]
+    assert _normalize_global_flags(
+        ["models", "list", "--base-url", "https://example.invalid"]
+    ) == ["--base-url", "https://example.invalid", "models", "list"]
+
+
+def test_global_flag_normalization_preserves_double_dash_literals() -> None:
+    assert _normalize_global_flags(["models", "show", "--", "--json"]) == [
+        "models",
+        "show",
+        "--",
+        "--json",
+    ]
+    assert _normalize_global_flags(["models", "show", "--", "--base-url"]) == [
+        "models",
+        "show",
+        "--",
+        "--base-url",
+    ]
 
 
 def test_console_prompts_for_api_key_when_env_missing(

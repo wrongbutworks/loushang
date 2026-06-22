@@ -876,6 +876,30 @@ def _hint_and_exit_for_missing_model(registry) -> None:
     sys.exit(2)
 
 
+def _normalize_global_flags(argv: list[str] | None) -> list[str]:
+    if argv is None:
+        argv = sys.argv[1:]
+    normalized: list[str] = []
+    remaining: list[str] = []
+    index = 0
+    while index < len(argv):
+        item = argv[index]
+        if item == "--":
+            remaining.extend(argv[index:])
+            break
+        if item == "--json":
+            normalized.append(item)
+        elif item == "--base-url" and index + 1 < len(argv) and argv[index + 1] != "--":
+            normalized.extend([item, argv[index + 1]])
+            index += 1
+        elif item.startswith("--base-url="):
+            normalized.append(item)
+        else:
+            remaining.append(item)
+        index += 1
+    return [*normalized, *remaining]
+
+
 def main(argv: list[str] | None = None) -> None:
     parser = argparse.ArgumentParser(prog="loushang-ai", description="Loushang AI CLI")
     parser.add_argument("--json", action="store_true", help="Output as JSON")
@@ -951,7 +975,7 @@ def main(argv: list[str] | None = None) -> None:
     )
     p_console.set_defaults(func=cmd_console)
 
-    args = parser.parse_args(argv)
+    args = parser.parse_args(_normalize_global_flags(argv))
     with suppress(Exception):
         env_base = os.getenv("LOUSHANG_BASE_URL")
         effective_base = args.base_url or env_base
