@@ -584,7 +584,18 @@ def _apply_reasoning_params(
             "preserve_thinking": True,
         }
         return
-    if thinking_format in {"deepseek", "zai-thinking"}:
+    if thinking_format == "deepseek":
+        extra_body["thinking"] = {
+            "type": "enabled" if isinstance(reasoning_effort, str) else "disabled"
+        }
+        _apply_reasoning_effort_if_supported(
+            params,
+            reasoning_effort,
+            reasoning_effort_map,
+            supports_reasoning_effort,
+        )
+        return
+    if thinking_format == "zai-thinking":
         params["thinking"] = {
             "type": "enabled" if isinstance(reasoning_effort, str) else "disabled"
         }

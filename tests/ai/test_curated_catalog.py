@@ -1030,7 +1030,8 @@ def test_moonshot_evidence_matches_curated_provider_fixture() -> None:
         "`kimi-k2.7-code`",
         "Legacy duplicate China/global/coding endpoint variants",
         "uv run pytest tests/ai/test_curated_catalog.py -q",
-        "Not run on 2026-06-22",
+        "Attempted on 2026-06-22 with `MOONSHOT_API_KEY`",
+        "HTTP 401 invalid authentication",
     ]:
         assert expected in text
 
@@ -1051,7 +1052,9 @@ def test_dashscope_evidence_matches_curated_provider_fixture() -> None:
         "`qwen3.7-plus`",
         "China North 2 Beijing endpoint",
         "uv run pytest tests/ai/test_curated_catalog.py -q",
-        "Not run on 2026-06-22",
+        "Passed on 2026-06-22 with `DASHSCOPE_API_KEY`",
+        "test_openai_responses_stream_live.py",
+        "test_openai_responses_tools_live.py",
     ]:
         assert expected in text
 
@@ -1075,7 +1078,9 @@ def test_deepseek_evidence_matches_curated_provider_fixture() -> None:
         "$0.14 input, $0.0028 cache hit, and $0.28 output",
         "$0.435 input, $0.003625 cache hit, and $0.87 output",
         "uv run pytest tests/ai/test_curated_catalog.py tests/providers/test_openai_completions_provider.py -q",
-        "Not run on 2026-06-22",
+        "Passed on 2026-06-22 with `DEEPSEEK_API_KEY`",
+        "usage_online.py --route deepseek-completions --strict",
+        "usage_online.py --route deepseek-completions --stream --strict",
     ]:
         assert expected in text
 

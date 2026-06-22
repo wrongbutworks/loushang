@@ -6,6 +6,7 @@ import json
 from collections.abc import AsyncIterator, Mapping
 from contextlib import suppress
 from dataclasses import dataclass
+from inspect import isawaitable
 from types import SimpleNamespace
 from typing import Any
 from uuid import uuid4
@@ -115,11 +116,15 @@ class OpenAICodexResponsesProvider:
         _debug(
             "payload",
             {
-                "params": body,
+                "params": _request_body_trace_summary(body),
             },
         )
 
-        client = self._client or _HttpxCodexClient()
+        owned_client = None
+        client = self._client
+        if client is None:
+            owned_client = _HttpxCodexClient()
+            client = owned_client
         try:
             transport = getattr(options, "transport", None) or "sse"
             if transport != "sse":
@@ -150,6 +155,10 @@ class OpenAICodexResponsesProvider:
                 yield part
         except Exception as exc:
             yield provider_error_part(exc, source=self.api)
+        finally:
+            if owned_client is not None:
+                with suppress(Exception):
+                    await _close_owned_client(owned_client)
 
     async def _stream_sse_once(
         self,
@@ -370,6 +379,71 @@ def _build_request_body(
     if text_format is not None:
         body["text"].update(text_format)
     return body
+
+
+def _request_body_trace_summary(body: Mapping[str, Any]) -> dict[str, Any]:
+    summary: dict[str, Any] = {
+        "fields": sorted(str(key) for key in body),
+    }
+    model = body.get("model")
+    if isinstance(model, str):
+        summary["model"] = model
+    for key in ("store", "stream", "parallel_tool_calls"):
+        value = body.get(key)
+        if isinstance(value, bool):
+            summary[key] = value
+    for key in ("temperature",):
+        value = body.get(key)
+        if isinstance(value, int | float):
+            summary[key] = value
+    instructions = body.get("instructions")
+    if isinstance(instructions, str):
+        summary["has_instructions"] = bool(instructions)
+        summary["instruction_chars"] = len(instructions)
+    input_items = body.get("input")
+    if isinstance(input_items, list):
+        summary["input_items"] = len(input_items)
+    tools = body.get("tools")
+    if isinstance(tools, list):
+        summary["tool_count"] = len(tools)
+    tool_choice = body.get("tool_choice")
+    if isinstance(tool_choice, str):
+        summary["tool_choice"] = tool_choice
+    include = body.get("include")
+    if isinstance(include, list):
+        summary["include"] = [str(item) for item in include]
+    text = body.get("text")
+    if isinstance(text, Mapping):
+        text_summary: dict[str, Any] = {
+            "fields": sorted(str(key) for key in text),
+        }
+        verbosity = text.get("verbosity")
+        if isinstance(verbosity, str):
+            text_summary["verbosity"] = verbosity
+        text_format = text.get("format")
+        if isinstance(text_format, Mapping):
+            format_type = text_format.get("type")
+            text_summary["format_type"] = (
+                format_type if isinstance(format_type, str) else "object"
+            )
+        summary["text"] = text_summary
+    reasoning = body.get("reasoning")
+    if isinstance(reasoning, Mapping):
+        reasoning_summary: dict[str, Any] = {}
+        effort = reasoning.get("effort")
+        if isinstance(effort, str):
+            reasoning_summary["effort"] = effort
+        summary_value = reasoning.get("summary")
+        if isinstance(summary_value, str):
+            reasoning_summary["summary"] = summary_value
+        summary["reasoning"] = reasoning_summary
+    prompt_cache_key = body.get("prompt_cache_key")
+    if isinstance(prompt_cache_key, str):
+        summary["has_prompt_cache_key"] = bool(prompt_cache_key)
+    prompt_cache_retention = body.get("prompt_cache_retention")
+    if isinstance(prompt_cache_retention, str):
+        summary["prompt_cache_retention"] = prompt_cache_retention
+    return summary
 
 
 def _clamp_reasoning_effort(model_id: str, effort: str) -> str:
@@ -670,6 +744,17 @@ def _objectify(value: Any) -> Any:
     return value
 
 
+async def _close_owned_client(client: Any) -> None:
+    close = getattr(client, "aclose", None)
+    if not callable(close):
+        close = getattr(client, "close", None)
+    if not callable(close):
+        return
+    result = close()
+    if isawaitable(result):
+        await result
+
+
 class _HttpxCodexClient:
     def __init__(self) -> None:
         try:
@@ -693,6 +778,9 @@ class _HttpxCodexClient:
         return self._client.stream(
             method, url, headers=headers, json=json, timeout=timeout
         )
+
+    async def aclose(self) -> None:
+        await self._client.aclose()
 
 
 @dataclass

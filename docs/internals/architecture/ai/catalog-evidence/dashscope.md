@@ -25,4 +25,6 @@
 - Contract tests:
   - `uv run pytest tests/ai/test_curated_catalog.py -q`
 - Manual live smoke:
-  - Not run on 2026-06-22; no live DashScope credential was used for this catalog-only commit.
+  - Passed on 2026-06-22 with `DASHSCOPE_API_KEY`:
+    - `uv run pytest tests/ai/vendors/dashscope/test_openai_responses_stream_live.py -q -s`
+    - `uv run pytest tests/ai/vendors/dashscope/test_openai_responses_tools_live.py -q -s`

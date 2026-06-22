@@ -25,4 +25,6 @@
 - Contract tests:
   - `uv run pytest tests/ai/test_curated_catalog.py tests/providers/test_openai_completions_provider.py -q`
 - Manual live smoke:
-  - Not run on 2026-06-22; no live DeepSeek credential was used for this catalog-only commit.
+  - Passed on 2026-06-22 with `DEEPSEEK_API_KEY`:
+    - `uv run python examples/ai/advanced/usage_online.py --route deepseek-completions --strict`
+    - `uv run python examples/ai/advanced/usage_online.py --route deepseek-completions --stream --strict`

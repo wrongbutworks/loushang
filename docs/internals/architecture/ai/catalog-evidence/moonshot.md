@@ -27,4 +27,6 @@
 - Contract tests:
   - `uv run pytest tests/ai/test_curated_catalog.py -q`
 - Manual live smoke:
-  - Not run on 2026-06-22; no live Moonshot credential was used for this catalog-only commit.
+  - Attempted on 2026-06-22 with `MOONSHOT_API_KEY`:
+    - `uv run pytest tests/ai/vendors/moonshot/test_kimi_openai_complete_live.py -q -s`
+    - Result: not accepted as live proof because the provider returned HTTP 401 invalid authentication.

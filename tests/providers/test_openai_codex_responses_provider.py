@@ -6,6 +6,7 @@ from dataclasses import dataclass, field
 
 import pytest
 
+import loushang.ai.contrib.openai_codex.provider as codex_provider_module
 from loushang.ai.auth.types import OAuthCredentials
 from loushang.ai.context import normalize_context
 from loushang.ai.contrib.openai_codex import OpenAICodexResponsesOptions
@@ -142,6 +143,108 @@ def test_openai_codex_responses_builds_request_body_and_headers() -> None:
         "prompt_cache_retention": "in-memory",
         "reasoning": {"effort": "low", "summary": "concise"},
     }
+
+
+def test_openai_codex_responses_trace_payload_summarizes_request_body() -> None:
+    secret_system = "system-secret-do-not-log"
+    secret_user = "user-secret-do-not-log"
+    trace_events: list[dict] = []
+    client = _FakeCodexClient(
+        events=[
+            {"type": "response.completed", "response": {"status": "completed"}},
+        ]
+    )
+    provider = OpenAICodexResponsesProvider(client=client)
+
+    asyncio.run(
+        _collect_parts(
+            _stream_raw_parts(
+                provider,
+                _Model(reasoning=True),
+                {
+                    "system_prompt": secret_system,
+                    "messages": [
+                        UserMessage(role="user", content=secret_user, timestamp=0.0)
+                    ],
+                    "tools": [
+                        Tool(
+                            name="calc",
+                            description="Calculate",
+                            parameters={"type": "object"},
+                        )
+                    ],
+                },
+                OpenAICodexResponsesOptions(
+                    api_key=_build_fake_jwt("acc_test"),
+                    session_id="sess_trace",
+                    reasoning="minimal",
+                    reasoning_summary="auto",
+                    trace=trace_events.append,
+                ),
+            )
+        )
+    )
+
+    payload_events = [
+        event for event in trace_events if event.get("type") == "sdk:payload"
+    ]
+    assert len(payload_events) == 1
+    payload_event = payload_events[0]
+    summary = payload_event["data"]["params"]
+    assert client.last_json is not None
+    assert summary["fields"] == sorted(client.last_json)
+    assert summary["has_instructions"] is True
+    assert summary["instruction_chars"] == len(secret_system)
+    assert summary["input_items"] == 1
+    assert summary["tool_count"] == 1
+    assert summary["reasoning"] == {"effort": "low", "summary": "auto"}
+    serialized = json.dumps(payload_event, sort_keys=True)
+    assert secret_system not in serialized
+    assert secret_user not in serialized
+
+
+def test_openai_codex_responses_closes_owned_http_client(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    class _OwnedFakeCodexClient(_FakeCodexClient):
+        def __init__(self) -> None:
+            super().__init__(
+                events=[
+                    {"type": "response.completed", "response": {"status": "completed"}},
+                ]
+            )
+            self.closed = False
+
+        async def aclose(self) -> None:
+            self.closed = True
+
+    created_clients: list[_OwnedFakeCodexClient] = []
+
+    def _client_factory() -> _OwnedFakeCodexClient:
+        client = _OwnedFakeCodexClient()
+        created_clients.append(client)
+        return client
+
+    monkeypatch.setattr(codex_provider_module, "_HttpxCodexClient", _client_factory)
+    provider = OpenAICodexResponsesProvider()
+
+    asyncio.run(
+        _collect_parts(
+            _stream_raw_parts(
+                provider,
+                _Model(reasoning=False),
+                {
+                    "messages": [
+                        UserMessage(role="user", content="hello", timestamp=0.0)
+                    ],
+                },
+                OpenAICodexResponsesOptions(api_key=_build_fake_jwt("acc_test")),
+            )
+        )
+    )
+
+    assert len(created_clients) == 1
+    assert created_clients[0].closed is True
 
 
 def test_openai_codex_responses_merges_structured_output_text_format() -> None:

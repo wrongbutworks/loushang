@@ -13,6 +13,7 @@ from loushang.ai.context import normalize_context
 from loushang.ai.model import Capabilities, Compat, Model
 from loushang.ai.model.compat_schema import (
     MAX_TOKENS_FIELD,
+    REQUIRES_REASONING_CONTENT_ON_ASSISTANT_MESSAGES,
     SUPPORTS_DEVELOPER_ROLE,
     SUPPORTS_LONG_CACHE_RETENTION,
     SUPPORTS_PROMPT_CACHE_KEY,
@@ -1344,6 +1345,47 @@ def test_openai_completions_explicit_zai_thinking_object_format(
 
     assert _FakeAsyncOpenAI.last_create_kwargs["thinking"] == {"type": "enabled"}
     assert "enable_thinking" not in _FakeAsyncOpenAI.last_create_kwargs
+    assert "reasoning_effort" not in _FakeAsyncOpenAI.last_create_kwargs
+    assert "store" not in _FakeAsyncOpenAI.last_create_kwargs
+
+
+def test_openai_completions_deepseek_thinking_uses_extra_body(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _fake_openai_module(monkeypatch)
+    _patch_resolved_request(
+        monkeypatch,
+        compat={
+            THINKING_FORMAT: "deepseek",
+            REQUIRES_REASONING_CONTENT_ON_ASSISTANT_MESSAGES: True,
+            SUPPORTS_DEVELOPER_ROLE: False,
+            SUPPORTS_REASONING_EFFORT: False,
+            SUPPORTS_STORE: False,
+        },
+        reasoning_effort="high",
+        base_url="https://api.deepseek.com",
+    )
+    provider = OpenAICompletionsProvider()
+
+    asyncio.run(
+        _collect_parts(
+            _stream_raw_parts(
+                provider,
+                _Model(provider_id="deepseek", reasoning=True),
+                {
+                    "messages": [
+                        UserMessage(role="user", content="hello", timestamp=0.0)
+                    ]
+                },
+                OpenAICompletionsOptions(api_key="test-key"),
+            )
+        )
+    )
+
+    assert _FakeAsyncOpenAI.last_create_kwargs["extra_body"] == {
+        "thinking": {"type": "enabled"}
+    }
+    assert "thinking" not in _FakeAsyncOpenAI.last_create_kwargs
     assert "reasoning_effort" not in _FakeAsyncOpenAI.last_create_kwargs
     assert "store" not in _FakeAsyncOpenAI.last_create_kwargs
 
