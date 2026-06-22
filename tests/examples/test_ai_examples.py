@@ -382,6 +382,24 @@ def test_advanced_normalization_diagnostics_reports_stable_payload(capsys) -> No
     assert payload == summary
 
 
+def test_advanced_capability_failure_reports_public_error(capsys) -> None:
+    module = _load_module(
+        Path("examples/ai/advanced/capability_failure.py"),
+        "examples_ai_advanced_capability_failure",
+    )
+
+    summary = asyncio.run(module.inspect_capability_failure())
+
+    assert summary == {
+        "errorType": "ValueError",
+        "message": "Model 'capability-demo' does not support tool use",
+    }
+
+    module.main()
+    payload = json.loads(capsys.readouterr().out)
+    assert payload == summary
+
+
 def test_advanced_inspect_endpoint_contract_rejects_missing_model(
     monkeypatch,
     tmp_path,

@@ -176,6 +176,10 @@
 - `Model.stream_simple(...)`
 - `Model.complete_simple(...)`
 
+调用入口会在 Provider handoff 前校验已解析模型能力。`stream` 路径要求
+`stream` capability；`tools`、reasoning、structured output、temperature、image
+input 和 attachment 请求也会在模型未声明支持时直接失败。
+
 ### 模型访问
 
 - `Model`

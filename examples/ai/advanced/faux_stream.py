@@ -25,7 +25,7 @@ def _build_model() -> Model:
         id="faux-model",
         provider="faux",
         endpoint="anthropic-messages",
-        capabilities=Capabilities(reasoning=True),
+        capabilities=Capabilities(stream=True, reasoning=True),
     )
 
 

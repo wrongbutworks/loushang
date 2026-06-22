@@ -26,6 +26,8 @@
 - [advanced/normalization_diagnostics.py](advanced/normalization_diagnostics.py)
   离线查看 context/message 归一化产生的 repair、downgrade 和 signature-removal diagnostics；
   该示例显式启用 `pairing_mode="repair"` 以演示历史兼容修复
+- [advanced/capability_failure.py](advanced/capability_failure.py)
+  离线查看 stream/tools 等能力请求在 provider 调用前被统一校验和拒绝
 
 ## Provider 配置速查
 

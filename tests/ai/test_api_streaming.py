@@ -7,7 +7,7 @@ from types import ModuleType, SimpleNamespace
 
 import pytest
 
-from loushang.ai.api.streaming import stream, stream_simple
+from loushang.ai.api.streaming import complete, stream, stream_simple
 from loushang.ai.api_registry import ApiProviderRegistry
 from loushang.ai.context import (
     NORMALIZED_CONTEXT_MARKER,
@@ -297,10 +297,198 @@ def test_stream_passes_normalized_context_to_provider(
     assert normalized["messages"][0].role == "user"
 
 
+@pytest.mark.parametrize(
+    ("capabilities", "context", "options", "expected_message"),
+    [
+        (
+            Capabilities(input=("text",), stream=False),
+            {"messages": [UserMessage(role="user", content="hello", timestamp=0.0)]},
+            ModelCallOptions(),
+            "does not support streaming",
+        ),
+        (
+            Capabilities(input=("text",), stream=True, tool_use=False),
+            {
+                "messages": [UserMessage(role="user", content="hello", timestamp=0.0)],
+                "tools": [
+                    {
+                        "name": "calc",
+                        "description": "Calculate values",
+                        "parameters": {"type": "object"},
+                    }
+                ],
+            },
+            ModelCallOptions(),
+            "does not support tool use",
+        ),
+        (
+            Capabilities(input=("text",), stream=True, reasoning=False),
+            {"messages": [], "emit_thinking": True},
+            ModelCallOptions(),
+            "does not support reasoning",
+        ),
+        (
+            Capabilities(input=("text",), stream=True, structured_output=False),
+            {
+                "messages": [UserMessage(role="user", content="hello", timestamp=0.0)],
+                "response_format": {"type": "json_schema"},
+            },
+            ModelCallOptions(),
+            "does not support structured output",
+        ),
+        (
+            Capabilities(input=("text",), stream=True, temperature=False),
+            {"messages": [UserMessage(role="user", content="hello", timestamp=0.0)]},
+            ModelCallOptions(temperature=0.2),
+            "does not support temperature",
+        ),
+        (
+            Capabilities(input=("text",), stream=True),
+            {
+                "messages": [
+                    UserMessage(
+                        role="user",
+                        content=[
+                            ImagePart(
+                                type="image",
+                                data="aGVsbG8=",
+                                mime_type="image/png",
+                            )
+                        ],
+                        timestamp=0.0,
+                    )
+                ]
+            },
+            ModelCallOptions(),
+            "does not support image input",
+        ),
+        (
+            Capabilities(input=("text",), stream=True, attachment=False),
+            {
+                "messages": [UserMessage(role="user", content="hello", timestamp=0.0)],
+                "attachments": [{"id": "file_1"}],
+            },
+            ModelCallOptions(),
+            "does not support attachment",
+        ),
+    ],
+)
+def test_stream_enforces_capability_matrix(
+    monkeypatch: pytest.MonkeyPatch,
+    capabilities: Capabilities,
+    context: dict[str, object],
+    options: ModelCallOptions,
+    expected_message: str,
+) -> None:
+    _patch_resolved_request(monkeypatch, capabilities=capabilities)
+    monkeypatch.setattr("loushang.ai.messages.resolve_model_api", lambda _model: "faux")
+    monkeypatch.setattr(
+        "loushang.ai.tool.transform.resolve_model_api", lambda _model: "faux"
+    )
+    provider = _Provider()
+    registry = _Registry(provider)
+
+    with pytest.raises(ValueError, match=expected_message):
+        asyncio.run(stream(_Model(), context, options, registry=registry))
+
+    assert provider.context is None
+
+
+def test_stream_allows_complete_capability_matrix(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _patch_resolved_request(
+        monkeypatch,
+        capabilities=Capabilities(
+            input=("text", "image"),
+            stream=True,
+            tool_use=True,
+            reasoning=True,
+            structured_output=True,
+            attachment=True,
+            temperature=True,
+        ),
+    )
+    monkeypatch.setattr("loushang.ai.messages.resolve_model_api", lambda _model: "faux")
+    monkeypatch.setattr(
+        "loushang.ai.tool.transform.resolve_model_api", lambda _model: "faux"
+    )
+    provider = _Provider()
+    registry = _Registry(provider)
+
+    asyncio.run(
+        stream(
+            _Model(),
+            {
+                "messages": [
+                    UserMessage(
+                        role="user",
+                        content=[
+                            ImagePart(
+                                type="image",
+                                data="aGVsbG8=",
+                                mime_type="image/png",
+                            )
+                        ],
+                        timestamp=0.0,
+                    )
+                ],
+                "tools": [
+                    {
+                        "name": "calc",
+                        "description": "Calculate values",
+                        "parameters": {"type": "object"},
+                    }
+                ],
+                "emit_thinking": True,
+                "response_format": {"type": "json_schema"},
+                "attachments": [{"id": "file_1"}],
+            },
+            ModelCallOptions(temperature=0.2),
+            registry=registry,
+        )
+    )
+
+    normalized = _assert_normalized_provider_context(provider.context)
+    assert normalized.tools is not None
+    assert normalized["emit_thinking"] is True
+    assert normalized["response_format"] == {"type": "json_schema"}
+    assert normalized["attachments"] == [{"id": "file_1"}]
+
+
+def test_complete_does_not_require_stream_capability(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _patch_resolved_request(
+        monkeypatch,
+        capabilities=Capabilities(input=("text",), stream=False),
+    )
+    monkeypatch.setattr("loushang.ai.messages.resolve_model_api", lambda _model: "faux")
+    monkeypatch.setattr(
+        "loushang.ai.tool.transform.resolve_model_api", lambda _model: "faux"
+    )
+    provider = _Provider()
+    registry = _Registry(provider)
+
+    result = asyncio.run(
+        complete(
+            _Model(),
+            {"messages": [UserMessage(role="user", content="hello", timestamp=0.0)]},
+            ModelCallOptions(),
+            registry=registry,
+        )
+    )
+
+    assert result is None
+    _assert_normalized_provider_context(provider.context)
+
+
 def test_stream_canonicalizes_raw_dict_context_before_provider(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    _patch_resolved_request(monkeypatch, capabilities=Capabilities(input=("text", "image")))
+    _patch_resolved_request(
+        monkeypatch, capabilities=Capabilities(input=("text", "image"), stream=True)
+    )
     monkeypatch.setattr("loushang.ai.messages.resolve_model_api", lambda _model: "faux")
     monkeypatch.setattr(
         "loushang.ai.tool.transform.resolve_model_api", lambda _model: "faux"
@@ -606,7 +794,7 @@ def test_get_api_provider_stream_rejects_mismatched_resolved_request() -> None:
         endpoint="other",
         api="other",
         base_url=None,
-        capabilities=Capabilities(input=("text",)),
+        capabilities=Capabilities(input=("text",), stream=True),
     )
 
     with pytest.raises(ValueError, match="Mismatched api"):
@@ -635,7 +823,7 @@ def test_get_api_provider_stream_normalizes_context_against_resolved_request_api
         provider="anthropic",
         endpoint="anthropic-messages",
         base_url=None,
-        capabilities=Capabilities(input=("text",)),
+        capabilities=Capabilities(input=("text",), stream=True),
     )
     assistant = AssistantMessage(
         role="assistant",
@@ -690,7 +878,9 @@ def test_get_api_provider_stream_normalizes_context_against_resolved_request_api
 def test_stream_validates_resolved_request_capabilities(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    _patch_resolved_request(monkeypatch, capabilities=Capabilities(input=("text",)))
+    _patch_resolved_request(
+        monkeypatch, capabilities=Capabilities(input=("text",), stream=True)
+    )
     monkeypatch.setattr("loushang.ai.messages.resolve_model_api", lambda _model: "faux")
     monkeypatch.setattr(
         "loushang.ai.tool.transform.resolve_model_api", lambda _model: "faux"
@@ -728,7 +918,7 @@ def test_stream_allows_capabilities_after_request_resolution_switches_endpoint(
 ) -> None:
     _patch_resolved_request(
         monkeypatch,
-        capabilities=Capabilities(input=("text", "image")),
+        capabilities=Capabilities(input=("text", "image"), stream=True),
     )
     monkeypatch.setattr("loushang.ai.messages.resolve_model_api", lambda _model: "faux")
     monkeypatch.setattr(
@@ -851,7 +1041,9 @@ def test_stream_public_path_uses_openai_completions_typed_request(
             }
         ),
         max_tokens=128,
-        capabilities=Capabilities(input=("text",), tool_use=True, max_tokens=4096),
+        capabilities=Capabilities(
+            input=("text",), stream=True, tool_use=True, max_tokens=4096
+        ),
     )
 
     def _resolve_request(_model, options=None):
@@ -932,7 +1124,13 @@ def test_stream_public_path_uses_openai_responses_typed_request(
             {"tools": {"assistantBridgeRequired": True}}
         ),
         max_tokens=128,
-        capabilities=Capabilities(input=("text",), reasoning=True, max_tokens=4096),
+        capabilities=Capabilities(
+            input=("text",),
+            stream=True,
+            tool_use=True,
+            reasoning=True,
+            max_tokens=4096,
+        ),
     )
 
     def _resolve_request(_model, options=None):
@@ -1035,7 +1233,7 @@ def _patch_resolved_request(
         return SimpleNamespace(
             api=api,
             provider=provider,
-            capabilities=capabilities or Capabilities(input=("text",)),
+            capabilities=capabilities or Capabilities(input=("text",), stream=True),
         )
 
     def _resolve_provider_request(provider_api, _model, *, options=None, request=None):
