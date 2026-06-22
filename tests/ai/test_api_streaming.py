@@ -71,11 +71,11 @@ class _Provider:
         self.options = None
         self.request = None
 
-    async def stream(self, model, context, options, request):
+    async def stream_raw(self, model, context, options, request):
         self.context = context
         self.options = options
         self.request = request
-        return _DoneStream()
+        yield {"type": "response_done"}
 
 
 def _assert_normalized_provider_context(context: object) -> NormalizedContext:
@@ -92,10 +92,10 @@ class _LegacyProvider:
         self.context = None
         self.options = None
 
-    async def stream(self, model, context, options):
+    async def stream_raw(self, model, context, options):
         self.context = context
         self.options = options
-        return _DoneStream()
+        yield {"type": "response_done"}
 
 
 class _LegacyProviderWithOptionalDebug:
@@ -106,10 +106,10 @@ class _LegacyProviderWithOptionalDebug:
         self.context = None
         self.debug = None
 
-    async def stream(self, model, context, options, debug=False):
+    async def stream_raw(self, model, context, options, debug=False):
         self.context = context
         self.debug = debug
-        return _DoneStream()
+        yield {"type": "response_done"}
 
 
 class _KeywordRequestProvider:
@@ -121,22 +121,17 @@ class _KeywordRequestProvider:
         self.options = None
         self.request = None
 
-    async def stream(self, model, context, options, *, request=None):
+    async def stream_raw(self, model, context, options, *, request=None):
         self.context = context
         self.options = options
         self.request = request
-        return _DoneStream()
+        yield {"type": "response_done"}
 
 
-class _DoneStream:
-    def __aiter__(self):
-        async def _iterate():
-            if False:
-                yield None
+class _StreamOnlyProvider:
+    api = "faux"
 
-        return _iterate()
-
-    async def result(self):
+    async def stream(self, model, context, options, request):
         return None
 
 
@@ -476,7 +471,9 @@ def test_complete_does_not_require_stream_capability(
         )
     )
 
-    assert result is None
+    assert result.api == "faux"
+    assert result.provider == "faux"
+    assert result.model == "test-model"
     _assert_normalized_provider_context(provider.context)
 
 
@@ -614,6 +611,13 @@ def test_stream_passes_request_through_registered_provider(
 
     _assert_normalized_provider_context(provider.context)
     assert provider.request.api == "faux"
+
+
+def test_register_api_provider_rejects_stream_only_provider() -> None:
+    registry = ApiProviderRegistry()
+
+    with pytest.raises(TypeError, match="stream_raw"):
+        registry.register_api_provider(_StreamOnlyProvider())
 
 
 def test_stream_supports_legacy_registered_provider_signature(

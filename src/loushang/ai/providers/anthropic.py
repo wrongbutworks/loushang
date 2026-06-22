@@ -5,7 +5,6 @@ import json
 from collections.abc import AsyncIterator, Mapping
 from typing import Any
 
-from loushang.ai.event_stream import AssistantMessageEventStream, RawAssembler
 from loushang.ai.model.domain import EndpointProtocolFeatures, SupportStatus
 from loushang.ai.options import (
     get_reasoning_budget_tokens,
@@ -14,7 +13,6 @@ from loushang.ai.options import (
 )
 from loushang.ai.output_budget import resolve_output_token_budget
 from loushang.ai.provider import resolve_provider_request
-from loushang.ai.provider.cancellation import is_signal_cancelled
 from loushang.ai.provider.errors import provider_error_part
 from loushang.ai.providers.anthropic_base import AnthropicProviderBase
 from loushang.ai.providers.provider_helpers import (
@@ -310,46 +308,12 @@ class AnthropicProvider(AnthropicProviderBase):
         # 允许注入自建客户端（同步或异步），否则按需创建
         self._client = client
 
-    async def stream(self, model, context, options, request=None):
-        """
-        Anthropic 官方 SDK 适配版流接口（可选实现）。
-        注意：需要安装 `anthropic` 包；否则会在创建客户端时报错。
-        """
-        resolved = resolve_provider_request(
-            self.api,
-            model,
-            options=options,
-            request=request,
-        )
-        stream = AssistantMessageEventStream()
-        assembler = RawAssembler(
-            stream=stream,
-            api=resolved.api,
-            provider=model.provider_id,
-            model=model.id,
-            pricing=getattr(model, "pricing", None),
-        )
+    def _stream_raw_parts(
+        self, model, context, options, request=None
+    ) -> AsyncIterator[dict]:
+        return self.stream_raw(model, context, options, request)
 
-        async def _run() -> None:
-            signal = getattr(options, "signal", None) if options is not None else None
-            if is_signal_cancelled(signal):
-                assembler.feed({"type": "aborted"})
-                return
-            try:
-                async for part in self._stream_raw_parts(
-                    model, context, options, resolved
-                ):
-                    if is_signal_cancelled(signal):
-                        assembler.feed({"type": "aborted"})
-                        return
-                    assembler.feed(part)
-            except Exception as error:
-                assembler.feed(provider_error_part(error, source=self.api))
-
-        stream.attach_task(asyncio.create_task(_run()))
-        return stream
-
-    async def _stream_raw_parts(
+    async def stream_raw(
         self, model, context, options, request=None
     ) -> AsyncIterator[dict]:
         """

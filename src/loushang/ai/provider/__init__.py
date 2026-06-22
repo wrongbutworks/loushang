@@ -8,6 +8,7 @@ from loushang.ai.provider.resolution import (
     resolve_provider_request,
     resolve_request_for_model,
 )
+from loushang.ai.provider.runtime import start_provider_runtime
 from loushang.ai.provider.runtime_config import (
     AdapterRuntimeConfig,
     AdapterRuntimeConfigResolver,
@@ -25,4 +26,5 @@ __all__ = [
     "resolve_endpoint_for_model",
     "resolve_provider_request",
     "resolve_request_for_model",
+    "start_provider_runtime",
 ]

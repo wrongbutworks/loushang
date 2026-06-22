@@ -10,6 +10,7 @@ from loushang.ai.provider.resolution import (
     ResolvedRequest,
     resolve_provider_request,
 )
+from loushang.ai.provider.runtime import start_provider_runtime
 
 _ProviderCallStyle = Literal["positional", "keyword", "legacy"]
 
@@ -73,7 +74,23 @@ def _normalize_provider_context(model, context, options, request: ResolvedReques
     )
 
 
-async def _call_provider(
+def _call_provider_raw_parts(
+    method: Any,
+    style: _ProviderCallStyle,
+    model,
+    context,
+    options,
+    request: ResolvedRequest,
+):
+    context = _normalize_provider_context(model, context, options, request)
+    if style == "legacy":
+        return method(model, context, options)
+    if style == "keyword":
+        return method(model, context, options, request=request)
+    return method(model, context, options, request)
+
+
+async def _call_request_aware_provider(
     method: Any,
     style: _ProviderCallStyle,
     model,
@@ -96,19 +113,37 @@ async def call_api_provider_stream(
     options,
     request: ResolvedRequest,
 ):
+    stream_method = getattr(provider, "stream", None)
+    stream_raw_method = getattr(provider, "stream_raw", None)
     request = resolve_provider_request(
         provider.api,
         model,
         options=options,
         request=request,
     )
-    return await _call_provider(
-        provider.stream,
-        _provider_call_style(provider.stream),
-        model,
-        context,
-        options,
-        request,
+    if not callable(stream_raw_method):
+        if not callable(stream_method):
+            raise TypeError("Provider missing required stream_raw or stream method")
+        return await _call_request_aware_provider(
+            stream_method,
+            _provider_call_style(stream_method),
+            model,
+            context,
+            options,
+            request,
+        )
+    return start_provider_runtime(
+        lambda: _call_provider_raw_parts(
+            stream_raw_method,
+            _provider_call_style(stream_raw_method),
+            model,
+            context,
+            options,
+            request,
+        ),
+        model=model,
+        options=options,
+        request=request,
     )
 
 
@@ -116,7 +151,7 @@ class _RequestAwareProviderInvoker:
     def __init__(self, provider: Any) -> None:
         self._provider = provider
         self.api = provider.api
-        self._stream_style = _provider_call_style(provider.stream)
+        self._stream_raw_style = _provider_call_style(provider.stream_raw)
 
     def _resolve_request(self, model, options, request: ResolvedRequest | None):
         return resolve_provider_request(
@@ -130,11 +165,16 @@ class _RequestAwareProviderInvoker:
         self, model, context, options, request: ResolvedRequest | None = None
     ):
         request = self._resolve_request(model, options, request)
-        return await _call_provider(
-            self._provider.stream,
-            self._stream_style,
-            model,
-            context,
-            options,
-            request,
+        return start_provider_runtime(
+            lambda: _call_provider_raw_parts(
+                self._provider.stream_raw,
+                self._stream_raw_style,
+                model,
+                context,
+                options,
+                request,
+            ),
+            model=model,
+            options=options,
+            request=request,
         )

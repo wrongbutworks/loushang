@@ -11,6 +11,7 @@ from loushang.ai.model import Capabilities, Endpoint, Model, ModelRegistry, Prov
 from loushang.ai.provider import ResolvedRequest
 from loushang.ai.providers.bedrock_converse import BedrockConverseProvider
 from loushang.ai.types import UserMessage
+from tests.providers._runtime import start_test_provider_stream
 
 
 def _normalized_context(model, context, options=None):
@@ -30,11 +31,12 @@ def _stream_raw_parts(provider, model, context, options=None, request=None):
 
 
 async def _stream(provider, model, context, options=None, request=None):
-    return await provider.stream(
+    return start_test_provider_stream(
+        provider,
         model,
         _normalized_context(model, context, options),
         options,
-        request,
+        request=request,
     )
 
 

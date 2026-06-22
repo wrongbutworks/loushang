@@ -5,7 +5,7 @@ from typing import Any, cast
 from loushang.ai.provider.invocation import _RequestAwareProviderInvoker
 from loushang.ai.provider.protocol import ApiProvider, RequestAwareApiProvider
 
-RegisteredApiProvider = ApiProvider | RequestAwareApiProvider
+RegisteredApiProvider = ApiProvider
 
 __all__ = [
     "ApiProviderRegistry",
@@ -23,11 +23,11 @@ class ApiProviderRegistry:
         self, provider: RegisteredApiProvider, *, source_id: str | None = None
     ) -> None:
         provider_any = cast(Any, provider)
-        required = ("api", "stream")
+        required = ("api", "stream_raw")
         for name in required:
             if not hasattr(provider_any, name):
                 raise TypeError(f"Provider missing required attribute: {name}")
-        for name in ("stream",):
+        for name in ("stream_raw",):
             if not callable(getattr(provider_any, name)):
                 raise TypeError(f"Provider attribute must be callable: {name}")
         self._providers[provider_any.api] = (

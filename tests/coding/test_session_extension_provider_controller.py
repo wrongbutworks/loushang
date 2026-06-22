@@ -17,8 +17,9 @@ from loushang.coding.session.extension_provider_controller import (
 class _ApiProvider:
     api = "proxy-api"
 
-    async def stream(self, model, context, options, request):
-        return await asyncio.sleep(0)
+    async def stream_raw(self, model, context, options, request):
+        await asyncio.sleep(0)
+        yield {"type": "response_done"}
 
     async def stream_simple(self, model, context, options, request):
         return await asyncio.sleep(0)

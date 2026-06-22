@@ -1,6 +1,7 @@
 from __future__ import annotations
 
-from typing import Protocol, runtime_checkable
+from collections.abc import AsyncIterator
+from typing import Any, Protocol, runtime_checkable
 
 from loushang.ai.context import NormalizedContext
 from loushang.ai.event_stream import AssistantMessageEventStream
@@ -16,12 +17,13 @@ ProviderOptions = CallOptions | None
 class ApiProvider(Protocol):
     api: str
 
-    async def stream(
+    def stream_raw(
         self,
         model: Model,
         context: ProviderContext,
         options: ProviderOptions,
-    ) -> AssistantMessageEventStream: ...
+        request: ResolvedRequest,
+    ) -> AsyncIterator[Any]: ...
 
 
 @runtime_checkable

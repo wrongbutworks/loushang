@@ -5,7 +5,6 @@ import os
 from collections.abc import AsyncIterator
 from typing import Any
 
-from loushang.ai.event_stream import AssistantMessageEventStream, RawAssembler
 from loushang.ai.model.domain import (
     EndpointProtocolFeatures,
     EndpointWireDialect,
@@ -14,7 +13,6 @@ from loushang.ai.model.domain import (
 from loushang.ai.options import get_reasoning_effort, get_reasoning_summary
 from loushang.ai.output_budget import resolve_output_token_budget
 from loushang.ai.provider import resolve_provider_request
-from loushang.ai.provider.cancellation import is_signal_cancelled
 from loushang.ai.provider.errors import provider_error_part
 from loushang.ai.providers.openai_responses_shared import (
     build_copilot_dynamic_headers,
@@ -65,42 +63,12 @@ class OpenAIResponsesProvider:
         self._client = client
         self._base_url = base_url
 
-    async def stream(self, model, context, options, request=None):
-        resolved = resolve_provider_request(
-            self.api,
-            model,
-            options=options,
-            request=request,
-        )
-        stream = AssistantMessageEventStream()
-        assembler = RawAssembler(
-            stream=stream,
-            api=resolved.api,
-            provider=model.provider_id,
-            model=model.id,
-            pricing=getattr(model, "pricing", None),
-        )
+    def _stream_raw_parts(
+        self, model, context, options, request=None
+    ) -> AsyncIterator[dict]:
+        return self.stream_raw(model, context, options, request)
 
-        async def _run() -> None:
-            signal = getattr(options, "signal", None) if options is not None else None
-            if is_signal_cancelled(signal):
-                assembler.feed({"type": "aborted"})
-                return
-            try:
-                async for part in self._stream_raw_parts(
-                    model, context, options, resolved
-                ):
-                    if is_signal_cancelled(signal):
-                        assembler.feed({"type": "aborted"})
-                        return
-                    assembler.feed(part)
-            except Exception as error:
-                assembler.feed(provider_error_part(error, source=self.api))
-
-        stream.attach_task(asyncio.create_task(_run()))
-        return stream
-
-    async def _stream_raw_parts(
+    async def stream_raw(
         self, model, context, options, request=None
     ) -> AsyncIterator[dict]:
         def _debug(event: str, data: dict | None = None) -> None:

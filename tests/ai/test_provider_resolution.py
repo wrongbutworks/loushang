@@ -1219,18 +1219,16 @@ def test_call_api_provider_helpers_use_normalized_supplied_request() -> None:
         ),
     )
 
-    assert (
-        asyncio.run(
-            call_api_provider_stream(
-                provider,
-                model,
-                {"messages": []},
-                OpenAICompletionsOptions(),
-                request,
-            )
+    stream = asyncio.run(
+        call_api_provider_stream(
+            provider,
+            model,
+            {"messages": []},
+            OpenAICompletionsOptions(),
+            request,
         )
-        == "stream"
     )
+    asyncio.run(stream.result())
     assert provider.stream_request is not None
     assert (
         provider.stream_request.adapter_protocol.cache.prompt_key
@@ -1258,9 +1256,9 @@ class _RequestRecordingProvider:
     def __init__(self) -> None:
         self.stream_request: ResolvedRequest | None = None
 
-    async def stream(self, _model, _context, _options, request: ResolvedRequest):
+    async def stream_raw(self, _model, _context, _options, request: ResolvedRequest):
         self.stream_request = request
-        return "stream"
+        yield {"type": "response_done"}
 
 
 def test_resolved_request_rejects_conflicting_compat_aliases() -> None:
