@@ -15,13 +15,14 @@ from loushang.ai.auth import (
     register_builtin_oauth_providers,
     reset_oauth_providers,
 )
-from loushang.ai.auth.providers.openai_codex import (
+from loushang.ai.auth.types import OAuthCredentials
+from loushang.ai.contrib.openai_codex.oauth import (
     AUTHORIZE_URL,
     CLIENT_ID,
     REDIRECT_URI,
     OpenAICodexOAuthProvider,
+    register_openai_codex_oauth_provider,
 )
-from loushang.ai.auth.types import OAuthCredentials
 
 
 def _build_fake_jwt(account_id: str) -> str:
@@ -202,27 +203,31 @@ def test_openai_codex_refresh_requires_refresh_token() -> None:
         )
 
 
-def test_register_builtin_oauth_providers_includes_openai_codex() -> None:
+def test_register_builtin_oauth_providers_excludes_openai_codex() -> None:
     clear_oauth_providers()
     register_builtin_oauth_providers()
-    assert get_oauth_provider("openai-codex") is not None
+    assert get_oauth_provider("openai-codex") is None
 
 
-def test_register_builtin_oauth_providers_lists_openai_codex_first() -> None:
+def test_register_builtin_oauth_providers_lists_anthropic_only() -> None:
     clear_oauth_providers()
     register_builtin_oauth_providers()
 
     providers = list_oauth_providers()
 
-    assert [provider.id for provider in providers] == [
-        "openai-codex",
-        "anthropic",
-    ]
+    assert [provider.id for provider in providers] == ["anthropic"]
 
 
-def test_reset_oauth_providers_restores_builtin_openai_codex() -> None:
+def test_reset_oauth_providers_restores_builtin_anthropic_only() -> None:
     clear_oauth_providers()
     reset_oauth_providers(with_builtins=True)
+    assert get_oauth_provider("openai-codex") is None
+    assert get_oauth_provider("anthropic") is not None
+
+
+def test_openai_codex_contrib_registers_oauth_provider_explicitly() -> None:
+    clear_oauth_providers()
+    register_openai_codex_oauth_provider()
     assert get_oauth_provider("openai-codex") is not None
 
 

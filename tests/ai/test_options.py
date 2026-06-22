@@ -10,11 +10,11 @@ from loushang.ai.advanced import (
     OpenAICompletionsOptions as AdvancedOpenAICompletionsOptions,
 )
 from loushang.ai.advanced.registry import ApiProviderRegistry
+from loushang.ai.contrib.openai_codex import OpenAICodexResponsesOptions
 from loushang.ai.options import (
     AnthropicOptions,
     CallOptions,
     ModelCallOptions,
-    OpenAICodexResponsesOptions,
     OpenAICompletionsOptions,
     OpenAIResponsesOptions,
     ProviderStreamOptions,
@@ -145,6 +145,11 @@ def test_provider_specific_options_are_advanced_compatibility_types() -> None:
     assert "ApiProviderRegistry" not in ai.__all__
     assert not hasattr(ai, "AnthropicOptions")
     assert not hasattr(ai, "ApiProviderRegistry")
+    assert OpenAICodexResponsesOptions.__module__ == (
+        "loushang.ai.contrib.openai_codex.options"
+    )
+    assert "OpenAICodexResponsesOptions" not in ai.__all__
+    assert not hasattr(ai, "OpenAICodexResponsesOptions")
 
 
 def test_provider_specific_options_keep_model_call_fields() -> None:

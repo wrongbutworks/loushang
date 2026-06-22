@@ -16,7 +16,6 @@ from loushang.ai import (
 from loushang.ai.advanced.options import (
     AnthropicOptions,
     AzureOpenAIResponsesOptions,
-    OpenAICodexResponsesOptions,
     OpenAICompletionsOptions,
     OpenAIResponsesOptions,
 )
@@ -37,6 +36,11 @@ from loushang.ai.auth import (
 from loushang.ai.auth.storage import find_scoped_credential, load_credential_store
 from loushang.ai.auth.support import merge_auth_config
 from loushang.ai.auth.types import OAuthAuthInfo, OAuthLoginCallbacks, OAuthPrompt
+from loushang.ai.contrib.openai_codex import (
+    OpenAICodexResponsesOptions,
+    register_openai_codex_contrib,
+    register_openai_codex_oauth_provider,
+)
 from loushang.ai.model.registry import (
     get_default_model_registry,
     resolve_model_api,
@@ -280,6 +284,7 @@ def cmd_complete(args: argparse.Namespace) -> None:
 
 def cmd_auth(args: argparse.Namespace) -> None:
     register_builtin_oauth_providers()
+    register_openai_codex_oauth_provider()
 
     if args.action == "providers":
         items = [
@@ -379,6 +384,7 @@ def _auth_scope_payload(provider: str, endpoint: str | None, model: str | None) 
 
 def cmd_console(args: argparse.Namespace) -> None:
     register_builtin_oauth_providers()
+    register_openai_codex_contrib()
     registry = get_default_model_registry()
     print("Loushang AI Console")
     print("- Interactive path: provider -> endpoint -> auth -> model -> conversation")

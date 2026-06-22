@@ -387,7 +387,7 @@ def test_anthropic_provider_sanitizes_unpaired_surrogates_in_payload_text() -> N
 
 
 def test_openai_codex_responses_provider_sanitizes_instruction_text() -> None:
-    from loushang.ai.providers.openai_codex_responses import _build_request_body
+    from loushang.ai.contrib.openai_codex.provider import _build_request_body
 
     body = _build_request_body(
         SimpleNamespace(id="gpt-5.2-codex", input=("text",)),

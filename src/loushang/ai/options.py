@@ -259,7 +259,6 @@ def _simple_reasoning_budget_tokens(options: SimpleCallOptions) -> int | None:
 from loushang.ai.advanced.options import (  # noqa: E402
     AnthropicOptions,
     AzureOpenAIResponsesOptions,
-    OpenAICodexResponsesOptions,
     OpenAICompletionsOptions,
     OpenAIResponsesOptions,
 )
@@ -270,7 +269,6 @@ __all__ = [
     "CacheRetention",
     "CallOptions",
     "ModelCallOptions",
-    "OpenAICodexResponsesOptions",
     "OpenAICompletionsOptions",
     "OpenAIResponsesOptions",
     "PairingMode",

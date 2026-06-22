@@ -267,6 +267,28 @@ def test_platform_quota_example_reports_endpoint_quota(capsys) -> None:
     assert json.loads(capsys.readouterr().out) == summary
 
 
+def test_openai_codex_contrib_example_registers_codex_model() -> None:
+    from loushang.ai.advanced.registry import clear_api_providers
+    from loushang.ai.auth import clear_oauth_providers
+    from loushang.ai.model import clear_default_model_registry
+
+    module = _load_module(
+        Path("examples/ai/advanced/openai_codex_contrib.py"),
+        "examples_ai_advanced_openai_codex_contrib",
+    )
+
+    try:
+        model = module.load_codex_model()
+    finally:
+        clear_api_providers()
+        clear_oauth_providers()
+        clear_default_model_registry()
+
+    assert model.provider_id == "openai-codex"
+    assert model.endpoint_id == "openai-codex-responses"
+    assert model.id == "gpt-5.3-codex"
+
+
 def test_errors_retry_example_reports_redacted_error_payload(capsys) -> None:
     module = _load_module(
         Path("examples/ai/09_errors_retry.py"), "examples_ai_09_errors_retry"

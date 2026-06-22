@@ -8,7 +8,7 @@ from typing import Any, Awaitable, Callable
 from urllib.parse import parse_qs, urlencode, urlparse
 
 from loushang.ai.auth.browser import CallbackWaiter, open_browser, wait_for_callback_url
-from loushang.ai.auth.registry import get_default_oauth_registry
+from loushang.ai.auth.registry import OAuthProviderRegistry, get_default_oauth_registry
 from loushang.ai.auth.types import (
     OAuthCredentials,
     OAuthLoginCallbacks,
@@ -286,7 +286,12 @@ class OpenAICodexOAuthProvider(OAuthProviderInterface):
         )
 
 
-def register_openai_codex_oauth_provider(*, source_id: str | None = None) -> None:
-    get_default_oauth_registry().register_oauth_provider(
+def register_openai_codex_oauth_provider(
+    *,
+    source_id: str | None = None,
+    registry: OAuthProviderRegistry | None = None,
+) -> None:
+    resolved_registry = registry or get_default_oauth_registry()
+    resolved_registry.register_oauth_provider(
         OpenAICodexOAuthProvider(), source_id=source_id
     )

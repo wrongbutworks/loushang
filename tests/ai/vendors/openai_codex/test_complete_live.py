@@ -5,11 +5,14 @@ import asyncio
 import pytest
 
 from loushang.ai import get_model
-from loushang.ai.advanced import OpenAICodexResponsesOptions
 from loushang.ai.auth import (
     load_credentials,
     register_builtin_oauth_providers,
     resolve_oauth_api_key,
+)
+from loushang.ai.contrib.openai_codex import (
+    OpenAICodexResponsesOptions,
+    register_openai_codex_contrib,
 )
 
 pytestmark = [
@@ -20,6 +23,7 @@ pytestmark = [
 
 def test_openai_codex_complete_live() -> None:
     register_builtin_oauth_providers()
+    register_openai_codex_contrib()
     credentials = load_credentials().get("openai-codex")
     if credentials is None:
         pytest.skip(

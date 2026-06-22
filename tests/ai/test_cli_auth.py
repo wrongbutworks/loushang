@@ -45,6 +45,10 @@ def _reset_oauth_registry(monkeypatch: pytest.MonkeyPatch):
         "loushang.ai.cli.__main__.register_builtin_oauth_providers",
         lambda: None,
     )
+    monkeypatch.setattr(
+        "loushang.ai.cli.__main__.register_openai_codex_oauth_provider",
+        lambda: None,
+    )
 
 
 def test_auth_providers_outputs_registered_oauth_providers(

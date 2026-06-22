@@ -4,7 +4,6 @@ from typing import Mapping
 
 from loushang.ai.auth.oauth import GetOAuthApiKeyResult
 from loushang.ai.auth.providers.anthropic import AnthropicOAuthProvider
-from loushang.ai.auth.providers.openai_codex import OpenAICodexOAuthProvider
 from loushang.ai.auth.registry import OAuthProviderRegistry, get_default_oauth_registry
 from loushang.ai.auth.storage import (
     find_scoped_credential,
@@ -63,14 +62,11 @@ def ensure_builtin_oauth_providers(
     *, registry: OAuthProviderRegistry | None = None
 ) -> None:
     resolved_registry = registry or get_default_oauth_registry()
-    if resolved_registry.get_oauth_provider("openai-codex") is None:
-        _register_builtin_openai_codex(resolved_registry)
     if resolved_registry.get_oauth_provider("anthropic") is None:
         _register_builtin_anthropic(resolved_registry)
 
 
 def _register_builtin_oauth_providers(registry: OAuthProviderRegistry) -> None:
-    _register_builtin_openai_codex(registry)
     _register_builtin_anthropic(registry)
 
 
@@ -78,14 +74,6 @@ def _register_builtin_anthropic(
     registry: OAuthProviderRegistry,
 ) -> OAuthProviderInterface:
     provider = AnthropicOAuthProvider()
-    registry.register_oauth_provider(provider, source_id="builtin")
-    return provider
-
-
-def _register_builtin_openai_codex(
-    registry: OAuthProviderRegistry,
-) -> OAuthProviderInterface:
-    provider = OpenAICodexOAuthProvider()
     registry.register_oauth_provider(provider, source_id="builtin")
     return provider
 

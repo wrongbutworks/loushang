@@ -87,7 +87,6 @@ CATALOG_PROVIDER_BASELINE = [
     "moonshotai-cn",
     "nvidia",
     "openai",
-    "openai-codex",
     "opencode",
     "opencode-go",
     "openrouter",
@@ -109,7 +108,6 @@ REGISTERED_PROVIDER_APIS_BASELINE = [
     "anthropic-messages",
     "azure-openai-responses",
     "bedrock-converse-stream",
-    "openai-codex-responses",
     "openai-completions",
     "openai-responses",
 ]
@@ -134,16 +132,15 @@ KNOWN_BASELINE_DEBT = {
     "core_bootstrap_registers_non_target_adapters": [
         "azure-openai-responses",
         "bedrock-converse-stream",
-        "openai-codex-responses",
     ],
     "builtin_catalog_is_over_curated_budget": {
-        "providers": 41,
-        "endpoints": 56,
-        "models": 1000,
+        "providers": 40,
+        "endpoints": 55,
+        "models": 990,
     },
     "legacy_compat_is_still_present": {
-        "endpoints": 30,
-        "models": 617,
+        "endpoints": 29,
+        "models": 607,
     },
 }
 
@@ -165,11 +162,11 @@ def test_builtin_provider_and_catalog_count_baseline() -> None:
     models = registry.list_models()
 
     assert [provider.id for provider in providers] == CATALOG_PROVIDER_BASELINE
-    assert len(providers) == 41
-    assert len(endpoints) == 56
-    assert len(models) == 1000
-    assert sum(1 for endpoint in endpoints if endpoint.compat) == 30
-    assert sum(1 for model in models if model.compat) == 617
+    assert len(providers) == 40
+    assert len(endpoints) == 55
+    assert len(models) == 990
+    assert sum(1 for endpoint in endpoints if endpoint.compat) == 29
+    assert sum(1 for model in models if model.compat) == 607
 
 
 def test_registered_provider_api_baseline_snapshot() -> None:
@@ -189,7 +186,7 @@ def test_test_and_example_inventory_baseline() -> None:
 
     assert len(ai_test_files) == 38
     assert len(provider_test_files) == 7
-    assert len(example_files) == 25
+    assert len(example_files) == 26
 
 
 def test_known_baseline_debt_snapshot() -> None:
@@ -200,11 +197,18 @@ def test_known_baseline_debt_snapshot() -> None:
     endpoints = model_registry.list_endpoints()
     models = model_registry.list_models()
 
-    assert sorted(provider.api for provider in provider_registry.list_api_providers() if provider.api in {
-        "azure-openai-responses",
-        "bedrock-converse-stream",
-        "openai-codex-responses",
-    }) == KNOWN_BASELINE_DEBT["core_bootstrap_registers_non_target_adapters"]
+    assert (
+        sorted(
+            provider.api
+            for provider in provider_registry.list_api_providers()
+            if provider.api
+            in {
+                "azure-openai-responses",
+                "bedrock-converse-stream",
+            }
+        )
+        == KNOWN_BASELINE_DEBT["core_bootstrap_registers_non_target_adapters"]
+    )
     assert KNOWN_BASELINE_DEBT["builtin_catalog_is_over_curated_budget"] == {
         "providers": len(providers),
         "endpoints": len(endpoints),

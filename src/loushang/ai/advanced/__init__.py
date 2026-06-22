@@ -1,7 +1,6 @@
 from loushang.ai.advanced.options import (
     AnthropicOptions,
     AzureOpenAIResponsesOptions,
-    OpenAICodexResponsesOptions,
     OpenAICompletionsOptions,
     OpenAIResponsesOptions,
 )
@@ -9,7 +8,6 @@ from loushang.ai.advanced.options import (
 __all__ = [
     "AnthropicOptions",
     "AzureOpenAIResponsesOptions",
-    "OpenAICodexResponsesOptions",
     "OpenAICompletionsOptions",
     "OpenAIResponsesOptions",
 ]

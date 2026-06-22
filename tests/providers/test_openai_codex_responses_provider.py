@@ -8,14 +8,14 @@ import pytest
 
 from loushang.ai.auth.types import OAuthCredentials
 from loushang.ai.context import normalize_context
+from loushang.ai.contrib.openai_codex import OpenAICodexResponsesOptions
+from loushang.ai.contrib.openai_codex.provider import OpenAICodexResponsesProvider
 from loushang.ai.model.domain import Compat, Endpoint, Model
 from loushang.ai.model.registry import (
     clear_default_model_registry,
     get_default_model_registry,
 )
-from loushang.ai.options import OpenAICodexResponsesOptions
 from loushang.ai.provider import ResolvedRequest
-from loushang.ai.providers.openai_codex_responses import OpenAICodexResponsesProvider
 from loushang.ai.structured import StructuredOutputOptions
 from loushang.ai.types import (
     AssistantMessage,

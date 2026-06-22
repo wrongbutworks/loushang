@@ -93,7 +93,6 @@ def test_ensure_builtin_oauth_providers_does_not_reset_registry() -> None:
     ensure_builtin_oauth_providers(registry=registry)
 
     assert registry.get_oauth_provider("demo") is not None
-    assert registry.get_oauth_provider("openai-codex") is not None
     assert registry.get_oauth_provider("anthropic") is not None
 
 

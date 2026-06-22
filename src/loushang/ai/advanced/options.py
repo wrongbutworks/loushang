@@ -45,21 +45,9 @@ class AzureOpenAIResponsesOptions(OpenAIResponsesOptions):
     azure_deployment_name: str | None = None
 
 
-@dataclass(frozen=True, slots=True)
-class OpenAICodexResponsesOptions(CallOptions):
-    """Deprecated provider-specific extension; prefer CallOptions."""
-
-    reasoning: str | None = None
-    reasoning_summary: str | None = None
-    text_verbosity: str | None = None
-    transport: Transport | None = None
-    session_id: str | None = None
-
-
 __all__ = [
     "AnthropicOptions",
     "AzureOpenAIResponsesOptions",
-    "OpenAICodexResponsesOptions",
     "OpenAICompletionsOptions",
     "OpenAIResponsesOptions",
 ]

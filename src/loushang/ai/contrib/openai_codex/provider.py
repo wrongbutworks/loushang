@@ -9,6 +9,10 @@ from types import SimpleNamespace
 from typing import Any
 from uuid import uuid4
 
+from loushang.ai.contrib.openai_codex.runtime_config import (
+    OpenAICodexRuntimeConfig,
+    resolve_openai_codex_runtime_config,
+)
 from loushang.ai.model.domain import EndpointProtocolFeatures, EndpointWireDialect
 from loushang.ai.options import (
     get_reasoning_effort,
@@ -21,10 +25,6 @@ from loushang.ai.provider import resolve_provider_request
 from loushang.ai.provider.errors import is_http_status_code, provider_error_part
 from loushang.ai.provider.runtime_config import (
     AdapterRuntimeConfig,
-)
-from loushang.ai.providers.openai_codex_runtime_config import (
-    OpenAICodexRuntimeConfig,
-    resolve_openai_codex_runtime_config,
 )
 from loushang.ai.providers.openai_responses_shared import (
     convert_responses_messages,

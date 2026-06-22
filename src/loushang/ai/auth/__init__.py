@@ -16,10 +16,6 @@ from loushang.ai.auth.oauth import (
     get_oauth_api_key,
     refresh_oauth_token,
 )
-from loushang.ai.auth.providers.openai_codex import (
-    OpenAICodexOAuthProvider,
-    register_openai_codex_oauth_provider,
-)
 from loushang.ai.auth.registry import OAuthProviderRegistry, get_default_oauth_registry
 from loushang.ai.auth.storage import (
     CredentialStore,
@@ -56,7 +52,6 @@ __all__ = [
     "OAuthLoginCallbacks",
     "OAuthPrompt",
     "OAuthProviderInterface",
-    "OpenAICodexOAuthProvider",
     "OAuthProviderRegistry",
     "clear_oauth_providers",
     "ensure_builtin_oauth_providers",
@@ -71,7 +66,6 @@ __all__ = [
     "oauth_refresh",
     "refresh_oauth_token",
     "register_builtin_oauth_providers",
-    "register_openai_codex_oauth_provider",
     "register_oauth_provider",
     "reset_oauth_providers",
     "resolve_auth_for_model",

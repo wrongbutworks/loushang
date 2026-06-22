@@ -24,11 +24,7 @@ LOADER_COMPAT_HELPER_PATHS = frozenset(
         "src/loushang/ai/model/loader.py",
     }
 )
-PROVIDER_COMPAT_SCHEMA_IMPORT_PATHS = frozenset(
-    {
-        "src/loushang/ai/providers/openai_codex_runtime_config.py",
-    }
-)
+PROVIDER_COMPAT_SCHEMA_IMPORT_PATHS = frozenset()
 
 
 def test_legacy_compat_helpers_are_loader_only() -> None:
@@ -345,11 +341,11 @@ def _codex_runtime_core_accesses(relative_path: str, tree: ast.AST) -> list[str]
                             f"{relative_path} imports "
                             f"loushang.ai.model.compat_schema.{name}"
                         )
-            elif node.module == "loushang.ai.providers.openai_codex_runtime_config":
+            elif node.module == "loushang.ai.contrib.openai_codex.runtime_config":
                 for alias in node.names:
                     offenders.append(
                         f"{relative_path} imports "
-                        f"loushang.ai.providers.openai_codex_runtime_config.{alias.name}"
+                        f"loushang.ai.contrib.openai_codex.runtime_config.{alias.name}"
                     )
     return offenders
 

@@ -48,6 +48,8 @@
   离线查看 OAuth scoped credential store 写入、选择和本地文件权限
 - [advanced/platform_quota.py](advanced/platform_quota.py)
   离线查看 Endpoint 平台额度查询抽象与 `PlatformQuota` 输出
+- [advanced/openai_codex_contrib.py](advanced/openai_codex_contrib.py)
+  显式注册非稳定 Codex contrib adapter 和私有 catalog 后再查找模型
 
 ## Provider 配置速查
 

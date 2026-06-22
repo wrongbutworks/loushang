@@ -9,6 +9,11 @@ from dataclasses import asdict, fields
 import pytest
 
 import loushang.ai.model.registry as model_registry_module
+from loushang.ai.contrib.openai_codex.provider import OpenAICodexResponsesProvider
+from loushang.ai.contrib.openai_codex.runtime_config import (
+    OpenAICodexRuntimeConfig,
+    resolve_openai_codex_runtime_config,
+)
 from loushang.ai.model import (
     Auth,
     Capabilities,
@@ -64,11 +69,6 @@ from loushang.ai.provider import (
 )
 from loushang.ai.provider.invocation import (
     call_api_provider_stream,
-)
-from loushang.ai.providers.openai_codex_responses import OpenAICodexResponsesProvider
-from loushang.ai.providers.openai_codex_runtime_config import (
-    OpenAICodexRuntimeConfig,
-    resolve_openai_codex_runtime_config,
 )
 
 OPENAI_CODEX_RESPONSES_API = OpenAICodexResponsesProvider.api

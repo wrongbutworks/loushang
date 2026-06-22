@@ -83,8 +83,7 @@ def resolve_openai_codex_runtime_config(
         return derived
     if not isinstance(current, OpenAICodexRuntimeConfig):
         raise TypeError(
-            "adapter_config for openai-codex-responses must be "
-            "OpenAICodexRuntimeConfig"
+            "adapter_config for openai-codex-responses must be OpenAICodexRuntimeConfig"
         )
     _validate_openai_codex_runtime_config_matches_compat(current, codex_compat)
     return current
