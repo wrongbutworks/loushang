@@ -8,10 +8,10 @@ from collections.abc import Mapping
 
 from loushang.ai import (
     EndpointQuotaQuery,
-    get_model,
     platform_quota_payload,
     query_platform_quota,
 )
+from loushang.ai.model import Model
 
 
 class _OfflineQuotaTransport:
@@ -35,7 +35,12 @@ class _OfflineQuotaTransport:
 
 
 async def inspect_platform_quota() -> dict[str, object]:
-    model = get_model("moonshot", "coding", "kimi-for-coding")
+    model = Model(
+        id="kimi-for-coding",
+        provider="moonshot",
+        endpoint="coding",
+        base_url="https://api.kimi.com/coding/v1",
+    )
     quota = await query_platform_quota(
         model,
         api_key="offline-demo-key",

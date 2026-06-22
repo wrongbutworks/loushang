@@ -19,7 +19,7 @@ from loushang.ai.tool import validate_tool_arguments, validate_tool_arguments_re
 API_KEY = ""
 PROVIDER_ID = "moonshot"
 ENDPOINT_ID = "openai-completions"
-MODEL_ID = "kimi-k2.5"
+MODEL_ID = "kimi-k2.6"
 USER_PROMPT = "只调用工具，不要心算：使用 add 计算 78 + 35，并返回结果。"
 MAX_TOKENS = 1024
 

@@ -30,7 +30,7 @@ from loushang.ai.advanced import OpenAIResponsesOptions
 # 用户可直接修改的配置。
 # 这是高级示例；重点在 tool 协议，不在最短接入路径。
 API_KEY = ""
-MODEL_ID = "qwen3.6-plus"
+MODEL_ID = "qwen3.7-plus"
 USER_PROMPT = "只调用工具，不要心算：使用 add 计算 78 + 35，并返回结果。"
 MAX_TOKENS = 1024
 

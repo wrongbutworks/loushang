@@ -11,7 +11,7 @@ from loushang.ai import get_model, list_models
 
 PROVIDER_ID = "moonshot"
 ENDPOINT_ID = "openai-completions"
-MODEL_ID = "kimi-k2.5"
+MODEL_ID = "kimi-k2.6"
 
 
 def main() -> None:

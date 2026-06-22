@@ -26,10 +26,10 @@ def test_model_lookup_example_targets_public_kimi_model() -> None:
 
     assert module.PROVIDER_ID == "moonshot"
     assert module.ENDPOINT_ID == "openai-completions"
-    assert module.MODEL_ID == "kimi-k2.5"
+    assert module.MODEL_ID == "kimi-k2.6"
 
 
-def test_provider_matrix_example_targets_new_provider_models() -> None:
+def test_provider_matrix_example_targets_curated_provider_models() -> None:
     module = _load_module(
         Path("examples/ai/provider_matrix.py"), "examples_ai_provider_matrix"
     )
@@ -39,19 +39,28 @@ def test_provider_matrix_example_targets_new_provider_models() -> None:
         for item in module.PROVIDER_EXAMPLES
     }
 
-    assert examples[("openrouter", "openai-completions", "openai/gpt-oss-120b_free")]
-    assert "amazon-bedrock" not in {item.provider_id for item in module.PROVIDER_EXAMPLES}
+    assert examples[("moonshot", "openai-completions", "kimi-k2.6")]
+    assert examples[("baidu-qianfan", "openai-completions-cn", "ernie-5.1")]
+    assert examples[("stepfun", "openai-completions", "step-3.7-flash")]
+    assert len(examples) == 11
+    assert "openrouter" not in {item.provider_id for item in module.PROVIDER_EXAMPLES}
+    assert "amazon-bedrock" not in {
+        item.provider_id for item in module.PROVIDER_EXAMPLES
+    }
 
 
-def test_provider_matrix_example_formats_upstream_model_id() -> None:
+def test_provider_matrix_example_formats_curated_model_line() -> None:
     module = _load_module(
         Path("examples/ai/provider_matrix.py"), "examples_ai_provider_matrix_format"
     )
 
-    line = module._format_model_line(module.PROVIDER_EXAMPLES[0])
+    moonshot = next(
+        item for item in module.PROVIDER_EXAMPLES if item.provider_id == "moonshot"
+    )
+    line = module._format_model_line(moonshot)
 
-    assert "openai/gpt-oss-120b_free" in line
-    assert "upstream=openai/gpt-oss-120b:free" in line
+    assert "moonshot:openai-completions:kimi-k2.6" in line
+    assert "env=MOONSHOT_API_KEY" in line
 
 
 def test_provider_matrix_example_formats_all_provider_entries() -> None:
@@ -93,7 +102,7 @@ def test_usage_online_example_prints_unknown_cost(capsys, monkeypatch) -> None:
                 content=[TextPart(type="text", text="ok")],
                 api="openai-completions",
                 provider="moonshot",
-                model="kimi-k2.5",
+                model="kimi-k2.6",
                 response_id="resp_1",
                 usage=Usage(
                     input=1,
@@ -394,7 +403,7 @@ def test_advanced_inspect_endpoint_contract_formats_protocol_facts(
                                     }
                                 },
                                 "models": {
-                                    "kimi-k2.5": {
+                                    "kimi-k2.6": {
                                         "compat": {
                                             "supportsReasoningEffort": True,
                                             "supportsStreamReasoningDelta": True,
@@ -422,7 +431,7 @@ def test_advanced_inspect_endpoint_contract_formats_protocol_facts(
     assert contract["endpoint"] == "openai-completions"
     assert contract["api"] == "openai-completions"
     assert contract["protocolScope"] == "endpoint-default"
-    assert contract["model"] == "kimi-k2.5"
+    assert contract["model"] == "kimi-k2.6"
     assert contract["protocol"] == {
         "store": "unsupported",
         "roles": {"developer": "unsupported"},
@@ -483,38 +492,75 @@ def test_advanced_inspect_endpoint_contract_runs_against_builtin_catalog() -> No
 
     assert contract["provider"] == "moonshot"
     assert contract["endpoint"] == "openai-completions"
-    assert contract["model"] == "kimi-k2.5"
+    assert contract["model"] == "kimi-k2.6"
     assert contract["protocol"] == {
         "store": "unsupported",
         "roles": {"developer": "unsupported"},
+        "streaming": {"usage": "supported", "reasoningDelta": "supported"},
         "reasoning": {"effort": "unsupported"},
         "tools": {"strictSchema": "unsupported"},
     }
     assert contract["dialect"] == {
         "maxOutputTokensField": "max_tokens",
-        "reasoning": {"wireFormat": "moonshot"},
+        "reasoning": {
+            "wireFormat": "moonshot",
+            "thinkingAsText": False,
+            "assistantContentRequired": False,
+        },
     }
     assert contract["transport"] == {}
     assert contract["routing"] == {}
-    assert contract["requestProtocol"]["reasoning"]["effort"] == "supported"
-    assert contract["adapterProtocol"]["reasoning"]["effort"] == "supported"
+    assert contract["requestProtocol"]["reasoning"]["effort"] == "unsupported"
+    assert contract["adapterProtocol"]["reasoning"]["effort"] == "unsupported"
 
 
-def test_advanced_inspect_endpoint_contract_handles_templated_base_url() -> None:
+def test_advanced_inspect_endpoint_contract_handles_templated_base_url(
+    monkeypatch,
+    tmp_path,
+) -> None:
     module = _load_module(
         Path("examples/ai/advanced/inspect_endpoint_contract.py"),
         "examples_ai_advanced_inspect_endpoint_contract_template",
     )
+    path = tmp_path / "models.v2.json"
+    path.write_text(
+        json.dumps(
+            {
+                "schemaVersion": 2,
+                "providers": {
+                    "custom-template": {
+                        "endpoints": {
+                            "openai-completions": {
+                                "api": "openai-completions",
+                                "baseUrl": "https://example.invalid/{ACCOUNT_ID}/v1",
+                                "models": {
+                                    "template-model": {
+                                        "capabilities": {
+                                            "input": ["text"],
+                                            "output": ["text"],
+                                        }
+                                    }
+                                },
+                            }
+                        }
+                    }
+                },
+            }
+        ),
+        encoding="utf-8",
+    )
+    registry = load_model_registry_from_file(path)
+    monkeypatch.setattr(module, "load_builtin_model_registry", lambda: registry)
 
     contract = module.inspect_endpoint_contract(
-        "cloudflare-workers-ai",
+        "custom-template",
         "openai-completions",
-        "@cf/google/gemma-4-26b-a4b-it",
+        "template-model",
     )
 
-    assert contract["provider"] == "cloudflare-workers-ai"
+    assert contract["provider"] == "custom-template"
     assert contract["endpoint"] == "openai-completions"
-    assert contract["model"] == "@cf/google/gemma-4-26b-a4b-it"
+    assert contract["model"] == "template-model"
     assert contract["requestProtocolScope"] == "model-effective"
     assert contract["requestDialectScope"] == "model-effective"
     assert contract["adapterProtocolScope"] == "adapter-effective"
@@ -778,19 +824,14 @@ def test_usage_online_example_defaults_to_moonshot_public_route(monkeypatch) -> 
     assert module.parse_args().route == "moonshot-openai"
 
 
-def test_usage_online_kimi_code_routes_require_kimi_credentials() -> None:
+def test_usage_online_curated_routes_use_provider_credentials() -> None:
     module = _load_module(
         Path("examples/ai/usage_online.py"), "examples_ai_usage_online_routes"
     )
 
-    assert module.ROUTES["kimi-code-anthropic"].api_key_envs == (
-        "KIMI_API_KEY",
-        "KIMI_AUTH_TOKEN",
-    )
-    assert module.ROUTES["kimi-code-openai"].api_key_envs == (
-        "KIMI_API_KEY",
-        "KIMI_AUTH_TOKEN",
-    )
+    assert module.ROUTES["moonshot-openai"].api_key_envs == ("MOONSHOT_API_KEY",)
+    assert module.ROUTES["dashscope-responses"].api_key_envs == ("DASHSCOPE_API_KEY",)
+    assert module.ROUTES["deepseek-completions"].api_key_envs == ("DEEPSEEK_API_KEY",)
 
 
 def test_usage_online_routes_exist_in_model_catalog() -> None:

@@ -13,9 +13,7 @@ from loushang.ai.model import (
 from loushang.ai.model.loader import validate_model_registry_raw
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
-CURATED_CATALOG_PATH = (
-    REPO_ROOT / "src/loushang/ai/model/models.curated.v2.json"
-)
+CURATED_CATALOG_PATH = REPO_ROOT / "src/loushang/ai/model/models.curated.v2.json"
 EVIDENCE_DIR = REPO_ROOT / "docs/internals/architecture/ai/catalog-evidence"
 EVIDENCE_TEMPLATE_PATH = EVIDENCE_DIR / "_template.md"
 ANTHROPIC_EVIDENCE_PATH = EVIDENCE_DIR / "anthropic.md"
@@ -67,41 +65,43 @@ def test_curated_catalog_loads_v2_schema() -> None:
     ]
 
 
-def test_default_builtin_catalog_still_uses_legacy_catalog() -> None:
+def test_default_builtin_catalog_uses_curated_v2_catalog() -> None:
     registry = load_builtin_model_registry()
+    curated = _load_curated_registry()
 
-    assert registry.list_providers()
-    assert registry.get_provider("openai") is not None
-    assert len(registry.list_models(provider="openai")) > len(
-        _load_curated_registry().list_models(provider="openai")
+    assert [provider.id for provider in registry.list_providers()] == [
+        provider.id for provider in curated.list_providers()
+    ]
+    assert [
+        (endpoint.provider_id, endpoint.id) for endpoint in registry.list_endpoints()
+    ] == [(endpoint.provider_id, endpoint.id) for endpoint in curated.list_endpoints()]
+    assert [
+        (model.provider_id, model.endpoint_id, model.id)
+        for model in registry.list_models()
+    ] == [
+        (model.provider_id, model.endpoint_id, model.id)
+        for model in curated.list_models()
+    ]
+    assert registry.get_provider("openrouter") is None
+    assert registry.get_provider("cloudflare-workers-ai") is None
+
+
+def test_cli_catalog_commands_show_curated_builtin_catalog(monkeypatch, capsys) -> None:
+    from loushang.ai.cli.__main__ import main
+
+    monkeypatch.setattr(
+        "loushang.ai.cli.__main__.get_default_model_registry",
+        load_builtin_model_registry,
     )
-    assert len(registry.list_models(provider="anthropic")) > len(
-        _load_curated_registry().list_models(provider="anthropic")
-    )
-    assert len(registry.list_models(provider="dashscope")) > len(
-        _load_curated_registry().list_models(provider="dashscope")
-    )
-    assert len(registry.list_models(provider="baidu-qianfan")) > len(
-        _load_curated_registry().list_models(provider="baidu-qianfan")
-    )
-    assert len(registry.list_models(provider="moonshot")) > len(
-        _load_curated_registry().list_models(provider="moonshot")
-    )
-    assert len(registry.list_models(provider="minimax")) > len(
-        _load_curated_registry().list_models(provider="minimax")
-    )
-    assert len(registry.list_models(provider="stepfun")) > len(
-        _load_curated_registry().list_models(provider="stepfun")
-    )
-    assert len(registry.list_models(provider="tencent-hunyuan")) > len(
-        _load_curated_registry().list_models(provider="tencent-hunyuan")
-    )
-    assert len(registry.list_models(provider="volcano-ark")) > len(
-        _load_curated_registry().list_models(provider="volcano-ark")
-    )
-    assert len(registry.list_models(provider="zai")) > len(
-        _load_curated_registry().list_models(provider="zai")
-    )
+
+    main(["--json", "models", "list", "--provider", "moonshot"])
+    assert json.loads(capsys.readouterr().out) == ["kimi-k2.6", "kimi-k2.7-code"]
+
+    main(["--json", "endpoints", "list", "--provider", "moonshot"])
+    assert json.loads(capsys.readouterr().out) == ["moonshot:openai-completions"]
+
+    main(["--json", "endpoints", "list", "--provider", "openrouter"])
+    assert json.loads(capsys.readouterr().out) == []
 
 
 def test_curated_catalog_includes_verified_anthropic_messages_models() -> None:
@@ -160,9 +160,7 @@ def test_curated_catalog_includes_verified_anthropic_messages_models() -> None:
     assert opus.pricing.cache_read == 0.5
     assert opus.pricing.cache_write == 6.25
 
-    sonnet = registry.get_model(
-        "anthropic", "anthropic-messages", "claude-sonnet-4-6"
-    )
+    sonnet = registry.get_model("anthropic", "anthropic-messages", "claude-sonnet-4-6")
     assert sonnet is not None
     assert sonnet.name == "Claude Sonnet 4.6"
     assert sonnet.context_window == 1_000_000
@@ -338,7 +336,9 @@ def test_curated_catalog_includes_verified_dashscope_responses_models() -> None:
 def test_curated_catalog_includes_verified_deepseek_v4_models() -> None:
     registry = _load_curated_registry()
 
-    curated_model_ids = {model.id for model in registry.list_models(provider="deepseek")}
+    curated_model_ids = {
+        model.id for model in registry.list_models(provider="deepseek")
+    }
     assert "deepseek-r1" not in curated_model_ids
     assert "deepseek-v3.2" not in curated_model_ids
 
@@ -1245,7 +1245,9 @@ def test_curated_provider_matrix_matches_openai_fixture() -> None:
     assert "`hunyuan-turbos-latest`" in text
     assert "`HUNYUAN_API_KEY`" in text
     assert "`catalog-evidence/tencent-hunyuan.md`" in text
-    assert "`volcano-ark` | `openai-completions-cn-beijing` | `openai-completions`" in text
+    assert (
+        "`volcano-ark` | `openai-completions-cn-beijing` | `openai-completions`" in text
+    )
     assert "`doubao-seed-2-0-lite-260215`" in text
     assert "`ARK_API_KEY`" in text
     assert "`catalog-evidence/volcano-ark.md`" in text
@@ -1253,4 +1255,4 @@ def test_curated_provider_matrix_matches_openai_fixture() -> None:
     assert "`glm-5.2`, `glm-5.1`" in text
     assert "`ZAI_API_KEY`" in text
     assert "`catalog-evidence/zai.md`" in text
-    assert "load_model_registry_from_file" in text
+    assert "built-in catalog" in text

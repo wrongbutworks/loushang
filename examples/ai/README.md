@@ -5,7 +5,9 @@
 - [model_lookup.py](model_lookup.py)
   查看 provider、模型列表，并拿到正式模型句柄
 - [provider_matrix.py](provider_matrix.py)
-  查看新增 provider、endpoint、环境变量和上游模型 ID 映射
+  查看内置 curated provider、endpoint、环境变量和模型入口
+- [12_provider_smoke.py](12_provider_smoke.py)
+  离线验证内置 curated provider 的默认模型句柄可解析
 - [complete.py](complete.py)
   最常见的完整返回调用
 - [stream.py](stream.py)
@@ -53,22 +55,27 @@
 
 ## Provider 配置速查
 
-模型调用使用三元组定位：`provider:endpoint:model`。如果上游模型 ID 自身包含冒号，内置 catalog 的公开 `model` ID 会把冒号替换为下划线，并在 `model.upstream_id` 保存真实上游 ID。自定义 schema v2 catalog 可直接写模型字段 `upstreamId`。
+模型调用使用三元组定位：`provider:endpoint:model`。内置 catalog 现在是小型 curated provider 集；更长尾的 provider/model 应通过自定义 schema v2 catalog 添加。
 
-例如 OpenRouter 的上游模型 `openai/gpt-oss-120b:free` 在本地查询时写作：
+例如 Moonshot 默认 OpenAI-compatible route：
 
 ```python
-model = get_model("openrouter", "openai-completions", "openai/gpt-oss-120b_free")
+model = get_model("moonshot", "openai-completions", "kimi-k2.6")
 ```
 
-常用新增 provider 的最小环境变量：
+内置 curated provider 的最小环境变量：
 
-- `openrouter`: `OPENROUTER_API_KEY`
-- `cloudflare-ai-gateway`: `CLOUDFLARE_API_KEY`, `CLOUDFLARE_ACCOUNT_ID`, `CLOUDFLARE_GATEWAY_ID`
-- `cloudflare-workers-ai`: `CLOUDFLARE_API_KEY`, `CLOUDFLARE_ACCOUNT_ID`
-- `mistral`: `MISTRAL_API_KEY`
-- `google`: `GEMINI_API_KEY` 或 `GOOGLE_API_KEY`
-- `google-vertex`: `GOOGLE_VERTEX_ACCESS_TOKEN`, `GOOGLE_CLOUD_PROJECT`, `GOOGLE_CLOUD_LOCATION`
+- `anthropic`: `ANTHROPIC_API_KEY`
+- `baidu-qianfan`: `QIANFAN_API_KEY` 或 `BAIDU_QIANFAN_API_KEY`
+- `dashscope`: `DASHSCOPE_API_KEY`
+- `deepseek`: `DEEPSEEK_API_KEY`
+- `minimax`: `MINIMAX_API_KEY`
+- `moonshot`: `MOONSHOT_API_KEY`
+- `openai`: `OPENAI_API_KEY`
+- `stepfun`: `STEP_API_KEY` 或 `STEPFUN_API_KEY`
+- `tencent-hunyuan`: `HUNYUAN_API_KEY`
+- `volcano-ark`: `ARK_API_KEY`
+- `zai`: `ZAI_API_KEY`
 补充：
 
 - [advanced/openai_codex_login.py](advanced/openai_codex_login.py)

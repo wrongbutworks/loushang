@@ -1696,7 +1696,7 @@ def test_openai_completions_explicit_moonshot_thinking_for_model_definition(
             _stream_raw_parts(
                 provider,
                 Model(
-                    id="kimi-k2.5",
+                    id="kimi-k2.6",
                     provider="moonshot",
                     endpoint="openai-completions",
                     capabilities=Capabilities(reasoning=True),
@@ -1722,7 +1722,7 @@ def test_openai_completions_builtin_moonshot_uses_system_role_not_developer(
     _fake_openai_module(monkeypatch)
     monkeypatch.setenv("MOONSHOT_API_KEY", "test-key")
     provider = OpenAICompletionsProvider()
-    model = get_model("moonshot", "openai-completions", "kimi-k2.5")
+    model = get_model("moonshot", "openai-completions", "kimi-k2.6")
 
     asyncio.run(
         _collect_parts(

@@ -1,7 +1,8 @@
-"""Provider catalog and configuration lookup example.
+"""Curated provider catalog lookup example.
 
-This example does not call any remote API. It only reads the built-in model
-catalog and prints the provider/endpoint/model facts needed before a real call.
+This example does not call any remote API. It only reads the built-in curated
+model catalog and prints provider/endpoint/model facts needed before a real
+call.
 """
 
 from __future__ import annotations
@@ -21,40 +22,70 @@ class ProviderExample:
 
 PROVIDER_EXAMPLES = (
     ProviderExample(
-        "openrouter",
-        "openai-completions",
-        "openai/gpt-oss-120b_free",
-        ("OPENROUTER_API_KEY",),
+        "anthropic",
+        "anthropic-messages",
+        "claude-sonnet-4-6",
+        ("ANTHROPIC_API_KEY",),
     ),
     ProviderExample(
-        "cloudflare-ai-gateway",
-        "openai-completions",
-        "workers-ai/@cf/moonshotai/kimi-k2.5",
-        ("CLOUDFLARE_API_KEY", "CLOUDFLARE_ACCOUNT_ID", "CLOUDFLARE_GATEWAY_ID"),
+        "baidu-qianfan",
+        "openai-completions-cn",
+        "ernie-5.1",
+        ("QIANFAN_API_KEY", "BAIDU_QIANFAN_API_KEY"),
     ),
     ProviderExample(
-        "cloudflare-workers-ai",
-        "openai-completions",
-        "@cf/openai/gpt-oss-120b",
-        ("CLOUDFLARE_API_KEY", "CLOUDFLARE_ACCOUNT_ID"),
+        "dashscope",
+        "openai-responses",
+        "qwen3.7-plus",
+        ("DASHSCOPE_API_KEY",),
     ),
     ProviderExample(
-        "mistral",
+        "deepseek",
         "openai-completions",
-        "mistral-large-latest",
-        ("MISTRAL_API_KEY",),
+        "deepseek-v4-flash",
+        ("DEEPSEEK_API_KEY",),
     ),
     ProviderExample(
-        "google",
-        "openai-completions",
-        "gemini-2.5-flash",
-        ("GEMINI_API_KEY",),
+        "minimax",
+        "anthropic-messages",
+        "MiniMax-M3",
+        ("MINIMAX_API_KEY",),
     ),
     ProviderExample(
-        "google-vertex",
+        "moonshot",
         "openai-completions",
-        "gemini-2.5-flash",
-        ("GOOGLE_VERTEX_ACCESS_TOKEN", "GOOGLE_CLOUD_PROJECT", "GOOGLE_CLOUD_LOCATION"),
+        "kimi-k2.6",
+        ("MOONSHOT_API_KEY",),
+    ),
+    ProviderExample(
+        "openai",
+        "openai-responses",
+        "gpt-5.4-mini",
+        ("OPENAI_API_KEY",),
+    ),
+    ProviderExample(
+        "stepfun",
+        "openai-completions",
+        "step-3.7-flash",
+        ("STEP_API_KEY", "STEPFUN_API_KEY"),
+    ),
+    ProviderExample(
+        "tencent-hunyuan",
+        "openai-completions",
+        "hunyuan-turbos-latest",
+        ("HUNYUAN_API_KEY",),
+    ),
+    ProviderExample(
+        "volcano-ark",
+        "openai-completions-cn-beijing",
+        "doubao-seed-2-0-lite-260215",
+        ("ARK_API_KEY",),
+    ),
+    ProviderExample(
+        "zai",
+        "openai-completions",
+        "glm-5.2",
+        ("ZAI_API_KEY",),
     ),
 )
 

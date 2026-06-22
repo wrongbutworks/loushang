@@ -32,10 +32,10 @@
   - 运行时查询容器：`ModelRegistry`
   - 默认入口：`get_default_model_registry()`
 - `loader.py`
-  - 从内置 `models.json` 或显式文件/目录路径装载 registry
+  - 从内置 `models.curated.v2.json` 或显式文件/目录路径装载 registry
   - 显式文件、目录和外部 overlay 的 `*_with_diagnostics()` 变体返回 legacy `compat` 到类型化字段的 deprecation diagnostics；内置 catalog 自身的迁移 warning 不向普通装载调用暴露
-- `models.json`
-  - 内置模型事实源
+- `models.curated.v2.json`
+  - 内置 curated 模型事实源；完整 legacy catalog 已归档到 `docs/internals/archive/ai/model-catalog/models-v1-full.json.gz`
 
 当前 `model` 包的稳定心智是：
 
@@ -46,12 +46,12 @@
 模型 ID 规则：
 
 - catalog 中的 `provider`、`endpoint`、`model` 三段用于本地查询和 CLI 展示
-- 上游模型 ID 如果包含 `:`，catalog 的公开 `model` ID 使用 `_` 替换 `:`
+- 自定义 catalog 可以用 `upstreamId` 记录与本地 model ID 不同的真实上游模型 ID
 - 真实上游 ID 存在 `model.upstream_id`
 - provider 解析层输出 `ResolvedRequest.upstream_model_id`
 - provider adapter 发请求时使用 `ResolvedRequest.upstream_model_id`，没有该字段时使用 `model.id`
 
-例如 OpenRouter 上游模型 `openai/gpt-oss-120b:free` 在本地写作 `openai/gpt-oss-120b_free`。
+内置 curated catalog 当前不依赖 `upstreamId`；长尾 provider 或带特殊上游 ID 的模型应通过外部自定义 catalog 加入。
 
 ### `provider/`
 
@@ -85,7 +85,7 @@
 - OpenAI Responses：`openai-responses`
 - Anthropic Messages：`anthropic-messages`
 
-其中 Mistral、Google Gemini API、Google Vertex OpenAI-compatible、Cloudflare AI Gateway / Workers AI 通过现有 OpenAI-compatible 或 Anthropic Messages adapter 接入。Cloudflare 和 Vertex 的 `baseUrl` 可以包含 `{ENV_NAME}` 模板，运行时由 `provider.resolution` 从环境变量展开；缺少变量时直接报错。
+内置 curated model catalog 只发布经过证据校验的小型 provider 集。Mistral、Google Gemini API、Google Vertex OpenAI-compatible、Cloudflare AI Gateway / Workers AI 等长尾接入不在默认 catalog 中；需要时应通过自定义 catalog 或外部包复用现有 OpenAI-compatible / Anthropic Messages adapter 边界。外部 catalog 的 `baseUrl` 可以包含 `{ENV_NAME}` 模板，运行时由 `provider.resolution` 从环境变量展开；缺少变量时直接报错。
 
 核心 adapter 集合由 `docs/internals/architecture/ai/core-provider-adapter-contract-matrix.md`
 锁定；新增厂商专用 adapter 必须进入 `contrib` 或外部包，不能默认进入 core。
@@ -386,13 +386,9 @@ code should use attribute access instead of dict-style message access.
 
 运行时 provider 路由由 `endpoint.api` 决定。
 
-例如：
-
-- `moonshot:openai-completions:kimi-k2.5`
-- `moonshot:openai-responses:kimi-k2.5`
-- `moonshot:anthropic-messages:kimi-k2.5`
-
-是三个不同的可调用 `Model` 句柄。
+例如 `moonshot:openai-completions:kimi-k2.6` 是一个可调用 `Model` 句柄。
+如果同一个上游模型通过多个 endpoint 暴露，catalog 仍会把它们表达为不同的
+`provider:endpoint:model` 句柄。
 
 ### `ResolvedRequest`
 
@@ -454,7 +450,7 @@ resolution 边界报错。无关 compat key 不参与
 ```python
 from loushang.ai import get_model
 
-model = get_model("moonshot", "openai-completions", "kimi-k2.5")
+model = get_model("moonshot", "openai-completions", "kimi-k2.6")
 
 message = await model.complete(
     {
@@ -470,7 +466,7 @@ message = await model.complete(
 ```python
 from loushang.ai import complete, get_model
 
-model = get_model("moonshot", "openai-completions", "kimi-k2.5")
+model = get_model("moonshot", "openai-completions", "kimi-k2.6")
 message = await complete(model, {"messages": [{"role": "user", "content": "hi"}]})
 ```
 

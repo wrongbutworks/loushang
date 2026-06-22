@@ -60,7 +60,7 @@ def inspect_error_serialization() -> dict[str, object]:
             retryable=False,
             provider="moonshot",
             endpoint="openai-completions",
-            model="kimi-k2.5",
+            model="kimi-k2.6",
             details={
                 "hint": "Set MOONSHOT_API_KEY.",
                 "Authorization": "Bearer secret-token",
@@ -112,7 +112,9 @@ async def inspect_retry_policy() -> dict[str, object]:
     return {
         "attempts": provider.attempts,
         "text": "".join(
-            part.text for part in message.content if getattr(part, "type", None) == "text"
+            part.text
+            for part in message.content
+            if getattr(part, "type", None) == "text"
         ),
         "trace": trace_events,
     }

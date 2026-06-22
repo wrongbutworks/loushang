@@ -5,14 +5,14 @@
 - 对比 complete 与 stream 两种 public path 的最终 usage
 
 运行前提：
-- Kimi Code: export KIMI_API_KEY=... 或 export KIMI_AUTH_TOKEN=...
 - Moonshot public API: export MOONSHOT_API_KEY=...
 - DashScope: export DASHSCOPE_API_KEY=...
+- DeepSeek: export DEEPSEEK_API_KEY=...
 
 示例：
 - uv --cache-dir .uv-cache run python examples/ai/usage_online.py
-- uv --cache-dir .uv-cache run python examples/ai/usage_online.py --route kimi-code-anthropic --stream --strict
 - uv --cache-dir .uv-cache run python examples/ai/usage_online.py --route dashscope-responses --strict
+- uv --cache-dir .uv-cache run python examples/ai/usage_online.py --route deepseek-completions --stream --strict
 """
 
 from __future__ import annotations
@@ -42,35 +42,23 @@ class Route:
 
 
 ROUTES: dict[str, Route] = {
-    "kimi-code-anthropic": Route(
-        provider="moonshot",
-        endpoint="kimi-code-anthropic",
-        model="kimi-for-coding",
-        api_key_envs=("KIMI_API_KEY", "KIMI_AUTH_TOKEN"),
-    ),
-    "kimi-code-openai": Route(
-        provider="moonshot",
-        endpoint="coding",
-        model="kimi-for-coding",
-        api_key_envs=("KIMI_API_KEY", "KIMI_AUTH_TOKEN"),
-    ),
     "moonshot-openai": Route(
         provider="moonshot",
         endpoint="openai-completions",
-        model="kimi-k2.5",
-        api_key_envs=("MOONSHOT_API_KEY",),
-    ),
-    "moonshot-anthropic": Route(
-        provider="moonshot",
-        endpoint="anthropic-messages",
-        model="kimi-k2.5",
+        model="kimi-k2.6",
         api_key_envs=("MOONSHOT_API_KEY",),
     ),
     "dashscope-responses": Route(
         provider="dashscope",
         endpoint="openai-responses",
-        model="qwen3.6-plus",
+        model="qwen3.7-plus",
         api_key_envs=("DASHSCOPE_API_KEY",),
+    ),
+    "deepseek-completions": Route(
+        provider="deepseek",
+        endpoint="openai-completions",
+        model="deepseek-v4-flash",
+        api_key_envs=("DEEPSEEK_API_KEY",),
     ),
 }
 
@@ -143,21 +131,8 @@ def _resolve_api_key(
 def _build_options(
     route: Route, *, api_key: str, max_tokens: int, timeout: float
 ) -> CallOptions:
-    value = CallOptions(
-        api_key=api_key, max_output_tokens=max_tokens, timeout=timeout
-    )
-    if route.model != "kimi-for-coding":
-        return value
-    headers = {
-        **dict(getattr(value, "headers", {}) or {}),
-        "User-Agent": "KimiCLI/1.5",
-    }
-    return CallOptions(
-        api_key=api_key,
-        max_output_tokens=max_tokens,
-        timeout=timeout,
-        headers=headers,
-    )
+    del route
+    return CallOptions(api_key=api_key, max_output_tokens=max_tokens, timeout=timeout)
 
 
 def _build_context(*, system_prompt: str, user_prompt: str) -> dict[str, object]:

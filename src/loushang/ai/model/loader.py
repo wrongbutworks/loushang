@@ -381,18 +381,16 @@ def _validate_compat_mapping(
     unknown = sorted(set(mapping) - allowed_keys)
     if unknown:
         raise ValueError(f"models registry field has unknown keys at {path}: {unknown}")
-    bool_keys = {
-        compat_key for compat_key, _, _ in PROTOCOL_COMPAT_STATUS_MAPPINGS
-    } | {compat_key for compat_key, _, _ in DIALECT_COMPAT_BOOL_MAPPINGS}
+    bool_keys = {compat_key for compat_key, _, _ in PROTOCOL_COMPAT_STATUS_MAPPINGS} | {
+        compat_key for compat_key, _, _ in DIALECT_COMPAT_BOOL_MAPPINGS
+    }
     bool_keys.update(
         {
             SUPPORTS_JSON_SCHEMA_STRUCTURED_OUTPUT,
             SUPPORTS_PROMPT_CACHE_KEY,
         }
     )
-    value_keys = {
-        compat_key for compat_key, _, _ in DIALECT_COMPAT_VALUE_MAPPINGS
-    }
+    value_keys = {compat_key for compat_key, _, _ in DIALECT_COMPAT_VALUE_MAPPINGS}
     for key, entry in mapping.items():
         entry_path = f"{path}.{key}"
         if key in bool_keys:
@@ -1443,9 +1441,14 @@ def _merge_auth_raw(
     return merged
 
 
+_BUILTIN_CATALOG_RESOURCE = "models.curated.v2.json"
+
+
 def _load_builtin_raw() -> dict[str, Any]:
     return json.loads(
-        files("loushang.ai.model").joinpath("models.json").read_text(encoding="utf-8")
+        files("loushang.ai.model")
+        .joinpath(_BUILTIN_CATALOG_RESOURCE)
+        .read_text(encoding="utf-8")
     )
 
 

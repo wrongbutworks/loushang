@@ -313,22 +313,11 @@ def test_official_openai_completions_prompt_cache_key_can_be_disabled() -> None:
     assert resolved.adapter_protocol.cache.prompt_key is SupportStatus.UNSUPPORTED
 
 
-def test_builtin_catalog_declares_removed_openai_compat_detector_facts() -> None:
+def test_builtin_catalog_declares_curated_openai_compat_bridge_facts() -> None:
     registry = get_default_model_registry()
     cases = [
         (
-            ("moonshot", "openai-completions", "kimi-k2.5"),
-            {
-                "supportsStore": False,
-                "supportsDeveloperRole": False,
-                "supportsReasoningEffort": True,
-                "maxTokensField": "max_tokens",
-                "supportsStrictMode": False,
-                "thinkingFormat": "moonshot",
-            },
-        ),
-        (
-            ("moonshotai", "openai-completions", "kimi-k2.5"),
+            ("moonshot", "openai-completions", "kimi-k2.6"),
             {
                 "supportsStore": False,
                 "supportsDeveloperRole": False,
@@ -336,29 +325,6 @@ def test_builtin_catalog_declares_removed_openai_compat_detector_facts() -> None
                 "maxTokensField": "max_tokens",
                 "supportsStrictMode": False,
                 "thinkingFormat": "moonshot",
-            },
-        ),
-        (
-            ("moonshotai-cn", "openai-completions", "kimi-k2.5"),
-            {
-                "supportsStore": False,
-                "supportsDeveloperRole": False,
-                "supportsReasoningEffort": False,
-                "maxTokensField": "max_tokens",
-                "supportsStrictMode": False,
-                "thinkingFormat": "moonshot",
-            },
-        ),
-        (
-            ("openrouter", "openai-completions", "anthropic/claude-sonnet-4.5"),
-            {
-                "supportsStore": True,
-                "supportsDeveloperRole": True,
-                "supportsReasoningEffort": True,
-                "maxTokensField": "max_completion_tokens",
-                "supportsStrictMode": True,
-                "thinkingFormat": "openrouter",
-                "cacheControlFormat": "anthropic",
             },
         ),
         (
@@ -367,127 +333,49 @@ def test_builtin_catalog_declares_removed_openai_compat_detector_facts() -> None
                 "supportsStore": False,
                 "supportsDeveloperRole": False,
                 "supportsReasoningEffort": True,
-                "maxTokensField": "max_completion_tokens",
-                "supportsStrictMode": True,
-                "thinkingFormat": "deepseek",
-                "requiresReasoningContentOnAssistantMessages": True,
-            },
-        ),
-        (
-            ("cerebras", "openai-completions", "gpt-oss-120b"),
-            {
-                "supportsStore": False,
-                "supportsDeveloperRole": False,
-                "supportsReasoningEffort": True,
-                "maxTokensField": "max_completion_tokens",
-                "supportsStrictMode": True,
-                "thinkingFormat": "openai",
-            },
-        ),
-        (
-            ("zai", "openai-completions", "glm-4.7"),
-            {
-                "supportsStore": False,
-                "supportsDeveloperRole": False,
-                "supportsReasoningEffort": False,
-                "maxTokensField": "max_completion_tokens",
-                "supportsStrictMode": True,
-                "thinkingFormat": "zai",
-            },
-        ),
-        (
-            ("together", "openai-completions", "MiniMaxAI/MiniMax-M2.5"),
-            {
-                "supportsStore": False,
-                "supportsDeveloperRole": False,
-                "supportsReasoningEffort": False,
                 "maxTokensField": "max_tokens",
-                "supportsStrictMode": False,
-                "thinkingFormat": "together",
-                "supportsLongCacheRetention": False,
-            },
-        ),
-        (
-            ("xai", "openai-completions", "grok-3"),
-            {
-                "supportsStore": False,
-                "supportsDeveloperRole": False,
-                "supportsReasoningEffort": False,
-                "maxTokensField": "max_completion_tokens",
                 "supportsStrictMode": True,
-                "thinkingFormat": "openai",
-            },
-        ),
-        (
-            ("opencode", "openai-completions", "big-pickle"),
-            {
-                "supportsStore": False,
-                "supportsDeveloperRole": False,
-                "supportsReasoningEffort": True,
-                "maxTokensField": "max_completion_tokens",
-                "supportsStrictMode": True,
-                "thinkingFormat": "openai",
-            },
-        ),
-        (
-            ("opencode-go", "openai-completions", "deepseek-v4-flash"),
-            {
-                "supportsStore": False,
-                "supportsDeveloperRole": False,
-                "supportsReasoningEffort": True,
-                "maxTokensField": "max_completion_tokens",
-                "supportsStrictMode": True,
-                "requiresReasoningContentOnAssistantMessages": True,
                 "thinkingFormat": "deepseek",
+                "requiresReasoningContentOnAssistantMessages": True,
             },
         ),
         (
-            ("groq", "openai-completions", "qwen/qwen3-32b"),
+            ("stepfun", "openai-completions", "step-3.7-flash"),
             {
-                "supportsStore": True,
-                "supportsDeveloperRole": True,
+                "supportsStore": False,
+                "supportsDeveloperRole": False,
                 "supportsReasoningEffort": True,
                 "reasoningEffortMap": {
-                    "minimal": None,
-                    "low": None,
-                    "medium": None,
-                    "high": "default",
+                    "low": "low",
+                    "medium": "medium",
+                    "high": "high",
+                    "xhigh": "high",
                 },
-                "maxTokensField": "max_completion_tokens",
-                "supportsStrictMode": True,
-                "thinkingFormat": "openai",
-            },
-        ),
-        (
-            (
-                "cloudflare-ai-gateway",
-                "openai-completions",
-                "workers-ai/@cf/moonshotai/kimi-k2.5",
-            ),
-            {
-                "supportsStore": False,
-                "supportsDeveloperRole": False,
-                "supportsReasoningEffort": True,
                 "maxTokensField": "max_tokens",
                 "supportsStrictMode": False,
                 "thinkingFormat": "openai",
-                "supportsLongCacheRetention": False,
             },
         ),
         (
-            (
-                "cloudflare-workers-ai",
-                "openai-completions",
-                "@cf/google/gemma-4-26b-a4b-it",
-            ),
+            ("baidu-qianfan", "openai-completions-cn", "ernie-5.1"),
             {
                 "supportsStore": False,
                 "supportsDeveloperRole": False,
-                "supportsReasoningEffort": True,
-                "maxTokensField": "max_completion_tokens",
-                "supportsStrictMode": True,
+                "supportsReasoningEffort": False,
+                "maxTokensField": "max_tokens",
+                "supportsStrictMode": False,
                 "thinkingFormat": "openai",
-                "supportsLongCacheRetention": False,
+            },
+        ),
+        (
+            ("zai", "openai-completions", "glm-5.2"),
+            {
+                "supportsStore": False,
+                "supportsDeveloperRole": False,
+                "supportsReasoningEffort": False,
+                "maxTokensField": "max_tokens",
+                "supportsStrictMode": False,
+                "thinkingFormat": "zai-thinking",
             },
         ),
     ]
@@ -504,9 +392,7 @@ def test_builtin_catalog_declares_removed_openai_compat_detector_facts() -> None
             },
         )
 
-        assert {
-            key: resolved.adapter_compat.get(key) for key in expected
-        } == expected
+        assert {key: resolved.adapter_compat.get(key) for key in expected} == expected
 
 
 def test_builtin_openai_compatible_endpoints_do_not_declare_prompt_cache_key() -> None:
@@ -525,7 +411,9 @@ def test_builtin_openai_compatible_endpoints_do_not_declare_prompt_cache_key() -
             model = registry.get_model(endpoint.provider_id, endpoint.id, model_id)
             resolved = resolve_request_for_model(model, registry=registry, env=env)
 
-            assert resolved.adapter_compat.get(SUPPORTS_PROMPT_CACHE_KEY, False) is False, (
+            assert (
+                resolved.adapter_compat.get(SUPPORTS_PROMPT_CACHE_KEY, False) is False
+            ), (
                 endpoint.provider_id,
                 endpoint.id,
                 model_id,
@@ -537,52 +425,40 @@ def test_builtin_openai_compatible_endpoints_do_not_declare_prompt_cache_key() -
             )
 
 
-def test_builtin_catalog_declares_removed_anthropic_compat_detector_facts() -> None:
+def test_builtin_catalog_declares_curated_anthropic_compat_bridge_facts() -> None:
     registry = get_default_model_registry()
-    env = {
-        "CLOUDFLARE_ACCOUNT_ID": "example-account",
-        "CLOUDFLARE_GATEWAY_ID": "example-gateway",
-    }
     cases = [
         (
-            "cloudflare-ai-gateway",
+            "anthropic",
             "anthropic-messages",
-            "claude-sonnet-4-5",
-            {"sendSessionAffinityHeaders": True},
+            "claude-sonnet-4-6",
+            {
+                "sendSessionAffinityHeaders": False,
+                "supportsEagerToolInputStreaming": True,
+                "supportsCacheControlOnTools": True,
+                "supportsLongCacheRetention": True,
+                "fineGrainedTools": True,
+                "interleavedThinking": True,
+            },
         ),
         (
-            "fireworks",
+            "minimax",
             "anthropic-messages",
-            "accounts/fireworks/models/deepseek-v4-flash",
+            "MiniMax-M3",
             {
-                "sendSessionAffinityHeaders": True,
-                "supportsEagerToolInputStreaming": False,
-                "supportsCacheControlOnTools": False,
-                "supportsLongCacheRetention": False,
+                "sendSessionAffinityHeaders": False,
+                "supportsEagerToolInputStreaming": True,
+                "supportsCacheControlOnTools": True,
+                "supportsLongCacheRetention": True,
             },
         ),
     ]
 
     for provider_id, endpoint_id, model_id, expected in cases:
         model = registry.get_model(provider_id, endpoint_id, model_id)
-        resolved = resolve_request_for_model(model, registry=registry, env=env)
+        resolved = resolve_request_for_model(model, registry=registry, env={})
 
-        assert {
-            key: resolved.adapter_compat.get(key) for key in expected
-        } == expected
-        if expected.get("sendSessionAffinityHeaders") is True:
-            assert resolved.protocol.to_raw()["session"]["affinityHeaders"] == "supported"
-
-    fireworks = registry.get_endpoint("fireworks", "anthropic-messages")
-    assert fireworks is not None
-    for model_id in fireworks.models:
-        model = registry.get_model("fireworks", "anthropic-messages", model_id)
-        resolved = resolve_request_for_model(model, registry=registry, env=env)
-
-        assert resolved.adapter_compat["sendSessionAffinityHeaders"] is True
-        assert resolved.adapter_compat["supportsEagerToolInputStreaming"] is False
-        assert resolved.adapter_compat["supportsCacheControlOnTools"] is False
-        assert resolved.adapter_compat["supportsLongCacheRetention"] is False
+        assert {key: resolved.adapter_compat.get(key) for key in expected} == expected
 
 
 def test_resolver_constructor_keeps_existing_fields_before_upstream_model_id() -> None:
@@ -816,9 +692,7 @@ def test_resolve_provider_request_openai_codex_keeps_runtime_config_input() -> N
     assert resolved.adapter_config == codex_config
 
 
-def test_resolve_provider_request_openai_codex_rejects_foreign_runtime_config() -> (
-    None
-):
+def test_resolve_provider_request_openai_codex_rejects_foreign_runtime_config() -> None:
     model = Model(id="model-a", provider="openai-codex", endpoint="openai-codex")
     request = ResolvedRequest(
         provider="openai-codex",
@@ -890,9 +764,7 @@ def test_openai_codex_runtime_config_rejects_invalid_typed_values(
         OpenAICodexRuntimeConfig(**config_kwargs)
 
 
-def test_resolve_provider_request_openai_codex_compares_explicit_runtime_keys() -> (
-    None
-):
+def test_resolve_provider_request_openai_codex_compares_explicit_runtime_keys() -> None:
     model = Model(id="model-a", provider="openai-codex", endpoint="openai-codex")
     codex_config = OpenAICodexRuntimeConfig(
         originator="typed",
@@ -920,9 +792,7 @@ def test_resolve_provider_request_openai_codex_compares_explicit_runtime_keys() 
     assert resolved.adapter_config == codex_config
 
 
-def test_resolve_provider_request_openai_codex_rejects_invalid_runtime_config() -> (
-    None
-):
+def test_resolve_provider_request_openai_codex_rejects_invalid_runtime_config() -> None:
     model = Model(id="model-a", provider="openai-codex", endpoint="openai-codex")
     request = ResolvedRequest(
         provider="openai-codex",
@@ -981,8 +851,7 @@ def test_resolve_provider_request_normalizes_supplied_anthropic_request() -> Non
     assert resolved.adapter_protocol.cache.on_tools is SupportStatus.SUPPORTED
     assert resolved.adapter_protocol.cache.long_retention is SupportStatus.SUPPORTED
     assert (
-        resolved.adapter_protocol.session.affinity_headers
-        is SupportStatus.UNSUPPORTED
+        resolved.adapter_protocol.session.affinity_headers is SupportStatus.UNSUPPORTED
     )
     assert resolved.adapter_protocol.reasoning.interleaved is SupportStatus.UNKNOWN
     assert resolved.adapter_compat[SUPPORTS_EAGER_TOOL_INPUT_STREAMING] is True
@@ -1065,7 +934,9 @@ def test_resolve_provider_request_anthropic_typed_contract_satisfies_legacy_prof
 
     resolved = resolve_provider_request("anthropic-messages", model, request=request)
 
-    assert resolved.adapter_protocol.tools.eager_input_stream is SupportStatus.UNSUPPORTED
+    assert (
+        resolved.adapter_protocol.tools.eager_input_stream is SupportStatus.UNSUPPORTED
+    )
     assert resolved.adapter_protocol.tools.fine_grained is SupportStatus.UNSUPPORTED
     assert resolved.adapter_protocol.cache.on_tools is SupportStatus.UNSUPPORTED
     assert resolved.adapter_protocol.cache.long_retention is SupportStatus.UNSUPPORTED
@@ -1325,7 +1196,9 @@ def test_resolve_request_uses_in_memory_endpoint_protocol_bridge() -> None:
     assert resolved.adapter_compat["supportsStrictMode"] is False
 
 
-def test_resolve_request_does_not_infer_adapter_contract_from_endpoint_identity() -> None:
+def test_resolve_request_does_not_infer_adapter_contract_from_endpoint_identity() -> (
+    None
+):
     endpoint = Endpoint(
         id="openai-completions",
         provider="moonshot",
@@ -3641,9 +3514,9 @@ def test_resolve_model_endpoint_returns_bound_snapshot_without_default_registry(
 def test_loader_preserves_model_level_reasoning_defaults() -> None:
     registry = load_model_registry()
     model = registry.get_model(
-        "moonshot",
-        "coding",
-        "kimi-for-coding",
+        "dashscope",
+        "openai-responses",
+        "qwen3.7-plus",
     )
 
     assert model.compat["supportsReasoningEffort"] is True

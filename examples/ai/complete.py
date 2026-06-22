@@ -12,7 +12,7 @@ from loushang.ai import CallOptions, get_model
 API_KEY = ""
 PROVIDER_ID = "moonshot"
 ENDPOINT_ID = "openai-completions"
-MODEL_ID = "kimi-k2.5"
+MODEL_ID = "kimi-k2.6"
 SYSTEM_PROMPT = "你是 Kimi，由 Moonshot AI 提供。回答要简洁、准确，优先使用中文。"
 USER_PROMPT = "请用两句话介绍你自己，并说明 1 + 1 等于几。"
 MAX_TOKENS = 256
@@ -22,7 +22,9 @@ def _resolve_api_key() -> str:
     value = API_KEY or os.getenv("MOONSHOT_API_KEY")
     if value:
         return value
-    raise RuntimeError("Set API_KEY at the top of this file, or export MOONSHOT_API_KEY.")
+    raise RuntimeError(
+        "Set API_KEY at the top of this file, or export MOONSHOT_API_KEY."
+    )
 
 
 def _build_context() -> dict:

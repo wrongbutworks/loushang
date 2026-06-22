@@ -19,7 +19,7 @@ from loushang.ai import (
 API_KEY = ""
 PROVIDER_ID = "moonshot"
 ENDPOINT_ID = "openai-completions"
-MODEL_ID = "kimi-k2.5"
+MODEL_ID = "kimi-k2.6"
 MAX_TOKENS = 512
 
 
@@ -27,7 +27,9 @@ def _resolve_api_key() -> str:
     value = API_KEY or os.getenv("MOONSHOT_API_KEY")
     if value:
         return value
-    raise RuntimeError("Set API_KEY at the top of this file, or export MOONSHOT_API_KEY.")
+    raise RuntimeError(
+        "Set API_KEY at the top of this file, or export MOONSHOT_API_KEY."
+    )
 
 
 def _build_context() -> Context:

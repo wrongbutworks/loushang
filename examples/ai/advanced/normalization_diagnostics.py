@@ -60,7 +60,7 @@ def inspect_normalization_diagnostics() -> dict[str, object]:
         model=load_builtin_model_registry().get_model(
             "anthropic",
             "anthropic-messages",
-            "claude-3-5-haiku-20241022",
+            "claude-sonnet-4-6",
         ),
         pairing_mode="repair",
     )

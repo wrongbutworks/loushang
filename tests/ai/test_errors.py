@@ -22,7 +22,7 @@ def test_error_info_serializes_stable_shape_and_redacts_secrets() -> None:
         "Missing API key.",
         provider="moonshot",
         endpoint="openai-completions",
-        model="kimi-k2.5",
+        model="kimi-k2.6",
         request_id="req_123",
         details={
             "hint": "Set MOONSHOT_API_KEY.",
@@ -41,7 +41,7 @@ def test_error_info_serializes_stable_shape_and_redacts_secrets() -> None:
         "retryable": False,
         "provider": "moonshot",
         "endpoint": "openai-completions",
-        "model": "kimi-k2.5",
+        "model": "kimi-k2.6",
         "statusCode": None,
         "requestId": "req_123",
         "details": {

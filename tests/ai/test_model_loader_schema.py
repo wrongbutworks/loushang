@@ -95,7 +95,7 @@ def test_legacy_compat_translation_target_table_covers_plan_keys() -> None:
 def test_builtin_model_registry_matches_schema() -> None:
     registry = load_model_registry()
 
-    assert registry.get_model("moonshot", "kimi-code-anthropic", "kimi-for-coding")
+    assert registry.get_model("moonshot", "openai-completions", "kimi-k2.6")
 
 
 def test_model_registry_schema_accepts_implicit_v1_catalog() -> None:
@@ -531,7 +531,7 @@ def test_legacy_structured_output_compat_does_not_override_typed_capability(
 def test_builtin_model_registry_with_diagnostics_suppresses_builtin_warnings() -> None:
     result = load_builtin_model_registry_with_diagnostics()
 
-    assert result.registry.get_model("moonshot", "kimi-code-anthropic", "kimi-for-coding")
+    assert result.registry.get_model("moonshot", "openai-completions", "kimi-k2.6")
     assert result.diagnostics == ()
 
 
@@ -547,9 +547,7 @@ def test_legacy_compat_diagnostics_preserve_per_path_entries(tmp_path) -> None:
 
     result = load_model_registry_from_file_with_diagnostics(path)
 
-    assert [
-        diagnostic.path for diagnostic in result.diagnostics
-    ] == [
+    assert [diagnostic.path for diagnostic in result.diagnostics] == [
         "providers.custom.endpoints.openai-completions.compat.supportsJsonSchemaStructuredOutput",
         "providers.custom.endpoints.openai-completions.models.model-a.compat.supportsJsonSchemaStructuredOutput",
     ]
@@ -658,7 +656,7 @@ def test_layered_model_registry_with_diagnostics_reports_external_overlay(
     result = load_layered_model_registry_with_diagnostics(project_dir=project_dir)
 
     assert result.registry.get_model("custom", "openai-completions", "model-a")
-    assert result.registry.get_model("moonshot", "kimi-code-anthropic", "kimi-for-coding")
+    assert result.registry.get_model("moonshot", "openai-completions", "kimi-k2.6")
     assert [diagnostic.path for diagnostic in result.diagnostics] == [
         "providers.custom.endpoints.openai-completions.compat.supportsStore"
     ]
@@ -1253,11 +1251,7 @@ def test_model_registry_schema_rejects_non_bool_prompt_cache_compat(
 ) -> None:
     raw = _minimal_registry_raw(schema_version=2)
     endpoint = raw["providers"]["custom"]["endpoints"]["openai-completions"]
-    compat_owner = (
-        endpoint
-        if scope == "endpoint"
-        else endpoint["models"]["model-a"]
-    )
+    compat_owner = endpoint if scope == "endpoint" else endpoint["models"]["model-a"]
     compat_owner["compat"] = {"supportsPromptCacheKey": "false"}
 
     with pytest.raises(ValueError, match="supportsPromptCacheKey"):
@@ -1468,7 +1462,7 @@ def test_layered_model_registry_loads_v2_overlay_without_version_stamping(
     registry = load_layered_model_registry(user_dir=user_dir)
 
     assert registry.get_model("custom", "openai-completions", "model-a")
-    assert registry.get_model("moonshot", "kimi-code-anthropic", "kimi-for-coding")
+    assert registry.get_model("moonshot", "openai-completions", "kimi-k2.6")
 
 
 def test_layered_model_registry_loads_v2_overlay_protocol(tmp_path) -> None:

@@ -17,7 +17,7 @@ from loushang.ai.provider import resolve_request_for_model
 
 DEFAULT_PROVIDER = "moonshot"
 DEFAULT_ENDPOINT = "openai-completions"
-DEFAULT_MODEL = "kimi-k2.5"
+DEFAULT_MODEL = "kimi-k2.6"
 
 
 def inspect_endpoint_contract(

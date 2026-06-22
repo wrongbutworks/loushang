@@ -32,6 +32,9 @@ ENDPOINT_ID = "anthropic-messages"
 pytestmark = [
     pytest.mark.live,
     pytest.mark.vendor_verification,
+    pytest.mark.skip(
+        reason="Moonshot Anthropic route is archived from the built-in curated catalog"
+    ),
     pytest.mark.skipif(
         not (API_KEY or os.getenv("MOONSHOT_API_KEY")),
         reason="MOONSHOT_API_KEY not set; live Moonshot verification skipped",

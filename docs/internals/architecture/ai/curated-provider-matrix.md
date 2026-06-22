@@ -1,8 +1,9 @@
 # Curated Provider Matrix
 
 This matrix tracks the provider set being assembled in
-`models.curated.v2.json`. The runtime default remains the legacy catalog until
-AIQ-056 switches the package data.
+`models.curated.v2.json`. AIQ-056 makes this curated catalog the runtime
+default; the legacy full catalog is kept only as the compressed archive under
+`docs/internals/archive/ai/model-catalog/`.
 
 | Provider | Endpoint | API | Models | Auth env | Evidence | Offline smoke |
 |---|---|---|---|---|---|---|
@@ -18,8 +19,7 @@ AIQ-056 switches the package data.
 | `volcano-ark` | `openai-completions-cn-beijing` | `openai-completions` | `doubao-seed-2-0-lite-260215` | `ARK_API_KEY` | `catalog-evidence/volcano-ark.md` | `uv run pytest tests/ai/test_curated_catalog.py tests/providers/test_openai_completions_provider.py -q` |
 | `zai` | `openai-completions` | `openai-completions` | `glm-5.2`, `glm-5.1` | `ZAI_API_KEY` | `catalog-evidence/zai.md` | `uv run pytest tests/ai/test_curated_catalog.py tests/providers/test_openai_completions_provider.py -q` |
 
-Generic provider smoke for curated entries is intentionally offline in this
-phase: load the curated catalog file with `load_model_registry_from_file`, look
-up provider, endpoint, and selected models, and verify auth, endpoint protocol,
-capabilities, and evidence links. Live API calls require credentials and must be
-recorded in the provider evidence file.
+Generic provider smoke for curated entries is intentionally offline: load the
+built-in catalog, look up provider, endpoint, and selected models, and verify
+auth, endpoint protocol, capabilities, and evidence links. Live API calls
+require credentials and must be recorded in the provider evidence file.

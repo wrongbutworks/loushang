@@ -62,44 +62,17 @@ ROOT_EXPORTS_BASELINE = [
 ]
 
 CATALOG_PROVIDER_BASELINE = [
-    "ant-ling",
     "anthropic",
     "baidu-qianfan",
-    "cerebras",
-    "cloudflare-ai-gateway",
-    "cloudflare-workers-ai",
     "dashscope",
     "deepseek",
-    "fireworks",
-    "github-copilot",
-    "google",
-    "google-vertex",
-    "groq",
-    "huggingface",
-    "kimi-coding",
     "minimax",
-    "minimax-cn",
-    "mistral",
     "moonshot",
-    "moonshotai",
-    "moonshotai-cn",
-    "nvidia",
     "openai",
-    "opencode",
-    "opencode-go",
-    "openrouter",
     "stepfun",
     "tencent-hunyuan",
-    "together",
-    "vercel-ai-gateway",
     "volcano-ark",
-    "xai",
-    "xiaomi",
-    "xiaomi-token-plan-ams",
-    "xiaomi-token-plan-cn",
-    "xiaomi-token-plan-sgp",
     "zai",
-    "zai-coding-cn",
 ]
 
 REGISTERED_PROVIDER_APIS_BASELINE = [
@@ -125,14 +98,14 @@ ADVANCED_ROOT_EXPORTS_REMOVED = [
 
 KNOWN_BASELINE_DEBT = {
     "core_bootstrap_registers_non_target_adapters": [],
-    "builtin_catalog_is_over_curated_budget": {
-        "providers": 38,
-        "endpoints": 52,
-        "models": 854,
+    "builtin_catalog_matches_curated_budget": {
+        "providers": 11,
+        "endpoints": 11,
+        "models": 17,
     },
-    "legacy_compat_is_still_present": {
-        "endpoints": 29,
-        "models": 607,
+    "typed_contract_compat_bridge_is_present": {
+        "endpoints": 11,
+        "models": 17,
     },
 }
 
@@ -154,11 +127,11 @@ def test_builtin_provider_and_catalog_count_baseline() -> None:
     models = registry.list_models()
 
     assert [provider.id for provider in providers] == CATALOG_PROVIDER_BASELINE
-    assert len(providers) == 38
-    assert len(endpoints) == 52
-    assert len(models) == 854
-    assert sum(1 for endpoint in endpoints if endpoint.compat) == 29
-    assert sum(1 for model in models if model.compat) == 607
+    assert len(providers) == 11
+    assert len(endpoints) == 11
+    assert len(models) == 17
+    assert sum(1 for endpoint in endpoints if endpoint.compat) == 11
+    assert sum(1 for model in models if model.compat) == 17
 
 
 def test_registered_provider_api_baseline_snapshot() -> None:
@@ -178,7 +151,7 @@ def test_test_and_example_inventory_baseline() -> None:
 
     assert len(ai_test_files) == 40
     assert len(provider_test_files) == 5
-    assert len(example_files) == 26
+    assert len(example_files) == 27
 
 
 def test_known_baseline_debt_snapshot() -> None:
@@ -199,12 +172,12 @@ def test_known_baseline_debt_snapshot() -> None:
             "openai-responses",
         }
     ] == KNOWN_BASELINE_DEBT["core_bootstrap_registers_non_target_adapters"]
-    assert KNOWN_BASELINE_DEBT["builtin_catalog_is_over_curated_budget"] == {
+    assert KNOWN_BASELINE_DEBT["builtin_catalog_matches_curated_budget"] == {
         "providers": len(providers),
         "endpoints": len(endpoints),
         "models": len(models),
     }
-    assert KNOWN_BASELINE_DEBT["legacy_compat_is_still_present"] == {
+    assert KNOWN_BASELINE_DEBT["typed_contract_compat_bridge_is_present"] == {
         "endpoints": sum(1 for endpoint in endpoints if endpoint.compat),
         "models": sum(1 for model in models if model.compat),
     }
