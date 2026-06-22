@@ -27,12 +27,6 @@ PROVIDER_EXAMPLES = (
         ("OPENROUTER_API_KEY",),
     ),
     ProviderExample(
-        "azure-openai-responses",
-        "azure-openai-responses",
-        "gpt-4o-mini",
-        ("AZURE_OPENAI_API_KEY", "AZURE_OPENAI_BASE_URL"),
-    ),
-    ProviderExample(
         "cloudflare-ai-gateway",
         "openai-completions",
         "workers-ai/@cf/moonshotai/kimi-k2.5",

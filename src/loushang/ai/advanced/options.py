@@ -36,18 +36,8 @@ class OpenAIResponsesOptions(CallOptions):
     session_id: str | None = None
 
 
-@dataclass(frozen=True, slots=True)
-class AzureOpenAIResponsesOptions(OpenAIResponsesOptions):
-    """Deprecated provider-specific extension; prefer CallOptions."""
-
-    azure_api_version: str | None = None
-    azure_base_url: str | None = None
-    azure_deployment_name: str | None = None
-
-
 __all__ = [
     "AnthropicOptions",
-    "AzureOpenAIResponsesOptions",
     "OpenAICompletionsOptions",
     "OpenAIResponsesOptions",
 ]

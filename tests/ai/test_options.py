@@ -145,6 +145,8 @@ def test_provider_specific_options_are_advanced_compatibility_types() -> None:
     assert "ApiProviderRegistry" not in ai.__all__
     assert not hasattr(ai, "AnthropicOptions")
     assert not hasattr(ai, "ApiProviderRegistry")
+    assert "AzureOpenAIResponsesOptions" not in ai.__all__
+    assert not hasattr(ai, "AzureOpenAIResponsesOptions")
     assert OpenAICodexResponsesOptions.__module__ == (
         "loushang.ai.contrib.openai_codex.options"
     )

@@ -40,7 +40,6 @@ def test_provider_matrix_example_targets_new_provider_models() -> None:
     }
 
     assert examples[("openrouter", "openai-completions", "openai/gpt-oss-120b_free")]
-    assert examples[("azure-openai-responses", "azure-openai-responses", "gpt-4o-mini")]
     assert examples[
         (
             "amazon-bedrock",

@@ -75,7 +75,6 @@
 - `anthropic.py`
 - `openai_completions.py`
 - `openai_responses.py`
-- `azure_openai_responses.py`
 - `bedrock_converse.py`
 - `faux.py`
 
@@ -86,13 +85,15 @@
 - OpenAI-compatible chat completions：`openai-completions`
 - OpenAI Responses：`openai-responses`
 - Anthropic Messages：`anthropic-messages`
-- Azure OpenAI Responses：`azure-openai-responses`
 - Amazon Bedrock Converse：`bedrock-converse-stream`
 
 其中 Mistral、Google Gemini API、Google Vertex OpenAI-compatible、Cloudflare AI Gateway / Workers AI 通过现有 OpenAI-compatible 或 Anthropic Messages adapter 接入。Cloudflare 和 Vertex 的 `baseUrl` 可以包含 `{ENV_NAME}` 模板，运行时由 `provider.resolution` 从环境变量展开；缺少变量时直接报错。
 
 OpenAI Codex Responses 不在默认 model catalog 和 builtin adapter 注册中；它位于
 `loushang.ai.contrib.openai_codex`，需要调用方显式注册 contrib 后使用。
+
+Azure OpenAI Responses 不再作为 core adapter 发布；需要 Azure 私有部署时，
+请使用自定义 catalog 和通用 OpenAI-compatible 协议边界，或在外部包中注册专用 adapter。
 
 ### `context.py` 与 `messages.py`
 

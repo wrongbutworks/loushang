@@ -64,7 +64,6 @@ model = get_model("openrouter", "openai-completions", "openai/gpt-oss-120b_free"
 常用新增 provider 的最小环境变量：
 
 - `openrouter`: `OPENROUTER_API_KEY`
-- `azure-openai-responses`: `AZURE_OPENAI_API_KEY`, `AZURE_OPENAI_BASE_URL`
 - `cloudflare-ai-gateway`: `CLOUDFLARE_API_KEY`, `CLOUDFLARE_ACCOUNT_ID`, `CLOUDFLARE_GATEWAY_ID`
 - `cloudflare-workers-ai`: `CLOUDFLARE_API_KEY`, `CLOUDFLARE_ACCOUNT_ID`
 - `mistral`: `MISTRAL_API_KEY`

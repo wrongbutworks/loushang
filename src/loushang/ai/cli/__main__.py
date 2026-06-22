@@ -15,7 +15,6 @@ from loushang.ai import (
 )
 from loushang.ai.advanced.options import (
     AnthropicOptions,
-    AzureOpenAIResponsesOptions,
     OpenAICompletionsOptions,
     OpenAIResponsesOptions,
 )
@@ -52,7 +51,6 @@ _OPTION_CLASS_BY_API = {
     "openai-completions": OpenAICompletionsOptions,
     "openai-responses": OpenAIResponsesOptions,
     "openai-codex-responses": OpenAICodexResponsesOptions,
-    "azure-openai-responses": AzureOpenAIResponsesOptions,
 }
 
 _BACK = object()

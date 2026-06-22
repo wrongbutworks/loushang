@@ -27,7 +27,6 @@ from loushang.ai.types import ImagePart, ToolResultMessage, UserMessage
 
 _STRUCTURED_OUTPUT_APIS = frozenset(
     {
-        "azure-openai-responses",
         "openai-codex-responses",
         "openai-completions",
         "openai-responses",

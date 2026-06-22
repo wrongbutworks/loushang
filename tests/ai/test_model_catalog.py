@@ -125,9 +125,7 @@ def test_builtin_catalog_normalizes_model_ids_with_colons() -> None:
 def test_builtin_catalog_includes_framework_gap_providers() -> None:
     registry = load_builtin_model_registry()
 
-    assert registry.get_model(
-        "azure-openai-responses", "azure-openai-responses", "gpt-4o-mini"
-    ).api == "azure-openai-responses"
+    assert registry.get_provider("azure-openai-responses") is None
     assert registry.get_model(
         "cloudflare-workers-ai",
         "openai-completions",

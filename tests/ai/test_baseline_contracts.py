@@ -65,7 +65,6 @@ CATALOG_PROVIDER_BASELINE = [
     "amazon-bedrock",
     "ant-ling",
     "anthropic",
-    "azure-openai-responses",
     "baidu-qianfan",
     "cerebras",
     "cloudflare-ai-gateway",
@@ -106,7 +105,6 @@ CATALOG_PROVIDER_BASELINE = [
 
 REGISTERED_PROVIDER_APIS_BASELINE = [
     "anthropic-messages",
-    "azure-openai-responses",
     "bedrock-converse-stream",
     "openai-completions",
     "openai-responses",
@@ -115,7 +113,6 @@ REGISTERED_PROVIDER_APIS_BASELINE = [
 ADVANCED_ROOT_EXPORTS_REMOVED = [
     "ApiProviderRegistry",
     "AnthropicOptions",
-    "AzureOpenAIResponsesOptions",
     "OpenAICodexResponsesOptions",
     "OpenAICompletionsOptions",
     "OpenAIResponsesOptions",
@@ -130,13 +127,12 @@ ADVANCED_ROOT_EXPORTS_REMOVED = [
 
 KNOWN_BASELINE_DEBT = {
     "core_bootstrap_registers_non_target_adapters": [
-        "azure-openai-responses",
         "bedrock-converse-stream",
     ],
     "builtin_catalog_is_over_curated_budget": {
-        "providers": 40,
-        "endpoints": 55,
-        "models": 990,
+        "providers": 39,
+        "endpoints": 54,
+        "models": 948,
     },
     "legacy_compat_is_still_present": {
         "endpoints": 29,
@@ -162,9 +158,9 @@ def test_builtin_provider_and_catalog_count_baseline() -> None:
     models = registry.list_models()
 
     assert [provider.id for provider in providers] == CATALOG_PROVIDER_BASELINE
-    assert len(providers) == 40
-    assert len(endpoints) == 55
-    assert len(models) == 990
+    assert len(providers) == 39
+    assert len(endpoints) == 54
+    assert len(models) == 948
     assert sum(1 for endpoint in endpoints if endpoint.compat) == 29
     assert sum(1 for model in models if model.compat) == 607
 
@@ -185,7 +181,7 @@ def test_test_and_example_inventory_baseline() -> None:
     example_files = sorted((REPO_ROOT / "examples/ai").rglob("*.py"))
 
     assert len(ai_test_files) == 38
-    assert len(provider_test_files) == 7
+    assert len(provider_test_files) == 6
     assert len(example_files) == 26
 
 
@@ -203,7 +199,6 @@ def test_known_baseline_debt_snapshot() -> None:
             for provider in provider_registry.list_api_providers()
             if provider.api
             in {
-                "azure-openai-responses",
                 "bedrock-converse-stream",
             }
         )

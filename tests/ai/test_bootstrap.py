@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import importlib.util
+
 from loushang.ai.api_registry import ApiProviderRegistry
 from loushang.ai.auth.registry import OAuthProviderRegistry
 from loushang.ai.bootstrap import register_builtin_ai_providers
@@ -12,24 +14,9 @@ from loushang.ai.model.registry import (
 )
 
 
-def test_register_builtin_ai_providers_includes_azure_and_bedrock() -> None:
+def test_register_builtin_ai_providers_includes_bedrock_and_excludes_azure() -> None:
     clear_default_model_registry()
     model_registry = get_default_model_registry()
-    model_registry.register_endpoint(
-        "azure-openai-responses",
-        Endpoint(
-            id="azure-openai-responses",
-            provider="azure-openai-responses",
-            api="azure-openai-responses",
-            models={
-                "gpt-4o-mini": Model(
-                    id="gpt-4o-mini",
-                    provider="azure-openai-responses",
-                    endpoint="azure-openai-responses",
-                )
-            },
-        ),
-    )
     model_registry.register_endpoint(
         "amazon-bedrock",
         Endpoint(
@@ -50,9 +37,15 @@ def test_register_builtin_ai_providers_includes_azure_and_bedrock() -> None:
     register_builtin_ai_providers(registry)
 
     apis = {provider.api for provider in registry.list_api_providers()}
-    assert "azure-openai-responses" in apis
+    assert "azure-openai-responses" not in apis
     assert "bedrock-converse-stream" in apis
     assert "openai-codex-responses" not in apis
+
+
+def test_azure_openai_provider_module_is_not_in_core() -> None:
+    assert importlib.util.find_spec(
+        "loushang.ai.providers.azure_openai_responses"
+    ) is None
 
 
 def test_openai_codex_contrib_registers_api_and_catalog_explicitly() -> None:

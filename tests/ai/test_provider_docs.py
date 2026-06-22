@@ -11,7 +11,6 @@ def test_provider_docs_cover_new_provider_configuration() -> None:
 
     for provider_id in [
         "openrouter",
-        "azure-openai-responses",
         "cloudflare-ai-gateway",
         "cloudflare-workers-ai",
         "mistral",
@@ -24,7 +23,6 @@ def test_provider_docs_cover_new_provider_configuration() -> None:
 
     for env_name in [
         "OPENROUTER_API_KEY",
-        "AZURE_OPENAI_API_KEY",
         "CLOUDFLARE_ACCOUNT_ID",
         "MISTRAL_API_KEY",
         "GEMINI_API_KEY",
