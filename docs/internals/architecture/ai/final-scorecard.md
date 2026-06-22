@@ -120,7 +120,7 @@ Current composite score: 8.6/10.
 | Each key capability has an example | Met | Numbered examples cover complete, stream, typed context, tools, parallel tools, reasoning, structured output, image input, errors/retry, usage, provider matrix, and provider smoke. |
 | Main examples use only stable API | Met | `scripts/ai/check_import_boundaries.py`. |
 | Advanced examples are marked clearly | Met | Advanced examples live under `examples/ai/advanced`. |
-| Chinese and English docs are aligned | Mostly met | SDK README and migration guides exist in both languages; final copy review should compare them before release. |
+| Chinese and English docs are aligned | Met | SDK README and migration guides exist in both languages with matched section structure, migration topics, examples, advanced boundaries, and live-smoke caveats. |
 | Provider matrix and catalog stay aligned | Met | `scripts/ai/check_catalog.py`. |
 
 ### Review
