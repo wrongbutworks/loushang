@@ -56,6 +56,9 @@ Run [examples/ai/11_provider_matrix.py](../../../examples/ai/11_provider_matrix.
 or [examples/ai/12_provider_smoke.py](../../../examples/ai/12_provider_smoke.py)
 to inspect the current built-in provider set offline.
 
+If you are moving code from the legacy catalog or broad root API, read the
+[v2 migration guide](./migration-v2.md).
+
 For local or long-tail providers, load a schema v2 custom catalog instead of
 expanding the built-in catalog. See
 [examples/ai/advanced/custom_catalog.py](../../../examples/ai/advanced/custom_catalog.py).

@@ -66,6 +66,7 @@ def test_stable_sdk_guides_cover_public_ai_paths_and_examples() -> None:
         "11_provider_matrix.py",
         "12_provider_smoke.py",
         "advanced/custom_catalog.py",
+        "migration-v2.md",
     ]
 
     for path in SDK_DOC_PATHS:

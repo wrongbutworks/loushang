@@ -21,6 +21,7 @@
 - [Loushang AI Provider Adapter Strategy](./loushang-ai-provider-adapter-strategy.md)
 - [Loushang AI OpenAI-Compatible Compat](./loushang-ai-openai-compat.md)
 - [Loushang AI Top-Level API Signatures](./loushang-ai-top-level-api-signatures.md)
+- [Loushang AI Final Scorecard](./final-scorecard.md)
 - [Loushang AI Streaming and Cancellation](./loushang-ai-streaming-and-cancellation.md)
 - [Loushang AI Raw Part Design V1](./loushang-ai-raw-part-design-v1.md)
 - [Loushang AI Streaming Semantics](./loushang-ai-streaming-semantics.md)

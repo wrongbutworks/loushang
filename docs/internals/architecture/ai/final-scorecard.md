@@ -1,0 +1,166 @@
+# Loushang AI Final Scorecard
+
+Last updated: 2026-06-22.
+
+This scorecard records the current release readiness of the AI quality hardening
+branch against the execution plan in
+[`2026-06-20-loushang-ai-quality-hardening-execution-plan.md`](../../plans/2026-06-20-loushang-ai-quality-hardening-execution-plan.md).
+It is an owner-level status document, not a replacement for the final review.
+
+## Release Recommendation
+
+Do not tag a release until the open release gates below are resolved or accepted
+with a follow-up issue or ADR.
+
+The branch has largely reached the intended SDK shape: a curated catalog, narrow
+root API, protocol-level core adapters, explicit contrib boundaries, normalized
+errors, executable offline examples, and local AI quality gates. The remaining
+items should be closed without expanding the public API.
+
+## Objective Score
+
+| Dimension | Target | Current | Status |
+|---|---:|---:|---|
+| Architecture boundaries | 9.0 | 8.6 | Mostly met |
+| Stable API consistency | 8.5 | 8.7 | Met |
+| Message and tool normalization | 9.0 | 8.8 | Mostly met |
+| Compat and endpoint contract | 9.0 | 8.6 | Mostly met |
+| Error and reliability semantics | 8.5 | 8.4 | Needs cleanup gate |
+| Streaming and cancellation | 8.5 | 8.6 | Met |
+| Provider consistency | 8.5 | 8.3 | Needs provider-boundary decision |
+| Auth security | 8.0 | 8.1 | Met |
+| Model catalog governance | 9.0 | 9.0 | Met |
+| Tests, examples, and docs | 9.0 | 8.4 | Needs coverage/review gate |
+
+Current composite score: 8.5/10.
+
+## Evidence Summary
+
+| Area | Current evidence |
+|---|---|
+| Root API surface | `tests/ai/test_options.py` verifies root exports stay narrow and provider-specific options remain outside `loushang.ai.__all__`. |
+| Catalog budget | `scripts/ai/check_catalog.py` enforces provider <= 11, model <= 20, evidence files, provider matrix alignment, preferred-endpoint uniqueness, and supported modalities. |
+| Curated provider facts | `docs/internals/architecture/ai/catalog-evidence/*.md` records official docs, included models, omitted facts, and live-smoke status for each curated provider. |
+| Legacy catalog archive | `docs/internals/archive/ai/model-catalog/README.md` records the compressed v1 catalog archive and SHA verification command. |
+| Provider boundary | `docs/internals/architecture/ai/core-provider-adapter-contract-matrix.md` records the three core adapters and the contrib/test-only boundaries. |
+| Public SDK docs | `docs/en/sdk/README.md`, `docs/zh-CN/sdk/README.md`, and the v2 migration guides document the public path, catalog, auth, errors, examples, and migration rules. |
+| Offline examples | `scripts/ai/check_examples.py` executes numbered `examples/ai/[0-9][0-9]_*.py` with live provider keys removed. |
+| Import boundaries | `scripts/ai/check_import_boundaries.py` prevents `loushang.ai` from importing agent/coding layers, prevents removed core providers from returning, and keeps top-level examples on stable AI imports. |
+| AI gate | `make check-ai` runs lint, mypy, catalog checks, import checks, offline examples, and coverage. |
+| Full offline test suite | `env -u <provider keys> uv run pytest tests -q` passed on 2026-06-22 with 4213 passed and 9 skipped. |
+| Build | `uv build` passed on 2026-06-22 and produced both sdist and wheel artifacts. |
+
+## Final Checklist Status
+
+### Code
+
+| Requirement | Status | Evidence or remaining work |
+|---|---|---|
+| Core only has three protocol adapters | Met | `core-provider-adapter-contract-matrix.md`; `loushang.ai.bootstrap.register_builtin_ai_providers`. |
+| Bedrock/Azure not in core | Met | `scripts/ai/check_import_boundaries.py` blocks removed core provider modules. |
+| Codex is contrib and explicitly registered | Met | `loushang.ai.contrib.openai_codex.register_openai_codex_contrib`. |
+| Core has no provider-id/base-url compat guessing | Mostly met | Compat boundary tests cover provider/runtime leakage; keep any future provider-specific behavior behind endpoint contracts or contrib. |
+| Built-in catalog has no legacy full-catalog runtime path | Met | Package data points to `models.curated.v2.json`; full v1 catalog is archived under docs. |
+| Provider boundary accepts only normalized context/request facts | Partial | `NormalizedContext` is enforced, but the adapter protocol still passes `Model`, `CallOptions`, and `ResolvedRequest` separately rather than a single final `ProviderRequest` object. |
+| Core has no bare `except Exception: pass` | Open | Current source still contains a small set of broad silent catches that need a follow-up cleanup or explicit justification. |
+| Stream queue is bounded | Met | `AssistantMessageEventStream` uses a bounded queue; `tests/ai/test_provider_runtime.py` checks it. |
+| Cancellation closes upstream | Met | Provider runtime closes async sources through `aclose`/`close`; provider runtime tests cover cancellation. |
+| Parallel tool calls can interleave | Met | Tool and provider tests cover multi-tool event assembly and parallel tool examples. |
+| Structured output is verifiable | Met | Structured output API and tests cover schema parsing and errors. |
+| Text/image declarations match implementation | Mostly met | Catalog checker rejects unsupported modalities; advanced video/audio/image-output facts remain omitted. |
+| OAuth files are safe | Mostly met | OAuth storage uses locked atomic writes; final security review still needs to check file modes on target platforms. |
+| Unknown pricing is not zero cost | Met | Pricing and assembler tests preserve unknown cost as `None`. |
+
+### Catalog
+
+| Requirement | Status | Evidence or remaining work |
+|---|---|---|
+| Original catalog archived and SHA-verifiable | Met | `docs/internals/archive/ai/model-catalog/README.md`. |
+| Provider <= 11 | Met | `scripts/ai/check_catalog.py`. |
+| Model <= 20 | Met | `scripts/ai/check_catalog.py`. |
+| Issue #102-#108 have evidence and status | Met | Evidence files exist for Tencent Hunyuan, Z.AI, DeepSeek, MiniMax, Volcano Ark, Baidu Qianfan, and StepFun. |
+| Each model has at most one preferred endpoint | Met | `scripts/ai/check_catalog.py`. |
+| No unsupported modality in built-in catalog | Met | `scripts/ai/check_catalog.py` allows only text and image. |
+| Uncertain facts omitted or marked unknown | Met | Evidence files list unknown/omitted facts; pricing and modality tests preserve unknown values. |
+
+### API
+
+| Requirement | Status | Evidence or remaining work |
+|---|---|---|
+| Root `__all__` has snapshot coverage | Met | `tests/ai/test_options.py`. |
+| Full/simple semantics are clear | Met | SDK docs and option tests document `CallOptions` and `SimpleCallOptions`. |
+| Unsupported parameters fail instead of being silently ignored | Mostly met | Capability and option tests cover major public paths; keep provider-specific additions behind explicit advanced options. |
+| `complete()` raises typed errors | Met | Streaming/API tests cover terminal error conversion to typed `AIError`. |
+| Stable error code documented | Met | SDK README and migration guide document `AIError` payload fields and stable codes. |
+| Migration guide complete | Met | `docs/en/sdk/migration-v2.md` and `docs/zh-CN/sdk/migration-v2.md`. |
+
+### Tests
+
+| Requirement | Status | Evidence or remaining work |
+|---|---|---|
+| `make check-ai` passes | Met | Required local gate. Refresh after every follow-up commit. |
+| `uv run pytest tests -q` passes | Partial | Offline full suite passed on 2026-06-22 with live provider keys removed; the unmodified environment can still run live Moonshot tests when `MOONSHOT_API_KEY` is present, and those require a valid credential. |
+| `uv run pytest tests/ai/contracts -q` passes | Open | No `tests/ai/contracts` directory is present in this branch; provider contracts are currently distributed across `tests/ai` and `tests/providers`. |
+| `uv run python scripts/ai/check_catalog.py` passes | Met | Catalog gate. |
+| `uv run python scripts/ai/check_examples.py` passes | Met | Offline example gate. |
+| `uv build` passes | Met | Passed on 2026-06-22. Refresh after any packaging or package-data changes. |
+| Core coverage >= 90% | Open | Current AI coverage gate is 80%; raise or document the final coverage target separately. |
+| Adapter aggregate coverage >= 85% | Open | Current gate reports per-file coverage but does not enforce adapter aggregate coverage separately. |
+| No pending asyncio task | Mostly met | Provider runtime tests cover cancellation and close behavior; final full-suite leak check still required. |
+| No secret trace snapshot | Mostly met | Error payload redaction is tested; final artifact scan still required. |
+
+### Examples And Docs
+
+| Requirement | Status | Evidence or remaining work |
+|---|---|---|
+| All offline examples execute | Met | `scripts/ai/check_examples.py`. |
+| Each key capability has an example | Met | Numbered examples cover complete, stream, typed context, tools, parallel tools, reasoning, structured output, image input, errors/retry, usage, provider matrix, and provider smoke. |
+| Main examples use only stable API | Met | `scripts/ai/check_import_boundaries.py`. |
+| Advanced examples are marked clearly | Met | Advanced examples live under `examples/ai/advanced`. |
+| Chinese and English docs are aligned | Mostly met | SDK README and migration guides exist in both languages; final copy review should compare them before release. |
+| Provider matrix and catalog stay aligned | Met | `scripts/ai/check_catalog.py`. |
+
+### Review
+
+| Requirement | Status | Evidence or remaining work |
+|---|---|---|
+| Each AIQ commit has a focused review | Partial | Per-commit review frequency was intentionally reduced during execution; final owner review must compensate for smaller commits. |
+| Each phase has a range review | Partial | Several phase gates were validated by commands; not every phase has a recorded independent range review. |
+| Final branch has a full review | Open | Required before release. |
+| P0/P1 = 0 | Open | Requires final owner review after all release gates are resolved. |
+| P2 resolved or tracked | Open | Use this scorecard, `src/loushang/ai/TODO.md`, or a repo issue/ADR to track accepted P2 debt. |
+
+## Issue #102-#108 Status
+
+| Issue | Provider | Status | Evidence |
+|---|---|---|---|
+| #102 | Tencent Hunyuan | Included, one model | `catalog-evidence/tencent-hunyuan.md` |
+| #103 | Zhipu GLM / Z.AI | Included, two models | `catalog-evidence/zai.md` |
+| #104 | DeepSeek | Included, two models | `catalog-evidence/deepseek.md` |
+| #105 | MiniMax | Included, one model | `catalog-evidence/minimax.md` |
+| #106 | Doubao / Volcano Ark | Included, one model | `catalog-evidence/volcano-ark.md` |
+| #107 | Baidu Qianfan / Wenxin | Included, one model | `catalog-evidence/baidu-qianfan.md` |
+| #108 | StepFun | Included, one model | `catalog-evidence/stepfun.md` |
+
+All seven entries are catalog-accepted with official evidence and offline
+contract checks. Live smoke verification is not claimed unless the matching
+provider evidence file records a valid credential-backed run.
+
+## Exact Remaining Issues
+
+1. Decide whether the final adapter protocol must collapse `Model`, `CallOptions`,
+   and `ResolvedRequest` into a single `ProviderRequest`; the current protocol
+   has normalized context but not the exact final request-object shape described
+   in the plan.
+2. Remove or explicitly justify the remaining broad silent catches in
+   `src/loushang/ai`; the final checklist requires no bare
+   `except Exception: pass` in core paths.
+3. Decide how to satisfy `tests/ai/contracts`: either add a compatibility test
+   directory/alias or update the release checklist to point at the current
+   provider contract suites.
+4. Raise coverage enforcement to the final stated targets, or record an ADR that
+   the release gate is the current `make check-ai` 80% AI package threshold.
+5. Run a final branch review against `origin/main` and resolve all P0/P1
+   findings.
+6. Perform live provider smoke only with valid credentials; do not treat offline
+   catalog checks as live compatibility proof.

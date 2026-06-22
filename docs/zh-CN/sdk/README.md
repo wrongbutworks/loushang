@@ -55,6 +55,9 @@ model = get_model("moonshot", "openai-completions", "kimi-k2.6")
 或 [examples/ai/12_provider_smoke.py](../../../examples/ai/12_provider_smoke.py)
 可以离线查看当前内置 provider 集合。
 
+如果要从 legacy catalog 或旧的宽根包 API 迁移，请先阅读
+[v2 迁移指南](./migration-v2.md)。
+
 本地部署或长尾 provider 应通过 schema v2 自定义 catalog 接入，而不是扩大内置
 catalog。参考
 [examples/ai/advanced/custom_catalog.py](../../../examples/ai/advanced/custom_catalog.py)。
