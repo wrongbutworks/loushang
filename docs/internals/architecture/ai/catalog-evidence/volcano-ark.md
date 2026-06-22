@@ -1,0 +1,24 @@
+# Provider evidence: volcano-ark
+
+- Verified at: 2026-06-22
+- Issue: #106
+- Official docs:
+  - https://www.volcengine.com/docs/82379/1330310
+  - https://www.volcengine.com/docs/82379/1949118
+  - https://www.volcengine.com/docs/82379/1544106
+- Authentication: API key in `ARK_API_KEY`, sent as an `Authorization: Bearer ...` header.
+- Endpoint: `https://ark.cn-beijing.volces.com/api/v3`, OpenAI-compatible Chat Completions protocol, China North Beijing region.
+- Included models:
+  - `doubao-seed-2-0-lite-260215`: current Doubao Seed 2.0 Lite model selected for the single-model AIQ-053 catalog entry.
+- Verified capabilities:
+  - Official model-list docs list the selected model with 256K context, multimodal input, tool calls, and structured output.
+  - Official compatibility docs establish the OpenAI-compatible API path for Volcano Ark model calls.
+- Unknown/omitted facts:
+  - `pricing` is omitted because the official pricing page is a dynamic page in this environment and the catalog entry should not copy prices from unofficial mirrors.
+  - `maxTokens` is omitted because the cited official pages used for this curation do not expose a stable maximum output token cap in machine-readable text.
+  - `reasoning` is false because the selected pages do not provide a stable OpenAI-compatible Chat Completions wire contract for requesting Doubao deep-thinking mode through the current adapter.
+  - Only the China North Beijing endpoint is included; deployment-specific endpoint IDs and other regions are intentionally omitted until a runtime deployment requirement is documented.
+- Contract tests:
+  - `uv run pytest tests/ai/test_curated_catalog.py tests/providers/test_openai_completions_provider.py -q`
+- Manual live smoke:
+  - Not run on 2026-06-22; no live Volcano Ark credential was used for this catalog-only commit.

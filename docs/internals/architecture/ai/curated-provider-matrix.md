@@ -13,6 +13,7 @@ AIQ-056 switches the package data.
 | `moonshot` | `openai-completions` | `openai-completions` | `kimi-k2.6`, `kimi-k2.7-code` | `MOONSHOT_API_KEY` | `catalog-evidence/moonshot.md` | `uv run pytest tests/ai/test_curated_catalog.py -q` |
 | `openai` | `openai-responses` | `openai-responses` | `gpt-5.5`, `gpt-5.4-mini` | `OPENAI_API_KEY` | `catalog-evidence/openai.md` | `uv run pytest tests/ai/test_curated_catalog.py -q` |
 | `tencent-hunyuan` | `openai-completions` | `openai-completions` | `hunyuan-turbos-latest` | `HUNYUAN_API_KEY` | `catalog-evidence/tencent-hunyuan.md` | `uv run pytest tests/ai/test_curated_catalog.py -q` |
+| `volcano-ark` | `openai-completions-cn-beijing` | `openai-completions` | `doubao-seed-2-0-lite-260215` | `ARK_API_KEY` | `catalog-evidence/volcano-ark.md` | `uv run pytest tests/ai/test_curated_catalog.py tests/providers/test_openai_completions_provider.py -q` |
 | `zai` | `openai-completions` | `openai-completions` | `glm-5.2`, `glm-5.1` | `ZAI_API_KEY` | `catalog-evidence/zai.md` | `uv run pytest tests/ai/test_curated_catalog.py tests/providers/test_openai_completions_provider.py -q` |
 
 Generic provider smoke for curated entries is intentionally offline in this

@@ -25,6 +25,7 @@ MINIMAX_EVIDENCE_PATH = EVIDENCE_DIR / "minimax.md"
 MOONSHOT_EVIDENCE_PATH = EVIDENCE_DIR / "moonshot.md"
 OPENAI_EVIDENCE_PATH = EVIDENCE_DIR / "openai.md"
 TENCENT_HUNYUAN_EVIDENCE_PATH = EVIDENCE_DIR / "tencent-hunyuan.md"
+VOLCANO_ARK_EVIDENCE_PATH = EVIDENCE_DIR / "volcano-ark.md"
 ZAI_EVIDENCE_PATH = EVIDENCE_DIR / "zai.md"
 CURATED_PROVIDER_MATRIX_PATH = (
     REPO_ROOT / "docs/internals/architecture/ai/curated-provider-matrix.md"
@@ -57,6 +58,7 @@ def test_curated_catalog_loads_v2_schema() -> None:
         "moonshot",
         "openai",
         "tencent-hunyuan",
+        "volcano-ark",
         "zai",
     ]
 
@@ -83,6 +85,9 @@ def test_default_builtin_catalog_still_uses_legacy_catalog() -> None:
     )
     assert len(registry.list_models(provider="tencent-hunyuan")) > len(
         _load_curated_registry().list_models(provider="tencent-hunyuan")
+    )
+    assert len(registry.list_models(provider="volcano-ark")) > len(
+        _load_curated_registry().list_models(provider="volcano-ark")
     )
     assert len(registry.list_models(provider="zai")) > len(
         _load_curated_registry().list_models(provider="zai")
@@ -526,6 +531,62 @@ def test_curated_catalog_includes_verified_tencent_hunyuan_model() -> None:
     assert model.pricing.cache_write is None
 
 
+def test_curated_catalog_includes_verified_volcano_ark_doubao_model() -> None:
+    registry = _load_curated_registry()
+
+    provider = registry.get_provider("volcano-ark")
+    assert provider is not None
+    assert provider.name == "Volcano Ark"
+    assert provider.website == "https://www.volcengine.com/product/ark"
+    assert provider.auth is not None
+    assert provider.auth.api_key_env == "ARK_API_KEY"
+    assert provider.auth.header == "Authorization"
+    assert provider.auth.prefix == "Bearer "
+
+    endpoint = registry.get_endpoint("volcano-ark", "openai-completions-cn-beijing")
+    assert endpoint is not None
+    assert endpoint.api == "openai-completions"
+    assert endpoint.base_url == "https://ark.cn-beijing.volces.com/api/v3"
+    assert endpoint.region == "cn-beijing"
+    assert endpoint.preferred is True
+    assert endpoint.auth is not None
+    assert endpoint.auth.api_key_env == "ARK_API_KEY"
+    assert endpoint.protocol.store is SupportStatus.UNSUPPORTED
+    assert endpoint.protocol.roles.developer is SupportStatus.UNSUPPORTED
+    assert endpoint.protocol.reasoning.effort is SupportStatus.UNSUPPORTED
+    assert endpoint.protocol.tools.strict_schema is SupportStatus.UNSUPPORTED
+    assert endpoint.dialect.max_output_tokens_field == "max_tokens"
+    assert endpoint.dialect.tools.assistant_bridge_required is False
+    assert endpoint.dialect.tools.result_name_required is False
+    assert endpoint.dialect.tools.stream_flag is False
+    assert endpoint.transport.kind == "http"
+    assert endpoint.transport.stream == "sse"
+
+    models = registry.list_models(provider="volcano-ark")
+    assert [model.id for model in models] == ["doubao-seed-2-0-lite-260215"]
+
+    model = registry.get_model(
+        "volcano-ark",
+        "openai-completions-cn-beijing",
+        "doubao-seed-2-0-lite-260215",
+    )
+    assert model is not None
+    assert model.name == "Doubao Seed 2.0 Lite"
+    assert model.alias == "default-chat"
+    assert model.last_updated == "2026-02-15"
+    assert model.context_window == 262_144
+    assert model.max_tokens is None
+    assert model.capabilities.input == ("text", "image")
+    assert model.capabilities.output == ("text",)
+    assert model.reasoning is False
+    assert model.supports_stream is True
+    assert model.supports_tool_use is True
+    assert model.supports_structured_output is True
+    assert model.supports_attachment is False
+    assert model.supports_temperature is True
+    assert model.pricing is None
+
+
 def test_curated_catalog_includes_verified_zai_glm_models() -> None:
     registry = _load_curated_registry()
 
@@ -895,6 +956,28 @@ def test_tencent_hunyuan_evidence_matches_curated_provider_fixture() -> None:
         assert expected in text
 
 
+def test_volcano_ark_evidence_matches_curated_provider_fixture() -> None:
+    text = VOLCANO_ARK_EVIDENCE_PATH.read_text(encoding="utf-8")
+
+    for expected in [
+        "# Provider evidence: volcano-ark",
+        "- Verified at: 2026-06-22",
+        "- Issue: #106",
+        "https://www.volcengine.com/docs/82379/1330310",
+        "https://www.volcengine.com/docs/82379/1949118",
+        "https://www.volcengine.com/docs/82379/1544106",
+        "`ARK_API_KEY`",
+        "`https://ark.cn-beijing.volces.com/api/v3`",
+        "`doubao-seed-2-0-lite-260215`",
+        "256K context",
+        "`pricing` is omitted",
+        "`reasoning` is false",
+        "uv run pytest tests/ai/test_curated_catalog.py tests/providers/test_openai_completions_provider.py -q",
+        "Not run on 2026-06-22",
+    ]:
+        assert expected in text
+
+
 def test_zai_evidence_matches_curated_provider_fixture() -> None:
     text = ZAI_EVIDENCE_PATH.read_text(encoding="utf-8")
 
@@ -951,6 +1034,10 @@ def test_curated_provider_matrix_matches_openai_fixture() -> None:
     assert "`hunyuan-turbos-latest`" in text
     assert "`HUNYUAN_API_KEY`" in text
     assert "`catalog-evidence/tencent-hunyuan.md`" in text
+    assert "`volcano-ark` | `openai-completions-cn-beijing` | `openai-completions`" in text
+    assert "`doubao-seed-2-0-lite-260215`" in text
+    assert "`ARK_API_KEY`" in text
+    assert "`catalog-evidence/volcano-ark.md`" in text
     assert "`zai` | `openai-completions` | `openai-completions`" in text
     assert "`glm-5.2`, `glm-5.1`" in text
     assert "`ZAI_API_KEY`" in text

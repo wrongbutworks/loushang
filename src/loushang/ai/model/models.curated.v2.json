@@ -715,6 +715,74 @@
         }
       }
     },
+    "volcano-ark": {
+      "displayName": "Volcano Ark",
+      "website": "https://www.volcengine.com/product/ark",
+      "auth": {
+        "kind": "apiKey",
+        "apiKeyEnv": "ARK_API_KEY",
+        "header": "Authorization",
+        "prefix": "Bearer "
+      },
+      "endpoints": {
+        "openai-completions-cn-beijing": {
+          "displayName": "Volcano Ark Chat Completions (China North, Beijing)",
+          "api": "openai-completions",
+          "baseUrl": "https://ark.cn-beijing.volces.com/api/v3",
+          "region": "cn-beijing",
+          "preferred": true,
+          "docs": "https://www.volcengine.com/docs/82379/1330310",
+          "protocol": {
+            "store": "unsupported",
+            "roles": {
+              "developer": "unsupported"
+            },
+            "reasoning": {
+              "effort": "unsupported"
+            },
+            "tools": {
+              "strictSchema": "unsupported"
+            }
+          },
+          "dialect": {
+            "maxOutputTokensField": "max_tokens",
+            "tools": {
+              "assistantBridgeRequired": false,
+              "resultNameRequired": false,
+              "streamFlag": false
+            }
+          },
+          "transport": {
+            "kind": "http",
+            "stream": "sse"
+          },
+          "models": {
+            "doubao-seed-2-0-lite-260215": {
+              "displayName": "Doubao Seed 2.0 Lite",
+              "family": "doubao-seed-2.0",
+              "alias": "default-chat",
+              "lastUpdated": "2026-02-15",
+              "capabilities": {
+                "contextWindow": 262144,
+                "input": [
+                  "text",
+                  "image"
+                ],
+                "output": [
+                  "text"
+                ],
+                "reasoning": false,
+                "stream": true,
+                "toolUse": true,
+                "structuredOutput": true,
+                "attachment": false,
+                "temperature": true
+              }
+            }
+          }
+        }
+      }
+    },
     "zai": {
       "displayName": "Z.AI",
       "website": "https://docs.z.ai",
