@@ -1,0 +1,28 @@
+# Provider evidence: dashscope
+
+- Verified at: 2026-06-22
+- Issue: n/a
+- Official docs:
+  - https://help.aliyun.com/zh/model-studio/compatibility-of-openai-with-dashscope
+  - https://help.aliyun.com/zh/model-studio/qwen-api-via-openai-responses
+  - https://help.aliyun.com/zh/model-studio/getting-started/models
+  - https://help.aliyun.com/zh/model-studio/model-pricing
+- Authentication: API key in `DASHSCOPE_API_KEY`, sent as an `Authorization: Bearer ...` header.
+- Endpoint: `https://dashscope.aliyuncs.com/compatible-mode/v1`, OpenAI-compatible Responses API protocol, China North 2 Beijing default region.
+- Included models:
+  - `qwen3.7-max`: main Qwen3.7 model for highest-accuracy multimodal and reasoning work.
+  - `qwen3.7-plus`: lower-cost Qwen3.7 model for common multimodal tasks.
+- Verified capabilities:
+  - Both selected models list 1,000,000 token context windows in official model-selection docs.
+  - Responses API docs show `qwen3.7-max` and related qwen3.7 models with `reasoning.effort` and `previous_response_id`.
+  - OpenAI-compatible docs establish the selected base URL and OpenAI SDK-compatible request path.
+  - Pricing docs record qwen3.7-max at CNY 12 input / 36 output and qwen3.7-plus at CNY 2 input / 8 output per million tokens.
+- Unknown/omitted facts:
+  - Audio and video input are not represented because the current catalog modality shape only supports text/image.
+  - `maxTokens` is omitted because the cited docs do not publish a stable per-model output token cap in the selected pages.
+  - Only the China North 2 Beijing endpoint is included; legacy Singapore/US duplicate endpoints are intentionally omitted until a deployment-specific requirement is documented.
+  - Cache read/write pricing is omitted because the selected pricing rows used for this curation record standard input/output prices, not stable cache component prices.
+- Contract tests:
+  - `uv run pytest tests/ai/test_curated_catalog.py -q`
+- Manual live smoke:
+  - Not run on 2026-06-22; no live DashScope credential was used for this catalog-only commit.

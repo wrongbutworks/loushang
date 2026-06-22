@@ -113,6 +113,116 @@
         }
       }
     },
+    "dashscope": {
+      "displayName": "Alibaba Cloud DashScope",
+      "website": "https://dashscope.aliyun.com",
+      "auth": {
+        "kind": "apiKey",
+        "apiKeyEnv": "DASHSCOPE_API_KEY",
+        "header": "Authorization",
+        "prefix": "Bearer "
+      },
+      "endpoints": {
+        "openai-responses": {
+          "displayName": "DashScope Responses API (China North 2, Beijing)",
+          "api": "openai-responses",
+          "baseUrl": "https://dashscope.aliyuncs.com/compatible-mode/v1",
+          "region": "cn",
+          "preferred": true,
+          "docs": "https://help.aliyun.com/zh/model-studio/qwen-api-via-openai-responses",
+          "protocol": {
+            "roles": {
+              "developer": "supported"
+            },
+            "streaming": {
+              "usage": "supported",
+              "reasoningDelta": "supported"
+            },
+            "reasoning": {
+              "effort": "supported",
+              "effortMap": {
+                "low": "low",
+                "medium": "medium",
+                "high": "high",
+                "xhigh": "max"
+              }
+            },
+            "tools": {
+              "strictSchema": "unsupported"
+            },
+            "cache": {
+              "promptKey": "supported"
+            }
+          },
+          "transport": {
+            "kind": "http",
+            "stream": "sse"
+          },
+          "models": {
+            "qwen3.7-max": {
+              "displayName": "Qwen3.7 Max",
+              "family": "qwen-max",
+              "alias": "qwen-main",
+              "defaults": {
+                "maxOutputTokens": 32000,
+                "reasoningEffort": "medium"
+              },
+              "capabilities": {
+                "contextWindow": 1000000,
+                "input": [
+                  "text",
+                  "image"
+                ],
+                "output": [
+                  "text"
+                ],
+                "reasoning": true,
+                "stream": true,
+                "toolUse": true,
+                "structuredOutput": true,
+                "attachment": false,
+                "temperature": true
+              },
+              "pricing": {
+                "currency": "CNY",
+                "input": 12,
+                "output": 36
+              }
+            },
+            "qwen3.7-plus": {
+              "displayName": "Qwen3.7 Plus",
+              "family": "qwen-plus",
+              "alias": "qwen-balanced",
+              "defaults": {
+                "maxOutputTokens": 32000,
+                "reasoningEffort": "medium"
+              },
+              "capabilities": {
+                "contextWindow": 1000000,
+                "input": [
+                  "text",
+                  "image"
+                ],
+                "output": [
+                  "text"
+                ],
+                "reasoning": true,
+                "stream": true,
+                "toolUse": true,
+                "structuredOutput": true,
+                "attachment": false,
+                "temperature": true
+              },
+              "pricing": {
+                "currency": "CNY",
+                "input": 2,
+                "output": 8
+              }
+            }
+          }
+        }
+      }
+    },
     "moonshot": {
       "displayName": "Moonshot AI",
       "website": "https://platform.kimi.ai",

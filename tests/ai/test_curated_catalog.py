@@ -19,6 +19,7 @@ CURATED_CATALOG_PATH = (
 EVIDENCE_DIR = REPO_ROOT / "docs/internals/architecture/ai/catalog-evidence"
 EVIDENCE_TEMPLATE_PATH = EVIDENCE_DIR / "_template.md"
 ANTHROPIC_EVIDENCE_PATH = EVIDENCE_DIR / "anthropic.md"
+DASHSCOPE_EVIDENCE_PATH = EVIDENCE_DIR / "dashscope.md"
 MOONSHOT_EVIDENCE_PATH = EVIDENCE_DIR / "moonshot.md"
 OPENAI_EVIDENCE_PATH = EVIDENCE_DIR / "openai.md"
 CURATED_PROVIDER_MATRIX_PATH = (
@@ -46,6 +47,7 @@ def test_curated_catalog_loads_v2_schema() -> None:
     validate_model_registry_raw(raw)
     assert [provider.id for provider in _load_curated_registry().list_providers()] == [
         "anthropic",
+        "dashscope",
         "moonshot",
         "openai",
     ]
@@ -61,6 +63,9 @@ def test_default_builtin_catalog_still_uses_legacy_catalog() -> None:
     )
     assert len(registry.list_models(provider="anthropic")) > len(
         _load_curated_registry().list_models(provider="anthropic")
+    )
+    assert len(registry.list_models(provider="dashscope")) > len(
+        _load_curated_registry().list_models(provider="dashscope")
     )
     assert len(registry.list_models(provider="moonshot")) > len(
         _load_curated_registry().list_models(provider="moonshot")
@@ -136,6 +141,88 @@ def test_curated_catalog_includes_verified_anthropic_messages_models() -> None:
     assert sonnet.pricing.output == 15
     assert sonnet.pricing.cache_read == 0.3
     assert sonnet.pricing.cache_write == 3.75
+
+
+def test_curated_catalog_includes_verified_dashscope_responses_models() -> None:
+    registry = _load_curated_registry()
+
+    assert registry.get_endpoint("dashscope", "openai-responses-sg") is None
+    assert registry.get_endpoint("dashscope", "openai-responses-us") is None
+
+    provider = registry.get_provider("dashscope")
+    assert provider is not None
+    assert provider.name == "Alibaba Cloud DashScope"
+    assert provider.website == "https://dashscope.aliyun.com"
+    assert provider.auth is not None
+    assert provider.auth.api_key_env == "DASHSCOPE_API_KEY"
+    assert provider.auth.header == "Authorization"
+    assert provider.auth.prefix == "Bearer "
+
+    endpoint = registry.get_endpoint("dashscope", "openai-responses")
+    assert endpoint is not None
+    assert endpoint.api == "openai-responses"
+    assert endpoint.base_url == "https://dashscope.aliyuncs.com/compatible-mode/v1"
+    assert endpoint.region == "cn"
+    assert endpoint.preferred is True
+    assert endpoint.auth is not None
+    assert endpoint.auth.api_key_env == "DASHSCOPE_API_KEY"
+    assert endpoint.protocol.roles.developer is SupportStatus.SUPPORTED
+    assert endpoint.protocol.streaming.usage is SupportStatus.SUPPORTED
+    assert endpoint.protocol.streaming.reasoning_delta is SupportStatus.SUPPORTED
+    assert endpoint.protocol.reasoning.effort is SupportStatus.SUPPORTED
+    assert endpoint.protocol.reasoning.effort_map == {
+        "low": "low",
+        "medium": "medium",
+        "high": "high",
+        "xhigh": "max",
+    }
+    assert endpoint.protocol.tools.strict_schema is SupportStatus.UNSUPPORTED
+    assert endpoint.protocol.cache.prompt_key is SupportStatus.SUPPORTED
+    assert endpoint.transport.kind == "http"
+    assert endpoint.transport.stream == "sse"
+
+    models = registry.list_models(provider="dashscope")
+    assert [model.id for model in models] == ["qwen3.7-max", "qwen3.7-plus"]
+
+    max_model = registry.get_model("dashscope", "openai-responses", "qwen3.7-max")
+    assert max_model is not None
+    assert max_model.name == "Qwen3.7 Max"
+    assert max_model.alias == "qwen-main"
+    assert max_model.context_window == 1_000_000
+    assert max_model.max_tokens is None
+    assert max_model.defaults.get("maxOutputTokens") == 32_000
+    assert max_model.defaults.get("reasoningEffort") == "medium"
+    assert max_model.capabilities.input == ("text", "image")
+    assert max_model.capabilities.output == ("text",)
+    assert max_model.reasoning is True
+    assert max_model.supports_stream is True
+    assert max_model.supports_tool_use is True
+    assert max_model.supports_structured_output is True
+    assert max_model.supports_attachment is False
+    assert max_model.supports_temperature is True
+    assert max_model.pricing is not None
+    assert max_model.pricing.currency == "CNY"
+    assert max_model.pricing.input == 12
+    assert max_model.pricing.output == 36
+    assert max_model.pricing.cache_read is None
+    assert max_model.pricing.cache_write is None
+
+    plus = registry.get_model("dashscope", "openai-responses", "qwen3.7-plus")
+    assert plus is not None
+    assert plus.name == "Qwen3.7 Plus"
+    assert plus.alias == "qwen-balanced"
+    assert plus.context_window == 1_000_000
+    assert plus.max_tokens is None
+    assert plus.defaults.get("maxOutputTokens") == 32_000
+    assert plus.defaults.get("reasoningEffort") == "medium"
+    assert plus.reasoning is True
+    assert plus.supports_temperature is True
+    assert plus.pricing is not None
+    assert plus.pricing.currency == "CNY"
+    assert plus.pricing.input == 2
+    assert plus.pricing.output == 8
+    assert plus.pricing.cache_read is None
+    assert plus.pricing.cache_write is None
 
 
 def test_curated_catalog_includes_verified_moonshot_openai_compatible_models() -> None:
@@ -390,6 +477,27 @@ def test_moonshot_evidence_matches_curated_provider_fixture() -> None:
         assert expected in text
 
 
+def test_dashscope_evidence_matches_curated_provider_fixture() -> None:
+    text = DASHSCOPE_EVIDENCE_PATH.read_text(encoding="utf-8")
+
+    for expected in [
+        "# Provider evidence: dashscope",
+        "- Verified at: 2026-06-22",
+        "https://help.aliyun.com/zh/model-studio/compatibility-of-openai-with-dashscope",
+        "https://help.aliyun.com/zh/model-studio/qwen-api-via-openai-responses",
+        "https://help.aliyun.com/zh/model-studio/getting-started/models",
+        "https://help.aliyun.com/zh/model-studio/model-pricing",
+        "`DASHSCOPE_API_KEY`",
+        "`https://dashscope.aliyuncs.com/compatible-mode/v1`",
+        "`qwen3.7-max`",
+        "`qwen3.7-plus`",
+        "China North 2 Beijing endpoint",
+        "uv run pytest tests/ai/test_curated_catalog.py -q",
+        "Not run on 2026-06-22",
+    ]:
+        assert expected in text
+
+
 def test_openai_evidence_matches_curated_provider_fixture() -> None:
     text = OPENAI_EVIDENCE_PATH.read_text(encoding="utf-8")
 
@@ -417,6 +525,10 @@ def test_curated_provider_matrix_matches_openai_fixture() -> None:
     assert "`claude-opus-4-8`, `claude-sonnet-4-6`" in text
     assert "`ANTHROPIC_API_KEY`" in text
     assert "`catalog-evidence/anthropic.md`" in text
+    assert "`dashscope` | `openai-responses` | `openai-responses`" in text
+    assert "`qwen3.7-max`, `qwen3.7-plus`" in text
+    assert "`DASHSCOPE_API_KEY`" in text
+    assert "`catalog-evidence/dashscope.md`" in text
     assert "`moonshot` | `openai-completions` | `openai-completions`" in text
     assert "`kimi-k2.6`, `kimi-k2.7-code`" in text
     assert "`MOONSHOT_API_KEY`" in text
