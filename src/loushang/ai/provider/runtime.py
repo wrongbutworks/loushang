@@ -139,6 +139,7 @@ def start_provider_runtime(
                         attempt += 1
                         continue
                     await _flush_pending(assembler, pending)
+                    await assembler.emit({"type": "response_done"})
                     return
                 except _RuntimeCancelled:
                     await _flush_pending(assembler, pending)

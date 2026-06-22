@@ -12,6 +12,7 @@ from loushang.ai.errors import (
     AIRateLimitError,
     AIServiceUnavailableError,
     AITimeoutError,
+    ai_error_info_from_mapping,
 )
 from loushang.observability.problem import JSONValue
 
@@ -71,6 +72,7 @@ def normalize_provider_error(
         source=source,
         retryable=_is_retryable_provider_error(code),
         status_code=status_code,
+        request_id=_provider_request_id(error),
         details={"exceptionType": error.__class__.__name__},
     )
     normalized.__cause__ = error
@@ -86,7 +88,7 @@ def provider_error_info_from_raw(
 ) -> AIErrorInfo:
     raw_info = part.get("error_info")
     if isinstance(raw_info, Mapping):
-        return _ai_error_info_from_mapping(raw_info)
+        return ai_error_info_from_mapping(raw_info)
     message = part.get("message")
     status_code = _http_status_code(part.get("code"))
     code = _provider_error_code_from_status(status_code)
@@ -128,6 +130,40 @@ def _provider_status_code(error: Exception) -> int | None:
     return status_code
 
 
+def _provider_request_id(error: Exception) -> str | None:
+    for name in (
+        "request_id",
+        "requestId",
+        "x_request_id",
+        "x_requestid",
+    ):
+        value = getattr(error, name, None)
+        if isinstance(value, str) and value:
+            return value
+    headers = getattr(error, "headers", None)
+    request_id = _request_id_from_headers(headers)
+    if request_id is not None:
+        return request_id
+    response = getattr(error, "response", None)
+    return _request_id_from_headers(getattr(response, "headers", None))
+
+
+def _request_id_from_headers(headers: object) -> str | None:
+    if not isinstance(headers, Mapping):
+        return None
+    for key, value in headers.items():
+        if not isinstance(key, str) or not isinstance(value, str) or not value:
+            continue
+        if key.lower() in {
+            "x-request-id",
+            "request-id",
+            "x-ms-request-id",
+            "x-amzn-requestid",
+        }:
+            return value
+    return None
+
+
 def _provider_error_code(error: Exception, status_code: int | None) -> AIErrorCode:
     if isinstance(error, TimeoutError):
         return AIErrorCode.TIMEOUT
@@ -152,29 +188,6 @@ def _is_retryable_provider_error(code: AIErrorCode) -> bool:
         AIErrorCode.TIMEOUT,
         AIErrorCode.SERVICE_UNAVAILABLE,
     }
-
-
-def _ai_error_info_from_mapping(raw: Mapping[str, object]) -> AIErrorInfo:
-    details = raw.get("details")
-    return AIErrorInfo(
-        code=_required_str(raw, "code"),
-        message=_required_str(raw, "message"),
-        source=_required_str(raw, "source"),
-        retryable=bool(raw.get("retryable")),
-        provider=_optional_str(raw.get("provider")),
-        endpoint=_optional_str(raw.get("endpoint")),
-        model=_optional_str(raw.get("model")),
-        status_code=_http_status_code(raw.get("statusCode")),
-        request_id=_optional_str(raw.get("requestId")),
-        details=details if isinstance(details, Mapping) else {},
-    )
-
-
-def _required_str(raw: Mapping[str, object], key: str) -> str:
-    value = raw.get(key)
-    if not isinstance(value, str) or not value:
-        raise ValueError(f"error_info.{key} must be a non-empty string")
-    return value
 
 
 def _optional_str(value: object) -> str | None:

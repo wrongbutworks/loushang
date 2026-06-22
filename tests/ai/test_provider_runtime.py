@@ -82,6 +82,34 @@ def test_provider_runtime_assembles_raw_parts() -> None:
     assert events[-1]["message"].content[0].text == "hello"
 
 
+def test_provider_runtime_emits_done_when_source_omits_terminal_part() -> None:
+    async def _parts():
+        yield {"type": "response_start", "response_id": "resp_missing_done"}
+        yield {"type": "text_delta", "text": "hello"}
+
+    async def _run():
+        stream = start_provider_runtime(
+            _parts,
+            model=_model(),
+            options=None,
+            request=_request(),
+        )
+        events = [event async for event in stream]
+        return events, await stream.result()
+
+    events, message = asyncio.run(_run())
+
+    assert [event["type"] for event in events] == [
+        "start",
+        "text_start",
+        "text_delta",
+        "text_end",
+        "done",
+    ]
+    assert message.content[0].text == "hello"
+    assert message.response_id == "resp_missing_done"
+
+
 def test_provider_runtime_converts_adapter_exceptions_to_error_events() -> None:
     async def _parts():
         raise RuntimeError("adapter failed")

@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from collections.abc import Callable
+from time import time
 from typing import cast
 
 from loushang.ai.event_stream.raw_parts import (
@@ -64,12 +66,14 @@ class RawAssembler:
         provider: str,
         model: str,
         pricing=None,
+        clock: Callable[[], float] = time,
     ) -> None:
         self._stream = stream
         self._api = api
         self._provider = provider
         self._model = model
         self._pricing = pricing
+        self._clock = clock
         self._response_id: str | None = None
         self._text_chunks: list[str] = []
         self._text_signature: str | None = None
@@ -100,8 +104,11 @@ class RawAssembler:
         self._thinking_started = False
         self._tool_call_started = False
         self._queued_events: list[AssistantMessageEvent] | None = None
+        self._terminal_emitted = False
 
     def feed(self, part: RawPart) -> None:
+        if self._terminal_emitted:
+            return
         part_type = part["type"]
 
         if part_type == "response_start":
@@ -479,6 +486,7 @@ class RawAssembler:
                     },
                 )
             )
+            self._terminal_emitted = True
             return
 
         if part_type == "aborted":
@@ -493,6 +501,7 @@ class RawAssembler:
                     {"type": "error", "reason": "aborted", "error": message},
                 )
             )
+            self._terminal_emitted = True
             return
 
         if part_type == "response_error":
@@ -518,6 +527,7 @@ class RawAssembler:
                 error_event["code"] = code
             self._final_message = message
             self._push_event(error_event)
+            self._terminal_emitted = True
             return
 
         raise ValueError(f"Unsupported raw part type: {part_type}")
@@ -582,7 +592,7 @@ class RawAssembler:
             usage=self._usage,
             stop_reason=_assistant_stop_reason(stop_reason),
             error_message=error_message,
-            timestamp=0.0,
+            timestamp=self._clock(),
         )
 
     def _build_partial_message(self) -> AssistantMessage:

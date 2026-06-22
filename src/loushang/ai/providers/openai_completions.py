@@ -240,13 +240,11 @@ class OpenAICompletionsProvider:
                     continue
                 # response id
                 if not emitted_response_start:
-                    emitted_response_start = True
                     resp_id = getattr(chunk, "id", None)
                     _debug("event", {"kind": "response_start", "response_id": resp_id})
-                    yield {
-                        "type": "response_start",
-                        **({"response_id": resp_id} if resp_id else {}),
-                    }
+                    if isinstance(resp_id, str) and resp_id:
+                        emitted_response_start = True
+                        yield {"type": "response_start", "response_id": resp_id}
                 # usage
                 usage = getattr(chunk, "usage", None)
                 if usage is None and hasattr(choice, "usage"):

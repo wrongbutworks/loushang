@@ -195,6 +195,51 @@ class AICancelledError(AIError):
     default_code = AIErrorCode.CANCELLED
 
 
+_ERROR_CLASS_BY_CODE: dict[AIErrorCode, type[AIError]] = {
+    AIErrorCode.CONFIGURATION: AIConfigurationError,
+    AIErrorCode.MODEL_NOT_FOUND: ModelNotFoundError,
+    AIErrorCode.AMBIGUOUS_MODEL: AmbiguousModelError,
+    AIErrorCode.UNSUPPORTED_CAPABILITY: UnsupportedCapabilityError,
+    AIErrorCode.AUTHENTICATION: AIAuthenticationError,
+    AIErrorCode.REQUEST_VALIDATION: AIRequestValidationError,
+    AIErrorCode.TOOL_VALIDATION: ToolValidationError,
+    AIErrorCode.PROVIDER: AIProviderError,
+    AIErrorCode.RATE_LIMIT: AIRateLimitError,
+    AIErrorCode.TIMEOUT: AITimeoutError,
+    AIErrorCode.SERVICE_UNAVAILABLE: AIServiceUnavailableError,
+    AIErrorCode.CONTEXT_OVERFLOW: AIContextOverflowError,
+    AIErrorCode.PROVIDER_PROTOCOL: AIProviderProtocolError,
+    AIErrorCode.STREAM: AIStreamError,
+    AIErrorCode.CANCELLED: AICancelledError,
+}
+
+
+def ai_error_from_info(info: AIErrorInfo) -> AIError:
+    code = info.code
+    if isinstance(code, str):
+        try:
+            code = AIErrorCode(code)
+        except ValueError:
+            return AIError.from_info(info)
+    return _ERROR_CLASS_BY_CODE.get(code, AIError).from_info(info)
+
+
+def ai_error_info_from_mapping(raw: Mapping[str, object]) -> AIErrorInfo:
+    details = raw.get("details")
+    return AIErrorInfo(
+        code=_required_str(raw, "code"),
+        message=_required_str(raw, "message"),
+        source=_required_str(raw, "source"),
+        retryable=bool(raw.get("retryable")),
+        provider=_optional_str(raw.get("provider")),
+        endpoint=_optional_str(raw.get("endpoint")),
+        model=_optional_str(raw.get("model")),
+        status_code=_http_status_code(raw.get("statusCode")),
+        request_id=_optional_str(raw.get("requestId")),
+        details=details if isinstance(details, Mapping) else {},
+    )
+
+
 def _redact_json_value(value: JSONValue, *, key: str | None = None) -> JSONValue:
     if key is not None and _is_sensitive_key(key):
         return _REDACTED
@@ -218,6 +263,31 @@ def _is_sensitive_key(key: str) -> bool:
     return any(marker in normalized or marker in dashed for marker in _SENSITIVE_KEY_MARKERS)
 
 
+def _http_status_code(value: object) -> int | None:
+    if isinstance(value, bool):
+        return None
+    if isinstance(value, int):
+        code = value
+    elif isinstance(value, str) and value.isdecimal():
+        code = int(value)
+    else:
+        return None
+    if 100 <= code <= 599:
+        return code
+    return None
+
+
+def _required_str(raw: Mapping[str, object], key: str) -> str:
+    value = raw.get(key)
+    if not isinstance(value, str) or not value:
+        raise ValueError(f"error_info.{key} must be a non-empty string")
+    return value
+
+
+def _optional_str(value: object) -> str | None:
+    return value if isinstance(value, str) else None
+
+
 __all__ = [
     "AIError",
     "AIErrorCode",
@@ -237,4 +307,6 @@ __all__ = [
     "AIProviderProtocolError",
     "AIStreamError",
     "AICancelledError",
+    "ai_error_from_info",
+    "ai_error_info_from_mapping",
 ]

@@ -2,6 +2,9 @@ from __future__ import annotations
 
 import asyncio
 
+import pytest
+
+from loushang.ai.errors import AICancelledError, AIRateLimitError
 from loushang.ai.event_stream import AssistantMessageEventStream, RawAssembler
 from loushang.ai.model import Pricing
 from loushang.ai.types import AssistantMessage, Usage
@@ -227,6 +230,103 @@ def test_raw_assembler_preserves_http_error_code() -> None:
     assert events[-1]["error_info"]["retryable"] is True
     assert events[-1]["error_info"]["provider"] == "openai"
     assert events[-1]["error_info"]["model"] == "gpt-test"
+
+
+def test_event_stream_result_raises_typed_error_for_error_terminal() -> None:
+    stream = AssistantMessageEventStream()
+    assembler = RawAssembler(
+        stream=stream,
+        api="openai-responses",
+        provider="openai",
+        model="gpt-test",
+    )
+
+    assembler.feed(
+        {
+            "type": "response_error",
+            "message": "rate limited",
+            "code": 429,
+            "error_info": {
+                "code": "rate_limit",
+                "message": "rate limited",
+                "source": "openai-responses",
+                "retryable": True,
+                "provider": "openai",
+                "endpoint": None,
+                "model": "gpt-test",
+                "statusCode": 429,
+                "requestId": "req_123",
+                "details": {},
+            },
+        }
+    )
+
+    with pytest.raises(AIRateLimitError) as exc_info:
+        asyncio.run(stream.result())
+
+    error = exc_info.value
+    assert error.info.status_code == 429
+    assert error.info.request_id == "req_123"
+    assert error.info.retryable is True
+
+    message = asyncio.run(stream.final_message())
+    assert message.stop_reason == "error"
+    assert message.error_message == "rate limited"
+
+
+def test_event_stream_result_raises_cancelled_for_aborted_terminal() -> None:
+    stream = AssistantMessageEventStream()
+    assembler = RawAssembler(
+        stream=stream,
+        api="openai-responses",
+        provider="openai",
+        model="gpt-test",
+    )
+
+    assembler.feed({"type": "aborted"})
+
+    with pytest.raises(AICancelledError) as exc_info:
+        asyncio.run(stream.result())
+
+    assert exc_info.value.info.provider == "openai"
+    assert exc_info.value.info.model == "gpt-test"
+    assert asyncio.run(stream.final_message()).stop_reason == "aborted"
+
+
+def test_raw_assembler_keeps_first_terminal_event() -> None:
+    stream = AssistantMessageEventStream()
+    assembler = RawAssembler(
+        stream=stream,
+        api="openai-responses",
+        provider="openai",
+        model="gpt-test",
+    )
+
+    assembler.feed({"type": "response_done"})
+    assembler.feed({"type": "response_error", "message": "late error", "code": 500})
+
+    events = asyncio.run(_collect_events(stream))
+
+    assert [event["type"] for event in events] == ["done"]
+    assert events[0]["message"].stop_reason == "stop"
+    assert asyncio.run(stream.result()).stop_reason == "stop"
+
+
+def test_raw_assembler_uses_clock_timestamp_for_final_message() -> None:
+    stream = AssistantMessageEventStream()
+    assembler = RawAssembler(
+        stream=stream,
+        api="openai-responses",
+        provider="openai",
+        model="gpt-test",
+        clock=lambda: 123.5,
+    )
+
+    assembler.feed({"type": "response_done"})
+
+    message = asyncio.run(stream.result())
+
+    assert message.timestamp == 123.5
 
 
 def test_raw_assembler_omits_non_http_error_code() -> None:

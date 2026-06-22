@@ -1,9 +1,16 @@
 from __future__ import annotations
 
 import asyncio
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Mapping
 from typing import Callable, Generic, TypeVar, cast
 
+from loushang.ai.errors import (
+    AICancelledError,
+    AIError,
+    AIStreamError,
+    ai_error_from_info,
+    ai_error_info_from_mapping,
+)
 from loushang.ai.types import (
     AssistantMessage,
     AssistantMessageEvent,
@@ -29,6 +36,7 @@ class EventStream(Generic[TEvent, TResult]):
             maxsize=max(1, max_queue_size)
         )
         self._final_result: TResult | None = None
+        self._terminal_event: TEvent | None = None
         self._producer_error: BaseException | None = None
         self._ended: bool = False
         self._producer_task: asyncio.Task[object] | None = None
@@ -40,6 +48,7 @@ class EventStream(Generic[TEvent, TResult]):
             return
         self._queue.put_nowait(event)
         if self._is_terminal(event):
+            self._terminal_event = event
             self._final_result = self._extract_result(event)
             self._put_nowait_force(None)
             self._ended = True
@@ -49,6 +58,7 @@ class EventStream(Generic[TEvent, TResult]):
             return
         await self._queue.put(event)
         if self._is_terminal(event):
+            self._terminal_event = event
             self._final_result = self._extract_result(event)
             await self._queue.put(None)
             self._ended = True
@@ -150,6 +160,32 @@ class AssistantMessageEventStream(EventStream[AssistantMessageEvent, AssistantMe
         self._validate_event(event)
         await super().emit(event)
 
+    async def result(self) -> AssistantMessage:
+        message = await self.final_message()
+        terminal_event = self._terminal_event
+        if terminal_event is not None and terminal_event["type"] == "error":
+            raise _error_from_terminal_event(cast(ErrorEvent, terminal_event))
+        if message.stop_reason == "aborted":
+            raise AICancelledError(
+                message.error_message or "Stream aborted",
+                source=message.api,
+                provider=message.provider,
+                model=message.model,
+                details=_response_details(message),
+            )
+        if message.stop_reason == "error":
+            raise AIStreamError(
+                message.error_message or "Stream failed",
+                source=message.api,
+                provider=message.provider,
+                model=message.model,
+                details=_response_details(message),
+            )
+        return message
+
+    async def final_message(self) -> AssistantMessage:
+        return await super().result()
+
     def _validate_event(self, event: AssistantMessageEvent) -> None:
         event_type = event["type"]
         if event_type not in {
@@ -181,6 +217,7 @@ class AssistantMessageEventStream(EventStream[AssistantMessageEvent, AssistantMe
                 "reason": "stop",
                 "message": message,
             }
+            self._terminal_event = done_event
             self._put_nowait_force(done_event)
         self._put_nowait_force(None)
 
@@ -189,3 +226,34 @@ def _extract_assistant_message_result(event: AssistantMessageEvent) -> Assistant
     if event["type"] == "done":
         return event["message"]
     return cast(ErrorEvent, event)["error"]
+
+
+def _error_from_terminal_event(event: ErrorEvent) -> AIError:
+    message = event["error"]
+    if event["reason"] == "aborted":
+        return AICancelledError(
+            message.error_message or "Stream aborted",
+            source=message.api,
+            provider=message.provider,
+            model=message.model,
+            details=_response_details(message),
+        )
+    raw_info = event.get("error_info")
+    if isinstance(raw_info, Mapping):
+        try:
+            return ai_error_from_info(ai_error_info_from_mapping(raw_info))
+        except ValueError:
+            pass
+    return AIStreamError(
+        message.error_message or "Stream failed",
+        source=message.api,
+        provider=message.provider,
+        model=message.model,
+        details=_response_details(message),
+    )
+
+
+def _response_details(message: AssistantMessage) -> dict[str, str]:
+    if message.response_id is None:
+        return {}
+    return {"responseId": message.response_id}

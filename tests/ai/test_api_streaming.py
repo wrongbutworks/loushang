@@ -13,6 +13,7 @@ from loushang.ai.context import (
     NORMALIZED_CONTEXT_MARKER,
     NormalizedContext,
 )
+from loushang.ai.errors import AIRateLimitError
 from loushang.ai.model import (
     Capabilities,
     EndpointProtocolFeatures,
@@ -76,6 +77,30 @@ class _Provider:
         self.options = options
         self.request = request
         yield {"type": "response_done"}
+
+
+class _ErrorProvider(_Provider):
+    async def stream_raw(self, model, context, options, request):
+        self.context = context
+        self.options = options
+        self.request = request
+        yield {
+            "type": "response_error",
+            "message": "rate limited",
+            "code": 429,
+            "error_info": {
+                "code": "rate_limit",
+                "message": "rate limited",
+                "source": "faux",
+                "retryable": True,
+                "provider": "faux",
+                "endpoint": None,
+                "model": "test-model",
+                "statusCode": 429,
+                "requestId": "req_public",
+                "details": {},
+            },
+        }
 
 
 def _assert_normalized_provider_context(context: object) -> NormalizedContext:
@@ -209,6 +234,27 @@ def test_stream_defaults_to_strict_pairing_and_exposes_repair_option(
     assert isinstance(synthetic, ToolResultMessage)
     assert synthetic.tool_call_id == "call_1"
     assert synthetic.is_error is True
+
+
+def test_complete_raises_typed_error_for_stream_error(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _patch_resolved_request(monkeypatch)
+    provider = _ErrorProvider()
+    registry = _Registry(provider)
+
+    with pytest.raises(AIRateLimitError) as exc_info:
+        asyncio.run(
+            complete(
+                _Model(),
+                {"messages": [UserMessage(role="user", content="hello", timestamp=0.0)]},
+                CallOptions(),
+                registry=registry,
+            )
+        )
+
+    assert exc_info.value.info.status_code == 429
+    assert exc_info.value.info.request_id == "req_public"
 
 
 def test_stream_exposes_strict_pairing_through_public_options(

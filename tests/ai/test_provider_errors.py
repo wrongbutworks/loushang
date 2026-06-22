@@ -12,6 +12,12 @@ class _HttpError(Exception):
         self.status_code = status_code
 
 
+class _HttpErrorWithHeaders(_HttpError):
+    def __init__(self, message: str, status_code: int) -> None:
+        super().__init__(message, status_code)
+        self.headers = {"x-request-id": "req_headers"}
+
+
 @pytest.mark.parametrize(
     ("status_code", "code", "retryable"),
     [
@@ -66,3 +72,12 @@ def test_normalize_provider_error_preserves_original_as_cause() -> None:
     assert normalized.info.code is AIErrorCode.RATE_LIMIT
     assert normalized.info.retryable is True
     assert normalized.__cause__ is original
+
+
+def test_normalize_provider_error_preserves_request_id_from_headers() -> None:
+    normalized = normalize_provider_error(
+        _HttpErrorWithHeaders("rate limited", 429),
+        source="openai",
+    )
+
+    assert normalized.info.request_id == "req_headers"

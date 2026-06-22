@@ -1978,6 +1978,42 @@ def test_openai_completions_stream_maps_thinking_tool_calls_and_reasoning_detail
     )
 
 
+def test_openai_completions_omits_response_start_when_chunk_id_missing(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _fake_openai_module(
+        monkeypatch,
+        chunks=[
+            SimpleNamespace(
+                choices=[
+                    SimpleNamespace(
+                        delta=SimpleNamespace(content="hello"),
+                        finish_reason="stop",
+                    )
+                ],
+                usage=None,
+            )
+        ],
+    )
+    _patch_resolved_request(monkeypatch, compat={}, reasoning_effort=None)
+    provider = OpenAICompletionsProvider()
+
+    parts = asyncio.run(
+        _collect_parts(
+            _stream_raw_parts(
+                provider,
+                _Model(),
+                {"messages": [UserMessage(role="user", content="hello", timestamp=0.0)]},
+                OpenAICompletionsOptions(api_key="test-key"),
+            )
+        )
+    )
+
+    assert "response_start" not in {part["type"] for part in parts}
+    assert {"type": "text_delta", "text": "hello"} in parts
+    assert parts[-1] == {"type": "response_done"}
+
+
 async def _collect_parts(source) -> list[dict]:
     return [part async for part in source]
 
