@@ -24,7 +24,10 @@ from loushang.ai.event_stream.raw_parts import (
 )
 from loushang.ai.event_stream.stream import AssistantMessageEventStream
 from loushang.ai.pricing import calculate_usage_cost
-from loushang.ai.provider.errors import is_http_status_code
+from loushang.ai.provider.errors import (
+    is_http_status_code,
+    provider_error_info_from_raw,
+)
 from loushang.ai.types import (
     AssistantMessage,
     DoneEvent,
@@ -492,14 +495,21 @@ class RawAssembler:
 
         if part_type == "response_error":
             response_error_part = cast(ResponseErrorPart, part)
+            error_info = provider_error_info_from_raw(
+                response_error_part,
+                source=self._api,
+                provider=self._provider,
+                model=self._model,
+            )
             message = self._build_message(
                 stop_reason="error",
-                error_message=response_error_part.get("message", "Unknown error"),
+                error_message=error_info.message,
             )
             error_event: ErrorEvent = {
                 "type": "error",
                 "reason": "error",
                 "error": message,
+                "error_info": error_info.to_dict(),
             }
             code = _http_status_code(response_error_part.get("code"))
             if code is not None:

@@ -1,6 +1,9 @@
 from __future__ import annotations
 
-from loushang.ai.provider.errors import provider_error_part
+import pytest
+
+from loushang.ai import AIErrorCode
+from loushang.ai.provider.errors import normalize_provider_error, provider_error_part
 
 
 class _HttpError(Exception):
@@ -9,29 +12,57 @@ class _HttpError(Exception):
         self.status_code = status_code
 
 
-def test_provider_error_part_uses_http_status_code_as_code() -> None:
-    part = provider_error_part(_HttpError("Unauthorized", 401), source="openai")
+@pytest.mark.parametrize(
+    ("status_code", "code", "retryable"),
+    [
+        (401, AIErrorCode.AUTHENTICATION, False),
+        (403, AIErrorCode.AUTHENTICATION, False),
+        (408, AIErrorCode.TIMEOUT, True),
+        (429, AIErrorCode.RATE_LIMIT, True),
+        (500, AIErrorCode.SERVICE_UNAVAILABLE, True),
+        (503, AIErrorCode.SERVICE_UNAVAILABLE, True),
+    ],
+)
+def test_provider_error_part_maps_http_status_codes_to_error_info(
+    status_code: int,
+    code: AIErrorCode,
+    retryable: bool,
+) -> None:
+    part = provider_error_part(_HttpError("provider failed", status_code), source="openai")
 
-    assert part == {
-        "type": "response_error",
-        "message": "Unauthorized",
-        "code": 401,
-    }
+    assert part["type"] == "response_error"
+    assert part["message"] == "provider failed"
+    assert part["code"] == status_code
+    assert part["error_info"]["code"] == code.value
+    assert part["error_info"]["source"] == "openai"
+    assert part["error_info"]["retryable"] is retryable
+    assert part["error_info"]["statusCode"] == status_code
 
 
-def test_provider_error_part_omits_code_without_http_status() -> None:
+def test_provider_error_part_maps_timeout_without_http_status() -> None:
     part = provider_error_part(TimeoutError("connection timed out"), source="openai")
 
-    assert part == {
-        "type": "response_error",
-        "message": "connection timed out",
-    }
+    assert part["type"] == "response_error"
+    assert part["message"] == "connection timed out"
+    assert "code" not in part
+    assert part["error_info"]["code"] == "timeout"
+    assert part["error_info"]["retryable"] is True
 
 
 def test_provider_error_part_omits_non_http_status_code() -> None:
     part = provider_error_part(_HttpError("grpc unavailable", 14), source="openai")
 
-    assert part == {
-        "type": "response_error",
-        "message": "grpc unavailable",
-    }
+    assert part["type"] == "response_error"
+    assert part["message"] == "grpc unavailable"
+    assert "code" not in part
+    assert part["error_info"]["code"] == "provider"
+    assert part["error_info"]["retryable"] is False
+
+
+def test_normalize_provider_error_preserves_original_as_cause() -> None:
+    original = _HttpError("rate limited", 429)
+    normalized = normalize_provider_error(original, source="openai")
+
+    assert normalized.info.code is AIErrorCode.RATE_LIMIT
+    assert normalized.info.retryable is True
+    assert normalized.__cause__ is original

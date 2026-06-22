@@ -1,4 +1,4 @@
-from loushang.ai.provider.errors import map_provider_error
+from loushang.ai.provider.errors import normalize_provider_error
 from loushang.ai.provider.protocol import ApiProvider, RequestAwareApiProvider
 from loushang.ai.provider.resolution import (
     ResolvedEndpoint,
@@ -21,7 +21,7 @@ __all__ = [
     "ResolvedEndpoint",
     "ResolvedRequest",
     "ensure_request_api",
-    "map_provider_error",
+    "normalize_provider_error",
     "resolve_endpoint_for_model",
     "resolve_provider_request",
     "resolve_request_for_model",

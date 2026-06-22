@@ -3,6 +3,8 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Any, Literal, NotRequired, TypedDict
 
+from loushang.observability.problem import JSONValue
+
 
 class UsageCost(TypedDict):
     input: float
@@ -203,6 +205,7 @@ class ErrorEvent(TypedDict):
     reason: Literal["aborted", "error"]
     error: AssistantMessage
     code: NotRequired[int]
+    error_info: NotRequired[dict[str, JSONValue]]
 
 
 AssistantMessageEvent = (

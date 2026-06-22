@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from typing import Literal, NotRequired, TypedDict
 
+from loushang.observability.problem import JSONValue
+
 
 class ResponseStartPart(TypedDict):
     type: Literal["response_start"]
@@ -16,6 +18,7 @@ class ResponseErrorPart(TypedDict):
     type: Literal["response_error"]
     message: str
     code: NotRequired[int]
+    error_info: NotRequired[dict[str, JSONValue]]
 
 
 class TextDeltaPart(TypedDict):

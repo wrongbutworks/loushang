@@ -188,8 +188,11 @@ def test_raw_assembler_preserves_http_error_code() -> None:
 
     assert events[-1]["type"] == "error"
     assert events[-1]["code"] == 429
-    assert "source" not in events[-1]
-    assert "retryable" not in events[-1]
+    assert events[-1]["error_info"]["code"] == "rate_limit"
+    assert events[-1]["error_info"]["source"] == "openai-responses"
+    assert events[-1]["error_info"]["retryable"] is True
+    assert events[-1]["error_info"]["provider"] == "openai"
+    assert events[-1]["error_info"]["model"] == "gpt-test"
 
 
 def test_raw_assembler_omits_non_http_error_code() -> None:
@@ -213,6 +216,8 @@ def test_raw_assembler_omits_non_http_error_code() -> None:
 
     assert events[-1]["type"] == "error"
     assert "code" not in events[-1]
+    assert events[-1]["error_info"]["code"] == "provider"
+    assert events[-1]["error_info"]["retryable"] is False
 
 
 def test_raw_assembler_derives_total_tokens_when_provider_omits_total() -> None:
