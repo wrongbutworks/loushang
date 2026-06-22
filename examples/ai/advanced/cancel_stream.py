@@ -9,6 +9,7 @@ from loushang.ai import CallOptions, Model, stream
 from loushang.ai.advanced.registry import ApiProviderRegistry
 from loushang.ai.model import Capabilities, Endpoint
 from loushang.ai.model.registry import get_default_model_registry
+from loushang.ai.provider import ProviderRequest
 
 
 class _SlowProvider:
@@ -19,7 +20,7 @@ class _SlowProvider:
         self.blocked = asyncio.Event()
         self.closed = False
 
-    async def stream_raw(self, model, context, options, request):
+    async def stream_raw(self, request: ProviderRequest):
         self.started.set()
         try:
             yield {"type": "response_start", "response_id": "cancel-demo"}

@@ -9,6 +9,7 @@ from loushang.ai import CallOptions, Model, RetryOptions, stream
 from loushang.ai.advanced.registry import ApiProviderRegistry
 from loushang.ai.model import Capabilities, Endpoint
 from loushang.ai.model.registry import ModelRegistry
+from loushang.ai.provider import ProviderRequest
 from loushang.ai.trace import emit_trace
 
 
@@ -26,10 +27,10 @@ class _TraceProvider:
     def __init__(self) -> None:
         self.attempts = 0
 
-    async def stream_raw(self, model, context, options, request):
+    async def stream_raw(self, request: ProviderRequest):
         self.attempts += 1
         emit_trace(
-            options,
+            request.options,
             {
                 "type": "sdk:client",
                 "headers": {

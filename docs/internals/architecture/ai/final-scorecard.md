@@ -48,8 +48,8 @@ Current composite score: 8.6/10.
 | Offline examples | `scripts/ai/check_examples.py` executes numbered `examples/ai/[0-9][0-9]_*.py` with live provider keys removed. |
 | Import boundaries | `scripts/ai/check_import_boundaries.py` prevents `loushang.ai` from importing agent/coding layers, prevents removed core providers from returning, and keeps top-level examples on stable AI imports. |
 | AI gate | `make check-ai` runs lint, mypy, catalog checks, import checks, offline examples, package coverage, scoped core coverage, and adapter coverage; latest run reached 83.36% package coverage, 90.09% runtime-core coverage, and 85.66% provider-adapter coverage with 691 passed and 9 live tests deselected. |
-| Full offline test suite | `env -u <provider keys> uv run pytest tests -m "not live" -q` passed on 2026-06-22 with 4254 passed and 9 deselected. |
-| Build | `uv build` passed on 2026-06-22 after the final review fixes and produced both sdist and wheel artifacts. |
+| Full offline test suite | `env -u <provider keys> uv run pytest tests -m "not live" -q` passed on 2026-06-22 with 4260 passed and 9 deselected. |
+| Build | `uv build` passed on 2026-06-22 after the final fixes and produced both sdist and wheel artifacts. |
 | Live provider smoke | DashScope Responses stream/tools and DeepSeek OpenAI-compatible complete/stream passed on 2026-06-22 with valid local credentials. Moonshot was attempted but rejected by the provider with HTTP 401, so it is not counted as live proof. |
 
 ## Final Checklist Status
@@ -70,7 +70,7 @@ Current composite score: 8.6/10.
 | Parallel tool calls can interleave | Met | Tool and provider tests cover multi-tool event assembly and parallel tool examples. |
 | Structured output is verifiable | Met | Structured output API and tests cover schema parsing and errors. |
 | Text/image declarations match implementation | Mostly met | Catalog checker rejects unsupported modalities; advanced video/audio/image-output facts remain omitted. |
-| OAuth files are safe | Mostly met | OAuth storage uses locked atomic writes; final security review still needs to check file modes on target platforms. |
+| OAuth files are safe | Met | OAuth storage uses locked atomic writes; local POSIX smoke verified `0o700` credential directories and `0o600` store/lock files. |
 | Unknown pricing is not zero cost | Met | Pricing and assembler tests preserve unknown cost as `None`. |
 
 ### Catalog
@@ -101,15 +101,15 @@ Current composite score: 8.6/10.
 | Requirement | Status | Evidence or remaining work |
 |---|---|---|
 | `make check-ai` passes | Met | Passed on 2026-06-22 with 691 passed and 9 live tests deselected. `test-ai` and `check-ai-coverage` explicitly run `pytest ... -m "not live"` so default AI gates stay offline. |
-| `uv run pytest tests -m "not live" -q` passes | Met | Passed on 2026-06-22 with provider keys removed: 4254 passed, 9 deselected. |
+| `uv run pytest tests -m "not live" -q` passes | Met | Passed on 2026-06-22 with provider keys removed: 4260 passed, 9 deselected. |
 | `uv run pytest tests/ai/contracts -q` passes | Met | `tests/ai/contracts/test_core_provider_contracts.py` covers the core adapter protocol and builtin registration contract. |
 | `uv run python scripts/ai/check_catalog.py` passes | Met | Catalog gate. |
 | `uv run python scripts/ai/check_examples.py` passes | Met | Offline example gate. |
-| `uv build` passes | Met | Passed on 2026-06-22 after the final review fixes. |
+| `uv build` passes | Met | Passed on 2026-06-22 after the final fixes. |
 | Core coverage >= 90% | Met | `scripts/ai/check_coverage_targets.py` enforces scoped runtime-core coverage; latest `make check-ai` reported 90.09%. Scope is recorded in `ARD-002-ai-coverage-gate-scope.md`. |
 | Adapter aggregate coverage >= 85% | Met | `scripts/ai/check_coverage_targets.py` enforces retained provider adapter aggregate coverage; latest `make check-ai` reported 85.66%. |
-| No pending asyncio task | Mostly met | Provider runtime tests cover cancellation and close behavior; final full-suite leak check still required. |
-| No secret trace snapshot | Mostly met | Error payload redaction and Codex request-body trace summarization are tested; final artifact scan still required. |
+| No pending asyncio task | Met | Provider runtime and event stream tests cover cancellation, close behavior, bounded queues, and terminal preservation; current full offline suite passed after those fixes. |
+| No secret trace snapshot | Met | Error payload redaction and Codex request-body trace summarization are tested; `.artifacts` and `dist` were scanned for current provider environment secret values with no matches. |
 
 ### Examples And Docs
 
