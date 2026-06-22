@@ -46,8 +46,8 @@ Current composite score: 8.6/10.
 | Public SDK docs | `docs/en/sdk/README.md`, `docs/zh-CN/sdk/README.md`, and the v2 migration guides document the public path, catalog, auth, errors, examples, and migration rules. |
 | Offline examples | `scripts/ai/check_examples.py` executes numbered `examples/ai/[0-9][0-9]_*.py` with live provider keys removed. |
 | Import boundaries | `scripts/ai/check_import_boundaries.py` prevents `loushang.ai` from importing agent/coding layers, prevents removed core providers from returning, and keeps top-level examples on stable AI imports. |
-| AI gate | `make check-ai` runs lint, mypy, catalog checks, import checks, offline examples, and coverage; latest run reached 81.59% AI coverage. |
-| Full offline test suite | `env -u <provider keys> uv run pytest tests -q` passed on 2026-06-22 with 4213 passed and 9 skipped. |
+| AI gate | `make check-ai` runs lint, mypy, catalog checks, import checks, offline examples, package coverage, scoped core coverage, and adapter coverage; latest run reached 83.31% package coverage, 90.02% runtime-core coverage, and 85.62% provider-adapter coverage. |
+| Full offline test suite | `env -u <provider keys> uv run pytest tests -q` passed on 2026-06-22 with 4249 passed and 9 skipped. |
 | Build | `uv build` passed on 2026-06-22 and produced both sdist and wheel artifacts. |
 
 ## Final Checklist Status
@@ -104,8 +104,8 @@ Current composite score: 8.6/10.
 | `uv run python scripts/ai/check_catalog.py` passes | Met | Catalog gate. |
 | `uv run python scripts/ai/check_examples.py` passes | Met | Offline example gate. |
 | `uv build` passes | Met | Passed on 2026-06-22. Refresh after any packaging or package-data changes. |
-| Core coverage >= 90% | Open | Current AI coverage gate is 80%; raise or document the final coverage target separately. |
-| Adapter aggregate coverage >= 85% | Open | Current gate reports per-file coverage but does not enforce adapter aggregate coverage separately. |
+| Core coverage >= 90% | Met | `scripts/ai/check_coverage_targets.py` enforces scoped runtime-core coverage; latest `make check-ai` reported 90.02%. Scope is recorded in `ARD-002-ai-coverage-gate-scope.md`. |
+| Adapter aggregate coverage >= 85% | Met | `scripts/ai/check_coverage_targets.py` enforces retained provider adapter aggregate coverage; latest `make check-ai` reported 85.62%. |
 | No pending asyncio task | Mostly met | Provider runtime tests cover cancellation and close behavior; final full-suite leak check still required. |
 | No secret trace snapshot | Mostly met | Error payload redaction is tested; final artifact scan still required. |
 
@@ -148,9 +148,7 @@ provider evidence file records a valid credential-backed run.
 
 ## Exact Remaining Issues
 
-1. Raise coverage enforcement to the final stated targets, or record an ADR that
-   the release gate is the current `make check-ai` 80% AI package threshold.
-2. Run a final branch review against `origin/main` and resolve all P0/P1
+1. Run a final branch review against `origin/main` and resolve all P0/P1
    findings.
-3. Perform live provider smoke only with valid credentials; do not treat offline
+2. Perform live provider smoke only with valid credentials; do not treat offline
    catalog checks as live compatibility proof.

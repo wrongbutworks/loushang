@@ -337,6 +337,183 @@ def test_tool_result_content_to_payload_preserves_mixed_content_order() -> None:
     ]
 
 
+def test_anthropic_payload_maps_images_oauth_tools_and_groups_tool_results() -> None:
+    from loushang.ai.providers.anthropic import _build_anthropic_message_payloads
+
+    messages, system = _build_anthropic_message_payloads(
+        {
+            "system_prompt": "system",
+            "messages": [
+                UserMessage(
+                    role="user",
+                    content=[
+                        ImagePart(
+                            type="image",
+                            data="aW1hZ2U=",
+                            mime_type="image/png",
+                        )
+                    ],
+                    timestamp=0.0,
+                ),
+                AssistantMessage(
+                    role="assistant",
+                    content=[
+                        ImagePart(
+                            type="image",
+                            data="YXNzaXN0YW50",
+                            mime_type="image/jpeg",
+                        ),
+                        ToolCall(
+                            type="toolCall",
+                            id="call_1",
+                            name="read",
+                            arguments={"path": "README.md"},
+                        ),
+                    ],
+                    api="anthropic-messages",
+                    provider="anthropic",
+                    model="claude",
+                    response_id=None,
+                    usage=Usage(
+                        input=0,
+                        output=0,
+                        cache_read=0,
+                        cache_write=0,
+                        total_tokens=0,
+                        cost={},
+                    ),
+                    stop_reason="toolUse",
+                    error_message=None,
+                    timestamp=0.0,
+                ),
+                ToolResultMessage(
+                    role="toolResult",
+                    tool_call_id="call_1",
+                    tool_name="read",
+                    content=[TextPart(type="text", text="first")],
+                    is_error=False,
+                    timestamp=0.0,
+                ),
+                ToolResultMessage(
+                    role="toolResult",
+                    tool_call_id="call_2",
+                    tool_name="write",
+                    content=[TextPart(type="text", text="second")],
+                    is_error=True,
+                    timestamp=0.0,
+                ),
+            ],
+        },
+        is_oauth_token=True,
+    )
+
+    assert system == [{"type": "text", "text": "system"}]
+    assert messages[0] == {
+        "role": "user",
+        "content": [
+            {
+                "type": "image",
+                "source": {
+                    "type": "base64",
+                    "media_type": "image/png",
+                    "data": "aW1hZ2U=",
+                },
+            }
+        ],
+    }
+    assert messages[1]["content"] == [
+        {
+            "type": "image",
+            "source": {
+                "type": "base64",
+                "media_type": "image/jpeg",
+                "data": "YXNzaXN0YW50",
+            },
+        },
+        {
+            "type": "tool_use",
+            "id": "call_1",
+            "name": "Read",
+            "input": {"path": "README.md"},
+        },
+    ]
+    assert messages[2] == {
+        "role": "user",
+        "content": [
+            {
+                "type": "tool_result",
+                "tool_use_id": "call_1",
+                "content": "first",
+                "is_error": False,
+            },
+            {
+                "type": "tool_result",
+                "tool_use_id": "call_2",
+                "content": "second",
+                "is_error": True,
+            },
+        ],
+    }
+
+
+def test_anthropic_internal_summarizers_cover_debug_shapes() -> None:
+    from loushang.ai.providers.anthropic import (
+        _map_stop_reason,
+        _optional_int,
+        _summarize_sdk_value,
+        _summarize_tool_args_json,
+        _tool_input_to_json_delta,
+    )
+
+    class Dumpable:
+        def model_dump(self, *, exclude_none: bool):
+            assert exclude_none is True
+            return {"path": "README.md", "content": "hello"}
+
+    class Attrs:
+        def __init__(self) -> None:
+            self.public = ["x" * 300]
+            self._private = "hidden"
+
+    assert _tool_input_to_json_delta("") is None
+    assert _tool_input_to_json_delta({}) is None
+    assert _tool_input_to_json_delta({"path": "README.md"}) == '{"path":"README.md"}'
+    assert _tool_input_to_json_delta(["not-json-object"]) is None
+
+    assert _summarize_tool_args_json("") == {
+        "chars": 0,
+        "valid_json": False,
+        "error": "empty",
+    }
+    assert _summarize_tool_args_json("[1, 2]") == {
+        "chars": 6,
+        "valid_json": True,
+        "kind": "list",
+    }
+    repaired = _summarize_tool_args_json('{"path":"README.md","content":"hello"')
+    assert repaired["valid_json"] is False
+    assert repaired["repair_valid"] is True
+    assert repaired["repaired_keys"] == ["path", "content"]
+    assert repaired["repaired_path"] == "README.md"
+    assert repaired["repaired_content_chars"] == 5
+
+    assert _summarize_sdk_value(Dumpable()) == {
+        "path": "README.md",
+        "content": "hello",
+    }
+    assert _summarize_sdk_value(Attrs()) == {
+        "public": ["x" * 160 + "...<300 chars>"]
+    }
+    assert _summarize_sdk_value(object()).startswith("<object object at ")
+
+    assert _map_stop_reason("refusal") == "error"
+    with pytest.raises(ValueError, match="Unhandled stop reason"):
+        _map_stop_reason("new_reason")
+    assert _optional_int(True) is None
+    assert _optional_int(3) == 3
+    assert _optional_int("3") is None
+
+
 def test_apply_oauth_identity_headers_merges_required_betas() -> None:
     from loushang.ai.providers.anthropic_base import AnthropicProviderBase
     from loushang.ai.providers.anthropic_oauth_compat import AnthropicOAuthCompat

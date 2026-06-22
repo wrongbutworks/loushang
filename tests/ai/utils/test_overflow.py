@@ -1,7 +1,7 @@
 from __future__ import annotations
 
-from loushang.ai.types import AssistantMessage, TextPart, Usage
-from loushang.ai.utils.overflow import is_context_overflow
+from loushang.ai.types import AssistantMessage, ImagePart, TextPart, ThinkingPart, Usage
+from loushang.ai.utils.overflow import get_overflow_patterns, is_context_overflow
 
 
 def _assistant(
@@ -41,6 +41,15 @@ def test_error_message_no_overflow() -> None:
         usage=Usage(input=100, output=0, cache_read=0, cache_write=0, total_tokens=100, cost={}),
     )
     assert is_context_overflow(msg, context_window=128000) is False
+
+
+def test_cerebras_status_without_body_is_context_overflow() -> None:
+    msg = _assistant(
+        stop_reason="error",
+        error_message="413 status code (no body)",
+    )
+
+    assert is_context_overflow(msg, context_window=128000) is True
 
 
 def test_silent_overflow_by_input_tokens() -> None:
@@ -95,6 +104,34 @@ def test_total_tokens_over_window_not_overflow_when_content_present() -> None:
     assert is_context_overflow(msg, context_window=128000) is False
 
 
+def test_total_tokens_over_window_not_overflow_with_thinking_or_image_content() -> None:
+    thinking_message = _assistant(
+        usage=Usage(
+            input=50000,
+            output=80000,
+            cache_read=0,
+            cache_write=0,
+            total_tokens=130000,
+            cost={},
+        ),
+        content=[ThinkingPart(type="thinking", thinking="reasoning")],
+    )
+    image_message = _assistant(
+        usage=Usage(
+            input=50000,
+            output=80000,
+            cache_read=0,
+            cache_write=0,
+            total_tokens=130000,
+            cost={},
+        ),
+        content=[ImagePart(type="image", data="aW1hZ2U=", mime_type="image/png")],
+    )
+
+    assert is_context_overflow(thinking_message, context_window=128000) is False
+    assert is_context_overflow(image_message, context_window=128000) is False
+
+
 def test_silent_overflow_heuristic_not_triggered_below_threshold() -> None:
     """Empty content but total_tokens < 95% should NOT trigger."""
     context_window = 128000
@@ -117,3 +154,11 @@ def test_no_context_window_skips_silent_check() -> None:
         usage=Usage(input=999999, output=0, cache_read=0, cache_write=0, total_tokens=999999, cost={}),
     )
     assert is_context_overflow(msg, context_window=None) is False
+
+
+def test_get_overflow_patterns_returns_copy() -> None:
+    patterns = get_overflow_patterns()
+
+    assert patterns
+    patterns.clear()
+    assert get_overflow_patterns()

@@ -44,6 +44,7 @@ check-ai-examples:
 check-ai-coverage:
 	mkdir -p .artifacts/ai
 	. .venv/bin/activate && $(AI_OFFLINE_ENV) uv run pytest tests/ai tests/providers --cov=src/loushang/ai --cov-report=term-missing:skip-covered --cov-report=xml:.artifacts/ai/coverage.xml --cov-fail-under=80 -q
+	uv run python scripts/ai/check_coverage_targets.py .artifacts/ai/coverage.xml
 
 test-tui:
 	. .venv/bin/activate && python -m pytest tests/tui -q
