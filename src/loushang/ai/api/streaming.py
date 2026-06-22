@@ -16,7 +16,23 @@ from loushang.ai.options import (
 )
 from loushang.ai.provider import resolve_request_for_model
 from loushang.ai.provider.invocation import call_api_provider_stream
+from loushang.ai.structured import (
+    StructuredOutputOptions,
+    StructuredOutputResult,
+    get_structured_output_options,
+    parse_structured_output,
+    with_structured_output_options,
+)
 from loushang.ai.types import ImagePart, ToolResultMessage, UserMessage
+
+_STRUCTURED_OUTPUT_APIS = frozenset(
+    {
+        "azure-openai-responses",
+        "openai-codex-responses",
+        "openai-completions",
+        "openai-responses",
+    }
+)
 
 
 def _has_image_input(normalized_context: Mapping[str, Any]) -> bool:
@@ -40,9 +56,9 @@ def _requests_reasoning(normalized_context: Mapping[str, Any], options) -> bool:
     return is_reasoning_requested(options)
 
 
-def _requests_structured_output(
-    normalized_context: Mapping[str, Any], options
-) -> bool:
+def _requests_structured_output(normalized_context: Mapping[str, Any], options) -> bool:
+    if get_structured_output_options(options) is not None:
+        return True
     fields = (
         "response_format",
         "responseFormat",
@@ -101,9 +117,9 @@ def _validate_capability(
     if require_stream and not _supports(capabilities, "stream"):
         raise ValueError(f"Model {model.id!r} does not support streaming")
 
-    if (_has_tools(normalized_context) or _requests_tool_choice(options)) and not _supports(
-        capabilities, "tool_use"
-    ):
+    if (
+        _has_tools(normalized_context) or _requests_tool_choice(options)
+    ) and not _supports(capabilities, "tool_use"):
         raise ValueError(f"Model {model.id!r} does not support tool use")
 
     if _requests_reasoning(normalized_context, options) and not _supports(
@@ -177,6 +193,13 @@ async def _start_stream(
         options,
         require_stream=require_stream,
     )
+    if (
+        get_structured_output_options(options) is not None
+        and resolved.api not in _STRUCTURED_OUTPUT_APIS
+    ):
+        raise ValueError(
+            f"Provider API {resolved.api!r} does not support structured output mapping"
+        )
     provider = _resolve_api_provider_registry(registry).get_api_provider(resolved.api)
     return await call_api_provider_stream(
         provider, model, normalized, options, resolved
@@ -193,7 +216,9 @@ async def stream(model, context, options: CallOptions | None = None, *, registry
     )
 
 
-async def complete(model, context, options: CallOptions | None = None, *, registry=None):
+async def complete(
+    model, context, options: CallOptions | None = None, *, registry=None
+):
     event_stream = await _start_stream(
         model,
         context,
@@ -202,6 +227,22 @@ async def complete(model, context, options: CallOptions | None = None, *, regist
         require_stream=False,
     )
     return await event_stream.result()
+
+
+async def complete_structured(
+    model,
+    context,
+    output: StructuredOutputOptions | None = None,
+    *,
+    options: CallOptions | None = None,
+    registry=None,
+) -> StructuredOutputResult:
+    structured_output = output or get_structured_output_options(options)
+    if structured_output is None:
+        raise ValueError("complete_structured requires StructuredOutputOptions")
+    call_options = with_structured_output_options(options, structured_output)
+    message = await complete(model, context, call_options, registry=registry)
+    return parse_structured_output(message, structured_output)
 
 
 async def stream_simple(

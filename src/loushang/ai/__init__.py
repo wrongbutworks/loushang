@@ -1,4 +1,10 @@
-from loushang.ai.api import complete, complete_simple, stream, stream_simple
+from loushang.ai.api import (
+    complete,
+    complete_simple,
+    complete_structured,
+    stream,
+    stream_simple,
+)
 from loushang.ai.errors import AIError, AIErrorCode, AIErrorInfo
 from loushang.ai.event_stream import AssistantMessageEventStream
 from loushang.ai.model import Model
@@ -13,6 +19,11 @@ from loushang.ai.options import (
     ThinkingBudgets,
     ThinkingLevel,
     TimeoutOptions,
+)
+from loushang.ai.structured import (
+    StructuredOutputError,
+    StructuredOutputOptions,
+    StructuredOutputResult,
 )
 from loushang.ai.types import (
     AssistantMessage,
@@ -71,6 +82,9 @@ __all__ = [
     "TimeoutOptions",
     "ThinkingLevel",
     "ThinkingBudgets",
+    "StructuredOutputError",
+    "StructuredOutputOptions",
+    "StructuredOutputResult",
     "ImagePart",
     "TextPart",
     "ThinkingPart",
@@ -82,6 +96,7 @@ __all__ = [
     "UsageCost",
     "complete",
     "complete_simple",
+    "complete_structured",
     "get_model",
     "list_models",
     "stream",

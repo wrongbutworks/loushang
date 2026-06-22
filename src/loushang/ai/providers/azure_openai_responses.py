@@ -17,6 +17,7 @@ from loushang.ai.providers.provider_helpers import (
     close_provider_stream,
     extract_sdk_api_key,
 )
+from loushang.ai.structured import openai_responses_text_format
 
 DEFAULT_AZURE_API_VERSION = "v1"
 
@@ -100,6 +101,9 @@ class AzureOpenAIResponsesProvider:
             params.setdefault("reasoning", {})["summary"] = reasoning_summary
         if getattr(options, "temperature", None) is not None:
             params["temperature"] = getattr(options, "temperature")
+        text_format = openai_responses_text_format(options)
+        if text_format is not None:
+            params["text"] = text_format
 
         sdk_stream = await client.responses.create(**params)
         try:

@@ -170,6 +170,25 @@ def test_parallel_tools_example_groups_interleaved_calls(capsys) -> None:
     assert payload == summary
 
 
+def test_structured_output_example_parses_result(capsys) -> None:
+    module = _load_module(
+        Path("examples/ai/07_structured_output.py"),
+        "examples_ai_07_structured_output",
+    )
+
+    summary = asyncio.run(module.inspect_structured_output())
+
+    assert summary == {
+        "responseId": "structured-demo",
+        "stopReason": "stop",
+        "parsed": {"answer": "Paris", "score": 10},
+    }
+
+    module.main()
+    payload = json.loads(capsys.readouterr().out)
+    assert payload == summary
+
+
 def test_errors_retry_example_reports_redacted_error_payload(capsys) -> None:
     module = _load_module(
         Path("examples/ai/09_errors_retry.py"), "examples_ai_09_errors_retry"

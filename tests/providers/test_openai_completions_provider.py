@@ -36,6 +36,7 @@ from loushang.ai.model.registry import (
 from loushang.ai.options import OpenAICompletionsOptions
 from loushang.ai.provider import ResolvedRequest, resolve_provider_request
 from loushang.ai.providers.openai_completions import OpenAICompletionsProvider
+from loushang.ai.structured import StructuredOutputOptions
 from loushang.ai.types import (
     AssistantMessage,
     ImagePart,
@@ -278,6 +279,57 @@ def test_openai_completions_payload_uses_resolved_capabilities_for_images(
             ],
         },
     ]
+
+
+def test_openai_completions_payload_maps_structured_output_response_format(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _fake_openai_module(monkeypatch)
+    _patch_resolved_request(
+        monkeypatch,
+        compat={},
+        reasoning_effort=None,
+        capabilities=Capabilities(input=("text",), structured_output=True),
+    )
+    provider = OpenAICompletionsProvider()
+    schema = {
+        "title": "Answer",
+        "type": "object",
+        "properties": {"answer": {"type": "string"}},
+        "required": ["answer"],
+        "additionalProperties": False,
+    }
+
+    asyncio.run(
+        _collect_parts(
+            _stream_raw_parts(
+                provider,
+                _Model(),
+                {
+                    "messages": [
+                        UserMessage(role="user", content="hello", timestamp=0.0)
+                    ]
+                },
+                OpenAICompletionsOptions(
+                    api_key="test-key",
+                    output=StructuredOutputOptions(
+                        mode="json_schema",
+                        schema=schema,
+                        strict=True,
+                    ),
+                ),
+            )
+        )
+    )
+
+    assert _FakeAsyncOpenAI.last_create_kwargs["response_format"] == {
+        "type": "json_schema",
+        "json_schema": {
+            "name": "Answer",
+            "schema": schema,
+            "strict": True,
+        },
+    }
 
 
 def test_openai_completions_uses_upstream_model_id(
@@ -2092,7 +2144,11 @@ def test_openai_completions_omits_response_start_when_chunk_id_missing(
             _stream_raw_parts(
                 provider,
                 _Model(),
-                {"messages": [UserMessage(role="user", content="hello", timestamp=0.0)]},
+                {
+                    "messages": [
+                        UserMessage(role="user", content="hello", timestamp=0.0)
+                    ]
+                },
                 OpenAICompletionsOptions(api_key="test-key"),
             )
         )

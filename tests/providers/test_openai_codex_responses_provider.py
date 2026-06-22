@@ -16,6 +16,7 @@ from loushang.ai.model.registry import (
 from loushang.ai.options import OpenAICodexResponsesOptions
 from loushang.ai.provider import ResolvedRequest
 from loushang.ai.providers.openai_codex_responses import OpenAICodexResponsesProvider
+from loushang.ai.structured import StructuredOutputOptions
 from loushang.ai.types import (
     AssistantMessage,
     TextPart,
@@ -139,6 +140,40 @@ def test_openai_codex_responses_builds_request_body_and_headers() -> None:
         "prompt_cache_key": "sess_1",
         "prompt_cache_retention": "in-memory",
         "reasoning": {"effort": "low", "summary": "concise"},
+    }
+
+
+def test_openai_codex_responses_merges_structured_output_text_format() -> None:
+    client = _FakeCodexClient(
+        events=[
+            {"type": "response.completed", "response": {"status": "completed"}},
+        ]
+    )
+    provider = OpenAICodexResponsesProvider(client=client)
+    token = _build_fake_jwt("acc_test")
+
+    asyncio.run(
+        _collect_parts(
+            _stream_raw_parts(
+                provider,
+                _Model(),
+                {
+                    "messages": [
+                        UserMessage(role="user", content="hello", timestamp=0.0)
+                    ]
+                },
+                OpenAICodexResponsesOptions(
+                    api_key=token,
+                    text_verbosity="low",
+                    output=StructuredOutputOptions(mode="json_object"),
+                ),
+            )
+        )
+    )
+
+    assert client.last_json["text"] == {
+        "verbosity": "low",
+        "format": {"type": "json_object"},
     }
 
 

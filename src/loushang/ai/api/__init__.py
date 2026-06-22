@@ -1,6 +1,12 @@
 from dataclasses import dataclass
 
-from loushang.ai.api.streaming import complete, complete_simple, stream, stream_simple
+from loushang.ai.api.streaming import (
+    complete,
+    complete_simple,
+    complete_structured,
+    stream,
+    stream_simple,
+)
 from loushang.ai.errors import AIError, AIErrorCode, AIErrorInfo
 from loushang.ai.options import (
     CacheRetention,
@@ -39,6 +45,7 @@ __all__ = [
     "complete",
     "stream_simple",
     "complete_simple",
+    "complete_structured",
     "AgentRuntimeHints",
     "CompressionPolicy",
     "SessionBudget",

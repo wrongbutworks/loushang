@@ -26,6 +26,7 @@ from loushang.ai.providers.provider_helpers import (
     extract_sdk_api_key,
     sdk_default_headers,
 )
+from loushang.ai.structured import openai_responses_text_format
 from loushang.ai.trace import emit_trace as _emit_trace
 
 
@@ -204,6 +205,9 @@ class OpenAIResponsesProvider:
                 params["include"] = ["reasoning.encrypted_content"]
             else:
                 params["reasoning"] = {"effort": "none"}
+        text_format = openai_responses_text_format(options)
+        if text_format is not None:
+            params["text"] = text_format
 
         # options.on_payload：允许调用方观察/修改最终请求参数（对齐 pi-ai 语义）
         try:

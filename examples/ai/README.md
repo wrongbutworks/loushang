@@ -12,6 +12,8 @@
   流式消费事件并读取最终结果
 - [06_reasoning.py](06_reasoning.py)
   离线演示 `stream_simple` 如何把 `SimpleCallOptions.reasoning` 映射到统一 reasoning 请求
+- [07_structured_output.py](07_structured_output.py)
+  离线演示 `StructuredOutputOptions`、provider payload 映射和 `complete_structured` 解析结果
 - [05_parallel_tools.py](05_parallel_tools.py)
   离线演示多个并行 tool call 的交错增量按 id/index 正确组装
 - [09_errors_retry.py](09_errors_retry.py)

@@ -23,6 +23,7 @@ from loushang.ai.model.registry import (
 from loushang.ai.options import AzureOpenAIResponsesOptions
 from loushang.ai.provider import ResolvedRequest
 from loushang.ai.providers.azure_openai_responses import AzureOpenAIResponsesProvider
+from loushang.ai.structured import StructuredOutputOptions
 from loushang.ai.types import (
     AssistantMessage,
     Context,
@@ -444,6 +445,40 @@ def test_azure_openai_responses_uses_real_resolved_request_boundary(
             ],
         }
     ]
+
+
+def test_azure_openai_responses_payload_maps_structured_output_text_format(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv(
+        "AZURE_OPENAI_BASE_URL", "https://azure.example.openai.azure.com"
+    )
+    _fake_openai_module(monkeypatch)
+    _patch_resolved_request(
+        monkeypatch,
+        capabilities=Capabilities(input=("text",), structured_output=True),
+    )
+    provider = AzureOpenAIResponsesProvider()
+
+    asyncio.run(
+        _collect_parts(
+            _stream_raw_parts(
+                provider,
+                _Model(),
+                Context(
+                    messages=[UserMessage(role="user", content="hello", timestamp=0.0)]
+                ),
+                AzureOpenAIResponsesOptions(
+                    api_key="test-key",
+                    output=StructuredOutputOptions(mode="json_object"),
+                ),
+            )
+        )
+    )
+
+    assert _FakeAsyncAzureOpenAI.last_create_kwargs["text"] == {
+        "format": {"type": "json_object"}
+    }
 
 
 async def _collect_parts(source) -> list[dict]:

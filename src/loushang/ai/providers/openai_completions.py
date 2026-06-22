@@ -21,6 +21,7 @@ from loushang.ai.providers.provider_helpers import (
     extract_sdk_api_key,
     sdk_default_headers,
 )
+from loushang.ai.structured import openai_chat_response_format
 from loushang.ai.tool.providers import sanitize_tool_parameters
 from loushang.ai.tool.transform import (
     MISSING_TOOL_RESULT_TEXT,
@@ -169,6 +170,9 @@ class OpenAICompletionsProvider:
         tool_choice = getattr(options, "tool_choice", None)
         if tool_choice is not None:
             params["tool_choice"] = tool_choice
+        response_format = openai_chat_response_format(options)
+        if response_format is not None:
+            params["response_format"] = response_format
         reasoning_effort = getattr(resolved, "reasoning_effort", None)
         _apply_reasoning_params(
             params,
@@ -699,8 +703,7 @@ def _get_cache_control(
         return None
     ttl = (
         "1h"
-        if cache_retention == "long"
-        and _is_supported(protocol.cache.long_retention)
+        if cache_retention == "long" and _is_supported(protocol.cache.long_retention)
         else None
     )
     return {"type": "ephemeral", **({"ttl": ttl} if ttl else {})}
@@ -809,9 +812,7 @@ def _build_messages(
     messages_param: list[dict[str, Any]] = []
     system_prompt = normalized.get("system_prompt")
     supports_developer_role = _is_supported(protocol.roles.developer)
-    requires_assistant_after_tool_result = bool(
-        dialect.tools.assistant_bridge_required
-    )
+    requires_assistant_after_tool_result = bool(dialect.tools.assistant_bridge_required)
     if isinstance(system_prompt, str) and system_prompt.strip():
         role = (
             "developer"
@@ -975,9 +976,7 @@ def _assistant_message_payload(
     model,
     capabilities: object | None = None,
 ) -> dict[str, Any] | None:
-    requires_assistant_after_tool_result = bool(
-        dialect.tools.assistant_bridge_required
-    )
+    requires_assistant_after_tool_result = bool(dialect.tools.assistant_bridge_required)
     requires_thinking_as_text = bool(dialect.reasoning.thinking_as_text)
     content = getattr(message, "content", None)
     if not isinstance(content, list):

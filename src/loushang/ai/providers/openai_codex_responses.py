@@ -31,6 +31,7 @@ from loushang.ai.providers.openai_responses_shared import (
     convert_responses_tools,
     process_responses_stream,
 )
+from loushang.ai.structured import openai_responses_text_format
 from loushang.ai.trace import emit_trace as _emit_trace
 from loushang.ai.utils import sanitize_surrogates
 
@@ -313,7 +314,9 @@ class OpenAICodexResponsesProvider:
         )
 
 
-def _codex_runtime_config(value: AdapterRuntimeConfig | None) -> OpenAICodexRuntimeConfig:
+def _codex_runtime_config(
+    value: AdapterRuntimeConfig | None,
+) -> OpenAICodexRuntimeConfig:
     if isinstance(value, OpenAICodexRuntimeConfig):
         return value
     return OpenAICodexRuntimeConfig()
@@ -371,6 +374,9 @@ def _build_request_body(
             "effort": _clamp_reasoning_effort(model.id, reasoning or "medium"),
             "summary": reasoning_summary or "auto",
         }
+    text_format = openai_responses_text_format(options)
+    if text_format is not None:
+        body["text"].update(text_format)
     return body
 
 

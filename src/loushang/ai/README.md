@@ -229,6 +229,8 @@ provider-specific options 仍保留在 `loushang.ai.options` / `loushang.ai.adva
 - `SimpleCallOptions`
 - `ReasoningOptions`
 - `RetryOptions`
+- `StructuredOutputOptions`
+- `StructuredOutputResult`
 - `TimeoutOptions`
 - `ThinkingLevel`
 - `ThinkingBudgets`
@@ -277,6 +279,12 @@ provider-specific options 仍保留在 `loushang.ai.options` / `loushang.ai.adva
 - `loushang.ai.tool.normalize_tool_call_id_for_model(...)`
 - `loushang.ai.pricing.calculate_cost(...)`
 - `loushang.ai.pricing.models_are_equal(...)`
+- `loushang.ai.complete_structured(model, context, output, options=...)`
+  - sends `StructuredOutputOptions` through provider-native structured output payloads where the adapter has a stable mapping
+  - returns `StructuredOutputResult(raw=AssistantMessage, parsed=...)`
+  - `mode="json_object"` parses the assistant text as a JSON object
+  - `mode="json_schema"` accepts a JSON Schema mapping or a Pydantic-like type with `model_json_schema()` and `model_validate(...)`
+  - unsupported adapter mappings fail before provider invocation instead of silently ignoring the structured output request
 
 `calculate_cost(model, usage)` returns `None` when the model has no pricing
 metadata, or when a used token component has no known price. Explicit zero

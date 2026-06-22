@@ -30,6 +30,9 @@ ROOT_EXPORTS_BASELINE = [
     "TimeoutOptions",
     "ThinkingLevel",
     "ThinkingBudgets",
+    "StructuredOutputError",
+    "StructuredOutputOptions",
+    "StructuredOutputResult",
     "ImagePart",
     "TextPart",
     "ThinkingPart",
@@ -41,6 +44,7 @@ ROOT_EXPORTS_BASELINE = [
     "UsageCost",
     "complete",
     "complete_simple",
+    "complete_structured",
     "get_model",
     "list_models",
     "stream",
@@ -136,7 +140,7 @@ KNOWN_BASELINE_DEBT = {
 
 def test_root_exports_baseline_snapshot() -> None:
     assert ai.__all__ == ROOT_EXPORTS_BASELINE
-    assert len(ai.__all__) == 32
+    assert len(ai.__all__) == 36
 
 
 def test_advanced_exports_are_not_root_stable_exports() -> None:
@@ -173,9 +177,9 @@ def test_test_and_example_inventory_baseline() -> None:
     provider_test_files = sorted((REPO_ROOT / "tests/providers").rglob("test_*.py"))
     example_files = sorted((REPO_ROOT / "examples/ai").rglob("*.py"))
 
-    assert len(ai_test_files) == 36
+    assert len(ai_test_files) == 37
     assert len(provider_test_files) == 7
-    assert len(example_files) == 20
+    assert len(example_files) == 21
 
 
 def test_known_baseline_debt_snapshot() -> None:

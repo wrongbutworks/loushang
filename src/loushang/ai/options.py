@@ -3,6 +3,8 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Any, Literal, Mapping, TypedDict
 
+from loushang.ai.structured import StructuredOutputOptions
+
 PairingMode = Literal["strict", "repair"]
 
 ThinkingLevel = Literal["minimal", "low", "medium", "high", "xhigh"]
@@ -71,7 +73,7 @@ class CallOptions:
     reasoning: ReasoningOptions | ThinkingLevel | str | None = None
     reasoning_summary: str | None = None
     tool_choice: ToolChoice | None = None
-    output: object | None = None
+    output: StructuredOutputOptions | None = None
     hooks: object | None = None
     provider_options: Mapping[str, object] = field(default_factory=dict)
 
@@ -198,7 +200,9 @@ class SimpleCallOptions(CallOptions):
 SimpleStreamOptions = SimpleCallOptions
 
 
-def simple_options_to_call_options(options: SimpleCallOptions | None) -> CallOptions | None:
+def simple_options_to_call_options(
+    options: SimpleCallOptions | None,
+) -> CallOptions | None:
     if options is None:
         return None
     if not isinstance(options, SimpleCallOptions):
@@ -276,6 +280,7 @@ __all__ = [
     "SimpleCallOptions",
     "SimpleStreamOptions",
     "StreamOptions",
+    "StructuredOutputOptions",
     "ThinkingBudgets",
     "ThinkingLevel",
     "TimeoutOptions",

@@ -21,6 +21,7 @@ from loushang.ai.model.registry import clear_default_model_registry
 from loushang.ai.options import OpenAIResponsesOptions
 from loushang.ai.provider import ResolvedRequest
 from loushang.ai.providers.openai_responses import OpenAIResponsesProvider
+from loushang.ai.structured import StructuredOutputOptions
 from loushang.ai.types import (
     AssistantMessage,
     Context,
@@ -180,6 +181,38 @@ def test_openai_responses_payload_uses_resolved_capabilities_for_images(
             ],
         },
     ]
+
+
+def test_openai_responses_payload_maps_structured_output_text_format(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _fake_openai_module(monkeypatch)
+    _patch_resolved_request(
+        monkeypatch,
+        base_url="https://api.openai.test/v1",
+        capabilities=Capabilities(input=("text",), structured_output=True),
+    )
+    provider = OpenAIResponsesProvider()
+
+    asyncio.run(
+        _collect_parts(
+            _stream_raw_parts(
+                provider,
+                _Model(),
+                Context(
+                    messages=[UserMessage(role="user", content="hello", timestamp=0.0)]
+                ),
+                OpenAIResponsesOptions(
+                    api_key="test-key",
+                    output=StructuredOutputOptions(mode="json_object"),
+                ),
+            )
+        )
+    )
+
+    assert _FakeAsyncOpenAI.last_create_kwargs["text"] == {
+        "format": {"type": "json_object"}
+    }
 
 
 def test_openai_responses_direct_stream_rejects_mismatched_request_api() -> None:
