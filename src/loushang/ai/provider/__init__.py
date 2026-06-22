@@ -1,3 +1,4 @@
+from loushang.ai.provider.cancellation import CancellationSignal
 from loushang.ai.provider.errors import normalize_provider_error
 from loushang.ai.provider.protocol import ApiProvider, RequestAwareApiProvider
 from loushang.ai.provider.resolution import (
@@ -18,6 +19,7 @@ __all__ = [
     "ApiProvider",
     "AdapterRuntimeConfig",
     "AdapterRuntimeConfigResolver",
+    "CancellationSignal",
     "RequestAwareApiProvider",
     "ResolvedEndpoint",
     "ResolvedRequest",

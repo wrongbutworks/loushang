@@ -4,6 +4,7 @@ import asyncio
 import inspect
 import random
 from collections.abc import AsyncIterator, Awaitable, Callable, Mapping
+from contextlib import suppress
 from datetime import UTC, datetime
 from email.utils import parsedate_to_datetime
 from typing import Any, cast
@@ -11,7 +12,7 @@ from typing import Any, cast
 from loushang.ai.event_stream import AssistantMessageEventStream, RawAssembler
 from loushang.ai.event_stream.raw_parts import RawPart
 from loushang.ai.options import RetryOptions
-from loushang.ai.provider.cancellation import is_signal_cancelled
+from loushang.ai.provider.cancellation import is_signal_cancelled, wait_signal_cancelled
 from loushang.ai.provider.errors import (
     normalize_provider_error,
     provider_error_info_from_raw,
@@ -44,6 +45,10 @@ _TERMINAL_RAW_PART_TYPES = frozenset(
 )
 
 
+class _RuntimeCancelled(Exception):
+    pass
+
+
 def start_provider_runtime(
     raw_parts: RawPartSource,
     *,
@@ -63,94 +68,113 @@ def start_provider_runtime(
     )
 
     async def _run() -> None:
-        signal = getattr(options, "signal", None) if options is not None else None
-        if is_signal_cancelled(signal):
+        signals = _cancellation_signals(options)
+        cancellation_task = _create_cancellation_task(signals)
+        if _signals_cancelled(signals):
             await assembler.emit({"type": "aborted"})
             return
-        max_attempts = _retry_max_attempts(options)
-        attempt = 1
-        while attempt <= max_attempts:
-            pending: list[RawPart] = []
-            visible_output_started = False
-            retry_next_attempt = False
-            try:
-                source = raw_parts()
-                if inspect.isawaitable(source):
-                    source = await source
-                async for part in source:
-                    if is_signal_cancelled(signal):
+        try:
+            max_attempts = _retry_max_attempts(options)
+            attempt = 1
+            while attempt <= max_attempts:
+                pending: list[RawPart] = []
+                visible_output_started = False
+                retry_next_attempt = False
+                source = None
+                try:
+                    source = raw_parts()
+                    if inspect.isawaitable(source):
+                        source = await _await_or_cancel(source, cancellation_task)
+                    while True:
+                        try:
+                            part = await _next_raw_part(source, cancellation_task)
+                        except StopAsyncIteration:
+                            break
+
+                        if _signals_cancelled(signals):
+                            raise _RuntimeCancelled
+
+                        if (
+                            part["type"] == "response_error"
+                            and not visible_output_started
+                            and attempt < max_attempts
+                            and _retryable_response_error_part(
+                                part,
+                                request=request,
+                                model=model,
+                            )
+                        ):
+                            await _sleep_before_retry(
+                                options=options,
+                                attempt=attempt,
+                                max_attempts=max_attempts,
+                                retry_after_seconds=_retry_after_seconds_from_part(part),
+                                reason=_retry_reason_from_part(part, request, model),
+                                sleep=_sleep,
+                                jitter=_jitter,
+                                cancellation_task=cancellation_task,
+                            )
+                            retry_next_attempt = True
+                            break
+
+                        if part["type"] in _VISIBLE_RAW_PART_TYPES:
+                            await _flush_pending(assembler, pending)
+                            visible_output_started = True
+                            await assembler.emit(part)
+                            continue
+
+                        if (
+                            visible_output_started
+                            or part["type"] in _TERMINAL_RAW_PART_TYPES
+                        ):
+                            await _flush_pending(assembler, pending)
+                            await assembler.emit(part)
+                            if part["type"] in _TERMINAL_RAW_PART_TYPES:
+                                return
+                            continue
+
+                        pending.append(part)
+
+                    if retry_next_attempt:
+                        attempt += 1
+                        continue
+                    await _flush_pending(assembler, pending)
+                    return
+                except _RuntimeCancelled:
+                    await _flush_pending(assembler, pending)
+                    await assembler.emit({"type": "aborted"})
+                    return
+                except Exception as error:
+                    if _signals_cancelled(signals):
                         await _flush_pending(assembler, pending)
                         await assembler.emit({"type": "aborted"})
                         return
-
                     if (
-                        part["type"] == "response_error"
-                        and not visible_output_started
+                        not visible_output_started
                         and attempt < max_attempts
-                        and _retryable_response_error_part(
-                            part,
-                            request=request,
-                            model=model,
-                        )
+                        and _retryable_exception(error, source=request.api)
                     ):
                         await _sleep_before_retry(
                             options=options,
                             attempt=attempt,
                             max_attempts=max_attempts,
-                            retry_after_seconds=_retry_after_seconds_from_part(part),
-                            reason=_retry_reason_from_part(part, request, model),
+                            retry_after_seconds=_retry_after_seconds_from_exception(error),
+                            reason=_retry_reason_from_exception(error, request.api),
                             sleep=_sleep,
                             jitter=_jitter,
+                            cancellation_task=cancellation_task,
                         )
-                        retry_next_attempt = True
-                        break
-
-                    if part["type"] in _VISIBLE_RAW_PART_TYPES:
-                        await _flush_pending(assembler, pending)
-                        visible_output_started = True
-                        await assembler.emit(part)
+                        attempt += 1
                         continue
-
-                    if visible_output_started or part["type"] in _TERMINAL_RAW_PART_TYPES:
-                        await _flush_pending(assembler, pending)
-                        await assembler.emit(part)
-                        if part["type"] in _TERMINAL_RAW_PART_TYPES:
-                            return
-                        continue
-
-                    pending.append(part)
-
-                if retry_next_attempt:
-                    attempt += 1
-                    continue
-                await _flush_pending(assembler, pending)
-                return
-            except Exception as error:
-                if is_signal_cancelled(signal):
                     await _flush_pending(assembler, pending)
-                    await assembler.emit({"type": "aborted"})
-                    return
-                if (
-                    not visible_output_started
-                    and attempt < max_attempts
-                    and _retryable_exception(error, source=request.api)
-                ):
-                    await _sleep_before_retry(
-                        options=options,
-                        attempt=attempt,
-                        max_attempts=max_attempts,
-                        retry_after_seconds=_retry_after_seconds_from_exception(error),
-                        reason=_retry_reason_from_exception(error, request.api),
-                        sleep=_sleep,
-                        jitter=_jitter,
+                    await assembler.emit(
+                        cast(RawPart, provider_error_part(error, source=request.api))
                     )
-                    attempt += 1
-                    continue
-                await _flush_pending(assembler, pending)
-                await assembler.emit(
-                    cast(RawPart, provider_error_part(error, source=request.api))
-                )
-                return
+                    return
+                finally:
+                    await _close_source(source)
+        finally:
+            await _cancel_task(cancellation_task)
 
     stream.attach_task(asyncio.create_task(_run()))
     return stream
@@ -159,6 +183,106 @@ def start_provider_runtime(
 async def _flush_pending(assembler: RawAssembler, pending: list[RawPart]) -> None:
     while pending:
         await assembler.emit(pending.pop(0))
+
+
+def _cancellation_signals(options: object | None) -> tuple[object, ...]:
+    if options is None:
+        return ()
+    signals: list[object] = []
+    for name in ("cancellation", "signal"):
+        signal = getattr(options, name, None)
+        if signal is not None and any(signal is existing for existing in signals):
+            continue
+        if signal is not None:
+            signals.append(signal)
+    return tuple(signals)
+
+
+def _signals_cancelled(signals: tuple[object, ...]) -> bool:
+    return any(is_signal_cancelled(signal) for signal in signals)
+
+
+def _create_cancellation_task(
+    signals: tuple[object, ...],
+) -> asyncio.Task[None] | None:
+    if not signals:
+        return None
+    return asyncio.create_task(_wait_any_signal_cancelled(signals))
+
+
+async def _wait_any_signal_cancelled(signals: tuple[object, ...]) -> None:
+    if _signals_cancelled(signals):
+        return
+    tasks = [
+        asyncio.create_task(wait_signal_cancelled(signal))
+        for signal in signals
+    ]
+    try:
+        done, pending = await asyncio.wait(tasks, return_when=asyncio.FIRST_COMPLETED)
+        for task in pending:
+            task.cancel()
+        for task in done:
+            await task
+        for task in pending:
+            with suppress(asyncio.CancelledError):
+                await task
+    finally:
+        for task in tasks:
+            if not task.done():
+                task.cancel()
+
+
+async def _await_or_cancel(awaitable, cancellation_task: asyncio.Task[None] | None):
+    if cancellation_task is None:
+        return await awaitable
+    if cancellation_task.done():
+        raise _RuntimeCancelled
+    task = asyncio.ensure_future(awaitable)
+    try:
+        done, pending = await asyncio.wait(
+            {task, cancellation_task},
+            return_when=asyncio.FIRST_COMPLETED,
+        )
+    except BaseException:
+        task.cancel()
+        with suppress(asyncio.CancelledError):
+            await task
+        raise
+    if cancellation_task in done:
+        task.cancel()
+        with suppress(asyncio.CancelledError):
+            await task
+        raise _RuntimeCancelled
+    for pending_task in pending:
+        if pending_task is not cancellation_task:
+            pending_task.cancel()
+    return await task
+
+
+async def _next_raw_part(source, cancellation_task: asyncio.Task[None] | None):
+    iterator = source.__aiter__() if hasattr(source, "__aiter__") else source
+    return await _await_or_cancel(iterator.__anext__(), cancellation_task)
+
+
+async def _close_source(source) -> None:
+    if source is None:
+        return
+    for name in ("aclose", "close"):
+        close = getattr(source, name, None)
+        if not callable(close):
+            continue
+        result = close()
+        if inspect.isawaitable(result):
+            await result
+        return
+
+
+async def _cancel_task(task: asyncio.Task[object] | None) -> None:
+    if task is None or task.done():
+        return
+    task.cancel()
+    with suppress(asyncio.CancelledError):
+        await task
 
 
 def _retry_max_attempts(options: object | None) -> int:
@@ -216,6 +340,7 @@ async def _sleep_before_retry(
     reason: dict[str, object],
     sleep: Sleep,
     jitter: Jitter,
+    cancellation_task: asyncio.Task[None] | None,
 ) -> None:
     delay_seconds = _retry_delay_seconds(
         attempt=attempt,
@@ -234,7 +359,7 @@ async def _sleep_before_retry(
         },
     )
     if delay_seconds > 0:
-        await sleep(delay_seconds)
+        await _await_or_cancel(sleep(delay_seconds), cancellation_task)
 
 
 def _retry_delay_seconds(

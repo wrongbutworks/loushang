@@ -32,6 +32,8 @@
   该示例显式启用 `pairing_mode="repair"` 以演示历史兼容修复
 - [advanced/capability_failure.py](advanced/capability_failure.py)
   离线查看 stream/tools 等能力请求在 provider 调用前被统一校验和拒绝
+- [advanced/cancel_stream.py](advanced/cancel_stream.py)
+  离线演示 `asyncio.Event` 取消流式调用，并关闭上游 provider source
 
 ## Provider 配置速查
 

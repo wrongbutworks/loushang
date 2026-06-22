@@ -17,6 +17,7 @@ from loushang.ai.provider.errors import provider_error_part
 from loushang.ai.providers.openai_responses_shared import build_copilot_dynamic_headers
 from loushang.ai.providers.provider_helpers import (
     apply_session_headers,
+    close_provider_stream,
     extract_sdk_api_key,
     sdk_default_headers,
 )
@@ -443,6 +444,8 @@ class OpenAICompletionsProvider:
             _debug("stream_iter_error_outer", {"message": str(e)})
             yield provider_error_part(e, source=self.api)
             yield {"type": "response_done"}
+        finally:
+            await close_provider_stream(stream_ctx)
 
 
 def _request_protocol(request: object) -> EndpointProtocolFeatures:

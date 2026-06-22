@@ -27,6 +27,23 @@ class _HTTPError(Exception):
         self.headers = headers or {}
 
 
+class _BlockingRawSource:
+    def __init__(self) -> None:
+        self.next_started = asyncio.Event()
+        self.closed = asyncio.Event()
+
+    def __aiter__(self):
+        return self
+
+    async def __anext__(self):
+        self.next_started.set()
+        await asyncio.Future()
+        raise StopAsyncIteration
+
+    async def aclose(self) -> None:
+        self.closed.set()
+
+
 @pytest.mark.parametrize(
     "provider_cls",
     (OpenAICompletionsProvider, OpenAIResponsesProvider, AnthropicProvider),
@@ -291,6 +308,52 @@ def test_provider_runtime_applies_backpressure_to_raw_source() -> None:
     produced_before_consume = asyncio.run(_run())
 
     assert 0 < produced_before_consume < 1000
+
+
+def test_provider_runtime_cancellation_signal_aborts_and_closes_source() -> None:
+    source = _BlockingRawSource()
+
+    async def _run():
+        signal = asyncio.Event()
+        stream = start_provider_runtime(
+            lambda: source,
+            model=_model(),
+            options=CallOptions(cancellation=signal),
+            request=_request(),
+        )
+        await asyncio.wait_for(source.next_started.wait(), timeout=1)
+        signal.set()
+        events = [event async for event in stream]
+        await asyncio.wait_for(source.closed.wait(), timeout=1)
+        return events
+
+    events = asyncio.run(_run())
+
+    assert [event["type"] for event in events] == ["error"]
+    assert events[0]["reason"] == "aborted"
+    assert events[0]["error"].stop_reason == "aborted"
+
+
+def test_provider_runtime_consumer_close_closes_source_without_leaking_task() -> None:
+    source = _BlockingRawSource()
+
+    async def _run() -> bool:
+        stream = start_provider_runtime(
+            lambda: source,
+            model=_model(),
+            options=None,
+            request=_request(),
+        )
+        await asyncio.wait_for(source.next_started.wait(), timeout=1)
+        await stream.aclose()
+        await asyncio.wait_for(source.closed.wait(), timeout=1)
+        task = stream._producer_task
+        if task is not None:
+            with pytest.raises(asyncio.CancelledError):
+                await task
+        return task is not None and task.cancelled()
+
+    assert asyncio.run(_run()) is True
 
 
 def _model():

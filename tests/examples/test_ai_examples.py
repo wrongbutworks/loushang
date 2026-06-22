@@ -453,6 +453,22 @@ def test_advanced_capability_failure_reports_public_error(capsys) -> None:
     assert payload == summary
 
 
+def test_advanced_cancel_stream_reports_abort_and_source_close() -> None:
+    module = _load_module(
+        Path("examples/ai/advanced/cancel_stream.py"),
+        "examples_ai_advanced_cancel_stream",
+    )
+
+    summary = asyncio.run(module.inspect_stream_cancellation())
+
+    assert summary == {
+        "events": ["start", "error"],
+        "reason": "aborted",
+        "stopReason": "aborted",
+        "sourceClosed": True,
+    }
+
+
 def test_advanced_inspect_endpoint_contract_rejects_missing_model(
     monkeypatch,
     tmp_path,

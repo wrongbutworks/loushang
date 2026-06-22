@@ -13,7 +13,10 @@ from loushang.ai.providers.openai_responses_shared import (
     convert_responses_tools,
     process_responses_stream,
 )
-from loushang.ai.providers.provider_helpers import extract_sdk_api_key
+from loushang.ai.providers.provider_helpers import (
+    close_provider_stream,
+    extract_sdk_api_key,
+)
 
 DEFAULT_AZURE_API_VERSION = "v1"
 
@@ -99,8 +102,11 @@ class AzureOpenAIResponsesProvider:
             params["temperature"] = getattr(options, "temperature")
 
         sdk_stream = await client.responses.create(**params)
-        async for part in process_responses_stream(sdk_stream, options=options):
-            yield part
+        try:
+            async for part in process_responses_stream(sdk_stream, options=options):
+                yield part
+        finally:
+            await close_provider_stream(sdk_stream)
 
 
 def _request_protocol(request: object) -> EndpointProtocolFeatures:

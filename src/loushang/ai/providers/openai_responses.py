@@ -22,6 +22,7 @@ from loushang.ai.providers.openai_responses_shared import (
 )
 from loushang.ai.providers.provider_helpers import (
     apply_session_headers,
+    close_provider_stream,
     extract_sdk_api_key,
     sdk_default_headers,
 )
@@ -233,6 +234,8 @@ class OpenAIResponsesProvider:
         except Exception as e:
             _debug("stream_iter_error", {"message": str(e)})
             yield provider_error_part(e, source=self.api)
+        finally:
+            await close_provider_stream(stream_ctx)
 
 
 async def _notify_provider_response(options, response, model) -> None:
