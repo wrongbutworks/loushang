@@ -3,10 +3,17 @@ from __future__ import annotations
 import asyncio
 import importlib.util
 import json
+import os
+import subprocess
 import sys
 from pathlib import Path
 
 from loushang.ai.model import load_model_registry_from_file
+
+REPO_ROOT = Path(__file__).resolve().parents[2]
+TOP_LEVEL_OFFLINE_EXAMPLES = sorted(
+    (REPO_ROOT / "examples/ai").glob("[0-9][0-9]_*.py")
+)
 
 
 def _load_module(path: Path, name: str):
@@ -19,19 +26,53 @@ def _load_module(path: Path, name: str):
     return module
 
 
-def test_model_lookup_example_targets_public_kimi_model() -> None:
-    module = _load_module(
-        Path("examples/ai/model_lookup.py"), "examples_ai_model_lookup"
-    )
+def test_top_level_ai_examples_run_offline() -> None:
+    env = os.environ.copy()
+    for key in [
+        "ANTHROPIC_API_KEY",
+        "BAIDU_QIANFAN_API_KEY",
+        "DASHSCOPE_API_KEY",
+        "DEEPSEEK_API_KEY",
+        "MOONSHOT_API_KEY",
+        "OPENAI_API_KEY",
+        "QIANFAN_API_KEY",
+        "STEPFUN_API_KEY",
+        "STEP_API_KEY",
+    ]:
+        env.pop(key, None)
 
-    assert module.PROVIDER_ID == "moonshot"
-    assert module.ENDPOINT_ID == "openai-completions"
-    assert module.MODEL_ID == "kimi-k2.6"
+    assert [path.name for path in TOP_LEVEL_OFFLINE_EXAMPLES] == [
+        "01_complete.py",
+        "02_stream.py",
+        "03_typed_context.py",
+        "04_tools.py",
+        "05_parallel_tools.py",
+        "06_reasoning.py",
+        "07_structured_output.py",
+        "08_image_input.py",
+        "09_errors_retry.py",
+        "10_usage.py",
+        "11_provider_matrix.py",
+        "12_provider_smoke.py",
+    ]
+
+    for path in TOP_LEVEL_OFFLINE_EXAMPLES:
+        completed = subprocess.run(
+            [sys.executable, str(path)],
+            cwd=REPO_ROOT,
+            env=env,
+            text=True,
+            capture_output=True,
+            timeout=20,
+            check=False,
+        )
+        assert completed.returncode == 0, (path, completed.stdout, completed.stderr)
+        assert completed.stdout.strip(), path
 
 
 def test_provider_matrix_example_targets_curated_provider_models() -> None:
     module = _load_module(
-        Path("examples/ai/provider_matrix.py"), "examples_ai_provider_matrix"
+        Path("examples/ai/11_provider_matrix.py"), "examples_ai_provider_matrix"
     )
 
     examples = {
@@ -51,7 +92,7 @@ def test_provider_matrix_example_targets_curated_provider_models() -> None:
 
 def test_provider_matrix_example_formats_curated_model_line() -> None:
     module = _load_module(
-        Path("examples/ai/provider_matrix.py"), "examples_ai_provider_matrix_format"
+        Path("examples/ai/11_provider_matrix.py"), "examples_ai_provider_matrix_format"
     )
 
     moonshot = next(
@@ -65,7 +106,7 @@ def test_provider_matrix_example_formats_curated_model_line() -> None:
 
 def test_provider_matrix_example_formats_all_provider_entries() -> None:
     module = _load_module(
-        Path("examples/ai/provider_matrix.py"), "examples_ai_provider_matrix_all"
+        Path("examples/ai/11_provider_matrix.py"), "examples_ai_provider_matrix_all"
     )
 
     lines = [module._format_model_line(example) for example in module.PROVIDER_EXAMPLES]
@@ -75,7 +116,7 @@ def test_provider_matrix_example_formats_all_provider_entries() -> None:
 
 def test_usage_online_example_marks_unknown_cost() -> None:
     module = _load_module(
-        Path("examples/ai/usage_online.py"), "examples_ai_usage_online"
+        Path("examples/ai/advanced/usage_online.py"), "examples_ai_usage_online"
     )
 
     assert module._cost_payload(None) == {"known": False}
@@ -90,7 +131,7 @@ def test_usage_online_example_prints_unknown_cost(capsys, monkeypatch) -> None:
     from loushang.ai.types import AssistantMessage, TextPart, Usage
 
     module = _load_module(
-        Path("examples/ai/usage_online.py"), "examples_ai_usage_online_main"
+        Path("examples/ai/advanced/usage_online.py"), "examples_ai_usage_online_main"
     )
 
     class FakeModel:
@@ -765,22 +806,51 @@ def test_advanced_inspect_endpoint_contract_rejects_missing_model(
 
 
 def test_complete_example_builds_expected_context() -> None:
-    module = _load_module(Path("examples/ai/complete.py"), "examples_ai_complete")
+    module = _load_module(Path("examples/ai/01_complete.py"), "examples_ai_complete")
 
     context = module._build_context()
+    summary = asyncio.run(module.inspect_complete())
 
     assert context["system_prompt"]
     assert context["messages"][0]["role"] == "user"
+    assert summary == {
+        "model": "faux:anthropic-messages:faux-complete",
+        "responseId": "faux-response",
+        "stopReason": "stop",
+        "text": "mock hello from faux provider",
+    }
+
+
+def test_stream_example_reports_text_delta() -> None:
+    module = _load_module(Path("examples/ai/02_stream.py"), "examples_ai_stream")
+
+    summary = asyncio.run(module.inspect_stream())
+
+    assert summary["model"] == "faux:anthropic-messages:faux-stream"
+    assert summary["responseId"] == "faux-response"
+    assert summary["stopReason"] == "stop"
+    assert summary["text"] == "mock hello from faux provider"
+    assert {"type": "text_delta", "text": "mock hello from faux provider"} in summary[
+        "events"
+    ]
 
 
 def test_tools_example_declares_add_tool() -> None:
-    module = _load_module(Path("examples/ai/tools.py"), "examples_ai_tools")
+    module = _load_module(Path("examples/ai/04_tools.py"), "examples_ai_tools")
 
     tools = module._build_tools()
+    summary = asyncio.run(module.inspect_tools())
 
     assert tools[0]["name"] == "add"
     assert tools[0]["parameters"]["required"] == ["a", "b"]
-    assert module._inspect_tool_validation() == {
+    assert summary["toolCall"] == {
+        "id": "call_add",
+        "name": "add",
+        "arguments": {"a": 78, "b": 35},
+    }
+    assert summary["toolResult"] == "113"
+    assert "答案是 113" in summary["finalText"]
+    assert summary["validation"] == {
         "strict": {"a": 2, "b": 3},
         "strictError": 'Validation failed for tool "add":',
         "coerce": {"a": 2.0, "b": 3.0},
@@ -807,16 +877,24 @@ def test_typed_context_example_uses_public_types() -> None:
     )
 
     context = module._build_context()
+    summary = asyncio.run(module.inspect_typed_context())
 
     assert context.system_prompt is not None
     assert context.messages[0].role == "user"
     assert context.tools is not None
     assert context.tools[0].name == "add"
+    assert summary == {
+        "model": "faux:anthropic-messages:faux-typed-context",
+        "messageCount": 1,
+        "toolCount": 1,
+        "stopReason": "stop",
+        "text": "mock hello from faux provider",
+    }
 
 
 def test_usage_online_example_defaults_to_moonshot_public_route(monkeypatch) -> None:
     module = _load_module(
-        Path("examples/ai/usage_online.py"), "examples_ai_usage_online"
+        Path("examples/ai/advanced/usage_online.py"), "examples_ai_usage_online"
     )
 
     monkeypatch.setattr(sys, "argv", ["usage_online.py"])
@@ -826,7 +904,7 @@ def test_usage_online_example_defaults_to_moonshot_public_route(monkeypatch) -> 
 
 def test_usage_online_curated_routes_use_provider_credentials() -> None:
     module = _load_module(
-        Path("examples/ai/usage_online.py"), "examples_ai_usage_online_routes"
+        Path("examples/ai/advanced/usage_online.py"), "examples_ai_usage_online_routes"
     )
 
     assert module.ROUTES["moonshot-openai"].api_key_envs == ("MOONSHOT_API_KEY",)
@@ -836,7 +914,7 @@ def test_usage_online_curated_routes_use_provider_credentials() -> None:
 
 def test_usage_online_routes_exist_in_model_catalog() -> None:
     module = _load_module(
-        Path("examples/ai/usage_online.py"), "examples_ai_usage_online_catalog"
+        Path("examples/ai/advanced/usage_online.py"), "examples_ai_usage_online_catalog"
     )
 
     for route in module.ROUTES.values():

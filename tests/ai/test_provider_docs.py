@@ -63,7 +63,7 @@ def test_stable_sdk_guides_cover_public_ai_paths_and_examples() -> None:
         "RetryOptions",
         "UsageObservation",
         "models.curated.v2.json",
-        "provider_matrix.py",
+        "11_provider_matrix.py",
         "12_provider_smoke.py",
         "advanced/custom_catalog.py",
     ]

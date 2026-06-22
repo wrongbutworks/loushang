@@ -1,35 +1,31 @@
 `examples/ai` 面向上层开发者，展示 `loushang.ai` 根包公开 API 的常见调用路径。
 
-推荐阅读顺序：
+顶层编号示例默认离线可运行，不需要真实厂商凭证：
 
-- [model_lookup.py](model_lookup.py)
-  查看 provider、模型列表，并拿到正式模型句柄
-- [provider_matrix.py](provider_matrix.py)
+- [01_complete.py](01_complete.py)
+  完整返回调用，并读取最终 `AssistantMessage`
+- [02_stream.py](02_stream.py)
+  流式消费事件并读取最终结果
+- [03_typed_context.py](03_typed_context.py)
+  显式 `Context` / `Tool` / `UserMessage` 类型构造
+- [04_tools.py](04_tools.py)
+  工具调用、默认 strict 参数校验、显式 coerce diagnostics，以及 `ToolResultMessage` 往返
+- [05_parallel_tools.py](05_parallel_tools.py)
+  多个并行 tool call 的交错增量按 id/index 正确组装
+- [06_reasoning.py](06_reasoning.py)
+  `stream_simple` 如何把 `SimpleCallOptions.reasoning` 映射到统一 reasoning 请求
+- [07_structured_output.py](07_structured_output.py)
+  `StructuredOutputOptions`、provider payload 映射和 `complete_structured` 解析结果
+- [08_image_input.py](08_image_input.py)
+  用户图片输入和图片 tool result 回流到 provider context
+- [09_errors_retry.py](09_errors_retry.py)
+  稳定错误信息的序列化、脱敏，以及可见输出前的安全 retry
+- [10_usage.py](10_usage.py)
+  响应级 `UsageObservation`，与账号级平台额度分开
+- [11_provider_matrix.py](11_provider_matrix.py)
   查看内置 curated provider、endpoint、环境变量和模型入口
 - [12_provider_smoke.py](12_provider_smoke.py)
   离线验证内置 curated provider 的默认模型句柄可解析
-- [complete.py](complete.py)
-  最常见的完整返回调用
-- [stream.py](stream.py)
-  流式消费事件并读取最终结果
-- [06_reasoning.py](06_reasoning.py)
-  离线演示 `stream_simple` 如何把 `SimpleCallOptions.reasoning` 映射到统一 reasoning 请求
-- [07_structured_output.py](07_structured_output.py)
-  离线演示 `StructuredOutputOptions`、provider payload 映射和 `complete_structured` 解析结果
-- [08_image_input.py](08_image_input.py)
-  离线演示用户图片输入和图片 tool result 回流到 provider context
-- [05_parallel_tools.py](05_parallel_tools.py)
-  离线演示多个并行 tool call 的交错增量按 id/index 正确组装
-- [09_errors_retry.py](09_errors_retry.py)
-  离线演示稳定错误信息的序列化、脱敏，以及可见输出前的安全 retry
-- [10_usage.py](10_usage.py)
-  离线演示响应级 `UsageObservation`，与账号级平台额度分开
-- [usage_online.py](usage_online.py)
-  在线检查 usage；当 catalog 缺少价格事实时，cost 输出为 `{"known": false}`
-- [tools.py](tools.py)
-  工具调用、默认 strict 参数校验、显式 coerce diagnostics，以及 `ToolResultMessage` 往返
-- [03_typed_context.py](03_typed_context.py)
-  显式 `Context` / `Tool` / `UserMessage` 类型构造
 
 `examples/ai/advanced/` 放协议观察、faux provider、本地 registry 注入这类高级样例，不作为第一次接入的推荐入口。
 
@@ -50,6 +46,8 @@
   离线查看 OAuth scoped credential store 写入、选择和本地文件权限
 - [advanced/platform_quota.py](advanced/platform_quota.py)
   离线查看 Endpoint 平台额度查询抽象与 `PlatformQuota` 输出
+- [advanced/usage_online.py](advanced/usage_online.py)
+  在线检查 usage；当 catalog 缺少价格事实时，cost 输出为 `{"known": false}`
 - [advanced/openai_codex_contrib.py](advanced/openai_codex_contrib.py)
   显式注册非稳定 Codex contrib adapter 和私有 catalog 后再查找模型
 

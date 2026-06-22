@@ -1,4 +1,4 @@
-"""Offline explicit Context type example."""
+"""Offline complete-call example."""
 
 from __future__ import annotations
 
@@ -6,14 +6,7 @@ import asyncio
 import json
 from collections.abc import Iterable
 
-from loushang.ai import (
-    CallOptions,
-    Context,
-    Model,
-    Tool,
-    UserMessage,
-    complete,
-)
+from loushang.ai import CallOptions, Model, complete
 from loushang.ai.advanced.registry import ApiProviderRegistry
 from loushang.ai.model import Capabilities, Endpoint
 from loushang.ai.model.registry import ModelRegistry
@@ -21,8 +14,10 @@ from loushang.ai.providers.faux import FauxProvider
 
 PROVIDER_ID = "faux"
 ENDPOINT_ID = "anthropic-messages"
-MODEL_ID = "faux-typed-context"
-MAX_TOKENS = 512
+MODEL_ID = "faux-complete"
+SYSTEM_PROMPT = "You are an offline example assistant."
+USER_PROMPT = "请用两句话介绍你自己，并说明 1 + 1 等于几。"
+MAX_TOKENS = 256
 
 
 def _build_model() -> Model:
@@ -30,7 +25,7 @@ def _build_model() -> Model:
         id=MODEL_ID,
         provider=PROVIDER_ID,
         endpoint=ENDPOINT_ID,
-        capabilities=Capabilities(stream=True, tool_use=True),
+        capabilities=Capabilities(stream=True),
     )
 
 
@@ -54,35 +49,11 @@ def _build_provider_registry() -> ApiProviderRegistry:
     return registry
 
 
-def _build_context() -> Context:
-    return Context(
-        system_prompt=(
-            "You are an offline example assistant. Answer directly; only call tools "
-            "when the user asks for them."
-        ),
-        messages=[
-            UserMessage(
-                role="user",
-                content="Introduce yourself in two sentences and say what 1 + 1 equals. Do not call tools.",
-                timestamp=0.0,
-            )
-        ],
-        tools=[
-            Tool(
-                name="add",
-                description="Return the sum of two numbers a and b.",
-                parameters={
-                    "type": "object",
-                    "properties": {
-                        "a": {"type": "number"},
-                        "b": {"type": "number"},
-                    },
-                    "required": ["a", "b"],
-                    "additionalProperties": False,
-                },
-            )
-        ],
-    )
+def _build_context() -> dict[str, object]:
+    return {
+        "system_prompt": SYSTEM_PROMPT,
+        "messages": [{"role": "user", "content": USER_PROMPT}],
+    }
 
 
 def _build_options() -> CallOptions:
@@ -97,7 +68,7 @@ def _iter_text(parts: Iterable[object]) -> str:
     return "".join(texts)
 
 
-async def inspect_typed_context() -> dict[str, object]:
+async def inspect_complete() -> dict[str, object]:
     model = _build_model_registry().get_model(PROVIDER_ID, ENDPOINT_ID, MODEL_ID)
     message = await complete(
         model,
@@ -107,19 +78,14 @@ async def inspect_typed_context() -> dict[str, object]:
     )
     return {
         "model": f"{model.provider_id}:{model.endpoint_id}:{model.id}",
-        "messageCount": len(_build_context().messages),
-        "toolCount": len(_build_context().tools or ()),
+        "responseId": message.response_id,
         "stopReason": message.stop_reason,
         "text": _iter_text(message.content),
     }
 
 
 def main() -> None:
-    print(
-        json.dumps(
-            asyncio.run(inspect_typed_context()), ensure_ascii=False, sort_keys=True
-        )
-    )
+    print(json.dumps(asyncio.run(inspect_complete()), ensure_ascii=False, sort_keys=True))
 
 
 if __name__ == "__main__":

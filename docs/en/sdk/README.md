@@ -52,7 +52,7 @@ for model in list_models(provider="moonshot", endpoint="openai-completions"):
 model = get_model("moonshot", "openai-completions", "kimi-k2.6")
 ```
 
-Run [examples/ai/provider_matrix.py](../../../examples/ai/provider_matrix.py)
+Run [examples/ai/11_provider_matrix.py](../../../examples/ai/11_provider_matrix.py)
 or [examples/ai/12_provider_smoke.py](../../../examples/ai/12_provider_smoke.py)
 to inspect the current built-in provider set offline.
 
@@ -113,7 +113,7 @@ print(message.stop_reason)
 print("".join(part.text for part in message.content if part.type == "text"))
 ```
 
-Runnable reference: [examples/ai/complete.py](../../../examples/ai/complete.py).
+Runnable reference: [examples/ai/01_complete.py](../../../examples/ai/01_complete.py).
 
 ## Streaming
 
@@ -137,7 +137,7 @@ async for event in events:
 message = await events.result()
 ```
 
-Runnable reference: [examples/ai/stream.py](../../../examples/ai/stream.py).
+Runnable reference: [examples/ai/02_stream.py](../../../examples/ai/02_stream.py).
 
 ## Tools
 
@@ -165,7 +165,7 @@ tools = [
 
 Use strict validation by default; use the coercing validation helper only when
 you want diagnostics for repaired user/tool input. Runnable references:
-[examples/ai/tools.py](../../../examples/ai/tools.py) and
+[examples/ai/04_tools.py](../../../examples/ai/04_tools.py) and
 [examples/ai/05_parallel_tools.py](../../../examples/ai/05_parallel_tools.py).
 
 ## Reasoning
@@ -284,23 +284,25 @@ print(usage.input, usage.output, usage.total_tokens, usage.cost)
 
 Account or platform quota is separate from response usage. Runnable references:
 [examples/ai/10_usage.py](../../../examples/ai/10_usage.py),
-[examples/ai/usage_online.py](../../../examples/ai/usage_online.py), and
+[examples/ai/advanced/usage_online.py](../../../examples/ai/advanced/usage_online.py), and
 [examples/ai/advanced/platform_quota.py](../../../examples/ai/advanced/platform_quota.py).
 
 ## Example Index
 
 Recommended reading order:
 
-1. [model_lookup.py](../../../examples/ai/model_lookup.py)
-2. [provider_matrix.py](../../../examples/ai/provider_matrix.py)
-3. [complete.py](../../../examples/ai/complete.py)
-4. [stream.py](../../../examples/ai/stream.py)
-5. [tools.py](../../../examples/ai/tools.py)
+1. [01_complete.py](../../../examples/ai/01_complete.py)
+2. [02_stream.py](../../../examples/ai/02_stream.py)
+3. [03_typed_context.py](../../../examples/ai/03_typed_context.py)
+4. [04_tools.py](../../../examples/ai/04_tools.py)
+5. [05_parallel_tools.py](../../../examples/ai/05_parallel_tools.py)
 6. [06_reasoning.py](../../../examples/ai/06_reasoning.py)
 7. [07_structured_output.py](../../../examples/ai/07_structured_output.py)
 8. [08_image_input.py](../../../examples/ai/08_image_input.py)
 9. [09_errors_retry.py](../../../examples/ai/09_errors_retry.py)
 10. [10_usage.py](../../../examples/ai/10_usage.py)
+11. [11_provider_matrix.py](../../../examples/ai/11_provider_matrix.py)
+12. [12_provider_smoke.py](../../../examples/ai/12_provider_smoke.py)
 
 Advanced examples live under
 [examples/ai/advanced](../../../examples/ai/advanced/).

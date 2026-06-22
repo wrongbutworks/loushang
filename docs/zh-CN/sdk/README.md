@@ -51,7 +51,7 @@ for model in list_models(provider="moonshot", endpoint="openai-completions"):
 model = get_model("moonshot", "openai-completions", "kimi-k2.6")
 ```
 
-运行 [examples/ai/provider_matrix.py](../../../examples/ai/provider_matrix.py)
+运行 [examples/ai/11_provider_matrix.py](../../../examples/ai/11_provider_matrix.py)
 或 [examples/ai/12_provider_smoke.py](../../../examples/ai/12_provider_smoke.py)
 可以离线查看当前内置 provider 集合。
 
@@ -111,7 +111,7 @@ print(message.stop_reason)
 print("".join(part.text for part in message.content if part.type == "text"))
 ```
 
-可运行示例：[examples/ai/complete.py](../../../examples/ai/complete.py)。
+可运行示例：[examples/ai/01_complete.py](../../../examples/ai/01_complete.py)。
 
 ## 流式输出
 
@@ -135,7 +135,7 @@ async for event in events:
 message = await events.result()
 ```
 
-可运行示例：[examples/ai/stream.py](../../../examples/ai/stream.py)。
+可运行示例：[examples/ai/02_stream.py](../../../examples/ai/02_stream.py)。
 
 ## 工具
 
@@ -162,7 +162,7 @@ tools = [
 
 默认使用 strict 参数校验；只有需要修复用户或工具输入并读取 diagnostics 时，才使用
 coerce 校验辅助。可运行示例：
-[examples/ai/tools.py](../../../examples/ai/tools.py) 和
+[examples/ai/04_tools.py](../../../examples/ai/04_tools.py) 和
 [examples/ai/05_parallel_tools.py](../../../examples/ai/05_parallel_tools.py)。
 
 ## Reasoning
@@ -277,22 +277,24 @@ print(usage.input, usage.output, usage.total_tokens, usage.cost)
 
 账号或平台额度与单次 response usage 是不同概念。可运行示例：
 [examples/ai/10_usage.py](../../../examples/ai/10_usage.py)、
-[examples/ai/usage_online.py](../../../examples/ai/usage_online.py) 和
+[examples/ai/advanced/usage_online.py](../../../examples/ai/advanced/usage_online.py) 和
 [examples/ai/advanced/platform_quota.py](../../../examples/ai/advanced/platform_quota.py)。
 
 ## 示例索引
 
 建议阅读顺序：
 
-1. [model_lookup.py](../../../examples/ai/model_lookup.py)
-2. [provider_matrix.py](../../../examples/ai/provider_matrix.py)
-3. [complete.py](../../../examples/ai/complete.py)
-4. [stream.py](../../../examples/ai/stream.py)
-5. [tools.py](../../../examples/ai/tools.py)
+1. [01_complete.py](../../../examples/ai/01_complete.py)
+2. [02_stream.py](../../../examples/ai/02_stream.py)
+3. [03_typed_context.py](../../../examples/ai/03_typed_context.py)
+4. [04_tools.py](../../../examples/ai/04_tools.py)
+5. [05_parallel_tools.py](../../../examples/ai/05_parallel_tools.py)
 6. [06_reasoning.py](../../../examples/ai/06_reasoning.py)
 7. [07_structured_output.py](../../../examples/ai/07_structured_output.py)
 8. [08_image_input.py](../../../examples/ai/08_image_input.py)
 9. [09_errors_retry.py](../../../examples/ai/09_errors_retry.py)
 10. [10_usage.py](../../../examples/ai/10_usage.py)
+11. [11_provider_matrix.py](../../../examples/ai/11_provider_matrix.py)
+12. [12_provider_smoke.py](../../../examples/ai/12_provider_smoke.py)
 
 高级示例位于 [examples/ai/advanced](../../../examples/ai/advanced/)。

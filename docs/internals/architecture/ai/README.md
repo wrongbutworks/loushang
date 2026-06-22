@@ -210,10 +210,10 @@
 - 手动构造 `ApiProviderRegistry`
 - protocol 级 tool roundtrip
 
-- [Model Lookup Example](../../../../examples/ai/model_lookup.py)
-- [Complete Example](../../../../examples/ai/complete.py)
-- [Stream Example](../../../../examples/ai/stream.py)
-- [Tools Example](../../../../examples/ai/tools.py)
+- [Provider Matrix Example](../../../../examples/ai/11_provider_matrix.py)
+- [Complete Example](../../../../examples/ai/01_complete.py)
+- [Stream Example](../../../../examples/ai/02_stream.py)
+- [Tools Example](../../../../examples/ai/04_tools.py)
 - [Typed Context Example](../../../../examples/ai/03_typed_context.py)
 - [Faux Stream Example (Advanced)](../../../../examples/ai/advanced/faux_stream.py)
 - [Context And Tool Minimal Example (Advanced)](../../../../examples/ai/advanced/context_tools_minimal.py)

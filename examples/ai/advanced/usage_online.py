@@ -10,9 +10,9 @@
 - DeepSeek: export DEEPSEEK_API_KEY=...
 
 示例：
-- uv --cache-dir .uv-cache run python examples/ai/usage_online.py
-- uv --cache-dir .uv-cache run python examples/ai/usage_online.py --route dashscope-responses --strict
-- uv --cache-dir .uv-cache run python examples/ai/usage_online.py --route deepseek-completions --stream --strict
+- uv --cache-dir .uv-cache run python examples/ai/advanced/usage_online.py
+- uv --cache-dir .uv-cache run python examples/ai/advanced/usage_online.py --route dashscope-responses --strict
+- uv --cache-dir .uv-cache run python examples/ai/advanced/usage_online.py --route deepseek-completions --stream --strict
 """
 
 from __future__ import annotations

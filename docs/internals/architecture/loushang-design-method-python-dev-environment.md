@@ -155,7 +155,7 @@ Python 开发环境问题，优先修环境，不优先修示例。
 
 ```bash
 uv sync --extra dev
-uv run python examples/ai/complete.py
+uv run python examples/ai/01_complete.py
 make example-ai-complete
 ```
 
@@ -189,7 +189,7 @@ make example-ai-complete
 
 ```bash
 uv sync --extra dev
-uv run python examples/ai/complete.py
+uv run python examples/ai/01_complete.py
 ```
 
 2. 仓库级命令路径
@@ -272,7 +272,7 @@ example 的价值在于：
 
 ```make
 example-ai-complete:
-	uv run python examples/ai/complete.py
+	uv run python examples/ai/01_complete.py
 ```
 
 这类入口是合适的。

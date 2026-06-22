@@ -81,17 +81,27 @@ vendor-ai-moonshot-custom-base-url-openai:
 vendor-ai-openai-codex-complete:
 	uv run pytest tests/ai/vendors/openai_codex/test_complete_live.py -q -s
 
-example-ai-model-lookup:
-	uv run python examples/ai/model_lookup.py
+.PHONY: example-ai-offline example-ai-provider-matrix example-ai-provider-smoke
+
+example-ai-offline:
+	for path in examples/ai/[0-9][0-9]_*.py; do uv run python "$$path"; done
+
+example-ai-model-lookup: example-ai-provider-matrix
+
+example-ai-provider-matrix:
+	uv run python examples/ai/11_provider_matrix.py
+
+example-ai-provider-smoke:
+	uv run python examples/ai/12_provider_smoke.py
 
 example-ai-complete:
-	uv run python examples/ai/complete.py
+	uv run python examples/ai/01_complete.py
 
 example-ai-stream:
-	uv run python examples/ai/stream.py
+	uv run python examples/ai/02_stream.py
 
 example-ai-tools:
-	uv run python examples/ai/tools.py
+	uv run python examples/ai/04_tools.py
 
 example-ai-typed-context:
 	uv run python examples/ai/03_typed_context.py

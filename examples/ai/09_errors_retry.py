@@ -6,8 +6,8 @@ import asyncio
 import json
 
 from loushang.ai import AIError, AIErrorInfo, CallOptions, Model, RetryOptions, stream
-from loushang.ai.errors import AIRateLimitError
 from loushang.ai.advanced.registry import ApiProviderRegistry
+from loushang.ai.errors import AIRateLimitError
 from loushang.ai.model import Capabilities, Endpoint
 from loushang.ai.model.registry import get_default_model_registry
 
