@@ -113,6 +113,113 @@
         }
       }
     },
+    "moonshot": {
+      "displayName": "Moonshot AI",
+      "website": "https://platform.kimi.ai",
+      "auth": {
+        "kind": "apiKey",
+        "apiKeyEnv": "MOONSHOT_API_KEY",
+        "header": "Authorization",
+        "prefix": "Bearer "
+      },
+      "endpoints": {
+        "openai-completions": {
+          "displayName": "Moonshot OpenAI-compatible Chat Completions",
+          "api": "openai-completions",
+          "baseUrl": "https://api.moonshot.ai/v1",
+          "preferred": true,
+          "docs": "https://platform.kimi.ai/docs/api-reference",
+          "protocol": {
+            "store": "unsupported",
+            "roles": {
+              "developer": "unsupported"
+            },
+            "streaming": {
+              "usage": "supported",
+              "reasoningDelta": "supported"
+            },
+            "reasoning": {
+              "effort": "unsupported"
+            },
+            "tools": {
+              "strictSchema": "unsupported"
+            }
+          },
+          "dialect": {
+            "maxOutputTokensField": "max_tokens",
+            "reasoning": {
+              "assistantContentRequired": false,
+              "thinkingAsText": false,
+              "wireFormat": "moonshot"
+            }
+          },
+          "models": {
+            "kimi-k2.6": {
+              "displayName": "Kimi K2.6",
+              "family": "kimi-k2",
+              "alias": "default-chat",
+              "defaults": {
+                "maxOutputTokens": 32000,
+                "reasoningEffort": "medium"
+              },
+              "capabilities": {
+                "contextWindow": 262144,
+                "input": [
+                  "text",
+                  "image"
+                ],
+                "output": [
+                  "text"
+                ],
+                "reasoning": true,
+                "stream": true,
+                "toolUse": true,
+                "structuredOutput": true,
+                "attachment": false,
+                "temperature": true
+              },
+              "pricing": {
+                "currency": "USD",
+                "input": 0.95,
+                "output": 4,
+                "cacheRead": 0.16
+              }
+            },
+            "kimi-k2.7-code": {
+              "displayName": "Kimi K2.7 Code",
+              "family": "kimi-k2-code",
+              "alias": "default-coding",
+              "defaults": {
+                "maxOutputTokens": 32000,
+                "reasoningEffort": "medium"
+              },
+              "capabilities": {
+                "contextWindow": 262144,
+                "input": [
+                  "text",
+                  "image"
+                ],
+                "output": [
+                  "text"
+                ],
+                "reasoning": true,
+                "stream": true,
+                "toolUse": true,
+                "structuredOutput": true,
+                "attachment": false,
+                "temperature": false
+              },
+              "pricing": {
+                "currency": "USD",
+                "input": 0.95,
+                "output": 4,
+                "cacheRead": 0.19
+              }
+            }
+          }
+        }
+      }
+    },
     "openai": {
       "displayName": "OpenAI",
       "website": "https://platform.openai.com",

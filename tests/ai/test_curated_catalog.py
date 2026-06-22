@@ -19,6 +19,7 @@ CURATED_CATALOG_PATH = (
 EVIDENCE_DIR = REPO_ROOT / "docs/internals/architecture/ai/catalog-evidence"
 EVIDENCE_TEMPLATE_PATH = EVIDENCE_DIR / "_template.md"
 ANTHROPIC_EVIDENCE_PATH = EVIDENCE_DIR / "anthropic.md"
+MOONSHOT_EVIDENCE_PATH = EVIDENCE_DIR / "moonshot.md"
 OPENAI_EVIDENCE_PATH = EVIDENCE_DIR / "openai.md"
 CURATED_PROVIDER_MATRIX_PATH = (
     REPO_ROOT / "docs/internals/architecture/ai/curated-provider-matrix.md"
@@ -45,7 +46,8 @@ def test_curated_catalog_loads_v2_schema() -> None:
     validate_model_registry_raw(raw)
     assert [provider.id for provider in _load_curated_registry().list_providers()] == [
         "anthropic",
-        "openai"
+        "moonshot",
+        "openai",
     ]
 
 
@@ -59,6 +61,9 @@ def test_default_builtin_catalog_still_uses_legacy_catalog() -> None:
     )
     assert len(registry.list_models(provider="anthropic")) > len(
         _load_curated_registry().list_models(provider="anthropic")
+    )
+    assert len(registry.list_models(provider="moonshot")) > len(
+        _load_curated_registry().list_models(provider="moonshot")
     )
 
 
@@ -131,6 +136,80 @@ def test_curated_catalog_includes_verified_anthropic_messages_models() -> None:
     assert sonnet.pricing.output == 15
     assert sonnet.pricing.cache_read == 0.3
     assert sonnet.pricing.cache_write == 3.75
+
+
+def test_curated_catalog_includes_verified_moonshot_openai_compatible_models() -> None:
+    registry = _load_curated_registry()
+
+    assert registry.get_provider("moonshotai") is None
+    assert registry.get_provider("moonshotai-cn") is None
+    assert registry.get_provider("kimi-coding") is None
+
+    provider = registry.get_provider("moonshot")
+    assert provider is not None
+    assert provider.name == "Moonshot AI"
+    assert provider.website == "https://platform.kimi.ai"
+    assert provider.auth is not None
+    assert provider.auth.api_key_env == "MOONSHOT_API_KEY"
+    assert provider.auth.header == "Authorization"
+    assert provider.auth.prefix == "Bearer "
+
+    endpoint = registry.get_endpoint("moonshot", "openai-completions")
+    assert endpoint is not None
+    assert endpoint.api == "openai-completions"
+    assert endpoint.base_url == "https://api.moonshot.ai/v1"
+    assert endpoint.preferred is True
+    assert endpoint.auth is not None
+    assert endpoint.auth.api_key_env == "MOONSHOT_API_KEY"
+    assert endpoint.protocol.store is SupportStatus.UNSUPPORTED
+    assert endpoint.protocol.roles.developer is SupportStatus.UNSUPPORTED
+    assert endpoint.protocol.streaming.usage is SupportStatus.SUPPORTED
+    assert endpoint.protocol.streaming.reasoning_delta is SupportStatus.SUPPORTED
+    assert endpoint.protocol.reasoning.effort is SupportStatus.UNSUPPORTED
+    assert endpoint.protocol.tools.strict_schema is SupportStatus.UNSUPPORTED
+    assert endpoint.dialect.max_output_tokens_field == "max_tokens"
+    assert endpoint.dialect.reasoning.wire_format == "moonshot"
+    assert endpoint.dialect.reasoning.thinking_as_text is False
+
+    models = registry.list_models(provider="moonshot")
+    assert [model.id for model in models] == ["kimi-k2.6", "kimi-k2.7-code"]
+
+    general = registry.get_model("moonshot", "openai-completions", "kimi-k2.6")
+    assert general is not None
+    assert general.name == "Kimi K2.6"
+    assert general.alias == "default-chat"
+    assert general.context_window == 262_144
+    assert general.max_tokens is None
+    assert general.defaults.get("maxOutputTokens") == 32_000
+    assert general.capabilities.input == ("text", "image")
+    assert general.capabilities.output == ("text",)
+    assert general.reasoning is True
+    assert general.supports_stream is True
+    assert general.supports_tool_use is True
+    assert general.supports_structured_output is True
+    assert general.supports_attachment is False
+    assert general.supports_temperature is True
+    assert general.pricing is not None
+    assert general.pricing.currency == "USD"
+    assert general.pricing.input == 0.95
+    assert general.pricing.output == 4
+    assert general.pricing.cache_read == 0.16
+    assert general.pricing.cache_write is None
+
+    coding = registry.get_model("moonshot", "openai-completions", "kimi-k2.7-code")
+    assert coding is not None
+    assert coding.name == "Kimi K2.7 Code"
+    assert coding.alias == "default-coding"
+    assert coding.context_window == 262_144
+    assert coding.max_tokens is None
+    assert coding.defaults.get("maxOutputTokens") == 32_000
+    assert coding.reasoning is True
+    assert coding.supports_temperature is False
+    assert coding.pricing is not None
+    assert coding.pricing.input == 0.95
+    assert coding.pricing.output == 4
+    assert coding.pricing.cache_read == 0.19
+    assert coding.pricing.cache_write is None
 
 
 def test_curated_catalog_includes_verified_openai_responses_models() -> None:
@@ -288,6 +367,29 @@ def test_anthropic_evidence_matches_curated_provider_fixture() -> None:
         assert expected in text
 
 
+def test_moonshot_evidence_matches_curated_provider_fixture() -> None:
+    text = MOONSHOT_EVIDENCE_PATH.read_text(encoding="utf-8")
+
+    for expected in [
+        "# Provider evidence: moonshot",
+        "- Verified at: 2026-06-22",
+        "https://platform.kimi.ai/docs/models",
+        "https://platform.kimi.ai/docs/models/kimi-k2.6",
+        "https://platform.kimi.ai/docs/models/kimi-k2.7-code",
+        "https://platform.kimi.ai/docs/quickstart",
+        "https://platform.kimi.ai/docs/api-reference",
+        "https://platform.kimi.ai/",
+        "`MOONSHOT_API_KEY`",
+        "`https://api.moonshot.ai/v1`",
+        "`kimi-k2.6`",
+        "`kimi-k2.7-code`",
+        "Legacy duplicate China/global/coding endpoint variants",
+        "uv run pytest tests/ai/test_curated_catalog.py -q",
+        "Not run on 2026-06-22",
+    ]:
+        assert expected in text
+
+
 def test_openai_evidence_matches_curated_provider_fixture() -> None:
     text = OPENAI_EVIDENCE_PATH.read_text(encoding="utf-8")
 
@@ -315,6 +417,10 @@ def test_curated_provider_matrix_matches_openai_fixture() -> None:
     assert "`claude-opus-4-8`, `claude-sonnet-4-6`" in text
     assert "`ANTHROPIC_API_KEY`" in text
     assert "`catalog-evidence/anthropic.md`" in text
+    assert "`moonshot` | `openai-completions` | `openai-completions`" in text
+    assert "`kimi-k2.6`, `kimi-k2.7-code`" in text
+    assert "`MOONSHOT_API_KEY`" in text
+    assert "`catalog-evidence/moonshot.md`" in text
     assert "`openai` | `openai-responses` | `openai-responses`" in text
     assert "`gpt-5.5`, `gpt-5.4-mini`" in text
     assert "`OPENAI_API_KEY`" in text

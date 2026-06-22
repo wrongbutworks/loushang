@@ -7,6 +7,7 @@ AIQ-056 switches the package data.
 | Provider | Endpoint | API | Models | Auth env | Evidence | Offline smoke |
 |---|---|---|---|---|---|---|
 | `anthropic` | `anthropic-messages` | `anthropic-messages` | `claude-opus-4-8`, `claude-sonnet-4-6` | `ANTHROPIC_API_KEY` | `catalog-evidence/anthropic.md` | `uv run pytest tests/ai/test_curated_catalog.py -q` |
+| `moonshot` | `openai-completions` | `openai-completions` | `kimi-k2.6`, `kimi-k2.7-code` | `MOONSHOT_API_KEY` | `catalog-evidence/moonshot.md` | `uv run pytest tests/ai/test_curated_catalog.py -q` |
 | `openai` | `openai-responses` | `openai-responses` | `gpt-5.5`, `gpt-5.4-mini` | `OPENAI_API_KEY` | `catalog-evidence/openai.md` | `uv run pytest tests/ai/test_curated_catalog.py -q` |
 
 Generic provider smoke for curated entries is intentionally offline in this

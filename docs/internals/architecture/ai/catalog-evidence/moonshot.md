@@ -1,0 +1,30 @@
+# Provider evidence: moonshot
+
+- Verified at: 2026-06-22
+- Issue: n/a
+- Official docs:
+  - https://platform.kimi.ai/docs/models
+  - https://platform.kimi.ai/docs/models/kimi-k2.6
+  - https://platform.kimi.ai/docs/models/kimi-k2.7-code
+  - https://platform.kimi.ai/docs/quickstart
+  - https://platform.kimi.ai/docs/api-reference
+  - https://platform.kimi.ai/
+- Authentication: API key in `MOONSHOT_API_KEY`, sent as an `Authorization: Bearer ...` header.
+- Endpoint: `https://api.moonshot.ai/v1`, OpenAI-compatible Chat Completions protocol.
+- Included models:
+  - `kimi-k2.6`: current stable Kimi K2 model for general multimodal work.
+  - `kimi-k2.7-code`: current Kimi coding model for programming and agentic coding workflows.
+- Verified capabilities:
+  - Both selected models list a 256K context window and support text plus image input in official docs.
+  - Both selected models support thinking output, streaming, tool calls, and JSON-mode structured output through Moonshot's OpenAI-compatible Chat Completions API.
+  - `kimi-k2.6` standard pricing records $0.16 cache hit, $0.95 input, and $4 output per million tokens.
+  - `kimi-k2.7-code` standard pricing records $0.19 cache hit, $0.95 input, and $4 output per million tokens.
+- Unknown/omitted facts:
+  - `maxTokens` is omitted because the official model pages used for this curation describe context window and examples, not a stable maximum output token contract.
+  - `attachment` is false because the current model capability shape only records text/image modalities and does not separately model file or video input.
+  - Only the global Kimi API endpoint is included. Legacy duplicate China/global/coding endpoint variants remain out of the curated catalog until a specific deployment requirement is documented.
+  - `cacheWrite` is omitted because the official pricing presentation distinguishes cache hit from normal input price rather than a separate cache write price.
+- Contract tests:
+  - `uv run pytest tests/ai/test_curated_catalog.py -q`
+- Manual live smoke:
+  - Not run on 2026-06-22; no live Moonshot credential was used for this catalog-only commit.
