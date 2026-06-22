@@ -213,6 +213,16 @@ provider-specific options 仍保留在 `loushang.ai.options` / `loushang.ai.adva
 - `AssistantMessageEvent`
 - `AssistantMessageEventStream`
 
+### 错误入口
+
+- `AIError`
+- `AIErrorCode`
+- `AIErrorInfo`
+
+`AIErrorInfo.to_dict()` 返回稳定、JSON-safe 的错误载荷，并递归脱敏
+`Authorization`、API key、OAuth token、refresh token、secret、credential 等敏感字段。
+完整异常层级位于 `loushang.ai.errors`；Provider 失败到 typed error 的迁移会在后续 runtime/error 工作包中完成。
+
 ### 通用 Options
 
 - `CallOptions`

@@ -1,6 +1,7 @@
 from dataclasses import dataclass
 
 from loushang.ai.api.streaming import complete, complete_simple, stream, stream_simple
+from loushang.ai.errors import AIError, AIErrorCode, AIErrorInfo
 from loushang.ai.options import (
     CacheRetention,
     CallOptions,
@@ -41,6 +42,9 @@ __all__ = [
     "AgentRuntimeHints",
     "CompressionPolicy",
     "SessionBudget",
+    "AIError",
+    "AIErrorCode",
+    "AIErrorInfo",
     "ThinkingLevel",
     "ThinkingBudgets",
     "CacheRetention",

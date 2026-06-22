@@ -150,6 +150,25 @@ def test_reasoning_example_reports_simple_reasoning_mapping(capsys) -> None:
     assert payload == summary
 
 
+def test_errors_retry_example_reports_redacted_error_payload(capsys) -> None:
+    module = _load_module(
+        Path("examples/ai/09_errors_retry.py"), "examples_ai_09_errors_retry"
+    )
+
+    payload = module.inspect_error_serialization()
+
+    assert payload["code"] == "authentication"
+    assert payload["retryable"] is False
+    assert payload["details"] == {
+        "hint": "Set MOONSHOT_API_KEY.",
+        "Authorization": "[redacted]",
+        "nested": {"refresh_token": "[redacted]"},
+    }
+
+    module.main()
+    assert json.loads(capsys.readouterr().out) == payload
+
+
 def test_advanced_inspect_endpoint_contract_formats_protocol_facts(
     capsys,
     monkeypatch,

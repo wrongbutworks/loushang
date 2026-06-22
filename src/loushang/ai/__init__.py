@@ -1,4 +1,5 @@
 from loushang.ai.api import complete, complete_simple, stream, stream_simple
+from loushang.ai.errors import AIError, AIErrorCode, AIErrorInfo
 from loushang.ai.event_stream import AssistantMessageEventStream
 from loushang.ai.model import Model
 from loushang.ai.model.registry import (
@@ -60,6 +61,9 @@ __all__ = [
     "Message",
     "Model",
     "StopReason",
+    "AIError",
+    "AIErrorCode",
+    "AIErrorInfo",
     "CallOptions",
     "SimpleCallOptions",
     "ReasoningOptions",
