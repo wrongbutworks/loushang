@@ -66,3 +66,12 @@ def test_get_oauth_api_key_refreshes_async_provider_inside_running_loop(
         assert result["newCredentials"].access_token == "new-token"
 
     asyncio.run(_run())
+
+
+def test_get_oauth_api_key_ignores_empty_access_token() -> None:
+    result = get_oauth_api_key(
+        "demo",
+        {"demo": OAuthCredentials(provider="demo", access_token="  ")},
+    )
+
+    assert result is None

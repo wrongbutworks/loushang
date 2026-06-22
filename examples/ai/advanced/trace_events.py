@@ -77,7 +77,7 @@ async def inspect_trace_events() -> dict[str, object]:
         "redaction": {
             "authorization": sdk_client["data"]["headers"]["Authorization"],
             "apiKey": sdk_client["data"]["apiKey"],
-            "refreshToken": sdk_client["data"]["oauth"]["refresh_token"],
+            "oauth": sdk_client["data"]["oauth"],
         },
         "retry": retry["data"],
     }

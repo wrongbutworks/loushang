@@ -99,6 +99,29 @@ def test_credential_store_reports_structural_corruption(tmp_path) -> None:
         CredentialStore(path).load()
 
 
+def test_credential_store_skips_entries_without_access_token(tmp_path) -> None:
+    path = tmp_path / "oauth.json"
+    path.write_text(
+        json.dumps(
+            {
+                "providers": {
+                    "empty": {"provider": "empty", "access_token": ""},
+                    "blank": {"provider": "blank", "access": "   "},
+                    "demo": {"provider": "demo", "access_token": " token "},
+                },
+                "endpoints": {},
+                "models": {},
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    loaded = CredentialStore(path).load()
+
+    assert set(loaded["providers"]) == {"demo"}
+    assert loaded["providers"]["demo"].access_token == "token"
+
+
 def test_credential_store_update_merges_concurrent_writes(tmp_path) -> None:
     store = CredentialStore(tmp_path / "oauth.json")
     barrier = threading.Barrier(8)

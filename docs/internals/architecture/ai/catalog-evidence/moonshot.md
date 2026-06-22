@@ -28,5 +28,5 @@
   - `uv run pytest tests/ai/test_curated_catalog.py -q`
 - Manual live smoke:
   - Attempted on 2026-06-22 with `MOONSHOT_API_KEY`:
-    - `uv run pytest tests/ai/vendors/moonshot/test_kimi_openai_complete_live.py -q -s`
-    - Result: not accepted as live proof because the provider returned HTTP 401 invalid authentication.
+    - `uv run pytest tests/ai/vendors/moonshot/test_kimi_openai_complete_live.py tests/ai/vendors/moonshot/test_kimi_openai_stream_live.py -q -s`
+    - Result: 2 skipped and not accepted as live proof because the provider returned HTTP 401 invalid authentication.

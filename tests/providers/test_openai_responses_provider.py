@@ -9,10 +9,12 @@ import pytest
 
 from loushang.ai.advanced import OpenAIResponsesOptions
 from loushang.ai.context import normalize_context
+from loushang.ai.errors import UnsupportedCapabilityError
 from loushang.ai.model import (
     Capabilities,
     Endpoint,
     EndpointProtocolFeatures,
+    EndpointTransport,
     EndpointWireDialect,
     Model,
     Pricing,
@@ -329,7 +331,7 @@ def test_openai_responses_supplied_request_compat_projects_to_typed_payload(
                 _Model(reasoning=True),
                 _tool_result_followed_by_user_context(system_prompt="Use system."),
                 OpenAIResponsesOptions(
-                    cache_retention="long",
+                    cache_retention="short",
                     session_id="session-compat",
                 ),
                 request,
@@ -360,6 +362,43 @@ def test_openai_responses_supplied_request_compat_projects_to_typed_payload(
         _FakeAsyncOpenAI.last_init_kwargs["default_headers"]["x-client-request-id"]
         == "session-compat"
     )
+
+
+def test_openai_responses_rejects_unsupported_long_cache_retention(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _fake_openai_module(monkeypatch)
+    provider = OpenAIResponsesProvider()
+    request = ResolvedRequest(
+        provider="openai",
+        endpoint="openai-responses",
+        api="openai-responses",
+        base_url="https://api.openai.test/v1",
+        headers={"Authorization": "Bearer test-key"},
+        compat={"supportsLongCacheRetention": False},
+        capabilities=Capabilities(input=("text",), reasoning=True),
+        max_tokens=128,
+    )
+
+    with pytest.raises(UnsupportedCapabilityError, match="long cache retention"):
+        asyncio.run(
+            _collect_parts(
+                _stream_raw_parts(
+                    provider,
+                    _Model(reasoning=True),
+                    Context(
+                        system_prompt=None,
+                        messages=[
+                            UserMessage(role="user", content="hello", timestamp=0.0)
+                        ],
+                    ),
+                    OpenAIResponsesOptions(cache_retention="long"),
+                    request,
+                )
+            )
+        )
+
+    assert _FakeAsyncOpenAI.last_create_kwargs == {}
 
 
 def test_openai_responses_supplied_request_typed_adapter_overrides_stale_compat(
@@ -400,7 +439,7 @@ def test_openai_responses_supplied_request_typed_adapter_overrides_stale_compat(
                 _Model(reasoning=True),
                 _tool_result_followed_by_user_context(system_prompt="Use system."),
                 OpenAIResponsesOptions(
-                    cache_retention="long",
+                    cache_retention="short",
                     session_id="session-typed",
                 ),
                 request,
@@ -873,6 +912,7 @@ def test_openai_responses_provider_adds_github_copilot_dynamic_headers(
         monkeypatch,
         base_url="https://api.githubcopilot.test/v1",
         extra_headers={"Editor-Version": "vscode/1.100.0"},
+        transport=EndpointTransport(kind="github-copilot"),
     )
     provider = OpenAIResponsesProvider()
 
@@ -1361,6 +1401,7 @@ def _patch_resolved_request(
     extra_headers: dict[str, str] | None = None,
     max_tokens: int | None = 1024,
     capabilities: Capabilities | None = None,
+    transport: EndpointTransport | None = None,
     upstream_model_id: str | None = None,
 ) -> None:
     def _resolve(provider_api, _model, *, options=None, request=None):
@@ -1393,6 +1434,7 @@ def _patch_resolved_request(
             adapter_compat=compat or {},
             adapter_protocol=protocol or _responses_protocol_from_compat(compat or {}),
             adapter_dialect=dialect or _responses_dialect_from_compat(compat or {}),
+            transport=transport or EndpointTransport(),
             max_tokens=resolved_max_tokens,
             capabilities=capabilities
             or Capabilities(
@@ -1419,7 +1461,10 @@ def _responses_protocol_from_compat(
             "cache": {
                 "longRetention": _support_status(
                     compat.get("supportsLongCacheRetention", True)
-                )
+                ),
+                "promptKey": _support_status(
+                    compat.get("supportsPromptCacheKey", True)
+                ),
             },
             "session": {
                 "idHeader": _support_status(compat.get("sendSessionIdHeader", True))

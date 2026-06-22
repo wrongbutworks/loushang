@@ -110,6 +110,25 @@ def test_model_registry_schema_accepts_explicit_v1_catalog() -> None:
     validate_model_registry_raw(raw)
 
 
+def test_model_registry_schema_v2_openai_compatible_endpoint_without_models_loads() -> None:
+    raw = {
+        "schemaVersion": 2,
+        "providers": {
+            "custom": {
+                "endpoints": {
+                    "openai-completions": {
+                        "api": "openai-completions",
+                        "baseUrl": "https://custom.example/v1",
+                        "models": {},
+                    }
+                }
+            }
+        },
+    }
+
+    validate_model_registry_raw(raw)
+
+
 def test_model_registry_schema_loads_v2_catalog_file(tmp_path) -> None:
     path = tmp_path / "models.v2.json"
     path.write_text(
@@ -2045,4 +2064,33 @@ def test_model_registry_schema_rejects_invalid_auth_shape() -> None:
     }
 
     with pytest.raises(ValueError, match="apiKeyEnvs"):
+        validate_model_registry_raw(raw)
+
+
+def test_model_registry_schema_rejects_invalid_auth_extra_headers() -> None:
+    raw = {
+        "providers": {
+            "custom": {
+                "auth": {
+                    "apiKeyEnv": "CUSTOM_API_KEY",
+                    "extraHeaders": {"x-provider": 1},
+                },
+                "endpoints": {
+                    "openai-completions": {
+                        "api": "openai-completions",
+                        "models": {
+                            "model-a": {
+                                "capabilities": {
+                                    "input": ["text"],
+                                    "output": ["text"],
+                                }
+                            }
+                        },
+                    }
+                },
+            }
+        }
+    }
+
+    with pytest.raises(ValueError, match="must be a string map"):
         validate_model_registry_raw(raw)

@@ -250,13 +250,16 @@ def _load_credential_bucket(value: object, name: str) -> dict[str, OAuthCredenti
             raise CredentialStoreCorruptError(
                 f"OAuth credential entry must be an object: {name}"
             )
+        access_token = _optional_str(
+            raw_credential.get("access_token") or raw_credential.get("access")
+        )
+        if access_token is None:
+            continue
         result[key] = OAuthCredentials(
             provider=str(
                 raw_credential.get("provider") or _provider_from_scope_key(key)
             ),
-            access_token=str(
-                raw_credential.get("access_token") or raw_credential.get("access") or ""
-            ),
+            access_token=access_token,
             refresh_token=_optional_str(
                 raw_credential.get("refresh_token") or raw_credential.get("refresh")
             ),
@@ -287,7 +290,10 @@ def _provider_from_scope_key(key: str) -> str:
 
 
 def _optional_str(value: object) -> str | None:
-    return value if isinstance(value, str) else None
+    if not isinstance(value, str):
+        return None
+    value = value.strip()
+    return value or None
 
 
 def _ensure_private_parent(path: Path, *, harden_existing: bool) -> None:

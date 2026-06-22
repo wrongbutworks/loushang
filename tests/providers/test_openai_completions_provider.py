@@ -11,6 +11,7 @@ import pytest
 from loushang.ai import get_model
 from loushang.ai.advanced import OpenAICompletionsOptions
 from loushang.ai.context import normalize_context
+from loushang.ai.errors import UnsupportedCapabilityError
 from loushang.ai.model import Capabilities, Compat, Model
 from loushang.ai.model.compat_schema import (
     MAX_TOKENS_FIELD,
@@ -926,27 +927,26 @@ def test_openai_completions_supplied_request_typed_adapter_overrides_stale_compa
         capabilities=Capabilities(input=("text",), max_tokens=4096),
     )
 
-    asyncio.run(
-        _collect_parts(
-            _stream_raw_parts(
-                provider,
-                _Model(),
-                {
-                    "messages": [
-                        UserMessage(role="user", content="hello", timestamp=0.0)
-                    ]
-                },
-                OpenAICompletionsOptions(
-                    cache_retention="short",
-                    session_id="session-stale",
-                ),
-                request=request,
+    with pytest.raises(UnsupportedCapabilityError, match="session id"):
+        asyncio.run(
+            _collect_parts(
+                _stream_raw_parts(
+                    provider,
+                    _Model(),
+                    {
+                        "messages": [
+                            UserMessage(role="user", content="hello", timestamp=0.0)
+                        ]
+                    },
+                    OpenAICompletionsOptions(
+                        cache_retention="short",
+                        session_id="session-stale",
+                    ),
+                    request=request,
+                )
             )
         )
-    )
-
-    assert _FakeAsyncOpenAI.last_create_kwargs["model"] == "gpt-test"
-    assert "prompt_cache_key" not in _FakeAsyncOpenAI.last_create_kwargs
+    assert _FakeAsyncOpenAI.last_create_kwargs == {}
 
 
 def test_openai_completions_supplied_request_typed_dialect_overrides_stale_compat(
@@ -1097,29 +1097,26 @@ def test_openai_completions_official_url_requires_prompt_cache_support_flag(
     model = registry.get_model("custom-openai", "openai-completions", "gpt-test")
     provider = OpenAICompletionsProvider()
 
-    asyncio.run(
-        _collect_parts(
-            _stream_raw_parts(
-                provider,
-                model,
-                {
-                    "messages": [
-                        UserMessage(role="user", content="hello", timestamp=0.0)
-                    ]
-                },
-                OpenAICompletionsOptions(
-                    api_key="test-key",
-                    cache_retention="long",
-                    session_id="session-official",
-                ),
+    with pytest.raises(UnsupportedCapabilityError, match="session id"):
+        asyncio.run(
+            _collect_parts(
+                _stream_raw_parts(
+                    provider,
+                    model,
+                    {
+                        "messages": [
+                            UserMessage(role="user", content="hello", timestamp=0.0)
+                        ]
+                    },
+                    OpenAICompletionsOptions(
+                        api_key="test-key",
+                        cache_retention="long",
+                        session_id="session-official",
+                    ),
+                )
             )
         )
-    )
-
-    assert _FakeAsyncOpenAI.last_init_kwargs["base_url"] == "https://api.openai.com/v1"
-    assert _FakeAsyncOpenAI.last_create_kwargs["model"] == "gpt-test"
-    assert "prompt_cache_key" not in _FakeAsyncOpenAI.last_create_kwargs
-    assert "prompt_cache_retention" not in _FakeAsyncOpenAI.last_create_kwargs
+    assert _FakeAsyncOpenAI.last_create_kwargs == {}
 
 
 def test_openai_completions_typed_prompt_cache_key_unsupported_disables_payload(
@@ -1150,27 +1147,26 @@ def test_openai_completions_typed_prompt_cache_key_unsupported_disables_payload(
     model = registry.get_model("custom-openai", "openai-completions", "gpt-test")
     provider = OpenAICompletionsProvider()
 
-    asyncio.run(
-        _collect_parts(
-            _stream_raw_parts(
-                provider,
-                model,
-                {
-                    "messages": [
-                        UserMessage(role="user", content="hello", timestamp=0.0)
-                    ]
-                },
-                OpenAICompletionsOptions(
-                    api_key="test-key",
-                    cache_retention="long",
-                    session_id="session-official",
-                ),
+    with pytest.raises(UnsupportedCapabilityError, match="session id"):
+        asyncio.run(
+            _collect_parts(
+                _stream_raw_parts(
+                    provider,
+                    model,
+                    {
+                        "messages": [
+                            UserMessage(role="user", content="hello", timestamp=0.0)
+                        ]
+                    },
+                    OpenAICompletionsOptions(
+                        api_key="test-key",
+                        cache_retention="long",
+                        session_id="session-official",
+                    ),
+                )
             )
         )
-    )
-
-    assert "prompt_cache_key" not in _FakeAsyncOpenAI.last_create_kwargs
-    assert "prompt_cache_retention" not in _FakeAsyncOpenAI.last_create_kwargs
+    assert _FakeAsyncOpenAI.last_create_kwargs == {}
 
 
 def test_openai_completions_prompt_cache_key_defaults_off_for_short_sessions(
@@ -1180,27 +1176,26 @@ def test_openai_completions_prompt_cache_key_defaults_off_for_short_sessions(
     _patch_resolved_request(monkeypatch, compat={}, reasoning_effort=None)
     provider = OpenAICompletionsProvider()
 
-    asyncio.run(
-        _collect_parts(
-            _stream_raw_parts(
-                provider,
-                _Model(),
-                {
-                    "messages": [
-                        UserMessage(role="user", content="hello", timestamp=0.0)
-                    ]
-                },
-                OpenAICompletionsOptions(
-                    api_key="test-key",
-                    cache_retention="short",
-                    session_id="session-short",
-                ),
+    with pytest.raises(UnsupportedCapabilityError, match="session id"):
+        asyncio.run(
+            _collect_parts(
+                _stream_raw_parts(
+                    provider,
+                    _Model(),
+                    {
+                        "messages": [
+                            UserMessage(role="user", content="hello", timestamp=0.0)
+                        ]
+                    },
+                    OpenAICompletionsOptions(
+                        api_key="test-key",
+                        cache_retention="short",
+                        session_id="session-short",
+                    ),
+                )
             )
         )
-    )
-
-    assert "prompt_cache_key" not in _FakeAsyncOpenAI.last_create_kwargs
-    assert "prompt_cache_retention" not in _FakeAsyncOpenAI.last_create_kwargs
+    assert _FakeAsyncOpenAI.last_create_kwargs == {}
 
 
 def test_openai_completions_prompt_cache_key_can_be_disabled(
@@ -1214,27 +1209,26 @@ def test_openai_completions_prompt_cache_key_can_be_disabled(
     )
     provider = OpenAICompletionsProvider()
 
-    asyncio.run(
-        _collect_parts(
-            _stream_raw_parts(
-                provider,
-                _Model(),
-                {
-                    "messages": [
-                        UserMessage(role="user", content="hello", timestamp=0.0)
-                    ]
-                },
-                OpenAICompletionsOptions(
-                    api_key="test-key",
-                    cache_retention="short",
-                    session_id="session-short",
-                ),
+    with pytest.raises(UnsupportedCapabilityError, match="session id"):
+        asyncio.run(
+            _collect_parts(
+                _stream_raw_parts(
+                    provider,
+                    _Model(),
+                    {
+                        "messages": [
+                            UserMessage(role="user", content="hello", timestamp=0.0)
+                        ]
+                    },
+                    OpenAICompletionsOptions(
+                        api_key="test-key",
+                        cache_retention="short",
+                        session_id="session-short",
+                    ),
+                )
             )
         )
-    )
-
-    assert "prompt_cache_key" not in _FakeAsyncOpenAI.last_create_kwargs
-    assert "prompt_cache_retention" not in _FakeAsyncOpenAI.last_create_kwargs
+    assert _FakeAsyncOpenAI.last_create_kwargs == {}
 
 
 def test_openai_completions_prompt_cache_key_disables_long_retention_params(
@@ -1251,27 +1245,26 @@ def test_openai_completions_prompt_cache_key_disables_long_retention_params(
     )
     provider = OpenAICompletionsProvider()
 
-    asyncio.run(
-        _collect_parts(
-            _stream_raw_parts(
-                provider,
-                _Model(),
-                {
-                    "messages": [
-                        UserMessage(role="user", content="hello", timestamp=0.0)
-                    ]
-                },
-                OpenAICompletionsOptions(
-                    api_key="test-key",
-                    cache_retention="long",
-                    session_id="session-long",
-                ),
+    with pytest.raises(UnsupportedCapabilityError, match="session id"):
+        asyncio.run(
+            _collect_parts(
+                _stream_raw_parts(
+                    provider,
+                    _Model(),
+                    {
+                        "messages": [
+                            UserMessage(role="user", content="hello", timestamp=0.0)
+                        ]
+                    },
+                    OpenAICompletionsOptions(
+                        api_key="test-key",
+                        cache_retention="long",
+                        session_id="session-long",
+                    ),
+                )
             )
         )
-    )
-
-    assert "prompt_cache_key" not in _FakeAsyncOpenAI.last_create_kwargs
-    assert "prompt_cache_retention" not in _FakeAsyncOpenAI.last_create_kwargs
+    assert _FakeAsyncOpenAI.last_create_kwargs == {}
 
 
 def test_openai_completions_explicit_zai_thinking_format(
@@ -1498,7 +1491,7 @@ def test_openai_completions_typed_routing_maps_openrouter_provider_payload(
     assert _FakeAsyncOpenAI.last_create_kwargs["store"] is False
 
 
-def test_openai_completions_mixed_routing_uses_openrouter_namespace(
+def test_openai_completions_mixed_routing_without_single_namespace_errors(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     _fake_openai_module(monkeypatch)
@@ -1515,26 +1508,25 @@ def test_openai_completions_mixed_routing_uses_openrouter_namespace(
     )
     provider = OpenAICompletionsProvider()
 
-    asyncio.run(
-        _collect_parts(
-            _stream_raw_parts(
-                provider,
-                _Model(provider_id="openrouter"),
-                {
-                    "messages": [
-                        UserMessage(role="user", content="hello", timestamp=0.0)
-                    ]
-                },
-                OpenAICompletionsOptions(api_key="test-key"),
+    with pytest.raises(ValueError, match="Ambiguous provider routing"):
+        asyncio.run(
+            _collect_parts(
+                _stream_raw_parts(
+                    provider,
+                    _Model(provider_id="openrouter"),
+                    {
+                        "messages": [
+                            UserMessage(role="user", content="hello", timestamp=0.0)
+                        ]
+                    },
+                    OpenAICompletionsOptions(api_key="test-key"),
+                )
             )
         )
-    )
-
-    assert _FakeAsyncOpenAI.last_create_kwargs["provider"] == {"only": ["anthropic"]}
-    assert "providerOptions" not in _FakeAsyncOpenAI.last_create_kwargs
+    assert _FakeAsyncOpenAI.last_create_kwargs == {}
 
 
-def test_openai_completions_mixed_routing_uses_vercel_namespace(
+def test_openai_completions_mixed_routing_errors_independent_of_provider_identity(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     _fake_openai_module(monkeypatch)
@@ -1551,28 +1543,25 @@ def test_openai_completions_mixed_routing_uses_vercel_namespace(
     )
     provider = OpenAICompletionsProvider()
 
-    asyncio.run(
-        _collect_parts(
-            _stream_raw_parts(
-                provider,
-                _Model(provider_id="vercel-ai-gateway"),
-                {
-                    "messages": [
-                        UserMessage(role="user", content="hello", timestamp=0.0)
-                    ]
-                },
-                OpenAICompletionsOptions(api_key="test-key"),
+    with pytest.raises(ValueError, match="Ambiguous provider routing"):
+        asyncio.run(
+            _collect_parts(
+                _stream_raw_parts(
+                    provider,
+                    _Model(provider_id="vercel-ai-gateway"),
+                    {
+                        "messages": [
+                            UserMessage(role="user", content="hello", timestamp=0.0)
+                        ]
+                    },
+                    OpenAICompletionsOptions(api_key="test-key"),
+                )
             )
         )
-    )
-
-    assert "provider" not in _FakeAsyncOpenAI.last_create_kwargs
-    assert _FakeAsyncOpenAI.last_create_kwargs["providerOptions"] == {
-        "gateway": {"order": ["openai"]}
-    }
+    assert _FakeAsyncOpenAI.last_create_kwargs == {}
 
 
-def test_openai_completions_mixed_routing_without_known_provider_is_ignored(
+def test_openai_completions_mixed_routing_errors_independent_of_base_url_identity(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     _fake_openai_module(monkeypatch)
@@ -1586,29 +1575,29 @@ def test_openai_completions_mixed_routing_without_known_provider_is_ignored(
             }
         ),
         reasoning_effort=None,
+        base_url="https://openrouter.ai/api/v1",
     )
     provider = OpenAICompletionsProvider()
 
-    asyncio.run(
-        _collect_parts(
-            _stream_raw_parts(
-                provider,
-                _Model(provider_id="custom"),
-                {
-                    "messages": [
-                        UserMessage(role="user", content="hello", timestamp=0.0)
-                    ]
-                },
-                OpenAICompletionsOptions(api_key="test-key"),
+    with pytest.raises(ValueError, match="Ambiguous provider routing"):
+        asyncio.run(
+            _collect_parts(
+                _stream_raw_parts(
+                    provider,
+                    _Model(provider_id="custom"),
+                    {
+                        "messages": [
+                            UserMessage(role="user", content="hello", timestamp=0.0)
+                        ]
+                    },
+                    OpenAICompletionsOptions(api_key="test-key"),
+                )
             )
         )
-    )
-
-    assert "provider" not in _FakeAsyncOpenAI.last_create_kwargs
-    assert "providerOptions" not in _FakeAsyncOpenAI.last_create_kwargs
+    assert _FakeAsyncOpenAI.last_create_kwargs == {}
 
 
-def test_openai_completions_openrouter_provider_ignores_vercel_only_routing(
+def test_openai_completions_vercel_routing_is_explicit_not_provider_inferred(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     _fake_openai_module(monkeypatch)
@@ -1638,10 +1627,12 @@ def test_openai_completions_openrouter_provider_ignores_vercel_only_routing(
     )
 
     assert "provider" not in _FakeAsyncOpenAI.last_create_kwargs
-    assert "providerOptions" not in _FakeAsyncOpenAI.last_create_kwargs
+    assert _FakeAsyncOpenAI.last_create_kwargs["providerOptions"] == {
+        "gateway": {"order": ["openai"]}
+    }
 
 
-def test_openai_completions_vercel_provider_ignores_openrouter_only_routing(
+def test_openai_completions_openrouter_routing_is_explicit_not_provider_inferred(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     _fake_openai_module(monkeypatch)
@@ -1670,7 +1661,7 @@ def test_openai_completions_vercel_provider_ignores_openrouter_only_routing(
         )
     )
 
-    assert "provider" not in _FakeAsyncOpenAI.last_create_kwargs
+    assert _FakeAsyncOpenAI.last_create_kwargs["provider"] == {"only": ["anthropic"]}
     assert "providerOptions" not in _FakeAsyncOpenAI.last_create_kwargs
 
 
@@ -1869,6 +1860,7 @@ def test_openai_completions_provider_adds_github_copilot_dynamic_headers(
         reasoning_effort=None,
         base_url="https://api.githubcopilot.test/v1",
         extra_headers={"Editor-Version": "vscode/1.100.0"},
+        transport=EndpointTransport(kind="github-copilot"),
     )
     provider = OpenAICompletionsProvider()
 
@@ -2298,9 +2290,6 @@ def _patch_resolved_request(
             else max_tokens
         )
         resolved_compat = resolve_openai_completions_compat(
-            provider_id=getattr(_model, "provider_id", ""),
-            model_id=getattr(_model, "id", ""),
-            base_url=base_url,
             raw=compat,
         )
         return resolve_provider_request(

@@ -77,25 +77,14 @@ OPENAI_CODEX_RUNTIME_CONFIG_RESOLVER = resolve_openai_codex_runtime_config
 
 
 def test_openai_completions_stream_reasoning_delta_defaults_to_bool() -> None:
-    compat = resolve_openai_completions_compat(
-        provider_id="custom",
-        model_id="model-a",
-        base_url=None,
-    )
+    compat = resolve_openai_completions_compat()
 
     assert compat[SUPPORTS_STREAM_REASONING_DELTA] is False
 
 
-def test_standard_compat_profiles_do_not_infer_from_provider_or_base_url() -> None:
-    standard = resolve_openai_completions_compat(
-        provider_id="custom",
-        model_id="model-a",
-        base_url=None,
-    )
-    anthropic_standard = resolve_anthropic_messages_compat(
-        provider_id="custom",
-        base_url=None,
-    )
+def test_standard_compat_profiles_are_identity_free() -> None:
+    standard = resolve_openai_completions_compat()
+    anthropic_standard = resolve_anthropic_messages_compat()
 
     assert standard[SUPPORTS_DEVELOPER_ROLE] is True
     assert standard[SUPPORTS_REASONING_EFFORT] is True
@@ -104,64 +93,20 @@ def test_standard_compat_profiles_do_not_infer_from_provider_or_base_url() -> No
     assert SUPPORTS_PROMPT_CACHE_KEY not in standard
     assert anthropic_standard[SUPPORTS_EAGER_TOOL_INPUT_STREAMING] is True
     assert anthropic_standard[SUPPORTS_LONG_CACHE_RETENTION] is True
-    with pytest.raises(ValueError, match="declare explicit compat keys"):
-        resolve_openai_completions_compat(
-            provider_id="moonshot",
-            model_id="kimi-k2.5",
-            base_url="https://api.moonshot.cn/v1",
-        )
-    with pytest.raises(ValueError, match="declare explicit compat keys"):
-        resolve_openai_completions_compat(
-            provider_id="custom",
-            model_id="kimi-k2.5",
-            base_url="https://api.moonshot.cn/v1",
-        )
-    with pytest.raises(ValueError, match="declare explicit compat keys"):
-        resolve_openai_completions_compat(
-            provider_id="zai",
-            model_id="glm-4.6",
-            base_url="https://api.z.ai/api/coding/paas/v4",
-        )
-    with pytest.raises(ValueError, match="declare explicit compat keys"):
-        resolve_openai_completions_compat(
-            provider_id="custom",
-            model_id="qwen-plus",
-            base_url="https://dashscope.aliyuncs.com/compatible-mode/v1",
-        )
-    with pytest.raises(ValueError, match=REASONING_EFFORT_MAP):
-        resolve_openai_completions_compat(
-            provider_id="custom",
-            model_id="qwen/qwen3-32b",
-            base_url="https://api.groq.com/openai/v1",
-        )
-    with pytest.raises(ValueError, match="declare explicit compat keys"):
-        resolve_anthropic_messages_compat(
-            provider_id="fireworks",
-            base_url="https://api.fireworks.ai/inference",
-        )
-    with pytest.raises(ValueError, match="declare explicit compat keys"):
-        resolve_anthropic_messages_compat(
-            provider_id="custom",
-            base_url="https://api.fireworks.ai/inference",
-        )
 
 
-def test_legacy_openai_completions_guard_requires_every_differing_key() -> None:
-    with pytest.raises(ValueError) as exc_info:
-        resolve_openai_completions_compat(
-            provider_id="custom",
-            model_id="kimi-k2.5",
-            base_url="https://api.moonshot.cn/v1",
-            raw={MAX_TOKENS_FIELD: "max_tokens"},
-        )
+def test_openai_completions_compat_uses_only_explicit_raw_overrides() -> None:
+    compat = resolve_openai_completions_compat(
+        raw={MAX_TOKENS_FIELD: "max_tokens"},
+    )
 
-    message = str(exc_info.value)
-    assert MAX_TOKENS_FIELD not in message
-    assert SUPPORTS_DEVELOPER_ROLE in message
-    assert SUPPORTS_STORE in message
+    assert compat[MAX_TOKENS_FIELD] == "max_tokens"
+    assert compat[SUPPORTS_DEVELOPER_ROLE] is True
+    assert compat[SUPPORTS_STORE] is True
+    assert compat[THINKING_FORMAT] == "openai"
 
 
-def test_loaded_legacy_openai_completions_endpoint_must_declare_max_tokens_field(
+def test_custom_openai_completions_endpoint_without_explicit_contract_uses_standard_profile(
     tmp_path,
 ) -> None:
     raw = {
@@ -171,13 +116,6 @@ def test_loaded_legacy_openai_completions_endpoint_must_declare_max_tokens_field
                     "openai-completions": {
                         "api": "openai-completions",
                         "baseUrl": "https://api.moonshot.cn/v1",
-                        "compat": {
-                            "supportsStore": False,
-                            "supportsDeveloperRole": False,
-                            "supportsReasoningEffort": False,
-                            "supportsStrictMode": False,
-                            "thinkingFormat": "moonshot",
-                        },
                         "models": {
                             "kimi-k2.5": {
                                 "capabilities": {
@@ -196,8 +134,73 @@ def test_loaded_legacy_openai_completions_endpoint_must_declare_max_tokens_field
     registry = load_model_registry_from_file(path)
     model = registry.get_model("custom", "openai-completions", "kimi-k2.5")
 
-    with pytest.raises(ValueError, match=MAX_TOKENS_FIELD):
-        resolve_request_for_model(model, registry=registry, env={})
+    resolved = resolve_request_for_model(model, registry=registry, env={})
+
+    assert resolved.adapter_compat[MAX_TOKENS_FIELD] == "max_completion_tokens"
+    assert resolved.adapter_compat[SUPPORTS_DEVELOPER_ROLE] is True
+    assert resolved.adapter_compat[THINKING_FORMAT] == "openai"
+
+
+def test_schema_v2_custom_openai_completions_requires_explicit_contract(
+    tmp_path,
+) -> None:
+    raw = {
+        "schemaVersion": 2,
+        "providers": {
+            "custom": {
+                "endpoints": {
+                    "openai-completions": {
+                        "api": "openai-completions",
+                        "baseUrl": "https://api.moonshot.cn/v1",
+                        "models": {
+                            "kimi-k2.5": {
+                                "capabilities": {
+                                    "input": ["text"],
+                                    "output": ["text"],
+                                }
+                            }
+                        },
+                    }
+                }
+            }
+        },
+    }
+    path = tmp_path / "models.v2.json"
+    path.write_text(json.dumps(raw), encoding="utf-8")
+
+    with pytest.raises(ValueError, match="must declare protocol or dialect"):
+        load_model_registry_from_file(path)
+
+
+def test_schema_v2_custom_openai_completions_base_url_env_requires_contract(
+    tmp_path,
+) -> None:
+    raw = {
+        "schemaVersion": 2,
+        "providers": {
+            "custom": {
+                "endpoints": {
+                    "openai-completions": {
+                        "api": "openai-completions",
+                        "baseUrlEnv": "CUSTOM_OPENAI_BASE_URL",
+                        "models": {
+                            "model-a": {
+                                "capabilities": {
+                                    "input": ["text"],
+                                    "output": ["text"],
+                                }
+                            }
+                        },
+                    }
+                }
+            }
+        },
+    }
+    path = tmp_path / "models.v2.json"
+    path.write_text(json.dumps(raw), encoding="utf-8")
+
+    with pytest.raises(ValueError, match="must declare protocol or dialect"):
+        load_model_registry_from_file(path)
 
 
 def test_custom_openai_completions_endpoint_prompt_cache_key_is_opt_in() -> None:
@@ -1126,9 +1129,6 @@ def test_resolved_request_accepts_deprecated_positional_compat_slot() -> None:
 
 def test_openai_completions_compat_preserves_legacy_routing_overrides() -> None:
     compat = resolve_openai_completions_compat(
-        provider_id="custom",
-        model_id="model-a",
-        base_url="https://openrouter.ai/api/v1",
         raw={
             OPENROUTER_ROUTING: {"only": ["anthropic"]},
             THINKING_FORMAT: "openrouter",
@@ -1142,10 +1142,7 @@ def test_openai_completions_compat_preserves_legacy_routing_overrides() -> None:
 
 
 def test_anthropic_messages_protocol_flags_default_to_bool_or_absent() -> None:
-    compat = resolve_anthropic_messages_compat(
-        provider_id="custom",
-        base_url=None,
-    )
+    compat = resolve_anthropic_messages_compat()
 
     assert FINE_GRAINED_TOOLS not in compat
     assert INTERLEAVED_THINKING not in compat
@@ -1153,8 +1150,6 @@ def test_anthropic_messages_protocol_flags_default_to_bool_or_absent() -> None:
 
 def test_anthropic_messages_protocol_flags_preserve_explicit_booleans() -> None:
     compat = resolve_anthropic_messages_compat(
-        provider_id="custom",
-        base_url=None,
         raw={INTERLEAVED_THINKING: True},
     )
 
@@ -1218,8 +1213,11 @@ def test_resolve_request_does_not_infer_adapter_contract_from_endpoint_identity(
     )
     model = registry.get_model("moonshot", "openai-completions", "model-a")
 
-    with pytest.raises(ValueError, match="declare explicit compat keys"):
-        resolve_request_for_model(model, registry=registry, env={})
+    resolved = resolve_request_for_model(model, registry=registry, env={})
+
+    assert resolved.adapter_compat[MAX_TOKENS_FIELD] == "max_completion_tokens"
+    assert resolved.adapter_compat[SUPPORTS_DEVELOPER_ROLE] is True
+    assert resolved.adapter_compat[THINKING_FORMAT] == "openai"
 
 
 def test_resolve_request_explicit_unknown_projects_to_adapter_compat() -> None:
@@ -1691,7 +1689,7 @@ def test_resolve_request_does_not_use_stale_bound_endpoint_transport_routing() -
     )
 
 
-def test_resolve_request_bridges_direct_model_legacy_transport_routing() -> None:
+def test_resolve_request_ignores_direct_model_legacy_transport_routing() -> None:
     endpoint = Endpoint(
         id="openai-completions",
         provider="openrouter",
@@ -1715,18 +1713,13 @@ def test_resolve_request_bridges_direct_model_legacy_transport_routing() -> None
 
     resolved = resolve_request_for_model(model, registry=registry, env={})
 
-    assert resolved.transport == EndpointTransport(kind="httpx")
-    assert resolved.routing == EndpointRouting(
-        request_overrides={
-            "openrouter": {"only": ["anthropic"]},
-            "vercelGateway": {"order": ["openai", "anthropic"]},
-        }
-    )
+    assert resolved.transport == EndpointTransport()
+    assert resolved.routing == EndpointRouting()
     assert "openRouterRouting" not in resolved.adapter_compat
     assert "vercelGatewayRouting" not in resolved.adapter_compat
 
 
-def test_resolve_request_bridges_direct_model_legacy_upstream_binding() -> None:
+def test_resolve_request_ignores_direct_model_legacy_upstream_binding() -> None:
     endpoint = Endpoint(
         id="openai-completions",
         provider="openrouter",
@@ -1746,7 +1739,7 @@ def test_resolve_request_bridges_direct_model_legacy_upstream_binding() -> None:
 
     resolved = resolve_request_for_model(model, registry=registry, env={})
 
-    assert resolved.upstream_model_id == "openai/gpt-oss-120b:free"
+    assert resolved.upstream_model_id == "openai/gpt-oss-120b_free"
     assert "upstreamModelId" not in resolved.adapter_compat
 
 
@@ -1811,7 +1804,7 @@ def test_resolve_request_uses_first_class_upstream_binding() -> None:
     assert "upstreamModelId" not in resolved.adapter_compat
 
 
-def test_resolve_endpoint_strips_direct_model_legacy_transport_routing() -> None:
+def test_resolve_endpoint_ignores_direct_model_legacy_transport_routing() -> None:
     model = Model(
         id="dynamic",
         provider="openrouter",
@@ -1828,13 +1821,8 @@ def test_resolve_endpoint_strips_direct_model_legacy_transport_routing() -> None
         registry=ModelRegistry.from_providers({}),
     )
 
-    assert resolved.transport == EndpointTransport(kind="httpx")
-    assert resolved.routing == EndpointRouting(
-        request_overrides={
-            "openrouter": {"only": ["anthropic"]},
-            "vercelGateway": {"order": ["openai", "anthropic"]},
-        }
-    )
+    assert resolved.transport == EndpointTransport()
+    assert resolved.routing == EndpointRouting()
     assert "providerTransport" not in resolved.adapter_compat
     assert "openRouterRouting" not in resolved.adapter_compat
     assert "vercelGatewayRouting" not in resolved.adapter_compat
@@ -1940,7 +1928,6 @@ def test_resolve_request_preserves_direct_overrides_for_catalog_model_id() -> No
     assert resolved.routing == EndpointRouting(
         request_overrides={
             "openrouter": {"only": ["endpoint"], "order": ["caller"]},
-            "vercelGateway": {"order": ["openai", "anthropic"]},
         }
     )
     assert resolved.capabilities == model.capabilities

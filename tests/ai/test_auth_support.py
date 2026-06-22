@@ -56,3 +56,22 @@ def test_oauth_refresh_failure_does_not_fall_back_to_api_key() -> None:
             resolve_auth_for_model(model, options=options)
     finally:
         registry.reset_oauth_providers()
+
+
+def test_empty_oauth_credentials_do_not_block_api_key_fallback() -> None:
+    model = SimpleNamespace(
+        provider_id="demo",
+        endpoint_id="demo",
+        id="model-a",
+        auth=AuthConfig(api_key_env="DEMO_API_KEY"),
+    )
+    options = SimpleNamespace(
+        oauth_credentials={
+            "demo": OAuthCredentials(provider="demo", access_token="  ")
+        },
+        api_key="fallback-key",
+    )
+
+    view = resolve_auth_for_model(model, options=options)
+
+    assert view.headers["Authorization"] == "Bearer fallback-key"

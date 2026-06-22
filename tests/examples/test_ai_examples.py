@@ -575,6 +575,10 @@ def test_advanced_inspect_endpoint_contract_handles_templated_base_url(
                             "openai-completions": {
                                 "api": "openai-completions",
                                 "baseUrl": "https://example.invalid/{ACCOUNT_ID}/v1",
+                                "dialect": {
+                                    "maxOutputTokensField": "max_completion_tokens",
+                                    "reasoning": {"wireFormat": "openai"},
+                                },
                                 "models": {
                                     "template-model": {
                                         "capabilities": {
@@ -705,7 +709,7 @@ def test_advanced_capability_failure_reports_public_error(capsys) -> None:
     summary = asyncio.run(module.inspect_capability_failure())
 
     assert summary == {
-        "errorType": "ValueError",
+        "errorType": "UnsupportedCapabilityError",
         "message": "Model 'capability-demo' does not support tool use",
     }
 
@@ -751,7 +755,7 @@ def test_advanced_trace_events_reports_schema_and_redaction(capsys) -> None:
         "redaction": {
             "authorization": "<redacted>",
             "apiKey": "<redacted>",
-            "refreshToken": "<redacted>",
+            "oauth": "<redacted>",
         },
         "retry": {
             "attempt": 2,

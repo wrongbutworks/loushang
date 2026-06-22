@@ -46,10 +46,10 @@
      Partial:
      - `RawAssembler` no longer forces an empty leading text part for thinking-only or toolcall-only streams.
      - `content_index` for thinking/toolcall events is now derived from real assembled content shape instead of fixed slot assumptions like `thinking == 1`.
-  6. Reduce magic-string compatibility/config behavior in `models.json` and provider implementations.
+  6. Reduce magic-string compatibility/config behavior in the curated model catalog and provider implementations.
   7. Done: narrow the public API surface so advanced/internal helpers are not exported as if they were primary entry points.
   8. Strengthen typed boundaries for options, protocol objects, and provider adapter inputs.
-  9. Evaluate whether `models.json` should remain a package-internal fact source for pricing/defaults/compat metadata or be split by responsibility over time.
+  9. Evaluate whether `models.curated.v2.json` should remain a package-internal fact source for pricing/defaults/compat metadata or be split by responsibility over time.
 
 - Initialize the default API provider registry more explicitly.
   Right now the top-level provider registry starts empty, so callers must invoke

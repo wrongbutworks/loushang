@@ -5,8 +5,8 @@ import json
 from collections.abc import AsyncIterator, Mapping, Sequence
 from contextlib import suppress
 from typing import Any
-from urllib.parse import urlsplit
 
+from loushang.ai.errors import UnsupportedCapabilityError
 from loushang.ai.model.domain import (
     EndpointProtocolFeatures,
     EndpointWireDialect,
@@ -98,7 +98,7 @@ class OpenAICompletionsProvider:
         )
 
         default_headers = sdk_default_headers(headers)
-        if getattr(model, "provider_id", "") == "github-copilot":
+        if _uses_copilot_dynamic_headers(resolved):
             copilot_headers = build_copilot_dynamic_headers(
                 normalized.get("messages", [])
             )
@@ -108,6 +108,13 @@ class OpenAICompletionsProvider:
         ) or "short"
         session_id = (
             getattr(options, "session_id", None) if options is not None else None
+        )
+        _validate_cache_session_options(
+            model,
+            resolved,
+            protocol=protocol,
+            cache_retention=cache_retention,
+            session_id=session_id,
         )
         if (
             cache_retention != "none"
@@ -198,8 +205,6 @@ class OpenAICompletionsProvider:
         )
         _apply_provider_routing(
             params,
-            provider_id=resolved.provider,
-            base_url=effective_base_url,
             request_overrides=getattr(
                 getattr(resolved, "routing", None),
                 "request_overrides",
@@ -558,6 +563,44 @@ def _apply_prompt_cache_params(
         params["prompt_cache_retention"] = "24h"
 
 
+def _validate_cache_session_options(
+    model: object,
+    resolved: object,
+    *,
+    protocol: EndpointProtocolFeatures,
+    cache_retention: str | None,
+    session_id: str | None,
+) -> None:
+    if cache_retention == "long" and not _is_supported(
+        protocol.cache.long_retention
+    ):
+        raise UnsupportedCapabilityError(
+            f"Model {getattr(model, 'id', '<unknown>')!r} does not support long cache retention",
+            source=getattr(resolved, "api", None),
+            provider=getattr(resolved, "provider", None),
+            endpoint=getattr(resolved, "endpoint", None),
+            model=getattr(model, "id", None),
+            details={"capability": "cache_long_retention"},
+        )
+    if (
+        cache_retention != "none"
+        and isinstance(session_id, str)
+        and session_id
+        and not (
+            _is_supported(protocol.cache.prompt_key)
+            or _is_supported(protocol.session.affinity_headers)
+        )
+    ):
+        raise UnsupportedCapabilityError(
+            f"Model {getattr(model, 'id', '<unknown>')!r} does not support session id",
+            source=getattr(resolved, "api", None),
+            provider=getattr(resolved, "provider", None),
+            endpoint=getattr(resolved, "endpoint", None),
+            model=getattr(model, "id", None),
+            details={"capability": "session_id"},
+        )
+
+
 def _apply_reasoning_params(
     params: dict[str, Any],
     extra_body: dict[str, Any],
@@ -646,12 +689,10 @@ def _apply_reasoning_effort_if_supported(
 def _apply_provider_routing(
     params: dict[str, Any],
     *,
-    provider_id: str,
-    base_url: str | None,
     request_overrides: Mapping[str, Mapping[str, object]] | None,
 ) -> None:
     overrides = request_overrides or {}
-    namespace = _active_routing_namespace(provider_id, base_url, overrides)
+    namespace = _active_routing_namespace(overrides)
     if namespace is None:
         return
     openrouter_routing = overrides.get("openrouter")
@@ -671,19 +712,8 @@ def _apply_provider_routing(
 
 
 def _active_routing_namespace(
-    provider_id: str,
-    base_url: str | None,
     request_overrides: Mapping[str, Mapping[str, object]],
 ) -> str | None:
-    if provider_id == "openrouter":
-        return "openrouter" if request_overrides.get("openrouter") else None
-    if provider_id == "vercel-ai-gateway":
-        return "vercelGateway" if request_overrides.get("vercelGateway") else None
-    hostname = _base_url_hostname(base_url)
-    if hostname == "openrouter.ai" and request_overrides.get("openrouter"):
-        return "openrouter"
-    if hostname == "ai-gateway.vercel.sh" and request_overrides.get("vercelGateway"):
-        return "vercelGateway"
     present = [
         namespace
         for namespace in ("openrouter", "vercelGateway")
@@ -691,14 +721,16 @@ def _active_routing_namespace(
     ]
     if len(present) == 1:
         return present[0]
+    if len(present) > 1:
+        raise ValueError(
+            "Ambiguous provider routing requestOverrides: choose one namespace"
+        )
     return None
 
 
-def _base_url_hostname(base_url: str | None) -> str | None:
-    if not isinstance(base_url, str) or not base_url.strip():
-        return None
-    parsed = urlsplit(base_url if "://" in base_url else f"https://{base_url}")
-    return parsed.hostname
+def _uses_copilot_dynamic_headers(resolved: object) -> bool:
+    transport = getattr(resolved, "transport", None)
+    return getattr(transport, "kind", None) == "github-copilot"
 
 
 def _resolve_timeout_seconds(options, resolved) -> float | int | None:

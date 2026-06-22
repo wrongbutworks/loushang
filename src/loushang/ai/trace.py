@@ -19,10 +19,16 @@ _SENSITIVE_KEYS = {
     "authorization",
     "bearertoken",
     "clientsecret",
+    "credential",
+    "credentials",
     "idtoken",
+    "oauth",
+    "oauthcredentials",
     "password",
     "refreshtoken",
     "secret",
+    "token",
+    "tokens",
     "xapikey",
 }
 

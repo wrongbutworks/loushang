@@ -5,7 +5,7 @@ from __future__ import annotations
 import asyncio
 import json
 
-from loushang.ai import Model, Tool, UserMessage, stream
+from loushang.ai import AIError, Model, Tool, UserMessage, stream
 from loushang.ai.model import Capabilities
 
 
@@ -29,7 +29,7 @@ async def inspect_capability_failure() -> dict[str, object]:
 
     try:
         await stream(model, context)
-    except ValueError as error:
+    except AIError as error:
         return {
             "errorType": type(error).__name__,
             "message": str(error),

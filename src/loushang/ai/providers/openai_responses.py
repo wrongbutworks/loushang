@@ -6,6 +6,7 @@ from collections.abc import AsyncIterator
 from contextlib import suppress
 from typing import Any
 
+from loushang.ai.errors import UnsupportedCapabilityError
 from loushang.ai.model.domain import (
     EndpointProtocolFeatures,
     EndpointWireDialect,
@@ -59,6 +60,45 @@ def _apply_prompt_cache_params(
         params["prompt_cache_key"] = session_id
     if cache_retention == "long" and _is_supported(protocol.cache.long_retention):
         params["prompt_cache_retention"] = "24h"
+
+
+def _validate_cache_session_options(
+    model: object,
+    resolved: object,
+    *,
+    protocol: EndpointProtocolFeatures,
+    cache_retention: str | None,
+    session_id: str | None,
+) -> None:
+    if cache_retention == "long" and not _is_supported(
+        protocol.cache.long_retention
+    ):
+        raise UnsupportedCapabilityError(
+            f"Model {getattr(model, 'id', '<unknown>')!r} does not support long cache retention",
+            source=getattr(resolved, "api", None),
+            provider=getattr(resolved, "provider", None),
+            endpoint=getattr(resolved, "endpoint", None),
+            model=getattr(model, "id", None),
+            details={"capability": "cache_long_retention"},
+        )
+    if (
+        (cache_retention or "short") != "none"
+        and isinstance(session_id, str)
+        and session_id
+        and not (
+            _is_supported(protocol.cache.prompt_key)
+            or _is_supported(protocol.session.id_header)
+            or _is_supported(protocol.session.affinity_headers)
+        )
+    ):
+        raise UnsupportedCapabilityError(
+            f"Model {getattr(model, 'id', '<unknown>')!r} does not support session id",
+            source=getattr(resolved, "api", None),
+            provider=getattr(resolved, "provider", None),
+            endpoint=getattr(resolved, "endpoint", None),
+            model=getattr(model, "id", None),
+            details={"capability": "session_id"},
+        )
 
 
 class OpenAIResponsesProvider:
@@ -127,7 +167,7 @@ class OpenAIResponsesProvider:
         )
 
         default_headers = sdk_default_headers(headers)
-        if getattr(model, "provider_id", "") == "github-copilot":
+        if _uses_copilot_dynamic_headers(resolved):
             default_headers.update(
                 build_copilot_dynamic_headers(normalized.get("messages", []))
             )
@@ -150,6 +190,13 @@ class OpenAIResponsesProvider:
         cache_retention = _resolve_cache_retention(options)
         session_id = (
             getattr(options, "session_id", None) if options is not None else None
+        )
+        _validate_cache_session_options(
+            model,
+            resolved,
+            protocol=protocol,
+            cache_retention=cache_retention,
+            session_id=session_id,
         )
         if (
             (cache_retention or "short") != "none"
@@ -286,6 +333,11 @@ def _request_dialect(request: object) -> EndpointWireDialect:
     if isinstance(dialect, EndpointWireDialect):
         return dialect
     return EndpointWireDialect()
+
+
+def _uses_copilot_dynamic_headers(resolved: object) -> bool:
+    transport = getattr(resolved, "transport", None)
+    return getattr(transport, "kind", None) == "github-copilot"
 
 
 def _is_supported(status: SupportStatus) -> bool:

@@ -21,15 +21,22 @@ than another broad manual pass.
 
 ## Validation After Final Fixes
 
-- `make check-ai` passed on 2026-06-22 with 696 passed and 9 live tests
+- `make check-ai` passed on 2026-06-22 with 708 passed and 9 live tests
   deselected.
-- The same run reported total coverage 83.62%, AI runtime-core coverage 90.10%,
+- The same run reported total coverage 83.55%, AI runtime-core coverage 90.00%,
   provider-adapter coverage 85.84%, and production-adapter-module coverage
   85.39%.
-- Targeted non-AI validation also covered proxy cancellation:
-  `uv run pytest tests/agent/test_proxy.py::test_stream_proxy_consumer_close_cancels_proxy_task -q`.
-- The full offline suite and package build passed earlier on 2026-06-22. They
-  were not rerun after the final P1 fix package to keep the closeout focused.
+- Targeted and broad non-AI validation covered proxy, auth, and advanced
+  examples:
+  `uv run ruff check examples/ai/advanced src/loushang/agent/proxy.py tests/agent/test_proxy.py tests/auth tests/examples/test_ai_examples.py`
+  and `env -u <provider keys> UV_CACHE_DIR=/tmp/uv-cache uv run pytest tests -m "not live" -q`.
+- The full offline suite passed with 4284 passed and 9 live tests deselected.
+- `UV_CACHE_DIR=/tmp/uv-cache uv build` passed and produced both sdist and
+  wheel artifacts.
+- Live smoke passed for DashScope Responses stream/tools and DeepSeek
+  OpenAI-compatible complete/stream examples. Moonshot OpenAI complete/stream
+  were attempted but skipped because the provider rejected the configured
+  credential.
 
 ## P0 Findings
 
@@ -56,22 +63,33 @@ None found.
   socket instead of returning it to the cache.
 - Stable `CallOptions` no longer exposes a generic `provider_options` escape
   hatch.
+- Runtime provider/base-url compatibility guessing was removed from shared
+  compat resolution; runtime request resolution now consumes typed
+  protocol/dialect/transport/routing facts.
+- Schema v2 custom OpenAI-compatible endpoints with a concrete `baseUrl` or
+  `baseUrlEnv` now fail at loader time unless they declare `protocol` or
+  `dialect`.
+- Explicit unsupported `cache_retention` and `session_id` requests now fail with
+  typed `UnsupportedCapabilityError` instead of being silently dropped.
+- Ambiguous provider routing request overrides now fail instead of being routed
+  by provider or base-url identity.
+- Trace redaction now covers token, OAuth, credential, and credentials keys while
+  preserving non-secret usage fields such as `total_tokens`.
+- Empty OAuth access-token entries no longer block fallback credentials, and
+  explicit OAuth credentials no longer persist by default.
+- `EventStream.result()` now waits for producer cleanup after terminal events.
+- `stream_proxy()` abort signals now cancel blocked SSE reads and emit an
+  aborted terminal error.
 
-## Remaining P1 Boundary Debt
+## P1 Closure
 
-The branch should not claim full architecture-boundary completion yet. Runtime
-compatibility code still contains provider/base-url heuristics and
-provider-specific branches that need either a narrower endpoint-contract owner or
-an explicit ADR accepting the compatibility layer.
-
-This is intentionally tracked instead of being forced into the final fix package;
-it is broader than the low-risk closeout work and would need its own focused
-review.
+No P0/P1 findings remain after the final fix package and local review. The only
+remaining live-provider caveat is evidence scope: Tencent Hunyuan, Z.AI,
+MiniMax, Volcano Ark, Baidu Qianfan, and StepFun were not live-smoked on this
+machine because their matching environment variables were not present.
 
 ## P2 Items Tracked
 
-- Explicit OAuth credentials still persist by default unless callers override
-  the option.
 - Credential file locking remains POSIX-oriented.
 - Provider-side tool-result repair is narrower than the public normalization
   repair path.
@@ -84,7 +102,6 @@ review.
 
 ## Recommendation
 
-Local gates are closed for this final-review fix package. Do not tag or announce
-the branch as fully compliant with the execution-plan architecture checklist
-until the remaining provider/base-url compatibility boundary is either removed or
-explicitly accepted by design.
+Local gates are closed for this final-review fix package. The branch can be
+pushed after the final local commit, but release notes should not claim live
+provider proof beyond the providers listed in the scorecard.

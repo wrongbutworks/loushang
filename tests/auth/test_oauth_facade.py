@@ -248,6 +248,35 @@ def test_oauth_refresh_explicit_credentials_without_persist_does_not_touch_stora
     assert result.access_token == "refreshed-token"
 
 
+def test_oauth_refresh_explicit_credentials_default_does_not_touch_storage(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        facade,
+        "load_credential_store",
+        lambda: pytest.fail("explicit refresh should not load storage"),
+    )
+    monkeypatch.setattr(
+        facade,
+        "update_credential_store",
+        lambda _mutator: pytest.fail("explicit refresh should not update storage"),
+    )
+
+    result = asyncio.run(
+        oauth_refresh(
+            "demo",
+            OAuthCredentials(
+                provider="demo",
+                access_token="old-token",
+                refresh_token="refresh-token",
+            ),
+            registry=_registry(),
+        )
+    )
+
+    assert result.access_token == "refreshed-token"
+
+
 def test_resolve_oauth_api_key_uses_explicit_empty_credentials_map(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -258,6 +287,49 @@ def test_resolve_oauth_api_key_uses_explicit_empty_credentials_map(
     )
 
     assert resolve_oauth_api_key("demo", credentials={}) is None
+
+
+def test_resolve_oauth_api_key_explicit_credentials_default_does_not_persist(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        facade,
+        "load_credential_store",
+        lambda: pytest.fail("explicit credentials should not load storage"),
+    )
+    monkeypatch.setattr(
+        facade,
+        "save_credentials",
+        lambda _stored: pytest.fail("explicit credentials should not persist by default"),
+    )
+
+    result = resolve_oauth_api_key(
+        "demo",
+        credentials={
+            "demo": OAuthCredentials(provider="demo", access_token="explicit-token")
+        },
+    )
+
+    assert result is not None
+    assert result["apiKey"] == "explicit-token"
+
+
+def test_resolve_oauth_api_key_explicit_credentials_can_persist_when_requested(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    save_calls: list[dict[str, OAuthCredentials]] = []
+    monkeypatch.setattr(facade, "save_credentials", lambda stored: save_calls.append(stored))
+
+    result = resolve_oauth_api_key(
+        "demo",
+        credentials={
+            "demo": OAuthCredentials(provider="demo", access_token="explicit-token")
+        },
+        persist_refresh=True,
+    )
+
+    assert result is not None
+    assert [saved["demo"].access_token for saved in save_calls] == ["explicit-token"]
 
 
 def test_resolve_oauth_api_key_prefers_model_scope(

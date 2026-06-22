@@ -313,6 +313,57 @@ def test_stream_proxy_consumer_close_cancels_proxy_task() -> None:
     asyncio.run(scenario())
 
 
+def test_stream_proxy_signal_abort_cancels_blocked_sse_read() -> None:
+    from loushang.agent.proxy import stream_proxy
+
+    class _Signal:
+        def __init__(self) -> None:
+            self.aborted = False
+            self._listeners = []
+
+        def add_event_listener(self, event: str, listener) -> None:
+            assert event == "abort"
+            self._listeners.append(listener)
+
+        def remove_event_listener(self, event: str, listener) -> None:
+            assert event == "abort"
+            self._listeners.remove(listener)
+
+        def abort(self) -> None:
+            self.aborted = True
+            for listener in list(self._listeners):
+                listener()
+
+    context = Context(
+        system_prompt="system",
+        messages=[UserMessage(role="user", content="hi", timestamp=0.0)],
+    )
+    signal = _Signal()
+    options = ProxyStreamOptions(
+        auth_token="secret",
+        proxy_url="https://proxy.example.com",
+        signal=signal,
+    )
+    response = _BlockingResponse()
+    client = _FakeAsyncClient(response=response)
+
+    async def scenario() -> None:
+        stream = stream_proxy(_model(), context, options, client=client)
+        iterator = stream.__aiter__()
+        assert (await iterator.__anext__())["type"] == "start"
+
+        signal.abort()
+        events = [event async for event in iterator]
+
+        assert [event["type"] for event in events] == ["error"]
+        assert events[0]["reason"] == "aborted"
+        assert events[0]["error"].stop_reason == "aborted"
+        assert response.closed.is_set()
+        assert signal._listeners == []
+
+    asyncio.run(scenario())
+
+
 class _FakeResponse:
     def __init__(
         self,

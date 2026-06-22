@@ -8,7 +8,13 @@ from types import ModuleType, SimpleNamespace
 import pytest
 
 from loushang.ai.advanced import OpenAICompletionsOptions, OpenAIResponsesOptions
-from loushang.ai.api.streaming import complete, stream, stream_simple
+from loushang.ai.api.streaming import (
+    complete,
+    complete_simple,
+    complete_structured,
+    stream,
+    stream_simple,
+)
 from loushang.ai.api_registry import ApiProviderRegistry
 from loushang.ai.context import (
     NORMALIZED_CONTEXT_MARKER,
@@ -520,6 +526,37 @@ def test_complete_does_not_require_stream_capability(
     assert result.provider == "faux"
     assert result.model == "test-model"
     _assert_normalized_provider_context(provider.context)
+
+
+def test_complete_simple_returns_message(monkeypatch: pytest.MonkeyPatch) -> None:
+    _patch_resolved_request(
+        monkeypatch,
+        capabilities=Capabilities(input=("text",), stream=False),
+    )
+    provider = _Provider()
+    registry = _Registry(provider)
+
+    result = asyncio.run(
+        complete_simple(
+            _Model(),
+            {"messages": [UserMessage(role="user", content="hello", timestamp=0.0)]},
+            SimpleCallOptions(max_output_tokens=64),
+            registry=registry,
+        )
+    )
+
+    assert result.stop_reason == "stop"
+    assert provider.options.max_output_tokens == 64
+
+
+def test_complete_structured_requires_output_options() -> None:
+    with pytest.raises(ValueError, match="requires StructuredOutputOptions"):
+        asyncio.run(
+            complete_structured(
+                _Model(),
+                {"messages": [UserMessage(role="user", content="hello", timestamp=0.0)]},
+            )
+        )
 
 
 def test_stream_canonicalizes_raw_dict_context_before_provider(
@@ -1146,7 +1183,10 @@ def test_stream_public_path_uses_openai_responses_typed_request(
         protocol=EndpointProtocolFeatures.from_raw(
             {
                 "roles": {"developer": "unsupported"},
-                "cache": {"longRetention": "unsupported"},
+                "cache": {
+                    "longRetention": "unsupported",
+                    "promptKey": "supported",
+                },
                 "session": {"idHeader": "unsupported"},
             }
         ),
@@ -1215,7 +1255,7 @@ def test_stream_public_path_uses_openai_responses_typed_request(
                 ],
             },
             OpenAIResponsesOptions(
-                cache_retention="long",
+                cache_retention="short",
                 session_id="session-responses",
             ),
             registry=registry,
@@ -1250,6 +1290,161 @@ def test_stream_public_path_uses_openai_responses_typed_request(
     )
     assert "prompt_cache_retention" not in _FakeAsyncOpenAI.last_create_kwargs
     assert "session_id" not in _FakeAsyncOpenAI.last_init_kwargs["default_headers"]
+
+
+def test_stream_public_path_rejects_unsupported_long_cache_retention(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _fake_openai_module(monkeypatch)
+    registry = ApiProviderRegistry()
+    registry.register_api_provider(OpenAIResponsesProvider())
+    model = SimpleNamespace(
+        id="gpt-test",
+        provider_id="custom",
+        endpoint_id="openai-responses",
+        input=("text",),
+        pricing=None,
+    )
+    request = ResolvedRequest(
+        provider="custom",
+        endpoint="openai-responses",
+        api="openai-responses",
+        base_url="https://api.openai.test/v1",
+        headers={"Authorization": "Bearer test-key"},
+        adapter_protocol=EndpointProtocolFeatures.from_raw(
+            {
+                "cache": {
+                    "longRetention": "unsupported",
+                    "promptKey": "supported",
+                }
+            }
+        ),
+        capabilities=Capabilities(input=("text",), stream=True, max_tokens=4096),
+    )
+
+    def _resolve_request(_model, options=None):
+        return request
+
+    monkeypatch.setattr(
+        "loushang.ai.api.streaming.resolve_request_for_model",
+        _resolve_request,
+    )
+
+    async def _run() -> None:
+        await stream(
+            model,
+            {"messages": [UserMessage(role="user", content="hello", timestamp=0.0)]},
+            OpenAIResponsesOptions(cache_retention="long"),
+            registry=registry,
+        )
+
+    with pytest.raises(UnsupportedCapabilityError, match="long cache retention"):
+        asyncio.run(_run())
+
+
+def test_stream_public_path_rejects_unsupported_session_id(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    registry = ApiProviderRegistry()
+    model = SimpleNamespace(
+        id="gpt-test",
+        provider_id="custom",
+        endpoint_id="openai-completions",
+        input=("text",),
+        pricing=None,
+    )
+    request = ResolvedRequest(
+        provider="custom",
+        endpoint="openai-completions",
+        api="openai-completions",
+        base_url="https://api.openai.test/v1",
+        headers={"Authorization": "Bearer test-key"},
+        adapter_protocol=EndpointProtocolFeatures(),
+        capabilities=Capabilities(input=("text",), stream=True, max_tokens=4096),
+    )
+
+    def _resolve_request(_model, options=None):
+        return request
+
+    monkeypatch.setattr(
+        "loushang.ai.api.streaming.resolve_request_for_model",
+        _resolve_request,
+    )
+
+    async def _run() -> None:
+        await stream(
+            model,
+            {"messages": [UserMessage(role="user", content="hello", timestamp=0.0)]},
+            OpenAICompletionsOptions(session_id="session-public"),
+            registry=registry,
+        )
+
+    with pytest.raises(UnsupportedCapabilityError, match="session id"):
+        asyncio.run(_run())
+
+
+def test_stream_public_path_uses_adapter_protocol_override_for_cache_validation(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _fake_openai_module(monkeypatch)
+    registry = ApiProviderRegistry()
+    registry.register_api_provider(OpenAIResponsesProvider())
+    model = SimpleNamespace(
+        id="gpt-test",
+        provider_id="custom",
+        endpoint_id="openai-responses",
+        input=("text",),
+        pricing=None,
+    )
+    request = ResolvedRequest(
+        provider="custom",
+        endpoint="openai-responses",
+        api="openai-responses",
+        base_url="https://api.openai.test/v1",
+        headers={"Authorization": "Bearer test-key"},
+        protocol=EndpointProtocolFeatures.from_raw(
+            {
+                "cache": {
+                    "longRetention": "unsupported",
+                    "promptKey": "unsupported",
+                }
+            }
+        ),
+        adapter_protocol=EndpointProtocolFeatures.from_raw(
+            {
+                "cache": {
+                    "longRetention": "supported",
+                    "promptKey": "supported",
+                }
+            }
+        ),
+        capabilities=Capabilities(input=("text",), stream=True, max_tokens=4096),
+    )
+
+    def _resolve_request(_model, options=None):
+        return request
+
+    monkeypatch.setattr(
+        "loushang.ai.api.streaming.resolve_request_for_model",
+        _resolve_request,
+    )
+
+    async def _run() -> None:
+        event_stream = await stream(
+            model,
+            {"messages": [UserMessage(role="user", content="hello", timestamp=0.0)]},
+            OpenAIResponsesOptions(
+                cache_retention="long",
+                session_id="session-override",
+            ),
+            registry=registry,
+        )
+        await event_stream.result()
+
+    asyncio.run(_run())
+
+    assert _FakeAsyncOpenAI.last_create_kwargs["prompt_cache_key"] == "session-override"
+    assert _FakeAsyncOpenAI.last_create_kwargs["prompt_cache_retention"] == "24h"
 
 
 def _patch_resolved_request(

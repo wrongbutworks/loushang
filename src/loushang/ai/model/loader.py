@@ -204,6 +204,12 @@ def validate_model_registry_raw(raw: dict[str, Any]) -> None:
                 f"{endpoint_path}.dialect",
                 schema_version=schema_version,
             )
+            _validate_openai_compatible_endpoint_contract(
+                endpoint,
+                endpoint_path,
+                provider_id=provider_id,
+                schema_version=schema_version,
+            )
             _validate_transport_mapping(
                 endpoint.get("transport"),
                 f"{endpoint_path}.transport",
@@ -637,7 +643,43 @@ def _validate_typed_schema_version(
                             "models registry field requires schemaVersion 2 or newer: "
                             f"providers.{provider_id}.endpoints."
                             f"{endpoint_key}.models.{model_id}.{field}"
-                        )
+            )
+
+
+def _validate_openai_compatible_endpoint_contract(
+    endpoint: dict[str, Any],
+    path: str,
+    *,
+    provider_id: str,
+    schema_version: int,
+) -> None:
+    if schema_version < 2:
+        return
+    if provider_id == "openai" or endpoint.get("api") != "openai-completions":
+        return
+    models = endpoint.get("models")
+    if not isinstance(models, dict) or not models:
+        return
+    if not _non_empty_str(endpoint.get("baseUrl")) and not _non_empty_str(
+        endpoint.get("baseUrlEnv")
+    ):
+        return
+    if _non_empty_mapping(endpoint.get("protocol")) or _non_empty_mapping(
+        endpoint.get("dialect")
+    ):
+        return
+    raise ValueError(
+        "schemaVersion 2 openai-completions endpoints for non-openai providers "
+        f"must declare protocol or dialect: {path}"
+    )
+
+
+def _non_empty_mapping(value: object) -> bool:
+    return isinstance(value, dict) and bool(value)
+
+
+def _non_empty_str(value: object) -> bool:
+    return isinstance(value, str) and bool(value.strip())
 
 
 def _as_str_mapping(value: object, path: str) -> dict[str, str]:

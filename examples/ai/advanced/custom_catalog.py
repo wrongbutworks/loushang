@@ -22,6 +22,10 @@ CUSTOM_CATALOG: dict[str, Any] = {
                 "openai-completions": {
                     "api": "openai-completions",
                     "baseUrl": "https://api.example.invalid/v1",
+                    "dialect": {
+                        "maxOutputTokensField": "max_completion_tokens",
+                        "reasoning": {"wireFormat": "openai"},
+                    },
                     "models": {
                         "public-model": {
                             "upstreamId": "vendor/public-model:latest",

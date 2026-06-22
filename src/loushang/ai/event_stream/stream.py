@@ -111,12 +111,15 @@ class EventStream(Generic[TEvent, TResult]):
 
     async def result(self) -> TResult:
         if self._final_result is not None:
+            await self._await_producer_completion()
             return self._final_result
 
         async for _ in self:
             if self._final_result is not None:
+                await self._await_producer_completion()
                 return self._final_result
 
+        await self._await_producer_completion()
         if self._final_result is None:
             if self._producer_error is not None:
                 raise RuntimeError(
@@ -124,6 +127,17 @@ class EventStream(Generic[TEvent, TResult]):
                 ) from self._producer_error
             raise RuntimeError("Event stream finished without a final result")
         return self._final_result
+
+    async def _await_producer_completion(self) -> None:
+        task = self._producer_task
+        if task is None or task is asyncio.current_task():
+            return
+        try:
+            await task
+        except asyncio.CancelledError:
+            return
+        except Exception as exc:
+            self._producer_error = exc
 
     def _finish_from_task(self, task: asyncio.Task[object]) -> None:
         if self._ended:

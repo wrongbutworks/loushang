@@ -52,6 +52,9 @@ def test_emit_trace_redacts_sensitive_options_callback_fields() -> None:
             },
             "apiKey": "secret-key",
             "access_token": "secret-token",
+            "token": "secret-token",
+            "oauth": {"accessToken": "secret-token"},
+            "credentials": {"apiKey": "secret-key"},
             "total_tokens": 42,
         },
     )
@@ -66,6 +69,9 @@ def test_emit_trace_redacts_sensitive_options_callback_fields() -> None:
     }
     assert data["apiKey"] == "<redacted>"
     assert data["access_token"] == "<redacted>"
+    assert data["token"] == "<redacted>"
+    assert data["oauth"] == "<redacted>"
+    assert data["credentials"] == "<redacted>"
     assert data["total_tokens"] == 42
 
 

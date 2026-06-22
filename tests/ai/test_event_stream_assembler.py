@@ -304,6 +304,34 @@ def test_event_stream_result_preserves_producer_exception() -> None:
         raise AssertionError("expected producer exception")
 
 
+def test_event_stream_result_waits_for_producer_cleanup_after_terminal() -> None:
+    async def scenario() -> None:
+        stream = AssistantMessageEventStream()
+        message = _empty_message()
+        cleanup_started = asyncio.Event()
+        cleanup_can_finish = asyncio.Event()
+        cleanup_done = asyncio.Event()
+
+        async def producer() -> None:
+            await stream.emit({"type": "done", "reason": "stop", "message": message})
+            cleanup_started.set()
+            await cleanup_can_finish.wait()
+            cleanup_done.set()
+
+        stream.attach_task(asyncio.create_task(producer()))
+        result_task = asyncio.create_task(stream.result())
+
+        await asyncio.wait_for(cleanup_started.wait(), timeout=1)
+        await asyncio.sleep(0)
+        assert not result_task.done()
+
+        cleanup_can_finish.set()
+        assert await asyncio.wait_for(result_task, timeout=1) is message
+        assert cleanup_done.is_set()
+
+    asyncio.run(scenario())
+
+
 def test_raw_assembler_preserves_http_error_code() -> None:
     stream = AssistantMessageEventStream()
     assembler = RawAssembler(

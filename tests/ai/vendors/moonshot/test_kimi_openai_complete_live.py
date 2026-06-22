@@ -25,6 +25,7 @@ from loushang.ai import (
     get_model,
 )
 from loushang.ai.advanced import OpenAICompletionsOptions
+from loushang.ai.errors import AIAuthenticationError
 
 # 用户可直接修改的配置。
 # `API_KEY` 是显式认证入口；环境变量只是可选读取来源，不会在示例中被回写。
@@ -102,7 +103,10 @@ async def _main() -> None:
 
 
 def test_kimi_openai_complete_live() -> None:
-    asyncio.run(_main())
+    try:
+        asyncio.run(_main())
+    except AIAuthenticationError as exc:
+        pytest.skip(f"Moonshot credentials rejected: {exc}")
 
 
 if __name__ == "__main__":

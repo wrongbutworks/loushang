@@ -190,8 +190,6 @@ def _normalize_request_for_api(
             _merge_wire_dialect(request.dialect, request.adapter_dialect),
         )
         projection_compat = resolve_anthropic_messages_compat(
-            provider_id=request.provider,
-            base_url=request.base_url,
             raw=typed_projection_compat,
         )
     else:
@@ -395,9 +393,6 @@ def resolve_request_for_model(
     _validate_adapter_compat_raw(raw_compat)
     adapter_compat = _resolve_compat_for_api(
         api=resolved_endpoint.api,
-        provider_id=resolved_endpoint.provider,
-        model_id=model.id,
-        base_url=base_url,
         raw=raw_compat,
     )
     auth_view = resolve_auth_for_model(
@@ -826,21 +821,12 @@ def _model_upstream_id(model: Model) -> str | None:
     value = getattr(model, "upstream_id", None)
     if isinstance(value, str) and value.strip():
         return value
-    compat = getattr(model, "compat", {})
-    legacy_value = (
-        compat.get(UPSTREAM_MODEL_ID) if isinstance(compat, Mapping) else None
-    )
-    return (
-        legacy_value if isinstance(legacy_value, str) and legacy_value.strip() else None
-    )
+    return None
 
 
 def _model_transport_raw(model: Model, *, own_only: bool) -> dict[str, object]:
-    raw = _deep_merge_raw_mapping(
-        _transport_raw_from_legacy_compat(
-            getattr(model, "_transport_legacy_raw", None)
-        ),
-        _transport_raw_from_legacy_compat(getattr(model, "compat", {})),
+    raw = _transport_raw_from_legacy_compat(
+        getattr(model, "_transport_legacy_raw", None)
     )
     own_raw = getattr(model, "_transport_own_raw", None)
     if own_only and isinstance(own_raw, Mapping):
@@ -856,9 +842,8 @@ def _model_transport_raw(model: Model, *, own_only: bool) -> dict[str, object]:
 
 
 def _model_routing_raw(model: Model, *, own_only: bool) -> dict[str, object]:
-    raw = _deep_merge_raw_mapping(
-        _routing_raw_from_legacy_compat(getattr(model, "_routing_legacy_raw", None)),
-        _routing_raw_from_legacy_compat(getattr(model, "compat", {})),
+    raw = _routing_raw_from_legacy_compat(
+        getattr(model, "_routing_legacy_raw", None)
     )
     own_raw = getattr(model, "_routing_own_raw", None)
     if own_only and isinstance(own_raw, Mapping):
@@ -1013,26 +998,14 @@ def _expand_env_template(value: str, env: dict[str, str]) -> str:
 def _resolve_compat_for_api(
     *,
     api: str,
-    provider_id: str,
-    model_id: str,
-    base_url: str | None,
     raw: dict[str, object],
 ) -> dict[str, object]:
     if api == "openai-completions":
-        return resolve_openai_completions_compat(
-            provider_id=provider_id,
-            model_id=model_id,
-            base_url=base_url,
-            raw=raw,
-        )
+        return resolve_openai_completions_compat(raw=raw)
     if api == "openai-responses":
         return resolve_openai_responses_compat(raw)
     if api == "anthropic-messages":
-        return resolve_anthropic_messages_compat(
-            provider_id=provider_id,
-            base_url=base_url,
-            raw=raw,
-        )
+        return resolve_anthropic_messages_compat(raw=raw)
     return raw
 
 

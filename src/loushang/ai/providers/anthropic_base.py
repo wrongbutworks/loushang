@@ -59,11 +59,7 @@ class AnthropicProviderBase:
         retention = cls.resolve_cache_retention(cache_retention)
         if retention == "none":
             return {"retention": retention, "cacheControl": None}
-        supports_long = (
-            supports_long_cache_retention
-            if supports_long_cache_retention is not None
-            else isinstance(base_url, str) and "api.anthropic.com" in base_url
-        )
+        supports_long = bool(supports_long_cache_retention)
         ttl = "1h" if retention == "long" and supports_long else None
         cache_control = {"type": "ephemeral", **({"ttl": ttl} if ttl else {})}
         return {"retention": retention, "cacheControl": cache_control}

@@ -3,7 +3,7 @@ from __future__ import annotations
 import asyncio
 import json
 import time
-from collections.abc import Mapping
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field, replace
 from math import isfinite
 from typing import Any
@@ -85,8 +85,19 @@ def stream_proxy(
 
     async def _run() -> None:
         owned_client = None
-        remove_abort_listener = _attach_abort_listener(options.signal)
+        current_task = asyncio.current_task()
+
+        def _cancel_current_task() -> None:
+            if current_task is not None and not current_task.done():
+                current_task.cancel()
+
+        remove_abort_listener = _attach_abort_listener(
+            options.signal,
+            _cancel_current_task,
+        )
         try:
+            if getattr(options.signal, "aborted", False):
+                raise RuntimeError("Request aborted by user")
             stream_client = client
             if stream_client is None:
                 try:
@@ -136,6 +147,19 @@ def stream_proxy(
 
                 if partial.stop_reason not in {"error", "aborted"}:
                     stream.end()
+        except asyncio.CancelledError:
+            if getattr(options.signal, "aborted", False):
+                partial.stop_reason = "aborted"
+                partial.error_message = "Request aborted by user"
+                await stream.emit(
+                    {
+                        "type": "error",
+                        "reason": "aborted",
+                        "error": partial.snapshot(),
+                    }
+                )
+                return
+            raise
         except Exception as error:
             reason = "aborted" if getattr(options.signal, "aborted", False) else "error"
             partial.stop_reason = reason
@@ -367,15 +391,18 @@ def _int_value(value: object) -> int:
         return 0
 
 
-def _attach_abort_listener(signal: object | None):
+def _attach_abort_listener(
+    signal: object | None,
+    on_abort: Callable[[], None],
+):
     if signal is None:
         return lambda: None
 
     add_event_listener = getattr(signal, "addEventListener", None)
     remove_event_listener = getattr(signal, "removeEventListener", None)
     if callable(add_event_listener) and callable(remove_event_listener):
-        def _on_abort() -> None:
-            return None
+        def _on_abort(*_args: object) -> None:
+            on_abort()
 
         add_event_listener("abort", _on_abort)
         return lambda: remove_event_listener("abort", _on_abort)
@@ -383,8 +410,8 @@ def _attach_abort_listener(signal: object | None):
     add_event_listener = getattr(signal, "add_event_listener", None)
     remove_event_listener = getattr(signal, "remove_event_listener", None)
     if callable(add_event_listener) and callable(remove_event_listener):
-        def _on_abort() -> None:
-            return None
+        def _on_abort(*_args: object) -> None:
+            on_abort()
 
         add_event_listener("abort", _on_abort)
         return lambda: remove_event_listener("abort", _on_abort)
