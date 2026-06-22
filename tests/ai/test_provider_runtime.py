@@ -264,6 +264,35 @@ def test_provider_runtime_uses_retry_after_delay() -> None:
     assert message.content[0].text == "done"
 
 
+def test_provider_runtime_applies_backpressure_to_raw_source() -> None:
+    produced = 0
+
+    async def _parts():
+        nonlocal produced
+        yield {"type": "response_start", "response_id": "resp_backpressure"}
+        for index in range(1000):
+            produced += 1
+            yield {"type": "text_delta", "text": str(index)}
+        yield {"type": "response_done"}
+
+    async def _run() -> int:
+        stream = start_provider_runtime(
+            _parts,
+            model=_model(),
+            options=None,
+            request=_request(),
+        )
+        assert stream._queue.maxsize > 0
+        await asyncio.sleep(0.05)
+        produced_before_consume = produced
+        await stream.aclose()
+        return produced_before_consume
+
+    produced_before_consume = asyncio.run(_run())
+
+    assert 0 < produced_before_consume < 1000
+
+
 def _model():
     return SimpleNamespace(id="model-a", provider_id="provider-a")
 

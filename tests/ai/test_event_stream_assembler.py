@@ -148,6 +148,40 @@ def test_event_stream_cancels_producer_when_consumer_stops() -> None:
     assert asyncio.run(scenario())
 
 
+def test_event_stream_emit_waits_when_queue_is_full() -> None:
+    async def scenario() -> bool:
+        stream = AssistantMessageEventStream(max_queue_size=1)
+        message = AssistantMessage(
+            role="assistant",
+            content=[],
+            api="openai-responses",
+            provider="openai",
+            model="gpt-test",
+            response_id=None,
+            usage=Usage(
+                input=0, output=0, cache_read=0, cache_write=0, total_tokens=0, cost={}
+            ),
+            stop_reason="stop",
+            error_message=None,
+            timestamp=0.0,
+        )
+        await stream.emit({"type": "start", "partial": message})
+        second_emit = asyncio.create_task(
+            stream.emit(
+                {"type": "text_start", "content_index": 0, "partial": message}
+            )
+        )
+        await asyncio.sleep(0)
+        blocked = not second_emit.done()
+        iterator = stream.__aiter__()
+        assert (await iterator.__anext__())["type"] == "start"
+        await asyncio.wait_for(second_emit, timeout=1)
+        await stream.aclose()
+        return blocked
+
+    assert asyncio.run(scenario()) is True
+
+
 def test_event_stream_result_preserves_producer_exception() -> None:
     async def scenario() -> None:
         stream = AssistantMessageEventStream()

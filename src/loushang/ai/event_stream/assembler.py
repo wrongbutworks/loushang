@@ -30,6 +30,7 @@ from loushang.ai.provider.errors import (
 )
 from loushang.ai.types import (
     AssistantMessage,
+    AssistantMessageEvent,
     DoneEvent,
     ErrorEvent,
     ImageEndEvent,
@@ -98,6 +99,7 @@ class RawAssembler:
         self._text_started = False
         self._thinking_started = False
         self._tool_call_started = False
+        self._queued_events: list[AssistantMessageEvent] | None = None
 
     def feed(self, part: RawPart) -> None:
         part_type = part["type"]
@@ -106,7 +108,7 @@ class RawAssembler:
             response_part = cast(ResponseStartPart, part)
             self._response_id = response_part["response_id"]
             if not self._started:
-                self._stream.push(
+                self._push_event(
                     cast(
                         StartEvent,
                         {"type": "start", "partial": self._build_partial_message()},
@@ -118,7 +120,7 @@ class RawAssembler:
         if part_type == "text_delta":
             text_part = cast(TextDeltaPart, part)
             if not self._started:
-                self._stream.push(
+                self._push_event(
                     cast(
                         StartEvent,
                         {"type": "start", "partial": self._build_partial_message()},
@@ -128,7 +130,7 @@ class RawAssembler:
             if not self._text_started:
                 self._text_started = True
                 content_index = self._ensure_content_block("text")
-                self._stream.push(
+                self._push_event(
                     cast(
                         TextStartEvent,
                         {
@@ -139,7 +141,7 @@ class RawAssembler:
                     )
                 )
             self._text_chunks.append(text_part["text"])
-            self._stream.push(
+            self._push_event(
                 cast(
                     TextDeltaEvent,
                     {
@@ -160,7 +162,7 @@ class RawAssembler:
         if part_type == "thinking_delta":
             thinking_part = cast(ThinkingDeltaPart, part)
             if not self._started:
-                self._stream.push(
+                self._push_event(
                     cast(
                         StartEvent,
                         {"type": "start", "partial": self._build_partial_message()},
@@ -170,7 +172,7 @@ class RawAssembler:
             if not self._thinking_started:
                 self._thinking_started = True
                 content_index = self._ensure_content_block("thinking")
-                self._stream.push(
+                self._push_event(
                     cast(
                         ThinkingStartEvent,
                         {
@@ -181,7 +183,7 @@ class RawAssembler:
                     )
                 )
             self._thinking_chunks.append(thinking_part["text"])
-            self._stream.push(
+            self._push_event(
                 cast(
                     ThinkingDeltaEvent,
                     {
@@ -197,7 +199,7 @@ class RawAssembler:
         if part_type == "thinking_signature_delta":
             thinking_signature_part = cast(ThinkingSignatureDeltaPart, part)
             if not self._started:
-                self._stream.push(
+                self._push_event(
                     cast(
                         StartEvent,
                         {"type": "start", "partial": self._build_partial_message()},
@@ -207,7 +209,7 @@ class RawAssembler:
             if not self._thinking_started:
                 self._thinking_started = True
                 content_index = self._ensure_content_block("thinking")
-                self._stream.push(
+                self._push_event(
                     cast(
                         ThinkingStartEvent,
                         {
@@ -223,7 +225,7 @@ class RawAssembler:
         if part_type == "redacted_thinking":
             redacted_part = cast(RedactedThinkingPart, part)
             if not self._started:
-                self._stream.push(
+                self._push_event(
                     cast(
                         StartEvent,
                         {"type": "start", "partial": self._build_partial_message()},
@@ -233,7 +235,7 @@ class RawAssembler:
             if not self._thinking_started:
                 self._thinking_started = True
                 content_index = self._ensure_content_block("thinking")
-                self._stream.push(
+                self._push_event(
                     cast(
                         ThinkingStartEvent,
                         {
@@ -252,7 +254,7 @@ class RawAssembler:
         if part_type == "tool_call_start":
             tool_call_start_part = cast(ToolCallStartPart, part)
             if not self._started:
-                self._stream.push(
+                self._push_event(
                     cast(
                         StartEvent,
                         {"type": "start", "partial": self._build_partial_message()},
@@ -267,7 +269,7 @@ class RawAssembler:
             content_index = self._ensure_content_block(
                 "tool", tool_call_start_part["id"]
             )
-            self._stream.push(
+            self._push_event(
                 cast(
                     ToolCallStartEvent,
                     {
@@ -288,7 +290,7 @@ class RawAssembler:
             ):
                 raise RuntimeError("tool call delta received before tool call start")
             self._active_tool_call_args_chunks.append(tool_call_args_part["delta"])
-            self._stream.push(
+            self._push_event(
                 cast(
                     ToolCallDeltaEvent,
                     {
@@ -310,7 +312,7 @@ class RawAssembler:
             ):
                 raise RuntimeError("tool call done received before tool call start")
             tool_call = self._build_active_tool_call()
-            self._stream.push(
+            self._push_event(
                 cast(
                     ToolCallEndEvent,
                     {
@@ -358,7 +360,7 @@ class RawAssembler:
         if part_type == "image_part":
             image_part = cast(ImagePartRaw, part)
             if not self._started:
-                self._stream.push(
+                self._push_event(
                     cast(
                         StartEvent,
                         {"type": "start", "partial": self._build_partial_message()},
@@ -375,7 +377,7 @@ class RawAssembler:
                 "image", str(len(self._images) - 1)
             )
             partial = self._build_partial_message()
-            self._stream.push(
+            self._push_event(
                 cast(
                     ImageStartEvent,
                     {
@@ -385,7 +387,7 @@ class RawAssembler:
                     },
                 )
             )
-            self._stream.push(
+            self._push_event(
                 cast(
                     ImageEndEvent,
                     {
@@ -440,7 +442,7 @@ class RawAssembler:
             self._finalize_usage_cost()
             for kind, _key in self._content_order:
                 if kind == "text" and self._text_started:
-                    self._stream.push(
+                    self._push_event(
                         cast(
                             TextEndEvent,
                             {
@@ -452,7 +454,7 @@ class RawAssembler:
                         )
                     )
                 elif kind == "thinking" and self._thinking_started:
-                    self._stream.push(
+                    self._push_event(
                         cast(
                             ThinkingEndEvent,
                             {
@@ -467,7 +469,7 @@ class RawAssembler:
                 stop_reason=self._stop_reason, error_message=None
             )
             self._final_message = message
-            self._stream.push(
+            self._push_event(
                 cast(
                     DoneEvent,
                     {
@@ -485,7 +487,7 @@ class RawAssembler:
                 stop_reason="aborted", error_message="aborted"
             )
             self._final_message = message
-            self._stream.push(
+            self._push_event(
                 cast(
                     ErrorEvent,
                     {"type": "error", "reason": "aborted", "error": message},
@@ -515,10 +517,30 @@ class RawAssembler:
             if code is not None:
                 error_event["code"] = code
             self._final_message = message
-            self._stream.push(error_event)
+            self._push_event(error_event)
             return
 
         raise ValueError(f"Unsupported raw part type: {part_type}")
+
+    async def emit(self, part: RawPart) -> None:
+        if self._queued_events is not None:
+            raise RuntimeError("Raw assembler async emit is already active")
+        self._queued_events = []
+        try:
+            self.feed(part)
+            queued_events = self._queued_events
+        finally:
+            self._queued_events = None
+        if queued_events is None:
+            return
+        for event in queued_events:
+            await self._stream.emit(event)
+
+    def _push_event(self, event: AssistantMessageEvent) -> None:
+        if self._queued_events is not None:
+            self._queued_events.append(event)
+            return
+        self._stream.push(event)
 
     def result_nowait(self) -> AssistantMessage:
         if self._final_message is None:

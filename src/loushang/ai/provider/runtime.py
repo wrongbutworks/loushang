@@ -65,7 +65,7 @@ def start_provider_runtime(
     async def _run() -> None:
         signal = getattr(options, "signal", None) if options is not None else None
         if is_signal_cancelled(signal):
-            assembler.feed({"type": "aborted"})
+            await assembler.emit({"type": "aborted"})
             return
         max_attempts = _retry_max_attempts(options)
         attempt = 1
@@ -79,8 +79,8 @@ def start_provider_runtime(
                     source = await source
                 async for part in source:
                     if is_signal_cancelled(signal):
-                        _flush_pending(assembler, pending)
-                        assembler.feed({"type": "aborted"})
+                        await _flush_pending(assembler, pending)
+                        await assembler.emit({"type": "aborted"})
                         return
 
                     if (
@@ -106,14 +106,14 @@ def start_provider_runtime(
                         break
 
                     if part["type"] in _VISIBLE_RAW_PART_TYPES:
-                        _flush_pending(assembler, pending)
+                        await _flush_pending(assembler, pending)
                         visible_output_started = True
-                        assembler.feed(part)
+                        await assembler.emit(part)
                         continue
 
                     if visible_output_started or part["type"] in _TERMINAL_RAW_PART_TYPES:
-                        _flush_pending(assembler, pending)
-                        assembler.feed(part)
+                        await _flush_pending(assembler, pending)
+                        await assembler.emit(part)
                         if part["type"] in _TERMINAL_RAW_PART_TYPES:
                             return
                         continue
@@ -123,12 +123,12 @@ def start_provider_runtime(
                 if retry_next_attempt:
                     attempt += 1
                     continue
-                _flush_pending(assembler, pending)
+                await _flush_pending(assembler, pending)
                 return
             except Exception as error:
                 if is_signal_cancelled(signal):
-                    _flush_pending(assembler, pending)
-                    assembler.feed({"type": "aborted"})
+                    await _flush_pending(assembler, pending)
+                    await assembler.emit({"type": "aborted"})
                     return
                 if (
                     not visible_output_started
@@ -146,8 +146,8 @@ def start_provider_runtime(
                     )
                     attempt += 1
                     continue
-                _flush_pending(assembler, pending)
-                assembler.feed(
+                await _flush_pending(assembler, pending)
+                await assembler.emit(
                     cast(RawPart, provider_error_part(error, source=request.api))
                 )
                 return
@@ -156,9 +156,9 @@ def start_provider_runtime(
     return stream
 
 
-def _flush_pending(assembler: RawAssembler, pending: list[RawPart]) -> None:
+async def _flush_pending(assembler: RawAssembler, pending: list[RawPart]) -> None:
     while pending:
-        assembler.feed(pending.pop(0))
+        await assembler.emit(pending.pop(0))
 
 
 def _retry_max_attempts(options: object | None) -> int:

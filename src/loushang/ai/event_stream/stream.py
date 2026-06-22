@@ -14,6 +14,8 @@ from loushang.ai.types import (
 TEvent = TypeVar("TEvent")
 TResult = TypeVar("TResult")
 
+DEFAULT_EVENT_STREAM_QUEUE_SIZE = 256
+
 
 class EventStream(Generic[TEvent, TResult]):
     def __init__(
@@ -21,8 +23,11 @@ class EventStream(Generic[TEvent, TResult]):
         *,
         is_terminal: Callable[[TEvent], bool],
         extract_result: Callable[[TEvent], TResult],
+        max_queue_size: int = DEFAULT_EVENT_STREAM_QUEUE_SIZE,
     ) -> None:
-        self._queue: asyncio.Queue[TEvent | None] = asyncio.Queue()
+        self._queue: asyncio.Queue[TEvent | None] = asyncio.Queue(
+            maxsize=max(1, max_queue_size)
+        )
         self._final_result: TResult | None = None
         self._producer_error: BaseException | None = None
         self._ended: bool = False
@@ -36,7 +41,16 @@ class EventStream(Generic[TEvent, TResult]):
         self._queue.put_nowait(event)
         if self._is_terminal(event):
             self._final_result = self._extract_result(event)
-            self._queue.put_nowait(None)
+            self._put_nowait_force(None)
+            self._ended = True
+
+    async def emit(self, event: TEvent) -> None:
+        if self._ended:
+            return
+        await self._queue.put(event)
+        if self._is_terminal(event):
+            self._final_result = self._extract_result(event)
+            await self._queue.put(None)
             self._ended = True
 
     def __aiter__(self) -> AsyncIterator[TEvent]:
@@ -64,7 +78,7 @@ class EventStream(Generic[TEvent, TResult]):
         task = self._producer_task
         if task is not None and not task.done():
             task.cancel()
-        self._queue.put_nowait(None)
+        self._put_nowait_force(None)
 
     cancel = aclose
 
@@ -74,7 +88,7 @@ class EventStream(Generic[TEvent, TResult]):
         self._ended = True
         if result is not None:
             self._final_result = result
-        self._queue.put_nowait(None)
+        self._put_nowait_force(None)
 
     async def result(self) -> TResult:
         if self._final_result is not None:
@@ -105,15 +119,38 @@ class EventStream(Generic[TEvent, TResult]):
             return
         self.end()
 
+    def _put_nowait_force(self, item: TEvent | None) -> None:
+        try:
+            self._queue.put_nowait(item)
+            return
+        except asyncio.QueueFull:
+            pass
+        try:
+            self._queue.get_nowait()
+        except asyncio.QueueEmpty:
+            pass
+        self._queue.put_nowait(item)
+
 
 class AssistantMessageEventStream(EventStream[AssistantMessageEvent, AssistantMessage]):
-    def __init__(self) -> None:
+    def __init__(
+        self, *, max_queue_size: int = DEFAULT_EVENT_STREAM_QUEUE_SIZE
+    ) -> None:
         super().__init__(
             is_terminal=lambda event: event["type"] in {"done", "error"},
             extract_result=_extract_assistant_message_result,
+            max_queue_size=max_queue_size,
         )
 
     def push(self, event: AssistantMessageEvent) -> None:
+        self._validate_event(event)
+        super().push(event)
+
+    async def emit(self, event: AssistantMessageEvent) -> None:
+        self._validate_event(event)
+        await super().emit(event)
+
+    def _validate_event(self, event: AssistantMessageEvent) -> None:
         event_type = event["type"]
         if event_type not in {
             "start",
@@ -132,7 +169,6 @@ class AssistantMessageEventStream(EventStream[AssistantMessageEvent, AssistantMe
             "error",
         }:
             raise ValueError(f"Unsupported event type: {event_type}")
-        super().push(event)
 
     def end(self, message: AssistantMessage | None = None) -> None:
         if self._ended:
@@ -145,8 +181,8 @@ class AssistantMessageEventStream(EventStream[AssistantMessageEvent, AssistantMe
                 "reason": "stop",
                 "message": message,
             }
-            self._queue.put_nowait(done_event)
-        self._queue.put_nowait(None)
+            self._put_nowait_force(done_event)
+        self._put_nowait_force(None)
 
 
 def _extract_assistant_message_result(event: AssistantMessageEvent) -> AssistantMessage:

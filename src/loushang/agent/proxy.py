@@ -127,7 +127,7 @@ def stream_proxy(
                     proxy_event = json.loads(data)
                     event = _process_proxy_event(proxy_event, partial)
                     if event is not None:
-                        stream.push(event)
+                        await stream.emit(event)
                     if _is_terminal_proxy_event(proxy_event):
                         return
 
@@ -140,7 +140,7 @@ def stream_proxy(
             reason = "aborted" if getattr(options.signal, "aborted", False) else "error"
             partial.stop_reason = reason
             partial.error_message = str(error)
-            stream.push(
+            await stream.emit(
                 {
                     "type": "error",
                     "reason": reason,
