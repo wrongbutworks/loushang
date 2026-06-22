@@ -3,20 +3,21 @@ from __future__ import annotations
 from dataclasses import fields
 
 import loushang.ai as ai
+import loushang.ai.options as options_module
 from loushang.ai import CallOptions as PublicCallOptions
 from loushang.ai import SimpleCallOptions as PublicSimpleCallOptions
 from loushang.ai.advanced import AnthropicOptions as AdvancedAnthropicOptions
 from loushang.ai.advanced import (
     OpenAICompletionsOptions as AdvancedOpenAICompletionsOptions,
 )
+from loushang.ai.advanced import (
+    OpenAIResponsesOptions as AdvancedOpenAIResponsesOptions,
+)
 from loushang.ai.advanced.registry import ApiProviderRegistry
 from loushang.ai.contrib.openai_codex import OpenAICodexResponsesOptions
 from loushang.ai.options import (
-    AnthropicOptions,
     CallOptions,
     ModelCallOptions,
-    OpenAICompletionsOptions,
-    OpenAIResponsesOptions,
     ProviderStreamOptions,
     ReasoningOptions,
     RetryOptions,
@@ -35,6 +36,10 @@ from loushang.ai.options import (
     is_reasoning_requested,
     simple_options_to_call_options,
 )
+
+AnthropicOptions = AdvancedAnthropicOptions
+OpenAICompletionsOptions = AdvancedOpenAICompletionsOptions
+OpenAIResponsesOptions = AdvancedOpenAIResponsesOptions
 
 
 def test_call_options_is_public_and_legacy_names_remain_module_compatible() -> None:
@@ -140,10 +145,15 @@ def test_simple_call_options_map_to_call_options_reasoning() -> None:
 
 
 def test_provider_specific_options_are_advanced_compatibility_types() -> None:
-    assert AnthropicOptions is AdvancedAnthropicOptions
-    assert OpenAICompletionsOptions is AdvancedOpenAICompletionsOptions
-    assert AnthropicOptions.__module__ == "loushang.ai.advanced.options"
+    assert AdvancedAnthropicOptions.__module__ == "loushang.ai.advanced.options"
+    assert (
+        AdvancedOpenAICompletionsOptions.__module__ == "loushang.ai.advanced.options"
+    )
+    assert AdvancedOpenAIResponsesOptions.__module__ == "loushang.ai.advanced.options"
     assert ApiProviderRegistry.__module__ == "loushang.ai.api_registry"
+    assert not hasattr(options_module, "AnthropicOptions")
+    assert not hasattr(options_module, "OpenAICompletionsOptions")
+    assert not hasattr(options_module, "OpenAIResponsesOptions")
     assert "AnthropicOptions" not in ai.__all__
     assert "ApiProviderRegistry" not in ai.__all__
     assert not hasattr(ai, "AnthropicOptions")

@@ -7,6 +7,7 @@ from types import ModuleType, SimpleNamespace
 
 import pytest
 
+from loushang.ai.advanced import OpenAIResponsesOptions
 from loushang.ai.context import normalize_context
 from loushang.ai.model import (
     Capabilities,
@@ -18,7 +19,6 @@ from loushang.ai.model import (
     get_default_model_registry,
 )
 from loushang.ai.model.registry import clear_default_model_registry
-from loushang.ai.options import OpenAIResponsesOptions
 from loushang.ai.provider import ResolvedRequest
 from loushang.ai.providers.openai_responses import OpenAIResponsesProvider
 from loushang.ai.structured import StructuredOutputOptions

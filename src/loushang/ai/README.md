@@ -187,9 +187,10 @@ Provider 管理、provider-specific options、归一化诊断、pricing、tool t
 `stream` capability；`tools`、reasoning、structured output、temperature、image
 input 和 attachment 请求也会在模型未声明支持时直接失败。
 
-通用调用参数使用 `CallOptions`。旧的 `ModelCallOptions`、`StreamOptions` 和
-provider-specific options 仍保留在 `loushang.ai.options` / `loushang.ai.advanced` 作为兼容入口，
-但不再属于根包稳定门面；新示例应优先使用 `CallOptions`。
+通用调用参数使用 `CallOptions`。旧的 `ModelCallOptions`、`StreamOptions` 仍保留在
+`loushang.ai.options` 作为兼容别名；provider-specific options 只保留在
+`loushang.ai.advanced` 作为兼容入口，不再属于根包稳定门面；新示例应优先使用
+`CallOptions`。
 `stream_simple` / `complete_simple` 使用更窄的 `SimpleCallOptions`；核心 API 会先
 把 simple reasoning 选项映射为 `CallOptions.reasoning`，provider adapter 只需要
 实现普通 `stream`。
@@ -245,7 +246,7 @@ provider-specific options 仍保留在 `loushang.ai.options` / `loushang.ai.adva
 本轮契约收敛把根包 `__all__` 视为稳定 API 快照。此前从根包导出的高级能力不再继续占用稳定门面：
 
 - Provider registry 管理入口移到 `loushang.ai.advanced.registry`。
-- Provider-specific options 只从 `loushang.ai.advanced` 或 `loushang.ai.options` 进入。
+- Provider-specific options 只从 `loushang.ai.advanced` 进入。
 - Context normalization helper 从 `loushang.ai.context` 进入。
 - Tool transform / validation 从 `loushang.ai.tool` 进入。
 - Cost helper 从 `loushang.ai.pricing` 进入。

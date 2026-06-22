@@ -4,11 +4,13 @@ import asyncio
 import json
 import sys
 import time
+from collections.abc import Iterator
 from dataclasses import dataclass, field
 from types import ModuleType, SimpleNamespace
 
 import pytest
 
+from loushang.ai.advanced import AnthropicOptions
 from loushang.ai.auth.types import OAuthCredentials
 from loushang.ai.context import normalize_context
 from loushang.ai.model.compat_schema import (
@@ -31,7 +33,6 @@ from loushang.ai.model.registry import (
     clear_default_model_registry,
     get_default_model_registry,
 )
-from loushang.ai.options import AnthropicOptions
 from loushang.ai.provider import ResolvedRequest
 from loushang.ai.providers.anthropic import AnthropicProvider
 from loushang.ai.types import (
@@ -1384,7 +1385,7 @@ class _Model:
 
 
 @pytest.fixture(autouse=True)
-def _default_registry() -> None:
+def _default_registry() -> Iterator[None]:
     clear_default_model_registry()
     registry = get_default_model_registry()
     registry.register_endpoint(
@@ -1402,3 +1403,5 @@ def _default_registry() -> None:
             },
         ),
     )
+    yield
+    clear_default_model_registry()

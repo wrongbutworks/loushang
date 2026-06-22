@@ -265,19 +265,10 @@ def _simple_reasoning_budget_tokens(options: SimpleCallOptions) -> int | None:
     return value if isinstance(value, int) else None
 
 
-from loushang.ai.advanced.options import (  # noqa: E402
-    AnthropicOptions,
-    OpenAICompletionsOptions,
-    OpenAIResponsesOptions,
-)
-
 __all__ = [
-    "AnthropicOptions",
     "CacheRetention",
     "CallOptions",
     "ModelCallOptions",
-    "OpenAICompletionsOptions",
-    "OpenAIResponsesOptions",
     "PairingMode",
     "ProviderStreamOptions",
     "ReasoningOptions",

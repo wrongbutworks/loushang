@@ -130,7 +130,7 @@ Current composite score: 8.6/10.
 | Each phase has a range review | Partial | Several phase gates were validated by commands; not every phase has a recorded independent range review. |
 | Final branch has a full review | Met | Three read-only final-review passes on 2026-06-22 found no P0 and surfaced release-blocking P1 items; the follow-up fixes resolved the default offline gate, catalog-copy path, retry/timeout semantics, root quota exports, and stable `CallOptions` hook leakage. |
 | P0/P1 = 0 | Met | No P0 findings in final review; all final-review P1 findings were fixed and covered by targeted tests plus `make check-ai`. |
-| P2 resolved or tracked | Partial | Low-cost docs/example P2s, Codex request-body trace summarization, default Codex HTTP client close ownership, legacy provider fallback removal, and provider-declared structured-output mapping were fixed. Remaining P2 debt is accepted for follow-up: advanced option compatibility still re-exports through `loushang.ai.options`, and terminal queue edge cases need a focused stream-runtime patch. |
+| P2 resolved or tracked | Partial | Low-cost docs/example P2s, Codex request-body trace summarization, default Codex HTTP client close ownership, legacy provider fallback removal, provider-declared structured-output mapping, and advanced-only provider options were fixed. Remaining P2 debt is accepted for follow-up: terminal queue edge cases need a focused stream-runtime patch. |
 
 ## Issue #102-#108 Status
 

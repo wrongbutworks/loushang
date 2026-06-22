@@ -9,6 +9,7 @@ from dataclasses import asdict, fields
 import pytest
 
 import loushang.ai.model.registry as model_registry_module
+from loushang.ai.advanced import OpenAICompletionsOptions
 from loushang.ai.contrib.openai_codex.provider import OpenAICodexResponsesProvider
 from loushang.ai.contrib.openai_codex.runtime_config import (
     OpenAICodexRuntimeConfig,
@@ -58,7 +59,7 @@ from loushang.ai.model.registry import (
     resolve_model_api,
     resolve_model_endpoint,
 )
-from loushang.ai.options import CallOptions, OpenAICompletionsOptions, ReasoningOptions
+from loushang.ai.options import CallOptions, ReasoningOptions
 from loushang.ai.provider import (
     AdapterRuntimeConfig,
     ResolvedEndpoint,

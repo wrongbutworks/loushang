@@ -7,6 +7,7 @@ from types import ModuleType, SimpleNamespace
 
 import pytest
 
+from loushang.ai.advanced import OpenAICompletionsOptions, OpenAIResponsesOptions
 from loushang.ai.api.streaming import complete, stream, stream_simple
 from loushang.ai.api_registry import ApiProviderRegistry
 from loushang.ai.context import (
@@ -22,8 +23,6 @@ from loushang.ai.model import (
 from loushang.ai.options import (
     CallOptions,
     ModelCallOptions,
-    OpenAICompletionsOptions,
-    OpenAIResponsesOptions,
     ReasoningOptions,
     SimpleCallOptions,
 )

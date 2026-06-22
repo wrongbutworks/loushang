@@ -34,7 +34,7 @@ WS 相关（可选）：
 ## 使用示例
 
 ```python
-from loushang.ai.options import OpenAICompletionsOptions
+from loushang.ai.advanced import OpenAICompletionsOptions
 
 def trace_logger(evt: dict):
     print("TRACE", evt)

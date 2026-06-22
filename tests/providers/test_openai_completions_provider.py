@@ -9,6 +9,7 @@ from types import ModuleType, SimpleNamespace
 import pytest
 
 from loushang.ai import get_model
+from loushang.ai.advanced import OpenAICompletionsOptions
 from loushang.ai.context import normalize_context
 from loushang.ai.model import Capabilities, Compat, Model
 from loushang.ai.model.compat_schema import (
@@ -34,7 +35,6 @@ from loushang.ai.model.registry import (
     clear_default_model_registry,
     get_default_model_registry,
 )
-from loushang.ai.options import OpenAICompletionsOptions
 from loushang.ai.provider import ResolvedRequest, resolve_provider_request
 from loushang.ai.providers.openai_completions import OpenAICompletionsProvider
 from loushang.ai.structured import StructuredOutputOptions
