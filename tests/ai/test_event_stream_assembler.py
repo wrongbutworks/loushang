@@ -171,6 +171,23 @@ async def _collect_events(stream: AssistantMessageEventStream) -> list[dict]:
     return [event async for event in stream]
 
 
+def _empty_message() -> AssistantMessage:
+    return AssistantMessage(
+        role="assistant",
+        content=[],
+        api="openai-responses",
+        provider="openai",
+        model="gpt-test",
+        response_id=None,
+        usage=Usage(
+            input=0, output=0, cache_read=0, cache_write=0, total_tokens=0, cost={}
+        ),
+        stop_reason="stop",
+        error_message=None,
+        timestamp=0.0,
+    )
+
+
 def test_event_stream_cancels_producer_when_consumer_stops() -> None:
     async def scenario() -> bool:
         stream = AssistantMessageEventStream()
@@ -206,6 +223,32 @@ def test_event_stream_cancels_producer_when_consumer_stops() -> None:
         return task.cancelled()
 
     assert asyncio.run(scenario())
+
+
+def test_event_stream_push_preserves_terminal_event_when_queue_is_full() -> None:
+    stream = AssistantMessageEventStream(max_queue_size=1)
+    message = _empty_message()
+
+    stream.push({"type": "start", "partial": message})
+    stream.push({"type": "done", "reason": "stop", "message": message})
+
+    events = asyncio.run(_collect_events(stream))
+
+    assert [event["type"] for event in events] == ["done"]
+    assert asyncio.run(stream.result()) is message
+
+
+def test_event_stream_end_preserves_terminal_event_when_queue_is_full() -> None:
+    stream = AssistantMessageEventStream(max_queue_size=1)
+    message = _empty_message()
+
+    stream.push({"type": "start", "partial": message})
+    stream.end(message)
+
+    events = asyncio.run(_collect_events(stream))
+
+    assert [event["type"] for event in events] == ["done"]
+    assert asyncio.run(stream.result()) is message
 
 
 def test_event_stream_emit_waits_when_queue_is_full() -> None:

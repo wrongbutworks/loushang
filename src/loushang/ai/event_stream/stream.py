@@ -47,22 +47,18 @@ class EventStream(Generic[TEvent, TResult]):
     def push(self, event: TEvent) -> None:
         if self._ended:
             return
-        self._queue.put_nowait(event)
         if self._is_terminal(event):
-            self._terminal_event = event
-            self._final_result = self._extract_result(event)
-            self._put_nowait_force(None)
-            self._ended = True
+            self._put_nowait_force(event)
+            self._record_terminal(event)
+            return
+        self._queue.put_nowait(event)
 
     async def emit(self, event: TEvent) -> None:
         if self._ended:
             return
         await self._queue.put(event)
         if self._is_terminal(event):
-            self._terminal_event = event
-            self._final_result = self._extract_result(event)
-            await self._queue.put(None)
-            self._ended = True
+            self._record_terminal(event)
 
     def __aiter__(self) -> AsyncIterator[TEvent]:
         return self._iterate()
@@ -73,7 +69,12 @@ class EventStream(Generic[TEvent, TResult]):
                 item = await self._queue.get()
                 if item is None:
                     break
+                is_terminal = self._is_terminal(item)
+                if is_terminal:
+                    self._record_terminal(item)
                 yield item
+                if is_terminal:
+                    break
         finally:
             if not self._ended:
                 await self.aclose()
@@ -129,6 +130,12 @@ class EventStream(Generic[TEvent, TResult]):
             self.end()
             return
         self.end()
+
+    def _record_terminal(self, event: TEvent) -> None:
+        if self._terminal_event is None:
+            self._terminal_event = event
+            self._final_result = self._extract_result(event)
+        self._ended = True
 
     def _put_nowait_force(self, item: TEvent | None) -> None:
         try:
@@ -208,16 +215,16 @@ class AssistantMessageEventStream(EventStream[AssistantMessageEvent, AssistantMe
     def end(self, message: AssistantMessage | None = None) -> None:
         if self._ended:
             return
-        self._ended = True
         if message is not None:
-            self._final_result = message
             done_event: DoneEvent = {
                 "type": "done",
                 "reason": "stop",
                 "message": message,
             }
-            self._terminal_event = done_event
             self._put_nowait_force(done_event)
+            self._record_terminal(done_event)
+            return
+        self._ended = True
         self._put_nowait_force(None)
 
 
