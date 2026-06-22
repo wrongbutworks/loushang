@@ -113,6 +113,89 @@
         }
       }
     },
+    "baidu-qianfan": {
+      "displayName": "Baidu Qianfan",
+      "website": "https://cloud.baidu.com/product/qianfan",
+      "auth": {
+        "kind": "apiKey",
+        "apiKeyEnvs": [
+          "QIANFAN_API_KEY",
+          "BAIDU_QIANFAN_API_KEY"
+        ],
+        "header": "Authorization",
+        "prefix": "Bearer "
+      },
+      "endpoints": {
+        "openai-completions-cn": {
+          "displayName": "Baidu Qianfan Chat Completions (China)",
+          "api": "openai-completions",
+          "baseUrl": "https://qianfan.baidubce.com/v2",
+          "region": "cn",
+          "preferred": true,
+          "docs": "https://cloud.baidu.com/doc/qianfan-api/s/3m7of64lb",
+          "protocol": {
+            "store": "unsupported",
+            "roles": {
+              "developer": "unsupported"
+            },
+            "streaming": {
+              "usage": "supported",
+              "reasoningDelta": "supported"
+            },
+            "reasoning": {
+              "effort": "unsupported"
+            },
+            "tools": {
+              "strictSchema": "unsupported"
+            }
+          },
+          "dialect": {
+            "maxOutputTokensField": "max_tokens",
+            "tools": {
+              "assistantBridgeRequired": false,
+              "resultNameRequired": false,
+              "streamFlag": false
+            }
+          },
+          "transport": {
+            "kind": "http",
+            "stream": "sse"
+          },
+          "models": {
+            "ernie-5.1": {
+              "displayName": "ERNIE 5.1",
+              "family": "ernie",
+              "alias": "default-chat",
+              "lastUpdated": "2026-05-08",
+              "defaults": {
+                "maxOutputTokens": 4096
+              },
+              "capabilities": {
+                "contextWindow": 248832,
+                "maxTokens": 65536,
+                "input": [
+                  "text"
+                ],
+                "output": [
+                  "text"
+                ],
+                "reasoning": true,
+                "stream": true,
+                "toolUse": true,
+                "structuredOutput": true,
+                "attachment": false,
+                "temperature": true
+              },
+              "pricing": {
+                "currency": "CNY",
+                "input": 6,
+                "output": 22
+              }
+            }
+          }
+        }
+      }
+    },
     "dashscope": {
       "displayName": "Alibaba Cloud DashScope",
       "website": "https://dashscope.aliyun.com",

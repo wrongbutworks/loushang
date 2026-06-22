@@ -19,6 +19,7 @@ CURATED_CATALOG_PATH = (
 EVIDENCE_DIR = REPO_ROOT / "docs/internals/architecture/ai/catalog-evidence"
 EVIDENCE_TEMPLATE_PATH = EVIDENCE_DIR / "_template.md"
 ANTHROPIC_EVIDENCE_PATH = EVIDENCE_DIR / "anthropic.md"
+BAIDU_QIANFAN_EVIDENCE_PATH = EVIDENCE_DIR / "baidu-qianfan.md"
 DASHSCOPE_EVIDENCE_PATH = EVIDENCE_DIR / "dashscope.md"
 DEEPSEEK_EVIDENCE_PATH = EVIDENCE_DIR / "deepseek.md"
 MINIMAX_EVIDENCE_PATH = EVIDENCE_DIR / "minimax.md"
@@ -52,6 +53,7 @@ def test_curated_catalog_loads_v2_schema() -> None:
     validate_model_registry_raw(raw)
     assert [provider.id for provider in _load_curated_registry().list_providers()] == [
         "anthropic",
+        "baidu-qianfan",
         "dashscope",
         "deepseek",
         "minimax",
@@ -76,6 +78,9 @@ def test_default_builtin_catalog_still_uses_legacy_catalog() -> None:
     )
     assert len(registry.list_models(provider="dashscope")) > len(
         _load_curated_registry().list_models(provider="dashscope")
+    )
+    assert len(registry.list_models(provider="baidu-qianfan")) > len(
+        _load_curated_registry().list_models(provider="baidu-qianfan")
     )
     assert len(registry.list_models(provider="moonshot")) > len(
         _load_curated_registry().list_models(provider="moonshot")
@@ -163,6 +168,84 @@ def test_curated_catalog_includes_verified_anthropic_messages_models() -> None:
     assert sonnet.pricing.output == 15
     assert sonnet.pricing.cache_read == 0.3
     assert sonnet.pricing.cache_write == 3.75
+
+
+def test_curated_catalog_includes_verified_baidu_qianfan_ernie_model() -> None:
+    registry = _load_curated_registry()
+
+    curated_model_ids = {
+        model.id for model in registry.list_models(provider="baidu-qianfan")
+    }
+    assert "ernie-5.0" not in curated_model_ids
+    assert "deepseek-v3.2" not in curated_model_ids
+
+    provider = registry.get_provider("baidu-qianfan")
+    assert provider is not None
+    assert provider.name == "Baidu Qianfan"
+    assert provider.website == "https://cloud.baidu.com/product/qianfan"
+    assert provider.auth is not None
+    assert provider.auth.api_key_env is None
+    assert provider.auth.api_key_envs == (
+        "QIANFAN_API_KEY",
+        "BAIDU_QIANFAN_API_KEY",
+    )
+    assert provider.auth.header == "Authorization"
+    assert provider.auth.prefix == "Bearer "
+
+    endpoint = registry.get_endpoint("baidu-qianfan", "openai-completions-cn")
+    assert endpoint is not None
+    assert endpoint.api == "openai-completions"
+    assert endpoint.base_url == "https://qianfan.baidubce.com/v2"
+    assert endpoint.region == "cn"
+    assert endpoint.preferred is True
+    assert endpoint.auth is not None
+    assert endpoint.auth.api_key_env is None
+    assert endpoint.auth.api_key_envs == (
+        "QIANFAN_API_KEY",
+        "BAIDU_QIANFAN_API_KEY",
+    )
+    assert endpoint.protocol.store is SupportStatus.UNSUPPORTED
+    assert endpoint.protocol.roles.developer is SupportStatus.UNSUPPORTED
+    assert endpoint.protocol.streaming.usage is SupportStatus.SUPPORTED
+    assert endpoint.protocol.streaming.reasoning_delta is SupportStatus.SUPPORTED
+    assert endpoint.protocol.reasoning.effort is SupportStatus.UNSUPPORTED
+    assert endpoint.protocol.tools.strict_schema is SupportStatus.UNSUPPORTED
+    assert endpoint.dialect.max_output_tokens_field == "max_tokens"
+    assert endpoint.dialect.tools.assistant_bridge_required is False
+    assert endpoint.dialect.tools.result_name_required is False
+    assert endpoint.dialect.tools.stream_flag is False
+    assert endpoint.transport.kind == "http"
+    assert endpoint.transport.stream == "sse"
+
+    models = registry.list_models(provider="baidu-qianfan")
+    assert [model.id for model in models] == ["ernie-5.1"]
+
+    model = registry.get_model(
+        "baidu-qianfan",
+        "openai-completions-cn",
+        "ernie-5.1",
+    )
+    assert model is not None
+    assert model.name == "ERNIE 5.1"
+    assert model.alias == "default-chat"
+    assert model.last_updated == "2026-05-08"
+    assert model.context_window == 248_832
+    assert model.max_tokens == 65_536
+    assert model.defaults.get("maxOutputTokens") == 4_096
+    assert model.capabilities.input == ("text",)
+    assert model.capabilities.output == ("text",)
+    assert model.reasoning is True
+    assert model.supports_stream is True
+    assert model.supports_tool_use is True
+    assert model.supports_structured_output is True
+    assert model.supports_attachment is False
+    assert model.supports_temperature is True
+    assert model.pricing is not None
+    assert model.pricing.currency == "CNY"
+    assert model.pricing.input == 6
+    assert model.pricing.output == 22
+    assert model.pricing.cache_read is None
+    assert model.pricing.cache_write is None
 
 
 def test_curated_catalog_includes_verified_dashscope_responses_models() -> None:
@@ -820,6 +903,31 @@ def test_anthropic_evidence_matches_curated_provider_fixture() -> None:
         "`claude-opus-4-8`",
         "`claude-sonnet-4-6`",
         "uv run pytest tests/ai/test_curated_catalog.py -q",
+        "Not run on 2026-06-22",
+    ]:
+        assert expected in text
+
+
+def test_baidu_qianfan_evidence_matches_curated_provider_fixture() -> None:
+    text = BAIDU_QIANFAN_EVIDENCE_PATH.read_text(encoding="utf-8")
+
+    for expected in [
+        "# Provider evidence: baidu-qianfan",
+        "- Verified at: 2026-06-22",
+        "- Issue: #107",
+        "https://cloud.baidu.com/doc/qianfan-api/s/Dmba8k71y",
+        "https://cloud.baidu.com/doc/qianfan-api/s/3m7of64lb",
+        "https://cloud.baidu.com/doc/qianfan-api/s/ym9chdsy5",
+        "https://cloud.baidu.com/doc/qianfan-docs/s/Wm95lyynv",
+        "https://cloud.baidu.com/doc/qianfan-docs/s/xm95lyys5",
+        "`QIANFAN_API_KEY`",
+        "`BAIDU_QIANFAN_API_KEY`",
+        "`https://qianfan.baidubce.com/v2`",
+        "`ernie-5.1`",
+        "248,832 token context and 65,536 maximum answer tokens",
+        "CNY 6 input and CNY 22 output",
+        "lower <=32K pricing tier is omitted",
+        "uv run pytest tests/ai/test_curated_catalog.py tests/providers/test_openai_completions_provider.py -q",
         "Not run on 2026-06-22",
     ]:
         assert expected in text

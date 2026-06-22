@@ -7,6 +7,7 @@ AIQ-056 switches the package data.
 | Provider | Endpoint | API | Models | Auth env | Evidence | Offline smoke |
 |---|---|---|---|---|---|---|
 | `anthropic` | `anthropic-messages` | `anthropic-messages` | `claude-opus-4-8`, `claude-sonnet-4-6` | `ANTHROPIC_API_KEY` | `catalog-evidence/anthropic.md` | `uv run pytest tests/ai/test_curated_catalog.py -q` |
+| `baidu-qianfan` | `openai-completions-cn` | `openai-completions` | `ernie-5.1` | `QIANFAN_API_KEY`, `BAIDU_QIANFAN_API_KEY` | `catalog-evidence/baidu-qianfan.md` | `uv run pytest tests/ai/test_curated_catalog.py tests/providers/test_openai_completions_provider.py -q` |
 | `dashscope` | `openai-responses` | `openai-responses` | `qwen3.7-max`, `qwen3.7-plus` | `DASHSCOPE_API_KEY` | `catalog-evidence/dashscope.md` | `uv run pytest tests/ai/test_curated_catalog.py -q` |
 | `deepseek` | `openai-completions` | `openai-completions` | `deepseek-v4-flash`, `deepseek-v4-pro` | `DEEPSEEK_API_KEY` | `catalog-evidence/deepseek.md` | `uv run pytest tests/ai/test_curated_catalog.py tests/providers/test_openai_completions_provider.py -q` |
 | `minimax` | `anthropic-messages` | `anthropic-messages` | `MiniMax-M3` | `MINIMAX_API_KEY` | `catalog-evidence/minimax.md` | `uv run pytest tests/ai/test_curated_catalog.py tests/providers/test_anthropic_messages_mapping.py -q` |
