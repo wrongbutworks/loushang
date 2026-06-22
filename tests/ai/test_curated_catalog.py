@@ -25,6 +25,7 @@ DEEPSEEK_EVIDENCE_PATH = EVIDENCE_DIR / "deepseek.md"
 MINIMAX_EVIDENCE_PATH = EVIDENCE_DIR / "minimax.md"
 MOONSHOT_EVIDENCE_PATH = EVIDENCE_DIR / "moonshot.md"
 OPENAI_EVIDENCE_PATH = EVIDENCE_DIR / "openai.md"
+STEPFUN_EVIDENCE_PATH = EVIDENCE_DIR / "stepfun.md"
 TENCENT_HUNYUAN_EVIDENCE_PATH = EVIDENCE_DIR / "tencent-hunyuan.md"
 VOLCANO_ARK_EVIDENCE_PATH = EVIDENCE_DIR / "volcano-ark.md"
 ZAI_EVIDENCE_PATH = EVIDENCE_DIR / "zai.md"
@@ -59,6 +60,7 @@ def test_curated_catalog_loads_v2_schema() -> None:
         "minimax",
         "moonshot",
         "openai",
+        "stepfun",
         "tencent-hunyuan",
         "volcano-ark",
         "zai",
@@ -87,6 +89,9 @@ def test_default_builtin_catalog_still_uses_legacy_catalog() -> None:
     )
     assert len(registry.list_models(provider="minimax")) > len(
         _load_curated_registry().list_models(provider="minimax")
+    )
+    assert len(registry.list_models(provider="stepfun")) > len(
+        _load_curated_registry().list_models(provider="stepfun")
     )
     assert len(registry.list_models(provider="tencent-hunyuan")) > len(
         _load_curated_registry().list_models(provider="tencent-hunyuan")
@@ -542,6 +547,80 @@ def test_curated_catalog_includes_verified_moonshot_openai_compatible_models() -
     assert coding.pricing.output == 4
     assert coding.pricing.cache_read == 0.19
     assert coding.pricing.cache_write is None
+
+
+def test_curated_catalog_includes_verified_stepfun_flash_model() -> None:
+    registry = _load_curated_registry()
+
+    assert registry.get_endpoint("stepfun", "openai-completions:step-plan") is None
+
+    curated_model_ids = {model.id for model in registry.list_models(provider="stepfun")}
+    assert "step-3.5-flash" not in curated_model_ids
+    assert "step-3.5-flash-2603" not in curated_model_ids
+
+    provider = registry.get_provider("stepfun")
+    assert provider is not None
+    assert provider.name == "StepFun"
+    assert provider.website == "https://platform.stepfun.ai"
+    assert provider.auth is not None
+    assert provider.auth.api_key_env is None
+    assert provider.auth.api_key_envs == ("STEP_API_KEY", "STEPFUN_API_KEY")
+    assert provider.auth.header == "Authorization"
+    assert provider.auth.prefix == "Bearer "
+
+    endpoint = registry.get_endpoint("stepfun", "openai-completions")
+    assert endpoint is not None
+    assert endpoint.api == "openai-completions"
+    assert endpoint.base_url == "https://api.stepfun.ai/v1"
+    assert endpoint.preferred is True
+    assert endpoint.auth is not None
+    assert endpoint.auth.api_key_env is None
+    assert endpoint.auth.api_key_envs == ("STEP_API_KEY", "STEPFUN_API_KEY")
+    assert endpoint.protocol.store is SupportStatus.UNSUPPORTED
+    assert endpoint.protocol.roles.developer is SupportStatus.UNSUPPORTED
+    assert endpoint.protocol.streaming.usage is SupportStatus.SUPPORTED
+    assert endpoint.protocol.streaming.reasoning_delta is SupportStatus.SUPPORTED
+    assert endpoint.protocol.reasoning.effort is SupportStatus.SUPPORTED
+    assert endpoint.protocol.reasoning.effort_map == {
+        "low": "low",
+        "medium": "medium",
+        "high": "high",
+        "xhigh": "high",
+    }
+    assert endpoint.protocol.tools.strict_schema is SupportStatus.UNSUPPORTED
+    assert endpoint.dialect.max_output_tokens_field == "max_tokens"
+    assert endpoint.dialect.tools.assistant_bridge_required is False
+    assert endpoint.dialect.tools.result_name_required is False
+    assert endpoint.dialect.tools.stream_flag is False
+    assert endpoint.transport.kind == "http"
+    assert endpoint.transport.stream == "sse"
+
+    models = registry.list_models(provider="stepfun")
+    assert [model.id for model in models] == ["step-3.7-flash"]
+
+    model = registry.get_model("stepfun", "openai-completions", "step-3.7-flash")
+    assert model is not None
+    assert model.name == "Step 3.7 Flash"
+    assert model.alias == "default-chat"
+    assert model.last_updated == "2026-05-29"
+    assert model.context_window == 262_144
+    assert model.max_tokens is None
+    assert model.defaults.get("maxOutputTokens") == 4_096
+    assert model.defaults.get("reasoningEffort") == "medium"
+    assert model.capabilities.input == ("text", "image")
+    assert model.capabilities.output == ("text",)
+    assert model.reasoning is True
+    assert model.supports_stream is True
+    assert model.supports_tool_use is True
+    assert model.supports_structured_output is True
+    assert model.supports_attachment is False
+    assert model.supports_temperature is True
+    assert model.pricing is not None
+    assert model.pricing.currency == "USD"
+    assert model.pricing.input == 0.2
+    assert model.pricing.output == 1.15
+    assert model.pricing.cache_read == 0.04
+    assert model.pricing.cache_write is None
 
 
 def test_curated_catalog_includes_verified_tencent_hunyuan_model() -> None:
@@ -1038,6 +1117,30 @@ def test_openai_evidence_matches_curated_provider_fixture() -> None:
         "`gpt-5.5`",
         "`gpt-5.4-mini`",
         "uv run pytest tests/ai/test_curated_catalog.py -q",
+        "Not run on 2026-06-22",
+    ]:
+        assert expected in text
+
+
+def test_stepfun_evidence_matches_curated_provider_fixture() -> None:
+    text = STEPFUN_EVIDENCE_PATH.read_text(encoding="utf-8")
+
+    for expected in [
+        "# Provider evidence: stepfun",
+        "- Verified at: 2026-06-22",
+        "- Issue: #108",
+        "https://platform.stepfun.ai/docs/en/guides/models/step-3.7-flash",
+        "https://platform.stepfun.ai/docs/en/api-reference/chat/chat-completion-create",
+        "https://platform.stepfun.ai/docs/en/guides/models/step-3.7-flash-quickstart",
+        "`STEP_API_KEY`",
+        "`STEPFUN_API_KEY`",
+        "`https://api.stepfun.ai/v1`",
+        "`step-3.7-flash`",
+        "256K token context",
+        "$0.20 input, $0.04 cache hit, and $1.15 output",
+        "`maxTokens` is omitted",
+        "`xhigh` is mapped to `high`",
+        "uv run pytest tests/ai/test_curated_catalog.py tests/providers/test_openai_completions_provider.py -q",
         "Not run on 2026-06-22",
     ]:
         assert expected in text

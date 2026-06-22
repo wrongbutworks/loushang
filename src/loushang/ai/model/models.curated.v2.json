@@ -718,6 +718,96 @@
         }
       }
     },
+    "stepfun": {
+      "displayName": "StepFun",
+      "website": "https://platform.stepfun.ai",
+      "auth": {
+        "kind": "apiKey",
+        "apiKeyEnvs": [
+          "STEP_API_KEY",
+          "STEPFUN_API_KEY"
+        ],
+        "header": "Authorization",
+        "prefix": "Bearer "
+      },
+      "endpoints": {
+        "openai-completions": {
+          "displayName": "StepFun OpenAI-compatible Chat Completions",
+          "api": "openai-completions",
+          "baseUrl": "https://api.stepfun.ai/v1",
+          "preferred": true,
+          "docs": "https://platform.stepfun.ai/docs/en/api-reference/chat/chat-completion-create",
+          "protocol": {
+            "store": "unsupported",
+            "roles": {
+              "developer": "unsupported"
+            },
+            "streaming": {
+              "usage": "supported",
+              "reasoningDelta": "supported"
+            },
+            "reasoning": {
+              "effort": "supported",
+              "effortMap": {
+                "low": "low",
+                "medium": "medium",
+                "high": "high",
+                "xhigh": "high"
+              }
+            },
+            "tools": {
+              "strictSchema": "unsupported"
+            }
+          },
+          "dialect": {
+            "maxOutputTokensField": "max_tokens",
+            "tools": {
+              "assistantBridgeRequired": false,
+              "resultNameRequired": false,
+              "streamFlag": false
+            }
+          },
+          "transport": {
+            "kind": "http",
+            "stream": "sse"
+          },
+          "models": {
+            "step-3.7-flash": {
+              "displayName": "Step 3.7 Flash",
+              "family": "step-3",
+              "alias": "default-chat",
+              "lastUpdated": "2026-05-29",
+              "defaults": {
+                "maxOutputTokens": 4096,
+                "reasoningEffort": "medium"
+              },
+              "capabilities": {
+                "contextWindow": 262144,
+                "input": [
+                  "text",
+                  "image"
+                ],
+                "output": [
+                  "text"
+                ],
+                "reasoning": true,
+                "stream": true,
+                "toolUse": true,
+                "structuredOutput": true,
+                "attachment": false,
+                "temperature": true
+              },
+              "pricing": {
+                "currency": "USD",
+                "input": 0.2,
+                "output": 1.15,
+                "cacheRead": 0.04
+              }
+            }
+          }
+        }
+      }
+    },
     "tencent-hunyuan": {
       "displayName": "Tencent Hunyuan",
       "website": "https://cloud.tencent.com/product/hunyuan",
