@@ -1,6 +1,118 @@
 {
   "schemaVersion": 2,
   "providers": {
+    "anthropic": {
+      "displayName": "Anthropic",
+      "website": "https://docs.anthropic.com",
+      "auth": {
+        "kind": "apiKey",
+        "apiKeyEnv": "ANTHROPIC_API_KEY",
+        "header": "x-api-key",
+        "prefix": "",
+        "extraHeaders": {
+          "anthropic-version": "2023-06-01"
+        }
+      },
+      "endpoints": {
+        "anthropic-messages": {
+          "displayName": "Anthropic Messages API",
+          "api": "anthropic-messages",
+          "baseUrl": "https://api.anthropic.com",
+          "preferred": true,
+          "docs": "https://docs.anthropic.com/en/api/messages",
+          "protocol": {
+            "streaming": {
+              "usage": "supported",
+              "reasoningDelta": "supported"
+            },
+            "reasoning": {
+              "interleaved": "supported"
+            },
+            "tools": {
+              "fineGrained": "supported"
+            },
+            "cache": {
+              "longRetention": "supported"
+            }
+          },
+          "dialect": {
+            "maxOutputTokensField": "max_tokens",
+            "reasoning": {
+              "assistantContentRequired": false,
+              "thinkingAsText": false,
+              "wireFormat": "anthropic"
+            },
+            "cache": {
+              "controlFormat": "anthropic"
+            }
+          },
+          "models": {
+            "claude-opus-4-8": {
+              "displayName": "Claude Opus 4.8",
+              "family": "claude-opus-4-8",
+              "defaults": {
+                "maxTokens": 32000
+              },
+              "capabilities": {
+                "contextWindow": 1000000,
+                "maxTokens": 128000,
+                "input": [
+                  "text",
+                  "image"
+                ],
+                "output": [
+                  "text"
+                ],
+                "reasoning": true,
+                "stream": true,
+                "toolUse": true,
+                "structuredOutput": true,
+                "attachment": false,
+                "temperature": false
+              },
+              "pricing": {
+                "currency": "USD",
+                "input": 5,
+                "output": 25,
+                "cacheRead": 0.5,
+                "cacheWrite": 6.25
+              }
+            },
+            "claude-sonnet-4-6": {
+              "displayName": "Claude Sonnet 4.6",
+              "family": "claude-sonnet-4-6",
+              "defaults": {
+                "maxTokens": 32000
+              },
+              "capabilities": {
+                "contextWindow": 1000000,
+                "maxTokens": 64000,
+                "input": [
+                  "text",
+                  "image"
+                ],
+                "output": [
+                  "text"
+                ],
+                "reasoning": true,
+                "stream": true,
+                "toolUse": true,
+                "structuredOutput": true,
+                "attachment": false,
+                "temperature": true
+              },
+              "pricing": {
+                "currency": "USD",
+                "input": 3,
+                "output": 15,
+                "cacheRead": 0.3,
+                "cacheWrite": 3.75
+              }
+            }
+          }
+        }
+      }
+    },
     "openai": {
       "displayName": "OpenAI",
       "website": "https://platform.openai.com",

@@ -1,0 +1,31 @@
+# Provider evidence: anthropic
+
+- Verified at: 2026-06-22
+- Issue: n/a
+- Official docs:
+  - https://docs.anthropic.com/en/docs/about-claude/models/overview
+  - https://docs.anthropic.com/en/docs/about-claude/pricing
+  - https://docs.anthropic.com/en/api/messages
+  - https://docs.anthropic.com/en/docs/build-with-claude/streaming
+  - https://docs.anthropic.com/en/docs/build-with-claude/extended-thinking
+  - https://docs.anthropic.com/en/docs/build-with-claude/vision
+  - https://docs.anthropic.com/en/docs/agents-and-tools/tool-use/overview
+- Authentication: API key in `ANTHROPIC_API_KEY`, sent as an `x-api-key` header with `anthropic-version: 2023-06-01`.
+- Endpoint: `https://api.anthropic.com`, Messages API protocol.
+- Included models:
+  - `claude-opus-4-8`: current Opus model selected for complex reasoning, coding, and long-context work.
+  - `claude-sonnet-4-6`: current Sonnet model selected for the speed and intelligence balance.
+- Verified capabilities:
+  - Both selected models list text and image input, text output, streaming, tool use, extended thinking, and prompt caching support in official docs.
+  - `claude-opus-4-8` lists a 1,000,000 token context window, 128,000 maximum output tokens, and standard pricing of $5 input, $25 output, $0.50 cache read, and $6.25 cache write per million tokens.
+  - `claude-sonnet-4-6` lists a 1,000,000 token context window, 64,000 maximum output tokens, and standard pricing of $3 input, $15 output, $0.30 cache read, and $3.75 cache write per million tokens.
+  - The Messages API is the selected endpoint for model calls and streaming.
+- Unknown/omitted facts:
+  - `attachment` is false until file and PDF input support is represented separately from image input in the model capability shape.
+  - `structuredOutput` is represented through Anthropic tool-use JSON schema workflows; no native `response_format` equivalent is recorded in this catalog entry.
+  - `claude-opus-4-8` is recorded with `temperature=false` because current Anthropic Opus 4.7+ docs and the existing adapter contract treat temperature as unsupported for that model family.
+  - Provider OAuth token variants are not included in the curated official API-key entry.
+- Contract tests:
+  - `uv run pytest tests/ai/test_curated_catalog.py -q`
+- Manual live smoke:
+  - Not run on 2026-06-22; no live Anthropic credential was used for this catalog-only commit.

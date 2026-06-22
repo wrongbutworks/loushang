@@ -18,6 +18,7 @@ CURATED_CATALOG_PATH = (
 )
 EVIDENCE_DIR = REPO_ROOT / "docs/internals/architecture/ai/catalog-evidence"
 EVIDENCE_TEMPLATE_PATH = EVIDENCE_DIR / "_template.md"
+ANTHROPIC_EVIDENCE_PATH = EVIDENCE_DIR / "anthropic.md"
 OPENAI_EVIDENCE_PATH = EVIDENCE_DIR / "openai.md"
 CURATED_PROVIDER_MATRIX_PATH = (
     REPO_ROOT / "docs/internals/architecture/ai/curated-provider-matrix.md"
@@ -43,6 +44,7 @@ def test_curated_catalog_loads_v2_schema() -> None:
     assert raw["schemaVersion"] == 2
     validate_model_registry_raw(raw)
     assert [provider.id for provider in _load_curated_registry().list_providers()] == [
+        "anthropic",
         "openai"
     ]
 
@@ -55,6 +57,80 @@ def test_default_builtin_catalog_still_uses_legacy_catalog() -> None:
     assert len(registry.list_models(provider="openai")) > len(
         _load_curated_registry().list_models(provider="openai")
     )
+    assert len(registry.list_models(provider="anthropic")) > len(
+        _load_curated_registry().list_models(provider="anthropic")
+    )
+
+
+def test_curated_catalog_includes_verified_anthropic_messages_models() -> None:
+    registry = _load_curated_registry()
+
+    provider = registry.get_provider("anthropic")
+    assert provider is not None
+    assert provider.name == "Anthropic"
+    assert provider.website == "https://docs.anthropic.com"
+    assert provider.auth is not None
+    assert provider.auth.api_key_env == "ANTHROPIC_API_KEY"
+    assert provider.auth.header == "x-api-key"
+    assert provider.auth.prefix == ""
+    assert provider.auth.extra_headers == {"anthropic-version": "2023-06-01"}
+
+    endpoint = registry.get_endpoint("anthropic", "anthropic-messages")
+    assert endpoint is not None
+    assert endpoint.api == "anthropic-messages"
+    assert endpoint.base_url == "https://api.anthropic.com"
+    assert endpoint.preferred is True
+    assert endpoint.auth is not None
+    assert endpoint.auth.api_key_env == "ANTHROPIC_API_KEY"
+    assert endpoint.auth.extra_headers == {"anthropic-version": "2023-06-01"}
+    assert endpoint.protocol.streaming.usage is SupportStatus.SUPPORTED
+    assert endpoint.protocol.streaming.reasoning_delta is SupportStatus.SUPPORTED
+    assert endpoint.protocol.reasoning.interleaved is SupportStatus.SUPPORTED
+    assert endpoint.protocol.tools.fine_grained is SupportStatus.SUPPORTED
+    assert endpoint.protocol.cache.long_retention is SupportStatus.SUPPORTED
+    assert endpoint.dialect.max_output_tokens_field == "max_tokens"
+    assert endpoint.dialect.reasoning.wire_format == "anthropic"
+    assert endpoint.dialect.reasoning.thinking_as_text is False
+    assert endpoint.dialect.cache.control_format == "anthropic"
+
+    models = registry.list_models(provider="anthropic")
+    assert [model.id for model in models] == [
+        "claude-opus-4-8",
+        "claude-sonnet-4-6",
+    ]
+
+    opus = registry.get_model("anthropic", "anthropic-messages", "claude-opus-4-8")
+    assert opus is not None
+    assert opus.name == "Claude Opus 4.8"
+    assert opus.context_window == 1_000_000
+    assert opus.max_tokens == 128_000
+    assert opus.capabilities.input == ("text", "image")
+    assert opus.capabilities.output == ("text",)
+    assert opus.reasoning is True
+    assert opus.supports_stream is True
+    assert opus.supports_tool_use is True
+    assert opus.supports_structured_output is True
+    assert opus.supports_attachment is False
+    assert opus.supports_temperature is False
+    assert opus.pricing is not None
+    assert opus.pricing.input == 5
+    assert opus.pricing.output == 25
+    assert opus.pricing.cache_read == 0.5
+    assert opus.pricing.cache_write == 6.25
+
+    sonnet = registry.get_model(
+        "anthropic", "anthropic-messages", "claude-sonnet-4-6"
+    )
+    assert sonnet is not None
+    assert sonnet.name == "Claude Sonnet 4.6"
+    assert sonnet.context_window == 1_000_000
+    assert sonnet.max_tokens == 64_000
+    assert sonnet.supports_temperature is True
+    assert sonnet.pricing is not None
+    assert sonnet.pricing.input == 3
+    assert sonnet.pricing.output == 15
+    assert sonnet.pricing.cache_read == 0.3
+    assert sonnet.pricing.cache_write == 3.75
 
 
 def test_curated_catalog_includes_verified_openai_responses_models() -> None:
@@ -189,6 +265,29 @@ def test_catalog_evidence_template_matches_required_sections() -> None:
         assert section in text
 
 
+def test_anthropic_evidence_matches_curated_provider_fixture() -> None:
+    text = ANTHROPIC_EVIDENCE_PATH.read_text(encoding="utf-8")
+
+    for expected in [
+        "# Provider evidence: anthropic",
+        "- Verified at: 2026-06-22",
+        "https://docs.anthropic.com/en/docs/about-claude/models/overview",
+        "https://docs.anthropic.com/en/docs/about-claude/pricing",
+        "https://docs.anthropic.com/en/api/messages",
+        "https://docs.anthropic.com/en/docs/build-with-claude/streaming",
+        "https://docs.anthropic.com/en/docs/build-with-claude/extended-thinking",
+        "https://docs.anthropic.com/en/docs/build-with-claude/vision",
+        "https://docs.anthropic.com/en/docs/agents-and-tools/tool-use/overview",
+        "`ANTHROPIC_API_KEY`",
+        "`https://api.anthropic.com`",
+        "`claude-opus-4-8`",
+        "`claude-sonnet-4-6`",
+        "uv run pytest tests/ai/test_curated_catalog.py -q",
+        "Not run on 2026-06-22",
+    ]:
+        assert expected in text
+
+
 def test_openai_evidence_matches_curated_provider_fixture() -> None:
     text = OPENAI_EVIDENCE_PATH.read_text(encoding="utf-8")
 
@@ -212,6 +311,10 @@ def test_openai_evidence_matches_curated_provider_fixture() -> None:
 def test_curated_provider_matrix_matches_openai_fixture() -> None:
     text = CURATED_PROVIDER_MATRIX_PATH.read_text(encoding="utf-8")
 
+    assert "`anthropic` | `anthropic-messages` | `anthropic-messages`" in text
+    assert "`claude-opus-4-8`, `claude-sonnet-4-6`" in text
+    assert "`ANTHROPIC_API_KEY`" in text
+    assert "`catalog-evidence/anthropic.md`" in text
     assert "`openai` | `openai-responses` | `openai-responses`" in text
     assert "`gpt-5.5`, `gpt-5.4-mini`" in text
     assert "`OPENAI_API_KEY`" in text
