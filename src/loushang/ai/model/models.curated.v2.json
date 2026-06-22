@@ -454,6 +454,86 @@
           }
         }
       }
+    },
+    "tencent-hunyuan": {
+      "displayName": "Tencent Hunyuan",
+      "website": "https://cloud.tencent.com/product/hunyuan",
+      "auth": {
+        "kind": "apiKey",
+        "apiKeyEnv": "HUNYUAN_API_KEY",
+        "header": "Authorization",
+        "prefix": "Bearer "
+      },
+      "endpoints": {
+        "openai-completions": {
+          "displayName": "Tencent Hunyuan OpenAI Compatible",
+          "api": "openai-completions",
+          "baseUrl": "https://api.hunyuan.cloud.tencent.com/v1",
+          "region": "cn",
+          "preferred": true,
+          "docs": "https://cloud.tencent.com/document/product/1729/111007",
+          "protocol": {
+            "store": "unsupported",
+            "roles": {
+              "developer": "unsupported"
+            },
+            "streaming": {
+              "usage": "supported",
+              "reasoningDelta": "unsupported"
+            },
+            "reasoning": {
+              "effort": "unsupported"
+            },
+            "tools": {
+              "strictSchema": "unsupported"
+            }
+          },
+          "dialect": {
+            "maxOutputTokensField": "max_tokens",
+            "tools": {
+              "assistantBridgeRequired": false,
+              "resultNameRequired": false,
+              "streamFlag": false
+            }
+          },
+          "transport": {
+            "kind": "http",
+            "stream": "sse"
+          },
+          "models": {
+            "hunyuan-turbos-latest": {
+              "displayName": "Hunyuan TurboS Latest",
+              "family": "hunyuan-turbos",
+              "alias": "default-chat",
+              "lastUpdated": "2025-07-16",
+              "defaults": {
+                "maxOutputTokens": 4096
+              },
+              "capabilities": {
+                "contextWindow": 32768,
+                "maxTokens": 16384,
+                "input": [
+                  "text"
+                ],
+                "output": [
+                  "text"
+                ],
+                "reasoning": false,
+                "stream": true,
+                "toolUse": true,
+                "structuredOutput": false,
+                "attachment": false,
+                "temperature": true
+              },
+              "pricing": {
+                "currency": "CNY",
+                "input": 0.8,
+                "output": 2
+              }
+            }
+          }
+        }
+      }
     }
   }
 }

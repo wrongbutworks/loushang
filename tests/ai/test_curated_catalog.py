@@ -22,6 +22,7 @@ ANTHROPIC_EVIDENCE_PATH = EVIDENCE_DIR / "anthropic.md"
 DASHSCOPE_EVIDENCE_PATH = EVIDENCE_DIR / "dashscope.md"
 MOONSHOT_EVIDENCE_PATH = EVIDENCE_DIR / "moonshot.md"
 OPENAI_EVIDENCE_PATH = EVIDENCE_DIR / "openai.md"
+TENCENT_HUNYUAN_EVIDENCE_PATH = EVIDENCE_DIR / "tencent-hunyuan.md"
 CURATED_PROVIDER_MATRIX_PATH = (
     REPO_ROOT / "docs/internals/architecture/ai/curated-provider-matrix.md"
 )
@@ -50,6 +51,7 @@ def test_curated_catalog_loads_v2_schema() -> None:
         "dashscope",
         "moonshot",
         "openai",
+        "tencent-hunyuan",
     ]
 
 
@@ -69,6 +71,9 @@ def test_default_builtin_catalog_still_uses_legacy_catalog() -> None:
     )
     assert len(registry.list_models(provider="moonshot")) > len(
         _load_curated_registry().list_models(provider="moonshot")
+    )
+    assert len(registry.list_models(provider="tencent-hunyuan")) > len(
+        _load_curated_registry().list_models(provider="tencent-hunyuan")
     )
 
 
@@ -299,6 +304,76 @@ def test_curated_catalog_includes_verified_moonshot_openai_compatible_models() -
     assert coding.pricing.cache_write is None
 
 
+def test_curated_catalog_includes_verified_tencent_hunyuan_model() -> None:
+    registry = _load_curated_registry()
+
+    curated_model_ids = {
+        model.id for model in registry.list_models(provider="tencent-hunyuan")
+    }
+    assert "hunyuan-2.0-instruct-20251111" not in curated_model_ids
+    assert "hunyuan-vision-1.5-instruct" not in curated_model_ids
+
+    provider = registry.get_provider("tencent-hunyuan")
+    assert provider is not None
+    assert provider.name == "Tencent Hunyuan"
+    assert provider.website == "https://cloud.tencent.com/product/hunyuan"
+    assert provider.auth is not None
+    assert provider.auth.api_key_env == "HUNYUAN_API_KEY"
+    assert provider.auth.header == "Authorization"
+    assert provider.auth.prefix == "Bearer "
+
+    endpoint = registry.get_endpoint("tencent-hunyuan", "openai-completions")
+    assert endpoint is not None
+    assert endpoint.api == "openai-completions"
+    assert endpoint.base_url == "https://api.hunyuan.cloud.tencent.com/v1"
+    assert endpoint.region == "cn"
+    assert endpoint.preferred is True
+    assert endpoint.auth is not None
+    assert endpoint.auth.api_key_env == "HUNYUAN_API_KEY"
+    assert endpoint.protocol.store is SupportStatus.UNSUPPORTED
+    assert endpoint.protocol.roles.developer is SupportStatus.UNSUPPORTED
+    assert endpoint.protocol.streaming.usage is SupportStatus.SUPPORTED
+    assert endpoint.protocol.streaming.reasoning_delta is SupportStatus.UNSUPPORTED
+    assert endpoint.protocol.reasoning.effort is SupportStatus.UNSUPPORTED
+    assert endpoint.protocol.tools.strict_schema is SupportStatus.UNSUPPORTED
+    assert endpoint.dialect.max_output_tokens_field == "max_tokens"
+    assert endpoint.dialect.tools.assistant_bridge_required is False
+    assert endpoint.dialect.tools.result_name_required is False
+    assert endpoint.dialect.tools.stream_flag is False
+    assert endpoint.transport.kind == "http"
+    assert endpoint.transport.stream == "sse"
+
+    models = registry.list_models(provider="tencent-hunyuan")
+    assert [model.id for model in models] == ["hunyuan-turbos-latest"]
+
+    model = registry.get_model(
+        "tencent-hunyuan",
+        "openai-completions",
+        "hunyuan-turbos-latest",
+    )
+    assert model is not None
+    assert model.name == "Hunyuan TurboS Latest"
+    assert model.alias == "default-chat"
+    assert model.last_updated == "2025-07-16"
+    assert model.context_window == 32_768
+    assert model.max_tokens == 16_384
+    assert model.defaults.get("maxOutputTokens") == 4_096
+    assert model.capabilities.input == ("text",)
+    assert model.capabilities.output == ("text",)
+    assert model.reasoning is False
+    assert model.supports_stream is True
+    assert model.supports_tool_use is True
+    assert model.supports_structured_output is False
+    assert model.supports_attachment is False
+    assert model.supports_temperature is True
+    assert model.pricing is not None
+    assert model.pricing.currency == "CNY"
+    assert model.pricing.input == 0.8
+    assert model.pricing.output == 2
+    assert model.pricing.cache_read is None
+    assert model.pricing.cache_write is None
+
+
 def test_curated_catalog_includes_verified_openai_responses_models() -> None:
     registry = _load_curated_registry()
 
@@ -518,6 +593,27 @@ def test_openai_evidence_matches_curated_provider_fixture() -> None:
         assert expected in text
 
 
+def test_tencent_hunyuan_evidence_matches_curated_provider_fixture() -> None:
+    text = TENCENT_HUNYUAN_EVIDENCE_PATH.read_text(encoding="utf-8")
+
+    for expected in [
+        "# Provider evidence: tencent-hunyuan",
+        "- Verified at: 2026-06-22",
+        "- Issue: #102",
+        "https://cloud.tencent.com/document/product/1729/111007",
+        "https://cloud.tencent.com/document/product/1729/104753",
+        "https://cloud.tencent.com/document/product/1729/97731",
+        "`HUNYUAN_API_KEY`",
+        "`https://api.hunyuan.cloud.tencent.com/v1`",
+        "`hunyuan-turbos-latest`",
+        "32K maximum input and 16K maximum output",
+        "CNY 0.8 input and CNY 2 output",
+        "uv run pytest tests/ai/test_curated_catalog.py -q",
+        "Not run on 2026-06-22",
+    ]:
+        assert expected in text
+
+
 def test_curated_provider_matrix_matches_openai_fixture() -> None:
     text = CURATED_PROVIDER_MATRIX_PATH.read_text(encoding="utf-8")
 
@@ -537,4 +633,8 @@ def test_curated_provider_matrix_matches_openai_fixture() -> None:
     assert "`gpt-5.5`, `gpt-5.4-mini`" in text
     assert "`OPENAI_API_KEY`" in text
     assert "`catalog-evidence/openai.md`" in text
+    assert "`tencent-hunyuan` | `openai-completions` | `openai-completions`" in text
+    assert "`hunyuan-turbos-latest`" in text
+    assert "`HUNYUAN_API_KEY`" in text
+    assert "`catalog-evidence/tencent-hunyuan.md`" in text
     assert "load_model_registry_from_file" in text

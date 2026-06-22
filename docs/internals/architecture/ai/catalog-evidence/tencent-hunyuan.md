@@ -1,0 +1,25 @@
+# Provider evidence: tencent-hunyuan
+
+- Verified at: 2026-06-22
+- Issue: #102
+- Official docs:
+  - https://cloud.tencent.com/document/product/1729/111007
+  - https://cloud.tencent.com/document/product/1729/104753
+  - https://cloud.tencent.com/document/product/1729/97731
+- Authentication: API key in `HUNYUAN_API_KEY`, sent as an `Authorization: Bearer ...` header.
+- Endpoint: `https://api.hunyuan.cloud.tencent.com/v1`, OpenAI-compatible Chat Completions protocol.
+- Included models:
+  - `hunyuan-turbos-latest`: stable model used by Tencent Cloud's OpenAI-compatible Chat Completions and function-calling examples.
+- Verified capabilities:
+  - OpenAI-compatible docs use `/chat/completions`, SSE streaming, `stream_options.include_usage`, and `tools` / `tool_choice` examples with `hunyuan-turbos-latest`.
+  - Product overview lists `hunyuan-turbos-latest` with 32K maximum input and 16K maximum output.
+  - Pricing docs record Hunyuan TurboS at CNY 0.8 input and CNY 2 output per million tokens.
+- Unknown/omitted facts:
+  - Newer Hunyuan 2.0, T1, A13B, Lite, and vision models are omitted because AIQ-049 asks for one model and the OpenAI-compatible examples directly exercise `hunyuan-turbos-latest`.
+  - `reasoning` is false because the cited OpenAI-compatible docs do not expose a stable reasoning request contract or reasoning delta stream for this model.
+  - `structuredOutput` is false because the cited docs show function tools, not a stable JSON-schema response-format contract.
+  - `cacheRead` and `cacheWrite` are omitted because the selected pricing rows used for this curation record standard input/output prices, not stable cache component prices.
+- Contract tests:
+  - `uv run pytest tests/ai/test_curated_catalog.py -q`
+- Manual live smoke:
+  - Not run on 2026-06-22; no live Tencent Hunyuan credential was used for this catalog-only commit.
