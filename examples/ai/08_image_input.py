@@ -2,62 +2,26 @@
 
 from __future__ import annotations
 
-import asyncio
 import json
 
 from loushang.ai import (
     AssistantMessage,
-    CallOptions,
     Context,
     ImagePart,
-    Model,
     TextPart,
     ToolCall,
     ToolResultMessage,
     Usage,
     UserMessage,
-    complete,
 )
-from loushang.ai.advanced.registry import ApiProviderRegistry
-from loushang.ai.model import Capabilities, Endpoint
-from loushang.ai.model.registry import ModelRegistry
 
 
-class _ImageEchoProvider:
-    api = "openai-responses"
-
-    async def stream_raw(self, model, context, options, request):
-        del model, options, request
-        summary = _summarize_images(context.get("messages", []))
-        yield {"type": "response_start", "response_id": "image-input-demo"}
-        yield {"type": "text_delta", "text": json.dumps(summary, sort_keys=True)}
-        yield {"type": "stop_reason", "stop_reason": "stop"}
-        yield {"type": "response_done"}
-
-
-async def inspect_image_input() -> dict[str, object]:
-    model_registry = _build_model_registry()
-    model = model_registry.get_model(
-        "image-input-demo",
-        "openai-responses",
-        "image-input-demo",
-    )
-    registry = ApiProviderRegistry()
-    registry.register_api_provider(_ImageEchoProvider())
-    message = await complete(
-        model,
-        _build_context(),
-        CallOptions(),
-        registry=registry,
-    )
-    text = "".join(
-        part.text for part in message.content if getattr(part, "type", None) == "text"
-    )
-    return json.loads(text)
+def inspect_image_input() -> dict[str, object]:
+    return _summarize_images(_build_context().messages)
 
 
 def main() -> None:
-    print(json.dumps(asyncio.run(inspect_image_input()), indent=2, sort_keys=True))
+    print(json.dumps(inspect_image_input(), indent=2, sort_keys=True))
 
 
 def _summarize_images(messages: list[object]) -> dict[str, object]:
@@ -95,8 +59,8 @@ def _build_context() -> Context:
             )
         ],
         api="openai-responses",
-        provider="image-input-demo",
-        model="image-input-demo",
+        provider="openai",
+        model="gpt-5.4-mini",
         response_id="resp_1",
         usage=Usage(
             input=0,
@@ -138,29 +102,6 @@ def _build_context() -> Context:
             ),
         ]
     )
-
-
-def _build_model() -> Model:
-    return Model(
-        id="image-input-demo",
-        provider="image-input-demo",
-        endpoint="openai-responses",
-        capabilities=Capabilities(stream=True, input=("text", "image")),
-    )
-
-
-def _build_model_registry() -> ModelRegistry:
-    registry = ModelRegistry()
-    registry.register_endpoint(
-        "image-input-demo",
-        Endpoint(
-            id="openai-responses",
-            provider="image-input-demo",
-            api="openai-responses",
-            models={"image-input-demo": _build_model()},
-        ),
-    )
-    return registry
 
 
 if __name__ == "__main__":

@@ -21,11 +21,5 @@ jobs:
       - name: Install dependencies
         run: make bootstrap
 
-      - name: Ruff
-        run: make lint-ai
-
-      - name: Mypy
-        run: make typecheck-ai
-
-      - name: AI tests
-        run: make test-ai
+      - name: AI quality gate
+        run: make check-ai

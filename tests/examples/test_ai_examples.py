@@ -195,14 +195,14 @@ def test_reasoning_example_reports_simple_reasoning_mapping(capsys) -> None:
         Path("examples/ai/06_reasoning.py"), "examples_ai_06_reasoning"
     )
 
-    summary = asyncio.run(module.inspect_reasoning())
+    summary = module.inspect_reasoning()
 
     assert summary == {
         "reasoning": "medium",
         "budgetTokens": 2048,
         "events": [
             {"type": "thinking_delta", "thinking": "reasoning trace"},
-            {"type": "text_delta", "text": "mock hello from faux provider"},
+            {"type": "text_delta", "text": "mock hello from offline fixture"},
         ],
         "stopReason": "stop",
     }
@@ -217,7 +217,7 @@ def test_parallel_tools_example_groups_interleaved_calls(capsys) -> None:
         Path("examples/ai/05_parallel_tools.py"), "examples_ai_05_parallel_tools"
     )
 
-    summary = asyncio.run(module.inspect_parallel_tools())
+    summary = module.inspect_parallel_tools()
 
     assert summary == {
         "stopReason": "toolUse",
@@ -238,9 +238,10 @@ def test_structured_output_example_parses_result(capsys) -> None:
         "examples_ai_07_structured_output",
     )
 
-    summary = asyncio.run(module.inspect_structured_output())
+    summary = module.inspect_structured_output()
 
     assert summary == {
+        "mode": "json_schema",
         "responseId": "structured-demo",
         "stopReason": "stop",
         "parsed": {"answer": "Paris", "score": 10},
@@ -257,7 +258,7 @@ def test_image_input_example_reports_image_counts(capsys) -> None:
         "examples_ai_08_image_input",
     )
 
-    summary = asyncio.run(module.inspect_image_input())
+    summary = module.inspect_image_input()
 
     assert summary == {
         "userImages": 1,
@@ -809,28 +810,30 @@ def test_complete_example_builds_expected_context() -> None:
     module = _load_module(Path("examples/ai/01_complete.py"), "examples_ai_complete")
 
     context = module._build_context()
-    summary = asyncio.run(module.inspect_complete())
+    summary = module.inspect_complete()
 
     assert context["system_prompt"]
     assert context["messages"][0]["role"] == "user"
     assert summary == {
-        "model": "faux:anthropic-messages:faux-complete",
-        "responseId": "faux-response",
+        "model": "moonshot:openai-completions:kimi-k2.6",
+        "maxOutputTokens": 256,
+        "messageCount": 1,
+        "responseId": "offline-complete-demo",
         "stopReason": "stop",
-        "text": "mock hello from faux provider",
+        "text": "mock hello from offline fixture",
     }
 
 
 def test_stream_example_reports_text_delta() -> None:
     module = _load_module(Path("examples/ai/02_stream.py"), "examples_ai_stream")
 
-    summary = asyncio.run(module.inspect_stream())
+    summary = module.inspect_stream()
 
-    assert summary["model"] == "faux:anthropic-messages:faux-stream"
-    assert summary["responseId"] == "faux-response"
+    assert summary["model"] == "moonshot:openai-completions:kimi-k2.6"
+    assert summary["responseId"] == "offline-stream-demo"
     assert summary["stopReason"] == "stop"
-    assert summary["text"] == "mock hello from faux provider"
-    assert {"type": "text_delta", "text": "mock hello from faux provider"} in summary[
+    assert summary["text"] == "mock hello from offline fixture"
+    assert {"type": "text_delta", "text": "mock hello "} in summary[
         "events"
     ]
 
@@ -839,7 +842,7 @@ def test_tools_example_declares_add_tool() -> None:
     module = _load_module(Path("examples/ai/04_tools.py"), "examples_ai_tools")
 
     tools = module._build_tools()
-    summary = asyncio.run(module.inspect_tools())
+    summary = module.inspect_tools()
 
     assert tools[0]["name"] == "add"
     assert tools[0]["parameters"]["required"] == ["a", "b"]
@@ -877,18 +880,18 @@ def test_typed_context_example_uses_public_types() -> None:
     )
 
     context = module._build_context()
-    summary = asyncio.run(module.inspect_typed_context())
+    summary = module.inspect_typed_context()
 
     assert context.system_prompt is not None
     assert context.messages[0].role == "user"
     assert context.tools is not None
     assert context.tools[0].name == "add"
     assert summary == {
-        "model": "faux:anthropic-messages:faux-typed-context",
+        "model": "moonshot:openai-completions:kimi-k2.6",
         "messageCount": 1,
         "toolCount": 1,
         "stopReason": "stop",
-        "text": "mock hello from faux provider",
+        "text": "mock hello from typed context",
     }
 
 

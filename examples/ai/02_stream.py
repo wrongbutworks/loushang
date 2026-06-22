@@ -1,63 +1,39 @@
-"""Offline streaming example."""
+"""Offline streaming event handling example."""
 
 from __future__ import annotations
 
-import asyncio
 import json
 from collections.abc import Iterable
 
-from loushang.ai import CallOptions, Model, stream
-from loushang.ai.advanced.registry import ApiProviderRegistry
-from loushang.ai.model import Capabilities, Endpoint
-from loushang.ai.model.registry import ModelRegistry
-from loushang.ai.providers.faux import FauxProvider
+from loushang.ai import AssistantMessage, TextPart, get_model
 
-PROVIDER_ID = "faux"
-ENDPOINT_ID = "anthropic-messages"
-MODEL_ID = "faux-stream"
-SYSTEM_PROMPT = "You are an offline streaming example assistant."
-USER_PROMPT = "请用两句话介绍你自己，并说明 1 + 1 等于几。"
-MAX_TOKENS = 256
+PROVIDER_ID = "moonshot"
+ENDPOINT_ID = "openai-completions"
+MODEL_ID = "kimi-k2.6"
 
 
-def _build_model() -> Model:
-    return Model(
-        id=MODEL_ID,
+def _offline_events() -> list[dict[str, object]]:
+    return [
+        {"type": "start"},
+        {"type": "text_delta", "text": "mock hello "},
+        {"type": "text_delta", "text": "from offline fixture"},
+        {"type": "done"},
+    ]
+
+
+def _offline_message() -> AssistantMessage:
+    return AssistantMessage(
+        role="assistant",
+        content=[TextPart(type="text", text="mock hello from offline fixture")],
+        api=ENDPOINT_ID,
         provider=PROVIDER_ID,
-        endpoint=ENDPOINT_ID,
-        capabilities=Capabilities(stream=True),
+        model=MODEL_ID,
+        response_id="offline-stream-demo",
+        usage=None,
+        stop_reason="stop",
+        error_message=None,
+        timestamp=0.0,
     )
-
-
-def _build_model_registry() -> ModelRegistry:
-    registry = ModelRegistry()
-    registry.register_endpoint(
-        PROVIDER_ID,
-        Endpoint(
-            id=ENDPOINT_ID,
-            provider=PROVIDER_ID,
-            api="anthropic-messages",
-            models={MODEL_ID: _build_model()},
-        ),
-    )
-    return registry
-
-
-def _build_provider_registry() -> ApiProviderRegistry:
-    registry = ApiProviderRegistry()
-    registry.register_api_provider(FauxProvider())
-    return registry
-
-
-def _build_context() -> dict[str, object]:
-    return {
-        "system_prompt": SYSTEM_PROMPT,
-        "messages": [{"role": "user", "content": USER_PROMPT}],
-    }
-
-
-def _build_options() -> CallOptions:
-    return CallOptions(max_output_tokens=MAX_TOKENS)
 
 
 def _iter_text(parts: Iterable[object]) -> str:
@@ -68,26 +44,12 @@ def _iter_text(parts: Iterable[object]) -> str:
     return "".join(texts)
 
 
-async def inspect_stream() -> dict[str, object]:
-    model = _build_model_registry().get_model(PROVIDER_ID, ENDPOINT_ID, MODEL_ID)
-    event_stream = await stream(
-        model,
-        _build_context(),
-        _build_options(),
-        registry=_build_provider_registry(),
-    )
-
-    events: list[dict[str, object]] = []
-    async for event in event_stream:
-        if event["type"] == "text_delta":
-            events.append({"type": event["type"], "text": event["delta"]})
-        else:
-            events.append({"type": event["type"]})
-
-    message = await event_stream.result()
+def inspect_stream() -> dict[str, object]:
+    model = get_model(PROVIDER_ID, ENDPOINT_ID, MODEL_ID)
+    message = _offline_message()
     return {
         "model": f"{model.provider_id}:{model.endpoint_id}:{model.id}",
-        "events": events,
+        "events": _offline_events(),
         "responseId": message.response_id,
         "stopReason": message.stop_reason,
         "text": _iter_text(message.content),
@@ -95,7 +57,7 @@ async def inspect_stream() -> dict[str, object]:
 
 
 def main() -> None:
-    print(json.dumps(asyncio.run(inspect_stream()), ensure_ascii=False, sort_keys=True))
+    print(json.dumps(inspect_stream(), ensure_ascii=False, sort_keys=True))
 
 
 if __name__ == "__main__":

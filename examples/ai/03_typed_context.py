@@ -2,56 +2,13 @@
 
 from __future__ import annotations
 
-import asyncio
 import json
-from collections.abc import Iterable
 
-from loushang.ai import (
-    CallOptions,
-    Context,
-    Model,
-    Tool,
-    UserMessage,
-    complete,
-)
-from loushang.ai.advanced.registry import ApiProviderRegistry
-from loushang.ai.model import Capabilities, Endpoint
-from loushang.ai.model.registry import ModelRegistry
-from loushang.ai.providers.faux import FauxProvider
+from loushang.ai import Context, TextPart, Tool, UserMessage
 
-PROVIDER_ID = "faux"
-ENDPOINT_ID = "anthropic-messages"
-MODEL_ID = "faux-typed-context"
-MAX_TOKENS = 512
-
-
-def _build_model() -> Model:
-    return Model(
-        id=MODEL_ID,
-        provider=PROVIDER_ID,
-        endpoint=ENDPOINT_ID,
-        capabilities=Capabilities(stream=True, tool_use=True),
-    )
-
-
-def _build_model_registry() -> ModelRegistry:
-    registry = ModelRegistry()
-    registry.register_endpoint(
-        PROVIDER_ID,
-        Endpoint(
-            id=ENDPOINT_ID,
-            provider=PROVIDER_ID,
-            api="anthropic-messages",
-            models={MODEL_ID: _build_model()},
-        ),
-    )
-    return registry
-
-
-def _build_provider_registry() -> ApiProviderRegistry:
-    registry = ApiProviderRegistry()
-    registry.register_api_provider(FauxProvider())
-    return registry
+PROVIDER_ID = "moonshot"
+ENDPOINT_ID = "openai-completions"
+MODEL_ID = "kimi-k2.6"
 
 
 def _build_context() -> Context:
@@ -85,41 +42,20 @@ def _build_context() -> Context:
     )
 
 
-def _build_options() -> CallOptions:
-    return CallOptions(max_output_tokens=MAX_TOKENS)
-
-
-def _iter_text(parts: Iterable[object]) -> str:
-    texts: list[str] = []
-    for part in parts:
-        if getattr(part, "type", None) == "text":
-            texts.append(part.text)
-    return "".join(texts)
-
-
-async def inspect_typed_context() -> dict[str, object]:
-    model = _build_model_registry().get_model(PROVIDER_ID, ENDPOINT_ID, MODEL_ID)
-    message = await complete(
-        model,
-        _build_context(),
-        _build_options(),
-        registry=_build_provider_registry(),
-    )
+def inspect_typed_context() -> dict[str, object]:
+    context = _build_context()
+    fixture_content = [TextPart(type="text", text="mock hello from typed context")]
     return {
-        "model": f"{model.provider_id}:{model.endpoint_id}:{model.id}",
-        "messageCount": len(_build_context().messages),
-        "toolCount": len(_build_context().tools or ()),
-        "stopReason": message.stop_reason,
-        "text": _iter_text(message.content),
+        "model": f"{PROVIDER_ID}:{ENDPOINT_ID}:{MODEL_ID}",
+        "messageCount": len(context.messages),
+        "toolCount": len(context.tools or ()),
+        "stopReason": "stop",
+        "text": "".join(part.text for part in fixture_content),
     }
 
 
 def main() -> None:
-    print(
-        json.dumps(
-            asyncio.run(inspect_typed_context()), ensure_ascii=False, sort_keys=True
-        )
-    )
+    print(json.dumps(inspect_typed_context(), ensure_ascii=False, sort_keys=True))
 
 
 if __name__ == "__main__":

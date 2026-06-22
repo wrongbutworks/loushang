@@ -1,4 +1,4 @@
-`examples/ai` 面向上层开发者，展示 `loushang.ai` 根包公开 API 的常见调用路径。
+`examples/ai` 面向上层开发者，展示 `loushang.ai` 根包公开 API 和公开 tool 校验辅助的常见调用路径。
 
 顶层编号示例默认离线可运行，不需要真实厂商凭证：
 
