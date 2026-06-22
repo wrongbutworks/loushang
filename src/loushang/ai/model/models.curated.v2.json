@@ -223,6 +223,120 @@
         }
       }
     },
+    "deepseek": {
+      "displayName": "DeepSeek",
+      "website": "https://api-docs.deepseek.com",
+      "auth": {
+        "kind": "apiKey",
+        "apiKeyEnv": "DEEPSEEK_API_KEY",
+        "header": "Authorization",
+        "prefix": "Bearer "
+      },
+      "endpoints": {
+        "openai-completions": {
+          "displayName": "DeepSeek OpenAI-compatible Chat Completions",
+          "api": "openai-completions",
+          "baseUrl": "https://api.deepseek.com",
+          "preferred": true,
+          "docs": "https://api-docs.deepseek.com/",
+          "protocol": {
+            "store": "unsupported",
+            "roles": {
+              "developer": "unsupported"
+            },
+            "streaming": {
+              "usage": "supported",
+              "reasoningDelta": "supported"
+            },
+            "reasoning": {
+              "effort": "supported",
+              "effortMap": {
+                "low": "high",
+                "medium": "high",
+                "high": "high",
+                "xhigh": "max"
+              }
+            },
+            "tools": {
+              "strictSchema": "supported"
+            }
+          },
+          "dialect": {
+            "maxOutputTokensField": "max_tokens",
+            "tools": {
+              "assistantBridgeRequired": false,
+              "resultNameRequired": false,
+              "streamFlag": false
+            },
+            "reasoning": {
+              "assistantContentRequired": true,
+              "thinkingAsText": false,
+              "wireFormat": "deepseek"
+            }
+          },
+          "transport": {
+            "kind": "http",
+            "stream": "sse"
+          },
+          "models": {
+            "deepseek-v4-flash": {
+              "displayName": "DeepSeek V4 Flash",
+              "family": "deepseek-v4",
+              "alias": "fast-chat",
+              "capabilities": {
+                "contextWindow": 1000000,
+                "maxTokens": 384000,
+                "input": [
+                  "text"
+                ],
+                "output": [
+                  "text"
+                ],
+                "reasoning": true,
+                "stream": true,
+                "toolUse": true,
+                "structuredOutput": true,
+                "attachment": false,
+                "temperature": true
+              },
+              "pricing": {
+                "currency": "USD",
+                "input": 0.14,
+                "output": 0.28,
+                "cacheRead": 0.0028
+              }
+            },
+            "deepseek-v4-pro": {
+              "displayName": "DeepSeek V4 Pro",
+              "family": "deepseek-v4",
+              "alias": "default-chat",
+              "capabilities": {
+                "contextWindow": 1000000,
+                "maxTokens": 384000,
+                "input": [
+                  "text"
+                ],
+                "output": [
+                  "text"
+                ],
+                "reasoning": true,
+                "stream": true,
+                "toolUse": true,
+                "structuredOutput": true,
+                "attachment": false,
+                "temperature": true
+              },
+              "pricing": {
+                "currency": "USD",
+                "input": 0.435,
+                "output": 0.87,
+                "cacheRead": 0.003625
+              }
+            }
+          }
+        }
+      }
+    },
     "moonshot": {
       "displayName": "Moonshot AI",
       "website": "https://platform.kimi.ai",

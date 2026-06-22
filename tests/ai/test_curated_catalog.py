@@ -20,6 +20,7 @@ EVIDENCE_DIR = REPO_ROOT / "docs/internals/architecture/ai/catalog-evidence"
 EVIDENCE_TEMPLATE_PATH = EVIDENCE_DIR / "_template.md"
 ANTHROPIC_EVIDENCE_PATH = EVIDENCE_DIR / "anthropic.md"
 DASHSCOPE_EVIDENCE_PATH = EVIDENCE_DIR / "dashscope.md"
+DEEPSEEK_EVIDENCE_PATH = EVIDENCE_DIR / "deepseek.md"
 MOONSHOT_EVIDENCE_PATH = EVIDENCE_DIR / "moonshot.md"
 OPENAI_EVIDENCE_PATH = EVIDENCE_DIR / "openai.md"
 TENCENT_HUNYUAN_EVIDENCE_PATH = EVIDENCE_DIR / "tencent-hunyuan.md"
@@ -50,6 +51,7 @@ def test_curated_catalog_loads_v2_schema() -> None:
     assert [provider.id for provider in _load_curated_registry().list_providers()] == [
         "anthropic",
         "dashscope",
+        "deepseek",
         "moonshot",
         "openai",
         "tencent-hunyuan",
@@ -233,6 +235,91 @@ def test_curated_catalog_includes_verified_dashscope_responses_models() -> None:
     assert plus.pricing.output == 8
     assert plus.pricing.cache_read is None
     assert plus.pricing.cache_write is None
+
+
+def test_curated_catalog_includes_verified_deepseek_v4_models() -> None:
+    registry = _load_curated_registry()
+
+    curated_model_ids = {model.id for model in registry.list_models(provider="deepseek")}
+    assert "deepseek-r1" not in curated_model_ids
+    assert "deepseek-v3.2" not in curated_model_ids
+
+    provider = registry.get_provider("deepseek")
+    assert provider is not None
+    assert provider.name == "DeepSeek"
+    assert provider.website == "https://api-docs.deepseek.com"
+    assert provider.auth is not None
+    assert provider.auth.api_key_env == "DEEPSEEK_API_KEY"
+    assert provider.auth.header == "Authorization"
+    assert provider.auth.prefix == "Bearer "
+
+    endpoint = registry.get_endpoint("deepseek", "openai-completions")
+    assert endpoint is not None
+    assert endpoint.api == "openai-completions"
+    assert endpoint.base_url == "https://api.deepseek.com"
+    assert endpoint.preferred is True
+    assert endpoint.auth is not None
+    assert endpoint.auth.api_key_env == "DEEPSEEK_API_KEY"
+    assert endpoint.protocol.store is SupportStatus.UNSUPPORTED
+    assert endpoint.protocol.roles.developer is SupportStatus.UNSUPPORTED
+    assert endpoint.protocol.streaming.usage is SupportStatus.SUPPORTED
+    assert endpoint.protocol.streaming.reasoning_delta is SupportStatus.SUPPORTED
+    assert endpoint.protocol.reasoning.effort is SupportStatus.SUPPORTED
+    assert endpoint.protocol.reasoning.effort_map == {
+        "low": "high",
+        "medium": "high",
+        "high": "high",
+        "xhigh": "max",
+    }
+    assert endpoint.protocol.tools.strict_schema is SupportStatus.SUPPORTED
+    assert endpoint.dialect.max_output_tokens_field == "max_tokens"
+    assert endpoint.dialect.tools.assistant_bridge_required is False
+    assert endpoint.dialect.tools.result_name_required is False
+    assert endpoint.dialect.tools.stream_flag is False
+    assert endpoint.dialect.reasoning.wire_format == "deepseek"
+    assert endpoint.dialect.reasoning.thinking_as_text is False
+    assert endpoint.dialect.reasoning.assistant_content_required is True
+    assert endpoint.transport.kind == "http"
+    assert endpoint.transport.stream == "sse"
+
+    models = registry.list_models(provider="deepseek")
+    assert [model.id for model in models] == ["deepseek-v4-flash", "deepseek-v4-pro"]
+
+    flash = registry.get_model("deepseek", "openai-completions", "deepseek-v4-flash")
+    assert flash is not None
+    assert flash.name == "DeepSeek V4 Flash"
+    assert flash.alias == "fast-chat"
+    assert flash.context_window == 1_000_000
+    assert flash.max_tokens == 384_000
+    assert flash.capabilities.input == ("text",)
+    assert flash.capabilities.output == ("text",)
+    assert flash.reasoning is True
+    assert flash.supports_stream is True
+    assert flash.supports_tool_use is True
+    assert flash.supports_structured_output is True
+    assert flash.supports_attachment is False
+    assert flash.supports_temperature is True
+    assert flash.pricing is not None
+    assert flash.pricing.currency == "USD"
+    assert flash.pricing.input == 0.14
+    assert flash.pricing.output == 0.28
+    assert flash.pricing.cache_read == 0.0028
+    assert flash.pricing.cache_write is None
+
+    pro = registry.get_model("deepseek", "openai-completions", "deepseek-v4-pro")
+    assert pro is not None
+    assert pro.name == "DeepSeek V4 Pro"
+    assert pro.alias == "default-chat"
+    assert pro.context_window == 1_000_000
+    assert pro.max_tokens == 384_000
+    assert pro.reasoning is True
+    assert pro.supports_temperature is True
+    assert pro.pricing is not None
+    assert pro.pricing.currency == "USD"
+    assert pro.pricing.input == 0.435
+    assert pro.pricing.output == 0.87
+    assert pro.pricing.cache_read == 0.003625
+    assert pro.pricing.cache_write is None
 
 
 def test_curated_catalog_includes_verified_moonshot_openai_compatible_models() -> None:
@@ -661,6 +748,30 @@ def test_dashscope_evidence_matches_curated_provider_fixture() -> None:
         assert expected in text
 
 
+def test_deepseek_evidence_matches_curated_provider_fixture() -> None:
+    text = DEEPSEEK_EVIDENCE_PATH.read_text(encoding="utf-8")
+
+    for expected in [
+        "# Provider evidence: deepseek",
+        "- Verified at: 2026-06-22",
+        "- Issue: #104",
+        "https://api-docs.deepseek.com/",
+        "https://api-docs.deepseek.com/quick_start/pricing",
+        "https://api-docs.deepseek.com/guides/thinking_mode",
+        "https://api-docs.deepseek.com/api/create-chat-completion",
+        "`DEEPSEEK_API_KEY`",
+        "`https://api.deepseek.com`",
+        "`deepseek-v4-flash`",
+        "`deepseek-v4-pro`",
+        "1,000,000 token context, 384,000 maximum output tokens",
+        "$0.14 input, $0.0028 cache hit, and $0.28 output",
+        "$0.435 input, $0.003625 cache hit, and $0.87 output",
+        "uv run pytest tests/ai/test_curated_catalog.py tests/providers/test_openai_completions_provider.py -q",
+        "Not run on 2026-06-22",
+    ]:
+        assert expected in text
+
+
 def test_openai_evidence_matches_curated_provider_fixture() -> None:
     text = OPENAI_EVIDENCE_PATH.read_text(encoding="utf-8")
 
@@ -738,6 +849,10 @@ def test_curated_provider_matrix_matches_openai_fixture() -> None:
     assert "`qwen3.7-max`, `qwen3.7-plus`" in text
     assert "`DASHSCOPE_API_KEY`" in text
     assert "`catalog-evidence/dashscope.md`" in text
+    assert "`deepseek` | `openai-completions` | `openai-completions`" in text
+    assert "`deepseek-v4-flash`, `deepseek-v4-pro`" in text
+    assert "`DEEPSEEK_API_KEY`" in text
+    assert "`catalog-evidence/deepseek.md`" in text
     assert "`moonshot` | `openai-completions` | `openai-completions`" in text
     assert "`kimi-k2.6`, `kimi-k2.7-code`" in text
     assert "`MOONSHOT_API_KEY`" in text

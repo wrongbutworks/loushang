@@ -8,6 +8,7 @@ AIQ-056 switches the package data.
 |---|---|---|---|---|---|---|
 | `anthropic` | `anthropic-messages` | `anthropic-messages` | `claude-opus-4-8`, `claude-sonnet-4-6` | `ANTHROPIC_API_KEY` | `catalog-evidence/anthropic.md` | `uv run pytest tests/ai/test_curated_catalog.py -q` |
 | `dashscope` | `openai-responses` | `openai-responses` | `qwen3.7-max`, `qwen3.7-plus` | `DASHSCOPE_API_KEY` | `catalog-evidence/dashscope.md` | `uv run pytest tests/ai/test_curated_catalog.py -q` |
+| `deepseek` | `openai-completions` | `openai-completions` | `deepseek-v4-flash`, `deepseek-v4-pro` | `DEEPSEEK_API_KEY` | `catalog-evidence/deepseek.md` | `uv run pytest tests/ai/test_curated_catalog.py tests/providers/test_openai_completions_provider.py -q` |
 | `moonshot` | `openai-completions` | `openai-completions` | `kimi-k2.6`, `kimi-k2.7-code` | `MOONSHOT_API_KEY` | `catalog-evidence/moonshot.md` | `uv run pytest tests/ai/test_curated_catalog.py -q` |
 | `openai` | `openai-responses` | `openai-responses` | `gpt-5.5`, `gpt-5.4-mini` | `OPENAI_API_KEY` | `catalog-evidence/openai.md` | `uv run pytest tests/ai/test_curated_catalog.py -q` |
 | `tencent-hunyuan` | `openai-completions` | `openai-completions` | `hunyuan-turbos-latest` | `HUNYUAN_API_KEY` | `catalog-evidence/tencent-hunyuan.md` | `uv run pytest tests/ai/test_curated_catalog.py -q` |
