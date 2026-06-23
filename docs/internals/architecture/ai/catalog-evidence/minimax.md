@@ -6,6 +6,10 @@
   - https://platform.minimax.io/docs/api-reference/api-overview
   - https://platform.minimax.io/docs/pricing/overview
   - https://platform.minimax.io/docs/guides/text-models
+- Source map:
+  - Authentication and endpoint: API overview.
+  - Model selection, context, modalities, thinking, tools, and structured output: text-models guide.
+  - Pricing: pricing overview.
 - Authentication: API key in `MINIMAX_API_KEY`, sent as an `x-api-key` header.
 - Endpoint: `https://api.minimax.io/anthropic/v1`, Anthropic-compatible Messages protocol.
 - Included models:

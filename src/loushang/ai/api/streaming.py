@@ -127,7 +127,9 @@ def _adapter_protocol_for_validation(resolved) -> EndpointProtocolFeatures:
     override_raw = (
         override.to_raw() if isinstance(override, EndpointProtocolFeatures) else {}
     )
-    return EndpointProtocolFeatures.from_raw(_deep_merge_mapping(base_raw, override_raw))
+    return EndpointProtocolFeatures.from_raw(
+        _deep_merge_mapping(base_raw, override_raw)
+    )
 
 
 def _deep_merge_mapping(

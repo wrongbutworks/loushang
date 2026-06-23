@@ -3,9 +3,9 @@ from __future__ import annotations
 import asyncio
 import inspect
 import time
-from collections.abc import Mapping
+from collections.abc import Awaitable, Callable, Mapping
 from dataclasses import dataclass, replace
-from typing import Any, Awaitable, Callable
+from typing import Any
 
 from loushang.agent.types import (
     AfterToolCallContext,
@@ -19,7 +19,7 @@ from loushang.agent.types import (
     BeforeToolCallContext,
     StreamFn,
 )
-from loushang.ai.api import stream_simple
+from loushang.ai.api import stream
 from loushang.ai.event_stream import EventStream
 from loushang.ai.tool.validation import validate_tool_arguments
 from loushang.ai.types import (
@@ -57,8 +57,10 @@ def agent_loop(
                 signal=signal,
                 stream_fn=stream_fn,
             )
-        except Exception as error:  # noqa: BLE001
-            stream.fail(error if isinstance(error, Exception) else RuntimeError(str(error)))
+        except Exception as error:
+            stream.fail(
+                error if isinstance(error, Exception) else RuntimeError(str(error))
+            )
 
     asyncio.create_task(_runner())
     return stream
@@ -87,8 +89,10 @@ def agent_loop_continue(
                 signal=signal,
                 stream_fn=stream_fn,
             )
-        except Exception as error:  # noqa: BLE001
-            stream.fail(error if isinstance(error, Exception) else RuntimeError(str(error)))
+        except Exception as error:
+            stream.fail(
+                error if isinstance(error, Exception) else RuntimeError(str(error))
+            )
 
     asyncio.create_task(_runner())
     return stream
@@ -122,7 +126,9 @@ async def run_agent_loop(
         await _emit(emit, {"type": "message_start", "message": prompt})
         await _emit(emit, {"type": "message_end", "message": prompt})
 
-    await _run_loop(current_context, new_messages, config, emit, signal=signal, stream_fn=stream_fn)
+    await _run_loop(
+        current_context, new_messages, config, emit, signal=signal, stream_fn=stream_fn
+    )
     return new_messages
 
 
@@ -148,7 +154,9 @@ async def run_agent_loop_continue(
 
     await _emit(emit, {"type": "agent_start"})
     await _emit(emit, {"type": "turn_start"})
-    await _run_loop(current_context, new_messages, config, emit, signal=signal, stream_fn=stream_fn)
+    await _run_loop(
+        current_context, new_messages, config, emit, signal=signal, stream_fn=stream_fn
+    )
     return new_messages
 
 
@@ -201,11 +209,20 @@ async def _run_loop(
                 )
                 return
 
-            assistant_message = await _stream_assistant_response(current_context, config, emit, signal=signal, stream_fn=stream_fn)
+            assistant_message = await _stream_assistant_response(
+                current_context, config, emit, signal=signal, stream_fn=stream_fn
+            )
             new_messages.append(assistant_message)
 
             if assistant_message.stop_reason in {"error", "aborted"}:
-                await _emit(emit, {"type": "turn_end", "message": assistant_message, "tool_results": []})
+                await _emit(
+                    emit,
+                    {
+                        "type": "turn_end",
+                        "message": assistant_message,
+                        "tool_results": [],
+                    },
+                )
                 await _emit(emit, {"type": "agent_end", "messages": new_messages})
                 return
             if _is_aborted(signal):
@@ -218,7 +235,11 @@ async def _run_loop(
                 )
                 return
 
-            tool_calls = [item for item in assistant_message.content if getattr(item, "type", None) == "toolCall"]
+            tool_calls = [
+                item
+                for item in assistant_message.content
+                if getattr(item, "type", None) == "toolCall"
+            ]
             has_more_tool_calls = len(tool_calls) > 0
 
             tool_results: list[ToolResultMessage] = []
@@ -258,13 +279,24 @@ async def _run_loop(
                     current_context.messages.append(result)
                     new_messages.append(result)
 
-            await _emit(emit, {"type": "turn_end", "message": assistant_message, "tool_results": tool_results})
+            await _emit(
+                emit,
+                {
+                    "type": "turn_end",
+                    "message": assistant_message,
+                    "tool_results": tool_results,
+                },
+            )
             if terminate_after_tool_batch:
                 await _emit(emit, {"type": "agent_end", "messages": new_messages})
                 return
-            pending_messages = await _maybe_call(config.get_steering_messages, default=[])
+            pending_messages = await _maybe_call(
+                config.get_steering_messages, default=[]
+            )
 
-        follow_up_messages = await _maybe_call(config.get_follow_up_messages, default=[])
+        follow_up_messages = await _maybe_call(
+            config.get_follow_up_messages, default=[]
+        )
         if follow_up_messages:
             pending_messages = follow_up_messages
             continue
@@ -296,7 +328,7 @@ async def _stream_assistant_response(
         tools=_project_tools_for_llm(context.tools),
     )
 
-    call_stream = stream_fn or stream_simple
+    call_stream = stream_fn or stream
     resolved_api_key = config.api_key
     if config.get_api_key is not None:
         runtime_api_key = await _resolve(config.get_api_key(config.model.provider_id))
@@ -314,7 +346,7 @@ async def _stream_assistant_response(
 
     try:
         response = await _resolve(call_stream(config.model, llm_context, options))
-    except Exception as error:  # noqa: BLE001
+    except Exception as error:
         _report_provider_problem(
             "provider_request_failed",
             config.model,
@@ -368,12 +400,14 @@ async def _stream_assistant_response(
                     context.messages[-1] = final_message
                 else:
                     context.messages.append(final_message)
-                    await _emit(emit, {"type": "message_start", "message": final_message})
+                    await _emit(
+                        emit, {"type": "message_start", "message": final_message}
+                    )
                 await _emit(emit, {"type": "message_end", "message": final_message})
                 return final_message
 
         final_message = await response.result()
-    except Exception as error:  # noqa: BLE001
+    except Exception as error:
         if _is_user_abort_error(error, signal):
             raise
         _report_provider_problem(
@@ -403,10 +437,20 @@ async def _execute_tool_calls(
 ) -> "_ToolCallBatchOutcome":
     if _is_aborted(signal):
         return _ToolCallBatchOutcome(messages=[], terminate=True)
-    tool_calls = [item for item in assistant_message.content if getattr(item, "type", None) == "toolCall"]
-    if config.tool_execution == "sequential" or _has_sequential_tool_call(current_context, tool_calls):
-        return await _execute_tool_calls_sequential(current_context, assistant_message, tool_calls, config, emit, signal=signal)
-    return await _execute_tool_calls_parallel(current_context, assistant_message, tool_calls, config, emit, signal=signal)
+    tool_calls = [
+        item
+        for item in assistant_message.content
+        if getattr(item, "type", None) == "toolCall"
+    ]
+    if config.tool_execution == "sequential" or _has_sequential_tool_call(
+        current_context, tool_calls
+    ):
+        return await _execute_tool_calls_sequential(
+            current_context, assistant_message, tool_calls, config, emit, signal=signal
+        )
+    return await _execute_tool_calls_parallel(
+        current_context, assistant_message, tool_calls, config, emit, signal=signal
+    )
 
 
 @dataclass
@@ -421,7 +465,9 @@ class _FinalizedToolCallOutcome:
     terminate: bool
 
 
-def _has_sequential_tool_call(current_context: AgentContext, tool_calls: list[AgentToolCall]) -> bool:
+def _has_sequential_tool_call(
+    current_context: AgentContext, tool_calls: list[AgentToolCall]
+) -> bool:
     for tool_call in tool_calls:
         tool = _find_tool(current_context, tool_call.name)
         if tool is not None and tool.execution_mode == "sequential":
@@ -451,17 +497,34 @@ async def _execute_tool_calls_sequential(
                 "args": tool_call.arguments,
             },
         )
-        preparation = await _prepare_tool_call(current_context, assistant_message, tool_call, config, signal=signal)
+        preparation = await _prepare_tool_call(
+            current_context, assistant_message, tool_call, config, signal=signal
+        )
         if _is_aborted(signal):
             return _ToolCallBatchOutcome(messages=[], terminate=True)
         if preparation.kind == "immediate":
-            finalized_results.append(await _emit_tool_call_outcome(preparation.tool_call, preparation.result, preparation.is_error, emit))
+            finalized_results.append(
+                await _emit_tool_call_outcome(
+                    preparation.tool_call,
+                    preparation.result,
+                    preparation.is_error,
+                    emit,
+                )
+            )
             continue
         executed = await _execute_prepared_tool_call(preparation, emit, signal=signal)
         if _is_aborted(signal):
             return _ToolCallBatchOutcome(messages=[], terminate=True)
         finalized_results.append(
-            await _finalize_executed_tool_call(current_context, assistant_message, preparation, executed, config, emit, signal=signal)
+            await _finalize_executed_tool_call(
+                current_context,
+                assistant_message,
+                preparation,
+                executed,
+                config,
+                emit,
+                signal=signal,
+            )
         )
     return _ToolCallBatchOutcome(
         messages=[result.message for result in finalized_results],
@@ -493,18 +556,29 @@ async def _execute_tool_calls_parallel(
                 "args": tool_call.arguments,
             },
         )
-        preparation = await _prepare_tool_call(current_context, assistant_message, tool_call, config, signal=signal)
+        preparation = await _prepare_tool_call(
+            current_context, assistant_message, tool_call, config, signal=signal
+        )
         if _is_aborted(signal):
             return _ToolCallBatchOutcome(messages=[], terminate=True)
         if preparation.kind == "immediate":
-            finalized_results.append(await _emit_tool_call_outcome(preparation.tool_call, preparation.result, preparation.is_error, emit))
+            finalized_results.append(
+                await _emit_tool_call_outcome(
+                    preparation.tool_call,
+                    preparation.result,
+                    preparation.is_error,
+                    emit,
+                )
+            )
         else:
             runnable_calls.append(preparation)
 
     running_calls = [
         (
             prepared,
-            asyncio.create_task(_execute_prepared_tool_call(prepared, emit, signal=signal)),
+            asyncio.create_task(
+                _execute_prepared_tool_call(prepared, emit, signal=signal)
+            ),
         )
         for prepared in runnable_calls
     ]
@@ -514,7 +588,15 @@ async def _execute_tool_calls_parallel(
             await _cancel_pending_tool_tasks(running_calls)
             return _ToolCallBatchOutcome(messages=[], terminate=True)
         finalized_results.append(
-            await _finalize_executed_tool_call(current_context, assistant_message, prepared, executed, config, emit, signal=signal)
+            await _finalize_executed_tool_call(
+                current_context,
+                assistant_message,
+                prepared,
+                executed,
+                config,
+                emit,
+                signal=signal,
+            )
         )
     return _ToolCallBatchOutcome(
         messages=[result.message for result in finalized_results],
@@ -522,7 +604,9 @@ async def _execute_tool_calls_parallel(
     )
 
 
-def _should_terminate_after_tool_batch(results: list[_FinalizedToolCallOutcome]) -> bool:
+def _should_terminate_after_tool_batch(
+    results: list[_FinalizedToolCallOutcome],
+) -> bool:
     return bool(results) and all(result.terminate for result in results)
 
 
@@ -543,7 +627,9 @@ async def _emit_aborted_turn(
     await _emit(emit, {"type": "agent_end", "messages": new_messages})
 
 
-def _create_aborted_assistant_message(config: AgentLoopConfig, *, error_message: str) -> AssistantMessage:
+def _create_aborted_assistant_message(
+    config: AgentLoopConfig, *, error_message: str
+) -> AssistantMessage:
     return AssistantMessage(
         role="assistant",
         content=[TextPart(type="text", text="")],
@@ -569,7 +655,11 @@ def _empty_usage() -> Usage:
     )
 
 
-async def _cancel_pending_tool_tasks(running_calls: list[tuple["_PreparedToolCall", asyncio.Task["_ExecutedToolCallOutcome"]]]) -> None:
+async def _cancel_pending_tool_tasks(
+    running_calls: list[
+        tuple["_PreparedToolCall", asyncio.Task["_ExecutedToolCallOutcome"]]
+    ],
+) -> None:
     pending = [task for _prepared, task in running_calls if not task.done()]
     for task in pending:
         task.cancel()
@@ -633,7 +723,7 @@ def _report_provider_problem(
 def _safe_model_attr(model: Any, name: str) -> str:
     try:
         value = getattr(model, name)
-    except Exception:  # noqa: BLE001
+    except Exception:
         return ""
     return value if isinstance(value, str) else str(value)
 
@@ -689,7 +779,9 @@ async def _prepare_tool_call(
 
     problem_reported = False
 
-    def report_once(code: str, reported_tool_call: AgentToolCall, error: BaseException) -> None:
+    def report_once(
+        code: str, reported_tool_call: AgentToolCall, error: BaseException
+    ) -> None:
         nonlocal problem_reported
         _report_tool_problem(
             code,
@@ -700,18 +792,28 @@ async def _prepare_tool_call(
         problem_reported = True
 
     try:
-        prepared_arguments = tool.prepare_arguments(tool_call.arguments) if getattr(tool, "prepare_arguments", None) else tool_call.arguments
-        validation_tool_call = tool_call if prepared_arguments is tool_call.arguments else ToolCall(
-            type="toolCall",
-            id=tool_call.id,
-            name=tool_call.name,
-            arguments=prepared_arguments,
-            thought_signature=tool_call.thought_signature,
+        prepared_arguments = (
+            tool.prepare_arguments(tool_call.arguments)
+            if getattr(tool, "prepare_arguments", None)
+            else tool_call.arguments
+        )
+        validation_tool_call = (
+            tool_call
+            if prepared_arguments is tool_call.arguments
+            else ToolCall(
+                type="toolCall",
+                id=tool_call.id,
+                name=tool_call.name,
+                arguments=prepared_arguments,
+                thought_signature=tool_call.thought_signature,
+            )
         )
         event_tool_call = tool_call
         try:
-            validated_args = validate_tool_arguments(_project_tool_for_llm(tool), validation_tool_call)
-        except Exception as error:  # noqa: BLE001
+            validated_args = validate_tool_arguments(
+                _project_tool_for_llm(tool), validation_tool_call
+            )
+        except Exception as error:
             report_once("tool_validation_failed", validation_tool_call, error)
             raise
         if config.before_tool_call is not None:
@@ -725,9 +827,18 @@ async def _prepare_tool_call(
                 signal,
             )
             if before_result is not None:
-                rewritten_tool_name = before_result.tool_name or validation_tool_call.name
-                rewritten_arguments = before_result.arguments if before_result.arguments is not None else validated_args
-                if rewritten_tool_name != validation_tool_call.name or rewritten_arguments != validated_args:
+                rewritten_tool_name = (
+                    before_result.tool_name or validation_tool_call.name
+                )
+                rewritten_arguments = (
+                    before_result.arguments
+                    if before_result.arguments is not None
+                    else validated_args
+                )
+                if (
+                    rewritten_tool_name != validation_tool_call.name
+                    or rewritten_arguments != validated_args
+                ):
                     rewritten_tool = _find_tool(current_context, rewritten_tool_name)
                     if rewritten_tool is None:
                         rewritten_call = ToolCall(
@@ -745,7 +856,9 @@ async def _prepare_tool_call(
                         return _ImmediateToolCallOutcome(
                             kind="immediate",
                             tool_call=rewritten_call,
-                            result=_create_error_tool_result(f"Tool {rewritten_tool_name} not found"),
+                            result=_create_error_tool_result(
+                                f"Tool {rewritten_tool_name} not found"
+                            ),
                             is_error=True,
                         )
                     rewritten_prepared_arguments = (
@@ -769,19 +882,27 @@ async def _prepare_tool_call(
                     )
                     tool = rewritten_tool
                     try:
-                        validated_args = validate_tool_arguments(_project_tool_for_llm(tool), validation_tool_call)
-                    except Exception as error:  # noqa: BLE001
-                        report_once("tool_validation_failed", validation_tool_call, error)
+                        validated_args = validate_tool_arguments(
+                            _project_tool_for_llm(tool), validation_tool_call
+                        )
+                    except Exception as error:
+                        report_once(
+                            "tool_validation_failed", validation_tool_call, error
+                        )
                         raise
                 if before_result.block:
                     return _ImmediateToolCallOutcome(
                         kind="immediate",
                         tool_call=event_tool_call,
-                        result=_create_error_tool_result(before_result.reason or "Tool execution was blocked"),
+                        result=_create_error_tool_result(
+                            before_result.reason or "Tool execution was blocked"
+                        ),
                         is_error=True,
                     )
-        return _PreparedToolCall(kind="prepared", tool_call=event_tool_call, tool=tool, args=validated_args)
-    except Exception as error:  # noqa: BLE001
+        return _PreparedToolCall(
+            kind="prepared", tool_call=event_tool_call, tool=tool, args=validated_args
+        )
+    except Exception as error:
         if not problem_reported:
             _report_tool_problem(
                 "tool_preparation_failed",
@@ -831,8 +952,10 @@ async def _execute_prepared_tool_call(
         )
         for update in update_events:
             await update
-        return _ExecutedToolCallOutcome(result=result, is_error=False, duration_ms=_elapsed_ms(started_at))
-    except Exception as error:  # noqa: BLE001
+        return _ExecutedToolCallOutcome(
+            result=result, is_error=False, duration_ms=_elapsed_ms(started_at)
+        )
+    except Exception as error:
         duration_ms = _elapsed_ms(started_at)
         _report_tool_problem(
             "tool_execution_failed",
@@ -876,13 +999,19 @@ async def _finalize_executed_tool_call(
             )
             if after_result is not None:
                 result = AgentToolResult(
-                    content=after_result.content if after_result.content is not None else result.content,
-                    details=after_result.details if after_result.details is not None else result.details,
-                    terminate=after_result.terminate if after_result.terminate is not None else result.terminate,
+                    content=after_result.content
+                    if after_result.content is not None
+                    else result.content,
+                    details=after_result.details
+                    if after_result.details is not None
+                    else result.details,
+                    terminate=after_result.terminate
+                    if after_result.terminate is not None
+                    else result.terminate,
                 )
                 if after_result.is_error is not None:
                     is_error = after_result.is_error
-        except Exception as error:  # noqa: BLE001
+        except Exception as error:
             _report_tool_problem(
                 "tool_after_hook_failed",
                 prepared.tool_call,
@@ -901,8 +1030,13 @@ async def _finalize_executed_tool_call(
     )
 
 
-def _create_error_tool_result(message: str, error: BaseException | None = None) -> AgentToolResult[Any]:
-    return AgentToolResult(content=[TextPart(type="text", text=message)], details=_error_tool_result_details(error))
+def _create_error_tool_result(
+    message: str, error: BaseException | None = None
+) -> AgentToolResult[Any]:
+    return AgentToolResult(
+        content=[TextPart(type="text", text=message)],
+        details=_error_tool_result_details(error),
+    )
 
 
 def _error_tool_result_details(error: BaseException | None) -> dict[str, Any]:
@@ -946,7 +1080,9 @@ async def _emit_tool_call_outcome(
     )
     await _emit(emit, {"type": "message_start", "message": tool_result_message})
     await _emit(emit, {"type": "message_end", "message": tool_result_message})
-    return _FinalizedToolCallOutcome(message=tool_result_message, terminate=result.terminate)
+    return _FinalizedToolCallOutcome(
+        message=tool_result_message, terminate=result.terminate
+    )
 
 
 def _elapsed_ms(started_at: float) -> int:
@@ -954,7 +1090,14 @@ def _elapsed_ms(started_at: float) -> int:
 
 
 def _find_tool(current_context: AgentContext, tool_name: str) -> AgentTool[Any] | None:
-    return next((candidate for candidate in current_context.tools or [] if candidate.name == tool_name), None)
+    return next(
+        (
+            candidate
+            for candidate in current_context.tools or []
+            if candidate.name == tool_name
+        ),
+        None,
+    )
 
 
 async def _emit(emit: AgentEventSink, event: AgentEvent) -> None:

@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+from collections.abc import AsyncIterator
+
+from loushang.ai.event_stream.raw_parts import RawPart
 from loushang.ai.options import is_reasoning_requested
 from loushang.ai.provider import ProviderRequest, resolve_provider_request
 from loushang.ai.types import TextPart, ToolResultMessage
@@ -24,7 +27,7 @@ class FauxProvider:
             )
         )
 
-    async def stream_raw(self, request: ProviderRequest):
+    async def stream_raw(self, request: ProviderRequest) -> AsyncIterator[RawPart]:
         options = request.options
         normalized = request.context
         yield {"type": "response_start", "response_id": "faux-response"}

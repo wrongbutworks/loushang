@@ -25,7 +25,9 @@ class _FailingRefreshProvider:
     def get_api_key(self, credentials: OAuthCredentials) -> str:
         return credentials.access_token
 
-    def modify_models(self, models: list[object], credentials: OAuthCredentials) -> list[object]:
+    def modify_models(
+        self, models: list[object], credentials: OAuthCredentials
+    ) -> list[object]:
         return models
 
 

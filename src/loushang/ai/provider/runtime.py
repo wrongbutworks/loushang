@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import inspect
+import math
 import random
 from collections.abc import AsyncIterator, Awaitable, Callable, Mapping
 from contextlib import suppress
@@ -40,9 +41,7 @@ _VISIBLE_RAW_PART_TYPES = frozenset(
         "image_part",
     }
 )
-_TERMINAL_RAW_PART_TYPES = frozenset(
-    {"response_done", "response_error", "aborted"}
-)
+_TERMINAL_RAW_PART_TYPES = frozenset({"response_done", "response_error", "aborted"})
 
 
 class _RuntimeCancelled(Exception):
@@ -116,7 +115,9 @@ def start_provider_runtime(
                                 options=options,
                                 attempt=attempt,
                                 max_attempts=max_attempts,
-                                retry_after_seconds=_retry_after_seconds_from_part(part),
+                                retry_after_seconds=_retry_after_seconds_from_part(
+                                    part
+                                ),
                                 reason=_retry_reason_from_part(part, request, model),
                                 sleep=_sleep,
                                 jitter=_jitter,
@@ -164,7 +165,9 @@ def start_provider_runtime(
                 except Exception as error:
                     if _signals_cancelled(signals):
                         await _flush_pending(assembler, pending)
-                        _emit_runtime_cancel_trace(options, request=request, model=model)
+                        _emit_runtime_cancel_trace(
+                            options, request=request, model=model
+                        )
                         await assembler.emit({"type": "aborted"})
                         return
                     if (
@@ -176,7 +179,9 @@ def start_provider_runtime(
                             options=options,
                             attempt=attempt,
                             max_attempts=max_attempts,
-                            retry_after_seconds=_retry_after_seconds_from_exception(error),
+                            retry_after_seconds=_retry_after_seconds_from_exception(
+                                error
+                            ),
                             reason=_retry_reason_from_exception(error, request.api),
                             sleep=_sleep,
                             jitter=_jitter,
@@ -325,10 +330,7 @@ def _create_cancellation_task(
 async def _wait_any_signal_cancelled(signals: tuple[object, ...]) -> None:
     if _signals_cancelled(signals):
         return
-    tasks = [
-        asyncio.create_task(wait_signal_cancelled(signal))
-        for signal in signals
-    ]
+    tasks = [asyncio.create_task(wait_signal_cancelled(signal)) for signal in signals]
     try:
         done, pending = await asyncio.wait(tasks, return_when=asyncio.FIRST_COMPLETED)
         for task in pending:
@@ -484,12 +486,11 @@ def _retry_delay_seconds(
     max_delay = _retry_max_delay_seconds(options)
     if max_delay <= 0:
         return 0.0
+    if retry_after_seconds is not None:
+        return min(max_delay, retry_after_seconds)
     backoff = min(max_delay, _INITIAL_RETRY_DELAY_SECONDS * (2 ** max(0, attempt - 1)))
     jitter_ratio = min(1.0, max(0.0, float(jitter())))
-    delay = backoff + (backoff * 0.25 * jitter_ratio)
-    if retry_after_seconds is not None:
-        delay = max(delay, retry_after_seconds)
-    return min(max_delay, delay)
+    return min(max_delay, backoff + (backoff * 0.25 * jitter_ratio))
 
 
 def _retry_after_seconds_from_exception(error: Exception) -> float | None:
@@ -519,14 +520,14 @@ def _retry_after_seconds_from_headers(headers: object) -> float | None:
 
 def _parse_retry_after(value: object) -> float | None:
     if isinstance(value, int | float) and not isinstance(value, bool):
-        return max(0.0, float(value))
+        return _finite_retry_after_seconds(float(value))
     if not isinstance(value, str):
         return None
     value = value.strip()
     if not value:
         return None
     try:
-        return max(0.0, float(value))
+        return _finite_retry_after_seconds(float(value))
     except ValueError:
         pass
     try:
@@ -535,7 +536,13 @@ def _parse_retry_after(value: object) -> float | None:
         return None
     if retry_at.tzinfo is None:
         retry_at = retry_at.replace(tzinfo=UTC)
-    return max(0.0, (retry_at - datetime.now(UTC)).total_seconds())
+    return _finite_retry_after_seconds((retry_at - datetime.now(UTC)).total_seconds())
+
+
+def _finite_retry_after_seconds(value: float) -> float | None:
+    if not math.isfinite(value):
+        return None
+    return max(0.0, value)
 
 
 def _retry_reason_from_exception(error: Exception, source: str) -> dict[str, object]:

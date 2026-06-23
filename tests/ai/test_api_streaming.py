@@ -33,6 +33,7 @@ from loushang.ai.options import (
     SimpleCallOptions,
 )
 from loushang.ai.provider import ResolvedRequest
+from loushang.ai.provider.invocation import call_api_provider_stream
 from loushang.ai.providers.openai_completions import OpenAICompletionsProvider
 from loushang.ai.providers.openai_responses import OpenAIResponsesProvider
 from loushang.ai.types import (
@@ -227,10 +228,7 @@ def test_stream_defaults_to_strict_pairing_and_exposes_repair_option(
     )
 
     normalized = _assert_normalized_provider_context(provider.context)
-    assert [
-        type(message).__name__
-        for message in normalized.messages
-    ] == [
+    assert [type(message).__name__ for message in normalized.messages] == [
         "AssistantMessage",
         "ToolResultMessage",
         "UserMessage",
@@ -252,7 +250,11 @@ def test_complete_raises_typed_error_for_stream_error(
         asyncio.run(
             complete(
                 _Model(),
-                {"messages": [UserMessage(role="user", content="hello", timestamp=0.0)]},
+                {
+                    "messages": [
+                        UserMessage(role="user", content="hello", timestamp=0.0)
+                    ]
+                },
                 CallOptions(),
                 registry=registry,
             )
@@ -554,7 +556,11 @@ def test_complete_structured_requires_output_options() -> None:
         asyncio.run(
             complete_structured(
                 _Model(),
-                {"messages": [UserMessage(role="user", content="hello", timestamp=0.0)]},
+                {
+                    "messages": [
+                        UserMessage(role="user", content="hello", timestamp=0.0)
+                    ]
+                },
             )
         )
 
@@ -817,7 +823,7 @@ def test_stream_simple_rejects_legacy_provider_from_custom_registry(
         )
 
 
-def test_get_api_provider_stream_supports_wrapper_signature_without_request(
+def test_call_api_provider_stream_supports_registered_provider(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     _patch_resolved_request(monkeypatch)
@@ -826,10 +832,18 @@ def test_get_api_provider_stream_supports_wrapper_signature_without_request(
     registry.register_api_provider(provider)
 
     asyncio.run(
-        registry.get_api_provider("faux").stream(
+        call_api_provider_stream(
+            registry.get_api_provider("faux"),
             _Model(),
             {"messages": [UserMessage(role="user", content="hello", timestamp=0.0)]},
             ModelCallOptions(),
+            request=ResolvedRequest(
+                provider="faux",
+                endpoint="faux",
+                api="faux",
+                base_url=None,
+                capabilities=Capabilities(input=("text",), stream=True),
+            ),
         )
     )
 
@@ -852,7 +866,8 @@ def test_get_api_provider_stream_rejects_legacy_optional_arg_signature() -> None
     with pytest.raises(TypeError, match="exactly one ProviderRequest"):
         registry.register_api_provider(provider)
 
-def test_get_api_provider_stream_rejects_mismatched_resolved_request() -> None:
+
+def test_call_api_provider_stream_rejects_mismatched_resolved_request() -> None:
     provider = _Provider()
     registry = ApiProviderRegistry()
     registry.register_api_provider(provider)
@@ -866,7 +881,8 @@ def test_get_api_provider_stream_rejects_mismatched_resolved_request() -> None:
 
     with pytest.raises(ValueError, match="Mismatched api"):
         asyncio.run(
-            registry.get_api_provider("faux").stream(
+            call_api_provider_stream(
+                registry.get_api_provider("faux"),
                 _Model(),
                 {
                     "messages": [
@@ -874,12 +890,12 @@ def test_get_api_provider_stream_rejects_mismatched_resolved_request() -> None:
                     ]
                 },
                 ModelCallOptions(),
-                request,
+                request=request,
             )
         )
 
 
-def test_get_api_provider_stream_normalizes_context_against_resolved_request_api() -> (
+def test_call_api_provider_stream_normalizes_context_against_resolved_request_api() -> (
     None
 ):
     provider = _Provider(api="anthropic-messages")
@@ -915,7 +931,8 @@ def test_get_api_provider_stream_normalizes_context_against_resolved_request_api
     )
 
     asyncio.run(
-        registry.get_api_provider("anthropic-messages").stream(
+        call_api_provider_stream(
+            registry.get_api_provider("anthropic-messages"),
             _Model(api="openai-responses"),
             {
                 "messages": [
@@ -931,7 +948,7 @@ def test_get_api_provider_stream_normalizes_context_against_resolved_request_api
                 ]
             },
             ModelCallOptions(),
-            request,
+            request=request,
         )
     )
 
@@ -955,7 +972,9 @@ def test_stream_validates_resolved_request_capabilities(
     provider = _Provider()
     registry = _Registry(provider)
 
-    with pytest.raises(UnsupportedCapabilityError, match="does not support image input"):
+    with pytest.raises(
+        UnsupportedCapabilityError, match="does not support image input"
+    ):
         asyncio.run(
             stream(
                 _Model(capabilities=_Capabilities(supports_image_input=True)),

@@ -63,22 +63,35 @@ def test_process_proxy_event_reconstructs_partial_message() -> None:
     partial = _create_initial_partial_message(_model())
 
     start_event = _process_proxy_event({"type": "start"}, partial)
-    text_start = _process_proxy_event({"type": "text_start", "content_index": 0}, partial)
-    text_delta = _process_proxy_event({"type": "text_delta", "content_index": 0, "delta": "Hello"}, partial)
+    text_start = _process_proxy_event(
+        {"type": "text_start", "content_index": 0}, partial
+    )
+    text_delta = _process_proxy_event(
+        {"type": "text_delta", "content_index": 0, "delta": "Hello"}, partial
+    )
     text_end = _process_proxy_event(
         {"type": "text_end", "content_index": 0, "content_signature": "sig-1"},
         partial,
     )
     tool_start = _process_proxy_event(
-        {"type": "toolcall_start", "content_index": 1, "id": "tc_1", "tool_name": "calc"},
+        {
+            "type": "toolcall_start",
+            "content_index": 1,
+            "id": "tc_1",
+            "tool_name": "calc",
+        },
         partial,
     )
     tool_delta = _process_proxy_event(
         {"type": "toolcall_delta", "content_index": 1, "delta": '{"x": 1}'},
         partial,
     )
-    tool_end = _process_proxy_event({"type": "toolcall_end", "content_index": 1}, partial)
-    done = _process_proxy_event({"type": "done", "reason": "toolUse", "usage": _usage()}, partial)
+    tool_end = _process_proxy_event(
+        {"type": "toolcall_end", "content_index": 1}, partial
+    )
+    done = _process_proxy_event(
+        {"type": "done", "reason": "toolUse", "usage": _usage()}, partial
+    )
 
     assert start_event["type"] == "start"
     assert start_event["partial"].usage.cost is None
@@ -107,11 +120,25 @@ def test_process_proxy_event_accumulates_partial_toolcall_json_until_valid() -> 
     )
 
     partial = _create_initial_partial_message(_model())
-    _process_proxy_event({"type": "toolcall_start", "content_index": 0, "id": "tc_1", "tool_name": "calc"}, partial)
+    _process_proxy_event(
+        {
+            "type": "toolcall_start",
+            "content_index": 0,
+            "id": "tc_1",
+            "tool_name": "calc",
+        },
+        partial,
+    )
 
-    first_delta = _process_proxy_event({"type": "toolcall_delta", "content_index": 0, "delta": '{"x": '}, partial)
-    second_delta = _process_proxy_event({"type": "toolcall_delta", "content_index": 0, "delta": '1, "y": 2}'}, partial)
-    tool_end = _process_proxy_event({"type": "toolcall_end", "content_index": 0}, partial)
+    first_delta = _process_proxy_event(
+        {"type": "toolcall_delta", "content_index": 0, "delta": '{"x": '}, partial
+    )
+    second_delta = _process_proxy_event(
+        {"type": "toolcall_delta", "content_index": 0, "delta": '1, "y": 2}'}, partial
+    )
+    tool_end = _process_proxy_event(
+        {"type": "toolcall_end", "content_index": 0}, partial
+    )
 
     assert first_delta["partial"].content[0].arguments == {}
     assert second_delta["partial"].content[0].arguments == {"x": 1, "y": 2}
@@ -416,7 +443,9 @@ class _FakeAsyncClient:
         self.last_headers: dict | None = None
         self.last_path: str | None = None
 
-    def stream(self, method: str, path: str, json: dict, headers: dict) -> _FakeResponse:
+    def stream(
+        self, method: str, path: str, json: dict, headers: dict
+    ) -> _FakeResponse:
         assert method == "POST"
         self.last_path = path
         self.last_json = json

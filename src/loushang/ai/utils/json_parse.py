@@ -67,7 +67,9 @@ def repair_json(value: str) -> str:
             index += 1
             continue
 
-        repaired.append(_escape_control_character(char) if _is_control_character(char) else char)
+        repaired.append(
+            _escape_control_character(char) if _is_control_character(char) else char
+        )
         index += 1
 
     return "".join(repaired)

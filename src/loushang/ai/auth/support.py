@@ -189,9 +189,8 @@ def resolve_auth_for_model(
     provider = model.provider_id
     auth_input = normalize_auth_input(options)
     endpoint = resolve_model_endpoint(model, registry=registry)
-    auth_config = (
-        getattr(model, "auth", None)
-        or (endpoint.auth if endpoint is not None else None)
+    auth_config = getattr(model, "auth", None) or (
+        endpoint.auth if endpoint is not None else None
     )
 
     if isinstance(auth_input.oauth_credentials, dict):
@@ -200,7 +199,9 @@ def resolve_auth_for_model(
             return oauth_view
 
     if auth_input.api_key is not None:
-        return resolve_auth_material(api_key=auth_input.api_key, config=auth_config, env=env)
+        return resolve_auth_material(
+            api_key=auth_input.api_key, config=auth_config, env=env
+        )
 
     oauth_view = _resolve_env_oauth_auth_view(provider, env=env)
     if oauth_view is not None:

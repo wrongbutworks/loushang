@@ -502,9 +502,7 @@ def test_anthropic_internal_summarizers_cover_debug_shapes() -> None:
         "path": "README.md",
         "content": "hello",
     }
-    assert _summarize_sdk_value(Attrs()) == {
-        "public": ["x" * 160 + "...<300 chars>"]
-    }
+    assert _summarize_sdk_value(Attrs()) == {"public": ["x" * 160 + "...<300 chars>"]}
     assert _summarize_sdk_value(object()).startswith("<object object at ")
 
     assert _map_stop_reason("refusal") == "error"
@@ -745,6 +743,97 @@ def test_anthropic_provider_stream_uses_tool_input_from_content_block_start(
     assert tool_start_data["input"]["content_chars"] == len(tool_input["content"])
 
 
+def test_anthropic_provider_stream_keeps_interleaved_tool_blocks_by_index(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _fake_anthropic_module(
+        monkeypatch,
+        [
+            SimpleNamespace(
+                type="message_start",
+                message=SimpleNamespace(id="resp_1", usage=None),
+            ),
+            SimpleNamespace(
+                type="content_block_start",
+                index=0,
+                content_block=SimpleNamespace(
+                    type="tool_use",
+                    id="call_read",
+                    name="read",
+                ),
+            ),
+            SimpleNamespace(
+                type="content_block_start",
+                index=1,
+                content_block=SimpleNamespace(
+                    type="tool_use",
+                    id="call_write",
+                    name="write",
+                ),
+            ),
+            SimpleNamespace(
+                type="content_block_delta",
+                index=0,
+                delta=SimpleNamespace(
+                    type="input_json_delta", partial_json='{"path":"README.md"}'
+                ),
+            ),
+            SimpleNamespace(
+                type="content_block_delta",
+                index=1,
+                delta=SimpleNamespace(
+                    type="input_json_delta", partial_json='{"path":"out.txt"}'
+                ),
+            ),
+            SimpleNamespace(type="content_block_stop", index=0),
+            SimpleNamespace(type="content_block_stop", index=1),
+            SimpleNamespace(type="message_stop"),
+        ],
+    )
+    provider = AnthropicProvider()
+
+    parts = asyncio.run(
+        _collect_parts(
+            _stream_raw_parts(
+                provider,
+                _Model(),
+                {
+                    "messages": [
+                        UserMessage(role="user", content="hello", timestamp=0.0)
+                    ],
+                    "tools": [
+                        Tool(
+                            name="read",
+                            description="Read a file",
+                            parameters={"type": "object"},
+                        ),
+                        Tool(
+                            name="write",
+                            description="Write a file",
+                            parameters={"type": "object"},
+                        ),
+                    ],
+                },
+                AnthropicOptions(api_key="test-key"),
+            )
+        )
+    )
+
+    assert [
+        (part.get("index"), part.get("id"), part.get("name"))
+        for part in parts
+        if part["type"] == "tool_call_start"
+    ] == [(0, "call_read", "read"), (1, "call_write", "write")]
+    assert [
+        (part.get("index"), part.get("delta"))
+        for part in parts
+        if part["type"] == "tool_call_args_delta"
+    ] == [(0, '{"path":"README.md"}'), (1, '{"path":"out.txt"}')]
+    assert [
+        part.get("index") for part in parts if part["type"] == "tool_call_done"
+    ] == [0, 1]
+
+
 def test_anthropic_provider_payload_snapshot_for_mixed_assistant_and_tool_result_context(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -940,7 +1029,7 @@ def test_anthropic_provider_uses_resolved_capability_max_tokens(
     assert _FakeAsyncAnthropic.last_stream_kwargs["max_tokens"] == 2048
 
 
-def test_anthropic_provider_uses_typed_protocol_over_stale_false_compat(
+def test_anthropic_provider_uses_typed_protocol_over_stale_false_options(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     _fake_anthropic_module(monkeypatch, [SimpleNamespace(type="message_stop")])
@@ -951,7 +1040,7 @@ def test_anthropic_provider_uses_typed_protocol_over_stale_false_compat(
         api="anthropic-messages",
         base_url=None,
         headers={"x-api-key": "test-key"},
-        compat={
+        adapter_options={
             SEND_SESSION_AFFINITY_HEADERS: False,
             SUPPORTS_LONG_CACHE_RETENTION: False,
             FINE_GRAINED_TOOLS: False,
@@ -1005,7 +1094,7 @@ def test_anthropic_provider_uses_typed_protocol_over_stale_false_compat(
     }
 
 
-def test_anthropic_provider_uses_typed_protocol_over_stale_true_compat(
+def test_anthropic_provider_uses_typed_protocol_over_stale_true_options(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     _fake_anthropic_module(monkeypatch, [SimpleNamespace(type="message_stop")])
@@ -1016,7 +1105,7 @@ def test_anthropic_provider_uses_typed_protocol_over_stale_true_compat(
         api="anthropic-messages",
         base_url=None,
         headers={"x-api-key": "test-key", "anthropic-version": "2023-06-01"},
-        compat={
+        adapter_options={
             SEND_SESSION_AFFINITY_HEADERS: True,
             SUPPORTS_LONG_CACHE_RETENTION: True,
             FINE_GRAINED_TOOLS: True,

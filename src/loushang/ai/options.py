@@ -199,7 +199,18 @@ def get_provider_option(options: object | None, name: str) -> object | None:
 
 
 @dataclass(frozen=True, slots=True)
-class SimpleCallOptions(CallOptions):
+class SimpleCallOptions:
+    signal: object | None = None
+    cancellation: object | None = None
+    api_key: str | None = None
+    headers: Mapping[str, str] = field(default_factory=dict)
+    max_output_tokens: int | None = None
+    temperature: float | int | None = None
+    timeout: TimeoutOptions | float | int | None = None
+    retries: int | None = None
+    retry: RetryOptions | None = None
+    region: str | None = None
+    pairing_mode: PairingMode = "strict"
     reasoning: "ThinkingLevel | None" = None
     thinking_budgets: "ThinkingBudgets | None" = None
 
@@ -230,26 +241,14 @@ def simple_options_to_call_options(
         cancellation=options.cancellation,
         api_key=options.api_key,
         headers=options.headers,
-        transport=options.transport,
-        cache_retention=options.cache_retention,
-        session_id=options.session_id,
-        max_retry_delay_ms=options.max_retry_delay_ms,
-        metadata=options.metadata,
-        max_tokens=options.max_tokens,
         max_output_tokens=options.max_output_tokens,
         temperature=options.temperature,
         timeout=options.timeout,
         retries=options.retries,
         retry=options.retry,
-        trace=options.trace,
-        oauth_credentials=options.oauth_credentials,
         region=options.region,
         pairing_mode=options.pairing_mode,
         reasoning=reasoning,
-        reasoning_summary=options.reasoning_summary,
-        tool_choice=options.tool_choice,
-        output=options.output,
-        hooks=options.hooks,
     )
 
 

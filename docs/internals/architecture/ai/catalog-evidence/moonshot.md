@@ -9,6 +9,11 @@
   - https://platform.kimi.ai/docs/quickstart
   - https://platform.kimi.ai/docs/api-reference
   - https://platform.kimi.ai/
+- Source map:
+  - Authentication and endpoint: quickstart and API reference.
+  - Model selection, context windows, modalities, and pricing rows: Kimi model pages.
+  - Thinking output, streaming, tools, and JSON-mode structured output: API reference and model pages.
+  - Pricing: model pages.
 - Authentication: API key in `MOONSHOT_API_KEY`, sent as an `Authorization: Bearer ...` header.
 - Endpoint: `https://api.moonshot.ai/v1`, OpenAI-compatible Chat Completions protocol.
 - Included models:

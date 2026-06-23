@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import math
 import os
 import tempfile
 import threading
@@ -250,6 +251,7 @@ def _load_credential_bucket(value: object, name: str) -> dict[str, OAuthCredenti
             raise CredentialStoreCorruptError(
                 f"OAuth credential entry must be an object: {name}"
             )
+        expires_at = _optional_expires_at(raw_credential, f"{name}.{key}")
         access_token = _optional_str(
             raw_credential.get("access_token") or raw_credential.get("access")
         )
@@ -263,8 +265,7 @@ def _load_credential_bucket(value: object, name: str) -> dict[str, OAuthCredenti
             refresh_token=_optional_str(
                 raw_credential.get("refresh_token") or raw_credential.get("refresh")
             ),
-            expires_at=raw_credential.get("expires_at")
-            or raw_credential.get("expires"),
+            expires_at=expires_at,
             extra=raw_credential.get("extra")
             if isinstance(raw_credential.get("extra"), dict)
             else None,
@@ -279,9 +280,11 @@ def _dump_credential_bucket(creds: dict[str, OAuthCredentials]) -> dict[str, Any
             continue
         v = value
         if is_dataclass(v):
-            serializable[key] = asdict(v)
+            raw = asdict(v)
         else:
-            serializable[key] = dict(v)  # type: ignore[arg-type]
+            raw = dict(v)  # type: ignore[arg-type]
+        _optional_expires_at(raw, f"{key}")
+        serializable[key] = raw
     return serializable
 
 
@@ -294,6 +297,31 @@ def _optional_str(value: object) -> str | None:
         return None
     value = value.strip()
     return value or None
+
+
+def _optional_expires_at(
+    raw_credential: dict[str, object], entry_name: str
+) -> float | int | None:
+    value = raw_credential.get("expires_at")
+    field_name = "expires_at"
+    if value is None:
+        value = raw_credential.get("expires")
+        field_name = "expires"
+    if value is None:
+        return None
+    if isinstance(value, bool) or not isinstance(value, int | float):
+        raise CredentialStoreCorruptError(
+            f"OAuth credential entry has invalid {field_name}: {entry_name}"
+        )
+    try:
+        finite_expiry = math.isfinite(float(value))
+    except OverflowError:
+        finite_expiry = False
+    if not finite_expiry:
+        raise CredentialStoreCorruptError(
+            f"OAuth credential entry has invalid {field_name}: {entry_name}"
+        )
+    return value
 
 
 def _ensure_private_parent(path: Path, *, harden_existing: bool) -> None:

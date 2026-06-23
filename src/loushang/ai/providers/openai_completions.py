@@ -4,9 +4,10 @@ import asyncio
 import json
 from collections.abc import AsyncIterator, Mapping, Sequence
 from contextlib import suppress
-from typing import Any
+from typing import Any, cast
 
 from loushang.ai.errors import UnsupportedCapabilityError
+from loushang.ai.event_stream.raw_parts import RawPart
 from loushang.ai.model.domain import (
     EndpointProtocolFeatures,
     EndpointWireDialect,
@@ -15,7 +16,10 @@ from loushang.ai.model.domain import (
 from loushang.ai.options import get_provider_option, get_timeout_seconds
 from loushang.ai.output_budget import resolve_output_token_budget
 from loushang.ai.provider import ProviderRequest, resolve_provider_request
-from loushang.ai.provider.errors import provider_error_part
+from loushang.ai.provider.errors import (
+    provider_error_part,
+    provider_error_part_from_raw,
+)
 from loushang.ai.providers.openai_responses_shared import build_copilot_dynamic_headers
 from loushang.ai.providers.provider_helpers import (
     apply_session_headers,
@@ -46,7 +50,7 @@ class OpenAICompletionsProvider:
 
     def _stream_raw_parts(
         self, model, context, options, request=None
-    ) -> AsyncIterator[dict]:
+    ) -> AsyncIterator[RawPart]:
         resolved = resolve_provider_request(
             self.api,
             model,
@@ -62,7 +66,7 @@ class OpenAICompletionsProvider:
             )
         )
 
-    async def stream_raw(self, request: ProviderRequest) -> AsyncIterator[dict]:
+    async def stream_raw(self, request: ProviderRequest) -> AsyncIterator[RawPart]:
         model = request.model
         options = request.options
         resolved = request.resolved
@@ -245,10 +249,11 @@ class OpenAICompletionsProvider:
                     break
                 except asyncio.TimeoutError:
                     _debug("stream_timeout", {"after_seconds": inactivity_timeout})
-                    yield {
-                        "type": "response_error",
-                        "message": f"inactivity timeout after {inactivity_timeout}s",
-                    }
+                    yield provider_error_part_from_raw(
+                        f"inactivity timeout after {inactivity_timeout}s",
+                        code="timeout",
+                        source=self.api,
+                    )
                     yield {"type": "response_done"}
                     break
                 except Exception as e:
@@ -432,7 +437,7 @@ class OpenAICompletionsProvider:
                                 }
                                 if tool_call_index is not None:
                                     start_part["index"] = tool_call_index
-                                yield start_part
+                                yield _raw_part(start_part)
                             elif (
                                 isinstance(tool_call_id, str)
                                 and tool_call_id
@@ -456,7 +461,7 @@ class OpenAICompletionsProvider:
                                     delta_part["tool_call_id"] = tool_call_id
                                 elif tool_call_index is not None:
                                     delta_part["index"] = tool_call_index
-                                yield delta_part
+                                yield _raw_part(delta_part)
                 # finish reason
                 finish = getattr(choice, "finish_reason", None)
                 if isinstance(finish, str):
@@ -467,7 +472,7 @@ class OpenAICompletionsProvider:
                         }
                         if tool_call_id in active_tool_call_indexes:
                             done_part["index"] = active_tool_call_indexes[tool_call_id]
-                        yield done_part
+                        yield _raw_part(done_part)
                     active_tool_call_ids = []
                     active_tool_call_indexes = {}
                     tool_call_ids_by_index = {}
@@ -497,16 +502,17 @@ class OpenAICompletionsProvider:
                     )
                     yield {"type": "stop_reason", "stop_reason": mapped}
                     if mapped == "error":
-                        yield {
-                            "type": "response_error",
-                            "message": f"provider finish_reason={finish}",
-                        }
+                        yield provider_error_part_from_raw(
+                            f"provider finish_reason={finish}",
+                            code=finish,
+                            source=self.api,
+                        )
             # 正常结束：上游结束迭代后，补发 response_done 以关闭装配器
             for tool_call_id in active_tool_call_ids:
                 done_part = {"type": "tool_call_done", "tool_call_id": tool_call_id}
                 if tool_call_id in active_tool_call_indexes:
                     done_part["index"] = active_tool_call_indexes[tool_call_id]
-                yield done_part
+                yield _raw_part(done_part)
             _debug("stream_done", {})
             yield {"type": "response_done"}
         except Exception as e:
@@ -529,6 +535,10 @@ def _request_dialect(request: object) -> EndpointWireDialect:
     if isinstance(dialect, EndpointWireDialect):
         return dialect
     return EndpointWireDialect()
+
+
+def _raw_part(part: dict[str, object]) -> RawPart:
+    return cast(RawPart, part)
 
 
 def _is_supported(status: SupportStatus) -> bool:
@@ -571,9 +581,7 @@ def _validate_cache_session_options(
     cache_retention: str | None,
     session_id: str | None,
 ) -> None:
-    if cache_retention == "long" and not _is_supported(
-        protocol.cache.long_retention
-    ):
+    if cache_retention == "long" and not _is_supported(protocol.cache.long_retention):
         raise UnsupportedCapabilityError(
             f"Model {getattr(model, 'id', '<unknown>')!r} does not support long cache retention",
             source=getattr(resolved, "api", None),

@@ -1,6 +1,6 @@
 # Loushang AI Final Scorecard
 
-Last updated: 2026-06-22.
+Last updated: 2026-06-23.
 
 This scorecard records the current release readiness of the AI quality hardening
 branch against the execution plan in
@@ -51,9 +51,9 @@ Current composite score: 8.8/10.
 | Public SDK docs | `docs/en/sdk/README.md`, `docs/zh-CN/sdk/README.md`, and the v2 migration guides document the public path, catalog, auth, errors, examples, and migration rules. |
 | Offline examples | `scripts/ai/check_examples.py` executes numbered `examples/ai/[0-9][0-9]_*.py` with live provider keys removed. |
 | Import boundaries | `scripts/ai/check_import_boundaries.py` prevents `loushang.ai` from importing agent/coding layers, prevents removed core providers from returning, and keeps top-level examples on stable AI imports. |
-| AI gate | `make check-ai` runs lint, mypy, catalog checks, import checks, offline examples, package coverage, scoped core coverage, and adapter coverage; latest run reached 83.55% package coverage, 90.00% runtime-core coverage, 85.84% provider-adapter coverage, and 85.39% production-adapter-module coverage with 708 passed and 9 live tests deselected. |
-| Full offline test suite | `env -u <provider keys> UV_CACHE_DIR=/tmp/uv-cache uv run pytest tests -m "not live" -q` passed on 2026-06-22 with 4284 passed and 9 deselected. |
-| Build | `UV_CACHE_DIR=/tmp/uv-cache uv build` passed on 2026-06-22 and produced both sdist and wheel artifacts. |
+| AI gate | `make check-ai` runs lint, mypy, catalog checks, import checks, offline examples, package coverage, scoped core coverage, and adapter coverage; latest run reached 83.56% package coverage, 90.13% runtime-core coverage, 85.74% provider-adapter coverage, and 85.28% production-adapter-module coverage with 726 passed and 9 live tests deselected. |
+| Full test suite | `UV_CACHE_DIR=/tmp/uv-cache uv run pytest tests -q` passed on 2026-06-23 with 4312 passed and 6 skipped. |
+| Build | `UV_CACHE_DIR=/tmp/uv-cache uv build` passed on 2026-06-23 and produced both sdist and wheel artifacts. |
 | Live provider smoke | DashScope Responses stream/tools passed with 2 tests. DeepSeek OpenAI-compatible complete/stream examples passed. Moonshot OpenAI complete/stream were attempted and skipped because the provider rejected the configured credential, so Moonshot is not counted as live proof. |
 
 ## Final Checklist Status
@@ -104,14 +104,14 @@ Current composite score: 8.8/10.
 
 | Requirement | Status | Evidence or remaining work |
 |---|---|---|
-| `make check-ai` passes | Met | Passed on 2026-06-22 with 708 passed and 9 live tests deselected. `test-ai` and `check-ai-coverage` explicitly run `pytest ... -m "not live"` so default AI gates stay offline. |
-| `uv run pytest tests -m "not live" -q` passes | Met | Passed on 2026-06-22 with provider keys removed: 4284 passed, 9 deselected. |
+| `make check-ai` passes | Met | Passed on 2026-06-23 with 726 passed and 9 live tests deselected. `test-ai` and `check-ai-coverage` explicitly run `pytest ... -m "not live"` so default AI gates stay offline. |
+| `uv run pytest tests -q` passes | Met | Passed on 2026-06-23: 4312 passed, 6 skipped. |
 | `uv run pytest tests/ai/contracts -q` passes | Met | `tests/ai/contracts/test_core_provider_contracts.py` covers the core adapter protocol and builtin registration contract. |
 | `uv run python scripts/ai/check_catalog.py` passes | Met | Catalog gate. |
 | `uv run python scripts/ai/check_examples.py` passes | Met | Offline example gate. |
-| `uv build` passes | Met | Passed on 2026-06-22 and produced `dist/loushang-0.1.0.tar.gz` and `dist/loushang-0.1.0-py3-none-any.whl`. |
-| Core coverage >= 90% | Met | `scripts/ai/check_coverage_targets.py` enforces scoped runtime-core coverage; latest `make check-ai` reported 90.00%. Scope is recorded in `ARD-002-ai-coverage-gate-scope.md`. |
-| Adapter aggregate coverage >= 85% | Met | `scripts/ai/check_coverage_targets.py` enforces retained provider adapter aggregate coverage; latest `make check-ai` reported 85.84%. Production-adapter-module coverage was 85.39%. |
+| `uv build` passes | Met | Passed on 2026-06-23 and produced `dist/loushang-0.1.0.tar.gz` and `dist/loushang-0.1.0-py3-none-any.whl`. |
+| Core coverage >= 90% | Met | `scripts/ai/check_coverage_targets.py` enforces scoped runtime-core coverage; latest `make check-ai` reported 90.13%. Scope is recorded in `ARD-002-ai-coverage-gate-scope.md`. |
+| Adapter aggregate coverage >= 85% | Met | `scripts/ai/check_coverage_targets.py` enforces retained provider adapter aggregate coverage; latest `make check-ai` reported 85.74%. Production-adapter-module coverage was 85.28%. |
 | No pending asyncio task | Met | Provider runtime, event stream, proxy, and Codex WebSocket tests cover cancellation, close behavior, bounded queues, and terminal preservation. |
 | No secret trace snapshot | Met | Error payload redaction and Codex request-body trace summarization are tested; `.artifacts` and `dist` were scanned for current provider environment secret values with no matches. |
 

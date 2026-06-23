@@ -2,10 +2,10 @@ from __future__ import annotations
 
 from collections.abc import AsyncIterator
 from dataclasses import dataclass
-from typing import Any, Protocol, runtime_checkable
+from typing import Protocol, runtime_checkable
 
 from loushang.ai.context import NormalizedContext
-from loushang.ai.event_stream import AssistantMessageEventStream
+from loushang.ai.event_stream.raw_parts import RawPart
 from loushang.ai.model import Model
 from loushang.ai.options import CallOptions
 from loushang.ai.provider.resolution import ResolvedRequest
@@ -29,17 +29,4 @@ class ApiProvider(Protocol):
     def stream_raw(
         self,
         request: ProviderRequest,
-    ) -> AsyncIterator[Any]: ...
-
-
-@runtime_checkable
-class RequestAwareApiProvider(Protocol):
-    api: str
-
-    async def stream(
-        self,
-        model: Model,
-        context: ProviderContext,
-        options: ProviderOptions,
-        request: ResolvedRequest | None = None,
-    ) -> AssistantMessageEventStream: ...
+    ) -> AsyncIterator[RawPart]: ...

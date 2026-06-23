@@ -285,9 +285,7 @@ class RawAssembler:
             self._active_tool_call_buffers_by_id[start_buffer.id] = start_buffer
             if index is not None:
                 self._active_tool_call_buffers_by_index[index] = start_buffer
-            content_index = self._ensure_content_block(
-                "tool", start_buffer.id
-            )
+            content_index = self._ensure_content_block("tool", start_buffer.id)
             self._push_event(
                 cast(
                     ToolCallStartEvent,
@@ -624,9 +622,7 @@ class RawAssembler:
                     content.append(tool_call)
                 elif key in self._active_tool_call_buffers_by_id:
                     content.append(
-                        self._build_tool_call(
-                            self._active_tool_call_buffers_by_id[key]
-                        )
+                        self._build_tool_call(self._active_tool_call_buffers_by_id[key])
                     )
             elif kind == "image" and key is not None:
                 image_index = int(key)
@@ -674,6 +670,7 @@ class RawAssembler:
             and self._active_tool_call_buffers_by_index.get(buffer.index) is buffer
         ):
             self._active_tool_call_buffers_by_index.pop(buffer.index, None)
+
     def _toolcall_content_index(self, buffer: _ToolCallBuffer) -> int:
         return self._content_block_index("tool", buffer.id)
 

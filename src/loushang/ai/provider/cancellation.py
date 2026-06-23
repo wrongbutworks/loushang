@@ -27,7 +27,9 @@ def is_signal_cancelled(signal: object | None) -> bool:
             return bool(is_set())
         except Exception:
             return False
-    return bool(getattr(signal, "aborted", False) or getattr(signal, "cancelled", False))
+    return bool(
+        getattr(signal, "aborted", False) or getattr(signal, "cancelled", False)
+    )
 
 
 async def wait_signal_cancelled(signal: object | None) -> None:

@@ -2,8 +2,8 @@ from __future__ import annotations
 
 from typing import Any, cast
 
-from loushang.ai.provider.invocation import _RequestAwareProviderInvoker
-from loushang.ai.provider.protocol import ApiProvider, RequestAwareApiProvider
+from loushang.ai.provider.invocation import validate_provider_stream_raw_contract
+from loushang.ai.provider.protocol import ApiProvider
 
 RegisteredApiProvider = ApiProvider
 
@@ -16,8 +16,8 @@ __all__ = [
 
 class ApiProviderRegistry:
     def __init__(self) -> None:
-        # api -> (request-aware invoker, source_id)
-        self._providers: dict[str, tuple[RequestAwareApiProvider, str | None]] = {}
+        # api -> (raw provider, source_id)
+        self._providers: dict[str, tuple[ApiProvider, str | None]] = {}
 
     def register_api_provider(
         self, provider: RegisteredApiProvider, *, source_id: str | None = None
@@ -30,21 +30,19 @@ class ApiProviderRegistry:
         for name in ("stream_raw",):
             if not callable(getattr(provider_any, name)):
                 raise TypeError(f"Provider attribute must be callable: {name}")
-        self._providers[provider_any.api] = (
-            _RequestAwareProviderInvoker(provider_any),
-            source_id,
-        )
+        validate_provider_stream_raw_contract(provider_any)
+        self._providers[provider_any.api] = (provider_any, source_id)
 
-    def get_api_provider(self, api: str) -> RequestAwareApiProvider:
+    def get_api_provider(self, api: str) -> ApiProvider:
         return self._providers[api][0]
 
-    def list_api_providers(self) -> list[RequestAwareApiProvider]:
+    def list_api_providers(self) -> list[ApiProvider]:
         return [entry[0] for entry in self._providers.values()]
 
     def unregister_api_providers(self, source_id: str) -> None:
         """Unregister all providers that were registered with the given source identifier."""
         to_delete: list[str] = []
-        for api, (_wrapped, sid) in self._providers.items():
+        for api, (_provider, sid) in self._providers.items():
             if sid == source_id:
                 to_delete.append(api)
         for api in to_delete:

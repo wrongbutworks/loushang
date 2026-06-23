@@ -8,6 +8,11 @@
   - https://cloud.baidu.com/doc/qianfan-api/s/ym9chdsy5
   - https://cloud.baidu.com/doc/qianfan-docs/s/Wm95lyynv
   - https://cloud.baidu.com/doc/qianfan-docs/s/xm95lyys5
+- Source map:
+  - Authentication and endpoint: Qianfan API authentication and text-generation API docs.
+  - Model selection, context window, maximum output, and pricing tiers: model-list API docs.
+  - Streaming, stream usage, tools, response format, and reasoning content: text-generation, deep-thinking, and function-calling docs.
+  - Pricing: model-list API pricing fields.
 - Authentication: API key in `QIANFAN_API_KEY` or `BAIDU_QIANFAN_API_KEY`, sent as an `Authorization: Bearer ...` header.
 - Endpoint: `https://qianfan.baidubce.com/v2`, OpenAI-compatible Chat Completions protocol, China region.
 - Included models:

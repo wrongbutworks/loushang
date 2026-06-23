@@ -59,8 +59,7 @@ TEST_ONLY_PROVIDER_FILES = {"faux.py"}
 
 def test_core_provider_directory_matches_contract_matrix() -> None:
     files = {
-        path.name
-        for path in (REPO_ROOT / "src/loushang/ai/providers").glob("*.py")
+        path.name for path in (REPO_ROOT / "src/loushang/ai/providers").glob("*.py")
     }
 
     assert files == (

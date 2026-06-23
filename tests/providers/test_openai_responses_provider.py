@@ -60,10 +60,7 @@ class _AsyncEventStream:
 
 
 async def _collect_raw_parts(events: list[SimpleNamespace]) -> list[dict[str, object]]:
-    return [
-        part
-        async for part in process_responses_stream(_AsyncEventStream(events))
-    ]
+    return [part async for part in process_responses_stream(_AsyncEventStream(events))]
 
 
 def _stream_raw_parts(provider, model, context, options=None, request=None):
@@ -303,7 +300,7 @@ def test_openai_responses_supplied_empty_request_uses_typed_defaults(
     )
 
 
-def test_openai_responses_supplied_request_compat_projects_to_typed_payload(
+def test_openai_responses_supplied_request_adapter_options_project_to_typed_payload(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     _fake_openai_module(monkeypatch)
@@ -314,7 +311,7 @@ def test_openai_responses_supplied_request_compat_projects_to_typed_payload(
         api="openai-responses",
         base_url="https://api.openai.test/v1",
         headers={"Authorization": "Bearer test-key"},
-        compat={
+        adapter_options={
             "supportsDeveloperRole": False,
             "requiresAssistantAfterToolResult": True,
             "supportsLongCacheRetention": False,
@@ -332,7 +329,7 @@ def test_openai_responses_supplied_request_compat_projects_to_typed_payload(
                 _tool_result_followed_by_user_context(system_prompt="Use system."),
                 OpenAIResponsesOptions(
                     cache_retention="short",
-                    session_id="session-compat",
+                    session_id="session-options",
                 ),
                 request,
             )
@@ -355,12 +352,12 @@ def test_openai_responses_supplied_request_compat_projects_to_typed_payload(
         {"role": "assistant", "content": "I have processed the tool results."},
         {"role": "user", "content": [{"type": "input_text", "text": "next"}]},
     ]
-    assert _FakeAsyncOpenAI.last_create_kwargs["prompt_cache_key"] == "session-compat"
+    assert _FakeAsyncOpenAI.last_create_kwargs["prompt_cache_key"] == "session-options"
     assert "prompt_cache_retention" not in _FakeAsyncOpenAI.last_create_kwargs
     assert "session_id" not in _FakeAsyncOpenAI.last_init_kwargs["default_headers"]
     assert (
         _FakeAsyncOpenAI.last_init_kwargs["default_headers"]["x-client-request-id"]
-        == "session-compat"
+        == "session-options"
     )
 
 
@@ -375,7 +372,7 @@ def test_openai_responses_rejects_unsupported_long_cache_retention(
         api="openai-responses",
         base_url="https://api.openai.test/v1",
         headers={"Authorization": "Bearer test-key"},
-        compat={"supportsLongCacheRetention": False},
+        adapter_options={"supportsLongCacheRetention": False},
         capabilities=Capabilities(input=("text",), reasoning=True),
         max_tokens=128,
     )
@@ -401,7 +398,7 @@ def test_openai_responses_rejects_unsupported_long_cache_retention(
     assert _FakeAsyncOpenAI.last_create_kwargs == {}
 
 
-def test_openai_responses_supplied_request_typed_adapter_overrides_stale_compat(
+def test_openai_responses_supplied_request_typed_adapter_overrides_stale_options(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     _fake_openai_module(monkeypatch)
@@ -412,7 +409,7 @@ def test_openai_responses_supplied_request_typed_adapter_overrides_stale_compat(
         api="openai-responses",
         base_url="https://api.openai.test/v1",
         headers={"Authorization": "Bearer test-key"},
-        compat={
+        adapter_options={
             "supportsDeveloperRole": True,
             "requiresAssistantAfterToolResult": True,
             "supportsLongCacheRetention": True,
@@ -1431,7 +1428,7 @@ def _patch_resolved_request(
             api=provider_api,
             base_url=base_url,
             headers=headers,
-            adapter_compat=compat or {},
+            adapter_options=compat or {},
             adapter_protocol=protocol or _responses_protocol_from_compat(compat or {}),
             adapter_dialect=dialect or _responses_dialect_from_compat(compat or {}),
             transport=transport or EndpointTransport(),

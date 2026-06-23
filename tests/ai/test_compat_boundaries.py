@@ -54,8 +54,9 @@ def test_legacy_compat_helper_detection_rejects_module_aliases() -> None:
     offenders = _legacy_helper_accesses("example.py", tree)
 
     assert "example.py imports loushang.ai.model.compat_schema" in offenders
-    assert "example.py imports loushang.ai.model.compat_schema via loushang.ai.model" in (
-        offenders
+    assert (
+        "example.py imports loushang.ai.model.compat_schema via loushang.ai.model"
+        in (offenders)
     )
     assert "example.py calls schema.compat_bool" in offenders
     assert "example.py calls compat_schema.compat_str" in offenders
@@ -79,8 +80,7 @@ def test_provider_compat_schema_detection_rejects_constant_imports() -> None:
         "loushang.ai.model.compat_schema.CODEX_USER_AGENT"
     ) in offenders
     assert (
-        "src/loushang/ai/providers/example.py imports "
-        "loushang.ai.model.compat_schema"
+        "src/loushang/ai/providers/example.py imports loushang.ai.model.compat_schema"
     ) in offenders
     assert (
         "src/loushang/ai/providers/example.py imports "
@@ -107,7 +107,10 @@ def test_provider_adapter_compat_detection_rejects_getattr() -> None:
 
     assert "src/loushang/ai/providers/example.py reads adapter_compat" in offenders
     assert "src/loushang/ai/providers/example.py reads compat" in offenders
-    assert offenders.count("src/loushang/ai/providers/example.py reads adapter_compat") == 3
+    assert (
+        offenders.count("src/loushang/ai/providers/example.py reads adapter_compat")
+        == 3
+    )
     assert offenders.count("src/loushang/ai/providers/example.py reads compat") == 2
     assert "src/loushang/ai/providers/example.py reads model.compat" not in offenders
 

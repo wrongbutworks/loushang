@@ -84,8 +84,12 @@ def test_raw_assembler_groups_interleaved_tool_calls_by_id_and_index() -> None:
     )
 
     assembler.feed({"type": "response_start", "response_id": "resp_1"})
-    assembler.feed({"type": "tool_call_start", "id": "call_a", "name": "add", "index": 0})
-    assembler.feed({"type": "tool_call_start", "id": "call_b", "name": "mul", "index": 1})
+    assembler.feed(
+        {"type": "tool_call_start", "id": "call_a", "name": "add", "index": 0}
+    )
+    assembler.feed(
+        {"type": "tool_call_start", "id": "call_b", "name": "mul", "index": 1}
+    )
     assembler.feed(
         {
             "type": "tool_call_args_delta",
@@ -96,7 +100,9 @@ def test_raw_assembler_groups_interleaved_tool_calls_by_id_and_index() -> None:
     )
     assembler.feed({"type": "tool_call_args_delta", "index": 1, "delta": '{"x":'})
     assembler.feed({"type": "tool_call_args_delta", "index": 0, "delta": "1}"})
-    assembler.feed({"type": "tool_call_args_delta", "tool_call_id": "call_b", "delta": "2}"})
+    assembler.feed(
+        {"type": "tool_call_args_delta", "tool_call_id": "call_b", "delta": "2}"}
+    )
     assembler.feed({"type": "tool_call_done", "index": 1})
     assembler.feed({"type": "tool_call_done", "tool_call_id": "call_a"})
     assembler.feed({"type": "response_done"})
@@ -270,9 +276,7 @@ def test_event_stream_emit_waits_when_queue_is_full() -> None:
         )
         await stream.emit({"type": "start", "partial": message})
         second_emit = asyncio.create_task(
-            stream.emit(
-                {"type": "text_start", "content_index": 0, "partial": message}
-            )
+            stream.emit({"type": "text_start", "content_index": 0, "partial": message})
         )
         await asyncio.sleep(0)
         blocked = not second_emit.done()
@@ -457,7 +461,9 @@ def test_raw_assembler_uses_clock_timestamp_for_final_message() -> None:
     assert message.timestamp == 123.5
 
 
-def test_raw_assembler_omits_non_http_error_code() -> None:
+def test_raw_assembler_omits_non_http_top_level_code_but_normalizes_known_code() -> (
+    None
+):
     stream = AssistantMessageEventStream()
     assembler = RawAssembler(
         stream=stream,
@@ -478,8 +484,8 @@ def test_raw_assembler_omits_non_http_error_code() -> None:
 
     assert events[-1]["type"] == "error"
     assert "code" not in events[-1]
-    assert events[-1]["error_info"]["code"] == "provider"
-    assert events[-1]["error_info"]["retryable"] is False
+    assert events[-1]["error_info"]["code"] == "rate_limit"
+    assert events[-1]["error_info"]["retryable"] is True
 
 
 def test_raw_assembler_derives_total_tokens_when_provider_omits_total() -> None:

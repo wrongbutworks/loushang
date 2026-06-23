@@ -384,7 +384,9 @@ def _first_tool_call_path(
 
 
 def _aborted_boundary_message(message: AssistantMessage) -> AssistantMessage:
-    text = _assistant_text(message) or message.error_message or "Request aborted by user"
+    text = (
+        _assistant_text(message) or message.error_message or "Request aborted by user"
+    )
     return AssistantMessage(
         role=message.role,
         content=[TextPart(type="text", text=text)],

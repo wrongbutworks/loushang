@@ -2,8 +2,8 @@ from __future__ import annotations
 
 import asyncio
 import time
-from collections.abc import Mapping
-from typing import Any, Awaitable, Callable
+from collections.abc import Awaitable, Callable, Mapping
+from typing import Any
 
 from loushang.agent.agent_loop import run_agent_loop, run_agent_loop_continue
 from loushang.agent.types import (
@@ -21,7 +21,7 @@ from loushang.agent.types import (
     ThinkingLevel,
     ToolExecutionMode,
 )
-from loushang.ai.api import stream_simple
+from loushang.ai.api import stream
 from loushang.ai.api_registry import (
     ApiProviderRegistry,
     get_default_api_provider_registry,
@@ -44,6 +44,7 @@ _ABORT_FORCE_CANCEL_DELAY_S = 0.05
 
 class AgentStateError(RuntimeError):
     """Agent 状态错误，当操作在非法状态下执行时抛出。"""
+
     pass
 
 
@@ -55,9 +56,11 @@ def _get_default_agent_api_registry() -> ApiProviderRegistry:
     return registry
 
 
-async def _stream_simple_with_registry(model, context, options=None):
-    """Wrapper for stream_simple that includes the default registry."""
-    return await stream_simple(model, context, options, registry=_get_default_agent_api_registry())
+async def _stream_with_registry(model, context, options=None):
+    """Wrapper for stream that includes the default registry."""
+    return await stream(
+        model, context, options, registry=_get_default_agent_api_registry()
+    )
 
 
 def _default_model() -> Model:
@@ -128,7 +131,7 @@ class Agent:
         self._state = _create_agent_state(options.initial_state)
         self.convert_to_llm = options.convert_to_llm or _default_convert_to_llm
         self.transform_context = options.transform_context
-        self.stream_fn = options.stream_fn or _stream_simple_with_registry
+        self.stream_fn = options.stream_fn or _stream_with_registry
         self.get_api_key = options.get_api_key
         self.on_payload = options.on_payload
         self.on_response = options.on_response
@@ -141,7 +144,9 @@ class Agent:
         self._transport = options.transport
         self._max_retry_delay_ms = options.max_retry_delay_ms
         self.tool_execution = options.tool_execution
-        self._listeners: dict[Callable[[AgentEvent, AbortSignal], Awaitable[None] | None], None] = {}
+        self._listeners: dict[
+            Callable[[AgentEvent, AbortSignal], Awaitable[None] | None], None
+        ] = {}
         self._active_run_task: asyncio.Task[None] | None = None
         self._active_abort_controller: AbortController | None = None
 
@@ -208,22 +213,50 @@ class Agent:
         self._tool_execution = value
 
     @property
-    def before_tool_call(self) -> Callable[[BeforeToolCallContext, object | None], Awaitable[BeforeToolCallResult | None]] | None:
+    def before_tool_call(
+        self,
+    ) -> (
+        Callable[
+            [BeforeToolCallContext, object | None],
+            Awaitable[BeforeToolCallResult | None],
+        ]
+        | None
+    ):
         """Get the beforeToolCall hook if set."""
         return self._before_tool_call
 
     @before_tool_call.setter
-    def before_tool_call(self, value: Callable[[BeforeToolCallContext, object | None], Awaitable[BeforeToolCallResult | None]] | None) -> None:
+    def before_tool_call(
+        self,
+        value: Callable[
+            [BeforeToolCallContext, object | None],
+            Awaitable[BeforeToolCallResult | None],
+        ]
+        | None,
+    ) -> None:
         """Set the beforeToolCall hook called before each tool execution."""
         self._before_tool_call = value
 
     @property
-    def after_tool_call(self) -> Callable[[AfterToolCallContext, object | None], Awaitable[AfterToolCallResult | None]] | None:
+    def after_tool_call(
+        self,
+    ) -> (
+        Callable[
+            [AfterToolCallContext, object | None], Awaitable[AfterToolCallResult | None]
+        ]
+        | None
+    ):
         """Get the afterToolCall hook if set."""
         return self._after_tool_call
 
     @after_tool_call.setter
-    def after_tool_call(self, value: Callable[[AfterToolCallContext, object | None], Awaitable[AfterToolCallResult | None]] | None) -> None:
+    def after_tool_call(
+        self,
+        value: Callable[
+            [AfterToolCallContext, object | None], Awaitable[AfterToolCallResult | None]
+        ]
+        | None,
+    ) -> None:
         """Set the afterToolCall hook called after each tool execution."""
         self._after_tool_call = value
 
@@ -340,7 +373,9 @@ class Agent:
     def follow_up_mode(self, mode: str) -> None:
         self.follow_up_queue.mode = mode
 
-    def subscribe(self, listener: Callable[[AgentEvent, AbortSignal], Awaitable[None] | None]) -> Callable[[], None]:
+    def subscribe(
+        self, listener: Callable[[AgentEvent, AbortSignal], Awaitable[None] | None]
+    ) -> Callable[[], None]:
         self._listeners.setdefault(listener, None)
 
         def unsubscribe() -> None:
@@ -382,7 +417,9 @@ class Agent:
         except RuntimeError:
             active_task.cancel()
             return
-        loop.call_later(_ABORT_FORCE_CANCEL_DELAY_S, self._force_cancel_active_task, active_task)
+        loop.call_later(
+            _ABORT_FORCE_CANCEL_DELAY_S, self._force_cancel_active_task, active_task
+        )
 
     def _force_cancel_active_task(self, task: asyncio.Task[None]) -> None:
         if task is self._active_run_task and not task.done():
@@ -400,15 +437,23 @@ class Agent:
         self._state.error_message = None
         self.clear_all_queues()
 
-    async def prompt(self, input: str | AgentMessage | list[AgentMessage], images: list[ImagePart] | None = None) -> None:
+    async def prompt(
+        self,
+        input: str | AgentMessage | list[AgentMessage],
+        images: list[ImagePart] | None = None,
+    ) -> None:
         if self._active_run_task is not None:
-            raise AgentStateError("Agent is already processing a prompt. Use steer() or followUp() to queue messages, or wait for completion.")
+            raise AgentStateError(
+                "Agent is already processing a prompt. Use steer() or followUp() to queue messages, or wait for completion."
+            )
         messages = self._normalize_prompt_input(input, images)
         await self._run_prompt_messages(messages)
 
     async def continue_run(self) -> None:
         if self._active_run_task is not None:
-            raise AgentStateError("Agent is already processing. Wait for completion before continuing.")
+            raise AgentStateError(
+                "Agent is already processing. Wait for completion before continuing."
+            )
 
         last_message = self._state.messages[-1] if self._state.messages else None
         if last_message is None:
@@ -417,7 +462,9 @@ class Agent:
         if getattr(last_message, "role", None) == "assistant":
             queued_steering = self.steering_queue.drain()
             if queued_steering:
-                await self._run_prompt_messages(queued_steering, skip_initial_steering_poll=True)
+                await self._run_prompt_messages(
+                    queued_steering, skip_initial_steering_poll=True
+                )
                 return
 
             queued_follow_ups = self.follow_up_queue.drain()
@@ -429,12 +476,16 @@ class Agent:
 
         await self._run_continuation()
 
-    async def _run_prompt_messages(self, messages: list[AgentMessage], skip_initial_steering_poll: bool = False) -> None:
+    async def _run_prompt_messages(
+        self, messages: list[AgentMessage], skip_initial_steering_poll: bool = False
+    ) -> None:
         async def executor(signal: AbortSignal) -> None:
             await run_agent_loop(
                 list(messages),
                 self._create_context_snapshot(),
-                self._create_loop_config(skip_initial_steering_poll=skip_initial_steering_poll),
+                self._create_loop_config(
+                    skip_initial_steering_poll=skip_initial_steering_poll
+                ),
                 self._process_event,
                 signal=signal,
                 stream_fn=self.stream_fn,
@@ -457,11 +508,15 @@ class Agent:
     def _create_context_snapshot(self) -> AgentContext:
         return AgentContext(
             system_prompt=self._state.system_prompt,
-            messages=[canonicalize_user_message(message) for message in self._state.messages],
+            messages=[
+                canonicalize_user_message(message) for message in self._state.messages
+            ],
             tools=list(self._state.tools),
         )
 
-    def _create_loop_config(self, *, skip_initial_steering_poll: bool = False) -> AgentLoopConfig:
+    def _create_loop_config(
+        self, *, skip_initial_steering_poll: bool = False
+    ) -> AgentLoopConfig:
         local_skip = skip_initial_steering_poll
 
         async def get_steering_messages() -> list[AgentMessage]:
@@ -476,7 +531,9 @@ class Agent:
 
         return AgentLoopConfig(
             model=self._state.model,
-            reasoning=None if self._state.thinking_level == "off" else self._state.thinking_level,
+            reasoning=None
+            if self._state.thinking_level == "off"
+            else self._state.thinking_level,
             session_id=self.session_id,
             on_payload=self.on_payload,
             on_response=self.on_response,
@@ -507,7 +564,9 @@ class Agent:
             content.extend(images)
         return [UserMessage(role="user", content=content, timestamp=time.time() * 1000)]
 
-    async def _run_with_lifecycle(self, executor: Callable[[AbortSignal], Awaitable[None]]) -> None:
+    async def _run_with_lifecycle(
+        self, executor: Callable[[AbortSignal], Awaitable[None]]
+    ) -> None:
         if self._active_run_task is not None:
             raise AgentStateError("Agent is already processing.")
 
@@ -522,11 +581,15 @@ class Agent:
                 await executor(abort_controller.signal)
             except asyncio.CancelledError:
                 if abort_controller.signal.aborted:
-                    await self._handle_run_failure(RuntimeError("Request aborted by user"), aborted=True)
+                    await self._handle_run_failure(
+                        RuntimeError("Request aborted by user"), aborted=True
+                    )
                     return
                 raise
-            except Exception as error:  # noqa: BLE001
-                await self._handle_run_failure(error, aborted=abort_controller.signal.aborted)
+            except Exception as error:
+                await self._handle_run_failure(
+                    error, aborted=abort_controller.signal.aborted
+                )
             finally:
                 self._finish_run()
 
@@ -537,7 +600,9 @@ class Agent:
             if not abort_controller.signal.aborted:
                 raise
             if self._active_run_task is not None:
-                await self._handle_run_failure(RuntimeError("Request aborted by user"), aborted=True)
+                await self._handle_run_failure(
+                    RuntimeError("Request aborted by user"), aborted=True
+                )
                 self._finish_run()
 
     async def _handle_run_failure(self, error: Exception, *, aborted: bool) -> None:
@@ -593,15 +658,21 @@ class Agent:
                 await result
 
 
-def _initial_state_value(initial_state: AgentState | Mapping[str, Any] | object, key: str, default: Any) -> Any:
+def _initial_state_value(
+    initial_state: AgentState | Mapping[str, Any] | object, key: str, default: Any
+) -> Any:
     if isinstance(initial_state, Mapping):
         return initial_state.get(key, default)
     return getattr(initial_state, key, default)
 
 
-def _create_agent_state(initial_state: AgentState | Mapping[str, Any] | object | None) -> AgentState:
+def _create_agent_state(
+    initial_state: AgentState | Mapping[str, Any] | object | None,
+) -> AgentState:
     if initial_state is None:
-        return AgentState(system_prompt="", model=_default_model(), thinking_level="off")
+        return AgentState(
+            system_prompt="", model=_default_model(), thinking_level="off"
+        )
 
     return AgentState(
         system_prompt=_initial_state_value(initial_state, "system_prompt", ""),
@@ -610,8 +681,12 @@ def _create_agent_state(initial_state: AgentState | Mapping[str, Any] | object |
         tools=_initial_state_value(initial_state, "tools", []),
         messages=_initial_state_value(initial_state, "messages", []),
         is_streaming=_initial_state_value(initial_state, "is_streaming", False),
-        streaming_message=_initial_state_value(initial_state, "streaming_message", None),
-        pending_tool_calls=set(_initial_state_value(initial_state, "pending_tool_calls", set())),
+        streaming_message=_initial_state_value(
+            initial_state, "streaming_message", None
+        ),
+        pending_tool_calls=set(
+            _initial_state_value(initial_state, "pending_tool_calls", set())
+        ),
         error_message=_initial_state_value(initial_state, "error_message", None),
     )
 

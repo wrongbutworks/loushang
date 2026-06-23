@@ -217,10 +217,7 @@ class AnthropicProviderBase:
         if not isinstance(content, list):
             return "(empty)"
 
-        if all(
-            getattr(part, "type", None) == "text"
-            for part in content
-        ):
+        if all(getattr(part, "type", None) == "text" for part in content):
             text_parts = [getattr(part, "text", "") for part in content]
             text = "\n".join(
                 part for part in text_parts if isinstance(part, str) and part.strip()

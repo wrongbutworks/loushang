@@ -75,3 +75,19 @@ def test_get_oauth_api_key_ignores_empty_access_token() -> None:
     )
 
     assert result is None
+
+
+def test_get_oauth_api_key_rejects_expired_token_without_refresh() -> None:
+    result = get_oauth_api_key(
+        "demo",
+        {
+            "demo": OAuthCredentials(
+                provider="demo",
+                access_token="old-token",
+                refresh_token=None,
+                expires_at=0.0,
+            )
+        },
+    )
+
+    assert result is None

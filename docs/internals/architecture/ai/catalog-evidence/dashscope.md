@@ -7,6 +7,11 @@
   - https://help.aliyun.com/zh/model-studio/qwen-api-via-openai-responses
   - https://help.aliyun.com/zh/model-studio/getting-started/models
   - https://help.aliyun.com/zh/model-studio/model-pricing
+- Source map:
+  - Authentication and endpoint: OpenAI-compatible DashScope docs.
+  - Model selection and context windows: model-selection docs.
+  - Responses API, reasoning effort, streaming continuity, and previous response id: Qwen OpenAI Responses docs.
+  - Pricing: model-pricing docs.
 - Authentication: API key in `DASHSCOPE_API_KEY`, sent as an `Authorization: Bearer ...` header.
 - Endpoint: `https://dashscope.aliyuncs.com/compatible-mode/v1`, OpenAI-compatible Responses API protocol, China North 2 Beijing default region.
 - Included models:

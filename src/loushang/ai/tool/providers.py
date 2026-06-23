@@ -169,7 +169,9 @@ def _openai_tool_result_text_parts(message: ToolResultMessage) -> list[str]:
     ]
 
 
-def _openai_responses_tool_result_images(message: ToolResultMessage) -> list[dict[str, Any]]:
+def _openai_responses_tool_result_images(
+    message: ToolResultMessage,
+) -> list[dict[str, Any]]:
     image_parts: list[dict[str, Any]] = []
     for part in message.content:
         if _part_type(part) != "image":

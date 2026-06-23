@@ -6,6 +6,10 @@
   - https://www.volcengine.com/docs/82379/1330310
   - https://www.volcengine.com/docs/82379/1949118
   - https://www.volcengine.com/docs/82379/1544106
+- Source map:
+  - Authentication and endpoint: OpenAI-compatible Volcano Ark docs.
+  - Model selection, context, multimodal input, tools, and structured output: official model-list docs.
+  - Pricing: intentionally omitted because the official pricing page is dynamic in this environment.
 - Authentication: API key in `ARK_API_KEY`, sent as an `Authorization: Bearer ...` header.
 - Endpoint: `https://ark.cn-beijing.volces.com/api/v3`, OpenAI-compatible Chat Completions protocol, China North Beijing region.
 - Included models:

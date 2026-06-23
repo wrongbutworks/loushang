@@ -49,10 +49,10 @@ class OpenAICodexRuntimeConfig(AdapterRuntimeConfig):
 
 
 def resolve_openai_codex_runtime_config(
-    adapter_compat: Mapping[str, object],
+    adapter_options: Mapping[str, object],
     current: AdapterRuntimeConfig | None,
 ) -> OpenAICodexRuntimeConfig:
-    codex_compat = _openai_codex_runtime_compat(adapter_compat)
+    codex_compat = _openai_codex_runtime_compat(adapter_options)
     derived = OpenAICodexRuntimeConfig(
         include_client_request_id=_config_bool(
             codex_compat,
@@ -90,11 +90,11 @@ def resolve_openai_codex_runtime_config(
 
 
 def _openai_codex_runtime_compat(
-    adapter_compat: Mapping[str, object],
+    adapter_options: Mapping[str, object],
 ) -> dict[str, object]:
     return {
         key: value
-        for key, value in adapter_compat.items()
+        for key, value in adapter_options.items()
         if key in _OPENAI_CODEX_RUNTIME_COMPAT_KEYS
     }
 
@@ -132,7 +132,7 @@ def _validate_openai_codex_runtime_config_matches_compat(
     for field_name, expected_value in expected.items():
         if getattr(current, field_name) != expected_value:
             raise ValueError(
-                "adapter_config conflicts with adapter_compat for "
+                "adapter_config conflicts with adapter_options for "
                 "openai-codex-responses"
             )
 

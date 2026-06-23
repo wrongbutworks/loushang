@@ -49,7 +49,9 @@ def _assistant_with_tool_call() -> AssistantMessage:
 
 
 def test_transform_messages_marks_synthetic_tool_results() -> None:
-    transformed = transform_messages([_assistant_with_tool_call()], pairing_mode="repair")
+    transformed = transform_messages(
+        [_assistant_with_tool_call()], pairing_mode="repair"
+    )
 
     synthetic = transformed[1]
     assert synthetic.role == "toolResult"
@@ -223,7 +225,9 @@ def test_transform_messages_normalizes_tool_call_and_matching_result_ids() -> No
     assert transformed_result.tool_call_id == "call_1_fc_1"
 
 
-def test_transform_messages_adds_synthetic_results_only_for_missing_tool_calls() -> None:
+def test_transform_messages_adds_synthetic_results_only_for_missing_tool_calls() -> (
+    None
+):
     assistant = AssistantMessage(
         role="assistant",
         content=[

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import math
 import os
 import stat
 import threading
@@ -120,6 +121,97 @@ def test_credential_store_skips_entries_without_access_token(tmp_path) -> None:
 
     assert set(loaded["providers"]) == {"demo"}
     assert loaded["providers"]["demo"].access_token == "token"
+
+
+def test_credential_store_rejects_invalid_expiry(tmp_path) -> None:
+    path = tmp_path / "oauth.json"
+    path.write_text(
+        json.dumps(
+            {
+                "providers": {
+                    "demo": {
+                        "provider": "demo",
+                        "access_token": "token",
+                        "expires_at": "expired",
+                    }
+                },
+                "endpoints": {},
+                "models": {},
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    with pytest.raises(CredentialStoreCorruptError, match="invalid expires_at"):
+        CredentialStore(path).load()
+
+
+@pytest.mark.parametrize("expires_at", [math.nan, math.inf])
+def test_credential_store_rejects_non_finite_expiry(tmp_path, expires_at) -> None:
+    path = tmp_path / "oauth.json"
+    path.write_text(
+        json.dumps(
+            {
+                "providers": {
+                    "demo": {
+                        "provider": "demo",
+                        "access_token": "token",
+                        "expires_at": expires_at,
+                    }
+                },
+                "endpoints": {},
+                "models": {},
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    with pytest.raises(CredentialStoreCorruptError, match="invalid expires_at"):
+        CredentialStore(path).load()
+
+
+def test_credential_store_rejects_non_finite_expiry_on_save(tmp_path) -> None:
+    store = CredentialStore(tmp_path / "oauth.json")
+
+    with pytest.raises(CredentialStoreCorruptError, match="invalid expires_at"):
+        store.save(
+            {
+                "providers": {
+                    "demo": OAuthCredentials(
+                        provider="demo",
+                        access_token="token",
+                        expires_at=math.inf,
+                    )
+                },
+                "endpoints": {},
+                "models": {},
+            }
+        )
+
+
+def test_credential_store_preserves_zero_expiry(tmp_path) -> None:
+    path = tmp_path / "oauth.json"
+    path.write_text(
+        json.dumps(
+            {
+                "providers": {
+                    "demo": {
+                        "provider": "demo",
+                        "access_token": "token",
+                        "expires_at": 0,
+                        "expires": 999,
+                    }
+                },
+                "endpoints": {},
+                "models": {},
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    loaded = CredentialStore(path).load()
+
+    assert loaded["providers"]["demo"].expires_at == 0
 
 
 def test_credential_store_update_merges_concurrent_writes(tmp_path) -> None:

@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from collections.abc import Mapping
-from typing import NotRequired, TypedDict
+from typing import TYPE_CHECKING, NotRequired, TypedDict, cast
 
 from loushang.ai.errors import (
     AIAuthenticationError,
@@ -15,6 +15,9 @@ from loushang.ai.errors import (
     ai_error_info_from_mapping,
 )
 from loushang.observability.problem import JSONValue
+
+if TYPE_CHECKING:
+    from loushang.ai.event_stream.raw_parts import RawPart, ResponseErrorPart
 
 
 class ProviderErrorInfo(TypedDict):
@@ -56,9 +59,39 @@ def provider_error_part(
     error: Exception,
     *,
     source: str = "provider",
-) -> dict[str, object]:
+) -> "RawPart":
     info = classify_provider_error(error, source=source)
-    return {"type": "response_error", **info}
+    return cast("RawPart", {"type": "response_error", **info})
+
+
+def provider_error_part_from_raw(
+    message: object,
+    *,
+    code: object = None,
+    source: str = "provider",
+) -> "RawPart":
+    message_text = message if isinstance(message, str) and message else "Unknown error"
+    status_code = _http_status_code(code)
+    error_code = _provider_error_code_from_raw(code, status_code)
+    info = AIErrorInfo(
+        code=error_code,
+        message=message_text,
+        source=source,
+        retryable=_is_retryable_provider_error(error_code),
+        status_code=status_code,
+        details={"rawCode": str(code)} if code is not None else {},
+    )
+    part = cast(
+        "ResponseErrorPart",
+        {
+            "type": "response_error",
+            "message": message_text,
+            "error_info": info.to_dict(),
+        },
+    )
+    if status_code is not None:
+        part["code"] = status_code
+    return cast("RawPart", part)
 
 
 def normalize_provider_error(
@@ -93,7 +126,7 @@ def provider_error_info_from_raw(
         return ai_error_info_from_mapping(raw_info)
     message = part.get("message")
     status_code = _http_status_code(part.get("code"))
-    code = _provider_error_code_from_status(status_code)
+    code = _provider_error_code_from_raw(part.get("code"), status_code)
     return AIErrorInfo(
         code=code,
         message=message if isinstance(message, str) and message else "Unknown error",
@@ -199,6 +232,32 @@ def _provider_error_code_from_status(status_code: int | None) -> AIErrorCode:
         return AIErrorCode.RATE_LIMIT
     if status_code is not None and 500 <= status_code <= 599:
         return AIErrorCode.SERVICE_UNAVAILABLE
+    return AIErrorCode.PROVIDER
+
+
+def _provider_error_code_from_raw(
+    raw_code: object,
+    status_code: int | None,
+) -> AIErrorCode:
+    if status_code is not None:
+        return _provider_error_code_from_status(status_code)
+    if not isinstance(raw_code, str):
+        return AIErrorCode.PROVIDER
+    normalized = raw_code.strip().lower().replace("-", "_")
+    if normalized in {"rate_limit", "rate_limited", "too_many_requests"}:
+        return AIErrorCode.RATE_LIMIT
+    if normalized in {"timeout", "timed_out", "request_timeout"}:
+        return AIErrorCode.TIMEOUT
+    if normalized in {
+        "server_error",
+        "service_unavailable",
+        "temporarily_unavailable",
+        "overloaded",
+        "unavailable",
+    }:
+        return AIErrorCode.SERVICE_UNAVAILABLE
+    if normalized in {"authentication", "authentication_error", "invalid_api_key"}:
+        return AIErrorCode.AUTHENTICATION
     return AIErrorCode.PROVIDER
 
 

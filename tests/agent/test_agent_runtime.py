@@ -1,4 +1,5 @@
 import asyncio
+from contextlib import suppress
 from typing import Any
 
 import pytest
@@ -62,7 +63,9 @@ def _default_registry() -> None:
     )
 
 
-def _assistant_text_message(text: str, *, stop_reason: str = "stop", error_message: str | None = None) -> AssistantMessage:
+def _assistant_text_message(
+    text: str, *, stop_reason: str = "stop", error_message: str | None = None
+) -> AssistantMessage:
     return AssistantMessage(
         role="assistant",
         content=[TextPart(type="text", text=text)],
@@ -92,7 +95,9 @@ def _assistant_tool_call_message() -> AssistantMessage:
     )
 
 
-def _stream_with_final_message(message: AssistantMessage, *, delay: float = 0.0) -> AssistantMessageEventStream:
+def _stream_with_final_message(
+    message: AssistantMessage, *, delay: float = 0.0
+) -> AssistantMessageEventStream:
     stream = AssistantMessageEventStream()
 
     async def _feed() -> None:
@@ -101,14 +106,44 @@ def _stream_with_final_message(message: AssistantMessage, *, delay: float = 0.0)
             stream.push({"type": "text_start", "content_index": 0, "partial": message})
             if delay:
                 await asyncio.sleep(delay)
-            stream.push({"type": "text_delta", "content_index": 0, "delta": message.content[0].text, "partial": message})
-            stream.push({"type": "text_end", "content_index": 0, "content": message.content[0].text, "partial": message})
+            stream.push(
+                {
+                    "type": "text_delta",
+                    "content_index": 0,
+                    "delta": message.content[0].text,
+                    "partial": message,
+                }
+            )
+            stream.push(
+                {
+                    "type": "text_end",
+                    "content_index": 0,
+                    "content": message.content[0].text,
+                    "partial": message,
+                }
+            )
         elif message.content and isinstance(message.content[0], ToolCall):
-            stream.push({"type": "toolcall_start", "content_index": 0, "partial": message})
+            stream.push(
+                {"type": "toolcall_start", "content_index": 0, "partial": message}
+            )
             if delay:
                 await asyncio.sleep(delay)
-            stream.push({"type": "toolcall_delta", "content_index": 0, "delta": '{"x": 1}', "partial": message})
-            stream.push({"type": "toolcall_end", "content_index": 0, "tool_call": message.content[0], "partial": message})
+            stream.push(
+                {
+                    "type": "toolcall_delta",
+                    "content_index": 0,
+                    "delta": '{"x": 1}',
+                    "partial": message,
+                }
+            )
+            stream.push(
+                {
+                    "type": "toolcall_end",
+                    "content_index": 0,
+                    "tool_call": message.content[0],
+                    "partial": message,
+                }
+            )
         stream.push({"type": "done", "reason": message.stop_reason, "message": message})  # type: ignore[typeddict-item]
 
     asyncio.create_task(_feed())
@@ -131,10 +166,20 @@ class FakeTool:
     label = "Calc"
     prepare_arguments = None
 
-    async def execute(self, tool_call_id: str, params: dict[str, Any], signal=None, on_update=None) -> AgentToolResult[dict[str, Any]]:
+    async def execute(
+        self, tool_call_id: str, params: dict[str, Any], signal=None, on_update=None
+    ) -> AgentToolResult[dict[str, Any]]:
         if on_update is not None:
-            on_update(AgentToolResult(content=[TextPart(type="text", text="partial")], details={"progress": "half"}))
-        return AgentToolResult(content=[TextPart(type="text", text=str(params["x"] + 1))], details={"value": params["x"] + 1})
+            on_update(
+                AgentToolResult(
+                    content=[TextPart(type="text", text="partial")],
+                    details={"progress": "half"},
+                )
+            )
+        return AgentToolResult(
+            content=[TextPart(type="text", text=str(params["x"] + 1))],
+            details={"value": params["x"] + 1},
+        )
 
 
 def test_prompt_updates_state_and_notifies_subscribers() -> None:
@@ -154,7 +199,10 @@ def test_prompt_updates_state_and_notifies_subscribers() -> None:
         agent.subscribe(listener)
         await agent.prompt("hi")
 
-        assert [getattr(message, "role", None) for message in agent.state.messages] == ["user", "assistant"]
+        assert [getattr(message, "role", None) for message in agent.state.messages] == [
+            "user",
+            "assistant",
+        ]
         assert agent.state.messages[-1].content[0].text == "hello"
         assert agent.state.is_streaming is False
         assert agent.state.streaming_message is None
@@ -219,7 +267,9 @@ def test_subscribe_preserves_first_registration_order() -> None:
     asyncio.run(scenario())
 
 
-def test_continue_prefers_queued_steering_then_follow_up_when_last_message_is_assistant() -> None:
+def test_continue_prefers_queued_steering_then_follow_up_when_last_message_is_assistant() -> (
+    None
+):
     from loushang.agent import Agent
 
     calls: list[str] = []
@@ -238,7 +288,9 @@ def test_continue_prefers_queued_steering_then_follow_up_when_last_message_is_as
         await agent.continue_run()
 
         agent.state.messages.append(_assistant_text_message("done-again"))
-        agent.follow_up(UserMessage(role="user", content="follow-up-now", timestamp=0.0))
+        agent.follow_up(
+            UserMessage(role="user", content="follow-up-now", timestamp=0.0)
+        )
         await agent.continue_run()
 
         assert calls == ["steer-now", "follow-up-now"]
@@ -280,8 +332,13 @@ def test_state_folding_tracks_tool_execution_and_error_message() -> None:
     pending_snapshots: list[set[str]] = []
 
     async def stream_fn(model, context, options=None):
-        if any(getattr(message, "role", None) == "toolResult" for message in context.messages):
-            return _stream_with_final_message(_assistant_text_message("", stop_reason="error", error_message="boom"))
+        if any(
+            getattr(message, "role", None) == "toolResult"
+            for message in context.messages
+        ):
+            return _stream_with_final_message(
+                _assistant_text_message("", stop_reason="error", error_message="boom")
+            )
         return _stream_with_final_message(_assistant_tool_call_message())
 
     async def scenario() -> None:
@@ -408,6 +465,45 @@ def test_get_api_key_is_forwarded_to_stream_function_options() -> None:
     asyncio.run(scenario())
 
 
+def test_default_agent_stream_preserves_advanced_options(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import loushang.agent.agent as agent_module
+    from loushang.agent import Agent
+
+    captured_options: list[object] = []
+    payload_hook = object()
+    response_hook = object()
+
+    async def stream_fn(model, context, options=None, *, registry=None):
+        del model, context, registry
+        captured_options.append(options)
+        return _stream_with_final_message(_assistant_text_message("hello"))
+
+    monkeypatch.setattr(agent_module, "stream", stream_fn)
+
+    async def scenario() -> None:
+        agent = Agent(
+            initial_state=agent_state_seed(),
+            session_id="session-1",
+            transport="websocket",
+            max_retry_delay_ms=1234,
+            on_payload=payload_hook,
+            on_response=response_hook,
+        )
+        await agent.prompt("hi")
+
+    asyncio.run(scenario())
+
+    assert len(captured_options) == 1
+    options = captured_options[0]
+    assert getattr(options, "session_id", None) == "session-1"
+    assert getattr(options, "transport", None) == "websocket"
+    assert getattr(options, "max_retry_delay_ms", None) == 1234
+    assert getattr(options, "on_payload", None) is payload_hook
+    assert getattr(options, "on_response", None) is response_hook
+
+
 def test_abort_marks_run_as_aborted_and_sets_error_message() -> None:
     from loushang.agent import Agent
 
@@ -449,16 +545,16 @@ def test_abort_then_task_cancel_adds_aborted_boundary() -> None:
         await started.wait()
         agent.abort()
         task.cancel()
-        try:
+        with suppress(asyncio.CancelledError):
             await task
-        except asyncio.CancelledError:
-            pass
         return agent
 
     agent = asyncio.run(scenario())
 
     assert agent.state.is_streaming is False
-    assert [getattr(message, "role", None) for message in agent.state.messages[-2:]] == ["user", "assistant"]
+    assert [
+        getattr(message, "role", None) for message in agent.state.messages[-2:]
+    ] == ["user", "assistant"]
     assert agent.state.messages[-1].stop_reason == "aborted"
     assert agent.state.error_message == "Request aborted by user"
 
@@ -482,10 +578,8 @@ def test_abort_cancels_non_cooperative_stream_prompt() -> None:
         done, pending = await asyncio.wait({task}, timeout=0.2)
         if pending:
             task.cancel()
-            try:
+            with suppress(asyncio.CancelledError):
                 await task
-            except asyncio.CancelledError:
-                pass
         assert task in done
         return agent
 

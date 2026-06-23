@@ -17,6 +17,7 @@ _SENSITIVE_KEY_MARKERS = (
     "api-key",
     "authorization",
     "credential",
+    "cookie",
     "oauth",
     "password",
     "refreshtoken",
@@ -67,7 +68,9 @@ class AIErrorInfo:
 
     def to_dict(self) -> dict[str, JSONValue]:
         return {
-            "code": self.code.value if isinstance(self.code, AIErrorCode) else self.code,
+            "code": self.code.value
+            if isinstance(self.code, AIErrorCode)
+            else self.code,
             "message": self.message,
             "source": self.source,
             "retryable": self.retryable,
@@ -102,7 +105,9 @@ class AIError(Exception):
     ) -> None:
         if isinstance(message, AIErrorInfo):
             if info is not None:
-                raise TypeError("AIError accepts either message info or info=, not both")
+                raise TypeError(
+                    "AIError accepts either message info or info=, not both"
+                )
             info = message
             message_text = info.message
         else:
@@ -260,7 +265,9 @@ def _redact_json_mapping(value: Mapping[str, JSONValue]) -> dict[str, JSONValue]
 def _is_sensitive_key(key: str) -> bool:
     normalized = key.lower().replace("_", "").replace(" ", "")
     dashed = key.lower().replace("_", "-").replace(" ", "-")
-    return any(marker in normalized or marker in dashed for marker in _SENSITIVE_KEY_MARKERS)
+    return any(
+        marker in normalized or marker in dashed for marker in _SENSITIVE_KEY_MARKERS
+    )
 
 
 def _http_status_code(value: object) -> int | None:

@@ -9,6 +9,11 @@
   - https://docs.z.ai/guides/overview/pricing
   - https://docs.z.ai/guides/capabilities/struct-output
   - https://docs.z.ai/guides/capabilities/function-call
+- Source map:
+  - Authentication and endpoint: quick-start docs.
+  - Model selection, context, maximum output, thinking mode, and streaming: GLM model docs.
+  - Structured output and tools: struct-output and function-call docs.
+  - Pricing: pricing docs.
 - Authentication: API key in `ZAI_API_KEY`, sent as an `Authorization: Bearer ...` header.
 - Endpoint: `https://api.z.ai/api/paas/v4/`, OpenAI-compatible Chat Completions protocol.
 - Included models:

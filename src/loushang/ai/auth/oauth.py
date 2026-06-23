@@ -32,6 +32,8 @@ def get_oauth_api_key(
         if refreshed_token is None:
             return None
         return {"newCredentials": refreshed, "apiKey": refreshed_token}
+    if needs_refresh:
+        return None
     return {"newCredentials": creds, "apiKey": token}
 
 

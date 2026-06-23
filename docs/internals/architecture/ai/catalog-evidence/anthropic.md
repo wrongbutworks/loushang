@@ -10,6 +10,11 @@
   - https://docs.anthropic.com/en/docs/build-with-claude/extended-thinking
   - https://docs.anthropic.com/en/docs/build-with-claude/vision
   - https://docs.anthropic.com/en/docs/agents-and-tools/tool-use/overview
+- Source map:
+  - Authentication and endpoint: Messages API reference.
+  - Model selection, context windows, and maximum output tokens: models overview.
+  - Streaming, extended thinking, vision, tools, and prompt caching: streaming, extended-thinking, vision, and tool-use docs.
+  - Pricing: pricing docs.
 - Authentication: API key in `ANTHROPIC_API_KEY`, sent as an `x-api-key` header with `anthropic-version: 2023-06-01`.
 - Endpoint: `https://api.anthropic.com`, Messages API protocol.
 - Included models:

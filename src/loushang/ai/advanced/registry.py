@@ -1,12 +1,12 @@
 from __future__ import annotations
 
 from loushang.ai.api_registry import (
+    ApiProvider,
     ApiProviderRegistry,
     RegisteredApiProvider,
     get_default_api_provider_registry,
 )
 from loushang.ai.bootstrap import register_builtin_ai_providers
-from loushang.ai.provider.protocol import RequestAwareApiProvider
 
 
 def _api_provider_registry() -> ApiProviderRegistry:
@@ -19,11 +19,11 @@ def register_api_provider(
     _api_provider_registry().register_api_provider(provider, source_id=source_id)
 
 
-def get_api_provider(api: str) -> RequestAwareApiProvider:
+def get_api_provider(api: str) -> ApiProvider:
     return _api_provider_registry().get_api_provider(api)
 
 
-def list_api_providers() -> list[RequestAwareApiProvider]:
+def list_api_providers() -> list[ApiProvider]:
     return _api_provider_registry().list_api_providers()
 
 

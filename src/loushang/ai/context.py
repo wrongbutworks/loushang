@@ -149,9 +149,8 @@ def normalize_context_result(
 ) -> NormalizationResult:
     normalization_key = _normalization_key(model, pairing_mode)
     if isinstance(context, NormalizedContext):
-        if (
-            context.normalization_key is not None
-            and _normalization_key_matches(context.normalization_key, normalization_key)
+        if context.normalization_key is not None and _normalization_key_matches(
+            context.normalization_key, normalization_key
         ):
             return NormalizationResult(context=context)
         if (
@@ -184,9 +183,7 @@ def normalize_context_result(
         return NormalizationResult(
             context=NormalizedContext(
                 system_prompt=context.system_prompt,
-                messages=tuple(
-                    _validate_normalized_messages(message_result.messages)
-                ),
+                messages=tuple(_validate_normalized_messages(message_result.messages)),
                 tools=tools,
                 normalization_key=normalization_key,
             ),
@@ -265,9 +262,7 @@ def _snapshot_value(value: Any) -> Any:
 
 def _freeze_value(value: Any) -> Any:
     if isinstance(value, dict):
-        return _FrozenDict(
-            {key: _freeze_value(item) for key, item in value.items()}
-        )
+        return _FrozenDict({key: _freeze_value(item) for key, item in value.items()})
     if isinstance(value, list):
         return _FrozenList(_freeze_value(item) for item in value)
     if isinstance(value, tuple):
@@ -317,7 +312,10 @@ def _coalesce_system_prompt(*parts: str | None) -> str | None:
 def _extract_system_prompt(messages: Iterable[object]) -> str | None:
     parts: list[str] = []
     for message in messages:
-        if isinstance(message, Mapping) and message.get("role") in {"system", "developer"}:
+        if isinstance(message, Mapping) and message.get("role") in {
+            "system",
+            "developer",
+        }:
             content = message.get("content")
             if isinstance(content, str) and content:
                 parts.append(content)
@@ -337,7 +335,10 @@ def _strip_system_messages_with_paths(
     normalized: list[object] = []
     paths: list[str] = []
     for index, message in enumerate(messages):
-        if isinstance(message, Mapping) and message.get("role") in {"system", "developer"}:
+        if isinstance(message, Mapping) and message.get("role") in {
+            "system",
+            "developer",
+        }:
             continue
         normalized.append(message)
         paths.append(f"messages[{index}]")

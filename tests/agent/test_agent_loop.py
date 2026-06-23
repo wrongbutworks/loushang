@@ -83,7 +83,9 @@ def _assistant_tool_call_message() -> AssistantMessage:
     )
 
 
-def _assistant_tool_call_message_with_calls(tool_calls: list[ToolCall]) -> AssistantMessage:
+def _assistant_tool_call_message_with_calls(
+    tool_calls: list[ToolCall],
+) -> AssistantMessage:
     return AssistantMessage(
         role="assistant",
         content=tool_calls,
@@ -98,17 +100,47 @@ def _assistant_tool_call_message_with_calls(tool_calls: list[ToolCall]) -> Assis
     )
 
 
-def _stream_with_final_message(message: AssistantMessage) -> AssistantMessageEventStream:
+def _stream_with_final_message(
+    message: AssistantMessage,
+) -> AssistantMessageEventStream:
     stream = AssistantMessageEventStream()
     stream.push({"type": "start", "partial": message})
     if message.content and isinstance(message.content[0], TextPart):
         stream.push({"type": "text_start", "content_index": 0, "partial": message})
-        stream.push({"type": "text_delta", "content_index": 0, "delta": message.content[0].text, "partial": message})
-        stream.push({"type": "text_end", "content_index": 0, "content": message.content[0].text, "partial": message})
+        stream.push(
+            {
+                "type": "text_delta",
+                "content_index": 0,
+                "delta": message.content[0].text,
+                "partial": message,
+            }
+        )
+        stream.push(
+            {
+                "type": "text_end",
+                "content_index": 0,
+                "content": message.content[0].text,
+                "partial": message,
+            }
+        )
     elif message.content and isinstance(message.content[0], ToolCall):
         stream.push({"type": "toolcall_start", "content_index": 0, "partial": message})
-        stream.push({"type": "toolcall_delta", "content_index": 0, "delta": '{"x": 1}', "partial": message})
-        stream.push({"type": "toolcall_end", "content_index": 0, "tool_call": message.content[0], "partial": message})
+        stream.push(
+            {
+                "type": "toolcall_delta",
+                "content_index": 0,
+                "delta": '{"x": 1}',
+                "partial": message,
+            }
+        )
+        stream.push(
+            {
+                "type": "toolcall_end",
+                "content_index": 0,
+                "tool_call": message.content[0],
+                "partial": message,
+            }
+        )
     stream.push({"type": "done", "reason": message.stop_reason, "message": message})  # type: ignore[typeddict-item]
     return stream
 
@@ -116,7 +148,13 @@ def _stream_with_final_message(message: AssistantMessage) -> AssistantMessageEve
 def _config(stream_fn):
     return AgentLoopConfig(
         model=_model(),
-        convert_to_llm=lambda messages: [m for m in messages if isinstance(m, UserMessage) or isinstance(m, AssistantMessage) or getattr(m, "role", None) == "toolResult"],
+        convert_to_llm=lambda messages: [
+            m
+            for m in messages
+            if isinstance(m, UserMessage)
+            or isinstance(m, AssistantMessage)
+            or getattr(m, "role", None) == "toolResult"
+        ],
         tool_execution="parallel",
     )
 
@@ -136,13 +174,23 @@ def test_agent_loop_records_problem_when_provider_request_fails() -> None:
         messages=[],
         tools=[],
     )
-    prompts = [UserMessage(role="user", content=[TextPart(type="text", text="hello")], timestamp=0.0)]
+    prompts = [
+        UserMessage(
+            role="user", content=[TextPart(type="text", text="hello")], timestamp=0.0
+        )
+    ]
 
     reset_observability()
     try:
-        with log_context(session_id="session-1", run_id=5, cwd="/repo", mode="scenario"):
+        with log_context(
+            session_id="session-1", run_id=5, cwd="/repo", mode="scenario"
+        ):
             with pytest.raises(RuntimeError, match="provider unavailable"):
-                asyncio.run(run_agent_loop(prompts, context, _config(stream_fn), emit, stream_fn=stream_fn))
+                asyncio.run(
+                    run_agent_loop(
+                        prompts, context, _config(stream_fn), emit, stream_fn=stream_fn
+                    )
+                )
 
         records = get_problem_store().all()
         assert len(records) == 1
@@ -180,10 +228,20 @@ class FakeTool:
                 "additionalProperties": False,
             }
 
-    async def execute(self, tool_call_id: str, params: dict[str, Any], signal=None, on_update=None) -> AgentToolResult[dict[str, Any]]:
+    async def execute(
+        self, tool_call_id: str, params: dict[str, Any], signal=None, on_update=None
+    ) -> AgentToolResult[dict[str, Any]]:
         if on_update is not None:
-            on_update(AgentToolResult(content=[TextPart(type="text", text="partial")], details={"progress": "half"}))
-        return AgentToolResult(content=[TextPart(type="text", text=str(params["x"] + 1))], details={"value": params["x"] + 1})
+            on_update(
+                AgentToolResult(
+                    content=[TextPart(type="text", text="partial")],
+                    details={"progress": "half"},
+                )
+            )
+        return AgentToolResult(
+            content=[TextPart(type="text", text=str(params["x"] + 1))],
+            details={"value": params["x"] + 1},
+        )
 
 
 def test_run_agent_loop_emits_events_for_single_assistant_turn() -> None:
@@ -202,7 +260,9 @@ def test_run_agent_loop_emits_events_for_single_assistant_turn() -> None:
     prompts = [UserMessage(role="user", content="hi", timestamp=0.0)]
     context = AgentContext(system_prompt="system", messages=[])
 
-    new_messages = asyncio.run(run_agent_loop(prompts, context, _config(stream_fn), emit, stream_fn=stream_fn))
+    new_messages = asyncio.run(
+        run_agent_loop(prompts, context, _config(stream_fn), emit, stream_fn=stream_fn)
+    )
 
     assert [event["type"] for event in emitted] == [
         "agent_start",
@@ -231,21 +291,28 @@ def test_run_agent_loop_executes_tool_and_continues_with_following_turn() -> Non
         emitted.append(event)
 
     async def stream_fn(model, context: Context, options=None):
-        if any(getattr(message, "role", None) == "toolResult" for message in context.messages):
+        if any(
+            getattr(message, "role", None) == "toolResult"
+            for message in context.messages
+        ):
             return _stream_with_final_message(_assistant_text_message("done"))
         return _stream_with_final_message(_assistant_tool_call_message())
 
     prompts = [UserMessage(role="user", content="use tool", timestamp=0.0)]
     context = AgentContext(system_prompt="system", messages=[], tools=[FakeTool()])
 
-    new_messages = asyncio.run(run_agent_loop(prompts, context, _config(stream_fn), emit, stream_fn=stream_fn))
+    new_messages = asyncio.run(
+        run_agent_loop(prompts, context, _config(stream_fn), emit, stream_fn=stream_fn)
+    )
 
     event_types = [event["type"] for event in emitted]
     assert event_types.count("turn_start") == 2
     assert "tool_execution_start" in event_types
     assert "tool_execution_update" in event_types
     assert "tool_execution_end" in event_types
-    tool_end_event = next(event for event in emitted if event["type"] == "tool_execution_end")
+    tool_end_event = next(
+        event for event in emitted if event["type"] == "tool_execution_end"
+    )
     assert isinstance(tool_end_event["duration_ms"], int)
     assert tool_end_event["duration_ms"] >= 0
     assert len(new_messages) == 4
@@ -254,7 +321,9 @@ def test_run_agent_loop_executes_tool_and_continues_with_following_turn() -> Non
     assert new_messages[-1].content[0].text == "done"
 
 
-def test_run_agent_loop_abort_during_tool_does_not_continue_to_next_model_call() -> None:
+def test_run_agent_loop_abort_during_tool_does_not_continue_to_next_model_call() -> (
+    None
+):
     from loushang.agent import AbortSignal
     from loushang.agent.agent_loop import run_agent_loop
 
@@ -263,10 +332,14 @@ def test_run_agent_loop_abort_during_tool_does_not_continue_to_next_model_call()
     stream_calls = 0
 
     class AbortingTool(FakeTool):
-        async def execute(self, tool_call_id: str, params: dict[str, Any], signal=None, on_update=None) -> AgentToolResult[dict[str, Any]]:
+        async def execute(
+            self, tool_call_id: str, params: dict[str, Any], signal=None, on_update=None
+        ) -> AgentToolResult[dict[str, Any]]:
             del tool_call_id, params, on_update
             signal.aborted = True
-            return AgentToolResult(content=[TextPart(type="text", text="cancelled")], details={})
+            return AgentToolResult(
+                content=[TextPart(type="text", text="cancelled")], details={}
+            )
 
     async def emit(event):
         emitted.append(event)
@@ -281,18 +354,33 @@ def test_run_agent_loop_abort_during_tool_does_not_continue_to_next_model_call()
     prompts = [UserMessage(role="user", content="use tool", timestamp=0.0)]
     context = AgentContext(system_prompt="system", messages=[], tools=[AbortingTool()])
 
-    new_messages = asyncio.run(run_agent_loop(prompts, context, _config(stream_fn), emit, signal=signal, stream_fn=stream_fn))
+    new_messages = asyncio.run(
+        run_agent_loop(
+            prompts,
+            context,
+            _config(stream_fn),
+            emit,
+            signal=signal,
+            stream_fn=stream_fn,
+        )
+    )
 
     event_types = [event["type"] for event in emitted]
     assert stream_calls == 1
     assert "tool_execution_start" in event_types
     assert "tool_execution_end" not in event_types
     assert event_types[-1] == "agent_end"
-    assert [getattr(message, "role", None) for message in new_messages] == ["user", "assistant", "assistant"]
+    assert [getattr(message, "role", None) for message in new_messages] == [
+        "user",
+        "assistant",
+        "assistant",
+    ]
     assert getattr(new_messages[-1], "stop_reason", None) == "aborted"
 
 
-def test_run_agent_loop_abort_before_drained_follow_up_does_not_consume_follow_up() -> None:
+def test_run_agent_loop_abort_before_drained_follow_up_does_not_consume_follow_up() -> (
+    None
+):
     from loushang.agent import AbortSignal
     from loushang.agent.agent_loop import run_agent_loop
 
@@ -319,7 +407,11 @@ def test_run_agent_loop_abort_before_drained_follow_up_does_not_consume_follow_u
     context = AgentContext(system_prompt="system", messages=[], tools=[])
     config = replace(_config(stream_fn), get_follow_up_messages=get_follow_up_messages)
 
-    new_messages = asyncio.run(run_agent_loop(prompts, context, config, emit, signal=signal, stream_fn=stream_fn))
+    new_messages = asyncio.run(
+        run_agent_loop(
+            prompts, context, config, emit, signal=signal, stream_fn=stream_fn
+        )
+    )
 
     consumed_user_texts = [
         message.content
@@ -328,11 +420,17 @@ def test_run_agent_loop_abort_before_drained_follow_up_does_not_consume_follow_u
     ]
     assert consumed_user_texts == []
     assert stream_calls == 1
-    assert [getattr(message, "role", None) for message in new_messages] == ["user", "assistant", "assistant"]
+    assert [getattr(message, "role", None) for message in new_messages] == [
+        "user",
+        "assistant",
+        "assistant",
+    ]
     assert getattr(new_messages[-1], "stop_reason", None) == "aborted"
 
 
-def test_run_agent_loop_steer_then_abort_before_follow_up_does_not_resume_old_task() -> None:
+def test_run_agent_loop_steer_then_abort_before_follow_up_does_not_resume_old_task() -> (
+    None
+):
     from loushang.agent import AbortSignal
     from loushang.agent.agent_loop import run_agent_loop
 
@@ -350,13 +448,17 @@ def test_run_agent_loop_steer_then_abort_before_follow_up_does_not_resume_old_ta
         last = context.messages[-1]
         if isinstance(last, UserMessage):
             stream_user_texts.append(str(last.content))
-        return _stream_with_final_message(_assistant_text_message(f"response {len(stream_user_texts)}"))
+        return _stream_with_final_message(
+            _assistant_text_message(f"response {len(stream_user_texts)}")
+        )
 
     async def get_steering_messages():
         nonlocal steering_polls
         steering_polls += 1
         if steering_polls == 2:
-            return [UserMessage(role="user", content="steer current run", timestamp=0.0)]
+            return [
+                UserMessage(role="user", content="steer current run", timestamp=0.0)
+            ]
         return []
 
     async def get_follow_up_messages():
@@ -373,7 +475,11 @@ def test_run_agent_loop_steer_then_abort_before_follow_up_does_not_resume_old_ta
         get_follow_up_messages=get_follow_up_messages,
     )
 
-    new_messages = asyncio.run(run_agent_loop(prompts, context, config, emit, signal=signal, stream_fn=stream_fn))
+    new_messages = asyncio.run(
+        run_agent_loop(
+            prompts, context, config, emit, signal=signal, stream_fn=stream_fn
+        )
+    )
 
     assert stream_user_texts == ["start", "steer current run"]
     assert follow_up_polls == 1
@@ -392,7 +498,9 @@ def test_run_agent_loop_steer_then_abort_before_follow_up_does_not_resume_old_ta
     assert getattr(new_messages[-1], "stop_reason", None) == "aborted"
 
 
-def test_run_agent_loop_abort_before_tool_execution_skips_tool_and_next_model_call() -> None:
+def test_run_agent_loop_abort_before_tool_execution_skips_tool_and_next_model_call() -> (
+    None
+):
     from loushang.agent import AbortSignal
     from loushang.agent.agent_loop import run_agent_loop
 
@@ -402,10 +510,14 @@ def test_run_agent_loop_abort_before_tool_execution_skips_tool_and_next_model_ca
     executed = False
 
     class SkippedTool(FakeTool):
-        async def execute(self, tool_call_id: str, params: dict[str, Any], signal=None, on_update=None) -> AgentToolResult[dict[str, Any]]:
+        async def execute(
+            self, tool_call_id: str, params: dict[str, Any], signal=None, on_update=None
+        ) -> AgentToolResult[dict[str, Any]]:
             nonlocal executed
             executed = True
-            return await super().execute(tool_call_id, params, signal=signal, on_update=on_update)
+            return await super().execute(
+                tool_call_id, params, signal=signal, on_update=on_update
+            )
 
     async def emit(event):
         emitted.append(event)
@@ -425,7 +537,11 @@ def test_run_agent_loop_abort_before_tool_execution_skips_tool_and_next_model_ca
     context = AgentContext(system_prompt="system", messages=[], tools=[SkippedTool()])
     config = replace(_config(stream_fn), before_tool_call=before_tool_call)
 
-    new_messages = asyncio.run(run_agent_loop(prompts, context, config, emit, signal=signal, stream_fn=stream_fn))
+    new_messages = asyncio.run(
+        run_agent_loop(
+            prompts, context, config, emit, signal=signal, stream_fn=stream_fn
+        )
+    )
 
     event_types = [event["type"] for event in emitted]
     assert stream_calls == 1
@@ -433,7 +549,11 @@ def test_run_agent_loop_abort_before_tool_execution_skips_tool_and_next_model_ca
     assert "tool_execution_start" in event_types
     assert "tool_execution_end" not in event_types
     assert event_types[-1] == "agent_end"
-    assert [getattr(message, "role", None) for message in new_messages] == ["user", "assistant", "assistant"]
+    assert [getattr(message, "role", None) for message in new_messages] == [
+        "user",
+        "assistant",
+        "assistant",
+    ]
     assert getattr(new_messages[-1], "stop_reason", None) == "aborted"
 
 
@@ -452,7 +572,9 @@ def test_tool_exception_can_project_structured_error_details() -> None:
             }
 
     class DeniedTool(FakeTool):
-        async def execute(self, tool_call_id: str, params: dict[str, Any], signal=None, on_update=None) -> AgentToolResult[dict[str, Any]]:
+        async def execute(
+            self, tool_call_id: str, params: dict[str, Any], signal=None, on_update=None
+        ) -> AgentToolResult[dict[str, Any]]:
             del tool_call_id, params, signal, on_update
             raise StructuredToolError()
 
@@ -462,7 +584,10 @@ def test_tool_exception_can_project_structured_error_details() -> None:
         emitted.append(event)
 
     async def stream_fn(model, context: Context, options=None):
-        if any(getattr(message, "role", None) == "toolResult" for message in context.messages):
+        if any(
+            getattr(message, "role", None) == "toolResult"
+            for message in context.messages
+        ):
             return _stream_with_final_message(_assistant_text_message("done"))
         return _stream_with_final_message(
             _assistant_tool_call_message_with_calls(
@@ -471,11 +596,19 @@ def test_tool_exception_can_project_structured_error_details() -> None:
         )
 
     prompts = [UserMessage(role="user", content="use tool", timestamp=0.0)]
-    context = AgentContext(system_prompt="system", messages=[], tools=[DeniedTool(name="write", label="Write")])
+    context = AgentContext(
+        system_prompt="system",
+        messages=[],
+        tools=[DeniedTool(name="write", label="Write")],
+    )
 
-    new_messages = asyncio.run(run_agent_loop(prompts, context, _config(stream_fn), emit, stream_fn=stream_fn))
+    new_messages = asyncio.run(
+        run_agent_loop(prompts, context, _config(stream_fn), emit, stream_fn=stream_fn)
+    )
 
-    tool_end_event = next(event for event in emitted if event["type"] == "tool_execution_end")
+    tool_end_event = next(
+        event for event in emitted if event["type"] == "tool_execution_end"
+    )
     assert tool_end_event["is_error"] is True
     assert tool_end_event["result"].details == {
         "tool_name": "write",
@@ -488,33 +621,49 @@ def test_tool_exception_can_project_structured_error_details() -> None:
     assert new_messages[2].details == tool_end_event["result"].details
 
 
-def test_run_agent_loop_rejects_tool_arguments_requiring_implicit_conversion_by_default() -> None:
+def test_run_agent_loop_rejects_tool_arguments_requiring_implicit_conversion_by_default() -> (
+    None
+):
     from loushang.agent.agent_loop import run_agent_loop
 
     executed: list[dict[str, Any]] = []
 
     class RecordingTool(FakeTool):
-        async def execute(self, tool_call_id: str, params: dict[str, Any], signal=None, on_update=None) -> AgentToolResult[dict[str, Any]]:
+        async def execute(
+            self, tool_call_id: str, params: dict[str, Any], signal=None, on_update=None
+        ) -> AgentToolResult[dict[str, Any]]:
             del tool_call_id, signal, on_update
             executed.append(params)
-            return AgentToolResult(content=[TextPart(type="text", text=str(params["x"] + 1))], details={"value": params["x"] + 1})
+            return AgentToolResult(
+                content=[TextPart(type="text", text=str(params["x"] + 1))],
+                details={"value": params["x"] + 1},
+            )
 
     async def emit(event):
         return None
 
     async def stream_fn(model, context: Context, options=None):
-        if any(getattr(message, "role", None) == "toolResult" for message in context.messages):
+        if any(
+            getattr(message, "role", None) == "toolResult"
+            for message in context.messages
+        ):
             return _stream_with_final_message(_assistant_text_message("done"))
         return _stream_with_final_message(
             _assistant_tool_call_message_with_calls(
-                [ToolCall(type="toolCall", id="tc_1", name="calc", arguments={"x": "41"})]
+                [
+                    ToolCall(
+                        type="toolCall", id="tc_1", name="calc", arguments={"x": "41"}
+                    )
+                ]
             )
         )
 
     prompts = [UserMessage(role="user", content="use tool", timestamp=0.0)]
     context = AgentContext(system_prompt="system", messages=[], tools=[RecordingTool()])
 
-    new_messages = asyncio.run(run_agent_loop(prompts, context, _config(stream_fn), emit, stream_fn=stream_fn))
+    new_messages = asyncio.run(
+        run_agent_loop(prompts, context, _config(stream_fn), emit, stream_fn=stream_fn)
+    )
 
     assert executed == []
     assert getattr(new_messages[2], "role", None) == "toolResult"
@@ -546,32 +695,58 @@ def test_tool_execution_update_keeps_raw_arguments_after_prepare_arguments() -> 
         def prepare_arguments(self, args: dict[str, Any]) -> dict[str, Any]:
             return {"path": args["file_path"]}
 
-        async def execute(self, tool_call_id: str, params: dict[str, Any], signal=None, on_update=None) -> AgentToolResult[dict[str, Any]]:
+        async def execute(
+            self, tool_call_id: str, params: dict[str, Any], signal=None, on_update=None
+        ) -> AgentToolResult[dict[str, Any]]:
             del tool_call_id, signal
             executed.append(params)
             if on_update is not None:
-                on_update(AgentToolResult(content=[TextPart(type="text", text="reading")], details={"path": params["path"]}))
-            return AgentToolResult(content=[TextPart(type="text", text=params["path"])], details={"path": params["path"]})
+                on_update(
+                    AgentToolResult(
+                        content=[TextPart(type="text", text="reading")],
+                        details={"path": params["path"]},
+                    )
+                )
+            return AgentToolResult(
+                content=[TextPart(type="text", text=params["path"])],
+                details={"path": params["path"]},
+            )
 
     async def emit(event):
         emitted.append(event)
 
     async def stream_fn(model, context: Context, options=None):
-        if any(getattr(message, "role", None) == "toolResult" for message in context.messages):
+        if any(
+            getattr(message, "role", None) == "toolResult"
+            for message in context.messages
+        ):
             return _stream_with_final_message(_assistant_text_message("done"))
         return _stream_with_final_message(
             _assistant_tool_call_message_with_calls(
-                [ToolCall(type="toolCall", id="tc_1", name="read", arguments={"file_path": "notes.txt"})]
+                [
+                    ToolCall(
+                        type="toolCall",
+                        id="tc_1",
+                        name="read",
+                        arguments={"file_path": "notes.txt"},
+                    )
+                ]
             )
         )
 
     prompts = [UserMessage(role="user", content="read", timestamp=0.0)]
     context = AgentContext(system_prompt="system", messages=[], tools=[AliasTool()])
 
-    new_messages = asyncio.run(run_agent_loop(prompts, context, _config(stream_fn), emit, stream_fn=stream_fn))
+    new_messages = asyncio.run(
+        run_agent_loop(prompts, context, _config(stream_fn), emit, stream_fn=stream_fn)
+    )
 
-    start_event = next(event for event in emitted if event["type"] == "tool_execution_start")
-    update_event = next(event for event in emitted if event["type"] == "tool_execution_update")
+    start_event = next(
+        event for event in emitted if event["type"] == "tool_execution_start"
+    )
+    update_event = next(
+        event for event in emitted if event["type"] == "tool_execution_update"
+    )
 
     assert executed == [{"path": "notes.txt"}]
     assert start_event["args"] == {"file_path": "notes.txt"}
@@ -587,7 +762,9 @@ def test_tool_execution_update_is_emitted_before_tool_execute_returns() -> None:
     event_types_seen_before_return: list[str] = []
 
     class StreamingTool(FakeTool):
-        async def execute(self, tool_call_id: str, params: dict[str, Any], signal=None, on_update=None) -> AgentToolResult[dict[str, Any]]:
+        async def execute(
+            self, tool_call_id: str, params: dict[str, Any], signal=None, on_update=None
+        ) -> AgentToolResult[dict[str, Any]]:
             del tool_call_id, signal
             if on_update is not None:
                 forwarded = on_update(
@@ -599,20 +776,28 @@ def test_tool_execution_update_is_emitted_before_tool_execute_returns() -> None:
                 if inspect.isawaitable(forwarded):
                     await forwarded
             event_types_seen_before_return.extend(event["type"] for event in emitted)
-            return AgentToolResult(content=[TextPart(type="text", text=str(params["x"] + 1))], details={"value": params["x"] + 1})
+            return AgentToolResult(
+                content=[TextPart(type="text", text=str(params["x"] + 1))],
+                details={"value": params["x"] + 1},
+            )
 
     async def emit(event):
         emitted.append(event)
 
     async def stream_fn(model, context: Context, options=None):
-        if any(getattr(message, "role", None) == "toolResult" for message in context.messages):
+        if any(
+            getattr(message, "role", None) == "toolResult"
+            for message in context.messages
+        ):
             return _stream_with_final_message(_assistant_text_message("done"))
         return _stream_with_final_message(_assistant_tool_call_message())
 
     prompts = [UserMessage(role="user", content="use tool", timestamp=0.0)]
     context = AgentContext(system_prompt="system", messages=[], tools=[StreamingTool()])
 
-    asyncio.run(run_agent_loop(prompts, context, _config(stream_fn), emit, stream_fn=stream_fn))
+    asyncio.run(
+        run_agent_loop(prompts, context, _config(stream_fn), emit, stream_fn=stream_fn)
+    )
 
     assert "tool_execution_update" in event_types_seen_before_return
     assert "tool_execution_end" not in event_types_seen_before_return
@@ -643,7 +828,9 @@ def test_run_agent_loop_projects_agent_tools_to_ai_tools_for_model_context() -> 
     prompts = [UserMessage(role="user", content="hi", timestamp=0.0)]
     context = AgentContext(system_prompt="system", messages=[], tools=[FakeTool()])
 
-    new_messages = asyncio.run(run_agent_loop(prompts, context, _config(stream_fn), emit, stream_fn=stream_fn))
+    new_messages = asyncio.run(
+        run_agent_loop(prompts, context, _config(stream_fn), emit, stream_fn=stream_fn)
+    )
 
     assert isinstance(new_messages[-1], AssistantMessage)
     assert new_messages[-1].content[0].text == "hello"
@@ -656,11 +843,23 @@ def test_run_agent_loop_continue_rejects_invalid_context() -> None:
         raise AssertionError(f"unexpected event: {event}")
 
     with pytest.raises(ValueError, match="no messages"):
-        asyncio.run(run_agent_loop_continue(AgentContext(system_prompt="system", messages=[]), _config(lambda *_: None), emit))
+        asyncio.run(
+            run_agent_loop_continue(
+                AgentContext(system_prompt="system", messages=[]),
+                _config(lambda *_: None),
+                emit,
+            )
+        )
 
     assistant = _assistant_text_message("hello")
     with pytest.raises(ValueError, match="assistant"):
-        asyncio.run(run_agent_loop_continue(AgentContext(system_prompt="system", messages=[assistant]), _config(lambda *_: None), emit))
+        asyncio.run(
+            run_agent_loop_continue(
+                AgentContext(system_prompt="system", messages=[assistant]),
+                _config(lambda *_: None),
+                emit,
+            )
+        )
 
 
 def test_agent_loop_returns_event_stream_with_result() -> None:
@@ -712,17 +911,23 @@ def test_agent_loop_continue_returns_event_stream_with_result() -> None:
     asyncio.run(scenario())
 
 
-def test_before_tool_call_block_emits_error_tool_result_without_executing_tool() -> None:
+def test_before_tool_call_block_emits_error_tool_result_without_executing_tool() -> (
+    None
+):
     from loushang.agent.agent_loop import run_agent_loop
     from loushang.agent.types import BeforeToolCallResult
 
     executed = False
 
     class BlockedTool(FakeTool):
-        async def execute(self, tool_call_id: str, params: dict[str, Any], signal=None, on_update=None) -> AgentToolResult[dict[str, Any]]:
+        async def execute(
+            self, tool_call_id: str, params: dict[str, Any], signal=None, on_update=None
+        ) -> AgentToolResult[dict[str, Any]]:
             nonlocal executed
             executed = True
-            return await super().execute(tool_call_id, params, signal=signal, on_update=on_update)
+            return await super().execute(
+                tool_call_id, params, signal=signal, on_update=on_update
+            )
 
     async def emit(event):
         return None
@@ -731,7 +936,10 @@ def test_before_tool_call_block_emits_error_tool_result_without_executing_tool()
         return BeforeToolCallResult(block=True, reason="blocked by policy")
 
     async def stream_fn(model, context: Context, options=None):
-        if any(getattr(message, "role", None) == "toolResult" for message in context.messages):
+        if any(
+            getattr(message, "role", None) == "toolResult"
+            for message in context.messages
+        ):
             return _stream_with_final_message(_assistant_text_message("done"))
         return _stream_with_final_message(_assistant_tool_call_message())
 
@@ -740,7 +948,9 @@ def test_before_tool_call_block_emits_error_tool_result_without_executing_tool()
     config = _config(stream_fn)
     config = replace(config, before_tool_call=before_tool_call)
 
-    new_messages = asyncio.run(run_agent_loop(prompts, context, config, emit, stream_fn=stream_fn))
+    new_messages = asyncio.run(
+        run_agent_loop(prompts, context, config, emit, stream_fn=stream_fn)
+    )
 
     tool_result = new_messages[2]
     assert getattr(tool_result, "role", None) == "toolResult"
@@ -766,7 +976,9 @@ def test_before_tool_call_can_rewrite_tool_name_and_arguments() -> None:
                 "additionalProperties": False,
             }
 
-        async def execute(self, tool_call_id: str, params: dict[str, Any], signal=None, on_update=None) -> AgentToolResult[dict[str, Any]]:
+        async def execute(
+            self, tool_call_id: str, params: dict[str, Any], signal=None, on_update=None
+        ) -> AgentToolResult[dict[str, Any]]:
             executed.append((self.name, params))
             return AgentToolResult(
                 content=[TextPart(type="text", text=str(params["y"] + 10))],
@@ -782,7 +994,10 @@ def test_before_tool_call_can_rewrite_tool_name_and_arguments() -> None:
         return BeforeToolCallResult(tool_name="calc_rewritten", arguments={"y": 2})
 
     async def stream_fn(model, context: Context, options=None):
-        if any(getattr(message, "role", None) == "toolResult" for message in context.messages):
+        if any(
+            getattr(message, "role", None) == "toolResult"
+            for message in context.messages
+        ):
             return _stream_with_final_message(_assistant_text_message("done"))
         return _stream_with_final_message(_assistant_tool_call_message())
 
@@ -790,12 +1005,17 @@ def test_before_tool_call_can_rewrite_tool_name_and_arguments() -> None:
     context = AgentContext(
         system_prompt="system",
         messages=[],
-        tools=[FakeTool(), RewrittenTool(name="calc_rewritten", label="Calc Rewritten")],
+        tools=[
+            FakeTool(),
+            RewrittenTool(name="calc_rewritten", label="Calc Rewritten"),
+        ],
     )
     config = _config(stream_fn)
     config = replace(config, before_tool_call=before_tool_call)
 
-    new_messages = asyncio.run(run_agent_loop(prompts, context, config, emit, stream_fn=stream_fn))
+    new_messages = asyncio.run(
+        run_agent_loop(prompts, context, config, emit, stream_fn=stream_fn)
+    )
 
     tool_result = new_messages[2]
     assert getattr(tool_result, "role", None) == "toolResult"
@@ -819,7 +1039,10 @@ def test_after_tool_call_can_override_content_details_and_error_flag() -> None:
         )
 
     async def stream_fn(model, context: Context, options=None):
-        if any(getattr(message, "role", None) == "toolResult" for message in context.messages):
+        if any(
+            getattr(message, "role", None) == "toolResult"
+            for message in context.messages
+        ):
             return _stream_with_final_message(_assistant_text_message("done"))
         return _stream_with_final_message(_assistant_tool_call_message())
 
@@ -828,7 +1051,9 @@ def test_after_tool_call_can_override_content_details_and_error_flag() -> None:
     config = _config(stream_fn)
     config = replace(config, after_tool_call=after_tool_call)
 
-    new_messages = asyncio.run(run_agent_loop(prompts, context, config, emit, stream_fn=stream_fn))
+    new_messages = asyncio.run(
+        run_agent_loop(prompts, context, config, emit, stream_fn=stream_fn)
+    )
 
     tool_result = new_messages[2]
     assert getattr(tool_result, "role", None) == "toolResult"
@@ -848,7 +1073,10 @@ def test_after_tool_call_exception_becomes_error_tool_result() -> None:
         raise RuntimeError("after hook exploded")
 
     async def stream_fn(model, context: Context, options=None):
-        if any(getattr(message, "role", None) == "toolResult" for message in context.messages):
+        if any(
+            getattr(message, "role", None) == "toolResult"
+            for message in context.messages
+        ):
             return _stream_with_final_message(_assistant_text_message("done"))
         return _stream_with_final_message(_assistant_tool_call_message())
 
@@ -856,7 +1084,9 @@ def test_after_tool_call_exception_becomes_error_tool_result() -> None:
     context = AgentContext(system_prompt="system", messages=[], tools=[FakeTool()])
     config = replace(_config(stream_fn), after_tool_call=after_tool_call)
 
-    new_messages = asyncio.run(run_agent_loop(prompts, context, config, emit, stream_fn=stream_fn))
+    new_messages = asyncio.run(
+        run_agent_loop(prompts, context, config, emit, stream_fn=stream_fn)
+    )
 
     tool_result = new_messages[2]
     assert getattr(tool_result, "role", None) == "toolResult"
@@ -872,7 +1102,9 @@ def test_agent_loop_stops_after_tool_batch_when_all_results_terminate() -> None:
     llm_calls = 0
 
     class TerminatingTool(FakeTool):
-        async def execute(self, tool_call_id: str, params: dict[str, Any], signal=None, on_update=None) -> AgentToolResult[dict[str, Any]]:
+        async def execute(
+            self, tool_call_id: str, params: dict[str, Any], signal=None, on_update=None
+        ) -> AgentToolResult[dict[str, Any]]:
             del tool_call_id, signal, on_update
             return AgentToolResult(
                 content=[TextPart(type="text", text=f"terminated: {params['x']}")],
@@ -889,21 +1121,33 @@ def test_agent_loop_stops_after_tool_batch_when_all_results_terminate() -> None:
         return _stream_with_final_message(_assistant_tool_call_message())
 
     prompts = [UserMessage(role="user", content="use terminating tool", timestamp=0.0)]
-    context = AgentContext(system_prompt="system", messages=[], tools=[TerminatingTool()])
+    context = AgentContext(
+        system_prompt="system", messages=[], tools=[TerminatingTool()]
+    )
 
-    new_messages = asyncio.run(run_agent_loop(prompts, context, _config(stream_fn), emit, stream_fn=stream_fn))
+    new_messages = asyncio.run(
+        run_agent_loop(prompts, context, _config(stream_fn), emit, stream_fn=stream_fn)
+    )
 
     assert llm_calls == 1
-    assert [getattr(message, "role", None) for message in new_messages] == ["user", "assistant", "toolResult"]
+    assert [getattr(message, "role", None) for message in new_messages] == [
+        "user",
+        "assistant",
+        "toolResult",
+    ]
 
 
-def test_agent_loop_continues_after_parallel_batch_when_not_all_results_terminate() -> None:
+def test_agent_loop_continues_after_parallel_batch_when_not_all_results_terminate() -> (
+    None
+):
     from loushang.agent.agent_loop import run_agent_loop
 
     llm_calls = 0
 
     class SometimesTerminatingTool(FakeTool):
-        async def execute(self, tool_call_id: str, params: dict[str, Any], signal=None, on_update=None) -> AgentToolResult[dict[str, Any]]:
+        async def execute(
+            self, tool_call_id: str, params: dict[str, Any], signal=None, on_update=None
+        ) -> AgentToolResult[dict[str, Any]]:
             del tool_call_id, signal, on_update
             return AgentToolResult(
                 content=[TextPart(type="text", text=f"value: {params['x']}")],
@@ -917,22 +1161,33 @@ def test_agent_loop_continues_after_parallel_batch_when_not_all_results_terminat
     async def stream_fn(model, context: Context, options=None):
         nonlocal llm_calls
         llm_calls += 1
-        if any(getattr(message, "role", None) == "toolResult" for message in context.messages):
+        if any(
+            getattr(message, "role", None) == "toolResult"
+            for message in context.messages
+        ):
             return _stream_with_final_message(_assistant_text_message("done"))
         return _stream_with_final_message(
             _assistant_tool_call_message_with_calls(
                 [
-                    ToolCall(type="toolCall", id="tc_1", name="calc", arguments={"x": 1}),
-                    ToolCall(type="toolCall", id="tc_2", name="calc", arguments={"x": 2}),
+                    ToolCall(
+                        type="toolCall", id="tc_1", name="calc", arguments={"x": 1}
+                    ),
+                    ToolCall(
+                        type="toolCall", id="tc_2", name="calc", arguments={"x": 2}
+                    ),
                 ]
             )
         )
 
     prompts = [UserMessage(role="user", content="use two tools", timestamp=0.0)]
-    context = AgentContext(system_prompt="system", messages=[], tools=[SometimesTerminatingTool()])
+    context = AgentContext(
+        system_prompt="system", messages=[], tools=[SometimesTerminatingTool()]
+    )
     config = replace(_config(stream_fn), tool_execution="parallel")
 
-    new_messages = asyncio.run(run_agent_loop(prompts, context, config, emit, stream_fn=stream_fn))
+    new_messages = asyncio.run(
+        run_agent_loop(prompts, context, config, emit, stream_fn=stream_fn)
+    )
 
     assert llm_calls == 2
     assert [getattr(message, "role", None) for message in new_messages] == [
@@ -952,7 +1207,9 @@ def test_tool_execution_mode_sequential_forces_sequential_batch() -> None:
     parallel_observed = False
 
     class SequentialTool(FakeTool):
-        async def execute(self, tool_call_id: str, params: dict[str, Any], signal=None, on_update=None) -> AgentToolResult[dict[str, Any]]:
+        async def execute(
+            self, tool_call_id: str, params: dict[str, Any], signal=None, on_update=None
+        ) -> AgentToolResult[dict[str, Any]]:
             nonlocal first_resolved, parallel_observed
             del tool_call_id, signal, on_update
             if params["x"] == 1:
@@ -969,20 +1226,31 @@ def test_tool_execution_mode_sequential_forces_sequential_batch() -> None:
         return None
 
     async def stream_fn(model, context: Context, options=None):
-        if any(getattr(message, "role", None) == "toolResult" for message in context.messages):
+        if any(
+            getattr(message, "role", None) == "toolResult"
+            for message in context.messages
+        ):
             return _stream_with_final_message(_assistant_text_message("done"))
         asyncio.get_running_loop().call_later(0.02, release_first.set)
         return _stream_with_final_message(
             _assistant_tool_call_message_with_calls(
                 [
-                    ToolCall(type="toolCall", id="tc_1", name="calc", arguments={"x": 1}),
-                    ToolCall(type="toolCall", id="tc_2", name="calc", arguments={"x": 2}),
+                    ToolCall(
+                        type="toolCall", id="tc_1", name="calc", arguments={"x": 1}
+                    ),
+                    ToolCall(
+                        type="toolCall", id="tc_2", name="calc", arguments={"x": 2}
+                    ),
                 ]
             )
         )
 
     prompts = [UserMessage(role="user", content="use sequential tools", timestamp=0.0)]
-    context = AgentContext(system_prompt="system", messages=[], tools=[SequentialTool(execution_mode="sequential")])
+    context = AgentContext(
+        system_prompt="system",
+        messages=[],
+        tools=[SequentialTool(execution_mode="sequential")],
+    )
     config = replace(_config(stream_fn), tool_execution="parallel")
 
     asyncio.run(run_agent_loop(prompts, context, config, emit, stream_fn=stream_fn))
@@ -1012,7 +1280,13 @@ def test_after_tool_call_can_mark_tool_batch_as_terminating() -> None:
     context = AgentContext(system_prompt="system", messages=[], tools=[FakeTool()])
     config = replace(_config(stream_fn), after_tool_call=after_tool_call)
 
-    new_messages = asyncio.run(run_agent_loop(prompts, context, config, emit, stream_fn=stream_fn))
+    new_messages = asyncio.run(
+        run_agent_loop(prompts, context, config, emit, stream_fn=stream_fn)
+    )
 
     assert llm_calls == 1
-    assert [getattr(message, "role", None) for message in new_messages] == ["user", "assistant", "toolResult"]
+    assert [getattr(message, "role", None) for message in new_messages] == [
+        "user",
+        "assistant",
+        "toolResult",
+    ]

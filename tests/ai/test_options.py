@@ -134,6 +134,7 @@ def test_simple_call_options_map_to_call_options_reasoning() -> None:
 
     assert isinstance(options, CallOptions)
     assert not isinstance(options, SimpleCallOptions)
+    assert not isinstance(simple, CallOptions)
     assert options.api_key == "key"
     assert options.max_output_tokens == 256
     assert options.reasoning == ReasoningOptions(
@@ -146,9 +147,7 @@ def test_simple_call_options_map_to_call_options_reasoning() -> None:
 
 def test_provider_specific_options_are_advanced_compatibility_types() -> None:
     assert AdvancedAnthropicOptions.__module__ == "loushang.ai.advanced.options"
-    assert (
-        AdvancedOpenAICompletionsOptions.__module__ == "loushang.ai.advanced.options"
-    )
+    assert AdvancedOpenAICompletionsOptions.__module__ == "loushang.ai.advanced.options"
     assert AdvancedOpenAIResponsesOptions.__module__ == "loushang.ai.advanced.options"
     assert ApiProviderRegistry.__module__ == "loushang.ai.api_registry"
     assert not hasattr(options_module, "AnthropicOptions")
@@ -185,7 +184,6 @@ def test_provider_specific_options_keep_model_call_fields() -> None:
         OpenAICompletionsOptions,
         OpenAIResponsesOptions,
         OpenAICodexResponsesOptions,
-        SimpleCallOptions,
     )
 
     for option_type in option_types:
@@ -199,3 +197,22 @@ def test_provider_specific_options_keep_model_call_fields() -> None:
         assert options.api_key == "key"
         assert options.headers == {"x-trace": "1"}
         assert options.oauth_credentials is not None
+
+
+def test_simple_call_options_is_narrow_public_surface() -> None:
+    field_names = {field.name for field in fields(SimpleCallOptions)}
+
+    assert {
+        "api_key",
+        "headers",
+        "max_output_tokens",
+        "temperature",
+        "timeout",
+        "retry",
+        "reasoning",
+        "thinking_budgets",
+    } <= field_names
+    assert "oauth_credentials" not in field_names
+    assert "transport" not in field_names
+    assert "cache_retention" not in field_names
+    assert "tool_choice" not in field_names

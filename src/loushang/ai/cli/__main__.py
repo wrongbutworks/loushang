@@ -151,9 +151,13 @@ def cmd_models(args: argparse.Namespace) -> None:
             "provider": model.provider_id,
             "endpoint": model.endpoint_id,
             "api": resolve_model_api(model, registry=registry),
-            "region": endpoint_info.region if endpoint_info is not None else model.region,
+            "region": endpoint_info.region
+            if endpoint_info is not None
+            else model.region,
             "lane": endpoint_info.lane if endpoint_info is not None else None,
-            "preferredEndpoint": bool(endpoint_info.preferred) if endpoint_info is not None else False,
+            "preferredEndpoint": bool(endpoint_info.preferred)
+            if endpoint_info is not None
+            else False,
             "name": model.name,
             "family": model.family,
             "alias": model.alias,
@@ -308,7 +312,11 @@ def cmd_auth(args: argparse.Namespace) -> None:
         data = {
             "id": provider.id,
             "name": provider.name,
-            "scope": _auth_scope_payload(args.provider, getattr(args, "endpoint", None), getattr(args, "model", None)),
+            "scope": _auth_scope_payload(
+                args.provider,
+                getattr(args, "endpoint", None),
+                getattr(args, "model", None),
+            ),
             "uses_callback_server": provider.uses_callback_server(),
             "has_credentials": stored is not None,
             "source": source,
@@ -363,7 +371,11 @@ def cmd_auth(args: argparse.Namespace) -> None:
         )
         output = {
             "provider": credentials.provider,
-            "scope": _auth_scope_payload(provider_id, getattr(args, "endpoint", None), getattr(args, "model", None)),
+            "scope": _auth_scope_payload(
+                provider_id,
+                getattr(args, "endpoint", None),
+                getattr(args, "model", None),
+            ),
             "stored": True,
             "source": "stored",
             "expires_at": credentials.expires_at,
@@ -373,7 +385,9 @@ def cmd_auth(args: argparse.Namespace) -> None:
         return
 
 
-def _auth_scope_payload(provider: str, endpoint: str | None, model: str | None) -> dict[str, str | None]:
+def _auth_scope_payload(
+    provider: str, endpoint: str | None, model: str | None
+) -> dict[str, str | None]:
     return {
         "provider": provider,
         "endpoint": endpoint,
@@ -693,7 +707,9 @@ def _prepare_console_auth(
     option_kwargs: dict[str, object] = {}
     auth_source = "none"
     if getattr(auth_config, "kind", "apiKey") == "oauth":
-        oauth_credentials, auth_source = _resolve_console_oauth_credentials(provider.id, endpoint_id=endpoint.id)
+        oauth_credentials, auth_source = _resolve_console_oauth_credentials(
+            provider.id, endpoint_id=endpoint.id
+        )
         if oauth_credentials is not None:
             option_kwargs["oauth_credentials"] = oauth_credentials
     else:
@@ -754,7 +770,11 @@ def _resolve_console_api_key(provider_id: str, auth_config) -> tuple[str | None,
         if fallback:
             return fallback, "env:provider-default"
 
-    label = env_names[0] if env_names else f"{provider_id.upper().replace('-', '_')}_API_KEY"
+    label = (
+        env_names[0]
+        if env_names
+        else f"{provider_id.upper().replace('-', '_')}_API_KEY"
+    )
     value = getpass.getpass(f"{label}: ").strip()
     if not value:
         raise ValueError(f"Missing API key for provider: {provider_id}")

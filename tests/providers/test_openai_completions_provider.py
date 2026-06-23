@@ -697,7 +697,7 @@ def test_openai_completions_payload_uses_typed_endpoint_dialect(
     }
 
 
-def test_openai_completions_supplied_request_compat_projects_to_typed_payload(
+def test_openai_completions_supplied_request_adapter_options_project_to_typed_payload(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     _fake_openai_module(monkeypatch)
@@ -708,7 +708,7 @@ def test_openai_completions_supplied_request_compat_projects_to_typed_payload(
         api="openai-completions",
         base_url="https://api.openai.test/v1",
         headers={"Authorization": "Bearer test-key"},
-        compat={
+        adapter_options={
             MAX_TOKENS_FIELD: "max_tokens",
             SUPPORTS_PROMPT_CACHE_KEY: True,
         },
@@ -909,7 +909,7 @@ def test_openai_completions_public_stream_uses_supplied_typed_request(
     assert _FakeAsyncOpenAI.last_create_kwargs["prompt_cache_key"] == "session-public"
 
 
-def test_openai_completions_supplied_request_typed_adapter_overrides_stale_compat(
+def test_openai_completions_supplied_request_typed_adapter_overrides_stale_options(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     _fake_openai_module(monkeypatch)
@@ -923,7 +923,7 @@ def test_openai_completions_supplied_request_typed_adapter_overrides_stale_compa
         adapter_protocol=EndpointProtocolFeatures.from_raw(
             {"cache": {"promptKey": "unsupported"}}
         ),
-        compat={SUPPORTS_PROMPT_CACHE_KEY: True},
+        adapter_options={SUPPORTS_PROMPT_CACHE_KEY: True},
         capabilities=Capabilities(input=("text",), max_tokens=4096),
     )
 
@@ -949,7 +949,7 @@ def test_openai_completions_supplied_request_typed_adapter_overrides_stale_compa
     assert _FakeAsyncOpenAI.last_create_kwargs == {}
 
 
-def test_openai_completions_supplied_request_typed_dialect_overrides_stale_compat(
+def test_openai_completions_supplied_request_typed_dialect_overrides_stale_options(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     _fake_openai_module(monkeypatch)
@@ -963,7 +963,7 @@ def test_openai_completions_supplied_request_typed_dialect_overrides_stale_compa
         adapter_dialect=EndpointWireDialect.from_raw(
             {"maxOutputTokensField": "max_completion_tokens"}
         ),
-        compat={MAX_TOKENS_FIELD: "max_tokens"},
+        adapter_options={MAX_TOKENS_FIELD: "max_tokens"},
         max_tokens=128,
         capabilities=Capabilities(input=("text",), max_tokens=4096),
     )
@@ -2302,7 +2302,7 @@ def _patch_resolved_request(
                 api=provider_api,
                 base_url=base_url,
                 headers=headers,
-                adapter_compat=resolved_compat,
+                adapter_options=resolved_compat,
                 max_tokens=resolved_max_tokens,
                 capabilities=capabilities
                 or Capabilities(

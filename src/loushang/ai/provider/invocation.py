@@ -92,7 +92,6 @@ async def call_api_provider_stream(
     options,
     request: ResolvedRequest,
 ):
-    stream_method = getattr(provider, "stream", None)
     stream_raw_method = getattr(provider, "stream_raw", None)
     request = resolve_provider_request(
         provider.api,
@@ -102,10 +101,7 @@ async def call_api_provider_stream(
         adapter_config_resolver=_adapter_config_resolver(provider),
     )
     if not callable(stream_raw_method):
-        if not callable(stream_method):
-            raise TypeError("Provider missing required stream_raw or stream method")
-        context = _normalize_provider_context(model, context, options, request)
-        return await stream_method(model, context, options, request)
+        raise TypeError("Provider missing required stream_raw method")
     validate_provider_stream_raw_contract(provider)
     return start_provider_runtime(
         lambda: _call_provider_raw_parts(
@@ -119,40 +115,3 @@ async def call_api_provider_stream(
         options=options,
         request=request,
     )
-
-
-class _RequestAwareProviderInvoker:
-    def __init__(self, provider: Any) -> None:
-        self._provider = provider
-        self.api = provider.api
-        self.supports_structured_output = bool(
-            getattr(provider, "supports_structured_output", False)
-        )
-        validate_provider_stream_raw_contract(provider)
-        self._adapter_config_resolver = _adapter_config_resolver(provider)
-
-    def _resolve_request(self, model, options, request: ResolvedRequest | None):
-        return resolve_provider_request(
-            self.api,
-            model,
-            options=options,
-            request=request,
-            adapter_config_resolver=self._adapter_config_resolver,
-        )
-
-    async def stream(
-        self, model, context, options, request: ResolvedRequest | None = None
-    ):
-        request = self._resolve_request(model, options, request)
-        return start_provider_runtime(
-            lambda: _call_provider_raw_parts(
-                self._provider,
-                model,
-                context,
-                options,
-                request,
-            ),
-            model=model,
-            options=options,
-            request=request,
-        )

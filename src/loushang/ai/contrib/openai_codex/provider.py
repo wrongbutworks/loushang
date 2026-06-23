@@ -15,6 +15,7 @@ from loushang.ai.contrib.openai_codex.runtime_config import (
     OpenAICodexRuntimeConfig,
     resolve_openai_codex_runtime_config,
 )
+from loushang.ai.event_stream.raw_parts import RawPart
 from loushang.ai.model.domain import EndpointProtocolFeatures, EndpointWireDialect
 from loushang.ai.options import (
     get_reasoning_effort,
@@ -22,7 +23,10 @@ from loushang.ai.options import (
     get_timeout_seconds,
 )
 from loushang.ai.provider import ProviderRequest, resolve_provider_request
-from loushang.ai.provider.errors import is_http_status_code, provider_error_part
+from loushang.ai.provider.errors import (
+    provider_error_part,
+    provider_error_part_from_raw,
+)
 from loushang.ai.provider.runtime_config import (
     AdapterRuntimeConfig,
 )
@@ -50,7 +54,7 @@ class OpenAICodexResponsesProvider:
 
     def _stream_raw_parts(
         self, model, context, options, request=None
-    ) -> AsyncIterator[dict]:
+    ) -> AsyncIterator[RawPart]:
         resolved = resolve_provider_request(
             self.api,
             model,
@@ -67,7 +71,7 @@ class OpenAICodexResponsesProvider:
             )
         )
 
-    async def stream_raw(self, request: ProviderRequest) -> AsyncIterator[dict]:
+    async def stream_raw(self, request: ProviderRequest) -> AsyncIterator[RawPart]:
         model = request.model
         options = request.options
         resolved = request.resolved
@@ -170,7 +174,7 @@ class OpenAICodexResponsesProvider:
         options,
         *,
         debug_cb=None,
-    ) -> AsyncIterator[dict]:
+    ) -> AsyncIterator[RawPart]:
         async with client.stream(
             "POST",
             url,
@@ -190,23 +194,22 @@ class OpenAICodexResponsesProvider:
                             "message": error_text,
                         },
                     )
-                error_part: dict[str, object] = {
-                    "type": "response_error",
-                    "message": error_text
-                    or f"Codex request failed with status {status_code}",
-                }
-                if is_http_status_code(status_code):
-                    error_part["code"] = status_code
-                yield error_part
+                yield provider_error_part_from_raw(
+                    error_text or f"Codex request failed with status {status_code}",
+                    code=status_code,
+                    source=self.api,
+                )
                 return
             async for part in process_responses_stream(
-                _map_codex_events(_parse_sse_lines(response)), options=options
+                _map_codex_events(_parse_sse_lines(response)),
+                options=options,
+                source=self.api,
             ):
                 yield part
 
     async def _stream_websocket_raw_parts(
         self, client, url: str, headers: dict[str, str], body: dict[str, Any], options
-    ) -> AsyncIterator[dict]:
+    ) -> AsyncIterator[RawPart]:
         if hasattr(client, "connect_websocket"):
             session_id = getattr(options, "session_id", None)
             socket, release = await self._acquire_websocket(
@@ -218,6 +221,7 @@ class OpenAICodexResponsesProvider:
                 async for part in process_responses_stream(
                     _map_codex_events(_parse_websocket(socket.events())),
                     options=options,
+                    source=self.api,
                 ):
                     yield part
             except asyncio.CancelledError:
@@ -238,7 +242,9 @@ class OpenAICodexResponsesProvider:
             timeout=get_timeout_seconds(options),
         )
         async for part in process_responses_stream(
-            _map_codex_events(_objectify_events(events)), options=options
+            _map_codex_events(_objectify_events(events)),
+            options=options,
+            source=self.api,
         ):
             yield part
 
@@ -699,11 +705,26 @@ async def _response_text(response) -> str:
 def _redact_headers(headers: dict[str, str]) -> dict[str, str]:
     redacted: dict[str, str] = {}
     for key, value in headers.items():
-        if key.lower() in {"authorization", "x-api-key"}:
+        if _is_sensitive_header(key):
             redacted[key] = "***"
         else:
             redacted[key] = value
     return redacted
+
+
+def _is_sensitive_header(key: str) -> bool:
+    compacted = "".join(char for char in key.lower() if char.isalnum())
+    return compacted in {
+        "authorization",
+        "cookie",
+        "proxyauthorization",
+        "setcookie",
+        "xaccesstoken",
+        "xamzsecuritytoken",
+        "xapikey",
+        "xauthtoken",
+        "xgoogapikey",
+    }
 
 
 def _response_headers(response) -> dict[str, str]:

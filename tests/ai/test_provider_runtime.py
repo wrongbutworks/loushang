@@ -211,7 +211,9 @@ def test_provider_runtime_retries_response_error_before_visible_output() -> None
         stream = start_provider_runtime(
             _parts,
             model=_model(),
-            options=CallOptions(retry=RetryOptions(max_attempts=2, max_delay_seconds=0)),
+            options=CallOptions(
+                retry=RetryOptions(max_attempts=2, max_delay_seconds=0)
+            ),
             request=_request(),
         )
         return [event async for event in stream]
@@ -276,7 +278,9 @@ def test_provider_runtime_does_not_retry_nonretryable_error_before_output() -> N
         stream = start_provider_runtime(
             _parts,
             model=_model(),
-            options=CallOptions(retry=RetryOptions(max_attempts=2, max_delay_seconds=0)),
+            options=CallOptions(
+                retry=RetryOptions(max_attempts=2, max_delay_seconds=0)
+            ),
             request=_request(),
         )
         return [event async for event in stream]
@@ -303,7 +307,9 @@ def test_provider_runtime_does_not_retry_after_visible_output() -> None:
         stream = start_provider_runtime(
             _parts,
             model=_model(),
-            options=CallOptions(retry=RetryOptions(max_attempts=2, max_delay_seconds=0)),
+            options=CallOptions(
+                retry=RetryOptions(max_attempts=2, max_delay_seconds=0)
+            ),
             request=_request(),
         )
         return [event async for event in stream]
@@ -355,6 +361,85 @@ def test_provider_runtime_uses_retry_after_delay() -> None:
 
     assert attempts == 2
     assert delays == [1.0]
+    assert message.content[0].text == "done"
+
+
+def test_provider_runtime_caps_retry_after_by_max_delay() -> None:
+    attempts = 0
+    delays: list[float] = []
+
+    async def _sleep(delay: float) -> None:
+        delays.append(delay)
+
+    async def _parts():
+        nonlocal attempts
+        attempts += 1
+        if attempts == 1:
+            raise _HTTPError(
+                "slow down",
+                429,
+                headers={"Retry-After": "2"},
+            )
+        yield {"type": "text_delta", "text": "done"}
+        yield {"type": "response_done"}
+
+    async def _run():
+        stream = start_provider_runtime(
+            _parts,
+            model=_model(),
+            options=CallOptions(
+                retry=RetryOptions(max_attempts=2, max_delay_seconds=0.5)
+            ),
+            request=_request(),
+            _sleep=_sleep,
+            _jitter=lambda: 0.0,
+        )
+        return await stream.result()
+
+    message = asyncio.run(_run())
+
+    assert attempts == 2
+    assert delays == [0.5]
+    assert message.content[0].text == "done"
+
+
+@pytest.mark.parametrize("retry_after", ["NaN", "Infinity"])
+def test_provider_runtime_ignores_non_finite_retry_after(retry_after: str) -> None:
+    attempts = 0
+    delays: list[float] = []
+
+    async def _sleep(delay: float) -> None:
+        delays.append(delay)
+
+    async def _parts():
+        nonlocal attempts
+        attempts += 1
+        if attempts == 1:
+            raise _HTTPError(
+                "slow down",
+                429,
+                headers={"Retry-After": retry_after},
+            )
+        yield {"type": "text_delta", "text": "done"}
+        yield {"type": "response_done"}
+
+    async def _run():
+        stream = start_provider_runtime(
+            _parts,
+            model=_model(),
+            options=CallOptions(
+                retry=RetryOptions(max_attempts=2, max_delay_seconds=1)
+            ),
+            request=_request(),
+            _sleep=_sleep,
+            _jitter=lambda: 0.0,
+        )
+        return await stream.result()
+
+    message = asyncio.run(_run())
+
+    assert attempts == 2
+    assert delays == [0.25]
     assert message.content[0].text == "done"
 
 

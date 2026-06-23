@@ -227,7 +227,9 @@ input 和 attachment 请求也会在模型未声明支持时直接失败。
 
 `AIErrorInfo.to_dict()` 返回稳定、JSON-safe 的错误载荷，并递归脱敏
 `Authorization`、API key、OAuth token、refresh token、secret、credential 等敏感字段。
-完整异常层级位于 `loushang.ai.errors`；Provider 失败到 typed error 的迁移会在后续 runtime/error 工作包中完成。
+完整异常层级位于 `loushang.ai.errors`；provider adapter 失败会在 runtime 边界归一化为
+稳定的 `AIErrorInfo` / `response_error` 语义，保留 HTTP status、source 和 retryable
+判断。
 
 ### 通用 Options
 
@@ -416,7 +418,7 @@ code should use attribute access instead of dict-style message access.
 - `capabilities`
 - `adapter_protocol`
 - `adapter_dialect`
-- `adapter_compat`
+- `adapter_options`
 - `adapter_config`
 - `defaults`
 - `transport`
@@ -426,23 +428,22 @@ code should use attribute access instead of dict-style message access.
 - `temperature`
 
 AIQ-012 起，`ResolvedEndpoint` / `ResolvedRequest` 的推荐字段改为 typed
-`protocol` / `dialect` / `capabilities` / `transport` / `routing`；构造参数
-仍兼容接受 `compat`，但它只是已弃用的 `adapter_compat` 初始化别名。旧的
-`.compat` 也只保留为只读、已弃用的 `adapter_compat` 读取别名。
+`protocol` / `dialect` / `capabilities` / `transport` / `routing`；request
+resolution 结果不再暴露 legacy `.compat` 或 `adapter_compat` 别名。
 `protocol` / `dialect` 只表达 catalog / programmatic
 contract 中显式声明或由 legacy compat 迁移得到的事实；provider / base URL
 推断出的 runtime heuristic 不会投射为 public contract。
 
 provider adapter 侧的执行事实单独放在 `adapter_protocol` / `adapter_dialect` /
-`adapter_compat` / `adapter_config`。其中 `adapter_config` 是
+`adapter_options` / `adapter_config`。其中 `adapter_config` 是
 provider adapter 调用 `resolve_provider_request()` 时通过自己的 runtime config
 resolver 生成或校验后的 provider 专有 typed runtime 配置，承载无法放入通用
 protocol/dialect 的执行参数；具体配置类型由对应 provider 模块拥有。手写
-`ResolvedRequest` 时，如果同时提供 `adapter_compat` 和 provider-specific
+`ResolvedRequest` 时，如果同时提供 `adapter_options` 和 provider-specific
 `adapter_config`，二者必须在该 provider 的 runtime key 上投影一致；冲突会在
 resolution 边界报错。无关 compat key 不参与
-`adapter_config` 一致性检查。`adapter_compat` 是核心 adapter 迁移完成前的内部
-桥接字段，provider adapter 新代码应依赖 typed `adapter_protocol` /
+`adapter_config` 一致性检查。`adapter_options` 是 provider request 归一化边界的
+内部 adapter 输入；provider adapter 新代码应依赖 typed `adapter_protocol` /
 `adapter_dialect` / `adapter_config`，不要读取 raw compat。
 
 ## 最小调用链

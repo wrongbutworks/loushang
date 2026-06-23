@@ -114,7 +114,9 @@ def test_tool_provider_payloads_strip_schema_meta_keys_without_mutating_input() 
     responses_payload = to_openai_responses_tools([tool])
 
     assert anthropic_payload[0]["input_schema"] == _expected_sanitized_schema()
-    assert completions_payload[0]["function"]["parameters"] == _expected_sanitized_schema()
+    assert (
+        completions_payload[0]["function"]["parameters"] == _expected_sanitized_schema()
+    )
     assert responses_payload[0]["parameters"] == _expected_sanitized_schema()
     assert parameters == original
 
@@ -137,7 +139,9 @@ def test_openai_completions_provider_build_tools_strips_schema_meta_keys() -> No
     assert payload[0]["function"]["parameters"] == _expected_sanitized_schema()
 
 
-def test_openai_completions_provider_uses_image_placeholder_when_model_cannot_accept_images() -> None:
+def test_openai_completions_provider_uses_image_placeholder_when_model_cannot_accept_images() -> (
+    None
+):
     from loushang.ai.providers.openai_completions import _tool_result_payload
 
     message = ToolResultMessage(
@@ -163,39 +167,43 @@ def test_openai_completions_provider_uses_image_placeholder_when_model_cannot_ac
     assert image_blocks == []
 
 
-def test_openai_completions_provider_sanitizes_unpaired_surrogates_in_payload_text() -> None:
+def test_openai_completions_provider_sanitizes_unpaired_surrogates_in_payload_text() -> (
+    None
+):
     from loushang.ai.providers.openai_completions import _build_messages
 
     payload = _build_messages(
         SimpleNamespace(input=("text",), reasoning=False),
-        normalize_context({
-            "system_prompt": f"system {_UNPAIRED_HIGH_SURROGATE} prompt",
-            "messages": [
-                {
-                    "role": "user",
-                    "content": [
-                        {
-                            "type": "text",
-                            "text": f"user {_UNPAIRED_HIGH_SURROGATE} text 🙈",
-                        }
-                    ],
-                },
-                _assistant_tool_call("openai-completions"),
-                ToolResultMessage(
-                    role="toolResult",
-                    tool_call_id="call_1",
-                    tool_name="read",
-                    content=[
-                        TextPart(
-                            type="text",
-                            text=f"tool {_UNPAIRED_HIGH_SURROGATE} result 🙈",
-                        )
-                    ],
-                    is_error=False,
-                    timestamp=0.0,
-                ),
-            ],
-        }),
+        normalize_context(
+            {
+                "system_prompt": f"system {_UNPAIRED_HIGH_SURROGATE} prompt",
+                "messages": [
+                    {
+                        "role": "user",
+                        "content": [
+                            {
+                                "type": "text",
+                                "text": f"user {_UNPAIRED_HIGH_SURROGATE} text 🙈",
+                            }
+                        ],
+                    },
+                    _assistant_tool_call("openai-completions"),
+                    ToolResultMessage(
+                        role="toolResult",
+                        tool_call_id="call_1",
+                        tool_name="read",
+                        content=[
+                            TextPart(
+                                type="text",
+                                text=f"tool {_UNPAIRED_HIGH_SURROGATE} result 🙈",
+                            )
+                        ],
+                        is_error=False,
+                        timestamp=0.0,
+                    ),
+                ],
+            }
+        ),
         EndpointProtocolFeatures(),
         EndpointWireDialect(),
     )
@@ -205,7 +213,9 @@ def test_openai_completions_provider_sanitizes_unpaired_surrogates_in_payload_te
     assert payload[-1]["content"] == "tool  result 🙈"
 
 
-def test_openai_responses_provider_uses_image_placeholder_when_model_cannot_accept_images() -> None:
+def test_openai_responses_provider_uses_image_placeholder_when_model_cannot_accept_images() -> (
+    None
+):
     from loushang.ai.providers.openai_responses_shared import _tool_result_payload
 
     message = ToolResultMessage(
@@ -261,39 +271,43 @@ def test_openai_responses_provider_preserves_image_only_tool_result() -> None:
     }
 
 
-def test_openai_responses_provider_sanitizes_unpaired_surrogates_in_payload_text() -> None:
+def test_openai_responses_provider_sanitizes_unpaired_surrogates_in_payload_text() -> (
+    None
+):
     from loushang.ai.providers.openai_responses_shared import convert_responses_messages
 
     payload = convert_responses_messages(
         SimpleNamespace(input=("text",), reasoning=False),
-        normalize_context({
-            "system_prompt": f"system {_UNPAIRED_HIGH_SURROGATE} prompt",
-            "messages": [
-                {
-                    "role": "user",
-                    "content": [
-                        {
-                            "type": "text",
-                            "text": f"user {_UNPAIRED_HIGH_SURROGATE} text 🙈",
-                        }
-                    ],
-                },
-                _assistant_tool_call("openai-responses"),
-                ToolResultMessage(
-                    role="toolResult",
-                    tool_call_id="call_1",
-                    tool_name="read",
-                    content=[
-                        TextPart(
-                            type="text",
-                            text=f"tool {_UNPAIRED_HIGH_SURROGATE} result 🙈",
-                        )
-                    ],
-                    is_error=False,
-                    timestamp=0.0,
-                ),
-            ],
-        }),
+        normalize_context(
+            {
+                "system_prompt": f"system {_UNPAIRED_HIGH_SURROGATE} prompt",
+                "messages": [
+                    {
+                        "role": "user",
+                        "content": [
+                            {
+                                "type": "text",
+                                "text": f"user {_UNPAIRED_HIGH_SURROGATE} text 🙈",
+                            }
+                        ],
+                    },
+                    _assistant_tool_call("openai-responses"),
+                    ToolResultMessage(
+                        role="toolResult",
+                        tool_call_id="call_1",
+                        tool_name="read",
+                        content=[
+                            TextPart(
+                                type="text",
+                                text=f"tool {_UNPAIRED_HIGH_SURROGATE} result 🙈",
+                            )
+                        ],
+                        is_error=False,
+                        timestamp=0.0,
+                    ),
+                ],
+            }
+        ),
         EndpointProtocolFeatures(),
         EndpointWireDialect(),
     )
@@ -307,60 +321,69 @@ def test_anthropic_provider_sanitizes_unpaired_surrogates_in_payload_text() -> N
     from loushang.ai.providers.anthropic import _build_anthropic_message_payloads
 
     messages, system = _build_anthropic_message_payloads(
-        normalize_context({
-            "system_prompt": f"system {_UNPAIRED_HIGH_SURROGATE} prompt",
-            "messages": [
-                {
-                    "role": "user",
-                    "content": [
-                        {
-                            "type": "text",
-                            "text": f"user {_UNPAIRED_HIGH_SURROGATE} text 🙈",
-                        }
-                    ],
-                },
-                AssistantMessage(
-                    role="assistant",
-                    content=[
-                        TextPart(
-                            type="text",
-                            text=f"assistant {_UNPAIRED_HIGH_SURROGATE} text 🙈",
+        normalize_context(
+            {
+                "system_prompt": f"system {_UNPAIRED_HIGH_SURROGATE} prompt",
+                "messages": [
+                    {
+                        "role": "user",
+                        "content": [
+                            {
+                                "type": "text",
+                                "text": f"user {_UNPAIRED_HIGH_SURROGATE} text 🙈",
+                            }
+                        ],
+                    },
+                    AssistantMessage(
+                        role="assistant",
+                        content=[
+                            TextPart(
+                                type="text",
+                                text=f"assistant {_UNPAIRED_HIGH_SURROGATE} text 🙈",
+                            ),
+                            ThinkingPart(
+                                type="thinking",
+                                thinking=f"thinking {_UNPAIRED_HIGH_SURROGATE} text 🙈",
+                            ),
+                            ToolCall(
+                                type="toolCall",
+                                id="call_1",
+                                name="read",
+                                arguments={"path": "README.md"},
+                            ),
+                        ],
+                        api="anthropic-messages",
+                        provider="anthropic",
+                        model="claude",
+                        response_id=None,
+                        usage=Usage(
+                            input=0,
+                            output=0,
+                            cache_read=0,
+                            cache_write=0,
+                            total_tokens=0,
+                            cost={},
                         ),
-                        ThinkingPart(
-                            type="thinking",
-                            thinking=f"thinking {_UNPAIRED_HIGH_SURROGATE} text 🙈",
-                        ),
-                        ToolCall(
-                            type="toolCall",
-                            id="call_1",
-                            name="read",
-                            arguments={"path": "README.md"},
-                        ),
-                    ],
-                    api="anthropic-messages",
-                    provider="anthropic",
-                    model="claude",
-                    response_id=None,
-                    usage=Usage(input=0, output=0, cache_read=0, cache_write=0, total_tokens=0, cost={}),
-                    stop_reason="toolUse",
-                    error_message=None,
-                    timestamp=0.0,
-                ),
-                ToolResultMessage(
-                    role="toolResult",
-                    tool_call_id="call_1",
-                    tool_name="read",
-                    content=[
-                        TextPart(
-                            type="text",
-                            text=f"tool {_UNPAIRED_HIGH_SURROGATE} result 🙈",
-                        )
-                    ],
-                    is_error=False,
-                    timestamp=0.0,
-                ),
-            ],
-        }),
+                        stop_reason="toolUse",
+                        error_message=None,
+                        timestamp=0.0,
+                    ),
+                    ToolResultMessage(
+                        role="toolResult",
+                        tool_call_id="call_1",
+                        tool_name="read",
+                        content=[
+                            TextPart(
+                                type="text",
+                                text=f"tool {_UNPAIRED_HIGH_SURROGATE} result 🙈",
+                            )
+                        ],
+                        is_error=False,
+                        timestamp=0.0,
+                    ),
+                ],
+            }
+        ),
         is_oauth_token=False,
     )
 
@@ -402,7 +425,9 @@ def test_openai_codex_responses_provider_sanitizes_instruction_text() -> None:
     assert body["instructions"] == "system  prompt 🙈"
 
 
-def test_openai_responses_tool_result_helper_preserves_images_in_function_output() -> None:
+def test_openai_responses_tool_result_helper_preserves_images_in_function_output() -> (
+    None
+):
     message = ToolResultMessage(
         role="toolResult",
         tool_call_id="call_1",

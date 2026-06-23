@@ -110,7 +110,9 @@ def test_model_registry_schema_accepts_explicit_v1_catalog() -> None:
     validate_model_registry_raw(raw)
 
 
-def test_model_registry_schema_v2_openai_compatible_endpoint_without_models_loads() -> None:
+def test_model_registry_schema_v2_openai_compatible_endpoint_without_models_loads() -> (
+    None
+):
     raw = {
         "schemaVersion": 2,
         "providers": {

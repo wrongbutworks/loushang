@@ -6,6 +6,10 @@
   - https://cloud.tencent.com/document/product/1729/111007
   - https://cloud.tencent.com/document/product/1729/104753
   - https://cloud.tencent.com/document/product/1729/97731
+- Source map:
+  - Authentication and endpoint: OpenAI-compatible Chat Completions docs.
+  - Model selection, input/output limits, streaming, usage, and tools: product overview and OpenAI-compatible docs.
+  - Pricing: pricing docs.
 - Authentication: API key in `HUNYUAN_API_KEY`, sent as an `Authorization: Bearer ...` header.
 - Endpoint: `https://api.hunyuan.cloud.tencent.com/v1`, OpenAI-compatible Chat Completions protocol.
 - Included models:

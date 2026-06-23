@@ -7,6 +7,7 @@ from contextlib import suppress
 from typing import Any
 
 from loushang.ai.errors import UnsupportedCapabilityError
+from loushang.ai.event_stream.raw_parts import RawPart
 from loushang.ai.model.domain import (
     EndpointProtocolFeatures,
     EndpointWireDialect,
@@ -70,9 +71,7 @@ def _validate_cache_session_options(
     cache_retention: str | None,
     session_id: str | None,
 ) -> None:
-    if cache_retention == "long" and not _is_supported(
-        protocol.cache.long_retention
-    ):
+    if cache_retention == "long" and not _is_supported(protocol.cache.long_retention):
         raise UnsupportedCapabilityError(
             f"Model {getattr(model, 'id', '<unknown>')!r} does not support long cache retention",
             source=getattr(resolved, "api", None),
@@ -113,7 +112,7 @@ class OpenAIResponsesProvider:
 
     def _stream_raw_parts(
         self, model, context, options, request=None
-    ) -> AsyncIterator[dict]:
+    ) -> AsyncIterator[RawPart]:
         resolved = resolve_provider_request(
             self.api,
             model,
@@ -129,7 +128,7 @@ class OpenAIResponsesProvider:
             )
         )
 
-    async def stream_raw(self, request: ProviderRequest) -> AsyncIterator[dict]:
+    async def stream_raw(self, request: ProviderRequest) -> AsyncIterator[RawPart]:
         model = request.model
         options = request.options
         resolved = request.resolved
@@ -293,7 +292,11 @@ class OpenAIResponsesProvider:
         await _notify_provider_response(options, stream_ctx, model)
 
         try:
-            async for part in process_responses_stream(stream_ctx, options=options):
+            async for part in process_responses_stream(
+                stream_ctx,
+                options=options,
+                source=self.api,
+            ):
                 yield part
         except Exception as e:
             _debug("stream_iter_error", {"message": str(e)})

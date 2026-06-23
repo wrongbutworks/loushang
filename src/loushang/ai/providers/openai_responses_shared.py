@@ -2,9 +2,10 @@ from __future__ import annotations
 
 import json
 import re
-from collections.abc import Mapping, Sequence
-from typing import Any, TypedDict
+from collections.abc import AsyncIterator, Mapping, Sequence
+from typing import Any, TypedDict, cast
 
+from loushang.ai.event_stream.raw_parts import RawPart
 from loushang.ai.model.domain import (
     EndpointProtocolFeatures,
     EndpointWireDialect,
@@ -12,6 +13,7 @@ from loushang.ai.model.domain import (
 )
 from loushang.ai.model.registry import resolve_model_api
 from loushang.ai.options import is_reasoning_requested
+from loushang.ai.provider.errors import provider_error_part_from_raw
 from loushang.ai.tool.providers import to_openai_responses_tools
 from loushang.ai.tool.transform import (
     MISSING_TOOL_RESULT_TEXT,
@@ -158,7 +160,12 @@ def build_copilot_dynamic_headers(messages: list[object]) -> dict[str, str]:
     return headers
 
 
-async def process_responses_stream(openai_stream, *, options=None):
+async def process_responses_stream(
+    openai_stream,
+    *,
+    options=None,
+    source: str = "openai-responses",
+) -> AsyncIterator[RawPart]:
     thinking_buf: list[str] = []
     text_buf: list[str] = []
     thinking_closed = False
@@ -206,7 +213,7 @@ async def process_responses_stream(openai_stream, *, options=None):
                 }
                 if index is not None:
                     start_part["index"] = index
-                yield start_part
+                yield _raw_part(start_part)
         elif etype == "response.reasoning_summary_part.added":
             if current_reasoning_item is not None:
                 part = getattr(event, "part", None)
@@ -262,12 +269,12 @@ async def process_responses_stream(openai_stream, *, options=None):
                     )
                 index = _optional_int(getattr(event, "output_index", None))
                 if "tool_call_id" not in delta_part and index is not None:
-                    tool_call_id = tool_call_ids_by_index.get(index)
-                    if tool_call_id is not None:
-                        delta_part["tool_call_id"] = tool_call_id
+                    indexed_tool_call_id = tool_call_ids_by_index.get(index)
+                    if indexed_tool_call_id is not None:
+                        delta_part["tool_call_id"] = indexed_tool_call_id
                 if index is not None:
                     delta_part["index"] = index
-                yield delta_part
+                yield _raw_part(delta_part)
         elif etype == "response.output_item.done":
             item = getattr(event, "item", None)
             if item is None:
@@ -310,7 +317,7 @@ async def process_responses_stream(openai_stream, *, options=None):
                 if index is not None:
                     done_part["index"] = index
                     tool_call_ids_by_index.pop(index, None)
-                yield done_part
+                yield _raw_part(done_part)
         elif etype == "response.completed":
             resp = getattr(event, "response", None)
             if resp is not None:
@@ -353,10 +360,7 @@ async def process_responses_stream(openai_stream, *, options=None):
             err = (
                 f"Error Code {code}: {message}" if code or message else "Unknown error"
             )
-            yield {
-                "type": "response_error",
-                "message": err,
-            }
+            yield provider_error_part_from_raw(err, code=code, source=source)
         elif etype == "response.failed":
             response = getattr(event, "response", None)
             error = getattr(response, "error", None) if response else None
@@ -369,10 +373,12 @@ async def process_responses_stream(openai_stream, *, options=None):
                 msg = f"incomplete: {getattr(incomplete, 'reason', 'unknown')}"
             else:
                 msg = "Unknown error (no error details in response)"
-            yield {
-                "type": "response_error",
-                "message": msg,
-            }
+            raw_code = getattr(error, "code", None) if error is not None else None
+            yield provider_error_part_from_raw(
+                msg,
+                code=raw_code,
+                source=source,
+            )
 
     yield {"type": "response_done"}
 
@@ -383,6 +389,10 @@ def _service_tier_cost_multiplier(service_tier: str | None) -> float:
     if service_tier == "priority":
         return 2.0
     return 1.0
+
+
+def _raw_part(part: dict[str, object]) -> RawPart:
+    return cast(RawPart, part)
 
 
 def map_responses_status_to_reason(status: str | None) -> str:

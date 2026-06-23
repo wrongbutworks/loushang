@@ -11,7 +11,9 @@ from loushang.ai.model.registry import (
 )
 
 
-def _model(model_id: str, *, provider: str = "provider", endpoint: str = "primary") -> Model:
+def _model(
+    model_id: str, *, provider: str = "provider", endpoint: str = "primary"
+) -> Model:
     return Model(
         id=model_id,
         provider=provider,
@@ -20,7 +22,9 @@ def _model(model_id: str, *, provider: str = "provider", endpoint: str = "primar
     )
 
 
-def _registry(*, primary_preferred: bool = False, secondary_preferred: bool = False) -> ModelRegistry:
+def _registry(
+    *, primary_preferred: bool = False, secondary_preferred: bool = False
+) -> ModelRegistry:
     primary = Endpoint(
         id="primary",
         provider="provider",

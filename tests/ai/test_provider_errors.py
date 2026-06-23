@@ -3,7 +3,11 @@ from __future__ import annotations
 import pytest
 
 from loushang.ai import AIErrorCode
-from loushang.ai.provider.errors import normalize_provider_error, provider_error_part
+from loushang.ai.provider.errors import (
+    normalize_provider_error,
+    provider_error_part,
+    provider_error_part_from_raw,
+)
 
 
 class _HttpError(Exception):
@@ -94,6 +98,34 @@ def test_provider_error_part_omits_non_http_status_code() -> None:
     assert "code" not in part
     assert part["error_info"]["code"] == "provider"
     assert part["error_info"]["retryable"] is False
+
+
+@pytest.mark.parametrize(
+    ("raw_code", "code", "retryable"),
+    [
+        ("rate-limited", "rate_limit", True),
+        ("request_timeout", "timeout", True),
+        ("overloaded", "service_unavailable", True),
+        ("invalid_api_key", "authentication", False),
+        ("unknown_error", "provider", False),
+        (object(), "provider", False),
+    ],
+)
+def test_provider_error_part_from_raw_maps_known_string_codes(
+    raw_code: object,
+    code: str,
+    retryable: bool,
+) -> None:
+    part = provider_error_part_from_raw(
+        "provider failed",
+        code=raw_code,
+        source="provider",
+    )
+
+    assert part["type"] == "response_error"
+    assert "code" not in part
+    assert part["error_info"]["code"] == code
+    assert part["error_info"]["retryable"] is retryable
 
 
 def test_normalize_provider_error_preserves_original_as_cause() -> None:

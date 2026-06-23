@@ -7,6 +7,11 @@
   - https://developers.openai.com/api/docs/guides/latest-model
   - https://developers.openai.com/api/reference/resources/responses/methods/create
   - https://developers.openai.com/api/docs/pricing
+- Source map:
+  - Authentication and endpoint: Responses API create reference and API docs.
+  - Model selection, context, maximum output, knowledge cutoff, and modalities: models and latest-model docs.
+  - Streaming, tools, structured output, reasoning, and temperature: Responses API create reference.
+  - Pricing: pricing docs.
 - Authentication: API key in `OPENAI_API_KEY`, sent as an `Authorization: Bearer ...` header.
 - Endpoint: `https://api.openai.com/v1`, Responses API protocol.
 - Included models:

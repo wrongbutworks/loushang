@@ -4,8 +4,10 @@ import asyncio
 import json
 from collections.abc import AsyncIterator, Mapping
 from contextlib import suppress
-from typing import Any
+from dataclasses import dataclass, field
+from typing import Any, cast
 
+from loushang.ai.event_stream.raw_parts import RawPart
 from loushang.ai.model.domain import EndpointProtocolFeatures, SupportStatus
 from loushang.ai.options import (
     get_provider_option,
@@ -15,7 +17,10 @@ from loushang.ai.options import (
 )
 from loushang.ai.output_budget import resolve_output_token_budget
 from loushang.ai.provider import ProviderRequest, resolve_provider_request
-from loushang.ai.provider.errors import provider_error_part
+from loushang.ai.provider.errors import (
+    provider_error_part,
+    provider_error_part_from_raw,
+)
 from loushang.ai.providers.anthropic_base import AnthropicProviderBase
 from loushang.ai.providers.provider_helpers import (
     apply_session_headers,
@@ -171,6 +176,42 @@ def _tool_input_to_json_delta(value: object) -> str | None:
 _MISSING = object()
 
 
+@dataclass
+class _AnthropicToolStreamState:
+    args_from_start: bool = False
+    arg_chunks: list[str] = field(default_factory=list)
+    id: str | None = None
+    name: str | None = None
+    args_source: str = "none"
+    delta_chars: int = 0
+    last_delta: dict[str, object] | None = None
+    last_snapshot: dict[str, object] | None = None
+
+
+def _get_tool_stream_state(
+    states: dict[int | None, _AnthropicToolStreamState],
+    content_index: int | None,
+) -> _AnthropicToolStreamState | None:
+    state = states.get(content_index)
+    if state is not None:
+        return state
+    if content_index is not None and len(states) == 1:
+        return states.get(None)
+    return None
+
+
+def _pop_tool_stream_state(
+    states: dict[int | None, _AnthropicToolStreamState],
+    content_index: int | None,
+) -> _AnthropicToolStreamState | None:
+    state = states.pop(content_index, None)
+    if state is not None:
+        return state
+    if content_index is not None and len(states) == 1:
+        return states.pop(None, None)
+    return None
+
+
 def _summarize_tool_input(value: object) -> dict[str, object]:
     if value is _MISSING:
         return {"present": False}
@@ -310,7 +351,7 @@ class AnthropicProvider(AnthropicProviderBase):
 
     def _stream_raw_parts(
         self, model, context, options, request=None
-    ) -> AsyncIterator[dict]:
+    ) -> AsyncIterator[RawPart]:
         resolved = resolve_provider_request(
             self.api,
             model,
@@ -326,7 +367,7 @@ class AnthropicProvider(AnthropicProviderBase):
             )
         )
 
-    async def stream_raw(self, request: ProviderRequest) -> AsyncIterator[dict]:
+    async def stream_raw(self, request: ProviderRequest) -> AsyncIterator[RawPart]:
         """
         将 Anthropic SDK 的 streaming 事件映射到 RawPart。
         当前实现覆盖文本、thinking、signature、redacted thinking、工具增量、usage、stop_reason 与完成事件。
@@ -565,15 +606,7 @@ class AnthropicProvider(AnthropicProviderBase):
         await _notify_provider_response(options, stream_ctx, model)
         # 启动事件：发出 response_start（若 SDK 提供 id 会在后续 message_start 拿到）
         # 主循环（SDK 为 async context manager）
-        active_tool_block = False
-        active_tool_args_from_start = False
-        active_tool_arg_chunks: list[str] = []
-        active_tool_id: str | None = None
-        active_tool_name: str | None = None
-        active_tool_args_source = "none"
-        active_tool_delta_chars = 0
-        active_tool_last_delta: dict[str, object] | None = None
-        active_tool_last_snapshot: dict[str, object] | None = None
+        active_tool_blocks: dict[int | None, _AnthropicToolStreamState] = {}
         try:
             async with stream_ctx as stream:
                 async for event in stream:
@@ -603,15 +636,7 @@ class AnthropicProvider(AnthropicProviderBase):
                     if etype == "content_block_start":
                         cblk = getattr(event, "content_block", None)
                         content_index = _optional_int(getattr(event, "index", None))
-                        active_tool_block = False
-                        active_tool_args_from_start = False
-                        active_tool_arg_chunks = []
-                        active_tool_id = None
-                        active_tool_name = None
-                        active_tool_args_source = "none"
-                        active_tool_delta_chars = 0
-                        active_tool_last_delta = None
-                        active_tool_last_snapshot = None
+                        active_tool_blocks.pop(content_index, None)
                         # text/thinking/tool_use 起始：我们只需开始时打标，增量通过 delta 下发
                         # 目前 RawAssembler 不依赖 *_start 事件，故不强制发送 start，减少噪音
                         if (
@@ -622,48 +647,50 @@ class AnthropicProvider(AnthropicProviderBase):
                             tid = getattr(cblk, "id", None)
                             tname = getattr(cblk, "name", None)
                             if isinstance(tid, str) and isinstance(tname, str) and tid:
-                                active_tool_block = True
-                                active_tool_id = tid
-                                active_tool_name = (
-                                    self.from_oauth_tool_name(
-                                        tname, normalized.get("tools")
-                                    )
-                                    if is_oauth_token
-                                    else tname
+                                new_tool_state = _AnthropicToolStreamState(
+                                    id=tid,
+                                    name=(
+                                        self.from_oauth_tool_name(
+                                            tname, normalized.get("tools")
+                                        )
+                                        if is_oauth_token
+                                        else tname
+                                    ),
                                 )
-                                input_value = getattr(cblk, "input", _MISSING)
+                                active_tool_blocks[content_index] = new_tool_state
+                                active_tool_name = new_tool_state.name
+                                active_tool_id = new_tool_state.id
                                 _debug(
                                     "tool_start",
                                     {
                                         "id": active_tool_id,
                                         "name": active_tool_name,
-                                        "input": _summarize_tool_input(input_value),
+                                        "input": _summarize_tool_input(
+                                            getattr(cblk, "input", _MISSING)
+                                        ),
                                     },
                                 )
-                                yield {
+                                start_part: dict[str, object] = {
                                     "type": "tool_call_start",
                                     "id": tid,
                                     "name": active_tool_name,
-                                    **(
-                                        {"index": content_index}
-                                        if content_index is not None
-                                        else {}
-                                    ),
                                 }
+                                if content_index is not None:
+                                    start_part["index"] = content_index
+                                yield _raw_part(start_part)
+                                input_value = getattr(cblk, "input", _MISSING)
                                 input_delta = _tool_input_to_json_delta(input_value)
                                 if input_delta:
-                                    active_tool_args_from_start = True
-                                    active_tool_args_source = "content_block.input"
-                                    active_tool_arg_chunks = [input_delta]
-                                    yield {
+                                    new_tool_state.args_from_start = True
+                                    new_tool_state.args_source = "content_block.input"
+                                    new_tool_state.arg_chunks = [input_delta]
+                                    args_part: dict[str, object] = {
                                         "type": "tool_call_args_delta",
                                         "delta": input_delta,
-                                        **(
-                                            {"index": content_index}
-                                            if content_index is not None
-                                            else {}
-                                        ),
                                     }
+                                    if content_index is not None:
+                                        args_part["index"] = content_index
+                                    yield _raw_part(args_part)
                         elif (
                             cblk is not None
                             and getattr(cblk, "type", None) == "redacted_thinking"
@@ -678,11 +705,14 @@ class AnthropicProvider(AnthropicProviderBase):
                     if etype == "content_block_delta":
                         content_index = _optional_int(getattr(event, "index", None))
                         delta = getattr(event, "delta", None)
-                        if active_tool_block:
+                        active_tool_state = _get_tool_stream_state(
+                            active_tool_blocks, content_index
+                        )
+                        if active_tool_state is not None:
                             snapshot = getattr(event, "snapshot", None)
                             if snapshot is not None:
-                                active_tool_last_snapshot = _summarize_tool_snapshot(
-                                    snapshot
+                                active_tool_state.last_snapshot = (
+                                    _summarize_tool_snapshot(snapshot)
                                 )
                         if (
                             delta is not None
@@ -715,60 +745,56 @@ class AnthropicProvider(AnthropicProviderBase):
                         ):
                             partial = getattr(delta, "partial_json", None)
                             if isinstance(partial, str) and partial:
-                                active_tool_block = True
-                                active_tool_delta_chars += len(partial)
-                                active_tool_last_delta = _summarize_tool_delta(delta)
-                                if not active_tool_args_from_start:
-                                    active_tool_args_source = "input_json_delta"
-                                    active_tool_arg_chunks.append(partial)
-                                    yield {
+                                if active_tool_state is None:
+                                    active_tool_state = _AnthropicToolStreamState()
+                                    active_tool_blocks[content_index] = (
+                                        active_tool_state
+                                    )
+                                active_tool_state.delta_chars += len(partial)
+                                active_tool_state.last_delta = _summarize_tool_delta(
+                                    delta
+                                )
+                                if not active_tool_state.args_from_start:
+                                    active_tool_state.args_source = "input_json_delta"
+                                    active_tool_state.arg_chunks.append(partial)
+                                    args_part = {
                                         "type": "tool_call_args_delta",
                                         "delta": partial,
-                                        **(
-                                            {"index": content_index}
-                                            if content_index is not None
-                                            else {}
-                                        ),
                                     }
-                        elif active_tool_block and delta is not None:
-                            active_tool_last_delta = _summarize_tool_delta(delta)
+                                    if content_index is not None:
+                                        args_part["index"] = content_index
+                                    yield _raw_part(args_part)
+                        elif active_tool_state is not None and delta is not None:
+                            active_tool_state.last_delta = _summarize_tool_delta(delta)
                         continue
                     if etype == "content_block_stop":
                         content_index = _optional_int(getattr(event, "index", None))
                         # 工具块结束：发出 tool_call_done（不带 payload，RawAssembler 内部汇总参数）
-                        if active_tool_block:
+                        active_tool_state = _pop_tool_stream_state(
+                            active_tool_blocks, content_index
+                        )
+                        if active_tool_state is not None:
                             tool_trace = {
-                                "id": active_tool_id,
-                                "name": active_tool_name,
-                                "args_source": active_tool_args_source,
-                                "delta_chars": active_tool_delta_chars,
+                                "id": active_tool_state.id,
+                                "name": active_tool_state.name,
+                                "args_source": active_tool_state.args_source,
+                                "delta_chars": active_tool_state.delta_chars,
                                 "args": _summarize_tool_args_json(
-                                    "".join(active_tool_arg_chunks)
+                                    "".join(active_tool_state.arg_chunks)
                                 ),
                             }
-                            if active_tool_args_source == "none":
-                                tool_trace["last_delta"] = active_tool_last_delta
-                                tool_trace["last_snapshot"] = active_tool_last_snapshot
+                            if active_tool_state.args_source == "none":
+                                tool_trace["last_delta"] = active_tool_state.last_delta
+                                tool_trace["last_snapshot"] = (
+                                    active_tool_state.last_snapshot
+                                )
                                 _debug("tool_empty_args", tool_trace)
                             else:
                                 _debug("tool_done", tool_trace)
-                            yield {
-                                "type": "tool_call_done",
-                                **(
-                                    {"index": content_index}
-                                    if content_index is not None
-                                    else {}
-                                ),
-                            }
-                            active_tool_block = False
-                            active_tool_args_from_start = False
-                            active_tool_arg_chunks = []
-                            active_tool_id = None
-                            active_tool_name = None
-                            active_tool_args_source = "none"
-                            active_tool_delta_chars = 0
-                            active_tool_last_delta = None
-                            active_tool_last_snapshot = None
+                            done_part: dict[str, object] = {"type": "tool_call_done"}
+                            if content_index is not None:
+                                done_part["index"] = content_index
+                            yield _raw_part(done_part)
                         continue
                     if etype == "message_delta":
                         delta = getattr(event, "delta", None)
@@ -777,10 +803,11 @@ class AnthropicProvider(AnthropicProviderBase):
                             mapped = _map_stop_reason(stop_reason)
                             yield {"type": "stop_reason", "stop_reason": mapped}
                             if mapped == "error":
-                                yield {
-                                    "type": "response_error",
-                                    "message": f"provider stop_reason={stop_reason}",
-                                }
+                                yield provider_error_part_from_raw(
+                                    f"provider stop_reason={stop_reason}",
+                                    code=stop_reason,
+                                    source=self.api,
+                                )
                         usage = getattr(event, "usage", None)
                         if usage:
                             yield {
@@ -808,10 +835,12 @@ class AnthropicProvider(AnthropicProviderBase):
                     if etype == "error":
                         err = getattr(event, "error", None)
                         msg = getattr(err, "message", None) if err is not None else None
-                        yield {
-                            "type": "response_error",
-                            "message": msg or "Unknown error",
-                        }
+                        code = getattr(err, "type", None) if err is not None else None
+                        yield provider_error_part_from_raw(
+                            msg or "Unknown error",
+                            code=code,
+                            source=self.api,
+                        )
         except Exception as e:
             _debug("stream_iter_error", {"message": str(e)})
             yield provider_error_part(e, source=self.api)
@@ -844,6 +873,10 @@ def _request_protocol(request: object) -> EndpointProtocolFeatures:
     if isinstance(protocol, EndpointProtocolFeatures):
         return protocol
     return EndpointProtocolFeatures()
+
+
+def _raw_part(part: dict[str, object]) -> RawPart:
+    return cast(RawPart, part)
 
 
 def _is_supported(status: SupportStatus) -> bool:

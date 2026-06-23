@@ -47,15 +47,24 @@ def test_emit_trace_redacts_sensitive_options_callback_fields() -> None:
             "type": "sdk:client",
             "headers": {
                 "Authorization": "Bearer secret-token",
+                "Proxy-Authorization": "Bearer proxy-secret",
+                "X-Auth-Token": "auth-secret",
+                "X-Amz-Security-Token": "aws-secret",
                 "x-api-key": "secret-key",
                 "anthropic-version": "2023-06-01",
             },
             "apiKey": "secret-key",
+            "openai_api_key": "secret-key",
+            "anthropic_api_key": "secret-key",
             "access_token": "secret-token",
+            "provider_token": "secret-token",
+            "session_cookie": "cookie-secret",
             "token": "secret-token",
             "oauth": {"accessToken": "secret-token"},
-            "credentials": {"apiKey": "secret-key"},
+            "credentials": {"apiKey": "secret-key", "cookie_header": "cookie-secret"},
+            "nested": {"cookies": "cookie-secret", "total_tokens": 3},
             "total_tokens": 42,
+            "output_tokens": 7,
         },
     )
 
@@ -64,18 +73,29 @@ def test_emit_trace_redacts_sensitive_options_callback_fields() -> None:
     data = events[0]["data"]
     assert data["headers"] == {
         "Authorization": "<redacted>",
+        "Proxy-Authorization": "<redacted>",
+        "X-Auth-Token": "<redacted>",
+        "X-Amz-Security-Token": "<redacted>",
         "x-api-key": "<redacted>",
         "anthropic-version": "2023-06-01",
     }
     assert data["apiKey"] == "<redacted>"
+    assert data["openai_api_key"] == "<redacted>"
+    assert data["anthropic_api_key"] == "<redacted>"
     assert data["access_token"] == "<redacted>"
+    assert data["provider_token"] == "<redacted>"
+    assert data["session_cookie"] == "<redacted>"
     assert data["token"] == "<redacted>"
     assert data["oauth"] == "<redacted>"
     assert data["credentials"] == "<redacted>"
+    assert data["nested"] == {"cookies": "<redacted>", "total_tokens": 3}
     assert data["total_tokens"] == 42
+    assert data["output_tokens"] == 7
 
 
-def test_emit_trace_writes_provider_debug_event_to_observability_trace(tmp_path: Path) -> None:
+def test_emit_trace_writes_provider_debug_event_to_observability_trace(
+    tmp_path: Path,
+) -> None:
     trace_path = tmp_path / "provider.jsonl"
     configure_observability(
         trace_sink=TraceJSONLSink(trace_path),
@@ -118,7 +138,9 @@ def test_emit_trace_writes_provider_debug_event_to_observability_trace(tmp_path:
     }
 
 
-def test_emit_trace_summarizes_tool_content_for_observability_trace(tmp_path: Path) -> None:
+def test_emit_trace_summarizes_tool_content_for_observability_trace(
+    tmp_path: Path,
+) -> None:
     trace_path = tmp_path / "provider.jsonl"
     configure_observability(
         trace_sink=TraceJSONLSink(trace_path),
@@ -157,6 +179,8 @@ def test_emit_trace_redacts_sensitive_observability_fields(tmp_path: Path) -> No
             "type": "sdk:client",
             "headers": {
                 "Authorization": "Bearer secret-token",
+                "Proxy-Authorization": "Bearer proxy-secret",
+                "X-Auth-Token": "auth-secret",
                 "x-api-key": "secret-key",
                 "anthropic-version": "2023-06-01",
             },
@@ -169,6 +193,8 @@ def test_emit_trace_redacts_sensitive_observability_fields(tmp_path: Path) -> No
     event = record["data"]["event"]["data"]
     assert event["headers"] == {
         "Authorization": "<redacted>",
+        "Proxy-Authorization": "<redacted>",
+        "X-Auth-Token": "<redacted>",
         "x-api-key": "<redacted>",
         "anthropic-version": "2023-06-01",
     }

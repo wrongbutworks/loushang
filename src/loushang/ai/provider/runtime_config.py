@@ -17,10 +17,10 @@ AdapterRuntimeConfigResolver = Callable[
 
 def resolve_adapter_runtime_config(
     resolver: AdapterRuntimeConfigResolver | None,
-    adapter_compat: Mapping[str, object],
+    adapter_options: Mapping[str, object],
     *,
     current: AdapterRuntimeConfig | None = None,
 ) -> AdapterRuntimeConfig | None:
     if resolver is None:
         return current
-    return resolver(adapter_compat, current)
+    return resolver(adapter_options, current)

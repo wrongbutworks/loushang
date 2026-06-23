@@ -351,7 +351,11 @@ def test_validate_schema_accepts_supported_compositions_and_types() -> None:
         ("not-array", {"type": "array"}, "must be an array"),
         ([], {"type": "array", "minItems": 1}, "at least 1"),
         ([1, 2], {"type": "array", "maxItems": 1}, "at most 1"),
-        (["x"], {"type": "array", "prefixItems": [{"type": "integer"}]}, "must be an integer"),
+        (
+            ["x"],
+            {"type": "array", "prefixItems": [{"type": "integer"}]},
+            "must be an integer",
+        ),
         ("x", {"type": "string", "minLength": 2}, "minLength 2"),
         ("xxx", {"type": "string", "maxLength": 2}, "maxLength 2"),
         ("abc", {"type": "string", "pattern": r"[0-9]+"}, "pattern"),

@@ -7,6 +7,11 @@
   - https://api-docs.deepseek.com/quick_start/pricing
   - https://api-docs.deepseek.com/guides/thinking_mode
   - https://api-docs.deepseek.com/api/create-chat-completion
+- Source map:
+  - Authentication and endpoint: API overview and create-chat-completion docs.
+  - Model selection, context window, maximum output, tools, JSON output, streaming, and cache facts: pricing and create-chat-completion docs.
+  - Thinking support and effort mapping: thinking-mode docs.
+  - Pricing: pricing docs.
 - Authentication: API key in `DEEPSEEK_API_KEY`, sent as an `Authorization: Bearer ...` header.
 - Endpoint: `https://api.deepseek.com`, OpenAI-compatible Chat Completions protocol.
 - Included models:

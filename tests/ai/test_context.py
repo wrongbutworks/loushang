@@ -31,15 +31,23 @@ from loushang.coding.tools import create_write_tool_definition
 def _usage() -> object:
     from loushang.ai.types import Usage
 
-    return Usage(input=0, output=0, cache_read=0, cache_write=0, total_tokens=0, cost={})
+    return Usage(
+        input=0, output=0, cache_read=0, cache_write=0, total_tokens=0, cost={}
+    )
 
 
 def _write_tool() -> Tool:
     definition = create_write_tool_definition()
-    return Tool(name=definition.name, description=definition.description, parameters=definition.parameters)
+    return Tool(
+        name=definition.name,
+        description=definition.description,
+        parameters=definition.parameters,
+    )
 
 
-def _diagnostic_snapshot(result: NormalizationResult) -> list[tuple[str, str, str, str]]:
+def _diagnostic_snapshot(
+    result: NormalizationResult,
+) -> list[tuple[str, str, str, str]]:
     return [
         (diagnostic.code, diagnostic.path, diagnostic.message, diagnostic.level)
         for diagnostic in result.diagnostics
@@ -140,7 +148,9 @@ def test_normalize_context_rejects_dict_tools_with_non_object_parameters() -> No
         )
 
 
-def test_normalize_context_rejects_tool_dataclasses_with_non_object_parameters() -> None:
+def test_normalize_context_rejects_tool_dataclasses_with_non_object_parameters() -> (
+    None
+):
     with pytest.raises(TypeError, match="Unsupported tool parameters type"):
         normalize_context(
             {
@@ -188,7 +198,9 @@ def test_normalize_context_rejects_context_tools_with_invalid_names() -> None:
         )
 
 
-def test_normalize_context_rejects_context_dict_tools_with_non_object_parameters() -> None:
+def test_normalize_context_rejects_context_dict_tools_with_non_object_parameters() -> (
+    None
+):
     with pytest.raises(TypeError, match="Unsupported tool parameters type"):
         normalize_context(
             Context(
@@ -242,9 +254,7 @@ def test_normalize_context_rejects_unknown_user_content_parts() -> None:
 
 def test_normalize_context_rejects_unknown_user_content_part_objects() -> None:
     with pytest.raises(TypeError, match="Unsupported user content part object"):
-        normalize_context(
-            {"messages": [{"role": "user", "content": [_UnknownPart()]}]}
-        )
+        normalize_context({"messages": [{"role": "user", "content": [_UnknownPart()]}]})
 
 
 def test_normalize_context_returns_immutable_normalized_context() -> None:
@@ -478,7 +488,9 @@ def test_normalize_context_result_keeps_original_paths_after_system_messages() -
     ]
 
 
-def test_normalize_context_result_skips_tool_diagnostics_for_dropped_error_assistant() -> None:
+def test_normalize_context_result_skips_tool_diagnostics_for_dropped_error_assistant() -> (
+    None
+):
     assistant = AssistantMessage(
         role="assistant",
         content=[
@@ -667,7 +679,9 @@ def test_normalize_context_result_keeps_repair_paths_when_tool_ids_collide() -> 
     ]
 
 
-def test_normalize_context_result_reports_cross_provider_downgrades_and_signature_removal() -> None:
+def test_normalize_context_result_reports_cross_provider_downgrades_and_signature_removal() -> (
+    None
+):
     assistant = AssistantMessage(
         role="assistant",
         content=[
@@ -907,7 +921,14 @@ def test_normalize_context_accepts_pi_style_assistant_and_tool_result_dicts() ->
                     "provider": "github-copilot",
                     "model": "gpt-5",
                     "responseId": "resp_1",
-                    "usage": {"input": 1, "output": 2, "cacheRead": 3, "cacheWrite": 4, "totalTokens": 10, "cost": {"usd": 0.01}},
+                    "usage": {
+                        "input": 1,
+                        "output": 2,
+                        "cacheRead": 3,
+                        "cacheWrite": 4,
+                        "totalTokens": 10,
+                        "cost": {"usd": 0.01},
+                    },
                     "stopReason": "toolUse",
                     "errorMessage": None,
                     "timestamp": 123.0,
@@ -935,7 +956,11 @@ def test_normalize_context_accepts_pi_style_assistant_and_tool_result_dicts() ->
     assert len(normalized["messages"]) == 2
     assert isinstance(assistant, AssistantMessage)
     assert assistant.content == [
-        ThinkingPart(type="thinking", thinking="private reasoning", thinking_signature="thinking-sig"),
+        ThinkingPart(
+            type="thinking",
+            thinking="private reasoning",
+            thinking_signature="thinking-sig",
+        ),
         ToolCall(
             type="toolCall",
             id="call_1",
@@ -1136,7 +1161,14 @@ def test_normalize_context_keeps_malformed_historical_tool_call_recoverable() ->
             "messages": [
                 AssistantMessage(
                     role="assistant",
-                    content=[ToolCall(type="toolCall", id="write-empty", name="write", arguments={})],
+                    content=[
+                        ToolCall(
+                            type="toolCall",
+                            id="write-empty",
+                            name="write",
+                            arguments={},
+                        )
+                    ],
                     api="anthropic-messages",
                     provider="moonshot",
                     model="kimi-for-coding",
@@ -1163,7 +1195,11 @@ def test_normalize_context_keeps_malformed_historical_tool_call_recoverable() ->
                     is_error=True,
                     timestamp=2.0,
                 ),
-                UserMessage(role="user", content=[TextPart(type="text", text="你好")], timestamp=3.0),
+                UserMessage(
+                    role="user",
+                    content=[TextPart(type="text", text="你好")],
+                    timestamp=3.0,
+                ),
             ],
             "tools": [_write_tool()],
         }

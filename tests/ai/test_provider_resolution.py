@@ -136,9 +136,9 @@ def test_custom_openai_completions_endpoint_without_explicit_contract_uses_stand
 
     resolved = resolve_request_for_model(model, registry=registry, env={})
 
-    assert resolved.adapter_compat[MAX_TOKENS_FIELD] == "max_completion_tokens"
-    assert resolved.adapter_compat[SUPPORTS_DEVELOPER_ROLE] is True
-    assert resolved.adapter_compat[THINKING_FORMAT] == "openai"
+    assert resolved.adapter_options[MAX_TOKENS_FIELD] == "max_completion_tokens"
+    assert resolved.adapter_options[SUPPORTS_DEVELOPER_ROLE] is True
+    assert resolved.adapter_options[THINKING_FORMAT] == "openai"
 
 
 def test_schema_v2_custom_openai_completions_requires_explicit_contract(
@@ -229,7 +229,7 @@ def test_custom_openai_completions_endpoint_prompt_cache_key_is_opt_in() -> None
         request=resolved,
     )
 
-    assert resolved.adapter_compat.get(SUPPORTS_PROMPT_CACHE_KEY, False) is False
+    assert resolved.adapter_options.get(SUPPORTS_PROMPT_CACHE_KEY, False) is False
     assert resolved.adapter_protocol.cache.prompt_key is SupportStatus.UNKNOWN
     assert provider_resolved.adapter_protocol.cache.prompt_key is SupportStatus.UNKNOWN
 
@@ -256,7 +256,7 @@ def test_custom_openai_completions_prompt_cache_key_projects_to_protocol() -> No
 
     resolved = resolve_request_for_model(model, registry=registry, env={})
 
-    assert resolved.adapter_compat[SUPPORTS_PROMPT_CACHE_KEY] is True
+    assert resolved.adapter_options[SUPPORTS_PROMPT_CACHE_KEY] is True
     assert resolved.adapter_protocol.cache.prompt_key is SupportStatus.SUPPORTED
 
 
@@ -286,7 +286,7 @@ def test_official_openai_completions_url_does_not_project_prompt_cache_key() -> 
         request=resolved,
     )
 
-    assert SUPPORTS_PROMPT_CACHE_KEY not in resolved.adapter_compat
+    assert SUPPORTS_PROMPT_CACHE_KEY not in resolved.adapter_options
     assert resolved.adapter_protocol.cache.prompt_key is SupportStatus.UNKNOWN
     assert provider_resolved.adapter_protocol.cache.prompt_key is SupportStatus.UNKNOWN
 
@@ -313,7 +313,7 @@ def test_official_openai_completions_prompt_cache_key_can_be_disabled() -> None:
 
     resolved = resolve_request_for_model(model, registry=registry, env={})
 
-    assert resolved.adapter_compat[SUPPORTS_PROMPT_CACHE_KEY] is False
+    assert resolved.adapter_options[SUPPORTS_PROMPT_CACHE_KEY] is False
     assert resolved.adapter_protocol.cache.prompt_key is SupportStatus.UNSUPPORTED
 
 
@@ -396,7 +396,7 @@ def test_builtin_catalog_declares_curated_openai_compat_bridge_facts() -> None:
             },
         )
 
-        assert {key: resolved.adapter_compat.get(key) for key in expected} == expected
+        assert {key: resolved.adapter_options.get(key) for key in expected} == expected
 
 
 def test_builtin_openai_compatible_endpoints_do_not_declare_prompt_cache_key() -> None:
@@ -416,13 +416,13 @@ def test_builtin_openai_compatible_endpoints_do_not_declare_prompt_cache_key() -
             resolved = resolve_request_for_model(model, registry=registry, env=env)
 
             assert (
-                resolved.adapter_compat.get(SUPPORTS_PROMPT_CACHE_KEY, False) is False
+                resolved.adapter_options.get(SUPPORTS_PROMPT_CACHE_KEY, False) is False
             ), (
                 endpoint.provider_id,
                 endpoint.id,
                 model_id,
             )
-            assert SUPPORTS_PROMPT_CACHE_KEY not in resolved.adapter_compat, (
+            assert SUPPORTS_PROMPT_CACHE_KEY not in resolved.adapter_options, (
                 endpoint.provider_id,
                 endpoint.id,
                 model_id,
@@ -462,7 +462,7 @@ def test_builtin_catalog_declares_curated_anthropic_compat_bridge_facts() -> Non
         model = registry.get_model(provider_id, endpoint_id, model_id)
         resolved = resolve_request_for_model(model, registry=registry, env={})
 
-        assert {key: resolved.adapter_compat.get(key) for key in expected} == expected
+        assert {key: resolved.adapter_options.get(key) for key in expected} == expected
 
 
 def test_resolver_constructor_keeps_existing_fields_before_upstream_model_id() -> None:
@@ -477,7 +477,7 @@ def test_resolver_constructor_keeps_existing_fields_before_upstream_model_id() -
         "base_url_env",
         "regions",
         "default_region",
-        "compat",
+        "defaults",
     ]
     assert endpoint_parameters.index("routing") < endpoint_parameters.index(
         "upstream_model_id"
@@ -486,7 +486,7 @@ def test_resolver_constructor_keeps_existing_fields_before_upstream_model_id() -
         "protocol"
     )
     assert endpoint_parameters.index("dialect") < endpoint_parameters.index(
-        "adapter_compat"
+        "adapter_options"
     )
     assert request_parameters[:8] == [
         "provider",
@@ -496,7 +496,7 @@ def test_resolver_constructor_keeps_existing_fields_before_upstream_model_id() -
         "region",
         "candidate_base_urls",
         "headers",
-        "compat",
+        "defaults",
     ]
     assert request_parameters.index("temperature") < request_parameters.index(
         "upstream_model_id"
@@ -515,25 +515,25 @@ def test_model_constructor_keeps_endpoint_snapshot_fields_private() -> None:
     assert "_endpoint_ref" not in parameters
 
 
-def test_resolved_request_accepts_deprecated_compat_init_alias() -> None:
+def test_resolved_request_exposes_no_compat_alias() -> None:
     endpoint = ResolvedEndpoint(
         provider="custom",
         endpoint="openai-completions",
         api="openai-completions",
-        compat={"supportsDeveloperRole": False},
+        adapter_options={"supportsDeveloperRole": False},
     )
     request = ResolvedRequest(
         provider="custom",
         endpoint="openai-completions",
         api="openai-completions",
         base_url=None,
-        compat={"maxTokensField": "max_tokens"},
+        adapter_options={"maxTokensField": "max_tokens"},
     )
 
-    assert endpoint.adapter_compat == {"supportsDeveloperRole": False}
-    assert endpoint.compat == {"supportsDeveloperRole": False}
-    assert request.adapter_compat == {"maxTokensField": "max_tokens"}
-    assert request.compat == {"maxTokensField": "max_tokens"}
+    assert endpoint.adapter_options == {"supportsDeveloperRole": False}
+    assert request.adapter_options == {"maxTokensField": "max_tokens"}
+    assert not hasattr(endpoint, "compat")
+    assert not hasattr(request, "compat")
 
 
 def test_resolve_provider_request_validates_supplied_request_api() -> None:
@@ -578,7 +578,7 @@ def test_resolve_provider_request_openai_responses_typed_overrides_stale_compat(
         endpoint="openai-responses",
         api="openai-responses",
         base_url=None,
-        compat={
+        adapter_options={
             "supportsDeveloperRole": True,
             "supportsLongCacheRetention": True,
             "sendSessionIdHeader": True,
@@ -602,10 +602,10 @@ def test_resolve_provider_request_openai_responses_typed_overrides_stale_compat(
     assert resolved.adapter_protocol.cache.long_retention is SupportStatus.UNSUPPORTED
     assert resolved.adapter_protocol.session.id_header is SupportStatus.UNSUPPORTED
     assert resolved.adapter_dialect.tools.assistant_bridge_required is False
-    assert resolved.adapter_compat["supportsDeveloperRole"] is False
-    assert resolved.adapter_compat["supportsLongCacheRetention"] is False
-    assert resolved.adapter_compat["sendSessionIdHeader"] is False
-    assert resolved.adapter_compat["requiresAssistantAfterToolResult"] is False
+    assert resolved.adapter_options["supportsDeveloperRole"] is False
+    assert resolved.adapter_options["supportsLongCacheRetention"] is False
+    assert resolved.adapter_options["sendSessionIdHeader"] is False
+    assert resolved.adapter_options["requiresAssistantAfterToolResult"] is False
 
 
 def test_resolve_provider_request_openai_codex_projects_compat_to_runtime_config() -> (
@@ -617,7 +617,7 @@ def test_resolve_provider_request_openai_codex_projects_compat_to_runtime_config
         endpoint="openai-codex",
         api="openai-codex-responses",
         base_url=None,
-        adapter_compat={
+        adapter_options={
             "codexIncludeClientRequestId": False,
             "codexIncludeConversationId": True,
             "codexPromptCacheRetention": "ephemeral",
@@ -650,7 +650,7 @@ def test_resolve_provider_request_openai_codex_rejects_conflicting_runtime_confi
         endpoint="openai-codex",
         api="openai-codex-responses",
         base_url=None,
-        adapter_compat={
+        adapter_options={
             "codexOriginator": "fresh",
             "codexUserAgent": "fresh-agent",
         },
@@ -662,7 +662,7 @@ def test_resolve_provider_request_openai_codex_rejects_conflicting_runtime_confi
 
     with pytest.raises(
         ValueError,
-        match="adapter_config conflicts with adapter_compat",
+        match="adapter_config conflicts with adapter_options",
     ):
         resolve_provider_request(
             "openai-codex-responses",
@@ -779,7 +779,7 @@ def test_resolve_provider_request_openai_codex_compares_explicit_runtime_keys() 
         endpoint="openai-codex",
         api="openai-codex-responses",
         base_url=None,
-        adapter_compat={
+        adapter_options={
             "supportsDeveloperRole": True,
             "codexOriginator": "typed",
         },
@@ -803,7 +803,7 @@ def test_resolve_provider_request_openai_codex_rejects_invalid_runtime_config() 
         endpoint="openai-codex",
         api="openai-codex-responses",
         base_url=None,
-        adapter_compat={
+        adapter_options={
             "codexIncludeClientRequestId": "false",
         },
     )
@@ -824,7 +824,7 @@ def test_resolve_provider_request_openai_codex_rejects_invalid_runtime_config() 
         endpoint="openai-codex",
         api="openai-codex-responses",
         base_url=None,
-        adapter_compat={
+        adapter_options={
             "codexUserAgent": 123,
         },
     )
@@ -858,11 +858,11 @@ def test_resolve_provider_request_normalizes_supplied_anthropic_request() -> Non
         resolved.adapter_protocol.session.affinity_headers is SupportStatus.UNSUPPORTED
     )
     assert resolved.adapter_protocol.reasoning.interleaved is SupportStatus.UNKNOWN
-    assert resolved.adapter_compat[SUPPORTS_EAGER_TOOL_INPUT_STREAMING] is True
-    assert FINE_GRAINED_TOOLS not in resolved.adapter_compat
-    assert resolved.adapter_compat[SUPPORTS_CACHE_CONTROL_ON_TOOLS] is True
-    assert resolved.adapter_compat[SUPPORTS_LONG_CACHE_RETENTION] is True
-    assert resolved.adapter_compat[SEND_SESSION_AFFINITY_HEADERS] is False
+    assert resolved.adapter_options[SUPPORTS_EAGER_TOOL_INPUT_STREAMING] is True
+    assert FINE_GRAINED_TOOLS not in resolved.adapter_options
+    assert resolved.adapter_options[SUPPORTS_CACHE_CONTROL_ON_TOOLS] is True
+    assert resolved.adapter_options[SUPPORTS_LONG_CACHE_RETENTION] is True
+    assert resolved.adapter_options[SEND_SESSION_AFFINITY_HEADERS] is False
 
 
 def test_resolve_provider_request_anthropic_typed_overrides_stale_compat() -> None:
@@ -872,7 +872,7 @@ def test_resolve_provider_request_anthropic_typed_overrides_stale_compat() -> No
         endpoint="anthropic-messages",
         api="anthropic-messages",
         base_url=None,
-        compat={
+        adapter_options={
             SUPPORTS_EAGER_TOOL_INPUT_STREAMING: False,
             FINE_GRAINED_TOOLS: False,
             SUPPORTS_CACHE_CONTROL_ON_TOOLS: False,
@@ -904,12 +904,12 @@ def test_resolve_provider_request_anthropic_typed_overrides_stale_compat() -> No
     assert resolved.adapter_protocol.cache.on_tools is SupportStatus.SUPPORTED
     assert resolved.adapter_protocol.cache.long_retention is SupportStatus.SUPPORTED
     assert resolved.adapter_protocol.session.affinity_headers is SupportStatus.SUPPORTED
-    assert resolved.adapter_compat[INTERLEAVED_THINKING] is True
-    assert resolved.adapter_compat[SUPPORTS_EAGER_TOOL_INPUT_STREAMING] is True
-    assert resolved.adapter_compat[FINE_GRAINED_TOOLS] is True
-    assert resolved.adapter_compat[SUPPORTS_CACHE_CONTROL_ON_TOOLS] is True
-    assert resolved.adapter_compat[SUPPORTS_LONG_CACHE_RETENTION] is True
-    assert resolved.adapter_compat[SEND_SESSION_AFFINITY_HEADERS] is True
+    assert resolved.adapter_options[INTERLEAVED_THINKING] is True
+    assert resolved.adapter_options[SUPPORTS_EAGER_TOOL_INPUT_STREAMING] is True
+    assert resolved.adapter_options[FINE_GRAINED_TOOLS] is True
+    assert resolved.adapter_options[SUPPORTS_CACHE_CONTROL_ON_TOOLS] is True
+    assert resolved.adapter_options[SUPPORTS_LONG_CACHE_RETENTION] is True
+    assert resolved.adapter_options[SEND_SESSION_AFFINITY_HEADERS] is True
 
 
 def test_resolve_provider_request_anthropic_typed_contract_satisfies_legacy_profile() -> (
@@ -945,11 +945,11 @@ def test_resolve_provider_request_anthropic_typed_contract_satisfies_legacy_prof
     assert resolved.adapter_protocol.cache.on_tools is SupportStatus.UNSUPPORTED
     assert resolved.adapter_protocol.cache.long_retention is SupportStatus.UNSUPPORTED
     assert resolved.adapter_protocol.session.affinity_headers is SupportStatus.SUPPORTED
-    assert resolved.adapter_compat[SUPPORTS_EAGER_TOOL_INPUT_STREAMING] is False
-    assert resolved.adapter_compat[FINE_GRAINED_TOOLS] is False
-    assert resolved.adapter_compat[SUPPORTS_CACHE_CONTROL_ON_TOOLS] is False
-    assert resolved.adapter_compat[SUPPORTS_LONG_CACHE_RETENTION] is False
-    assert resolved.adapter_compat[SEND_SESSION_AFFINITY_HEADERS] is True
+    assert resolved.adapter_options[SUPPORTS_EAGER_TOOL_INPUT_STREAMING] is False
+    assert resolved.adapter_options[FINE_GRAINED_TOOLS] is False
+    assert resolved.adapter_options[SUPPORTS_CACHE_CONTROL_ON_TOOLS] is False
+    assert resolved.adapter_options[SUPPORTS_LONG_CACHE_RETENTION] is False
+    assert resolved.adapter_options[SEND_SESSION_AFFINITY_HEADERS] is True
 
 
 def test_resolve_provider_request_anthropic_legacy_interleaved_off() -> None:
@@ -959,13 +959,13 @@ def test_resolve_provider_request_anthropic_legacy_interleaved_off() -> None:
         endpoint="anthropic-messages",
         api="anthropic-messages",
         base_url=None,
-        compat={INTERLEAVED_THINKING: "off"},
+        adapter_options={INTERLEAVED_THINKING: "off"},
     )
 
     resolved = resolve_provider_request("anthropic-messages", model, request=request)
 
     assert resolved.adapter_protocol.reasoning.interleaved is SupportStatus.UNSUPPORTED
-    assert resolved.adapter_compat[INTERLEAVED_THINKING] is False
+    assert resolved.adapter_options[INTERLEAVED_THINKING] is False
 
 
 @pytest.mark.parametrize(
@@ -983,7 +983,7 @@ def test_resolve_provider_request_anthropic_legacy_interleaved_off() -> None:
         ),
     ],
 )
-def test_resolve_provider_request_validates_supplied_adapter_compat(
+def test_resolve_provider_request_validates_supplied_adapter_options(
     api: str,
     compat: dict[str, object],
     message: str,
@@ -994,7 +994,7 @@ def test_resolve_provider_request_validates_supplied_adapter_compat(
         endpoint=api,
         api=api,
         base_url=None,
-        compat=compat,
+        adapter_options=compat,
     )
 
     with pytest.raises(ValueError, match=message):
@@ -1031,14 +1031,14 @@ def test_call_api_provider_helpers_use_normalized_supplied_request() -> None:
     )
 
 
-def test_resolve_provider_request_validates_supplied_compat() -> None:
+def test_resolve_provider_request_validates_supplied_adapter_options_value() -> None:
     model = Model(id="model-a", provider="custom", endpoint="openai-completions")
     request = ResolvedRequest(
         provider="custom",
         endpoint="openai-completions",
         api="openai-completions",
         base_url=None,
-        compat={SUPPORTS_PROMPT_CACHE_KEY: "true"},
+        adapter_options={SUPPORTS_PROMPT_CACHE_KEY: "true"},
     )
 
     with pytest.raises(ValueError, match=SUPPORTS_PROMPT_CACHE_KEY):
@@ -1056,75 +1056,64 @@ class _RequestRecordingProvider:
         yield {"type": "response_done"}
 
 
-def test_resolved_request_rejects_conflicting_compat_aliases() -> None:
-    with pytest.raises(TypeError, match="adapter_compat or compat"):
+def test_resolved_request_rejects_compat_init_alias() -> None:
+    with pytest.raises(TypeError, match="compat"):
         ResolvedEndpoint(
             provider="custom",
             endpoint="openai-completions",
             api="openai-completions",
             compat={"supportsDeveloperRole": False},
-            adapter_compat={"supportsDeveloperRole": True},
         )
-    with pytest.raises(TypeError, match="adapter_compat or compat"):
+    with pytest.raises(TypeError, match="compat"):
         ResolvedRequest(
             provider="custom",
             endpoint="openai-completions",
             api="openai-completions",
             base_url=None,
             compat={"maxTokensField": "max_tokens"},
-            adapter_compat={"maxTokensField": "max_completion_tokens"},
         )
 
 
-def test_resolved_request_keeps_deprecated_compat_dataclass_field() -> None:
+def test_resolved_request_has_no_compat_dataclass_field() -> None:
     endpoint = ResolvedEndpoint(
         provider="custom",
         endpoint="openai-completions",
         api="openai-completions",
-        compat={"supportsDeveloperRole": False},
+        adapter_options={"supportsDeveloperRole": False},
     )
     request = ResolvedRequest(
         provider="custom",
         endpoint="openai-completions",
         api="openai-completions",
         base_url=None,
-        adapter_compat={"maxTokensField": "max_tokens"},
+        adapter_options={"maxTokensField": "max_tokens"},
     )
 
-    assert "compat" in {field.name for field in fields(ResolvedEndpoint)}
-    assert "compat" in {field.name for field in fields(ResolvedRequest)}
-    assert asdict(endpoint)["compat"] == {"supportsDeveloperRole": False}
-    assert asdict(request)["compat"] == {"maxTokensField": "max_tokens"}
+    assert "compat" not in {field.name for field in fields(ResolvedEndpoint)}
+    assert "compat" not in {field.name for field in fields(ResolvedRequest)}
+    assert asdict(endpoint)["adapter_options"] == {"supportsDeveloperRole": False}
+    assert asdict(request)["adapter_options"] == {"maxTokensField": "max_tokens"}
 
 
-def test_resolved_request_accepts_deprecated_positional_compat_slot() -> None:
+def test_resolved_request_uses_adapter_options_keyword() -> None:
     endpoint = ResolvedEndpoint(
-        "custom",
-        "openai-completions",
-        "openai-completions",
-        None,
-        None,
-        {},
-        None,
-        {"supportsDeveloperRole": False},
+        provider="custom",
+        endpoint="openai-completions",
+        api="openai-completions",
+        adapter_options={"supportsDeveloperRole": False},
     )
     request = ResolvedRequest(
-        "custom",
-        "openai-completions",
-        "openai-completions",
-        None,
-        None,
-        (),
-        {},
-        {"maxTokensField": "max_tokens"},
+        provider="custom",
+        endpoint="openai-completions",
+        api="openai-completions",
+        base_url=None,
+        adapter_options={"maxTokensField": "max_tokens"},
     )
 
     assert isinstance(endpoint.protocol, EndpointProtocolFeatures)
-    assert endpoint.adapter_compat == {"supportsDeveloperRole": False}
-    assert endpoint.compat == {"supportsDeveloperRole": False}
+    assert endpoint.adapter_options == {"supportsDeveloperRole": False}
     assert isinstance(request.protocol, EndpointProtocolFeatures)
-    assert request.adapter_compat == {"maxTokensField": "max_tokens"}
-    assert request.compat == {"maxTokensField": "max_tokens"}
+    assert request.adapter_options == {"maxTokensField": "max_tokens"}
 
 
 def test_openai_completions_compat_preserves_legacy_routing_overrides() -> None:
@@ -1186,10 +1175,9 @@ def test_resolve_request_uses_in_memory_endpoint_protocol_bridge() -> None:
     assert resolved.protocol.roles.developer is SupportStatus.UNSUPPORTED
     assert resolved.protocol.reasoning.effort is SupportStatus.UNSUPPORTED
     assert resolved.protocol.tools.strict_schema is SupportStatus.UNSUPPORTED
-    assert resolved.compat == resolved.adapter_compat
-    assert resolved.adapter_compat["supportsDeveloperRole"] is False
-    assert resolved.adapter_compat["supportsReasoningEffort"] is False
-    assert resolved.adapter_compat["supportsStrictMode"] is False
+    assert resolved.adapter_options["supportsDeveloperRole"] is False
+    assert resolved.adapter_options["supportsReasoningEffort"] is False
+    assert resolved.adapter_options["supportsStrictMode"] is False
 
 
 def test_resolve_request_does_not_infer_adapter_contract_from_endpoint_identity() -> (
@@ -1215,12 +1203,12 @@ def test_resolve_request_does_not_infer_adapter_contract_from_endpoint_identity(
 
     resolved = resolve_request_for_model(model, registry=registry, env={})
 
-    assert resolved.adapter_compat[MAX_TOKENS_FIELD] == "max_completion_tokens"
-    assert resolved.adapter_compat[SUPPORTS_DEVELOPER_ROLE] is True
-    assert resolved.adapter_compat[THINKING_FORMAT] == "openai"
+    assert resolved.adapter_options[MAX_TOKENS_FIELD] == "max_completion_tokens"
+    assert resolved.adapter_options[SUPPORTS_DEVELOPER_ROLE] is True
+    assert resolved.adapter_options[THINKING_FORMAT] == "openai"
 
 
-def test_resolve_request_explicit_unknown_projects_to_adapter_compat() -> None:
+def test_resolve_request_explicit_unknown_projects_to_adapter_options() -> None:
     endpoint = Endpoint(
         id="openai-completions",
         provider="moonshot",
@@ -1251,7 +1239,7 @@ def test_resolve_request_explicit_unknown_projects_to_adapter_compat() -> None:
 
     resolved = resolve_request_for_model(model, registry=registry, env={})
 
-    assert resolved.adapter_compat["supportsDeveloperRole"] is False
+    assert resolved.adapter_options["supportsDeveloperRole"] is False
     assert resolved.protocol.roles.developer is SupportStatus.UNKNOWN
     assert resolved.adapter_protocol.roles.developer is SupportStatus.UNSUPPORTED
 
@@ -1367,8 +1355,8 @@ def test_resolve_request_accepts_none_for_optional_dialect_compat_override() -> 
         env={},
     )
 
-    assert resolved.adapter_compat[THINKING_FORMAT] is None
-    assert resolved.adapter_compat[CACHE_CONTROL_FORMAT] is None
+    assert resolved.adapter_options[THINKING_FORMAT] is None
+    assert resolved.adapter_options[CACHE_CONTROL_FORMAT] is None
     assert resolved.adapter_dialect.reasoning.wire_format is None
     assert resolved.adapter_dialect.cache.control_format is None
 
@@ -1403,8 +1391,8 @@ def test_resolve_request_none_dialect_compat_clears_inherited_typed_dialect() ->
 
     resolved = resolve_request_for_model(model, registry=registry, env={})
 
-    assert resolved.adapter_compat[THINKING_FORMAT] is None
-    assert resolved.adapter_compat[CACHE_CONTROL_FORMAT] is None
+    assert resolved.adapter_options[THINKING_FORMAT] is None
+    assert resolved.adapter_options[CACHE_CONTROL_FORMAT] is None
     assert resolved.dialect.reasoning.wire_format is None
     assert resolved.dialect.cache.control_format is None
     assert resolved.adapter_dialect.reasoning.wire_format is None
@@ -1471,16 +1459,16 @@ def test_resolve_request_uses_in_memory_endpoint_dialect_bridge() -> None:
     assert resolved.dialect.reasoning.thinking_as_text is True
     assert resolved.dialect.reasoning.assistant_content_required is True
     assert resolved.dialect.cache.control_format == "anthropic"
-    assert resolved.adapter_compat["maxTokensField"] == "max_completion_tokens"
-    assert resolved.adapter_compat["requiresToolResultName"] is True
-    assert resolved.adapter_compat["requiresAssistantAfterToolResult"] is True
-    assert resolved.adapter_compat["requiresThinkingAsText"] is True
+    assert resolved.adapter_options["maxTokensField"] == "max_completion_tokens"
+    assert resolved.adapter_options["requiresToolResultName"] is True
+    assert resolved.adapter_options["requiresAssistantAfterToolResult"] is True
+    assert resolved.adapter_options["requiresThinkingAsText"] is True
     assert (
-        resolved.adapter_compat["requiresReasoningContentOnAssistantMessages"] is True
+        resolved.adapter_options["requiresReasoningContentOnAssistantMessages"] is True
     )
-    assert resolved.adapter_compat["thinkingFormat"] == "moonshot"
-    assert resolved.adapter_compat["zaiToolStream"] is True
-    assert resolved.adapter_compat["cacheControlFormat"] == "anthropic"
+    assert resolved.adapter_options["thinkingFormat"] == "moonshot"
+    assert resolved.adapter_options["zaiToolStream"] is True
+    assert resolved.adapter_options["cacheControlFormat"] == "anthropic"
 
 
 def test_resolve_endpoint_uses_in_memory_endpoint_dialect_bridge() -> None:
@@ -1527,16 +1515,16 @@ def test_resolve_endpoint_uses_in_memory_endpoint_dialect_bridge() -> None:
     assert resolved.dialect.reasoning.thinking_as_text is True
     assert resolved.dialect.reasoning.assistant_content_required is True
     assert resolved.dialect.cache.control_format == "anthropic"
-    assert resolved.adapter_compat["maxTokensField"] == "max_completion_tokens"
-    assert resolved.adapter_compat["requiresToolResultName"] is True
-    assert resolved.adapter_compat["requiresAssistantAfterToolResult"] is True
-    assert resolved.adapter_compat["requiresThinkingAsText"] is True
+    assert resolved.adapter_options["maxTokensField"] == "max_completion_tokens"
+    assert resolved.adapter_options["requiresToolResultName"] is True
+    assert resolved.adapter_options["requiresAssistantAfterToolResult"] is True
+    assert resolved.adapter_options["requiresThinkingAsText"] is True
     assert (
-        resolved.adapter_compat["requiresReasoningContentOnAssistantMessages"] is True
+        resolved.adapter_options["requiresReasoningContentOnAssistantMessages"] is True
     )
-    assert resolved.adapter_compat["thinkingFormat"] == "moonshot"
-    assert resolved.adapter_compat["zaiToolStream"] is True
-    assert resolved.adapter_compat["cacheControlFormat"] == "anthropic"
+    assert resolved.adapter_options["thinkingFormat"] == "moonshot"
+    assert resolved.adapter_options["zaiToolStream"] is True
+    assert resolved.adapter_options["cacheControlFormat"] == "anthropic"
 
 
 def test_resolve_endpoint_projects_programmatic_compat_to_typed_contract() -> None:
@@ -1567,9 +1555,8 @@ def test_resolve_endpoint_projects_programmatic_compat_to_typed_contract() -> No
 
     assert resolved.protocol.roles.developer is SupportStatus.UNSUPPORTED
     assert resolved.dialect.reasoning.wire_format == "moonshot"
-    assert resolved.compat == resolved.adapter_compat
-    assert resolved.adapter_compat["supportsDeveloperRole"] is False
-    assert resolved.adapter_compat["thinkingFormat"] == "moonshot"
+    assert resolved.adapter_options["supportsDeveloperRole"] is False
+    assert resolved.adapter_options["thinkingFormat"] == "moonshot"
 
 
 def test_resolve_request_exposes_in_memory_endpoint_transport_routing() -> None:
@@ -1606,8 +1593,8 @@ def test_resolve_request_exposes_in_memory_endpoint_transport_routing() -> None:
             "vercelGateway": {"order": ["openai", "anthropic"]},
         }
     )
-    assert "openRouterRouting" not in resolved.adapter_compat
-    assert "vercelGatewayRouting" not in resolved.adapter_compat
+    assert "openRouterRouting" not in resolved.adapter_options
+    assert "vercelGatewayRouting" not in resolved.adapter_options
 
 
 def test_resolve_request_uses_bound_transport_routing_with_empty_registry() -> None:
@@ -1715,8 +1702,8 @@ def test_resolve_request_ignores_direct_model_legacy_transport_routing() -> None
 
     assert resolved.transport == EndpointTransport()
     assert resolved.routing == EndpointRouting()
-    assert "openRouterRouting" not in resolved.adapter_compat
-    assert "vercelGatewayRouting" not in resolved.adapter_compat
+    assert "openRouterRouting" not in resolved.adapter_options
+    assert "vercelGatewayRouting" not in resolved.adapter_options
 
 
 def test_resolve_request_ignores_direct_model_legacy_upstream_binding() -> None:
@@ -1740,7 +1727,7 @@ def test_resolve_request_ignores_direct_model_legacy_upstream_binding() -> None:
     resolved = resolve_request_for_model(model, registry=registry, env={})
 
     assert resolved.upstream_model_id == "openai/gpt-oss-120b_free"
-    assert "upstreamModelId" not in resolved.adapter_compat
+    assert "upstreamModelId" not in resolved.adapter_options
 
 
 def test_resolve_request_ignores_endpoint_legacy_upstream_binding() -> None:
@@ -1775,9 +1762,9 @@ def test_resolve_request_ignores_endpoint_legacy_upstream_binding() -> None:
 
     assert "upstreamModelId" not in model.compat
     assert resolved_endpoint.upstream_model_id is None
-    assert "upstreamModelId" not in resolved_endpoint.adapter_compat
+    assert "upstreamModelId" not in resolved_endpoint.adapter_options
     assert resolved.upstream_model_id == "openai/gpt-oss-120b_free"
-    assert "upstreamModelId" not in resolved.adapter_compat
+    assert "upstreamModelId" not in resolved.adapter_options
 
 
 def test_resolve_request_uses_first_class_upstream_binding() -> None:
@@ -1801,7 +1788,7 @@ def test_resolve_request_uses_first_class_upstream_binding() -> None:
     resolved = resolve_request_for_model(model, registry=registry, env={})
 
     assert resolved.upstream_model_id == "openai/gpt-oss-120b:free"
-    assert "upstreamModelId" not in resolved.adapter_compat
+    assert "upstreamModelId" not in resolved.adapter_options
 
 
 def test_resolve_endpoint_ignores_direct_model_legacy_transport_routing() -> None:
@@ -1823,9 +1810,9 @@ def test_resolve_endpoint_ignores_direct_model_legacy_transport_routing() -> Non
 
     assert resolved.transport == EndpointTransport()
     assert resolved.routing == EndpointRouting()
-    assert "providerTransport" not in resolved.adapter_compat
-    assert "openRouterRouting" not in resolved.adapter_compat
-    assert "vercelGatewayRouting" not in resolved.adapter_compat
+    assert "providerTransport" not in resolved.adapter_options
+    assert "openRouterRouting" not in resolved.adapter_options
+    assert "vercelGatewayRouting" not in resolved.adapter_options
 
 
 def test_resolve_request_merges_dynamic_model_transport_routing_with_endpoint() -> None:
@@ -1874,9 +1861,9 @@ def test_resolve_request_merges_dynamic_model_transport_routing_with_endpoint() 
             "vercelGateway": {"order": ["endpoint"]},
         }
     )
-    assert resolved.adapter_compat["supportsDeveloperRole"] is False
-    assert resolved.adapter_compat["supportsStrictMode"] is False
-    assert resolved.adapter_compat["maxTokensField"] == "max_completion_tokens"
+    assert resolved.adapter_options["supportsDeveloperRole"] is False
+    assert resolved.adapter_options["supportsStrictMode"] is False
+    assert resolved.adapter_options["maxTokensField"] == "max_completion_tokens"
     assert resolved.protocol.roles.developer is SupportStatus.UNSUPPORTED
     assert resolved.dialect.max_output_tokens_field == "max_completion_tokens"
 
@@ -1998,8 +1985,8 @@ def test_resolve_request_preserves_direct_overrides_when_region_switches() -> No
     )
 
     assert resolved.endpoint == "openai-completions-us"
-    assert resolved.adapter_compat["maxTokensField"] == "max_completion_tokens"
-    assert resolved.adapter_compat["thinkingFormat"] == "caller"
+    assert resolved.adapter_options["maxTokensField"] == "max_completion_tokens"
+    assert resolved.adapter_options["thinkingFormat"] == "caller"
     assert resolved.max_tokens == 123
     assert resolved.transport == EndpointTransport(kind=None, timeout=5)
     assert resolved.routing == EndpointRouting(
@@ -2317,10 +2304,10 @@ def test_bound_endpoint_snapshot_keeps_endpoint_defaults_separate_from_request()
     assert snapshot is not None
     assert snapshot.compat["supportsReasoningEffort"] is False
     assert snapshot.defaults["maxOutputTokens"] == 100
-    assert resolved_endpoint.adapter_compat["supportsReasoningEffort"] is False
+    assert resolved_endpoint.adapter_options["supportsReasoningEffort"] is False
     assert resolved_endpoint.defaults["maxOutputTokens"] == 100
     assert resolved_endpoint.protocol.roles.developer is SupportStatus.UNSUPPORTED
-    assert resolved_request.adapter_compat["supportsReasoningEffort"] is True
+    assert resolved_request.adapter_options["supportsReasoningEffort"] is True
     assert resolved_request.defaults["maxOutputTokens"] == 200
     assert resolved_request.max_tokens == 200
     assert resolved_request.protocol.reasoning.effort is SupportStatus.SUPPORTED
@@ -2649,14 +2636,14 @@ def test_resolve_request_uses_explicit_protocol_compat_bridge(tmp_path) -> None:
 
     resolved = resolve_request_for_model(model, registry=registry, env={})
 
-    assert resolved.adapter_compat["supportsStore"] is False
-    assert resolved.adapter_compat["supportsDeveloperRole"] is False
-    assert resolved.adapter_compat["supportsUsageInStreaming"] is False
-    assert resolved.adapter_compat["supportsReasoningEffort"] is True
-    assert resolved.adapter_compat["supportsStrictMode"] is False
-    assert resolved.adapter_compat["supportsStreamReasoningDelta"] is True
-    assert resolved.adapter_compat["supportsLongCacheRetention"] is False
-    assert resolved.adapter_compat["sendSessionAffinityHeaders"] is True
+    assert resolved.adapter_options["supportsStore"] is False
+    assert resolved.adapter_options["supportsDeveloperRole"] is False
+    assert resolved.adapter_options["supportsUsageInStreaming"] is False
+    assert resolved.adapter_options["supportsReasoningEffort"] is True
+    assert resolved.adapter_options["supportsStrictMode"] is False
+    assert resolved.adapter_options["supportsStreamReasoningDelta"] is True
+    assert resolved.adapter_options["supportsLongCacheRetention"] is False
+    assert resolved.adapter_options["sendSessionAffinityHeaders"] is True
     assert resolved.protocol.to_raw() == {
         "store": "unsupported",
         "roles": {"developer": "unsupported"},
@@ -2712,7 +2699,7 @@ def test_resolve_request_preserves_model_compat_override_over_endpoint_protocol(
     resolved = resolve_request_for_model(model, registry=registry, env={})
 
     assert model.compat["supportsReasoningEffort"] is True
-    assert resolved.adapter_compat["supportsReasoningEffort"] is True
+    assert resolved.adapter_options["supportsReasoningEffort"] is True
     assert resolved.protocol.to_raw()["reasoning"]["effort"] == "supported"
 
 
@@ -2765,16 +2752,16 @@ def test_resolve_request_uses_explicit_dialect_compat_bridge(tmp_path) -> None:
 
     resolved = resolve_request_for_model(model, registry=registry, env={})
 
-    assert resolved.adapter_compat["maxTokensField"] == "max_completion_tokens"
-    assert resolved.adapter_compat["requiresToolResultName"] is True
-    assert resolved.adapter_compat["requiresAssistantAfterToolResult"] is True
-    assert resolved.adapter_compat["requiresThinkingAsText"] is True
+    assert resolved.adapter_options["maxTokensField"] == "max_completion_tokens"
+    assert resolved.adapter_options["requiresToolResultName"] is True
+    assert resolved.adapter_options["requiresAssistantAfterToolResult"] is True
+    assert resolved.adapter_options["requiresThinkingAsText"] is True
     assert (
-        resolved.adapter_compat["requiresReasoningContentOnAssistantMessages"] is True
+        resolved.adapter_options["requiresReasoningContentOnAssistantMessages"] is True
     )
-    assert resolved.adapter_compat["thinkingFormat"] == "moonshot"
-    assert resolved.adapter_compat["zaiToolStream"] is False
-    assert resolved.adapter_compat["cacheControlFormat"] == "anthropic"
+    assert resolved.adapter_options["thinkingFormat"] == "moonshot"
+    assert resolved.adapter_options["zaiToolStream"] is False
+    assert resolved.adapter_options["cacheControlFormat"] == "anthropic"
     assert resolved.dialect.to_raw() == {
         "maxOutputTokensField": "max_completion_tokens",
         "tools": {
@@ -2832,7 +2819,7 @@ def test_resolve_request_preserves_model_compat_override_over_endpoint_dialect(
     resolved = resolve_request_for_model(model, registry=registry, env={})
 
     assert model.compat["thinkingFormat"] == "deepseek"
-    assert resolved.adapter_compat["thinkingFormat"] == "deepseek"
+    assert resolved.adapter_options["thinkingFormat"] == "deepseek"
     assert resolved.dialect.to_raw()["reasoning"]["wireFormat"] == "deepseek"
 
 
@@ -2876,9 +2863,9 @@ def test_resolve_request_preserves_openai_responses_protocol_bridge_keys(
 
     resolved = resolve_request_for_model(model, registry=registry, env={})
 
-    assert resolved.adapter_compat["supportsDeveloperRole"] is False
-    assert resolved.adapter_compat["supportsLongCacheRetention"] is False
-    assert resolved.adapter_compat["sendSessionIdHeader"] is False
+    assert resolved.adapter_options["supportsDeveloperRole"] is False
+    assert resolved.adapter_options["supportsLongCacheRetention"] is False
+    assert resolved.adapter_options["sendSessionIdHeader"] is False
     assert resolved.protocol.to_raw() == {
         "roles": {"developer": "unsupported"},
         "cache": {"longRetention": "unsupported"},
@@ -2933,9 +2920,9 @@ def test_resolve_request_treats_explicit_unknown_protocol_as_runtime_unsupported
     assert endpoint.protocol.store is SupportStatus.UNKNOWN
     assert endpoint.protocol.roles.developer is SupportStatus.UNKNOWN
     assert endpoint.protocol.tools.strict_schema is SupportStatus.UNKNOWN
-    assert resolved.adapter_compat["supportsStore"] is False
-    assert resolved.adapter_compat["supportsDeveloperRole"] is False
-    assert resolved.adapter_compat["supportsStrictMode"] is False
+    assert resolved.adapter_options["supportsStore"] is False
+    assert resolved.adapter_options["supportsDeveloperRole"] is False
+    assert resolved.adapter_options["supportsStrictMode"] is False
     assert resolved.protocol.store is SupportStatus.UNKNOWN
     assert resolved.protocol.roles.developer is SupportStatus.UNKNOWN
     assert resolved.protocol.tools.strict_schema is SupportStatus.UNKNOWN
@@ -2982,7 +2969,7 @@ def test_resolve_request_model_compat_false_overrides_endpoint_unknown_protocol(
 
     resolved = resolve_request_for_model(model, registry=registry, env={})
 
-    assert resolved.adapter_compat["supportsDeveloperRole"] is False
+    assert resolved.adapter_options["supportsDeveloperRole"] is False
     assert resolved.protocol.roles.developer is SupportStatus.UNSUPPORTED
 
 
@@ -3033,12 +3020,12 @@ def test_resolve_request_preserves_anthropic_protocol_bridge_keys(tmp_path) -> N
 
     resolved = resolve_request_for_model(model, registry=registry, env={})
 
-    assert resolved.adapter_compat["supportsEagerToolInputStreaming"] is False
-    assert resolved.adapter_compat["fineGrainedTools"] is True
-    assert resolved.adapter_compat["interleavedThinking"] is True
-    assert resolved.adapter_compat["supportsCacheControlOnTools"] is False
-    assert resolved.adapter_compat["supportsLongCacheRetention"] is False
-    assert resolved.adapter_compat["sendSessionAffinityHeaders"] is True
+    assert resolved.adapter_options["supportsEagerToolInputStreaming"] is False
+    assert resolved.adapter_options["fineGrainedTools"] is True
+    assert resolved.adapter_options["interleavedThinking"] is True
+    assert resolved.adapter_options["supportsCacheControlOnTools"] is False
+    assert resolved.adapter_options["supportsLongCacheRetention"] is False
+    assert resolved.adapter_options["sendSessionAffinityHeaders"] is True
     assert resolved.protocol.to_raw() == {
         "reasoning": {"interleaved": "supported"},
         "tools": {
@@ -3100,9 +3087,9 @@ def test_resolve_request_uses_legacy_transport_routing_as_typed_contract(
         "openrouter": {"only": ["anthropic"]},
         "vercelGateway": {"order": ["openai", "anthropic"]},
     }
-    assert "providerTransport" not in resolved.adapter_compat
-    assert "openRouterRouting" not in resolved.adapter_compat
-    assert "vercelGatewayRouting" not in resolved.adapter_compat
+    assert "providerTransport" not in resolved.adapter_options
+    assert "openRouterRouting" not in resolved.adapter_options
+    assert "vercelGatewayRouting" not in resolved.adapter_options
 
 
 def test_resolve_request_selects_matching_region_endpoint() -> None:
@@ -3177,8 +3164,8 @@ def test_resolve_request_selects_matching_region_endpoint() -> None:
     assert resolved.region == "us"
     assert resolved.base_url == "https://us.example/v1"
     assert resolved.headers["Authorization"] == "Bearer us-secret"
-    assert resolved.adapter_compat["maxTokensField"] == "max_completion_tokens"
-    assert resolved.adapter_compat["thinkingFormat"] == "moonshot"
+    assert resolved.adapter_options["maxTokensField"] == "max_completion_tokens"
+    assert resolved.adapter_options["thinkingFormat"] == "moonshot"
     assert resolved.transport == EndpointTransport(kind="sdk", timeout=20)
     assert resolved.routing == EndpointRouting(
         request_overrides={"openrouter": {"only": ["us"]}}
@@ -3339,8 +3326,8 @@ def test_resolve_request_preserves_bound_contract_overrides_when_region_switches
     assert resolved.endpoint == "openai-completions-us"
     assert resolved.protocol.roles.developer is SupportStatus.SUPPORTED
     assert resolved.dialect.max_output_tokens_field == "max_tokens"
-    assert resolved.adapter_compat["supportsDeveloperRole"] is True
-    assert resolved.adapter_compat["maxTokensField"] == "max_tokens"
+    assert resolved.adapter_options["supportsDeveloperRole"] is True
+    assert resolved.adapter_options["maxTokensField"] == "max_tokens"
     assert resolved.capabilities.supports_image_input is True
     assert resolved.capabilities.reasoning is True
     assert resolved.transport == EndpointTransport(kind="sdk", timeout=20)

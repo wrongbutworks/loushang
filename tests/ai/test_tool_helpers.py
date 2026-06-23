@@ -42,17 +42,19 @@ def test_compute_remaining_context_clamps_used_tokens_and_margin() -> None:
 
 def test_estimate_tokens_simple_from_messages_counts_visible_text() -> None:
     assert (
-        estimate_tokens_simple_from_messages([
-            {"content": "abcd"},
-            {"content": [{"text": "abcdefgh"}, {"text": 3}]},
-            {"content": {"text": "abcd"}},
-            SimpleNamespace(
-                content=[
-                    SimpleNamespace(text="abcdefghijkl"),
-                    SimpleNamespace(data="ignored"),
-                ]
-            ),
-        ])
+        estimate_tokens_simple_from_messages(
+            [
+                {"content": "abcd"},
+                {"content": [{"text": "abcdefgh"}, {"text": 3}]},
+                {"content": {"text": "abcd"}},
+                SimpleNamespace(
+                    content=[
+                        SimpleNamespace(text="abcdefghijkl"),
+                        SimpleNamespace(data="ignored"),
+                    ]
+                ),
+            ]
+        )
         == 7
     )
     assert estimate_tokens_simple_from_messages([{"content": []}]) == 0

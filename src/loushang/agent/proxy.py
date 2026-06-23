@@ -12,6 +12,7 @@ from loushang.agent.types import ProxyAssistantMessageEvent, ProxyStreamOptions
 from loushang.ai.event_stream.stream import AssistantMessageEventStream
 from loushang.ai.model import Model
 from loushang.ai.model.registry import resolve_model_api
+from loushang.ai.options import get_max_output_tokens
 from loushang.ai.types import (
     AssistantMessage,
     AssistantMessageEvent,
@@ -32,7 +33,9 @@ class _MutablePartialMessage:
     provider: str
     model: str
     timestamp: float
-    content: list[TextPart | ThinkingPart | ToolCall | ImagePart] = field(default_factory=list)
+    content: list[TextPart | ThinkingPart | ToolCall | ImagePart] = field(
+        default_factory=list
+    )
     stop_reason: str = "stop"
     response_id: str | None = None
     usage: Usage = field(
@@ -103,7 +106,9 @@ def stream_proxy(
                 try:
                     import httpx
                 except ImportError as exc:  # pragma: no cover
-                    raise RuntimeError("httpx is required for proxy streaming. Install via `pip install httpx`") from exc
+                    raise RuntimeError(
+                        "httpx is required for proxy streaming. Install via `pip install httpx`"
+                    ) from exc
                 owned_client = httpx.AsyncClient(base_url=options.proxy_url)
                 stream_client = owned_client
 
@@ -115,7 +120,7 @@ def stream_proxy(
                     "context": context,
                     "options": {
                         "temperature": options.temperature,
-                        "max_tokens": options.max_tokens,
+                        "max_tokens": get_max_output_tokens(options),
                         "reasoning": options.reasoning,
                     },
                 },
@@ -205,7 +210,11 @@ def _process_proxy_event(
     if event_type == "text_start":
         content_index = proxy_event["content_index"]
         _set_content(partial, content_index, TextPart(type="text", text=""))
-        return {"type": "text_start", "content_index": content_index, "partial": partial.snapshot()}
+        return {
+            "type": "text_start",
+            "content_index": content_index,
+            "partial": partial.snapshot(),
+        }
 
     if event_type == "text_delta":
         content_index = proxy_event["content_index"]
@@ -234,11 +243,17 @@ def _process_proxy_event(
     if event_type == "thinking_start":
         content_index = proxy_event["content_index"]
         _set_content(partial, content_index, ThinkingPart(type="thinking", thinking=""))
-        return {"type": "thinking_start", "content_index": content_index, "partial": partial.snapshot()}
+        return {
+            "type": "thinking_start",
+            "content_index": content_index,
+            "partial": partial.snapshot(),
+        }
 
     if event_type == "thinking_delta":
         content_index = proxy_event["content_index"]
-        content = _require_content_type(partial, content_index, ThinkingPart, "thinking_delta")
+        content = _require_content_type(
+            partial, content_index, ThinkingPart, "thinking_delta"
+        )
         updated = replace(content, thinking=content.thinking + proxy_event["delta"])
         _set_content(partial, content_index, updated)
         return {
@@ -250,8 +265,12 @@ def _process_proxy_event(
 
     if event_type == "thinking_end":
         content_index = proxy_event["content_index"]
-        content = _require_content_type(partial, content_index, ThinkingPart, "thinking_end")
-        updated = replace(content, thinking_signature=proxy_event.get("content_signature"))
+        content = _require_content_type(
+            partial, content_index, ThinkingPart, "thinking_end"
+        )
+        updated = replace(
+            content, thinking_signature=proxy_event.get("content_signature")
+        )
         _set_content(partial, content_index, updated)
         return {
             "type": "thinking_end",
@@ -273,12 +292,20 @@ def _process_proxy_event(
                 arguments={},
             ),
         )
-        return {"type": "toolcall_start", "content_index": content_index, "partial": partial.snapshot()}
+        return {
+            "type": "toolcall_start",
+            "content_index": content_index,
+            "partial": partial.snapshot(),
+        }
 
     if event_type == "toolcall_delta":
         content_index = proxy_event["content_index"]
-        content = _require_content_type(partial, content_index, ToolCall, "toolcall_delta")
-        partial_json = partial._toolcall_partial_json.get(content_index, "") + proxy_event["delta"]
+        content = _require_content_type(
+            partial, content_index, ToolCall, "toolcall_delta"
+        )
+        partial_json = (
+            partial._toolcall_partial_json.get(content_index, "") + proxy_event["delta"]
+        )
         partial._toolcall_partial_json[content_index] = partial_json
         arguments = _parse_streaming_json(partial_json) or content.arguments
         _set_content(partial, content_index, replace(content, arguments=arguments))
@@ -291,8 +318,13 @@ def _process_proxy_event(
 
     if event_type == "toolcall_end":
         content_index = proxy_event["content_index"]
-        content = _require_content_type(partial, content_index, ToolCall, "toolcall_end")
-        full_arguments = _parse_streaming_json(partial._toolcall_partial_json.get(content_index, "")) or content.arguments
+        content = _require_content_type(
+            partial, content_index, ToolCall, "toolcall_end"
+        )
+        full_arguments = (
+            _parse_streaming_json(partial._toolcall_partial_json.get(content_index, ""))
+            or content.arguments
+        )
         final_call = replace(content, arguments=full_arguments)
         _set_content(partial, content_index, final_call)
         partial._toolcall_partial_json.pop(content_index, None)
@@ -334,10 +366,14 @@ def _usage_from_proxy_value(value: object) -> Usage:
             output=_int_value(value.get("output")),
             cache_read=_int_value(value.get("cache_read", value.get("cacheRead"))),
             cache_write=_int_value(value.get("cache_write", value.get("cacheWrite"))),
-            total_tokens=_int_value(value.get("total_tokens", value.get("totalTokens"))),
+            total_tokens=_int_value(
+                value.get("total_tokens", value.get("totalTokens"))
+            ),
             cost=_usage_cost_from_proxy_value(value.get("cost")),
         )
-    return Usage(input=0, output=0, cache_read=0, cache_write=0, total_tokens=0, cost=None)
+    return Usage(
+        input=0, output=0, cache_read=0, cache_write=0, total_tokens=0, cost=None
+    )
 
 
 def _usage_cost_from_proxy_value(value: object) -> UsageCost | None:
@@ -401,6 +437,7 @@ def _attach_abort_listener(
     add_event_listener = getattr(signal, "addEventListener", None)
     remove_event_listener = getattr(signal, "removeEventListener", None)
     if callable(add_event_listener) and callable(remove_event_listener):
+
         def _on_abort(*_args: object) -> None:
             on_abort()
 
@@ -410,6 +447,7 @@ def _attach_abort_listener(
     add_event_listener = getattr(signal, "add_event_listener", None)
     remove_event_listener = getattr(signal, "remove_event_listener", None)
     if callable(add_event_listener) and callable(remove_event_listener):
+
         def _on_abort(*_args: object) -> None:
             on_abort()
 
@@ -419,19 +457,29 @@ def _attach_abort_listener(
     return lambda: None
 
 
-def _set_content(partial: _MutablePartialMessage, index: int, content: TextPart | ThinkingPart | ToolCall | ImagePart) -> None:
+def _set_content(
+    partial: _MutablePartialMessage,
+    index: int,
+    content: TextPart | ThinkingPart | ToolCall | ImagePart,
+) -> None:
     while len(partial.content) <= index:
         partial.content.append(TextPart(type="text", text=""))
     partial.content[index] = content
 
 
-def _require_content_type(partial: _MutablePartialMessage, index: int, expected_type: type, event_name: str):
+def _require_content_type(
+    partial: _MutablePartialMessage, index: int, expected_type: type, event_name: str
+):
     try:
         content = partial.content[index]
     except IndexError as exc:
-        raise ValueError(f"Received {event_name} for missing content index {index}") from exc
+        raise ValueError(
+            f"Received {event_name} for missing content index {index}"
+        ) from exc
     if not isinstance(content, expected_type):
-        raise ValueError(f"Received {event_name} for unexpected content type {type(content).__name__}")
+        raise ValueError(
+            f"Received {event_name} for unexpected content type {type(content).__name__}"
+        )
     return content
 
 
@@ -445,7 +493,9 @@ def _parse_streaming_json(value: str) -> dict[str, Any] | None:
     return parsed if isinstance(parsed, dict) else None
 
 
-def _is_terminal_proxy_event(proxy_event: ProxyAssistantMessageEvent | dict[str, Any]) -> bool:
+def _is_terminal_proxy_event(
+    proxy_event: ProxyAssistantMessageEvent | dict[str, Any],
+) -> bool:
     return proxy_event["type"] in {"done", "error"}
 
 

@@ -643,7 +643,7 @@ def _validate_typed_schema_version(
                             "models registry field requires schemaVersion 2 or newer: "
                             f"providers.{provider_id}.endpoints."
                             f"{endpoint_key}.models.{model_id}.{field}"
-            )
+                        )
 
 
 def _validate_openai_compatible_endpoint_contract(

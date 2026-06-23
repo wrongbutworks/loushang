@@ -41,7 +41,9 @@ def _model() -> Model:
 
 
 def test_public_types_are_exported() -> None:
-    assert isinstance(AgentState(system_prompt="", model=_model(), thinking_level="off"), AgentState)
+    assert isinstance(
+        AgentState(system_prompt="", model=_model(), thinking_level="off"), AgentState
+    )
     assert is_dataclass(AgentContext)
     assert is_dataclass(AgentLoopConfig)
     assert is_dataclass(AgentOptions)
@@ -55,7 +57,14 @@ def test_public_types_are_exported() -> None:
 
 def test_public_literal_and_union_types_are_defined() -> None:
     assert set(get_args(ToolExecutionMode)) == {"sequential", "parallel"}
-    assert set(get_args(ThinkingLevel)) == {"off", "minimal", "low", "medium", "high", "xhigh"}
+    assert set(get_args(ThinkingLevel)) == {
+        "off",
+        "minimal",
+        "low",
+        "medium",
+        "high",
+        "xhigh",
+    }
     assert get_args(AgentMessage)
     assert get_args(AgentEvent)
     assert get_args(ProxyAssistantMessageEvent)
