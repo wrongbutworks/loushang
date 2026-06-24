@@ -1,9 +1,14 @@
 from __future__ import annotations
 
 import json
+from dataclasses import fields
+
+import pytest
 
 
-def test_settings_manager_loads_global_and_project_settings_with_project_precedence(tmp_path) -> None:
+def test_settings_manager_loads_global_and_project_settings_with_project_precedence(
+    tmp_path,
+) -> None:
     from loushang.coding.control import SettingsManager
 
     global_settings_path = tmp_path / "global-settings.json"
@@ -14,7 +19,11 @@ def test_settings_manager_loads_global_and_project_settings_with_project_precede
             {
                 "default_model": {"provider": "faux", "model_id": "alpha"},
                 "thinking_level": "minimal",
-                "compaction": {"enabled": False, "compact_percent": 75, "reserve_tokens": 2048},
+                "compaction": {
+                    "enabled": False,
+                    "compact_percent": 75,
+                    "reserve_tokens": 2048,
+                },
                 "session_dir": "/tmp/global-sessions",
                 "resource_roots": ["/tmp/global-resources"],
                 "package_roots": ["/tmp/global-packages"],
@@ -68,7 +77,9 @@ def test_settings_manager_loads_global_and_project_settings_with_project_precede
     }
 
 
-def test_settings_manager_loads_method_settings_with_project_precedence(tmp_path) -> None:
+def test_settings_manager_loads_method_settings_with_project_precedence(
+    tmp_path,
+) -> None:
     from loushang.coding.control import MethodSettings, SettingsManager
 
     global_settings_path = tmp_path / "global-settings.json"
@@ -87,8 +98,12 @@ def test_settings_manager_loads_method_settings_with_project_precedence(tmp_path
         project_settings_path=project_settings_path,
     )
 
-    assert manager.get_settings().method == MethodSettings(mode="explicit", selected_method="debug")
-    assert manager.get_method_settings() == MethodSettings(mode="explicit", selected_method="debug")
+    assert manager.get_settings().method == MethodSettings(
+        mode="explicit", selected_method="debug"
+    )
+    assert manager.get_method_settings() == MethodSettings(
+        mode="explicit", selected_method="debug"
+    )
 
 
 def test_settings_manager_persists_method_settings_updates(tmp_path) -> None:
@@ -120,10 +135,14 @@ def test_settings_manager_persists_method_settings_updates(tmp_path) -> None:
     assert reloaded.get_project_settings() == {
         "method": {"mode": "off", "selected_method": None}
     }
-    assert reloaded.get_method_settings() == MethodSettings(mode="off", selected_method=None)
+    assert reloaded.get_method_settings() == MethodSettings(
+        mode="off", selected_method=None
+    )
 
 
-def test_settings_manager_loads_statusline_settings_with_project_precedence(tmp_path) -> None:
+def test_settings_manager_loads_statusline_settings_with_project_precedence(
+    tmp_path,
+) -> None:
     from loushang.coding.control import SettingsManager, StatusLineControlSettings
 
     global_settings_path = tmp_path / "global-settings.json"
@@ -211,7 +230,9 @@ def test_settings_manager_persists_statusline_settings_updates(tmp_path) -> None
     )
 
 
-def test_settings_manager_ignores_invalid_statusline_patch_without_dropping_other_settings(tmp_path) -> None:
+def test_settings_manager_ignores_invalid_statusline_patch_without_dropping_other_settings(
+    tmp_path,
+) -> None:
     from loushang.coding.control import SettingsManager, StatusLineControlSettings
 
     settings_path = tmp_path / "settings.json"
@@ -238,7 +259,9 @@ def test_settings_manager_ignores_invalid_statusline_patch_without_dropping_othe
     assert "statusline.queue" in errors[0].message
 
 
-def test_settings_manager_persists_scoped_updates_and_notifies_subscribers(tmp_path) -> None:
+def test_settings_manager_persists_scoped_updates_and_notifies_subscribers(
+    tmp_path,
+) -> None:
     from loushang.coding.control import (
         BranchSummarySettings,
         CompactionSettings,
@@ -265,7 +288,6 @@ def test_settings_manager_persists_scoped_updates_and_notifies_subscribers(tmp_p
         thinking_level="high",
         steering_mode="all",
         follow_up_mode="all",
-        transport="auto",
         theme="solarized",
         hide_thinking_block=True,
         shell_path="/bin/zsh",
@@ -276,8 +298,15 @@ def test_settings_manager_persists_scoped_updates_and_notifies_subscribers(tmp_p
         enable_install_telemetry=False,
         enable_skill_commands=False,
         thinking_budgets={"minimal": 512, "low": 1024, "medium": 2048, "high": 4096},
-        compaction=CompactionSettings(enabled=False, compact_percent=75, reserve_tokens=2048, keep_recent_tokens=8192),
-        branch_summary=BranchSummarySettings(enabled=False, reserve_tokens=4096, skip_prompt=True),
+        compaction=CompactionSettings(
+            enabled=False,
+            compact_percent=75,
+            reserve_tokens=2048,
+            keep_recent_tokens=8192,
+        ),
+        branch_summary=BranchSummarySettings(
+            enabled=False, reserve_tokens=4096, skip_prompt=True
+        ),
         tools=ToolSettings(
             external_tool_policy="never",
             blocked_tools=("bash",),
@@ -296,7 +325,9 @@ def test_settings_manager_persists_scoped_updates_and_notifies_subscribers(tmp_p
             clear_on_shrink=True,
             show_terminal_progress=True,
         ),
-        statusline=StatusLineControlSettings(enabled=False, queue="true", style="muted"),
+        statusline=StatusLineControlSettings(
+            enabled=False, queue="true", style="muted"
+        ),
         markdown=MarkdownSettings(code_block_indent="    "),
         warnings=WarningSettings(anthropic_extra_usage=False),
         package_roots=("/tmp/shared-packages",),
@@ -329,13 +360,18 @@ def test_settings_manager_persists_scoped_updates_and_notifies_subscribers(tmp_p
     assert reloaded.get_settings().thinking_level == "high"
     assert reloaded.get_settings().steering_mode == "all"
     assert reloaded.get_settings().follow_up_mode == "all"
-    assert reloaded.get_settings().transport == "auto"
     assert reloaded.get_settings().theme == "solarized"
     assert reloaded.get_settings().hide_thinking_block is True
     assert reloaded.get_settings().shell_path == "/bin/zsh"
     assert reloaded.get_settings().quiet_startup is True
     assert reloaded.get_settings().shell_command_prefix == "set -e"
-    assert reloaded.get_settings().npm_command == ("mise", "exec", "node@20", "--", "npm")
+    assert reloaded.get_settings().npm_command == (
+        "mise",
+        "exec",
+        "node@20",
+        "--",
+        "npm",
+    )
     assert reloaded.get_settings().collapse_changelog is True
     assert reloaded.get_settings().enable_install_telemetry is False
     assert reloaded.get_settings().enable_skill_commands is False
@@ -345,8 +381,12 @@ def test_settings_manager_persists_scoped_updates_and_notifies_subscribers(tmp_p
         "medium": 2048,
         "high": 4096,
     }
-    assert reloaded.get_settings().compaction == CompactionSettings(enabled=False, compact_percent=75, reserve_tokens=2048, keep_recent_tokens=8192)
-    assert reloaded.get_settings().branch_summary == BranchSummarySettings(enabled=False, reserve_tokens=4096, skip_prompt=True)
+    assert reloaded.get_settings().compaction == CompactionSettings(
+        enabled=False, compact_percent=75, reserve_tokens=2048, keep_recent_tokens=8192
+    )
+    assert reloaded.get_settings().branch_summary == BranchSummarySettings(
+        enabled=False, reserve_tokens=4096, skip_prompt=True
+    )
     assert reloaded.get_settings().tools == ToolSettings(
         external_tool_policy="never",
         blocked_tools=("bash",),
@@ -358,16 +398,24 @@ def test_settings_manager_persists_scoped_updates_and_notifies_subscribers(tmp_p
         approval_mode="allow",
         approval_reason="trusted headless run",
     )
-    assert reloaded.get_settings().images == ImageSettings(auto_resize=False, block_images=True)
+    assert reloaded.get_settings().images == ImageSettings(
+        auto_resize=False, block_images=True
+    )
     assert reloaded.get_settings().terminal == TerminalSettings(
         show_images=False,
         image_width_cells=42,
         clear_on_shrink=True,
         show_terminal_progress=True,
     )
-    assert reloaded.get_settings().statusline == StatusLineControlSettings(enabled=False, queue="true", style="muted")
-    assert reloaded.get_settings().markdown == MarkdownSettings(code_block_indent="    ")
-    assert reloaded.get_settings().warnings == WarningSettings(anthropic_extra_usage=False)
+    assert reloaded.get_settings().statusline == StatusLineControlSettings(
+        enabled=False, queue="true", style="muted"
+    )
+    assert reloaded.get_settings().markdown == MarkdownSettings(
+        code_block_indent="    "
+    )
+    assert reloaded.get_settings().warnings == WarningSettings(
+        anthropic_extra_usage=False
+    )
     assert reloaded.get_settings().package_roots == ("/tmp/shared-packages",)
     assert reloaded.get_settings().plugin_sources == ("/tmp/shared-plugins/debug-pack",)
     assert reloaded.get_settings().disabled_skills == ("debug",)
@@ -382,34 +430,59 @@ def test_settings_manager_persists_scoped_updates_and_notifies_subscribers(tmp_p
     assert seen[-1] == manager.get_settings()
 
 
-def test_settings_manager_package_source_add_remove_uses_package_identity(tmp_path) -> None:
+def test_settings_manager_package_source_add_remove_uses_package_identity(
+    tmp_path,
+) -> None:
     from loushang.coding.control import SettingsManager
 
     settings_path = tmp_path / "settings.json"
     manager = SettingsManager(global_settings_path=settings_path)
 
-    assert manager.add_package_source("pypi:acme-review-pack==1.2.3", scope="global") is True
-    assert manager.add_package_source("pypi:acme-review-pack==1.3.0", scope="global") is False
-    assert manager.add_package_source("git:github.com/acme/review-pack@v1", scope="global") is True
-    assert manager.add_package_source("git+https://github.com/acme/review-pack#main", scope="global") is False
+    assert (
+        manager.add_package_source("pypi:acme-review-pack==1.2.3", scope="global")
+        is True
+    )
+    assert (
+        manager.add_package_source("pypi:acme-review-pack==1.3.0", scope="global")
+        is False
+    )
+    assert (
+        manager.add_package_source("git:github.com/acme/review-pack@v1", scope="global")
+        is True
+    )
+    assert (
+        manager.add_package_source(
+            "git+https://github.com/acme/review-pack#main", scope="global"
+        )
+        is False
+    )
     assert [source.source for source in manager.get_package_sources()] == [
         "pypi:acme-review-pack==1.2.3",
         "git:github.com/acme/review-pack@v1",
     ]
 
-    assert manager.remove_package_source("pypi:acme-review-pack==1.3.0", scope="global") is True
-    assert manager.remove_package_source("git+https://github.com/acme/review-pack#main", scope="global") is True
+    assert (
+        manager.remove_package_source("pypi:acme-review-pack==1.3.0", scope="global")
+        is True
+    )
+    assert (
+        manager.remove_package_source(
+            "git+https://github.com/acme/review-pack#main", scope="global"
+        )
+        is True
+    )
     assert manager.get_package_sources() == []
 
 
-def test_settings_manager_exposes_pi_style_control_getters_and_setters(tmp_path) -> None:
+def test_settings_manager_exposes_pi_style_control_getters_and_setters(
+    tmp_path,
+) -> None:
     from loushang.coding.control import SettingsManager
 
     settings_path = tmp_path / "settings.json"
     manager = SettingsManager(global_settings_path=settings_path)
 
     manager.set_theme("night")
-    manager.set_transport("websocket")
     manager.set_hide_thinking_block(True)
     manager.set_shell_path("/bin/fish")
     manager.set_quiet_startup(True)
@@ -431,14 +504,21 @@ def test_settings_manager_exposes_pi_style_control_getters_and_setters(tmp_path)
     manager.set_editor_padding_x(12)
     manager.set_autocomplete_max_visible(99)
     manager.set_external_tool_policy("required")
-    manager.update_settings(scope="global", branch_summary={"skip_prompt": True}, markdown={"code_block_indent": "\t"})
+    manager.update_settings(
+        scope="global",
+        branch_summary={"skip_prompt": True},
+        markdown={"code_block_indent": "\t"},
+    )
     manager.update_settings(scope="global", warnings={"anthropic_extra_usage": False})
-    manager.update_settings(scope="global", thinking_budgets={"low": 1000}, retry={"provider_max_retry_delay_ms": 7})
+    manager.update_settings(
+        scope="global",
+        thinking_budgets={"low": 1000},
+        retry={"provider_max_retry_delay_ms": 7},
+    )
 
     reloaded = SettingsManager(global_settings_path=settings_path)
     settings = reloaded.get_settings()
     assert reloaded.get_theme() == "night"
-    assert reloaded.get_transport() == "websocket"
     assert reloaded.get_hide_thinking_block() is True
     assert reloaded.get_shell_path() == "/bin/fish"
     assert reloaded.get_quiet_startup() is True
@@ -473,7 +553,57 @@ def test_settings_manager_exposes_pi_style_control_getters_and_setters(tmp_path)
     assert reloaded.get_warnings() == settings.warnings
 
 
-def test_settings_manager_control_getters_apply_pi_style_defaults_and_bounds(tmp_path, monkeypatch) -> None:
+def test_settings_manager_transport_setting_is_removed() -> None:
+    from loushang.coding.control import ControlConfig, SettingsManager
+
+    manager = SettingsManager()
+
+    assert "transport" not in {field.name for field in fields(ControlConfig)}
+    assert not hasattr(manager, "get_transport")
+    assert not hasattr(manager, "set_transport")
+    with pytest.raises(TypeError, match="transport"):
+        manager.update_settings(transport="websocket")  # type: ignore[call-arg]
+
+    manager.apply_overrides({"transport": "websocket"})
+    assert not hasattr(manager.get_settings(), "transport")
+    errors = manager.drain_errors()
+    assert len(errors) == 1
+    assert errors[0].scope == "session"
+    assert "transport setting has been removed" in errors[0].message
+
+
+def test_settings_manager_reports_persisted_removed_transport_setting(tmp_path) -> None:
+    from loushang.coding.control import SettingsManager
+
+    global_settings_path = tmp_path / "global-settings.json"
+    global_settings_path.write_text(
+        json.dumps({"transport": "websocket", "theme": "night"}),
+        encoding="utf-8",
+    )
+
+    manager = SettingsManager(global_settings_path=global_settings_path)
+
+    assert manager.get_settings().theme == "night"
+    assert not hasattr(manager.get_settings(), "transport")
+    assert manager.get_global_settings() == {
+        "transport": "websocket",
+        "theme": "night",
+    }
+    errors = manager.drain_errors()
+    assert len(errors) == 1
+    assert errors[0].scope == "global"
+    assert "transport setting has been removed" in errors[0].message
+
+    manager.reload()
+    errors = manager.drain_errors()
+    assert len(errors) == 1
+    assert errors[0].scope == "global"
+    assert "transport setting has been removed" in errors[0].message
+
+
+def test_settings_manager_control_getters_apply_pi_style_defaults_and_bounds(
+    tmp_path, monkeypatch
+) -> None:
     from loushang.coding.control import SettingsManager
 
     monkeypatch.delenv("PI_HARDWARE_CURSOR", raising=False)
@@ -501,7 +631,9 @@ def test_settings_manager_control_getters_apply_pi_style_defaults_and_bounds(tmp
     assert manager.get_autocomplete_max_visible() == 3
 
 
-def test_settings_manager_exposes_resource_and_package_source_getters_and_setters(tmp_path) -> None:
+def test_settings_manager_exposes_resource_and_package_source_getters_and_setters(
+    tmp_path,
+) -> None:
     from loushang.coding.control import SettingsManager
     from loushang.coding.package import PackageSourceConfig
 
@@ -562,8 +694,12 @@ def test_settings_manager_exposes_scope_patch_snapshots(tmp_path) -> None:
 
     global_settings_path = tmp_path / "global-settings.json"
     project_settings_path = tmp_path / "project-settings.json"
-    global_settings_path.write_text(json.dumps({"thinking_level": "minimal"}), encoding="utf-8")
-    project_settings_path.write_text(json.dumps({"system_prompt": "Project prompt."}), encoding="utf-8")
+    global_settings_path.write_text(
+        json.dumps({"thinking_level": "minimal"}), encoding="utf-8"
+    )
+    project_settings_path.write_text(
+        json.dumps({"system_prompt": "Project prompt."}), encoding="utf-8"
+    )
 
     manager = SettingsManager(
         global_settings_path=global_settings_path,
@@ -580,7 +716,9 @@ def test_settings_manager_exposes_scope_patch_snapshots(tmp_path) -> None:
 
     assert manager.get_global_settings() == {"thinking_level": "minimal"}
     assert manager.get_project_settings() == {"system_prompt": "Project prompt."}
-    assert manager.get_session_settings() == {"resource_roots": ["/tmp/session-resources"]}
+    assert manager.get_session_settings() == {
+        "resource_roots": ["/tmp/session-resources"]
+    }
 
 
 def test_settings_manager_records_load_errors_without_failing_startup(tmp_path) -> None:
@@ -589,7 +727,9 @@ def test_settings_manager_records_load_errors_without_failing_startup(tmp_path) 
     global_settings_path = tmp_path / "global-settings.json"
     project_settings_path = tmp_path / "project-settings.json"
     global_settings_path.write_text("{not-json", encoding="utf-8")
-    project_settings_path.write_text(json.dumps({"thinking_level": "high"}), encoding="utf-8")
+    project_settings_path.write_text(
+        json.dumps({"thinking_level": "high"}), encoding="utf-8"
+    )
 
     manager = SettingsManager(
         global_settings_path=global_settings_path,
@@ -604,11 +744,15 @@ def test_settings_manager_records_load_errors_without_failing_startup(tmp_path) 
     assert manager.drain_errors() == []
 
 
-def test_settings_manager_reload_preserves_previous_scope_when_reload_fails(tmp_path) -> None:
+def test_settings_manager_reload_preserves_previous_scope_when_reload_fails(
+    tmp_path,
+) -> None:
     from loushang.coding.control import SettingsManager
 
     project_settings_path = tmp_path / "project-settings.json"
-    project_settings_path.write_text(json.dumps({"system_prompt": "before"}), encoding="utf-8")
+    project_settings_path.write_text(
+        json.dumps({"system_prompt": "before"}), encoding="utf-8"
+    )
     manager = SettingsManager(project_settings_path=project_settings_path)
 
     project_settings_path.write_text("{not-json", encoding="utf-8")

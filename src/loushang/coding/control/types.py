@@ -1,10 +1,9 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Literal
+from typing import Literal, TypedDict
 
 from loushang.agent import ThinkingLevel
-from loushang.ai.options import ThinkingBudgets, Transport
 from loushang.coding.package import PackageSourceConfig
 from loushang.coding.types import ModelSelection
 
@@ -17,6 +16,13 @@ StatusLineAutoValue = Literal["auto", "true", "false"]
 StatusLineSeparator = Literal["pipe", "dot"]
 StatusLineStyle = Literal["codex-like", "muted", "plain"]
 KeybindingValue = str | tuple[str, ...] | None
+
+
+class ThinkingBudgetMap(TypedDict, total=False):
+    minimal: int
+    low: int
+    medium: int
+    high: int
 
 
 @dataclass(frozen=True)
@@ -107,7 +113,6 @@ class ControlConfig:
     thinking_level: ThinkingLevel = "off"
     steering_mode: QueueMode = "one-at-a-time"
     follow_up_mode: QueueMode = "one-at-a-time"
-    transport: Transport = "sse"
     theme: str | None = None
     system_prompt: str = ""
     hide_thinking_block: bool = False
@@ -125,7 +130,7 @@ class ControlConfig:
     editor_padding_x: int = 0
     autocomplete_max_visible: int = 5
     keybindings: dict[str, KeybindingValue] = field(default_factory=dict)
-    thinking_budgets: ThinkingBudgets | None = None
+    thinking_budgets: ThinkingBudgetMap | None = None
     compaction: CompactionSettings = field(default_factory=CompactionSettings)
     branch_summary: BranchSummarySettings = field(default_factory=BranchSummarySettings)
     retry: RetrySettings = field(default_factory=RetrySettings)
@@ -162,6 +167,7 @@ __all__ = [
     "StatusLineSeparator",
     "StatusLineStyle",
     "TerminalSettings",
+    "ThinkingBudgetMap",
     "ToolSettings",
     "TreeFilterMode",
     "WarningSettings",

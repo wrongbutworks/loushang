@@ -15,9 +15,10 @@ from collections.abc import Iterable
 import pytest
 
 from loushang.ai import (
+    CallOptions,
     get_model,
+    stream,
 )
-from loushang.ai.advanced import AnthropicOptions
 
 # 用户可直接修改的配置。
 # `API_KEY` 是显式认证入口；环境变量只是可选读取来源。
@@ -61,9 +62,9 @@ def _build_context() -> dict:
     }
 
 
-def _build_options(api_key: str) -> AnthropicOptions:
+def _build_options(api_key: str) -> CallOptions:
     # 这里保留最小必要选项，方便观察 stream 本身而不是 options 细节。
-    return AnthropicOptions(api_key=api_key, max_tokens=MAX_TOKENS)
+    return CallOptions(api_key=api_key, max_output_tokens=MAX_TOKENS)
 
 
 def _iter_text(parts: Iterable[object]) -> str:
@@ -80,7 +81,8 @@ async def _main() -> None:
     model = get_model(PROVIDER_ID, ENDPOINT_ID, MODEL_ID)
 
     # 先拿事件流，再逐个消费事件，最后通过 result() 拼装最终消息。
-    event_stream = await model.stream(
+    event_stream = await stream(
+        model,
         _build_context(),
         _build_options(api_key),
     )

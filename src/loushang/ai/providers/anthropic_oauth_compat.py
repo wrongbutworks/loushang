@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 
-class AnthropicOAuthCompat:
+class AnthropicOAuthBridge:
     SDK_USER_AGENT = "loushang-ai"
     SDK_APP_ID = "sdk"
     _BETA_FEATURES = (

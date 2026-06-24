@@ -1,13 +1,13 @@
 from __future__ import annotations
 
-from loushang.ai.cli.codex_auth import get_codex_cli_oauth_credentials
+from loushang.ai.contrib.openai_codex import get_codex_cli_oauth_credentials
 
 
 def test_get_codex_cli_oauth_credentials_reads_chatgpt_auth_payload(
     monkeypatch,
 ) -> None:
     monkeypatch.setattr(
-        "loushang.ai.cli.codex_auth.load_codex_cli_auth",
+        "loushang.ai.contrib.openai_codex.codex_cli_auth.load_codex_cli_auth",
         lambda: {
             "auth_mode": "chatgpt",
             "tokens": {
@@ -36,7 +36,7 @@ def test_get_codex_cli_oauth_credentials_ignores_non_chatgpt_auth_mode(
     monkeypatch,
 ) -> None:
     monkeypatch.setattr(
-        "loushang.ai.cli.codex_auth.load_codex_cli_auth",
+        "loushang.ai.contrib.openai_codex.codex_cli_auth.load_codex_cli_auth",
         lambda: {
             "auth_mode": "apiKey",
             "OPENAI_API_KEY": "sk-test",

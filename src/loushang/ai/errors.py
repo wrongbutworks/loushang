@@ -5,6 +5,7 @@ from dataclasses import dataclass, field
 from enum import Enum
 from typing import Self
 
+from loushang.ai.utils.redaction import is_sensitive_key
 from loushang.observability.problem import (
     JSONValue,
     ensure_json_safe_mapping,
@@ -12,19 +13,6 @@ from loushang.observability.problem import (
 )
 
 _REDACTED = "[redacted]"
-_SENSITIVE_KEY_MARKERS = (
-    "apikey",
-    "api-key",
-    "authorization",
-    "credential",
-    "cookie",
-    "oauth",
-    "password",
-    "refreshtoken",
-    "refresh-token",
-    "secret",
-    "token",
-)
 
 
 class AIErrorCode(str, Enum):
@@ -246,7 +234,7 @@ def ai_error_info_from_mapping(raw: Mapping[str, object]) -> AIErrorInfo:
 
 
 def _redact_json_value(value: JSONValue, *, key: str | None = None) -> JSONValue:
-    if key is not None and _is_sensitive_key(key):
+    if key is not None and is_sensitive_key(key):
         return _REDACTED
     if isinstance(value, dict):
         return {
@@ -260,14 +248,6 @@ def _redact_json_value(value: JSONValue, *, key: str | None = None) -> JSONValue
 
 def _redact_json_mapping(value: Mapping[str, JSONValue]) -> dict[str, JSONValue]:
     return {key: _redact_json_value(item, key=key) for key, item in value.items()}
-
-
-def _is_sensitive_key(key: str) -> bool:
-    normalized = key.lower().replace("_", "").replace(" ", "")
-    dashed = key.lower().replace("_", "-").replace(" ", "-")
-    return any(
-        marker in normalized or marker in dashed for marker in _SENSITIVE_KEY_MARKERS
-    )
 
 
 def _http_status_code(value: object) -> int | None:

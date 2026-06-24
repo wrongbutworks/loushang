@@ -3,12 +3,13 @@ from __future__ import annotations
 from collections.abc import Mapping, Sequence
 
 from loushang.agent import AgentMessage
-from loushang.ai import Context, complete_simple
+from loushang.ai import CallOptions, Context
 from loushang.ai.types import TextPart, UserMessage
 from loushang.coding.compaction.compaction import (
     SUMMARIZATION_SYSTEM_PROMPT,
     _build_summarization_prompt,
     _collect_file_operation_details,
+    _complete_text,
     _entry_to_agent_message,
     _estimate_message_tokens,
     _format_file_operations,
@@ -127,8 +128,6 @@ async def generate_branch_summary(
     replace_instructions: bool = False,
     reserve_tokens: int = 16_384,
 ) -> BranchSummaryResult:
-    del api_key, headers
-
     if _is_aborted(signal):
         return BranchSummaryResult(aborted=True)
 
@@ -141,7 +140,7 @@ async def generate_branch_summary(
             custom_instructions=custom_instructions,
             replace_instructions=replace_instructions,
         )
-        summary = await complete_simple(
+        summary = await _complete_text(
             model,
             Context(
                 system_prompt=SUMMARIZATION_SYSTEM_PROMPT,
@@ -152,6 +151,11 @@ async def generate_branch_summary(
                         timestamp=0.0,
                     )
                 ],
+            ),
+            CallOptions(
+                api_key=api_key,
+                headers=dict(headers or {}),
+                cancellation=signal,
             ),
         )
         if _is_aborted(signal):

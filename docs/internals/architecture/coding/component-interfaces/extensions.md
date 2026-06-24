@@ -27,7 +27,6 @@
 - `emit_session_event(...)`
 - `emit_event(...)`
 - `emit_before_agent_start(...)`
-- `emit_before_provider_request(...)`
 - `emit_input(...)`
 - `emit_tool_call(...)`
 - `emit_tool_result(...)`
@@ -58,7 +57,6 @@
 - agent lifecycle event payloads: `agent_start` / `agent_end` / `turn_start` / `turn_end` /
   `message_start` / `message_update` / `message_end` / `tool_execution_start` /
   `tool_execution_update` / `tool_execution_end`
-- provider hook payloads: `before_provider_request` / `after_provider_response`
 - user shell hook payloads: `user_bash`
 - model hook payloads: `model_select`
 
@@ -103,11 +101,6 @@
   返回 `systemPrompt` 覆盖、`systemPromptAppend` 追加，或返回 custom messages 注入本轮 agent prompt
 - prompt 级 `before_agent_start` 的多扩展执行按注册顺序串行；后续 handler 看到前序 handler 修改后的 system prompt，
   diagnostics 回收进 extension diagnostics，hook 异常进入 runtime error sink
-- `before_provider_request` 对齐 `reference CLI` 的 provider payload replacement 语义：多个 handler 按注册顺序串行，
-  非 `None` 返回值作为下一个 provider payload；hook 异常只记录 diagnostics/runtime error，不阻断模型请求
-- `after_provider_response` 通过 `StreamOptions.on_response` 从 AI provider 桥接到 `AgentSession`，
-  再由 `ExtensionRunner.emit_after_provider_response()` 发出；payload 保留原始 response，
-  并标准化 `status` / `headers` 供扩展读取
 - `user_bash` 对齐 `reference CLI` 的用户 shell 拦截面：`execute_bash()` 在默认 bash tool 执行前发出事件；
   handler 可返回 `{ result: ... }` 直接替换执行结果并写入 session context，也可返回 `{ operations: ... }`
   让默认 bash 执行链继续运行但切换到自定义后端

@@ -157,8 +157,6 @@
 
 - `stream`
 - `complete`
-- `stream_simple`
-- `complete_simple`
 - model registry 查询
 - api registry 查询/注册
 
@@ -174,8 +172,6 @@
 
 - `stream`
 - `complete`
-- `stream_simple`
-- `complete_simple`
 - `get_model`
 - `list_models`
 - `get_providers`
@@ -216,7 +212,7 @@
 
 它负责：
 
-- 将统一 `Context + Model + StreamOptions` 翻译为 provider 请求
+- 将统一 `Context + Model + CallOptions` 翻译为 provider 请求
 - 选择应用协议族
 - 选择实现载体
 - 发起 SDK 或 HTTP 请求

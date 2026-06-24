@@ -27,7 +27,7 @@ class _TraceProvider:
     def __init__(self) -> None:
         self.attempts = 0
 
-    async def stream_raw(self, request: ProviderRequest):
+    async def invoke_raw(self, request: ProviderRequest):
         self.attempts += 1
         emit_trace(
             request.options,
@@ -63,23 +63,37 @@ async def inspect_trace_events() -> dict[str, object]:
             retry=RetryOptions(max_attempts=2, max_delay_seconds=0),
             trace=trace_events.append,
         ),
-        registry=registry,
+        provider_registry=registry,
     )
     message = await event_stream.result()
     sdk_client = next(event for event in trace_events if event["type"] == "sdk:client")
     retry = next(event for event in trace_events if event["type"] == "runtime:retry")
+    runtime_events = [
+        event for event in trace_events if str(event["type"]).startswith("runtime:")
+    ]
+    runtime_call_ids = [event["data"].get("callId") for event in runtime_events]
+    retry_data = dict(retry["data"])
+    if isinstance(retry_data.get("callId"), str) and retry_data["callId"]:
+        retry_data["callId"] = "<callId>"
     return {
         "schemas": sorted({str(event["schema"]) for event in trace_events}),
         "eventTypes": [event["type"] for event in trace_events],
+        "callIdStable": (
+            len(runtime_call_ids) == 3
+            and all(isinstance(call_id, str) and call_id for call_id in runtime_call_ids)
+            and len(set(runtime_call_ids)) == 1
+        ),
         "text": "".join(
-            part.text for part in message.content if getattr(part, "type", None) == "text"
+            part.text
+            for part in message.content
+            if getattr(part, "type", None) == "text"
         ),
         "redaction": {
             "authorization": sdk_client["data"]["headers"]["Authorization"],
             "apiKey": sdk_client["data"]["apiKey"],
             "oauth": sdk_client["data"]["oauth"],
         },
-        "retry": retry["data"],
+        "retry": retry_data,
     }
 
 

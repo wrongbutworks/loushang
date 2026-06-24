@@ -1243,50 +1243,6 @@ class ExtensionRunner:
     def has_handlers(self, hook_name: str) -> bool:
         return any(extension.hooks.get(hook_name) for extension in self._extensions)
 
-    async def emit_before_provider_request(self, payload: object, *, cwd: str = "") -> object:
-        context = self._context_from_runtime(fallback_cwd=cwd)
-        current_payload = payload
-        for extension in self._extensions:
-            for handler in extension.hooks.get("before_provider_request", []):
-                try:
-                    event = _ExtensionEvent(type="before_provider_request", payload=current_payload)
-                    result = handler(event, context)
-                    if inspect.isawaitable(result):
-                        result = await result
-                    if result is not None:
-                        current_payload = result
-                except Exception as exc:
-                    self._diagnostics.append(
-                        ResourceDiagnostic(
-                            code="extension_before_provider_request_failed",
-                            message=f"Extension hook 'before_provider_request' failed: {exc}",
-                            source_path=extension.source_path,
-                        )
-                    )
-                    self._emit_runtime_error(extension=extension, event="before_provider_request", error=exc)
-        return current_payload
-
-    async def emit_after_provider_response(self, response: object, *, cwd: str = "") -> None:
-        context = self._context_from_runtime(fallback_cwd=cwd)
-        status = _safe_get_value(response, "status")
-        headers = _normalize_provider_response_headers(_safe_get_value(response, "headers"))
-        event = _ExtensionEvent(type="after_provider_response", response=response, status=status, headers=headers)
-        for extension in self._extensions:
-            for handler in extension.hooks.get("after_provider_response", []):
-                try:
-                    result = handler(event, context)
-                    if inspect.isawaitable(result):
-                        await result
-                except Exception as exc:
-                    self._diagnostics.append(
-                        ResourceDiagnostic(
-                            code="extension_after_provider_response_failed",
-                            message=f"Extension hook 'after_provider_response' failed: {exc}",
-                            source_path=extension.source_path,
-                        )
-                    )
-                    self._emit_runtime_error(extension=extension, event="after_provider_response", error=exc)
-
     async def emit_user_bash(self, event: object, *, cwd: str = "") -> object | None:
         context = self._context_from_runtime(fallback_cwd=cwd)
         event_object = _event_object(event)
@@ -2147,36 +2103,6 @@ def _coerce_before_agent_start_result(result: object) -> BeforeAgentStartResult 
             diagnostics=diagnostics if isinstance(diagnostics, list) else [],
         )
     return None
-
-
-def _safe_get_value(target: object, name: str) -> object | None:
-    if isinstance(target, dict):
-        return target.get(name)
-    try:
-        return getattr(target, name)
-    except Exception:
-        return None
-
-
-def _normalize_provider_response_headers(headers: object) -> dict[str, str]:
-    if headers is None:
-        return {}
-    items = None
-    if isinstance(headers, dict):
-        items = headers.items()
-    else:
-        getter = getattr(headers, "items", None)
-        if callable(getter):
-            try:
-                items = getter()
-            except Exception:
-                items = None
-    if items is None:
-        return {}
-    normalized: dict[str, str] = {}
-    for key, value in items:
-        normalized[str(key)] = str(value)
-    return normalized
 
 
 def _extension_visibility_snapshot(

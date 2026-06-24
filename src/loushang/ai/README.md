@@ -27,15 +27,14 @@
 
 - `domain.py`
   - 领域对象：`Provider`、`Endpoint`、`Model`
-  - 配套对象：`Auth`、`Capabilities`、`Compat`、`Defaults`、`Pricing`
+  - 配套对象：`Auth`、`Capabilities`、`Defaults`、`Pricing`、三类 `AdapterConfig`
 - `registry.py`
   - 运行时查询容器：`ModelRegistry`
   - 默认入口：`get_default_model_registry()`
 - `loader.py`
-  - 从内置 `models.curated.v2.json` 或显式文件/目录路径装载 registry
-  - 显式文件、目录和外部 overlay 的 `*_with_diagnostics()` 变体返回 legacy `compat` 到类型化字段的 deprecation diagnostics；内置 catalog 自身的迁移 warning 不向普通装载调用暴露
-- `models.curated.v2.json`
-  - 内置 curated 模型事实源；完整 legacy catalog 已归档到 `docs/internals/archive/ai/model-catalog/models-v1-full.json.gz`
+  - 从内置 `models.json` 或显式文件/目录路径装载 registry
+- `models.json`
+  - 内置模型事实源；完整 legacy catalog 已备份到 `backup/ai/models-legacy-full.json.gz`
 
 当前 `model` 包的稳定心智是：
 
@@ -48,8 +47,8 @@
 - catalog 中的 `provider`、`endpoint`、`model` 三段用于本地查询和 CLI 展示
 - 自定义 catalog 可以用 `upstreamId` 记录与本地 model ID 不同的真实上游模型 ID
 - 真实上游 ID 存在 `model.upstream_id`
-- provider 解析层输出 `ResolvedRequest.upstream_model_id`
-- provider adapter 发请求时使用 `ResolvedRequest.upstream_model_id`，没有该字段时使用 `model.id`
+- provider 解析层输出 `ProviderRequest.upstream_model_id`
+- provider adapter 发请求时使用 `ProviderRequest.upstream_model_id`，没有该字段时使用 `model.id`
 
 内置 curated catalog 当前不依赖 `upstreamId`；长尾 provider 或带特殊上游 ID 的模型应通过外部自定义 catalog 加入。
 
@@ -58,12 +57,12 @@
 统一 provider 边界层。
 
 - `resolution.py`
-  - 从 `Model + options` 解析 `ResolvedEndpoint` / `ResolvedRequest`
+  - 从 `Model + context + options` 解析 `ProviderRequest`
 - `protocol.py`
   - `ApiProvider` 协议
 - `runtime.py` / `invocation.py`
   - 统一 provider 调用、重试、取消、raw stream 组装入口
-- `runtime_config.py` / `cancellation.py` / `output_budget.py` / `errors.py`
+- `cancellation.py` / `output_budget.py` / `errors.py`
   - 通用运行时辅助
 
 `provider/` 负责统一边界，不负责具体厂商实现。
@@ -85,7 +84,7 @@
 - OpenAI Responses：`openai-responses`
 - Anthropic Messages：`anthropic-messages`
 
-内置 curated model catalog 只发布经过证据校验的小型 provider 集。Mistral、Google Gemini API、Google Vertex OpenAI-compatible、Cloudflare AI Gateway / Workers AI 等长尾接入不在默认 catalog 中；需要时应通过自定义 catalog 或外部包复用现有 OpenAI-compatible / Anthropic Messages adapter 边界。外部 catalog 的 `baseUrl` 可以包含 `{ENV_NAME}` 模板，运行时由 `provider.resolution` 从环境变量展开；缺少变量时直接报错。
+内置 curated model catalog 只发布当前维护的小型 provider 集。Mistral、Google Gemini API、Google Vertex OpenAI-compatible、Cloudflare AI Gateway / Workers AI 等长尾接入不在默认 catalog 中；需要时应通过自定义模型文件或外部包复用现有 OpenAI-compatible / Anthropic Messages adapter 边界。外部 catalog 的 `baseUrl` 可以包含 `{ENV_NAME}` 模板，运行时由 `provider.resolution` 从环境变量展开；缺少变量时直接报错。
 
 核心 adapter 集合由 `docs/internals/architecture/ai/core-provider-adapter-contract-matrix.md`
 锁定；新增厂商专用 adapter 必须进入 `contrib` 或外部包，不能默认进入 core。
@@ -105,7 +104,7 @@ Amazon Bedrock Converse 不再作为 core adapter 发布；本包不再声明 Be
   - 只负责 `Context` 形状整理
   - 提取 `system_prompt`
   - 规范化 `tools`
-  - 产出公开的 `NormalizedContext` 不可变 snapshot，provider 只读取这个归一化边界
+  - 产出公开的 `NormalizedContext` frozen dataclass boundary，provider 只读取这个归一化边界
   - `normalize_context_result(...)` 返回 `NormalizationResult`，其中 diagnostics 会稳定报告 repair、downgrade 和 signature-removal
   - 默认使用 strict tool-call/tool-result pairing；缺失或孤立的 tool result 会直接报错
   - 历史兼容修复需要调用方显式传入 `pairing_mode="repair"`
@@ -152,7 +151,7 @@ Amazon Bedrock Converse 不再作为 core adapter 发布；本包不再声明 Be
 ### 其它
 
 - `api/`
-  - `stream / complete / stream_simple / complete_simple`
+  - `stream / complete / complete_structured`
 - `api_registry.py`
   - API provider registry
 - `pricing.py`
@@ -167,8 +166,8 @@ Amazon Bedrock Converse 不再作为 core adapter 发布；本包不再声明 Be
 ## 根包 API
 
 根包 `loushang.ai` 是稳定 SDK 门面，只导出最常用的模型调用、模型访问、消息/事件类型和通用 options。
-Provider 管理、provider-specific options、归一化诊断、pricing、tool transform 和 JSON repair 等能力必须从
-对应子模块或 `loushang.ai.advanced` 进入。
+Provider 管理、归一化诊断、pricing、tool transform 和 JSON repair 等能力必须从
+对应子模块进入；可选 provider 集成使用自己的 `loushang.ai.contrib.*` 边界。
 
 主要导出分为：
 
@@ -176,24 +175,15 @@ Provider 管理、provider-specific options、归一化诊断、pricing、tool t
 
 - `stream(...)`
 - `complete(...)`
-- `stream_simple(...)`
-- `complete_simple(...)`
-- `Model.stream(...)`
-- `Model.complete(...)`
-- `Model.stream_simple(...)`
-- `Model.complete_simple(...)`
 
 调用入口会在 Provider handoff 前校验已解析模型能力。`stream` 路径要求
 `stream` capability；`tools`、reasoning、structured output、temperature、image
 input 和 attachment 请求也会在模型未声明支持时直接失败。
 
-通用调用参数使用 `CallOptions`。旧的 `ModelCallOptions`、`StreamOptions` 仍保留在
-`loushang.ai.options` 作为兼容别名；provider-specific options 只保留在
-`loushang.ai.advanced` 作为兼容入口，不再属于根包稳定门面；新示例应优先使用
-`CallOptions`。
-`stream_simple` / `complete_simple` 使用更窄的 `SimpleCallOptions`；核心 API 会先
-把 simple reasoning 选项映射为 `CallOptions.reasoning`，provider adapter 只需要
-实现普通 `stream`。
+通用调用参数使用 `CallOptions`。核心 provider 不再有 provider-specific option
+class；普通调用只通过 `CallOptions`、`ReasoningOptions`、`RetryOptions` 和
+`TimeoutOptions` 这组根包契约表达。可选 contrib 集成可以在自己的 contrib 包中保留
+专有 option class。
 
 ### 模型访问
 
@@ -234,31 +224,33 @@ input 和 attachment 请求也会在模型未声明支持时直接失败。
 ### 通用 Options
 
 - `CallOptions`
-- `SimpleCallOptions`
 - `ReasoningOptions`
 - `RetryOptions`
 - `StructuredOutputOptions`
 - `StructuredOutputResult`
 - `TimeoutOptions`
 - `ThinkingLevel`
-- `ThinkingBudgets`
 
 ### Deprecation policy
 
 本轮契约收敛把根包 `__all__` 视为稳定 API 快照。此前从根包导出的高级能力不再继续占用稳定门面：
 
 - Provider registry 管理入口移到 `loushang.ai.advanced.registry`。
-- Provider-specific options 只从 `loushang.ai.advanced` 进入。
+- Core provider-specific options 已删除；OpenAI Codex 等可选集成从自己的
+  `loushang.ai.contrib.*` 包进入。
 - Context normalization helper 从 `loushang.ai.context` 进入。
 - Tool transform / validation 从 `loushang.ai.tool` 进入。
 - Cost helper 从 `loushang.ai.pricing` 进入。
-- Platform quota helper 从 `loushang.ai.usage` 进入。
+- Platform quota helper 从 `loushang.ai.contrib.moonshot` 进入；core
+  `loushang.ai.usage` 只保留 response usage payload helper。
 - Overflow 和 streaming JSON repair helper 从 `loushang.ai.utils` 进入。
 
 ### 子模块 helper
 
 - `loushang.ai.context.normalize_context(...)`
-  - returns the public `NormalizedContext` immutable mapping contract instead of a marker-tagged dict
+  - returns the public `NormalizedContext` frozen dataclass contract with attribute access
+  - freezes the context shell and message/tool tuples; it does not deep-freeze
+    nested message content or tool parameter schemas
   - accepts pi-style dict messages, including camelCase assistant/tool-result fields such as `toolCallId`, `thinkingSignature`, `thoughtSignature`, `mimeType`, and `stopReason`
 - `loushang.ai.context.normalize_context_result(...)`
   - returns the same normalized context plus stable `NormalizationDiagnostic` entries for repairs, cross-provider downgrades, and provider-specific signature removal
@@ -289,8 +281,8 @@ input 和 attachment 请求也会在模型未声明支持时直接失败。
 - `loushang.ai.tool.normalize_tool_call_id_for_model(...)`
 - `loushang.ai.pricing.calculate_cost(...)`
 - `loushang.ai.pricing.models_are_equal(...)`
-- `loushang.ai.usage_observation_from_message(...)`
-- `loushang.ai.usage.query_platform_quota(...)`
+- `loushang.ai.usage_from_message(...)`
+- `loushang.ai.usage_payload(...)`
 - `loushang.ai.complete_structured(model, context, output, options=...)`
   - sends `StructuredOutputOptions` through provider-native structured output payloads where the adapter has a stable mapping
   - returns `StructuredOutputResult(raw=AssistantMessage, parsed=...)`
@@ -302,10 +294,9 @@ input 和 attachment 请求也会在模型未声明支持时直接失败。
 metadata, or when a used token component has no known price. Explicit zero
 prices remain valid and produce a zero cost.
 
-`UsageObservation` is response-level accounting produced by model response
-events. `PlatformQuota` is account-level limit/used/remaining data queried
-through an endpoint-specific optional query descriptor; examples should use the
-query abstraction instead of hardcoding provider quota URLs.
+`Usage` is response-level accounting produced by model response events. Provider
+account quota helpers live outside core; for Moonshot/Kimi coding quota, use
+`loushang.ai.contrib.moonshot`.
 
 ## Advanced API
 
@@ -319,7 +310,9 @@ query abstraction instead of hardcoding provider quota URLs.
 - `Endpoint`
 - `Auth`
 - `Capabilities`
-- `Compat`
+- `OpenAICompletionsConfig`
+- `OpenAIResponsesConfig`
+- `AnthropicMessagesConfig`
 - `Defaults`
 - `Pricing`
 
@@ -336,12 +329,16 @@ query abstraction instead of hardcoding provider quota URLs.
 Custom providers registered through `ApiProviderRegistry` receive a canonical
 `NormalizedContext`: user, assistant, and tool-result messages are dataclasses,
 and tools are `Tool` dataclasses with validated dict parameters. Custom provider
-code should use attribute access instead of dict-style message access.
+code should use attribute access instead of dict-style message access. The
+boundary is canonical provider input, not a deep immutable clone of all nested
+values. Providers with provider-specific adapter config can also implement the
+optional `ProviderRequestValidator` protocol; `validate_request(request)` runs
+after core request normalization and before `invoke_raw(request)`.
 
 ### `loushang.ai.provider`
 
-- `ResolvedEndpoint`
-- `ResolvedRequest`
+- `ProviderRequest`
+- `ProviderRequestValidator`
 - `resolve_endpoint_for_model(...)`
 - `resolve_request_for_model(...)`
 
@@ -349,19 +346,28 @@ code should use attribute access instead of dict-style message access.
 
 - `resolve_auth_material(...)`
 - `resolve_auth_for_model(...)`
-- OAuth provider 与 credential 相关接口
+- `get_default_oauth_registry()`
+- `OAuthProviderRegistry.register(...)`
+- `OAuthProviderRegistry.get(...)`
+- `OAuthProviderRegistry.list()`
+- `OAuthProviderRegistry.clear()`
+- `register_builtin_oauth_providers(...)`
+- `oauth_login(...)`
+- `oauth_refresh(...)`
+- OAuth credential store 读写接口
 
 ## 当前边界约定
 
 ### `Model`
 
-`Model` 是上层直接持有和调用的句柄。
+`Model` 是上层持有的模型句柄。
 
 它当前承载：
 
 - 基本标识：`id` / `provider` / `endpoint`
+- 有效调用入口：`api` / `base_url` / `base_url_env`
 - 能力：`capabilities`
-- 兼容项：`compat`
+- 适配配置：`adapter`
 - 默认值：`defaults`
 - 价格：`pricing`
   - `None` 表示价格未知；缺失的 price component 不会被当成 0
@@ -369,10 +375,10 @@ code should use attribute access instead of dict-style message access.
 其中：
 
 - `capabilities` 表示模型本体能力
+- `adapter` 表示当前外部 API 协议的最小适配配置
 - `defaults` 表示默认请求值
-- `compat` 表示协议兼容项
 
-`Model` 不再独立持有 `api` 事实。
+Registry 返回的 `Model` 会带上继承后的 endpoint 调用事实。
 
 稳定心智是：
 
@@ -388,23 +394,24 @@ code should use attribute access instead of dict-style message access.
 - 同一个模型名可以在多个 endpoint 下分别出现
 - 每个 `Model` 只通过自己的 `endpoint` 被调用
 
-运行时 provider 路由由 `endpoint.api` 决定。
+运行时 provider 路由由模型继承后的 `api` 决定。
 
 例如 `moonshot:openai-completions:kimi-k2.6` 是一个可调用 `Model` 句柄。
 如果同一个上游模型通过多个 endpoint 暴露，catalog 仍会把它们表达为不同的
 `provider:endpoint:model` 句柄。
 
-### `ResolvedRequest`
+### `ProviderRequest`
 
-`ResolvedRequest` 是进入具体 provider 实现前的请求边界对象。
+`ProviderRequest` 是进入具体 provider 实现前的请求边界对象。
 
 它负责把：
 
 - `Model`
+- normalized `context`
 - runtime `options`
-- auth / typed protocol/dialect / capabilities / defaults
+- auth / adapter config / capabilities / defaults
 
-收敛为 provider 侧可直接消费的请求解析结果。
+收敛为 provider 侧可直接消费的单一请求对象。
 
 它当前主要承载：
 
@@ -413,12 +420,7 @@ code should use attribute access instead of dict-style message access.
 - `api`
 - `base_url`
 - `headers`
-- `protocol`
-- `dialect`
 - `capabilities`
-- `adapter_protocol`
-- `adapter_dialect`
-- `adapter_options`
 - `adapter_config`
 - `defaults`
 - `transport`
@@ -427,35 +429,23 @@ code should use attribute access instead of dict-style message access.
 - `reasoning_effort`
 - `temperature`
 
-AIQ-012 起，`ResolvedEndpoint` / `ResolvedRequest` 的推荐字段改为 typed
-`protocol` / `dialect` / `capabilities` / `transport` / `routing`；request
-resolution 结果不再暴露 legacy `.compat` 或 `adapter_compat` 别名。
-`protocol` / `dialect` 只表达 catalog / programmatic
-contract 中显式声明或由 legacy compat 迁移得到的事实；provider / base URL
-推断出的 runtime heuristic 不会投射为 public contract。
-
-provider adapter 侧的执行事实单独放在 `adapter_protocol` / `adapter_dialect` /
-`adapter_options` / `adapter_config`。其中 `adapter_config` 是
-provider adapter 调用 `resolve_provider_request()` 时通过自己的 runtime config
-resolver 生成或校验后的 provider 专有 typed runtime 配置，承载无法放入通用
-protocol/dialect 的执行参数；具体配置类型由对应 provider 模块拥有。手写
-`ResolvedRequest` 时，如果同时提供 `adapter_options` 和 provider-specific
-`adapter_config`，二者必须在该 provider 的 runtime key 上投影一致；冲突会在
-resolution 边界报错。无关 compat key 不参与
-`adapter_config` 一致性检查。`adapter_options` 是 provider request 归一化边界的
-内部 adapter 输入；provider adapter 新代码应依赖 typed `adapter_protocol` /
-`adapter_dialect` / `adapter_config`，不要读取 raw compat。
+冻结后的 request resolution 只携带一份 `adapter_config`。核心 provider 使用
+`OpenAICompletionsConfig`、`OpenAIResponsesConfig`、`AnthropicMessagesConfig`
+三类配置；非核心 provider 可以实现可选 `ProviderRequestValidator`，在
+`validate_request(request)` 中生成或校验 provider 专有配置。catalog 只声明
+`adapter`，resolution 不再保留历史字段迁移层。
 
 ## 最小调用链
 
-最简单的调用方式是直接从 `Model` 实例发起：
+最简单的调用方式是用 `get_model(...)` 取得模型句柄，再调用根包函数：
 
 ```python
-from loushang.ai import get_model
+from loushang.ai import complete, get_model
 
 model = get_model("moonshot", "openai-completions", "kimi-k2.6")
 
-message = await model.complete(
+message = await complete(
+    model,
     {
         "messages": [
             {"role": "user", "content": "用一句话介绍 loushang.ai"}
@@ -464,13 +454,13 @@ message = await model.complete(
 )
 ```
 
-也可以继续使用顶层函数：
+流式调用同样使用根包函数：
 
 ```python
-from loushang.ai import complete, get_model
+from loushang.ai import get_model, stream
 
 model = get_model("moonshot", "openai-completions", "kimi-k2.6")
-message = await complete(model, {"messages": [{"role": "user", "content": "hi"}]})
+events = await stream(model, {"messages": [{"role": "user", "content": "hi"}]})
 ```
 
 默认情况下，调用入口会自动使用默认 provider registry，并在首次调用时自动注册内置 providers。

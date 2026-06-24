@@ -23,14 +23,14 @@ CORE_ADAPTERS = (
 )
 
 
-def test_core_adapters_implement_stream_raw_contract() -> None:
+def test_core_adapters_implement_invoke_raw_contract() -> None:
     for case in CORE_ADAPTERS:
         provider = case.provider_type()
 
         assert isinstance(provider, ApiProvider)
         assert provider.api == case.api
-        assert callable(provider.stream_raw)
-        assert list(inspect.signature(provider.stream_raw).parameters) == ["request"]
+        assert callable(provider.invoke_raw)
+        assert list(inspect.signature(provider.invoke_raw).parameters) == ["request"]
         assert not hasattr(provider, "stream_simple")
 
 

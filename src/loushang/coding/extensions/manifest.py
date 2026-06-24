@@ -5,6 +5,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Literal
 
+from loushang.coding.extensions.events import VALID_EXTENSION_EVENTS
 from loushang.coding.loader import ResourceDiagnostic
 
 PermissionLevel = Literal["safe", "standard", "powerful"]
@@ -329,6 +330,16 @@ def _parse_hooks(
                     "Extension manifest hook declaration requires an event.",
                     path,
                     metadata={"index": index},
+                )
+            )
+            continue
+        if event not in VALID_EXTENSION_EVENTS:
+            diagnostics.append(
+                _diagnostic(
+                    "unsupported_extension_hook_event",
+                    f"Unsupported extension hook event: {event}",
+                    path,
+                    metadata={"index": index, "event": event},
                 )
             )
             continue

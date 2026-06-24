@@ -1801,7 +1801,7 @@ def test_create_agent_session_passes_compaction_settings_to_session(tmp_path, mo
     assert result.first_kept_entry_id == assistant_id
 
 
-def test_create_agent_session_passes_control_transport_and_thinking_settings(tmp_path) -> None:
+def test_create_agent_session_passes_control_thinking_settings(tmp_path) -> None:
     from loushang.coding.bootstrap import create_agent_session, create_services
     from loushang.coding.control import ControlConfig, RetrySettings, SettingsManager
     from loushang.coding.store import SessionManager
@@ -1809,7 +1809,6 @@ def test_create_agent_session_passes_control_transport_and_thinking_settings(tmp
     services = create_services(
         settings_manager=SettingsManager(
             ControlConfig(
-                transport="websocket",
                 thinking_budgets={"low": 1024, "high": 4096},
                 retry=RetrySettings(provider_max_retry_delay_ms=1234),
             )
@@ -1819,7 +1818,6 @@ def test_create_agent_session_passes_control_transport_and_thinking_settings(tmp
 
     session = create_agent_session(session_manager=manager, model=_model(), services=services)
 
-    assert session.agent.transport == "websocket"
     assert session.agent.thinking_budgets == {"low": 1024, "high": 4096}
     assert session.agent.max_retry_delay_ms == 1234
 

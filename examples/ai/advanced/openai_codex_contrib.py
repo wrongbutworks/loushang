@@ -6,7 +6,7 @@ Register this contrib module before looking up Codex models.
 
 from __future__ import annotations
 
-from loushang.ai import get_model
+from loushang.ai import ReasoningOptions, get_model
 from loushang.ai.contrib.openai_codex import (
     OpenAICodexResponsesOptions,
     register_openai_codex_contrib,
@@ -20,7 +20,10 @@ def load_codex_model():
 
 def main() -> None:
     model = load_codex_model()
-    options = OpenAICodexResponsesOptions(reasoning="low", text_verbosity="low")
+    options = OpenAICodexResponsesOptions(
+        reasoning=ReasoningOptions(effort="low"),
+        text_verbosity="low",
+    )
     print(f"{model.provider_id}:{model.endpoint_id}:{model.id}")
     print(type(options).__name__)
 

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import ast
 import asyncio
 import importlib.util
 import json
@@ -13,7 +14,7 @@ from loushang.ai.model import load_model_registry_from_file
 REPO_ROOT = Path(__file__).resolve().parents[2]
 TOP_LEVEL_OFFLINE_EXAMPLES = sorted(
     (REPO_ROOT / "examples/ai").glob("[0-9][0-9]_*.py")
-)
+) + [REPO_ROOT / "examples/ai/custom_model_file.py"]
 
 
 def _load_module(path: Path, name: str):
@@ -26,8 +27,23 @@ def _load_module(path: Path, name: str):
     return module
 
 
-def test_top_level_ai_examples_run_offline() -> None:
+def _loushang_imports(path: Path) -> list[str]:
+    tree = ast.parse(path.read_text(encoding="utf-8"))
+    modules: list[str] = []
+    for node in ast.walk(tree):
+        if isinstance(node, ast.ImportFrom) and node.module:
+            if node.module == "loushang" or node.module.startswith("loushang."):
+                modules.append(node.module)
+        elif isinstance(node, ast.Import):
+            for alias in node.names:
+                if alias.name == "loushang" or alias.name.startswith("loushang."):
+                    modules.append(alias.name)
+    return modules
+
+
+def test_top_level_ai_examples_run_offline(tmp_path: Path) -> None:
     env = os.environ.copy()
+    env["HOME"] = str(tmp_path)
     for key in [
         "ANTHROPIC_API_KEY",
         "BAIDU_QIANFAN_API_KEY",
@@ -54,6 +70,7 @@ def test_top_level_ai_examples_run_offline() -> None:
         "10_usage.py",
         "11_provider_matrix.py",
         "12_provider_smoke.py",
+        "custom_model_file.py",
     ]
 
     for path in TOP_LEVEL_OFFLINE_EXAMPLES:
@@ -68,6 +85,19 @@ def test_top_level_ai_examples_run_offline() -> None:
         )
         assert completed.returncode == 0, (path, completed.stdout, completed.stderr)
         assert completed.stdout.strip(), path
+
+
+def test_top_level_ai_examples_stay_on_public_import_boundary() -> None:
+    base_allowed = {"loushang.ai", "loushang.ai.tool"}
+    custom_model_file_allowed = {"loushang.ai.model"}
+
+    for path in TOP_LEVEL_OFFLINE_EXAMPLES:
+        allowed = set(base_allowed)
+        if path.name == "custom_model_file.py":
+            allowed.update(custom_model_file_allowed)
+
+        imports = _loushang_imports(path)
+        assert sorted(imports) == sorted(allowed & set(imports))
 
 
 def test_provider_matrix_example_targets_curated_provider_models() -> None:
@@ -114,6 +144,21 @@ def test_provider_matrix_example_formats_all_provider_entries() -> None:
     assert len(lines) == len(module.PROVIDER_EXAMPLES)
 
 
+def test_custom_model_file_example_reports_custom_model_summary() -> None:
+    module = _load_module(
+        Path("examples/ai/custom_model_file.py"),
+        "examples_ai_custom_model_file",
+    )
+
+    summary = module.inspect_custom_model_file()
+
+    assert summary["availableModels"] == ["company:openai-completions:company-chat"]
+    assert summary["model"] == "company:openai-completions:company-chat"
+    assert summary["displayName"] == "Company Chat"
+    assert summary["upstreamId"] == "vendor/company-chat-2026-06"
+    assert summary["capabilities"] == {"stream": True, "toolUse": True}
+
+
 def test_usage_online_example_marks_unknown_cost() -> None:
     module = _load_module(
         Path("examples/ai/advanced/usage_online.py"), "examples_ai_usage_online"
@@ -137,29 +182,30 @@ def test_usage_online_example_prints_unknown_cost(capsys, monkeypatch) -> None:
     class FakeModel:
         pricing = None
 
-        async def complete(self, context, options):
-            return AssistantMessage(
-                role="assistant",
-                content=[TextPart(type="text", text="ok")],
-                api="openai-completions",
-                provider="moonshot",
-                model="kimi-k2.6",
-                response_id="resp_1",
-                usage=Usage(
-                    input=1,
-                    output=1,
-                    cache_read=0,
-                    cache_write=0,
-                    total_tokens=2,
-                    cost=None,
-                ),
-                stop_reason="stop",
-                error_message=None,
-                timestamp=0.0,
-            )
+    async def fake_complete(model, context, options):
+        return AssistantMessage(
+            role="assistant",
+            content=[TextPart(type="text", text="ok")],
+            api="openai-completions",
+            provider="moonshot",
+            model="kimi-k2.6",
+            response_id="resp_1",
+            usage=Usage(
+                input=1,
+                output=1,
+                cache_read=0,
+                cache_write=0,
+                total_tokens=2,
+                cost=None,
+            ),
+            stop_reason="stop",
+            error_message=None,
+            timestamp=0.0,
+        )
 
     monkeypatch.setattr(sys, "argv", ["usage_online.py", "--api-key", "test-key"])
     monkeypatch.setattr(module, "get_model", lambda *_args: FakeModel())
+    monkeypatch.setattr(module, "complete", fake_complete)
 
     assert asyncio.run(module.main()) == 0
 
@@ -174,7 +220,7 @@ def test_usage_online_example_prints_unknown_cost(capsys, monkeypatch) -> None:
 def test_usage_example_reports_response_observation(capsys) -> None:
     module = _load_module(Path("examples/ai/10_usage.py"), "examples_ai_10_usage")
 
-    summary = module.inspect_usage_observation()
+    summary = module.inspect_usage()
 
     assert summary == {
         "present": True,
@@ -201,8 +247,8 @@ def test_reasoning_example_reports_simple_reasoning_mapping(capsys) -> None:
         "reasoning": "medium",
         "budgetTokens": 2048,
         "events": [
-            {"type": "thinking_delta", "thinking": "reasoning trace"},
-            {"type": "text_delta", "text": "mock hello from offline fixture"},
+            {"type": "thinking_delta", "delta": "reasoning trace"},
+            {"type": "text_delta", "delta": "mock hello from offline fixture"},
         ],
         "stopReason": "stop",
     }
@@ -311,11 +357,16 @@ def test_platform_quota_example_reports_endpoint_quota(capsys) -> None:
     assert json.loads(capsys.readouterr().out) == summary
 
 
-def test_openai_codex_contrib_example_registers_codex_model() -> None:
+def test_openai_codex_contrib_example_registers_codex_model(
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
     from loushang.ai.advanced.registry import clear_api_providers
-    from loushang.ai.auth import clear_oauth_providers
+    from loushang.ai.auth import get_default_oauth_registry
     from loushang.ai.model import clear_default_model_registry
 
+    monkeypatch.setattr(Path, "home", lambda: tmp_path)
+    clear_default_model_registry()
     module = _load_module(
         Path("examples/ai/advanced/openai_codex_contrib.py"),
         "examples_ai_advanced_openai_codex_contrib",
@@ -325,7 +376,7 @@ def test_openai_codex_contrib_example_registers_codex_model() -> None:
         model = module.load_codex_model()
     finally:
         clear_api_providers()
-        clear_oauth_providers()
+        get_default_oauth_registry().clear()
         clear_default_model_registry()
 
     assert model.provider_id == "openai-codex"
@@ -362,12 +413,13 @@ def test_errors_retry_example_reports_redacted_error_payload(capsys) -> None:
             "source": "runtime",
             "name": "request",
             "data": {
+                "callId": "retry-demo-call",
                 "api": "anthropic-messages",
                 "provider": "retry-demo",
+                "endpoint": "anthropic-messages",
                 "model": "retry-demo",
                 "attempt": 1,
                 "maxAttempts": 2,
-                "endpoint": "anthropic-messages",
                 "upstreamModel": "retry-demo",
             },
         },
@@ -377,11 +429,17 @@ def test_errors_retry_example_reports_redacted_error_payload(capsys) -> None:
             "source": "runtime",
             "name": "retry",
             "data": {
+                "callId": "retry-demo-call",
+                "api": "anthropic-messages",
+                "provider": "retry-demo",
+                "endpoint": "anthropic-messages",
+                "model": "retry-demo",
                 "attempt": 2,
                 "maxAttempts": 2,
                 "delayMs": 0,
                 "reason": "service_unavailable",
                 "statusCode": 503,
+                "requestId": "req_retry_demo",
             },
         },
         {
@@ -390,12 +448,13 @@ def test_errors_retry_example_reports_redacted_error_payload(capsys) -> None:
             "source": "runtime",
             "name": "request",
             "data": {
+                "callId": "retry-demo-call",
                 "api": "anthropic-messages",
                 "provider": "retry-demo",
+                "endpoint": "anthropic-messages",
                 "model": "retry-demo",
                 "attempt": 2,
                 "maxAttempts": 2,
-                "endpoint": "anthropic-messages",
                 "upstreamModel": "retry-demo",
             },
         },
@@ -414,29 +473,23 @@ def test_advanced_inspect_endpoint_contract_formats_protocol_facts(
         Path("examples/ai/advanced/inspect_endpoint_contract.py"),
         "examples_ai_advanced_inspect_endpoint_contract",
     )
-    path = tmp_path / "models.v2.json"
+    path = tmp_path / "models.json"
     path.write_text(
         json.dumps(
             {
-                "schemaVersion": 2,
                 "providers": {
                     "moonshot": {
                         "endpoints": {
                             "openai-completions": {
                                 "api": "openai-completions",
                                 "baseUrl": "https://example.invalid/v1",
-                                "compat": {
-                                    "supportsStore": False,
-                                    "supportsStrictMode": False,
-                                    "thinkingFormat": "example",
-                                },
-                                "protocol": {
-                                    "roles": {"developer": "unsupported"},
-                                    "reasoning": {"effort": "unsupported"},
-                                },
-                                "dialect": {
+                                "adapter": {
+                                    "store": False,
+                                    "developerRole": False,
+                                    "strictSchema": False,
                                     "maxOutputTokensField": "max_completion_tokens",
-                                    "reasoning": {"wireFormat": "moonshot"},
+                                    "reasoningEffort": False,
+                                    "reasoningFormat": "moonshot",
                                 },
                                 "transport": {"kind": "httpx"},
                                 "routing": {
@@ -446,9 +499,9 @@ def test_advanced_inspect_endpoint_contract_formats_protocol_facts(
                                 },
                                 "models": {
                                     "kimi-k2.6": {
-                                        "compat": {
-                                            "supportsReasoningEffort": True,
-                                            "supportsStreamReasoningDelta": True,
+                                        "adapter": {
+                                            "reasoningEffort": True,
+                                            "streamingUsage": True,
                                         },
                                         "capabilities": {
                                             "input": ["text"],
@@ -472,56 +525,39 @@ def test_advanced_inspect_endpoint_contract_formats_protocol_facts(
     assert contract["provider"] == "moonshot"
     assert contract["endpoint"] == "openai-completions"
     assert contract["api"] == "openai-completions"
-    assert contract["protocolScope"] == "endpoint-default"
+    assert contract["adapterScope"] == "endpoint-default"
     assert contract["model"] == "kimi-k2.6"
-    assert contract["protocol"] == {
-        "store": "unsupported",
-        "roles": {"developer": "unsupported"},
-        "reasoning": {"effort": "unsupported"},
-        "tools": {"strictSchema": "unsupported"},
-    }
-    assert contract["dialectScope"] == "endpoint-default"
-    assert contract["dialect"] == {
-        "maxOutputTokensField": "max_completion_tokens",
-        "reasoning": {"wireFormat": "moonshot"},
-    }
+    assert contract["adapter"]["store"] is False
+    assert contract["adapter"]["developerRole"] is False
+    assert contract["adapter"]["strictSchema"] is False
+    assert contract["adapter"]["maxOutputTokensField"] == "max_completion_tokens"
+    assert contract["adapter"]["reasoningEffort"] is False
+    assert contract["adapter"]["reasoningFormat"] == "moonshot"
     assert contract["transportScope"] == "endpoint-default"
     assert contract["transport"] == {"kind": "httpx"}
     assert contract["routingScope"] == "endpoint-default"
     assert contract["routing"] == {
         "requestOverrides": {"openrouter": {"only": ["anthropic"]}}
     }
-    assert contract["requestProtocolScope"] == "model-effective"
-    assert contract["requestProtocol"]["roles"]["developer"] == "unsupported"
-    assert contract["requestProtocol"]["streaming"]["reasoningDelta"] == "supported"
-    assert contract["requestProtocol"]["reasoning"]["effort"] == "supported"
-    assert contract["requestDialectScope"] == "model-effective"
-    assert contract["requestDialect"]["maxOutputTokensField"] == "max_completion_tokens"
-    assert contract["requestDialect"]["reasoning"]["wireFormat"] == "moonshot"
-    assert contract["adapterProtocolScope"] == "adapter-effective"
-    assert contract["adapterProtocol"]["roles"]["developer"] == "unsupported"
-    assert contract["adapterProtocol"]["reasoning"]["effort"] == "supported"
-    assert contract["adapterDialectScope"] == "adapter-effective"
-    assert contract["adapterDialect"]["maxOutputTokensField"] == "max_completion_tokens"
-    assert contract["adapterDialect"]["reasoning"]["wireFormat"] == "moonshot"
+    assert contract["requestAdapterScope"] == "model-effective"
+    assert contract["requestAdapter"]["store"] is False
+    assert contract["requestAdapter"]["developerRole"] is False
+    assert contract["requestAdapter"]["reasoningEffort"] is True
+    assert contract["requestAdapter"]["maxOutputTokensField"] == "max_completion_tokens"
+    assert contract["requestAdapter"]["reasoningFormat"] == "moonshot"
     assert contract["requestTransportScope"] == "model-effective"
     assert contract["requestTransport"] == {"kind": "httpx"}
     assert contract["requestRoutingScope"] == "model-effective"
     assert contract["requestRouting"] == {
         "requestOverrides": {"openrouter": {"only": ["anthropic"]}}
     }
-    assert "thinkingFormat" in contract["legacyCompatKeys"]
 
     module.main()
     payload = json.loads(capsys.readouterr().out)
-    assert payload["protocolScope"] == "endpoint-default"
-    assert payload["dialectScope"] == "endpoint-default"
+    assert payload["adapterScope"] == "endpoint-default"
     assert payload["transportScope"] == "endpoint-default"
     assert payload["routingScope"] == "endpoint-default"
-    assert payload["requestProtocolScope"] == "model-effective"
-    assert payload["requestDialectScope"] == "model-effective"
-    assert payload["adapterProtocolScope"] == "adapter-effective"
-    assert payload["adapterDialectScope"] == "adapter-effective"
+    assert payload["requestAdapterScope"] == "model-effective"
 
 
 def test_advanced_inspect_endpoint_contract_runs_against_builtin_catalog() -> None:
@@ -535,25 +571,15 @@ def test_advanced_inspect_endpoint_contract_runs_against_builtin_catalog() -> No
     assert contract["provider"] == "moonshot"
     assert contract["endpoint"] == "openai-completions"
     assert contract["model"] == "kimi-k2.6"
-    assert contract["protocol"] == {
-        "store": "unsupported",
-        "roles": {"developer": "unsupported"},
-        "streaming": {"usage": "supported", "reasoningDelta": "supported"},
-        "reasoning": {"effort": "unsupported"},
-        "tools": {"strictSchema": "unsupported"},
-    }
-    assert contract["dialect"] == {
-        "maxOutputTokensField": "max_tokens",
-        "reasoning": {
-            "wireFormat": "moonshot",
-            "thinkingAsText": False,
-            "assistantContentRequired": False,
-        },
-    }
+    assert contract["adapter"]["store"] is False
+    assert contract["adapter"]["developerRole"] is False
+    assert contract["adapter"]["streamingUsage"] is True
+    assert contract["adapter"]["reasoningEffort"] is False
+    assert contract["adapter"]["maxOutputTokensField"] == "max_tokens"
+    assert contract["adapter"]["reasoningFormat"] == "moonshot"
     assert contract["transport"] == {}
     assert contract["routing"] == {}
-    assert contract["requestProtocol"]["reasoning"]["effort"] == "unsupported"
-    assert contract["adapterProtocol"]["reasoning"]["effort"] == "unsupported"
+    assert contract["requestAdapter"]["reasoningEffort"] is False
 
 
 def test_advanced_inspect_endpoint_contract_handles_templated_base_url(
@@ -564,20 +590,19 @@ def test_advanced_inspect_endpoint_contract_handles_templated_base_url(
         Path("examples/ai/advanced/inspect_endpoint_contract.py"),
         "examples_ai_advanced_inspect_endpoint_contract_template",
     )
-    path = tmp_path / "models.v2.json"
+    path = tmp_path / "models.json"
     path.write_text(
         json.dumps(
             {
-                "schemaVersion": 2,
                 "providers": {
                     "custom-template": {
                         "endpoints": {
                             "openai-completions": {
                                 "api": "openai-completions",
                                 "baseUrl": "https://example.invalid/{ACCOUNT_ID}/v1",
-                                "dialect": {
+                                "adapter": {
                                     "maxOutputTokensField": "max_completion_tokens",
-                                    "reasoning": {"wireFormat": "openai"},
+                                    "reasoningFormat": "openai",
                                 },
                                 "models": {
                                     "template-model": {
@@ -607,10 +632,11 @@ def test_advanced_inspect_endpoint_contract_handles_templated_base_url(
     assert contract["provider"] == "custom-template"
     assert contract["endpoint"] == "openai-completions"
     assert contract["model"] == "template-model"
-    assert contract["requestProtocolScope"] == "model-effective"
-    assert contract["requestDialectScope"] == "model-effective"
-    assert contract["adapterProtocolScope"] == "adapter-effective"
-    assert contract["adapterDialectScope"] == "adapter-effective"
+    assert contract["requestAdapterScope"] == "model-effective"
+    assert contract["requestAdapter"]["maxOutputTokensField"] == (
+        "max_completion_tokens"
+    )
+    assert contract["requestAdapter"]["reasoningFormat"] == "openai"
 
 
 def test_advanced_custom_catalog_uses_typed_upstream_binding() -> None:
@@ -751,6 +777,7 @@ def test_advanced_trace_events_reports_schema_and_redaction(capsys) -> None:
             "runtime:request",
             "sdk:client",
         ],
+        "callIdStable": True,
         "text": "trace recovered",
         "redaction": {
             "authorization": "<redacted>",
@@ -758,11 +785,17 @@ def test_advanced_trace_events_reports_schema_and_redaction(capsys) -> None:
             "oauth": "<redacted>",
         },
         "retry": {
+            "callId": "<callId>",
+            "api": "anthropic-messages",
+            "provider": "trace-demo",
+            "endpoint": "anthropic-messages",
+            "model": "trace-demo",
             "attempt": 2,
             "maxAttempts": 2,
             "delayMs": 0,
             "reason": "service_unavailable",
             "statusCode": 503,
+            "requestId": "req_trace_retry",
         },
     }
     assert "secret" not in json.dumps(summary, sort_keys=True)
@@ -780,16 +813,16 @@ def test_advanced_inspect_endpoint_contract_rejects_missing_model(
         Path("examples/ai/advanced/inspect_endpoint_contract.py"),
         "examples_ai_advanced_inspect_endpoint_contract_missing_model",
     )
-    path = tmp_path / "models.v2.json"
+    path = tmp_path / "models.json"
     path.write_text(
         json.dumps(
             {
-                "schemaVersion": 2,
                 "providers": {
                     "moonshot": {
                         "endpoints": {
                             "openai-completions": {
                                 "api": "openai-completions",
+                                "adapter": {"developerRole": False},
                                 "models": {},
                             }
                         }
@@ -837,7 +870,7 @@ def test_stream_example_reports_text_delta() -> None:
     assert summary["responseId"] == "offline-stream-demo"
     assert summary["stopReason"] == "stop"
     assert summary["text"] == "mock hello from offline fixture"
-    assert {"type": "text_delta", "text": "mock hello "} in summary[
+    assert {"type": "text_delta", "delta": "mock hello "} in summary[
         "events"
     ]
 

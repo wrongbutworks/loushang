@@ -32,13 +32,13 @@ from loushang.ai import (
 
 - `loushang.ai.model`：自定义模型 catalog、registry 检查。
 - `loushang.ai.auth`：OAuth credential 存储和 provider 登录辅助。
-- `loushang.ai.advanced`：provider-specific options 和 registry 接线。
+- `loushang.ai.advanced.registry`：provider registry 接线。
 - `loushang.ai.contrib.openai_codex`：可选 OpenAI Codex 集成。
 
 ## 模型与 Catalog
 
-内置 catalog 是 `models.curated.v2.json`。它刻意保持为小型、带证据的 provider
-集合，不再把归档的完整 legacy catalog 放在运行时包路径上。
+内置 catalog 是 `models.json`。它刻意保持为小型 provider 集合，不再把归档的完整
+legacy catalog 放在运行时包路径上。
 
 模型用本地 `provider:endpoint:model` 三元组定位：
 
@@ -55,14 +55,53 @@ model = get_model("moonshot", "openai-completions", "kimi-k2.6")
 或 [examples/ai/12_provider_smoke.py](../../../examples/ai/12_provider_smoke.py)
 可以离线查看当前内置 provider 集合。
 
-如果要从 legacy catalog 或旧的宽根包 API 迁移，请先阅读
-[v2 迁移指南](./migration-v2.md)。
-
-本地部署或长尾 provider 应通过 schema v2 自定义 catalog 接入，而不是扩大内置
-catalog。参考
+本地部署或长尾 provider 应通过与 `models.json` 同形状的自定义模型文件接入，
+而不是扩大内置 catalog。常规路径参考
+[examples/ai/custom_model_file.py](../../../examples/ai/custom_model_file.py)，
+需要检查 provider request 绑定时参考
 [examples/ai/advanced/custom_catalog.py](../../../examples/ai/advanced/custom_catalog.py)。
-当 provider 侧真实模型名不同于本地模型 ID 时，自定义 catalog 可以写
+当 provider 侧真实模型名不同于本地模型 ID 时，自定义模型文件可以写
 `upstreamId`。
+
+### 模型文件格式
+
+运行时模型文件只有一种形状，不包含 `schemaVersion`：
+
+```json
+{
+  "providers": {
+    "company": {
+      "displayName": "Company AI",
+      "auth": {"apiKeyEnv": "COMPANY_AI_API_KEY"},
+      "endpoints": {
+        "openai-completions": {
+          "api": "openai-completions",
+          "baseUrl": "https://models.company.example/v1",
+          "adapter": {
+            "developerRole": false,
+            "maxOutputTokensField": "max_completion_tokens",
+            "reasoningFormat": "openai"
+          },
+          "models": {
+            "company-chat": {
+              "upstreamId": "vendor/company-chat-2026-06",
+              "capabilities": {
+                "input": ["text"],
+                "output": ["text"],
+                "stream": true,
+                "toolUse": true
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}
+```
+
+协议请求映射统一写在 `adapter`。不要再使用已删除的 `compat`、`protocol`
+或 `dialect` 字段。
 
 ## 认证
 
@@ -98,14 +137,14 @@ OAuth 能力位于 `loushang.ai.auth`，并由 `openai-codex` 这类显式 contr
 
 ## 完整返回调用
 
-最短路径是先 `get_model(...)`，再调用 `model.complete(...)` 或根包
-`complete(...)`。
+最短路径是先 `get_model(...)`，再调用根包 `complete(...)`。
 
 ```python
-from loushang.ai import CallOptions, get_model
+from loushang.ai import CallOptions, complete, get_model
 
 model = get_model("moonshot", "openai-completions", "kimi-k2.6")
-message = await model.complete(
+message = await complete(
+    model,
     {"messages": [{"role": "user", "content": "用一句话打个招呼。"}]},
     CallOptions(api_key="...", max_output_tokens=128),
 )
@@ -182,8 +221,7 @@ options = CallOptions(
 )
 ```
 
-如果只需要简单入口，`SimpleCallOptions(reasoning="medium")` 会映射到同一套内部
-call options。可运行示例：
+可运行 reasoning 示例：
 [examples/ai/06_reasoning.py](../../../examples/ai/06_reasoning.py)。
 
 ## Structured Output
@@ -254,10 +292,11 @@ provider、校验、能力、超时、取消和流式失败会归一化为 `AIEr
 `error.to_dict()` 返回稳定、JSON-safe 的错误载荷，并会脱敏凭证和 token。
 
 ```python
-from loushang.ai import AIError, CallOptions, RetryOptions
+from loushang.ai import AIError, CallOptions, RetryOptions, complete
 
 try:
-    message = await model.complete(
+    message = await complete(
+        model,
         {"messages": [{"role": "user", "content": "hello"}]},
         CallOptions(api_key="...", retry=RetryOptions(max_attempts=2)),
     )
@@ -270,7 +309,7 @@ retry 只在尚未产生可见输出前是安全的。可运行示例：
 
 ## Usage 与成本
 
-最终 `AssistantMessage.usage` 是 response 级别的 `UsageObservation`。当 catalog
+最终 `AssistantMessage.usage` 是 response 级别的 `Usage`。当 catalog
 没有可信 pricing 事实时，cost 为 `None`。
 
 ```python
@@ -278,7 +317,8 @@ usage = message.usage
 print(usage.input, usage.output, usage.total_tokens, usage.cost)
 ```
 
-账号或平台额度与单次 response usage 是不同概念。可运行示例：
+账号或平台额度与单次 response usage 是不同概念；Moonshot/Kimi 额度查询在
+`loushang.ai.contrib.moonshot`。可运行示例：
 [examples/ai/10_usage.py](../../../examples/ai/10_usage.py)、
 [examples/ai/advanced/usage_online.py](../../../examples/ai/advanced/usage_online.py) 和
 [examples/ai/advanced/platform_quota.py](../../../examples/ai/advanced/platform_quota.py)。
@@ -299,5 +339,6 @@ print(usage.input, usage.output, usage.total_tokens, usage.cost)
 10. [10_usage.py](../../../examples/ai/10_usage.py)
 11. [11_provider_matrix.py](../../../examples/ai/11_provider_matrix.py)
 12. [12_provider_smoke.py](../../../examples/ai/12_provider_smoke.py)
+13. [custom_model_file.py](../../../examples/ai/custom_model_file.py)
 
 高级示例位于 [examples/ai/advanced](../../../examples/ai/advanced/)。

@@ -16,7 +16,7 @@ SRC_ROOT = REPO_ROOT / "src"
 if str(SRC_ROOT) not in sys.path:
     sys.path.insert(0, str(SRC_ROOT))
 
-from loushang.ai import Context, UserMessage, complete_simple, get_model
+from loushang.ai import Context, UserMessage, complete, get_model
 from loushang.ai.model import Model, load_model_registry
 from loushang.ai.model.registry import ModelRegistry
 
@@ -358,7 +358,7 @@ async def _run_online_probe(example: Example, profiles: dict[str, Profile], topi
             messages=[UserMessage(role="user", content=prompt, timestamp=time.time())],
         )
         model = _resolve_model(example.model_profile, profiles)
-        response = await complete_simple(model, context)
+        response = await complete(model, context)
         content = "".join(part.text for part in response.content if getattr(part, "type", None) == "text")
         print(textwrap.fill(content or "[no text output]", width=100))
         return 0

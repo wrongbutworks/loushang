@@ -160,7 +160,7 @@ LiteLLM 说明：
 
 做法：
 
-- `stream()` / `stream_simple()` 为同步函数
+- `stream()` 为同步函数
 - 返回 `AssistantMessageEventStream`
 - provider start 通过额外 bridge 隐式完成
 
@@ -181,9 +181,9 @@ LiteLLM 说明：
 
 做法：
 
-- `stream()` / `stream_simple()` 为 `async def`
+- `stream()` 为 `async def`
 - provider start 显式成为 public async 边界
-- `signal` 保留字段名，但定义为 Python 最小取消协议
+- `CallOptions.cancellation` 定义为 Python 最小取消协议
 - 默认实现内部可以使用 `asyncio`
 - `asyncio.Task` / `asyncio.Queue` / `asyncio.Event` 不进入 public contract
 
@@ -197,7 +197,7 @@ LiteLLM 说明：
 ### 风险
 
 - 与 `reference AI SDK` 的同步 `stream()` public shape 不再完全一致
-- `complete()` / `complete_simple()` 在文档和心智模型上需要多一段 `await stream(...)`
+- `complete()` 在文档和心智模型上需要多一段 `await stream(...)`
 - 调用方需要接受“先 await stream handle，再消费 stream”的模型
 
 ---
@@ -221,13 +221,13 @@ LiteLLM 说明：
 
 ### 2. Cancellation Model
 
-保留 `signal` 字段名，以对齐 `reference AI SDK`。
+取消语义通过 `CallOptions.cancellation` 进入 public API。
 
 但：
 
-- `signal` 不直接定义为 `asyncio.Event`
-- 它应建模为 `AbortSignalLike`
-- `AbortSignalLike` 只表达“调用是否应被取消”
+- `cancellation` 不直接定义为 `asyncio.Event`
+- 它应建模为最小取消信号对象
+- 该对象只表达“调用是否应被取消”
 
 ### 3. Abort Semantics
 
@@ -443,7 +443,7 @@ provider adapter 负责：
    - async iterable + `result()`
    - 还是 wrapper object + internal queue
 
-2. `AbortSignalLike` 的最小协议长什么样
+2. 最小取消信号对象的协议长什么样
    - 当前建议：`cancelled: bool`
    - 是否需要兼容 `is_cancelled()` 形式的适配层
 
@@ -467,4 +467,4 @@ provider adapter 负责：
 4. cancellation 作为协议语义保留在 public API 中
 5. `AssistantMessageEventStream` 对外只暴露读侧接口
 6. internal streaming 采用 `provider SDK stream -> raw part stream -> assistant event stream` 三层结构
-7. `AbortSignalLike` 当前建议采用最小只读协议：`cancelled: bool`
+7. `CallOptions.cancellation` 当前建议采用最小只读协议：`cancelled: bool`

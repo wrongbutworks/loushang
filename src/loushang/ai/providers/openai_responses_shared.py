@@ -2,15 +2,12 @@ from __future__ import annotations
 
 import json
 import re
-from collections.abc import AsyncIterator, Mapping, Sequence
+from collections.abc import AsyncIterator, Iterator, Sequence
 from typing import Any, TypedDict, cast
 
+from loushang.ai.context import NormalizedContext
 from loushang.ai.event_stream.raw_parts import RawPart
-from loushang.ai.model.domain import (
-    EndpointProtocolFeatures,
-    EndpointWireDialect,
-    SupportStatus,
-)
+from loushang.ai.model.domain import OpenAIResponsesConfig
 from loushang.ai.model.registry import resolve_model_api
 from loushang.ai.options import is_reasoning_requested
 from loushang.ai.provider.errors import provider_error_part_from_raw
@@ -30,9 +27,8 @@ class _BufferedTextPart(TypedDict):
 
 def convert_responses_messages(
     model,
-    normalized: Mapping[str, Any],
-    protocol: EndpointProtocolFeatures | None = None,
-    dialect: EndpointWireDialect | None = None,
+    normalized: NormalizedContext,
+    adapter_config: OpenAIResponsesConfig | None = None,
     capabilities: object | None = None,
 ) -> list[dict[str, Any]]:
     """
@@ -42,24 +38,21 @@ def convert_responses_messages(
     next steps can iterate toward pi-ai's shared architecture without keeping the
     logic in the orchestration file.
     """
-    protocol = protocol if isinstance(protocol, EndpointProtocolFeatures) else None
-    protocol = protocol or EndpointProtocolFeatures()
-    dialect = dialect if isinstance(dialect, EndpointWireDialect) else None
-    dialect = dialect or EndpointWireDialect()
+    adapter_config = adapter_config or OpenAIResponsesConfig()
     input_items: list[dict[str, Any]] = []
     tool_call_id_map: dict[str, str] = {}
-    system_prompt = normalized.get("system_prompt")
+    system_prompt = normalized.system_prompt
     if isinstance(system_prompt, str) and system_prompt.strip():
         role = (
             "developer"
-            if _supports_developer_role(model, protocol, capabilities)
+            if _supports_developer_role(model, adapter_config, capabilities)
             else "system"
         )
         input_items.append(
             {"role": role, "content": sanitize_surrogates(system_prompt)}
         )
 
-    messages = normalized.get("messages", [])
+    messages = normalized.messages
     last_role: str | None = None
     index = 0
     while index < len(messages):
@@ -68,7 +61,7 @@ def convert_responses_messages(
         content = _message_content(msg)
         if message_role == "user":
             if (
-                dialect.tools.assistant_bridge_required is True
+                adapter_config.assistant_after_tool_result is True
                 and last_role == "toolResult"
             ):
                 input_items.append(
@@ -323,7 +316,6 @@ async def process_responses_stream(
             if resp is not None:
                 multiplier = _service_tier_cost_multiplier(
                     getattr(resp, "service_tier", None)
-                    or getattr(options, "service_tier", None)
                 )
                 if multiplier != 1.0:
                     yield {"type": "usage_cost_multiplier", "multiplier": multiplier}
@@ -383,6 +375,61 @@ async def process_responses_stream(
     yield {"type": "response_done"}
 
 
+def process_responses_response(
+    response: object,
+    *,
+    options=None,
+    source: str = "openai-responses",
+) -> Iterator[RawPart]:
+    rid = getattr(response, "id", None)
+    if isinstance(rid, str) and rid:
+        yield {"type": "response_start", "response_id": rid}
+
+    emit_thinking = False
+    if options is not None:
+        try:
+            emit_thinking = is_reasoning_requested(options)
+        except Exception:
+            emit_thinking = False
+
+    output = getattr(response, "output", None)
+    if isinstance(output, list):
+        for index, item in enumerate(output):
+            item_type = getattr(item, "type", None)
+            if item_type == "reasoning":
+                yield from _iter_complete_reasoning_parts(
+                    item,
+                    emit_thinking=emit_thinking,
+                )
+            elif item_type == "message":
+                yield from _iter_complete_message_parts(item)
+            elif item_type == "function_call":
+                yield from _iter_complete_function_call_parts(item, index=index)
+
+    multiplier = _service_tier_cost_multiplier(getattr(response, "service_tier", None))
+    if multiplier != 1.0:
+        yield {"type": "usage_cost_multiplier", "multiplier": multiplier}
+
+    usage = getattr(response, "usage", None)
+    if usage is not None:
+        yield _responses_usage_part(usage)
+
+    status = getattr(response, "status", None)
+    yield {
+        "type": "stop_reason",
+        "stop_reason": map_responses_status_to_reason(status),
+    }
+    if status in {"failed", "cancelled"}:
+        error = getattr(response, "error", None)
+        code = getattr(error, "code", None) if error is not None else status
+        message = (
+            getattr(error, "message", None) if error is not None else "response failed"
+        )
+        yield provider_error_part_from_raw(message, code=code, source=source)
+
+    yield {"type": "response_done"}
+
+
 def _service_tier_cost_multiplier(service_tier: str | None) -> float:
     if service_tier == "flex":
         return 0.5
@@ -393,6 +440,118 @@ def _service_tier_cost_multiplier(service_tier: str | None) -> float:
 
 def _raw_part(part: dict[str, object]) -> RawPart:
     return cast(RawPart, part)
+
+
+def _iter_complete_reasoning_parts(
+    item: object,
+    *,
+    emit_thinking: bool,
+) -> Iterator[RawPart]:
+    summary_payload = []
+    for part in getattr(item, "summary", None) or []:
+        text = getattr(part, "text", "")
+        summary_payload.append(
+            {
+                "type": getattr(part, "type", "summary_text"),
+                "text": text,
+            }
+        )
+        if emit_thinking and isinstance(text, str) and text:
+            yield {"type": "thinking_delta", "text": text}
+    yield {
+        "type": "thinking_signature_delta",
+        "signature": json.dumps(
+            {
+                "type": "reasoning",
+                "id": getattr(item, "id", None),
+                "summary": summary_payload,
+            }
+        ),
+    }
+
+
+def _iter_complete_message_parts(item: object) -> Iterator[RawPart]:
+    content = getattr(item, "content", None)
+    if isinstance(content, str) and content:
+        yield {"type": "text_delta", "text": content}
+    elif isinstance(content, list):
+        for part in content:
+            text = _complete_content_text(part)
+            if isinstance(text, str) and text:
+                yield {"type": "text_delta", "text": text}
+    yield {
+        "type": "text_signature_delta",
+        "signature": encode_text_signature_v1(
+            str(getattr(item, "id", "") or ""),
+            getattr(item, "phase", None),
+        ),
+    }
+
+
+def _iter_complete_function_call_parts(
+    item: object,
+    *,
+    index: int,
+) -> Iterator[RawPart]:
+    item_id = getattr(item, "id", None)
+    call_id = getattr(item, "call_id", None)
+    tool_call_id = f"{call_id or ''}|{item_id or ''}"
+    yield _raw_part(
+        {
+            "type": "tool_call_start",
+            "id": tool_call_id,
+            "name": getattr(item, "name", ""),
+            "index": index,
+        }
+    )
+    arguments = getattr(item, "arguments", None)
+    if isinstance(arguments, dict):
+        arguments = json.dumps(arguments, ensure_ascii=False, separators=(",", ":"))
+    if isinstance(arguments, str) and arguments:
+        yield _raw_part(
+            {
+                "type": "tool_call_args_delta",
+                "tool_call_id": tool_call_id,
+                "delta": arguments,
+                "index": index,
+            }
+        )
+    yield _raw_part(
+        {
+            "type": "tool_call_done",
+            "tool_call_id": tool_call_id,
+            "index": index,
+        }
+    )
+
+
+def _complete_content_text(part: object) -> str | None:
+    text = getattr(part, "text", None)
+    if isinstance(text, str):
+        return text
+    refusal = getattr(part, "refusal", None)
+    if isinstance(refusal, str):
+        return refusal
+    return None
+
+
+def _responses_usage_part(usage: object) -> RawPart:
+    cached = (
+        getattr(
+            getattr(usage, "input_tokens_details", None) or {},
+            "cached_tokens",
+            0,
+        )
+        or 0
+    )
+    return {
+        "type": "usage_delta",
+        "input": (getattr(usage, "input_tokens", 0) or 0) - cached,
+        "output": getattr(usage, "output_tokens", 0) or 0,
+        "cache_read": cached,
+        "cache_write": 0,
+        "total_tokens": getattr(usage, "total_tokens", 0) or 0,
+    }
 
 
 def map_responses_status_to_reason(status: str | None) -> str:
@@ -653,15 +812,9 @@ def _supports_reasoning(model, capabilities: object | None) -> bool:
 
 
 def _supports_developer_role(
-    model, protocol: EndpointProtocolFeatures, capabilities: object | None
+    model, adapter_config: OpenAIResponsesConfig, capabilities: object | None
 ) -> bool:
-    return _supports_reasoning(model, capabilities) and _is_supported(
-        protocol.roles.developer
-    )
-
-
-def _is_supported(status: SupportStatus) -> bool:
-    return status is SupportStatus.SUPPORTED
+    return _supports_reasoning(model, capabilities) and adapter_config.developer_role
 
 
 def _normalize_id_part(part: str) -> str:

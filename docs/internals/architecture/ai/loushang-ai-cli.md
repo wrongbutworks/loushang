@@ -30,7 +30,7 @@
    - show <model-id>：展示 capability（context 窗口、是否支持 thinking/image 等）
 3) endpoints
    - list [--provider P]
-   - show <provider>:<endpoint>：显示 baseUrl、regions、defaults、compat
+   - show <provider>:<endpoint>：显示 baseUrl、regions、defaults、adapter
 4) chat/complete
    - chat：流式输出事件或 JSON 行；参数：--model/--message/--system/--timeout/--region/--transport/--retries/--json/--stream
    - complete：等待最终消息并打印；支持 --json 输出原始 AssistantMessage（dict）

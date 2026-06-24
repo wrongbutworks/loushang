@@ -5,11 +5,12 @@ from dataclasses import asdict
 
 import pytest
 
+import loushang.ai.auth as auth_module
 from loushang.ai.auth import facade
 from loushang.ai.auth.facade import (
-    ensure_builtin_oauth_providers,
     oauth_login,
     oauth_refresh,
+    register_builtin_oauth_providers,
     resolve_oauth_api_key,
 )
 from loushang.ai.auth.registry import OAuthProviderRegistry
@@ -68,7 +69,7 @@ class _FakeProvider:
 
 def _registry() -> OAuthProviderRegistry:
     registry = OAuthProviderRegistry()
-    registry.register_oauth_provider(_FakeProvider(), source_id="test")
+    registry.register(_FakeProvider(), source_id="test")
     return registry
 
 
@@ -87,13 +88,28 @@ def _capture_store_updates(store, save_calls):
     return _update
 
 
-def test_ensure_builtin_oauth_providers_does_not_reset_registry() -> None:
+def test_oauth_registry_method_wrappers_are_not_public_api() -> None:
+    removed_names = (
+        "register_oauth_provider",
+        "get_oauth_provider",
+        "list_oauth_providers",
+        "clear_oauth_providers",
+        "reset_oauth_providers",
+        "ensure_builtin_oauth_providers",
+    )
+
+    for name in removed_names:
+        assert not hasattr(auth_module, name)
+        assert not hasattr(facade, name)
+
+
+def test_register_builtin_oauth_providers_does_not_reset_registry() -> None:
     registry = _registry()
 
-    ensure_builtin_oauth_providers(registry=registry)
+    register_builtin_oauth_providers(registry=registry)
 
-    assert registry.get_oauth_provider("demo") is not None
-    assert registry.get_oauth_provider("anthropic") is not None
+    assert registry.get("demo") is not None
+    assert registry.get("anthropic") is not None
 
 
 def test_oauth_login_persists_into_explicit_credentials_map(

@@ -99,6 +99,8 @@ def normalize_provider_error(
     *,
     source: str = "provider",
 ) -> AIError:
+    if isinstance(error, AIError):
+        return error
     status_code = _provider_status_code(error)
     code = _provider_error_code(error, status_code)
     error_type = _ERROR_CLASS_BY_CODE.get(code, AIProviderError)

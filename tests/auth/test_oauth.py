@@ -4,7 +4,7 @@ import asyncio
 
 import pytest
 
-from loushang.ai.auth.facade import reset_oauth_providers
+from loushang.ai.auth.facade import register_builtin_oauth_providers
 from loushang.ai.auth.oauth import get_oauth_api_key
 from loushang.ai.auth.registry import get_default_oauth_registry
 from loushang.ai.auth.types import OAuthCredentials
@@ -42,15 +42,16 @@ class _AsyncRefreshProvider:
 @pytest.fixture
 def _oauth_registry():
     registry = get_default_oauth_registry()
-    registry.reset_oauth_providers()
+    registry.clear()
     yield registry
-    reset_oauth_providers(with_builtins=True)
+    registry.clear()
+    register_builtin_oauth_providers()
 
 
 def test_get_oauth_api_key_refreshes_async_provider_inside_running_loop(
     _oauth_registry,
 ) -> None:
-    _oauth_registry.register_oauth_provider(_AsyncRefreshProvider(), source_id="test")
+    _oauth_registry.register(_AsyncRefreshProvider(), source_id="test")
     expired = OAuthCredentials(
         provider="demo",
         access_token="old-token",

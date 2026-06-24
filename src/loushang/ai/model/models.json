@@ -1,5 +1,4 @@
 {
-  "schemaVersion": 2,
   "providers": {
     "anthropic": {
       "displayName": "Anthropic",
@@ -20,32 +19,6 @@
           "baseUrl": "https://api.anthropic.com",
           "preferred": true,
           "docs": "https://docs.anthropic.com/en/api/messages",
-          "protocol": {
-            "streaming": {
-              "usage": "supported",
-              "reasoningDelta": "supported"
-            },
-            "reasoning": {
-              "interleaved": "supported"
-            },
-            "tools": {
-              "fineGrained": "supported"
-            },
-            "cache": {
-              "longRetention": "supported"
-            }
-          },
-          "dialect": {
-            "maxOutputTokensField": "max_tokens",
-            "reasoning": {
-              "assistantContentRequired": false,
-              "thinkingAsText": false,
-              "wireFormat": "anthropic"
-            },
-            "cache": {
-              "controlFormat": "anthropic"
-            }
-          },
           "models": {
             "claude-opus-4-8": {
               "displayName": "Claude Opus 4.8",
@@ -109,6 +82,11 @@
                 "cacheWrite": 3.75
               }
             }
+          },
+          "adapter": {
+            "fineGrainedTools": true,
+            "interleavedThinking": true,
+            "longCacheRetention": true
           }
         }
       }
@@ -133,30 +111,6 @@
           "region": "cn",
           "preferred": true,
           "docs": "https://cloud.baidu.com/doc/qianfan-api/s/3m7of64lb",
-          "protocol": {
-            "store": "unsupported",
-            "roles": {
-              "developer": "unsupported"
-            },
-            "streaming": {
-              "usage": "supported",
-              "reasoningDelta": "supported"
-            },
-            "reasoning": {
-              "effort": "unsupported"
-            },
-            "tools": {
-              "strictSchema": "unsupported"
-            }
-          },
-          "dialect": {
-            "maxOutputTokensField": "max_tokens",
-            "tools": {
-              "assistantBridgeRequired": false,
-              "resultNameRequired": false,
-              "streamFlag": false
-            }
-          },
           "transport": {
             "kind": "http",
             "stream": "sse"
@@ -192,6 +146,17 @@
                 "output": 22
               }
             }
+          },
+          "adapter": {
+            "store": false,
+            "developerRole": false,
+            "streamingUsage": true,
+            "reasoningEffort": false,
+            "strictSchema": false,
+            "maxOutputTokensField": "max_tokens",
+            "toolResultName": false,
+            "assistantAfterToolResult": false,
+            "toolStream": false
           }
         }
       }
@@ -213,30 +178,6 @@
           "region": "cn",
           "preferred": true,
           "docs": "https://help.aliyun.com/zh/model-studio/qwen-api-via-openai-responses",
-          "protocol": {
-            "roles": {
-              "developer": "supported"
-            },
-            "streaming": {
-              "usage": "supported",
-              "reasoningDelta": "supported"
-            },
-            "reasoning": {
-              "effort": "supported",
-              "effortMap": {
-                "low": "low",
-                "medium": "medium",
-                "high": "high",
-                "xhigh": "max"
-              }
-            },
-            "tools": {
-              "strictSchema": "unsupported"
-            },
-            "cache": {
-              "promptKey": "supported"
-            }
-          },
           "transport": {
             "kind": "http",
             "stream": "sse"
@@ -302,6 +243,10 @@
                 "output": 8
               }
             }
+          },
+          "adapter": {
+            "developerRole": true,
+            "promptCacheKey": true
           }
         }
       }
@@ -322,41 +267,6 @@
           "baseUrl": "https://api.deepseek.com",
           "preferred": true,
           "docs": "https://api-docs.deepseek.com/",
-          "protocol": {
-            "store": "unsupported",
-            "roles": {
-              "developer": "unsupported"
-            },
-            "streaming": {
-              "usage": "supported",
-              "reasoningDelta": "supported"
-            },
-            "reasoning": {
-              "effort": "supported",
-              "effortMap": {
-                "low": "high",
-                "medium": "high",
-                "high": "high",
-                "xhigh": "max"
-              }
-            },
-            "tools": {
-              "strictSchema": "supported"
-            }
-          },
-          "dialect": {
-            "maxOutputTokensField": "max_tokens",
-            "tools": {
-              "assistantBridgeRequired": false,
-              "resultNameRequired": false,
-              "streamFlag": false
-            },
-            "reasoning": {
-              "assistantContentRequired": true,
-              "thinkingAsText": false,
-              "wireFormat": "deepseek"
-            }
-          },
           "transport": {
             "kind": "http",
             "stream": "sse"
@@ -416,6 +326,26 @@
                 "cacheRead": 0.003625
               }
             }
+          },
+          "adapter": {
+            "store": false,
+            "developerRole": false,
+            "streamingUsage": true,
+            "reasoningEffort": true,
+            "reasoningEffortMap": {
+              "low": "high",
+              "medium": "high",
+              "high": "high",
+              "xhigh": "max"
+            },
+            "strictSchema": true,
+            "maxOutputTokensField": "max_tokens",
+            "toolResultName": false,
+            "assistantAfterToolResult": false,
+            "toolStream": false,
+            "thinkingAsText": false,
+            "assistantReasoningContent": true,
+            "reasoningFormat": "deepseek"
           }
         }
       }
@@ -433,22 +363,11 @@
         "anthropic-messages": {
           "displayName": "MiniMax Anthropic-compatible Messages",
           "api": "anthropic-messages",
-          "baseUrl": "https://api.minimax.io/anthropic/v1",
+          "baseUrl": "https://api.minimax.io/anthropic",
           "preferred": true,
           "docs": "https://platform.minimax.io/docs/api-reference/api-overview",
-          "protocol": {
-            "streaming": {
-              "usage": "supported",
-              "reasoningDelta": "supported"
-            }
-          },
-          "dialect": {
-            "maxOutputTokensField": "max_tokens",
-            "reasoning": {
-              "assistantContentRequired": false,
-              "thinkingAsText": false,
-              "wireFormat": "anthropic"
-            }
+          "adapter": {
+            "longCacheRetention": false
           },
           "transport": {
             "kind": "http",
@@ -474,12 +393,6 @@
                 "structuredOutput": true,
                 "attachment": false,
                 "temperature": true
-              },
-              "pricing": {
-                "currency": "USD",
-                "input": 0.6,
-                "output": 2.4,
-                "cacheRead": 0.12
               }
             }
           }
@@ -502,30 +415,6 @@
           "baseUrl": "https://api.moonshot.ai/v1",
           "preferred": true,
           "docs": "https://platform.kimi.ai/docs/api-reference",
-          "protocol": {
-            "store": "unsupported",
-            "roles": {
-              "developer": "unsupported"
-            },
-            "streaming": {
-              "usage": "supported",
-              "reasoningDelta": "supported"
-            },
-            "reasoning": {
-              "effort": "unsupported"
-            },
-            "tools": {
-              "strictSchema": "unsupported"
-            }
-          },
-          "dialect": {
-            "maxOutputTokensField": "max_tokens",
-            "reasoning": {
-              "assistantContentRequired": false,
-              "thinkingAsText": false,
-              "wireFormat": "moonshot"
-            }
-          },
           "models": {
             "kimi-k2.6": {
               "displayName": "Kimi K2.6",
@@ -549,7 +438,7 @@
                 "toolUse": true,
                 "structuredOutput": true,
                 "attachment": false,
-                "temperature": true
+                "temperature": false
               },
               "pricing": {
                 "currency": "USD",
@@ -589,6 +478,17 @@
                 "cacheRead": 0.19
               }
             }
+          },
+          "adapter": {
+            "store": false,
+            "developerRole": false,
+            "streamingUsage": true,
+            "reasoningEffort": false,
+            "strictSchema": false,
+            "maxOutputTokensField": "max_tokens",
+            "thinkingAsText": false,
+            "assistantReasoningContent": false,
+            "reasoningFormat": "moonshot"
           }
         }
       }
@@ -609,42 +509,6 @@
           "baseUrl": "https://api.openai.com/v1",
           "preferred": true,
           "docs": "https://developers.openai.com/api/reference/resources/responses/methods/create",
-          "protocol": {
-            "store": "supported",
-            "roles": {
-              "developer": "supported"
-            },
-            "streaming": {
-              "usage": "supported",
-              "reasoningDelta": "supported"
-            },
-            "reasoning": {
-              "effort": "supported",
-              "effortMap": {
-                "off": "none",
-                "low": "low",
-                "medium": "medium",
-                "high": "high",
-                "xhigh": "xhigh"
-              }
-            },
-            "tools": {
-              "strictSchema": "supported"
-            }
-          },
-          "dialect": {
-            "maxOutputTokensField": "max_output_tokens",
-            "tools": {
-              "assistantBridgeRequired": false,
-              "resultNameRequired": false,
-              "streamFlag": false
-            },
-            "reasoning": {
-              "assistantContentRequired": false,
-              "thinkingAsText": false,
-              "wireFormat": "responses"
-            }
-          },
           "transport": {
             "kind": "http",
             "stream": "sse"
@@ -714,6 +578,10 @@
                 "cacheRead": 0.075
               }
             }
+          },
+          "adapter": {
+            "developerRole": true,
+            "assistantAfterToolResult": false
           }
         }
       }
@@ -737,36 +605,6 @@
           "baseUrl": "https://api.stepfun.ai/v1",
           "preferred": true,
           "docs": "https://platform.stepfun.ai/docs/en/api-reference/chat/chat-completion-create",
-          "protocol": {
-            "store": "unsupported",
-            "roles": {
-              "developer": "unsupported"
-            },
-            "streaming": {
-              "usage": "supported",
-              "reasoningDelta": "supported"
-            },
-            "reasoning": {
-              "effort": "supported",
-              "effortMap": {
-                "low": "low",
-                "medium": "medium",
-                "high": "high",
-                "xhigh": "high"
-              }
-            },
-            "tools": {
-              "strictSchema": "unsupported"
-            }
-          },
-          "dialect": {
-            "maxOutputTokensField": "max_tokens",
-            "tools": {
-              "assistantBridgeRequired": false,
-              "resultNameRequired": false,
-              "streamFlag": false
-            }
-          },
           "transport": {
             "kind": "http",
             "stream": "sse"
@@ -804,6 +642,23 @@
                 "cacheRead": 0.04
               }
             }
+          },
+          "adapter": {
+            "store": false,
+            "developerRole": false,
+            "streamingUsage": true,
+            "reasoningEffort": true,
+            "reasoningEffortMap": {
+              "low": "low",
+              "medium": "medium",
+              "high": "high",
+              "xhigh": "high"
+            },
+            "strictSchema": false,
+            "maxOutputTokensField": "max_tokens",
+            "toolResultName": false,
+            "assistantAfterToolResult": false,
+            "toolStream": false
           }
         }
       }
@@ -819,36 +674,12 @@
       },
       "endpoints": {
         "openai-completions": {
-          "displayName": "Tencent Hunyuan OpenAI Compatible",
+          "displayName": "Tencent Hunyuan OpenAI-compatible",
           "api": "openai-completions",
           "baseUrl": "https://api.hunyuan.cloud.tencent.com/v1",
           "region": "cn",
           "preferred": true,
           "docs": "https://cloud.tencent.com/document/product/1729/111007",
-          "protocol": {
-            "store": "unsupported",
-            "roles": {
-              "developer": "unsupported"
-            },
-            "streaming": {
-              "usage": "supported",
-              "reasoningDelta": "unsupported"
-            },
-            "reasoning": {
-              "effort": "unsupported"
-            },
-            "tools": {
-              "strictSchema": "unsupported"
-            }
-          },
-          "dialect": {
-            "maxOutputTokensField": "max_tokens",
-            "tools": {
-              "assistantBridgeRequired": false,
-              "resultNameRequired": false,
-              "streamFlag": false
-            }
-          },
           "transport": {
             "kind": "http",
             "stream": "sse"
@@ -884,6 +715,17 @@
                 "output": 2
               }
             }
+          },
+          "adapter": {
+            "store": false,
+            "developerRole": false,
+            "streamingUsage": true,
+            "reasoningEffort": false,
+            "strictSchema": false,
+            "maxOutputTokensField": "max_tokens",
+            "toolResultName": false,
+            "assistantAfterToolResult": false,
+            "toolStream": false
           }
         }
       }
@@ -905,26 +747,6 @@
           "region": "cn-beijing",
           "preferred": true,
           "docs": "https://www.volcengine.com/docs/82379/1330310",
-          "protocol": {
-            "store": "unsupported",
-            "roles": {
-              "developer": "unsupported"
-            },
-            "reasoning": {
-              "effort": "unsupported"
-            },
-            "tools": {
-              "strictSchema": "unsupported"
-            }
-          },
-          "dialect": {
-            "maxOutputTokensField": "max_tokens",
-            "tools": {
-              "assistantBridgeRequired": false,
-              "resultNameRequired": false,
-              "streamFlag": false
-            }
-          },
           "transport": {
             "kind": "http",
             "stream": "sse"
@@ -952,6 +774,16 @@
                 "temperature": true
               }
             }
+          },
+          "adapter": {
+            "store": false,
+            "developerRole": false,
+            "reasoningEffort": false,
+            "strictSchema": false,
+            "maxOutputTokensField": "max_tokens",
+            "toolResultName": false,
+            "assistantAfterToolResult": false,
+            "toolStream": false
           }
         }
       }
@@ -972,35 +804,6 @@
           "baseUrl": "https://api.z.ai/api/paas/v4/",
           "preferred": true,
           "docs": "https://docs.z.ai/guides/overview/quick-start",
-          "protocol": {
-            "store": "unsupported",
-            "roles": {
-              "developer": "unsupported"
-            },
-            "streaming": {
-              "usage": "supported",
-              "reasoningDelta": "supported"
-            },
-            "reasoning": {
-              "effort": "unsupported"
-            },
-            "tools": {
-              "strictSchema": "unsupported"
-            }
-          },
-          "dialect": {
-            "maxOutputTokensField": "max_tokens",
-            "tools": {
-              "assistantBridgeRequired": false,
-              "resultNameRequired": false,
-              "streamFlag": false
-            },
-            "reasoning": {
-              "assistantContentRequired": false,
-              "thinkingAsText": false,
-              "wireFormat": "zai-thinking"
-            }
-          },
           "transport": {
             "kind": "http",
             "stream": "sse"
@@ -1066,6 +869,20 @@
                 "cacheRead": 0.26
               }
             }
+          },
+          "adapter": {
+            "store": false,
+            "developerRole": false,
+            "streamingUsage": true,
+            "reasoningEffort": false,
+            "strictSchema": false,
+            "maxOutputTokensField": "max_tokens",
+            "toolResultName": false,
+            "assistantAfterToolResult": false,
+            "toolStream": false,
+            "thinkingAsText": false,
+            "assistantReasoningContent": false,
+            "reasoningFormat": "zai-thinking"
           }
         }
       }

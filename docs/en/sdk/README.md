@@ -33,13 +33,13 @@ Use subpackages only when you need an advanced boundary:
 
 - `loushang.ai.model` for custom model catalogs and registry inspection.
 - `loushang.ai.auth` for OAuth credential storage and provider login helpers.
-- `loushang.ai.advanced` for provider-specific options and registry wiring.
+- `loushang.ai.advanced.registry` for provider registry wiring.
 - `loushang.ai.contrib.openai_codex` for the optional OpenAI Codex integration.
 
 ## Models And Catalog
 
-The built-in catalog is `models.curated.v2.json`. It intentionally contains a
-small, evidence-backed provider set instead of the archived full legacy catalog.
+The built-in catalog is `models.json`. It intentionally contains a small
+provider set instead of the archived full legacy catalog.
 
 List and choose models by the local `provider:endpoint:model` tuple:
 
@@ -56,14 +56,53 @@ Run [examples/ai/11_provider_matrix.py](../../../examples/ai/11_provider_matrix.
 or [examples/ai/12_provider_smoke.py](../../../examples/ai/12_provider_smoke.py)
 to inspect the current built-in provider set offline.
 
-If you are moving code from the legacy catalog or broad root API, read the
-[v2 migration guide](./migration-v2.md).
+For local or long-tail providers, load a custom model file with the same shape
+as `models.json` instead of expanding the built-in catalog. See
+[examples/ai/custom_model_file.py](../../../examples/ai/custom_model_file.py) for
+the common path and
+[examples/ai/advanced/custom_catalog.py](../../../examples/ai/advanced/custom_catalog.py)
+for request-binding inspection. Custom model files can set `upstreamId` when the
+provider-facing model name differs from the local model id.
 
-For local or long-tail providers, load a schema v2 custom catalog instead of
-expanding the built-in catalog. See
-[examples/ai/advanced/custom_catalog.py](../../../examples/ai/advanced/custom_catalog.py).
-Custom catalog models can set `upstreamId` when the provider-facing model name
-differs from the local model id.
+### Model File Format
+
+Runtime model files use one shape and do not include `schemaVersion`:
+
+```json
+{
+  "providers": {
+    "company": {
+      "displayName": "Company AI",
+      "auth": {"apiKeyEnv": "COMPANY_AI_API_KEY"},
+      "endpoints": {
+        "openai-completions": {
+          "api": "openai-completions",
+          "baseUrl": "https://models.company.example/v1",
+          "adapter": {
+            "developerRole": false,
+            "maxOutputTokensField": "max_completion_tokens",
+            "reasoningFormat": "openai"
+          },
+          "models": {
+            "company-chat": {
+              "upstreamId": "vendor/company-chat-2026-06",
+              "capabilities": {
+                "input": ["text"],
+                "output": ["text"],
+                "stream": true,
+                "toolUse": true
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}
+```
+
+Use `adapter` for protocol-specific request mapping. Do not use removed
+`compat`, `protocol`, or `dialect` fields.
 
 ## Auth
 
@@ -100,14 +139,15 @@ API-key provider path.
 
 ## Complete Calls
 
-The shortest path is `get_model(...)` followed by `model.complete(...)` or the
-root `complete(...)` helper.
+The shortest path is `get_model(...)` followed by the root `complete(...)`
+helper.
 
 ```python
-from loushang.ai import CallOptions, get_model
+from loushang.ai import CallOptions, complete, get_model
 
 model = get_model("moonshot", "openai-completions", "kimi-k2.6")
-message = await model.complete(
+message = await complete(
+    model,
     {"messages": [{"role": "user", "content": "Say hello in one sentence."}]},
     CallOptions(api_key="...", max_output_tokens=128),
 )
@@ -185,8 +225,7 @@ options = CallOptions(
 )
 ```
 
-For a simpler public path, `SimpleCallOptions(reasoning="medium")` maps to the
-same internal call options. Runnable reference:
+Runnable reasoning reference:
 [examples/ai/06_reasoning.py](../../../examples/ai/06_reasoning.py).
 
 ## Structured Output
@@ -261,10 +300,11 @@ normalized as `AIError` subclasses. The stable JSON-safe payload is available
 through `error.to_dict()`, with credentials and tokens redacted.
 
 ```python
-from loushang.ai import AIError, CallOptions, RetryOptions
+from loushang.ai import AIError, CallOptions, RetryOptions, complete
 
 try:
-    message = await model.complete(
+    message = await complete(
+        model,
         {"messages": [{"role": "user", "content": "hello"}]},
         CallOptions(api_key="...", retry=RetryOptions(max_attempts=2)),
     )
@@ -277,7 +317,7 @@ Retries are only safe before visible output is emitted. Runnable reference:
 
 ## Usage And Cost
 
-Final `AssistantMessage.usage` is a response-level `UsageObservation`. Cost is
+Final `AssistantMessage.usage` is response-level `Usage`. Cost is
 `None` when the catalog does not have trusted pricing facts.
 
 ```python
@@ -285,7 +325,8 @@ usage = message.usage
 print(usage.input, usage.output, usage.total_tokens, usage.cost)
 ```
 
-Account or platform quota is separate from response usage. Runnable references:
+Account or platform quota is separate from response usage. Moonshot/Kimi quota
+helpers live in `loushang.ai.contrib.moonshot`. Runnable references:
 [examples/ai/10_usage.py](../../../examples/ai/10_usage.py),
 [examples/ai/advanced/usage_online.py](../../../examples/ai/advanced/usage_online.py), and
 [examples/ai/advanced/platform_quota.py](../../../examples/ai/advanced/platform_quota.py).
@@ -306,6 +347,7 @@ Recommended reading order:
 10. [10_usage.py](../../../examples/ai/10_usage.py)
 11. [11_provider_matrix.py](../../../examples/ai/11_provider_matrix.py)
 12. [12_provider_smoke.py](../../../examples/ai/12_provider_smoke.py)
+13. [custom_model_file.py](../../../examples/ai/custom_model_file.py)
 
 Advanced examples live under
 [examples/ai/advanced](../../../examples/ai/advanced/).

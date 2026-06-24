@@ -49,6 +49,7 @@ def inspect_typed_stream_error() -> dict[str, object]:
 
 def inspect_retry_policy() -> dict[str, object]:
     retry = RetryOptions(max_attempts=2, max_delay_seconds=0)
+    call_id = "retry-demo-call"
     return {
         "attempts": retry.max_attempts,
         "text": "retry recovered",
@@ -59,12 +60,13 @@ def inspect_retry_policy() -> dict[str, object]:
                 "source": "runtime",
                 "name": "request",
                 "data": {
+                    "callId": call_id,
                     "api": "anthropic-messages",
                     "provider": "retry-demo",
+                    "endpoint": "anthropic-messages",
                     "model": "retry-demo",
                     "attempt": 1,
                     "maxAttempts": 2,
-                    "endpoint": "anthropic-messages",
                     "upstreamModel": "retry-demo",
                 },
             },
@@ -74,11 +76,17 @@ def inspect_retry_policy() -> dict[str, object]:
                 "source": "runtime",
                 "name": "retry",
                 "data": {
+                    "callId": call_id,
+                    "api": "anthropic-messages",
+                    "provider": "retry-demo",
+                    "endpoint": "anthropic-messages",
+                    "model": "retry-demo",
                     "attempt": 2,
                     "maxAttempts": 2,
                     "delayMs": 0,
                     "reason": "service_unavailable",
                     "statusCode": 503,
+                    "requestId": "req_retry_demo",
                 },
             },
             {
@@ -87,12 +95,13 @@ def inspect_retry_policy() -> dict[str, object]:
                 "source": "runtime",
                 "name": "request",
                 "data": {
+                    "callId": call_id,
                     "api": "anthropic-messages",
                     "provider": "retry-demo",
+                    "endpoint": "anthropic-messages",
                     "model": "retry-demo",
                     "attempt": 2,
                     "maxAttempts": 2,
-                    "endpoint": "anthropic-messages",
                     "upstreamModel": "retry-demo",
                 },
             },

@@ -1,5 +1,6 @@
 import pytest
 
+from loushang.ai import CallOptions
 from loushang.ai.types import (
     AssistantMessage,
     TextPart,
@@ -23,6 +24,47 @@ from loushang.coding.compaction import (
 )
 from loushang.coding.message import BranchSummaryMessage
 from loushang.coding.store import SessionManager
+
+
+@pytest.mark.anyio
+async def test_complete_text_calls_root_complete_with_options(monkeypatch) -> None:
+    from loushang.ai import Context
+    from loushang.coding.compaction import compaction as compaction_module
+
+    captured: dict[str, object] = {}
+
+    async def fake_complete(model, context, options=None):
+        captured["model"] = model
+        captured["context"] = context
+        captured["options"] = options
+        return AssistantMessage(
+            role="assistant",
+            content=[TextPart(type="text", text="summary text")],
+            api="faux",
+            provider="faux",
+            model="faux-model",
+            response_id=None,
+            usage=Usage(
+                input=0,
+                output=0,
+                cache_read=0,
+                cache_write=0,
+                total_tokens=0,
+                cost=None,
+            ),
+            stop_reason="stop",
+            error_message=None,
+            timestamp=0.0,
+        )
+
+    monkeypatch.setattr(compaction_module, "complete", fake_complete)
+    options = CallOptions(api_key="key", headers={"x-test": "1"})
+    context = Context(messages=[UserMessage(role="user", content="summarize", timestamp=0.0)])
+
+    result = await compaction_module._complete_text("model", context, options)
+
+    assert result == "summary text"
+    assert captured == {"model": "model", "context": context, "options": options}
 
 
 def test_compaction_package_exports_core_symbols() -> None:
@@ -523,7 +565,7 @@ async def test_generate_branch_summary_returns_summary_text(monkeypatch) -> None
         return "branch summary"
 
     monkeypatch.setattr(
-        "loushang.coding.compaction.branch_summarization.complete_simple",
+        "loushang.coding.compaction.branch_summarization._complete_text",
         _fake_complete,
     )
 
@@ -546,16 +588,18 @@ async def test_generate_branch_summary_returns_summary_text(monkeypatch) -> None
 async def test_generate_branch_summary_uses_serialized_prompt_and_file_details(monkeypatch) -> None:
     captured: dict[str, object] = {}
 
-    async def _fake_complete(model, context):
+    async def _fake_complete(model, context, options=None):
         captured["model"] = model
         captured["context"] = context
+        captured["options"] = options
         return "branch summary"
 
     monkeypatch.setattr(
-        "loushang.coding.compaction.branch_summarization.complete_simple",
+        "loushang.coding.compaction.branch_summarization._complete_text",
         _fake_complete,
     )
 
+    signal = object()
     result = await generate_branch_summary(
         [
             UserMessage(role="user", content=[TextPart(type="text", text="Explore branch")], timestamp=1.0),
@@ -576,7 +620,9 @@ async def test_generate_branch_summary_uses_serialized_prompt_and_file_details(m
             ),
         ],
         model="model",
-        api_key="",
+        api_key="branch-key",
+        headers={"x-branch": "1"},
+        signal=signal,
         custom_instructions="Keep exact paths.",
         reserve_tokens=1024,
     )
@@ -588,6 +634,11 @@ async def test_generate_branch_summary_uses_serialized_prompt_and_file_details(m
     assert "[Assistant tool calls]: read(path='README.md'); edit(path='src/app.py')" in prompt
     assert "Additional focus: Keep exact paths." in prompt
     assert "Do NOT continue the conversation" in context.system_prompt
+    options = captured["options"]
+    assert isinstance(options, CallOptions)
+    assert options.api_key == "branch-key"
+    assert options.headers == {"x-branch": "1"}
+    assert options.cancellation is signal
     assert result.summary.endswith("<read-files>\nREADME.md\n</read-files>\n\n<modified-files>\nsrc/app.py\n</modified-files>")
     assert result.details.read_files == ["README.md"]
     assert result.details.modified_files == ["src/app.py"]
@@ -655,12 +706,13 @@ async def test_compact_passes_custom_instructions_to_summarizer(monkeypatch) -> 
 async def test_compact_serializes_conversation_and_previous_summary_for_llm(monkeypatch) -> None:
     captured: dict[str, object] = {}
 
-    async def fake_complete(model, context):
+    async def fake_complete(model, context, options=None):
         captured["model"] = model
         captured["context"] = context
+        captured["options"] = options
         return "summary text"
 
-    monkeypatch.setattr("loushang.coding.compaction.compaction.complete_simple", fake_complete)
+    monkeypatch.setattr("loushang.coding.compaction.compaction._complete_text", fake_complete)
 
     preparation = CompactionPreparation(
         first_kept_entry_id="e2",
@@ -681,10 +733,13 @@ async def test_compact_serializes_conversation_and_previous_summary_for_llm(monk
         previous_summary="Earlier summary",
     )
 
+    signal = object()
     result = await compact(
         preparation=preparation,
         model="model",
         api_key="test-key",
+        headers={"x-test": "1"},
+        signal=signal,
         custom_instructions="Keep exact file paths.",
     )
 
@@ -698,6 +753,55 @@ async def test_compact_serializes_conversation_and_previous_summary_for_llm(monk
     assert "<previous-summary>\nEarlier summary\n</previous-summary>" in prompt
     assert "Additional focus: Keep exact file paths." in prompt
     assert "Do NOT continue the conversation" in context.system_prompt
+    options = captured["options"]
+    assert isinstance(options, CallOptions)
+    assert options.api_key == "test-key"
+    assert options.headers == {"x-test": "1"}
+    assert options.cancellation is signal
+
+
+@pytest.mark.anyio
+async def test_compact_split_turn_forwards_call_options_to_both_summaries(monkeypatch) -> None:
+    captured: list[tuple[object, object, object | None]] = []
+
+    async def fake_complete(model, context, options=None):
+        captured.append((model, context, options))
+        return f"summary-{len(captured)}"
+
+    monkeypatch.setattr("loushang.coding.compaction.compaction._complete_text", fake_complete)
+
+    preparation = CompactionPreparation(
+        first_kept_entry_id="e2",
+        messages_to_summarize=[
+            UserMessage(role="user", content=[TextPart(type="text", text="older")], timestamp=1.0)
+        ],
+        turn_prefix_messages=[
+            UserMessage(role="user", content=[TextPart(type="text", text="current turn")], timestamp=2.0)
+        ],
+        is_split_turn=True,
+        tokens_before=42,
+    )
+
+    signal = object()
+    result = await compact(
+        preparation=preparation,
+        model="model",
+        api_key="test-key",
+        headers={"x-test": "1"},
+        signal=signal,
+    )
+
+    assert result.summary == "summary-1\n\n---\n\n**Turn Context (split turn):**\n\nsummary-2"
+    assert len(captured) == 2
+    assert [model for model, _, _ in captured] == ["model", "model"]
+    prompts = [context.messages[0].content[0].text for _, context, _ in captured]
+    assert "[User]: older" in prompts[0]
+    assert "[User]: current turn" in prompts[1]
+    for _, _, options in captured:
+        assert isinstance(options, CallOptions)
+        assert options.api_key == "test-key"
+        assert options.headers == {"x-test": "1"}
+        assert options.cancellation is signal
 
 
 @pytest.mark.anyio

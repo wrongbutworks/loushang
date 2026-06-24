@@ -28,13 +28,11 @@ Accepted
 `loushang-ai` 采用 **async public streaming surface**：
 
 - `async stream(...) -> AssistantMessageEventStream`
-- `async stream_simple(...) -> AssistantMessageEventStream`
 - `async complete(...) -> AssistantMessage`
-- `async complete_simple(...) -> AssistantMessage`
 
 并且：
 
-- `complete*()` 建立在 `await stream*(); await result()` 之上
+- `complete()` 建立在 `await stream(); await result()` 之上
 - `ApiProvider` 协议也采用 async-start 形态
 
 ## Alternatives Considered
@@ -62,7 +60,7 @@ Accepted
 
 做法：
 
-- `stream()` / `stream_simple()` 直接进入 async 边界
+- `stream()` 直接进入 async 边界
 - provider 启动在 public contract 层面显式表达
 
 优点：

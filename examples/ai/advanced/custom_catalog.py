@@ -1,7 +1,7 @@
-"""Load a custom catalog with a first-class upstream model binding.
+"""Load a custom model file with a first-class upstream model binding.
 
-This advanced example is offline. It writes a tiny schema v2 model catalog,
-loads it, and inspects the provider request binding without calling any API.
+This advanced example is offline. It writes a tiny model file, loads it,
+and inspects the provider request binding without calling any API.
 """
 
 from __future__ import annotations
@@ -15,16 +15,15 @@ from loushang.ai.model import load_model_registry_from_file
 from loushang.ai.provider import resolve_request_for_model
 
 CUSTOM_CATALOG: dict[str, Any] = {
-    "schemaVersion": 2,
     "providers": {
         "custom-provider": {
             "endpoints": {
                 "openai-completions": {
                     "api": "openai-completions",
                     "baseUrl": "https://api.example.invalid/v1",
-                    "dialect": {
+                    "adapter": {
                         "maxOutputTokensField": "max_completion_tokens",
-                        "reasoning": {"wireFormat": "openai"},
+                        "reasoningFormat": "openai",
                     },
                     "models": {
                         "public-model": {
@@ -44,7 +43,7 @@ CUSTOM_CATALOG: dict[str, Any] = {
 
 def inspect_custom_catalog() -> dict[str, object]:
     with TemporaryDirectory() as directory:
-        path = Path(directory) / "models.v2.json"
+        path = Path(directory) / "models.json"
         path.write_text(json.dumps(CUSTOM_CATALOG), encoding="utf-8")
 
         registry = load_model_registry_from_file(path)

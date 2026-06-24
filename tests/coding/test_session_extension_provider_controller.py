@@ -17,7 +17,7 @@ from loushang.coding.session.extension_provider_controller import (
 class _ApiProvider:
     api = "proxy-api"
 
-    async def stream_raw(self, request):
+    async def invoke_raw(self, request):
         del request
         await asyncio.sleep(0)
         yield {"type": "response_done"}
@@ -139,7 +139,7 @@ def test_extension_provider_controller_unregisters_provider_and_source_registrat
     api_registry = ApiProviderRegistry()
     oauth_registry = OAuthProviderRegistry()
     api_registry.register_api_provider(_ApiProvider(), source_id="provider:proxy")
-    oauth_registry.register_oauth_provider(_OAuthProvider(), source_id="provider:proxy")
+    oauth_registry.register(_OAuthProvider(), source_id="provider:proxy")
     controller = ExtensionProviderController(
         model_registry=ModelRegistry(ai_registry=ai_registry),
         api_provider_registry=api_registry,
@@ -150,7 +150,7 @@ def test_extension_provider_controller_unregisters_provider_and_source_registrat
 
     assert ai_registry.get_provider("proxy") is None
     assert api_registry.list_api_providers() == []
-    assert oauth_registry.list_oauth_providers() == []
+    assert oauth_registry.list() == []
 
 
 def test_extension_provider_controller_rejects_pi_style_provider_config() -> None:

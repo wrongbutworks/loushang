@@ -5,7 +5,7 @@
 - Normalize input once before provider adapters.
 - Provider adapters emit RawPart and must not expose vendor SDK objects.
 - Core behavior must not branch on provider id or base URL.
-- Built-in catalog facts require official evidence.
+- Built-in catalog facts live in `model/models.json`; user model files do not need evidence docs.
 - Unknown capability is not supported capability.
 - Every behavior change includes tests; user-visible changes include examples/docs.
 - Run make check-ai before every commit.

@@ -16,7 +16,7 @@ from _support import (
     describe_model,
 )
 
-from loushang.ai import Context, UserMessage, complete_simple
+from loushang.ai import Context, UserMessage, complete
 from loushang.ai.pricing import calculate_cost
 
 
@@ -89,7 +89,7 @@ async def main() -> int:
         system_prompt="请遵循用户约束，简短回复。",
         messages=[UserMessage(role="user", content=args.prompt, timestamp=0.0)],
     )
-    response = await complete_simple(model, context)
+    response = await complete(model, context)
     text_parts = [
         part.text
         for part in response.content

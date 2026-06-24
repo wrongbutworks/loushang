@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import inspect
 from collections.abc import Callable
 from dataclasses import dataclass, replace
 
@@ -22,8 +21,6 @@ class ExtensionHooks:
         existing_transform = self.agent.transform_context
         existing_before = self.agent.before_tool_call
         existing_after = self.agent.after_tool_call
-        existing_on_payload = self.agent.on_payload
-        existing_on_response = getattr(self.agent, "on_response", None)
 
         async def _transform_context(messages, signal):
             current_messages = messages
@@ -49,37 +46,9 @@ class ExtensionHooks:
                 [hook for hook in (existing_after, self.extension_runner.after_tool_call) if hook is not None],
             )
 
-        async def _on_payload(payload, model):
-            current_payload = payload
-            if callable(existing_on_payload):
-                next_payload = existing_on_payload(current_payload, model)
-                if inspect.isawaitable(next_payload):
-                    next_payload = await next_payload
-                if next_payload is not None:
-                    current_payload = next_payload
-            if self.extension_runner.has_handlers("before_provider_request"):
-                current_payload = await self.extension_runner.emit_before_provider_request(
-                    current_payload,
-                    cwd=self.get_cwd(),
-                )
-            return current_payload
-
-        async def _on_response(response, model):
-            if callable(existing_on_response):
-                result = existing_on_response(response, model)
-                if inspect.isawaitable(result):
-                    await result
-            if self.extension_runner.has_handlers("after_provider_response"):
-                await self.extension_runner.emit_after_provider_response(
-                    response,
-                    cwd=self.get_cwd(),
-                )
-
         self.agent.transform_context = _transform_context
         self.agent.before_tool_call = _before_tool_call
         self.agent.after_tool_call = _after_tool_call
-        self.agent.on_payload = _on_payload
-        self.agent.on_response = _on_response
 
 
 async def compose_before_tool_call_hooks(context, signal, hooks):

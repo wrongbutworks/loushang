@@ -8,19 +8,19 @@ class OAuthProviderRegistry:
         # id -> (provider, source_id)
         self._providers: dict[str, tuple[OAuthProviderInterface, str | None]] = {}
 
-    def register_oauth_provider(
+    def register(
         self, provider: OAuthProviderInterface, *, source_id: str | None = None
     ) -> None:
         self._providers[provider.id] = (provider, source_id)
 
-    def get_oauth_provider(self, provider_id: str) -> OAuthProviderInterface | None:
+    def get(self, provider_id: str) -> OAuthProviderInterface | None:
         entry = self._providers.get(provider_id)
         return entry[0] if entry else None
 
-    def list_oauth_providers(self) -> list[OAuthProviderInterface]:
+    def list(self) -> list[OAuthProviderInterface]:
         return [p for p, _ in self._providers.values()]
 
-    def unregister_oauth_providers(self, source_id: str) -> None:
+    def unregister_source(self, source_id: str) -> None:
         to_delete: list[str] = []
         for pid, (_p, sid) in self._providers.items():
             if sid == source_id:
@@ -28,7 +28,7 @@ class OAuthProviderRegistry:
         for pid in to_delete:
             del self._providers[pid]
 
-    def reset_oauth_providers(self) -> None:
+    def clear(self) -> None:
         self._providers.clear()
 
 

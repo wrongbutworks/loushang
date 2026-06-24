@@ -6,12 +6,12 @@ import asyncio
 import json
 from collections.abc import Mapping
 
-from loushang.ai.model import Model
-from loushang.ai.usage import (
+from loushang.ai.contrib.moonshot import (
     EndpointQuotaQuery,
     platform_quota_payload,
     query_platform_quota,
 )
+from loushang.ai.model import Model
 
 
 class _OfflineQuotaTransport:

@@ -5,6 +5,10 @@ from collections.abc import Mapping
 from dataclasses import dataclass, field
 
 from loushang.ai.auth.types import OAuthCredentials
+from loushang.ai.model import Auth
+from loushang.ai.utils.redaction import is_sensitive_key
+
+AuthConfig = Auth
 
 
 def _auth_value(config, field_name: str, default=None):
@@ -13,20 +17,48 @@ def _auth_value(config, field_name: str, default=None):
     return getattr(config, field_name, default)
 
 
-@dataclass(frozen=True)
-class AuthConfig:
-    kind: str = "apiKey"
-    api_key_env: str | None = None
-    api_key_envs: tuple[str, ...] = ()
-    header: str = "Authorization"
-    prefix: str = "Bearer "
-    extra_headers: dict[str, str] = field(default_factory=dict)
+_AUTH_FIELD_DEFAULTS: dict[str, object] = {
+    "kind": "apiKey",
+    "api_key_env": None,
+    "api_key_envs": (),
+    "header": "Authorization",
+    "prefix": "Bearer ",
+    "extra_headers": {},
+}
+_AUTH_ATTR_TO_RAW_KEY = {
+    "kind": "kind",
+    "api_key_env": "apiKeyEnv",
+    "api_key_envs": "apiKeyEnvs",
+    "header": "header",
+    "prefix": "prefix",
+    "extra_headers": "extraHeaders",
+}
+
+
+def _auth_field_explicit(config, field_name: str) -> bool:
+    explicit_keys = getattr(config, "_explicit_keys", None)
+    raw_key = _AUTH_ATTR_TO_RAW_KEY[field_name]
+    if explicit_keys is not None:
+        return raw_key in explicit_keys
+    value = _auth_value(config, field_name, _AUTH_FIELD_DEFAULTS[field_name])
+    if field_name == "api_key_env":
+        return value is not None
+    if field_name == "api_key_envs":
+        return bool(tuple(value or ()))
+    if field_name == "extra_headers":
+        return bool(dict(value or {}))
+    return value != _AUTH_FIELD_DEFAULTS[field_name]
+
+
+def _merged_auth_value(effective, override, field_name: str):
+    if _auth_field_explicit(override, field_name):
+        return _auth_value(override, field_name, _AUTH_FIELD_DEFAULTS[field_name])
+    return _auth_value(effective, field_name, _AUTH_FIELD_DEFAULTS[field_name])
 
 
 @dataclass(frozen=True)
 class AuthView:
     headers: dict[str, str] = field(default_factory=dict)
-    account_id: str | None = None
     metadata: dict[str, object] = field(default_factory=dict)
 
 
@@ -50,22 +82,18 @@ def merge_auth_config(
             effective = override
             continue
         auth_type = type(effective)
+        extra_headers = dict(_auth_value(effective, "extra_headers", {}) or {})
+        if _auth_field_explicit(override, "extra_headers"):
+            extra_headers.update(dict(_auth_value(override, "extra_headers", {}) or {}))
         effective = auth_type(
-            kind=_auth_value(override, "kind", "apiKey")
-            or _auth_value(effective, "kind", "apiKey"),
-            api_key_env=_auth_value(override, "api_key_env")
-            or _auth_value(effective, "api_key_env"),
-            api_key_envs=tuple(_auth_value(override, "api_key_envs", ()) or ())
-            or tuple(_auth_value(effective, "api_key_envs", ()) or ()),
-            header=_auth_value(override, "header", "Authorization")
-            or _auth_value(effective, "header", "Authorization"),
-            prefix=_auth_value(override, "prefix")
-            if _auth_value(override, "prefix") is not None
-            else _auth_value(effective, "prefix", "Bearer "),
-            extra_headers={
-                **dict(_auth_value(effective, "extra_headers", {}) or {}),
-                **dict(_auth_value(override, "extra_headers", {}) or {}),
-            },
+            kind=_merged_auth_value(effective, override, "kind"),
+            api_key_env=_merged_auth_value(effective, override, "api_key_env"),
+            api_key_envs=tuple(
+                _merged_auth_value(effective, override, "api_key_envs") or ()
+            ),
+            header=_merged_auth_value(effective, override, "header"),
+            prefix=_merged_auth_value(effective, override, "prefix"),
+            extra_headers=extra_headers,
         )
     return effective
 
@@ -129,14 +157,10 @@ def _resolve_oauth_auth_view(
         return None
     credentials = result["newCredentials"]
     metadata = dict(getattr(credentials, "extra", None) or {})
-    account_id = metadata.get("account_id")
-    if not isinstance(account_id, str) or not account_id:
-        account_id = metadata.get("chatgpt_account_id")
-    if not isinstance(account_id, str) or not account_id:
-        account_id = None
+    headers = resolve_auth_material(bearer_token=result["apiKey"]).headers
+    headers.update(_oauth_provider_headers(provider, credentials))
     return AuthView(
-        headers=resolve_auth_material(bearer_token=result["apiKey"]).headers,
-        account_id=account_id,
+        headers=headers,
         metadata=metadata,
     )
 
@@ -178,20 +202,12 @@ def _resolve_stored_oauth_auth_view(
 def resolve_auth_for_model(
     model,
     *,
-    catalog=None,
     options=None,
     env: dict[str, str] | None = None,
-    registry=None,
 ) -> AuthView:
-    del catalog
-    from loushang.ai.model.registry import resolve_model_endpoint
-
     provider = model.provider_id
     auth_input = normalize_auth_input(options)
-    endpoint = resolve_model_endpoint(model, registry=registry)
-    auth_config = getattr(model, "auth", None) or (
-        endpoint.auth if endpoint is not None else None
-    )
+    auth_config = getattr(model, "auth", None)
 
     if isinstance(auth_input.oauth_credentials, dict):
         oauth_view = _resolve_oauth_auth_view(provider, auth_input.oauth_credentials)
@@ -255,6 +271,28 @@ def _expand_extra_headers(
             continue
         expanded[key] = value
     return expanded
+
+
+def _oauth_provider_headers(
+    provider: str,
+    credentials: OAuthCredentials,
+) -> dict[str, str]:
+    from loushang.ai.auth.registry import get_default_oauth_registry
+
+    oauth_provider = get_default_oauth_registry().get(provider)
+    if oauth_provider is None:
+        return {}
+    try:
+        headers = oauth_provider.get_auth_headers(credentials)
+    except AttributeError:
+        return {}
+    if not isinstance(headers, dict):
+        return {}
+    return {
+        key: value
+        for key, value in headers.items()
+        if isinstance(key, str) and isinstance(value, str) and not is_sensitive_key(key)
+    }
 
 
 def _env_reference(value: str) -> str | None:

@@ -14,6 +14,8 @@ from loushang.ai.auth import storage
 from loushang.ai.auth.storage import (
     CredentialStore,
     CredentialStoreCorruptError,
+    CredentialStoreError,
+    CredentialStorePermissionError,
     find_scoped_credential,
     set_scoped_credential,
 )
@@ -82,6 +84,62 @@ def test_credential_store_writes_by_atomic_replace(
     assert replace_calls
     assert replace_calls[0][1] == str(path)
     assert not list(path.parent.glob(".oauth.json.*.tmp"))
+
+
+def test_credential_store_uses_msvcrt_lock_backend_when_fcntl_unavailable(
+    tmp_path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    class _FakeMsvcrt:
+        LK_LOCK = 1
+        LK_UNLCK = 2
+
+        def __init__(self) -> None:
+            self.calls: list[tuple[int, int, int]] = []
+
+        def locking(self, fd: int, mode: int, nbytes: int) -> None:
+            self.calls.append((mode, nbytes, os.fstat(fd).st_size))
+
+    fake_msvcrt = _FakeMsvcrt()
+    monkeypatch.setattr(storage, "fcntl", None)
+    monkeypatch.setattr(storage, "msvcrt", fake_msvcrt)
+
+    CredentialStore(tmp_path / "oauth.json").save(
+        {"providers": {"demo": _credential()}, "endpoints": {}, "models": {}}
+    )
+
+    assert fake_msvcrt.calls == [
+        (fake_msvcrt.LK_LOCK, 1, 1),
+        (fake_msvcrt.LK_UNLCK, 1, 1),
+    ]
+
+
+@pytest.mark.parametrize(
+    ("error", "expected_error"),
+    [
+        (PermissionError("denied"), CredentialStorePermissionError),
+        (OSError("unavailable"), CredentialStoreError),
+    ],
+)
+def test_credential_store_reports_msvcrt_lock_errors(
+    tmp_path,
+    monkeypatch: pytest.MonkeyPatch,
+    error: OSError,
+    expected_error: type[CredentialStoreError],
+) -> None:
+    class _FakeMsvcrt:
+        LK_LOCK = 1
+        LK_UNLCK = 2
+
+        def locking(self, fd: int, mode: int, nbytes: int) -> None:
+            del fd, mode, nbytes
+            raise error
+
+    monkeypatch.setattr(storage, "fcntl", None)
+    monkeypatch.setattr(storage, "msvcrt", _FakeMsvcrt())
+
+    with pytest.raises(expected_error, match="lock cannot be acquired"):
+        CredentialStore(tmp_path / "oauth.json").load()
 
 
 def test_credential_store_reports_corrupt_json_with_explicit_error(tmp_path) -> None:

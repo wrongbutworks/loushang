@@ -811,7 +811,7 @@ class AgentSession:
     async def _login_from_builtin(self, raw_target: str | None) -> dict[str, object]:
         if self.model_registry is None:
             raise RuntimeError("Model registry is not available.")
-        from loushang.ai.auth import ensure_builtin_oauth_providers, oauth_login
+        from loushang.ai.auth import oauth_login, register_builtin_oauth_providers
 
         target = resolve_auth_login_target(
             raw_target,
@@ -819,7 +819,7 @@ class AgentSession:
             registry=self.model_registry.ai_registry,
         )
         validate_oauth_login_target(target)
-        ensure_builtin_oauth_providers(registry=self.oauth_provider_registry)
+        register_builtin_oauth_providers(registry=self.oauth_provider_registry)
         callbacks = SessionOAuthLoginCallbacks()
         scope_kwargs = login_scope_kwargs(target)
         credentials = await oauth_login(

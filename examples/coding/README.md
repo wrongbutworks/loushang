@@ -238,7 +238,7 @@ python examples/coding/run.py run legacy-001
 `LOUSHANG_EXAMPLES_MODEL_CATALOG` 不设时，`run.py` 会优先读取：
 `<artifacts-root>/models/`（目录）；
 `<artifacts-root>/models.json`（文件）；
-找不到再回退到内置 `src/loushang/ai/model/models.curated.v2.json`。
+找不到再回退到内置 `src/loushang/ai/model/models.json`。
 
 `models.xx.json` 这类模型清单建议放在示例目录的 `models/` 下（例如 `examples/coding/models/`），
 并在需要时通过：
@@ -247,7 +247,7 @@ python examples/coding/run.py run legacy-001
 python examples/coding/run.py run legacy-014 --model-catalog examples/coding/models
 ```
 
-来使用；默认仍为 `src/loushang/ai/model/models.curated.v2.json`。
+来使用；默认仍为 `src/loushang/ai/model/models.json`。
 
 仓库内额外提供了 Kimi Code 示例 catalog（默认不内置到内置 catalog）：
 - 文件：`examples/coding/models/models.kimi-code.json`

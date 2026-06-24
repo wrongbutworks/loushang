@@ -21,11 +21,12 @@ import sys
 import pytest
 
 from loushang.ai import (
+    CallOptions,
     TextPart,
     ToolResultMessage,
+    complete,
     get_model,
 )
-from loushang.ai.advanced import OpenAIResponsesOptions
 
 # 用户可直接修改的配置。
 # 这是高级示例；重点在 tool 协议，不在最短接入路径。
@@ -76,9 +77,9 @@ def _build_tools() -> list[dict]:
     ]
 
 
-def _build_options(api_key: str) -> OpenAIResponsesOptions:
+def _build_options(api_key: str) -> CallOptions:
     # tool roundtrip 与普通调用共用同一套认证和 token 控制方式。
-    return OpenAIResponsesOptions(api_key=api_key, max_tokens=MAX_TOKENS)
+    return CallOptions(api_key=api_key, max_output_tokens=MAX_TOKENS)
 
 
 async def _main() -> None:
@@ -87,7 +88,8 @@ async def _main() -> None:
     tools = _build_tools()
 
     # 第一轮：要求模型先决定是否调用工具。
-    first = await model.complete(
+    first = await complete(
+        model,
         {
             "system_prompt": (
                 "当需要外部计算时，请优先调用工具；"
@@ -122,7 +124,8 @@ async def _main() -> None:
 
     # 第二轮：把本地执行结果显式包装成 ToolResultMessage 再回传给模型。
     # 这是协议 roundtrip 的关键步骤，也是这个高级示例要表达的核心。
-    second = await model.complete(
+    second = await complete(
+        model,
         {
             "system_prompt": "你已经拿到工具结果，请用中文一句话给出最终答案。",
             "messages": [

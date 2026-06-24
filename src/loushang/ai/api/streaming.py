@@ -1,23 +1,32 @@
 from __future__ import annotations
 
-from collections.abc import Mapping
+from dataclasses import replace
 from types import SimpleNamespace
-from typing import Any
 
 from loushang.ai.api_registry import get_default_api_provider_registry
 from loushang.ai.bootstrap import register_builtin_ai_providers
-from loushang.ai.context import normalize_context
+from loushang.ai.context import NormalizedContext, normalize_context_result
+from loushang.ai.diagnostics import NormalizationDiagnostic
 from loushang.ai.errors import UnsupportedCapabilityError
-from loushang.ai.model import EndpointProtocolFeatures, SupportStatus
+from loushang.ai.model import (
+    AnthropicMessagesConfig,
+    OpenAICompletionsConfig,
+    OpenAIResponsesConfig,
+)
 from loushang.ai.options import (
     CallOptions,
     PairingMode,
-    SimpleCallOptions,
     is_reasoning_requested,
-    simple_options_to_call_options,
 )
-from loushang.ai.provider import resolve_request_for_model
-from loushang.ai.provider.invocation import call_api_provider_stream
+from loushang.ai.provider import (
+    ProviderInvocationMode,
+    normalize_provider_request_for_api,
+    resolve_request_for_model,
+)
+from loushang.ai.provider.invocation import (
+    call_api_provider_stream,
+    validate_provider_request,
+)
 from loushang.ai.structured import (
     StructuredOutputOptions,
     StructuredOutputResult,
@@ -28,8 +37,8 @@ from loushang.ai.structured import (
 from loushang.ai.types import ImagePart, ToolResultMessage, UserMessage
 
 
-def _has_image_input(normalized_context: Mapping[str, Any]) -> bool:
-    for message in normalized_context.get("messages", []):
+def _has_image_input(normalized_context: NormalizedContext) -> bool:
+    for message in normalized_context.messages:
         if (
             isinstance(message, UserMessage)
             and isinstance(message.content, list)
@@ -43,49 +52,16 @@ def _has_image_input(normalized_context: Mapping[str, Any]) -> bool:
     return False
 
 
-def _has_tools(normalized_context: Mapping[str, Any]) -> bool:
-    return bool(normalized_context.get("tools"))
+def _has_tools(normalized_context: NormalizedContext) -> bool:
+    return bool(normalized_context.tools)
 
 
-def _requests_reasoning(normalized_context: Mapping[str, Any], options) -> bool:
-    if normalized_context.get("emit_thinking"):
-        return True
+def _requests_reasoning(options) -> bool:
     return is_reasoning_requested(options)
 
 
-def _requests_structured_output(normalized_context: Mapping[str, Any], options) -> bool:
-    if get_structured_output_options(options) is not None:
-        return True
-    fields = (
-        "response_format",
-        "responseFormat",
-        "structured_output",
-        "structuredOutput",
-        "json_schema",
-        "jsonSchema",
-        "output_schema",
-        "outputSchema",
-        "response_model",
-        "responseModel",
-    )
-    return _has_any_context_or_option_value(normalized_context, options, fields)
-
-
-def _requests_attachment(normalized_context: Mapping[str, Any], options) -> bool:
-    fields = ("attachment", "attachments", "file_ids", "fileIds", "files")
-    return _has_any_context_or_option_value(normalized_context, options, fields)
-
-
-def _has_any_context_or_option_value(
-    normalized_context: Mapping[str, Any],
-    options,
-    fields: tuple[str, ...],
-) -> bool:
-    if any(normalized_context.get(field) for field in fields):
-        return True
-    if options is None:
-        return False
-    return any(getattr(options, field, None) for field in fields)
+def _requests_structured_output(options) -> bool:
+    return get_structured_output_options(options) is not None
 
 
 def _requests_temperature(options) -> bool:
@@ -103,57 +79,38 @@ def _supports(capabilities, field: str) -> bool:
     return bool(getattr(capabilities, field, False))
 
 
-def _adapter_status_supported(status: object) -> bool:
-    return status is SupportStatus.SUPPORTED
+def _adapter_supports_long_cache_retention(adapter_config: object) -> bool:
+    if isinstance(
+        adapter_config,
+        OpenAICompletionsConfig | OpenAIResponsesConfig | AnthropicMessagesConfig,
+    ):
+        return adapter_config.long_cache_retention
+    return True
 
 
-def _adapter_supports_session_id(protocol: object) -> bool:
-    cache = getattr(protocol, "cache", None)
-    session = getattr(protocol, "session", None)
-    return any(
-        _adapter_status_supported(status)
-        for status in (
-            getattr(cache, "prompt_key", None),
-            getattr(session, "id_header", None),
-            getattr(session, "affinity_headers", None),
+def _adapter_supports_session_id(adapter_config: object) -> bool:
+    if isinstance(adapter_config, OpenAICompletionsConfig):
+        return (
+            adapter_config.prompt_cache_key or adapter_config.session_affinity_headers
         )
-    )
+    if isinstance(adapter_config, OpenAIResponsesConfig):
+        return (
+            adapter_config.prompt_cache_key
+            or adapter_config.session_id_header
+            or adapter_config.session_affinity_headers
+        )
+    if isinstance(adapter_config, AnthropicMessagesConfig):
+        return adapter_config.session_affinity_headers
+    return True
 
 
-def _adapter_protocol_for_validation(resolved) -> EndpointProtocolFeatures:
-    base = getattr(resolved, "protocol", None)
-    override = getattr(resolved, "adapter_protocol", None)
-    base_raw = base.to_raw() if isinstance(base, EndpointProtocolFeatures) else {}
-    override_raw = (
-        override.to_raw() if isinstance(override, EndpointProtocolFeatures) else {}
-    )
-    return EndpointProtocolFeatures.from_raw(
-        _deep_merge_mapping(base_raw, override_raw)
-    )
-
-
-def _deep_merge_mapping(
-    base: Mapping[str, object],
-    override: Mapping[str, object],
-) -> dict[str, object]:
-    merged = dict(base)
-    for key, value in override.items():
-        existing = merged.get(key)
-        if isinstance(existing, Mapping) and isinstance(value, Mapping):
-            merged[key] = _deep_merge_mapping(existing, value)
-        else:
-            merged[key] = value
-    return merged
-
-
-def _validate_explicit_adapter_options(model, resolved, options) -> None:
+def _validate_explicit_adapter_config(model, resolved, options) -> None:
     if options is None:
         return
-    protocol = _adapter_protocol_for_validation(resolved)
-    cache = getattr(protocol, "cache", None)
+    adapter_config = getattr(resolved, "adapter_config", None)
     cache_retention = getattr(options, "cache_retention", None)
-    if cache_retention == "long" and not _adapter_status_supported(
-        getattr(cache, "long_retention", None)
+    if cache_retention == "long" and not _adapter_supports_long_cache_retention(
+        adapter_config
     ):
         raise UnsupportedCapabilityError(
             f"Model {model.id!r} does not support long cache retention",
@@ -168,7 +125,7 @@ def _validate_explicit_adapter_options(model, resolved, options) -> None:
         isinstance(session_id, str)
         and session_id
         and cache_retention != "none"
-        and not _adapter_supports_session_id(protocol)
+        and not _adapter_supports_session_id(adapter_config)
     ):
         raise UnsupportedCapabilityError(
             f"Model {model.id!r} does not support session id",
@@ -182,7 +139,7 @@ def _validate_explicit_adapter_options(model, resolved, options) -> None:
 def _validate_capability(
     model,
     capabilities,
-    normalized_context: Mapping[str, Any],
+    normalized_context: NormalizedContext,
     options,
     *,
     require_stream: bool,
@@ -203,7 +160,7 @@ def _validate_capability(
             details={"capability": "tool_use"},
         )
 
-    if _requests_reasoning(normalized_context, options) and not _supports(
+    if _requests_reasoning(options) and not _supports(
         capabilities, "reasoning"
     ):
         raise UnsupportedCapabilityError(
@@ -212,7 +169,7 @@ def _validate_capability(
             details={"capability": "reasoning"},
         )
 
-    if _requests_structured_output(normalized_context, options) and not _supports(
+    if _requests_structured_output(options) and not _supports(
         capabilities, "structured_output"
     ):
         raise UnsupportedCapabilityError(
@@ -236,16 +193,6 @@ def _validate_capability(
             details={"capability": "image_input"},
         )
 
-    if _requests_attachment(normalized_context, options) and not _supports(
-        capabilities, "attachment"
-    ):
-        raise UnsupportedCapabilityError(
-            f"Model {model.id!r} does not support attachment",
-            model=getattr(model, "id", None),
-            details={"capability": "attachment"},
-        )
-
-
 def _resolve_api_provider_registry(api_provider_registry=None):
     if api_provider_registry is not None:
         return api_provider_registry
@@ -253,6 +200,12 @@ def _resolve_api_provider_registry(api_provider_registry=None):
     if not default_registry.list_api_providers():
         register_builtin_ai_providers(default_registry)
     return default_registry
+
+
+def _validate_call_options(options: object | None) -> CallOptions | None:
+    if options is None or isinstance(options, CallOptions):
+        return options
+    raise TypeError("options must be CallOptions")
 
 
 def _supports_structured_output_mapping(provider: object) -> bool:
@@ -277,19 +230,65 @@ def _normalization_model(model, resolved):
     )
 
 
+def _emit_normalization_diagnostics(
+    options: CallOptions | None,
+    diagnostics: tuple[NormalizationDiagnostic, ...],
+) -> None:
+    if not diagnostics:
+        return
+    from loushang.ai.trace import emit_trace
+    from loushang.observability import get_log
+
+    log = get_log(__name__).bind(component="AINormalization")
+    for diagnostic in diagnostics:
+        payload = {
+            "type": "normalization:diagnostic",
+            "code": diagnostic.code,
+            "path": diagnostic.path,
+            "message": diagnostic.message,
+            "level": diagnostic.level,
+        }
+        emit_trace(options, payload)
+        if diagnostic.level == "warning":
+            log.warning(
+                diagnostic.message,
+                code=diagnostic.code,
+                path=diagnostic.path,
+                level=diagnostic.level,
+            )
+        else:
+            log.debug(
+                diagnostic.message,
+                code=diagnostic.code,
+                path=diagnostic.path,
+                level=diagnostic.level,
+        )
+
+
 async def _start_stream(
     model,
     context,
     options: CallOptions | None = None,
     *,
-    registry=None,
+    provider_registry=None,
+    mode: ProviderInvocationMode,
     require_stream: bool,
 ):
+    options = _validate_call_options(options)
     resolved = resolve_request_for_model(model, options=options)
-    normalized = normalize_context(
+    normalization_result = normalize_context_result(
         context,
         model=_normalization_model(model, resolved),
         pairing_mode=_resolve_pairing_mode(options),
+    )
+    normalized = normalization_result.context
+    _emit_normalization_diagnostics(options, normalization_result.diagnostics)
+    resolved = replace(
+        resolved,
+        model=model,
+        context=normalized,
+        options=options,
+        mode=mode,
     )
     _validate_capability(
         model,
@@ -298,8 +297,12 @@ async def _start_stream(
         options,
         require_stream=require_stream,
     )
-    _validate_explicit_adapter_options(model, resolved, options)
-    provider = _resolve_api_provider_registry(registry).get_api_provider(resolved.api)
+    _validate_explicit_adapter_config(model, resolved, options)
+    provider = _resolve_api_provider_registry(provider_registry).get_api_provider(
+        resolved.api
+    )
+    resolved = normalize_provider_request_for_api(provider.api, resolved)
+    validate_provider_request(provider, resolved)
     if get_structured_output_options(
         options
     ) is not None and not _supports_structured_output_mapping(provider):
@@ -313,29 +316,39 @@ async def _start_stream(
                 "api": resolved.api,
             },
         )
-    return await call_api_provider_stream(
-        provider, model, normalized, options, resolved
-    )
+    return await call_api_provider_stream(provider, resolved)
 
 
-async def stream(model, context, options: CallOptions | None = None, *, registry=None):
+async def stream(
+    model,
+    context,
+    options: CallOptions | None = None,
+    *,
+    provider_registry=None,
+):
     return await _start_stream(
         model,
         context,
         options,
-        registry=registry,
+        provider_registry=provider_registry,
+        mode="stream",
         require_stream=True,
     )
 
 
 async def complete(
-    model, context, options: CallOptions | None = None, *, registry=None
+    model,
+    context,
+    options: CallOptions | None = None,
+    *,
+    provider_registry=None,
 ):
     event_stream = await _start_stream(
         model,
         context,
         options,
-        registry=registry,
+        provider_registry=provider_registry,
+        mode="complete",
         require_stream=False,
     )
     return await event_stream.result()
@@ -347,38 +360,16 @@ async def complete_structured(
     output: StructuredOutputOptions | None = None,
     *,
     options: CallOptions | None = None,
-    registry=None,
+    provider_registry=None,
 ) -> StructuredOutputResult:
     structured_output = output or get_structured_output_options(options)
     if structured_output is None:
         raise ValueError("complete_structured requires StructuredOutputOptions")
     call_options = with_structured_output_options(options, structured_output)
-    message = await complete(model, context, call_options, registry=registry)
+    message = await complete(
+        model,
+        context,
+        call_options,
+        provider_registry=provider_registry,
+    )
     return parse_structured_output(message, structured_output)
-
-
-async def stream_simple(
-    model, context, options: SimpleCallOptions | None = None, *, registry=None
-):
-    call_options = simple_options_to_call_options(options)
-    return await _start_stream(
-        model,
-        context,
-        call_options,
-        registry=registry,
-        require_stream=True,
-    )
-
-
-async def complete_simple(
-    model, context, options: SimpleCallOptions | None = None, *, registry=None
-):
-    call_options = simple_options_to_call_options(options)
-    event_stream = await _start_stream(
-        model,
-        context,
-        call_options,
-        registry=registry,
-        require_stream=False,
-    )
-    return await event_stream.result()

@@ -32,7 +32,6 @@
 - `SettingsManager.set_steering_mode(...)`
 - `SettingsManager.set_follow_up_mode(...)`
 - `SettingsManager.set_theme(...)`
-- `SettingsManager.set_transport(...)`
 - `SettingsManager.set_shell_path(...)`
 - `SettingsManager.set_shell_command_prefix(...)`
 - `SettingsManager.set_npm_command(...)`
@@ -64,7 +63,6 @@
 - `SettingsManager.get_project_settings()`
 - `SettingsManager.get_session_settings()`
 - `SettingsManager.drain_errors()`
-- `SettingsManager.get_transport()`
 - `SettingsManager.get_theme()`
 - `SettingsManager.get_shell_path()`
 - `SettingsManager.get_shell_command_prefix()`
@@ -123,7 +121,7 @@
 
 - `SettingsManager` 与 `ModelRegistry` 的核心语义分别直接对齐 `reference CLI`
 - `control` 是 `loushang` 在架构上对这些控制面服务的聚合边界，不要求对齐成单一 `reference CLI` 对象名
-- settings/control 覆盖 reference implementation headless MVP 所需的 queue mode、transport、theme、shell、npm、terminal、image、thinking budget、retry provider cap、skill command enablement、enabled model cycling、resource/package source 管理等偏好
+- settings/control 覆盖 reference implementation headless MVP 所需的 queue mode、theme、shell、npm、terminal、image、thinking budget、retry provider cap、skill command enablement、enabled model cycling、resource/package source 管理等偏好
 - branch summary 覆盖 reference implementation headless 可见的 `reserve_tokens` 与 `skip_prompt` 语义；`enabled` 是 loushang 为策略控制保留的扩展字段
 - compaction 覆盖 参考实现的 `reserve_tokens` / `keep_recent_tokens` 语义，并额外提供全局 `compact_percent`；
   实际 threshold 由 `compaction.policy` 取 percent threshold 与 reserve threshold 中更保守者，配置通过

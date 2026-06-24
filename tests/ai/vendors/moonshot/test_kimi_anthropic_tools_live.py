@@ -13,11 +13,12 @@ import sys
 import pytest
 
 from loushang.ai import (
+    CallOptions,
     TextPart,
     ToolResultMessage,
+    complete,
     get_model,
 )
-from loushang.ai.advanced import AnthropicOptions
 
 # 用户可直接修改的配置。
 # 这是高级示例，重点是工具协议，不是最短接入路径。
@@ -71,9 +72,9 @@ def _build_tools() -> list[dict]:
     ]
 
 
-def _build_options(api_key: str) -> AnthropicOptions:
+def _build_options(api_key: str) -> CallOptions:
     # 把调用参数集中到 options，便于聚焦 tool 协议本身。
-    return AnthropicOptions(api_key=api_key, max_tokens=MAX_TOKENS)
+    return CallOptions(api_key=api_key, max_output_tokens=MAX_TOKENS)
 
 
 async def _main() -> None:
@@ -82,7 +83,8 @@ async def _main() -> None:
     tools = _build_tools()
 
     # 第一轮：让模型先决定工具调用参数。
-    first = await model.complete(
+    first = await complete(
+        model,
         {
             "system_prompt": (
                 "当需要外部计算时，你必须且仅能通过调用工具完成任务；"
@@ -116,7 +118,8 @@ async def _main() -> None:
     )
 
     # 第二轮：把工具执行结果回传给模型，让模型生成最终自然语言答案。
-    second = await model.complete(
+    second = await complete(
+        model,
         {
             "system_prompt": "你已经拿到工具结果，请用中文一句话给出最终答案。",
             "messages": [

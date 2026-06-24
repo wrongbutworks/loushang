@@ -29,6 +29,8 @@ def test_error_info_serializes_stable_shape_and_redacts_secrets() -> None:
             "Authorization": "Bearer secret-token",
             "headers": {"x-request-id": "req_123", "api_key": "secret-key"},
             "session_cookie": "cookie-secret",
+            "total_tokens": 42,
+            "x-amz-security-token": "aws-secret",
             "oauth": [{"refresh_token": "refresh-secret"}],
         },
     )
@@ -50,6 +52,8 @@ def test_error_info_serializes_stable_shape_and_redacts_secrets() -> None:
             "Authorization": "[redacted]",
             "headers": {"x-request-id": "req_123", "api_key": "[redacted]"},
             "session_cookie": "[redacted]",
+            "total_tokens": 42,
+            "x-amz-security-token": "[redacted]",
             "oauth": "[redacted]",
         },
     }

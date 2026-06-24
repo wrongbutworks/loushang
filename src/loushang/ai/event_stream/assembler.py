@@ -122,46 +122,19 @@ class RawAssembler:
         if part_type == "response_start":
             response_part = cast(ResponseStartPart, part)
             self._response_id = response_part["response_id"]
-            if not self._started:
-                self._push_event(
-                    cast(
-                        StartEvent,
-                        {"type": "start", "partial": self._build_partial_message()},
-                    )
-                )
-                self._started = True
+            self._ensure_started()
             return
 
         if part_type == "text_delta":
             text_part = cast(TextDeltaPart, part)
-            if not self._started:
-                self._push_event(
-                    cast(
-                        StartEvent,
-                        {"type": "start", "partial": self._build_partial_message()},
-                    )
-                )
-                self._started = True
-            if not self._text_started:
-                self._text_started = True
-                content_index = self._ensure_content_block("text")
-                self._push_event(
-                    cast(
-                        TextStartEvent,
-                        {
-                            "type": "text_start",
-                            "content_index": content_index,
-                            "partial": self._build_partial_message(),
-                        },
-                    )
-                )
+            content_index = self._ensure_text_started()
             self._text_chunks.append(text_part["text"])
             self._push_event(
                 cast(
                     TextDeltaEvent,
                     {
                         "type": "text_delta",
-                        "content_index": self._text_content_index(),
+                        "content_index": content_index,
                         "delta": text_part["text"],
                         "partial": self._build_partial_message(),
                     },
@@ -176,34 +149,14 @@ class RawAssembler:
 
         if part_type == "thinking_delta":
             thinking_part = cast(ThinkingDeltaPart, part)
-            if not self._started:
-                self._push_event(
-                    cast(
-                        StartEvent,
-                        {"type": "start", "partial": self._build_partial_message()},
-                    )
-                )
-                self._started = True
-            if not self._thinking_started:
-                self._thinking_started = True
-                content_index = self._ensure_content_block("thinking")
-                self._push_event(
-                    cast(
-                        ThinkingStartEvent,
-                        {
-                            "type": "thinking_start",
-                            "content_index": content_index,
-                            "partial": self._build_partial_message(),
-                        },
-                    )
-                )
+            content_index = self._ensure_thinking_started()
             self._thinking_chunks.append(thinking_part["text"])
             self._push_event(
                 cast(
                     ThinkingDeltaEvent,
                     {
                         "type": "thinking_delta",
-                        "content_index": self._thinking_content_index(),
+                        "content_index": content_index,
                         "delta": thinking_part["text"],
                         "partial": self._build_partial_message(),
                     },
@@ -213,53 +166,13 @@ class RawAssembler:
 
         if part_type == "thinking_signature_delta":
             thinking_signature_part = cast(ThinkingSignatureDeltaPart, part)
-            if not self._started:
-                self._push_event(
-                    cast(
-                        StartEvent,
-                        {"type": "start", "partial": self._build_partial_message()},
-                    )
-                )
-                self._started = True
-            if not self._thinking_started:
-                self._thinking_started = True
-                content_index = self._ensure_content_block("thinking")
-                self._push_event(
-                    cast(
-                        ThinkingStartEvent,
-                        {
-                            "type": "thinking_start",
-                            "content_index": content_index,
-                            "partial": self._build_partial_message(),
-                        },
-                    )
-                )
+            self._ensure_thinking_started()
             self._thinking_signature_chunks.append(thinking_signature_part["signature"])
             return
 
         if part_type == "redacted_thinking":
             redacted_part = cast(RedactedThinkingPart, part)
-            if not self._started:
-                self._push_event(
-                    cast(
-                        StartEvent,
-                        {"type": "start", "partial": self._build_partial_message()},
-                    )
-                )
-                self._started = True
-            if not self._thinking_started:
-                self._thinking_started = True
-                content_index = self._ensure_content_block("thinking")
-                self._push_event(
-                    cast(
-                        ThinkingStartEvent,
-                        {
-                            "type": "thinking_start",
-                            "content_index": content_index,
-                            "partial": self._build_partial_message(),
-                        },
-                    )
-                )
+            self._ensure_thinking_started()
             if not self._thinking_chunks:
                 self._thinking_chunks.append("[Reasoning redacted]")
             self._thinking_redacted = True
@@ -268,14 +181,7 @@ class RawAssembler:
 
         if part_type == "tool_call_start":
             tool_call_start_part = cast(ToolCallStartPart, part)
-            if not self._started:
-                self._push_event(
-                    cast(
-                        StartEvent,
-                        {"type": "start", "partial": self._build_partial_message()},
-                    )
-                )
-                self._started = True
+            self._ensure_started()
             index = _optional_int(tool_call_start_part.get("index"))
             start_buffer = _ToolCallBuffer(
                 id=tool_call_start_part["id"],
@@ -365,14 +271,7 @@ class RawAssembler:
 
         if part_type == "image_part":
             image_part = cast(ImagePartRaw, part)
-            if not self._started:
-                self._push_event(
-                    cast(
-                        StartEvent,
-                        {"type": "start", "partial": self._build_partial_message()},
-                    )
-                )
-                self._started = True
+            self._ensure_started()
             image = ImagePart(
                 type="image",
                 data=image_part["data"],
@@ -550,6 +449,53 @@ class RawAssembler:
             self._queued_events.append(event)
             return
         self._stream.push(event)
+
+    def _ensure_started(self) -> None:
+        if self._started:
+            return
+        self._push_event(
+            cast(
+                StartEvent,
+                {"type": "start", "partial": self._build_partial_message()},
+            )
+        )
+        self._started = True
+
+    def _ensure_text_started(self) -> int:
+        self._ensure_started()
+        if not self._text_started:
+            self._text_started = True
+            content_index = self._ensure_content_block("text")
+            self._push_event(
+                cast(
+                    TextStartEvent,
+                    {
+                        "type": "text_start",
+                        "content_index": content_index,
+                        "partial": self._build_partial_message(),
+                    },
+                )
+            )
+            return content_index
+        return self._text_content_index()
+
+    def _ensure_thinking_started(self) -> int:
+        self._ensure_started()
+        if not self._thinking_started:
+            self._thinking_started = True
+            content_index = self._ensure_content_block("thinking")
+            self._push_event(
+                cast(
+                    ThinkingStartEvent,
+                    {
+                        "type": "thinking_start",
+                        "content_index": content_index,
+                        "partial": self._build_partial_message(),
+                    },
+                )
+            )
+            return content_index
+        return self._thinking_content_index()
 
     def result_nowait(self) -> AssistantMessage:
         if self._final_message is None:

@@ -17,7 +17,7 @@
 
 | 能力项 | `reference AI SDK` 状态 | `loushang.ai` 状态 | 结论 | 证据 |
 |---|---|---|---|---|
-| 顶层统一 API：`stream/complete/streamSimple/completeSimple` | 完整 | 完整 | 已基本对齐 | [reference implementation stream](/home/dev/workspace/reference-repository/packages/ai/src/stream.ts#L25) [loushang api](/home/dev/workspace/loushang/src/loushang/ai/api/streaming.py#L51) |
+| 顶层统一 API：`stream/complete` | 完整，且额外包含 `streamSimple/completeSimple` | `stream/complete` 已冻结，Simple 入口有意删除 | 部分对齐；Python core 保持更窄根 API | [reference implementation stream](/home/dev/workspace/reference-repository/packages/ai/src/stream.ts#L25) [loushang api](/home/dev/workspace/loushang/src/loushang/ai/api/streaming.py#L51) |
 | API provider registry | 完整 | 完整 | 已基本对齐 | [reference implementation registry](/home/dev/workspace/reference-repository/packages/ai/src/api-registry.ts#L66) [loushang registry](/home/dev/workspace/loushang/src/loushang/ai/api_registry.py#L27) |
 | 模型注册/查询接口 | 完整 | 完整但规模小 | 语义对齐，数据面不足 | [reference implementation models](/home/dev/workspace/reference-repository/packages/ai/src/models.ts#L20) [loushang exports](/home/dev/workspace/loushang/src/loushang/ai/__init__.py#L36) |
 | 标准消息类型：`text/thinking/toolCall/image/toolResult` | 完整 | 完整 | 已基本对齐 | [reference implementation types](/home/dev/workspace/reference-repository/packages/ai/src/types.ts#L137) [loushang types](/home/dev/workspace/loushang/src/loushang/ai/types.py#L7) |
@@ -25,7 +25,7 @@
 | streaming event 语义：`text_* thinking_* toolcall_* done/error` | 完整 | 完整 | 已基本对齐 | [reference implementation README events](/home/dev/workspace/reference-repository/packages/ai/README.md#L374) [loushang assembler](../../../src/loushang/ai/event_stream/assembler.py) |
 | abort 语义 | 完整 | 完整 | 已基本对齐 | [reference implementation abort tests](/home/dev/workspace/reference-repository/packages/ai/test/abort.test.ts#L30) [loushang aborted handling](../../../src/loushang/ai/event_stream/assembler.py) |
 | overflow 检测 | 完整 | 完整 | 已基本对齐 | [reference implementation overflow](/home/dev/workspace/reference-repository/packages/ai/src/utils/overflow.ts#L12) [loushang overflow](/home/dev/workspace/loushang/src/loushang/ai/utils/overflow.py#L14) |
-| `ThinkingLevel/CacheRetention/Transport/xhigh` | 完整 | 基本完整 | 已基本对齐 | [reference implementation options](/home/dev/workspace/reference-repository/packages/ai/src/types.ts#L45) [loushang options](/home/dev/workspace/loushang/src/loushang/ai/options.py#L52) |
+| `ThinkingLevel/CacheRetention/xhigh` 等核心 options | 完整，含 root transport preference | 核心 options 已收敛到 `CallOptions`；transport 仅保留在 provider/contrib 专用面 | 部分对齐；root API 有意不暴露 `Transport` | [reference implementation options](/home/dev/workspace/reference-repository/packages/ai/src/types.ts#L45) [loushang options](/home/dev/workspace/loushang/src/loushang/ai/options.py#L52) |
 | `supportsXhigh` 模型级能力 | 有显式 helper | 缺少统一 helper/策略 | 部分缺失 | [reference implementation helper](/home/dev/workspace/reference-repository/packages/ai/src/models.ts#L55) |
 | Tool schema 校验 | 完整 | 完整但实现较简 | 基本对齐 | [reference implementation validation](/home/dev/workspace/reference-repository/packages/ai/src/utils/validation.ts#L49) [loushang validation](/home/dev/workspace/loushang/src/loushang/ai/tool/validation.py#L25) |
 | Tool call replay / cross-provider transform | 完整 | 完整 | 已基本对齐 | [reference implementation transform](/home/dev/workspace/reference-repository/packages/ai/src/providers/transform-messages.ts#L13) [loushang tool transform](../../../src/loushang/ai/tool/transform.py) |

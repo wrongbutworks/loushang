@@ -14,14 +14,6 @@
           "api": "openai-codex-responses",
           "region": "global",
           "docs": "https://platform.openai.com/docs/codex",
-          "compat": {
-            "supportsDeveloperRole": true,
-            "codexIncludeClientRequestId": true,
-            "codexIncludeConversationId": false,
-            "codexPromptCacheRetention": "in-memory",
-            "codexOriginator": "loushang",
-            "codexUserAgent": "loushang"
-          },
           "models": {
             "gpt-5.1": {
               "displayName": "GPT-5.1",
@@ -35,10 +27,6 @@
                 "output": 0,
                 "cacheRead": 0,
                 "cacheWrite": 0
-              },
-              "compat": {
-                "supportsUsageInStreaming": true,
-                "supportsReasoningEffort": true
               },
               "capabilities": {
                 "reasoning": true,
@@ -70,10 +58,6 @@
                 "output": 0,
                 "cacheRead": 0,
                 "cacheWrite": 0
-              },
-              "compat": {
-                "supportsUsageInStreaming": true,
-                "supportsReasoningEffort": true
               },
               "capabilities": {
                 "reasoning": true,
@@ -107,10 +91,6 @@
                 "cacheRead": 0,
                 "cacheWrite": 0
               },
-              "compat": {
-                "supportsUsageInStreaming": true,
-                "supportsReasoningEffort": true
-              },
               "capabilities": {
                 "reasoning": true,
                 "contextWindow": 400000,
@@ -142,10 +122,6 @@
                 "cacheRead": 0,
                 "cacheWrite": 0
               },
-              "compat": {
-                "supportsUsageInStreaming": true,
-                "supportsReasoningEffort": true
-              },
               "capabilities": {
                 "reasoning": true,
                 "contextWindow": 400000,
@@ -176,10 +152,6 @@
                 "output": 0,
                 "cacheRead": 0,
                 "cacheWrite": 0
-              },
-              "compat": {
-                "supportsUsageInStreaming": true,
-                "supportsReasoningEffort": true
               },
               "capabilities": {
                 "reasoning": true,
@@ -213,10 +185,6 @@
                 "cacheRead": 0,
                 "cacheWrite": 0
               },
-              "compat": {
-                "supportsUsageInStreaming": true,
-                "supportsReasoningEffort": true
-              },
               "capabilities": {
                 "reasoning": true,
                 "contextWindow": 400000,
@@ -247,10 +215,6 @@
                 "output": 0,
                 "cacheRead": 0,
                 "cacheWrite": 0
-              },
-              "compat": {
-                "supportsUsageInStreaming": true,
-                "supportsReasoningEffort": true
               },
               "capabilities": {
                 "reasoning": true,
@@ -283,10 +247,6 @@
                 "cacheRead": 0,
                 "cacheWrite": 0
               },
-              "compat": {
-                "supportsUsageInStreaming": true,
-                "supportsReasoningEffort": true
-              },
               "capabilities": {
                 "reasoning": true,
                 "contextWindow": 400000,
@@ -318,10 +278,6 @@
                 "cacheRead": 0,
                 "cacheWrite": 0
               },
-              "compat": {
-                "supportsUsageInStreaming": true,
-                "supportsReasoningEffort": true
-              },
               "capabilities": {
                 "reasoning": true,
                 "contextWindow": 128000,
@@ -348,12 +304,6 @@
                 "output": 30,
                 "cacheRead": 0.5,
                 "cacheWrite": 0
-              },
-              "compat": {
-                "reasoningEffortMap": {
-                  "xhigh": "xhigh",
-                  "minimal": "low"
-                }
               },
               "capabilities": {
                 "reasoning": true,
