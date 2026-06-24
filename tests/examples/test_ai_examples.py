@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import ast
 import asyncio
 import importlib.util
 import json
@@ -24,6 +25,20 @@ def _load_module(path: Path, name: str):
     sys.modules[name] = module
     spec.loader.exec_module(module)
     return module
+
+
+def _loushang_imports(path: Path) -> list[str]:
+    tree = ast.parse(path.read_text(encoding="utf-8"))
+    modules: list[str] = []
+    for node in ast.walk(tree):
+        if isinstance(node, ast.ImportFrom) and node.module:
+            if node.module == "loushang" or node.module.startswith("loushang."):
+                modules.append(node.module)
+        elif isinstance(node, ast.Import):
+            for alias in node.names:
+                if alias.name == "loushang" or alias.name.startswith("loushang."):
+                    modules.append(alias.name)
+    return modules
 
 
 def test_top_level_ai_examples_run_offline(tmp_path: Path) -> None:
@@ -72,6 +87,19 @@ def test_top_level_ai_examples_run_offline(tmp_path: Path) -> None:
         assert completed.stdout.strip(), path
 
 
+def test_top_level_ai_examples_stay_on_public_import_boundary() -> None:
+    base_allowed = {"loushang.ai", "loushang.ai.tool"}
+    custom_model_file_allowed = {"loushang.ai.model"}
+
+    for path in TOP_LEVEL_OFFLINE_EXAMPLES:
+        allowed = set(base_allowed)
+        if path.name == "custom_model_file.py":
+            allowed.update(custom_model_file_allowed)
+
+        imports = _loushang_imports(path)
+        assert sorted(imports) == sorted(allowed & set(imports))
+
+
 def test_provider_matrix_example_targets_curated_provider_models() -> None:
     module = _load_module(
         Path("examples/ai/11_provider_matrix.py"), "examples_ai_provider_matrix"
@@ -116,7 +144,7 @@ def test_provider_matrix_example_formats_all_provider_entries() -> None:
     assert len(lines) == len(module.PROVIDER_EXAMPLES)
 
 
-def test_custom_model_file_example_reports_resolved_request() -> None:
+def test_custom_model_file_example_reports_custom_model_summary() -> None:
     module = _load_module(
         Path("examples/ai/custom_model_file.py"),
         "examples_ai_custom_model_file",
@@ -124,15 +152,11 @@ def test_custom_model_file_example_reports_resolved_request() -> None:
 
     summary = module.inspect_custom_model_file()
 
+    assert summary["availableModels"] == ["company:openai-completions:company-chat"]
     assert summary["model"] == "company:openai-completions:company-chat"
-    assert summary["api"] == "openai-completions"
-    assert summary["baseUrl"] == "https://models.company.example/v1"
-    assert summary["upstreamModelId"] == "vendor/company-chat-2026-06"
-    adapter = summary["adapter"]
-    assert isinstance(adapter, dict)
-    assert adapter["developerRole"] is False
-    assert adapter["maxOutputTokensField"] == "max_completion_tokens"
-    assert adapter["reasoningFormat"] == "openai"
+    assert summary["displayName"] == "Company Chat"
+    assert summary["upstreamId"] == "vendor/company-chat-2026-06"
+    assert summary["capabilities"] == {"stream": True, "toolUse": True}
 
 
 def test_usage_online_example_marks_unknown_cost() -> None:

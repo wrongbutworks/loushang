@@ -4,6 +4,7 @@ import os
 import subprocess
 import sys
 from pathlib import Path
+from tempfile import TemporaryDirectory
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 EXAMPLES_DIR = REPO_ROOT / "examples/ai"
@@ -40,24 +41,26 @@ def run_offline_examples() -> list[str]:
     for env_name in LIVE_ENV_NAMES:
         env.pop(env_name, None)
 
-    for path in _offline_examples():
-        completed = subprocess.run(
-            [sys.executable, str(path)],
-            cwd=REPO_ROOT,
-            env=env,
-            text=True,
-            capture_output=True,
-            timeout=20,
-            check=False,
-        )
-        if completed.returncode != 0:
-            errors.append(
-                f"{path.relative_to(REPO_ROOT)} failed with {completed.returncode}: "
-                f"{completed.stderr.strip() or completed.stdout.strip()}"
+    with TemporaryDirectory() as home:
+        env["HOME"] = home
+        for path in _offline_examples():
+            completed = subprocess.run(
+                [sys.executable, str(path)],
+                cwd=REPO_ROOT,
+                env=env,
+                text=True,
+                capture_output=True,
+                timeout=20,
+                check=False,
             )
-            continue
-        if not completed.stdout.strip():
-            errors.append(f"{path.relative_to(REPO_ROOT)} produced no output")
+            if completed.returncode != 0:
+                errors.append(
+                    f"{path.relative_to(REPO_ROOT)} failed with {completed.returncode}: "
+                    f"{completed.stderr.strip() or completed.stdout.strip()}"
+                )
+                continue
+            if not completed.stdout.strip():
+                errors.append(f"{path.relative_to(REPO_ROOT)} produced no output")
     return errors
 
 

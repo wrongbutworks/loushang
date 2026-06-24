@@ -1,8 +1,8 @@
 """Offline custom model file example.
 
 This example writes the current `models.json` shape to a temporary file, loads
-it into a standalone registry, and inspects the resolved provider request. It
-does not call a remote API.
+it into a standalone registry, and queries the custom model. It does not call a
+remote API.
 """
 
 from __future__ import annotations
@@ -12,7 +12,6 @@ from pathlib import Path
 from tempfile import TemporaryDirectory
 
 from loushang.ai.model import load_model_registry_from_file
-from loushang.ai.provider import resolve_request_for_model
 
 CUSTOM_MODEL_FILE = {
     "providers": {
@@ -54,22 +53,19 @@ def inspect_custom_model_file() -> dict[str, object]:
 
         registry = load_model_registry_from_file(path)
         model = registry.get_model("company", "openai-completions", "company-chat")
-        request = resolve_request_for_model(
-            model,
-            registry=registry,
-            env={},
-        )
+        models = registry.list_models(provider="company")
 
     return {
+        "availableModels": [
+            f"{item.provider_id}:{item.endpoint_id}:{item.id}" for item in models
+        ],
         "model": f"{model.provider_id}:{model.endpoint_id}:{model.id}",
-        "api": request.api,
-        "baseUrl": request.base_url,
-        "upstreamModelId": request.upstream_model_id,
-        "adapter": (
-            request.adapter_config.to_raw()
-            if hasattr(request.adapter_config, "to_raw")
-            else None
-        ),
+        "displayName": model.name,
+        "upstreamId": model.upstream_id,
+        "capabilities": {
+            "stream": model.supports_stream,
+            "toolUse": model.supports_tool_use,
+        },
     }
 
 

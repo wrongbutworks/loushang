@@ -1,4 +1,5 @@
-`examples/ai` 面向上层开发者，展示 `loushang.ai` 根包公开 API 和公开 tool 校验辅助的常见调用路径。
+`examples/ai` 面向上层开发者，展示 `loushang.ai` 根包公开 API、公开 tool
+校验辅助，以及自定义模型文件加载的常见调用路径。
 
 顶层编号示例默认离线可运行，不需要真实厂商凭证：
 
@@ -27,7 +28,7 @@
 - [12_provider_smoke.py](12_provider_smoke.py)
   离线验证内置 curated provider 的默认模型句柄可解析
 - [custom_model_file.py](custom_model_file.py)
-  写入当前 `models.json` 形状的自定义模型文件，加载独立 registry，并检查 provider request
+  写入当前 `models.json` 形状的自定义模型文件，加载独立 registry，并查询自定义模型
 
 `examples/ai/advanced/` 放协议观察、faux provider、本地 registry 注入这类高级样例，不作为第一次接入的推荐入口。
 
