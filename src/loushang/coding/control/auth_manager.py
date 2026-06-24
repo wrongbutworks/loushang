@@ -73,6 +73,7 @@ class AuthManager:
             if oauth_credentials is not None:
                 oauth_api_key = self._resolve_oauth_api_key(
                     model.provider_id,
+                    oauth_credentials,
                     endpoint_id=model.endpoint_id,
                     model_id=model.id,
                 )
@@ -133,6 +134,7 @@ class AuthManager:
     def _resolve_oauth_api_key(
         self,
         provider: str,
+        credentials: OAuthCredentials,
         *,
         endpoint_id: str | None,
         model_id: str | None,
@@ -142,8 +144,10 @@ class AuthManager:
 
             result = resolve_oauth_api_key(
                 provider,
+                credentials={provider: credentials},
                 endpoint_id=endpoint_id,
                 model_id=model_id,
+                persist_refresh=False,
             )
         except Exception:
             return None

@@ -60,7 +60,7 @@ def _get_default_agent_api_registry() -> ApiProviderRegistry:
 async def _stream_with_registry(model, context, options=None):
     """Wrapper for stream that includes the default registry."""
     return await stream(
-        model, context, options, registry=_get_default_agent_api_registry()
+        model, context, options, provider_registry=_get_default_agent_api_registry()
     )
 
 
