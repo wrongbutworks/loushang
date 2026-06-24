@@ -7,7 +7,7 @@
 - `models.work.json`
 - `models.xx.json`
 
-内容保持与 `src/loushang/ai/model/models.curated.v2.json` 兼容（`providers -> endpoints -> models`）。
+内容保持与 `src/loushang/ai/model/models.json` 兼容（`providers -> endpoints -> models`）。
 
 示例（最小骨架）：
 
@@ -20,7 +20,7 @@
 你可以把实际模型内容拷贝或拼接到这里，运行时会：
 1) 优先查找 `examples/coding/.loushang/models`（当 `LOUSHANG_EXAMPLES_MODEL_CATALOG` 未设置时）；
 2) 否则查找 `<artifacts-root>/models.json`；
-3) 最后回退到内置 `src/loushang/ai/model/models.curated.v2.json`。
+3) 最后回退到内置 `src/loushang/ai/model/models.json`。
 
 仓库内提供了一个开箱即用的 Kimi Code 模板：
 

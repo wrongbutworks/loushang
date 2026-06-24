@@ -45,7 +45,7 @@ Current composite score: 8.8/10.
 | Root API surface | `tests/ai/test_options.py` verifies root exports stay narrow and provider-specific options remain outside `loushang.ai.__all__`. |
 | Catalog budget | `scripts/ai/check_catalog.py` enforces provider <= 11, model <= 20, evidence files, provider matrix alignment, preferred-endpoint uniqueness, and supported modalities. |
 | Curated provider facts | `docs/internals/architecture/ai/catalog-evidence/*.md` records official docs, included models, omitted facts, and live-smoke status for each curated provider. |
-| Legacy catalog archive | `docs/internals/archive/ai/model-catalog/README.md` records the compressed v1 catalog archive and SHA verification command. |
+| Legacy catalog backup | `backup/ai/README.md` records the compressed legacy catalog backup and SHA verification command. |
 | Provider boundary | `ProviderRequest` is the single `stream_raw` argument for registered raw providers; contract tests lock the signature, builtin registration, and legacy-signature rejection. |
 | Structured output mapping | `tests/ai/test_structured_output.py` verifies structured-output requests are accepted only when the selected provider adapter declares mapping support, not by a core hard-coded API allowlist. |
 | Public SDK docs | `docs/en/sdk/README.md`, `docs/zh-CN/sdk/README.md`, and the v2 migration guides document the public path, catalog, auth, errors, examples, and migration rules. |
@@ -66,7 +66,7 @@ Current composite score: 8.8/10.
 | Bedrock/Azure not in core | Met | `scripts/ai/check_import_boundaries.py` blocks removed core provider modules. |
 | Codex is contrib and explicitly registered | Met | `loushang.ai.contrib.openai_codex.register_openai_codex_contrib`. |
 | Core has no provider-id/base-url compat guessing | Met | `compat_schema.py` compatibility resolution no longer accepts provider/base-url identity inputs; request resolution consumes typed protocol/dialect/transport/routing facts. Schema v2 custom OpenAI-compatible endpoints with `baseUrl` or `baseUrlEnv` must declare `protocol` or `dialect`. |
-| Built-in catalog has no legacy full-catalog runtime path | Met | Package data points to `models.curated.v2.json`; full v1 catalog is archived under docs. |
+| Built-in catalog has no legacy full-catalog runtime path | Met | Package data points to `models.json`; the full legacy catalog is kept under `backup/ai/` only. |
 | Provider boundary accepts only normalized context/request facts | Met | Registered raw providers receive one `ProviderRequest` object containing `model`, normalized `context`, `options`, and resolved request facts; old positional provider signatures are rejected. |
 | Core has no bare `except Exception: pass` | Met | `rg -n -U "except Exception:\n\s*pass" src/loushang/ai tests/ai tests/providers` returns no matches. |
 | Stream queue is bounded | Met | `AssistantMessageEventStream` uses a bounded queue; provider runtime tests cover backpressure and event stream tests cover full-queue terminal preservation. |
@@ -81,7 +81,7 @@ Current composite score: 8.8/10.
 
 | Requirement | Status | Evidence or remaining work |
 |---|---|---|
-| Original catalog archived and SHA-verifiable | Met | `docs/internals/archive/ai/model-catalog/README.md`. |
+| Original catalog archived and SHA-verifiable | Met | `backup/ai/README.md`. |
 | Provider <= 11 | Met | `scripts/ai/check_catalog.py`. |
 | Model <= 20 | Met | `scripts/ai/check_catalog.py`. |
 | Issue #102-#108 have evidence and status | Met | Evidence files exist for Tencent Hunyuan, Z.AI, DeepSeek, MiniMax, Volcano Ark, Baidu Qianfan, and StepFun. |

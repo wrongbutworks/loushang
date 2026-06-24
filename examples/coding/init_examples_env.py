@@ -7,7 +7,7 @@ import shutil
 from pathlib import Path
 
 ARTIFACT_ROOT_NAME = ".loushang"
-BUILTIN_MODEL_CATALOG = Path("src/loushang/ai/model/models.curated.v2.json")
+BUILTIN_MODEL_CATALOG = Path("src/loushang/ai/model/models.json")
 
 
 def _detect_repo_root(start: Path) -> Path:
@@ -110,7 +110,10 @@ def run(argv: list[str] | None = None) -> int:
     parser.add_argument(
         "--copy-model-catalog",
         action="store_true",
-        help="Copy src/loushang/ai/model/models.curated.v2.json to <artifacts-root>/models/models.json.",
+        help=(
+            "Copy src/loushang/ai/model/models.json to "
+            "<artifacts-root>/models/models.json."
+        ),
     )
     parser.add_argument(
         "--skip-session-dir",
