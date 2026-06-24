@@ -184,6 +184,41 @@ def test_model_overrides_defaults_and_capabilities() -> None:
     assert resolved.adapter_config.developer_role is False
 
 
+def test_ad_hoc_model_adapter_merges_with_registered_endpoint_adapter() -> None:
+    endpoint = Endpoint(
+        id="openai-completions",
+        provider="custom",
+        api="openai-completions",
+        base_url="https://example.test/v1",
+        auth=Auth(api_key_env="TEST_API_KEY"),
+        adapter=OpenAICompletionsConfig(
+            developer_role=False,
+            max_output_tokens_field="max_tokens",
+        ),
+        models={},
+    )
+    registry = ModelRegistry.from_providers(
+        {"custom": Provider(id="custom", endpoints={endpoint.id: endpoint})}
+    )
+    caller_model = Model(
+        id="ad-hoc",
+        provider="custom",
+        endpoint="openai-completions",
+        adapter=OpenAICompletionsConfig(reasoning_format="moonshot"),
+    )
+
+    resolved = resolve_request_for_model(
+        caller_model,
+        options=_Options(api_key="token"),
+        registry=registry,
+    )
+
+    assert isinstance(resolved.adapter_config, OpenAICompletionsConfig)
+    assert resolved.adapter_config.developer_role is False
+    assert resolved.adapter_config.max_output_tokens_field == "max_tokens"
+    assert resolved.adapter_config.reasoning_format == "moonshot"
+
+
 def test_bound_model_endpoint_snapshot_preserves_adapter_transport_and_routing() -> (
     None
 ):

@@ -30,7 +30,7 @@ class AnthropicProviderBase:
     @staticmethod
     def map_thinking_level_to_effort(
         level: str | None, model_id: str
-    ) -> Literal["low", "medium", "high", "max"] | None:
+    ) -> Literal["low", "medium", "high", "xhigh", "max"] | None:
         if level is None:
             return None
         if level in ("minimal", "low"):
@@ -40,12 +40,11 @@ class AnthropicProviderBase:
         if level == "high":
             return "high"
         # xhigh
+        if any(tag in model_id for tag in ("opus-4-8", "opus-4.8")):
+            return "xhigh"
         return (
             "max"
-            if any(
-                tag in model_id
-                for tag in ("opus-4-8", "opus-4.8", "opus-4-6", "opus-4.6")
-            )
+            if any(tag in model_id for tag in ("opus-4-6", "opus-4.6"))
             else "high"
         )
 

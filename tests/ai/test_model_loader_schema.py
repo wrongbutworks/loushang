@@ -288,6 +288,22 @@ def test_model_adapter_json_override_is_shallow(tmp_path: Path) -> None:
     assert model.adapter.reasoning_format == "moonshot"
 
 
+def test_model_adapter_json_override_can_restore_default_value(tmp_path: Path) -> None:
+    path = _write_registry(
+        tmp_path,
+        _registry_raw(
+            endpoint_adapter={"developerRole": False},
+            model_adapter={"developerRole": True},
+        ),
+    )
+
+    registry = load_model_registry_from_file(path)
+    model = registry.get_model("custom", "test-endpoint", "test-model")
+
+    assert isinstance(model.adapter, OpenAICompletionsConfig)
+    assert model.adapter.developer_role is True
+
+
 def test_openai_responses_adapter_schema_accepts_core_fields(tmp_path: Path) -> None:
     path = _write_registry(
         tmp_path,

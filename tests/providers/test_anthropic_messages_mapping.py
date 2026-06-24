@@ -91,7 +91,8 @@ def test_output_config_injected_for_adaptive_thinking():
     assert base.supports_adaptive_thinking("claude-opus-4-8-latest") is True
     # 映射 effort
     assert base.map_thinking_level_to_effort("high", "claude-opus-4-6") == "high"
-    assert base.map_thinking_level_to_effort("xhigh", "claude-opus-4-8") == "max"
+    assert base.map_thinking_level_to_effort("xhigh", "claude-opus-4-8") == "xhigh"
+    assert base.map_thinking_level_to_effort("xhigh", "claude-opus-4-6") == "max"
 
 
 def test_fine_grained_tool_beta_uses_typed_transport_kind() -> None:

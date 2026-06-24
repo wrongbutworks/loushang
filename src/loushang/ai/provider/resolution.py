@@ -365,7 +365,10 @@ def _build_resolved_endpoint(
     adapter_config = endpoint.adapter or default_adapter_config(endpoint.api)
     request_adapter = getattr(request_model or model, "adapter", None)
     if request_adapter is not None:
-        adapter_config = request_adapter
+        adapter_config = merge_adapter_config(
+            adapter_config if isinstance(adapter_config, AdapterConfig) else None,
+            request_adapter,
+        )
     if (
         override_model is not None
         and getattr(override_model, "adapter", None) is not None
