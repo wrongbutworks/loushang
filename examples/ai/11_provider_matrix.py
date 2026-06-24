@@ -71,8 +71,8 @@ PROVIDER_EXAMPLES = (
     ),
     ProviderExample(
         "tencent-hunyuan",
-        "openai-completions",
-        "hunyuan-turbos-latest",
+        "openai-responses",
+        "hy3-preview",
         ("HUNYUAN_API_KEY",),
     ),
     ProviderExample(
