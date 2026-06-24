@@ -109,7 +109,7 @@ def test_json_only_custom_model_loads_merges_queries_and_completes(
             model,
             {"messages": [{"role": "user", "content": "hello"}]},
             CallOptions(api_key="test-key"),
-            registry=provider_registry,
+            provider_registry=provider_registry,
         )
 
     message = asyncio.run(run_complete())
