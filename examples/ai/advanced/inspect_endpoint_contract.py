@@ -12,6 +12,7 @@ import re
 from typing import Any
 
 from loushang.ai.model import Endpoint, load_builtin_model_registry
+from loushang.ai.options import CallOptions
 from loushang.ai.provider import resolve_request_for_model
 
 DEFAULT_PROVIDER = "moonshot"
@@ -45,6 +46,7 @@ def inspect_endpoint_contract(
             raise KeyError((provider_id, endpoint_id, model_id))
         resolved = resolve_request_for_model(
             model,
+            options=CallOptions(api_key="example-offline-api-key"),
             registry=registry,
             env=_offline_template_env(endpoint),
         )

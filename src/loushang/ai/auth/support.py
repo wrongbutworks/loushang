@@ -184,12 +184,17 @@ def _resolve_stored_oauth_auth_view(
     model_id: str | None = None,
 ) -> AuthView | None:
     from loushang.ai.auth.storage import (
+        CredentialStoreError,
         find_scoped_credential,
         load_credential_store,
     )
 
+    try:
+        store = load_credential_store()
+    except CredentialStoreError:
+        return None
     credential = find_scoped_credential(
-        load_credential_store(),
+        store,
         provider,
         endpoint_id=endpoint_id,
         model_id=model_id,
@@ -208,6 +213,7 @@ def resolve_auth_for_model(
     provider = model.provider_id
     auth_input = normalize_auth_input(options)
     auth_config = getattr(model, "auth", None)
+    auth_kind = _auth_value(auth_config, "kind", None)
 
     if isinstance(auth_input.oauth_credentials, dict):
         oauth_view = _resolve_oauth_auth_view(provider, auth_input.oauth_credentials)
@@ -223,6 +229,9 @@ def resolve_auth_for_model(
     if oauth_view is not None:
         return oauth_view
 
+    if auth_config is None or auth_kind == "none":
+        return AuthView()
+
     oauth_view = _resolve_stored_oauth_auth_view(
         provider,
         endpoint_id=getattr(model, "endpoint_id", None),
@@ -231,8 +240,6 @@ def resolve_auth_for_model(
     if oauth_view is not None:
         return oauth_view
 
-    if auth_config is None:
-        return AuthView()
     return resolve_auth_material(config=auth_config, env=env)
 
 
