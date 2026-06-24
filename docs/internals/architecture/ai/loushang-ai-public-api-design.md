@@ -114,8 +114,6 @@
 - Invocation API
   - `stream`
   - `complete`
-  - `stream_simple`
-  - `complete_simple`
 - Model Access API
   - `Model`
   - `get_model`
@@ -407,8 +405,6 @@ Stable 最小字段集合确认为：
 
 - `stream(model, context, options=None, *, registry)`
 - `complete(model, context, options=None, *, registry)`
-- `stream_simple(model, context, options=None, *, registry)`
-- `complete_simple(model, context, options=None, *, registry)`
 
 说明：
 

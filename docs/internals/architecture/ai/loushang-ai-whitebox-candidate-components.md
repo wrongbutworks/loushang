@@ -1,5 +1,7 @@
 # Loushang-AI Whitebox Candidate Components
 
+> Status: pre-freeze candidate inventory. This file may mention removed simple entrypoints or legacy option names as historical candidates. Current root invocation is `stream()` / `complete()` with `CallOptions`; AIF-015 will decide whether to rewrite or archive this candidate inventory.
+
 ## Scope
 
 本文档从白盒视角列出 `loushang-ai` 的候选组件清单。  

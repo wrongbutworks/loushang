@@ -9,7 +9,7 @@
 - `ApiProvider` 作为注册单元的职责
 - api registry 的 public 能力
 - `register_api_provider` / `get_api_provider` / `list_api_providers` 的建议形态
-- `stream()` / `complete()` / `stream_simple()` / `complete_simple()` 如何依赖 registry 解析 provider
+- `stream()` / `complete()` 如何依赖 registry 解析 provider
 - api registry 与 model registry 的边界
 
 本文档不讨论：
@@ -48,7 +48,7 @@
 1. 让统一入口通过稳定规则解析 provider，而不是硬编码 if/else
 2. 让 `model registry` 只负责描述模型，不负责持有调用实现
 3. 让 provider adapter 可以在内部演化，而不破坏顶层 public contract
-4. 为后续 `stream_simple()` / `complete_simple()` 提供稳定的 api 语义落点
+4. 为 `complete()` / `stream()` 提供稳定的 api 语义落点
 
 因此，这一层既不能太薄，也不能膨胀成完整 plugin system。
 
@@ -133,9 +133,8 @@
 `ApiProvider` 的职责建议严格限制为：
 
 1. 声明自己支持哪个 `api`
-2. 提供统一 `stream()` 能力
-3. 可选提供统一 `stream_simple()` 能力
-4. 向顶层入口暴露足够稳定的 capability 信息
+2. 提供统一 `invoke_raw(request)` 能力
+3. 向顶层入口暴露足够稳定的 capability 信息
 
 它不负责：
 
@@ -154,33 +153,32 @@
 
 ---
 
-## Proposed Public Shape
+## Current Public Shape
 
-`ApiProvider` 作为 public registration unit，建议最小形态只包含：
+`ApiProvider` 作为 registration unit，当前最小形态只包含：
 
 - `api`
-- `stream`
-- `stream_simple`
+- `invoke_raw`
 
 其中：
 
 - `api` 是该 provider 适配的 `Api`
-- `stream` 是完整统一流式入口
-- `stream_simple` 是简化统一流式入口，可允许缺省实现
+- `invoke_raw` 接收单一 `ProviderRequest`，并返回统一 raw parts
 
 建议语义上要求：
 
-- `stream` 为必选
-- `stream_simple` 为可选，但若缺省，则顶层可通过降级转换实现 `complete_simple()`
+- `invoke_raw` 为必选
+- `ProviderRequest.mode` 表达 `complete` / `stream` 调用模式
+- `complete()` / `stream()` 都通过同一 provider boundary 执行
 
 这样设计的原因是：
 
-- `stream` 是当前已冻结的统一核心能力
-- `complete()` 可以由 `stream()` 收敛得到
-- `complete_simple()` 可以由 `stream_simple()` 或统一降级路径得到
+- raw parts 是当前已冻结的 provider 输出边界
+- complete-mode 和 stream-mode 的差异留在 request mode 和 adapter 映射中
+- 根 API 不再保留 simple projection path
 
-因此，不建议先把 `complete` / `complete_simple` 也做成 `ApiProvider` 必备成员。  
-registry 层应围绕流式原语建模，而不是重复保存收敛包装。
+因此，不建议把 `complete` / `stream` 做成两个 provider 方法。
+registry 层应围绕单一 raw-part 原语建模，而不是重复保存收敛包装。
 
 ---
 
@@ -328,12 +326,10 @@ registry 层应围绕流式原语建模，而不是重复保存收敛包装。
 
 ## Relation to Top-Level Entrypoints
 
-本设计对四个统一入口的直接约束是：
+本设计对两个统一入口的直接约束是：
 
-- `stream()` 依赖 `ApiProvider.stream()`
-- `complete()` 应建立在 `stream()` 的统一收敛语义之上
-- `stream_simple()` 优先依赖 `ApiProvider.stream_simple()`
-- `complete_simple()` 应建立在 `stream_simple()` 或其统一降级路径之上
+- `stream()` 依赖 `ApiProvider.invoke_raw(request)`，并设置 `ProviderRequest.mode = "stream"`
+- `complete()` 依赖同一 `ApiProvider.invoke_raw(request)`，并设置 `ProviderRequest.mode = "complete"`
 
 因此，registry 层需要保证的是：
 
@@ -423,7 +419,7 @@ v0.1 建议优先采用：
 
 1. `ApiProvider registry` 作为 `loushang.ai` public contract 的一部分存在
 2. `ApiProvider` 按 `api` 维度注册，而不是按 `provider` 品牌维度注册
-3. `ApiProvider` 的最小 public shape 保持为 `api + async stream + async stream_simple`
+3. `ApiProvider` 的最小 shape 保持为 `api + invoke_raw(request)`
 4. registry public API 保持为 `register_api_provider` / `get_api_provider` / `list_api_providers`
 5. 顶层统一入口按 `resolve_model_api(model) -> api provider` 的单一路径解析
 6. `model registry` 与 `api provider registry` 严格分层，不互相吞并职责
@@ -434,11 +430,11 @@ v0.1 建议优先采用：
 
 在进入顶层 API 签名设计前，仍有几个问题需要后续文档继续细化：
 
-1. `ApiProvider.stream()` 与 `stream()` 的正式参数签名是否完全一致
-2. `stream_simple()` 是 provider 必须实现，还是允许统一默认降级
+1. `ApiProvider.invoke_raw()` 的 `ProviderRequest` 字段是否仍有可删除项
+2. `complete` / `stream` 两种 mode 的 adapter 测试矩阵是否完整
 3. registry-level error 的正式类型族如何命名
 4. `api registry` 是否需要暴露 `has_api_provider(api)` 这类辅助查询
-5. provider-specific option 扩展最终如何从顶层入口下沉到 adapter
+5. provider/contrib-specific option 扩展如何避免进入根 public surface
 
 ---
 
@@ -452,5 +448,5 @@ v0.1 建议优先采用：
 
 在此基础上，下一步可以继续进入：
 
-1. `stream()` / `complete()` / `stream_simple()` / `complete_simple()` 的正式签名设计
+1. `stream()` / `complete()` 的正式签名设计
 2. `ApiProvider` 方法级签名与错误类型设计

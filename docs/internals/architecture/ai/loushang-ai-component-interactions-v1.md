@@ -1,4 +1,6 @@
-# Loushang-AI Component Interactions V1（同步现状）
+# Loushang-AI Component Interactions V1
+
+> Status: pre-freeze design snapshot. This file predates AIF-009 and may mention removed simple entrypoints, compat, transport, or legacy option names. Current root invocation is `stream()` / `complete()` with `CallOptions`; use this document only as historical interaction input until AIF-015 archives or rewrites it.
 
 ## Scope
 

@@ -675,4 +675,4 @@ v0.1 建议的 Python 表达方式如下：
 
 1. `AssistantMessageEventStream` 的 Python 形态
 2. `ApiProvider` registry 形态
-3. `stream()` / `complete()` / `stream_simple()` / `complete_simple()` 的 public API 签名
+3. `stream()` / `complete()` 的 public API 签名

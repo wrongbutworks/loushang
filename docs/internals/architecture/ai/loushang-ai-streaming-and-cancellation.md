@@ -160,7 +160,7 @@ LiteLLM 说明：
 
 做法：
 
-- `stream()` / `stream_simple()` 为同步函数
+- `stream()` 为同步函数
 - 返回 `AssistantMessageEventStream`
 - provider start 通过额外 bridge 隐式完成
 
@@ -181,9 +181,9 @@ LiteLLM 说明：
 
 做法：
 
-- `stream()` / `stream_simple()` 为 `async def`
+- `stream()` 为 `async def`
 - provider start 显式成为 public async 边界
-- `signal` 保留字段名，但定义为 Python 最小取消协议
+- `CallOptions.cancellation` 定义为 Python 最小取消协议
 - 默认实现内部可以使用 `asyncio`
 - `asyncio.Task` / `asyncio.Queue` / `asyncio.Event` 不进入 public contract
 
@@ -197,7 +197,7 @@ LiteLLM 说明：
 ### 风险
 
 - 与 `reference AI SDK` 的同步 `stream()` public shape 不再完全一致
-- `complete()` / `complete_simple()` 在文档和心智模型上需要多一段 `await stream(...)`
+- `complete()` 在文档和心智模型上需要多一段 `await stream(...)`
 - 调用方需要接受“先 await stream handle，再消费 stream”的模型
 
 ---

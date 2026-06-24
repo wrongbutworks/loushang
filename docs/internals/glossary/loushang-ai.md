@@ -411,8 +411,7 @@ API provider 注册表。
 典型属性包括：
 
 - `api`
-- `stream`
-- `stream_simple`
+- `invoke_raw`
 
 ### register_api_provider
 
@@ -429,14 +428,6 @@ API provider 注册表。
 ### complete
 
 统一非流式完成入口。
-
-### stream_simple
-
-统一简化流式入口。
-
-### complete_simple
-
-统一简化完成入口。
 
 ---
 

@@ -113,8 +113,6 @@
 - `Invocation API`
   - `stream`
   - `complete`
-  - `stream_simple`
-  - `complete_simple`
 - `AI Input Semantics`
   - `Context`
   - `Message`

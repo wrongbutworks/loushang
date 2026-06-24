@@ -393,5 +393,5 @@ provider adapter strategy 需要明确承接当前已冻结的 cancellation 方�
 
 在此基础上，下一步最自然进入：
 
-1. `stream()` / `complete()` / `stream_simple()` / `complete_simple()` 的正式签名设计
+1. `stream()` / `complete()` 的正式签名设计
 2. 一个最小 provider spike，用于验证 adapter strategy 能否落地
