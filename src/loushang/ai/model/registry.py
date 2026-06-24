@@ -163,6 +163,7 @@ def _model_with_effective_context(
         _deep_merge_raw_mapping(endpoint.routing.to_raw(), model.routing.to_raw())
     )
     adapter = merge_adapter_config(endpoint.adapter, model.adapter)
+    auth = _merge_effective_auth(provider_auth, endpoint.auth, model.auth)
     return replace(
         model,
         _endpoint_key=endpoint.endpoint_key,
@@ -172,12 +173,22 @@ def _model_with_effective_context(
         region=endpoint.region,
         lane=endpoint.lane,
         preferred_endpoint=endpoint.preferred,
-        auth=model.auth if model.auth is not None else endpoint.auth or provider_auth,
+        auth=auth,
         adapter=adapter,
         defaults=endpoint.defaults.merged(model.defaults),
         transport=transport,
         routing=routing,
     )
+
+
+def _merge_effective_auth(
+    provider_auth: Auth | None,
+    endpoint_auth: Auth | None,
+    model_auth: Auth | None,
+) -> Auth | None:
+    from loushang.ai.auth.support import merge_auth_config
+
+    return merge_auth_config(provider_auth, endpoint_auth, model_auth)
 
 
 def _deep_merge_raw_mapping(

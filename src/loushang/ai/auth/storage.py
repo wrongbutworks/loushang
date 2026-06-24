@@ -16,6 +16,11 @@ try:  # pragma: no cover - exercised on POSIX in tests.
 except ImportError:  # pragma: no cover - Windows fallback.
     fcntl = None  # type: ignore[assignment]
 
+try:  # pragma: no cover - exercised through monkeypatched backend tests.
+    import msvcrt
+except ImportError:  # pragma: no cover - POSIX fallback.
+    msvcrt = None  # type: ignore[assignment]
+
 from loushang.ai.auth.types import OAuthCredentials
 
 CredentialScope = Literal["provider", "endpoint", "model"]
@@ -357,6 +362,7 @@ def _locked_credential_path(path: Path):
             ) from error
         with os.fdopen(fd, "a+", encoding="utf-8") as lock_file:
             try:
+                _prepare_lock_file(lock_file)
                 _lock_file(lock_file.fileno())
             except PermissionError as error:
                 raise CredentialStorePermissionError(
@@ -375,11 +381,28 @@ def _locked_credential_path(path: Path):
 def _lock_file(fd: int) -> None:
     if fcntl is not None:
         fcntl.flock(fd, fcntl.LOCK_EX)
+        return
+    if msvcrt is not None:
+        os.lseek(fd, 0, os.SEEK_SET)
+        msvcrt.locking(fd, msvcrt.LK_LOCK, 1)
 
 
 def _unlock_file(fd: int) -> None:
     if fcntl is not None:
         fcntl.flock(fd, fcntl.LOCK_UN)
+        return
+    if msvcrt is not None:
+        os.lseek(fd, 0, os.SEEK_SET)
+        msvcrt.locking(fd, msvcrt.LK_UNLCK, 1)
+
+
+def _prepare_lock_file(lock_file) -> None:
+    lock_file.seek(0, os.SEEK_END)
+    if lock_file.tell() == 0:
+        lock_file.write("\0")
+        lock_file.flush()
+        os.fsync(lock_file.fileno())
+    lock_file.seek(0)
 
 
 def _chmod_private_dir(path: Path) -> None:

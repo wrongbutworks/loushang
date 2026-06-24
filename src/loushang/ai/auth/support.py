@@ -5,6 +5,9 @@ from collections.abc import Mapping
 from dataclasses import dataclass, field
 
 from loushang.ai.auth.types import OAuthCredentials
+from loushang.ai.model import Auth
+
+AuthConfig = Auth
 
 
 def _auth_value(config, field_name: str, default=None):
@@ -50,16 +53,6 @@ def _merged_auth_value(effective, override, field_name: str):
     if _auth_field_explicit(override, field_name):
         return _auth_value(override, field_name, _AUTH_FIELD_DEFAULTS[field_name])
     return _auth_value(effective, field_name, _AUTH_FIELD_DEFAULTS[field_name])
-
-
-@dataclass(frozen=True)
-class AuthConfig:
-    kind: str = "apiKey"
-    api_key_env: str | None = None
-    api_key_envs: tuple[str, ...] = ()
-    header: str = "Authorization"
-    prefix: str = "Bearer "
-    extra_headers: dict[str, str] = field(default_factory=dict)
 
 
 @dataclass(frozen=True)
@@ -213,33 +206,12 @@ def _resolve_stored_oauth_auth_view(
 def resolve_auth_for_model(
     model,
     *,
-    catalog=None,
     options=None,
     env: dict[str, str] | None = None,
-    registry=None,
 ) -> AuthView:
-    del catalog
-    from loushang.ai.model.registry import (
-        get_default_model_registry,
-        has_bound_endpoint_context,
-        resolve_model_endpoint,
-    )
-
     provider = model.provider_id
     auth_input = normalize_auth_input(options)
-    resolved_registry = registry
-    if resolved_registry is None and not has_bound_endpoint_context(model):
-        resolved_registry = get_default_model_registry()
-    endpoint = resolve_model_endpoint(model, registry=resolved_registry)
-    provider_auth = None
-    if resolved_registry is not None:
-        resolved_provider = resolved_registry.get_provider(provider)
-        provider_auth = getattr(resolved_provider, "auth", None)
-    auth_config = merge_auth_config(
-        provider_auth,
-        endpoint.auth if endpoint is not None else None,
-        getattr(model, "auth", None),
-    )
+    auth_config = getattr(model, "auth", None)
 
     if isinstance(auth_input.oauth_credentials, dict):
         oauth_view = _resolve_oauth_auth_view(provider, auth_input.oauth_credentials)

@@ -26,7 +26,7 @@
   Current scope: prioritize core `ai` package design (`model/`, `auth/`, `api/`, `providers/`, `messages.py`, `context.py`, `event_stream/`, `types.py`, `options.py`).
   Out of primary scope for now: CLI, examples, and tests as external or simulated consumers, except where they have already polluted core package boundaries.
   Priority order:
-  1. Done: align builtin auth provider lifecycle so `reset_oauth_providers(with_builtins=True)` restores the same builtin providers as `register_builtin_oauth_providers()`.
+  1. Done: align builtin auth provider lifecycle around direct `OAuthProviderRegistry.clear()` plus `register_builtin_oauth_providers()`.
   2. Audit and isolate consumer-specific logic that has leaked into core `auth/` and `providers/` layers.
      Partial:
      - Anthropic OAuth requests no longer identify as `claude-cli`; core provider now uses neutral SDK identity headers.

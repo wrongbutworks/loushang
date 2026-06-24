@@ -343,7 +343,15 @@ values.
 
 - `resolve_auth_material(...)`
 - `resolve_auth_for_model(...)`
-- OAuth provider 与 credential 相关接口
+- `get_default_oauth_registry()`
+- `OAuthProviderRegistry.register(...)`
+- `OAuthProviderRegistry.get(...)`
+- `OAuthProviderRegistry.list()`
+- `OAuthProviderRegistry.clear()`
+- `register_builtin_oauth_providers(...)`
+- `oauth_login(...)`
+- `oauth_refresh(...)`
+- OAuth credential store 读写接口
 
 ## 当前边界约定
 

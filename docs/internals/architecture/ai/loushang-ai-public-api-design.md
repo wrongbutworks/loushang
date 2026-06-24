@@ -540,11 +540,11 @@ Stable 最小字段集合确认为：
 
 - `resolve_auth_material(...)`
 - `resolve_auth_for_model(...)`
-- `register_oauth_provider(...)`
-- `get_oauth_provider(...)`
-- `list_oauth_providers()`
-- `clear_oauth_providers()`
-- `reset_oauth_providers(...)`
+- `get_default_oauth_registry()`
+- `OAuthProviderRegistry.register(...)`
+- `OAuthProviderRegistry.get(...)`
+- `OAuthProviderRegistry.list()`
+- `OAuthProviderRegistry.clear()`
 - `register_builtin_oauth_providers()`
 - `oauth_login(...)`
 - `oauth_refresh(...)`
@@ -554,7 +554,6 @@ Stable 最小字段集合确认为：
 - `OAuthCredentials`
 - `OAuthProviderInterface`
 - `OAuthProviderRegistry`
-- `get_default_oauth_registry()`
 - `get_oauth_api_key(...)`
 - `load_credentials()`
 - `save_credentials()`
@@ -732,16 +731,11 @@ Stable 最小字段集合确认为：
 - Advanced API 优先从子包导入
 - Internal API 不从根包导出
 
-### 2. 补充认证高层门面
+### 2. 认证 Registry 边界
 
-当前 `auth` 功能可用，但高层门面偏弱。
-
-建议补：
-
-- `list_oauth_providers()`
-- `register_oauth_provider(...)`
-- `oauth_login(...)`
-- `oauth_refresh(...)`
+OAuth provider 增删查列由 `OAuthProviderRegistry` 直接提供，不再为每个
+Registry 方法额外导出同名全局 wrapper。保留的全局操作只覆盖默认 Registry
+获取、内置 provider 注册、登录和刷新。
 
 ### 3. 明确 `provider` 与 `providers` 的边界说明
 

@@ -182,7 +182,6 @@ def resolve_request_for_model(
         request_model,
         options=options,
         env=resolved_env,
-        registry=resolved_registry,
     )
     headers = _merge_option_headers(auth_view.headers, options)
     auth_account_id = _auth_account_id_from_view(auth_view, headers)

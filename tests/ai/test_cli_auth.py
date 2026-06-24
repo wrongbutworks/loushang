@@ -39,8 +39,8 @@ class _FakeProvider:
 @pytest.fixture(autouse=True)
 def _reset_oauth_registry(monkeypatch: pytest.MonkeyPatch):
     registry = get_default_oauth_registry()
-    registry.reset_oauth_providers()
-    registry.register_oauth_provider(_FakeProvider(), source_id="test")
+    registry.clear()
+    registry.register(_FakeProvider(), source_id="test")
     monkeypatch.setattr(
         "loushang.ai.cli.__main__.register_builtin_oauth_providers",
         lambda: None,

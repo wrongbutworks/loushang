@@ -38,7 +38,7 @@ class ExtensionProviderController:
             remover(name)
         source_id = _extension_provider_source_id(name)
         self.api_provider_registry.unregister_api_providers(source_id)
-        self.oauth_provider_registry.unregister_oauth_providers(source_id)
+        self.oauth_provider_registry.unregister_source(source_id)
 
     def get_registered_provider(self, name: str) -> Provider | None:
         ai_registry = getattr(self.model_registry, "ai_registry", None)

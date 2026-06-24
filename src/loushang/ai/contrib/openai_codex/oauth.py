@@ -288,6 +288,4 @@ def register_openai_codex_oauth_provider(
     registry: OAuthProviderRegistry | None = None,
 ) -> None:
     resolved_registry = registry or get_default_oauth_registry()
-    resolved_registry.register_oauth_provider(
-        OpenAICodexOAuthProvider(), source_id=source_id
-    )
+    resolved_registry.register(OpenAICodexOAuthProvider(), source_id=source_id)

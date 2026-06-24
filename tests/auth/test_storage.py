@@ -84,6 +84,35 @@ def test_credential_store_writes_by_atomic_replace(
     assert not list(path.parent.glob(".oauth.json.*.tmp"))
 
 
+def test_credential_store_uses_msvcrt_lock_backend_when_fcntl_unavailable(
+    tmp_path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    class _FakeMsvcrt:
+        LK_LOCK = 1
+        LK_UNLCK = 2
+
+        def __init__(self) -> None:
+            self.calls: list[tuple[int, int]] = []
+
+        def locking(self, fd: int, mode: int, nbytes: int) -> None:
+            del fd
+            self.calls.append((mode, nbytes))
+
+    fake_msvcrt = _FakeMsvcrt()
+    monkeypatch.setattr(storage, "fcntl", None)
+    monkeypatch.setattr(storage, "msvcrt", fake_msvcrt)
+
+    CredentialStore(tmp_path / "oauth.json").save(
+        {"providers": {"demo": _credential()}, "endpoints": {}, "models": {}}
+    )
+
+    assert fake_msvcrt.calls == [
+        (fake_msvcrt.LK_LOCK, 1),
+        (fake_msvcrt.LK_UNLCK, 1),
+    ]
+
+
 def test_credential_store_reports_corrupt_json_with_explicit_error(tmp_path) -> None:
     path = tmp_path / "oauth.json"
     path.write_text("{not-json", encoding="utf-8")

@@ -34,8 +34,8 @@ class _FailingRefreshProvider:
 
 def test_oauth_refresh_failure_does_not_fall_back_to_api_key() -> None:
     registry = get_default_oauth_registry()
-    registry.reset_oauth_providers()
-    registry.register_oauth_provider(_FailingRefreshProvider(), source_id="test")
+    registry.clear()
+    registry.register(_FailingRefreshProvider(), source_id="test")
     try:
         model = SimpleNamespace(
             provider_id="demo",
@@ -58,7 +58,7 @@ def test_oauth_refresh_failure_does_not_fall_back_to_api_key() -> None:
         with pytest.raises(RuntimeError, match="refresh failed"):
             resolve_auth_for_model(model, options=options)
     finally:
-        registry.reset_oauth_providers()
+        registry.clear()
 
 
 def test_empty_oauth_credentials_do_not_block_api_key_fallback() -> None:
@@ -80,40 +80,33 @@ def test_empty_oauth_credentials_do_not_block_api_key_fallback() -> None:
     assert view.headers["Authorization"] == "Bearer fallback-key"
 
 
-def test_provider_auth_applies_to_ad_hoc_model_on_registered_endpoint() -> None:
-    endpoint = Endpoint(
-        id="responses",
+def test_auth_config_is_model_auth_type() -> None:
+    assert AuthConfig is Auth
+
+
+def test_auth_resolution_uses_model_effective_auth_without_registry_lookup() -> None:
+    model = Model(
+        id="ad-hoc",
         provider="demo",
-        api="openai-responses",
-        models={},
+        endpoint="responses",
+        auth=Auth(header="X-API-Key", prefix="", api_key_env="DEMO_API_KEY"),
     )
-    registry = ModelRegistry.from_providers(
-        {
-            "demo": Provider(
-                id="demo",
-                auth=Auth(header="X-API-Key", prefix="", api_key_env="DEMO_API_KEY"),
-                endpoints={endpoint.id: endpoint},
-            )
-        }
-    )
-    model = Model(id="ad-hoc", provider="demo", endpoint="responses")
 
     view = resolve_auth_for_model(
         model,
         options=SimpleNamespace(api_key="secret"),
-        registry=registry,
     )
 
     assert view.headers == {"X-API-Key": "secret"}
 
 
-def test_partial_endpoint_auth_does_not_reset_provider_header() -> None:
+def test_loaded_model_holds_effective_provider_endpoint_auth() -> None:
     endpoint = Endpoint(
         id="responses",
         provider="demo",
         api="openai-responses",
         auth=Auth(extra_headers={"X-Endpoint": "endpoint"}),
-        models={},
+        models={"ad-hoc": Model(id="ad-hoc", provider="demo", endpoint="responses")},
     )
     registry = ModelRegistry.from_providers(
         {
@@ -124,12 +117,11 @@ def test_partial_endpoint_auth_does_not_reset_provider_header() -> None:
             )
         }
     )
-    model = Model(id="ad-hoc", provider="demo", endpoint="responses")
+    model = registry.get_model("demo", "responses", "ad-hoc")
 
     view = resolve_auth_for_model(
         model,
         options=SimpleNamespace(api_key="secret"),
-        registry=registry,
     )
 
     assert view.headers == {

@@ -19,74 +19,24 @@ from loushang.ai.auth.types import (
 )
 
 
-def register_oauth_provider(
-    provider: OAuthProviderInterface,
-    *,
-    source_id: str | None = None,
-    registry: OAuthProviderRegistry | None = None,
-) -> None:
-    resolved_registry = registry or get_default_oauth_registry()
-    resolved_registry.register_oauth_provider(provider, source_id=source_id)
-
-
-def get_oauth_provider(
-    provider_id: str,
-    *,
-    registry: OAuthProviderRegistry | None = None,
-) -> OAuthProviderInterface | None:
-    resolved_registry = registry or get_default_oauth_registry()
-    return resolved_registry.get_oauth_provider(provider_id)
-
-
-def list_oauth_providers(
-    *, registry: OAuthProviderRegistry | None = None
-) -> list[OAuthProviderInterface]:
-    resolved_registry = registry or get_default_oauth_registry()
-    return resolved_registry.list_oauth_providers()
-
-
-def clear_oauth_providers(*, registry: OAuthProviderRegistry | None = None) -> None:
-    resolved_registry = registry or get_default_oauth_registry()
-    resolved_registry.reset_oauth_providers()
-
-
 def register_builtin_oauth_providers(
     *, registry: OAuthProviderRegistry | None = None
 ) -> None:
     resolved_registry = registry or get_default_oauth_registry()
-    resolved_registry.reset_oauth_providers()
     _register_builtin_oauth_providers(resolved_registry)
 
 
-def ensure_builtin_oauth_providers(
-    *, registry: OAuthProviderRegistry | None = None
-) -> None:
-    resolved_registry = registry or get_default_oauth_registry()
-    if resolved_registry.get_oauth_provider("anthropic") is None:
-        _register_builtin_anthropic(resolved_registry)
-
-
 def _register_builtin_oauth_providers(registry: OAuthProviderRegistry) -> None:
-    _register_builtin_anthropic(registry)
+    if registry.get("anthropic") is None:
+        _register_builtin_anthropic(registry)
 
 
 def _register_builtin_anthropic(
     registry: OAuthProviderRegistry,
 ) -> OAuthProviderInterface:
     provider = AnthropicOAuthProvider()
-    registry.register_oauth_provider(provider, source_id="builtin")
+    registry.register(provider, source_id="builtin")
     return provider
-
-
-def reset_oauth_providers(
-    *,
-    registry: OAuthProviderRegistry | None = None,
-    with_builtins: bool = True,
-) -> None:
-    resolved_registry = registry or get_default_oauth_registry()
-    resolved_registry.reset_oauth_providers()
-    if with_builtins:
-        _register_builtin_oauth_providers(resolved_registry)
 
 
 async def oauth_login(
@@ -99,7 +49,8 @@ async def oauth_login(
     model_id: str | None = None,
     persist: bool = True,
 ) -> OAuthCredentials:
-    provider = get_oauth_provider(provider_id, registry=registry)
+    resolved_registry = registry or get_default_oauth_registry()
+    provider = resolved_registry.get(provider_id)
     if provider is None:
         raise ValueError(f"OAuth provider not found: {provider_id}")
     next_credentials = await provider.login(callbacks)
@@ -129,7 +80,8 @@ async def oauth_refresh(
     model_id: str | None = None,
     persist: bool | None = None,
 ) -> OAuthCredentials:
-    provider = get_oauth_provider(provider_id, registry=registry)
+    resolved_registry = registry or get_default_oauth_registry()
+    provider = resolved_registry.get(provider_id)
     if provider is None:
         raise ValueError(f"OAuth provider not found: {provider_id}")
     store = load_credential_store() if credentials is None else None
