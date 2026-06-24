@@ -1,6 +1,6 @@
-"""Load a custom catalog with a first-class upstream model binding.
+"""Load a custom model file with a first-class upstream model binding.
 
-This advanced example is offline. It writes a tiny model catalog, loads it,
+This advanced example is offline. It writes a tiny model file, loads it,
 and inspects the provider request binding without calling any API.
 """
 
@@ -43,7 +43,7 @@ CUSTOM_CATALOG: dict[str, Any] = {
 
 def inspect_custom_catalog() -> dict[str, object]:
     with TemporaryDirectory() as directory:
-        path = Path(directory) / "models.v2.json"
+        path = Path(directory) / "models.json"
         path.write_text(json.dumps(CUSTOM_CATALOG), encoding="utf-8")
 
         registry = load_model_registry_from_file(path)

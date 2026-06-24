@@ -26,13 +26,15 @@
   查看内置 curated provider、endpoint、环境变量和模型入口
 - [12_provider_smoke.py](12_provider_smoke.py)
   离线验证内置 curated provider 的默认模型句柄可解析
+- [custom_model_file.py](custom_model_file.py)
+  写入当前 `models.json` 形状的自定义模型文件，加载独立 registry，并检查 provider request
 
 `examples/ai/advanced/` 放协议观察、faux provider、本地 registry 注入这类高级样例，不作为第一次接入的推荐入口。
 
 - [advanced/inspect_endpoint_contract.py](advanced/inspect_endpoint_contract.py)
   查看 endpoint 默认 facts 和模型最终 resolved request 的 typed contract
 - [advanced/custom_catalog.py](advanced/custom_catalog.py)
-  从自定义 schema v2 catalog 读取 `upstreamId`，并查看最终 provider 请求绑定
+  从自定义模型文件读取 `upstreamId`，并查看最终 provider 请求绑定
 - [advanced/normalization_diagnostics.py](advanced/normalization_diagnostics.py)
   离线查看 context/message 归一化产生的 repair、downgrade 和 signature-removal diagnostics；
   该示例显式启用 `pairing_mode="repair"` 以演示历史兼容修复
@@ -53,7 +55,7 @@
 
 ## Provider 配置速查
 
-模型调用使用三元组定位：`provider:endpoint:model`。内置 catalog 现在是小型 curated provider 集；更长尾的 provider/model 应通过自定义 schema v2 catalog 添加。
+模型调用使用三元组定位：`provider:endpoint:model`。内置 catalog 现在是小型 curated provider 集；更长尾的 provider/model 应通过当前 `models.json` 形状的自定义模型文件添加。
 
 例如 Moonshot 默认 OpenAI-compatible route：
 

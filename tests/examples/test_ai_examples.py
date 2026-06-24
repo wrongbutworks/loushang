@@ -13,7 +13,7 @@ from loushang.ai.model import load_model_registry_from_file
 REPO_ROOT = Path(__file__).resolve().parents[2]
 TOP_LEVEL_OFFLINE_EXAMPLES = sorted(
     (REPO_ROOT / "examples/ai").glob("[0-9][0-9]_*.py")
-)
+) + [REPO_ROOT / "examples/ai/custom_model_file.py"]
 
 
 def _load_module(path: Path, name: str):
@@ -55,6 +55,7 @@ def test_top_level_ai_examples_run_offline(tmp_path: Path) -> None:
         "10_usage.py",
         "11_provider_matrix.py",
         "12_provider_smoke.py",
+        "custom_model_file.py",
     ]
 
     for path in TOP_LEVEL_OFFLINE_EXAMPLES:
@@ -115,6 +116,25 @@ def test_provider_matrix_example_formats_all_provider_entries() -> None:
     assert len(lines) == len(module.PROVIDER_EXAMPLES)
 
 
+def test_custom_model_file_example_reports_resolved_request() -> None:
+    module = _load_module(
+        Path("examples/ai/custom_model_file.py"),
+        "examples_ai_custom_model_file",
+    )
+
+    summary = module.inspect_custom_model_file()
+
+    assert summary["model"] == "company:openai-completions:company-chat"
+    assert summary["api"] == "openai-completions"
+    assert summary["baseUrl"] == "https://models.company.example/v1"
+    assert summary["upstreamModelId"] == "vendor/company-chat-2026-06"
+    adapter = summary["adapter"]
+    assert isinstance(adapter, dict)
+    assert adapter["developerRole"] is False
+    assert adapter["maxOutputTokensField"] == "max_completion_tokens"
+    assert adapter["reasoningFormat"] == "openai"
+
+
 def test_usage_online_example_marks_unknown_cost() -> None:
     module = _load_module(
         Path("examples/ai/advanced/usage_online.py"), "examples_ai_usage_online"
@@ -138,29 +158,30 @@ def test_usage_online_example_prints_unknown_cost(capsys, monkeypatch) -> None:
     class FakeModel:
         pricing = None
 
-        async def complete(self, context, options):
-            return AssistantMessage(
-                role="assistant",
-                content=[TextPart(type="text", text="ok")],
-                api="openai-completions",
-                provider="moonshot",
-                model="kimi-k2.6",
-                response_id="resp_1",
-                usage=Usage(
-                    input=1,
-                    output=1,
-                    cache_read=0,
-                    cache_write=0,
-                    total_tokens=2,
-                    cost=None,
-                ),
-                stop_reason="stop",
-                error_message=None,
-                timestamp=0.0,
-            )
+    async def fake_complete(model, context, options):
+        return AssistantMessage(
+            role="assistant",
+            content=[TextPart(type="text", text="ok")],
+            api="openai-completions",
+            provider="moonshot",
+            model="kimi-k2.6",
+            response_id="resp_1",
+            usage=Usage(
+                input=1,
+                output=1,
+                cache_read=0,
+                cache_write=0,
+                total_tokens=2,
+                cost=None,
+            ),
+            stop_reason="stop",
+            error_message=None,
+            timestamp=0.0,
+        )
 
     monkeypatch.setattr(sys, "argv", ["usage_online.py", "--api-key", "test-key"])
     monkeypatch.setattr(module, "get_model", lambda *_args: FakeModel())
+    monkeypatch.setattr(module, "complete", fake_complete)
 
     assert asyncio.run(module.main()) == 0
 
@@ -428,29 +449,23 @@ def test_advanced_inspect_endpoint_contract_formats_protocol_facts(
         Path("examples/ai/advanced/inspect_endpoint_contract.py"),
         "examples_ai_advanced_inspect_endpoint_contract",
     )
-    path = tmp_path / "models.v2.json"
+    path = tmp_path / "models.json"
     path.write_text(
         json.dumps(
             {
-                "schemaVersion": 2,
                 "providers": {
                     "moonshot": {
                         "endpoints": {
                             "openai-completions": {
                                 "api": "openai-completions",
                                 "baseUrl": "https://example.invalid/v1",
-                                "compat": {
-                                    "supportsStore": False,
-                                    "supportsStrictMode": False,
-                                    "thinkingFormat": "example",
-                                },
-                                "protocol": {
-                                    "roles": {"developer": "unsupported"},
-                                    "reasoning": {"effort": "unsupported"},
-                                },
-                                "dialect": {
+                                "adapter": {
+                                    "store": False,
+                                    "developerRole": False,
+                                    "strictSchema": False,
                                     "maxOutputTokensField": "max_completion_tokens",
-                                    "reasoning": {"wireFormat": "moonshot"},
+                                    "reasoningEffort": False,
+                                    "reasoningFormat": "moonshot",
                                 },
                                 "transport": {"kind": "httpx"},
                                 "routing": {
@@ -460,9 +475,9 @@ def test_advanced_inspect_endpoint_contract_formats_protocol_facts(
                                 },
                                 "models": {
                                     "kimi-k2.6": {
-                                        "compat": {
-                                            "supportsReasoningEffort": True,
-                                            "supportsStreamReasoningDelta": True,
+                                        "adapter": {
+                                            "reasoningEffort": True,
+                                            "streamingUsage": True,
                                         },
                                         "capabilities": {
                                             "input": ["text"],
@@ -486,56 +501,39 @@ def test_advanced_inspect_endpoint_contract_formats_protocol_facts(
     assert contract["provider"] == "moonshot"
     assert contract["endpoint"] == "openai-completions"
     assert contract["api"] == "openai-completions"
-    assert contract["protocolScope"] == "endpoint-default"
+    assert contract["adapterScope"] == "endpoint-default"
     assert contract["model"] == "kimi-k2.6"
-    assert contract["protocol"] == {
-        "store": "unsupported",
-        "roles": {"developer": "unsupported"},
-        "reasoning": {"effort": "unsupported"},
-        "tools": {"strictSchema": "unsupported"},
-    }
-    assert contract["dialectScope"] == "endpoint-default"
-    assert contract["dialect"] == {
-        "maxOutputTokensField": "max_completion_tokens",
-        "reasoning": {"wireFormat": "moonshot"},
-    }
+    assert contract["adapter"]["store"] is False
+    assert contract["adapter"]["developerRole"] is False
+    assert contract["adapter"]["strictSchema"] is False
+    assert contract["adapter"]["maxOutputTokensField"] == "max_completion_tokens"
+    assert contract["adapter"]["reasoningEffort"] is False
+    assert contract["adapter"]["reasoningFormat"] == "moonshot"
     assert contract["transportScope"] == "endpoint-default"
     assert contract["transport"] == {"kind": "httpx"}
     assert contract["routingScope"] == "endpoint-default"
     assert contract["routing"] == {
         "requestOverrides": {"openrouter": {"only": ["anthropic"]}}
     }
-    assert contract["requestProtocolScope"] == "model-effective"
-    assert contract["requestProtocol"]["roles"]["developer"] == "unsupported"
-    assert contract["requestProtocol"]["streaming"]["reasoningDelta"] == "supported"
-    assert contract["requestProtocol"]["reasoning"]["effort"] == "supported"
-    assert contract["requestDialectScope"] == "model-effective"
-    assert contract["requestDialect"]["maxOutputTokensField"] == "max_completion_tokens"
-    assert contract["requestDialect"]["reasoning"]["wireFormat"] == "moonshot"
-    assert contract["adapterProtocolScope"] == "adapter-effective"
-    assert contract["adapterProtocol"]["roles"]["developer"] == "unsupported"
-    assert contract["adapterProtocol"]["reasoning"]["effort"] == "supported"
-    assert contract["adapterDialectScope"] == "adapter-effective"
-    assert contract["adapterDialect"]["maxOutputTokensField"] == "max_completion_tokens"
-    assert contract["adapterDialect"]["reasoning"]["wireFormat"] == "moonshot"
+    assert contract["requestAdapterScope"] == "model-effective"
+    assert contract["requestAdapter"]["store"] is False
+    assert contract["requestAdapter"]["developerRole"] is False
+    assert contract["requestAdapter"]["reasoningEffort"] is True
+    assert contract["requestAdapter"]["maxOutputTokensField"] == "max_completion_tokens"
+    assert contract["requestAdapter"]["reasoningFormat"] == "moonshot"
     assert contract["requestTransportScope"] == "model-effective"
     assert contract["requestTransport"] == {"kind": "httpx"}
     assert contract["requestRoutingScope"] == "model-effective"
     assert contract["requestRouting"] == {
         "requestOverrides": {"openrouter": {"only": ["anthropic"]}}
     }
-    assert "thinkingFormat" in contract["legacyCompatKeys"]
 
     module.main()
     payload = json.loads(capsys.readouterr().out)
-    assert payload["protocolScope"] == "endpoint-default"
-    assert payload["dialectScope"] == "endpoint-default"
+    assert payload["adapterScope"] == "endpoint-default"
     assert payload["transportScope"] == "endpoint-default"
     assert payload["routingScope"] == "endpoint-default"
-    assert payload["requestProtocolScope"] == "model-effective"
-    assert payload["requestDialectScope"] == "model-effective"
-    assert payload["adapterProtocolScope"] == "adapter-effective"
-    assert payload["adapterDialectScope"] == "adapter-effective"
+    assert payload["requestAdapterScope"] == "model-effective"
 
 
 def test_advanced_inspect_endpoint_contract_runs_against_builtin_catalog() -> None:
@@ -549,25 +547,15 @@ def test_advanced_inspect_endpoint_contract_runs_against_builtin_catalog() -> No
     assert contract["provider"] == "moonshot"
     assert contract["endpoint"] == "openai-completions"
     assert contract["model"] == "kimi-k2.6"
-    assert contract["protocol"] == {
-        "store": "unsupported",
-        "roles": {"developer": "unsupported"},
-        "streaming": {"usage": "supported", "reasoningDelta": "supported"},
-        "reasoning": {"effort": "unsupported"},
-        "tools": {"strictSchema": "unsupported"},
-    }
-    assert contract["dialect"] == {
-        "maxOutputTokensField": "max_tokens",
-        "reasoning": {
-            "wireFormat": "moonshot",
-            "thinkingAsText": False,
-            "assistantContentRequired": False,
-        },
-    }
+    assert contract["adapter"]["store"] is False
+    assert contract["adapter"]["developerRole"] is False
+    assert contract["adapter"]["streamingUsage"] is True
+    assert contract["adapter"]["reasoningEffort"] is False
+    assert contract["adapter"]["maxOutputTokensField"] == "max_tokens"
+    assert contract["adapter"]["reasoningFormat"] == "moonshot"
     assert contract["transport"] == {}
     assert contract["routing"] == {}
-    assert contract["requestProtocol"]["reasoning"]["effort"] == "unsupported"
-    assert contract["adapterProtocol"]["reasoning"]["effort"] == "unsupported"
+    assert contract["requestAdapter"]["reasoningEffort"] is False
 
 
 def test_advanced_inspect_endpoint_contract_handles_templated_base_url(
@@ -578,20 +566,19 @@ def test_advanced_inspect_endpoint_contract_handles_templated_base_url(
         Path("examples/ai/advanced/inspect_endpoint_contract.py"),
         "examples_ai_advanced_inspect_endpoint_contract_template",
     )
-    path = tmp_path / "models.v2.json"
+    path = tmp_path / "models.json"
     path.write_text(
         json.dumps(
             {
-                "schemaVersion": 2,
                 "providers": {
                     "custom-template": {
                         "endpoints": {
                             "openai-completions": {
                                 "api": "openai-completions",
                                 "baseUrl": "https://example.invalid/{ACCOUNT_ID}/v1",
-                                "dialect": {
+                                "adapter": {
                                     "maxOutputTokensField": "max_completion_tokens",
-                                    "reasoning": {"wireFormat": "openai"},
+                                    "reasoningFormat": "openai",
                                 },
                                 "models": {
                                     "template-model": {
@@ -621,10 +608,11 @@ def test_advanced_inspect_endpoint_contract_handles_templated_base_url(
     assert contract["provider"] == "custom-template"
     assert contract["endpoint"] == "openai-completions"
     assert contract["model"] == "template-model"
-    assert contract["requestProtocolScope"] == "model-effective"
-    assert contract["requestDialectScope"] == "model-effective"
-    assert contract["adapterProtocolScope"] == "adapter-effective"
-    assert contract["adapterDialectScope"] == "adapter-effective"
+    assert contract["requestAdapterScope"] == "model-effective"
+    assert contract["requestAdapter"]["maxOutputTokensField"] == (
+        "max_completion_tokens"
+    )
+    assert contract["requestAdapter"]["reasoningFormat"] == "openai"
 
 
 def test_advanced_custom_catalog_uses_typed_upstream_binding() -> None:
@@ -801,16 +789,16 @@ def test_advanced_inspect_endpoint_contract_rejects_missing_model(
         Path("examples/ai/advanced/inspect_endpoint_contract.py"),
         "examples_ai_advanced_inspect_endpoint_contract_missing_model",
     )
-    path = tmp_path / "models.v2.json"
+    path = tmp_path / "models.json"
     path.write_text(
         json.dumps(
             {
-                "schemaVersion": 2,
                 "providers": {
                     "moonshot": {
                         "endpoints": {
                             "openai-completions": {
                                 "api": "openai-completions",
+                                "adapter": {"developerRole": False},
                                 "models": {},
                             }
                         }

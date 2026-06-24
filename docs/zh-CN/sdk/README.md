@@ -55,14 +55,53 @@ model = get_model("moonshot", "openai-completions", "kimi-k2.6")
 或 [examples/ai/12_provider_smoke.py](../../../examples/ai/12_provider_smoke.py)
 可以离线查看当前内置 provider 集合。
 
-如果要从 legacy catalog 或旧的宽根包 API 迁移，请先阅读
-[v2 迁移指南](./migration-v2.md)。
-
-本地部署或长尾 provider 应通过 schema v2 自定义 catalog 接入，而不是扩大内置
-catalog。参考
+本地部署或长尾 provider 应通过与 `models.json` 同形状的自定义模型文件接入，
+而不是扩大内置 catalog。常规路径参考
+[examples/ai/custom_model_file.py](../../../examples/ai/custom_model_file.py)，
+需要检查 provider request 绑定时参考
 [examples/ai/advanced/custom_catalog.py](../../../examples/ai/advanced/custom_catalog.py)。
-当 provider 侧真实模型名不同于本地模型 ID 时，自定义 catalog 可以写
+当 provider 侧真实模型名不同于本地模型 ID 时，自定义模型文件可以写
 `upstreamId`。
+
+### 模型文件格式
+
+运行时模型文件只有一种形状，不包含 `schemaVersion`：
+
+```json
+{
+  "providers": {
+    "company": {
+      "displayName": "Company AI",
+      "auth": {"apiKeyEnv": "COMPANY_AI_API_KEY"},
+      "endpoints": {
+        "openai-completions": {
+          "api": "openai-completions",
+          "baseUrl": "https://models.company.example/v1",
+          "adapter": {
+            "developerRole": false,
+            "maxOutputTokensField": "max_completion_tokens",
+            "reasoningFormat": "openai"
+          },
+          "models": {
+            "company-chat": {
+              "upstreamId": "vendor/company-chat-2026-06",
+              "capabilities": {
+                "input": ["text"],
+                "output": ["text"],
+                "stream": true,
+                "toolUse": true
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}
+```
+
+协议请求映射统一写在 `adapter`。不要再使用已删除的 `compat`、`protocol`
+或 `dialect` 字段。
 
 ## 认证
 
@@ -300,5 +339,6 @@ print(usage.input, usage.output, usage.total_tokens, usage.cost)
 10. [10_usage.py](../../../examples/ai/10_usage.py)
 11. [11_provider_matrix.py](../../../examples/ai/11_provider_matrix.py)
 12. [12_provider_smoke.py](../../../examples/ai/12_provider_smoke.py)
+13. [custom_model_file.py](../../../examples/ai/custom_model_file.py)
 
 高级示例位于 [examples/ai/advanced](../../../examples/ai/advanced/)。

@@ -62,7 +62,10 @@ def run_offline_examples() -> list[str]:
 
 
 def _offline_examples() -> list[Path]:
-    return sorted(EXAMPLES_DIR.glob("[0-9][0-9]_*.py"))
+    return [
+        *sorted(EXAMPLES_DIR.glob("[0-9][0-9]_*.py")),
+        EXAMPLES_DIR / "custom_model_file.py",
+    ]
 
 
 if __name__ == "__main__":

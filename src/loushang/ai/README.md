@@ -84,7 +84,7 @@
 - OpenAI Responses：`openai-responses`
 - Anthropic Messages：`anthropic-messages`
 
-内置 curated model catalog 只发布经过证据校验的小型 provider 集。Mistral、Google Gemini API、Google Vertex OpenAI-compatible、Cloudflare AI Gateway / Workers AI 等长尾接入不在默认 catalog 中；需要时应通过自定义 catalog 或外部包复用现有 OpenAI-compatible / Anthropic Messages adapter 边界。外部 catalog 的 `baseUrl` 可以包含 `{ENV_NAME}` 模板，运行时由 `provider.resolution` 从环境变量展开；缺少变量时直接报错。
+内置 curated model catalog 只发布当前维护的小型 provider 集。Mistral、Google Gemini API、Google Vertex OpenAI-compatible、Cloudflare AI Gateway / Workers AI 等长尾接入不在默认 catalog 中；需要时应通过自定义模型文件或外部包复用现有 OpenAI-compatible / Anthropic Messages adapter 边界。外部 catalog 的 `baseUrl` 可以包含 `{ENV_NAME}` 模板，运行时由 `provider.resolution` 从环境变量展开；缺少变量时直接报错。
 
 核心 adapter 集合由 `docs/internals/architecture/ai/core-provider-adapter-contract-matrix.md`
 锁定；新增厂商专用 adapter 必须进入 `contrib` 或外部包，不能默认进入 core。

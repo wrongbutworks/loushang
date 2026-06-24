@@ -56,14 +56,53 @@ Run [examples/ai/11_provider_matrix.py](../../../examples/ai/11_provider_matrix.
 or [examples/ai/12_provider_smoke.py](../../../examples/ai/12_provider_smoke.py)
 to inspect the current built-in provider set offline.
 
-If you are moving code from the legacy catalog or broad root API, read the
-[v2 migration guide](./migration-v2.md).
+For local or long-tail providers, load a custom model file with the same shape
+as `models.json` instead of expanding the built-in catalog. See
+[examples/ai/custom_model_file.py](../../../examples/ai/custom_model_file.py) for
+the common path and
+[examples/ai/advanced/custom_catalog.py](../../../examples/ai/advanced/custom_catalog.py)
+for request-binding inspection. Custom model files can set `upstreamId` when the
+provider-facing model name differs from the local model id.
 
-For local or long-tail providers, load a schema v2 custom catalog instead of
-expanding the built-in catalog. See
-[examples/ai/advanced/custom_catalog.py](../../../examples/ai/advanced/custom_catalog.py).
-Custom catalog models can set `upstreamId` when the provider-facing model name
-differs from the local model id.
+### Model File Format
+
+Runtime model files use one shape and do not include `schemaVersion`:
+
+```json
+{
+  "providers": {
+    "company": {
+      "displayName": "Company AI",
+      "auth": {"apiKeyEnv": "COMPANY_AI_API_KEY"},
+      "endpoints": {
+        "openai-completions": {
+          "api": "openai-completions",
+          "baseUrl": "https://models.company.example/v1",
+          "adapter": {
+            "developerRole": false,
+            "maxOutputTokensField": "max_completion_tokens",
+            "reasoningFormat": "openai"
+          },
+          "models": {
+            "company-chat": {
+              "upstreamId": "vendor/company-chat-2026-06",
+              "capabilities": {
+                "input": ["text"],
+                "output": ["text"],
+                "stream": true,
+                "toolUse": true
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}
+```
+
+Use `adapter` for protocol-specific request mapping. Do not use removed
+`compat`, `protocol`, or `dialect` fields.
 
 ## Auth
 
@@ -308,6 +347,7 @@ Recommended reading order:
 10. [10_usage.py](../../../examples/ai/10_usage.py)
 11. [11_provider_matrix.py](../../../examples/ai/11_provider_matrix.py)
 12. [12_provider_smoke.py](../../../examples/ai/12_provider_smoke.py)
+13. [custom_model_file.py](../../../examples/ai/custom_model_file.py)
 
 Advanced examples live under
 [examples/ai/advanced](../../../examples/ai/advanced/).

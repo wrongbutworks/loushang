@@ -10,10 +10,6 @@ SDK_DOC_PATHS = [
     REPO_ROOT / "docs/en/sdk/README.md",
     REPO_ROOT / "docs/zh-CN/sdk/README.md",
 ]
-SDK_MIGRATION_DOC_PATHS = [
-    REPO_ROOT / "docs/en/sdk/migration-v2.md",
-    REPO_ROOT / "docs/zh-CN/sdk/migration-v2.md",
-]
 
 
 def test_provider_docs_cover_new_provider_configuration() -> None:
@@ -69,8 +65,10 @@ def test_stable_sdk_guides_cover_public_ai_paths_and_examples() -> None:
         "models.json",
         "11_provider_matrix.py",
         "12_provider_smoke.py",
+        "custom_model_file.py",
         "advanced/custom_catalog.py",
-        "migration-v2.md",
+        "upstreamId",
+        "adapter",
     ]
 
     for path in SDK_DOC_PATHS:
@@ -79,10 +77,3 @@ def test_stable_sdk_guides_cover_public_ai_paths_and_examples() -> None:
             assert term in text, (path, term)
         for target in re.findall(r"\]\((../../../examples/ai/[^)]+)\)", text):
             assert (path.parent / target).resolve().exists(), (path, target)
-
-
-def test_sdk_migration_guides_cover_catalog_and_archive_paths() -> None:
-    for path in SDK_MIGRATION_DOC_PATHS:
-        text = path.read_text(encoding="utf-8")
-        assert "src/loushang/ai/model/models.json" in text, path
-        assert "backup/ai/models-legacy-full.json.gz" in text, path
