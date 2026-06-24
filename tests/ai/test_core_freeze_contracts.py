@@ -166,7 +166,6 @@ def test_builtin_model_file_is_models_json_without_schema_version() -> None:
     assert "schemaVersion" not in raw
 
 
-@pytest.mark.xfail(strict=True, reason="AIF-009 removes Simple API")
 def test_simple_api_is_not_part_of_root_or_api_contract() -> None:
     forbidden = {
         "SimpleCallOptions",
@@ -186,6 +185,17 @@ def test_simple_api_is_not_part_of_root_or_api_contract() -> None:
     for name in forbidden:
         assert not hasattr(api_module, name)
         assert not hasattr(options_module, name)
+
+
+def test_model_instances_do_not_expose_call_facades() -> None:
+    model = get_default_model_registry().get_model(
+        "moonshot",
+        "openai-completions",
+        "kimi-k2.6",
+    )
+
+    for name in ("complete", "stream", "complete_simple", "stream_simple"):
+        assert not hasattr(model, name)
 
 
 def test_deprecated_provider_specific_options_are_not_core_api() -> None:

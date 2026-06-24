@@ -151,7 +151,7 @@ Amazon Bedrock Converse 不再作为 core adapter 发布；本包不再声明 Be
 ### 其它
 
 - `api/`
-  - `stream / complete / stream_simple / complete_simple`
+  - `stream / complete / complete_structured`
 - `api_registry.py`
   - API provider registry
 - `pricing.py`
@@ -166,8 +166,8 @@ Amazon Bedrock Converse 不再作为 core adapter 发布；本包不再声明 Be
 ## 根包 API
 
 根包 `loushang.ai` 是稳定 SDK 门面，只导出最常用的模型调用、模型访问、消息/事件类型和通用 options。
-Provider 管理、provider-specific options、归一化诊断、pricing、tool transform 和 JSON repair 等能力必须从
-对应子模块或 `loushang.ai.advanced` 进入。
+Provider 管理、归一化诊断、pricing、tool transform 和 JSON repair 等能力必须从
+对应子模块进入；可选 provider 集成使用自己的 `loushang.ai.contrib.*` 边界。
 
 主要导出分为：
 
@@ -175,24 +175,15 @@ Provider 管理、provider-specific options、归一化诊断、pricing、tool t
 
 - `stream(...)`
 - `complete(...)`
-- `stream_simple(...)`
-- `complete_simple(...)`
-- `Model.stream(...)`
-- `Model.complete(...)`
-- `Model.stream_simple(...)`
-- `Model.complete_simple(...)`
 
 调用入口会在 Provider handoff 前校验已解析模型能力。`stream` 路径要求
 `stream` capability；`tools`、reasoning、structured output、temperature、image
 input 和 attachment 请求也会在模型未声明支持时直接失败。
 
-通用调用参数使用 `CallOptions`。旧的 `ModelCallOptions`、`StreamOptions` 仍保留在
-`loushang.ai.options` 作为兼容别名；provider-specific options 只保留在
-`loushang.ai.advanced` 作为兼容入口，不再属于根包稳定门面；新示例应优先使用
-`CallOptions`。
-`stream_simple` / `complete_simple` 使用更窄的 `SimpleCallOptions`；核心 API 会先
-把 simple reasoning 选项映射为 `CallOptions.reasoning`，provider adapter 只需要
-实现普通 `stream`。
+通用调用参数使用 `CallOptions`。核心 provider 不再有 provider-specific option
+class；普通调用只通过 `CallOptions`、`ReasoningOptions`、`RetryOptions` 和
+`TimeoutOptions` 这组根包契约表达。可选 contrib 集成可以在自己的 contrib 包中保留
+专有 option class。
 
 ### 模型访问
 
@@ -233,21 +224,20 @@ input 和 attachment 请求也会在模型未声明支持时直接失败。
 ### 通用 Options
 
 - `CallOptions`
-- `SimpleCallOptions`
 - `ReasoningOptions`
 - `RetryOptions`
 - `StructuredOutputOptions`
 - `StructuredOutputResult`
 - `TimeoutOptions`
 - `ThinkingLevel`
-- `ThinkingBudgets`
 
 ### Deprecation policy
 
 本轮契约收敛把根包 `__all__` 视为稳定 API 快照。此前从根包导出的高级能力不再继续占用稳定门面：
 
 - Provider registry 管理入口移到 `loushang.ai.advanced.registry`。
-- Provider-specific options 只从 `loushang.ai.advanced` 进入。
+- Core provider-specific options 已删除；OpenAI Codex 等可选集成从自己的
+  `loushang.ai.contrib.*` 包进入。
 - Context normalization helper 从 `loushang.ai.context` 进入。
 - Tool transform / validation 从 `loushang.ai.tool` 进入。
 - Cost helper 从 `loushang.ai.pricing` 进入。
@@ -355,7 +345,7 @@ code should use attribute access instead of dict-style message access.
 
 ### `Model`
 
-`Model` 是上层直接持有和调用的句柄。
+`Model` 是上层持有的模型句柄。
 
 它当前承载：
 
@@ -431,14 +421,15 @@ provider 专有配置。catalog 只声明 `adapter`，resolution 不再保留历
 
 ## 最小调用链
 
-最简单的调用方式是直接从 `Model` 实例发起：
+最简单的调用方式是用 `get_model(...)` 取得模型句柄，再调用根包函数：
 
 ```python
-from loushang.ai import get_model
+from loushang.ai import complete, get_model
 
 model = get_model("moonshot", "openai-completions", "kimi-k2.6")
 
-message = await model.complete(
+message = await complete(
+    model,
     {
         "messages": [
             {"role": "user", "content": "用一句话介绍 loushang.ai"}
@@ -447,13 +438,13 @@ message = await model.complete(
 )
 ```
 
-也可以继续使用顶层函数：
+流式调用同样使用根包函数：
 
 ```python
-from loushang.ai import complete, get_model
+from loushang.ai import get_model, stream
 
 model = get_model("moonshot", "openai-completions", "kimi-k2.6")
-message = await complete(model, {"messages": [{"role": "user", "content": "hi"}]})
+events = await stream(model, {"messages": [{"role": "user", "content": "hi"}]})
 ```
 
 默认情况下，调用入口会自动使用默认 provider registry，并在首次调用时自动注册内置 providers。

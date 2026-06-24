@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import asyncio
 import os
 from collections.abc import AsyncIterator
 from contextlib import suppress
@@ -10,7 +9,6 @@ from loushang.ai.errors import UnsupportedCapabilityError
 from loushang.ai.event_stream.raw_parts import RawPart
 from loushang.ai.model.domain import OpenAIResponsesConfig
 from loushang.ai.options import (
-    get_provider_option,
     get_reasoning_effort,
     get_reasoning_summary,
 )
@@ -226,9 +224,6 @@ class OpenAIResponsesProvider:
         # 温度
         if getattr(options, "temperature", None) is not None:
             params["temperature"] = getattr(options, "temperature")
-        # service_tier（可选）
-        if getattr(options, "service_tier", None) is not None:
-            params["service_tier"] = getattr(options, "service_tier")
         # 推理配置（最小实现）
         if _supports_reasoning(capabilities):
             reasoning_effort = get_reasoning_effort(options) or getattr(
@@ -247,18 +242,6 @@ class OpenAIResponsesProvider:
         if text_format is not None:
             params["text"] = text_format
 
-        # options.on_payload：允许调用方观察/修改最终请求参数（对齐 pi-ai 语义）
-        try:
-            cb = get_provider_option(options, "on_payload")
-            if callable(cb):
-                next_params = cb(params, model)
-                if asyncio.iscoroutine(next_params):
-                    next_params = await next_params
-                if isinstance(next_params, dict):
-                    params = next_params
-        except Exception as e:
-            # on_payload 是观察/调试钩子，失败不应影响主流程，但要可诊断。
-            _debug("on_payload_error", {"message": str(e)})
         _debug("payload", {"params": {k: v for k, v in params.items() if k != "input"}})
 
         # 发送请求
@@ -268,7 +251,6 @@ class OpenAIResponsesProvider:
             _debug("stream_error", {"message": str(e)})
             yield provider_error_part(e, source=self.api)
             return
-        await _notify_provider_response(options, response, model)
         if not is_stream_request:
             for part in process_responses_response(
                 response,
@@ -290,16 +272,6 @@ class OpenAIResponsesProvider:
             yield provider_error_part(e, source=self.api)
         finally:
             await close_provider_stream(response)
-
-
-async def _notify_provider_response(options, response, model) -> None:
-    callback = get_provider_option(options, "on_response")
-    if not callable(callback):
-        return
-    with suppress(Exception):
-        result = callback(response, model)
-        if asyncio.iscoroutine(result):
-            await result
 
 
 def _supports_reasoning(capabilities: object | None) -> bool:

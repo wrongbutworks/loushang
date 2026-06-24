@@ -1,9 +1,7 @@
 from loushang.ai.api import (
     complete,
-    complete_simple,
     complete_structured,
     stream,
-    stream_simple,
 )
 from loushang.ai.errors import AIError, AIErrorCode, AIErrorInfo
 from loushang.ai.event_stream import AssistantMessageEventStream
@@ -18,8 +16,6 @@ from loushang.ai.options import (
     CallOptions,
     ReasoningOptions,
     RetryOptions,
-    SimpleCallOptions,
-    ThinkingBudgets,
     ThinkingLevel,
     TimeoutOptions,
 )
@@ -84,12 +80,10 @@ __all__ = [
     "AIErrorCode",
     "AIErrorInfo",
     "CallOptions",
-    "SimpleCallOptions",
     "ReasoningOptions",
     "RetryOptions",
     "TimeoutOptions",
     "ThinkingLevel",
-    "ThinkingBudgets",
     "StructuredOutputError",
     "StructuredOutputOptions",
     "StructuredOutputResult",
@@ -104,12 +98,10 @@ __all__ = [
     "UsageCost",
     "UsageObservation",
     "complete",
-    "complete_simple",
     "complete_structured",
     "get_model",
     "list_models",
     "stream",
-    "stream_simple",
     "usage_observation_from_message",
     "usage_observation_payload",
 ]

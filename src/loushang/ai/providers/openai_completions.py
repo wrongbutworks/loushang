@@ -9,7 +9,7 @@ from typing import Any, cast
 from loushang.ai.errors import UnsupportedCapabilityError
 from loushang.ai.event_stream.raw_parts import RawPart
 from loushang.ai.model.domain import OpenAICompletionsConfig
-from loushang.ai.options import get_provider_option, get_timeout_seconds
+from loushang.ai.options import get_timeout_seconds
 from loushang.ai.output_budget import resolve_output_token_budget
 from loushang.ai.provider import ProviderRequest
 from loushang.ai.provider.errors import (
@@ -205,7 +205,6 @@ class OpenAICompletionsProvider:
             _debug("stream_error", {"message": str(e)})
             yield provider_error_part(e, source=self.api)
             return
-        await _notify_provider_response(options, response, model)
         if not is_stream_request:
             for part in _iter_complete_response_parts(response, source=self.api):
                 yield part
@@ -1242,16 +1241,6 @@ def _assistant_message_payload(
     if payload.get("content") == "" and not tool_calls:
         return None
     return payload
-
-
-async def _notify_provider_response(options, response, model) -> None:
-    callback = get_provider_option(options, "on_response")
-    if not callable(callback):
-        return
-    with suppress(Exception):
-        result = callback(response, model)
-        if asyncio.iscoroutine(result):
-            await result
 
 
 def _tool_result_payload(

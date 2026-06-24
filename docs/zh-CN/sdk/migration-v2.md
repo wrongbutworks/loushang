@@ -15,7 +15,7 @@ UI、RAG、MCP 编排或产品级配置。
 - 内置 catalog 切换为 `models.json`。
 - 旧的完整 catalog 只作为审计归档保留。
 - 普通应用代码优先从根包 `loushang.ai` 导入。
-- provider-specific options 和 provider registry 接线进入 advanced 或 contrib 边界。
+- provider registry 接线进入 advanced 边界；可选集成保留自己的 contrib options。
 - 错误统一归一化为 `AIError` 子类和稳定 JSON-safe payload。
 - core builtin adapter 是协议 adapter，不再按厂商横向堆 adapter。
 - OpenAI Codex 移到显式 `loushang.ai.contrib.openai_codex` 注册路径。
@@ -91,37 +91,52 @@ from loushang.ai import (
 
 | 旧访问方式 | v2 路径 |
 |---|---|
-| `loushang.ai.ModelCallOptions` | `loushang.ai.options.ModelCallOptions`，作为 `CallOptions` 的兼容别名 |
-| `loushang.ai.StreamOptions` | `loushang.ai.options.StreamOptions`，作为 `CallOptions` 的兼容别名 |
-| `loushang.ai.AnthropicOptions` | `loushang.ai.advanced.AnthropicOptions` |
-| `loushang.ai.OpenAICompletionsOptions` | `loushang.ai.advanced.OpenAICompletionsOptions` |
-| `loushang.ai.OpenAIResponsesOptions` | `loushang.ai.advanced.OpenAIResponsesOptions` |
+| `loushang.ai.ModelCallOptions` | `loushang.ai.CallOptions` |
+| `loushang.ai.StreamOptions` | `loushang.ai.CallOptions` |
+| `loushang.ai.AnthropicOptions` | `loushang.ai.CallOptions` |
+| `loushang.ai.OpenAICompletionsOptions` | `loushang.ai.CallOptions` |
+| `loushang.ai.OpenAIResponsesOptions` | `loushang.ai.CallOptions` |
 | `loushang.ai.ApiProviderRegistry` | `loushang.ai.advanced.registry.ApiProviderRegistry` |
 | `loushang.ai.OpenAICodexResponsesOptions` | `loushang.ai.contrib.openai_codex.OpenAICodexResponsesOptions` |
 
 普通调用优先使用 provider-neutral 的 `CallOptions`：
 
 ```python
-from loushang.ai import CallOptions, get_model
+from loushang.ai import CallOptions, complete, get_model
 
 model = get_model("openai", "openai-responses", "gpt-5.4-mini")
-message = await model.complete(
+message = await complete(
+    model,
     {"messages": [{"role": "user", "content": "Say hello."}]},
     CallOptions(api_key="...", max_output_tokens=128),
 )
 ```
 
-provider-specific option class 仍保留用于兼容和高级协议控制，但不再是普通应用代码的首选导入。
+core provider-specific option class 已移除。核心 provider 使用 `CallOptions`；
+只有显式 contrib 集成继续使用自己的 contrib option class。
+
+字段级替换：
+
+| 旧 option 形状 | v2 替换方式 |
+|---|---|
+| `max_tokens` | `CallOptions(max_output_tokens=...)` |
+| 数字 `timeout` | `CallOptions(timeout=TimeoutOptions(total_seconds=...))` |
+| `retries` | `CallOptions(retry=RetryOptions(max_attempts=...))` |
+| `max_retry_delay_ms` | `CallOptions(retry=RetryOptions(max_delay_seconds=...))` |
+| 字符串 `reasoning` | `CallOptions(reasoning=ReasoningOptions(effort=...))` |
+| `reasoning_summary` | `ReasoningOptions(expose_summary=True)` |
+| provider hooks、`service_tier` 和 provider-only 控制项 | 不再是 core `CallOptions` 字段；迁移到 contrib 集成或 provider/runtime 配置 |
 
 ## 错误迁移
 
 公共契约不再要求调用方捕获 provider SDK 异常。捕获 `AIError` 或其子类：
 
 ```python
-from loushang.ai import AIError, CallOptions
+from loushang.ai import AIError, CallOptions, complete
 
 try:
-    message = await model.complete(
+    message = await complete(
+        model,
         {"messages": [{"role": "user", "content": "hello"}]},
         CallOptions(api_key="..."),
     )

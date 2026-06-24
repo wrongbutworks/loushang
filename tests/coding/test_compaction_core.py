@@ -523,7 +523,7 @@ async def test_generate_branch_summary_returns_summary_text(monkeypatch) -> None
         return "branch summary"
 
     monkeypatch.setattr(
-        "loushang.coding.compaction.branch_summarization.complete_simple",
+        "loushang.coding.compaction.branch_summarization._complete_text",
         _fake_complete,
     )
 
@@ -552,7 +552,7 @@ async def test_generate_branch_summary_uses_serialized_prompt_and_file_details(m
         return "branch summary"
 
     monkeypatch.setattr(
-        "loushang.coding.compaction.branch_summarization.complete_simple",
+        "loushang.coding.compaction.branch_summarization._complete_text",
         _fake_complete,
     )
 
@@ -660,7 +660,7 @@ async def test_compact_serializes_conversation_and_previous_summary_for_llm(monk
         captured["context"] = context
         return "summary text"
 
-    monkeypatch.setattr("loushang.coding.compaction.compaction.complete_simple", fake_complete)
+    monkeypatch.setattr("loushang.coding.compaction.compaction._complete_text", fake_complete)
 
     preparation = CompactionPreparation(
         first_kept_entry_id="e2",

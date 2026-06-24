@@ -4,7 +4,7 @@ import asyncio
 
 import pytest
 
-from loushang.ai import get_model
+from loushang.ai import TimeoutOptions, complete, get_model
 from loushang.ai.auth import (
     load_credentials,
     register_builtin_oauth_providers,
@@ -49,7 +49,8 @@ def test_openai_codex_complete_live() -> None:
     model = get_model("openai-codex", "openai-codex-responses", "gpt-5.3-codex")
 
     async def _run() -> None:
-        message = await model.complete(
+        message = await complete(
+            model,
             {
                 "system_prompt": "You are Codex. Keep answers short.",
                 "messages": [{"role": "user", "content": "Reply with exactly: ok"}],
@@ -58,7 +59,7 @@ def test_openai_codex_complete_live() -> None:
                 oauth_credentials={"openai-codex": credentials},
                 reasoning="low",
                 text_verbosity="low",
-                timeout=30,
+                timeout=TimeoutOptions(total_seconds=30),
             ),
         )
 

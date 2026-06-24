@@ -1091,7 +1091,10 @@ def test_openai_codex_responses_surfaces_parsed_error_message() -> None:
             provider,
             _Model(reasoning=False),
             {"messages": [UserMessage(role="user", content="hello", timestamp=0.0)]},
-            OpenAICodexResponsesOptions(api_key=_build_fake_jwt("acc_test"), retries=0),
+            OpenAICodexResponsesOptions(
+                api_key=_build_fake_jwt("acc_test"),
+                retry=RetryOptions(max_attempts=1),
+            ),
         )
     )
 

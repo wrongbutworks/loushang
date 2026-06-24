@@ -2,7 +2,7 @@
 
 适用场景：
 - 第一次接入 `loushang.ai`
-- 想看最短 public path：`get_model(...)` + `model.complete(...)`
+- 想看最短 public path：`get_model(...)` + `complete(model, ...)`
 
 运行前提：
 - 在文件顶部填写 `API_KEY`，或导出 `MOONSHOT_API_KEY`
@@ -22,9 +22,10 @@ from collections.abc import Iterable
 import pytest
 
 from loushang.ai import (
+    CallOptions,
+    complete,
     get_model,
 )
-from loushang.ai.advanced import OpenAICompletionsOptions
 from loushang.ai.errors import AIAuthenticationError
 
 # 用户可直接修改的配置。
@@ -68,9 +69,9 @@ def _build_context() -> dict:
     }
 
 
-def _build_options(api_key: str) -> OpenAICompletionsOptions:
+def _build_options(api_key: str) -> CallOptions:
     # options 只放本次调用直接相关的参数，避免把认证散落到别处。
-    return OpenAICompletionsOptions(api_key=api_key, max_tokens=MAX_TOKENS)
+    return CallOptions(api_key=api_key, max_output_tokens=MAX_TOKENS)
 
 
 def _iter_text(parts: Iterable[object]) -> str:
@@ -90,7 +91,8 @@ async def _main() -> None:
 
     # 第 3 步：走完整返回接口。这个示例故意不手动传 registry，
     # 用来展示根包默认 registry 的最短调用路径。
-    message = await model.complete(
+    message = await complete(
+        model,
         _build_context(),
         _build_options(api_key),
     )

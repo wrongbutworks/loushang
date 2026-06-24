@@ -1,20 +1,25 @@
-"""Offline simple reasoning options example."""
+"""Offline reasoning options example."""
 
 from __future__ import annotations
 
 import json
 
-from loushang.ai import SimpleCallOptions
+from loushang.ai import CallOptions, ReasoningOptions
 
 
 def inspect_reasoning() -> dict[str, object]:
-    options = SimpleCallOptions(
-        reasoning="medium",
-        thinking_budgets={"medium": 2048},
+    options = CallOptions(
+        reasoning=ReasoningOptions(
+            effort="medium",
+            budget_tokens=2048,
+            expose_summary=True,
+        ),
     )
+    reasoning = options.reasoning
+    assert isinstance(reasoning, ReasoningOptions)
     return {
-        "reasoning": options.reasoning,
-        "budgetTokens": options.thinking_budgets["medium"],
+        "reasoning": reasoning.effort,
+        "budgetTokens": reasoning.budget_tokens,
         "events": [
             {"type": "thinking_delta", "thinking": "reasoning trace"},
             {"type": "text_delta", "text": "mock hello from offline fixture"},

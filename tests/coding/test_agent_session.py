@@ -896,7 +896,7 @@ def test_agent_session_applies_before_agent_start_result(tmp_path) -> None:
     assert entries[1].message.content == "extension context"
 
 
-def test_agent_session_wires_before_provider_request_to_agent_payload(tmp_path) -> None:
+def test_agent_session_does_not_wire_provider_hooks_to_agent_options(tmp_path) -> None:
     from pathlib import Path
 
     from loushang.agent import Agent
@@ -904,65 +904,27 @@ def test_agent_session_wires_before_provider_request_to_agent_payload(tmp_path) 
     from loushang.coding.session import AgentSession
     from loushang.coding.store import SessionManager
 
-    payloads: list[object] = []
+    captured: list[tuple[bool, bool]] = []
+    provider_hook_calls: list[str] = []
 
     async def stream_fn(model, context, options=None):
         del model, context
         assert options is not None
-        transformed = await options.on_payload({"model": "base", "messages": []}, object())
-        payloads.append(transformed)
+        captured.append((hasattr(options, "on_payload"), hasattr(options, "on_response")))
         return _stream_with_final_message(_assistant_text_message("done"))
 
     def _before_provider_request(event, ctx):
+        del event, ctx
+        provider_hook_calls.append("before_provider_request")
         return {
             "model": "extension-model",
-            "messages": event.payload["messages"],
-            "cwd": ctx.cwd,
+            "messages": [],
+            "cwd": "/tmp/project",
         }
 
-    async def scenario() -> None:
-        session = AgentSession(
-            agent=Agent(stream_fn=stream_fn, initial_state={"system_prompt": "Base system prompt"}),
-            session_manager=SessionManager.new(session_dir=tmp_path, cwd="/tmp/project", persist=False),
-            extension_runner=ExtensionRunner(
-                [
-                    LoadedExtension(
-                        name="provider",
-                        source_path=Path("/tmp/project/extensions/provider.py"),
-                        hooks={"before_provider_request": [_before_provider_request]},
-                    )
-                ]
-            ),
-        )
-
-        await session.prompt("hello")
-
-    asyncio.run(scenario())
-
-    assert payloads == [{"model": "extension-model", "messages": [], "cwd": "/tmp/project"}]
-
-
-def test_agent_session_wires_after_provider_response_to_extension(tmp_path) -> None:
-    from pathlib import Path
-
-    from loushang.agent import Agent
-    from loushang.coding.extensions import ExtensionRunner, LoadedExtension
-    from loushang.coding.session import AgentSession
-    from loushang.coding.store import SessionManager
-
-    seen: list[tuple[object, object, str]] = []
-
-    async def stream_fn(model, context, options=None):
-        del model, context
-        assert options is not None
-        await options.on_response(
-            {"status": 202, "headers": {"x-provider": "ok"}},
-            object(),
-        )
-        return _stream_with_final_message(_assistant_text_message("done"))
-
     async def _after_provider_response(event, ctx):
-        seen.append((event.status, event.headers, ctx.cwd))
+        del event, ctx
+        provider_hook_calls.append("after_provider_response")
 
     async def scenario() -> None:
         session = AgentSession(
@@ -973,7 +935,10 @@ def test_agent_session_wires_after_provider_response_to_extension(tmp_path) -> N
                     LoadedExtension(
                         name="provider",
                         source_path=Path("/tmp/project/extensions/provider.py"),
-                        hooks={"after_provider_response": [_after_provider_response]},
+                        hooks={
+                            "before_provider_request": [_before_provider_request],
+                            "after_provider_response": [_after_provider_response],
+                        },
                     )
                 ]
             ),
@@ -983,7 +948,8 @@ def test_agent_session_wires_after_provider_response_to_extension(tmp_path) -> N
 
     asyncio.run(scenario())
 
-    assert seen == [(202, {"x-provider": "ok"}, "/tmp/project")]
+    assert captured == [(False, False)]
+    assert provider_hook_calls == []
 
 
 def test_agent_session_extension_hook_ordering_spans_provider_tool_and_agent_end(tmp_path) -> None:
@@ -1021,8 +987,6 @@ def test_agent_session_extension_hook_ordering_spans_provider_tool_and_agent_end
     async def stream_fn(model, context, options=None):
         del model, context
         assert options is not None
-        await options.on_payload({"messages": []}, object())
-        await options.on_response({"status": 200, "headers": {}}, object())
         return _stream_with_assistant_message(
             AssistantMessage(
                 role="assistant",
@@ -1112,8 +1076,6 @@ def test_agent_session_extension_hook_ordering_spans_provider_tool_and_agent_end
     assert order == [
         "input",
         "before_agent_start",
-        "before_provider_request",
-        "after_provider_response",
         "tool_call",
         "tool_execute",
         "tool_result",

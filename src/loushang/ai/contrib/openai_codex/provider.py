@@ -18,6 +18,7 @@ from loushang.ai.contrib.openai_codex.runtime_config import (
 from loushang.ai.event_stream.raw_parts import RawPart
 from loushang.ai.model.domain import OpenAIResponsesConfig
 from loushang.ai.options import (
+    ReasoningOptions,
     get_reasoning_effort,
     get_reasoning_summary,
     get_timeout_seconds,
@@ -180,7 +181,7 @@ class OpenAICodexResponsesProvider:
                 return
             async for part in process_responses_stream(
                 _map_codex_events(_parse_sse_lines(response)),
-                options=options,
+                options=_codex_stream_options(options),
                 source=self.api,
             ):
                 yield part
@@ -198,7 +199,7 @@ class OpenAICodexResponsesProvider:
                 await socket.send({"type": "response.create", **body})
                 async for part in process_responses_stream(
                     _map_codex_events(_parse_websocket(socket.events())),
-                    options=options,
+                    options=_codex_stream_options(options),
                     source=self.api,
                 ):
                     yield part
@@ -221,7 +222,7 @@ class OpenAICodexResponsesProvider:
         )
         async for part in process_responses_stream(
             _map_codex_events(_objectify_events(events)),
-            options=options,
+            options=_codex_stream_options(options),
             source=self.api,
         ):
             yield part
@@ -355,8 +356,8 @@ def _build_request_body(
         prompt_cache_retention = codex_config.prompt_cache_retention
         if isinstance(prompt_cache_retention, str) and prompt_cache_retention:
             body["prompt_cache_retention"] = prompt_cache_retention
-    reasoning = get_reasoning_effort(options)
-    reasoning_summary = get_reasoning_summary(options)
+    reasoning = _codex_reasoning_effort(options)
+    reasoning_summary = _codex_reasoning_summary(options)
     if reasoning is not None or reasoning_summary is not None:
         body["reasoning"] = {
             "effort": _clamp_reasoning_effort(model.id, reasoning or "medium"),
@@ -366,6 +367,41 @@ def _build_request_body(
     if text_format is not None:
         body["text"].update(text_format)
     return body
+
+
+def _codex_reasoning_effort(options: object | None) -> str | None:
+    effort = get_reasoning_effort(options)
+    if effort is not None:
+        return effort
+    contrib_reasoning = getattr(options, "reasoning", None)
+    if isinstance(contrib_reasoning, str) and contrib_reasoning:
+        return contrib_reasoning
+    return None
+
+
+def _codex_reasoning_summary(options: object | None) -> str | None:
+    contrib_summary = getattr(options, "reasoning_summary", None)
+    if isinstance(contrib_summary, str) and contrib_summary:
+        return contrib_summary
+    return get_reasoning_summary(options)
+
+
+def _codex_stream_options(options: object | None) -> object | None:
+    if options is None:
+        return None
+    if isinstance(getattr(options, "reasoning", None), ReasoningOptions):
+        return options
+    reasoning = _codex_reasoning_effort(options)
+    reasoning_summary = _codex_reasoning_summary(options)
+    if reasoning is None and reasoning_summary is None:
+        return options
+    return SimpleNamespace(
+        reasoning=ReasoningOptions(
+            enabled=True,
+            effort=reasoning,
+            expose_summary=reasoning_summary is not None,
+        )
+    )
 
 
 def _request_body_trace_summary(body: Mapping[str, Any]) -> dict[str, Any]:

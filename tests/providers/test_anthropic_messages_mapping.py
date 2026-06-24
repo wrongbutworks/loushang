@@ -10,7 +10,7 @@ from types import ModuleType, SimpleNamespace
 
 import pytest
 
-from loushang.ai.advanced import AnthropicOptions
+from loushang.ai import CallOptions, ReasoningOptions
 from loushang.ai.auth.types import OAuthCredentials
 from loushang.ai.context import normalize_context
 from loushang.ai.model.domain import (
@@ -129,7 +129,10 @@ def test_anthropic_provider_sends_opus_48_xhigh_adaptive_thinking(
                         UserMessage(role="user", content="hello", timestamp=0.0)
                     ]
                 },
-                AnthropicOptions(api_key="test-key", effort="xhigh"),
+                CallOptions(
+                    api_key="test-key",
+                    reasoning=ReasoningOptions(effort="xhigh"),
+                ),
             )
         )
     )
@@ -178,7 +181,7 @@ def test_anthropic_provider_complete_mode_maps_non_stream_response(
                         UserMessage(role="user", content="hello", timestamp=0.0)
                     ]
                 },
-                AnthropicOptions(api_key="test-key"),
+                CallOptions(api_key="test-key"),
                 mode="complete",
             )
         )
@@ -283,7 +286,7 @@ def test_anthropic_provider_uses_typed_transport_for_fine_grained_beta(
                         UserMessage(role="user", content="hello", timestamp=0.0)
                     ]
                 },
-                AnthropicOptions(api_key="test-key"),
+                CallOptions(api_key="test-key"),
             )
         )
     )
@@ -331,7 +334,7 @@ def test_anthropic_provider_uses_upstream_model_id(
                         UserMessage(role="user", content="hello", timestamp=0.0)
                     ]
                 },
-                AnthropicOptions(api_key="test-key"),
+                CallOptions(api_key="test-key"),
             )
         )
     )
@@ -694,7 +697,7 @@ def test_anthropic_provider_oauth_request_uses_sdk_headers_and_tool_names(
                         ),
                     ],
                 },
-                AnthropicOptions(
+                CallOptions(
                     oauth_credentials={
                         "anthropic": OAuthCredentials(
                             provider="anthropic",
@@ -765,7 +768,7 @@ def test_anthropic_provider_oauth_stream_maps_claude_code_tool_name_back_to_regi
                         ),
                     ],
                 },
-                AnthropicOptions(
+                CallOptions(
                     oauth_credentials={
                         "anthropic": OAuthCredentials(
                             provider="anthropic",
@@ -838,7 +841,7 @@ def test_anthropic_provider_stream_uses_tool_input_from_content_block_start(
                         ),
                     ],
                 },
-                AnthropicOptions(api_key="test-key", trace=trace_events.append),
+                CallOptions(api_key="test-key", trace=trace_events.append),
             )
         )
     )
@@ -926,7 +929,7 @@ def test_anthropic_provider_stream_keeps_interleaved_tool_blocks_by_index(
                         ),
                     ],
                 },
-                AnthropicOptions(api_key="test-key"),
+                CallOptions(api_key="test-key"),
             )
         )
     )
@@ -1008,7 +1011,7 @@ def test_anthropic_provider_payload_snapshot_for_mixed_assistant_and_tool_result
                         ),
                     ],
                 },
-                AnthropicOptions(api_key="test-key"),
+                CallOptions(api_key="test-key"),
             )
         )
     )
@@ -1099,7 +1102,7 @@ def test_anthropic_provider_respects_explicit_max_tokens(
                 id="claude-test", provider="anthropic", endpoint="anthropic-messages"
             ),
             {"messages": [UserMessage(role="user", content="hello", timestamp=0.0)]},
-            AnthropicOptions(api_key="test-key", max_tokens=1234),
+            CallOptions(api_key="test-key", max_output_tokens=1234),
         )
     )
     asyncio.run(stream.result())
@@ -1132,7 +1135,7 @@ def test_anthropic_provider_uses_resolved_capability_max_tokens(
                         UserMessage(role="user", content="hello", timestamp=0.0)
                     ]
                 },
-                AnthropicOptions(api_key="ignored-options-key"),
+                CallOptions(api_key="ignored-options-key"),
                 request,
             )
         )
@@ -1174,11 +1177,11 @@ def test_anthropic_provider_uses_typed_protocol_over_stale_false_options(
                         )
                     ]
                 },
-                AnthropicOptions(
+                CallOptions(
                     api_key="ignored-options-key",
                     cache_retention="long",
                     session_id="sess_typed",
-                    thinking_enabled=True,
+                    reasoning=ReasoningOptions(enabled=True),
                 ),
                 request,
             )
@@ -1231,11 +1234,11 @@ def test_anthropic_provider_uses_typed_protocol_over_stale_true_options(
                         )
                     ]
                 },
-                AnthropicOptions(
+                CallOptions(
                     api_key="ignored-options-key",
                     cache_retention="long",
                     session_id="sess_stale",
-                    thinking_enabled=True,
+                    reasoning=ReasoningOptions(enabled=True),
                 ),
                 request,
             )
@@ -1276,7 +1279,7 @@ def test_anthropic_provider_clamps_explicit_max_tokens(
                 id="claude-test", provider="anthropic", endpoint="anthropic-messages"
             ),
             {"messages": [UserMessage(role="user", content="hello", timestamp=0.0)]},
-            AnthropicOptions(api_key="test-key", max_tokens=0),
+            CallOptions(api_key="test-key", max_output_tokens=0),
         )
     )
     asyncio.run(stream.result())
@@ -1328,7 +1331,7 @@ def test_anthropic_compat_fireworks_uses_session_headers_without_long_cache_ttl(
                         )
                     ]
                 },
-                AnthropicOptions(
+                CallOptions(
                     api_key="test-key",
                     cache_retention="long",
                     session_id="sess_fireworks",
@@ -1363,7 +1366,7 @@ def test_anthropic_provider_uses_model_max_tokens_without_scaling(
                         UserMessage(role="user", content="hello", timestamp=0.0)
                     ]
                 },
-                AnthropicOptions(api_key="test-key"),
+                CallOptions(api_key="test-key"),
             )
         )
     )
@@ -1387,7 +1390,7 @@ def test_anthropic_provider_caps_model_max_tokens_default(
                         UserMessage(role="user", content="hello", timestamp=0.0)
                     ]
                 },
-                AnthropicOptions(api_key="test-key"),
+                CallOptions(api_key="test-key"),
             )
         )
     )

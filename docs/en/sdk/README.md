@@ -33,7 +33,7 @@ Use subpackages only when you need an advanced boundary:
 
 - `loushang.ai.model` for custom model catalogs and registry inspection.
 - `loushang.ai.auth` for OAuth credential storage and provider login helpers.
-- `loushang.ai.advanced` for provider-specific options and registry wiring.
+- `loushang.ai.advanced.registry` for provider registry wiring.
 - `loushang.ai.contrib.openai_codex` for the optional OpenAI Codex integration.
 
 ## Models And Catalog
@@ -100,14 +100,15 @@ API-key provider path.
 
 ## Complete Calls
 
-The shortest path is `get_model(...)` followed by `model.complete(...)` or the
-root `complete(...)` helper.
+The shortest path is `get_model(...)` followed by the root `complete(...)`
+helper.
 
 ```python
-from loushang.ai import CallOptions, get_model
+from loushang.ai import CallOptions, complete, get_model
 
 model = get_model("moonshot", "openai-completions", "kimi-k2.6")
-message = await model.complete(
+message = await complete(
+    model,
     {"messages": [{"role": "user", "content": "Say hello in one sentence."}]},
     CallOptions(api_key="...", max_output_tokens=128),
 )
@@ -185,8 +186,7 @@ options = CallOptions(
 )
 ```
 
-For a simpler public path, `SimpleCallOptions(reasoning="medium")` maps to the
-same internal call options. Runnable reference:
+Runnable reasoning reference:
 [examples/ai/06_reasoning.py](../../../examples/ai/06_reasoning.py).
 
 ## Structured Output
@@ -261,10 +261,11 @@ normalized as `AIError` subclasses. The stable JSON-safe payload is available
 through `error.to_dict()`, with credentials and tokens redacted.
 
 ```python
-from loushang.ai import AIError, CallOptions, RetryOptions
+from loushang.ai import AIError, CallOptions, RetryOptions, complete
 
 try:
-    message = await model.complete(
+    message = await complete(
+        model,
         {"messages": [{"role": "user", "content": "hello"}]},
         CallOptions(api_key="...", retry=RetryOptions(max_attempts=2)),
     )

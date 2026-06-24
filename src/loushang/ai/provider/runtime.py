@@ -405,9 +405,6 @@ def _retry_max_attempts(options: object | None) -> int:
     retry = getattr(options, "retry", None)
     if isinstance(retry, RetryOptions):
         return max(1, retry.max_attempts)
-    retries = getattr(options, "retries", None)
-    if isinstance(retries, int) and not isinstance(retries, bool):
-        return max(1, retries + 1)
     return 1
 
 
@@ -417,9 +414,6 @@ def _retry_max_delay_seconds(options: object | None) -> float:
     retry = getattr(options, "retry", None)
     if isinstance(retry, RetryOptions):
         return max(0.0, float(retry.max_delay_seconds))
-    max_delay_ms = getattr(options, "max_retry_delay_ms", None)
-    if isinstance(max_delay_ms, int) and not isinstance(max_delay_ms, bool):
-        return max(0.0, max_delay_ms / 1000.0)
     return _DEFAULT_MAX_RETRY_DELAY_SECONDS
 
 

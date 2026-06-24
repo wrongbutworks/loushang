@@ -17,9 +17,7 @@ from loushang.ai.model import (
 from loushang.ai.options import (
     CallOptions,
     PairingMode,
-    SimpleCallOptions,
     is_reasoning_requested,
-    simple_options_to_call_options,
 )
 from loushang.ai.provider import (
     ProviderInvocationMode,
@@ -382,42 +380,3 @@ async def complete_structured(
         provider_registry=_coalesce_provider_registry(provider_registry, registry),
     )
     return parse_structured_output(message, structured_output)
-
-
-async def stream_simple(
-    model,
-    context,
-    options: SimpleCallOptions | None = None,
-    *,
-    provider_registry=None,
-    registry=None,
-):
-    call_options = simple_options_to_call_options(options)
-    return await _start_stream(
-        model,
-        context,
-        call_options,
-        provider_registry=_coalesce_provider_registry(provider_registry, registry),
-        mode="stream",
-        require_stream=True,
-    )
-
-
-async def complete_simple(
-    model,
-    context,
-    options: SimpleCallOptions | None = None,
-    *,
-    provider_registry=None,
-    registry=None,
-):
-    call_options = simple_options_to_call_options(options)
-    event_stream = await _start_stream(
-        model,
-        context,
-        call_options,
-        provider_registry=_coalesce_provider_registry(provider_registry, registry),
-        mode="complete",
-        require_stream=False,
-    )
-    return await event_stream.result()

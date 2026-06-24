@@ -8,8 +8,7 @@ from types import ModuleType, SimpleNamespace
 
 import pytest
 
-from loushang.ai import get_model
-from loushang.ai.advanced import OpenAICompletionsOptions
+from loushang.ai import CallOptions, ReasoningOptions, get_model
 from loushang.ai.context import normalize_context
 from loushang.ai.errors import UnsupportedCapabilityError
 from loushang.ai.model import Capabilities, Model, OpenAICompletionsConfig
@@ -189,7 +188,7 @@ def test_openai_completions_payload_maps_user_image_assistant_toolcall_and_tool_
                         ),
                     ],
                 },
-                OpenAICompletionsOptions(api_key="test-key", tool_choice="required"),
+                CallOptions(api_key="test-key", tool_choice="required"),
             )
         )
     )
@@ -321,7 +320,7 @@ def test_openai_completions_complete_mode_maps_non_stream_response(
                         ),
                     ],
                 },
-                OpenAICompletionsOptions(api_key="test-key"),
+                CallOptions(api_key="test-key"),
                 request=request,
                 mode="complete",
             )
@@ -396,7 +395,7 @@ def test_openai_completions_payload_uses_resolved_capabilities_for_images(
                         tool_result,
                     ],
                 },
-                OpenAICompletionsOptions(api_key="test-key", pairing_mode="repair"),
+                CallOptions(api_key="test-key", pairing_mode="repair"),
             )
         )
     )
@@ -459,7 +458,7 @@ def test_openai_completions_payload_maps_structured_output_response_format(
                         UserMessage(role="user", content="hello", timestamp=0.0)
                     ]
                 },
-                OpenAICompletionsOptions(
+                CallOptions(
                     api_key="test-key",
                     output=StructuredOutputOptions(
                         mode="json_schema",
@@ -503,7 +502,7 @@ def test_openai_completions_uses_upstream_model_id(
                         UserMessage(role="user", content="hello", timestamp=0.0)
                     ]
                 },
-                OpenAICompletionsOptions(api_key="test-key"),
+                CallOptions(api_key="test-key"),
             )
         )
     )
@@ -533,7 +532,7 @@ def test_openai_completions_caps_model_max_tokens_default(
                         UserMessage(role="user", content="hello", timestamp=0.0)
                     ]
                 },
-                OpenAICompletionsOptions(api_key="test-key"),
+                CallOptions(api_key="test-key"),
             )
         )
     )
@@ -564,7 +563,7 @@ def test_openai_completions_uses_resolved_capability_max_tokens(
                         UserMessage(role="user", content="hello", timestamp=0.0)
                     ]
                 },
-                OpenAICompletionsOptions(api_key="test-key"),
+                CallOptions(api_key="test-key"),
             )
         )
     )
@@ -627,7 +626,7 @@ def test_openai_completions_payload_respects_bridge_tool_name_developer_role_and
                         UserMessage(role="user", content="next", timestamp=0.0),
                     ],
                 },
-                OpenAICompletionsOptions(api_key="test-key", max_tokens=128),
+                CallOptions(api_key="test-key", max_output_tokens=128),
             )
         )
     )
@@ -686,7 +685,7 @@ def test_openai_completions_payload_uses_resolved_capabilities_for_reasoning(
                         UserMessage(role="user", content="hello", timestamp=0.0)
                     ],
                 },
-                OpenAICompletionsOptions(api_key="test-key"),
+                CallOptions(api_key="test-key"),
             )
         )
     )
@@ -783,10 +782,10 @@ def test_openai_completions_payload_uses_typed_endpoint_dialect(
                         ),
                     ],
                 },
-                OpenAICompletionsOptions(
+                CallOptions(
                     api_key="test-key",
-                    max_tokens=128,
-                    reasoning="high",
+                    max_output_tokens=128,
+                    reasoning=ReasoningOptions(effort="high"),
                     cache_retention="long",
                     session_id="session-1",
                 ),
@@ -859,7 +858,7 @@ def test_openai_completions_supplied_request_adapter_config_projects_to_payload(
                         UserMessage(role="user", content="hello", timestamp=0.0)
                     ]
                 },
-                OpenAICompletionsOptions(
+                CallOptions(
                     cache_retention="long",
                     session_id="session-supplied",
                 ),
@@ -899,7 +898,7 @@ def test_openai_completions_supplied_empty_request_uses_adapter_defaults(
                         UserMessage(role="user", content="hello", timestamp=0.0)
                     ]
                 },
-                OpenAICompletionsOptions(),
+                CallOptions(),
                 request=request,
             )
         )
@@ -938,7 +937,7 @@ def test_openai_completions_supplied_request_preserves_explicit_unknown_protocol
                         UserMessage(role="user", content="hello", timestamp=0.0)
                     ],
                 },
-                OpenAICompletionsOptions(),
+                CallOptions(),
                 request=request,
             )
         )
@@ -979,7 +978,7 @@ def test_openai_completions_supplied_request_protocol_and_dialect_project_to_pay
                         UserMessage(role="user", content="hello", timestamp=0.0)
                     ]
                 },
-                OpenAICompletionsOptions(
+                CallOptions(
                     cache_retention="long",
                     session_id="session-typed",
                 ),
@@ -1021,7 +1020,7 @@ def test_openai_completions_public_stream_uses_supplied_typed_request(
             provider,
             _Model(),
             {"messages": [UserMessage(role="user", content="hello", timestamp=0.0)]},
-            OpenAICompletionsOptions(
+            CallOptions(
                 cache_retention="short",
                 session_id="session-public",
             ),
@@ -1062,7 +1061,7 @@ def test_openai_completions_supplied_request_typed_adapter_overrides_stale_optio
                             UserMessage(role="user", content="hello", timestamp=0.0)
                         ]
                     },
-                    OpenAICompletionsOptions(
+                    CallOptions(
                         cache_retention="short",
                         session_id="session-stale",
                     ),
@@ -1101,7 +1100,7 @@ def test_openai_completions_supplied_request_typed_dialect_overrides_stale_optio
                         UserMessage(role="user", content="hello", timestamp=0.0)
                     ]
                 },
-                OpenAICompletionsOptions(),
+                CallOptions(),
                 request=request,
             )
         )
@@ -1132,7 +1131,7 @@ def test_openai_completions_prompt_cache_key_uses_explicit_support_flag(
                         UserMessage(role="user", content="hello", timestamp=0.0)
                     ]
                 },
-                OpenAICompletionsOptions(
+                CallOptions(
                     api_key="test-key",
                     cache_retention="short",
                     session_id="session-short",
@@ -1181,7 +1180,7 @@ def test_openai_completions_explicit_prompt_cache_key_reaches_sdk_payload(
                         UserMessage(role="user", content="hello", timestamp=0.0)
                     ]
                 },
-                OpenAICompletionsOptions(
+                CallOptions(
                     api_key="test-key",
                     cache_retention="long",
                     session_id="session-official",
@@ -1231,7 +1230,7 @@ def test_openai_completions_official_url_requires_prompt_cache_support_flag(
                             UserMessage(role="user", content="hello", timestamp=0.0)
                         ]
                     },
-                    OpenAICompletionsOptions(
+                    CallOptions(
                         api_key="test-key",
                         cache_retention="long",
                         session_id="session-official",
@@ -1279,7 +1278,7 @@ def test_openai_completions_typed_prompt_cache_key_unsupported_disables_payload(
                             UserMessage(role="user", content="hello", timestamp=0.0)
                         ]
                     },
-                    OpenAICompletionsOptions(
+                    CallOptions(
                         api_key="test-key",
                         cache_retention="long",
                         session_id="session-official",
@@ -1308,7 +1307,7 @@ def test_openai_completions_prompt_cache_key_defaults_off_for_short_sessions(
                             UserMessage(role="user", content="hello", timestamp=0.0)
                         ]
                     },
-                    OpenAICompletionsOptions(
+                    CallOptions(
                         api_key="test-key",
                         cache_retention="short",
                         session_id="session-short",
@@ -1341,7 +1340,7 @@ def test_openai_completions_prompt_cache_key_can_be_disabled(
                             UserMessage(role="user", content="hello", timestamp=0.0)
                         ]
                     },
-                    OpenAICompletionsOptions(
+                    CallOptions(
                         api_key="test-key",
                         cache_retention="short",
                         session_id="session-short",
@@ -1377,7 +1376,7 @@ def test_openai_completions_prompt_cache_key_disables_long_retention_params(
                             UserMessage(role="user", content="hello", timestamp=0.0)
                         ]
                     },
-                    OpenAICompletionsOptions(
+                    CallOptions(
                         api_key="test-key",
                         cache_retention="long",
                         session_id="session-long",
@@ -1415,7 +1414,7 @@ def test_openai_completions_explicit_zai_thinking_format(
                         UserMessage(role="user", content="hello", timestamp=0.0)
                     ]
                 },
-                OpenAICompletionsOptions(api_key="test-key"),
+                CallOptions(api_key="test-key"),
             )
         )
     )
@@ -1452,7 +1451,7 @@ def test_openai_completions_explicit_zai_thinking_object_format(
                         UserMessage(role="user", content="hello", timestamp=0.0)
                     ]
                 },
-                OpenAICompletionsOptions(api_key="test-key"),
+                CallOptions(api_key="test-key"),
             )
         )
     )
@@ -1491,7 +1490,7 @@ def test_openai_completions_deepseek_thinking_uses_extra_body(
                         UserMessage(role="user", content="hello", timestamp=0.0)
                     ]
                 },
-                OpenAICompletionsOptions(api_key="test-key"),
+                CallOptions(api_key="test-key"),
             )
         )
     )
@@ -1529,7 +1528,7 @@ def test_openai_completions_explicit_qwen_thinking_format(
                         UserMessage(role="user", content="hello", timestamp=0.0)
                     ]
                 },
-                OpenAICompletionsOptions(api_key="test-key"),
+                CallOptions(api_key="test-key"),
             )
         )
     )
@@ -1561,7 +1560,7 @@ def test_openai_completions_compat_maps_qwen_chat_template_thinking(
                         UserMessage(role="user", content="hello", timestamp=0.0)
                     ]
                 },
-                OpenAICompletionsOptions(api_key="test-key"),
+                CallOptions(api_key="test-key"),
             )
         )
     )
@@ -1601,7 +1600,7 @@ def test_openai_completions_typed_routing_maps_openrouter_provider_payload(
                         UserMessage(role="user", content="hello", timestamp=0.0)
                     ]
                 },
-                OpenAICompletionsOptions(api_key="test-key"),
+                CallOptions(api_key="test-key"),
             )
         )
     )
@@ -1640,7 +1639,7 @@ def test_openai_completions_mixed_routing_without_single_namespace_errors(
                             UserMessage(role="user", content="hello", timestamp=0.0)
                         ]
                     },
-                    OpenAICompletionsOptions(api_key="test-key"),
+                    CallOptions(api_key="test-key"),
                 )
             )
         )
@@ -1675,7 +1674,7 @@ def test_openai_completions_mixed_routing_errors_independent_of_provider_identit
                             UserMessage(role="user", content="hello", timestamp=0.0)
                         ]
                     },
-                    OpenAICompletionsOptions(api_key="test-key"),
+                    CallOptions(api_key="test-key"),
                 )
             )
         )
@@ -1711,7 +1710,7 @@ def test_openai_completions_mixed_routing_errors_independent_of_base_url_identit
                             UserMessage(role="user", content="hello", timestamp=0.0)
                         ]
                     },
-                    OpenAICompletionsOptions(api_key="test-key"),
+                    CallOptions(api_key="test-key"),
                 )
             )
         )
@@ -1742,7 +1741,7 @@ def test_openai_completions_vercel_routing_is_explicit_not_provider_inferred(
                         UserMessage(role="user", content="hello", timestamp=0.0)
                     ]
                 },
-                OpenAICompletionsOptions(api_key="test-key"),
+                CallOptions(api_key="test-key"),
             )
         )
     )
@@ -1777,7 +1776,7 @@ def test_openai_completions_openrouter_routing_is_explicit_not_provider_inferred
                         UserMessage(role="user", content="hello", timestamp=0.0)
                     ]
                 },
-                OpenAICompletionsOptions(api_key="test-key"),
+                CallOptions(api_key="test-key"),
             )
         )
     )
@@ -1815,7 +1814,7 @@ def test_openai_completions_explicit_moonshot_thinking_toggle(
                         UserMessage(role="user", content="hello", timestamp=0.0)
                     ]
                 },
-                OpenAICompletionsOptions(api_key="test-key"),
+                CallOptions(api_key="test-key"),
             )
         )
     )
@@ -1860,7 +1859,7 @@ def test_openai_completions_explicit_moonshot_thinking_for_model_definition(
                         UserMessage(role="user", content="hello", timestamp=0.0)
                     ]
                 },
-                OpenAICompletionsOptions(api_key="test-key"),
+                CallOptions(api_key="test-key"),
             )
         )
     )
@@ -1889,7 +1888,7 @@ def test_openai_completions_builtin_moonshot_uses_system_role_not_developer(
                         UserMessage(role="user", content="hello", timestamp=0.0)
                     ],
                 },
-                OpenAICompletionsOptions(),
+                CallOptions(),
             )
         )
     )
@@ -1925,7 +1924,7 @@ def test_openai_completions_typed_routing_maps_vercel_gateway_payload(
                         UserMessage(role="user", content="hello", timestamp=0.0)
                     ]
                 },
-                OpenAICompletionsOptions(api_key="test-key"),
+                CallOptions(api_key="test-key"),
             )
         )
     )
@@ -1960,7 +1959,7 @@ def test_openai_completions_typed_routing_uses_explicit_single_namespace(
                         UserMessage(role="user", content="hello", timestamp=0.0)
                     ]
                 },
-                OpenAICompletionsOptions(api_key="test-key"),
+                CallOptions(api_key="test-key"),
             )
         )
     )
@@ -2042,7 +2041,7 @@ def test_openai_completions_provider_adds_github_copilot_dynamic_headers(
                         ),
                     ],
                 },
-                OpenAICompletionsOptions(api_key="test-key"),
+                CallOptions(api_key="test-key"),
             )
         )
     )
@@ -2084,7 +2083,7 @@ def test_openai_completions_payload_synthesizes_missing_tool_result_for_assistan
                 provider,
                 _Model(),
                 {"messages": [assistant]},
-                OpenAICompletionsOptions(api_key="test-key", pairing_mode="repair"),
+                CallOptions(api_key="test-key", pairing_mode="repair"),
             )
         )
     )
@@ -2127,7 +2126,7 @@ def test_openai_completions_uses_transport_timeout_when_options_omits_timeout(
                 provider,
                 _Model(),
                 {"messages": [{"role": "user", "content": "hello"}]},
-                OpenAICompletionsOptions(api_key="test-key"),
+                CallOptions(api_key="test-key"),
             )
         )
     )
@@ -2195,7 +2194,7 @@ def test_openai_completions_stream_maps_thinking_tool_calls_and_reasoning_detail
             provider,
             _Model(),
             {"messages": [UserMessage(role="user", content="hello", timestamp=0.0)]},
-            OpenAICompletionsOptions(api_key="test-key"),
+            CallOptions(api_key="test-key"),
         )
         return await _collect_stream_events(stream)
 
@@ -2287,7 +2286,7 @@ def test_openai_completions_stream_groups_interleaved_parallel_tool_calls(
             provider,
             _Model(),
             {"messages": [UserMessage(role="user", content="hello", timestamp=0.0)]},
-            OpenAICompletionsOptions(api_key="test-key"),
+            CallOptions(api_key="test-key"),
         )
         return await _collect_stream_events(stream)
 
@@ -2342,7 +2341,7 @@ def test_openai_completions_omits_response_start_when_chunk_id_missing(
                         UserMessage(role="user", content="hello", timestamp=0.0)
                     ]
                 },
-                OpenAICompletionsOptions(api_key="test-key"),
+                CallOptions(api_key="test-key"),
             )
         )
     )
@@ -2397,7 +2396,7 @@ def _patch_resolved_request(
         if extra_headers:
             headers.update(extra_headers)
         option_max_tokens = (
-            getattr(options, "max_tokens", None) if options is not None else None
+            getattr(options, "max_output_tokens", None) if options is not None else None
         )
         resolved_max_tokens = (
             max(1, option_max_tokens)

@@ -27,7 +27,11 @@ from dataclasses import dataclass
 
 from loushang.ai import (
     CallOptions,
+    Model,
+    TimeoutOptions,
+    complete,
     get_model,
+    stream,
 )
 from loushang.ai.pricing import calculate_cost
 from loushang.ai.types import AssistantMessage, Usage
@@ -94,7 +98,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--stream",
         action="store_true",
-        help="Use model.stream instead of model.complete.",
+        help="Use the streaming root API instead of the complete root API.",
     )
     parser.add_argument(
         "--strict",
@@ -132,7 +136,11 @@ def _build_options(
     route: Route, *, api_key: str, max_tokens: int, timeout: float
 ) -> CallOptions:
     del route
-    return CallOptions(api_key=api_key, max_output_tokens=max_tokens, timeout=timeout)
+    return CallOptions(
+        api_key=api_key,
+        max_output_tokens=max_tokens,
+        timeout=TimeoutOptions(total_seconds=timeout),
+    )
 
 
 def _build_context(*, system_prompt: str, user_prompt: str) -> dict[str, object]:
@@ -188,15 +196,15 @@ def _print_json(label: str, payload: dict[str, object]) -> None:
 
 
 async def _complete(
-    model: object, context: dict[str, object], options: CallOptions
+    model: Model, context: dict[str, object], options: CallOptions
 ) -> AssistantMessage:
-    return await model.complete(context, options)  # type: ignore[attr-defined,no-any-return]
+    return await complete(model, context, options)
 
 
 async def _stream(
-    model: object, context: dict[str, object], options: CallOptions
+    model: Model, context: dict[str, object], options: CallOptions
 ) -> AssistantMessage:
-    events = await model.stream(context, options)  # type: ignore[attr-defined]
+    events = await stream(model, context, options)
     async for event in events:
         if event["type"] == "text_delta":
             print(f"EVENT text_delta {event['delta']!r}")

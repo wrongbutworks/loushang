@@ -13,7 +13,7 @@
 - [05_parallel_tools.py](05_parallel_tools.py)
   多个并行 tool call 的交错增量按 id/index 正确组装
 - [06_reasoning.py](06_reasoning.py)
-  `stream_simple` 如何把 `SimpleCallOptions.reasoning` 映射到统一 reasoning 请求
+  `CallOptions.reasoning` 如何映射到统一 reasoning 请求
 - [07_structured_output.py](07_structured_output.py)
   `StructuredOutputOptions`、provider payload 映射和 `complete_structured` 解析结果
 - [08_image_input.py](08_image_input.py)

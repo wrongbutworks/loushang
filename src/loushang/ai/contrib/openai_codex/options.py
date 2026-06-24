@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from loushang.ai.options import CallOptions, Transport
+from loushang.ai.options import CallOptions, ReasoningOptions, Transport
 
 
 @dataclass(frozen=True, slots=True)
@@ -11,7 +11,7 @@ class OpenAICodexResponsesOptions(CallOptions):
 
     on_payload: object | None = None
     on_response: object | None = None
-    reasoning: str | None = None
+    reasoning: ReasoningOptions | str | None = None  # type: ignore[assignment]
     reasoning_summary: str | None = None
     text_verbosity: str | None = None
     transport: Transport | None = None

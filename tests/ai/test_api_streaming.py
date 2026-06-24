@@ -7,13 +7,11 @@ from types import ModuleType, SimpleNamespace
 
 import pytest
 
-from loushang.ai.advanced import OpenAICompletionsOptions, OpenAIResponsesOptions
+from loushang.ai import CallOptions, ReasoningOptions
 from loushang.ai.api.streaming import (
     complete,
-    complete_simple,
     complete_structured,
     stream,
-    stream_simple,
 )
 from loushang.ai.api_registry import ApiProviderRegistry
 from loushang.ai.context import (
@@ -25,12 +23,6 @@ from loushang.ai.model import (
     Capabilities,
     OpenAICompletionsConfig,
     OpenAIResponsesConfig,
-)
-from loushang.ai.options import (
-    CallOptions,
-    ModelCallOptions,
-    ReasoningOptions,
-    SimpleCallOptions,
 )
 from loushang.ai.provider import ProviderRequest
 from loushang.ai.provider.invocation import call_api_provider_stream
@@ -208,7 +200,7 @@ def test_stream_defaults_to_strict_pairing_and_exposes_repair_option(
                         UserMessage(role="user", content="next", timestamp=0.0),
                     ]
                 },
-                ModelCallOptions(),
+                CallOptions(),
                 registry=registry,
             )
         )
@@ -222,7 +214,7 @@ def test_stream_defaults_to_strict_pairing_and_exposes_repair_option(
                     UserMessage(role="user", content="next", timestamp=0.0),
                 ]
             },
-            ModelCallOptions(pairing_mode="repair"),
+            CallOptions(pairing_mode="repair"),
             registry=registry,
         )
     )
@@ -306,7 +298,7 @@ def test_stream_exposes_strict_pairing_through_public_options(
                         UserMessage(role="user", content="next", timestamp=0.0),
                     ]
                 },
-                ModelCallOptions(pairing_mode="strict"),
+                CallOptions(pairing_mode="strict"),
                 registry=registry,
             )
         )
@@ -327,7 +319,7 @@ def test_stream_passes_normalized_context_to_provider(
         stream(
             _Model(),
             {"messages": [UserMessage(role="user", content="hello", timestamp=0.0)]},
-            ModelCallOptions(),
+            CallOptions(),
             registry=registry,
         )
     )
@@ -342,7 +334,7 @@ def test_stream_passes_normalized_context_to_provider(
         (
             Capabilities(input=("text",), stream=False),
             {"messages": [UserMessage(role="user", content="hello", timestamp=0.0)]},
-            ModelCallOptions(),
+            CallOptions(),
             "does not support streaming",
         ),
         (
@@ -357,13 +349,13 @@ def test_stream_passes_normalized_context_to_provider(
                     }
                 ],
             },
-            ModelCallOptions(),
+            CallOptions(),
             "does not support tool use",
         ),
         (
             Capabilities(input=("text",), stream=True, reasoning=False),
             {"messages": [], "emit_thinking": True},
-            ModelCallOptions(),
+            CallOptions(),
             "does not support reasoning",
         ),
         (
@@ -378,13 +370,13 @@ def test_stream_passes_normalized_context_to_provider(
                 "messages": [UserMessage(role="user", content="hello", timestamp=0.0)],
                 "response_format": {"type": "json_schema"},
             },
-            ModelCallOptions(),
+            CallOptions(),
             "does not support structured output",
         ),
         (
             Capabilities(input=("text",), stream=True, temperature=False),
             {"messages": [UserMessage(role="user", content="hello", timestamp=0.0)]},
-            ModelCallOptions(temperature=0.2),
+            CallOptions(temperature=0.2),
             "does not support temperature",
         ),
         (
@@ -404,7 +396,7 @@ def test_stream_passes_normalized_context_to_provider(
                     )
                 ]
             },
-            ModelCallOptions(),
+            CallOptions(),
             "does not support image input",
         ),
         (
@@ -413,7 +405,7 @@ def test_stream_passes_normalized_context_to_provider(
                 "messages": [UserMessage(role="user", content="hello", timestamp=0.0)],
                 "attachments": [{"id": "file_1"}],
             },
-            ModelCallOptions(),
+            CallOptions(),
             "does not support attachment",
         ),
     ],
@@ -422,7 +414,7 @@ def test_stream_enforces_capability_matrix(
     monkeypatch: pytest.MonkeyPatch,
     capabilities: Capabilities,
     context: dict[str, object],
-    options: ModelCallOptions,
+    options: CallOptions,
     expected_message: str,
 ) -> None:
     _patch_resolved_request(monkeypatch, capabilities=capabilities)
@@ -489,7 +481,7 @@ def test_stream_allows_complete_capability_matrix(
                 "response_format": {"type": "json_schema"},
                 "attachments": [{"id": "file_1"}],
             },
-            ModelCallOptions(temperature=0.2),
+            CallOptions(temperature=0.2),
             registry=registry,
         )
     )
@@ -519,7 +511,7 @@ def test_complete_does_not_require_stream_capability(
         complete(
             _Model(),
             {"messages": [UserMessage(role="user", content="hello", timestamp=0.0)]},
-            ModelCallOptions(),
+            CallOptions(),
             registry=registry,
         )
     )
@@ -528,27 +520,6 @@ def test_complete_does_not_require_stream_capability(
     assert result.provider == "faux"
     assert result.model == "test-model"
     _assert_normalized_provider_context(provider.context)
-
-
-def test_complete_simple_returns_message(monkeypatch: pytest.MonkeyPatch) -> None:
-    _patch_resolved_request(
-        monkeypatch,
-        capabilities=Capabilities(input=("text",), stream=False),
-    )
-    provider = _Provider()
-    registry = _Registry(provider)
-
-    result = asyncio.run(
-        complete_simple(
-            _Model(),
-            {"messages": [UserMessage(role="user", content="hello", timestamp=0.0)]},
-            SimpleCallOptions(max_output_tokens=64),
-            registry=registry,
-        )
-    )
-
-    assert result.stop_reason == "stop"
-    assert provider.options.max_output_tokens == 64
 
 
 def test_complete_structured_requires_output_options() -> None:
@@ -598,7 +569,7 @@ def test_stream_canonicalizes_raw_dict_context_before_provider(
                     }
                 ],
             },
-            ModelCallOptions(),
+            CallOptions(),
             registry=registry,
         )
     )
@@ -637,7 +608,7 @@ def test_stream_rejects_raw_dict_tools_with_non_object_parameters_before_provide
                         }
                     ],
                 },
-                ModelCallOptions(),
+                CallOptions(),
                 registry=registry,
             )
         )
@@ -668,7 +639,7 @@ def test_stream_rejects_raw_dict_tools_with_invalid_names_before_provider(
                         }
                     ],
                 },
-                ModelCallOptions(),
+                CallOptions(),
                 registry=registry,
             )
         )
@@ -692,7 +663,7 @@ def test_stream_passes_request_through_registered_provider(
         stream(
             _Model(),
             {"messages": [UserMessage(role="user", content="hello", timestamp=0.0)]},
-            ModelCallOptions(),
+            CallOptions(),
             registry=registry,
         )
     )
@@ -741,7 +712,7 @@ def test_register_api_provider_rejects_optional_legacy_argument_signature() -> N
         "openai-codex-responses",
     ),
 )
-def test_stream_simple_maps_reasoning_options_before_provider_call(
+def test_stream_maps_reasoning_options_before_provider_call(
     monkeypatch: pytest.MonkeyPatch,
     api: str,
 ) -> None:
@@ -755,12 +726,16 @@ def test_stream_simple_maps_reasoning_options_before_provider_call(
     registry = _Registry(provider)
 
     asyncio.run(
-        stream_simple(
+        stream(
             _Model(),
             {"messages": [UserMessage(role="user", content="hello", timestamp=0.0)]},
-            SimpleCallOptions(
-                reasoning="medium",
-                thinking_budgets={"medium": 2048},
+            CallOptions(
+                reasoning=ReasoningOptions(
+                    enabled=True,
+                    effort="medium",
+                    budget_tokens=2048,
+                    expose_summary=True,
+                ),
                 max_output_tokens=123,
             ),
             registry=registry,
@@ -768,7 +743,6 @@ def test_stream_simple_maps_reasoning_options_before_provider_call(
     )
 
     assert isinstance(provider.options, CallOptions)
-    assert not isinstance(provider.options, SimpleCallOptions)
     assert provider.options.max_output_tokens == 123
     assert provider.options.reasoning == ReasoningOptions(
         enabled=True,
@@ -795,29 +769,7 @@ def test_stream_rejects_legacy_provider_from_custom_registry(
                         UserMessage(role="user", content="hello", timestamp=0.0)
                     ]
                 },
-                ModelCallOptions(),
-                registry=registry,
-            )
-        )
-
-
-def test_stream_simple_rejects_legacy_provider_from_custom_registry(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    _patch_resolved_request(monkeypatch)
-    provider = _LegacyProvider()
-    registry = _Registry(provider)
-
-    with pytest.raises(TypeError, match="exactly one ProviderRequest"):
-        asyncio.run(
-            stream_simple(
-                _Model(),
-                {
-                    "messages": [
-                        UserMessage(role="user", content="hello", timestamp=0.0)
-                    ]
-                },
-                SimpleCallOptions(),
+                CallOptions(),
                 registry=registry,
             )
         )
@@ -845,7 +797,7 @@ def test_call_api_provider_stream_supports_registered_provider(
                         UserMessage(role="user", content="hello", timestamp=0.0)
                     ]
                 },
-                options=ModelCallOptions(),
+                options=CallOptions(),
                 capabilities=Capabilities(input=("text",), stream=True),
             ),
         )
@@ -895,7 +847,7 @@ def test_call_api_provider_stream_rejects_mismatched_resolved_request() -> None:
                             UserMessage(role="user", content="hello", timestamp=0.0)
                         ]
                     },
-                    options=ModelCallOptions(),
+                    options=CallOptions(),
                 ),
             )
         )
@@ -955,7 +907,7 @@ def test_call_api_provider_stream_normalizes_context_against_resolved_request_ap
                         ),
                     ]
                 },
-                options=ModelCallOptions(),
+                options=CallOptions(),
             ),
         )
     )
@@ -1001,7 +953,7 @@ def test_stream_validates_resolved_request_capabilities(
                         )
                     ]
                 },
-                ModelCallOptions(),
+                CallOptions(),
                 registry=registry,
             )
         )
@@ -1039,7 +991,7 @@ def test_stream_allows_capabilities_after_request_resolution_switches_endpoint(
                     )
                 ]
             },
-            ModelCallOptions(),
+            CallOptions(),
             registry=registry,
         )
     )
@@ -1095,7 +1047,7 @@ def test_stream_normalizes_context_against_resolved_request_api(
                     ),
                 ]
             },
-            ModelCallOptions(),
+            CallOptions(),
             registry=registry,
         )
     )
@@ -1157,7 +1109,7 @@ def test_stream_public_path_uses_openai_completions_typed_request(
                     }
                 ],
             },
-            OpenAICompletionsOptions(
+            CallOptions(
                 cache_retention="short",
                 session_id="session-public",
             ),
@@ -1272,7 +1224,7 @@ def test_stream_public_path_uses_openai_responses_typed_request(
                     )
                 ],
             },
-            OpenAIResponsesOptions(
+            CallOptions(
                 cache_retention="short",
                 session_id="session-responses",
             ),
@@ -1348,7 +1300,7 @@ def test_stream_public_path_rejects_unsupported_long_cache_retention(
         await stream(
             model,
             {"messages": [UserMessage(role="user", content="hello", timestamp=0.0)]},
-            OpenAIResponsesOptions(cache_retention="long"),
+            CallOptions(cache_retention="long"),
             registry=registry,
         )
 
@@ -1392,7 +1344,7 @@ def test_stream_public_path_rejects_unsupported_session_id(
         await stream(
             model,
             {"messages": [UserMessage(role="user", content="hello", timestamp=0.0)]},
-            OpenAICompletionsOptions(session_id="session-public"),
+            CallOptions(session_id="session-public"),
             registry=registry,
         )
 
@@ -1438,7 +1390,7 @@ def test_stream_public_path_uses_adapter_protocol_override_for_cache_validation(
         event_stream = await stream(
             model,
             {"messages": [UserMessage(role="user", content="hello", timestamp=0.0)]},
-            OpenAIResponsesOptions(
+            CallOptions(
                 cache_retention="long",
                 session_id="session-override",
             ),

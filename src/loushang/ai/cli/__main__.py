@@ -14,11 +14,6 @@ from loushang.ai import (
     complete,
     stream,
 )
-from loushang.ai.advanced.options import (
-    AnthropicOptions,
-    OpenAICompletionsOptions,
-    OpenAIResponsesOptions,
-)
 from loushang.ai.advanced.registry import (
     get_api_provider,
     list_api_providers,
@@ -48,9 +43,6 @@ from loushang.ai.model.registry import (
 )
 
 _OPTION_CLASS_BY_API = {
-    "anthropic-messages": AnthropicOptions,
-    "openai-completions": OpenAICompletionsOptions,
-    "openai-responses": OpenAIResponsesOptions,
     "openai-codex-responses": OpenAICodexResponsesOptions,
 }
 
@@ -809,7 +801,7 @@ def _console_trace(event: dict) -> None:
 
 
 async def _run_console_turn(model, context, options, *, as_json: bool):
-    event_stream = await model.stream(context, options)
+    event_stream = await stream(model, context, options)
     if as_json:
         async for event in event_stream:
             print(json.dumps(event, ensure_ascii=False))

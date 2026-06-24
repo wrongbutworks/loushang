@@ -14,7 +14,7 @@
   2. Improve Google Vertex auth:
      - support ADC or service-account based token acquisition
      - keep explicit `GOOGLE_VERTEX_ACCESS_TOKEN` as the simple override path
-  3. Add dedicated CLI flags for provider-specific options where useful:
+  3. Add dedicated CLI flags for provider/runtime config where useful:
      - Vertex project / location / token source
   4. Run full repository verification before PR finalization:
      - `uv run pytest tests -q`
@@ -40,8 +40,8 @@
   4. Done: make tool-call/tool-result pairing strict by default, with explicit repair as the compatibility mode.
      - Synthetic missing-tool-result content and assistant bridge text now come from shared transform-layer constants instead of scattered provider-local strings.
      - Synthetic tool results are now explicitly marked in `ToolResultMessage.details` with `{"synthetic": true, "reason": "missing_tool_result"}`.
-     - Pairing strategy is now a public option (`StreamOptions.pairing_mode`) and propagates through API/provider normalization paths.
-     - `ModelCallOptions.pairing_mode` defaults to `strict`; callers must explicitly pass `repair` for legacy transcript repair diagnostics.
+     - Pairing strategy is now a public option (`CallOptions.pairing_mode`) and propagates through API/provider normalization paths.
+     - `CallOptions.pairing_mode` defaults to `strict`; callers must explicitly pass `repair` for legacy transcript repair diagnostics.
   5. Simplify event stream assembly so content ordering/indexing is derived from real content, not hidden assembler layout assumptions.
      Partial:
      - `RawAssembler` no longer forces an empty leading text part for thinking-only or toolcall-only streams.

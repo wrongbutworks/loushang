@@ -145,7 +145,7 @@ def test_usage_inspect_example_marks_unknown_cost(
         "examples_coding_22_usage_inspect",
     )
 
-    async def _complete_simple(model, context):
+    async def _complete(model, context):
         assert model
         assert context
         return AssistantMessage(
@@ -182,7 +182,7 @@ def test_usage_inspect_example_marks_unknown_cost(
             "model": "kimi-for-coding",
         },
     )
-    monkeypatch.setattr(module, "complete_simple", _complete_simple)
+    monkeypatch.setattr(module, "complete", _complete)
 
     assert asyncio.run(module.main()) == 0
 

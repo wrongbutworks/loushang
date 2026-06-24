@@ -315,7 +315,6 @@ async def process_responses_stream(
             if resp is not None:
                 multiplier = _service_tier_cost_multiplier(
                     getattr(resp, "service_tier", None)
-                    or getattr(options, "service_tier", None)
                 )
                 if multiplier != 1.0:
                     yield {"type": "usage_cost_multiplier", "multiplier": multiplier}
@@ -406,10 +405,7 @@ def process_responses_response(
             elif item_type == "function_call":
                 yield from _iter_complete_function_call_parts(item, index=index)
 
-    multiplier = _service_tier_cost_multiplier(
-        getattr(response, "service_tier", None)
-        or getattr(options, "service_tier", None)
-    )
+    multiplier = _service_tier_cost_multiplier(getattr(response, "service_tier", None))
     if multiplier != 1.0:
         yield {"type": "usage_cost_multiplier", "multiplier": multiplier}
 

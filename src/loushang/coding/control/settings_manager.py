@@ -7,7 +7,7 @@ from pathlib import Path
 from typing import Any, Literal
 
 from loushang.agent import ThinkingLevel
-from loushang.ai.options import ThinkingBudgets, Transport
+from loushang.ai.options import Transport
 from loushang.coding.control.settings_store import (
     load_settings_patch,
     save_settings_patch,
@@ -30,6 +30,7 @@ from loushang.coding.control.types import (
     StatusLineSeparator,
     StatusLineStyle,
     TerminalSettings,
+    ThinkingBudgetMap,
     ToolSettings,
     TreeFilterMode,
     WarningSettings,
@@ -252,12 +253,12 @@ def _bounded_int(value: object, field_name: str, *, lower_bound: int, upper_boun
     return max(lower_bound, min(upper_bound, int(value)))
 
 
-def _thinking_budgets(value: object) -> ThinkingBudgets | None:
+def _thinking_budgets(value: object) -> ThinkingBudgetMap | None:
     if value is None:
         return None
     if not isinstance(value, Mapping):
         raise TypeError("thinking_budgets must be a JSON object or null")
-    normalized: ThinkingBudgets = {}
+    normalized: ThinkingBudgetMap = {}
     for key, item in value.items():
         if key not in {"minimal", "low", "medium", "high"}:
             raise ValueError("thinking_budgets may only contain minimal, low, medium, or high")
@@ -737,7 +738,7 @@ class SettingsManager:
         editor_padding_x: float | int | object = _UNSET,
         autocomplete_max_visible: float | int | object = _UNSET,
         keybindings: Mapping[str, object] | object = _UNSET,
-        thinking_budgets: ThinkingBudgets | None | object = _UNSET,
+        thinking_budgets: ThinkingBudgetMap | None | object = _UNSET,
         compaction: CompactionSettings | object = _UNSET,
         branch_summary: BranchSummarySettings | object = _UNSET,
         retry: RetrySettings | object = _UNSET,
@@ -971,7 +972,7 @@ class SettingsManager:
     def set_keybindings(self, keybindings: Mapping[str, object], *, scope: SettingsScope = "global") -> None:
         self.update_settings(scope=scope, keybindings=keybindings)
 
-    def get_thinking_budgets(self) -> ThinkingBudgets | None:
+    def get_thinking_budgets(self) -> ThinkingBudgetMap | None:
         return deepcopy(self._settings.thinking_budgets)
 
     def get_compaction_settings(self) -> CompactionSettings:

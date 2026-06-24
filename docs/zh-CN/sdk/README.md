@@ -32,7 +32,7 @@ from loushang.ai import (
 
 - `loushang.ai.model`：自定义模型 catalog、registry 检查。
 - `loushang.ai.auth`：OAuth credential 存储和 provider 登录辅助。
-- `loushang.ai.advanced`：provider-specific options 和 registry 接线。
+- `loushang.ai.advanced.registry`：provider registry 接线。
 - `loushang.ai.contrib.openai_codex`：可选 OpenAI Codex 集成。
 
 ## 模型与 Catalog
@@ -98,14 +98,14 @@ OAuth 能力位于 `loushang.ai.auth`，并由 `openai-codex` 这类显式 contr
 
 ## 完整返回调用
 
-最短路径是先 `get_model(...)`，再调用 `model.complete(...)` 或根包
-`complete(...)`。
+最短路径是先 `get_model(...)`，再调用根包 `complete(...)`。
 
 ```python
-from loushang.ai import CallOptions, get_model
+from loushang.ai import CallOptions, complete, get_model
 
 model = get_model("moonshot", "openai-completions", "kimi-k2.6")
-message = await model.complete(
+message = await complete(
+    model,
     {"messages": [{"role": "user", "content": "用一句话打个招呼。"}]},
     CallOptions(api_key="...", max_output_tokens=128),
 )
@@ -182,8 +182,7 @@ options = CallOptions(
 )
 ```
 
-如果只需要简单入口，`SimpleCallOptions(reasoning="medium")` 会映射到同一套内部
-call options。可运行示例：
+可运行 reasoning 示例：
 [examples/ai/06_reasoning.py](../../../examples/ai/06_reasoning.py)。
 
 ## Structured Output
@@ -254,10 +253,11 @@ provider、校验、能力、超时、取消和流式失败会归一化为 `AIEr
 `error.to_dict()` 返回稳定、JSON-safe 的错误载荷，并会脱敏凭证和 token。
 
 ```python
-from loushang.ai import AIError, CallOptions, RetryOptions
+from loushang.ai import AIError, CallOptions, RetryOptions, complete
 
 try:
-    message = await model.complete(
+    message = await complete(
+        model,
         {"messages": [{"role": "user", "content": "hello"}]},
         CallOptions(api_key="...", retry=RetryOptions(max_attempts=2)),
     )

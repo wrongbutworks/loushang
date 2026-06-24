@@ -21,7 +21,7 @@ from _support import (
     resolve_api_key,
 )
 
-from loushang.ai import Context, UserMessage, complete_simple
+from loushang.ai import Context, UserMessage, complete
 from loushang.ai.pricing import calculate_cost
 from loushang.ai.usage import query_platform_quota
 
@@ -380,7 +380,7 @@ async def _run_once(
         "tool.start", {"tool": "completion", "endpoint": endpoint, "model": model}
     )
 
-    response = await complete_simple(model_obj, context)
+    response = await complete(model_obj, context)
     text = "".join(
         part.text
         for part in response.content

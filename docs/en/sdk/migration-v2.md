@@ -17,8 +17,8 @@ The main changes are:
 - The built-in catalog is now `models.json`.
 - The legacy full catalog is archived for audit only.
 - Normal application code should import from the root `loushang.ai` package.
-- Provider-specific options and provider registry wiring moved behind advanced
-  or contrib boundaries.
+- Provider registry wiring moved behind the advanced boundary; optional
+  integrations keep their own contrib options.
 - Errors are normalized into `AIError` subclasses and stable JSON-safe payloads.
 - Core builtin adapters are protocol adapters, not one adapter per vendor.
 - OpenAI Codex moved to explicit `loushang.ai.contrib.openai_codex` registration.
@@ -97,29 +97,42 @@ root exports:
 
 | Old access pattern | v2 path |
 |---|---|
-| `loushang.ai.ModelCallOptions` | `loushang.ai.options.ModelCallOptions`, compatibility alias for `CallOptions` |
-| `loushang.ai.StreamOptions` | `loushang.ai.options.StreamOptions`, compatibility alias for `CallOptions` |
-| `loushang.ai.AnthropicOptions` | `loushang.ai.advanced.AnthropicOptions` |
-| `loushang.ai.OpenAICompletionsOptions` | `loushang.ai.advanced.OpenAICompletionsOptions` |
-| `loushang.ai.OpenAIResponsesOptions` | `loushang.ai.advanced.OpenAIResponsesOptions` |
+| `loushang.ai.ModelCallOptions` | `loushang.ai.CallOptions` |
+| `loushang.ai.StreamOptions` | `loushang.ai.CallOptions` |
+| `loushang.ai.AnthropicOptions` | `loushang.ai.CallOptions` |
+| `loushang.ai.OpenAICompletionsOptions` | `loushang.ai.CallOptions` |
+| `loushang.ai.OpenAIResponsesOptions` | `loushang.ai.CallOptions` |
 | `loushang.ai.ApiProviderRegistry` | `loushang.ai.advanced.registry.ApiProviderRegistry` |
 | `loushang.ai.OpenAICodexResponsesOptions` | `loushang.ai.contrib.openai_codex.OpenAICodexResponsesOptions` |
 
 Use `CallOptions` for provider-neutral calls:
 
 ```python
-from loushang.ai import CallOptions, get_model
+from loushang.ai import CallOptions, complete, get_model
 
 model = get_model("openai", "openai-responses", "gpt-5.4-mini")
-message = await model.complete(
+message = await complete(
+    model,
     {"messages": [{"role": "user", "content": "Say hello."}]},
     CallOptions(api_key="...", max_output_tokens=128),
 )
 ```
 
-Provider-specific option classes remain available for compatibility and advanced
-protocol controls. They are no longer the recommended first import for normal
-application code.
+Core provider-specific option classes were removed. Use `CallOptions` for core
+providers and contrib-specific option classes only for explicit contrib
+integrations.
+
+Field-level replacements:
+
+| Old option shape | v2 replacement |
+|---|---|
+| `max_tokens` | `CallOptions(max_output_tokens=...)` |
+| numeric `timeout` | `CallOptions(timeout=TimeoutOptions(total_seconds=...))` |
+| `retries` | `CallOptions(retry=RetryOptions(max_attempts=...))` |
+| `max_retry_delay_ms` | `CallOptions(retry=RetryOptions(max_delay_seconds=...))` |
+| string `reasoning` | `CallOptions(reasoning=ReasoningOptions(effort=...))` |
+| `reasoning_summary` | `ReasoningOptions(expose_summary=True)` |
+| provider hooks, `service_tier`, and provider-only controls | no core `CallOptions` field; move to contrib integrations or provider/runtime configuration |
 
 ## Error Migration
 
@@ -127,10 +140,11 @@ Do not catch provider SDK exceptions as the public contract. Catch `AIError` or
 one of its subclasses:
 
 ```python
-from loushang.ai import AIError, CallOptions
+from loushang.ai import AIError, CallOptions, complete
 
 try:
-    message = await model.complete(
+    message = await complete(
+        model,
         {"messages": [{"role": "user", "content": "hello"}]},
         CallOptions(api_key="..."),
     )

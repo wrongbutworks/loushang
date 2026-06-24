@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import asyncio
 import json
 from collections.abc import AsyncIterator, Iterator, Mapping
 from contextlib import suppress
@@ -10,7 +9,6 @@ from typing import Any, cast
 from loushang.ai.event_stream.raw_parts import RawPart
 from loushang.ai.model.domain import AnthropicMessagesConfig
 from loushang.ai.options import (
-    get_provider_option,
     get_reasoning_budget_tokens,
     get_reasoning_effort,
     is_reasoning_requested,
@@ -529,11 +527,6 @@ class AnthropicProvider(AnthropicProviderBase):
                         }:
                             lb.setdefault("cache_control", cache_control)
                     break
-        # metadata.user_id 透传
-        meta = getattr(options, "metadata", None) if options is not None else None
-        user_id = meta.get("user_id") if isinstance(meta, dict) else None
-        if isinstance(user_id, str) and user_id:
-            params["metadata"] = {"user_id": user_id}
         # temperature：仅在未启用思考时设置
         if (
             not thinking_cfg
@@ -567,18 +560,6 @@ class AnthropicProvider(AnthropicProviderBase):
             "payload", {"params": {k: v for k, v in params.items() if k != "messages"}}
         )
 
-        # on_payload 钩子
-        try:
-            onp = get_provider_option(options, "on_payload")
-            if callable(onp):
-                next_params = onp(params, model)  # 允许返回替换
-                if asyncio.iscoroutine(next_params):
-                    next_params = await next_params
-                if next_params:
-                    params = next_params  # type: ignore[assignment]
-        except Exception as e:
-            _debug("on_payload_error", {"message": str(e)})
-
         try:
             if getattr(resolved, "mode", "stream") == "complete":
                 response = await client.messages.create(**params)
@@ -588,7 +569,6 @@ class AnthropicProvider(AnthropicProviderBase):
             _debug("stream_error", {"message": str(e)})
             yield provider_error_part(e, source=self.api)
             return
-        await _notify_provider_response(options, response, model)
         if getattr(resolved, "mode", "stream") == "complete":
             for part in _iter_complete_response_parts(
                 response,
@@ -840,16 +820,6 @@ class AnthropicProvider(AnthropicProviderBase):
         except Exception as e:
             _debug("stream_iter_error", {"message": str(e)})
             yield provider_error_part(e, source=self.api)
-
-
-async def _notify_provider_response(options, response, model) -> None:
-    callback = get_provider_option(options, "on_response")
-    if not callable(callback):
-        return
-    with suppress(Exception):
-        result = callback(response, model)
-        if asyncio.iscoroutine(result):
-            await result
 
 
 def _map_stop_reason(reason: str) -> str:

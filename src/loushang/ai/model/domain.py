@@ -1127,78 +1127,6 @@ class Model:
     def supports_image_output(self) -> bool:
         return self.capabilities.supports_image_output
 
-    async def stream(
-        self,
-        context,
-        options=None,
-        *,
-        provider_registry=None,
-        registry=None,
-    ):
-        from loushang.ai.api.streaming import stream
-
-        resolved_registry = provider_registry if provider_registry is not None else registry
-        return await stream(
-            self,
-            context,
-            options=options,
-            provider_registry=resolved_registry,
-        )
-
-    async def complete(
-        self,
-        context,
-        options=None,
-        *,
-        provider_registry=None,
-        registry=None,
-    ):
-        from loushang.ai.api.streaming import complete
-
-        resolved_registry = provider_registry if provider_registry is not None else registry
-        return await complete(
-            self,
-            context,
-            options=options,
-            provider_registry=resolved_registry,
-        )
-
-    async def stream_simple(
-        self,
-        context,
-        options=None,
-        *,
-        provider_registry=None,
-        registry=None,
-    ):
-        from loushang.ai.api.streaming import stream_simple
-
-        resolved_registry = provider_registry if provider_registry is not None else registry
-        return await stream_simple(
-            self,
-            context,
-            options=options,
-            provider_registry=resolved_registry,
-        )
-
-    async def complete_simple(
-        self,
-        context,
-        options=None,
-        *,
-        provider_registry=None,
-        registry=None,
-    ):
-        from loushang.ai.api.streaming import complete_simple
-
-        resolved_registry = provider_registry if provider_registry is not None else registry
-        return await complete_simple(
-            self,
-            context,
-            options=options,
-            provider_registry=resolved_registry,
-        )
-
     def to_raw(self) -> dict[str, object]:
         raw: dict[str, object] = {
             "displayName": self.name,
@@ -1315,8 +1243,7 @@ class Provider:
                 endpoint_id: _endpoint_to_raw(
                     endpoint,
                     provider_auth=self.auth,
-                    endpoint_auth_explicit=endpoint_id
-                    in self._explicit_endpoint_auth,
+                    endpoint_auth_explicit=endpoint_id in self._explicit_endpoint_auth,
                     model_auth_explicit={
                         model_id
                         for explicit_endpoint_id, model_id in self._explicit_model_auth
