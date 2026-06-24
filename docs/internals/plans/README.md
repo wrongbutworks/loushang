@@ -11,3 +11,4 @@ This directory contains implementation plans for documentation and development w
 
 - [Loushang AI Quality Hardening Charter](./2026-06-20-loushang-ai-quality-hardening-charter.md) is the accepted branch entrypoint.
 - [Loushang AI Quality Hardening Execution Plan](./2026-06-20-loushang-ai-quality-hardening-execution-plan.md) is the detailed Plan-ID sequence and gate checklist governed by the charter.
+- [Loushang AI Core Freeze Goal](./2026-06-24-loushang-ai-core-freeze-goal.md) is the accepted execution document for the `ai/core-freeze-v1` branch.

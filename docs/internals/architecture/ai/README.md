@@ -10,6 +10,8 @@
 
 - [Loushang-AI ARD List](./ARD-list.md)
 - [ARD-001: Async Public Streaming Surface](./ARD-001-async-public-streaming-surface.md)
+- [ARD-003: AI Core Freeze Contract](./ARD-003-core-freeze-contract.md)
+- [Loushang AI Core Freeze Target Checklist](./core-freeze-target-checklist.md)
 - [Loushang AI Quality Hardening Charter](../../plans/2026-06-20-loushang-ai-quality-hardening-charter.md)
 - [Loushang-AI Adaptability NFR](./loushang-ai-adaptability-NFR.md)
 - [Loushang-AI Adaptability Design V1](./loushang-ai-adaptability-design-v1.md)
