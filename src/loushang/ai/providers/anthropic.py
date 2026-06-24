@@ -2,21 +2,25 @@ from __future__ import annotations
 
 import asyncio
 import json
-from collections.abc import AsyncIterator
-from typing import Any
+from collections.abc import AsyncIterator, Mapping
+from contextlib import suppress
+from dataclasses import dataclass, field
+from typing import Any, cast
 
-from loushang.ai.context import ensure_normalized_context
-from loushang.ai.event_stream import AssistantMessageEventStream, RawAssembler
-from loushang.ai.model.compat_schema import (
-    SEND_SESSION_AFFINITY_HEADERS,
-    SUPPORTS_LONG_CACHE_RETENTION,
-    compat_bool,
+from loushang.ai.event_stream.raw_parts import RawPart
+from loushang.ai.model.domain import EndpointProtocolFeatures, SupportStatus
+from loushang.ai.options import (
+    get_provider_option,
+    get_reasoning_budget_tokens,
+    get_reasoning_effort,
+    is_reasoning_requested,
 )
-from loushang.ai.options import PairingMode
 from loushang.ai.output_budget import resolve_output_token_budget
-from loushang.ai.provider import resolve_request_for_model
-from loushang.ai.provider.cancellation import is_signal_cancelled
-from loushang.ai.provider.errors import provider_error_part
+from loushang.ai.provider import ProviderRequest, resolve_provider_request
+from loushang.ai.provider.errors import (
+    provider_error_part,
+    provider_error_part_from_raw,
+)
 from loushang.ai.providers.anthropic_base import AnthropicProviderBase
 from loushang.ai.providers.provider_helpers import (
     apply_session_headers,
@@ -33,7 +37,7 @@ from loushang.ai.utils import parse_streaming_json, sanitize_surrogates
 
 
 def _build_anthropic_message_payloads(
-    normalized: dict[str, Any],
+    normalized: Mapping[str, Any],
     *,
     is_oauth_token: bool,
 ) -> tuple[list[dict[str, Any]], list[dict[str, str]] | None]:
@@ -43,44 +47,22 @@ def _build_anthropic_message_payloads(
     if isinstance(system_prompt, str) and system_prompt.strip():
         system_param = [{"type": "text", "text": sanitize_surrogates(system_prompt)}]
     for msg in normalized.get("messages", []):
-        role = (
-            getattr(msg, "role", None) if not isinstance(msg, dict) else msg.get("role")
-        )
+        role = getattr(msg, "role", None)
         if role == "user":
-            content = (
-                getattr(msg, "content", None)
-                if not isinstance(msg, dict)
-                else msg.get("content")
-            )
+            content = getattr(msg, "content", None)
             if isinstance(content, list):
                 user_blocks: list[dict[str, object]] = []
                 for p in content:
-                    ptype = (
-                        getattr(p, "type", None)
-                        if not isinstance(p, dict)
-                        else p.get("type")
-                    )
+                    ptype = getattr(p, "type", None)
                     if ptype == "text":
-                        txt = (
-                            getattr(p, "text", "")
-                            if not isinstance(p, dict)
-                            else p.get("text", "")
-                        )
+                        txt = getattr(p, "text", "")
                         if isinstance(txt, str) and txt.strip():
                             user_blocks.append(
                                 {"type": "text", "text": sanitize_surrogates(txt)}
                             )
                     elif ptype == "image":
-                        data = (
-                            getattr(p, "data", "")
-                            if not isinstance(p, dict)
-                            else p.get("data", "")
-                        )
-                        mime = (
-                            getattr(p, "mime_type", "")
-                            if not isinstance(p, dict)
-                            else p.get("mimeType", "")
-                        )
+                        data = getattr(p, "data", "")
+                        mime = getattr(p, "mime_type", "")
                         if (
                             isinstance(data, str)
                             and data
@@ -100,30 +82,14 @@ def _build_anthropic_message_payloads(
                 if user_blocks:
                     messages_param.append({"role": "user", "content": user_blocks})
         elif role == "assistant":
-            content = (
-                getattr(msg, "content", None)
-                if not isinstance(msg, dict)
-                else msg.get("content")
-            )
+            content = getattr(msg, "content", None)
             if isinstance(content, list):
                 assistant_blocks: list[dict[str, object]] = []
                 for p in content:
-                    ptype = (
-                        getattr(p, "type", None)
-                        if not isinstance(p, dict)
-                        else p.get("type")
-                    )
+                    ptype = getattr(p, "type", None)
                     if ptype == "image":
-                        data = (
-                            getattr(p, "data", "")
-                            if not isinstance(p, dict)
-                            else p.get("data", "")
-                        )
-                        mime = (
-                            getattr(p, "mime_type", "")
-                            if not isinstance(p, dict)
-                            else p.get("mimeType", "")
-                        )
+                        data = getattr(p, "data", "")
+                        mime = getattr(p, "mime_type", "")
                         if (
                             isinstance(data, str)
                             and data
@@ -158,21 +124,9 @@ def _build_anthropic_message_payloads(
                         {"role": "assistant", "content": assistant_blocks}
                     )
         elif role == "toolResult":
-            tool_call_id = (
-                getattr(msg, "tool_call_id", None)
-                if not isinstance(msg, dict)
-                else msg.get("toolCallId") or msg.get("tool_call_id")
-            )
-            is_error = (
-                getattr(msg, "is_error", None)
-                if not isinstance(msg, dict)
-                else msg.get("isError")
-            )
-            content = (
-                getattr(msg, "content", None)
-                if not isinstance(msg, dict)
-                else msg.get("content")
-            )
+            tool_call_id = getattr(msg, "tool_call_id", None)
+            is_error = getattr(msg, "is_error", None)
+            content = getattr(msg, "content", None)
             if isinstance(tool_call_id, str) and tool_call_id:
                 _append_tool_result_payload(
                     messages_param,
@@ -220,6 +174,42 @@ def _tool_input_to_json_delta(value: object) -> str | None:
 
 
 _MISSING = object()
+
+
+@dataclass
+class _AnthropicToolStreamState:
+    args_from_start: bool = False
+    arg_chunks: list[str] = field(default_factory=list)
+    id: str | None = None
+    name: str | None = None
+    args_source: str = "none"
+    delta_chars: int = 0
+    last_delta: dict[str, object] | None = None
+    last_snapshot: dict[str, object] | None = None
+
+
+def _get_tool_stream_state(
+    states: dict[int | None, _AnthropicToolStreamState],
+    content_index: int | None,
+) -> _AnthropicToolStreamState | None:
+    state = states.get(content_index)
+    if state is not None:
+        return state
+    if content_index is not None and len(states) == 1:
+        return states.get(None)
+    return None
+
+
+def _pop_tool_stream_state(
+    states: dict[int | None, _AnthropicToolStreamState],
+    content_index: int | None,
+) -> _AnthropicToolStreamState | None:
+    state = states.pop(content_index, None)
+    if state is not None:
+        return state
+    if content_index is not None and len(states) == 1:
+        return states.pop(None, None)
+    return None
 
 
 def _summarize_tool_input(value: object) -> dict[str, object]:
@@ -331,12 +321,10 @@ def _summarize_sdk_value(value: object) -> object:
 
     model_dump = getattr(value, "model_dump", None)
     if callable(model_dump):
-        try:
+        with suppress(Exception):
             dumped = model_dump(exclude_none=True)
             if isinstance(dumped, dict):
                 return _summarize_sdk_value(dumped)
-        except Exception:
-            pass
 
     attrs = getattr(value, "__dict__", None)
     if isinstance(attrs, dict):
@@ -361,54 +349,32 @@ class AnthropicProvider(AnthropicProviderBase):
         # 允许注入自建客户端（同步或异步），否则按需创建
         self._client = client
 
-    async def stream(self, model, context, options):
-        """
-        Anthropic 官方 SDK 适配版流接口（可选实现）。
-        注意：需要安装 `anthropic` 包；否则会在创建客户端时报错。
-        """
-        resolved = resolve_request_for_model(model, options=options)
-        stream = AssistantMessageEventStream()
-        assembler = RawAssembler(
-            stream=stream,
-            api=resolved.api,
-            provider=model.provider_id,
-            model=model.id,
-            pricing=getattr(model, "pricing", None),
+    def _stream_raw_parts(
+        self, model, context, options, request=None
+    ) -> AsyncIterator[RawPart]:
+        resolved = resolve_provider_request(
+            self.api,
+            model,
+            options=options,
+            request=request,
+        )
+        return self.stream_raw(
+            ProviderRequest(
+                model=model,
+                context=context,
+                options=options,
+                resolved=resolved,
+            )
         )
 
-        async def _run() -> None:
-            signal = getattr(options, "signal", None) if options is not None else None
-            if is_signal_cancelled(signal):
-                assembler.feed({"type": "aborted"})
-                return
-            try:
-                async for part in self._stream_raw_parts(model, context, options):
-                    if is_signal_cancelled(signal):
-                        assembler.feed({"type": "aborted"})
-                        return
-                    assembler.feed(part)
-            except Exception as error:
-                assembler.feed(provider_error_part(error, source=self.api))
-
-        stream.attach_task(asyncio.create_task(_run()))
-        return stream
-
-    async def stream_simple(self, model, context, options):
-        return await self.stream(model, context, options)
-
-    async def _stream_raw_parts(self, model, context, options) -> AsyncIterator[dict]:
-        def _pairing_mode() -> PairingMode:
-            if options is None:
-                return "repair"
-            pairing_mode = getattr(options, "pairing_mode", "repair")
-            if pairing_mode == "strict":
-                return "strict"
-            return "repair"
-
+    async def stream_raw(self, request: ProviderRequest) -> AsyncIterator[RawPart]:
         """
         将 Anthropic SDK 的 streaming 事件映射到 RawPart。
         当前实现覆盖文本、thinking、signature、redacted thinking、工具增量、usage、stop_reason 与完成事件。
         """
+        model = request.model
+        options = request.options
+        resolved = request.resolved
 
         def _debug(event: str, data: dict | None = None) -> None:
             payload = {"type": f"sdk:{event}"}
@@ -417,13 +383,8 @@ class AnthropicProvider(AnthropicProviderBase):
                     payload["event_type" if key == "type" else key] = value
             _emit_trace(options, payload)
 
-        normalized = ensure_normalized_context(
-            context,
-            model=model,
-            pairing_mode=_pairing_mode(),
-        )
-        resolved = resolve_request_for_model(model, options=options)
-        compat = dict(getattr(resolved, "compat", {}) or {})
+        normalized = request.context
+        protocol = _request_protocol(resolved)
 
         headers = resolved.headers or {}
         api_key = extract_sdk_api_key(
@@ -445,15 +406,16 @@ class AnthropicProvider(AnthropicProviderBase):
 
         # 仅透传非鉴权头作为默认头（如 anthropic-version），鉴权用 api_key 参数避免重复
         default_headers = sdk_default_headers(headers)
-        # 门闸：按 compat/headers 决定是否注入 beta（与 httpx 对齐）
+        # 门闸：按 typed protocol/headers 决定是否注入 beta（与 httpx 对齐）
         need_ilt = self.should_inject_interleaved_thinking(
             model_id=model.id,
             options=options,
-            compat=compat,
+            protocol=protocol,
         )
         need_fg = self.should_inject_fine_grained_tools(
-            compat=compat,
+            protocol=protocol,
             headers=default_headers,
+            transport_kind=getattr(getattr(resolved, "transport", None), "kind", None),
         )
         if need_ilt or need_fg:
             default_headers = self.apply_beta_headers(
@@ -477,7 +439,7 @@ class AnthropicProvider(AnthropicProviderBase):
             cache_retention != "none"
             and isinstance(session_id, str)
             and session_id
-            and compat_bool(compat, SEND_SESSION_AFFINITY_HEADERS)
+            and _is_supported(protocol.session.affinity_headers)
         ):
             apply_session_headers(
                 default_headers,
@@ -496,6 +458,7 @@ class AnthropicProvider(AnthropicProviderBase):
             normalized,
             is_oauth_token=is_oauth_token,
         )
+        upstream_model_id = getattr(resolved, "upstream_model_id", None) or model.id
 
         tools_param = None
         if normalized.get("tools"):
@@ -511,51 +474,26 @@ class AnthropicProvider(AnthropicProviderBase):
                     }
                 )
 
-        max_tokens = resolve_output_token_budget(model, resolved, options).value
+        max_tokens = resolve_output_token_budget(model, resolved).value
         thinking_cfg: dict[str, object] | None = None
         # 思考模式：自适应或预算式；与 temperature 互斥
-        try:
-            want_thinking = normalized.get("emit_thinking") or (
-                options is not None and getattr(options, "thinking_enabled", False)
-            )
-            if want_thinking:
-                if self.supports_adaptive_thinking(model.id):
-                    thinking_cfg = {"type": "adaptive"}
-                    # effort 由 reasoning 等级映射
-                    effort = self.map_thinking_level_to_effort(
-                        getattr(options, "effort", None), model.id
-                    )  # effort 可直接来自 options.effort
-                    if effort is None:
-                        reasoning = getattr(options, "reasoning", None)
-                        effort = self.map_thinking_level_to_effort(reasoning, model.id)
-                    # 将 effort 合并到 output_config
-                    if effort:
-                        try:
-                            # 在 params 构造后统一注入
-                            pass
-                        except Exception:
-                            pass
-                else:
-                    thinking_budget_tokens = getattr(
-                        options, "thinking_budget_tokens", None
-                    )
-                    thinking_cfg = {
-                        "type": "enabled",
-                        "budget_tokens": thinking_budget_tokens
-                        if isinstance(thinking_budget_tokens, int)
-                        else 1024,
-                    }
-                # 与思考互斥：移除 temperature
-                if (
-                    options is not None
-                    and getattr(options, "temperature", None) is not None
-                ):
-                    pass  # 不放入 params（下方设置时跳过）
-        except Exception:
-            pass
+        want_thinking = normalized.get("emit_thinking") or is_reasoning_requested(
+            options
+        )
+        if want_thinking:
+            if self.supports_adaptive_thinking(model.id):
+                thinking_cfg = {"type": "adaptive"}
+            else:
+                thinking_budget_tokens = get_reasoning_budget_tokens(options)
+                thinking_cfg = {
+                    "type": "enabled",
+                    "budget_tokens": thinking_budget_tokens
+                    if isinstance(thinking_budget_tokens, int)
+                    else 1024,
+                }
 
         params: dict[str, Any] = {
-            "model": model.id,
+            "model": upstream_model_id,
             "messages": messages_param,
             "max_tokens": max(1, int(max_tokens)),
         }
@@ -566,16 +504,13 @@ class AnthropicProvider(AnthropicProviderBase):
         if thinking_cfg:
             params["thinking"] = thinking_cfg
         # 若存在自适应思考的 effort，注入 output_config
-        want_thinking = normalized.get("emit_thinking") or (
-            options is not None and getattr(options, "thinking_enabled", False)
+        want_thinking = normalized.get("emit_thinking") or is_reasoning_requested(
+            options
         )
         if want_thinking and self.supports_adaptive_thinking(model.id):
             effort = self.map_thinking_level_to_effort(
-                getattr(options, "effort", None), model.id
+                get_reasoning_effort(options), model.id
             )
-            if effort is None:
-                reasoning = getattr(options, "reasoning", None)
-                effort = self.map_thinking_level_to_effort(reasoning, model.id)
             if effort:
                 params["output_config"] = {"effort": effort}
         # 透传 tool_choice（auto/any/none 或 {type:'tool', name:...}）
@@ -591,9 +526,7 @@ class AnthropicProvider(AnthropicProviderBase):
             cache_retention=getattr(options, "cache_retention", None)
             if options is not None
             else None,
-            supports_long_cache_retention=compat_bool(
-                compat, SUPPORTS_LONG_CACHE_RETENTION, default=True
-            ),
+            supports_long_cache_retention=_is_supported(protocol.cache.long_retention),
         )
         cache_control = cc.get("cacheControl")
         if cache_control:
@@ -654,7 +587,7 @@ class AnthropicProvider(AnthropicProviderBase):
 
         # on_payload 钩子
         try:
-            onp = getattr(options, "on_payload", None) if options is not None else None
+            onp = get_provider_option(options, "on_payload")
             if callable(onp):
                 next_params = onp(params, model)  # 允许返回替换
                 if asyncio.iscoroutine(next_params):
@@ -673,15 +606,7 @@ class AnthropicProvider(AnthropicProviderBase):
         await _notify_provider_response(options, stream_ctx, model)
         # 启动事件：发出 response_start（若 SDK 提供 id 会在后续 message_start 拿到）
         # 主循环（SDK 为 async context manager）
-        active_tool_block = False
-        active_tool_args_from_start = False
-        active_tool_arg_chunks: list[str] = []
-        active_tool_id: str | None = None
-        active_tool_name: str | None = None
-        active_tool_args_source = "none"
-        active_tool_delta_chars = 0
-        active_tool_last_delta: dict[str, object] | None = None
-        active_tool_last_snapshot: dict[str, object] | None = None
+        active_tool_blocks: dict[int | None, _AnthropicToolStreamState] = {}
         try:
             async with stream_ctx as stream:
                 async for event in stream:
@@ -710,15 +635,8 @@ class AnthropicProvider(AnthropicProviderBase):
                         continue
                     if etype == "content_block_start":
                         cblk = getattr(event, "content_block", None)
-                        active_tool_block = False
-                        active_tool_args_from_start = False
-                        active_tool_arg_chunks = []
-                        active_tool_id = None
-                        active_tool_name = None
-                        active_tool_args_source = "none"
-                        active_tool_delta_chars = 0
-                        active_tool_last_delta = None
-                        active_tool_last_snapshot = None
+                        content_index = _optional_int(getattr(event, "index", None))
+                        active_tool_blocks.pop(content_index, None)
                         # text/thinking/tool_use 起始：我们只需开始时打标，增量通过 delta 下发
                         # 目前 RawAssembler 不依赖 *_start 事件，故不强制发送 start，减少噪音
                         if (
@@ -729,38 +647,50 @@ class AnthropicProvider(AnthropicProviderBase):
                             tid = getattr(cblk, "id", None)
                             tname = getattr(cblk, "name", None)
                             if isinstance(tid, str) and isinstance(tname, str) and tid:
-                                active_tool_block = True
-                                active_tool_id = tid
-                                active_tool_name = (
-                                    self.from_oauth_tool_name(
-                                        tname, normalized.get("tools")
-                                    )
-                                    if is_oauth_token
-                                    else tname
+                                new_tool_state = _AnthropicToolStreamState(
+                                    id=tid,
+                                    name=(
+                                        self.from_oauth_tool_name(
+                                            tname, normalized.get("tools")
+                                        )
+                                        if is_oauth_token
+                                        else tname
+                                    ),
                                 )
-                                input_value = getattr(cblk, "input", _MISSING)
+                                active_tool_blocks[content_index] = new_tool_state
+                                active_tool_name = new_tool_state.name
+                                active_tool_id = new_tool_state.id
                                 _debug(
                                     "tool_start",
                                     {
                                         "id": active_tool_id,
                                         "name": active_tool_name,
-                                        "input": _summarize_tool_input(input_value),
+                                        "input": _summarize_tool_input(
+                                            getattr(cblk, "input", _MISSING)
+                                        ),
                                     },
                                 )
-                                yield {
+                                start_part: dict[str, object] = {
                                     "type": "tool_call_start",
                                     "id": tid,
                                     "name": active_tool_name,
                                 }
+                                if content_index is not None:
+                                    start_part["index"] = content_index
+                                yield _raw_part(start_part)
+                                input_value = getattr(cblk, "input", _MISSING)
                                 input_delta = _tool_input_to_json_delta(input_value)
                                 if input_delta:
-                                    active_tool_args_from_start = True
-                                    active_tool_args_source = "content_block.input"
-                                    active_tool_arg_chunks = [input_delta]
-                                    yield {
+                                    new_tool_state.args_from_start = True
+                                    new_tool_state.args_source = "content_block.input"
+                                    new_tool_state.arg_chunks = [input_delta]
+                                    args_part: dict[str, object] = {
                                         "type": "tool_call_args_delta",
                                         "delta": input_delta,
                                     }
+                                    if content_index is not None:
+                                        args_part["index"] = content_index
+                                    yield _raw_part(args_part)
                         elif (
                             cblk is not None
                             and getattr(cblk, "type", None) == "redacted_thinking"
@@ -773,12 +703,16 @@ class AnthropicProvider(AnthropicProviderBase):
                                 }
                         continue
                     if etype == "content_block_delta":
+                        content_index = _optional_int(getattr(event, "index", None))
                         delta = getattr(event, "delta", None)
-                        if active_tool_block:
+                        active_tool_state = _get_tool_stream_state(
+                            active_tool_blocks, content_index
+                        )
+                        if active_tool_state is not None:
                             snapshot = getattr(event, "snapshot", None)
                             if snapshot is not None:
-                                active_tool_last_snapshot = _summarize_tool_snapshot(
-                                    snapshot
+                                active_tool_state.last_snapshot = (
+                                    _summarize_tool_snapshot(snapshot)
                                 )
                         if (
                             delta is not None
@@ -811,47 +745,56 @@ class AnthropicProvider(AnthropicProviderBase):
                         ):
                             partial = getattr(delta, "partial_json", None)
                             if isinstance(partial, str) and partial:
-                                active_tool_block = True
-                                active_tool_delta_chars += len(partial)
-                                active_tool_last_delta = _summarize_tool_delta(delta)
-                                if not active_tool_args_from_start:
-                                    active_tool_args_source = "input_json_delta"
-                                    active_tool_arg_chunks.append(partial)
-                                    yield {
+                                if active_tool_state is None:
+                                    active_tool_state = _AnthropicToolStreamState()
+                                    active_tool_blocks[content_index] = (
+                                        active_tool_state
+                                    )
+                                active_tool_state.delta_chars += len(partial)
+                                active_tool_state.last_delta = _summarize_tool_delta(
+                                    delta
+                                )
+                                if not active_tool_state.args_from_start:
+                                    active_tool_state.args_source = "input_json_delta"
+                                    active_tool_state.arg_chunks.append(partial)
+                                    args_part = {
                                         "type": "tool_call_args_delta",
                                         "delta": partial,
                                     }
-                        elif active_tool_block and delta is not None:
-                            active_tool_last_delta = _summarize_tool_delta(delta)
+                                    if content_index is not None:
+                                        args_part["index"] = content_index
+                                    yield _raw_part(args_part)
+                        elif active_tool_state is not None and delta is not None:
+                            active_tool_state.last_delta = _summarize_tool_delta(delta)
                         continue
                     if etype == "content_block_stop":
+                        content_index = _optional_int(getattr(event, "index", None))
                         # 工具块结束：发出 tool_call_done（不带 payload，RawAssembler 内部汇总参数）
-                        if active_tool_block:
+                        active_tool_state = _pop_tool_stream_state(
+                            active_tool_blocks, content_index
+                        )
+                        if active_tool_state is not None:
                             tool_trace = {
-                                "id": active_tool_id,
-                                "name": active_tool_name,
-                                "args_source": active_tool_args_source,
-                                "delta_chars": active_tool_delta_chars,
+                                "id": active_tool_state.id,
+                                "name": active_tool_state.name,
+                                "args_source": active_tool_state.args_source,
+                                "delta_chars": active_tool_state.delta_chars,
                                 "args": _summarize_tool_args_json(
-                                    "".join(active_tool_arg_chunks)
+                                    "".join(active_tool_state.arg_chunks)
                                 ),
                             }
-                            if active_tool_args_source == "none":
-                                tool_trace["last_delta"] = active_tool_last_delta
-                                tool_trace["last_snapshot"] = active_tool_last_snapshot
+                            if active_tool_state.args_source == "none":
+                                tool_trace["last_delta"] = active_tool_state.last_delta
+                                tool_trace["last_snapshot"] = (
+                                    active_tool_state.last_snapshot
+                                )
                                 _debug("tool_empty_args", tool_trace)
                             else:
                                 _debug("tool_done", tool_trace)
-                            yield {"type": "tool_call_done"}
-                            active_tool_block = False
-                            active_tool_args_from_start = False
-                            active_tool_arg_chunks = []
-                            active_tool_id = None
-                            active_tool_name = None
-                            active_tool_args_source = "none"
-                            active_tool_delta_chars = 0
-                            active_tool_last_delta = None
-                            active_tool_last_snapshot = None
+                            done_part: dict[str, object] = {"type": "tool_call_done"}
+                            if content_index is not None:
+                                done_part["index"] = content_index
+                            yield _raw_part(done_part)
                         continue
                     if etype == "message_delta":
                         delta = getattr(event, "delta", None)
@@ -860,10 +803,11 @@ class AnthropicProvider(AnthropicProviderBase):
                             mapped = _map_stop_reason(stop_reason)
                             yield {"type": "stop_reason", "stop_reason": mapped}
                             if mapped == "error":
-                                yield {
-                                    "type": "response_error",
-                                    "message": f"provider stop_reason={stop_reason}",
-                                }
+                                yield provider_error_part_from_raw(
+                                    f"provider stop_reason={stop_reason}",
+                                    code=stop_reason,
+                                    source=self.api,
+                                )
                         usage = getattr(event, "usage", None)
                         if usage:
                             yield {
@@ -891,25 +835,25 @@ class AnthropicProvider(AnthropicProviderBase):
                     if etype == "error":
                         err = getattr(event, "error", None)
                         msg = getattr(err, "message", None) if err is not None else None
-                        yield {
-                            "type": "response_error",
-                            "message": msg or "Unknown error",
-                        }
+                        code = getattr(err, "type", None) if err is not None else None
+                        yield provider_error_part_from_raw(
+                            msg or "Unknown error",
+                            code=code,
+                            source=self.api,
+                        )
         except Exception as e:
             _debug("stream_iter_error", {"message": str(e)})
             yield provider_error_part(e, source=self.api)
 
 
 async def _notify_provider_response(options, response, model) -> None:
-    callback = getattr(options, "on_response", None) if options is not None else None
+    callback = get_provider_option(options, "on_response")
     if not callable(callback):
         return
-    try:
+    with suppress(Exception):
         result = callback(response, model)
         if asyncio.iscoroutine(result):
             await result
-    except Exception:
-        pass
 
 
 def _map_stop_reason(reason: str) -> str:
@@ -922,3 +866,24 @@ def _map_stop_reason(reason: str) -> str:
     if reason in {"refusal", "sensitive"}:
         return "error"
     raise ValueError(f"Unhandled stop reason: {reason}")
+
+
+def _request_protocol(request: object) -> EndpointProtocolFeatures:
+    protocol = getattr(request, "adapter_protocol", None)
+    if isinstance(protocol, EndpointProtocolFeatures):
+        return protocol
+    return EndpointProtocolFeatures()
+
+
+def _raw_part(part: dict[str, object]) -> RawPart:
+    return cast(RawPart, part)
+
+
+def _is_supported(status: SupportStatus) -> bool:
+    return status is SupportStatus.SUPPORTED
+
+
+def _optional_int(value: object) -> int | None:
+    if isinstance(value, bool):
+        return None
+    return value if isinstance(value, int) else None

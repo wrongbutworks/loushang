@@ -1,17 +1,16 @@
 from __future__ import annotations
 
-from typing import Mapping
+from collections.abc import Mapping
 
 from loushang.ai.auth.oauth import GetOAuthApiKeyResult
 from loushang.ai.auth.providers.anthropic import AnthropicOAuthProvider
-from loushang.ai.auth.providers.openai_codex import OpenAICodexOAuthProvider
 from loushang.ai.auth.registry import OAuthProviderRegistry, get_default_oauth_registry
 from loushang.ai.auth.storage import (
     find_scoped_credential,
     load_credential_store,
-    save_credential_store,
     save_credentials,
     set_scoped_credential,
+    update_credential_store,
 )
 from loushang.ai.auth.types import (
     OAuthCredentials,
@@ -63,14 +62,11 @@ def ensure_builtin_oauth_providers(
     *, registry: OAuthProviderRegistry | None = None
 ) -> None:
     resolved_registry = registry or get_default_oauth_registry()
-    if resolved_registry.get_oauth_provider("openai-codex") is None:
-        _register_builtin_openai_codex(resolved_registry)
     if resolved_registry.get_oauth_provider("anthropic") is None:
         _register_builtin_anthropic(resolved_registry)
 
 
 def _register_builtin_oauth_providers(registry: OAuthProviderRegistry) -> None:
-    _register_builtin_openai_codex(registry)
     _register_builtin_anthropic(registry)
 
 
@@ -78,14 +74,6 @@ def _register_builtin_anthropic(
     registry: OAuthProviderRegistry,
 ) -> OAuthProviderInterface:
     provider = AnthropicOAuthProvider()
-    registry.register_oauth_provider(provider, source_id="builtin")
-    return provider
-
-
-def _register_builtin_openai_codex(
-    registry: OAuthProviderRegistry,
-) -> OAuthProviderInterface:
-    provider = OpenAICodexOAuthProvider()
     registry.register_oauth_provider(provider, source_id="builtin")
     return provider
 
@@ -121,14 +109,14 @@ async def oauth_login(
             stored[provider_id] = next_credentials
             save_credentials(stored)
         else:
-            store = load_credential_store()
-            set_scoped_credential(
-                store,
-                next_credentials,
-                endpoint_id=endpoint_id,
-                model_id=model_id,
+            update_credential_store(
+                lambda store: set_scoped_credential(
+                    store,
+                    next_credentials,
+                    endpoint_id=endpoint_id,
+                    model_id=model_id,
+                )
             )
-            save_credential_store(store)
     return next_credentials
 
 
@@ -139,12 +127,12 @@ async def oauth_refresh(
     registry: OAuthProviderRegistry | None = None,
     endpoint_id: str | None = None,
     model_id: str | None = None,
-    persist: bool = True,
+    persist: bool | None = None,
 ) -> OAuthCredentials:
     provider = get_oauth_provider(provider_id, registry=registry)
     if provider is None:
         raise ValueError(f"OAuth provider not found: {provider_id}")
-    store = load_credential_store() if (persist or credentials is None) else None
+    store = load_credential_store() if credentials is None else None
     current = credentials
     if current is None and store is not None:
         current = find_scoped_credential(
@@ -156,16 +144,16 @@ async def oauth_refresh(
     if current is None:
         raise ValueError(f"OAuth credentials not found for provider: {provider_id}")
     refreshed = await provider.refresh_token(current)
-    if persist:
-        if store is None:
-            store = load_credential_store()
-        set_scoped_credential(
-            store,
-            refreshed,
-            endpoint_id=endpoint_id,
-            model_id=model_id,
+    should_persist = credentials is None if persist is None else persist
+    if should_persist:
+        update_credential_store(
+            lambda next_store: set_scoped_credential(
+                next_store,
+                refreshed,
+                endpoint_id=endpoint_id,
+                model_id=model_id,
+            )
         )
-        save_credential_store(store)
     return refreshed
 
 
@@ -175,7 +163,7 @@ def resolve_oauth_api_key(
     credentials: Mapping[str, OAuthCredentials] | None = None,
     endpoint_id: str | None = None,
     model_id: str | None = None,
-    persist_refresh: bool = True,
+    persist_refresh: bool | None = None,
 ) -> GetOAuthApiKeyResult | None:
     from loushang.ai.auth.oauth import get_oauth_api_key
 
@@ -184,7 +172,7 @@ def resolve_oauth_api_key(
         result = get_oauth_api_key(provider_id, stored)
         if result is None:
             return None
-        if persist_refresh:
+        if persist_refresh is True:
             stored[provider_id] = result["newCredentials"]
             save_credentials(stored)
         return result
@@ -201,12 +189,13 @@ def resolve_oauth_api_key(
     result = get_oauth_api_key(provider_id, {provider_id: credential})
     if result is None:
         return None
-    if persist_refresh:
-        set_scoped_credential(
-            store,
-            result["newCredentials"],
-            endpoint_id=endpoint_id,
-            model_id=model_id,
+    if persist_refresh is not False:
+        update_credential_store(
+            lambda next_store: set_scoped_credential(
+                next_store,
+                result["newCredentials"],
+                endpoint_id=endpoint_id,
+                model_id=model_id,
+            )
         )
-        save_credential_store(store)
     return result

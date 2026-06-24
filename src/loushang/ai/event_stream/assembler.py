@@ -1,5 +1,9 @@
 from __future__ import annotations
 
+from collections.abc import Callable, Mapping
+from contextlib import suppress
+from dataclasses import dataclass, field
+from time import time
 from typing import cast
 
 from loushang.ai.event_stream.raw_parts import (
@@ -24,9 +28,13 @@ from loushang.ai.event_stream.raw_parts import (
 )
 from loushang.ai.event_stream.stream import AssistantMessageEventStream
 from loushang.ai.pricing import calculate_usage_cost
-from loushang.ai.provider.errors import is_http_status_code
+from loushang.ai.provider.errors import (
+    is_http_status_code,
+    provider_error_info_from_raw,
+)
 from loushang.ai.types import (
     AssistantMessage,
+    AssistantMessageEvent,
     DoneEvent,
     ErrorEvent,
     ImageEndEvent,
@@ -51,6 +59,15 @@ from loushang.ai.types import (
 from loushang.ai.utils.json_parse import parse_streaming_json
 
 
+@dataclass
+class _ToolCallBuffer:
+    id: str
+    name: str
+    index: int | None
+    args_chunks: list[str] = field(default_factory=list)
+    thought_signature: str | None = None
+
+
 class RawAssembler:
     def __init__(
         self,
@@ -60,12 +77,14 @@ class RawAssembler:
         provider: str,
         model: str,
         pricing=None,
+        clock: Callable[[], float] = time,
     ) -> None:
         self._stream = stream
         self._api = api
         self._provider = provider
         self._model = model
         self._pricing = pricing
+        self._clock = clock
         self._response_id: str | None = None
         self._text_chunks: list[str] = []
         self._text_signature: str | None = None
@@ -75,10 +94,8 @@ class RawAssembler:
         self._images: list[ImagePart] = []
         self._tool_calls: list[ToolCall] = []
         self._tool_calls_by_id: dict[str, ToolCall] = {}
-        self._active_tool_call_id: str | None = None
-        self._active_tool_call_name: str | None = None
-        self._active_tool_call_args_chunks: list[str] = []
-        self._active_tool_call_thought_signature: str | None = None
+        self._active_tool_call_buffers_by_id: dict[str, _ToolCallBuffer] = {}
+        self._active_tool_call_buffers_by_index: dict[int, _ToolCallBuffer] = {}
         self._content_order: list[tuple[str, str | None]] = []
         self._stop_reason = "stop"
         self._usage = Usage(
@@ -87,23 +104,26 @@ class RawAssembler:
             cache_read=0,
             cache_write=0,
             total_tokens=0,
-            cost={},
+            cost=None,
         )
         self._usage_cost_multiplier = 1.0
         self._final_message: AssistantMessage | None = None
         self._started = False
         self._text_started = False
         self._thinking_started = False
-        self._tool_call_started = False
+        self._queued_events: list[AssistantMessageEvent] | None = None
+        self._terminal_emitted = False
 
     def feed(self, part: RawPart) -> None:
+        if self._terminal_emitted:
+            return
         part_type = part["type"]
 
         if part_type == "response_start":
             response_part = cast(ResponseStartPart, part)
             self._response_id = response_part["response_id"]
             if not self._started:
-                self._stream.push(
+                self._push_event(
                     cast(
                         StartEvent,
                         {"type": "start", "partial": self._build_partial_message()},
@@ -115,7 +135,7 @@ class RawAssembler:
         if part_type == "text_delta":
             text_part = cast(TextDeltaPart, part)
             if not self._started:
-                self._stream.push(
+                self._push_event(
                     cast(
                         StartEvent,
                         {"type": "start", "partial": self._build_partial_message()},
@@ -125,7 +145,7 @@ class RawAssembler:
             if not self._text_started:
                 self._text_started = True
                 content_index = self._ensure_content_block("text")
-                self._stream.push(
+                self._push_event(
                     cast(
                         TextStartEvent,
                         {
@@ -136,7 +156,7 @@ class RawAssembler:
                     )
                 )
             self._text_chunks.append(text_part["text"])
-            self._stream.push(
+            self._push_event(
                 cast(
                     TextDeltaEvent,
                     {
@@ -157,7 +177,7 @@ class RawAssembler:
         if part_type == "thinking_delta":
             thinking_part = cast(ThinkingDeltaPart, part)
             if not self._started:
-                self._stream.push(
+                self._push_event(
                     cast(
                         StartEvent,
                         {"type": "start", "partial": self._build_partial_message()},
@@ -167,7 +187,7 @@ class RawAssembler:
             if not self._thinking_started:
                 self._thinking_started = True
                 content_index = self._ensure_content_block("thinking")
-                self._stream.push(
+                self._push_event(
                     cast(
                         ThinkingStartEvent,
                         {
@@ -178,7 +198,7 @@ class RawAssembler:
                     )
                 )
             self._thinking_chunks.append(thinking_part["text"])
-            self._stream.push(
+            self._push_event(
                 cast(
                     ThinkingDeltaEvent,
                     {
@@ -194,7 +214,7 @@ class RawAssembler:
         if part_type == "thinking_signature_delta":
             thinking_signature_part = cast(ThinkingSignatureDeltaPart, part)
             if not self._started:
-                self._stream.push(
+                self._push_event(
                     cast(
                         StartEvent,
                         {"type": "start", "partial": self._build_partial_message()},
@@ -204,7 +224,7 @@ class RawAssembler:
             if not self._thinking_started:
                 self._thinking_started = True
                 content_index = self._ensure_content_block("thinking")
-                self._stream.push(
+                self._push_event(
                     cast(
                         ThinkingStartEvent,
                         {
@@ -220,7 +240,7 @@ class RawAssembler:
         if part_type == "redacted_thinking":
             redacted_part = cast(RedactedThinkingPart, part)
             if not self._started:
-                self._stream.push(
+                self._push_event(
                     cast(
                         StartEvent,
                         {"type": "start", "partial": self._build_partial_message()},
@@ -230,7 +250,7 @@ class RawAssembler:
             if not self._thinking_started:
                 self._thinking_started = True
                 content_index = self._ensure_content_block("thinking")
-                self._stream.push(
+                self._push_event(
                     cast(
                         ThinkingStartEvent,
                         {
@@ -249,22 +269,24 @@ class RawAssembler:
         if part_type == "tool_call_start":
             tool_call_start_part = cast(ToolCallStartPart, part)
             if not self._started:
-                self._stream.push(
+                self._push_event(
                     cast(
                         StartEvent,
                         {"type": "start", "partial": self._build_partial_message()},
                     )
                 )
                 self._started = True
-            self._active_tool_call_id = tool_call_start_part["id"]
-            self._active_tool_call_name = tool_call_start_part["name"]
-            self._active_tool_call_args_chunks = []
-            self._active_tool_call_thought_signature = None
-            self._tool_call_started = True
-            content_index = self._ensure_content_block(
-                "tool", tool_call_start_part["id"]
+            index = _optional_int(tool_call_start_part.get("index"))
+            start_buffer = _ToolCallBuffer(
+                id=tool_call_start_part["id"],
+                name=tool_call_start_part["name"],
+                index=index,
             )
-            self._stream.push(
+            self._active_tool_call_buffers_by_id[start_buffer.id] = start_buffer
+            if index is not None:
+                self._active_tool_call_buffers_by_index[index] = start_buffer
+            content_index = self._ensure_content_block("tool", start_buffer.id)
+            self._push_event(
                 cast(
                     ToolCallStartEvent,
                     {
@@ -278,19 +300,16 @@ class RawAssembler:
 
         if part_type == "tool_call_args_delta":
             tool_call_args_part = cast(ToolCallArgsDeltaPart, part)
-            if (
-                not self._tool_call_started
-                or self._active_tool_call_id is None
-                or self._active_tool_call_name is None
-            ):
+            delta_buffer = self._resolve_active_tool_call_buffer(tool_call_args_part)
+            if delta_buffer is None:
                 raise RuntimeError("tool call delta received before tool call start")
-            self._active_tool_call_args_chunks.append(tool_call_args_part["delta"])
-            self._stream.push(
+            delta_buffer.args_chunks.append(tool_call_args_part["delta"])
+            self._push_event(
                 cast(
                     ToolCallDeltaEvent,
                     {
                         "type": "toolcall_delta",
-                        "content_index": self._toolcall_content_index(),
+                        "content_index": self._toolcall_content_index(delta_buffer),
                         "delta": tool_call_args_part["delta"],
                         "partial": self._build_partial_message(),
                     },
@@ -299,20 +318,17 @@ class RawAssembler:
             return
 
         if part_type == "tool_call_done":
-            cast(ToolCallDonePart, part)
-            if (
-                not self._tool_call_started
-                or self._active_tool_call_id is None
-                or self._active_tool_call_name is None
-            ):
+            tool_call_done_part = cast(ToolCallDonePart, part)
+            done_buffer = self._resolve_active_tool_call_buffer(tool_call_done_part)
+            if done_buffer is None:
                 raise RuntimeError("tool call done received before tool call start")
-            tool_call = self._build_active_tool_call()
-            self._stream.push(
+            tool_call = self._build_tool_call(done_buffer)
+            self._push_event(
                 cast(
                     ToolCallEndEvent,
                     {
                         "type": "toolcall_end",
-                        "content_index": self._toolcall_content_index(),
+                        "content_index": self._toolcall_content_index(done_buffer),
                         "tool_call": tool_call,
                         "partial": self._build_partial_message(),
                     },
@@ -320,21 +336,16 @@ class RawAssembler:
             )
             self._tool_calls.append(tool_call)
             self._tool_calls_by_id[tool_call.id] = tool_call
-            self._active_tool_call_id = None
-            self._active_tool_call_name = None
-            self._active_tool_call_args_chunks = []
-            self._active_tool_call_thought_signature = None
-            self._tool_call_started = False
+            self._remove_active_tool_call_buffer(done_buffer)
             return
 
         if part_type == "tool_call_thought_signature":
             tool_call_signature_part = cast(ToolCallThoughtSignaturePart, part)
-            if (
-                self._tool_call_started
-                and self._active_tool_call_id
-                == tool_call_signature_part["tool_call_id"]
-            ):
-                self._active_tool_call_thought_signature = tool_call_signature_part[
+            signature_buffer = self._active_tool_call_buffers_by_id.get(
+                tool_call_signature_part["tool_call_id"]
+            )
+            if signature_buffer is not None:
+                signature_buffer.thought_signature = tool_call_signature_part[
                     "thought_signature"
                 ]
                 return
@@ -355,7 +366,7 @@ class RawAssembler:
         if part_type == "image_part":
             image_part = cast(ImagePartRaw, part)
             if not self._started:
-                self._stream.push(
+                self._push_event(
                     cast(
                         StartEvent,
                         {"type": "start", "partial": self._build_partial_message()},
@@ -372,7 +383,7 @@ class RawAssembler:
                 "image", str(len(self._images) - 1)
             )
             partial = self._build_partial_message()
-            self._stream.push(
+            self._push_event(
                 cast(
                     ImageStartEvent,
                     {
@@ -382,7 +393,7 @@ class RawAssembler:
                     },
                 )
             )
-            self._stream.push(
+            self._push_event(
                 cast(
                     ImageEndEvent,
                     {
@@ -437,7 +448,7 @@ class RawAssembler:
             self._finalize_usage_cost()
             for kind, _key in self._content_order:
                 if kind == "text" and self._text_started:
-                    self._stream.push(
+                    self._push_event(
                         cast(
                             TextEndEvent,
                             {
@@ -449,7 +460,7 @@ class RawAssembler:
                         )
                     )
                 elif kind == "thinking" and self._thinking_started:
-                    self._stream.push(
+                    self._push_event(
                         cast(
                             ThinkingEndEvent,
                             {
@@ -464,7 +475,7 @@ class RawAssembler:
                 stop_reason=self._stop_reason, error_message=None
             )
             self._final_message = message
-            self._stream.push(
+            self._push_event(
                 cast(
                     DoneEvent,
                     {
@@ -474,6 +485,7 @@ class RawAssembler:
                     },
                 )
             )
+            self._terminal_emitted = True
             return
 
         if part_type == "aborted":
@@ -482,33 +494,62 @@ class RawAssembler:
                 stop_reason="aborted", error_message="aborted"
             )
             self._final_message = message
-            self._stream.push(
+            self._push_event(
                 cast(
                     ErrorEvent,
                     {"type": "error", "reason": "aborted", "error": message},
                 )
             )
+            self._terminal_emitted = True
             return
 
         if part_type == "response_error":
             response_error_part = cast(ResponseErrorPart, part)
+            error_info = provider_error_info_from_raw(
+                response_error_part,
+                source=self._api,
+                provider=self._provider,
+                model=self._model,
+            )
             message = self._build_message(
                 stop_reason="error",
-                error_message=response_error_part.get("message", "Unknown error"),
+                error_message=error_info.message,
             )
             error_event: ErrorEvent = {
                 "type": "error",
                 "reason": "error",
                 "error": message,
+                "error_info": error_info.to_dict(),
             }
             code = _http_status_code(response_error_part.get("code"))
             if code is not None:
                 error_event["code"] = code
             self._final_message = message
-            self._stream.push(error_event)
+            self._push_event(error_event)
+            self._terminal_emitted = True
             return
 
         raise ValueError(f"Unsupported raw part type: {part_type}")
+
+    async def emit(self, part: RawPart) -> None:
+        if self._queued_events is not None:
+            raise RuntimeError("Raw assembler async emit is already active")
+        self._queued_events = []
+        try:
+            self.feed(part)
+            queued_events = self._queued_events
+        finally:
+            self._queued_events = None
+        if queued_events is None:
+            return
+        for event in queued_events:
+            await self._stream.emit(event)
+
+    def _push_event(self, event: AssistantMessageEvent) -> None:
+        if self._queued_events is not None:
+            self._queued_events.append(event)
+            return
+        self._stream.push(event)
 
     def result_nowait(self) -> AssistantMessage:
         if self._final_message is None:
@@ -518,12 +559,14 @@ class RawAssembler:
     def _finalize_usage_cost(self) -> None:
         if self._pricing is None:
             return
-        try:
+        with suppress(Exception):
             computed = calculate_usage_cost(
                 self._pricing,
                 self._usage,
                 multiplier=self._usage_cost_multiplier,
             )
+            if computed is None:
+                return
             self._usage = Usage(
                 input=self._usage.input,
                 output=self._usage.output,
@@ -532,8 +575,6 @@ class RawAssembler:
                 total_tokens=self._usage.total_tokens,
                 cost=computed,
             )
-        except Exception:
-            pass
 
     def _build_message(
         self, *, stop_reason: str, error_message: str | None
@@ -548,7 +589,7 @@ class RawAssembler:
             usage=self._usage,
             stop_reason=_assistant_stop_reason(stop_reason),
             error_message=error_message,
-            timestamp=0.0,
+            timestamp=self._clock(),
         )
 
     def _build_partial_message(self) -> AssistantMessage:
@@ -579,33 +620,59 @@ class RawAssembler:
                 tool_call = self._tool_calls_by_id.get(key)
                 if tool_call is not None:
                     content.append(tool_call)
-                elif key == self._active_tool_call_id and self._tool_call_started:
-                    content.append(self._build_active_tool_call())
+                elif key in self._active_tool_call_buffers_by_id:
+                    content.append(
+                        self._build_tool_call(self._active_tool_call_buffers_by_id[key])
+                    )
             elif kind == "image" and key is not None:
                 image_index = int(key)
                 if image_index < len(self._images):
                     content.append(self._images[image_index])
         return content
 
-    def _build_active_tool_call(self) -> ToolCall:
-        if self._active_tool_call_id is None or self._active_tool_call_name is None:
-            raise RuntimeError("tool call has not started")
+    def _build_tool_call(self, buffer: _ToolCallBuffer) -> ToolCall:
         return ToolCall(
             type="toolCall",
-            id=self._active_tool_call_id,
-            name=self._active_tool_call_name,
-            arguments=self._parse_active_tool_call_arguments(),
-            thought_signature=self._active_tool_call_thought_signature,
+            id=buffer.id,
+            name=buffer.name,
+            arguments=self._parse_tool_call_arguments(buffer),
+            thought_signature=buffer.thought_signature,
         )
 
-    def _parse_active_tool_call_arguments(self) -> dict:
-        raw = "".join(self._active_tool_call_args_chunks)
+    def _parse_tool_call_arguments(self, buffer: _ToolCallBuffer) -> dict:
+        raw = "".join(buffer.args_chunks)
         return parse_streaming_json(raw)
 
-    def _toolcall_content_index(self) -> int:
-        if self._active_tool_call_id is None:
-            return len(self._build_content()) - 1
-        return self._content_block_index("tool", self._active_tool_call_id)
+    def _resolve_active_tool_call_buffer(
+        self, part: ToolCallArgsDeltaPart | ToolCallDonePart
+    ) -> _ToolCallBuffer | None:
+        tool_call_id = _optional_str(
+            part.get("tool_call_id") or cast(Mapping[str, object], part).get("id")
+        )
+        if tool_call_id is not None:
+            buffer = self._active_tool_call_buffers_by_id.get(tool_call_id)
+            if buffer is not None:
+                return buffer
+        index = _optional_int(part.get("index"))
+        if index is not None:
+            buffer = self._active_tool_call_buffers_by_index.get(index)
+            if buffer is not None:
+                return buffer
+        active_buffers = list(self._active_tool_call_buffers_by_id.values())
+        if len(active_buffers) == 1:
+            return active_buffers[0]
+        return None
+
+    def _remove_active_tool_call_buffer(self, buffer: _ToolCallBuffer) -> None:
+        self._active_tool_call_buffers_by_id.pop(buffer.id, None)
+        if (
+            buffer.index is not None
+            and self._active_tool_call_buffers_by_index.get(buffer.index) is buffer
+        ):
+            self._active_tool_call_buffers_by_index.pop(buffer.index, None)
+
+    def _toolcall_content_index(self, buffer: _ToolCallBuffer) -> int:
+        return self._content_block_index("tool", buffer.id)
 
     def _text_content_index(self) -> int:
         return self._content_block_index("text")
@@ -658,6 +725,16 @@ def _assistant_stop_reason(stop_reason: str) -> StopReason:
     if stop_reason in {"stop", "length", "toolUse", "error", "aborted"}:
         return cast(StopReason, stop_reason)
     return "stop"
+
+
+def _optional_str(value: object) -> str | None:
+    return value if isinstance(value, str) and value else None
+
+
+def _optional_int(value: object) -> int | None:
+    if isinstance(value, bool):
+        return None
+    return value if isinstance(value, int) else None
 
 
 def _derive_total_tokens(

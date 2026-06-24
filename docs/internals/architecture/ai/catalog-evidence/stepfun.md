@@ -1,0 +1,32 @@
+# Provider evidence: stepfun
+
+- Verified at: 2026-06-22
+- Issue: #108
+- Official docs:
+  - https://platform.stepfun.ai/docs/en/guides/models/step-3.7-flash
+  - https://platform.stepfun.ai/docs/en/api-reference/chat/chat-completion-create
+  - https://platform.stepfun.ai/docs/en/guides/models/step-3.7-flash-quickstart
+  - https://platform.stepfun.ai/docs/en/guides/pricing/details
+- Source map:
+  - Authentication and endpoint: Chat Completions API reference and quickstart.
+  - Model selection, context, multimodal support, coding/agent positioning, and reasoning levels: step-3.7-flash model guide.
+  - Streaming, usage, tools, response format, reasoning, and reasoning effort: Chat Completions API reference.
+  - Pricing: pricing and rate-limit docs.
+- Authentication: API key in `STEP_API_KEY` or `STEPFUN_API_KEY`, sent as an `Authorization: Bearer ...` header.
+- Endpoint: `https://api.stepfun.ai/v1`, OpenAI-compatible Chat Completions protocol.
+- Included models:
+  - `step-3.7-flash`: current StepFun flagship multimodal reasoning model selected for the single-model AIQ-055 catalog entry.
+- Verified capabilities:
+  - Model docs list `step-3.7-flash` with 256K token context, multimodal understanding, tool calling, coding/agent optimization, and reasoning-effort levels `low`, `medium`, and `high`.
+  - Chat Completions API docs establish the `/v1/chat/completions` endpoint, `STEP_API_KEY` bearer authentication examples, streaming, streamed usage, tools/tool calls, `response_format`, `reasoning`, and `reasoning_effort`.
+  - Pricing and rate-limit docs list $0.20 input, $0.04 cache hit, and $1.15 output per million tokens.
+- Unknown/omitted facts:
+  - `maxTokens` is omitted because official docs describe `max_tokens` as caller-controlled and bounded by model context, without exposing a stable model-specific answer cap.
+  - The Step Plan endpoint is omitted because the normal OpenAI-compatible endpoint already supports the selected model and avoids a second coding-specific endpoint for this one-model provider entry.
+  - Video input is omitted from `capabilities.input` because the current catalog schema only allows `text` and `image` modalities.
+  - `xhigh` is mapped to `high` because official docs list only `low`, `medium`, and `high` for this model.
+  - `cacheWrite` is omitted because the pricing docs expose cache-hit pricing but not a separate cache-write rate.
+- Contract tests:
+  - `uv run pytest tests/ai/test_curated_catalog.py tests/providers/test_openai_completions_provider.py -q`
+- Manual live smoke:
+  - Not run on 2026-06-22; no live StepFun credential was used for this catalog-only commit.

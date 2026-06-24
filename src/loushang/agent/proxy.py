@@ -3,13 +3,16 @@ from __future__ import annotations
 import asyncio
 import json
 import time
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field, replace
+from math import isfinite
 from typing import Any
 
 from loushang.agent.types import ProxyAssistantMessageEvent, ProxyStreamOptions
 from loushang.ai.event_stream.stream import AssistantMessageEventStream
 from loushang.ai.model import Model
 from loushang.ai.model.registry import resolve_model_api
+from loushang.ai.options import get_max_output_tokens
 from loushang.ai.types import (
     AssistantMessage,
     AssistantMessageEvent,
@@ -19,6 +22,7 @@ from loushang.ai.types import (
     ThinkingPart,
     ToolCall,
     Usage,
+    UsageCost,
 )
 
 
@@ -29,10 +33,21 @@ class _MutablePartialMessage:
     provider: str
     model: str
     timestamp: float
-    content: list[TextPart | ThinkingPart | ToolCall | ImagePart] = field(default_factory=list)
+    content: list[TextPart | ThinkingPart | ToolCall | ImagePart] = field(
+        default_factory=list
+    )
     stop_reason: str = "stop"
     response_id: str | None = None
-    usage: Usage = field(default_factory=lambda: Usage(input=0, output=0, cache_read=0, cache_write=0, total_tokens=0, cost={}))
+    usage: Usage = field(
+        default_factory=lambda: Usage(
+            input=0,
+            output=0,
+            cache_read=0,
+            cache_write=0,
+            total_tokens=0,
+            cost=None,
+        )
+    )
     error_message: str | None = None
     _toolcall_partial_json: dict[int, str] = field(default_factory=dict)
 
@@ -73,14 +88,27 @@ def stream_proxy(
 
     async def _run() -> None:
         owned_client = None
-        remove_abort_listener = _attach_abort_listener(options.signal)
+        current_task = asyncio.current_task()
+
+        def _cancel_current_task() -> None:
+            if current_task is not None and not current_task.done():
+                current_task.cancel()
+
+        remove_abort_listener = _attach_abort_listener(
+            options.signal,
+            _cancel_current_task,
+        )
         try:
+            if getattr(options.signal, "aborted", False):
+                raise RuntimeError("Request aborted by user")
             stream_client = client
             if stream_client is None:
                 try:
                     import httpx
                 except ImportError as exc:  # pragma: no cover
-                    raise RuntimeError("httpx is required for proxy streaming. Install via `pip install httpx`") from exc
+                    raise RuntimeError(
+                        "httpx is required for proxy streaming. Install via `pip install httpx`"
+                    ) from exc
                 owned_client = httpx.AsyncClient(base_url=options.proxy_url)
                 stream_client = owned_client
 
@@ -92,7 +120,7 @@ def stream_proxy(
                     "context": context,
                     "options": {
                         "temperature": options.temperature,
-                        "max_tokens": options.max_tokens,
+                        "max_tokens": get_max_output_tokens(options),
                         "reasoning": options.reasoning,
                     },
                 },
@@ -115,7 +143,7 @@ def stream_proxy(
                     proxy_event = json.loads(data)
                     event = _process_proxy_event(proxy_event, partial)
                     if event is not None:
-                        stream.push(event)
+                        await stream.emit(event)
                     if _is_terminal_proxy_event(proxy_event):
                         return
 
@@ -124,11 +152,24 @@ def stream_proxy(
 
                 if partial.stop_reason not in {"error", "aborted"}:
                     stream.end()
-        except Exception as error:  # noqa: BLE001
+        except asyncio.CancelledError:
+            if getattr(options.signal, "aborted", False):
+                partial.stop_reason = "aborted"
+                partial.error_message = "Request aborted by user"
+                await stream.emit(
+                    {
+                        "type": "error",
+                        "reason": "aborted",
+                        "error": partial.snapshot(),
+                    }
+                )
+                return
+            raise
+        except Exception as error:
             reason = "aborted" if getattr(options.signal, "aborted", False) else "error"
             partial.stop_reason = reason
             partial.error_message = str(error)
-            stream.push(
+            await stream.emit(
                 {
                     "type": "error",
                     "reason": reason,
@@ -140,7 +181,7 @@ def stream_proxy(
             if owned_client is not None:
                 await owned_client.aclose()
 
-    asyncio.create_task(_run())
+    stream.attach_task(asyncio.create_task(_run()))
     return stream
 
 
@@ -150,7 +191,7 @@ async def _proxy_error_message(response: Any) -> str:
     message = f"Proxy error: {status_code} {status_text}".strip()
     try:
         payload = await response.json()
-    except Exception:  # noqa: BLE001
+    except Exception:
         return message
     if isinstance(payload, dict) and isinstance(payload.get("error"), str):
         return f"Proxy error: {payload['error']}"
@@ -169,7 +210,11 @@ def _process_proxy_event(
     if event_type == "text_start":
         content_index = proxy_event["content_index"]
         _set_content(partial, content_index, TextPart(type="text", text=""))
-        return {"type": "text_start", "content_index": content_index, "partial": partial.snapshot()}
+        return {
+            "type": "text_start",
+            "content_index": content_index,
+            "partial": partial.snapshot(),
+        }
 
     if event_type == "text_delta":
         content_index = proxy_event["content_index"]
@@ -198,11 +243,17 @@ def _process_proxy_event(
     if event_type == "thinking_start":
         content_index = proxy_event["content_index"]
         _set_content(partial, content_index, ThinkingPart(type="thinking", thinking=""))
-        return {"type": "thinking_start", "content_index": content_index, "partial": partial.snapshot()}
+        return {
+            "type": "thinking_start",
+            "content_index": content_index,
+            "partial": partial.snapshot(),
+        }
 
     if event_type == "thinking_delta":
         content_index = proxy_event["content_index"]
-        content = _require_content_type(partial, content_index, ThinkingPart, "thinking_delta")
+        content = _require_content_type(
+            partial, content_index, ThinkingPart, "thinking_delta"
+        )
         updated = replace(content, thinking=content.thinking + proxy_event["delta"])
         _set_content(partial, content_index, updated)
         return {
@@ -214,8 +265,12 @@ def _process_proxy_event(
 
     if event_type == "thinking_end":
         content_index = proxy_event["content_index"]
-        content = _require_content_type(partial, content_index, ThinkingPart, "thinking_end")
-        updated = replace(content, thinking_signature=proxy_event.get("content_signature"))
+        content = _require_content_type(
+            partial, content_index, ThinkingPart, "thinking_end"
+        )
+        updated = replace(
+            content, thinking_signature=proxy_event.get("content_signature")
+        )
         _set_content(partial, content_index, updated)
         return {
             "type": "thinking_end",
@@ -237,12 +292,20 @@ def _process_proxy_event(
                 arguments={},
             ),
         )
-        return {"type": "toolcall_start", "content_index": content_index, "partial": partial.snapshot()}
+        return {
+            "type": "toolcall_start",
+            "content_index": content_index,
+            "partial": partial.snapshot(),
+        }
 
     if event_type == "toolcall_delta":
         content_index = proxy_event["content_index"]
-        content = _require_content_type(partial, content_index, ToolCall, "toolcall_delta")
-        partial_json = partial._toolcall_partial_json.get(content_index, "") + proxy_event["delta"]
+        content = _require_content_type(
+            partial, content_index, ToolCall, "toolcall_delta"
+        )
+        partial_json = (
+            partial._toolcall_partial_json.get(content_index, "") + proxy_event["delta"]
+        )
         partial._toolcall_partial_json[content_index] = partial_json
         arguments = _parse_streaming_json(partial_json) or content.arguments
         _set_content(partial, content_index, replace(content, arguments=arguments))
@@ -255,8 +318,13 @@ def _process_proxy_event(
 
     if event_type == "toolcall_end":
         content_index = proxy_event["content_index"]
-        content = _require_content_type(partial, content_index, ToolCall, "toolcall_end")
-        full_arguments = _parse_streaming_json(partial._toolcall_partial_json.get(content_index, "")) or content.arguments
+        content = _require_content_type(
+            partial, content_index, ToolCall, "toolcall_end"
+        )
+        full_arguments = (
+            _parse_streaming_json(partial._toolcall_partial_json.get(content_index, ""))
+            or content.arguments
+        )
         final_call = replace(content, arguments=full_arguments)
         _set_content(partial, content_index, final_call)
         partial._toolcall_partial_json.pop(content_index, None)
@@ -269,7 +337,7 @@ def _process_proxy_event(
 
     if event_type == "done":
         partial.stop_reason = proxy_event["reason"]
-        partial.usage = proxy_event["usage"]
+        partial.usage = _usage_from_proxy_value(proxy_event["usage"])
         return {
             "type": "done",
             "reason": proxy_event["reason"],
@@ -278,7 +346,7 @@ def _process_proxy_event(
 
     if event_type == "error":
         partial.stop_reason = proxy_event["reason"]
-        partial.usage = proxy_event["usage"]
+        partial.usage = _usage_from_proxy_value(proxy_event["usage"])
         partial.error_message = proxy_event.get("error_message")
         return {
             "type": "error",
@@ -289,15 +357,89 @@ def _process_proxy_event(
     return None
 
 
-def _attach_abort_listener(signal: object | None):
+def _usage_from_proxy_value(value: object) -> Usage:
+    if isinstance(value, Usage):
+        return value if value.cost else replace(value, cost=None)
+    if isinstance(value, dict):
+        return Usage(
+            input=_int_value(value.get("input")),
+            output=_int_value(value.get("output")),
+            cache_read=_int_value(value.get("cache_read", value.get("cacheRead"))),
+            cache_write=_int_value(value.get("cache_write", value.get("cacheWrite"))),
+            total_tokens=_int_value(
+                value.get("total_tokens", value.get("totalTokens"))
+            ),
+            cost=_usage_cost_from_proxy_value(value.get("cost")),
+        )
+    return Usage(
+        input=0, output=0, cache_read=0, cache_write=0, total_tokens=0, cost=None
+    )
+
+
+def _usage_cost_from_proxy_value(value: object) -> UsageCost | None:
+    if not isinstance(value, Mapping):
+        return None
+    input_cost = _cost_number(value, "input")
+    output_cost = _cost_number(value, "output")
+    cache_read = _cost_number(value, "cacheRead", "cache_read")
+    cache_write = _cost_number(value, "cacheWrite", "cache_write")
+    total = _cost_number(value, "total")
+    if (
+        input_cost is None
+        or output_cost is None
+        or cache_read is None
+        or cache_write is None
+        or total is None
+    ):
+        return None
+    return {
+        "input": input_cost,
+        "output": output_cost,
+        "cacheRead": cache_read,
+        "cacheWrite": cache_write,
+        "total": total,
+    }
+
+
+def _cost_number(
+    cost: Mapping[str, object], key: str, alias: str | None = None
+) -> float | None:
+    if key in cost:
+        value = cost[key]
+    elif alias is not None and alias in cost:
+        value = cost[alias]
+    else:
+        return None
+    if (
+        isinstance(value, bool)
+        or not isinstance(value, int | float)
+        or not isfinite(value)
+        or value < 0
+    ):
+        return None
+    return float(value)
+
+
+def _int_value(value: object) -> int:
+    try:
+        return int(value)  # type: ignore[arg-type]
+    except (TypeError, ValueError):
+        return 0
+
+
+def _attach_abort_listener(
+    signal: object | None,
+    on_abort: Callable[[], None],
+):
     if signal is None:
         return lambda: None
 
     add_event_listener = getattr(signal, "addEventListener", None)
     remove_event_listener = getattr(signal, "removeEventListener", None)
     if callable(add_event_listener) and callable(remove_event_listener):
-        def _on_abort() -> None:
-            return None
+
+        def _on_abort(*_args: object) -> None:
+            on_abort()
 
         add_event_listener("abort", _on_abort)
         return lambda: remove_event_listener("abort", _on_abort)
@@ -305,8 +447,9 @@ def _attach_abort_listener(signal: object | None):
     add_event_listener = getattr(signal, "add_event_listener", None)
     remove_event_listener = getattr(signal, "remove_event_listener", None)
     if callable(add_event_listener) and callable(remove_event_listener):
-        def _on_abort() -> None:
-            return None
+
+        def _on_abort(*_args: object) -> None:
+            on_abort()
 
         add_event_listener("abort", _on_abort)
         return lambda: remove_event_listener("abort", _on_abort)
@@ -314,19 +457,29 @@ def _attach_abort_listener(signal: object | None):
     return lambda: None
 
 
-def _set_content(partial: _MutablePartialMessage, index: int, content: TextPart | ThinkingPart | ToolCall | ImagePart) -> None:
+def _set_content(
+    partial: _MutablePartialMessage,
+    index: int,
+    content: TextPart | ThinkingPart | ToolCall | ImagePart,
+) -> None:
     while len(partial.content) <= index:
         partial.content.append(TextPart(type="text", text=""))
     partial.content[index] = content
 
 
-def _require_content_type(partial: _MutablePartialMessage, index: int, expected_type: type, event_name: str):
+def _require_content_type(
+    partial: _MutablePartialMessage, index: int, expected_type: type, event_name: str
+):
     try:
         content = partial.content[index]
     except IndexError as exc:
-        raise ValueError(f"Received {event_name} for missing content index {index}") from exc
+        raise ValueError(
+            f"Received {event_name} for missing content index {index}"
+        ) from exc
     if not isinstance(content, expected_type):
-        raise ValueError(f"Received {event_name} for unexpected content type {type(content).__name__}")
+        raise ValueError(
+            f"Received {event_name} for unexpected content type {type(content).__name__}"
+        )
     return content
 
 
@@ -340,7 +493,9 @@ def _parse_streaming_json(value: str) -> dict[str, Any] | None:
     return parsed if isinstance(parsed, dict) else None
 
 
-def _is_terminal_proxy_event(proxy_event: ProxyAssistantMessageEvent | dict[str, Any]) -> bool:
+def _is_terminal_proxy_event(
+    proxy_event: ProxyAssistantMessageEvent | dict[str, Any],
+) -> bool:
     return proxy_event["type"] in {"done", "error"}
 
 

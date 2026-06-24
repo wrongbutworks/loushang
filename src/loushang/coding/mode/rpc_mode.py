@@ -8,6 +8,7 @@ import sys
 import uuid
 from collections.abc import Sequence
 from dataclasses import asdict, is_dataclass
+from math import isfinite
 from pathlib import Path
 from typing import Any, NotRequired, Required, TextIO, TypedDict, cast
 
@@ -2157,15 +2158,22 @@ class RpcMode(ModeAdapter):
         output_cost = self._safe_getattr(pricing, "output", None)
         cache_read = self._safe_getattr(pricing, "cache_read", None)
         cache_write = self._safe_getattr(pricing, "cache_write", None)
-        values = {
-            "input": input_cost,
-            "output": output_cost,
-            "cacheRead": cache_read,
-            "cacheWrite": cache_write,
-        }
-        if not any(value is not None for value in values.values()):
+        values = (input_cost, output_cost, cache_read, cache_write)
+        if any(
+            value is None
+            or isinstance(value, bool)
+            or not isinstance(value, int | float)
+            or not isfinite(value)
+            or value < 0
+            for value in values
+        ):
             return None
-        return values
+        return {
+            "input": cast(float | int, input_cost),
+            "output": cast(float | int, output_cost),
+            "cacheRead": cast(float | int, cache_read),
+            "cacheWrite": cast(float | int, cache_write),
+        }
 
     def _serialize_model_compat(self, compat: object) -> dict[str, Any] | None:
         if compat is None:

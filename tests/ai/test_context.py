@@ -1,15 +1,22 @@
 from __future__ import annotations
 
+from dataclasses import dataclass
+from types import MappingProxyType, SimpleNamespace
+
 import pytest
 
 from loushang.ai.context import (
     NORMALIZED_CONTEXT_MARKER,
+    NormalizationResult,
+    NormalizedContext,
     ensure_normalized_context,
     is_normalized_context,
     normalize_context,
+    normalize_context_result,
 )
 from loushang.ai.types import (
     AssistantMessage,
+    Context,
     ImagePart,
     TextPart,
     ThinkingPart,
@@ -24,18 +31,49 @@ from loushang.coding.tools import create_write_tool_definition
 def _usage() -> object:
     from loushang.ai.types import Usage
 
-    return Usage(input=0, output=0, cache_read=0, cache_write=0, total_tokens=0, cost={})
+    return Usage(
+        input=0, output=0, cache_read=0, cache_write=0, total_tokens=0, cost={}
+    )
 
 
 def _write_tool() -> Tool:
     definition = create_write_tool_definition()
-    return Tool(name=definition.name, description=definition.description, parameters=definition.parameters)
+    return Tool(
+        name=definition.name,
+        description=definition.description,
+        parameters=definition.parameters,
+    )
+
+
+def _diagnostic_snapshot(
+    result: NormalizationResult,
+) -> list[tuple[str, str, str, str]]:
+    return [
+        (diagnostic.code, diagnostic.path, diagnostic.message, diagnostic.level)
+        for diagnostic in result.diagnostics
+    ]
 
 
 class _DuckTypedTool:
     name = "calc"
     description = "calculate"
     parameters = {"type": "object"}
+
+
+class _UnknownMessage:
+    role = "custom"
+
+
+class _UnknownPart:
+    type = "custom"
+
+
+@dataclass(frozen=True)
+class _UncopyablePayload:
+    items: list[dict[str, int]]
+
+    def __deepcopy__(self, memo: object) -> object:
+        raise RuntimeError("blocked")
 
 
 def test_normalize_context_accepts_tool_dataclasses_and_dicts() -> None:
@@ -57,10 +95,10 @@ def test_normalize_context_accepts_tool_dataclasses_and_dicts() -> None:
         }
     )
 
-    assert normalized["tools"] == [
+    assert normalized["tools"] == (
         Tool(name="read", description="Read a file", parameters={"type": "object"}),
         Tool(name="write", description="Write a file", parameters={"type": "object"}),
-    ]
+    )
 
 
 def test_normalize_context_rejects_duck_typed_tools() -> None:
@@ -68,20 +106,795 @@ def test_normalize_context_rejects_duck_typed_tools() -> None:
         normalize_context({"messages": [], "tools": [_DuckTypedTool()]})
 
 
-def test_normalize_context_marks_normalized_payload() -> None:
+def test_normalize_context_rejects_dict_tools_with_invalid_names() -> None:
+    with pytest.raises(TypeError, match="Unsupported tool name type"):
+        normalize_context(
+            {
+                "messages": [],
+                "tools": [{"name": "", "description": "bad"}],
+            }
+        )
+
+
+def test_normalize_context_rejects_tool_dataclasses_with_invalid_names() -> None:
+    with pytest.raises(TypeError, match="Unsupported tool name type"):
+        normalize_context(
+            {
+                "messages": [],
+                "tools": [
+                    Tool(
+                        name="",
+                        description="bad",
+                        parameters={"type": "object"},
+                    )
+                ],
+            }
+        )
+
+
+def test_normalize_context_rejects_dict_tools_with_non_object_parameters() -> None:
+    with pytest.raises(TypeError, match="Unsupported tool parameters type"):
+        normalize_context(
+            {
+                "messages": [],
+                "tools": [
+                    {
+                        "name": "calc",
+                        "description": "Calculate values",
+                        "parameters": "bad",
+                    }
+                ],
+            }
+        )
+
+
+def test_normalize_context_rejects_tool_dataclasses_with_non_object_parameters() -> (
+    None
+):
+    with pytest.raises(TypeError, match="Unsupported tool parameters type"):
+        normalize_context(
+            {
+                "messages": [],
+                "tools": [
+                    Tool(
+                        name="calc",
+                        description="Calculate values",
+                        parameters="bad",  # type: ignore[arg-type]
+                    )
+                ],
+            }
+        )
+
+
+def test_normalize_context_rejects_context_tools_with_non_object_parameters() -> None:
+    with pytest.raises(TypeError, match="Unsupported tool parameters type"):
+        normalize_context(
+            Context(
+                messages=[],
+                tools=[
+                    Tool(
+                        name="calc",
+                        description="Calculate values",
+                        parameters="bad",  # type: ignore[arg-type]
+                    )
+                ],
+            )
+        )
+
+
+def test_normalize_context_rejects_context_tools_with_invalid_names() -> None:
+    with pytest.raises(TypeError, match="Unsupported tool name type"):
+        normalize_context(
+            Context(
+                messages=[],
+                tools=[
+                    Tool(
+                        name="",
+                        description="bad",
+                        parameters={"type": "object"},
+                    )
+                ],
+            )
+        )
+
+
+def test_normalize_context_rejects_context_dict_tools_with_non_object_parameters() -> (
+    None
+):
+    with pytest.raises(TypeError, match="Unsupported tool parameters type"):
+        normalize_context(
+            Context(
+                messages=[],
+                tools=[  # type: ignore[list-item]
+                    {
+                        "name": "calc",
+                        "description": "Calculate values",
+                        "parameters": "bad",
+                    }
+                ],
+            )
+        )
+
+
+def test_normalize_context_rejects_non_string_system_prompt() -> None:
+    with pytest.raises(TypeError, match="Unsupported system_prompt type"):
+        normalize_context({"system_prompt": {"text": "system"}, "messages": []})
+
+
+def test_normalize_context_rejects_unknown_message_objects() -> None:
+    with pytest.raises(TypeError, match="Unsupported message type after normalization"):
+        normalize_context({"messages": [_UnknownMessage()]})
+
+
+def test_normalize_context_rejects_unknown_dict_message_roles() -> None:
+    with pytest.raises(TypeError, match="Unsupported message role"):
+        normalize_context({"messages": [{"role": "custom", "content": "hello"}]})
+
+
+def test_normalize_context_canonicalizes_non_dict_mapping_messages() -> None:
+    normalized = normalize_context(
+        {"messages": [MappingProxyType({"role": "user", "content": "hello"})]}
+    )
+
+    assert normalized.messages == (
+        UserMessage(
+            role="user",
+            content=[TextPart(type="text", text="hello")],
+            timestamp=0.0,
+        ),
+    )
+
+
+def test_normalize_context_rejects_unknown_user_content_parts() -> None:
+    with pytest.raises(TypeError, match="Unsupported user content part type"):
+        normalize_context(
+            {"messages": [{"role": "user", "content": [{"type": "audio"}]}]}
+        )
+
+
+def test_normalize_context_rejects_unknown_user_content_part_objects() -> None:
+    with pytest.raises(TypeError, match="Unsupported user content part object"):
+        normalize_context({"messages": [{"role": "user", "content": [_UnknownPart()]}]})
+
+
+def test_normalize_context_returns_immutable_normalized_context() -> None:
     normalized = normalize_context({"messages": []})
 
-    assert normalized[NORMALIZED_CONTEXT_MARKER] is True
+    assert isinstance(normalized, NormalizedContext)
+    assert NORMALIZED_CONTEXT_MARKER not in normalized
     assert is_normalized_context(normalized) is True
+    assert normalized.messages == ()
+    assert normalized["messages"] == ()
+    with pytest.raises(AttributeError):
+        setattr(normalized, "system_prompt", "changed")
 
 
-def test_ensure_normalized_context_is_idempotent_for_normalized_payload() -> None:
+def test_normalize_context_snapshots_mutable_message_and_tool_inputs() -> None:
+    arguments = {"x": 1}
+    assistant = AssistantMessage(
+        role="assistant",
+        content=[
+            ToolCall(type="toolCall", id="call_1", name="calc", arguments=arguments)
+        ],
+        api="openai-responses",
+        provider="openai",
+        model="gpt-test",
+        response_id=None,
+        usage=_usage(),
+        stop_reason="toolUse",
+        error_message=None,
+        timestamp=1.0,
+    )
+    tool_parameters = {
+        "type": "object",
+        "properties": {"x": {"type": "number"}},
+    }
+    tool = Tool(
+        name="calc",
+        description="Calculate values",
+        parameters=tool_parameters,
+    )
+    tool_result = ToolResultMessage(
+        role="toolResult",
+        tool_call_id="call_1",
+        tool_name="calc",
+        content=[TextPart(type="text", text="1")],
+        is_error=False,
+        timestamp=2.0,
+    )
+
+    normalized = normalize_context(
+        {
+            "messages": [assistant, tool_result],
+            "tools": [tool],
+        }
+    )
+    assistant.content.append(TextPart(type="text", text="mutated"))
+    arguments["x"] = 2
+    tool_parameters["properties"]["x"]["type"] = "string"
+
+    snapshot_assistant = normalized.messages[0]
+    assert isinstance(snapshot_assistant, AssistantMessage)
+    assert snapshot_assistant.content == [
+        ToolCall(type="toolCall", id="call_1", name="calc", arguments={"x": 1})
+    ]
+    assert normalized.tools == (
+        Tool(
+            name="calc",
+            description="Calculate values",
+            parameters={
+                "type": "object",
+                "properties": {"x": {"type": "number"}},
+            },
+        ),
+    )
+    with pytest.raises(TypeError, match="NormalizedContext values are immutable"):
+        snapshot_assistant.content.append(TextPart(type="text", text="blocked"))
+    snapshot_tool_call = snapshot_assistant.content[0]
+    assert isinstance(snapshot_tool_call, ToolCall)
+    with pytest.raises(TypeError, match="NormalizedContext values are immutable"):
+        snapshot_tool_call.arguments["x"] = 2
+    frozen_arguments = snapshot_tool_call.arguments
+    with pytest.raises(TypeError, match="NormalizedContext values are immutable"):
+        frozen_arguments |= {"y": 3}
+    assert normalized.tools is not None
+    with pytest.raises(TypeError, match="NormalizedContext values are immutable"):
+        normalized.tools[0].parameters["type"] = "string"
+
+
+def test_normalize_context_rejects_uncopyable_values_without_mutating_input() -> None:
+    payload = _UncopyablePayload(items=[{"x": 1}])
+
+    with pytest.raises(TypeError, match="could not be snapshotted"):
+        normalize_context({"messages": [], "payload": payload})
+
+    assert type(payload.items) is list
+    assert type(payload.items[0]) is dict
+    payload.items[0]["x"] = 2
+    assert payload.items == [{"x": 2}]
+
+
+def test_ensure_normalized_context_is_idempotent_for_normalized_context() -> None:
     normalized = normalize_context({"messages": []})
 
     ensured = ensure_normalized_context(normalized)
 
-    assert ensured == normalized
+    assert ensured is normalized
     assert is_normalized_context(ensured) is True
+
+
+def test_ensure_normalized_context_does_not_trust_legacy_marker_dict() -> None:
+    ensured = ensure_normalized_context(
+        {
+            NORMALIZED_CONTEXT_MARKER: True,
+            "messages": [{"role": "system", "content": "system text"}],
+        }
+    )
+
+    assert isinstance(ensured, NormalizedContext)
+    assert ensured.system_prompt == "system text"
+    assert ensured.messages == ()
+    assert NORMALIZED_CONTEXT_MARKER not in ensured
+
+
+def test_normalize_context_result_wraps_normalized_context() -> None:
+    result = normalize_context_result({"messages": [], "emit_thinking": True})
+
+    assert isinstance(result, NormalizationResult)
+    assert isinstance(result.context, NormalizedContext)
+    assert result.context["emit_thinking"] is True
+    assert result.diagnostics == ()
+
+
+def test_normalize_context_result_reports_missing_tool_result_repair() -> None:
+    assistant = AssistantMessage(
+        role="assistant",
+        content=[
+            ToolCall(type="toolCall", id="call_1", name="calc", arguments={"x": 1})
+        ],
+        api="openai-responses",
+        provider="openai",
+        model="gpt-test",
+        response_id=None,
+        usage=_usage(),
+        stop_reason="toolUse",
+        error_message=None,
+        timestamp=1.0,
+    )
+
+    result = normalize_context_result({"messages": [assistant]}, pairing_mode="repair")
+
+    assert _diagnostic_snapshot(result) == [
+        (
+            "missing_tool_result_repaired",
+            "messages[0].content[0]",
+            "Inserted synthetic error result for missing tool call 'call_1'.",
+            "warning",
+        )
+    ]
+
+
+def test_normalize_context_result_reports_tool_call_id_repairs() -> None:
+    assistant = AssistantMessage(
+        role="assistant",
+        content=[
+            ToolCall(type="toolCall", id="call:1", name="calc", arguments={"x": 1})
+        ],
+        api="openai-responses",
+        provider="openai",
+        model="gpt-test",
+        response_id=None,
+        usage=_usage(),
+        stop_reason="toolUse",
+        error_message=None,
+        timestamp=1.0,
+    )
+    tool_result = ToolResultMessage(
+        role="toolResult",
+        tool_call_id="call:1",
+        tool_name="calc",
+        content=[TextPart(type="text", text="1")],
+        is_error=False,
+        timestamp=2.0,
+    )
+
+    result = normalize_context_result(
+        {"messages": [assistant, tool_result]},
+        model=SimpleNamespace(
+            api="anthropic-messages",
+            provider_id="anthropic",
+            id="claude-test",
+        ),
+    )
+
+    assert _diagnostic_snapshot(result) == [
+        (
+            "tool_call_id_normalized",
+            "messages[0].content[0]",
+            "Normalized tool call id 'call:1' to 'call_1'.",
+            "warning",
+        ),
+        (
+            "tool_result_id_normalized",
+            "messages[1]",
+            "Normalized tool result id 'call:1' to 'call_1'.",
+            "warning",
+        ),
+    ]
+
+
+def test_normalize_context_result_keeps_original_paths_after_system_messages() -> None:
+    result = normalize_context_result(
+        {
+            "messages": [
+                {"role": "system", "content": "system"},
+                {
+                    "role": "assistant",
+                    "content": [{"type": "text", "text": "failed"}],
+                    "stopReason": "error",
+                    "errorMessage": "provider failed",
+                },
+            ]
+        }
+    )
+
+    assert _diagnostic_snapshot(result) == [
+        (
+            "error_assistant_dropped",
+            "messages[1]",
+            "Dropped error assistant message during normalization.",
+            "warning",
+        )
+    ]
+
+
+def test_normalize_context_result_skips_tool_diagnostics_for_dropped_error_assistant() -> (
+    None
+):
+    assistant = AssistantMessage(
+        role="assistant",
+        content=[
+            ToolCall(
+                type="toolCall",
+                id="call:1",
+                name="calc",
+                arguments={"x": 1},
+                thought_signature="thought-sig",
+            )
+        ],
+        api="openai-responses",
+        provider="openai",
+        model="gpt-test",
+        response_id=None,
+        usage=_usage(),
+        stop_reason="error",
+        error_message="provider failed",
+        timestamp=1.0,
+    )
+    tool_result = ToolResultMessage(
+        role="toolResult",
+        tool_call_id="call:1",
+        tool_name="calc",
+        content=[TextPart(type="text", text="1")],
+        is_error=False,
+        timestamp=2.0,
+    )
+
+    result = normalize_context_result(
+        {"messages": [assistant, tool_result]},
+        model=SimpleNamespace(
+            api="anthropic-messages",
+            provider_id="anthropic",
+            id="claude-test",
+        ),
+        pairing_mode="repair",
+    )
+
+    assert len(result.context.messages) == 1
+    normalized_result = result.context.messages[0]
+    assert isinstance(normalized_result, ToolResultMessage)
+    assert normalized_result.tool_call_id == "call_1"
+    assert _diagnostic_snapshot(result) == [
+        (
+            "error_assistant_dropped",
+            "messages[0]",
+            "Dropped error assistant message during normalization.",
+            "warning",
+        ),
+        (
+            "tool_result_id_normalized",
+            "messages[1]",
+            "Normalized tool result id 'call:1' to 'call_1'.",
+            "warning",
+        ),
+    ]
+
+
+def test_normalize_context_result_skips_tool_diagnostics_for_aborted_boundary() -> None:
+    assistant = AssistantMessage(
+        role="assistant",
+        content=[
+            ToolCall(
+                type="toolCall",
+                id="call:1",
+                name="calc",
+                arguments={"x": 1},
+                thought_signature="thought-sig",
+            )
+        ],
+        api="openai-responses",
+        provider="openai",
+        model="gpt-test",
+        response_id=None,
+        usage=_usage(),
+        stop_reason="aborted",
+        error_message="Request aborted by user",
+        timestamp=1.0,
+    )
+    tool_result = ToolResultMessage(
+        role="toolResult",
+        tool_call_id="call:1",
+        tool_name="calc",
+        content=[TextPart(type="text", text="1")],
+        is_error=False,
+        timestamp=2.0,
+    )
+
+    result = normalize_context_result(
+        {"messages": [assistant, tool_result]},
+        model=SimpleNamespace(
+            api="anthropic-messages",
+            provider_id="anthropic",
+            id="claude-test",
+        ),
+        pairing_mode="repair",
+    )
+
+    assert len(result.context.messages) == 2
+    boundary = result.context.messages[0]
+    assert isinstance(boundary, AssistantMessage)
+    assert boundary.stop_reason == "stop"
+    assert boundary.content == [TextPart(type="text", text="Request aborted by user")]
+    normalized_result = result.context.messages[1]
+    assert isinstance(normalized_result, ToolResultMessage)
+    assert normalized_result.tool_call_id == "call_1"
+    assert _diagnostic_snapshot(result) == [
+        (
+            "aborted_assistant_repaired",
+            "messages[0]",
+            "Repaired aborted assistant message as a text turn boundary.",
+            "warning",
+        ),
+        (
+            "tool_result_id_normalized",
+            "messages[1]",
+            "Normalized tool result id 'call:1' to 'call_1'.",
+            "warning",
+        ),
+    ]
+
+
+def test_normalize_context_result_keeps_repair_paths_when_tool_ids_collide() -> None:
+    assistant = AssistantMessage(
+        role="assistant",
+        content=[
+            ToolCall(type="toolCall", id="call:1", name="calc", arguments={"x": 1}),
+            ToolCall(type="toolCall", id="call_1", name="read", arguments={}),
+        ],
+        api="openai-responses",
+        provider="openai",
+        model="gpt-test",
+        response_id=None,
+        usage=_usage(),
+        stop_reason="toolUse",
+        error_message=None,
+        timestamp=1.0,
+    )
+
+    result = normalize_context_result(
+        {"messages": [assistant]},
+        model=SimpleNamespace(
+            api="anthropic-messages",
+            provider_id="anthropic",
+            id="claude-test",
+        ),
+        pairing_mode="repair",
+    )
+
+    normalized = result.context.messages[0]
+    assert isinstance(normalized, AssistantMessage)
+    tool_calls = [part for part in normalized.content if isinstance(part, ToolCall)]
+    assert len(tool_calls) == 2
+    assert tool_calls[1].id == "call_1"
+    assert tool_calls[0].id != "call_1"
+    assert len({tool_call.id for tool_call in tool_calls}) == 2
+
+    synthetic_results = [
+        message
+        for message in result.context.messages
+        if isinstance(message, ToolResultMessage)
+    ]
+    assert [message.tool_call_id for message in synthetic_results] == [
+        tool_call.id for tool_call in tool_calls
+    ]
+    assert _diagnostic_snapshot(result)[:3] == [
+        (
+            "tool_call_id_normalized",
+            "messages[0].content[0]",
+            f"Normalized tool call id 'call:1' to {tool_calls[0].id!r}.",
+            "warning",
+        ),
+        (
+            "missing_tool_result_repaired",
+            "messages[0].content[0]",
+            f"Inserted synthetic error result for missing tool call {tool_calls[0].id!r}.",
+            "warning",
+        ),
+        (
+            "missing_tool_result_repaired",
+            "messages[0].content[1]",
+            "Inserted synthetic error result for missing tool call 'call_1'.",
+            "warning",
+        ),
+    ]
+
+
+def test_normalize_context_result_reports_cross_provider_downgrades_and_signature_removal() -> (
+    None
+):
+    assistant = AssistantMessage(
+        role="assistant",
+        content=[
+            ThinkingPart(
+                type="thinking",
+                thinking="private reasoning",
+                thinking_signature="thinking-sig",
+            ),
+            TextPart(type="text", text="answer", text_signature="text-sig"),
+            ToolCall(
+                type="toolCall",
+                id="call_1",
+                name="calc",
+                arguments={"x": 1},
+                thought_signature="thought-sig",
+            ),
+        ],
+        api="openai-responses",
+        provider="openai",
+        model="gpt-test",
+        response_id=None,
+        usage=_usage(),
+        stop_reason="toolUse",
+        error_message=None,
+        timestamp=1.0,
+    )
+    tool_result = ToolResultMessage(
+        role="toolResult",
+        tool_call_id="call_1",
+        tool_name="calc",
+        content=[TextPart(type="text", text="1")],
+        is_error=False,
+        timestamp=2.0,
+    )
+
+    result = normalize_context_result(
+        {"messages": [assistant, tool_result]},
+        model=SimpleNamespace(
+            api="anthropic-messages",
+            provider_id="anthropic",
+            id="claude-test",
+        ),
+    )
+
+    assert _diagnostic_snapshot(result) == [
+        (
+            "thinking_signature_removed",
+            "messages[0].content[0]",
+            "Removed provider-specific thinking signature.",
+            "warning",
+        ),
+        (
+            "thinking_downgraded_to_text",
+            "messages[0].content[0]",
+            "Downgraded provider-specific thinking to text.",
+            "warning",
+        ),
+        (
+            "text_signature_removed",
+            "messages[0].content[1]",
+            "Removed provider-specific text signature.",
+            "warning",
+        ),
+        (
+            "tool_call_thought_signature_removed",
+            "messages[0].content[2]",
+            "Removed provider-specific tool call thought signature.",
+            "warning",
+        ),
+    ]
+
+
+def test_normalize_context_result_reports_dropped_thinking_blocks() -> None:
+    assistant = AssistantMessage(
+        role="assistant",
+        content=[
+            ThinkingPart(
+                type="thinking",
+                thinking="private reasoning",
+                thinking_signature="thinking-sig",
+                redacted=True,
+            ),
+            ThinkingPart(type="thinking", thinking="   "),
+            TextPart(type="text", text="answer"),
+        ],
+        api="openai-responses",
+        provider="openai",
+        model="gpt-test",
+        response_id=None,
+        usage=_usage(),
+        stop_reason="stop",
+        error_message=None,
+        timestamp=1.0,
+    )
+
+    result = normalize_context_result(
+        {"messages": [assistant]},
+        model=SimpleNamespace(
+            api="anthropic-messages",
+            provider_id="anthropic",
+            id="claude-test",
+        ),
+    )
+
+    normalized = result.context.messages[0]
+    assert isinstance(normalized, AssistantMessage)
+    assert normalized.content == [TextPart(type="text", text="answer")]
+    assert _diagnostic_snapshot(result) == [
+        (
+            "thinking_signature_removed",
+            "messages[0].content[0]",
+            "Removed provider-specific thinking signature.",
+            "warning",
+        ),
+        (
+            "redacted_thinking_dropped",
+            "messages[0].content[0]",
+            "Dropped redacted thinking block while coercing assistant message.",
+            "warning",
+        ),
+        (
+            "empty_thinking_dropped",
+            "messages[0].content[1]",
+            "Dropped empty thinking block while coercing assistant message.",
+            "warning",
+        ),
+    ]
+
+
+def test_normalize_context_reprojects_normalized_context_for_new_model() -> None:
+    assistant = AssistantMessage(
+        role="assistant",
+        content=[
+            ToolCall(type="toolCall", id="call:1", name="calc", arguments={"x": 1})
+        ],
+        api="openai-responses",
+        provider="openai",
+        model="gpt-test",
+        response_id=None,
+        usage=_usage(),
+        stop_reason="toolUse",
+        error_message=None,
+        timestamp=1.0,
+    )
+    tool_result = ToolResultMessage(
+        role="toolResult",
+        tool_call_id="call:1",
+        tool_name="calc",
+        content=[TextPart(type="text", text="1")],
+        is_error=False,
+        timestamp=2.0,
+    )
+    first = normalize_context({"messages": [assistant, tool_result]})
+
+    reprojected = normalize_context(
+        first,
+        model=SimpleNamespace(
+            api="anthropic-messages",
+            provider_id="anthropic",
+            id="claude-test",
+        ),
+    )
+
+    next_assistant = reprojected.messages[0]
+    next_tool_result = reprojected.messages[1]
+    assert isinstance(next_assistant, AssistantMessage)
+    assert isinstance(next_tool_result, ToolResultMessage)
+    assert next_assistant.content[0] == ToolCall(
+        type="toolCall",
+        id="call_1",
+        name="calc",
+        arguments={"x": 1},
+    )
+    assert next_tool_result.tool_call_id == "call_1"
+
+
+def test_normalize_context_reuses_more_specific_context_for_partial_model_key() -> None:
+    normalized = normalize_context(
+        {"messages": []},
+        model=SimpleNamespace(
+            api="openai-responses",
+            provider_id="custom",
+            id="gpt-test",
+        ),
+    )
+
+    ensured = ensure_normalized_context(
+        normalized,
+        model=SimpleNamespace(provider_id="custom", id="gpt-test"),
+    )
+
+    assert ensured is normalized
+
+
+def test_normalize_context_rejects_pairing_mode_change_after_repair() -> None:
+    assistant = AssistantMessage(
+        role="assistant",
+        content=[
+            ToolCall(type="toolCall", id="call_1", name="calc", arguments={"x": 1})
+        ],
+        api="openai-responses",
+        provider="openai",
+        model="gpt-test",
+        response_id=None,
+        usage=_usage(),
+        stop_reason="toolUse",
+        error_message=None,
+        timestamp=1.0,
+    )
+    repaired = normalize_context({"messages": [assistant]}, pairing_mode="repair")
+
+    with pytest.raises(ValueError, match="different pairing_mode"):
+        normalize_context(repaired, pairing_mode="strict")
 
 
 def test_normalize_context_accepts_pi_style_assistant_and_tool_result_dicts() -> None:
@@ -108,7 +921,14 @@ def test_normalize_context_accepts_pi_style_assistant_and_tool_result_dicts() ->
                     "provider": "github-copilot",
                     "model": "gpt-5",
                     "responseId": "resp_1",
-                    "usage": {"input": 1, "output": 2, "cacheRead": 3, "cacheWrite": 4, "totalTokens": 10, "cost": {"usd": 0.01}},
+                    "usage": {
+                        "input": 1,
+                        "output": 2,
+                        "cacheRead": 3,
+                        "cacheWrite": 4,
+                        "totalTokens": 10,
+                        "cost": {"usd": 0.01},
+                    },
                     "stopReason": "toolUse",
                     "errorMessage": None,
                     "timestamp": 123.0,
@@ -136,7 +956,11 @@ def test_normalize_context_accepts_pi_style_assistant_and_tool_result_dicts() ->
     assert len(normalized["messages"]) == 2
     assert isinstance(assistant, AssistantMessage)
     assert assistant.content == [
-        ThinkingPart(type="thinking", thinking="private reasoning", thinking_signature="thinking-sig"),
+        ThinkingPart(
+            type="thinking",
+            thinking="private reasoning",
+            thinking_signature="thinking-sig",
+        ),
         ToolCall(
             type="toolCall",
             id="call_1",
@@ -157,6 +981,159 @@ def test_normalize_context_accepts_pi_style_assistant_and_tool_result_dicts() ->
         ImagePart(type="image", data="aW1hZ2U=", mime_type="image/png"),
     ]
     assert tool_result.details == {"source": "test"}
+
+
+def test_normalize_context_canonicalizes_user_dicts_once() -> None:
+    normalized = normalize_context(
+        {
+            "messages": [
+                {
+                    "role": "user",
+                    "content": [
+                        {"type": "text", "text": "Look"},
+                        {"type": "image", "data": "aW1n", "mimeType": "image/png"},
+                    ],
+                    "timestamp": 125.0,
+                }
+            ]
+        }
+    )
+
+    user = normalized["messages"][0]
+
+    assert isinstance(user, UserMessage)
+    assert user.content == [
+        TextPart(type="text", text="Look"),
+        ImagePart(type="image", data="aW1n", mime_type="image/png"),
+    ]
+    assert user.timestamp == 125.0
+
+
+def test_normalize_context_preserves_unknown_usage_cost() -> None:
+    normalized = normalize_context(
+        {
+            "messages": [
+                {
+                    "role": "assistant",
+                    "content": [{"type": "text", "text": "hello"}],
+                    "api": "openai-responses",
+                    "provider": "openai",
+                    "model": "gpt-4.1",
+                    "responseId": "resp_1",
+                    "usage": {
+                        "input": 1,
+                        "output": 2,
+                        "cacheRead": 0,
+                        "cacheWrite": 0,
+                        "totalTokens": 3,
+                    },
+                    "stopReason": "stop",
+                    "timestamp": 123.0,
+                }
+            ],
+        }
+    )
+
+    assistant = normalized["messages"][0]
+
+    assert isinstance(assistant, AssistantMessage)
+    assert assistant.usage.cost is None
+
+
+@pytest.mark.parametrize(
+    "cost",
+    [
+        {},
+        {"input": 0.1},
+        {
+            "input": -0.1,
+            "output": 0.2,
+            "cacheRead": 0.0,
+            "cacheWrite": 0.0,
+            "total": 0.1,
+        },
+        {
+            "input": float("nan"),
+            "output": 0.2,
+            "cacheRead": 0.0,
+            "cacheWrite": 0.0,
+            "total": 0.2,
+        },
+    ],
+)
+def test_normalize_context_rejects_invalid_usage_cost(
+    cost: dict[str, float],
+) -> None:
+    normalized = normalize_context(
+        {
+            "messages": [
+                {
+                    "role": "assistant",
+                    "content": [{"type": "text", "text": "hello"}],
+                    "api": "openai-responses",
+                    "provider": "openai",
+                    "model": "gpt-4.1",
+                    "usage": {
+                        "input": 1,
+                        "output": 2,
+                        "cacheRead": 0,
+                        "cacheWrite": 0,
+                        "totalTokens": 3,
+                        "cost": cost,
+                    },
+                    "stopReason": "stop",
+                    "timestamp": 123.0,
+                }
+            ],
+        }
+    )
+
+    assistant = normalized["messages"][0]
+    assert isinstance(assistant, AssistantMessage)
+    assert assistant.usage.cost is None
+
+
+def test_normalize_context_canonicalizes_usage_cost_aliases() -> None:
+    normalized = normalize_context(
+        {
+            "messages": [
+                {
+                    "role": "assistant",
+                    "content": [{"type": "text", "text": "hello"}],
+                    "api": "openai-responses",
+                    "provider": "openai",
+                    "model": "gpt-4.1",
+                    "usage": {
+                        "input": 1,
+                        "output": 2,
+                        "cacheRead": 0,
+                        "cacheWrite": 0,
+                        "totalTokens": 3,
+                        "cost": {
+                            "input": 0.1,
+                            "output": 0.2,
+                            "cache_read": 0.0,
+                            "cache_write": 0.0,
+                            "total": 0.3,
+                        },
+                    },
+                    "stopReason": "stop",
+                    "timestamp": 123.0,
+                }
+            ],
+        }
+    )
+
+    assistant = normalized["messages"][0]
+
+    assert isinstance(assistant, AssistantMessage)
+    assert assistant.usage.cost == {
+        "input": 0.1,
+        "output": 0.2,
+        "cacheRead": 0.0,
+        "cacheWrite": 0.0,
+        "total": 0.3,
+    }
 
 
 def test_normalize_context_accepts_string_assistant_dict_content() -> None:
@@ -184,7 +1161,14 @@ def test_normalize_context_keeps_malformed_historical_tool_call_recoverable() ->
             "messages": [
                 AssistantMessage(
                     role="assistant",
-                    content=[ToolCall(type="toolCall", id="write-empty", name="write", arguments={})],
+                    content=[
+                        ToolCall(
+                            type="toolCall",
+                            id="write-empty",
+                            name="write",
+                            arguments={},
+                        )
+                    ],
                     api="anthropic-messages",
                     provider="moonshot",
                     model="kimi-for-coding",
@@ -211,10 +1195,18 @@ def test_normalize_context_keeps_malformed_historical_tool_call_recoverable() ->
                     is_error=True,
                     timestamp=2.0,
                 ),
-                UserMessage(role="user", content=[TextPart(type="text", text="你好")], timestamp=3.0),
+                UserMessage(
+                    role="user",
+                    content=[TextPart(type="text", text="你好")],
+                    timestamp=3.0,
+                ),
             ],
             "tools": [_write_tool()],
         }
     )
 
-    assert [getattr(message, "role", None) for message in normalized["messages"]] == ["assistant", "toolResult", "user"]
+    assert [getattr(message, "role", None) for message in normalized["messages"]] == [
+        "assistant",
+        "toolResult",
+        "user",
+    ]

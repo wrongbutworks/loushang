@@ -6,10 +6,11 @@
 
 - 本目录同时包含当前架构说明、历史设计草案、验证记录。
 - 名称里带 `V1`、`round-1`、`blueprint`、`validation` 的文档，很多是阶段性方案，不一定代表当前代码事实。
-- 当前代码事实优先参考 [`src/loushang/ai/README.md`](../../../src/loushang/ai/README.md) 与本页后半部分。
+- 当前代码事实优先参考 [`src/loushang/ai/README.md`](../../../../src/loushang/ai/README.md) 与本页后半部分。
 
 - [Loushang-AI ARD List](./ARD-list.md)
 - [ARD-001: Async Public Streaming Surface](./ARD-001-async-public-streaming-surface.md)
+- [Loushang AI Quality Hardening Charter](../../plans/2026-06-20-loushang-ai-quality-hardening-charter.md)
 - [Loushang-AI Adaptability NFR](./loushang-ai-adaptability-NFR.md)
 - [Loushang-AI Adaptability Design V1](./loushang-ai-adaptability-design-v1.md)
   - 已补充 `code plan` / `codex-like` 账号态认证接入约束、resolved auth view 约束与 `loushang-ai` 边界说明
@@ -20,6 +21,8 @@
 - [Loushang AI Provider Adapter Strategy](./loushang-ai-provider-adapter-strategy.md)
 - [Loushang AI OpenAI-Compatible Compat](./loushang-ai-openai-compat.md)
 - [Loushang AI Top-Level API Signatures](./loushang-ai-top-level-api-signatures.md)
+- [Loushang AI Final Scorecard](./final-scorecard.md)
+- [Loushang AI Final Owner Review - 2026-06-22](./final-owner-review-2026-06-22.md)
 - [Loushang AI Streaming and Cancellation](./loushang-ai-streaming-and-cancellation.md)
 - [Loushang AI Raw Part Design V1](./loushang-ai-raw-part-design-v1.md)
 - [Loushang AI Streaming Semantics](./loushang-ai-streaming-semantics.md)
@@ -74,6 +77,8 @@
 - `src/loushang/ai/messages.py`
 - `src/loushang/ai/context.py`
 - `src/loushang/ai/pricing.py`
+
+当前 `context.py`/`messages.py` 的归一化边界会通过 `normalize_context_result(...)` 暴露稳定 diagnostics，用于报告 tool-result repair、跨 provider thinking downgrade，以及 provider-specific signature removal；adapter 继续只消费 canonical `NormalizedContext`。
 
 当前 `model/` 组件已包含：
 
@@ -187,8 +192,9 @@
     - provider tool schema conversion
     - tool argument validation
     - tool message transformation
-  - `normalize_context(...)` 现在只负责 `Context` 形状整理
-  - 消息规范化与 canonicalization 由 `messages.py` 负责
+  - `normalize_context(...)` 现在只负责 `Context` 形状整理并返回公开的 `NormalizedContext` 不可变 snapshot
+  - `provider.invocation` 是 provider handoff 的最终归一化 guard；内置 adapter 不再二次 normalize
+  - 消息规范化与 canonicalization 由 `messages.py` 负责，provider adapters 只消费 canonical message dataclass
   - `event_stream/assembler.py` 不再反查 model registry 做 cost enrich
   - `reset_api_providers()` / `register_builtin_ai_providers()` 会按 built-in model registry 自动注册 built-ins
 
@@ -206,23 +212,22 @@
 - 手动构造 `ApiProviderRegistry`
 - protocol 级 tool roundtrip
 
-- [Model Lookup Example](../../examples/ai/model_lookup.py)
-- [Complete Example](../../examples/ai/complete.py)
-- [Stream Example](../../examples/ai/stream.py)
-- [Tools Example](../../examples/ai/tools.py)
-- [Typed Context Example](../../examples/ai/typed_context.py)
-- [Faux Stream Example (Advanced)](../../examples/ai/advanced/faux_stream.py)
-- [Context And Tool Minimal Example (Advanced)](../../examples/ai/advanced/context_tools_minimal.py)
-- [Tool Result Roundtrip Example (Advanced)](../../examples/ai/advanced/tool_result_roundtrip.py)
-- [Moonshot Anthropic Stream Vendor Verification](../../tests/ai/vendors/moonshot/test_kimi_anthropic_stream_live.py)
-- [Moonshot Anthropic Complete Vendor Verification](../../tests/ai/vendors/moonshot/test_kimi_anthropic_complete_live.py)
-- [Moonshot Anthropic Tools Vendor Verification](../../tests/ai/vendors/moonshot/test_kimi_anthropic_tools_live.py)
-- [Moonshot OpenAI-Compatible Stream Vendor Verification](../../tests/ai/vendors/moonshot/test_kimi_openai_stream_live.py)
-- [Moonshot OpenAI-Compatible Complete Vendor Verification](../../tests/ai/vendors/moonshot/test_kimi_openai_complete_live.py)
-- [Moonshot OpenAI-Compatible Tools Vendor Verification](../../tests/ai/vendors/moonshot/test_kimi_openai_tools_live.py)
-- [DashScope OpenAI-Compatible Responses Stream Vendor Verification](../../tests/ai/vendors/dashscope/test_openai_responses_stream_live.py)
-- [DashScope OpenAI-Compatible Responses Tools Vendor Verification](../../tests/ai/vendors/dashscope/test_openai_responses_tools_live.py)
-- [Moonshot Custom OpenAI-Compatible Base URL Verification](../../tests/ai/vendors/moonshot/test_custom_base_url_openai_live.py)
+- [Provider Matrix Example](../../../../examples/ai/11_provider_matrix.py)
+- [Complete Example](../../../../examples/ai/01_complete.py)
+- [Stream Example](../../../../examples/ai/02_stream.py)
+- [Tools Example](../../../../examples/ai/04_tools.py)
+- [Typed Context Example](../../../../examples/ai/03_typed_context.py)
+- [Faux Stream Example (Advanced)](../../../../examples/ai/advanced/faux_stream.py)
+- [Context And Tool Minimal Example (Advanced)](../../../../examples/ai/advanced/context_tools_minimal.py)
+- [Tool Result Roundtrip Example (Advanced)](../../../../examples/ai/advanced/tool_result_roundtrip.py)
+- [Moonshot Anthropic Stream Vendor Verification](../../../../tests/ai/vendors/moonshot/test_kimi_anthropic_stream_live.py)
+- [Moonshot Anthropic Complete Vendor Verification](../../../../tests/ai/vendors/moonshot/test_kimi_anthropic_complete_live.py)
+- [Moonshot Anthropic Tools Vendor Verification](../../../../tests/ai/vendors/moonshot/test_kimi_anthropic_tools_live.py)
+- [Moonshot OpenAI-Compatible Stream Vendor Verification](../../../../tests/ai/vendors/moonshot/test_kimi_openai_stream_live.py)
+- [Moonshot OpenAI-Compatible Complete Vendor Verification](../../../../tests/ai/vendors/moonshot/test_kimi_openai_complete_live.py)
+- [DashScope OpenAI-Compatible Responses Stream Vendor Verification](../../../../tests/ai/vendors/dashscope/test_openai_responses_stream_live.py)
+- [DashScope OpenAI-Compatible Responses Tools Vendor Verification](../../../../tests/ai/vendors/dashscope/test_openai_responses_tools_live.py)
+- [Moonshot Custom OpenAI-Compatible Base URL Verification](../../../../tests/ai/vendors/moonshot/test_custom_base_url_openai_live.py)
 
 说明：
 

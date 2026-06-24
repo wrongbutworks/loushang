@@ -67,7 +67,9 @@ def repair_json(value: str) -> str:
             index += 1
             continue
 
-        repaired.append(_escape_control_character(char) if _is_control_character(char) else char)
+        repaired.append(
+            _escape_control_character(char) if _is_control_character(char) else char
+        )
         index += 1
 
     return "".join(repaired)
@@ -137,9 +139,8 @@ def _repair_partial_json(value: str) -> str | None:
             stack.append("}")
         elif char == "[":
             stack.append("]")
-        elif char in {"}", "]"}:
-            if stack and stack[-1] == char:
-                stack.pop()
+        elif char in {"}", "]"} and stack and stack[-1] == char:
+            stack.pop()
 
     repaired = trimmed
     if in_string:

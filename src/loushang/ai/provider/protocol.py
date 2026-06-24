@@ -1,30 +1,32 @@
 from __future__ import annotations
 
-from typing import Any, Protocol, runtime_checkable
+from collections.abc import AsyncIterator
+from dataclasses import dataclass
+from typing import Protocol, runtime_checkable
 
-from loushang.ai.event_stream import AssistantMessageEventStream
+from loushang.ai.context import NormalizedContext
+from loushang.ai.event_stream.raw_parts import RawPart
 from loushang.ai.model import Model
-from loushang.ai.options import ModelCallOptions
-from loushang.ai.types import Context
+from loushang.ai.options import CallOptions
+from loushang.ai.provider.resolution import ResolvedRequest
 
-ProviderContext = Context | dict[str, Any]
-ProviderOptions = ModelCallOptions | None
+ProviderContext = NormalizedContext
+ProviderOptions = CallOptions | None
+
+
+@dataclass(frozen=True, slots=True)
+class ProviderRequest:
+    model: Model
+    context: ProviderContext
+    options: ProviderOptions
+    resolved: ResolvedRequest
 
 
 @runtime_checkable
 class ApiProvider(Protocol):
     api: str
 
-    async def stream(
+    def stream_raw(
         self,
-        model: Model,
-        context: ProviderContext,
-        options: ProviderOptions,
-    ) -> AssistantMessageEventStream: ...
-
-    async def stream_simple(
-        self,
-        model: Model,
-        context: ProviderContext,
-        options: ProviderOptions,
-    ) -> AssistantMessageEventStream: ...
+        request: ProviderRequest,
+    ) -> AsyncIterator[RawPart]: ...

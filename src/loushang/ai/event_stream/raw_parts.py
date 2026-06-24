@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from typing import Literal, NotRequired, TypedDict
 
+from loushang.observability.problem import JSONValue
+
 
 class ResponseStartPart(TypedDict):
     type: Literal["response_start"]
@@ -16,6 +18,7 @@ class ResponseErrorPart(TypedDict):
     type: Literal["response_error"]
     message: str
     code: NotRequired[int]
+    error_info: NotRequired[dict[str, JSONValue]]
 
 
 class TextDeltaPart(TypedDict):
@@ -47,15 +50,20 @@ class ToolCallStartPart(TypedDict):
     type: Literal["tool_call_start"]
     id: str
     name: str
+    index: NotRequired[int]
 
 
 class ToolCallArgsDeltaPart(TypedDict):
     type: Literal["tool_call_args_delta"]
     delta: str
+    tool_call_id: NotRequired[str]
+    index: NotRequired[int]
 
 
 class ToolCallDonePart(TypedDict):
     type: Literal["tool_call_done"]
+    tool_call_id: NotRequired[str]
+    index: NotRequired[int]
 
 
 class ToolCallThoughtSignaturePart(TypedDict):

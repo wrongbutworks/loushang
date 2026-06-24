@@ -1458,7 +1458,7 @@ def test_rpc_mode_get_state_tolerates_broken_model_projection() -> None:
     assert state["sessionId"] == "session-a"
 
 
-def test_rpc_mode_get_state_model_uses_id_as_name_and_includes_zero_cost_defaults() -> None:
+def test_rpc_mode_get_state_model_uses_id_as_name_and_omits_unknown_cost() -> None:
     from loushang.coding.mode import run_rpc_mode
 
     session = FakeSession(session_id="session-a", cwd="/tmp/project")
@@ -1507,13 +1507,58 @@ def test_rpc_mode_get_state_model_uses_id_as_name_and_includes_zero_cost_default
         "contextWindow": 100_000,
         "maxTokens": 4_096,
         "reasoning": False,
-        "cost": {
-            "input": 0,
-            "output": 0,
-            "cacheRead": 0,
-            "cacheWrite": 0,
-        },
     }
+
+
+def test_rpc_mode_get_state_model_omits_partial_unknown_cost() -> None:
+    from loushang.coding.mode import run_rpc_mode
+
+    session = FakeSession(session_id="session-a", cwd="/tmp/project")
+    session.model_registry = FakeModelRegistry(
+        resolved_models={
+            ("openrouter", "auto"): Model(
+                id="auto",
+                provider="openrouter",
+                endpoint="anthropic-messages",
+                capabilities=Capabilities(input=("text",), context_window=100_000),
+                pricing=Pricing(input=None, output=None, cache_read=0, cache_write=0),
+            )
+        },
+        endpoints={
+            ("openrouter", "anthropic-messages"): Endpoint(
+                id="anthropic-messages",
+                api="anthropic-messages",
+                provider="openrouter",
+            )
+        },
+    )
+    asyncio.run(session.set_model(ModelSelection(provider="openrouter", model_id="auto")))
+    runtime = FakeRuntime(session)
+    stdin = StringIO(json.dumps({"id": "state", "type": "get_state"}) + "\n")
+    stdout = StringIO()
+
+    async def scenario() -> None:
+        exit_code = await run_rpc_mode(runtime=runtime, stdin=stdin, stdout=stdout)
+        assert exit_code == 0
+
+    asyncio.run(scenario())
+
+    model = _parse_jsonl(stdout)[0]["data"]["model"]
+    assert "cost" not in model
+
+
+@pytest.mark.parametrize("value", [-1.0, float("nan"), float("inf")])
+def test_rpc_mode_model_cost_omits_invalid_numeric_values(value: float) -> None:
+    from loushang.coding.mode import RpcMode
+
+    session = FakeSession(session_id="session-a", cwd="/tmp/project")
+    mode = RpcMode(runtime=FakeRuntime(session), stdin=StringIO(), stdout=StringIO())
+
+    cost = mode._serialize_model_cost(
+        SimpleNamespace(input=1.0, output=value, cache_read=0.0, cache_write=0.0)
+    )
+
+    assert cost is None
 
 
 @pytest.mark.parametrize(
@@ -3275,12 +3320,6 @@ def test_rpc_mode_get_available_models_skips_invalid_model_entries() -> None:
                         "contextWindow": 128000,
                         "maxTokens": 8192,
                         "reasoning": True,
-                        "cost": {
-                            "input": 0,
-                            "output": 0,
-                            "cacheRead": 0,
-                            "cacheWrite": 0,
-                        },
                     },
                 ],
             },

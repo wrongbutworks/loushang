@@ -3,15 +3,28 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Any, Literal, NotRequired, TypedDict
 
+from loushang.observability.problem import JSONValue
+
+
+class UsageCost(TypedDict):
+    input: float
+    output: float
+    cacheRead: float
+    cacheWrite: float
+    total: float
+
 
 @dataclass(frozen=True)
-class Usage:
+class UsageObservation:
     input: int
     output: int
     cache_read: int
     cache_write: int
     total_tokens: int
-    cost: dict[str, float]
+    cost: UsageCost | None
+
+
+Usage = UsageObservation
 
 
 @dataclass(frozen=True)
@@ -195,6 +208,7 @@ class ErrorEvent(TypedDict):
     reason: Literal["aborted", "error"]
     error: AssistantMessage
     code: NotRequired[int]
+    error_info: NotRequired[dict[str, JSONValue]]
 
 
 AssistantMessageEvent = (

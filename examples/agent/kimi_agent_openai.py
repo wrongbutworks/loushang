@@ -1,7 +1,7 @@
 """loushang-agent example with Moonshot Kimi model via OpenAI Chat Completions.
 
 Demonstrates:
-- Basic conversation with kimi-k2.5
+- Basic conversation with kimi-k2.6
 - Streaming events for typewriter effect
 - Simple tool execution (calculator)
 - Chinese interaction
@@ -27,11 +27,11 @@ from loushang.ai import (
     Model,
     TextPart,
     get_model,
-    reset_api_providers,
 )
+from loushang.ai.advanced.registry import reset_api_providers
 
 BASE_URL = "https://api.moonshot.cn/v1"
-MODEL_ID = "kimi-k2.5"
+MODEL_ID = "kimi-k2.6"
 
 
 @dataclass
@@ -80,7 +80,11 @@ class CalcTool:
 
 
 def _resolve_api_key() -> str:
-    api_key = os.environ.get("KIMI_API_KEY") or os.environ.get("MOONSHOT_API_KEY") or os.environ.get("OPENAI_API_KEY")
+    api_key = (
+        os.environ.get("KIMI_API_KEY")
+        or os.environ.get("MOONSHOT_API_KEY")
+        or os.environ.get("OPENAI_API_KEY")
+    )
     if not api_key:
         raise RuntimeError("请先导出 KIMI_API_KEY 或 MOONSHOT_API_KEY 环境变量")
     return api_key
@@ -121,7 +125,9 @@ async def main() -> None:
                 print(delta, end="", flush=True)
         elif event_type == "message_end":
             message = event.get("message")
-            if getattr(message, "role", None) == "assistant" and getattr(message, "error_message", None):
+            if getattr(message, "role", None) == "assistant" and getattr(
+                message, "error_message", None
+            ):
                 print(f"[错误: {message.error_message}]")
             else:
                 print()  # New line after message completes

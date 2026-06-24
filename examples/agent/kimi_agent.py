@@ -1,7 +1,7 @@
 """loushang-agent example with Moonshot Kimi model.
 
 Demonstrates:
-- Basic conversation with kimi-k2.5
+- Basic conversation with kimi-k2.6
 - Streaming events for typewriter effect
 - Simple tool execution (calculator)
 - Chinese interaction
@@ -27,11 +27,11 @@ from loushang.ai import (
     Model,
     TextPart,
     get_model,
-    reset_api_providers,
 )
+from loushang.ai.advanced.registry import reset_api_providers
 
-BASE_URL = "https://api.moonshot.cn/anthropic"
-MODEL_ID = "kimi-k2.5"
+BASE_URL = "https://api.moonshot.cn/v1"
+MODEL_ID = "kimi-k2.6"
 
 
 @dataclass
@@ -80,20 +80,20 @@ class CalcTool:
 
 
 def _resolve_api_key() -> str:
-    api_key = os.environ.get("KIMI_API_KEY") or os.environ.get("MOONSHOT_API_KEY") or os.environ.get("ANTHROPIC_API_KEY")
+    api_key = os.environ.get("KIMI_API_KEY") or os.environ.get("MOONSHOT_API_KEY")
     if not api_key:
         raise RuntimeError("请先导出 KIMI_API_KEY 或 MOONSHOT_API_KEY 环境变量")
     return api_key
 
 
 def _build_model() -> Model:
-    """Build public Model for Kimi via Moonshot Anthropic-compatible API."""
-    return get_model("moonshot", "anthropic-messages", MODEL_ID)
+    """Build public Model for Kimi via Moonshot OpenAI-compatible API."""
+    return get_model("moonshot", "openai-completions", MODEL_ID)
 
 
 async def main() -> None:
     # Register providers with Moonshot base URL
-    reset_api_providers(anthropic_base_url=BASE_URL)
+    reset_api_providers(openai_base_url=BASE_URL)
 
     model = _build_model()
 

@@ -1,18 +1,22 @@
 from dataclasses import dataclass
 
-from loushang.ai.api.streaming import complete, complete_simple, stream, stream_simple
+from loushang.ai.api.streaming import (
+    complete,
+    complete_simple,
+    complete_structured,
+    stream,
+    stream_simple,
+)
+from loushang.ai.errors import AIError, AIErrorCode, AIErrorInfo
 from loushang.ai.options import (
-    AnthropicOptions,
     CacheRetention,
-    ModelCallOptions,
-    OpenAICompletionsOptions,
-    OpenAIResponsesOptions,
-    PairingMode,
-    ProviderStreamOptions,
-    SimpleStreamOptions,
-    StreamOptions,
+    CallOptions,
+    ReasoningOptions,
+    RetryOptions,
+    SimpleCallOptions,
     ThinkingBudgets,
     ThinkingLevel,
+    TimeoutOptions,
     Transport,
 )
 from loushang.ai.types import StopReason, TextSignatureV1
@@ -41,21 +45,22 @@ __all__ = [
     "complete",
     "stream_simple",
     "complete_simple",
+    "complete_structured",
     "AgentRuntimeHints",
     "CompressionPolicy",
     "SessionBudget",
+    "AIError",
+    "AIErrorCode",
+    "AIErrorInfo",
     "ThinkingLevel",
     "ThinkingBudgets",
     "CacheRetention",
     "Transport",
-    "ModelCallOptions",
-    "ProviderStreamOptions",
-    "StreamOptions",
-    "SimpleStreamOptions",
-    "AnthropicOptions",
-    "OpenAICompletionsOptions",
-    "OpenAIResponsesOptions",
-    "PairingMode",
+    "CallOptions",
+    "SimpleCallOptions",
+    "ReasoningOptions",
+    "RetryOptions",
+    "TimeoutOptions",
     "StopReason",
     "TextSignatureV1",
 ]

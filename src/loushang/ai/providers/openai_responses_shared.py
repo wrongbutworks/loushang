@@ -2,14 +2,18 @@ from __future__ import annotations
 
 import json
 import re
-from typing import Any, TypedDict
+from collections.abc import AsyncIterator, Mapping, Sequence
+from typing import Any, TypedDict, cast
 
-from loushang.ai.model.compat_schema import (
-    REQUIRES_ASSISTANT_AFTER_TOOL_RESULT,
-    SUPPORTS_DEVELOPER_ROLE,
-    compat_bool,
+from loushang.ai.event_stream.raw_parts import RawPart
+from loushang.ai.model.domain import (
+    EndpointProtocolFeatures,
+    EndpointWireDialect,
+    SupportStatus,
 )
 from loushang.ai.model.registry import resolve_model_api
+from loushang.ai.options import is_reasoning_requested
+from loushang.ai.provider.errors import provider_error_part_from_raw
 from loushang.ai.tool.providers import to_openai_responses_tools
 from loushang.ai.tool.transform import (
     MISSING_TOOL_RESULT_TEXT,
@@ -26,8 +30,10 @@ class _BufferedTextPart(TypedDict):
 
 def convert_responses_messages(
     model,
-    normalized: dict[str, Any],
-    compat: dict[str, Any] | None = None,
+    normalized: Mapping[str, Any],
+    protocol: EndpointProtocolFeatures | None = None,
+    dialect: EndpointWireDialect | None = None,
+    capabilities: object | None = None,
 ) -> list[dict[str, Any]]:
     """
     Minimal shared message conversion for the OpenAI Responses provider.
@@ -36,12 +42,19 @@ def convert_responses_messages(
     next steps can iterate toward pi-ai's shared architecture without keeping the
     logic in the orchestration file.
     """
-    compat = compat or {}
+    protocol = protocol if isinstance(protocol, EndpointProtocolFeatures) else None
+    protocol = protocol or EndpointProtocolFeatures()
+    dialect = dialect if isinstance(dialect, EndpointWireDialect) else None
+    dialect = dialect or EndpointWireDialect()
     input_items: list[dict[str, Any]] = []
     tool_call_id_map: dict[str, str] = {}
     system_prompt = normalized.get("system_prompt")
     if isinstance(system_prompt, str) and system_prompt.strip():
-        role = "developer" if _supports_developer_role(model, compat) else "system"
+        role = (
+            "developer"
+            if _supports_developer_role(model, protocol, capabilities)
+            else "system"
+        )
         input_items.append(
             {"role": role, "content": sanitize_surrogates(system_prompt)}
         )
@@ -55,7 +68,7 @@ def convert_responses_messages(
         content = _message_content(msg)
         if message_role == "user":
             if (
-                compat_bool(compat, REQUIRES_ASSISTANT_AFTER_TOOL_RESULT)
+                dialect.tools.assistant_bridge_required is True
                 and last_role == "toolResult"
             ):
                 input_items.append(
@@ -64,7 +77,7 @@ def convert_responses_messages(
                         "content": TOOL_RESULTS_PROCESSED_ASSISTANT_TEXT,
                     }
                 )
-            user_payload = _user_message_payload(content, model)
+            user_payload = _user_message_payload(content, model, capabilities)
             if user_payload is not None:
                 input_items.append(user_payload)
                 last_role = "user"
@@ -94,7 +107,12 @@ def convert_responses_messages(
             index += 1
             continue
         if message_role == "toolResult":
-            tool_result_payload = _tool_result_payload(msg, model, tool_call_id_map)
+            tool_result_payload = _tool_result_payload(
+                msg,
+                model,
+                tool_call_id_map,
+                capabilities,
+            )
             if tool_result_payload is not None:
                 input_items.append(tool_result_payload)
                 last_role = "toolResult"
@@ -105,38 +123,12 @@ def convert_responses_messages(
     return input_items
 
 
-def convert_responses_tools(tools: list[Any] | None) -> list[dict[str, Any]] | None:
-    if not isinstance(tools, list) or not tools:
+def convert_responses_tools(
+    tools: Sequence[Tool] | None,
+) -> list[dict[str, Any]] | None:
+    if not isinstance(tools, Sequence) or isinstance(tools, str) or not tools:
         return None
-    normalized_tools: list[Tool] = []
-    for tool in tools:
-        if isinstance(tool, dict):
-            name = tool.get("name")
-            description = tool.get("description", "")
-            parameters = tool.get("parameters", {"type": "object"})
-            if isinstance(name, str) and name:
-                normalized_tools.append(
-                    Tool(
-                        name=name,
-                        description=description if isinstance(description, str) else "",
-                        parameters=parameters
-                        if isinstance(parameters, dict)
-                        else {"type": "object"},
-                    )
-                )
-        else:
-            name = getattr(tool, "name", None)
-            if isinstance(name, str) and name:
-                normalized_tools.append(
-                    Tool(
-                        name=name,
-                        description=getattr(tool, "description", "") or "",
-                        parameters=getattr(tool, "parameters", {"type": "object"})
-                        if isinstance(getattr(tool, "parameters", None), dict)
-                        else {"type": "object"},
-                    )
-                )
-    return to_openai_responses_tools(normalized_tools) if normalized_tools else None
+    return to_openai_responses_tools(list(tools))
 
 
 def build_copilot_dynamic_headers(messages: list[object]) -> dict[str, str]:
@@ -152,10 +144,13 @@ def build_copilot_dynamic_headers(messages: list[object]) -> dict[str, str]:
             ):
                 has_images = True
                 break
-        if role == "toolResult" and isinstance(message, ToolResultMessage):
-            if any(_part_type(part) == "image" for part in message.content):
-                has_images = True
-                break
+        if (
+            role == "toolResult"
+            and isinstance(message, ToolResultMessage)
+            and any(_part_type(part) == "image" for part in message.content)
+        ):
+            has_images = True
+            break
     headers = {
         "X-Initiator": "agent" if last_role and last_role != "user" else "user",
         "Openai-Intent": "conversation-edits",
@@ -165,21 +160,23 @@ def build_copilot_dynamic_headers(messages: list[object]) -> dict[str, str]:
     return headers
 
 
-async def process_responses_stream(openai_stream, *, options=None):
+async def process_responses_stream(
+    openai_stream,
+    *,
+    options=None,
+    source: str = "openai-responses",
+) -> AsyncIterator[RawPart]:
     thinking_buf: list[str] = []
     text_buf: list[str] = []
     thinking_closed = False
     text_closed = False
     current_reasoning_item: dict[str, Any] | None = None
+    tool_call_ids_by_item_id: dict[str, str] = {}
+    tool_call_ids_by_index: dict[int, str] = {}
     emit_thinking = False
     if options is not None:
         try:
-            if getattr(options, "emit_thinking", False):
-                emit_thinking = True
-            if getattr(options, "thinking_enabled", False):
-                emit_thinking = True
-            if getattr(options, "reasoning", None) is not None:
-                emit_thinking = True
+            emit_thinking = is_reasoning_requested(options)
         except Exception:
             emit_thinking = False
 
@@ -201,11 +198,22 @@ async def process_responses_stream(openai_stream, *, options=None):
                     "summary": [],
                 }
             elif getattr(item, "type", None) == "function_call":
-                yield {
+                index = _optional_int(getattr(event, "output_index", None))
+                item_id = getattr(item, "id", None)
+                call_id = getattr(item, "call_id", None)
+                tool_call_id = f"{call_id or ''}|{item_id or ''}"
+                if isinstance(item_id, str) and item_id:
+                    tool_call_ids_by_item_id[item_id] = tool_call_id
+                if index is not None:
+                    tool_call_ids_by_index[index] = tool_call_id
+                start_part: dict[str, object] = {
                     "type": "tool_call_start",
-                    "id": f"{getattr(item, 'call_id', '')}|{getattr(item, 'id', '')}",
+                    "id": tool_call_id,
                     "name": getattr(item, "name", ""),
                 }
+                if index is not None:
+                    start_part["index"] = index
+                yield _raw_part(start_part)
         elif etype == "response.reasoning_summary_part.added":
             if current_reasoning_item is not None:
                 part = getattr(event, "part", None)
@@ -249,7 +257,24 @@ async def process_responses_stream(openai_stream, *, options=None):
         elif etype == "response.function_call_arguments.delta":
             delta = getattr(event, "delta", None)
             if isinstance(delta, str) and delta:
-                yield {"type": "tool_call_args_delta", "delta": delta}
+                delta_part: dict[str, object] = {
+                    "type": "tool_call_args_delta",
+                    "delta": delta,
+                }
+                item_id = getattr(event, "item_id", None)
+                if isinstance(item_id, str) and item_id:
+                    delta_part["tool_call_id"] = tool_call_ids_by_item_id.get(
+                        item_id,
+                        item_id,
+                    )
+                index = _optional_int(getattr(event, "output_index", None))
+                if "tool_call_id" not in delta_part and index is not None:
+                    indexed_tool_call_id = tool_call_ids_by_index.get(index)
+                    if indexed_tool_call_id is not None:
+                        delta_part["tool_call_id"] = indexed_tool_call_id
+                if index is not None:
+                    delta_part["index"] = index
+                yield _raw_part(delta_part)
         elif etype == "response.output_item.done":
             item = getattr(event, "item", None)
             if item is None:
@@ -282,7 +307,17 @@ async def process_responses_stream(openai_stream, *, options=None):
                 }
                 text_closed = True
             elif getattr(item, "type", None) == "function_call":
-                yield {"type": "tool_call_done"}
+                done_part: dict[str, object] = {"type": "tool_call_done"}
+                item_id = getattr(item, "id", None)
+                call_id = getattr(item, "call_id", None)
+                if isinstance(call_id, str) and isinstance(item_id, str):
+                    done_part["tool_call_id"] = f"{call_id}|{item_id}"
+                    tool_call_ids_by_item_id.pop(item_id, None)
+                index = _optional_int(getattr(event, "output_index", None))
+                if index is not None:
+                    done_part["index"] = index
+                    tool_call_ids_by_index.pop(index, None)
+                yield _raw_part(done_part)
         elif etype == "response.completed":
             resp = getattr(event, "response", None)
             if resp is not None:
@@ -325,10 +360,7 @@ async def process_responses_stream(openai_stream, *, options=None):
             err = (
                 f"Error Code {code}: {message}" if code or message else "Unknown error"
             )
-            yield {
-                "type": "response_error",
-                "message": err,
-            }
+            yield provider_error_part_from_raw(err, code=code, source=source)
         elif etype == "response.failed":
             response = getattr(event, "response", None)
             error = getattr(response, "error", None) if response else None
@@ -341,10 +373,12 @@ async def process_responses_stream(openai_stream, *, options=None):
                 msg = f"incomplete: {getattr(incomplete, 'reason', 'unknown')}"
             else:
                 msg = "Unknown error (no error details in response)"
-            yield {
-                "type": "response_error",
-                "message": msg,
-            }
+            raw_code = getattr(error, "code", None) if error is not None else None
+            yield provider_error_part_from_raw(
+                msg,
+                code=raw_code,
+                source=source,
+            )
 
     yield {"type": "response_done"}
 
@@ -355,6 +389,10 @@ def _service_tier_cost_multiplier(service_tier: str | None) -> float:
     if service_tier == "priority":
         return 2.0
     return 1.0
+
+
+def _raw_part(part: dict[str, object]) -> RawPart:
+    return cast(RawPart, part)
 
 
 def map_responses_status_to_reason(status: str | None) -> str:
@@ -399,22 +437,16 @@ def parse_text_signature(
 
 
 def _message_role(message: object) -> str | None:
-    return (
-        message.get("role")
-        if isinstance(message, dict)
-        else getattr(message, "role", None)
-    )
+    return getattr(message, "role", None)
 
 
 def _message_content(message: object) -> object:
-    return (
-        message.get("content")
-        if isinstance(message, dict)
-        else getattr(message, "content", None)
-    )
+    return getattr(message, "content", None)
 
 
-def _user_message_payload(content: object, model) -> dict[str, Any] | None:
+def _user_message_payload(
+    content: object, model, capabilities: object | None = None
+) -> dict[str, Any] | None:
     if not isinstance(content, list):
         return None
 
@@ -425,7 +457,7 @@ def _user_message_payload(content: object, model) -> dict[str, Any] | None:
             text = _part_text(part)
             if isinstance(text, str) and text.strip():
                 parts.append({"type": "input_text", "text": sanitize_surrogates(text)})
-        elif part_type == "image" and "image" in getattr(model, "input", ()):
+        elif part_type == "image" and _supports_image_input(model, capabilities):
             data = _part_data(part)
             mime_type = _part_mime_type(part)
             if (
@@ -492,9 +524,7 @@ def _assistant_message_payload(
                 text_buffer.append(
                     {
                         "text": text,
-                        "text_signature": getattr(part, "text_signature", None)
-                        if not isinstance(part, dict)
-                        else part.get("text_signature"),
+                        "text_signature": getattr(part, "text_signature", None),
                     }
                 )
             continue
@@ -535,20 +565,18 @@ def _assistant_message_payload(
 
 
 def _part_type(part: object) -> str | None:
-    return part.get("type") if isinstance(part, dict) else getattr(part, "type", None)
+    return getattr(part, "type", None)
 
 
 def _part_text(part: object) -> str | None:
-    return part.get("text") if isinstance(part, dict) else getattr(part, "text", None)
+    return getattr(part, "text", None)
 
 
 def _part_data(part: object) -> str | None:
-    return part.get("data") if isinstance(part, dict) else getattr(part, "data", None)
+    return getattr(part, "data", None)
 
 
 def _part_mime_type(part: object) -> str | None:
-    if isinstance(part, dict):
-        return part.get("mime_type") or part.get("mimeType")
     return getattr(part, "mime_type", None)
 
 
@@ -556,6 +584,7 @@ def _tool_result_payload(
     message: object,
     model,
     tool_call_id_map: dict[str, str],
+    capabilities: object | None = None,
 ) -> dict[str, Any] | None:
     if not isinstance(message, ToolResultMessage):
         return None
@@ -566,7 +595,7 @@ def _tool_result_payload(
     ]
     has_images = any(_part_type(part) == "image" for part in message.content)
     image_parts: list[dict[str, Any]] = []
-    if "image" in getattr(model, "input", ()):
+    if _supports_image_input(model, capabilities):
         for part in message.content:
             if _part_type(part) != "image":
                 continue
@@ -608,18 +637,43 @@ def _tool_result_payload(
     }
 
 
-def _supports_developer_role(model, compat: dict[str, Any]) -> bool:
-    if SUPPORTS_DEVELOPER_ROLE in compat:
-        return bool(getattr(model, "reasoning", False)) and compat_bool(
-            compat, SUPPORTS_DEVELOPER_ROLE
-        )
-    return bool(getattr(model, "reasoning", False))
+def _supports_image_input(model, capabilities: object | None) -> bool:
+    if capabilities is not None:
+        return bool(getattr(capabilities, "supports_image_input", False))
+    return "image" in getattr(model, "input", ())
+
+
+def _supports_reasoning(model, capabilities: object | None) -> bool:
+    if capabilities is not None:
+        supports_thinking = getattr(capabilities, "supports_thinking", None)
+        if supports_thinking is not None:
+            return bool(supports_thinking)
+        return bool(getattr(capabilities, "reasoning", False))
+    return bool(getattr(model, "supports_thinking", getattr(model, "reasoning", False)))
+
+
+def _supports_developer_role(
+    model, protocol: EndpointProtocolFeatures, capabilities: object | None
+) -> bool:
+    return _supports_reasoning(model, capabilities) and _is_supported(
+        protocol.roles.developer
+    )
+
+
+def _is_supported(status: SupportStatus) -> bool:
+    return status is SupportStatus.SUPPORTED
 
 
 def _normalize_id_part(part: str) -> str:
     sanitized = re.sub(r"[^a-zA-Z0-9_-]", "_", part)
     normalized = sanitized[:64] if len(sanitized) > 64 else sanitized
     return re.sub(r"_+$", "", normalized) or "_"
+
+
+def _optional_int(value: object) -> int | None:
+    if isinstance(value, bool):
+        return None
+    return value if isinstance(value, int) else None
 
 
 def _build_foreign_responses_item_id(item_id: str) -> str:

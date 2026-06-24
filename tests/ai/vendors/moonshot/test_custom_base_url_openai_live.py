@@ -19,13 +19,15 @@ from collections.abc import Iterable
 
 import pytest
 
-from loushang.ai import OpenAICompletionsOptions, get_model, reset_api_providers
+from loushang.ai import get_model
+from loushang.ai.advanced import OpenAICompletionsOptions
+from loushang.ai.advanced.registry import reset_api_providers
 
 # 用户可直接修改的配置。
 # 这是高级示例；默认正式示例不需要覆盖 `BASE_URL`。
 API_KEY = ""
 BASE_URL = "https://api.moonshot.cn/v1"
-MODEL_ID = "kimi-k2.5"
+MODEL_ID = "kimi-k2.6"
 SYSTEM_PROMPT = "你是 Kimi，由 Moonshot AI 提供。回答要简洁、准确，优先使用中文。"
 USER_PROMPT = "请用一句话介绍你自己。"
 MAX_TOKENS = 256

@@ -10,8 +10,6 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
 
-from httpx import AsyncClient
-
 if __package__ in {None, ""}:
     sys.path.insert(0, str(Path(__file__).resolve().parent))
 
@@ -25,6 +23,7 @@ from _support import (
 
 from loushang.ai import Context, UserMessage, complete_simple
 from loushang.ai.pricing import calculate_cost
+from loushang.ai.usage import query_platform_quota
 
 LEDGER_FILE_NAME = "usage-ledger.jsonl"
 ENV_WEEKLY_QUOTA_TOKENS = "LOUSHANG_WEEKLY_QUOTA_TOKENS"
@@ -56,11 +55,11 @@ class UsagePayload:
     cache_read: int
     cache_write: int
     total_tokens: int
-    cost_input: float
-    cost_output: float
-    cost_cache_read: float
-    cost_cache_write: float
-    cost_total: float
+    cost_input: float | None
+    cost_output: float | None
+    cost_cache_read: float | None
+    cost_cache_write: float | None
+    cost_total: float | None
 
 
 def _to_int(value: Any, *, default: int = 0) -> int:
@@ -75,6 +74,12 @@ def _to_float(value: Any, *, default: float = 0.0) -> float:
         return float(value)
     except Exception:
         return default
+
+
+def _cost_value(cost: dict[str, float] | None, key: str) -> float | None:
+    if cost is None or key not in cost:
+        return None
+    return _to_float(cost[key])
 
 
 def _usage_from_response(
@@ -92,13 +97,7 @@ def _usage_from_response(
         getattr(usage, "total_tokens", None),
         default=input_tokens + output_tokens + cache_read + cache_write,
     )
-    cost = {
-        "input": 0.0,
-        "output": 0.0,
-        "cacheRead": 0.0,
-        "cacheWrite": 0.0,
-        "total": 0.0,
-    }
+    cost = None
     try:
         computed = calculate_cost(model_obj, usage)
         if isinstance(computed, dict):
@@ -111,11 +110,11 @@ def _usage_from_response(
         cache_read=cache_read,
         cache_write=cache_write,
         total_tokens=total_tokens,
-        cost_input=_to_float(cost.get("input")),
-        cost_output=_to_float(cost.get("output")),
-        cost_cache_read=_to_float(cost.get("cacheRead")),
-        cost_cache_write=_to_float(cost.get("cacheWrite")),
-        cost_total=_to_float(cost.get("total")),
+        cost_input=_cost_value(cost, "input"),
+        cost_output=_cost_value(cost, "output"),
+        cost_cache_read=_cost_value(cost, "cacheRead"),
+        cost_cache_write=_cost_value(cost, "cacheWrite"),
+        cost_total=_cost_value(cost, "total"),
     )
 
 
@@ -158,50 +157,18 @@ def _safe_int(value: Any) -> int:
         return 0
 
 
-async def _query_platform_usage(base_url: str | None) -> dict[str, Any]:
-    if not base_url:
-        raise RuntimeError("model base_url missing")
-
-    api_key = resolve_api_key()
-    headers = {
-        "Accept": "application/json",
-        "Authorization": f"Bearer {api_key}",
-        "x-api-key": api_key,
-        "User-Agent": "KimiCLI/1.5",
-    }
-
-    candidates = [
-        f"{base_url.rstrip('/')}/usages",
-    ]
-    if not base_url.rstrip("/").endswith("/v1"):
-        candidates.insert(0, f"{base_url.rstrip('/')}/v1/usages")
-    candidates = list(dict.fromkeys(candidates))
-
-    payload: Any = {}
-    last_error: Exception | None = None
-    async with AsyncClient(timeout=12.0) as client:
-        for candidate in candidates:
-            try:
-                resp = await client.get(candidate, headers=headers)
-                if resp.status_code == 404:
-                    last_error = RuntimeError(f"HTTP 404 {candidate}")
-                    continue
-                resp.raise_for_status()
-                payload = resp.json()
-                break
-            except Exception as error:
-                last_error = error
-                continue
-
-    if not payload:
-        if isinstance(last_error, Exception):
-            raise last_error
-        raise RuntimeError(f"query platform usage failed for all candidates: {candidates}")
-
+async def _query_platform_usage(endpoint: str, model: str) -> dict[str, Any]:
+    model_obj = build_kimi_model(endpoint_id=endpoint, model_id=model)
+    quota = await query_platform_quota(
+        model_obj,
+        api_key=resolve_api_key(),
+        timeout=12.0,
+    )
+    payload: Any = quota.raw
     usage = payload.get("usage", {}) if isinstance(payload, dict) else {}
     limits = payload.get("limits", []) if isinstance(payload, dict) else []
     total_quota = payload.get("totalQuota", {}) if isinstance(payload, dict) else {}
-    reset = usage.get("resetTime")
+    reset = quota.reset_time or usage.get("resetTime")
     reset_parsed = _parse_iso_datetime(reset)
 
     window_records: list[dict[str, Any]] = []
@@ -226,12 +193,14 @@ async def _query_platform_usage(base_url: str | None) -> dict[str, Any]:
 
     resets_in_hours = None
     if reset_parsed is not None:
-        resets_in_hours = int((reset_parsed - datetime.now(timezone.utc)).total_seconds() // 3600)
+        resets_in_hours = int(
+            (reset_parsed - datetime.now(timezone.utc)).total_seconds() // 3600
+        )
 
     return {
-        "usage_limit": _safe_int(usage.get("limit")),
-        "usage_used": _safe_int(usage.get("used")),
-        "usage_remaining": _safe_int(usage.get("remaining")),
+        "usage_limit": _safe_int(quota.limit),
+        "usage_used": _safe_int(quota.used),
+        "usage_remaining": _safe_int(quota.remaining),
         "reset_time": reset,
         "reset_time_iso": _to_iso_datetime(reset_parsed),
         "resets_in_hours": resets_in_hours,
@@ -381,12 +350,14 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--skip-platform-usage",
         action="store_true",
-        help="Skip querying official /usages endpoint.",
+        help="Skip querying the configured platform quota endpoint.",
     )
     return parser.parse_args()
 
 
-async def _run_once(endpoint: str, model: str, prompt: str, ledger_path: Path) -> tuple[str, dict[str, Any]]:
+async def _run_once(
+    endpoint: str, model: str, prompt: str, ledger_path: Path
+) -> tuple[str, dict[str, Any]]:
     model_obj = build_kimi_model(endpoint_id=endpoint, model_id=model)
     model_info = describe_model(model_obj)
     print_event(
@@ -405,7 +376,9 @@ async def _run_once(endpoint: str, model: str, prompt: str, ledger_path: Path) -
         system_prompt="简短回复并保持稳定可复现格式。",
         messages=[UserMessage(role="user", content=prompt, timestamp=0.0)],
     )
-    print_event("tool.start", {"tool": "completion", "endpoint": endpoint, "model": model})
+    print_event(
+        "tool.start", {"tool": "completion", "endpoint": endpoint, "model": model}
+    )
 
     response = await complete_simple(model_obj, context)
     text = "".join(
@@ -484,16 +457,23 @@ async def main_async(args: argparse.Namespace) -> int:
     ledger_path = _resolve_ledger_path(args.ledger_path or None)
     print(f"ledger_path: {ledger_path}")
     records = _load_records(ledger_path)
-    print_event("model.end", {"loaded_records": len(records), "record_file_exists": ledger_path.exists()})
+    print_event(
+        "model.end",
+        {"loaded_records": len(records), "record_file_exists": ledger_path.exists()},
+    )
 
     if args.offline:
         _print_offline_sample(ledger_path)
         return 0
 
     try:
-        text, record = await _run_once(args.endpoint, args.model, args.prompt, ledger_path)
+        text, record = await _run_once(
+            args.endpoint, args.model, args.prompt, ledger_path
+        )
     except Exception as error:
-        print_event("tool.end", {"tool": "completion", "status": "fail", "error": str(error)})
+        print_event(
+            "tool.end", {"tool": "completion", "status": "fail", "error": str(error)}
+        )
         print(f"reply_error: {error}")
         print_event("message.end", {"result": "fail"})
         _render_summary(_now_local(), records, quota_tokens, 0, 0)
@@ -501,13 +481,12 @@ async def main_async(args: argparse.Namespace) -> int:
 
     if not args.skip_platform_usage:
         try:
-            base_url = str(record.get("base_url", ""))
-            platform_usage = await _query_platform_usage(base_url)
+            platform_usage = await _query_platform_usage(args.endpoint, args.model)
             _print_platform_usage(platform_usage, _now_local())
         except Exception as error:
             print_event(
                 "platform_usage.error",
-                {"error": str(error), "base_url": str(record.get("base_url"))},
+                {"error": str(error), "endpoint": args.endpoint, "model": args.model},
             )
             print(f"platform_usage_error: {error}")
 
@@ -515,16 +494,33 @@ async def main_async(args: argparse.Namespace) -> int:
         _safe_append_record(ledger_path, record)
         records.append(record)
 
-    print_event("tool.end", {"tool": "completion", "status": "ok", "reply_preview": text[:160]})
+    print_event(
+        "tool.end", {"tool": "completion", "status": "ok", "reply_preview": text[:160]}
+    )
     print(f"reply: {text}")
-    print("usage_now:", {k: record[k] for k in ("input_tokens", "output_tokens", "cache_read", "cache_write", "total_tokens")})
-    print("cost_now:", {
-        "input": record["cost_input"],
-        "output": record["cost_output"],
-        "cacheRead": record["cost_cache_read"],
-        "cacheWrite": record["cost_cache_write"],
-        "total": record["cost_total"],
-    })
+    print(
+        "usage_now:",
+        {
+            k: record[k]
+            for k in (
+                "input_tokens",
+                "output_tokens",
+                "cache_read",
+                "cache_write",
+                "total_tokens",
+            )
+        },
+    )
+    print(
+        "cost_now:",
+        {
+            "input": record["cost_input"],
+            "output": record["cost_output"],
+            "cacheRead": record["cost_cache_read"],
+            "cacheWrite": record["cost_cache_write"],
+            "total": record["cost_total"],
+        },
+    )
     _render_summary(
         datetime.fromisoformat(record["timestamp"]),
         records,

@@ -45,6 +45,10 @@ def _reset_oauth_registry(monkeypatch: pytest.MonkeyPatch):
         "loushang.ai.cli.__main__.register_builtin_oauth_providers",
         lambda: None,
     )
+    monkeypatch.setattr(
+        "loushang.ai.cli.__main__.register_openai_codex_oauth_provider",
+        lambda: None,
+    )
 
 
 def test_auth_providers_outputs_registered_oauth_providers(
@@ -90,7 +94,9 @@ def test_auth_login_uses_oauth_login(
 ) -> None:
     monkeypatch.setattr("builtins.input", lambda _prompt="": "")
 
-    async def _fake_login(provider_id, callbacks, *, endpoint_id=None, model_id=None, persist=True):
+    async def _fake_login(
+        provider_id, callbacks, *, endpoint_id=None, model_id=None, persist=True
+    ):
         assert provider_id == "openai-codex"
         assert endpoint_id is None
         assert model_id is None
@@ -122,7 +128,9 @@ def test_auth_login_can_prompt_for_provider_selection(
     responses = iter(["1", ""])
     monkeypatch.setattr("builtins.input", lambda _prompt="": next(responses))
 
-    async def _fake_login(provider_id, callbacks, *, endpoint_id=None, model_id=None, persist=True):
+    async def _fake_login(
+        provider_id, callbacks, *, endpoint_id=None, model_id=None, persist=True
+    ):
         assert provider_id == "openai-codex"
         assert endpoint_id is None
         assert model_id is None

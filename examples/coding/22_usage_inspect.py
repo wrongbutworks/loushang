@@ -24,6 +24,12 @@ def print_event(name: str, payload: dict[str, object]) -> None:
     print(f"{name}: {json.dumps(payload, ensure_ascii=False, sort_keys=True)}")
 
 
+def _cost_payload(cost: dict[str, float] | None) -> dict[str, object]:
+    if cost is None:
+        return {"known": False}
+    return {"known": True, **cost}
+
+
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Inspect assistant usage and estimated cost from a model call.")
     parser.add_argument(
@@ -120,7 +126,7 @@ async def main() -> int:
         "cache_write": None,
         "total_tokens": None,
     }
-    cost_payload: dict[str, object] = {"input": None, "output": None, "cacheRead": None, "cacheWrite": None, "total": None}
+    cost_payload = _cost_payload(None)
 
     if usage is not None:
         usage_payload = {
@@ -131,10 +137,9 @@ async def main() -> int:
             "total_tokens": usage.total_tokens,
         }
         try:
-            cost = calculate_cost(model, usage)
-            cost_payload = cost
+            cost_payload = _cost_payload(calculate_cost(model, usage))
         except Exception as error:
-            cost_payload = {"error": str(error), "input": None, "output": None, "cacheRead": None, "cacheWrite": None, "total": None}
+            cost_payload = {"known": False, "error": str(error)}
     else:
         print_event("model.error", {"reason": "missing usage in response"})
 
@@ -157,7 +162,7 @@ async def main() -> int:
     print("resolved catalog: .../examples/coding/models/models.kimi-code.json")
     print("Model route:")
     print("usage: {'input': 0, 'output': 0, 'cache_read': 0, 'cache_write': 0, 'total_tokens': 0}")
-    print("cost: {'input': 0.0, 'output': 0.0, 'cacheRead': 0.0, 'cacheWrite': 0.0, 'total': 0.0}")
+    print("cost: {'known': False}")
 
     if args.strict and status != "ok":
         return 1

@@ -3,21 +3,23 @@ from __future__ import annotations
 import asyncio
 import os
 from collections.abc import AsyncIterator
+from contextlib import suppress
 from typing import Any
 
-from loushang.ai.context import ensure_normalized_context
-from loushang.ai.event_stream import AssistantMessageEventStream, RawAssembler
-from loushang.ai.model.compat_schema import (
-    SEND_SESSION_ID_HEADER,
-    SUPPORTS_LONG_CACHE_RETENTION,
-    UPSTREAM_MODEL_ID,
-    compat_bool,
-    compat_str,
+from loushang.ai.errors import UnsupportedCapabilityError
+from loushang.ai.event_stream.raw_parts import RawPart
+from loushang.ai.model.domain import (
+    EndpointProtocolFeatures,
+    EndpointWireDialect,
+    SupportStatus,
 )
-from loushang.ai.options import PairingMode
+from loushang.ai.options import (
+    get_provider_option,
+    get_reasoning_effort,
+    get_reasoning_summary,
+)
 from loushang.ai.output_budget import resolve_output_token_budget
-from loushang.ai.provider import resolve_request_for_model
-from loushang.ai.provider.cancellation import is_signal_cancelled
+from loushang.ai.provider import ProviderRequest, resolve_provider_request
 from loushang.ai.provider.errors import provider_error_part
 from loushang.ai.providers.openai_responses_shared import (
     build_copilot_dynamic_headers,
@@ -27,9 +29,11 @@ from loushang.ai.providers.openai_responses_shared import (
 )
 from loushang.ai.providers.provider_helpers import (
     apply_session_headers,
+    close_provider_stream,
     extract_sdk_api_key,
     sdk_default_headers,
 )
+from loushang.ai.structured import openai_responses_text_format
 from loushang.ai.trace import emit_trace as _emit_trace
 
 
@@ -47,7 +51,7 @@ def _resolve_cache_retention(options: object | None) -> str | None:
 def _apply_prompt_cache_params(
     params: dict[str, Any],
     *,
-    compat: dict[str, object],
+    protocol: EndpointProtocolFeatures,
     cache_retention: str | None,
     session_id: str | None,
 ) -> None:
@@ -55,12 +59,50 @@ def _apply_prompt_cache_params(
         return
     if isinstance(session_id, str) and session_id:
         params["prompt_cache_key"] = session_id
-    if cache_retention == "long" and compat_bool(compat, SUPPORTS_LONG_CACHE_RETENTION):
+    if cache_retention == "long" and _is_supported(protocol.cache.long_retention):
         params["prompt_cache_retention"] = "24h"
+
+
+def _validate_cache_session_options(
+    model: object,
+    resolved: object,
+    *,
+    protocol: EndpointProtocolFeatures,
+    cache_retention: str | None,
+    session_id: str | None,
+) -> None:
+    if cache_retention == "long" and not _is_supported(protocol.cache.long_retention):
+        raise UnsupportedCapabilityError(
+            f"Model {getattr(model, 'id', '<unknown>')!r} does not support long cache retention",
+            source=getattr(resolved, "api", None),
+            provider=getattr(resolved, "provider", None),
+            endpoint=getattr(resolved, "endpoint", None),
+            model=getattr(model, "id", None),
+            details={"capability": "cache_long_retention"},
+        )
+    if (
+        (cache_retention or "short") != "none"
+        and isinstance(session_id, str)
+        and session_id
+        and not (
+            _is_supported(protocol.cache.prompt_key)
+            or _is_supported(protocol.session.id_header)
+            or _is_supported(protocol.session.affinity_headers)
+        )
+    ):
+        raise UnsupportedCapabilityError(
+            f"Model {getattr(model, 'id', '<unknown>')!r} does not support session id",
+            source=getattr(resolved, "api", None),
+            provider=getattr(resolved, "provider", None),
+            endpoint=getattr(resolved, "endpoint", None),
+            model=getattr(model, "id", None),
+            details={"capability": "session_id"},
+        )
 
 
 class OpenAIResponsesProvider:
     api = "openai-responses"
+    supports_structured_output = True
 
     def __init__(
         self, *, client: Any | None = None, base_url: str | None = None
@@ -68,66 +110,43 @@ class OpenAIResponsesProvider:
         self._client = client
         self._base_url = base_url
 
-    async def stream(self, model, context, options):
-        resolved = resolve_request_for_model(model, options=options)
-        stream = AssistantMessageEventStream()
-        assembler = RawAssembler(
-            stream=stream,
-            api=resolved.api,
-            provider=model.provider_id,
-            model=model.id,
-            pricing=getattr(model, "pricing", None),
+    def _stream_raw_parts(
+        self, model, context, options, request=None
+    ) -> AsyncIterator[RawPart]:
+        resolved = resolve_provider_request(
+            self.api,
+            model,
+            options=options,
+            request=request,
+        )
+        return self.stream_raw(
+            ProviderRequest(
+                model=model,
+                context=context,
+                options=options,
+                resolved=resolved,
+            )
         )
 
-        async def _run() -> None:
-            signal = getattr(options, "signal", None) if options is not None else None
-            if is_signal_cancelled(signal):
-                assembler.feed({"type": "aborted"})
-                return
-            try:
-                async for part in self._stream_raw_parts(model, context, options):
-                    if is_signal_cancelled(signal):
-                        assembler.feed({"type": "aborted"})
-                        return
-                    assembler.feed(part)
-            except Exception as error:
-                assembler.feed(provider_error_part(error, source=self.api))
-
-        stream.attach_task(asyncio.create_task(_run()))
-        return stream
-
-    async def stream_simple(self, model, context, options):
-        return await self.stream(model, context, options)
-
-    async def _stream_raw_parts(self, model, context, options) -> AsyncIterator[dict]:
-        def _pairing_mode() -> PairingMode:
-            if options is None:
-                return "repair"
-            pairing_mode = getattr(options, "pairing_mode", "repair")
-            if pairing_mode == "strict":
-                return "strict"
-            return "repair"
+    async def stream_raw(self, request: ProviderRequest) -> AsyncIterator[RawPart]:
+        model = request.model
+        options = request.options
+        resolved = request.resolved
 
         def _debug(event: str, data: dict | None = None) -> None:
             # Allow callers to suppress provider SDK trace events explicitly.
             if options is not None:
-                try:
+                with suppress(Exception):
                     if (
                         getattr(options, "debug", None) is False
                         or getattr(options, "quiet_debug", None) is True
                     ):
                         return
-                except Exception:
-                    pass
             _emit_trace(options, {"type": f"sdk:{event}", **(data or {})})
 
-        normalized = ensure_normalized_context(
-            context,
-            model=model,
-            pairing_mode=_pairing_mode(),
-        )
-        resolved = resolve_request_for_model(model, options=options)
-        compat = dict(getattr(resolved, "compat", {}) or {})
+        normalized = request.context
+        protocol = _request_protocol(resolved)
+        dialect = _request_dialect(resolved)
 
         # 延迟导入 OpenAI SDK
         try:
@@ -147,7 +166,7 @@ class OpenAIResponsesProvider:
         )
 
         default_headers = sdk_default_headers(headers)
-        if getattr(model, "provider_id", "") == "github-copilot":
+        if _uses_copilot_dynamic_headers(resolved):
             default_headers.update(
                 build_copilot_dynamic_headers(normalized.get("messages", []))
             )
@@ -158,11 +177,25 @@ class OpenAIResponsesProvider:
         )
 
         # 构造 Responses API 输入。下一步会继续向 pi-ai 的 shared conversion 收敛。
-        input_items = convert_responses_messages(model, normalized, compat)
+        capabilities = getattr(resolved, "capabilities", None)
+        input_items = convert_responses_messages(
+            model,
+            normalized,
+            protocol,
+            dialect,
+            capabilities,
+        )
 
         cache_retention = _resolve_cache_retention(options)
         session_id = (
             getattr(options, "session_id", None) if options is not None else None
+        )
+        _validate_cache_session_options(
+            model,
+            resolved,
+            protocol=protocol,
+            cache_retention=cache_retention,
+            session_id=session_id,
         )
         if (
             (cache_retention or "short") != "none"
@@ -172,9 +205,7 @@ class OpenAIResponsesProvider:
             apply_session_headers(
                 default_headers,
                 session_id,
-                include_session_id=compat_bool(
-                    compat, SEND_SESSION_ID_HEADER, default=True
-                ),
+                include_session_id=_is_supported(protocol.session.id_header),
             )
 
         client = self._client or AsyncOpenAI(  # type: ignore[call-arg]
@@ -184,7 +215,7 @@ class OpenAIResponsesProvider:
         )
         _debug("client", {"base_url": effective_base_url, "headers": default_headers})
 
-        upstream_model_id = compat_str(compat, UPSTREAM_MODEL_ID) or model.id
+        upstream_model_id = getattr(resolved, "upstream_model_id", None) or model.id
         params: dict[str, Any] = {
             "model": upstream_model_id,
             "input": input_items,
@@ -192,11 +223,7 @@ class OpenAIResponsesProvider:
             "store": False,
         }
         # tools（如果提供）映射到 Responses API，触发结构化 function_call 事件
-        tools_src: list[Any] = []
-        n_tools = normalized.get("tools")
-        if isinstance(n_tools, list):
-            tools_src = n_tools
-        mapped_tools = convert_responses_tools(tools_src)
+        mapped_tools = convert_responses_tools(normalized.get("tools"))
         if isinstance(mapped_tools, list) and mapped_tools:
             params["tools"] = mapped_tools
             # 缺省让服务端自动选择是否调用工具（仅当 tools 非空）
@@ -209,14 +236,13 @@ class OpenAIResponsesProvider:
                 params["tool_choice"] = "auto"
         _apply_prompt_cache_params(
             params,
-            compat=compat,
+            protocol=protocol,
             cache_retention=cache_retention,
             session_id=session_id,
         )
         params["max_output_tokens"] = resolve_output_token_budget(
             model,
             resolved,
-            options,
         ).value
         # 温度
         if getattr(options, "temperature", None) is not None:
@@ -225,16 +251,11 @@ class OpenAIResponsesProvider:
         if getattr(options, "service_tier", None) is not None:
             params["service_tier"] = getattr(options, "service_tier")
         # 推理配置（最小实现）
-        if getattr(model, "reasoning", False):
-            reasoning_effort = (
-                getattr(options, "reasoning_effort", None)
-                or getattr(options, "reasoningEffort", None)
-                or getattr(options, "reasoning", None)
-                or getattr(resolved, "reasoning_effort", None)
+        if _supports_reasoning(capabilities):
+            reasoning_effort = get_reasoning_effort(options) or getattr(
+                resolved, "reasoning_effort", None
             )
-            reasoning_summary = getattr(options, "reasoning_summary", None) or getattr(
-                options, "reasoningSummary", None
-            )
+            reasoning_summary = get_reasoning_summary(options)
             if reasoning_effort or reasoning_summary:
                 params["reasoning"] = {
                     "effort": reasoning_effort or "medium",
@@ -243,10 +264,13 @@ class OpenAIResponsesProvider:
                 params["include"] = ["reasoning.encrypted_content"]
             else:
                 params["reasoning"] = {"effort": "none"}
+        text_format = openai_responses_text_format(options)
+        if text_format is not None:
+            params["text"] = text_format
 
         # options.on_payload：允许调用方观察/修改最终请求参数（对齐 pi-ai 语义）
         try:
-            cb = getattr(options, "on_payload", None) if options is not None else None
+            cb = get_provider_option(options, "on_payload")
             if callable(cb):
                 next_params = cb(params, model)
                 if asyncio.iscoroutine(next_params):
@@ -268,20 +292,56 @@ class OpenAIResponsesProvider:
         await _notify_provider_response(options, stream_ctx, model)
 
         try:
-            async for part in process_responses_stream(stream_ctx, options=options):
+            async for part in process_responses_stream(
+                stream_ctx,
+                options=options,
+                source=self.api,
+            ):
                 yield part
         except Exception as e:
             _debug("stream_iter_error", {"message": str(e)})
             yield provider_error_part(e, source=self.api)
+        finally:
+            await close_provider_stream(stream_ctx)
 
 
 async def _notify_provider_response(options, response, model) -> None:
-    callback = getattr(options, "on_response", None) if options is not None else None
+    callback = get_provider_option(options, "on_response")
     if not callable(callback):
         return
-    try:
+    with suppress(Exception):
         result = callback(response, model)
         if asyncio.iscoroutine(result):
             await result
-    except Exception:
-        pass
+
+
+def _supports_reasoning(capabilities: object | None) -> bool:
+    if capabilities is None:
+        return False
+    supports_thinking = getattr(capabilities, "supports_thinking", None)
+    if supports_thinking is not None:
+        return bool(supports_thinking)
+    return bool(getattr(capabilities, "reasoning", False))
+
+
+def _request_protocol(request: object) -> EndpointProtocolFeatures:
+    protocol = getattr(request, "adapter_protocol", None)
+    if isinstance(protocol, EndpointProtocolFeatures):
+        return protocol
+    return EndpointProtocolFeatures()
+
+
+def _request_dialect(request: object) -> EndpointWireDialect:
+    dialect = getattr(request, "adapter_dialect", None)
+    if isinstance(dialect, EndpointWireDialect):
+        return dialect
+    return EndpointWireDialect()
+
+
+def _uses_copilot_dynamic_headers(resolved: object) -> bool:
+    transport = getattr(resolved, "transport", None)
+    return getattr(transport, "kind", None) == "github-copilot"
+
+
+def _is_supported(status: SupportStatus) -> bool:
+    return status is SupportStatus.SUPPORTED

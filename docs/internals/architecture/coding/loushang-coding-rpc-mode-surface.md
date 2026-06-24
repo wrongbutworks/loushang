@@ -211,7 +211,7 @@ RPC `model` 字段不直接暴露 `ModelSelection`，而是优先投影真实的
 补充规则：
 
 - `name` 缺失时回退成 `id`
-- `cost` 只要存在 pricing object 就稳定输出，即使值全是 `0`
+- `cost` 只有所有价格组件都是已知数值时才输出；缺少 pricing 或任一组件未知时省略，显式 `0` 仍按 `0` 输出
 - `compat` 只有非空时才输出
 
 ## Type Notes

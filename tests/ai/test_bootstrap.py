@@ -1,32 +1,86 @@
 from __future__ import annotations
 
+import importlib.util
+
+import pytest
+
 from loushang.ai.api_registry import ApiProviderRegistry
+from loushang.ai.auth.registry import OAuthProviderRegistry
 from loushang.ai.bootstrap import register_builtin_ai_providers
+from loushang.ai.contrib.openai_codex import register_openai_codex_contrib
 from loushang.ai.model import Endpoint, Model
 from loushang.ai.model.registry import (
+    ModelRegistry,
     clear_default_model_registry,
     get_default_model_registry,
 )
 
 
-def test_register_builtin_ai_providers_includes_azure_and_bedrock() -> None:
+class _Provider:
+    api = "custom"
+
+    async def stream_raw(self, request):
+        del request
+        yield {"type": "response_done"}
+
+
+class _MissingApiProvider:
+    async def stream_raw(self, request):
+        del request
+        yield {"type": "response_done"}
+
+
+class _MissingStreamRawProvider:
+    api = "missing-stream"
+
+
+class _NonCallableStreamRawProvider:
+    api = "non-callable"
+    stream_raw = object()
+
+
+def test_api_provider_registry_manages_raw_providers_by_source() -> None:
+    registry = ApiProviderRegistry()
+    provider = _Provider()
+    other = _Provider()
+    other.api = "other"
+
+    registry.register_api_provider(provider, source_id="plugin-a")
+    registry.register_api_provider(other, source_id="plugin-b")
+
+    assert registry.get_api_provider("custom") is provider
+    assert {item.api for item in registry.list_api_providers()} == {"custom", "other"}
+
+    registry.unregister_api_providers("plugin-a")
+
+    assert {item.api for item in registry.list_api_providers()} == {"other"}
+
+    registry.clear_api_providers()
+
+    assert registry.list_api_providers() == []
+
+
+@pytest.mark.parametrize(
+    ("provider", "message"),
+    [
+        (_MissingApiProvider(), "api"),
+        (_MissingStreamRawProvider(), "stream_raw"),
+        (_NonCallableStreamRawProvider(), "callable"),
+    ],
+)
+def test_api_provider_registry_rejects_invalid_provider_shape(
+    provider: object,
+    message: str,
+) -> None:
+    registry = ApiProviderRegistry()
+
+    with pytest.raises(TypeError, match=message):
+        registry.register_api_provider(provider)  # type: ignore[arg-type]
+
+
+def test_register_builtin_ai_providers_excludes_removed_adapters() -> None:
     clear_default_model_registry()
     model_registry = get_default_model_registry()
-    model_registry.register_endpoint(
-        "azure-openai-responses",
-        Endpoint(
-            id="azure-openai-responses",
-            provider="azure-openai-responses",
-            api="azure-openai-responses",
-            models={
-                "gpt-4o-mini": Model(
-                    id="gpt-4o-mini",
-                    provider="azure-openai-responses",
-                    endpoint="azure-openai-responses",
-                )
-            },
-        ),
-    )
     model_registry.register_endpoint(
         "amazon-bedrock",
         Endpoint(
@@ -47,5 +101,40 @@ def test_register_builtin_ai_providers_includes_azure_and_bedrock() -> None:
     register_builtin_ai_providers(registry)
 
     apis = {provider.api for provider in registry.list_api_providers()}
-    assert "azure-openai-responses" in apis
-    assert "bedrock-converse-stream" in apis
+    assert "azure-openai-responses" not in apis
+    assert "bedrock-converse-stream" not in apis
+    assert "openai-codex-responses" not in apis
+
+
+def test_azure_openai_provider_module_is_not_in_core() -> None:
+    assert (
+        importlib.util.find_spec("loushang.ai.providers.azure_openai_responses") is None
+    )
+
+
+def test_bedrock_provider_module_is_not_in_core() -> None:
+    assert importlib.util.find_spec("loushang.ai.providers.bedrock_converse") is None
+
+
+def test_openai_codex_contrib_registers_api_and_catalog_explicitly() -> None:
+    api_registry = ApiProviderRegistry()
+    model_registry = ModelRegistry()
+    oauth_registry = OAuthProviderRegistry()
+
+    register_openai_codex_contrib(
+        api_registry=api_registry,
+        oauth_registry=oauth_registry,
+        model_registry=model_registry,
+    )
+
+    apis = {provider.api for provider in api_registry.list_api_providers()}
+    assert "openai-codex-responses" in apis
+    assert model_registry.get_provider("openai-codex") is not None
+    assert (
+        model_registry.get_model(
+            "openai-codex",
+            "openai-codex-responses",
+            "gpt-5.3-codex",
+        ).id
+        == "gpt-5.3-codex"
+    )

@@ -21,12 +21,20 @@ def get_oauth_api_key(
     creds = credentials_map.get(provider)
     if creds is None:
         return None
+    token = _non_empty_token(creds.access_token)
+    if token is None:
+        return None
     now = time.time()
     needs_refresh = creds.expires_at is not None and creds.expires_at <= now
     if needs_refresh and creds.refresh_token:
         refreshed = refresh_oauth_token(provider, creds)
-        return {"newCredentials": refreshed, "apiKey": refreshed.access_token}
-    return {"newCredentials": creds, "apiKey": creds.access_token}
+        refreshed_token = _non_empty_token(refreshed.access_token)
+        if refreshed_token is None:
+            return None
+        return {"newCredentials": refreshed, "apiKey": refreshed_token}
+    if needs_refresh:
+        return None
+    return {"newCredentials": creds, "apiKey": token}
 
 
 def refresh_oauth_token(provider: str, creds: OAuthCredentials) -> OAuthCredentials:
@@ -70,3 +78,10 @@ def _run_awaitable_sync(awaitable: Awaitable[OAuthCredentials]) -> OAuthCredenti
 
 async def _await_result(awaitable: Awaitable[OAuthCredentials]) -> OAuthCredentials:
     return await awaitable
+
+
+def _non_empty_token(value: object) -> str | None:
+    if not isinstance(value, str):
+        return None
+    value = value.strip()
+    return value or None

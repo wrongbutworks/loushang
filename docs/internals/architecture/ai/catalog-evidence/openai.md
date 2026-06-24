@@ -1,0 +1,32 @@
+# Provider evidence: openai
+
+- Verified at: 2026-06-22
+- Issue: n/a
+- Official docs:
+  - https://developers.openai.com/api/docs/models
+  - https://developers.openai.com/api/docs/guides/latest-model
+  - https://developers.openai.com/api/reference/resources/responses/methods/create
+  - https://developers.openai.com/api/docs/pricing
+- Source map:
+  - Authentication and endpoint: Responses API create reference and API docs.
+  - Model selection, context, maximum output, knowledge cutoff, and modalities: models and latest-model docs.
+  - Streaming, tools, structured output, reasoning, and temperature: Responses API create reference.
+  - Pricing: pricing docs.
+- Authentication: API key in `OPENAI_API_KEY`, sent as an `Authorization: Bearer ...` header.
+- Endpoint: `https://api.openai.com/v1`, Responses API protocol.
+- Included models:
+  - `gpt-5.5`: flagship GPT-5.5 model for complex reasoning and coding.
+  - `gpt-5.4-mini`: smaller GPT-5.4 variant for lower latency and lower cost.
+- Verified capabilities:
+  - Both selected models list text and image input, text output, reasoning, tools, streaming, structured outputs, temperature, and 128k maximum output tokens in official docs.
+  - `gpt-5.5` lists a 1,000,000 token context window and December 2025 knowledge cutoff.
+  - `gpt-5.4-mini` lists a 400,000 token context window and August 2025 knowledge cutoff.
+  - The Responses API create endpoint is the selected endpoint for model calls and streaming.
+- Unknown/omitted facts:
+  - `attachment` is false until file-input support is captured as a model-level capability rather than an endpoint feature.
+  - Pricing records the standard direct API input, cached input, and output rates only. Batch, priority, flex, and long-context pricing variants are not representable in the current catalog shape.
+  - `cacheWrite` is omitted because the official pricing table does not expose a separate write price for these model rows.
+- Contract tests:
+  - `uv run pytest tests/ai/test_curated_catalog.py -q`
+- Manual live smoke:
+  - Not run on 2026-06-22; no live OpenAI credential was used for this catalog-only commit.

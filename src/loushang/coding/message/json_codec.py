@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+from collections.abc import Mapping
 from dataclasses import asdict, is_dataclass
+from math import isfinite
 from pathlib import Path
 from typing import Any
 
@@ -15,6 +17,7 @@ from loushang.ai.types import (
     ToolCall,
     ToolResultMessage,
     Usage,
+    UsageCost,
     UserMessage,
 )
 from loushang.coding.message.custom_messages import (
@@ -123,39 +126,72 @@ def deserialize_content_part(payload: dict[str, Any]) -> TextPart | ImagePart | 
     raise ValueError(f"Unsupported content part type: {part_type}")
 
 
+def _canonical_cost(cost: Mapping[str, object] | None) -> UsageCost | None:
+    if cost is None:
+        return None
+    input_cost = _cost_number(cost, "input")
+    output_cost = _cost_number(cost, "output")
+    cache_read = _cost_number(cost, "cacheRead", "cache_read")
+    cache_write = _cost_number(cost, "cacheWrite", "cache_write")
+    total = _cost_number(cost, "total")
+    if (
+        input_cost is None
+        or output_cost is None
+        or cache_read is None
+        or cache_write is None
+        or total is None
+    ):
+        return None
+    return {
+        "input": input_cost,
+        "output": output_cost,
+        "cacheRead": cache_read,
+        "cacheWrite": cache_write,
+        "total": total,
+    }
+
+
+def _cost_number(
+    cost: Mapping[str, object], key: str, alias: str | None = None
+) -> float | None:
+    if key in cost:
+        value = cost[key]
+    elif alias is not None and alias in cost:
+        value = cost[alias]
+    else:
+        return None
+    if (
+        isinstance(value, bool)
+        or not isinstance(value, int | float)
+        or not isfinite(value)
+        or value < 0
+    ):
+        return None
+    return float(value)
+
+
 def serialize_usage(usage: Usage) -> dict[str, Any]:
-    cost = usage.cost
+    serialized_cost = _canonical_cost(usage.cost)
     return {
         "input": usage.input,
         "output": usage.output,
         "cacheRead": usage.cache_read,
         "cacheWrite": usage.cache_write,
         "totalTokens": usage.total_tokens,
-        "cost": {
-            "input": cost.get("input", 0.0),
-            "output": cost.get("output", 0.0),
-            "cacheRead": cost.get("cacheRead", cost.get("cache_read", 0.0)),
-            "cacheWrite": cost.get("cacheWrite", cost.get("cache_write", 0.0)),
-            "total": cost.get("total", 0.0),
-        },
+        "cost": serialized_cost,
     }
 
 
 def deserialize_usage(payload: dict[str, Any]) -> Usage:
-    cost = payload.get("cost", {})
+    cost = payload.get("cost")
+    restored_cost = _canonical_cost(cost if isinstance(cost, dict) else None)
     return Usage(
         input=payload["input"],
         output=payload["output"],
         cache_read=_get_key(payload, "cacheRead", "cache_read"),
         cache_write=_get_key(payload, "cacheWrite", "cache_write"),
         total_tokens=_get_key(payload, "totalTokens", "total_tokens"),
-        cost={
-            "input": cost.get("input", 0.0),
-            "output": cost.get("output", 0.0),
-            "cacheRead": cost.get("cacheRead", cost.get("cache_read", 0.0)),
-            "cacheWrite": cost.get("cacheWrite", cost.get("cache_write", 0.0)),
-            "total": cost.get("total", 0.0),
-        },
+        cost=restored_cost,
     )
 
 

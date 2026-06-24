@@ -169,7 +169,9 @@ def _openai_tool_result_text_parts(message: ToolResultMessage) -> list[str]:
     ]
 
 
-def _openai_responses_tool_result_images(message: ToolResultMessage) -> list[dict[str, Any]]:
+def _openai_responses_tool_result_images(
+    message: ToolResultMessage,
+) -> list[dict[str, Any]]:
     image_parts: list[dict[str, Any]] = []
     for part in message.content:
         if _part_type(part) != "image":
@@ -187,21 +189,19 @@ def _openai_responses_tool_result_images(message: ToolResultMessage) -> list[dic
     return image_parts
 
 
-def _part_type(part: TextPart | ImagePart | dict[str, Any]) -> str | None:
-    return part.get("type") if isinstance(part, dict) else getattr(part, "type", None)
+def _part_type(part: TextPart | ImagePart) -> str | None:
+    return getattr(part, "type", None)
 
 
-def _part_text(part: TextPart | ImagePart | dict[str, Any]) -> str | None:
-    return part.get("text") if isinstance(part, dict) else getattr(part, "text", None)
+def _part_text(part: TextPart | ImagePart) -> str | None:
+    return getattr(part, "text", None)
 
 
-def _part_data(part: TextPart | ImagePart | dict[str, Any]) -> str | None:
-    return part.get("data") if isinstance(part, dict) else getattr(part, "data", None)
+def _part_data(part: TextPart | ImagePart) -> str | None:
+    return getattr(part, "data", None)
 
 
-def _part_mime_type(part: TextPart | ImagePart | dict[str, Any]) -> str | None:
-    if isinstance(part, dict):
-        return part.get("mime_type") or part.get("mimeType")
+def _part_mime_type(part: TextPart | ImagePart) -> str | None:
     return getattr(part, "mime_type", None)
 
 

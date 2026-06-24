@@ -1,58 +1,46 @@
 from __future__ import annotations
 
 import asyncio
-from collections.abc import AsyncIterator
+import json
+from collections.abc import AsyncIterator, Mapping, Sequence
+from contextlib import suppress
 from typing import Any, cast
 
-from loushang.ai.context import ensure_normalized_context
-from loushang.ai.event_stream import AssistantMessageEventStream, RawAssembler
-from loushang.ai.model.compat_schema import (
-    CACHE_CONTROL_FORMAT,
-    MAX_TOKENS_FIELD,
-    OPENROUTER_ROUTING,
-    REASONING_EFFORT_MAP,
-    REQUIRES_ASSISTANT_AFTER_TOOL_RESULT,
-    REQUIRES_REASONING_CONTENT_ON_ASSISTANT_MESSAGES,
-    REQUIRES_THINKING_AS_TEXT,
-    REQUIRES_TOOL_RESULT_NAME,
-    SEND_SESSION_AFFINITY_HEADERS,
-    SUPPORTS_DEVELOPER_ROLE,
-    SUPPORTS_LONG_CACHE_RETENTION,
-    SUPPORTS_REASONING_EFFORT,
-    SUPPORTS_STORE,
-    SUPPORTS_STRICT_MODE,
-    SUPPORTS_USAGE_IN_STREAMING,
-    THINKING_FORMAT,
-    UPSTREAM_MODEL_ID,
-    VERCEL_GATEWAY_ROUTING,
-    ZAI_TOOL_STREAM,
-    compat_bool,
-    compat_dict,
-    compat_str,
+from loushang.ai.errors import UnsupportedCapabilityError
+from loushang.ai.event_stream.raw_parts import RawPart
+from loushang.ai.model.domain import (
+    EndpointProtocolFeatures,
+    EndpointWireDialect,
+    SupportStatus,
 )
-from loushang.ai.options import PairingMode
+from loushang.ai.options import get_provider_option, get_timeout_seconds
 from loushang.ai.output_budget import resolve_output_token_budget
-from loushang.ai.provider import resolve_request_for_model
-from loushang.ai.provider.cancellation import is_signal_cancelled
-from loushang.ai.provider.errors import provider_error_part
+from loushang.ai.provider import ProviderRequest, resolve_provider_request
+from loushang.ai.provider.errors import (
+    provider_error_part,
+    provider_error_part_from_raw,
+)
 from loushang.ai.providers.openai_responses_shared import build_copilot_dynamic_headers
 from loushang.ai.providers.provider_helpers import (
     apply_session_headers,
+    close_provider_stream,
     extract_sdk_api_key,
     sdk_default_headers,
 )
+from loushang.ai.structured import openai_chat_response_format
 from loushang.ai.tool.providers import sanitize_tool_parameters
 from loushang.ai.tool.transform import (
     MISSING_TOOL_RESULT_TEXT,
     TOOL_RESULTS_PROCESSED_ASSISTANT_TEXT,
 )
 from loushang.ai.trace import emit_trace as _emit_trace
-from loushang.ai.types import AssistantMessage, TextPart, ToolResultMessage
+from loushang.ai.types import AssistantMessage, TextPart, Tool, ToolResultMessage
 from loushang.ai.utils import sanitize_surrogates
 
 
 class OpenAICompletionsProvider:
     api = "openai-completions"
+    supports_structured_output = True
 
     def __init__(
         self, *, client: Any | None = None, base_url: str | None = None
@@ -60,66 +48,41 @@ class OpenAICompletionsProvider:
         self._client = client
         self._base_url = base_url
 
-    async def stream(self, model, context, options):
-        resolved = resolve_request_for_model(model, options=options)
-        stream = AssistantMessageEventStream()
-        assembler = RawAssembler(
-            stream=stream,
-            api=resolved.api,
-            provider=model.provider_id,
-            model=model.id,
-            pricing=getattr(model, "pricing", None),
+    def _stream_raw_parts(
+        self, model, context, options, request=None
+    ) -> AsyncIterator[RawPart]:
+        resolved = resolve_provider_request(
+            self.api,
+            model,
+            options=options,
+            request=request,
+        )
+        return self.stream_raw(
+            ProviderRequest(
+                model=model,
+                context=context,
+                options=options,
+                resolved=resolved,
+            )
         )
 
-        async def _run() -> None:
-            signal = getattr(options, "signal", None) if options is not None else None
-            if is_signal_cancelled(signal):
-                assembler.feed({"type": "aborted"})
-                return
-            try:
-                async for part in self._stream_raw_parts(model, context, options):
-                    if is_signal_cancelled(signal):
-                        assembler.feed({"type": "aborted"})
-                        return
-                    assembler.feed(part)
-            except Exception as error:
-                assembler.feed(provider_error_part(error, source=self.api))
-
-        stream.attach_task(asyncio.create_task(_run()))
-        return stream
-
-    async def stream_simple(self, model, context, options):
-        return await self.stream(model, context, options)
-
-    async def _stream_raw_parts(self, model, context, options) -> AsyncIterator[dict]:
-        def _pairing_mode() -> PairingMode:
-            if options is None:
-                return "repair"
-            pairing_mode = getattr(options, "pairing_mode", "repair")
-            if pairing_mode == "strict":
-                return "strict"
-            return "repair"
+    async def stream_raw(self, request: ProviderRequest) -> AsyncIterator[RawPart]:
+        model = request.model
+        options = request.options
+        resolved = request.resolved
 
         def _debug(event: str, data: dict | None = None) -> None:
             _emit_trace(options, {"type": f"sdk:{event}", **(data or {})})
 
-        normalized = ensure_normalized_context(
-            context,
-            model=model,
-            pairing_mode=_pairing_mode(),
-        )
-        resolved = resolve_request_for_model(model, options=options)
-        compat = dict(getattr(resolved, "compat", {}) or {})
-        supports_usage_in_streaming = compat_bool(compat, SUPPORTS_USAGE_IN_STREAMING)
-        supports_store = compat_bool(compat, SUPPORTS_STORE)
-        max_tokens_field = compat_str(compat, MAX_TOKENS_FIELD, default="max_tokens")
-        thinking_format = compat_str(compat, THINKING_FORMAT)
-        reasoning_effort_map = cast(
-            dict[str, str], compat_dict(compat, REASONING_EFFORT_MAP)
-        )
-        supports_reasoning_effort = compat_bool(compat, SUPPORTS_REASONING_EFFORT)
-        openrouter_routing = compat_dict(compat, OPENROUTER_ROUTING)
-        vercel_gateway_routing = compat_dict(compat, VERCEL_GATEWAY_ROUTING)
+        normalized = request.context
+        protocol = _request_protocol(resolved)
+        dialect = _request_dialect(resolved)
+        supports_usage_in_streaming = _is_supported(protocol.streaming.usage)
+        supports_store = _is_supported(protocol.store)
+        max_tokens_field = dialect.max_output_tokens_field or "max_tokens"
+        thinking_format = dialect.reasoning.wire_format
+        reasoning_effort_map = dict(protocol.reasoning.effort_map)
+        supports_reasoning_effort = _is_supported(protocol.reasoning.effort)
 
         # OpenAI Python SDK
         try:
@@ -139,7 +102,7 @@ class OpenAICompletionsProvider:
         )
 
         default_headers = sdk_default_headers(headers)
-        if getattr(model, "provider_id", "") == "github-copilot":
+        if _uses_copilot_dynamic_headers(resolved):
             copilot_headers = build_copilot_dynamic_headers(
                 normalized.get("messages", [])
             )
@@ -150,11 +113,18 @@ class OpenAICompletionsProvider:
         session_id = (
             getattr(options, "session_id", None) if options is not None else None
         )
+        _validate_cache_session_options(
+            model,
+            resolved,
+            protocol=protocol,
+            cache_retention=cache_retention,
+            session_id=session_id,
+        )
         if (
             cache_retention != "none"
             and isinstance(session_id, str)
             and session_id
-            and compat_bool(compat, SEND_SESSION_AFFINITY_HEADERS)
+            and _is_supported(protocol.session.affinity_headers)
         ):
             apply_session_headers(
                 default_headers,
@@ -162,8 +132,7 @@ class OpenAICompletionsProvider:
                 include_affinity=True,
             )
 
-        # 传递超时（若提供）
-        timeout_s = getattr(options, "timeout", None) if options is not None else None
+        timeout_s = _resolve_timeout_seconds(options, resolved)
         # 优先使用 provider 的 base_url（如果提供），否则使用 resolved 的 base_url
         effective_base_url = (
             self._base_url if self._base_url is not None else resolved.base_url
@@ -178,16 +147,23 @@ class OpenAICompletionsProvider:
         client = self._client or AsyncOpenAI(**client_kwargs)  # type: ignore[call-arg]
         _debug("client", {"base_url": effective_base_url, "headers": default_headers})
 
-        messages_param = _build_messages(model, normalized, compat)
-        tools_param = _build_tools(normalized.get("tools"), compat)
+        capabilities = getattr(resolved, "capabilities", None)
+        messages_param = _build_messages(
+            model,
+            normalized,
+            protocol,
+            dialect,
+            capabilities,
+        )
+        tools_param = _build_tools(normalized.get("tools"), protocol)
         if tools_param is None and _has_tool_history(normalized.get("messages", [])):
             tools_param = []
-        cache_control = _get_compat_cache_control(compat, cache_retention)
+        cache_control = _get_cache_control(protocol, dialect, cache_retention)
         if cache_control is not None:
             _apply_anthropic_cache_control(messages_param, tools_param, cache_control)
 
-        max_tokens = resolve_output_token_budget(model, resolved, options).value
-        upstream_model_id = compat_str(compat, UPSTREAM_MODEL_ID) or model.id
+        max_tokens = resolve_output_token_budget(model, resolved).value
+        upstream_model_id = getattr(resolved, "upstream_model_id", None) or model.id
         params: dict[str, Any] = {
             "model": upstream_model_id,
             "messages": messages_param,
@@ -195,8 +171,7 @@ class OpenAICompletionsProvider:
         }
         _apply_prompt_cache_params(
             params,
-            base_url=getattr(resolved, "base_url", None),
-            compat=compat,
+            protocol=protocol,
             cache_retention=cache_retention,
             session_id=session_id,
         )
@@ -213,11 +188,14 @@ class OpenAICompletionsProvider:
             params["temperature"] = getattr(options, "temperature")
         if tools_param is not None:
             params["tools"] = tools_param
-            if compat_bool(compat, ZAI_TOOL_STREAM):
+            if dialect.tools.stream_flag:
                 params["tool_stream"] = True
         tool_choice = getattr(options, "tool_choice", None)
         if tool_choice is not None:
             params["tool_choice"] = tool_choice
+        response_format = openai_chat_response_format(options)
+        if response_format is not None:
+            params["response_format"] = response_format
         reasoning_effort = getattr(resolved, "reasoning_effort", None)
         _apply_reasoning_params(
             params,
@@ -227,12 +205,15 @@ class OpenAICompletionsProvider:
             reasoning_effort=reasoning_effort,
             reasoning_effort_map=reasoning_effort_map,
             supports_reasoning_effort=supports_reasoning_effort,
+            capabilities=capabilities,
         )
         _apply_provider_routing(
             params,
-            base_url=getattr(resolved, "base_url", None),
-            openrouter_routing=openrouter_routing,
-            vercel_gateway_routing=vercel_gateway_routing,
+            request_overrides=getattr(
+                getattr(resolved, "routing", None),
+                "request_overrides",
+                {},
+            ),
         )
         if extra_body:
             params["extra_body"] = extra_body
@@ -255,7 +236,9 @@ class OpenAICompletionsProvider:
         try:
             emitted_response_start = False
             emitted_any_text = False
-            active_tool_call_id: str | None = None
+            active_tool_call_ids: list[str] = []
+            active_tool_call_indexes: dict[str, int] = {}
+            tool_call_ids_by_index: dict[int, str] = {}
             while True:
                 try:
                     chunk = await asyncio.wait_for(
@@ -266,10 +249,11 @@ class OpenAICompletionsProvider:
                     break
                 except asyncio.TimeoutError:
                     _debug("stream_timeout", {"after_seconds": inactivity_timeout})
-                    yield {
-                        "type": "response_error",
-                        "message": f"inactivity timeout after {inactivity_timeout}s",
-                    }
+                    yield provider_error_part_from_raw(
+                        f"inactivity timeout after {inactivity_timeout}s",
+                        code="timeout",
+                        source=self.api,
+                    )
                     yield {"type": "response_done"}
                     break
                 except Exception as e:
@@ -284,13 +268,11 @@ class OpenAICompletionsProvider:
                     continue
                 # response id
                 if not emitted_response_start:
-                    emitted_response_start = True
                     resp_id = getattr(chunk, "id", None)
                     _debug("event", {"kind": "response_start", "response_id": resp_id})
-                    yield {
-                        "type": "response_start",
-                        **({"response_id": resp_id} if resp_id else {}),
-                    }
+                    if isinstance(resp_id, str) and resp_id:
+                        emitted_response_start = True
+                        yield {"type": "response_start", "response_id": resp_id}
                 # usage
                 usage = getattr(chunk, "usage", None)
                 if usage is None and hasattr(choice, "usage"):
@@ -410,7 +392,20 @@ class OpenAICompletionsProvider:
                     tool_calls = getattr(delta, "tool_calls", None)
                     if isinstance(tool_calls, list):
                         for tool_call in tool_calls:
-                            tool_call_id = getattr(tool_call, "id", None)
+                            raw_tool_call_id = getattr(tool_call, "id", None)
+                            tool_call_index = _optional_int(
+                                getattr(tool_call, "index", None)
+                            )
+                            tool_call_id = (
+                                raw_tool_call_id
+                                if isinstance(raw_tool_call_id, str)
+                                and raw_tool_call_id
+                                else None
+                            )
+                            if tool_call_id is None and tool_call_index is not None:
+                                tool_call_id = tool_call_ids_by_index.get(
+                                    tool_call_index
+                                )
                             function = getattr(tool_call, "function", None)
                             tool_call_name = (
                                 getattr(function, "name", None)
@@ -425,30 +420,62 @@ class OpenAICompletionsProvider:
                             if (
                                 isinstance(tool_call_id, str)
                                 and tool_call_id
-                                and tool_call_id != active_tool_call_id
+                                and tool_call_id not in active_tool_call_ids
                             ):
-                                if active_tool_call_id is not None:
-                                    yield {"type": "tool_call_done"}
-                                active_tool_call_id = tool_call_id
-                                yield {
+                                active_tool_call_ids.append(tool_call_id)
+                                if tool_call_index is not None:
+                                    active_tool_call_indexes[tool_call_id] = (
+                                        tool_call_index
+                                    )
+                                    tool_call_ids_by_index[tool_call_index] = (
+                                        tool_call_id
+                                    )
+                                start_part: dict[str, object] = {
                                     "type": "tool_call_start",
                                     "id": tool_call_id,
                                     "name": tool_call_name or "",
                                 }
+                                if tool_call_index is not None:
+                                    start_part["index"] = tool_call_index
+                                yield _raw_part(start_part)
+                            elif (
+                                isinstance(tool_call_id, str)
+                                and tool_call_id
+                                and tool_call_index is not None
+                            ):
+                                active_tool_call_indexes.setdefault(
+                                    tool_call_id, tool_call_index
+                                )
+                                tool_call_ids_by_index.setdefault(
+                                    tool_call_index, tool_call_id
+                                )
                             if (
                                 isinstance(tool_call_arguments, str)
                                 and tool_call_arguments
                             ):
-                                yield {
+                                delta_part: dict[str, object] = {
                                     "type": "tool_call_args_delta",
                                     "delta": tool_call_arguments,
                                 }
+                                if isinstance(tool_call_id, str) and tool_call_id:
+                                    delta_part["tool_call_id"] = tool_call_id
+                                elif tool_call_index is not None:
+                                    delta_part["index"] = tool_call_index
+                                yield _raw_part(delta_part)
                 # finish reason
                 finish = getattr(choice, "finish_reason", None)
                 if isinstance(finish, str):
-                    if active_tool_call_id is not None:
-                        yield {"type": "tool_call_done"}
-                        active_tool_call_id = None
+                    for tool_call_id in active_tool_call_ids:
+                        done_part: dict[str, object] = {
+                            "type": "tool_call_done",
+                            "tool_call_id": tool_call_id,
+                        }
+                        if tool_call_id in active_tool_call_indexes:
+                            done_part["index"] = active_tool_call_indexes[tool_call_id]
+                        yield _raw_part(done_part)
+                    active_tool_call_ids = []
+                    active_tool_call_indexes = {}
+                    tool_call_ids_by_index = {}
                     # 有些上游在流模式下仅在最后一次返回完整 message.content，而不逐字增量
                     if not emitted_any_text:
                         msg_obj = getattr(choice, "message", None)
@@ -475,19 +502,47 @@ class OpenAICompletionsProvider:
                     )
                     yield {"type": "stop_reason", "stop_reason": mapped}
                     if mapped == "error":
-                        yield {
-                            "type": "response_error",
-                            "message": f"provider finish_reason={finish}",
-                        }
+                        yield provider_error_part_from_raw(
+                            f"provider finish_reason={finish}",
+                            code=finish,
+                            source=self.api,
+                        )
             # 正常结束：上游结束迭代后，补发 response_done 以关闭装配器
-            if active_tool_call_id is not None:
-                yield {"type": "tool_call_done"}
+            for tool_call_id in active_tool_call_ids:
+                done_part = {"type": "tool_call_done", "tool_call_id": tool_call_id}
+                if tool_call_id in active_tool_call_indexes:
+                    done_part["index"] = active_tool_call_indexes[tool_call_id]
+                yield _raw_part(done_part)
             _debug("stream_done", {})
             yield {"type": "response_done"}
         except Exception as e:
             _debug("stream_iter_error_outer", {"message": str(e)})
             yield provider_error_part(e, source=self.api)
             yield {"type": "response_done"}
+        finally:
+            await close_provider_stream(stream_ctx)
+
+
+def _request_protocol(request: object) -> EndpointProtocolFeatures:
+    protocol = getattr(request, "adapter_protocol", None)
+    if isinstance(protocol, EndpointProtocolFeatures):
+        return protocol
+    return EndpointProtocolFeatures()
+
+
+def _request_dialect(request: object) -> EndpointWireDialect:
+    dialect = getattr(request, "adapter_dialect", None)
+    if isinstance(dialect, EndpointWireDialect):
+        return dialect
+    return EndpointWireDialect()
+
+
+def _raw_part(part: dict[str, object]) -> RawPart:
+    return cast(RawPart, part)
+
+
+def _is_supported(status: SupportStatus) -> bool:
+    return status is SupportStatus.SUPPORTED
 
 
 def _map_stop_reason(reason: str) -> str:
@@ -505,22 +560,53 @@ def _map_stop_reason(reason: str) -> str:
 def _apply_prompt_cache_params(
     params: dict[str, Any],
     *,
-    base_url: str | None,
-    compat: dict[str, Any],
+    protocol: EndpointProtocolFeatures,
     cache_retention: str | None,
     session_id: str | None,
 ) -> None:
     if cache_retention == "none" or not isinstance(session_id, str) or not session_id:
         return
-    supports_long_retention = compat_bool(
-        compat, SUPPORTS_LONG_CACHE_RETENTION, default=True
-    )
-    if "api.openai.com" in str(base_url or "") or (
-        cache_retention == "long" and supports_long_retention
-    ):
-        params["prompt_cache_key"] = session_id
-    if cache_retention == "long" and supports_long_retention:
+    if not _is_supported(protocol.cache.prompt_key):
+        return
+    params["prompt_cache_key"] = session_id
+    if cache_retention == "long" and _is_supported(protocol.cache.long_retention):
         params["prompt_cache_retention"] = "24h"
+
+
+def _validate_cache_session_options(
+    model: object,
+    resolved: object,
+    *,
+    protocol: EndpointProtocolFeatures,
+    cache_retention: str | None,
+    session_id: str | None,
+) -> None:
+    if cache_retention == "long" and not _is_supported(protocol.cache.long_retention):
+        raise UnsupportedCapabilityError(
+            f"Model {getattr(model, 'id', '<unknown>')!r} does not support long cache retention",
+            source=getattr(resolved, "api", None),
+            provider=getattr(resolved, "provider", None),
+            endpoint=getattr(resolved, "endpoint", None),
+            model=getattr(model, "id", None),
+            details={"capability": "cache_long_retention"},
+        )
+    if (
+        cache_retention != "none"
+        and isinstance(session_id, str)
+        and session_id
+        and not (
+            _is_supported(protocol.cache.prompt_key)
+            or _is_supported(protocol.session.affinity_headers)
+        )
+    ):
+        raise UnsupportedCapabilityError(
+            f"Model {getattr(model, 'id', '<unknown>')!r} does not support session id",
+            source=getattr(resolved, "api", None),
+            provider=getattr(resolved, "provider", None),
+            endpoint=getattr(resolved, "endpoint", None),
+            model=getattr(model, "id", None),
+            details={"capability": "session_id"},
+        )
 
 
 def _apply_reasoning_params(
@@ -530,10 +616,11 @@ def _apply_reasoning_params(
     model,
     thinking_format: str | None,
     reasoning_effort: str | None,
-    reasoning_effort_map: dict[str, str],
+    reasoning_effort_map: Mapping[str, str | None],
     supports_reasoning_effort: bool,
+    capabilities: object | None = None,
 ) -> None:
-    if not _supports_reasoning(model):
+    if not _supports_reasoning(model, capabilities):
         return
     if thinking_format in {"zai", "qwen"}:
         params["enable_thinking"] = bool(reasoning_effort)
@@ -550,6 +637,17 @@ def _apply_reasoning_params(
         }
         return
     if thinking_format == "deepseek":
+        extra_body["thinking"] = {
+            "type": "enabled" if isinstance(reasoning_effort, str) else "disabled"
+        }
+        _apply_reasoning_effort_if_supported(
+            params,
+            reasoning_effort,
+            reasoning_effort_map,
+            supports_reasoning_effort,
+        )
+        return
+    if thinking_format == "zai-thinking":
         params["thinking"] = {
             "type": "enabled" if isinstance(reasoning_effort, str) else "disabled"
         }
@@ -587,7 +685,7 @@ def _apply_reasoning_params(
 def _apply_reasoning_effort_if_supported(
     params: dict[str, Any],
     reasoning_effort: str | None,
-    reasoning_effort_map: dict[str, str],
+    reasoning_effort_map: Mapping[str, str | None],
     supports_reasoning_effort: bool,
 ) -> None:
     if isinstance(reasoning_effort, str) and supports_reasoning_effort:
@@ -599,14 +697,18 @@ def _apply_reasoning_effort_if_supported(
 def _apply_provider_routing(
     params: dict[str, Any],
     *,
-    base_url: str | None,
-    openrouter_routing: dict[str, object],
-    vercel_gateway_routing: dict[str, object],
+    request_overrides: Mapping[str, Mapping[str, object]] | None,
 ) -> None:
-    base_url_text = str(base_url or "")
-    if "openrouter.ai" in base_url_text and openrouter_routing:
-        params["provider"] = openrouter_routing
-    if "ai-gateway.vercel.sh" not in base_url_text or not vercel_gateway_routing:
+    overrides = request_overrides or {}
+    namespace = _active_routing_namespace(overrides)
+    if namespace is None:
+        return
+    openrouter_routing = overrides.get("openrouter")
+    if namespace == "openrouter" and openrouter_routing:
+        params["provider"] = dict(openrouter_routing)
+        return
+    vercel_gateway_routing = overrides.get("vercelGateway")
+    if namespace != "vercelGateway" or not vercel_gateway_routing:
         return
     gateway: dict[str, Any] = {}
     if vercel_gateway_routing.get("only"):
@@ -617,18 +719,54 @@ def _apply_provider_routing(
         params["providerOptions"] = {"gateway": gateway}
 
 
-def _get_compat_cache_control(
-    compat: dict[str, Any],
+def _active_routing_namespace(
+    request_overrides: Mapping[str, Mapping[str, object]],
+) -> str | None:
+    present = [
+        namespace
+        for namespace in ("openrouter", "vercelGateway")
+        if request_overrides.get(namespace)
+    ]
+    if len(present) == 1:
+        return present[0]
+    if len(present) > 1:
+        raise ValueError(
+            "Ambiguous provider routing requestOverrides: choose one namespace"
+        )
+    return None
+
+
+def _uses_copilot_dynamic_headers(resolved: object) -> bool:
+    transport = getattr(resolved, "transport", None)
+    return getattr(transport, "kind", None) == "github-copilot"
+
+
+def _resolve_timeout_seconds(options, resolved) -> float | int | None:
+    option_timeout = get_timeout_seconds(options)
+    if isinstance(option_timeout, int | float):
+        return option_timeout
+    transport_timeout = getattr(
+        getattr(resolved, "transport", None),
+        "timeout",
+        None,
+    )
+    if isinstance(transport_timeout, int | float) and transport_timeout > 0:
+        return transport_timeout
+    return None
+
+
+def _get_cache_control(
+    protocol: EndpointProtocolFeatures,
+    dialect: EndpointWireDialect,
     cache_retention: str | None,
 ) -> dict[str, str] | None:
-    if compat_str(compat, CACHE_CONTROL_FORMAT) != "anthropic":
+    if dialect.cache.control_format != "anthropic":
         return None
     if cache_retention == "none":
         return None
     ttl = (
         "1h"
-        if cache_retention == "long"
-        and compat_bool(compat, SUPPORTS_LONG_CACHE_RETENTION, default=True)
+        if cache_retention == "long" and _is_supported(protocol.cache.long_retention)
         else None
     )
     return {"type": "ephemeral", **({"ttl": ttl} if ttl else {})}
@@ -659,9 +797,11 @@ def _add_cache_control_to_last_conversation_message(
     cache_control: dict[str, str],
 ) -> None:
     for message in reversed(messages):
-        if message.get("role") in {"user", "assistant"}:
-            if _add_cache_control_to_message(message, cache_control):
-                return
+        if message.get("role") in {
+            "user",
+            "assistant",
+        } and _add_cache_control_to_message(message, cache_control):
+            return
 
 
 def _add_cache_control_to_last_tool(
@@ -699,14 +839,25 @@ def _add_cache_control_to_message(
 
 def _map_reasoning_effort(
     effort: str | None,
-    reasoning_effort_map: dict[str, str],
-) -> str:
+    reasoning_effort_map: Mapping[str, str | None],
+) -> str | None:
     if not isinstance(effort, str):
         return "none"
     return reasoning_effort_map.get(effort, effort)
 
 
-def _supports_reasoning(model: object) -> bool:
+def _supports_image_input(model: object, capabilities: object | None = None) -> bool:
+    if capabilities is not None:
+        return bool(getattr(capabilities, "supports_image_input", False))
+    return "image" in getattr(model, "input", ())
+
+
+def _supports_reasoning(model: object, capabilities: object | None = None) -> bool:
+    if capabilities is not None:
+        supports_thinking = getattr(capabilities, "supports_thinking", None)
+        if supports_thinking is not None:
+            return bool(supports_thinking)
+        return bool(getattr(capabilities, "reasoning", False))
     return bool(
         getattr(
             model,
@@ -717,18 +868,20 @@ def _supports_reasoning(model: object) -> bool:
 
 
 def _build_messages(
-    model, normalized: dict[str, Any], compat: dict[str, Any]
+    model,
+    normalized: Mapping[str, Any],
+    protocol: EndpointProtocolFeatures,
+    dialect: EndpointWireDialect,
+    capabilities: object | None = None,
 ) -> list[dict[str, Any]]:
     messages_param: list[dict[str, Any]] = []
     system_prompt = normalized.get("system_prompt")
-    supports_developer_role = compat_bool(compat, SUPPORTS_DEVELOPER_ROLE)
-    requires_assistant_after_tool_result = compat_bool(
-        compat, REQUIRES_ASSISTANT_AFTER_TOOL_RESULT
-    )
+    supports_developer_role = _is_supported(protocol.roles.developer)
+    requires_assistant_after_tool_result = bool(dialect.tools.assistant_bridge_required)
     if isinstance(system_prompt, str) and system_prompt.strip():
         role = (
             "developer"
-            if getattr(model, "reasoning", False) and supports_developer_role
+            if _supports_reasoning(model, capabilities) and supports_developer_role
             else "system"
         )
         messages_param.append(
@@ -754,14 +907,14 @@ def _build_messages(
             )
             last_role = "assistant"
         if message_role == "user":
-            payload = _user_message_payload(msg, model)
+            payload = _user_message_payload(msg, model, capabilities)
             if payload is not None:
                 messages_param.append(payload)
                 last_role = "user"
             index += 1
             continue
         if message_role == "assistant":
-            payload = _assistant_message_payload(msg, compat, model)
+            payload = _assistant_message_payload(msg, dialect, model, capabilities)
             if payload is not None:
                 messages_param.append(payload)
                 last_role = "assistant"
@@ -773,7 +926,10 @@ def _build_messages(
                 index < len(messages) and _message_role(messages[index]) == "toolResult"
             ):
                 tool_payload, tool_images = _tool_result_payload(
-                    messages[index], compat, model
+                    messages[index],
+                    dialect,
+                    model,
+                    capabilities,
                 )
                 messages_param.append(tool_payload)
                 image_blocks.extend(tool_images)
@@ -806,31 +962,19 @@ def _build_messages(
     return messages_param
 
 
-def _build_tools(tools: Any, compat: dict[str, Any]) -> list[dict[str, Any]] | None:
-    if not isinstance(tools, list) or not tools:
+def _build_tools(
+    tools: Sequence[Tool] | None,
+    protocol: EndpointProtocolFeatures,
+) -> list[dict[str, Any]] | None:
+    if not isinstance(tools, Sequence) or isinstance(tools, str) or not tools:
         return None
-    supports_strict_mode = compat_bool(compat, SUPPORTS_STRICT_MODE)
+    supports_strict_mode = _is_supported(protocol.tools.strict_schema)
     payload: list[dict[str, Any]] = []
     for tool in tools:
-        name = (
-            getattr(tool, "name", None)
-            if not isinstance(tool, dict)
-            else tool.get("name")
-        )
-        description = (
-            getattr(tool, "description", "")
-            if not isinstance(tool, dict)
-            else tool.get("description", "")
-        )
-        parameters = (
-            getattr(tool, "parameters", {"type": "object"})
-            if not isinstance(tool, dict)
-            else tool.get("parameters", {"type": "object"})
-        )
         function_payload = {
-            "name": name,
-            "description": description,
-            "parameters": sanitize_tool_parameters(parameters),
+            "name": tool.name,
+            "description": tool.description,
+            "parameters": sanitize_tool_parameters(tool.parameters),
         }
         if supports_strict_mode:
             function_payload["strict"] = False
@@ -843,26 +987,23 @@ def _has_tool_history(messages: list[object]) -> bool:
         role = _message_role(msg)
         if role == "toolResult":
             return True
-        if role == "assistant" and isinstance(msg, AssistantMessage):
-            if any(getattr(block, "type", None) == "toolCall" for block in msg.content):
-                return True
+        if (
+            role == "assistant"
+            and isinstance(msg, AssistantMessage)
+            and any(getattr(block, "type", None) == "toolCall" for block in msg.content)
+        ):
+            return True
     return False
 
 
 def _message_role(message: object) -> str | None:
-    return (
-        message.get("role")
-        if isinstance(message, dict)
-        else getattr(message, "role", None)
-    )
+    return getattr(message, "role", None)
 
 
-def _user_message_payload(message: object, model) -> dict[str, Any] | None:
-    content = (
-        message.get("content")
-        if isinstance(message, dict)
-        else getattr(message, "content", None)
-    )
+def _user_message_payload(
+    message: object, model, capabilities: object | None = None
+) -> dict[str, Any] | None:
+    content = getattr(message, "content", None)
     if not isinstance(content, list):
         return None
     parts: list[dict[str, Any]] = []
@@ -875,7 +1016,7 @@ def _user_message_payload(message: object, model) -> dict[str, Any] | None:
                 sanitized_text = sanitize_surrogates(text)
                 text_fragments.append(sanitized_text)
                 parts.append({"type": "text", "text": sanitized_text})
-        elif part_type == "image" and "image" in getattr(model, "input", ()):
+        elif part_type == "image" and _supports_image_input(model, capabilities):
             data = _part_data(part)
             mime_type = _part_mime_type(part)
             if (
@@ -898,17 +1039,14 @@ def _user_message_payload(message: object, model) -> dict[str, Any] | None:
 
 
 def _assistant_message_payload(
-    message: object, compat: dict[str, Any], model
+    message: object,
+    dialect: EndpointWireDialect,
+    model,
+    capabilities: object | None = None,
 ) -> dict[str, Any] | None:
-    requires_assistant_after_tool_result = compat_bool(
-        compat, REQUIRES_ASSISTANT_AFTER_TOOL_RESULT
-    )
-    requires_thinking_as_text = compat_bool(compat, REQUIRES_THINKING_AS_TEXT)
-    content = (
-        message.get("content")
-        if isinstance(message, dict)
-        else getattr(message, "content", None)
-    )
+    requires_assistant_after_tool_result = bool(dialect.tools.assistant_bridge_required)
+    requires_thinking_as_text = bool(dialect.reasoning.thinking_as_text)
+    content = getattr(message, "content", None)
     if not isinstance(content, list):
         return None
     text_blocks: list[str] = []
@@ -922,16 +1060,8 @@ def _assistant_message_payload(
             if isinstance(text, str) and text.strip():
                 text_blocks.append(sanitize_surrogates(text))
         elif part_type == "thinking":
-            thinking = (
-                getattr(part, "thinking", None)
-                if not isinstance(part, dict)
-                else part.get("thinking")
-            )
-            signature = (
-                getattr(part, "thinking_signature", None)
-                if not isinstance(part, dict)
-                else part.get("thinking_signature")
-            )
+            thinking = getattr(part, "thinking", None)
+            signature = getattr(part, "thinking_signature", None)
             if isinstance(thinking, str) and thinking.strip():
                 thinking_blocks.append(
                     (
@@ -940,21 +1070,9 @@ def _assistant_message_payload(
                     )
                 )
         elif part_type == "toolCall":
-            tool_id = (
-                getattr(part, "id", None)
-                if not isinstance(part, dict)
-                else part.get("id")
-            )
-            tool_name = (
-                getattr(part, "name", None)
-                if not isinstance(part, dict)
-                else part.get("name")
-            )
-            tool_args = (
-                getattr(part, "arguments", {})
-                if not isinstance(part, dict)
-                else (part.get("arguments") or {})
-            )
+            tool_id = getattr(part, "id", None)
+            tool_name = getattr(part, "name", None)
+            tool_args = getattr(part, "arguments", {}) or {}
             if isinstance(tool_id, str) and tool_id:
                 tool_calls.append(
                     {
@@ -966,18 +1084,10 @@ def _assistant_message_payload(
                         },
                     }
                 )
-                thought_signature = (
-                    getattr(part, "thought_signature", None)
-                    if not isinstance(part, dict)
-                    else part.get("thought_signature")
-                )
+                thought_signature = getattr(part, "thought_signature", None)
                 if isinstance(thought_signature, str) and thought_signature:
-                    try:
-                        reasoning_details.append(
-                            __import__("json").loads(thought_signature)
-                        )
-                    except Exception:
-                        pass
+                    with suppress(Exception):
+                        reasoning_details.append(json.loads(thought_signature))
     assistant_content = (
         "".join(text_blocks)
         if text_blocks
@@ -998,8 +1108,8 @@ def _assistant_message_payload(
     if reasoning_details:
         payload["reasoning_details"] = reasoning_details
     if (
-        compat_bool(compat, REQUIRES_REASONING_CONTENT_ON_ASSISTANT_MESSAGES)
-        and _supports_reasoning(model)
+        dialect.reasoning.assistant_content_required
+        and _supports_reasoning(model, capabilities)
         and "reasoning_content" not in payload
     ):
         payload["reasoning_content"] = ""
@@ -1017,19 +1127,20 @@ def _assistant_message_payload(
 
 
 async def _notify_provider_response(options, response, model) -> None:
-    callback = getattr(options, "on_response", None) if options is not None else None
+    callback = get_provider_option(options, "on_response")
     if not callable(callback):
         return
-    try:
+    with suppress(Exception):
         result = callback(response, model)
         if asyncio.iscoroutine(result):
             await result
-    except Exception:
-        pass
 
 
 def _tool_result_payload(
-    message: object, compat: dict[str, Any], model
+    message: object,
+    dialect: EndpointWireDialect,
+    model,
+    capabilities: object | None = None,
 ) -> tuple[dict[str, Any], list[dict[str, Any]]]:
     assert isinstance(message, ToolResultMessage)
     text_parts = [
@@ -1040,7 +1151,7 @@ def _tool_result_payload(
     text_result = "\n".join(text_parts)
     has_images = any(_part_type(part) == "image" for part in message.content)
     image_blocks: list[dict[str, Any]] = []
-    if "image" in getattr(model, "input", ()):
+    if _supports_image_input(model, capabilities):
         for part in message.content:
             if _part_type(part) != "image":
                 continue
@@ -1064,24 +1175,28 @@ def _tool_result_payload(
         "content": text_result
         or ("(see attached image)" if has_images else MISSING_TOOL_RESULT_TEXT),
     }
-    if compat_bool(compat, REQUIRES_TOOL_RESULT_NAME) and message.tool_name:
+    if dialect.tools.result_name_required and message.tool_name:
         tool_payload["name"] = message.tool_name
     return tool_payload, image_blocks
 
 
 def _part_type(part: object) -> str | None:
-    return part.get("type") if isinstance(part, dict) else getattr(part, "type", None)
+    return getattr(part, "type", None)
 
 
 def _part_text(part: object) -> str | None:
-    return part.get("text") if isinstance(part, dict) else getattr(part, "text", None)
+    return getattr(part, "text", None)
 
 
 def _part_data(part: object) -> str | None:
-    return part.get("data") if isinstance(part, dict) else getattr(part, "data", None)
+    return getattr(part, "data", None)
 
 
 def _part_mime_type(part: object) -> str | None:
-    if isinstance(part, dict):
-        return part.get("mime_type") or part.get("mimeType")
     return getattr(part, "mime_type", None)
+
+
+def _optional_int(value: object) -> int | None:
+    if isinstance(value, bool):
+        return None
+    return value if isinstance(value, int) else None

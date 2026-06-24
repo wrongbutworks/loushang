@@ -13,12 +13,13 @@ import sys
 
 import pytest
 
-from loushang.ai import OpenAIResponsesOptions, get_model
+from loushang.ai import get_model
+from loushang.ai.advanced import OpenAIResponsesOptions
 
 # 用户可直接修改的配置。
 # `API_KEY` 是显式认证入口；环境变量只是可选读取来源。
 API_KEY = ""
-MODEL_ID = "qwen3.6-plus"
+MODEL_ID = "qwen3.7-plus"
 SYSTEM_PROMPT = "你是通义千问模型，请用中文简洁回答。"
 USER_PROMPT = "请用两句话介绍你自己，并说明 1 + 1 等于几。"
 MAX_TOKENS = 256

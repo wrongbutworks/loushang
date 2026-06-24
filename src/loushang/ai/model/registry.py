@@ -2,7 +2,15 @@ from __future__ import annotations
 
 from dataclasses import replace
 
-from loushang.ai.model.domain import Endpoint, Model, Provider
+from loushang.ai.model.domain import (
+    Compat,
+    Defaults,
+    Endpoint,
+    EndpointRouting,
+    EndpointTransport,
+    Model,
+    Provider,
+)
 
 # 全局
 _default_model_registry: ModelRegistry | None = None
@@ -43,12 +51,57 @@ def resolve_model_endpoint(
     *,
     registry: "ModelRegistry | None" = None,
 ) -> Endpoint | None:
+    if registry is None and has_bound_endpoint_context(model):
+        return _endpoint_snapshot_from_model(model)
     resolved_registry = (
         registry if registry is not None else get_default_model_registry()
     )
-    if resolved_registry is None:
-        return None
     return resolved_registry.get_endpoint(model.provider_id, model.endpoint_id)
+
+
+def has_bound_endpoint_context(model: Model) -> bool:
+    if not getattr(model, "api", None):
+        return False
+    if isinstance(getattr(model, "_endpoint_ref", None), Endpoint):
+        return True
+    if (
+        getattr(model, "base_url", None)
+        or getattr(model, "base_url_env", None)
+        or getattr(model, "region", None)
+        or getattr(model, "lane", None)
+        or getattr(model, "preferred_endpoint", False)
+        or getattr(model, "_auth_inherited", False)
+    ):
+        return True
+    return False
+
+
+def _endpoint_snapshot_from_model(model: Model) -> Endpoint:
+    endpoint = getattr(model, "_endpoint_ref", None)
+    if isinstance(endpoint, Endpoint):
+        return endpoint
+    compat = getattr(model, "compat", Compat())
+    if not isinstance(compat, Compat):
+        compat = Compat.from_raw(compat)
+    defaults = getattr(model, "defaults", Defaults())
+    if not isinstance(defaults, Defaults):
+        defaults = Defaults.from_raw(defaults)
+    return Endpoint(
+        id=model.endpoint_id,
+        provider=model.provider_id,
+        api=getattr(model, "api", None) or model.endpoint_id,
+        base_url=getattr(model, "base_url", None),
+        base_url_env=getattr(model, "base_url_env", None),
+        region=getattr(model, "region", None),
+        lane=getattr(model, "lane", None),
+        preferred=getattr(model, "preferred_endpoint", False),
+        auth=getattr(model, "auth", None),
+        compat=compat,
+        defaults=defaults,
+        transport=getattr(model, "transport", EndpointTransport()),
+        routing=getattr(model, "routing", EndpointRouting()),
+        models={model.id: model},
+    )
 
 
 def resolve_model_api(
@@ -85,9 +138,8 @@ class AmbiguousModelReference(ValueError):
     def __init__(self, ref: str, candidates: list[Model]) -> None:
         self.ref = ref
         self.candidates = tuple(format_model_ref(model) for model in candidates)
-        message = (
-            f"Ambiguous model reference {ref!r}; use one of: "
-            + ", ".join(self.candidates)
+        message = f"Ambiguous model reference {ref!r}; use one of: " + ", ".join(
+            self.candidates
         )
         super().__init__(message)
 
@@ -98,8 +150,7 @@ class AmbiguousPreferredModelReference(ValueError):
         self.candidates = tuple(format_model_ref(model) for model in candidates)
         message = (
             f"Ambiguous preferred endpoint for model reference {ref!r}; "
-            "catalog marks multiple preferred endpoints: "
-            + ", ".join(self.candidates)
+            "catalog marks multiple preferred endpoints: " + ", ".join(self.candidates)
         )
         super().__init__(message)
 
@@ -154,9 +205,7 @@ def _resolve_candidates(
     preferred = [
         model
         for model in candidates
-        if (
-            endpoint := registry.get_endpoint(model.provider_id, model.endpoint_id)
-        )
+        if (endpoint := registry.get_endpoint(model.provider_id, model.endpoint_id))
         is not None
         and endpoint.preferred
     ]
@@ -301,23 +350,13 @@ class ModelRegistry:
         endpoint: str | None = None,
         model_id: str | None = None,
     ) -> list[Model]:
-        if provider is not None and endpoint is not None:
-            resolved_endpoint = self.get_endpoint(provider, endpoint)
-            if resolved_endpoint is None:
-                return []
-            models = resolved_endpoint.list_models()
-        elif provider is not None:
-            resolved_provider = self.get_provider(provider)
-            if resolved_provider is None:
-                return []
-            models = resolved_provider.list_models()
-        else:
-            models = sorted(
-                self._models.values(),
-                key=lambda item: (item.provider_id, item.endpoint_id, item.id),
-            )
-
-        if endpoint is not None and provider is None:
+        models = sorted(
+            self._models.values(),
+            key=lambda item: (item.provider_id, item.endpoint_id, item.id),
+        )
+        if provider is not None:
+            models = [model for model in models if model.provider_id == provider]
+        if endpoint is not None:
             models = [model for model in models if model.endpoint_id == endpoint]
         if model_id is None:
             return models
@@ -330,6 +369,5 @@ class ModelRegistry:
             for endpoint in provider.endpoints.values():
                 self._endpoints[(provider.id, endpoint.id)] = endpoint
                 for model in endpoint.models.values():
-                    self._models[(provider.id, endpoint.id, model.id)] = (
-                        endpoint.bind_model(model)
-                    )
+                    bound_model = endpoint.bind_model(model)
+                    self._models[(provider.id, endpoint.id, model.id)] = bound_model

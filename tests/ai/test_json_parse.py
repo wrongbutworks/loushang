@@ -3,7 +3,9 @@ from __future__ import annotations
 from loushang.ai.utils.json_parse import parse_streaming_json
 
 
-def test_parse_streaming_json_repairs_tool_arguments_with_raw_controls_and_bad_escape() -> None:
+def test_parse_streaming_json_repairs_tool_arguments_with_raw_controls_and_bad_escape() -> (
+    None
+):
     raw = '{"path":"tmp/bmi.html","content":"line 1\tline 2\nbad escape: \\H"}'
 
     assert parse_streaming_json(raw) == {

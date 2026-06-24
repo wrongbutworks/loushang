@@ -1,57 +1,48 @@
 from __future__ import annotations
 
-from loushang.ai.model.registry import resolve_model_api
+from typing import Any, cast
+
+from loushang.ai.provider.invocation import validate_provider_stream_raw_contract
 from loushang.ai.provider.protocol import ApiProvider
 
+RegisteredApiProvider = ApiProvider
 
-class _ApiCheckedProvider:
-    def __init__(self, provider: ApiProvider) -> None:
-        self._provider = provider
-        self.api = provider.api
-
-    def _check_model_api(self, model) -> None:
-        model_api = resolve_model_api(model)
-        if model_api != self.api:
-            raise ValueError(
-                f"Mismatched api: provider={self.api!r} endpoint.api={model_api!r}"
-            )
-
-    async def stream(self, model, context, options):
-        self._check_model_api(model)
-        return await self._provider.stream(model, context, options)
-
-    async def stream_simple(self, model, context, options):
-        self._check_model_api(model)
-        return await self._provider.stream_simple(model, context, options)
+__all__ = [
+    "ApiProviderRegistry",
+    "RegisteredApiProvider",
+    "get_default_api_provider_registry",
+]
 
 
 class ApiProviderRegistry:
     def __init__(self) -> None:
-        # api -> (wrapped_provider, source_id)
-        self._providers: dict[str, tuple[_ApiCheckedProvider, str | None]] = {}
+        # api -> (raw provider, source_id)
+        self._providers: dict[str, tuple[ApiProvider, str | None]] = {}
 
     def register_api_provider(
-        self, provider: ApiProvider, *, source_id: str | None = None
+        self, provider: RegisteredApiProvider, *, source_id: str | None = None
     ) -> None:
-        required = ("api", "stream", "stream_simple")
+        provider_any = cast(Any, provider)
+        required = ("api", "stream_raw")
         for name in required:
-            if not hasattr(provider, name):
+            if not hasattr(provider_any, name):
                 raise TypeError(f"Provider missing required attribute: {name}")
-        for name in ("stream", "stream_simple"):
-            if not callable(getattr(provider, name)):
+        for name in ("stream_raw",):
+            if not callable(getattr(provider_any, name)):
                 raise TypeError(f"Provider attribute must be callable: {name}")
-        self._providers[provider.api] = (_ApiCheckedProvider(provider), source_id)
+        validate_provider_stream_raw_contract(provider_any)
+        self._providers[provider_any.api] = (provider_any, source_id)
 
-    def get_api_provider(self, api: str) -> _ApiCheckedProvider:
+    def get_api_provider(self, api: str) -> ApiProvider:
         return self._providers[api][0]
 
-    def list_api_providers(self) -> list[_ApiCheckedProvider]:
+    def list_api_providers(self) -> list[ApiProvider]:
         return [entry[0] for entry in self._providers.values()]
 
     def unregister_api_providers(self, source_id: str) -> None:
         """Unregister all providers that were registered with the given source identifier."""
         to_delete: list[str] = []
-        for api, (_wrapped, sid) in self._providers.items():
+        for api, (_provider, sid) in self._providers.items():
             if sid == source_id:
                 to_delete.append(api)
         for api in to_delete:

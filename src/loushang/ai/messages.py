@@ -1,15 +1,22 @@
 from __future__ import annotations
 
+from collections.abc import Mapping
+from dataclasses import dataclass
+from math import isfinite
 from typing import Any, cast
 
+from loushang.ai.diagnostics import (
+    NormalizationDiagnostic,
+    sort_normalization_diagnostics,
+)
 from loushang.ai.model.registry import resolve_model_api
 from loushang.ai.tool import (
     normalize_tool_call_id_for_model,
-    transform_messages,
 )
 from loushang.ai.tool.transform import (
     PairingMode,
-    coerce_cross_provider_assistant_message,
+    coerce_cross_provider_assistant_message_result,
+    transform_messages_result,
 )
 from loushang.ai.types import (
     AssistantMessage,
@@ -20,8 +27,15 @@ from loushang.ai.types import (
     ToolCall,
     ToolResultMessage,
     Usage,
+    UsageCost,
     UserMessage,
 )
+
+
+@dataclass(frozen=True)
+class MessageNormalizationResult:
+    messages: list[object]
+    diagnostics: tuple[NormalizationDiagnostic, ...] = ()
 
 
 def normalize_messages(
@@ -29,9 +43,26 @@ def normalize_messages(
     *,
     tools: list[Tool] | None = None,
     model=None,
-    pairing_mode: PairingMode = "repair",
+    pairing_mode: PairingMode = "strict",
 ) -> list[object]:
+    return normalize_messages_result(
+        messages,
+        tools=tools,
+        model=model,
+        pairing_mode=pairing_mode,
+    ).messages
+
+
+def normalize_messages_result(
+    messages: list[object],
+    *,
+    tools: list[Tool] | None = None,
+    model=None,
+    pairing_mode: PairingMode = "strict",
+    message_paths: list[str] | None = None,
+) -> MessageNormalizationResult:
     messages = [canonicalize_message(message) for message in messages]
+    diagnostics: list[NormalizationDiagnostic] = []
     normalize_tool_call_id = None
     if model is not None:
 
@@ -42,43 +73,57 @@ def normalize_messages(
 
         normalize_tool_call_id = _normalize_tool_call_id
 
-    transformed = transform_messages(
+    transform_result = transform_messages_result(
         messages,
         normalize_tool_call_id=normalize_tool_call_id,
         pairing_mode=pairing_mode,
+        message_paths=message_paths,
     )
+    transformed = transform_result.messages
+    transformed_paths = list(transform_result.message_paths)
+    diagnostics.extend(transform_result.diagnostics)
     transformed = [canonicalize_user_message(message) for message in transformed]
 
     if model is not None:
         target_api = resolve_model_api(model)
         if isinstance(target_api, str) and target_api:
-            transformed = [
-                coerce_cross_provider_assistant_message(
+            coerced: list[object] = []
+            for index, message in enumerate(transformed):
+                if not isinstance(message, AssistantMessage):
+                    coerced.append(message)
+                    continue
+                coercion_result = coerce_cross_provider_assistant_message_result(
                     message,
                     target_api=target_api,
                     target_provider=getattr(model, "provider_id", None),
                     target_model=getattr(model, "id", None),
+                    path=transformed_paths[index],
                 )
-                if isinstance(message, AssistantMessage)
-                else message
-                for message in transformed
-            ]
+                coerced.append(coercion_result.message)
+                diagnostics.extend(coercion_result.diagnostics)
+            transformed = coerced
 
     # Tool arguments are validated before execution. Provider-context projection
     # must keep historical malformed calls recoverable when they already have
     # matching error tool results in the transcript.
-    return transformed
+    return MessageNormalizationResult(
+        messages=transformed,
+        diagnostics=sort_normalization_diagnostics(diagnostics),
+    )
 
 
 def canonicalize_message(message: object) -> object:
-    if not isinstance(message, dict):
+    if not isinstance(message, Mapping):
         return message
+    message = dict(message)
     role = message.get("role")
+    if role == "user":
+        return _user_message_from_dict(message)
     if role == "assistant":
         return _assistant_message_from_dict(message)
     if role == "toolResult":
         return _tool_result_message_from_dict(message)
-    return message
+    raise TypeError(f"Unsupported message role: {role!r}")
 
 
 def canonicalize_user_message(message: object) -> object:
@@ -92,14 +137,21 @@ def canonicalize_user_message(message: object) -> object:
             timestamp=message.timestamp,
         )
 
-    if isinstance(message, dict) and message.get("role") == "user":
-        normalized = dict(message)
-        normalized["content"] = canonicalize_user_content(
-            message.get("content"), prefer_dict_parts=True
-        )
-        return normalized
+    if isinstance(message, Mapping):
+        return canonicalize_message(message)
 
     return message
+
+
+def _user_message_from_dict(message: dict[str, Any]) -> UserMessage:
+    return UserMessage(
+        role="user",
+        content=cast(
+            list[TextPart | ImagePart],
+            canonicalize_user_content(message.get("content")),
+        ),
+        timestamp=_float_or_default(message.get("timestamp")),
+    )
 
 
 def _assistant_message_from_dict(message: dict[str, Any]) -> AssistantMessage:
@@ -112,10 +164,14 @@ def _assistant_message_from_dict(message: dict[str, Any]) -> AssistantMessage:
         api=str(message.get("api", "")),
         provider=str(message.get("provider", "")),
         model=str(message.get("model", "")),
-        response_id=_optional_str(message.get("response_id", message.get("responseId"))),
+        response_id=_optional_str(
+            message.get("response_id", message.get("responseId"))
+        ),
         usage=_usage_from_dict(message.get("usage")),
         stop_reason=message.get("stop_reason", message.get("stopReason", "stop")),  # type: ignore[arg-type]
-        error_message=_optional_str(message.get("error_message", message.get("errorMessage"))),
+        error_message=_optional_str(
+            message.get("error_message", message.get("errorMessage"))
+        ),
         timestamp=_float_or_default(message.get("timestamp")),
         response_model=_optional_str(
             message.get("response_model", message.get("responseModel"))
@@ -170,18 +226,18 @@ def _content_parts(content: object) -> list[Any]:
         return []
     if isinstance(content, str):
         return [{"type": "text", "text": content}]
-    if isinstance(content, dict):
-        return [content]
+    if isinstance(content, Mapping):
+        return [dict(content)]
     if not isinstance(content, list):
         raise TypeError(f"Unsupported message content type: {type(content)!r}")
     return list(content)
 
 
 def _assistant_content_part(
-    part: dict[str, Any] | TextPart | ThinkingPart | ToolCall | ImagePart
+    part: dict[str, Any] | TextPart | ThinkingPart | ToolCall | ImagePart,
 ) -> TextPart | ThinkingPart | ToolCall | ImagePart:
-    if isinstance(part, dict):
-        return _assistant_content_part_from_dict(part)
+    if isinstance(part, Mapping):
+        return _assistant_content_part_from_dict(dict(part))
     if isinstance(part, (TextPart, ThinkingPart, ToolCall, ImagePart)):
         return part
     raise TypeError(f"Unsupported assistant content part type: {type(part)!r}")
@@ -190,20 +246,66 @@ def _assistant_content_part(
 def _usage_from_dict(value: object) -> Usage:
     if isinstance(value, Usage):
         return value
-    if not isinstance(value, dict):
+    if not isinstance(value, Mapping):
         value = {}
+    else:
+        value = dict(value)
+    cost_raw = value.get("cost")
+    cost = _canonical_cost(cost_raw if isinstance(cost_raw, dict) else None)
     return Usage(
         input=_int_or_default(value.get("input")),
         output=_int_or_default(value.get("output")),
         cache_read=_int_or_default(value.get("cache_read", value.get("cacheRead"))),
-        cache_write=_int_or_default(
-            value.get("cache_write", value.get("cacheWrite"))
-        ),
+        cache_write=_int_or_default(value.get("cache_write", value.get("cacheWrite"))),
         total_tokens=_int_or_default(
             value.get("total_tokens", value.get("totalTokens"))
         ),
-        cost=dict(value.get("cost") or {}),
+        cost=cost,
     )
+
+
+def _canonical_cost(cost: Mapping[str, object] | None) -> UsageCost | None:
+    if cost is None:
+        return None
+    input_cost = _cost_number(cost, "input")
+    output_cost = _cost_number(cost, "output")
+    cache_read = _cost_number(cost, "cacheRead", "cache_read")
+    cache_write = _cost_number(cost, "cacheWrite", "cache_write")
+    total = _cost_number(cost, "total")
+    if (
+        input_cost is None
+        or output_cost is None
+        or cache_read is None
+        or cache_write is None
+        or total is None
+    ):
+        return None
+    return {
+        "input": input_cost,
+        "output": output_cost,
+        "cacheRead": cache_read,
+        "cacheWrite": cache_write,
+        "total": total,
+    }
+
+
+def _cost_number(
+    cost: Mapping[str, object], key: str, alias: str | None = None
+) -> float | None:
+    if key in cost:
+        value = cost[key]
+    elif alias is not None and alias in cost:
+        value = cost[alias]
+    else:
+        return None
+    if (
+        isinstance(value, bool)
+        or not isinstance(value, int | float)
+        or not isfinite(value)
+        or value < 0
+    ):
+        return None
+    return float(value)
 
 
 def _optional_str(value: object) -> str | None:
@@ -235,38 +337,28 @@ def _float_or_default(value: object, default: float = 0.0) -> float:
 
 def canonicalize_user_content(
     content: object,
-    *,
-    prefer_dict_parts: bool = False,
-) -> list[TextPart | ImagePart] | list[dict[str, Any]]:
+) -> list[TextPart | ImagePart]:
     if isinstance(content, str):
-        if prefer_dict_parts:
-            return [{"type": "text", "text": content}]
         return cast(
             list[TextPart | ImagePart],
             [TextPart(type="text", text=content)],
         )
 
-    if isinstance(content, dict):
-        return [dict(content)] if prefer_dict_parts else [_part_from_dict(content)]
+    if isinstance(content, Mapping):
+        return [_part_from_dict(dict(content))]
 
     if not isinstance(content, list):
         raise TypeError(f"Unsupported user content type: {type(content)!r}")
 
-    if prefer_dict_parts:
-        normalized_dict_parts: list[dict[str, Any]] = []
-        for part in content:
-            if isinstance(part, dict):
-                normalized_dict_parts.append(dict(part))
-                continue
-            normalized_dict_parts.append(_part_to_dict(part))
-        return normalized_dict_parts
-
     normalized_parts: list[TextPart | ImagePart] = []
     for part in content:
-        if isinstance(part, dict):
-            normalized_parts.append(_part_from_dict(part))
+        if isinstance(part, Mapping):
+            normalized_parts.append(_part_from_dict(dict(part)))
             continue
-        normalized_parts.append(cast(TextPart | ImagePart, part))
+        if isinstance(part, (TextPart, ImagePart)):
+            normalized_parts.append(part)
+            continue
+        raise TypeError(f"Unsupported user content part object: {type(part)!r}")
     return normalized_parts
 
 
@@ -286,23 +378,3 @@ def _part_from_dict(part: dict[str, Any]) -> TextPart | ImagePart:
             mime_type=str(mime_type or ""),
         )
     raise TypeError(f"Unsupported user content part type: {part_type!r}")
-
-
-def _part_to_dict(part: object) -> dict[str, Any]:
-    part_type = getattr(part, "type", None)
-    if part_type == "text":
-        payload: dict[str, Any] = {
-            "type": "text",
-            "text": getattr(part, "text", ""),
-        }
-        text_signature = getattr(part, "text_signature", None)
-        if text_signature is not None:
-            payload["text_signature"] = text_signature
-        return payload
-    if part_type == "image":
-        return {
-            "type": "image",
-            "data": getattr(part, "data", ""),
-            "mime_type": getattr(part, "mime_type", ""),
-        }
-    raise TypeError(f"Unsupported user content part object: {type(part)!r}")

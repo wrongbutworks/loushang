@@ -3,6 +3,8 @@ from __future__ import annotations
 from copy import deepcopy
 from types import SimpleNamespace
 
+from loushang.ai.context import normalize_context
+from loushang.ai.model import EndpointProtocolFeatures, EndpointWireDialect
 from loushang.ai.tool.providers import (
     to_anthropic_tools,
     to_openai_completions_tool_result_message,
@@ -22,6 +24,35 @@ from loushang.ai.types import (
 )
 
 _UNPAIRED_HIGH_SURROGATE = "\ud83d"
+
+
+def _assistant_tool_call(api: str) -> AssistantMessage:
+    return AssistantMessage(
+        role="assistant",
+        content=[
+            ToolCall(
+                type="toolCall",
+                id="call_1",
+                name="read",
+                arguments={"path": "README.md"},
+            )
+        ],
+        api=api,
+        provider="openai",
+        model="gpt-test",
+        response_id=None,
+        usage=Usage(
+            input=0,
+            output=0,
+            cache_read=0,
+            cache_write=0,
+            total_tokens=0,
+            cost={},
+        ),
+        stop_reason="toolUse",
+        error_message=None,
+        timestamp=0.0,
+    )
 
 
 def _schema_with_meta_keys() -> dict[str, object]:
@@ -83,7 +114,9 @@ def test_tool_provider_payloads_strip_schema_meta_keys_without_mutating_input() 
     responses_payload = to_openai_responses_tools([tool])
 
     assert anthropic_payload[0]["input_schema"] == _expected_sanitized_schema()
-    assert completions_payload[0]["function"]["parameters"] == _expected_sanitized_schema()
+    assert (
+        completions_payload[0]["function"]["parameters"] == _expected_sanitized_schema()
+    )
     assert responses_payload[0]["parameters"] == _expected_sanitized_schema()
     assert parameters == original
 
@@ -93,20 +126,22 @@ def test_openai_completions_provider_build_tools_strips_schema_meta_keys() -> No
 
     payload = _build_tools(
         [
-            {
-                "name": "probe",
-                "description": "Probe",
-                "parameters": _schema_with_meta_keys(),
-            }
+            Tool(
+                name="probe",
+                description="Probe",
+                parameters=_schema_with_meta_keys(),
+            )
         ],
-        {},
+        EndpointProtocolFeatures(),
     )
 
     assert payload is not None
     assert payload[0]["function"]["parameters"] == _expected_sanitized_schema()
 
 
-def test_openai_completions_provider_uses_image_placeholder_when_model_cannot_accept_images() -> None:
+def test_openai_completions_provider_uses_image_placeholder_when_model_cannot_accept_images() -> (
+    None
+):
     from loushang.ai.providers.openai_completions import _tool_result_payload
 
     message = ToolResultMessage(
@@ -120,7 +155,7 @@ def test_openai_completions_provider_uses_image_placeholder_when_model_cannot_ac
 
     tool_payload, image_blocks = _tool_result_payload(
         message,
-        {},
+        EndpointWireDialect(),
         SimpleNamespace(input=("text",)),
     )
 
@@ -132,47 +167,55 @@ def test_openai_completions_provider_uses_image_placeholder_when_model_cannot_ac
     assert image_blocks == []
 
 
-def test_openai_completions_provider_sanitizes_unpaired_surrogates_in_payload_text() -> None:
+def test_openai_completions_provider_sanitizes_unpaired_surrogates_in_payload_text() -> (
+    None
+):
     from loushang.ai.providers.openai_completions import _build_messages
 
     payload = _build_messages(
         SimpleNamespace(input=("text",), reasoning=False),
-        {
-            "system_prompt": f"system {_UNPAIRED_HIGH_SURROGATE} prompt",
-            "messages": [
-                {
-                    "role": "user",
-                    "content": [
-                        {
-                            "type": "text",
-                            "text": f"user {_UNPAIRED_HIGH_SURROGATE} text 🙈",
-                        }
-                    ],
-                },
-                ToolResultMessage(
-                    role="toolResult",
-                    tool_call_id="call_1",
-                    tool_name="read",
-                    content=[
-                        TextPart(
-                            type="text",
-                            text=f"tool {_UNPAIRED_HIGH_SURROGATE} result 🙈",
-                        )
-                    ],
-                    is_error=False,
-                    timestamp=0.0,
-                ),
-            ],
-        },
-        {},
+        normalize_context(
+            {
+                "system_prompt": f"system {_UNPAIRED_HIGH_SURROGATE} prompt",
+                "messages": [
+                    {
+                        "role": "user",
+                        "content": [
+                            {
+                                "type": "text",
+                                "text": f"user {_UNPAIRED_HIGH_SURROGATE} text 🙈",
+                            }
+                        ],
+                    },
+                    _assistant_tool_call("openai-completions"),
+                    ToolResultMessage(
+                        role="toolResult",
+                        tool_call_id="call_1",
+                        tool_name="read",
+                        content=[
+                            TextPart(
+                                type="text",
+                                text=f"tool {_UNPAIRED_HIGH_SURROGATE} result 🙈",
+                            )
+                        ],
+                        is_error=False,
+                        timestamp=0.0,
+                    ),
+                ],
+            }
+        ),
+        EndpointProtocolFeatures(),
+        EndpointWireDialect(),
     )
 
     assert payload[0]["content"] == "system  prompt"
     assert payload[1]["content"] == "user  text 🙈"
-    assert payload[2]["content"] == "tool  result 🙈"
+    assert payload[-1]["content"] == "tool  result 🙈"
 
 
-def test_openai_responses_provider_uses_image_placeholder_when_model_cannot_accept_images() -> None:
+def test_openai_responses_provider_uses_image_placeholder_when_model_cannot_accept_images() -> (
+    None
+):
     from loushang.ai.providers.openai_responses_shared import _tool_result_payload
 
     message = ToolResultMessage(
@@ -197,104 +240,150 @@ def test_openai_responses_provider_uses_image_placeholder_when_model_cannot_acce
     }
 
 
-def test_openai_responses_provider_sanitizes_unpaired_surrogates_in_payload_text() -> None:
+def test_openai_responses_provider_preserves_image_only_tool_result() -> None:
+    from loushang.ai.providers.openai_responses_shared import _tool_result_payload
+
+    message = ToolResultMessage(
+        role="toolResult",
+        tool_call_id="call_1|fc_1",
+        tool_name="read_image",
+        content=[ImagePart(type="image", data="aW1hZ2U=", mime_type="image/png")],
+        is_error=False,
+        timestamp=0.0,
+    )
+
+    payload = _tool_result_payload(
+        message,
+        SimpleNamespace(input=("text", "image")),
+        {"call_1|fc_1": "call_1|fc_1"},
+    )
+
+    assert payload == {
+        "type": "function_call_output",
+        "call_id": "call_1",
+        "output": [
+            {
+                "type": "input_image",
+                "detail": "auto",
+                "image_url": "data:image/png;base64,aW1hZ2U=",
+            }
+        ],
+    }
+
+
+def test_openai_responses_provider_sanitizes_unpaired_surrogates_in_payload_text() -> (
+    None
+):
     from loushang.ai.providers.openai_responses_shared import convert_responses_messages
 
     payload = convert_responses_messages(
         SimpleNamespace(input=("text",), reasoning=False),
-        {
-            "system_prompt": f"system {_UNPAIRED_HIGH_SURROGATE} prompt",
-            "messages": [
-                {
-                    "role": "user",
-                    "content": [
-                        {
-                            "type": "text",
-                            "text": f"user {_UNPAIRED_HIGH_SURROGATE} text 🙈",
-                        }
-                    ],
-                },
-                ToolResultMessage(
-                    role="toolResult",
-                    tool_call_id="call_1",
-                    tool_name="read",
-                    content=[
-                        TextPart(
-                            type="text",
-                            text=f"tool {_UNPAIRED_HIGH_SURROGATE} result 🙈",
-                        )
-                    ],
-                    is_error=False,
-                    timestamp=0.0,
-                ),
-            ],
-        },
-        {},
+        normalize_context(
+            {
+                "system_prompt": f"system {_UNPAIRED_HIGH_SURROGATE} prompt",
+                "messages": [
+                    {
+                        "role": "user",
+                        "content": [
+                            {
+                                "type": "text",
+                                "text": f"user {_UNPAIRED_HIGH_SURROGATE} text 🙈",
+                            }
+                        ],
+                    },
+                    _assistant_tool_call("openai-responses"),
+                    ToolResultMessage(
+                        role="toolResult",
+                        tool_call_id="call_1",
+                        tool_name="read",
+                        content=[
+                            TextPart(
+                                type="text",
+                                text=f"tool {_UNPAIRED_HIGH_SURROGATE} result 🙈",
+                            )
+                        ],
+                        is_error=False,
+                        timestamp=0.0,
+                    ),
+                ],
+            }
+        ),
+        EndpointProtocolFeatures(),
+        EndpointWireDialect(),
     )
 
     assert payload[0]["content"] == "system  prompt"
     assert payload[1]["content"] == [{"type": "input_text", "text": "user  text 🙈"}]
-    assert payload[2]["output"] == "tool  result 🙈"
+    assert payload[-1]["output"] == "tool  result 🙈"
 
 
 def test_anthropic_provider_sanitizes_unpaired_surrogates_in_payload_text() -> None:
     from loushang.ai.providers.anthropic import _build_anthropic_message_payloads
 
     messages, system = _build_anthropic_message_payloads(
-        {
-            "system_prompt": f"system {_UNPAIRED_HIGH_SURROGATE} prompt",
-            "messages": [
-                {
-                    "role": "user",
-                    "content": [
-                        {
-                            "type": "text",
-                            "text": f"user {_UNPAIRED_HIGH_SURROGATE} text 🙈",
-                        }
-                    ],
-                },
-                AssistantMessage(
-                    role="assistant",
-                    content=[
-                        TextPart(
-                            type="text",
-                            text=f"assistant {_UNPAIRED_HIGH_SURROGATE} text 🙈",
+        normalize_context(
+            {
+                "system_prompt": f"system {_UNPAIRED_HIGH_SURROGATE} prompt",
+                "messages": [
+                    {
+                        "role": "user",
+                        "content": [
+                            {
+                                "type": "text",
+                                "text": f"user {_UNPAIRED_HIGH_SURROGATE} text 🙈",
+                            }
+                        ],
+                    },
+                    AssistantMessage(
+                        role="assistant",
+                        content=[
+                            TextPart(
+                                type="text",
+                                text=f"assistant {_UNPAIRED_HIGH_SURROGATE} text 🙈",
+                            ),
+                            ThinkingPart(
+                                type="thinking",
+                                thinking=f"thinking {_UNPAIRED_HIGH_SURROGATE} text 🙈",
+                            ),
+                            ToolCall(
+                                type="toolCall",
+                                id="call_1",
+                                name="read",
+                                arguments={"path": "README.md"},
+                            ),
+                        ],
+                        api="anthropic-messages",
+                        provider="anthropic",
+                        model="claude",
+                        response_id=None,
+                        usage=Usage(
+                            input=0,
+                            output=0,
+                            cache_read=0,
+                            cache_write=0,
+                            total_tokens=0,
+                            cost={},
                         ),
-                        ThinkingPart(
-                            type="thinking",
-                            thinking=f"thinking {_UNPAIRED_HIGH_SURROGATE} text 🙈",
-                        ),
-                        ToolCall(
-                            type="toolCall",
-                            id="call_1",
-                            name="read",
-                            arguments={"path": "README.md"},
-                        ),
-                    ],
-                    api="anthropic-messages",
-                    provider="anthropic",
-                    model="claude",
-                    response_id=None,
-                    usage=Usage(input=0, output=0, cache_read=0, cache_write=0, total_tokens=0, cost={}),
-                    stop_reason="toolUse",
-                    error_message=None,
-                    timestamp=0.0,
-                ),
-                ToolResultMessage(
-                    role="toolResult",
-                    tool_call_id="call_1",
-                    tool_name="read",
-                    content=[
-                        TextPart(
-                            type="text",
-                            text=f"tool {_UNPAIRED_HIGH_SURROGATE} result 🙈",
-                        )
-                    ],
-                    is_error=False,
-                    timestamp=0.0,
-                ),
-            ],
-        },
+                        stop_reason="toolUse",
+                        error_message=None,
+                        timestamp=0.0,
+                    ),
+                    ToolResultMessage(
+                        role="toolResult",
+                        tool_call_id="call_1",
+                        tool_name="read",
+                        content=[
+                            TextPart(
+                                type="text",
+                                text=f"tool {_UNPAIRED_HIGH_SURROGATE} result 🙈",
+                            )
+                        ],
+                        is_error=False,
+                        timestamp=0.0,
+                    ),
+                ],
+            }
+        ),
         is_oauth_token=False,
     )
 
@@ -321,7 +410,7 @@ def test_anthropic_provider_sanitizes_unpaired_surrogates_in_payload_text() -> N
 
 
 def test_openai_codex_responses_provider_sanitizes_instruction_text() -> None:
-    from loushang.ai.providers.openai_codex_responses import _build_request_body
+    from loushang.ai.contrib.openai_codex.provider import _build_request_body
 
     body = _build_request_body(
         SimpleNamespace(id="gpt-5.2-codex", input=("text",)),
@@ -336,7 +425,9 @@ def test_openai_codex_responses_provider_sanitizes_instruction_text() -> None:
     assert body["instructions"] == "system  prompt 🙈"
 
 
-def test_openai_responses_tool_result_helper_preserves_images_in_function_output() -> None:
+def test_openai_responses_tool_result_helper_preserves_images_in_function_output() -> (
+    None
+):
     message = ToolResultMessage(
         role="toolResult",
         tool_call_id="call_1",

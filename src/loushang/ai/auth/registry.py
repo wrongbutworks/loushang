@@ -1,14 +1,12 @@
 from __future__ import annotations
 
-from typing import Dict, Tuple
-
 from loushang.ai.auth.types import OAuthProviderInterface
 
 
 class OAuthProviderRegistry:
     def __init__(self) -> None:
         # id -> (provider, source_id)
-        self._providers: Dict[str, Tuple[OAuthProviderInterface, str | None]] = {}
+        self._providers: dict[str, tuple[OAuthProviderInterface, str | None]] = {}
 
     def register_oauth_provider(
         self, provider: OAuthProviderInterface, *, source_id: str | None = None

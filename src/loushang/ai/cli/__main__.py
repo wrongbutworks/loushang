@@ -5,24 +5,28 @@ import getpass
 import json
 import os
 import sys
+from contextlib import suppress
 from dataclasses import dataclass
 from typing import Any
 
 from loushang.ai import (
+    CallOptions,
+    complete,
+    stream,
+)
+from loushang.ai.advanced.options import (
     AnthropicOptions,
-    AzureOpenAIResponsesOptions,
-    ModelCallOptions,
-    OpenAICodexResponsesOptions,
     OpenAICompletionsOptions,
     OpenAIResponsesOptions,
-    complete,
+)
+from loushang.ai.advanced.registry import (
     get_api_provider,
-    get_env_api_key,
     list_api_providers,
-    stream,
+    reset_api_providers,
 )
 from loushang.ai.api_registry import get_default_api_provider_registry
 from loushang.ai.auth import (
+    get_env_api_key,
     get_env_oauth_credentials,
     get_oauth_provider,
     list_oauth_providers,
@@ -32,6 +36,11 @@ from loushang.ai.auth import (
 from loushang.ai.auth.storage import find_scoped_credential, load_credential_store
 from loushang.ai.auth.support import merge_auth_config
 from loushang.ai.auth.types import OAuthAuthInfo, OAuthLoginCallbacks, OAuthPrompt
+from loushang.ai.contrib.openai_codex import (
+    OpenAICodexResponsesOptions,
+    register_openai_codex_contrib,
+    register_openai_codex_oauth_provider,
+)
 from loushang.ai.model.registry import (
     get_default_model_registry,
     resolve_model_api,
@@ -43,7 +52,6 @@ _OPTION_CLASS_BY_API = {
     "openai-completions": OpenAICompletionsOptions,
     "openai-responses": OpenAIResponsesOptions,
     "openai-codex-responses": OpenAICodexResponsesOptions,
-    "azure-openai-responses": AzureOpenAIResponsesOptions,
 }
 
 _BACK = object()
@@ -143,9 +151,13 @@ def cmd_models(args: argparse.Namespace) -> None:
             "provider": model.provider_id,
             "endpoint": model.endpoint_id,
             "api": resolve_model_api(model, registry=registry),
-            "region": endpoint_info.region if endpoint_info is not None else model.region,
+            "region": endpoint_info.region
+            if endpoint_info is not None
+            else model.region,
             "lane": endpoint_info.lane if endpoint_info is not None else None,
-            "preferredEndpoint": bool(endpoint_info.preferred) if endpoint_info is not None else False,
+            "preferredEndpoint": bool(endpoint_info.preferred)
+            if endpoint_info is not None
+            else False,
             "name": model.name,
             "family": model.family,
             "alias": model.alias,
@@ -275,6 +287,7 @@ def cmd_complete(args: argparse.Namespace) -> None:
 
 def cmd_auth(args: argparse.Namespace) -> None:
     register_builtin_oauth_providers()
+    register_openai_codex_oauth_provider()
 
     if args.action == "providers":
         items = [
@@ -299,7 +312,11 @@ def cmd_auth(args: argparse.Namespace) -> None:
         data = {
             "id": provider.id,
             "name": provider.name,
-            "scope": _auth_scope_payload(args.provider, getattr(args, "endpoint", None), getattr(args, "model", None)),
+            "scope": _auth_scope_payload(
+                args.provider,
+                getattr(args, "endpoint", None),
+                getattr(args, "model", None),
+            ),
             "uses_callback_server": provider.uses_callback_server(),
             "has_credentials": stored is not None,
             "source": source,
@@ -354,7 +371,11 @@ def cmd_auth(args: argparse.Namespace) -> None:
         )
         output = {
             "provider": credentials.provider,
-            "scope": _auth_scope_payload(provider_id, getattr(args, "endpoint", None), getattr(args, "model", None)),
+            "scope": _auth_scope_payload(
+                provider_id,
+                getattr(args, "endpoint", None),
+                getattr(args, "model", None),
+            ),
             "stored": True,
             "source": "stored",
             "expires_at": credentials.expires_at,
@@ -364,7 +385,9 @@ def cmd_auth(args: argparse.Namespace) -> None:
         return
 
 
-def _auth_scope_payload(provider: str, endpoint: str | None, model: str | None) -> dict[str, str | None]:
+def _auth_scope_payload(
+    provider: str, endpoint: str | None, model: str | None
+) -> dict[str, str | None]:
     return {
         "provider": provider,
         "endpoint": endpoint,
@@ -374,6 +397,7 @@ def _auth_scope_payload(provider: str, endpoint: str | None, model: str | None) 
 
 def cmd_console(args: argparse.Namespace) -> None:
     register_builtin_oauth_providers()
+    register_openai_codex_contrib()
     registry = get_default_model_registry()
     print("Loushang AI Console")
     print("- Interactive path: provider -> endpoint -> auth -> model -> conversation")
@@ -420,7 +444,7 @@ def cmd_console(args: argparse.Namespace) -> None:
         if system_prompt:
             context["system_prompt"] = system_prompt
         message = _run_async(
-            lambda: _run_console_turn(
+            lambda binding=binding, context=context: _run_console_turn(
                 binding.model,
                 context,
                 binding.options,
@@ -683,7 +707,9 @@ def _prepare_console_auth(
     option_kwargs: dict[str, object] = {}
     auth_source = "none"
     if getattr(auth_config, "kind", "apiKey") == "oauth":
-        oauth_credentials, auth_source = _resolve_console_oauth_credentials(provider.id, endpoint_id=endpoint.id)
+        oauth_credentials, auth_source = _resolve_console_oauth_credentials(
+            provider.id, endpoint_id=endpoint.id
+        )
         if oauth_credentials is not None:
             option_kwargs["oauth_credentials"] = oauth_credentials
     else:
@@ -704,7 +730,7 @@ def _build_console_options(model, *, api: str, auth_result, debug: bool = False)
         option_kwargs["trace"] = _console_trace
     if not option_kwargs:
         return None, auth_source
-    option_cls = _OPTION_CLASS_BY_API.get(api, ModelCallOptions)
+    option_cls = _OPTION_CLASS_BY_API.get(api, CallOptions)
     return option_cls(**option_kwargs), auth_source
 
 
@@ -744,7 +770,11 @@ def _resolve_console_api_key(provider_id: str, auth_config) -> tuple[str | None,
         if fallback:
             return fallback, "env:provider-default"
 
-    label = env_names[0] if env_names else f"{provider_id.upper().replace('-', '_')}_API_KEY"
+    label = (
+        env_names[0]
+        if env_names
+        else f"{provider_id.upper().replace('-', '_')}_API_KEY"
+    )
     value = getpass.getpass(f"{label}: ").strip()
     if not value:
         raise ValueError(f"Missing API key for provider: {provider_id}")
@@ -866,6 +896,30 @@ def _hint_and_exit_for_missing_model(registry) -> None:
     sys.exit(2)
 
 
+def _normalize_global_flags(argv: list[str] | None) -> list[str]:
+    if argv is None:
+        argv = sys.argv[1:]
+    normalized: list[str] = []
+    remaining: list[str] = []
+    index = 0
+    while index < len(argv):
+        item = argv[index]
+        if item == "--":
+            remaining.extend(argv[index:])
+            break
+        if item == "--json":
+            normalized.append(item)
+        elif item == "--base-url" and index + 1 < len(argv) and argv[index + 1] != "--":
+            normalized.extend([item, argv[index + 1]])
+            index += 1
+        elif item.startswith("--base-url="):
+            normalized.append(item)
+        else:
+            remaining.append(item)
+        index += 1
+    return [*normalized, *remaining]
+
+
 def main(argv: list[str] | None = None) -> None:
     parser = argparse.ArgumentParser(prog="loushang-ai", description="Loushang AI CLI")
     parser.add_argument("--json", action="store_true", help="Output as JSON")
@@ -941,10 +995,8 @@ def main(argv: list[str] | None = None) -> None:
     )
     p_console.set_defaults(func=cmd_console)
 
-    args = parser.parse_args(argv)
-    try:
-        from loushang.ai import reset_api_providers
-
+    args = parser.parse_args(_normalize_global_flags(argv))
+    with suppress(Exception):
         env_base = os.getenv("LOUSHANG_BASE_URL")
         effective_base = args.base_url or env_base
         if effective_base:
@@ -954,8 +1006,6 @@ def main(argv: list[str] | None = None) -> None:
             )
         else:
             reset_api_providers()
-    except Exception:
-        pass
     args.func(args)
 
 

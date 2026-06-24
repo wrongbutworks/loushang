@@ -22,15 +22,16 @@ from collections.abc import Iterable
 import pytest
 
 from loushang.ai import (
-    OpenAICompletionsOptions,
     get_model,
 )
+from loushang.ai.advanced import OpenAICompletionsOptions
+from loushang.ai.errors import AIAuthenticationError
 
 # 用户可直接修改的配置。
 # `API_KEY` 是显式认证入口；环境变量只是可选读取来源，不会在示例中被回写。
 API_KEY = ""
-# `MODEL_ID` / `PROVIDER_ID` / `ENDPOINT_ID` 必须是 `models.json` 里可匹配的一组模型句柄。
-MODEL_ID = "kimi-k2.5"
+# `MODEL_ID` / `PROVIDER_ID` / `ENDPOINT_ID` 必须是内置 catalog 里可匹配的一组模型句柄。
+MODEL_ID = "kimi-k2.6"
 SYSTEM_PROMPT = "你是 Kimi，由 Moonshot AI 提供。回答要简洁、准确，优先使用中文。"
 USER_PROMPT = "请用两句话介绍你自己，并说明 1 + 1 等于几。"
 # `MAX_TOKENS` 控制本次返回上限；调大通常会得到更长输出。
@@ -102,7 +103,10 @@ async def _main() -> None:
 
 
 def test_kimi_openai_complete_live() -> None:
-    asyncio.run(_main())
+    try:
+        asyncio.run(_main())
+    except AIAuthenticationError as exc:
+        pytest.skip(f"Moonshot credentials rejected: {exc}")
 
 
 if __name__ == "__main__":

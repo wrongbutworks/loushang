@@ -20,6 +20,8 @@
 - 写入字段：`input`、`output`、`cacheRead`、`cacheWrite`、`total`
 - 计算公式：`cost = tokens * (rate per 1_000_000) / 1_000_000`
 - `total = input + output + cacheRead + cacheWrite`
+- 当模型没有 pricing、已使用 token 组件缺少价格，或 Provider 只返回无法分摊到组件的 `total_tokens` 时，成本为未知，`AssistantMessage.usage.cost` 保持 `None`
+- 显式 `0` 价格是有效价格，不会被当成未知值
 
 示例（以 2,000 input、500 output、100 cacheRead，费率分别为 1.5、6.0、0.3、3.0 为例）：
 
@@ -37,7 +39,7 @@ total  ≈ 0.00603
 
 ## 容错与不变式
 
-- 若缺少定价、解析异常或 Provider 不支持相关用量字段，估算将被跳过
+- 若缺少定价、已使用组件缺少价格、解析异常或 Provider 不支持相关用量字段，估算将被跳过并保留 `usage.cost = None`
 - 任何估算错误都不会阻断事件流结束或改变最终消息内容
 
 ## 最小示例
@@ -45,7 +47,7 @@ total  ≈ 0.00603
 ```python
 from loushang.ai import complete, get_model
 
-# 正常调用；如果模型 pricing 存在，结束后可在 AssistantMessage.usage.cost 中查看成本估算
+# 正常调用；只有模型 pricing 足以覆盖本次 usage 时，AssistantMessage.usage.cost 才是成本估算 dict
 # model = get_model("kimi-k2.5")
 # message = await complete(model, {"messages": [...]})
 # print(message.usage.cost)

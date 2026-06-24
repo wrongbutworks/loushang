@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import inspect
 from collections.abc import Mapping, MutableMapping
 
 AUTH_HEADER_KEYS = frozenset({"authorization", "x-api-key"})
@@ -45,6 +46,17 @@ def apply_session_headers(
     if include_affinity:
         headers["x-session-affinity"] = session_id
     return True
+
+
+async def close_provider_stream(stream: object) -> None:
+    for name in ("aclose", "close"):
+        close = getattr(stream, name, None)
+        if not callable(close):
+            continue
+        result = close()
+        if inspect.isawaitable(result):
+            await result
+        return
 
 
 def _bearer_token(headers: Mapping[str, str]) -> str | None:

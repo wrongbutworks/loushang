@@ -3,6 +3,7 @@ import asyncio
 import pytest
 
 from loushang.agent.types import ProxyStreamOptions
+from loushang.ai.errors import AIStreamError
 from loushang.ai.model import Capabilities, Model
 from loushang.ai.model.domain import Endpoint
 from loushang.ai.model.registry import (
@@ -34,7 +35,7 @@ def _usage() -> Usage:
         cache_read=0,
         cache_write=0,
         total_tokens=3,
-        cost={},
+        cost=None,
     )
 
 
@@ -62,24 +63,38 @@ def test_process_proxy_event_reconstructs_partial_message() -> None:
     partial = _create_initial_partial_message(_model())
 
     start_event = _process_proxy_event({"type": "start"}, partial)
-    text_start = _process_proxy_event({"type": "text_start", "content_index": 0}, partial)
-    text_delta = _process_proxy_event({"type": "text_delta", "content_index": 0, "delta": "Hello"}, partial)
+    text_start = _process_proxy_event(
+        {"type": "text_start", "content_index": 0}, partial
+    )
+    text_delta = _process_proxy_event(
+        {"type": "text_delta", "content_index": 0, "delta": "Hello"}, partial
+    )
     text_end = _process_proxy_event(
         {"type": "text_end", "content_index": 0, "content_signature": "sig-1"},
         partial,
     )
     tool_start = _process_proxy_event(
-        {"type": "toolcall_start", "content_index": 1, "id": "tc_1", "tool_name": "calc"},
+        {
+            "type": "toolcall_start",
+            "content_index": 1,
+            "id": "tc_1",
+            "tool_name": "calc",
+        },
         partial,
     )
     tool_delta = _process_proxy_event(
         {"type": "toolcall_delta", "content_index": 1, "delta": '{"x": 1}'},
         partial,
     )
-    tool_end = _process_proxy_event({"type": "toolcall_end", "content_index": 1}, partial)
-    done = _process_proxy_event({"type": "done", "reason": "toolUse", "usage": _usage()}, partial)
+    tool_end = _process_proxy_event(
+        {"type": "toolcall_end", "content_index": 1}, partial
+    )
+    done = _process_proxy_event(
+        {"type": "done", "reason": "toolUse", "usage": _usage()}, partial
+    )
 
     assert start_event["type"] == "start"
+    assert start_event["partial"].usage.cost is None
     assert text_start["type"] == "text_start"
     assert text_delta["type"] == "text_delta"
     assert text_end["type"] == "text_end"
@@ -105,11 +120,25 @@ def test_process_proxy_event_accumulates_partial_toolcall_json_until_valid() -> 
     )
 
     partial = _create_initial_partial_message(_model())
-    _process_proxy_event({"type": "toolcall_start", "content_index": 0, "id": "tc_1", "tool_name": "calc"}, partial)
+    _process_proxy_event(
+        {
+            "type": "toolcall_start",
+            "content_index": 0,
+            "id": "tc_1",
+            "tool_name": "calc",
+        },
+        partial,
+    )
 
-    first_delta = _process_proxy_event({"type": "toolcall_delta", "content_index": 0, "delta": '{"x": '}, partial)
-    second_delta = _process_proxy_event({"type": "toolcall_delta", "content_index": 0, "delta": '1, "y": 2}'}, partial)
-    tool_end = _process_proxy_event({"type": "toolcall_end", "content_index": 0}, partial)
+    first_delta = _process_proxy_event(
+        {"type": "toolcall_delta", "content_index": 0, "delta": '{"x": '}, partial
+    )
+    second_delta = _process_proxy_event(
+        {"type": "toolcall_delta", "content_index": 0, "delta": '1, "y": 2}'}, partial
+    )
+    tool_end = _process_proxy_event(
+        {"type": "toolcall_end", "content_index": 0}, partial
+    )
 
     assert first_delta["partial"].content[0].arguments == {}
     assert second_delta["partial"].content[0].arguments == {"x": 1, "y": 2}
@@ -145,6 +174,7 @@ def test_stream_proxy_emits_error_event_for_non_ok_response() -> None:
         assert error_event["reason"] == "error"
         assert error_event["error"].error_message == "Proxy error: bad token"
         assert error_event["error"].stop_reason == "error"
+        assert error_event["error"].usage.cost is None
         assert client.last_path == "/api/stream"
         assert client.last_headers == {
             "Authorization": "Bearer secret",
@@ -202,6 +232,7 @@ def test_stream_proxy_reconstructs_sse_success_path() -> None:
         assert result.content[0].text_signature == "sig-1"
         assert result.content[1].thinking == "Plan"
         assert result.content[1].thinking_signature == "think-1"
+        assert result.usage.cost is None
 
     asyncio.run(scenario())
 
@@ -268,12 +299,94 @@ def test_stream_proxy_stops_on_proxy_error_event() -> None:
     async def scenario() -> None:
         stream = stream_proxy(_model(), context, options, client=client)
         events = [event async for event in stream]
-        result = await stream.result()
+        with pytest.raises(AIStreamError) as exc_info:
+            await stream.result()
+        result = await stream.final_message()
 
         assert [event["type"] for event in events] == ["start", "error"]
+        assert str(exc_info.value) == "proxy failed"
         assert events[-1]["error"].error_message == "proxy failed"
+        assert events[-1]["error"].usage.cost is None
         assert result.stop_reason == "error"
         assert result.error_message == "proxy failed"
+        assert result.usage.cost is None
+
+    asyncio.run(scenario())
+
+
+def test_stream_proxy_consumer_close_cancels_proxy_task() -> None:
+    from loushang.agent.proxy import stream_proxy
+
+    context = Context(
+        system_prompt="system",
+        messages=[UserMessage(role="user", content="hi", timestamp=0.0)],
+    )
+    options = ProxyStreamOptions(
+        auth_token="secret",
+        proxy_url="https://proxy.example.com",
+    )
+    response = _BlockingResponse()
+    client = _FakeAsyncClient(response=response)
+
+    async def scenario() -> None:
+        stream = stream_proxy(_model(), context, options, client=client)
+        iterator = stream.__aiter__()
+        assert (await iterator.__anext__())["type"] == "start"
+        await stream.aclose()
+        assert response.closed.is_set()
+        task = stream._producer_task
+        assert task is not None and task.cancelled()
+
+    asyncio.run(scenario())
+
+
+def test_stream_proxy_signal_abort_cancels_blocked_sse_read() -> None:
+    from loushang.agent.proxy import stream_proxy
+
+    class _Signal:
+        def __init__(self) -> None:
+            self.aborted = False
+            self._listeners = []
+
+        def add_event_listener(self, event: str, listener) -> None:
+            assert event == "abort"
+            self._listeners.append(listener)
+
+        def remove_event_listener(self, event: str, listener) -> None:
+            assert event == "abort"
+            self._listeners.remove(listener)
+
+        def abort(self) -> None:
+            self.aborted = True
+            for listener in list(self._listeners):
+                listener()
+
+    context = Context(
+        system_prompt="system",
+        messages=[UserMessage(role="user", content="hi", timestamp=0.0)],
+    )
+    signal = _Signal()
+    options = ProxyStreamOptions(
+        auth_token="secret",
+        proxy_url="https://proxy.example.com",
+        signal=signal,
+    )
+    response = _BlockingResponse()
+    client = _FakeAsyncClient(response=response)
+
+    async def scenario() -> None:
+        stream = stream_proxy(_model(), context, options, client=client)
+        iterator = stream.__aiter__()
+        assert (await iterator.__anext__())["type"] == "start"
+
+        signal.abort()
+        events = [event async for event in iterator]
+
+        assert [event["type"] for event in events] == ["error"]
+        assert events[0]["reason"] == "aborted"
+        assert events[0]["error"].stop_reason == "aborted"
+        assert response.closed.is_set()
+        assert signal._listeners == []
 
     asyncio.run(scenario())
 
@@ -310,6 +423,19 @@ class _FakeResponse:
         return self._json_body
 
 
+class _BlockingResponse(_FakeResponse):
+    def __init__(self) -> None:
+        super().__init__([])
+        self.closed = asyncio.Event()
+
+    async def aiter_lines(self):
+        try:
+            yield 'data: {"type":"start"}'
+            await asyncio.Event().wait()
+        finally:
+            self.closed.set()
+
+
 class _FakeAsyncClient:
     def __init__(self, *, response: _FakeResponse) -> None:
         self._response = response
@@ -317,7 +443,9 @@ class _FakeAsyncClient:
         self.last_headers: dict | None = None
         self.last_path: str | None = None
 
-    def stream(self, method: str, path: str, json: dict, headers: dict) -> _FakeResponse:
+    def stream(
+        self, method: str, path: str, json: dict, headers: dict
+    ) -> _FakeResponse:
         assert method == "POST"
         self.last_path = path
         self.last_json = json

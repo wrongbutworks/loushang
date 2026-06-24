@@ -4,7 +4,7 @@ import json
 from pathlib import Path
 from types import SimpleNamespace
 
-from loushang.ai.trace import emit_trace
+from loushang.ai.trace import TRACE_SCHEMA, emit_trace
 from loushang.observability import (
     configure_observability,
     log_context,
@@ -21,16 +21,81 @@ def teardown_function() -> None:
     reset_observability()
 
 
-def test_emit_trace_preserves_explicit_options_callback() -> None:
+def test_emit_trace_emits_versioned_options_callback_event() -> None:
     events: list[dict[str, object]] = []
     event = {"type": "sdk:payload", "model": "kimi-for-coding"}
 
     emit_trace(SimpleNamespace(trace=events.append), event)
 
-    assert events == [event]
+    assert events == [
+        {
+            "schema": TRACE_SCHEMA,
+            "type": "sdk:payload",
+            "source": "sdk",
+            "name": "payload",
+            "data": {"model": "kimi-for-coding"},
+        }
+    ]
 
 
-def test_emit_trace_writes_provider_debug_event_to_observability_trace(tmp_path: Path) -> None:
+def test_emit_trace_redacts_sensitive_options_callback_fields() -> None:
+    events: list[dict[str, object]] = []
+
+    emit_trace(
+        SimpleNamespace(trace=events.append),
+        {
+            "type": "sdk:client",
+            "headers": {
+                "Authorization": "Bearer secret-token",
+                "Proxy-Authorization": "Bearer proxy-secret",
+                "X-Auth-Token": "auth-secret",
+                "X-Amz-Security-Token": "aws-secret",
+                "x-api-key": "secret-key",
+                "anthropic-version": "2023-06-01",
+            },
+            "apiKey": "secret-key",
+            "openai_api_key": "secret-key",
+            "anthropic_api_key": "secret-key",
+            "access_token": "secret-token",
+            "provider_token": "secret-token",
+            "session_cookie": "cookie-secret",
+            "token": "secret-token",
+            "oauth": {"accessToken": "secret-token"},
+            "credentials": {"apiKey": "secret-key", "cookie_header": "cookie-secret"},
+            "nested": {"cookies": "cookie-secret", "total_tokens": 3},
+            "total_tokens": 42,
+            "output_tokens": 7,
+        },
+    )
+
+    payload = json.dumps(events[0], sort_keys=True)
+    assert "secret" not in payload
+    data = events[0]["data"]
+    assert data["headers"] == {
+        "Authorization": "<redacted>",
+        "Proxy-Authorization": "<redacted>",
+        "X-Auth-Token": "<redacted>",
+        "X-Amz-Security-Token": "<redacted>",
+        "x-api-key": "<redacted>",
+        "anthropic-version": "2023-06-01",
+    }
+    assert data["apiKey"] == "<redacted>"
+    assert data["openai_api_key"] == "<redacted>"
+    assert data["anthropic_api_key"] == "<redacted>"
+    assert data["access_token"] == "<redacted>"
+    assert data["provider_token"] == "<redacted>"
+    assert data["session_cookie"] == "<redacted>"
+    assert data["token"] == "<redacted>"
+    assert data["oauth"] == "<redacted>"
+    assert data["credentials"] == "<redacted>"
+    assert data["nested"] == {"cookies": "<redacted>", "total_tokens": 3}
+    assert data["total_tokens"] == 42
+    assert data["output_tokens"] == 7
+
+
+def test_emit_trace_writes_provider_debug_event_to_observability_trace(
+    tmp_path: Path,
+) -> None:
     trace_path = tmp_path / "provider.jsonl"
     configure_observability(
         trace_sink=TraceJSONLSink(trace_path),
@@ -56,19 +121,26 @@ def test_emit_trace_writes_provider_debug_event_to_observability_trace(tmp_path:
     assert record["run_id"] == 6
     assert record["data"] == {
         "event": {
+            "schema": TRACE_SCHEMA,
             "type": "sdk:tool_done",
-            "id": "tool_1",
-            "name": "write",
-            "args": {
-                "kind": "object",
-                "keys": ["path"],
-                "path": "tmp/bmi.html",
+            "source": "sdk",
+            "name": "tool_done",
+            "data": {
+                "id": "tool_1",
+                "name": "write",
+                "args": {
+                    "kind": "object",
+                    "keys": ["path"],
+                    "path": "tmp/bmi.html",
+                },
             },
         }
     }
 
 
-def test_emit_trace_summarizes_tool_content_for_observability_trace(tmp_path: Path) -> None:
+def test_emit_trace_summarizes_tool_content_for_observability_trace(
+    tmp_path: Path,
+) -> None:
     trace_path = tmp_path / "provider.jsonl"
     configure_observability(
         trace_sink=TraceJSONLSink(trace_path),
@@ -86,7 +158,7 @@ def test_emit_trace_summarizes_tool_content_for_observability_trace(tmp_path: Pa
     )
 
     record = json.loads(trace_path.read_text(encoding="utf-8").splitlines()[0])
-    assert record["data"]["event"]["args"] == {
+    assert record["data"]["event"]["data"]["args"] == {
         "kind": "object",
         "keys": ["content", "path"],
         "path": "tmp/bmi.html",
@@ -107,6 +179,8 @@ def test_emit_trace_redacts_sensitive_observability_fields(tmp_path: Path) -> No
             "type": "sdk:client",
             "headers": {
                 "Authorization": "Bearer secret-token",
+                "Proxy-Authorization": "Bearer proxy-secret",
+                "X-Auth-Token": "auth-secret",
                 "x-api-key": "secret-key",
                 "anthropic-version": "2023-06-01",
             },
@@ -116,9 +190,11 @@ def test_emit_trace_redacts_sensitive_observability_fields(tmp_path: Path) -> No
     )
 
     record = json.loads(trace_path.read_text(encoding="utf-8").splitlines()[0])
-    event = record["data"]["event"]
+    event = record["data"]["event"]["data"]
     assert event["headers"] == {
         "Authorization": "<redacted>",
+        "Proxy-Authorization": "<redacted>",
+        "X-Auth-Token": "<redacted>",
         "x-api-key": "<redacted>",
         "anthropic-version": "2023-06-01",
     }
@@ -136,7 +212,7 @@ def test_emit_trace_stringifies_non_json_safe_event_values(tmp_path: Path) -> No
     emit_trace(None, {"type": "sdk:payload", "path": Path("tmp/bmi.html")})
 
     record = json.loads(trace_path.read_text(encoding="utf-8").splitlines()[0])
-    assert record["data"]["event"]["path"] == "tmp/bmi.html"
+    assert record["data"]["event"]["data"]["path"] == "tmp/bmi.html"
 
 
 def test_emit_trace_stringifies_non_finite_floats(tmp_path: Path) -> None:
@@ -146,11 +222,14 @@ def test_emit_trace_stringifies_non_finite_floats(tmp_path: Path) -> None:
         trace_scopes={"provider"},
     )
 
-    emit_trace(None, {"type": "sdk:usage", "nan_value": float("nan"), "inf_value": float("inf")})
+    emit_trace(
+        None,
+        {"type": "sdk:usage", "nan_value": float("nan"), "inf_value": float("inf")},
+    )
 
     raw_text = trace_path.read_text(encoding="utf-8")
     record = json.loads(raw_text)
     assert "NaN" not in raw_text
     assert "Infinity" not in raw_text
-    assert record["data"]["event"]["nan_value"] == "nan"
-    assert record["data"]["event"]["inf_value"] == "inf"
+    assert record["data"]["event"]["data"]["nan_value"] == "nan"
+    assert record["data"]["event"]["data"]["inf_value"] == "inf"

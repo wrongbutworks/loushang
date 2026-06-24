@@ -15,9 +15,9 @@ from collections.abc import Iterable
 import pytest
 
 from loushang.ai import (
-    AnthropicOptions,
     get_model,
 )
+from loushang.ai.advanced import AnthropicOptions
 
 # 用户可直接修改的配置。
 # `API_KEY` 是显式认证入口；环境变量只是可选读取来源。
@@ -33,6 +33,9 @@ ENDPOINT_ID = "anthropic-messages"
 pytestmark = [
     pytest.mark.live,
     pytest.mark.vendor_verification,
+    pytest.mark.skip(
+        reason="Moonshot Anthropic route is archived from the built-in curated catalog"
+    ),
     pytest.mark.skipif(
         not (API_KEY or os.getenv("MOONSHOT_API_KEY")),
         reason="MOONSHOT_API_KEY not set; live Moonshot verification skipped",

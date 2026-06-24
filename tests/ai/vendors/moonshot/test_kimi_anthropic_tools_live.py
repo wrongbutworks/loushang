@@ -13,11 +13,11 @@ import sys
 import pytest
 
 from loushang.ai import (
-    AnthropicOptions,
     TextPart,
     ToolResultMessage,
     get_model,
 )
+from loushang.ai.advanced import AnthropicOptions
 
 # 用户可直接修改的配置。
 # 这是高级示例，重点是工具协议，不是最短接入路径。
@@ -32,6 +32,9 @@ ENDPOINT_ID = "anthropic-messages"
 pytestmark = [
     pytest.mark.live,
     pytest.mark.vendor_verification,
+    pytest.mark.skip(
+        reason="Moonshot Anthropic route is archived from the built-in curated catalog"
+    ),
     pytest.mark.skipif(
         not (API_KEY or os.getenv("MOONSHOT_API_KEY")),
         reason="MOONSHOT_API_KEY not set; live Moonshot verification skipped",

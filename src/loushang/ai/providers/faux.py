@@ -1,70 +1,61 @@
 from __future__ import annotations
 
-from loushang.ai.context import ensure_normalized_context
-from loushang.ai.event_stream import AssistantMessageEventStream, RawAssembler
-from loushang.ai.model.registry import resolve_model_api
-from loushang.ai.options import PairingMode
+from collections.abc import AsyncIterator
+
+from loushang.ai.event_stream.raw_parts import RawPart
+from loushang.ai.options import is_reasoning_requested
+from loushang.ai.provider import ProviderRequest, resolve_provider_request
 from loushang.ai.types import TextPart, ToolResultMessage
 
 
 class FauxProvider:
     api = "anthropic-messages"
 
-    async def stream(self, model, context, options):
-        pairing_mode: PairingMode = "repair"
-        if options is not None:
-            candidate = getattr(options, "pairing_mode", "repair")
-            if candidate in {"repair", "strict"}:
-                pairing_mode = candidate
-        normalized = ensure_normalized_context(
-            context,
-            model=model,
-            pairing_mode=pairing_mode,
+    def _stream_raw_parts(self, model, context, options, request=None):
+        resolved = resolve_provider_request(
+            self.api,
+            model,
+            options=options,
+            request=request,
         )
-        stream = AssistantMessageEventStream()
-        assembler = RawAssembler(
-            stream=stream,
-            api=resolve_model_api(model),
-            provider=model.provider_id,
-            model=model.id,
-            pricing=getattr(model, "pricing", None),
+        return self.stream_raw(
+            ProviderRequest(
+                model=model,
+                context=context,
+                options=options,
+                resolved=resolved,
+            )
         )
-        assembler.feed({"type": "response_start", "response_id": "faux-response"})
+
+    async def stream_raw(self, request: ProviderRequest) -> AsyncIterator[RawPart]:
+        options = request.options
+        normalized = request.context
+        yield {"type": "response_start", "response_id": "faux-response"}
         tool_result_text = self._extract_tool_result_text(
             normalized.get("messages", [])
         )
-        if normalized.get("emit_thinking"):
-            assembler.feed({"type": "thinking_delta", "text": "reasoning trace"})
+        if normalized.get("emit_thinking") or is_reasoning_requested(options):
+            yield {"type": "thinking_delta", "text": "reasoning trace"}
         if normalized.get("emit_tool_call"):
-            assembler.feed({"type": "tool_call_start", "id": "tc_1", "name": "calc"})
-            assembler.feed({"type": "tool_call_args_delta", "delta": '{"x":1}'})
-            assembler.feed({"type": "tool_call_done"})
+            yield {"type": "tool_call_start", "id": "tc_1", "name": "calc"}
+            yield {"type": "tool_call_args_delta", "delta": '{"x":1}'}
+            yield {"type": "tool_call_done"}
         if normalized.get("emit_image"):
-            assembler.feed(
-                {"type": "image_part", "data": "aGVsbG8=", "mime_type": "image/png"}
-            )
+            yield {"type": "image_part", "data": "aGVsbG8=", "mime_type": "image/png"}
         if tool_result_text is not None:
-            assembler.feed(
-                {
-                    "type": "text_delta",
-                    "text": f"faux saw tool result: {tool_result_text}",
-                }
-            )
+            yield {
+                "type": "text_delta",
+                "text": f"faux saw tool result: {tool_result_text}",
+            }
         else:
-            assembler.feed(
-                {"type": "text_delta", "text": "mock hello from faux provider"}
-            )
+            yield {"type": "text_delta", "text": "mock hello from faux provider"}
 
         if normalized.get("abort_after_first_delta"):
-            assembler.feed({"type": "aborted"})
-            return stream
+            yield {"type": "aborted"}
+            return
 
-        assembler.feed({"type": "stop_reason", "stop_reason": "stop"})
-        assembler.feed({"type": "response_done"})
-        return stream
-
-    async def stream_simple(self, model, context, options):
-        return await self.stream(model, context, options)
+        yield {"type": "stop_reason", "stop_reason": "stop"}
+        yield {"type": "response_done"}
 
     def _extract_tool_result_text(self, messages: list[object]) -> str | None:
         for message in reversed(messages):

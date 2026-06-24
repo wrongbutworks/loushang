@@ -25,6 +25,7 @@ loushang-tui = "loushang.coding.ui.cli:main"
 [project.optional-dependencies]
 dev = [
   "pytest>=8,<9",
+  "pytest-cov>=7,<8",
   "ruff>=0.11,<1",
   "mypy>=1.15,<2",
 ]
@@ -43,6 +44,7 @@ target-version = "py311"
 
 [tool.ruff.lint]
 select = ["E4", "E7", "E9", "F", "I"]
+extend-select = ["B023", "RUF100", "SIM102", "SIM105", "UP006", "UP035"]
 
 [tool.ruff.lint.per-file-ignores]
 "examples/coding/*.py" = ["E402"]
@@ -60,6 +62,15 @@ pretty = true
 show_error_codes = true
 show_column_numbers = true
 
+[[tool.mypy.overrides]]
+module = [
+  "loushang.ai",
+  "loushang.ai.advanced.registry",
+  "loushang.ai.structured",
+  "loushang.ai.tool.*",
+]
+disallow_untyped_defs = true
+
 [tool.setuptools]
 package-dir = {"" = "src"}
 
@@ -68,5 +79,6 @@ where = ["src"]
 
 [tool.setuptools.package-data]
 "loushang" = ["py.typed"]
-"loushang.ai.model" = ["models.json"]
+"loushang.ai.contrib.openai_codex" = ["models.json"]
+"loushang.ai.model" = ["models.curated.v2.json"]
 "loushang.coding.session.export_html" = ["*.html", "*.css", "*.js"]

@@ -1,0 +1,34 @@
+# Provider evidence: baidu-qianfan
+
+- Verified at: 2026-06-22
+- Issue: #107
+- Official docs:
+  - https://cloud.baidu.com/doc/qianfan-api/s/Dmba8k71y
+  - https://cloud.baidu.com/doc/qianfan-api/s/3m7of64lb
+  - https://cloud.baidu.com/doc/qianfan-api/s/ym9chdsy5
+  - https://cloud.baidu.com/doc/qianfan-docs/s/Wm95lyynv
+  - https://cloud.baidu.com/doc/qianfan-docs/s/xm95lyys5
+- Source map:
+  - Authentication and endpoint: Qianfan API authentication and text-generation API docs.
+  - Model selection, context window, maximum output, and pricing tiers: model-list API docs.
+  - Streaming, stream usage, tools, response format, and reasoning content: text-generation, deep-thinking, and function-calling docs.
+  - Pricing: model-list API pricing fields.
+- Authentication: API key in `QIANFAN_API_KEY` or `BAIDU_QIANFAN_API_KEY`, sent as an `Authorization: Bearer ...` header.
+- Endpoint: `https://qianfan.baidubce.com/v2`, OpenAI-compatible Chat Completions protocol, China region.
+- Included models:
+  - `ernie-5.1`: current Baidu-owned ERNIE text chat model selected for the single-model AIQ-054 catalog entry.
+- Verified capabilities:
+  - Model-list API docs record `ernie-5.1` with 248,832 token context and 65,536 maximum answer tokens.
+  - Text-generation API docs establish the `v2/chat/completions` path, `max_tokens`, SSE streaming, stream usage, tools, `response_format`, and `reasoning_content` response fields.
+  - Deep-thinking docs list `ernie-5.1` for `thinking_budget` and document streamed `delta.reasoning_content`; the curated entry records the model as reasoning-capable without adding a Baidu-specific request mapping.
+  - Function calling docs list `ernie-5.1` in the supported ERNIE model range.
+  - Pricing from the model-list API is tiered per thousand tokens; the catalog records the >32K tier as CNY 6 input and CNY 22 output per million tokens.
+- Unknown/omitted facts:
+  - The lower <=32K pricing tier is omitted because the current pricing schema cannot express token-count tiers.
+  - `reasoning.effort` remains unsupported because official docs list `reasoning_effort` support for DeepSeek V4 models, not `ernie-5.1`.
+  - Baidu-specific `thinking_budget` and `thinking` request controls are omitted from the endpoint contract until the shared adapter has a stable dialect mapping for them.
+  - Multimodal ERNIE variants and third-party models hosted on Qianfan are omitted to keep AIQ-054 to one Baidu-owned text model.
+- Contract tests:
+  - `uv run pytest tests/ai/test_curated_catalog.py tests/providers/test_openai_completions_provider.py -q`
+- Manual live smoke:
+  - Not run on 2026-06-22; no live Baidu Qianfan credential was used for this catalog-only commit.

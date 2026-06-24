@@ -56,7 +56,7 @@ def _offline_usage() -> Usage:
         cache_read=0,
         cache_write=0,
         total_tokens=0,
-        cost={},
+        cost=None,
     )
 
 

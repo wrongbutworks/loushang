@@ -4,6 +4,7 @@ from loushang.ai.tool.transform import (
     MISSING_TOOL_RESULT_TEXT,
     SYNTHETIC_TOOL_RESULT_REASON,
     TOOL_RESULTS_PROCESSED_ASSISTANT_TEXT,
+    MessagePairingError,
     coerce_cross_provider_assistant_message,
     insert_assistant_bridge_after_tool_results,
     transform_messages,
@@ -48,7 +49,9 @@ def _assistant_with_tool_call() -> AssistantMessage:
 
 
 def test_transform_messages_marks_synthetic_tool_results() -> None:
-    transformed = transform_messages([_assistant_with_tool_call()])
+    transformed = transform_messages(
+        [_assistant_with_tool_call()], pairing_mode="repair"
+    )
 
     synthetic = transformed[1]
     assert synthetic.role == "toolResult"
@@ -86,6 +89,9 @@ def test_transform_messages_strict_mode_rejects_missing_tool_result() -> None:
         )
     except ValueError as error:
         assert str(error) == "Missing tool results before next message"
+        assert isinstance(error, MessagePairingError)
+        assert error.diagnostic.code == "missing_tool_result"
+        assert error.diagnostic.path == "messages[0].content[0]"
         return
 
     raise AssertionError("strict mode should reject missing tool results")
@@ -208,6 +214,7 @@ def test_transform_messages_normalizes_tool_call_and_matching_result_ids() -> No
         normalize_tool_call_id=lambda tool_call_id, _message: tool_call_id.replace(
             "|", "_"
         ),
+        pairing_mode="repair",
     )
 
     transformed_assistant = transformed[0]
@@ -218,7 +225,9 @@ def test_transform_messages_normalizes_tool_call_and_matching_result_ids() -> No
     assert transformed_result.tool_call_id == "call_1_fc_1"
 
 
-def test_transform_messages_adds_synthetic_results_only_for_missing_tool_calls() -> None:
+def test_transform_messages_adds_synthetic_results_only_for_missing_tool_calls() -> (
+    None
+):
     assistant = AssistantMessage(
         role="assistant",
         content=[
@@ -258,6 +267,7 @@ def test_transform_messages_adds_synthetic_results_only_for_missing_tool_calls()
         normalize_tool_call_id=lambda tool_call_id, _message: tool_call_id.replace(
             "|", "_"
         ),
+        pairing_mode="repair",
     )
 
     synthetic_results = [
@@ -314,7 +324,7 @@ def test_transform_messages_keeps_aborted_assistant_as_turn_boundary() -> None:
         role="user", content=[TextPart(type="text", text="hello")], timestamp=2.0
     )
 
-    transformed = transform_messages([assistant, aborted, user])
+    transformed = transform_messages([assistant, aborted, user], pairing_mode="repair")
 
     assert [getattr(message, "role", None) for message in transformed] == [
         "assistant",

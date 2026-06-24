@@ -16,7 +16,7 @@ python examples/coding/init_examples_env.py --copy-model-catalog
 - `examples/coding/.loushang/`：运行时根目录
 - `examples/coding/.loushang/sessions/`：会话落盘目录
 - `examples/coding/.loushang/extensions/`：示例扩展文件目录
-- `examples/coding/.loushang/models/`：模型 catalog 目录（含 `models.json`）
+- `examples/coding/.loushang/models/`：模型 catalog 目录（含内置 curated catalog 副本和可选覆盖模板）
 
 建议将该目录和你的示例会话一起提交为“本地运行环境脚手架”，从其他机器 `git pull` 后再跑一遍初始化即可重建同结构，脚本输出可直接执行的推荐环境变量和命令。
 
@@ -238,7 +238,7 @@ python examples/coding/run.py run legacy-001
 `LOUSHANG_EXAMPLES_MODEL_CATALOG` 不设时，`run.py` 会优先读取：
 `<artifacts-root>/models/`（目录）；
 `<artifacts-root>/models.json`（文件）；
-找不到再回退到内置 `src/loushang/ai/model/models.json`。
+找不到再回退到内置 `src/loushang/ai/model/models.curated.v2.json`。
 
 `models.xx.json` 这类模型清单建议放在示例目录的 `models/` 下（例如 `examples/coding/models/`），
 并在需要时通过：
@@ -247,7 +247,7 @@ python examples/coding/run.py run legacy-001
 python examples/coding/run.py run legacy-014 --model-catalog examples/coding/models
 ```
 
-来使用；默认仍为 `src/loushang/ai/model/models.json`。
+来使用；默认仍为 `src/loushang/ai/model/models.curated.v2.json`。
 
 仓库内额外提供了 Kimi Code 示例 catalog（默认不内置到内置 catalog）：
 - 文件：`examples/coding/models/models.kimi-code.json`

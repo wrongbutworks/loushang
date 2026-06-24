@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import math
 from collections.abc import Mapping
+from contextlib import suppress
 from pathlib import Path
 from typing import Any
 
@@ -9,45 +10,110 @@ from loushang.observability import get_log
 from loushang.observability.problem import JSONValue
 
 _log = get_log(__name__).bind(component="AITrace")
+TRACE_SCHEMA = "loushang.ai.trace.v1"
 _REDACTED = "<redacted>"
 _SENSITIVE_KEYS = {
+    "accesstoken",
     "apikey",
+    "apitoken",
     "authorization",
     "bearertoken",
     "clientsecret",
+    "credential",
+    "credentials",
+    "cookie",
     "idtoken",
+    "oauth",
+    "oauthcredentials",
     "password",
+    "proxyauthorization",
     "refreshtoken",
     "secret",
+    "setcookie",
+    "token",
+    "tokens",
+    "xaccesstoken",
+    "xamzsecuritytoken",
     "xapikey",
+    "xauthtoken",
+    "xgoogapikey",
+}
+_SENSITIVE_KEY_MARKERS = (
+    "accesstoken",
+    "apikey",
+    "apitoken",
+    "authorization",
+    "bearertoken",
+    "clientsecret",
+    "credential",
+    "credentials",
+    "cookie",
+    "idtoken",
+    "oauth",
+    "password",
+    "proxyauthorization",
+    "refreshtoken",
+    "secret",
+    "setcookie",
+    "xamzsecuritytoken",
+)
+_SAFE_TOKEN_KEYS = {
+    "cachecreationinputtokens",
+    "cacheinputtokens",
+    "cacheread",
+    "cachereadinputtokens",
+    "cachewrite",
+    "cachewriteinputtokens",
+    "inputtokens",
+    "maxtokens",
+    "maxoutputtokens",
+    "outputtokens",
+    "totaltokens",
 }
 
 
-def emit_trace(options: Any | None, event: dict) -> None:
-    _emit_options_trace(options, event)
-    _emit_observability_trace(event)
+TraceEvent = dict[str, JSONValue]
 
 
-def _emit_options_trace(options: Any | None, event: dict) -> None:
+def emit_trace(options: Any | None, event: Mapping[str, object]) -> None:
+    normalized = normalize_trace_event(event)
+    _emit_options_trace(options, normalized)
+    _emit_observability_trace(normalized)
+
+
+def normalize_trace_event(event: Mapping[str, object]) -> TraceEvent:
+    event_type = _trace_type(event)
+    source, name = _trace_source_name(event_type)
+    data = {
+        str(key): _summarize_event_value(str(key), value)
+        for key, value in event.items()
+        if key != "type"
+    }
+    return {
+        "schema": TRACE_SCHEMA,
+        "type": event_type,
+        "source": source,
+        "name": name,
+        "data": data,
+    }
+
+
+def _emit_options_trace(options: Any | None, event: TraceEvent) -> None:
     if options is None:
         return
     handler = getattr(options, "trace", None)
     if callable(handler):
-        try:
+        with suppress(Exception):
             handler(event)
-        except Exception:
-            pass
 
 
-def _emit_observability_trace(event: dict) -> None:
-    try:
+def _emit_observability_trace(event: TraceEvent) -> None:
+    with suppress(Exception):
         _log.debug_event(
             "provider",
             _event_name(event),
-            event=_summarize_event(event),
+            event=event,
         )
-    except Exception:
-        pass
 
 
 def _event_name(event: Mapping[str, object]) -> str:
@@ -55,6 +121,20 @@ def _event_name(event: Mapping[str, object]) -> str:
     if isinstance(raw_type, str) and raw_type:
         return raw_type.replace(":", ".")
     return "event"
+
+
+def _trace_type(event: Mapping[str, object]) -> str:
+    raw_type = event.get("type")
+    if isinstance(raw_type, str) and raw_type:
+        return raw_type
+    return "event"
+
+
+def _trace_source_name(event_type: str) -> tuple[str, str]:
+    if ":" in event_type:
+        source, name = event_type.split(":", 1)
+        return source or "event", name or "event"
+    return "event", event_type
 
 
 def _json_safe(value: object, *, key: str | None = None) -> JSONValue:
@@ -69,12 +149,11 @@ def _json_safe(value: object, *, key: str | None = None) -> JSONValue:
     if isinstance(value, list | tuple):
         return [_json_safe(item) for item in value]
     if isinstance(value, Mapping):
-        return {str(item_key): _json_safe(item, key=str(item_key)) for item_key, item in value.items()}
+        return {
+            str(item_key): _json_safe(item, key=str(item_key))
+            for item_key, item in value.items()
+        }
     return str(value)
-
-
-def _summarize_event(event: Mapping[str, object]) -> JSONValue:
-    return {str(key): _summarize_event_value(str(key), value) for key, value in event.items()}
 
 
 def _summarize_event_value(key: str, value: object) -> JSONValue:
@@ -105,4 +184,13 @@ def _summarize_tool_args(args: Mapping[str, object]) -> dict[str, JSONValue]:
 
 def _is_sensitive_key(key: str) -> bool:
     compacted = "".join(char for char in key.lower() if char.isalnum())
-    return compacted in _SENSITIVE_KEYS
+    if compacted in _SAFE_TOKEN_KEYS:
+        return False
+    if compacted in _SENSITIVE_KEYS:
+        return True
+    if any(marker in compacted for marker in _SENSITIVE_KEY_MARKERS):
+        return True
+    return compacted.endswith("token") or compacted.endswith("tokens")
+
+
+__all__ = ["TRACE_SCHEMA", "TraceEvent", "emit_trace", "normalize_trace_event"]

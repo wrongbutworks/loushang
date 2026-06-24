@@ -42,7 +42,9 @@ def _model() -> Model:
 
 
 def _usage() -> Usage:
-    return Usage(input=0, output=0, cache_read=0, cache_write=0, total_tokens=0, cost={})
+    return Usage(
+        input=0, output=0, cache_read=0, cache_write=0, total_tokens=0, cost={}
+    )
 
 
 @pytest.fixture(autouse=True)
@@ -187,9 +189,15 @@ class Expect:
             assert text not in runtime.consumed_user_texts
             assert text not in runtime.model_user_inputs
         if self.roles is not None:
-            assert [getattr(message, "role", None) for message in runtime.agent.state.messages] == list(self.roles)
+            assert [
+                getattr(message, "role", None)
+                for message in runtime.agent.state.messages
+            ] == list(self.roles)
         if self.abort_boundaries is not None:
-            assert _abort_boundary_count(runtime.agent.state.messages) == self.abort_boundaries
+            assert (
+                _abort_boundary_count(runtime.agent.state.messages)
+                == self.abort_boundaries
+            )
         if self.final_idle:
             assert runtime.agent.state.is_streaming is False
             assert runtime.agent.signal is None
@@ -223,12 +231,17 @@ class ScenarioTool:
     def __init__(self, runtime: "ScenarioRuntime") -> None:
         self.runtime = runtime
 
-    async def execute(self, tool_call_id: str, params: dict, signal=None, on_update=None) -> AgentToolResult[dict]:
+    async def execute(
+        self, tool_call_id: str, params: dict, signal=None, on_update=None
+    ) -> AgentToolResult[dict]:
         del tool_call_id, params, on_update
         self.runtime.signal(ToolStarted(self.name))
         response = await self.runtime.next_tool_result(signal=signal)
         self.runtime.signal(ToolFinished(self.name))
-        return AgentToolResult(content=[TextPart(type="text", text=response.text)], details={"text": response.text})
+        return AgentToolResult(
+            content=[TextPart(type="text", text=response.text)],
+            details={"text": response.text},
+        )
 
 
 class ScenarioRuntime:
@@ -241,7 +254,12 @@ class ScenarioRuntime:
         self.model_call_count = 0
         self.model_user_inputs: list[str] = []
         self.consumed_user_texts: list[str] = []
-        state = AgentState(system_prompt="", model=_model(), thinking_level="off", tools=[ScenarioTool(self)])
+        state = AgentState(
+            system_prompt="",
+            model=_model(),
+            thinking_level="off",
+            tools=[ScenarioTool(self)],
+        )
         self.agent = Agent(
             stream_fn=self.stream_fn,
             initial_state=state,
@@ -271,31 +289,47 @@ class ScenarioRuntime:
         if self.current_abort_event is not None:
             self.current_abort_event.set()
 
-    async def stream_fn(self, model, context: Context, options=None) -> AssistantMessageEventStream:
+    async def stream_fn(
+        self, model, context: Context, options=None
+    ) -> AssistantMessageEventStream:
         del model
         self.model_call_count += 1
         self.model_user_inputs.append(_last_user_text(context.messages))
         self.signal(ModelCall(self.model_call_count))
-        response = await self.next_model_response(signal=getattr(options, "signal", None))
+        response = await self.next_model_response(
+            signal=getattr(options, "signal", None)
+        )
         if isinstance(response, ModelToolCall):
-            return _stream_with_final_message(_assistant_tool_call_message(response.name, response.tool_call_id))
+            return _stream_with_final_message(
+                _assistant_tool_call_message(response.name, response.tool_call_id)
+            )
         return _stream_with_final_message(_assistant_text_message(response.text))
 
-    async def next_model_response(self, *, signal: object | None) -> ModelText | ModelToolCall:
-        response = await self._wait_for_queue_or_abort(self.model_responses, signal=signal)
+    async def next_model_response(
+        self, *, signal: object | None
+    ) -> ModelText | ModelToolCall:
+        response = await self._wait_for_queue_or_abort(
+            self.model_responses, signal=signal
+        )
         return response
 
     async def next_tool_result(self, *, signal: object | None) -> ToolResult:
-        response = await self._wait_for_queue_or_abort(self.tool_responses, signal=signal)
+        response = await self._wait_for_queue_or_abort(
+            self.tool_responses, signal=signal
+        )
         return response
 
-    async def _wait_for_queue_or_abort(self, queue: asyncio.Queue, *, signal: object | None):
+    async def _wait_for_queue_or_abort(
+        self, queue: asyncio.Queue, *, signal: object | None
+    ):
         abort_event = self.current_abort_event
         if abort_event is None:
             return await queue.get()
         response_task = asyncio.create_task(queue.get())
         abort_task = asyncio.create_task(abort_event.wait())
-        done, pending = await asyncio.wait({response_task, abort_task}, return_when=asyncio.FIRST_COMPLETED)
+        done, pending = await asyncio.wait(
+            {response_task, abort_task}, return_when=asyncio.FIRST_COMPLETED
+        )
         for task in pending:
             task.cancel()
         if abort_task in done and _is_aborted(signal):
@@ -578,23 +612,55 @@ def _assistant_tool_call_message(name: str, tool_call_id: str) -> AssistantMessa
     )
 
 
-def _stream_with_final_message(message: AssistantMessage) -> AssistantMessageEventStream:
+def _stream_with_final_message(
+    message: AssistantMessage,
+) -> AssistantMessageEventStream:
     stream = AssistantMessageEventStream()
     stream.push({"type": "start", "partial": message})
     if message.content and isinstance(message.content[0], TextPart):
         stream.push({"type": "text_start", "content_index": 0, "partial": message})
-        stream.push({"type": "text_delta", "content_index": 0, "delta": message.content[0].text, "partial": message})
-        stream.push({"type": "text_end", "content_index": 0, "content": message.content[0].text, "partial": message})
+        stream.push(
+            {
+                "type": "text_delta",
+                "content_index": 0,
+                "delta": message.content[0].text,
+                "partial": message,
+            }
+        )
+        stream.push(
+            {
+                "type": "text_end",
+                "content_index": 0,
+                "content": message.content[0].text,
+                "partial": message,
+            }
+        )
     elif message.content and isinstance(message.content[0], ToolCall):
         stream.push({"type": "toolcall_start", "content_index": 0, "partial": message})
-        stream.push({"type": "toolcall_delta", "content_index": 0, "delta": "{}", "partial": message})
-        stream.push({"type": "toolcall_end", "content_index": 0, "tool_call": message.content[0], "partial": message})
+        stream.push(
+            {
+                "type": "toolcall_delta",
+                "content_index": 0,
+                "delta": "{}",
+                "partial": message,
+            }
+        )
+        stream.push(
+            {
+                "type": "toolcall_end",
+                "content_index": 0,
+                "tool_call": message.content[0],
+                "partial": message,
+            }
+        )
     stream.push({"type": "done", "reason": message.stop_reason, "message": message})  # type: ignore[typeddict-item]
     return stream
 
 
 def _user_message(text: str) -> UserMessage:
-    return UserMessage(role="user", content=[TextPart(type="text", text=text)], timestamp=0.0)
+    return UserMessage(
+        role="user", content=[TextPart(type="text", text=text)], timestamp=0.0
+    )
 
 
 def _user_text(message: UserMessage) -> str:
@@ -612,7 +678,11 @@ def _last_user_text(messages: Sequence[object]) -> str:
 
 
 def _abort_boundary_count(messages: Sequence[object]) -> int:
-    return sum(1 for message in messages if isinstance(message, AssistantMessage) and message.stop_reason == "aborted")
+    return sum(
+        1
+        for message in messages
+        if isinstance(message, AssistantMessage) and message.stop_reason == "aborted"
+    )
 
 
 def _is_aborted(signal: object | None) -> bool:

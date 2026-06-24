@@ -1,10 +1,9 @@
 from __future__ import annotations
 
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
 from typing import (
     Any,
-    Awaitable,
-    Callable,
     Generic,
     Literal,
     NotRequired,
@@ -73,7 +72,9 @@ class AgentToolResult(Generic[TDetails]):
 
 
 class AgentToolUpdateCallback(Protocol[TDetails]):
-    def __call__(self, partial_result: AgentToolResult[TDetails]) -> Awaitable[None] | None: ...
+    def __call__(
+        self, partial_result: AgentToolResult[TDetails]
+    ) -> Awaitable[None] | None: ...
 
 
 @runtime_checkable
@@ -87,11 +88,15 @@ class StreamFn(Protocol):
 
 
 class ConvertToLlmFn(Protocol):
-    def __call__(self, messages: list[AgentMessage]) -> list[Message] | Awaitable[list[Message]]: ...
+    def __call__(
+        self, messages: list[AgentMessage]
+    ) -> list[Message] | Awaitable[list[Message]]: ...
 
 
 class TransformContextFn(Protocol):
-    def __call__(self, messages: list[AgentMessage], signal: object | None = None) -> Awaitable[list[AgentMessage]]: ...
+    def __call__(
+        self, messages: list[AgentMessage], signal: object | None = None
+    ) -> Awaitable[list[AgentMessage]]: ...
 
 
 class GetApiKeyFn(Protocol):
@@ -140,7 +145,10 @@ class _AgentToolWithDefaultExecutionMode(Generic[TDetails]):
 
     @property
     def prepare_arguments(self) -> Callable[[object], dict[str, Any]] | None:
-        return cast(Callable[[object], dict[str, Any]] | None, getattr(self._tool, "prepare_arguments", None))
+        return cast(
+            Callable[[object], dict[str, Any]] | None,
+            getattr(self._tool, "prepare_arguments", None),
+        )
 
     async def execute(
         self,
@@ -154,9 +162,10 @@ class _AgentToolWithDefaultExecutionMode(Generic[TDetails]):
 
 
 def is_agent_tool_like(tool: object) -> bool:
-    return all(hasattr(tool, field_name) for field_name in ("name", "description", "parameters", "label")) and callable(
-        getattr(tool, "execute", None)
-    )
+    return all(
+        hasattr(tool, field_name)
+        for field_name in ("name", "description", "parameters", "label")
+    ) and callable(getattr(tool, "execute", None))
 
 
 def ensure_agent_tool(tool: AgentTool[TDetails] | object) -> AgentTool[Any]:
@@ -164,13 +173,22 @@ def ensure_agent_tool(tool: AgentTool[TDetails] | object) -> AgentTool[Any]:
         return tool
     if is_agent_tool_like(tool):
         return _AgentToolWithDefaultExecutionMode(tool)
-    raise TypeError("Agent tools must define name, description, parameters, label, execute, and optional execution_mode")
+    raise TypeError(
+        "Agent tools must define name, description, parameters, label, execute, and optional execution_mode"
+    )
 
 
-def normalize_agent_tools(tools: list[AgentTool[Any]] | None) -> list[AgentTool[Any]] | None:
+def normalize_agent_tools(
+    tools: list[AgentTool[Any]] | None,
+) -> list[AgentTool[Any]] | None:
     if tools is None:
         return None
-    return [ensure_agent_tool(tool) if is_agent_tool_like(tool) else cast(AgentTool[Any], tool) for tool in tools]
+    return [
+        ensure_agent_tool(tool)
+        if is_agent_tool_like(tool)
+        else cast(AgentTool[Any], tool)
+        for tool in tools
+    ]
 
 
 @dataclass(frozen=True)
@@ -207,11 +225,27 @@ class AgentLoopConfig(SimpleStreamOptions):
     convert_to_llm: ConvertToLlmFn
     transform_context: TransformContextFn | None = None
     get_api_key: GetApiKeyFn | None = None
+    session_id: str | None = None
+    transport: Transport = "sse"
+    max_retry_delay_ms: int | None = None
+    on_payload: object | None = None
+    on_response: object | None = None
     get_steering_messages: Callable[[], Awaitable[list[AgentMessage]]] | None = None
     get_follow_up_messages: Callable[[], Awaitable[list[AgentMessage]]] | None = None
     tool_execution: ToolExecutionMode = "parallel"
-    before_tool_call: Callable[[BeforeToolCallContext, object | None], Awaitable[BeforeToolCallResult | None]] | None = None
-    after_tool_call: Callable[[AfterToolCallContext, object | None], Awaitable[AfterToolCallResult | None]] | None = None
+    before_tool_call: (
+        Callable[
+            [BeforeToolCallContext, object | None],
+            Awaitable[BeforeToolCallResult | None],
+        ]
+        | None
+    ) = None
+    after_tool_call: (
+        Callable[
+            [AfterToolCallContext, object | None], Awaitable[AfterToolCallResult | None]
+        ]
+        | None
+    ) = None
 
 
 class AgentState:
@@ -274,8 +308,19 @@ class AgentOptions:
     get_api_key: GetApiKeyFn | None = None
     on_payload: object | None = None
     on_response: object | None = None
-    before_tool_call: Callable[[BeforeToolCallContext, object | None], Awaitable[BeforeToolCallResult | None]] | None = None
-    after_tool_call: Callable[[AfterToolCallContext, object | None], Awaitable[AfterToolCallResult | None]] | None = None
+    before_tool_call: (
+        Callable[
+            [BeforeToolCallContext, object | None],
+            Awaitable[BeforeToolCallResult | None],
+        ]
+        | None
+    ) = None
+    after_tool_call: (
+        Callable[
+            [AfterToolCallContext, object | None], Awaitable[AfterToolCallResult | None]
+        ]
+        | None
+    ) = None
     steering_mode: Literal["all", "one-at-a-time"] = "one-at-a-time"
     follow_up_mode: Literal["all", "one-at-a-time"] = "one-at-a-time"
     session_id: str | None = None
@@ -447,6 +492,7 @@ ProxyAssistantMessageEvent: TypeAlias = (
 class ProxyStreamOptions(SimpleStreamOptions):
     auth_token: str
     proxy_url: str
+    max_tokens: int | None = None
 
 
 __all__ = [

@@ -1,8 +1,15 @@
 from __future__ import annotations
 
+import re
 from pathlib import Path
 
 from loushang.ai.model import load_builtin_model_registry
+
+REPO_ROOT = Path(__file__).resolve().parents[2]
+SDK_DOC_PATHS = [
+    REPO_ROOT / "docs/en/sdk/README.md",
+    REPO_ROOT / "docs/zh-CN/sdk/README.md",
+]
 
 
 def test_provider_docs_cover_new_provider_configuration() -> None:
@@ -10,33 +17,61 @@ def test_provider_docs_cover_new_provider_configuration() -> None:
     registry = load_builtin_model_registry()
 
     for provider_id in [
-        "openrouter",
-        "azure-openai-responses",
-        "cloudflare-ai-gateway",
-        "cloudflare-workers-ai",
-        "mistral",
-        "google",
-        "google-vertex",
-        "amazon-bedrock",
+        "anthropic",
+        "baidu-qianfan",
+        "dashscope",
+        "deepseek",
+        "minimax",
+        "moonshot",
+        "openai",
+        "stepfun",
+        "tencent-hunyuan",
+        "volcano-ark",
+        "zai",
     ]:
         assert registry.get_provider(provider_id) is not None
         assert f"`{provider_id}`" in docs or f"- `{provider_id}`" in docs
 
     for env_name in [
-        "OPENROUTER_API_KEY",
-        "AZURE_OPENAI_API_KEY",
-        "CLOUDFLARE_ACCOUNT_ID",
-        "MISTRAL_API_KEY",
-        "GEMINI_API_KEY",
-        "GOOGLE_VERTEX_ACCESS_TOKEN",
-        "AWS_ACCESS_KEY_ID",
+        "ANTHROPIC_API_KEY",
+        "QIANFAN_API_KEY",
+        "DASHSCOPE_API_KEY",
+        "DEEPSEEK_API_KEY",
+        "MOONSHOT_API_KEY",
+        "STEPFUN_API_KEY",
     ]:
         assert env_name in docs
 
 
-def test_ai_readme_documents_upstream_model_id_rule() -> None:
+def test_ai_readme_documents_curated_builtin_catalog_and_archive() -> None:
     docs = Path("src/loushang/ai/README.md").read_text(encoding="utf-8")
 
-    assert "upstreamModelId" in docs
-    assert "openai/gpt-oss-120b_free" in docs
-    assert "bedrock-converse-stream" in docs
+    assert "models.curated.v2.json" in docs
+    assert "models-v1-full.json.gz" in docs
+    assert "model.upstream_id" in docs
+    assert "ResolvedRequest.upstream_model_id" in docs
+    assert "kimi-k2.6" in docs
+
+
+def test_stable_sdk_guides_cover_public_ai_paths_and_examples() -> None:
+    required_terms = [
+        "CallOptions",
+        "ReasoningOptions",
+        "StructuredOutputOptions",
+        "ImagePart",
+        "AIError",
+        "RetryOptions",
+        "UsageObservation",
+        "models.curated.v2.json",
+        "11_provider_matrix.py",
+        "12_provider_smoke.py",
+        "advanced/custom_catalog.py",
+        "migration-v2.md",
+    ]
+
+    for path in SDK_DOC_PATHS:
+        text = path.read_text(encoding="utf-8")
+        for term in required_terms:
+            assert term in text, (path, term)
+        for target in re.findall(r"\]\((../../../examples/ai/[^)]+)\)", text):
+            assert (path.parent / target).resolve().exists(), (path, target)
