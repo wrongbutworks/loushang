@@ -156,8 +156,10 @@ def _resolve_oauth_auth_view(
         return None
     credentials = result["newCredentials"]
     metadata = dict(getattr(credentials, "extra", None) or {})
+    headers = resolve_auth_material(bearer_token=result["apiKey"]).headers
+    headers.update(_oauth_metadata_headers(metadata))
     return AuthView(
-        headers=resolve_auth_material(bearer_token=result["apiKey"]).headers,
+        headers=headers,
         metadata=metadata,
     )
 
@@ -268,6 +270,19 @@ def _expand_extra_headers(
             continue
         expanded[key] = value
     return expanded
+
+
+def _oauth_metadata_headers(metadata: Mapping[str, object]) -> dict[str, str]:
+    headers = metadata.get("headers")
+    if not isinstance(headers, dict):
+        return {}
+    return {
+        key: value
+        for key, value in headers.items()
+        if isinstance(key, str)
+        and isinstance(value, str)
+        and key.lower() not in {"authorization", "x-api-key"}
+    }
 
 
 def _env_reference(value: str) -> str | None:

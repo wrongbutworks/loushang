@@ -20,7 +20,7 @@ No live-provider calls were run. No GitHub Actions result is claimed here.
 | --- | --- |
 | `git diff --check` | Passed |
 | `make check-ai` | Passed |
-| `uv run pytest tests -q` | Passed: 4185 passed, 6 skipped |
+| `uv run pytest tests -q` | Passed: 4187 passed, 6 skipped |
 | `uv build` | Passed: built `dist/loushang-0.1.0.tar.gz` and `dist/loushang-0.1.0-py3-none-any.whl` |
 
 `make check-ai` details:
@@ -30,8 +30,8 @@ No live-provider calls were run. No GitHub Actions result is claimed here.
 - Catalog check passed: 11 providers, 11 endpoints, 17 models.
 - Import-boundary check passed.
 - Offline examples passed: 13 examples.
-- Offline AI/provider tests passed: 581 passed, 9 deselected.
-- Total AI coverage: 83.62%.
+- Offline AI/provider tests passed: 583 passed, 9 deselected.
+- Total AI coverage: 83.70%.
 - Coverage targets passed:
   - `ai-runtime-core`: 90.59% (minimum 90.00%)
   - `provider-adapters`: 88.36% (minimum 85.00%)

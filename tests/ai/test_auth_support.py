@@ -49,6 +49,32 @@ def test_env_oauth_credentials_use_generic_provider_prefix_only() -> None:
     assert get_env_oauth_credentials("openai-codex", env=env) is None
 
 
+def test_oauth_credentials_can_carry_non_auth_headers() -> None:
+    model = SimpleNamespace(provider_id="demo", endpoint_id="demo", id="model-a")
+    options = SimpleNamespace(
+        oauth_credentials={
+            "demo": OAuthCredentials(
+                provider="demo",
+                access_token="oauth-token",
+                extra={
+                    "headers": {
+                        "x-demo-account": "account-1",
+                        "Authorization": "Bearer override",
+                        "x-api-key": "override",
+                    }
+                },
+            )
+        }
+    )
+
+    view = resolve_auth_for_model(model, options=options)
+
+    assert view.headers == {
+        "Authorization": "Bearer oauth-token",
+        "x-demo-account": "account-1",
+    }
+
+
 def test_oauth_refresh_failure_does_not_fall_back_to_api_key() -> None:
     registry = get_default_oauth_registry()
     registry.clear()

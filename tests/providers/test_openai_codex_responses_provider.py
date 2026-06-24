@@ -715,6 +715,45 @@ def test_openai_codex_responses_uses_oauth_token_account_binding() -> None:
     assert client.last_headers["chatgpt-account-id"] == "acc_from_token"
 
 
+def test_openai_codex_responses_uses_oauth_metadata_account_header() -> None:
+    client = _FakeCodexClient(
+        events=[
+            {"type": "response.completed", "response": {"status": "completed"}},
+        ]
+    )
+    provider = OpenAICodexResponsesProvider(client=client)
+
+    asyncio.run(
+        _collect_parts(
+            _invoke_raw_parts(
+                provider,
+                _Model(reasoning=False),
+                {
+                    "messages": [
+                        UserMessage(role="user", content="hello", timestamp=0.0)
+                    ],
+                },
+                OpenAICodexResponsesOptions(
+                    oauth_credentials={
+                        "openai-codex": OAuthCredentials(
+                            provider="openai-codex",
+                            access_token="opaque-access-token",
+                            extra={
+                                "headers": {
+                                    "chatgpt-account-id": "acc_from_metadata"
+                                }
+                            },
+                        )
+                    }
+                ),
+            )
+        )
+    )
+
+    assert client.last_headers["Authorization"] == "Bearer opaque-access-token"
+    assert client.last_headers["chatgpt-account-id"] == "acc_from_metadata"
+
+
 def test_openai_codex_responses_header_override_keeps_account_consistent() -> None:
     client = _FakeCodexClient(
         events=[
