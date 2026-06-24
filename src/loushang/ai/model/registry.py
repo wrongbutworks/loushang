@@ -3,7 +3,6 @@ from __future__ import annotations
 from dataclasses import replace
 
 from loushang.ai.model.domain import (
-    Compat,
     Defaults,
     Endpoint,
     EndpointRouting,
@@ -80,9 +79,6 @@ def _endpoint_snapshot_from_model(model: Model) -> Endpoint:
     endpoint = getattr(model, "_endpoint_ref", None)
     if isinstance(endpoint, Endpoint):
         return endpoint
-    compat = getattr(model, "compat", Compat())
-    if not isinstance(compat, Compat):
-        compat = Compat.from_raw(compat)
     defaults = getattr(model, "defaults", Defaults())
     if not isinstance(defaults, Defaults):
         defaults = Defaults.from_raw(defaults)
@@ -96,7 +92,7 @@ def _endpoint_snapshot_from_model(model: Model) -> Endpoint:
         lane=getattr(model, "lane", None),
         preferred=getattr(model, "preferred_endpoint", False),
         auth=getattr(model, "auth", None),
-        compat=compat,
+        adapter=getattr(model, "adapter", None),
         defaults=defaults,
         transport=getattr(model, "transport", EndpointTransport()),
         routing=getattr(model, "routing", EndpointRouting()),

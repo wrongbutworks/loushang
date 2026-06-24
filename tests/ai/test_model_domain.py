@@ -5,218 +5,172 @@ import inspect
 import pytest
 
 from loushang.ai.model import (
+    AnthropicMessagesConfig,
+    Auth,
     Endpoint,
-    EndpointDialectCache,
-    EndpointDialectReasoning,
-    EndpointDialectTools,
-    EndpointProtocolCache,
-    EndpointProtocolFeatures,
-    EndpointProtocolReasoning,
-    EndpointProtocolRoles,
-    EndpointProtocolSession,
-    EndpointProtocolStreaming,
-    EndpointProtocolTools,
     EndpointRouting,
     EndpointTransport,
-    EndpointWireDialect,
     Model,
+    OpenAICompletionsConfig,
+    OpenAIResponsesConfig,
     Pricing,
-    SupportStatus,
+    Provider,
 )
 
 
-def test_endpoint_protocol_features_round_trip() -> None:
-    protocol = EndpointProtocolFeatures.from_raw(
+def test_openai_completions_adapter_round_trip() -> None:
+    adapter = OpenAICompletionsConfig.from_raw(
         {
-            "store": "unsupported",
-            "streaming": {
-                "usage": "supported",
-                "reasoningDelta": "unsupported",
-            },
-            "tools": {
-                "strictSchema": "supported",
-                "eagerInputStream": "unknown",
-            },
-            "reasoning": {
-                "effort": "supported",
-                "effortMap": {"off": None, "minimal": "low"},
-            },
-            "cache": {"promptKey": "supported"},
-        }
-    )
-    endpoint = Endpoint(
-        id="openai-completions",
-        provider="custom",
-        api="openai-completions",
-        protocol=protocol,
-    )
-
-    raw = endpoint.to_raw()["protocol"]
-
-    assert raw == {
-        "store": "unsupported",
-        "streaming": {
-            "usage": "supported",
-            "reasoningDelta": "unsupported",
-        },
-        "tools": {
-            "strictSchema": "supported",
-            "eagerInputStream": "unknown",
-        },
-        "reasoning": {
-            "effort": "supported",
-            "effortMap": {"off": None, "minimal": "low"},
-        },
-        "cache": {"promptKey": "supported"},
-    }
-    assert EndpointProtocolFeatures.from_raw(raw) == EndpointProtocolFeatures(
-        store=SupportStatus.UNSUPPORTED,
-        streaming=EndpointProtocolStreaming(
-            usage=SupportStatus.SUPPORTED,
-            reasoning_delta=SupportStatus.UNSUPPORTED,
-        ),
-        tools=EndpointProtocolTools(strict_schema=SupportStatus.SUPPORTED),
-        reasoning=EndpointProtocolReasoning(
-            effort=SupportStatus.SUPPORTED,
-            effort_map={"off": None, "minimal": "low"},
-        ),
-        cache=EndpointProtocolCache(prompt_key=SupportStatus.SUPPORTED),
-    )
-
-
-def test_endpoint_protocol_constructors_normalize_raw_status_strings() -> None:
-    protocol = EndpointProtocolFeatures(
-        store="supported",
-        roles=EndpointProtocolRoles(developer="unsupported"),
-        streaming=EndpointProtocolStreaming(
-            usage="supported",
-            reasoning_delta="unknown",
-        ),
-        reasoning=EndpointProtocolReasoning(
-            effort="supported",
-            interleaved="unsupported",
-        ),
-        tools=EndpointProtocolTools(
-            strict_schema="supported",
-            eager_input_stream="unsupported",
-            fine_grained="unknown",
-        ),
-        cache=EndpointProtocolCache(
-            on_tools="supported",
-            long_retention="unsupported",
-            prompt_key="supported",
-        ),
-        session=EndpointProtocolSession(
-            id_header="supported",
-            affinity_headers="unsupported",
-        ),
-    )
-
-    assert protocol.store is SupportStatus.SUPPORTED
-    assert protocol.roles.developer is SupportStatus.UNSUPPORTED
-    assert protocol.streaming.reasoning_delta is SupportStatus.UNKNOWN
-    assert protocol.tools.fine_grained is SupportStatus.UNKNOWN
-    assert protocol.to_raw() == {
-        "store": "supported",
-        "roles": {"developer": "unsupported"},
-        "streaming": {"usage": "supported"},
-        "reasoning": {
-            "effort": "supported",
-            "interleaved": "unsupported",
-        },
-        "tools": {
-            "strictSchema": "supported",
-            "eagerInputStream": "unsupported",
-        },
-        "cache": {
-            "onTools": "supported",
-            "longRetention": "unsupported",
-            "promptKey": "supported",
-        },
-        "session": {
-            "idHeader": "supported",
-            "affinityHeaders": "unsupported",
-        },
-    }
-
-
-def test_endpoint_protocol_constructors_reject_invalid_status_strings() -> None:
-    with pytest.raises(ValueError, match="unsupported support status"):
-        EndpointProtocolTools(strict_schema="yes")
-
-
-def test_endpoint_wire_dialect_round_trip() -> None:
-    dialect = EndpointWireDialect.from_raw(
-        {
-            "maxOutputTokensField": "max_completion_tokens",
-            "tools": {
-                "resultNameRequired": True,
-                "assistantBridgeRequired": False,
-                "streamFlag": True,
-            },
-            "reasoning": {
-                "wireFormat": "moonshot",
-                "thinkingAsText": True,
-                "assistantContentRequired": False,
-            },
-            "cache": {"controlFormat": "anthropic"},
-        }
-    )
-    endpoint = Endpoint(
-        id="openai-completions",
-        provider="custom",
-        api="openai-completions",
-        dialect=dialect,
-    )
-
-    raw = endpoint.to_raw()["dialect"]
-
-    assert raw == {
-        "maxOutputTokensField": "max_completion_tokens",
-        "tools": {
-            "resultNameRequired": True,
-            "assistantBridgeRequired": False,
-            "streamFlag": True,
-        },
-        "reasoning": {
-            "wireFormat": "moonshot",
+            "store": False,
+            "developerRole": False,
+            "streamingUsage": True,
+            "maxOutputTokensField": "max_tokens",
+            "reasoningEffort": True,
+            "reasoningEffortMap": {"off": None, "minimal": "low"},
+            "strictSchema": True,
+            "promptCacheKey": True,
+            "longCacheRetention": False,
+            "sessionAffinityHeaders": True,
+            "toolResultName": True,
+            "assistantAfterToolResult": True,
             "thinkingAsText": True,
-            "assistantContentRequired": False,
-        },
-        "cache": {"controlFormat": "anthropic"},
-    }
-    assert EndpointWireDialect.from_raw(raw) == EndpointWireDialect(
-        max_output_tokens_field="max_completion_tokens",
-        tools=EndpointDialectTools(
-            result_name_required=True,
-            assistant_bridge_required=False,
-            stream_flag=True,
-        ),
-        reasoning=EndpointDialectReasoning(
-            wire_format="moonshot",
-            thinking_as_text=True,
-            assistant_content_required=False,
-        ),
-        cache=EndpointDialectCache(control_format="anthropic"),
+            "assistantReasoningContent": True,
+            "toolStream": True,
+            "reasoningFormat": "moonshot",
+            "cacheControlFormat": "anthropic",
+            "extraBody": {"metadata": {"owner": "tests"}},
+        }
+    )
+    endpoint = Endpoint(
+        id="openai-completions",
+        provider="custom",
+        api="openai-completions",
+        adapter=adapter,
     )
 
+    raw = endpoint.to_raw()["adapter"]
 
-def test_endpoint_wire_dialect_constructors_reject_invalid_values() -> None:
-    with pytest.raises(ValueError, match="wire dialect field must be a boolean"):
-        EndpointDialectTools(result_name_required="yes")
+    assert raw == {
+        "store": False,
+        "developerRole": False,
+        "streamingUsage": True,
+        "maxOutputTokensField": "max_tokens",
+        "reasoningEffort": True,
+        "reasoningEffortMap": {"off": None, "minimal": "low"},
+        "strictSchema": True,
+        "promptCacheKey": True,
+        "longCacheRetention": False,
+        "sessionAffinityHeaders": True,
+        "toolResultName": True,
+        "assistantAfterToolResult": True,
+        "thinkingAsText": True,
+        "assistantReasoningContent": True,
+        "toolStream": True,
+        "reasoningFormat": "moonshot",
+        "cacheControlFormat": "anthropic",
+        "extraBody": {"metadata": {"owner": "tests"}},
+    }
+    assert OpenAICompletionsConfig.from_raw(raw) == adapter
+
+
+def test_openai_completions_adapter_rejects_invalid_values() -> None:
+    with pytest.raises(ValueError, match="adapter config field must be a boolean"):
+        OpenAICompletionsConfig(strict_schema="yes")
     with pytest.raises(
-        ValueError, match="wire dialect field must be a non-empty string"
+        ValueError, match="adapter config field must be a non-empty string"
     ):
-        EndpointWireDialect(max_output_tokens_field="")
+        OpenAICompletionsConfig(max_output_tokens_field="")
+    with pytest.raises(ValueError, match="adapter config has unknown keys"):
+        OpenAICompletionsConfig.from_raw({"futureFlag": True})
 
 
-@pytest.mark.parametrize("section", ["tools", "reasoning", "cache"])
-def test_endpoint_wire_dialect_rejects_non_object_sections(section: str) -> None:
-    with pytest.raises(
-        ValueError,
-        match=f"wire dialect section must be an object: {section}",
-    ):
-        EndpointWireDialect.from_raw({section: True})
+def test_openai_completions_extra_body_rejects_sdk_fields() -> None:
+    with pytest.raises(ValueError, match="cannot override SDK field"):
+        OpenAICompletionsConfig.from_raw({"extraBody": {"model": "other"}})
+    with pytest.raises(ValueError, match="JSON-safe"):
+        OpenAICompletionsConfig.from_raw({"extraBody": {"bad": object()}})
+
+
+def test_openai_responses_adapter_round_trip() -> None:
+    adapter = OpenAIResponsesConfig.from_raw(
+        {
+            "developerRole": False,
+            "assistantAfterToolResult": True,
+            "promptCacheKey": False,
+            "longCacheRetention": False,
+            "sessionIdHeader": False,
+            "sessionAffinityHeaders": True,
+        }
+    )
+    endpoint = Endpoint(
+        id="openai-responses",
+        provider="custom",
+        api="openai-responses",
+        adapter=adapter,
+    )
+
+    raw = endpoint.to_raw()["adapter"]
+
+    assert raw == {
+        "developerRole": False,
+        "assistantAfterToolResult": True,
+        "promptCacheKey": False,
+        "longCacheRetention": False,
+        "sessionIdHeader": False,
+        "sessionAffinityHeaders": True,
+    }
+    assert OpenAIResponsesConfig.from_raw(raw) == adapter
+
+
+def test_anthropic_messages_adapter_round_trip() -> None:
+    adapter = AnthropicMessagesConfig.from_raw(
+        {
+            "fineGrainedTools": True,
+            "interleavedThinking": False,
+            "sessionAffinityHeaders": True,
+            "longCacheRetention": False,
+        }
+    )
+    endpoint = Endpoint(
+        id="anthropic-messages",
+        provider="custom",
+        api="anthropic-messages",
+        adapter=adapter,
+    )
+
+    raw = endpoint.to_raw()["adapter"]
+
+    assert raw == {
+        "sessionAffinityHeaders": True,
+        "longCacheRetention": False,
+        "fineGrainedTools": True,
+        "interleavedThinking": False,
+    }
+    assert AnthropicMessagesConfig.from_raw(raw) == adapter
+
+
+def test_model_adapter_override_merges_with_endpoint_adapter() -> None:
+    endpoint = Endpoint(
+        id="openai-completions",
+        provider="custom",
+        api="openai-completions",
+        adapter=OpenAICompletionsConfig(
+            developer_role=False,
+            max_output_tokens_field="max_tokens",
+        ),
+    )
+    model = Model(
+        id="public-model",
+        provider="custom",
+        endpoint="openai-completions",
+        adapter=OpenAICompletionsConfig(reasoning_format="moonshot"),
+    )
+
+    bound = endpoint.bind_model(model)
+
+    assert isinstance(bound.adapter, OpenAICompletionsConfig)
+    assert bound.adapter.developer_role is True
+    assert bound.adapter.reasoning_format == "moonshot"
 
 
 def test_endpoint_transport_round_trip() -> None:
@@ -305,6 +259,74 @@ def test_model_omits_unknown_pricing_from_raw() -> None:
     assert "pricing" not in raw
 
 
+def test_provider_endpoint_and_model_to_raw_include_optional_fields() -> None:
+    model = Model(
+        id="public-model",
+        provider="custom",
+        endpoint="openai-completions",
+        name="Public Model",
+        family="test",
+        alias="public",
+        knowledge="2026-01",
+        release_date="2026-01-01",
+        last_updated="2026-02-01",
+        auth=Auth(api_key_env="MODEL_KEY"),
+        adapter=OpenAICompletionsConfig(reasoning_format="moonshot"),
+        pricing=Pricing(input=1, output=2),
+        transport=EndpointTransport(kind="httpx"),
+        routing=EndpointRouting.from_raw(
+            {"requestOverrides": {"openrouter": {"order": ["moonshot"]}}}
+        ),
+    )
+    endpoint = Endpoint(
+        id="openai-completions",
+        provider="custom",
+        api="openai-completions",
+        name="OpenAI-compatible",
+        base_url="https://example.test/v1",
+        base_url_env="CUSTOM_BASE_URL",
+        region="global",
+        lane="coding",
+        preferred=True,
+        docs="https://example.test/docs",
+        auth=Auth(api_key_env="ENDPOINT_KEY"),
+        adapter=OpenAICompletionsConfig(developer_role=False),
+        models={"public-model": model},
+    )
+    provider = Provider(
+        id="custom",
+        name="Custom",
+        website="https://example.test",
+        auth=Auth(api_key_env="PROVIDER_KEY"),
+        endpoints={endpoint.id: endpoint},
+    )
+
+    raw = provider.to_raw()
+
+    assert provider.get_endpoint("openai-completions") == endpoint
+    assert provider.get_model("openai-completions", "public-model") == model
+    assert provider.get_model("missing", "public-model") is None
+    assert provider.list_models() == [model]
+    assert raw["displayName"] == "Custom"
+    assert raw["website"] == "https://example.test"
+    endpoint_raw = raw["endpoints"]["openai-completions"]
+    assert endpoint_raw["displayName"] == "OpenAI-compatible"
+    assert endpoint_raw["baseUrl"] == "https://example.test/v1"
+    assert endpoint_raw["baseUrlEnv"] == "CUSTOM_BASE_URL"
+    assert endpoint_raw["region"] == "global"
+    assert endpoint_raw["lane"] == "coding"
+    assert endpoint_raw["preferred"] is True
+    assert endpoint_raw["docs"] == "https://example.test/docs"
+    model_raw = endpoint_raw["models"]["public-model"]
+    assert model_raw["adapter"]["reasoningFormat"] == "moonshot"
+    assert model_raw["pricing"] == {"input": 1, "output": 2}
+    assert model_raw["auth"]["apiKeyEnv"] == "MODEL_KEY"
+    assert model_raw["transport"] == {"kind": "httpx"}
+    assert model_raw["routing"] == {
+        "requestOverrides": {"openrouter": {"order": ["moonshot"]}}
+    }
+
+
 def test_pricing_round_trip_preserves_unknown_and_zero_components() -> None:
     pricing = Pricing.from_raw({"input": 0, "output": 2.0})
 
@@ -325,14 +347,14 @@ def test_model_upstream_id_round_trip() -> None:
     raw = model.to_raw()
 
     assert raw["upstreamId"] == "vendor/public-model:latest"
-    assert "upstreamModelId" not in raw["compat"]
+    assert "upstreamModelId" not in raw
 
 
 def test_model_constructor_keeps_existing_fields_before_upstream_id() -> None:
     parameters = list(inspect.signature(Model).parameters)
 
     assert parameters.index("knowledge") < parameters.index("upstream_id")
-    assert parameters.index("_routing_legacy_raw") < parameters.index("upstream_id")
+    assert parameters.index("routing") < parameters.index("upstream_id")
 
 
 def test_model_rejects_invalid_upstream_id() -> None:

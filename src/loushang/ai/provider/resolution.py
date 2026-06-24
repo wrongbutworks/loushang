@@ -8,45 +8,17 @@ from typing import Any
 
 from loushang.ai.auth.support import resolve_auth_for_model
 from loushang.ai.model import Model
-from loushang.ai.model.compat_schema import (
-    CACHE_CONTROL_FORMAT,
-    COMPAT_DEFAULTS,
-    DIALECT_COMPAT_BOOL_MAPPINGS,
-    DIALECT_COMPAT_VALUE_MAPPINGS,
-    INTERLEAVED_THINKING,
-    MAX_TOKENS_FIELD,
-    OPENROUTER_ROUTING,
-    PROTOCOL_COMPAT_STATUS_MAPPINGS,
-    PROVIDER_TRANSPORT,
-    REASONING_EFFORT_MAP,
-    REQUIRES_ASSISTANT_AFTER_TOOL_RESULT,
-    REQUIRES_REASONING_CONTENT_ON_ASSISTANT_MESSAGES,
-    REQUIRES_THINKING_AS_TEXT,
-    REQUIRES_TOOL_RESULT_NAME,
-    SEND_SESSION_AFFINITY_HEADERS,
-    SUPPORTS_DEVELOPER_ROLE,
-    SUPPORTS_LONG_CACHE_RETENTION,
-    SUPPORTS_PROMPT_CACHE_KEY,
-    SUPPORTS_REASONING_EFFORT,
-    SUPPORTS_STORE,
-    SUPPORTS_STREAM_REASONING_DELTA,
-    SUPPORTS_STRICT_MODE,
-    SUPPORTS_USAGE_IN_STREAMING,
-    THINKING_FORMAT,
-    UPSTREAM_MODEL_ID,
-    VERCEL_GATEWAY_ROUTING,
-    ZAI_TOOL_STREAM,
-    resolve_anthropic_messages_compat,
-    resolve_openai_completions_compat,
-    resolve_openai_responses_compat,
-)
 from loushang.ai.model.domain import (
+    AdapterConfig,
+    AnthropicMessagesConfig,
     Capabilities,
     Endpoint,
-    EndpointProtocolFeatures,
     EndpointRouting,
     EndpointTransport,
-    EndpointWireDialect,
+    OpenAICompletionsConfig,
+    OpenAIResponsesConfig,
+    default_adapter_config,
+    merge_adapter_config,
 )
 from loushang.ai.model.registry import (
     ModelRegistry,
@@ -56,40 +28,8 @@ from loushang.ai.model.registry import (
 )
 from loushang.ai.options import get_max_output_tokens, get_reasoning_effort
 from loushang.ai.provider.runtime_config import (
-    AdapterRuntimeConfig,
     AdapterRuntimeConfigResolver,
     resolve_adapter_runtime_config,
-)
-
-LEGACY_MODEL_CONTRACT_COMPAT_KEYS = frozenset(
-    {
-        PROVIDER_TRANSPORT,
-        OPENROUTER_ROUTING,
-        UPSTREAM_MODEL_ID,
-        VERCEL_GATEWAY_ROUTING,
-    }
-)
-
-OPENAI_COMPLETIONS_COMPAT_DEFAULT_KEYS = frozenset(
-    {
-        SUPPORTS_STORE,
-        SUPPORTS_DEVELOPER_ROLE,
-        SUPPORTS_REASONING_EFFORT,
-        REASONING_EFFORT_MAP,
-        SUPPORTS_USAGE_IN_STREAMING,
-        SUPPORTS_STREAM_REASONING_DELTA,
-        MAX_TOKENS_FIELD,
-        REQUIRES_TOOL_RESULT_NAME,
-        REQUIRES_ASSISTANT_AFTER_TOOL_RESULT,
-        REQUIRES_THINKING_AS_TEXT,
-        REQUIRES_REASONING_CONTENT_ON_ASSISTANT_MESSAGES,
-        THINKING_FORMAT,
-        SUPPORTS_STRICT_MODE,
-        ZAI_TOOL_STREAM,
-        CACHE_CONTROL_FORMAT,
-        SEND_SESSION_AFFINITY_HEADERS,
-        SUPPORTS_LONG_CACHE_RETENTION,
-    }
 )
 
 
@@ -106,9 +46,7 @@ class ResolvedEndpoint:
     transport: EndpointTransport = field(default_factory=EndpointTransport)
     routing: EndpointRouting = field(default_factory=EndpointRouting)
     upstream_model_id: str | None = None
-    protocol: EndpointProtocolFeatures = field(default_factory=EndpointProtocolFeatures)
-    dialect: EndpointWireDialect = field(default_factory=EndpointWireDialect)
-    adapter_options: Mapping[str, object] = field(default_factory=dict)
+    adapter_config: object | None = None
 
 
 @dataclass(frozen=True)
@@ -127,16 +65,9 @@ class ResolvedRequest:
     reasoning_effort: str | None = None
     temperature: float | int | None = None
     upstream_model_id: str | None = None
-    protocol: EndpointProtocolFeatures = field(default_factory=EndpointProtocolFeatures)
-    dialect: EndpointWireDialect = field(default_factory=EndpointWireDialect)
     capabilities: Capabilities = field(default_factory=Capabilities)
-    adapter_protocol: EndpointProtocolFeatures = field(
-        default_factory=EndpointProtocolFeatures
-    )
-    adapter_dialect: EndpointWireDialect = field(default_factory=EndpointWireDialect)
-    adapter_options: Mapping[str, object] = field(default_factory=dict)
     auth_account_id: str | None = None
-    adapter_config: AdapterRuntimeConfig | None = None
+    adapter_config: object | None = None
 
 
 def ensure_request_api(provider_api: str, request: ResolvedRequest) -> ResolvedRequest:
@@ -154,112 +85,48 @@ def _normalize_request_for_api(
     adapter_config_resolver: AdapterRuntimeConfigResolver | None = None,
 ) -> ResolvedRequest:
     if provider_api == "openai-completions":
-        raw_compat = dict(request.adapter_options or {})
-        projection_compat = _openai_completions_compat_with_defaults(raw_compat)
-    elif provider_api == "openai-responses":
-        raw_compat = dict(request.adapter_options or {})
-        projection_compat = resolve_openai_responses_compat(raw_compat)
-    elif provider_api == "anthropic-messages":
-        raw_compat = _normalize_anthropic_request_compat(
-            dict(request.adapter_options or {})
+        adapter_config = _ensure_core_adapter_config(
+            request.adapter_config,
+            provider_api,
+            OpenAICompletionsConfig,
         )
-        typed_projection_compat = _adapter_options_from_typed(
-            raw_compat,
-            _merge_protocol_features(request.protocol, request.adapter_protocol),
-            _merge_wire_dialect(request.dialect, request.adapter_dialect),
-        )
-        projection_compat = resolve_anthropic_messages_compat(
-            raw=typed_projection_compat,
-        )
-    else:
-        adapter_config = resolve_adapter_runtime_config(
-            adapter_config_resolver,
-            dict(request.adapter_options or {}),
-            current=request.adapter_config,
-        )
-        if adapter_config == request.adapter_config:
-            return request
         return replace(request, adapter_config=adapter_config)
-    _validate_adapter_options_raw(raw_compat)
-    typed_protocol = _merge_protocol_features(
-        request.protocol,
-        request.adapter_protocol,
-    )
-    typed_dialect = _merge_wire_dialect(
-        request.dialect,
-        request.adapter_dialect,
-    )
-    adapter_protocol = _merge_protocol_features(
-        _protocol_from_compat(projection_compat),
-        typed_protocol,
-    )
-    adapter_dialect = _merge_wire_dialect(
-        _merge_wire_dialect_with_compat(EndpointWireDialect(), projection_compat),
-        typed_dialect,
-    )
-    adapter_options = _adapter_options_from_typed(
-        raw_compat,
-        adapter_protocol,
-        adapter_dialect,
-    )
-    adapter_config = resolve_adapter_runtime_config(
+    if provider_api == "openai-responses":
+        adapter_config = _ensure_core_adapter_config(
+            request.adapter_config,
+            provider_api,
+            OpenAIResponsesConfig,
+        )
+        return replace(request, adapter_config=adapter_config)
+    if provider_api == "anthropic-messages":
+        adapter_config = _ensure_core_adapter_config(
+            request.adapter_config,
+            provider_api,
+            AnthropicMessagesConfig,
+        )
+        return replace(request, adapter_config=adapter_config)
+    runtime_adapter_config = resolve_adapter_runtime_config(
         adapter_config_resolver,
-        adapter_options,
         current=request.adapter_config,
     )
-    if (
-        adapter_protocol == request.adapter_protocol
-        and adapter_protocol.to_raw() == request.adapter_protocol.to_raw()
-        and adapter_dialect == request.adapter_dialect
-        and adapter_dialect.to_raw() == request.adapter_dialect.to_raw()
-        and adapter_config == request.adapter_config
-        and adapter_options == dict(request.adapter_options or {})
-    ):
+    if runtime_adapter_config == request.adapter_config:
         return request
-    return replace(
-        request,
-        adapter_protocol=adapter_protocol,
-        adapter_dialect=adapter_dialect,
-        adapter_config=adapter_config,
-        adapter_options=adapter_options,
-    )
+    return replace(request, adapter_config=runtime_adapter_config)
 
 
-def _normalize_anthropic_request_compat(
-    raw_compat: Mapping[str, object],
-) -> dict[str, object]:
-    normalized = dict(raw_compat)
-    value = normalized.get(INTERLEAVED_THINKING)
-    if value == "off":
-        normalized[INTERLEAVED_THINKING] = False
-    elif value == "auto":
-        normalized.pop(INTERLEAVED_THINKING, None)
-    return normalized
-
-
-def _openai_completions_compat_with_defaults(
-    raw_compat: Mapping[str, object],
-) -> dict[str, object]:
-    projection_compat = {
-        key: COMPAT_DEFAULTS[key]
-        for key in OPENAI_COMPLETIONS_COMPAT_DEFAULT_KEYS
-        if key in COMPAT_DEFAULTS
-    }
-    projection_compat.update(dict(raw_compat))
-    if SUPPORTS_PROMPT_CACHE_KEY not in raw_compat:
-        projection_compat.pop(SUPPORTS_PROMPT_CACHE_KEY, None)
-    return projection_compat
-
-
-def _adapter_options_from_typed(
-    raw_compat: Mapping[str, object],
-    adapter_protocol: EndpointProtocolFeatures,
-    adapter_dialect: EndpointWireDialect,
-) -> dict[str, object]:
-    adapter_options = dict(raw_compat)
-    adapter_options.update(adapter_protocol.to_compat())
-    adapter_options.update(adapter_dialect.to_compat())
-    return adapter_options
+def _ensure_core_adapter_config(
+    adapter_config: object | None,
+    api: str,
+    expected_type: type[AdapterConfig],
+) -> AdapterConfig:
+    if adapter_config is None:
+        resolved = default_adapter_config(api)
+        if resolved is None:
+            raise ValueError(f"No default adapter config for api: {api}")
+        return resolved
+    if not isinstance(adapter_config, expected_type):
+        raise TypeError(f"adapter_config for {api} must be {expected_type.__name__}")
+    return adapter_config
 
 
 def resolve_provider_request(
@@ -345,34 +212,22 @@ def resolve_request_for_model(
         override_model=override_model,
     )
     base_url = _resolve_base_url(resolved_endpoint, resolved_env)
-    raw_compat = dict(resolved_endpoint.adapter_options or {})
-    raw_compat.update(dict(getattr(request_model, "compat", {})))
     defaults = dict(getattr(request_model, "defaults", {}))
     capabilities = getattr(request_model, "capabilities", Capabilities())
-    model_contract_compat = _model_compat_overrides(request_model)
-    caller_contract_compat = (
-        _model_compat_overrides(model) if request_model is not model else {}
-    )
+    adapter_config = resolved_endpoint.adapter_config
     if use_model_overrides:
-        raw_compat.update(dict(getattr(model, "compat", {})))
         defaults.update(dict(getattr(model, "defaults", {})))
         capability_overrides = _model_capability_overrides(model)
         if capability_overrides is not None:
             capabilities = capability_overrides
-        model_contract_compat.update(_model_compat_overrides(model))
-    if caller_contract_compat:
-        raw_compat.update(caller_contract_compat)
-        model_contract_compat.update(caller_contract_compat)
+        adapter_config = merge_adapter_config(
+            adapter_config if isinstance(adapter_config, AdapterConfig) else None,
+            getattr(model, "adapter", None),
+        )
     if request_model is not model:
         capability_overrides = _model_capability_overrides(model)
         if capability_overrides is not None:
             capabilities = capability_overrides
-    raw_compat = _strip_legacy_model_contract_compat(raw_compat)
-    _validate_adapter_options_raw(raw_compat)
-    adapter_options = _resolve_compat_for_api(
-        api=resolved_endpoint.api,
-        raw=raw_compat,
-    )
     auth_view = resolve_auth_for_model(
         request_model,
         options=options,
@@ -387,14 +242,6 @@ def resolve_request_for_model(
     candidates = []
     if base_url:
         candidates.append(base_url)
-    protocol = _resolve_request_protocol(
-        resolved_endpoint,
-        model_contract_compat,
-    )
-    dialect = _resolve_request_dialect(
-        resolved_endpoint,
-        model_contract_compat,
-    )
     return ResolvedRequest(
         provider=resolved_endpoint.provider,
         endpoint=resolved_endpoint.endpoint,
@@ -403,15 +250,8 @@ def resolve_request_for_model(
         region=resolved_endpoint.default_region,
         candidate_base_urls=tuple(candidates),
         headers=headers,
-        protocol=protocol,
-        dialect=dialect,
         capabilities=capabilities,
-        adapter_protocol=_merge_protocol_features(
-            protocol,
-            _protocol_from_compat(adapter_options),
-        ),
-        adapter_dialect=_merge_wire_dialect_with_compat(dialect, adapter_options),
-        adapter_options=adapter_options,
+        adapter_config=adapter_config,
         defaults=defaults,
         upstream_model_id=resolved_endpoint.upstream_model_id or model.id,
         transport=resolved_endpoint.transport,
@@ -421,16 +261,6 @@ def resolve_request_for_model(
         temperature=temperature,
         auth_account_id=auth_account_id,
     )
-
-
-def _strip_legacy_model_contract_compat(
-    raw: Mapping[str, object],
-) -> dict[str, object]:
-    return {
-        key: value
-        for key, value in raw.items()
-        if key not in LEGACY_MODEL_CONTRACT_COMPAT_KEYS
-    }
 
 
 def _should_apply_model_request_overrides(
@@ -492,30 +322,21 @@ def _build_resolved_endpoint(
     override_model: Model | None = None,
 ) -> ResolvedEndpoint:
     if endpoint is None:
-        adapter_options = _strip_legacy_model_contract_compat(
-            getattr(model, "compat", {})
-        )
-        _validate_adapter_options_raw(adapter_options)
-        protocol = _protocol_from_compat(adapter_options)
-        dialect = _dialect_from_compat(adapter_options)
+        api = getattr(model, "api", None) or model.endpoint_id
         return ResolvedEndpoint(
             provider=model.provider_id,
             endpoint=model.endpoint_id,
-            api=getattr(model, "api", None) or model.endpoint_id,
+            api=api,
             base_url=getattr(model, "base_url", None),
             base_url_env=getattr(model, "base_url_env", None),
             default_region=getattr(model, "region", None),
-            protocol=protocol,
-            dialect=dialect,
-            adapter_options=adapter_options,
+            adapter_config=getattr(model, "adapter", None)
+            or default_adapter_config(api),
             defaults=dict(getattr(model, "defaults", {})),
             upstream_model_id=_model_upstream_id(model),
             transport=_model_transport(model),
             routing=_model_routing(model),
         )
-    endpoint_compat = endpoint.compat.merged(endpoint.protocol.to_compat()).merged(
-        endpoint.dialect.to_compat()
-    )
     transport_raw = endpoint.transport.to_raw()
     if request_model is not None:
         transport_raw = _deep_merge_raw_mapping(
@@ -541,10 +362,18 @@ def _build_resolved_endpoint(
     upstream_model_id = _model_upstream_id(request_model or model)
     if override_model is not None:
         upstream_model_id = _model_upstream_id(override_model) or upstream_model_id
-    transport = EndpointTransport.from_raw(transport_raw)
-    routing = EndpointRouting.from_raw(routing_raw)
-    adapter_options = _strip_legacy_model_contract_compat(endpoint_compat)
-    _validate_adapter_options_raw(adapter_options)
+    adapter_config = endpoint.adapter or default_adapter_config(endpoint.api)
+    request_adapter = getattr(request_model or model, "adapter", None)
+    if request_adapter is not None:
+        adapter_config = request_adapter
+    if (
+        override_model is not None
+        and getattr(override_model, "adapter", None) is not None
+    ):
+        adapter_config = merge_adapter_config(
+            adapter_config if isinstance(adapter_config, AdapterConfig) else None,
+            getattr(override_model, "adapter", None),
+        )
     return ResolvedEndpoint(
         provider=endpoint.provider_id,
         endpoint=endpoint.id,
@@ -555,101 +384,12 @@ def _build_resolved_endpoint(
         if endpoint.region and endpoint.base_url
         else {},
         default_region=endpoint.region,
-        protocol=_merge_protocol_features(
-            _protocol_from_compat(adapter_options),
-            endpoint.protocol,
-        ),
-        dialect=_merge_wire_dialect(
-            _dialect_from_compat(adapter_options),
-            endpoint.dialect,
-        ),
-        adapter_options=adapter_options,
+        adapter_config=adapter_config,
         defaults=dict(endpoint.defaults),
         upstream_model_id=upstream_model_id,
-        transport=transport,
-        routing=routing,
+        transport=EndpointTransport.from_raw(transport_raw),
+        routing=EndpointRouting.from_raw(routing_raw),
     )
-
-
-def _resolve_request_protocol(
-    endpoint: ResolvedEndpoint,
-    model_compat: Mapping[str, object],
-) -> EndpointProtocolFeatures:
-    return _merge_protocol_features(
-        endpoint.protocol,
-        _protocol_from_compat(model_compat),
-    )
-
-
-def _resolve_request_dialect(
-    endpoint: ResolvedEndpoint,
-    model_compat: Mapping[str, object],
-) -> EndpointWireDialect:
-    return _merge_wire_dialect_with_compat(endpoint.dialect, model_compat)
-
-
-def _merge_protocol_features(
-    base: EndpointProtocolFeatures,
-    override: EndpointProtocolFeatures,
-) -> EndpointProtocolFeatures:
-    return EndpointProtocolFeatures.from_raw(
-        _deep_merge_raw_mapping(base.to_raw(), override.to_raw())
-    )
-
-
-def _merge_wire_dialect(
-    base: EndpointWireDialect,
-    override: EndpointWireDialect,
-) -> EndpointWireDialect:
-    return EndpointWireDialect.from_raw(
-        _deep_merge_raw_mapping(base.to_raw(), override.to_raw())
-    )
-
-
-def _merge_wire_dialect_with_compat(
-    base: EndpointWireDialect,
-    compat: Mapping[str, object],
-) -> EndpointWireDialect:
-    return _clear_wire_dialect_from_compat(
-        _merge_wire_dialect(base, _dialect_from_compat(compat)),
-        compat,
-    )
-
-
-def _clear_wire_dialect_from_compat(
-    dialect: EndpointWireDialect,
-    compat: Mapping[str, object],
-) -> EndpointWireDialect:
-    raw = dialect.to_raw()
-    changed = False
-    for compat_key, section, dialect_key in DIALECT_COMPAT_VALUE_MAPPINGS:
-        if compat_key not in compat or compat[compat_key] is not None:
-            continue
-        if section is None:
-            if dialect_key in raw:
-                raw.pop(dialect_key, None)
-                changed = True
-            continue
-        section_raw = raw.get(section)
-        if not isinstance(section_raw, dict) or dialect_key not in section_raw:
-            continue
-        section_copy = dict(section_raw)
-        section_copy.pop(dialect_key, None)
-        if section_copy:
-            raw[section] = section_copy
-        else:
-            raw.pop(section, None)
-        changed = True
-    if not changed:
-        return dialect
-    return EndpointWireDialect.from_raw(raw)
-
-
-def _model_compat_overrides(model: Model) -> dict[str, object]:
-    compat = getattr(model, "contract_compat", None)
-    if isinstance(compat, Mapping):
-        return _strip_legacy_model_contract_compat(compat)
-    return _strip_legacy_model_contract_compat(getattr(model, "compat", {}))
 
 
 def _model_capability_overrides(model: Model) -> Capabilities | None:
@@ -658,133 +398,6 @@ def _model_capability_overrides(model: Model) -> Capabilities | None:
         return capabilities
     fallback = getattr(model, "capabilities", Capabilities())
     return fallback if fallback != Capabilities() else None
-
-
-def _validate_adapter_options_raw(raw: Mapping[str, object]) -> None:
-    bool_keys = {compat_key for compat_key, _, _ in PROTOCOL_COMPAT_STATUS_MAPPINGS} | {
-        compat_key for compat_key, _, _ in DIALECT_COMPAT_BOOL_MAPPINGS
-    }
-    bool_keys.add(SUPPORTS_PROMPT_CACHE_KEY)
-    for key in sorted(bool_keys):
-        if key in raw and not isinstance(raw[key], bool):
-            raise ValueError(f"compat key {key} must be boolean")
-    for key in sorted(compat_key for compat_key, _, _ in DIALECT_COMPAT_VALUE_MAPPINGS):
-        if key not in raw:
-            continue
-        value = raw[key]
-        if key in {"thinkingFormat", "cacheControlFormat"} and value is None:
-            continue
-        if not isinstance(value, str) or not value:
-            raise ValueError(f"compat key {key} must be non-empty string")
-    if REASONING_EFFORT_MAP in raw and not _is_string_or_none_mapping(
-        raw[REASONING_EFFORT_MAP]
-    ):
-        raise ValueError(f"compat key {REASONING_EFFORT_MAP} must be string map")
-
-
-def _is_string_or_none_mapping(value: object) -> bool:
-    return isinstance(value, Mapping) and all(
-        isinstance(item_key, str)
-        and (item_value is None or isinstance(item_value, str))
-        for item_key, item_value in value.items()
-    )
-
-
-def _protocol_from_compat(
-    compat: Mapping[str, object],
-) -> EndpointProtocolFeatures:
-    raw: dict[str, object] = {}
-    for compat_key, section, protocol_key in PROTOCOL_COMPAT_STATUS_MAPPINGS:
-        if compat_key in compat:
-            _set_protocol_status(raw, section, protocol_key, compat[compat_key])
-    if REASONING_EFFORT_MAP in compat:
-        _set_protocol_string_or_none_mapping(
-            raw,
-            "reasoning",
-            "effortMap",
-            compat[REASONING_EFFORT_MAP],
-        )
-    return EndpointProtocolFeatures.from_raw(raw)
-
-
-def _dialect_from_compat(
-    compat: Mapping[str, object],
-) -> EndpointWireDialect:
-    raw: dict[str, object] = {}
-    for compat_key, section, dialect_key in DIALECT_COMPAT_BOOL_MAPPINGS:
-        if compat_key in compat:
-            _set_dialect_bool(raw, section, dialect_key, compat[compat_key])
-    for compat_key, value_section, dialect_key in DIALECT_COMPAT_VALUE_MAPPINGS:
-        if compat_key in compat:
-            _set_dialect_value(raw, value_section, dialect_key, compat[compat_key])
-    return EndpointWireDialect.from_raw(raw)
-
-
-def _set_protocol_status(
-    raw: dict[str, object],
-    section: str | None,
-    key: str,
-    value: object,
-) -> None:
-    if not isinstance(value, bool):
-        return
-    status = "supported" if value else "unsupported"
-    if section is None:
-        raw[key] = status
-        return
-    section_raw = raw.setdefault(section, {})
-    if isinstance(section_raw, dict):
-        section_raw[key] = status
-
-
-def _set_protocol_string_or_none_mapping(
-    raw: dict[str, object],
-    section: str,
-    key: str,
-    value: object,
-) -> None:
-    if not isinstance(value, Mapping):
-        return
-    mapping = {
-        item_key: item_value
-        for item_key, item_value in value.items()
-        if isinstance(item_key, str)
-        and (item_value is None or isinstance(item_value, str))
-    }
-    if not mapping:
-        return
-    section_raw = raw.setdefault(section, {})
-    if isinstance(section_raw, dict):
-        section_raw[key] = mapping
-
-
-def _set_dialect_bool(
-    raw: dict[str, object],
-    section: str,
-    key: str,
-    value: object,
-) -> None:
-    if not isinstance(value, bool):
-        return
-    section_raw = raw.setdefault(section, {})
-    if isinstance(section_raw, dict):
-        section_raw[key] = value
-
-
-def _set_dialect_value(
-    raw: dict[str, object],
-    section: str | None,
-    key: str,
-    value: object,
-) -> None:
-    if not isinstance(value, str) or not value:
-        return
-    if section is None:
-        raw[key] = value
-        return
-    section_raw = raw.setdefault(section, {})
-    if isinstance(section_raw, dict):
-        section_raw[key] = value
 
 
 def _model_transport(model: Model) -> EndpointTransport:
@@ -803,62 +416,23 @@ def _model_upstream_id(model: Model) -> str | None:
 
 
 def _model_transport_raw(model: Model, *, own_only: bool) -> dict[str, object]:
-    raw = _transport_raw_from_legacy_compat(
-        getattr(model, "_transport_legacy_raw", None)
-    )
     own_raw = getattr(model, "_transport_own_raw", None)
     if own_only and isinstance(own_raw, Mapping):
-        transport_raw = dict(own_raw)
-    elif own_only:
-        transport_raw = {}
-    else:
-        transport = getattr(model, "transport", None)
-        transport_raw = (
-            transport.to_raw() if isinstance(transport, EndpointTransport) else {}
-        )
-    return _deep_merge_raw_mapping(raw, transport_raw)
+        return dict(own_raw)
+    if own_only:
+        return {}
+    transport = getattr(model, "transport", None)
+    return transport.to_raw() if isinstance(transport, EndpointTransport) else {}
 
 
 def _model_routing_raw(model: Model, *, own_only: bool) -> dict[str, object]:
-    raw = _routing_raw_from_legacy_compat(getattr(model, "_routing_legacy_raw", None))
     own_raw = getattr(model, "_routing_own_raw", None)
     if own_only and isinstance(own_raw, Mapping):
-        routing_raw = dict(own_raw)
-    elif own_only:
-        routing_raw = {}
-    else:
-        routing = getattr(model, "routing", None)
-        routing_raw = routing.to_raw() if isinstance(routing, EndpointRouting) else {}
-    return _deep_merge_raw_mapping(raw, routing_raw)
-
-
-def _transport_raw_from_legacy_compat(
-    compat: Mapping[str, object] | None,
-) -> dict[str, object]:
-    if compat is None:
+        return dict(own_raw)
+    if own_only:
         return {}
-    value = compat.get(PROVIDER_TRANSPORT)
-    if not isinstance(value, str) or not value:
-        return {}
-    return {"kind": value}
-
-
-def _routing_raw_from_legacy_compat(
-    compat: Mapping[str, object] | None,
-) -> dict[str, object]:
-    if compat is None:
-        return {}
-    request_overrides: dict[str, object] = {}
-    for compat_key, routing_key in (
-        (OPENROUTER_ROUTING, "openrouter"),
-        (VERCEL_GATEWAY_ROUTING, "vercelGateway"),
-    ):
-        value = compat.get(compat_key)
-        if isinstance(value, Mapping) and value:
-            request_overrides[routing_key] = dict(value)
-    if not request_overrides:
-        return {}
-    return {"requestOverrides": request_overrides}
+    routing = getattr(model, "routing", None)
+    return routing.to_raw() if isinstance(routing, EndpointRouting) else {}
 
 
 def _deep_merge_raw_mapping(
@@ -969,20 +543,6 @@ def _expand_env_template(value: str, env: dict[str, str]) -> str:
         return replacement
 
     return re.sub(r"\{([A-Z_][A-Z0-9_]*)\}", _replace, value)
-
-
-def _resolve_compat_for_api(
-    *,
-    api: str,
-    raw: dict[str, object],
-) -> dict[str, object]:
-    if api == "openai-completions":
-        return resolve_openai_completions_compat(raw=raw)
-    if api == "openai-responses":
-        return resolve_openai_responses_compat(raw)
-    if api == "anthropic-messages":
-        return resolve_anthropic_messages_compat(raw=raw)
-    return raw
 
 
 def _resolve_max_tokens(options, defaults: dict[str, object]) -> int | None:

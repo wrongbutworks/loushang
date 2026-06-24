@@ -13,19 +13,10 @@ import pytest
 from loushang.ai.advanced import AnthropicOptions
 from loushang.ai.auth.types import OAuthCredentials
 from loushang.ai.context import normalize_context
-from loushang.ai.model.compat_schema import (
-    FINE_GRAINED_TOOLS,
-    INTERLEAVED_THINKING,
-    SEND_SESSION_AFFINITY_HEADERS,
-    SUPPORTS_CACHE_CONTROL_ON_TOOLS,
-    SUPPORTS_EAGER_TOOL_INPUT_STREAMING,
-    SUPPORTS_LONG_CACHE_RETENTION,
-)
 from loushang.ai.model.domain import (
+    AnthropicMessagesConfig,
     Capabilities,
-    Compat,
     Endpoint,
-    EndpointProtocolFeatures,
     EndpointTransport,
     Model,
 )
@@ -47,6 +38,13 @@ from loushang.ai.types import (
     UserMessage,
 )
 from tests.providers._runtime import start_test_provider_stream
+
+FINE_GRAINED_TOOLS = "fineGrainedTools"
+INTERLEAVED_THINKING = "interleavedThinking"
+SEND_SESSION_AFFINITY_HEADERS = "sendSessionAffinityHeaders"
+SUPPORTS_CACHE_CONTROL_ON_TOOLS = "supportsCacheControlOnTools"
+SUPPORTS_EAGER_TOOL_INPUT_STREAMING = "supportsEagerToolInputStreaming"
+SUPPORTS_LONG_CACHE_RETENTION = "supportsLongCacheRetention"
 
 
 def _normalized_context(model, context, options=None):
@@ -97,12 +95,10 @@ def test_output_config_injected_for_adaptive_thinking():
 def test_fine_grained_tool_beta_uses_typed_transport_kind() -> None:
     from loushang.ai.providers.anthropic_base import AnthropicProviderBase
 
-    unsupported = EndpointProtocolFeatures.from_raw(
-        {"tools": {"fineGrained": "unsupported"}}
-    )
+    unsupported = AnthropicMessagesConfig(fine_grained_tools=False)
     assert (
         AnthropicProviderBase.should_inject_fine_grained_tools(
-            protocol=unsupported,
+            adapter_config=unsupported,
             headers={"anthropic-beta": "other-beta"},
             transport_kind=None,
         )
@@ -110,7 +106,7 @@ def test_fine_grained_tool_beta_uses_typed_transport_kind() -> None:
     )
     assert (
         AnthropicProviderBase.should_inject_fine_grained_tools(
-            protocol=unsupported,
+            adapter_config=unsupported,
             headers={},
             transport_kind="httpx",
         )
@@ -118,7 +114,7 @@ def test_fine_grained_tool_beta_uses_typed_transport_kind() -> None:
     )
     assert (
         AnthropicProviderBase.should_inject_fine_grained_tools(
-            protocol=EndpointProtocolFeatures(),
+            adapter_config=AnthropicMessagesConfig(),
             headers={},
             transport_kind="httpx",
         )
@@ -126,9 +122,7 @@ def test_fine_grained_tool_beta_uses_typed_transport_kind() -> None:
     )
     assert (
         AnthropicProviderBase.should_inject_fine_grained_tools(
-            protocol=EndpointProtocolFeatures.from_raw(
-                {"tools": {"fineGrained": "supported"}}
-            ),
+            adapter_config=AnthropicMessagesConfig(fine_grained_tools=True),
             headers={},
             transport_kind=None,
         )
@@ -515,7 +509,7 @@ def test_anthropic_internal_summarizers_cover_debug_shapes() -> None:
 
 def test_apply_oauth_identity_headers_merges_required_betas() -> None:
     from loushang.ai.providers.anthropic_base import AnthropicProviderBase
-    from loushang.ai.providers.anthropic_oauth_compat import AnthropicOAuthCompat
+    from loushang.ai.providers.anthropic_oauth_compat import AnthropicOAuthBridge
 
     headers = AnthropicProviderBase.apply_oauth_identity_headers(
         {"anthropic-beta": "fine-grained-tool-streaming-2025-05-14"}
@@ -524,8 +518,8 @@ def test_apply_oauth_identity_headers_merges_required_betas() -> None:
     assert headers["anthropic-beta"] == (
         "claude-code-20250219,oauth-2025-04-20,fine-grained-tool-streaming-2025-05-14"
     )
-    assert headers["user-agent"] == AnthropicOAuthCompat.SDK_USER_AGENT
-    assert headers["x-app"] == AnthropicOAuthCompat.SDK_APP_ID
+    assert headers["user-agent"] == AnthropicOAuthBridge.SDK_USER_AGENT
+    assert headers["x-app"] == AnthropicOAuthBridge.SDK_APP_ID
 
 
 def test_oauth_tool_name_roundtrip_prefers_registered_tool_name() -> None:
@@ -1040,19 +1034,11 @@ def test_anthropic_provider_uses_typed_protocol_over_stale_false_options(
         api="anthropic-messages",
         base_url=None,
         headers={"x-api-key": "test-key"},
-        adapter_options={
-            SEND_SESSION_AFFINITY_HEADERS: False,
-            SUPPORTS_LONG_CACHE_RETENTION: False,
-            FINE_GRAINED_TOOLS: False,
-            INTERLEAVED_THINKING: False,
-        },
-        adapter_protocol=EndpointProtocolFeatures.from_raw(
-            {
-                "reasoning": {"interleaved": "supported"},
-                "tools": {"fineGrained": "supported"},
-                "cache": {"longRetention": "supported"},
-                "session": {"affinityHeaders": "supported"},
-            }
+        adapter_config=AnthropicMessagesConfig(
+            session_affinity_headers=True,
+            long_cache_retention=True,
+            fine_grained_tools=True,
+            interleaved_thinking=True,
         ),
     )
 
@@ -1105,19 +1091,11 @@ def test_anthropic_provider_uses_typed_protocol_over_stale_true_options(
         api="anthropic-messages",
         base_url=None,
         headers={"x-api-key": "test-key", "anthropic-version": "2023-06-01"},
-        adapter_options={
-            SEND_SESSION_AFFINITY_HEADERS: True,
-            SUPPORTS_LONG_CACHE_RETENTION: True,
-            FINE_GRAINED_TOOLS: True,
-            INTERLEAVED_THINKING: True,
-        },
-        adapter_protocol=EndpointProtocolFeatures.from_raw(
-            {
-                "reasoning": {"interleaved": "unsupported"},
-                "tools": {"fineGrained": "unsupported"},
-                "cache": {"longRetention": "unsupported"},
-                "session": {"affinityHeaders": "unsupported"},
-            }
+        adapter_config=AnthropicMessagesConfig(
+            session_affinity_headers=False,
+            long_cache_retention=False,
+            fine_grained_tools=False,
+            interleaved_thinking=False,
         ),
     )
 
@@ -1200,13 +1178,9 @@ def test_anthropic_compat_fireworks_uses_session_headers_without_long_cache_ttl(
             provider="fireworks",
             api="anthropic-messages",
             base_url="https://api.fireworks.ai/inference/v1",
-            compat=Compat.from_raw(
-                {
-                    SEND_SESSION_AFFINITY_HEADERS: True,
-                    SUPPORTS_CACHE_CONTROL_ON_TOOLS: False,
-                    SUPPORTS_EAGER_TOOL_INPUT_STREAMING: False,
-                    SUPPORTS_LONG_CACHE_RETENTION: False,
-                }
+            adapter=AnthropicMessagesConfig(
+                session_affinity_headers=True,
+                long_cache_retention=False,
             ),
             models={
                 "claude-sonnet-4-5": Model(

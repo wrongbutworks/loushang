@@ -8,11 +8,7 @@ from typing import Any
 
 from loushang.ai.errors import UnsupportedCapabilityError
 from loushang.ai.event_stream.raw_parts import RawPart
-from loushang.ai.model.domain import (
-    EndpointProtocolFeatures,
-    EndpointWireDialect,
-    SupportStatus,
-)
+from loushang.ai.model.domain import OpenAIResponsesConfig
 from loushang.ai.options import (
     get_provider_option,
     get_reasoning_effort,
@@ -51,15 +47,15 @@ def _resolve_cache_retention(options: object | None) -> str | None:
 def _apply_prompt_cache_params(
     params: dict[str, Any],
     *,
-    protocol: EndpointProtocolFeatures,
+    adapter_config: OpenAIResponsesConfig,
     cache_retention: str | None,
     session_id: str | None,
 ) -> None:
     if (cache_retention or "short") == "none":
         return
-    if isinstance(session_id, str) and session_id:
+    if adapter_config.prompt_cache_key and isinstance(session_id, str) and session_id:
         params["prompt_cache_key"] = session_id
-    if cache_retention == "long" and _is_supported(protocol.cache.long_retention):
+    if cache_retention == "long" and adapter_config.long_cache_retention:
         params["prompt_cache_retention"] = "24h"
 
 
@@ -67,11 +63,11 @@ def _validate_cache_session_options(
     model: object,
     resolved: object,
     *,
-    protocol: EndpointProtocolFeatures,
+    adapter_config: OpenAIResponsesConfig,
     cache_retention: str | None,
     session_id: str | None,
 ) -> None:
-    if cache_retention == "long" and not _is_supported(protocol.cache.long_retention):
+    if cache_retention == "long" and not adapter_config.long_cache_retention:
         raise UnsupportedCapabilityError(
             f"Model {getattr(model, 'id', '<unknown>')!r} does not support long cache retention",
             source=getattr(resolved, "api", None),
@@ -85,9 +81,9 @@ def _validate_cache_session_options(
         and isinstance(session_id, str)
         and session_id
         and not (
-            _is_supported(protocol.cache.prompt_key)
-            or _is_supported(protocol.session.id_header)
-            or _is_supported(protocol.session.affinity_headers)
+            adapter_config.prompt_cache_key
+            or adapter_config.session_id_header
+            or adapter_config.session_affinity_headers
         )
     ):
         raise UnsupportedCapabilityError(
@@ -145,8 +141,7 @@ class OpenAIResponsesProvider:
             _emit_trace(options, {"type": f"sdk:{event}", **(data or {})})
 
         normalized = request.context
-        protocol = _request_protocol(resolved)
-        dialect = _request_dialect(resolved)
+        adapter_config = _request_adapter_config(resolved)
 
         # 延迟导入 OpenAI SDK
         try:
@@ -181,8 +176,7 @@ class OpenAIResponsesProvider:
         input_items = convert_responses_messages(
             model,
             normalized,
-            protocol,
-            dialect,
+            adapter_config,
             capabilities,
         )
 
@@ -193,7 +187,7 @@ class OpenAIResponsesProvider:
         _validate_cache_session_options(
             model,
             resolved,
-            protocol=protocol,
+            adapter_config=adapter_config,
             cache_retention=cache_retention,
             session_id=session_id,
         )
@@ -205,7 +199,7 @@ class OpenAIResponsesProvider:
             apply_session_headers(
                 default_headers,
                 session_id,
-                include_session_id=_is_supported(protocol.session.id_header),
+                include_session_id=adapter_config.session_id_header,
             )
 
         client = self._client or AsyncOpenAI(  # type: ignore[call-arg]
@@ -236,7 +230,7 @@ class OpenAIResponsesProvider:
                 params["tool_choice"] = "auto"
         _apply_prompt_cache_params(
             params,
-            protocol=protocol,
+            adapter_config=adapter_config,
             cache_retention=cache_retention,
             session_id=session_id,
         )
@@ -324,24 +318,13 @@ def _supports_reasoning(capabilities: object | None) -> bool:
     return bool(getattr(capabilities, "reasoning", False))
 
 
-def _request_protocol(request: object) -> EndpointProtocolFeatures:
-    protocol = getattr(request, "adapter_protocol", None)
-    if isinstance(protocol, EndpointProtocolFeatures):
-        return protocol
-    return EndpointProtocolFeatures()
-
-
-def _request_dialect(request: object) -> EndpointWireDialect:
-    dialect = getattr(request, "adapter_dialect", None)
-    if isinstance(dialect, EndpointWireDialect):
-        return dialect
-    return EndpointWireDialect()
+def _request_adapter_config(request: object) -> OpenAIResponsesConfig:
+    adapter_config = getattr(request, "adapter_config", None)
+    if isinstance(adapter_config, OpenAIResponsesConfig):
+        return adapter_config
+    return OpenAIResponsesConfig()
 
 
 def _uses_copilot_dynamic_headers(resolved: object) -> bool:
     transport = getattr(resolved, "transport", None)
     return getattr(transport, "kind", None) == "github-copilot"
-
-
-def _is_supported(status: SupportStatus) -> bool:
-    return status is SupportStatus.SUPPORTED

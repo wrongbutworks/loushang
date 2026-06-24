@@ -2,81 +2,25 @@ from __future__ import annotations
 
 from collections.abc import Iterator, Mapping
 from dataclasses import InitVar, dataclass, field, replace
-from enum import Enum
 from math import isfinite
-from typing import Literal, cast
-
-from loushang.ai.model.compat_schema import (
-    DIALECT_COMPAT_BOOL_MAPPINGS,
-    DIALECT_COMPAT_VALUE_MAPPINGS,
-    PROTOCOL_COMPAT_STATUS_MAPPINGS,
-    REASONING_EFFORT_MAP,
-    UPSTREAM_MODEL_ID,
-)
+from typing import Literal, TypeAlias, cast
 
 Modality = Literal["text", "image"]
 ALLOWED_MODALITIES: tuple[Modality, ...] = ("text", "image")
-_CONTRACT_OVERRIDE_UNSET = object()
-
-
-class SupportStatus(str, Enum):
-    SUPPORTED = "supported"
-    UNSUPPORTED = "unsupported"
-    UNKNOWN = "unknown"
-
-    @classmethod
-    def from_raw(cls, raw: object) -> "SupportStatus":
-        if isinstance(raw, SupportStatus):
-            return raw
-        if isinstance(raw, str):
-            try:
-                return cls(raw)
-            except ValueError as error:
-                raise ValueError(f"unsupported support status: {raw!r}") from error
-        raise ValueError(f"support status must be a string: {raw!r}")
-
-
-def _status_from_raw(raw: Mapping[str, object], key: str) -> SupportStatus:
-    if key not in raw:
-        return SupportStatus.UNKNOWN
-    return SupportStatus.from_raw(raw[key])
-
-
-def _status_to_raw(status: SupportStatus, *, explicit: bool = False) -> str | None:
-    if status is SupportStatus.UNKNOWN and not explicit:
-        return None
-    return status.value
-
-
-def _explicit_keys(raw: Mapping[str, object], keys: tuple[str, ...]) -> frozenset[str]:
-    return frozenset(key for key in keys if key in raw)
-
-
-def _protocol_status_to_compat_bool(value: object) -> bool:
-    return SupportStatus.from_raw(value) is SupportStatus.SUPPORTED
-
-
-def _normalize_status_attrs(instance: object, *attrs: str) -> None:
-    for attr in attrs:
-        object.__setattr__(
-            instance,
-            attr,
-            SupportStatus.from_raw(getattr(instance, attr)),
-        )
 
 
 def _normalize_optional_bool_attrs(instance: object, *attrs: str) -> None:
     for attr in attrs:
         value = getattr(instance, attr)
         if value is not None and not isinstance(value, bool):
-            raise ValueError(f"wire dialect field must be a boolean: {attr}")
+            raise ValueError(f"adapter config field must be a boolean: {attr}")
 
 
 def _normalize_optional_str_attrs(instance: object, *attrs: str) -> None:
     for attr in attrs:
         value = getattr(instance, attr)
         if value is not None and (not isinstance(value, str) or not value):
-            raise ValueError(f"wire dialect field must be a non-empty string: {attr}")
+            raise ValueError(f"adapter config field must be a non-empty string: {attr}")
 
 
 def _normalize_optional_transport_str_attrs(instance: object, *attrs: str) -> None:
@@ -111,7 +55,12 @@ def _optional_bool_from_raw(raw: Mapping[str, object], key: str) -> bool | None:
     value = raw[key]
     if isinstance(value, bool):
         return value
-    raise ValueError(f"wire dialect field must be a boolean: {key}")
+    raise ValueError(f"adapter config field must be a boolean: {key}")
+
+
+def _bool_from_raw(raw: Mapping[str, object], key: str, default: bool) -> bool:
+    value = _optional_bool_from_raw(raw, key)
+    return default if value is None else value
 
 
 def _optional_str_from_raw(raw: Mapping[str, object], key: str) -> str | None:
@@ -120,7 +69,7 @@ def _optional_str_from_raw(raw: Mapping[str, object], key: str) -> str | None:
     value = raw[key]
     if isinstance(value, str) and value:
         return value
-    raise ValueError(f"wire dialect field must be a non-empty string: {key}")
+    raise ValueError(f"adapter config field must be a non-empty string: {key}")
 
 
 def _optional_transport_str_from_raw(
@@ -162,18 +111,6 @@ def _optional_transport_number_from_raw(
     ):
         raise ValueError(f"transport field must be a positive number: {key}")
     return value
-
-
-def _optional_dialect_section_from_raw(
-    raw: Mapping[str, object],
-    key: str,
-) -> Mapping[str, object] | None:
-    if key not in raw:
-        return None
-    value = raw[key]
-    if isinstance(value, Mapping):
-        return value
-    raise ValueError(f"wire dialect section must be an object: {key}")
 
 
 def _copy_raw_value(value: object) -> object:
@@ -223,498 +160,453 @@ def _routing_request_overrides_from_raw(
     return overrides
 
 
-def _legacy_transport_routing_compat_raw(
-    transport_raw: Mapping[str, object] | None,
-    routing_raw: Mapping[str, object] | None,
-) -> dict[str, object]:
-    raw: dict[str, object] = {}
-    if transport_raw is not None:
-        raw.update(_copy_raw_mapping(transport_raw))
-    if routing_raw is not None:
-        raw.update(_copy_raw_mapping(routing_raw))
-    return raw
+_EXTRA_BODY_RESERVED_KEYS = frozenset(
+    {
+        "model",
+        "messages",
+        "input",
+        "stream",
+        "tools",
+        "tool_choice",
+        "response_format",
+        "max_tokens",
+        "max_completion_tokens",
+        "max_output_tokens",
+        "temperature",
+        "reasoning",
+        "store",
+        "stream_options",
+        "extra_body",
+        "parallel_tool_calls",
+        "thinking",
+    }
+)
+
+OPENAI_COMPLETIONS_ADAPTER_KEYS = frozenset(
+    {
+        "store",
+        "developerRole",
+        "streamingUsage",
+        "maxOutputTokensField",
+        "reasoningEffort",
+        "reasoningEffortMap",
+        "strictSchema",
+        "promptCacheKey",
+        "longCacheRetention",
+        "sessionAffinityHeaders",
+        "toolResultName",
+        "assistantAfterToolResult",
+        "thinkingAsText",
+        "assistantReasoningContent",
+        "toolStream",
+        "reasoningFormat",
+        "cacheControlFormat",
+        "extraBody",
+    }
+)
+OPENAI_RESPONSES_ADAPTER_KEYS = frozenset(
+    {
+        "developerRole",
+        "assistantAfterToolResult",
+        "promptCacheKey",
+        "longCacheRetention",
+        "sessionIdHeader",
+        "sessionAffinityHeaders",
+    }
+)
+ANTHROPIC_MESSAGES_ADAPTER_KEYS = frozenset(
+    {
+        "fineGrainedTools",
+        "interleavedThinking",
+        "sessionAffinityHeaders",
+        "longCacheRetention",
+    }
+)
+
+
+def _json_safe_copy(value: object, path: str) -> object:
+    if value is None or isinstance(value, str | int | float | bool):
+        if isinstance(value, float) and not isfinite(value):
+            raise ValueError(f"adapter extraBody value must be JSON-safe: {path}")
+        return value
+    if isinstance(value, list):
+        return [_json_safe_copy(entry, f"{path}[]") for entry in value]
+    if isinstance(value, Mapping):
+        result: dict[str, object] = {}
+        for key, entry in value.items():
+            if not isinstance(key, str) or not key:
+                raise ValueError(f"adapter extraBody keys must be strings: {path}")
+            result[key] = _json_safe_copy(entry, f"{path}.{key}")
+        return result
+    raise ValueError(f"adapter extraBody value must be JSON-safe: {path}")
+
+
+def _extra_body_from_raw(raw: Mapping[str, object], key: str) -> dict[str, object]:
+    if key not in raw:
+        return {}
+    value = raw[key]
+    if not isinstance(value, Mapping):
+        raise ValueError(f"adapter config field must be an object: {key}")
+    result: dict[str, object] = {}
+    for entry_key, entry_value in value.items():
+        if not isinstance(entry_key, str) or not entry_key:
+            raise ValueError(f"adapter extraBody keys must be strings: {key}")
+        if entry_key in _EXTRA_BODY_RESERVED_KEYS:
+            raise ValueError(
+                f"adapter extraBody cannot override SDK field: {entry_key}"
+            )
+        result[entry_key] = _json_safe_copy(entry_value, f"{key}.{entry_key}")
+    return result
+
+
+def _string_or_none_dict_from_raw(
+    raw: Mapping[str, object],
+    key: str,
+) -> dict[str, str | None]:
+    if key not in raw:
+        return {}
+    value = raw[key]
+    if not isinstance(value, Mapping):
+        raise ValueError(f"adapter config field must be a string-or-null map: {key}")
+    result: dict[str, str | None] = {}
+    for entry_key, entry_value in value.items():
+        if not isinstance(entry_key, str) or not (
+            entry_value is None or isinstance(entry_value, str)
+        ):
+            raise ValueError(
+                f"adapter config field must be a string-or-null map: {key}"
+            )
+        result[entry_key] = entry_value
+    return result
+
+
+def _with_raw_value(raw: dict[str, object], key: str, value: object) -> None:
+    if value is None:
+        return
+    if isinstance(value, dict) and not value:
+        return
+    raw[key] = value
+
+
+def _validate_adapter_keys(
+    raw: Mapping[str, object],
+    allowed_keys: frozenset[str],
+) -> None:
+    unknown = sorted(set(raw) - allowed_keys)
+    if unknown:
+        raise ValueError(f"adapter config has unknown keys: {unknown}")
 
 
 @dataclass(frozen=True)
-class EndpointProtocolRoles:
-    developer: SupportStatus = SupportStatus.UNKNOWN
-    _explicit_keys: frozenset[str] = field(
-        default_factory=frozenset,
-        compare=False,
-        repr=False,
-    )
+class OpenAICompletionsConfig:
+    store: bool = True
+    developer_role: bool = True
+    streaming_usage: bool = True
+    max_output_tokens_field: str = "max_completion_tokens"
+    reasoning_effort: bool = True
+    reasoning_effort_map: dict[str, str | None] = field(default_factory=dict)
+    strict_schema: bool = True
+    prompt_cache_key: bool = False
+    long_cache_retention: bool = True
+    session_affinity_headers: bool = False
+    tool_result_name: bool = False
+    assistant_after_tool_result: bool = False
+    thinking_as_text: bool = False
+    assistant_reasoning_content: bool = False
+    tool_stream: bool = False
+    reasoning_format: str | None = "openai"
+    cache_control_format: str | None = None
+    extra_body: dict[str, object] = field(default_factory=dict)
 
     def __post_init__(self) -> None:
-        _normalize_status_attrs(self, "developer")
-
-    @classmethod
-    def from_raw(cls, raw: Mapping[str, object] | None) -> "EndpointProtocolRoles":
-        raw = raw or {}
-        return cls(
-            developer=_status_from_raw(raw, "developer"),
-            _explicit_keys=_explicit_keys(raw, ("developer",)),
-        )
-
-    def to_raw(self) -> dict[str, object]:
-        raw: dict[str, object] = {}
-        if value := _status_to_raw(
-            self.developer,
-            explicit="developer" in self._explicit_keys,
-        ):
-            raw["developer"] = value
-        return raw
-
-
-@dataclass(frozen=True)
-class EndpointProtocolStreaming:
-    usage: SupportStatus = SupportStatus.UNKNOWN
-    reasoning_delta: SupportStatus = SupportStatus.UNKNOWN
-    _explicit_keys: frozenset[str] = field(
-        default_factory=frozenset,
-        compare=False,
-        repr=False,
-    )
-
-    def __post_init__(self) -> None:
-        _normalize_status_attrs(self, "usage", "reasoning_delta")
-
-    @classmethod
-    def from_raw(cls, raw: Mapping[str, object] | None) -> "EndpointProtocolStreaming":
-        raw = raw or {}
-        return cls(
-            usage=_status_from_raw(raw, "usage"),
-            reasoning_delta=_status_from_raw(raw, "reasoningDelta"),
-            _explicit_keys=_explicit_keys(raw, ("usage", "reasoningDelta")),
-        )
-
-    def to_raw(self) -> dict[str, object]:
-        raw: dict[str, object] = {}
-        if value := _status_to_raw(
-            self.usage,
-            explicit="usage" in self._explicit_keys,
-        ):
-            raw["usage"] = value
-        if value := _status_to_raw(
-            self.reasoning_delta,
-            explicit="reasoningDelta" in self._explicit_keys,
-        ):
-            raw["reasoningDelta"] = value
-        return raw
-
-
-@dataclass(frozen=True)
-class EndpointProtocolReasoning:
-    effort: SupportStatus = SupportStatus.UNKNOWN
-    effort_map: dict[str, str | None] = field(default_factory=dict)
-    interleaved: SupportStatus = SupportStatus.UNKNOWN
-    _explicit_keys: frozenset[str] = field(
-        default_factory=frozenset,
-        compare=False,
-        repr=False,
-    )
-
-    def __post_init__(self) -> None:
-        _normalize_status_attrs(self, "effort", "interleaved")
-
-    @classmethod
-    def from_raw(cls, raw: Mapping[str, object] | None) -> "EndpointProtocolReasoning":
-        raw = raw or {}
-        return cls(
-            effort=_status_from_raw(raw, "effort"),
-            effort_map=_as_optional_str_dict(raw.get("effortMap")),
-            interleaved=_status_from_raw(raw, "interleaved"),
-            _explicit_keys=_explicit_keys(raw, ("effort", "effortMap", "interleaved")),
-        )
-
-    def to_raw(self) -> dict[str, object]:
-        raw: dict[str, object] = {}
-        if value := _status_to_raw(
-            self.effort,
-            explicit="effort" in self._explicit_keys,
-        ):
-            raw["effort"] = value
-        if self.effort_map or "effortMap" in self._explicit_keys:
-            raw["effortMap"] = dict(self.effort_map)
-        if value := _status_to_raw(
-            self.interleaved,
-            explicit="interleaved" in self._explicit_keys,
-        ):
-            raw["interleaved"] = value
-        return raw
-
-
-@dataclass(frozen=True)
-class EndpointProtocolTools:
-    strict_schema: SupportStatus = SupportStatus.UNKNOWN
-    eager_input_stream: SupportStatus = SupportStatus.UNKNOWN
-    fine_grained: SupportStatus = SupportStatus.UNKNOWN
-    _explicit_keys: frozenset[str] = field(
-        default_factory=frozenset,
-        compare=False,
-        repr=False,
-    )
-
-    def __post_init__(self) -> None:
-        _normalize_status_attrs(
+        _normalize_optional_bool_attrs(
             self,
+            "store",
+            "developer_role",
+            "streaming_usage",
+            "reasoning_effort",
             "strict_schema",
-            "eager_input_stream",
-            "fine_grained",
-        )
-
-    @classmethod
-    def from_raw(cls, raw: Mapping[str, object] | None) -> "EndpointProtocolTools":
-        raw = raw or {}
-        return cls(
-            strict_schema=_status_from_raw(raw, "strictSchema"),
-            eager_input_stream=_status_from_raw(raw, "eagerInputStream"),
-            fine_grained=_status_from_raw(raw, "fineGrained"),
-            _explicit_keys=_explicit_keys(
-                raw,
-                ("strictSchema", "eagerInputStream", "fineGrained"),
-            ),
-        )
-
-    def to_raw(self) -> dict[str, object]:
-        raw: dict[str, object] = {}
-        if value := _status_to_raw(
-            self.strict_schema,
-            explicit="strictSchema" in self._explicit_keys,
-        ):
-            raw["strictSchema"] = value
-        if value := _status_to_raw(
-            self.eager_input_stream,
-            explicit="eagerInputStream" in self._explicit_keys,
-        ):
-            raw["eagerInputStream"] = value
-        if value := _status_to_raw(
-            self.fine_grained,
-            explicit="fineGrained" in self._explicit_keys,
-        ):
-            raw["fineGrained"] = value
-        return raw
-
-
-@dataclass(frozen=True)
-class EndpointProtocolCache:
-    on_tools: SupportStatus = SupportStatus.UNKNOWN
-    long_retention: SupportStatus = SupportStatus.UNKNOWN
-    prompt_key: SupportStatus = SupportStatus.UNKNOWN
-    _explicit_keys: frozenset[str] = field(
-        default_factory=frozenset,
-        compare=False,
-        repr=False,
-    )
-
-    def __post_init__(self) -> None:
-        _normalize_status_attrs(self, "on_tools", "long_retention", "prompt_key")
-
-    @classmethod
-    def from_raw(cls, raw: Mapping[str, object] | None) -> "EndpointProtocolCache":
-        raw = raw or {}
-        return cls(
-            on_tools=_status_from_raw(raw, "onTools"),
-            long_retention=_status_from_raw(raw, "longRetention"),
-            prompt_key=_status_from_raw(raw, "promptKey"),
-            _explicit_keys=_explicit_keys(
-                raw,
-                ("onTools", "longRetention", "promptKey"),
-            ),
-        )
-
-    def to_raw(self) -> dict[str, object]:
-        raw: dict[str, object] = {}
-        if value := _status_to_raw(
-            self.on_tools,
-            explicit="onTools" in self._explicit_keys,
-        ):
-            raw["onTools"] = value
-        if value := _status_to_raw(
-            self.long_retention,
-            explicit="longRetention" in self._explicit_keys,
-        ):
-            raw["longRetention"] = value
-        if value := _status_to_raw(
-            self.prompt_key,
-            explicit="promptKey" in self._explicit_keys,
-        ):
-            raw["promptKey"] = value
-        return raw
-
-
-@dataclass(frozen=True)
-class EndpointProtocolSession:
-    id_header: SupportStatus = SupportStatus.UNKNOWN
-    affinity_headers: SupportStatus = SupportStatus.UNKNOWN
-    _explicit_keys: frozenset[str] = field(
-        default_factory=frozenset,
-        compare=False,
-        repr=False,
-    )
-
-    def __post_init__(self) -> None:
-        _normalize_status_attrs(self, "id_header", "affinity_headers")
-
-    @classmethod
-    def from_raw(cls, raw: Mapping[str, object] | None) -> "EndpointProtocolSession":
-        raw = raw or {}
-        return cls(
-            id_header=_status_from_raw(raw, "idHeader"),
-            affinity_headers=_status_from_raw(raw, "affinityHeaders"),
-            _explicit_keys=_explicit_keys(raw, ("idHeader", "affinityHeaders")),
-        )
-
-    def to_raw(self) -> dict[str, object]:
-        raw: dict[str, object] = {}
-        if value := _status_to_raw(
-            self.id_header,
-            explicit="idHeader" in self._explicit_keys,
-        ):
-            raw["idHeader"] = value
-        if value := _status_to_raw(
-            self.affinity_headers,
-            explicit="affinityHeaders" in self._explicit_keys,
-        ):
-            raw["affinityHeaders"] = value
-        return raw
-
-
-@dataclass(frozen=True)
-class EndpointProtocolFeatures:
-    store: SupportStatus = SupportStatus.UNKNOWN
-    roles: EndpointProtocolRoles = field(default_factory=EndpointProtocolRoles)
-    streaming: EndpointProtocolStreaming = field(
-        default_factory=EndpointProtocolStreaming
-    )
-    reasoning: EndpointProtocolReasoning = field(
-        default_factory=EndpointProtocolReasoning
-    )
-    tools: EndpointProtocolTools = field(default_factory=EndpointProtocolTools)
-    cache: EndpointProtocolCache = field(default_factory=EndpointProtocolCache)
-    session: EndpointProtocolSession = field(default_factory=EndpointProtocolSession)
-    _explicit_keys: frozenset[str] = field(
-        default_factory=frozenset,
-        compare=False,
-        repr=False,
-    )
-
-    def __post_init__(self) -> None:
-        _normalize_status_attrs(self, "store")
-
-    @classmethod
-    def from_raw(cls, raw: Mapping[str, object] | None) -> "EndpointProtocolFeatures":
-        raw = raw or {}
-        return cls(
-            store=_status_from_raw(raw, "store"),
-            roles=EndpointProtocolRoles.from_raw(_mapping_or_none(raw.get("roles"))),
-            streaming=EndpointProtocolStreaming.from_raw(
-                _mapping_or_none(raw.get("streaming"))
-            ),
-            reasoning=EndpointProtocolReasoning.from_raw(
-                _mapping_or_none(raw.get("reasoning"))
-            ),
-            tools=EndpointProtocolTools.from_raw(_mapping_or_none(raw.get("tools"))),
-            cache=EndpointProtocolCache.from_raw(_mapping_or_none(raw.get("cache"))),
-            session=EndpointProtocolSession.from_raw(
-                _mapping_or_none(raw.get("session"))
-            ),
-            _explicit_keys=_explicit_keys(raw, ("store",)),
-        )
-
-    def to_raw(self) -> dict[str, object]:
-        raw: dict[str, object] = {}
-        if store_value := _status_to_raw(
-            self.store,
-            explicit="store" in self._explicit_keys,
-        ):
-            raw["store"] = store_value
-        for key, section_raw in (
-            ("roles", self.roles.to_raw()),
-            ("streaming", self.streaming.to_raw()),
-            ("reasoning", self.reasoning.to_raw()),
-            ("tools", self.tools.to_raw()),
-            ("cache", self.cache.to_raw()),
-            ("session", self.session.to_raw()),
-        ):
-            if section_raw:
-                raw[key] = section_raw
-        return raw
-
-    def to_compat(self) -> dict[str, object]:
-        raw = self.to_raw()
-        compat: dict[str, object] = {}
-        for compat_key, section, protocol_key in PROTOCOL_COMPAT_STATUS_MAPPINGS:
-            if section is None:
-                if protocol_key not in raw:
-                    continue
-                value = raw[protocol_key]
-            else:
-                section_raw = raw.get(section)
-                if not isinstance(section_raw, dict) or protocol_key not in section_raw:
-                    continue
-                value = section_raw[protocol_key]
-            # The legacy compat bridge has no third state, so explicit
-            # "unknown" projects conservatively to False.
-            compat[compat_key] = _protocol_status_to_compat_bool(value)
-        reasoning_raw = raw.get("reasoning")
-        if isinstance(reasoning_raw, dict) and "effortMap" in reasoning_raw:
-            compat[REASONING_EFFORT_MAP] = dict(reasoning_raw["effortMap"])
-        return compat
-
-
-@dataclass(frozen=True)
-class EndpointDialectTools:
-    result_name_required: bool | None = None
-    assistant_bridge_required: bool | None = None
-    stream_flag: bool | None = None
-
-    def __post_init__(self) -> None:
-        _normalize_optional_bool_attrs(
-            self,
-            "result_name_required",
-            "assistant_bridge_required",
-            "stream_flag",
-        )
-
-    @classmethod
-    def from_raw(cls, raw: Mapping[str, object] | None) -> "EndpointDialectTools":
-        raw = raw or {}
-        return cls(
-            result_name_required=_optional_bool_from_raw(raw, "resultNameRequired"),
-            assistant_bridge_required=_optional_bool_from_raw(
-                raw,
-                "assistantBridgeRequired",
-            ),
-            stream_flag=_optional_bool_from_raw(raw, "streamFlag"),
-        )
-
-    def to_raw(self) -> dict[str, object]:
-        raw: dict[str, object] = {}
-        if self.result_name_required is not None:
-            raw["resultNameRequired"] = self.result_name_required
-        if self.assistant_bridge_required is not None:
-            raw["assistantBridgeRequired"] = self.assistant_bridge_required
-        if self.stream_flag is not None:
-            raw["streamFlag"] = self.stream_flag
-        return raw
-
-
-@dataclass(frozen=True)
-class EndpointDialectReasoning:
-    wire_format: str | None = None
-    thinking_as_text: bool | None = None
-    assistant_content_required: bool | None = None
-
-    def __post_init__(self) -> None:
-        _normalize_optional_str_attrs(self, "wire_format")
-        _normalize_optional_bool_attrs(
-            self,
+            "prompt_cache_key",
+            "long_cache_retention",
+            "session_affinity_headers",
+            "tool_result_name",
+            "assistant_after_tool_result",
             "thinking_as_text",
-            "assistant_content_required",
+            "assistant_reasoning_content",
+            "tool_stream",
+        )
+        _normalize_optional_str_attrs(
+            self,
+            "max_output_tokens_field",
+            "reasoning_format",
+            "cache_control_format",
+        )
+        object.__setattr__(
+            self, "reasoning_effort_map", dict(self.reasoning_effort_map)
+        )
+        object.__setattr__(
+            self,
+            "extra_body",
+            _extra_body_from_raw({"extraBody": self.extra_body}, "extraBody"),
         )
 
     @classmethod
-    def from_raw(cls, raw: Mapping[str, object] | None) -> "EndpointDialectReasoning":
+    def from_raw(
+        cls,
+        raw: Mapping[str, object] | None,
+    ) -> "OpenAICompletionsConfig":
         raw = raw or {}
+        _validate_adapter_keys(raw, OPENAI_COMPLETIONS_ADAPTER_KEYS)
         return cls(
-            wire_format=_optional_str_from_raw(raw, "wireFormat"),
-            thinking_as_text=_optional_bool_from_raw(raw, "thinkingAsText"),
-            assistant_content_required=_optional_bool_from_raw(
-                raw,
-                "assistantContentRequired",
-            ),
-        )
-
-    def to_raw(self) -> dict[str, object]:
-        raw: dict[str, object] = {}
-        if self.wire_format is not None:
-            raw["wireFormat"] = self.wire_format
-        if self.thinking_as_text is not None:
-            raw["thinkingAsText"] = self.thinking_as_text
-        if self.assistant_content_required is not None:
-            raw["assistantContentRequired"] = self.assistant_content_required
-        return raw
-
-
-@dataclass(frozen=True)
-class EndpointDialectCache:
-    control_format: str | None = None
-
-    def __post_init__(self) -> None:
-        _normalize_optional_str_attrs(self, "control_format")
-
-    @classmethod
-    def from_raw(cls, raw: Mapping[str, object] | None) -> "EndpointDialectCache":
-        raw = raw or {}
-        return cls(control_format=_optional_str_from_raw(raw, "controlFormat"))
-
-    def to_raw(self) -> dict[str, object]:
-        raw: dict[str, object] = {}
-        if self.control_format is not None:
-            raw["controlFormat"] = self.control_format
-        return raw
-
-
-@dataclass(frozen=True)
-class EndpointWireDialect:
-    max_output_tokens_field: str | None = None
-    tools: EndpointDialectTools = field(default_factory=EndpointDialectTools)
-    reasoning: EndpointDialectReasoning = field(
-        default_factory=EndpointDialectReasoning
-    )
-    cache: EndpointDialectCache = field(default_factory=EndpointDialectCache)
-
-    def __post_init__(self) -> None:
-        _normalize_optional_str_attrs(self, "max_output_tokens_field")
-
-    @classmethod
-    def from_raw(cls, raw: Mapping[str, object] | None) -> "EndpointWireDialect":
-        raw = raw or {}
-        return cls(
+            store=_bool_from_raw(raw, "store", cls.store),
+            developer_role=_bool_from_raw(raw, "developerRole", cls.developer_role),
+            streaming_usage=_bool_from_raw(raw, "streamingUsage", cls.streaming_usage),
             max_output_tokens_field=_optional_str_from_raw(
                 raw,
                 "maxOutputTokensField",
+            )
+            or cls.max_output_tokens_field,
+            reasoning_effort=_bool_from_raw(
+                raw,
+                "reasoningEffort",
+                cls.reasoning_effort,
             ),
-            tools=EndpointDialectTools.from_raw(
-                _optional_dialect_section_from_raw(raw, "tools")
+            reasoning_effort_map=_string_or_none_dict_from_raw(
+                raw,
+                "reasoningEffortMap",
             ),
-            reasoning=EndpointDialectReasoning.from_raw(
-                _optional_dialect_section_from_raw(raw, "reasoning")
+            strict_schema=_bool_from_raw(raw, "strictSchema", cls.strict_schema),
+            prompt_cache_key=_bool_from_raw(
+                raw,
+                "promptCacheKey",
+                cls.prompt_cache_key,
             ),
-            cache=EndpointDialectCache.from_raw(
-                _optional_dialect_section_from_raw(raw, "cache")
+            long_cache_retention=_bool_from_raw(
+                raw,
+                "longCacheRetention",
+                cls.long_cache_retention,
+            ),
+            session_affinity_headers=_bool_from_raw(
+                raw,
+                "sessionAffinityHeaders",
+                cls.session_affinity_headers,
+            ),
+            tool_result_name=_bool_from_raw(
+                raw,
+                "toolResultName",
+                cls.tool_result_name,
+            ),
+            assistant_after_tool_result=_bool_from_raw(
+                raw,
+                "assistantAfterToolResult",
+                cls.assistant_after_tool_result,
+            ),
+            thinking_as_text=_bool_from_raw(
+                raw,
+                "thinkingAsText",
+                cls.thinking_as_text,
+            ),
+            assistant_reasoning_content=_bool_from_raw(
+                raw,
+                "assistantReasoningContent",
+                cls.assistant_reasoning_content,
+            ),
+            tool_stream=_bool_from_raw(raw, "toolStream", cls.tool_stream),
+            reasoning_format=_optional_str_from_raw(raw, "reasoningFormat")
+            if "reasoningFormat" in raw
+            else cls.reasoning_format,
+            cache_control_format=_optional_str_from_raw(raw, "cacheControlFormat")
+            if "cacheControlFormat" in raw
+            else cls.cache_control_format,
+            extra_body=_extra_body_from_raw(raw, "extraBody"),
+        )
+
+    def to_raw(self) -> dict[str, object]:
+        raw: dict[str, object] = {
+            "store": self.store,
+            "developerRole": self.developer_role,
+            "streamingUsage": self.streaming_usage,
+            "maxOutputTokensField": self.max_output_tokens_field,
+            "reasoningEffort": self.reasoning_effort,
+            "strictSchema": self.strict_schema,
+            "promptCacheKey": self.prompt_cache_key,
+            "longCacheRetention": self.long_cache_retention,
+            "sessionAffinityHeaders": self.session_affinity_headers,
+            "toolResultName": self.tool_result_name,
+            "assistantAfterToolResult": self.assistant_after_tool_result,
+            "thinkingAsText": self.thinking_as_text,
+            "assistantReasoningContent": self.assistant_reasoning_content,
+            "toolStream": self.tool_stream,
+        }
+        _with_raw_value(raw, "reasoningEffortMap", dict(self.reasoning_effort_map))
+        _with_raw_value(raw, "reasoningFormat", self.reasoning_format)
+        _with_raw_value(raw, "cacheControlFormat", self.cache_control_format)
+        _with_raw_value(raw, "extraBody", _copy_raw_mapping(self.extra_body))
+        return raw
+
+
+@dataclass(frozen=True)
+class OpenAIResponsesConfig:
+    developer_role: bool = True
+    assistant_after_tool_result: bool = False
+    prompt_cache_key: bool = True
+    long_cache_retention: bool = True
+    session_id_header: bool = True
+    session_affinity_headers: bool = False
+
+    def __post_init__(self) -> None:
+        _normalize_optional_bool_attrs(
+            self,
+            "developer_role",
+            "assistant_after_tool_result",
+            "prompt_cache_key",
+            "long_cache_retention",
+            "session_id_header",
+            "session_affinity_headers",
+        )
+
+    @classmethod
+    def from_raw(cls, raw: Mapping[str, object] | None) -> "OpenAIResponsesConfig":
+        raw = raw or {}
+        _validate_adapter_keys(raw, OPENAI_RESPONSES_ADAPTER_KEYS)
+        return cls(
+            developer_role=_bool_from_raw(raw, "developerRole", cls.developer_role),
+            assistant_after_tool_result=_bool_from_raw(
+                raw,
+                "assistantAfterToolResult",
+                cls.assistant_after_tool_result,
+            ),
+            prompt_cache_key=_bool_from_raw(
+                raw,
+                "promptCacheKey",
+                cls.prompt_cache_key,
+            ),
+            long_cache_retention=_bool_from_raw(
+                raw,
+                "longCacheRetention",
+                cls.long_cache_retention,
+            ),
+            session_id_header=_bool_from_raw(
+                raw,
+                "sessionIdHeader",
+                cls.session_id_header,
+            ),
+            session_affinity_headers=_bool_from_raw(
+                raw,
+                "sessionAffinityHeaders",
+                cls.session_affinity_headers,
             ),
         )
 
     def to_raw(self) -> dict[str, object]:
-        raw: dict[str, object] = {}
-        if self.max_output_tokens_field is not None:
-            raw["maxOutputTokensField"] = self.max_output_tokens_field
-        for key, section_raw in (
-            ("tools", self.tools.to_raw()),
-            ("reasoning", self.reasoning.to_raw()),
-            ("cache", self.cache.to_raw()),
-        ):
-            if section_raw:
-                raw[key] = section_raw
+        return {
+            "developerRole": self.developer_role,
+            "assistantAfterToolResult": self.assistant_after_tool_result,
+            "promptCacheKey": self.prompt_cache_key,
+            "longCacheRetention": self.long_cache_retention,
+            "sessionIdHeader": self.session_id_header,
+            "sessionAffinityHeaders": self.session_affinity_headers,
+        }
+
+
+@dataclass(frozen=True)
+class AnthropicMessagesConfig:
+    fine_grained_tools: bool | None = None
+    interleaved_thinking: bool | None = None
+    session_affinity_headers: bool = False
+    long_cache_retention: bool = True
+
+    def __post_init__(self) -> None:
+        _normalize_optional_bool_attrs(
+            self,
+            "fine_grained_tools",
+            "interleaved_thinking",
+            "session_affinity_headers",
+            "long_cache_retention",
+        )
+
+    @classmethod
+    def from_raw(cls, raw: Mapping[str, object] | None) -> "AnthropicMessagesConfig":
+        raw = raw or {}
+        _validate_adapter_keys(raw, ANTHROPIC_MESSAGES_ADAPTER_KEYS)
+        return cls(
+            fine_grained_tools=_optional_bool_from_raw(raw, "fineGrainedTools")
+            if "fineGrainedTools" in raw
+            else cls.fine_grained_tools,
+            interleaved_thinking=_optional_bool_from_raw(raw, "interleavedThinking")
+            if "interleavedThinking" in raw
+            else cls.interleaved_thinking,
+            session_affinity_headers=_bool_from_raw(
+                raw,
+                "sessionAffinityHeaders",
+                cls.session_affinity_headers,
+            ),
+            long_cache_retention=_bool_from_raw(
+                raw,
+                "longCacheRetention",
+                cls.long_cache_retention,
+            ),
+        )
+
+    def to_raw(self) -> dict[str, object]:
+        raw: dict[str, object] = {
+            "sessionAffinityHeaders": self.session_affinity_headers,
+            "longCacheRetention": self.long_cache_retention,
+        }
+        _with_raw_value(raw, "fineGrainedTools", self.fine_grained_tools)
+        _with_raw_value(raw, "interleavedThinking", self.interleaved_thinking)
         return raw
 
-    def to_compat(self) -> dict[str, object]:
-        raw = self.to_raw()
-        compat: dict[str, object] = {}
-        for compat_key, section, dialect_key in DIALECT_COMPAT_BOOL_MAPPINGS:
-            section_raw = raw.get(section)
-            if isinstance(section_raw, dict) and dialect_key in section_raw:
-                compat[compat_key] = section_raw[dialect_key]
-        for compat_key, value_section, dialect_key in DIALECT_COMPAT_VALUE_MAPPINGS:
-            if value_section is None:
-                if dialect_key in raw:
-                    compat[compat_key] = raw[dialect_key]
-                continue
-            section_raw = raw.get(value_section)
-            if isinstance(section_raw, dict) and dialect_key in section_raw:
-                compat[compat_key] = section_raw[dialect_key]
-        return compat
+
+AdapterConfig: TypeAlias = (
+    OpenAICompletionsConfig | OpenAIResponsesConfig | AnthropicMessagesConfig
+)
+
+
+def default_adapter_config(api: str) -> AdapterConfig | None:
+    if api == "openai-completions":
+        return OpenAICompletionsConfig()
+    if api == "openai-responses":
+        return OpenAIResponsesConfig()
+    if api == "anthropic-messages":
+        return AnthropicMessagesConfig()
+    return None
+
+
+def adapter_config_from_raw(
+    api: str,
+    raw: Mapping[str, object] | None,
+) -> AdapterConfig | None:
+    if api == "openai-completions":
+        return OpenAICompletionsConfig.from_raw(raw)
+    if api == "openai-responses":
+        return OpenAIResponsesConfig.from_raw(raw)
+    if api == "anthropic-messages":
+        return AnthropicMessagesConfig.from_raw(raw)
+    return None
+
+
+def adapter_config_allowed_keys(api: str) -> frozenset[str]:
+    if api == "openai-completions":
+        return OPENAI_COMPLETIONS_ADAPTER_KEYS
+    if api == "openai-responses":
+        return OPENAI_RESPONSES_ADAPTER_KEYS
+    if api == "anthropic-messages":
+        return ANTHROPIC_MESSAGES_ADAPTER_KEYS
+    return frozenset()
+
+
+def merge_adapter_config(
+    base: AdapterConfig | None,
+    override: AdapterConfig | None,
+) -> AdapterConfig | None:
+    if override is None:
+        return base
+    if base is None:
+        return override
+    if type(base) is not type(override):
+        raise ValueError("model adapter config must match endpoint adapter type")
+    return type(base).from_raw({**base.to_raw(), **override.to_raw()})
 
 
 @dataclass(frozen=True)
@@ -928,47 +820,6 @@ class Capabilities:
         }
 
 
-@dataclass(frozen=True, init=False)
-class Compat(Mapping[str, object]):
-    items_by_key: dict[str, object] = field(default_factory=dict)
-
-    def __init__(
-        self,
-        *,
-        items_by_key: Mapping[str, object] | None = None,
-        values: Mapping[str, object] | None = None,
-    ) -> None:
-        if items_by_key is not None and values is not None:
-            raise TypeError("Compat accepts either items_by_key or values, not both.")
-        source = items_by_key if items_by_key is not None else values
-        object.__setattr__(self, "items_by_key", dict(source or {}))
-
-    def __getitem__(self, key: str) -> object:
-        return self.items_by_key[key]
-
-    def __iter__(self) -> Iterator[str]:
-        return iter(self.items_by_key)
-
-    def __len__(self) -> int:
-        return len(self.items_by_key)
-
-    def get(self, key: str, default: object | None = None) -> object | None:
-        return self.items_by_key.get(key, default)
-
-    def merged(self, other: Mapping[str, object] | None = None) -> "Compat":
-        merged = dict(self.items_by_key)
-        if other is not None:
-            merged.update(dict(other))
-        return Compat(items_by_key=merged)
-
-    @classmethod
-    def from_raw(cls, raw: Mapping[str, object] | None) -> "Compat":
-        return cls(items_by_key=dict(raw or {}))
-
-    def to_raw(self) -> dict[str, object]:
-        return dict(self.items_by_key)
-
-
 @dataclass(frozen=True)
 class Defaults(Mapping[str, object]):
     items_by_key: dict[str, object] = field(default_factory=dict)
@@ -1027,21 +878,10 @@ class Model:
     last_updated: str | None = None
     capabilities: Capabilities = field(default_factory=Capabilities)
     pricing: Pricing | None = None
-    compat: Compat = field(default_factory=Compat)
-    _compat_overrides: Compat = field(
-        default_factory=Compat,
-        init=False,
-        compare=False,
-        repr=False,
-    )
+    adapter: AdapterConfig | None = None
     defaults: Defaults = field(default_factory=Defaults)
     transport: EndpointTransport = field(default_factory=EndpointTransport)
     _transport_own_raw: dict[str, object] | None = field(
-        default=None,
-        compare=False,
-        repr=False,
-    )
-    _transport_legacy_raw: dict[str, object] | None = field(
         default=None,
         compare=False,
         repr=False,
@@ -1052,17 +892,7 @@ class Model:
         compare=False,
         repr=False,
     )
-    _routing_legacy_raw: dict[str, object] | None = field(
-        default=None,
-        compare=False,
-        repr=False,
-    )
     upstream_id: str | None = None
-    _upstream_id_legacy_raw: dict[str, object] | None = field(
-        default=None,
-        compare=False,
-        repr=False,
-    )
     _capabilities_overrides: Capabilities | None = field(
         default=None,
         init=False,
@@ -1075,18 +905,15 @@ class Model:
             not isinstance(self.upstream_id, str) or not self.upstream_id.strip()
         ):
             raise ValueError("model upstream_id must be a non-empty string")
-        if not isinstance(self.compat, Compat):
-            object.__setattr__(self, "compat", Compat.from_raw(self.compat))
-        object.__setattr__(self, "_compat_overrides", Compat.from_raw(self.compat))
         if self.capabilities != Capabilities():
             object.__setattr__(
                 self,
                 "_capabilities_overrides",
                 self.capabilities,
             )
-        if self._transport_own_raw is None and self._transport_legacy_raw is None:
+        if self._transport_own_raw is None:
             object.__setattr__(self, "_transport_own_raw", self.transport.to_raw())
-        if self._routing_own_raw is None and self._routing_legacy_raw is None:
+        if self._routing_own_raw is None:
             object.__setattr__(self, "_routing_own_raw", self.routing.to_raw())
         if not self._endpoint_key and provider is not None and endpoint is not None:
             object.__setattr__(
@@ -1156,48 +983,12 @@ class Model:
         return self.capabilities.supports_image_output
 
     @property
-    def contract_compat(self) -> Compat:
-        return Compat.from_raw(self._compat_overrides)
-
-    @property
     def contract_capabilities(self) -> Capabilities | None:
         return self._capabilities_overrides
-
-    def with_contract_overrides(
-        self,
-        *,
-        compat: Mapping[str, object] | None | object = _CONTRACT_OVERRIDE_UNSET,
-        capabilities: Capabilities | None | object = _CONTRACT_OVERRIDE_UNSET,
-    ) -> "Model":
-        model = replace(self)
-        object.__setattr__(model, "_endpoint_ref", self._endpoint_ref)
-        resolved_compat = (
-            self.contract_compat
-            if compat is _CONTRACT_OVERRIDE_UNSET
-            else Compat.from_raw(cast(Mapping[str, object] | None, compat))
-        )
-        resolved_capabilities = (
-            self.contract_capabilities
-            if capabilities is _CONTRACT_OVERRIDE_UNSET
-            else cast(Capabilities | None, capabilities)
-        )
-        object.__setattr__(model, "_compat_overrides", resolved_compat)
-        object.__setattr__(model, "_capabilities_overrides", resolved_capabilities)
-        return model
 
     def with_endpoint(self, endpoint: "Endpoint") -> "Model":
         inherits_auth = self.auth is None or self._auth_inherited
         auth = endpoint.auth if inherits_auth else self.auth
-        endpoint_compat = endpoint.compat.merged(endpoint.protocol.to_compat()).merged(
-            endpoint.dialect.to_compat()
-        )
-        endpoint_compat = Compat(
-            items_by_key={
-                key: value
-                for key, value in endpoint_compat.items()
-                if key != UPSTREAM_MODEL_ID
-            }
-        )
         model_transport_raw = self.transport.to_raw()
         model_transport_own_raw = (
             _copy_raw_mapping(self._transport_own_raw)
@@ -1206,8 +997,6 @@ class Model:
         )
         if model_transport_own_raw is not None:
             model_transport_raw = model_transport_own_raw
-        elif self._transport_legacy_raw is None:
-            model_transport_own_raw = model_transport_raw
         model_routing_raw = self.routing.to_raw()
         model_routing_own_raw = (
             _copy_raw_mapping(self._routing_own_raw)
@@ -1216,8 +1005,6 @@ class Model:
         )
         if model_routing_own_raw is not None:
             model_routing_raw = model_routing_own_raw
-        elif self._routing_legacy_raw is None:
-            model_routing_own_raw = model_routing_raw
         transport = EndpointTransport.from_raw(
             _deep_merge_raw_mapping(endpoint.transport.to_raw(), model_transport_raw)
         )
@@ -1235,24 +1022,14 @@ class Model:
             preferred_endpoint=endpoint.preferred,
             auth=auth,
             _auth_inherited=inherits_auth and auth is not None,
-            compat=endpoint_compat.merged(self.compat),
+            adapter=merge_adapter_config(endpoint.adapter, self.adapter),
             defaults=endpoint.defaults.merged(self.defaults),
             upstream_id=self.upstream_id,
-            _upstream_id_legacy_raw=_copy_raw_mapping(self._upstream_id_legacy_raw)
-            if self._upstream_id_legacy_raw is not None
-            else None,
             transport=transport,
             _transport_own_raw=model_transport_own_raw,
-            _transport_legacy_raw=_copy_raw_mapping(self._transport_legacy_raw)
-            if self._transport_legacy_raw is not None
-            else None,
             routing=routing,
             _routing_own_raw=model_routing_own_raw,
-            _routing_legacy_raw=_copy_raw_mapping(self._routing_legacy_raw)
-            if self._routing_legacy_raw is not None
-            else None,
         )
-        object.__setattr__(model, "_compat_overrides", self.contract_compat)
         object.__setattr__(
             model,
             "_capabilities_overrides",
@@ -1289,48 +1066,31 @@ class Model:
             "knowledge": self.knowledge,
             "releaseDate": self.release_date,
             "lastUpdated": self.last_updated,
-            "compat": self.compat.to_raw(),
             "defaults": self.defaults.to_raw(),
         }
         raw.update(self.capabilities.to_raw())
+        if self.adapter is not None:
+            raw["adapter"] = self.adapter.to_raw()
         if self.pricing is not None:
             raw["pricing"] = self.pricing.to_raw()
         if self.auth is not None and not self._auth_inherited:
             raw["auth"] = self.auth.to_raw()
         if self.upstream_id is not None:
-            if self._upstream_id_legacy_raw is not None:
-                raw["compat"] = {
-                    **cast(dict[str, object], raw["compat"]),
-                    **_copy_raw_mapping(self._upstream_id_legacy_raw),
-                }
-            else:
-                raw["upstreamId"] = self.upstream_id
-        if (
-            self._transport_legacy_raw is not None
-            or self._routing_legacy_raw is not None
-        ):
-            raw["compat"] = {
-                **cast(dict[str, object], raw["compat"]),
-                **_legacy_transport_routing_compat_raw(
-                    self._transport_legacy_raw,
-                    self._routing_legacy_raw,
-                ),
-            }
-        else:
-            transport_raw = (
-                _copy_raw_mapping(self._transport_own_raw)
-                if self._transport_own_raw is not None
-                else self.transport.to_raw()
-            )
-            if transport_raw:
-                raw["transport"] = transport_raw
-            routing_raw = (
-                _copy_raw_mapping(self._routing_own_raw)
-                if self._routing_own_raw is not None
-                else self.routing.to_raw()
-            )
-            if routing_raw:
-                raw["routing"] = routing_raw
+            raw["upstreamId"] = self.upstream_id
+        transport_raw = (
+            _copy_raw_mapping(self._transport_own_raw)
+            if self._transport_own_raw is not None
+            else self.transport.to_raw()
+        )
+        if transport_raw:
+            raw["transport"] = transport_raw
+        routing_raw = (
+            _copy_raw_mapping(self._routing_own_raw)
+            if self._routing_own_raw is not None
+            else self.routing.to_raw()
+        )
+        if routing_raw:
+            raw["routing"] = routing_raw
         return {key: value for key, value in raw.items() if value is not None}
 
 
@@ -1349,23 +1109,9 @@ class Endpoint:
     docs: str | None = None
     auth: Auth | None = None
     _auth_inherited: bool = False
-    compat: Compat = field(default_factory=Compat)
     defaults: Defaults = field(default_factory=Defaults)
     models: dict[str, Model] = field(default_factory=dict)
-    protocol: EndpointProtocolFeatures = field(default_factory=EndpointProtocolFeatures)
-    _protocol_explicit: bool = field(default=True, compare=False, repr=False)
-    dialect: EndpointWireDialect = field(default_factory=EndpointWireDialect)
-    _dialect_explicit: bool = field(default=True, compare=False, repr=False)
-    _dialect_raw: dict[str, object] | None = field(
-        default=None,
-        compare=False,
-        repr=False,
-    )
-    _dialect_raw_source: EndpointWireDialect | None = field(
-        default=None,
-        compare=False,
-        repr=False,
-    )
+    adapter: AdapterConfig | None = None
     transport: EndpointTransport = field(default_factory=EndpointTransport)
     _transport_explicit: bool = field(default=True, compare=False, repr=False)
     _transport_raw: dict[str, object] | None = field(
@@ -1378,11 +1124,6 @@ class Endpoint:
         compare=False,
         repr=False,
     )
-    _transport_legacy_raw: dict[str, object] | None = field(
-        default=None,
-        compare=False,
-        repr=False,
-    )
     routing: EndpointRouting = field(default_factory=EndpointRouting)
     _routing_explicit: bool = field(default=True, compare=False, repr=False)
     _routing_raw: dict[str, object] | None = field(
@@ -1391,11 +1132,6 @@ class Endpoint:
         repr=False,
     )
     _routing_raw_source: EndpointRouting | None = field(
-        default=None,
-        compare=False,
-        repr=False,
-    )
-    _routing_legacy_raw: dict[str, object] | None = field(
         default=None,
         compare=False,
         repr=False,
@@ -1426,20 +1162,8 @@ class Endpoint:
         return model.with_endpoint(self)
 
     def to_raw(self) -> dict[str, object]:
-        compat_raw = self.compat.to_raw()
-        if (
-            self._transport_legacy_raw is not None
-            or self._routing_legacy_raw is not None
-        ):
-            compat_raw.update(
-                _legacy_transport_routing_compat_raw(
-                    self._transport_legacy_raw,
-                    self._routing_legacy_raw,
-                )
-            )
         raw: dict[str, object] = {
             "api": self.api,
-            "compat": compat_raw,
             "defaults": self.defaults.to_raw(),
             "models": {
                 model_id: model.to_raw() for model_id, model in self.models.items()
@@ -1461,18 +1185,9 @@ class Endpoint:
             raw["docs"] = self.docs
         if self.auth is not None and not self._auth_inherited:
             raw["auth"] = self.auth.to_raw()
-        if self._protocol_explicit and (protocol_raw := self.protocol.to_raw()):
-            raw["protocol"] = protocol_raw
-        if self._dialect_explicit:
-            dialect_raw = (
-                _copy_raw_mapping(self._dialect_raw)
-                if self._dialect_raw is not None
-                and self._dialect_raw_source == self.dialect
-                else self.dialect.to_raw()
-            )
-            if dialect_raw:
-                raw["dialect"] = dialect_raw
-        if self._transport_legacy_raw is None and self._transport_explicit:
+        if self.adapter is not None:
+            raw["adapter"] = self.adapter.to_raw()
+        if self._transport_explicit:
             transport_raw = (
                 _copy_raw_mapping(self._transport_raw)
                 if self._transport_raw is not None
@@ -1481,7 +1196,7 @@ class Endpoint:
             )
             if transport_raw:
                 raw["transport"] = transport_raw
-        if self._routing_legacy_raw is None and self._routing_explicit:
+        if self._routing_explicit:
             routing_raw = (
                 _copy_raw_mapping(self._routing_raw)
                 if self._routing_raw is not None

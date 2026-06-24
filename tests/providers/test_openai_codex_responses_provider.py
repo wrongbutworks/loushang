@@ -11,7 +11,7 @@ from loushang.ai.auth.types import OAuthCredentials
 from loushang.ai.context import normalize_context
 from loushang.ai.contrib.openai_codex import OpenAICodexResponsesOptions
 from loushang.ai.contrib.openai_codex.provider import OpenAICodexResponsesProvider
-from loushang.ai.model.domain import Compat, Endpoint, Model
+from loushang.ai.model.domain import Endpoint, Model
 from loushang.ai.model.registry import (
     clear_default_model_registry,
     get_default_model_registry,
@@ -359,14 +359,6 @@ def test_openai_codex_responses_uses_upstream_model_id() -> None:
             id="openai-codex-responses",
             provider="openai-codex",
             api="openai-codex-responses",
-            compat=Compat.from_raw(
-                {
-                    "codexIncludeClientRequestId": True,
-                    "codexPromptCacheRetention": "in-memory",
-                    "codexOriginator": "loushang",
-                    "codexUserAgent": "loushang",
-                }
-            ),
             models={
                 "gpt-5.3-codex_public": Model(
                     id="gpt-5.3-codex_public",
@@ -458,7 +450,7 @@ def test_openai_codex_responses_sends_empty_instructions_when_missing() -> None:
     assert client.last_json["instructions"] == ""
 
 
-def test_openai_codex_responses_respects_compat_session_headers() -> None:
+def test_openai_codex_responses_uses_default_runtime_session_headers() -> None:
     client = _FakeCodexClient(
         events=[
             {"type": "response.completed", "response": {"status": "completed"}},
@@ -470,15 +462,6 @@ def test_openai_codex_responses_respects_compat_session_headers() -> None:
             id="openai-codex-responses",
             provider="openai-codex",
             api="openai-codex-responses",
-            compat=Compat.from_raw(
-                {
-                    "codexIncludeClientRequestId": False,
-                    "codexIncludeConversationId": True,
-                    "codexPromptCacheRetention": "ephemeral",
-                    "codexOriginator": "compat-test",
-                    "codexUserAgent": "compat-agent",
-                }
-            ),
             models={
                 "gpt-5.3-codex": Model(
                     id="gpt-5.3-codex",
@@ -512,11 +495,11 @@ def test_openai_codex_responses_respects_compat_session_headers() -> None:
     )
 
     assert client.last_headers["session_id"] == "sess_compat"
-    assert client.last_headers["conversation_id"] == "sess_compat"
-    assert "x-client-request-id" not in client.last_headers
-    assert client.last_headers["originator"] == "compat-test"
-    assert client.last_headers["User-Agent"] == "compat-agent"
-    assert client.last_json["prompt_cache_retention"] == "ephemeral"
+    assert "conversation_id" not in client.last_headers
+    assert "x-client-request-id" in client.last_headers
+    assert client.last_headers["originator"] == "loushang"
+    assert client.last_headers["User-Agent"] == "loushang"
+    assert client.last_json["prompt_cache_retention"] == "in-memory"
 
 
 def test_openai_codex_responses_public_stream_uses_runtime_config_headers() -> None:
@@ -531,15 +514,6 @@ def test_openai_codex_responses_public_stream_uses_runtime_config_headers() -> N
             id="openai-codex-responses",
             provider="openai-codex",
             api="openai-codex-responses",
-            compat=Compat.from_raw(
-                {
-                    "codexIncludeClientRequestId": False,
-                    "codexIncludeConversationId": True,
-                    "codexPromptCacheRetention": "ephemeral",
-                    "codexOriginator": "compat-public",
-                    "codexUserAgent": "compat-public-agent",
-                }
-            ),
             models={
                 "gpt-5.3-codex": Model(
                     id="gpt-5.3-codex",
@@ -572,11 +546,11 @@ def test_openai_codex_responses_public_stream_uses_runtime_config_headers() -> N
 
     assert events[-1]["type"] == "done"
     assert client.last_headers["session_id"] == "sess_public_config"
-    assert client.last_headers["conversation_id"] == "sess_public_config"
-    assert "x-client-request-id" not in client.last_headers
-    assert client.last_headers["originator"] == "compat-public"
-    assert client.last_headers["User-Agent"] == "compat-public-agent"
-    assert client.last_json["prompt_cache_retention"] == "ephemeral"
+    assert "conversation_id" not in client.last_headers
+    assert "x-client-request-id" in client.last_headers
+    assert client.last_headers["originator"] == "loushang"
+    assert client.last_headers["User-Agent"] == "loushang"
+    assert client.last_json["prompt_cache_retention"] == "in-memory"
 
 
 def test_openai_codex_responses_prefers_oauth_account_binding_over_token_parsing() -> (
@@ -1208,12 +1182,6 @@ def test_openai_codex_responses_websocket_uses_runtime_config_headers() -> None:
             id="openai-codex-responses",
             provider="openai-codex",
             api="openai-codex-responses",
-            compat=Compat.from_raw(
-                {
-                    "codexOriginator": "compat-ws",
-                    "codexUserAgent": "compat-ws-agent",
-                }
-            ),
             models={
                 "gpt-5.3-codex": Model(
                     id="gpt-5.3-codex",
@@ -1246,8 +1214,8 @@ def test_openai_codex_responses_websocket_uses_runtime_config_headers() -> None:
     events = asyncio.run(_run())
 
     assert events[-1]["type"] == "done"
-    assert client.last_headers["originator"] == "compat-ws"
-    assert client.last_headers["User-Agent"] == "compat-ws-agent"
+    assert client.last_headers["originator"] == "loushang"
+    assert client.last_headers["User-Agent"] == "loushang"
 
 
 def test_openai_codex_responses_websocket_reuses_connection_for_same_session() -> None:
@@ -1657,15 +1625,6 @@ def _default_registry() -> None:
             id="openai-codex-responses",
             provider="openai-codex",
             api="openai-codex-responses",
-            compat=Compat.from_raw(
-                {
-                    "codexIncludeClientRequestId": True,
-                    "codexIncludeConversationId": False,
-                    "codexPromptCacheRetention": "in-memory",
-                    "codexOriginator": "loushang",
-                    "codexUserAgent": "loushang",
-                }
-            ),
             models={
                 "gpt-5.3-codex": Model(
                     id="gpt-5.3-codex",

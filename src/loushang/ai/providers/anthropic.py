@@ -8,7 +8,7 @@ from dataclasses import dataclass, field
 from typing import Any, cast
 
 from loushang.ai.event_stream.raw_parts import RawPart
-from loushang.ai.model.domain import EndpointProtocolFeatures, SupportStatus
+from loushang.ai.model.domain import AnthropicMessagesConfig
 from loushang.ai.options import (
     get_provider_option,
     get_reasoning_budget_tokens,
@@ -384,7 +384,7 @@ class AnthropicProvider(AnthropicProviderBase):
             _emit_trace(options, payload)
 
         normalized = request.context
-        protocol = _request_protocol(resolved)
+        adapter_config = _request_adapter_config(resolved)
 
         headers = resolved.headers or {}
         api_key = extract_sdk_api_key(
@@ -410,10 +410,10 @@ class AnthropicProvider(AnthropicProviderBase):
         need_ilt = self.should_inject_interleaved_thinking(
             model_id=model.id,
             options=options,
-            protocol=protocol,
+            adapter_config=adapter_config,
         )
         need_fg = self.should_inject_fine_grained_tools(
-            protocol=protocol,
+            adapter_config=adapter_config,
             headers=default_headers,
             transport_kind=getattr(getattr(resolved, "transport", None), "kind", None),
         )
@@ -439,7 +439,7 @@ class AnthropicProvider(AnthropicProviderBase):
             cache_retention != "none"
             and isinstance(session_id, str)
             and session_id
-            and _is_supported(protocol.session.affinity_headers)
+            and adapter_config.session_affinity_headers
         ):
             apply_session_headers(
                 default_headers,
@@ -526,7 +526,7 @@ class AnthropicProvider(AnthropicProviderBase):
             cache_retention=getattr(options, "cache_retention", None)
             if options is not None
             else None,
-            supports_long_cache_retention=_is_supported(protocol.cache.long_retention),
+            supports_long_cache_retention=adapter_config.long_cache_retention,
         )
         cache_control = cc.get("cacheControl")
         if cache_control:
@@ -868,19 +868,15 @@ def _map_stop_reason(reason: str) -> str:
     raise ValueError(f"Unhandled stop reason: {reason}")
 
 
-def _request_protocol(request: object) -> EndpointProtocolFeatures:
-    protocol = getattr(request, "adapter_protocol", None)
-    if isinstance(protocol, EndpointProtocolFeatures):
-        return protocol
-    return EndpointProtocolFeatures()
+def _request_adapter_config(request: object) -> AnthropicMessagesConfig:
+    adapter_config = getattr(request, "adapter_config", None)
+    if isinstance(adapter_config, AnthropicMessagesConfig):
+        return adapter_config
+    return AnthropicMessagesConfig()
 
 
 def _raw_part(part: dict[str, object]) -> RawPart:
     return cast(RawPart, part)
-
-
-def _is_supported(status: SupportStatus) -> bool:
-    return status is SupportStatus.SUPPORTED
 
 
 def _optional_int(value: object) -> int | None:

@@ -27,13 +27,13 @@
 
 - `domain.py`
   - 领域对象：`Provider`、`Endpoint`、`Model`
-  - 配套对象：`Auth`、`Capabilities`、`Compat`、`Defaults`、`Pricing`
+  - 配套对象：`Auth`、`Capabilities`、`Defaults`、`Pricing`、三类 `AdapterConfig`
 - `registry.py`
   - 运行时查询容器：`ModelRegistry`
   - 默认入口：`get_default_model_registry()`
 - `loader.py`
   - 从内置 `models.json` 或显式文件/目录路径装载 registry
-  - 显式文件、目录和外部 overlay 的 `*_with_diagnostics()` 变体返回 legacy `compat` 到类型化字段的 deprecation diagnostics；内置 catalog 自身的迁移 warning 不向普通装载调用暴露
+  - `*_with_diagnostics()` 变体保留返回结构，但当前 adapter contract 下不会生成旧字段迁移诊断
 - `models.json`
   - 内置模型事实源；完整 legacy catalog 已备份到 `backup/ai/models-legacy-full.json.gz`
 
@@ -319,7 +319,9 @@ query abstraction instead of hardcoding provider quota URLs.
 - `Endpoint`
 - `Auth`
 - `Capabilities`
-- `Compat`
+- `OpenAICompletionsConfig`
+- `OpenAIResponsesConfig`
+- `AnthropicMessagesConfig`
 - `Defaults`
 - `Pricing`
 
@@ -413,12 +415,7 @@ code should use attribute access instead of dict-style message access.
 - `api`
 - `base_url`
 - `headers`
-- `protocol`
-- `dialect`
 - `capabilities`
-- `adapter_protocol`
-- `adapter_dialect`
-- `adapter_options`
 - `adapter_config`
 - `defaults`
 - `transport`
@@ -427,24 +424,10 @@ code should use attribute access instead of dict-style message access.
 - `reasoning_effort`
 - `temperature`
 
-AIQ-012 起，`ResolvedEndpoint` / `ResolvedRequest` 的推荐字段改为 typed
-`protocol` / `dialect` / `capabilities` / `transport` / `routing`；request
-resolution 结果不再暴露 legacy `.compat` 或 `adapter_compat` 别名。
-`protocol` / `dialect` 只表达 catalog / programmatic
-contract 中显式声明或由 legacy compat 迁移得到的事实；provider / base URL
-推断出的 runtime heuristic 不会投射为 public contract。
-
-provider adapter 侧的执行事实单独放在 `adapter_protocol` / `adapter_dialect` /
-`adapter_options` / `adapter_config`。其中 `adapter_config` 是
-provider adapter 调用 `resolve_provider_request()` 时通过自己的 runtime config
-resolver 生成或校验后的 provider 专有 typed runtime 配置，承载无法放入通用
-protocol/dialect 的执行参数；具体配置类型由对应 provider 模块拥有。手写
-`ResolvedRequest` 时，如果同时提供 `adapter_options` 和 provider-specific
-`adapter_config`，二者必须在该 provider 的 runtime key 上投影一致；冲突会在
-resolution 边界报错。无关 compat key 不参与
-`adapter_config` 一致性检查。`adapter_options` 是 provider request 归一化边界的
-内部 adapter 输入；provider adapter 新代码应依赖 typed `adapter_protocol` /
-`adapter_dialect` / `adapter_config`，不要读取 raw compat。
+冻结后的 request resolution 只携带一份 `adapter_config`。核心 provider 使用
+`OpenAICompletionsConfig`、`OpenAIResponsesConfig`、`AnthropicMessagesConfig`
+三类配置；非核心 provider 可以通过自己的 runtime config resolver 生成或校验
+provider 专有配置。catalog 只声明 `adapter`，resolution 不再保留历史字段迁移层。
 
 ## 最小调用链
 

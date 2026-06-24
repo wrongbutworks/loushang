@@ -8,7 +8,11 @@ from loushang.ai.api_registry import get_default_api_provider_registry
 from loushang.ai.bootstrap import register_builtin_ai_providers
 from loushang.ai.context import normalize_context
 from loushang.ai.errors import UnsupportedCapabilityError
-from loushang.ai.model import EndpointProtocolFeatures, SupportStatus
+from loushang.ai.model import (
+    AnthropicMessagesConfig,
+    OpenAICompletionsConfig,
+    OpenAIResponsesConfig,
+)
 from loushang.ai.options import (
     CallOptions,
     PairingMode,
@@ -103,57 +107,38 @@ def _supports(capabilities, field: str) -> bool:
     return bool(getattr(capabilities, field, False))
 
 
-def _adapter_status_supported(status: object) -> bool:
-    return status is SupportStatus.SUPPORTED
+def _adapter_supports_long_cache_retention(adapter_config: object) -> bool:
+    if isinstance(
+        adapter_config,
+        OpenAICompletionsConfig | OpenAIResponsesConfig | AnthropicMessagesConfig,
+    ):
+        return adapter_config.long_cache_retention
+    return True
 
 
-def _adapter_supports_session_id(protocol: object) -> bool:
-    cache = getattr(protocol, "cache", None)
-    session = getattr(protocol, "session", None)
-    return any(
-        _adapter_status_supported(status)
-        for status in (
-            getattr(cache, "prompt_key", None),
-            getattr(session, "id_header", None),
-            getattr(session, "affinity_headers", None),
+def _adapter_supports_session_id(adapter_config: object) -> bool:
+    if isinstance(adapter_config, OpenAICompletionsConfig):
+        return (
+            adapter_config.prompt_cache_key or adapter_config.session_affinity_headers
         )
-    )
+    if isinstance(adapter_config, OpenAIResponsesConfig):
+        return (
+            adapter_config.prompt_cache_key
+            or adapter_config.session_id_header
+            or adapter_config.session_affinity_headers
+        )
+    if isinstance(adapter_config, AnthropicMessagesConfig):
+        return adapter_config.session_affinity_headers
+    return True
 
 
-def _adapter_protocol_for_validation(resolved) -> EndpointProtocolFeatures:
-    base = getattr(resolved, "protocol", None)
-    override = getattr(resolved, "adapter_protocol", None)
-    base_raw = base.to_raw() if isinstance(base, EndpointProtocolFeatures) else {}
-    override_raw = (
-        override.to_raw() if isinstance(override, EndpointProtocolFeatures) else {}
-    )
-    return EndpointProtocolFeatures.from_raw(
-        _deep_merge_mapping(base_raw, override_raw)
-    )
-
-
-def _deep_merge_mapping(
-    base: Mapping[str, object],
-    override: Mapping[str, object],
-) -> dict[str, object]:
-    merged = dict(base)
-    for key, value in override.items():
-        existing = merged.get(key)
-        if isinstance(existing, Mapping) and isinstance(value, Mapping):
-            merged[key] = _deep_merge_mapping(existing, value)
-        else:
-            merged[key] = value
-    return merged
-
-
-def _validate_explicit_adapter_options(model, resolved, options) -> None:
+def _validate_explicit_adapter_config(model, resolved, options) -> None:
     if options is None:
         return
-    protocol = _adapter_protocol_for_validation(resolved)
-    cache = getattr(protocol, "cache", None)
+    adapter_config = getattr(resolved, "adapter_config", None)
     cache_retention = getattr(options, "cache_retention", None)
-    if cache_retention == "long" and not _adapter_status_supported(
-        getattr(cache, "long_retention", None)
+    if cache_retention == "long" and not _adapter_supports_long_cache_retention(
+        adapter_config
     ):
         raise UnsupportedCapabilityError(
             f"Model {model.id!r} does not support long cache retention",
@@ -168,7 +153,7 @@ def _validate_explicit_adapter_options(model, resolved, options) -> None:
         isinstance(session_id, str)
         and session_id
         and cache_retention != "none"
-        and not _adapter_supports_session_id(protocol)
+        and not _adapter_supports_session_id(adapter_config)
     ):
         raise UnsupportedCapabilityError(
             f"Model {model.id!r} does not support session id",
@@ -298,7 +283,7 @@ async def _start_stream(
         options,
         require_stream=require_stream,
     )
-    _validate_explicit_adapter_options(model, resolved, options)
+    _validate_explicit_adapter_config(model, resolved, options)
     provider = _resolve_api_provider_registry(registry).get_api_provider(resolved.api)
     if get_structured_output_options(
         options

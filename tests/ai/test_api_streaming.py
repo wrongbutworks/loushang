@@ -23,8 +23,8 @@ from loushang.ai.context import (
 from loushang.ai.errors import AIRateLimitError, UnsupportedCapabilityError
 from loushang.ai.model import (
     Capabilities,
-    EndpointProtocolFeatures,
-    EndpointWireDialect,
+    OpenAICompletionsConfig,
+    OpenAIResponsesConfig,
 )
 from loushang.ai.options import (
     CallOptions,
@@ -1117,14 +1117,10 @@ def test_stream_public_path_uses_openai_completions_typed_request(
         api="openai-completions",
         base_url="https://api.openai.test/v1",
         headers={"Authorization": "Bearer test-key"},
-        protocol=EndpointProtocolFeatures.from_raw(
-            {"cache": {"promptKey": "supported"}}
-        ),
-        dialect=EndpointWireDialect.from_raw(
-            {
-                "maxOutputTokensField": "max_completion_tokens",
-                "tools": {"streamFlag": True},
-            }
+        adapter_config=OpenAICompletionsConfig(
+            prompt_cache_key=True,
+            max_output_tokens_field="max_completion_tokens",
+            tool_stream=True,
         ),
         max_tokens=128,
         capabilities=Capabilities(
@@ -1174,6 +1170,7 @@ def test_stream_public_path_uses_openai_completions_typed_request(
                 "name": "calc",
                 "description": "Calculate values",
                 "parameters": {"type": "object"},
+                "strict": False,
             },
         }
     ]
@@ -1199,18 +1196,12 @@ def test_stream_public_path_uses_openai_responses_typed_request(
         api="openai-responses",
         base_url="https://api.openai.test/v1",
         headers={"Authorization": "Bearer test-key"},
-        protocol=EndpointProtocolFeatures.from_raw(
-            {
-                "roles": {"developer": "unsupported"},
-                "cache": {
-                    "longRetention": "unsupported",
-                    "promptKey": "supported",
-                },
-                "session": {"idHeader": "unsupported"},
-            }
-        ),
-        dialect=EndpointWireDialect.from_raw(
-            {"tools": {"assistantBridgeRequired": True}}
+        adapter_config=OpenAIResponsesConfig(
+            developer_role=False,
+            long_cache_retention=False,
+            prompt_cache_key=True,
+            session_id_header=False,
+            assistant_after_tool_result=True,
         ),
         max_tokens=128,
         capabilities=Capabilities(
@@ -1330,13 +1321,9 @@ def test_stream_public_path_rejects_unsupported_long_cache_retention(
         api="openai-responses",
         base_url="https://api.openai.test/v1",
         headers={"Authorization": "Bearer test-key"},
-        adapter_protocol=EndpointProtocolFeatures.from_raw(
-            {
-                "cache": {
-                    "longRetention": "unsupported",
-                    "promptKey": "supported",
-                }
-            }
+        adapter_config=OpenAIResponsesConfig(
+            long_cache_retention=False,
+            prompt_cache_key=True,
         ),
         capabilities=Capabilities(input=("text",), stream=True, max_tokens=4096),
     )
@@ -1378,7 +1365,10 @@ def test_stream_public_path_rejects_unsupported_session_id(
         api="openai-completions",
         base_url="https://api.openai.test/v1",
         headers={"Authorization": "Bearer test-key"},
-        adapter_protocol=EndpointProtocolFeatures(),
+        adapter_config=OpenAICompletionsConfig(
+            prompt_cache_key=False,
+            session_affinity_headers=False,
+        ),
         capabilities=Capabilities(input=("text",), stream=True, max_tokens=4096),
     )
 
@@ -1421,21 +1411,9 @@ def test_stream_public_path_uses_adapter_protocol_override_for_cache_validation(
         api="openai-responses",
         base_url="https://api.openai.test/v1",
         headers={"Authorization": "Bearer test-key"},
-        protocol=EndpointProtocolFeatures.from_raw(
-            {
-                "cache": {
-                    "longRetention": "unsupported",
-                    "promptKey": "unsupported",
-                }
-            }
-        ),
-        adapter_protocol=EndpointProtocolFeatures.from_raw(
-            {
-                "cache": {
-                    "longRetention": "supported",
-                    "promptKey": "supported",
-                }
-            }
+        adapter_config=OpenAIResponsesConfig(
+            long_cache_retention=True,
+            prompt_cache_key=True,
         ),
         capabilities=Capabilities(input=("text",), stream=True, max_tokens=4096),
     )

@@ -16,7 +16,7 @@ from loushang.ai.contrib.openai_codex.runtime_config import (
     resolve_openai_codex_runtime_config,
 )
 from loushang.ai.event_stream.raw_parts import RawPart
-from loushang.ai.model.domain import EndpointProtocolFeatures, EndpointWireDialect
+from loushang.ai.model.domain import OpenAIResponsesConfig
 from loushang.ai.options import (
     get_reasoning_effort,
     get_reasoning_summary,
@@ -26,9 +26,6 @@ from loushang.ai.provider import ProviderRequest, resolve_provider_request
 from loushang.ai.provider.errors import (
     provider_error_part,
     provider_error_part_from_raw,
-)
-from loushang.ai.provider.runtime_config import (
-    AdapterRuntimeConfig,
 )
 from loushang.ai.providers.openai_responses_shared import (
     convert_responses_messages,
@@ -326,7 +323,7 @@ class OpenAICodexResponsesProvider:
 
 
 def _codex_runtime_config(
-    value: AdapterRuntimeConfig | None,
+    value: object | None,
 ) -> OpenAICodexRuntimeConfig:
     if isinstance(value, OpenAICodexRuntimeConfig):
         return value
@@ -349,8 +346,7 @@ def _build_request_body(
             **normalized,
             "system_prompt": None,
         },
-        EndpointProtocolFeatures(),
-        EndpointWireDialect(),
+        OpenAIResponsesConfig(),
         capabilities,
     )
     body: dict[str, Any] = {

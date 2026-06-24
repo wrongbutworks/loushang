@@ -8,11 +8,7 @@ from typing import Any, cast
 
 from loushang.ai.errors import UnsupportedCapabilityError
 from loushang.ai.event_stream.raw_parts import RawPart
-from loushang.ai.model.domain import (
-    EndpointProtocolFeatures,
-    EndpointWireDialect,
-    SupportStatus,
-)
+from loushang.ai.model.domain import OpenAICompletionsConfig
 from loushang.ai.options import get_provider_option, get_timeout_seconds
 from loushang.ai.output_budget import resolve_output_token_budget
 from loushang.ai.provider import ProviderRequest, resolve_provider_request
@@ -75,14 +71,13 @@ class OpenAICompletionsProvider:
             _emit_trace(options, {"type": f"sdk:{event}", **(data or {})})
 
         normalized = request.context
-        protocol = _request_protocol(resolved)
-        dialect = _request_dialect(resolved)
-        supports_usage_in_streaming = _is_supported(protocol.streaming.usage)
-        supports_store = _is_supported(protocol.store)
-        max_tokens_field = dialect.max_output_tokens_field or "max_tokens"
-        thinking_format = dialect.reasoning.wire_format
-        reasoning_effort_map = dict(protocol.reasoning.effort_map)
-        supports_reasoning_effort = _is_supported(protocol.reasoning.effort)
+        adapter_config = _request_adapter_config(resolved)
+        supports_usage_in_streaming = adapter_config.streaming_usage
+        supports_store = adapter_config.store
+        max_tokens_field = adapter_config.max_output_tokens_field or "max_tokens"
+        thinking_format = adapter_config.reasoning_format
+        reasoning_effort_map = dict(adapter_config.reasoning_effort_map)
+        supports_reasoning_effort = adapter_config.reasoning_effort
 
         # OpenAI Python SDK
         try:
@@ -116,7 +111,7 @@ class OpenAICompletionsProvider:
         _validate_cache_session_options(
             model,
             resolved,
-            protocol=protocol,
+            adapter_config=adapter_config,
             cache_retention=cache_retention,
             session_id=session_id,
         )
@@ -124,7 +119,7 @@ class OpenAICompletionsProvider:
             cache_retention != "none"
             and isinstance(session_id, str)
             and session_id
-            and _is_supported(protocol.session.affinity_headers)
+            and adapter_config.session_affinity_headers
         ):
             apply_session_headers(
                 default_headers,
@@ -151,14 +146,13 @@ class OpenAICompletionsProvider:
         messages_param = _build_messages(
             model,
             normalized,
-            protocol,
-            dialect,
+            adapter_config,
             capabilities,
         )
-        tools_param = _build_tools(normalized.get("tools"), protocol)
+        tools_param = _build_tools(normalized.get("tools"), adapter_config)
         if tools_param is None and _has_tool_history(normalized.get("messages", [])):
             tools_param = []
-        cache_control = _get_cache_control(protocol, dialect, cache_retention)
+        cache_control = _get_cache_control(adapter_config, cache_retention)
         if cache_control is not None:
             _apply_anthropic_cache_control(messages_param, tools_param, cache_control)
 
@@ -171,7 +165,7 @@ class OpenAICompletionsProvider:
         }
         _apply_prompt_cache_params(
             params,
-            protocol=protocol,
+            adapter_config=adapter_config,
             cache_retention=cache_retention,
             session_id=session_id,
         )
@@ -188,7 +182,7 @@ class OpenAICompletionsProvider:
             params["temperature"] = getattr(options, "temperature")
         if tools_param is not None:
             params["tools"] = tools_param
-            if dialect.tools.stream_flag:
+            if adapter_config.tool_stream:
                 params["tool_stream"] = True
         tool_choice = getattr(options, "tool_choice", None)
         if tool_choice is not None:
@@ -523,26 +517,15 @@ class OpenAICompletionsProvider:
             await close_provider_stream(stream_ctx)
 
 
-def _request_protocol(request: object) -> EndpointProtocolFeatures:
-    protocol = getattr(request, "adapter_protocol", None)
-    if isinstance(protocol, EndpointProtocolFeatures):
-        return protocol
-    return EndpointProtocolFeatures()
-
-
-def _request_dialect(request: object) -> EndpointWireDialect:
-    dialect = getattr(request, "adapter_dialect", None)
-    if isinstance(dialect, EndpointWireDialect):
-        return dialect
-    return EndpointWireDialect()
+def _request_adapter_config(request: object) -> OpenAICompletionsConfig:
+    adapter_config = getattr(request, "adapter_config", None)
+    if isinstance(adapter_config, OpenAICompletionsConfig):
+        return adapter_config
+    return OpenAICompletionsConfig()
 
 
 def _raw_part(part: dict[str, object]) -> RawPart:
     return cast(RawPart, part)
-
-
-def _is_supported(status: SupportStatus) -> bool:
-    return status is SupportStatus.SUPPORTED
 
 
 def _map_stop_reason(reason: str) -> str:
@@ -560,16 +543,16 @@ def _map_stop_reason(reason: str) -> str:
 def _apply_prompt_cache_params(
     params: dict[str, Any],
     *,
-    protocol: EndpointProtocolFeatures,
+    adapter_config: OpenAICompletionsConfig,
     cache_retention: str | None,
     session_id: str | None,
 ) -> None:
     if cache_retention == "none" or not isinstance(session_id, str) or not session_id:
         return
-    if not _is_supported(protocol.cache.prompt_key):
+    if not adapter_config.prompt_cache_key:
         return
     params["prompt_cache_key"] = session_id
-    if cache_retention == "long" and _is_supported(protocol.cache.long_retention):
+    if cache_retention == "long" and adapter_config.long_cache_retention:
         params["prompt_cache_retention"] = "24h"
 
 
@@ -577,11 +560,11 @@ def _validate_cache_session_options(
     model: object,
     resolved: object,
     *,
-    protocol: EndpointProtocolFeatures,
+    adapter_config: OpenAICompletionsConfig,
     cache_retention: str | None,
     session_id: str | None,
 ) -> None:
-    if cache_retention == "long" and not _is_supported(protocol.cache.long_retention):
+    if cache_retention == "long" and not adapter_config.long_cache_retention:
         raise UnsupportedCapabilityError(
             f"Model {getattr(model, 'id', '<unknown>')!r} does not support long cache retention",
             source=getattr(resolved, "api", None),
@@ -595,8 +578,7 @@ def _validate_cache_session_options(
         and isinstance(session_id, str)
         and session_id
         and not (
-            _is_supported(protocol.cache.prompt_key)
-            or _is_supported(protocol.session.affinity_headers)
+            adapter_config.prompt_cache_key or adapter_config.session_affinity_headers
         )
     ):
         raise UnsupportedCapabilityError(
@@ -756,17 +738,16 @@ def _resolve_timeout_seconds(options, resolved) -> float | int | None:
 
 
 def _get_cache_control(
-    protocol: EndpointProtocolFeatures,
-    dialect: EndpointWireDialect,
+    adapter_config: OpenAICompletionsConfig,
     cache_retention: str | None,
 ) -> dict[str, str] | None:
-    if dialect.cache.control_format != "anthropic":
+    if adapter_config.cache_control_format != "anthropic":
         return None
     if cache_retention == "none":
         return None
     ttl = (
         "1h"
-        if cache_retention == "long" and _is_supported(protocol.cache.long_retention)
+        if cache_retention == "long" and adapter_config.long_cache_retention
         else None
     )
     return {"type": "ephemeral", **({"ttl": ttl} if ttl else {})}
@@ -870,14 +851,13 @@ def _supports_reasoning(model: object, capabilities: object | None = None) -> bo
 def _build_messages(
     model,
     normalized: Mapping[str, Any],
-    protocol: EndpointProtocolFeatures,
-    dialect: EndpointWireDialect,
+    adapter_config: OpenAICompletionsConfig,
     capabilities: object | None = None,
 ) -> list[dict[str, Any]]:
     messages_param: list[dict[str, Any]] = []
     system_prompt = normalized.get("system_prompt")
-    supports_developer_role = _is_supported(protocol.roles.developer)
-    requires_assistant_after_tool_result = bool(dialect.tools.assistant_bridge_required)
+    supports_developer_role = adapter_config.developer_role
+    requires_assistant_after_tool_result = adapter_config.assistant_after_tool_result
     if isinstance(system_prompt, str) and system_prompt.strip():
         role = (
             "developer"
@@ -914,7 +894,9 @@ def _build_messages(
             index += 1
             continue
         if message_role == "assistant":
-            payload = _assistant_message_payload(msg, dialect, model, capabilities)
+            payload = _assistant_message_payload(
+                msg, adapter_config, model, capabilities
+            )
             if payload is not None:
                 messages_param.append(payload)
                 last_role = "assistant"
@@ -927,7 +909,7 @@ def _build_messages(
             ):
                 tool_payload, tool_images = _tool_result_payload(
                     messages[index],
-                    dialect,
+                    adapter_config,
                     model,
                     capabilities,
                 )
@@ -964,11 +946,11 @@ def _build_messages(
 
 def _build_tools(
     tools: Sequence[Tool] | None,
-    protocol: EndpointProtocolFeatures,
+    adapter_config: OpenAICompletionsConfig,
 ) -> list[dict[str, Any]] | None:
     if not isinstance(tools, Sequence) or isinstance(tools, str) or not tools:
         return None
-    supports_strict_mode = _is_supported(protocol.tools.strict_schema)
+    supports_strict_mode = adapter_config.strict_schema
     payload: list[dict[str, Any]] = []
     for tool in tools:
         function_payload = {
@@ -1040,12 +1022,12 @@ def _user_message_payload(
 
 def _assistant_message_payload(
     message: object,
-    dialect: EndpointWireDialect,
+    adapter_config: OpenAICompletionsConfig,
     model,
     capabilities: object | None = None,
 ) -> dict[str, Any] | None:
-    requires_assistant_after_tool_result = bool(dialect.tools.assistant_bridge_required)
-    requires_thinking_as_text = bool(dialect.reasoning.thinking_as_text)
+    requires_assistant_after_tool_result = adapter_config.assistant_after_tool_result
+    requires_thinking_as_text = adapter_config.thinking_as_text
     content = getattr(message, "content", None)
     if not isinstance(content, list):
         return None
@@ -1108,7 +1090,7 @@ def _assistant_message_payload(
     if reasoning_details:
         payload["reasoning_details"] = reasoning_details
     if (
-        dialect.reasoning.assistant_content_required
+        adapter_config.assistant_reasoning_content
         and _supports_reasoning(model, capabilities)
         and "reasoning_content" not in payload
     ):
@@ -1138,7 +1120,7 @@ async def _notify_provider_response(options, response, model) -> None:
 
 def _tool_result_payload(
     message: object,
-    dialect: EndpointWireDialect,
+    adapter_config: OpenAICompletionsConfig,
     model,
     capabilities: object | None = None,
 ) -> tuple[dict[str, Any], list[dict[str, Any]]]:
@@ -1175,7 +1157,7 @@ def _tool_result_payload(
         "content": text_result
         or ("(see attached image)" if has_images else MISSING_TOOL_RESULT_TEXT),
     }
-    if dialect.tools.result_name_required and message.tool_name:
+    if adapter_config.tool_result_name and message.tool_name:
         tool_payload["name"] = message.tool_name
     return tool_payload, image_blocks
 

@@ -174,7 +174,7 @@ def cmd_models(args: argparse.Namespace) -> None:
                 "attachment": model.capabilities.attachment,
             },
             "defaults": dict(model.defaults),
-            "compat": dict(model.compat),
+            "adapter": model.adapter.to_raw() if model.adapter is not None else None,
         }
         _print(data, args.json)
         return
@@ -206,7 +206,9 @@ def cmd_endpoints(args: argparse.Namespace) -> None:
             "region": endpoint_info.region,
             "lane": endpoint_info.lane,
             "defaults": endpoint_info.defaults,
-            "compat": endpoint_info.compat,
+            "adapter": endpoint_info.adapter.to_raw()
+            if endpoint_info.adapter is not None
+            else None,
         }
         _print(data, args.json)
         return

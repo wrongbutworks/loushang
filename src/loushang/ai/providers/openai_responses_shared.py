@@ -6,11 +6,7 @@ from collections.abc import AsyncIterator, Mapping, Sequence
 from typing import Any, TypedDict, cast
 
 from loushang.ai.event_stream.raw_parts import RawPart
-from loushang.ai.model.domain import (
-    EndpointProtocolFeatures,
-    EndpointWireDialect,
-    SupportStatus,
-)
+from loushang.ai.model.domain import OpenAIResponsesConfig
 from loushang.ai.model.registry import resolve_model_api
 from loushang.ai.options import is_reasoning_requested
 from loushang.ai.provider.errors import provider_error_part_from_raw
@@ -31,8 +27,7 @@ class _BufferedTextPart(TypedDict):
 def convert_responses_messages(
     model,
     normalized: Mapping[str, Any],
-    protocol: EndpointProtocolFeatures | None = None,
-    dialect: EndpointWireDialect | None = None,
+    adapter_config: OpenAIResponsesConfig | None = None,
     capabilities: object | None = None,
 ) -> list[dict[str, Any]]:
     """
@@ -42,17 +37,14 @@ def convert_responses_messages(
     next steps can iterate toward pi-ai's shared architecture without keeping the
     logic in the orchestration file.
     """
-    protocol = protocol if isinstance(protocol, EndpointProtocolFeatures) else None
-    protocol = protocol or EndpointProtocolFeatures()
-    dialect = dialect if isinstance(dialect, EndpointWireDialect) else None
-    dialect = dialect or EndpointWireDialect()
+    adapter_config = adapter_config or OpenAIResponsesConfig()
     input_items: list[dict[str, Any]] = []
     tool_call_id_map: dict[str, str] = {}
     system_prompt = normalized.get("system_prompt")
     if isinstance(system_prompt, str) and system_prompt.strip():
         role = (
             "developer"
-            if _supports_developer_role(model, protocol, capabilities)
+            if _supports_developer_role(model, adapter_config, capabilities)
             else "system"
         )
         input_items.append(
@@ -68,7 +60,7 @@ def convert_responses_messages(
         content = _message_content(msg)
         if message_role == "user":
             if (
-                dialect.tools.assistant_bridge_required is True
+                adapter_config.assistant_after_tool_result is True
                 and last_role == "toolResult"
             ):
                 input_items.append(
@@ -653,15 +645,9 @@ def _supports_reasoning(model, capabilities: object | None) -> bool:
 
 
 def _supports_developer_role(
-    model, protocol: EndpointProtocolFeatures, capabilities: object | None
+    model, adapter_config: OpenAIResponsesConfig, capabilities: object | None
 ) -> bool:
-    return _supports_reasoning(model, capabilities) and _is_supported(
-        protocol.roles.developer
-    )
-
-
-def _is_supported(status: SupportStatus) -> bool:
-    return status is SupportStatus.SUPPORTED
+    return _supports_reasoning(model, capabilities) and adapter_config.developer_role
 
 
 def _normalize_id_part(part: str) -> str:

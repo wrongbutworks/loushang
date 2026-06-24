@@ -4,7 +4,7 @@ from copy import deepcopy
 from types import SimpleNamespace
 
 from loushang.ai.context import normalize_context
-from loushang.ai.model import EndpointProtocolFeatures, EndpointWireDialect
+from loushang.ai.model import OpenAICompletionsConfig, OpenAIResponsesConfig
 from loushang.ai.tool.providers import (
     to_anthropic_tools,
     to_openai_completions_tool_result_message,
@@ -132,7 +132,7 @@ def test_openai_completions_provider_build_tools_strips_schema_meta_keys() -> No
                 parameters=_schema_with_meta_keys(),
             )
         ],
-        EndpointProtocolFeatures(),
+        OpenAICompletionsConfig(),
     )
 
     assert payload is not None
@@ -155,7 +155,7 @@ def test_openai_completions_provider_uses_image_placeholder_when_model_cannot_ac
 
     tool_payload, image_blocks = _tool_result_payload(
         message,
-        EndpointWireDialect(),
+        OpenAICompletionsConfig(),
         SimpleNamespace(input=("text",)),
     )
 
@@ -204,8 +204,7 @@ def test_openai_completions_provider_sanitizes_unpaired_surrogates_in_payload_te
                 ],
             }
         ),
-        EndpointProtocolFeatures(),
-        EndpointWireDialect(),
+        OpenAICompletionsConfig(),
     )
 
     assert payload[0]["content"] == "system  prompt"
@@ -308,8 +307,7 @@ def test_openai_responses_provider_sanitizes_unpaired_surrogates_in_payload_text
                 ],
             }
         ),
-        EndpointProtocolFeatures(),
-        EndpointWireDialect(),
+        OpenAIResponsesConfig(),
     )
 
     assert payload[0]["content"] == "system  prompt"

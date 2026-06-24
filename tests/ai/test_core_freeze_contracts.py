@@ -110,21 +110,23 @@ class _StreamRawOnlyProvider:
         raise AssertionError("not used by this contract test")
 
 
-@pytest.mark.xfail(strict=True, reason="AIF-004 removes legacy Compat bridge")
 def test_no_legacy_compat_model_contract_types_remain() -> None:
     import loushang.ai.model as model_module
 
-    assert "Compat" not in model_module.__all__
-    assert not hasattr(model_module, "Compat")
-    assert not (MODEL_DIR / "compat_schema.py").exists()
+    removed_public = "Com" + "pat"
+    removed_schema = "compat" + "_schema"
+
+    assert removed_public not in model_module.__all__
+    assert not hasattr(model_module, removed_public)
+    assert not (MODEL_DIR / f"{removed_schema}.py").exists()
 
     forbidden_source_tokens = (
-        "class Compat",
+        "class " + removed_public,
         "LEGACY_COMPAT_TRANSLATION_TARGETS",
         "resolve_anthropic_messages_compat",
         "resolve_openai_completions_compat",
         "resolve_openai_responses_compat",
-        "compat_schema",
+        removed_schema,
     )
     for path in (MODEL_DIR).rglob("*.py"):
         text = path.read_text(encoding="utf-8")

@@ -13,10 +13,9 @@ from loushang.ai.errors import UnsupportedCapabilityError
 from loushang.ai.model import (
     Capabilities,
     Endpoint,
-    EndpointProtocolFeatures,
     EndpointTransport,
-    EndpointWireDialect,
     Model,
+    OpenAIResponsesConfig,
     Pricing,
     get_default_model_registry,
 )
@@ -300,7 +299,7 @@ def test_openai_responses_supplied_empty_request_uses_typed_defaults(
     )
 
 
-def test_openai_responses_supplied_request_adapter_options_project_to_typed_payload(
+def test_openai_responses_supplied_request_adapter_config_projects_to_payload(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     _fake_openai_module(monkeypatch)
@@ -311,12 +310,12 @@ def test_openai_responses_supplied_request_adapter_options_project_to_typed_payl
         api="openai-responses",
         base_url="https://api.openai.test/v1",
         headers={"Authorization": "Bearer test-key"},
-        adapter_options={
-            "supportsDeveloperRole": False,
-            "requiresAssistantAfterToolResult": True,
-            "supportsLongCacheRetention": False,
-            "sendSessionIdHeader": False,
-        },
+        adapter_config=OpenAIResponsesConfig(
+            developer_role=False,
+            assistant_after_tool_result=True,
+            long_cache_retention=False,
+            session_id_header=False,
+        ),
         capabilities=Capabilities(input=("text",), reasoning=True),
         max_tokens=128,
     )
@@ -372,7 +371,7 @@ def test_openai_responses_rejects_unsupported_long_cache_retention(
         api="openai-responses",
         base_url="https://api.openai.test/v1",
         headers={"Authorization": "Bearer test-key"},
-        adapter_options={"supportsLongCacheRetention": False},
+        adapter_config=OpenAIResponsesConfig(long_cache_retention=False),
         capabilities=Capabilities(input=("text",), reasoning=True),
         max_tokens=128,
     )
@@ -409,21 +408,11 @@ def test_openai_responses_supplied_request_typed_adapter_overrides_stale_options
         api="openai-responses",
         base_url="https://api.openai.test/v1",
         headers={"Authorization": "Bearer test-key"},
-        adapter_options={
-            "supportsDeveloperRole": True,
-            "requiresAssistantAfterToolResult": True,
-            "supportsLongCacheRetention": True,
-            "sendSessionIdHeader": True,
-        },
-        adapter_protocol=EndpointProtocolFeatures.from_raw(
-            {
-                "roles": {"developer": "unsupported"},
-                "cache": {"longRetention": "unsupported"},
-                "session": {"idHeader": "unsupported"},
-            }
-        ),
-        adapter_dialect=EndpointWireDialect.from_raw(
-            {"tools": {"assistantBridgeRequired": False}}
+        adapter_config=OpenAIResponsesConfig(
+            developer_role=False,
+            assistant_after_tool_result=False,
+            long_cache_retention=False,
+            session_id_header=False,
         ),
         capabilities=Capabilities(input=("text",), reasoning=True),
         max_tokens=128,
@@ -1393,8 +1382,7 @@ def _patch_resolved_request(
     *,
     base_url: str,
     compat: dict[str, object] | None = None,
-    protocol: EndpointProtocolFeatures | None = None,
-    dialect: EndpointWireDialect | None = None,
+    adapter_config: OpenAIResponsesConfig | None = None,
     extra_headers: dict[str, str] | None = None,
     max_tokens: int | None = 1024,
     capabilities: Capabilities | None = None,
@@ -1428,9 +1416,8 @@ def _patch_resolved_request(
             api=provider_api,
             base_url=base_url,
             headers=headers,
-            adapter_options=compat or {},
-            adapter_protocol=protocol or _responses_protocol_from_compat(compat or {}),
-            adapter_dialect=dialect or _responses_dialect_from_compat(compat or {}),
+            adapter_config=adapter_config
+            or _responses_adapter_config_from_compat(compat or {}),
             transport=transport or EndpointTransport(),
             max_tokens=resolved_max_tokens,
             capabilities=capabilities
@@ -1447,43 +1434,18 @@ def _patch_resolved_request(
     )
 
 
-def _responses_protocol_from_compat(
+def _responses_adapter_config_from_compat(
     compat: dict[str, object],
-) -> EndpointProtocolFeatures:
-    return EndpointProtocolFeatures.from_raw(
-        {
-            "roles": {
-                "developer": _support_status(compat.get("supportsDeveloperRole", True))
-            },
-            "cache": {
-                "longRetention": _support_status(
-                    compat.get("supportsLongCacheRetention", True)
-                ),
-                "promptKey": _support_status(
-                    compat.get("supportsPromptCacheKey", True)
-                ),
-            },
-            "session": {
-                "idHeader": _support_status(compat.get("sendSessionIdHeader", True))
-            },
-        }
+) -> OpenAIResponsesConfig:
+    return OpenAIResponsesConfig(
+        developer_role=bool(compat.get("supportsDeveloperRole", True)),
+        assistant_after_tool_result=bool(
+            compat.get("requiresAssistantAfterToolResult", False)
+        ),
+        long_cache_retention=bool(compat.get("supportsLongCacheRetention", True)),
+        prompt_cache_key=bool(compat.get("supportsPromptCacheKey", True)),
+        session_id_header=bool(compat.get("sendSessionIdHeader", True)),
     )
-
-
-def _responses_dialect_from_compat(compat: dict[str, object]) -> EndpointWireDialect:
-    return EndpointWireDialect.from_raw(
-        {
-            "tools": {
-                "assistantBridgeRequired": bool(
-                    compat.get("requiresAssistantAfterToolResult", False)
-                )
-            }
-        }
-    )
-
-
-def _support_status(value: object) -> str:
-    return "supported" if bool(value) else "unsupported"
 
 
 class _FakeAsyncOpenAI:

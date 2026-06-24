@@ -12,25 +12,11 @@ from loushang.ai import get_model
 from loushang.ai.advanced import OpenAICompletionsOptions
 from loushang.ai.context import normalize_context
 from loushang.ai.errors import UnsupportedCapabilityError
-from loushang.ai.model import Capabilities, Compat, Model
-from loushang.ai.model.compat_schema import (
-    MAX_TOKENS_FIELD,
-    REQUIRES_REASONING_CONTENT_ON_ASSISTANT_MESSAGES,
-    SUPPORTS_DEVELOPER_ROLE,
-    SUPPORTS_LONG_CACHE_RETENTION,
-    SUPPORTS_PROMPT_CACHE_KEY,
-    SUPPORTS_REASONING_EFFORT,
-    SUPPORTS_STORE,
-    SUPPORTS_STRICT_MODE,
-    THINKING_FORMAT,
-    resolve_openai_completions_compat,
-)
+from loushang.ai.model import Capabilities, Model, OpenAICompletionsConfig
 from loushang.ai.model.domain import (
     Endpoint,
-    EndpointProtocolFeatures,
     EndpointRouting,
     EndpointTransport,
-    EndpointWireDialect,
 )
 from loushang.ai.model.registry import (
     clear_default_model_registry,
@@ -51,6 +37,18 @@ from loushang.ai.types import (
     UserMessage,
 )
 from tests.providers._runtime import start_test_provider_stream
+
+MAX_TOKENS_FIELD = "maxTokensField"
+REQUIRES_REASONING_CONTENT_ON_ASSISTANT_MESSAGES = (
+    "requiresReasoningContentOnAssistantMessages"
+)
+SUPPORTS_DEVELOPER_ROLE = "supportsDeveloperRole"
+SUPPORTS_LONG_CACHE_RETENTION = "supportsLongCacheRetention"
+SUPPORTS_PROMPT_CACHE_KEY = "supportsPromptCacheKey"
+SUPPORTS_REASONING_EFFORT = "supportsReasoningEffort"
+SUPPORTS_STORE = "supportsStore"
+SUPPORTS_STRICT_MODE = "supportsStrictMode"
+THINKING_FORMAT = "thinkingFormat"
 
 
 def _normalized_context(model, context, options=None):
@@ -77,6 +75,33 @@ async def _stream(provider, model, context, options=None, request=None):
         options,
         request=request,
     )
+
+
+def _adapter_config_from_compat(
+    compat: dict[str, object] | None,
+) -> OpenAICompletionsConfig:
+    raw: dict[str, object] = {}
+    compat = compat or {}
+    mappings = {
+        SUPPORTS_STORE: "store",
+        SUPPORTS_DEVELOPER_ROLE: "developerRole",
+        SUPPORTS_REASONING_EFFORT: "reasoningEffort",
+        "supportsUsageInStreaming": "streamingUsage",
+        SUPPORTS_PROMPT_CACHE_KEY: "promptCacheKey",
+        SUPPORTS_LONG_CACHE_RETENTION: "longCacheRetention",
+        SUPPORTS_STRICT_MODE: "strictSchema",
+        "requiresToolResultName": "toolResultName",
+        "requiresAssistantAfterToolResult": "assistantAfterToolResult",
+        REQUIRES_REASONING_CONTENT_ON_ASSISTANT_MESSAGES: ("assistantReasoningContent"),
+    }
+    for old_key, new_key in mappings.items():
+        if old_key in compat:
+            raw[new_key] = compat[old_key]
+    if MAX_TOKENS_FIELD in compat:
+        raw["maxOutputTokensField"] = compat[MAX_TOKENS_FIELD]
+    if THINKING_FORMAT in compat and compat[THINKING_FORMAT] is not None:
+        raw["reasoningFormat"] = compat[THINKING_FORMAT]
+    return OpenAICompletionsConfig.from_raw(raw)
 
 
 def test_openai_completions_payload_maps_user_image_assistant_toolcall_and_tool_result_mixed(
@@ -563,30 +588,16 @@ def test_openai_completions_payload_uses_typed_endpoint_dialect(
             provider="typed",
             api="openai-completions",
             base_url="https://api.openai.test/v1",
-            protocol=EndpointProtocolFeatures.from_raw(
-                {
-                    "cache": {
-                        "promptKey": "supported",
-                    },
-                }
-            ),
-            dialect=EndpointWireDialect.from_raw(
-                {
-                    "maxOutputTokensField": "max_tokens",
-                    "tools": {
-                        "resultNameRequired": True,
-                        "assistantBridgeRequired": True,
-                        "streamFlag": True,
-                    },
-                    "reasoning": {
-                        "wireFormat": "moonshot",
-                        "thinkingAsText": True,
-                        "assistantContentRequired": True,
-                    },
-                    "cache": {
-                        "controlFormat": "anthropic",
-                    },
-                }
+            adapter=OpenAICompletionsConfig(
+                prompt_cache_key=True,
+                max_output_tokens_field="max_tokens",
+                tool_result_name=True,
+                assistant_after_tool_result=True,
+                tool_stream=True,
+                reasoning_format="moonshot",
+                thinking_as_text=True,
+                assistant_reasoning_content=True,
+                cache_control_format="anthropic",
             ),
             models={
                 "gpt-test": Model(
@@ -697,7 +708,7 @@ def test_openai_completions_payload_uses_typed_endpoint_dialect(
     }
 
 
-def test_openai_completions_supplied_request_adapter_options_project_to_typed_payload(
+def test_openai_completions_supplied_request_adapter_config_projects_to_payload(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     _fake_openai_module(monkeypatch)
@@ -708,10 +719,10 @@ def test_openai_completions_supplied_request_adapter_options_project_to_typed_pa
         api="openai-completions",
         base_url="https://api.openai.test/v1",
         headers={"Authorization": "Bearer test-key"},
-        adapter_options={
-            MAX_TOKENS_FIELD: "max_tokens",
-            SUPPORTS_PROMPT_CACHE_KEY: True,
-        },
+        adapter_config=OpenAICompletionsConfig(
+            max_output_tokens_field="max_tokens",
+            prompt_cache_key=True,
+        ),
         max_tokens=128,
         capabilities=Capabilities(input=("text",), max_tokens=4096),
     )
@@ -741,7 +752,7 @@ def test_openai_completions_supplied_request_adapter_options_project_to_typed_pa
     assert _FakeAsyncOpenAI.last_create_kwargs["prompt_cache_retention"] == "24h"
 
 
-def test_openai_completions_supplied_empty_request_uses_legacy_compat_defaults(
+def test_openai_completions_supplied_empty_request_uses_adapter_defaults(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     _fake_openai_module(monkeypatch)
@@ -772,8 +783,8 @@ def test_openai_completions_supplied_empty_request_uses_legacy_compat_defaults(
         )
     )
 
-    assert _FakeAsyncOpenAI.last_create_kwargs["max_tokens"] == 128
-    assert "max_completion_tokens" not in _FakeAsyncOpenAI.last_create_kwargs
+    assert _FakeAsyncOpenAI.last_create_kwargs["max_completion_tokens"] == 128
+    assert "max_tokens" not in _FakeAsyncOpenAI.last_create_kwargs
     assert _FakeAsyncOpenAI.last_create_kwargs["stream_options"] == {
         "include_usage": True
     }
@@ -790,9 +801,7 @@ def test_openai_completions_supplied_request_preserves_explicit_unknown_protocol
         api="openai-completions",
         base_url="https://api.openai.test/v1",
         headers={"Authorization": "Bearer test-key"},
-        adapter_protocol=EndpointProtocolFeatures.from_raw(
-            {"roles": {"developer": "unknown"}}
-        ),
+        adapter_config=OpenAICompletionsConfig(developer_role=False),
         capabilities=Capabilities(input=("text",), reasoning=True, max_tokens=4096),
     )
 
@@ -830,11 +839,9 @@ def test_openai_completions_supplied_request_protocol_and_dialect_project_to_pay
         api="openai-completions",
         base_url="https://api.openai.test/v1",
         headers={"Authorization": "Bearer test-key"},
-        protocol=EndpointProtocolFeatures.from_raw(
-            {"cache": {"promptKey": "supported"}}
-        ),
-        dialect=EndpointWireDialect.from_raw(
-            {"maxOutputTokensField": "max_completion_tokens"}
+        adapter_config=OpenAICompletionsConfig(
+            prompt_cache_key=True,
+            max_output_tokens_field="max_completion_tokens",
         ),
         max_tokens=128,
         capabilities=Capabilities(input=("text",), max_tokens=4096),
@@ -879,11 +886,9 @@ def test_openai_completions_public_stream_uses_supplied_typed_request(
         api="openai-completions",
         base_url="https://api.openai.test/v1",
         headers={"Authorization": "Bearer test-key"},
-        protocol=EndpointProtocolFeatures.from_raw(
-            {"cache": {"promptKey": "supported"}}
-        ),
-        dialect=EndpointWireDialect.from_raw(
-            {"maxOutputTokensField": "max_completion_tokens"}
+        adapter_config=OpenAICompletionsConfig(
+            prompt_cache_key=True,
+            max_output_tokens_field="max_completion_tokens",
         ),
         max_tokens=128,
         capabilities=Capabilities(input=("text",), max_tokens=4096),
@@ -920,10 +925,7 @@ def test_openai_completions_supplied_request_typed_adapter_overrides_stale_optio
         api="openai-completions",
         base_url="https://api.openai.test/v1",
         headers={"Authorization": "Bearer test-key"},
-        adapter_protocol=EndpointProtocolFeatures.from_raw(
-            {"cache": {"promptKey": "unsupported"}}
-        ),
-        adapter_options={SUPPORTS_PROMPT_CACHE_KEY: True},
+        adapter_config=OpenAICompletionsConfig(prompt_cache_key=False),
         capabilities=Capabilities(input=("text",), max_tokens=4096),
     )
 
@@ -960,10 +962,9 @@ def test_openai_completions_supplied_request_typed_dialect_overrides_stale_optio
         api="openai-completions",
         base_url="https://api.openai.test/v1",
         headers={"Authorization": "Bearer test-key"},
-        adapter_dialect=EndpointWireDialect.from_raw(
-            {"maxOutputTokensField": "max_completion_tokens"}
+        adapter_config=OpenAICompletionsConfig(
+            max_output_tokens_field="max_completion_tokens"
         ),
-        adapter_options={MAX_TOKENS_FIELD: "max_tokens"},
         max_tokens=128,
         capabilities=Capabilities(input=("text",), max_tokens=4096),
     )
@@ -1034,7 +1035,7 @@ def test_openai_completions_explicit_prompt_cache_key_reaches_sdk_payload(
             provider="custom-openai",
             api="openai-completions",
             base_url="https://api.openai.com/v1",
-            compat=Compat.from_raw({SUPPORTS_PROMPT_CACHE_KEY: True}),
+            adapter=OpenAICompletionsConfig(prompt_cache_key=True),
             models={
                 "gpt-test": Model(
                     id="gpt-test",
@@ -1131,9 +1132,7 @@ def test_openai_completions_typed_prompt_cache_key_unsupported_disables_payload(
             provider="custom-openai",
             api="openai-completions",
             base_url="https://api.openai.com/v1",
-            protocol=EndpointProtocolFeatures.from_raw(
-                {"cache": {"promptKey": "unsupported"}}
-            ),
+            adapter=OpenAICompletionsConfig(prompt_cache_key=False),
             models={
                 "gpt-test": Model(
                     id="gpt-test",
@@ -2289,9 +2288,7 @@ def _patch_resolved_request(
             if isinstance(option_max_tokens, int)
             else max_tokens
         )
-        resolved_compat = resolve_openai_completions_compat(
-            raw=compat,
-        )
+        adapter_config = _adapter_config_from_compat(compat)
         return resolve_provider_request(
             provider_api,
             _model,
@@ -2302,7 +2299,7 @@ def _patch_resolved_request(
                 api=provider_api,
                 base_url=base_url,
                 headers=headers,
-                adapter_options=resolved_compat,
+                adapter_config=adapter_config,
                 max_tokens=resolved_max_tokens,
                 capabilities=capabilities
                 or Capabilities(

@@ -8,12 +8,14 @@ from loushang.ai.auth.registry import OAuthProviderRegistry
 from loushang.ai.model import (
     Auth,
     Capabilities,
-    Compat,
     Defaults,
     Endpoint,
     Model,
+    OpenAICompletionsConfig,
     Pricing,
     Provider,
+    adapter_config_from_raw,
+    merge_adapter_config,
 )
 
 
@@ -150,8 +152,15 @@ def _native_endpoint_from_extension_dict(
     api = _optional_string(config.get("api")) or (existing_endpoint.api if existing_endpoint is not None else None)
     if api is None:
         raise ValueError(f'Provider {provider}, endpoint {endpoint_id}: "api" is required.')
-    compat = Compat.from_raw(_optional_mapping(config.get("compat")))
     defaults = Defaults.from_raw(_optional_mapping(config.get("defaults")))
+    adapter = merge_adapter_config(
+        existing_endpoint.adapter if existing_endpoint is not None else None,
+        _adapter_config_from_native_raw(
+            api,
+            _optional_mapping(config.get("adapter"))
+            or _optional_mapping(config.get("compat")),
+        ),
+    )
     endpoint = Endpoint(
         id=endpoint_id,
         api=api,
@@ -171,20 +180,30 @@ def _native_endpoint_from_extension_dict(
             config.get("auth") if "auth" in config else config.get("authOverride")
         )
         or (existing_endpoint.auth if existing_endpoint is not None else None),
-        compat=(existing_endpoint.compat if existing_endpoint is not None else Compat()).merged(compat),
+        adapter=adapter,
         defaults=(existing_endpoint.defaults if existing_endpoint is not None else Defaults()).merged(defaults),
     )
     models_raw = config.get("models")
     if models_raw is None:
         models = dict(existing_endpoint.models) if existing_endpoint is not None else {}
     else:
-        models = _native_models_from_extension_dict(provider=provider, endpoint=endpoint_id, models=models_raw)
+        models = _native_models_from_extension_dict(
+            provider=provider,
+            endpoint=endpoint_id,
+            endpoint_api=api,
+            models=models_raw,
+        )
     if models:
         endpoint = replace(endpoint, models={model_id: endpoint.bind_model(model) for model_id, model in models.items()})
     return endpoint
 
 
-def _native_models_from_extension_dict(provider: str, endpoint: str, models: object) -> dict[str, Model]:
+def _native_models_from_extension_dict(
+    provider: str,
+    endpoint: str,
+    endpoint_api: str,
+    models: object,
+) -> dict[str, Model]:
     if not isinstance(models, Mapping):
         raise TypeError(f'Provider {provider}, endpoint {endpoint}: "models" must be a dict.')
     parsed: dict[str, Model] = {}
@@ -208,10 +227,41 @@ def _native_models_from_extension_dict(provider: str, endpoint: str, models: obj
             last_updated=_optional_string(raw.get("lastUpdated")),
             capabilities=Capabilities.from_raw(raw),
             pricing=Pricing.from_raw(_optional_mapping(raw.get("pricing")) or _optional_mapping(raw.get("cost"))),
-            compat=Compat.from_raw(_optional_mapping(raw.get("compat"))),
+            adapter=_adapter_config_from_native_raw(
+                endpoint_api,
+                _optional_mapping(raw.get("adapter"))
+                or _optional_mapping(raw.get("compat")),
+            ),
             defaults=Defaults.from_raw(_optional_mapping(raw.get("defaults"))),
         )
     return parsed
+
+
+def _adapter_config_from_native_raw(api: str, raw: Mapping[str, object] | None):
+    if raw is None:
+        return None
+    if api == "openai-completions" and any(
+        key.startswith("supports") or key in {"maxTokensField", "thinkingFormat"}
+        for key in raw
+    ):
+        return OpenAICompletionsConfig.from_raw(
+            {
+                new_key: raw[old_key]
+                for old_key, new_key in {
+                    "supportsStore": "store",
+                    "supportsDeveloperRole": "developerRole",
+                    "supportsUsageInStreaming": "streamingUsage",
+                    "supportsReasoningEffort": "reasoningEffort",
+                    "supportsStrictMode": "strictSchema",
+                    "supportsPromptCacheKey": "promptCacheKey",
+                    "supportsLongCacheRetention": "longCacheRetention",
+                    "maxTokensField": "maxOutputTokensField",
+                    "thinkingFormat": "reasoningFormat",
+                }.items()
+                if old_key in raw and raw[old_key] is not None
+            }
+        )
+    return adapter_config_from_raw(api, raw)
 
 
 def _auth_from_native_raw(raw: object) -> Auth | None:

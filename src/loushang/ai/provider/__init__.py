@@ -14,13 +14,11 @@ from loushang.ai.provider.resolution import (
 )
 from loushang.ai.provider.runtime import start_provider_runtime
 from loushang.ai.provider.runtime_config import (
-    AdapterRuntimeConfig,
     AdapterRuntimeConfigResolver,
 )
 
 __all__ = [
     "ApiProvider",
-    "AdapterRuntimeConfig",
     "AdapterRuntimeConfigResolver",
     "CancellationSignal",
     "ProviderRequest",

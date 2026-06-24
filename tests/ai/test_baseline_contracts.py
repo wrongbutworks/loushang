@@ -66,6 +66,6 @@ def test_builtin_provider_registration_stays_on_core_protocol_adapters() -> None
 
     register_builtin_ai_providers(registry)
 
-    assert tuple(sorted(provider.api for provider in registry.list_api_providers())) == (
-        REGISTERED_CORE_PROVIDER_APIS
-    )
+    assert tuple(
+        sorted(provider.api for provider in registry.list_api_providers())
+    ) == (REGISTERED_CORE_PROVIDER_APIS)
