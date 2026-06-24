@@ -63,7 +63,24 @@ def resolve_model_endpoint(
 
 def has_bound_endpoint_context(model: Model) -> bool:
     model_api = getattr(model, "api", None)
-    return isinstance(model_api, str) and bool(model_api)
+    if not isinstance(model_api, str) or not model_api:
+        return False
+    if (
+        getattr(model, "base_url", None)
+        or getattr(model, "base_url_env", None)
+        or getattr(model, "region", None)
+        or getattr(model, "lane", None)
+        or getattr(model, "preferred_endpoint", False)
+        or getattr(model, "auth", None) is not None
+    ):
+        return True
+    transport = getattr(model, "transport", None)
+    if isinstance(transport, EndpointTransport) and transport.to_raw():
+        return True
+    routing = getattr(model, "routing", None)
+    if isinstance(routing, EndpointRouting) and routing.to_raw():
+        return True
+    return False
 
 
 def _endpoint_snapshot_from_model(model: Model) -> Endpoint:
@@ -114,24 +131,31 @@ def _normalize_endpoint(
     *,
     provider_auth: Auth | None = None,
 ) -> Endpoint:
-    endpoint_auth = endpoint.auth if endpoint.auth is not None else provider_auth
     normalized_endpoint = replace(
         endpoint,
         _provider_key=provider_id,
-        auth=endpoint_auth,
     )
     if not normalized_endpoint.models:
         return normalized_endpoint
     return replace(
         normalized_endpoint,
         models={
-            model_id: _model_with_effective_context(model, normalized_endpoint)
+            model_id: _model_with_effective_context(
+                model,
+                normalized_endpoint,
+                provider_auth=provider_auth,
+            )
             for model_id, model in normalized_endpoint.models.items()
         },
     )
 
 
-def _model_with_effective_context(model: Model, endpoint: Endpoint) -> Model:
+def _model_with_effective_context(
+    model: Model,
+    endpoint: Endpoint,
+    *,
+    provider_auth: Auth | None = None,
+) -> Model:
     transport = EndpointTransport.from_raw(
         _deep_merge_raw_mapping(endpoint.transport.to_raw(), model.transport.to_raw())
     )
@@ -148,7 +172,7 @@ def _model_with_effective_context(model: Model, endpoint: Endpoint) -> Model:
         region=endpoint.region,
         lane=endpoint.lane,
         preferred_endpoint=endpoint.preferred,
-        auth=model.auth if model.auth is not None else endpoint.auth,
+        auth=model.auth if model.auth is not None else endpoint.auth or provider_auth,
         adapter=adapter,
         defaults=endpoint.defaults.merged(model.defaults),
         transport=transport,
@@ -168,6 +192,31 @@ def _deep_merge_raw_mapping(
             continue
         merged[key] = value
     return merged
+
+
+def _infer_endpoint_auth_explicit(
+    providers: dict[str, Provider],
+) -> set[tuple[str, str]]:
+    explicit: set[tuple[str, str]] = set()
+    for provider_id, provider in providers.items():
+        for endpoint_id, endpoint in provider.endpoints.items():
+            if endpoint.auth is not None:
+                explicit.add((provider_id, endpoint_id))
+    return explicit
+
+
+def _infer_model_auth_explicit(
+    providers: dict[str, Provider],
+) -> set[tuple[str, str, str]]:
+    explicit: set[tuple[str, str, str]] = set()
+    for provider_id, provider in providers.items():
+        provider_auth = provider.auth
+        for endpoint_id, endpoint in provider.endpoints.items():
+            inherited_auth = endpoint.auth if endpoint.auth is not None else provider_auth
+            for model_id, model in endpoint.models.items():
+                if model.auth is not None and model.auth != inherited_auth:
+                    explicit.add((provider_id, endpoint_id, model_id))
+    return explicit
 
 
 def resolve_model_api(
@@ -293,8 +342,16 @@ class ModelRegistry:
         self._providers = _normalize_providers(dict(providers or {}))
         self._endpoints: dict[tuple[str, str], Endpoint] = {}
         self._models: dict[tuple[str, str, str], Model] = {}
-        self._endpoint_auth_explicit = set(endpoint_auth_explicit or ())
-        self._model_auth_explicit = set(model_auth_explicit or ())
+        self._endpoint_auth_explicit = (
+            set(endpoint_auth_explicit)
+            if endpoint_auth_explicit is not None
+            else _infer_endpoint_auth_explicit(self._providers)
+        )
+        self._model_auth_explicit = (
+            set(model_auth_explicit)
+            if model_auth_explicit is not None
+            else _infer_model_auth_explicit(self._providers)
+        )
         self._rebuild_index()
 
     @property
@@ -317,6 +374,8 @@ class ModelRegistry:
 
     def replace_providers(self, providers: dict[str, Provider]) -> None:
         self._providers = _normalize_providers(dict(providers))
+        self._endpoint_auth_explicit = _infer_endpoint_auth_explicit(self._providers)
+        self._model_auth_explicit = _infer_model_auth_explicit(self._providers)
         self._rebuild_index()
 
     def register_provider(self, provider: Provider) -> None:

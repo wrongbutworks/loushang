@@ -572,11 +572,11 @@ def _build_registry(raw: dict[str, Any]) -> ModelRegistry:
             endpoint_specific_auth_raw = _auth_raw(endpoint_raw)
             if endpoint_specific_auth_raw is not None:
                 endpoint_auth_explicit.add((provider_id, endpoint_id))
-            endpoint_auth_raw = _merge_auth_raw(
+            effective_endpoint_auth_raw = _merge_auth_raw(
                 provider_auth_raw,
                 endpoint_specific_auth_raw,
             )
-            endpoint_auth = Auth.from_raw(endpoint_auth_raw)
+            endpoint_auth = Auth.from_raw(endpoint_specific_auth_raw)
             endpoint_adapter_raw = _adapter_raw(endpoint_raw.get("adapter"))
             endpoint_adapter = adapter_config_from_raw(
                 endpoint_api, endpoint_adapter_raw
@@ -614,7 +614,7 @@ def _build_registry(raw: dict[str, Any]) -> ModelRegistry:
                 if model_auth_raw is not None:
                     model_auth_explicit.add((provider_id, endpoint.id, model_id))
                 model_auth = Auth.from_raw(
-                    _merge_auth_raw(endpoint_auth_raw, model_auth_raw)
+                    _merge_auth_raw(effective_endpoint_auth_raw, model_auth_raw)
                 )
                 model_adapter = _merged_adapter_config(
                     endpoint.api,

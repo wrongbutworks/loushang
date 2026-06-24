@@ -44,7 +44,7 @@ def _registry(
 
 def test_current_model_login_uses_provider_scope_for_provider_auth() -> None:
     auth = Auth(kind="oauth")
-    registry, model = _registry(provider_auth=auth, endpoint_auth=auth)
+    registry, model = _registry(provider_auth=auth)
 
     target = resolve_auth_login_target(None, current_model=model, registry=registry)
 
@@ -161,6 +161,81 @@ def test_loaded_endpoint_explicit_same_auth_still_uses_endpoint_scope(tmp_path) 
         tmp_path,
         provider_auth=oauth_auth,
         endpoint_auth=oauth_auth,
+    )
+    model = registry.get_model("demo", "responses", "chat")
+
+    target = resolve_auth_login_target(None, current_model=model, registry=registry)
+
+    assert target.scope == "endpoint"
+
+
+def test_provider_raw_round_trip_keeps_inherited_auth_at_provider_scope(
+    tmp_path,
+) -> None:
+    oauth_auth = {"kind": "oauth"}
+    registry = _loaded_registry(tmp_path, provider_auth=oauth_auth)
+    provider = registry.get_provider("demo")
+    assert provider is not None
+    raw = {"providers": {"demo": provider.to_raw()}}
+    model_raw = raw["providers"]["demo"]["endpoints"]["responses"]["models"]["chat"]
+    assert isinstance(model_raw, dict)
+    assert "auth" not in model_raw
+    path = tmp_path / "roundtrip.json"
+    path.write_text(json.dumps(raw), encoding="utf-8")
+    reloaded = load_model_registry_from_file(path)
+    model = reloaded.get_model("demo", "responses", "chat")
+
+    target = resolve_auth_login_target(None, current_model=model, registry=reloaded)
+
+    assert target.scope == "provider"
+
+
+def test_replace_providers_recomputes_explicit_auth_scope(tmp_path) -> None:
+    oauth_auth = {"kind": "oauth"}
+    registry = _loaded_registry(
+        tmp_path,
+        provider_auth=oauth_auth,
+        endpoint_auth=oauth_auth,
+    )
+    replacement = Provider(
+        id="demo",
+        auth=Auth(kind="oauth"),
+        endpoints={
+            "responses": Endpoint(
+                id="responses",
+                provider="demo",
+                api="demo-api",
+                models={"chat": Model(id="chat", provider="demo", endpoint="responses")},
+            )
+        },
+    )
+
+    registry.replace_providers({"demo": replacement})
+    model = registry.get_model("demo", "responses", "chat")
+    target = resolve_auth_login_target(None, current_model=model, registry=registry)
+
+    assert target.scope == "provider"
+
+
+def test_programmatic_endpoint_auth_same_as_provider_keeps_endpoint_scope() -> None:
+    auth = Auth(kind="oauth")
+    registry = ModelRegistry()
+    registry.register_provider(
+        Provider(
+            id="demo",
+            auth=auth,
+            endpoints={
+                "responses": Endpoint(
+                    id="responses",
+                    provider="demo",
+                    api="demo-api",
+                    auth=auth,
+                    models={
+                        "chat": Model(id="chat", provider="demo", endpoint="responses")
+                    },
+                )
+            },
+        )
     )
     model = registry.get_model("demo", "responses", "chat")
 

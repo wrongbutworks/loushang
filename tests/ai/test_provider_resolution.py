@@ -204,6 +204,7 @@ def test_ad_hoc_model_adapter_merges_with_registered_endpoint_adapter() -> None:
         id="ad-hoc",
         provider="custom",
         endpoint="openai-completions",
+        api="openai-completions",
         adapter=OpenAICompletionsConfig(reasoning_format="moonshot"),
     )
 
@@ -217,6 +218,46 @@ def test_ad_hoc_model_adapter_merges_with_registered_endpoint_adapter() -> None:
     assert resolved.adapter_config.developer_role is False
     assert resolved.adapter_config.max_output_tokens_field == "max_tokens"
     assert resolved.adapter_config.reasoning_format == "moonshot"
+
+
+def test_api_only_ad_hoc_model_uses_default_registry_endpoint(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    endpoint = Endpoint(
+        id="openai-responses",
+        provider="custom",
+        api="openai-responses",
+        base_url="https://example.test/responses",
+        auth=Auth(api_key_env="TEST_API_KEY"),
+        models={
+            "ad-hoc": Model(
+                id="ad-hoc",
+                provider="custom",
+                endpoint="openai-responses",
+            )
+        },
+    )
+    registry = ModelRegistry.from_providers(
+        {"custom": Provider(id="custom", endpoints={endpoint.id: endpoint})}
+    )
+    monkeypatch.setattr(
+        "loushang.ai.provider.resolution.get_default_model_registry",
+        lambda: registry,
+    )
+    caller_model = Model(
+        id="ad-hoc",
+        provider="custom",
+        endpoint="openai-responses",
+        api="openai-responses",
+    )
+
+    resolved = resolve_request_for_model(
+        caller_model,
+        options=_Options(api_key="token"),
+    )
+
+    assert resolved.base_url == "https://example.test/responses"
+    assert resolved.headers == {"Authorization": "Bearer token"}
 
 
 def test_bound_model_endpoint_snapshot_preserves_adapter_transport_and_routing() -> (

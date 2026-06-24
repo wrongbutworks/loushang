@@ -193,10 +193,12 @@ def resolve_request_for_model(
     if endpoint is None and has_bound_endpoint_context(model):
         endpoint = resolve_model_endpoint(model)
     request_model = model
+    request_model_has_effective_context = False
     if endpoint is not None:
         endpoint_model = endpoint.get_model(model.id)
         if endpoint_model is not None:
             request_model = endpoint_model
+            request_model_has_effective_context = True
     use_model_overrides = _should_apply_model_request_overrides(
         model,
         endpoint,
@@ -209,6 +211,7 @@ def resolve_request_for_model(
         request_model,
         endpoint,
         request_model=request_model,
+        request_model_has_effective_context=request_model_has_effective_context,
         override_model=override_model,
     )
     base_url = _resolve_base_url(resolved_endpoint, resolved_env)
@@ -319,6 +322,7 @@ def _build_resolved_endpoint(
     endpoint: Endpoint | None,
     *,
     request_model: Model | None = None,
+    request_model_has_effective_context: bool = False,
     override_model: Model | None = None,
 ) -> ResolvedEndpoint:
     if endpoint is None:
@@ -366,7 +370,7 @@ def _build_resolved_endpoint(
     adapter_config = endpoint_adapter_config
     request_adapter = getattr(request_model or model, "adapter", None)
     if request_adapter is not None:
-        if request_model is not None and has_bound_endpoint_context(request_model):
+        if request_model_has_effective_context:
             adapter_config = request_adapter
         else:
             adapter_config = merge_adapter_config(

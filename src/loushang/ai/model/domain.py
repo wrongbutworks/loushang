@@ -853,14 +853,18 @@ class Auth:
         )
 
     def to_raw(self) -> dict[str, object]:
-        return {
+        raw: dict[str, object] = {
             "kind": self.kind,
-            "apiKeyEnv": self.api_key_env,
-            "apiKeyEnvs": list(self.api_key_envs),
             "header": self.header,
             "prefix": self.prefix,
-            "extraHeaders": dict(self.extra_headers),
         }
+        if self.api_key_env is not None:
+            raw["apiKeyEnv"] = self.api_key_env
+        if self.api_key_envs:
+            raw["apiKeyEnvs"] = list(self.api_key_envs)
+        if self.extra_headers:
+            raw["extraHeaders"] = dict(self.extra_headers)
+        return raw
 
 
 @dataclass(frozen=True)
@@ -1185,38 +1189,7 @@ class Endpoint:
         return sorted(self.models.values(), key=lambda item: item.id)
 
     def to_raw(self) -> dict[str, object]:
-        raw: dict[str, object] = {
-            "api": self.api,
-            "defaults": self.defaults.to_raw(),
-            "models": {
-                model_id: model.to_raw() for model_id, model in self.models.items()
-            },
-        }
-        if self.name is not None:
-            raw["displayName"] = self.name
-        if self.base_url is not None:
-            raw["baseUrl"] = self.base_url
-        if self.base_url_env is not None:
-            raw["baseUrlEnv"] = self.base_url_env
-        if self.region is not None:
-            raw["region"] = self.region
-        if self.lane is not None:
-            raw["lane"] = self.lane
-        if self.preferred:
-            raw["preferred"] = self.preferred
-        if self.docs is not None:
-            raw["docs"] = self.docs
-        if self.auth is not None:
-            raw["auth"] = self.auth.to_raw()
-        if self.adapter is not None:
-            raw["adapter"] = self.adapter.to_raw()
-        transport_raw = self.transport.to_raw()
-        if transport_raw:
-            raw["transport"] = transport_raw
-        routing_raw = self.routing.to_raw()
-        if routing_raw:
-            raw["routing"] = routing_raw
-        return raw
+        return _endpoint_to_raw(self)
 
 
 @dataclass(frozen=True)
@@ -1248,7 +1221,7 @@ class Provider:
     def to_raw(self) -> dict[str, object]:
         raw: dict[str, object] = {
             "endpoints": {
-                endpoint_id: endpoint.to_raw()
+                endpoint_id: _endpoint_to_raw(endpoint, provider_auth=self.auth)
                 for endpoint_id, endpoint in self.endpoints.items()
             }
         }
@@ -1259,6 +1232,58 @@ class Provider:
         if self.auth is not None:
             raw["auth"] = self.auth.to_raw()
         return raw
+
+
+def _endpoint_to_raw(
+    endpoint: Endpoint,
+    *,
+    provider_auth: Auth | None = None,
+) -> dict[str, object]:
+    inherited_model_auth = endpoint.auth if endpoint.auth is not None else provider_auth
+    raw: dict[str, object] = {
+        "api": endpoint.api,
+        "defaults": endpoint.defaults.to_raw(),
+        "models": {
+            model_id: _model_to_raw(model, inherited_auth=inherited_model_auth)
+            for model_id, model in endpoint.models.items()
+        },
+    }
+    if endpoint.name is not None:
+        raw["displayName"] = endpoint.name
+    if endpoint.base_url is not None:
+        raw["baseUrl"] = endpoint.base_url
+    if endpoint.base_url_env is not None:
+        raw["baseUrlEnv"] = endpoint.base_url_env
+    if endpoint.region is not None:
+        raw["region"] = endpoint.region
+    if endpoint.lane is not None:
+        raw["lane"] = endpoint.lane
+    if endpoint.preferred:
+        raw["preferred"] = endpoint.preferred
+    if endpoint.docs is not None:
+        raw["docs"] = endpoint.docs
+    if endpoint.auth is not None:
+        raw["auth"] = endpoint.auth.to_raw()
+    if endpoint.adapter is not None:
+        raw["adapter"] = endpoint.adapter.to_raw()
+    transport_raw = endpoint.transport.to_raw()
+    if transport_raw:
+        raw["transport"] = transport_raw
+    routing_raw = endpoint.routing.to_raw()
+    if routing_raw:
+        raw["routing"] = routing_raw
+    return raw
+
+
+def _model_to_raw(
+    model: Model,
+    *,
+    inherited_auth: Auth | None = None,
+) -> dict[str, object]:
+    raw = model.to_raw()
+    if inherited_auth is not None and model.auth == inherited_auth:
+        raw.pop("auth", None)
+    return raw
 
 
 def _parse_modalities(raw: object) -> tuple[Modality, ...]:

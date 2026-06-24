@@ -134,6 +134,26 @@ def test_no_legacy_compat_model_contract_types_remain() -> None:
             assert token not in text, (path, token)
 
 
+def test_model_loader_diagnostics_api_is_removed() -> None:
+    import loushang.ai.model as model_module
+    import loushang.ai.model.loader as loader_module
+
+    removed_names = (
+        "ModelRegistryLoadDiagnostic",
+        "ModelRegistryLoadResult",
+        "load_builtin_model_registry_with_diagnostics",
+        "load_layered_model_registry_with_diagnostics",
+        "load_model_registry_from_directory_with_diagnostics",
+        "load_model_registry_from_file_with_diagnostics",
+        "load_model_registry_with_diagnostics",
+    )
+
+    for name in removed_names:
+        assert name not in model_module.__all__
+        assert not hasattr(model_module, name)
+        assert not hasattr(loader_module, name)
+
+
 def test_builtin_model_file_is_models_json_without_schema_version() -> None:
     models_json = MODEL_DIR / "models.json"
     legacy_catalog = MODEL_DIR / "models.curated.v2.json"
