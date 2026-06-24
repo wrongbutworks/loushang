@@ -274,6 +274,37 @@ def test_complete_dispatches_to_invoke_raw_provider(tmp_path: Path) -> None:
 
 @pytest.mark.xfail(
     strict=True,
+    reason="AIF-008 dispatches streaming provider raw calls through invoke_raw",
+)
+def test_stream_dispatches_to_invoke_raw_provider(tmp_path: Path) -> None:
+    async def run() -> None:
+        path = tmp_path / "company.json"
+        _write_custom_registry(path, stream=True)
+        model = load_model_registry_from_file(path).get_model(
+            "company-aif002",
+            "anthropic-messages",
+            "company-chat",
+        )
+        provider = _InvokeRawOnlyProvider()
+        provider_registry = ApiProviderRegistry()
+        provider_registry.register_api_provider(provider)
+
+        event_stream = await ai.stream(
+            model,
+            {"messages": [{"role": "user", "content": "hello"}]},
+            CallOptions(api_key="test-key"),
+            registry=provider_registry,
+        )
+        async for _event in event_stream:
+            pass
+
+        assert provider.modes == ["stream"]
+
+    asyncio.run(run())
+
+
+@pytest.mark.xfail(
+    strict=True,
     reason="AIF-008 passes ProviderRequest.mode through complete() and stream()",
 )
 def test_complete_and_stream_pass_distinct_provider_modes(tmp_path: Path) -> None:
