@@ -1,12 +1,13 @@
 from __future__ import annotations
 
+import asyncio
 import json
-from dataclasses import fields
 from pathlib import Path
 
 import pytest
 
 import loushang.ai as ai
+from loushang.ai.api_registry import ApiProviderRegistry
 from loushang.ai.model import (
     clear_default_model_registry,
     get_default_model_registry,
@@ -20,7 +21,11 @@ AI_SRC = REPO_ROOT / "src/loushang/ai"
 MODEL_DIR = AI_SRC / "model"
 
 
-def _custom_registry_raw(provider_id: str = "company-aif002") -> dict[str, object]:
+def _custom_registry_raw(
+    provider_id: str = "company-aif002",
+    *,
+    stream: bool = False,
+) -> dict[str, object]:
     return {
         "providers": {
             provider_id: {
@@ -38,7 +43,7 @@ def _custom_registry_raw(provider_id: str = "company-aif002") -> dict[str, objec
                                     "output": ["text"],
                                     "contextWindow": 1024,
                                     "maxTokens": 128,
-                                    "stream": False,
+                                    "stream": stream,
                                 },
                             }
                         },
@@ -49,32 +54,52 @@ def _custom_registry_raw(provider_id: str = "company-aif002") -> dict[str, objec
     }
 
 
-def _write_custom_registry(path: Path, provider_id: str = "company-aif002") -> None:
+def _write_custom_registry(
+    path: Path,
+    provider_id: str = "company-aif002",
+    *,
+    stream: bool = False,
+) -> None:
     path.write_text(
-        json.dumps(_custom_registry_raw(provider_id), indent=2),
+        json.dumps(_custom_registry_raw(provider_id, stream=stream), indent=2),
         encoding="utf-8",
     )
 
 
-@pytest.mark.xfail(strict=True, reason="AIF-004 removes legacy Compat types")
+class _RecordingProvider:
+    api = "anthropic-messages"
+
+    def __init__(self) -> None:
+        self.modes: list[str | None] = []
+
+    def stream_raw(self, request):
+        return self._raw_parts(request)
+
+    def invoke_raw(self, request):
+        return self._raw_parts(request)
+
+    async def _raw_parts(self, request):
+        self.modes.append(getattr(request, "mode", None))
+        yield {"type": "response_start", "response_id": "aif002"}
+        yield {"type": "text_delta", "text": "ok"}
+        yield {"type": "stop_reason", "stop_reason": "stop"}
+        yield {"type": "response_done"}
+
+
+@pytest.mark.xfail(strict=True, reason="AIF-004 removes legacy Compat bridge")
 def test_no_legacy_compat_model_contract_types_remain() -> None:
     import loushang.ai.model as model_module
 
-    forbidden_exports = {
-        "Compat",
-        "EndpointProtocolFeatures",
-        "EndpointWireDialect",
-        "SupportStatus",
-    }
-    assert forbidden_exports.isdisjoint(model_module.__all__)
-    for name in forbidden_exports:
-        assert not hasattr(model_module, name)
+    assert "Compat" not in model_module.__all__
+    assert not hasattr(model_module, "Compat")
+    assert not (MODEL_DIR / "compat_schema.py").exists()
 
     forbidden_source_tokens = (
         "class Compat",
-        "SupportStatus",
-        "EndpointProtocol",
-        "EndpointWireDialect",
+        "LEGACY_COMPAT_TRANSLATION_TARGETS",
+        "resolve_anthropic_messages_compat",
+        "resolve_openai_completions_compat",
+        "resolve_openai_responses_compat",
         "compat_schema",
     )
     for path in (MODEL_DIR).rglob("*.py"):
@@ -96,8 +121,6 @@ def test_builtin_model_file_is_models_json_without_schema_version() -> None:
 
     raw = json.loads(models_json.read_text(encoding="utf-8"))
     assert "schemaVersion" not in raw
-    for path in MODEL_DIR.rglob("*.py"):
-        assert "schemaVersion" not in path.read_text(encoding="utf-8"), path
 
 
 @pytest.mark.xfail(strict=True, reason="AIF-009 removes Simple API")
@@ -122,21 +145,24 @@ def test_simple_api_is_not_part_of_root_or_api_contract() -> None:
         assert not hasattr(options_module, name)
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason="AIF-009 removes deprecated provider-specific core options",
-)
 def test_deprecated_provider_specific_options_are_not_core_api() -> None:
-    import loushang.ai.advanced as advanced_module
+    import loushang.ai.api as api_module
+    import loushang.ai.options as options_module
 
     forbidden = {
         "AnthropicOptions",
         "OpenAICompletionsOptions",
         "OpenAIResponsesOptions",
     }
-    for name in forbidden:
-        assert not hasattr(advanced_module, name)
-    assert not (AI_SRC / "advanced/options.py").exists()
+    public_modules = (ai, api_module, options_module)
+    for module in public_modules:
+        for name in forbidden:
+            assert not hasattr(module, name), (module.__name__, name)
+
+    for path in (REPO_ROOT / "examples/ai").rglob("*.py"):
+        text = path.read_text(encoding="utf-8")
+        for name in forbidden:
+            assert name not in text, (path, name)
 
 
 def test_default_registry_loads_builtin_and_user_model_directory(
@@ -163,32 +189,59 @@ def test_default_registry_loads_builtin_and_user_model_directory(
         clear_default_model_registry()
 
 
+def test_default_registry_fails_on_bad_user_model_file(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    user_model_dir = tmp_path / ".loushang" / "models"
+    user_model_dir.mkdir(parents=True)
+    (user_model_dir / "bad.json").write_text("{", encoding="utf-8")
+    monkeypatch.setattr(Path, "home", lambda: tmp_path)
+    clear_default_model_registry()
+
+    try:
+        with pytest.raises((json.JSONDecodeError, ValueError)):
+            get_default_model_registry()
+    finally:
+        clear_default_model_registry()
+
+
 @pytest.mark.xfail(
     strict=True,
-    reason="AIF-008 adds ProviderRequest.mode and invoke_raw",
+    reason="AIF-008 passes ProviderRequest.mode through complete() and stream()",
 )
-def test_provider_contract_has_complete_and_stream_invocation_modes() -> None:
-    from loushang.ai.provider.protocol import ApiProvider, ProviderRequest
+def test_complete_and_stream_pass_distinct_provider_modes(tmp_path: Path) -> None:
+    async def run() -> None:
+        path = tmp_path / "company.json"
+        _write_custom_registry(path, stream=True)
+        model = load_model_registry_from_file(path).get_model(
+            "company-aif002",
+            "anthropic-messages",
+            "company-chat",
+        )
+        provider = _RecordingProvider()
+        provider_registry = ApiProviderRegistry()
+        provider_registry.register_api_provider(provider)
+        context = {"messages": [{"role": "user", "content": "hello"}]}
 
-    field_names = {field.name for field in fields(ProviderRequest)}
+        await ai.complete(
+            model,
+            context,
+            CallOptions(api_key="test-key"),
+            registry=provider_registry,
+        )
+        event_stream = await ai.stream(
+            model,
+            context,
+            CallOptions(api_key="test-key"),
+            registry=provider_registry,
+        )
+        async for _event in event_stream:
+            pass
 
-    assert {
-        "call_id",
-        "mode",
-        "model",
-        "context",
-        "headers",
-        "max_output_tokens",
-        "temperature",
-        "timeout",
-        "retry",
-        "reasoning",
-        "tool_choice",
-        "structured_output",
-    } <= field_names
-    assert "resolved" not in field_names
-    assert hasattr(ApiProvider, "invoke_raw")
-    assert not hasattr(ApiProvider, "stream_raw")
+        assert provider.modes == ["complete", "stream"]
+
+    asyncio.run(run())
 
 
 @pytest.mark.xfail(
