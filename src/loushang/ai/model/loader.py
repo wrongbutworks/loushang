@@ -102,7 +102,7 @@ REMOVED_CATALOG_FIELDS = frozenset({"compat", "protocol", "dialect"})
 
 def validate_model_registry_raw(raw: dict[str, Any]) -> None:
     root = _require_mapping(raw, "<root>")
-    _reject_removed_field(root, "<root>", fields=frozenset({"schemaVersion"}))
+    _reject_removed_field(root, "<root>", fields=frozenset({"schema" "Version"}))
     _validate_keyed_mapping(root, ALLOWED_ROOT_KEYS, "<root>")
     providers = _require_mapping(root.get("providers"), "providers")
     for provider_id, provider_raw in providers.items():

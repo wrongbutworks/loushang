@@ -11,6 +11,7 @@ This directory keeps the current architecture notes for the frozen
 - [ARD-001: Async Public Streaming Surface](./ARD-001-async-public-streaming-surface.md)
 - [ARD-002: AI Coverage Gate Scope](./ARD-002-ai-coverage-gate-scope.md)
 - [ARD-003: AI Core Freeze Contract](./ARD-003-core-freeze-contract.md)
+- [Core Freeze Verification](./core-freeze-verification.md)
 - [Core Freeze Target Checklist](./core-freeze-target-checklist.md)
 - [Core Provider Adapter Contract Matrix](./core-provider-adapter-contract-matrix.md)
 - [Trace Events](./loushang-ai-trace-events.md)
