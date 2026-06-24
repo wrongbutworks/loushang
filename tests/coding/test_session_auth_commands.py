@@ -305,6 +305,41 @@ def test_incremental_register_model_auth_same_as_provider_keeps_model_scope() ->
     assert target.scope == "model"
 
 
+def test_reregister_normalized_endpoint_preserves_model_auth_scope() -> None:
+    auth = Auth(kind="oauth")
+    registry = ModelRegistry.from_providers(
+        {
+            "demo": Provider(
+                id="demo",
+                auth=auth,
+                endpoints={
+                    "responses": Endpoint(
+                        id="responses",
+                        provider="demo",
+                        api="demo-api",
+                        models={
+                            "chat": Model(
+                                id="chat",
+                                provider="demo",
+                                endpoint="responses",
+                                auth=auth,
+                            )
+                        },
+                    )
+                },
+            )
+        }
+    )
+    endpoint = registry.get_endpoint("demo", "responses")
+    assert endpoint is not None
+
+    registry.register_endpoint("demo", endpoint)
+    model = registry.get_model("demo", "responses", "chat")
+    target = resolve_auth_login_target(None, current_model=model, registry=registry)
+
+    assert target.scope == "model"
+
+
 def test_programmatic_endpoint_auth_same_as_provider_keeps_endpoint_scope() -> None:
     auth = Auth(kind="oauth")
     registry = ModelRegistry()
