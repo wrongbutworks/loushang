@@ -297,6 +297,110 @@ def _validate_adapter_keys(
         raise ValueError(f"adapter config has unknown keys: {unknown}")
 
 
+def _set_explicit_adapter_keys(
+    instance: object,
+    *,
+    attr_to_key: Mapping[str, str],
+    defaults: Mapping[str, object],
+    allowed_keys: frozenset[str],
+) -> None:
+    explicit_keys = getattr(instance, "_explicit_keys", None)
+    if explicit_keys is None:
+        explicit_keys = frozenset(
+            key
+            for attr, key in attr_to_key.items()
+            if getattr(instance, attr) != defaults[key]
+        )
+    else:
+        explicit_keys = frozenset(explicit_keys)
+        unknown = sorted(set(explicit_keys) - allowed_keys)
+        if unknown:
+            raise ValueError(f"adapter config has unknown explicit keys: {unknown}")
+    object.__setattr__(instance, "_explicit_keys", explicit_keys)
+
+
+def _adapter_override_raw(config: AdapterConfig) -> dict[str, object]:
+    explicit_keys = getattr(config, "_explicit_keys", None)
+    if not explicit_keys:
+        return {}
+    raw = config.to_raw()
+    return {key: raw[key] for key in explicit_keys if key in raw}
+
+
+_OPENAI_COMPLETIONS_ATTR_TO_KEY = {
+    "store": "store",
+    "developer_role": "developerRole",
+    "streaming_usage": "streamingUsage",
+    "max_output_tokens_field": "maxOutputTokensField",
+    "reasoning_effort": "reasoningEffort",
+    "reasoning_effort_map": "reasoningEffortMap",
+    "strict_schema": "strictSchema",
+    "prompt_cache_key": "promptCacheKey",
+    "long_cache_retention": "longCacheRetention",
+    "session_affinity_headers": "sessionAffinityHeaders",
+    "tool_result_name": "toolResultName",
+    "assistant_after_tool_result": "assistantAfterToolResult",
+    "thinking_as_text": "thinkingAsText",
+    "assistant_reasoning_content": "assistantReasoningContent",
+    "tool_stream": "toolStream",
+    "reasoning_format": "reasoningFormat",
+    "cache_control_format": "cacheControlFormat",
+    "extra_body": "extraBody",
+}
+_OPENAI_COMPLETIONS_DEFAULTS = {
+    "store": True,
+    "developerRole": True,
+    "streamingUsage": True,
+    "maxOutputTokensField": "max_completion_tokens",
+    "reasoningEffort": True,
+    "reasoningEffortMap": {},
+    "strictSchema": True,
+    "promptCacheKey": False,
+    "longCacheRetention": True,
+    "sessionAffinityHeaders": False,
+    "toolResultName": False,
+    "assistantAfterToolResult": False,
+    "thinkingAsText": False,
+    "assistantReasoningContent": False,
+    "toolStream": False,
+    "reasoningFormat": "openai",
+    "cacheControlFormat": None,
+    "extraBody": {},
+}
+
+
+_OPENAI_RESPONSES_ATTR_TO_KEY = {
+    "developer_role": "developerRole",
+    "assistant_after_tool_result": "assistantAfterToolResult",
+    "prompt_cache_key": "promptCacheKey",
+    "long_cache_retention": "longCacheRetention",
+    "session_id_header": "sessionIdHeader",
+    "session_affinity_headers": "sessionAffinityHeaders",
+}
+_OPENAI_RESPONSES_DEFAULTS = {
+    "developerRole": True,
+    "assistantAfterToolResult": False,
+    "promptCacheKey": True,
+    "longCacheRetention": True,
+    "sessionIdHeader": True,
+    "sessionAffinityHeaders": False,
+}
+
+
+_ANTHROPIC_MESSAGES_ATTR_TO_KEY = {
+    "fine_grained_tools": "fineGrainedTools",
+    "interleaved_thinking": "interleavedThinking",
+    "session_affinity_headers": "sessionAffinityHeaders",
+    "long_cache_retention": "longCacheRetention",
+}
+_ANTHROPIC_MESSAGES_DEFAULTS = {
+    "fineGrainedTools": None,
+    "interleavedThinking": None,
+    "sessionAffinityHeaders": False,
+    "longCacheRetention": True,
+}
+
+
 @dataclass(frozen=True)
 class OpenAICompletionsConfig:
     store: bool = True
@@ -317,6 +421,12 @@ class OpenAICompletionsConfig:
     reasoning_format: str | None = "openai"
     cache_control_format: str | None = None
     extra_body: dict[str, object] = field(default_factory=dict)
+    _explicit_keys: frozenset[str] | None = field(
+        default=None,
+        compare=False,
+        repr=False,
+        kw_only=True,
+    )
 
     def __post_init__(self) -> None:
         _normalize_optional_bool_attrs(
@@ -348,6 +458,12 @@ class OpenAICompletionsConfig:
             self,
             "extra_body",
             _extra_body_from_raw({"extraBody": self.extra_body}, "extraBody"),
+        )
+        _set_explicit_adapter_keys(
+            self,
+            attr_to_key=_OPENAI_COMPLETIONS_ATTR_TO_KEY,
+            defaults=_OPENAI_COMPLETIONS_DEFAULTS,
+            allowed_keys=OPENAI_COMPLETIONS_ADAPTER_KEYS,
         )
 
     @classmethod
@@ -419,6 +535,7 @@ class OpenAICompletionsConfig:
             if "cacheControlFormat" in raw
             else cls.cache_control_format,
             extra_body=_extra_body_from_raw(raw, "extraBody"),
+            _explicit_keys=frozenset(raw),
         )
 
     def to_raw(self) -> dict[str, object]:
@@ -453,6 +570,12 @@ class OpenAIResponsesConfig:
     long_cache_retention: bool = True
     session_id_header: bool = True
     session_affinity_headers: bool = False
+    _explicit_keys: frozenset[str] | None = field(
+        default=None,
+        compare=False,
+        repr=False,
+        kw_only=True,
+    )
 
     def __post_init__(self) -> None:
         _normalize_optional_bool_attrs(
@@ -463,6 +586,12 @@ class OpenAIResponsesConfig:
             "long_cache_retention",
             "session_id_header",
             "session_affinity_headers",
+        )
+        _set_explicit_adapter_keys(
+            self,
+            attr_to_key=_OPENAI_RESPONSES_ATTR_TO_KEY,
+            defaults=_OPENAI_RESPONSES_DEFAULTS,
+            allowed_keys=OPENAI_RESPONSES_ADAPTER_KEYS,
         )
 
     @classmethod
@@ -496,6 +625,7 @@ class OpenAIResponsesConfig:
                 "sessionAffinityHeaders",
                 cls.session_affinity_headers,
             ),
+            _explicit_keys=frozenset(raw),
         )
 
     def to_raw(self) -> dict[str, object]:
@@ -515,6 +645,12 @@ class AnthropicMessagesConfig:
     interleaved_thinking: bool | None = None
     session_affinity_headers: bool = False
     long_cache_retention: bool = True
+    _explicit_keys: frozenset[str] | None = field(
+        default=None,
+        compare=False,
+        repr=False,
+        kw_only=True,
+    )
 
     def __post_init__(self) -> None:
         _normalize_optional_bool_attrs(
@@ -523,6 +659,12 @@ class AnthropicMessagesConfig:
             "interleaved_thinking",
             "session_affinity_headers",
             "long_cache_retention",
+        )
+        _set_explicit_adapter_keys(
+            self,
+            attr_to_key=_ANTHROPIC_MESSAGES_ATTR_TO_KEY,
+            defaults=_ANTHROPIC_MESSAGES_DEFAULTS,
+            allowed_keys=ANTHROPIC_MESSAGES_ADAPTER_KEYS,
         )
 
     @classmethod
@@ -546,6 +688,7 @@ class AnthropicMessagesConfig:
                 "longCacheRetention",
                 cls.long_cache_retention,
             ),
+            _explicit_keys=frozenset(raw),
         )
 
     def to_raw(self) -> dict[str, object]:
@@ -606,7 +749,10 @@ def merge_adapter_config(
         return override
     if type(base) is not type(override):
         raise ValueError("model adapter config must match endpoint adapter type")
-    return type(base).from_raw({**base.to_raw(), **override.to_raw()})
+    override_raw = _adapter_override_raw(override)
+    if not override_raw:
+        return base
+    return type(base).from_raw({**base.to_raw(), **override_raw})
 
 
 @dataclass(frozen=True)

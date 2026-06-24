@@ -20,9 +20,9 @@
           "api": "openai-completions",
           "region": "cn",
           "docs": "https://www.kimi.com/code/docs/en/third-party-tools/other-coding-agents.html",
-          "compat": {
-            "thinkingFormat": "moonshot",
-            "supportsDeveloperRole": false
+          "adapter": {
+            "reasoningFormat": "moonshot",
+            "developerRole": false
           },
           "models": {
             "kimi-code": {
@@ -39,10 +39,10 @@
                 "cacheRead": 0,
                 "cacheWrite": 0
               },
-              "compat": {
-                "supportsUsageInStreaming": false,
-                "supportsReasoningEffort": false,
-                "supportsJsonSchemaStructuredOutput": true
+              "adapter": {
+                "streamingUsage": false,
+                "reasoningEffort": false,
+                "strictSchema": true
               },
               "capabilities": {
                 "reasoning": true,
@@ -75,10 +75,10 @@
                 "cacheRead": 0,
                 "cacheWrite": 0
               },
-              "compat": {
-                "supportsUsageInStreaming": false,
-                "supportsReasoningEffort": false,
-                "supportsJsonSchemaStructuredOutput": true
+              "adapter": {
+                "streamingUsage": false,
+                "reasoningEffort": false,
+                "strictSchema": true
               },
               "capabilities": {
                 "reasoning": true,
@@ -106,9 +106,6 @@
           "api": "anthropic-messages",
           "region": "cn",
           "docs": "https://www.kimi.com/code/docs/en/",
-          "compat": {
-            "supportsDeveloperRole": false
-          },
           "models": {
             "kimi-code": {
               "displayName": "Kimi for Coding (Anthropic Compatible)",
@@ -123,11 +120,6 @@
                 "output": 0,
                 "cacheRead": 0,
                 "cacheWrite": 0
-              },
-              "compat": {
-                "supportsUsageInStreaming": false,
-                "supportsReasoningEffort": false,
-                "supportsJsonSchemaStructuredOutput": true
               },
               "capabilities": {
                 "reasoning": true,
@@ -159,11 +151,6 @@
                 "output": 0,
                 "cacheRead": 0,
                 "cacheWrite": 0
-              },
-              "compat": {
-                "supportsUsageInStreaming": false,
-                "supportsReasoningEffort": false,
-                "supportsJsonSchemaStructuredOutput": true
               },
               "capabilities": {
                 "reasoning": true,

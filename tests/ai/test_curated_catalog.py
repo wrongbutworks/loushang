@@ -92,6 +92,16 @@ def test_curated_catalog_uses_core_adapter_configs() -> None:
     assert adapters[("moonshot", "openai-completions")] is OpenAICompletionsConfig
 
 
+def test_minimax_anthropic_catalog_uses_sdk_base_url_and_short_cache() -> None:
+    registry = _load_curated_registry()
+    endpoint = registry.get_endpoint("minimax", "anthropic-messages")
+
+    assert endpoint is not None
+    assert endpoint.base_url == "https://api.minimax.io/anthropic"
+    assert isinstance(endpoint.adapter, AnthropicMessagesConfig)
+    assert endpoint.adapter.long_cache_retention is False
+
+
 def test_curated_openai_style_custom_base_urls_declare_adapter() -> None:
     raw = _load_curated_raw()
 

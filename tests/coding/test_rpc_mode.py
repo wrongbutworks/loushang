@@ -9,7 +9,13 @@ from types import SimpleNamespace
 
 import pytest
 
-from loushang.ai.model.domain import Capabilities, Compat, Endpoint, Model, Pricing
+from loushang.ai.model.domain import (
+    Capabilities,
+    Endpoint,
+    Model,
+    OpenAICompletionsConfig,
+    Pricing,
+)
 from loushang.ai.types import AssistantMessage, TextPart, Usage, UserMessage
 from loushang.coding.compaction import CompactionResult
 from loushang.coding.diagnostics import (
@@ -897,7 +903,7 @@ def test_rpc_mode_get_state_and_messages_serialize_current_session() -> None:
                     reasoning=True,
                 ),
                 pricing=Pricing(input=1.5, output=2.5, cache_read=0.1, cache_write=0.2),
-                compat=Compat(values={"supportsReasoningEffort": True}),
+                adapter=OpenAICompletionsConfig(reasoning_effort=True),
             )
         },
         endpoints={
@@ -953,7 +959,6 @@ def test_rpc_mode_get_state_and_messages_serialize_current_session() -> None:
             "cacheRead": 0.1,
             "cacheWrite": 0.2,
         },
-        "compat": {"supportsReasoningEffort": True},
     }
     assert "cwd" not in state_response["data"]
     assert "modelSelection" not in state_response["data"]
@@ -1856,7 +1861,7 @@ def test_rpc_mode_applies_control_commands_to_active_session() -> None:
                     reasoning=True,
                 ),
                 pricing=Pricing(input=3, output=4, cache_read=0.3, cache_write=0.4),
-                compat=Compat(values={"supportsReasoningEffort": True}),
+                adapter=OpenAICompletionsConfig(reasoning_effort=True),
             )
         },
         endpoints={
@@ -1918,7 +1923,6 @@ def test_rpc_mode_applies_control_commands_to_active_session() -> None:
                 "cacheRead": 0.3,
                 "cacheWrite": 0.4,
             },
-            "compat": {"supportsReasoningEffort": True},
         },
     }
     commands = [line["command"] for line in lines]
@@ -2109,7 +2113,7 @@ def test_rpc_mode_supports_queue_model_name_and_command_queries() -> None:
                     reasoning=False,
                 ),
                 pricing=Pricing(input=1, output=2, cache_read=0.1, cache_write=0.2),
-                compat=Compat(values={"supportsReasoningEffort": False}),
+                adapter=OpenAICompletionsConfig(reasoning_effort=False),
             ),
             ("openai", "gpt-5"): Model(
                 id="gpt-5",
@@ -2123,7 +2127,7 @@ def test_rpc_mode_supports_queue_model_name_and_command_queries() -> None:
                     reasoning=True,
                 ),
                 pricing=Pricing(input=5, output=15, cache_read=0.5, cache_write=0.8),
-                compat=Compat(values={"supportsReasoningEffort": True}),
+                adapter=OpenAICompletionsConfig(reasoning_effort=True),
             ),
         },
         endpoints={
@@ -2222,7 +2226,6 @@ def test_rpc_mode_supports_queue_model_name_and_command_queries() -> None:
                         "cacheRead": 0.1,
                         "cacheWrite": 0.2,
                     },
-                    "compat": {"supportsReasoningEffort": False},
                 },
                 {
                     "provider": "openai",
@@ -2240,7 +2243,6 @@ def test_rpc_mode_supports_queue_model_name_and_command_queries() -> None:
                         "cacheRead": 0.5,
                         "cacheWrite": 0.8,
                     },
-                    "compat": {"supportsReasoningEffort": True},
                 },
             ]
         },
@@ -3925,7 +3927,7 @@ def test_rpc_mode_supports_cycle_model_command() -> None:
                     reasoning=True,
                 ),
                 pricing=Pricing(input=5, output=15, cache_read=0.5, cache_write=0.8),
-                compat=Compat(values={"supportsReasoningEffort": True}),
+                adapter=OpenAICompletionsConfig(reasoning_effort=True),
             ),
         },
         endpoints={
@@ -3983,7 +3985,6 @@ def test_rpc_mode_supports_cycle_model_command() -> None:
                         "cacheRead": 0.5,
                         "cacheWrite": 0.8,
                     },
-                    "compat": {"supportsReasoningEffort": True},
                 },
                 "thinkingLevel": "off",
                 "isScoped": False,

@@ -17,7 +17,14 @@ class AnthropicProviderBase:
     def supports_adaptive_thinking(model_id: str) -> bool:
         return any(
             tag in model_id
-            for tag in ("opus-4-6", "opus-4.6", "sonnet-4-6", "sonnet-4.6")
+            for tag in (
+                "opus-4-8",
+                "opus-4.8",
+                "opus-4-6",
+                "opus-4.6",
+                "sonnet-4-6",
+                "sonnet-4.6",
+            )
         )
 
     @staticmethod
@@ -33,7 +40,14 @@ class AnthropicProviderBase:
         if level == "high":
             return "high"
         # xhigh
-        return "max" if ("opus-4-6" in model_id or "opus-4.6" in model_id) else "high"
+        return (
+            "max"
+            if any(
+                tag in model_id
+                for tag in ("opus-4-8", "opus-4.8", "opus-4-6", "opus-4.6")
+            )
+            else "high"
+        )
 
     @staticmethod
     def is_oauth_token(api_key: str) -> bool:

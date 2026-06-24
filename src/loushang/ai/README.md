@@ -362,8 +362,9 @@ code should use attribute access instead of dict-style message access.
 它当前承载：
 
 - 基本标识：`id` / `provider` / `endpoint`
+- 有效调用入口：`api` / `base_url` / `base_url_env`
 - 能力：`capabilities`
-- 兼容项：`compat`
+- 适配配置：`adapter`
 - 默认值：`defaults`
 - 价格：`pricing`
   - `None` 表示价格未知；缺失的 price component 不会被当成 0
@@ -371,10 +372,10 @@ code should use attribute access instead of dict-style message access.
 其中：
 
 - `capabilities` 表示模型本体能力
+- `adapter` 表示当前外部 API 协议的最小适配配置
 - `defaults` 表示默认请求值
-- `compat` 表示协议兼容项
 
-`Model` 不再独立持有 `api` 事实。
+Registry 返回的 `Model` 会带上继承后的 endpoint 调用事实。
 
 稳定心智是：
 
@@ -390,7 +391,7 @@ code should use attribute access instead of dict-style message access.
 - 同一个模型名可以在多个 endpoint 下分别出现
 - 每个 `Model` 只通过自己的 `endpoint` 被调用
 
-运行时 provider 路由由 `endpoint.api` 决定。
+运行时 provider 路由由模型继承后的 `api` 决定。
 
 例如 `moonshot:openai-completions:kimi-k2.6` 是一个可调用 `Model` 句柄。
 如果同一个上游模型通过多个 endpoint 暴露，catalog 仍会把它们表达为不同的
@@ -404,7 +405,7 @@ code should use attribute access instead of dict-style message access.
 
 - `Model`
 - runtime `options`
-- auth / typed protocol/dialect / capabilities / defaults
+- auth / adapter config / capabilities / defaults
 
 收敛为 provider 侧可直接消费的请求解析结果。
 

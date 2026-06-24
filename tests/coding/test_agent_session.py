@@ -2383,8 +2383,8 @@ def test_agent_session_applies_extension_provider_registration(tmp_path) -> None
             "displayName": "Proxy Provider",
             "website": "https://proxy.example.com",
             "endpoints": {
-                "proxy-simple": {
-                    "api": "proxy-simple",
+                    "proxy-simple": {
+                        "api": "openai-completions",
                     "displayName": "Proxy Endpoint",
                     "baseUrl": "https://proxy.example.com",
                     "authOverride": {
@@ -2392,7 +2392,7 @@ def test_agent_session_applies_extension_provider_registration(tmp_path) -> None
                         "apiKeyEnv": "PROXY_API_KEY",
                         "extraHeaders": {"x-proxy": "yes"},
                     },
-                    "compat": {"supportsUsageInStreaming": True},
+                    "adapter": {"streamingUsage": True},
                     "defaults": {"temperature": 0.1},
                     "models": {
                         "proxy-model": {
@@ -2402,7 +2402,7 @@ def test_agent_session_applies_extension_provider_registration(tmp_path) -> None
                             "contextWindow": 200000,
                             "maxTokens": 8192,
                             "cost": {"input": 1, "output": 2},
-                            "compat": {"supportsReasoningEffort": True},
+                            "adapter": {"reasoningEffort": True},
                             "defaults": {"reasoningEffort": "high"},
                         }
                     },
@@ -2429,14 +2429,17 @@ def test_agent_session_applies_extension_provider_registration(tmp_path) -> None
     assert endpoint.auth is not None
     assert endpoint.auth.api_key_env == "PROXY_API_KEY"
     assert endpoint.auth.extra_headers == {"x-proxy": "yes"}
-    assert dict(endpoint.compat) == {"supportsUsageInStreaming": True}
+    assert endpoint.adapter is not None
+    assert endpoint.adapter.streaming_usage is True
     assert dict(endpoint.defaults) == {"temperature": 0.1}
     model = ai_registry.get_model("proxy", "proxy-simple", "proxy-model")
     assert model.name == "Proxy Model"
     assert model.supports_image_input is True
     assert model.supports_thinking is True
     assert model.max_tokens == 8192
-    assert dict(model.compat) == {"supportsUsageInStreaming": True, "supportsReasoningEffort": True}
+    assert model.adapter is not None
+    assert model.adapter.streaming_usage is True
+    assert model.adapter.reasoning_effort is True
     assert dict(model.defaults) == {"temperature": 0.1, "reasoningEffort": "high"}
 
     api.register_provider(
@@ -2450,7 +2453,7 @@ def test_agent_session_applies_extension_provider_registration(tmp_path) -> None
                         "apiKeyEnv": "PROXY_API_KEY",
                         "extraHeaders": {"x-proxy": "updated"},
                     },
-                    "compat": {"supportsStore": True},
+                    "adapter": {"store": True},
                     "defaults": {"maxTokens": 1024},
                 }
             }
@@ -2463,11 +2466,10 @@ def test_agent_session_applies_extension_provider_registration(tmp_path) -> None
     assert endpoint.auth.extra_headers == {"x-proxy": "updated"}
     model = ai_registry.get_model("proxy", "proxy-simple", "proxy-model")
     assert model.name == "Proxy Model"
-    assert dict(model.compat) == {
-        "supportsUsageInStreaming": True,
-        "supportsReasoningEffort": True,
-        "supportsStore": True,
-    }
+    assert model.adapter is not None
+    assert model.adapter.streaming_usage is True
+    assert model.adapter.reasoning_effort is True
+    assert model.adapter.store is True
     assert dict(model.defaults) == {
         "temperature": 0.1,
         "reasoningEffort": "high",

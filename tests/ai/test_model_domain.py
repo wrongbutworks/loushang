@@ -122,6 +122,13 @@ def test_openai_responses_adapter_round_trip() -> None:
     assert OpenAIResponsesConfig.from_raw(raw) == adapter
 
 
+def test_openai_responses_adapter_rejects_invalid_values() -> None:
+    with pytest.raises(ValueError, match="adapter config field must be a boolean"):
+        OpenAIResponsesConfig(prompt_cache_key="yes")
+    with pytest.raises(ValueError, match="adapter config has unknown keys"):
+        OpenAIResponsesConfig.from_raw({"reasoningFormat": "openai"})
+
+
 def test_anthropic_messages_adapter_round_trip() -> None:
     adapter = AnthropicMessagesConfig.from_raw(
         {
@@ -149,6 +156,13 @@ def test_anthropic_messages_adapter_round_trip() -> None:
     assert AnthropicMessagesConfig.from_raw(raw) == adapter
 
 
+def test_anthropic_messages_adapter_rejects_invalid_values() -> None:
+    with pytest.raises(ValueError, match="adapter config field must be a boolean"):
+        AnthropicMessagesConfig(long_cache_retention="yes")
+    with pytest.raises(ValueError, match="adapter config has unknown keys"):
+        AnthropicMessagesConfig.from_raw({"developerRole": False})
+
+
 def test_model_adapter_override_merges_with_endpoint_adapter() -> None:
     endpoint = Endpoint(
         id="openai-completions",
@@ -169,8 +183,28 @@ def test_model_adapter_override_merges_with_endpoint_adapter() -> None:
     bound = endpoint.bind_model(model)
 
     assert isinstance(bound.adapter, OpenAICompletionsConfig)
-    assert bound.adapter.developer_role is True
+    assert bound.adapter.developer_role is False
     assert bound.adapter.reasoning_format == "moonshot"
+
+
+def test_model_adapter_raw_override_can_restore_default_value() -> None:
+    endpoint = Endpoint(
+        id="openai-completions",
+        provider="custom",
+        api="openai-completions",
+        adapter=OpenAICompletionsConfig(developer_role=False),
+    )
+    model = Model(
+        id="public-model",
+        provider="custom",
+        endpoint="openai-completions",
+        adapter=OpenAICompletionsConfig.from_raw({"developerRole": True}),
+    )
+
+    bound = endpoint.bind_model(model)
+
+    assert isinstance(bound.adapter, OpenAICompletionsConfig)
+    assert bound.adapter.developer_role is True
 
 
 def test_endpoint_transport_round_trip() -> None:

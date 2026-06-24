@@ -1,7 +1,7 @@
 """Load a custom catalog with a first-class upstream model binding.
 
-This advanced example is offline. It writes a tiny schema v2 model catalog,
-loads it, and inspects the provider request binding without calling any API.
+This advanced example is offline. It writes a tiny model catalog, loads it,
+and inspects the provider request binding without calling any API.
 """
 
 from __future__ import annotations
@@ -15,16 +15,15 @@ from loushang.ai.model import load_model_registry_from_file
 from loushang.ai.provider import resolve_request_for_model
 
 CUSTOM_CATALOG: dict[str, Any] = {
-    "schemaVersion": 2,
     "providers": {
         "custom-provider": {
             "endpoints": {
                 "openai-completions": {
                     "api": "openai-completions",
                     "baseUrl": "https://api.example.invalid/v1",
-                    "dialect": {
+                    "adapter": {
                         "maxOutputTokensField": "max_completion_tokens",
-                        "reasoning": {"wireFormat": "openai"},
+                        "reasoningFormat": "openai",
                     },
                     "models": {
                         "public-model": {
