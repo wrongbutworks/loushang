@@ -13,6 +13,45 @@ def _auth_value(config, field_name: str, default=None):
     return getattr(config, field_name, default)
 
 
+_AUTH_FIELD_DEFAULTS: dict[str, object] = {
+    "kind": "apiKey",
+    "api_key_env": None,
+    "api_key_envs": (),
+    "header": "Authorization",
+    "prefix": "Bearer ",
+    "extra_headers": {},
+}
+_AUTH_ATTR_TO_RAW_KEY = {
+    "kind": "kind",
+    "api_key_env": "apiKeyEnv",
+    "api_key_envs": "apiKeyEnvs",
+    "header": "header",
+    "prefix": "prefix",
+    "extra_headers": "extraHeaders",
+}
+
+
+def _auth_field_explicit(config, field_name: str) -> bool:
+    explicit_keys = getattr(config, "_explicit_keys", None)
+    raw_key = _AUTH_ATTR_TO_RAW_KEY[field_name]
+    if explicit_keys is not None:
+        return raw_key in explicit_keys
+    value = _auth_value(config, field_name, _AUTH_FIELD_DEFAULTS[field_name])
+    if field_name == "api_key_env":
+        return value is not None
+    if field_name == "api_key_envs":
+        return bool(tuple(value or ()))
+    if field_name == "extra_headers":
+        return bool(dict(value or {}))
+    return value != _AUTH_FIELD_DEFAULTS[field_name]
+
+
+def _merged_auth_value(effective, override, field_name: str):
+    if _auth_field_explicit(override, field_name):
+        return _auth_value(override, field_name, _AUTH_FIELD_DEFAULTS[field_name])
+    return _auth_value(effective, field_name, _AUTH_FIELD_DEFAULTS[field_name])
+
+
 @dataclass(frozen=True)
 class AuthConfig:
     kind: str = "apiKey"
@@ -50,22 +89,18 @@ def merge_auth_config(
             effective = override
             continue
         auth_type = type(effective)
+        extra_headers = dict(_auth_value(effective, "extra_headers", {}) or {})
+        if _auth_field_explicit(override, "extra_headers"):
+            extra_headers.update(dict(_auth_value(override, "extra_headers", {}) or {}))
         effective = auth_type(
-            kind=_auth_value(override, "kind", "apiKey")
-            or _auth_value(effective, "kind", "apiKey"),
-            api_key_env=_auth_value(override, "api_key_env")
-            or _auth_value(effective, "api_key_env"),
-            api_key_envs=tuple(_auth_value(override, "api_key_envs", ()) or ())
-            or tuple(_auth_value(effective, "api_key_envs", ()) or ()),
-            header=_auth_value(override, "header", "Authorization")
-            or _auth_value(effective, "header", "Authorization"),
-            prefix=_auth_value(override, "prefix")
-            if _auth_value(override, "prefix") is not None
-            else _auth_value(effective, "prefix", "Bearer "),
-            extra_headers={
-                **dict(_auth_value(effective, "extra_headers", {}) or {}),
-                **dict(_auth_value(override, "extra_headers", {}) or {}),
-            },
+            kind=_merged_auth_value(effective, override, "kind"),
+            api_key_env=_merged_auth_value(effective, override, "api_key_env"),
+            api_key_envs=tuple(
+                _merged_auth_value(effective, override, "api_key_envs") or ()
+            ),
+            header=_merged_auth_value(effective, override, "header"),
+            prefix=_merged_auth_value(effective, override, "prefix"),
+            extra_headers=extra_headers,
         )
     return effective
 

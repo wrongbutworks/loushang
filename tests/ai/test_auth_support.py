@@ -105,3 +105,34 @@ def test_provider_auth_applies_to_ad_hoc_model_on_registered_endpoint() -> None:
     )
 
     assert view.headers == {"X-API-Key": "secret"}
+
+
+def test_partial_endpoint_auth_does_not_reset_provider_header() -> None:
+    endpoint = Endpoint(
+        id="responses",
+        provider="demo",
+        api="openai-responses",
+        auth=Auth(extra_headers={"X-Endpoint": "endpoint"}),
+        models={},
+    )
+    registry = ModelRegistry.from_providers(
+        {
+            "demo": Provider(
+                id="demo",
+                auth=Auth(header="X-Provider", prefix="Token "),
+                endpoints={endpoint.id: endpoint},
+            )
+        }
+    )
+    model = Model(id="ad-hoc", provider="demo", endpoint="responses")
+
+    view = resolve_auth_for_model(
+        model,
+        options=SimpleNamespace(api_key="secret"),
+        registry=registry,
+    )
+
+    assert view.headers == {
+        "X-Provider": "Token secret",
+        "X-Endpoint": "endpoint",
+    }

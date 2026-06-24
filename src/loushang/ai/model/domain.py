@@ -838,6 +838,30 @@ class Auth:
     header: str = "Authorization"
     prefix: str = "Bearer "
     extra_headers: dict[str, str] = field(default_factory=dict)
+    _explicit_keys: frozenset[str] | None = field(
+        default=None,
+        compare=False,
+        repr=False,
+    )
+
+    def __post_init__(self) -> None:
+        if self._explicit_keys is not None:
+            object.__setattr__(self, "_explicit_keys", frozenset(self._explicit_keys))
+            return
+        explicit_keys = set()
+        if self.kind != "apiKey":
+            explicit_keys.add("kind")
+        if self.api_key_env is not None:
+            explicit_keys.add("apiKeyEnv")
+        if self.api_key_envs:
+            explicit_keys.add("apiKeyEnvs")
+        if self.header != "Authorization":
+            explicit_keys.add("header")
+        if self.prefix != "Bearer ":
+            explicit_keys.add("prefix")
+        if self.extra_headers:
+            explicit_keys.add("extraHeaders")
+        object.__setattr__(self, "_explicit_keys", frozenset(explicit_keys))
 
     @classmethod
     def from_raw(cls, raw: Mapping[str, object] | None) -> "Auth | None":
@@ -850,18 +874,22 @@ class Auth:
             header=str(raw.get("header", "Authorization")),
             prefix=str(raw.get("prefix", "Bearer ")),
             extra_headers=_as_str_dict(raw.get("extraHeaders")),
+            _explicit_keys=frozenset(raw),
         )
 
     def to_raw(self) -> dict[str, object]:
-        raw: dict[str, object] = {
-            "kind": self.kind,
-            "header": self.header,
-            "prefix": self.prefix,
-        }
+        explicit_keys = self._explicit_keys or frozenset()
+        raw: dict[str, object] = {}
+        if "kind" in explicit_keys or self.kind != "apiKey":
+            raw["kind"] = self.kind
         if self.api_key_env is not None:
             raw["apiKeyEnv"] = self.api_key_env
         if self.api_key_envs:
             raw["apiKeyEnvs"] = list(self.api_key_envs)
+        if "header" in explicit_keys or self.header != "Authorization":
+            raw["header"] = self.header
+        if "prefix" in explicit_keys or self.prefix != "Bearer ":
+            raw["prefix"] = self.prefix
         if self.extra_headers:
             raw["extraHeaders"] = dict(self.extra_headers)
         return raw

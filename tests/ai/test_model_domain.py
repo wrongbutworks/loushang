@@ -378,11 +378,10 @@ def test_provider_endpoint_and_model_to_raw_include_optional_fields() -> None:
 
 
 def test_auth_to_raw_omits_empty_optional_fields() -> None:
-    assert Auth(kind="oauth").to_raw() == {
-        "kind": "oauth",
-        "header": "Authorization",
-        "prefix": "Bearer ",
-    }
+    assert Auth(kind="oauth").to_raw() == {"kind": "oauth"}
+    partial = Auth.from_raw({"extraHeaders": {"x-extra": "yes"}})
+    assert partial is not None
+    assert partial.to_raw() == {"extraHeaders": {"x-extra": "yes"}}
     assert Auth(
         kind="apiKey",
         api_key_env="PRIMARY_KEY",
@@ -391,7 +390,6 @@ def test_auth_to_raw_omits_empty_optional_fields() -> None:
         prefix="",
         extra_headers={"x-extra": "yes"},
     ).to_raw() == {
-        "kind": "apiKey",
         "apiKeyEnv": "PRIMARY_KEY",
         "apiKeyEnvs": ["SECONDARY_KEY"],
         "header": "X-Key",

@@ -423,9 +423,26 @@ class ModelRegistry:
         )
 
     def replace_providers(self, providers: dict[str, Provider]) -> None:
+        self._replace_providers(providers)
+
+    def _replace_providers(
+        self,
+        providers: dict[str, Provider],
+        *,
+        endpoint_auth_explicit: set[tuple[str, str]] | None = None,
+        model_auth_explicit: set[tuple[str, str, str]] | None = None,
+    ) -> None:
         raw_providers = dict(providers)
-        self._endpoint_auth_explicit = _infer_endpoint_auth_explicit(raw_providers)
-        self._model_auth_explicit = _infer_model_auth_explicit(raw_providers)
+        self._endpoint_auth_explicit = (
+            set(endpoint_auth_explicit)
+            if endpoint_auth_explicit is not None
+            else _infer_endpoint_auth_explicit(raw_providers)
+        )
+        self._model_auth_explicit = (
+            set(model_auth_explicit)
+            if model_auth_explicit is not None
+            else _infer_model_auth_explicit(raw_providers)
+        )
         self._providers = _attach_auth_scope_metadata(
             _normalize_providers(raw_providers),
             endpoint_auth_explicit=self._endpoint_auth_explicit,
@@ -450,7 +467,28 @@ class ModelRegistry:
 
         endpoints = dict(provider.endpoints)
         endpoints[endpoint.id] = endpoint
-        self.register_provider(replace(provider, endpoints=endpoints))
+        providers = dict(self._providers)
+        providers[provider_id] = replace(provider, endpoints=endpoints)
+        endpoint_auth_explicit = {
+            entry
+            for entry in self._endpoint_auth_explicit
+            if entry != (provider_id, endpoint.id)
+        }
+        model_auth_explicit = {
+            entry
+            for entry in self._model_auth_explicit
+            if entry[0] != provider_id or entry[1] != endpoint.id
+        }
+        if endpoint.auth is not None:
+            endpoint_auth_explicit.add((provider_id, endpoint.id))
+        for model_id, model in endpoint.models.items():
+            if model.auth is not None and not has_bound_endpoint_context(model):
+                model_auth_explicit.add((provider_id, endpoint.id, model_id))
+        self._replace_providers(
+            providers,
+            endpoint_auth_explicit=endpoint_auth_explicit,
+            model_auth_explicit=model_auth_explicit,
+        )
 
     def register_model(self, model: Model) -> None:
         provider = self._providers.get(model.provider_id)
@@ -467,12 +505,19 @@ class ModelRegistry:
 
         models = dict(endpoint.models)
         models[model.id] = model
-        self.register_endpoint(
-            model.provider_id,
-            replace(
-                endpoint,
-                models=models,
-            ),
+        endpoint = replace(endpoint, models=models)
+        endpoints = dict(provider.endpoints)
+        endpoints[endpoint.id] = endpoint
+        providers = dict(self._providers)
+        providers[model.provider_id] = replace(provider, endpoints=endpoints)
+        model_auth_explicit = set(self._model_auth_explicit)
+        model_auth_explicit.discard((model.provider_id, endpoint.id, model.id))
+        if model.auth is not None:
+            model_auth_explicit.add((model.provider_id, endpoint.id, model.id))
+        self._replace_providers(
+            providers,
+            endpoint_auth_explicit=set(self._endpoint_auth_explicit),
+            model_auth_explicit=model_auth_explicit,
         )
 
     def get_provider(self, provider_id: str) -> Provider | None:
