@@ -6,70 +6,13 @@ from contextlib import suppress
 from pathlib import Path
 from typing import Any
 
+from loushang.ai.utils.redaction import is_sensitive_key
 from loushang.observability import get_log
 from loushang.observability.problem import JSONValue
 
 _log = get_log(__name__).bind(component="AITrace")
 TRACE_SCHEMA = "loushang.ai.trace.v1"
 _REDACTED = "<redacted>"
-_SENSITIVE_KEYS = {
-    "accesstoken",
-    "apikey",
-    "apitoken",
-    "authorization",
-    "bearertoken",
-    "clientsecret",
-    "credential",
-    "credentials",
-    "cookie",
-    "idtoken",
-    "oauth",
-    "oauthcredentials",
-    "password",
-    "proxyauthorization",
-    "refreshtoken",
-    "secret",
-    "setcookie",
-    "token",
-    "tokens",
-    "xaccesstoken",
-    "xamzsecuritytoken",
-    "xapikey",
-    "xauthtoken",
-    "xgoogapikey",
-}
-_SENSITIVE_KEY_MARKERS = (
-    "accesstoken",
-    "apikey",
-    "apitoken",
-    "authorization",
-    "bearertoken",
-    "clientsecret",
-    "credential",
-    "credentials",
-    "cookie",
-    "idtoken",
-    "oauth",
-    "password",
-    "proxyauthorization",
-    "refreshtoken",
-    "secret",
-    "setcookie",
-    "xamzsecuritytoken",
-)
-_SAFE_TOKEN_KEYS = {
-    "cachecreationinputtokens",
-    "cacheinputtokens",
-    "cacheread",
-    "cachereadinputtokens",
-    "cachewrite",
-    "cachewriteinputtokens",
-    "inputtokens",
-    "maxtokens",
-    "maxoutputtokens",
-    "outputtokens",
-    "totaltokens",
-}
 
 
 TraceEvent = dict[str, JSONValue]
@@ -138,7 +81,7 @@ def _trace_source_name(event_type: str) -> tuple[str, str]:
 
 
 def _json_safe(value: object, *, key: str | None = None) -> JSONValue:
-    if key is not None and _is_sensitive_key(key):
+    if key is not None and is_sensitive_key(key):
         return _REDACTED
     if value is None or isinstance(value, str | bool | int):
         return value
@@ -157,7 +100,7 @@ def _json_safe(value: object, *, key: str | None = None) -> JSONValue:
 
 
 def _summarize_event_value(key: str, value: object) -> JSONValue:
-    if _is_sensitive_key(key):
+    if is_sensitive_key(key):
         return _REDACTED
     if key == "args" and isinstance(value, Mapping):
         return _summarize_tool_args(value)
@@ -180,17 +123,6 @@ def _summarize_tool_args(args: Mapping[str, object]) -> dict[str, JSONValue]:
     if isinstance(command, str):
         summary["command_chars"] = len(command)
     return summary
-
-
-def _is_sensitive_key(key: str) -> bool:
-    compacted = "".join(char for char in key.lower() if char.isalnum())
-    if compacted in _SAFE_TOKEN_KEYS:
-        return False
-    if compacted in _SENSITIVE_KEYS:
-        return True
-    if any(marker in compacted for marker in _SENSITIVE_KEY_MARKERS):
-        return True
-    return compacted.endswith("token") or compacted.endswith("tokens")
 
 
 __all__ = ["TRACE_SCHEMA", "TraceEvent", "emit_trace", "normalize_trace_event"]

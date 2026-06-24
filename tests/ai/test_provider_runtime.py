@@ -5,6 +5,7 @@ from types import SimpleNamespace
 
 import pytest
 
+import loushang.ai.provider.runtime as runtime_module
 from loushang.ai.options import CallOptions, RetryOptions
 from loushang.ai.provider import ProviderRequest
 from loushang.ai.provider.errors import provider_error_part
@@ -129,6 +130,9 @@ def test_provider_runtime_converts_adapter_exceptions_to_error_events() -> None:
     assert [event["type"] for event in events] == ["error"]
     assert events[0]["error"].error_message == "adapter failed"
     assert events[0]["error_info"]["message"] == "adapter failed"
+    assert events[0]["error_info"]["provider"] == "provider-a"
+    assert events[0]["error_info"]["endpoint"] == "openai-responses"
+    assert events[0]["error_info"]["model"] == "model-a"
 
 
 def test_provider_runtime_retries_retryable_exception_before_visible_output() -> None:
@@ -139,7 +143,11 @@ def test_provider_runtime_retries_retryable_exception_before_visible_output() ->
         nonlocal attempts
         attempts += 1
         if attempts == 1:
-            raise _HTTPError("temporarily unavailable", 503)
+            raise _HTTPError(
+                "temporarily unavailable",
+                503,
+                headers={"x-request-id": "req_503"},
+            )
         yield {"type": "response_start", "response_id": "resp_2"}
         yield {"type": "text_delta", "text": "recovered"}
         yield {"type": "response_done"}
@@ -172,25 +180,34 @@ def test_provider_runtime_retries_retryable_exception_before_visible_output() ->
         "runtime:retry",
         "runtime:request",
     ]
+    call_id = _assert_runtime_trace_identity(trace_events[0]["data"])
     assert trace_events[0]["data"] == {
+        "callId": call_id,
         "api": "openai-responses",
         "provider": "provider-a",
+        "endpoint": "openai-responses",
         "model": "model-a",
         "attempt": 1,
         "maxAttempts": 2,
-        "endpoint": "openai-responses",
     }
     retry_trace = trace_events[1]
     assert retry_trace["schema"] == "loushang.ai.trace.v1"
     assert retry_trace["source"] == "runtime"
     assert retry_trace["name"] == "retry"
     assert retry_trace["data"] == {
+        "callId": call_id,
+        "api": "openai-responses",
+        "provider": "provider-a",
+        "endpoint": "openai-responses",
+        "model": "model-a",
         "attempt": 2,
         "maxAttempts": 2,
         "delayMs": 0,
         "reason": "service_unavailable",
         "statusCode": 503,
+        "requestId": "req_503",
     }
+    assert trace_events[2]["data"]["callId"] == call_id
     assert trace_events[2]["data"]["attempt"] == 2
 
 
@@ -254,9 +271,12 @@ def test_provider_runtime_emits_error_trace_for_terminal_error() -> None:
         "runtime:request",
         "runtime:error",
     ]
+    call_id = _assert_runtime_trace_identity(trace_events[0]["data"])
     assert trace_events[1]["data"] == {
+        "callId": call_id,
         "api": "openai-responses",
         "provider": "provider-a",
+        "endpoint": "openai-responses",
         "model": "model-a",
         "reason": "authentication",
         "retryable": False,
@@ -443,6 +463,65 @@ def test_provider_runtime_ignores_non_finite_retry_after(retry_after: str) -> No
     assert message.content[0].text == "done"
 
 
+def test_provider_runtime_bounds_pre_visible_buffer_by_part_count(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(runtime_module, "_PENDING_RETRY_BUFFER_MAX_PARTS", 2)
+
+    async def _parts():
+        yield {"type": "response_start", "response_id": "resp_buffer_parts"}
+        yield {"type": "usage_delta", "input": 1}
+        yield {"type": "usage_delta", "output": 1}
+        yield {"type": "text_delta", "text": "unreachable"}
+
+    async def _run():
+        stream = start_provider_runtime(
+            _parts,
+            model=_model(),
+            options=None,
+            request=_request(),
+        )
+        return [event async for event in stream]
+
+    events = asyncio.run(_run())
+
+    assert [event["type"] for event in events] == ["start", "error"]
+    error_info = events[-1]["error_info"]
+    assert error_info["code"] == "provider_protocol"
+    assert error_info["provider"] == "provider-a"
+    assert error_info["endpoint"] == "openai-responses"
+    assert error_info["model"] == "model-a"
+    assert error_info["details"]["maxParts"] == 2
+    assert error_info["details"]["partCount"] == 3
+
+
+def test_provider_runtime_bounds_pre_visible_buffer_by_estimated_bytes(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(runtime_module, "_PENDING_RETRY_BUFFER_MAX_BYTES", 8)
+
+    async def _parts():
+        yield {"type": "response_start", "response_id": "resp_buffer_bytes"}
+        yield {"type": "text_delta", "text": "unreachable"}
+
+    async def _run():
+        stream = start_provider_runtime(
+            _parts,
+            model=_model(),
+            options=None,
+            request=_request(),
+        )
+        return [event async for event in stream]
+
+    events = asyncio.run(_run())
+
+    assert [event["type"] for event in events] == ["error"]
+    error_info = events[-1]["error_info"]
+    assert error_info["code"] == "provider_protocol"
+    assert error_info["details"]["maxBytes"] == 8
+    assert error_info["details"]["estimatedBytes"] > 8
+
+
 def test_provider_runtime_applies_backpressure_to_raw_source() -> None:
     produced = 0
 
@@ -499,9 +578,12 @@ def test_provider_runtime_cancellation_signal_aborts_and_closes_source() -> None
         "runtime:request",
         "runtime:cancel",
     ]
+    call_id = _assert_runtime_trace_identity(trace_events[0]["data"])
     assert trace_events[1]["data"] == {
+        "callId": call_id,
         "api": "openai-responses",
         "provider": "provider-a",
+        "endpoint": "openai-responses",
         "model": "model-a",
         "reason": "cancelled",
     }
@@ -540,3 +622,20 @@ def _request() -> ProviderRequest:
         api="openai-responses",
         base_url=None,
     )
+
+
+def _assert_runtime_trace_identity(
+    data: object,
+    call_id: object | None = None,
+) -> str:
+    assert isinstance(data, dict)
+    if call_id is None:
+        call_id = data["callId"]
+    assert isinstance(call_id, str)
+    assert call_id
+    assert data["callId"] == call_id
+    assert data["api"] == "openai-responses"
+    assert data["provider"] == "provider-a"
+    assert data["endpoint"] == "openai-responses"
+    assert data["model"] == "model-a"
+    return call_id
