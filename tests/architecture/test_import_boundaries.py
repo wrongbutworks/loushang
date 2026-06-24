@@ -27,23 +27,6 @@ def test_core_runtime_packages_do_not_import_product_layers() -> None:
                 "loushang.tui",
                 "loushang.work",
             ),
-            allowed_paths=frozenset(
-                {
-                    "src/loushang/agent/harness/__init__.py",
-                    "src/loushang/agent/harness/runner.py",
-                    "src/loushang/agent/harness/types.py",
-                }
-            ),
-        ),
-        ImportBoundary(
-            name="agent.harness",
-            root=Path("src/loushang/agent/harness"),
-            forbidden_prefixes=(
-                "loushang.coding",
-                "loushang.method",
-                "loushang.tui",
-                "loushang.work",
-            ),
         ),
         ImportBoundary(
             name="harness",
@@ -95,6 +78,10 @@ def test_core_runtime_packages_do_not_import_product_layers() -> None:
         offenders.extend(_find_forbidden_imports(boundary))
 
     assert offenders == []
+
+
+def test_legacy_agent_harness_package_has_been_removed() -> None:
+    assert not Path("src/loushang/agent/harness").exists()
 
 
 def test_absolute_imports_include_child_aliases_from_package_import(
