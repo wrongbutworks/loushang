@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from collections.abc import Mapping
 from dataclasses import dataclass, field
-from typing import Any, Literal, TypedDict
+from typing import Any, Literal
 
 from loushang.ai.structured import StructuredOutputOptions
 
@@ -11,17 +11,7 @@ PairingMode = Literal["strict", "repair"]
 ThinkingLevel = Literal["minimal", "low", "medium", "high", "xhigh"]
 
 
-class ThinkingBudgets(TypedDict, total=False):
-    minimal: int
-    low: int
-    medium: int
-    high: int
-
-
 CacheRetention = Literal["none", "short", "long"]
-
-
-Transport = Literal["sse", "websocket", "auto"]
 
 
 ToolChoice = str | dict[str, Any]
@@ -50,44 +40,34 @@ class TimeoutOptions:
 
 @dataclass(frozen=True, slots=True)
 class CallOptions:
-    signal: object | None = None
     cancellation: object | None = None
     api_key: str | None = None
     headers: Mapping[str, str] = field(default_factory=dict)
-    transport: Transport | None = None
     cache_retention: CacheRetention | None = None
     session_id: str | None = None
-    max_retry_delay_ms: int | None = None
-    metadata: Mapping[str, object] | None = None
-    max_tokens: int | None = None
     max_output_tokens: int | None = None
     temperature: float | int | None = None
-    timeout: TimeoutOptions | float | int | None = None
-    retries: int | None = None
+    timeout: TimeoutOptions | None = None
     retry: RetryOptions | None = None
     trace: object | None = None
     oauth_credentials: dict[str, object] | None = None
     region: str | None = None
     pairing_mode: PairingMode = "strict"
-    reasoning: ReasoningOptions | ThinkingLevel | str | None = None
-    reasoning_summary: str | None = None
+    reasoning: ReasoningOptions | None = None
     tool_choice: ToolChoice | None = None
     output: StructuredOutputOptions | None = None
-    hooks: object | None = None
 
-
-ModelCallOptions = CallOptions
-StreamOptions = CallOptions
-ProviderStreamOptions = CallOptions
+    def __post_init__(self) -> None:
+        if self.reasoning is not None and not isinstance(
+            self.reasoning, ReasoningOptions
+        ):
+            raise TypeError("reasoning must be ReasoningOptions")
 
 
 def get_max_output_tokens(options: object | None) -> int | None:
     if options is None:
         return None
     value = getattr(options, "max_output_tokens", None)
-    if isinstance(value, int):
-        return value
-    value = getattr(options, "max_tokens", None)
     return value if isinstance(value, int) else None
 
 
@@ -104,23 +84,12 @@ def get_reasoning_effort(options: object | None) -> str | None:
     reasoning = getattr(options, "reasoning", None)
     if isinstance(reasoning, ReasoningOptions):
         return reasoning.effort if isinstance(reasoning.effort, str) else None
-    if isinstance(reasoning, str):
-        return reasoning
-    for name in ("reasoning_effort", "reasoningEffort", "effort"):
-        value = getattr(options, name, None)
-        if isinstance(value, str):
-            return value
     return None
 
 
 def get_reasoning_summary(options: object | None) -> str | None:
     if options is None:
         return None
-    value = getattr(options, "reasoning_summary", None) or getattr(
-        options, "reasoningSummary", None
-    )
-    if isinstance(value, str):
-        return value
     reasoning = get_reasoning_options(options)
     if reasoning is not None and reasoning.expose_summary:
         return "auto"
@@ -133,8 +102,7 @@ def get_reasoning_budget_tokens(options: object | None) -> int | None:
     reasoning = get_reasoning_options(options)
     if reasoning is not None and isinstance(reasoning.budget_tokens, int):
         return reasoning.budget_tokens
-    value = getattr(options, "thinking_budget_tokens", None)
-    return value if isinstance(value, int) else None
+    return None
 
 
 def is_reasoning_requested(options: object | None) -> bool:
@@ -148,15 +116,7 @@ def is_reasoning_requested(options: object | None) -> bool:
             or reasoning.budget_tokens
             or reasoning.expose_summary
         )
-    if getattr(options, "emit_thinking", False):
-        return True
-    if getattr(options, "thinking_enabled", False):
-        return True
-    if get_reasoning_effort(options) is not None:
-        return True
-    if get_reasoning_summary(options) is not None:
-        return True
-    return get_reasoning_budget_tokens(options) is not None
+    return False
 
 
 def get_timeout_seconds(options: object | None) -> float | int | None:
@@ -166,7 +126,7 @@ def get_timeout_seconds(options: object | None) -> float | int | None:
     if isinstance(timeout, TimeoutOptions):
         value = timeout.total_seconds
         return value if isinstance(value, int | float) and value > 0 else None
-    return timeout if isinstance(timeout, int | float) and timeout > 0 else None
+    return None
 
 
 def get_retry_attempts(options: object | None) -> int | None:
@@ -175,8 +135,7 @@ def get_retry_attempts(options: object | None) -> int | None:
     retry = getattr(options, "retry", None)
     if isinstance(retry, RetryOptions):
         return retry.max_attempts
-    value = getattr(options, "retries", None)
-    return value if isinstance(value, int) else None
+    return None
 
 
 def get_retry_max_delay_ms(options: object | None) -> int | None:
@@ -185,96 +144,17 @@ def get_retry_max_delay_ms(options: object | None) -> int | None:
     retry = getattr(options, "retry", None)
     if isinstance(retry, RetryOptions):
         return int(max(0.0, retry.max_delay_seconds) * 1000)
-    value = getattr(options, "max_retry_delay_ms", None)
-    return value if isinstance(value, int) else None
-
-
-def get_provider_option(options: object | None, name: str) -> object | None:
-    if options is None:
-        return None
-    value = getattr(options, name, None)
-    if value is not None:
-        return value
     return None
-
-
-@dataclass(frozen=True, slots=True)
-class SimpleCallOptions:
-    signal: object | None = None
-    cancellation: object | None = None
-    api_key: str | None = None
-    headers: Mapping[str, str] = field(default_factory=dict)
-    max_output_tokens: int | None = None
-    temperature: float | int | None = None
-    timeout: TimeoutOptions | float | int | None = None
-    retries: int | None = None
-    retry: RetryOptions | None = None
-    region: str | None = None
-    pairing_mode: PairingMode = "strict"
-    reasoning: "ThinkingLevel | None" = None
-    thinking_budgets: "ThinkingBudgets | None" = None
-
-
-SimpleStreamOptions = SimpleCallOptions
-
-
-def simple_options_to_call_options(
-    options: SimpleCallOptions | None,
-) -> CallOptions | None:
-    if options is None:
-        return None
-    if not isinstance(options, SimpleCallOptions):
-        raise TypeError("simple options must be SimpleCallOptions")
-    budget_tokens = _simple_reasoning_budget_tokens(options)
-    reasoning = (
-        ReasoningOptions(
-            enabled=True,
-            effort=options.reasoning,
-            budget_tokens=budget_tokens,
-            expose_summary=True,
-        )
-        if options.reasoning is not None
-        else None
-    )
-    return CallOptions(
-        signal=options.signal,
-        cancellation=options.cancellation,
-        api_key=options.api_key,
-        headers=options.headers,
-        max_output_tokens=options.max_output_tokens,
-        temperature=options.temperature,
-        timeout=options.timeout,
-        retries=options.retries,
-        retry=options.retry,
-        region=options.region,
-        pairing_mode=options.pairing_mode,
-        reasoning=reasoning,
-    )
-
-
-def _simple_reasoning_budget_tokens(options: SimpleCallOptions) -> int | None:
-    if options.reasoning is None or options.thinking_budgets is None:
-        return None
-    value = options.thinking_budgets.get(options.reasoning)
-    return value if isinstance(value, int) else None
 
 
 __all__ = [
     "CacheRetention",
     "CallOptions",
-    "ModelCallOptions",
     "PairingMode",
-    "ProviderStreamOptions",
     "ReasoningOptions",
     "RetryOptions",
-    "SimpleCallOptions",
-    "SimpleStreamOptions",
-    "StreamOptions",
     "StructuredOutputOptions",
-    "ThinkingBudgets",
     "ThinkingLevel",
     "TimeoutOptions",
     "ToolChoice",
-    "Transport",
-    "simple_options_to_call_options",
 ]

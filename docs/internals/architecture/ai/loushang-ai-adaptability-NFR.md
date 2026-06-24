@@ -59,8 +59,6 @@
 
 - `stream`
 - `complete`
-- `stream_simple`
-- `complete_simple`
 
 也不得改变统一 message / event 主协议，除非形成新的 ARD。
 

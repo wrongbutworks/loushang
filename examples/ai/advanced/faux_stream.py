@@ -13,7 +13,7 @@ from __future__ import annotations
 import asyncio
 from collections.abc import Iterable
 
-from loushang.ai import Model, stream
+from loushang.ai import CallOptions, Model, ReasoningOptions, stream
 from loushang.ai.advanced.registry import ApiProviderRegistry
 from loushang.ai.model import Capabilities, Endpoint
 from loushang.ai.model.registry import get_default_model_registry
@@ -44,13 +44,12 @@ def _register_model() -> None:
 
 
 def _build_context() -> dict:
-    # faux provider 支持这些测试开关，用来稳定产出 thinking / tool / image 事件。
-    return {
-        "messages": [],
-        "emit_thinking": True,
-        "emit_tool_call": True,
-        "emit_image": True,
-    }
+    return {"messages": []}
+
+
+def _build_options() -> CallOptions:
+    # reasoning 等调用行为走 CallOptions，context 只保留 system_prompt/messages/tools。
+    return CallOptions(reasoning=ReasoningOptions(enabled=True))
 
 
 def _iter_text(parts: Iterable[object]) -> str:
@@ -71,7 +70,8 @@ async def _main() -> None:
     event_stream = await stream(
         _build_model(),
         _build_context(),
-        registry=registry,
+        _build_options(),
+        provider_registry=registry,
     )
 
     # 运行时可观察不同事件类型如何被统一协议表达。
@@ -83,11 +83,6 @@ async def _main() -> None:
         elif event_type == "thinking_delta":
             part = event["partial"].content[event["content_index"]]
             print(f"EVENT {event_type} thinking={part.thinking!r}")
-        elif event_type == "toolcall_delta":
-            part = event["partial"].content[event["content_index"]]
-            print(f"EVENT {event_type} args={part.arguments!r}")
-        elif event_type == "image_end":
-            print(f"EVENT {event_type} mime_type={event['image'].mime_type!r}")
         else:
             print(f"EVENT {event_type}")
 

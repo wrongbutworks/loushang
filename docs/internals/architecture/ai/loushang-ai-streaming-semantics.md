@@ -25,8 +25,8 @@
   - response_start / response_done / response_error / aborted
   - usage_delta（input/output/cacheRead/cacheWrite/totalTokens）
   - stop_reason（stop/length/toolUse/error）
-- 取消与 signal
-  - signal=AbortSignalLike（最小协议，仅关心 `cancelled: bool`）
+- 取消
+  - `CallOptions.cancellation` 承载最小取消信号协议（仅关心 `cancelled: bool`）
   - 取消映射为 stop_reason=aborted，并通过 error 事件对外可见；finally 仍需保证完成收口
 - 内容
   - text_delta、thinking_delta、tool_call_*、image_part
@@ -145,16 +145,16 @@
 ### 细粒度语义的演进与不丢失
 - 旁路直通：后续加入 `vendor_event{provider,api,name,payload,context}`；不影响主装配。
 - 扩展袋：事件可带 `extensions: dict`；新增字段不破坏旧消费方。
-- compat/feature flags：在 `models.json` 记录 betaFeatures（如 fine-grained-tool-streaming、interleaved-thinking）与 providerTransport。
+- adapter config：在 `models.json` 的 endpoint adapter 配置中记录当前核心协议真实需要的静态适配字段。
 - 模式：严格/宽松开关，决定对块边界的要求与告警等级。
 
 ### 可观测与回放
-- Trace：支持 `options.trace`，coding CLI/TUI 通过 `--trace=<scope>`、`--trace-file` 或 `LOUSHANG_TRACE_SCOPES`、`LOUSHANG_TRACE_FILE` 接入统一 observability sink。
+- Trace：支持 `CallOptions.trace`，coding CLI/TUI 通过 `--trace=<scope>`、`--trace-file` 或 `LOUSHANG_TRACE_SCOPES`、`LOUSHANG_TRACE_FILE` 接入统一 observability sink。
 - 回放：保存原始事件 → 重放到 Assembler，对比高层产出与最终消息，便于回归。
 - 指标：块生命周期、工具完成率、usage 完整性、stop_reason 分布、错误率。
 
 ### 配置与 CLI
-- `models.json`：在 endpoint.compat 标注 `providerTransport`、`betaFeatures` 等；在 provider 适配中自动注入 headers。
+- `models.json`：在 endpoint adapter 配置中标注核心 adapter 实际消费的字段；provider/contrib 专用传输策略不进入 core model contract。
 - CLI：支持 `--tool-choice`、思考相关参数与 headers 透传，便于快速验证工具/思考流。
 
 ### 测试与验证

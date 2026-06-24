@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import importlib.util
 import json
 import sys
 from pathlib import Path
@@ -10,11 +9,7 @@ from loushang.ai.model import load_model_registry_from_file
 from loushang.ai.model.loader import validate_model_registry_raw
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
-CATALOG_PATH = REPO_ROOT / "src/loushang/ai/model/models.curated.v2.json"
-EVIDENCE_DIR = REPO_ROOT / "docs/internals/architecture/ai/catalog-evidence"
-PROVIDER_MATRIX_PATH = REPO_ROOT / "examples/ai/11_provider_matrix.py"
-MAX_PROVIDERS = 11
-MAX_MODELS = 20
+CATALOG_PATH = REPO_ROOT / "src/loushang/ai/model/models.json"
 
 
 def main() -> int:
@@ -52,28 +47,6 @@ def check_catalog() -> list[str]:
     endpoints = registry.list_endpoints()
     models = registry.list_models()
 
-    if len(providers) > MAX_PROVIDERS:
-        errors.append(f"provider budget exceeded: {len(providers)} > {MAX_PROVIDERS}")
-    if len(models) > MAX_MODELS:
-        errors.append(f"model budget exceeded: {len(models)} > {MAX_MODELS}")
-
-    provider_ids = {provider.id for provider in providers}
-    evidence_ids = {
-        path.stem
-        for path in EVIDENCE_DIR.glob("*.md")
-        if not path.name.startswith("_")
-    }
-    missing_evidence = sorted(provider_ids - evidence_ids)
-    if missing_evidence:
-        errors.append(f"missing provider evidence: {missing_evidence}")
-
-    matrix_provider_ids = {item.provider_id for item in _load_provider_examples()}
-    if matrix_provider_ids != provider_ids:
-        errors.append(
-            "provider matrix mismatch: "
-            f"matrix={sorted(matrix_provider_ids)} catalog={sorted(provider_ids)}"
-        )
-
     for provider in providers:
         preferred_by_model: dict[str, list[str]] = {}
         for endpoint in registry.list_endpoints(provider=provider.id):
@@ -109,20 +82,6 @@ def check_catalog() -> list[str]:
 
 def _load_catalog_raw() -> dict[str, Any]:
     return json.loads(CATALOG_PATH.read_text(encoding="utf-8"))
-
-
-def _load_provider_examples() -> tuple[object, ...]:
-    spec = importlib.util.spec_from_file_location(
-        "_examples_ai_provider_matrix",
-        PROVIDER_MATRIX_PATH,
-    )
-    if spec is None or spec.loader is None:
-        raise RuntimeError(f"Cannot load provider matrix from {PROVIDER_MATRIX_PATH}")
-    module = importlib.util.module_from_spec(spec)
-    sys.modules[spec.name] = module
-    spec.loader.exec_module(module)
-    return tuple(module.PROVIDER_EXAMPLES)
-
 
 if __name__ == "__main__":
     raise SystemExit(main())

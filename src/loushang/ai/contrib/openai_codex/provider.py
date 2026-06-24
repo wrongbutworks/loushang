@@ -11,24 +11,20 @@ from types import SimpleNamespace
 from typing import Any
 from uuid import uuid4
 
-from loushang.ai.contrib.openai_codex.runtime_config import (
-    OpenAICodexRuntimeConfig,
-    resolve_openai_codex_runtime_config,
-)
+from loushang.ai.context import NormalizedContext
+from loushang.ai.contrib.openai_codex.options import OpenAICodexResponsesOptions
+from loushang.ai.contrib.openai_codex.runtime_config import OpenAICodexRuntimeConfig
 from loushang.ai.event_stream.raw_parts import RawPart
-from loushang.ai.model.domain import EndpointProtocolFeatures, EndpointWireDialect
+from loushang.ai.model.domain import OpenAIResponsesConfig
 from loushang.ai.options import (
     get_reasoning_effort,
     get_reasoning_summary,
     get_timeout_seconds,
 )
-from loushang.ai.provider import ProviderRequest, resolve_provider_request
+from loushang.ai.provider import ProviderRequest
 from loushang.ai.provider.errors import (
     provider_error_part,
     provider_error_part_from_raw,
-)
-from loushang.ai.provider.runtime_config import (
-    AdapterRuntimeConfig,
 )
 from loushang.ai.providers.openai_responses_shared import (
     convert_responses_messages,
@@ -43,7 +39,6 @@ from loushang.ai.utils import sanitize_surrogates
 class OpenAICodexResponsesProvider:
     api = "openai-codex-responses"
     supports_structured_output = True
-    adapter_config_resolver = staticmethod(resolve_openai_codex_runtime_config)
 
     def __init__(
         self, *, client: Any | None = None, websocket_cache_ttl_ms: int = 5 * 60 * 1000
@@ -52,29 +47,13 @@ class OpenAICodexResponsesProvider:
         self._websocket_session_cache: dict[str, _CachedWebSocketConnection] = {}
         self._websocket_cache_ttl_ms = websocket_cache_ttl_ms
 
-    def _stream_raw_parts(
-        self, model, context, options, request=None
-    ) -> AsyncIterator[RawPart]:
-        resolved = resolve_provider_request(
-            self.api,
-            model,
-            options=options,
-            request=request,
-            adapter_config_resolver=self.adapter_config_resolver,
-        )
-        return self.stream_raw(
-            ProviderRequest(
-                model=model,
-                context=context,
-                options=options,
-                resolved=resolved,
-            )
-        )
+    def validate_request(self, request: ProviderRequest) -> None:
+        _codex_runtime_config(request.adapter_config)
 
-    async def stream_raw(self, request: ProviderRequest) -> AsyncIterator[RawPart]:
+    async def invoke_raw(self, request: ProviderRequest) -> AsyncIterator[RawPart]:
         model = request.model
         options = request.options
-        resolved = request.resolved
+        resolved = request
 
         def _debug(event: str, data: dict | None = None) -> None:
             _emit_trace(options, {"type": f"sdk:{event}", **(data or {})})
@@ -92,7 +71,6 @@ class OpenAICodexResponsesProvider:
         account_id = _resolve_account_id(
             headers,
             api_key=api_key,
-            auth_account_id=getattr(resolved, "auth_account_id", None),
         )
         body = _build_request_body(
             model,
@@ -131,7 +109,12 @@ class OpenAICodexResponsesProvider:
             owned_client = _HttpxCodexClient()
             client = owned_client
         try:
-            transport = getattr(options, "transport", None) or "sse"
+            codex_options = _as_codex_options(options)
+            transport = (
+                codex_options.transport
+                if codex_options is not None and codex_options.transport is not None
+                else "sse"
+            )
             if transport != "sse":
                 websocket_started = False
                 try:
@@ -326,16 +309,20 @@ class OpenAICodexResponsesProvider:
 
 
 def _codex_runtime_config(
-    value: AdapterRuntimeConfig | None,
+    value: object | None,
 ) -> OpenAICodexRuntimeConfig:
+    if value is None:
+        return OpenAICodexRuntimeConfig()
     if isinstance(value, OpenAICodexRuntimeConfig):
         return value
-    return OpenAICodexRuntimeConfig()
+    raise TypeError(
+        "adapter_config for openai-codex-responses must be OpenAICodexRuntimeConfig"
+    )
 
 
 def _build_request_body(
     model,
-    normalized: Mapping[str, Any],
+    normalized: NormalizedContext,
     options,
     *,
     codex_config: OpenAICodexRuntimeConfig | None = None,
@@ -345,12 +332,12 @@ def _build_request_body(
     codex_config = codex_config or OpenAICodexRuntimeConfig()
     input_items = convert_responses_messages(
         model,
-        {
-            **normalized,
-            "system_prompt": None,
-        },
-        EndpointProtocolFeatures(),
-        EndpointWireDialect(),
+        NormalizedContext(
+            system_prompt=None,
+            messages=normalized.messages,
+            tools=normalized.tools,
+        ),
+        OpenAIResponsesConfig(),
         capabilities,
     )
     body: dict[str, Any] = {
@@ -359,15 +346,15 @@ def _build_request_body(
         "stream": True,
         "input": input_items,
         "instructions": "",
-        "text": {"verbosity": getattr(options, "text_verbosity", None) or "medium"},
+        "text": {"verbosity": _codex_text_verbosity(options)},
         "include": ["reasoning.encrypted_content"],
     }
-    system_prompt = normalized.get("system_prompt")
+    system_prompt = normalized.system_prompt
     if isinstance(system_prompt, str) and system_prompt.strip():
         body["instructions"] = sanitize_surrogates(system_prompt)
     if getattr(options, "temperature", None) is not None:
         body["temperature"] = getattr(options, "temperature")
-    tools = convert_responses_tools(normalized.get("tools"))
+    tools = convert_responses_tools(normalized.tools)
     if isinstance(tools, list) and tools:
         body["tools"] = tools
         body["tool_choice"] = "auto"
@@ -378,8 +365,8 @@ def _build_request_body(
         prompt_cache_retention = codex_config.prompt_cache_retention
         if isinstance(prompt_cache_retention, str) and prompt_cache_retention:
             body["prompt_cache_retention"] = prompt_cache_retention
-    reasoning = get_reasoning_effort(options)
-    reasoning_summary = get_reasoning_summary(options)
+    reasoning = _codex_reasoning_effort(options)
+    reasoning_summary = _codex_reasoning_summary(options)
     if reasoning is not None or reasoning_summary is not None:
         body["reasoning"] = {
             "effort": _clamp_reasoning_effort(model.id, reasoning or "medium"),
@@ -389,6 +376,31 @@ def _build_request_body(
     if text_format is not None:
         body["text"].update(text_format)
     return body
+
+
+def _as_codex_options(
+    options: object | None,
+) -> OpenAICodexResponsesOptions | None:
+    return options if isinstance(options, OpenAICodexResponsesOptions) else None
+
+
+def _codex_text_verbosity(options: object | None) -> str:
+    codex_options = _as_codex_options(options)
+    if (
+        codex_options is not None
+        and isinstance(codex_options.text_verbosity, str)
+        and codex_options.text_verbosity
+    ):
+        return codex_options.text_verbosity
+    return "medium"
+
+
+def _codex_reasoning_effort(options: object | None) -> str | None:
+    return get_reasoning_effort(options)
+
+
+def _codex_reasoning_summary(options: object | None) -> str | None:
+    return get_reasoning_summary(options)
 
 
 def _request_body_trace_summary(body: Mapping[str, Any]) -> dict[str, Any]:
@@ -529,13 +541,10 @@ def _resolve_account_id(
     headers: dict[str, str],
     *,
     api_key: str,
-    auth_account_id: str | None = None,
 ) -> str:
     explicit_account_id = _header_value(headers, "chatgpt-account-id")
     if explicit_account_id:
         return explicit_account_id
-    if auth_account_id:
-        return auth_account_id
     return _extract_account_id(api_key)
 
 

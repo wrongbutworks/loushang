@@ -46,10 +46,10 @@ def test_provider_docs_cover_new_provider_configuration() -> None:
 def test_ai_readme_documents_curated_builtin_catalog_and_archive() -> None:
     docs = Path("src/loushang/ai/README.md").read_text(encoding="utf-8")
 
-    assert "models.curated.v2.json" in docs
-    assert "models-v1-full.json.gz" in docs
+    assert "models.json" in docs
+    assert "backup/ai/models-legacy-full.json.gz" in docs
     assert "model.upstream_id" in docs
-    assert "ResolvedRequest.upstream_model_id" in docs
+    assert "ProviderRequest.upstream_model_id" in docs
     assert "kimi-k2.6" in docs
 
 
@@ -61,12 +61,14 @@ def test_stable_sdk_guides_cover_public_ai_paths_and_examples() -> None:
         "ImagePart",
         "AIError",
         "RetryOptions",
-        "UsageObservation",
-        "models.curated.v2.json",
+        "Usage",
+        "models.json",
         "11_provider_matrix.py",
         "12_provider_smoke.py",
+        "custom_model_file.py",
         "advanced/custom_catalog.py",
-        "migration-v2.md",
+        "upstreamId",
+        "adapter",
     ]
 
     for path in SDK_DOC_PATHS:

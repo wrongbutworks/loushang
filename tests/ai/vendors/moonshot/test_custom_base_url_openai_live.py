@@ -19,8 +19,7 @@ from collections.abc import Iterable
 
 import pytest
 
-from loushang.ai import get_model
-from loushang.ai.advanced import OpenAICompletionsOptions
+from loushang.ai import CallOptions, complete, get_model
 from loushang.ai.advanced.registry import reset_api_providers
 
 # 用户可直接修改的配置。
@@ -63,9 +62,9 @@ def _build_context() -> dict:
     }
 
 
-def _build_options(api_key: str) -> OpenAICompletionsOptions:
+def _build_options(api_key: str) -> CallOptions:
     # 仍然使用显式 api_key，避免把 base URL 覆盖与认证来源混在一起。
-    return OpenAICompletionsOptions(api_key=api_key, max_tokens=MAX_TOKENS)
+    return CallOptions(api_key=api_key, max_output_tokens=MAX_TOKENS)
 
 
 def _iter_text(parts: Iterable[object]) -> str:
@@ -85,7 +84,8 @@ async def _main() -> None:
     reset_api_providers(openai_base_url=BASE_URL)
     try:
         model = get_model(PROVIDER_ID, ENDPOINT_ID, MODEL_ID)
-        message = await model.complete(
+        message = await complete(
+            model,
             _build_context(),
             _build_options(api_key),
         )

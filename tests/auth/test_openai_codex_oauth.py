@@ -9,11 +9,8 @@ from urllib.parse import parse_qs, urlparse
 import pytest
 
 from loushang.ai.auth import (
-    clear_oauth_providers,
-    get_oauth_provider,
-    list_oauth_providers,
+    get_default_oauth_registry,
     register_builtin_oauth_providers,
-    reset_oauth_providers,
 )
 from loushang.ai.auth.types import OAuthCredentials
 from loushang.ai.contrib.openai_codex.oauth import (
@@ -204,31 +201,35 @@ def test_openai_codex_refresh_requires_refresh_token() -> None:
 
 
 def test_register_builtin_oauth_providers_excludes_openai_codex() -> None:
-    clear_oauth_providers()
+    registry = get_default_oauth_registry()
+    registry.clear()
     register_builtin_oauth_providers()
-    assert get_oauth_provider("openai-codex") is None
+    assert registry.get("openai-codex") is None
 
 
 def test_register_builtin_oauth_providers_lists_anthropic_only() -> None:
-    clear_oauth_providers()
+    registry = get_default_oauth_registry()
+    registry.clear()
     register_builtin_oauth_providers()
 
-    providers = list_oauth_providers()
+    providers = registry.list()
 
     assert [provider.id for provider in providers] == ["anthropic"]
 
 
-def test_reset_oauth_providers_restores_builtin_anthropic_only() -> None:
-    clear_oauth_providers()
-    reset_oauth_providers(with_builtins=True)
-    assert get_oauth_provider("openai-codex") is None
-    assert get_oauth_provider("anthropic") is not None
+def test_clear_then_register_builtin_oauth_providers_restores_anthropic_only() -> None:
+    registry = get_default_oauth_registry()
+    registry.clear()
+    register_builtin_oauth_providers()
+    assert registry.get("openai-codex") is None
+    assert registry.get("anthropic") is not None
 
 
 def test_openai_codex_contrib_registers_oauth_provider_explicitly() -> None:
-    clear_oauth_providers()
+    registry = get_default_oauth_registry()
+    registry.clear()
     register_openai_codex_oauth_provider()
-    assert get_oauth_provider("openai-codex") is not None
+    assert registry.get("openai-codex") is not None
 
 
 async def _fake_post_form(

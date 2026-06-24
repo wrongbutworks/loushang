@@ -192,7 +192,7 @@ def test_console_prompts_for_api_key_when_env_missing(
     assert "Current model: moonshot:openai-completions:kimi-a" in output
 
 
-def test_console_authenticates_after_endpoint_before_model_selection(
+def test_console_authenticates_after_model_selection(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     monkeypatch.delenv("MOONSHOT_API_KEY", raising=False)
@@ -218,7 +218,7 @@ def test_console_authenticates_after_endpoint_before_model_selection(
     with pytest.raises(SystemExit):
         main(["console"])
 
-    assert events[:3] == ["input", "getpass", "input"]
+    assert events[:4] == ["input", "input", "input", "getpass"]
 
 
 def test_console_api_key_uses_first_available_env_candidate(

@@ -12,6 +12,7 @@ from loushang.ai.model.registry import (
     clear_default_model_registry,
     get_default_model_registry,
 )
+from loushang.ai.options import CallOptions, ReasoningOptions, RetryOptions
 from loushang.ai.types import (
     AssistantMessage,
     ImagePart,
@@ -465,15 +466,13 @@ def test_get_api_key_is_forwarded_to_stream_function_options() -> None:
     asyncio.run(scenario())
 
 
-def test_default_agent_stream_preserves_advanced_options(
+def test_default_agent_stream_preserves_canonical_options(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     import loushang.agent.agent as agent_module
     from loushang.agent import Agent
 
     captured_options: list[object] = []
-    payload_hook = object()
-    response_hook = object()
 
     async def stream_fn(model, context, options=None, *, registry=None):
         del model, context, registry
@@ -484,12 +483,14 @@ def test_default_agent_stream_preserves_advanced_options(
 
     async def scenario() -> None:
         agent = Agent(
-            initial_state=agent_state_seed(),
+            initial_state={
+                "system_prompt": "",
+                "model": _model(),
+                "thinking_level": "high",
+            },
             session_id="session-1",
-            transport="websocket",
+            thinking_budgets={"high": 2048},
             max_retry_delay_ms=1234,
-            on_payload=payload_hook,
-            on_response=response_hook,
         )
         await agent.prompt("hi")
 
@@ -497,11 +498,22 @@ def test_default_agent_stream_preserves_advanced_options(
 
     assert len(captured_options) == 1
     options = captured_options[0]
-    assert getattr(options, "session_id", None) == "session-1"
-    assert getattr(options, "transport", None) == "websocket"
-    assert getattr(options, "max_retry_delay_ms", None) == 1234
-    assert getattr(options, "on_payload", None) is payload_hook
-    assert getattr(options, "on_response", None) is response_hook
+    assert isinstance(options, CallOptions)
+    assert options.session_id == "session-1"
+    assert options.reasoning == ReasoningOptions(
+        enabled=True,
+        effort="high",
+        budget_tokens=2048,
+    )
+    assert options.retry == RetryOptions(
+        max_attempts=1,
+        max_delay_seconds=1.234,
+    )
+    assert not hasattr(options, "signal")
+    assert not hasattr(options, "transport")
+    assert not hasattr(options, "max_retry_delay_ms")
+    assert not hasattr(options, "on_payload")
+    assert not hasattr(options, "on_response")
 
 
 def test_abort_marks_run_as_aborted_and_sets_error_message() -> None:
@@ -509,7 +521,10 @@ def test_abort_marks_run_as_aborted_and_sets_error_message() -> None:
 
     async def stream_fn(model, context, options=None):
         await asyncio.sleep(0.02)
-        if getattr(options, "signal", None) is not None and options.signal.aborted:
+        if (
+            getattr(options, "cancellation", None) is not None
+            and options.cancellation.aborted
+        ):
             raise RuntimeError("stream aborted")
         return _stream_with_final_message(_assistant_text_message("late"))
 

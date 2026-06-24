@@ -17,6 +17,7 @@
 
 1. [ARD-001: Async Public Streaming Surface](./ARD-001-async-public-streaming-surface.md)
 2. [ARD-002: AI Coverage Gate Scope](./ARD-002-ai-coverage-gate-scope.md)
+3. [ARD-003: AI Core Freeze Contract](./ARD-003-core-freeze-contract.md)
 
 ---
 

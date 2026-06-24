@@ -297,7 +297,7 @@ class ScenarioRuntime:
         self.model_user_inputs.append(_last_user_text(context.messages))
         self.signal(ModelCall(self.model_call_count))
         response = await self.next_model_response(
-            signal=getattr(options, "signal", None)
+            signal=getattr(options, "cancellation", None)
         )
         if isinstance(response, ModelToolCall):
             return _stream_with_final_message(

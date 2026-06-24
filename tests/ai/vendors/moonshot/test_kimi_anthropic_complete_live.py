@@ -15,9 +15,10 @@ from collections.abc import Iterable
 import pytest
 
 from loushang.ai import (
+    CallOptions,
+    complete,
     get_model,
 )
-from loushang.ai.advanced import AnthropicOptions
 
 # 用户可直接修改的配置。
 # `API_KEY` 是显式认证入口；环境变量只是可选读取来源。
@@ -61,9 +62,9 @@ def _build_context() -> dict:
     }
 
 
-def _build_options(api_key: str) -> AnthropicOptions:
+def _build_options(api_key: str) -> CallOptions:
     # 把 Anthropic 特有参数收束到 options 中，保持调用点干净。
-    return AnthropicOptions(api_key=api_key, max_tokens=MAX_TOKENS)
+    return CallOptions(api_key=api_key, max_output_tokens=MAX_TOKENS)
 
 
 def _iter_text(parts: Iterable[object]) -> str:
@@ -80,7 +81,8 @@ async def _main() -> None:
     model = get_model(PROVIDER_ID, ENDPOINT_ID, MODEL_ID)
 
     # 这里演示最短 complete 路径，不手动暴露 registry / provider 细节。
-    message = await model.complete(
+    message = await complete(
+        model,
         _build_context(),
         _build_options(api_key),
     )

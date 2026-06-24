@@ -1,5 +1,17 @@
 # `loushang.ai` 公共 API 设计清单
 
+> Status: historical pre-freeze design draft.
+>
+> This file is retained as background design material. It is not the current
+> public API contract. The frozen contract is documented in
+> [`ARD-003-core-freeze-contract.md`](./ARD-003-core-freeze-contract.md),
+> [`loushang-ai-top-level-api-signatures.md`](./loushang-ai-top-level-api-signatures.md),
+> [`src/loushang/ai/README.md`](../../../../src/loushang/ai/README.md), and
+> [`docs/internals/architecture/ai/core-freeze-verification.md`](./core-freeze-verification.md).
+> Names below such as `ResolvedRequest`, `ResolvedEndpoint`, and provider
+> registry functions on the root package describe an earlier proposal, not the
+> current frozen surface.
+
 ## 文档目的
 
 本文用于收敛 `src/loushang/ai` 的对外能力边界。
@@ -114,8 +126,6 @@
 - Invocation API
   - `stream`
   - `complete`
-  - `stream_simple`
-  - `complete_simple`
 - Model Access API
   - `Model`
   - `get_model`
@@ -150,16 +160,13 @@
   - `validate_tool_arguments`
   - `normalize_tool_call_id_for_model`
 - Stable Option Types
-  - `StreamOptions`
-  - `SimpleStreamOptions`
-  - `AnthropicOptions`
-  - `OpenAICompletionsOptions`
-  - `OpenAIResponsesOptions`
-  - `OpenAICodexResponsesOptions`
+  - `CallOptions`
+  - `ReasoningOptions`
+  - `RetryOptions`
+  - `TimeoutOptions`
+  - `StructuredOutputOptions`
   - `ThinkingLevel`
-  - `ThinkingBudgets`
   - `CacheRetention`
-  - `Transport`
 
 ## API 层派生对象
 
@@ -410,8 +417,6 @@ Stable 最小字段集合确认为：
 
 - `stream(model, context, options=None, *, registry)`
 - `complete(model, context, options=None, *, registry)`
-- `stream_simple(model, context, options=None, *, registry)`
-- `complete_simple(model, context, options=None, *, registry)`
 
 说明：
 
@@ -480,23 +485,21 @@ Stable 最小字段集合确认为：
 - 这些能力本质上属于“统一协议层”的一部分
 - 上层如果要做工具编排、跨模型切换或上下文修复，会直接依赖它们
 
-### F. Provider 选项类型
+### F. 调用选项类型
 
-- `StreamOptions`
-- `SimpleStreamOptions`
-- `AnthropicOptions`
-- `OpenAICompletionsOptions`
-- `OpenAIResponsesOptions`
-- `OpenAICodexResponsesOptions`
+- `CallOptions`
+- `ReasoningOptions`
+- `RetryOptions`
+- `TimeoutOptions`
+- `StructuredOutputOptions`
 - `ThinkingLevel`
-- `ThinkingBudgets`
 - `CacheRetention`
-- `Transport`
 
 说明：
 
-- 这些类型用于统一表达调用参数
+- 这些类型用于统一表达核心调用参数
 - 应稳定暴露给上层，避免上层直接组装任意 dict
+- provider / contrib 专用选项不进入 core public surface；例如 Codex transport 只属于 `loushang.ai.contrib.openai_codex`
 
 
 ## Advanced API
@@ -549,11 +552,11 @@ Stable 最小字段集合确认为：
 
 - `resolve_auth_material(...)`
 - `resolve_auth_for_model(...)`
-- `register_oauth_provider(...)`
-- `get_oauth_provider(...)`
-- `list_oauth_providers()`
-- `clear_oauth_providers()`
-- `reset_oauth_providers(...)`
+- `get_default_oauth_registry()`
+- `OAuthProviderRegistry.register(...)`
+- `OAuthProviderRegistry.get(...)`
+- `OAuthProviderRegistry.list()`
+- `OAuthProviderRegistry.clear()`
 - `register_builtin_oauth_providers()`
 - `oauth_login(...)`
 - `oauth_refresh(...)`
@@ -563,7 +566,6 @@ Stable 最小字段集合确认为：
 - `OAuthCredentials`
 - `OAuthProviderInterface`
 - `OAuthProviderRegistry`
-- `get_default_oauth_registry()`
 - `get_oauth_api_key(...)`
 - `load_credentials()`
 - `save_credentials()`
@@ -741,16 +743,11 @@ Stable 最小字段集合确认为：
 - Advanced API 优先从子包导入
 - Internal API 不从根包导出
 
-### 2. 补充认证高层门面
+### 2. 认证 Registry 边界
 
-当前 `auth` 功能可用，但高层门面偏弱。
-
-建议补：
-
-- `list_oauth_providers()`
-- `register_oauth_provider(...)`
-- `oauth_login(...)`
-- `oauth_refresh(...)`
+OAuth provider 增删查列由 `OAuthProviderRegistry` 直接提供，不再为每个
+Registry 方法额外导出同名全局 wrapper。保留的全局操作只覆盖默认 Registry
+获取、内置 provider 注册、登录和刷新。
 
 ### 3. 明确 `provider` 与 `providers` 的边界说明
 

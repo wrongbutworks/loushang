@@ -11,6 +11,7 @@ from loushang.coding.commands import SessionCommandDescriptor
 from loushang.coding.compaction import BranchSummaryResult, CompactionResult
 from loushang.coding.exec import ExecResult, ExecUpdateCallback
 from loushang.coding.extensions.contributions import ExtensionSurfaceDescriptor
+from loushang.coding.extensions.events import VALID_EXTENSION_EVENTS
 from loushang.coding.extensions.manifest import ExtensionManifest
 from loushang.coding.extensions.policy import ExtensionPolicyDecision
 from loushang.coding.loader import (
@@ -24,38 +25,6 @@ from loushang.coding.loader.types import ResourceSourceKind, ResourceSourceScope
 from loushang.coding.source_info import SourceOrigin, SourceScope
 from loushang.coding.tools import ToolDefinition
 from loushang.coding.types import ModelSelection
-
-VALID_EXTENSION_EVENTS = (
-    "session_start",
-    "session_before_switch",
-    "session_before_fork",
-    "session_before_compact",
-    "session_before_tree",
-    "session_compact",
-    "session_tree",
-    "session_refresh",
-    "before_agent_start",
-    "session_shutdown",
-    "resources_discover",
-    "input",
-    "agent_start",
-    "agent_end",
-    "turn_start",
-    "turn_end",
-    "message_start",
-    "message_update",
-    "message_end",
-    "tool_execution_start",
-    "tool_execution_update",
-    "tool_execution_end",
-    "before_provider_request",
-    "after_provider_response",
-    "user_bash",
-    "model_select",
-    "context",
-    "tool_call",
-    "tool_result",
-)
 
 
 class ExtensionContext(Protocol):

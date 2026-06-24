@@ -5,27 +5,18 @@ import json
 import sys
 import time
 from collections.abc import Iterator
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from types import ModuleType, SimpleNamespace
 
 import pytest
 
-from loushang.ai.advanced import AnthropicOptions
+from loushang.ai import CallOptions, ReasoningOptions
 from loushang.ai.auth.types import OAuthCredentials
 from loushang.ai.context import normalize_context
-from loushang.ai.model.compat_schema import (
-    FINE_GRAINED_TOOLS,
-    INTERLEAVED_THINKING,
-    SEND_SESSION_AFFINITY_HEADERS,
-    SUPPORTS_CACHE_CONTROL_ON_TOOLS,
-    SUPPORTS_EAGER_TOOL_INPUT_STREAMING,
-    SUPPORTS_LONG_CACHE_RETENTION,
-)
 from loushang.ai.model.domain import (
+    AnthropicMessagesConfig,
     Capabilities,
-    Compat,
     Endpoint,
-    EndpointProtocolFeatures,
     EndpointTransport,
     Model,
 )
@@ -33,7 +24,7 @@ from loushang.ai.model.registry import (
     clear_default_model_registry,
     get_default_model_registry,
 )
-from loushang.ai.provider import ResolvedRequest
+from loushang.ai.provider import ProviderRequest
 from loushang.ai.providers.anthropic import AnthropicProvider
 from loushang.ai.types import (
     AssistantMessage,
@@ -46,7 +37,17 @@ from loushang.ai.types import (
     Usage,
     UserMessage,
 )
-from tests.providers._runtime import start_test_provider_stream
+from tests.providers._runtime import (
+    provider_request_for_test,
+    start_test_provider_stream,
+)
+
+FINE_GRAINED_TOOLS = "fineGrainedTools"
+INTERLEAVED_THINKING = "interleavedThinking"
+SEND_SESSION_AFFINITY_HEADERS = "sendSessionAffinityHeaders"
+SUPPORTS_CACHE_CONTROL_ON_TOOLS = "supportsCacheControlOnTools"
+SUPPORTS_EAGER_TOOL_INPUT_STREAMING = "supportsEagerToolInputStreaming"
+SUPPORTS_LONG_CACHE_RETENTION = "supportsLongCacheRetention"
 
 
 def _normalized_context(model, context, options=None):
@@ -56,13 +57,26 @@ def _normalized_context(model, context, options=None):
     return normalize_context(context, model=model, pairing_mode=pairing_mode)
 
 
-def _stream_raw_parts(provider, model, context, options=None, request=None):
-    return provider._stream_raw_parts(
+def _invoke_raw_parts(
+    provider,
+    model,
+    context,
+    options=None,
+    request=None,
+    *,
+    mode: str = "stream",
+):
+    normalized_context = _normalized_context(model, context, options)
+    provider_request = provider_request_for_test(
+        provider,
         model,
-        _normalized_context(model, context, options),
-        options,
-        request,
+        normalized_context,
+        options=options,
+        request=request,
     )
+    if mode != "stream":
+        provider_request = replace(provider_request, mode=mode)
+    return provider.invoke_raw(provider_request)
 
 
 async def _stream(provider, model, context, options=None, request=None):
@@ -88,21 +102,124 @@ def test_output_config_injected_for_adaptive_thinking():
     from loushang.ai.providers.anthropic_base import AnthropicProviderBase
 
     base = AnthropicProviderBase()
-    # 伪模型ID包含 opus-4-6 -> 支持自适应思考
+    # 伪模型ID包含 opus-4-6 / opus-4-8 -> 支持自适应思考
     assert base.supports_adaptive_thinking("claude-opus-4-6-latest") is True
+    assert base.supports_adaptive_thinking("claude-opus-4-8-latest") is True
     # 映射 effort
     assert base.map_thinking_level_to_effort("high", "claude-opus-4-6") == "high"
+    assert base.map_thinking_level_to_effort("xhigh", "claude-opus-4-8") == "xhigh"
+    assert base.map_thinking_level_to_effort("xhigh", "claude-opus-4-6") == "max"
+    assert base.map_thinking_level_to_effort("max", "claude-opus-4-8") == "max"
+    assert base.map_thinking_level_to_effort("future", "claude-opus-4-8") is None
+
+
+def test_anthropic_provider_sends_opus_48_xhigh_adaptive_thinking(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _fake_anthropic_module(monkeypatch, [SimpleNamespace(type="message_stop")])
+    provider = AnthropicProvider()
+
+    asyncio.run(
+        _collect_parts(
+            _invoke_raw_parts(
+                provider,
+                _Model(id="claude-opus-4-8", max_tokens=8192),
+                {
+                    "messages": [
+                        UserMessage(role="user", content="hello", timestamp=0.0)
+                    ]
+                },
+                CallOptions(
+                    api_key="test-key",
+                    reasoning=ReasoningOptions(effort="xhigh"),
+                ),
+            )
+        )
+    )
+
+    payload = _FakeAsyncAnthropic.last_stream_kwargs
+    assert payload["thinking"] == {"type": "adaptive"}
+    assert payload["output_config"] == {"effort": "xhigh"}
+
+
+def test_anthropic_provider_complete_mode_maps_non_stream_response(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _fake_anthropic_module(
+        monkeypatch,
+        [],
+        response=SimpleNamespace(
+            id="msg_complete",
+            content=[
+                SimpleNamespace(
+                    type="thinking",
+                    thinking="plan",
+                    signature="sig_thinking",
+                ),
+                SimpleNamespace(type="redacted_thinking", data="sig_redacted"),
+                SimpleNamespace(
+                    type="tool_use",
+                    id=None,
+                    name="calc",
+                    input={"x": 1},
+                ),
+                SimpleNamespace(type="text", text="hello"),
+            ],
+            stop_reason="refusal",
+            usage=SimpleNamespace(input_tokens=3, output_tokens=2),
+        ),
+    )
+    provider = AnthropicProvider()
+
+    parts = asyncio.run(
+        _collect_parts(
+            _invoke_raw_parts(
+                provider,
+                _Model(),
+                {
+                    "messages": [
+                        UserMessage(role="user", content="hello", timestamp=0.0)
+                    ]
+                },
+                CallOptions(api_key="test-key"),
+                mode="complete",
+            )
+        )
+    )
+
+    assert _FakeAsyncAnthropic.last_stream_kwargs == {}
+    assert _FakeAsyncAnthropic.last_create_kwargs["model"] == "claude-sonnet-4-5"
+    assert [part["type"] for part in parts] == [
+        "response_start",
+        "usage_delta",
+        "thinking_delta",
+        "thinking_signature_delta",
+        "redacted_thinking",
+        "tool_call_start",
+        "tool_call_args_delta",
+        "tool_call_done",
+        "text_delta",
+        "stop_reason",
+        "response_error",
+        "response_done",
+    ]
+    assert parts[2] == {"type": "thinking_delta", "text": "plan"}
+    assert parts[3] == {
+        "type": "thinking_signature_delta",
+        "signature": "sig_thinking",
+    }
+    assert parts[5]["id"] == "tool_call_2"
+    assert parts[6]["delta"] == '{"x":1}'
+    assert parts[9] == {"type": "stop_reason", "stop_reason": "error"}
 
 
 def test_fine_grained_tool_beta_uses_typed_transport_kind() -> None:
     from loushang.ai.providers.anthropic_base import AnthropicProviderBase
 
-    unsupported = EndpointProtocolFeatures.from_raw(
-        {"tools": {"fineGrained": "unsupported"}}
-    )
+    unsupported = AnthropicMessagesConfig(fine_grained_tools=False)
     assert (
         AnthropicProviderBase.should_inject_fine_grained_tools(
-            protocol=unsupported,
+            adapter_config=unsupported,
             headers={"anthropic-beta": "other-beta"},
             transport_kind=None,
         )
@@ -110,7 +227,7 @@ def test_fine_grained_tool_beta_uses_typed_transport_kind() -> None:
     )
     assert (
         AnthropicProviderBase.should_inject_fine_grained_tools(
-            protocol=unsupported,
+            adapter_config=unsupported,
             headers={},
             transport_kind="httpx",
         )
@@ -118,7 +235,7 @@ def test_fine_grained_tool_beta_uses_typed_transport_kind() -> None:
     )
     assert (
         AnthropicProviderBase.should_inject_fine_grained_tools(
-            protocol=EndpointProtocolFeatures(),
+            adapter_config=AnthropicMessagesConfig(),
             headers={},
             transport_kind="httpx",
         )
@@ -126,9 +243,7 @@ def test_fine_grained_tool_beta_uses_typed_transport_kind() -> None:
     )
     assert (
         AnthropicProviderBase.should_inject_fine_grained_tools(
-            protocol=EndpointProtocolFeatures.from_raw(
-                {"tools": {"fineGrained": "supported"}}
-            ),
+            adapter_config=AnthropicMessagesConfig(fine_grained_tools=True),
             headers={},
             transport_kind=None,
         )
@@ -163,7 +278,7 @@ def test_anthropic_provider_uses_typed_transport_for_fine_grained_beta(
 
     asyncio.run(
         _collect_parts(
-            _stream_raw_parts(
+            _invoke_raw_parts(
                 provider,
                 model,
                 {
@@ -171,7 +286,7 @@ def test_anthropic_provider_uses_typed_transport_for_fine_grained_beta(
                         UserMessage(role="user", content="hello", timestamp=0.0)
                     ]
                 },
-                AnthropicOptions(api_key="test-key"),
+                CallOptions(api_key="test-key"),
             )
         )
     )
@@ -211,7 +326,7 @@ def test_anthropic_provider_uses_upstream_model_id(
 
     asyncio.run(
         _collect_parts(
-            _stream_raw_parts(
+            _invoke_raw_parts(
                 provider,
                 model,
                 {
@@ -219,7 +334,7 @@ def test_anthropic_provider_uses_upstream_model_id(
                         UserMessage(role="user", content="hello", timestamp=0.0)
                     ]
                 },
-                AnthropicOptions(api_key="test-key"),
+                CallOptions(api_key="test-key"),
             )
         )
     )
@@ -342,69 +457,77 @@ def test_anthropic_payload_maps_images_oauth_tools_and_groups_tool_results() -> 
     from loushang.ai.providers.anthropic import _build_anthropic_message_payloads
 
     messages, system = _build_anthropic_message_payloads(
-        {
-            "system_prompt": "system",
-            "messages": [
-                UserMessage(
-                    role="user",
-                    content=[
-                        ImagePart(
-                            type="image",
-                            data="aW1hZ2U=",
-                            mime_type="image/png",
-                        )
-                    ],
-                    timestamp=0.0,
-                ),
-                AssistantMessage(
-                    role="assistant",
-                    content=[
-                        ImagePart(
-                            type="image",
-                            data="YXNzaXN0YW50",
-                            mime_type="image/jpeg",
-                        ),
-                        ToolCall(
-                            type="toolCall",
-                            id="call_1",
-                            name="read",
-                            arguments={"path": "README.md"},
-                        ),
-                    ],
-                    api="anthropic-messages",
-                    provider="anthropic",
-                    model="claude",
-                    response_id=None,
-                    usage=Usage(
-                        input=0,
-                        output=0,
-                        cache_read=0,
-                        cache_write=0,
-                        total_tokens=0,
-                        cost={},
+        normalize_context(
+            {
+                "system_prompt": "system",
+                "messages": [
+                    UserMessage(
+                        role="user",
+                        content=[
+                            ImagePart(
+                                type="image",
+                                data="aW1hZ2U=",
+                                mime_type="image/png",
+                            )
+                        ],
+                        timestamp=0.0,
                     ),
-                    stop_reason="toolUse",
-                    error_message=None,
-                    timestamp=0.0,
-                ),
-                ToolResultMessage(
-                    role="toolResult",
-                    tool_call_id="call_1",
-                    tool_name="read",
-                    content=[TextPart(type="text", text="first")],
-                    is_error=False,
-                    timestamp=0.0,
-                ),
-                ToolResultMessage(
-                    role="toolResult",
-                    tool_call_id="call_2",
-                    tool_name="write",
-                    content=[TextPart(type="text", text="second")],
-                    is_error=True,
-                    timestamp=0.0,
-                ),
-            ],
-        },
+                    AssistantMessage(
+                        role="assistant",
+                        content=[
+                            ImagePart(
+                                type="image",
+                                data="YXNzaXN0YW50",
+                                mime_type="image/jpeg",
+                            ),
+                            ToolCall(
+                                type="toolCall",
+                                id="call_1",
+                                name="read",
+                                arguments={"path": "README.md"},
+                            ),
+                            ToolCall(
+                                type="toolCall",
+                                id="call_2",
+                                name="write",
+                                arguments={},
+                            ),
+                        ],
+                        api="anthropic-messages",
+                        provider="anthropic",
+                        model="claude",
+                        response_id=None,
+                        usage=Usage(
+                            input=0,
+                            output=0,
+                            cache_read=0,
+                            cache_write=0,
+                            total_tokens=0,
+                            cost={},
+                        ),
+                        stop_reason="toolUse",
+                        error_message=None,
+                        timestamp=0.0,
+                    ),
+                    ToolResultMessage(
+                        role="toolResult",
+                        tool_call_id="call_1",
+                        tool_name="read",
+                        content=[TextPart(type="text", text="first")],
+                        is_error=False,
+                        timestamp=0.0,
+                    ),
+                    ToolResultMessage(
+                        role="toolResult",
+                        tool_call_id="call_2",
+                        tool_name="write",
+                        content=[TextPart(type="text", text="second")],
+                        is_error=True,
+                        timestamp=0.0,
+                    ),
+                ],
+            }
+        ),
         is_oauth_token=True,
     )
 
@@ -436,6 +559,12 @@ def test_anthropic_payload_maps_images_oauth_tools_and_groups_tool_results() -> 
             "id": "call_1",
             "name": "Read",
             "input": {"path": "README.md"},
+        },
+        {
+            "type": "tool_use",
+            "id": "call_2",
+            "name": "Write",
+            "input": {},
         },
     ]
     assert messages[2] == {
@@ -515,7 +644,7 @@ def test_anthropic_internal_summarizers_cover_debug_shapes() -> None:
 
 def test_apply_oauth_identity_headers_merges_required_betas() -> None:
     from loushang.ai.providers.anthropic_base import AnthropicProviderBase
-    from loushang.ai.providers.anthropic_oauth_compat import AnthropicOAuthCompat
+    from loushang.ai.providers.anthropic_oauth_compat import AnthropicOAuthBridge
 
     headers = AnthropicProviderBase.apply_oauth_identity_headers(
         {"anthropic-beta": "fine-grained-tool-streaming-2025-05-14"}
@@ -524,8 +653,8 @@ def test_apply_oauth_identity_headers_merges_required_betas() -> None:
     assert headers["anthropic-beta"] == (
         "claude-code-20250219,oauth-2025-04-20,fine-grained-tool-streaming-2025-05-14"
     )
-    assert headers["user-agent"] == AnthropicOAuthCompat.SDK_USER_AGENT
-    assert headers["x-app"] == AnthropicOAuthCompat.SDK_APP_ID
+    assert headers["user-agent"] == AnthropicOAuthBridge.SDK_USER_AGENT
+    assert headers["x-app"] == AnthropicOAuthBridge.SDK_APP_ID
 
 
 def test_oauth_tool_name_roundtrip_prefers_registered_tool_name() -> None:
@@ -556,7 +685,7 @@ def test_anthropic_provider_oauth_request_uses_sdk_headers_and_tool_names(
 
     asyncio.run(
         _collect_parts(
-            _stream_raw_parts(
+            _invoke_raw_parts(
                 provider,
                 _Model(),
                 {
@@ -582,7 +711,7 @@ def test_anthropic_provider_oauth_request_uses_sdk_headers_and_tool_names(
                         ),
                     ],
                 },
-                AnthropicOptions(
+                CallOptions(
                     oauth_credentials={
                         "anthropic": OAuthCredentials(
                             provider="anthropic",
@@ -638,7 +767,7 @@ def test_anthropic_provider_oauth_stream_maps_claude_code_tool_name_back_to_regi
 
     parts = asyncio.run(
         _collect_parts(
-            _stream_raw_parts(
+            _invoke_raw_parts(
                 provider,
                 _Model(),
                 {
@@ -653,7 +782,7 @@ def test_anthropic_provider_oauth_stream_maps_claude_code_tool_name_back_to_regi
                         ),
                     ],
                 },
-                AnthropicOptions(
+                CallOptions(
                     oauth_credentials={
                         "anthropic": OAuthCredentials(
                             provider="anthropic",
@@ -711,7 +840,7 @@ def test_anthropic_provider_stream_uses_tool_input_from_content_block_start(
 
     parts = asyncio.run(
         _collect_parts(
-            _stream_raw_parts(
+            _invoke_raw_parts(
                 provider,
                 _Model(),
                 {
@@ -726,7 +855,7 @@ def test_anthropic_provider_stream_uses_tool_input_from_content_block_start(
                         ),
                     ],
                 },
-                AnthropicOptions(api_key="test-key", trace=trace_events.append),
+                CallOptions(api_key="test-key", trace=trace_events.append),
             )
         )
     )
@@ -794,7 +923,7 @@ def test_anthropic_provider_stream_keeps_interleaved_tool_blocks_by_index(
 
     parts = asyncio.run(
         _collect_parts(
-            _stream_raw_parts(
+            _invoke_raw_parts(
                 provider,
                 _Model(),
                 {
@@ -814,7 +943,7 @@ def test_anthropic_provider_stream_keeps_interleaved_tool_blocks_by_index(
                         ),
                     ],
                 },
-                AnthropicOptions(api_key="test-key"),
+                CallOptions(api_key="test-key"),
             )
         )
     )
@@ -842,7 +971,7 @@ def test_anthropic_provider_payload_snapshot_for_mixed_assistant_and_tool_result
 
     asyncio.run(
         _collect_parts(
-            _stream_raw_parts(
+            _invoke_raw_parts(
                 provider,
                 _Model(),
                 {
@@ -896,7 +1025,7 @@ def test_anthropic_provider_payload_snapshot_for_mixed_assistant_and_tool_result
                         ),
                     ],
                 },
-                AnthropicOptions(api_key="test-key"),
+                CallOptions(api_key="test-key"),
             )
         )
     )
@@ -987,7 +1116,7 @@ def test_anthropic_provider_respects_explicit_max_tokens(
                 id="claude-test", provider="anthropic", endpoint="anthropic-messages"
             ),
             {"messages": [UserMessage(role="user", content="hello", timestamp=0.0)]},
-            AnthropicOptions(api_key="test-key", max_tokens=1234),
+            CallOptions(api_key="test-key", max_output_tokens=1234),
         )
     )
     asyncio.run(stream.result())
@@ -1000,7 +1129,7 @@ def test_anthropic_provider_uses_resolved_capability_max_tokens(
 ) -> None:
     _fake_anthropic_module(monkeypatch, [SimpleNamespace(type="message_stop")])
     provider = AnthropicProvider()
-    request = ResolvedRequest(
+    request = ProviderRequest(
         provider="anthropic",
         endpoint="anthropic-messages",
         api="anthropic-messages",
@@ -1012,7 +1141,7 @@ def test_anthropic_provider_uses_resolved_capability_max_tokens(
 
     asyncio.run(
         _collect_parts(
-            _stream_raw_parts(
+            _invoke_raw_parts(
                 provider,
                 _Model(max_tokens=8192),
                 {
@@ -1020,7 +1149,7 @@ def test_anthropic_provider_uses_resolved_capability_max_tokens(
                         UserMessage(role="user", content="hello", timestamp=0.0)
                     ]
                 },
-                AnthropicOptions(api_key="ignored-options-key"),
+                CallOptions(api_key="ignored-options-key"),
                 request,
             )
         )
@@ -1034,31 +1163,23 @@ def test_anthropic_provider_uses_typed_protocol_over_stale_false_options(
 ) -> None:
     _fake_anthropic_module(monkeypatch, [SimpleNamespace(type="message_stop")])
     provider = AnthropicProvider()
-    request = ResolvedRequest(
+    request = ProviderRequest(
         provider="anthropic",
         endpoint="anthropic-messages",
         api="anthropic-messages",
         base_url=None,
         headers={"x-api-key": "test-key"},
-        adapter_options={
-            SEND_SESSION_AFFINITY_HEADERS: False,
-            SUPPORTS_LONG_CACHE_RETENTION: False,
-            FINE_GRAINED_TOOLS: False,
-            INTERLEAVED_THINKING: False,
-        },
-        adapter_protocol=EndpointProtocolFeatures.from_raw(
-            {
-                "reasoning": {"interleaved": "supported"},
-                "tools": {"fineGrained": "supported"},
-                "cache": {"longRetention": "supported"},
-                "session": {"affinityHeaders": "supported"},
-            }
+        adapter_config=AnthropicMessagesConfig(
+            session_affinity_headers=True,
+            long_cache_retention=True,
+            fine_grained_tools=True,
+            interleaved_thinking=True,
         ),
     )
 
     asyncio.run(
         _collect_parts(
-            _stream_raw_parts(
+            _invoke_raw_parts(
                 provider,
                 _Model(),
                 {
@@ -1070,11 +1191,11 @@ def test_anthropic_provider_uses_typed_protocol_over_stale_false_options(
                         )
                     ]
                 },
-                AnthropicOptions(
+                CallOptions(
                     api_key="ignored-options-key",
                     cache_retention="long",
                     session_id="sess_typed",
-                    thinking_enabled=True,
+                    reasoning=ReasoningOptions(enabled=True),
                 ),
                 request,
             )
@@ -1099,31 +1220,23 @@ def test_anthropic_provider_uses_typed_protocol_over_stale_true_options(
 ) -> None:
     _fake_anthropic_module(monkeypatch, [SimpleNamespace(type="message_stop")])
     provider = AnthropicProvider()
-    request = ResolvedRequest(
+    request = ProviderRequest(
         provider="anthropic",
         endpoint="anthropic-messages",
         api="anthropic-messages",
         base_url=None,
         headers={"x-api-key": "test-key", "anthropic-version": "2023-06-01"},
-        adapter_options={
-            SEND_SESSION_AFFINITY_HEADERS: True,
-            SUPPORTS_LONG_CACHE_RETENTION: True,
-            FINE_GRAINED_TOOLS: True,
-            INTERLEAVED_THINKING: True,
-        },
-        adapter_protocol=EndpointProtocolFeatures.from_raw(
-            {
-                "reasoning": {"interleaved": "unsupported"},
-                "tools": {"fineGrained": "unsupported"},
-                "cache": {"longRetention": "unsupported"},
-                "session": {"affinityHeaders": "unsupported"},
-            }
+        adapter_config=AnthropicMessagesConfig(
+            session_affinity_headers=False,
+            long_cache_retention=False,
+            fine_grained_tools=False,
+            interleaved_thinking=False,
         ),
     )
 
     asyncio.run(
         _collect_parts(
-            _stream_raw_parts(
+            _invoke_raw_parts(
                 provider,
                 _Model(),
                 {
@@ -1135,11 +1248,11 @@ def test_anthropic_provider_uses_typed_protocol_over_stale_true_options(
                         )
                     ]
                 },
-                AnthropicOptions(
+                CallOptions(
                     api_key="ignored-options-key",
                     cache_retention="long",
                     session_id="sess_stale",
-                    thinking_enabled=True,
+                    reasoning=ReasoningOptions(enabled=True),
                 ),
                 request,
             )
@@ -1180,7 +1293,7 @@ def test_anthropic_provider_clamps_explicit_max_tokens(
                 id="claude-test", provider="anthropic", endpoint="anthropic-messages"
             ),
             {"messages": [UserMessage(role="user", content="hello", timestamp=0.0)]},
-            AnthropicOptions(api_key="test-key", max_tokens=0),
+            CallOptions(api_key="test-key", max_output_tokens=0),
         )
     )
     asyncio.run(stream.result())
@@ -1200,13 +1313,9 @@ def test_anthropic_compat_fireworks_uses_session_headers_without_long_cache_ttl(
             provider="fireworks",
             api="anthropic-messages",
             base_url="https://api.fireworks.ai/inference/v1",
-            compat=Compat.from_raw(
-                {
-                    SEND_SESSION_AFFINITY_HEADERS: True,
-                    SUPPORTS_CACHE_CONTROL_ON_TOOLS: False,
-                    SUPPORTS_EAGER_TOOL_INPUT_STREAMING: False,
-                    SUPPORTS_LONG_CACHE_RETENTION: False,
-                }
+            adapter=AnthropicMessagesConfig(
+                session_affinity_headers=True,
+                long_cache_retention=False,
             ),
             models={
                 "claude-sonnet-4-5": Model(
@@ -1221,7 +1330,7 @@ def test_anthropic_compat_fireworks_uses_session_headers_without_long_cache_ttl(
 
     asyncio.run(
         _collect_parts(
-            _stream_raw_parts(
+            _invoke_raw_parts(
                 provider,
                 _Model(
                     provider_id="fireworks",
@@ -1236,7 +1345,7 @@ def test_anthropic_compat_fireworks_uses_session_headers_without_long_cache_ttl(
                         )
                     ]
                 },
-                AnthropicOptions(
+                CallOptions(
                     api_key="test-key",
                     cache_retention="long",
                     session_id="sess_fireworks",
@@ -1263,7 +1372,7 @@ def test_anthropic_provider_uses_model_max_tokens_without_scaling(
 
     asyncio.run(
         _collect_parts(
-            _stream_raw_parts(
+            _invoke_raw_parts(
                 provider,
                 _Model(max_tokens=8192),
                 {
@@ -1271,7 +1380,7 @@ def test_anthropic_provider_uses_model_max_tokens_without_scaling(
                         UserMessage(role="user", content="hello", timestamp=0.0)
                     ]
                 },
-                AnthropicOptions(api_key="test-key"),
+                CallOptions(api_key="test-key"),
             )
         )
     )
@@ -1287,7 +1396,7 @@ def test_anthropic_provider_caps_model_max_tokens_default(
 
     asyncio.run(
         _collect_parts(
-            _stream_raw_parts(
+            _invoke_raw_parts(
                 provider,
                 _Model(max_tokens=32768),
                 {
@@ -1295,7 +1404,7 @@ def test_anthropic_provider_caps_model_max_tokens_default(
                         UserMessage(role="user", content="hello", timestamp=0.0)
                     ]
                 },
-                AnthropicOptions(api_key="test-key"),
+                CallOptions(api_key="test-key"),
             )
         )
     )
@@ -1307,60 +1416,68 @@ def test_anthropic_payload_groups_consecutive_tool_results_from_same_turn() -> N
     from loushang.ai.providers.anthropic import _build_anthropic_message_payloads
 
     messages, _system = _build_anthropic_message_payloads(
-        {
-            "messages": [
-                AssistantMessage(
-                    role="assistant",
-                    content=[
-                        ToolCall(
-                            type="toolCall", id="bad_write", name="write", arguments={}
+        normalize_context(
+            {
+                "messages": [
+                    AssistantMessage(
+                        role="assistant",
+                        content=[
+                            ToolCall(
+                                type="toolCall",
+                                id="bad_write",
+                                name="write",
+                                arguments={},
+                            ),
+                            ToolCall(
+                                type="toolCall",
+                                id="good_write",
+                                name="write",
+                                arguments={
+                                    "path": "tmp/bmi.html",
+                                    "content": "<!doctype html>",
+                                },
+                            ),
+                        ],
+                        api="anthropic-messages",
+                        provider="anthropic",
+                        model="claude-test",
+                        response_id=None,
+                        usage=Usage(
+                            input=0,
+                            output=0,
+                            cache_read=0,
+                            cache_write=0,
+                            total_tokens=0,
+                            cost=None,
                         ),
-                        ToolCall(
-                            type="toolCall",
-                            id="good_write",
-                            name="write",
-                            arguments={
-                                "path": "tmp/bmi.html",
-                                "content": "<!doctype html>",
-                            },
-                        ),
-                    ],
-                    api="anthropic-messages",
-                    provider="anthropic",
-                    model="claude-test",
-                    response_id=None,
-                    usage=Usage(
-                        input=0,
-                        output=0,
-                        cache_read=0,
-                        cache_write=0,
-                        total_tokens=0,
-                        cost=None,
+                        stop_reason="toolUse",
+                        error_message=None,
+                        timestamp=0.0,
                     ),
-                    stop_reason="toolUse",
-                    error_message=None,
-                    timestamp=0.0,
-                ),
-                ToolResultMessage(
-                    role="toolResult",
-                    tool_call_id="bad_write",
-                    tool_name="write",
-                    content=[
-                        TextPart(type="text", text='Validation failed for tool "write"')
-                    ],
-                    is_error=True,
-                    timestamp=0.0,
-                ),
-                ToolResultMessage(
-                    role="toolResult",
-                    tool_call_id="good_write",
-                    tool_name="write",
-                    content=[TextPart(type="text", text="Wrote tmp/bmi.html")],
-                    is_error=False,
-                    timestamp=0.0,
-                ),
-            ],
-        },
+                    ToolResultMessage(
+                        role="toolResult",
+                        tool_call_id="bad_write",
+                        tool_name="write",
+                        content=[
+                            TextPart(
+                                type="text",
+                                text='Validation failed for tool "write"',
+                            )
+                        ],
+                        is_error=True,
+                        timestamp=0.0,
+                    ),
+                    ToolResultMessage(
+                        role="toolResult",
+                        tool_call_id="good_write",
+                        tool_name="write",
+                        content=[TextPart(type="text", text="Wrote tmp/bmi.html")],
+                        is_error=False,
+                        timestamp=0.0,
+                    ),
+                ],
+            }
+        ),
         is_oauth_token=False,
     )
 
@@ -1402,11 +1519,16 @@ async def _collect_parts(source) -> list[dict]:
 
 
 def _fake_anthropic_module(
-    monkeypatch: pytest.MonkeyPatch, events: list[object]
+    monkeypatch: pytest.MonkeyPatch,
+    events: list[object],
+    *,
+    response: object | None = None,
 ) -> None:
     _FakeAsyncAnthropic.events = events
+    _FakeAsyncAnthropic.response = response
     _FakeAsyncAnthropic.last_init_kwargs = {}
     _FakeAsyncAnthropic.last_stream_kwargs = {}
+    _FakeAsyncAnthropic.last_create_kwargs = {}
     module = ModuleType("anthropic")
     module.AsyncAnthropic = _FakeAsyncAnthropic
     monkeypatch.setitem(sys.modules, "anthropic", module)
@@ -1414,8 +1536,10 @@ def _fake_anthropic_module(
 
 class _FakeAsyncAnthropic:
     events: list[object] = []
+    response: object | None = None
     last_init_kwargs: dict[str, object] = {}
     last_stream_kwargs: dict[str, object] = {}
+    last_create_kwargs: dict[str, object] = {}
 
     def __init__(self, **kwargs) -> None:
         type(self).last_init_kwargs = kwargs
@@ -1429,6 +1553,10 @@ class _FakeMessages:
     def stream(self, **kwargs):
         self._owner.last_stream_kwargs = kwargs
         return _FakeStreamContext(self._owner.events)
+
+    async def create(self, **kwargs):
+        self._owner.last_create_kwargs = kwargs
+        return self._owner.response
 
 
 class _FakeStreamContext:

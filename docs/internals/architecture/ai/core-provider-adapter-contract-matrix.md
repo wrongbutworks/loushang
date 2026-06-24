@@ -12,6 +12,10 @@ or account-specific integrations must live in `contrib` or an external package.
 | `openai-responses` | `loushang.ai.providers.openai_responses` | `OpenAIResponsesProvider` | OpenAI Responses |
 
 These are the only adapters registered by `register_builtin_ai_providers`.
+All providers must implement `ApiProvider` (`api` plus `invoke_raw(request)`).
+Providers that own non-core adapter config may additionally implement
+`ProviderRequestValidator.validate_request(request)`, which is checked at
+registration and runs before `invoke_raw(request)`.
 
 ## Core Support Modules
 

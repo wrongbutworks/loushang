@@ -1,8 +1,8 @@
 """高级示例：本地 faux provider 的 tool-result roundtrip。
 
 这个示例只关注协议往返：
-1. 第一轮拿到 `toolCall`
-2. 第二轮回传 `ToolResultMessage`
+1. 构造上一轮 assistant `toolCall`
+2. 当前轮回传 `ToolResultMessage`
 
 它适合调试工具协议，不适合作为第一次接入参考。
 """
@@ -13,9 +13,12 @@ import asyncio
 from collections.abc import Iterable
 
 from loushang.ai import (
+    AssistantMessage,
     Model,
     TextPart,
+    ToolCall,
     ToolResultMessage,
+    Usage,
     complete,
 )
 from loushang.ai.advanced.registry import ApiProviderRegistry
@@ -55,6 +58,30 @@ def _iter_text(parts: Iterable[object]) -> str:
     return "".join(texts)
 
 
+def _previous_tool_call_message() -> AssistantMessage:
+    return AssistantMessage(
+        role="assistant",
+        content=[
+            ToolCall(type="toolCall", id="call_1", name="calc", arguments={"x": 1})
+        ],
+        api="anthropic-messages",
+        provider="faux",
+        model="faux-model",
+        response_id="faux-tool-call",
+        usage=Usage(
+            input=0,
+            output=0,
+            cache_read=0,
+            cache_write=0,
+            total_tokens=0,
+            cost=None,
+        ),
+        stop_reason="toolUse",
+        error_message=None,
+        timestamp=0.0,
+    )
+
+
 async def _main() -> None:
     # 高级路径：显式注册 faux provider，避免依赖真实厂商网络。
     _register_model()
@@ -63,12 +90,7 @@ async def _main() -> None:
 
     model = _build_model()
 
-    first = await complete(
-        model,
-        {"messages": [], "emit_tool_call": True},
-        registry=registry,
-    )
-    # 第一轮重点是确认模型是否按协议发出了 tool call。
+    first = _previous_tool_call_message()
     tool_call = next(part for part in first.content if getattr(part, "type", None) == "toolCall")
 
     print("ROUND 1")
@@ -90,7 +112,7 @@ async def _main() -> None:
                 ),
             ]
         },
-        registry=registry,
+        provider_registry=registry,
     )
 
     print("ROUND 2")

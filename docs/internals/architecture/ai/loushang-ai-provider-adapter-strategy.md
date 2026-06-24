@@ -233,7 +233,7 @@ official SDK 的优点包括：
 
 provider adapter 应只负责以下事项：
 
-1. 接收统一 `Context + Model + StreamOptions`
+1. 接收统一 `Context + Model + CallOptions`
 2. 将其映射为对应应用协议请求
 3. 在 async-start 边界上选择并调用实现载体
 4. 将上游 stream 翻译为 raw parts
@@ -275,8 +275,8 @@ provider adapter 应只负责以下事项：
 
 provider adapter strategy 需要明确承接当前已冻结的 cancellation 方向：
 
-- public 使用 `signal`
-- public 语义建模为 `AbortSignalLike`
+- public 使用 `CallOptions.cancellation`
+- public 语义建模为最小取消信号对象
 - adapter 是最关键的取消检查层之一
 
 因此建议要求 adapter 至少在三个点检查取消：
@@ -393,5 +393,5 @@ provider adapter strategy 需要明确承接当前已冻结的 cancellation 方�
 
 在此基础上，下一步最自然进入：
 
-1. `stream()` / `complete()` / `stream_simple()` / `complete_simple()` 的正式签名设计
+1. `stream()` / `complete()` 的正式签名设计
 2. 一个最小 provider spike，用于验证 adapter strategy 能否落地

@@ -1,4 +1,6 @@
-# Loushang-AI Component Structure V1 (同步现状)
+# Loushang-AI Component Structure V1
+
+> Status: pre-freeze component draft. Current root invocation is `stream()` / `complete()` with `CallOptions`; remaining compat, transport, or simple-entrypoint references in this file are historical draft material until AIF-015 archives or rewrites it.
 
 说明：
 
@@ -54,8 +56,6 @@
 
 - 对外暴露 `stream`
 - 对外暴露 `complete`
-- 对外暴露 `stream_simple`
-- 对外暴露 `complete_simple`
 
 **不负责：**
 

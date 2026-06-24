@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import asyncio
 from dataclasses import dataclass
-from types import SimpleNamespace
 
 import pytest
 
@@ -15,6 +14,7 @@ from loushang.ai import (
 from loushang.ai.api_registry import ApiProviderRegistry
 from loushang.ai.errors import UnsupportedCapabilityError
 from loushang.ai.model import Capabilities
+from loushang.ai.provider import ProviderRequest
 from loushang.ai.structured import (
     openai_chat_response_format,
     openai_responses_text_format,
@@ -140,7 +140,7 @@ def test_complete_structured_returns_raw_and_parsed(
             {"messages": []},
             StructuredOutputOptions(mode="json_object"),
             options=CallOptions(),
-            registry=registry,
+            provider_registry=registry,
         )
     )
 
@@ -163,7 +163,7 @@ def test_complete_structured_uses_provider_declared_mapping_support(
             {"messages": []},
             StructuredOutputOptions(mode="json_object"),
             options=CallOptions(),
-            registry=registry,
+            provider_registry=registry,
         )
     )
 
@@ -189,7 +189,7 @@ def test_complete_structured_rejects_provider_without_mapping_support(
                 {"messages": []},
                 StructuredOutputOptions(mode="json_object"),
                 options=CallOptions(),
-                registry=registry,
+                provider_registry=registry,
             )
         )
 
@@ -207,7 +207,7 @@ class _StructuredProvider:
         self.supports_structured_output = supports_mapping
         self.options = None
 
-    async def stream_raw(self, request):
+    async def invoke_raw(self, request):
         self.options = request.options
         yield {"type": "response_start", "response_id": "structured-demo"}
         yield {"type": "text_delta", "text": '{"answer":"ok"}'}
@@ -218,9 +218,12 @@ class _StructuredProvider:
 def _patch_resolved_request(monkeypatch: pytest.MonkeyPatch, *, api: str) -> None:
     def _resolve_request(_model, options=None):
         del options
-        return SimpleNamespace(
+        return ProviderRequest(
             api=api,
             provider="test-provider",
+            endpoint=api,
+            base_url=None,
+            model=_model,
             capabilities=Capabilities(
                 input=("text",),
                 stream=True,
@@ -228,27 +231,7 @@ def _patch_resolved_request(monkeypatch: pytest.MonkeyPatch, *, api: str) -> Non
             ),
         )
 
-    def _resolve_provider_request(
-        provider_api,
-        _model,
-        *,
-        options=None,
-        request=None,
-        adapter_config_resolver=None,
-    ):
-        del options
-        resolved = request if request is not None else _resolve_request(_model)
-        if resolved.api != provider_api:
-            raise ValueError(
-                f"Mismatched api: provider={provider_api!r} request.api={resolved.api!r}"
-            )
-        return resolved
-
     monkeypatch.setattr(
         "loushang.ai.api.streaming.resolve_request_for_model",
         _resolve_request,
-    )
-    monkeypatch.setattr(
-        "loushang.ai.provider.invocation.resolve_provider_request",
-        _resolve_provider_request,
     )

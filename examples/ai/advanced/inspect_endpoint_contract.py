@@ -1,9 +1,8 @@
 """Inspect typed provider request facts from the built-in catalog.
 
 This advanced example is offline. It reads the model catalog and prints the
-typed endpoint-default protocol, wire dialect, transport, and routing contracts,
-then shows the model-effective request contract and adapter-effective request
-facts produced by provider resolution.
+endpoint-default adapter, transport, and routing contracts, then shows the
+model-effective request facts produced by provider resolution.
 """
 
 from __future__ import annotations
@@ -33,15 +32,12 @@ def inspect_endpoint_contract(
         "provider": provider_id,
         "endpoint": endpoint_id,
         "api": endpoint.api,
-        "protocolScope": "endpoint-default",
-        "protocol": endpoint.protocol.to_raw(),
-        "dialectScope": "endpoint-default",
-        "dialect": endpoint.dialect.to_raw(),
+        "adapterScope": "endpoint-default",
+        "adapter": endpoint.adapter.to_raw() if endpoint.adapter is not None else None,
         "transportScope": "endpoint-default",
         "transport": endpoint.transport.to_raw(),
         "routingScope": "endpoint-default",
         "routing": endpoint.routing.to_raw(),
-        "legacyCompatKeys": sorted(endpoint.compat),
     }
     if model_id is not None:
         model = registry.find_model(provider_id, endpoint_id, model_id)
@@ -53,14 +49,11 @@ def inspect_endpoint_contract(
             env=_offline_template_env(endpoint),
         )
         contract["model"] = model_id
-        contract["requestProtocolScope"] = "model-effective"
-        contract["requestProtocol"] = resolved.protocol.to_raw()
-        contract["requestDialectScope"] = "model-effective"
-        contract["requestDialect"] = resolved.dialect.to_raw()
-        contract["adapterProtocolScope"] = "adapter-effective"
-        contract["adapterProtocol"] = resolved.adapter_protocol.to_raw()
-        contract["adapterDialectScope"] = "adapter-effective"
-        contract["adapterDialect"] = resolved.adapter_dialect.to_raw()
+        contract["requestAdapterScope"] = "model-effective"
+        adapter_config = resolved.adapter_config
+        contract["requestAdapter"] = (
+            adapter_config.to_raw() if hasattr(adapter_config, "to_raw") else None
+        )
         contract["requestTransportScope"] = "model-effective"
         contract["requestTransport"] = resolved.transport.to_raw()
         contract["requestRoutingScope"] = "model-effective"

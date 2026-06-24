@@ -242,7 +242,7 @@ def test_agent_session_abort_mid_stream_cleans_run_state_and_keeps_queued_messag
     async def stream_fn(model, context, options=None):
         del model, context
         stream = AssistantMessageEventStream()
-        signal = getattr(options, "signal", None)
+        signal = getattr(options, "cancellation", None)
         partial = _assistant_text_message("partial")
 
         async def _feed() -> None:
@@ -896,96 +896,6 @@ def test_agent_session_applies_before_agent_start_result(tmp_path) -> None:
     assert entries[1].message.content == "extension context"
 
 
-def test_agent_session_wires_before_provider_request_to_agent_payload(tmp_path) -> None:
-    from pathlib import Path
-
-    from loushang.agent import Agent
-    from loushang.coding.extensions import ExtensionRunner, LoadedExtension
-    from loushang.coding.session import AgentSession
-    from loushang.coding.store import SessionManager
-
-    payloads: list[object] = []
-
-    async def stream_fn(model, context, options=None):
-        del model, context
-        assert options is not None
-        transformed = await options.on_payload({"model": "base", "messages": []}, object())
-        payloads.append(transformed)
-        return _stream_with_final_message(_assistant_text_message("done"))
-
-    def _before_provider_request(event, ctx):
-        return {
-            "model": "extension-model",
-            "messages": event.payload["messages"],
-            "cwd": ctx.cwd,
-        }
-
-    async def scenario() -> None:
-        session = AgentSession(
-            agent=Agent(stream_fn=stream_fn, initial_state={"system_prompt": "Base system prompt"}),
-            session_manager=SessionManager.new(session_dir=tmp_path, cwd="/tmp/project", persist=False),
-            extension_runner=ExtensionRunner(
-                [
-                    LoadedExtension(
-                        name="provider",
-                        source_path=Path("/tmp/project/extensions/provider.py"),
-                        hooks={"before_provider_request": [_before_provider_request]},
-                    )
-                ]
-            ),
-        )
-
-        await session.prompt("hello")
-
-    asyncio.run(scenario())
-
-    assert payloads == [{"model": "extension-model", "messages": [], "cwd": "/tmp/project"}]
-
-
-def test_agent_session_wires_after_provider_response_to_extension(tmp_path) -> None:
-    from pathlib import Path
-
-    from loushang.agent import Agent
-    from loushang.coding.extensions import ExtensionRunner, LoadedExtension
-    from loushang.coding.session import AgentSession
-    from loushang.coding.store import SessionManager
-
-    seen: list[tuple[object, object, str]] = []
-
-    async def stream_fn(model, context, options=None):
-        del model, context
-        assert options is not None
-        await options.on_response(
-            {"status": 202, "headers": {"x-provider": "ok"}},
-            object(),
-        )
-        return _stream_with_final_message(_assistant_text_message("done"))
-
-    async def _after_provider_response(event, ctx):
-        seen.append((event.status, event.headers, ctx.cwd))
-
-    async def scenario() -> None:
-        session = AgentSession(
-            agent=Agent(stream_fn=stream_fn, initial_state={"system_prompt": "Base system prompt"}),
-            session_manager=SessionManager.new(session_dir=tmp_path, cwd="/tmp/project", persist=False),
-            extension_runner=ExtensionRunner(
-                [
-                    LoadedExtension(
-                        name="provider",
-                        source_path=Path("/tmp/project/extensions/provider.py"),
-                        hooks={"after_provider_response": [_after_provider_response]},
-                    )
-                ]
-            ),
-        )
-
-        await session.prompt("hello")
-
-    asyncio.run(scenario())
-
-    assert seen == [(202, {"x-provider": "ok"}, "/tmp/project")]
-
-
 def test_agent_session_extension_hook_ordering_spans_provider_tool_and_agent_end(tmp_path) -> None:
     from pathlib import Path
 
@@ -1021,8 +931,6 @@ def test_agent_session_extension_hook_ordering_spans_provider_tool_and_agent_end
     async def stream_fn(model, context, options=None):
         del model, context
         assert options is not None
-        await options.on_payload({"messages": []}, object())
-        await options.on_response({"status": 200, "headers": {}}, object())
         return _stream_with_assistant_message(
             AssistantMessage(
                 role="assistant",
@@ -1053,14 +961,6 @@ def test_agent_session_extension_hook_ordering_spans_provider_tool_and_agent_end
     def _before_agent_start(event, ctx):
         del event, ctx
         order.append("before_agent_start")
-
-    def _before_provider_request(event, ctx):
-        del event, ctx
-        order.append("before_provider_request")
-
-    def _after_provider_response(event, ctx):
-        del event, ctx
-        order.append("after_provider_response")
 
     def _tool_call(event, ctx):
         del event, ctx
@@ -1094,8 +994,6 @@ def test_agent_session_extension_hook_ordering_spans_provider_tool_and_agent_end
                         hooks={
                             "input": [_input],
                             "before_agent_start": [_before_agent_start],
-                            "before_provider_request": [_before_provider_request],
-                            "after_provider_response": [_after_provider_response],
                             "tool_call": [_tool_call],
                             "tool_result": [_tool_result],
                             "agent_end": [_agent_end],
@@ -1112,8 +1010,6 @@ def test_agent_session_extension_hook_ordering_spans_provider_tool_and_agent_end
     assert order == [
         "input",
         "before_agent_start",
-        "before_provider_request",
-        "after_provider_response",
         "tool_call",
         "tool_execute",
         "tool_result",
@@ -2383,8 +2279,8 @@ def test_agent_session_applies_extension_provider_registration(tmp_path) -> None
             "displayName": "Proxy Provider",
             "website": "https://proxy.example.com",
             "endpoints": {
-                "proxy-simple": {
-                    "api": "proxy-simple",
+                    "proxy-simple": {
+                        "api": "openai-completions",
                     "displayName": "Proxy Endpoint",
                     "baseUrl": "https://proxy.example.com",
                     "authOverride": {
@@ -2392,7 +2288,7 @@ def test_agent_session_applies_extension_provider_registration(tmp_path) -> None
                         "apiKeyEnv": "PROXY_API_KEY",
                         "extraHeaders": {"x-proxy": "yes"},
                     },
-                    "compat": {"supportsUsageInStreaming": True},
+                    "adapter": {"streamingUsage": True},
                     "defaults": {"temperature": 0.1},
                     "models": {
                         "proxy-model": {
@@ -2402,7 +2298,7 @@ def test_agent_session_applies_extension_provider_registration(tmp_path) -> None
                             "contextWindow": 200000,
                             "maxTokens": 8192,
                             "cost": {"input": 1, "output": 2},
-                            "compat": {"supportsReasoningEffort": True},
+                            "adapter": {"reasoningEffort": True},
                             "defaults": {"reasoningEffort": "high"},
                         }
                     },
@@ -2429,14 +2325,17 @@ def test_agent_session_applies_extension_provider_registration(tmp_path) -> None
     assert endpoint.auth is not None
     assert endpoint.auth.api_key_env == "PROXY_API_KEY"
     assert endpoint.auth.extra_headers == {"x-proxy": "yes"}
-    assert dict(endpoint.compat) == {"supportsUsageInStreaming": True}
+    assert endpoint.adapter is not None
+    assert endpoint.adapter.streaming_usage is True
     assert dict(endpoint.defaults) == {"temperature": 0.1}
     model = ai_registry.get_model("proxy", "proxy-simple", "proxy-model")
     assert model.name == "Proxy Model"
     assert model.supports_image_input is True
     assert model.supports_thinking is True
     assert model.max_tokens == 8192
-    assert dict(model.compat) == {"supportsUsageInStreaming": True, "supportsReasoningEffort": True}
+    assert model.adapter is not None
+    assert model.adapter.streaming_usage is True
+    assert model.adapter.reasoning_effort is True
     assert dict(model.defaults) == {"temperature": 0.1, "reasoningEffort": "high"}
 
     api.register_provider(
@@ -2450,7 +2349,7 @@ def test_agent_session_applies_extension_provider_registration(tmp_path) -> None
                         "apiKeyEnv": "PROXY_API_KEY",
                         "extraHeaders": {"x-proxy": "updated"},
                     },
-                    "compat": {"supportsStore": True},
+                    "adapter": {"store": True},
                     "defaults": {"maxTokens": 1024},
                 }
             }
@@ -2463,11 +2362,10 @@ def test_agent_session_applies_extension_provider_registration(tmp_path) -> None
     assert endpoint.auth.extra_headers == {"x-proxy": "updated"}
     model = ai_registry.get_model("proxy", "proxy-simple", "proxy-model")
     assert model.name == "Proxy Model"
-    assert dict(model.compat) == {
-        "supportsUsageInStreaming": True,
-        "supportsReasoningEffort": True,
-        "supportsStore": True,
-    }
+    assert model.adapter is not None
+    assert model.adapter.streaming_usage is True
+    assert model.adapter.reasoning_effort is True
+    assert model.adapter.store is True
     assert dict(model.defaults) == {
         "temperature": 0.1,
         "reasoningEffort": "high",

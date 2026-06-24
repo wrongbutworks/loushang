@@ -3,21 +3,29 @@ from __future__ import annotations
 import asyncio
 import json
 from dataclasses import dataclass, field
+from types import SimpleNamespace
 
 import pytest
 
 import loushang.ai.contrib.openai_codex.provider as codex_provider_module
+from loushang.ai.api import stream
+from loushang.ai.api_registry import ApiProviderRegistry
+from loushang.ai.auth.registry import get_default_oauth_registry
 from loushang.ai.auth.types import OAuthCredentials
 from loushang.ai.context import normalize_context
-from loushang.ai.contrib.openai_codex import OpenAICodexResponsesOptions
+from loushang.ai.contrib.openai_codex import (
+    OpenAICodexResponsesOptions,
+    register_openai_codex_oauth_provider,
+)
 from loushang.ai.contrib.openai_codex.provider import OpenAICodexResponsesProvider
-from loushang.ai.model.domain import Compat, Endpoint, Model
+from loushang.ai.contrib.openai_codex.runtime_config import OpenAICodexRuntimeConfig
+from loushang.ai.model.domain import Capabilities, Endpoint, Model
 from loushang.ai.model.registry import (
     clear_default_model_registry,
     get_default_model_registry,
 )
-from loushang.ai.options import RetryOptions
-from loushang.ai.provider import ResolvedRequest
+from loushang.ai.options import ReasoningOptions, RetryOptions
+from loushang.ai.provider import ProviderRequest
 from loushang.ai.structured import StructuredOutputOptions
 from loushang.ai.types import (
     AssistantMessage,
@@ -28,7 +36,10 @@ from loushang.ai.types import (
     Usage,
     UserMessage,
 )
-from tests.providers._runtime import start_test_provider_stream
+from tests.providers._runtime import (
+    provider_request_for_test,
+    start_test_provider_stream,
+)
 
 
 def _normalized_context(model, context, options=None):
@@ -38,12 +49,16 @@ def _normalized_context(model, context, options=None):
     return normalize_context(context, model=model, pairing_mode=pairing_mode)
 
 
-def _stream_raw_parts(provider, model, context, options=None, request=None):
-    return provider._stream_raw_parts(
-        model,
-        _normalized_context(model, context, options),
-        options,
-        request,
+def _invoke_raw_parts(provider, model, context, options=None, request=None):
+    normalized_context = _normalized_context(model, context, options)
+    return provider.invoke_raw(
+        provider_request_for_test(
+            provider,
+            model,
+            normalized_context,
+            options=options,
+            request=request,
+        )
     )
 
 
@@ -81,7 +96,7 @@ def test_openai_codex_responses_builds_request_body_and_headers() -> None:
 
     asyncio.run(
         _collect_parts(
-            _stream_raw_parts(
+            _invoke_raw_parts(
                 provider,
                 model,
                 {
@@ -100,8 +115,10 @@ def test_openai_codex_responses_builds_request_body_and_headers() -> None:
                 OpenAICodexResponsesOptions(
                     api_key=token,
                     session_id="sess_1",
-                    reasoning="minimal",
-                    reasoning_summary="concise",
+                    reasoning=ReasoningOptions(
+                        effort="minimal",
+                        expose_summary=True,
+                    ),
                     text_verbosity="high",
                 ),
             )
@@ -141,7 +158,7 @@ def test_openai_codex_responses_builds_request_body_and_headers() -> None:
         "include": ["reasoning.encrypted_content"],
         "prompt_cache_key": "sess_1",
         "prompt_cache_retention": "in-memory",
-        "reasoning": {"effort": "low", "summary": "concise"},
+        "reasoning": {"effort": "low", "summary": "auto"},
     }
 
 
@@ -158,7 +175,7 @@ def test_openai_codex_responses_trace_payload_summarizes_request_body() -> None:
 
     asyncio.run(
         _collect_parts(
-            _stream_raw_parts(
+            _invoke_raw_parts(
                 provider,
                 _Model(reasoning=True),
                 {
@@ -177,8 +194,10 @@ def test_openai_codex_responses_trace_payload_summarizes_request_body() -> None:
                 OpenAICodexResponsesOptions(
                     api_key=_build_fake_jwt("acc_test"),
                     session_id="sess_trace",
-                    reasoning="minimal",
-                    reasoning_summary="auto",
+                    reasoning=ReasoningOptions(
+                        effort="minimal",
+                        expose_summary=True,
+                    ),
                     trace=trace_events.append,
                 ),
             )
@@ -201,6 +220,37 @@ def test_openai_codex_responses_trace_payload_summarizes_request_body() -> None:
     serialized = json.dumps(payload_event, sort_keys=True)
     assert secret_system not in serialized
     assert secret_user not in serialized
+
+
+def test_openai_codex_responses_accepts_canonical_reasoning_options() -> None:
+    client = _FakeCodexClient(
+        events=[
+            {"type": "response.completed", "response": {"status": "completed"}},
+        ]
+    )
+    provider = OpenAICodexResponsesProvider(client=client)
+
+    asyncio.run(
+        _collect_parts(
+            _invoke_raw_parts(
+                provider,
+                _Model(reasoning=True),
+                {"messages": [UserMessage(role="user", content="hello", timestamp=0.0)]},
+                OpenAICodexResponsesOptions(
+                    api_key=_build_fake_jwt("acc_test"),
+                    reasoning=ReasoningOptions(
+                        enabled=True,
+                        effort="minimal",
+                        expose_summary=True,
+                    ),
+                ),
+            )
+        )
+    )
+
+    assert client.last_json is not None
+    assert client.last_json["include"] == ["reasoning.encrypted_content"]
+    assert client.last_json["reasoning"] == {"effort": "low", "summary": "auto"}
 
 
 def test_openai_codex_responses_closes_owned_http_client(
@@ -230,7 +280,7 @@ def test_openai_codex_responses_closes_owned_http_client(
 
     asyncio.run(
         _collect_parts(
-            _stream_raw_parts(
+            _invoke_raw_parts(
                 provider,
                 _Model(reasoning=False),
                 {
@@ -258,7 +308,7 @@ def test_openai_codex_responses_merges_structured_output_text_format() -> None:
 
     asyncio.run(
         _collect_parts(
-            _stream_raw_parts(
+            _invoke_raw_parts(
                 provider,
                 _Model(),
                 {
@@ -279,6 +329,39 @@ def test_openai_codex_responses_merges_structured_output_text_format() -> None:
         "verbosity": "low",
         "format": {"type": "json_object"},
     }
+
+
+def test_openai_codex_responses_ignores_duck_typed_contrib_fields() -> None:
+    client = _FakeCodexClient(
+        events=[
+            {"type": "response.completed", "response": {"status": "completed"}},
+        ]
+    )
+    provider = OpenAICodexResponsesProvider(client=client)
+
+    asyncio.run(
+        _collect_parts(
+            _invoke_raw_parts(
+                provider,
+                _Model(),
+                {
+                    "messages": [
+                        UserMessage(role="user", content="hello", timestamp=0.0)
+                    ]
+                },
+                SimpleNamespace(
+                    api_key=_build_fake_jwt("acc_test"),
+                    transport="websocket",
+                    text_verbosity="low",
+                ),
+            )
+        )
+    )
+
+    assert client.stream_call_count == 1
+    assert client.websocket_connect_count == 0
+    assert client.last_json is not None
+    assert client.last_json["text"] == {"verbosity": "medium"}
 
 
 def test_openai_codex_responses_preserves_tool_history_payload() -> None:
@@ -316,7 +399,7 @@ def test_openai_codex_responses_preserves_tool_history_payload() -> None:
 
     asyncio.run(
         _collect_parts(
-            _stream_raw_parts(
+            _invoke_raw_parts(
                 provider,
                 _Model(reasoning=False),
                 {
@@ -359,14 +442,6 @@ def test_openai_codex_responses_uses_upstream_model_id() -> None:
             id="openai-codex-responses",
             provider="openai-codex",
             api="openai-codex-responses",
-            compat=Compat.from_raw(
-                {
-                    "codexIncludeClientRequestId": True,
-                    "codexPromptCacheRetention": "in-memory",
-                    "codexOriginator": "loushang",
-                    "codexUserAgent": "loushang",
-                }
-            ),
             models={
                 "gpt-5.3-codex_public": Model(
                     id="gpt-5.3-codex_public",
@@ -380,7 +455,7 @@ def test_openai_codex_responses_uses_upstream_model_id() -> None:
 
     asyncio.run(
         _collect_parts(
-            _stream_raw_parts(
+            _invoke_raw_parts(
                 provider,
                 _Model(id="gpt-5.3-codex_public"),
                 {
@@ -407,7 +482,7 @@ def test_openai_codex_responses_omits_optional_request_fields_when_unused() -> N
 
     asyncio.run(
         _collect_parts(
-            _stream_raw_parts(
+            _invoke_raw_parts(
                 provider,
                 _Model(reasoning=False),
                 {
@@ -442,7 +517,7 @@ def test_openai_codex_responses_sends_empty_instructions_when_missing() -> None:
 
     asyncio.run(
         _collect_parts(
-            _stream_raw_parts(
+            _invoke_raw_parts(
                 provider,
                 _Model(reasoning=False),
                 {
@@ -458,7 +533,7 @@ def test_openai_codex_responses_sends_empty_instructions_when_missing() -> None:
     assert client.last_json["instructions"] == ""
 
 
-def test_openai_codex_responses_respects_compat_session_headers() -> None:
+def test_openai_codex_responses_uses_default_runtime_session_headers() -> None:
     client = _FakeCodexClient(
         events=[
             {"type": "response.completed", "response": {"status": "completed"}},
@@ -470,15 +545,6 @@ def test_openai_codex_responses_respects_compat_session_headers() -> None:
             id="openai-codex-responses",
             provider="openai-codex",
             api="openai-codex-responses",
-            compat=Compat.from_raw(
-                {
-                    "codexIncludeClientRequestId": False,
-                    "codexIncludeConversationId": True,
-                    "codexPromptCacheRetention": "ephemeral",
-                    "codexOriginator": "compat-test",
-                    "codexUserAgent": "compat-agent",
-                }
-            ),
             models={
                 "gpt-5.3-codex": Model(
                     id="gpt-5.3-codex",
@@ -498,7 +564,7 @@ def test_openai_codex_responses_respects_compat_session_headers() -> None:
 
     asyncio.run(
         _collect_parts(
-            _stream_raw_parts(
+            _invoke_raw_parts(
                 provider,
                 model,
                 {
@@ -512,11 +578,11 @@ def test_openai_codex_responses_respects_compat_session_headers() -> None:
     )
 
     assert client.last_headers["session_id"] == "sess_compat"
-    assert client.last_headers["conversation_id"] == "sess_compat"
-    assert "x-client-request-id" not in client.last_headers
-    assert client.last_headers["originator"] == "compat-test"
-    assert client.last_headers["User-Agent"] == "compat-agent"
-    assert client.last_json["prompt_cache_retention"] == "ephemeral"
+    assert "conversation_id" not in client.last_headers
+    assert "x-client-request-id" in client.last_headers
+    assert client.last_headers["originator"] == "loushang"
+    assert client.last_headers["User-Agent"] == "loushang"
+    assert client.last_json["prompt_cache_retention"] == "in-memory"
 
 
 def test_openai_codex_responses_public_stream_uses_runtime_config_headers() -> None:
@@ -531,15 +597,6 @@ def test_openai_codex_responses_public_stream_uses_runtime_config_headers() -> N
             id="openai-codex-responses",
             provider="openai-codex",
             api="openai-codex-responses",
-            compat=Compat.from_raw(
-                {
-                    "codexIncludeClientRequestId": False,
-                    "codexIncludeConversationId": True,
-                    "codexPromptCacheRetention": "ephemeral",
-                    "codexOriginator": "compat-public",
-                    "codexUserAgent": "compat-public-agent",
-                }
-            ),
             models={
                 "gpt-5.3-codex": Model(
                     id="gpt-5.3-codex",
@@ -572,26 +629,72 @@ def test_openai_codex_responses_public_stream_uses_runtime_config_headers() -> N
 
     assert events[-1]["type"] == "done"
     assert client.last_headers["session_id"] == "sess_public_config"
-    assert client.last_headers["conversation_id"] == "sess_public_config"
-    assert "x-client-request-id" not in client.last_headers
-    assert client.last_headers["originator"] == "compat-public"
-    assert client.last_headers["User-Agent"] == "compat-public-agent"
-    assert client.last_json["prompt_cache_retention"] == "ephemeral"
+    assert "conversation_id" not in client.last_headers
+    assert "x-client-request-id" in client.last_headers
+    assert client.last_headers["originator"] == "loushang"
+    assert client.last_headers["User-Agent"] == "loushang"
+    assert client.last_json["prompt_cache_retention"] == "in-memory"
 
 
-def test_openai_codex_responses_prefers_oauth_account_binding_over_token_parsing() -> (
+def test_openai_codex_public_stream_rejects_invalid_runtime_config_before_iteration() -> (
     None
 ):
+    provider_registry = ApiProviderRegistry()
+    provider_registry.register_api_provider(OpenAICodexResponsesProvider())
+    model = Model(
+        id="gpt-5.3-codex",
+        provider="openai-codex",
+        endpoint="openai-codex-responses",
+        api="openai-codex-responses",
+        adapter=object(),
+        capabilities=Capabilities(stream=True),
+    )
+
+    async def _run() -> None:
+        with pytest.raises(TypeError, match="OpenAICodexRuntimeConfig"):
+            await stream(
+                model,
+                {
+                    "messages": [
+                        UserMessage(role="user", content="hello", timestamp=0.0)
+                    ]
+                },
+                OpenAICodexResponsesOptions(api_key=_build_fake_jwt("acc_test")),
+                provider_registry=provider_registry,
+            )
+
+    asyncio.run(_run())
+
+
+def test_openai_codex_provider_accepts_contrib_runtime_config_directly() -> None:
+    provider = OpenAICodexResponsesProvider()
+    provider.validate_request(
+        ProviderRequest(
+            provider="openai-codex",
+            endpoint="openai-codex-responses",
+            api="openai-codex-responses",
+            base_url=None,
+            adapter_config=OpenAICodexRuntimeConfig(
+                prompt_cache_retention=None,
+                originator="custom-origin",
+                user_agent="custom-agent",
+            ),
+        )
+    )
+
+
+def test_openai_codex_responses_uses_oauth_token_account_binding() -> None:
     client = _FakeCodexClient(
         events=[
             {"type": "response.completed", "response": {"status": "completed"}},
         ]
     )
     provider = OpenAICodexResponsesProvider(client=client)
+    token = _build_fake_jwt("acc_from_token")
 
     asyncio.run(
         _collect_parts(
-            _stream_raw_parts(
+            _invoke_raw_parts(
                 provider,
                 _Model(reasoning=False),
                 {
@@ -603,8 +706,7 @@ def test_openai_codex_responses_prefers_oauth_account_binding_over_token_parsing
                     oauth_credentials={
                         "openai-codex": OAuthCredentials(
                             provider="openai-codex",
-                            access_token="not-a-jwt",
-                            extra={"account_id": "acc_from_oauth", "plan": "pro"},
+                            access_token=token,
                         )
                     }
                 ),
@@ -612,44 +714,49 @@ def test_openai_codex_responses_prefers_oauth_account_binding_over_token_parsing
         )
     )
 
-    assert client.last_headers["Authorization"] == "Bearer not-a-jwt"
-    assert client.last_headers["chatgpt-account-id"] == "acc_from_oauth"
+    assert client.last_headers["Authorization"] == f"Bearer {token}"
+    assert client.last_headers["chatgpt-account-id"] == "acc_from_token"
 
 
-def test_openai_codex_responses_uses_resolved_request_account_binding() -> None:
+def test_openai_codex_responses_uses_oauth_metadata_account_header() -> None:
+    oauth_registry = get_default_oauth_registry()
+    oauth_registry.clear()
+    register_openai_codex_oauth_provider(registry=oauth_registry)
     client = _FakeCodexClient(
         events=[
             {"type": "response.completed", "response": {"status": "completed"}},
         ]
     )
     provider = OpenAICodexResponsesProvider(client=client)
-    request = ResolvedRequest(
-        provider="openai-codex",
-        endpoint="openai-codex-responses",
-        api="openai-codex-responses",
-        base_url=None,
-        headers={"Authorization": "Bearer not-a-jwt"},
-        auth_account_id="acc_from_resolved",
-    )
 
-    asyncio.run(
-        _collect_parts(
-            _stream_raw_parts(
-                provider,
-                _Model(reasoning=False),
-                {
-                    "messages": [
-                        UserMessage(role="user", content="hello", timestamp=0.0)
-                    ],
-                },
-                OpenAICodexResponsesOptions(),
-                request,
+    try:
+        asyncio.run(
+            _collect_parts(
+                _invoke_raw_parts(
+                    provider,
+                    _Model(reasoning=False),
+                    {
+                        "messages": [
+                            UserMessage(role="user", content="hello", timestamp=0.0)
+                        ],
+                    },
+                    OpenAICodexResponsesOptions(
+                        oauth_credentials={
+                            "openai-codex": OAuthCredentials(
+                                provider="openai-codex",
+                                access_token="opaque-access-token",
+                                extra={"account_id": "acc_from_metadata"},
+                            )
+                        }
+                    ),
+                )
             )
         )
-    )
+    finally:
+        oauth_registry.clear()
 
-    assert client.last_headers["Authorization"] == "Bearer not-a-jwt"
-    assert client.last_headers["chatgpt-account-id"] == "acc_from_resolved"
+    assert client.last_headers["Authorization"] == "Bearer opaque-access-token"
+    assert client.last_headers["chatgpt-account-id"] == "acc_from_metadata"
 
 
 def test_openai_codex_responses_header_override_keeps_account_consistent() -> None:
@@ -663,7 +770,7 @@ def test_openai_codex_responses_header_override_keeps_account_consistent() -> No
 
     asyncio.run(
         _collect_parts(
-            _stream_raw_parts(
+            _invoke_raw_parts(
                 provider,
                 _Model(reasoning=False),
                 {
@@ -753,7 +860,8 @@ def test_openai_codex_responses_stream_maps_sse_to_final_message() -> None:
             _Model(reasoning=True),
             {"messages": [UserMessage(role="user", content="hello", timestamp=0.0)]},
             OpenAICodexResponsesOptions(
-                api_key=_build_fake_jwt("acc_test"), reasoning="high"
+                api_key=_build_fake_jwt("acc_test"),
+                reasoning=ReasoningOptions(effort="high"),
             ),
         )
     )
@@ -1110,7 +1218,10 @@ def test_openai_codex_responses_surfaces_parsed_error_message() -> None:
             provider,
             _Model(reasoning=False),
             {"messages": [UserMessage(role="user", content="hello", timestamp=0.0)]},
-            OpenAICodexResponsesOptions(api_key=_build_fake_jwt("acc_test"), retries=0),
+            OpenAICodexResponsesOptions(
+                api_key=_build_fake_jwt("acc_test"),
+                retry=RetryOptions(max_attempts=1),
+            ),
         )
     )
 
@@ -1208,12 +1319,6 @@ def test_openai_codex_responses_websocket_uses_runtime_config_headers() -> None:
             id="openai-codex-responses",
             provider="openai-codex",
             api="openai-codex-responses",
-            compat=Compat.from_raw(
-                {
-                    "codexOriginator": "compat-ws",
-                    "codexUserAgent": "compat-ws-agent",
-                }
-            ),
             models={
                 "gpt-5.3-codex": Model(
                     id="gpt-5.3-codex",
@@ -1246,8 +1351,8 @@ def test_openai_codex_responses_websocket_uses_runtime_config_headers() -> None:
     events = asyncio.run(_run())
 
     assert events[-1]["type"] == "done"
-    assert client.last_headers["originator"] == "compat-ws"
-    assert client.last_headers["User-Agent"] == "compat-ws-agent"
+    assert client.last_headers["originator"] == "loushang"
+    assert client.last_headers["User-Agent"] == "loushang"
 
 
 def test_openai_codex_responses_websocket_reuses_connection_for_same_session() -> None:
@@ -1657,15 +1762,6 @@ def _default_registry() -> None:
             id="openai-codex-responses",
             provider="openai-codex",
             api="openai-codex-responses",
-            compat=Compat.from_raw(
-                {
-                    "codexIncludeClientRequestId": True,
-                    "codexIncludeConversationId": False,
-                    "codexPromptCacheRetention": "in-memory",
-                    "codexOriginator": "loushang",
-                    "codexUserAgent": "loushang",
-                }
-            ),
             models={
                 "gpt-5.3-codex": Model(
                     id="gpt-5.3-codex",

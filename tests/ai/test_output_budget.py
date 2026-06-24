@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from types import SimpleNamespace
 
+from loushang.ai import CallOptions
 from loushang.ai.model.domain import Capabilities, Model
 from loushang.ai.provider.output_budget import resolve_output_token_budget
 
@@ -26,11 +27,11 @@ def test_output_budget_uses_uncapped_resolved_request_budget() -> None:
     assert budget.explicit is True
 
 
-def test_output_budget_uses_resolved_request_before_legacy_options_argument() -> None:
+def test_output_budget_uses_resolved_request_before_options_argument() -> None:
     budget = resolve_output_token_budget(
         _model(32768),
         SimpleNamespace(max_tokens=32000),
-        SimpleNamespace(max_tokens=64),
+        CallOptions(max_output_tokens=64),
     )
 
     assert budget.value == 32000
@@ -38,11 +39,11 @@ def test_output_budget_uses_resolved_request_before_legacy_options_argument() ->
     assert budget.explicit is True
 
 
-def test_output_budget_accepts_legacy_options_argument_without_request_budget() -> None:
+def test_output_budget_accepts_options_argument_without_request_budget() -> None:
     budget = resolve_output_token_budget(
         _model(32768),
         SimpleNamespace(max_tokens=None),
-        SimpleNamespace(max_tokens=64),
+        CallOptions(max_output_tokens=64),
     )
 
     assert budget.value == 64

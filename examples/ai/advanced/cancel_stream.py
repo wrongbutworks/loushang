@@ -20,7 +20,7 @@ class _SlowProvider:
         self.blocked = asyncio.Event()
         self.closed = False
 
-    async def stream_raw(self, request: ProviderRequest):
+    async def invoke_raw(self, request: ProviderRequest):
         self.started.set()
         try:
             yield {"type": "response_start", "response_id": "cancel-demo"}
@@ -40,7 +40,7 @@ async def inspect_stream_cancellation() -> dict[str, object]:
         _build_model(),
         {"messages": []},
         CallOptions(cancellation=signal),
-        registry=registry,
+        provider_registry=registry,
     )
     await asyncio.wait_for(provider.blocked.wait(), timeout=1)
     signal.set()

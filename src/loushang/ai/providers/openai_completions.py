@@ -2,20 +2,17 @@ from __future__ import annotations
 
 import asyncio
 import json
-from collections.abc import AsyncIterator, Mapping, Sequence
+from collections.abc import AsyncIterator, Iterator, Mapping, Sequence
 from contextlib import suppress
 from typing import Any, cast
 
+from loushang.ai.context import NormalizedContext
 from loushang.ai.errors import UnsupportedCapabilityError
 from loushang.ai.event_stream.raw_parts import RawPart
-from loushang.ai.model.domain import (
-    EndpointProtocolFeatures,
-    EndpointWireDialect,
-    SupportStatus,
-)
-from loushang.ai.options import get_provider_option, get_timeout_seconds
+from loushang.ai.model.domain import OpenAICompletionsConfig
+from loushang.ai.options import get_timeout_seconds
 from loushang.ai.output_budget import resolve_output_token_budget
-from loushang.ai.provider import ProviderRequest, resolve_provider_request
+from loushang.ai.provider import ProviderRequest
 from loushang.ai.provider.errors import (
     provider_error_part,
     provider_error_part_from_raw,
@@ -48,41 +45,22 @@ class OpenAICompletionsProvider:
         self._client = client
         self._base_url = base_url
 
-    def _stream_raw_parts(
-        self, model, context, options, request=None
-    ) -> AsyncIterator[RawPart]:
-        resolved = resolve_provider_request(
-            self.api,
-            model,
-            options=options,
-            request=request,
-        )
-        return self.stream_raw(
-            ProviderRequest(
-                model=model,
-                context=context,
-                options=options,
-                resolved=resolved,
-            )
-        )
-
-    async def stream_raw(self, request: ProviderRequest) -> AsyncIterator[RawPart]:
+    async def invoke_raw(self, request: ProviderRequest) -> AsyncIterator[RawPart]:
         model = request.model
         options = request.options
-        resolved = request.resolved
+        resolved = request
 
         def _debug(event: str, data: dict | None = None) -> None:
             _emit_trace(options, {"type": f"sdk:{event}", **(data or {})})
 
         normalized = request.context
-        protocol = _request_protocol(resolved)
-        dialect = _request_dialect(resolved)
-        supports_usage_in_streaming = _is_supported(protocol.streaming.usage)
-        supports_store = _is_supported(protocol.store)
-        max_tokens_field = dialect.max_output_tokens_field or "max_tokens"
-        thinking_format = dialect.reasoning.wire_format
-        reasoning_effort_map = dict(protocol.reasoning.effort_map)
-        supports_reasoning_effort = _is_supported(protocol.reasoning.effort)
+        adapter_config = _request_adapter_config(resolved)
+        supports_usage_in_streaming = adapter_config.streaming_usage
+        supports_store = adapter_config.store
+        max_tokens_field = adapter_config.max_output_tokens_field or "max_tokens"
+        thinking_format = adapter_config.reasoning_format
+        reasoning_effort_map = dict(adapter_config.reasoning_effort_map)
+        supports_reasoning_effort = adapter_config.reasoning_effort
 
         # OpenAI Python SDK
         try:
@@ -104,7 +82,7 @@ class OpenAICompletionsProvider:
         default_headers = sdk_default_headers(headers)
         if _uses_copilot_dynamic_headers(resolved):
             copilot_headers = build_copilot_dynamic_headers(
-                normalized.get("messages", [])
+                list(normalized.messages)
             )
             default_headers.update(copilot_headers)
         cache_retention = (
@@ -116,7 +94,7 @@ class OpenAICompletionsProvider:
         _validate_cache_session_options(
             model,
             resolved,
-            protocol=protocol,
+            adapter_config=adapter_config,
             cache_retention=cache_retention,
             session_id=session_id,
         )
@@ -124,7 +102,7 @@ class OpenAICompletionsProvider:
             cache_retention != "none"
             and isinstance(session_id, str)
             and session_id
-            and _is_supported(protocol.session.affinity_headers)
+            and adapter_config.session_affinity_headers
         ):
             apply_session_headers(
                 default_headers,
@@ -151,32 +129,33 @@ class OpenAICompletionsProvider:
         messages_param = _build_messages(
             model,
             normalized,
-            protocol,
-            dialect,
+            adapter_config,
             capabilities,
         )
-        tools_param = _build_tools(normalized.get("tools"), protocol)
-        if tools_param is None and _has_tool_history(normalized.get("messages", [])):
+        tools_param = _build_tools(normalized.tools, adapter_config)
+        if tools_param is None and _has_tool_history(list(normalized.messages)):
             tools_param = []
-        cache_control = _get_cache_control(protocol, dialect, cache_retention)
+        cache_control = _get_cache_control(adapter_config, cache_retention)
         if cache_control is not None:
             _apply_anthropic_cache_control(messages_param, tools_param, cache_control)
 
         max_tokens = resolve_output_token_budget(model, resolved).value
         upstream_model_id = getattr(resolved, "upstream_model_id", None) or model.id
+        is_stream_request = getattr(resolved, "mode", "stream") == "stream"
         params: dict[str, Any] = {
             "model": upstream_model_id,
             "messages": messages_param,
-            "stream": True,
         }
+        if is_stream_request:
+            params["stream"] = True
         _apply_prompt_cache_params(
             params,
-            protocol=protocol,
+            adapter_config=adapter_config,
             cache_retention=cache_retention,
             session_id=session_id,
         )
         extra_body: dict[str, Any] = {}
-        if supports_usage_in_streaming:
+        if is_stream_request and supports_usage_in_streaming:
             params["stream_options"] = {"include_usage": True}
         if supports_store:
             params["store"] = False
@@ -188,7 +167,7 @@ class OpenAICompletionsProvider:
             params["temperature"] = getattr(options, "temperature")
         if tools_param is not None:
             params["tools"] = tools_param
-            if dialect.tools.stream_flag:
+            if is_stream_request and adapter_config.tool_stream:
                 params["tool_stream"] = True
         tool_choice = getattr(options, "tool_choice", None)
         if tool_choice is not None:
@@ -222,12 +201,17 @@ class OpenAICompletionsProvider:
         )
 
         try:
-            stream_ctx = await client.chat.completions.create(**params)
+            response = await client.chat.completions.create(**params)
         except Exception as e:
             _debug("stream_error", {"message": str(e)})
             yield provider_error_part(e, source=self.api)
             return
-        await _notify_provider_response(options, stream_ctx, model)
+        if not is_stream_request:
+            for part in _iter_complete_response_parts(response, source=self.api):
+                yield part
+            return
+
+        stream_ctx = response
         # 流式超时/空闲看门狗：若超过 timeout 无增量则报错退出，避免“假死”
         inactivity_timeout = (
             timeout_s if isinstance(timeout_s, (int, float)) and timeout_s > 0 else 30
@@ -523,26 +507,161 @@ class OpenAICompletionsProvider:
             await close_provider_stream(stream_ctx)
 
 
-def _request_protocol(request: object) -> EndpointProtocolFeatures:
-    protocol = getattr(request, "adapter_protocol", None)
-    if isinstance(protocol, EndpointProtocolFeatures):
-        return protocol
-    return EndpointProtocolFeatures()
-
-
-def _request_dialect(request: object) -> EndpointWireDialect:
-    dialect = getattr(request, "adapter_dialect", None)
-    if isinstance(dialect, EndpointWireDialect):
-        return dialect
-    return EndpointWireDialect()
+def _request_adapter_config(request: object) -> OpenAICompletionsConfig:
+    adapter_config = getattr(request, "adapter_config", None)
+    if isinstance(adapter_config, OpenAICompletionsConfig):
+        return adapter_config
+    return OpenAICompletionsConfig()
 
 
 def _raw_part(part: dict[str, object]) -> RawPart:
     return cast(RawPart, part)
 
 
-def _is_supported(status: SupportStatus) -> bool:
-    return status is SupportStatus.SUPPORTED
+def _iter_complete_response_parts(
+    response: object, *, source: str
+) -> Iterator[RawPart]:
+    resp_id = getattr(response, "id", None)
+    if isinstance(resp_id, str) and resp_id:
+        yield {"type": "response_start", "response_id": resp_id}
+
+    usage = getattr(response, "usage", None)
+    if usage is not None:
+        yield _usage_part_from_chat_usage(usage)
+
+    choices = getattr(response, "choices", None)
+    if isinstance(choices, list):
+        for choice in choices:
+            message = getattr(choice, "message", None)
+            if message is not None:
+                yield from _iter_complete_message_parts(message)
+            finish = getattr(choice, "finish_reason", None)
+            if isinstance(finish, str):
+                mapped = _map_stop_reason(finish)
+                yield {"type": "stop_reason", "stop_reason": mapped}
+                if mapped == "error":
+                    yield provider_error_part_from_raw(
+                        f"provider finish_reason={finish}",
+                        code=finish,
+                        source=source,
+                    )
+    yield {"type": "response_done"}
+
+
+def _iter_complete_message_parts(message: object) -> Iterator[RawPart]:
+    for candidate in (
+        "reasoning_content",
+        "reasoning",
+        "reasoning_text",
+    ):
+        reasoning_value = getattr(message, candidate, None)
+        if isinstance(reasoning_value, str) and reasoning_value:
+            yield {"type": "thinking_delta", "text": reasoning_value}
+            break
+    reasoning_details = getattr(message, "reasoning_details", None)
+    if isinstance(reasoning_details, list):
+        for detail in reasoning_details:
+            detail_type = (
+                getattr(detail, "type", None)
+                if not isinstance(detail, dict)
+                else detail.get("type")
+            )
+            detail_id = (
+                getattr(detail, "id", None)
+                if not isinstance(detail, dict)
+                else detail.get("id")
+            )
+            detail_data = (
+                getattr(detail, "data", None)
+                if not isinstance(detail, dict)
+                else detail.get("data")
+            )
+            if (
+                detail_type == "reasoning.encrypted"
+                and isinstance(detail_id, str)
+                and detail_id
+                and isinstance(detail_data, str)
+                and detail_data
+            ):
+                yield {
+                    "type": "tool_call_thought_signature",
+                    "tool_call_id": detail_id,
+                    "thought_signature": json.dumps(
+                        {
+                            "type": detail_type,
+                            "id": detail_id,
+                            "data": detail_data,
+                        }
+                    ),
+                }
+
+    text = getattr(message, "content", None)
+    if isinstance(text, str) and text:
+        yield {"type": "text_delta", "text": text}
+
+    tool_calls = getattr(message, "tool_calls", None)
+    if isinstance(tool_calls, list):
+        for index, tool_call in enumerate(tool_calls):
+            tool_call_id = getattr(tool_call, "id", None)
+            if not isinstance(tool_call_id, str) or not tool_call_id:
+                tool_call_id = f"tool_call_{index}"
+            function = getattr(tool_call, "function", None)
+            name = getattr(function, "name", "") if function is not None else ""
+            arguments = (
+                getattr(function, "arguments", None) if function is not None else None
+            )
+            yield _raw_part(
+                {
+                    "type": "tool_call_start",
+                    "id": tool_call_id,
+                    "name": name if isinstance(name, str) else "",
+                    "index": index,
+                }
+            )
+            if isinstance(arguments, str) and arguments:
+                yield _raw_part(
+                    {
+                        "type": "tool_call_args_delta",
+                        "tool_call_id": tool_call_id,
+                        "delta": arguments,
+                        "index": index,
+                    }
+                )
+            yield _raw_part(
+                {
+                    "type": "tool_call_done",
+                    "tool_call_id": tool_call_id,
+                    "index": index,
+                }
+            )
+
+
+def _usage_part_from_chat_usage(usage: object) -> RawPart:
+    input_tokens = getattr(usage, "prompt_tokens", 0) or 0
+    cached = (
+        getattr(
+            getattr(usage, "prompt_tokens_details", None) or {},
+            "cached_tokens",
+            0,
+        )
+        or 0
+    )
+    output_tokens = (getattr(usage, "completion_tokens", 0) or 0) + (
+        getattr(
+            getattr(usage, "completion_tokens_details", None) or {},
+            "reasoning_tokens",
+            0,
+        )
+        or 0
+    )
+    return {
+        "type": "usage_delta",
+        "input": input_tokens - cached,
+        "output": output_tokens,
+        "cache_read": cached,
+        "cache_write": 0,
+        "total_tokens": (input_tokens - cached) + output_tokens + cached,
+    }
 
 
 def _map_stop_reason(reason: str) -> str:
@@ -560,16 +679,16 @@ def _map_stop_reason(reason: str) -> str:
 def _apply_prompt_cache_params(
     params: dict[str, Any],
     *,
-    protocol: EndpointProtocolFeatures,
+    adapter_config: OpenAICompletionsConfig,
     cache_retention: str | None,
     session_id: str | None,
 ) -> None:
     if cache_retention == "none" or not isinstance(session_id, str) or not session_id:
         return
-    if not _is_supported(protocol.cache.prompt_key):
+    if not adapter_config.prompt_cache_key:
         return
     params["prompt_cache_key"] = session_id
-    if cache_retention == "long" and _is_supported(protocol.cache.long_retention):
+    if cache_retention == "long" and adapter_config.long_cache_retention:
         params["prompt_cache_retention"] = "24h"
 
 
@@ -577,11 +696,11 @@ def _validate_cache_session_options(
     model: object,
     resolved: object,
     *,
-    protocol: EndpointProtocolFeatures,
+    adapter_config: OpenAICompletionsConfig,
     cache_retention: str | None,
     session_id: str | None,
 ) -> None:
-    if cache_retention == "long" and not _is_supported(protocol.cache.long_retention):
+    if cache_retention == "long" and not adapter_config.long_cache_retention:
         raise UnsupportedCapabilityError(
             f"Model {getattr(model, 'id', '<unknown>')!r} does not support long cache retention",
             source=getattr(resolved, "api", None),
@@ -595,8 +714,7 @@ def _validate_cache_session_options(
         and isinstance(session_id, str)
         and session_id
         and not (
-            _is_supported(protocol.cache.prompt_key)
-            or _is_supported(protocol.session.affinity_headers)
+            adapter_config.prompt_cache_key or adapter_config.session_affinity_headers
         )
     ):
         raise UnsupportedCapabilityError(
@@ -756,17 +874,16 @@ def _resolve_timeout_seconds(options, resolved) -> float | int | None:
 
 
 def _get_cache_control(
-    protocol: EndpointProtocolFeatures,
-    dialect: EndpointWireDialect,
+    adapter_config: OpenAICompletionsConfig,
     cache_retention: str | None,
 ) -> dict[str, str] | None:
-    if dialect.cache.control_format != "anthropic":
+    if adapter_config.cache_control_format != "anthropic":
         return None
     if cache_retention == "none":
         return None
     ttl = (
         "1h"
-        if cache_retention == "long" and _is_supported(protocol.cache.long_retention)
+        if cache_retention == "long" and adapter_config.long_cache_retention
         else None
     )
     return {"type": "ephemeral", **({"ttl": ttl} if ttl else {})}
@@ -869,15 +986,14 @@ def _supports_reasoning(model: object, capabilities: object | None = None) -> bo
 
 def _build_messages(
     model,
-    normalized: Mapping[str, Any],
-    protocol: EndpointProtocolFeatures,
-    dialect: EndpointWireDialect,
+    normalized: NormalizedContext,
+    adapter_config: OpenAICompletionsConfig,
     capabilities: object | None = None,
 ) -> list[dict[str, Any]]:
     messages_param: list[dict[str, Any]] = []
-    system_prompt = normalized.get("system_prompt")
-    supports_developer_role = _is_supported(protocol.roles.developer)
-    requires_assistant_after_tool_result = bool(dialect.tools.assistant_bridge_required)
+    system_prompt = normalized.system_prompt
+    supports_developer_role = adapter_config.developer_role
+    requires_assistant_after_tool_result = adapter_config.assistant_after_tool_result
     if isinstance(system_prompt, str) and system_prompt.strip():
         role = (
             "developer"
@@ -888,7 +1004,7 @@ def _build_messages(
             {"role": role, "content": sanitize_surrogates(system_prompt)}
         )
 
-    messages = normalized.get("messages", [])
+    messages = normalized.messages
     last_role: str | None = None
     index = 0
     while index < len(messages):
@@ -914,7 +1030,9 @@ def _build_messages(
             index += 1
             continue
         if message_role == "assistant":
-            payload = _assistant_message_payload(msg, dialect, model, capabilities)
+            payload = _assistant_message_payload(
+                msg, adapter_config, model, capabilities
+            )
             if payload is not None:
                 messages_param.append(payload)
                 last_role = "assistant"
@@ -927,7 +1045,7 @@ def _build_messages(
             ):
                 tool_payload, tool_images = _tool_result_payload(
                     messages[index],
-                    dialect,
+                    adapter_config,
                     model,
                     capabilities,
                 )
@@ -964,11 +1082,11 @@ def _build_messages(
 
 def _build_tools(
     tools: Sequence[Tool] | None,
-    protocol: EndpointProtocolFeatures,
+    adapter_config: OpenAICompletionsConfig,
 ) -> list[dict[str, Any]] | None:
     if not isinstance(tools, Sequence) or isinstance(tools, str) or not tools:
         return None
-    supports_strict_mode = _is_supported(protocol.tools.strict_schema)
+    supports_strict_mode = adapter_config.strict_schema
     payload: list[dict[str, Any]] = []
     for tool in tools:
         function_payload = {
@@ -1040,12 +1158,12 @@ def _user_message_payload(
 
 def _assistant_message_payload(
     message: object,
-    dialect: EndpointWireDialect,
+    adapter_config: OpenAICompletionsConfig,
     model,
     capabilities: object | None = None,
 ) -> dict[str, Any] | None:
-    requires_assistant_after_tool_result = bool(dialect.tools.assistant_bridge_required)
-    requires_thinking_as_text = bool(dialect.reasoning.thinking_as_text)
+    requires_assistant_after_tool_result = adapter_config.assistant_after_tool_result
+    requires_thinking_as_text = adapter_config.thinking_as_text
     content = getattr(message, "content", None)
     if not isinstance(content, list):
         return None
@@ -1108,7 +1226,7 @@ def _assistant_message_payload(
     if reasoning_details:
         payload["reasoning_details"] = reasoning_details
     if (
-        dialect.reasoning.assistant_content_required
+        adapter_config.assistant_reasoning_content
         and _supports_reasoning(model, capabilities)
         and "reasoning_content" not in payload
     ):
@@ -1126,19 +1244,9 @@ def _assistant_message_payload(
     return payload
 
 
-async def _notify_provider_response(options, response, model) -> None:
-    callback = get_provider_option(options, "on_response")
-    if not callable(callback):
-        return
-    with suppress(Exception):
-        result = callback(response, model)
-        if asyncio.iscoroutine(result):
-            await result
-
-
 def _tool_result_payload(
     message: object,
-    dialect: EndpointWireDialect,
+    adapter_config: OpenAICompletionsConfig,
     model,
     capabilities: object | None = None,
 ) -> tuple[dict[str, Any], list[dict[str, Any]]]:
@@ -1175,7 +1283,7 @@ def _tool_result_payload(
         "content": text_result
         or ("(see attached image)" if has_images else MISSING_TOOL_RESULT_TEXT),
     }
-    if dialect.tools.result_name_required and message.tool_name:
+    if adapter_config.tool_result_name and message.tool_name:
         tool_payload["name"] = message.tool_name
     return tool_payload, image_blocks
 

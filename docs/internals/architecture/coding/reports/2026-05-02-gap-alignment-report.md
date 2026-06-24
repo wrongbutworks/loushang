@@ -74,10 +74,10 @@ runtime/RPC/diagnostics/tool hardening pass.
   - `AgentSession.set_steering_mode()` and `set_follow_up_mode()` persist settings, matching the reference implementation's session/settings behavior.
   - Bootstrap applies configured queue modes when constructing the underlying agent.
 - Settings/control breadth:
-  - Added theme, transport, shell path, shell command prefix, npm command, quiet startup, changelog collapse, install telemetry, skill command enablement, thinking budgets, terminal preferences, markdown preferences, warning preferences, and provider retry cap settings.
+  - Added theme, shell path, shell command prefix, npm command, quiet startup, changelog collapse, install telemetry, skill command enablement, thinking budgets, terminal preferences, markdown preferences, warning preferences, and provider retry cap settings.
   - Added enabled model cycling, double-escape action, tree filter mode, hardware cursor, editor padding, and autocomplete max-visible settings with reference-style defaults and bounds.
   - Added stable getter/setter accessors for resource roots, package roots, plugin sources, disabled skills, and disabled plugins.
-  - Bootstrap now passes transport, thinking budgets, and provider retry delay cap to the underlying agent.
+  - Bootstrap now passes thinking budgets and provider retry delay cap to the underlying agent. A later AIF-009 cleanup removed the coding-level transport setting; transport selection remains provider/contrib-owned.
   - Bootstrap now maps configured `enabled_models` patterns into `AgentSession.scopedModels`, preserving per-model thinking-level suffixes such as `model-id:high`.
   - Added branch-summary `skip_prompt` and stable query facades for compaction, branch summary, image, terminal, markdown, and warnings settings.
   - This closes settings/control for the non-interactive headless MVP while preserving loushang's non-reference provider/model configuration decision.

@@ -17,9 +17,10 @@ import sys
 import pytest
 
 from loushang.ai import (
+    CallOptions,
     get_model,
+    stream,
 )
-from loushang.ai.advanced import OpenAICompletionsOptions
 from loushang.ai.errors import AIAuthenticationError
 
 # 用户可直接修改的配置。
@@ -61,9 +62,9 @@ def _build_context() -> dict:
     }
 
 
-def _build_options(api_key: str) -> OpenAICompletionsOptions:
+def _build_options(api_key: str) -> CallOptions:
     # 流式与完整返回共用同一组核心 options；这里只保留最关键的 api_key/max_tokens。
-    return OpenAICompletionsOptions(api_key=api_key, max_tokens=MAX_TOKENS)
+    return CallOptions(api_key=api_key, max_output_tokens=MAX_TOKENS)
 
 
 async def _main() -> None:
@@ -71,7 +72,8 @@ async def _main() -> None:
     model = get_model(PROVIDER_ID, ENDPOINT_ID, MODEL_ID)
 
     # 这个示例演示流式接口：先消费事件，再通过 result() 取最终消息。
-    events = await model.stream(
+    events = await stream(
+        model,
         _build_context(),
         _build_options(api_key),
     )

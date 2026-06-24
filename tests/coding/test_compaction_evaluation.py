@@ -186,7 +186,7 @@ async def test_evaluate_summary_case_accepts_fixed_branch_workload(monkeypatch) 
         del args, kwargs
         return _structured_branch_summary()
 
-    monkeypatch.setattr("loushang.coding.compaction.branch_summarization.complete_simple", fake_complete)
+    monkeypatch.setattr("loushang.coding.compaction.branch_summarization._complete_text", fake_complete)
 
     result = await generate_branch_summary(
         [

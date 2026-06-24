@@ -432,7 +432,6 @@ def create_agent_session(
         "convert_to_llm": _convert_to_llm_with_block_images(services.settings_manager),
         "steering_mode": settings.steering_mode,
         "follow_up_mode": settings.follow_up_mode,
-        "transport": settings.transport,
         "thinking_budgets": settings.thinking_budgets,
         "max_retry_delay_ms": settings.retry.provider_max_retry_delay_ms,
     }

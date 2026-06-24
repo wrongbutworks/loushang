@@ -263,6 +263,4 @@ class AnthropicOAuthProvider(OAuthProviderInterface):
 
 
 def register_anthropic_oauth_provider(*, source_id: str | None = None) -> None:
-    get_default_oauth_registry().register_oauth_provider(
-        AnthropicOAuthProvider(), source_id=source_id
-    )
+    get_default_oauth_registry().register(AnthropicOAuthProvider(), source_id=source_id)

@@ -17,7 +17,7 @@ from _support import (
     describe_model,
 )
 
-from loushang.ai import Context, UserMessage, complete_simple
+from loushang.ai import Context, UserMessage, complete
 
 TARGET_ENDPOINTS = [
     "kimi-code-anthropic",
@@ -77,7 +77,7 @@ async def _probe_endpoint(endpoint_id: str, prompt: str) -> RouteResult:
             system_prompt="Please respond with one concise sentence.",
             messages=[UserMessage(role="user", content=prompt, timestamp=0.0)],
         )
-        response = await complete_simple(model, context)
+        response = await complete(model, context)
         if getattr(response, "content", None):
             text = "".join(
                 part.text

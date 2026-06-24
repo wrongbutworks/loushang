@@ -2,9 +2,9 @@ from __future__ import annotations
 
 from typing import Any, Literal
 
-from loushang.ai.model.domain import EndpointProtocolFeatures, SupportStatus
+from loushang.ai.model.domain import AnthropicMessagesConfig
 from loushang.ai.options import CacheRetention, is_reasoning_requested
-from loushang.ai.providers.anthropic_oauth_compat import AnthropicOAuthCompat
+from loushang.ai.providers.anthropic_oauth_compat import AnthropicOAuthBridge
 from loushang.ai.utils import sanitize_surrogates
 
 
@@ -17,13 +17,20 @@ class AnthropicProviderBase:
     def supports_adaptive_thinking(model_id: str) -> bool:
         return any(
             tag in model_id
-            for tag in ("opus-4-6", "opus-4.6", "sonnet-4-6", "sonnet-4.6")
+            for tag in (
+                "opus-4-8",
+                "opus-4.8",
+                "opus-4-6",
+                "opus-4.6",
+                "sonnet-4-6",
+                "sonnet-4.6",
+            )
         )
 
     @staticmethod
     def map_thinking_level_to_effort(
         level: str | None, model_id: str
-    ) -> Literal["low", "medium", "high", "max"] | None:
+    ) -> Literal["low", "medium", "high", "xhigh", "max"] | None:
         if level is None:
             return None
         if level in ("minimal", "low"):
@@ -32,8 +39,15 @@ class AnthropicProviderBase:
             return "medium"
         if level == "high":
             return "high"
-        # xhigh
-        return "max" if ("opus-4-6" in model_id or "opus-4.6" in model_id) else "high"
+        if level == "max":
+            return "max"
+        if level == "xhigh":
+            if any(tag in model_id for tag in ("opus-4-8", "opus-4.8")):
+                return "xhigh"
+            if any(tag in model_id for tag in ("opus-4-6", "opus-4.6")):
+                return "max"
+            return "high"
+        return None
 
     @staticmethod
     def is_oauth_token(api_key: str) -> bool:
@@ -103,44 +117,34 @@ class AnthropicProviderBase:
     def apply_oauth_identity_headers(
         cls, existing_headers: dict[str, str] | None
     ) -> dict[str, str]:
-        return AnthropicOAuthCompat.apply_identity_headers(existing_headers)
+        return AnthropicOAuthBridge.apply_identity_headers(existing_headers)
 
     @classmethod
     def to_oauth_tool_name(cls, name: str) -> str:
-        return AnthropicOAuthCompat.to_provider_tool_name(name)
+        return AnthropicOAuthBridge.to_provider_tool_name(name)
 
     @classmethod
     def from_oauth_tool_name(cls, name: str, tools: list[object] | None = None) -> str:
-        return AnthropicOAuthCompat.from_provider_tool_name(name, tools)
+        return AnthropicOAuthBridge.from_provider_tool_name(name, tools)
 
     @classmethod
     def should_inject_fine_grained_tools(
         cls,
         *,
-        protocol: EndpointProtocolFeatures | None,
+        adapter_config: AnthropicMessagesConfig | None,
         headers: dict[str, str] | None,
         transport_kind: str | None = None,
     ) -> bool:
-        if (
-            protocol is not None
-            and protocol.tools.fine_grained is SupportStatus.UNSUPPORTED
-        ):
+        if adapter_config is not None and adapter_config.fine_grained_tools is False:
             return False
-        # 若已存在 anthropic-beta，则允许合并（不强制新增）
         if headers:
             h = {k.lower(): v for k, v in headers.items()}
             if "anthropic-beta" in h:
                 return True
-        # 显式开启
-        if (
-            protocol is not None
-            and protocol.tools.fine_grained is SupportStatus.SUPPORTED
-        ):
+        if adapter_config is not None and adapter_config.fine_grained_tools is True:
             return True
-        # HTTP transport requires Anthropic fine-grained tool streaming beta.
         if transport_kind == "httpx":
             return True
-        # 默认不注入，避免破坏既有单测/代理不识别 beta 的情况
         return False
 
     @classmethod
@@ -149,20 +153,15 @@ class AnthropicProviderBase:
         *,
         model_id: str,
         options: object | None,
-        protocol: EndpointProtocolFeatures | None,
+        adapter_config: AnthropicMessagesConfig | None,
     ) -> bool:
-        if (
-            protocol is not None
-            and protocol.reasoning.interleaved is SupportStatus.UNSUPPORTED
-        ):
+        if adapter_config is not None and adapter_config.interleaved_thinking is False:
             return False
         want_thinking = is_reasoning_requested(options)
         if not want_thinking:
             return False
-        # 4.6 系列内建，不注入
         if cls.supports_adaptive_thinking(model_id):
             return False
-        # auto 模式：其余情况注入
         return True
 
     @staticmethod

@@ -2,37 +2,26 @@ from __future__ import annotations
 
 import asyncio
 import sys
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from types import ModuleType, SimpleNamespace
 
 import pytest
 
-from loushang.ai.advanced import OpenAICompletionsOptions, OpenAIResponsesOptions
+from loushang.ai import CallOptions, ReasoningOptions, StructuredOutputOptions
 from loushang.ai.api.streaming import (
     complete,
-    complete_simple,
     complete_structured,
     stream,
-    stream_simple,
 )
 from loushang.ai.api_registry import ApiProviderRegistry
-from loushang.ai.context import (
-    NORMALIZED_CONTEXT_MARKER,
-    NormalizedContext,
-)
+from loushang.ai.context import NormalizedContext, normalize_context
 from loushang.ai.errors import AIRateLimitError, UnsupportedCapabilityError
 from loushang.ai.model import (
     Capabilities,
-    EndpointProtocolFeatures,
-    EndpointWireDialect,
+    OpenAICompletionsConfig,
+    OpenAIResponsesConfig,
 )
-from loushang.ai.options import (
-    CallOptions,
-    ModelCallOptions,
-    ReasoningOptions,
-    SimpleCallOptions,
-)
-from loushang.ai.provider import ResolvedRequest
+from loushang.ai.provider import ProviderRequest
 from loushang.ai.provider.invocation import call_api_provider_stream
 from loushang.ai.providers.openai_completions import OpenAICompletionsProvider
 from loushang.ai.providers.openai_responses import OpenAIResponsesProvider
@@ -78,18 +67,32 @@ class _Provider:
         self.options = None
         self.request = None
 
-    async def stream_raw(self, request):
+    async def invoke_raw(self, request):
         self.context = request.context
         self.options = request.options
-        self.request = request.resolved
+        self.request = request
         yield {"type": "response_done"}
 
 
+class _ValidatingProvider(_Provider):
+    def __init__(self, api: str = "faux") -> None:
+        super().__init__(api)
+        self.validated_request: ProviderRequest | None = None
+
+    def validate_request(self, request: ProviderRequest) -> None:
+        self.validated_request = request
+
+
+class _RejectingValidatorProvider(_Provider):
+    def validate_request(self, request: ProviderRequest) -> None:
+        raise TypeError(f"invalid adapter for {request.api}")
+
+
 class _ErrorProvider(_Provider):
-    async def stream_raw(self, request):
+    async def invoke_raw(self, request):
         self.context = request.context
         self.options = request.options
-        self.request = request.resolved
+        self.request = request
         yield {
             "type": "response_error",
             "message": "rate limited",
@@ -111,7 +114,6 @@ class _ErrorProvider(_Provider):
 
 def _assert_normalized_provider_context(context: object) -> NormalizedContext:
     assert isinstance(context, NormalizedContext)
-    assert NORMALIZED_CONTEXT_MARKER not in context
     return context
 
 
@@ -123,7 +125,7 @@ class _LegacyProvider:
         self.context = None
         self.options = None
 
-    async def stream_raw(self, model, context, options):
+    async def invoke_raw(self, model, context, options):
         self.context = context
         self.options = options
         yield {"type": "response_done"}
@@ -137,7 +139,7 @@ class _LegacyProviderWithOptionalDebug:
         self.context = None
         self.debug = None
 
-    async def stream_raw(self, model, context, options, debug=False):
+    async def invoke_raw(self, model, context, options, debug=False):
         self.context = context
         self.debug = debug
         yield {"type": "response_done"}
@@ -152,7 +154,7 @@ class _KeywordRequestProvider:
         self.options = None
         self.request = None
 
-    async def stream_raw(self, model, context, options, *, request=None):
+    async def invoke_raw(self, model, context, options, *, request=None):
         self.context = context
         self.options = options
         self.request = request
@@ -208,8 +210,8 @@ def test_stream_defaults_to_strict_pairing_and_exposes_repair_option(
                         UserMessage(role="user", content="next", timestamp=0.0),
                     ]
                 },
-                ModelCallOptions(),
-                registry=registry,
+                CallOptions(),
+                provider_registry=registry,
             )
         )
 
@@ -222,8 +224,8 @@ def test_stream_defaults_to_strict_pairing_and_exposes_repair_option(
                     UserMessage(role="user", content="next", timestamp=0.0),
                 ]
             },
-            ModelCallOptions(pairing_mode="repair"),
-            registry=registry,
+            CallOptions(pairing_mode="repair"),
+            provider_registry=registry,
         )
     )
 
@@ -256,7 +258,7 @@ def test_complete_raises_typed_error_for_stream_error(
                     ]
                 },
                 CallOptions(),
-                registry=registry,
+                provider_registry=registry,
             )
         )
 
@@ -306,8 +308,8 @@ def test_stream_exposes_strict_pairing_through_public_options(
                         UserMessage(role="user", content="next", timestamp=0.0),
                     ]
                 },
-                ModelCallOptions(pairing_mode="strict"),
-                registry=registry,
+                CallOptions(pairing_mode="strict"),
+                provider_registry=registry,
             )
         )
 
@@ -327,13 +329,13 @@ def test_stream_passes_normalized_context_to_provider(
         stream(
             _Model(),
             {"messages": [UserMessage(role="user", content="hello", timestamp=0.0)]},
-            ModelCallOptions(),
-            registry=registry,
+            CallOptions(),
+            provider_registry=registry,
         )
     )
 
     normalized = _assert_normalized_provider_context(provider.context)
-    assert normalized["messages"][0].role == "user"
+    assert normalized.messages[0].role == "user"
 
 
 @pytest.mark.parametrize(
@@ -342,7 +344,7 @@ def test_stream_passes_normalized_context_to_provider(
         (
             Capabilities(input=("text",), stream=False),
             {"messages": [UserMessage(role="user", content="hello", timestamp=0.0)]},
-            ModelCallOptions(),
+            CallOptions(),
             "does not support streaming",
         ),
         (
@@ -357,14 +359,8 @@ def test_stream_passes_normalized_context_to_provider(
                     }
                 ],
             },
-            ModelCallOptions(),
+            CallOptions(),
             "does not support tool use",
-        ),
-        (
-            Capabilities(input=("text",), stream=True, reasoning=False),
-            {"messages": [], "emit_thinking": True},
-            ModelCallOptions(),
-            "does not support reasoning",
         ),
         (
             Capabilities(input=("text",), stream=True, reasoning=False),
@@ -374,17 +370,14 @@ def test_stream_passes_normalized_context_to_provider(
         ),
         (
             Capabilities(input=("text",), stream=True, structured_output=False),
-            {
-                "messages": [UserMessage(role="user", content="hello", timestamp=0.0)],
-                "response_format": {"type": "json_schema"},
-            },
-            ModelCallOptions(),
+            {"messages": [UserMessage(role="user", content="hello", timestamp=0.0)]},
+            CallOptions(output=StructuredOutputOptions(mode="json_object")),
             "does not support structured output",
         ),
         (
             Capabilities(input=("text",), stream=True, temperature=False),
             {"messages": [UserMessage(role="user", content="hello", timestamp=0.0)]},
-            ModelCallOptions(temperature=0.2),
+            CallOptions(temperature=0.2),
             "does not support temperature",
         ),
         (
@@ -404,17 +397,8 @@ def test_stream_passes_normalized_context_to_provider(
                     )
                 ]
             },
-            ModelCallOptions(),
+            CallOptions(),
             "does not support image input",
-        ),
-        (
-            Capabilities(input=("text",), stream=True, attachment=False),
-            {
-                "messages": [UserMessage(role="user", content="hello", timestamp=0.0)],
-                "attachments": [{"id": "file_1"}],
-            },
-            ModelCallOptions(),
-            "does not support attachment",
         ),
     ],
 )
@@ -422,7 +406,7 @@ def test_stream_enforces_capability_matrix(
     monkeypatch: pytest.MonkeyPatch,
     capabilities: Capabilities,
     context: dict[str, object],
-    options: ModelCallOptions,
+    options: CallOptions,
     expected_message: str,
 ) -> None:
     _patch_resolved_request(monkeypatch, capabilities=capabilities)
@@ -434,7 +418,7 @@ def test_stream_enforces_capability_matrix(
     registry = _Registry(provider)
 
     with pytest.raises(UnsupportedCapabilityError, match=expected_message):
-        asyncio.run(stream(_Model(), context, options, registry=registry))
+        asyncio.run(stream(_Model(), context, options, provider_registry=registry))
 
     assert provider.context is None
 
@@ -450,7 +434,6 @@ def test_stream_allows_complete_capability_matrix(
             tool_use=True,
             reasoning=True,
             structured_output=True,
-            attachment=True,
             temperature=True,
         ),
     )
@@ -485,20 +468,20 @@ def test_stream_allows_complete_capability_matrix(
                         "parameters": {"type": "object"},
                     }
                 ],
-                "emit_thinking": True,
-                "response_format": {"type": "json_schema"},
-                "attachments": [{"id": "file_1"}],
             },
-            ModelCallOptions(temperature=0.2),
-            registry=registry,
+            CallOptions(
+                temperature=0.2,
+                reasoning=ReasoningOptions(effort="high"),
+            ),
+            provider_registry=registry,
         )
     )
 
     normalized = _assert_normalized_provider_context(provider.context)
-    assert normalized.tools is not None
-    assert normalized["emit_thinking"] is True
-    assert normalized["response_format"] == {"type": "json_schema"}
-    assert normalized["attachments"] == [{"id": "file_1"}]
+    assert normalized.tools == (
+        Tool(name="calc", description="Calculate values", parameters={"type": "object"}),
+    )
+    assert provider.options.reasoning == ReasoningOptions(effort="high")
 
 
 def test_complete_does_not_require_stream_capability(
@@ -519,8 +502,8 @@ def test_complete_does_not_require_stream_capability(
         complete(
             _Model(),
             {"messages": [UserMessage(role="user", content="hello", timestamp=0.0)]},
-            ModelCallOptions(),
-            registry=registry,
+            CallOptions(),
+            provider_registry=registry,
         )
     )
 
@@ -528,27 +511,6 @@ def test_complete_does_not_require_stream_capability(
     assert result.provider == "faux"
     assert result.model == "test-model"
     _assert_normalized_provider_context(provider.context)
-
-
-def test_complete_simple_returns_message(monkeypatch: pytest.MonkeyPatch) -> None:
-    _patch_resolved_request(
-        monkeypatch,
-        capabilities=Capabilities(input=("text",), stream=False),
-    )
-    provider = _Provider()
-    registry = _Registry(provider)
-
-    result = asyncio.run(
-        complete_simple(
-            _Model(),
-            {"messages": [UserMessage(role="user", content="hello", timestamp=0.0)]},
-            SimpleCallOptions(max_output_tokens=64),
-            registry=registry,
-        )
-    )
-
-    assert result.stop_reason == "stop"
-    assert provider.options.max_output_tokens == 64
 
 
 def test_complete_structured_requires_output_options() -> None:
@@ -598,13 +560,13 @@ def test_stream_canonicalizes_raw_dict_context_before_provider(
                     }
                 ],
             },
-            ModelCallOptions(),
-            registry=registry,
+            CallOptions(),
+            provider_registry=registry,
         )
     )
 
     normalized = _assert_normalized_provider_context(provider.context)
-    message = normalized["messages"][0]
+    message = normalized.messages[0]
     assert normalized.system_prompt == "system text"
     assert isinstance(message, UserMessage)
     assert message.content == [
@@ -637,8 +599,8 @@ def test_stream_rejects_raw_dict_tools_with_non_object_parameters_before_provide
                         }
                     ],
                 },
-                ModelCallOptions(),
-                registry=registry,
+                CallOptions(),
+                provider_registry=registry,
             )
         )
 
@@ -668,8 +630,61 @@ def test_stream_rejects_raw_dict_tools_with_invalid_names_before_provider(
                         }
                     ],
                 },
-                ModelCallOptions(),
-                registry=registry,
+                CallOptions(),
+                provider_registry=registry,
+            )
+        )
+
+    assert provider.context is None
+
+
+@pytest.mark.parametrize(
+    "legacy_options",
+    [
+        SimpleNamespace(max_tokens=64),
+        SimpleNamespace(timeout=10),
+        SimpleNamespace(retries=2),
+        SimpleNamespace(max_retry_delay_ms=500),
+        SimpleNamespace(reasoning="high"),
+        SimpleNamespace(reasoning_summary="auto"),
+        SimpleNamespace(thinking_budget_tokens=4096),
+    ],
+)
+def test_stream_rejects_non_call_options_before_provider(
+    monkeypatch: pytest.MonkeyPatch,
+    legacy_options: object,
+) -> None:
+    _patch_resolved_request(monkeypatch)
+    provider = _Provider()
+    registry = _Registry(provider)
+
+    with pytest.raises(TypeError, match="options must be CallOptions"):
+        asyncio.run(
+            stream(
+                _Model(),
+                {"messages": [UserMessage(role="user", content="hello", timestamp=0.0)]},
+                legacy_options,  # type: ignore[arg-type]
+                provider_registry=registry,
+            )
+        )
+
+    assert provider.context is None
+
+
+def test_complete_rejects_non_call_options_before_provider(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _patch_resolved_request(monkeypatch)
+    provider = _Provider()
+    registry = _Registry(provider)
+
+    with pytest.raises(TypeError, match="options must be CallOptions"):
+        asyncio.run(
+            complete(
+                _Model(),
+                {"messages": [UserMessage(role="user", content="hello", timestamp=0.0)]},
+                SimpleNamespace(max_tokens=64),  # type: ignore[arg-type]
+                provider_registry=registry,
             )
         )
 
@@ -692,8 +707,8 @@ def test_stream_passes_request_through_registered_provider(
         stream(
             _Model(),
             {"messages": [UserMessage(role="user", content="hello", timestamp=0.0)]},
-            ModelCallOptions(),
-            registry=registry,
+            CallOptions(),
+            provider_registry=registry,
         )
     )
 
@@ -701,10 +716,58 @@ def test_stream_passes_request_through_registered_provider(
     assert provider.request.api == "faux"
 
 
+def test_stream_runs_optional_provider_request_validator_before_iteration(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _patch_resolved_request(monkeypatch)
+    provider = _ValidatingProvider()
+    registry = ApiProviderRegistry()
+    registry.register_api_provider(provider)
+
+    event_stream = asyncio.run(
+        stream(
+            _Model(),
+            {"messages": [UserMessage(role="user", content="hello", timestamp=0.0)]},
+            CallOptions(),
+            provider_registry=registry,
+        )
+    )
+
+    assert provider.validated_request is provider.request
+    assert provider.validated_request is not None
+    assert provider.validated_request.api == "faux"
+    asyncio.run(event_stream.aclose())
+
+
+def test_stream_raises_provider_request_validation_error_before_iteration(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _patch_resolved_request(monkeypatch)
+    provider = _RejectingValidatorProvider()
+    registry = ApiProviderRegistry()
+    registry.register_api_provider(provider)
+
+    with pytest.raises(TypeError, match="invalid adapter for faux"):
+        asyncio.run(
+            stream(
+                _Model(),
+                {
+                    "messages": [
+                        UserMessage(role="user", content="hello", timestamp=0.0)
+                    ]
+                },
+                CallOptions(),
+                provider_registry=registry,
+            )
+        )
+
+    assert provider.request is None
+
+
 def test_register_api_provider_rejects_stream_only_provider() -> None:
     registry = ApiProviderRegistry()
 
-    with pytest.raises(TypeError, match="stream_raw"):
+    with pytest.raises(TypeError, match="invoke_raw"):
         registry.register_api_provider(_StreamOnlyProvider())
 
 
@@ -741,7 +804,7 @@ def test_register_api_provider_rejects_optional_legacy_argument_signature() -> N
         "openai-codex-responses",
     ),
 )
-def test_stream_simple_maps_reasoning_options_before_provider_call(
+def test_stream_maps_reasoning_options_before_provider_call(
     monkeypatch: pytest.MonkeyPatch,
     api: str,
 ) -> None:
@@ -755,20 +818,23 @@ def test_stream_simple_maps_reasoning_options_before_provider_call(
     registry = _Registry(provider)
 
     asyncio.run(
-        stream_simple(
+        stream(
             _Model(),
             {"messages": [UserMessage(role="user", content="hello", timestamp=0.0)]},
-            SimpleCallOptions(
-                reasoning="medium",
-                thinking_budgets={"medium": 2048},
+            CallOptions(
+                reasoning=ReasoningOptions(
+                    enabled=True,
+                    effort="medium",
+                    budget_tokens=2048,
+                    expose_summary=True,
+                ),
                 max_output_tokens=123,
             ),
-            registry=registry,
+            provider_registry=registry,
         )
     )
 
     assert isinstance(provider.options, CallOptions)
-    assert not isinstance(provider.options, SimpleCallOptions)
     assert provider.options.max_output_tokens == 123
     assert provider.options.reasoning == ReasoningOptions(
         enabled=True,
@@ -795,30 +861,8 @@ def test_stream_rejects_legacy_provider_from_custom_registry(
                         UserMessage(role="user", content="hello", timestamp=0.0)
                     ]
                 },
-                ModelCallOptions(),
-                registry=registry,
-            )
-        )
-
-
-def test_stream_simple_rejects_legacy_provider_from_custom_registry(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    _patch_resolved_request(monkeypatch)
-    provider = _LegacyProvider()
-    registry = _Registry(provider)
-
-    with pytest.raises(TypeError, match="exactly one ProviderRequest"):
-        asyncio.run(
-            stream_simple(
-                _Model(),
-                {
-                    "messages": [
-                        UserMessage(role="user", content="hello", timestamp=0.0)
-                    ]
-                },
-                SimpleCallOptions(),
-                registry=registry,
+                CallOptions(),
+                provider_registry=registry,
             )
         )
 
@@ -834,21 +878,54 @@ def test_call_api_provider_stream_supports_registered_provider(
     asyncio.run(
         call_api_provider_stream(
             registry.get_api_provider("faux"),
-            _Model(),
-            {"messages": [UserMessage(role="user", content="hello", timestamp=0.0)]},
-            ModelCallOptions(),
-            request=ResolvedRequest(
+            ProviderRequest(
                 provider="faux",
                 endpoint="faux",
                 api="faux",
                 base_url=None,
+                model=_Model(),
+                context=normalize_context(
+                    {
+                        "messages": [
+                            UserMessage(role="user", content="hello", timestamp=0.0)
+                        ]
+                    }
+                ),
+                options=CallOptions(),
                 capabilities=Capabilities(input=("text",), stream=True),
             ),
         )
     )
 
     assert provider.request.api == "faux"
-    assert provider.context["messages"][0].role == "user"
+    assert provider.context.messages[0].role == "user"
+
+
+def test_call_api_provider_stream_requires_normalized_context() -> None:
+    provider = _Provider()
+    registry = ApiProviderRegistry()
+    registry.register_api_provider(provider)
+
+    with pytest.raises(TypeError, match="ProviderRequest.context must be NormalizedContext"):
+        asyncio.run(
+            call_api_provider_stream(
+                registry.get_api_provider("faux"),
+                ProviderRequest(
+                    provider="faux",
+                    endpoint="faux",
+                    api="faux",
+                    base_url=None,
+                    model=_Model(),
+                    context={
+                        "messages": [
+                            UserMessage(role="user", content="hello", timestamp=0.0)
+                        ]
+                    },
+                    options=CallOptions(),
+                    capabilities=Capabilities(input=("text",), stream=True),
+                ),
+            )
+        )
 
 
 def test_get_api_provider_stream_rejects_legacy_provider_signature() -> None:
@@ -871,7 +948,7 @@ def test_call_api_provider_stream_rejects_mismatched_resolved_request() -> None:
     provider = _Provider()
     registry = ApiProviderRegistry()
     registry.register_api_provider(provider)
-    request = ResolvedRequest(
+    request = ProviderRequest(
         provider="faux",
         endpoint="other",
         api="other",
@@ -883,25 +960,33 @@ def test_call_api_provider_stream_rejects_mismatched_resolved_request() -> None:
         asyncio.run(
             call_api_provider_stream(
                 registry.get_api_provider("faux"),
-                _Model(),
-                {
-                    "messages": [
-                        UserMessage(role="user", content="hello", timestamp=0.0)
-                    ]
-                },
-                ModelCallOptions(),
-                request=request,
+                replace(
+                    request,
+                    model=_Model(),
+                    context=normalize_context(
+                        {
+                            "messages": [
+                                UserMessage(
+                                    role="user",
+                                    content="hello",
+                                    timestamp=0.0,
+                                )
+                            ]
+                        }
+                    ),
+                    options=CallOptions(),
+                ),
             )
         )
 
 
-def test_call_api_provider_stream_normalizes_context_against_resolved_request_api() -> (
+def test_call_api_provider_stream_passes_normalized_context_without_renormalizing() -> (
     None
 ):
     provider = _Provider(api="anthropic-messages")
     registry = ApiProviderRegistry()
     registry.register_api_provider(provider)
-    request = ResolvedRequest(
+    request = ProviderRequest(
         api="anthropic-messages",
         provider="anthropic",
         endpoint="anthropic-messages",
@@ -930,31 +1015,38 @@ def test_call_api_provider_stream_normalizes_context_against_resolved_request_ap
         timestamp=0.0,
     )
 
+    normalized = normalize_context(
+        {
+            "messages": [
+                assistant,
+                ToolResultMessage(
+                    role="toolResult",
+                    tool_call_id="call.1",
+                    tool_name="calc",
+                    content=[],
+                    is_error=False,
+                    timestamp=0.0,
+                ),
+            ]
+        },
+        model=SimpleNamespace(api="anthropic-messages"),
+    )
+
     asyncio.run(
         call_api_provider_stream(
             registry.get_api_provider("anthropic-messages"),
-            _Model(api="openai-responses"),
-            {
-                "messages": [
-                    assistant,
-                    ToolResultMessage(
-                        role="toolResult",
-                        tool_call_id="call.1",
-                        tool_name="calc",
-                        content=[],
-                        is_error=False,
-                        timestamp=0.0,
-                    ),
-                ]
-            },
-            ModelCallOptions(),
-            request=request,
+            replace(
+                request,
+                model=_Model(api="openai-responses"),
+                context=normalized,
+                options=CallOptions(),
+            ),
         )
     )
 
-    normalized_assistant = provider.context["messages"][0]
-    normalized_tool_result = provider.context["messages"][1]
-    _assert_normalized_provider_context(provider.context)
+    assert provider.context is normalized
+    normalized_assistant = provider.context.messages[0]
+    normalized_tool_result = provider.context.messages[1]
     assert normalized_assistant.content[0].id == "call_1"
     assert normalized_tool_result.tool_call_id == "call_1"
 
@@ -993,8 +1085,8 @@ def test_stream_validates_resolved_request_capabilities(
                         )
                     ]
                 },
-                ModelCallOptions(),
-                registry=registry,
+                CallOptions(),
+                provider_registry=registry,
             )
         )
 
@@ -1031,8 +1123,8 @@ def test_stream_allows_capabilities_after_request_resolution_switches_endpoint(
                     )
                 ]
             },
-            ModelCallOptions(),
-            registry=registry,
+            CallOptions(),
+            provider_registry=registry,
         )
     )
 
@@ -1087,13 +1179,13 @@ def test_stream_normalizes_context_against_resolved_request_api(
                     ),
                 ]
             },
-            ModelCallOptions(),
-            registry=registry,
+            CallOptions(),
+            provider_registry=registry,
         )
     )
 
-    normalized_assistant = provider.context["messages"][0]
-    normalized_tool_result = provider.context["messages"][1]
+    normalized_assistant = provider.context.messages[0]
+    normalized_tool_result = provider.context.messages[1]
     assert normalized_assistant.content[0].id == "call_1"
     assert normalized_tool_result.tool_call_id == "call_1"
 
@@ -1111,20 +1203,16 @@ def test_stream_public_path_uses_openai_completions_typed_request(
         input=("text",),
         pricing=None,
     )
-    request = ResolvedRequest(
+    request = ProviderRequest(
         provider="custom",
         endpoint="openai-completions",
         api="openai-completions",
         base_url="https://api.openai.test/v1",
         headers={"Authorization": "Bearer test-key"},
-        protocol=EndpointProtocolFeatures.from_raw(
-            {"cache": {"promptKey": "supported"}}
-        ),
-        dialect=EndpointWireDialect.from_raw(
-            {
-                "maxOutputTokensField": "max_completion_tokens",
-                "tools": {"streamFlag": True},
-            }
+        adapter_config=OpenAICompletionsConfig(
+            prompt_cache_key=True,
+            max_output_tokens_field="max_completion_tokens",
+            tool_stream=True,
         ),
         max_tokens=128,
         capabilities=Capabilities(
@@ -1153,11 +1241,11 @@ def test_stream_public_path_uses_openai_completions_typed_request(
                     }
                 ],
             },
-            OpenAICompletionsOptions(
+            CallOptions(
                 cache_retention="short",
                 session_id="session-public",
             ),
-            registry=registry,
+            provider_registry=registry,
         )
         await event_stream.result()
 
@@ -1174,6 +1262,7 @@ def test_stream_public_path_uses_openai_completions_typed_request(
                 "name": "calc",
                 "description": "Calculate values",
                 "parameters": {"type": "object"},
+                "strict": False,
             },
         }
     ]
@@ -1193,24 +1282,18 @@ def test_stream_public_path_uses_openai_responses_typed_request(
         input=("text",),
         pricing=None,
     )
-    request = ResolvedRequest(
+    request = ProviderRequest(
         provider="custom",
         endpoint="openai-responses",
         api="openai-responses",
         base_url="https://api.openai.test/v1",
         headers={"Authorization": "Bearer test-key"},
-        protocol=EndpointProtocolFeatures.from_raw(
-            {
-                "roles": {"developer": "unsupported"},
-                "cache": {
-                    "longRetention": "unsupported",
-                    "promptKey": "supported",
-                },
-                "session": {"idHeader": "unsupported"},
-            }
-        ),
-        dialect=EndpointWireDialect.from_raw(
-            {"tools": {"assistantBridgeRequired": True}}
+        adapter_config=OpenAIResponsesConfig(
+            developer_role=False,
+            long_cache_retention=False,
+            prompt_cache_key=True,
+            session_id_header=False,
+            assistant_after_tool_result=True,
         ),
         max_tokens=128,
         capabilities=Capabilities(
@@ -1273,11 +1356,11 @@ def test_stream_public_path_uses_openai_responses_typed_request(
                     )
                 ],
             },
-            OpenAIResponsesOptions(
+            CallOptions(
                 cache_retention="short",
                 session_id="session-responses",
             ),
-            registry=registry,
+            provider_registry=registry,
         )
         await event_stream.result()
 
@@ -1324,19 +1407,15 @@ def test_stream_public_path_rejects_unsupported_long_cache_retention(
         input=("text",),
         pricing=None,
     )
-    request = ResolvedRequest(
+    request = ProviderRequest(
         provider="custom",
         endpoint="openai-responses",
         api="openai-responses",
         base_url="https://api.openai.test/v1",
         headers={"Authorization": "Bearer test-key"},
-        adapter_protocol=EndpointProtocolFeatures.from_raw(
-            {
-                "cache": {
-                    "longRetention": "unsupported",
-                    "promptKey": "supported",
-                }
-            }
+        adapter_config=OpenAIResponsesConfig(
+            long_cache_retention=False,
+            prompt_cache_key=True,
         ),
         capabilities=Capabilities(input=("text",), stream=True, max_tokens=4096),
     )
@@ -1353,8 +1432,8 @@ def test_stream_public_path_rejects_unsupported_long_cache_retention(
         await stream(
             model,
             {"messages": [UserMessage(role="user", content="hello", timestamp=0.0)]},
-            OpenAIResponsesOptions(cache_retention="long"),
-            registry=registry,
+            CallOptions(cache_retention="long"),
+            provider_registry=registry,
         )
 
     with pytest.raises(UnsupportedCapabilityError, match="long cache retention"):
@@ -1372,13 +1451,16 @@ def test_stream_public_path_rejects_unsupported_session_id(
         input=("text",),
         pricing=None,
     )
-    request = ResolvedRequest(
+    request = ProviderRequest(
         provider="custom",
         endpoint="openai-completions",
         api="openai-completions",
         base_url="https://api.openai.test/v1",
         headers={"Authorization": "Bearer test-key"},
-        adapter_protocol=EndpointProtocolFeatures(),
+        adapter_config=OpenAICompletionsConfig(
+            prompt_cache_key=False,
+            session_affinity_headers=False,
+        ),
         capabilities=Capabilities(input=("text",), stream=True, max_tokens=4096),
     )
 
@@ -1394,8 +1476,8 @@ def test_stream_public_path_rejects_unsupported_session_id(
         await stream(
             model,
             {"messages": [UserMessage(role="user", content="hello", timestamp=0.0)]},
-            OpenAICompletionsOptions(session_id="session-public"),
-            registry=registry,
+            CallOptions(session_id="session-public"),
+            provider_registry=registry,
         )
 
     with pytest.raises(UnsupportedCapabilityError, match="session id"):
@@ -1415,27 +1497,15 @@ def test_stream_public_path_uses_adapter_protocol_override_for_cache_validation(
         input=("text",),
         pricing=None,
     )
-    request = ResolvedRequest(
+    request = ProviderRequest(
         provider="custom",
         endpoint="openai-responses",
         api="openai-responses",
         base_url="https://api.openai.test/v1",
         headers={"Authorization": "Bearer test-key"},
-        protocol=EndpointProtocolFeatures.from_raw(
-            {
-                "cache": {
-                    "longRetention": "unsupported",
-                    "promptKey": "unsupported",
-                }
-            }
-        ),
-        adapter_protocol=EndpointProtocolFeatures.from_raw(
-            {
-                "cache": {
-                    "longRetention": "supported",
-                    "promptKey": "supported",
-                }
-            }
+        adapter_config=OpenAIResponsesConfig(
+            long_cache_retention=True,
+            prompt_cache_key=True,
         ),
         capabilities=Capabilities(input=("text",), stream=True, max_tokens=4096),
     )
@@ -1452,11 +1522,11 @@ def test_stream_public_path_uses_adapter_protocol_override_for_cache_validation(
         event_stream = await stream(
             model,
             {"messages": [UserMessage(role="user", content="hello", timestamp=0.0)]},
-            OpenAIResponsesOptions(
+            CallOptions(
                 cache_retention="long",
                 session_id="session-override",
             ),
-            registry=registry,
+            provider_registry=registry,
         )
         await event_stream.result()
 
@@ -1474,34 +1544,19 @@ def _patch_resolved_request(
     provider: str = "faux",
 ) -> None:
     def _resolve_request(_model, options=None):
-        return SimpleNamespace(
+        return ProviderRequest(
             api=api,
             provider=provider,
+            endpoint=api,
+            base_url=None,
+            model=_model,
+            options=options,
             capabilities=capabilities or Capabilities(input=("text",), stream=True),
         )
-
-    def _resolve_provider_request(
-        provider_api,
-        _model,
-        *,
-        options=None,
-        request=None,
-        adapter_config_resolver=None,
-    ):
-        resolved = request if request is not None else _resolve_request(_model, options)
-        if resolved.api != provider_api:
-            raise ValueError(
-                f"Mismatched api: provider={provider_api!r} request.api={resolved.api!r}"
-            )
-        return resolved
 
     monkeypatch.setattr(
         "loushang.ai.api.streaming.resolve_request_for_model",
         _resolve_request,
-    )
-    monkeypatch.setattr(
-        "loushang.ai.provider.invocation.resolve_provider_request",
-        _resolve_provider_request,
     )
 
 

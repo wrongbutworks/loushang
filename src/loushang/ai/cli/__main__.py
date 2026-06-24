@@ -14,11 +14,6 @@ from loushang.ai import (
     complete,
     stream,
 )
-from loushang.ai.advanced.options import (
-    AnthropicOptions,
-    OpenAICompletionsOptions,
-    OpenAIResponsesOptions,
-)
 from loushang.ai.advanced.registry import (
     get_api_provider,
     list_api_providers,
@@ -26,18 +21,15 @@ from loushang.ai.advanced.registry import (
 )
 from loushang.ai.api_registry import get_default_api_provider_registry
 from loushang.ai.auth import (
+    get_default_oauth_registry,
     get_env_api_key,
     get_env_oauth_credentials,
-    get_oauth_provider,
-    list_oauth_providers,
     oauth_login,
     register_builtin_oauth_providers,
 )
 from loushang.ai.auth.storage import find_scoped_credential, load_credential_store
-from loushang.ai.auth.support import merge_auth_config
 from loushang.ai.auth.types import OAuthAuthInfo, OAuthLoginCallbacks, OAuthPrompt
 from loushang.ai.contrib.openai_codex import (
-    OpenAICodexResponsesOptions,
     register_openai_codex_contrib,
     register_openai_codex_oauth_provider,
 )
@@ -46,13 +38,6 @@ from loushang.ai.model.registry import (
     resolve_model_api,
     resolve_model_ref,
 )
-
-_OPTION_CLASS_BY_API = {
-    "anthropic-messages": AnthropicOptions,
-    "openai-completions": OpenAICompletionsOptions,
-    "openai-responses": OpenAIResponsesOptions,
-    "openai-codex-responses": OpenAICodexResponsesOptions,
-}
 
 _BACK = object()
 
@@ -174,7 +159,7 @@ def cmd_models(args: argparse.Namespace) -> None:
                 "attachment": model.capabilities.attachment,
             },
             "defaults": dict(model.defaults),
-            "compat": dict(model.compat),
+            "adapter": model.adapter.to_raw() if model.adapter is not None else None,
         }
         _print(data, args.json)
         return
@@ -206,7 +191,9 @@ def cmd_endpoints(args: argparse.Namespace) -> None:
             "region": endpoint_info.region,
             "lane": endpoint_info.lane,
             "defaults": endpoint_info.defaults,
-            "compat": endpoint_info.compat,
+            "adapter": endpoint_info.adapter.to_raw()
+            if endpoint_info.adapter is not None
+            else None,
         }
         _print(data, args.json)
         return
@@ -225,7 +212,12 @@ def cmd_chat(args: argparse.Namespace) -> None:
     options = None
 
     async def run():
-        ev = await stream(model, context, options, registry=get_api_provider_registry())
+        ev = await stream(
+            model,
+            context,
+            options,
+            provider_registry=get_api_provider_registry(),
+        )
         if args.json:
             async for e in ev:
                 print(json.dumps(e, ensure_ascii=False))
@@ -271,7 +263,10 @@ def cmd_complete(args: argparse.Namespace) -> None:
 
     async def run():
         res = await complete(
-            model, context, options, registry=get_api_provider_registry()
+            model,
+            context,
+            options,
+            provider_registry=get_api_provider_registry(),
         )
         if args.json:
             print(json.dumps(res.__dict__, ensure_ascii=False))
@@ -288,17 +283,15 @@ def cmd_complete(args: argparse.Namespace) -> None:
 def cmd_auth(args: argparse.Namespace) -> None:
     register_builtin_oauth_providers()
     register_openai_codex_oauth_provider()
+    oauth_registry = get_default_oauth_registry()
 
     if args.action == "providers":
-        items = [
-            {"id": provider.id, "name": provider.name}
-            for provider in list_oauth_providers()
-        ]
+        items = [{"id": provider.id, "name": provider.name} for provider in oauth_registry.list()]
         _print(items, args.json)
         return
 
     if args.action == "show":
-        provider = get_oauth_provider(args.provider)
+        provider = oauth_registry.get(args.provider)
         if provider is None:
             print(f"OAuth provider not found: {args.provider}", file=sys.stderr)
             sys.exit(2)
@@ -328,7 +321,7 @@ def cmd_auth(args: argparse.Namespace) -> None:
     if args.action == "login":
         provider_id = args.provider
         if not provider_id:
-            providers = list_oauth_providers()
+            providers = oauth_registry.list()
             if not providers:
                 print("No OAuth providers registered.", file=sys.stderr)
                 sys.exit(2)
@@ -355,7 +348,7 @@ def cmd_auth(args: argparse.Namespace) -> None:
                 sys.exit(2)
             provider_id = providers[chosen - 1].id
 
-        provider = get_oauth_provider(provider_id)
+        provider = oauth_registry.get(provider_id)
         if provider is None:
             print(f"OAuth provider not found: {provider_id}", file=sys.stderr)
             sys.exit(2)
@@ -528,11 +521,6 @@ def _build_console_binding(
                 provider = None
                 continue
             endpoint = selected_endpoint
-        auth_result = _prepare_console_auth(
-            provider,
-            endpoint,
-            debug=debug,
-        )
         model = _select_console_model(
             endpoint,
             model_hint=model_hint,
@@ -542,6 +530,12 @@ def _build_console_binding(
         if model is _BACK:
             endpoint = None
             continue
+        auth_result = _prepare_console_auth(
+            model,
+            provider_id=provider.id,
+            endpoint_id=endpoint.id,
+            debug=debug,
+        )
         return _create_console_binding(
             provider=provider,
             endpoint=endpoint,
@@ -557,7 +551,12 @@ def _switch_console_model(binding: ConsoleBinding, registry) -> ConsoleBinding:
     if provider is None or endpoint is None:
         return _build_console_binding(registry)
     model = _select_console_model(endpoint)
-    auth_result = _prepare_console_auth(provider, endpoint, debug=False)
+    auth_result = _prepare_console_auth(
+        model,
+        provider_id=provider.id,
+        endpoint_id=endpoint.id,
+        debug=False,
+    )
     api = resolve_model_api(model)
     options, auth_source = _build_console_options(
         model,
@@ -681,7 +680,12 @@ def _create_console_binding(
 ) -> ConsoleBinding:
     api = resolve_model_api(model)
     if auth_result is None:
-        auth_result = _prepare_console_auth(provider, endpoint, debug=debug)
+        auth_result = _prepare_console_auth(
+            model,
+            provider_id=provider.id,
+            endpoint_id=endpoint.id,
+            debug=debug,
+        )
     options, auth_source = _build_console_options(
         model,
         api=api,
@@ -699,27 +703,25 @@ def _create_console_binding(
 
 
 def _prepare_console_auth(
-    provider, endpoint, *, debug: bool
+    model, *, provider_id: str, endpoint_id: str, debug: bool
 ) -> tuple[dict[str, object], str]:
-    auth_config = merge_auth_config(
-        getattr(provider, "auth", None), getattr(endpoint, "auth", None)
-    )
+    auth_config = getattr(model, "auth", None)
     option_kwargs: dict[str, object] = {}
     auth_source = "none"
     if getattr(auth_config, "kind", "apiKey") == "oauth":
         oauth_credentials, auth_source = _resolve_console_oauth_credentials(
-            provider.id, endpoint_id=endpoint.id
+            provider_id, endpoint_id=endpoint_id
         )
         if oauth_credentials is not None:
             option_kwargs["oauth_credentials"] = oauth_credentials
     else:
-        api_key, auth_source = _resolve_console_api_key(provider.id, auth_config)
+        api_key, auth_source = _resolve_console_api_key(provider_id, auth_config)
         if api_key:
             option_kwargs["api_key"] = api_key
     if debug:
         print(
             "DEBUG auth-prepared "
-            f"provider={provider.id} endpoint={endpoint.id} source={auth_source}"
+            f"provider={provider_id} endpoint={endpoint_id} source={auth_source}"
         )
     return option_kwargs, auth_source
 
@@ -730,8 +732,7 @@ def _build_console_options(model, *, api: str, auth_result, debug: bool = False)
         option_kwargs["trace"] = _console_trace
     if not option_kwargs:
         return None, auth_source
-    option_cls = _OPTION_CLASS_BY_API.get(api, CallOptions)
-    return option_cls(**option_kwargs), auth_source
+    return CallOptions(**option_kwargs), auth_source
 
 
 def _resolve_console_oauth_credentials(
@@ -799,7 +800,7 @@ def _console_trace(event: dict) -> None:
 
 
 async def _run_console_turn(model, context, options, *, as_json: bool):
-    event_stream = await model.stream(context, options)
+    event_stream = await stream(model, context, options)
     if as_json:
         async for event in event_stream:
             print(json.dumps(event, ensure_ascii=False))

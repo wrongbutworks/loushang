@@ -1,9 +1,12 @@
-from dataclasses import is_dataclass
+from dataclasses import fields, is_dataclass
 from typing import get_args
+
+import pytest
 
 from loushang.agent import (
     AfterToolCallContext,
     AfterToolCallResult,
+    Agent,
     AgentContext,
     AgentEvent,
     AgentLoopConfig,
@@ -53,6 +56,12 @@ def test_public_types_are_exported() -> None:
     assert AfterToolCallResult.__annotations__["is_error"] == "bool | None"
     assert AfterToolCallResult.__annotations__["terminate"] == "bool | None"
     assert AgentToolResult(content=[], details={}).terminate is False
+
+
+def test_agent_transport_option_is_removed() -> None:
+    assert "transport" not in {field.name for field in fields(AgentOptions)}
+    with pytest.raises(TypeError, match="transport"):
+        Agent(transport="websocket")
 
 
 def test_public_literal_and_union_types_are_defined() -> None:

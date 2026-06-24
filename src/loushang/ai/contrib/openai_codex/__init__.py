@@ -10,6 +10,10 @@ from loushang.ai.contrib.openai_codex.catalog import (
     load_openai_codex_model_registry,
     register_openai_codex_models,
 )
+from loushang.ai.contrib.openai_codex.codex_cli_auth import (
+    get_codex_cli_oauth_credentials,
+    load_codex_cli_auth,
+)
 from loushang.ai.contrib.openai_codex.oauth import (
     AUTHORIZE_URL,
     CLIENT_ID,
@@ -21,10 +25,7 @@ from loushang.ai.contrib.openai_codex.oauth import (
 )
 from loushang.ai.contrib.openai_codex.options import OpenAICodexResponsesOptions
 from loushang.ai.contrib.openai_codex.provider import OpenAICodexResponsesProvider
-from loushang.ai.contrib.openai_codex.runtime_config import (
-    OpenAICodexRuntimeConfig,
-    resolve_openai_codex_runtime_config,
-)
+from loushang.ai.contrib.openai_codex.runtime_config import OpenAICodexRuntimeConfig
 from loushang.ai.model import ModelRegistry, get_default_model_registry
 
 OPENAI_CODEX_CONTRIB_SOURCE_ID = "contrib:openai-codex"
@@ -63,9 +64,10 @@ __all__ = [
     "OpenAICodexRuntimeConfig",
     "REDIRECT_URI",
     "TOKEN_URL",
+    "get_codex_cli_oauth_credentials",
     "load_openai_codex_model_registry",
+    "load_codex_cli_auth",
     "register_openai_codex_contrib",
     "register_openai_codex_models",
     "register_openai_codex_oauth_provider",
-    "resolve_openai_codex_runtime_config",
 ]

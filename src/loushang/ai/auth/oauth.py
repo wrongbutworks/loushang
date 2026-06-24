@@ -41,7 +41,7 @@ def refresh_oauth_token(provider: str, creds: OAuthCredentials) -> OAuthCredenti
     from loushang.ai.auth.registry import get_default_oauth_registry
 
     reg = get_default_oauth_registry()
-    prov = reg.get_oauth_provider(provider)
+    prov = reg.get(provider)
     if prov is None:
         raise ValueError(f"OAuth provider not found: {provider}")
     rt = prov.refresh_token  # type: ignore[attr-defined]

@@ -30,6 +30,7 @@ from loushang.ai.bootstrap import register_builtin_ai_providers
 from loushang.ai.messages import canonicalize_user_message
 from loushang.ai.model import Capabilities, Model
 from loushang.ai.model.registry import resolve_model_api
+from loushang.ai.options import CallOptions, ReasoningOptions, RetryOptions
 from loushang.ai.types import (
     AssistantMessage,
     ImagePart,
@@ -133,15 +134,12 @@ class Agent:
         self.transform_context = options.transform_context
         self.stream_fn = options.stream_fn or _stream_with_registry
         self.get_api_key = options.get_api_key
-        self.on_payload = options.on_payload
-        self.on_response = options.on_response
         self.before_tool_call = options.before_tool_call
         self.after_tool_call = options.after_tool_call
         self.steering_queue = PendingMessageQueue(options.steering_mode)
         self.follow_up_queue = PendingMessageQueue(options.follow_up_mode)
         self._session_id = options.session_id
         self._thinking_budgets = options.thinking_budgets
-        self._transport = options.transport
         self._max_retry_delay_ms = options.max_retry_delay_ms
         self.tool_execution = options.tool_execution
         self._listeners: dict[
@@ -284,16 +282,6 @@ class Agent:
     def thinking_budgets(self, value: dict[str, int] | None) -> None:
         """Set custom thinking budgets for token-based providers."""
         self._thinking_budgets = value
-
-    @property
-    def transport(self) -> str:
-        """Get the preferred transport for providers that support multiple transports."""
-        return self._transport
-
-    @transport.setter
-    def transport(self, value: str) -> None:
-        """Set the preferred transport."""
-        self._transport = value
 
     @property
     def max_retry_delay_ms(self) -> int | None:
@@ -531,15 +519,13 @@ class Agent:
 
         return AgentLoopConfig(
             model=self._state.model,
-            reasoning=None
-            if self._state.thinking_level == "off"
-            else self._state.thinking_level,
-            session_id=self.session_id,
-            on_payload=self.on_payload,
-            on_response=self.on_response,
-            transport=self.transport,
-            thinking_budgets=self.thinking_budgets,
-            max_retry_delay_ms=self.max_retry_delay_ms,
+            call_options=CallOptions(
+                session_id=self.session_id,
+                reasoning=_reasoning_options(
+                    self._state.thinking_level, self.thinking_budgets
+                ),
+                retry=_retry_options(self.max_retry_delay_ms),
+            ),
             tool_execution=self.tool_execution,
             before_tool_call=self.before_tool_call,
             after_tool_call=self.after_tool_call,
@@ -689,6 +675,30 @@ def _create_agent_state(
         ),
         error_message=_initial_state_value(initial_state, "error_message", None),
     )
+
+
+def _reasoning_options(
+    thinking_level: ThinkingLevel,
+    thinking_budgets: Mapping[str, int] | None,
+) -> ReasoningOptions | None:
+    if thinking_level == "off":
+        return None
+    budget_tokens = None
+    if thinking_budgets is not None:
+        budget = thinking_budgets.get(thinking_level)
+        if isinstance(budget, int):
+            budget_tokens = budget
+    return ReasoningOptions(
+        enabled=True,
+        effort=thinking_level,
+        budget_tokens=budget_tokens,
+    )
+
+
+def _retry_options(max_retry_delay_ms: int | None) -> RetryOptions | None:
+    if not isinstance(max_retry_delay_ms, int):
+        return None
+    return RetryOptions(max_attempts=1, max_delay_seconds=max(0, max_retry_delay_ms) / 1000)
 
 
 def _empty_usage() -> Usage:
