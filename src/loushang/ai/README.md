@@ -32,10 +32,10 @@
   - 运行时查询容器：`ModelRegistry`
   - 默认入口：`get_default_model_registry()`
 - `loader.py`
-  - 从内置 `models.curated.v2.json` 或显式文件/目录路径装载 registry
+  - 从内置 `models.json` 或显式文件/目录路径装载 registry
   - 显式文件、目录和外部 overlay 的 `*_with_diagnostics()` 变体返回 legacy `compat` 到类型化字段的 deprecation diagnostics；内置 catalog 自身的迁移 warning 不向普通装载调用暴露
-- `models.curated.v2.json`
-  - 内置 curated 模型事实源；完整 legacy catalog 已归档到 `docs/internals/archive/ai/model-catalog/models-v1-full.json.gz`
+- `models.json`
+  - 内置模型事实源；完整 legacy catalog 已备份到 `backup/ai/models-legacy-full.json.gz`
 
 当前 `model` 包的稳定心智是：
 

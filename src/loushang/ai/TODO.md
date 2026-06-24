@@ -49,7 +49,7 @@
   6. Reduce magic-string compatibility/config behavior in the curated model catalog and provider implementations.
   7. Done: narrow the public API surface so advanced/internal helpers are not exported as if they were primary entry points.
   8. Strengthen typed boundaries for options, protocol objects, and provider adapter inputs.
-  9. Evaluate whether `models.curated.v2.json` should remain a package-internal fact source for pricing/defaults/compat metadata or be split by responsibility over time.
+  9. Evaluate whether `models.json` should remain a package-internal fact source for pricing/defaults/compat metadata or be split by responsibility over time.
 
 - Initialize the default API provider registry more explicitly.
   Right now the top-level provider registry starts empty, so callers must invoke

@@ -38,8 +38,8 @@ Use subpackages only when you need an advanced boundary:
 
 ## Models And Catalog
 
-The built-in catalog is `models.curated.v2.json`. It intentionally contains a
-small, evidence-backed provider set instead of the archived full legacy catalog.
+The built-in catalog is `models.json`. It intentionally contains a small
+provider set instead of the archived full legacy catalog.
 
 List and choose models by the local `provider:endpoint:model` tuple:
 

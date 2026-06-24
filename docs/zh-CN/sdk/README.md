@@ -37,8 +37,8 @@ from loushang.ai import (
 
 ## 模型与 Catalog
 
-内置 catalog 是 `models.curated.v2.json`。它刻意保持为小型、带证据的 provider
-集合，不再把归档的完整 legacy catalog 放在运行时包路径上。
+内置 catalog 是 `models.json`。它刻意保持为小型 provider 集合，不再把归档的完整
+legacy catalog 放在运行时包路径上。
 
 模型用本地 `provider:endpoint:model` 三元组定位：
 

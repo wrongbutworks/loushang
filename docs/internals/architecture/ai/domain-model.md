@@ -11,7 +11,7 @@
 约束：
 
 - 不参照 `reference repository` 或 `kilocode` 的数据模型
-- 不读取 `models.json.bak`
+- 不读取离线备份目录 `backup/ai/`
 - 只描述当前 `models.json` 原生存在的对象及其直接关系
 - API 层可参考外部项目，但领域模型层不参考
 

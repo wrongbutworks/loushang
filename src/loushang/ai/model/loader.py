@@ -117,7 +117,7 @@ ALLOWED_DIALECT_SECTION_KEYS: dict[str, frozenset[str]] = {
 }
 ALLOWED_TRANSPORT_KEYS = frozenset({"kind", "stream", "fallback", "timeout"})
 ALLOWED_ROUTING_KEYS = frozenset({"requestOverrides"})
-DEFAULT_SCHEMA_VERSION = 1
+DEFAULT_SCHEMA_VERSION = 2
 SUPPORTED_SCHEMA_VERSIONS = frozenset({1, 2})
 
 
@@ -1483,7 +1483,7 @@ def _merge_auth_raw(
     return merged
 
 
-_BUILTIN_CATALOG_RESOURCE = "models.curated.v2.json"
+_BUILTIN_CATALOG_RESOURCE = "models.json"
 
 
 def _load_builtin_raw() -> dict[str, Any]:

@@ -132,7 +132,6 @@ def test_no_legacy_compat_model_contract_types_remain() -> None:
             assert token not in text, (path, token)
 
 
-@pytest.mark.xfail(strict=True, reason="AIF-003 establishes models.json only")
 def test_builtin_model_file_is_models_json_without_schema_version() -> None:
     models_json = MODEL_DIR / "models.json"
     legacy_catalog = MODEL_DIR / "models.curated.v2.json"

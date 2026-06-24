@@ -1,9 +1,8 @@
 # Curated Provider Matrix
 
-This matrix tracks the provider set being assembled in
-`models.curated.v2.json`. AIQ-056 makes this curated catalog the runtime
-default; the legacy full catalog is kept only as the compressed archive under
-`docs/internals/archive/ai/model-catalog/`.
+This matrix tracks the provider set declared in
+`src/loushang/ai/model/models.json`. The legacy full catalog is kept only as
+the compressed offline backup under `backup/ai/`.
 
 | Provider | Endpoint | API | Models | Auth env | Evidence | Offline smoke |
 |---|---|---|---|---|---|---|

@@ -14,7 +14,7 @@ configuration.
 
 The main changes are:
 
-- The built-in catalog is now `models.curated.v2.json`.
+- The built-in catalog is now `models.json`.
 - The legacy full catalog is archived for audit only.
 - Normal application code should import from the root `loushang.ai` package.
 - Provider-specific options and provider registry wiring moved behind advanced
@@ -33,13 +33,13 @@ provider facts that were not equally verified.
 In v2, the runtime package data uses the curated catalog:
 
 ```text
-src/loushang/ai/model/models.curated.v2.json
+src/loushang/ai/model/models.json
 ```
 
 The previous full catalog remains available only as a compressed audit archive:
 
 ```text
-docs/internals/archive/ai/model-catalog/models-v1-full.json.gz
+backup/ai/models-legacy-full.json.gz
 ```
 
 Use the archive for inspection or manual recovery. Do not restore it into the

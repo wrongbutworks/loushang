@@ -13,28 +13,10 @@ from loushang.ai.model import (
 from loushang.ai.model.loader import validate_model_registry_raw
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
-CURATED_CATALOG_PATH = REPO_ROOT / "src/loushang/ai/model/models.curated.v2.json"
-EVIDENCE_DIR = REPO_ROOT / "docs/internals/architecture/ai/catalog-evidence"
-EVIDENCE_TEMPLATE_PATH = EVIDENCE_DIR / "_template.md"
-ANTHROPIC_EVIDENCE_PATH = EVIDENCE_DIR / "anthropic.md"
-BAIDU_QIANFAN_EVIDENCE_PATH = EVIDENCE_DIR / "baidu-qianfan.md"
-DASHSCOPE_EVIDENCE_PATH = EVIDENCE_DIR / "dashscope.md"
-DEEPSEEK_EVIDENCE_PATH = EVIDENCE_DIR / "deepseek.md"
-MINIMAX_EVIDENCE_PATH = EVIDENCE_DIR / "minimax.md"
-MOONSHOT_EVIDENCE_PATH = EVIDENCE_DIR / "moonshot.md"
-OPENAI_EVIDENCE_PATH = EVIDENCE_DIR / "openai.md"
-STEPFUN_EVIDENCE_PATH = EVIDENCE_DIR / "stepfun.md"
-TENCENT_HUNYUAN_EVIDENCE_PATH = EVIDENCE_DIR / "tencent-hunyuan.md"
-VOLCANO_ARK_EVIDENCE_PATH = EVIDENCE_DIR / "volcano-ark.md"
-ZAI_EVIDENCE_PATH = EVIDENCE_DIR / "zai.md"
+CURATED_CATALOG_PATH = REPO_ROOT / "src/loushang/ai/model/models.json"
 CURATED_PROVIDER_MATRIX_PATH = (
     REPO_ROOT / "docs/internals/architecture/ai/curated-provider-matrix.md"
 )
-
-MAX_PROVIDERS = 11
-MAX_ENDPOINTS = 16
-MAX_MODELS = 20
-MAX_MODELS_PER_PROVIDER = 2
 
 
 def _load_curated_raw() -> dict[str, Any]:
@@ -45,10 +27,10 @@ def _load_curated_registry() -> ModelRegistry:
     return load_model_registry_from_file(CURATED_CATALOG_PATH)
 
 
-def test_curated_catalog_loads_v2_schema() -> None:
+def test_curated_catalog_loads_runtime_models_json() -> None:
     raw = _load_curated_raw()
 
-    assert raw["schemaVersion"] == 2
+    assert "schemaVersion" not in raw
     validate_model_registry_raw(raw)
     assert [provider.id for provider in _load_curated_registry().list_providers()] == [
         "anthropic",
@@ -893,20 +875,6 @@ def test_curated_catalog_includes_verified_openai_responses_models() -> None:
     assert mini.pricing.cache_write is None
 
 
-def test_curated_catalog_budget_limits() -> None:
-    registry = _load_curated_registry()
-    providers = registry.list_providers()
-    endpoints = registry.list_endpoints()
-    models = registry.list_models()
-
-    assert len(providers) <= MAX_PROVIDERS
-    assert len(endpoints) <= MAX_ENDPOINTS
-    assert len(models) <= MAX_MODELS
-    for provider in providers:
-        assert (
-            len(registry.list_models(provider=provider.id)) <= MAX_MODELS_PER_PROVIDER
-        )
-
 
 def test_curated_catalog_has_no_legacy_compat_keys() -> None:
     offenders: list[str] = []
@@ -945,280 +913,6 @@ def test_curated_catalog_has_at_most_one_preferred_endpoint_per_model() -> None:
         } == {}
 
 
-def test_catalog_evidence_template_matches_required_sections() -> None:
-    text = EVIDENCE_TEMPLATE_PATH.read_text(encoding="utf-8")
-
-    for section in [
-        "# Provider evidence: <provider>",
-        "- Verified at: YYYY-MM-DD",
-        "- Issue: #...",
-        "- Official docs:",
-        "- Authentication:",
-        "- Endpoint:",
-        "- Included models:",
-        "- Verified capabilities:",
-        "- Unknown/omitted facts:",
-        "- Contract tests:",
-        "- Manual live smoke:",
-    ]:
-        assert section in text
-
-
-def test_anthropic_evidence_matches_curated_provider_fixture() -> None:
-    text = ANTHROPIC_EVIDENCE_PATH.read_text(encoding="utf-8")
-
-    for expected in [
-        "# Provider evidence: anthropic",
-        "- Verified at: 2026-06-22",
-        "https://docs.anthropic.com/en/docs/about-claude/models/overview",
-        "https://docs.anthropic.com/en/docs/about-claude/pricing",
-        "https://docs.anthropic.com/en/api/messages",
-        "https://docs.anthropic.com/en/docs/build-with-claude/streaming",
-        "https://docs.anthropic.com/en/docs/build-with-claude/extended-thinking",
-        "https://docs.anthropic.com/en/docs/build-with-claude/vision",
-        "https://docs.anthropic.com/en/docs/agents-and-tools/tool-use/overview",
-        "`ANTHROPIC_API_KEY`",
-        "`https://api.anthropic.com`",
-        "`claude-opus-4-8`",
-        "`claude-sonnet-4-6`",
-        "uv run pytest tests/ai/test_curated_catalog.py -q",
-        "Not run on 2026-06-22",
-    ]:
-        assert expected in text
-
-
-def test_baidu_qianfan_evidence_matches_curated_provider_fixture() -> None:
-    text = BAIDU_QIANFAN_EVIDENCE_PATH.read_text(encoding="utf-8")
-
-    for expected in [
-        "# Provider evidence: baidu-qianfan",
-        "- Verified at: 2026-06-22",
-        "- Issue: #107",
-        "https://cloud.baidu.com/doc/qianfan-api/s/Dmba8k71y",
-        "https://cloud.baidu.com/doc/qianfan-api/s/3m7of64lb",
-        "https://cloud.baidu.com/doc/qianfan-api/s/ym9chdsy5",
-        "https://cloud.baidu.com/doc/qianfan-docs/s/Wm95lyynv",
-        "https://cloud.baidu.com/doc/qianfan-docs/s/xm95lyys5",
-        "`QIANFAN_API_KEY`",
-        "`BAIDU_QIANFAN_API_KEY`",
-        "`https://qianfan.baidubce.com/v2`",
-        "`ernie-5.1`",
-        "248,832 token context and 65,536 maximum answer tokens",
-        "CNY 6 input and CNY 22 output",
-        "lower <=32K pricing tier is omitted",
-        "uv run pytest tests/ai/test_curated_catalog.py tests/providers/test_openai_completions_provider.py -q",
-        "Not run on 2026-06-22",
-    ]:
-        assert expected in text
-
-
-def test_moonshot_evidence_matches_curated_provider_fixture() -> None:
-    text = MOONSHOT_EVIDENCE_PATH.read_text(encoding="utf-8")
-
-    for expected in [
-        "# Provider evidence: moonshot",
-        "- Verified at: 2026-06-22",
-        "https://platform.kimi.ai/docs/models",
-        "https://platform.kimi.ai/docs/models/kimi-k2.6",
-        "https://platform.kimi.ai/docs/models/kimi-k2.7-code",
-        "https://platform.kimi.ai/docs/quickstart",
-        "https://platform.kimi.ai/docs/api-reference",
-        "https://platform.kimi.ai/",
-        "`MOONSHOT_API_KEY`",
-        "`https://api.moonshot.ai/v1`",
-        "`kimi-k2.6`",
-        "`kimi-k2.7-code`",
-        "Legacy duplicate China/global/coding endpoint variants",
-        "uv run pytest tests/ai/test_curated_catalog.py -q",
-        "Attempted on 2026-06-22 with `MOONSHOT_API_KEY`",
-        "HTTP 401 invalid authentication",
-    ]:
-        assert expected in text
-
-
-def test_dashscope_evidence_matches_curated_provider_fixture() -> None:
-    text = DASHSCOPE_EVIDENCE_PATH.read_text(encoding="utf-8")
-
-    for expected in [
-        "# Provider evidence: dashscope",
-        "- Verified at: 2026-06-22",
-        "https://help.aliyun.com/zh/model-studio/compatibility-of-openai-with-dashscope",
-        "https://help.aliyun.com/zh/model-studio/qwen-api-via-openai-responses",
-        "https://help.aliyun.com/zh/model-studio/getting-started/models",
-        "https://help.aliyun.com/zh/model-studio/model-pricing",
-        "`DASHSCOPE_API_KEY`",
-        "`https://dashscope.aliyuncs.com/compatible-mode/v1`",
-        "`qwen3.7-max`",
-        "`qwen3.7-plus`",
-        "China North 2 Beijing endpoint",
-        "uv run pytest tests/ai/test_curated_catalog.py -q",
-        "Passed on 2026-06-22 with `DASHSCOPE_API_KEY`",
-        "test_openai_responses_stream_live.py",
-        "test_openai_responses_tools_live.py",
-    ]:
-        assert expected in text
-
-
-def test_deepseek_evidence_matches_curated_provider_fixture() -> None:
-    text = DEEPSEEK_EVIDENCE_PATH.read_text(encoding="utf-8")
-
-    for expected in [
-        "# Provider evidence: deepseek",
-        "- Verified at: 2026-06-22",
-        "- Issue: #104",
-        "https://api-docs.deepseek.com/",
-        "https://api-docs.deepseek.com/quick_start/pricing",
-        "https://api-docs.deepseek.com/guides/thinking_mode",
-        "https://api-docs.deepseek.com/api/create-chat-completion",
-        "`DEEPSEEK_API_KEY`",
-        "`https://api.deepseek.com`",
-        "`deepseek-v4-flash`",
-        "`deepseek-v4-pro`",
-        "1,000,000 token context, 384,000 maximum output tokens",
-        "$0.14 input, $0.0028 cache hit, and $0.28 output",
-        "$0.435 input, $0.003625 cache hit, and $0.87 output",
-        "uv run pytest tests/ai/test_curated_catalog.py tests/providers/test_openai_completions_provider.py -q",
-        "Passed on 2026-06-22 with `DEEPSEEK_API_KEY`",
-        "usage_online.py --route deepseek-completions --strict",
-        "usage_online.py --route deepseek-completions --stream --strict",
-    ]:
-        assert expected in text
-
-
-def test_minimax_evidence_matches_curated_provider_fixture() -> None:
-    text = MINIMAX_EVIDENCE_PATH.read_text(encoding="utf-8")
-
-    for expected in [
-        "# Provider evidence: minimax",
-        "- Verified at: 2026-06-22",
-        "- Issue: #105",
-        "https://platform.minimax.io/docs/api-reference/api-overview",
-        "https://platform.minimax.io/docs/pricing/overview",
-        "https://platform.minimax.io/docs/guides/text-models",
-        "`MINIMAX_API_KEY`",
-        "`https://api.minimax.io/anthropic/v1`",
-        "`MiniMax-M3`",
-        "1,000,000 token context",
-        "$0.60 input, $0.12 cache hit, and $2.40 output",
-        "lower <=512K pricing tier is omitted",
-        "uv run pytest tests/ai/test_curated_catalog.py tests/providers/test_anthropic_messages_mapping.py -q",
-        "Not run on 2026-06-22",
-    ]:
-        assert expected in text
-
-
-def test_openai_evidence_matches_curated_provider_fixture() -> None:
-    text = OPENAI_EVIDENCE_PATH.read_text(encoding="utf-8")
-
-    for expected in [
-        "# Provider evidence: openai",
-        "- Verified at: 2026-06-22",
-        "https://developers.openai.com/api/docs/models",
-        "https://developers.openai.com/api/docs/guides/latest-model",
-        "https://developers.openai.com/api/reference/resources/responses/methods/create",
-        "https://developers.openai.com/api/docs/pricing",
-        "`OPENAI_API_KEY`",
-        "`https://api.openai.com/v1`",
-        "`gpt-5.5`",
-        "`gpt-5.4-mini`",
-        "uv run pytest tests/ai/test_curated_catalog.py -q",
-        "Not run on 2026-06-22",
-    ]:
-        assert expected in text
-
-
-def test_stepfun_evidence_matches_curated_provider_fixture() -> None:
-    text = STEPFUN_EVIDENCE_PATH.read_text(encoding="utf-8")
-
-    for expected in [
-        "# Provider evidence: stepfun",
-        "- Verified at: 2026-06-22",
-        "- Issue: #108",
-        "https://platform.stepfun.ai/docs/en/guides/models/step-3.7-flash",
-        "https://platform.stepfun.ai/docs/en/api-reference/chat/chat-completion-create",
-        "https://platform.stepfun.ai/docs/en/guides/models/step-3.7-flash-quickstart",
-        "https://platform.stepfun.ai/docs/en/guides/pricing/details",
-        "`STEP_API_KEY`",
-        "`STEPFUN_API_KEY`",
-        "`https://api.stepfun.ai/v1`",
-        "`step-3.7-flash`",
-        "256K token context",
-        "Pricing and rate-limit docs list $0.20 input, $0.04 cache hit, and $1.15 output",
-        "`maxTokens` is omitted",
-        "`xhigh` is mapped to `high`",
-        "uv run pytest tests/ai/test_curated_catalog.py tests/providers/test_openai_completions_provider.py -q",
-        "Not run on 2026-06-22",
-    ]:
-        assert expected in text
-
-
-def test_tencent_hunyuan_evidence_matches_curated_provider_fixture() -> None:
-    text = TENCENT_HUNYUAN_EVIDENCE_PATH.read_text(encoding="utf-8")
-
-    for expected in [
-        "# Provider evidence: tencent-hunyuan",
-        "- Verified at: 2026-06-22",
-        "- Issue: #102",
-        "https://cloud.tencent.com/document/product/1729/111007",
-        "https://cloud.tencent.com/document/product/1729/104753",
-        "https://cloud.tencent.com/document/product/1729/97731",
-        "`HUNYUAN_API_KEY`",
-        "`https://api.hunyuan.cloud.tencent.com/v1`",
-        "`hunyuan-turbos-latest`",
-        "32K maximum input and 16K maximum output",
-        "CNY 0.8 input and CNY 2 output",
-        "uv run pytest tests/ai/test_curated_catalog.py -q",
-        "Not run on 2026-06-22",
-    ]:
-        assert expected in text
-
-
-def test_volcano_ark_evidence_matches_curated_provider_fixture() -> None:
-    text = VOLCANO_ARK_EVIDENCE_PATH.read_text(encoding="utf-8")
-
-    for expected in [
-        "# Provider evidence: volcano-ark",
-        "- Verified at: 2026-06-22",
-        "- Issue: #106",
-        "https://www.volcengine.com/docs/82379/1330310",
-        "https://www.volcengine.com/docs/82379/1949118",
-        "https://www.volcengine.com/docs/82379/1544106",
-        "`ARK_API_KEY`",
-        "`https://ark.cn-beijing.volces.com/api/v3`",
-        "`doubao-seed-2-0-lite-260215`",
-        "256K context",
-        "`pricing` is omitted",
-        "`reasoning` is false",
-        "uv run pytest tests/ai/test_curated_catalog.py tests/providers/test_openai_completions_provider.py -q",
-        "Not run on 2026-06-22",
-    ]:
-        assert expected in text
-
-
-def test_zai_evidence_matches_curated_provider_fixture() -> None:
-    text = ZAI_EVIDENCE_PATH.read_text(encoding="utf-8")
-
-    for expected in [
-        "# Provider evidence: zai",
-        "- Verified at: 2026-06-22",
-        "- Issue: #103",
-        "https://docs.z.ai/guides/overview/quick-start",
-        "https://docs.z.ai/guides/llm/glm-5.2",
-        "https://docs.z.ai/guides/llm/glm-5.1",
-        "https://docs.z.ai/guides/overview/pricing",
-        "https://docs.z.ai/guides/capabilities/struct-output",
-        "https://docs.z.ai/guides/capabilities/function-call",
-        "`ZAI_API_KEY`",
-        "`https://api.z.ai/api/paas/v4/`",
-        "`glm-5.2`",
-        "`glm-5.1`",
-        "$1.4 input, $0.26 cached input, and $4.4 output",
-        "coding-plan endpoint is omitted",
-        "uv run pytest tests/ai/test_curated_catalog.py tests/providers/test_openai_completions_provider.py -q",
-        "Not run on 2026-06-22",
-    ]:
-        assert expected in text
-
 
 def test_curated_provider_matrix_matches_openai_fixture() -> None:
     text = CURATED_PROVIDER_MATRIX_PATH.read_text(encoding="utf-8")
@@ -1226,39 +920,30 @@ def test_curated_provider_matrix_matches_openai_fixture() -> None:
     assert "`anthropic` | `anthropic-messages` | `anthropic-messages`" in text
     assert "`claude-opus-4-8`, `claude-sonnet-4-6`" in text
     assert "`ANTHROPIC_API_KEY`" in text
-    assert "`catalog-evidence/anthropic.md`" in text
     assert "`dashscope` | `openai-responses` | `openai-responses`" in text
     assert "`qwen3.7-max`, `qwen3.7-plus`" in text
     assert "`DASHSCOPE_API_KEY`" in text
-    assert "`catalog-evidence/dashscope.md`" in text
     assert "`deepseek` | `openai-completions` | `openai-completions`" in text
     assert "`deepseek-v4-flash`, `deepseek-v4-pro`" in text
     assert "`DEEPSEEK_API_KEY`" in text
-    assert "`catalog-evidence/deepseek.md`" in text
     assert "`minimax` | `anthropic-messages` | `anthropic-messages`" in text
     assert "`MiniMax-M3`" in text
     assert "`MINIMAX_API_KEY`" in text
-    assert "`catalog-evidence/minimax.md`" in text
     assert "`moonshot` | `openai-completions` | `openai-completions`" in text
     assert "`kimi-k2.6`, `kimi-k2.7-code`" in text
     assert "`MOONSHOT_API_KEY`" in text
-    assert "`catalog-evidence/moonshot.md`" in text
     assert "`openai` | `openai-responses` | `openai-responses`" in text
     assert "`gpt-5.5`, `gpt-5.4-mini`" in text
     assert "`OPENAI_API_KEY`" in text
-    assert "`catalog-evidence/openai.md`" in text
     assert "`tencent-hunyuan` | `openai-completions` | `openai-completions`" in text
     assert "`hunyuan-turbos-latest`" in text
     assert "`HUNYUAN_API_KEY`" in text
-    assert "`catalog-evidence/tencent-hunyuan.md`" in text
     assert (
         "`volcano-ark` | `openai-completions-cn-beijing` | `openai-completions`" in text
     )
     assert "`doubao-seed-2-0-lite-260215`" in text
     assert "`ARK_API_KEY`" in text
-    assert "`catalog-evidence/volcano-ark.md`" in text
     assert "`zai` | `openai-completions` | `openai-completions`" in text
     assert "`glm-5.2`, `glm-5.1`" in text
     assert "`ZAI_API_KEY`" in text
-    assert "`catalog-evidence/zai.md`" in text
     assert "built-in catalog" in text

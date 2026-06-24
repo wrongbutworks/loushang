@@ -12,7 +12,7 @@ UI、RAG、MCP 编排或产品级配置。
 
 主要变化：
 
-- 内置 catalog 切换为 `models.curated.v2.json`。
+- 内置 catalog 切换为 `models.json`。
 - 旧的完整 catalog 只作为审计归档保留。
 - 普通应用代码优先从根包 `loushang.ai` 导入。
 - provider-specific options 和 provider registry 接线进入 advanced 或 contrib 边界。
@@ -30,13 +30,13 @@ UI、RAG、MCP 编排或产品级配置。
 v2 运行时包数据使用 curated catalog：
 
 ```text
-src/loushang/ai/model/models.curated.v2.json
+src/loushang/ai/model/models.json
 ```
 
 旧完整 catalog 只保留为压缩审计归档：
 
 ```text
-docs/internals/archive/ai/model-catalog/models-v1-full.json.gz
+backup/ai/models-legacy-full.json.gz
 ```
 
 这个归档只能用于检查或手工恢复数据，不应恢复到运行时包路径。
