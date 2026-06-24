@@ -248,6 +248,43 @@ def test_ad_hoc_model_adapter_merges_with_registered_endpoint_adapter() -> None:
     assert resolved.adapter_config.reasoning_format == "moonshot"
 
 
+def test_ad_hoc_model_auth_merges_registered_provider_endpoint_auth() -> None:
+    endpoint = Endpoint(
+        id="openai-completions",
+        provider="custom",
+        api="openai-completions",
+        base_url="https://example.test/v1",
+        auth=Auth(extra_headers={"X-Endpoint": "endpoint"}),
+        models={},
+    )
+    registry = ModelRegistry.from_providers(
+        {
+            "custom": Provider(
+                id="custom",
+                auth=Auth(header="X-API-Key", prefix="Token "),
+                endpoints={endpoint.id: endpoint},
+            )
+        }
+    )
+    caller_model = Model(
+        id="ad-hoc",
+        provider="custom",
+        endpoint="openai-completions",
+        api="openai-completions",
+    )
+
+    resolved = resolve_request_for_model(
+        caller_model,
+        options=_Options(api_key="secret"),
+        registry=registry,
+    )
+
+    assert resolved.headers == {
+        "X-API-Key": "Token secret",
+        "X-Endpoint": "endpoint",
+    }
+
+
 def test_api_only_ad_hoc_model_uses_default_registry_endpoint(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

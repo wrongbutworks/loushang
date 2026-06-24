@@ -2,12 +2,16 @@ from __future__ import annotations
 
 import asyncio
 import json
+from types import SimpleNamespace
 
 import pytest
 
+from loushang.ai.auth.registry import OAuthProviderRegistry
+from loushang.ai.auth.types import OAuthCredentials
 from loushang.ai.model import Auth, Endpoint, Model, Provider
 from loushang.ai.model.loader import load_model_registry_from_file
 from loushang.ai.model.registry import ModelRegistry
+from loushang.coding.session.agent_session import AgentSession
 from loushang.coding.session.auth_commands import (
     SessionOAuthLoginCallbacks,
     login_scope_kwargs,
@@ -42,6 +46,29 @@ def _registry(
     return registry, registry.get_model("demo", "responses", "chat")
 
 
+class _CustomOAuthProvider:
+    id = "custom-oauth"
+    name = "Custom OAuth"
+
+    async def login(self, callbacks):
+        raise AssertionError(f"unexpected login: {callbacks}")
+
+    async def refresh_token(self, credentials: OAuthCredentials) -> OAuthCredentials:
+        return credentials
+
+    def get_api_key(self, credentials: OAuthCredentials) -> str:
+        return credentials.access_token
+
+    def uses_callback_server(self) -> bool:
+        return False
+
+    def modify_models(
+        self, models: list[object], credentials: OAuthCredentials
+    ) -> list[object]:
+        del credentials
+        return models
+
+
 def test_current_model_login_uses_provider_scope_for_provider_auth() -> None:
     auth = Auth(kind="oauth")
     registry, model = _registry(provider_auth=auth)
@@ -51,6 +78,68 @@ def test_current_model_login_uses_provider_scope_for_provider_auth() -> None:
     assert target.scope == "provider"
     assert target.provider == "demo"
     assert login_scope_kwargs(target) == {"endpoint_id": None, "model_id": None}
+
+
+def test_agent_session_login_uses_session_registry_and_preserves_registrations(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    registry, model = _registry(
+        provider_auth=Auth(kind="apiKey"),
+        endpoint_auth=Auth(kind="oauth"),
+    )
+    oauth_registry = OAuthProviderRegistry()
+    oauth_registry.register(_CustomOAuthProvider(), source_id="test")
+    auth_records: list[Model] = []
+    login_calls: list[dict[str, object]] = []
+
+    async def _fake_oauth_login(
+        provider_id,
+        callbacks,
+        *,
+        registry,
+        endpoint_id=None,
+        model_id=None,
+        persist=True,
+    ):
+        login_calls.append(
+            {
+                "provider_id": provider_id,
+                "registry": registry,
+                "endpoint_id": endpoint_id,
+                "model_id": model_id,
+                "persist": persist,
+            }
+        )
+        callbacks.on_auth({"url": "https://example.test/login"})
+        callbacks.on_progress("done")
+        return OAuthCredentials(provider=provider_id, access_token="token")
+
+    monkeypatch.setattr("loushang.ai.auth.oauth_login", _fake_oauth_login)
+    session = AgentSession.__new__(AgentSession)
+    session.agent = SimpleNamespace(model=model)
+    session.model_registry = SimpleNamespace(ai_registry=registry)
+    session.oauth_provider_registry = oauth_registry
+    session._auth_bridge_controller = SimpleNamespace(
+        record_model_auth_resolution=auth_records.append
+    )
+
+    result = asyncio.run(session._login_from_builtin(None))
+
+    assert login_calls == [
+        {
+            "provider_id": "demo",
+            "registry": oauth_registry,
+            "endpoint_id": "responses",
+            "model_id": None,
+            "persist": True,
+        }
+    ]
+    assert oauth_registry.get("custom-oauth") is not None
+    assert oauth_registry.get("anthropic") is not None
+    assert auth_records == [model]
+    assert result["scope"] == "endpoint"
+    assert result["auth_url"] == "https://example.test/login"
+    assert result["progress"] == ["done"]
 
 
 def test_current_model_login_uses_endpoint_scope_for_endpoint_auth() -> None:

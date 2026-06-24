@@ -61,6 +61,70 @@ def test_oauth_refresh_failure_does_not_fall_back_to_api_key() -> None:
         registry.clear()
 
 
+def test_env_oauth_refresh_failure_does_not_fall_back_to_api_key(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    registry = get_default_oauth_registry()
+    registry.clear()
+    registry.register(_FailingRefreshProvider(), source_id="test")
+    monkeypatch.setattr(
+        "loushang.ai.auth.env.get_env_oauth_credentials",
+        lambda provider, env=None: OAuthCredentials(
+            provider=provider,
+            access_token="expired",
+            refresh_token="refresh",
+            expires_at=0.0,
+        ),
+    )
+    try:
+        model = SimpleNamespace(
+            provider_id="demo",
+            endpoint_id="demo",
+            id="model-a",
+            auth=AuthConfig(api_key_env="DEMO_API_KEY"),
+        )
+
+        with pytest.raises(RuntimeError, match="refresh failed"):
+            resolve_auth_for_model(model, env={"DEMO_API_KEY": "fallback-key"})
+    finally:
+        registry.clear()
+
+
+def test_stored_oauth_refresh_failure_does_not_fall_back_to_api_key(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    registry = get_default_oauth_registry()
+    registry.clear()
+    registry.register(_FailingRefreshProvider(), source_id="test")
+    monkeypatch.setattr(
+        "loushang.ai.auth.storage.load_credential_store",
+        lambda: {
+            "providers": {
+                "demo": OAuthCredentials(
+                    provider="demo",
+                    access_token="expired",
+                    refresh_token="refresh",
+                    expires_at=0.0,
+                )
+            },
+            "endpoints": {},
+            "models": {},
+        },
+    )
+    try:
+        model = SimpleNamespace(
+            provider_id="demo",
+            endpoint_id="demo",
+            id="model-a",
+            auth=AuthConfig(api_key_env="DEMO_API_KEY"),
+        )
+
+        with pytest.raises(RuntimeError, match="refresh failed"):
+            resolve_auth_for_model(model, env={"DEMO_API_KEY": "fallback-key"})
+    finally:
+        registry.clear()
+
+
 def test_empty_oauth_credentials_do_not_block_api_key_fallback() -> None:
     model = SimpleNamespace(
         provider_id="demo",

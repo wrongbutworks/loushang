@@ -4,9 +4,10 @@ import os
 import re
 from collections.abc import Mapping
 from dataclasses import replace
+from types import SimpleNamespace
 from typing import Any
 
-from loushang.ai.auth.support import resolve_auth_for_model
+from loushang.ai.auth.support import merge_auth_config, resolve_auth_for_model
 from loushang.ai.context import NormalizedContext
 from loushang.ai.model import Model
 from loushang.ai.model.domain import (
@@ -178,8 +179,14 @@ def resolve_request_for_model(
         capability_overrides = _model_capability_overrides(model)
         if capability_overrides is not None:
             capabilities = capability_overrides
+    auth_model = _auth_model_for_request(
+        model,
+        endpoint,
+        request_model=request_model,
+        registry=resolved_registry,
+    )
     auth_view = resolve_auth_for_model(
-        request_model,
+        auth_model,
         options=options,
         env=resolved_env,
     )
@@ -224,6 +231,32 @@ def _should_apply_model_request_overrides(
     if endpoint is None or endpoint.id == model.endpoint_id:
         return True
     return request_model is not model and not getattr(model, "api", None)
+
+
+def _auth_model_for_request(
+    model: Model,
+    endpoint: Endpoint | None,
+    *,
+    request_model: Model,
+    registry: ModelRegistry | None,
+) -> object:
+    if endpoint is None or request_model is not model:
+        return request_model
+    provider_auth = None
+    if registry is not None:
+        provider = registry.get_provider(endpoint.provider_id)
+        provider_auth = getattr(provider, "auth", None)
+    auth = merge_auth_config(provider_auth, endpoint.auth, getattr(model, "auth", None))
+    if auth == getattr(request_model, "auth", None):
+        return request_model
+    if not isinstance(request_model, Model):
+        return SimpleNamespace(
+            provider_id=request_model.provider_id,
+            endpoint_id=request_model.endpoint_id,
+            id=request_model.id,
+            auth=auth,
+        )
+    return replace(request_model, auth=auth)
 
 
 def _registry_for_catalog_lookup(

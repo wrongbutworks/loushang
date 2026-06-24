@@ -5,6 +5,7 @@ from dataclasses import asdict
 
 import pytest
 
+import loushang.ai.auth as auth_module
 from loushang.ai.auth import facade
 from loushang.ai.auth.facade import (
     oauth_login,
@@ -85,6 +86,21 @@ def _capture_store_updates(store, save_calls):
         return result
 
     return _update
+
+
+def test_oauth_registry_method_wrappers_are_not_public_api() -> None:
+    removed_names = (
+        "register_oauth_provider",
+        "get_oauth_provider",
+        "list_oauth_providers",
+        "clear_oauth_providers",
+        "reset_oauth_providers",
+        "ensure_builtin_oauth_providers",
+    )
+
+    for name in removed_names:
+        assert not hasattr(auth_module, name)
+        assert not hasattr(facade, name)
 
 
 def test_register_builtin_oauth_providers_does_not_reset_registry() -> None:
