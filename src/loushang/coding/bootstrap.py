@@ -1037,7 +1037,7 @@ def create_agent_session_runtime(
         session_start_event: SessionStartEvent | None = None,
     ) -> AgentSession:
         session_services = services_factory(session_manager.get_cwd()) if services_factory is not None else fixed_services
-        return create_agent_session(
+        session = create_agent_session(
             session_manager=session_manager,
             model=model,
             stream_fn=stream_fn,
@@ -1053,6 +1053,9 @@ def create_agent_session_runtime(
             session_start_event=session_start_event,
             append_system_prompt=append_system_prompt,
         )
+        if not persist:
+            session.agent.session_id = None
+        return session
 
     return AgentSessionRuntime(
         session_dir=Path(session_dir),

@@ -406,7 +406,8 @@ def test_create_agent_session_runtime_builds_working_default_sessions(tmp_path) 
         await session.prompt("hi")
 
         assert runtime.get_current_session() is session
-        assert session.agent.session_id == session.session_manager.get_header().id
+        assert session.session_manager.get_header().id
+        assert session.agent.session_id is None
         assert [message.content[0].text for message in session.get_session_context().messages] == ["hi", "bootstrapped"]
 
     asyncio.run(scenario())
