@@ -103,7 +103,7 @@
 也就是说：
 
 - 一个 `ApiProvider` 对应一种稳定的上游 API 语义
-- 它负责把统一 `Context + Model + StreamOptions` 调用翻译到该 API
+- 它负责把统一 `Context + Model + CallOptions` 调用翻译到该 API
 - 它不是“某个 provider 品牌”的纯别名
 
 例如：

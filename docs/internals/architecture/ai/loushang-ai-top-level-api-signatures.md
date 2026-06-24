@@ -127,7 +127,7 @@ async def complete_simple(
 1. 四个入口都以 `model + context + options` 为统一参数骨架
 2. 两个 stream 入口在 `await` 后都返回 `AssistantMessageEventStream`
 3. 两个 complete 入口都返回 `AssistantMessage`
-4. 当前顶层主签名仍保持 `options: object | None`，但 public surface 已开始导出初步 `StreamOptions` / provider-specific options family
+4. 当前 public surface 使用单一 core `CallOptions`，provider/contrib 专用选项不进入根 API
 
 ---
 
@@ -269,8 +269,8 @@ async def complete_simple(
 
 顶层签名层面应明确遵守当前 cancellation 决策：
 
-- 取消通过 `options.signal` 进入
-- `signal` 的 public 语义是 `AbortSignalLike`
+- 取消通过 `options.cancellation` 进入
+- `cancellation` 的 public 语义是最小取消信号对象
 - 检测到取消后，最终协议语义应收敛为 `aborted`
 
 因此，建议 public 行为保持如下方向：
@@ -358,7 +358,7 @@ async def complete_simple(
 在进入正式 spike 或实现前，仍有少量问题需要后续细化：
 
 1. `stream_simple()` 在 provider 未实现 simple adapter 时是否允许统一降级
-2. 顶层是否需要在后续补出正式 `StreamOptions` / `SimpleStreamOptions` 类型家族
+2. 是否还需要为高级 provider/contrib 场景补充额外的专用选项类型
 3. 顶层 error family 是否需要独立命名
 
 ---

@@ -572,6 +572,35 @@ def test_settings_manager_transport_setting_is_removed() -> None:
     assert "transport setting has been removed" in errors[0].message
 
 
+def test_settings_manager_reports_persisted_removed_transport_setting(tmp_path) -> None:
+    from loushang.coding.control import SettingsManager
+
+    global_settings_path = tmp_path / "global-settings.json"
+    global_settings_path.write_text(
+        json.dumps({"transport": "websocket", "theme": "night"}),
+        encoding="utf-8",
+    )
+
+    manager = SettingsManager(global_settings_path=global_settings_path)
+
+    assert manager.get_settings().theme == "night"
+    assert not hasattr(manager.get_settings(), "transport")
+    assert manager.get_global_settings() == {
+        "transport": "websocket",
+        "theme": "night",
+    }
+    errors = manager.drain_errors()
+    assert len(errors) == 1
+    assert errors[0].scope == "global"
+    assert "transport setting has been removed" in errors[0].message
+
+    manager.reload()
+    errors = manager.drain_errors()
+    assert len(errors) == 1
+    assert errors[0].scope == "global"
+    assert "transport setting has been removed" in errors[0].message
+
+
 def test_settings_manager_control_getters_apply_pi_style_defaults_and_bounds(
     tmp_path, monkeypatch
 ) -> None:

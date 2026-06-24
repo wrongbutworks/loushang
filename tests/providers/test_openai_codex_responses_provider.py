@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import json
 from dataclasses import dataclass, field
+from types import SimpleNamespace
 
 import pytest
 
@@ -321,6 +322,39 @@ def test_openai_codex_responses_merges_structured_output_text_format() -> None:
         "verbosity": "low",
         "format": {"type": "json_object"},
     }
+
+
+def test_openai_codex_responses_ignores_duck_typed_contrib_fields() -> None:
+    client = _FakeCodexClient(
+        events=[
+            {"type": "response.completed", "response": {"status": "completed"}},
+        ]
+    )
+    provider = OpenAICodexResponsesProvider(client=client)
+
+    asyncio.run(
+        _collect_parts(
+            _invoke_raw_parts(
+                provider,
+                _Model(),
+                {
+                    "messages": [
+                        UserMessage(role="user", content="hello", timestamp=0.0)
+                    ]
+                },
+                SimpleNamespace(
+                    api_key=_build_fake_jwt("acc_test"),
+                    transport="websocket",
+                    text_verbosity="low",
+                ),
+            )
+        )
+    )
+
+    assert client.stream_call_count == 1
+    assert client.websocket_connect_count == 0
+    assert client.last_json is not None
+    assert client.last_json["text"] == {"verbosity": "medium"}
 
 
 def test_openai_codex_responses_preserves_tool_history_payload() -> None:

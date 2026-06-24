@@ -134,33 +134,52 @@
 - `description`
 - `parameters`
 
-### StreamOptions
+### CallOptions
 
-流式调用的基础选项。
+统一调用基础选项。
 
 典型属性包括：
 
 - `temperature`
-- `max_tokens`
-- `signal`
+- `max_output_tokens`
+- `cancellation`
 - `api_key`
 - `headers`
 - `session_id`
-- `metadata`
-
-### SimpleStreamOptions
-
-面向统一调用入口的简化流式选项。
-
-通常在 `StreamOptions` 基础上增加：
-
 - `reasoning`
+- `retry`
+- `timeout`
+- `trace`
 
-### ProviderStreamOptions
+### ReasoningOptions
 
-provider 特定流式选项扩展。
+推理/思考相关选项。
 
-用于承载统一选项之外的 provider 专有参数。
+典型属性包括：
+
+- `enabled`
+- `effort`
+- `budget_tokens`
+- `expose_summary`
+
+### RetryOptions
+
+重试相关选项。
+
+典型属性包括：
+
+- `max_attempts`
+- `max_delay_seconds`
+
+### TimeoutOptions
+
+超时相关选项。
+
+典型属性包括：
+
+- `connect_seconds`
+- `total_seconds`
+- `idle_seconds`
 
 ### ThinkingLevel
 
@@ -184,20 +203,9 @@ provider 特定流式选项扩展。
 - `short`
 - `long`
 
-### Transport
+### Provider-Specific Options
 
-传输偏好。
-
-建议对齐：
-
-- `sse`
-- `websocket`
-- `auto`
-
-它只表达传输偏好，不等同于：
-
-- `Api`
-- provider adapter 的实现载体
+provider / contrib 专用选项不进入 `loushang.ai` 根 public surface。例如 Codex 的 `transport` 只属于 `loushang.ai.contrib.openai_codex.OpenAICodexResponsesOptions`。
 
 ---
 

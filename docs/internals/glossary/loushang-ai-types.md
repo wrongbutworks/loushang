@@ -107,23 +107,13 @@
 - `short`
 - `long`
 
-### Transport
-
-传输偏好。
-
-建议值：
-
-- `sse`
-- `websocket`
-- `auto`
-
 ### AbortSignalLike
 
 Python 侧的最小取消信号协议。
 
 说明：
 
-- `signal` 字段名保留，以维持与 `pi-ai` 的语义对齐
+- `CallOptions.cancellation` 承载取消信号
 - Python 实现不要求复制 JavaScript `AbortSignal`
 - `AbortSignalLike` 只表达“调用是否应被取消”的语义
 - provider 与 streaming 层应在调用前、流式迭代中与结束前检查该信号
@@ -431,61 +421,67 @@ assistant message 用量统计。
 
 ## 9. Options Family
 
-### ThinkingBudgets
+### CallOptions
 
-推理预算配置。
-
-建议字段：
-
-- `minimal: int | None = None`
-- `low: int | None = None`
-- `medium: int | None = None`
-- `high: int | None = None`
-
-### StreamOptions
-
-统一流式调用基础选项。
+统一调用基础选项。
 
 建议字段：
 
 - `temperature: float | None = None`
-- `max_tokens: int | None = None`
-- `signal: AbortSignalLike | None = None`
+- `max_output_tokens: int | None = None`
+- `cancellation: object | None = None`
 - `api_key: str | None = None`
-- `transport: Transport | None = None`
 - `cache_retention: CacheRetention | None = None`
 - `session_id: str | None = None`
-- `on_payload: Callable[[Any, Model], Any | None] | None = None`
 - `headers: dict[str, str] | None = None`
-- `max_retry_delay_ms: int | None = None`
-- `metadata: dict[str, Any] | None = None`
+- `reasoning: ReasoningOptions | None = None`
+- `retry: RetryOptions | None = None`
+- `timeout: TimeoutOptions | None = None`
+- `trace: object | None = None`
 
 说明：
 
-- 保留 `signal` 字段名，但以 Python 协议类型表达取消语义
+- 使用 `cancellation` 以 Python 协议类型表达取消语义
 - v0.1 不要求与 JavaScript `AbortSignal` 结构逐字段兼容
 - provider 与 streaming 层应在调用前、流式迭代中与收敛结果前检查该信号
 - 检测到取消后，应映射为 `aborted` 协议语义
 
-### SimpleStreamOptions
+### ReasoningOptions
 
-面向统一入口的简化流式选项。
+推理/思考相关选项。
 
 建议字段：
 
-- 继承 `StreamOptions`
-- `reasoning: ThinkingLevel | None = None`
-- `thinking_budgets: ThinkingBudgets | None = None`
+- `enabled: bool | None = None`
+- `effort: ThinkingLevel | str | None = None`
+- `budget_tokens: int | None = None`
+- `expose_summary: bool = False`
 
-### ProviderStreamOptions
+### RetryOptions
 
-provider 特定流式选项扩展概念。
+重试相关选项。
 
-建议：
+建议字段：
 
-- 作为 `StreamOptions` 的扩展方向存在
-- 具体 provider option 类型在 provider 模块中定义
-- 不在 v0.1 中单独细化为稳定根类型
+- `max_attempts: int = 1`
+- `max_delay_seconds: float = 30.0`
+
+### TimeoutOptions
+
+超时相关选项。
+
+建议字段：
+
+- `connect_seconds: float | int | None = None`
+- `total_seconds: float | int | None = None`
+- `idle_seconds: float | int | None = None`
+
+### Provider-Specific Options
+
+provider / contrib 专用选项不进入 `loushang.ai` 根 public surface。
+
+- Codex contrib 可通过 `loushang.ai.contrib.openai_codex.OpenAICodexResponsesOptions` 暴露 Codex 专有 `transport` 等字段
+- 核心调用路径只消费 `CallOptions`
 
 ---
 
@@ -666,7 +662,7 @@ v0.1 建议的 Python 表达方式如下：
    - `context_window`
    - `response_id`
    - `stop_reason`
-3. 保留 `signal` 字段名，但以 Python 协议类型承载取消语义
+3. 取消语义由 `CallOptions.cancellation` 承载，兼容层可在边界处把旧 `signal` 名称映射到该字段
 4. 不在 AI 层引入 `Agent*` 概念
 5. 不在 v0.1 中扩大职责边界到 tool orchestration 或 boundary protocol
 6. `AssistantMessageEventStream` 的 public contract 保持只读，内部可读写分离

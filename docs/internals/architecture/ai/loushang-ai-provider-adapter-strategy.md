@@ -233,7 +233,7 @@ official SDK 的优点包括：
 
 provider adapter 应只负责以下事项：
 
-1. 接收统一 `Context + Model + StreamOptions`
+1. 接收统一 `Context + Model + CallOptions`
 2. 将其映射为对应应用协议请求
 3. 在 async-start 边界上选择并调用实现载体
 4. 将上游 stream 翻译为 raw parts

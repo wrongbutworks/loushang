@@ -1,6 +1,6 @@
 # Loushang-AI Trace Events
 
-本文定义 `loushang-ai` Provider 层的 trace 事件，用于日志与指标接入。事件通过 `StreamOptions.trace(event: dict)` 回调发出。
+本文定义 `loushang-ai` Provider 层的 trace 事件，用于日志与指标接入。事件通过 `CallOptions(trace=callable)` 回调发出，也会进入统一 observability trace sink。
 
 ## 事件类型
 
@@ -10,20 +10,20 @@
 - response_success
 - request_error
 - request_end
-- fallback（仅 auto 传输发生回退时）
-- reconnect（仅 WS 发生自动重连时）
+- fallback（仅支持自动传输回退的 contrib/provider 会发出）
+- reconnect（仅支持长连接重连的 contrib/provider 会发出）
 
 ## 通用字段
 
 - api: string（如 `openai-completions` / `openai-responses` / `anthropic-messages`）
 - provider: string（如 `openai` / `kimi`）
 - endpoint: string（路由路径，如 `/chat/completions`、`/responses`、`/v1/messages`）
-- transport: `"sse"` | `"websocket"`
+- transport: string（例如 `"sse"`；WebSocket 目前属于 Codex contrib 等 provider-owned path）
 - sessionId: string | null
 - timing: { startTs: number, endTs?: number, attempt?: number }
 - reason/message: string（错误时）
 
-WS 相关（可选）：
+WebSocket 相关（Codex contrib 等支持时可选）：
 
 - ws: { reused: boolean, ttlSeconds: number, poolSize: number }
 
@@ -34,24 +34,24 @@ WS 相关（可选）：
 ## 使用示例
 
 ```python
-from loushang.ai.advanced import OpenAICompletionsOptions
+from loushang.ai import CallOptions
 
 def trace_logger(evt: dict):
     print("TRACE", evt)
 
-opts = OpenAICompletionsOptions(trace=trace_logger, retries=1, timeout=30)
+opts = CallOptions(trace=trace_logger)
 # 传给 stream/complete
 ```
 
 ## 最佳实践
 
 - 将 trace 事件转为 JSON 行输出或接入 OpenTelemetry
-- 在生产环境可按 provider/api/endpoint/transport/sessionId 建立维度聚合
+- 在生产环境可按 provider/api/endpoint/sessionId 建立维度聚合；支持多传输的 contrib/provider 可额外按 transport 聚合
 - 对 attempt_error/request_error 分类统计（transport/provider/semantic）
 
 ## 详细事件示例
 
-### 1) WebSocket 复用（transport=auto 命中 WS）
+### 1) Codex contrib WebSocket 复用（transport=auto 命中 WS）
 
 ```json
 {"type":"request_start","api":"openai-responses","provider":"openai","endpoint":"/responses","transport":"sse","sessionId":"sess-1","timing":{"startTs":1711872000.12}}
@@ -64,7 +64,7 @@ opts = OpenAICompletionsOptions(trace=trace_logger, retries=1, timeout=30)
 - request_start 里 transport 初始标记为 sse（默认），实际 attempt 命中 websocket 时，后续事件（含 request_end）以实际传输为准
 - ws.reused=true 表示命中连接池；poolSize 为当前池大小
 
-### 2) WebSocket 失败回退到 SSE（transport=auto）
+### 2) Codex contrib WebSocket 失败回退到 SSE（transport=auto）
 
 ```json
 {"type":"request_start","api":"openai-responses","provider":"openai","endpoint":"/responses","transport":"sse","sessionId":"sess-2","timing":{"startTs":1711873000.50}}
