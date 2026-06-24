@@ -41,9 +41,9 @@ def _normalized_context(model, context, options=None):
     return normalize_context(context, model=model, pairing_mode=pairing_mode)
 
 
-def _stream_raw_parts(provider, model, context, options=None, request=None):
+def _invoke_raw_parts(provider, model, context, options=None, request=None):
     normalized_context = _normalized_context(model, context, options)
-    return provider.stream_raw(
+    return provider.invoke_raw(
         provider_request_for_test(
             provider,
             model,
@@ -88,7 +88,7 @@ def test_openai_codex_responses_builds_request_body_and_headers() -> None:
 
     asyncio.run(
         _collect_parts(
-            _stream_raw_parts(
+            _invoke_raw_parts(
                 provider,
                 model,
                 {
@@ -165,7 +165,7 @@ def test_openai_codex_responses_trace_payload_summarizes_request_body() -> None:
 
     asyncio.run(
         _collect_parts(
-            _stream_raw_parts(
+            _invoke_raw_parts(
                 provider,
                 _Model(reasoning=True),
                 {
@@ -237,7 +237,7 @@ def test_openai_codex_responses_closes_owned_http_client(
 
     asyncio.run(
         _collect_parts(
-            _stream_raw_parts(
+            _invoke_raw_parts(
                 provider,
                 _Model(reasoning=False),
                 {
@@ -265,7 +265,7 @@ def test_openai_codex_responses_merges_structured_output_text_format() -> None:
 
     asyncio.run(
         _collect_parts(
-            _stream_raw_parts(
+            _invoke_raw_parts(
                 provider,
                 _Model(),
                 {
@@ -323,7 +323,7 @@ def test_openai_codex_responses_preserves_tool_history_payload() -> None:
 
     asyncio.run(
         _collect_parts(
-            _stream_raw_parts(
+            _invoke_raw_parts(
                 provider,
                 _Model(reasoning=False),
                 {
@@ -379,7 +379,7 @@ def test_openai_codex_responses_uses_upstream_model_id() -> None:
 
     asyncio.run(
         _collect_parts(
-            _stream_raw_parts(
+            _invoke_raw_parts(
                 provider,
                 _Model(id="gpt-5.3-codex_public"),
                 {
@@ -406,7 +406,7 @@ def test_openai_codex_responses_omits_optional_request_fields_when_unused() -> N
 
     asyncio.run(
         _collect_parts(
-            _stream_raw_parts(
+            _invoke_raw_parts(
                 provider,
                 _Model(reasoning=False),
                 {
@@ -441,7 +441,7 @@ def test_openai_codex_responses_sends_empty_instructions_when_missing() -> None:
 
     asyncio.run(
         _collect_parts(
-            _stream_raw_parts(
+            _invoke_raw_parts(
                 provider,
                 _Model(reasoning=False),
                 {
@@ -488,7 +488,7 @@ def test_openai_codex_responses_uses_default_runtime_session_headers() -> None:
 
     asyncio.run(
         _collect_parts(
-            _stream_raw_parts(
+            _invoke_raw_parts(
                 provider,
                 model,
                 {
@@ -572,7 +572,7 @@ def test_openai_codex_responses_prefers_oauth_account_binding_over_token_parsing
 
     asyncio.run(
         _collect_parts(
-            _stream_raw_parts(
+            _invoke_raw_parts(
                 provider,
                 _Model(reasoning=False),
                 {
@@ -615,7 +615,7 @@ def test_openai_codex_responses_uses_resolved_request_account_binding() -> None:
 
     asyncio.run(
         _collect_parts(
-            _stream_raw_parts(
+            _invoke_raw_parts(
                 provider,
                 _Model(reasoning=False),
                 {
@@ -644,7 +644,7 @@ def test_openai_codex_responses_header_override_keeps_account_consistent() -> No
 
     asyncio.run(
         _collect_parts(
-            _stream_raw_parts(
+            _invoke_raw_parts(
                 provider,
                 _Model(reasoning=False),
                 {

@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import json
-from collections.abc import AsyncIterator, Mapping, Sequence
+from collections.abc import AsyncIterator, Iterator, Mapping, Sequence
 from contextlib import suppress
 from typing import Any, cast
 
@@ -44,7 +44,7 @@ class OpenAICompletionsProvider:
         self._client = client
         self._base_url = base_url
 
-    async def stream_raw(self, request: ProviderRequest) -> AsyncIterator[RawPart]:
+    async def invoke_raw(self, request: ProviderRequest) -> AsyncIterator[RawPart]:
         model = request.model
         options = request.options
         resolved = request
@@ -140,11 +140,13 @@ class OpenAICompletionsProvider:
 
         max_tokens = resolve_output_token_budget(model, resolved).value
         upstream_model_id = getattr(resolved, "upstream_model_id", None) or model.id
+        is_stream_request = getattr(resolved, "mode", "stream") == "stream"
         params: dict[str, Any] = {
             "model": upstream_model_id,
             "messages": messages_param,
-            "stream": True,
         }
+        if is_stream_request:
+            params["stream"] = True
         _apply_prompt_cache_params(
             params,
             adapter_config=adapter_config,
@@ -152,7 +154,7 @@ class OpenAICompletionsProvider:
             session_id=session_id,
         )
         extra_body: dict[str, Any] = {}
-        if supports_usage_in_streaming:
+        if is_stream_request and supports_usage_in_streaming:
             params["stream_options"] = {"include_usage": True}
         if supports_store:
             params["store"] = False
@@ -164,7 +166,7 @@ class OpenAICompletionsProvider:
             params["temperature"] = getattr(options, "temperature")
         if tools_param is not None:
             params["tools"] = tools_param
-            if adapter_config.tool_stream:
+            if is_stream_request and adapter_config.tool_stream:
                 params["tool_stream"] = True
         tool_choice = getattr(options, "tool_choice", None)
         if tool_choice is not None:
@@ -198,12 +200,18 @@ class OpenAICompletionsProvider:
         )
 
         try:
-            stream_ctx = await client.chat.completions.create(**params)
+            response = await client.chat.completions.create(**params)
         except Exception as e:
             _debug("stream_error", {"message": str(e)})
             yield provider_error_part(e, source=self.api)
             return
-        await _notify_provider_response(options, stream_ctx, model)
+        await _notify_provider_response(options, response, model)
+        if not is_stream_request:
+            for part in _iter_complete_response_parts(response, source=self.api):
+                yield part
+            return
+
+        stream_ctx = response
         # 流式超时/空闲看门狗：若超过 timeout 无增量则报错退出，避免“假死”
         inactivity_timeout = (
             timeout_s if isinstance(timeout_s, (int, float)) and timeout_s > 0 else 30
@@ -508,6 +516,152 @@ def _request_adapter_config(request: object) -> OpenAICompletionsConfig:
 
 def _raw_part(part: dict[str, object]) -> RawPart:
     return cast(RawPart, part)
+
+
+def _iter_complete_response_parts(
+    response: object, *, source: str
+) -> Iterator[RawPart]:
+    resp_id = getattr(response, "id", None)
+    if isinstance(resp_id, str) and resp_id:
+        yield {"type": "response_start", "response_id": resp_id}
+
+    usage = getattr(response, "usage", None)
+    if usage is not None:
+        yield _usage_part_from_chat_usage(usage)
+
+    choices = getattr(response, "choices", None)
+    if isinstance(choices, list):
+        for choice in choices:
+            message = getattr(choice, "message", None)
+            if message is not None:
+                yield from _iter_complete_message_parts(message)
+            finish = getattr(choice, "finish_reason", None)
+            if isinstance(finish, str):
+                mapped = _map_stop_reason(finish)
+                yield {"type": "stop_reason", "stop_reason": mapped}
+                if mapped == "error":
+                    yield provider_error_part_from_raw(
+                        f"provider finish_reason={finish}",
+                        code=finish,
+                        source=source,
+                    )
+    yield {"type": "response_done"}
+
+
+def _iter_complete_message_parts(message: object) -> Iterator[RawPart]:
+    for candidate in (
+        "reasoning_content",
+        "reasoning",
+        "reasoning_text",
+    ):
+        reasoning_value = getattr(message, candidate, None)
+        if isinstance(reasoning_value, str) and reasoning_value:
+            yield {"type": "thinking_delta", "text": reasoning_value}
+            break
+    reasoning_details = getattr(message, "reasoning_details", None)
+    if isinstance(reasoning_details, list):
+        for detail in reasoning_details:
+            detail_type = (
+                getattr(detail, "type", None)
+                if not isinstance(detail, dict)
+                else detail.get("type")
+            )
+            detail_id = (
+                getattr(detail, "id", None)
+                if not isinstance(detail, dict)
+                else detail.get("id")
+            )
+            detail_data = (
+                getattr(detail, "data", None)
+                if not isinstance(detail, dict)
+                else detail.get("data")
+            )
+            if (
+                detail_type == "reasoning.encrypted"
+                and isinstance(detail_id, str)
+                and detail_id
+                and isinstance(detail_data, str)
+                and detail_data
+            ):
+                yield {
+                    "type": "tool_call_thought_signature",
+                    "tool_call_id": detail_id,
+                    "thought_signature": json.dumps(
+                        {
+                            "type": detail_type,
+                            "id": detail_id,
+                            "data": detail_data,
+                        }
+                    ),
+                }
+
+    text = getattr(message, "content", None)
+    if isinstance(text, str) and text:
+        yield {"type": "text_delta", "text": text}
+
+    tool_calls = getattr(message, "tool_calls", None)
+    if isinstance(tool_calls, list):
+        for index, tool_call in enumerate(tool_calls):
+            tool_call_id = getattr(tool_call, "id", None)
+            if not isinstance(tool_call_id, str) or not tool_call_id:
+                tool_call_id = f"tool_call_{index}"
+            function = getattr(tool_call, "function", None)
+            name = getattr(function, "name", "") if function is not None else ""
+            arguments = (
+                getattr(function, "arguments", None) if function is not None else None
+            )
+            yield _raw_part(
+                {
+                    "type": "tool_call_start",
+                    "id": tool_call_id,
+                    "name": name if isinstance(name, str) else "",
+                    "index": index,
+                }
+            )
+            if isinstance(arguments, str) and arguments:
+                yield _raw_part(
+                    {
+                        "type": "tool_call_args_delta",
+                        "tool_call_id": tool_call_id,
+                        "delta": arguments,
+                        "index": index,
+                    }
+                )
+            yield _raw_part(
+                {
+                    "type": "tool_call_done",
+                    "tool_call_id": tool_call_id,
+                    "index": index,
+                }
+            )
+
+
+def _usage_part_from_chat_usage(usage: object) -> RawPart:
+    input_tokens = getattr(usage, "prompt_tokens", 0) or 0
+    cached = (
+        getattr(
+            getattr(usage, "prompt_tokens_details", None) or {},
+            "cached_tokens",
+            0,
+        )
+        or 0
+    )
+    output_tokens = (getattr(usage, "completion_tokens", 0) or 0) + (
+        getattr(
+            getattr(usage, "completion_tokens_details", None) or {},
+            "reasoning_tokens",
+            0,
+        )
+        or 0
+    )
+    return {
+        "type": "usage_delta",
+        "input": input_tokens - cached,
+        "output": output_tokens,
+        "cache_read": cached,
+        "cache_write": 0,
+        "total_tokens": (input_tokens - cached) + output_tokens + cached,
+    }
 
 
 def _map_stop_reason(reason: str) -> str:

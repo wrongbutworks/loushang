@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Any, cast
 
-from loushang.ai.provider.invocation import validate_provider_stream_raw_contract
+from loushang.ai.provider.invocation import validate_provider_invoke_raw_contract
 from loushang.ai.provider.protocol import ApiProvider
 
 RegisteredApiProvider = ApiProvider
@@ -23,14 +23,14 @@ class ApiProviderRegistry:
         self, provider: RegisteredApiProvider, *, source_id: str | None = None
     ) -> None:
         provider_any = cast(Any, provider)
-        required = ("api", "stream_raw")
+        required = ("api", "invoke_raw")
         for name in required:
             if not hasattr(provider_any, name):
                 raise TypeError(f"Provider missing required attribute: {name}")
-        for name in ("stream_raw",):
+        for name in ("invoke_raw",):
             if not callable(getattr(provider_any, name)):
                 raise TypeError(f"Provider attribute must be callable: {name}")
-        validate_provider_stream_raw_contract(provider_any)
+        validate_provider_invoke_raw_contract(provider_any)
         self._providers[provider_any.api] = (provider_any, source_id)
 
     def get_api_provider(self, api: str) -> ApiProvider:

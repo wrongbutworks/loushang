@@ -207,7 +207,7 @@ class _StructuredProvider:
         self.supports_structured_output = supports_mapping
         self.options = None
 
-    async def stream_raw(self, request):
+    async def invoke_raw(self, request):
         self.options = request.options
         yield {"type": "response_start", "response_id": "structured-demo"}
         yield {"type": "text_delta", "text": '{"answer":"ok"}'}

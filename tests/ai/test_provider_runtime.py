@@ -48,10 +48,10 @@ class _BlockingRawSource:
     "provider_cls",
     (OpenAICompletionsProvider, OpenAIResponsesProvider, AnthropicProvider),
 )
-def test_builtin_adapters_expose_stream_raw_contract(provider_cls) -> None:
+def test_builtin_adapters_expose_invoke_raw_contract(provider_cls) -> None:
     provider = provider_cls()
 
-    assert callable(getattr(provider, "stream_raw", None))
+    assert callable(getattr(provider, "invoke_raw", None))
     assert "stream" not in provider_cls.__dict__
 
 

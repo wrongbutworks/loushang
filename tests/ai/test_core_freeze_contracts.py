@@ -73,9 +73,6 @@ class _RecordingProvider:
     def __init__(self) -> None:
         self.modes: list[str | None] = []
 
-    def stream_raw(self, request):
-        return self._raw_parts(request)
-
     def invoke_raw(self, request):
         return self._raw_parts(request)
 
@@ -276,10 +273,6 @@ def test_reload_default_registry_keeps_existing_registry_when_user_file_fails(
         clear_default_model_registry()
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason="AIF-008 renames provider raw invocation from stream_raw to invoke_raw",
-)
 def test_provider_registry_accepts_invoke_raw_and_rejects_stream_raw() -> None:
     registry = ApiProviderRegistry()
 
@@ -288,10 +281,6 @@ def test_provider_registry_accepts_invoke_raw_and_rejects_stream_raw() -> None:
         registry.register_api_provider(_StreamRawOnlyProvider())
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason="AIF-008 dispatches provider raw calls through invoke_raw",
-)
 def test_complete_dispatches_to_invoke_raw_provider(tmp_path: Path) -> None:
     async def run() -> None:
         path = tmp_path / "company.json"
@@ -312,16 +301,12 @@ def test_complete_dispatches_to_invoke_raw_provider(tmp_path: Path) -> None:
             registry=provider_registry,
         )
 
-        assert message.text == "ok"
+        assert message.content[0].text == "ok"
         assert provider.modes == ["complete"]
 
     asyncio.run(run())
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason="AIF-008 dispatches streaming provider raw calls through invoke_raw",
-)
 def test_stream_dispatches_to_invoke_raw_provider(tmp_path: Path) -> None:
     async def run() -> None:
         path = tmp_path / "company.json"
@@ -349,10 +334,6 @@ def test_stream_dispatches_to_invoke_raw_provider(tmp_path: Path) -> None:
     asyncio.run(run())
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason="AIF-008 passes ProviderRequest.mode through complete() and stream()",
-)
 def test_complete_and_stream_pass_distinct_provider_modes(tmp_path: Path) -> None:
     async def run() -> None:
         path = tmp_path / "company.json"

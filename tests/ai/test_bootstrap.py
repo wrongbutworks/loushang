@@ -20,13 +20,13 @@ from loushang.ai.model.registry import (
 class _Provider:
     api = "custom"
 
-    async def stream_raw(self, request):
+    async def invoke_raw(self, request):
         del request
         yield {"type": "response_done"}
 
 
 class _MissingApiProvider:
-    async def stream_raw(self, request):
+    async def invoke_raw(self, request):
         del request
         yield {"type": "response_done"}
 
@@ -37,7 +37,7 @@ class _MissingStreamRawProvider:
 
 class _NonCallableStreamRawProvider:
     api = "non-callable"
-    stream_raw = object()
+    invoke_raw = object()
 
 
 def test_api_provider_registry_manages_raw_providers_by_source() -> None:
@@ -65,7 +65,7 @@ def test_api_provider_registry_manages_raw_providers_by_source() -> None:
     ("provider", "message"),
     [
         (_MissingApiProvider(), "api"),
-        (_MissingStreamRawProvider(), "stream_raw"),
+        (_MissingStreamRawProvider(), "invoke_raw"),
         (_NonCallableStreamRawProvider(), "callable"),
     ],
 )

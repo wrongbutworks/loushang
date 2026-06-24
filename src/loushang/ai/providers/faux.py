@@ -11,7 +11,7 @@ from loushang.ai.types import TextPart, ToolResultMessage
 class FauxProvider:
     api = "anthropic-messages"
 
-    async def stream_raw(self, request: ProviderRequest) -> AsyncIterator[RawPart]:
+    async def invoke_raw(self, request: ProviderRequest) -> AsyncIterator[RawPart]:
         options = request.options
         normalized = request.context
         yield {"type": "response_start", "response_id": "faux-response"}

@@ -20,7 +20,7 @@ class _SlowProvider:
         self.blocked = asyncio.Event()
         self.closed = False
 
-    async def stream_raw(self, request: ProviderRequest):
+    async def invoke_raw(self, request: ProviderRequest):
         self.started.set()
         try:
             yield {"type": "response_start", "response_id": "cancel-demo"}

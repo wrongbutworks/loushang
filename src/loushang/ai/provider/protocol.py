@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from collections.abc import AsyncIterator
 from dataclasses import dataclass, field
-from typing import Any, Protocol, runtime_checkable
+from typing import Any, Literal, Protocol, runtime_checkable
 
 from loushang.ai.context import NormalizedContext
 from loushang.ai.event_stream.raw_parts import RawPart
@@ -11,6 +11,7 @@ from loushang.ai.options import CallOptions
 
 ProviderContext = NormalizedContext
 ProviderOptions = CallOptions | None
+ProviderInvocationMode = Literal["complete", "stream"]
 
 
 @dataclass(frozen=True, slots=True)
@@ -37,13 +38,14 @@ class ProviderRequest:
     capabilities: Capabilities = field(default_factory=Capabilities)
     auth_account_id: str | None = None
     adapter_config: object | None = None
+    mode: ProviderInvocationMode = "stream"
 
 
 @runtime_checkable
 class ApiProvider(Protocol):
     api: str
 
-    def stream_raw(
+    def invoke_raw(
         self,
         request: ProviderRequest,
     ) -> AsyncIterator[RawPart]: ...

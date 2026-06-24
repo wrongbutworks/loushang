@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import json
-from collections.abc import AsyncIterator, Mapping
+from collections.abc import AsyncIterator, Iterator, Mapping
 from contextlib import suppress
 from dataclasses import dataclass, field
 from typing import Any, cast
@@ -349,7 +349,7 @@ class AnthropicProvider(AnthropicProviderBase):
         # 允许注入自建客户端（同步或异步），否则按需创建
         self._client = client
 
-    async def stream_raw(self, request: ProviderRequest) -> AsyncIterator[RawPart]:
+    async def invoke_raw(self, request: ProviderRequest) -> AsyncIterator[RawPart]:
         """
         将 Anthropic SDK 的 streaming 事件映射到 RawPart。
         当前实现覆盖文本、thinking、signature、redacted thinking、工具增量、usage、stop_reason 与完成事件。
@@ -580,12 +580,26 @@ class AnthropicProvider(AnthropicProviderBase):
             _debug("on_payload_error", {"message": str(e)})
 
         try:
-            stream_ctx = client.messages.stream(**params)
+            if getattr(resolved, "mode", "stream") == "complete":
+                response = await client.messages.create(**params)
+            else:
+                response = client.messages.stream(**params)
         except Exception as e:
             _debug("stream_error", {"message": str(e)})
             yield provider_error_part(e, source=self.api)
             return
-        await _notify_provider_response(options, stream_ctx, model)
+        await _notify_provider_response(options, response, model)
+        if getattr(resolved, "mode", "stream") == "complete":
+            for part in _iter_complete_response_parts(
+                response,
+                source=self.api,
+                is_oauth_token=is_oauth_token,
+                registered_tools=cast(list[object] | None, normalized.get("tools")),
+            ):
+                yield part
+            return
+
+        stream_ctx = response
         # 启动事件：发出 response_start（若 SDK 提供 id 会在后续 message_start 拿到）
         # 主循环（SDK 为 async context manager）
         active_tool_blocks: dict[int | None, _AnthropicToolStreamState] = {}
@@ -848,6 +862,120 @@ def _map_stop_reason(reason: str) -> str:
     if reason in {"refusal", "sensitive"}:
         return "error"
     raise ValueError(f"Unhandled stop reason: {reason}")
+
+
+def _iter_complete_response_parts(
+    response: object,
+    *,
+    source: str,
+    is_oauth_token: bool,
+    registered_tools: list[object] | None,
+) -> Iterator[RawPart]:
+    response_id = getattr(response, "id", None)
+    if isinstance(response_id, str) and response_id:
+        yield {"type": "response_start", "response_id": response_id}
+
+    usage = getattr(response, "usage", None)
+    if usage is not None:
+        yield _usage_part_from_anthropic_usage(usage)
+
+    content = getattr(response, "content", None)
+    if isinstance(content, list):
+        for index, block in enumerate(content):
+            block_type = getattr(block, "type", None)
+            if block_type == "text":
+                text = getattr(block, "text", None)
+                if isinstance(text, str) and text:
+                    yield {"type": "text_delta", "text": text}
+            elif block_type == "thinking":
+                thinking = getattr(block, "thinking", None)
+                if isinstance(thinking, str) and thinking:
+                    yield {"type": "thinking_delta", "text": thinking}
+                signature = getattr(block, "signature", None)
+                if isinstance(signature, str) and signature:
+                    yield {
+                        "type": "thinking_signature_delta",
+                        "signature": signature,
+                    }
+            elif block_type == "redacted_thinking":
+                signature = getattr(block, "data", None)
+                if isinstance(signature, str) and signature:
+                    yield {"type": "redacted_thinking", "signature": signature}
+            elif block_type == "tool_use":
+                yield from _iter_complete_tool_call_parts(
+                    block,
+                    index=index,
+                    is_oauth_token=is_oauth_token,
+                    registered_tools=registered_tools,
+                )
+
+    stop_reason = getattr(response, "stop_reason", None)
+    if isinstance(stop_reason, str):
+        mapped = _map_stop_reason(stop_reason)
+        yield {"type": "stop_reason", "stop_reason": mapped}
+        if mapped == "error":
+            yield provider_error_part_from_raw(
+                f"provider stop_reason={stop_reason}",
+                code=stop_reason,
+                source=source,
+            )
+    yield {"type": "response_done"}
+
+
+def _iter_complete_tool_call_parts(
+    block: object,
+    *,
+    index: int,
+    is_oauth_token: bool,
+    registered_tools: list[object] | None,
+) -> Iterator[RawPart]:
+    tool_call_id = getattr(block, "id", None)
+    if not isinstance(tool_call_id, str) or not tool_call_id:
+        tool_call_id = f"tool_call_{index}"
+    raw_name = getattr(block, "name", "")
+    if is_oauth_token and isinstance(raw_name, str):
+        name = AnthropicProviderBase.from_oauth_tool_name(raw_name, registered_tools)
+    else:
+        name = raw_name if isinstance(raw_name, str) else ""
+    yield _raw_part(
+        {
+            "type": "tool_call_start",
+            "id": tool_call_id,
+            "name": name,
+            "index": index,
+        }
+    )
+    input_value = getattr(block, "input", _MISSING)
+    input_delta = _tool_input_to_json_delta(input_value)
+    if input_delta:
+        yield _raw_part(
+            {
+                "type": "tool_call_args_delta",
+                "tool_call_id": tool_call_id,
+                "delta": input_delta,
+                "index": index,
+            }
+        )
+    yield _raw_part(
+        {
+            "type": "tool_call_done",
+            "tool_call_id": tool_call_id,
+            "index": index,
+        }
+    )
+
+
+def _usage_part_from_anthropic_usage(usage: object) -> RawPart:
+    input_tokens = getattr(usage, "input_tokens", 0) or 0
+    output_tokens = getattr(usage, "output_tokens", 0) or 0
+    return {
+        "type": "usage_delta",
+        "input": input_tokens,
+        "output": output_tokens,
+        "cache_read": getattr(usage, "cache_read_input_tokens", 0) or 0,
+        "cache_write": getattr(usage, "cache_creation_input_tokens", 0) or 0,
+        "total_tokens": input_tokens + output_tokens,
+    }
 
 
 def _request_adapter_config(request: object) -> AnthropicMessagesConfig:

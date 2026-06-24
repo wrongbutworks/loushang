@@ -22,6 +22,7 @@ from loushang.ai.options import (
     simple_options_to_call_options,
 )
 from loushang.ai.provider import (
+    ProviderInvocationMode,
     normalize_provider_request_for_api,
     resolve_request_for_model,
 )
@@ -276,6 +277,7 @@ async def _start_stream(
     options: CallOptions | None = None,
     *,
     provider_registry=None,
+    mode: ProviderInvocationMode,
     require_stream: bool,
 ):
     resolved = resolve_request_for_model(model, options=options)
@@ -289,6 +291,7 @@ async def _start_stream(
         model=model,
         context=normalized,
         options=options,
+        mode=mode,
     )
     _validate_capability(
         model,
@@ -319,9 +322,7 @@ async def _start_stream(
                 "api": resolved.api,
             },
         )
-    return await call_api_provider_stream(
-        provider, resolved
-    )
+    return await call_api_provider_stream(provider, resolved)
 
 
 async def stream(
@@ -337,6 +338,7 @@ async def stream(
         context,
         options,
         provider_registry=_coalesce_provider_registry(provider_registry, registry),
+        mode="stream",
         require_stream=True,
     )
 
@@ -354,6 +356,7 @@ async def complete(
         context,
         options,
         provider_registry=_coalesce_provider_registry(provider_registry, registry),
+        mode="complete",
         require_stream=False,
     )
     return await event_stream.result()
@@ -395,6 +398,7 @@ async def stream_simple(
         context,
         call_options,
         provider_registry=_coalesce_provider_registry(provider_registry, registry),
+        mode="stream",
         require_stream=True,
     )
 
@@ -413,6 +417,7 @@ async def complete_simple(
         context,
         call_options,
         provider_registry=_coalesce_provider_registry(provider_registry, registry),
+        mode="complete",
         require_stream=False,
     )
     return await event_stream.result()

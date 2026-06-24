@@ -46,7 +46,7 @@ Current composite score: 8.8/10.
 | Catalog budget | `scripts/ai/check_catalog.py` enforces provider <= 11, model <= 20, evidence files, provider matrix alignment, preferred-endpoint uniqueness, and supported modalities. |
 | Curated provider facts | `docs/internals/architecture/ai/catalog-evidence/*.md` records official docs, included models, omitted facts, and live-smoke status for each curated provider. |
 | Legacy catalog backup | `backup/ai/README.md` records the compressed legacy catalog backup and SHA verification command. |
-| Provider boundary | `ProviderRequest` is the single `stream_raw` argument for registered raw providers; contract tests lock the signature, builtin registration, and legacy-signature rejection. |
+| Provider boundary | `ProviderRequest` is the single `invoke_raw` argument for registered raw providers; contract tests lock the signature, builtin registration, and legacy-signature rejection. |
 | Structured output mapping | `tests/ai/test_structured_output.py` verifies structured-output requests are accepted only when the selected provider adapter declares mapping support, not by a core hard-coded API allowlist. |
 | Public SDK docs | `docs/en/sdk/README.md`, `docs/zh-CN/sdk/README.md`, and the v2 migration guides document the public path, catalog, auth, errors, examples, and migration rules. |
 | Offline examples | `scripts/ai/check_examples.py` executes numbered `examples/ai/[0-9][0-9]_*.py` with live provider keys removed. |

@@ -27,7 +27,7 @@ class _TraceProvider:
     def __init__(self) -> None:
         self.attempts = 0
 
-    async def stream_raw(self, request: ProviderRequest):
+    async def invoke_raw(self, request: ProviderRequest):
         self.attempts += 1
         emit_trace(
             request.options,
@@ -72,7 +72,9 @@ async def inspect_trace_events() -> dict[str, object]:
         "schemas": sorted({str(event["schema"]) for event in trace_events}),
         "eventTypes": [event["type"] for event in trace_events],
         "text": "".join(
-            part.text for part in message.content if getattr(part, "type", None) == "text"
+            part.text
+            for part in message.content
+            if getattr(part, "type", None) == "text"
         ),
         "redaction": {
             "authorization": sdk_client["data"]["headers"]["Authorization"],

@@ -26,7 +26,7 @@ def start_test_provider_stream(
         request=request,
     )
     return start_provider_runtime(
-        lambda: provider.stream_raw(resolved),
+        lambda: provider.invoke_raw(resolved),
         model=model,
         options=options,
         request=resolved,

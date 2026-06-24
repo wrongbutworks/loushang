@@ -21,6 +21,7 @@ from loushang.ai.providers.openai_responses_shared import (
     build_copilot_dynamic_headers,
     convert_responses_messages,
     convert_responses_tools,
+    process_responses_response,
     process_responses_stream,
 )
 from loushang.ai.providers.provider_helpers import (
@@ -106,7 +107,7 @@ class OpenAIResponsesProvider:
         self._client = client
         self._base_url = base_url
 
-    async def stream_raw(self, request: ProviderRequest) -> AsyncIterator[RawPart]:
+    async def invoke_raw(self, request: ProviderRequest) -> AsyncIterator[RawPart]:
         model = request.model
         options = request.options
         resolved = request
@@ -192,12 +193,14 @@ class OpenAIResponsesProvider:
         _debug("client", {"base_url": effective_base_url, "headers": default_headers})
 
         upstream_model_id = getattr(resolved, "upstream_model_id", None) or model.id
+        is_stream_request = getattr(resolved, "mode", "stream") == "stream"
         params: dict[str, Any] = {
             "model": upstream_model_id,
             "input": input_items,
-            "stream": True,
             "store": False,
         }
+        if is_stream_request:
+            params["stream"] = True
         # tools（如果提供）映射到 Responses API，触发结构化 function_call 事件
         mapped_tools = convert_responses_tools(normalized.get("tools"))
         if isinstance(mapped_tools, list) and mapped_tools:
@@ -260,16 +263,24 @@ class OpenAIResponsesProvider:
 
         # 发送请求
         try:
-            stream_ctx = await client.responses.create(**params)
+            response = await client.responses.create(**params)
         except Exception as e:
             _debug("stream_error", {"message": str(e)})
             yield provider_error_part(e, source=self.api)
             return
-        await _notify_provider_response(options, stream_ctx, model)
+        await _notify_provider_response(options, response, model)
+        if not is_stream_request:
+            for part in process_responses_response(
+                response,
+                options=options,
+                source=self.api,
+            ):
+                yield part
+            return
 
         try:
             async for part in process_responses_stream(
-                stream_ctx,
+                response,
                 options=options,
                 source=self.api,
             ):
@@ -278,7 +289,7 @@ class OpenAIResponsesProvider:
             _debug("stream_iter_error", {"message": str(e)})
             yield provider_error_part(e, source=self.api)
         finally:
-            await close_provider_stream(stream_ctx)
+            await close_provider_stream(response)
 
 
 async def _notify_provider_response(options, response, model) -> None:

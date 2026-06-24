@@ -78,7 +78,7 @@ class _Provider:
         self.options = None
         self.request = None
 
-    async def stream_raw(self, request):
+    async def invoke_raw(self, request):
         self.context = request.context
         self.options = request.options
         self.request = request
@@ -86,7 +86,7 @@ class _Provider:
 
 
 class _ErrorProvider(_Provider):
-    async def stream_raw(self, request):
+    async def invoke_raw(self, request):
         self.context = request.context
         self.options = request.options
         self.request = request
@@ -123,7 +123,7 @@ class _LegacyProvider:
         self.context = None
         self.options = None
 
-    async def stream_raw(self, model, context, options):
+    async def invoke_raw(self, model, context, options):
         self.context = context
         self.options = options
         yield {"type": "response_done"}
@@ -137,7 +137,7 @@ class _LegacyProviderWithOptionalDebug:
         self.context = None
         self.debug = None
 
-    async def stream_raw(self, model, context, options, debug=False):
+    async def invoke_raw(self, model, context, options, debug=False):
         self.context = context
         self.debug = debug
         yield {"type": "response_done"}
@@ -152,7 +152,7 @@ class _KeywordRequestProvider:
         self.options = None
         self.request = None
 
-    async def stream_raw(self, model, context, options, *, request=None):
+    async def invoke_raw(self, model, context, options, *, request=None):
         self.context = context
         self.options = options
         self.request = request
@@ -704,7 +704,7 @@ def test_stream_passes_request_through_registered_provider(
 def test_register_api_provider_rejects_stream_only_provider() -> None:
     registry = ApiProviderRegistry()
 
-    with pytest.raises(TypeError, match="stream_raw"):
+    with pytest.raises(TypeError, match="invoke_raw"):
         registry.register_api_provider(_StreamOnlyProvider())
 
 

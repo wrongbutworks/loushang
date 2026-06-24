@@ -73,8 +73,8 @@ def test_core_production_adapters_implement_api_provider_contract() -> None:
 
         assert provider.api == case.api
         assert isinstance(provider, ApiProvider)
-        assert callable(provider.stream_raw)
-        assert list(inspect.signature(provider.stream_raw).parameters) == ["request"]
+        assert callable(provider.invoke_raw)
+        assert list(inspect.signature(provider.invoke_raw).parameters) == ["request"]
         assert not hasattr(provider, "stream_simple")
 
 

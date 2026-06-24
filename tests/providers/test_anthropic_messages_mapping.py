@@ -5,7 +5,7 @@ import json
 import sys
 import time
 from collections.abc import Iterator
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from types import ModuleType, SimpleNamespace
 
 import pytest
@@ -57,17 +57,26 @@ def _normalized_context(model, context, options=None):
     return normalize_context(context, model=model, pairing_mode=pairing_mode)
 
 
-def _stream_raw_parts(provider, model, context, options=None, request=None):
+def _invoke_raw_parts(
+    provider,
+    model,
+    context,
+    options=None,
+    request=None,
+    *,
+    mode: str = "stream",
+):
     normalized_context = _normalized_context(model, context, options)
-    return provider.stream_raw(
-        provider_request_for_test(
-            provider,
-            model,
-            normalized_context,
-            options=options,
-            request=request,
-        )
+    provider_request = provider_request_for_test(
+        provider,
+        model,
+        normalized_context,
+        options=options,
+        request=request,
     )
+    if mode != "stream":
+        provider_request = replace(provider_request, mode=mode)
+    return provider.invoke_raw(provider_request)
 
 
 async def _stream(provider, model, context, options=None, request=None):
@@ -112,7 +121,7 @@ def test_anthropic_provider_sends_opus_48_xhigh_adaptive_thinking(
 
     asyncio.run(
         _collect_parts(
-            _stream_raw_parts(
+            _invoke_raw_parts(
                 provider,
                 _Model(id="claude-opus-4-8", max_tokens=8192),
                 {
@@ -128,6 +137,77 @@ def test_anthropic_provider_sends_opus_48_xhigh_adaptive_thinking(
     payload = _FakeAsyncAnthropic.last_stream_kwargs
     assert payload["thinking"] == {"type": "adaptive"}
     assert payload["output_config"] == {"effort": "xhigh"}
+
+
+def test_anthropic_provider_complete_mode_maps_non_stream_response(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _fake_anthropic_module(
+        monkeypatch,
+        [],
+        response=SimpleNamespace(
+            id="msg_complete",
+            content=[
+                SimpleNamespace(
+                    type="thinking",
+                    thinking="plan",
+                    signature="sig_thinking",
+                ),
+                SimpleNamespace(type="redacted_thinking", data="sig_redacted"),
+                SimpleNamespace(
+                    type="tool_use",
+                    id=None,
+                    name="calc",
+                    input={"x": 1},
+                ),
+                SimpleNamespace(type="text", text="hello"),
+            ],
+            stop_reason="refusal",
+            usage=SimpleNamespace(input_tokens=3, output_tokens=2),
+        ),
+    )
+    provider = AnthropicProvider()
+
+    parts = asyncio.run(
+        _collect_parts(
+            _invoke_raw_parts(
+                provider,
+                _Model(),
+                {
+                    "messages": [
+                        UserMessage(role="user", content="hello", timestamp=0.0)
+                    ]
+                },
+                AnthropicOptions(api_key="test-key"),
+                mode="complete",
+            )
+        )
+    )
+
+    assert _FakeAsyncAnthropic.last_stream_kwargs == {}
+    assert _FakeAsyncAnthropic.last_create_kwargs["model"] == "claude-sonnet-4-5"
+    assert [part["type"] for part in parts] == [
+        "response_start",
+        "usage_delta",
+        "thinking_delta",
+        "thinking_signature_delta",
+        "redacted_thinking",
+        "tool_call_start",
+        "tool_call_args_delta",
+        "tool_call_done",
+        "text_delta",
+        "stop_reason",
+        "response_error",
+        "response_done",
+    ]
+    assert parts[2] == {"type": "thinking_delta", "text": "plan"}
+    assert parts[3] == {
+        "type": "thinking_signature_delta",
+        "signature": "sig_thinking",
+    }
+    assert parts[5]["id"] == "tool_call_2"
+    assert parts[6]["delta"] == '{"x":1}'
+    assert parts[9] == {"type": "stop_reason", "stop_reason": "error"}
 
 
 def test_fine_grained_tool_beta_uses_typed_transport_kind() -> None:
@@ -195,7 +275,7 @@ def test_anthropic_provider_uses_typed_transport_for_fine_grained_beta(
 
     asyncio.run(
         _collect_parts(
-            _stream_raw_parts(
+            _invoke_raw_parts(
                 provider,
                 model,
                 {
@@ -243,7 +323,7 @@ def test_anthropic_provider_uses_upstream_model_id(
 
     asyncio.run(
         _collect_parts(
-            _stream_raw_parts(
+            _invoke_raw_parts(
                 provider,
                 model,
                 {
@@ -588,7 +668,7 @@ def test_anthropic_provider_oauth_request_uses_sdk_headers_and_tool_names(
 
     asyncio.run(
         _collect_parts(
-            _stream_raw_parts(
+            _invoke_raw_parts(
                 provider,
                 _Model(),
                 {
@@ -670,7 +750,7 @@ def test_anthropic_provider_oauth_stream_maps_claude_code_tool_name_back_to_regi
 
     parts = asyncio.run(
         _collect_parts(
-            _stream_raw_parts(
+            _invoke_raw_parts(
                 provider,
                 _Model(),
                 {
@@ -743,7 +823,7 @@ def test_anthropic_provider_stream_uses_tool_input_from_content_block_start(
 
     parts = asyncio.run(
         _collect_parts(
-            _stream_raw_parts(
+            _invoke_raw_parts(
                 provider,
                 _Model(),
                 {
@@ -826,7 +906,7 @@ def test_anthropic_provider_stream_keeps_interleaved_tool_blocks_by_index(
 
     parts = asyncio.run(
         _collect_parts(
-            _stream_raw_parts(
+            _invoke_raw_parts(
                 provider,
                 _Model(),
                 {
@@ -874,7 +954,7 @@ def test_anthropic_provider_payload_snapshot_for_mixed_assistant_and_tool_result
 
     asyncio.run(
         _collect_parts(
-            _stream_raw_parts(
+            _invoke_raw_parts(
                 provider,
                 _Model(),
                 {
@@ -1044,7 +1124,7 @@ def test_anthropic_provider_uses_resolved_capability_max_tokens(
 
     asyncio.run(
         _collect_parts(
-            _stream_raw_parts(
+            _invoke_raw_parts(
                 provider,
                 _Model(max_tokens=8192),
                 {
@@ -1082,7 +1162,7 @@ def test_anthropic_provider_uses_typed_protocol_over_stale_false_options(
 
     asyncio.run(
         _collect_parts(
-            _stream_raw_parts(
+            _invoke_raw_parts(
                 provider,
                 _Model(),
                 {
@@ -1139,7 +1219,7 @@ def test_anthropic_provider_uses_typed_protocol_over_stale_true_options(
 
     asyncio.run(
         _collect_parts(
-            _stream_raw_parts(
+            _invoke_raw_parts(
                 provider,
                 _Model(),
                 {
@@ -1233,7 +1313,7 @@ def test_anthropic_compat_fireworks_uses_session_headers_without_long_cache_ttl(
 
     asyncio.run(
         _collect_parts(
-            _stream_raw_parts(
+            _invoke_raw_parts(
                 provider,
                 _Model(
                     provider_id="fireworks",
@@ -1275,7 +1355,7 @@ def test_anthropic_provider_uses_model_max_tokens_without_scaling(
 
     asyncio.run(
         _collect_parts(
-            _stream_raw_parts(
+            _invoke_raw_parts(
                 provider,
                 _Model(max_tokens=8192),
                 {
@@ -1299,7 +1379,7 @@ def test_anthropic_provider_caps_model_max_tokens_default(
 
     asyncio.run(
         _collect_parts(
-            _stream_raw_parts(
+            _invoke_raw_parts(
                 provider,
                 _Model(max_tokens=32768),
                 {
@@ -1414,11 +1494,16 @@ async def _collect_parts(source) -> list[dict]:
 
 
 def _fake_anthropic_module(
-    monkeypatch: pytest.MonkeyPatch, events: list[object]
+    monkeypatch: pytest.MonkeyPatch,
+    events: list[object],
+    *,
+    response: object | None = None,
 ) -> None:
     _FakeAsyncAnthropic.events = events
+    _FakeAsyncAnthropic.response = response
     _FakeAsyncAnthropic.last_init_kwargs = {}
     _FakeAsyncAnthropic.last_stream_kwargs = {}
+    _FakeAsyncAnthropic.last_create_kwargs = {}
     module = ModuleType("anthropic")
     module.AsyncAnthropic = _FakeAsyncAnthropic
     monkeypatch.setitem(sys.modules, "anthropic", module)
@@ -1426,8 +1511,10 @@ def _fake_anthropic_module(
 
 class _FakeAsyncAnthropic:
     events: list[object] = []
+    response: object | None = None
     last_init_kwargs: dict[str, object] = {}
     last_stream_kwargs: dict[str, object] = {}
+    last_create_kwargs: dict[str, object] = {}
 
     def __init__(self, **kwargs) -> None:
         type(self).last_init_kwargs = kwargs
@@ -1441,6 +1528,10 @@ class _FakeMessages:
     def stream(self, **kwargs):
         self._owner.last_stream_kwargs = kwargs
         return _FakeStreamContext(self._owner.events)
+
+    async def create(self, **kwargs):
+        self._owner.last_create_kwargs = kwargs
+        return self._owner.response
 
 
 class _FakeStreamContext:
