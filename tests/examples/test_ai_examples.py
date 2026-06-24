@@ -26,8 +26,9 @@ def _load_module(path: Path, name: str):
     return module
 
 
-def test_top_level_ai_examples_run_offline() -> None:
+def test_top_level_ai_examples_run_offline(tmp_path: Path) -> None:
     env = os.environ.copy()
+    env["HOME"] = str(tmp_path)
     for key in [
         "ANTHROPIC_API_KEY",
         "BAIDU_QIANFAN_API_KEY",
