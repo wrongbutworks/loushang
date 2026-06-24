@@ -107,8 +107,10 @@ def test_openai_codex_responses_builds_request_body_and_headers() -> None:
                 OpenAICodexResponsesOptions(
                     api_key=token,
                     session_id="sess_1",
-                    reasoning="minimal",
-                    reasoning_summary="concise",
+                    reasoning=ReasoningOptions(
+                        effort="minimal",
+                        expose_summary=True,
+                    ),
                     text_verbosity="high",
                 ),
             )
@@ -148,7 +150,7 @@ def test_openai_codex_responses_builds_request_body_and_headers() -> None:
         "include": ["reasoning.encrypted_content"],
         "prompt_cache_key": "sess_1",
         "prompt_cache_retention": "in-memory",
-        "reasoning": {"effort": "low", "summary": "concise"},
+        "reasoning": {"effort": "low", "summary": "auto"},
     }
 
 
@@ -184,8 +186,10 @@ def test_openai_codex_responses_trace_payload_summarizes_request_body() -> None:
                 OpenAICodexResponsesOptions(
                     api_key=_build_fake_jwt("acc_test"),
                     session_id="sess_trace",
-                    reasoning="minimal",
-                    reasoning_summary="auto",
+                    reasoning=ReasoningOptions(
+                        effort="minimal",
+                        expose_summary=True,
+                    ),
                     trace=trace_events.append,
                 ),
             )
@@ -765,7 +769,8 @@ def test_openai_codex_responses_stream_maps_sse_to_final_message() -> None:
             _Model(reasoning=True),
             {"messages": [UserMessage(role="user", content="hello", timestamp=0.0)]},
             OpenAICodexResponsesOptions(
-                api_key=_build_fake_jwt("acc_test"), reasoning="high"
+                api_key=_build_fake_jwt("acc_test"),
+                reasoning=ReasoningOptions(effort="high"),
             ),
         )
     )

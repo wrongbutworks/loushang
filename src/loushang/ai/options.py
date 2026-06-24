@@ -14,9 +14,6 @@ ThinkingLevel = Literal["minimal", "low", "medium", "high", "xhigh"]
 CacheRetention = Literal["none", "short", "long"]
 
 
-Transport = Literal["sse", "websocket", "auto"]
-
-
 ToolChoice = str | dict[str, Any]
 
 
@@ -59,6 +56,12 @@ class CallOptions:
     reasoning: ReasoningOptions | None = None
     tool_choice: ToolChoice | None = None
     output: StructuredOutputOptions | None = None
+
+    def __post_init__(self) -> None:
+        if self.reasoning is not None and not isinstance(
+            self.reasoning, ReasoningOptions
+        ):
+            raise TypeError("reasoning must be ReasoningOptions")
 
 
 def get_max_output_tokens(options: object | None) -> int | None:

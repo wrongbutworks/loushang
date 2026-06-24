@@ -8,6 +8,7 @@ import pytest
 from loushang.agent.types import AgentContext, AgentLoopConfig, AgentToolResult
 from loushang.ai.event_stream import AssistantMessageEventStream, EventStream
 from loushang.ai.model import Capabilities, Model
+from loushang.ai.options import CallOptions
 from loushang.ai.types import (
     AssistantMessage,
     Context,
@@ -208,6 +209,38 @@ def test_agent_loop_records_problem_when_provider_request_fails() -> None:
         assert records[0].run_id == 5
     finally:
         reset_observability()
+
+
+def test_agent_loop_preserves_preseeded_call_options_cancellation() -> None:
+    from loushang.agent.agent_loop import run_agent_loop
+
+    marker = object()
+    captured_options: list[object | None] = []
+
+    async def stream_fn(model, context: Context, options=None):
+        del model, context
+        captured_options.append(options)
+        return _stream_with_final_message(_assistant_text_message("hello"))
+
+    async def emit(event):
+        del event
+
+    context = AgentContext(system_prompt="", messages=[], tools=[])
+    prompts = [
+        UserMessage(
+            role="user", content=[TextPart(type="text", text="hello")], timestamp=0.0
+        )
+    ]
+    config = replace(
+        _config(stream_fn),
+        call_options=CallOptions(cancellation=marker),
+    )
+
+    asyncio.run(run_agent_loop(prompts, context, config, emit, stream_fn=stream_fn))
+
+    assert len(captured_options) == 1
+    assert isinstance(captured_options[0], CallOptions)
+    assert captured_options[0].cancellation is marker
 
 
 @dataclass

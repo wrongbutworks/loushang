@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from types import SimpleNamespace
+
 
 def test_extension_manifest_parser_accepts_capability_manifest(tmp_path) -> None:
     from loushang.coding.extensions.manifest import parse_extension_manifest
@@ -51,6 +53,61 @@ packages = ["acme-sdk>=0.3"]
         ("before_agent_start", "augment")
     ]
     assert result.manifest.dependencies.python.packages == ("acme-sdk>=0.3",)
+
+
+def test_extension_manifest_rejects_removed_provider_hooks(tmp_path) -> None:
+    from loushang.coding.extensions.contributions import surfaces_from_loaded_extension
+    from loushang.coding.extensions.manifest import parse_extension_manifest
+
+    manifest_path = tmp_path / "loushang-extension.toml"
+    manifest_path.write_text(
+        """
+[extension]
+id = "bad.provider-hooks"
+name = "Bad Provider Hooks"
+
+[[hooks]]
+event = "before_provider_request"
+kind = "observe"
+
+[[hooks]]
+event = "after_provider_response"
+kind = "observe"
+
+[[hooks]]
+event = "session_start"
+kind = "observe"
+        """.strip()
+        + "\n",
+        encoding="utf-8",
+    )
+
+    result = parse_extension_manifest(manifest_path)
+
+    assert result.manifest is not None
+    assert [(hook.event, hook.kind) for hook in result.manifest.hooks] == [
+        ("session_start", "observe")
+    ]
+    assert [diagnostic.code for diagnostic in result.diagnostics] == [
+        "unsupported_extension_hook_event",
+        "unsupported_extension_hook_event",
+    ]
+    assert [diagnostic.metadata["event"] for diagnostic in result.diagnostics] == [
+        "before_provider_request",
+        "after_provider_response",
+    ]
+    surfaces = surfaces_from_loaded_extension(
+        SimpleNamespace(
+            manifest=result.manifest,
+            source_path=manifest_path,
+            hooks={},
+            commands={},
+            tool_definitions=(),
+        )
+    )
+    assert [(surface.type, surface.name) for surface in surfaces] == [
+        ("hook", "session_start")
+    ]
 
 
 def test_extension_manifest_parser_reports_invalid_input_without_throwing(tmp_path) -> None:

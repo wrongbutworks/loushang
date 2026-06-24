@@ -265,7 +265,6 @@ def test_settings_manager_persists_scoped_updates_and_notifies_subscribers(tmp_p
         thinking_level="high",
         steering_mode="all",
         follow_up_mode="all",
-        transport="auto",
         theme="solarized",
         hide_thinking_block=True,
         shell_path="/bin/zsh",
@@ -329,7 +328,6 @@ def test_settings_manager_persists_scoped_updates_and_notifies_subscribers(tmp_p
     assert reloaded.get_settings().thinking_level == "high"
     assert reloaded.get_settings().steering_mode == "all"
     assert reloaded.get_settings().follow_up_mode == "all"
-    assert reloaded.get_settings().transport == "auto"
     assert reloaded.get_settings().theme == "solarized"
     assert reloaded.get_settings().hide_thinking_block is True
     assert reloaded.get_settings().shell_path == "/bin/zsh"
@@ -409,7 +407,6 @@ def test_settings_manager_exposes_pi_style_control_getters_and_setters(tmp_path)
     manager = SettingsManager(global_settings_path=settings_path)
 
     manager.set_theme("night")
-    manager.set_transport("websocket")
     manager.set_hide_thinking_block(True)
     manager.set_shell_path("/bin/fish")
     manager.set_quiet_startup(True)
@@ -438,7 +435,6 @@ def test_settings_manager_exposes_pi_style_control_getters_and_setters(tmp_path)
     reloaded = SettingsManager(global_settings_path=settings_path)
     settings = reloaded.get_settings()
     assert reloaded.get_theme() == "night"
-    assert reloaded.get_transport() == "websocket"
     assert reloaded.get_hide_thinking_block() is True
     assert reloaded.get_shell_path() == "/bin/fish"
     assert reloaded.get_quiet_startup() is True

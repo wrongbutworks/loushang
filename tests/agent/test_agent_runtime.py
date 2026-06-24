@@ -489,7 +489,6 @@ def test_default_agent_stream_preserves_canonical_options(
                 "thinking_level": "high",
             },
             session_id="session-1",
-            transport="websocket",
             thinking_budgets={"high": 2048},
             max_retry_delay_ms=1234,
         )

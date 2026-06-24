@@ -20,7 +20,6 @@ from loushang.ai.model import Model
 from loushang.ai.options import (
     CallOptions,
     ReasoningOptions,
-    Transport,
 )
 from loushang.ai.types import (
     AssistantMessage,
@@ -330,7 +329,6 @@ class AgentOptions:
     follow_up_mode: Literal["all", "one-at-a-time"] = "one-at-a-time"
     session_id: str | None = None
     thinking_budgets: AgentThinkingBudgetMap | None = None
-    transport: Transport = "sse"
     max_retry_delay_ms: int | None = None
     tool_execution: ToolExecutionMode = "parallel"
 

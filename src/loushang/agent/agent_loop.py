@@ -338,7 +338,7 @@ async def _stream_assistant_response(
     options = replace(
         config.call_options,
         api_key=resolved_api_key,
-        cancellation=signal,
+        cancellation=signal if signal is not None else config.call_options.cancellation,
     )
 
     if _is_aborted(signal):

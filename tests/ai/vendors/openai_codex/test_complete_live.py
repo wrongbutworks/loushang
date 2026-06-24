@@ -4,7 +4,7 @@ import asyncio
 
 import pytest
 
-from loushang.ai import TimeoutOptions, complete, get_model
+from loushang.ai import ReasoningOptions, TimeoutOptions, complete, get_model
 from loushang.ai.auth import (
     load_credentials,
     register_builtin_oauth_providers,
@@ -57,7 +57,7 @@ def test_openai_codex_complete_live() -> None:
             },
             OpenAICodexResponsesOptions(
                 oauth_credentials={"openai-codex": credentials},
-                reasoning="low",
+                reasoning=ReasoningOptions(effort="low"),
                 text_verbosity="low",
                 timeout=TimeoutOptions(total_seconds=30),
             ),

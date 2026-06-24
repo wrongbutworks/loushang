@@ -761,6 +761,50 @@ async def test_compact_serializes_conversation_and_previous_summary_for_llm(monk
 
 
 @pytest.mark.anyio
+async def test_compact_split_turn_forwards_call_options_to_both_summaries(monkeypatch) -> None:
+    captured: list[tuple[object, object, object | None]] = []
+
+    async def fake_complete(model, context, options=None):
+        captured.append((model, context, options))
+        return f"summary-{len(captured)}"
+
+    monkeypatch.setattr("loushang.coding.compaction.compaction._complete_text", fake_complete)
+
+    preparation = CompactionPreparation(
+        first_kept_entry_id="e2",
+        messages_to_summarize=[
+            UserMessage(role="user", content=[TextPart(type="text", text="older")], timestamp=1.0)
+        ],
+        turn_prefix_messages=[
+            UserMessage(role="user", content=[TextPart(type="text", text="current turn")], timestamp=2.0)
+        ],
+        is_split_turn=True,
+        tokens_before=42,
+    )
+
+    signal = object()
+    result = await compact(
+        preparation=preparation,
+        model="model",
+        api_key="test-key",
+        headers={"x-test": "1"},
+        signal=signal,
+    )
+
+    assert result.summary == "summary-1\n\n---\n\n**Turn Context (split turn):**\n\nsummary-2"
+    assert len(captured) == 2
+    assert [model for model, _, _ in captured] == ["model", "model"]
+    prompts = [context.messages[0].content[0].text for _, context, _ in captured]
+    assert "[User]: older" in prompts[0]
+    assert "[User]: current turn" in prompts[1]
+    for _, _, options in captured:
+        assert isinstance(options, CallOptions)
+        assert options.api_key == "test-key"
+        assert options.headers == {"x-test": "1"}
+        assert options.cancellation is signal
+
+
+@pytest.mark.anyio
 async def test_compact_appends_file_operation_summary_details(monkeypatch) -> None:
     async def fake_summarize_messages(**kwargs):
         del kwargs

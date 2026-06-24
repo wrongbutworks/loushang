@@ -4,6 +4,8 @@ import importlib.util
 from dataclasses import fields
 from types import SimpleNamespace
 
+import pytest
+
 import loushang.ai as ai
 import loushang.ai.options as options_module
 from loushang.ai import CallOptions as PublicCallOptions
@@ -31,6 +33,7 @@ REMOVED_OPTION_NAMES = {
     "SimpleStreamOptions",
     "StreamOptions",
     "ThinkingBudgets",
+    "Transport",
     "simple_options_to_call_options",
 }
 
@@ -134,6 +137,11 @@ def test_call_option_helpers_support_canonical_shapes_only() -> None:
     assert get_timeout_seconds(legacy) is None
 
 
+def test_call_options_reject_non_canonical_reasoning() -> None:
+    with pytest.raises(TypeError, match="reasoning must be ReasoningOptions"):
+        CallOptions(reasoning="medium")  # type: ignore[arg-type]
+
+
 def test_provider_specific_options_are_removed_from_core() -> None:
     assert importlib.util.find_spec("loushang.ai.advanced.options") is None
     assert ApiProviderRegistry.__module__ == "loushang.ai.api_registry"
@@ -154,7 +162,10 @@ def test_contrib_options_remain_isolated_from_root_api() -> None:
         "loushang.ai.contrib.openai_codex.options"
     )
     assert isinstance(OpenAICodexResponsesOptions(text_verbosity="low"), CallOptions)
+    with pytest.raises(TypeError, match="reasoning must be ReasoningOptions"):
+        OpenAICodexResponsesOptions(reasoning="low")  # type: ignore[arg-type]
     assert not hasattr(OpenAICodexResponsesOptions(), "on_payload")
     assert not hasattr(OpenAICodexResponsesOptions(), "on_response")
+    assert not hasattr(OpenAICodexResponsesOptions(), "reasoning_summary")
     assert "OpenAICodexResponsesOptions" not in ai.__all__
     assert not hasattr(ai, "OpenAICodexResponsesOptions")

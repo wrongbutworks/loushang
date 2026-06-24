@@ -7,7 +7,6 @@ from pathlib import Path
 from typing import Any, Literal
 
 from loushang.agent import ThinkingLevel
-from loushang.ai.options import Transport
 from loushang.coding.control.settings_store import (
     load_settings_patch,
     save_settings_patch,
@@ -139,12 +138,6 @@ def _deserialize_model_selection(value: object) -> ModelSelection | None:
 def _deserialize_queue_mode(value: object, field_name: str) -> QueueMode:
     if value not in {"all", "one-at-a-time"}:
         raise ValueError(f"{field_name} must be 'all' or 'one-at-a-time'")
-    return value
-
-
-def _deserialize_transport(value: object) -> Transport:
-    if value not in {"sse", "websocket", "auto"}:
-        raise ValueError("transport must be 'sse', 'websocket', or 'auto'")
     return value
 
 
@@ -353,8 +346,6 @@ def _control_config_to_patch(config: ControlConfig) -> dict[str, Any]:
         patch["steering_mode"] = config.steering_mode
     if config.follow_up_mode != defaults.follow_up_mode:
         patch["follow_up_mode"] = config.follow_up_mode
-    if config.transport != defaults.transport:
-        patch["transport"] = config.transport
     if config.theme != defaults.theme:
         patch["theme"] = config.theme
     if config.system_prompt != defaults.system_prompt:
@@ -514,8 +505,6 @@ def _apply_patch(
         next_config = replace(next_config, steering_mode=_deserialize_queue_mode(patch["steering_mode"], "steering_mode"))
     if "follow_up_mode" in patch:
         next_config = replace(next_config, follow_up_mode=_deserialize_queue_mode(patch["follow_up_mode"], "follow_up_mode"))
-    if "transport" in patch:
-        next_config = replace(next_config, transport=_deserialize_transport(patch["transport"]))
     if "theme" in patch:
         next_config = replace(next_config, theme=_optional_string(patch["theme"], "theme"))
     if "system_prompt" in patch:
@@ -720,7 +709,6 @@ class SettingsManager:
         thinking_level: ThinkingLevel | object = _UNSET,
         steering_mode: QueueMode | object = _UNSET,
         follow_up_mode: QueueMode | object = _UNSET,
-        transport: Transport | object = _UNSET,
         theme: str | None | object = _UNSET,
         system_prompt: str | object = _UNSET,
         hide_thinking_block: bool | object = _UNSET,
@@ -766,8 +754,6 @@ class SettingsManager:
             patch["steering_mode"] = _deserialize_queue_mode(steering_mode, "steering_mode")
         if follow_up_mode is not _UNSET:
             patch["follow_up_mode"] = _deserialize_queue_mode(follow_up_mode, "follow_up_mode")
-        if transport is not _UNSET:
-            patch["transport"] = _deserialize_transport(transport)
         if theme is not _UNSET:
             patch["theme"] = _optional_string(theme, "theme")
         if system_prompt is not _UNSET:
@@ -869,12 +855,6 @@ class SettingsManager:
 
     def set_follow_up_mode(self, mode: QueueMode, *, scope: SettingsScope = "session") -> None:
         self.update_settings(scope=scope, follow_up_mode=mode)
-
-    def get_transport(self) -> Transport:
-        return self._settings.transport
-
-    def set_transport(self, transport: Transport, *, scope: SettingsScope = "global") -> None:
-        self.update_settings(scope=scope, transport=transport)
 
     def get_theme(self) -> str | None:
         return self._settings.theme

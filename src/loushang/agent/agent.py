@@ -140,7 +140,6 @@ class Agent:
         self.follow_up_queue = PendingMessageQueue(options.follow_up_mode)
         self._session_id = options.session_id
         self._thinking_budgets = options.thinking_budgets
-        self._transport = options.transport
         self._max_retry_delay_ms = options.max_retry_delay_ms
         self.tool_execution = options.tool_execution
         self._listeners: dict[
@@ -283,16 +282,6 @@ class Agent:
     def thinking_budgets(self, value: dict[str, int] | None) -> None:
         """Set custom thinking budgets for token-based providers."""
         self._thinking_budgets = value
-
-    @property
-    def transport(self) -> str:
-        """Get the preferred transport for providers that support multiple transports."""
-        return self._transport
-
-    @transport.setter
-    def transport(self, value: str) -> None:
-        """Set the preferred transport."""
-        self._transport = value
 
     @property
     def max_retry_delay_ms(self) -> int | None:

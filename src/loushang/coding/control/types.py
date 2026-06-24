@@ -4,7 +4,6 @@ from dataclasses import dataclass, field
 from typing import Literal, TypedDict
 
 from loushang.agent import ThinkingLevel
-from loushang.ai.options import Transport
 from loushang.coding.package import PackageSourceConfig
 from loushang.coding.types import ModelSelection
 
@@ -114,7 +113,6 @@ class ControlConfig:
     thinking_level: ThinkingLevel = "off"
     steering_mode: QueueMode = "one-at-a-time"
     follow_up_mode: QueueMode = "one-at-a-time"
-    transport: Transport = "sse"
     theme: str | None = None
     system_prompt: str = ""
     hide_thinking_block: bool = False
