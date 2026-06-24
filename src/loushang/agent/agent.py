@@ -30,7 +30,7 @@ from loushang.ai.bootstrap import register_builtin_ai_providers
 from loushang.ai.messages import canonicalize_user_message
 from loushang.ai.model import Capabilities, Model
 from loushang.ai.model.registry import resolve_model_api
-from loushang.ai.options import ReasoningOptions, RetryOptions
+from loushang.ai.options import CallOptions, ReasoningOptions, RetryOptions
 from loushang.ai.types import (
     AssistantMessage,
     ImagePart,
@@ -530,14 +530,13 @@ class Agent:
 
         return AgentLoopConfig(
             model=self._state.model,
-            reasoning=_reasoning_options(
-                self._state.thinking_level, self.thinking_budgets
+            call_options=CallOptions(
+                session_id=self.session_id,
+                reasoning=_reasoning_options(
+                    self._state.thinking_level, self.thinking_budgets
+                ),
+                retry=_retry_options(self.max_retry_delay_ms),
             ),
-            retry=_retry_options(self.max_retry_delay_ms),
-            session_id=self.session_id,
-            transport=self.transport,
-            thinking_budgets=self.thinking_budgets,
-            max_retry_delay_ms=self.max_retry_delay_ms,
             tool_execution=self.tool_execution,
             before_tool_call=self.before_tool_call,
             after_tool_call=self.after_tool_call,

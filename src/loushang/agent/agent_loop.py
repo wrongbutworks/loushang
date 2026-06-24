@@ -329,16 +329,16 @@ async def _stream_assistant_response(
     )
 
     call_stream = stream_fn or stream
-    resolved_api_key = config.api_key
+    resolved_api_key = config.call_options.api_key
     if config.get_api_key is not None:
         runtime_api_key = await _resolve(config.get_api_key(config.model.provider_id))
         if runtime_api_key is not None:
             resolved_api_key = runtime_api_key
 
     options = replace(
-        config,
+        config.call_options,
         api_key=resolved_api_key,
-        signal=signal,
+        cancellation=signal,
     )
 
     if _is_aborted(signal):

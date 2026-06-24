@@ -323,8 +323,6 @@ def test_extension_api_v1_core_types_are_available() -> None:
         "tool_execution_start",
         "tool_execution_update",
         "tool_execution_end",
-        "before_provider_request",
-        "after_provider_response",
         "user_bash",
         "model_select",
         "context",

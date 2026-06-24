@@ -247,6 +247,12 @@ def _coalesce_provider_registry(provider_registry, registry):
     return provider_registry if provider_registry is not None else registry
 
 
+def _validate_call_options(options: object | None) -> CallOptions | None:
+    if options is None or isinstance(options, CallOptions):
+        return options
+    raise TypeError("options must be CallOptions")
+
+
 def _supports_structured_output_mapping(provider: object) -> bool:
     return bool(getattr(provider, "supports_structured_output", False))
 
@@ -278,6 +284,7 @@ async def _start_stream(
     mode: ProviderInvocationMode,
     require_stream: bool,
 ):
+    options = _validate_call_options(options)
     resolved = resolve_request_for_model(model, options=options)
     normalized = normalize_context(
         context,

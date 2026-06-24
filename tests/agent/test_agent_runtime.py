@@ -12,7 +12,7 @@ from loushang.ai.model.registry import (
     clear_default_model_registry,
     get_default_model_registry,
 )
-from loushang.ai.options import ReasoningOptions, RetryOptions
+from loushang.ai.options import CallOptions, ReasoningOptions, RetryOptions
 from loushang.ai.types import (
     AssistantMessage,
     ImagePart,
@@ -499,18 +499,20 @@ def test_default_agent_stream_preserves_canonical_options(
 
     assert len(captured_options) == 1
     options = captured_options[0]
-    assert getattr(options, "session_id", None) == "session-1"
-    assert getattr(options, "transport", None) == "websocket"
-    assert getattr(options, "max_retry_delay_ms", None) == 1234
-    assert getattr(options, "reasoning", None) == ReasoningOptions(
+    assert isinstance(options, CallOptions)
+    assert options.session_id == "session-1"
+    assert options.reasoning == ReasoningOptions(
         enabled=True,
         effort="high",
         budget_tokens=2048,
     )
-    assert getattr(options, "retry", None) == RetryOptions(
+    assert options.retry == RetryOptions(
         max_attempts=1,
         max_delay_seconds=1.234,
     )
+    assert not hasattr(options, "signal")
+    assert not hasattr(options, "transport")
+    assert not hasattr(options, "max_retry_delay_ms")
     assert not hasattr(options, "on_payload")
     assert not hasattr(options, "on_response")
 
@@ -520,7 +522,10 @@ def test_abort_marks_run_as_aborted_and_sets_error_message() -> None:
 
     async def stream_fn(model, context, options=None):
         await asyncio.sleep(0.02)
-        if getattr(options, "signal", None) is not None and options.signal.aborted:
+        if (
+            getattr(options, "cancellation", None) is not None
+            and options.cancellation.aborted
+        ):
             raise RuntimeError("stream aborted")
         return _stream_with_final_message(_assistant_text_message("late"))
 

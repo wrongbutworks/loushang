@@ -18,13 +18,10 @@ from typing import (
 from loushang.ai.event_stream.stream import AssistantMessageEventStream
 from loushang.ai.model import Model
 from loushang.ai.options import (
-    PairingMode,
+    CallOptions,
     ReasoningOptions,
-    RetryOptions,
-    TimeoutOptions,
     Transport,
 )
-from loushang.ai.structured import StructuredOutputOptions
 from loushang.ai.types import (
     AssistantMessage,
     AssistantMessageEvent,
@@ -97,7 +94,7 @@ class StreamFn(Protocol):
         self,
         model: Model,
         context: Context,
-        options: "AgentStreamOptions | None" = None,
+        options: CallOptions | None = None,
     ) -> AssistantMessageEventStream | Awaitable[AssistantMessageEventStream]: ...
 
 
@@ -234,31 +231,12 @@ class AfterToolCallContext:
 
 
 @dataclass(frozen=True, kw_only=True)
-class AgentStreamOptions:
-    signal: object | None = None
-    cancellation: object | None = None
-    api_key: str | None = None
-    headers: dict[str, str] = field(default_factory=dict)
-    max_output_tokens: int | None = None
-    temperature: float | int | None = None
-    timeout: TimeoutOptions | None = None
-    retry: RetryOptions | None = None
-    region: str | None = None
-    pairing_mode: PairingMode = "strict"
-    reasoning: ReasoningOptions | None = None
-    thinking_budgets: AgentThinkingBudgetMap | None = None
-    output: StructuredOutputOptions | None = None
-
-
-@dataclass(frozen=True, kw_only=True)
-class AgentLoopConfig(AgentStreamOptions):
+class AgentLoopConfig:
     model: Model
     convert_to_llm: ConvertToLlmFn
+    call_options: CallOptions = field(default_factory=CallOptions)
     transform_context: TransformContextFn | None = None
     get_api_key: GetApiKeyFn | None = None
-    session_id: str | None = None
-    transport: Transport = "sse"
-    max_retry_delay_ms: int | None = None
     get_steering_messages: Callable[[], Awaitable[list[AgentMessage]]] | None = None
     get_follow_up_messages: Callable[[], Awaitable[list[AgentMessage]]] | None = None
     tool_execution: ToolExecutionMode = "parallel"
@@ -516,7 +494,11 @@ ProxyAssistantMessageEvent: TypeAlias = (
 
 
 @dataclass(frozen=True, kw_only=True)
-class ProxyStreamOptions(AgentStreamOptions):
+class ProxyStreamOptions:
+    signal: object | None = None
+    max_output_tokens: int | None = None
+    temperature: float | int | None = None
+    reasoning: ReasoningOptions | None = None
     auth_token: str
     proxy_url: str
     max_tokens: int | None = None
@@ -531,7 +513,6 @@ __all__ = [
     "AgentMessage",
     "AgentOptions",
     "AgentState",
-    "AgentStreamOptions",
     "AgentThinkingBudgetMap",
     "AgentTool",
     "AgentToolCall",

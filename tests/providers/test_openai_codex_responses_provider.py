@@ -16,7 +16,7 @@ from loushang.ai.model.registry import (
     clear_default_model_registry,
     get_default_model_registry,
 )
-from loushang.ai.options import RetryOptions
+from loushang.ai.options import ReasoningOptions, RetryOptions
 from loushang.ai.provider import ProviderRequest
 from loushang.ai.structured import StructuredOutputOptions
 from loushang.ai.types import (
@@ -208,6 +208,37 @@ def test_openai_codex_responses_trace_payload_summarizes_request_body() -> None:
     serialized = json.dumps(payload_event, sort_keys=True)
     assert secret_system not in serialized
     assert secret_user not in serialized
+
+
+def test_openai_codex_responses_accepts_canonical_reasoning_options() -> None:
+    client = _FakeCodexClient(
+        events=[
+            {"type": "response.completed", "response": {"status": "completed"}},
+        ]
+    )
+    provider = OpenAICodexResponsesProvider(client=client)
+
+    asyncio.run(
+        _collect_parts(
+            _invoke_raw_parts(
+                provider,
+                _Model(reasoning=True),
+                {"messages": [UserMessage(role="user", content="hello", timestamp=0.0)]},
+                OpenAICodexResponsesOptions(
+                    api_key=_build_fake_jwt("acc_test"),
+                    reasoning=ReasoningOptions(
+                        enabled=True,
+                        effort="minimal",
+                        expose_summary=True,
+                    ),
+                ),
+            )
+        )
+    )
+
+    assert client.last_json is not None
+    assert client.last_json["include"] == ["reasoning.encrypted_content"]
+    assert client.last_json["reasoning"] == {"effort": "low", "summary": "auto"}
 
 
 def test_openai_codex_responses_closes_owned_http_client(

@@ -647,6 +647,59 @@ def test_stream_rejects_raw_dict_tools_with_invalid_names_before_provider(
     assert provider.context is None
 
 
+@pytest.mark.parametrize(
+    "legacy_options",
+    [
+        SimpleNamespace(max_tokens=64),
+        SimpleNamespace(timeout=10),
+        SimpleNamespace(retries=2),
+        SimpleNamespace(max_retry_delay_ms=500),
+        SimpleNamespace(reasoning="high"),
+        SimpleNamespace(reasoning_summary="auto"),
+        SimpleNamespace(thinking_budget_tokens=4096),
+    ],
+)
+def test_stream_rejects_non_call_options_before_provider(
+    monkeypatch: pytest.MonkeyPatch,
+    legacy_options: object,
+) -> None:
+    _patch_resolved_request(monkeypatch)
+    provider = _Provider()
+    registry = _Registry(provider)
+
+    with pytest.raises(TypeError, match="options must be CallOptions"):
+        asyncio.run(
+            stream(
+                _Model(),
+                {"messages": [UserMessage(role="user", content="hello", timestamp=0.0)]},
+                legacy_options,  # type: ignore[arg-type]
+                registry=registry,
+            )
+        )
+
+    assert provider.context is None
+
+
+def test_complete_rejects_non_call_options_before_provider(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _patch_resolved_request(monkeypatch)
+    provider = _Provider()
+    registry = _Registry(provider)
+
+    with pytest.raises(TypeError, match="options must be CallOptions"):
+        asyncio.run(
+            complete(
+                _Model(),
+                {"messages": [UserMessage(role="user", content="hello", timestamp=0.0)]},
+                SimpleNamespace(max_tokens=64),  # type: ignore[arg-type]
+                registry=registry,
+            )
+        )
+
+    assert provider.context is None
+
+
 def test_stream_passes_request_through_registered_provider(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

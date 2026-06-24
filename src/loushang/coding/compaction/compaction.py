@@ -4,7 +4,7 @@ from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, is_dataclass
 
 from loushang.agent import AgentMessage
-from loushang.ai import Context, complete
+from loushang.ai import CallOptions, Context, complete
 from loushang.ai.types import AssistantMessage, TextPart, ToolResultMessage, UserMessage
 from loushang.coding.compaction.policy import calculate_compaction_budget
 from loushang.coding.compaction.types import (
@@ -168,8 +168,12 @@ def _assistant_text(message: object) -> str:
     )
 
 
-async def _complete_text(model: object, context: Context) -> str:
-    return _assistant_text(await complete(model, context))
+async def _complete_text(
+    model: object,
+    context: Context,
+    options: CallOptions | None = None,
+) -> str:
+    return _assistant_text(await complete(model, context, options))
 
 
 def estimate_context_tokens(messages: list[AgentMessage]) -> ContextUsageEstimate:
@@ -570,8 +574,6 @@ async def _summarize_messages(
     signal: object | None = None,
     custom_instructions: str | None = None,
 ) -> str:
-    del api_key, headers, signal
-
     prompt = _build_summarization_prompt(
         messages=preparation.messages_to_summarize,
         base_prompt=UPDATE_SUMMARIZATION_PROMPT if preparation.previous_summary else SUMMARIZATION_PROMPT,
@@ -588,7 +590,15 @@ async def _summarize_messages(
             )
         ],
     )
-    return await _complete_text(model, context)
+    return await _complete_text(
+        model,
+        context,
+        CallOptions(
+            api_key=api_key,
+            headers=dict(headers or {}),
+            cancellation=signal,
+        ),
+    )
 
 
 async def _summarize_turn_prefix(
@@ -599,8 +609,6 @@ async def _summarize_turn_prefix(
     headers: Mapping[str, str] | None = None,
     signal: object | None = None,
 ) -> str:
-    del api_key, headers, signal
-
     prompt = _build_summarization_prompt(
         messages=messages,
         base_prompt=TURN_PREFIX_SUMMARIZATION_PROMPT,
@@ -618,6 +626,11 @@ async def _summarize_turn_prefix(
                     timestamp=0.0,
                 )
             ],
+        ),
+        CallOptions(
+            api_key=api_key,
+            headers=dict(headers or {}),
+            cancellation=signal,
         ),
     )
 

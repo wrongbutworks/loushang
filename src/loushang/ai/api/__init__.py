@@ -13,7 +13,6 @@ from loushang.ai.options import (
     RetryOptions,
     ThinkingLevel,
     TimeoutOptions,
-    Transport,
 )
 from loushang.ai.types import StopReason, TextSignatureV1
 
@@ -48,7 +47,6 @@ __all__ = [
     "AIErrorInfo",
     "ThinkingLevel",
     "CacheRetention",
-    "Transport",
     "CallOptions",
     "ReasoningOptions",
     "RetryOptions",

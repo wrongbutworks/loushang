@@ -32,7 +32,6 @@ from loushang.ai.auth.storage import find_scoped_credential, load_credential_sto
 from loushang.ai.auth.support import merge_auth_config
 from loushang.ai.auth.types import OAuthAuthInfo, OAuthLoginCallbacks, OAuthPrompt
 from loushang.ai.contrib.openai_codex import (
-    OpenAICodexResponsesOptions,
     register_openai_codex_contrib,
     register_openai_codex_oauth_provider,
 )
@@ -41,10 +40,6 @@ from loushang.ai.model.registry import (
     resolve_model_api,
     resolve_model_ref,
 )
-
-_OPTION_CLASS_BY_API = {
-    "openai-codex-responses": OpenAICodexResponsesOptions,
-}
 
 _BACK = object()
 
@@ -732,8 +727,7 @@ def _build_console_options(model, *, api: str, auth_result, debug: bool = False)
         option_kwargs["trace"] = _console_trace
     if not option_kwargs:
         return None, auth_source
-    option_cls = _OPTION_CLASS_BY_API.get(api, CallOptions)
-    return option_cls(**option_kwargs), auth_source
+    return CallOptions(**option_kwargs), auth_source
 
 
 def _resolve_console_oauth_credentials(

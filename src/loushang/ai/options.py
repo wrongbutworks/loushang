@@ -46,7 +46,6 @@ class CallOptions:
     cancellation: object | None = None
     api_key: str | None = None
     headers: Mapping[str, str] = field(default_factory=dict)
-    transport: Transport | None = None
     cache_retention: CacheRetention | None = None
     session_id: str | None = None
     max_output_tokens: int | None = None
@@ -155,5 +154,4 @@ __all__ = [
     "ThinkingLevel",
     "TimeoutOptions",
     "ToolChoice",
-    "Transport",
 ]

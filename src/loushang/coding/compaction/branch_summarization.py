@@ -3,7 +3,7 @@ from __future__ import annotations
 from collections.abc import Mapping, Sequence
 
 from loushang.agent import AgentMessage
-from loushang.ai import Context
+from loushang.ai import CallOptions, Context
 from loushang.ai.types import TextPart, UserMessage
 from loushang.coding.compaction.compaction import (
     SUMMARIZATION_SYSTEM_PROMPT,
@@ -128,8 +128,6 @@ async def generate_branch_summary(
     replace_instructions: bool = False,
     reserve_tokens: int = 16_384,
 ) -> BranchSummaryResult:
-    del api_key, headers
-
     if _is_aborted(signal):
         return BranchSummaryResult(aborted=True)
 
@@ -153,6 +151,11 @@ async def generate_branch_summary(
                         timestamp=0.0,
                     )
                 ],
+            ),
+            CallOptions(
+                api_key=api_key,
+                headers=dict(headers or {}),
+                cancellation=signal,
             ),
         )
         if _is_aborted(signal):

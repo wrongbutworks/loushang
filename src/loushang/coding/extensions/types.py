@@ -48,8 +48,6 @@ VALID_EXTENSION_EVENTS = (
     "tool_execution_start",
     "tool_execution_update",
     "tool_execution_end",
-    "before_provider_request",
-    "after_provider_response",
     "user_bash",
     "model_select",
     "context",

@@ -65,7 +65,6 @@ def test_call_options_fields_are_canonical_and_consumed() -> None:
         "cancellation",
         "api_key",
         "headers",
-        "transport",
         "cache_retention",
         "session_id",
         "max_output_tokens",
@@ -155,5 +154,7 @@ def test_contrib_options_remain_isolated_from_root_api() -> None:
         "loushang.ai.contrib.openai_codex.options"
     )
     assert isinstance(OpenAICodexResponsesOptions(text_verbosity="low"), CallOptions)
+    assert not hasattr(OpenAICodexResponsesOptions(), "on_payload")
+    assert not hasattr(OpenAICodexResponsesOptions(), "on_response")
     assert "OpenAICodexResponsesOptions" not in ai.__all__
     assert not hasattr(ai, "OpenAICodexResponsesOptions")

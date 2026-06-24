@@ -242,7 +242,7 @@ def test_agent_session_abort_mid_stream_cleans_run_state_and_keeps_queued_messag
     async def stream_fn(model, context, options=None):
         del model, context
         stream = AssistantMessageEventStream()
-        signal = getattr(options, "signal", None)
+        signal = getattr(options, "cancellation", None)
         partial = _assistant_text_message("partial")
 
         async def _feed() -> None:
@@ -896,62 +896,6 @@ def test_agent_session_applies_before_agent_start_result(tmp_path) -> None:
     assert entries[1].message.content == "extension context"
 
 
-def test_agent_session_does_not_wire_provider_hooks_to_agent_options(tmp_path) -> None:
-    from pathlib import Path
-
-    from loushang.agent import Agent
-    from loushang.coding.extensions import ExtensionRunner, LoadedExtension
-    from loushang.coding.session import AgentSession
-    from loushang.coding.store import SessionManager
-
-    captured: list[tuple[bool, bool]] = []
-    provider_hook_calls: list[str] = []
-
-    async def stream_fn(model, context, options=None):
-        del model, context
-        assert options is not None
-        captured.append((hasattr(options, "on_payload"), hasattr(options, "on_response")))
-        return _stream_with_final_message(_assistant_text_message("done"))
-
-    def _before_provider_request(event, ctx):
-        del event, ctx
-        provider_hook_calls.append("before_provider_request")
-        return {
-            "model": "extension-model",
-            "messages": [],
-            "cwd": "/tmp/project",
-        }
-
-    async def _after_provider_response(event, ctx):
-        del event, ctx
-        provider_hook_calls.append("after_provider_response")
-
-    async def scenario() -> None:
-        session = AgentSession(
-            agent=Agent(stream_fn=stream_fn, initial_state={"system_prompt": "Base system prompt"}),
-            session_manager=SessionManager.new(session_dir=tmp_path, cwd="/tmp/project", persist=False),
-            extension_runner=ExtensionRunner(
-                [
-                    LoadedExtension(
-                        name="provider",
-                        source_path=Path("/tmp/project/extensions/provider.py"),
-                        hooks={
-                            "before_provider_request": [_before_provider_request],
-                            "after_provider_response": [_after_provider_response],
-                        },
-                    )
-                ]
-            ),
-        )
-
-        await session.prompt("hello")
-
-    asyncio.run(scenario())
-
-    assert captured == [(False, False)]
-    assert provider_hook_calls == []
-
-
 def test_agent_session_extension_hook_ordering_spans_provider_tool_and_agent_end(tmp_path) -> None:
     from pathlib import Path
 
@@ -1018,14 +962,6 @@ def test_agent_session_extension_hook_ordering_spans_provider_tool_and_agent_end
         del event, ctx
         order.append("before_agent_start")
 
-    def _before_provider_request(event, ctx):
-        del event, ctx
-        order.append("before_provider_request")
-
-    def _after_provider_response(event, ctx):
-        del event, ctx
-        order.append("after_provider_response")
-
     def _tool_call(event, ctx):
         del event, ctx
         order.append("tool_call")
@@ -1058,8 +994,6 @@ def test_agent_session_extension_hook_ordering_spans_provider_tool_and_agent_end
                         hooks={
                             "input": [_input],
                             "before_agent_start": [_before_agent_start],
-                            "before_provider_request": [_before_provider_request],
-                            "after_provider_response": [_after_provider_response],
                             "tool_call": [_tool_call],
                             "tool_result": [_tool_result],
                             "agent_end": [_agent_end],

@@ -305,14 +305,8 @@ def _emit_runtime_cancel_trace(
 def _cancellation_signals(options: object | None) -> tuple[object, ...]:
     if options is None:
         return ()
-    signals: list[object] = []
-    for name in ("cancellation", "signal"):
-        signal = getattr(options, name, None)
-        if signal is not None and any(signal is existing for existing in signals):
-            continue
-        if signal is not None:
-            signals.append(signal)
-    return tuple(signals)
+    signal = getattr(options, "cancellation", None)
+    return (signal,) if signal is not None else ()
 
 
 def _signals_cancelled(signals: tuple[object, ...]) -> bool:
