@@ -59,26 +59,21 @@
 - Normalize indentation and style in a few files.
   Some modules still use tabs instead of the prevailing project style.
 
-- Done for AIQ-039: separate response usage and platform quota contracts.
-  The response-level usage (`input/output/cache_*`) and platform quota endpoint (`/usages`)
-  are currently mixed in example-level scripts; standardize this inside `loushang.ai`:
-  define a single usage payload contract, include provider-specific quota-query support
-  (e.g., Kimi `/v1/usages` path), and expose it via a stable API for callers.
-  Endpoint catalog files were not changed; `loushang.ai.usage` now owns the
-  response usage and endpoint quota-query contracts.
+- Done for AIQ-039/AIF-013: separate response usage and provider account quota.
+  Core `loushang.ai.usage` owns only response-level `Usage` payload helpers.
+  Moonshot/Kimi account quota helpers now live in `loushang.ai.contrib.moonshot`.
 
 ### Example context for Kimi
 
 - Current examples to validate (`examples/coding`):
   - `22_usage_inspect.py`: demonstrates response-level usage/cost extraction.
-  - `23_kimi_weekly_usage_ledger.py`: writes local weekly ledger and now queries platform quota through `loushang.ai.usage`.
+  - `23_kimi_weekly_usage_ledger.py`: writes local weekly ledger and now queries platform quota through `loushang.ai.contrib.moonshot`.
   - `21_switch_model_route.py`: validates endpoint/model routing behavior.
   - `17_kimi_env_probe.py`: environment/catalog/key-surface checks.
-- Expected core behavior after fixing:
-  - `loushang.ai` should expose two distinct payload types:
-    - `usage_observation`: response usage fields from model call (`input/output/cache_*`).
-    - `platform_quota`: account-level quota/remaining/reset data from provider quota endpoint.
-    - Examples should consume the standardized contracts instead of URL-specific script-level logic.
+- Expected behavior after fixing:
+  - Core exposes response `Usage` fields from model calls (`input/output/cache_*`).
+  - Moonshot contrib exposes account quota/remaining/reset data for Kimi provider endpoints.
+  - Examples should consume package helpers instead of URL-specific script-level logic.
 
 - Design note (deferred):
   - Evaluate whether to model platform quota as an endpoint capability in catalog (similar to docs metadata).
@@ -90,23 +85,23 @@
 - Observation:
   - `https://api.kimi.com/coding/v1/usages` is an account-level query endpoint.
   - It is endpoint-scoped rather than model-scoped, and likely shared by multiple models under same endpoint.
-  - 现网脚本已改为通过 `query_platform_quota` 使用核心 endpoint 查询描述，避免示例层耦合。
+  - 现网脚本已改为通过 Moonshot contrib 的 `query_platform_quota` 查询，避免示例层耦合。
 
 - Proposed endpoint-level schema sketch (deferred):
   - Add optional endpoint capability metadata, but keep behavior backward-compatible:
     - `supportsUsageQuery: true/false`
     - `usageQuery: { path: "/v1/usages", method: "GET", authMode: "bearer_or_x_api_key", responseKind: "platform_quota" }`
     - `usageQuery.path` can be absolute URL when endpoint host differs.
-  - `loushang.ai` exposes a stable accessor, examples consume via API call only.
+  - Moonshot contrib exposes a provider-specific accessor; examples consume via API call only.
   - Example migration sequence:
-    1) done: add abstraction in core (`loushang.ai`) for platform_quota
-    2) done: add Kimi mapping in core usage layer
+    1) done: keep response usage in core
+    2) done: move Kimi quota mapping to Moonshot contrib
     3) keep catalogs unchanged until step 3
     4) optional: surface `usage_query` in catalog metadata and remove special-case script logic
 
 - Acceptance criteria for this TODO:
   - 一个调用同时可拿到两类口径：
-    - `usage_observation`（响应 usage）
-    - `platform_quota`（账户额度）
+    - `Usage`（响应 usage）
+    - Moonshot `PlatformQuota`（账户额度）
   - 不再在示例层硬编码 `/usages` 路径。
   - 控制台对齐（`limit/used/remaining/resetTime`）与模型响应 usage 在文档中明确区分且有字段来源。

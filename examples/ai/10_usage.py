@@ -1,14 +1,14 @@
-"""Offline response usage observation example."""
+"""Offline response usage example."""
 
 from __future__ import annotations
 
 import json
 
-from loushang.ai import UsageObservation, usage_observation_payload
+from loushang.ai import Usage, usage_payload
 
 
-def inspect_usage_observation() -> dict[str, object]:
-    usage = UsageObservation(
+def inspect_usage() -> dict[str, object]:
+    usage = Usage(
         input=120,
         output=30,
         cache_read=10,
@@ -16,11 +16,11 @@ def inspect_usage_observation() -> dict[str, object]:
         total_tokens=160,
         cost=None,
     )
-    return usage_observation_payload(usage)
+    return usage_payload(usage)
 
 
 def main() -> None:
-    print(json.dumps(inspect_usage_observation(), indent=2, sort_keys=True))
+    print(json.dumps(inspect_usage(), indent=2, sort_keys=True))
 
 
 if __name__ == "__main__":

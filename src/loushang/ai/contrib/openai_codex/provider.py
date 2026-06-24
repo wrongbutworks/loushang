@@ -13,10 +13,7 @@ from uuid import uuid4
 
 from loushang.ai.context import NormalizedContext
 from loushang.ai.contrib.openai_codex.options import OpenAICodexResponsesOptions
-from loushang.ai.contrib.openai_codex.runtime_config import (
-    OpenAICodexRuntimeConfig,
-    resolve_openai_codex_runtime_config,
-)
+from loushang.ai.contrib.openai_codex.runtime_config import OpenAICodexRuntimeConfig
 from loushang.ai.event_stream.raw_parts import RawPart
 from loushang.ai.model.domain import OpenAIResponsesConfig
 from loushang.ai.options import (
@@ -42,7 +39,6 @@ from loushang.ai.utils import sanitize_surrogates
 class OpenAICodexResponsesProvider:
     api = "openai-codex-responses"
     supports_structured_output = True
-    adapter_config_resolver = staticmethod(resolve_openai_codex_runtime_config)
 
     def __init__(
         self, *, client: Any | None = None, websocket_cache_ttl_ms: int = 5 * 60 * 1000
@@ -313,9 +309,13 @@ class OpenAICodexResponsesProvider:
 def _codex_runtime_config(
     value: object | None,
 ) -> OpenAICodexRuntimeConfig:
+    if value is None:
+        return OpenAICodexRuntimeConfig()
     if isinstance(value, OpenAICodexRuntimeConfig):
         return value
-    return OpenAICodexRuntimeConfig()
+    raise TypeError(
+        "adapter_config for openai-codex-responses must be OpenAICodexRuntimeConfig"
+    )
 
 
 def _build_request_body(

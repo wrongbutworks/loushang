@@ -65,7 +65,7 @@ def test_stable_sdk_guides_cover_public_ai_paths_and_examples() -> None:
         "ImagePart",
         "AIError",
         "RetryOptions",
-        "UsageObservation",
+        "Usage",
         "models.json",
         "11_provider_matrix.py",
         "12_provider_smoke.py",

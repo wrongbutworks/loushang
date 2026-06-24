@@ -175,7 +175,7 @@ def test_usage_online_example_prints_unknown_cost(capsys, monkeypatch) -> None:
 def test_usage_example_reports_response_observation(capsys) -> None:
     module = _load_module(Path("examples/ai/10_usage.py"), "examples_ai_10_usage")
 
-    summary = module.inspect_usage_observation()
+    summary = module.inspect_usage()
 
     assert summary == {
         "present": True,

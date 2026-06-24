@@ -135,25 +135,7 @@ def test_ensure_request_api_rejects_mismatch() -> None:
         ensure_request_api("openai-responses", request)
 
 
-def test_normalize_provider_request_uses_runtime_adapter_resolver() -> None:
-    request = ProviderRequest(
-        provider="custom",
-        endpoint="custom-api",
-        api="custom-api",
-        base_url="https://example.test/v1",
-        adapter_config={"raw": True},
-    )
-
-    resolved = normalize_provider_request_for_api(
-        "custom-api",
-        request,
-        adapter_config_resolver=lambda current: {"resolved": current},
-    )
-
-    assert resolved.adapter_config == {"resolved": {"raw": True}}
-
-
-def test_normalize_provider_request_keeps_runtime_config_when_resolver_matches() -> None:
+def test_normalize_provider_request_leaves_non_core_runtime_config_to_provider() -> None:
     config = {"raw": True}
     request = ProviderRequest(
         provider="custom",
@@ -163,11 +145,7 @@ def test_normalize_provider_request_keeps_runtime_config_when_resolver_matches()
         adapter_config=config,
     )
 
-    resolved = normalize_provider_request_for_api(
-        "custom-api",
-        request,
-        adapter_config_resolver=lambda current: current,
-    )
+    resolved = normalize_provider_request_for_api("custom-api", request)
 
     assert resolved is request
 

@@ -12,14 +12,14 @@ Source plan:
 - [ ] No runtime `schemaVersion` migration track remains.
 - [ ] No protocol/dialect/compat round-trip projection remains.
 - [ ] No `ResolvedEndpoint` / `ResolvedRequest` double request layer remains.
-- [ ] No empty core `AdapterRuntimeConfig` base class remains.
+- [x] No empty core `AdapterRuntimeConfig` base class remains.
 - [ ] No Simple API or options alias remains.
 - [ ] No deprecated provider-specific core options remain.
 - [ ] No `Model` instance invocation facade remains.
 - [ ] Context normalization runs once per public call.
-- [ ] Core has no provider account quota special case.
+- [x] Core has no provider account quota special case.
 - [ ] Core has one auth configuration type.
-- [ ] Core exposes one public usage type.
+- [x] Core exposes one public usage type.
 
 ## Model And Registry
 

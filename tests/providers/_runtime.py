@@ -52,13 +52,4 @@ def provider_request_for_test(
         context=normalized_context,
         options=options,
     )
-    return normalize_provider_request_for_api(
-        provider.api,
-        resolved,
-        adapter_config_resolver=_adapter_config_resolver(provider),
-    )
-
-
-def _adapter_config_resolver(provider):
-    resolver = getattr(provider, "adapter_config_resolver", None)
-    return resolver if callable(resolver) else None
+    return normalize_provider_request_for_api(provider.api, resolved)

@@ -302,11 +302,7 @@ async def _start_stream(
     provider = _resolve_api_provider_registry(provider_registry).get_api_provider(
         resolved.api
     )
-    resolved = normalize_provider_request_for_api(
-        provider.api,
-        resolved,
-        adapter_config_resolver=getattr(provider, "adapter_config_resolver", None),
-    )
+    resolved = normalize_provider_request_for_api(provider.api, resolved)
     if get_structured_output_options(
         options
     ) is not None and not _supports_structured_output_mapping(provider):

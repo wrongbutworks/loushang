@@ -278,7 +278,7 @@ Retries are only safe before visible output is emitted. Runnable reference:
 
 ## Usage And Cost
 
-Final `AssistantMessage.usage` is a response-level `UsageObservation`. Cost is
+Final `AssistantMessage.usage` is response-level `Usage`. Cost is
 `None` when the catalog does not have trusted pricing facts.
 
 ```python
@@ -286,7 +286,8 @@ usage = message.usage
 print(usage.input, usage.output, usage.total_tokens, usage.cost)
 ```
 
-Account or platform quota is separate from response usage. Runnable references:
+Account or platform quota is separate from response usage. Moonshot/Kimi quota
+helpers live in `loushang.ai.contrib.moonshot`. Runnable references:
 [examples/ai/10_usage.py](../../../examples/ai/10_usage.py),
 [examples/ai/advanced/usage_online.py](../../../examples/ai/advanced/usage_online.py), and
 [examples/ai/advanced/platform_quota.py](../../../examples/ai/advanced/platform_quota.py).

@@ -5,17 +5,17 @@ from collections.abc import Mapping
 
 import pytest
 
-from loushang.ai.model import Model, Pricing
-from loushang.ai.pricing import calculate_usage_cost
-from loushang.ai.types import Usage, UsageObservation
-from loushang.ai.usage import (
+from loushang.ai.contrib.moonshot import (
     EndpointQuotaQuery,
     PlatformQuotaUnsupportedError,
     endpoint_quota_query_for_model,
     platform_quota_payload,
     query_platform_quota,
-    usage_observation_payload,
 )
+from loushang.ai.model import Model, Pricing
+from loushang.ai.pricing import calculate_usage_cost
+from loushang.ai.types import Usage
+from loushang.ai.usage import usage_payload
 
 
 class _QuotaTransport:
@@ -44,7 +44,7 @@ class _QuotaTransport:
         }
 
 
-def test_usage_observation_is_the_stable_response_usage_name() -> None:
+def test_usage_is_the_stable_response_usage_name() -> None:
     usage = Usage(
         input=10,
         output=5,
@@ -54,8 +54,7 @@ def test_usage_observation_is_the_stable_response_usage_name() -> None:
         cost=None,
     )
 
-    assert isinstance(usage, UsageObservation)
-    assert usage_observation_payload(usage) == {
+    assert usage_payload(usage) == {
         "present": True,
         "input": 10,
         "output": 5,

@@ -30,10 +30,6 @@ from loushang.ai.model.registry import (
 )
 from loushang.ai.options import get_max_output_tokens, get_reasoning_effort
 from loushang.ai.provider.protocol import ProviderContext, ProviderRequest
-from loushang.ai.provider.runtime_config import (
-    AdapterRuntimeConfigResolver,
-    resolve_adapter_runtime_config,
-)
 
 
 def ensure_request_api(provider_api: str, request: ProviderRequest) -> ProviderRequest:
@@ -47,8 +43,6 @@ def ensure_request_api(provider_api: str, request: ProviderRequest) -> ProviderR
 def normalize_provider_request_for_api(
     provider_api: str,
     request: ProviderRequest,
-    *,
-    adapter_config_resolver: AdapterRuntimeConfigResolver | None = None,
 ) -> ProviderRequest:
     request = ensure_request_api(provider_api, request)
     if provider_api == "openai-completions":
@@ -72,13 +66,7 @@ def normalize_provider_request_for_api(
             AnthropicMessagesConfig,
         )
         return replace(request, adapter_config=adapter_config)
-    runtime_adapter_config = resolve_adapter_runtime_config(
-        adapter_config_resolver,
-        current=request.adapter_config,
-    )
-    if runtime_adapter_config == request.adapter_config:
-        return request
-    return replace(request, adapter_config=runtime_adapter_config)
+    return request
 
 
 def _ensure_core_adapter_config(

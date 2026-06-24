@@ -38,12 +38,11 @@ from loushang.ai.types import (
     ToolResultMessage,
     Usage,
     UsageCost,
-    UsageObservation,
     UserMessage,
 )
 from loushang.ai.usage import (
-    usage_observation_from_message,
-    usage_observation_payload,
+    usage_from_message,
+    usage_payload,
 )
 
 
@@ -96,12 +95,11 @@ __all__ = [
     "UserMessage",
     "Usage",
     "UsageCost",
-    "UsageObservation",
     "complete",
     "complete_structured",
     "get_model",
     "list_models",
     "stream",
-    "usage_observation_from_message",
-    "usage_observation_payload",
+    "usage_from_message",
+    "usage_payload",
 ]

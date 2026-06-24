@@ -21,7 +21,7 @@
 - [09_errors_retry.py](09_errors_retry.py)
   稳定错误信息的序列化、脱敏，以及可见输出前的安全 retry
 - [10_usage.py](10_usage.py)
-  响应级 `UsageObservation`，与账号级平台额度分开
+  响应级 `Usage`，与账号级平台额度分开
 - [11_provider_matrix.py](11_provider_matrix.py)
   查看内置 curated provider、endpoint、环境变量和模型入口
 - [12_provider_smoke.py](12_provider_smoke.py)
@@ -45,7 +45,7 @@
 - [advanced/oauth_credential_store.py](advanced/oauth_credential_store.py)
   离线查看 OAuth scoped credential store 写入、选择和本地文件权限
 - [advanced/platform_quota.py](advanced/platform_quota.py)
-  离线查看 Endpoint 平台额度查询抽象与 `PlatformQuota` 输出
+  离线查看 Moonshot/Kimi 平台额度查询与 `PlatformQuota` 输出
 - [advanced/usage_online.py](advanced/usage_online.py)
   在线检查 usage；当 catalog 缺少价格事实时，cost 输出为 `{"known": false}`
 - [advanced/openai_codex_contrib.py](advanced/openai_codex_contrib.py)

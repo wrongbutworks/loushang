@@ -62,7 +62,7 @@
   - `ApiProvider` 协议
 - `runtime.py` / `invocation.py`
   - 统一 provider 调用、重试、取消、raw stream 组装入口
-- `runtime_config.py` / `cancellation.py` / `output_budget.py` / `errors.py`
+- `cancellation.py` / `output_budget.py` / `errors.py`
   - 通用运行时辅助
 
 `provider/` 负责统一边界，不负责具体厂商实现。
@@ -280,8 +280,8 @@ class；普通调用只通过 `CallOptions`、`ReasoningOptions`、`RetryOptions
 - `loushang.ai.tool.normalize_tool_call_id_for_model(...)`
 - `loushang.ai.pricing.calculate_cost(...)`
 - `loushang.ai.pricing.models_are_equal(...)`
-- `loushang.ai.usage_observation_from_message(...)`
-- `loushang.ai.usage.query_platform_quota(...)`
+- `loushang.ai.usage_from_message(...)`
+- `loushang.ai.usage_payload(...)`
 - `loushang.ai.complete_structured(model, context, output, options=...)`
   - sends `StructuredOutputOptions` through provider-native structured output payloads where the adapter has a stable mapping
   - returns `StructuredOutputResult(raw=AssistantMessage, parsed=...)`
@@ -293,10 +293,9 @@ class；普通调用只通过 `CallOptions`、`ReasoningOptions`、`RetryOptions
 metadata, or when a used token component has no known price. Explicit zero
 prices remain valid and produce a zero cost.
 
-`UsageObservation` is response-level accounting produced by model response
-events. `PlatformQuota` is account-level limit/used/remaining data queried
-through an endpoint-specific optional query descriptor; examples should use the
-query abstraction instead of hardcoding provider quota URLs.
+`Usage` is response-level accounting produced by model response events. Provider
+account quota helpers live outside core; for Moonshot/Kimi coding quota, use
+`loushang.ai.contrib.moonshot`.
 
 ## Advanced API
 

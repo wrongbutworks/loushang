@@ -270,7 +270,7 @@ retry 只在尚未产生可见输出前是安全的。可运行示例：
 
 ## Usage 与成本
 
-最终 `AssistantMessage.usage` 是 response 级别的 `UsageObservation`。当 catalog
+最终 `AssistantMessage.usage` 是 response 级别的 `Usage`。当 catalog
 没有可信 pricing 事实时，cost 为 `None`。
 
 ```python
@@ -278,7 +278,8 @@ usage = message.usage
 print(usage.input, usage.output, usage.total_tokens, usage.cost)
 ```
 
-账号或平台额度与单次 response usage 是不同概念。可运行示例：
+账号或平台额度与单次 response usage 是不同概念；Moonshot/Kimi 额度查询在
+`loushang.ai.contrib.moonshot`。可运行示例：
 [examples/ai/10_usage.py](../../../examples/ai/10_usage.py)、
 [examples/ai/advanced/usage_online.py](../../../examples/ai/advanced/usage_online.py) 和
 [examples/ai/advanced/platform_quota.py](../../../examples/ai/advanced/platform_quota.py)。
