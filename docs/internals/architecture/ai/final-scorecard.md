@@ -94,7 +94,7 @@ Current composite score: 8.8/10.
 | Requirement | Status | Evidence or remaining work |
 |---|---|---|
 | Root `__all__` has snapshot coverage | Met | `tests/ai/test_options.py`. |
-| Full/simple semantics are clear | Met | SDK docs and option tests document `CallOptions` and `SimpleCallOptions`. |
+| Root invocation semantics are clear | Met | SDK docs and option tests document `stream` / `complete` with `CallOptions`; simple APIs are intentionally removed from the root public surface. |
 | Unsupported parameters fail instead of being silently ignored | Met | Capability, structured-output, and option tests cover public failure paths; stable `CallOptions` no longer exposes a generic `provider_options` escape hatch. |
 | `complete()` raises typed errors | Met | Streaming/API tests cover terminal error conversion and capability preflight failures as typed `AIError`/`UnsupportedCapabilityError`. |
 | Stable error code documented | Met | SDK README and migration guide document `AIError` payload fields and stable codes. |
