@@ -430,14 +430,20 @@ def test_directory_and_layered_registry_loading(tmp_path: Path) -> None:
     user_dir.mkdir()
     project_dir.mkdir()
     (user_dir / "provider.json").write_text(
-        json.dumps(_registry_raw(endpoint_adapter={"developerRole": False})),
+        json.dumps(
+            _registry_raw(
+                provider_id="custom-user",
+                endpoint_adapter={"developerRole": False},
+            )
+        ),
         encoding="utf-8",
     )
     (project_dir / "provider.json").write_text(
         json.dumps(
             _registry_raw(
+                provider_id="custom-project",
                 endpoint_adapter={"developerRole": False},
-                model_extra={"displayName": "Project Override"},
+                model_extra={"displayName": "Project Model"},
             )
         ),
         encoding="utf-8",
@@ -449,12 +455,126 @@ def test_directory_and_layered_registry_loading(tmp_path: Path) -> None:
     )
 
     assert (
-        layered.get_model("custom", "test-endpoint", "test-model").name
-        == "Project Override"
+        layered.get_model("custom-user", "test-endpoint", "test-model").id
+        == "test-model"
+    )
+    assert (
+        layered.get_model("custom-project", "test-endpoint", "test-model").name
+        == "Project Model"
     )
 
 
-def test_load_model_registry_dispatches_by_path_type(tmp_path: Path) -> None:
+def test_directory_registry_rejects_duplicate_full_model_id(tmp_path: Path) -> None:
+    registry_dir = tmp_path / "registry"
+    registry_dir.mkdir()
+    raw = _registry_raw(endpoint_adapter={"developerRole": False})
+    (registry_dir / "a.json").write_text(json.dumps(raw), encoding="utf-8")
+    (registry_dir / "b.json").write_text(json.dumps(raw), encoding="utf-8")
+
+    with pytest.raises(ValueError, match="duplicate model id"):
+        load_model_registry_from_directory(registry_dir)
+
+
+def test_layered_registry_rejects_user_duplicate_of_builtin_model(
+    tmp_path: Path,
+) -> None:
+    user_dir = tmp_path / "user"
+    user_dir.mkdir()
+    raw = _registry_raw(
+        provider_id="openai",
+        api="openai-responses",
+        endpoint_adapter={"developerRole": True},
+    )
+    providers = raw["providers"]
+    assert isinstance(providers, dict)
+    provider = providers["openai"]
+    assert isinstance(provider, dict)
+    endpoints = provider["endpoints"]
+    assert isinstance(endpoints, dict)
+    endpoints["openai-responses"] = endpoints.pop("test-endpoint")
+    endpoint = endpoints["openai-responses"]
+    assert isinstance(endpoint, dict)
+    models = endpoint["models"]
+    assert isinstance(models, dict)
+    models["gpt-5.5"] = models.pop("test-model")
+    (user_dir / "openai.json").write_text(json.dumps(raw), encoding="utf-8")
+
+    with pytest.raises(ValueError, match="duplicate model id"):
+        load_layered_model_registry(user_dir=user_dir)
+
+
+def test_layered_registry_rejects_project_duplicate_instead_of_deep_merge(
+    tmp_path: Path,
+) -> None:
+    user_dir = tmp_path / "user"
+    project_dir = tmp_path / "project"
+    user_dir.mkdir()
+    project_dir.mkdir()
+    (user_dir / "custom.json").write_text(
+        json.dumps(
+            _registry_raw(
+                endpoint_adapter={"developerRole": False},
+                model_extra={"displayName": "User Model"},
+            )
+        ),
+        encoding="utf-8",
+    )
+    (project_dir / "custom.json").write_text(
+        json.dumps(
+            _registry_raw(
+                endpoint_adapter={"developerRole": False},
+                model_extra={"displayName": "Project Override"},
+            )
+        ),
+        encoding="utf-8",
+    )
+
+    with pytest.raises(ValueError) as exc_info:
+        load_layered_model_registry(user_dir=user_dir, project_dir=project_dir)
+
+    message = str(exc_info.value)
+    assert "duplicate model id custom:test-endpoint:test-model" in message
+    assert "providers.custom.endpoints.test-endpoint.models.test-model" in message
+    assert str(user_dir) in message
+    assert str(project_dir) in message
+
+
+def test_directory_registry_error_includes_file_and_field_path(
+    tmp_path: Path,
+) -> None:
+    registry_dir = tmp_path / "registry"
+    registry_dir.mkdir()
+    raw = _registry_raw(endpoint_adapter={"developerRole": False})
+    _set_nested(
+        raw,
+        (
+            "providers",
+            "custom",
+            "endpoints",
+            "test-endpoint",
+            "models",
+            "test-model",
+            "capabilities",
+            "input",
+        ),
+        ["audio"],
+    )
+    bad_file = registry_dir / "bad.json"
+    bad_file.write_text(json.dumps(raw), encoding="utf-8")
+
+    with pytest.raises(ValueError) as exc_info:
+        load_model_registry_from_directory(registry_dir)
+
+    message = str(exc_info.value)
+    assert str(bad_file) in message
+    assert "providers.custom.endpoints.test-endpoint.models.test-model" in message
+    assert "capabilities.input" in message
+
+
+def test_load_model_registry_dispatches_by_path_type(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
     path = _write_registry(
         tmp_path,
         _registry_raw(endpoint_adapter={"developerRole": False}),
@@ -462,6 +582,7 @@ def test_load_model_registry_dispatches_by_path_type(tmp_path: Path) -> None:
     directory = tmp_path / "models"
     directory.mkdir()
     (directory / "models.json").write_text(path.read_text(encoding="utf-8"))
+    monkeypatch.setattr(Path, "home", lambda: tmp_path / "home")
 
     assert load_model_registry().list_models()
     assert (

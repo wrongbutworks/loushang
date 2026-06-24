@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import importlib.util
+from pathlib import Path
 
 import pytest
 
@@ -78,32 +79,39 @@ def test_api_provider_registry_rejects_invalid_provider_shape(
         registry.register_api_provider(provider)  # type: ignore[arg-type]
 
 
-def test_register_builtin_ai_providers_excludes_removed_adapters() -> None:
+def test_register_builtin_ai_providers_excludes_removed_adapters(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    monkeypatch.setattr(Path, "home", lambda: tmp_path)
     clear_default_model_registry()
-    model_registry = get_default_model_registry()
-    model_registry.register_endpoint(
-        "amazon-bedrock",
-        Endpoint(
-            id="bedrock-converse-stream",
-            provider="amazon-bedrock",
-            api="bedrock-converse-stream",
-            models={
-                "claude": Model(
-                    id="claude",
-                    provider="amazon-bedrock",
-                    endpoint="bedrock-converse-stream",
-                )
-            },
-        ),
-    )
-    registry = ApiProviderRegistry()
+    try:
+        model_registry = get_default_model_registry()
+        model_registry.register_endpoint(
+            "amazon-bedrock",
+            Endpoint(
+                id="bedrock-converse-stream",
+                provider="amazon-bedrock",
+                api="bedrock-converse-stream",
+                models={
+                    "claude": Model(
+                        id="claude",
+                        provider="amazon-bedrock",
+                        endpoint="bedrock-converse-stream",
+                    )
+                },
+            ),
+        )
+        registry = ApiProviderRegistry()
 
-    register_builtin_ai_providers(registry)
+        register_builtin_ai_providers(registry)
 
-    apis = {provider.api for provider in registry.list_api_providers()}
-    assert "azure-openai-responses" not in apis
-    assert "bedrock-converse-stream" not in apis
-    assert "openai-codex-responses" not in apis
+        apis = {provider.api for provider in registry.list_api_providers()}
+        assert "azure-openai-responses" not in apis
+        assert "bedrock-converse-stream" not in apis
+        assert "openai-codex-responses" not in apis
+    finally:
+        clear_default_model_registry()
 
 
 def test_azure_openai_provider_module_is_not_in_core() -> None:

@@ -12,6 +12,7 @@ from loushang.ai.model import (
     clear_default_model_registry,
     get_default_model_registry,
     load_model_registry_from_file,
+    reload_default_model_registry,
 )
 from loushang.ai.options import CallOptions
 from loushang.ai.provider.resolution import resolve_request_for_model
@@ -245,8 +246,32 @@ def test_default_registry_fails_on_bad_user_model_file(
     clear_default_model_registry()
 
     try:
-        with pytest.raises((json.JSONDecodeError, ValueError)):
+        with pytest.raises(ValueError) as exc_info:
             get_default_model_registry()
+        assert str(user_model_dir / "bad.json") in str(exc_info.value)
+    finally:
+        clear_default_model_registry()
+
+
+def test_reload_default_registry_keeps_existing_registry_when_user_file_fails(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    user_model_dir = tmp_path / ".loushang" / "models"
+    user_model_dir.mkdir(parents=True)
+    _write_custom_registry(user_model_dir / "company.json")
+    monkeypatch.setattr(Path, "home", lambda: tmp_path)
+    clear_default_model_registry()
+
+    try:
+        initial_registry = get_default_model_registry()
+        (user_model_dir / "bad.json").write_text("{", encoding="utf-8")
+
+        with pytest.raises(ValueError) as exc_info:
+            reload_default_model_registry()
+
+        assert str(user_model_dir / "bad.json") in str(exc_info.value)
+        assert get_default_model_registry() is initial_registry
     finally:
         clear_default_model_registry()
 

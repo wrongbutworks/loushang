@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+from dataclasses import replace
 from importlib.resources import files
 from math import isfinite
 from pathlib import Path
@@ -500,6 +501,20 @@ def _merged_adapter_config(
     return adapter_config_from_raw(endpoint_api, endpoint_adapter_raw)
 
 
+def _overlay_nested_raw(
+    base: dict[str, object],
+    override: dict[str, object],
+) -> dict[str, object]:
+    result = dict(base)
+    for key, value in override.items():
+        existing = result.get(key)
+        if isinstance(existing, dict) and isinstance(value, dict):
+            result[key] = _overlay_nested_raw(existing, value)
+        else:
+            result[key] = value
+    return result
+
+
 def _derive_model_defaults(
     endpoint_api: str,
     endpoint_lane: str | None,
@@ -632,10 +647,10 @@ def _build_registry(raw: dict[str, Any]) -> ModelRegistry:
                     else {}
                 )
                 model_transport = EndpointTransport.from_raw(
-                    _deep_merge_dict(endpoint.transport.to_raw(), model_transport_raw)
+                    _overlay_nested_raw(endpoint.transport.to_raw(), model_transport_raw)
                 )
                 model_routing = EndpointRouting.from_raw(
-                    _deep_merge_dict(endpoint.routing.to_raw(), model_routing_raw)
+                    _overlay_nested_raw(endpoint.routing.to_raw(), model_routing_raw)
                 )
                 defaults = _derive_model_defaults(
                     endpoint.api,
@@ -714,7 +729,17 @@ def _load_builtin_raw() -> dict[str, Any]:
 
 
 def _load_json_file(path: Path) -> dict[str, Any]:
-    return json.loads(path.read_text(encoding="utf-8"))
+    try:
+        return json.loads(path.read_text(encoding="utf-8"))
+    except json.JSONDecodeError as error:
+        raise ValueError("models registry file has invalid JSON") from error
+
+
+def _build_registry_from_file(path: Path) -> ModelRegistry:
+    try:
+        return _build_registry(_load_json_file(path))
+    except ValueError as error:
+        raise ValueError(f"models registry file {path}: {error}") from error
 
 
 def load_builtin_model_registry() -> ModelRegistry:
@@ -725,21 +750,73 @@ def load_model_registry_from_file(path: str | Path) -> ModelRegistry:
     resolved = Path(path)
     if not resolved.is_file():
         raise FileNotFoundError(str(resolved))
-    return _build_registry(_load_json_file(resolved))
+    return _build_registry_from_file(resolved)
 
 
 def load_model_registry_from_directory(path: str | Path) -> ModelRegistry:
     resolved = Path(path)
     if not resolved.is_dir():
         raise FileNotFoundError(str(resolved))
+    return _combine_model_registries(
+        [
+            (str(child), _build_registry_from_file(child))
+            for child in sorted(resolved.glob("*.json"))
+        ]
+    )
+
+
+def _combine_model_registries(
+    sources: list[tuple[str, ModelRegistry]],
+) -> ModelRegistry:
     providers: dict[str, Provider] = {}
     endpoint_auth_explicit: set[tuple[str, str]] = set()
     model_auth_explicit: set[tuple[str, str, str]] = set()
-    for child in sorted(resolved.glob("*.json")):
-        child_registry = _build_registry(_load_json_file(child))
-        providers.update(child_registry.providers)
-        endpoint_auth_explicit.update(child_registry._endpoint_auth_explicit)
-        model_auth_explicit.update(child_registry._model_auth_explicit)
+    seen_models: dict[tuple[str, str, str], tuple[str, str]] = {}
+    for source, registry in sources:
+        endpoint_auth_explicit.update(registry._endpoint_auth_explicit)
+        model_auth_explicit.update(registry._model_auth_explicit)
+        for provider in registry.list_providers():
+            existing_provider = providers.get(provider.id)
+            endpoints = dict(existing_provider.endpoints) if existing_provider else {}
+            for endpoint in provider.list_endpoints():
+                existing_endpoint = endpoints.get(endpoint.id)
+                models = dict(existing_endpoint.models) if existing_endpoint else {}
+                for model in endpoint.list_models():
+                    model_key = (provider.id, endpoint.id, model.id)
+                    field_path = (
+                        f"providers.{provider.id}.endpoints.{endpoint.id}."
+                        f"models.{model.id}"
+                    )
+                    if model_key in seen_models:
+                        first_source, first_path = seen_models[model_key]
+                        raise ValueError(
+                            "duplicate model id "
+                            f"{provider.id}:{endpoint.id}:{model.id} at "
+                            f"{source}:{field_path}; first defined at "
+                            f"{first_source}:{first_path}"
+                        )
+                    seen_models[model_key] = (source, field_path)
+                    models[model.id] = model
+                if existing_endpoint is None:
+                    endpoints[endpoint.id] = endpoint
+                else:
+                    endpoints[endpoint.id] = replace(existing_endpoint, models=models)
+            if existing_provider is None:
+                providers[provider.id] = Provider(
+                    id=provider.id,
+                    name=provider.name,
+                    website=provider.website,
+                    auth=provider.auth,
+                    endpoints=endpoints,
+                )
+            else:
+                providers[provider.id] = Provider(
+                    id=existing_provider.id,
+                    name=existing_provider.name,
+                    website=existing_provider.website,
+                    auth=existing_provider.auth,
+                    endpoints=endpoints,
+                )
     return ModelRegistry.from_providers(
         providers,
         endpoint_auth_explicit=endpoint_auth_explicit,
@@ -747,45 +824,27 @@ def load_model_registry_from_directory(path: str | Path) -> ModelRegistry:
     )
 
 
-def _deep_merge_dict(base: dict[str, Any], override: dict[str, Any]) -> dict[str, Any]:
-    result = dict(base)
-    for key, value in override.items():
-        if key in result and isinstance(result[key], dict) and isinstance(value, dict):
-            result[key] = _deep_merge_dict(result[key], value)
-        else:
-            result[key] = value
-    return result
-
-
-def _load_directory_raw(path: Path) -> dict[str, Any] | None:
-    if not path.is_dir():
-        return None
-    merged: dict[str, Any] = {}
-    for child in sorted(path.glob("*.json")):
-        merged = _deep_merge_dict(merged, _load_json_file(child))
-    return merged or None
-
-
 def load_layered_model_registry(
     *,
     user_dir: Path | None = None,
     project_dir: Path | None = None,
 ) -> ModelRegistry:
-    raw = _load_builtin_raw()
-    user_raw = _load_directory_raw(user_dir) if user_dir is not None else None
-    project_raw = _load_directory_raw(project_dir) if project_dir is not None else None
-    if user_raw is not None:
-        raw = _deep_merge_dict(raw, user_raw)
-    if project_raw is not None:
-        raw = _deep_merge_dict(raw, project_raw)
-    return _build_registry(raw)
+    sources = [("<builtin>", load_builtin_model_registry())]
+    for directory in (user_dir, project_dir):
+        if directory is not None and directory.is_dir():
+            sources.append(
+                (str(directory), load_model_registry_from_directory(directory))
+            )
+    return _combine_model_registries(sources)
 
 
 def load_model_registry(
     path: str | Path | None = None,
 ) -> ModelRegistry:
     if path is None:
-        return load_builtin_model_registry()
+        return load_layered_model_registry(
+            user_dir=Path.home() / ".loushang" / "models",
+        )
 
     resolved = Path(path)
     if resolved.is_file():
