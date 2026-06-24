@@ -33,7 +33,6 @@
   - 默认入口：`get_default_model_registry()`
 - `loader.py`
   - 从内置 `models.json` 或显式文件/目录路径装载 registry
-  - `*_with_diagnostics()` 变体保留返回结构，但当前 adapter contract 下不会生成旧字段迁移诊断
 - `models.json`
   - 内置模型事实源；完整 legacy catalog 已备份到 `backup/ai/models-legacy-full.json.gz`
 

@@ -194,7 +194,7 @@ def _native_endpoint_from_extension_dict(
             models=models_raw,
         )
     if models:
-        endpoint = replace(endpoint, models={model_id: endpoint.bind_model(model) for model_id, model in models.items()})
+        endpoint = replace(endpoint, models=models)
     return endpoint
 
 

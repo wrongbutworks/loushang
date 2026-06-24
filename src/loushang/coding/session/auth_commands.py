@@ -119,7 +119,23 @@ def _target_from_current_model(model: Model, *, registry: AiModelRegistry) -> Au
     endpoint_id = model.endpoint_id
     model_id = model.id
     model_auth = getattr(model, "auth", None)
-    if model_auth is not None and not bool(getattr(model, "_auth_inherited", False)):
+    endpoint = registry.get_endpoint(provider, endpoint_id)
+    provider_auth = _provider_auth(registry, provider)
+    provider_auth_kind = _auth_kind(provider_auth)
+    endpoint_auth = getattr(endpoint, "auth", None) if endpoint is not None else None
+    model_auth_explicit = registry.has_explicit_model_auth(
+        provider,
+        endpoint_id,
+        model_id,
+    )
+    endpoint_auth_explicit = registry.has_explicit_endpoint_auth(provider, endpoint_id)
+    if (
+        model_auth is not None
+        and (
+            model_auth_explicit
+            or (model_auth != endpoint_auth and model_auth != provider_auth)
+        )
+    ):
         return AuthLoginTarget(
             provider=provider,
             endpoint_id=endpoint_id,
@@ -127,11 +143,9 @@ def _target_from_current_model(model: Model, *, registry: AiModelRegistry) -> Au
             scope="model",
             auth_kind=_auth_kind(model_auth),
         )
-
-    endpoint = registry.get_endpoint(provider, endpoint_id)
-    provider_auth_kind = _provider_auth_kind(registry, provider)
-    endpoint_auth = getattr(endpoint, "auth", None) if endpoint is not None else None
-    if endpoint_auth is not None and not bool(getattr(endpoint, "_auth_inherited", False)):
+    if endpoint_auth is not None and (
+        endpoint_auth_explicit or endpoint_auth != provider_auth
+    ):
         return AuthLoginTarget(
             provider=provider,
             endpoint_id=endpoint_id,
@@ -151,10 +165,14 @@ def _target_from_current_model(model: Model, *, registry: AiModelRegistry) -> Au
 
 
 def _provider_auth_kind(registry: AiModelRegistry, provider: str) -> str | None:
+    return _auth_kind(_provider_auth(registry, provider))
+
+
+def _provider_auth(registry: AiModelRegistry, provider: str) -> Any:
     resolved = registry.get_provider(provider)
     if resolved is None:
         raise ValueError(f"Provider not found: {provider}")
-    return _auth_kind(getattr(resolved, "auth", None))
+    return getattr(resolved, "auth", None)
 
 
 def _endpoint_auth_kind(

@@ -10,10 +10,10 @@ from loushang.ai.model import (
     OpenAICompletionsConfig,
     OpenAIResponsesConfig,
     load_builtin_model_registry,
-    load_layered_model_registry_with_diagnostics,
+    load_layered_model_registry,
+    load_model_registry,
     load_model_registry_from_directory,
     load_model_registry_from_file,
-    load_model_registry_with_diagnostics,
     validate_model_registry_raw,
 )
 
@@ -443,14 +443,13 @@ def test_directory_and_layered_registry_loading(tmp_path: Path) -> None:
         encoding="utf-8",
     )
 
-    layered = load_layered_model_registry_with_diagnostics(
+    layered = load_layered_model_registry(
         user_dir=user_dir,
         project_dir=project_dir,
     )
 
-    assert layered.diagnostics == ()
     assert (
-        layered.registry.get_model("custom", "test-endpoint", "test-model").name
+        layered.get_model("custom", "test-endpoint", "test-model").name
         == "Project Override"
     )
 
@@ -464,18 +463,16 @@ def test_load_model_registry_dispatches_by_path_type(tmp_path: Path) -> None:
     directory.mkdir()
     (directory / "models.json").write_text(path.read_text(encoding="utf-8"))
 
-    assert load_model_registry_with_diagnostics().diagnostics == ()
+    assert load_model_registry().list_models()
     assert (
-        load_model_registry_with_diagnostics(path)
-        .registry.get_model("custom", "test-endpoint", "test-model")
-        .id
+        load_model_registry(path).get_model("custom", "test-endpoint", "test-model").id
         == "test-model"
     )
     assert (
-        load_model_registry_with_diagnostics(directory)
-        .registry.get_model("custom", "test-endpoint", "test-model")
+        load_model_registry(directory)
+        .get_model("custom", "test-endpoint", "test-model")
         .id
         == "test-model"
     )
     with pytest.raises(FileNotFoundError):
-        load_model_registry_with_diagnostics(tmp_path / "missing.json")
+        load_model_registry(tmp_path / "missing.json")

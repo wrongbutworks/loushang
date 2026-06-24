@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from collections.abc import Iterator, Mapping
-from dataclasses import InitVar, dataclass, field, replace
+from dataclasses import InitVar, dataclass, field
 from math import isfinite
 from typing import Literal, TypeAlias, cast
 
@@ -1008,14 +1008,7 @@ class Model:
     region: str | None = None
     lane: str | None = None
     preferred_endpoint: bool = False
-    _endpoint_ref: Endpoint | None = field(
-        default=None,
-        init=False,
-        compare=False,
-        repr=False,
-    )
     auth: Auth | None = None
-    _auth_inherited: bool = False
     name: str | None = None
     family: str | None = None
     alias: str | None = None
@@ -1027,40 +1020,14 @@ class Model:
     adapter: AdapterConfig | None = None
     defaults: Defaults = field(default_factory=Defaults)
     transport: EndpointTransport = field(default_factory=EndpointTransport)
-    _transport_own_raw: dict[str, object] | None = field(
-        default=None,
-        compare=False,
-        repr=False,
-    )
     routing: EndpointRouting = field(default_factory=EndpointRouting)
-    _routing_own_raw: dict[str, object] | None = field(
-        default=None,
-        compare=False,
-        repr=False,
-    )
     upstream_id: str | None = None
-    _capabilities_overrides: Capabilities | None = field(
-        default=None,
-        init=False,
-        compare=False,
-        repr=False,
-    )
 
     def __post_init__(self, provider: str | None, endpoint: str | None) -> None:
         if self.upstream_id is not None and (
             not isinstance(self.upstream_id, str) or not self.upstream_id.strip()
         ):
             raise ValueError("model upstream_id must be a non-empty string")
-        if self.capabilities != Capabilities():
-            object.__setattr__(
-                self,
-                "_capabilities_overrides",
-                self.capabilities,
-            )
-        if self._transport_own_raw is None:
-            object.__setattr__(self, "_transport_own_raw", self.transport.to_raw())
-        if self._routing_own_raw is None:
-            object.__setattr__(self, "_routing_own_raw", self.routing.to_raw())
         if not self._endpoint_key and provider is not None and endpoint is not None:
             object.__setattr__(
                 self,
@@ -1128,62 +1095,6 @@ class Model:
     def supports_image_output(self) -> bool:
         return self.capabilities.supports_image_output
 
-    @property
-    def contract_capabilities(self) -> Capabilities | None:
-        return self._capabilities_overrides
-
-    def with_endpoint(self, endpoint: "Endpoint") -> "Model":
-        inherits_auth = self.auth is None or self._auth_inherited
-        auth = endpoint.auth if inherits_auth else self.auth
-        model_transport_raw = self.transport.to_raw()
-        model_transport_own_raw = (
-            _copy_raw_mapping(self._transport_own_raw)
-            if self._transport_own_raw is not None
-            else None
-        )
-        if model_transport_own_raw is not None:
-            model_transport_raw = model_transport_own_raw
-        model_routing_raw = self.routing.to_raw()
-        model_routing_own_raw = (
-            _copy_raw_mapping(self._routing_own_raw)
-            if self._routing_own_raw is not None
-            else None
-        )
-        if model_routing_own_raw is not None:
-            model_routing_raw = model_routing_own_raw
-        transport = EndpointTransport.from_raw(
-            _deep_merge_raw_mapping(endpoint.transport.to_raw(), model_transport_raw)
-        )
-        routing = EndpointRouting.from_raw(
-            _deep_merge_raw_mapping(endpoint.routing.to_raw(), model_routing_raw)
-        )
-        model = replace(
-            self,
-            _endpoint_key=endpoint.endpoint_key,
-            api=endpoint.api,
-            base_url=endpoint.base_url,
-            base_url_env=endpoint.base_url_env,
-            region=endpoint.region,
-            lane=endpoint.lane,
-            preferred_endpoint=endpoint.preferred,
-            auth=auth,
-            _auth_inherited=inherits_auth and auth is not None,
-            adapter=merge_adapter_config(endpoint.adapter, self.adapter),
-            defaults=endpoint.defaults.merged(self.defaults),
-            upstream_id=self.upstream_id,
-            transport=transport,
-            _transport_own_raw=model_transport_own_raw,
-            routing=routing,
-            _routing_own_raw=model_routing_own_raw,
-        )
-        object.__setattr__(
-            model,
-            "_capabilities_overrides",
-            self.contract_capabilities,
-        )
-        object.__setattr__(model, "_endpoint_ref", endpoint)
-        return model
-
     async def stream(self, context, options=None, *, registry=None):
         from loushang.ai.api.streaming import stream
 
@@ -1219,22 +1130,14 @@ class Model:
             raw["adapter"] = self.adapter.to_raw()
         if self.pricing is not None:
             raw["pricing"] = self.pricing.to_raw()
-        if self.auth is not None and not self._auth_inherited:
+        if self.auth is not None:
             raw["auth"] = self.auth.to_raw()
         if self.upstream_id is not None:
             raw["upstreamId"] = self.upstream_id
-        transport_raw = (
-            _copy_raw_mapping(self._transport_own_raw)
-            if self._transport_own_raw is not None
-            else self.transport.to_raw()
-        )
+        transport_raw = self.transport.to_raw()
         if transport_raw:
             raw["transport"] = transport_raw
-        routing_raw = (
-            _copy_raw_mapping(self._routing_own_raw)
-            if self._routing_own_raw is not None
-            else self.routing.to_raw()
-        )
+        routing_raw = self.routing.to_raw()
         if routing_raw:
             raw["routing"] = routing_raw
         return {key: value for key, value in raw.items() if value is not None}
@@ -1254,34 +1157,11 @@ class Endpoint:
     preferred: bool = False
     docs: str | None = None
     auth: Auth | None = None
-    _auth_inherited: bool = False
     defaults: Defaults = field(default_factory=Defaults)
     models: dict[str, Model] = field(default_factory=dict)
     adapter: AdapterConfig | None = None
     transport: EndpointTransport = field(default_factory=EndpointTransport)
-    _transport_explicit: bool = field(default=True, compare=False, repr=False)
-    _transport_raw: dict[str, object] | None = field(
-        default=None,
-        compare=False,
-        repr=False,
-    )
-    _transport_raw_source: EndpointTransport | None = field(
-        default=None,
-        compare=False,
-        repr=False,
-    )
     routing: EndpointRouting = field(default_factory=EndpointRouting)
-    _routing_explicit: bool = field(default=True, compare=False, repr=False)
-    _routing_raw: dict[str, object] | None = field(
-        default=None,
-        compare=False,
-        repr=False,
-    )
-    _routing_raw_source: EndpointRouting | None = field(
-        default=None,
-        compare=False,
-        repr=False,
-    )
 
     def __post_init__(self, provider: str | None) -> None:
         if self._provider_key:
@@ -1303,9 +1183,6 @@ class Endpoint:
 
     def list_models(self) -> list[Model]:
         return sorted(self.models.values(), key=lambda item: item.id)
-
-    def bind_model(self, model: Model) -> Model:
-        return model.with_endpoint(self)
 
     def to_raw(self) -> dict[str, object]:
         raw: dict[str, object] = {
@@ -1329,28 +1206,16 @@ class Endpoint:
             raw["preferred"] = self.preferred
         if self.docs is not None:
             raw["docs"] = self.docs
-        if self.auth is not None and not self._auth_inherited:
+        if self.auth is not None:
             raw["auth"] = self.auth.to_raw()
         if self.adapter is not None:
             raw["adapter"] = self.adapter.to_raw()
-        if self._transport_explicit:
-            transport_raw = (
-                _copy_raw_mapping(self._transport_raw)
-                if self._transport_raw is not None
-                and self._transport_raw_source == self.transport
-                else self.transport.to_raw()
-            )
-            if transport_raw:
-                raw["transport"] = transport_raw
-        if self._routing_explicit:
-            routing_raw = (
-                _copy_raw_mapping(self._routing_raw)
-                if self._routing_raw is not None
-                and self._routing_raw_source == self.routing
-                else self.routing.to_raw()
-            )
-            if routing_raw:
-                raw["routing"] = routing_raw
+        transport_raw = self.transport.to_raw()
+        if transport_raw:
+            raw["transport"] = transport_raw
+        routing_raw = self.routing.to_raw()
+        if routing_raw:
+            raw["routing"] = routing_raw
         return raw
 
 

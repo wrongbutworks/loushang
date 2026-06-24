@@ -196,7 +196,7 @@ def resolve_request_for_model(
     if endpoint is not None:
         endpoint_model = endpoint.get_model(model.id)
         if endpoint_model is not None:
-            request_model = endpoint.bind_model(endpoint_model)
+            request_model = endpoint_model
     use_model_overrides = _should_apply_model_request_overrides(
         model,
         endpoint,
@@ -341,34 +341,40 @@ def _build_resolved_endpoint(
     if request_model is not None:
         transport_raw = _deep_merge_raw_mapping(
             transport_raw,
-            _model_transport_raw(request_model, own_only=True),
+            _model_transport_raw(request_model),
         )
     if override_model is not None:
         transport_raw = _deep_merge_raw_mapping(
             transport_raw,
-            _model_transport_raw(override_model, own_only=True),
+            _model_transport_raw(override_model),
         )
     routing_raw = endpoint.routing.to_raw()
     if request_model is not None:
         routing_raw = _deep_merge_raw_mapping(
             routing_raw,
-            _model_routing_raw(request_model, own_only=True),
+            _model_routing_raw(request_model),
         )
     if override_model is not None:
         routing_raw = _deep_merge_raw_mapping(
             routing_raw,
-            _model_routing_raw(override_model, own_only=True),
+            _model_routing_raw(override_model),
         )
     upstream_model_id = _model_upstream_id(request_model or model)
     if override_model is not None:
         upstream_model_id = _model_upstream_id(override_model) or upstream_model_id
-    adapter_config = endpoint.adapter or default_adapter_config(endpoint.api)
+    endpoint_adapter_config = endpoint.adapter or default_adapter_config(endpoint.api)
+    adapter_config = endpoint_adapter_config
     request_adapter = getattr(request_model or model, "adapter", None)
     if request_adapter is not None:
-        adapter_config = merge_adapter_config(
-            adapter_config if isinstance(adapter_config, AdapterConfig) else None,
-            request_adapter,
-        )
+        if request_model is not None and has_bound_endpoint_context(request_model):
+            adapter_config = request_adapter
+        else:
+            adapter_config = merge_adapter_config(
+                endpoint_adapter_config
+                if isinstance(endpoint_adapter_config, AdapterConfig)
+                else None,
+                request_adapter,
+            )
     if (
         override_model is not None
         and getattr(override_model, "adapter", None) is not None
@@ -396,19 +402,16 @@ def _build_resolved_endpoint(
 
 
 def _model_capability_overrides(model: Model) -> Capabilities | None:
-    capabilities = getattr(model, "contract_capabilities", None)
-    if isinstance(capabilities, Capabilities):
-        return capabilities
     fallback = getattr(model, "capabilities", Capabilities())
     return fallback if fallback != Capabilities() else None
 
 
 def _model_transport(model: Model) -> EndpointTransport:
-    return EndpointTransport.from_raw(_model_transport_raw(model, own_only=False))
+    return EndpointTransport.from_raw(_model_transport_raw(model))
 
 
 def _model_routing(model: Model) -> EndpointRouting:
-    return EndpointRouting.from_raw(_model_routing_raw(model, own_only=False))
+    return EndpointRouting.from_raw(_model_routing_raw(model))
 
 
 def _model_upstream_id(model: Model) -> str | None:
@@ -418,22 +421,12 @@ def _model_upstream_id(model: Model) -> str | None:
     return None
 
 
-def _model_transport_raw(model: Model, *, own_only: bool) -> dict[str, object]:
-    own_raw = getattr(model, "_transport_own_raw", None)
-    if own_only and isinstance(own_raw, Mapping):
-        return dict(own_raw)
-    if own_only:
-        return {}
+def _model_transport_raw(model: Model) -> dict[str, object]:
     transport = getattr(model, "transport", None)
     return transport.to_raw() if isinstance(transport, EndpointTransport) else {}
 
 
-def _model_routing_raw(model: Model, *, own_only: bool) -> dict[str, object]:
-    own_raw = getattr(model, "_routing_own_raw", None)
-    if own_only and isinstance(own_raw, Mapping):
-        return dict(own_raw)
-    if own_only:
-        return {}
+def _model_routing_raw(model: Model) -> dict[str, object]:
     routing = getattr(model, "routing", None)
     return routing.to_raw() if isinstance(routing, EndpointRouting) else {}
 

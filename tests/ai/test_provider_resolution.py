@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 
 import pytest
 
@@ -234,14 +234,26 @@ def test_bound_model_endpoint_snapshot_preserves_adapter_transport_and_routing()
             {"requestOverrides": {"openrouter": {"order": ["x"]}}}
         ),
     )
-    bound = endpoint.bind_model(
-        Model(
-            id="m",
-            provider="custom",
-            endpoint="openai-completions",
-            capabilities=Capabilities(stream=True),
-        )
-    )
+    bound = ModelRegistry.from_providers(
+        {
+            "custom": Provider(
+                id="custom",
+                endpoints={
+                    endpoint.id: replace(
+                        endpoint,
+                        models={
+                            "m": Model(
+                                id="m",
+                                provider="custom",
+                                endpoint="openai-completions",
+                                capabilities=Capabilities(stream=True),
+                            )
+                        },
+                    )
+                },
+            )
+        }
+    ).get_model("custom", "openai-completions", "m")
 
     resolved_endpoint = resolve_endpoint_for_model(bound, registry=ModelRegistry())
     resolved = resolve_request_for_model(

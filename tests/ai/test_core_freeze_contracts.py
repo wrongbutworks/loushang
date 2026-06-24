@@ -342,10 +342,6 @@ def test_complete_and_stream_pass_distinct_provider_modes(tmp_path: Path) -> Non
     asyncio.run(run())
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason="AIF-005 makes Model carry call info without private endpoint refs",
-)
 def test_model_carries_call_information_without_registry_lookup_state(
     tmp_path: Path,
 ) -> None:

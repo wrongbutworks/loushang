@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import inspect
+from dataclasses import replace
 
 import pytest
 
@@ -11,6 +12,7 @@ from loushang.ai.model import (
     EndpointRouting,
     EndpointTransport,
     Model,
+    ModelRegistry,
     OpenAICompletionsConfig,
     OpenAIResponsesConfig,
     Pricing,
@@ -163,7 +165,7 @@ def test_anthropic_messages_adapter_rejects_invalid_values() -> None:
         AnthropicMessagesConfig.from_raw({"developerRole": False})
 
 
-def test_model_adapter_override_merges_with_endpoint_adapter() -> None:
+def test_model_adapter_override_merges_endpoint_adapter() -> None:
     endpoint = Endpoint(
         id="openai-completions",
         provider="custom",
@@ -180,7 +182,14 @@ def test_model_adapter_override_merges_with_endpoint_adapter() -> None:
         adapter=OpenAICompletionsConfig(reasoning_format="moonshot"),
     )
 
-    bound = endpoint.bind_model(model)
+    bound = ModelRegistry.from_providers(
+        {
+            "custom": Provider(
+                id="custom",
+                endpoints={endpoint.id: replace(endpoint, models={model.id: model})},
+            )
+        }
+    ).get_model("custom", "openai-completions", model.id)
 
     assert isinstance(bound.adapter, OpenAICompletionsConfig)
     assert bound.adapter.developer_role is False
@@ -201,7 +210,14 @@ def test_model_adapter_raw_override_can_restore_default_value() -> None:
         adapter=OpenAICompletionsConfig.from_raw({"developerRole": True}),
     )
 
-    bound = endpoint.bind_model(model)
+    bound = ModelRegistry.from_providers(
+        {
+            "custom": Provider(
+                id="custom",
+                endpoints={endpoint.id: replace(endpoint, models={model.id: model})},
+            )
+        }
+    ).get_model("custom", "openai-completions", model.id)
 
     assert isinstance(bound.adapter, OpenAICompletionsConfig)
     assert bound.adapter.developer_role is True

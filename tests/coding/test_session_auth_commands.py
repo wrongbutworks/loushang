@@ -45,9 +45,6 @@ def _registry(
 def test_current_model_login_uses_provider_scope_for_provider_auth() -> None:
     auth = Auth(kind="oauth")
     registry, model = _registry(provider_auth=auth, endpoint_auth=auth)
-    endpoint = registry.get_endpoint("demo", "responses")
-    assert endpoint is not None
-    object.__setattr__(endpoint, "_auth_inherited", True)
 
     target = resolve_auth_login_target(None, current_model=model, registry=registry)
 

@@ -1,11 +1,10 @@
 from __future__ import annotations
 
 import json
-from dataclasses import dataclass
 from importlib.resources import files
 from math import isfinite
 from pathlib import Path
-from typing import Any, Literal
+from typing import Any
 
 from loushang.ai.model.domain import (
     ALLOWED_MODALITIES,
@@ -98,22 +97,6 @@ ALLOWED_AUTH_KEYS = frozenset(
 ALLOWED_TRANSPORT_KEYS = frozenset({"kind", "stream", "fallback", "timeout"})
 ALLOWED_ROUTING_KEYS = frozenset({"requestOverrides"})
 REMOVED_CATALOG_FIELDS = frozenset({"compat", "protocol", "dialect"})
-
-
-@dataclass(frozen=True)
-class ModelRegistryLoadDiagnostic:
-    code: str
-    path: str
-    key: str
-    target: str
-    message: str
-    level: Literal["warning"] = "warning"
-
-
-@dataclass(frozen=True)
-class ModelRegistryLoadResult:
-    registry: ModelRegistry
-    diagnostics: tuple[ModelRegistryLoadDiagnostic, ...] = ()
 
 
 def validate_model_registry_raw(raw: dict[str, Any]) -> None:
@@ -569,9 +552,11 @@ def _derive_endpoint_id(
     return api
 
 
-def _build_registry_result(raw: dict[str, Any]) -> ModelRegistryLoadResult:
+def _build_registry(raw: dict[str, Any]) -> ModelRegistry:
     validate_model_registry_raw(raw)
     providers: dict[str, Provider] = {}
+    endpoint_auth_explicit: set[tuple[str, str]] = set()
+    model_auth_explicit: set[tuple[str, str, str]] = set()
     for provider_id, provider_raw in raw.get("providers", {}).items():
         provider_auth_raw = _auth_raw(provider_raw)
         provider_auth = Auth.from_raw(provider_auth_raw)
@@ -585,6 +570,8 @@ def _build_registry_result(raw: dict[str, Any]) -> ModelRegistryLoadResult:
                 endpoint_raw.get("region"),
             )
             endpoint_specific_auth_raw = _auth_raw(endpoint_raw)
+            if endpoint_specific_auth_raw is not None:
+                endpoint_auth_explicit.add((provider_id, endpoint_id))
             endpoint_auth_raw = _merge_auth_raw(
                 provider_auth_raw,
                 endpoint_specific_auth_raw,
@@ -616,34 +603,18 @@ def _build_registry_result(raw: dict[str, Any]) -> ModelRegistryLoadResult:
                 preferred=bool(endpoint_raw.get("preferred", False)),
                 docs=endpoint_raw.get("docs"),
                 auth=endpoint_auth,
-                _auth_inherited=endpoint_specific_auth_raw is None
-                and endpoint_auth is not None,
                 adapter=endpoint_adapter,
                 defaults=Defaults.from_raw(endpoint_raw.get("defaults")),
                 transport=endpoint_transport,
-                _transport_explicit=isinstance(endpoint_transport_raw, dict),
-                _transport_raw=dict(endpoint_transport_raw)
-                if isinstance(endpoint_transport_raw, dict)
-                else None,
-                _transport_raw_source=endpoint_transport
-                if isinstance(endpoint_transport_raw, dict)
-                else None,
                 routing=endpoint_routing,
-                _routing_explicit=isinstance(endpoint_routing_raw, dict),
-                _routing_raw=dict(endpoint_routing_raw)
-                if isinstance(endpoint_routing_raw, dict)
-                else None,
-                _routing_raw_source=endpoint_routing
-                if isinstance(endpoint_routing_raw, dict)
-                else None,
             )
             models: dict[str, Model] = {}
             for model_id, model_raw in endpoint_raw.get("models", {}).items():
                 model_auth_raw = _auth_raw(model_raw)
-                model_auth = (
-                    Auth.from_raw(_merge_auth_raw(endpoint_auth_raw, model_auth_raw))
-                    if model_auth_raw is not None
-                    else None
+                if model_auth_raw is not None:
+                    model_auth_explicit.add((provider_id, endpoint.id, model_id))
+                model_auth = Auth.from_raw(
+                    _merge_auth_raw(endpoint_auth_raw, model_auth_raw)
                 )
                 model_adapter = _merged_adapter_config(
                     endpoint.api,
@@ -660,6 +631,12 @@ def _build_registry_result(raw: dict[str, Any]) -> ModelRegistryLoadResult:
                     if isinstance(model_raw.get("routing"), dict)
                     else {}
                 )
+                model_transport = EndpointTransport.from_raw(
+                    _deep_merge_dict(endpoint.transport.to_raw(), model_transport_raw)
+                )
+                model_routing = EndpointRouting.from_raw(
+                    _deep_merge_dict(endpoint.routing.to_raw(), model_routing_raw)
+                )
                 defaults = _derive_model_defaults(
                     endpoint.api,
                     endpoint.lane,
@@ -672,6 +649,12 @@ def _build_registry_result(raw: dict[str, Any]) -> ModelRegistryLoadResult:
                     name=model_raw.get("displayName"),
                     provider=provider_id,
                     endpoint=endpoint.id,
+                    api=endpoint.api,
+                    base_url=endpoint.base_url,
+                    base_url_env=endpoint.base_url_env,
+                    region=endpoint.region,
+                    lane=endpoint.lane,
+                    preferred_endpoint=endpoint.preferred,
                     family=model_raw.get("family"),
                     alias=model_raw.get("alias"),
                     upstream_id=model_raw.get("upstreamId"),
@@ -683,12 +666,10 @@ def _build_registry_result(raw: dict[str, Any]) -> ModelRegistryLoadResult:
                     pricing=Pricing.from_raw(model_raw.get("pricing")),
                     adapter=model_adapter,
                     defaults=defaults,
-                    transport=EndpointTransport.from_raw(model_transport_raw),
-                    _transport_own_raw=dict(model_transport_raw),
-                    routing=EndpointRouting.from_raw(model_routing_raw),
-                    _routing_own_raw=dict(model_routing_raw),
+                    transport=model_transport,
+                    routing=model_routing,
                 )
-                models[model_id] = endpoint.bind_model(model)
+                models[model_id] = model
             endpoints[endpoint.id] = Endpoint(
                 id=endpoint.id,
                 provider=provider_id,
@@ -701,18 +682,11 @@ def _build_registry_result(raw: dict[str, Any]) -> ModelRegistryLoadResult:
                 preferred=endpoint.preferred,
                 docs=endpoint.docs,
                 auth=endpoint.auth,
-                _auth_inherited=endpoint._auth_inherited,
                 defaults=endpoint.defaults,
                 models=models,
                 adapter=endpoint.adapter,
                 transport=endpoint.transport,
-                _transport_explicit=endpoint._transport_explicit,
-                _transport_raw=endpoint._transport_raw,
-                _transport_raw_source=endpoint._transport_raw_source,
                 routing=endpoint.routing,
-                _routing_explicit=endpoint._routing_explicit,
-                _routing_raw=endpoint._routing_raw,
-                _routing_raw_source=endpoint._routing_raw_source,
             )
         providers[provider_id] = Provider(
             id=provider_id,
@@ -721,11 +695,11 @@ def _build_registry_result(raw: dict[str, Any]) -> ModelRegistryLoadResult:
             auth=provider_auth,
             endpoints=endpoints,
         )
-    return ModelRegistryLoadResult(registry=ModelRegistry.from_providers(providers))
-
-
-def _build_registry(raw: dict[str, Any]) -> ModelRegistry:
-    return _build_registry_result(raw).registry
+    return ModelRegistry.from_providers(
+        providers,
+        endpoint_auth_explicit=endpoint_auth_explicit,
+        model_auth_explicit=model_auth_explicit,
+    )
 
 
 _BUILTIN_CATALOG_RESOURCE = "models.json"
@@ -747,10 +721,6 @@ def load_builtin_model_registry() -> ModelRegistry:
     return _build_registry(_load_builtin_raw())
 
 
-def load_builtin_model_registry_with_diagnostics() -> ModelRegistryLoadResult:
-    return _build_registry_result(_load_builtin_raw())
-
-
 def load_model_registry_from_file(path: str | Path) -> ModelRegistry:
     resolved = Path(path)
     if not resolved.is_file():
@@ -758,30 +728,23 @@ def load_model_registry_from_file(path: str | Path) -> ModelRegistry:
     return _build_registry(_load_json_file(resolved))
 
 
-def load_model_registry_from_file_with_diagnostics(
-    path: str | Path,
-) -> ModelRegistryLoadResult:
-    resolved = Path(path)
-    if not resolved.is_file():
-        raise FileNotFoundError(str(resolved))
-    return _build_registry_result(_load_json_file(resolved))
-
-
 def load_model_registry_from_directory(path: str | Path) -> ModelRegistry:
-    return load_model_registry_from_directory_with_diagnostics(path).registry
-
-
-def load_model_registry_from_directory_with_diagnostics(
-    path: str | Path,
-) -> ModelRegistryLoadResult:
     resolved = Path(path)
     if not resolved.is_dir():
         raise FileNotFoundError(str(resolved))
     providers: dict[str, Provider] = {}
+    endpoint_auth_explicit: set[tuple[str, str]] = set()
+    model_auth_explicit: set[tuple[str, str, str]] = set()
     for child in sorted(resolved.glob("*.json")):
-        child_result = _build_registry_result(_load_json_file(child))
-        providers.update(child_result.registry.providers)
-    return ModelRegistryLoadResult(registry=ModelRegistry.from_providers(providers))
+        child_registry = _build_registry(_load_json_file(child))
+        providers.update(child_registry.providers)
+        endpoint_auth_explicit.update(child_registry._endpoint_auth_explicit)
+        model_auth_explicit.update(child_registry._model_auth_explicit)
+    return ModelRegistry.from_providers(
+        providers,
+        endpoint_auth_explicit=endpoint_auth_explicit,
+        model_auth_explicit=model_auth_explicit,
+    )
 
 
 def _deep_merge_dict(base: dict[str, Any], override: dict[str, Any]) -> dict[str, Any]:
@@ -808,17 +771,6 @@ def load_layered_model_registry(
     user_dir: Path | None = None,
     project_dir: Path | None = None,
 ) -> ModelRegistry:
-    return load_layered_model_registry_with_diagnostics(
-        user_dir=user_dir,
-        project_dir=project_dir,
-    ).registry
-
-
-def load_layered_model_registry_with_diagnostics(
-    *,
-    user_dir: Path | None = None,
-    project_dir: Path | None = None,
-) -> ModelRegistryLoadResult:
     raw = _load_builtin_raw()
     user_raw = _load_directory_raw(user_dir) if user_dir is not None else None
     project_raw = _load_directory_raw(project_dir) if project_dir is not None else None
@@ -826,24 +778,18 @@ def load_layered_model_registry_with_diagnostics(
         raw = _deep_merge_dict(raw, user_raw)
     if project_raw is not None:
         raw = _deep_merge_dict(raw, project_raw)
-    return _build_registry_result(raw)
+    return _build_registry(raw)
 
 
 def load_model_registry(
     path: str | Path | None = None,
 ) -> ModelRegistry:
-    return load_model_registry_with_diagnostics(path).registry
-
-
-def load_model_registry_with_diagnostics(
-    path: str | Path | None = None,
-) -> ModelRegistryLoadResult:
     if path is None:
-        return load_builtin_model_registry_with_diagnostics()
+        return load_builtin_model_registry()
 
     resolved = Path(path)
     if resolved.is_file():
-        return load_model_registry_from_file_with_diagnostics(resolved)
+        return load_model_registry_from_file(resolved)
     if resolved.is_dir():
-        return load_model_registry_from_directory_with_diagnostics(resolved)
+        return load_model_registry_from_directory(resolved)
     raise FileNotFoundError(str(resolved))

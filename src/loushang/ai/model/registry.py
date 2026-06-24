@@ -1,14 +1,17 @@
 from __future__ import annotations
 
+from collections.abc import Mapping
 from dataclasses import replace
 
 from loushang.ai.model.domain import (
+    Auth,
     Defaults,
     Endpoint,
     EndpointRouting,
     EndpointTransport,
     Model,
     Provider,
+    merge_adapter_config,
 )
 
 # 全局
@@ -59,26 +62,11 @@ def resolve_model_endpoint(
 
 
 def has_bound_endpoint_context(model: Model) -> bool:
-    if not getattr(model, "api", None):
-        return False
-    if isinstance(getattr(model, "_endpoint_ref", None), Endpoint):
-        return True
-    if (
-        getattr(model, "base_url", None)
-        or getattr(model, "base_url_env", None)
-        or getattr(model, "region", None)
-        or getattr(model, "lane", None)
-        or getattr(model, "preferred_endpoint", False)
-        or getattr(model, "_auth_inherited", False)
-    ):
-        return True
-    return False
+    model_api = getattr(model, "api", None)
+    return isinstance(model_api, str) and bool(model_api)
 
 
 def _endpoint_snapshot_from_model(model: Model) -> Endpoint:
-    endpoint = getattr(model, "_endpoint_ref", None)
-    if isinstance(endpoint, Endpoint):
-        return endpoint
     defaults = getattr(model, "defaults", Defaults())
     if not isinstance(defaults, Defaults):
         defaults = Defaults.from_raw(defaults)
@@ -98,6 +86,88 @@ def _endpoint_snapshot_from_model(model: Model) -> Endpoint:
         routing=getattr(model, "routing", EndpointRouting()),
         models={model.id: model},
     )
+
+
+def _normalize_providers(providers: dict[str, Provider]) -> dict[str, Provider]:
+    return {
+        provider_id: _normalize_provider(provider_id, provider)
+        for provider_id, provider in providers.items()
+    }
+
+
+def _normalize_provider(provider_id: str, provider: Provider) -> Provider:
+    provider_auth = getattr(provider, "auth", None)
+    endpoints = {
+        endpoint_id: _normalize_endpoint(
+            provider_id,
+            endpoint,
+            provider_auth=provider_auth,
+        )
+        for endpoint_id, endpoint in provider.endpoints.items()
+    }
+    return replace(provider, id=provider_id, endpoints=endpoints)
+
+
+def _normalize_endpoint(
+    provider_id: str,
+    endpoint: Endpoint,
+    *,
+    provider_auth: Auth | None = None,
+) -> Endpoint:
+    endpoint_auth = endpoint.auth if endpoint.auth is not None else provider_auth
+    normalized_endpoint = replace(
+        endpoint,
+        _provider_key=provider_id,
+        auth=endpoint_auth,
+    )
+    if not normalized_endpoint.models:
+        return normalized_endpoint
+    return replace(
+        normalized_endpoint,
+        models={
+            model_id: _model_with_effective_context(model, normalized_endpoint)
+            for model_id, model in normalized_endpoint.models.items()
+        },
+    )
+
+
+def _model_with_effective_context(model: Model, endpoint: Endpoint) -> Model:
+    transport = EndpointTransport.from_raw(
+        _deep_merge_raw_mapping(endpoint.transport.to_raw(), model.transport.to_raw())
+    )
+    routing = EndpointRouting.from_raw(
+        _deep_merge_raw_mapping(endpoint.routing.to_raw(), model.routing.to_raw())
+    )
+    adapter = merge_adapter_config(endpoint.adapter, model.adapter)
+    return replace(
+        model,
+        _endpoint_key=endpoint.endpoint_key,
+        api=endpoint.api,
+        base_url=endpoint.base_url,
+        base_url_env=endpoint.base_url_env,
+        region=endpoint.region,
+        lane=endpoint.lane,
+        preferred_endpoint=endpoint.preferred,
+        auth=model.auth if model.auth is not None else endpoint.auth,
+        adapter=adapter,
+        defaults=endpoint.defaults.merged(model.defaults),
+        transport=transport,
+        routing=routing,
+    )
+
+
+def _deep_merge_raw_mapping(
+    base: Mapping[str, object],
+    override: Mapping[str, object],
+) -> dict[str, object]:
+    merged = dict(base)
+    for key, value in override.items():
+        current = merged.get(key)
+        if isinstance(current, Mapping) and isinstance(value, Mapping):
+            merged[key] = _deep_merge_raw_mapping(current, value)
+            continue
+        merged[key] = value
+    return merged
 
 
 def resolve_model_api(
@@ -213,10 +283,18 @@ def _resolve_candidates(
 
 
 class ModelRegistry:
-    def __init__(self, providers: dict[str, Provider] | None = None) -> None:
-        self._providers = dict(providers or {})
+    def __init__(
+        self,
+        providers: dict[str, Provider] | None = None,
+        *,
+        endpoint_auth_explicit: set[tuple[str, str]] | None = None,
+        model_auth_explicit: set[tuple[str, str, str]] | None = None,
+    ) -> None:
+        self._providers = _normalize_providers(dict(providers or {}))
         self._endpoints: dict[tuple[str, str], Endpoint] = {}
         self._models: dict[tuple[str, str, str], Model] = {}
+        self._endpoint_auth_explicit = set(endpoint_auth_explicit or ())
+        self._model_auth_explicit = set(model_auth_explicit or ())
         self._rebuild_index()
 
     @property
@@ -224,11 +302,21 @@ class ModelRegistry:
         return dict(self._providers)
 
     @classmethod
-    def from_providers(cls, providers: dict[str, Provider]) -> "ModelRegistry":
-        return cls(providers=providers)
+    def from_providers(
+        cls,
+        providers: dict[str, Provider],
+        *,
+        endpoint_auth_explicit: set[tuple[str, str]] | None = None,
+        model_auth_explicit: set[tuple[str, str, str]] | None = None,
+    ) -> "ModelRegistry":
+        return cls(
+            providers=providers,
+            endpoint_auth_explicit=endpoint_auth_explicit,
+            model_auth_explicit=model_auth_explicit,
+        )
 
     def replace_providers(self, providers: dict[str, Provider]) -> None:
-        self._providers = dict(providers)
+        self._providers = _normalize_providers(dict(providers))
         self._rebuild_index()
 
     def register_provider(self, provider: Provider) -> None:
@@ -246,18 +334,8 @@ class ModelRegistry:
         if provider is None:
             provider = Provider(id=provider_id)
 
-        normalized_endpoint = replace(endpoint, _provider_key=provider_id)
-        if normalized_endpoint.models:
-            normalized_endpoint = replace(
-                normalized_endpoint,
-                models={
-                    model_id: normalized_endpoint.bind_model(model)
-                    for model_id, model in normalized_endpoint.models.items()
-                },
-            )
-
         endpoints = dict(provider.endpoints)
-        endpoints[normalized_endpoint.id] = normalized_endpoint
+        endpoints[endpoint.id] = endpoint
         self.register_provider(replace(provider, endpoints=endpoints))
 
     def register_model(self, model: Model) -> None:
@@ -274,7 +352,7 @@ class ModelRegistry:
             )
 
         models = dict(endpoint.models)
-        models[model.id] = endpoint.bind_model(model)
+        models[model.id] = model
         self.register_endpoint(
             model.provider_id,
             replace(
@@ -339,6 +417,17 @@ class ModelRegistry:
         provider_id, endpoint_id, model_id = args
         return self._models.get((provider_id, endpoint_id, model_id))
 
+    def has_explicit_endpoint_auth(self, provider_id: str, endpoint_id: str) -> bool:
+        return (provider_id, endpoint_id) in self._endpoint_auth_explicit
+
+    def has_explicit_model_auth(
+        self,
+        provider_id: str,
+        endpoint_id: str,
+        model_id: str,
+    ) -> bool:
+        return (provider_id, endpoint_id, model_id) in self._model_auth_explicit
+
     def list_models(
         self,
         *,
@@ -365,5 +454,4 @@ class ModelRegistry:
             for endpoint in provider.endpoints.values():
                 self._endpoints[(provider.id, endpoint.id)] = endpoint
                 for model in endpoint.models.values():
-                    bound_model = endpoint.bind_model(model)
-                    self._models[(provider.id, endpoint.id, model.id)] = bound_model
+                    self._models[(provider.id, endpoint.id, model.id)] = model
