@@ -757,12 +757,22 @@ def load_model_registry_from_directory(path: str | Path) -> ModelRegistry:
     resolved = Path(path)
     if not resolved.is_dir():
         raise FileNotFoundError(str(resolved))
-    return _combine_model_registries(
-        [
-            (str(child), _build_registry_from_file(child))
-            for child in sorted(resolved.glob("*.json"))
-        ]
-    )
+    return _combine_model_registries(_model_registry_sources_from_directory(resolved))
+
+
+def _model_registry_sources_from_directory(path: Path) -> list[tuple[str, ModelRegistry]]:
+    return [
+        (str(child), _build_registry_from_file(child))
+        for child in sorted(path.glob("*.json"))
+    ]
+
+
+def _provider_metadata(provider: Provider) -> Provider:
+    return replace(provider, endpoints={})
+
+
+def _endpoint_metadata(endpoint: Endpoint) -> Endpoint:
+    return replace(endpoint, models={})
 
 
 def _combine_model_registries(
@@ -771,16 +781,16 @@ def _combine_model_registries(
     providers: dict[str, Provider] = {}
     endpoint_auth_explicit: set[tuple[str, str]] = set()
     model_auth_explicit: set[tuple[str, str, str]] = set()
+    seen_providers: dict[str, tuple[str, str]] = {}
+    seen_endpoints: dict[tuple[str, str], tuple[str, str]] = {}
     seen_models: dict[tuple[str, str, str], tuple[str, str]] = {}
     for source, registry in sources:
         endpoint_auth_explicit.update(registry._endpoint_auth_explicit)
         model_auth_explicit.update(registry._model_auth_explicit)
         for provider in registry.list_providers():
+            provider_path = f"providers.{provider.id}"
             existing_provider = providers.get(provider.id)
-            endpoints = dict(existing_provider.endpoints) if existing_provider else {}
             for endpoint in provider.list_endpoints():
-                existing_endpoint = endpoints.get(endpoint.id)
-                models = dict(existing_endpoint.models) if existing_endpoint else {}
                 for model in endpoint.list_models():
                     model_key = (provider.id, endpoint.id, model.id)
                     field_path = (
@@ -796,27 +806,45 @@ def _combine_model_registries(
                             f"{first_source}:{first_path}"
                         )
                     seen_models[model_key] = (source, field_path)
+
+            if existing_provider is None:
+                seen_providers[provider.id] = (source, provider_path)
+            elif _provider_metadata(existing_provider) != _provider_metadata(provider):
+                first_source, first_path = seen_providers[provider.id]
+                raise ValueError(
+                    "conflicting provider metadata "
+                    f"{provider.id} at {source}:{provider_path}; "
+                    f"first defined at {first_source}:{first_path}"
+                )
+
+            endpoints = dict(existing_provider.endpoints) if existing_provider else {}
+            for endpoint in provider.list_endpoints():
+                endpoint_key = (provider.id, endpoint.id)
+                endpoint_path = f"{provider_path}.endpoints.{endpoint.id}"
+                existing_endpoint = endpoints.get(endpoint.id)
+                if existing_endpoint is None:
+                    seen_endpoints[endpoint_key] = (source, endpoint_path)
+                elif _endpoint_metadata(existing_endpoint) != _endpoint_metadata(
+                    endpoint
+                ):
+                    first_source, first_path = seen_endpoints[endpoint_key]
+                    raise ValueError(
+                        "conflicting endpoint metadata "
+                        f"{provider.id}:{endpoint.id} at {source}:{endpoint_path}; "
+                        f"first defined at {first_source}:{first_path}"
+                    )
+
+                models = dict(existing_endpoint.models) if existing_endpoint else {}
+                for model in endpoint.list_models():
                     models[model.id] = model
                 if existing_endpoint is None:
                     endpoints[endpoint.id] = endpoint
                 else:
                     endpoints[endpoint.id] = replace(existing_endpoint, models=models)
             if existing_provider is None:
-                providers[provider.id] = Provider(
-                    id=provider.id,
-                    name=provider.name,
-                    website=provider.website,
-                    auth=provider.auth,
-                    endpoints=endpoints,
-                )
+                providers[provider.id] = replace(provider, endpoints=endpoints)
             else:
-                providers[provider.id] = Provider(
-                    id=existing_provider.id,
-                    name=existing_provider.name,
-                    website=existing_provider.website,
-                    auth=existing_provider.auth,
-                    endpoints=endpoints,
-                )
+                providers[provider.id] = replace(existing_provider, endpoints=endpoints)
     return ModelRegistry.from_providers(
         providers,
         endpoint_auth_explicit=endpoint_auth_explicit,
@@ -832,9 +860,7 @@ def load_layered_model_registry(
     sources = [("<builtin>", load_builtin_model_registry())]
     for directory in (user_dir, project_dir):
         if directory is not None and directory.is_dir():
-            sources.append(
-                (str(directory), load_model_registry_from_directory(directory))
-            )
+            sources.extend(_model_registry_sources_from_directory(directory))
     return _combine_model_registries(sources)
 
 

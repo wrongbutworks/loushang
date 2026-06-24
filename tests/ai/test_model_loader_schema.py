@@ -468,11 +468,83 @@ def test_directory_registry_rejects_duplicate_full_model_id(tmp_path: Path) -> N
     registry_dir = tmp_path / "registry"
     registry_dir.mkdir()
     raw = _registry_raw(endpoint_adapter={"developerRole": False})
-    (registry_dir / "a.json").write_text(json.dumps(raw), encoding="utf-8")
-    (registry_dir / "b.json").write_text(json.dumps(raw), encoding="utf-8")
+    first_file = registry_dir / "a.json"
+    duplicate_file = registry_dir / "z.json"
+    duplicate_file.write_text(json.dumps(raw), encoding="utf-8")
+    first_file.write_text(json.dumps(raw), encoding="utf-8")
 
-    with pytest.raises(ValueError, match="duplicate model id"):
+    with pytest.raises(ValueError, match="duplicate model id") as exc_info:
         load_model_registry_from_directory(registry_dir)
+
+    message = str(exc_info.value)
+    assert f"at {duplicate_file}" in message
+    assert f"first defined at {first_file}" in message
+
+
+def test_directory_registry_rejects_conflicting_provider_metadata(
+    tmp_path: Path,
+) -> None:
+    registry_dir = tmp_path / "registry"
+    registry_dir.mkdir()
+    first_file = registry_dir / "a.json"
+    conflict_file = registry_dir / "b.json"
+    first_file.write_text(
+        json.dumps(_registry_raw(endpoint_adapter={"developerRole": False})),
+        encoding="utf-8",
+    )
+    raw = _registry_raw(endpoint_adapter={"developerRole": False})
+    provider = raw["providers"]["custom"]
+    assert isinstance(provider, dict)
+    provider["displayName"] = "Other Custom"
+    endpoints = provider["endpoints"]
+    assert isinstance(endpoints, dict)
+    endpoints["other-endpoint"] = endpoints.pop("test-endpoint")
+    conflict_file.write_text(json.dumps(raw), encoding="utf-8")
+
+    with pytest.raises(ValueError, match="conflicting provider metadata") as exc_info:
+        load_model_registry_from_directory(registry_dir)
+
+    message = str(exc_info.value)
+    assert str(conflict_file) in message
+    assert str(first_file) in message
+    assert "providers.custom" in message
+
+
+def test_directory_registry_rejects_conflicting_endpoint_metadata(
+    tmp_path: Path,
+) -> None:
+    registry_dir = tmp_path / "registry"
+    registry_dir.mkdir()
+    first_file = registry_dir / "a.json"
+    conflict_file = registry_dir / "b.json"
+    first_file.write_text(
+        json.dumps(_registry_raw(endpoint_adapter={"developerRole": False})),
+        encoding="utf-8",
+    )
+    raw = _registry_raw(
+        endpoint_adapter={"developerRole": False},
+        endpoint_extra={"baseUrl": "https://other.example.test/v1"},
+    )
+    providers = raw["providers"]
+    assert isinstance(providers, dict)
+    provider = providers["custom"]
+    assert isinstance(provider, dict)
+    endpoints = provider["endpoints"]
+    assert isinstance(endpoints, dict)
+    endpoint = endpoints["test-endpoint"]
+    assert isinstance(endpoint, dict)
+    models = endpoint["models"]
+    assert isinstance(models, dict)
+    models["other-model"] = models.pop("test-model")
+    conflict_file.write_text(json.dumps(raw), encoding="utf-8")
+
+    with pytest.raises(ValueError, match="conflicting endpoint metadata") as exc_info:
+        load_model_registry_from_directory(registry_dir)
+
+    message = str(exc_info.value)
+    assert str(conflict_file) in message
+    assert str(first_file) in message
+    assert "providers.custom.endpoints.test-endpoint" in message
 
 
 def test_layered_registry_rejects_user_duplicate_of_builtin_model(
@@ -497,10 +569,15 @@ def test_layered_registry_rejects_user_duplicate_of_builtin_model(
     models = endpoint["models"]
     assert isinstance(models, dict)
     models["gpt-5.5"] = models.pop("test-model")
-    (user_dir / "openai.json").write_text(json.dumps(raw), encoding="utf-8")
+    user_file = user_dir / "openai.json"
+    user_file.write_text(json.dumps(raw), encoding="utf-8")
 
-    with pytest.raises(ValueError, match="duplicate model id"):
+    with pytest.raises(ValueError, match="duplicate model id") as exc_info:
         load_layered_model_registry(user_dir=user_dir)
+
+    message = str(exc_info.value)
+    assert str(user_file) in message
+    assert "<builtin>" in message
 
 
 def test_layered_registry_rejects_project_duplicate_instead_of_deep_merge(
