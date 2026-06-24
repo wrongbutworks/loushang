@@ -39,14 +39,15 @@ class AnthropicProviderBase:
             return "medium"
         if level == "high":
             return "high"
-        # xhigh
-        if any(tag in model_id for tag in ("opus-4-8", "opus-4.8")):
-            return "xhigh"
-        return (
-            "max"
-            if any(tag in model_id for tag in ("opus-4-6", "opus-4.6"))
-            else "high"
-        )
+        if level == "max":
+            return "max"
+        if level == "xhigh":
+            if any(tag in model_id for tag in ("opus-4-8", "opus-4.8")):
+                return "xhigh"
+            if any(tag in model_id for tag in ("opus-4-6", "opus-4.6")):
+                return "max"
+            return "high"
+        return None
 
     @staticmethod
     def is_oauth_token(api_key: str) -> bool:

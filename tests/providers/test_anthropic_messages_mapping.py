@@ -93,6 +93,34 @@ def test_output_config_injected_for_adaptive_thinking():
     assert base.map_thinking_level_to_effort("high", "claude-opus-4-6") == "high"
     assert base.map_thinking_level_to_effort("xhigh", "claude-opus-4-8") == "xhigh"
     assert base.map_thinking_level_to_effort("xhigh", "claude-opus-4-6") == "max"
+    assert base.map_thinking_level_to_effort("max", "claude-opus-4-8") == "max"
+    assert base.map_thinking_level_to_effort("future", "claude-opus-4-8") is None
+
+
+def test_anthropic_provider_sends_opus_48_xhigh_adaptive_thinking(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _fake_anthropic_module(monkeypatch, [SimpleNamespace(type="message_stop")])
+    provider = AnthropicProvider()
+
+    asyncio.run(
+        _collect_parts(
+            _stream_raw_parts(
+                provider,
+                _Model(id="claude-opus-4-8", max_tokens=8192),
+                {
+                    "messages": [
+                        UserMessage(role="user", content="hello", timestamp=0.0)
+                    ]
+                },
+                AnthropicOptions(api_key="test-key", effort="xhigh"),
+            )
+        )
+    )
+
+    payload = _FakeAsyncAnthropic.last_stream_kwargs
+    assert payload["thinking"] == {"type": "adaptive"}
+    assert payload["output_config"] == {"effort": "xhigh"}
 
 
 def test_fine_grained_tool_beta_uses_typed_transport_kind() -> None:
