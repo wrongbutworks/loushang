@@ -53,7 +53,7 @@ def test_ai_readme_documents_curated_builtin_catalog_and_archive() -> None:
     assert "models.json" in docs
     assert "backup/ai/models-legacy-full.json.gz" in docs
     assert "model.upstream_id" in docs
-    assert "ResolvedRequest.upstream_model_id" in docs
+    assert "ProviderRequest.upstream_model_id" in docs
     assert "kimi-k2.6" in docs
 
 

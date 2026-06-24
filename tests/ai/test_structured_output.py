@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import asyncio
 from dataclasses import dataclass
-from types import SimpleNamespace
 
 import pytest
 
@@ -15,6 +14,7 @@ from loushang.ai import (
 from loushang.ai.api_registry import ApiProviderRegistry
 from loushang.ai.errors import UnsupportedCapabilityError
 from loushang.ai.model import Capabilities
+from loushang.ai.provider import ProviderRequest
 from loushang.ai.structured import (
     openai_chat_response_format,
     openai_responses_text_format,
@@ -218,9 +218,12 @@ class _StructuredProvider:
 def _patch_resolved_request(monkeypatch: pytest.MonkeyPatch, *, api: str) -> None:
     def _resolve_request(_model, options=None):
         del options
-        return SimpleNamespace(
+        return ProviderRequest(
             api=api,
             provider="test-provider",
+            endpoint=api,
+            base_url=None,
+            model=_model,
             capabilities=Capabilities(
                 input=("text",),
                 stream=True,
@@ -228,27 +231,7 @@ def _patch_resolved_request(monkeypatch: pytest.MonkeyPatch, *, api: str) -> Non
             ),
         )
 
-    def _resolve_provider_request(
-        provider_api,
-        _model,
-        *,
-        options=None,
-        request=None,
-        adapter_config_resolver=None,
-    ):
-        del options
-        resolved = request if request is not None else _resolve_request(_model)
-        if resolved.api != provider_api:
-            raise ValueError(
-                f"Mismatched api: provider={provider_api!r} request.api={resolved.api!r}"
-            )
-        return resolved
-
     monkeypatch.setattr(
         "loushang.ai.api.streaming.resolve_request_for_model",
         _resolve_request,
-    )
-    monkeypatch.setattr(
-        "loushang.ai.provider.invocation.resolve_provider_request",
-        _resolve_provider_request,
     )

@@ -19,7 +19,7 @@ from loushang.ai.provider.errors import (
     provider_error_info_from_raw,
     provider_error_part,
 )
-from loushang.ai.provider.resolution import ResolvedRequest
+from loushang.ai.provider.protocol import ProviderRequest
 from loushang.ai.trace import emit_trace
 
 RawPartSource = Callable[[], AsyncIterator[RawPart] | Any]
@@ -53,7 +53,7 @@ def start_provider_runtime(
     *,
     model,
     options,
-    request: ResolvedRequest,
+    request: ProviderRequest,
     _sleep: Sleep = asyncio.sleep,
     _jitter: Jitter = random.random,
 ) -> AssistantMessageEventStream:
@@ -219,7 +219,7 @@ async def _flush_pending(assembler: RawAssembler, pending: list[RawPart]) -> Non
 def _emit_runtime_request_trace(
     options: object | None,
     *,
-    request: ResolvedRequest,
+    request: ProviderRequest,
     model,
     attempt: int,
     max_attempts: int,
@@ -245,7 +245,7 @@ def _emit_runtime_error_trace(
     options: object | None,
     *,
     part: RawPart,
-    request: ResolvedRequest,
+    request: ProviderRequest,
     model,
 ) -> None:
     try:
@@ -287,7 +287,7 @@ def _emit_runtime_error_trace(
 def _emit_runtime_cancel_trace(
     options: object | None,
     *,
-    request: ResolvedRequest,
+    request: ProviderRequest,
     model,
 ) -> None:
     emit_trace(
@@ -430,7 +430,7 @@ def _retryable_exception(error: Exception, *, source: str) -> bool:
 def _retryable_response_error_part(
     part: RawPart,
     *,
-    request: ResolvedRequest,
+    request: ProviderRequest,
     model,
 ) -> bool:
     try:
@@ -557,7 +557,7 @@ def _retry_reason_from_exception(error: Exception, source: str) -> dict[str, obj
 
 def _retry_reason_from_part(
     part: RawPart,
-    request: ResolvedRequest,
+    request: ProviderRequest,
     model,
 ) -> dict[str, object]:
     try:

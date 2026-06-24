@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import sys
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from types import ModuleType, SimpleNamespace
 
 import pytest
@@ -32,7 +32,7 @@ from loushang.ai.options import (
     ReasoningOptions,
     SimpleCallOptions,
 )
-from loushang.ai.provider import ResolvedRequest
+from loushang.ai.provider import ProviderRequest
 from loushang.ai.provider.invocation import call_api_provider_stream
 from loushang.ai.providers.openai_completions import OpenAICompletionsProvider
 from loushang.ai.providers.openai_responses import OpenAIResponsesProvider
@@ -81,7 +81,7 @@ class _Provider:
     async def stream_raw(self, request):
         self.context = request.context
         self.options = request.options
-        self.request = request.resolved
+        self.request = request
         yield {"type": "response_done"}
 
 
@@ -89,7 +89,7 @@ class _ErrorProvider(_Provider):
     async def stream_raw(self, request):
         self.context = request.context
         self.options = request.options
-        self.request = request.resolved
+        self.request = request
         yield {
             "type": "response_error",
             "message": "rate limited",
@@ -834,14 +834,18 @@ def test_call_api_provider_stream_supports_registered_provider(
     asyncio.run(
         call_api_provider_stream(
             registry.get_api_provider("faux"),
-            _Model(),
-            {"messages": [UserMessage(role="user", content="hello", timestamp=0.0)]},
-            ModelCallOptions(),
-            request=ResolvedRequest(
+            ProviderRequest(
                 provider="faux",
                 endpoint="faux",
                 api="faux",
                 base_url=None,
+                model=_Model(),
+                context={
+                    "messages": [
+                        UserMessage(role="user", content="hello", timestamp=0.0)
+                    ]
+                },
+                options=ModelCallOptions(),
                 capabilities=Capabilities(input=("text",), stream=True),
             ),
         )
@@ -871,7 +875,7 @@ def test_call_api_provider_stream_rejects_mismatched_resolved_request() -> None:
     provider = _Provider()
     registry = ApiProviderRegistry()
     registry.register_api_provider(provider)
-    request = ResolvedRequest(
+    request = ProviderRequest(
         provider="faux",
         endpoint="other",
         api="other",
@@ -883,14 +887,16 @@ def test_call_api_provider_stream_rejects_mismatched_resolved_request() -> None:
         asyncio.run(
             call_api_provider_stream(
                 registry.get_api_provider("faux"),
-                _Model(),
-                {
-                    "messages": [
-                        UserMessage(role="user", content="hello", timestamp=0.0)
-                    ]
-                },
-                ModelCallOptions(),
-                request=request,
+                replace(
+                    request,
+                    model=_Model(),
+                    context={
+                        "messages": [
+                            UserMessage(role="user", content="hello", timestamp=0.0)
+                        ]
+                    },
+                    options=ModelCallOptions(),
+                ),
             )
         )
 
@@ -901,7 +907,7 @@ def test_call_api_provider_stream_normalizes_context_against_resolved_request_ap
     provider = _Provider(api="anthropic-messages")
     registry = ApiProviderRegistry()
     registry.register_api_provider(provider)
-    request = ResolvedRequest(
+    request = ProviderRequest(
         api="anthropic-messages",
         provider="anthropic",
         endpoint="anthropic-messages",
@@ -933,22 +939,24 @@ def test_call_api_provider_stream_normalizes_context_against_resolved_request_ap
     asyncio.run(
         call_api_provider_stream(
             registry.get_api_provider("anthropic-messages"),
-            _Model(api="openai-responses"),
-            {
-                "messages": [
-                    assistant,
-                    ToolResultMessage(
-                        role="toolResult",
-                        tool_call_id="call.1",
-                        tool_name="calc",
-                        content=[],
-                        is_error=False,
-                        timestamp=0.0,
-                    ),
-                ]
-            },
-            ModelCallOptions(),
-            request=request,
+            replace(
+                request,
+                model=_Model(api="openai-responses"),
+                context={
+                    "messages": [
+                        assistant,
+                        ToolResultMessage(
+                            role="toolResult",
+                            tool_call_id="call.1",
+                            tool_name="calc",
+                            content=[],
+                            is_error=False,
+                            timestamp=0.0,
+                        ),
+                    ]
+                },
+                options=ModelCallOptions(),
+            ),
         )
     )
 
@@ -1111,7 +1119,7 @@ def test_stream_public_path_uses_openai_completions_typed_request(
         input=("text",),
         pricing=None,
     )
-    request = ResolvedRequest(
+    request = ProviderRequest(
         provider="custom",
         endpoint="openai-completions",
         api="openai-completions",
@@ -1190,7 +1198,7 @@ def test_stream_public_path_uses_openai_responses_typed_request(
         input=("text",),
         pricing=None,
     )
-    request = ResolvedRequest(
+    request = ProviderRequest(
         provider="custom",
         endpoint="openai-responses",
         api="openai-responses",
@@ -1315,7 +1323,7 @@ def test_stream_public_path_rejects_unsupported_long_cache_retention(
         input=("text",),
         pricing=None,
     )
-    request = ResolvedRequest(
+    request = ProviderRequest(
         provider="custom",
         endpoint="openai-responses",
         api="openai-responses",
@@ -1359,7 +1367,7 @@ def test_stream_public_path_rejects_unsupported_session_id(
         input=("text",),
         pricing=None,
     )
-    request = ResolvedRequest(
+    request = ProviderRequest(
         provider="custom",
         endpoint="openai-completions",
         api="openai-completions",
@@ -1405,7 +1413,7 @@ def test_stream_public_path_uses_adapter_protocol_override_for_cache_validation(
         input=("text",),
         pricing=None,
     )
-    request = ResolvedRequest(
+    request = ProviderRequest(
         provider="custom",
         endpoint="openai-responses",
         api="openai-responses",
@@ -1452,34 +1460,19 @@ def _patch_resolved_request(
     provider: str = "faux",
 ) -> None:
     def _resolve_request(_model, options=None):
-        return SimpleNamespace(
+        return ProviderRequest(
             api=api,
             provider=provider,
+            endpoint=api,
+            base_url=None,
+            model=_model,
+            options=options,
             capabilities=capabilities or Capabilities(input=("text",), stream=True),
         )
-
-    def _resolve_provider_request(
-        provider_api,
-        _model,
-        *,
-        options=None,
-        request=None,
-        adapter_config_resolver=None,
-    ):
-        resolved = request if request is not None else _resolve_request(_model, options)
-        if resolved.api != provider_api:
-            raise ValueError(
-                f"Mismatched api: provider={provider_api!r} request.api={resolved.api!r}"
-            )
-        return resolved
 
     monkeypatch.setattr(
         "loushang.ai.api.streaming.resolve_request_for_model",
         _resolve_request,
-    )
-    monkeypatch.setattr(
-        "loushang.ai.provider.invocation.resolve_provider_request",
-        _resolve_provider_request,
     )
 
 

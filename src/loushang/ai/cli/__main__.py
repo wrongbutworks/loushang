@@ -227,7 +227,12 @@ def cmd_chat(args: argparse.Namespace) -> None:
     options = None
 
     async def run():
-        ev = await stream(model, context, options, registry=get_api_provider_registry())
+        ev = await stream(
+            model,
+            context,
+            options,
+            provider_registry=get_api_provider_registry(),
+        )
         if args.json:
             async for e in ev:
                 print(json.dumps(e, ensure_ascii=False))
@@ -273,7 +278,10 @@ def cmd_complete(args: argparse.Namespace) -> None:
 
     async def run():
         res = await complete(
-            model, context, options, registry=get_api_provider_registry()
+            model,
+            context,
+            options,
+            provider_registry=get_api_provider_registry(),
         )
         if args.json:
             print(json.dumps(res.__dict__, ensure_ascii=False))

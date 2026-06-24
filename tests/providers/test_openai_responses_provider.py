@@ -20,7 +20,7 @@ from loushang.ai.model import (
     get_default_model_registry,
 )
 from loushang.ai.model.registry import clear_default_model_registry
-from loushang.ai.provider import ResolvedRequest
+from loushang.ai.provider import ProviderRequest
 from loushang.ai.providers.openai_responses import OpenAIResponsesProvider
 from loushang.ai.providers.openai_responses_shared import process_responses_stream
 from loushang.ai.structured import StructuredOutputOptions
@@ -235,7 +235,7 @@ def test_openai_responses_payload_maps_structured_output_text_format(
 
 def test_openai_responses_direct_stream_rejects_mismatched_request_api() -> None:
     provider = OpenAIResponsesProvider()
-    request = ResolvedRequest(
+    request = ProviderRequest(
         provider="openai",
         endpoint="openai-responses",
         api="openai-completions",
@@ -260,7 +260,7 @@ def test_openai_responses_supplied_empty_request_uses_typed_defaults(
 ) -> None:
     _fake_openai_module(monkeypatch)
     provider = OpenAIResponsesProvider()
-    request = ResolvedRequest(
+    request = ProviderRequest(
         provider="openai",
         endpoint="openai-responses",
         api="openai-responses",
@@ -304,7 +304,7 @@ def test_openai_responses_supplied_request_adapter_config_projects_to_payload(
 ) -> None:
     _fake_openai_module(monkeypatch)
     provider = OpenAIResponsesProvider()
-    request = ResolvedRequest(
+    request = ProviderRequest(
         provider="openai",
         endpoint="openai-responses",
         api="openai-responses",
@@ -365,7 +365,7 @@ def test_openai_responses_rejects_unsupported_long_cache_retention(
 ) -> None:
     _fake_openai_module(monkeypatch)
     provider = OpenAIResponsesProvider()
-    request = ResolvedRequest(
+    request = ProviderRequest(
         provider="openai",
         endpoint="openai-responses",
         api="openai-responses",
@@ -402,7 +402,7 @@ def test_openai_responses_supplied_request_typed_adapter_overrides_stale_options
 ) -> None:
     _fake_openai_module(monkeypatch)
     provider = OpenAIResponsesProvider()
-    request = ResolvedRequest(
+    request = ProviderRequest(
         provider="openai",
         endpoint="openai-responses",
         api="openai-responses",
@@ -1389,13 +1389,8 @@ def _patch_resolved_request(
     transport: EndpointTransport | None = None,
     upstream_model_id: str | None = None,
 ) -> None:
-    def _resolve(provider_api, _model, *, options=None, request=None):
-        if request is not None:
-            if request.api != provider_api:
-                raise ValueError(
-                    f"Mismatched api: provider={provider_api!r} request.api={request.api!r}"
-                )
-            return request
+    def _resolve(_model, *, context=None, options=None, request=None):
+        del context, request
         headers = {}
         api_key = getattr(options, "api_key", None) if options is not None else None
         if isinstance(api_key, str) and api_key:
@@ -1410,10 +1405,10 @@ def _patch_resolved_request(
             if isinstance(option_max_tokens, int)
             else max_tokens
         )
-        return ResolvedRequest(
+        return ProviderRequest(
             provider=getattr(_model, "provider_id", ""),
             endpoint=getattr(_model, "endpoint_id", ""),
-            api=provider_api,
+            api="openai-responses",
             base_url=base_url,
             headers=headers,
             adapter_config=adapter_config
@@ -1429,7 +1424,7 @@ def _patch_resolved_request(
         )
 
     monkeypatch.setattr(
-        "loushang.ai.providers.openai_responses.resolve_provider_request",
+        "loushang.ai.providers.openai_responses.resolve_request_for_model",
         _resolve,
     )
 

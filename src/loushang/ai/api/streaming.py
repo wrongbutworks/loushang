@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from collections.abc import Mapping
+from dataclasses import replace
 from types import SimpleNamespace
 from typing import Any
 
@@ -20,7 +21,10 @@ from loushang.ai.options import (
     is_reasoning_requested,
     simple_options_to_call_options,
 )
-from loushang.ai.provider import resolve_request_for_model
+from loushang.ai.provider import (
+    normalize_provider_request_for_api,
+    resolve_request_for_model,
+)
 from loushang.ai.provider.invocation import call_api_provider_stream
 from loushang.ai.structured import (
     StructuredOutputOptions,
@@ -240,6 +244,10 @@ def _resolve_api_provider_registry(api_provider_registry=None):
     return default_registry
 
 
+def _coalesce_provider_registry(provider_registry, registry):
+    return provider_registry if provider_registry is not None else registry
+
+
 def _supports_structured_output_mapping(provider: object) -> bool:
     return bool(getattr(provider, "supports_structured_output", False))
 
@@ -267,7 +275,7 @@ async def _start_stream(
     context,
     options: CallOptions | None = None,
     *,
-    registry=None,
+    provider_registry=None,
     require_stream: bool,
 ):
     resolved = resolve_request_for_model(model, options=options)
@@ -275,6 +283,12 @@ async def _start_stream(
         context,
         model=_normalization_model(model, resolved),
         pairing_mode=_resolve_pairing_mode(options),
+    )
+    resolved = replace(
+        resolved,
+        model=model,
+        context=normalized,
+        options=options,
     )
     _validate_capability(
         model,
@@ -284,7 +298,14 @@ async def _start_stream(
         require_stream=require_stream,
     )
     _validate_explicit_adapter_config(model, resolved, options)
-    provider = _resolve_api_provider_registry(registry).get_api_provider(resolved.api)
+    provider = _resolve_api_provider_registry(provider_registry).get_api_provider(
+        resolved.api
+    )
+    resolved = normalize_provider_request_for_api(
+        provider.api,
+        resolved,
+        adapter_config_resolver=getattr(provider, "adapter_config_resolver", None),
+    )
     if get_structured_output_options(
         options
     ) is not None and not _supports_structured_output_mapping(provider):
@@ -299,28 +320,40 @@ async def _start_stream(
             },
         )
     return await call_api_provider_stream(
-        provider, model, normalized, options, resolved
+        provider, resolved
     )
 
 
-async def stream(model, context, options: CallOptions | None = None, *, registry=None):
+async def stream(
+    model,
+    context,
+    options: CallOptions | None = None,
+    *,
+    provider_registry=None,
+    registry=None,
+):
     return await _start_stream(
         model,
         context,
         options,
-        registry=registry,
+        provider_registry=_coalesce_provider_registry(provider_registry, registry),
         require_stream=True,
     )
 
 
 async def complete(
-    model, context, options: CallOptions | None = None, *, registry=None
+    model,
+    context,
+    options: CallOptions | None = None,
+    *,
+    provider_registry=None,
+    registry=None,
 ):
     event_stream = await _start_stream(
         model,
         context,
         options,
-        registry=registry,
+        provider_registry=_coalesce_provider_registry(provider_registry, registry),
         require_stream=False,
     )
     return await event_stream.result()
@@ -332,38 +365,54 @@ async def complete_structured(
     output: StructuredOutputOptions | None = None,
     *,
     options: CallOptions | None = None,
+    provider_registry=None,
     registry=None,
 ) -> StructuredOutputResult:
     structured_output = output or get_structured_output_options(options)
     if structured_output is None:
         raise ValueError("complete_structured requires StructuredOutputOptions")
     call_options = with_structured_output_options(options, structured_output)
-    message = await complete(model, context, call_options, registry=registry)
+    message = await complete(
+        model,
+        context,
+        call_options,
+        provider_registry=_coalesce_provider_registry(provider_registry, registry),
+    )
     return parse_structured_output(message, structured_output)
 
 
 async def stream_simple(
-    model, context, options: SimpleCallOptions | None = None, *, registry=None
+    model,
+    context,
+    options: SimpleCallOptions | None = None,
+    *,
+    provider_registry=None,
+    registry=None,
 ):
     call_options = simple_options_to_call_options(options)
     return await _start_stream(
         model,
         context,
         call_options,
-        registry=registry,
+        provider_registry=_coalesce_provider_registry(provider_registry, registry),
         require_stream=True,
     )
 
 
 async def complete_simple(
-    model, context, options: SimpleCallOptions | None = None, *, registry=None
+    model,
+    context,
+    options: SimpleCallOptions | None = None,
+    *,
+    provider_registry=None,
+    registry=None,
 ):
     call_options = simple_options_to_call_options(options)
     event_stream = await _start_stream(
         model,
         context,
         call_options,
-        registry=registry,
+        provider_registry=_coalesce_provider_registry(provider_registry, registry),
         require_stream=False,
     )
     return await event_stream.result()

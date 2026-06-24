@@ -3,10 +3,11 @@ from __future__ import annotations
 import os
 import re
 from collections.abc import Mapping
-from dataclasses import dataclass, field, replace
+from dataclasses import replace
 from typing import Any
 
 from loushang.ai.auth.support import resolve_auth_for_model
+from loushang.ai.context import NormalizedContext
 from loushang.ai.model import Model
 from loushang.ai.model.domain import (
     AdapterConfig,
@@ -27,50 +28,14 @@ from loushang.ai.model.registry import (
     resolve_model_endpoint,
 )
 from loushang.ai.options import get_max_output_tokens, get_reasoning_effort
+from loushang.ai.provider.protocol import ProviderContext, ProviderRequest
 from loushang.ai.provider.runtime_config import (
     AdapterRuntimeConfigResolver,
     resolve_adapter_runtime_config,
 )
 
 
-@dataclass(frozen=True)
-class ResolvedEndpoint:
-    provider: str
-    endpoint: str | None
-    api: str
-    base_url: str | None = None
-    base_url_env: str | None = None
-    regions: dict[str, dict] = field(default_factory=dict)
-    default_region: str | None = None
-    defaults: dict[str, object] = field(default_factory=dict)
-    transport: EndpointTransport = field(default_factory=EndpointTransport)
-    routing: EndpointRouting = field(default_factory=EndpointRouting)
-    upstream_model_id: str | None = None
-    adapter_config: object | None = None
-
-
-@dataclass(frozen=True)
-class ResolvedRequest:
-    provider: str
-    endpoint: str | None
-    api: str
-    base_url: str | None
-    region: str | None = None
-    candidate_base_urls: tuple[str, ...] = ()
-    headers: dict[str, str] = field(default_factory=dict)
-    defaults: dict[str, object] = field(default_factory=dict)
-    transport: EndpointTransport = field(default_factory=EndpointTransport)
-    routing: EndpointRouting = field(default_factory=EndpointRouting)
-    max_tokens: int | None = None
-    reasoning_effort: str | None = None
-    temperature: float | int | None = None
-    upstream_model_id: str | None = None
-    capabilities: Capabilities = field(default_factory=Capabilities)
-    auth_account_id: str | None = None
-    adapter_config: object | None = None
-
-
-def ensure_request_api(provider_api: str, request: ResolvedRequest) -> ResolvedRequest:
+def ensure_request_api(provider_api: str, request: ProviderRequest) -> ProviderRequest:
     if request.api != provider_api:
         raise ValueError(
             f"Mismatched api: provider={provider_api!r} request.api={request.api!r}"
@@ -78,12 +43,13 @@ def ensure_request_api(provider_api: str, request: ResolvedRequest) -> ResolvedR
     return request
 
 
-def _normalize_request_for_api(
+def normalize_provider_request_for_api(
     provider_api: str,
-    request: ResolvedRequest,
+    request: ProviderRequest,
     *,
     adapter_config_resolver: AdapterRuntimeConfigResolver | None = None,
-) -> ResolvedRequest:
+) -> ProviderRequest:
+    request = ensure_request_api(provider_api, request)
     if provider_api == "openai-completions":
         adapter_config = _ensure_core_adapter_config(
             request.adapter_config,
@@ -129,32 +95,12 @@ def _ensure_core_adapter_config(
     return adapter_config
 
 
-def resolve_provider_request(
-    provider_api: str,
-    model: Model,
-    *,
-    options=None,
-    request: ResolvedRequest | None = None,
-    adapter_config_resolver: AdapterRuntimeConfigResolver | None = None,
-) -> ResolvedRequest:
-    resolved = (
-        request
-        if request is not None
-        else resolve_request_for_model(model, options=options)
-    )
-    return _normalize_request_for_api(
-        provider_api,
-        ensure_request_api(provider_api, resolved),
-        adapter_config_resolver=adapter_config_resolver,
-    )
-
-
 def resolve_endpoint_for_model(
     model: Model,
     *,
     catalog=None,
     registry: ModelRegistry | None = None,
-) -> ResolvedEndpoint:
+) -> Endpoint | None:
     del catalog
     resolved_registry = _registry_for_catalog_lookup(model, registry)
     endpoint = (
@@ -164,17 +110,18 @@ def resolve_endpoint_for_model(
     )
     if endpoint is None and has_bound_endpoint_context(model):
         endpoint = resolve_model_endpoint(model)
-    return _build_resolved_endpoint(model, endpoint)
+    return endpoint
 
 
 def resolve_request_for_model(
     model: Model,
     *,
+    context: ProviderContext | None = None,
     options=None,
     catalog=None,
     registry: ModelRegistry | None = None,
     env: dict[str, str] | None = None,
-) -> ResolvedRequest:
+) -> ProviderRequest:
     del catalog
     resolved_env = dict(os.environ) if env is None else env
     selected_region = getattr(options, "region", None) if options is not None else None
@@ -207,17 +154,17 @@ def resolve_request_for_model(
     override_model = (
         model if use_model_overrides and request_model is not model else None
     )
-    resolved_endpoint = _build_resolved_endpoint(
+    endpoint_context = _build_request_endpoint_context(
         request_model,
         endpoint,
         request_model=request_model,
         request_model_has_effective_context=request_model_has_effective_context,
         override_model=override_model,
     )
-    base_url = _resolve_base_url(resolved_endpoint, resolved_env)
+    base_url = _resolve_base_url(endpoint_context, resolved_env)
     defaults = dict(getattr(request_model, "defaults", {}))
     capabilities = getattr(request_model, "capabilities", Capabilities())
-    adapter_config = resolved_endpoint.adapter_config
+    adapter_config = endpoint_context["adapter_config"]
     if use_model_overrides:
         defaults.update(dict(getattr(model, "defaults", {})))
         capability_overrides = _model_capability_overrides(model)
@@ -245,20 +192,24 @@ def resolve_request_for_model(
     candidates = []
     if base_url:
         candidates.append(base_url)
-    return ResolvedRequest(
-        provider=resolved_endpoint.provider,
-        endpoint=resolved_endpoint.endpoint,
-        api=resolved_endpoint.api,
+    upstream_model_id = endpoint_context["upstream_model_id"]
+    return ProviderRequest(
+        model=model,
+        context=context or NormalizedContext(system_prompt=None),
+        options=options,
+        provider=str(endpoint_context["provider"]),
+        endpoint=endpoint_context["endpoint"],
+        api=str(endpoint_context["api"]),
         base_url=base_url,
-        region=resolved_endpoint.default_region,
+        region=endpoint_context["default_region"],
         candidate_base_urls=tuple(candidates),
         headers=headers,
         capabilities=capabilities,
         adapter_config=adapter_config,
         defaults=defaults,
-        upstream_model_id=resolved_endpoint.upstream_model_id or model.id,
-        transport=resolved_endpoint.transport,
-        routing=resolved_endpoint.routing,
+        upstream_model_id=upstream_model_id or model.id,
+        transport=endpoint_context["transport"],
+        routing=endpoint_context["routing"],
         max_tokens=max_tokens,
         reasoning_effort=reasoning_effort,
         temperature=temperature,
@@ -317,30 +268,30 @@ def _matching_default_registry_for_bound_model(model: Model) -> ModelRegistry | 
     return default_registry
 
 
-def _build_resolved_endpoint(
+def _build_request_endpoint_context(
     model: Model,
     endpoint: Endpoint | None,
     *,
     request_model: Model | None = None,
     request_model_has_effective_context: bool = False,
     override_model: Model | None = None,
-) -> ResolvedEndpoint:
+) -> dict[str, Any]:
     if endpoint is None:
         api = getattr(model, "api", None) or model.endpoint_id
-        return ResolvedEndpoint(
-            provider=model.provider_id,
-            endpoint=model.endpoint_id,
-            api=api,
-            base_url=getattr(model, "base_url", None),
-            base_url_env=getattr(model, "base_url_env", None),
-            default_region=getattr(model, "region", None),
-            adapter_config=getattr(model, "adapter", None)
+        return {
+            "provider": model.provider_id,
+            "endpoint": model.endpoint_id,
+            "api": api,
+            "base_url": getattr(model, "base_url", None),
+            "base_url_env": getattr(model, "base_url_env", None),
+            "default_region": getattr(model, "region", None),
+            "adapter_config": getattr(model, "adapter", None)
             or default_adapter_config(api),
-            defaults=dict(getattr(model, "defaults", {})),
-            upstream_model_id=_model_upstream_id(model),
-            transport=_model_transport(model),
-            routing=_model_routing(model),
-        )
+            "defaults": dict(getattr(model, "defaults", {})),
+            "upstream_model_id": _model_upstream_id(model),
+            "transport": _model_transport(model),
+            "routing": _model_routing(model),
+        }
     transport_raw = endpoint.transport.to_raw()
     if request_model is not None:
         transport_raw = _deep_merge_raw_mapping(
@@ -387,22 +338,19 @@ def _build_resolved_endpoint(
             adapter_config if isinstance(adapter_config, AdapterConfig) else None,
             getattr(override_model, "adapter", None),
         )
-    return ResolvedEndpoint(
-        provider=endpoint.provider_id,
-        endpoint=endpoint.id,
-        api=endpoint.api,
-        base_url=endpoint.base_url,
-        base_url_env=endpoint.base_url_env,
-        regions={endpoint.region: {"baseUrl": endpoint.base_url}}
-        if endpoint.region and endpoint.base_url
-        else {},
-        default_region=endpoint.region,
-        adapter_config=adapter_config,
-        defaults=dict(endpoint.defaults),
-        upstream_model_id=upstream_model_id,
-        transport=EndpointTransport.from_raw(transport_raw),
-        routing=EndpointRouting.from_raw(routing_raw),
-    )
+    return {
+        "provider": endpoint.provider_id,
+        "endpoint": endpoint.id,
+        "api": endpoint.api,
+        "base_url": endpoint.base_url,
+        "base_url_env": endpoint.base_url_env,
+        "default_region": endpoint.region,
+        "adapter_config": adapter_config,
+        "defaults": dict(endpoint.defaults),
+        "upstream_model_id": upstream_model_id,
+        "transport": EndpointTransport.from_raw(transport_raw),
+        "routing": EndpointRouting.from_raw(routing_raw),
+    }
 
 
 def _model_capability_overrides(model: Model) -> Capabilities | None:
@@ -519,17 +467,19 @@ def _select_endpoint_for_request(
 
 
 def _resolve_base_url(
-    endpoint: ResolvedEndpoint,
+    endpoint: dict[str, Any],
     env: dict[str, str] | None,
 ) -> str | None:
     resolved_env = env or {}
-    if endpoint.base_url_env:
-        value = resolved_env.get(endpoint.base_url_env)
+    base_url_env = endpoint["base_url_env"]
+    if base_url_env:
+        value = resolved_env.get(base_url_env)
         if isinstance(value, str) and value:
             return value
-    if endpoint.base_url is None:
+    base_url = endpoint["base_url"]
+    if base_url is None:
         return None
-    return _expand_env_template(endpoint.base_url, resolved_env)
+    return _expand_env_template(base_url, resolved_env)
 
 
 def _expand_env_template(value: str, env: dict[str, str]) -> str:

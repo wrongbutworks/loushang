@@ -5,11 +5,9 @@ from loushang.ai.provider.protocol import (
     ProviderRequest,
 )
 from loushang.ai.provider.resolution import (
-    ResolvedEndpoint,
-    ResolvedRequest,
     ensure_request_api,
+    normalize_provider_request_for_api,
     resolve_endpoint_for_model,
-    resolve_provider_request,
     resolve_request_for_model,
 )
 from loushang.ai.provider.runtime import start_provider_runtime
@@ -22,12 +20,10 @@ __all__ = [
     "AdapterRuntimeConfigResolver",
     "CancellationSignal",
     "ProviderRequest",
-    "ResolvedEndpoint",
-    "ResolvedRequest",
     "ensure_request_api",
+    "normalize_provider_request_for_api",
     "normalize_provider_error",
     "resolve_endpoint_for_model",
-    "resolve_provider_request",
     "resolve_request_for_model",
     "start_provider_runtime",
 ]

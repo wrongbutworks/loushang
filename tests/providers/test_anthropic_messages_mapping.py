@@ -24,7 +24,7 @@ from loushang.ai.model.registry import (
     clear_default_model_registry,
     get_default_model_registry,
 )
-from loushang.ai.provider import ResolvedRequest
+from loushang.ai.provider import ProviderRequest
 from loushang.ai.providers.anthropic import AnthropicProvider
 from loushang.ai.types import (
     AssistantMessage,
@@ -1025,7 +1025,7 @@ def test_anthropic_provider_uses_resolved_capability_max_tokens(
 ) -> None:
     _fake_anthropic_module(monkeypatch, [SimpleNamespace(type="message_stop")])
     provider = AnthropicProvider()
-    request = ResolvedRequest(
+    request = ProviderRequest(
         provider="anthropic",
         endpoint="anthropic-messages",
         api="anthropic-messages",
@@ -1059,7 +1059,7 @@ def test_anthropic_provider_uses_typed_protocol_over_stale_false_options(
 ) -> None:
     _fake_anthropic_module(monkeypatch, [SimpleNamespace(type="message_stop")])
     provider = AnthropicProvider()
-    request = ResolvedRequest(
+    request = ProviderRequest(
         provider="anthropic",
         endpoint="anthropic-messages",
         api="anthropic-messages",
@@ -1116,7 +1116,7 @@ def test_anthropic_provider_uses_typed_protocol_over_stale_true_options(
 ) -> None:
     _fake_anthropic_module(monkeypatch, [SimpleNamespace(type="message_stop")])
     provider = AnthropicProvider()
-    request = ResolvedRequest(
+    request = ProviderRequest(
         provider="anthropic",
         endpoint="anthropic-messages",
         api="anthropic-messages",

@@ -6,7 +6,7 @@ from types import SimpleNamespace
 import pytest
 
 from loushang.ai.options import CallOptions, RetryOptions
-from loushang.ai.provider import ResolvedRequest
+from loushang.ai.provider import ProviderRequest
 from loushang.ai.provider.errors import provider_error_part
 from loushang.ai.provider.runtime import start_provider_runtime
 from loushang.ai.providers.anthropic import AnthropicProvider
@@ -533,8 +533,8 @@ def _model():
     return SimpleNamespace(id="model-a", provider_id="provider-a")
 
 
-def _request() -> ResolvedRequest:
-    return ResolvedRequest(
+def _request() -> ProviderRequest:
+    return ProviderRequest(
         provider="provider-a",
         endpoint="openai-responses",
         api="openai-responses",

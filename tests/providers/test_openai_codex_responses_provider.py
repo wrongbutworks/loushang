@@ -17,7 +17,7 @@ from loushang.ai.model.registry import (
     get_default_model_registry,
 )
 from loushang.ai.options import RetryOptions
-from loushang.ai.provider import ResolvedRequest
+from loushang.ai.provider import ProviderRequest
 from loushang.ai.structured import StructuredOutputOptions
 from loushang.ai.types import (
     AssistantMessage,
@@ -597,7 +597,7 @@ def test_openai_codex_responses_uses_resolved_request_account_binding() -> None:
         ]
     )
     provider = OpenAICodexResponsesProvider(client=client)
-    request = ResolvedRequest(
+    request = ProviderRequest(
         provider="openai-codex",
         endpoint="openai-codex-responses",
         api="openai-codex-responses",

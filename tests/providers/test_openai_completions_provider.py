@@ -22,7 +22,7 @@ from loushang.ai.model.registry import (
     clear_default_model_registry,
     get_default_model_registry,
 )
-from loushang.ai.provider import ResolvedRequest, resolve_provider_request
+from loushang.ai.provider import ProviderRequest
 from loushang.ai.providers.openai_completions import OpenAICompletionsProvider
 from loushang.ai.structured import StructuredOutputOptions
 from loushang.ai.types import (
@@ -713,7 +713,7 @@ def test_openai_completions_supplied_request_adapter_config_projects_to_payload(
 ) -> None:
     _fake_openai_module(monkeypatch)
     provider = OpenAICompletionsProvider()
-    request = ResolvedRequest(
+    request = ProviderRequest(
         provider="custom",
         endpoint="openai-completions",
         api="openai-completions",
@@ -757,7 +757,7 @@ def test_openai_completions_supplied_empty_request_uses_adapter_defaults(
 ) -> None:
     _fake_openai_module(monkeypatch)
     provider = OpenAICompletionsProvider()
-    request = ResolvedRequest(
+    request = ProviderRequest(
         provider="custom",
         endpoint="openai-completions",
         api="openai-completions",
@@ -795,7 +795,7 @@ def test_openai_completions_supplied_request_preserves_explicit_unknown_protocol
 ) -> None:
     _fake_openai_module(monkeypatch)
     provider = OpenAICompletionsProvider()
-    request = ResolvedRequest(
+    request = ProviderRequest(
         provider="custom",
         endpoint="openai-completions",
         api="openai-completions",
@@ -833,7 +833,7 @@ def test_openai_completions_supplied_request_protocol_and_dialect_project_to_pay
 ) -> None:
     _fake_openai_module(monkeypatch)
     provider = OpenAICompletionsProvider()
-    request = ResolvedRequest(
+    request = ProviderRequest(
         provider="custom",
         endpoint="openai-completions",
         api="openai-completions",
@@ -880,7 +880,7 @@ def test_openai_completions_public_stream_uses_supplied_typed_request(
 ) -> None:
     _fake_openai_module(monkeypatch)
     provider = OpenAICompletionsProvider()
-    request = ResolvedRequest(
+    request = ProviderRequest(
         provider="custom",
         endpoint="openai-completions",
         api="openai-completions",
@@ -919,7 +919,7 @@ def test_openai_completions_supplied_request_typed_adapter_overrides_stale_optio
 ) -> None:
     _fake_openai_module(monkeypatch)
     provider = OpenAICompletionsProvider()
-    request = ResolvedRequest(
+    request = ProviderRequest(
         provider="custom",
         endpoint="openai-completions",
         api="openai-completions",
@@ -956,7 +956,7 @@ def test_openai_completions_supplied_request_typed_dialect_overrides_stale_optio
 ) -> None:
     _fake_openai_module(monkeypatch)
     provider = OpenAICompletionsProvider()
-    request = ResolvedRequest(
+    request = ProviderRequest(
         provider="custom",
         endpoint="openai-completions",
         api="openai-completions",
@@ -2262,18 +2262,8 @@ def _patch_resolved_request(
     transport: EndpointTransport | None = None,
     upstream_model_id: str | None = None,
 ) -> None:
-    def _resolve(provider_api, _model, *, options=None, request=None):
-        if request is not None:
-            if request.api != provider_api:
-                raise ValueError(
-                    f"Mismatched api: provider={provider_api!r} request.api={request.api!r}"
-                )
-            return resolve_provider_request(
-                provider_api,
-                _model,
-                options=options,
-                request=request,
-            )
+    def _resolve(_model, *, context=None, options=None, request=None):
+        del context, request
         headers = {}
         api_key = getattr(options, "api_key", None) if options is not None else None
         if isinstance(api_key, str) and api_key:
@@ -2289,32 +2279,27 @@ def _patch_resolved_request(
             else max_tokens
         )
         adapter_config = _adapter_config_from_compat(compat)
-        return resolve_provider_request(
-            provider_api,
-            _model,
-            options=options,
-            request=ResolvedRequest(
-                provider=getattr(_model, "provider_id", ""),
-                endpoint=getattr(_model, "endpoint_id", ""),
-                api=provider_api,
-                base_url=base_url,
-                headers=headers,
-                adapter_config=adapter_config,
-                max_tokens=resolved_max_tokens,
-                capabilities=capabilities
-                or Capabilities(
-                    input=tuple(getattr(_model, "input", ("text",))),
-                    reasoning=bool(getattr(_model, "reasoning", False)),
-                ),
-                reasoning_effort=reasoning_effort,
-                routing=routing or EndpointRouting(),
-                transport=transport or EndpointTransport(),
-                upstream_model_id=upstream_model_id,
+        return ProviderRequest(
+            provider=getattr(_model, "provider_id", ""),
+            endpoint=getattr(_model, "endpoint_id", ""),
+            api="openai-completions",
+            base_url=base_url,
+            headers=headers,
+            adapter_config=adapter_config,
+            max_tokens=resolved_max_tokens,
+            capabilities=capabilities
+            or Capabilities(
+                input=tuple(getattr(_model, "input", ("text",))),
+                reasoning=bool(getattr(_model, "reasoning", False)),
             ),
+            reasoning_effort=reasoning_effort,
+            routing=routing or EndpointRouting(),
+            transport=transport or EndpointTransport(),
+            upstream_model_id=upstream_model_id,
         )
 
     monkeypatch.setattr(
-        "loushang.ai.providers.openai_completions.resolve_provider_request",
+        "loushang.ai.providers.openai_completions.resolve_request_for_model",
         _resolve,
     )
 

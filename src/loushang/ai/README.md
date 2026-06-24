@@ -47,8 +47,8 @@
 - catalog 中的 `provider`、`endpoint`、`model` 三段用于本地查询和 CLI 展示
 - 自定义 catalog 可以用 `upstreamId` 记录与本地 model ID 不同的真实上游模型 ID
 - 真实上游 ID 存在 `model.upstream_id`
-- provider 解析层输出 `ResolvedRequest.upstream_model_id`
-- provider adapter 发请求时使用 `ResolvedRequest.upstream_model_id`，没有该字段时使用 `model.id`
+- provider 解析层输出 `ProviderRequest.upstream_model_id`
+- provider adapter 发请求时使用 `ProviderRequest.upstream_model_id`，没有该字段时使用 `model.id`
 
 内置 curated catalog 当前不依赖 `upstreamId`；长尾 provider 或带特殊上游 ID 的模型应通过外部自定义 catalog 加入。
 
@@ -57,7 +57,7 @@
 统一 provider 边界层。
 
 - `resolution.py`
-  - 从 `Model + options` 解析 `ResolvedEndpoint` / `ResolvedRequest`
+  - 从 `Model + context + options` 解析 `ProviderRequest`
 - `protocol.py`
   - `ApiProvider` 协议
 - `runtime.py` / `invocation.py`
@@ -341,8 +341,7 @@ code should use attribute access instead of dict-style message access.
 
 ### `loushang.ai.provider`
 
-- `ResolvedEndpoint`
-- `ResolvedRequest`
+- `ProviderRequest`
 - `resolve_endpoint_for_model(...)`
 - `resolve_request_for_model(...)`
 
@@ -396,17 +395,18 @@ Registry 返回的 `Model` 会带上继承后的 endpoint 调用事实。
 如果同一个上游模型通过多个 endpoint 暴露，catalog 仍会把它们表达为不同的
 `provider:endpoint:model` 句柄。
 
-### `ResolvedRequest`
+### `ProviderRequest`
 
-`ResolvedRequest` 是进入具体 provider 实现前的请求边界对象。
+`ProviderRequest` 是进入具体 provider 实现前的请求边界对象。
 
 它负责把：
 
 - `Model`
+- normalized `context`
 - runtime `options`
 - auth / adapter config / capabilities / defaults
 
-收敛为 provider 侧可直接消费的请求解析结果。
+收敛为 provider 侧可直接消费的单一请求对象。
 
 它当前主要承载：
 

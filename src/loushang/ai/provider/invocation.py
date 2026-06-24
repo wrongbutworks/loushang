@@ -1,16 +1,13 @@
 from __future__ import annotations
 
 import inspect
+from dataclasses import replace
 from types import SimpleNamespace
 from typing import Any
 
 from loushang.ai.context import ensure_normalized_context
 from loushang.ai.options import PairingMode
 from loushang.ai.provider.protocol import ProviderRequest
-from loushang.ai.provider.resolution import (
-    ResolvedRequest,
-    resolve_provider_request,
-)
 from loushang.ai.provider.runtime import start_provider_runtime
 
 
@@ -45,73 +42,53 @@ def _resolve_pairing_mode(options) -> PairingMode:
     return "strict"
 
 
-def _adapter_config_resolver(provider: Any):
-    resolver = getattr(provider, "adapter_config_resolver", None)
-    return resolver if callable(resolver) else None
-
-
-def normalization_model_for_request(model, request: ResolvedRequest):
+def normalization_model_for_request(request: ProviderRequest):
     return SimpleNamespace(
         api=request.api,
         provider_id=request.provider,
-        endpoint_id=getattr(request, "endpoint", getattr(model, "endpoint_id", None)),
-        id=model.id,
+        endpoint_id=getattr(
+            request,
+            "endpoint",
+            getattr(request.model, "endpoint_id", None),
+        ),
+        id=request.model.id,
     )
 
 
-def _normalize_provider_context(model, context, options, request: ResolvedRequest):
+def _normalize_provider_context(request: ProviderRequest):
     return ensure_normalized_context(
-        context,
-        model=normalization_model_for_request(model, request),
-        pairing_mode=_resolve_pairing_mode(options),
+        request.context,
+        model=normalization_model_for_request(request),
+        pairing_mode=_resolve_pairing_mode(request.options),
     )
 
 
 def _call_provider_raw_parts(
     provider: Any,
-    model,
-    context,
-    options,
-    request: ResolvedRequest,
+    request: ProviderRequest,
 ):
-    context = _normalize_provider_context(model, context, options, request)
-    return provider.stream_raw(
-        ProviderRequest(
-            model=model,
-            context=context,
-            options=options,
-            resolved=request,
-        )
-    )
+    request = replace(request, context=_normalize_provider_context(request))
+    return provider.stream_raw(request)
 
 
 async def call_api_provider_stream(
     provider: Any,
-    model,
-    context,
-    options,
-    request: ResolvedRequest,
+    request: ProviderRequest,
 ):
     stream_raw_method = getattr(provider, "stream_raw", None)
-    request = resolve_provider_request(
-        provider.api,
-        model,
-        options=options,
-        request=request,
-        adapter_config_resolver=_adapter_config_resolver(provider),
-    )
+    if request.api != provider.api:
+        raise ValueError(
+            f"Mismatched api: provider={provider.api!r} request.api={request.api!r}"
+        )
     if not callable(stream_raw_method):
         raise TypeError("Provider missing required stream_raw method")
     validate_provider_stream_raw_contract(provider)
     return start_provider_runtime(
         lambda: _call_provider_raw_parts(
             provider,
-            model,
-            context,
-            options,
             request,
         ),
-        model=model,
-        options=options,
+        model=request.model,
+        options=request.options,
         request=request,
     )

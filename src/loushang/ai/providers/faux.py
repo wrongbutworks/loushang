@@ -1,10 +1,15 @@
 from __future__ import annotations
 
 from collections.abc import AsyncIterator
+from dataclasses import replace
 
 from loushang.ai.event_stream.raw_parts import RawPart
 from loushang.ai.options import is_reasoning_requested
-from loushang.ai.provider import ProviderRequest, resolve_provider_request
+from loushang.ai.provider import (
+    ProviderRequest,
+    normalize_provider_request_for_api,
+    resolve_request_for_model,
+)
 from loushang.ai.types import TextPart, ToolResultMessage
 
 
@@ -12,20 +17,17 @@ class FauxProvider:
     api = "anthropic-messages"
 
     def _stream_raw_parts(self, model, context, options, request=None):
-        resolved = resolve_provider_request(
-            self.api,
+        resolved = request or resolve_request_for_model(
             model,
+            context=context,
             options=options,
-            request=request,
         )
-        return self.stream_raw(
-            ProviderRequest(
-                model=model,
-                context=context,
-                options=options,
-                resolved=resolved,
-            )
+        resolved = replace(resolved, model=model, context=context, options=options)
+        resolved = normalize_provider_request_for_api(
+            self.api,
+            resolved,
         )
+        return self.stream_raw(resolved)
 
     async def stream_raw(self, request: ProviderRequest) -> AsyncIterator[RawPart]:
         options = request.options

@@ -19,10 +19,10 @@ from loushang.ai.model import (
     load_builtin_model_registry,
 )
 from loushang.ai.provider import (
-    ResolvedRequest,
+    ProviderRequest,
     ensure_request_api,
+    normalize_provider_request_for_api,
     resolve_endpoint_for_model,
-    resolve_provider_request,
     resolve_request_for_model,
 )
 
@@ -56,7 +56,17 @@ def test_builtin_openai_style_model_resolves_adapter_config() -> None:
     assert resolved.upstream_model_id == "kimi-k2.7-code"
 
 
-def test_resolve_provider_request_adds_default_core_adapter_config() -> None:
+def test_legacy_resolved_request_projection_api_is_removed() -> None:
+    import loushang.ai.provider as provider_module
+    import loushang.ai.provider.resolution as resolution_module
+
+    for name in ("ResolvedEndpoint", "ResolvedRequest", "resolve_provider_request"):
+        assert name not in provider_module.__all__
+        assert not hasattr(provider_module, name)
+        assert not hasattr(resolution_module, name)
+
+
+def test_normalize_provider_request_adds_default_core_adapter_config() -> None:
     model = Model(
         id="gpt-test",
         provider="custom",
@@ -67,19 +77,41 @@ def test_resolve_provider_request_adds_default_core_adapter_config() -> None:
         auth=Auth(api_key_env="TEST_API_KEY"),
     )
 
-    resolved = resolve_provider_request(
+    resolved = normalize_provider_request_for_api(
         "openai-responses",
-        model,
-        options=_Options(api_key="token"),
+        resolve_request_for_model(
+            model,
+            options=_Options(api_key="token"),
+        ),
     )
 
     assert isinstance(resolved.adapter_config, OpenAIResponsesConfig)
     assert resolved.adapter_config.prompt_cache_key is True
 
 
-def test_resolve_provider_request_rejects_wrong_adapter_config_type() -> None:
-    model = Model(id="m", provider="custom", endpoint="openai-responses")
-    request = ResolvedRequest(
+def test_resolve_request_for_model_returns_provider_request() -> None:
+    model = Model(
+        id="gpt-test",
+        provider="custom",
+        endpoint="openai-responses",
+        api="openai-responses",
+        base_url="https://example.test/v1",
+        capabilities=Capabilities(reasoning=True, stream=True),
+        auth=Auth(api_key_env="TEST_API_KEY"),
+    )
+
+    resolved = resolve_request_for_model(
+        model,
+        options=_Options(api_key="token"),
+    )
+
+    assert isinstance(resolved, ProviderRequest)
+    assert resolved.model is model
+    assert resolved.options == _Options(api_key="token")
+
+
+def test_normalize_provider_request_rejects_wrong_adapter_config_type() -> None:
+    request = ProviderRequest(
         provider="custom",
         endpoint="openai-responses",
         api="openai-responses",
@@ -88,11 +120,11 @@ def test_resolve_provider_request_rejects_wrong_adapter_config_type() -> None:
     )
 
     with pytest.raises(TypeError, match="OpenAIResponsesConfig"):
-        resolve_provider_request("openai-responses", model, request=request)
+        normalize_provider_request_for_api("openai-responses", request)
 
 
 def test_ensure_request_api_rejects_mismatch() -> None:
-    request = ResolvedRequest(
+    request = ProviderRequest(
         provider="custom",
         endpoint="openai-completions",
         api="openai-completions",
@@ -103,9 +135,8 @@ def test_ensure_request_api_rejects_mismatch() -> None:
         ensure_request_api("openai-responses", request)
 
 
-def test_resolve_provider_request_uses_runtime_adapter_resolver() -> None:
-    model = Model(id="m", provider="custom", endpoint="custom-api", api="custom-api")
-    request = ResolvedRequest(
+def test_normalize_provider_request_uses_runtime_adapter_resolver() -> None:
+    request = ProviderRequest(
         provider="custom",
         endpoint="custom-api",
         api="custom-api",
@@ -113,20 +144,18 @@ def test_resolve_provider_request_uses_runtime_adapter_resolver() -> None:
         adapter_config={"raw": True},
     )
 
-    resolved = resolve_provider_request(
+    resolved = normalize_provider_request_for_api(
         "custom-api",
-        model,
-        request=request,
+        request,
         adapter_config_resolver=lambda current: {"resolved": current},
     )
 
     assert resolved.adapter_config == {"resolved": {"raw": True}}
 
 
-def test_resolve_provider_request_keeps_runtime_config_when_resolver_matches() -> None:
-    model = Model(id="m", provider="custom", endpoint="custom-api", api="custom-api")
+def test_normalize_provider_request_keeps_runtime_config_when_resolver_matches() -> None:
     config = {"raw": True}
-    request = ResolvedRequest(
+    request = ProviderRequest(
         provider="custom",
         endpoint="custom-api",
         api="custom-api",
@@ -134,10 +163,9 @@ def test_resolve_provider_request_keeps_runtime_config_when_resolver_matches() -
         adapter_config=config,
     )
 
-    resolved = resolve_provider_request(
+    resolved = normalize_provider_request_for_api(
         "custom-api",
-        model,
-        request=request,
+        request,
         adapter_config_resolver=lambda current: current,
     )
 

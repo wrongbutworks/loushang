@@ -5,7 +5,7 @@ import base64
 import json
 from collections.abc import AsyncIterator, Mapping
 from contextlib import suppress
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from inspect import isawaitable
 from types import SimpleNamespace
 from typing import Any
@@ -22,7 +22,11 @@ from loushang.ai.options import (
     get_reasoning_summary,
     get_timeout_seconds,
 )
-from loushang.ai.provider import ProviderRequest, resolve_provider_request
+from loushang.ai.provider import (
+    ProviderRequest,
+    normalize_provider_request_for_api,
+    resolve_request_for_model,
+)
 from loushang.ai.provider.errors import (
     provider_error_part,
     provider_error_part_from_raw,
@@ -52,26 +56,23 @@ class OpenAICodexResponsesProvider:
     def _stream_raw_parts(
         self, model, context, options, request=None
     ) -> AsyncIterator[RawPart]:
-        resolved = resolve_provider_request(
-            self.api,
+        resolved = request or resolve_request_for_model(
             model,
+            context=context,
             options=options,
-            request=request,
+        )
+        resolved = replace(resolved, model=model, context=context, options=options)
+        resolved = normalize_provider_request_for_api(
+            self.api,
+            resolved,
             adapter_config_resolver=self.adapter_config_resolver,
         )
-        return self.stream_raw(
-            ProviderRequest(
-                model=model,
-                context=context,
-                options=options,
-                resolved=resolved,
-            )
-        )
+        return self.stream_raw(resolved)
 
     async def stream_raw(self, request: ProviderRequest) -> AsyncIterator[RawPart]:
         model = request.model
         options = request.options
-        resolved = request.resolved
+        resolved = request
 
         def _debug(event: str, data: dict | None = None) -> None:
             _emit_trace(options, {"type": f"sdk:{event}", **(data or {})})
