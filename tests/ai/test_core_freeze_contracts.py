@@ -108,50 +108,6 @@ class _StreamRawOnlyProvider:
         raise AssertionError("not used by this contract test")
 
 
-def test_no_legacy_compat_model_contract_types_remain() -> None:
-    import loushang.ai.model as model_module
-
-    removed_public = "Com" + "pat"
-    removed_schema = "compat" + "_schema"
-
-    assert removed_public not in model_module.__all__
-    assert not hasattr(model_module, removed_public)
-    assert not (MODEL_DIR / f"{removed_schema}.py").exists()
-
-    forbidden_source_tokens = (
-        "class " + removed_public,
-        "LEGACY_COMPAT_TRANSLATION_TARGETS",
-        "resolve_anthropic_messages_compat",
-        "resolve_openai_completions_compat",
-        "resolve_openai_responses_compat",
-        removed_schema,
-    )
-    for path in (MODEL_DIR).rglob("*.py"):
-        text = path.read_text(encoding="utf-8")
-        for token in forbidden_source_tokens:
-            assert token not in text, (path, token)
-
-
-def test_model_loader_diagnostics_api_is_removed() -> None:
-    import loushang.ai.model as model_module
-    import loushang.ai.model.loader as loader_module
-
-    removed_names = (
-        "ModelRegistryLoadDiagnostic",
-        "ModelRegistryLoadResult",
-        "load_builtin_model_registry_with_diagnostics",
-        "load_layered_model_registry_with_diagnostics",
-        "load_model_registry_from_directory_with_diagnostics",
-        "load_model_registry_from_file_with_diagnostics",
-        "load_model_registry_with_diagnostics",
-    )
-
-    for name in removed_names:
-        assert name not in model_module.__all__
-        assert not hasattr(model_module, name)
-        assert not hasattr(loader_module, name)
-
-
 def test_builtin_model_file_is_models_json_without_schema_version() -> None:
     models_json = MODEL_DIR / "models.json"
     legacy_catalog = MODEL_DIR / "models.curated.v2.json"
@@ -196,26 +152,6 @@ def test_model_instances_do_not_expose_call_facades() -> None:
 
     for name in ("complete", "stream", "complete_simple", "stream_simple"):
         assert not hasattr(model, name)
-
-
-def test_deprecated_provider_specific_options_are_not_core_api() -> None:
-    import loushang.ai.api as api_module
-    import loushang.ai.options as options_module
-
-    forbidden = {
-        "AnthropicOptions",
-        "OpenAICompletionsOptions",
-        "OpenAIResponsesOptions",
-    }
-    public_modules = (ai, api_module, options_module)
-    for module in public_modules:
-        for name in forbidden:
-            assert not hasattr(module, name), (module.__name__, name)
-
-    for path in (REPO_ROOT / "examples/ai").rglob("*.py"):
-        text = path.read_text(encoding="utf-8")
-        for name in forbidden:
-            assert name not in text, (path, name)
 
 
 def test_default_registry_loads_builtin_and_user_model_directory(

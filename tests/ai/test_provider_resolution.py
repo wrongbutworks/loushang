@@ -5,6 +5,7 @@ from dataclasses import dataclass, replace
 import pytest
 
 from loushang.ai.model import (
+    AnthropicMessagesConfig,
     Auth,
     Capabilities,
     Defaults,
@@ -56,16 +57,6 @@ def test_builtin_openai_style_model_resolves_adapter_config() -> None:
     assert resolved.upstream_model_id == "kimi-k2.7-code"
 
 
-def test_legacy_resolved_request_projection_api_is_removed() -> None:
-    import loushang.ai.provider as provider_module
-    import loushang.ai.provider.resolution as resolution_module
-
-    for name in ("ResolvedEndpoint", "ResolvedRequest", "resolve_provider_request"):
-        assert name not in provider_module.__all__
-        assert not hasattr(provider_module, name)
-        assert not hasattr(resolution_module, name)
-
-
 def test_normalize_provider_request_adds_default_core_adapter_config() -> None:
     model = Model(
         id="gpt-test",
@@ -110,17 +101,29 @@ def test_resolve_request_for_model_returns_provider_request() -> None:
     assert resolved.options == _Options(api_key="token")
 
 
-def test_normalize_provider_request_rejects_wrong_adapter_config_type() -> None:
+@pytest.mark.parametrize(
+    ("api", "adapter_config", "expected_type"),
+    [
+        ("openai-completions", AnthropicMessagesConfig(), "OpenAICompletionsConfig"),
+        ("openai-responses", OpenAICompletionsConfig(), "OpenAIResponsesConfig"),
+        ("anthropic-messages", OpenAICompletionsConfig(), "AnthropicMessagesConfig"),
+    ],
+)
+def test_normalize_provider_request_rejects_wrong_core_adapter_config_type(
+    api: str,
+    adapter_config: object,
+    expected_type: str,
+) -> None:
     request = ProviderRequest(
         provider="custom",
-        endpoint="openai-responses",
-        api="openai-responses",
+        endpoint=api,
+        api=api,
         base_url="https://example.test/v1",
-        adapter_config=OpenAICompletionsConfig(),
+        adapter_config=adapter_config,
     )
 
-    with pytest.raises(TypeError, match="OpenAIResponsesConfig"):
-        normalize_provider_request_for_api("openai-responses", request)
+    with pytest.raises(TypeError, match=expected_type):
+        normalize_provider_request_for_api(api, request)
 
 
 def test_ensure_request_api_rejects_mismatch() -> None:

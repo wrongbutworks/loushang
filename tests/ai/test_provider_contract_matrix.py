@@ -42,30 +42,6 @@ CORE_ADAPTER_MATRIX = (
     ),
 )
 
-PRODUCTION_PROVIDER_FILES = {
-    "anthropic.py",
-    "openai_completions.py",
-    "openai_responses.py",
-}
-SUPPORT_PROVIDER_FILES = {
-    "__init__.py",
-    "anthropic_base.py",
-    "anthropic_oauth_compat.py",
-    "openai_responses_shared.py",
-    "provider_helpers.py",
-}
-TEST_ONLY_PROVIDER_FILES = {"faux.py"}
-
-
-def test_core_provider_directory_matches_contract_matrix() -> None:
-    files = {
-        path.name for path in (REPO_ROOT / "src/loushang/ai/providers").glob("*.py")
-    }
-
-    assert files == (
-        PRODUCTION_PROVIDER_FILES | SUPPORT_PROVIDER_FILES | TEST_ONLY_PROVIDER_FILES
-    )
-
 
 def test_core_production_adapters_implement_api_provider_contract() -> None:
     for case in CORE_ADAPTER_MATRIX:

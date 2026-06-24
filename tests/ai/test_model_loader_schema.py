@@ -81,6 +81,34 @@ def _write_registry(tmp_path: Path, raw: dict[str, object]) -> Path:
     return path
 
 
+def test_load_model_registry_from_file_rejects_invalid_json_with_file_path(
+    tmp_path: Path,
+) -> None:
+    path = tmp_path / "broken.json"
+    path.write_text("{", encoding="utf-8")
+
+    with pytest.raises(ValueError) as exc_info:
+        load_model_registry_from_file(path)
+
+    message = str(exc_info.value)
+    assert str(path) in message
+    assert "invalid JSON" in message
+
+
+def test_load_model_registry_from_file_rejects_missing_providers_with_field_path(
+    tmp_path: Path,
+) -> None:
+    path = _write_registry(tmp_path, {})
+
+    with pytest.raises(ValueError) as exc_info:
+        load_model_registry_from_file(path)
+
+    message = str(exc_info.value)
+    assert str(path) in message
+    assert "providers" in message
+    assert "must be an object" in message
+
+
 def _set_nested(
     raw: dict[str, object],
     path: tuple[str, ...],

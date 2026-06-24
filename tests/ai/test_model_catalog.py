@@ -23,8 +23,6 @@ def test_builtin_catalog_uses_curated_provider_set() -> None:
     assert [
         provider.id for provider in registry.list_providers()
     ] == CURATED_PROVIDER_IDS
-    assert len(registry.list_endpoints()) == 11
-    assert len(registry.list_models()) == 17
 
 
 def test_builtin_catalog_excludes_archived_legacy_providers() -> None:

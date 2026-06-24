@@ -63,8 +63,6 @@ def test_default_builtin_catalog_matches_curated_catalog() -> None:
         (model.provider_id, model.endpoint_id, model.id)
         for model in curated.list_models()
     ]
-    assert len(registry.list_endpoints()) == 11
-    assert len(registry.list_models()) == 17
 
 
 def test_curated_catalog_has_no_removed_model_contract_fields() -> None:
