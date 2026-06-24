@@ -51,7 +51,11 @@
 ## Observability
 
 - [Loushang-AI Trace Events](./loushang-ai-trace-events.md)
-  - 支持 transport/sessionId/ws 复用/回退(fallback)/自动重连(reconnect)/attempt/错误分类 等事件
+  - Core runtime 只定义 `runtime:request` / `runtime:retry` /
+    `runtime:error` / `runtime:cancel`，并统一携带
+    `callId/api/provider/endpoint/model`
+  - transport、WebSocket、fallback、reconnect 等事件属于 provider/contrib-owned
+    扩展，不属于 core runtime contract
 
 ## CLI
 
