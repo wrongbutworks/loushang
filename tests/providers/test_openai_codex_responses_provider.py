@@ -8,11 +8,14 @@ from types import SimpleNamespace
 import pytest
 
 import loushang.ai.contrib.openai_codex.provider as codex_provider_module
+from loushang.ai.api import stream
+from loushang.ai.api_registry import ApiProviderRegistry
 from loushang.ai.auth.types import OAuthCredentials
 from loushang.ai.context import normalize_context
 from loushang.ai.contrib.openai_codex import OpenAICodexResponsesOptions
 from loushang.ai.contrib.openai_codex.provider import OpenAICodexResponsesProvider
-from loushang.ai.model.domain import Endpoint, Model
+from loushang.ai.contrib.openai_codex.runtime_config import OpenAICodexRuntimeConfig
+from loushang.ai.model.domain import Capabilities, Endpoint, Model
 from loushang.ai.model.registry import (
     clear_default_model_registry,
     get_default_model_registry,
@@ -627,6 +630,53 @@ def test_openai_codex_responses_public_stream_uses_runtime_config_headers() -> N
     assert client.last_headers["originator"] == "loushang"
     assert client.last_headers["User-Agent"] == "loushang"
     assert client.last_json["prompt_cache_retention"] == "in-memory"
+
+
+def test_openai_codex_public_stream_rejects_invalid_runtime_config_before_iteration() -> (
+    None
+):
+    provider_registry = ApiProviderRegistry()
+    provider_registry.register_api_provider(OpenAICodexResponsesProvider())
+    model = Model(
+        id="gpt-5.3-codex",
+        provider="openai-codex",
+        endpoint="openai-codex-responses",
+        api="openai-codex-responses",
+        adapter=object(),
+        capabilities=Capabilities(stream=True),
+    )
+
+    async def _run() -> None:
+        with pytest.raises(TypeError, match="OpenAICodexRuntimeConfig"):
+            await stream(
+                model,
+                {
+                    "messages": [
+                        UserMessage(role="user", content="hello", timestamp=0.0)
+                    ]
+                },
+                OpenAICodexResponsesOptions(api_key=_build_fake_jwt("acc_test")),
+                registry=provider_registry,
+            )
+
+    asyncio.run(_run())
+
+
+def test_openai_codex_provider_accepts_contrib_runtime_config_directly() -> None:
+    provider = OpenAICodexResponsesProvider()
+    provider.validate_request(
+        ProviderRequest(
+            provider="openai-codex",
+            endpoint="openai-codex-responses",
+            api="openai-codex-responses",
+            base_url=None,
+            adapter_config=OpenAICodexRuntimeConfig(
+                prompt_cache_retention=None,
+                originator="custom-origin",
+                user_agent="custom-agent",
+            ),
+        )
+    )
 
 
 def test_openai_codex_responses_prefers_oauth_account_binding_over_token_parsing() -> (

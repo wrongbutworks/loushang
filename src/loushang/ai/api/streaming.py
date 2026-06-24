@@ -263,7 +263,13 @@ def _emit_normalization_diagnostics(
                 code=diagnostic.code,
                 path=diagnostic.path,
                 level=diagnostic.level,
-            )
+        )
+
+
+def _validate_provider_request(provider, request) -> None:
+    validator = getattr(provider, "validate_request", None)
+    if callable(validator):
+        validator(request)
 
 
 async def _start_stream(
@@ -303,6 +309,7 @@ async def _start_stream(
         resolved.api
     )
     resolved = normalize_provider_request_for_api(provider.api, resolved)
+    _validate_provider_request(provider, resolved)
     if get_structured_output_options(
         options
     ) is not None and not _supports_structured_output_mapping(provider):

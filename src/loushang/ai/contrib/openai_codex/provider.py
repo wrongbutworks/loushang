@@ -47,6 +47,9 @@ class OpenAICodexResponsesProvider:
         self._websocket_session_cache: dict[str, _CachedWebSocketConnection] = {}
         self._websocket_cache_ttl_ms = websocket_cache_ttl_ms
 
+    def validate_request(self, request: ProviderRequest) -> None:
+        _codex_runtime_config(request.adapter_config)
+
     async def invoke_raw(self, request: ProviderRequest) -> AsyncIterator[RawPart]:
         model = request.model
         options = request.options
