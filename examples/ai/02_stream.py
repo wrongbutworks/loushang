@@ -15,8 +15,8 @@ MODEL_ID = "kimi-k2.6"
 def _offline_events() -> list[dict[str, object]]:
     return [
         {"type": "start"},
-        {"type": "text_delta", "text": "mock hello "},
-        {"type": "text_delta", "text": "from offline fixture"},
+        {"type": "text_delta", "delta": "mock hello "},
+        {"type": "text_delta", "delta": "from offline fixture"},
         {"type": "done"},
     ]
 

@@ -6,7 +6,7 @@ Branch: `ai/core-freeze-v1`
 
 Base: `7f5810a263cdb58960dfed3998d9a0aefaeb4574`
 
-Pre-verification head: `6b5f3995d884b1de245e221bccece2141c9b1f86`
+Verification scope: `ai/core-freeze-v1` after AIF-017 review-fix changes.
 
 ## Result
 
@@ -20,7 +20,7 @@ No live-provider calls were run. No GitHub Actions result is claimed here.
 | --- | --- |
 | `git diff --check` | Passed |
 | `make check-ai` | Passed |
-| `uv run pytest tests -q` | Passed: 4183 passed, 6 skipped |
+| `uv run pytest tests -q` | Passed: 4185 passed, 6 skipped |
 | `uv build` | Passed: built `dist/loushang-0.1.0.tar.gz` and `dist/loushang-0.1.0-py3-none-any.whl` |
 
 `make check-ai` details:
@@ -30,10 +30,10 @@ No live-provider calls were run. No GitHub Actions result is claimed here.
 - Catalog check passed: 11 providers, 11 endpoints, 17 models.
 - Import-boundary check passed.
 - Offline examples passed: 13 examples.
-- Offline AI/provider tests passed: 580 passed, 9 deselected.
-- Total AI coverage: 83.53%.
+- Offline AI/provider tests passed: 581 passed, 9 deselected.
+- Total AI coverage: 83.62%.
 - Coverage targets passed:
-  - `ai-runtime-core`: 90.57% (minimum 90.00%)
+  - `ai-runtime-core`: 90.59% (minimum 90.00%)
   - `provider-adapters`: 88.36% (minimum 85.00%)
   - `production-adapter-modules`: 88.64% (minimum 85.00%)
 
@@ -63,8 +63,9 @@ source no longer contains the complete removed-field spelling as a scan hit.
 ## Review Index
 
 Local review reports are stored under the ignored path
-`.artifacts/ai-reviews/`. The final full-branch review for AIF-017 is run after
-the verification commit and recorded there as well.
+`.artifacts/ai-reviews/`. AIF-017 final full-branch review is run after the
+verification commit; its final clean report is recorded after all reviewer
+findings are resolved.
 
 | Scope | Local review report |
 | --- | --- |
@@ -90,6 +91,7 @@ the verification commit and recorded there as well.
 | AIF-014 | `.artifacts/ai-reviews/5bbad29a40264886a5d51b225aa416a16d796f2c.md` |
 | AIF-015 | `.artifacts/ai-reviews/1cb06ed7fea47dd55857edf5195181bb89ff0bdf.md` |
 | AIF-016 | `.artifacts/ai-reviews/6b5f399a44f6390797fab176865d0f3adf17ff93.md` |
+| AIF-017 | pending final clean review artifact |
 
 ## Acceptance Notes
 

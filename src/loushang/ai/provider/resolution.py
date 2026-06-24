@@ -179,7 +179,6 @@ def resolve_request_for_model(
         env=resolved_env,
     )
     headers = _merge_option_headers(auth_view.headers, options)
-    auth_account_id = _auth_account_id_from_view(auth_view, headers)
     max_tokens = _resolve_max_tokens(options, defaults)
     reasoning_effort = _resolve_reasoning_effort(options, defaults)
     temperature = _resolve_temperature(options, defaults)
@@ -207,7 +206,6 @@ def resolve_request_for_model(
         max_tokens=max_tokens,
         reasoning_effort=reasoning_effort,
         temperature=temperature,
-        auth_account_id=auth_account_id,
     )
 
 
@@ -433,32 +431,6 @@ def _merge_option_headers(
         }
     )
     return merged
-
-
-def _auth_account_id_from_view(auth_view, headers: Mapping[str, str]) -> str | None:
-    account_id = getattr(auth_view, "account_id", None)
-    if not isinstance(account_id, str) or not account_id:
-        return None
-    auth_headers = getattr(auth_view, "headers", {}) or {}
-    if _auth_material(headers) != _auth_material(auth_headers):
-        return None
-    return account_id
-
-
-def _auth_material(headers: Mapping[str, str]) -> str | None:
-    for header_name in ("authorization", "x-api-key"):
-        value = _header_value(headers, header_name)
-        if isinstance(value, str) and value:
-            return value
-    return None
-
-
-def _header_value(headers: Mapping[str, str], name: str) -> str | None:
-    target = name.lower()
-    for key, value in headers.items():
-        if key.lower() == target and value:
-            return value
-    return None
 
 
 def _select_endpoint_for_request(

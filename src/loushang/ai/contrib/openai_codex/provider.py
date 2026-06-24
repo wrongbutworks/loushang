@@ -71,7 +71,6 @@ class OpenAICodexResponsesProvider:
         account_id = _resolve_account_id(
             headers,
             api_key=api_key,
-            auth_account_id=getattr(resolved, "auth_account_id", None),
         )
         body = _build_request_body(
             model,
@@ -542,13 +541,10 @@ def _resolve_account_id(
     headers: dict[str, str],
     *,
     api_key: str,
-    auth_account_id: str | None = None,
 ) -> str:
     explicit_account_id = _header_value(headers, "chatgpt-account-id")
     if explicit_account_id:
         return explicit_account_id
-    if auth_account_id:
-        return auth_account_id
     return _extract_account_id(api_key)
 
 

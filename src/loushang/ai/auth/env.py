@@ -47,23 +47,6 @@ def get_env_oauth_credentials(
         f"{prefix}_PLAN",
     ]
 
-    if provider == "openai-codex":
-        token_names = [
-            "OPENAI_CODEX_ACCESS_TOKEN",
-            "CHATGPT_ACCESS_TOKEN",
-            *token_names,
-        ]
-        account_id_names = [
-            "OPENAI_CODEX_ACCOUNT_ID",
-            "CHATGPT_ACCOUNT_ID",
-            *account_id_names,
-        ]
-        plan_names = [
-            "OPENAI_CODEX_PLAN",
-            "CHATGPT_PLAN",
-            *plan_names,
-        ]
-
     access_token = next(
         (
             value.strip()

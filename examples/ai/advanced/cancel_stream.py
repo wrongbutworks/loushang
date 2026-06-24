@@ -40,7 +40,7 @@ async def inspect_stream_cancellation() -> dict[str, object]:
         _build_model(),
         {"messages": []},
         CallOptions(cancellation=signal),
-        registry=registry,
+        provider_registry=registry,
     )
     await asyncio.wait_for(provider.blocked.wait(), timeout=1)
     signal.set()

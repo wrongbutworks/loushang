@@ -4,6 +4,7 @@ from types import SimpleNamespace
 
 import pytest
 
+from loushang.ai.auth.env import get_env_oauth_credentials
 from loushang.ai.auth.registry import get_default_oauth_registry
 from loushang.ai.auth.support import AuthConfig, resolve_auth_for_model
 from loushang.ai.auth.types import OAuthCredentials
@@ -30,6 +31,22 @@ class _FailingRefreshProvider:
         self, models: list[object], credentials: OAuthCredentials
     ) -> list[object]:
         return models
+
+
+def test_env_oauth_credentials_use_generic_provider_prefix_only() -> None:
+    env = {
+        "DEMO_ACCESS_TOKEN": "demo-token",
+        "DEMO_ACCOUNT_ID": "demo-account",
+        "DEMO_PLAN": "team",
+        "CHATGPT_ACCESS_TOKEN": "chatgpt-token",
+    }
+
+    credentials = get_env_oauth_credentials("demo", env=env)
+
+    assert credentials is not None
+    assert credentials.access_token == "demo-token"
+    assert credentials.extra == {"account_id": "demo-account", "plan": "team"}
+    assert get_env_oauth_credentials("openai-codex", env=env) is None
 
 
 def test_oauth_refresh_failure_does_not_fall_back_to_api_key() -> None:

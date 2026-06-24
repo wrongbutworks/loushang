@@ -1,5 +1,17 @@
 # `loushang.ai` 公共 API 设计清单
 
+> Status: historical pre-freeze design draft.
+>
+> This file is retained as background design material. It is not the current
+> public API contract. The frozen contract is documented in
+> [`ARD-003-core-freeze-contract.md`](./ARD-003-core-freeze-contract.md),
+> [`loushang-ai-top-level-api-signatures.md`](./loushang-ai-top-level-api-signatures.md),
+> [`src/loushang/ai/README.md`](../../../../src/loushang/ai/README.md), and
+> [`docs/internals/architecture/ai/core-freeze-verification.md`](./core-freeze-verification.md).
+> Names below such as `ResolvedRequest`, `ResolvedEndpoint`, and provider
+> registry functions on the root package describe an earlier proposal, not the
+> current frozen surface.
+
 ## 文档目的
 
 本文用于收敛 `src/loushang/ai` 的对外能力边界。

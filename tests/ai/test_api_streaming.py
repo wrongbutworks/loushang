@@ -211,7 +211,7 @@ def test_stream_defaults_to_strict_pairing_and_exposes_repair_option(
                     ]
                 },
                 CallOptions(),
-                registry=registry,
+                provider_registry=registry,
             )
         )
 
@@ -225,7 +225,7 @@ def test_stream_defaults_to_strict_pairing_and_exposes_repair_option(
                 ]
             },
             CallOptions(pairing_mode="repair"),
-            registry=registry,
+            provider_registry=registry,
         )
     )
 
@@ -258,7 +258,7 @@ def test_complete_raises_typed_error_for_stream_error(
                     ]
                 },
                 CallOptions(),
-                registry=registry,
+                provider_registry=registry,
             )
         )
 
@@ -309,7 +309,7 @@ def test_stream_exposes_strict_pairing_through_public_options(
                     ]
                 },
                 CallOptions(pairing_mode="strict"),
-                registry=registry,
+                provider_registry=registry,
             )
         )
 
@@ -330,7 +330,7 @@ def test_stream_passes_normalized_context_to_provider(
             _Model(),
             {"messages": [UserMessage(role="user", content="hello", timestamp=0.0)]},
             CallOptions(),
-            registry=registry,
+            provider_registry=registry,
         )
     )
 
@@ -418,7 +418,7 @@ def test_stream_enforces_capability_matrix(
     registry = _Registry(provider)
 
     with pytest.raises(UnsupportedCapabilityError, match=expected_message):
-        asyncio.run(stream(_Model(), context, options, registry=registry))
+        asyncio.run(stream(_Model(), context, options, provider_registry=registry))
 
     assert provider.context is None
 
@@ -473,7 +473,7 @@ def test_stream_allows_complete_capability_matrix(
                 temperature=0.2,
                 reasoning=ReasoningOptions(effort="high"),
             ),
-            registry=registry,
+            provider_registry=registry,
         )
     )
 
@@ -503,7 +503,7 @@ def test_complete_does_not_require_stream_capability(
             _Model(),
             {"messages": [UserMessage(role="user", content="hello", timestamp=0.0)]},
             CallOptions(),
-            registry=registry,
+            provider_registry=registry,
         )
     )
 
@@ -561,7 +561,7 @@ def test_stream_canonicalizes_raw_dict_context_before_provider(
                 ],
             },
             CallOptions(),
-            registry=registry,
+            provider_registry=registry,
         )
     )
 
@@ -600,7 +600,7 @@ def test_stream_rejects_raw_dict_tools_with_non_object_parameters_before_provide
                     ],
                 },
                 CallOptions(),
-                registry=registry,
+                provider_registry=registry,
             )
         )
 
@@ -631,7 +631,7 @@ def test_stream_rejects_raw_dict_tools_with_invalid_names_before_provider(
                     ],
                 },
                 CallOptions(),
-                registry=registry,
+                provider_registry=registry,
             )
         )
 
@@ -664,7 +664,7 @@ def test_stream_rejects_non_call_options_before_provider(
                 _Model(),
                 {"messages": [UserMessage(role="user", content="hello", timestamp=0.0)]},
                 legacy_options,  # type: ignore[arg-type]
-                registry=registry,
+                provider_registry=registry,
             )
         )
 
@@ -684,7 +684,7 @@ def test_complete_rejects_non_call_options_before_provider(
                 _Model(),
                 {"messages": [UserMessage(role="user", content="hello", timestamp=0.0)]},
                 SimpleNamespace(max_tokens=64),  # type: ignore[arg-type]
-                registry=registry,
+                provider_registry=registry,
             )
         )
 
@@ -708,7 +708,7 @@ def test_stream_passes_request_through_registered_provider(
             _Model(),
             {"messages": [UserMessage(role="user", content="hello", timestamp=0.0)]},
             CallOptions(),
-            registry=registry,
+            provider_registry=registry,
         )
     )
 
@@ -729,7 +729,7 @@ def test_stream_runs_optional_provider_request_validator_before_iteration(
             _Model(),
             {"messages": [UserMessage(role="user", content="hello", timestamp=0.0)]},
             CallOptions(),
-            registry=registry,
+            provider_registry=registry,
         )
     )
 
@@ -757,7 +757,7 @@ def test_stream_raises_provider_request_validation_error_before_iteration(
                     ]
                 },
                 CallOptions(),
-                registry=registry,
+                provider_registry=registry,
             )
         )
 
@@ -830,7 +830,7 @@ def test_stream_maps_reasoning_options_before_provider_call(
                 ),
                 max_output_tokens=123,
             ),
-            registry=registry,
+            provider_registry=registry,
         )
     )
 
@@ -862,7 +862,7 @@ def test_stream_rejects_legacy_provider_from_custom_registry(
                     ]
                 },
                 CallOptions(),
-                registry=registry,
+                provider_registry=registry,
             )
         )
 
@@ -1086,7 +1086,7 @@ def test_stream_validates_resolved_request_capabilities(
                     ]
                 },
                 CallOptions(),
-                registry=registry,
+                provider_registry=registry,
             )
         )
 
@@ -1124,7 +1124,7 @@ def test_stream_allows_capabilities_after_request_resolution_switches_endpoint(
                 ]
             },
             CallOptions(),
-            registry=registry,
+            provider_registry=registry,
         )
     )
 
@@ -1180,7 +1180,7 @@ def test_stream_normalizes_context_against_resolved_request_api(
                 ]
             },
             CallOptions(),
-            registry=registry,
+            provider_registry=registry,
         )
     )
 
@@ -1245,7 +1245,7 @@ def test_stream_public_path_uses_openai_completions_typed_request(
                 cache_retention="short",
                 session_id="session-public",
             ),
-            registry=registry,
+            provider_registry=registry,
         )
         await event_stream.result()
 
@@ -1360,7 +1360,7 @@ def test_stream_public_path_uses_openai_responses_typed_request(
                 cache_retention="short",
                 session_id="session-responses",
             ),
-            registry=registry,
+            provider_registry=registry,
         )
         await event_stream.result()
 
@@ -1433,7 +1433,7 @@ def test_stream_public_path_rejects_unsupported_long_cache_retention(
             model,
             {"messages": [UserMessage(role="user", content="hello", timestamp=0.0)]},
             CallOptions(cache_retention="long"),
-            registry=registry,
+            provider_registry=registry,
         )
 
     with pytest.raises(UnsupportedCapabilityError, match="long cache retention"):
@@ -1477,7 +1477,7 @@ def test_stream_public_path_rejects_unsupported_session_id(
             model,
             {"messages": [UserMessage(role="user", content="hello", timestamp=0.0)]},
             CallOptions(session_id="session-public"),
-            registry=registry,
+            provider_registry=registry,
         )
 
     with pytest.raises(UnsupportedCapabilityError, match="session id"):
@@ -1526,7 +1526,7 @@ def test_stream_public_path_uses_adapter_protocol_override_for_cache_validation(
                 cache_retention="long",
                 session_id="session-override",
             ),
-            registry=registry,
+            provider_registry=registry,
         )
         await event_stream.result()
 

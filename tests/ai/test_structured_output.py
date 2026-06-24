@@ -140,7 +140,7 @@ def test_complete_structured_returns_raw_and_parsed(
             {"messages": []},
             StructuredOutputOptions(mode="json_object"),
             options=CallOptions(),
-            registry=registry,
+            provider_registry=registry,
         )
     )
 
@@ -163,7 +163,7 @@ def test_complete_structured_uses_provider_declared_mapping_support(
             {"messages": []},
             StructuredOutputOptions(mode="json_object"),
             options=CallOptions(),
-            registry=registry,
+            provider_registry=registry,
         )
     )
 
@@ -189,7 +189,7 @@ def test_complete_structured_rejects_provider_without_mapping_support(
                 {"messages": []},
                 StructuredOutputOptions(mode="json_object"),
                 options=CallOptions(),
-                registry=registry,
+                provider_registry=registry,
             )
         )
 

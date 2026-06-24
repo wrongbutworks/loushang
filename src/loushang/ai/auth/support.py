@@ -58,7 +58,6 @@ def _merged_auth_value(effective, override, field_name: str):
 @dataclass(frozen=True)
 class AuthView:
     headers: dict[str, str] = field(default_factory=dict)
-    account_id: str | None = None
     metadata: dict[str, object] = field(default_factory=dict)
 
 
@@ -157,14 +156,8 @@ def _resolve_oauth_auth_view(
         return None
     credentials = result["newCredentials"]
     metadata = dict(getattr(credentials, "extra", None) or {})
-    account_id = metadata.get("account_id")
-    if not isinstance(account_id, str) or not account_id:
-        account_id = metadata.get("chatgpt_account_id")
-    if not isinstance(account_id, str) or not account_id:
-        account_id = None
     return AuthView(
         headers=resolve_auth_material(bearer_token=result["apiKey"]).headers,
-        account_id=account_id,
         metadata=metadata,
     )
 

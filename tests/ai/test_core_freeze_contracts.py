@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import inspect
 import json
 from pathlib import Path
 
@@ -227,6 +228,13 @@ def test_provider_registry_accepts_invoke_raw_and_rejects_stream_raw() -> None:
         registry.register_api_provider(_StreamRawOnlyProvider())
 
 
+def test_public_invocation_uses_explicit_provider_registry_keyword() -> None:
+    for function in (ai.complete, ai.stream, ai.complete_structured):
+        parameters = inspect.signature(function).parameters
+        assert "provider_registry" in parameters
+        assert "registry" not in parameters
+
+
 def test_complete_dispatches_to_invoke_raw_provider(tmp_path: Path) -> None:
     async def run() -> None:
         path = tmp_path / "company.json"
@@ -244,7 +252,7 @@ def test_complete_dispatches_to_invoke_raw_provider(tmp_path: Path) -> None:
             model,
             {"messages": [{"role": "user", "content": "hello"}]},
             CallOptions(api_key="test-key"),
-            registry=provider_registry,
+            provider_registry=provider_registry,
         )
 
         assert message.content[0].text == "ok"
@@ -270,7 +278,7 @@ def test_stream_dispatches_to_invoke_raw_provider(tmp_path: Path) -> None:
             model,
             {"messages": [{"role": "user", "content": "hello"}]},
             CallOptions(api_key="test-key"),
-            registry=provider_registry,
+            provider_registry=provider_registry,
         )
         async for _event in event_stream:
             pass
@@ -298,13 +306,13 @@ def test_complete_and_stream_pass_distinct_provider_modes(tmp_path: Path) -> Non
             model,
             context,
             CallOptions(api_key="test-key"),
-            registry=provider_registry,
+            provider_registry=provider_registry,
         )
         event_stream = await ai.stream(
             model,
             context,
             CallOptions(api_key="test-key"),
-            registry=provider_registry,
+            provider_registry=provider_registry,
         )
         async for _event in event_stream:
             pass

@@ -114,12 +114,16 @@ def test_curated_openai_style_custom_base_urls_declare_adapter() -> None:
 
 def test_curated_catalog_keeps_key_model_defaults() -> None:
     registry = _load_curated_registry()
-    kimi = registry.get_model("moonshot", "openai-completions", "kimi-k2.7-code")
+    kimi = registry.get_model("moonshot", "openai-completions", "kimi-k2.6")
+    kimi_code = registry.get_model("moonshot", "openai-completions", "kimi-k2.7-code")
+    minimax = registry.get_model("minimax", "anthropic-messages", "MiniMax-M3")
     gpt = registry.get_model("openai", "openai-responses", "gpt-5.5")
     claude = registry.get_model("anthropic", "anthropic-messages", "claude-sonnet-4-6")
 
-    assert kimi.defaults["maxOutputTokens"] == 32000
-    assert kimi.defaults["reasoningEffort"] == "medium"
+    assert kimi.supports_temperature is False
+    assert kimi_code.defaults["maxOutputTokens"] == 32000
+    assert kimi_code.defaults["reasoningEffort"] == "medium"
+    assert minimax.pricing is None
     assert gpt.capabilities.context_window == 1000000
     assert claude.pricing is not None
     assert claude.pricing.output == 15

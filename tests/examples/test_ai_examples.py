@@ -247,8 +247,8 @@ def test_reasoning_example_reports_simple_reasoning_mapping(capsys) -> None:
         "reasoning": "medium",
         "budgetTokens": 2048,
         "events": [
-            {"type": "thinking_delta", "thinking": "reasoning trace"},
-            {"type": "text_delta", "text": "mock hello from offline fixture"},
+            {"type": "thinking_delta", "delta": "reasoning trace"},
+            {"type": "text_delta", "delta": "mock hello from offline fixture"},
         ],
         "stopReason": "stop",
     }
@@ -870,7 +870,7 @@ def test_stream_example_reports_text_delta() -> None:
     assert summary["responseId"] == "offline-stream-demo"
     assert summary["stopReason"] == "stop"
     assert summary["text"] == "mock hello from offline fixture"
-    assert {"type": "text_delta", "text": "mock hello "} in summary[
+    assert {"type": "text_delta", "delta": "mock hello "} in summary[
         "events"
     ]
 

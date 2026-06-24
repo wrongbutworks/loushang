@@ -82,7 +82,7 @@ async def _main() -> None:
     event_stream = await stream(
         _build_model(),
         _build_context(),
-        registry=registry,
+        provider_registry=registry,
     )
 
     # 运行时主要观察 event 类型，确认 context 和 tools 已被正确消费。

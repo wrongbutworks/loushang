@@ -71,7 +71,7 @@ async def _main() -> None:
         _build_model(),
         _build_context(),
         _build_options(),
-        registry=registry,
+        provider_registry=registry,
     )
 
     # 运行时可观察不同事件类型如何被统一协议表达。

@@ -36,7 +36,6 @@ class ProviderRequest:
     temperature: float | int | None = None
     upstream_model_id: str | None = None
     capabilities: Capabilities = field(default_factory=Capabilities)
-    auth_account_id: str | None = None
     adapter_config: object | None = None
     mode: ProviderInvocationMode = "stream"
 

@@ -21,8 +21,8 @@ def inspect_reasoning() -> dict[str, object]:
         "reasoning": reasoning.effort,
         "budgetTokens": reasoning.budget_tokens,
         "events": [
-            {"type": "thinking_delta", "thinking": "reasoning trace"},
-            {"type": "text_delta", "text": "mock hello from offline fixture"},
+            {"type": "thinking_delta", "delta": "reasoning trace"},
+            {"type": "text_delta", "delta": "mock hello from offline fixture"},
         ],
         "stopReason": "stop",
     }

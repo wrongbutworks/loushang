@@ -656,7 +656,7 @@ def test_openai_codex_public_stream_rejects_invalid_runtime_config_before_iterat
                     ]
                 },
                 OpenAICodexResponsesOptions(api_key=_build_fake_jwt("acc_test")),
-                registry=provider_registry,
+                provider_registry=provider_registry,
             )
 
     asyncio.run(_run())
@@ -679,15 +679,14 @@ def test_openai_codex_provider_accepts_contrib_runtime_config_directly() -> None
     )
 
 
-def test_openai_codex_responses_prefers_oauth_account_binding_over_token_parsing() -> (
-    None
-):
+def test_openai_codex_responses_uses_oauth_token_account_binding() -> None:
     client = _FakeCodexClient(
         events=[
             {"type": "response.completed", "response": {"status": "completed"}},
         ]
     )
     provider = OpenAICodexResponsesProvider(client=client)
+    token = _build_fake_jwt("acc_from_token")
 
     asyncio.run(
         _collect_parts(
@@ -703,8 +702,8 @@ def test_openai_codex_responses_prefers_oauth_account_binding_over_token_parsing
                     oauth_credentials={
                         "openai-codex": OAuthCredentials(
                             provider="openai-codex",
-                            access_token="not-a-jwt",
-                            extra={"account_id": "acc_from_oauth", "plan": "pro"},
+                            access_token=token,
+                            extra={"account_id": "not_used_by_core"},
                         )
                     }
                 ),
@@ -712,44 +711,8 @@ def test_openai_codex_responses_prefers_oauth_account_binding_over_token_parsing
         )
     )
 
-    assert client.last_headers["Authorization"] == "Bearer not-a-jwt"
-    assert client.last_headers["chatgpt-account-id"] == "acc_from_oauth"
-
-
-def test_openai_codex_responses_uses_resolved_request_account_binding() -> None:
-    client = _FakeCodexClient(
-        events=[
-            {"type": "response.completed", "response": {"status": "completed"}},
-        ]
-    )
-    provider = OpenAICodexResponsesProvider(client=client)
-    request = ProviderRequest(
-        provider="openai-codex",
-        endpoint="openai-codex-responses",
-        api="openai-codex-responses",
-        base_url=None,
-        headers={"Authorization": "Bearer not-a-jwt"},
-        auth_account_id="acc_from_resolved",
-    )
-
-    asyncio.run(
-        _collect_parts(
-            _invoke_raw_parts(
-                provider,
-                _Model(reasoning=False),
-                {
-                    "messages": [
-                        UserMessage(role="user", content="hello", timestamp=0.0)
-                    ],
-                },
-                OpenAICodexResponsesOptions(),
-                request,
-            )
-        )
-    )
-
-    assert client.last_headers["Authorization"] == "Bearer not-a-jwt"
-    assert client.last_headers["chatgpt-account-id"] == "acc_from_resolved"
+    assert client.last_headers["Authorization"] == f"Bearer {token}"
+    assert client.last_headers["chatgpt-account-id"] == "acc_from_token"
 
 
 def test_openai_codex_responses_header_override_keeps_account_consistent() -> None:

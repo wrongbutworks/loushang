@@ -202,10 +202,6 @@ def _resolve_api_provider_registry(api_provider_registry=None):
     return default_registry
 
 
-def _coalesce_provider_registry(provider_registry, registry):
-    return provider_registry if provider_registry is not None else registry
-
-
 def _validate_call_options(options: object | None) -> CallOptions | None:
     if options is None or isinstance(options, CallOptions):
         return options
@@ -329,13 +325,12 @@ async def stream(
     options: CallOptions | None = None,
     *,
     provider_registry=None,
-    registry=None,
 ):
     return await _start_stream(
         model,
         context,
         options,
-        provider_registry=_coalesce_provider_registry(provider_registry, registry),
+        provider_registry=provider_registry,
         mode="stream",
         require_stream=True,
     )
@@ -347,13 +342,12 @@ async def complete(
     options: CallOptions | None = None,
     *,
     provider_registry=None,
-    registry=None,
 ):
     event_stream = await _start_stream(
         model,
         context,
         options,
-        provider_registry=_coalesce_provider_registry(provider_registry, registry),
+        provider_registry=provider_registry,
         mode="complete",
         require_stream=False,
     )
@@ -367,7 +361,6 @@ async def complete_structured(
     *,
     options: CallOptions | None = None,
     provider_registry=None,
-    registry=None,
 ) -> StructuredOutputResult:
     structured_output = output or get_structured_output_options(options)
     if structured_output is None:
@@ -377,6 +370,6 @@ async def complete_structured(
         model,
         context,
         call_options,
-        provider_registry=_coalesce_provider_registry(provider_registry, registry),
+        provider_registry=provider_registry,
     )
     return parse_structured_output(message, structured_output)

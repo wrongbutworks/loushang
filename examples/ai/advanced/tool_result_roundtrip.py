@@ -112,7 +112,7 @@ async def _main() -> None:
                 ),
             ]
         },
-        registry=registry,
+        provider_registry=registry,
     )
 
     print("ROUND 2")

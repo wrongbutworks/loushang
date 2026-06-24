@@ -63,7 +63,7 @@ async def inspect_trace_events() -> dict[str, object]:
             retry=RetryOptions(max_attempts=2, max_delay_seconds=0),
             trace=trace_events.append,
         ),
-        registry=registry,
+        provider_registry=registry,
     )
     message = await event_stream.result()
     sdk_client = next(event for event in trace_events if event["type"] == "sdk:client")

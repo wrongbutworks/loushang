@@ -393,12 +393,6 @@
                 "structuredOutput": true,
                 "attachment": false,
                 "temperature": true
-              },
-              "pricing": {
-                "currency": "USD",
-                "input": 0.6,
-                "output": 2.4,
-                "cacheRead": 0.12
               }
             }
           }
@@ -444,7 +438,7 @@
                 "toolUse": true,
                 "structuredOutput": true,
                 "attachment": false,
-                "temperature": true
+                "temperature": false
               },
               "pricing": {
                 "currency": "USD",
