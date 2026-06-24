@@ -1,114 +1,102 @@
 # Loushang-AI Trace Events
 
-本文定义 `loushang-ai` Provider 层的 trace 事件，用于日志与指标接入。事件通过 `CallOptions(trace=callable)` 回调发出，也会进入统一 observability trace sink。
+本文定义 `loushang-ai` Provider Runtime 层的 trace 事件，用于日志与指标接入。事件通过
+`CallOptions(trace=callable)` 回调发出，也会进入统一 observability trace sink。
 
-## 事件类型
+Trace 事件统一为版本化 envelope：
 
-- request_start
-- attempt
-- attempt_error
-- response_success
-- request_error
-- request_end
-- fallback（仅支持自动传输回退的 contrib/provider 会发出）
-- reconnect（仅支持长连接重连的 contrib/provider 会发出）
-
-## 通用字段
-
-- api: string（如 `openai-completions` / `openai-responses` / `anthropic-messages`）
-- provider: string（如 `openai` / `kimi`）
-- endpoint: string（路由路径，如 `/chat/completions`、`/responses`、`/v1/messages`）
-- transport: string（例如 `"sse"`；WebSocket 目前属于 Codex contrib 等 provider-owned path）
-- sessionId: string | null
-- timing: { startTs: number, endTs?: number, attempt?: number }
-- reason/message: string（错误时）
-
-WebSocket 相关（Codex contrib 等支持时可选）：
-
-- ws: { reused: boolean, ttlSeconds: number, poolSize: number }
-
-回退事件：
-
-- fallback: { from: "websocket", to: "sse", reason: string }
-
-## 使用示例
-
-```python
-from loushang.ai import CallOptions
-
-def trace_logger(evt: dict):
-    print("TRACE", evt)
-
-opts = CallOptions(trace=trace_logger)
-# 传给 stream/complete
+```text
+schema = "loushang.ai.trace.v1"
+type
+source
+name
+data
 ```
 
-## 最佳实践
+`type` 使用 `source:name` 形式，例如 `runtime:request`；`source` 和 `name`
+由 `type` 拆分得出。
 
-- 将 trace 事件转为 JSON 行输出或接入 OpenTelemetry
-- 在生产环境可按 provider/api/endpoint/sessionId 建立维度聚合；支持多传输的 contrib/provider 可额外按 transport 聚合
-- 对 attempt_error/request_error 分类统计（transport/provider/semantic）
+## Runtime 事件
 
-## 详细事件示例
+Core runtime 只定义以下事件：
 
-### 1) Codex contrib WebSocket 复用（transport=auto 命中 WS）
+- `runtime:request`
+- `runtime:retry`
+- `runtime:error`
+- `runtime:cancel`
+
+所有 runtime 事件的 `data` 至少包含：
+
+- `callId`: string，同一次 `start_provider_runtime(...)` 调用内保持一致
+- `api`: string
+- `provider`: string
+- `endpoint`: string | null
+- `model`: string | null
+
+`runtime:request` 额外包含：
+
+- `attempt`: int，从 1 开始
+- `maxAttempts`: int
+- `upstreamModel`: string，可选
+
+`runtime:retry` 额外包含：
+
+- `attempt`: int，下一次要执行的 attempt
+- `maxAttempts`: int
+- `delayMs`: int
+- `reason`: string
+- `statusCode`: int，可选
+- `requestId`: string，可选
+
+`runtime:error` 额外包含：
+
+- `reason`: string
+- `retryable`: bool，若错误能归一化为 `AIErrorInfo`
+- `statusCode`: int，可选
+- `requestId`: string，可选
+
+`runtime:cancel` 额外包含：
+
+- `reason`: `"cancelled"`
+
+Provider SDK payload inspection uses separate `sdk:*` events. These events share the
+same versioned envelope and secret redaction rules, but they are provider-owned
+payload summaries rather than runtime lifecycle events.
+
+## 示例
+
+一次 retry 后成功的 runtime trace：
 
 ```json
-{"type":"request_start","api":"openai-responses","provider":"openai","endpoint":"/responses","transport":"sse","sessionId":"sess-1","timing":{"startTs":1711872000.12}}
-{"type":"attempt","api":"openai-responses","provider":"openai","transport":"websocket","sessionId":"sess-1","ws":{"reused":true,"ttlSeconds":300,"poolSize":1},"timing":{"startTs":1711872000.12,"attempt":1}}
-{"type":"response_success","api":"openai-responses","provider":"openai","transport":"websocket","sessionId":"sess-1"}
-{"type":"request_end","api":"openai-responses","provider":"openai","transport":"websocket","sessionId":"sess-1","timing":{"startTs":1711872000.12,"endTs":1711872001.03}}
+{"schema":"loushang.ai.trace.v1","type":"runtime:request","source":"runtime","name":"request","data":{"callId":"c1","api":"anthropic-messages","provider":"anthropic","endpoint":"anthropic-messages","model":"claude","attempt":1,"maxAttempts":2,"upstreamModel":"claude"}}
+{"schema":"loushang.ai.trace.v1","type":"runtime:retry","source":"runtime","name":"retry","data":{"callId":"c1","api":"anthropic-messages","provider":"anthropic","endpoint":"anthropic-messages","model":"claude","attempt":2,"maxAttempts":2,"delayMs":0,"reason":"service_unavailable","statusCode":503,"requestId":"req_503"}}
+{"schema":"loushang.ai.trace.v1","type":"runtime:request","source":"runtime","name":"request","data":{"callId":"c1","api":"anthropic-messages","provider":"anthropic","endpoint":"anthropic-messages","model":"claude","attempt":2,"maxAttempts":2,"upstreamModel":"claude"}}
 ```
 
-说明：
-- request_start 里 transport 初始标记为 sse（默认），实际 attempt 命中 websocket 时，后续事件（含 request_end）以实际传输为准
-- ws.reused=true 表示命中连接池；poolSize 为当前池大小
-
-### 2) Codex contrib WebSocket 失败回退到 SSE（transport=auto）
+一次 terminal provider error：
 
 ```json
-{"type":"request_start","api":"openai-responses","provider":"openai","endpoint":"/responses","transport":"sse","sessionId":"sess-2","timing":{"startTs":1711873000.50}}
-{"type":"attempt","api":"openai-responses","provider":"openai","transport":"websocket","sessionId":"sess-2","ws":{"reused":false,"ttlSeconds":300,"poolSize":0},"timing":{"startTs":1711873000.50,"attempt":1}}
-{"type":"attempt_error","api":"openai-responses","provider":"openai","reason":"transport","message":"dial timeout","transport":"websocket"}
-{"type":"fallback","api":"openai-responses","provider":"openai","fallback":{"from":"websocket","to":"sse","reason":"ws_failed"}}
-{"type":"attempt","api":"openai-responses","provider":"openai","transport":"sse","sessionId":"sess-2","timing":{"startTs":1711873000.50,"attempt":2}}
-{"type":"response_success","api":"openai-responses","provider":"openai","transport":"sse"}
-{"type":"request_end","api":"openai-responses","provider":"openai","transport":"sse","timing":{"startTs":1711873000.50,"endTs":1711873001.20}}
+{"schema":"loushang.ai.trace.v1","type":"runtime:request","source":"runtime","name":"request","data":{"callId":"c2","api":"openai-responses","provider":"openai","endpoint":"openai-responses","model":"gpt","attempt":1,"maxAttempts":1,"upstreamModel":"gpt"}}
+{"schema":"loushang.ai.trace.v1","type":"runtime:error","source":"runtime","name":"error","data":{"callId":"c2","api":"openai-responses","provider":"openai","endpoint":"openai-responses","model":"gpt","reason":"authentication","retryable":false,"statusCode":401,"requestId":"req_401"}}
 ```
 
-### 3) SSE 正常流转（Anthropic/OpenAI Completions）
+## Redaction
 
-```json
-{"type":"request_start","api":"anthropic-messages","provider":"anthropic","endpoint":"/v1/messages","transport":"sse","sessionId":null,"timing":{"startTs":1711874000.00}}
-{"type":"attempt","api":"anthropic-messages","provider":"anthropic","transport":"sse","timing":{"startTs":1711874000.00,"attempt":1}}
-{"type":"response_success","api":"anthropic-messages","provider":"anthropic","transport":"sse"}
-{"type":"request_end","api":"anthropic-messages","provider":"anthropic","transport":"sse","timing":{"startTs":1711874000.00,"endTs":1711874000.70}}
-```
+Trace redaction and `AIErrorInfo.to_dict()` share the same sensitive-key detection.
+Secrets such as API keys, authorization headers, OAuth credentials, cookies, and
+refresh tokens are redacted. Token accounting fields such as `input_tokens`,
+`output_tokens`, `total_tokens`, and `maxOutputTokens` are not treated as secrets.
 
-### 4) WebSocket 自动重连（半开检测后重建连接）
+Tool argument payloads are summarized instead of emitted verbatim:
 
-```json
-{"type":"request_start","api":"openai-responses","provider":"openai","endpoint":"/responses","transport":"sse","sessionId":"sess-3","timing":{"startTs":1711875000.10}}
-{"type":"attempt","api":"openai-responses","provider":"openai","transport":"websocket","sessionId":"sess-3","ws":{"reused":false,"ttlSeconds":300,"poolSize":0},"timing":{"startTs":1711875000.10,"attempt":1}}
-{"type":"reconnect","api":"openai-responses","provider":"openai","sessionId":"sess-3","reason":"iter_error","message":"ws half-open detected"}
-{"type":"response_success","api":"openai-responses","provider":"openai","transport":"websocket","sessionId":"sess-3"}
-{"type":"request_end","api":"openai-responses","provider":"openai","transport":"websocket","sessionId":"sess-3","timing":{"startTs":1711875000.10,"endTs":1711875000.95}}
-```
+- `path` may be retained
+- `content` is represented by `content_chars`
+- `command` is represented by `command_chars`
+- object keys are listed for debugging
 
-说明：
-- 在迭代事件过程中检测异常（半开/读失败）后，进行一次自动重连并重发 payload
-- 通过 `reconnect` 事件报告原因与 message，便于问题定位与指标统计
+## Contrib / Provider-Owned Events
 
-## 连接池与 TTL（WebSocket）
-
-- 连接键：`sessionId`
-- 复用策略：命中相同 `sessionId` 的连接直接复用
-- TTL：默认 300 秒；在每次成功事件后刷新心跳时间戳
-- 清理：惰性清理（在发起新连接前或定期操作时剔除过期项）
-- 建议：长会话应用可周期刷新 `sessionId` 或保持心跳，避免连接闲置被回收
-
-### 重连策略（WebSocket）
-
-- 最大重连次数：当前默认 1 次（防止无穷重试）
-- 触发条件：事件迭代过程中的异常（如半开/读失败），重连后会重发本次请求 payload
-- 观测：通过 `reconnect` 事件记录 `reason` 与 `message`，可据此告警或调整上限策略
+Core runtime does not define transport, WebSocket pool, fallback, reconnect, span, or
+tracer frameworks. Provider-owned integrations may emit additional `sdk:*` or
+provider-specific events when useful, but those events must keep the versioned trace
+envelope and redaction behavior.

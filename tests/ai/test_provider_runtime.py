@@ -213,12 +213,20 @@ def test_provider_runtime_retries_retryable_exception_before_visible_output() ->
 
 def test_provider_runtime_retries_response_error_before_visible_output() -> None:
     attempts = 0
+    trace_events: list[dict[str, object]] = []
 
     async def _parts():
         nonlocal attempts
         attempts += 1
         if attempts == 1:
-            yield provider_error_part(_HTTPError("rate limited", 429), source="openai")
+            yield provider_error_part(
+                _HTTPError(
+                    "rate limited",
+                    429,
+                    headers={"x-request-id": "req_raw_429"},
+                ),
+                source="openai",
+            )
             return
         yield {"type": "response_start", "response_id": "resp_3"}
         yield {"type": "text_delta", "text": "ok"}
@@ -229,7 +237,8 @@ def test_provider_runtime_retries_response_error_before_visible_output() -> None
             _parts,
             model=_model(),
             options=CallOptions(
-                retry=RetryOptions(max_attempts=2, max_delay_seconds=0)
+                retry=RetryOptions(max_attempts=2, max_delay_seconds=0),
+                trace=trace_events.append,
             ),
             request=_request(),
         )
@@ -246,6 +255,25 @@ def test_provider_runtime_retries_response_error_before_visible_output() -> None
         "done",
     ]
     assert events[-1]["message"].content[0].text == "ok"
+    assert [event["type"] for event in trace_events] == [
+        "runtime:request",
+        "runtime:retry",
+        "runtime:request",
+    ]
+    call_id = _assert_runtime_trace_identity(trace_events[0]["data"])
+    assert trace_events[1]["data"] == {
+        "callId": call_id,
+        "api": "openai-responses",
+        "provider": "provider-a",
+        "endpoint": "openai-responses",
+        "model": "model-a",
+        "attempt": 2,
+        "maxAttempts": 2,
+        "delayMs": 0,
+        "reason": "rate_limit",
+        "statusCode": 429,
+        "requestId": "req_raw_429",
+    }
 
 
 def test_provider_runtime_emits_error_trace_for_terminal_error() -> None:

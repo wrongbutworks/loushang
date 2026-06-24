@@ -68,9 +68,21 @@ async def inspect_trace_events() -> dict[str, object]:
     message = await event_stream.result()
     sdk_client = next(event for event in trace_events if event["type"] == "sdk:client")
     retry = next(event for event in trace_events if event["type"] == "runtime:retry")
+    runtime_events = [
+        event for event in trace_events if str(event["type"]).startswith("runtime:")
+    ]
+    runtime_call_ids = [event["data"].get("callId") for event in runtime_events]
+    retry_data = dict(retry["data"])
+    if isinstance(retry_data.get("callId"), str) and retry_data["callId"]:
+        retry_data["callId"] = "<callId>"
     return {
         "schemas": sorted({str(event["schema"]) for event in trace_events}),
         "eventTypes": [event["type"] for event in trace_events],
+        "callIdStable": (
+            len(runtime_call_ids) == 3
+            and all(isinstance(call_id, str) and call_id for call_id in runtime_call_ids)
+            and len(set(runtime_call_ids)) == 1
+        ),
         "text": "".join(
             part.text
             for part in message.content
@@ -81,7 +93,7 @@ async def inspect_trace_events() -> dict[str, object]:
             "apiKey": sdk_client["data"]["apiKey"],
             "oauth": sdk_client["data"]["oauth"],
         },
-        "retry": retry["data"],
+        "retry": retry_data,
     }
 
 
