@@ -673,23 +673,23 @@
         "prefix": "Bearer "
       },
       "endpoints": {
-        "openai-completions": {
-          "displayName": "Tencent Hunyuan OpenAI-compatible",
-          "api": "openai-completions",
-          "baseUrl": "https://api.hunyuan.cloud.tencent.com/v1",
+        "openai-responses": {
+          "displayName": "Tencent Hunyuan TokenHub Responses API",
+          "api": "openai-responses",
+          "baseUrl": "https://tokenhub.tencentmaas.com/v1",
           "region": "cn",
           "preferred": true,
-          "docs": "https://cloud.tencent.com/document/product/1729/111007",
+          "docs": "https://cloud.tencent.com/document/product/1823/130079",
           "transport": {
             "kind": "http",
             "stream": "sse"
           },
           "models": {
-            "hunyuan-turbos-latest": {
-              "displayName": "Hunyuan TurboS Latest",
-              "family": "hunyuan-turbos",
+            "hy3-preview": {
+              "displayName": "Hy3 Preview",
+              "family": "hy3",
               "alias": "default-chat",
-              "lastUpdated": "2025-07-16",
+              "lastUpdated": "2026-06-18",
               "defaults": {
                 "maxOutputTokens": 4096
               },
@@ -711,21 +711,18 @@
               },
               "pricing": {
                 "currency": "CNY",
-                "input": 0.8,
-                "output": 2
+                "input": 1.2,
+                "output": 4,
+                "cacheRead": 0.4
               }
             }
           },
           "adapter": {
-            "store": false,
             "developerRole": false,
-            "streamingUsage": true,
-            "reasoningEffort": false,
-            "strictSchema": false,
-            "maxOutputTokensField": "max_tokens",
-            "toolResultName": false,
-            "assistantAfterToolResult": false,
-            "toolStream": false
+            "promptCacheKey": false,
+            "longCacheRetention": false,
+            "sessionIdHeader": false,
+            "assistantAfterToolResult": false
           }
         }
       }

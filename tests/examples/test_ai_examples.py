@@ -113,6 +113,7 @@ def test_provider_matrix_example_targets_curated_provider_models() -> None:
     assert examples[("moonshot", "openai-completions", "kimi-k2.6")]
     assert examples[("baidu-qianfan", "openai-completions-cn", "ernie-5.1")]
     assert examples[("stepfun", "openai-completions", "step-3.7-flash")]
+    assert examples[("tencent-hunyuan", "openai-responses", "hy3-preview")]
     assert len(examples) == 11
     assert "openrouter" not in {item.provider_id for item in module.PROVIDER_EXAMPLES}
     assert "amazon-bedrock" not in {
