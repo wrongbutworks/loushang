@@ -104,7 +104,7 @@ Amazon Bedrock Converse 不再作为 core adapter 发布；本包不再声明 Be
   - 只负责 `Context` 形状整理
   - 提取 `system_prompt`
   - 规范化 `tools`
-  - 产出公开的 `NormalizedContext` frozen dataclass snapshot，provider 只读取这个归一化边界
+  - 产出公开的 `NormalizedContext` frozen dataclass boundary，provider 只读取这个归一化边界
   - `normalize_context_result(...)` 返回 `NormalizationResult`，其中 diagnostics 会稳定报告 repair、downgrade 和 signature-removal
   - 默认使用 strict tool-call/tool-result pairing；缺失或孤立的 tool result 会直接报错
   - 历史兼容修复需要调用方显式传入 `pairing_mode="repair"`
@@ -248,6 +248,8 @@ class；普通调用只通过 `CallOptions`、`ReasoningOptions`、`RetryOptions
 
 - `loushang.ai.context.normalize_context(...)`
   - returns the public `NormalizedContext` frozen dataclass contract with attribute access
+  - freezes the context shell and message/tool tuples; it does not deep-freeze
+    nested message content or tool parameter schemas
   - accepts pi-style dict messages, including camelCase assistant/tool-result fields such as `toolCallId`, `thinkingSignature`, `thoughtSignature`, `mimeType`, and `stopReason`
 - `loushang.ai.context.normalize_context_result(...)`
   - returns the same normalized context plus stable `NormalizationDiagnostic` entries for repairs, cross-provider downgrades, and provider-specific signature removal
@@ -327,7 +329,9 @@ query abstraction instead of hardcoding provider quota URLs.
 Custom providers registered through `ApiProviderRegistry` receive a canonical
 `NormalizedContext`: user, assistant, and tool-result messages are dataclasses,
 and tools are `Tool` dataclasses with validated dict parameters. Custom provider
-code should use attribute access instead of dict-style message access.
+code should use attribute access instead of dict-style message access. The
+boundary is canonical provider input, not a deep immutable clone of all nested
+values.
 
 ### `loushang.ai.provider`
 
