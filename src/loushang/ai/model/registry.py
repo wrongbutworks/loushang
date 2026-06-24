@@ -482,7 +482,10 @@ class ModelRegistry:
         if endpoint.auth is not None:
             endpoint_auth_explicit.add((provider_id, endpoint.id))
         for model_id, model in endpoint.models.items():
-            if (provider_id, endpoint.id, model_id) in self._model_auth_explicit:
+            if (
+                model.auth is not None
+                and (provider_id, endpoint.id, model_id) in self._model_auth_explicit
+            ):
                 model_auth_explicit.add((provider_id, endpoint.id, model_id))
                 continue
             if model.auth is not None and not has_bound_endpoint_context(model):
