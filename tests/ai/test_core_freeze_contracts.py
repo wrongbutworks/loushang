@@ -89,8 +89,18 @@ class _RecordingProvider:
 class _InvokeRawOnlyProvider:
     api = "anthropic-messages"
 
+    def __init__(self) -> None:
+        self.modes: list[str | None] = []
+
     def invoke_raw(self, request):
-        raise AssertionError("not used by this contract test")
+        return self._raw_parts(request)
+
+    async def _raw_parts(self, request):
+        self.modes.append(getattr(request, "mode", None))
+        yield {"type": "response_start", "response_id": "aif002"}
+        yield {"type": "text_delta", "text": "ok"}
+        yield {"type": "stop_reason", "stop_reason": "stop"}
+        yield {"type": "response_done"}
 
 
 class _StreamRawOnlyProvider:
@@ -228,8 +238,38 @@ def test_provider_registry_accepts_invoke_raw_and_rejects_stream_raw() -> None:
     registry = ApiProviderRegistry()
 
     registry.register_api_provider(_InvokeRawOnlyProvider())
-    with pytest.raises(TypeError, match="stream_raw"):
+    with pytest.raises(TypeError):
         registry.register_api_provider(_StreamRawOnlyProvider())
+
+
+@pytest.mark.xfail(
+    strict=True,
+    reason="AIF-008 dispatches provider raw calls through invoke_raw",
+)
+def test_complete_dispatches_to_invoke_raw_provider(tmp_path: Path) -> None:
+    async def run() -> None:
+        path = tmp_path / "company.json"
+        _write_custom_registry(path, stream=True)
+        model = load_model_registry_from_file(path).get_model(
+            "company-aif002",
+            "anthropic-messages",
+            "company-chat",
+        )
+        provider = _InvokeRawOnlyProvider()
+        provider_registry = ApiProviderRegistry()
+        provider_registry.register_api_provider(provider)
+
+        message = await ai.complete(
+            model,
+            {"messages": [{"role": "user", "content": "hello"}]},
+            CallOptions(api_key="test-key"),
+            registry=provider_registry,
+        )
+
+        assert message.text == "ok"
+        assert provider.modes == ["complete"]
+
+    asyncio.run(run())
 
 
 @pytest.mark.xfail(
