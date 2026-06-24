@@ -86,7 +86,7 @@ Provider/contrib-specific options do not enter the root `loushang.ai` public sur
 
 Cancellation enters through `CallOptions.cancellation`.
 
-The public contract is a minimal cancellation signal object, not a JavaScript `AbortSignal` clone and not an `options.signal` alias. The API and runtime may check cancellation before provider invocation, during streaming iteration, and before final result convergence.
+The public contract is a minimal cancellation signal object, not a JavaScript `AbortSignal` clone and not a legacy `signal` alias. The API and runtime may check cancellation before provider invocation, during streaming iteration, and before final result convergence.
 
 Detected cancellation should converge to the protocol-level `aborted` stop reason or a typed AI error; raw runtime cancellation details should not leak as the public AI contract.
 

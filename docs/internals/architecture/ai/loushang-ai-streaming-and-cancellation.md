@@ -221,13 +221,13 @@ LiteLLM 说明：
 
 ### 2. Cancellation Model
 
-保留 `signal` 字段名，以对齐 `reference AI SDK`。
+取消语义通过 `CallOptions.cancellation` 进入 public API。
 
 但：
 
-- `signal` 不直接定义为 `asyncio.Event`
-- 它应建模为 `AbortSignalLike`
-- `AbortSignalLike` 只表达“调用是否应被取消”
+- `cancellation` 不直接定义为 `asyncio.Event`
+- 它应建模为最小取消信号对象
+- 该对象只表达“调用是否应被取消”
 
 ### 3. Abort Semantics
 
@@ -443,7 +443,7 @@ provider adapter 负责：
    - async iterable + `result()`
    - 还是 wrapper object + internal queue
 
-2. `AbortSignalLike` 的最小协议长什么样
+2. 最小取消信号对象的协议长什么样
    - 当前建议：`cancelled: bool`
    - 是否需要兼容 `is_cancelled()` 形式的适配层
 
@@ -467,4 +467,4 @@ provider adapter 负责：
 4. cancellation 作为协议语义保留在 public API 中
 5. `AssistantMessageEventStream` 对外只暴露读侧接口
 6. internal streaming 采用 `provider SDK stream -> raw part stream -> assistant event stream` 三层结构
-7. `AbortSignalLike` 当前建议采用最小只读协议：`cancelled: bool`
+7. `CallOptions.cancellation` 当前建议采用最小只读协议：`cancelled: bool`

@@ -275,8 +275,8 @@ provider adapter 应只负责以下事项：
 
 provider adapter strategy 需要明确承接当前已冻结的 cancellation 方向：
 
-- public 使用 `signal`
-- public 语义建模为 `AbortSignalLike`
+- public 使用 `CallOptions.cancellation`
+- public 语义建模为最小取消信号对象
 - adapter 是最关键的取消检查层之一
 
 因此建议要求 adapter 至少在三个点检查取消：

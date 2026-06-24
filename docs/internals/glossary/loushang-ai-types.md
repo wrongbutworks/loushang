@@ -107,7 +107,7 @@
 - `short`
 - `long`
 
-### AbortSignalLike
+### Cancellation Signal
 
 Python 侧的最小取消信号协议。
 
@@ -115,13 +115,13 @@ Python 侧的最小取消信号协议。
 
 - `CallOptions.cancellation` 承载取消信号
 - Python 实现不要求复制 JavaScript `AbortSignal`
-- `AbortSignalLike` 只表达“调用是否应被取消”的语义
+- cancellation signal 只表达“调用是否应被取消”的语义
 - provider 与 streaming 层应在调用前、流式迭代中与结束前检查该信号
 - 一旦检测到取消，应映射为 `aborted` 终止语义，而不是普通异常
 
 建议：
 
-- 将 `AbortSignalLike` 定义为 `loushang.ai` 内部最小协议类型
+- 将 cancellation signal 定义为 `loushang.ai` 内部最小协议类型
 - 不在 v0.1 中绑定到具体事件循环或并发库
 
 当前建议的最小语义为：
@@ -130,7 +130,7 @@ Python 侧的最小取消信号协议。
 
 说明：
 
-- `AbortSignalLike` 优先建模为只读取消状态
+- cancellation signal 优先建模为只读取消状态
 - 不要求 `wait()`、不要求 awaitable 接口
 - 不直接绑定 `asyncio.Event`
 - 实现层可以适配 `asyncio.Event` 或其他取消对象
