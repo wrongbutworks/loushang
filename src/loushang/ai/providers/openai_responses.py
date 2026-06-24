@@ -4,7 +4,6 @@ import asyncio
 import os
 from collections.abc import AsyncIterator
 from contextlib import suppress
-from dataclasses import replace
 from typing import Any
 
 from loushang.ai.errors import UnsupportedCapabilityError
@@ -16,11 +15,7 @@ from loushang.ai.options import (
     get_reasoning_summary,
 )
 from loushang.ai.output_budget import resolve_output_token_budget
-from loushang.ai.provider import (
-    ProviderRequest,
-    normalize_provider_request_for_api,
-    resolve_request_for_model,
-)
+from loushang.ai.provider import ProviderRequest
 from loushang.ai.provider.errors import provider_error_part
 from loushang.ai.providers.openai_responses_shared import (
     build_copilot_dynamic_headers,
@@ -110,21 +105,6 @@ class OpenAIResponsesProvider:
     ) -> None:
         self._client = client
         self._base_url = base_url
-
-    def _stream_raw_parts(
-        self, model, context, options, request=None
-    ) -> AsyncIterator[RawPart]:
-        resolved = request or resolve_request_for_model(
-            model,
-            context=context,
-            options=options,
-        )
-        resolved = replace(resolved, model=model, context=context, options=options)
-        resolved = normalize_provider_request_for_api(
-            self.api,
-            resolved,
-        )
-        return self.stream_raw(resolved)
 
     async def stream_raw(self, request: ProviderRequest) -> AsyncIterator[RawPart]:
         model = request.model

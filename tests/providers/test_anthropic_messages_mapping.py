@@ -37,7 +37,10 @@ from loushang.ai.types import (
     Usage,
     UserMessage,
 )
-from tests.providers._runtime import start_test_provider_stream
+from tests.providers._runtime import (
+    provider_request_for_test,
+    start_test_provider_stream,
+)
 
 FINE_GRAINED_TOOLS = "fineGrainedTools"
 INTERLEAVED_THINKING = "interleavedThinking"
@@ -55,11 +58,15 @@ def _normalized_context(model, context, options=None):
 
 
 def _stream_raw_parts(provider, model, context, options=None, request=None):
-    return provider._stream_raw_parts(
-        model,
-        _normalized_context(model, context, options),
-        options,
-        request,
+    normalized_context = _normalized_context(model, context, options)
+    return provider.stream_raw(
+        provider_request_for_test(
+            provider,
+            model,
+            normalized_context,
+            options=options,
+            request=request,
+        )
     )
 
 

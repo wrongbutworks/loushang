@@ -5,7 +5,7 @@ import base64
 import json
 from collections.abc import AsyncIterator, Mapping
 from contextlib import suppress
-from dataclasses import dataclass, replace
+from dataclasses import dataclass
 from inspect import isawaitable
 from types import SimpleNamespace
 from typing import Any
@@ -22,11 +22,7 @@ from loushang.ai.options import (
     get_reasoning_summary,
     get_timeout_seconds,
 )
-from loushang.ai.provider import (
-    ProviderRequest,
-    normalize_provider_request_for_api,
-    resolve_request_for_model,
-)
+from loushang.ai.provider import ProviderRequest
 from loushang.ai.provider.errors import (
     provider_error_part,
     provider_error_part_from_raw,
@@ -52,22 +48,6 @@ class OpenAICodexResponsesProvider:
         self._client = client
         self._websocket_session_cache: dict[str, _CachedWebSocketConnection] = {}
         self._websocket_cache_ttl_ms = websocket_cache_ttl_ms
-
-    def _stream_raw_parts(
-        self, model, context, options, request=None
-    ) -> AsyncIterator[RawPart]:
-        resolved = request or resolve_request_for_model(
-            model,
-            context=context,
-            options=options,
-        )
-        resolved = replace(resolved, model=model, context=context, options=options)
-        resolved = normalize_provider_request_for_api(
-            self.api,
-            resolved,
-            adapter_config_resolver=self.adapter_config_resolver,
-        )
-        return self.stream_raw(resolved)
 
     async def stream_raw(self, request: ProviderRequest) -> AsyncIterator[RawPart]:
         model = request.model

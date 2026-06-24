@@ -4,7 +4,7 @@ import asyncio
 import json
 from collections.abc import AsyncIterator, Mapping
 from contextlib import suppress
-from dataclasses import dataclass, field, replace
+from dataclasses import dataclass, field
 from typing import Any, cast
 
 from loushang.ai.event_stream.raw_parts import RawPart
@@ -16,11 +16,7 @@ from loushang.ai.options import (
     is_reasoning_requested,
 )
 from loushang.ai.output_budget import resolve_output_token_budget
-from loushang.ai.provider import (
-    ProviderRequest,
-    normalize_provider_request_for_api,
-    resolve_request_for_model,
-)
+from loushang.ai.provider import ProviderRequest
 from loushang.ai.provider.errors import (
     provider_error_part,
     provider_error_part_from_raw,
@@ -352,21 +348,6 @@ class AnthropicProvider(AnthropicProviderBase):
     def __init__(self, *, client: Any | None = None) -> None:
         # 允许注入自建客户端（同步或异步），否则按需创建
         self._client = client
-
-    def _stream_raw_parts(
-        self, model, context, options, request=None
-    ) -> AsyncIterator[RawPart]:
-        resolved = request or resolve_request_for_model(
-            model,
-            context=context,
-            options=options,
-        )
-        resolved = replace(resolved, model=model, context=context, options=options)
-        resolved = normalize_provider_request_for_api(
-            self.api,
-            resolved,
-        )
-        return self.stream_raw(resolved)
 
     async def stream_raw(self, request: ProviderRequest) -> AsyncIterator[RawPart]:
         """

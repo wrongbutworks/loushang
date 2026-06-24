@@ -36,7 +36,10 @@ from loushang.ai.types import (
     Usage,
     UserMessage,
 )
-from tests.providers._runtime import start_test_provider_stream
+from tests.providers._runtime import (
+    provider_request_for_test,
+    start_test_provider_stream,
+)
 
 
 def _normalized_context(model, context, options=None):
@@ -63,11 +66,15 @@ async def _collect_raw_parts(events: list[SimpleNamespace]) -> list[dict[str, ob
 
 
 def _stream_raw_parts(provider, model, context, options=None, request=None):
-    return provider._stream_raw_parts(
-        model,
-        _normalized_context(model, context, options),
-        options,
-        request,
+    normalized_context = _normalized_context(model, context, options)
+    return provider.stream_raw(
+        provider_request_for_test(
+            provider,
+            model,
+            normalized_context,
+            options=options,
+            request=request,
+        )
     )
 
 
@@ -1424,7 +1431,7 @@ def _patch_resolved_request(
         )
 
     monkeypatch.setattr(
-        "loushang.ai.providers.openai_responses.resolve_request_for_model",
+        "tests.providers._runtime.resolve_request_for_model",
         _resolve,
     )
 

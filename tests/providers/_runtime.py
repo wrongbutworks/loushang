@@ -18,7 +18,7 @@ def start_test_provider_stream(
     *,
     request: ProviderRequest | None = None,
 ):
-    resolved = _runtime_request(
+    resolved = provider_request_for_test(
         provider,
         model,
         normalized_context,
@@ -33,7 +33,7 @@ def start_test_provider_stream(
     )
 
 
-def _runtime_request(
+def provider_request_for_test(
     provider,
     model,
     normalized_context,
