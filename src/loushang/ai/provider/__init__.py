@@ -4,6 +4,7 @@ from loushang.ai.provider.protocol import (
     ApiProvider,
     ProviderInvocationMode,
     ProviderRequest,
+    ProviderRequestValidator,
 )
 from loushang.ai.provider.resolution import (
     ensure_request_api,
@@ -18,6 +19,7 @@ __all__ = [
     "CancellationSignal",
     "ProviderInvocationMode",
     "ProviderRequest",
+    "ProviderRequestValidator",
     "ensure_request_api",
     "normalize_provider_request_for_api",
     "normalize_provider_error",

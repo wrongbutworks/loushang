@@ -2,7 +2,10 @@ from __future__ import annotations
 
 from typing import Any, cast
 
-from loushang.ai.provider.invocation import validate_provider_invoke_raw_contract
+from loushang.ai.provider.invocation import (
+    validate_provider_invoke_raw_contract,
+    validate_provider_request_validator_contract,
+)
 from loushang.ai.provider.protocol import ApiProvider
 
 RegisteredApiProvider = ApiProvider
@@ -31,6 +34,7 @@ class ApiProviderRegistry:
             if not callable(getattr(provider_any, name)):
                 raise TypeError(f"Provider attribute must be callable: {name}")
         validate_provider_invoke_raw_contract(provider_any)
+        validate_provider_request_validator_contract(provider_any)
         self._providers[provider_any.api] = (provider_any, source_id)
 
     def get_api_provider(self, api: str) -> ApiProvider:

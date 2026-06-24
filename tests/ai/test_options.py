@@ -7,6 +7,7 @@ from types import SimpleNamespace
 import pytest
 
 import loushang.ai as ai
+import loushang.ai.contrib.openai_codex as openai_codex_module
 import loushang.ai.options as options_module
 from loushang.ai import CallOptions as PublicCallOptions
 from loushang.ai.advanced.registry import ApiProviderRegistry
@@ -173,3 +174,5 @@ def test_contrib_options_remain_isolated_from_root_api() -> None:
     assert not hasattr(OpenAICodexResponsesOptions(), "reasoning_summary")
     assert "OpenAICodexResponsesOptions" not in ai.__all__
     assert not hasattr(ai, "OpenAICodexResponsesOptions")
+    assert "resolve_openai_codex_runtime_config" not in openai_codex_module.__all__
+    assert not hasattr(openai_codex_module, "resolve_openai_codex_runtime_config")

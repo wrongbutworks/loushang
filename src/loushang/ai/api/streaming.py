@@ -23,7 +23,10 @@ from loushang.ai.provider import (
     normalize_provider_request_for_api,
     resolve_request_for_model,
 )
-from loushang.ai.provider.invocation import call_api_provider_stream
+from loushang.ai.provider.invocation import (
+    call_api_provider_stream,
+    validate_provider_request,
+)
 from loushang.ai.structured import (
     StructuredOutputOptions,
     StructuredOutputResult,
@@ -266,12 +269,6 @@ def _emit_normalization_diagnostics(
         )
 
 
-def _validate_provider_request(provider, request) -> None:
-    validator = getattr(provider, "validate_request", None)
-    if callable(validator):
-        validator(request)
-
-
 async def _start_stream(
     model,
     context,
@@ -309,7 +306,7 @@ async def _start_stream(
         resolved.api
     )
     resolved = normalize_provider_request_for_api(provider.api, resolved)
-    _validate_provider_request(provider, resolved)
+    validate_provider_request(provider, resolved)
     if get_structured_output_options(
         options
     ) is not None and not _supports_structured_output_mapping(provider):

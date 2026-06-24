@@ -241,7 +241,8 @@ class；普通调用只通过 `CallOptions`、`ReasoningOptions`、`RetryOptions
 - Context normalization helper 从 `loushang.ai.context` 进入。
 - Tool transform / validation 从 `loushang.ai.tool` 进入。
 - Cost helper 从 `loushang.ai.pricing` 进入。
-- Platform quota helper 从 `loushang.ai.usage` 进入。
+- Platform quota helper 从 `loushang.ai.contrib.moonshot` 进入；core
+  `loushang.ai.usage` 只保留 response usage payload helper。
 - Overflow 和 streaming JSON repair helper 从 `loushang.ai.utils` 进入。
 
 ### 子模块 helper
@@ -330,11 +331,14 @@ Custom providers registered through `ApiProviderRegistry` receive a canonical
 and tools are `Tool` dataclasses with validated dict parameters. Custom provider
 code should use attribute access instead of dict-style message access. The
 boundary is canonical provider input, not a deep immutable clone of all nested
-values.
+values. Providers with provider-specific adapter config can also implement the
+optional `ProviderRequestValidator` protocol; `validate_request(request)` runs
+after core request normalization and before `invoke_raw(request)`.
 
 ### `loushang.ai.provider`
 
 - `ProviderRequest`
+- `ProviderRequestValidator`
 - `resolve_endpoint_for_model(...)`
 - `resolve_request_for_model(...)`
 
@@ -427,8 +431,9 @@ Registry 返回的 `Model` 会带上继承后的 endpoint 调用事实。
 
 冻结后的 request resolution 只携带一份 `adapter_config`。核心 provider 使用
 `OpenAICompletionsConfig`、`OpenAIResponsesConfig`、`AnthropicMessagesConfig`
-三类配置；非核心 provider 可以通过自己的 runtime config resolver 生成或校验
-provider 专有配置。catalog 只声明 `adapter`，resolution 不再保留历史字段迁移层。
+三类配置；非核心 provider 可以实现可选 `ProviderRequestValidator`，在
+`validate_request(request)` 中生成或校验 provider 专有配置。catalog 只声明
+`adapter`，resolution 不再保留历史字段迁移层。
 
 ## 最小调用链
 

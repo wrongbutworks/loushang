@@ -15,6 +15,7 @@ from loushang.ai.model.registry import (
     clear_default_model_registry,
     get_default_model_registry,
 )
+from loushang.ai.provider import ProviderRequest, ProviderRequestValidator
 
 
 class _Provider:
@@ -23,6 +24,14 @@ class _Provider:
     async def invoke_raw(self, request):
         del request
         yield {"type": "response_done"}
+
+
+class _ValidatingProvider(_Provider):
+    def __init__(self) -> None:
+        self.validated_requests: list[ProviderRequest] = []
+
+    def validate_request(self, request: ProviderRequest) -> None:
+        self.validated_requests.append(request)
 
 
 class _MissingApiProvider:
@@ -38,6 +47,15 @@ class _MissingStreamRawProvider:
 class _NonCallableStreamRawProvider:
     api = "non-callable"
     invoke_raw = object()
+
+
+class _NonCallableRequestValidatorProvider(_Provider):
+    validate_request = object()
+
+
+class _InvalidRequestValidatorSignatureProvider(_Provider):
+    def validate_request(self) -> None:
+        return None
 
 
 def test_api_provider_registry_manages_raw_providers_by_source() -> None:
@@ -70,6 +88,37 @@ def test_api_provider_registry_manages_raw_providers_by_source() -> None:
     ],
 )
 def test_api_provider_registry_rejects_invalid_provider_shape(
+    provider: object,
+    message: str,
+) -> None:
+    registry = ApiProviderRegistry()
+
+    with pytest.raises(TypeError, match=message):
+        registry.register_api_provider(provider)  # type: ignore[arg-type]
+
+
+def test_api_provider_registry_accepts_typed_request_validator() -> None:
+    registry = ApiProviderRegistry()
+    provider = _ValidatingProvider()
+
+    registry.register_api_provider(provider)
+
+    registered = registry.get_api_provider("custom")
+    assert registered is provider
+    assert isinstance(registered, ProviderRequestValidator)
+
+
+@pytest.mark.parametrize(
+    ("provider", "message"),
+    [
+        (_NonCallableRequestValidatorProvider(), "validate_request must be callable"),
+        (
+            _InvalidRequestValidatorSignatureProvider(),
+            "validate_request must accept exactly one ProviderRequest",
+        ),
+    ],
+)
+def test_api_provider_registry_rejects_invalid_request_validator_shape(
     provider: object,
     message: str,
 ) -> None:

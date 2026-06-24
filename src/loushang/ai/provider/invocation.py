@@ -4,7 +4,7 @@ import inspect
 from typing import Any
 
 from loushang.ai.context import NormalizedContext
-from loushang.ai.provider.protocol import ProviderRequest
+from loushang.ai.provider.protocol import ProviderRequest, ProviderRequestValidator
 from loushang.ai.provider.runtime import start_provider_runtime
 
 
@@ -28,6 +28,36 @@ def validate_provider_invoke_raw_contract(provider: Any) -> None:
         raise TypeError("Provider invoke_raw request must be a positional parameter")
     if parameter.name not in {"request", "provider_request"}:
         raise TypeError("Provider invoke_raw parameter must be named request")
+
+
+def validate_provider_request_validator_contract(provider: Any) -> None:
+    method = getattr(provider, "validate_request", None)
+    if method is None:
+        return
+    if not callable(method):
+        raise TypeError("Provider validate_request must be callable")
+    try:
+        signature = inspect.signature(method)
+    except (TypeError, ValueError):
+        raise TypeError("Provider validate_request signature is not inspectable") from None
+
+    parameters = list(signature.parameters.values())
+    if len(parameters) != 1:
+        raise TypeError("Provider validate_request must accept exactly one ProviderRequest")
+    parameter = parameters[0]
+    if parameter.kind not in (
+        inspect.Parameter.POSITIONAL_ONLY,
+        inspect.Parameter.POSITIONAL_OR_KEYWORD,
+    ):
+        raise TypeError("Provider validate_request request must be positional")
+    if parameter.name not in {"request", "provider_request"}:
+        raise TypeError("Provider validate_request parameter must be named request")
+
+
+def validate_provider_request(provider: Any, request: ProviderRequest) -> None:
+    validate_provider_request_validator_contract(provider)
+    if isinstance(provider, ProviderRequestValidator):
+        provider.validate_request(request)
 
 
 def _call_provider_raw_parts(

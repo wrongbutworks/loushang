@@ -74,6 +74,20 @@ class _Provider:
         yield {"type": "response_done"}
 
 
+class _ValidatingProvider(_Provider):
+    def __init__(self, api: str = "faux") -> None:
+        super().__init__(api)
+        self.validated_request: ProviderRequest | None = None
+
+    def validate_request(self, request: ProviderRequest) -> None:
+        self.validated_request = request
+
+
+class _RejectingValidatorProvider(_Provider):
+    def validate_request(self, request: ProviderRequest) -> None:
+        raise TypeError(f"invalid adapter for {request.api}")
+
+
 class _ErrorProvider(_Provider):
     async def invoke_raw(self, request):
         self.context = request.context
@@ -700,6 +714,54 @@ def test_stream_passes_request_through_registered_provider(
 
     _assert_normalized_provider_context(provider.context)
     assert provider.request.api == "faux"
+
+
+def test_stream_runs_optional_provider_request_validator_before_iteration(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _patch_resolved_request(monkeypatch)
+    provider = _ValidatingProvider()
+    registry = ApiProviderRegistry()
+    registry.register_api_provider(provider)
+
+    event_stream = asyncio.run(
+        stream(
+            _Model(),
+            {"messages": [UserMessage(role="user", content="hello", timestamp=0.0)]},
+            CallOptions(),
+            registry=registry,
+        )
+    )
+
+    assert provider.validated_request is provider.request
+    assert provider.validated_request is not None
+    assert provider.validated_request.api == "faux"
+    asyncio.run(event_stream.aclose())
+
+
+def test_stream_raises_provider_request_validation_error_before_iteration(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _patch_resolved_request(monkeypatch)
+    provider = _RejectingValidatorProvider()
+    registry = ApiProviderRegistry()
+    registry.register_api_provider(provider)
+
+    with pytest.raises(TypeError, match="invalid adapter for faux"):
+        asyncio.run(
+            stream(
+                _Model(),
+                {
+                    "messages": [
+                        UserMessage(role="user", content="hello", timestamp=0.0)
+                    ]
+                },
+                CallOptions(),
+                registry=registry,
+            )
+        )
+
+    assert provider.request is None
 
 
 def test_register_api_provider_rejects_stream_only_provider() -> None:

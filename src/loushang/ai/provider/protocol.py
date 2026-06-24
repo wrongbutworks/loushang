@@ -49,3 +49,8 @@ class ApiProvider(Protocol):
         self,
         request: ProviderRequest,
     ) -> AsyncIterator[RawPart]: ...
+
+
+@runtime_checkable
+class ProviderRequestValidator(Protocol):
+    def validate_request(self, request: ProviderRequest) -> None: ...

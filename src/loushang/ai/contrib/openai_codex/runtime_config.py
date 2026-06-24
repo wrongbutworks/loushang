@@ -28,18 +28,6 @@ class OpenAICodexRuntimeConfig:
         _validate_str_field("user_agent", self.user_agent)
 
 
-def resolve_openai_codex_runtime_config(
-    current: object | None,
-) -> OpenAICodexRuntimeConfig:
-    if current is None:
-        return OpenAICodexRuntimeConfig()
-    if not isinstance(current, OpenAICodexRuntimeConfig):
-        raise TypeError(
-            "adapter_config for openai-codex-responses must be OpenAICodexRuntimeConfig"
-        )
-    return current
-
-
 def _validate_bool_field(field_name: str, value: object) -> None:
     if isinstance(value, bool):
         return
