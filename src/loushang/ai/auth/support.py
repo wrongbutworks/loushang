@@ -6,6 +6,7 @@ from dataclasses import dataclass, field
 
 from loushang.ai.auth.types import OAuthCredentials
 from loushang.ai.model import Auth
+from loushang.ai.utils.redaction import is_sensitive_key
 
 AuthConfig = Auth
 
@@ -157,7 +158,7 @@ def _resolve_oauth_auth_view(
     credentials = result["newCredentials"]
     metadata = dict(getattr(credentials, "extra", None) or {})
     headers = resolve_auth_material(bearer_token=result["apiKey"]).headers
-    headers.update(_oauth_metadata_headers(metadata))
+    headers.update(_oauth_provider_headers(provider, credentials))
     return AuthView(
         headers=headers,
         metadata=metadata,
@@ -272,16 +273,25 @@ def _expand_extra_headers(
     return expanded
 
 
-def _oauth_metadata_headers(metadata: Mapping[str, object]) -> dict[str, str]:
-    headers = metadata.get("headers")
+def _oauth_provider_headers(
+    provider: str,
+    credentials: OAuthCredentials,
+) -> dict[str, str]:
+    from loushang.ai.auth.registry import get_default_oauth_registry
+
+    oauth_provider = get_default_oauth_registry().get(provider)
+    if oauth_provider is None:
+        return {}
+    get_auth_headers = getattr(oauth_provider, "get_auth_headers", None)
+    if not callable(get_auth_headers):
+        return {}
+    headers = get_auth_headers(credentials)
     if not isinstance(headers, dict):
         return {}
     return {
         key: value
         for key, value in headers.items()
-        if isinstance(key, str)
-        and isinstance(value, str)
-        and key.lower() not in {"authorization", "x-api-key"}
+        if isinstance(key, str) and isinstance(value, str) and not is_sensitive_key(key)
     }
 
 

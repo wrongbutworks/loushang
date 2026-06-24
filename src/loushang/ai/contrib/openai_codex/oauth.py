@@ -138,6 +138,12 @@ class OpenAICodexOAuthProvider(OAuthProviderInterface):
     def get_api_key(self, credentials: OAuthCredentials) -> str:
         return credentials.access_token
 
+    def get_auth_headers(self, credentials: OAuthCredentials) -> dict[str, str]:
+        account_id = _account_id_from_extra(credentials.extra)
+        if account_id is None:
+            return {}
+        return {"chatgpt-account-id": account_id}
+
     async def login(self, callbacks: OAuthLoginCallbacks) -> OAuthCredentials:
         verifier, challenge = self._pkce_generator()
         expected_state = self._state_generator()
@@ -289,3 +295,17 @@ def register_openai_codex_oauth_provider(
 ) -> None:
     resolved_registry = registry or get_default_oauth_registry()
     resolved_registry.register(OpenAICodexOAuthProvider(), source_id=source_id)
+
+
+def _account_id_from_extra(extra: object) -> str | None:
+    if not isinstance(extra, dict):
+        return None
+    headers = extra.get("headers")
+    if isinstance(headers, dict):
+        header_value = headers.get("chatgpt-account-id")
+        if isinstance(header_value, str) and header_value.strip():
+            return header_value.strip()
+    account_id = extra.get("account_id")
+    if isinstance(account_id, str) and account_id.strip():
+        return account_id.strip()
+    return None

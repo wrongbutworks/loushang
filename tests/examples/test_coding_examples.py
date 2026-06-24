@@ -134,6 +134,16 @@ def test_weekly_usage_ledger_preserves_known_cost() -> None:
     assert payload.cost_total == pytest.approx(0.0075)
 
 
+def test_kimi_code_example_catalog_keeps_unknown_cost_and_fixed_temperature() -> None:
+    raw = json.loads(Path("examples/coding/models/models.kimi-code.json").read_text())
+    endpoints = raw["providers"]["moonshot"]["endpoints"]
+
+    for endpoint_id in ("kimi-code-openai", "kimi-code-anthropic"):
+        for model in endpoints[endpoint_id]["models"].values():
+            assert "pricing" not in model
+            assert model["capabilities"]["temperature"] is False
+
+
 def test_usage_inspect_example_marks_unknown_cost(
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],

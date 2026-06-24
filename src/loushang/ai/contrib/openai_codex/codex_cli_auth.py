@@ -45,7 +45,6 @@ def get_codex_cli_oauth_credentials() -> OAuthCredentials | None:
         "source": "codex-cli",
         "auth_mode": "chatgpt",
         "account_id": account_id,
-        "headers": {"chatgpt-account-id": account_id},
     }
     last_refresh = payload.get("last_refresh")
     expires_at = None

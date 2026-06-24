@@ -10,9 +10,13 @@ import pytest
 import loushang.ai.contrib.openai_codex.provider as codex_provider_module
 from loushang.ai.api import stream
 from loushang.ai.api_registry import ApiProviderRegistry
+from loushang.ai.auth.registry import get_default_oauth_registry
 from loushang.ai.auth.types import OAuthCredentials
 from loushang.ai.context import normalize_context
-from loushang.ai.contrib.openai_codex import OpenAICodexResponsesOptions
+from loushang.ai.contrib.openai_codex import (
+    OpenAICodexResponsesOptions,
+    register_openai_codex_oauth_provider,
+)
 from loushang.ai.contrib.openai_codex.provider import OpenAICodexResponsesProvider
 from loushang.ai.contrib.openai_codex.runtime_config import OpenAICodexRuntimeConfig
 from loushang.ai.model.domain import Capabilities, Endpoint, Model
@@ -703,7 +707,6 @@ def test_openai_codex_responses_uses_oauth_token_account_binding() -> None:
                         "openai-codex": OAuthCredentials(
                             provider="openai-codex",
                             access_token=token,
-                            extra={"account_id": "not_used_by_core"},
                         )
                     }
                 ),
@@ -716,6 +719,9 @@ def test_openai_codex_responses_uses_oauth_token_account_binding() -> None:
 
 
 def test_openai_codex_responses_uses_oauth_metadata_account_header() -> None:
+    oauth_registry = get_default_oauth_registry()
+    oauth_registry.clear()
+    register_openai_codex_oauth_provider(registry=oauth_registry)
     client = _FakeCodexClient(
         events=[
             {"type": "response.completed", "response": {"status": "completed"}},
@@ -723,32 +729,31 @@ def test_openai_codex_responses_uses_oauth_metadata_account_header() -> None:
     )
     provider = OpenAICodexResponsesProvider(client=client)
 
-    asyncio.run(
-        _collect_parts(
-            _invoke_raw_parts(
-                provider,
-                _Model(reasoning=False),
-                {
-                    "messages": [
-                        UserMessage(role="user", content="hello", timestamp=0.0)
-                    ],
-                },
-                OpenAICodexResponsesOptions(
-                    oauth_credentials={
-                        "openai-codex": OAuthCredentials(
-                            provider="openai-codex",
-                            access_token="opaque-access-token",
-                            extra={
-                                "headers": {
-                                    "chatgpt-account-id": "acc_from_metadata"
-                                }
-                            },
-                        )
-                    }
-                ),
+    try:
+        asyncio.run(
+            _collect_parts(
+                _invoke_raw_parts(
+                    provider,
+                    _Model(reasoning=False),
+                    {
+                        "messages": [
+                            UserMessage(role="user", content="hello", timestamp=0.0)
+                        ],
+                    },
+                    OpenAICodexResponsesOptions(
+                        oauth_credentials={
+                            "openai-codex": OAuthCredentials(
+                                provider="openai-codex",
+                                access_token="opaque-access-token",
+                                extra={"account_id": "acc_from_metadata"},
+                            )
+                        }
+                    ),
+                )
             )
         )
-    )
+    finally:
+        oauth_registry.clear()
 
     assert client.last_headers["Authorization"] == "Bearer opaque-access-token"
     assert client.last_headers["chatgpt-account-id"] == "acc_from_metadata"

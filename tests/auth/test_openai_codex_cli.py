@@ -29,7 +29,6 @@ def test_get_codex_cli_oauth_credentials_reads_chatgpt_auth_payload(
         "source": "codex-cli",
         "auth_mode": "chatgpt",
         "account_id": "acc_1",
-        "headers": {"chatgpt-account-id": "acc_1"},
     }
 
 

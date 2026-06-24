@@ -8,6 +8,7 @@ from loushang.ai.auth.env import get_env_oauth_credentials
 from loushang.ai.auth.registry import get_default_oauth_registry
 from loushang.ai.auth.support import AuthConfig, resolve_auth_for_model
 from loushang.ai.auth.types import OAuthCredentials
+from loushang.ai.contrib.openai_codex import register_openai_codex_oauth_provider
 from loushang.ai.model import Auth, Endpoint, Model, ModelRegistry, Provider
 
 
@@ -33,6 +34,36 @@ class _FailingRefreshProvider:
         return models
 
 
+class _HeaderOAuthProvider:
+    id = "demo"
+    name = "Demo"
+
+    def uses_callback_server(self) -> bool:
+        return False
+
+    async def login(self, callbacks):
+        raise NotImplementedError
+
+    async def refresh_token(self, credentials: OAuthCredentials) -> OAuthCredentials:
+        return credentials
+
+    def get_api_key(self, credentials: OAuthCredentials) -> str:
+        return credentials.access_token
+
+    def get_auth_headers(self, credentials: OAuthCredentials) -> dict[str, str]:
+        return {
+            "x-demo-account": "account-1",
+            "Authorization": "Bearer override",
+            "x-api-key": "override",
+            "Cookie": "secret",
+        }
+
+    def modify_models(
+        self, models: list[object], credentials: OAuthCredentials
+    ) -> list[object]:
+        return models
+
+
 def test_env_oauth_credentials_use_generic_provider_prefix_only() -> None:
     env = {
         "DEMO_ACCESS_TOKEN": "demo-token",
@@ -49,29 +80,55 @@ def test_env_oauth_credentials_use_generic_provider_prefix_only() -> None:
     assert get_env_oauth_credentials("openai-codex", env=env) is None
 
 
-def test_oauth_credentials_can_carry_non_auth_headers() -> None:
-    model = SimpleNamespace(provider_id="demo", endpoint_id="demo", id="model-a")
-    options = SimpleNamespace(
-        oauth_credentials={
-            "demo": OAuthCredentials(
-                provider="demo",
-                access_token="oauth-token",
-                extra={
-                    "headers": {
-                        "x-demo-account": "account-1",
-                        "Authorization": "Bearer override",
-                        "x-api-key": "override",
-                    }
-                },
-            )
-        }
-    )
+def test_oauth_provider_can_add_non_sensitive_auth_headers() -> None:
+    registry = get_default_oauth_registry()
+    registry.clear()
+    registry.register(_HeaderOAuthProvider(), source_id="test")
+    try:
+        model = SimpleNamespace(provider_id="demo", endpoint_id="demo", id="model-a")
+        options = SimpleNamespace(
+            oauth_credentials={
+                "demo": OAuthCredentials(
+                    provider="demo",
+                    access_token="oauth-token",
+                )
+            }
+        )
 
-    view = resolve_auth_for_model(model, options=options)
+        view = resolve_auth_for_model(model, options=options)
+    finally:
+        registry.clear()
 
     assert view.headers == {
         "Authorization": "Bearer oauth-token",
         "x-demo-account": "account-1",
+    }
+
+
+def test_openai_codex_env_oauth_account_id_uses_contrib_header_hook() -> None:
+    registry = get_default_oauth_registry()
+    registry.clear()
+    register_openai_codex_oauth_provider(registry=registry)
+    try:
+        model = SimpleNamespace(
+            provider_id="openai-codex",
+            endpoint_id="openai-codex-responses",
+            id="gpt-5.1-codex",
+        )
+
+        view = resolve_auth_for_model(
+            model,
+            env={
+                "OPENAI_CODEX_ACCESS_TOKEN": "opaque-token",
+                "OPENAI_CODEX_ACCOUNT_ID": "acc_env",
+            },
+        )
+    finally:
+        registry.clear()
+
+    assert view.headers == {
+        "Authorization": "Bearer opaque-token",
+        "chatgpt-account-id": "acc_env",
     }
 
 
