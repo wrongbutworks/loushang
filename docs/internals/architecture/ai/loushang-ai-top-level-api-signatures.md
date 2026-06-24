@@ -75,7 +75,11 @@ CallOptions(
     reasoning=None,
     retry=None,
     timeout=None,
-    structured_output=None,
+    oauth_credentials=None,
+    region=None,
+    pairing_mode="strict",
+    tool_choice=None,
+    output=None,
     trace=None,
 )
 ```
