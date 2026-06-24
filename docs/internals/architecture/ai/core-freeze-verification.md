@@ -63,9 +63,9 @@ source no longer contains the complete removed-field spelling as a scan hit.
 ## Review Index
 
 Local review reports are stored under the ignored path
-`.artifacts/ai-reviews/`. AIF-017 final full-branch review is run after the
-verification commit; its final clean report is recorded after all reviewer
-findings are resolved.
+`.artifacts/ai-reviews/`. AIF-017 final full-branch review findings were
+resolved, and the final report records the clean P0/P1 result plus the
+subagent-auth limitation on the last retry.
 
 | Scope | Local review report |
 | --- | --- |
@@ -91,7 +91,7 @@ findings are resolved.
 | AIF-014 | `.artifacts/ai-reviews/5bbad29a40264886a5d51b225aa416a16d796f2c.md` |
 | AIF-015 | `.artifacts/ai-reviews/1cb06ed7fea47dd55857edf5195181bb89ff0bdf.md` |
 | AIF-016 | `.artifacts/ai-reviews/6b5f399a44f6390797fab176865d0f3adf17ff93.md` |
-| AIF-017 | pending final clean review artifact |
+| AIF-017 | `.artifacts/ai-reviews/final-full-branch-2026-06-24.md` |
 
 ## Acceptance Notes
 

@@ -66,4 +66,4 @@ Source plan:
 - [x] Final `uv run pytest tests -q` passes.
 - [x] Final `uv build` passes.
 - [x] Main offline examples pass.
-- [ ] Final review has P0=0 and P1=0.
+- [x] Final review has P0=0 and P1=0.
