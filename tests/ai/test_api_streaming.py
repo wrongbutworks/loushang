@@ -7,17 +7,14 @@ from types import ModuleType, SimpleNamespace
 
 import pytest
 
-from loushang.ai import CallOptions, ReasoningOptions
+from loushang.ai import CallOptions, ReasoningOptions, StructuredOutputOptions
 from loushang.ai.api.streaming import (
     complete,
     complete_structured,
     stream,
 )
 from loushang.ai.api_registry import ApiProviderRegistry
-from loushang.ai.context import (
-    NORMALIZED_CONTEXT_MARKER,
-    NormalizedContext,
-)
+from loushang.ai.context import NormalizedContext, normalize_context
 from loushang.ai.errors import AIRateLimitError, UnsupportedCapabilityError
 from loushang.ai.model import (
     Capabilities,
@@ -103,7 +100,6 @@ class _ErrorProvider(_Provider):
 
 def _assert_normalized_provider_context(context: object) -> NormalizedContext:
     assert isinstance(context, NormalizedContext)
-    assert NORMALIZED_CONTEXT_MARKER not in context
     return context
 
 
@@ -325,7 +321,7 @@ def test_stream_passes_normalized_context_to_provider(
     )
 
     normalized = _assert_normalized_provider_context(provider.context)
-    assert normalized["messages"][0].role == "user"
+    assert normalized.messages[0].role == "user"
 
 
 @pytest.mark.parametrize(
@@ -354,23 +350,14 @@ def test_stream_passes_normalized_context_to_provider(
         ),
         (
             Capabilities(input=("text",), stream=True, reasoning=False),
-            {"messages": [], "emit_thinking": True},
-            CallOptions(),
-            "does not support reasoning",
-        ),
-        (
-            Capabilities(input=("text",), stream=True, reasoning=False),
             {"messages": [UserMessage(role="user", content="hello", timestamp=0.0)]},
             CallOptions(reasoning=ReasoningOptions(effort="high")),
             "does not support reasoning",
         ),
         (
             Capabilities(input=("text",), stream=True, structured_output=False),
-            {
-                "messages": [UserMessage(role="user", content="hello", timestamp=0.0)],
-                "response_format": {"type": "json_schema"},
-            },
-            CallOptions(),
+            {"messages": [UserMessage(role="user", content="hello", timestamp=0.0)]},
+            CallOptions(output=StructuredOutputOptions(mode="json_object")),
             "does not support structured output",
         ),
         (
@@ -398,15 +385,6 @@ def test_stream_passes_normalized_context_to_provider(
             },
             CallOptions(),
             "does not support image input",
-        ),
-        (
-            Capabilities(input=("text",), stream=True, attachment=False),
-            {
-                "messages": [UserMessage(role="user", content="hello", timestamp=0.0)],
-                "attachments": [{"id": "file_1"}],
-            },
-            CallOptions(),
-            "does not support attachment",
         ),
     ],
 )
@@ -442,7 +420,6 @@ def test_stream_allows_complete_capability_matrix(
             tool_use=True,
             reasoning=True,
             structured_output=True,
-            attachment=True,
             temperature=True,
         ),
     )
@@ -477,20 +454,20 @@ def test_stream_allows_complete_capability_matrix(
                         "parameters": {"type": "object"},
                     }
                 ],
-                "emit_thinking": True,
-                "response_format": {"type": "json_schema"},
-                "attachments": [{"id": "file_1"}],
             },
-            CallOptions(temperature=0.2),
+            CallOptions(
+                temperature=0.2,
+                reasoning=ReasoningOptions(effort="high"),
+            ),
             registry=registry,
         )
     )
 
     normalized = _assert_normalized_provider_context(provider.context)
-    assert normalized.tools is not None
-    assert normalized["emit_thinking"] is True
-    assert normalized["response_format"] == {"type": "json_schema"}
-    assert normalized["attachments"] == [{"id": "file_1"}]
+    assert normalized.tools == (
+        Tool(name="calc", description="Calculate values", parameters={"type": "object"}),
+    )
+    assert provider.options.reasoning == ReasoningOptions(effort="high")
 
 
 def test_complete_does_not_require_stream_capability(
@@ -575,7 +552,7 @@ def test_stream_canonicalizes_raw_dict_context_before_provider(
     )
 
     normalized = _assert_normalized_provider_context(provider.context)
-    message = normalized["messages"][0]
+    message = normalized.messages[0]
     assert normalized.system_prompt == "system text"
     assert isinstance(message, UserMessage)
     assert message.content == [
@@ -845,11 +822,13 @@ def test_call_api_provider_stream_supports_registered_provider(
                 api="faux",
                 base_url=None,
                 model=_Model(),
-                context={
-                    "messages": [
-                        UserMessage(role="user", content="hello", timestamp=0.0)
-                    ]
-                },
+                context=normalize_context(
+                    {
+                        "messages": [
+                            UserMessage(role="user", content="hello", timestamp=0.0)
+                        ]
+                    }
+                ),
                 options=CallOptions(),
                 capabilities=Capabilities(input=("text",), stream=True),
             ),
@@ -857,7 +836,34 @@ def test_call_api_provider_stream_supports_registered_provider(
     )
 
     assert provider.request.api == "faux"
-    assert provider.context["messages"][0].role == "user"
+    assert provider.context.messages[0].role == "user"
+
+
+def test_call_api_provider_stream_requires_normalized_context() -> None:
+    provider = _Provider()
+    registry = ApiProviderRegistry()
+    registry.register_api_provider(provider)
+
+    with pytest.raises(TypeError, match="ProviderRequest.context must be NormalizedContext"):
+        asyncio.run(
+            call_api_provider_stream(
+                registry.get_api_provider("faux"),
+                ProviderRequest(
+                    provider="faux",
+                    endpoint="faux",
+                    api="faux",
+                    base_url=None,
+                    model=_Model(),
+                    context={
+                        "messages": [
+                            UserMessage(role="user", content="hello", timestamp=0.0)
+                        ]
+                    },
+                    options=CallOptions(),
+                    capabilities=Capabilities(input=("text",), stream=True),
+                ),
+            )
+        )
 
 
 def test_get_api_provider_stream_rejects_legacy_provider_signature() -> None:
@@ -895,18 +901,24 @@ def test_call_api_provider_stream_rejects_mismatched_resolved_request() -> None:
                 replace(
                     request,
                     model=_Model(),
-                    context={
-                        "messages": [
-                            UserMessage(role="user", content="hello", timestamp=0.0)
-                        ]
-                    },
+                    context=normalize_context(
+                        {
+                            "messages": [
+                                UserMessage(
+                                    role="user",
+                                    content="hello",
+                                    timestamp=0.0,
+                                )
+                            ]
+                        }
+                    ),
                     options=CallOptions(),
                 ),
             )
         )
 
 
-def test_call_api_provider_stream_normalizes_context_against_resolved_request_api() -> (
+def test_call_api_provider_stream_passes_normalized_context_without_renormalizing() -> (
     None
 ):
     provider = _Provider(api="anthropic-messages")
@@ -941,33 +953,38 @@ def test_call_api_provider_stream_normalizes_context_against_resolved_request_ap
         timestamp=0.0,
     )
 
+    normalized = normalize_context(
+        {
+            "messages": [
+                assistant,
+                ToolResultMessage(
+                    role="toolResult",
+                    tool_call_id="call.1",
+                    tool_name="calc",
+                    content=[],
+                    is_error=False,
+                    timestamp=0.0,
+                ),
+            ]
+        },
+        model=SimpleNamespace(api="anthropic-messages"),
+    )
+
     asyncio.run(
         call_api_provider_stream(
             registry.get_api_provider("anthropic-messages"),
             replace(
                 request,
                 model=_Model(api="openai-responses"),
-                context={
-                    "messages": [
-                        assistant,
-                        ToolResultMessage(
-                            role="toolResult",
-                            tool_call_id="call.1",
-                            tool_name="calc",
-                            content=[],
-                            is_error=False,
-                            timestamp=0.0,
-                        ),
-                    ]
-                },
+                context=normalized,
                 options=CallOptions(),
             ),
         )
     )
 
-    normalized_assistant = provider.context["messages"][0]
-    normalized_tool_result = provider.context["messages"][1]
-    _assert_normalized_provider_context(provider.context)
+    assert provider.context is normalized
+    normalized_assistant = provider.context.messages[0]
+    normalized_tool_result = provider.context.messages[1]
     assert normalized_assistant.content[0].id == "call_1"
     assert normalized_tool_result.tool_call_id == "call_1"
 
@@ -1105,8 +1122,8 @@ def test_stream_normalizes_context_against_resolved_request_api(
         )
     )
 
-    normalized_assistant = provider.context["messages"][0]
-    normalized_tool_result = provider.context["messages"][1]
+    normalized_assistant = provider.context.messages[0]
+    normalized_tool_result = provider.context.messages[1]
     assert normalized_assistant.content[0].id == "call_1"
     assert normalized_tool_result.tool_call_id == "call_1"
 

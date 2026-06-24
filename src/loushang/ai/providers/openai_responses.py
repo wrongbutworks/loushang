@@ -144,7 +144,7 @@ class OpenAIResponsesProvider:
         default_headers = sdk_default_headers(headers)
         if _uses_copilot_dynamic_headers(resolved):
             default_headers.update(
-                build_copilot_dynamic_headers(normalized.get("messages", []))
+                build_copilot_dynamic_headers(list(normalized.messages))
             )
 
         # 优先使用 provider 的 base_url（如果提供），否则使用 resolved 的 base_url
@@ -200,7 +200,7 @@ class OpenAIResponsesProvider:
         if is_stream_request:
             params["stream"] = True
         # tools（如果提供）映射到 Responses API，触发结构化 function_call 事件
-        mapped_tools = convert_responses_tools(normalized.get("tools"))
+        mapped_tools = convert_responses_tools(normalized.tools)
         if isinstance(mapped_tools, list) and mapped_tools:
             params["tools"] = mapped_tools
             # 缺省让服务端自动选择是否调用工具（仅当 tools 非空）

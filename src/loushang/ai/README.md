@@ -104,7 +104,7 @@ Amazon Bedrock Converse 不再作为 core adapter 发布；本包不再声明 Be
   - 只负责 `Context` 形状整理
   - 提取 `system_prompt`
   - 规范化 `tools`
-  - 产出公开的 `NormalizedContext` 不可变 snapshot，provider 只读取这个归一化边界
+  - 产出公开的 `NormalizedContext` frozen dataclass snapshot，provider 只读取这个归一化边界
   - `normalize_context_result(...)` 返回 `NormalizationResult`，其中 diagnostics 会稳定报告 repair、downgrade 和 signature-removal
   - 默认使用 strict tool-call/tool-result pairing；缺失或孤立的 tool result 会直接报错
   - 历史兼容修复需要调用方显式传入 `pairing_mode="repair"`
@@ -247,7 +247,7 @@ class；普通调用只通过 `CallOptions`、`ReasoningOptions`、`RetryOptions
 ### 子模块 helper
 
 - `loushang.ai.context.normalize_context(...)`
-  - returns the public `NormalizedContext` immutable mapping contract instead of a marker-tagged dict
+  - returns the public `NormalizedContext` frozen dataclass contract with attribute access
   - accepts pi-style dict messages, including camelCase assistant/tool-result fields such as `toolCallId`, `thinkingSignature`, `thoughtSignature`, `mimeType`, and `stopReason`
 - `loushang.ai.context.normalize_context_result(...)`
   - returns the same normalized context plus stable `NormalizationDiagnostic` entries for repairs, cross-provider downgrades, and provider-specific signature removal

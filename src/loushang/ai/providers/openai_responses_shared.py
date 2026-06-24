@@ -2,9 +2,10 @@ from __future__ import annotations
 
 import json
 import re
-from collections.abc import AsyncIterator, Iterator, Mapping, Sequence
+from collections.abc import AsyncIterator, Iterator, Sequence
 from typing import Any, TypedDict, cast
 
+from loushang.ai.context import NormalizedContext
 from loushang.ai.event_stream.raw_parts import RawPart
 from loushang.ai.model.domain import OpenAIResponsesConfig
 from loushang.ai.model.registry import resolve_model_api
@@ -26,7 +27,7 @@ class _BufferedTextPart(TypedDict):
 
 def convert_responses_messages(
     model,
-    normalized: Mapping[str, Any],
+    normalized: NormalizedContext,
     adapter_config: OpenAIResponsesConfig | None = None,
     capabilities: object | None = None,
 ) -> list[dict[str, Any]]:
@@ -40,7 +41,7 @@ def convert_responses_messages(
     adapter_config = adapter_config or OpenAIResponsesConfig()
     input_items: list[dict[str, Any]] = []
     tool_call_id_map: dict[str, str] = {}
-    system_prompt = normalized.get("system_prompt")
+    system_prompt = normalized.system_prompt
     if isinstance(system_prompt, str) and system_prompt.strip():
         role = (
             "developer"
@@ -51,7 +52,7 @@ def convert_responses_messages(
             {"role": role, "content": sanitize_surrogates(system_prompt)}
         )
 
-    messages = normalized.get("messages", [])
+    messages = normalized.messages
     last_role: str | None = None
     index = 0
     while index < len(messages):

@@ -11,6 +11,7 @@ from types import SimpleNamespace
 from typing import Any
 from uuid import uuid4
 
+from loushang.ai.context import NormalizedContext
 from loushang.ai.contrib.openai_codex.options import OpenAICodexResponsesOptions
 from loushang.ai.contrib.openai_codex.runtime_config import (
     OpenAICodexRuntimeConfig,
@@ -319,7 +320,7 @@ def _codex_runtime_config(
 
 def _build_request_body(
     model,
-    normalized: Mapping[str, Any],
+    normalized: NormalizedContext,
     options,
     *,
     codex_config: OpenAICodexRuntimeConfig | None = None,
@@ -329,10 +330,11 @@ def _build_request_body(
     codex_config = codex_config or OpenAICodexRuntimeConfig()
     input_items = convert_responses_messages(
         model,
-        {
-            **normalized,
-            "system_prompt": None,
-        },
+        NormalizedContext(
+            system_prompt=None,
+            messages=normalized.messages,
+            tools=normalized.tools,
+        ),
         OpenAIResponsesConfig(),
         capabilities,
     )
@@ -345,12 +347,12 @@ def _build_request_body(
         "text": {"verbosity": _codex_text_verbosity(options)},
         "include": ["reasoning.encrypted_content"],
     }
-    system_prompt = normalized.get("system_prompt")
+    system_prompt = normalized.system_prompt
     if isinstance(system_prompt, str) and system_prompt.strip():
         body["instructions"] = sanitize_surrogates(system_prompt)
     if getattr(options, "temperature", None) is not None:
         body["temperature"] = getattr(options, "temperature")
-    tools = convert_responses_tools(normalized.get("tools"))
+    tools = convert_responses_tools(normalized.tools)
     if isinstance(tools, list) and tools:
         body["tools"] = tools
         body["tool_choice"] = "auto"

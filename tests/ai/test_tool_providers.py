@@ -412,11 +412,13 @@ def test_openai_codex_responses_provider_sanitizes_instruction_text() -> None:
 
     body = _build_request_body(
         SimpleNamespace(id="gpt-5.2-codex", input=("text",)),
-        {
-            "system_prompt": f"system {_UNPAIRED_HIGH_SURROGATE} prompt 🙈",
-            "messages": [],
-            "tools": None,
-        },
+        normalize_context(
+            {
+                "system_prompt": f"system {_UNPAIRED_HIGH_SURROGATE} prompt 🙈",
+                "messages": [],
+                "tools": None,
+            }
+        ),
         SimpleNamespace(),
     )
 

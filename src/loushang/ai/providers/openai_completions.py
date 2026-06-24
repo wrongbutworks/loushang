@@ -6,6 +6,7 @@ from collections.abc import AsyncIterator, Iterator, Mapping, Sequence
 from contextlib import suppress
 from typing import Any, cast
 
+from loushang.ai.context import NormalizedContext
 from loushang.ai.errors import UnsupportedCapabilityError
 from loushang.ai.event_stream.raw_parts import RawPart
 from loushang.ai.model.domain import OpenAICompletionsConfig
@@ -81,7 +82,7 @@ class OpenAICompletionsProvider:
         default_headers = sdk_default_headers(headers)
         if _uses_copilot_dynamic_headers(resolved):
             copilot_headers = build_copilot_dynamic_headers(
-                normalized.get("messages", [])
+                list(normalized.messages)
             )
             default_headers.update(copilot_headers)
         cache_retention = (
@@ -131,8 +132,8 @@ class OpenAICompletionsProvider:
             adapter_config,
             capabilities,
         )
-        tools_param = _build_tools(normalized.get("tools"), adapter_config)
-        if tools_param is None and _has_tool_history(normalized.get("messages", [])):
+        tools_param = _build_tools(normalized.tools, adapter_config)
+        if tools_param is None and _has_tool_history(list(normalized.messages)):
             tools_param = []
         cache_control = _get_cache_control(adapter_config, cache_retention)
         if cache_control is not None:
@@ -985,12 +986,12 @@ def _supports_reasoning(model: object, capabilities: object | None = None) -> bo
 
 def _build_messages(
     model,
-    normalized: Mapping[str, Any],
+    normalized: NormalizedContext,
     adapter_config: OpenAICompletionsConfig,
     capabilities: object | None = None,
 ) -> list[dict[str, Any]]:
     messages_param: list[dict[str, Any]] = []
-    system_prompt = normalized.get("system_prompt")
+    system_prompt = normalized.system_prompt
     supports_developer_role = adapter_config.developer_role
     requires_assistant_after_tool_result = adapter_config.assistant_after_tool_result
     if isinstance(system_prompt, str) and system_prompt.strip():
@@ -1003,7 +1004,7 @@ def _build_messages(
             {"role": role, "content": sanitize_surrogates(system_prompt)}
         )
 
-    messages = normalized.get("messages", [])
+    messages = normalized.messages
     last_role: str | None = None
     index = 0
     while index < len(messages):

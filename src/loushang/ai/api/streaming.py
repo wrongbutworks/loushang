@@ -1,13 +1,12 @@
 from __future__ import annotations
 
-from collections.abc import Mapping
 from dataclasses import replace
 from types import SimpleNamespace
-from typing import Any
 
 from loushang.ai.api_registry import get_default_api_provider_registry
 from loushang.ai.bootstrap import register_builtin_ai_providers
-from loushang.ai.context import normalize_context
+from loushang.ai.context import NormalizedContext, normalize_context_result
+from loushang.ai.diagnostics import NormalizationDiagnostic
 from loushang.ai.errors import UnsupportedCapabilityError
 from loushang.ai.model import (
     AnthropicMessagesConfig,
@@ -35,8 +34,8 @@ from loushang.ai.structured import (
 from loushang.ai.types import ImagePart, ToolResultMessage, UserMessage
 
 
-def _has_image_input(normalized_context: Mapping[str, Any]) -> bool:
-    for message in normalized_context.get("messages", []):
+def _has_image_input(normalized_context: NormalizedContext) -> bool:
+    for message in normalized_context.messages:
         if (
             isinstance(message, UserMessage)
             and isinstance(message.content, list)
@@ -50,49 +49,16 @@ def _has_image_input(normalized_context: Mapping[str, Any]) -> bool:
     return False
 
 
-def _has_tools(normalized_context: Mapping[str, Any]) -> bool:
-    return bool(normalized_context.get("tools"))
+def _has_tools(normalized_context: NormalizedContext) -> bool:
+    return bool(normalized_context.tools)
 
 
-def _requests_reasoning(normalized_context: Mapping[str, Any], options) -> bool:
-    if normalized_context.get("emit_thinking"):
-        return True
+def _requests_reasoning(options) -> bool:
     return is_reasoning_requested(options)
 
 
-def _requests_structured_output(normalized_context: Mapping[str, Any], options) -> bool:
-    if get_structured_output_options(options) is not None:
-        return True
-    fields = (
-        "response_format",
-        "responseFormat",
-        "structured_output",
-        "structuredOutput",
-        "json_schema",
-        "jsonSchema",
-        "output_schema",
-        "outputSchema",
-        "response_model",
-        "responseModel",
-    )
-    return _has_any_context_or_option_value(normalized_context, options, fields)
-
-
-def _requests_attachment(normalized_context: Mapping[str, Any], options) -> bool:
-    fields = ("attachment", "attachments", "file_ids", "fileIds", "files")
-    return _has_any_context_or_option_value(normalized_context, options, fields)
-
-
-def _has_any_context_or_option_value(
-    normalized_context: Mapping[str, Any],
-    options,
-    fields: tuple[str, ...],
-) -> bool:
-    if any(normalized_context.get(field) for field in fields):
-        return True
-    if options is None:
-        return False
-    return any(getattr(options, field, None) for field in fields)
+def _requests_structured_output(options) -> bool:
+    return get_structured_output_options(options) is not None
 
 
 def _requests_temperature(options) -> bool:
@@ -170,7 +136,7 @@ def _validate_explicit_adapter_config(model, resolved, options) -> None:
 def _validate_capability(
     model,
     capabilities,
-    normalized_context: Mapping[str, Any],
+    normalized_context: NormalizedContext,
     options,
     *,
     require_stream: bool,
@@ -191,7 +157,7 @@ def _validate_capability(
             details={"capability": "tool_use"},
         )
 
-    if _requests_reasoning(normalized_context, options) and not _supports(
+    if _requests_reasoning(options) and not _supports(
         capabilities, "reasoning"
     ):
         raise UnsupportedCapabilityError(
@@ -200,7 +166,7 @@ def _validate_capability(
             details={"capability": "reasoning"},
         )
 
-    if _requests_structured_output(normalized_context, options) and not _supports(
+    if _requests_structured_output(options) and not _supports(
         capabilities, "structured_output"
     ):
         raise UnsupportedCapabilityError(
@@ -223,16 +189,6 @@ def _validate_capability(
             model=getattr(model, "id", None),
             details={"capability": "image_input"},
         )
-
-    if _requests_attachment(normalized_context, options) and not _supports(
-        capabilities, "attachment"
-    ):
-        raise UnsupportedCapabilityError(
-            f"Model {model.id!r} does not support attachment",
-            model=getattr(model, "id", None),
-            details={"capability": "attachment"},
-        )
-
 
 def _resolve_api_provider_registry(api_provider_registry=None):
     if api_provider_registry is not None:
@@ -275,6 +231,41 @@ def _normalization_model(model, resolved):
     )
 
 
+def _emit_normalization_diagnostics(
+    options: CallOptions | None,
+    diagnostics: tuple[NormalizationDiagnostic, ...],
+) -> None:
+    if not diagnostics:
+        return
+    from loushang.ai.trace import emit_trace
+    from loushang.observability import get_log
+
+    log = get_log(__name__).bind(component="AINormalization")
+    for diagnostic in diagnostics:
+        payload = {
+            "type": "normalization:diagnostic",
+            "code": diagnostic.code,
+            "path": diagnostic.path,
+            "message": diagnostic.message,
+            "level": diagnostic.level,
+        }
+        emit_trace(options, payload)
+        if diagnostic.level == "warning":
+            log.warning(
+                diagnostic.message,
+                code=diagnostic.code,
+                path=diagnostic.path,
+                level=diagnostic.level,
+            )
+        else:
+            log.debug(
+                diagnostic.message,
+                code=diagnostic.code,
+                path=diagnostic.path,
+                level=diagnostic.level,
+            )
+
+
 async def _start_stream(
     model,
     context,
@@ -286,11 +277,13 @@ async def _start_stream(
 ):
     options = _validate_call_options(options)
     resolved = resolve_request_for_model(model, options=options)
-    normalized = normalize_context(
+    normalization_result = normalize_context_result(
         context,
         model=_normalization_model(model, resolved),
         pairing_mode=_resolve_pairing_mode(options),
     )
+    normalized = normalization_result.context
+    _emit_normalization_diagnostics(options, normalization_result.diagnostics)
     resolved = replace(
         resolved,
         model=model,

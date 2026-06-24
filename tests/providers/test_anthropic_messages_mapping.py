@@ -457,69 +457,77 @@ def test_anthropic_payload_maps_images_oauth_tools_and_groups_tool_results() -> 
     from loushang.ai.providers.anthropic import _build_anthropic_message_payloads
 
     messages, system = _build_anthropic_message_payloads(
-        {
-            "system_prompt": "system",
-            "messages": [
-                UserMessage(
-                    role="user",
-                    content=[
-                        ImagePart(
-                            type="image",
-                            data="aW1hZ2U=",
-                            mime_type="image/png",
-                        )
-                    ],
-                    timestamp=0.0,
-                ),
-                AssistantMessage(
-                    role="assistant",
-                    content=[
-                        ImagePart(
-                            type="image",
-                            data="YXNzaXN0YW50",
-                            mime_type="image/jpeg",
-                        ),
-                        ToolCall(
-                            type="toolCall",
-                            id="call_1",
-                            name="read",
-                            arguments={"path": "README.md"},
-                        ),
-                    ],
-                    api="anthropic-messages",
-                    provider="anthropic",
-                    model="claude",
-                    response_id=None,
-                    usage=Usage(
-                        input=0,
-                        output=0,
-                        cache_read=0,
-                        cache_write=0,
-                        total_tokens=0,
-                        cost={},
+        normalize_context(
+            {
+                "system_prompt": "system",
+                "messages": [
+                    UserMessage(
+                        role="user",
+                        content=[
+                            ImagePart(
+                                type="image",
+                                data="aW1hZ2U=",
+                                mime_type="image/png",
+                            )
+                        ],
+                        timestamp=0.0,
                     ),
-                    stop_reason="toolUse",
-                    error_message=None,
-                    timestamp=0.0,
-                ),
-                ToolResultMessage(
-                    role="toolResult",
-                    tool_call_id="call_1",
-                    tool_name="read",
-                    content=[TextPart(type="text", text="first")],
-                    is_error=False,
-                    timestamp=0.0,
-                ),
-                ToolResultMessage(
-                    role="toolResult",
-                    tool_call_id="call_2",
-                    tool_name="write",
-                    content=[TextPart(type="text", text="second")],
-                    is_error=True,
-                    timestamp=0.0,
-                ),
-            ],
-        },
+                    AssistantMessage(
+                        role="assistant",
+                        content=[
+                            ImagePart(
+                                type="image",
+                                data="YXNzaXN0YW50",
+                                mime_type="image/jpeg",
+                            ),
+                            ToolCall(
+                                type="toolCall",
+                                id="call_1",
+                                name="read",
+                                arguments={"path": "README.md"},
+                            ),
+                            ToolCall(
+                                type="toolCall",
+                                id="call_2",
+                                name="write",
+                                arguments={},
+                            ),
+                        ],
+                        api="anthropic-messages",
+                        provider="anthropic",
+                        model="claude",
+                        response_id=None,
+                        usage=Usage(
+                            input=0,
+                            output=0,
+                            cache_read=0,
+                            cache_write=0,
+                            total_tokens=0,
+                            cost={},
+                        ),
+                        stop_reason="toolUse",
+                        error_message=None,
+                        timestamp=0.0,
+                    ),
+                    ToolResultMessage(
+                        role="toolResult",
+                        tool_call_id="call_1",
+                        tool_name="read",
+                        content=[TextPart(type="text", text="first")],
+                        is_error=False,
+                        timestamp=0.0,
+                    ),
+                    ToolResultMessage(
+                        role="toolResult",
+                        tool_call_id="call_2",
+                        tool_name="write",
+                        content=[TextPart(type="text", text="second")],
+                        is_error=True,
+                        timestamp=0.0,
+                    ),
+                ],
+            }
+        ),
         is_oauth_token=True,
     )
 
@@ -551,6 +559,12 @@ def test_anthropic_payload_maps_images_oauth_tools_and_groups_tool_results() -> 
             "id": "call_1",
             "name": "Read",
             "input": {"path": "README.md"},
+        },
+        {
+            "type": "tool_use",
+            "id": "call_2",
+            "name": "Write",
+            "input": {},
         },
     ]
     assert messages[2] == {
@@ -1402,60 +1416,68 @@ def test_anthropic_payload_groups_consecutive_tool_results_from_same_turn() -> N
     from loushang.ai.providers.anthropic import _build_anthropic_message_payloads
 
     messages, _system = _build_anthropic_message_payloads(
-        {
-            "messages": [
-                AssistantMessage(
-                    role="assistant",
-                    content=[
-                        ToolCall(
-                            type="toolCall", id="bad_write", name="write", arguments={}
+        normalize_context(
+            {
+                "messages": [
+                    AssistantMessage(
+                        role="assistant",
+                        content=[
+                            ToolCall(
+                                type="toolCall",
+                                id="bad_write",
+                                name="write",
+                                arguments={},
+                            ),
+                            ToolCall(
+                                type="toolCall",
+                                id="good_write",
+                                name="write",
+                                arguments={
+                                    "path": "tmp/bmi.html",
+                                    "content": "<!doctype html>",
+                                },
+                            ),
+                        ],
+                        api="anthropic-messages",
+                        provider="anthropic",
+                        model="claude-test",
+                        response_id=None,
+                        usage=Usage(
+                            input=0,
+                            output=0,
+                            cache_read=0,
+                            cache_write=0,
+                            total_tokens=0,
+                            cost=None,
                         ),
-                        ToolCall(
-                            type="toolCall",
-                            id="good_write",
-                            name="write",
-                            arguments={
-                                "path": "tmp/bmi.html",
-                                "content": "<!doctype html>",
-                            },
-                        ),
-                    ],
-                    api="anthropic-messages",
-                    provider="anthropic",
-                    model="claude-test",
-                    response_id=None,
-                    usage=Usage(
-                        input=0,
-                        output=0,
-                        cache_read=0,
-                        cache_write=0,
-                        total_tokens=0,
-                        cost=None,
+                        stop_reason="toolUse",
+                        error_message=None,
+                        timestamp=0.0,
                     ),
-                    stop_reason="toolUse",
-                    error_message=None,
-                    timestamp=0.0,
-                ),
-                ToolResultMessage(
-                    role="toolResult",
-                    tool_call_id="bad_write",
-                    tool_name="write",
-                    content=[
-                        TextPart(type="text", text='Validation failed for tool "write"')
-                    ],
-                    is_error=True,
-                    timestamp=0.0,
-                ),
-                ToolResultMessage(
-                    role="toolResult",
-                    tool_call_id="good_write",
-                    tool_name="write",
-                    content=[TextPart(type="text", text="Wrote tmp/bmi.html")],
-                    is_error=False,
-                    timestamp=0.0,
-                ),
-            ],
-        },
+                    ToolResultMessage(
+                        role="toolResult",
+                        tool_call_id="bad_write",
+                        tool_name="write",
+                        content=[
+                            TextPart(
+                                type="text",
+                                text='Validation failed for tool "write"',
+                            )
+                        ],
+                        is_error=True,
+                        timestamp=0.0,
+                    ),
+                    ToolResultMessage(
+                        role="toolResult",
+                        tool_call_id="good_write",
+                        tool_name="write",
+                        content=[TextPart(type="text", text="Wrote tmp/bmi.html")],
+                        is_error=False,
+                        timestamp=0.0,
+                    ),
+                ],
+            }
+        ),
         is_oauth_token=False,
     )
 

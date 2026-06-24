@@ -1,11 +1,12 @@
 from __future__ import annotations
 
 import json
-from collections.abc import AsyncIterator, Iterator, Mapping
+from collections.abc import AsyncIterator, Iterator
 from contextlib import suppress
 from dataclasses import dataclass, field
 from typing import Any, cast
 
+from loushang.ai.context import NormalizedContext
 from loushang.ai.event_stream.raw_parts import RawPart
 from loushang.ai.model.domain import AnthropicMessagesConfig
 from loushang.ai.options import (
@@ -35,16 +36,16 @@ from loushang.ai.utils import parse_streaming_json, sanitize_surrogates
 
 
 def _build_anthropic_message_payloads(
-    normalized: Mapping[str, Any],
+    normalized: NormalizedContext,
     *,
     is_oauth_token: bool,
 ) -> tuple[list[dict[str, Any]], list[dict[str, str]] | None]:
     messages_param: list[dict[str, Any]] = []
     system_param = None
-    system_prompt = normalized.get("system_prompt")
+    system_prompt = normalized.system_prompt
     if isinstance(system_prompt, str) and system_prompt.strip():
         system_param = [{"type": "text", "text": sanitize_surrogates(system_prompt)}]
-    for msg in normalized.get("messages", []):
+    for msg in normalized.messages:
         role = getattr(msg, "role", None)
         if role == "user":
             content = getattr(msg, "content", None)
@@ -441,9 +442,9 @@ class AnthropicProvider(AnthropicProviderBase):
         upstream_model_id = getattr(resolved, "upstream_model_id", None) or model.id
 
         tools_param = None
-        if normalized.get("tools"):
+        if normalized.tools:
             tools_param = []
-            for t in to_anthropic_tools(normalized["tools"]):
+            for t in to_anthropic_tools(list(normalized.tools)):
                 tools_param.append(
                     {
                         "name": self.to_oauth_tool_name(str(t.get("name", "")))
@@ -457,9 +458,7 @@ class AnthropicProvider(AnthropicProviderBase):
         max_tokens = resolve_output_token_budget(model, resolved).value
         thinking_cfg: dict[str, object] | None = None
         # 思考模式：自适应或预算式；与 temperature 互斥
-        want_thinking = normalized.get("emit_thinking") or is_reasoning_requested(
-            options
-        )
+        want_thinking = is_reasoning_requested(options)
         if want_thinking:
             if self.supports_adaptive_thinking(model.id):
                 thinking_cfg = {"type": "adaptive"}
@@ -484,9 +483,7 @@ class AnthropicProvider(AnthropicProviderBase):
         if thinking_cfg:
             params["thinking"] = thinking_cfg
         # 若存在自适应思考的 effort，注入 output_config
-        want_thinking = normalized.get("emit_thinking") or is_reasoning_requested(
-            options
-        )
+        want_thinking = is_reasoning_requested(options)
         if want_thinking and self.supports_adaptive_thinking(model.id):
             effort = self.map_thinking_level_to_effort(
                 get_reasoning_effort(options), model.id
@@ -537,7 +534,7 @@ class AnthropicProvider(AnthropicProviderBase):
         # Clamp max_tokens by remaining context if capability provides window
         remaining = compute_remaining_context(
             getattr(model, "context_window", None),
-            estimate_tokens_simple_from_messages(normalized.get("messages", [])),
+            estimate_tokens_simple_from_messages(list(normalized.messages)),
             safety_margin=64,
         )
         if remaining is not None and isinstance(params.get("max_tokens"), int):
@@ -574,7 +571,7 @@ class AnthropicProvider(AnthropicProviderBase):
                 response,
                 source=self.api,
                 is_oauth_token=is_oauth_token,
-                registered_tools=cast(list[object] | None, normalized.get("tools")),
+                registered_tools=cast(list[object] | None, list(normalized.tools)),
             ):
                 yield part
             return
@@ -627,7 +624,7 @@ class AnthropicProvider(AnthropicProviderBase):
                                     id=tid,
                                     name=(
                                         self.from_oauth_tool_name(
-                                            tname, normalized.get("tools")
+                                            tname, list(normalized.tools)
                                         )
                                         if is_oauth_token
                                         else tname
