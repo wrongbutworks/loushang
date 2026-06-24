@@ -190,6 +190,31 @@ def test_provider_raw_round_trip_keeps_inherited_auth_at_provider_scope(
     assert target.scope == "provider"
 
 
+def test_provider_raw_round_trip_keeps_explicit_same_model_auth_scope(
+    tmp_path,
+) -> None:
+    oauth_auth = {"kind": "oauth"}
+    registry = _loaded_registry(
+        tmp_path,
+        provider_auth=oauth_auth,
+        model_auth=oauth_auth,
+    )
+    provider = registry.get_provider("demo")
+    assert provider is not None
+    raw = {"providers": {"demo": provider.to_raw()}}
+    model_raw = raw["providers"]["demo"]["endpoints"]["responses"]["models"]["chat"]
+    assert isinstance(model_raw, dict)
+    assert model_raw.get("auth") == {"kind": "oauth", "header": "Authorization", "prefix": "Bearer "}
+    path = tmp_path / "roundtrip-model-auth.json"
+    path.write_text(json.dumps(raw), encoding="utf-8")
+    reloaded = load_model_registry_from_file(path)
+    model = reloaded.get_model("demo", "responses", "chat")
+
+    target = resolve_auth_login_target(None, current_model=model, registry=reloaded)
+
+    assert target.scope == "model"
+
+
 def test_replace_providers_recomputes_explicit_auth_scope(tmp_path) -> None:
     oauth_auth = {"kind": "oauth"}
     registry = _loaded_registry(
@@ -215,6 +240,37 @@ def test_replace_providers_recomputes_explicit_auth_scope(tmp_path) -> None:
     target = resolve_auth_login_target(None, current_model=model, registry=registry)
 
     assert target.scope == "provider"
+
+
+def test_programmatic_model_auth_same_as_provider_keeps_model_scope() -> None:
+    auth = Auth(kind="oauth")
+    registry = ModelRegistry()
+    registry.register_provider(
+        Provider(
+            id="demo",
+            auth=auth,
+            endpoints={
+                "responses": Endpoint(
+                    id="responses",
+                    provider="demo",
+                    api="demo-api",
+                    models={
+                        "chat": Model(
+                            id="chat",
+                            provider="demo",
+                            endpoint="responses",
+                            auth=auth,
+                        )
+                    },
+                )
+            },
+        )
+    )
+    model = registry.get_model("demo", "responses", "chat")
+
+    target = resolve_auth_login_target(None, current_model=model, registry=registry)
+
+    assert target.scope == "model"
 
 
 def test_programmatic_endpoint_auth_same_as_provider_keeps_endpoint_scope() -> None:

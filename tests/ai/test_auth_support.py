@@ -7,6 +7,7 @@ import pytest
 from loushang.ai.auth.registry import get_default_oauth_registry
 from loushang.ai.auth.support import AuthConfig, resolve_auth_for_model
 from loushang.ai.auth.types import OAuthCredentials
+from loushang.ai.model import Auth, Endpoint, Model, ModelRegistry, Provider
 
 
 class _FailingRefreshProvider:
@@ -77,3 +78,30 @@ def test_empty_oauth_credentials_do_not_block_api_key_fallback() -> None:
     view = resolve_auth_for_model(model, options=options)
 
     assert view.headers["Authorization"] == "Bearer fallback-key"
+
+
+def test_provider_auth_applies_to_ad_hoc_model_on_registered_endpoint() -> None:
+    endpoint = Endpoint(
+        id="responses",
+        provider="demo",
+        api="openai-responses",
+        models={},
+    )
+    registry = ModelRegistry.from_providers(
+        {
+            "demo": Provider(
+                id="demo",
+                auth=Auth(header="X-API-Key", prefix="", api_key_env="DEMO_API_KEY"),
+                endpoints={endpoint.id: endpoint},
+            )
+        }
+    )
+    model = Model(id="ad-hoc", provider="demo", endpoint="responses")
+
+    view = resolve_auth_for_model(
+        model,
+        options=SimpleNamespace(api_key="secret"),
+        registry=registry,
+    )
+
+    assert view.headers == {"X-API-Key": "secret"}

@@ -229,13 +229,7 @@ def test_api_only_ad_hoc_model_uses_default_registry_endpoint(
         api="openai-responses",
         base_url="https://example.test/responses",
         auth=Auth(api_key_env="TEST_API_KEY"),
-        models={
-            "ad-hoc": Model(
-                id="ad-hoc",
-                provider="custom",
-                endpoint="openai-responses",
-            )
-        },
+        models={},
     )
     registry = ModelRegistry.from_providers(
         {"custom": Provider(id="custom", endpoints={endpoint.id: endpoint})}

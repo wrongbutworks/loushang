@@ -1199,6 +1199,17 @@ class Provider:
     website: str | None = None
     auth: Auth | None = None
     endpoints: dict[str, Endpoint] = field(default_factory=dict)
+    _auth_scope_known: bool = field(default=False, compare=False, repr=False)
+    _explicit_endpoint_auth: frozenset[str] = field(
+        default_factory=frozenset,
+        compare=False,
+        repr=False,
+    )
+    _explicit_model_auth: frozenset[tuple[str, str]] = field(
+        default_factory=frozenset,
+        compare=False,
+        repr=False,
+    )
 
     def get_endpoint(self, endpoint_id: str) -> Endpoint | None:
         return self.endpoints.get(endpoint_id)
@@ -1221,7 +1232,18 @@ class Provider:
     def to_raw(self) -> dict[str, object]:
         raw: dict[str, object] = {
             "endpoints": {
-                endpoint_id: _endpoint_to_raw(endpoint, provider_auth=self.auth)
+                endpoint_id: _endpoint_to_raw(
+                    endpoint,
+                    provider_auth=self.auth,
+                    endpoint_auth_explicit=endpoint_id
+                    in self._explicit_endpoint_auth,
+                    model_auth_explicit={
+                        model_id
+                        for explicit_endpoint_id, model_id in self._explicit_model_auth
+                        if explicit_endpoint_id == endpoint_id
+                    },
+                    auth_scope_known=self._auth_scope_known,
+                )
                 for endpoint_id, endpoint in self.endpoints.items()
             }
         }
@@ -1238,13 +1260,25 @@ def _endpoint_to_raw(
     endpoint: Endpoint,
     *,
     provider_auth: Auth | None = None,
+    endpoint_auth_explicit: bool = False,
+    model_auth_explicit: set[str] | frozenset[str] | None = None,
+    auth_scope_known: bool = False,
 ) -> dict[str, object]:
     inherited_model_auth = endpoint.auth if endpoint.auth is not None else provider_auth
+    explicit_model_auth = model_auth_explicit or frozenset()
     raw: dict[str, object] = {
         "api": endpoint.api,
         "defaults": endpoint.defaults.to_raw(),
         "models": {
-            model_id: _model_to_raw(model, inherited_auth=inherited_model_auth)
+            model_id: _model_to_raw(
+                model,
+                inherited_auth=inherited_model_auth,
+                auth_explicit=(
+                    model_id in explicit_model_auth
+                    if auth_scope_known
+                    else model.auth is not None
+                ),
+            )
             for model_id, model in endpoint.models.items()
         },
     }
@@ -1262,7 +1296,9 @@ def _endpoint_to_raw(
         raw["preferred"] = endpoint.preferred
     if endpoint.docs is not None:
         raw["docs"] = endpoint.docs
-    if endpoint.auth is not None:
+    if endpoint.auth is not None and (
+        endpoint_auth_explicit or not auth_scope_known or endpoint.auth != provider_auth
+    ):
         raw["auth"] = endpoint.auth.to_raw()
     if endpoint.adapter is not None:
         raw["adapter"] = endpoint.adapter.to_raw()
@@ -1279,9 +1315,14 @@ def _model_to_raw(
     model: Model,
     *,
     inherited_auth: Auth | None = None,
+    auth_explicit: bool = True,
 ) -> dict[str, object]:
     raw = model.to_raw()
-    if inherited_auth is not None and model.auth == inherited_auth:
+    if (
+        not auth_explicit
+        and inherited_auth is not None
+        and model.auth == inherited_auth
+    ):
         raw.pop("auth", None)
     return raw
 

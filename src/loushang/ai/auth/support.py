@@ -184,13 +184,26 @@ def resolve_auth_for_model(
     registry=None,
 ) -> AuthView:
     del catalog
-    from loushang.ai.model.registry import resolve_model_endpoint
+    from loushang.ai.model.registry import (
+        get_default_model_registry,
+        has_bound_endpoint_context,
+        resolve_model_endpoint,
+    )
 
     provider = model.provider_id
     auth_input = normalize_auth_input(options)
-    endpoint = resolve_model_endpoint(model, registry=registry)
-    auth_config = getattr(model, "auth", None) or (
-        endpoint.auth if endpoint is not None else None
+    resolved_registry = registry
+    if resolved_registry is None and not has_bound_endpoint_context(model):
+        resolved_registry = get_default_model_registry()
+    endpoint = resolve_model_endpoint(model, registry=resolved_registry)
+    provider_auth = None
+    if resolved_registry is not None:
+        resolved_provider = resolved_registry.get_provider(provider)
+        provider_auth = getattr(resolved_provider, "auth", None)
+    auth_config = merge_auth_config(
+        provider_auth,
+        endpoint.auth if endpoint is not None else None,
+        getattr(model, "auth", None),
     )
 
     if isinstance(auth_input.oauth_credentials, dict):
