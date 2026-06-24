@@ -7,12 +7,27 @@ from pathlib import Path
 import pytest
 
 from loushang.ai import CallOptions, complete
-from loushang.ai.api_registry import ApiProviderRegistry
+from loushang.ai.advanced.registry import ApiProviderRegistry
 from loushang.ai.model import (
+    load_builtin_model_registry,
     load_layered_model_registry,
     load_model_registry_from_file,
 )
-from loushang.ai.providers.faux import FauxProvider
+from loushang.ai.provider import ProviderRequest
+
+
+class RecordingProvider:
+    api = "anthropic-messages"
+
+    def __init__(self) -> None:
+        self.requests: list[ProviderRequest] = []
+
+    async def invoke_raw(self, request: ProviderRequest):
+        self.requests.append(request)
+        yield {"type": "response_start", "response_id": "recorded-response"}
+        yield {"type": "text_delta", "text": "recorded hello"}
+        yield {"type": "stop_reason", "stop_reason": "stop"}
+        yield {"type": "response_done"}
 
 
 def _custom_model_raw() -> dict[str, object]:
@@ -72,13 +87,22 @@ def test_json_only_custom_model_loads_merges_queries_and_completes(
     assert custom_model.supports_tool_use is True
 
     layered = load_layered_model_registry(user_dir=user_model_dir)
-    assert layered.get_model("openai", "openai-responses", "gpt-5.5").id == "gpt-5.5"
+    builtin_model = load_builtin_model_registry().list_models()[0]
+    assert (
+        layered.get_model(
+            builtin_model.provider_id,
+            builtin_model.endpoint_id,
+            builtin_model.id,
+        ).id
+        == builtin_model.id
+    )
     model = layered.get_model("company", "anthropic-messages", "company-chat")
     assert model.base_url == "https://models.company.example"
     assert model.upstream_id == "vendor/company-chat-2026-06"
 
+    provider = RecordingProvider()
     provider_registry = ApiProviderRegistry()
-    provider_registry.register_api_provider(FauxProvider())
+    provider_registry.register_api_provider(provider)
 
     async def run_complete():
         return await complete(
@@ -93,8 +117,21 @@ def test_json_only_custom_model_loads_merges_queries_and_completes(
     assert message.provider == "company"
     assert message.api == "anthropic-messages"
     assert message.model == "company-chat"
-    assert message.response_id == "faux-response"
-    assert message.content[0].text == "mock hello from faux provider"
+    assert message.response_id == "recorded-response"
+    assert message.content[0].text == "recorded hello"
+
+    assert len(provider.requests) == 1
+    request = provider.requests[0]
+    assert request.mode == "complete"
+    assert request.provider == "company"
+    assert request.endpoint == "anthropic-messages"
+    assert request.api == "anthropic-messages"
+    assert request.base_url == "https://models.company.example"
+    assert request.candidate_base_urls == ("https://models.company.example",)
+    assert request.model == model
+    assert request.upstream_model_id == "vendor/company-chat-2026-06"
+    assert getattr(request.adapter_config, "fine_grained_tools") is True
+    assert getattr(request.adapter_config, "long_cache_retention") is False
 
 
 def test_custom_model_file_rejects_invalid_adapter_field(tmp_path: Path) -> None:
@@ -121,17 +158,18 @@ def test_layered_registry_rejects_duplicate_builtin_full_model_id(
     tmp_path: Path,
 ) -> None:
     raw = _custom_model_raw()
+    builtin_model = load_builtin_model_registry().list_models()[0]
+    api = builtin_model.api
+    assert api is not None
     providers = raw["providers"]
     assert isinstance(providers, dict)
     providers.clear()
-    providers["moonshot"] = {
+    providers[builtin_model.provider_id] = {
         "endpoints": {
-            "openai-completions": {
-                "api": "openai-completions",
-                "baseUrl": "https://models.company.example/v1",
-                "adapter": {"developerRole": False},
+            builtin_model.endpoint_id: {
+                "api": api,
                 "models": {
-                    "kimi-k2.6": {
+                    builtin_model.id: {
                         "capabilities": {
                             "input": ["text"],
                             "output": ["text"],
