@@ -161,6 +161,10 @@ def test_contrib_options_remain_isolated_from_root_api() -> None:
     assert OpenAICodexResponsesOptions.__module__ == (
         "loushang.ai.contrib.openai_codex.options"
     )
+    assert OpenAICodexResponsesOptions.__annotations__ == {
+        "text_verbosity": "str | None",
+        "transport": "CodexTransport | None",
+    }
     assert isinstance(OpenAICodexResponsesOptions(text_verbosity="low"), CallOptions)
     with pytest.raises(TypeError, match="reasoning must be ReasoningOptions"):
         OpenAICodexResponsesOptions(reasoning="low")  # type: ignore[arg-type]

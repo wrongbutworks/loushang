@@ -41,6 +41,9 @@ from loushang.coding.types import ModelSelection
 SettingsListener = Callable[[ControlConfig], None]
 SettingsScope = Literal["session", "global", "project"]
 _UNSET = object()
+_REMOVED_SETTING_MESSAGES = {
+    "transport": "transport setting has been removed; use provider/contrib-specific configuration instead",
+}
 
 
 @dataclass(frozen=True)
@@ -50,7 +53,9 @@ class SettingsError:
     error: Exception
 
 
-def _normalize_string_sequence(value: Sequence[str], field_name: str) -> tuple[str, ...]:
+def _normalize_string_sequence(
+    value: Sequence[str], field_name: str
+) -> tuple[str, ...]:
     if isinstance(value, str):
         raise TypeError(f"{field_name} must be a sequence of strings, not a string")
     normalized: list[str] = []
@@ -61,7 +66,9 @@ def _normalize_string_sequence(value: Sequence[str], field_name: str) -> tuple[s
     return tuple(normalized)
 
 
-def _normalize_package_source_sequence(value: object, field_name: str = "packages") -> tuple[PackageSourceConfig, ...]:
+def _normalize_package_source_sequence(
+    value: object, field_name: str = "packages"
+) -> tuple[PackageSourceConfig, ...]:
     if not isinstance(value, Sequence) or isinstance(value, str):
         raise TypeError(f"{field_name} must be a sequence")
     return tuple(_deserialize_package_source(item) for item in value)
@@ -109,7 +116,9 @@ def _serialize_package_source(source: PackageSourceConfig) -> str | dict[str, ob
     return payload
 
 
-def _serialize_model_selection(selection: ModelSelection | None) -> dict[str, str] | None:
+def _serialize_model_selection(
+    selection: ModelSelection | None,
+) -> dict[str, str] | None:
     if selection is None:
         return None
     payload = {"provider": selection.provider, "model_id": selection.model_id}
@@ -126,7 +135,9 @@ def _deserialize_model_selection(value: object) -> ModelSelection | None:
     provider = value.get("provider")
     model_id = value.get("model_id")
     if not isinstance(provider, str) or not isinstance(model_id, str):
-        raise TypeError("default_model must include string provider and model_id values")
+        raise TypeError(
+            "default_model must include string provider and model_id values"
+        )
     endpoint_id = value.get("endpoint_id") or value.get("endpointId")
     return ModelSelection(
         provider=provider,
@@ -149,7 +160,9 @@ def _deserialize_double_escape_action(value: object) -> DoubleEscapeAction:
 
 def _deserialize_tree_filter_mode(value: object) -> TreeFilterMode:
     if value not in {"default", "no-tools", "user-only", "labeled-only", "all"}:
-        raise ValueError("tree_filter_mode must be 'default', 'no-tools', 'user-only', 'labeled-only', or 'all'")
+        raise ValueError(
+            "tree_filter_mode must be 'default', 'no-tools', 'user-only', 'labeled-only', or 'all'"
+        )
     return value
 
 
@@ -167,13 +180,17 @@ def _deserialize_headless_approval_mode(value: object) -> HeadlessApprovalMode |
     return value
 
 
-def _deserialize_statusline_auto_value(value: object, field_name: str) -> StatusLineAutoValue:
+def _deserialize_statusline_auto_value(
+    value: object, field_name: str
+) -> StatusLineAutoValue:
     if value not in {"auto", "true", "false"}:
         raise ValueError(f"{field_name} must be 'auto', 'true', or 'false'")
     return value
 
 
-def _deserialize_statusline_separator(value: object, field_name: str) -> StatusLineSeparator:
+def _deserialize_statusline_separator(
+    value: object, field_name: str
+) -> StatusLineSeparator:
     if value not in {"pipe", "dot"}:
         raise ValueError(f"{field_name} must be 'pipe' or 'dot'")
     return value
@@ -231,7 +248,9 @@ def _serialize_keybindings(value: Mapping[str, KeybindingValue]) -> dict[str, ob
     return serialized
 
 
-def _non_negative_small_int(value: object, field_name: str, *, upper_bound: int | None = None) -> int:
+def _non_negative_small_int(
+    value: object, field_name: str, *, upper_bound: int | None = None
+) -> int:
     if not isinstance(value, int | float):
         raise TypeError(f"{field_name} must be a number")
     coerced = max(0, int(value))
@@ -240,7 +259,9 @@ def _non_negative_small_int(value: object, field_name: str, *, upper_bound: int 
     return coerced
 
 
-def _bounded_int(value: object, field_name: str, *, lower_bound: int, upper_bound: int) -> int:
+def _bounded_int(
+    value: object, field_name: str, *, lower_bound: int, upper_bound: int
+) -> int:
     if not isinstance(value, int | float):
         raise TypeError(f"{field_name} must be a number")
     return max(lower_bound, min(upper_bound, int(value)))
@@ -254,7 +275,9 @@ def _thinking_budgets(value: object) -> ThinkingBudgetMap | None:
     normalized: ThinkingBudgetMap = {}
     for key, item in value.items():
         if key not in {"minimal", "low", "medium", "high"}:
-            raise ValueError("thinking_budgets may only contain minimal, low, medium, or high")
+            raise ValueError(
+                "thinking_budgets may only contain minimal, low, medium, or high"
+            )
         if not isinstance(item, int):
             raise TypeError("thinking_budgets values must be integers")
         normalized[key] = item
@@ -270,7 +293,9 @@ def _serialize_settings_slice(value: object) -> dict[str, Any]:
 def _serialize_tool_settings(value: object) -> dict[str, Any]:
     if isinstance(value, ToolSettings):
         return {
-            "external_tool_policy": _deserialize_external_tool_policy(value.external_tool_policy),
+            "external_tool_policy": _deserialize_external_tool_policy(
+                value.external_tool_policy
+            ),
             "blocked_tools": list(value.blocked_tools),
             "ask_tools": list(value.ask_tools),
             "blocked_substrings": list(value.blocked_substrings),
@@ -284,7 +309,9 @@ def _serialize_tool_settings(value: object) -> dict[str, Any]:
         raise TypeError("tools must be a JSON object")
     patch = dict(value)
     if "external_tool_policy" in patch:
-        patch["external_tool_policy"] = _deserialize_external_tool_policy(patch["external_tool_policy"])
+        patch["external_tool_policy"] = _deserialize_external_tool_policy(
+            patch["external_tool_policy"]
+        )
     for key in (
         "blocked_tools",
         "ask_tools",
@@ -296,9 +323,13 @@ def _serialize_tool_settings(value: object) -> dict[str, Any]:
         if key in patch:
             patch[key] = list(_normalize_string_sequence(patch[key], key))
     if "approval_mode" in patch:
-        patch["approval_mode"] = _deserialize_headless_approval_mode(patch["approval_mode"])
+        patch["approval_mode"] = _deserialize_headless_approval_mode(
+            patch["approval_mode"]
+        )
     if "approval_reason" in patch:
-        patch["approval_reason"] = _optional_string(patch["approval_reason"], "approval_reason")
+        patch["approval_reason"] = _optional_string(
+            patch["approval_reason"], "approval_reason"
+        )
     return patch
 
 
@@ -335,6 +366,23 @@ def _diff_dataclass_slice(value: object, default_value: object) -> dict[str, Any
     return diff
 
 
+def _drop_removed_settings(
+    patch: Mapping[str, Any],
+    *,
+    scope: SettingsScope,
+    errors: list[SettingsError] | None,
+) -> dict[str, Any]:
+    normalized = dict(patch)
+    for key, message in _REMOVED_SETTING_MESSAGES.items():
+        if key not in normalized:
+            continue
+        normalized.pop(key)
+        if errors is not None:
+            error = ValueError(message)
+            errors.append(SettingsError(scope=scope, message=message, error=error))
+    return normalized
+
+
 def _control_config_to_patch(config: ControlConfig) -> dict[str, Any]:
     defaults = ControlConfig()
     patch: dict[str, Any] = {}
@@ -359,7 +407,9 @@ def _control_config_to_patch(config: ControlConfig) -> dict[str, Any]:
     if config.shell_command_prefix != defaults.shell_command_prefix:
         patch["shell_command_prefix"] = config.shell_command_prefix
     if config.npm_command != defaults.npm_command:
-        patch["npm_command"] = list(config.npm_command) if config.npm_command is not None else None
+        patch["npm_command"] = (
+            list(config.npm_command) if config.npm_command is not None else None
+        )
     if config.collapse_changelog != defaults.collapse_changelog:
         patch["collapse_changelog"] = config.collapse_changelog
     if config.enable_install_telemetry != defaults.enable_install_telemetry:
@@ -367,7 +417,9 @@ def _control_config_to_patch(config: ControlConfig) -> dict[str, Any]:
     if config.enable_skill_commands != defaults.enable_skill_commands:
         patch["enable_skill_commands"] = config.enable_skill_commands
     if config.enabled_models != defaults.enabled_models:
-        patch["enabled_models"] = list(config.enabled_models) if config.enabled_models is not None else None
+        patch["enabled_models"] = (
+            list(config.enabled_models) if config.enabled_models is not None else None
+        )
     if config.double_escape_action != defaults.double_escape_action:
         patch["double_escape_action"] = config.double_escape_action
     if config.tree_filter_mode != defaults.tree_filter_mode:
@@ -385,7 +437,9 @@ def _control_config_to_patch(config: ControlConfig) -> dict[str, Any]:
     compaction_patch = _diff_dataclass_slice(config.compaction, defaults.compaction)
     if compaction_patch:
         patch["compaction"] = compaction_patch
-    branch_summary_patch = _diff_dataclass_slice(config.branch_summary, defaults.branch_summary)
+    branch_summary_patch = _diff_dataclass_slice(
+        config.branch_summary, defaults.branch_summary
+    )
     if branch_summary_patch:
         patch["branch_summary"] = branch_summary_patch
     retry_patch = _diff_dataclass_slice(config.retry, defaults.retry)
@@ -419,7 +473,9 @@ def _control_config_to_patch(config: ControlConfig) -> dict[str, Any]:
     if config.package_roots != defaults.package_roots:
         patch["package_roots"] = list(config.package_roots)
     if config.package_sources != defaults.package_sources:
-        patch["package_sources"] = [_serialize_package_source(source) for source in config.package_sources]
+        patch["package_sources"] = [
+            _serialize_package_source(source) for source in config.package_sources
+        ]
     if config.plugin_sources != defaults.plugin_sources:
         patch["plugin_sources"] = list(config.plugin_sources)
     if config.disabled_skills != defaults.disabled_skills:
@@ -446,14 +502,18 @@ def _apply_dataclass_patch(current: object, patch_value: object, field_name: str
     return replace(current, **dict(patch_value))
 
 
-def _apply_tool_settings_patch(current: ToolSettings, patch_value: object) -> ToolSettings:
+def _apply_tool_settings_patch(
+    current: ToolSettings, patch_value: object
+) -> ToolSettings:
     if not isinstance(patch_value, Mapping):
         raise TypeError("tools must be a JSON object")
     next_settings = current
     if "external_tool_policy" in patch_value:
         next_settings = replace(
             next_settings,
-            external_tool_policy=_deserialize_external_tool_policy(patch_value["external_tool_policy"]),
+            external_tool_policy=_deserialize_external_tool_policy(
+                patch_value["external_tool_policy"]
+            ),
         )
     for key in (
         "blocked_tools",
@@ -471,12 +531,16 @@ def _apply_tool_settings_patch(current: ToolSettings, patch_value: object) -> To
     if "approval_mode" in patch_value:
         next_settings = replace(
             next_settings,
-            approval_mode=_deserialize_headless_approval_mode(patch_value["approval_mode"]),
+            approval_mode=_deserialize_headless_approval_mode(
+                patch_value["approval_mode"]
+            ),
         )
     if "approval_reason" in patch_value:
         next_settings = replace(
             next_settings,
-            approval_reason=_optional_string(patch_value["approval_reason"], "approval_reason"),
+            approval_reason=_optional_string(
+                patch_value["approval_reason"], "approval_reason"
+            ),
         )
     return next_settings
 
@@ -496,56 +560,117 @@ def _apply_patch(
     scope: SettingsScope | None = None,
     errors: list[SettingsError] | None = None,
 ) -> ControlConfig:
+    if scope is not None:
+        patch = _drop_removed_settings(patch, scope=scope, errors=errors)
     next_config = config
     if "default_model" in patch:
-        next_config = replace(next_config, default_model=_deserialize_model_selection(patch["default_model"]))
+        next_config = replace(
+            next_config,
+            default_model=_deserialize_model_selection(patch["default_model"]),
+        )
     if "thinking_level" in patch:
         next_config = replace(next_config, thinking_level=patch["thinking_level"])
     if "steering_mode" in patch:
-        next_config = replace(next_config, steering_mode=_deserialize_queue_mode(patch["steering_mode"], "steering_mode"))
+        next_config = replace(
+            next_config,
+            steering_mode=_deserialize_queue_mode(
+                patch["steering_mode"], "steering_mode"
+            ),
+        )
     if "follow_up_mode" in patch:
-        next_config = replace(next_config, follow_up_mode=_deserialize_queue_mode(patch["follow_up_mode"], "follow_up_mode"))
+        next_config = replace(
+            next_config,
+            follow_up_mode=_deserialize_queue_mode(
+                patch["follow_up_mode"], "follow_up_mode"
+            ),
+        )
     if "theme" in patch:
-        next_config = replace(next_config, theme=_optional_string(patch["theme"], "theme"))
+        next_config = replace(
+            next_config, theme=_optional_string(patch["theme"], "theme")
+        )
     if "system_prompt" in patch:
         next_config = replace(next_config, system_prompt=patch["system_prompt"])
     if "hide_thinking_block" in patch:
-        next_config = replace(next_config, hide_thinking_block=_bool_value(patch["hide_thinking_block"], "hide_thinking_block"))
+        next_config = replace(
+            next_config,
+            hide_thinking_block=_bool_value(
+                patch["hide_thinking_block"], "hide_thinking_block"
+            ),
+        )
     if "shell_path" in patch:
-        next_config = replace(next_config, shell_path=_optional_string(patch["shell_path"], "shell_path"))
+        next_config = replace(
+            next_config, shell_path=_optional_string(patch["shell_path"], "shell_path")
+        )
     if "quiet_startup" in patch:
-        next_config = replace(next_config, quiet_startup=_bool_value(patch["quiet_startup"], "quiet_startup"))
+        next_config = replace(
+            next_config,
+            quiet_startup=_bool_value(patch["quiet_startup"], "quiet_startup"),
+        )
     if "shell_command_prefix" in patch:
         next_config = replace(
             next_config,
-            shell_command_prefix=_optional_string(patch["shell_command_prefix"], "shell_command_prefix"),
+            shell_command_prefix=_optional_string(
+                patch["shell_command_prefix"], "shell_command_prefix"
+            ),
         )
     if "npm_command" in patch:
-        next_config = replace(next_config, npm_command=_string_tuple_or_none(patch["npm_command"], "npm_command"))
+        next_config = replace(
+            next_config,
+            npm_command=_string_tuple_or_none(patch["npm_command"], "npm_command"),
+        )
     if "collapse_changelog" in patch:
-        next_config = replace(next_config, collapse_changelog=_bool_value(patch["collapse_changelog"], "collapse_changelog"))
+        next_config = replace(
+            next_config,
+            collapse_changelog=_bool_value(
+                patch["collapse_changelog"], "collapse_changelog"
+            ),
+        )
     if "enable_install_telemetry" in patch:
         next_config = replace(
             next_config,
-            enable_install_telemetry=_bool_value(patch["enable_install_telemetry"], "enable_install_telemetry"),
+            enable_install_telemetry=_bool_value(
+                patch["enable_install_telemetry"], "enable_install_telemetry"
+            ),
         )
     if "enable_skill_commands" in patch:
-        next_config = replace(next_config, enable_skill_commands=_bool_value(patch["enable_skill_commands"], "enable_skill_commands"))
+        next_config = replace(
+            next_config,
+            enable_skill_commands=_bool_value(
+                patch["enable_skill_commands"], "enable_skill_commands"
+            ),
+        )
     if "enabled_models" in patch:
-        next_config = replace(next_config, enabled_models=_string_tuple_or_none(patch["enabled_models"], "enabled_models"))
+        next_config = replace(
+            next_config,
+            enabled_models=_string_tuple_or_none(
+                patch["enabled_models"], "enabled_models"
+            ),
+        )
     if "double_escape_action" in patch:
-        next_config = replace(next_config, double_escape_action=_deserialize_double_escape_action(patch["double_escape_action"]))
+        next_config = replace(
+            next_config,
+            double_escape_action=_deserialize_double_escape_action(
+                patch["double_escape_action"]
+            ),
+        )
     if "tree_filter_mode" in patch:
-        next_config = replace(next_config, tree_filter_mode=_deserialize_tree_filter_mode(patch["tree_filter_mode"]))
+        next_config = replace(
+            next_config,
+            tree_filter_mode=_deserialize_tree_filter_mode(patch["tree_filter_mode"]),
+        )
     if "show_hardware_cursor" in patch:
         next_config = replace(
             next_config,
-            show_hardware_cursor=_bool_value(patch["show_hardware_cursor"], "show_hardware_cursor"),
+            show_hardware_cursor=_bool_value(
+                patch["show_hardware_cursor"], "show_hardware_cursor"
+            ),
         )
     if "editor_padding_x" in patch:
         next_config = replace(
             next_config,
-            editor_padding_x=_non_negative_small_int(patch["editor_padding_x"], "editor_padding_x", upper_bound=3),
+            editor_padding_x=_non_negative_small_int(
+                patch["editor_padding_x"], "editor_padding_x", upper_bound=3
+            ),
         )
     if "autocomplete_max_visible" in patch:
         next_config = replace(
@@ -560,14 +685,21 @@ def _apply_patch(
     if "keybindings" in patch:
         next_config = replace(
             next_config,
-            keybindings={**next_config.keybindings, **_deserialize_keybindings(patch["keybindings"])},
+            keybindings={
+                **next_config.keybindings,
+                **_deserialize_keybindings(patch["keybindings"]),
+            },
         )
     if "thinking_budgets" in patch:
-        next_config = replace(next_config, thinking_budgets=_thinking_budgets(patch["thinking_budgets"]))
+        next_config = replace(
+            next_config, thinking_budgets=_thinking_budgets(patch["thinking_budgets"])
+        )
     if "compaction" in patch:
         next_config = replace(
             next_config,
-            compaction=_apply_dataclass_patch(next_config.compaction, patch["compaction"], "compaction"),
+            compaction=_apply_dataclass_patch(
+                next_config.compaction, patch["compaction"], "compaction"
+            ),
         )
     if "branch_summary" in patch:
         next_config = replace(
@@ -579,24 +711,57 @@ def _apply_patch(
             ),
         )
     if "retry" in patch:
-        next_config = replace(next_config, retry=_apply_dataclass_patch(next_config.retry, patch["retry"], "retry"))
+        next_config = replace(
+            next_config,
+            retry=_apply_dataclass_patch(next_config.retry, patch["retry"], "retry"),
+        )
     if "images" in patch:
-        next_config = replace(next_config, images=_apply_dataclass_patch(next_config.images, patch["images"], "images"))
+        next_config = replace(
+            next_config,
+            images=_apply_dataclass_patch(
+                next_config.images, patch["images"], "images"
+            ),
+        )
     if "terminal" in patch:
-        next_config = replace(next_config, terminal=_apply_dataclass_patch(next_config.terminal, patch["terminal"], "terminal"))
+        next_config = replace(
+            next_config,
+            terminal=_apply_dataclass_patch(
+                next_config.terminal, patch["terminal"], "terminal"
+            ),
+        )
     if "markdown" in patch:
-        next_config = replace(next_config, markdown=_apply_dataclass_patch(next_config.markdown, patch["markdown"], "markdown"))
+        next_config = replace(
+            next_config,
+            markdown=_apply_dataclass_patch(
+                next_config.markdown, patch["markdown"], "markdown"
+            ),
+        )
     if "warnings" in patch:
-        next_config = replace(next_config, warnings=_apply_dataclass_patch(next_config.warnings, patch["warnings"], "warnings"))
+        next_config = replace(
+            next_config,
+            warnings=_apply_dataclass_patch(
+                next_config.warnings, patch["warnings"], "warnings"
+            ),
+        )
     if "method" in patch:
-        next_config = replace(next_config, method=_apply_dataclass_patch(next_config.method, patch["method"], "method"))
+        next_config = replace(
+            next_config,
+            method=_apply_dataclass_patch(
+                next_config.method, patch["method"], "method"
+            ),
+        )
     if "tools" in patch:
-        next_config = replace(next_config, tools=_apply_tool_settings_patch(next_config.tools, patch["tools"]))
+        next_config = replace(
+            next_config,
+            tools=_apply_tool_settings_patch(next_config.tools, patch["tools"]),
+        )
     if "statusline" in patch:
         try:
             next_config = replace(
                 next_config,
-                statusline=_apply_statusline_settings_patch(next_config.statusline, patch["statusline"]),
+                statusline=_apply_statusline_settings_patch(
+                    next_config.statusline, patch["statusline"]
+                ),
             )
         except Exception as exc:
             if errors is None or scope is None:
@@ -643,7 +808,9 @@ def _apply_patch(
             raise TypeError("disabled_skills must be a sequence of strings")
         next_config = replace(
             next_config,
-            disabled_skills=_normalize_string_sequence(disabled_skills, "disabled_skills"),
+            disabled_skills=_normalize_string_sequence(
+                disabled_skills, "disabled_skills"
+            ),
         )
     if "disabled_plugins" in patch:
         disabled_plugins = patch["disabled_plugins"]
@@ -651,7 +818,9 @@ def _apply_patch(
             raise TypeError("disabled_plugins must be a sequence of strings")
         next_config = replace(
             next_config,
-            disabled_plugins=_normalize_string_sequence(disabled_plugins, "disabled_plugins"),
+            disabled_plugins=_normalize_string_sequence(
+                disabled_plugins, "disabled_plugins"
+            ),
         )
     return next_config
 
@@ -664,18 +833,32 @@ class SettingsManager:
         global_settings_path: str | Path | None = None,
         project_settings_path: str | Path | None = None,
     ) -> None:
-        self._global_settings_path = Path(global_settings_path) if global_settings_path is not None else None
-        self._project_settings_path = Path(project_settings_path) if project_settings_path is not None else None
+        self._global_settings_path = (
+            Path(global_settings_path) if global_settings_path is not None else None
+        )
+        self._project_settings_path = (
+            Path(project_settings_path) if project_settings_path is not None else None
+        )
         self._errors: list[SettingsError] = []
-        self._global_patch = self._load_patch("global", self._global_settings_path, previous={})
-        self._project_patch = self._load_patch("project", self._project_settings_path, previous={})
-        self._session_patch = _control_config_to_patch(initial) if initial is not None else {}
+        self._global_patch = self._load_patch(
+            "global", self._global_settings_path, previous={}
+        )
+        self._project_patch = self._load_patch(
+            "project", self._project_settings_path, previous={}
+        )
+        self._session_patch = (
+            _control_config_to_patch(initial) if initial is not None else {}
+        )
         self._listeners: list[SettingsListener] = []
         self._settings = self._compose_settings()
 
     def reload(self) -> None:
-        self._global_patch = self._load_patch("global", self._global_settings_path, previous=self._global_patch)
-        self._project_patch = self._load_patch("project", self._project_settings_path, previous=self._project_patch)
+        self._global_patch = self._load_patch(
+            "global", self._global_settings_path, previous=self._global_patch
+        )
+        self._project_patch = self._load_patch(
+            "project", self._project_settings_path, previous=self._project_patch
+        )
         self._settings = self._compose_settings()
         self._notify()
 
@@ -683,7 +866,12 @@ class SettingsManager:
         return None
 
     def apply_overrides(self, overrides: Mapping[str, Any] | ControlConfig) -> None:
-        patch = _control_config_to_patch(overrides) if isinstance(overrides, ControlConfig) else dict(overrides)
+        patch = (
+            _control_config_to_patch(overrides)
+            if isinstance(overrides, ControlConfig)
+            else dict(overrides)
+        )
+        patch = _drop_removed_settings(patch, scope="session", errors=self._errors)
         self._session_patch = _merge_patch(self._session_patch, patch)
         self._settings = self._compose_settings()
         self._notify()
@@ -695,11 +883,19 @@ class SettingsManager:
 
     @property
     def global_base_dir(self) -> Path | None:
-        return self._global_settings_path.parent if self._global_settings_path is not None else None
+        return (
+            self._global_settings_path.parent
+            if self._global_settings_path is not None
+            else None
+        )
 
     @property
     def project_base_dir(self) -> Path | None:
-        return self._project_settings_path.parent if self._project_settings_path is not None else None
+        return (
+            self._project_settings_path.parent
+            if self._project_settings_path is not None
+            else None
+        )
 
     def update_settings(
         self,
@@ -740,7 +936,8 @@ class SettingsManager:
         session_dir: str | None | object = _UNSET,
         resource_roots: Iterable[str] | object = _UNSET,
         package_roots: Iterable[str] | object = _UNSET,
-        package_sources: Iterable[PackageSourceConfig | str | Mapping[str, object]] | object = _UNSET,
+        package_sources: Iterable[PackageSourceConfig | str | Mapping[str, object]]
+        | object = _UNSET,
         plugin_sources: Iterable[str] | object = _UNSET,
         disabled_skills: Iterable[str] | object = _UNSET,
         disabled_plugins: Iterable[str] | object = _UNSET,
@@ -751,41 +948,71 @@ class SettingsManager:
         if thinking_level is not _UNSET:
             patch["thinking_level"] = thinking_level
         if steering_mode is not _UNSET:
-            patch["steering_mode"] = _deserialize_queue_mode(steering_mode, "steering_mode")
+            patch["steering_mode"] = _deserialize_queue_mode(
+                steering_mode, "steering_mode"
+            )
         if follow_up_mode is not _UNSET:
-            patch["follow_up_mode"] = _deserialize_queue_mode(follow_up_mode, "follow_up_mode")
+            patch["follow_up_mode"] = _deserialize_queue_mode(
+                follow_up_mode, "follow_up_mode"
+            )
         if theme is not _UNSET:
             patch["theme"] = _optional_string(theme, "theme")
         if system_prompt is not _UNSET:
             patch["system_prompt"] = system_prompt
         if hide_thinking_block is not _UNSET:
-            patch["hide_thinking_block"] = _bool_value(hide_thinking_block, "hide_thinking_block")
+            patch["hide_thinking_block"] = _bool_value(
+                hide_thinking_block, "hide_thinking_block"
+            )
         if shell_path is not _UNSET:
             patch["shell_path"] = _optional_string(shell_path, "shell_path")
         if quiet_startup is not _UNSET:
             patch["quiet_startup"] = _bool_value(quiet_startup, "quiet_startup")
         if shell_command_prefix is not _UNSET:
-            patch["shell_command_prefix"] = _optional_string(shell_command_prefix, "shell_command_prefix")
+            patch["shell_command_prefix"] = _optional_string(
+                shell_command_prefix, "shell_command_prefix"
+            )
         if npm_command is not _UNSET:
             normalized_npm_command = _string_tuple_or_none(npm_command, "npm_command")
-            patch["npm_command"] = list(normalized_npm_command) if normalized_npm_command is not None else None
+            patch["npm_command"] = (
+                list(normalized_npm_command)
+                if normalized_npm_command is not None
+                else None
+            )
         if collapse_changelog is not _UNSET:
-            patch["collapse_changelog"] = _bool_value(collapse_changelog, "collapse_changelog")
+            patch["collapse_changelog"] = _bool_value(
+                collapse_changelog, "collapse_changelog"
+            )
         if enable_install_telemetry is not _UNSET:
-            patch["enable_install_telemetry"] = _bool_value(enable_install_telemetry, "enable_install_telemetry")
+            patch["enable_install_telemetry"] = _bool_value(
+                enable_install_telemetry, "enable_install_telemetry"
+            )
         if enable_skill_commands is not _UNSET:
-            patch["enable_skill_commands"] = _bool_value(enable_skill_commands, "enable_skill_commands")
+            patch["enable_skill_commands"] = _bool_value(
+                enable_skill_commands, "enable_skill_commands"
+            )
         if enabled_models is not _UNSET:
-            normalized_enabled_models = _string_tuple_or_none(enabled_models, "enabled_models")
-            patch["enabled_models"] = list(normalized_enabled_models) if normalized_enabled_models is not None else None
+            normalized_enabled_models = _string_tuple_or_none(
+                enabled_models, "enabled_models"
+            )
+            patch["enabled_models"] = (
+                list(normalized_enabled_models)
+                if normalized_enabled_models is not None
+                else None
+            )
         if double_escape_action is not _UNSET:
-            patch["double_escape_action"] = _deserialize_double_escape_action(double_escape_action)
+            patch["double_escape_action"] = _deserialize_double_escape_action(
+                double_escape_action
+            )
         if tree_filter_mode is not _UNSET:
             patch["tree_filter_mode"] = _deserialize_tree_filter_mode(tree_filter_mode)
         if show_hardware_cursor is not _UNSET:
-            patch["show_hardware_cursor"] = _bool_value(show_hardware_cursor, "show_hardware_cursor")
+            patch["show_hardware_cursor"] = _bool_value(
+                show_hardware_cursor, "show_hardware_cursor"
+            )
         if editor_padding_x is not _UNSET:
-            patch["editor_padding_x"] = _non_negative_small_int(editor_padding_x, "editor_padding_x", upper_bound=3)
+            patch["editor_padding_x"] = _non_negative_small_int(
+                editor_padding_x, "editor_padding_x", upper_bound=3
+            )
         if autocomplete_max_visible is not _UNSET:
             patch["autocomplete_max_visible"] = _bounded_int(
                 autocomplete_max_visible,
@@ -794,7 +1021,9 @@ class SettingsManager:
                 upper_bound=20,
             )
         if keybindings is not _UNSET:
-            patch["keybindings"] = _serialize_keybindings(_deserialize_keybindings(keybindings))
+            patch["keybindings"] = _serialize_keybindings(
+                _deserialize_keybindings(keybindings)
+            )
         if thinking_budgets is not _UNSET:
             patch["thinking_budgets"] = _thinking_budgets(thinking_budgets)
         if compaction is not _UNSET:
@@ -820,20 +1049,32 @@ class SettingsManager:
         if session_dir is not _UNSET:
             patch["session_dir"] = session_dir
         if resource_roots is not _UNSET:
-            patch["resource_roots"] = list(_normalize_string_sequence(resource_roots, "resource_roots"))
+            patch["resource_roots"] = list(
+                _normalize_string_sequence(resource_roots, "resource_roots")
+            )
         if package_roots is not _UNSET:
-            patch["package_roots"] = list(_normalize_string_sequence(package_roots, "package_roots"))
+            patch["package_roots"] = list(
+                _normalize_string_sequence(package_roots, "package_roots")
+            )
         if package_sources is not _UNSET:
             patch["packages"] = [
                 _serialize_package_source(source)
-                for source in _normalize_package_source_sequence(list(package_sources), "package_sources")
+                for source in _normalize_package_source_sequence(
+                    list(package_sources), "package_sources"
+                )
             ]
         if plugin_sources is not _UNSET:
-            patch["plugin_sources"] = list(_normalize_string_sequence(plugin_sources, "plugin_sources"))
+            patch["plugin_sources"] = list(
+                _normalize_string_sequence(plugin_sources, "plugin_sources")
+            )
         if disabled_skills is not _UNSET:
-            patch["disabled_skills"] = list(_normalize_string_sequence(disabled_skills, "disabled_skills"))
+            patch["disabled_skills"] = list(
+                _normalize_string_sequence(disabled_skills, "disabled_skills")
+            )
         if disabled_plugins is not _UNSET:
-            patch["disabled_plugins"] = list(_normalize_string_sequence(disabled_plugins, "disabled_plugins"))
+            patch["disabled_plugins"] = list(
+                _normalize_string_sequence(disabled_plugins, "disabled_plugins")
+            )
 
         if scope == "global":
             self._global_patch = _merge_patch(self._global_patch, patch)
@@ -847,13 +1088,19 @@ class SettingsManager:
         self._settings = self._compose_settings()
         self._notify()
 
-    def set_default_model(self, selection: ModelSelection | None, *, scope: SettingsScope = "session") -> None:
+    def set_default_model(
+        self, selection: ModelSelection | None, *, scope: SettingsScope = "session"
+    ) -> None:
         self.update_settings(scope=scope, default_model=selection)
 
-    def set_steering_mode(self, mode: QueueMode, *, scope: SettingsScope = "session") -> None:
+    def set_steering_mode(
+        self, mode: QueueMode, *, scope: SettingsScope = "session"
+    ) -> None:
         self.update_settings(scope=scope, steering_mode=mode)
 
-    def set_follow_up_mode(self, mode: QueueMode, *, scope: SettingsScope = "session") -> None:
+    def set_follow_up_mode(
+        self, mode: QueueMode, *, scope: SettingsScope = "session"
+    ) -> None:
         self.update_settings(scope=scope, follow_up_mode=mode)
 
     def get_theme(self) -> str | None:
@@ -865,91 +1112,129 @@ class SettingsManager:
     def get_hide_thinking_block(self) -> bool:
         return self._settings.hide_thinking_block
 
-    def set_hide_thinking_block(self, hide: bool, *, scope: SettingsScope = "global") -> None:
+    def set_hide_thinking_block(
+        self, hide: bool, *, scope: SettingsScope = "global"
+    ) -> None:
         self.update_settings(scope=scope, hide_thinking_block=hide)
 
     def get_shell_path(self) -> str | None:
         return self._settings.shell_path
 
-    def set_shell_path(self, path: str | None, *, scope: SettingsScope = "global") -> None:
+    def set_shell_path(
+        self, path: str | None, *, scope: SettingsScope = "global"
+    ) -> None:
         self.update_settings(scope=scope, shell_path=path)
 
     def get_quiet_startup(self) -> bool:
         return self._settings.quiet_startup
 
-    def set_quiet_startup(self, quiet: bool, *, scope: SettingsScope = "global") -> None:
+    def set_quiet_startup(
+        self, quiet: bool, *, scope: SettingsScope = "global"
+    ) -> None:
         self.update_settings(scope=scope, quiet_startup=quiet)
 
     def get_shell_command_prefix(self) -> str | None:
         return self._settings.shell_command_prefix
 
-    def set_shell_command_prefix(self, prefix: str | None, *, scope: SettingsScope = "global") -> None:
+    def set_shell_command_prefix(
+        self, prefix: str | None, *, scope: SettingsScope = "global"
+    ) -> None:
         self.update_settings(scope=scope, shell_command_prefix=prefix)
 
     def get_npm_command(self) -> list[str] | None:
-        return list(self._settings.npm_command) if self._settings.npm_command is not None else None
+        return (
+            list(self._settings.npm_command)
+            if self._settings.npm_command is not None
+            else None
+        )
 
-    def set_npm_command(self, command: Sequence[str] | None, *, scope: SettingsScope = "global") -> None:
+    def set_npm_command(
+        self, command: Sequence[str] | None, *, scope: SettingsScope = "global"
+    ) -> None:
         self.update_settings(scope=scope, npm_command=command)
 
     def get_collapse_changelog(self) -> bool:
         return self._settings.collapse_changelog
 
-    def set_collapse_changelog(self, collapse: bool, *, scope: SettingsScope = "global") -> None:
+    def set_collapse_changelog(
+        self, collapse: bool, *, scope: SettingsScope = "global"
+    ) -> None:
         self.update_settings(scope=scope, collapse_changelog=collapse)
 
     def get_enable_install_telemetry(self) -> bool:
         return self._settings.enable_install_telemetry
 
-    def set_enable_install_telemetry(self, enabled: bool, *, scope: SettingsScope = "global") -> None:
+    def set_enable_install_telemetry(
+        self, enabled: bool, *, scope: SettingsScope = "global"
+    ) -> None:
         self.update_settings(scope=scope, enable_install_telemetry=enabled)
 
     def get_enable_skill_commands(self) -> bool:
         return self._settings.enable_skill_commands
 
-    def set_enable_skill_commands(self, enabled: bool, *, scope: SettingsScope = "global") -> None:
+    def set_enable_skill_commands(
+        self, enabled: bool, *, scope: SettingsScope = "global"
+    ) -> None:
         self.update_settings(scope=scope, enable_skill_commands=enabled)
 
     def get_enabled_models(self) -> list[str] | None:
-        return list(self._settings.enabled_models) if self._settings.enabled_models is not None else None
+        return (
+            list(self._settings.enabled_models)
+            if self._settings.enabled_models is not None
+            else None
+        )
 
-    def set_enabled_models(self, patterns: Sequence[str] | None, *, scope: SettingsScope = "global") -> None:
+    def set_enabled_models(
+        self, patterns: Sequence[str] | None, *, scope: SettingsScope = "global"
+    ) -> None:
         self.update_settings(scope=scope, enabled_models=patterns)
 
     def get_double_escape_action(self) -> DoubleEscapeAction:
         return self._settings.double_escape_action
 
-    def set_double_escape_action(self, action: DoubleEscapeAction, *, scope: SettingsScope = "global") -> None:
+    def set_double_escape_action(
+        self, action: DoubleEscapeAction, *, scope: SettingsScope = "global"
+    ) -> None:
         self.update_settings(scope=scope, double_escape_action=action)
 
     def get_tree_filter_mode(self) -> TreeFilterMode:
         return self._settings.tree_filter_mode
 
-    def set_tree_filter_mode(self, mode: TreeFilterMode, *, scope: SettingsScope = "global") -> None:
+    def set_tree_filter_mode(
+        self, mode: TreeFilterMode, *, scope: SettingsScope = "global"
+    ) -> None:
         self.update_settings(scope=scope, tree_filter_mode=mode)
 
     def get_show_hardware_cursor(self) -> bool:
         return self._settings.show_hardware_cursor
 
-    def set_show_hardware_cursor(self, enabled: bool, *, scope: SettingsScope = "global") -> None:
+    def set_show_hardware_cursor(
+        self, enabled: bool, *, scope: SettingsScope = "global"
+    ) -> None:
         self.update_settings(scope=scope, show_hardware_cursor=enabled)
 
     def get_editor_padding_x(self) -> int:
         return self._settings.editor_padding_x
 
-    def set_editor_padding_x(self, padding: float | int, *, scope: SettingsScope = "global") -> None:
+    def set_editor_padding_x(
+        self, padding: float | int, *, scope: SettingsScope = "global"
+    ) -> None:
         self.update_settings(scope=scope, editor_padding_x=padding)
 
     def get_autocomplete_max_visible(self) -> int:
         return self._settings.autocomplete_max_visible
 
-    def set_autocomplete_max_visible(self, max_visible: float | int, *, scope: SettingsScope = "global") -> None:
+    def set_autocomplete_max_visible(
+        self, max_visible: float | int, *, scope: SettingsScope = "global"
+    ) -> None:
         self.update_settings(scope=scope, autocomplete_max_visible=max_visible)
 
     def get_keybindings(self) -> dict[str, KeybindingValue]:
         return dict(self._settings.keybindings)
 
-    def set_keybindings(self, keybindings: Mapping[str, object], *, scope: SettingsScope = "global") -> None:
+    def set_keybindings(
+        self, keybindings: Mapping[str, object], *, scope: SettingsScope = "global"
+    ) -> None:
         self.update_settings(scope=scope, keybindings=keybindings)
 
     def get_thinking_budgets(self) -> ThinkingBudgetMap | None:
@@ -976,37 +1261,64 @@ class SettingsManager:
         return self._settings.terminal.show_images
 
     def set_show_images(self, show: bool, *, scope: SettingsScope = "global") -> None:
-        self.update_settings(scope=scope, terminal=replace(self._settings.terminal, show_images=show))
+        self.update_settings(
+            scope=scope, terminal=replace(self._settings.terminal, show_images=show)
+        )
 
     def get_image_width_cells(self) -> int:
         return max(1, int(self._settings.terminal.image_width_cells))
 
-    def set_image_width_cells(self, width: float | int, *, scope: SettingsScope = "global") -> None:
-        self.update_settings(scope=scope, terminal=replace(self._settings.terminal, image_width_cells=max(1, int(width))))
+    def set_image_width_cells(
+        self, width: float | int, *, scope: SettingsScope = "global"
+    ) -> None:
+        self.update_settings(
+            scope=scope,
+            terminal=replace(
+                self._settings.terminal, image_width_cells=max(1, int(width))
+            ),
+        )
 
     def get_clear_on_shrink(self) -> bool:
         return self._settings.terminal.clear_on_shrink
 
-    def set_clear_on_shrink(self, enabled: bool, *, scope: SettingsScope = "global") -> None:
-        self.update_settings(scope=scope, terminal=replace(self._settings.terminal, clear_on_shrink=enabled))
+    def set_clear_on_shrink(
+        self, enabled: bool, *, scope: SettingsScope = "global"
+    ) -> None:
+        self.update_settings(
+            scope=scope,
+            terminal=replace(self._settings.terminal, clear_on_shrink=enabled),
+        )
 
     def get_show_terminal_progress(self) -> bool:
         return self._settings.terminal.show_terminal_progress
 
-    def set_show_terminal_progress(self, enabled: bool, *, scope: SettingsScope = "global") -> None:
-        self.update_settings(scope=scope, terminal=replace(self._settings.terminal, show_terminal_progress=enabled))
+    def set_show_terminal_progress(
+        self, enabled: bool, *, scope: SettingsScope = "global"
+    ) -> None:
+        self.update_settings(
+            scope=scope,
+            terminal=replace(self._settings.terminal, show_terminal_progress=enabled),
+        )
 
     def get_image_auto_resize(self) -> bool:
         return self._settings.images.auto_resize
 
-    def set_image_auto_resize(self, enabled: bool, *, scope: SettingsScope = "global") -> None:
-        self.update_settings(scope=scope, images=replace(self._settings.images, auto_resize=enabled))
+    def set_image_auto_resize(
+        self, enabled: bool, *, scope: SettingsScope = "global"
+    ) -> None:
+        self.update_settings(
+            scope=scope, images=replace(self._settings.images, auto_resize=enabled)
+        )
 
     def get_block_images(self) -> bool:
         return self._settings.images.block_images
 
-    def set_block_images(self, enabled: bool, *, scope: SettingsScope = "global") -> None:
-        self.update_settings(scope=scope, images=replace(self._settings.images, block_images=enabled))
+    def set_block_images(
+        self, enabled: bool, *, scope: SettingsScope = "global"
+    ) -> None:
+        self.update_settings(
+            scope=scope, images=replace(self._settings.images, block_images=enabled)
+        )
 
     def get_image_settings(self) -> ImageSettings:
         return self._settings.images
@@ -1071,19 +1383,27 @@ class SettingsManager:
     def get_retry_enabled(self) -> bool:
         return self._settings.retry.enabled
 
-    def set_retry_enabled(self, enabled: bool, *, scope: SettingsScope = "session") -> None:
-        self.update_settings(scope=scope, retry=replace(self._settings.retry, enabled=enabled))
+    def set_retry_enabled(
+        self, enabled: bool, *, scope: SettingsScope = "session"
+    ) -> None:
+        self.update_settings(
+            scope=scope, retry=replace(self._settings.retry, enabled=enabled)
+        )
 
     def get_resource_roots(self) -> list[str]:
         return list(self._settings.resource_roots)
 
-    def set_resource_roots(self, roots: Iterable[str], *, scope: SettingsScope = "global") -> None:
+    def set_resource_roots(
+        self, roots: Iterable[str], *, scope: SettingsScope = "global"
+    ) -> None:
         self.update_settings(scope=scope, resource_roots=roots)
 
     def get_package_roots(self) -> list[str]:
         return list(self._settings.package_roots)
 
-    def set_package_roots(self, roots: Iterable[str], *, scope: SettingsScope = "global") -> None:
+    def set_package_roots(
+        self, roots: Iterable[str], *, scope: SettingsScope = "global"
+    ) -> None:
         self.update_settings(scope=scope, package_roots=roots)
 
     def get_package_sources(self) -> list[PackageSourceConfig]:
@@ -1109,7 +1429,9 @@ class SettingsManager:
         self.update_settings(scope=scope, package_sources=next_sources)
         return next_sources != current_sources
 
-    def remove_package_source(self, source: str, *, scope: SettingsScope = "project") -> bool:
+    def remove_package_source(
+        self, source: str, *, scope: SettingsScope = "project"
+    ) -> bool:
         current_sources = self._settings.package_sources
         next_sources = _without_package_source(current_sources, source)
         self.update_settings(scope=scope, package_sources=next_sources)
@@ -1118,44 +1440,66 @@ class SettingsManager:
     def get_plugin_sources(self) -> list[str]:
         return list(self._settings.plugin_sources)
 
-    def set_plugin_sources(self, sources: Iterable[str], *, scope: SettingsScope = "global") -> None:
+    def set_plugin_sources(
+        self, sources: Iterable[str], *, scope: SettingsScope = "global"
+    ) -> None:
         self.update_settings(scope=scope, plugin_sources=sources)
 
     def get_disabled_skills(self) -> list[str]:
         return list(self._settings.disabled_skills)
 
-    def set_disabled_skills(self, names: Iterable[str], *, scope: SettingsScope = "global") -> None:
+    def set_disabled_skills(
+        self, names: Iterable[str], *, scope: SettingsScope = "global"
+    ) -> None:
         self.update_settings(scope=scope, disabled_skills=names)
 
     def get_disabled_plugins(self) -> list[str]:
         return list(self._settings.disabled_plugins)
 
-    def set_disabled_plugins(self, names: Iterable[str], *, scope: SettingsScope = "global") -> None:
+    def set_disabled_plugins(
+        self, names: Iterable[str], *, scope: SettingsScope = "global"
+    ) -> None:
         self.update_settings(scope=scope, disabled_plugins=names)
 
-    def add_plugin_source(self, source: str, *, scope: SettingsScope = "project") -> bool:
+    def add_plugin_source(
+        self, source: str, *, scope: SettingsScope = "project"
+    ) -> bool:
         current_sources = self._settings.plugin_sources
         next_sources = _with_name(current_sources, source)
         self.update_settings(scope=scope, plugin_sources=next_sources)
         return next_sources != current_sources
 
-    def remove_plugin_source(self, source: str, *, scope: SettingsScope = "project") -> bool:
+    def remove_plugin_source(
+        self, source: str, *, scope: SettingsScope = "project"
+    ) -> bool:
         current_sources = self._settings.plugin_sources
         next_sources = _without_name(current_sources, source)
         self.update_settings(scope=scope, plugin_sources=next_sources)
         return next_sources != current_sources
 
     def enable_skill(self, name: str, *, scope: SettingsScope = "project") -> None:
-        self.update_settings(scope=scope, disabled_skills=_without_name(self._settings.disabled_skills, name))
+        self.update_settings(
+            scope=scope,
+            disabled_skills=_without_name(self._settings.disabled_skills, name),
+        )
 
     def disable_skill(self, name: str, *, scope: SettingsScope = "project") -> None:
-        self.update_settings(scope=scope, disabled_skills=_with_name(self._settings.disabled_skills, name))
+        self.update_settings(
+            scope=scope,
+            disabled_skills=_with_name(self._settings.disabled_skills, name),
+        )
 
     def enable_plugin(self, name: str, *, scope: SettingsScope = "project") -> None:
-        self.update_settings(scope=scope, disabled_plugins=_without_name(self._settings.disabled_plugins, name))
+        self.update_settings(
+            scope=scope,
+            disabled_plugins=_without_name(self._settings.disabled_plugins, name),
+        )
 
     def disable_plugin(self, name: str, *, scope: SettingsScope = "project") -> None:
-        self.update_settings(scope=scope, disabled_plugins=_with_name(self._settings.disabled_plugins, name))
+        self.update_settings(
+            scope=scope,
+            disabled_plugins=_with_name(self._settings.disabled_plugins, name),
+        )
 
     def get_settings(self) -> ControlConfig:
         return self._settings
@@ -1185,9 +1529,15 @@ class SettingsManager:
 
     def _compose_settings(self) -> ControlConfig:
         config = ControlConfig()
-        config = _apply_patch(config, self._global_patch, scope="global", errors=self._errors)
-        config = _apply_patch(config, self._project_patch, scope="project", errors=self._errors)
-        config = _apply_patch(config, self._session_patch, scope="session", errors=self._errors)
+        config = _apply_patch(
+            config, self._global_patch, scope="global", errors=self._errors
+        )
+        config = _apply_patch(
+            config, self._project_patch, scope="project", errors=self._errors
+        )
+        config = _apply_patch(
+            config, self._session_patch, scope="session", errors=self._errors
+        )
         return config
 
     def _load_patch(
@@ -1239,9 +1589,13 @@ def _with_package_source(
     return (*values, candidate)
 
 
-def _without_package_source(values: tuple[PackageSourceConfig, ...], source: str) -> tuple[PackageSourceConfig, ...]:
+def _without_package_source(
+    values: tuple[PackageSourceConfig, ...], source: str
+) -> tuple[PackageSourceConfig, ...]:
     normalized = source.strip()
     if not normalized:
         return values
     target_key = _package_identity_key(normalized)
-    return tuple(value for value in values if _package_identity_key(value.source) != target_key)
+    return tuple(
+        value for value in values if _package_identity_key(value.source) != target_key
+    )

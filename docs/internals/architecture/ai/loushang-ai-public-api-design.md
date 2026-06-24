@@ -150,16 +150,13 @@
   - `validate_tool_arguments`
   - `normalize_tool_call_id_for_model`
 - Stable Option Types
-  - `StreamOptions`
-  - `SimpleStreamOptions`
-  - `AnthropicOptions`
-  - `OpenAICompletionsOptions`
-  - `OpenAIResponsesOptions`
-  - `OpenAICodexResponsesOptions`
+  - `CallOptions`
+  - `ReasoningOptions`
+  - `RetryOptions`
+  - `TimeoutOptions`
+  - `StructuredOutputOptions`
   - `ThinkingLevel`
-  - `ThinkingBudgets`
   - `CacheRetention`
-  - `Transport`
 
 ## API 层派生对象
 
@@ -480,23 +477,21 @@ Stable 最小字段集合确认为：
 - 这些能力本质上属于“统一协议层”的一部分
 - 上层如果要做工具编排、跨模型切换或上下文修复，会直接依赖它们
 
-### F. Provider 选项类型
+### F. 调用选项类型
 
-- `StreamOptions`
-- `SimpleStreamOptions`
-- `AnthropicOptions`
-- `OpenAICompletionsOptions`
-- `OpenAIResponsesOptions`
-- `OpenAICodexResponsesOptions`
+- `CallOptions`
+- `ReasoningOptions`
+- `RetryOptions`
+- `TimeoutOptions`
+- `StructuredOutputOptions`
 - `ThinkingLevel`
-- `ThinkingBudgets`
 - `CacheRetention`
-- `Transport`
 
 说明：
 
-- 这些类型用于统一表达调用参数
+- 这些类型用于统一表达核心调用参数
 - 应稳定暴露给上层，避免上层直接组装任意 dict
+- provider / contrib 专用选项不进入 core public surface；例如 Codex transport 只属于 `loushang.ai.contrib.openai_codex`
 
 
 ## Advanced API

@@ -110,7 +110,55 @@ kind = "observe"
     ]
 
 
-def test_extension_manifest_parser_reports_invalid_input_without_throwing(tmp_path) -> None:
+def test_extension_loader_reports_removed_provider_hook_manifest(tmp_path) -> None:
+    from loushang.coding.extensions.loader import ExtensionLoader
+    from loushang.coding.loader import ExtensionDescriptor
+
+    extension_dir = tmp_path / "provider-hooks"
+    extension_dir.mkdir()
+    extension_file = extension_dir / "extension.py"
+    extension_file.write_text("def register(api):\n    pass\n", encoding="utf-8")
+    (extension_dir / "loushang-extension.toml").write_text(
+        """
+[extension]
+id = "bad.provider-hooks"
+name = "Bad Provider Hooks"
+
+[[hooks]]
+event = "before_provider_request"
+kind = "observe"
+
+[[hooks]]
+event = "session_start"
+kind = "observe"
+        """.strip()
+        + "\n",
+        encoding="utf-8",
+    )
+
+    loader = ExtensionLoader()
+    loaded = loader.load_extensions(
+        [
+            ExtensionDescriptor(
+                name="provider-hooks",
+                source_path=extension_dir,
+                entry_path=extension_file,
+            )
+        ]
+    )
+
+    assert len(loaded) == 1
+    assert [diagnostic.code for diagnostic in loader.get_diagnostics()] == [
+        "unsupported_extension_hook_event"
+    ]
+    assert sorted((surface.type, surface.name) for surface in loaded[0].surfaces) == [
+        ("hook", "session_start")
+    ]
+
+
+def test_extension_manifest_parser_reports_invalid_input_without_throwing(
+    tmp_path,
+) -> None:
     from loushang.coding.extensions.manifest import parse_extension_manifest
 
     manifest_path = tmp_path / "loushang-extension.toml"
@@ -137,7 +185,9 @@ level = "root"
     assert result.diagnostics[0].resource_type == "extension"
 
 
-def test_extension_manifest_parser_keeps_manifest_for_partial_surface_declaration_errors(tmp_path) -> None:
+def test_extension_manifest_parser_keeps_manifest_for_partial_surface_declaration_errors(
+    tmp_path,
+) -> None:
     from loushang.coding.extensions.manifest import parse_extension_manifest
 
     manifest_path = tmp_path / "loushang-extension.toml"
@@ -168,7 +218,9 @@ name = "valid_tool"
     ]
 
 
-def test_extension_loader_attaches_manifest_policy_and_surface_snapshot(tmp_path) -> None:
+def test_extension_loader_attaches_manifest_policy_and_surface_snapshot(
+    tmp_path,
+) -> None:
     from loushang.coding.extensions.loader import ExtensionLoader
     from loushang.coding.loader import ExtensionDescriptor
 
@@ -272,13 +324,17 @@ def test_extension_runner_lists_extension_visibility_snapshot() -> None:
         name="Acme Review",
         version="0.1.0",
         description="Review helpers",
-        permissions=ExtensionPermissionDeclaration(level="standard", capabilities=("filesystem",)),
+        permissions=ExtensionPermissionDeclaration(
+            level="standard", capabilities=("filesystem",)
+        ),
     )
     extension = LoadedExtension(
         name="review",
         source_path=Path("/tmp/project/extensions/review/extension.py"),
         manifest=manifest,
-        policy=ExtensionPolicyDecision(permission_level="standard", capabilities=("filesystem",)),
+        policy=ExtensionPolicyDecision(
+            permission_level="standard", capabilities=("filesystem",)
+        ),
         contributions=[
             ExtensionSurfaceDescriptor(
                 type="command",
@@ -299,7 +355,9 @@ def test_extension_runner_lists_extension_visibility_snapshot() -> None:
             ResourceDiagnostic(
                 code="missing_extension_hook_event",
                 message="Extension manifest hook declaration requires an event.",
-                source_path=Path("/tmp/project/extensions/review/loushang-extension.toml"),
+                source_path=Path(
+                    "/tmp/project/extensions/review/loushang-extension.toml"
+                ),
             )
         ],
     )
@@ -439,7 +497,9 @@ def test_extension_inventory_does_not_silently_overwrite_duplicate_keys() -> Non
     inventory.add(first)
     inventory.add(second)
 
-    assert [surface.extension_id for surface in inventory.by_key("command", "review")] == [
+    assert [
+        surface.extension_id for surface in inventory.by_key("command", "review")
+    ] == [
         "one",
         "two",
     ]

@@ -133,16 +133,13 @@
   - `reset_api_providers`
   - `register_builtin_ai_providers`
 - `Option Types`
-  - `StreamOptions`
-  - `SimpleStreamOptions`
-  - `AnthropicOptions`
-  - `OpenAICompletionsOptions`
-  - `OpenAIResponsesOptions`
-  - `OpenAICodexResponsesOptions`
+  - `CallOptions`
+  - `ReasoningOptions`
+  - `RetryOptions`
+  - `TimeoutOptions`
+  - `StructuredOutputOptions`
   - `ThinkingLevel`
-  - `ThinkingBudgets`
   - `CacheRetention`
-  - `Transport`
 - `Auth Helper API`
   - 当前仍未正式对外补齐
   - 只在系统环境图与适应性设计中保留为下一阶段入口
@@ -164,9 +161,6 @@
     - `reasoningEffort`
     - `maxOutputTokens`
     - `temperature`
-  - `OpenAIResponsesOptions` 现还可直接进入 payload
-    - `reasoning_summary`
-    - `service_tier`
 - `openai-completions` 现还可按 endpoint compat 吸收
   - `supportsUsageInStreaming`
   - `maxTokensField`
@@ -177,11 +171,7 @@
   - OpenAI-compatible provider 现共用一层 provider-boundary request 解析
   - `anthropic-messages` 现也共用同一层 request 解析
     - `maxTokens`
-  - `AnthropicOptions` 现已开始进入 payload
-    - `thinking_enabled`
-    - `thinking_budget_tokens`
-    - `effort`
-    - `tool_choice`
+  - Anthropic adapter 现从 canonical `CallOptions.reasoning` / `tool_choice` 进入 payload
   - `Context` 现已作为正式 AI 输入语义进入主链
     - `system_prompt`
     - `messages`
@@ -206,7 +196,7 @@
 
 - `get_model(...)`
 - `model.complete(...)` / `model.stream(...)`
-- 显式 `Options(api_key=...)`
+- 显式 `CallOptions(api_key=...)`
 
 以下场景应视为 advanced：
 

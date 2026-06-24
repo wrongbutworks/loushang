@@ -14,7 +14,6 @@ class OpenAICodexResponsesOptions(CallOptions):
 
     text_verbosity: str | None = None
     transport: CodexTransport | None = None
-    session_id: str | None = None
 
 
 __all__ = ["CodexTransport", "OpenAICodexResponsesOptions"]

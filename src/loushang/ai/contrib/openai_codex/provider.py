@@ -11,6 +11,7 @@ from types import SimpleNamespace
 from typing import Any
 from uuid import uuid4
 
+from loushang.ai.contrib.openai_codex.options import OpenAICodexResponsesOptions
 from loushang.ai.contrib.openai_codex.runtime_config import (
     OpenAICodexRuntimeConfig,
     resolve_openai_codex_runtime_config,
@@ -109,7 +110,12 @@ class OpenAICodexResponsesProvider:
             owned_client = _HttpxCodexClient()
             client = owned_client
         try:
-            transport = getattr(options, "transport", None) or "sse"
+            codex_options = _as_codex_options(options)
+            transport = (
+                codex_options.transport
+                if codex_options is not None and codex_options.transport is not None
+                else "sse"
+            )
             if transport != "sse":
                 websocket_started = False
                 try:
@@ -336,7 +342,7 @@ def _build_request_body(
         "stream": True,
         "input": input_items,
         "instructions": "",
-        "text": {"verbosity": getattr(options, "text_verbosity", None) or "medium"},
+        "text": {"verbosity": _codex_text_verbosity(options)},
         "include": ["reasoning.encrypted_content"],
     }
     system_prompt = normalized.get("system_prompt")
@@ -366,6 +372,23 @@ def _build_request_body(
     if text_format is not None:
         body["text"].update(text_format)
     return body
+
+
+def _as_codex_options(
+    options: object | None,
+) -> OpenAICodexResponsesOptions | None:
+    return options if isinstance(options, OpenAICodexResponsesOptions) else None
+
+
+def _codex_text_verbosity(options: object | None) -> str:
+    codex_options = _as_codex_options(options)
+    if (
+        codex_options is not None
+        and isinstance(codex_options.text_verbosity, str)
+        and codex_options.text_verbosity
+    ):
+        return codex_options.text_verbosity
+    return "medium"
 
 
 def _codex_reasoning_effort(options: object | None) -> str | None:
