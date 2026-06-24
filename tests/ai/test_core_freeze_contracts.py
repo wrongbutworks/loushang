@@ -86,6 +86,20 @@ class _RecordingProvider:
         yield {"type": "response_done"}
 
 
+class _InvokeRawOnlyProvider:
+    api = "anthropic-messages"
+
+    def invoke_raw(self, request):
+        raise AssertionError("not used by this contract test")
+
+
+class _StreamRawOnlyProvider:
+    api = "anthropic-messages"
+
+    def stream_raw(self, request):
+        raise AssertionError("not used by this contract test")
+
+
 @pytest.mark.xfail(strict=True, reason="AIF-004 removes legacy Compat bridge")
 def test_no_legacy_compat_model_contract_types_remain() -> None:
     import loushang.ai.model as model_module
@@ -204,6 +218,18 @@ def test_default_registry_fails_on_bad_user_model_file(
             get_default_model_registry()
     finally:
         clear_default_model_registry()
+
+
+@pytest.mark.xfail(
+    strict=True,
+    reason="AIF-008 renames provider raw invocation from stream_raw to invoke_raw",
+)
+def test_provider_registry_accepts_invoke_raw_and_rejects_stream_raw() -> None:
+    registry = ApiProviderRegistry()
+
+    registry.register_api_provider(_InvokeRawOnlyProvider())
+    with pytest.raises(TypeError, match="stream_raw"):
+        registry.register_api_provider(_StreamRawOnlyProvider())
 
 
 @pytest.mark.xfail(
