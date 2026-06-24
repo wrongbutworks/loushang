@@ -282,10 +282,10 @@ def _oauth_provider_headers(
     oauth_provider = get_default_oauth_registry().get(provider)
     if oauth_provider is None:
         return {}
-    get_auth_headers = getattr(oauth_provider, "get_auth_headers", None)
-    if not callable(get_auth_headers):
+    try:
+        headers = oauth_provider.get_auth_headers(credentials)
+    except AttributeError:
         return {}
-    headers = get_auth_headers(credentials)
     if not isinstance(headers, dict):
         return {}
     return {

@@ -7,7 +7,7 @@ import pytest
 from loushang.ai.auth.env import get_env_oauth_credentials
 from loushang.ai.auth.registry import get_default_oauth_registry
 from loushang.ai.auth.support import AuthConfig, resolve_auth_for_model
-from loushang.ai.auth.types import OAuthCredentials
+from loushang.ai.auth.types import OAuthCredentials, OAuthProviderInterface
 from loushang.ai.contrib.openai_codex import register_openai_codex_oauth_provider
 from loushang.ai.model import Auth, Endpoint, Model, ModelRegistry, Provider
 
@@ -78,6 +78,10 @@ def test_env_oauth_credentials_use_generic_provider_prefix_only() -> None:
     assert credentials.access_token == "demo-token"
     assert credentials.extra == {"account_id": "demo-account", "plan": "team"}
     assert get_env_oauth_credentials("openai-codex", env=env) is None
+
+
+def test_oauth_provider_contract_declares_auth_header_hook() -> None:
+    assert "get_auth_headers" in OAuthProviderInterface.__dict__
 
 
 def test_oauth_provider_can_add_non_sensitive_auth_headers() -> None:
