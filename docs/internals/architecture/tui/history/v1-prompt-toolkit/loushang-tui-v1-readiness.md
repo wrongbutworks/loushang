@@ -98,19 +98,11 @@ land. Separate burst tests should cover fast mixed input without resize.
 
 ## Freeze Checklist
 
-Before treating a change as v1-ready, run:
+This checklist is historical. The old release gate was removed because it
+referenced prompt-toolkit/Rich-era tests that were never part of the current
+native terminal core. Current verification should follow the live native
+terminal core testing strategy and screen playback regression docs.
 
-- Run `make test-tui-v1`
-
-The target above runs the full gate. It expands to:
-
-- Run `uv --cache-dir .uv-cache run pytest tests/tui/test_import_boundaries.py -q`
-- Run `uv --cache-dir .uv-cache run pytest tests/tui/test_public_api_guide.py tests/tui/test_v1_readiness_doc.py -q`
-- Run `make test-tui`
-- Run `uv --cache-dir .uv-cache run mypy src/loushang/tui --show-error-codes`
-- Run `uv --cache-dir .uv-cache run ruff check src/loushang/tui tests/tui`
-- Run `git diff --check`
-
-The checklist is intentionally mechanical. Any public export change must update the facade,
-type-checking re-export, public API guide, import-boundary tests, and this readiness contract
-in the same change.
+For historical context, this track expected any public export change to update
+the facade, type-checking re-export, public API guide, import-boundary tests,
+and readiness contract in the same change.
