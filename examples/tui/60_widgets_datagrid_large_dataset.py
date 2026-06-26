@@ -42,6 +42,8 @@ DATA_GRID_THEME = ThemeResolver(
         "example.dataGrid.meta": {"color": "bright_black"},
         "example.dataGrid.error": {"color": "red"},
         "widget.dataGrid.header": {"color": "bright_black"},
+        "widget.dataGrid.sortHeader": {"bold": True, "color": "yellow"},
+        "widget.dataGrid.focusSortHeader": {"bold": True, "color": "bright_yellow", "underline": True},
         "widget.dataGrid.row": {"color": "white"},
         "widget.dataGrid.focusRow": {"bold": True, "color": "cyan"},
         "widget.dataGrid.focusCell": {"bold": True, "color": "cyan"},

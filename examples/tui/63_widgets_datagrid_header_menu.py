@@ -44,6 +44,8 @@ HEADER_MENU_THEME = ThemeResolver(
         "widget.menu.description": {"color": "bright_black"},
         "widget.menu.disabled": {"dim": True},
         "widget.dataGrid.header": {"color": "bright_black"},
+        "widget.dataGrid.sortHeader": {"bold": True, "color": "yellow"},
+        "widget.dataGrid.focusSortHeader": {"bold": True, "color": "bright_yellow", "underline": True},
         "widget.dataGrid.row": {"color": "white"},
         "widget.dataGrid.focusCell": {"bold": True, "color": "cyan"},
         "widget.dataGrid.fixedColumn": {"color": "bright_white"},
@@ -105,10 +107,11 @@ class HeaderMenuOverlay(FocusableMixin):
 
     def __post_init__(self) -> None:
         FocusableMixin.__init__(self)
+        sort_state = self.app.grid.sort_state
         self.menu = Menu(
             (
-                MenuItem("sort_asc", "Sort ascending"),
-                MenuItem("sort_desc", "Sort descending"),
+                MenuItem("sort_asc", _sort_action_label("Sort ascending", sort_state, self.column_key, "asc")),
+                MenuItem("sort_desc", _sort_action_label("Sort descending", sort_state, self.column_key, "desc")),
                 MenuItem("hide", "Hide column"),
             ),
             theme=HEADER_MENU_THEME,
@@ -297,6 +300,15 @@ def _column_by_key(grid: DataGrid, key: str) -> DataGridColumn | None:
 def _column_label(grid: DataGrid, key: str) -> str:
     column = _column_by_key(grid, key)
     return key if column is None else column.header
+
+
+def _sort_action_label(
+    label: str,
+    sort_state: tuple[str, str] | None,
+    column_key: str,
+    direction: str,
+) -> str:
+    return f"* {label}" if sort_state == (column_key, direction) else label
 
 
 def _pad_visible(text: str, width: int) -> str:
