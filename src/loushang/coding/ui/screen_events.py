@@ -5,6 +5,7 @@ from collections.abc import Callable
 from dataclasses import dataclass, field
 from typing import Any
 
+from loushang.coding.ui.event_policy import is_cancelled_error_message
 from loushang.coding.ui.screen_app import ScreenCodingTuiApp
 from loushang.coding.ui.tool_blocks import (
     ToolCallSnapshot,
@@ -29,6 +30,7 @@ class ScreenCodingEventProjector:
     _tool_projector: ToolTranscriptProjector = field(init=False, repr=False)
     _tool_calls: dict[str, ToolCallSnapshot] = field(default_factory=dict, init=False, repr=False)
     _tool_started_at: dict[str, float] = field(default_factory=dict, init=False, repr=False)
+    _rendered_assistant_error_ids: set[int] = field(default_factory=set, init=False, repr=False)
 
     def __post_init__(self) -> None:
         self._tool_projector = ToolTranscriptProjector(
@@ -52,6 +54,9 @@ class ScreenCodingEventProjector:
             return
         if event_type == "message_end":
             self._handle_message_end(event)
+            return
+        if event_type == "agent_end":
+            self._handle_agent_end(event)
             return
         if event_type == "tool_execution_start":
             self._handle_tool_start(event)
@@ -125,11 +130,33 @@ class ScreenCodingEventProjector:
         role = getattr(message, "role", None)
         if role == "assistant":
             text = _extract_text(message)
-            stop_reason = getattr(message, "stop_reason", None)
-            error_message = getattr(message, "error_message", None)
             self.app.end_assistant(text)
-            if stop_reason in {"error", "aborted"} and isinstance(error_message, str) and error_message:
-                self.app.add_error(error_message)
+            self._render_assistant_error(message)
+
+    def _handle_agent_end(self, event: dict[str, Any]) -> None:
+        messages = event.get("messages")
+        if not isinstance(messages, list):
+            return
+        for message in reversed(messages):
+            if getattr(message, "role", None) == "assistant":
+                self._render_assistant_error(message)
+                return
+
+    def _render_assistant_error(self, message: object) -> bool:
+        error_message = getattr(message, "error_message", None)
+        stop_reason = getattr(message, "stop_reason", None)
+        if not isinstance(error_message, str) or not error_message:
+            return False
+        if stop_reason not in {"error", "aborted"}:
+            return False
+        if stop_reason == "aborted" and is_cancelled_error_message(error_message):
+            return True
+        message_id = id(message)
+        if message_id in self._rendered_assistant_error_ids:
+            return True
+        self._rendered_assistant_error_ids.add(message_id)
+        self.app.add_error(error_message)
+        return True
 
     def _handle_tool_start(self, event: dict[str, Any]) -> None:
         tool_call_id = _tool_call_id(event)
