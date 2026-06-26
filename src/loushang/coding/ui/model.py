@@ -19,7 +19,6 @@ class PreferredModel:
 
 PREFERRED_CODING_MODELS = (
     PreferredModel("moonshot", "kimi-code-anthropic", "kimi-for-coding"),
-    PreferredModel("moonshot", "openai-completions:cn:coding", "kimi-for-coding"),
 )
 
 

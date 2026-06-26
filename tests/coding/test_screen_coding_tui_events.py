@@ -7,6 +7,7 @@ from loushang.ai import TextPart, UserMessage
 from loushang.tui.transcript import (
     AssistantMessageRecord,
     ContextCompactionRecord,
+    ErrorRecord,
     ToolExecutionRecord,
     UserPromptRecord,
 )
@@ -46,6 +47,23 @@ def test_screen_event_projector_streams_assistant_to_draft_then_commits_once() -
     assert [record for record in app.state.records if isinstance(record, AssistantMessageRecord)] == [
         AssistantMessageRecord("你好，世界")
     ]
+
+
+def test_screen_event_projector_renders_assistant_error_from_agent_end() -> None:
+    from loushang.coding.ui.screen_app import ScreenCodingTuiApp
+    from loushang.coding.ui.screen_events import ScreenCodingEventProjector
+
+    app = ScreenCodingTuiApp(model_label="kimi", cwd="/repo", branch="main", session_label="abcd", now=lambda: 1.0)
+    projector = ScreenCodingEventProjector(app)
+
+    projector.handle(
+        {
+            "type": "agent_end",
+            "messages": [_assistant(stop_reason="error", error_message="provider failure")],
+        }
+    )
+
+    assert app.state.records == [ErrorRecord("provider failure")]
 
 
 def test_screen_event_projector_renders_user_message_and_skips_optimistic_echo() -> None:
