@@ -771,7 +771,7 @@ def test_data_grid_theme_tokens_and_width_constraints_are_applied() -> None:
     raw = render_lines(grid, width=20, height=3)
     plain = tuple(strip_control_sequences(line).rstrip() for line in raw)
 
-    assert raw[0].startswith("\x1b[36m  Name")
+    assert raw[0].startswith("  \x1b[36mName")
     assert raw[1].startswith("\x1b[1;32m> Build")
     assert raw[2].startswith("\x1b[2m  Skip")
     assert plain == (
@@ -1165,6 +1165,26 @@ def test_data_grid_sort_header_markers_render_and_pinned_rows_stay_pinned() -> N
     assert grid.sort_by("runs", "asc") is True
     assert grid.row_keys == ("top", "d", "b", "bottom")
     assert "Runs ^" in plain_lines(grid, width=32, height=6)[0]
+
+
+def test_data_grid_sorted_header_uses_distinct_theme_token() -> None:
+    theme = ThemeResolver(
+        defaults={
+            "widget.dataGrid.header": {"color": "bright_black"},
+            "widget.dataGrid.sortHeader": {"color": "magenta", "bold": True},
+        }
+    )
+    grid = DataGrid(
+        [DataGridColumn("job", "Job", width=8), DataGridColumn("runs", "Runs", width=6, align="right")],
+        [DataGridRow("b", {"job": "Build", "runs": 12}), DataGridRow("d", {"job": "Deploy", "runs": 3})],
+        theme=theme,
+    )
+
+    assert grid.sort_by("runs", "asc") is True
+    header = render_lines(grid, width=32, height=3)[0]
+
+    assert "\x1b[90mJob" in header
+    assert "\x1b[1;35mRuns ^" in header
 
 
 def test_data_grid_replace_rows_preserves_explicit_keys_and_rekeys_shorthand_rows() -> None:
@@ -1677,6 +1697,8 @@ def test_widgets_datagrid_header_menu_example_sorts_and_hides_active_column() ->
     assert grid.focused is True
 
     assert tui.handle_input(InputEvent(kind="text", text="m")) == ()
+    sorted_menu_lines = plain_lines(tui, width=96, height=16)
+    assert any("* Sort ascending" in line for line in sorted_menu_lines)
     assert tui.handle_input(InputEvent(kind="key", key="down")) == ()
     assert tui.handle_input(InputEvent(kind="key", key="down")) == ()
     assert tui.handle_input(InputEvent(kind="key", key="enter"))[0].kind == "surface_close"

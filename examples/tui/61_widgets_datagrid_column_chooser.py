@@ -46,6 +46,8 @@ COLUMN_CHOOSER_THEME = ThemeResolver(
         "widget.columnChooser.hidden": {"color": "bright_black"},
         "widget.columnChooser.disabled": {"dim": True},
         "widget.dataGrid.header": {"color": "bright_black"},
+        "widget.dataGrid.sortHeader": {"bold": True, "color": "yellow"},
+        "widget.dataGrid.focusSortHeader": {"bold": True, "color": "bright_yellow", "underline": True},
         "widget.dataGrid.row": {"color": "white"},
         "widget.dataGrid.focusCell": {"bold": True, "color": "cyan"},
         "widget.dataGrid.fixedColumn": {"color": "bright_white"},

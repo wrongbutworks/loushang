@@ -540,12 +540,19 @@ class DataGrid:
         cursor: CursorDeclaration | None = None
         if self.show_header and len(lines) < height:
             headers = tuple(self._header_text(column) for column in render_columns)
-            header_text = _grid_line(headers, render_columns, widths, target_width, label_width=label_width)
-            header_tokens = ["widget.dataGrid.header"]
+            header_tokens = tuple(self._header_theme_tokens(column) for column in render_columns)
+            header_text = _grid_line(
+                headers,
+                render_columns,
+                widths,
+                target_width,
+                label_width=label_width,
+                theme=self.theme,
+                cell_token_sets=header_tokens,
+            )
             if self.focused and self.cursor_mode == "column" and self._active_column_key in cell_starts:
-                header_tokens.append("widget.dataGrid.focusColumn")
                 cursor = CursorDeclaration(row=len(lines), column=cell_starts[str(self._active_column_key)])
-            lines.append(RenderLine(style_text(header_text, self.theme, *header_tokens)))
+            lines.append(RenderLine(header_text))
 
         top_rows = self._pinned_top_rows()
         body_rows = self._view_body_rows()
@@ -835,6 +842,17 @@ class DataGrid:
             return column.header
         marker = "^" if self._sort_state[1] == "asc" else "v"
         return f"{column.header} {marker}"
+
+    def _header_theme_tokens(self, column: DataGridColumn) -> tuple[str | None, ...]:
+        sorted_column = self._sort_state is not None and self._sort_state[0] == column.key
+        focused_column = self.focused and self.cursor_mode == "column" and self._active_column_key == column.key
+        if sorted_column and focused_column:
+            return ("widget.dataGrid.header", "widget.dataGrid.sortHeader", "widget.dataGrid.focusSortHeader")
+        if sorted_column:
+            return ("widget.dataGrid.header", "widget.dataGrid.sortHeader")
+        if focused_column:
+            return ("widget.dataGrid.header", "widget.dataGrid.focusColumn")
+        return ("widget.dataGrid.header",)
 
     def _repair_row_key(self, preferred: str | None) -> str | None:
         enabled = self._enabled_rows()
