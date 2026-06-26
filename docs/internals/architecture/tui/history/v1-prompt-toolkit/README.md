@@ -30,5 +30,7 @@ Older subsystem names such as `loushang-methods` are preserved inside these
 files as historical wording. Current method resources live in `loushang.method`,
 and coding/TUI method integration is governed by the live coding ARDs.
 
-If the historical v1 release gate needs to be reproduced, run
-`make test-tui-v1`.
+The historical v1 release gate has been removed because it referenced tests
+from this superseded prompt-toolkit/Rich track that were never part of the
+native terminal core. Use the live native terminal core testing strategy and
+screen playback regression docs for current verification.
