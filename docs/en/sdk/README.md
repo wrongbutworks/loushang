@@ -36,6 +36,17 @@ Use subpackages only when you need an advanced boundary:
 - `loushang.ai.advanced.registry` for provider registry wiring.
 - `loushang.ai.contrib.openai_codex` for the optional OpenAI Codex integration.
 
+### Session Hints And Prompt Caching
+
+`CallOptions.session_id` is a best-effort session hint. Adapters that support
+prompt cache keys or session/affinity headers may map it to provider-specific
+request fields. Adapters that do not support those mechanisms ignore it instead
+of failing the request.
+
+Use `cache_retention="long"` only with endpoints that advertise long cache
+retention support. Long retention remains a hard capability request and may fail
+fast when the selected adapter does not support it.
+
 ## Models And Catalog
 
 The built-in catalog is `models.json`. It intentionally contains a small

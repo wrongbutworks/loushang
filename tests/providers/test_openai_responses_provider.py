@@ -97,6 +97,15 @@ async def _stream(provider, model, context, options=None, request=None):
     )
 
 
+def _assert_no_session_hint_fields() -> None:
+    assert "prompt_cache_key" not in _FakeAsyncOpenAI.last_create_kwargs
+    assert "prompt_cache_retention" not in _FakeAsyncOpenAI.last_create_kwargs
+    headers = _FakeAsyncOpenAI.last_init_kwargs.get("default_headers") or {}
+    assert "session_id" not in headers
+    assert "x-client-request-id" not in headers
+    assert "x-session-affinity" not in headers
+
+
 def test_openai_responses_payload_maps_formal_context_and_tools(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -452,11 +461,50 @@ def test_openai_responses_supplied_request_adapter_config_projects_to_payload(
     ]
     assert _FakeAsyncOpenAI.last_create_kwargs["prompt_cache_key"] == "session-options"
     assert "prompt_cache_retention" not in _FakeAsyncOpenAI.last_create_kwargs
-    assert "session_id" not in _FakeAsyncOpenAI.last_init_kwargs["default_headers"]
-    assert (
-        _FakeAsyncOpenAI.last_init_kwargs["default_headers"]["x-client-request-id"]
-        == "session-options"
+    headers = _FakeAsyncOpenAI.last_init_kwargs.get("default_headers") or {}
+    assert "session_id" not in headers
+    assert "x-client-request-id" not in headers
+
+
+def test_openai_responses_ignores_unsupported_session_id_hint_without_headers(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _fake_openai_module(monkeypatch)
+    provider = OpenAIResponsesProvider()
+    request = ProviderRequest(
+        provider="openai",
+        endpoint="openai-responses",
+        api="openai-responses",
+        base_url="https://api.openai.test/v1",
+        headers={"Authorization": "Bearer test-key"},
+        adapter_config=OpenAIResponsesConfig(
+            prompt_cache_key=False,
+            session_id_header=False,
+            session_affinity_headers=False,
+        ),
+        capabilities=Capabilities(input=("text",), reasoning=True),
+        max_tokens=128,
     )
+
+    asyncio.run(
+        _collect_parts(
+            _invoke_raw_parts(
+                provider,
+                _Model(reasoning=True),
+                Context(
+                    system_prompt=None,
+                    messages=[UserMessage(role="user", content="hello", timestamp=0)],
+                ),
+                CallOptions(
+                    cache_retention="short",
+                    session_id="session-direct",
+                ),
+                request,
+            )
+        )
+    )
+
+    _assert_no_session_hint_fields()
 
 
 def test_openai_responses_rejects_unsupported_long_cache_retention(
@@ -549,7 +597,9 @@ def test_openai_responses_supplied_request_typed_adapter_overrides_stale_options
     ]
     assert _FakeAsyncOpenAI.last_create_kwargs["prompt_cache_key"] == "session-typed"
     assert "prompt_cache_retention" not in _FakeAsyncOpenAI.last_create_kwargs
-    assert "session_id" not in _FakeAsyncOpenAI.last_init_kwargs["default_headers"]
+    headers = _FakeAsyncOpenAI.last_init_kwargs.get("default_headers") or {}
+    assert "session_id" not in headers
+    assert "x-client-request-id" not in headers
 
 
 def test_openai_responses_uses_upstream_model_id(
