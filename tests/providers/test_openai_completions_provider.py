@@ -119,6 +119,15 @@ def _adapter_config_from_compat(
     return OpenAICompletionsConfig.from_raw(raw)
 
 
+def _assert_no_session_hint_fields() -> None:
+    assert "prompt_cache_key" not in _FakeAsyncOpenAI.last_create_kwargs
+    assert "prompt_cache_retention" not in _FakeAsyncOpenAI.last_create_kwargs
+    headers = _FakeAsyncOpenAI.last_init_kwargs.get("default_headers") or {}
+    assert "session_id" not in headers
+    assert "x-client-request-id" not in headers
+    assert "x-session-affinity" not in headers
+
+
 def test_openai_completions_payload_maps_user_image_assistant_toolcall_and_tool_result_mixed(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -1050,26 +1059,26 @@ def test_openai_completions_supplied_request_typed_adapter_overrides_stale_optio
         capabilities=Capabilities(input=("text",), max_tokens=4096),
     )
 
-    with pytest.raises(UnsupportedCapabilityError, match="session id"):
-        asyncio.run(
-            _collect_parts(
-                _invoke_raw_parts(
-                    provider,
-                    _Model(),
-                    {
-                        "messages": [
-                            UserMessage(role="user", content="hello", timestamp=0.0)
-                        ]
-                    },
-                    CallOptions(
-                        cache_retention="short",
-                        session_id="session-stale",
-                    ),
-                    request=request,
-                )
+    asyncio.run(
+        _collect_parts(
+            _invoke_raw_parts(
+                provider,
+                _Model(),
+                {
+                    "messages": [
+                        UserMessage(role="user", content="hello", timestamp=0.0)
+                    ]
+                },
+                CallOptions(
+                    cache_retention="short",
+                    session_id="session-stale",
+                ),
+                request=request,
             )
         )
-    assert _FakeAsyncOpenAI.last_create_kwargs == {}
+    )
+
+    _assert_no_session_hint_fields()
 
 
 def test_openai_completions_supplied_request_typed_dialect_overrides_stale_options(
@@ -1194,7 +1203,44 @@ def test_openai_completions_explicit_prompt_cache_key_reaches_sdk_payload(
     assert _FakeAsyncOpenAI.last_create_kwargs["prompt_cache_retention"] == "24h"
 
 
-def test_openai_completions_official_url_requires_prompt_cache_support_flag(
+def test_openai_completions_rejects_unsupported_long_cache_retention(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _fake_openai_module(monkeypatch)
+    _patch_resolved_request(
+        monkeypatch,
+        compat={
+            SUPPORTS_LONG_CACHE_RETENTION: False,
+            SUPPORTS_PROMPT_CACHE_KEY: True,
+        },
+        reasoning_effort=None,
+    )
+    provider = OpenAICompletionsProvider()
+
+    with pytest.raises(UnsupportedCapabilityError, match="long cache retention"):
+        asyncio.run(
+            _collect_parts(
+                _invoke_raw_parts(
+                    provider,
+                    _Model(),
+                    {
+                        "messages": [
+                            UserMessage(role="user", content="hello", timestamp=0.0)
+                        ]
+                    },
+                    CallOptions(
+                        api_key="test-key",
+                        cache_retention="long",
+                        session_id="session-long",
+                    ),
+                )
+            )
+        )
+
+    assert _FakeAsyncOpenAI.last_create_kwargs == {}
+
+
+def test_openai_completions_official_url_ignores_unsupported_session_hint(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     _fake_openai_module(monkeypatch)
@@ -1219,26 +1265,27 @@ def test_openai_completions_official_url_requires_prompt_cache_support_flag(
     model = registry.get_model("custom-openai", "openai-completions", "gpt-test")
     provider = OpenAICompletionsProvider()
 
-    with pytest.raises(UnsupportedCapabilityError, match="session id"):
-        asyncio.run(
-            _collect_parts(
-                _invoke_raw_parts(
-                    provider,
-                    model,
-                    {
-                        "messages": [
-                            UserMessage(role="user", content="hello", timestamp=0.0)
-                        ]
-                    },
-                    CallOptions(
-                        api_key="test-key",
-                        cache_retention="long",
-                        session_id="session-official",
-                    ),
-                )
+    asyncio.run(
+        _collect_parts(
+            _invoke_raw_parts(
+                provider,
+                model,
+                {
+                    "messages": [
+                        UserMessage(role="user", content="hello", timestamp=0.0)
+                    ]
+                },
+                CallOptions(
+                    api_key="test-key",
+                    cache_retention="long",
+                    session_id="session-official",
+                ),
             )
         )
-    assert _FakeAsyncOpenAI.last_create_kwargs == {}
+    )
+
+    assert _FakeAsyncOpenAI.last_init_kwargs["base_url"] == "https://api.openai.com/v1"
+    _assert_no_session_hint_fields()
 
 
 def test_openai_completions_typed_prompt_cache_key_unsupported_disables_payload(
@@ -1267,26 +1314,27 @@ def test_openai_completions_typed_prompt_cache_key_unsupported_disables_payload(
     model = registry.get_model("custom-openai", "openai-completions", "gpt-test")
     provider = OpenAICompletionsProvider()
 
-    with pytest.raises(UnsupportedCapabilityError, match="session id"):
-        asyncio.run(
-            _collect_parts(
-                _invoke_raw_parts(
-                    provider,
-                    model,
-                    {
-                        "messages": [
-                            UserMessage(role="user", content="hello", timestamp=0.0)
-                        ]
-                    },
-                    CallOptions(
-                        api_key="test-key",
-                        cache_retention="long",
-                        session_id="session-official",
-                    ),
-                )
+    asyncio.run(
+        _collect_parts(
+            _invoke_raw_parts(
+                provider,
+                model,
+                {
+                    "messages": [
+                        UserMessage(role="user", content="hello", timestamp=0.0)
+                    ]
+                },
+                CallOptions(
+                    api_key="test-key",
+                    cache_retention="long",
+                    session_id="session-official",
+                ),
             )
         )
-    assert _FakeAsyncOpenAI.last_create_kwargs == {}
+    )
+
+    assert _FakeAsyncOpenAI.last_init_kwargs["base_url"] == "https://api.openai.com/v1"
+    _assert_no_session_hint_fields()
 
 
 def test_openai_completions_prompt_cache_key_defaults_off_for_short_sessions(
@@ -1296,26 +1344,26 @@ def test_openai_completions_prompt_cache_key_defaults_off_for_short_sessions(
     _patch_resolved_request(monkeypatch, compat={}, reasoning_effort=None)
     provider = OpenAICompletionsProvider()
 
-    with pytest.raises(UnsupportedCapabilityError, match="session id"):
-        asyncio.run(
-            _collect_parts(
-                _invoke_raw_parts(
-                    provider,
-                    _Model(),
-                    {
-                        "messages": [
-                            UserMessage(role="user", content="hello", timestamp=0.0)
-                        ]
-                    },
-                    CallOptions(
-                        api_key="test-key",
-                        cache_retention="short",
-                        session_id="session-short",
-                    ),
-                )
+    asyncio.run(
+        _collect_parts(
+            _invoke_raw_parts(
+                provider,
+                _Model(),
+                {
+                    "messages": [
+                        UserMessage(role="user", content="hello", timestamp=0.0)
+                    ]
+                },
+                CallOptions(
+                    api_key="test-key",
+                    cache_retention="short",
+                    session_id="session-short",
+                ),
             )
         )
-    assert _FakeAsyncOpenAI.last_create_kwargs == {}
+    )
+
+    _assert_no_session_hint_fields()
 
 
 def test_openai_completions_prompt_cache_key_can_be_disabled(
@@ -1329,26 +1377,26 @@ def test_openai_completions_prompt_cache_key_can_be_disabled(
     )
     provider = OpenAICompletionsProvider()
 
-    with pytest.raises(UnsupportedCapabilityError, match="session id"):
-        asyncio.run(
-            _collect_parts(
-                _invoke_raw_parts(
-                    provider,
-                    _Model(),
-                    {
-                        "messages": [
-                            UserMessage(role="user", content="hello", timestamp=0.0)
-                        ]
-                    },
-                    CallOptions(
-                        api_key="test-key",
-                        cache_retention="short",
-                        session_id="session-short",
-                    ),
-                )
+    asyncio.run(
+        _collect_parts(
+            _invoke_raw_parts(
+                provider,
+                _Model(),
+                {
+                    "messages": [
+                        UserMessage(role="user", content="hello", timestamp=0.0)
+                    ]
+                },
+                CallOptions(
+                    api_key="test-key",
+                    cache_retention="short",
+                    session_id="session-short",
+                ),
             )
         )
-    assert _FakeAsyncOpenAI.last_create_kwargs == {}
+    )
+
+    _assert_no_session_hint_fields()
 
 
 def test_openai_completions_prompt_cache_key_disables_long_retention_params(
@@ -1365,26 +1413,26 @@ def test_openai_completions_prompt_cache_key_disables_long_retention_params(
     )
     provider = OpenAICompletionsProvider()
 
-    with pytest.raises(UnsupportedCapabilityError, match="session id"):
-        asyncio.run(
-            _collect_parts(
-                _invoke_raw_parts(
-                    provider,
-                    _Model(),
-                    {
-                        "messages": [
-                            UserMessage(role="user", content="hello", timestamp=0.0)
-                        ]
-                    },
-                    CallOptions(
-                        api_key="test-key",
-                        cache_retention="long",
-                        session_id="session-long",
-                    ),
-                )
+    asyncio.run(
+        _collect_parts(
+            _invoke_raw_parts(
+                provider,
+                _Model(),
+                {
+                    "messages": [
+                        UserMessage(role="user", content="hello", timestamp=0.0)
+                    ]
+                },
+                CallOptions(
+                    api_key="test-key",
+                    cache_retention="long",
+                    session_id="session-long",
+                ),
             )
         )
-    assert _FakeAsyncOpenAI.last_create_kwargs == {}
+    )
+
+    _assert_no_session_hint_fields()
 
 
 def test_openai_completions_explicit_zai_thinking_format(

@@ -88,7 +88,7 @@ def _adapter_supports_long_cache_retention(adapter_config: object) -> bool:
     return True
 
 
-def _adapter_supports_session_id(adapter_config: object) -> bool:
+def _adapter_consumes_session_hint(adapter_config: object) -> bool:
     if isinstance(adapter_config, OpenAICompletionsConfig):
         return (
             adapter_config.prompt_cache_key or adapter_config.session_affinity_headers
@@ -102,6 +102,27 @@ def _adapter_supports_session_id(adapter_config: object) -> bool:
     if isinstance(adapter_config, AnthropicMessagesConfig):
         return adapter_config.session_affinity_headers
     return True
+
+
+def _normalize_session_hint_for_adapter(
+    options: CallOptions | None,
+    adapter_config: object,
+) -> CallOptions | None:
+    """Return call options safe for the resolved adapter."""
+    if options is None:
+        return None
+
+    session_id = getattr(options, "session_id", None)
+    if not isinstance(session_id, str) or not session_id:
+        return options
+
+    if getattr(options, "cache_retention", None) == "none":
+        return replace(options, session_id=None)
+
+    if _adapter_consumes_session_hint(adapter_config):
+        return options
+
+    return replace(options, session_id=None)
 
 
 def _validate_explicit_adapter_config(model, resolved, options) -> None:
@@ -118,21 +139,6 @@ def _validate_explicit_adapter_config(model, resolved, options) -> None:
             endpoint=getattr(resolved, "endpoint", None),
             model=getattr(model, "id", None),
             details={"capability": "cache_long_retention"},
-        )
-
-    session_id = getattr(options, "session_id", None)
-    if (
-        isinstance(session_id, str)
-        and session_id
-        and cache_retention != "none"
-        and not _adapter_supports_session_id(adapter_config)
-    ):
-        raise UnsupportedCapabilityError(
-            f"Model {model.id!r} does not support session id",
-            provider=getattr(resolved, "provider", None),
-            endpoint=getattr(resolved, "endpoint", None),
-            model=getattr(model, "id", None),
-            details={"capability": "session_id"},
         )
 
 
@@ -276,6 +282,10 @@ async def _start_stream(
 ):
     options = _validate_call_options(options)
     resolved = resolve_request_for_model(model, options=options)
+    options = _normalize_session_hint_for_adapter(
+        options,
+        getattr(resolved, "adapter_config", None),
+    )
     normalization_result = normalize_context_result(
         context,
         model=_normalization_model(model, resolved),

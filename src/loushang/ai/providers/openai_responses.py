@@ -75,24 +75,6 @@ def _validate_cache_session_options(
             model=getattr(model, "id", None),
             details={"capability": "cache_long_retention"},
         )
-    if (
-        (cache_retention or "short") != "none"
-        and isinstance(session_id, str)
-        and session_id
-        and not (
-            adapter_config.prompt_cache_key
-            or adapter_config.session_id_header
-            or adapter_config.session_affinity_headers
-        )
-    ):
-        raise UnsupportedCapabilityError(
-            f"Model {getattr(model, 'id', '<unknown>')!r} does not support session id",
-            source=getattr(resolved, "api", None),
-            provider=getattr(resolved, "provider", None),
-            endpoint=getattr(resolved, "endpoint", None),
-            model=getattr(model, "id", None),
-            details={"capability": "session_id"},
-        )
 
 
 class OpenAIResponsesProvider:
@@ -172,15 +154,25 @@ class OpenAIResponsesProvider:
             cache_retention=cache_retention,
             session_id=session_id,
         )
-        if (
+        should_apply_session_headers = (
             (cache_retention or "short") != "none"
             and isinstance(session_id, str)
             and session_id
-        ):
+            and (
+                adapter_config.session_id_header
+                or adapter_config.session_affinity_headers
+            )
+        )
+        if should_apply_session_headers:
             apply_session_headers(
                 default_headers,
                 session_id,
                 include_session_id=adapter_config.session_id_header,
+                include_client_request_id=(
+                    adapter_config.session_id_header
+                    or adapter_config.session_affinity_headers
+                ),
+                include_affinity=adapter_config.session_affinity_headers,
             )
 
         client = self._client or AsyncOpenAI(  # type: ignore[call-arg]

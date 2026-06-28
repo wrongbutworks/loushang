@@ -1391,7 +1391,9 @@ def test_stream_public_path_uses_openai_responses_typed_request(
         "session-responses"
     )
     assert "prompt_cache_retention" not in _FakeAsyncOpenAI.last_create_kwargs
-    assert "session_id" not in _FakeAsyncOpenAI.last_init_kwargs["default_headers"]
+    headers = _FakeAsyncOpenAI.last_init_kwargs.get("default_headers") or {}
+    assert "session_id" not in headers
+    assert "x-client-request-id" not in headers
 
 
 def test_stream_public_path_rejects_unsupported_long_cache_retention(
@@ -1440,10 +1442,12 @@ def test_stream_public_path_rejects_unsupported_long_cache_retention(
         asyncio.run(_run())
 
 
-def test_stream_public_path_rejects_unsupported_session_id(
+def test_stream_public_path_ignores_unsupported_session_id_hint(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     registry = ApiProviderRegistry()
+    provider = _Provider(api="openai-completions")
+    registry.register_api_provider(provider)
     model = SimpleNamespace(
         id="gpt-test",
         provider_id="custom",
@@ -1473,15 +1477,18 @@ def test_stream_public_path_rejects_unsupported_session_id(
     )
 
     async def _run() -> None:
-        await stream(
+        event_stream = await stream(
             model,
             {"messages": [UserMessage(role="user", content="hello", timestamp=0.0)]},
             CallOptions(session_id="session-public"),
             provider_registry=registry,
         )
+        await event_stream.result()
 
-    with pytest.raises(UnsupportedCapabilityError, match="session id"):
-        asyncio.run(_run())
+    asyncio.run(_run())
+
+    assert isinstance(provider.options, CallOptions)
+    assert provider.options.session_id is None
 
 
 def test_stream_public_path_uses_adapter_protocol_override_for_cache_validation(
