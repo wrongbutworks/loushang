@@ -412,7 +412,7 @@
         "openai-completions": {
           "displayName": "Moonshot OpenAI-compatible Chat Completions",
           "api": "openai-completions",
-          "baseUrl": "https://api.moonshot.ai/v1",
+          "baseUrl": "https://api.moonshot.cn/v1",
           "preferred": true,
           "docs": "https://platform.kimi.ai/docs/api-reference",
           "models": {
