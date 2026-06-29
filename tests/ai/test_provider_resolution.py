@@ -50,7 +50,7 @@ def test_builtin_openai_style_model_resolves_adapter_config() -> None:
 
     assert resolved.provider == "moonshot"
     assert resolved.endpoint == "openai-completions"
-    assert resolved.base_url == "https://api.moonshot.ai/v1"
+    assert resolved.base_url == "https://api.moonshot.cn/v1"
     assert isinstance(resolved.adapter_config, OpenAICompletionsConfig)
     assert resolved.adapter_config.developer_role is False
     assert resolved.adapter_config.reasoning_format == "moonshot"

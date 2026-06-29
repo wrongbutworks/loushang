@@ -490,7 +490,19 @@
             "assistantReasoningContent": false,
             "reasoningFormat": "moonshot"
           }
-        },
+        }
+      }
+    },
+    "kimi-code": {
+      "displayName": "Kimi Code",
+      "website": "https://www.kimi.com/code",
+      "auth": {
+        "kind": "apiKey",
+        "apiKeyEnv": "KIMI_CODE_API_KEY",
+        "header": "Authorization",
+        "prefix": "Bearer "
+      },
+      "endpoints": {
         "kimi-code-anthropic": {
           "displayName": "Kimi Code Anthropic Messages",
           "api": "anthropic-messages",

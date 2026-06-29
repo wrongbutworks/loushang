@@ -80,7 +80,10 @@ class _HttpxPlatformQuotaTransport:
 def endpoint_quota_query_for_model(model: Model) -> EndpointQuotaQuery | None:
     provider = model.provider_id
     endpoint = model.endpoint_id
-    if provider == "moonshot" and endpoint in {"coding", "kimi-code-anthropic"}:
+    if provider in {"kimi-code", "moonshot"} and endpoint in {
+        "coding",
+        "kimi-code-anthropic",
+    }:
         return EndpointQuotaQuery(
             provider=provider,
             endpoint=endpoint,
