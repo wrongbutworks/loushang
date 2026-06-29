@@ -137,6 +137,12 @@ Amazon Bedrock Converse 不再作为 core adapter 发布；本包不再声明 Be
 
 认证与 OAuth 支持。
 
+认证重构的目标边界见
+[`loushang-ai-auth-boundary-design.md`](../../../docs/internals/architecture/ai/loushang-ai-auth-boundary-design.md)：
+core auth 只负责把本次调用凭证解析为 provider request headers；OAuth
+登录、refresh、credential store、账号选择、quota、billing 和产品级认证策略属于上层或
+contrib 边界。
+
 - `support.py`
   - auth merge
   - header material 解析

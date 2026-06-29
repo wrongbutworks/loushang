@@ -5,6 +5,17 @@ This directory keeps the current architecture notes for the frozen
 [`src/loushang/ai/README.md`](../../../../src/loushang/ai/README.md) and
 [`examples/ai`](../../../../examples/ai).
 
+## Active Refactor Inputs
+
+- [AI Refactor Blueprint](./loushang-ai-refactor-blueprint.md)
+  is the short entrypoint for the current AI package rebuild structure and
+  document reading order.
+- [Auth Boundary and Call Credential Design](./loushang-ai-auth-boundary-design.md)
+  defines the target boundary for rebuilding auth: `loushang.ai` resolves
+  per-call credentials into provider request auth headers; upper layers own
+  login, refresh, credential storage, account selection, quota, billing, and
+  product-level auth policy.
+
 ## Current References
 
 - [ARD List](./ARD-list.md)
