@@ -4,6 +4,7 @@ import json
 from pathlib import Path
 from typing import Any
 
+from loushang.ai.auth.support import merge_auth_config
 from loushang.ai.model import (
     AnthropicMessagesConfig,
     ModelRegistry,
@@ -36,6 +37,7 @@ def test_curated_catalog_loads_runtime_models_json() -> None:
         "baidu-qianfan",
         "dashscope",
         "deepseek",
+        "kimi-code",
         "minimax",
         "moonshot",
         "openai",
@@ -98,6 +100,23 @@ def test_minimax_anthropic_catalog_uses_sdk_base_url_and_short_cache() -> None:
     assert endpoint.base_url == "https://api.minimax.io/anthropic"
     assert isinstance(endpoint.adapter, AnthropicMessagesConfig)
     assert endpoint.adapter.long_cache_retention is False
+
+
+def test_kimi_code_catalog_uses_its_own_api_key_not_moonshot_platform_key() -> None:
+    registry = _load_curated_registry()
+    provider = registry.get_provider("kimi-code")
+    endpoint = registry.get_endpoint("kimi-code", "kimi-code-anthropic")
+    model = registry.get_model("kimi-code", "kimi-code-anthropic", "kimi-for-coding")
+
+    assert provider is not None
+    assert endpoint is not None
+    merged_auth = merge_auth_config(provider.auth, endpoint.auth, model.auth)
+
+    assert merged_auth.kind == "apiKey"
+    assert merged_auth.api_key_env == "KIMI_CODE_API_KEY"
+    assert merged_auth.header == "Authorization"
+    assert merged_auth.prefix == "Bearer "
+    assert endpoint.base_url == "https://api.kimi.com/coding"
 
 
 def test_curated_openai_style_custom_base_urls_declare_adapter() -> None:

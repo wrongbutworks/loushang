@@ -7,6 +7,7 @@ CURATED_PROVIDER_IDS = [
     "baidu-qianfan",
     "dashscope",
     "deepseek",
+    "kimi-code",
     "minimax",
     "moonshot",
     "openai",

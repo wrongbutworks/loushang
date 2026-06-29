@@ -18,7 +18,7 @@ class PreferredModel:
 
 
 PREFERRED_CODING_MODELS = (
-    PreferredModel("moonshot", "kimi-code-anthropic", "kimi-for-coding"),
+    PreferredModel("kimi-code", "kimi-code-anthropic", "kimi-for-coding"),
 )
 
 
