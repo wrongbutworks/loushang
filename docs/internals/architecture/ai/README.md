@@ -11,10 +11,11 @@ This directory keeps the current architecture notes for the frozen
   is the short entrypoint for the current AI package rebuild structure and
   document reading order.
 - [Auth Boundary and Call Credential Design](./loushang-ai-auth-boundary-design.md)
-  defines the target boundary for rebuilding auth: `loushang.ai` resolves
-  per-call credentials into provider request auth headers; upper layers own
-  login, refresh, credential storage, account selection, quota, billing, and
-  product-level auth policy.
+  defines the target boundary for rebuilding auth: `models.json.auth` is the
+  default declaration, `CallOptions.auth` is the explicit request-level
+  override, and `loushang.ai` resolves the final input into provider request
+  auth headers. Upper layers own login, refresh, credential storage, account
+  selection, quota, billing, and product-level auth policy.
 
 ## Current References
 

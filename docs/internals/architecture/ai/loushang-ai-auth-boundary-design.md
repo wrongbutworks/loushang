@@ -1,575 +1,1064 @@
-# loushang.ai 认证边界与调用凭证设计
+# loushang.ai Auth Boundary: Defaults and Explicit Overrides
 
-## 1. 背景
+## Purpose
 
-`loushang.ai` 是 Loushang 系统中的模型调用包，其核心职责是接收上层应用传入的模型调用请求，并完成模型协议适配、请求拼接、Provider 调用、响应归一化、流式事件处理和错误归一化。
+This document defines the target auth boundary for `loushang.ai`.
 
-认证能力是模型调用链路中的必要组成部分，但认证本身容易扩展为账号系统、OAuth 框架、凭证存储系统或 Provider control-plane。为了保持 `loushang.ai` 的职责简单、边界清晰，需要明确认证能力在 `loushang.ai` 中的职责范围。
-
-本文定义 `loushang.ai` 中认证能力的设计边界、核心概念、认证解析规则和非目标范围。
-
----
-
-## 2. 设计目标
-
-`loushang.ai` 的认证设计应满足以下目标：
-
-1. **职责单一**
-   只负责将调用凭证解析为 Provider 请求所需的认证信息。
-
-2. **边界清晰**
-   不承担 OAuth 登录、OAuth 刷新、凭证存储、账号选择、额度查询等上层职责。
-
-3. **调用友好**
-   支持上层显式传入认证凭证；对于 API Key 认证模型，也允许根据模型配置从环境变量读取凭证。
-
-4. **契约明确**
-   `models.json` 描述模型所需的认证契约，`CallOptions.auth` 描述本次调用实际提供的运行时凭证。
-
-5. **失败可诊断**
-   缺少认证、认证类型不匹配、模型认证配置错误等情况应明确失败，而不是静默降级或隐式修复。
-
-6. **安全可控**
-   所有认证信息在日志、错误、trace 中必须脱敏，不得泄露 API key、OAuth token 或其他敏感 header。
-
----
-
-## 3. 设计非目标
-
-`loushang.ai` 的认证能力不覆盖以下内容：
-
-| 非目标                         | 说明                                                              |
-| ------------------------------ | ----------------------------------------------------------------- |
-| OAuth 登录流程                 | 不负责 authorization URL、浏览器跳转、callback server、授权码交换 |
-| OAuth token refresh            | 不负责 refresh token、access token 自动刷新或重试                 |
-| 凭证持久化                     | 不负责本地 credential store、数据库存储、加密存储                 |
-| 多账号管理                     | 不负责用户账号、Provider 账号、组织账号选择                       |
-| Provider account control-plane | 不负责 quota、billing、subscription、account profile              |
-| 产品级认证策略                 | 不负责根据额度、用户状态、套餐决定模型路由                        |
-| 工具认证                       | 不负责上层工具调用所需的业务系统认证                              |
-| 会话认证状态                   | 不负责 session 内的长期认证状态管理                               |
-
-一句话概括：
-
-> `loushang.ai` 只处理“本次模型调用如何携带认证信息”，不处理“用户如何获得、保存、刷新或管理认证信息”。
-
----
-
-## 4. 核心概念
-
-认证设计中区分三个概念：
+The design is architectural guidance, not an implementation plan. It keeps
+`loushang.ai` auth simple, passive, and explainable:
 
 ```text
-AuthConfig
+loushang.ai only decides which auth material this provider request carries.
+```
+
+It must not grow into an OAuth framework, account system, credential store,
+Provider control-plane, or quota/billing layer.
+
+## Core Position
+
+Auth is split into two layers:
+
+```text
+models.json.auth
+  default auth declaration / default auth behavior / diagnostic metadata
+
+CallOptions.auth
+  explicit request-level auth input / per-call override
+```
+
+The relationship is:
+
+```text
+If CallOptions.auth is provided:
+  use CallOptions.auth.
+
+If CallOptions.auth is not provided:
+  use models.json.auth default behavior.
+```
+
+Therefore:
+
+```text
+models.json.auth is not the strong validator for call-time auth.
+CallOptions.auth is the explicit auth intent for this request and has
+highest priority.
+```
+
+## Goals
+
+1. Keep auth responsibility narrow: resolve request credentials into provider
+   request headers and metadata.
+2. Prefer explicit request intent over static catalog declarations.
+3. Let API key models use environment variable fallback when no explicit auth is
+   supplied.
+4. Require OAuth access tokens to come from the caller, never from implicit
+   local state.
+5. Keep secrets out of catalog model objects, logs, errors, and traces.
+6. Preserve room for strict catalog validation without making strict validation
+   the default runtime behavior.
+
+## Non-Goals
+
+`loushang.ai` auth does not cover:
+
+| Non-goal | Boundary |
+|---|---|
+| OAuth login | No authorization URL flow, browser redirect, callback server, or code exchange |
+| OAuth refresh | No refresh token handling, automatic access token refresh, or retry-after-refresh |
+| Credential persistence | No credential store, local file database, encrypted store, or keychain ownership |
+| Multi-account management | No user account, Provider account, organization, or profile selection |
+| Provider account control-plane | No quota, billing, subscription, account profile, or entitlement lookup |
+| Product-level auth policy | No model routing based on quota, user state, plan, or account policy |
+| Tool auth | No business-system auth for upper-layer tool calls |
+| Session auth state | No long-lived auth state inside `loushang.ai` sessions |
+| contrib/provider exceptions | `contrib` must not become the place where account, quota, or OAuth lifecycle semantics leak into core auth |
+
+In short:
+
+```text
+loushang.ai handles how this model request carries auth.
+Upper layers handle how users obtain, store, refresh, select, and manage auth.
+```
+
+## Design Principles
+
+### Explicit Auth Wins
+
+`CallOptions.auth` is closer to the real request than `models.json`. It may
+represent:
+
+- a caller-selected credential;
+- a private deployment or gateway override;
+- a test environment credential;
+- a new Provider auth shape not yet represented in the catalog;
+- an intentional no-auth call.
+
+For that reason, ordinary runtime behavior must honor explicit auth even if it
+does not match the catalog's declared `auth.kind`.
+
+### Defaults Apply Only When Auth Is Omitted
+
+`models.json.auth` participates in auth resolution only when:
+
+```python
+CallOptions.auth is None
+```
+
+Default behavior by declaration kind:
+
+| `models.json.auth.kind` | Default behavior |
+|---|---|
+| `api_key` | Read an API key or static request credential from configured environment variables |
+| `oauth` | Fail with missing auth and ask the caller to provide explicit OAuth auth |
+| `none` | Send no auth |
+| not configured | Treat as missing default auth configuration unless the model is explicitly classified as no-auth elsewhere |
+
+### Runtime Does Not Strongly Block Type Mismatches
+
+Ordinary runtime should not fail only because `models.json.auth.kind` differs
+from the explicit auth type.
+
+Example:
+
+```text
+models.json.auth.kind = oauth
+CallOptions.auth = ApiKeyAuth(...)
+```
+
+Ordinary runtime meaning:
+
+```text
+The caller explicitly overrode auth for this request. Use CallOptions.auth.
+```
+
+This can produce a diagnostic, but it should not be a default runtime blocker.
+Strict checks belong in tests, CI, catalog validation, or debug/diagnose modes.
+
+### `auth=None` and `NoAuth` Are Different
+
+| Input | Meaning |
+|---|---|
+| `auth=None` | Caller did not specify auth; use model default auth logic |
+| `auth=NoAuth()` | Caller explicitly says this request sends no auth |
+
+Example:
+
+```python
+await complete(model, context)
+```
+
+means:
+
+```text
+No explicit auth. Resolve auth from models.json.auth defaults.
+```
+
+This is different from:
+
+```python
+await complete(
+    model,
+    context,
+    options=CallOptions(auth=NoAuth()),
+)
+```
+
+which means:
+
+```text
+Explicit request-level no-auth override.
+```
+
+## Core Concepts
+
+The auth model has four concepts:
+
+```text
+AuthDeclaration / AuthConfig
   ↓
 AuthCredential
   ↓
+AuthResolver
+  ↓
 AuthView
 ```
 
-三者分别对应不同层次的职责。
+### AuthDeclaration / AuthConfig
 
----
+Source: `models.json.auth`.
 
-## 4.1 AuthConfig
+This is a default auth declaration, not a real credential. It describes:
 
-`AuthConfig` 表示模型或 endpoint 的认证契约，来源于 `models.json`。
+- default auth kind;
+- environment variables for API key fallback;
+- header name;
+- header prefix;
+- fixed supplemental headers if needed;
+- diagnostics and developer-facing auth requirements;
+- redaction hints.
 
-它描述的是：
+Example:
 
-- 该模型是否需要认证；
-- 该模型需要哪种认证方式；
-- 认证信息应放入哪个请求 header；
-- API Key 类型认证可以从哪些环境变量读取；
-- 是否需要附加固定 header。
-
-`AuthConfig` 不包含真实凭证。
-
-示例语义：
-
-```text
-这个模型使用 API Key 认证。
-API Key 默认从 OPENAI_API_KEY 环境变量读取。
-请求时放入 Authorization header。
-前缀为 Bearer。
+```json
+{
+  "auth": {
+    "kind": "api_key",
+    "apiKeyEnvs": ["MOONSHOT_API_KEY"],
+    "header": "Authorization",
+    "prefix": "Bearer "
+  }
+}
 ```
 
-或：
+Meaning:
 
 ```text
-这个模型使用 OAuth Bearer Token。
-调用方必须显式传入 access token。
-请求时放入 Authorization header。
-前缀为 Bearer。
+If no explicit auth is supplied, read MOONSHOT_API_KEY and send
+Authorization: Bearer <value>.
 ```
 
----
+OAuth declaration example:
 
-## 4.2 AuthCredential
+```json
+{
+  "auth": {
+    "kind": "oauth",
+    "header": "Authorization",
+    "prefix": "Bearer "
+  }
+}
+```
 
-`AuthCredential` 表示本次调用实际使用的运行时凭证，来源于上层应用传入的 `CallOptions.auth`，或者由 `loushang.ai` 在 API Key 场景下根据环境变量自动构造。
-
-它是调用级别的认证输入。
-
-推荐的认证凭证类型包括：
-
-| 类型              | 说明                                         |
-| ----------------- | -------------------------------------------- |
-| `ApiKeyAuth`      | 上层显式传入 API key                         |
-| `OAuthBearerAuth` | 上层显式传入 OAuth access token              |
-| `NoAuth`          | 显式声明本次调用不使用认证                   |
-| `EnvApiKeyAuth`   | 内部类型，根据模型配置从环境变量读取 API key |
-
-其中，`EnvApiKeyAuth` 是内部机制，不一定需要作为主要公开 API 暴露。
-
----
-
-## 4.3 AuthView
-
-`AuthView` 是认证解析后的结果，用于 Provider 请求阶段。
-
-它表示：
+Meaning:
 
 ```text
-最终要发送给 Provider 的认证 headers 和相关 metadata。
+This model defaults to OAuth bearer auth, but loushang.ai will not obtain the
+token. The caller must supply explicit CallOptions.auth.
 ```
 
-典型结果包括：
+No-auth declaration:
+
+```json
+{
+  "auth": {
+    "kind": "none"
+  }
+}
+```
+
+### AuthCredential
+
+Source: `CallOptions.auth`.
+
+This is the explicit auth input for this request. Recommended credential types:
+
+| Type | Purpose |
+|---|---|
+| `ApiKeyAuth` | Explicit API key or static request credential |
+| `OAuthBearerAuth` | Explicit OAuth access token |
+| `NoAuth` | Explicitly send no auth |
+| `HeadersAuth` | Explicit complete auth headers as a low-level escape hatch |
+
+### AuthResolver
+
+Internal concept.
+
+When no explicit auth is supplied and the model declares API key default auth,
+an environment resolver can read the first available configured environment
+variable:
 
 ```text
-Authorization: Bearer <api-key>
+EnvApiKeyResolver
 ```
 
-或：
+Important invariant:
 
 ```text
-Authorization: Bearer <oauth-access-token>
+get_model does not read real secrets.
+complete / stream read secrets immediately before building the provider request.
 ```
 
-`AuthView` 是解析结果，不是上层应用主要构造的对象。
+This prevents secrets from being attached to long-lived `Model` objects.
 
----
+### AuthView
 
-## 5. 分层关系
+The resolved result consumed by provider request construction:
 
-认证链路可以表示为：
+```python
+AuthView(
+    headers={
+        "Authorization": "Bearer <redacted>"
+    }
+)
+```
+
+`AuthView` is a resolution result, not a primary public construction API.
+
+## `models.json.auth` Positioning
+
+`models.json.auth` answers:
 
 ```text
-models.json 中的 AuthConfig
-        +
-CallOptions.auth 中的 AuthCredential
-        ↓
-认证解析
-        ↓
-AuthView
-        ↓
-Provider HTTP request
+If the caller did not provide explicit auth, how should this model authenticate?
 ```
 
-其中：
+It is useful for:
 
-| 层         | 数据             | 职责                           |
-| ---------- | ---------------- | ------------------------------ |
-| 模型目录层 | `AuthConfig`     | 声明模型需要的认证方式         |
-| 调用输入层 | `AuthCredential` | 提供本次调用实际凭证           |
-| 请求拼接层 | `AuthView`       | 生成 Provider 请求所需 headers |
+| Use | Description |
+|---|---|
+| API key default construction | Build API key auth from env when no explicit auth is passed |
+| OAuth default failure | Explain that OAuth must be provided explicitly |
+| No-auth default | Declare that the model normally sends no auth |
+| Header/prefix defaults | Provide header construction hints for compatible explicit auth |
+| Diagnostics | Produce clear missing-auth messages |
+| Documentation/introspection | Let upper layers show default auth requirements |
+| Redaction hints | Help identify sensitive headers and fields |
 
----
-
-## 6. 认证类型
-
-## 6.1 API Key 认证
-
-API Key 认证用于静态密钥类 Provider 调用。
-
-该类型支持两种凭证来源：
-
-1. 上层通过 `CallOptions.auth` 显式传入 `ApiKeyAuth`；
-2. 如果上层未传入认证，则 `loushang.ai` 根据 `models.json` 中配置的环境变量读取 API key。
-
-API Key 可以从环境变量读取，因为它通常是部署环境或开发环境中的静态服务凭证。
-
-例如：
+It must not:
 
 ```text
-OPENAI_API_KEY
-ANTHROPIC_API_KEY
-MOONSHOT_API_KEY
-DASHSCOPE_API_KEY
+strongly validate or block call-time auth in ordinary runtime;
+save real secrets;
+perform OAuth login;
+perform OAuth refresh;
+read a credential store;
+manage Provider accounts;
+query quota or billing.
 ```
 
----
+## `CallOptions.auth` Positioning
 
-## 6.2 OAuth Bearer 认证
-
-OAuth Bearer 认证用于上层已经完成 OAuth 授权后，将 access token 显式传给 `loushang.ai` 的场景。
-
-`loushang.ai` 对 OAuth 的职责仅限于：
+`CallOptions.auth` answers:
 
 ```text
-把上层传入的 access token 拼接为 Provider 请求 header。
+What auth should this request actually carry?
 ```
 
-例如：
+It has highest priority. When present, ordinary runtime uses it. At that point
+`models.json.auth` can still provide:
+
+- header and prefix hints;
+- diagnostics;
+- redaction hints;
+- documentation context.
+
+It should not silently override the caller's explicit intent.
+
+## Auth Kinds
+
+### `api_key`
+
+`api_key` means a broad static request credential, not only a literal API key.
+It can cover:
 
 ```text
-Authorization: Bearer <access-token>
+OpenAI API key
+Anthropic API key
+Moonshot API key
+DashScope API key
+static bearer token
+x-api-key token
+private service static access token
+long-lived provider token
 ```
 
-`loushang.ai` 不负责 OAuth 登录、刷新、存储或账号管理。
-
-OAuth 类型模型必须显式传入 `OAuthBearerAuth`。
-
----
-
-## 6.3 无认证
-
-部分本地模型、测试 Provider、mock Provider 或内部服务可能不需要认证。
-
-这类模型应在模型配置中声明为无认证。
-
-对于无认证模型，如果上层额外传入 API Key 或 OAuth Token，应视为认证类型不匹配，而不是静默忽略。
-
-这样可以避免：
-
-- 模型配置错误；
-- 调用方误选模型；
-- 上层凭证路由错误；
-- 敏感凭证被意外传递到不需要认证的 Provider。
-
----
-
-## 7. 认证解析规则
-
-## 7.1 总体优先级
-
-认证解析遵循以下原则：
+The defining traits are:
 
 ```text
-显式调用凭证优先；
-API Key 模型允许环境变量 fallback；
-OAuth 模型必须显式传入凭证；
-认证类型必须与模型认证契约匹配；
-不匹配或缺失时 fail fast。
+relatively static;
+does not require OAuth login;
+does not require refresh by loushang.ai;
+usually comes from env or an upper-layer secret system;
+not tied to a single interactive user authorization flow.
 ```
 
----
+This can express common shapes with `api_key + header + prefix + env`:
 
-## 7.2 API Key 模型
+```json
+{
+  "auth": {
+    "kind": "api_key",
+    "apiKeyEnvs": ["PRIVATE_MODEL_TOKEN"],
+    "header": "Authorization",
+    "prefix": "Bearer "
+  }
+}
+```
 
-当模型配置为 API Key 认证时：
+```json
+{
+  "auth": {
+    "kind": "api_key",
+    "apiKeyEnvs": ["PRIVATE_MODEL_API_KEY"],
+    "header": "x-api-key",
+    "prefix": ""
+  }
+}
+```
+
+The current design does not need separate `static_token`, `bearer_token`, or
+`custom_static_token` kinds.
+
+### `oauth`
+
+`oauth` means:
 
 ```text
-model.auth.kind == "api_key"
+This model defaults to requiring an OAuth access token.
 ```
 
-解析规则如下：
+`loushang.ai` does not obtain that token. OAuth declaration value:
 
-| `CallOptions.auth` | 行为                               |
-| ------------------ | ---------------------------------- |
-| `ApiKeyAuth`       | 使用显式传入的 API key             |
-| `None`             | 根据模型配置从环境变量读取 API key |
-| `OAuthBearerAuth`  | 报认证类型不匹配                   |
-| `NoAuth`           | 报认证类型不匹配                   |
+1. declares that default auth cannot be automatic;
+2. fails early when no explicit `CallOptions.auth` is supplied;
+3. provides default header/prefix hints;
+4. gives upper layers, docs, CLIs, and management UI the right auth prompt;
+5. prevents accidental API key env fallback.
 
-如果环境变量中没有可用 API key，则报缺少认证错误。
-
-API Key 模型的完整规则：
+OAuth tokens must not be read from:
 
 ```text
-1. 如果上层显式传入 ApiKeyAuth，则使用该凭证。
-2. 如果上层没有传入认证，则根据 AuthConfig 中的 env 配置读取 API key。
-3. 如果上层传入 OAuthBearerAuth 或 NoAuth，则视为认证类型不匹配。
-4. 如果既没有显式凭证，也无法从环境变量读取 API key，则失败。
+environment variables;
+credential stores;
+caches;
+local files;
+provider registries.
 ```
 
----
+The access token must come from the caller, for example:
 
-## 7.3 OAuth 模型
+```python
+CallOptions(auth=OAuthBearerAuth(access_token))
+```
 
-当模型配置为 OAuth 认证时：
+### `none`
+
+`none` means:
 
 ```text
-model.auth.kind == "oauth"
+This model defaults to no auth.
 ```
 
-解析规则如下：
-
-| `CallOptions.auth` | 行为                        |
-| ------------------ | --------------------------- |
-| `OAuthBearerAuth`  | 使用显式传入的 access token |
-| `None`             | 报缺少认证错误              |
-| `ApiKeyAuth`       | 报认证类型不匹配            |
-| `NoAuth`           | 报认证类型不匹配            |
-
-OAuth 模型的完整规则：
+Typical uses:
 
 ```text
-1. OAuth 模型必须显式传入 OAuthBearerAuth。
-2. 不从环境变量读取 OAuth token。
-3. 不从 credential store 读取 OAuth token。
-4. 不执行 OAuth login。
-5. 不执行 OAuth refresh。
-6. 如果缺少 OAuthBearerAuth，则失败。
-7. 如果传入其他认证类型，则失败。
+local models;
+mock providers;
+internal test services;
+private endpoints that do not require auth.
 ```
 
-OAuth access token 通常具有用户身份、授权范围、过期时间和撤销状态，因此它不应由 `loushang.ai` 隐式读取或管理。
+If `CallOptions.auth is None` and `models.json.auth.kind == "none"`, no auth is
+sent. If the caller explicitly passes auth, ordinary runtime still honors the
+explicit override. Strict mode may diagnose that the model declared no auth but
+the call supplied auth.
 
----
+## Recommended `CallOptions.auth` Types
 
-## 7.4 无认证模型
+### ApiKeyAuth
 
-当模型配置为无认证时：
+Explicit API key or static token:
+
+```python
+ApiKeyAuth(
+    value: str,
+    header: str | None = None,
+    prefix: str | None = None,
+)
+```
+
+Resolution:
 
 ```text
-model.auth.kind == "none"
+If ApiKeyAuth specifies header/prefix:
+  use those values.
+Else if models.json.auth can provide compatible header/prefix hints:
+  use those values.
+Else:
+  use safe defaults such as Authorization + Bearer.
 ```
 
-解析规则如下：
+### OAuthBearerAuth
 
-| `CallOptions.auth` | 行为              |
-| ------------------ | ----------------- |
-| `None`             | 不生成认证 header |
-| `NoAuth`           | 不生成认证 header |
-| `ApiKeyAuth`       | 报认证类型不匹配  |
-| `OAuthBearerAuth`  | 报认证类型不匹配  |
+Explicit OAuth access token:
 
-无认证模型不应静默接受额外凭证。
+```python
+OAuthBearerAuth(
+    access_token: str,
+    header: str | None = None,
+    prefix: str | None = None,
+)
+```
 
----
-
-## 8. 认证决策矩阵
-
-| 模型认证契约 | 调用凭证          | 结果                                 |
-| ------------ | ----------------- | ------------------------------------ |
-| `api_key`    | `ApiKeyAuth`      | 使用显式 API key                     |
-| `api_key`    | `None`            | 从模型配置声明的环境变量读取 API key |
-| `api_key`    | `OAuthBearerAuth` | 认证类型不匹配                       |
-| `api_key`    | `NoAuth`          | 认证类型不匹配                       |
-| `oauth`      | `OAuthBearerAuth` | 使用显式 OAuth access token          |
-| `oauth`      | `None`            | 缺少认证                             |
-| `oauth`      | `ApiKeyAuth`      | 认证类型不匹配                       |
-| `oauth`      | `NoAuth`          | 认证类型不匹配                       |
-| `none`       | `None`            | 无认证                               |
-| `none`       | `NoAuth`          | 无认证                               |
-| `none`       | `ApiKeyAuth`      | 认证类型不匹配                       |
-| `none`       | `OAuthBearerAuth` | 认证类型不匹配                       |
-
----
-
-## 9. API Key 与 OAuth 的差异
-
-API Key 和 OAuth Token 在认证模型中具有不同性质。
-
-| 项                                    | API Key                | OAuth Access Token   |
-| ------------------------------------- | ---------------------- | -------------------- |
-| 凭证形态                              | 静态密钥               | 用户授权后的短期令牌 |
-| 常见来源                              | 环境变量、密钥管理系统 | 上层 OAuth 授权流程  |
-| 是否可由 `loushang.ai` 从环境变量读取 | 可以                   | 不可以               |
-| 是否需要 refresh                      | 通常不需要             | 通常需要             |
-| 是否绑定用户身份                      | 不一定                 | 通常绑定             |
-| 是否涉及 scope                        | 一般较弱               | 通常明确             |
-| 是否涉及账号生命周期                  | 较弱                   | 较强                 |
-| 是否由 `loushang.ai` 管理             | 否，只读取             | 否，只接收           |
-
-因此：
+It must not contain:
 
 ```text
-API Key 可以作为部署环境中的静态输入源。
-OAuth Access Token 必须由上层应用显式提供。
+refresh_token
+expires_at
+client_id
+client_secret
+token_url
+scope
+credential store id
+provider account id
 ```
 
----
+Those fields belong to upper layers.
 
-## 10. 错误语义
+### NoAuth
 
-认证错误应具有明确语义，便于上层应用处理。
+Explicit no-auth request:
 
-推荐区分以下错误类型：
+```python
+CallOptions(auth=NoAuth())
+```
 
-| 错误类型                 | 触发场景                               |
-| ------------------------ | -------------------------------------- |
-| `MissingAuthError`       | 模型需要认证，但没有可用凭证           |
-| `AuthKindMismatchError`  | 调用凭证类型与模型认证契约不匹配       |
-| `InvalidAuthConfigError` | 模型认证配置本身不合法                 |
-| `AuthHeaderBuildError`   | 无法根据配置和凭证生成合法请求 header  |
-| `ProviderAuthError`      | Provider 返回认证失败，例如 401 或 403 |
+This is a request-level override and is not equivalent to `auth=None`.
 
-错误处理原则：
+### HeadersAuth
+
+Low-level escape hatch:
+
+```python
+CallOptions(
+    auth=HeadersAuth({
+        "Authorization": "Custom xxx",
+        "X-Provider-Token": "yyy",
+    })
+)
+```
+
+Constraints:
 
 ```text
-缺少认证要失败。
-认证类型不匹配要失败。
-模型认证配置错误要失败。
-Provider 返回认证失败要原样归一化为认证错误。
-不得静默降级。
-不得隐式切换认证方式。
-不得自动登录或刷新。
+HeadersAuth is only explicit CallOptions.auth.
+It is not auto-constructed from models.json.
+It does not participate in env fallback.
+It must be covered by secret redaction.
+Ordinary runtime should not block it.
+Strict mode may emit diagnostics.
 ```
 
----
+This is not a general auth framework. It is a request-level escape hatch for
+catalog lag or Provider-specific auth forms.
 
-## 11. 安全原则
+## Resolution Priority
 
-认证设计必须遵守以下安全原则：
-
-1. **Secret 不可出现在日志中**
-   API key、access token、Authorization header、x-api-key 等必须脱敏。
-
-2. **Secret 不可出现在异常消息中**
-   错误对象可以包含认证类型、模型 ID、Provider ID、缺失的环境变量名，但不能包含真实凭证值。
-
-3. **Secret 不可出现在 trace 明文中**
-   trace 中如需记录认证信息，只允许记录认证类型和脱敏后的 header 名称。
-
-4. **显式凭证优先**
-   如果调用方显式传入凭证，应优先使用该凭证，而不是环境变量。
-
-5. **不隐式使用 OAuth 凭证**
-   OAuth token 不从环境变量、credential store 或缓存读取。
-
-6. **多余凭证不静默忽略**
-   对于无认证模型或认证类型不匹配的模型，传入多余凭证应报错。
-
----
-
-## 12. `models.json` 中认证配置的定位
-
-`models.json` 中的认证配置是模型调用契约的一部分。
-
-它应描述：
+Final priority:
 
 ```text
-模型需要哪种认证；
-认证 header 如何生成；
-API Key 认证时从哪些环境变量读取；
-是否需要固定附加 header。
+1. CallOptions.auth
+2. models.json.auth default behavior
+3. no-auth result or missing-auth error
 ```
 
-它不应描述：
+Expanded:
 
 ```text
-OAuth 登录地址；
-OAuth token 地址；
-client_id；
-client_secret；
-refresh_token；
-credential store；
-账号选择策略；
-quota 查询接口；
-billing 查询接口。
+If CallOptions.auth is present:
+  resolve explicit auth.
+
+If CallOptions.auth is absent:
+  resolve from models.json.auth.kind.
 ```
 
-`models.json` 中的认证配置应保持稳定、简单、声明式。
+## Resolution Rules
 
----
+### Explicit `CallOptions.auth`
 
-## 13. `CallOptions.auth` 的定位
+When `CallOptions.auth is not None`:
 
-`CallOptions.auth` 是本次调用的运行时认证输入。
+| Explicit auth | Ordinary runtime behavior |
+|---|---|
+| `ApiKeyAuth` | Use explicit API key/static token |
+| `OAuthBearerAuth` | Use explicit OAuth access token |
+| `NoAuth` | Send no auth |
+| `HeadersAuth` | Use explicit headers |
 
-它用于表达：
+`models.json.auth` does not strongly block the call. It may supply header/prefix
+hints, diagnostics, redaction hints, and documentation context.
+
+### No Explicit `CallOptions.auth`
+
+When `CallOptions.auth is None`:
+
+| `models.json.auth.kind` | Behavior |
+|---|---|
+| `api_key` | Read API key/static credential from configured env vars |
+| `oauth` | Raise missing auth; caller must pass explicit OAuth auth |
+| `none` | Send no auth |
+| not configured | Raise missing auth config unless explicitly classified as no-auth elsewhere |
+
+## Decision Matrix
+
+### Explicit Auth Present
+
+| Model declaration | Explicit auth | Ordinary runtime behavior |
+|---|---|---|
+| `api_key` | `ApiKeyAuth` | Use explicit API key |
+| `api_key` | `OAuthBearerAuth` | Use explicit OAuth token; diagnostic allowed |
+| `api_key` | `NoAuth` | Send no auth; diagnostic allowed |
+| `api_key` | `HeadersAuth` | Use explicit headers |
+| `oauth` | `OAuthBearerAuth` | Use explicit OAuth token |
+| `oauth` | `ApiKeyAuth` | Use explicit API key; diagnostic allowed |
+| `oauth` | `NoAuth` | Send no auth; diagnostic allowed |
+| `oauth` | `HeadersAuth` | Use explicit headers |
+| `none` | `NoAuth` | Send no auth |
+| `none` | `ApiKeyAuth` | Use explicit API key; diagnostic allowed |
+| `none` | `OAuthBearerAuth` | Use explicit OAuth token; diagnostic allowed |
+| `none` | `HeadersAuth` | Use explicit headers |
+
+Ordinary runtime rule:
 
 ```text
-上层应用希望本次模型调用使用哪种凭证。
+Explicit auth wins. Catalog kind mismatch is diagnostic, not a default blocker.
 ```
 
-它不用于表达：
+### Explicit Auth Absent
+
+| Model declaration | Default behavior |
+|---|---|
+| `api_key` | Read API key/static credential from env |
+| `oauth` | MissingAuth |
+| `none` | No auth |
+| not configured | MissingAuthConfig or explicit no-auth policy |
+
+## Ordinary Mode and Strict Mode
+
+### Ordinary Runtime Mode
+
+Ordinary runtime follows:
 
 ```text
-如何登录；
-如何刷新；
-如何保存；
-如何选择账号；
-如何查询额度。
+explicit first;
+default fallback;
+no strong type blocking;
+fail only when no usable auth exists.
 ```
 
-推荐的调用凭证类型：
+This is the mode for real service calls.
 
-| 类型              | 语义                                |
-| ----------------- | ----------------------------------- |
-| `ApiKeyAuth`      | 本次调用使用显式 API key            |
-| `OAuthBearerAuth` | 本次调用使用显式 OAuth access token |
-| `NoAuth`          | 本次调用明确不使用认证              |
+### Strict / Diagnose Mode
 
-内部可根据 API Key 模型配置构造：
-
-| 类型            | 语义                                   |
-| --------------- | -------------------------------------- |
-| `EnvApiKeyAuth` | 从模型配置声明的环境变量中读取 API key |
-
----
-
-## 14. 认证解析不变量
-
-认证系统应满足以下不变量：
-
-1. `AuthConfig` 不包含真实 secret。
-2. `AuthCredential` 只表示本次调用的凭证输入。
-3. `AuthView` 是 Provider 请求前的最终认证视图。
-4. API Key 模型可以在未传入 `CallOptions.auth` 时读取环境变量。
-5. OAuth 模型必须显式传入 `OAuthBearerAuth`。
-6. OAuth 模型不得从环境变量读取 token。
-7. OAuth 模型不得从 credential store 读取 token。
-8. `loushang.ai` 不执行 OAuth login。
-9. `loushang.ai` 不执行 OAuth refresh。
-10. 认证类型不匹配必须失败。
-11. 缺少认证必须失败。
-12. 多余认证不得静默忽略。
-13. 所有 secret 必须脱敏。
-14. Provider 认证失败必须归一化为认证错误。
-15. 认证解析不得产生账号系统或 quota 系统职责。
-
----
-
-## 15. 与上层应用的职责分工
-
-| 能力                               |    `loushang.ai` | 上层应用 / service |
-| ---------------------------------- | ---------------: | -----------------: |
-| 读取 API key 环境变量              |               是 |               可选 |
-| 接收显式 API key                   |               是 |                 是 |
-| 接收显式 OAuth access token        |               是 |                 是 |
-| 构造 Provider auth header          |               是 |                 否 |
-| OAuth 登录                         |               否 |                 是 |
-| OAuth refresh                      |               否 |                 是 |
-| 凭证存储                           |               否 |                 是 |
-| 多账号选择                         |               否 |                 是 |
-| Provider account profile           |               否 |                 是 |
-| quota 查询                         |               否 |                 是 |
-| billing 查询                       |               否 |                 是 |
-| 根据认证状态切换模型               |               否 |                 是 |
-| 处理 Provider 401/403 后的重试策略 | 否，只归一化错误 |                 是 |
-
----
-
-## 16. 设计结论
-
-`loushang.ai` 的认证能力应保持为模型调用链路中的轻量认证解析层。
-
-最终边界如下：
+Strict mode is for:
 
 ```text
-API Key:
-  可以显式传入；
-  未传入时，可以根据 models.json 中声明的环境变量读取。
-
-OAuth:
-  必须显式传入 OAuthBearerAuth；
-  不从环境变量读取；
-  不从本地 store 读取；
-  不自动登录；
-  不自动刷新。
-
-NoAuth:
-  明确无认证；
-  如果传入多余认证，应报错。
-
-loushang.ai:
-  只负责把认证凭证解析成 Provider 请求 headers。
-
-上层应用:
-  负责 OAuth 登录、刷新、存储、账号选择、quota、billing 和认证策略。
+tests;
+CI;
+catalog validation;
+internal debugging;
+configuration quality checks.
 ```
 
-该设计保证 `loushang.ai` 的职责保持简单、被动和可验证，同时为 API Key 与 OAuth 两类主流认证方式提供清晰、稳定的调用边界。
+It may check:
+
+- whether `models.json.auth.kind` matches `CallOptions.auth`;
+- whether a no-auth model received auth;
+- whether an API key model lacks env configuration;
+- whether OAuth auth declarations contain API-key fallback fields;
+- whether header or prefix configuration is invalid.
+
+Strict mode should not be the default ordinary call path.
+
+## `get_model`
+
+Current position:
+
+```text
+get_model does not accept auth.
+```
+
+Reasons:
+
+1. `get_model` retrieves model definitions.
+2. Real credentials should not enter catalog model objects.
+3. API key default auth can be resolved by an env resolver at request time.
+4. OAuth is not suitable as a model-handle default.
+5. `CallOptions.auth` already provides request-level override.
+6. The current phase favors a simple architecture.
+
+A returned model can know:
+
+```text
+default auth declaration;
+API key env names;
+OAuth must be explicit;
+default no-auth behavior.
+```
+
+It must not hold real secrets.
+
+## Future: BoundModel / with_auth
+
+Future work may introduce:
+
+```python
+finance_model = model.with_auth(ApiKeyAuth.from_env("FINANCE_API_KEY"))
+coding_model = model.with_auth(ApiKeyAuth.from_env("CODING_API_KEY"))
+```
+
+This would help with:
+
+```text
+one model with multiple long-lived API keys;
+different business domains using different credentials;
+callers avoiding repeated CallOptions.auth.
+```
+
+This is not part of the current design.
+
+If introduced later, keep:
+
+```text
+Catalog Model does not store secrets.
+BoundModel is a runtime-bound object.
+CallOptions.auth remains highest priority.
+OAuth should still not be implicitly bound by default.
+```
+
+Possible future priority:
+
+```text
+1. CallOptions.auth
+2. BoundModel.default_auth
+3. models.json.auth default behavior
+4. no-auth result or missing-auth error
+```
+
+## Error Semantics
+
+Recommended error categories:
+
+| Error | Scenario |
+|---|---|
+| `MissingAuthError` | Default auth is required, but no usable credential exists |
+| `MissingAuthConfigError` | No explicit auth and no default auth declaration |
+| `InvalidAuthConfigError` | `models.json.auth` is malformed |
+| `AuthResolutionError` | Auth input cannot be resolved into request headers |
+| `ProviderAuthError` | Provider returned 401 or 403 |
+| `AuthDiagnostic` | Explicit auth differs from model declaration, but ordinary runtime continues |
+
+`AuthDiagnostic` is not an error.
+
+Example diagnostic:
+
+```text
+model declares oauth, but call provided api_key; using explicit call auth.
+```
+
+## Security Principles
+
+1. `models.json` and `Model` objects do not store real secrets.
+2. API key env values are resolved lazily before provider request construction.
+3. API keys, access tokens, authorization headers, and custom auth headers are
+   always redacted in logs, errors, diagnostics, and traces.
+4. Redaction must cover explicit `HeadersAuth`; escape hatches do not bypass
+   secret handling.
+5. OAuth is never implicitly read from env, credential stores, caches, local
+   files, or provider registries.
+6. `loushang.ai` does not automatically refresh auth, log in, switch accounts,
+   switch models, or perform quota fallback after Provider 401/403.
+7. Provider auth failures are normalized and returned to the upper layer.
+
+Redaction must not rely only on model declarations. Global sensitive name
+matching should cover at least:
+
+```text
+Authorization
+x-api-key
+api-key
+token
+access_token
+api_key
+secret
+credential
+```
+
+## Reference Pseudocode
+
+### Overall Resolution
+
+```python
+def resolve_auth_for_request(
+    model: Model,
+    options: CallOptions | None,
+    env: Mapping[str, str],
+) -> AuthView:
+    declaration = model.auth
+    explicit_auth = options.auth if options else None
+
+    if explicit_auth is not None:
+        return resolve_explicit_auth(
+            explicit_auth,
+            declaration_hint=declaration,
+        )
+
+    if declaration is None:
+        raise MissingAuthConfigError(
+            model=model.id,
+            message="No explicit auth and no default auth declaration.",
+        )
+
+    if declaration.kind == "api_key":
+        api_key = read_first_non_empty_env(
+            declaration.api_key_envs,
+            env,
+        )
+        if not api_key:
+            raise MissingAuthError(
+                model=model.id,
+                expected="api_key",
+                env_names=declaration.api_key_envs,
+            )
+
+        return build_api_key_auth_view(
+            value=api_key,
+            header=declaration.header,
+            prefix=declaration.prefix,
+        )
+
+    if declaration.kind == "oauth":
+        raise MissingAuthError(
+            model=model.id,
+            expected="oauth",
+            message="OAuth auth must be provided explicitly through CallOptions.auth.",
+        )
+
+    if declaration.kind == "none":
+        return AuthView(headers={})
+
+    raise InvalidAuthConfigError(...)
+```
+
+### Explicit Auth Resolution
+
+```python
+def resolve_explicit_auth(
+    auth: AuthCredential,
+    declaration_hint: AuthDeclaration | None,
+) -> AuthView:
+    if isinstance(auth, NoAuth):
+        return AuthView(headers={})
+
+    if isinstance(auth, HeadersAuth):
+        return AuthView(headers=auth.headers)
+
+    if isinstance(auth, ApiKeyAuth):
+        header, prefix = resolve_header_prefix(
+            auth=auth,
+            declaration_hint=declaration_hint,
+            preferred_kind="api_key",
+            fallback_header="Authorization",
+            fallback_prefix="Bearer ",
+        )
+        return AuthView(headers={header: f"{prefix}{auth.value}"})
+
+    if isinstance(auth, OAuthBearerAuth):
+        header, prefix = resolve_header_prefix(
+            auth=auth,
+            declaration_hint=declaration_hint,
+            preferred_kind="oauth",
+            fallback_header="Authorization",
+            fallback_prefix="Bearer ",
+        )
+        return AuthView(headers={header: f"{prefix}{auth.access_token}"})
+
+    raise AuthResolutionError(...)
+```
+
+## Examples
+
+### API Key Default Auth
+
+`models.json`:
+
+```json
+{
+  "auth": {
+    "kind": "api_key",
+    "apiKeyEnvs": ["MOONSHOT_API_KEY"],
+    "header": "Authorization",
+    "prefix": "Bearer "
+  }
+}
+```
+
+Call:
+
+```python
+model = get_model("moonshot:openai-completions:kimi-k2")
+await complete(model, context)
+```
+
+Behavior:
+
+```text
+No explicit CallOptions.auth.
+Read MOONSHOT_API_KEY.
+Send Authorization: Bearer <key>.
+```
+
+### API Key Explicit Override
+
+```python
+await complete(
+    model,
+    context,
+    options=CallOptions(auth=ApiKeyAuth("sk-temp")),
+)
+```
+
+Behavior:
+
+```text
+Use explicit ApiKeyAuth.
+Do not read default env vars.
+```
+
+### OAuth Explicit Auth
+
+`models.json`:
+
+```json
+{
+  "auth": {
+    "kind": "oauth",
+    "header": "Authorization",
+    "prefix": "Bearer "
+  }
+}
+```
+
+Call:
+
+```python
+await complete(
+    model,
+    context,
+    options=CallOptions(auth=OAuthBearerAuth(access_token)),
+)
+```
+
+Behavior:
+
+```text
+Use explicit OAuth access token.
+Send Authorization: Bearer <access_token>.
+```
+
+If auth is omitted, raise `MissingAuthError`.
+
+### Explicit NoAuth
+
+```python
+await complete(
+    model,
+    context,
+    options=CallOptions(auth=NoAuth()),
+)
+```
+
+Behavior:
+
+```text
+Send no auth.
+Do not run models.json.auth default logic.
+```
+
+### HeadersAuth Escape Hatch
+
+```python
+await complete(
+    model,
+    context,
+    options=CallOptions(
+        auth=HeadersAuth({
+            "Authorization": "Custom xxx",
+            "X-Provider-Token": "yyy",
+        })
+    ),
+)
+```
+
+Behavior:
+
+```text
+Use explicit headers.
+Do not let models.json.auth block the call.
+Redact all sensitive headers.
+```
+
+## Ownership Split
+
+| Capability | `loushang.ai` | Upper application/service |
+|---|---:|---:|
+| Read API key env vars | Yes | Provides env vars |
+| Accept explicit API key | Yes | Yes |
+| Accept explicit OAuth access token | Yes | Yes |
+| Build Provider auth headers | Yes | No |
+| OAuth login | No | Yes |
+| OAuth refresh | No | Yes |
+| Credential storage | No | Yes |
+| Multi-account selection | No | Yes |
+| Provider account profile | No | Yes |
+| Quota lookup | No | Yes |
+| Billing lookup | No | Yes |
+| Route models based on auth/account state | No | Yes |
+| Retry strategy after Provider 401/403 | No, only normalize errors | Yes |
+| Request-level explicit auth override | Yes | Decides when to use |
+
+## Invariants
+
+1. `models.json.auth` is a default declaration, not a strong call-time
+   validator.
+2. `CallOptions.auth` is the explicit auth input for this request and has
+   highest priority.
+3. When `CallOptions.auth` exists, ordinary runtime does not block only because
+   `models.json.auth.kind` differs.
+4. When `CallOptions.auth` is absent, `models.json.auth` default logic applies.
+5. `api_key` means a broad static request credential and may use env fallback.
+6. `oauth` means the access token must be explicitly supplied by the upper
+   layer.
+7. `none` means default no-auth.
+8. `NoAuth` and `auth=None` are semantically different.
+9. `HeadersAuth` is explicit-only and does not participate in default auth
+   construction.
+10. OAuth login, refresh, storage, account selection, quota, and billing are
+    outside `loushang.ai`.
+11. `get_model` does not accept auth.
+12. `BoundModel / with_auth` is future work, not current scope.
+13. Secrets are lazily resolved and never stored on catalog models.
+14. Secrets never appear in logs, errors, diagnostics, or traces.
+15. Provider auth failure is normalized as an error; `loushang.ai` does not
+    automatically refresh or retry auth.
+
+## Conclusion
+
+The design can be summarized as:
+
+```text
+models.json.auth:
+  declares what to do when no explicit auth is supplied.
+
+CallOptions.auth:
+  decides how this request actually authenticates.
+```
+
+API key and static token auth may be defaulted from environment variables or
+explicitly overridden per request.
+
+OAuth auth must be supplied explicitly by the caller and is never implicitly
+loaded, refreshed, or stored by `loushang.ai`.
+
+`NoAuth` is an explicit request-level override, distinct from omitted auth.
+
+`HeadersAuth` is a low-level request-level escape hatch for catalog lag or
+special Provider auth forms.
+
+In one sentence:
+
+```text
+models.json.auth is the default declaration; CallOptions.auth is the explicit
+request fact. loushang.ai resolves the final auth input into Provider request
+headers and owns no auth lifecycle, account system, or Provider control-plane.
+```
