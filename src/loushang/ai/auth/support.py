@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import os
-from collections.abc import Mapping
+from collections.abc import Iterable, Mapping
 from dataclasses import dataclass, field
 
 from loushang.ai.auth.credentials import (
@@ -131,9 +131,13 @@ def resolve_explicit_auth(
             prefix=auth.prefix,
             declaration_hint=declaration_hint,
         )
-        headers = {header: f"{prefix}{auth.value}"}
-        headers.update(_extra_headers(declaration_hint))
-        return AuthView(headers=headers)
+        return AuthView(
+            headers=_build_auth_headers(
+                header=header,
+                value=f"{prefix}{auth.value}",
+                declaration=declaration_hint,
+            )
+        )
 
     if isinstance(auth, OAuthBearerAuth):
         header, prefix = _resolve_header_prefix(
@@ -141,9 +145,13 @@ def resolve_explicit_auth(
             prefix=auth.prefix,
             declaration_hint=declaration_hint,
         )
-        headers = {header: f"{prefix}{auth.access_token}"}
-        headers.update(_extra_headers(declaration_hint))
-        return AuthView(headers=headers)
+        return AuthView(
+            headers=_build_auth_headers(
+                header=header,
+                value=f"{prefix}{auth.access_token}",
+                declaration=declaration_hint,
+            )
+        )
 
     raise AuthResolutionError(
         "Unsupported CallOptions.auth credential type.",
@@ -168,7 +176,9 @@ def resolve_default_auth(
     kind = normalize_auth_kind(_auth_value(declaration, "kind", None))
     if kind == "api_key":
         env_names = _api_key_env_names(declaration)
-        api_key = _resolve_api_key_from_env(declaration, os.environ if env is None else env)
+        api_key = _resolve_api_key_from_env(
+            declaration, os.environ if env is None else env
+        )
         if api_key is None:
             raise MissingAuthError(
                 "Model requires api_key auth but no configured API key env is set.",
@@ -178,9 +188,14 @@ def resolve_default_auth(
                 details={"expected_env": list(env_names)},
             )
         header, prefix = _resolve_header_prefix(declaration_hint=declaration)
-        headers = {header: f"{prefix}{api_key}"}
-        headers.update(_extra_headers(declaration, os.environ if env is None else env))
-        return AuthView(headers=headers)
+        return AuthView(
+            headers=_build_auth_headers(
+                header=header,
+                value=f"{prefix}{api_key}",
+                declaration=declaration,
+                env=os.environ if env is None else env,
+            )
+        )
 
     if kind == "oauth":
         raise MissingAuthError(
@@ -278,6 +293,60 @@ def _api_key_env_names(config) -> tuple[str, ...]:
     if isinstance(api_key_env, str) and api_key_env:
         names.append(api_key_env)
     return tuple(dict.fromkeys(names))
+
+
+def _build_auth_headers(
+    *,
+    header: str,
+    value: str,
+    declaration,
+    env: Mapping[str, str] | None = None,
+) -> dict[str, str]:
+    headers = {header: value}
+    headers.update(_extra_headers_without_primary_conflict(declaration, header, env))
+    return headers
+
+
+def _extra_headers_without_primary_conflict(
+    declaration,
+    primary_header: str,
+    env: Mapping[str, str] | None = None,
+) -> dict[str, str]:
+    _validate_extra_headers_do_not_override_primary(declaration, primary_header)
+    return _extra_headers(declaration, env)
+
+
+def _validate_extra_headers_do_not_override_primary(
+    declaration,
+    primary_header: str,
+) -> None:
+    if declaration is None:
+        return
+    extra_headers = dict(_auth_value(declaration, "extra_headers", {}) or {})
+    conflicting_header = _find_header_case_insensitive(
+        extra_headers.keys(),
+        primary_header,
+    )
+    if conflicting_header is None:
+        return
+    raise InvalidAuthConfigError(
+        "models.json.auth.extraHeaders cannot override the primary auth header.",
+        details={
+            "conflicting_header": conflicting_header,
+            "primary_header": primary_header,
+        },
+    )
+
+
+def _find_header_case_insensitive(
+    headers: Iterable[object],
+    target: str,
+) -> str | None:
+    target_lower = target.lower()
+    for header in headers:
+        if isinstance(header, str) and header.lower() == target_lower:
+            return header
+    return None
 
 
 def _extra_headers(

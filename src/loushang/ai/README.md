@@ -90,7 +90,10 @@
 锁定；新增厂商专用 adapter 必须进入 `contrib` 或外部包，不能默认进入 core。
 
 OpenAI Codex Responses 不在默认 model catalog 和 builtin adapter 注册中；它位于
-`loushang.ai.contrib.openai_codex`，需要调用方显式注册 contrib 后使用。
+`loushang.ai.contrib.openai_codex`，需要调用方显式注册 contrib 后使用。该 contrib
+只代表非默认 provider-specific adapter/catalog integration；OAuth lifecycle、
+quota、account control-plane 和 billing 不属于 `loushang.ai.contrib` 或 core auth
+边界。
 
 Azure OpenAI Responses 不再作为 core adapter 发布；需要 Azure 私有部署时，
 请使用自定义 catalog 和通用 OpenAI-compatible 协议边界，或在外部包中注册专用 adapter。
@@ -248,8 +251,8 @@ class；普通调用只通过 `CallOptions`、`ReasoningOptions`、`RetryOptions
 - Context normalization helper 从 `loushang.ai.context` 进入。
 - Tool transform / validation 从 `loushang.ai.tool` 进入。
 - Cost helper 从 `loushang.ai.pricing` 进入。
-- Platform quota helper 从 `loushang.ai.contrib.moonshot` 进入；core
-  `loushang.ai.usage` 只保留 response usage payload helper。
+- Account、billing 和 platform quota 不属于 `loushang.ai` core architecture
+  边界；core `loushang.ai.usage` 只保留 response usage payload helper。
 - Overflow 和 streaming JSON repair helper 从 `loushang.ai.utils` 进入。
 
 ### 子模块 helper
@@ -302,8 +305,9 @@ metadata, or when a used token component has no known price. Explicit zero
 prices remain valid and produce a zero cost.
 
 `Usage` is response-level accounting produced by model response events. Provider
-account quota helpers live outside core; for Moonshot/Kimi coding quota, use
-`loushang.ai.contrib.moonshot`.
+account quota, billing, entitlement, and account control-plane helpers live
+outside the `loushang.ai` core architecture boundary and must not be treated as
+auth or usage responsibilities.
 
 ## Advanced API
 

@@ -51,8 +51,10 @@ This directory keeps the current architecture notes for the frozen
   retry, cancellation, and provider request validation.
 - `providers/` owns the three core protocol adapters:
   `openai-completions`, `openai-responses`, and `anthropic-messages`.
-- `contrib/` owns optional provider-specific integrations such as OpenAI Codex
-  and Moonshot quota helpers.
+- `contrib/` is limited to explicitly registered, non-default
+  provider-specific adapter/catalog integrations such as OpenAI Codex. It must
+  not carry OAuth lifecycle, quota, billing, account control-plane, or product
+  auth policy back into `loushang.ai` core.
 - `usage.py` owns response usage payload helpers only; account or platform quota
   is outside core usage.
 

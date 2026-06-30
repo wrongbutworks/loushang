@@ -7,6 +7,7 @@ import pytest
 from loushang.ai.auth import (
     ApiKeyAuth,
     HeadersAuth,
+    InvalidAuthConfigError,
     MissingAuthConfigError,
     MissingAuthError,
     NoAuth,
@@ -77,6 +78,48 @@ def test_default_api_key_auth_uses_header_prefix_and_extra_headers() -> None:
     }
 
 
+def test_default_api_key_auth_rejects_extra_headers_primary_auth_override() -> None:
+    with pytest.raises(InvalidAuthConfigError) as exc_info:
+        resolve_auth_for_model(
+            _model(
+                Auth(
+                    api_key_env="DEMO_API_KEY",
+                    extra_headers={"Authorization": "Bearer override-secret"},
+                )
+            ),
+            env={"DEMO_API_KEY": "env-secret"},
+        )
+
+    payload = exc_info.value.to_dict()
+
+    assert payload["details"] == {
+        "conflicting_header": "Authorization",
+        "primary_header": "Authorization",
+    }
+    assert "override-secret" not in str(payload)
+    assert "env-secret" not in str(payload)
+
+
+def test_default_api_key_auth_primary_header_conflict_is_case_insensitive() -> None:
+    with pytest.raises(InvalidAuthConfigError) as exc_info:
+        resolve_auth_for_model(
+            _model(
+                Auth(
+                    api_key_env="DEMO_API_KEY",
+                    header="x-api-key",
+                    prefix="",
+                    extra_headers={"X-API-Key": "override-secret"},
+                )
+            ),
+            env={"DEMO_API_KEY": "env-secret"},
+        )
+
+    assert exc_info.value.to_dict()["details"] == {
+        "conflicting_header": "X-API-Key",
+        "primary_header": "x-api-key",
+    }
+
+
 def test_default_api_key_auth_missing_env_raises_missing_auth() -> None:
     with pytest.raises(MissingAuthError) as exc_info:
         resolve_auth_for_model(
@@ -116,6 +159,42 @@ def test_explicit_api_key_auth_wins_over_oauth_declaration_and_env() -> None:
     assert view.headers == {"X-Auth": "Token explicit-secret"}
 
 
+def test_explicit_api_key_auth_rejects_extra_headers_primary_auth_override() -> None:
+    with pytest.raises(InvalidAuthConfigError) as exc_info:
+        resolve_auth_for_model(
+            _model(
+                Auth(
+                    extra_headers={
+                        "authorization": "Bearer override-secret",
+                        "X-Trace": "trace",
+                    }
+                )
+            ),
+            options=SimpleNamespace(auth=ApiKeyAuth("explicit-secret")),
+        )
+
+    payload = exc_info.value.to_dict()
+
+    assert payload["details"] == {
+        "conflicting_header": "authorization",
+        "primary_header": "Authorization",
+    }
+    assert "override-secret" not in str(payload)
+    assert "explicit-secret" not in str(payload)
+
+
+def test_explicit_api_key_auth_merges_non_conflicting_extra_headers() -> None:
+    view = resolve_auth_for_model(
+        _model(Auth(extra_headers={"X-Trace": "trace"})),
+        options=SimpleNamespace(auth=ApiKeyAuth("explicit-secret")),
+    )
+
+    assert view.headers == {
+        "Authorization": "Bearer explicit-secret",
+        "X-Trace": "trace",
+    }
+
+
 def test_explicit_oauth_bearer_auth_uses_declaration_header_prefix() -> None:
     view = resolve_auth_for_model(
         _model(Auth(kind="oauth", header="X-OAuth", prefix="Bearer ")),
@@ -123,6 +202,31 @@ def test_explicit_oauth_bearer_auth_uses_declaration_header_prefix() -> None:
     )
 
     assert view.headers == {"X-OAuth": "Bearer oauth-token"}
+
+
+def test_explicit_oauth_bearer_auth_rejects_extra_headers_primary_auth_override() -> (
+    None
+):
+    with pytest.raises(InvalidAuthConfigError) as exc_info:
+        resolve_auth_for_model(
+            _model(
+                Auth(
+                    kind="oauth",
+                    header="Authorization",
+                    extra_headers={"Authorization": "Bearer override-secret"},
+                )
+            ),
+            options=SimpleNamespace(auth=OAuthBearerAuth("oauth-token")),
+        )
+
+    payload = exc_info.value.to_dict()
+
+    assert payload["details"] == {
+        "conflicting_header": "Authorization",
+        "primary_header": "Authorization",
+    }
+    assert "override-secret" not in str(payload)
+    assert "oauth-token" not in str(payload)
 
 
 def test_explicit_auth_can_override_header_prefix() -> None:
@@ -148,7 +252,14 @@ def test_no_auth_explicitly_overrides_default_api_key() -> None:
 
 def test_headers_auth_is_complete_explicit_header_override() -> None:
     view = resolve_auth_for_model(
-        _model(Auth(extra_headers={"X-Default": "default"})),
+        _model(
+            Auth(
+                extra_headers={
+                    "Authorization": "Bearer declaration-secret",
+                    "X-Default": "default",
+                }
+            )
+        ),
         options=SimpleNamespace(
             auth=HeadersAuth(
                 {
