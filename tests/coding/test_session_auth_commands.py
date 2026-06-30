@@ -6,11 +6,11 @@ from types import SimpleNamespace
 
 import pytest
 
-from loushang.ai.auth.registry import OAuthProviderRegistry
-from loushang.ai.auth.types import OAuthCredentials
 from loushang.ai.model import Auth, Endpoint, Model, Provider
 from loushang.ai.model.loader import load_model_registry_from_file
 from loushang.ai.model.registry import ModelRegistry
+from loushang.auth.registry import OAuthProviderRegistry
+from loushang.auth.types import OAuthCredentials
 from loushang.coding.session.agent_session import AgentSession
 from loushang.coding.session.auth_commands import (
     SessionOAuthLoginCallbacks,
@@ -114,7 +114,7 @@ def test_agent_session_login_uses_session_registry_and_preserves_registrations(
         callbacks.on_progress("done")
         return OAuthCredentials(provider=provider_id, access_token="token")
 
-    monkeypatch.setattr("loushang.ai.auth.facade.oauth_login", _fake_oauth_login)
+    monkeypatch.setattr("loushang.auth.facade.oauth_login", _fake_oauth_login)
     session = AgentSession.__new__(AgentSession)
     session.agent = SimpleNamespace(model=model)
     session.model_registry = SimpleNamespace(ai_registry=registry)

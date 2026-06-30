@@ -65,24 +65,27 @@ The root API consumes a single core options type:
 
 ```python
 CallOptions(
-    temperature=None,
-    max_output_tokens=None,
     cancellation=None,
-    api_key=None,
-    headers=None,
+    auth=None,
     cache_retention=None,
     session_id=None,
-    reasoning=None,
-    retry=None,
+    max_output_tokens=None,
+    temperature=None,
     timeout=None,
-    oauth_credentials=None,
+    retry=None,
+    trace=None,
     region=None,
     pairing_mode="strict",
+    reasoning=None,
     tool_choice=None,
     output=None,
-    trace=None,
 )
 ```
+
+`auth` is the only request-level credential input. It accepts
+`ApiKeyAuth`, `OAuthBearerAuth`, `NoAuth`, or `HeadersAuth`. OAuth login,
+refresh, credential storage, provider registries, and env-oauth helpers live
+outside `loushang.ai` in the top-level `loushang.auth` package.
 
 Provider/contrib-specific options do not enter the root `loushang.ai` public surface. For example, Codex transport options belong to `loushang.ai.contrib.openai_codex.OpenAICodexResponsesOptions` and are consumed only by that contrib provider.
 

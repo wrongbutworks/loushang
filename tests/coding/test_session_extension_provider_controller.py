@@ -5,7 +5,7 @@ import asyncio
 import pytest
 
 from loushang.ai.api_registry import ApiProviderRegistry
-from loushang.ai.auth.registry import OAuthProviderRegistry
+from loushang.auth.registry import OAuthProviderRegistry
 from loushang.ai.model import Endpoint, Model, Provider
 from loushang.ai.model.registry import ModelRegistry as AiModelRegistry
 from loushang.coding.control import ModelRegistry

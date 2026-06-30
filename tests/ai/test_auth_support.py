@@ -169,11 +169,11 @@ def test_resolver_does_not_use_env_or_stored_oauth_lookup(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     monkeypatch.setattr(
-        "loushang.ai.auth.env.get_env_oauth_credentials",
+        "loushang.auth.env.get_env_oauth_credentials",
         lambda *args, **kwargs: pytest.fail("env oauth lookup must not run"),
     )
     monkeypatch.setattr(
-        "loushang.ai.auth.storage.load_credential_store",
+        "loushang.auth.storage.load_credential_store",
         lambda *args, **kwargs: pytest.fail("stored oauth lookup must not run"),
     )
 

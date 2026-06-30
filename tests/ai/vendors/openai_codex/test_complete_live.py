@@ -6,15 +6,15 @@ import pytest
 
 from loushang.ai import ReasoningOptions, TimeoutOptions, complete, get_model
 from loushang.ai.auth import HeadersAuth
-from loushang.ai.auth.facade import (
-    register_builtin_oauth_providers,
-    resolve_oauth_api_key,
-)
-from loushang.ai.auth.storage import load_credentials
 from loushang.ai.contrib.openai_codex import (
     OpenAICodexResponsesOptions,
     register_openai_codex_contrib,
 )
+from loushang.auth.facade import (
+    register_builtin_oauth_providers,
+    resolve_oauth_api_key,
+)
+from loushang.auth.storage import load_credentials
 
 pytestmark = [
     pytest.mark.live,

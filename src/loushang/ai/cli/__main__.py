@@ -23,29 +23,27 @@ from loushang.ai.advanced.registry import (
     reset_api_providers,
 )
 from loushang.ai.api_registry import get_default_api_provider_registry
-from loushang.ai.auth.env import get_env_api_key, get_env_oauth_credentials
-from loushang.ai.auth.facade import (
-    oauth_login,
-    register_builtin_oauth_providers,
-)
-from loushang.ai.auth.registry import (
-    get_default_oauth_registry,
-)
-from loushang.ai.auth.storage import find_scoped_credential, load_credential_store
-from loushang.ai.auth.types import (
-    OAuthAuthInfo,
-    OAuthCredentials,
-    OAuthLoginCallbacks,
-    OAuthPrompt,
-)
-from loushang.ai.contrib.openai_codex import (
-    register_openai_codex_contrib,
-    register_openai_codex_oauth_provider,
-)
+from loushang.ai.contrib.openai_codex import register_openai_codex_contrib
 from loushang.ai.model.registry import (
     get_default_model_registry,
     resolve_model_api,
     resolve_model_ref,
+)
+from loushang.auth.env import get_env_api_key, get_env_oauth_credentials
+from loushang.auth.facade import (
+    oauth_login,
+    register_builtin_oauth_providers,
+)
+from loushang.auth.providers.openai_codex import register_openai_codex_oauth_provider
+from loushang.auth.registry import (
+    get_default_oauth_registry,
+)
+from loushang.auth.storage import find_scoped_credential, load_credential_store
+from loushang.auth.types import (
+    OAuthAuthInfo,
+    OAuthCredentials,
+    OAuthLoginCallbacks,
+    OAuthPrompt,
 )
 
 _BACK = object()
@@ -400,6 +398,7 @@ def _auth_scope_payload(
 def cmd_console(args: argparse.Namespace) -> None:
     register_builtin_oauth_providers()
     register_openai_codex_contrib()
+    register_openai_codex_oauth_provider()
     registry = get_default_model_registry()
     print("Loushang AI Console")
     print("- Interactive path: provider -> endpoint -> auth -> model -> conversation")

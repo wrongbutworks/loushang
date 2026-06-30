@@ -8,12 +8,12 @@ import stat
 import tempfile
 from pathlib import Path
 
-from loushang.ai.auth.storage import (
+from loushang.auth.storage import (
     CredentialStore,
     find_scoped_credential,
     set_scoped_credential,
 )
-from loushang.ai.auth.types import OAuthCredentials
+from loushang.auth.types import OAuthCredentials
 
 
 def inspect_oauth_credential_store() -> dict[str, object]:

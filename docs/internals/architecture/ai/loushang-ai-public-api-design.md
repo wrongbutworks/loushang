@@ -548,39 +548,31 @@ Stable 最小字段集合确认为：
 - provider 请求解析只公开解析结果与入口函数
 - payload 组装、transport/carrier 与协议默认值适配属于 provider 内部实现，不作为稳定公共 API
 
-### C. 认证与 OAuth 基础设施
+### C. 请求级认证
 
-- `resolve_auth_material(...)`
 - `resolve_auth_for_model(...)`
-- `get_default_oauth_registry()`
-- `OAuthProviderRegistry.register(...)`
-- `OAuthProviderRegistry.get(...)`
-- `OAuthProviderRegistry.list()`
-- `OAuthProviderRegistry.clear()`
-- `register_builtin_oauth_providers()`
-- `oauth_login(...)`
-- `oauth_refresh(...)`
-- `resolve_oauth_api_key(...)`
-- `AuthConfig`
+- `resolve_auth_for_request(...)`
+- `ApiKeyAuth`
+- `OAuthBearerAuth`
+- `NoAuth`
+- `HeadersAuth`
 - `AuthView`
-- `OAuthCredentials`
-- `OAuthProviderInterface`
-- `OAuthProviderRegistry`
-- `get_oauth_api_key(...)`
-- `load_credentials()`
-- `save_credentials()`
+- `MissingAuthError`
+- `MissingAuthConfigError`
+- `InvalidAuthConfigError`
+- `AuthResolutionError`
 
 适用场景：
 
-- CLI 登录流程
-- IDE 集成
-- 运行时凭据桥接
-- 集成第三方 OAuth provider
+- 将 `CallOptions.auth` 中的显式 request credential 解析成 provider request headers
+- 在未显式传入 auth 时，根据 `models.json.auth` 做 API key env fallback 或 OAuth missing-auth 诊断
+- 对 provider request auth header 做统一构造与脱敏配合
 
 说明：
 
-- 这部分应暴露，但建议通过单独命名空间或子包方式暴露
-- 不建议全部平铺在根包
+- `loushang.ai.auth` 不拥有 OAuth login、refresh、credential store、provider registry 或 env-oauth
+- OAuth lifecycle 支撑迁移到顶层 `loushang.auth`
+- `loushang.ai` 只接收 `OAuthBearerAuth(access_token)` 这类 request-level 输入
 
 ### D. 事件流组装基础设施
 
@@ -681,6 +673,7 @@ Stable 最小字段集合确认为：
 - 如 `loushang.ai.auth.*`
 - 如 `loushang.ai.provider.*`
 - 如 `loushang.ai.event_stream.*`
+- OAuth lifecycle 使用顶层 `loushang.auth.*`，不从 `loushang.ai.auth` 导入
 
 
 ## 建议的命名空间组织
@@ -693,8 +686,10 @@ Stable 最小字段集合确认为：
   - `from loushang.ai.model import ...`
 - 自定义 Provider：
   - `from loushang.ai.provider import ...`
-- 认证与 OAuth：
+- 请求级认证：
   - `from loushang.ai.auth import ...`
+- OAuth lifecycle：
+  - `from loushang.auth import ...`
 - 工具协议转换：
   - `from loushang.ai.tool import ...`
 
@@ -745,9 +740,9 @@ Stable 最小字段集合确认为：
 
 ### 2. 认证 Registry 边界
 
-OAuth provider 增删查列由 `OAuthProviderRegistry` 直接提供，不再为每个
-Registry 方法额外导出同名全局 wrapper。保留的全局操作只覆盖默认 Registry
-获取、内置 provider 注册、登录和刷新。
+OAuth provider 增删查列、内置 provider 注册、登录、刷新和 credential store
+属于顶层 `loushang.auth`。`loushang.ai.auth` 不导出这些 lifecycle API，只保留
+request-level credential 与 auth resolution。
 
 ### 3. 明确 `provider` 与 `providers` 的边界说明
 

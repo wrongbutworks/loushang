@@ -6,10 +6,10 @@ from dataclasses import dataclass, field
 
 from loushang.ai.auth import ApiKeyAuth, OAuthBearerAuth
 from loushang.ai.auth.support import resolve_explicit_auth
-from loushang.ai.auth.types import OAuthCredentials
 from loushang.ai.model import Model
 from loushang.ai.model.registry import ModelRegistry as AiModelRegistry
 from loushang.ai.model.registry import get_default_model_registry
+from loushang.auth.types import OAuthCredentials
 
 
 @dataclass(frozen=True)
@@ -45,7 +45,7 @@ class AuthManager:
         self._ai_registry = value
 
     def load_stored_oauth_credentials(self) -> dict[str, OAuthCredentials]:
-        from loushang.ai.auth.storage import load_credentials
+        from loushang.auth.storage import load_credentials
 
         return load_credentials()
 
@@ -147,7 +147,7 @@ class AuthManager:
         model_id: str | None,
     ) -> str | None:
         try:
-            from loushang.ai.auth.facade import resolve_oauth_api_key
+            from loushang.auth.facade import resolve_oauth_api_key
 
             result = resolve_oauth_api_key(
                 provider,
@@ -169,7 +169,7 @@ class AuthManager:
         model_id: str | None,
     ) -> OAuthCredentials | None:
         try:
-            from loushang.ai.auth.storage import (
+            from loushang.auth.storage import (
                 find_scoped_credential,
                 load_credential_store,
             )

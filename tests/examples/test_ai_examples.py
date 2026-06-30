@@ -363,7 +363,6 @@ def test_openai_codex_contrib_example_registers_codex_model(
     tmp_path: Path,
 ) -> None:
     from loushang.ai.advanced.registry import clear_api_providers
-    from loushang.ai.auth.registry import get_default_oauth_registry
     from loushang.ai.model import clear_default_model_registry
 
     monkeypatch.setattr(Path, "home", lambda: tmp_path)
@@ -377,7 +376,6 @@ def test_openai_codex_contrib_example_registers_codex_model(
         model = module.load_codex_model()
     finally:
         clear_api_providers()
-        get_default_oauth_registry().clear()
         clear_default_model_registry()
 
     assert model.provider_id == "openai-codex"

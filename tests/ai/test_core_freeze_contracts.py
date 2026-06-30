@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import importlib
 import inspect
 import json
 from pathlib import Path
@@ -154,6 +155,49 @@ def test_model_instances_do_not_expose_call_facades() -> None:
 
     for name in ("complete", "stream", "complete_simple", "stream_simple"):
         assert not hasattr(model, name)
+
+
+def test_ai_auth_package_contains_only_request_level_core() -> None:
+    auth_files = {
+        path.name
+        for path in (AI_SRC / "auth").glob("*.py")
+        if path.name != "__pycache__"
+    }
+
+    assert auth_files == {"__init__.py", "credentials.py", "support.py"}
+
+    import loushang.ai.auth as auth_module
+    import loushang.auth as lifecycle_auth
+
+    assert hasattr(lifecycle_auth, "oauth_login")
+    assert hasattr(lifecycle_auth, "OAuthProviderRegistry")
+
+    for name in (
+        "CredentialStore",
+        "OAuthCredentials",
+        "OAuthProviderRegistry",
+        "get_default_oauth_registry",
+        "get_env_oauth_credentials",
+        "get_oauth_api_key",
+        "load_credentials",
+        "oauth_login",
+        "oauth_refresh",
+        "register_builtin_oauth_providers",
+        "resolve_oauth_api_key",
+    ):
+        assert not hasattr(auth_module, name)
+
+    for module_name in (
+        "browser",
+        "env",
+        "facade",
+        "oauth",
+        "registry",
+        "storage",
+        "types",
+    ):
+        with pytest.raises(ModuleNotFoundError):
+            importlib.import_module(f"loushang.ai.auth.{module_name}")
 
 
 def test_default_registry_loads_builtin_and_user_model_directory(

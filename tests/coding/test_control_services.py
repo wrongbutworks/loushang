@@ -297,8 +297,8 @@ def test_session_restores_persisted_model_and_accepts_model_selection_updates(tm
 
 
 def test_create_services_exposes_ai_backed_auth_manager(monkeypatch) -> None:
-    from loushang.ai.auth.types import OAuthCredentials
     from loushang.ai.model.registry import ModelRegistry as AiModelRegistry
+    from loushang.auth.types import OAuthCredentials
     from loushang.coding.bootstrap import create_services
     from loushang.coding.control import AuthManager
 
@@ -310,7 +310,7 @@ def test_create_services_exposes_ai_backed_auth_manager(monkeypatch) -> None:
         )
     }
 
-    monkeypatch.setattr("loushang.ai.auth.storage.load_credentials", lambda: stored)
+    monkeypatch.setattr("loushang.auth.storage.load_credentials", lambda: stored)
 
     services = create_services(ai_model_registry=AiModelRegistry())
 

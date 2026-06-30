@@ -2,9 +2,9 @@ from __future__ import annotations
 
 import pytest
 
-from loushang.ai.auth.registry import get_default_oauth_registry
-from loushang.ai.auth.types import OAuthCredentials
 from loushang.ai.cli.__main__ import main
+from loushang.auth.registry import get_default_oauth_registry
+from loushang.auth.types import OAuthCredentials
 
 
 class _FakeProvider:

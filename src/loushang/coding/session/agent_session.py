@@ -16,9 +16,9 @@ from loushang.ai.api_registry import (
     ApiProviderRegistry,
     get_default_api_provider_registry,
 )
-from loushang.ai.auth.registry import OAuthProviderRegistry, get_default_oauth_registry
 from loushang.ai.model import Model, Provider
 from loushang.ai.types import AssistantMessage, ImagePart
+from loushang.auth.registry import OAuthProviderRegistry, get_default_oauth_registry
 from loushang.coding.compaction import (
     CompactionResult,
     CompactionStatus,
@@ -810,7 +810,7 @@ class AgentSession:
     async def _login_from_builtin(self, raw_target: str | None) -> dict[str, object]:
         if self.model_registry is None:
             raise RuntimeError("Model registry is not available.")
-        from loushang.ai.auth.facade import (
+        from loushang.auth.facade import (
             oauth_login,
             register_builtin_oauth_providers,
         )

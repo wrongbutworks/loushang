@@ -3,9 +3,9 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Any, Literal, cast
 
-from loushang.ai.auth.types import OAuthAuthInfo, OAuthLoginCallbacks, OAuthPrompt
 from loushang.ai.model import Model
 from loushang.ai.model.registry import ModelRegistry as AiModelRegistry
+from loushang.auth.types import OAuthAuthInfo, OAuthLoginCallbacks, OAuthPrompt
 
 AuthScope = Literal["provider", "endpoint", "model"]
 

@@ -2,28 +2,31 @@ from __future__ import annotations
 
 import base64
 import hashlib
+import json
 import secrets
 import time
 from collections.abc import Awaitable, Callable
 from contextlib import suppress
+from dataclasses import replace
 from typing import Any
 from urllib.parse import parse_qs, urlencode, urlparse
 
-from loushang.ai.auth.browser import CallbackWaiter, open_browser, wait_for_callback_url
-from loushang.ai.auth.registry import OAuthProviderRegistry, get_default_oauth_registry
-from loushang.ai.auth.types import (
+from loushang.auth.browser import CallbackWaiter, open_browser, wait_for_callback_url
+from loushang.auth.registry import get_default_oauth_registry
+from loushang.auth.types import (
     OAuthCredentials,
     OAuthLoginCallbacks,
     OAuthProviderInterface,
 )
 
-AUTHORIZE_URL = "https://auth.openai.com/oauth/authorize"
-TOKEN_URL = "https://auth.openai.com/oauth/token"
-CLIENT_ID = "app_EMoamEEZ73f0CkXaXp7hrann"
-REDIRECT_URI = "http://localhost:1455/auth/callback"
-SCOPES = "openid profile email offline_access"
-JWT_CLAIM_PATH = "https://api.openai.com/auth"
-LOGIN_URL = AUTHORIZE_URL
+AUTHORIZE_URL = "https://claude.ai/oauth/authorize"
+TOKEN_URL = "https://platform.claude.com/v1/oauth/token"
+CLIENT_ID = "9d1c250a-e61b-44d9-88ed-5944d1962f5e"
+REDIRECT_URI = "http://localhost:53692/callback"
+SCOPES = (
+    "org:create_api_key user:profile user:inference user:sessions:claude_code "
+    "user:mcp_servers user:file_upload"
+)
 
 
 def _base64url_encode(data: bytes) -> str:
@@ -36,10 +39,6 @@ def generate_pkce_pair() -> tuple[str, str]:
     return verifier, challenge
 
 
-def create_state() -> str:
-    return secrets.token_hex(16)
-
-
 def _parse_authorization_input(input_text: str) -> tuple[str | None, str | None]:
     value = input_text.strip()
     if not value:
@@ -48,7 +47,9 @@ def _parse_authorization_input(input_text: str) -> tuple[str | None, str | None]
     parsed = urlparse(value)
     if parsed.scheme and parsed.netloc:
         params = parse_qs(parsed.query)
-        return params.get("code", [None])[0], params.get("state", [None])[0]
+        code = params.get("code", [None])[0]
+        state = params.get("state", [None])[0]
+        return code, state
 
     if "#" in value:
         code, state = value.split("#", 1)
@@ -56,76 +57,58 @@ def _parse_authorization_input(input_text: str) -> tuple[str | None, str | None]
 
     if "code=" in value:
         params = parse_qs(value)
-        return params.get("code", [None])[0], params.get("state", [None])[0]
+        code = params.get("code", [None])[0]
+        state = params.get("state", [None])[0]
+        return code, state
 
     return value, None
 
 
-def _extract_account_id(access_token: str) -> str:
-    try:
-        parts = access_token.split(".")
-        if len(parts) != 3:
-            raise ValueError("invalid token")
-        payload = parts[1] + "=" * (-len(parts[1]) % 4)
-        decoded = base64.urlsafe_b64decode(payload.encode("ascii")).decode("utf-8")
-        import json
-
-        data = json.loads(decoded)
-        account_id = data.get(JWT_CLAIM_PATH, {}).get("chatgpt_account_id")
-        if not isinstance(account_id, str) or not account_id:
-            raise ValueError("missing account id")
-        return account_id
-    except Exception as exc:
-        raise ValueError("Failed to extract accountId from token") from exc
-
-
-async def _post_form(url: str, body: dict[str, str]) -> dict[str, Any]:
+async def _post_json(url: str, body: dict[str, str]) -> dict[str, Any]:
     try:
         import httpx
     except Exception as exc:  # pragma: no cover
         raise RuntimeError(
-            "httpx is required for OpenAI Codex OAuth. Install via `pip install httpx`"
+            "httpx is required for Anthropic OAuth. Install via `pip install httpx`"
         ) from exc
 
     async with httpx.AsyncClient(timeout=30.0) as client:
         response = await client.post(
             url,
             headers={
-                "Content-Type": "application/x-www-form-urlencoded",
+                "Content-Type": "application/json",
                 "Accept": "application/json",
             },
-            data=body,
+            content=json.dumps(body),
         )
         response.raise_for_status()
         return response.json()
 
 
-class OpenAICodexOAuthProvider(OAuthProviderInterface):
+class AnthropicOAuthProvider(OAuthProviderInterface):
     def __init__(
         self,
         *,
-        http_post_form: Callable[[str, dict[str, str]], Awaitable[dict[str, Any]]]
+        http_post_json: Callable[[str, dict[str, str]], Awaitable[dict[str, Any]]]
         | None = None,
         pkce_generator: Callable[[], tuple[str, str]] | None = None,
-        state_generator: Callable[[], str] | None = None,
         browser_opener: Callable[[str], bool] | None = None,
         callback_waiter: CallbackWaiter | None = None,
         time_fn: Callable[[], float] | None = None,
     ) -> None:
-        self._http_post_form = http_post_form or _post_form
+        self._http_post_json = http_post_json or _post_json
         self._pkce_generator = pkce_generator or generate_pkce_pair
-        self._state_generator = state_generator or create_state
         self._browser_opener = browser_opener or open_browser
         self._callback_waiter = callback_waiter or wait_for_callback_url
         self._time_fn = time_fn or time.time
 
     @property
     def id(self) -> str:
-        return "openai-codex"
+        return "anthropic"
 
     @property
     def name(self) -> str:
-        return "OpenAI Codex"
+        return "Anthropic (Claude)"
 
     def uses_callback_server(self) -> bool:
         return True
@@ -138,27 +121,18 @@ class OpenAICodexOAuthProvider(OAuthProviderInterface):
     def get_api_key(self, credentials: OAuthCredentials) -> str:
         return credentials.access_token
 
-    def get_auth_headers(self, credentials: OAuthCredentials) -> dict[str, str]:
-        account_id = _account_id_from_extra(credentials.extra)
-        if account_id is None:
-            return {}
-        return {"chatgpt-account-id": account_id}
-
     async def login(self, callbacks: OAuthLoginCallbacks) -> OAuthCredentials:
         verifier, challenge = self._pkce_generator()
-        expected_state = self._state_generator()
         query = urlencode(
             {
-                "response_type": "code",
+                "code": "true",
                 "client_id": CLIENT_ID,
+                "response_type": "code",
                 "redirect_uri": REDIRECT_URI,
                 "scope": SCOPES,
                 "code_challenge": challenge,
                 "code_challenge_method": "S256",
-                "state": expected_state,
-                "id_token_add_organizations": "true",
-                "codex_cli_simplified_flow": "true",
-                "originator": "loushang",
+                "state": verifier,
             }
         )
         auth_url = f"{AUTHORIZE_URL}?{query}"
@@ -169,7 +143,8 @@ class OpenAICodexOAuthProvider(OAuthProviderInterface):
                     "url": auth_url,
                     "instructions": (
                         "Complete login in your browser. If the automatic localhost callback "
-                        "does not arrive, paste the final redirect URL or the authorization code here."
+                        "does not arrive, paste the final redirect URL or the authorization "
+                        "code here."
                     ),
                 }
             )
@@ -177,8 +152,8 @@ class OpenAICodexOAuthProvider(OAuthProviderInterface):
         with suppress(Exception):
             opened = self._browser_opener(auth_url)
             if opened:
-                callbacks.on_progress("Opened browser for OpenAI Codex login")
-            callbacks.on_progress("Waiting for OpenAI Codex authorization callback")
+                callbacks.on_progress("Opened browser for Anthropic login")
+            callbacks.on_progress("Waiting for Anthropic authorization callback")
 
         try:
             raw_input = (
@@ -197,14 +172,12 @@ class OpenAICodexOAuthProvider(OAuthProviderInterface):
                 callbacks.on_progress(
                     "Callback not received; waiting for manual code input"
                 )
-
         try:
             if not raw_input.strip():
                 raw_input = await callbacks.on_manual_code_input()
         except Exception:
             if not raw_input.strip():
                 raw_input = ""
-
         if not raw_input.strip():
             raw_input = await callbacks.on_prompt(
                 {
@@ -214,36 +187,37 @@ class OpenAICodexOAuthProvider(OAuthProviderInterface):
                 }
             )
 
-        code, returned_state = _parse_authorization_input(raw_input)
+        code, state = _parse_authorization_input(raw_input)
         if not code:
             raise ValueError(
-                "OpenAI Codex OAuth login did not receive an authorization code"
+                "Anthropic OAuth login did not receive an authorization code"
             )
-        if returned_state and returned_state != expected_state:
-            raise ValueError("OpenAI Codex OAuth state mismatch")
+        if state and state != verifier:
+            raise ValueError("Anthropic OAuth state mismatch")
 
-        payload = await self._http_post_form(
+        payload = await self._http_post_json(
             TOKEN_URL,
             {
                 "grant_type": "authorization_code",
                 "client_id": CLIENT_ID,
                 "code": code,
-                "code_verifier": verifier,
+                "state": state or verifier,
                 "redirect_uri": REDIRECT_URI,
+                "code_verifier": verifier,
             },
         )
         return self._credentials_from_token_payload(payload)
 
     async def refresh_token(self, credentials: OAuthCredentials) -> OAuthCredentials:
         if not credentials.refresh_token:
-            raise ValueError("OpenAI Codex OAuth credentials missing refresh_token")
+            return replace(credentials, expires_at=self._time_fn() + 3600)
 
-        payload = await self._http_post_form(
+        payload = await self._http_post_json(
             TOKEN_URL,
             {
                 "grant_type": "refresh_token",
-                "refresh_token": credentials.refresh_token,
                 "client_id": CLIENT_ID,
+                "refresh_token": credentials.refresh_token,
             },
         )
         return self._credentials_from_token_payload(payload, previous=credentials)
@@ -256,7 +230,7 @@ class OpenAICodexOAuthProvider(OAuthProviderInterface):
     ) -> OAuthCredentials:
         access_token = payload.get("access_token")
         if not isinstance(access_token, str) or not access_token:
-            raise ValueError("OpenAI Codex OAuth token response missing access_token")
+            raise ValueError("Anthropic OAuth token response missing access_token")
 
         refresh_token = payload.get("refresh_token")
         if not isinstance(refresh_token, str) or not refresh_token:
@@ -264,20 +238,20 @@ class OpenAICodexOAuthProvider(OAuthProviderInterface):
 
         expires_in = payload.get("expires_in")
         expires_at: float | None = None
-        if isinstance(expires_in, (int, float)):
+        if isinstance(expires_in, int | float):
             expires_at = self._time_fn() + float(expires_in) - 300.0
         elif previous is not None:
             expires_at = previous.expires_at
 
-        extra: dict[str, Any] = {
-            "account_id": _extract_account_id(access_token),
-        }
+        extra: dict[str, Any] | None = None
         token_type = payload.get("token_type")
         scope = payload.get("scope")
-        if isinstance(token_type, str):
-            extra["token_type"] = token_type
-        if isinstance(scope, str):
-            extra["scope"] = scope
+        if isinstance(token_type, str) or isinstance(scope, str):
+            extra = {}
+            if isinstance(token_type, str):
+                extra["token_type"] = token_type
+            if isinstance(scope, str):
+                extra["scope"] = scope
 
         return OAuthCredentials(
             provider=self.id,
@@ -288,24 +262,5 @@ class OpenAICodexOAuthProvider(OAuthProviderInterface):
         )
 
 
-def register_openai_codex_oauth_provider(
-    *,
-    source_id: str | None = None,
-    registry: OAuthProviderRegistry | None = None,
-) -> None:
-    resolved_registry = registry or get_default_oauth_registry()
-    resolved_registry.register(OpenAICodexOAuthProvider(), source_id=source_id)
-
-
-def _account_id_from_extra(extra: object) -> str | None:
-    if not isinstance(extra, dict):
-        return None
-    headers = extra.get("headers")
-    if isinstance(headers, dict):
-        header_value = headers.get("chatgpt-account-id")
-        if isinstance(header_value, str) and header_value.strip():
-            return header_value.strip()
-    account_id = extra.get("account_id")
-    if isinstance(account_id, str) and account_id.strip():
-        return account_id.strip()
-    return None
+def register_anthropic_oauth_provider(*, source_id: str | None = None) -> None:
+    get_default_oauth_registry().register(AnthropicOAuthProvider(), source_id=source_id)

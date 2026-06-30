@@ -259,7 +259,7 @@ provider adapter 只消费：
   - subscription entitlement
   - workspace binding
 
-4. 账号态 credential 应进入 `OAuthCredentials`
+4. 账号态 credential 应进入顶层 `loushang.auth.OAuthCredentials`
 - `access_token`
 - `refresh_token`
 - `expires_at`

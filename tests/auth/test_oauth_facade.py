@@ -6,15 +6,15 @@ from dataclasses import asdict
 import pytest
 
 import loushang.ai.auth as auth_module
-from loushang.ai.auth import facade
-from loushang.ai.auth.facade import (
+import loushang.auth.facade as facade
+from loushang.auth.facade import (
     oauth_login,
     oauth_refresh,
     register_builtin_oauth_providers,
     resolve_oauth_api_key,
 )
-from loushang.ai.auth.registry import OAuthProviderRegistry
-from loushang.ai.auth.types import OAuthCredentials
+from loushang.auth.registry import OAuthProviderRegistry
+from loushang.auth.types import OAuthCredentials
 
 
 class _Callbacks:

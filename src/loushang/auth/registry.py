@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from loushang.ai.auth.types import OAuthProviderInterface
+from loushang.auth.types import OAuthProviderInterface
 
 
 class OAuthProviderRegistry:

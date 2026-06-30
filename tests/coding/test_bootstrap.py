@@ -1181,9 +1181,9 @@ def test_create_agent_session_records_auth_resolution_failure_for_default_model(
 def test_create_agent_session_uses_stored_oauth_credentials_for_auth_bridge(tmp_path, monkeypatch) -> None:
     import asyncio
 
-    from loushang.ai.auth.types import OAuthCredentials
     from loushang.ai.model.domain import Auth, Endpoint
     from loushang.ai.model.registry import ModelRegistry as AiModelRegistry
+    from loushang.auth.types import OAuthCredentials
     from loushang.coding.bootstrap import create_agent_session, create_services
     from loushang.coding.control import AuthManager
     from loushang.coding.session import ModelSelection
@@ -1214,10 +1214,10 @@ def test_create_agent_session_uses_stored_oauth_credentials_for_auth_bridge(tmp_
         "endpoints": {},
         "models": {},
     }
-    monkeypatch.setattr("loushang.ai.auth.storage.load_credential_store", lambda: credential_store)
-    monkeypatch.setattr("loushang.ai.auth.facade.load_credential_store", lambda: credential_store)
+    monkeypatch.setattr("loushang.auth.storage.load_credential_store", lambda: credential_store)
+    monkeypatch.setattr("loushang.auth.facade.load_credential_store", lambda: credential_store)
     monkeypatch.setattr(
-        "loushang.ai.auth.oauth.get_oauth_api_key",
+        "loushang.auth.oauth.get_oauth_api_key",
         lambda provider, credentials: {
             "apiKey": f"{provider}-oauth-key",
             "newCredentials": credentials[provider],

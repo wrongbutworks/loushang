@@ -150,12 +150,10 @@ OAuth 登录、refresh、credential store、账号选择、quota、billing 和�
   - `models.json.auth` default resolve
 - `credentials.py`
   - `ApiKeyAuth` / `OAuthBearerAuth` / `NoAuth` / `HeadersAuth`
-- `facade.py`
-  - 非 core OAuth provider 管理入口
-- `registry.py`
-  - OAuth provider registry
-- `oauth.py` / `storage.py` / `types.py`
-  - OAuth 具体支持
+
+OAuth login、refresh、credential store、provider registry、env-oauth 和
+Codex/Anthropic OAuth provider 支撑在顶层 `loushang.auth` 包中，不属于
+`loushang.ai.auth`。
 
 ### 其它
 

@@ -6,7 +6,6 @@ from pathlib import Path
 import pytest
 
 from loushang.ai.api_registry import ApiProviderRegistry
-from loushang.ai.auth.registry import OAuthProviderRegistry
 from loushang.ai.bootstrap import register_builtin_ai_providers
 from loushang.ai.contrib.openai_codex import register_openai_codex_contrib
 from loushang.ai.model import Endpoint, Model
@@ -176,11 +175,9 @@ def test_bedrock_provider_module_is_not_in_core() -> None:
 def test_openai_codex_contrib_registers_api_and_catalog_explicitly() -> None:
     api_registry = ApiProviderRegistry()
     model_registry = ModelRegistry()
-    oauth_registry = OAuthProviderRegistry()
 
     register_openai_codex_contrib(
         api_registry=api_registry,
-        oauth_registry=oauth_registry,
         model_registry=model_registry,
     )
 
