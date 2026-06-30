@@ -1,9 +1,9 @@
 from __future__ import annotations
 
-from collections.abc import Mapping
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import Any, Literal
 
+from loushang.ai.auth.credentials import AuthCredential
 from loushang.ai.structured import StructuredOutputOptions
 
 PairingMode = Literal["strict", "repair"]
@@ -41,8 +41,7 @@ class TimeoutOptions:
 @dataclass(frozen=True, slots=True)
 class CallOptions:
     cancellation: object | None = None
-    api_key: str | None = None
-    headers: Mapping[str, str] = field(default_factory=dict)
+    auth: AuthCredential | None = None
     cache_retention: CacheRetention | None = None
     session_id: str | None = None
     max_output_tokens: int | None = None
@@ -50,7 +49,6 @@ class CallOptions:
     timeout: TimeoutOptions | None = None
     retry: RetryOptions | None = None
     trace: object | None = None
-    oauth_credentials: dict[str, object] | None = None
     region: str | None = None
     pairing_mode: PairingMode = "strict"
     reasoning: ReasoningOptions | None = None

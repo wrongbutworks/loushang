@@ -15,6 +15,7 @@ from collections.abc import Iterable
 import pytest
 
 from loushang.ai import (
+    ApiKeyAuth,
     CallOptions,
     get_model,
     stream,
@@ -64,7 +65,7 @@ def _build_context() -> dict:
 
 def _build_options(api_key: str) -> CallOptions:
     # 这里保留最小必要选项，方便观察 stream 本身而不是 options 细节。
-    return CallOptions(api_key=api_key, max_output_tokens=MAX_TOKENS)
+    return CallOptions(auth=ApiKeyAuth(api_key), max_output_tokens=MAX_TOKENS)
 
 
 def _iter_text(parts: Iterable[object]) -> str:

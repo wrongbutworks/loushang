@@ -7,7 +7,7 @@ from types import ModuleType, SimpleNamespace
 
 import pytest
 
-from loushang.ai import CallOptions, ReasoningOptions
+from loushang.ai import ApiKeyAuth, CallOptions, HeadersAuth, ReasoningOptions
 from loushang.ai.context import normalize_context
 from loushang.ai.errors import UnsupportedCapabilityError
 from loushang.ai.model import (
@@ -129,7 +129,7 @@ def test_openai_responses_payload_maps_formal_context_and_tools(
                         )
                     ],
                 ),
-                CallOptions(api_key="test-key"),
+                CallOptions(auth=ApiKeyAuth("test-key")),
             )
         )
     )
@@ -199,7 +199,7 @@ def test_openai_responses_complete_mode_maps_non_stream_response(
                     ]
                 },
                 CallOptions(
-                    api_key="test-key",
+                    auth=ApiKeyAuth("test-key"),
                     reasoning=ReasoningOptions(effort="high"),
                 ),
                 mode="complete",
@@ -278,7 +278,7 @@ def test_openai_responses_payload_uses_resolved_capabilities_for_images(
                         ),
                     ],
                 ),
-                CallOptions(api_key="test-key", pairing_mode="repair"),
+                CallOptions(auth=ApiKeyAuth("test-key"), pairing_mode="repair"),
             )
         )
     )
@@ -329,7 +329,7 @@ def test_openai_responses_payload_maps_structured_output_text_format(
                     messages=[UserMessage(role="user", content="hello", timestamp=0.0)]
                 ),
                 CallOptions(
-                    api_key="test-key",
+                    auth=ApiKeyAuth("test-key"),
                     output=StructuredOutputOptions(mode="json_object"),
                 ),
             )
@@ -622,7 +622,7 @@ def test_openai_responses_uses_upstream_model_id(
                     system_prompt=None,
                     messages=[UserMessage(role="user", content="hello", timestamp=0.0)],
                 ),
-                CallOptions(api_key="test-key"),
+                CallOptions(auth=ApiKeyAuth("test-key")),
             )
         )
     )
@@ -651,7 +651,7 @@ def test_openai_responses_caps_model_max_tokens_default(
                     messages=[UserMessage(role="user", content="hello", timestamp=0.0)],
                     tools=[],
                 ),
-                CallOptions(api_key="test-key"),
+                CallOptions(auth=ApiKeyAuth("test-key")),
             )
         )
     )
@@ -681,7 +681,7 @@ def test_openai_responses_uses_resolved_capability_max_tokens(
                     messages=[UserMessage(role="user", content="hello", timestamp=0.0)],
                     tools=[],
                 ),
-                CallOptions(api_key="test-key"),
+                CallOptions(auth=ApiKeyAuth("test-key")),
             )
         )
     )
@@ -718,7 +718,7 @@ def test_openai_responses_payload_maps_assistant_tool_call_and_synthesizes_missi
                 provider,
                 _Model(),
                 {"messages": [assistant]},
-                CallOptions(api_key="test-key", pairing_mode="repair"),
+                CallOptions(auth=ApiKeyAuth("test-key"), pairing_mode="repair"),
             )
         )
     )
@@ -777,7 +777,7 @@ def test_openai_responses_payload_normalizes_cross_provider_tool_call_ids(
                 provider,
                 _Model(),
                 {"messages": [assistant, tool_result]},
-                CallOptions(api_key="test-key"),
+                CallOptions(auth=ApiKeyAuth("test-key")),
             )
         )
     )
@@ -828,7 +828,7 @@ def test_openai_responses_payload_replays_assistant_thinking_signature(
                 provider,
                 _Model(),
                 {"messages": [assistant]},
-                CallOptions(api_key="test-key"),
+                CallOptions(auth=ApiKeyAuth("test-key")),
             )
         )
     )
@@ -876,7 +876,7 @@ def test_openai_responses_payload_replays_assistant_text_signature_and_phase(
                 provider,
                 _Model(),
                 {"messages": [assistant]},
-                CallOptions(api_key="test-key"),
+                CallOptions(auth=ApiKeyAuth("test-key")),
             )
         )
     )
@@ -904,7 +904,7 @@ def test_openai_responses_payload_maps_reasoning_option(
                     ]
                 },
                 CallOptions(
-                    api_key="test-key",
+                    auth=ApiKeyAuth("test-key"),
                     reasoning=ReasoningOptions(effort="high", expose_summary=True),
                 ),
             )
@@ -942,7 +942,7 @@ def test_openai_responses_payload_uses_resolved_capabilities_for_reasoning(
                     ]
                 },
                 CallOptions(
-                    api_key="test-key",
+                    auth=ApiKeyAuth("test-key"),
                     reasoning=ReasoningOptions(effort="high", expose_summary=True),
                 ),
             )
@@ -1008,7 +1008,7 @@ def test_openai_responses_payload_maps_tool_result_images_and_bridge(
                         UserMessage(role="user", content="next", timestamp=0.0),
                     ]
                 },
-                CallOptions(api_key="test-key"),
+                CallOptions(auth=ApiKeyAuth("test-key")),
             )
         )
     )
@@ -1106,7 +1106,7 @@ def test_openai_responses_provider_adds_github_copilot_dynamic_headers(
                         ),
                     ]
                 },
-                CallOptions(api_key="test-key"),
+                CallOptions(auth=ApiKeyAuth("test-key")),
             )
         )
     )
@@ -1174,7 +1174,7 @@ def test_openai_responses_stream_applies_priority_service_tier_cost_multiplier(
                 pricing=Pricing(input=1.5, output=6.0, cache_read=0.3, cache_write=3.0),
             ),
             {"messages": [UserMessage(role="user", content="hello", timestamp=0.0)]},
-            CallOptions(api_key="test-key"),
+            CallOptions(auth=ApiKeyAuth("test-key")),
         )
     )
     events = asyncio.run(_collect_stream_events(stream))
@@ -1239,7 +1239,7 @@ def test_openai_responses_stream_retains_thinking_signature_on_final_message(
             _Model(),
             {"messages": [UserMessage(role="user", content="hello", timestamp=0.0)]},
             CallOptions(
-                api_key="test-key",
+                auth=ApiKeyAuth("test-key"),
                 reasoning=ReasoningOptions(effort="high"),
             ),
         )
@@ -1377,7 +1377,7 @@ def test_openai_responses_stream_joins_multiple_reasoning_summary_parts(
             _Model(),
             {"messages": [UserMessage(role="user", content="hello", timestamp=0.0)]},
             CallOptions(
-                api_key="test-key",
+                auth=ApiKeyAuth("test-key"),
                 reasoning=ReasoningOptions(effort="high"),
             ),
         )
@@ -1443,7 +1443,7 @@ def test_openai_responses_stream_retains_text_signature_on_final_message(
             provider,
             _Model(),
             {"messages": [UserMessage(role="user", content="hello", timestamp=0.0)]},
-            CallOptions(api_key="test-key"),
+            CallOptions(auth=ApiKeyAuth("test-key")),
         )
     )
     events = asyncio.run(_collect_stream_events(stream))
@@ -1549,9 +1549,13 @@ def _patch_resolved_request(
     def _resolve(_model, *, context=None, options=None, request=None):
         del context, request
         headers = {}
-        api_key = getattr(options, "api_key", None) if options is not None else None
-        if isinstance(api_key, str) and api_key:
-            headers["Authorization"] = f"Bearer {api_key}"
+        auth = getattr(options, "auth", None) if options is not None else None
+        if isinstance(auth, ApiKeyAuth):
+            headers[auth.header or "Authorization"] = (
+                f"{auth.prefix if auth.prefix is not None else 'Bearer '}{auth.value}"
+            )
+        elif isinstance(auth, HeadersAuth):
+            headers.update(dict(auth.headers))
         if extra_headers:
             headers.update(extra_headers)
         option_max_tokens = (

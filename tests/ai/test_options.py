@@ -11,6 +11,7 @@ import loushang.ai.contrib.openai_codex as openai_codex_module
 import loushang.ai.options as options_module
 from loushang.ai import CallOptions as PublicCallOptions
 from loushang.ai.advanced.registry import ApiProviderRegistry
+from loushang.ai.auth import ApiKeyAuth, HeadersAuth
 from loushang.ai.contrib.openai_codex import OpenAICodexResponsesOptions
 from loushang.ai.options import (
     CallOptions,
@@ -55,11 +56,10 @@ def test_call_options_is_the_single_public_call_contract() -> None:
         assert name not in options_module.__all__
         assert not hasattr(options_module, name)
 
-    options = CallOptions(api_key="key", headers={"x-trace": "1"})
+    options = CallOptions(auth=ApiKeyAuth("key"))
 
     assert isinstance(options, CallOptions)
-    assert options.api_key == "key"
-    assert options.headers == {"x-trace": "1"}
+    assert options.auth == ApiKeyAuth("key")
 
 
 def test_call_options_fields_are_canonical_and_consumed() -> None:
@@ -67,8 +67,7 @@ def test_call_options_fields_are_canonical_and_consumed() -> None:
 
     assert field_names == {
         "cancellation",
-        "api_key",
-        "headers",
+        "auth",
         "cache_retention",
         "session_id",
         "max_output_tokens",
@@ -76,7 +75,6 @@ def test_call_options_fields_are_canonical_and_consumed() -> None:
         "timeout",
         "retry",
         "trace",
-        "oauth_credentials",
         "region",
         "pairing_mode",
         "reasoning",
@@ -95,7 +93,14 @@ def test_call_options_fields_are_canonical_and_consumed() -> None:
         "on_response",
         "service_tier",
         "text_verbosity",
+        "api_key",
+        "headers",
+        "oauth_credentials",
     }.isdisjoint(field_names)
+
+    assert CallOptions(auth=HeadersAuth({"x-trace": "1"})).auth == HeadersAuth(
+        {"x-trace": "1"}
+    )
 
 
 def test_call_option_helpers_support_canonical_shapes_only() -> None:

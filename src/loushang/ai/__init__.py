@@ -3,6 +3,7 @@ from loushang.ai.api import (
     complete_structured,
     stream,
 )
+from loushang.ai.auth import ApiKeyAuth, HeadersAuth, NoAuth, OAuthBearerAuth
 from loushang.ai.errors import AIError, AIErrorCode, AIErrorInfo
 from loushang.ai.event_stream import AssistantMessageEventStream
 from loushang.ai.model import Model
@@ -78,7 +79,11 @@ __all__ = [
     "AIError",
     "AIErrorCode",
     "AIErrorInfo",
+    "ApiKeyAuth",
     "CallOptions",
+    "HeadersAuth",
+    "NoAuth",
+    "OAuthBearerAuth",
     "ReasoningOptions",
     "RetryOptions",
     "TimeoutOptions",

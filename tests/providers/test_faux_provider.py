@@ -3,7 +3,7 @@ from __future__ import annotations
 import asyncio
 
 from loushang.ai.context import normalize_context
-from loushang.ai.model import Model
+from loushang.ai.model import Auth, Model
 from loushang.ai.providers.faux import FauxProvider
 from loushang.ai.types import UserMessage
 from tests.providers._runtime import start_test_provider_stream
@@ -33,6 +33,7 @@ def test_faux_provider_stream_resolves_request_when_omitted() -> None:
         provider="faux",
         endpoint="anthropic-messages",
         api="anthropic-messages",
+        auth=Auth(kind="none"),
     )
 
     stream = asyncio.run(

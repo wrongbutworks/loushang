@@ -4,7 +4,8 @@ import os
 from collections.abc import Mapping
 from dataclasses import dataclass, field
 
-from loushang.ai.auth.support import resolve_auth_material
+from loushang.ai.auth import ApiKeyAuth, OAuthBearerAuth
+from loushang.ai.auth.support import resolve_explicit_auth
 from loushang.ai.auth.types import OAuthCredentials
 from loushang.ai.model import Model
 from loushang.ai.model.registry import ModelRegistry as AiModelRegistry
@@ -87,7 +88,10 @@ class AuthManager:
                         api_key=oauth_api_key,
                         api_key_env=getattr(auth_config, "api_key_env", None),
                         source="stored_oauth",
-                        headers=resolve_auth_material(bearer_token=oauth_api_key).headers,
+                        headers=resolve_explicit_auth(
+                            OAuthBearerAuth(oauth_api_key),
+                            declaration_hint=auth_config,
+                        ).headers,
                     )
 
         api_key_env = _primary_api_key_env(auth_config)
@@ -102,7 +106,10 @@ class AuthManager:
                 api_key=api_key,
                 api_key_env=api_key_env,
                 source="env",
-                headers=resolve_auth_material(api_key=api_key, config=auth_config, env=dict(env)).headers,
+                headers=resolve_explicit_auth(
+                    ApiKeyAuth(api_key),
+                    declaration_hint=auth_config,
+                ).headers,
             )
 
         if not auth_required:

@@ -178,7 +178,7 @@ def resolve_request_for_model(
         options=options,
         env=resolved_env,
     )
-    headers = _merge_option_headers(auth_view.headers, options)
+    headers = dict(auth_view.headers)
     max_tokens = _resolve_max_tokens(options, defaults)
     reasoning_effort = _resolve_reasoning_effort(options, defaults)
     temperature = _resolve_temperature(options, defaults)
@@ -412,24 +412,6 @@ def _deep_merge_raw_mapping(
             merged[key] = _deep_merge_raw_mapping(current, value)
             continue
         merged[key] = value
-    return merged
-
-
-def _merge_option_headers(
-    headers: dict[str, str],
-    options,
-) -> dict[str, str]:
-    option_headers = getattr(options, "headers", None) if options is not None else None
-    if not isinstance(option_headers, Mapping) or not option_headers:
-        return dict(headers)
-    merged = dict(headers)
-    merged.update(
-        {
-            key: value
-            for key, value in option_headers.items()
-            if isinstance(key, str) and isinstance(value, str)
-        }
-    )
     return merged
 
 

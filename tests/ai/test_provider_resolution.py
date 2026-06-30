@@ -4,6 +4,7 @@ from dataclasses import dataclass, replace
 
 import pytest
 
+from loushang.ai.auth import ApiKeyAuth, AuthCredential
 from loushang.ai.model import (
     AnthropicMessagesConfig,
     Auth,
@@ -30,8 +31,7 @@ from loushang.ai.provider import (
 
 @dataclass
 class _Options:
-    api_key: str | None = "secret"
-    headers: dict[str, str] | None = None
+    auth: AuthCredential | None = ApiKeyAuth("secret")
     region: str | None = None
     max_output_tokens: int | None = None
     reasoning_effort: str | None = None
@@ -44,7 +44,7 @@ def test_builtin_openai_style_model_resolves_adapter_config() -> None:
 
     resolved = resolve_request_for_model(
         model,
-        options=_Options(api_key="moonshot-key"),
+        options=_Options(auth=ApiKeyAuth("moonshot-key")),
         registry=registry,
     )
 
@@ -72,7 +72,7 @@ def test_normalize_provider_request_adds_default_core_adapter_config() -> None:
         "openai-responses",
         resolve_request_for_model(
             model,
-            options=_Options(api_key="token"),
+            options=_Options(auth=ApiKeyAuth("token")),
         ),
     )
 
@@ -93,12 +93,12 @@ def test_resolve_request_for_model_returns_provider_request() -> None:
 
     resolved = resolve_request_for_model(
         model,
-        options=_Options(api_key="token"),
+        options=_Options(auth=ApiKeyAuth("token")),
     )
 
     assert isinstance(resolved, ProviderRequest)
     assert resolved.model is model
-    assert resolved.options == _Options(api_key="token")
+    assert resolved.options == _Options(auth=ApiKeyAuth("token"))
 
 
 @pytest.mark.parametrize(
@@ -183,7 +183,7 @@ def test_model_overrides_defaults_and_capabilities() -> None:
 
     resolved = resolve_request_for_model(
         caller_model,
-        options=_Options(api_key="token"),
+        options=_Options(auth=ApiKeyAuth("token")),
         registry=registry,
     )
 
@@ -219,7 +219,7 @@ def test_ad_hoc_model_adapter_merges_with_registered_endpoint_adapter() -> None:
 
     resolved = resolve_request_for_model(
         caller_model,
-        options=_Options(api_key="token"),
+        options=_Options(auth=ApiKeyAuth("token")),
         registry=registry,
     )
 
@@ -256,7 +256,7 @@ def test_ad_hoc_model_auth_merges_registered_provider_endpoint_auth() -> None:
 
     resolved = resolve_request_for_model(
         caller_model,
-        options=_Options(api_key="secret"),
+        options=_Options(auth=ApiKeyAuth("secret")),
         registry=registry,
     )
 
@@ -293,7 +293,7 @@ def test_api_only_ad_hoc_model_uses_default_registry_endpoint(
 
     resolved = resolve_request_for_model(
         caller_model,
-        options=_Options(api_key="token"),
+        options=_Options(auth=ApiKeyAuth("token")),
     )
 
     assert resolved.base_url == "https://example.test/responses"
@@ -339,7 +339,7 @@ def test_bound_model_endpoint_snapshot_preserves_adapter_transport_and_routing()
     resolved_endpoint = resolve_endpoint_for_model(bound, registry=ModelRegistry())
     resolved = resolve_request_for_model(
         bound,
-        options=_Options(api_key="token"),
+        options=_Options(auth=ApiKeyAuth("token")),
         registry=ModelRegistry(),
     )
 
@@ -405,7 +405,7 @@ def test_resolve_request_switches_endpoint_by_selected_region() -> None:
 
     resolved = resolve_request_for_model(
         caller_model,
-        options=_Options(api_key="token", region="eu"),
+        options=_Options(auth=ApiKeyAuth("token"), region="eu"),
         registry=registry,
     )
 
@@ -430,7 +430,7 @@ def test_base_url_env_template_is_expanded() -> None:
 
     resolved = resolve_request_for_model(
         model,
-        options=_Options(api_key="token"),
+        options=_Options(auth=ApiKeyAuth("token")),
         registry=ModelRegistry(),
         env={"HOST": "example.test"},
     )
@@ -451,7 +451,7 @@ def test_missing_base_url_env_template_fails() -> None:
     with pytest.raises(ValueError, match="Environment variable HOST"):
         resolve_request_for_model(
             model,
-            options=_Options(api_key="token"),
+            options=_Options(auth=ApiKeyAuth("token")),
             registry=ModelRegistry(),
             env={},
         )

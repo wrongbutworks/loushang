@@ -114,7 +114,7 @@ def test_agent_session_login_uses_session_registry_and_preserves_registrations(
         callbacks.on_progress("done")
         return OAuthCredentials(provider=provider_id, access_token="token")
 
-    monkeypatch.setattr("loushang.ai.auth.oauth_login", _fake_oauth_login)
+    monkeypatch.setattr("loushang.ai.auth.facade.oauth_login", _fake_oauth_login)
     session = AgentSession.__new__(AgentSession)
     session.agent = SimpleNamespace(model=model)
     session.model_registry = SimpleNamespace(ai_registry=registry)

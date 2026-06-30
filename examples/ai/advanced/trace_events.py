@@ -7,7 +7,7 @@ import json
 
 from loushang.ai import CallOptions, Model, RetryOptions, stream
 from loushang.ai.advanced.registry import ApiProviderRegistry
-from loushang.ai.model import Capabilities, Endpoint
+from loushang.ai.model import Auth, Capabilities, Endpoint
 from loushang.ai.model.registry import ModelRegistry
 from loushang.ai.provider import ProviderRequest
 from loushang.ai.trace import emit_trace
@@ -107,6 +107,7 @@ def _build_model() -> Model:
         provider="trace-demo",
         endpoint="anthropic-messages",
         capabilities=Capabilities(stream=True),
+        auth=Auth(kind="none"),
     )
 
 

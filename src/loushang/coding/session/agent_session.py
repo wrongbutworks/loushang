@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 from collections.abc import Awaitable, Callable, Mapping, Sequence
+from contextlib import suppress
 from pathlib import Path
 
 from loushang.agent import (
@@ -427,10 +428,8 @@ class AgentSession:
                 endpoint_id=session_context.model.get("endpoint_id"),
             )
             if self.get_model_selection() != selection and self.model_registry is not None:
-                try:
+                with suppress(KeyError, ValueError):
                     self.agent.model = self.model_registry.build_model(selection)
-                except (KeyError, ValueError):
-                    pass
         if self._tool_registry is not None:
             initial_active_tool_names = (
                 list(active_tool_names)
@@ -811,7 +810,10 @@ class AgentSession:
     async def _login_from_builtin(self, raw_target: str | None) -> dict[str, object]:
         if self.model_registry is None:
             raise RuntimeError("Model registry is not available.")
-        from loushang.ai.auth import oauth_login, register_builtin_oauth_providers
+        from loushang.ai.auth.facade import (
+            oauth_login,
+            register_builtin_oauth_providers,
+        )
 
         target = resolve_auth_login_target(
             raw_target,

@@ -135,20 +135,23 @@ Amazon Bedrock Converse 不再作为 core adapter 发布；本包不再声明 Be
 
 ### `auth/`
 
-认证与 OAuth 支持。
+request-level 认证解析。
 
 认证重构的目标边界见
 [`loushang-ai-auth-boundary-design.md`](../../../docs/internals/architecture/ai/loushang-ai-auth-boundary-design.md)：
-core auth 只负责把本次调用凭证解析为 provider request headers；OAuth
-登录、refresh、credential store、账号选择、quota、billing 和产品级认证策略属于上层或
-contrib 边界。
+core auth 只负责把本次调用凭证解析为 provider request headers。
+`models.json.auth` 是缺省认证声明；`CallOptions.auth` 是本次 request 的显式认证输入。
+OAuth 登录、refresh、credential store、账号选择、quota、billing 和产品级认证策略属于上层或
+非 core 边界。
 
 - `support.py`
   - auth merge
-  - header material 解析
-  - model auth resolve
+  - request auth resolve
+  - `models.json.auth` default resolve
+- `credentials.py`
+  - `ApiKeyAuth` / `OAuthBearerAuth` / `NoAuth` / `HeadersAuth`
 - `facade.py`
-  - OAuth provider 管理入口
+  - 非 core OAuth provider 管理入口
 - `registry.py`
   - OAuth provider registry
 - `oauth.py` / `storage.py` / `types.py`
@@ -350,17 +353,16 @@ after core request normalization and before `invoke_raw(request)`.
 
 ### `loushang.ai.auth`
 
-- `resolve_auth_material(...)`
+- `ApiKeyAuth`
+- `OAuthBearerAuth`
+- `NoAuth`
+- `HeadersAuth`
 - `resolve_auth_for_model(...)`
-- `get_default_oauth_registry()`
-- `OAuthProviderRegistry.register(...)`
-- `OAuthProviderRegistry.get(...)`
-- `OAuthProviderRegistry.list()`
-- `OAuthProviderRegistry.clear()`
-- `register_builtin_oauth_providers(...)`
-- `oauth_login(...)`
-- `oauth_refresh(...)`
-- OAuth credential store 读写接口
+- `resolve_auth_for_request(...)`
+- `MissingAuthError`
+- `MissingAuthConfigError`
+- `InvalidAuthConfigError`
+- `AuthResolutionError`
 
 ## 当前边界约定
 

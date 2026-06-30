@@ -5,11 +5,12 @@ import asyncio
 import pytest
 
 from loushang.ai import ReasoningOptions, TimeoutOptions, complete, get_model
-from loushang.ai.auth import (
-    load_credentials,
+from loushang.ai.auth import HeadersAuth
+from loushang.ai.auth.facade import (
     register_builtin_oauth_providers,
     resolve_oauth_api_key,
 )
+from loushang.ai.auth.storage import load_credentials
 from loushang.ai.contrib.openai_codex import (
     OpenAICodexResponsesOptions,
     register_openai_codex_contrib,
@@ -56,7 +57,12 @@ def test_openai_codex_complete_live() -> None:
                 "messages": [{"role": "user", "content": "Reply with exactly: ok"}],
             },
             OpenAICodexResponsesOptions(
-                oauth_credentials={"openai-codex": credentials},
+                auth=HeadersAuth(
+                    {
+                        "Authorization": f"Bearer {resolved_api_key}",
+                        "chatgpt-account-id": account_id,
+                    }
+                ),
                 reasoning=ReasoningOptions(effort="low"),
                 text_verbosity="low",
                 timeout=TimeoutOptions(total_seconds=30),

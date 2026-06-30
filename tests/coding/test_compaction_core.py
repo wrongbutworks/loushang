@@ -1,6 +1,6 @@
 import pytest
 
-from loushang.ai import CallOptions
+from loushang.ai import CallOptions, HeadersAuth
 from loushang.ai.types import (
     AssistantMessage,
     TextPart,
@@ -58,7 +58,9 @@ async def test_complete_text_calls_root_complete_with_options(monkeypatch) -> No
         )
 
     monkeypatch.setattr(compaction_module, "complete", fake_complete)
-    options = CallOptions(api_key="key", headers={"x-test": "1"})
+    options = CallOptions(
+        auth=HeadersAuth({"Authorization": "Bearer key", "x-test": "1"})
+    )
     context = Context(messages=[UserMessage(role="user", content="summarize", timestamp=0.0)])
 
     result = await compaction_module._complete_text("model", context, options)
@@ -636,8 +638,9 @@ async def test_generate_branch_summary_uses_serialized_prompt_and_file_details(m
     assert "Do NOT continue the conversation" in context.system_prompt
     options = captured["options"]
     assert isinstance(options, CallOptions)
-    assert options.api_key == "branch-key"
-    assert options.headers == {"x-branch": "1"}
+    assert options.auth == HeadersAuth(
+        {"Authorization": "Bearer branch-key", "x-branch": "1"}
+    )
     assert options.cancellation is signal
     assert result.summary.endswith("<read-files>\nREADME.md\n</read-files>\n\n<modified-files>\nsrc/app.py\n</modified-files>")
     assert result.details.read_files == ["README.md"]
@@ -755,8 +758,9 @@ async def test_compact_serializes_conversation_and_previous_summary_for_llm(monk
     assert "Do NOT continue the conversation" in context.system_prompt
     options = captured["options"]
     assert isinstance(options, CallOptions)
-    assert options.api_key == "test-key"
-    assert options.headers == {"x-test": "1"}
+    assert options.auth == HeadersAuth(
+        {"Authorization": "Bearer test-key", "x-test": "1"}
+    )
     assert options.cancellation is signal
 
 
@@ -799,8 +803,9 @@ async def test_compact_split_turn_forwards_call_options_to_both_summaries(monkey
     assert "[User]: current turn" in prompts[1]
     for _, _, options in captured:
         assert isinstance(options, CallOptions)
-        assert options.api_key == "test-key"
-        assert options.headers == {"x-test": "1"}
+        assert options.auth == HeadersAuth(
+            {"Authorization": "Bearer test-key", "x-test": "1"}
+        )
         assert options.cancellation is signal
 
 

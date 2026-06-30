@@ -13,7 +13,7 @@ import sys
 
 import pytest
 
-from loushang.ai import CallOptions, get_model, stream
+from loushang.ai import ApiKeyAuth, CallOptions, get_model, stream
 
 # 用户可直接修改的配置。
 # `API_KEY` 是显式认证入口；环境变量只是可选读取来源。
@@ -56,7 +56,7 @@ def _build_context() -> dict:
 
 def _build_options(api_key: str) -> CallOptions:
     # Responses path 的关键参数仍然集中放在 options 中，调用点保持最短。
-    return CallOptions(api_key=api_key, max_output_tokens=MAX_TOKENS)
+    return CallOptions(auth=ApiKeyAuth(api_key), max_output_tokens=MAX_TOKENS)
 
 
 async def _main() -> None:

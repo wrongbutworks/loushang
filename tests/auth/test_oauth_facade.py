@@ -89,7 +89,19 @@ def _capture_store_updates(store, save_calls):
 
 
 def test_oauth_registry_method_wrappers_are_not_public_api() -> None:
-    removed_names = (
+    removed_core_exports = (
+        "CredentialStore",
+        "OAuthProviderRegistry",
+        "get_default_oauth_registry",
+        "get_env_oauth_credentials",
+        "get_oauth_api_key",
+        "load_credentials",
+        "oauth_login",
+        "oauth_refresh",
+        "refresh_oauth_token",
+        "register_builtin_oauth_providers",
+    )
+    removed_facade_wrappers = (
         "register_oauth_provider",
         "get_oauth_provider",
         "list_oauth_providers",
@@ -98,7 +110,10 @@ def test_oauth_registry_method_wrappers_are_not_public_api() -> None:
         "ensure_builtin_oauth_providers",
     )
 
-    for name in removed_names:
+    for name in removed_core_exports:
+        assert not hasattr(auth_module, name)
+
+    for name in removed_facade_wrappers:
         assert not hasattr(auth_module, name)
         assert not hasattr(facade, name)
 

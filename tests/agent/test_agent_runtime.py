@@ -5,6 +5,7 @@ from typing import Any
 import pytest
 
 from loushang.agent.types import AgentToolResult
+from loushang.ai.auth import ApiKeyAuth
 from loushang.ai.event_stream.stream import AssistantMessageEventStream
 from loushang.ai.model import Capabilities, Model
 from loushang.ai.model.domain import Endpoint
@@ -443,14 +444,14 @@ def test_process_event_requires_active_run_signal() -> None:
 def test_get_api_key_is_forwarded_to_stream_function_options() -> None:
     from loushang.agent import Agent
 
-    captured_api_keys: list[str | None] = []
+    captured_auth: list[object] = []
 
     async def get_api_key(provider: str) -> str:
         assert provider == "faux"
         return "secret-token"
 
     async def stream_fn(model, context, options=None):
-        captured_api_keys.append(getattr(options, "api_key", None))
+        captured_auth.append(getattr(options, "auth", None))
         return _stream_with_final_message(_assistant_text_message("hello"))
 
     async def scenario() -> None:
@@ -461,7 +462,7 @@ def test_get_api_key_is_forwarded_to_stream_function_options() -> None:
         )
         await agent.prompt("hi")
 
-        assert captured_api_keys == ["secret-token"]
+        assert captured_auth == [ApiKeyAuth("secret-token")]
 
     asyncio.run(scenario())
 

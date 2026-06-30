@@ -10,12 +10,10 @@ import pytest
 import loushang.ai.contrib.openai_codex.provider as codex_provider_module
 from loushang.ai.api import stream
 from loushang.ai.api_registry import ApiProviderRegistry
-from loushang.ai.auth.registry import get_default_oauth_registry
-from loushang.ai.auth.types import OAuthCredentials
+from loushang.ai.auth import ApiKeyAuth, HeadersAuth
 from loushang.ai.context import normalize_context
 from loushang.ai.contrib.openai_codex import (
     OpenAICodexResponsesOptions,
-    register_openai_codex_oauth_provider,
 )
 from loushang.ai.contrib.openai_codex.provider import OpenAICodexResponsesProvider
 from loushang.ai.contrib.openai_codex.runtime_config import OpenAICodexRuntimeConfig
@@ -113,7 +111,7 @@ def test_openai_codex_responses_builds_request_body_and_headers() -> None:
                     ],
                 },
                 OpenAICodexResponsesOptions(
-                    api_key=token,
+                    auth=ApiKeyAuth(token),
                     session_id="sess_1",
                     reasoning=ReasoningOptions(
                         effort="minimal",
@@ -192,7 +190,7 @@ def test_openai_codex_responses_trace_payload_summarizes_request_body() -> None:
                     ],
                 },
                 OpenAICodexResponsesOptions(
-                    api_key=_build_fake_jwt("acc_test"),
+                    auth=ApiKeyAuth(_build_fake_jwt("acc_test")),
                     session_id="sess_trace",
                     reasoning=ReasoningOptions(
                         effort="minimal",
@@ -237,7 +235,7 @@ def test_openai_codex_responses_accepts_canonical_reasoning_options() -> None:
                 _Model(reasoning=True),
                 {"messages": [UserMessage(role="user", content="hello", timestamp=0.0)]},
                 OpenAICodexResponsesOptions(
-                    api_key=_build_fake_jwt("acc_test"),
+                    auth=ApiKeyAuth(_build_fake_jwt("acc_test")),
                     reasoning=ReasoningOptions(
                         enabled=True,
                         effort="minimal",
@@ -288,7 +286,7 @@ def test_openai_codex_responses_closes_owned_http_client(
                         UserMessage(role="user", content="hello", timestamp=0.0)
                     ],
                 },
-                OpenAICodexResponsesOptions(api_key=_build_fake_jwt("acc_test")),
+                OpenAICodexResponsesOptions(auth=ApiKeyAuth(_build_fake_jwt("acc_test"))),
             )
         )
     )
@@ -317,7 +315,7 @@ def test_openai_codex_responses_merges_structured_output_text_format() -> None:
                     ]
                 },
                 OpenAICodexResponsesOptions(
-                    api_key=token,
+                    auth=ApiKeyAuth(token),
                     text_verbosity="low",
                     output=StructuredOutputOptions(mode="json_object"),
                 ),
@@ -350,7 +348,7 @@ def test_openai_codex_responses_ignores_duck_typed_contrib_fields() -> None:
                     ]
                 },
                 SimpleNamespace(
-                    api_key=_build_fake_jwt("acc_test"),
+                    auth=ApiKeyAuth(_build_fake_jwt("acc_test")),
                     transport="websocket",
                     text_verbosity="low",
                 ),
@@ -409,7 +407,7 @@ def test_openai_codex_responses_preserves_tool_history_payload() -> None:
                         UserMessage(role="user", content="next", timestamp=0.0),
                     ],
                 },
-                OpenAICodexResponsesOptions(api_key=token),
+                OpenAICodexResponsesOptions(auth=ApiKeyAuth(token)),
             )
         )
     )
@@ -463,7 +461,7 @@ def test_openai_codex_responses_uses_upstream_model_id() -> None:
                         UserMessage(role="user", content="hello", timestamp=0.0)
                     ],
                 },
-                OpenAICodexResponsesOptions(api_key=token),
+                OpenAICodexResponsesOptions(auth=ApiKeyAuth(token)),
             )
         )
     )
@@ -490,7 +488,7 @@ def test_openai_codex_responses_omits_optional_request_fields_when_unused() -> N
                         UserMessage(role="user", content="hello", timestamp=0.0)
                     ],
                 },
-                OpenAICodexResponsesOptions(api_key=token),
+                OpenAICodexResponsesOptions(auth=ApiKeyAuth(token)),
             )
         )
     )
@@ -525,7 +523,7 @@ def test_openai_codex_responses_sends_empty_instructions_when_missing() -> None:
                         UserMessage(role="user", content="hello", timestamp=0.0)
                     ],
                 },
-                OpenAICodexResponsesOptions(api_key=_build_fake_jwt("acc_test")),
+                OpenAICodexResponsesOptions(auth=ApiKeyAuth(_build_fake_jwt("acc_test"))),
             )
         )
     )
@@ -572,7 +570,7 @@ def test_openai_codex_responses_uses_default_runtime_session_headers() -> None:
                         UserMessage(role="user", content="hello", timestamp=0.0)
                     ],
                 },
-                OpenAICodexResponsesOptions(api_key=token, session_id="sess_compat"),
+                OpenAICodexResponsesOptions(auth=ApiKeyAuth(token), session_id="sess_compat"),
             )
         )
     )
@@ -619,7 +617,7 @@ def test_openai_codex_responses_public_stream_uses_runtime_config_headers() -> N
             model,
             {"messages": [UserMessage(role="user", content="hello", timestamp=0.0)]},
             OpenAICodexResponsesOptions(
-                api_key=_build_fake_jwt("acc_test"),
+                auth=ApiKeyAuth(_build_fake_jwt("acc_test")),
                 session_id="sess_public_config",
             ),
         )
@@ -659,7 +657,7 @@ def test_openai_codex_public_stream_rejects_invalid_runtime_config_before_iterat
                         UserMessage(role="user", content="hello", timestamp=0.0)
                     ]
                 },
-                OpenAICodexResponsesOptions(api_key=_build_fake_jwt("acc_test")),
+                OpenAICodexResponsesOptions(auth=ApiKeyAuth(_build_fake_jwt("acc_test"))),
                 provider_registry=provider_registry,
             )
 
@@ -703,12 +701,7 @@ def test_openai_codex_responses_uses_oauth_token_account_binding() -> None:
                     ],
                 },
                 OpenAICodexResponsesOptions(
-                    oauth_credentials={
-                        "openai-codex": OAuthCredentials(
-                            provider="openai-codex",
-                            access_token=token,
-                        )
-                    }
+                    auth=ApiKeyAuth(token)
                 ),
             )
         )
@@ -719,9 +712,6 @@ def test_openai_codex_responses_uses_oauth_token_account_binding() -> None:
 
 
 def test_openai_codex_responses_uses_oauth_metadata_account_header() -> None:
-    oauth_registry = get_default_oauth_registry()
-    oauth_registry.clear()
-    register_openai_codex_oauth_provider(registry=oauth_registry)
     client = _FakeCodexClient(
         events=[
             {"type": "response.completed", "response": {"status": "completed"}},
@@ -729,31 +719,27 @@ def test_openai_codex_responses_uses_oauth_metadata_account_header() -> None:
     )
     provider = OpenAICodexResponsesProvider(client=client)
 
-    try:
-        asyncio.run(
-            _collect_parts(
-                _invoke_raw_parts(
-                    provider,
-                    _Model(reasoning=False),
-                    {
-                        "messages": [
-                            UserMessage(role="user", content="hello", timestamp=0.0)
-                        ],
-                    },
-                    OpenAICodexResponsesOptions(
-                        oauth_credentials={
-                            "openai-codex": OAuthCredentials(
-                                provider="openai-codex",
-                                access_token="opaque-access-token",
-                                extra={"account_id": "acc_from_metadata"},
-                            )
+    asyncio.run(
+        _collect_parts(
+            _invoke_raw_parts(
+                provider,
+                _Model(reasoning=False),
+                {
+                    "messages": [
+                        UserMessage(role="user", content="hello", timestamp=0.0)
+                    ],
+                },
+                OpenAICodexResponsesOptions(
+                    auth=HeadersAuth(
+                        {
+                            "Authorization": "Bearer opaque-access-token",
+                            "chatgpt-account-id": "acc_from_metadata",
                         }
-                    ),
-                )
+                    )
+                ),
             )
         )
-    finally:
-        oauth_registry.clear()
+    )
 
     assert client.last_headers["Authorization"] == "Bearer opaque-access-token"
     assert client.last_headers["chatgpt-account-id"] == "acc_from_metadata"
@@ -779,17 +765,12 @@ def test_openai_codex_responses_header_override_keeps_account_consistent() -> No
                     ],
                 },
                 OpenAICodexResponsesOptions(
-                    oauth_credentials={
-                        "openai-codex": OAuthCredentials(
-                            provider="openai-codex",
-                            access_token="not-a-jwt",
-                            extra={"account_id": "acc_from_oauth"},
-                        )
-                    },
-                    headers={
-                        "Authorization": f"Bearer {override_token}",
-                        "chatgpt-account-id": "acc_header",
-                    },
+                    auth=HeadersAuth(
+                        {
+                            "Authorization": f"Bearer {override_token}",
+                            "chatgpt-account-id": "acc_header",
+                        }
+                    ),
                 ),
             )
         )
@@ -860,7 +841,7 @@ def test_openai_codex_responses_stream_maps_sse_to_final_message() -> None:
             _Model(reasoning=True),
             {"messages": [UserMessage(role="user", content="hello", timestamp=0.0)]},
             OpenAICodexResponsesOptions(
-                api_key=_build_fake_jwt("acc_test"),
+                auth=ApiKeyAuth(_build_fake_jwt("acc_test")),
                 reasoning=ReasoningOptions(effort="high"),
             ),
         )
@@ -933,7 +914,7 @@ def test_openai_codex_responses_stream_handles_incomplete_and_refusal_events() -
             provider,
             _Model(reasoning=False),
             {"messages": [UserMessage(role="user", content="hello", timestamp=0.0)]},
-            OpenAICodexResponsesOptions(api_key=_build_fake_jwt("acc_test")),
+            OpenAICodexResponsesOptions(auth=ApiKeyAuth(_build_fake_jwt("acc_test"))),
         )
     )
 
@@ -957,7 +938,7 @@ def test_openai_codex_responses_stream_handles_error_event() -> None:
             provider,
             _Model(reasoning=False),
             {"messages": [UserMessage(role="user", content="hello", timestamp=0.0)]},
-            OpenAICodexResponsesOptions(api_key=_build_fake_jwt("acc_test")),
+            OpenAICodexResponsesOptions(auth=ApiKeyAuth(_build_fake_jwt("acc_test"))),
         )
     )
 
@@ -1004,7 +985,7 @@ def test_openai_codex_responses_stream_handles_response_done_alias() -> None:
             provider,
             _Model(reasoning=False),
             {"messages": [UserMessage(role="user", content="hello", timestamp=0.0)]},
-            OpenAICodexResponsesOptions(api_key=_build_fake_jwt("acc_test")),
+            OpenAICodexResponsesOptions(auth=ApiKeyAuth(_build_fake_jwt("acc_test"))),
         )
     )
 
@@ -1062,7 +1043,7 @@ def test_openai_codex_responses_stream_handles_function_call_events() -> None:
                     UserMessage(role="user", content="use a tool", timestamp=0.0)
                 ]
             },
-            OpenAICodexResponsesOptions(api_key=_build_fake_jwt("acc_test")),
+            OpenAICodexResponsesOptions(auth=ApiKeyAuth(_build_fake_jwt("acc_test"))),
         )
     )
 
@@ -1113,7 +1094,7 @@ def test_openai_codex_responses_retries_retryable_sse_failure_through_runtime() 
             _Model(reasoning=False),
             {"messages": [UserMessage(role="user", content="hello", timestamp=0.0)]},
             OpenAICodexResponsesOptions(
-                api_key=_build_fake_jwt("acc_test"),
+                auth=ApiKeyAuth(_build_fake_jwt("acc_test")),
                 retry=RetryOptions(max_attempts=2, max_delay_seconds=0),
             ),
         )
@@ -1146,7 +1127,7 @@ def test_openai_codex_responses_does_not_retry_inside_adapter() -> None:
             _Model(reasoning=False),
             {"messages": [UserMessage(role="user", content="hello", timestamp=0.0)]},
             OpenAICodexResponsesOptions(
-                api_key=_build_fake_jwt("acc_test"),
+                auth=ApiKeyAuth(_build_fake_jwt("acc_test")),
                 retry=RetryOptions(max_attempts=1, max_delay_seconds=0),
             ),
         )
@@ -1169,7 +1150,7 @@ def test_openai_codex_responses_surfaces_http_error_code() -> None:
             provider,
             _Model(reasoning=False),
             {"messages": [UserMessage(role="user", content="hello", timestamp=0.0)]},
-            OpenAICodexResponsesOptions(api_key=_build_fake_jwt("acc_test")),
+            OpenAICodexResponsesOptions(auth=ApiKeyAuth(_build_fake_jwt("acc_test"))),
         )
     )
 
@@ -1192,7 +1173,7 @@ def test_openai_codex_responses_omits_non_http_error_code() -> None:
             provider,
             _Model(reasoning=False),
             {"messages": [UserMessage(role="user", content="hello", timestamp=0.0)]},
-            OpenAICodexResponsesOptions(api_key=_build_fake_jwt("acc_test")),
+            OpenAICodexResponsesOptions(auth=ApiKeyAuth(_build_fake_jwt("acc_test"))),
         )
     )
 
@@ -1219,7 +1200,7 @@ def test_openai_codex_responses_surfaces_parsed_error_message() -> None:
             _Model(reasoning=False),
             {"messages": [UserMessage(role="user", content="hello", timestamp=0.0)]},
             OpenAICodexResponsesOptions(
-                api_key=_build_fake_jwt("acc_test"),
+                auth=ApiKeyAuth(_build_fake_jwt("acc_test")),
                 retry=RetryOptions(max_attempts=1),
             ),
         )
@@ -1263,7 +1244,7 @@ def test_openai_codex_responses_auto_transport_falls_back_to_sse_when_websocket_
             _Model(reasoning=False),
             {"messages": [UserMessage(role="user", content="hello", timestamp=0.0)]},
             OpenAICodexResponsesOptions(
-                api_key=_build_fake_jwt("acc_test"),
+                auth=ApiKeyAuth(_build_fake_jwt("acc_test")),
                 transport="auto",
                 session_id="sess_ws",
             ),
@@ -1292,7 +1273,7 @@ def test_openai_codex_responses_websocket_transport_does_not_fallback_to_sse() -
             _Model(reasoning=False),
             {"messages": [UserMessage(role="user", content="hello", timestamp=0.0)]},
             OpenAICodexResponsesOptions(
-                api_key=_build_fake_jwt("acc_test"),
+                auth=ApiKeyAuth(_build_fake_jwt("acc_test")),
                 transport="websocket",
                 session_id="sess_ws",
             ),
@@ -1341,7 +1322,7 @@ def test_openai_codex_responses_websocket_uses_runtime_config_headers() -> None:
             model,
             {"messages": [UserMessage(role="user", content="hello", timestamp=0.0)]},
             OpenAICodexResponsesOptions(
-                api_key=_build_fake_jwt("acc_test"),
+                auth=ApiKeyAuth(_build_fake_jwt("acc_test")),
                 transport="websocket",
                 session_id="sess_ws_config",
             ),
@@ -1396,7 +1377,7 @@ def test_openai_codex_responses_websocket_reuses_connection_for_same_session() -
     )
     provider = OpenAICodexResponsesProvider(client=client)
     options = OpenAICodexResponsesOptions(
-        api_key=_build_fake_jwt("acc_test"),
+        auth=ApiKeyAuth(_build_fake_jwt("acc_test")),
         transport="websocket",
         session_id="sess_reuse",
     )
@@ -1446,7 +1427,7 @@ def test_openai_codex_responses_websocket_close_before_completion_is_error() -> 
             _Model(reasoning=False),
             {"messages": [UserMessage(role="user", content="hello", timestamp=0.0)]},
             OpenAICodexResponsesOptions(
-                api_key=_build_fake_jwt("acc_test"),
+                auth=ApiKeyAuth(_build_fake_jwt("acc_test")),
                 transport="websocket",
                 session_id="sess_close",
             ),
@@ -1505,7 +1486,7 @@ def test_openai_codex_responses_websocket_idle_expiry_closes_and_evicts_cached_s
     )
     provider = OpenAICodexResponsesProvider(client=client, websocket_cache_ttl_ms=10)
     options = OpenAICodexResponsesOptions(
-        api_key=_build_fake_jwt("acc_test"),
+        auth=ApiKeyAuth(_build_fake_jwt("acc_test")),
         transport="websocket",
         session_id="sess_idle",
     )

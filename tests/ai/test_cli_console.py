@@ -4,6 +4,7 @@ import json
 
 import pytest
 
+from loushang.ai.auth import ApiKeyAuth
 from loushang.ai.cli.__main__ import (
     _normalize_global_flags,
     _resolve_console_api_key,
@@ -103,7 +104,7 @@ def test_console_uses_env_api_key_for_selected_binding(
     assert exc_info.value.code == 0
     assert captured
     assert captured[0][0] == "kimi-a"
-    assert getattr(captured[0][1], "api_key", None) == "env-key"
+    assert getattr(captured[0][1], "auth", None) == ApiKeyAuth("env-key")
     output = capsys.readouterr().out
     assert "Loushang AI Console" in output
     assert (
@@ -187,7 +188,7 @@ def test_console_prompts_for_api_key_when_env_missing(
         main(["console"])
 
     assert captured
-    assert getattr(captured[0], "api_key", None) == "typed-key"
+    assert getattr(captured[0], "auth", None) == ApiKeyAuth("typed-key")
     output = capsys.readouterr().out
     assert "Current model: moonshot:openai-completions:kimi-a" in output
 

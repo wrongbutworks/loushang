@@ -13,6 +13,7 @@ from loushang.coding.compaction.compaction import (
     _entry_to_agent_message,
     _estimate_message_tokens,
     _format_file_operations,
+    _summarization_auth,
 )
 from loushang.coding.compaction.types import (
     BranchPreparation,
@@ -153,8 +154,7 @@ async def generate_branch_summary(
                 ],
             ),
             CallOptions(
-                api_key=api_key,
-                headers=dict(headers or {}),
+                auth=_summarization_auth(api_key=api_key, headers=headers),
                 cancellation=signal,
             ),
         )

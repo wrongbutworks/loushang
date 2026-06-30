@@ -19,7 +19,7 @@ from collections.abc import Iterable
 
 import pytest
 
-from loushang.ai import CallOptions, complete, get_model
+from loushang.ai import ApiKeyAuth, CallOptions, complete, get_model
 from loushang.ai.advanced.registry import reset_api_providers
 
 # 用户可直接修改的配置。
@@ -64,7 +64,7 @@ def _build_context() -> dict:
 
 def _build_options(api_key: str) -> CallOptions:
     # 仍然使用显式 api_key，避免把 base URL 覆盖与认证来源混在一起。
-    return CallOptions(api_key=api_key, max_output_tokens=MAX_TOKENS)
+    return CallOptions(auth=ApiKeyAuth(api_key), max_output_tokens=MAX_TOKENS)
 
 
 def _iter_text(parts: Iterable[object]) -> str:

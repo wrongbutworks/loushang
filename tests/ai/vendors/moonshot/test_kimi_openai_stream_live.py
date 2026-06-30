@@ -17,6 +17,7 @@ import sys
 import pytest
 
 from loushang.ai import (
+    ApiKeyAuth,
     CallOptions,
     get_model,
     stream,
@@ -64,7 +65,7 @@ def _build_context() -> dict:
 
 def _build_options(api_key: str) -> CallOptions:
     # 流式与完整返回共用同一组核心 options；这里只保留最关键的 api_key/max_tokens。
-    return CallOptions(api_key=api_key, max_output_tokens=MAX_TOKENS)
+    return CallOptions(auth=ApiKeyAuth(api_key), max_output_tokens=MAX_TOKENS)
 
 
 async def _main() -> None:

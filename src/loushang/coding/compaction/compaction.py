@@ -4,7 +4,7 @@ from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, is_dataclass
 
 from loushang.agent import AgentMessage
-from loushang.ai import CallOptions, Context, complete
+from loushang.ai import ApiKeyAuth, CallOptions, Context, HeadersAuth, complete
 from loushang.ai.types import AssistantMessage, TextPart, ToolResultMessage, UserMessage
 from loushang.coding.compaction.policy import calculate_compaction_budget
 from loushang.coding.compaction.types import (
@@ -594,8 +594,7 @@ async def _summarize_messages(
         model,
         context,
         CallOptions(
-            api_key=api_key,
-            headers=dict(headers or {}),
+            auth=_summarization_auth(api_key=api_key, headers=headers),
             cancellation=signal,
         ),
     )
@@ -628,11 +627,18 @@ async def _summarize_turn_prefix(
             ],
         ),
         CallOptions(
-            api_key=api_key,
-            headers=dict(headers or {}),
+            auth=_summarization_auth(api_key=api_key, headers=headers),
             cancellation=signal,
         ),
     )
+
+
+def _summarization_auth(*, api_key: str, headers: Mapping[str, str] | None):
+    resolved_headers = dict(headers or {})
+    if resolved_headers:
+        resolved_headers.setdefault("Authorization", f"Bearer {api_key}")
+        return HeadersAuth(resolved_headers)
+    return ApiKeyAuth(api_key)
 
 
 def _build_summarization_prompt(

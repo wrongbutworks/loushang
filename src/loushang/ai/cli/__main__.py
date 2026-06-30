@@ -10,7 +10,10 @@ from dataclasses import dataclass
 from typing import Any
 
 from loushang.ai import (
+    ApiKeyAuth,
     CallOptions,
+    HeadersAuth,
+    OAuthBearerAuth,
     complete,
     stream,
 )
@@ -20,15 +23,21 @@ from loushang.ai.advanced.registry import (
     reset_api_providers,
 )
 from loushang.ai.api_registry import get_default_api_provider_registry
-from loushang.ai.auth import (
-    get_default_oauth_registry,
-    get_env_api_key,
-    get_env_oauth_credentials,
+from loushang.ai.auth.env import get_env_api_key, get_env_oauth_credentials
+from loushang.ai.auth.facade import (
     oauth_login,
     register_builtin_oauth_providers,
 )
+from loushang.ai.auth.registry import (
+    get_default_oauth_registry,
+)
 from loushang.ai.auth.storage import find_scoped_credential, load_credential_store
-from loushang.ai.auth.types import OAuthAuthInfo, OAuthLoginCallbacks, OAuthPrompt
+from loushang.ai.auth.types import (
+    OAuthAuthInfo,
+    OAuthCredentials,
+    OAuthLoginCallbacks,
+    OAuthPrompt,
+)
 from loushang.ai.contrib.openai_codex import (
     register_openai_codex_contrib,
     register_openai_codex_oauth_provider,
@@ -713,11 +722,11 @@ def _prepare_console_auth(
             provider_id, endpoint_id=endpoint_id
         )
         if oauth_credentials is not None:
-            option_kwargs["oauth_credentials"] = oauth_credentials
+            option_kwargs["auth"] = _auth_from_oauth_credentials(oauth_credentials)
     else:
         api_key, auth_source = _resolve_console_api_key(provider_id, auth_config)
         if api_key:
-            option_kwargs["api_key"] = api_key
+            option_kwargs["auth"] = ApiKeyAuth(api_key)
     if debug:
         print(
             "DEBUG auth-prepared "
@@ -739,10 +748,10 @@ def _resolve_console_oauth_credentials(
     provider_id: str,
     *,
     endpoint_id: str | None = None,
-) -> tuple[dict[str, object] | None, str]:
+) -> tuple[OAuthCredentials | None, str]:
     env_credentials = get_env_oauth_credentials(provider_id)
     if env_credentials is not None:
-        return {provider_id: env_credentials}, "env-oauth"
+        return env_credentials, "env-oauth"
 
     stored = find_scoped_credential(
         load_credential_store(),
@@ -750,13 +759,26 @@ def _resolve_console_oauth_credentials(
         endpoint_id=endpoint_id,
     )
     if stored is not None:
-        return {provider_id: stored}, "stored-oauth"
+        return stored, "stored-oauth"
 
     print(f"No stored login found for {provider_id}. Starting login flow.")
     credentials = _run_async(
         lambda: oauth_login(provider_id, _CliOAuthCallbacks(), persist=False)
     )
-    return {provider_id: credentials}, "interactive-oauth-memory"
+    return credentials, "interactive-oauth-memory"
+
+
+def _auth_from_oauth_credentials(credentials: OAuthCredentials):
+    extra = credentials.extra if isinstance(credentials.extra, dict) else {}
+    account_id = extra.get("account_id")
+    if isinstance(account_id, str) and account_id:
+        return HeadersAuth(
+            {
+                "Authorization": f"Bearer {credentials.access_token}",
+                "chatgpt-account-id": account_id,
+            }
+        )
+    return OAuthBearerAuth(credentials.access_token)
 
 
 def _resolve_console_api_key(provider_id: str, auth_config) -> tuple[str | None, str]:

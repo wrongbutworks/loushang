@@ -8,10 +8,8 @@ from urllib.parse import parse_qs, urlparse
 
 import pytest
 
-from loushang.ai.auth import (
-    get_default_oauth_registry,
-    register_builtin_oauth_providers,
-)
+from loushang.ai.auth.facade import register_builtin_oauth_providers
+from loushang.ai.auth.registry import get_default_oauth_registry
 from loushang.ai.auth.types import OAuthCredentials
 from loushang.ai.contrib.openai_codex.oauth import (
     AUTHORIZE_URL,

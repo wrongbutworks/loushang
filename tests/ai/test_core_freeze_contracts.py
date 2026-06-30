@@ -9,6 +9,7 @@ import pytest
 
 import loushang.ai as ai
 from loushang.ai.api_registry import ApiProviderRegistry
+from loushang.ai.auth import ApiKeyAuth
 from loushang.ai.model import (
     clear_default_model_registry,
     get_default_model_registry,
@@ -251,7 +252,7 @@ def test_complete_dispatches_to_invoke_raw_provider(tmp_path: Path) -> None:
         message = await ai.complete(
             model,
             {"messages": [{"role": "user", "content": "hello"}]},
-            CallOptions(api_key="test-key"),
+            CallOptions(auth=ApiKeyAuth("test-key")),
             provider_registry=provider_registry,
         )
 
@@ -277,7 +278,7 @@ def test_stream_dispatches_to_invoke_raw_provider(tmp_path: Path) -> None:
         event_stream = await ai.stream(
             model,
             {"messages": [{"role": "user", "content": "hello"}]},
-            CallOptions(api_key="test-key"),
+            CallOptions(auth=ApiKeyAuth("test-key")),
             provider_registry=provider_registry,
         )
         async for _event in event_stream:
@@ -305,13 +306,13 @@ def test_complete_and_stream_pass_distinct_provider_modes(tmp_path: Path) -> Non
         await ai.complete(
             model,
             context,
-            CallOptions(api_key="test-key"),
+            CallOptions(auth=ApiKeyAuth("test-key")),
             provider_registry=provider_registry,
         )
         event_stream = await ai.stream(
             model,
             context,
-            CallOptions(api_key="test-key"),
+            CallOptions(auth=ApiKeyAuth("test-key")),
             provider_registry=provider_registry,
         )
         async for _event in event_stream:
@@ -373,7 +374,7 @@ def test_bound_model_resolves_without_default_registry_lookup(
 
     request = resolve_request_for_model(
         model,
-        options=CallOptions(api_key="test-key"),
+        options=CallOptions(auth=ApiKeyAuth("test-key")),
         env={},
     )
 
