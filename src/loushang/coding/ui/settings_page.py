@@ -224,7 +224,11 @@ class SettingsPageView:
             self.feedback_message = message
             return SettingsApplyResult(message)
         if item_id == "model.current":
-            message = await select_available_model(self.session, query=value)
+            message = await select_available_model(
+                self.session,
+                query=value,
+                settings_manager=self.settings_manager,
+            )
             await self._refresh_model_page()
             self._refresh_status_page()
             self.feedback_message = message

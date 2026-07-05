@@ -5,6 +5,10 @@ from collections.abc import Awaitable, Callable, Mapping
 from dataclasses import dataclass
 from typing import Any
 
+from loushang.coding.model_selection import (
+    apply_model_selection,
+    persistence_warning_message,
+)
 from loushang.coding.ui.model import (
     iter_available_model_selections,
     model_label_from_selection,
@@ -70,14 +74,24 @@ async def available_model_palette(session: Any, *, title: str = "Models") -> Com
     return CommandPalette.from_completion_provider(provider, title=title)
 
 
-async def select_available_model(session: Any, *, query: str = "", choose: ModelPaletteChooser | None = None) -> str:
+async def select_available_model(
+    session: Any,
+    *,
+    query: str = "",
+    choose: ModelPaletteChooser | None = None,
+    settings_manager: object | None = None,
+) -> str:
     stripped_query = query.strip()
     if not stripped_query:
         if choose is not None:
             selected = await _maybe_await(choose(await available_model_palette(session, title="Models")))
             if selected is None:
                 return "Model selection cancelled."
-            return await select_available_model(session, query=selected)
+            return await select_available_model(
+                session,
+                query=selected,
+                settings_manager=settings_manager,
+            )
         return await format_available_models(session)
 
     matches = _matching_model_choices(await available_model_choices(session), stripped_query)
@@ -101,8 +115,15 @@ async def select_available_model(session: Any, *, query: str = "", choose: Model
     setter = getattr(session, "set_model", None)
     if not callable(setter):
         return "Model selection is not available."
-    await _maybe_await(setter(choice.selection))
-    return f"Model set: {_choice_display_label(choice)}"
+    result = await apply_model_selection(
+        session,
+        choice.selection,
+        settings_manager=settings_manager,
+    )
+    message = f"Model set: {_choice_display_label(choice)}"
+    if warning := persistence_warning_message(result):
+        return f"{message}, but {warning}"
+    return message
 
 
 async def available_model_choices(session: Any) -> list[ModelChoice]:

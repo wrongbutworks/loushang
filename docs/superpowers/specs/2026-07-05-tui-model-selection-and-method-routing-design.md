@@ -38,6 +38,8 @@ means once methods can route work across multiple models.
 Current #242 goals:
 
 - Make `/model` persistence useful for current TUI sessions.
+- Make TUI and CLI model selection entry points share the same apply-and-persist
+  behavior.
 - Keep manual model choice, session history, project policy, and method routing
   as separate runtime facts.
 - Avoid writing personal model choices into project settings by default.
@@ -60,6 +62,9 @@ Future compatibility goals:
 - Do not introduce automatic method selection.
 - Do not make `/model` rewrite method definitions.
 - Do not make `AgentSession.set_model()` implicitly write persisted settings.
+- Do not make RPC `set_model` persist user settings in the #242 slice; RPC
+  remains a runtime control path until its persistence semantics are designed
+  explicitly.
 - Do not make project `.loushang/settings.json` a sink for interactive personal
   preferences.
 - Do not infer provider or endpoint facts from model names when the registry is
@@ -72,7 +77,9 @@ Future compatibility goals:
 ### Current Slice Decisions
 
 `/model` sets the active session model and persists the user's default model
-preference to global user settings.
+preference to global user settings. CLI `--model` uses the same
+apply-and-persist behavior in the #242 slice, so a successful explicit CLI
+model selection also becomes the global default model.
 
 The persisted target is:
 
@@ -108,9 +115,9 @@ it does not silently override a team/project default.
 
 `session.set_model()` remains a runtime operation. It should update the current
 agent/session state and append session history, but persistence should be owned
-by the TUI command path or another explicit control-plane command. This keeps
-RPC, extensions, tests, retry flows, and temporary switches from unexpectedly
-modifying user settings.
+by the TUI/CLI command path or another explicit control-plane command. This
+keeps RPC, extensions, tests, retry flows, and temporary switches from
+unexpectedly modifying user settings.
 
 Startup should treat persisted `default_model` as a candidate, not a guarantee.
 The bootstrap path must resolve it through the current `ModelRegistry`. If the
@@ -252,7 +259,7 @@ not preferences.
 
 ### Current Slice
 
-Add an explicit persistence step to the TUI model selection path:
+Add an explicit persistence step to the TUI/CLI model selection path:
 
 ```text
 /model selection
@@ -263,6 +270,9 @@ Add an explicit persistence step to the TUI model selection path:
   -> show "Model set" status
 ```
 
+For CLI `--model`, the same wrapper runs after session creation and before the
+command-specific action continues.
+
 The persistence call should happen only after `session.set_model(selection)`
 succeeds. A model that cannot be applied should not become the saved default.
 
@@ -272,10 +282,11 @@ selection helpers expose only provider/model ID and can drop `endpoint_id`; the
 persistence path must preserve endpoint identity when the selected model came
 from an endpoint-aware model detail.
 
-All TUI model entry points should share the same persistence wrapper. Plain
-mode, screen mode typed `/model`, model selector submit, and the settings model
-page all eventually call model selection helpers today. If only one entry point
-adds persistence, #242 will be inconsistent.
+All TUI and CLI model entry points that represent user model selection should
+share the same persistence wrapper. Plain mode, screen mode typed `/model`,
+model selector submit, the settings model page, and CLI `--model` all
+eventually call model selection helpers today. If only one entry point adds
+persistence, #242 will be inconsistent.
 
 The persistence API can be a thin helper on the session facade or UI command
 handler, but it should not hide inside the low-level `set_model()` method.
@@ -477,9 +488,12 @@ Current slice tests:
 - Project settings are not modified by ordinary `/model`.
 - Project explicit `default_model` still overrides the saved global preference
   on startup.
-- Existing explicit CLI model override still wins.
+- Explicit CLI model selection still wins for that invocation and, in the #242
+  slice, persists the selected model as the new global default after the runtime
+  switch succeeds.
 - Plain mode, screen mode, selector submit, and settings-page model selection
   all use the same persistence behavior.
+- RPC `set_model` remains runtime-only.
 
 Future router tests:
 
@@ -496,6 +510,7 @@ Future router tests:
 ### Phase 1: #242 Persistence
 
 - Add explicit persistence after successful TUI `/model` selection.
+- Route CLI `--model` through the same successful-switch persistence helper.
 - Store structured `default_model` in global user settings.
 - Keep `set_model()` runtime-only.
 - Add focused tests around persistence and startup fallback.

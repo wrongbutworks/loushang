@@ -89,6 +89,47 @@ def test_selection_controller_sets_model_records_auth_refresh_and_model_select(t
     ]
 
 
+def test_selection_controller_records_explicit_endpoint_selection(tmp_path) -> None:
+    from loushang.coding.session.selection_controller import SelectionController
+
+    first = _model()
+    second = _model("alt-model", "alt")
+    registry = FakeModelRegistry([first, second])
+    manager = SessionManager.new(session_dir=tmp_path, cwd="/tmp/project", persist=False)
+    controller = SelectionController(
+        agent=Agent(
+            initial_state={
+                "system_prompt": "",
+                "model": first,
+                "thinking_level": "low",
+            }
+        ),
+        session_manager=manager,
+        get_model_registry=lambda: registry,
+        get_extension_runner=lambda: None,
+        refresh_extension_runtime=lambda reason: _append_async([], reason),
+        is_extension_runtime_refreshing=lambda: False,
+        record_model_auth_resolution=lambda model: None,
+    )
+
+    asyncio.run(
+        controller.set_model(
+            ModelSelection(
+                provider="alt",
+                endpoint_id="responses",
+                model_id="alt-model",
+            ),
+            emit_refresh=True,
+        )
+    )
+
+    assert manager.build_session_context().model == {
+        "provider": "alt",
+        "model_id": "alt-model",
+        "endpoint_id": "responses",
+    }
+
+
 def test_selection_controller_set_model_from_extension_respects_refresh_guard(tmp_path) -> None:
     from loushang.coding.session.selection_controller import SelectionController
 

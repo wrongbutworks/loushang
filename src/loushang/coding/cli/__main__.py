@@ -6,13 +6,13 @@ import inspect
 import json
 import os
 import sys
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 from contextlib import contextmanager, nullcontext, redirect_stderr
 from dataclasses import asdict, dataclass, replace
 from importlib.metadata import PackageNotFoundError
 from importlib.metadata import version as package_version
 from pathlib import Path
-from typing import Any, Mapping, TextIO
+from typing import Any, TextIO
 
 from loushang.ai.model.registry import get_default_model_registry
 from loushang.ai.types import ImagePart
@@ -33,6 +33,11 @@ from loushang.coding.diagnostics import serialize_diagnostic
 from loushang.coding.domain import CodingDomainApp, CodingDomainRequest, MethodPolicy
 from loushang.coding.extensions.types import ResolvedFlag
 from loushang.coding.mode import ModeConfig, run_mode, run_print_mode, run_rpc_mode
+from loushang.coding.model_selection import (
+    apply_model_selection,
+    model_selection_ref,
+    persistence_warning_message,
+)
 from loushang.coding.observability import (
     coding_observability_context,
     coding_startup_observability_context,
@@ -359,7 +364,12 @@ async def run_cli(
             if callable(setter):
                 setter(args.session_name)
 
-        override_result = await _apply_model_and_thinking_overrides(args, session, stderr)
+        override_result = await _apply_model_and_thinking_overrides(
+            args,
+            session,
+            stderr,
+            settings_manager=settings_manager,
+        )
         if override_result is not None:
             return override_result
 
@@ -1376,11 +1386,26 @@ def _resolve_model_selection(args: CliArgs) -> ModelSelection | None:
     )
 
 
-async def _apply_model_and_thinking_overrides(args: CliArgs, session: Any, stderr: TextIO) -> int | None:
+async def _apply_model_and_thinking_overrides(
+    args: CliArgs,
+    session: Any,
+    stderr: TextIO,
+    *,
+    settings_manager: object | None = None,
+) -> int | None:
     try:
         explicit_model = _resolve_model_selection(args)
         if explicit_model is not None:
-            await session.set_model(explicit_model)
+            result = await apply_model_selection(
+                session,
+                explicit_model,
+                settings_manager=settings_manager,
+            )
+            if warning := persistence_warning_message(result):
+                stderr.write(
+                    f"Warning: Model changed to {model_selection_ref(result.selection)}, "
+                    f"but {warning}\n"
+                )
         if args.thinking is not None:
             session.set_thinking_level(args.thinking)
     except (RuntimeError, ValueError) as error:

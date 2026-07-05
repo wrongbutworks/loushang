@@ -2602,6 +2602,40 @@ def test_run_cli_accepts_explicit_endpoint_model_override(tmp_path) -> None:
     ]
 
 
+def test_apply_model_override_persists_global_default_with_endpoint() -> None:
+    from loushang.coding.cli.__main__ import _apply_model_and_thinking_overrides
+    from loushang.coding.types import ModelSelection
+
+    session = FakeSession("session-1")
+    settings_calls: list[tuple[ModelSelection | None, str]] = []
+    settings_manager = SimpleNamespace(
+        set_default_model=lambda selection, *, scope="session": settings_calls.append(
+            (selection, scope)
+        )
+    )
+    args = SimpleNamespace(provider=None, model="faux:responses:beta", thinking=None)
+    stderr = StringIO()
+
+    result = asyncio.run(
+        _apply_model_and_thinking_overrides(
+            args,
+            session,
+            stderr,
+            settings_manager=settings_manager,
+        )
+    )
+
+    selection = ModelSelection(
+        provider="faux",
+        endpoint_id="responses",
+        model_id="beta",
+    )
+    assert result is None
+    assert stderr.getvalue() == ""
+    assert session.set_model_calls == [selection]
+    assert settings_calls == [(selection, "global")]
+
+
 def test_run_cli_accepts_explicit_endpoint_model_override_with_colon_endpoint(tmp_path) -> None:
     from loushang.coding.cli.__main__ import run_cli
     from loushang.coding.types import ModelSelection

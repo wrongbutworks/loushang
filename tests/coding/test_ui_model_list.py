@@ -9,6 +9,8 @@ from loushang.coding.types import ModelSelection
 class _Session:
     def __init__(self) -> None:
         self.set_model_calls: list[ModelSelection] = []
+        self.default_model_calls: list[tuple[ModelSelection | None, str]] = []
+        self.settings_manager = self
         self.selection = ModelSelection(provider="moonshot", model_id="kimi-for-coding")
 
     def get_model_selection(self) -> ModelSelection:
@@ -23,6 +25,14 @@ class _Session:
     async def set_model(self, selection: ModelSelection) -> None:
         self.set_model_calls.append(selection)
         self.selection = selection
+
+    def set_default_model(
+        self,
+        selection: ModelSelection | None,
+        *,
+        scope: str = "session",
+    ) -> None:
+        self.default_model_calls.append((selection, scope))
 
 
 class _CurrentSecondSession(_Session):
@@ -223,7 +233,9 @@ def test_select_available_model_sets_unique_match() -> None:
     text = asyncio.run(select_available_model(session, query="gpt"))
 
     assert text == "Model set: openai/gpt-5.4"
-    assert session.set_model_calls == [ModelSelection(provider="openai", model_id="gpt-5.4")]
+    selection = ModelSelection(provider="openai", model_id="gpt-5.4")
+    assert session.set_model_calls == [selection]
+    assert session.default_model_calls == [(selection, "global")]
 
 
 def test_select_available_model_lists_models_when_query_is_empty() -> None:
@@ -292,10 +304,21 @@ def test_select_available_model_uses_full_identity_for_duplicate_endpoint_choice
     from loushang.coding.ui.model_list import select_available_model
 
     session = _DuplicateEndpointSession()
-    text = asyncio.run(select_available_model(session, query="dashscope:openai-responses:qwen3.6-plus"))
+    text = asyncio.run(
+        select_available_model(
+            session,
+            query="dashscope:openai-responses:qwen3.6-plus",
+        )
+    )
 
     assert text == "Model set: dashscope/qwen3.6-plus (endpoint: openai-responses)"
-    assert session.set_model_calls == [session.model_details[0]]
+    selection = ModelSelection(
+        provider="dashscope",
+        endpoint_id="openai-responses",
+        model_id="qwen3.6-plus",
+    )
+    assert session.set_model_calls == [selection]
+    assert session.default_model_calls == [(selection, "global")]
 
 
 def test_select_available_model_uses_preferred_endpoint_for_duplicate_label() -> None:
@@ -305,7 +328,13 @@ def test_select_available_model_uses_preferred_endpoint_for_duplicate_label() ->
     text = asyncio.run(select_available_model(session, query="dashscope/qwen3.6-plus"))
 
     assert text == "Model set: dashscope/qwen3.6-plus (endpoint: openai-responses)"
-    assert session.set_model_calls == [session.model_details[0]]
+    selection = ModelSelection(
+        provider="dashscope",
+        endpoint_id="openai-responses",
+        model_id="qwen3.6-plus",
+    )
+    assert session.set_model_calls == [selection]
+    assert session.default_model_calls == [(selection, "global")]
 
 
 def test_select_available_model_reports_duplicate_endpoint_label_as_ambiguous_without_preferred() -> None:
