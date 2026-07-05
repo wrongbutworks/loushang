@@ -1178,6 +1178,170 @@ def test_create_agent_session_records_auth_resolution_failure_for_default_model(
     assert "LOUSHANG_TEST_DEMO_KEY" in diagnostics[0].message
 
 
+def test_create_agent_session_uses_saved_default_model_endpoint_when_valid(tmp_path) -> None:
+    from loushang.ai.model.registry import ModelRegistry as AiModelRegistry
+    from loushang.coding.bootstrap import create_agent_session, create_services
+    from loushang.coding.session import ModelSelection
+    from loushang.coding.store import SessionManager
+
+    ai_registry = AiModelRegistry()
+    ai_registry.register_model(
+        Model(id="alpha", name="Alpha", provider="demo", endpoint="responses")
+    )
+    ai_registry.register_model(
+        Model(id="alpha", name="Alpha", provider="demo", endpoint="completions")
+    )
+    services = create_services(ai_model_registry=ai_registry)
+    saved_default = ModelSelection(
+        provider="demo",
+        endpoint_id="responses",
+        model_id="alpha",
+    )
+    services.settings_manager.set_default_model(saved_default)
+
+    manager = SessionManager.new(
+        session_dir=tmp_path / "sessions",
+        cwd=str(tmp_path),
+        persist=False,
+    )
+    session = create_agent_session(session_manager=manager, services=services)
+
+    diagnostics = [
+        record
+        for record in session.get_last_diagnostics()
+        if record.code == "default_model_unavailable"
+    ]
+
+    assert session.agent.model.provider_id == "demo"
+    assert session.agent.model.id == "alpha"
+    assert session.agent.model.endpoint_id == "responses"
+    assert diagnostics == []
+
+
+def test_create_agent_session_falls_back_when_saved_default_model_is_missing(
+    tmp_path,
+) -> None:
+    from loushang.ai.model.registry import ModelRegistry as AiModelRegistry
+    from loushang.coding.bootstrap import create_agent_session, create_services
+    from loushang.coding.session import ModelSelection
+    from loushang.coding.store import SessionManager
+
+    ai_registry = AiModelRegistry()
+    services = create_services(ai_model_registry=ai_registry)
+    saved_default = ModelSelection(provider="demo", model_id="missing")
+    services.settings_manager.set_default_model(saved_default)
+
+    manager = SessionManager.new(
+        session_dir=tmp_path / "sessions",
+        cwd=str(tmp_path),
+        persist=False,
+    )
+    session = create_agent_session(session_manager=manager, services=services)
+
+    diagnostics = [
+        record
+        for record in session.get_last_diagnostics()
+        if record.code == "default_model_unavailable"
+    ]
+
+    assert session.get_model_selection() == ModelSelection(
+        provider="unknown",
+        model_id="unknown",
+    )
+    assert services.settings_manager.get_settings().default_model == saved_default
+    assert len(diagnostics) == 1
+    assert diagnostics[0].type == "warning"
+    assert diagnostics[0].source == "model"
+    assert diagnostics[0].details["provider"] == "demo"
+    assert diagnostics[0].details["model_id"] == "missing"
+    assert diagnostics[0].details["reason"] == "missing"
+
+
+def test_create_agent_session_falls_back_when_saved_default_model_is_ambiguous(
+    tmp_path,
+) -> None:
+    from loushang.ai.model.registry import ModelRegistry as AiModelRegistry
+    from loushang.coding.bootstrap import create_agent_session, create_services
+    from loushang.coding.session import ModelSelection
+    from loushang.coding.store import SessionManager
+
+    ai_registry = AiModelRegistry()
+    ai_registry.register_model(
+        Model(id="alpha", name="Alpha", provider="demo", endpoint="responses")
+    )
+    ai_registry.register_model(
+        Model(id="alpha", name="Alpha", provider="demo", endpoint="completions")
+    )
+    services = create_services(ai_model_registry=ai_registry)
+    saved_default = ModelSelection(provider="demo", model_id="alpha")
+    services.settings_manager.set_default_model(saved_default)
+
+    manager = SessionManager.new(
+        session_dir=tmp_path / "sessions",
+        cwd=str(tmp_path),
+        persist=False,
+    )
+    session = create_agent_session(session_manager=manager, services=services)
+
+    diagnostics = [
+        record
+        for record in session.get_last_diagnostics()
+        if record.code == "default_model_unavailable"
+    ]
+
+    assert session.get_model_selection() == ModelSelection(
+        provider="unknown",
+        model_id="unknown",
+    )
+    assert services.settings_manager.get_settings().default_model == saved_default
+    assert len(diagnostics) == 1
+    assert diagnostics[0].details["reason"] == "ambiguous"
+    assert diagnostics[0].details["endpoint_id"] is None
+
+
+def test_create_agent_session_falls_back_when_saved_default_endpoint_is_unavailable(
+    tmp_path,
+) -> None:
+    from loushang.ai.model.registry import ModelRegistry as AiModelRegistry
+    from loushang.coding.bootstrap import create_agent_session, create_services
+    from loushang.coding.session import ModelSelection
+    from loushang.coding.store import SessionManager
+
+    ai_registry = AiModelRegistry()
+    ai_registry.register_model(
+        Model(id="alpha", name="Alpha", provider="demo", endpoint="responses")
+    )
+    services = create_services(ai_model_registry=ai_registry)
+    saved_default = ModelSelection(
+        provider="demo",
+        endpoint_id="retired",
+        model_id="alpha",
+    )
+    services.settings_manager.set_default_model(saved_default)
+
+    manager = SessionManager.new(
+        session_dir=tmp_path / "sessions",
+        cwd=str(tmp_path),
+        persist=False,
+    )
+    session = create_agent_session(session_manager=manager, services=services)
+
+    diagnostics = [
+        record
+        for record in session.get_last_diagnostics()
+        if record.code == "default_model_unavailable"
+    ]
+
+    assert session.get_model_selection() == ModelSelection(
+        provider="unknown",
+        model_id="unknown",
+    )
+    assert services.settings_manager.get_settings().default_model == saved_default
+    assert len(diagnostics) == 1
+    assert diagnostics[0].details["reason"] == "endpoint_unavailable"
+    assert diagnostics[0].details["endpoint_id"] == "retired"
+
+
 def test_create_agent_session_uses_stored_oauth_credentials_for_auth_bridge(tmp_path, monkeypatch) -> None:
     import asyncio
 

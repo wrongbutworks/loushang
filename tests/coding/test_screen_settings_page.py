@@ -38,6 +38,7 @@ class _SettingsManager:
         self.image_auto_resize = True
         self.block_images = False
         self.retry_enabled = True
+        self.default_model_calls: list[tuple[ModelSelection | None, str]] = []
 
     def get_show_terminal_progress(self) -> bool:
         return self.terminal_progress
@@ -74,6 +75,14 @@ class _SettingsManager:
 
     def set_retry_enabled(self, enabled: bool) -> None:
         self.retry_enabled = enabled
+
+    def set_default_model(
+        self,
+        selection: ModelSelection | None,
+        *,
+        scope: str = "session",
+    ) -> None:
+        self.default_model_calls.append((selection, scope))
 
 
 def test_status_provider_exposes_read_only_snapshot() -> None:
@@ -331,3 +340,15 @@ def test_settings_page_model_tab_filters_and_selects_model() -> None:
     intent = page.handle_input(InputEvent(kind="key", key="enter"))
 
     assert intent == InputIntent(kind="setting", text="model.current", note="openai/gpt-5.4")
+
+
+def test_settings_page_model_apply_persists_with_page_settings_manager() -> None:
+    settings_manager = _SettingsManager()
+    page = _page(settings_manager=settings_manager)
+
+    result = asyncio.run(page.apply_setting("model.current", "openai/gpt-5.4"))
+
+    selection = ModelSelection(provider="openai", model_id="gpt-5.4")
+    assert result.message == "Model set: openai/gpt-5.4"
+    assert result.refresh_model_label is True
+    assert settings_manager.default_model_calls == [(selection, "global")]

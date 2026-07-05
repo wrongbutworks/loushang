@@ -162,7 +162,13 @@ def test_screen_surface_model_selector_displays_endpoint_and_selects_full_identi
 
     asyncio.run(manager.handle_surface_intent(intent))
 
-    assert session.set_model_calls[-1] is responses_model
+    selection = ModelSelection(
+        provider="dashscope",
+        model_id="qwen3.6-plus",
+        endpoint_id="openai-responses",
+    )
+    assert session.set_model_calls[-1] == selection
+    assert session.default_model_calls[-1] == (selection, "global")
     assert app.active_surface is None
     assert app.state.status_message == "Model set: dashscope/qwen3.6-plus (endpoint: openai-responses)"
 
@@ -1024,6 +1030,8 @@ class _Session:
             ModelSelection(provider="openai", model_id="gpt-5.4"),
         ]
         self.set_model_calls: list[object] = []
+        self.default_model_calls: list[tuple[ModelSelection | None, str]] = []
+        self.settings_manager = self
         self.commands: list[object] = []
         self.model_details: list[Model] = []
         self.scoped_models: list[object] = []
@@ -1044,6 +1052,14 @@ class _Session:
     async def set_model(self, selection: object) -> None:
         self.set_model_calls.append(selection)
         self.current_model = selection
+
+    def set_default_model(
+        self,
+        selection: ModelSelection | None,
+        *,
+        scope: str = "session",
+    ) -> None:
+        self.default_model_calls.append((selection, scope))
 
     def list_commands(self) -> list[object]:
         return self.commands

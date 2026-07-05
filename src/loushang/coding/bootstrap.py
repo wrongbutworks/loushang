@@ -382,7 +382,12 @@ def create_agent_session(
     resolved_model: Model | None
     if model is None:
         default_selection = settings.default_model
-        resolved_model = services.model_registry.build_model(default_selection) if default_selection is not None else None
+        resolved_model = _resolve_default_model_candidate(
+            default_selection,
+            model_registry=services.model_registry,
+            diagnostics_service=services.diagnostics_service,
+            session_id=session_id,
+        )
     elif isinstance(model, ModelSelection):
         resolved_model = services.model_registry.build_model(model)
     else:
@@ -465,6 +470,87 @@ def create_agent_session(
     if scoped_models:
         session.setScopedModels(scoped_models)
     return session
+
+
+def _resolve_default_model_candidate(
+    selection: ModelSelection | None,
+    *,
+    model_registry: ModelRegistry,
+    diagnostics_service: DiagnosticsService,
+    session_id: str,
+) -> Model | None:
+    if selection is None:
+        return None
+    try:
+        return model_registry.build_model(selection)
+    except (KeyError, ValueError) as error:
+        _record_default_model_unavailable(
+            selection,
+            error=error,
+            model_registry=model_registry,
+            diagnostics_service=diagnostics_service,
+            session_id=session_id,
+        )
+        return None
+
+
+def _record_default_model_unavailable(
+    selection: ModelSelection,
+    *,
+    error: Exception,
+    model_registry: ModelRegistry,
+    diagnostics_service: DiagnosticsService,
+    session_id: str,
+) -> None:
+    reason = _default_model_unavailable_reason(
+        selection,
+        error=error,
+        model_registry=model_registry,
+    )
+    selection_ref = (
+        f"{selection.provider}:{selection.endpoint_id}:{selection.model_id}"
+        if selection.endpoint_id
+        else f"{selection.provider}:{selection.model_id}"
+    )
+    message = (
+        f"Default model unavailable: {selection_ref}; using startup fallback."
+    )
+    diagnostics_service.record(
+        diagnostics_service.normalize_error(
+            code="default_model_unavailable",
+            error=message,
+            phase="startup",
+            source="model",
+            level="warning",
+            session_id=session_id,
+            details={
+                "provider": selection.provider,
+                "model_id": selection.model_id,
+                "endpoint_id": selection.endpoint_id,
+                "reason": reason,
+                "error": str(error),
+            },
+        )
+    )
+
+
+def _default_model_unavailable_reason(
+    selection: ModelSelection,
+    *,
+    error: Exception,
+    model_registry: ModelRegistry,
+) -> str:
+    if selection.endpoint_id:
+        endpoint = model_registry.ai_registry.get_endpoint(
+            selection.provider,
+            selection.endpoint_id,
+        )
+        if endpoint is None:
+            return "endpoint_unavailable"
+        return "missing"
+    if isinstance(error, ValueError):
+        return "ambiguous"
+    return "missing"
 
 
 def create_agent_session_from_services(
