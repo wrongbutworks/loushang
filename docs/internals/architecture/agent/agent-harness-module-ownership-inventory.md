@@ -4,9 +4,14 @@
 
 Ownership inventory for
 [ARD-001: Agent Harness and Product Adapter Boundaries](ARD-001-agent-harness-and-product-adapters.md).
+Updated direction:
+[ARD-002: Harness Product Adapter Substrate](ARD-002-harness-product-adapter-substrate.md).
 
 This document records module ownership for the prepared agent run contract. It is
 intentionally an inventory, not an implementation plan.
+It remains accurate for the current thin facade; future host/adapter substrate
+migration should update this inventory or add a follow-up inventory before code
+moves.
 
 ## Scope
 
