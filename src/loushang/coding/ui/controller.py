@@ -16,8 +16,8 @@ from loushang.coding.ui.intent import (
     PromptIntent,
     QuitIntent,
 )
+from loushang.harness.commands import CommandEffectKind
 from loushang.observability import get_log
-from loushang.runtime.commands import CommandEffectKind
 
 log = get_log(__name__).bind(component="CodingUiController")
 
@@ -70,7 +70,7 @@ class CodingUiController:
                 error_message="Request cancelled.",
                 traceback_text=traceback.format_exc() if self.verbose else None,
             )
-        except Exception as error:  # noqa: BLE001
+        except Exception as error:
             log.problem(
                 "coding_ui_dispatch_failed",
                 source="agent",
@@ -94,7 +94,7 @@ class CodingUiController:
                 return ControllerResult(error_message="Steering is unavailable for this session.")
             await _call_text_method(method, text, images=images)
             return ControllerResult()
-        except Exception as error:  # noqa: BLE001
+        except Exception as error:
             log.problem(
                 "coding_ui_steer_failed",
                 source="agent",
@@ -116,7 +116,7 @@ class CodingUiController:
                 return ControllerResult(error_message="Follow-up is unavailable for this session.")
             await _call_text_method(method, text, images=images)
             return ControllerResult()
-        except Exception as error:  # noqa: BLE001
+        except Exception as error:
             log.problem(
                 "coding_ui_follow_up_failed",
                 source="agent",

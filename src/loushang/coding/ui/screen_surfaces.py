@@ -1,8 +1,8 @@
 from __future__ import annotations
 
-from collections.abc import Callable
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field, replace
-from typing import Any, Awaitable, Literal, Protocol
+from typing import Any, Literal, Protocol
 
 from loushang.coding.commands.catalog import CodingCommandCatalog
 from loushang.coding.ui.command_list import (
@@ -37,7 +37,7 @@ from loushang.coding.ui.model_list import (
 from loushang.coding.ui.screen_app import ScreenCodingTuiApp
 from loushang.coding.ui.settings_page import SettingsPageView
 from loushang.coding.ui.status_provider import CodingTuiStatusProvider
-from loushang.runtime.commands import CommandDef, CommandKind
+from loushang.harness.commands import CommandDef, CommandKind
 from loushang.tui import (
     ApprovalSurface,
     CommandPalette,

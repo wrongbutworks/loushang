@@ -7,7 +7,7 @@ def test_coding_command_catalog_classifies_local_and_session_commands() -> None:
     from loushang.coding.commands.catalog import CodingCommandCatalog
     from loushang.coding.ui.intent import PromptIntent, SettingsIntent
     from loushang.coding.ui.prompt_routing import PromptRoute
-    from loushang.runtime.commands import CommandEffectKind, CommandKind
+    from loushang.harness.commands import CommandEffectKind, CommandKind
 
     catalog = CodingCommandCatalog(
         session_commands=lambda: [
@@ -49,7 +49,7 @@ def test_coding_command_catalog_leaves_plain_prompts_and_queue_routes_unowned() 
 
 def test_coding_command_catalog_preserves_local_command_argument_rules() -> None:
     from loushang.coding.commands.catalog import CodingCommandCatalog
-    from loushang.runtime.commands import CommandKind
+    from loushang.harness.commands import CommandKind
 
     catalog = CodingCommandCatalog(session_commands=lambda: [])
 
@@ -65,7 +65,7 @@ def test_coding_command_catalog_preserves_local_command_argument_rules() -> None
 
 def test_coding_command_catalog_lists_local_and_session_commands_once() -> None:
     from loushang.coding.commands.catalog import CodingCommandCatalog
-    from loushang.runtime.commands import CommandKind
+    from loushang.harness.commands import CommandKind
 
     catalog = CodingCommandCatalog(
         session_commands=lambda: [

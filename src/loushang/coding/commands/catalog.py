@@ -4,7 +4,7 @@ from collections.abc import Callable, Iterable
 from typing import Any
 
 from loushang.coding.commands.slash import split_slash_command
-from loushang.runtime.commands import (
+from loushang.harness.commands import (
     CommandDef,
     CommandEffect,
     CommandEffectKind,

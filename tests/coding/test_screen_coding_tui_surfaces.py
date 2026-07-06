@@ -563,7 +563,7 @@ def test_screen_surface_manager_opens_terminal_diagnostics_surface() -> None:
 
 
 def test_screen_surface_manager_routes_local_commands_through_command_catalog() -> None:
-    from loushang.runtime.commands import CommandDef, CommandKind
+    from loushang.harness.commands import CommandDef, CommandKind
 
     class Catalog:
         def __init__(self) -> None:
