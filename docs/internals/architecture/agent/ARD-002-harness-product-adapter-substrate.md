@@ -57,6 +57,12 @@ loushang.harness.diagnostics  # generic diagnostic/status records
 These names are target ownership markers, not a requirement to create every
 module at once.
 
+The landed `loushang.harness.commands` module is intentionally only a command
+vocabulary module. It owns product-neutral value types such as `CommandDef`,
+`CommandEffect`, `CommandKind`, and `CommandEffectKind`; it does not own a
+command registry, command catalog, command handler, slash parser, or command
+execution policy.
+
 ### 2. Do not retain top-level `runtime` or introduce top-level `product`
 
 No new `loushang.product` package should be created for this substrate.
@@ -75,6 +81,7 @@ contracts that product adapters implement or consume.
 It must not own concrete product behavior:
 
 - coding tools
+- coding command catalog, registry, parser, or execution policy
 - slash commands and command handlers
 - AGENTS.md or prompt assembly
 - coding session JSONL schema
@@ -199,6 +206,10 @@ obsolete `loushang.runtime.commands` path into `loushang.harness.commands`.
 Update internal imports to the new path and delete
 `src/loushang/runtime/__init__.py` plus `src/loushang/runtime/commands.py`.
 Do not keep `loushang.runtime` as a compatibility shim.
+
+This phase stops at the value-type boundary. `loushang.coding.commands.catalog`,
+`loushang.coding.commands.slash`, session command execution, and UI command
+handlers remain owned by `loushang.coding`.
 
 ### Phase 2: Host and adapter contracts
 

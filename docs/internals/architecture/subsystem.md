@@ -99,7 +99,7 @@ diagnostics 合同也归属这里。
 - headless agent run 编排
 - product-neutral adapter / prepared-turn / adapter-result contracts
 - product-neutral host lifecycle contracts
-- command/effect value objects
+- command/effect value objects, such as `loushang.harness.commands`
 - generic diagnostics / status records
 
 不负责：
@@ -107,6 +107,7 @@ diagnostics 合同也归属这里。
 - `Agent` 生命周期
 - low-level agent loop ownership
 - coding / design / research / ppt / cowork 产品语义
+- coding command catalog、command handlers、slash parsing 或 command execution policy
 - work / method 投影语义
 - provider auth / model default persistence
 - TUI render loop、layout、input 或 screen state
