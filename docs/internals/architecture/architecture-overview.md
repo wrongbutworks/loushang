@@ -21,10 +21,10 @@
 - `loushang.agent`
 - `loushang.channel`
 - `loushang.coding`
+- `loushang.harness`
 - `loushang.method`
 - `loushang.tui`
 - `loushang.work`
-- `loushang.runtime`
 - `loushang.observability`
 - `loushang.ontology`
 
@@ -44,14 +44,18 @@ loushang/
       agent/
       channel/
       coding/
+      harness/
       method/
       tui/
       work/
-      runtime/
       observability/
       ontology/
   tests/
 ```
+
+`loushang.runtime` 不再作为保留子系统。若某个 worktree 在 command/effect
+迁移完成前仍存在该路径，它只是待删除的旧临时路径；相关类型迁到
+`loushang.harness.commands` 后应删除。
 
 ## Subsystem Documentation
 
@@ -60,6 +64,8 @@ loushang/
 跨层架构判断准则请参见 [Loushang Architecture Principles](./loushang-architecture-principles.md)。
 文档分层与阅读规则请参见 [Loushang Documentation Model](./loushang-documentation-model.md)。
 `loushang-tui` 子系统文档请参见 [Loushang-TUI Architecture](./tui/README.md)。
+`loushang-harness` 的产品适配器 substrate 方向请参见
+[ARD-002: Harness Product Adapter Substrate](./agent/ARD-002-harness-product-adapter-substrate.md)。
 
 ## Architecture Stack
 

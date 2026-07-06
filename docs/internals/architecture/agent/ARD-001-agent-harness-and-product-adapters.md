@@ -4,6 +4,15 @@
 
 Accepted
 
+## Reading Note
+
+This ARD records the initial agent/harness split and the thin prepared-run
+facade. [ARD-002: Harness Product Adapter Substrate](ARD-002-harness-product-adapter-substrate.md)
+extends the target scope of `loushang.harness` to product-neutral host,
+adapter, command, lifecycle, and diagnostics contracts. ARD-001 remains
+authoritative for the low-level `agent` boundary and for the rule that harness
+must not depend on product packages.
+
 ## Context
 
 `loushang.agent` already provides the stable low-level agent runtime surface:
