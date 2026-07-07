@@ -59,7 +59,7 @@ class AuthResolutionError(AIAuthenticationError):
 
 @dataclass(frozen=True)
 class AuthView:
-    headers: dict[str, str] = field(default_factory=dict)
+    headers: dict[str, str] = field(default_factory=dict, repr=False)
     metadata: dict[str, object] = field(default_factory=dict)
 
 
