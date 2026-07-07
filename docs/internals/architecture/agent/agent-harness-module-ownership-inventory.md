@@ -10,8 +10,9 @@ Updated direction:
 This document records module ownership for the prepared agent run contract. It is
 intentionally an inventory, not an implementation plan.
 It remains accurate for the current thin facade; future host/adapter substrate
-migration should update this inventory or add a follow-up inventory before code
-moves.
+migration is tracked by the follow-up
+[Coding To Harness Migration Inventory](../harness/coding-to-harness-migration-inventory.md)
+before code moves.
 
 ## Scope
 

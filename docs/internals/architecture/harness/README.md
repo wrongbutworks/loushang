@@ -1,0 +1,63 @@
+# Loushang Harness Architecture
+
+`loushang.harness` is the cross-product substrate that lets product adapters
+prepare and run agent work without depending on another product package.
+
+It is intentionally narrower than a product framework and broader than the
+initial prepared-run facade. Harness owns product-neutral contracts, helper
+engines, registries, and lifecycle shapes that `coding`, `design`, `research`,
+`ppt`, `cowork`, and OEM products can share.
+
+Harness does not own product defaults, product stores, product UI state, method
+planning, work event persistence, or AI provider behavior.
+
+## Documents
+
+- [Refactoring Principles](refactoring-principles.md) defines what may move
+  into harness and how migration slices should be shaped.
+- [Shared Capability Boundaries](shared-capability-boundaries.md) maps tools,
+  approval, renderers, workspace, resources, context, memory, session, and
+  diagnostics across harness and product adapters.
+- [Coding To Harness Migration Inventory](coding-to-harness-migration-inventory.md)
+  records how the current `loushang.coding` modules should be classified before
+  implementation moves code.
+
+Accepted decisions that govern this directory:
+
+- [ARD-001: Agent Harness and Product Adapter Boundaries](../agent/ARD-001-agent-harness-and-product-adapters.md)
+- [ARD-002: Harness Product Adapter Substrate](../agent/ARD-002-harness-product-adapter-substrate.md)
+
+## Boundary Summary
+
+Harness may depend on stable `loushang.agent` primitives and the existing agent
+loop. `loushang.agent` must not depend on harness.
+
+Harness must not import:
+
+- `loushang.coding`
+- `loushang.design`
+- `loushang.research`
+- `loushang.ppt`
+- `loushang.cowork`
+- `loushang.method`
+- `loushang.work`
+- `loushang.tui`
+- `loushang.ai`
+
+If a harness contract needs to refer to method, work, channel, UI, or product
+state, it should carry opaque ids, neutral metadata, or protocol-shaped values.
+The product adapter interprets those values.
+
+## Parallel Development Rule
+
+Harness refactoring should not block TUI, agent, or AI provider work:
+
+- TUI work stays under `loushang.tui` or product-owned UI adapters.
+- Agent loop work stays under `loushang.agent`.
+- Provider/model/auth work stays under `loushang.ai`.
+- Harness work stays in product-neutral contracts and shared engines used by
+  product adapters.
+
+When a migration slice touches a product adapter, it must prove product behavior
+is unchanged with focused tests and must keep the architecture import-boundary
+tests passing.

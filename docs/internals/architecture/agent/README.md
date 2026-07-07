@@ -57,6 +57,8 @@ compatibility path has been removed. Code should import from `loushang.harness`.
 
 See [ARD-001: Agent Harness and Product Adapter Boundaries](ARD-001-agent-harness-and-product-adapters.md).
 See also [ARD-002: Harness Product Adapter Substrate](ARD-002-harness-product-adapter-substrate.md).
+Detailed harness refactoring rules now live in
+[Loushang Harness Architecture](../harness/README.md).
 The current module ownership inventory is
 [Agent Harness Module Ownership Inventory](agent-harness-module-ownership-inventory.md).
 

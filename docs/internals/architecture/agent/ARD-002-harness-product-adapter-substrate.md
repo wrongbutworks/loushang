@@ -63,6 +63,11 @@ vocabulary module. It owns product-neutral value types such as `CommandDef`,
 command registry, command catalog, command handler, slash parser, or command
 execution policy.
 
+Detailed refactoring criteria and shared capability boundaries are maintained
+under [Loushang Harness Architecture](../harness/README.md). This ARD defines
+the accepted subsystem direction; the harness architecture docs record the
+working migration rules and inventories.
+
 ### 2. Do not retain top-level `runtime` or introduce top-level `product`
 
 No new `loushang.product` package should be created for this substrate.
@@ -229,6 +234,9 @@ state:
 Move only the shared substrate out of coding. Each slice should have focused
 tests that prove coding behavior is unchanged and import-boundary tests that
 prove harness remains product-free.
+
+The current migration inventory is
+[Coding To Harness Migration Inventory](../harness/coding-to-harness-migration-inventory.md).
 
 ### Phase 4: Second product validation
 

@@ -121,6 +121,8 @@ prepared-run contract，不引入第二套 `HarnessRunSpec`。原
 [Agent Harness and Product Adapter Boundaries](./agent/ARD-001-agent-harness-and-product-adapters.md)
 和
 [Harness Product Adapter Substrate](./agent/ARD-002-harness-product-adapter-substrate.md)。
+后续 harness 迁移准则、shared capability 边界和 coding 迁移 inventory 见
+[Loushang Harness Architecture](./harness/README.md)。
 
 ### loushang-channel (target)
 
@@ -383,3 +385,26 @@ TUI / WebUI / AppUI / SDK / RPC client
 
 The channel core transports and replays work operations/events. It does not
 render UI and does not own product execution internals.
+
+## Loop Boundaries
+
+`loushang` 有多个循环边界，不能合并成一个“大 runtime”：
+
+| Loop | Owner | Responsibility | Does not own |
+| --- | --- | --- | --- |
+| Provider stream loop | `loushang.ai` | provider/model/auth/stream protocol and upstream API capability mapping | agent state, product policy, UI |
+| Agent loop | `loushang.agent` | message/tool-call turn execution, low-level events, abort/error semantics | product preparation, work/method projection, UI |
+| Product-run loop | `loushang.harness` plus product adapter | prepared run handoff, product-neutral host/adapter/lifecycle contracts, shared engines | second agent loop, product defaults, provider behavior |
+| Work/method loop | `loushang.work` and optional `loushang.method` | durable operations/events/projections, method plan/step guidance | model streaming, product UI, harness execution mechanics |
+| Channel loop | target `loushang.channel` | external operation/event transport, subscription, replay, correlation | local UI widgets, product internals, agent state machine |
+| TUI render loop | `loushang.tui` plus product UI adapter | terminal input/render primitives and product-specific terminal wiring | agent loop, provider behavior, harness policy |
+
+This split lets `harness`, `tui`, `agent`, and `ai` develop in parallel. A
+harness change should affect those lanes only when it intentionally changes a
+stable cross-boundary contract. Otherwise:
+
+- TUI changes stay in `loushang.tui` or product-owned UI adapters.
+- Agent changes stay in `loushang.agent`.
+- Provider/model/auth changes stay in `loushang.ai`.
+- Harness changes stay in product-neutral contracts, shared registries,
+  lifecycle shapes, and helper engines consumed by product adapters.
