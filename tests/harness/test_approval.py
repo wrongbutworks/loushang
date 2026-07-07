@@ -10,6 +10,15 @@ def test_approval_decision_helpers_cover_allow_and_deny() -> None:
     assert ApprovalDecision.deny("blocked") == ApprovalDecision(disposition="deny", reason="blocked")
 
 
+def test_approval_decision_rejects_invalid_disposition() -> None:
+    import pytest
+
+    from loushang.harness.approval import ApprovalDecision
+
+    with pytest.raises(ValueError, match="Unsupported approval decision disposition"):
+        ApprovalDecision(disposition="prompt")  # type: ignore[arg-type]
+
+
 def test_resolve_approval_defaults_to_deny() -> None:
     from loushang.harness.approval import ApprovalRequest, resolve_approval
 
@@ -26,6 +35,25 @@ def test_resolve_approval_defaults_to_deny() -> None:
 
     assert decision.disposition == "deny"
     assert decision.reason == "needs approval"
+
+
+def test_resolve_approval_rejects_invalid_resolver_result() -> None:
+    import pytest
+
+    from loushang.harness.approval import ApprovalRequest, resolve_approval
+
+    class InvalidResolver:
+        def resolve(self, request):
+            del request
+            return object()
+
+    with pytest.raises(TypeError, match="ApprovalResolver returned object"):
+        asyncio.run(
+            resolve_approval(
+                InvalidResolver(),
+                ApprovalRequest(tool_name="write", arguments={}),
+            )
+        )
 
 
 def test_headless_approval_resolver_can_allow() -> None:

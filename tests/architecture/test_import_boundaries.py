@@ -92,6 +92,9 @@ def test_harness_slice1_symbols_are_not_top_level_exports() -> None:
         "ApprovalDecision",
         "ApprovalRequest",
         "ApprovalResolver",
+        "DenyApprovalResolver",
+        "HeadlessApprovalResolver",
+        "MaybeAwaitable",
         "ToolContribution",
         "ToolDefinition",
         "ToolPackDefinition",
@@ -101,6 +104,7 @@ def test_harness_slice1_symbols_are_not_top_level_exports() -> None:
         "ToolResolutionError",
         "ToolResolutionResult",
         "ToolResultPresentation",
+        "resolve_approval",
         "resolve_tool_contributions",
         "tool",
     }

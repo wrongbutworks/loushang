@@ -25,6 +25,10 @@ class ApprovalDecision:
     disposition: Literal["allow", "deny"]
     reason: str | None = None
 
+    def __post_init__(self) -> None:
+        if self.disposition not in {"allow", "deny"}:
+            raise ValueError(f"Unsupported approval decision disposition: {self.disposition}")
+
     @classmethod
     def allow(cls) -> "ApprovalDecision":
         return cls(disposition="allow")
@@ -66,5 +70,7 @@ async def resolve_approval(
     resolved = resolver or DenyApprovalResolver()
     result = resolved.resolve(request)
     if inspect.isawaitable(result):
-        return await result
+        result = await result
+    if not isinstance(result, ApprovalDecision):
+        raise TypeError(f"ApprovalResolver returned {type(result).__name__}, expected ApprovalDecision")
     return result
