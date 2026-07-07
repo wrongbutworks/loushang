@@ -68,6 +68,12 @@ For example, a current `policy_decision` field must become `object | None` or
 a neutral metadata mapping. Harness must not import
 `loushang.coding.policy.types.PolicyDecision`.
 
+Approval contracts should fail fast on invalid neutral values. In Slice 1,
+`ApprovalDecision` validates its disposition, and `resolve_approval` validates
+that resolvers return an `ApprovalDecision` after awaiting sync or async
+resolver output. This is contract hardening only; product policy semantics,
+approval audit payloads, and UI behavior stay outside harness.
+
 ### Coding Keeps
 
 `loushang.coding.policy` keeps coding policy and UI integration:
@@ -85,6 +91,11 @@ a neutral metadata mapping. Harness must not import
 implementation owns pending futures, presenter payload shape, and product UI
 behavior. A later slice may define a neutral approval broker if it can be
 expressed without importing UI callbacks or product payload semantics.
+
+Coding compatibility paths re-export harness-owned approval contracts where
+they were already part of the coding surface. Those shims preserve import paths;
+they do not change class ownership, add new top-level SDK exports, or move
+`InteractiveApprovalResolver` into harness.
 
 ## Tools Core Boundary
 
