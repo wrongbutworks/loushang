@@ -222,6 +222,20 @@ public SDK surface decision is explicit. They can be deleted only when:
 Top-level `loushang.coding` and `loushang.coding.tools` exports remain stable
 through Slice 1.
 
+Compatibility lifecycle:
+
+- internal-only shims should be deleted once all in-repo imports have moved to
+  the focused harness owner module and no product adapter still needs the old
+  submodule path;
+- public SDK compatibility paths stay until a documented deprecation or
+  long-term support decision is accepted for each path;
+- Pi-style wrapper aliases stay in `loushang.coding.tools.wrapper` and must not
+  be introduced as module-level aliases in neutral harness modules;
+- harness-owned classes keep their harness `__module__`; coding compatibility
+  shims preserve import paths, not class module identity;
+- compatibility tests should cover both retained public paths and deleted
+  neutral-surface aliases before any shim removal.
+
 ## External Reference: Hermes Agent
 
 `~/workspace/hermes-agent` is useful as a boundary validation sample, not as a

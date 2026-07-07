@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import ast
+import importlib
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -82,6 +83,54 @@ def test_core_runtime_packages_do_not_import_product_layers() -> None:
 
 def test_legacy_agent_harness_package_has_been_removed() -> None:
     assert not Path("src/loushang/agent/harness").exists()
+
+
+def test_harness_slice1_symbols_are_not_top_level_exports() -> None:
+    import loushang.harness as harness
+
+    slice1_symbols = {
+        "ApprovalDecision",
+        "ApprovalRequest",
+        "ApprovalResolver",
+        "ToolDefinition",
+        "ToolRegistry",
+        "ToolRenderRuntime",
+        "ToolResultPresentation",
+        "tool",
+    }
+
+    assert slice1_symbols.isdisjoint(set(harness.__all__))
+
+
+def test_harness_tools_core_does_not_expose_pi_style_module_aliases() -> None:
+    module = importlib.import_module("loushang.harness.tools.core")
+
+    pi_style_aliases = {
+        "createToolDefinitionFromAgentTool",
+        "wrapToolDefinition",
+        "wrapToolDefinitions",
+    }
+
+    assert [name for name in sorted(pi_style_aliases) if hasattr(module, name)] == []
+
+
+def test_harness_slice1_compatibility_lifecycle_is_documented() -> None:
+    text = " ".join(
+        Path("docs/internals/architecture/harness/slice-1-approval-tools-presentation-design.md")
+        .read_text(encoding="utf-8")
+        .split()
+    )
+
+    required_phrases = {
+        "`__module__`",
+        "harness-owned classes keep their harness `__module__`",
+        "coding compatibility shims preserve import paths, not class module identity",
+        "Pi-style wrapper aliases stay in `loushang.coding.tools.wrapper`",
+        "internal-only shims",
+        "public SDK compatibility paths",
+    }
+
+    assert sorted(phrase for phrase in required_phrases if phrase not in text) == []
 
 
 def test_absolute_imports_include_child_aliases_from_package_import(
