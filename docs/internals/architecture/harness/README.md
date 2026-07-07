@@ -21,6 +21,9 @@ planning, work event persistence, or AI provider behavior.
 - [Coding To Harness Migration Inventory](coding-to-harness-migration-inventory.md)
   records how the current `loushang.coding` modules should be classified before
   implementation moves code.
+- [Harness Lane Development Workflow](development-workflow.md) defines how the
+  long-lived `lane/harness` branch stays isolated from `main` until the
+  migration is bootable and validated.
 
 Accepted decisions that govern this directory:
 
