@@ -43,6 +43,11 @@ from loushang.coding.source_info import executable_source_identity
 from loushang.coding.store import SessionManager
 from loushang.coding.tools import ToolRegistry
 from loushang.coding.types import ModelSelection
+from loushang.harness.tools.contribution import (
+    ToolContribution,
+    ToolResolutionResult,
+    resolve_tool_contributions,
+)
 
 AgentFactory = Callable[..., Agent]
 ServicesFactory = Callable[[str], "BootstrapServices"]
@@ -874,34 +879,87 @@ def _register_extension_tools(
     extension_tools = extension_runner.list_tool_definitions()
     if not extension_tools:
         return resource_bundle, tool_registry, []
-
     resolved_tool_registry = tool_registry
     if resolved_tool_registry is None:
         resolved_tool_registry = ToolRegistry()
 
-    diagnostics: list[ResourceDiagnostic] = []
-    existing_names = {
-        definition.name
-        for definition in resolved_tool_registry.list_definitions()
-    }
-    for definition in extension_tools:
-        if definition.name in existing_names:
-            diagnostics.append(
-                ResourceDiagnostic(
-                    code="extension_tool_conflict",
-                    message=f"Extension tool '{definition.name}' conflicts with an existing registry tool.",
-                )
-            )
-            continue
+    resolution = _resolve_extension_tool_contributions(
+        extension_runner=extension_runner,
+        tool_registry=resolved_tool_registry,
+    )
+    conflict_diagnostics = _extension_tool_conflict_diagnostics(resolution)
+    diagnostics: list[ResourceDiagnostic] = list(conflict_diagnostics.values())
+    for contribution in _extension_tool_registration_contributions(resolution, conflict_names=set(conflict_diagnostics)):
         resolved_tool_registry.register_tool(
-            definition,
-            source_info=extension_runner.get_tool_source_info(definition.name),
+            contribution.definition,
+            source_info=contribution.source_info,
         )
-        existing_names.add(definition.name)
 
     if diagnostics:
         resource_bundle = resource_bundle.merge(diagnostics=diagnostics)
     return resource_bundle, resolved_tool_registry, diagnostics
+
+
+def _resolve_extension_tool_contributions(
+    *,
+    extension_runner: ExtensionRunner,
+    tool_registry: ToolRegistry,
+) -> ToolResolutionResult:
+    return resolve_tool_contributions(
+        (
+            *tool_registry.list_contributions(),
+            *_extension_tool_contributions(extension_runner),
+        ),
+        fail_on_errors=False,
+    )
+
+
+def _extension_tool_registration_contributions(
+    resolution: ToolResolutionResult,
+    *,
+    conflict_names: set[str],
+) -> tuple[ToolContribution, ...]:
+    contributions: list[ToolContribution] = []
+    for contribution in resolution.contributions:
+        if not _is_extension_tool_contribution(contribution):
+            continue
+        if contribution.definition.name in conflict_names:
+            continue
+        contributions.append(contribution)
+    return tuple(contributions)
+
+
+def _extension_tool_contributions(extension_runner: ExtensionRunner) -> tuple[ToolContribution, ...]:
+    return tuple(
+        ToolContribution(
+            definition,
+            source_info=extension_runner.get_tool_source_info(definition.name),
+            metadata={
+                "kind": "extension_tool",
+                "extension_tool": definition.name,
+            },
+        )
+        for definition in extension_runner.list_tool_definitions()
+    )
+
+
+def _extension_tool_conflict_diagnostics(resolution: ToolResolutionResult) -> dict[str, ResourceDiagnostic]:
+    conflicts: dict[str, ResourceDiagnostic] = {}
+    for diagnostic in resolution.diagnostics:
+        if diagnostic.code != "duplicate_tool":
+            continue
+        name = diagnostic.details.get("name")
+        if not isinstance(name, str):
+            continue
+        conflicts[name] = ResourceDiagnostic(
+            code="extension_tool_conflict",
+            message=f"Extension tool '{name}' conflicts with an existing registry tool.",
+        )
+    return conflicts
+
+
+def _is_extension_tool_contribution(contribution: ToolContribution) -> bool:
+    return contribution.metadata.get("kind") == "extension_tool"
 
 
 def _convert_to_llm_with_block_images(settings_manager: SettingsManager):

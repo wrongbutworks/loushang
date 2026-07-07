@@ -41,6 +41,7 @@ Slice 1 introduces or fills these focused modules:
 
 - `loushang.harness.approval`
 - `loushang.harness.tools.core`
+- `loushang.harness.tools.contribution`
 - `loushang.harness.presentation`
 
 No new top-level packages such as `loushang.workspace`, `loushang.context`,
@@ -89,8 +90,8 @@ expressed without importing UI callbacks or product payload semantics.
 
 ### Harness Owns
 
-`loushang.harness.tools.core` owns neutral tool definition, contribution, schema,
-registry, and agent-adaptation mechanics:
+`loushang.harness.tools.core` owns neutral tool definition, schema, registry,
+and agent-adaptation mechanics:
 
 - `ToolDefinition`
 - `ToolRenderCall`
@@ -144,6 +145,49 @@ secondary parameter schema as opaque metadata if needed for compatibility, but
 the current behavior where runtime agent tools expose
 `provider_parameters or parameters` stays in the coding wrapper until a neutral
 provider-adaptation contract exists.
+
+### Tool Contribution Resolver
+
+`loushang.harness.tools.contribution` owns neutral tool contribution and
+tool-pack resolution mechanics:
+
+- `ToolContribution`
+- `ToolPackDefinition`
+- `ToolResolutionDiagnostic`
+- `ToolResolutionResult`
+- `ToolResolutionError`
+- `resolve_tool_contributions`
+
+The resolver supports deterministic ordering, transitive pack includes,
+enable/disable filtering, duplicate tool or pack diagnostics, and missing
+reference diagnostics. It preserves opaque `source_info` and metadata for
+product adapters, but does not interpret task, expert, workflow, prompt,
+connector, model, or UI semantics.
+
+Coding remains responsible for concrete built-in tool registration, default
+pack activation, user-facing labels, product-specific aliases, external tool
+installation policy, and any migration from current coding registry paths.
+
+Slice 1b may add a coding adapter verification path where
+`loushang.coding.tools.ToolRegistry` projects its current registry state into
+neutral `ToolContribution` records and calls the harness resolver. This path is
+read-only: it must not change registration order, enable/disable state,
+materialized runtime tools, built-in tool defaults, or prompt assembly.
+
+Coding default tool-pack registration may also call the harness resolver after
+coding has created product-owned `ToolContribution` and `ToolPackDefinition`
+records. The pack names, built-in tool names, legacy order, factory options,
+policy wiring, and default activation remain coding-owned; harness only resolves
+the supplied neutral records.
+
+Bootstrap-time coding extension tools may use the same resolver path. Coding
+adapters project extension tool metadata into neutral `ToolContribution`
+records, preserve opaque `source_info` for diagnostics, and register only the
+extension contributions returned by the resolver. Concrete execution still
+stays in coding through the existing extension runner and tool wrapper. Runtime
+dynamic registration through extension callbacks remains coding-owned in Slice
+1b; migrating that path requires a separate execution-context boundary because
+it touches live session state and product runtime behavior.
 
 ## Presentation Boundary
 
@@ -242,7 +286,7 @@ Compatibility lifecycle:
 template to copy.
 
 Its tool registry demonstrates a contribution-record shape that is relevant to
-`harness.tools.core`: tool name, schema, handler, toolset membership,
+`harness.tools.contribution`: tool name, schema, handler, toolset membership,
 availability metadata, dynamic schema override hooks, registry snapshots, and a
 generation counter. Slice 1 may borrow those mechanism concepts, but not the
 Hermes implementation style. Hermes uses import-time singleton registration,
@@ -251,8 +295,8 @@ and JSON-string dispatch; those are product/runtime choices and remain outside
 harness.
 
 Hermes toolsets also validate that pack/include resolution is a shared
-mechanism, while defaults remain product-owned. Harness may define neutral
-tool-pack contribution and include resolution in or near `harness.tools.core`.
+mechanism, while defaults remain product-owned. Harness defines neutral
+tool-pack contribution and include resolution in `harness.tools.contribution`.
 Coding still decides the default tool set, activation order, disabled platform
 bundles, aliases, and user-facing names.
 
@@ -317,8 +361,16 @@ Focused tests:
 Create `loushang.harness.tools.core` for neutral tool definition, schema,
 decorator metadata, registry mechanics, and agent-tool adaptation.
 
+Create `loushang.harness.tools.contribution` for neutral contribution records,
+tool-pack definitions, pack include resolution, enable/disable filtering, and
+resolution diagnostics.
+
 Keep decorated plain-return normalization, coding `ToolContext`, concrete tools,
 tool factories, default tool packs, and public Pi-style aliases in coding.
+Built-in coding tool registration and bootstrap-time extension tool
+registration may use `harness.tools.contribution` as a neutral resolver, but
+the supplied contributions, default pack choices, conflict policy, runner
+binding, and concrete execution remain coding-owned.
 
 Focused tests:
 
@@ -330,6 +382,7 @@ Focused tests:
 - `tests/coding/test_prompt_assembly.py`
 - extension tests that import `ToolDefinition`
 - new harness tools-core tests
+- new harness tool contribution tests
 - `tests/architecture/test_import_boundaries.py`
 
 ### Step 4: Coding Compatibility Adapters
