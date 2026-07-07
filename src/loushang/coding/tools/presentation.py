@@ -1,29 +1,20 @@
 from __future__ import annotations
 
-import re
-from dataclasses import dataclass
-from typing import Any, Mapping, Sequence
+from collections.abc import Mapping, Sequence
+from typing import Any
+
+from loushang.harness.presentation import (
+    ToolResultPresentation,
+    collapse_text,
+    normalize_display_text,
+    normalize_line_endings,
+)
 
 from .protocol import (
     project_tool_details_for_protocol,
     tool_artifact_paths_for_protocol,
 )
 from .truncate import format_size
-
-ANSI_ESCAPE_RE = re.compile(r"\x1b\[[0-9;]*[A-Za-z]")
-
-
-@dataclass(frozen=True)
-class ToolResultPresentation:
-    expanded: str
-    collapsed: str
-    remaining_lines: int = 0
-    notices: tuple[str, ...] = ()
-    artifact_paths: tuple[str, ...] = ()
-
-
-def normalize_display_text(text: str) -> str:
-    return ANSI_ESCAPE_RE.sub("", _normalize_line_endings(text))
 
 
 def get_tool_text_output(
@@ -41,7 +32,7 @@ def get_tool_text_output(
         if part_type == "text":
             text = _part_value(part, "text")
             if isinstance(text, str):
-                text_blocks.append(_normalize_line_endings(text) if preserve_ansi else normalize_display_text(text))
+                text_blocks.append(normalize_line_endings(text) if preserve_ansi else normalize_display_text(text))
         elif part_type == "image" and not show_images:
             mime_type = _part_value(part, "mime_type") or _part_value(part, "mimeType") or "image/unknown"
             image_blocks.append(f"[Image: {mime_type}]")
@@ -72,12 +63,14 @@ def render_tool_result_presentation(
     show_images: bool = False,
     preserve_ansi: bool = False,
 ) -> ToolResultPresentation:
+    if max_collapsed_lines < 1:
+        raise ValueError("max_collapsed_lines must be >= 1")
     body = get_tool_text_output(content, show_images=show_images, preserve_ansi=preserve_ansi)
     notices = tuple(_tool_result_notices(details))
     artifact_paths = tuple(_artifact_paths(details))
     extra_lines = [*notices, *(f"[Full output: {path}]" for path in artifact_paths)]
     expanded = "\n".join(line for line in [body, *extra_lines] if line)
-    collapsed, remaining_lines = _collapse_text(expanded, max_lines=max_collapsed_lines)
+    collapsed, remaining_lines = collapse_text(expanded, max_lines=max_collapsed_lines)
     return ToolResultPresentation(
         expanded=expanded,
         collapsed=collapsed,
@@ -85,20 +78,6 @@ def render_tool_result_presentation(
         notices=notices,
         artifact_paths=artifact_paths,
     )
-
-
-def _collapse_text(text: str, *, max_lines: int) -> tuple[str, int]:
-    if max_lines < 1:
-        raise ValueError("max_collapsed_lines must be >= 1")
-    lines = text.splitlines()
-    if len(lines) <= max_lines:
-        return text, 0
-    remaining = len(lines) - max_lines
-    return "\n".join([*lines[:max_lines], f"... ({remaining} more lines)"]), remaining
-
-
-def _normalize_line_endings(text: str) -> str:
-    return text.replace("\r\n", "\n").replace("\r", "")
 
 
 def _tool_result_notices(details: object | None) -> list[str]:

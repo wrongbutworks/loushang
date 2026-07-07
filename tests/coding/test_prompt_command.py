@@ -97,7 +97,7 @@ def test_prompt_command_selects_usable_model_before_prompt() -> None:
 
     kimi = Model(
         id="kimi-for-coding",
-        provider="moonshot",
+        provider="kimi-code",
         endpoint="kimi-code-anthropic",
     )
 
@@ -147,7 +147,7 @@ def test_prompt_command_selects_usable_model_before_prompt() -> None:
 
         assert exit_code == 0
         assert session.set_model_calls == [kimi]
-        assert session.prompt_calls == [("hello", ModelSelection(provider="moonshot", model_id="kimi-for-coding"))]
+        assert session.prompt_calls == [("hello", ModelSelection(provider="kimi-code", model_id="kimi-for-coding"))]
 
     asyncio.run(scenario())
 

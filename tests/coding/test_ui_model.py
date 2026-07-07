@@ -57,7 +57,7 @@ def test_ensure_usable_session_model_keeps_existing_usable_model() -> None:
 def test_ensure_usable_session_model_prefers_kimi_coding_anthropic_detail() -> None:
     from loushang.coding.ui.model import ensure_usable_session_model
 
-    preferred = Model(id="kimi-for-coding", provider="moonshot", endpoint="kimi-code-anthropic")
+    preferred = Model(id="kimi-for-coding", provider="kimi-code", endpoint="kimi-code-anthropic")
     fallback = Model(id="kimi-for-coding", provider="moonshot", endpoint="openai-completions:cn:coding")
     session = _Session(
         current=ModelSelection(provider="unknown", model_id="unknown"),
@@ -66,7 +66,7 @@ def test_ensure_usable_session_model_prefers_kimi_coding_anthropic_detail() -> N
 
     result = asyncio.run(ensure_usable_session_model(session))
 
-    assert result == ModelSelection(provider="moonshot", model_id="kimi-for-coding")
+    assert result == ModelSelection(provider="kimi-code", model_id="kimi-for-coding")
     assert session.set_model_calls == [preferred]
 
 

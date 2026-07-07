@@ -92,7 +92,9 @@ def test_agent_session_composes_existing_transform_with_extension_context_withou
         seen.append(event.messages[-1].content[0].text)
         return ContextResult(messages=event.messages + [_user_message("from-extension-context")])
 
-    manager = SessionManager.new(session_dir=tmp_path, cwd="/tmp/project", persist=False)
+    project_dir = tmp_path / "project"
+    project_dir.mkdir()
+    manager = SessionManager.new(session_dir=tmp_path, cwd=str(project_dir), persist=False)
     manager.append_message(_user_message("persisted"))
     agent = Agent(transform_context=_existing_transform)
     session = AgentSession(
@@ -4577,7 +4579,9 @@ def test_agent_session_exposes_jsonl_and_html_export_methods(tmp_path) -> None:
     from loushang.coding.session import AgentSession
     from loushang.coding.store import SessionManager
 
-    manager = SessionManager.new(session_dir=tmp_path, cwd="/tmp/project", persist=False)
+    project_dir = tmp_path / "project"
+    project_dir.mkdir()
+    manager = SessionManager.new(session_dir=tmp_path, cwd=str(project_dir), persist=False)
     manager.append_message(
         UserMessage(
             role="user",
