@@ -31,3 +31,4 @@ Current live references:
 - [P3 Fixed MethodPlan Flow Research](p3-fixed-methodplan-flow-research.md)
 - [Method Deviation And Evolution](method-deviation-and-evolution.md)
 - [Methodology System Reference Survey](loushang-methodology-system-reference-survey.md)
+- [WorkBuddy Lessons For Loushang](workbuddy-lessons-for-loushang.md)
