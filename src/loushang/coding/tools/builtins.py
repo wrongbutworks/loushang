@@ -3,6 +3,11 @@ from __future__ import annotations
 from loushang.coding.diagnostics import DiagnosticsService
 from loushang.coding.exec import ExecService
 from loushang.coding.policy import ApprovalResolver, PolicyEngine
+from loushang.harness.tools.contribution import (
+    ToolContribution,
+    ToolPackDefinition,
+    resolve_tool_contributions,
+)
 
 from .external_tools import (
     ExternalToolDownloader,
@@ -14,6 +19,7 @@ from .operations import ToolOperations
 from .registry import ToolRegistry
 
 BUILTIN_TOOL_NAMES = ("bash", "read", "ls", "find", "grep", "write", "edit")
+BUILTIN_TOOL_PACK = ToolPackDefinition(name="coding.builtin", tools=BUILTIN_TOOL_NAMES)
 
 
 def register_builtin_tools(
@@ -42,6 +48,15 @@ def register_builtin_tools(
         allow_external_tool_downloads=allow_external_tool_downloads,
         require_external_tools=require_external_tools,
     )
-    for tool_name in BUILTIN_TOOL_NAMES:
-        registry.register_tool(create_tool_definition(tool_name, options=options))
+    contributions = tuple(
+        ToolContribution(create_tool_definition(tool_name, options=options))
+        for tool_name in BUILTIN_TOOL_NAMES
+    )
+    result = resolve_tool_contributions(
+        contributions,
+        packs=(BUILTIN_TOOL_PACK,),
+        include_packs=(BUILTIN_TOOL_PACK.name,),
+    )
+    for definition in result.definitions:
+        registry.register_tool(definition)
     return registry

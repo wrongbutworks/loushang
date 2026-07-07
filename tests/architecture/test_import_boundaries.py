@@ -92,10 +92,16 @@ def test_harness_slice1_symbols_are_not_top_level_exports() -> None:
         "ApprovalDecision",
         "ApprovalRequest",
         "ApprovalResolver",
+        "ToolContribution",
         "ToolDefinition",
+        "ToolPackDefinition",
         "ToolRegistry",
         "ToolRenderRuntime",
+        "ToolResolutionDiagnostic",
+        "ToolResolutionError",
+        "ToolResolutionResult",
         "ToolResultPresentation",
+        "resolve_tool_contributions",
         "tool",
     }
 

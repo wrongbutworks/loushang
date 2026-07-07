@@ -1921,6 +1921,184 @@ def test_create_agent_session_records_nonfatal_extension_tool_conflicts(tmp_path
     assert any(record.code == "extension_tool_conflict" for record in diagnostics)
 
 
+def test_extension_tool_contribution_projection_preserves_source_info(tmp_path) -> None:
+    from loushang.coding.bootstrap import _extension_tool_contributions
+    from loushang.coding.extensions import ExtensionRunner, LoadedExtension
+    from loushang.coding.tools import ToolDefinition
+
+    async def _execute_tool(tool_name: str, arguments: dict[str, object], context, signal):
+        del tool_name, arguments, context, signal
+        return {"ok": True}
+
+    tool = ToolDefinition(
+        name="ext_review",
+        label="Review",
+        description="Extension review tool",
+        parameters={"type": "object", "properties": {}, "required": []},
+        execute=_execute_tool,
+    )
+    extension = LoadedExtension(
+        name="review-pack",
+        source_path=tmp_path / "extensions" / "review",
+        entry_path=tmp_path / "extensions" / "review" / "extension.py",
+        tool_definitions=[tool],
+    )
+    runner = ExtensionRunner([extension])
+
+    contributions = _extension_tool_contributions(runner)
+
+    assert [contribution.definition.name for contribution in contributions] == ["ext_review"]
+    assert contributions[0].enabled is True
+    assert contributions[0].source_info == runner.get_tool_source_info("ext_review")
+    assert contributions[0].metadata == {
+        "kind": "extension_tool",
+        "extension_tool": "ext_review",
+    }
+
+
+def test_register_extension_tools_uses_harness_resolver_for_dry_run_conflicts(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    import loushang.coding.bootstrap as bootstrap
+    from loushang.coding.loader import ResourceBundle
+    from loushang.coding.tools import ToolDefinition, ToolRegistry
+    from loushang.harness.tools.contribution import resolve_tool_contributions
+
+    async def _execute_tool(tool_name: str, arguments: dict[str, object], context, signal):
+        del tool_name, arguments, context, signal
+        return {"ok": True}
+
+    base_tool = ToolDefinition(
+        name="calc",
+        label="Calc",
+        description="Base calc",
+        parameters={"type": "object", "properties": {}, "required": []},
+        execute=_execute_tool,
+    )
+    extension_tool = ToolDefinition(
+        name="calc",
+        label="Extension Calc",
+        description="Extension calc",
+        parameters={"type": "object", "properties": {}, "required": []},
+        execute=_execute_tool,
+    )
+    registry = ToolRegistry()
+    registry.register_tool(base_tool, source_info={"source": "base"})
+
+    class ExtensionRunner:
+        def list_tool_definitions(self):
+            return [extension_tool]
+
+        def get_tool_source_info(self, name: str):
+            return {"source": "extension", "name": name}
+
+    calls: list[tuple[str, ...]] = []
+
+    def spy_resolver(contributions, **kwargs):
+        contribution_tuple = tuple(contributions)
+        calls.append(tuple(contribution.definition.name for contribution in contribution_tuple))
+        return resolve_tool_contributions(contribution_tuple, **kwargs)
+
+    monkeypatch.setattr(bootstrap, "resolve_tool_contributions", spy_resolver)
+
+    bundle, resolved_registry, diagnostics = bootstrap._register_extension_tools(
+        extension_runner=ExtensionRunner(),
+        resource_bundle=ResourceBundle(cwd=tmp_path),
+        tool_registry=registry,
+    )
+
+    assert calls == [("calc", "calc")]
+    assert resolved_registry is registry
+    assert [definition.name for definition in registry.list_definitions()] == ["calc"]
+    assert [diagnostic.code for diagnostic in diagnostics] == ["extension_tool_conflict"]
+    assert [diagnostic.code for diagnostic in bundle.diagnostics] == ["extension_tool_conflict"]
+
+
+def test_register_extension_tools_registers_resolver_output_only(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    import loushang.coding.bootstrap as bootstrap
+    from loushang.coding.loader import ResourceBundle
+    from loushang.coding.tools import ToolDefinition, ToolRegistry
+    from loushang.harness.tools.contribution import ToolResolutionResult
+
+    async def _execute_tool(tool_name: str, arguments: dict[str, object], context, signal):
+        del tool_name, arguments, context, signal
+        return {"ok": True}
+
+    extension_tool = ToolDefinition(
+        name="ext_calc",
+        label="Extension Calc",
+        description="Extension calc",
+        parameters={"type": "object", "properties": {}, "required": []},
+        execute=_execute_tool,
+    )
+    registry = ToolRegistry()
+
+    class ExtensionRunner:
+        def list_tool_definitions(self):
+            return [extension_tool]
+
+        def get_tool_source_info(self, name: str):
+            return {"source": "extension", "name": name}
+
+    def empty_resolver(contributions, **kwargs):
+        del contributions, kwargs
+        return ToolResolutionResult(contributions=(), definitions=())
+
+    monkeypatch.setattr(bootstrap, "resolve_tool_contributions", empty_resolver)
+
+    _bundle, resolved_registry, diagnostics = bootstrap._register_extension_tools(
+        extension_runner=ExtensionRunner(),
+        resource_bundle=ResourceBundle(cwd=tmp_path),
+        tool_registry=registry,
+    )
+
+    assert diagnostics == []
+    assert resolved_registry is registry
+    assert registry.list_definitions() == []
+
+
+def test_register_extension_tools_preserves_resolver_source_info(tmp_path) -> None:
+    import loushang.coding.bootstrap as bootstrap
+    from loushang.coding.loader import ResourceBundle
+    from loushang.coding.tools import ToolDefinition, ToolRegistry
+
+    async def _execute_tool(tool_name: str, arguments: dict[str, object], context, signal):
+        del tool_name, arguments, context, signal
+        return {"ok": True}
+
+    extension_tool = ToolDefinition(
+        name="ext_calc",
+        label="Extension Calc",
+        description="Extension calc",
+        parameters={"type": "object", "properties": {}, "required": []},
+        execute=_execute_tool,
+    )
+    source_info = {"source": "extension", "path": str(tmp_path / "extension.py")}
+
+    class ExtensionRunner:
+        def list_tool_definitions(self):
+            return [extension_tool]
+
+        def get_tool_source_info(self, name: str):
+            del name
+            return source_info
+
+    _bundle, registry, diagnostics = bootstrap._register_extension_tools(
+        extension_runner=ExtensionRunner(),
+        resource_bundle=ResourceBundle(cwd=tmp_path),
+        tool_registry=ToolRegistry(),
+    )
+
+    assert diagnostics == []
+    assert registry is not None
+    assert [definition.name for definition in registry.list_definitions()] == ["ext_calc"]
+    assert registry.get_source_info("ext_calc") == source_info
+
+
 def test_create_agent_session_passes_compaction_settings_to_session(tmp_path, monkeypatch) -> None:
     import asyncio
 
