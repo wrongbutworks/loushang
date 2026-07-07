@@ -226,7 +226,10 @@ class ToolRenderRuntime:
             expanded=expanded,
             is_error=is_error,
         )
-        rendered = definition.render_call(args, self._theme, context)
+        try:
+            rendered = definition.render_call(args, self._theme, context)
+        except Exception:
+            return None
         self._last_call_rendered_by_call_id[tool_call_id] = rendered
         return rendered
 
@@ -254,7 +257,10 @@ class ToolRenderRuntime:
             is_error=is_error,
         )
         options = ToolRenderResultOptions(expanded=expanded, is_partial=is_partial)
-        rendered = definition.render_result(result, options, self._theme, context)
+        try:
+            rendered = definition.render_result(result, options, self._theme, context)
+        except Exception:
+            return None
         self._last_result_rendered_by_call_id[tool_call_id] = rendered
         return rendered
 

@@ -221,6 +221,12 @@ Harness presentation records should be neutral. They may describe text,
 structured values, file references, or opaque artifact references, but they do
 not decide terminal/web widgets or product transcript layout.
 
+Renderer callbacks are optional and fail soft. `ToolRenderRuntime` returns
+`None` when a resolver or renderer callback is unavailable or raises, and it
+must not treat a failed render as the last rendered value. Product adapters may
+log or trace renderer failures, but harness runtime does not own product
+diagnostics or UI fallback wording.
+
 ### Coding Keeps
 
 `loushang.coding.tools.presentation` and related modules keep coding-specific
@@ -237,6 +243,12 @@ projection and wording:
 
 The current builtin renderers know concrete coding tool names and argument
 semantics, so they remain coding-owned.
+
+Coding compatibility paths may re-export harness-owned presentation runtime
+contracts such as `ToolRenderRuntime`, `ToolRenderContext`,
+`ToolRenderResultOptions`, and `ToolDefinitionResolver`. Coding presentation
+helpers remain product-owned because they project protocol details and produce
+user-facing notices.
 
 Render callback aliases (`ToolRenderCall`, `ToolRenderResult`, and
 `ToolRenderOutput`) are tools-core contracts because they are fields on
