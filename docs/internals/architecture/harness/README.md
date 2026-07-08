@@ -24,6 +24,9 @@ planning, work event persistence, or AI provider behavior.
 - [Slice 1 Closure Status](slice-1-status.md) records the approval, tools-core,
   contribution, and presentation substrate that has landed on `lane/harness`,
   plus deferred runtime and product-adapter work.
+- [Slice 2 Execution Context Design](slice-2-execution-context-design.md)
+  drafts the neutral execution/context and runtime contribution boundaries for
+  follow-on work after Slice 1.
 - [Harness Lane Development Workflow](development-workflow.md) defines how the
   long-lived `lane/harness` branch stays isolated from `main` until the
   migration is bootable and validated.

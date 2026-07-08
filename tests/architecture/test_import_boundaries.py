@@ -175,6 +175,30 @@ def test_harness_slice1_closure_status_is_documented() -> None:
     assert sorted(phrase for phrase in required_phrases if phrase not in text) == []
 
 
+def test_harness_slice2_execution_context_design_is_documented() -> None:
+    path = Path("docs/internals/architecture/harness/slice-2-execution-context-design.md")
+    assert path.exists()
+
+    text = " ".join(path.read_text(encoding="utf-8").split())
+    required_phrases = {
+        "Slice 2 Execution Context Design",
+        "Status: design draft for `lane/harness`",
+        "neutral execution context",
+        "product execution adapter",
+        "runtime dynamic extension registration",
+        "`loushang.coding.tools.context.ToolContext`",
+        "`ExtensionRuntimeBindings.register_tool`",
+        "`ToolController.register_runtime_tool`",
+        "`harness.tools.contribution`",
+        "Product-owned behavior remains product-owned",
+        "No runtime behavior changes are part of this design slice",
+        "Deferred implementation items",
+        "not import `loushang.coding`",
+    }
+
+    assert sorted(phrase for phrase in required_phrases if phrase not in text) == []
+
+
 def test_absolute_imports_include_child_aliases_from_package_import(
     tmp_path: Path,
 ) -> None:

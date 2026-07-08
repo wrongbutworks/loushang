@@ -71,12 +71,26 @@ Keep in coding:
 - command handlers;
 - session controllers.
 
-### Slice 2: Workspace Exec
+### Slice 2: Execution Context And Runtime Contributions
+
+Status: design draft; see
+[Slice 2 Execution Context Design](slice-2-execution-context-design.md).
+
+Purpose: define the neutral live execution/context and runtime contribution
+boundary before migrating dynamic extension registration or live tool execution
+context.
+
+Move only neutral contribution/context descriptors after the design is accepted.
+Keep `ToolContext`, `ExtensionRuntimeBindings`, `ToolController`, active-tool
+policy, prompt rebuilds, session mutation, and concrete execution in coding.
+
+### Later Slice: Workspace Exec
 
 Purpose: separate process/file operation mechanics from coding policy.
 
-Move only neutral request/result/protocol shapes. Keep command allow/deny policy,
-workspace root selection, and product explanation text in coding.
+Move only neutral request/result/protocol shapes after the execution/context
+boundary is proven. Keep command allow/deny policy, workspace root selection,
+and product explanation text in coding.
 
 ### Slice 3: Resources And Source Metadata
 
