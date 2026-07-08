@@ -104,3 +104,69 @@ def test_render_runtime_preserves_context_state_and_last_rendered() -> None:
         ("call-1", {"path": "x"}, None, True, True, True),
         ("call-1", {"path": "x"}, "call-1:0:None", False, False, True),
     ]
+
+
+def test_render_runtime_fails_soft_when_render_call_raises() -> None:
+    from loushang.harness.presentation import ToolRenderRuntime
+
+    seen: list[object | None] = []
+
+    def broken_render_call(args, theme, context):
+        del args, theme
+        seen.append(context.last_rendered)
+        raise RuntimeError("renderer unavailable")
+
+    def working_render_call(args, theme, context):
+        del args, theme
+        seen.append(context.last_rendered)
+        return "rendered-call"
+
+    class Definition:
+        render_result = None
+
+    Definition.render_call = staticmethod(broken_render_call)
+
+    runtime = ToolRenderRuntime()
+
+    assert runtime.render_call(Definition(), "call-1", {"path": "x"}) is None
+
+    Definition.render_call = staticmethod(working_render_call)
+
+    assert runtime.render_call(Definition(), "call-1", {"path": "x"}) == "rendered-call"
+    assert seen == [None, None]
+
+
+def test_render_runtime_fails_soft_when_render_result_raises() -> None:
+    from loushang.agent.types import AgentToolResult
+    from loushang.harness.presentation import ToolRenderRuntime
+
+    seen: list[object | None] = []
+    result = AgentToolResult(content=[], details={})
+
+    def working_render_result(result, options, theme, context):
+        del result, options, theme
+        seen.append(context.last_rendered)
+        return "rendered-result"
+
+    def broken_render_result(result, options, theme, context):
+        del result, options, theme
+        seen.append(context.last_rendered)
+        raise RuntimeError("renderer unavailable")
+
+    class Definition:
+        render_call = None
+
+    Definition.render_result = staticmethod(working_render_result)
+
+    runtime = ToolRenderRuntime()
+
+    assert runtime.render_result(Definition(), "call-1", result) == "rendered-result"
+
+    Definition.render_result = staticmethod(broken_render_result)
+
+    assert runtime.render_result(Definition(), "call-1", result) is None
+
+    Definition.render_result = staticmethod(working_render_result)
+
+    assert runtime.render_result(Definition(), "call-1", result) == "rendered-result"
+    assert seen == [None, "rendered-result", "rendered-result"]
