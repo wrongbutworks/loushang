@@ -21,6 +21,9 @@ planning, work event persistence, or AI provider behavior.
 - [Coding To Harness Migration Inventory](coding-to-harness-migration-inventory.md)
   records how the current `loushang.coding` modules should be classified before
   implementation moves code.
+- [Slice 1 Closure Status](slice-1-status.md) records the approval, tools-core,
+  contribution, and presentation substrate that has landed on `lane/harness`,
+  plus deferred runtime and product-adapter work.
 - [Harness Lane Development Workflow](development-workflow.md) defines how the
   long-lived `lane/harness` branch stays isolated from `main` until the
   migration is bootable and validated.
