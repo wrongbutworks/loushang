@@ -170,7 +170,9 @@ Slice 1 closure should be validated with:
 
 The next slice should start with design, not implementation.
 
-Recommended focus: neutral execution/contribution context boundaries that can
-serve coding and future products without importing product runtime state into
-harness. That design should precede any migration of runtime dynamic extension
+Recommended focus:
+[Slice 2 Execution Context Design](slice-2-execution-context-design.md),
+covering neutral execution/contribution context boundaries that can serve
+coding and future products without importing product runtime state into harness.
+That design should precede any migration of runtime dynamic extension
 registration or live tool execution context.
