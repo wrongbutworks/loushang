@@ -4,7 +4,7 @@ from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from loushang.agent.types import AgentTool
+from loushang.agent.types import AgentTool, ensure_agent_tool, is_agent_tool_like
 from loushang.coding.diagnostics import DiagnosticsService
 from loushang.coding.loader import ResourceBundle
 from loushang.coding.prompt import assemble_prompt
@@ -15,6 +15,11 @@ from loushang.coding.tools import (
     ToolRegistry,
     create_tool_definition_from_tool,
     tool_to_definition,
+)
+from loushang.harness.tools.contribution import (
+    ToolContribution,
+    ToolResolutionResult,
+    resolve_tool_contributions,
 )
 
 _DEFAULT_ACTIVE_TOOL_NAMES: tuple[str, ...] = ("read", "ls", "find", "grep", "bash", "edit", "write")
@@ -160,7 +165,22 @@ class ToolController:
 
     def register_runtime_tool(self, tool: object, *, source_info: object | None = None) -> ToolDefinition:
         registry = self.ensure_tool_registry()
-        definition = registry.register_tool(tool, source_info=source_info)  # type: ignore[arg-type]
+        contribution = _runtime_tool_contribution(tool, source_info=source_info)
+        resolution = resolve_tool_contributions(
+            (
+                *registry.list_contributions(),
+                contribution,
+            ),
+            fail_on_errors=False,
+        )
+        registration_contribution = _runtime_tool_registration_contribution(
+            resolution,
+            fallback=contribution,
+        )
+        definition = registry.register_tool(
+            registration_contribution.definition,
+            source_info=registration_contribution.source_info,
+        )
         if not self.is_tool_allowed(definition.name):
             self.rebuild_prompt_and_tools_view()
             return definition
@@ -205,6 +225,39 @@ def _tool_info_from_definition(definition: ToolDefinition, source_info: object |
         "parameters": definition.parameters,
         "sourceInfo": _serialize_tool_source_info(source_info) if source_info is not None else _synthetic_tool_source_info(definition.name),
     }
+
+
+def _runtime_tool_contribution(tool: object, *, source_info: object | None = None) -> ToolContribution:
+    definition = _runtime_tool_definition(tool)
+    return ToolContribution(
+        definition,
+        source_info=source_info,
+        metadata={
+            "kind": "runtime_tool",
+            "runtime_tool": definition.name,
+        },
+    )
+
+
+def _runtime_tool_definition(tool: object) -> ToolDefinition:
+    if isinstance(tool, ToolDefinition):
+        return tool
+    if is_agent_tool_like(tool):
+        return create_tool_definition_from_tool(ensure_agent_tool(tool))
+    return tool_to_definition(tool)
+
+
+def _runtime_tool_registration_contribution(
+    resolution: ToolResolutionResult,
+    *,
+    fallback: ToolContribution,
+) -> ToolContribution:
+    for contribution in resolution.contributions:
+        if contribution.definition.name != fallback.definition.name:
+            continue
+        if contribution.metadata.get("kind") == "runtime_tool":
+            return contribution
+    return fallback
 
 
 def _synthetic_tool_source_info(name: str) -> dict[str, object]:
