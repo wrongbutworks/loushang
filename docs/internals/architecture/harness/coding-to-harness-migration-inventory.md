@@ -51,6 +51,9 @@ code moves into `loushang.harness`.
 
 ### Slice 1: Approval, Tools Core, Presentation
 
+Status: closed on `lane/harness`; see
+[Slice 1 Closure Status](slice-1-status.md).
+
 Purpose: validate the OEM/extension contribution model without touching agent
 loop, TUI render loop, or AI provider behavior.
 

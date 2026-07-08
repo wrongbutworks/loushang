@@ -150,6 +150,31 @@ def test_harness_slice1_compatibility_lifecycle_is_documented() -> None:
     assert sorted(phrase for phrase in required_phrases if phrase not in text) == []
 
 
+def test_harness_slice1_closure_status_is_documented() -> None:
+    path = Path("docs/internals/architecture/harness/slice-1-status.md")
+    assert path.exists()
+
+    text = " ".join(path.read_text(encoding="utf-8").split())
+    required_phrases = {
+        "Slice 1 Closure Status",
+        "Current status: closed on `lane/harness`",
+        "`loushang.harness.approval`",
+        "`loushang.harness.tools.core`",
+        "`loushang.harness.tools.contribution`",
+        "`loushang.harness.presentation`",
+        "Coding still owns",
+        "Compatibility shims",
+        "Deferred items",
+        "Validation matrix",
+        "runtime dynamic extension registration",
+        "concrete coding tools",
+        "TUI controller/render loop",
+        "AI provider/model/auth",
+    }
+
+    assert sorted(phrase for phrase in required_phrases if phrase not in text) == []
+
+
 def test_absolute_imports_include_child_aliases_from_package_import(
     tmp_path: Path,
 ) -> None:

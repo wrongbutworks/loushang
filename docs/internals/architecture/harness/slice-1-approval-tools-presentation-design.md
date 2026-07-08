@@ -2,11 +2,15 @@
 
 ## Status
 
-Draft for `lane/harness`.
+Implemented on `lane/harness` as the Slice 1 boundary design.
 
-This design starts Slice 1 of the harness migration. It is a boundary design,
-not an implementation plan. Source changes should wait until this design is
-accepted and an implementation plan is written.
+The closure audit and migration status are recorded in
+[Slice 1 Closure Status](slice-1-status.md). This document remains the boundary
+reference for approval, tools-core, tool-contribution, and presentation
+ownership. Follow-on slices still require separate design before migrating
+runtime context, dynamic extension registration, concrete tools, command
+semantics, prompt/resource semantics, TUI state, AI provider behavior, or agent
+loop behavior.
 
 ## Goal
 
