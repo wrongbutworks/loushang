@@ -8,19 +8,19 @@ behavior.
 
 ## Tasks
 
-- [ ] Add harness tests for user expansion and `cwd` resolution.
-- [ ] Add harness tests for configurable normalizers and path variants.
-- [ ] Add harness tests for canonical absolute path identity.
-- [ ] Add coding compatibility tests for `path_utils` behavior.
-- [ ] Implement `loushang.harness.workspace.paths`.
-- [ ] Reduce coding `path_utils` to policy and compatibility wrappers.
-- [ ] Add harness mutation queue concurrency and cleanup tests.
-- [ ] Move mutation queue ownership to harness.
-- [ ] Preserve coding snake-case function, registry, and camelCase alias identity.
-- [ ] Redirect write/edit internal consumers to the harness queue owner.
-- [ ] Add architecture owner and documentation tests.
-- [ ] Update the harness architecture index and migration inventory.
-- [ ] Run focused path, queue, tool, and architecture tests.
+- [x] Add harness tests for user expansion and `cwd` resolution.
+- [x] Add harness tests for configurable normalizers and path variants.
+- [x] Add harness tests for canonical absolute path identity.
+- [x] Add coding compatibility tests for `path_utils` behavior.
+- [x] Implement `loushang.harness.workspace.paths`.
+- [x] Reduce coding `path_utils` to policy and compatibility wrappers.
+- [x] Add harness mutation queue concurrency and cleanup tests.
+- [x] Move mutation queue ownership to harness.
+- [x] Preserve coding snake-case function, registry, and camelCase alias identity.
+- [x] Redirect write/edit internal consumers to the harness queue owner.
+- [x] Add architecture owner and documentation tests.
+- [x] Update the harness architecture index and migration inventory.
+- [x] Run focused path, queue, tool, and architecture tests.
 - [ ] Run Ruff, diff checks, and the full non-live test suite.
 
 ## Non-Goals

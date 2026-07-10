@@ -43,7 +43,7 @@ behavior:
 - Pi payload decoding and path projection helpers.
 
 Coding also keeps concrete read, write, edit, list, find, and grep tools; tool
-descriptions; path resolution; mutation queues; approval and risk policy; AI
+descriptions; coding path input policy; approval and risk policy; AI
 image/content projection; renderers; and user-facing result text.
 
 ## Compatibility
@@ -87,6 +87,11 @@ This migration does not:
 - move file mutation queueing or path canonicalization;
 - define workspace roots, sandbox policy, approval policy, or default tools;
 - change sync/async backend behavior or filesystem encoding behavior.
+
+Path canonicalization and mutation queueing were non-goals of this operation
+owner move, not permanent coding ownership decisions. Their subsequent owner
+move is defined by the
+[Workspace Path And Mutation Boundary](workspace-path-mutation-boundary.md).
 
 ## Validation
 
