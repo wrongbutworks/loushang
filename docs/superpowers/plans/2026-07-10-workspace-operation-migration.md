@@ -20,7 +20,7 @@ preserving coding public imports, Pi adapters, and concrete tool behavior.
 - [x] Add architecture ownership and documentation tests.
 - [x] Update the harness architecture index and migration inventory.
 - [x] Run focused harness, coding tool-operation, and architecture tests.
-- [ ] Run Ruff, diff checks, and the full non-live test suite.
+- [x] Run Ruff, diff checks, and the full non-live test suite.
 
 ## Non-Goals
 
