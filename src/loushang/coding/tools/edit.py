@@ -6,6 +6,7 @@ from typing import Any, NotRequired, TypedDict
 from loushang.agent.types import AgentToolResult
 from loushang.ai.types import TextPart
 from loushang.coding.policy import ApprovalResolver, PolicyEngine
+from loushang.harness.workspace.operations import EditOperations, resolve_operation
 
 from .authoring import tool
 from .builtin_renderers import render_edit_call, render_edit_result
@@ -19,10 +20,8 @@ from .edit_diff import (
 from .file_mutation_queue import with_file_mutation_queue
 from .normalize import tool_to_definition
 from .operations import (
-    EditOperations,
     normalize_edit_operations,
     raise_if_operation_aborted,
-    resolve_operation,
 )
 from .path_utils import resolve_tool_path
 from .policy import enforce_tool_policy

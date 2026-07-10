@@ -8,16 +8,15 @@ from typing import Any, NotRequired, Protocol, TypedDict
 from loushang.agent.types import AgentToolResult
 from loushang.ai.types import ImagePart, TextPart
 from loushang.coding.policy import ApprovalResolver, PolicyEngine
+from loushang.harness.workspace.operations import ReadOperations, resolve_operation
 
 from .authoring import tool
 from .builtin_renderers import render_read_call, render_read_result
 from .context import ToolContext
 from .normalize import tool_to_definition
 from .operations import (
-    ReadOperations,
     normalize_read_operations,
     raise_if_operation_aborted,
-    resolve_operation,
 )
 from .path_utils import resolve_tool_path
 from .policy import enforce_tool_policy

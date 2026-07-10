@@ -8,6 +8,7 @@ from loushang.harness.tools.contribution import (
     resolve_tool_contributions,
 )
 from loushang.harness.workspace.exec import ExecService
+from loushang.harness.workspace.operations import ToolOperations
 
 from .external_tools import (
     ExternalToolDownloader,
@@ -15,7 +16,6 @@ from .external_tools import (
     ExternalToolResolver,
 )
 from .factory import ToolsOptions, create_tool_definition
-from .operations import ToolOperations
 from .registry import ToolRegistry
 
 BUILTIN_TOOL_NAMES = ("bash", "read", "ls", "find", "grep", "write", "edit")

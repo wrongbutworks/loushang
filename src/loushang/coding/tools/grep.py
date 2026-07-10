@@ -10,6 +10,7 @@ from typing import Any, NotRequired, TypedDict
 from loushang.agent.types import AgentToolResult
 from loushang.ai.types import TextPart
 from loushang.coding.policy import ApprovalResolver, PolicyEngine
+from loushang.harness.workspace.operations import GrepOperations, resolve_operation
 
 from .authoring import tool
 from .builtin_renderers import render_grep_call, render_grep_result
@@ -28,10 +29,8 @@ from .external_tools import (
 from .ignore import load_ignore_matcher
 from .normalize import tool_to_definition
 from .operations import (
-    GrepOperations,
     normalize_grep_operations,
     raise_if_operation_aborted,
-    resolve_operation,
 )
 from .path_utils import resolve_tool_path
 from .policy import enforce_tool_policy

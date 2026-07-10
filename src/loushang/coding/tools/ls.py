@@ -5,16 +5,15 @@ from typing import Any, NotRequired, TypedDict
 from loushang.agent.types import AgentToolResult
 from loushang.ai.types import TextPart
 from loushang.coding.policy import ApprovalResolver, PolicyEngine
+from loushang.harness.workspace.operations import LsOperations, resolve_operation
 
 from .authoring import tool
 from .builtin_renderers import render_find_or_ls_result, render_ls_call
 from .context import ToolContext
 from .normalize import tool_to_definition
 from .operations import (
-    LsOperations,
     normalize_ls_operations,
     raise_if_operation_aborted,
-    resolve_operation,
 )
 from .path_utils import resolve_tool_path
 from .policy import enforce_tool_policy

@@ -155,6 +155,76 @@ def test_coding_internal_exec_imports_use_harness_owner() -> None:
     assert offenders == []
 
 
+def test_coding_internal_workspace_operation_imports_use_harness_owner() -> None:
+    compatibility_paths = {
+        "src/loushang/coding/__init__.py",
+        "src/loushang/coding/tools/__init__.py",
+        "src/loushang/coding/tools/operations.py",
+    }
+    legacy_symbols = (
+        "loushang.coding.tools.operations.EditOperations",
+        "loushang.coding.tools.operations.FindOperations",
+        "loushang.coding.tools.operations.GrepOperations",
+        "loushang.coding.tools.operations.LOCAL_TOOL_OPERATIONS",
+        "loushang.coding.tools.operations.LocalToolOperations",
+        "loushang.coding.tools.operations.LsOperations",
+        "loushang.coding.tools.operations.ReadOperations",
+        "loushang.coding.tools.operations.ToolOperations",
+        "loushang.coding.tools.operations.WriteOperations",
+        "loushang.coding.tools.operations.resolve_operation",
+    )
+    offenders: list[str] = []
+    for path in sorted(Path("src/loushang/coding").rglob("*.py")):
+        if path.as_posix() in compatibility_paths:
+            continue
+        for imported in _absolute_imports(path):
+            if _matches_any(imported, legacy_symbols):
+                offenders.append(f"{path.as_posix()} imports {imported}")
+
+    assert offenders == []
+
+
+def test_harness_workspace_operation_boundary_is_documented() -> None:
+    import loushang.harness as harness
+
+    operation_symbols = {
+        "EditOperations",
+        "FindOperations",
+        "GrepOperations",
+        "LOCAL_TOOL_OPERATIONS",
+        "LocalToolOperations",
+        "LsOperations",
+        "OperationResult",
+        "ReadOperations",
+        "ToolOperations",
+        "WriteOperations",
+        "resolve_operation",
+    }
+    assert operation_symbols.isdisjoint(set(harness.__all__))
+
+    design_path = Path("docs/internals/architecture/harness/workspace-operation-boundary.md")
+    assert design_path.exists()
+    design_text = " ".join(design_path.read_text(encoding="utf-8").split())
+    required_phrases = {
+        "Harness Workspace Operation Boundary",
+        "`loushang.harness.workspace.operations`",
+        "same harness-owned protocols, class, and singleton",
+        "keeps all `normalize_*_operations` functions",
+        "does not select an allowed root",
+        "must not import coding, method, work, TUI, AI, provider, or product packages",
+    }
+    assert sorted(phrase for phrase in required_phrases if phrase not in design_text) == []
+
+    readme_text = Path("docs/internals/architecture/harness/README.md").read_text(encoding="utf-8")
+    assert "Workspace Operation Boundary" in readme_text
+
+    inventory_text = Path(
+        "docs/internals/architecture/harness/coding-to-harness-migration-inventory.md"
+    ).read_text(encoding="utf-8")
+    assert "`loushang.harness.workspace.operations`" in inventory_text
+    assert "workspace operation implementation complete" in inventory_text
+
+
 def test_harness_tools_core_does_not_expose_pi_style_module_aliases() -> None:
     module = importlib.import_module("loushang.harness.tools.core")
 

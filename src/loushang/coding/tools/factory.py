@@ -7,6 +7,15 @@ from loushang.agent.types import AgentTool
 from loushang.coding.diagnostics import DiagnosticsService
 from loushang.coding.policy import ApprovalResolver, PolicyEngine
 from loushang.harness.workspace.exec import ExecService
+from loushang.harness.workspace.operations import (
+    EditOperations,
+    FindOperations,
+    GrepOperations,
+    LsOperations,
+    ReadOperations,
+    ToolOperations,
+    WriteOperations,
+)
 
 from .bash import (
     BashOperations,
@@ -27,15 +36,6 @@ from .external_tools import (
 from .find import FindToolOptions, create_find_tool_definition
 from .grep import GrepToolOptions, create_grep_tool_definition
 from .ls import LsToolOptions, create_ls_tool_definition
-from .operations import (
-    EditOperations,
-    FindOperations,
-    GrepOperations,
-    LsOperations,
-    ReadOperations,
-    ToolOperations,
-    WriteOperations,
-)
 from .read import ReadToolOptions, create_read_tool_definition
 from .types import ToolDefinition
 from .wrapper import wrap_tool_definition
