@@ -42,7 +42,8 @@ from `loushang.coding` into `loushang.harness`.
 | `coding.domain.types` | Split candidate | Use as input for future `loushang.harness.adapter` shapes. Generic request/result types must not contain first-class method fields; carry method/work refs as opaque metadata. |
 | `coding.session` | Split candidate | Move only generic host lifecycle records such as idle/abort/dispose/queue snapshot if needed. Keep `AgentSession`, controllers, product event bus, resource watchers, command execution, and transcript behavior in coding. |
 | `coding.event` | Keep product | Coding session event protocol and product projection stay coding. Harness may define separate neutral events later. |
-| `coding.extensions` | Split candidate | Later extract neutral contribution descriptors and hook/middleware contracts if validated by OEM/product needs. Keep extension runtime, manifest policy, permissions, and product activation in coding/OEM. |
+| `coding.extensions.contributions` | Compatibility shim | Descriptor, registry, indexing, and duplicate-key contracts live in `loushang.harness.contributions`. Coding keeps `LoadedExtension` projection and re-exports the same harness-owned classes. |
+| Remaining `coding.extensions` | Split candidate | Keep extension runtime, manifests, loaders, permissions, activation, command handlers, runtime bindings, and hooks in coding/OEM. Extract middleware or observer contracts only after a product-neutral invocation shape is proven. |
 | `coding.bootstrap` | Keep product | Product assembly. It may call harness engines but should not move. |
 | `coding.runtime` | Keep product | Coding session runtime host. It may adopt harness lifecycle protocols later. |
 | `coding.ui` | Never harness | Product-owned TUI adapter and screen/controller state. Shared terminal primitives belong in `loushang.tui`, not harness. |
@@ -184,10 +185,21 @@ is clear. Do not move `AgentSession` wholesale.
 
 ### Slice 6: Contribution Model
 
+Status: contribution inventory implementation complete for integration into
+`lane/harness`; middleware and observer contracts remain deferred; see
+[Contribution Inventory Boundary](contribution-inventory-boundary.md).
+
 Purpose: support OEM and extension contributions across products.
 
-Move contribution records and middleware/observer contracts only after tools,
-approval, and presentation have proven the shape.
+Contribution descriptors, registry indexing, and duplicate-key reporting now
+live in `loushang.harness.contributions`. Coding compatibility paths re-export
+the same harness-owned classes, while `surfaces_from_loaded_extension` remains
+the product projection adapter.
+
+Extension manifests, loaders, activation and permission policy, concrete
+handlers, runtime bindings, hooks, and session events remain coding-owned.
+Middleware and observer contracts should move only after a second product
+proves a neutral invocation shape.
 
 ## Guardrails
 

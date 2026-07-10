@@ -269,3 +269,10 @@ extension/package contributes neutral records
 
 Harness should not decide that an extension is trusted or that a product should
 enable a contributed tool, renderer, resource, or policy rule by default.
+
+`loushang.harness.contributions` owns the current shared descriptor, inventory,
+indexing, and duplicate-key contracts. Product adapters construct those records
+from their manifests or runtime objects and decide whether a contribution is
+applicable. Middleware invocation, observer dispatch, activation, precedence,
+and OEM override policy remain outside Harness until their cross-product shape
+is proven.

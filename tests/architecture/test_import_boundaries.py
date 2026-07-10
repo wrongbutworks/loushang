@@ -137,6 +137,83 @@ def test_harness_workspace_symbols_are_not_top_level_exports() -> None:
     assert workspace_symbols.isdisjoint(set(harness.__all__))
 
 
+def test_harness_contribution_symbols_are_not_top_level_exports() -> None:
+    import loushang.harness as harness
+
+    contribution_symbols = {
+        "ContributionDescriptor",
+        "ContributionRegistry",
+        "ContributionType",
+        "DuplicateContributionKeyError",
+        "DuplicateExtensionSurfaceKeyError",
+        "ExtensionInventory",
+        "ExtensionSurfaceDescriptor",
+        "ExtensionSurfaceType",
+    }
+
+    assert contribution_symbols.isdisjoint(set(harness.__all__))
+
+
+def test_coding_internal_contribution_imports_use_harness_owner() -> None:
+    compatibility_paths = {
+        "src/loushang/coding/extensions/__init__.py",
+        "src/loushang/coding/extensions/contributions.py",
+    }
+    legacy_symbols = (
+        "loushang.coding.extensions.ContributionDescriptor",
+        "loushang.coding.extensions.ContributionRegistry",
+        "loushang.coding.extensions.ContributionType",
+        "loushang.coding.extensions.DuplicateContributionKeyError",
+        "loushang.coding.extensions.DuplicateExtensionSurfaceKeyError",
+        "loushang.coding.extensions.ExtensionInventory",
+        "loushang.coding.extensions.ExtensionSurfaceDescriptor",
+        "loushang.coding.extensions.ExtensionSurfaceType",
+        "loushang.coding.extensions.contributions.ContributionDescriptor",
+        "loushang.coding.extensions.contributions.ContributionRegistry",
+        "loushang.coding.extensions.contributions.ContributionType",
+        "loushang.coding.extensions.contributions.DuplicateContributionKeyError",
+        "loushang.coding.extensions.contributions.DuplicateExtensionSurfaceKeyError",
+        "loushang.coding.extensions.contributions.ExtensionInventory",
+        "loushang.coding.extensions.contributions.ExtensionSurfaceDescriptor",
+        "loushang.coding.extensions.contributions.ExtensionSurfaceType",
+    )
+    offenders: list[str] = []
+    for path in sorted(Path("src/loushang/coding").rglob("*.py")):
+        if path.as_posix() in compatibility_paths:
+            continue
+        for imported in _absolute_imports(path):
+            if _matches_any(imported, legacy_symbols):
+                offenders.append(f"{path.as_posix()} imports {imported}")
+
+    assert offenders == []
+
+
+def test_harness_contribution_inventory_boundary_is_documented() -> None:
+    design_path = Path("docs/internals/architecture/harness/contribution-inventory-boundary.md")
+    assert design_path.exists()
+    design_text = " ".join(design_path.read_text(encoding="utf-8").split())
+    required_phrases = {
+        "Harness Contribution Inventory Boundary",
+        "`loushang.harness.contributions`",
+        "same harness-owned classes",
+        "`surfaces_from_loaded_extension`",
+        "This inventory migration moves records and indexing only",
+        "must not import coding, method, work, TUI, AI, agent runtime, provider, or product packages",
+    }
+    assert sorted(phrase for phrase in required_phrases if phrase not in design_text) == []
+
+    readme_text = Path("docs/internals/architecture/harness/README.md").read_text(
+        encoding="utf-8"
+    )
+    assert "Contribution Inventory Boundary" in readme_text
+
+    inventory_text = Path(
+        "docs/internals/architecture/harness/coding-to-harness-migration-inventory.md"
+    ).read_text(encoding="utf-8")
+    assert "`loushang.harness.contributions`" in inventory_text
+    assert "contribution inventory implementation complete" in inventory_text
+
+
 def test_coding_internal_exec_imports_use_harness_owner() -> None:
     compatibility_paths = {
         "src/loushang/coding/__init__.py",

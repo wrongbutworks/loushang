@@ -33,6 +33,9 @@ planning, work event persistence, or AI provider behavior.
 - [Resource Provenance Boundary](resource-provenance-boundary.md) defines
   shared source metadata and resource diagnostic ownership while preserving
   coding path representations and public compatibility imports.
+- [Contribution Inventory Boundary](contribution-inventory-boundary.md) defines
+  shared descriptor and registry ownership while keeping extension projection,
+  activation policy, runtime bindings, and hooks in product adapters.
 - [Workspace Execution Boundary](workspace-execution-boundary.md) defines
   harness-owned truncation, exec records, backend protocols, process execution,
   and coding compatibility ownership.
