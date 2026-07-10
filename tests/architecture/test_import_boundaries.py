@@ -193,6 +193,34 @@ def test_coding_internal_context_budget_imports_use_harness_owners() -> None:
     assert offenders == []
 
 
+def test_harness_context_budget_and_accounting_boundary_is_documented() -> None:
+    design_path = Path(
+        "docs/internals/architecture/harness/context-budget-accounting-boundary.md"
+    )
+    assert design_path.exists()
+    design_text = " ".join(design_path.read_text(encoding="utf-8").split())
+    required_phrases = {
+        "Harness Context Budget And Accounting Boundary",
+        "`loushang.harness.context.budget`",
+        "`loushang.harness.context.usage`",
+        "same Harness-owned objects",
+        "This migration establishes budget and accounting ownership only",
+        "must not import coding, method, work, TUI, AI, agent runtime, provider, or product packages",
+    }
+    assert sorted(phrase for phrase in required_phrases if phrase not in design_text) == []
+
+    readme_text = Path("docs/internals/architecture/harness/README.md").read_text(
+        encoding="utf-8"
+    )
+    assert "Context Budget And Accounting Boundary" in readme_text
+
+    inventory_text = Path(
+        "docs/internals/architecture/harness/coding-to-harness-migration-inventory.md"
+    ).read_text(encoding="utf-8")
+    assert "`loushang.harness.context`" in inventory_text
+    assert "context budget and accounting implementation complete" in inventory_text
+
+
 def test_coding_internal_contribution_imports_use_harness_owner() -> None:
     compatibility_paths = {
         "src/loushang/coding/extensions/__init__.py",

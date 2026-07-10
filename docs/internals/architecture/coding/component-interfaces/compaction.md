@@ -18,6 +18,7 @@
 - `store`
 - `control`
 - `loushang-ai`
+- `loushang.harness.context`
 
 ## Commands
 
@@ -45,7 +46,7 @@
 - `CompactionPlan`
 - `CompactionArtifact`
 - `CompactionStatus`
-- `CompactionBudget`
+- `CompactionBudget` (owned by `loushang.harness.context.budget`)
 - `SummaryEvaluationCase`
 - `SummaryEvaluationResult`
 - `SummaryQualityReport`
@@ -95,7 +96,8 @@
   还携带 `compact_percent`、`reserve_tokens`、`keep_recent_tokens`、`percent_threshold_tokens`、
   `reserve_threshold_tokens`、`threshold_tokens`、`threshold_reason`；
   mode / TUI / RPC / extension 只能消费 snapshot，不应重复计算 threshold
-- threshold policy 由 `coding.compaction.policy.calculate_compaction_budget(...)` 统一计算：
+- threshold accounting 由 `loushang.harness.context.budget.calculate_compaction_budget(...)` 统一计算，
+  `coding.compaction.policy` 保留兼容导出：
   `percent_threshold = context_window * compact_percent / 100`，
   `reserve_threshold = context_window - reserve_tokens`，
   实际 `threshold_tokens = min(percent_threshold, reserve_threshold)`；这保留了 `reference CLI` 的 fixed reserve guard，
@@ -103,6 +105,7 @@
 - 不能等到 `stop_reason="length"` 才 compact：只要上一轮可观测 usage 超过统一 policy 计算出的 `threshold_tokens`，
   下一次真正进入 agent prompt 前就应先触发 threshold compaction；extension command、streaming steer/follow-up 排队路径不触发 pre-prompt compaction
 - compaction 后如果没有新的 assistant usage，当前 context usage 应标记为 stale/unknown，避免复用 compaction 前的 usage 反复触发或误报预算
+- `ContextUsageEstimate` 记录由 `loushang.harness.context.usage` 所有；读取 assistant usage 和估算 trailing message token 的算法仍由 Coding 所有
 - `compaction_start` 事件携带 `usage` snapshot；`compaction_end` 事件携带 `usage_before` / `usage_after` snapshot。
   compaction 成功后 `usage_after.tokens` 与 `usage_after.percent` 通常为 `None`，并标记 `stale_after_compaction=True`，
   直到下一次有效 assistant usage 出现

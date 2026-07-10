@@ -8,18 +8,24 @@ compatibility, message estimation, and compaction behavior.
 
 ## Tasks
 
-- [ ] Define budget/accounting ownership and Coding adapter boundaries.
-- [ ] Implement `loushang.harness.context.budget`.
-- [ ] Preserve threshold calculation, normalization, and settings precedence.
-- [ ] Implement `loushang.harness.context.usage`.
-- [ ] Reduce Coding policy and type modules to compatibility exports.
-- [ ] Redirect Coding internal consumers to the Harness owners.
-- [ ] Add Harness budget and usage-record tests.
-- [ ] Add Coding compatibility and estimator identity tests.
-- [ ] Add architecture owner and documentation tests.
-- [ ] Update Harness and Coding architecture records.
-- [ ] Run focused Harness, Coding compaction/session, and architecture tests.
-- [ ] Run changed-file Ruff, diff checks, and the full non-live test suite.
+- [x] Define budget/accounting ownership and Coding adapter boundaries.
+- [x] Implement `loushang.harness.context.budget`.
+- [x] Preserve threshold calculation, normalization, and settings precedence.
+- [x] Implement `loushang.harness.context.usage`.
+- [x] Reduce Coding policy and type modules to compatibility exports.
+- [x] Redirect Coding internal consumers to the Harness owners.
+- [x] Add Harness budget and usage-record tests.
+- [x] Add Coding compatibility and estimator identity tests.
+- [x] Add architecture owner and documentation tests.
+- [x] Update Harness and Coding architecture records.
+- [x] Run focused Harness, Coding compaction/session, and architecture tests.
+- [x] Run changed-file Ruff, diff checks, and the full non-live test suite.
+
+## Validation Record
+
+- Focused Harness, Coding compaction/session, and architecture suite: 98 passed.
+- Full non-live suite: 4331 passed, 9 deselected.
+- Changed-file Ruff and `git diff --check`: passed.
 
 ## Non-Goals
 
