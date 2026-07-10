@@ -2,12 +2,14 @@
 
 ## Status
 
-Status: design draft for `lane/harness`.
+Slice 2A status: implementation complete for `lane/harness`.
+Slice 2B status: gated pending a second product consumer.
 
-This document defines the Slice 2 boundary design for neutral execution context
-and runtime contribution registration. No runtime behavior changes are part of
-this design slice. Implementation must wait for design approval and a separate
-implementation plan.
+This document defines the Slice 2 boundary for neutral execution context and
+runtime contribution registration. Slice 2A implements runtime tool
+contribution adapter verification without changing product behavior. No
+neutral execution context API is introduced by Slice 2A; that contract remains
+gated on evidence from a second product consumer.
 
 ## Goal
 
@@ -118,7 +120,7 @@ flow:
 This keeps startup-time and runtime extension registration aligned without
 moving concrete execution into harness.
 
-The first implementation slice should be adapter verification only:
+The first implementation slice was adapter verification only:
 
 - project runtime extension tools to `ToolContribution`
 - include source info and metadata as opaque values
@@ -128,10 +130,37 @@ The first implementation slice should be adapter verification only:
 
 No concrete tool execution should move in this slice.
 
-## Proposed Modules
+## Slice 2A Closure
 
-If implementation proceeds, use focused modules under existing harness package
-boundaries:
+Slice 2A implements the runtime extension tool adapter described above:
+
+- coding normalizes the runtime tool to a neutral `ToolDefinition`;
+- coding projects that definition, source info, and opaque runtime metadata to
+  a `ToolContribution`;
+- `ToolController.register_runtime_tool` calls
+  `harness.tools.contribution.resolve_tool_contributions` with current registry
+  contributions plus the runtime contribution;
+- coding registers resolver-selected runtime output when available and falls
+  back to the projected runtime contribution when existing duplicate
+  contributions win neutral first-match resolution;
+- allowed-tool filtering, active-tool policy, prompt rebuilds, and registry
+  mutation remain in coding.
+
+The resolver diagnostics are advisory inputs to coding policy. Startup
+extension registration may translate duplicate diagnostics into product
+resource diagnostics and reject a conflicting extension tool. Runtime
+registration deliberately preserves its previous replacement semantics, so
+runtime duplicate overwrite behavior remains coding-owned.
+
+Slice 2A does not add `loushang.harness.execution.context` or
+`loushang.harness.execution.contribution`. It proves the existing focused
+`ToolContribution` boundary before any broader runtime contribution envelope or
+execution context is accepted.
+
+## Proposed Slice 2B Modules
+
+If Slice 2B proceeds after the second-consumer gate, use focused modules under
+existing harness package boundaries:
 
 - `loushang.harness.execution.context`
 - `loushang.harness.execution.contribution`
@@ -189,21 +218,24 @@ not import `loushang.coding`, `loushang.tui`, `loushang.work`,
 Deferred implementation items include:
 
 - defining final names and exact dataclass/protocol shapes
-- deciding whether neutral context is needed before runtime contribution
-  adapter verification
+- identifying a second product consumer that validates a neutral execution
+  context independently of coding
 - deciding whether runtime registration supports only tools first or a generic
   contribution-kind envelope
 - deciding compatibility shim lifetime for any execution context aliases
 - deciding how source diagnostics map from neutral resolver diagnostics to
   coding resource diagnostics
 
-## Recommended First Implementation Slice
+## Implemented First Slice: 2A
 
-Start with runtime extension tool registration adapter verification.
+Runtime extension tool registration adapter verification is implemented as
+Slice 2A.
 
-The first code slice should not introduce broad context APIs. It should only
-extract the common contribution projection/resolution path for runtime extension
-tools, prove behavior is unchanged, and document what remains product-owned.
+The code slice does not introduce broad context APIs. It extracts the common
+contribution projection/resolution path for runtime extension tools, proves
+behavior is unchanged, and documents what remains product-owned.
 
-That keeps Slice 2 incremental and avoids prematurely designing a generic
-runtime substrate before a second product adapter needs it.
+Slice 2B must not begin by defining context types from coding alone. It should
+first identify a second product consumer and confirm the shared fields and
+lifecycle. That keeps Slice 2 incremental and avoids prematurely designing a
+generic runtime substrate before a second product adapter needs it.

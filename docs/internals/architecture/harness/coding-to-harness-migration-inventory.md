@@ -73,16 +73,24 @@ Keep in coding:
 
 ### Slice 2: Execution Context And Runtime Contributions
 
-Status: design draft; see
+Status: Slice 2A implementation complete for runtime tool contribution adapter
+verification. Slice 2B is gated pending a second product consumer; see
 [Slice 2 Execution Context Design](slice-2-execution-context-design.md).
 
 Purpose: define the neutral live execution/context and runtime contribution
 boundary before migrating dynamic extension registration or live tool execution
 context.
 
-Move only neutral contribution/context descriptors after the design is accepted.
-Keep `ToolContext`, `ExtensionRuntimeBindings`, `ToolController`, active-tool
-policy, prompt rebuilds, session mutation, and concrete execution in coding.
+Slice 2A routes coding runtime extension tool registration through neutral
+`ToolContribution` projection and resolver verification. Duplicate overwrite,
+active-tool policy, prompt rebuilds, diagnostics mapping, session mutation, and
+concrete execution remain coding-owned.
+
+Slice 2B may move only neutral execution context descriptors after a second
+product consumer validates the shared shape. Keep `ToolContext`,
+`ExtensionRuntimeBindings`, `ToolController`, model and diagnostics fields,
+active-tool policy, prompt rebuilds, session mutation, and concrete execution
+in coding.
 
 ### Later Slice: Workspace Exec
 
