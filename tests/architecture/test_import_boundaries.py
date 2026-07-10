@@ -304,6 +304,37 @@ def test_harness_resource_frontmatter_boundary_is_documented() -> None:
     assert "frontmatter parsing implementation complete" in inventory_text
 
 
+def test_harness_workspace_execution_boundary_is_documented() -> None:
+    design_path = Path("docs/internals/architecture/harness/workspace-execution-boundary.md")
+    assert design_path.exists()
+
+    design_text = " ".join(design_path.read_text(encoding="utf-8").split())
+    required_design_phrases = {
+        "Harness Workspace Execution Boundary",
+        "`loushang.harness.workspace.truncation`",
+        "`loushang.harness.workspace.exec`",
+        "Coding remains a product adapter",
+        "Harness-owned classes keep their harness `__module__`",
+        "does not introduce a neutral execution context",
+    }
+    assert sorted(phrase for phrase in required_design_phrases if phrase not in design_text) == []
+
+    readme_text = Path("docs/internals/architecture/harness/README.md").read_text(encoding="utf-8")
+    assert "Workspace Execution Boundary" in readme_text
+
+    inventory_text = Path(
+        "docs/internals/architecture/harness/coding-to-harness-migration-inventory.md"
+    ).read_text(encoding="utf-8")
+    assert "`loushang.harness.workspace.truncation`" in inventory_text
+    assert "workspace execution implementation complete" in inventory_text
+
+    coding_exec_text = Path("docs/internals/architecture/coding/component-interfaces/exec.md").read_text(
+        encoding="utf-8"
+    )
+    assert "`loushang.harness.workspace.exec`" in coding_exec_text
+    assert "compatibility" in coding_exec_text
+
+
 def test_absolute_imports_include_child_aliases_from_package_import(
     tmp_path: Path,
 ) -> None:

@@ -23,11 +23,12 @@ from `loushang.coding` into `loushang.harness`.
 | --- | --- | --- |
 | `coding.commands` | Split candidate | `CommandDef` / `CommandEffect` value types already moved to `loushang.harness.commands`. Catalog, slash parsing, handlers, and session command execution stay in coding. |
 | `coding.tools.types`, `schema`, `wrapper`, `factory`, `registry`, `authoring`, `normalize`, `protocol` | Split candidate | Move product-neutral tool definition, schema, wrapper, and registry mechanics to `loushang.harness.tools.core`. Keep coding defaults and product descriptions in coding. |
-| `coding.tools.presentation`, `rendering`, `builtin_renderers`, `output_preview`, `truncate` | Split candidate | Move neutral presentation records and renderer registry mechanics to `loushang.harness.presentation`. Keep terminal/product rendering and coding-specific preview choices in coding. |
+| `coding.tools.presentation`, `rendering`, `builtin_renderers`, `output_preview` | Split candidate | Move neutral presentation records and renderer registry mechanics to `loushang.harness.presentation`. Keep terminal/product rendering and coding-specific preview choices in coding. |
+| `coding.tools.truncate` | Compatibility shim | Neutral line/byte truncation and shared limits live in `loushang.harness.workspace.truncation`. Coding keeps grep line limits, product wording, detail projection, and camelCase compatibility aliases. |
 | `coding.tools.read`, `ls`, `find`, `grep` | Split candidate | May become optional `loushang.harness.tools.workspace` read-only tools after policy boundaries are clear. Coding decides default activation. |
 | `coding.tools.write`, `edit`, `edit_diff`, `bash`, `process`, `file_mutation_queue`, `policy` | Split candidate | Move only neutral workspace operation/exec request-result shapes and staging mechanics. Destructive operation policy, approval, and default activation stay product-owned. |
 | `coding.policy` | Split candidate | Move approval request/decision/resolver contracts and headless defaults to `loushang.harness.approval` or `loushang.harness.policy`. Keep coding risk rules and interactive UI integration in coding. |
-| `coding.exec` | Split candidate | Move neutral exec request/result/service protocol to `loushang.harness.workspace.exec`. Keep product policy and CLI-facing behavior in coding. |
+| `coding.exec` | Compatibility shim | `ExecRequest`, `ExecResult`, output records, backend/update protocols, and `ExecService` live in `loushang.harness.workspace.exec`. Coding keeps the public compatibility path; policy, session cwd resolution, tool projection, and extension behavior remain product-owned. |
 | `coding.diagnostics` | Split candidate | Move neutral diagnostic record/status/query types to `loushang.harness.diagnostics`. Keep coding health checks and remediation text in coding. |
 | `loushang.resource.frontmatter`, `coding.frontmatter` | Compatibility shim | Parser records, errors, and behavior live in `loushang.harness.resources.frontmatter`. Legacy paths preserve object identity; coding and method internal consumers use the harness owner. |
 | `coding.loader.types`, `coding.source_info` | Split candidate | Move only accepted generic source metadata and resource diagnostic pieces to `loushang.harness.resources`. Keep executable identity, prompt/theme/skill descriptors, loading roots, precedence, and merge policy in coding. |
@@ -94,13 +95,22 @@ product consumer validates the shared shape. Keep `ToolContext`,
 active-tool policy, prompt rebuilds, session mutation, and concrete execution
 in coding.
 
-### Later Slice: Workspace Exec
+### Workspace Execution
+
+Status: workspace execution implementation complete for integration into
+`lane/harness`; see
+[Workspace Execution Boundary](workspace-execution-boundary.md).
 
 Purpose: separate process/file operation mechanics from coding policy.
 
-Move only neutral request/result/protocol shapes after the execution/context
-boundary is proven. Keep command allow/deny policy, workspace root selection,
-and product explanation text in coding.
+Harness now owns neutral bounded-output truncation, exec request/result records,
+backend/update protocols, and local subprocess execution. Coding compatibility
+paths re-export those harness objects.
+
+Command allow/deny policy, workspace root and relative cwd selection, extension
+runtime behavior, bash result projection, and product explanation text remain
+in coding. This migration does not introduce a neutral execution context or
+satisfy the separate second-product gate for Slice 2B.
 
 ### Slice 3: Resources And Source Metadata
 
