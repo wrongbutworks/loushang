@@ -21,7 +21,7 @@ behavior.
 - [x] Add architecture owner and documentation tests.
 - [x] Update the harness architecture index and migration inventory.
 - [x] Run focused path, queue, tool, and architecture tests.
-- [ ] Run Ruff, diff checks, and the full non-live test suite.
+- [x] Run Ruff, diff checks, and the full non-live test suite.
 
 ## Non-Goals
 
