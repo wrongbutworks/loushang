@@ -35,10 +35,10 @@ path, request approval, or decide whether an operation is safe.
 ## Coding-Owned Behavior
 
 `loushang.coding.tools.operations` remains a product compatibility adapter. It
-keeps:
+keeps all `normalize_*_operations` functions and the following product
+behavior:
 
 - `is_operation_aborted` and `raise_if_operation_aborted`;
-- all `normalize_*_operations` functions;
 - all Pi-style operation adapters;
 - Pi payload decoding and path projection helpers.
 

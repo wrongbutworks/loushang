@@ -36,6 +36,9 @@ planning, work event persistence, or AI provider behavior.
 - [Workspace Execution Boundary](workspace-execution-boundary.md) defines
   harness-owned truncation, exec records, backend protocols, process execution,
   and coding compatibility ownership.
+- [Workspace Operation Boundary](workspace-operation-boundary.md) defines
+  filesystem operation protocols, local backend ownership, coding compatibility
+  paths, and product adapters that remain outside harness.
 - [Harness Lane Development Workflow](development-workflow.md) defines how the
   long-lived `lane/harness` branch stays isolated from `main` until the
   migration is bootable and validated.
