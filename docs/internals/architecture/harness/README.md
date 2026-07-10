@@ -25,8 +25,8 @@ planning, work event persistence, or AI provider behavior.
   contribution, and presentation substrate that has landed on `lane/harness`,
   plus deferred runtime and product-adapter work.
 - [Slice 2 Execution Context Design](slice-2-execution-context-design.md)
-  drafts the neutral execution/context and runtime contribution boundaries for
-  follow-on work after Slice 1.
+  records Slice 2A implementation complete for runtime tool contribution
+  adapter verification and Slice 2B gated pending a second product consumer.
 - [Harness Lane Development Workflow](development-workflow.md) defines how the
   long-lived `lane/harness` branch stays isolated from `main` until the
   migration is bootable and validated.

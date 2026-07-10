@@ -77,3 +77,43 @@ Run:
 Run:
 - `uv --cache-dir .uv-cache run --extra dev ruff check src/loushang/coding/session/tool_controller.py tests/coding/test_session_tool_controller.py`
 - `git diff --check`
+
+### Task 4: Close Slice 2A documentation and architecture status
+
+**Files:**
+- Modify: `tests/architecture/test_import_boundaries.py`
+- Modify: `docs/internals/architecture/harness/slice-2-execution-context-design.md`
+- Modify: `docs/internals/architecture/harness/coding-to-harness-migration-inventory.md`
+- Modify: `docs/internals/architecture/harness/README.md`
+
+- [x] **Step 1: Update the architecture contract test**
+
+Replace the transient design-draft assertion with durable Slice 2A status and
+boundary phrases: runtime contribution adapter verification is complete on the
+task branch, resolver diagnostics remain advisory to coding policy, and neutral
+execution context remains gated on a second consumer.
+
+- [x] **Step 2: Run the architecture test to verify it fails**
+
+Run: `uv --cache-dir .uv-cache run --extra dev pytest tests/architecture/test_import_boundaries.py::test_harness_slice2_execution_context_design_is_documented -q`
+
+Expected: FAIL because the Slice 2 design still reports draft status and does
+not record the completed 2A boundary.
+
+- [x] **Step 3: Update Slice 2 architecture documents**
+
+Record Slice 2A as implemented on `harness/runtime-tool-contribution-routing`,
+document that runtime duplicate overwrite and activation remain coding-owned,
+and mark neutral execution context as a gated Slice 2B item. Update the
+migration inventory and harness README to match.
+
+- [x] **Step 4: Run the architecture test to verify it passes**
+
+Run: `uv --cache-dir .uv-cache run --extra dev pytest tests/architecture/test_import_boundaries.py::test_harness_slice2_execution_context_design_is_documented -q`
+
+Expected: PASS.
+
+- [x] **Step 5: Re-run the complete focused validation surface**
+
+Run the Task 3 commands plus Ruff on the modified architecture test and
+`git diff --check`.

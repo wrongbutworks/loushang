@@ -182,7 +182,8 @@ def test_harness_slice2_execution_context_design_is_documented() -> None:
     text = " ".join(path.read_text(encoding="utf-8").split())
     required_phrases = {
         "Slice 2 Execution Context Design",
-        "Status: design draft for `lane/harness`",
+        "Slice 2A status: implementation complete for `lane/harness`",
+        "Slice 2B status: gated pending a second product consumer",
         "neutral execution context",
         "product execution adapter",
         "runtime dynamic extension registration",
@@ -191,12 +192,25 @@ def test_harness_slice2_execution_context_design_is_documented() -> None:
         "`ToolController.register_runtime_tool`",
         "`harness.tools.contribution`",
         "Product-owned behavior remains product-owned",
-        "No runtime behavior changes are part of this design slice",
+        "resolver diagnostics are advisory inputs to coding policy",
+        "runtime duplicate overwrite behavior remains coding-owned",
+        "No neutral execution context API is introduced by Slice 2A",
         "Deferred implementation items",
         "not import `loushang.coding`",
     }
 
     assert sorted(phrase for phrase in required_phrases if phrase not in text) == []
+
+    status_paths = (
+        Path("docs/internals/architecture/harness/README.md"),
+        Path("docs/internals/architecture/harness/coding-to-harness-migration-inventory.md"),
+    )
+    for status_path in status_paths:
+        status_text = " ".join(status_path.read_text(encoding="utf-8").split())
+        assert "Slice 2A" in status_text, status_path
+        assert "implementation complete" in status_text, status_path
+        assert "Slice 2B" in status_text, status_path
+        assert "gated pending a second product consumer" in status_text, status_path
 
 
 def test_absolute_imports_include_child_aliases_from_package_import(
