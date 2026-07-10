@@ -18,10 +18,10 @@
 - Create: `src/loushang/harness/workspace/__init__.py`
 - Modify: `src/loushang/coding/tools/truncate.py`
 
-- [ ] Write harness-path tests for head/tail line limits, byte limits, UTF-8 suffixes, metadata, and validation.
-- [ ] Run the new tests and verify import failure.
-- [ ] Move the neutral implementation to harness and leave coding product helpers plus aliases in the compatibility module.
-- [ ] Run harness truncation and coding compatibility tests.
+- [x] Write harness-path tests for head/tail line limits, byte limits, UTF-8 suffixes, metadata, and validation.
+- [x] Run the new tests and verify import failure.
+- [x] Move the neutral implementation to harness and leave coding product helpers plus aliases in the compatibility module.
+- [x] Run harness truncation and coding compatibility tests.
 
 ### Task 2: Define harness exec behavior
 
