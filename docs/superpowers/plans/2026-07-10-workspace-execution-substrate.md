@@ -61,6 +61,6 @@
 - Modify: `docs/superpowers/plans/2026-07-10-workspace-execution-substrate.md`
 
 - [x] Record final harness and coding ownership.
-- [ ] Mark all implementation-plan steps complete.
-- [ ] Run architecture tests, Ruff on changed Python files, and `git diff --check`.
-- [ ] Run the complete non-live test suite before completion.
+- [x] Mark all implementation-plan steps complete.
+- [x] Run architecture tests, Ruff on changed Python files, and `git diff --check`.
+- [x] Run the complete non-live test suite before completion.
