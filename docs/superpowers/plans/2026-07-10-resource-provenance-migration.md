@@ -8,17 +8,17 @@ public import paths, loader policy, or diagnostic behavior.
 
 ## Tasks
 
-- [ ] Add harness source-metadata behavior tests for string and `Path` values.
-- [ ] Add compatibility tests for coding source-info and extension imports.
-- [ ] Move `SourceInfo`, `SourceScope`, and `SourceOrigin` to harness resources.
-- [ ] Keep descriptor projection and executable identity in coding.
-- [ ] Add harness resource-diagnostic behavior tests.
-- [ ] Add compatibility tests for coding loader diagnostic imports.
-- [ ] Move `ResourceDiagnostic` to harness resources.
-- [ ] Redirect coding internal consumers to the harness owners.
-- [ ] Add architecture ownership and documentation tests.
-- [ ] Update the harness architecture index and migration inventory.
-- [ ] Run focused resource, coding compatibility, and architecture tests.
+- [x] Add harness source-metadata behavior tests for string and `Path` values.
+- [x] Add compatibility tests for coding source-info and extension imports.
+- [x] Move `SourceInfo`, `SourceScope`, and `SourceOrigin` to harness resources.
+- [x] Keep descriptor projection and executable identity in coding.
+- [x] Add harness resource-diagnostic behavior tests.
+- [x] Add compatibility tests for coding loader diagnostic imports.
+- [x] Move `ResourceDiagnostic` to harness resources.
+- [x] Redirect coding internal consumers to the harness owners.
+- [x] Add architecture ownership and documentation tests.
+- [x] Update the harness architecture index and migration inventory.
+- [x] Run focused resource, coding compatibility, and architecture tests.
 - [ ] Run Ruff, diff checks, and the full non-live test suite.
 
 ## Non-Goals

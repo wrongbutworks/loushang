@@ -304,6 +304,67 @@ def test_harness_resource_frontmatter_boundary_is_documented() -> None:
     assert "frontmatter parsing implementation complete" in inventory_text
 
 
+def test_resource_provenance_consumers_use_harness_owners() -> None:
+    compatibility_paths = {
+        "src/loushang/coding/extensions/__init__.py",
+        "src/loushang/coding/loader/__init__.py",
+        "src/loushang/coding/loader/types.py",
+        "src/loushang/coding/source_info.py",
+    }
+    legacy_symbols = (
+        "loushang.coding.extensions.SourceInfo",
+        "loushang.coding.extensions.types.SourceInfo",
+        "loushang.coding.loader.ResourceDiagnostic",
+        "loushang.coding.loader.types.ResourceDiagnostic",
+        "loushang.coding.source_info.SourceInfo",
+        "loushang.coding.source_info.SourceOrigin",
+        "loushang.coding.source_info.SourceScope",
+    )
+    offenders: list[str] = []
+    for path in sorted(Path("src/loushang/coding").rglob("*.py")):
+        if path.as_posix() in compatibility_paths:
+            continue
+        for imported in _absolute_imports(path):
+            if _matches_any(imported, legacy_symbols):
+                offenders.append(f"{path.as_posix()} imports {imported}")
+
+    assert offenders == []
+
+
+def test_harness_resource_provenance_boundary_is_documented() -> None:
+    import loushang.harness as harness
+
+    provenance_symbols = {
+        "ResourceDiagnostic",
+        "SourceInfo",
+        "SourceOrigin",
+        "SourceScope",
+    }
+    assert provenance_symbols.isdisjoint(set(harness.__all__))
+
+    design_path = Path("docs/internals/architecture/harness/resource-provenance-boundary.md")
+    assert design_path.exists()
+    design_text = " ".join(design_path.read_text(encoding="utf-8").split())
+    required_phrases = {
+        "Harness Resource Provenance Boundary",
+        "`loushang.harness.resources.source`",
+        "`loushang.harness.resources.diagnostics`",
+        "same harness-owned classes",
+        "does not move or redesign",
+        "must not import coding, method, work, TUI, AI, provider, or product packages",
+    }
+    assert sorted(phrase for phrase in required_phrases if phrase not in design_text) == []
+
+    readme_text = Path("docs/internals/architecture/harness/README.md").read_text(encoding="utf-8")
+    assert "Resource Provenance Boundary" in readme_text
+
+    inventory_text = Path(
+        "docs/internals/architecture/harness/coding-to-harness-migration-inventory.md"
+    ).read_text(encoding="utf-8")
+    assert "`loushang.harness.resources.source`" in inventory_text
+    assert "resource provenance implementation complete" in inventory_text
+
+
 def test_harness_workspace_execution_boundary_is_documented() -> None:
     design_path = Path("docs/internals/architecture/harness/workspace-execution-boundary.md")
     assert design_path.exists()
