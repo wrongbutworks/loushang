@@ -26,8 +26,10 @@ from `loushang.coding` into `loushang.harness`.
 | `coding.tools.presentation`, `rendering`, `builtin_renderers`, `output_preview` | Split candidate | Move neutral presentation records and renderer registry mechanics to `loushang.harness.presentation`. Keep terminal/product rendering and coding-specific preview choices in coding. |
 | `coding.tools.truncate` | Compatibility shim | Neutral line/byte truncation and shared limits live in `loushang.harness.workspace.truncation`. Coding keeps grep line limits, product wording, detail projection, and camelCase compatibility aliases. |
 | `coding.tools.operations` | Compatibility shim | Operation protocols, sync-or-async result resolution, `LocalToolOperations`, and the default singleton live in `loushang.harness.workspace.operations`. Coding keeps normalization, Pi adapters, payload projection, and abort behavior. |
+| `coding.tools.path_utils` | Split candidate | Configurable resolution, current-user expansion, canonical identity, Unicode normalization, and optional platform/user-input variants live in `loushang.harness.workspace.paths`. Coding keeps `@` syntax, default correction policy, public wrappers, and camelCase aliases. |
+| `coding.tools.file_mutation_queue` | Compatibility shim | Canonical per-path mutation coordination lives in `loushang.harness.workspace.mutation_queue`. Coding paths re-export the harness functions and registry; the Pi-style camelCase alias stays coding-owned. |
 | `coding.tools.read`, `ls`, `find`, `grep` | Split candidate | May become optional `loushang.harness.tools.workspace` read-only tools after policy boundaries are clear. Coding decides default activation. |
-| `coding.tools.write`, `edit`, `edit_diff`, `bash`, `process`, `file_mutation_queue`, `policy` | Split candidate | Operation and exec substrate ownership is established. File mutation queueing may move separately after path canonicalization is neutral; destructive-operation policy, approval, result projection, and default activation stay product-owned. |
+| `coding.tools.write`, `edit`, `edit_diff`, `bash`, `process`, `policy` | Split candidate | Operation, path, mutation, and exec substrate ownership is established. Destructive-operation policy, approval, result projection, tool cancellation, and default activation stay product-owned. |
 | `coding.policy` | Split candidate | Move approval request/decision/resolver contracts and headless defaults to `loushang.harness.approval` or `loushang.harness.policy`. Keep coding risk rules and interactive UI integration in coding. |
 | `coding.exec` | Compatibility shim | `ExecRequest`, `ExecResult`, output records, backend/update protocols, and `ExecService` live in `loushang.harness.workspace.exec`. Coding keeps the public compatibility path; policy, session cwd resolution, tool projection, and extension behavior remain product-owned. |
 | `coding.diagnostics` | Split candidate | Move neutral diagnostic record/status/query types to `loushang.harness.diagnostics`. Keep coding health checks and remediation text in coding. |
@@ -128,6 +130,21 @@ paths re-export those same objects.
 Normalization, Pi compatibility adapters, tool cancellation, path resolution,
 mutation queueing, policy, AI content projection, renderers, and concrete tools
 remain in coding.
+
+### Workspace Paths And Mutation
+
+Status: workspace path and mutation implementation complete for integration into
+`lane/harness`; see
+[Workspace Path And Mutation Boundary](workspace-path-mutation-boundary.md).
+
+Harness now owns configurable path resolution, current-user expansion,
+canonical absolute identity, opt-in Unicode/platform input helpers, and
+canonical per-path mutation coordination. Coding compatibility paths re-export
+the harness queue functions and registry.
+
+Coding keeps `@` input syntax, the default path-correction configuration,
+public path wrappers, camelCase aliases, workspace root and sandbox policy,
+approval, and concrete tool behavior.
 
 ### Slice 3: Resources And Source Metadata
 

@@ -6,6 +6,7 @@ from typing import Any, NotRequired, TypedDict
 from loushang.agent.types import AgentToolResult
 from loushang.ai.types import TextPart
 from loushang.coding.policy import ApprovalResolver, PolicyEngine
+from loushang.harness.workspace.mutation_queue import with_file_mutation_queue
 from loushang.harness.workspace.operations import EditOperations, resolve_operation
 
 from .authoring import tool
@@ -17,7 +18,6 @@ from .edit_diff import (
     build_unified_diff,
     first_changed_line,
 )
-from .file_mutation_queue import with_file_mutation_queue
 from .normalize import tool_to_definition
 from .operations import (
     normalize_edit_operations,

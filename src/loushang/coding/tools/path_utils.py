@@ -1,15 +1,15 @@
 from __future__ import annotations
 
-import re
-import unicodedata
 from pathlib import Path
 
-_UNICODE_SPACES_RE = re.compile(r"[\u00a0\u2000-\u200a\u202f\u205f\u3000]")
-_NARROW_NO_BREAK_SPACE = "\u202f"
-
-
-def _normalize_unicode_spaces(path: str) -> str:
-    return _UNICODE_SPACES_RE.sub(" ", path)
+from loushang.harness.workspace.paths import (
+    canonicalize_workspace_path,
+    expand_user_path,
+    normalize_unicode_spaces,
+    resolve_path_from_cwd,
+    resolve_workspace_path,
+    user_input_path_variants,
+)
 
 
 def _normalize_at_prefix(path: str) -> str:
@@ -17,12 +17,8 @@ def _normalize_at_prefix(path: str) -> str:
 
 
 def _expand_tool_path(path: str) -> str:
-    normalized = _normalize_unicode_spaces(_normalize_at_prefix(path))
-    if normalized == "~":
-        return str(Path.home())
-    if normalized.startswith("~/"):
-        return str(Path.home()) + normalized[1:]
-    return normalized
+    normalized = normalize_unicode_spaces(_normalize_at_prefix(path))
+    return str(expand_user_path(normalized))
 
 
 def expand_path(path: str) -> str:
@@ -30,58 +26,26 @@ def expand_path(path: str) -> str:
 
 
 def resolve_to_cwd(path: str, *, cwd: str | None) -> Path:
-    resolved = Path(expand_path(path))
-    if not resolved.is_absolute():
-        base = Path(cwd) if cwd is not None else Path.cwd()
-        resolved = base / resolved
-    return resolved
+    return resolve_path_from_cwd(expand_path(path), cwd=cwd)
 
 
 def resolve_read_path(path: str, *, cwd: str | None) -> Path:
     return resolve_tool_path(path, cwd=cwd)
 
 
-def _macos_screenshot_path_variant(path: str) -> str:
-    return re.sub(r" (AM|PM)\.", rf"{_NARROW_NO_BREAK_SPACE}\1.", path, flags=re.IGNORECASE)
-
-
-def _curly_quote_path_variant(path: str) -> str:
-    return path.replace("'", "\u2019")
-
-
-def _existing_path_variant(path: Path) -> Path:
-    if path.exists():
-        return path
-
-    path_text = str(path)
-    variants = [
-        _macos_screenshot_path_variant(path_text),
-        unicodedata.normalize("NFD", path_text),
-        _curly_quote_path_variant(path_text),
-    ]
-    variants.append(_curly_quote_path_variant(variants[1]))
-
-    for variant in variants:
-        if variant == path_text:
-            continue
-        candidate = Path(variant)
-        if candidate.exists():
-            return candidate
-    return path
-
-
 def resolve_tool_path(path: str, *, cwd: str | None) -> Path:
     if not isinstance(path, str) or not path:
         raise TypeError("path must be a non-empty string")
-    resolved = resolve_to_cwd(path, cwd=cwd)
-    return _existing_path_variant(resolved).resolve()
+    return resolve_workspace_path(
+        path,
+        cwd=cwd,
+        normalizers=(_normalize_at_prefix, normalize_unicode_spaces),
+        variant_providers=(user_input_path_variants,),
+    )
 
 
 def canonicalize_tool_path(path: str | Path) -> str:
-    canonical = Path(path)
-    if not canonical.is_absolute():
-        raise ValueError("path must be absolute")
-    return str(canonical.resolve())
+    return str(canonicalize_workspace_path(path))
 
 
 def expandPath(path: str) -> str:

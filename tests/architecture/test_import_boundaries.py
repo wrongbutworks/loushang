@@ -225,6 +225,67 @@ def test_harness_workspace_operation_boundary_is_documented() -> None:
     assert "workspace operation implementation complete" in inventory_text
 
 
+def test_coding_internal_mutation_queue_imports_use_harness_owner() -> None:
+    compatibility_paths = {
+        "src/loushang/coding/__init__.py",
+        "src/loushang/coding/tools/__init__.py",
+        "src/loushang/coding/tools/file_mutation_queue.py",
+    }
+    legacy_symbols = (
+        "loushang.coding.tools.file_mutation_queue.run_with_file_mutation_queue",
+        "loushang.coding.tools.file_mutation_queue.with_file_mutation_queue",
+    )
+    offenders: list[str] = []
+    for path in sorted(Path("src/loushang/coding").rglob("*.py")):
+        if path.as_posix() in compatibility_paths:
+            continue
+        for imported in _absolute_imports(path):
+            if _matches_any(imported, legacy_symbols):
+                offenders.append(f"{path.as_posix()} imports {imported}")
+
+    assert offenders == []
+
+
+def test_harness_workspace_path_and_mutation_boundary_is_documented() -> None:
+    import loushang.harness as harness
+
+    path_mutation_symbols = {
+        "PathNormalizer",
+        "PathVariantProvider",
+        "canonicalize_workspace_path",
+        "expand_user_path",
+        "normalize_unicode_spaces",
+        "resolve_path_from_cwd",
+        "resolve_workspace_path",
+        "run_with_file_mutation_queue",
+        "user_input_path_variants",
+        "with_file_mutation_queue",
+    }
+    assert path_mutation_symbols.isdisjoint(set(harness.__all__))
+
+    design_path = Path("docs/internals/architecture/harness/workspace-path-mutation-boundary.md")
+    assert design_path.exists()
+    design_text = " ".join(design_path.read_text(encoding="utf-8").split())
+    required_phrases = {
+        "Harness Workspace Path And Mutation Boundary",
+        "`loushang.harness.workspace.paths`",
+        "`loushang.harness.workspace.mutation_queue`",
+        "The engine does not enable product syntax or correction policy by itself",
+        "the Pi/coding `@` reference prefix",
+        "must not import coding, method, work, TUI, AI, provider, or product packages",
+    }
+    assert sorted(phrase for phrase in required_phrases if phrase not in design_text) == []
+
+    readme_text = Path("docs/internals/architecture/harness/README.md").read_text(encoding="utf-8")
+    assert "Workspace Path And Mutation Boundary" in readme_text
+
+    inventory_text = Path(
+        "docs/internals/architecture/harness/coding-to-harness-migration-inventory.md"
+    ).read_text(encoding="utf-8")
+    assert "`loushang.harness.workspace.paths`" in inventory_text
+    assert "workspace path and mutation implementation complete" in inventory_text
+
+
 def test_harness_tools_core_does_not_expose_pi_style_module_aliases() -> None:
     module = importlib.import_module("loushang.harness.tools.core")
 
