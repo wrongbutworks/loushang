@@ -1,4 +1,5 @@
 from loushang.coding.tools.truncate import (
+    TruncationResult,
     format_size,
     formatSize,
     truncate_head,
@@ -7,6 +8,15 @@ from loushang.coding.tools.truncate import (
     truncateHead,
     truncateLine,
     truncateTail,
+)
+from loushang.harness.workspace.truncation import (
+    TruncationResult as HarnessTruncationResult,
+)
+from loushang.harness.workspace.truncation import (
+    truncate_head as harness_truncate_head,
+)
+from loushang.harness.workspace.truncation import (
+    truncate_tail as harness_truncate_tail,
 )
 
 
@@ -112,3 +122,10 @@ def test_pi_style_truncation_aliases_delegate_to_python_helpers() -> None:
     assert truncateHead("a\nb\n", max_lines=1).content == truncate_head("a\nb\n", max_lines=1).content
     assert truncateTail("a\nb\n", max_lines=1).content == truncate_tail("a\nb\n", max_lines=1).content
     assert truncateLine("abcdef", max_chars=3).text == truncate_line("abcdef", max_chars=3).text
+
+
+def test_coding_truncation_exports_preserve_harness_owner_identity() -> None:
+    assert TruncationResult is HarnessTruncationResult
+    assert truncate_head is harness_truncate_head
+    assert truncate_tail is harness_truncate_tail
+    assert TruncationResult.__module__ == "loushang.harness.workspace.truncation"

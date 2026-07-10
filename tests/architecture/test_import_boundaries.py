@@ -119,6 +119,42 @@ def test_harness_slice1_symbols_are_not_top_level_exports() -> None:
     assert slice1_symbols.isdisjoint(set(harness.__all__))
 
 
+def test_harness_workspace_symbols_are_not_top_level_exports() -> None:
+    import loushang.harness as harness
+
+    workspace_symbols = {
+        "ExecBackend",
+        "ExecOutputChunk",
+        "ExecRequest",
+        "ExecResult",
+        "ExecService",
+        "ExecUpdateCallback",
+        "TruncationResult",
+        "truncate_head",
+        "truncate_tail",
+    }
+
+    assert workspace_symbols.isdisjoint(set(harness.__all__))
+
+
+def test_coding_internal_exec_imports_use_harness_owner() -> None:
+    compatibility_paths = {
+        "src/loushang/coding/__init__.py",
+        "src/loushang/coding/exec/__init__.py",
+        "src/loushang/coding/exec/service.py",
+        "src/loushang/coding/exec/types.py",
+    }
+    offenders: list[str] = []
+    for path in sorted(Path("src/loushang/coding").rglob("*.py")):
+        if path.as_posix() in compatibility_paths:
+            continue
+        for imported in _absolute_imports(path):
+            if imported.startswith("loushang.coding.exec"):
+                offenders.append(f"{path.as_posix()} imports {imported}")
+
+    assert offenders == []
+
+
 def test_harness_tools_core_does_not_expose_pi_style_module_aliases() -> None:
     module = importlib.import_module("loushang.harness.tools.core")
 
@@ -266,6 +302,37 @@ def test_harness_resource_frontmatter_boundary_is_documented() -> None:
     ).read_text(encoding="utf-8")
     assert "`loushang.harness.resources.frontmatter`" in inventory_text
     assert "frontmatter parsing implementation complete" in inventory_text
+
+
+def test_harness_workspace_execution_boundary_is_documented() -> None:
+    design_path = Path("docs/internals/architecture/harness/workspace-execution-boundary.md")
+    assert design_path.exists()
+
+    design_text = " ".join(design_path.read_text(encoding="utf-8").split())
+    required_design_phrases = {
+        "Harness Workspace Execution Boundary",
+        "`loushang.harness.workspace.truncation`",
+        "`loushang.harness.workspace.exec`",
+        "Coding remains a product adapter",
+        "Harness-owned classes keep their harness `__module__`",
+        "does not introduce a neutral execution context",
+    }
+    assert sorted(phrase for phrase in required_design_phrases if phrase not in design_text) == []
+
+    readme_text = Path("docs/internals/architecture/harness/README.md").read_text(encoding="utf-8")
+    assert "Workspace Execution Boundary" in readme_text
+
+    inventory_text = Path(
+        "docs/internals/architecture/harness/coding-to-harness-migration-inventory.md"
+    ).read_text(encoding="utf-8")
+    assert "`loushang.harness.workspace.truncation`" in inventory_text
+    assert "workspace execution implementation complete" in inventory_text
+
+    coding_exec_text = Path("docs/internals/architecture/coding/component-interfaces/exec.md").read_text(
+        encoding="utf-8"
+    )
+    assert "`loushang.harness.workspace.exec`" in coding_exec_text
+    assert "compatibility" in coding_exec_text
 
 
 def test_absolute_imports_include_child_aliases_from_package_import(

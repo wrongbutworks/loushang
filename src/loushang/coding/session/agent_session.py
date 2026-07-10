@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 from collections.abc import Awaitable, Callable, Mapping, Sequence
+from contextlib import suppress
 from pathlib import Path
 
 from loushang.agent import (
@@ -40,13 +41,6 @@ from loushang.coding.diagnostics import (
     ErrorReport,
 )
 from loushang.coding.event import AgentSessionEvent
-from loushang.coding.exec import (
-    ExecOutputChunk,
-    ExecRequest,
-    ExecResult,
-    ExecService,
-    ExecUpdateCallback,
-)
 from loushang.coding.extensions import (
     ExtensionRunner,
     ReplacedSessionContext,
@@ -127,6 +121,13 @@ from loushang.coding.session.types import (
 from loushang.coding.session.usage_payload import serialize_context_usage_payload
 from loushang.coding.store import SessionManager, SessionRecord
 from loushang.coding.tools import ToolDefinition, ToolRegistry
+from loushang.harness.workspace.exec import (
+    ExecOutputChunk,
+    ExecRequest,
+    ExecResult,
+    ExecService,
+    ExecUpdateCallback,
+)
 
 SessionEventListener = Callable[[AgentSessionEvent], Awaitable[None] | None]
 
@@ -427,10 +428,8 @@ class AgentSession:
                 endpoint_id=session_context.model.get("endpoint_id"),
             )
             if self.get_model_selection() != selection and self.model_registry is not None:
-                try:
+                with suppress(KeyError, ValueError):
                     self.agent.model = self.model_registry.build_model(selection)
-                except (KeyError, ValueError):
-                    pass
         if self._tool_registry is not None:
             initial_active_tool_names = (
                 list(active_tool_names)

@@ -5,8 +5,8 @@ from typing import Any, Literal
 
 from loushang.agent.types import AgentTool
 from loushang.coding.diagnostics import DiagnosticsService
-from loushang.coding.exec import ExecService
 from loushang.coding.policy import ApprovalResolver, PolicyEngine
+from loushang.harness.workspace.exec import ExecService
 
 from .bash import (
     BashOperations,

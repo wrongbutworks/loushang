@@ -12,7 +12,6 @@ from loushang.agent.types import (
     AgentMessage,
     BeforeToolCallResult,
 )
-from loushang.coding.exec import ExecResult, ExecUpdateCallback
 from loushang.coding.extensions.hooks import HookDispatcher
 from loushang.coding.extensions.loader import ExtensionLoader
 from loushang.coding.extensions.types import (
@@ -45,6 +44,7 @@ from loushang.coding.loader import (
     ThemeDescriptor,
 )
 from loushang.coding.tools import ToolDefinition
+from loushang.harness.workspace.exec import ExecResult, ExecUpdateCallback
 
 
 def _normalize_exec_args(args: Sequence[str]) -> list[str]:

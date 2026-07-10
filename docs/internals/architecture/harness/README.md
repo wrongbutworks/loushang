@@ -30,6 +30,9 @@ planning, work event persistence, or AI provider behavior.
 - [Resource Frontmatter Boundary](resource-frontmatter-boundary.md) defines the
   shared parser owner, legacy compatibility paths, and product-owned resource
   semantics that remain outside harness.
+- [Workspace Execution Boundary](workspace-execution-boundary.md) defines
+  harness-owned truncation, exec records, backend protocols, process execution,
+  and coding compatibility ownership.
 - [Harness Lane Development Workflow](development-workflow.md) defines how the
   long-lived `lane/harness` branch stays isolated from `main` until the
   migration is bootable and validated.

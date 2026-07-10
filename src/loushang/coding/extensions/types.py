@@ -9,7 +9,6 @@ from typing import Any, Literal, Protocol
 from loushang.agent import AgentMessage, ThinkingLevel
 from loushang.coding.commands import SessionCommandDescriptor
 from loushang.coding.compaction import BranchSummaryResult, CompactionResult
-from loushang.coding.exec import ExecResult, ExecUpdateCallback
 from loushang.coding.extensions.contributions import ExtensionSurfaceDescriptor
 from loushang.coding.extensions.events import VALID_EXTENSION_EVENTS
 from loushang.coding.extensions.manifest import ExtensionManifest
@@ -25,6 +24,7 @@ from loushang.coding.loader.types import ResourceSourceKind, ResourceSourceScope
 from loushang.coding.source_info import SourceOrigin, SourceScope
 from loushang.coding.tools import ToolDefinition
 from loushang.coding.types import ModelSelection
+from loushang.harness.workspace.exec import ExecResult, ExecUpdateCallback
 
 
 class ExtensionContext(Protocol):
