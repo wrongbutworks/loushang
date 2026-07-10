@@ -3,20 +3,43 @@ from __future__ import annotations
 from collections.abc import Iterable
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Protocol, TypeVar
+from typing import Any
 
-from .runtime import (
-    MaybeAwaitable,
-    is_tool_aborted,
-    raise_if_tool_aborted,
-    resolve_maybe_awaitable,
+from loushang.harness.workspace.operations import (
+    LOCAL_TOOL_OPERATIONS,
+    EditOperations,
+    FindOperations,
+    GrepOperations,
+    LocalToolOperations,
+    LsOperations,
+    ReadOperations,
+    ToolOperations,
+    WriteOperations,
+    resolve_operation,
 )
 
-T = TypeVar("T")
+from .runtime import is_tool_aborted, raise_if_tool_aborted
 
-
-async def resolve_operation(value: MaybeAwaitable[T]) -> T:
-    return await resolve_maybe_awaitable(value)
+__all__ = [
+    "LOCAL_TOOL_OPERATIONS",
+    "EditOperations",
+    "FindOperations",
+    "GrepOperations",
+    "LocalToolOperations",
+    "LsOperations",
+    "ReadOperations",
+    "ToolOperations",
+    "WriteOperations",
+    "is_operation_aborted",
+    "normalize_edit_operations",
+    "normalize_find_operations",
+    "normalize_grep_operations",
+    "normalize_ls_operations",
+    "normalize_read_operations",
+    "normalize_write_operations",
+    "raise_if_operation_aborted",
+    "resolve_operation",
+]
 
 
 def is_operation_aborted(signal: object | None) -> bool:
@@ -25,109 +48,6 @@ def is_operation_aborted(signal: object | None) -> bool:
 
 def raise_if_operation_aborted(signal: object | None) -> None:
     raise_if_tool_aborted(signal)
-
-
-class ReadOperations(Protocol):
-    def exists(self, path: Path) -> MaybeAwaitable[bool]: ...
-
-    def is_file(self, path: Path) -> MaybeAwaitable[bool]: ...
-
-    def read_bytes(self, path: Path) -> MaybeAwaitable[bytes]: ...
-
-
-class WriteOperations(Protocol):
-    def exists(self, path: Path) -> MaybeAwaitable[bool]: ...
-
-    def is_file(self, path: Path) -> MaybeAwaitable[bool]: ...
-
-    def mkdir(self, path: Path, *, parents: bool, exist_ok: bool) -> MaybeAwaitable[None]: ...
-
-    def write_text(self, path: Path, content: str, *, newline: str | None = None) -> MaybeAwaitable[None]: ...
-
-
-class EditOperations(Protocol):
-    def exists(self, path: Path) -> MaybeAwaitable[bool]: ...
-
-    def is_file(self, path: Path) -> MaybeAwaitable[bool]: ...
-
-    def read_text(self, path: Path, *, newline: str | None = None) -> MaybeAwaitable[str]: ...
-
-    def write_text(self, path: Path, content: str, *, newline: str | None = None) -> MaybeAwaitable[None]: ...
-
-
-class LsOperations(Protocol):
-    def exists(self, path: Path) -> MaybeAwaitable[bool]: ...
-
-    def is_dir(self, path: Path) -> MaybeAwaitable[bool]: ...
-
-    def iterdir(self, path: Path) -> MaybeAwaitable[Iterable[Path]]: ...
-
-
-class FindOperations(Protocol):
-    def exists(self, path: Path) -> MaybeAwaitable[bool]: ...
-
-    def is_dir(self, path: Path) -> MaybeAwaitable[bool]: ...
-
-    def walk_files(self, path: Path) -> MaybeAwaitable[Iterable[Path]]: ...
-
-
-class GrepOperations(Protocol):
-    def exists(self, path: Path) -> MaybeAwaitable[bool]: ...
-
-    def is_file(self, path: Path) -> MaybeAwaitable[bool]: ...
-
-    def is_dir(self, path: Path) -> MaybeAwaitable[bool]: ...
-
-    def read_text(self, path: Path, *, newline: str | None = None) -> MaybeAwaitable[str]: ...
-
-    def walk_files(self, path: Path) -> MaybeAwaitable[Iterable[Path]]: ...
-
-
-class ToolOperations(
-    ReadOperations,
-    WriteOperations,
-    EditOperations,
-    LsOperations,
-    FindOperations,
-    GrepOperations,
-    Protocol,
-):
-    pass
-
-
-@dataclass(frozen=True)
-class LocalToolOperations:
-    def exists(self, path: Path) -> bool:
-        return path.exists()
-
-    def is_file(self, path: Path) -> bool:
-        return path.is_file()
-
-    def is_dir(self, path: Path) -> bool:
-        return path.is_dir()
-
-    def read_bytes(self, path: Path) -> bytes:
-        return path.read_bytes()
-
-    def read_text(self, path: Path, *, newline: str | None = None) -> str:
-        with path.open("r", encoding="utf-8", newline=newline) as handle:
-            return handle.read()
-
-    def write_text(self, path: Path, content: str, *, newline: str | None = None) -> None:
-        with path.open("w", encoding="utf-8", newline=newline) as handle:
-            handle.write(content)
-
-    def mkdir(self, path: Path, *, parents: bool, exist_ok: bool) -> None:
-        path.mkdir(parents=parents, exist_ok=exist_ok)
-
-    def iterdir(self, path: Path) -> Iterable[Path]:
-        return path.iterdir()
-
-    def walk_files(self, path: Path) -> Iterable[Path]:
-        return (candidate for candidate in sorted(path.rglob("*")) if candidate.is_file())
-
-
-LOCAL_TOOL_OPERATIONS = LocalToolOperations()
 
 
 def normalize_read_operations(operations: object | None) -> ReadOperations:
