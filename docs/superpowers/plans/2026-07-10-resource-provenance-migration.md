@@ -19,7 +19,7 @@ public import paths, loader policy, or diagnostic behavior.
 - [x] Add architecture ownership and documentation tests.
 - [x] Update the harness architecture index and migration inventory.
 - [x] Run focused resource, coding compatibility, and architecture tests.
-- [ ] Run Ruff, diff checks, and the full non-live test suite.
+- [x] Run Ruff, diff checks, and the full non-live test suite.
 
 ## Non-Goals
 
