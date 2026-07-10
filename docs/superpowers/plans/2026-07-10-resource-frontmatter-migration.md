@@ -44,13 +44,13 @@
 - Modify: `docs/internals/architecture/harness/coding-to-harness-migration-inventory.md`
 - Modify: `tests/architecture/test_import_boundaries.py`
 
-- [ ] Add a documentation contract test and verify it fails before status updates.
-- [ ] Record harness ownership, compatibility paths, and deferred resource concerns.
-- [ ] Run architecture tests.
+- [x] Add a documentation contract test and verify it fails before status updates.
+- [x] Record harness ownership, compatibility paths, and deferred resource concerns.
+- [x] Run architecture tests.
 
 ### Task 4: Complete verification
 
-- [ ] Run Ruff on every changed Python file.
-- [ ] Run `git diff --check`.
-- [ ] Run the complete non-live test suite.
-- [ ] Mark every plan step complete and commit the final status.
+- [x] Run Ruff on every changed Python file.
+- [x] Run `git diff --check`.
+- [x] Run the complete non-live test suite.
+- [x] Mark every plan step complete and commit the final status.

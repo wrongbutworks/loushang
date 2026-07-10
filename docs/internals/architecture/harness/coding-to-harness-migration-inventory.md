@@ -4,8 +4,8 @@
 
 This is an ownership inventory, not an implementation plan.
 
-It records how current `loushang.coding` modules should be classified before
-code moves into `loushang.harness`.
+It records current ownership and the remaining action for modules migrating
+from `loushang.coding` into `loushang.harness`.
 
 ## Classification
 
@@ -13,6 +13,7 @@ code moves into `loushang.harness`.
 | --- | --- |
 | Move candidate | Product-neutral substrate that can likely move to harness. |
 | Split candidate | Contains shared mechanism and coding policy; only the shared part may move. |
+| Compatibility shim | Harness owns the implementation; an accepted legacy path re-exports that surface. |
 | Keep product | Coding-specific assembly, policy, storage, UI, or workflow. |
 | Never harness | Explicitly outside harness by subsystem boundary. |
 
@@ -28,7 +29,8 @@ code moves into `loushang.harness`.
 | `coding.policy` | Split candidate | Move approval request/decision/resolver contracts and headless defaults to `loushang.harness.approval` or `loushang.harness.policy`. Keep coding risk rules and interactive UI integration in coding. |
 | `coding.exec` | Split candidate | Move neutral exec request/result/service protocol to `loushang.harness.workspace.exec`. Keep product policy and CLI-facing behavior in coding. |
 | `coding.diagnostics` | Split candidate | Move neutral diagnostic record/status/query types to `loushang.harness.diagnostics`. Keep coding health checks and remediation text in coding. |
-| `coding.loader.types`, `coding.source_info`, `loushang.resource.frontmatter` | Split candidate | Move generic resource/source metadata/frontmatter pieces to `loushang.harness.resources`. Keep prompt/theme/skill loading policy in coding. |
+| `loushang.resource.frontmatter`, `coding.frontmatter` | Compatibility shim | Parser records, errors, and behavior live in `loushang.harness.resources.frontmatter`. Legacy paths preserve object identity; coding and method internal consumers use the harness owner. |
+| `coding.loader.types`, `coding.source_info` | Split candidate | Move only accepted generic source metadata and resource diagnostic pieces to `loushang.harness.resources`. Keep executable identity, prompt/theme/skill descriptors, loading roots, precedence, and merge policy in coding. |
 | `coding.prompt.types` | Split candidate | Move only neutral prepared-prompt/trace contracts if a second product needs them. Keep templates, preflight, and assembler policy in coding. |
 | `coding.compaction.types`, `coding.session.context_usage` | Split candidate | Move context budget/usage/accounting contracts to `loushang.harness.context`. Keep summarization services, transcript rebuild, and coding compaction policy in coding. |
 | `coding.domain.types` | Split candidate | Use as input for future `loushang.harness.adapter` shapes. Generic request/result types must not contain first-class method fields; carry method/work refs as opaque metadata. |
@@ -102,11 +104,21 @@ and product explanation text in coding.
 
 ### Slice 3: Resources And Source Metadata
 
+Status: frontmatter parsing implementation complete for integration into
+`lane/harness`; see
+[Resource Frontmatter Boundary](resource-frontmatter-boundary.md). Source
+metadata and generic resource diagnostics remain deferred.
+
 Purpose: avoid expanding `loushang.resource` as a broad top-level package.
 
-Move frontmatter parsing, source metadata, and generic diagnostics into
-`loushang.harness.resources` only when internal imports can be redirected
-without introducing harness -> product dependencies.
+Frontmatter parsing now lives in `loushang.harness.resources.frontmatter`.
+`loushang.resource.frontmatter` and `loushang.coding.frontmatter` are
+compatibility shims, while coding and method internal consumers import the
+harness owner directly.
+
+Source metadata and generic diagnostics require separate designs. Do not move
+coding executable identity, product resource descriptors, search roots,
+precedence, merge policy, or remediation text as part of the parser migration.
 
 ### Slice 4: Context
 

@@ -235,6 +235,39 @@ def test_frontmatter_consumers_use_harness_owner() -> None:
     assert offenders == []
 
 
+def test_harness_resource_frontmatter_boundary_is_documented() -> None:
+    import loushang.harness as harness
+
+    resource_symbols = {
+        "FrontmatterParseError",
+        "ParsedFrontmatter",
+        "parse_frontmatter",
+        "strip_frontmatter",
+    }
+    assert resource_symbols.isdisjoint(set(harness.__all__))
+
+    design_path = Path("docs/internals/architecture/harness/resource-frontmatter-boundary.md")
+    assert design_path.exists()
+    design_text = " ".join(design_path.read_text(encoding="utf-8").split())
+    required_phrases = {
+        "Harness Resource Frontmatter Boundary",
+        "`loushang.harness.resources.frontmatter`",
+        "Both paths re-export the same harness-owned classes and functions",
+        "does not move or redesign",
+        "must not import coding, method, work, TUI, AI, or provider packages",
+    }
+    assert sorted(phrase for phrase in required_phrases if phrase not in design_text) == []
+
+    readme_text = Path("docs/internals/architecture/harness/README.md").read_text(encoding="utf-8")
+    assert "Resource Frontmatter Boundary" in readme_text
+
+    inventory_text = Path(
+        "docs/internals/architecture/harness/coding-to-harness-migration-inventory.md"
+    ).read_text(encoding="utf-8")
+    assert "`loushang.harness.resources.frontmatter`" in inventory_text
+    assert "frontmatter parsing implementation complete" in inventory_text
+
+
 def test_absolute_imports_include_child_aliases_from_package_import(
     tmp_path: Path,
 ) -> None:
