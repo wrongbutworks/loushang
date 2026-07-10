@@ -13,7 +13,6 @@ from loushang.coding.loader.types import (
     PackageResourceSummary,
     PromptFragmentDescriptor,
     ResourceBundle,
-    ResourceDiagnostic,
     ResourceMergeDecision,
     ResourceSnapshot,
     ResourceSourceKind,
@@ -21,6 +20,7 @@ from loushang.coding.loader.types import (
     ThemeDescriptor,
 )
 from loushang.coding.package.source import PackageSourceConfig
+from loushang.harness.resources.diagnostics import ResourceDiagnostic
 from loushang.harness.resources.frontmatter import (
     FrontmatterParseError,
     parse_frontmatter,

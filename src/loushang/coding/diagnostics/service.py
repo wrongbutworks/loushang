@@ -1,9 +1,9 @@
 from __future__ import annotations
 
 import json
+from collections.abc import Iterable
 from dataclasses import replace
 from datetime import UTC, datetime
-from typing import Iterable
 
 from loushang.coding.diagnostics.types import (
     DiagnosticLevel,
@@ -16,7 +16,7 @@ from loushang.coding.diagnostics.types import (
     StartupCheck,
     StartupCheckResult,
 )
-from loushang.coding.loader import ResourceDiagnostic
+from loushang.harness.resources.diagnostics import ResourceDiagnostic
 
 
 def _now_iso() -> str:

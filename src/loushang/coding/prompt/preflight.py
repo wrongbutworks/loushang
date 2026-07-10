@@ -7,7 +7,6 @@ from loushang.coding.commands.slash import split_slash_command
 from loushang.coding.loader import (
     PromptFragmentDescriptor,
     ResourceBundle,
-    ResourceDiagnostic,
     SkillDescriptor,
 )
 from loushang.coding.prompt.templates import (
@@ -15,6 +14,7 @@ from loushang.coding.prompt.templates import (
     prompt_template_has_args,
     substitute_prompt_template_args,
 )
+from loushang.harness.resources.diagnostics import ResourceDiagnostic
 from loushang.harness.resources.frontmatter import strip_frontmatter
 
 

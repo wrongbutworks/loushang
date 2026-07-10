@@ -31,7 +31,9 @@ from `loushang.coding` into `loushang.harness`.
 | `coding.exec` | Compatibility shim | `ExecRequest`, `ExecResult`, output records, backend/update protocols, and `ExecService` live in `loushang.harness.workspace.exec`. Coding keeps the public compatibility path; policy, session cwd resolution, tool projection, and extension behavior remain product-owned. |
 | `coding.diagnostics` | Split candidate | Move neutral diagnostic record/status/query types to `loushang.harness.diagnostics`. Keep coding health checks and remediation text in coding. |
 | `loushang.resource.frontmatter`, `coding.frontmatter` | Compatibility shim | Parser records, errors, and behavior live in `loushang.harness.resources.frontmatter`. Legacy paths preserve object identity; coding and method internal consumers use the harness owner. |
-| `coding.loader.types`, `coding.source_info` | Split candidate | Move only accepted generic source metadata and resource diagnostic pieces to `loushang.harness.resources`. Keep executable identity, prompt/theme/skill descriptors, loading roots, precedence, and merge policy in coding. |
+| `coding.source_info.SourceInfo`, `coding.extensions.types.SourceInfo` | Compatibility shim | `SourceInfo`, `SourceScope`, and `SourceOrigin` live in `loushang.harness.resources.source`. Coding command and extension paths preserve string and `Path` representations through the same harness class. Descriptor projection and executable identity remain in coding. |
+| `coding.loader.ResourceDiagnostic`, `coding.loader.types.ResourceDiagnostic` | Compatibility shim | The neutral record lives in `loushang.harness.resources.diagnostics`. Coding compatibility paths preserve object identity; diagnostic services, messages, phases, and recording policy remain product-owned. |
+| Remaining `coding.loader.types` | Keep product | Prompt, skill, theme, and extension descriptors, source kinds, snapshots, roots, precedence, and merge decisions remain coding-owned. Generic merge primitives require a separate accepted boundary. |
 | `coding.prompt.types` | Split candidate | Move only neutral prepared-prompt/trace contracts if a second product needs them. Keep templates, preflight, and assembler policy in coding. |
 | `coding.compaction.types`, `coding.session.context_usage` | Split candidate | Move context budget/usage/accounting contracts to `loushang.harness.context`. Keep summarization services, transcript rebuild, and coding compaction policy in coding. |
 | `coding.domain.types` | Split candidate | Use as input for future `loushang.harness.adapter` shapes. Generic request/result types must not contain first-class method fields; carry method/work refs as opaque metadata. |
@@ -114,10 +116,10 @@ satisfy the separate second-product gate for Slice 2B.
 
 ### Slice 3: Resources And Source Metadata
 
-Status: frontmatter parsing implementation complete for integration into
-`lane/harness`; see
-[Resource Frontmatter Boundary](resource-frontmatter-boundary.md). Source
-metadata and generic resource diagnostics remain deferred.
+Status: frontmatter parsing implementation complete; resource provenance implementation complete
+for integration into `lane/harness`; see
+[Resource Frontmatter Boundary](resource-frontmatter-boundary.md) and
+[Resource Provenance Boundary](resource-provenance-boundary.md).
 
 Purpose: avoid expanding `loushang.resource` as a broad top-level package.
 
@@ -126,9 +128,12 @@ Frontmatter parsing now lives in `loushang.harness.resources.frontmatter`.
 compatibility shims, while coding and method internal consumers import the
 harness owner directly.
 
-Source metadata and generic diagnostics require separate designs. Do not move
-coding executable identity, product resource descriptors, search roots,
-precedence, merge policy, or remediation text as part of the parser migration.
+Source metadata now lives in `loushang.harness.resources.source`, preserving
+adapter-selected string or `Path` representations. The neutral resource
+diagnostic record lives in `loushang.harness.resources.diagnostics`.
+Accepted coding paths re-export the harness classes, while coding executable
+identity, product resource descriptors, search roots, precedence, merge policy,
+diagnostic services, and remediation text remain product-owned.
 
 ### Slice 4: Context
 

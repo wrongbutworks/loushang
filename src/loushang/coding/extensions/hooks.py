@@ -17,7 +17,7 @@ from loushang.coding.extensions.types import (
     ToolCallDecision,
     ToolResultDecision,
 )
-from loushang.coding.loader import ResourceDiagnostic
+from loushang.harness.resources.diagnostics import ResourceDiagnostic
 
 
 class HookKind(str, Enum):

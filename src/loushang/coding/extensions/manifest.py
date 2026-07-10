@@ -6,7 +6,7 @@ from pathlib import Path
 from typing import Literal
 
 from loushang.coding.extensions.events import VALID_EXTENSION_EVENTS
-from loushang.coding.loader import ResourceDiagnostic
+from loushang.harness.resources.diagnostics import ResourceDiagnostic
 
 PermissionLevel = Literal["safe", "standard", "powerful"]
 HookKind = Literal["observe", "transform", "intercept", "augment"]

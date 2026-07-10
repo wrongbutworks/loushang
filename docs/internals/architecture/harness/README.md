@@ -30,6 +30,9 @@ planning, work event persistence, or AI provider behavior.
 - [Resource Frontmatter Boundary](resource-frontmatter-boundary.md) defines the
   shared parser owner, legacy compatibility paths, and product-owned resource
   semantics that remain outside harness.
+- [Resource Provenance Boundary](resource-provenance-boundary.md) defines
+  shared source metadata and resource diagnostic ownership while preserving
+  coding path representations and public compatibility imports.
 - [Workspace Execution Boundary](workspace-execution-boundary.md) defines
   harness-owned truncation, exec records, backend protocols, process execution,
   and coding compatibility ownership.

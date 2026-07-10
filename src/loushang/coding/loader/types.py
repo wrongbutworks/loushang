@@ -1,9 +1,12 @@
 from __future__ import annotations
 
+from collections.abc import Mapping
 from dataclasses import dataclass, field
 from pathlib import Path
 from types import MappingProxyType
-from typing import Literal, Mapping
+from typing import Literal
+
+from loushang.harness.resources.diagnostics import ResourceDiagnostic
 
 ResourceSourceKind = Literal["built_in", "project_local", "external_package", "user_global", "temporary"]
 ResourceSourceScope = Literal["builtin", "project", "package", "user", "temporary"]
@@ -17,17 +20,6 @@ _PROMPT_SOURCE_ORDER: tuple[ResourceSourceKind, ...] = (
     "built_in",
 )
 _CONTEXT_PROMPT_KINDS = frozenset({"agents_md", "claude_md"})
-
-
-@dataclass(frozen=True)
-class ResourceDiagnostic:
-    code: str
-    message: str
-    source_path: Path | None = None
-    resource_id: str | None = None
-    resource_type: str | None = None
-    source_kind: ResourceSourceKind | None = None
-    metadata: Mapping[str, object] = field(default_factory=lambda: _EMPTY_METADATA)
 
 
 @dataclass(frozen=True)
