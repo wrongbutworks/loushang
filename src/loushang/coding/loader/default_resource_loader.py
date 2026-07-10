@@ -21,7 +21,10 @@ from loushang.coding.loader.types import (
     ThemeDescriptor,
 )
 from loushang.coding.package.source import PackageSourceConfig
-from loushang.resource.frontmatter import FrontmatterParseError, parse_frontmatter
+from loushang.harness.resources.frontmatter import (
+    FrontmatterParseError,
+    parse_frontmatter,
+)
 
 BUILT_IN_RESOURCE_PACKAGE = "loushang.coding.resources"
 _MAX_SKILL_NAME_LENGTH = 64
@@ -1417,7 +1420,7 @@ def _theme_json_diagnostic(path: Path, *, source_kind: ResourceSourceKind) -> Re
             resource_type="theme",
             source_kind=source_kind,
         )
-    except Exception as exc:  # noqa: BLE001
+    except Exception as exc:
         return ResourceDiagnostic(
             code="unreadable_theme_entry",
             message=f"Failed to read theme entry: {exc}",

@@ -27,6 +27,9 @@ planning, work event persistence, or AI provider behavior.
 - [Slice 2 Execution Context Design](slice-2-execution-context-design.md)
   records Slice 2A implementation complete for runtime tool contribution
   adapter verification and Slice 2B gated pending a second product consumer.
+- [Resource Frontmatter Boundary](resource-frontmatter-boundary.md) defines the
+  shared parser owner, legacy compatibility paths, and product-owned resource
+  semantics that remain outside harness.
 - [Harness Lane Development Workflow](development-workflow.md) defines how the
   long-lived `lane/harness` branch stays isolated from `main` until the
   migration is bootable and validated.
