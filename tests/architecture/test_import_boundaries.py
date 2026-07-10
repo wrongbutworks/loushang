@@ -154,6 +154,45 @@ def test_harness_contribution_symbols_are_not_top_level_exports() -> None:
     assert contribution_symbols.isdisjoint(set(harness.__all__))
 
 
+def test_harness_context_symbols_are_not_top_level_exports() -> None:
+    import loushang.harness as harness
+
+    context_symbols = {
+        "CompactionBudget",
+        "ContextUsageEstimate",
+        "calculate_compaction_budget",
+    }
+
+    assert context_symbols.isdisjoint(set(harness.__all__))
+
+
+def test_coding_internal_context_budget_imports_use_harness_owners() -> None:
+    compatibility_paths = {
+        "src/loushang/coding/__init__.py",
+        "src/loushang/coding/compaction/__init__.py",
+        "src/loushang/coding/compaction/policy.py",
+        "src/loushang/coding/compaction/types.py",
+    }
+    legacy_symbols = (
+        "loushang.coding.ContextUsageEstimate",
+        "loushang.coding.compaction.CompactionBudget",
+        "loushang.coding.compaction.ContextUsageEstimate",
+        "loushang.coding.compaction.calculate_compaction_budget",
+        "loushang.coding.compaction.policy.CompactionBudget",
+        "loushang.coding.compaction.policy.calculate_compaction_budget",
+        "loushang.coding.compaction.types.ContextUsageEstimate",
+    )
+    offenders: list[str] = []
+    for path in sorted(Path("src/loushang/coding").rglob("*.py")):
+        if path.as_posix() in compatibility_paths:
+            continue
+        for imported in _absolute_imports(path):
+            if _matches_any(imported, legacy_symbols):
+                offenders.append(f"{path.as_posix()} imports {imported}")
+
+    assert offenders == []
+
+
 def test_coding_internal_contribution_imports_use_harness_owner() -> None:
     compatibility_paths = {
         "src/loushang/coding/extensions/__init__.py",
