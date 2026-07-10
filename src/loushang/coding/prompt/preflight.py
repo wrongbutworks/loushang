@@ -4,7 +4,6 @@ from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
 
 from loushang.coding.commands.slash import split_slash_command
-from loushang.coding.frontmatter import strip_frontmatter
 from loushang.coding.loader import (
     PromptFragmentDescriptor,
     ResourceBundle,
@@ -16,6 +15,7 @@ from loushang.coding.prompt.templates import (
     prompt_template_has_args,
     substitute_prompt_template_args,
 )
+from loushang.harness.resources.frontmatter import strip_frontmatter
 
 
 @dataclass(frozen=True)

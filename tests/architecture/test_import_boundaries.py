@@ -213,6 +213,28 @@ def test_harness_slice2_execution_context_design_is_documented() -> None:
         assert "gated pending a second product consumer" in status_text, status_path
 
 
+def test_frontmatter_consumers_use_harness_owner() -> None:
+    compatibility_paths = {
+        "src/loushang/coding/frontmatter.py",
+        "src/loushang/resource/__init__.py",
+        "src/loushang/resource/frontmatter.py",
+    }
+    legacy_prefixes = (
+        "loushang.coding.frontmatter",
+        "loushang.resource.frontmatter",
+    )
+    offenders: list[str] = []
+    for root in (Path("src/loushang/coding"), Path("src/loushang/method")):
+        for path in sorted(root.rglob("*.py")):
+            if path.as_posix() in compatibility_paths:
+                continue
+            for imported in _absolute_imports(path):
+                if imported.startswith(legacy_prefixes):
+                    offenders.append(f"{path.as_posix()} imports {imported}")
+
+    assert offenders == []
+
+
 def test_absolute_imports_include_child_aliases_from_package_import(
     tmp_path: Path,
 ) -> None:

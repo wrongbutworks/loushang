@@ -17,10 +17,10 @@
 - Create: `src/loushang/harness/resources/__init__.py`
 - Create: `src/loushang/harness/resources/frontmatter.py`
 
-- [ ] Add harness-path tests for plain content, newline normalization, block scalars, lists, nested maps, stripping, and parse locations.
-- [ ] Run the new tests and verify import failure.
-- [ ] Move the parser implementation without changing accepted syntax or errors.
-- [ ] Run harness frontmatter tests.
+- [x] Add harness-path tests for plain content, newline normalization, block scalars, lists, nested maps, stripping, and parse locations.
+- [x] Run the new tests and verify import failure.
+- [x] Move the parser implementation without changing accepted syntax or errors.
+- [x] Run harness frontmatter tests.
 
 ### Task 2: Preserve compatibility and redirect internal consumers
 
@@ -32,10 +32,10 @@
 - Modify: `src/loushang/method/resources.py`
 - Modify: frontmatter compatibility and architecture tests
 
-- [ ] Add identity tests and an internal-owner import boundary test.
-- [ ] Run focused tests and verify the owner import assertion fails.
-- [ ] Replace legacy implementations/imports with harness owner imports and compatibility shims.
-- [ ] Run resource, coding frontmatter, coding loader, and method resource tests.
+- [x] Add identity tests and an internal-owner import boundary test.
+- [x] Run focused tests and verify the owner import assertion fails.
+- [x] Replace legacy implementations/imports with harness owner imports and compatibility shims.
+- [x] Run resource, coding frontmatter, coding loader, and method resource tests.
 
 ### Task 3: Record final ownership
 

@@ -7,7 +7,6 @@ from loushang.coding.commands.slash import split_slash_command
 from loushang.coding.diagnostics import DiagnosticsService
 from loushang.coding.extensions import ExtensionRunner, ResolvedCommand
 from loushang.coding.extensions import SourceInfo as ExtensionSourceInfo
-from loushang.coding.frontmatter import strip_frontmatter
 from loushang.coding.loader import (
     PromptFragmentDescriptor,
     ResourceBundle,
@@ -32,6 +31,7 @@ from loushang.coding.session.types import (
 )
 from loushang.coding.source_info import source_info_from_resource_descriptor
 from loushang.coding.store import SessionManager
+from loushang.harness.resources.frontmatter import strip_frontmatter
 
 
 @dataclass
