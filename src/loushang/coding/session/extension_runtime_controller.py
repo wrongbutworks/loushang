@@ -5,7 +5,7 @@ from collections.abc import Callable
 from dataclasses import dataclass
 
 from loushang.coding.extensions import SessionRefreshEvent, SessionStartEvent
-from loushang.coding.loader import ResourceDiagnostic
+from loushang.harness.resources.diagnostics import ResourceDiagnostic
 
 BuildBindings = Callable[[], object]
 RefreshResources = Callable[[], object | None]

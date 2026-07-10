@@ -51,7 +51,6 @@ from loushang.coding.loader import (
     DefaultResourceLoader,
     PromptFragmentDescriptor,
     ResourceBundle,
-    ResourceDiagnostic,
 )
 from loushang.coding.message import SessionContext
 from loushang.coding.package.materializer import (
@@ -121,6 +120,7 @@ from loushang.coding.session.types import (
 from loushang.coding.session.usage_payload import serialize_context_usage_payload
 from loushang.coding.store import SessionManager, SessionRecord
 from loushang.coding.tools import ToolDefinition, ToolRegistry
+from loushang.harness.resources.diagnostics import ResourceDiagnostic
 from loushang.harness.workspace.exec import (
     ExecOutputChunk,
     ExecRequest,

@@ -38,11 +38,11 @@ from loushang.coding.loader import (
     ExtensionDescriptor,
     PromptFragmentDescriptor,
     ResourceBundle,
-    ResourceDiagnostic,
     SkillDescriptor,
     ThemeDescriptor,
 )
 from loushang.coding.tools import ToolDefinition
+from loushang.harness.resources.diagnostics import ResourceDiagnostic
 from loushang.harness.resources.source import SourceInfo
 from loushang.harness.workspace.exec import ExecResult, ExecUpdateCallback
 

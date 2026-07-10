@@ -13,8 +13,8 @@ from loushang.coding.diagnostics import (
     DiagnosticSummary,
     ErrorReport,
 )
-from loushang.coding.loader import ResourceDiagnostic
 from loushang.coding.store import SessionManager
+from loushang.harness.resources.diagnostics import ResourceDiagnostic
 
 _EXTENSION_ERROR_DIAGNOSTIC_CODES: frozenset[str] = frozenset(
     {

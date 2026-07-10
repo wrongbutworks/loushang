@@ -6,7 +6,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Literal
 
-from loushang.coding.loader import ResourceDiagnostic
+from loushang.harness.resources.diagnostics import ResourceDiagnostic
 
 ExtensionSurfaceType = Literal[
     "command",

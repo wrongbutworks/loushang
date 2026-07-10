@@ -8,9 +8,9 @@ from pathlib import Path
 from loushang.coding.loader import (
     PromptFragmentDescriptor,
     ResourceBundle,
-    ResourceDiagnostic,
     SkillDescriptor,
 )
+from loushang.harness.resources.diagnostics import ResourceDiagnostic
 
 
 @dataclass

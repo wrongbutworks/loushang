@@ -9,7 +9,6 @@ from loushang.coding.extensions import ExtensionRunner, ResolvedCommand
 from loushang.coding.loader import (
     PromptFragmentDescriptor,
     ResourceBundle,
-    ResourceDiagnostic,
     SkillDescriptor,
 )
 from loushang.coding.prompt import (
@@ -30,6 +29,7 @@ from loushang.coding.session.types import (
 )
 from loushang.coding.source_info import source_info_from_resource_descriptor
 from loushang.coding.store import SessionManager
+from loushang.harness.resources.diagnostics import ResourceDiagnostic
 from loushang.harness.resources.frontmatter import strip_frontmatter
 from loushang.harness.resources.source import SourceInfo as ExtensionSourceInfo
 

@@ -6,7 +6,7 @@ from pathlib import Path
 
 from loushang.coding.control import SettingsManager
 from loushang.coding.diagnostics import DiagnosticsService
-from loushang.coding.loader import DefaultResourceLoader, ResourceDiagnostic
+from loushang.coding.loader import DefaultResourceLoader
 from loushang.coding.package.materializer import (
     PackageMaterializationRecord,
     PackageMaterializer,
@@ -20,6 +20,7 @@ from loushang.coding.package.source_manager import (
     package_source_scopes,
 )
 from loushang.coding.store import SessionManager
+from loushang.harness.resources.diagnostics import ResourceDiagnostic
 
 SettingsManagerProvider = Callable[[], SettingsManager | None]
 PackageMaterializerProvider = Callable[[], PackageMaterializer | None]

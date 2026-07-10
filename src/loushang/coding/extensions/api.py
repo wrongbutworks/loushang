@@ -21,13 +21,13 @@ from loushang.coding.extensions.types import (
     RegisteredFlag,
     RegisteredShortcut,
 )
-from loushang.coding.loader import ResourceDiagnostic
 from loushang.coding.tools import (
     DecoratedTool,
     ToolDefinition,
     create_tool_definition_from_tool,
     tool_to_definition,
 )
+from loushang.harness.resources.diagnostics import ResourceDiagnostic
 from loushang.harness.resources.source import SourceInfo
 from loushang.harness.workspace.exec import ExecResult, ExecUpdateCallback
 

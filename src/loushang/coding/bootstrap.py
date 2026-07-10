@@ -27,7 +27,7 @@ from loushang.coding.diagnostics import (
 from loushang.coding.extensions import ExtensionRunner
 from loushang.coding.extensions.types import SessionStartEvent
 from loushang.coding.loader import DefaultResourceLoader
-from loushang.coding.loader.types import ResourceBundle, ResourceDiagnostic
+from loushang.coding.loader.types import ResourceBundle
 from loushang.coding.message import convert_to_llm
 from loushang.coding.package import GitPackageMaterializerBackend, PackageMaterializer
 from loushang.coding.package.resource_roots import resolve_package_resource_roots
@@ -42,6 +42,7 @@ from loushang.coding.source_info import executable_source_identity
 from loushang.coding.store import SessionManager
 from loushang.coding.tools import ToolRegistry
 from loushang.coding.types import ModelSelection
+from loushang.harness.resources.diagnostics import ResourceDiagnostic
 from loushang.harness.tools.contribution import (
     ToolContribution,
     ToolResolutionResult,

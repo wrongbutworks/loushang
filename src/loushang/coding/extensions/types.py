@@ -16,13 +16,13 @@ from loushang.coding.extensions.policy import ExtensionPolicyDecision
 from loushang.coding.loader import (
     ExtensionDescriptor,
     PromptFragmentDescriptor,
-    ResourceDiagnostic,
     SkillDescriptor,
     ThemeDescriptor,
 )
 from loushang.coding.loader.types import ResourceSourceKind, ResourceSourceScope
 from loushang.coding.tools import ToolDefinition
 from loushang.coding.types import ModelSelection
+from loushang.harness.resources.diagnostics import ResourceDiagnostic
 from loushang.harness.resources.source import SourceInfo
 from loushang.harness.workspace.exec import ExecResult, ExecUpdateCallback
 
