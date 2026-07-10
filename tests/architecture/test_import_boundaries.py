@@ -119,6 +119,42 @@ def test_harness_slice1_symbols_are_not_top_level_exports() -> None:
     assert slice1_symbols.isdisjoint(set(harness.__all__))
 
 
+def test_harness_workspace_symbols_are_not_top_level_exports() -> None:
+    import loushang.harness as harness
+
+    workspace_symbols = {
+        "ExecBackend",
+        "ExecOutputChunk",
+        "ExecRequest",
+        "ExecResult",
+        "ExecService",
+        "ExecUpdateCallback",
+        "TruncationResult",
+        "truncate_head",
+        "truncate_tail",
+    }
+
+    assert workspace_symbols.isdisjoint(set(harness.__all__))
+
+
+def test_coding_internal_exec_imports_use_harness_owner() -> None:
+    compatibility_paths = {
+        "src/loushang/coding/__init__.py",
+        "src/loushang/coding/exec/__init__.py",
+        "src/loushang/coding/exec/service.py",
+        "src/loushang/coding/exec/types.py",
+    }
+    offenders: list[str] = []
+    for path in sorted(Path("src/loushang/coding").rglob("*.py")):
+        if path.as_posix() in compatibility_paths:
+            continue
+        for imported in _absolute_imports(path):
+            if imported.startswith("loushang.coding.exec"):
+                offenders.append(f"{path.as_posix()} imports {imported}")
+
+    assert offenders == []
+
+
 def test_harness_tools_core_does_not_expose_pi_style_module_aliases() -> None:
     module = importlib.import_module("loushang.harness.tools.core")
 

@@ -1,13 +1,14 @@
 from __future__ import annotations
 
 import shlex
+from collections.abc import Mapping
 from dataclasses import dataclass, field
 from os.path import basename
 from pathlib import Path
-from typing import Any, Mapping
+from typing import Any
 
-from loushang.coding.exec import ExecRequest
 from loushang.coding.policy.types import PolicyDecision
+from loushang.harness.workspace.exec import ExecRequest
 
 _DEFAULT_BLOCKED_SUBSTRINGS: tuple[str, ...] = (
     "rm -rf",

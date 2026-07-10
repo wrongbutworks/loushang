@@ -24,7 +24,6 @@ from loushang.coding.diagnostics import (
     DiagnosticsService,
     StartupCheckResult,
 )
-from loushang.coding.exec import ExecService
 from loushang.coding.extensions import ExtensionRunner
 from loushang.coding.extensions.types import SessionStartEvent
 from loushang.coding.loader import DefaultResourceLoader
@@ -48,6 +47,7 @@ from loushang.harness.tools.contribution import (
     ToolResolutionResult,
     resolve_tool_contributions,
 )
+from loushang.harness.workspace.exec import ExecService
 
 AgentFactory = Callable[..., Agent]
 ServicesFactory = Callable[[str], "BootstrapServices"]

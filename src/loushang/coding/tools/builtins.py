@@ -1,13 +1,13 @@
 from __future__ import annotations
 
 from loushang.coding.diagnostics import DiagnosticsService
-from loushang.coding.exec import ExecService
 from loushang.coding.policy import ApprovalResolver, PolicyEngine
 from loushang.harness.tools.contribution import (
     ToolContribution,
     ToolPackDefinition,
     resolve_tool_contributions,
 )
+from loushang.harness.workspace.exec import ExecService
 
 from .external_tools import (
     ExternalToolDownloader,

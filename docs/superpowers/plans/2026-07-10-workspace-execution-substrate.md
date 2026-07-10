@@ -34,11 +34,11 @@
 - Modify: `src/loushang/coding/exec/service.py`
 - Modify: `src/loushang/coding/exec/__init__.py`
 
-- [ ] Write harness-path tests for records, backend validation, subprocess output, streaming, preview/artifact behavior, timeout, cancellation, and rolling capture.
-- [ ] Run the new tests and verify import failure.
-- [ ] Move exec records, protocols, and service to harness using harness truncation.
-- [ ] Replace coding implementations with identity-preserving re-export shims.
-- [ ] Run harness exec and coding exec tests.
+- [x] Write harness-path tests for records, backend validation, subprocess output, streaming, preview/artifact behavior, timeout, cancellation, and rolling capture.
+- [x] Run the new tests and verify import failure.
+- [x] Move exec records, protocols, and service to harness using harness truncation.
+- [x] Replace coding implementations with identity-preserving re-export shims.
+- [x] Run harness exec and coding exec tests.
 
 ### Task 3: Redirect product internals and prove compatibility
 
@@ -47,10 +47,10 @@
 - Modify: `tests/coding/test_tool_public_types.py`
 - Modify: `tests/architecture/test_import_boundaries.py`
 
-- [ ] Add compatibility identity and harness top-level export tests.
-- [ ] Run focused tests and verify the new assertions fail before import rewiring.
-- [ ] Redirect internal product imports to `loushang.harness.workspace.exec` while retaining public coding exports.
-- [ ] Run exec, policy, extension, session, bash/tool, prompt, and architecture suites.
+- [x] Add compatibility identity and harness top-level export tests.
+- [x] Run focused tests and verify the new assertions fail before import rewiring.
+- [x] Redirect internal product imports to `loushang.harness.workspace.exec` while retaining public coding exports.
+- [x] Run exec, policy, extension, session, bash/tool, prompt, and architecture suites.
 
 ### Task 4: Update ownership documentation
 

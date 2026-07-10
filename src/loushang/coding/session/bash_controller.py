@@ -6,7 +6,6 @@ from dataclasses import dataclass
 from time import time
 
 from loushang.agent import AbortController, Agent
-from loushang.coding.exec import ExecOutputChunk
 from loushang.coding.extensions import ExtensionRunner
 from loushang.coding.message import BashExecutionMessage
 from loushang.coding.store import SessionManager
@@ -15,6 +14,7 @@ from loushang.coding.tools.protocol import (
     normalize_bash_result_from_protocol,
     project_bash_result_for_protocol,
 )
+from loushang.harness.workspace.exec import ExecOutputChunk
 
 ExtensionRunnerProvider = Callable[[], ExtensionRunner | None]
 ToolRegistryProvider = Callable[[], ToolRegistry | None]

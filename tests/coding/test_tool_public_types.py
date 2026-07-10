@@ -191,6 +191,24 @@ def test_coding_top_level_exports_exec_sdk_types() -> None:
         ExecService,
         ExecUpdateCallback,
     )
+    from loushang.harness.workspace.exec import (
+        ExecBackend as HarnessExecBackend,
+    )
+    from loushang.harness.workspace.exec import (
+        ExecOutputChunk as HarnessExecOutputChunk,
+    )
+    from loushang.harness.workspace.exec import (
+        ExecRequest as HarnessExecRequest,
+    )
+    from loushang.harness.workspace.exec import (
+        ExecResult as HarnessExecResult,
+    )
+    from loushang.harness.workspace.exec import (
+        ExecService as HarnessExecService,
+    )
+    from loushang.harness.workspace.exec import (
+        ExecUpdateCallback as HarnessExecUpdateCallback,
+    )
 
     assert ExecBackend is not None
     assert ExecOutputChunk(stream="stdout", text="ok").text == "ok"
@@ -198,6 +216,14 @@ def test_coding_top_level_exports_exec_sdk_types() -> None:
     assert ExecResult(exit_code=0).exit_code == 0
     assert ExecService is not None
     assert ExecUpdateCallback is not None
+    assert ExecBackend is HarnessExecBackend
+    assert ExecOutputChunk is HarnessExecOutputChunk
+    assert ExecRequest is HarnessExecRequest
+    assert ExecResult is HarnessExecResult
+    assert ExecService is HarnessExecService
+    assert ExecUpdateCallback is HarnessExecUpdateCallback
+    assert ExecRequest.__module__ == "loushang.harness.workspace.exec.types"
+    assert ExecService.__module__ == "loushang.harness.workspace.exec.service"
     assert {
         "ExecBackend",
         "ExecOutputChunk",

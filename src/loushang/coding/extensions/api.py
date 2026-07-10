@@ -11,7 +11,6 @@ from loushang.agent.types import (
     ensure_agent_tool,
     is_agent_tool_like,
 )
-from loushang.coding.exec import ExecResult, ExecUpdateCallback
 from loushang.coding.extensions.types import (
     VALID_EXTENSION_EVENTS,
     ExtensionCommandContext,
@@ -30,6 +29,7 @@ from loushang.coding.tools import (
     create_tool_definition_from_tool,
     tool_to_definition,
 )
+from loushang.harness.workspace.exec import ExecResult, ExecUpdateCallback
 
 
 class ExtensionAPI:
