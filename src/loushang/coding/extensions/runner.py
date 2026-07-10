@@ -32,7 +32,6 @@ from loushang.coding.extensions.types import (
     SessionBeforeForkResult,
     SessionBeforeTreeResult,
     SessionRefreshEvent,
-    SourceInfo,
 )
 from loushang.coding.extensions.wrapper import wrap_registered_tool_definition
 from loushang.coding.loader import (
@@ -44,6 +43,7 @@ from loushang.coding.loader import (
     ThemeDescriptor,
 )
 from loushang.coding.tools import ToolDefinition
+from loushang.harness.resources.source import SourceInfo
 from loushang.harness.workspace.exec import ExecResult, ExecUpdateCallback
 
 
@@ -692,7 +692,7 @@ class _BoundExtensionContext:
         self,
         runtime_state: _RunnerRuntimeState,
         generation: int,
-        tool_source_info: SourceInfo | None = None,
+        tool_source_info: SourceInfo[Path] | None = None,
     ) -> None:
         self._runtime_state = runtime_state
         self._generation = generation
@@ -1138,7 +1138,7 @@ class ExtensionRunner:
         self._diagnostics: list[ResourceDiagnostic] = []
         self._extensions: list[LoadedExtension] = []
         self._tool_definitions: list[ToolDefinition] = []
-        self._tool_source_info_by_name: dict[str, SourceInfo] = {}
+        self._tool_source_info_by_name: dict[str, SourceInfo[Path]] = {}
         self._tool_names: set[str] = set()
         self._command_diagnostics: list[ResourceDiagnostic] = []
         self._flag_diagnostics: list[ResourceDiagnostic] = []
@@ -1351,7 +1351,7 @@ class ExtensionRunner:
     def list_tool_definitions(self) -> list[ToolDefinition]:
         return list(self._tool_definitions)
 
-    def get_tool_source_info(self, name: str) -> SourceInfo | None:
+    def get_tool_source_info(self, name: str) -> SourceInfo[Path] | None:
         return self._tool_source_info_by_name.get(name)
 
     def get_message_renderer(self, custom_type: str):
@@ -2248,7 +2248,7 @@ def _path_text(value: object) -> str:
     return value.as_posix() if isinstance(value, Path) else str(value or "")
 
 
-def _source_info_from_extension(extension: LoadedExtension) -> SourceInfo:
+def _source_info_from_extension(extension: LoadedExtension) -> SourceInfo[Path]:
     return SourceInfo(
         path=extension.entry_path or extension.source_path,
         source=extension.source,
@@ -2285,7 +2285,7 @@ def _extension_hook_failure_diagnostic(
     )
 
 
-def _serialize_source_info(source_info: SourceInfo) -> dict[str, object]:
+def _serialize_source_info(source_info: SourceInfo[Path]) -> dict[str, object]:
     return {
         "path": source_info.path.as_posix(),
         "source": source_info.source,

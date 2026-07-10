@@ -20,7 +20,6 @@ from loushang.coding.extensions.types import (
     RegisteredCommand,
     RegisteredFlag,
     RegisteredShortcut,
-    SourceInfo,
 )
 from loushang.coding.loader import ResourceDiagnostic
 from loushang.coding.tools import (
@@ -29,6 +28,7 @@ from loushang.coding.tools import (
     create_tool_definition_from_tool,
     tool_to_definition,
 )
+from loushang.harness.resources.source import SourceInfo
 from loushang.harness.workspace.exec import ExecResult, ExecUpdateCallback
 
 

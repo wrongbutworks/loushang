@@ -3,7 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Literal
 
-from loushang.coding.source_info import SourceInfo
+from loushang.harness.resources.source import SourceInfo
 
 SlashCommandSource = Literal["builtin", "extension", "prompt", "skill"]
 
@@ -16,7 +16,7 @@ class SessionCommandDescriptor:
     name: str
     description: str | None
     source: SlashCommandSource
-    source_info: CommandSourceInfo
+    source_info: SourceInfo[str]
     invocation_name: str | None = None
     conflict_group: str | None = None
     argument_hint: str | None = None
@@ -27,7 +27,7 @@ class SlashCommandInfo:
     name: str
     description: str | None
     source: SlashCommandSource
-    source_info: CommandSourceInfo
+    source_info: SourceInfo[str]
 
 
 @dataclass(frozen=True)

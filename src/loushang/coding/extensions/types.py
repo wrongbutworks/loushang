@@ -21,9 +21,9 @@ from loushang.coding.loader import (
     ThemeDescriptor,
 )
 from loushang.coding.loader.types import ResourceSourceKind, ResourceSourceScope
-from loushang.coding.source_info import SourceOrigin, SourceScope
 from loushang.coding.tools import ToolDefinition
 from loushang.coding.types import ModelSelection
+from loushang.harness.resources.source import SourceInfo
 from loushang.harness.workspace.exec import ExecResult, ExecUpdateCallback
 
 
@@ -465,15 +465,6 @@ class InputEventResult:
 
 
 @dataclass(frozen=True)
-class SourceInfo:
-    path: Path
-    source: str = "filesystem"
-    scope: SourceScope = "project"
-    origin: SourceOrigin = "top-level"
-    base_dir: Path | None = None
-
-
-@dataclass(frozen=True)
 class SessionStartEvent:
     reason: str = "startup"
     previous_session_file: str | None = None
@@ -693,7 +684,7 @@ class RegisteredCommand:
 @dataclass(frozen=True, kw_only=True)
 class ResolvedCommand(RegisteredCommand):
     invocation_name: str
-    source_info: SourceInfo
+    source_info: SourceInfo[Path]
     extension_name: str
 
 
@@ -707,7 +698,7 @@ class RegisteredFlag:
 
 @dataclass(frozen=True, kw_only=True)
 class ResolvedFlag(RegisteredFlag):
-    source_info: SourceInfo
+    source_info: SourceInfo[Path]
     extension_name: str
 
 
@@ -720,7 +711,7 @@ class RegisteredShortcut:
 
 @dataclass(frozen=True, kw_only=True)
 class ResolvedShortcut(RegisteredShortcut):
-    source_info: SourceInfo
+    source_info: SourceInfo[Path]
     extension_name: str
 
 
