@@ -4,7 +4,7 @@ from types import SimpleNamespace
 
 import pytest
 
-from loushang.ai import ApiKeyAuth, CallOptions, OAuthBearerAuth
+from loushang.ai import ApiKeyAuth, CallOptions, HeadersAuth, OAuthBearerAuth
 from loushang.ai.auth import (
     AuthResolutionError,
     InvalidAuthConfigError,
@@ -18,7 +18,6 @@ from loushang.ai.auth.support import (
     resolve_explicit_auth,
 )
 from loushang.ai.model import Auth, Endpoint, Model, ModelRegistry, Provider
-from loushang.auth import OAuthCredentials
 
 
 def _model(auth: Auth | None = None):
@@ -30,30 +29,20 @@ def _model(auth: Auth | None = None):
     )
 
 
-def _oauth_credentials(
-    *,
-    provider: str = "demo",
-) -> OAuthCredentials:
-    return OAuthCredentials(
-        provider=provider,
-        access_token="oauth-token",
-    )
-
-
 def test_auth_config_is_model_auth_type() -> None:
     assert AuthConfig is Auth
 
 
-def test_legacy_call_options_auth_remains_supported() -> None:
+def test_typed_call_options_auth_uses_catalog_header() -> None:
     view = resolve_auth_for_model(
         _model(Auth(kind="oauth", header="X-Auth", prefix="Token ")),
-        options=CallOptions(auth=ApiKeyAuth("legacy-secret")),
+        options=CallOptions(auth=OAuthBearerAuth("oauth-token")),
     )
 
-    assert view.headers == {"X-Auth": "Token legacy-secret"}
+    assert view.headers == {"X-Auth": "Token oauth-token"}
 
 
-def test_legacy_positional_explicit_auth_remains_supported() -> None:
+def test_positional_explicit_auth_remains_supported() -> None:
     view = resolve_explicit_auth(
         OAuthBearerAuth("legacy-oauth"),
         declaration_hint=Auth(kind="oauth"),
@@ -136,7 +125,7 @@ def test_default_api_key_auth_missing_env_raises_missing_auth() -> None:
 
 
 def test_default_oauth_auth_requires_explicit_credentials() -> None:
-    with pytest.raises(MissingAuthError, match="oauth_credentials"):
+    with pytest.raises(MissingAuthError, match="OAuthBearerAuth"):
         resolve_auth_for_model(_model(Auth(kind="oauth")))
 
 
@@ -176,6 +165,21 @@ def test_explicit_api_key_uses_catalog_header_and_merges_extra_headers() -> None
     }
 
 
+def test_typed_api_key_uses_catalog_header_and_caller_headers() -> None:
+    view = resolve_auth_for_model(
+        _model(Auth(header="X-API-Key", prefix="Token ")),
+        options=CallOptions(
+            auth=ApiKeyAuth("typed-secret"),
+            headers={"X-Trace": "trace"},
+        ),
+    )
+
+    assert view.headers == {
+        "X-API-Key": "Token typed-secret",
+        "X-Trace": "trace",
+    }
+
+
 @pytest.mark.parametrize(
     ("kind", "normalized_kind"),
     [("oauth", "oauth"), ("none", "none"), ("custom", "custom")],
@@ -198,9 +202,16 @@ def test_explicit_api_key_requires_api_key_declaration(
 
 def test_explicit_oauth_uses_catalog_header_and_merges_caller_headers() -> None:
     view = resolve_auth_for_model(
-        _model(Auth(kind="oauth", header="X-OAuth", prefix="Bearer ")),
+        _model(
+            Auth(
+                kind="oauth",
+                header="X-OAuth",
+                prefix="Bearer ",
+                extra_headers={"originator": "loushang"},
+            )
+        ),
         options=CallOptions(
-            oauth_credentials=_oauth_credentials(),
+            auth=OAuthBearerAuth("oauth-token"),
             headers={
                 "chatgpt-account-id": "account-1",
                 "X-Trace": "trace",
@@ -210,24 +221,89 @@ def test_explicit_oauth_uses_catalog_header_and_merges_caller_headers() -> None:
 
     assert view.headers == {
         "X-OAuth": "Bearer oauth-token",
+        "originator": "loushang",
         "chatgpt-account-id": "account-1",
         "X-Trace": "trace",
     }
 
 
-def test_explicit_oauth_provider_must_match_model_provider() -> None:
-    with pytest.raises(AuthResolutionError, match="does not match") as exc_info:
+def test_explicit_oauth_rejects_blank_access_token() -> None:
+    with pytest.raises(AuthResolutionError, match="auth.access_token"):
+        resolve_auth_for_model(
+            _model(Auth(kind="oauth")),
+            options=CallOptions(auth=OAuthBearerAuth("  ")),
+        )
+
+
+def test_chatgpt_route_combines_bearer_catalog_and_account_headers() -> None:
+    from loushang.ai import get_model
+
+    model = get_model(
+        "openai",
+        "openai-responses-chatgpt",
+        "gpt-5.5-chatgpt",
+    )
+
+    view = resolve_auth_for_model(
+        model,
+        options=CallOptions(
+            auth=OAuthBearerAuth("chatgpt-token"),
+            headers={"chatgpt-account-id": "account-1"},
+        ),
+    )
+
+    assert view.headers == {
+        "Authorization": "Bearer chatgpt-token",
+        "originator": "loushang",
+        "OpenAI-Beta": "responses=experimental",
+        "chatgpt-account-id": "account-1",
+    }
+
+
+def test_headers_auth_is_authoritative_and_cannot_add_supplemental_headers() -> None:
+    with pytest.raises(AuthResolutionError, match="cannot be combined"):
         resolve_auth_for_model(
             _model(Auth(kind="oauth")),
             options=CallOptions(
-                oauth_credentials=_oauth_credentials(provider="other-provider")
+                auth=HeadersAuth({"Authorization": "Bearer token"}),
+                headers={"X-Trace": "trace"},
             ),
         )
 
-    assert exc_info.value.to_dict()["details"] == {
-        "provided_provider": "other-provider",
-        "model_provider": "demo",
-    }
+
+def test_headers_auth_is_an_authoritative_override() -> None:
+    view = resolve_auth_for_model(
+        _model(Auth(kind="oauth")),
+        options=CallOptions(auth=HeadersAuth({"X-Custom-Auth": "token"})),
+    )
+
+    assert view.headers == {"X-Custom-Auth": "token"}
+
+
+def test_headers_auth_rejects_case_insensitive_duplicates() -> None:
+    with pytest.raises(AuthResolutionError, match="duplicate case-insensitive"):
+        resolve_auth_for_model(
+            _model(Auth(kind="oauth")),
+            options=CallOptions(
+                auth=HeadersAuth(
+                    {
+                        "Authorization": "Bearer good",
+                        "authorization": "Bearer bad",
+                    }
+                )
+            ),
+        )
+
+
+def test_no_auth_explicitly_overrides_catalog_auth() -> None:
+    from loushang.ai import NoAuth
+
+    view = resolve_auth_for_model(
+        _model(Auth(kind="oauth")),
+        options=CallOptions(auth=NoAuth()),
+    )
+
+    assert view.headers == {}
 
 
 @pytest.mark.parametrize(
@@ -241,7 +317,7 @@ def test_explicit_oauth_requires_oauth_declaration(
     with pytest.raises(AuthResolutionError, match="cannot satisfy") as exc_info:
         resolve_auth_for_model(
             _model(Auth(kind=kind)),
-            options=CallOptions(oauth_credentials=_oauth_credentials()),
+            options=CallOptions(auth=OAuthBearerAuth("oauth-token")),
         )
 
     assert exc_info.value.to_dict()["details"] == {
@@ -253,7 +329,7 @@ def test_explicit_oauth_requires_oauth_declaration(
 def test_explicit_oauth_is_allowed_without_declaration_for_direct_model() -> None:
     view = resolve_auth_for_model(
         _model(None),
-        options=CallOptions(oauth_credentials=_oauth_credentials()),
+        options=CallOptions(auth=OAuthBearerAuth("oauth-token")),
     )
 
     assert view.headers == {"Authorization": "Bearer oauth-token"}
@@ -269,18 +345,20 @@ def test_explicit_api_key_is_allowed_without_declaration_for_direct_model() -> N
 
 
 @pytest.mark.parametrize(
-    ("options", "conflicting_header", "source"),
+    ("options", "auth", "conflicting_header", "source"),
     [
         (
             CallOptions(api_key="secret", headers={"authorization": "override"}),
+            Auth(),
             "authorization",
             "CallOptions.headers",
         ),
         (
             CallOptions(
-                oauth_credentials=_oauth_credentials(),
+                auth=OAuthBearerAuth("oauth-token"),
                 headers={"AUTHORIZATION": "override"},
             ),
+            Auth(kind="oauth"),
             "AUTHORIZATION",
             "CallOptions.headers",
         ),
@@ -288,11 +366,10 @@ def test_explicit_api_key_is_allowed_without_declaration_for_direct_model() -> N
 )
 def test_caller_headers_cannot_override_primary_auth_header(
     options: CallOptions,
+    auth: Auth,
     conflicting_header: str,
     source: str,
 ) -> None:
-    auth = Auth(kind="oauth") if options.oauth_credentials is not None else Auth()
-
     with pytest.raises(InvalidAuthConfigError) as exc_info:
         resolve_auth_for_model(_model(auth), options=options)
 

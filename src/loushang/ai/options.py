@@ -6,7 +6,6 @@ from typing import Any, Literal
 
 from loushang.ai.auth.credentials import AuthCredential
 from loushang.ai.structured import StructuredOutputOptions
-from loushang.auth.types import OAuthCredentials
 
 PairingMode = Literal["strict", "repair"]
 
@@ -45,7 +44,6 @@ class CallOptions:
     cancellation: object | None = None
     auth: AuthCredential | None = None
     api_key: str | None = field(default=None, repr=False)
-    oauth_credentials: OAuthCredentials | None = field(default=None, repr=False)
     headers: Mapping[str, str] = field(default_factory=dict, repr=False)
     cache_retention: CacheRetention | None = None
     cache_key: str | None = None
@@ -60,33 +58,14 @@ class CallOptions:
     output: StructuredOutputOptions | None = None
 
     def __post_init__(self) -> None:
-        if self.auth is not None and (
-            self.api_key is not None
-            or self.oauth_credentials is not None
-            or bool(self.headers)
-        ):
-            raise ValueError(
-                "auth cannot be combined with api_key, oauth_credentials, or headers"
-            )
+        if self.auth is not None and self.api_key is not None:
+            raise ValueError("auth cannot be combined with api_key")
         if self.api_key is not None:
             if not isinstance(self.api_key, str):
                 raise TypeError("api_key must be a string or None")
             if not self.api_key.strip():
                 raise ValueError("api_key must be non-empty")
             object.__setattr__(self, "api_key", self.api_key.strip())
-        if self.oauth_credentials is not None:
-            if not isinstance(self.oauth_credentials, OAuthCredentials):
-                raise TypeError("oauth_credentials must be OAuthCredentials or None")
-            if not isinstance(self.oauth_credentials.provider, str):
-                raise TypeError("oauth_credentials.provider must be a string")
-            if not self.oauth_credentials.provider.strip():
-                raise ValueError("oauth_credentials.provider must be non-empty")
-            if not isinstance(self.oauth_credentials.access_token, str):
-                raise TypeError("oauth_credentials.access_token must be a string")
-            if not self.oauth_credentials.access_token.strip():
-                raise ValueError("oauth_credentials.access_token must be non-empty")
-        if self.api_key is not None and self.oauth_credentials is not None:
-            raise ValueError("api_key and oauth_credentials are mutually exclusive")
         normalized_headers = _validate_headers(self.headers, field_name="headers")
         object.__setattr__(self, "headers", normalized_headers)
         if self.cache_key is not None:

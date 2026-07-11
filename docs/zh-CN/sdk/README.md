@@ -151,25 +151,25 @@ curated provider 常用环境变量如下：
 | `volcano-ark` | `ARK_API_KEY` |
 | `zai` | `ZAI_API_KEY` |
 
-OAuth 调用由上层取得 token，并为本次 request 传入一个明确的 credential：
+OAuth 调用由 `loushang.auth` 持有完整凭据并管理 refresh 生命周期；AI 调用只接收当前
+有效的 bearer token 和认证层派生的附加 headers：
 
 ```python
-from loushang.ai import CallOptions
-from loushang.auth import OAuthCredentials
+from loushang.ai import CallOptions, OAuthBearerAuth
 
-credentials = OAuthCredentials(
-    provider="openai",
-    access_token=access_token,
-)
 options = CallOptions(
-    oauth_credentials=credentials,
-    headers={"chatgpt-account-id": account_id},
+    auth=OAuthBearerAuth(access_token),
+    headers=provider_headers,
 )
 ```
 
-`loushang.ai` 只把这些值解析成请求头，不负责登录、refresh、credential store 或账号选择。
-[ChatGPT Coding Plan 示例](../../../examples/ai/chatgpt_coding_plan.py)只在应用边缘读取已有的
-`~/.codex/auth.json`，并通过通用 OpenAI Responses adapter 调用
+这里的 `access_token` 和 `provider_headers` 都由认证 provider 产出；调用方不在 AI
+层手工拼接 provider-specific account header。
+
+`refresh_token`、expiry、credential store 和账号选择不会进入 `CallOptions` 或
+`ProviderRequest`。[ChatGPT Coding Plan 示例](../../../examples/ai/chatgpt_coding_plan.py)
+通过 `loushang.auth` 读取已有的 `~/.codex/auth.json`。该外部 store 仍由 Codex CLI
+拥有；登录过期时先执行 `codex login`。请求继续通过通用 OpenAI Responses adapter 调用
 `openai:openai-responses-chatgpt:gpt-5.5-chatgpt`。
 
 ## 完整返回调用

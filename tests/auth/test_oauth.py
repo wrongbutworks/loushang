@@ -10,6 +10,25 @@ from loushang.auth.registry import get_default_oauth_registry
 from loushang.auth.types import OAuthCredentials
 
 
+def test_oauth_credentials_repr_redacts_tokens() -> None:
+    credentials = OAuthCredentials(
+        provider="demo",
+        access_token="access-secret",
+        refresh_token="refresh-secret",
+        extra={
+            "account_id": "account-secret",
+            "headers": {"chatgpt-account-id": "header-secret"},
+        },
+    )
+
+    rendered = repr(credentials)
+
+    assert "access-secret" not in rendered
+    assert "refresh-secret" not in rendered
+    assert "account-secret" not in rendered
+    assert "header-secret" not in rendered
+
+
 class _AsyncRefreshProvider:
     id = "demo"
     name = "Demo"

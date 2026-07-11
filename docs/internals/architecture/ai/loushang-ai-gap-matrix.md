@@ -56,7 +56,7 @@
 | Mistral provider | 有 | 无 | 缺失 | [reference implementation builtins](/home/dev/workspace/reference-repository/packages/ai/src/providers/register-builtins.ts#L379) |
 | Bedrock provider | 有 | 无 | 缺失 | [reference implementation builtins](/home/dev/workspace/reference-repository/packages/ai/src/providers/register-builtins.ts#L421) |
 | Faux provider | 有 | 有 | 对齐 | [reference implementation faux](/home/dev/workspace/reference-repository/packages/ai/src/providers/faux.ts) [loushang faux](/home/dev/workspace/loushang/src/loushang/ai/providers/faux.py#L8) |
-| 调用期 OAuth credential | provider registry 驱动 | 单个 `CallOptions.oauth_credentials` | Python core 保持更窄边界 | [loushang options](../../../src/loushang/ai/options.py) |
+| 调用期 OAuth credential | provider registry 驱动 | auth 层解析完整 credential，AI 调用只接收 `OAuthBearerAuth` + supplemental headers | Python core 保持更窄边界 | [loushang options](../../../src/loushang/ai/options.py) |
 | 懒加载 provider module | 有 | 无 | 缺失 | [reference implementation lazy](/home/dev/workspace/reference-repository/packages/ai/src/providers/register-builtins.ts#L168) |
 | 浏览器兼容/Node-safe import | 有 | 无对应目标 | 若追平 SDK 体验则缺失 | [reference implementation browser-safe](/home/dev/workspace/reference-repository/packages/ai/src/env-api-keys.ts#L1) |
 | TypeBox 顶层导出 | 有 | 无 Python 对应物 | 非必要差异 | [reference implementation index](/home/dev/workspace/reference-repository/packages/ai/src/index.ts#L1) |

@@ -549,25 +549,25 @@ Stable 最小字段集合确认为：
 
 ### C. 请求级认证
 
-- `loushang.auth.OAuthCredentials`
-- `CallOptions.auth`（仅保留现有调用方兼容）
-- `CallOptions.oauth_credentials`
+- `loushang.auth.OAuthCredentials`（认证生命周期层，不进入 AI request）
+- `CallOptions.auth`
 - `CallOptions.headers`
 
 适用场景：
 
-- 将 `CallOptions.oauth_credentials` 中的显式 OAuth access token 与
-  `CallOptions.headers` 中的请求级附加认证头解析成 provider request headers
+- 将 `CallOptions.auth=OAuthBearerAuth(valid_access_token)` 与认证层派生、通过
+  `CallOptions.headers` 传入的附加认证头解析成 provider request headers
 - 未显式传入 OAuth credential 时，根据 `models.json.auth` 做 API key env fallback 或 OAuth missing-auth 诊断
 - 对 provider request auth header 做统一构造与脱敏配合
 
 说明：
 
-- 新调用使用明确的 `api_key`、`oauth_credentials` 或 `headers` 字段；兼容入口不扩展为
-  OAuth lifecycle 能力
+- 新调用使用明确的 `api_key`，或 typed `auth` 配合 supplemental `headers`
+- `HeadersAuth` 是完整、显式的 header override，不再叠加 `CallOptions.headers`，也不继承
+  catalog auth headers；普通 OAuth 路径应使用 `OAuthBearerAuth + headers`
 - `loushang.ai` 不拥有 OAuth login、refresh、credential store、provider registry 或 env-oauth
-- `loushang.ai` 只接收调用方通过 `loushang.auth` 取得的单个 `OAuthCredentials`；
-  request-specific headers 不扩展 credential DTO
+- `OAuthCredentials.refresh_token`、expiry 和 provider metadata 只由 `loushang.auth`
+  消费；AI request 不持有完整 credential DTO
 
 ### D. 事件流组装基础设施
 

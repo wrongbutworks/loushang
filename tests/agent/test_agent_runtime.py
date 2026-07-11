@@ -5,9 +5,9 @@ from typing import Any
 import pytest
 
 from loushang.agent.types import AgentToolResult
-from loushang.ai.auth import ApiKeyAuth
+from loushang.ai.auth import ApiKeyAuth, OAuthBearerAuth
 from loushang.ai.event_stream.stream import AssistantMessageEventStream
-from loushang.ai.model import Capabilities, Model
+from loushang.ai.model import Auth, Capabilities, Model
 from loushang.ai.options import CallOptions, ReasoningOptions, RetryOptions
 from loushang.ai.types import (
     AssistantMessage,
@@ -444,6 +444,45 @@ def test_get_api_key_is_forwarded_to_stream_function_options() -> None:
         await agent.prompt("hi")
 
         assert captured_auth == [ApiKeyAuth("secret-token")]
+
+    asyncio.run(scenario())
+
+
+def test_get_api_key_uses_oauth_bearer_for_oauth_model() -> None:
+    from loushang.agent import Agent
+    from loushang.agent.types import AgentState
+
+    captured_auth: list[object] = []
+
+    async def get_api_key(provider: str) -> str:
+        assert provider == "faux"
+        return "oauth-token"
+
+    async def stream_fn(model, context, options=None):
+        captured_auth.append(getattr(options, "auth", None))
+        return _stream_with_final_message(_assistant_text_message("hello"))
+
+    async def scenario() -> None:
+        oauth_model = Model(
+            id="oauth-model",
+            provider="faux",
+            endpoint="anthropic-messages",
+            api="anthropic-messages",
+            auth=Auth(kind="oauth"),
+            capabilities=Capabilities(input=("text",), output=("text",)),
+        )
+        agent = Agent(
+            stream_fn=stream_fn,
+            get_api_key=get_api_key,
+            initial_state=AgentState(
+                system_prompt="",
+                model=oauth_model,
+                thinking_level="off",
+            ),
+        )
+        await agent.prompt("hi")
+
+        assert captured_auth == [OAuthBearerAuth("oauth-token")]
 
     asyncio.run(scenario())
 

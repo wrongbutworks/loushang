@@ -20,15 +20,24 @@ from loushang.auth.registry import get_default_oauth_registry
 from loushang.auth.types import OAuthCredentials
 
 
-def _build_fake_jwt(account_id: str) -> str:
-    header = base64.urlsafe_b64encode(
-        json.dumps({"alg": "none", "typ": "JWT"}).encode("utf-8")
-    ).decode("ascii").rstrip("=")
-    payload = base64.urlsafe_b64encode(
-        json.dumps(
-            {"https://api.openai.com/auth": {"chatgpt_account_id": account_id}}
-        ).encode("utf-8")
-    ).decode("ascii").rstrip("=")
+def _build_fake_jwt(account_id: str, *, expires_at: float | None = None) -> str:
+    header = (
+        base64.urlsafe_b64encode(
+            json.dumps({"alg": "none", "typ": "JWT"}).encode("utf-8")
+        )
+        .decode("ascii")
+        .rstrip("=")
+    )
+    claims: dict[str, object] = {
+        "https://api.openai.com/auth": {"chatgpt_account_id": account_id}
+    }
+    if expires_at is not None:
+        claims["exp"] = expires_at
+    payload = (
+        base64.urlsafe_b64encode(json.dumps(claims).encode("utf-8"))
+        .decode("ascii")
+        .rstrip("=")
+    )
     return f"{header}.{payload}.sig"
 
 
@@ -196,6 +205,88 @@ def test_openai_codex_refresh_requires_refresh_token() -> None:
                 )
             )
         )
+
+
+def test_openai_codex_refresh_uses_new_token_expiry_without_expires_in() -> None:
+    provider = OpenAICodexOAuthProvider(
+        http_post_form=lambda _url, _body: asyncio.sleep(
+            0,
+            result={
+                "access_token": _build_fake_jwt("acc_5", expires_at=8000.0),
+                "refresh_token": "refresh-5b",
+            },
+        )
+    )
+
+    refreshed = asyncio.run(
+        provider.refresh_token(
+            OAuthCredentials(
+                provider="openai-codex",
+                access_token="old-token",
+                refresh_token="refresh-5",
+                expires_at=0.0,
+            )
+        )
+    )
+
+    assert refreshed.expires_at == 7700.0
+
+
+def test_openai_codex_refresh_does_not_reuse_old_token_expiry() -> None:
+    provider = OpenAICodexOAuthProvider(
+        http_post_form=lambda _url, _body: asyncio.sleep(
+            0,
+            result={
+                "access_token": _build_fake_jwt("acc_5"),
+                "refresh_token": "refresh-5b",
+            },
+        )
+    )
+
+    refreshed = asyncio.run(
+        provider.refresh_token(
+            OAuthCredentials(
+                provider="openai-codex",
+                access_token="old-token",
+                refresh_token="refresh-5",
+                expires_at=10_000.0,
+            )
+        )
+    )
+
+    assert refreshed.expires_at is None
+
+
+@pytest.mark.parametrize(
+    "expires_in",
+    [True, float("nan"), float("inf"), 0, -1],
+)
+def test_openai_codex_refresh_ignores_invalid_expires_in(
+    expires_in: object,
+) -> None:
+    provider = OpenAICodexOAuthProvider(
+        http_post_form=lambda _url, _body: asyncio.sleep(
+            0,
+            result={
+                "access_token": _build_fake_jwt("acc_6", expires_at=9000.0),
+                "refresh_token": "refresh-6b",
+                "expires_in": expires_in,
+            },
+        )
+    )
+
+    refreshed = asyncio.run(
+        provider.refresh_token(
+            OAuthCredentials(
+                provider="openai-codex",
+                access_token="old-token",
+                refresh_token="refresh-6",
+                expires_at=0.0,
+            )
+        )
+    )
+
+    assert refreshed.expires_at == 8700.0
 
 
 def test_register_builtin_oauth_providers_excludes_openai_codex() -> None:

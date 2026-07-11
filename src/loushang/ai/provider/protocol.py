@@ -33,7 +33,7 @@ class ProviderRequest:
     )
     options: ProviderOptions = None
     region: str | None = None
-    headers: dict[str, str] = field(default_factory=dict)
+    headers: dict[str, str] = field(default_factory=dict, repr=False)
     defaults: dict[str, object] = field(default_factory=dict)
     transport: EndpointTransport = field(default_factory=EndpointTransport)
     routing: EndpointRouting = field(default_factory=EndpointRouting)

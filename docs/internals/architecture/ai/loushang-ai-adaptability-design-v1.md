@@ -93,7 +93,7 @@
 
 - endpoint auth declaration
 - API key env fallback
-- explicit API key / OAuth credential resolution
+- explicit API key / request-level OAuth bearer resolution
 - request header binding
 
 因此它应保持为独立组件：
@@ -198,7 +198,7 @@
 
 职责：
 
-- 接收 `CallOptions` 中调用方显式提供的 API key 或 OAuth credential
+- 接收 `CallOptions` 中调用方显式提供的 API key 或 typed request auth
 - 在没有显式 credential 时，按 endpoint 声明解析 API key env fallback
 - 将调用期 credential 归一为只包含最终 headers 的 auth view
 
@@ -235,24 +235,27 @@ family。只要请求仍遵循 OpenAI Responses，就必须复用 `openai-respon
 
 1. provider 仍是 `openai`，endpoint 只标识具体 route，`api` 仍是
    `openai-responses`
-2. 它的认证语义是调用期 OAuth credential，不是 API key
+2. 它要求调用期 `OAuthBearerAuth`，不是 API key；完整 OAuth credential 留在认证层
 - 不应继续用 `OPENAI_API_KEY` 这类命名暗示平台 API key
 - 更不应让 example 或 live test 把账号态 token 伪装成普通 API key
 
 3. `Model/Auth` 只表达认证需求，不表达运行时 credential 细节
 - 模型目录应只声明：
   - 需要哪种 auth kind
-  - credential 必须匹配哪个 provider
+- credential source/provider 与 model provider 是独立身份轴；例如
+  `openai-codex` credential 可以服务 `openai` model route
+- 具体 credential source 由应用和 `loushang.auth` 选择，不由 AI invocation 猜测
 - 不应在 model metadata 中塞入：
   - account id
   - plan
   - subscription entitlement
   - workspace binding
 
-4. 账号态 credential 与请求级 header 分别进入调用
-- `access_token` 通过 `CallOptions.oauth_credentials` 传入
-- provider 要求的 account binding header 通过 `CallOptions.headers` 传入
-- AI 请求链只消费这两类调用材料，不读取 refresh/store/account state
+4. 完整 credential 与请求级认证材料分层
+- `OAuthCredentials` 的 refresh token、expiry 和 account state 留在 `loushang.auth`
+- 有效 `access_token` 转换为 `CallOptions.auth=OAuthBearerAuth(...)`
+- provider 派生的 account binding header 通过 `CallOptions.headers` 传入
+- AI 请求链只消费 bearer credential 与 supplemental headers
 
 5. provider 不应自己成为登录产品层
 - provider adapter 不负责：
@@ -276,11 +279,12 @@ family。只要请求仍遵循 OpenAI Responses，就必须复用 `openai-respon
 输入来源只允许：
 
 - `CallOptions.api_key`
-- `CallOptions.oauth_credentials`
+- `CallOptions.auth`
 - `CallOptions.headers`
 - endpoint auth 声明允许的 API key env fallback
 
-OAuth credential 必须由调用方显式传入；AI 包不读取 store，也不刷新 token。
+OAuth bearer credential 必须由调用方显式传入；AI 包不读取完整 credential、store，
+也不刷新 token。
 
 关键约束：
 
@@ -325,8 +329,8 @@ OAuth credential 必须由调用方显式传入；AI 包不读取 store，也不
 ### 对 ChatGPT route 的直接约束
 
 1. catalog route 使用 `api: openai-responses`
-2. access token 由 `loushang.auth.OAuthCredentials` 传入，account header 由
-   `CallOptions.headers` 显式传入
+2. `loushang.auth` 读取完整 credentials 并派生可用 expiry；调用边界检查有效期后将
+   access token 转换为 `OAuthBearerAuth`，account header 由 `CallOptions.headers` 显式传入
 3. AI 包不解析 `~/.codex/auth.json`，不登录、不 refresh、不持久化
 4. `~/.codex/auth.json` 只由应用边缘 example 读取
 

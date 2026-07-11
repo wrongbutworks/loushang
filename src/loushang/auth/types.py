@@ -1,16 +1,16 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Any, Protocol, TypedDict, runtime_checkable
 
 
 @dataclass(frozen=True)
 class OAuthCredentials:
     provider: str
-    access_token: str
-    refresh_token: str | None = None
+    access_token: str = field(repr=False)
+    refresh_token: str | None = field(default=None, repr=False)
     expires_at: float | None = None
-    extra: dict[str, Any] | None = None
+    extra: dict[str, Any] | None = field(default=None, repr=False)
 
 
 class OAuthAuthInfo(TypedDict, total=False):
@@ -47,6 +47,7 @@ class OAuthProviderInterface(Protocol):
     def get_api_key(self, credentials: OAuthCredentials) -> str: ...
     def get_auth_headers(self, credentials: OAuthCredentials) -> dict[str, str]:
         return {}
+
     def uses_callback_server(self) -> bool: ...
     def modify_models(
         self, models: list[object], credentials: OAuthCredentials

@@ -3,6 +3,7 @@ from __future__ import annotations
 import base64
 import hashlib
 import json
+import math
 import os
 import secrets
 import time
@@ -32,20 +33,26 @@ def _codex_cli_auth_path() -> str:
     return os.path.join(os.path.expanduser("~"), ".codex", "auth.json")
 
 
-def load_codex_cli_auth() -> dict[str, object] | None:
-    path = _codex_cli_auth_path()
-    if not os.path.exists(path):
+def load_codex_cli_auth(
+    path: str | os.PathLike[str] | None = None,
+) -> dict[str, object] | None:
+    resolved_path = os.fspath(path) if path is not None else _codex_cli_auth_path()
+    if not os.path.exists(resolved_path):
         return None
     try:
-        with open(path, encoding="utf-8") as handle:
+        with open(resolved_path, encoding="utf-8") as handle:
             payload = json.load(handle)
     except Exception:
-        return None
+        if path is None:
+            return None
+        raise
     return payload if isinstance(payload, dict) else None
 
 
-def get_codex_cli_oauth_credentials() -> OAuthCredentials | None:
-    payload = load_codex_cli_auth()
+def get_codex_cli_oauth_credentials(
+    path: str | os.PathLike[str] | None = None,
+) -> OAuthCredentials | None:
+    payload = load_codex_cli_auth() if path is None else load_codex_cli_auth(path)
     if not payload:
         return None
 
@@ -58,6 +65,7 @@ def get_codex_cli_oauth_credentials() -> OAuthCredentials | None:
     access_token = token_map.get("access_token")
     if not isinstance(access_token, str) or not access_token.strip():
         return None
+    access_token = access_token.strip()
     account_id = token_map.get("account_id")
     if not isinstance(account_id, str) or not account_id.strip():
         return None
@@ -68,18 +76,16 @@ def get_codex_cli_oauth_credentials() -> OAuthCredentials | None:
         "auth_mode": "chatgpt",
         "account_id": account_id,
     }
-    last_refresh = payload.get("last_refresh")
-    expires_at = None
-    if isinstance(last_refresh, (int, float)):
-        expires_at = float(last_refresh)
-
     refresh_token = token_map.get("refresh_token")
-    if not isinstance(refresh_token, str) or not refresh_token:
+    if not isinstance(refresh_token, str) or not refresh_token.strip():
         refresh_token = None
+    else:
+        refresh_token = refresh_token.strip()
 
+    expires_at = _extract_token_expiry(access_token)
     return OAuthCredentials(
         provider="openai-codex",
-        access_token=access_token.strip(),
+        access_token=access_token,
         refresh_token=refresh_token,
         expires_at=expires_at,
         extra=extra,
@@ -121,14 +127,35 @@ def _parse_authorization_input(input_text: str) -> tuple[str | None, str | None]
     return value, None
 
 
+def _decode_jwt_payload(access_token: str) -> dict[str, Any]:
+    parts = access_token.split(".")
+    if len(parts) != 3:
+        raise ValueError("invalid token")
+    payload = parts[1] + "=" * (-len(parts[1]) % 4)
+    decoded = base64.urlsafe_b64decode(payload.encode("ascii")).decode("utf-8")
+    data = json.loads(decoded)
+    if not isinstance(data, dict):
+        raise ValueError("invalid token payload")
+    return data
+
+
+def _extract_token_expiry(access_token: str) -> float | None:
+    try:
+        expires_at = _decode_jwt_payload(access_token).get("exp")
+    except Exception:
+        return None
+    if (
+        isinstance(expires_at, bool)
+        or not isinstance(expires_at, (int, float))
+        or not math.isfinite(expires_at)
+    ):
+        return None
+    return float(expires_at) - 300.0
+
+
 def _extract_account_id(access_token: str) -> str:
     try:
-        parts = access_token.split(".")
-        if len(parts) != 3:
-            raise ValueError("invalid token")
-        payload = parts[1] + "=" * (-len(parts[1]) % 4)
-        decoded = base64.urlsafe_b64decode(payload.encode("ascii")).decode("utf-8")
-        data = json.loads(decoded)
+        data = _decode_jwt_payload(access_token)
         account_id = data.get(JWT_CLAIM_PATH, {}).get("chatgpt_account_id")
         if not isinstance(account_id, str) or not account_id:
             raise ValueError("missing account id")
@@ -322,10 +349,15 @@ class OpenAICodexOAuthProvider(OAuthProviderInterface):
 
         expires_in = payload.get("expires_in")
         expires_at: float | None = None
-        if isinstance(expires_in, (int, float)):
+        if (
+            not isinstance(expires_in, bool)
+            and isinstance(expires_in, (int, float))
+            and math.isfinite(expires_in)
+            and expires_in > 0
+        ):
             expires_at = self._time_fn() + float(expires_in) - 300.0
-        elif previous is not None:
-            expires_at = previous.expires_at
+        else:
+            expires_at = _extract_token_expiry(access_token)
 
         extra: dict[str, Any] = {
             "account_id": _extract_account_id(access_token),

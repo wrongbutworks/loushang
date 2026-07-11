@@ -5,6 +5,10 @@ from loushang.auth.facade import (
     resolve_oauth_api_key,
 )
 from loushang.auth.oauth import GetOAuthApiKeyResult, get_oauth_api_key
+from loushang.auth.providers import (
+    OpenAICodexOAuthProvider,
+    get_codex_cli_oauth_credentials,
+)
 from loushang.auth.registry import OAuthProviderRegistry, get_default_oauth_registry
 from loushang.auth.storage import (
     CredentialStore,
@@ -38,11 +42,13 @@ __all__ = [
     "OAuthCredentialStore",
     "OAuthCredentials",
     "OAuthLoginCallbacks",
+    "OpenAICodexOAuthProvider",
     "OAuthPrompt",
     "OAuthProviderInterface",
     "OAuthProviderRegistry",
     "find_scoped_credential",
     "get_default_oauth_registry",
+    "get_codex_cli_oauth_credentials",
     "get_oauth_api_key",
     "load_credential_store",
     "load_credentials",

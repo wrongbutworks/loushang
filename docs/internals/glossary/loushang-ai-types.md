@@ -481,7 +481,8 @@ assistant message 用量统计。
 
 产品场景不通过专用 provider、contrib 或 options 类型进入 `loushang.ai` 根 public surface。
 
-- 调用方通过 `CallOptions.oauth_credentials` 显式传入已有 OAuth 凭证
+- 完整 OAuth 凭证由 `loushang.auth` 持有；AI 调用只接收
+  `CallOptions.auth=OAuthBearerAuth(valid_access_token)` 和认证层派生的附加 headers
 - endpoint 在 catalog 中选择已有协议适配器
 - 核心调用路径只消费 `CallOptions`
 

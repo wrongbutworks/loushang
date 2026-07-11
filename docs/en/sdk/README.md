@@ -158,27 +158,27 @@ and environment. Curated provider examples:
 | `volcano-ark` | `ARK_API_KEY` |
 | `zai` | `ZAI_API_KEY` |
 
-For OAuth calls, the caller obtains the token and passes one explicit credential
-for that request:
+For OAuth calls, `loushang.auth` owns the complete credentials and refresh
+lifecycle. The AI call receives only a currently valid bearer token and any
+provider-derived supplemental headers:
 
 ```python
-from loushang.ai import CallOptions
-from loushang.auth import OAuthCredentials
+from loushang.ai import CallOptions, OAuthBearerAuth
 
-credentials = OAuthCredentials(
-    provider="openai",
-    access_token=access_token,
-)
 options = CallOptions(
-    oauth_credentials=credentials,
-    headers={"chatgpt-account-id": account_id},
+    auth=OAuthBearerAuth(access_token),
+    headers=provider_headers,
 )
 ```
 
-`loushang.ai` resolves these values into request headers. It does not log in,
-refresh tokens, read a credential store, or select an account. The runnable
-[ChatGPT Coding Plan example](../../../examples/ai/chatgpt_coding_plan.py) reads
-an existing `~/.codex/auth.json` at the application edge and calls
+Here `access_token` and `provider_headers` are outputs of the authentication
+provider; callers do not construct provider-specific account headers in the AI layer.
+
+`refresh_token`, expiry, storage, and account selection never enter
+`CallOptions` or `ProviderRequest`. The runnable [ChatGPT Coding Plan
+example](../../../examples/ai/chatgpt_coding_plan.py) reads an existing
+`~/.codex/auth.json` through `loushang.auth`. That external store remains owned
+by Codex CLI, so an expired login must be updated with `codex login`. The example calls
 `openai:openai-responses-chatgpt:gpt-5.5-chatgpt` through the normal OpenAI Responses
 adapter.
 

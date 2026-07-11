@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import ast
 import asyncio
+import base64
 import importlib.util
 import json
 import os
@@ -27,6 +28,15 @@ def _load_module(path: Path, name: str):
     sys.modules[name] = module
     spec.loader.exec_module(module)
     return module
+
+
+def _build_test_jwt(*, expires_at: float) -> str:
+    payload = (
+        base64.urlsafe_b64encode(json.dumps({"exp": expires_at}).encode("utf-8"))
+        .decode("ascii")
+        .rstrip("=")
+    )
+    return f"header.{payload}.signature"
 
 
 def _loushang_imports(path: Path) -> list[str]:
@@ -320,7 +330,7 @@ def test_image_input_example_reports_image_counts(capsys) -> None:
     assert payload == summary
 
 
-def test_chatgpt_coding_plan_example_loads_explicit_call_auth(
+def test_chatgpt_coding_plan_example_loads_complete_oauth_credentials(
     tmp_path: Path,
 ) -> None:
     module = _load_module(
@@ -328,14 +338,15 @@ def test_chatgpt_coding_plan_example_loads_explicit_call_auth(
         "examples_ai_chatgpt_coding_plan_credentials",
     )
     auth_path = tmp_path / "auth.json"
+    access_token = _build_test_jwt(expires_at=4_000_000_000.0)
     auth_path.write_text(
         json.dumps(
             {
                 "auth_mode": "chatgpt",
                 "tokens": {
-                    "access_token": " access-token ",
+                    "access_token": f" {access_token} ",
                     "account_id": " account-id ",
-                    "refresh_token": "ignored-refresh-token",
+                    "refresh_token": "refresh-token",
                     "id_token": "ignored-id-token",
                 },
             }
@@ -343,61 +354,63 @@ def test_chatgpt_coding_plan_example_loads_explicit_call_auth(
         encoding="utf-8",
     )
 
-    credentials, headers = module.load_call_auth(auth_path)
+    credentials = module.load_credentials(auth_path)
 
-    assert credentials.provider == "openai"
-    assert credentials.access_token == "access-token"
-    assert headers == {"chatgpt-account-id": "account-id"}
+    assert credentials.provider == "openai-codex"
+    assert credentials.access_token == access_token
+    assert credentials.refresh_token == "refresh-token"
+    assert credentials.extra == {
+        "source": "codex-cli",
+        "auth_mode": "chatgpt",
+        "account_id": "account-id",
+    }
 
 
 @pytest.mark.parametrize(
-    ("payload", "message"),
+    "payload",
     [
-        ([], "JSON object"),
-        ({"auth_mode": "apikey"}, "auth_mode='chatgpt'"),
-        ({"auth_mode": "chatgpt"}, "tokens object"),
-        (
-            {"auth_mode": "chatgpt", "tokens": {"account_id": "account-id"}},
-            "tokens.access_token",
-        ),
-        (
-            {"auth_mode": "chatgpt", "tokens": {"access_token": "token"}},
-            "tokens.account_id",
-        ),
+        [],
+        {"auth_mode": "apikey"},
+        {"auth_mode": "chatgpt"},
+        {"auth_mode": "chatgpt", "tokens": {"account_id": "account-id"}},
+        {"auth_mode": "chatgpt", "tokens": {"access_token": "token"}},
     ],
 )
 def test_chatgpt_coding_plan_example_rejects_invalid_auth_file(
     tmp_path: Path,
     payload: object,
-    message: str,
 ) -> None:
     module = _load_module(
         Path("examples/ai/chatgpt_coding_plan.py"),
-        f"examples_ai_chatgpt_coding_plan_invalid_{message}",
+        "examples_ai_chatgpt_coding_plan_invalid",
     )
     auth_path = tmp_path / "auth.json"
     auth_path.write_text(json.dumps(payload), encoding="utf-8")
 
-    with pytest.raises(RuntimeError, match=message):
-        module.load_call_auth(auth_path)
+    with pytest.raises(RuntimeError, match="valid ChatGPT login"):
+        module.load_credentials(auth_path)
 
 
 def test_chatgpt_coding_plan_example_calls_public_responses_path(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
-    from loushang.ai import AssistantMessage, TextPart
+    from loushang.ai import AssistantMessage, OAuthBearerAuth, TextPart
 
     module = _load_module(
         Path("examples/ai/chatgpt_coding_plan.py"),
         "examples_ai_chatgpt_coding_plan_call",
     )
     auth_path = tmp_path / "auth.json"
+    access_token = _build_test_jwt(expires_at=4_000_000_000.0)
     auth_path.write_text(
         json.dumps(
             {
                 "auth_mode": "chatgpt",
-                "tokens": {"access_token": "token", "account_id": "account-id"},
+                "tokens": {
+                    "access_token": access_token,
+                    "account_id": "account-id",
+                },
             }
         ),
         encoding="utf-8",
@@ -441,10 +454,81 @@ def test_chatgpt_coding_plan_example_calls_public_responses_path(
     )
     assert captured["model"] is model
     options = captured["options"]
-    assert options.oauth_credentials.access_token == "token"
+    assert options.auth == OAuthBearerAuth(access_token)
+    assert not hasattr(options, "oauth_credentials")
     assert options.headers == {"chatgpt-account-id": "account-id"}
     assert options.max_output_tokens is None
     assert options.reasoning.effort == "low"
+
+
+def test_chatgpt_coding_plan_example_rejects_expired_external_credentials(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    from loushang.auth import OAuthCredentials
+
+    module = _load_module(
+        Path("examples/ai/chatgpt_coding_plan.py"),
+        "examples_ai_chatgpt_coding_plan_expired",
+    )
+    auth_path = tmp_path / "auth.json"
+    auth_path.write_text("{}", encoding="utf-8")
+    monkeypatch.setattr(
+        module,
+        "get_codex_cli_oauth_credentials",
+        lambda path: OAuthCredentials(
+            provider="openai-codex",
+            access_token="expired",
+            refresh_token="external-refresh-token",
+            expires_at=100.0,
+            extra={"account_id": "account-id"},
+        ),
+    )
+    monkeypatch.setattr(module.time, "time", lambda: 200.0)
+
+    with pytest.raises(RuntimeError, match="codex login"):
+        asyncio.run(module.resolve_call_auth(auth_path))
+
+
+def test_chatgpt_coding_plan_example_rejects_unknown_token_expiry(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    from loushang.auth import OAuthCredentials
+
+    module = _load_module(
+        Path("examples/ai/chatgpt_coding_plan.py"),
+        "examples_ai_chatgpt_coding_plan_unknown_expiry",
+    )
+    auth_path = tmp_path / "auth.json"
+    auth_path.write_text("{}", encoding="utf-8")
+    monkeypatch.setattr(
+        module,
+        "get_codex_cli_oauth_credentials",
+        lambda path: OAuthCredentials(
+            provider="openai-codex",
+            access_token="not-a-jwt",
+            expires_at=None,
+            extra={"account_id": "account-id"},
+        ),
+    )
+
+    with pytest.raises(RuntimeError, match="cannot be verified"):
+        asyncio.run(module.resolve_call_auth(auth_path))
+
+
+def test_chatgpt_coding_plan_example_reports_corrupt_auth_file(
+    tmp_path: Path,
+) -> None:
+    module = _load_module(
+        Path("examples/ai/chatgpt_coding_plan.py"),
+        "examples_ai_chatgpt_coding_plan_corrupt",
+    )
+    auth_path = tmp_path / "auth.json"
+    auth_path.write_text("{", encoding="utf-8")
+
+    with pytest.raises(RuntimeError, match="Failed to read Codex auth file"):
+        module.load_credentials(auth_path)
 
 
 def test_errors_retry_example_reports_redacted_error_payload(capsys) -> None:

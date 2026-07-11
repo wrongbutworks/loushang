@@ -86,9 +86,7 @@ def bound_test_model(
     routing: EndpointRouting | None = None,
     upstream_model_id: str | None = None,
 ) -> Model:
-    provider_id = provider_id or str(
-        getattr(model, "provider_id", "test-provider")
-    )
+    provider_id = provider_id or str(getattr(model, "provider_id", "test-provider"))
     endpoint_id = endpoint_id or str(getattr(model, "endpoint_id", api))
     model_id = str(getattr(model, "id", "test-model"))
     if capabilities is None:
@@ -186,7 +184,9 @@ def make_provider_request(
 
 
 def _test_auth(options: object | None) -> Auth:
-    if getattr(options, "oauth_credentials", None) is not None:
+    from loushang.ai.auth import OAuthBearerAuth
+
+    if isinstance(getattr(options, "auth", None), OAuthBearerAuth):
         return Auth(kind="oauth")
     if getattr(options, "api_key", None) is not None:
         return Auth(kind="apiKey")

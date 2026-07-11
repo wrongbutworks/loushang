@@ -80,7 +80,6 @@ CallOptions(
     cancellation=None,
     auth=None,
     api_key=None,
-    oauth_credentials=None,
     headers={},
     cache_retention=None,
     cache_key=None,
@@ -96,14 +95,12 @@ CallOptions(
 )
 ```
 
-`auth` 仅为现有调用方保留 request-level 兼容；新的调用不再构造通用 auth
-union，而是使用明确的 `api_key`、`oauth_credentials` 或 `headers` 字段。
-
-`oauth_credentials` is a single explicit `loushang.auth.OAuthCredentials` value
-for this request. Request-specific supplemental headers use `CallOptions.headers`
-instead of expanding the credential DTO. API-key defaults still come from
-`models.json.auth`. OAuth login, refresh, credential storage, and account selection
-are outside `loushang.ai`.
+`auth` 是 request-level typed credential；API key 也可使用明确的 `api_key` convenience
+字段。OAuth 调用使用 `OAuthBearerAuth(valid_access_token)`，provider-derived supplemental
+headers 使用 `CallOptions.headers`。完整 `loushang.auth.OAuthCredentials`、refresh、expiry、
+credential storage 和 account selection 不进入 `loushang.ai`。
+`HeadersAuth` 只用于调用方已经持有完整最终 header 集的显式 override；它不与
+`CallOptions.headers` 叠加，也不继承 catalog auth headers。
 Provider-specific option classes do not enter the root public surface.
 
 `cache_key` is an opaque caller-provided cache/affinity key. Protocol adapters

@@ -340,6 +340,21 @@ def test_provider_request_requires_typed_model() -> None:
         )
 
 
+def test_provider_request_repr_redacts_headers() -> None:
+    request = _request(
+        _model(),
+        headers={
+            "Authorization": "Bearer access-secret",
+            "chatgpt-account-id": "account-secret",
+        },
+    )
+
+    rendered = repr(request)
+
+    assert "access-secret" not in rendered
+    assert "account-secret" not in rendered
+
+
 def test_normalize_provider_request_adds_model_default_core_adapter_config() -> None:
     model = _model(adapter=None)
     request = ProviderRequest(

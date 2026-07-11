@@ -8,7 +8,7 @@ import pytest
 
 import loushang.ai as ai
 import loushang.ai.options as options_module
-from loushang.ai import ApiKeyAuth
+from loushang.ai import ApiKeyAuth, OAuthBearerAuth
 from loushang.ai import CallOptions as PublicCallOptions
 from loushang.ai.advanced.registry import ApiProviderRegistry
 from loushang.ai.options import (
@@ -25,7 +25,6 @@ from loushang.ai.options import (
     get_timeout_seconds,
     is_reasoning_requested,
 )
-from loushang.auth import OAuthCredentials
 
 REMOVED_OPTION_NAMES = {
     "ModelCallOptions",
@@ -68,7 +67,6 @@ def test_call_options_fields_are_canonical_and_consumed() -> None:
         "cancellation",
         "auth",
         "api_key",
-        "oauth_credentials",
         "headers",
         "cache_retention",
         "cache_key",
@@ -96,31 +94,23 @@ def test_call_options_fields_are_canonical_and_consumed() -> None:
         "text_verbosity",
     }.isdisjoint(field_names)
 
-    credentials = OAuthCredentials(provider="demo", access_token="oauth-token")
     options = CallOptions(
-        oauth_credentials=credentials,
+        auth=OAuthBearerAuth("oauth-token"),
         headers={"x-trace": "1"},
     )
 
-    assert options.oauth_credentials is credentials
+    assert options.auth == OAuthBearerAuth("oauth-token")
     assert options.headers == {"x-trace": "1"}
+    assert "oauth_credentials" not in field_names
 
 
 def test_call_options_rejects_ambiguous_or_invalid_credentials() -> None:
-    credentials = OAuthCredentials(provider="demo", access_token="oauth-token")
-
-    with pytest.raises(ValueError, match="mutually exclusive"):
-        CallOptions(api_key="api-key", oauth_credentials=credentials)
+    with pytest.raises(ValueError, match="cannot be combined"):
+        CallOptions(api_key="api-key", auth=OAuthBearerAuth("oauth-token"))
     with pytest.raises(TypeError, match="api_key"):
         CallOptions(api_key=123)  # type: ignore[arg-type]
     with pytest.raises(ValueError, match="api_key"):
         CallOptions(api_key="  ")
-    with pytest.raises(TypeError, match="oauth_credentials"):
-        CallOptions(oauth_credentials=object())  # type: ignore[arg-type]
-    with pytest.raises(ValueError, match="access_token"):
-        CallOptions(
-            oauth_credentials=OAuthCredentials(provider="demo", access_token="  ")
-        )
     with pytest.raises(TypeError, match="headers"):
         CallOptions(headers={"x-trace": 1})  # type: ignore[dict-item]
     with pytest.raises(TypeError, match="cache_key"):
@@ -128,11 +118,11 @@ def test_call_options_rejects_ambiguous_or_invalid_credentials() -> None:
     with pytest.raises(ValueError, match="cache_key"):
         CallOptions(cache_key="   ")
     with pytest.raises(ValueError, match="cannot be combined"):
-        CallOptions(auth=ApiKeyAuth("legacy"), api_key="new")
+        CallOptions(auth=ApiKeyAuth("typed"), api_key="direct")
 
 
-def test_call_options_retains_legacy_auth_for_existing_consumers() -> None:
-    auth = ApiKeyAuth("legacy-secret")
+def test_call_options_retains_typed_auth() -> None:
+    auth = ApiKeyAuth("typed-secret")
 
     options = CallOptions(auth=auth)
 
