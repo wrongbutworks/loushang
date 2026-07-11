@@ -22,7 +22,7 @@ from loushang.ai.provider.errors import (
 )
 from loushang.ai.providers.anthropic_base import AnthropicProviderBase
 from loushang.ai.providers.provider_helpers import (
-    apply_session_headers,
+    apply_cache_key_headers,
     extract_sdk_api_key,
     sdk_default_headers,
 )
@@ -413,18 +413,18 @@ class AnthropicProvider(AnthropicProviderBase):
         cache_retention = (
             getattr(options, "cache_retention", None) if options is not None else None
         )
-        session_id = (
-            getattr(options, "session_id", None) if options is not None else None
+        cache_key = (
+            getattr(options, "cache_key", None) if options is not None else None
         )
         if (
             cache_retention != "none"
-            and isinstance(session_id, str)
-            and session_id
+            and isinstance(cache_key, str)
+            and cache_key
             and adapter_config.session_affinity_headers
         ):
-            apply_session_headers(
+            apply_cache_key_headers(
                 default_headers,
-                session_id,
+                cache_key,
                 include_affinity=True,
             )
 

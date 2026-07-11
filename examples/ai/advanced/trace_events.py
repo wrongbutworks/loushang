@@ -7,7 +7,7 @@ import json
 
 from loushang.ai import CallOptions, Model, RetryOptions, stream
 from loushang.ai.advanced.registry import ApiProviderRegistry
-from loushang.ai.model import Auth, Capabilities, Endpoint
+from loushang.ai.model import Auth, Capabilities, Endpoint, Provider
 from loushang.ai.model.registry import ModelRegistry
 from loushang.ai.provider import ProviderRequest
 from loushang.ai.trace import emit_trace
@@ -112,17 +112,20 @@ def _build_model() -> Model:
 
 
 def _build_model_registry() -> ModelRegistry:
-    registry = ModelRegistry()
-    registry.register_endpoint(
-        "trace-demo",
-        Endpoint(
-            id="anthropic-messages",
-            provider="trace-demo",
-            api="anthropic-messages",
-            models={"trace-demo": _build_model()},
-        ),
+    endpoint = Endpoint(
+        id="anthropic-messages",
+        provider="trace-demo",
+        api="anthropic-messages",
+        models={"trace-demo": _build_model()},
     )
-    return registry
+    return ModelRegistry.from_providers(
+        {
+            "trace-demo": Provider(
+                id="trace-demo",
+                endpoints={endpoint.id: endpoint},
+            )
+        }
+    )
 
 
 if __name__ == "__main__":

@@ -14,6 +14,7 @@ async def inspect_capability_failure() -> dict[str, object]:
         id="capability-demo",
         provider="faux",
         endpoint="anthropic-messages",
+        api="anthropic-messages",
         capabilities=Capabilities(stream=True, tool_use=False),
         auth=Auth(kind="none"),
     )

@@ -1,11 +1,11 @@
 from __future__ import annotations
 
 import asyncio
-from types import SimpleNamespace
 
 import pytest
 
 import loushang.ai.provider.runtime as runtime_module
+from loushang.ai.model import Auth, Model
 from loushang.ai.options import CallOptions, RetryOptions
 from loushang.ai.provider import ProviderRequest
 from loushang.ai.provider.errors import provider_error_part
@@ -65,7 +65,6 @@ def test_provider_runtime_assembles_raw_parts() -> None:
     async def _run():
         stream = start_provider_runtime(
             _parts,
-            model=_model(),
             options=None,
             request=_request(),
         )
@@ -91,7 +90,6 @@ def test_provider_runtime_emits_done_when_source_omits_terminal_part() -> None:
     async def _run():
         stream = start_provider_runtime(
             _parts,
-            model=_model(),
             options=None,
             request=_request(),
         )
@@ -119,7 +117,6 @@ def test_provider_runtime_converts_adapter_exceptions_to_error_events() -> None:
     async def _run():
         stream = start_provider_runtime(
             _parts,
-            model=_model(),
             options=None,
             request=_request(),
         )
@@ -155,7 +152,6 @@ def test_provider_runtime_retries_retryable_exception_before_visible_output() ->
     async def _run():
         stream = start_provider_runtime(
             _parts,
-            model=_model(),
             options=CallOptions(
                 retry=RetryOptions(max_attempts=2, max_delay_seconds=0),
                 trace=trace_events.append,
@@ -187,6 +183,7 @@ def test_provider_runtime_retries_retryable_exception_before_visible_output() ->
         "provider": "provider-a",
         "endpoint": "openai-responses",
         "model": "model-a",
+        "upstreamModel": "model-a",
         "attempt": 1,
         "maxAttempts": 2,
     }
@@ -235,7 +232,6 @@ def test_provider_runtime_retries_response_error_before_visible_output() -> None
     async def _run():
         stream = start_provider_runtime(
             _parts,
-            model=_model(),
             options=CallOptions(
                 retry=RetryOptions(max_attempts=2, max_delay_seconds=0),
                 trace=trace_events.append,
@@ -286,7 +282,6 @@ def test_provider_runtime_emits_error_trace_for_terminal_error() -> None:
     async def _run():
         stream = start_provider_runtime(
             _parts,
-            model=_model(),
             options=CallOptions(trace=trace_events.append),
             request=_request(),
         )
@@ -325,7 +320,6 @@ def test_provider_runtime_does_not_retry_nonretryable_error_before_output() -> N
     async def _run():
         stream = start_provider_runtime(
             _parts,
-            model=_model(),
             options=CallOptions(
                 retry=RetryOptions(max_attempts=2, max_delay_seconds=0)
             ),
@@ -354,7 +348,6 @@ def test_provider_runtime_does_not_retry_after_visible_output() -> None:
     async def _run():
         stream = start_provider_runtime(
             _parts,
-            model=_model(),
             options=CallOptions(
                 retry=RetryOptions(max_attempts=2, max_delay_seconds=0)
             ),
@@ -397,7 +390,6 @@ def test_provider_runtime_uses_retry_after_delay() -> None:
     async def _run():
         stream = start_provider_runtime(
             _parts,
-            model=_model(),
             options=CallOptions(retry=RetryOptions(max_attempts=2)),
             request=_request(),
             _sleep=_sleep,
@@ -434,7 +426,6 @@ def test_provider_runtime_caps_retry_after_by_max_delay() -> None:
     async def _run():
         stream = start_provider_runtime(
             _parts,
-            model=_model(),
             options=CallOptions(
                 retry=RetryOptions(max_attempts=2, max_delay_seconds=0.5)
             ),
@@ -474,7 +465,6 @@ def test_provider_runtime_ignores_non_finite_retry_after(retry_after: str) -> No
     async def _run():
         stream = start_provider_runtime(
             _parts,
-            model=_model(),
             options=CallOptions(
                 retry=RetryOptions(max_attempts=2, max_delay_seconds=1)
             ),
@@ -505,7 +495,6 @@ def test_provider_runtime_bounds_pre_visible_buffer_by_part_count(
     async def _run():
         stream = start_provider_runtime(
             _parts,
-            model=_model(),
             options=None,
             request=_request(),
         )
@@ -535,7 +524,6 @@ def test_provider_runtime_bounds_pre_visible_buffer_by_estimated_bytes(
     async def _run():
         stream = start_provider_runtime(
             _parts,
-            model=_model(),
             options=None,
             request=_request(),
         )
@@ -564,7 +552,6 @@ def test_provider_runtime_applies_backpressure_to_raw_source() -> None:
     async def _run() -> int:
         stream = start_provider_runtime(
             _parts,
-            model=_model(),
             options=None,
             request=_request(),
         )
@@ -587,7 +574,6 @@ def test_provider_runtime_cancellation_signal_aborts_and_closes_source() -> None
         signal = asyncio.Event()
         stream = start_provider_runtime(
             lambda: source,
-            model=_model(),
             options=CallOptions(cancellation=signal, trace=trace_events.append),
             request=_request(),
         )
@@ -623,7 +609,6 @@ def test_provider_runtime_consumer_close_closes_source_without_leaking_task() ->
     async def _run() -> bool:
         stream = start_provider_runtime(
             lambda: source,
-            model=_model(),
             options=None,
             request=_request(),
         )
@@ -639,12 +624,19 @@ def test_provider_runtime_consumer_close_closes_source_without_leaking_task() ->
     assert asyncio.run(_run()) is True
 
 
-def _model():
-    return SimpleNamespace(id="model-a", provider_id="provider-a")
+def _model() -> Model:
+    return Model(
+        id="model-a",
+        provider="provider-a",
+        endpoint="openai-responses",
+        api="openai-responses",
+        auth=Auth(kind="none"),
+    )
 
 
 def _request() -> ProviderRequest:
     return ProviderRequest(
+        model=_model(),
         provider="provider-a",
         endpoint="openai-responses",
         api="openai-responses",

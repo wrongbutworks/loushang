@@ -3,11 +3,34 @@ from __future__ import annotations
 import asyncio
 import inspect
 import json
+from dataclasses import replace
 from datetime import date
 
 from loushang.ai.event_stream.stream import AssistantMessageEventStream
-from loushang.ai.model import Capabilities, Model
+from loushang.ai.model import Auth, Capabilities, Endpoint, Model, Provider
+from loushang.ai.model.registry import ModelRegistry as AiModelRegistry
 from loushang.ai.types import AssistantMessage, TextPart, ToolCall, Usage, UserMessage
+
+
+def _ai_registry_with_models(
+    *models: Model,
+    endpoint_auth: Auth | None = None,
+) -> AiModelRegistry:
+    providers: dict[str, Provider] = {}
+    for model in models:
+        provider = providers.get(model.provider_id) or Provider(id=model.provider_id)
+        endpoint = provider.endpoints.get(model.endpoint_id) or Endpoint(
+            id=model.endpoint_id,
+            provider=model.provider_id,
+            api=model.api or model.endpoint_id,
+            auth=endpoint_auth,
+        )
+        endpoint_models = dict(endpoint.models)
+        endpoint_models[model.id] = model
+        endpoints = dict(provider.endpoints)
+        endpoints[endpoint.id] = replace(endpoint, models=endpoint_models)
+        providers[provider.id] = replace(provider, endpoints=endpoints)
+    return AiModelRegistry.from_providers(providers)
 
 
 def _runtime_footer_lines(cwd: str) -> list[str]:
@@ -2126,7 +2149,6 @@ def test_agent_session_set_model_and_thinking_level_persist_to_store(tmp_path) -
 
 def test_agent_session_cycles_model_and_thinking_level(tmp_path) -> None:
     from loushang.agent import Agent
-    from loushang.ai.model.registry import ModelRegistry as AiModelRegistry
     from loushang.coding.control import ModelRegistry
     from loushang.coding.session import AgentSession, ModelSelection
     from loushang.coding.store import SessionManager
@@ -2144,9 +2166,7 @@ def test_agent_session_cycles_model_and_thinking_level(tmp_path) -> None:
             max_tokens=2048,
         ),
     )
-    ai_registry = AiModelRegistry()
-    ai_registry.register_model(first)
-    ai_registry.register_model(second)
+    ai_registry = _ai_registry_with_models(first, second)
 
     session = AgentSession(
         agent=Agent(initial_state={"system_prompt": "", "model": first, "thinking_level": "low"}),
@@ -2164,7 +2184,6 @@ def test_agent_session_emits_model_select_event_for_async_model_control(tmp_path
     from pathlib import Path
 
     from loushang.agent import Agent
-    from loushang.ai.model.registry import ModelRegistry as AiModelRegistry
     from loushang.coding.control import ModelRegistry
     from loushang.coding.extensions import ExtensionRunner, LoadedExtension
     from loushang.coding.session import AgentSession, ModelSelection
@@ -2183,9 +2202,7 @@ def test_agent_session_emits_model_select_event_for_async_model_control(tmp_path
             max_tokens=2048,
         ),
     )
-    ai_registry = AiModelRegistry()
-    ai_registry.register_model(first)
-    ai_registry.register_model(second)
+    ai_registry = _ai_registry_with_models(first, second)
     seen: list[tuple[str, object, object, str]] = []
 
     def _model_select(event, ctx):
@@ -2218,7 +2235,6 @@ def test_agent_session_emits_model_select_event_for_async_model_control(tmp_path
 
 def test_agent_session_exposes_pi_style_model_and_session_mutators(tmp_path) -> None:
     from loushang.agent import Agent
-    from loushang.ai.model.registry import ModelRegistry as AiModelRegistry
     from loushang.coding.control import ModelRegistry
     from loushang.coding.session import AgentSession, ModelSelection
     from loushang.coding.store import SessionManager
@@ -2236,9 +2252,7 @@ def test_agent_session_exposes_pi_style_model_and_session_mutators(tmp_path) -> 
             max_tokens=2048,
         ),
     )
-    ai_registry = AiModelRegistry()
-    ai_registry.register_model(first)
-    ai_registry.register_model(second)
+    ai_registry = _ai_registry_with_models(first, second)
     session = AgentSession(
         agent=Agent(initial_state={"system_prompt": "", "model": first, "thinking_level": "low"}),
         session_manager=SessionManager.new(session_dir=tmp_path, cwd="/tmp/project", persist=False),
@@ -2263,14 +2277,14 @@ def test_agent_session_applies_extension_provider_registration(tmp_path) -> None
     from pathlib import Path
 
     from loushang.agent import Agent
-    from loushang.ai.model.registry import ModelRegistry as AiModelRegistry
-    from loushang.coding.control import ModelRegistry
+    from loushang.coding.control import AuthManager, ModelRegistry
     from loushang.coding.extensions import ExtensionAPI, ExtensionRunner
     from loushang.coding.session import AgentSession
     from loushang.coding.store import SessionManager
 
     ai_registry = AiModelRegistry()
     model_registry = ModelRegistry(ai_registry=ai_registry)
+    auth_manager = AuthManager(ai_registry=ai_registry, env={})
     api = ExtensionAPI(name="provider-ext", source_path=Path("/tmp/provider-ext.py"))
 
     api.register_provider(
@@ -2311,14 +2325,17 @@ def test_agent_session_applies_extension_provider_registration(tmp_path) -> None
         agent=Agent(initial_state={"system_prompt": "", "model": _model(), "thinking_level": "low"}),
         session_manager=SessionManager.new(session_dir=tmp_path, cwd="/tmp/project", persist=False),
         model_registry=model_registry,
+        auth_manager=auth_manager,
         extension_runner=ExtensionRunner([api.build_loaded_extension()]),
     )
 
-    provider = ai_registry.get_provider("proxy")
+    current = model_registry.ai_registry
+    assert auth_manager.ai_registry is current
+    provider = current.get_provider("proxy")
     assert provider is not None
     assert provider.name == "Proxy Provider"
     assert provider.website == "https://proxy.example.com"
-    endpoint = ai_registry.get_endpoint("proxy", "proxy-simple")
+    endpoint = current.get_endpoint("proxy", "proxy-simple")
     assert endpoint is not None
     assert endpoint.name == "Proxy Endpoint"
     assert endpoint.base_url == "https://proxy.example.com"
@@ -2328,7 +2345,7 @@ def test_agent_session_applies_extension_provider_registration(tmp_path) -> None
     assert endpoint.adapter is not None
     assert endpoint.adapter.streaming_usage is True
     assert dict(endpoint.defaults) == {"temperature": 0.1}
-    model = ai_registry.get_model("proxy", "proxy-simple", "proxy-model")
+    model = current.get_model("proxy", "proxy-simple", "proxy-model")
     assert model.name == "Proxy Model"
     assert model.supports_image_input is True
     assert model.supports_thinking is True
@@ -2355,12 +2372,14 @@ def test_agent_session_applies_extension_provider_registration(tmp_path) -> None
             }
         },
     )
-    endpoint = ai_registry.get_endpoint("proxy", "proxy-simple")
+    current = model_registry.ai_registry
+    assert auth_manager.ai_registry is current
+    endpoint = current.get_endpoint("proxy", "proxy-simple")
     assert endpoint is not None
     assert endpoint.base_url == "https://proxy-updated.example.com"
     assert endpoint.auth is not None
     assert endpoint.auth.extra_headers == {"x-proxy": "updated"}
-    model = ai_registry.get_model("proxy", "proxy-simple", "proxy-model")
+    model = current.get_model("proxy", "proxy-simple", "proxy-model")
     assert model.name == "Proxy Model"
     assert model.adapter is not None
     assert model.adapter.streaming_usage is True
@@ -2373,14 +2392,14 @@ def test_agent_session_applies_extension_provider_registration(tmp_path) -> None
     }
 
     api.unregister_provider("proxy")
-    assert ai_registry.get_provider("proxy") is None
+    assert model_registry.ai_registry.get_provider("proxy") is None
+    assert auth_manager.ai_registry is model_registry.ai_registry
 
 
 def test_agent_session_rejects_pi_style_extension_provider_config(tmp_path) -> None:
     from pathlib import Path
 
     from loushang.agent import Agent
-    from loushang.ai.model.registry import ModelRegistry as AiModelRegistry
     from loushang.coding.control import ModelRegistry
     from loushang.coding.diagnostics import DiagnosticsService
     from loushang.coding.extensions import ExtensionAPI, ExtensionRunner
@@ -2461,7 +2480,6 @@ def test_agent_session_rejects_pi_style_extension_provider_config(tmp_path) -> N
 
 def test_agent_session_exposes_pi_style_scoped_models_and_resources(tmp_path) -> None:
     from loushang.agent import Agent
-    from loushang.ai.model.registry import ModelRegistry as AiModelRegistry
     from loushang.coding.control import ModelRegistry
     from loushang.coding.loader import DefaultResourceLoader
     from loushang.coding.session import AgentSession, ModelSelection
@@ -2480,9 +2498,7 @@ def test_agent_session_exposes_pi_style_scoped_models_and_resources(tmp_path) ->
             max_tokens=2048,
         ),
     )
-    ai_registry = AiModelRegistry()
-    ai_registry.register_model(first)
-    ai_registry.register_model(second)
+    ai_registry = _ai_registry_with_models(first, second)
     loader = DefaultResourceLoader()
     session = AgentSession(
         agent=Agent(initial_state={"system_prompt": "", "model": first, "thinking_level": "low"}),
@@ -2663,16 +2679,16 @@ def test_agent_session_footer_data_provider_tracks_available_provider_count(tmp_
     from pathlib import Path
 
     from loushang.agent import Agent
-    from loushang.ai.model.registry import ModelRegistry as AiModelRegistry
     from loushang.coding.control import ModelRegistry
     from loushang.coding.extensions import ExtensionAPI, ExtensionRunner
     from loushang.coding.session import AgentSession
     from loushang.coding.store import SessionManager
 
-    ai_registry = AiModelRegistry()
-    ai_registry.register_model(Model(id="alpha", provider="base-a", endpoint="anthropic-messages"))
-    ai_registry.register_model(Model(id="beta", provider="base-a", endpoint="anthropic-messages"))
-    ai_registry.register_model(Model(id="gamma", provider="base-b", endpoint="anthropic-messages"))
+    ai_registry = _ai_registry_with_models(
+        Model(id="alpha", provider="base-a", endpoint="anthropic-messages"),
+        Model(id="beta", provider="base-a", endpoint="anthropic-messages"),
+        Model(id="gamma", provider="base-b", endpoint="anthropic-messages"),
+    )
     model_registry = ModelRegistry(ai_registry=ai_registry)
     api = ExtensionAPI(name="provider-ext", source_path=Path("/tmp/provider-ext.py"))
     api.register_provider(
@@ -2703,19 +2719,17 @@ def test_agent_session_footer_data_provider_tracks_available_provider_count(tmp_
 
 def test_agent_session_exposes_available_model_details_for_metadata_consumers(tmp_path) -> None:
     from loushang.agent import Agent
-    from loushang.ai.model.registry import ModelRegistry as AiModelRegistry
     from loushang.coding.control import ModelRegistry
     from loushang.coding.session import AgentSession
     from loushang.coding.store import SessionManager
 
-    ai_registry = AiModelRegistry()
     detailed = Model(
         id="detail-model",
         provider="detail-provider",
         endpoint="anthropic-messages",
         capabilities=Capabilities(reasoning=True, input=("text", "image"), context_window=64000, max_tokens=2048),
     )
-    ai_registry.register_model(detailed)
+    ai_registry = _ai_registry_with_models(detailed)
     session = AgentSession(
         agent=Agent(initial_state={"system_prompt": "", "model": _model(), "thinking_level": "off"}),
         session_manager=SessionManager.new(session_dir=tmp_path, cwd="/tmp/project", persist=False),
@@ -4640,40 +4654,29 @@ def test_agent_session_exposes_diagnostics_views(tmp_path) -> None:
 
 def test_agent_session_set_model_records_auth_resolution_failures(tmp_path) -> None:
     from loushang.agent import Agent
-    from loushang.ai.model.domain import Auth, Endpoint
-    from loushang.ai.model.registry import ModelRegistry as AiModelRegistry
     from loushang.coding.control import AuthManager, ModelRegistry
     from loushang.coding.diagnostics import DiagnosticsService
     from loushang.coding.session import AgentSession, ModelSelection
     from loushang.coding.store import SessionManager
 
-    ai_registry = AiModelRegistry()
-    ai_registry.register_endpoint(
-        "demo",
-        Endpoint(
-            id="responses",
-            api="responses",
-            provider="demo",
-            auth=Auth(api_key_env="LOUSHANG_TEST_DEMO_KEY"),
-        ),
-    )
-    ai_registry.register_model(
+    models = tuple(
         Model(
-            id="open",
-            name="Open",
+            id=model_id,
+            name=name,
             provider="demo",
             endpoint="responses",
-            capabilities=Capabilities(reasoning=True, input=("text",), context_window=128000, max_tokens=4096),
+            capabilities=Capabilities(
+                reasoning=True,
+                input=("text",),
+                context_window=128000,
+                max_tokens=4096,
+            ),
         )
+        for model_id, name in (("open", "Open"), ("secured", "Secured"))
     )
-    ai_registry.register_model(
-        Model(
-            id="secured",
-            name="Secured",
-            provider="demo",
-            endpoint="responses",
-            capabilities=Capabilities(reasoning=True, input=("text",), context_window=128000, max_tokens=4096),
-        )
+    ai_registry = _ai_registry_with_models(
+        *models,
+        endpoint_auth=Auth(api_key_env="LOUSHANG_TEST_DEMO_KEY"),
     )
 
     manager = SessionManager.new(session_dir=tmp_path, cwd="/tmp/project", persist=False)

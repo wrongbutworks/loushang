@@ -709,12 +709,19 @@ def _build_registry(raw: dict[str, Any]) -> ModelRegistry:
             website=provider_raw.get("website"),
             auth=provider_auth,
             endpoints=endpoints,
+            _auth_scope_known=True,
+            _explicit_endpoint_auth=frozenset(
+                endpoint_id
+                for explicit_provider_id, endpoint_id in endpoint_auth_explicit
+                if explicit_provider_id == provider_id
+            ),
+            _explicit_model_auth=frozenset(
+                (endpoint_id, model_id)
+                for explicit_provider_id, endpoint_id, model_id in model_auth_explicit
+                if explicit_provider_id == provider_id
+            ),
         )
-    return ModelRegistry.from_providers(
-        providers,
-        endpoint_auth_explicit=endpoint_auth_explicit,
-        model_auth_explicit=model_auth_explicit,
-    )
+    return ModelRegistry.from_providers(providers)
 
 
 _BUILTIN_CATALOG_RESOURCE = "models.json"
@@ -785,9 +792,15 @@ def _combine_model_registries(
     seen_endpoints: dict[tuple[str, str], tuple[str, str]] = {}
     seen_models: dict[tuple[str, str, str], tuple[str, str]] = {}
     for source, registry in sources:
-        endpoint_auth_explicit.update(registry._endpoint_auth_explicit)
-        model_auth_explicit.update(registry._model_auth_explicit)
         for provider in registry.list_providers():
+            endpoint_auth_explicit.update(
+                (provider.id, endpoint_id)
+                for endpoint_id in provider._explicit_endpoint_auth
+            )
+            model_auth_explicit.update(
+                (provider.id, endpoint_id, model_id)
+                for endpoint_id, model_id in provider._explicit_model_auth
+            )
             provider_path = f"providers.{provider.id}"
             existing_provider = providers.get(provider.id)
             for endpoint in provider.list_endpoints():
@@ -845,14 +858,27 @@ def _combine_model_registries(
                 providers[provider.id] = replace(provider, endpoints=endpoints)
             else:
                 providers[provider.id] = replace(existing_provider, endpoints=endpoints)
-    return ModelRegistry.from_providers(
-        providers,
-        endpoint_auth_explicit=endpoint_auth_explicit,
-        model_auth_explicit=model_auth_explicit,
-    )
+    providers = {
+        provider_id: replace(
+            provider,
+            _auth_scope_known=True,
+            _explicit_endpoint_auth=frozenset(
+                endpoint_id
+                for explicit_provider_id, endpoint_id in endpoint_auth_explicit
+                if explicit_provider_id == provider_id
+            ),
+            _explicit_model_auth=frozenset(
+                (endpoint_id, model_id)
+                for explicit_provider_id, endpoint_id, model_id in model_auth_explicit
+                if explicit_provider_id == provider_id
+            ),
+        )
+        for provider_id, provider in providers.items()
+    }
+    return ModelRegistry.from_providers(providers)
 
 
-def load_layered_model_registry(
+def _load_layered_model_registry(
     *,
     user_dir: Path | None = None,
     project_dir: Path | None = None,
@@ -862,19 +888,3 @@ def load_layered_model_registry(
         if directory is not None and directory.is_dir():
             sources.extend(_model_registry_sources_from_directory(directory))
     return _combine_model_registries(sources)
-
-
-def load_model_registry(
-    path: str | Path | None = None,
-) -> ModelRegistry:
-    if path is None:
-        return load_layered_model_registry(
-            user_dir=Path.home() / ".loushang" / "models",
-        )
-
-    resolved = Path(path)
-    if resolved.is_file():
-        return load_model_registry_from_file(resolved)
-    if resolved.is_dir():
-        return load_model_registry_from_directory(resolved)
-    raise FileNotFoundError(str(resolved))

@@ -11,11 +11,6 @@ from loushang.agent import Agent
 from loushang.agent.types import AgentState, AgentToolResult
 from loushang.ai.event_stream.stream import AssistantMessageEventStream
 from loushang.ai.model import Capabilities, Model
-from loushang.ai.model.domain import Endpoint
-from loushang.ai.model.registry import (
-    clear_default_model_registry,
-    get_default_model_registry,
-)
 from loushang.ai.types import (
     AssistantMessage,
     Context,
@@ -32,6 +27,7 @@ def _model() -> Model:
         name="Faux",
         provider="faux",
         endpoint="anthropic-messages",
+        api="anthropic-messages",
         capabilities=Capabilities(
             reasoning=False,
             input=("text",),
@@ -44,21 +40,6 @@ def _model() -> Model:
 def _usage() -> Usage:
     return Usage(
         input=0, output=0, cache_read=0, cache_write=0, total_tokens=0, cost={}
-    )
-
-
-@pytest.fixture(autouse=True)
-def _default_registry() -> None:
-    clear_default_model_registry()
-    registry = get_default_model_registry()
-    registry.register_endpoint(
-        "faux",
-        Endpoint(
-            id="anthropic-messages",
-            provider="faux",
-            api="anthropic-messages",
-            models={"faux-model": _model()},
-        ),
     )
 
 

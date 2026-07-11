@@ -26,7 +26,6 @@ from collections.abc import Iterable
 from dataclasses import dataclass
 
 from loushang.ai import (
-    ApiKeyAuth,
     CallOptions,
     Model,
     TimeoutOptions,
@@ -138,7 +137,7 @@ def _build_options(
 ) -> CallOptions:
     del route
     return CallOptions(
-        auth=ApiKeyAuth(api_key),
+        api_key=api_key,
         max_output_tokens=max_tokens,
         timeout=TimeoutOptions(total_seconds=timeout),
     )

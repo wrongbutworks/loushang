@@ -8,7 +8,7 @@ from loushang.ai.errors import AIError, AIErrorCode, AIErrorInfo
 from loushang.ai.event_stream import AssistantMessageEventStream
 from loushang.ai.model import Model
 from loushang.ai.model.registry import (
-    ModelRegistry,
+    ModelRegistry as _ModelRegistry,
 )
 from loushang.ai.model.registry import (
     get_default_model_registry as _get_default_model_registry,
@@ -47,7 +47,7 @@ from loushang.ai.usage import (
 )
 
 
-def _model_registry() -> ModelRegistry:
+def _model_registry() -> _ModelRegistry:
     return _get_default_model_registry()
 
 

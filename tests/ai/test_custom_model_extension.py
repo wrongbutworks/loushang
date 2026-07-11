@@ -6,13 +6,13 @@ from pathlib import Path
 
 import pytest
 
-from loushang.ai import ApiKeyAuth, CallOptions, complete
+from loushang.ai import CallOptions, complete
 from loushang.ai.advanced.registry import ApiProviderRegistry
 from loushang.ai.model import (
     load_builtin_model_registry,
-    load_layered_model_registry,
     load_model_registry_from_file,
 )
+from loushang.ai.model.loader import _load_layered_model_registry
 from loushang.ai.provider import ProviderRequest
 
 
@@ -86,7 +86,7 @@ def test_json_only_custom_model_loads_merges_queries_and_completes(
     assert custom_model.supports_stream is True
     assert custom_model.supports_tool_use is True
 
-    layered = load_layered_model_registry(user_dir=user_model_dir)
+    layered = _load_layered_model_registry(user_dir=user_model_dir)
     builtin_model = load_builtin_model_registry().list_models()[0]
     assert (
         layered.get_model(
@@ -108,7 +108,7 @@ def test_json_only_custom_model_loads_merges_queries_and_completes(
         return await complete(
             model,
             {"messages": [{"role": "user", "content": "hello"}]},
-            CallOptions(auth=ApiKeyAuth("test-key")),
+            CallOptions(api_key="test-key"),
             provider_registry=provider_registry,
         )
 
@@ -127,8 +127,11 @@ def test_json_only_custom_model_loads_merges_queries_and_completes(
     assert request.endpoint == "anthropic-messages"
     assert request.api == "anthropic-messages"
     assert request.base_url == "https://models.company.example"
-    assert request.candidate_base_urls == ("https://models.company.example",)
     assert request.model == model
+    assert request.capabilities == model.capabilities
+    assert request.defaults == dict(model.defaults)
+    assert request.transport == model.transport
+    assert request.routing == model.routing
     assert request.upstream_model_id == "vendor/company-chat-2026-06"
     assert getattr(request.adapter_config, "fine_grained_tools") is True
     assert getattr(request.adapter_config, "long_cache_retention") is False
@@ -182,7 +185,7 @@ def test_layered_registry_rejects_duplicate_builtin_full_model_id(
     path = _write_model_file(tmp_path, raw)
 
     with pytest.raises(ValueError, match="duplicate model id") as exc_info:
-        load_layered_model_registry(user_dir=tmp_path)
+        _load_layered_model_registry(user_dir=tmp_path)
 
     message = str(exc_info.value)
     assert str(path) in message

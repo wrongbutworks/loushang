@@ -17,8 +17,8 @@ from loushang.ai.event_stream.stream import AssistantMessageEventStream
 from loushang.ai.model import (
     Capabilities,
     Model,
-    get_default_model_registry,
-    load_model_registry,
+    load_model_registry_from_directory,
+    load_model_registry_from_file,
     resolve_model_endpoint,
 )
 from loushang.ai.model.registry import ModelRegistry
@@ -35,7 +35,6 @@ ENV_EXAMPLES_MODEL_CATALOG = "LOUSHANG_EXAMPLES_MODEL_CATALOG"
 ENV_EXAMPLES_SESSION_DIR = "LOUSHANG_EXAMPLES_SESSION_DIR"
 
 _OVERRIDE_REGISTRY: ModelRegistry | None = None
-_DEFAULT_REGISTRY_SYNCED = False
 
 
 def _resolve_session_dir(default_session_dir: Path) -> Path:
@@ -53,8 +52,6 @@ def _resolve_model_catalog() -> Path | None:
 
 
 def _resolve_model(provider: str, endpoint: str, model_id: str) -> Model:
-    if _resolve_model_catalog() is not None:
-        _sync_custom_catalog_into_default()
     registry = _resolve_model_registry()
     if registry is not None:
         catalog = _resolve_model_catalog()
@@ -72,25 +69,17 @@ def _resolve_model_registry() -> ModelRegistry | None:
     global _OVERRIDE_REGISTRY
     if _OVERRIDE_REGISTRY is None:
         try:
-            _OVERRIDE_REGISTRY = load_model_registry(catalog)
+            loader = (
+                load_model_registry_from_directory
+                if catalog.is_dir()
+                else load_model_registry_from_file
+            )
+            _OVERRIDE_REGISTRY = loader(catalog)
         except FileNotFoundError as exc:
             raise RuntimeError(f"model catalog not found: {catalog}") from exc
         except Exception as exc:
             raise RuntimeError(f"failed to load model catalog: {catalog}") from exc
     return _OVERRIDE_REGISTRY
-
-
-def _sync_custom_catalog_into_default() -> None:
-    global _DEFAULT_REGISTRY_SYNCED
-    if _DEFAULT_REGISTRY_SYNCED:
-        return
-    registry = _resolve_model_registry()
-    if registry is None:
-        return
-    default_registry = get_default_model_registry()
-    for provider in registry.providers.values():
-        default_registry.register_provider(provider)
-    _DEFAULT_REGISTRY_SYNCED = True
 
 
 MODEL_ID = "kimi-for-coding"

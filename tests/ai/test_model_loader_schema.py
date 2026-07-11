@@ -5,17 +5,17 @@ from pathlib import Path
 
 import pytest
 
+import loushang.ai.model as model_api
 from loushang.ai.model import (
     AnthropicMessagesConfig,
     OpenAICompletionsConfig,
     OpenAIResponsesConfig,
     load_builtin_model_registry,
-    load_layered_model_registry,
-    load_model_registry,
     load_model_registry_from_directory,
     load_model_registry_from_file,
     validate_model_registry_raw,
 )
+from loushang.ai.model.loader import _load_layered_model_registry
 
 
 def _capabilities() -> dict[str, object]:
@@ -31,6 +31,13 @@ def _capabilities() -> dict[str, object]:
         "attachment": False,
         "temperature": True,
     }
+
+
+def test_model_loader_public_surface_uses_explicit_sources() -> None:
+    assert not hasattr(model_api, "load_model_registry")
+    assert not hasattr(model_api, "load_layered_model_registry")
+    assert callable(model_api.load_model_registry_from_file)
+    assert callable(model_api.load_model_registry_from_directory)
 
 
 def _model_raw(**overrides: object) -> dict[str, object]:
@@ -340,6 +347,7 @@ def test_openai_responses_adapter_schema_accepts_core_fields(tmp_path: Path) -> 
             api="openai-responses",
             endpoint_adapter={
                 "developerRole": True,
+                "maxOutputTokens": False,
                 "promptCacheKey": True,
                 "sessionIdHeader": True,
                 "longCacheRetention": True,
@@ -354,6 +362,7 @@ def test_openai_responses_adapter_schema_accepts_core_fields(tmp_path: Path) -> 
     )
 
     assert isinstance(model.adapter, OpenAIResponsesConfig)
+    assert model.adapter.max_output_tokens is False
     assert model.adapter.prompt_cache_key is True
 
 
@@ -477,7 +486,7 @@ def test_directory_and_layered_registry_loading(tmp_path: Path) -> None:
         encoding="utf-8",
     )
 
-    layered = load_layered_model_registry(
+    layered = _load_layered_model_registry(
         user_dir=user_dir,
         project_dir=project_dir,
     )
@@ -601,7 +610,7 @@ def test_layered_registry_rejects_user_duplicate_of_builtin_model(
     user_file.write_text(json.dumps(raw), encoding="utf-8")
 
     with pytest.raises(ValueError, match="duplicate model id") as exc_info:
-        load_layered_model_registry(user_dir=user_dir)
+        _load_layered_model_registry(user_dir=user_dir)
 
     message = str(exc_info.value)
     assert str(user_file) in message
@@ -635,7 +644,7 @@ def test_layered_registry_rejects_project_duplicate_instead_of_deep_merge(
     )
 
     with pytest.raises(ValueError) as exc_info:
-        load_layered_model_registry(user_dir=user_dir, project_dir=project_dir)
+        _load_layered_model_registry(user_dir=user_dir, project_dir=project_dir)
 
     message = str(exc_info.value)
     assert "duplicate model id custom:test-endpoint:test-model" in message
@@ -676,10 +685,7 @@ def test_directory_registry_error_includes_file_and_field_path(
     assert "capabilities.input" in message
 
 
-def test_load_model_registry_dispatches_by_path_type(
-    monkeypatch: pytest.MonkeyPatch,
-    tmp_path: Path,
-) -> None:
+def test_explicit_model_registry_loaders_match_path_type(tmp_path: Path) -> None:
     path = _write_registry(
         tmp_path,
         _registry_raw(endpoint_adapter={"developerRole": False}),
@@ -687,18 +693,19 @@ def test_load_model_registry_dispatches_by_path_type(
     directory = tmp_path / "models"
     directory.mkdir()
     (directory / "models.json").write_text(path.read_text(encoding="utf-8"))
-    monkeypatch.setattr(Path, "home", lambda: tmp_path / "home")
-
-    assert load_model_registry().list_models()
     assert (
-        load_model_registry(path).get_model("custom", "test-endpoint", "test-model").id
+        load_model_registry_from_file(path)
+        .get_model("custom", "test-endpoint", "test-model")
+        .id
         == "test-model"
     )
     assert (
-        load_model_registry(directory)
+        load_model_registry_from_directory(directory)
         .get_model("custom", "test-endpoint", "test-model")
         .id
         == "test-model"
     )
     with pytest.raises(FileNotFoundError):
-        load_model_registry(tmp_path / "missing.json")
+        load_model_registry_from_file(tmp_path / "missing.json")
+    with pytest.raises(FileNotFoundError):
+        load_model_registry_from_directory(tmp_path / "missing")

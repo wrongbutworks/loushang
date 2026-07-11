@@ -19,7 +19,7 @@ from loushang.ai.provider.errors import (
 )
 from loushang.ai.providers.openai_responses_shared import build_copilot_dynamic_headers
 from loushang.ai.providers.provider_helpers import (
-    apply_session_headers,
+    apply_cache_key_headers,
     close_provider_stream,
     extract_sdk_api_key,
     sdk_default_headers,
@@ -39,11 +39,8 @@ class OpenAICompletionsProvider:
     api = "openai-completions"
     supports_structured_output = True
 
-    def __init__(
-        self, *, client: Any | None = None, base_url: str | None = None
-    ) -> None:
+    def __init__(self, *, client: Any | None = None) -> None:
         self._client = client
-        self._base_url = base_url
 
     async def invoke_raw(self, request: ProviderRequest) -> AsyncIterator[RawPart]:
         model = request.model
@@ -81,49 +78,40 @@ class OpenAICompletionsProvider:
 
         default_headers = sdk_default_headers(headers)
         if _uses_copilot_dynamic_headers(resolved):
-            copilot_headers = build_copilot_dynamic_headers(
-                list(normalized.messages)
-            )
+            copilot_headers = build_copilot_dynamic_headers(list(normalized.messages))
             default_headers.update(copilot_headers)
         cache_retention = (
             getattr(options, "cache_retention", None) if options is not None else None
         ) or "short"
-        session_id = (
-            getattr(options, "session_id", None) if options is not None else None
-        )
-        _validate_cache_session_options(
+        cache_key = getattr(options, "cache_key", None) if options is not None else None
+        _validate_cache_options(
             model,
             resolved,
             adapter_config=adapter_config,
             cache_retention=cache_retention,
-            session_id=session_id,
         )
         if (
             cache_retention != "none"
-            and isinstance(session_id, str)
-            and session_id
+            and isinstance(cache_key, str)
+            and cache_key
             and adapter_config.session_affinity_headers
         ):
-            apply_session_headers(
+            apply_cache_key_headers(
                 default_headers,
-                session_id,
+                cache_key,
                 include_affinity=True,
             )
 
         timeout_s = _resolve_timeout_seconds(options, resolved)
-        # 优先使用 provider 的 base_url（如果提供），否则使用 resolved 的 base_url
-        effective_base_url = (
-            self._base_url if self._base_url is not None else resolved.base_url
-        )
         client_kwargs: dict[str, Any] = {
             "api_key": api_key,
-            "base_url": effective_base_url,
+            "base_url": resolved.base_url,
             "default_headers": default_headers or None,
         }
         if isinstance(timeout_s, int | float):
             client_kwargs["timeout"] = timeout_s
         client = self._client or AsyncOpenAI(**client_kwargs)  # type: ignore[call-arg]
-        _debug("client", {"base_url": effective_base_url, "headers": default_headers})
+        _debug("client", {"base_url": resolved.base_url, "headers": default_headers})
 
         capabilities = getattr(resolved, "capabilities", None)
         messages_param = _build_messages(
@@ -152,7 +140,7 @@ class OpenAICompletionsProvider:
             params,
             adapter_config=adapter_config,
             cache_retention=cache_retention,
-            session_id=session_id,
+            cache_key=cache_key,
         )
         extra_body: dict[str, Any] = {}
         if is_stream_request and supports_usage_in_streaming:
@@ -681,24 +669,23 @@ def _apply_prompt_cache_params(
     *,
     adapter_config: OpenAICompletionsConfig,
     cache_retention: str | None,
-    session_id: str | None,
+    cache_key: str | None,
 ) -> None:
-    if cache_retention == "none" or not isinstance(session_id, str) or not session_id:
+    if cache_retention == "none" or not isinstance(cache_key, str) or not cache_key:
         return
     if not adapter_config.prompt_cache_key:
         return
-    params["prompt_cache_key"] = session_id
+    params["prompt_cache_key"] = cache_key
     if cache_retention == "long" and adapter_config.long_cache_retention:
         params["prompt_cache_retention"] = "24h"
 
 
-def _validate_cache_session_options(
+def _validate_cache_options(
     model: object,
     resolved: object,
     *,
     adapter_config: OpenAICompletionsConfig,
     cache_retention: str | None,
-    session_id: str | None,
 ) -> None:
     if cache_retention == "long" and not adapter_config.long_cache_retention:
         raise UnsupportedCapabilityError(
@@ -807,18 +794,30 @@ def _apply_provider_routing(
         return
     openrouter_routing = overrides.get("openrouter")
     if namespace == "openrouter" and openrouter_routing:
-        params["provider"] = dict(openrouter_routing)
+        params["provider"] = _mutable_json_mapping(openrouter_routing)
         return
     vercel_gateway_routing = overrides.get("vercelGateway")
     if namespace != "vercelGateway" or not vercel_gateway_routing:
         return
     gateway: dict[str, Any] = {}
     if vercel_gateway_routing.get("only"):
-        gateway["only"] = vercel_gateway_routing["only"]
+        gateway["only"] = _mutable_json_value(vercel_gateway_routing["only"])
     if vercel_gateway_routing.get("order"):
-        gateway["order"] = vercel_gateway_routing["order"]
+        gateway["order"] = _mutable_json_value(vercel_gateway_routing["order"])
     if gateway:
         params["providerOptions"] = {"gateway": gateway}
+
+
+def _mutable_json_mapping(value: Mapping[str, object]) -> dict[str, object]:
+    return {key: _mutable_json_value(entry) for key, entry in value.items()}
+
+
+def _mutable_json_value(value: object) -> object:
+    if isinstance(value, Mapping):
+        return _mutable_json_mapping(value)
+    if isinstance(value, (list, tuple)):
+        return [_mutable_json_value(entry) for entry in value]
+    return value
 
 
 def _active_routing_namespace(

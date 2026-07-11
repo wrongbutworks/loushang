@@ -19,8 +19,6 @@ from loushang.ai.model.domain import (
 )
 from loushang.ai.model.loader import (
     load_builtin_model_registry,
-    load_layered_model_registry,
-    load_model_registry,
     load_model_registry_from_directory,
     load_model_registry_from_file,
     validate_model_registry_raw,
@@ -62,8 +60,6 @@ __all__ = [
     "format_model_ref",
     "get_default_model_registry",
     "load_builtin_model_registry",
-    "load_layered_model_registry",
-    "load_model_registry",
     "load_model_registry_from_directory",
     "load_model_registry_from_file",
     "merge_adapter_config",

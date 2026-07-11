@@ -56,12 +56,12 @@ class _RuntimeCancelled(Exception):
 def start_provider_runtime(
     raw_parts: RawPartSource,
     *,
-    model,
     options,
     request: ProviderRequest,
     _sleep: Sleep = asyncio.sleep,
     _jitter: Jitter = random.random,
 ) -> AssistantMessageEventStream:
+    model = request.model
     stream = AssistantMessageEventStream()
     call_id = uuid4().hex
     assembler = RawAssembler(

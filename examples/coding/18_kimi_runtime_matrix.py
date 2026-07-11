@@ -4,7 +4,11 @@ import json
 import sys
 from pathlib import Path
 
-from loushang.ai.model import get_default_model_registry, load_model_registry
+from loushang.ai.model import (
+    get_default_model_registry,
+    load_model_registry_from_directory,
+    load_model_registry_from_file,
+)
 from loushang.ai.model.domain import Endpoint
 from loushang.ai.model.registry import ModelRegistry
 
@@ -39,7 +43,12 @@ def _provider_default_base_url(endpoint: Endpoint) -> str:
 def _sorted_endpoints(catalog_path: Path | None) -> tuple[ModelRegistry, list[tuple[str, Endpoint]]]:
     if catalog_path is not None and catalog_path.exists():
         try:
-            registry = load_model_registry(catalog_path)
+            loader = (
+                load_model_registry_from_directory
+                if catalog_path.is_dir()
+                else load_model_registry_from_file
+            )
+            registry = loader(catalog_path)
         except Exception:
             custom = _resolve_model_registry()
             registry = custom if custom is not None else get_default_model_registry()

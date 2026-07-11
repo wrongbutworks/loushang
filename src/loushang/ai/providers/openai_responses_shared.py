@@ -311,7 +311,7 @@ async def process_responses_stream(
                     done_part["index"] = index
                     tool_call_ids_by_index.pop(index, None)
                 yield _raw_part(done_part)
-        elif etype == "response.completed":
+        elif etype in {"response.completed", "response.done"}:
             resp = getattr(event, "response", None)
             if resp is not None:
                 multiplier = _service_tier_cost_multiplier(

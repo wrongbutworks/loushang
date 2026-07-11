@@ -31,17 +31,9 @@ def clear_api_providers() -> None:
     _api_provider_registry().clear_api_providers()
 
 
-def reset_api_providers(
-    *,
-    anthropic_base_url: str | None = None,
-    openai_base_url: str | None = None,
-) -> None:
+def reset_api_providers() -> None:
     clear_api_providers()
-    register_builtin_ai_providers(
-        _api_provider_registry(),
-        anthropic_base_url=anthropic_base_url,
-        openai_base_url=openai_base_url,
-    )
+    register_builtin_ai_providers(_api_provider_registry())
 
 
 __all__ = [

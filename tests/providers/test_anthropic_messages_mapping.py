@@ -3,14 +3,14 @@ from __future__ import annotations
 import asyncio
 import json
 import sys
-from collections.abc import Iterator
 from dataclasses import dataclass, field, replace
 from types import ModuleType, SimpleNamespace
 
 import pytest
 
-from loushang.ai import ApiKeyAuth, CallOptions, OAuthBearerAuth, ReasoningOptions
+from loushang.ai import CallOptions, ReasoningOptions
 from loushang.ai.context import normalize_context
+from loushang.ai.model import ModelRegistry, Provider
 from loushang.ai.model.domain import (
     AnthropicMessagesConfig,
     Capabilities,
@@ -18,11 +18,6 @@ from loushang.ai.model.domain import (
     EndpointTransport,
     Model,
 )
-from loushang.ai.model.registry import (
-    clear_default_model_registry,
-    get_default_model_registry,
-)
-from loushang.ai.provider import ProviderRequest
 from loushang.ai.providers.anthropic import AnthropicProvider
 from loushang.ai.types import (
     AssistantMessage,
@@ -36,6 +31,8 @@ from loushang.ai.types import (
     UserMessage,
 )
 from tests.providers._runtime import (
+    bound_test_model,
+    make_provider_request,
     provider_request_for_test,
     start_test_provider_stream,
 )
@@ -48,7 +45,24 @@ SUPPORTS_EAGER_TOOL_INPUT_STREAMING = "supportsEagerToolInputStreaming"
 SUPPORTS_LONG_CACHE_RETENTION = "supportsLongCacheRetention"
 
 
+def _registry_with_endpoint(provider_id: str, endpoint: Endpoint) -> ModelRegistry:
+    return ModelRegistry.from_providers(
+        {
+            provider_id: Provider(
+                id=provider_id,
+                endpoints={endpoint.id: endpoint},
+            )
+        }
+    )
+
+
 def _normalized_context(model, context, options=None):
+    if not isinstance(model, Model) or not model.api:
+        model = bound_test_model(
+            model,
+            api="anthropic-messages",
+            options=options,
+        )
     pairing_mode = (
         "strict" if getattr(options, "pairing_mode", "strict") == "strict" else "repair"
     )
@@ -64,7 +78,11 @@ def _invoke_raw_parts(
     *,
     mode: str = "stream",
 ):
-    normalized_context = _normalized_context(model, context, options)
+    normalized_context = _normalized_context(
+        request.model if request is not None else model,
+        context,
+        options,
+    )
     provider_request = provider_request_for_test(
         provider,
         model,
@@ -81,7 +99,11 @@ async def _stream(provider, model, context, options=None, request=None):
     return start_test_provider_stream(
         provider,
         model,
-        _normalized_context(model, context, options),
+        _normalized_context(
+            request.model if request is not None else model,
+            context,
+            options,
+        ),
         options,
         request=request,
     )
@@ -128,7 +150,7 @@ def test_anthropic_provider_sends_opus_48_xhigh_adaptive_thinking(
                     ]
                 },
                 CallOptions(
-                    auth=ApiKeyAuth("test-key"),
+                    api_key="test-key",
                     reasoning=ReasoningOptions(effort="xhigh"),
                 ),
             )
@@ -179,7 +201,7 @@ def test_anthropic_provider_complete_mode_maps_non_stream_response(
                         UserMessage(role="user", content="hello", timestamp=0.0)
                     ]
                 },
-                CallOptions(auth=ApiKeyAuth("test-key")),
+                CallOptions(api_key="test-key"),
                 mode="complete",
             )
         )
@@ -253,9 +275,7 @@ def test_anthropic_provider_uses_typed_transport_for_fine_grained_beta(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     _fake_anthropic_module(monkeypatch, [SimpleNamespace(type="message_stop")])
-    clear_default_model_registry()
-    registry = get_default_model_registry()
-    registry.register_endpoint(
+    registry = _registry_with_endpoint(
         "anthropic",
         Endpoint(
             id="anthropic-messages",
@@ -284,7 +304,7 @@ def test_anthropic_provider_uses_typed_transport_for_fine_grained_beta(
                         UserMessage(role="user", content="hello", timestamp=0.0)
                     ]
                 },
-                CallOptions(auth=ApiKeyAuth("test-key")),
+                CallOptions(api_key="test-key"),
             )
         )
     )
@@ -299,9 +319,7 @@ def test_anthropic_provider_uses_upstream_model_id(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     _fake_anthropic_module(monkeypatch, [SimpleNamespace(type="message_stop")])
-    clear_default_model_registry()
-    registry = get_default_model_registry()
-    registry.register_endpoint(
+    registry = _registry_with_endpoint(
         "anthropic",
         Endpoint(
             id="anthropic-messages",
@@ -332,7 +350,7 @@ def test_anthropic_provider_uses_upstream_model_id(
                         UserMessage(role="user", content="hello", timestamp=0.0)
                     ]
                 },
-                CallOptions(auth=ApiKeyAuth("test-key")),
+                CallOptions(api_key="test-key"),
             )
         )
     )
@@ -709,10 +727,7 @@ def test_anthropic_provider_oauth_request_uses_sdk_headers_and_tool_names(
                         ),
                     ],
                 },
-                CallOptions(
-                    auth=OAuthBearerAuth("sk-ant-oat-test"),
-                    pairing_mode="repair",
-                ),
+                CallOptions(api_key="sk-ant-oat-test", pairing_mode="repair"),
             )
         )
     )
@@ -774,9 +789,7 @@ def test_anthropic_provider_oauth_stream_maps_claude_code_tool_name_back_to_regi
                         ),
                     ],
                 },
-                CallOptions(
-                    auth=OAuthBearerAuth("sk-ant-oat-test"),
-                ),
+                CallOptions(api_key="sk-ant-oat-test"),
             )
         )
     )
@@ -841,7 +854,7 @@ def test_anthropic_provider_stream_uses_tool_input_from_content_block_start(
                         ),
                     ],
                 },
-                CallOptions(auth=ApiKeyAuth("test-key"), trace=trace_events.append),
+                CallOptions(api_key="test-key", trace=trace_events.append),
             )
         )
     )
@@ -929,7 +942,7 @@ def test_anthropic_provider_stream_keeps_interleaved_tool_blocks_by_index(
                         ),
                     ],
                 },
-                CallOptions(auth=ApiKeyAuth("test-key")),
+                CallOptions(api_key="test-key"),
             )
         )
     )
@@ -1011,7 +1024,7 @@ def test_anthropic_provider_payload_snapshot_for_mixed_assistant_and_tool_result
                         ),
                     ],
                 },
-                CallOptions(auth=ApiKeyAuth("test-key")),
+                CallOptions(api_key="test-key"),
             )
         )
     )
@@ -1102,7 +1115,7 @@ def test_anthropic_provider_respects_explicit_max_tokens(
                 id="claude-test", provider="anthropic", endpoint="anthropic-messages"
             ),
             {"messages": [UserMessage(role="user", content="hello", timestamp=0.0)]},
-            CallOptions(auth=ApiKeyAuth("test-key"), max_output_tokens=1234),
+            CallOptions(api_key="test-key", max_output_tokens=1234),
         )
     )
     asyncio.run(stream.result())
@@ -1115,9 +1128,8 @@ def test_anthropic_provider_uses_resolved_capability_max_tokens(
 ) -> None:
     _fake_anthropic_module(monkeypatch, [SimpleNamespace(type="message_stop")])
     provider = AnthropicProvider()
-    request = ProviderRequest(
-        provider="anthropic",
-        endpoint="anthropic-messages",
+    request = make_provider_request(
+        _Model(max_tokens=8192),
         api="anthropic-messages",
         base_url=None,
         headers={"x-api-key": "test-key"},
@@ -1135,7 +1147,7 @@ def test_anthropic_provider_uses_resolved_capability_max_tokens(
                         UserMessage(role="user", content="hello", timestamp=0.0)
                     ]
                 },
-                CallOptions(auth=ApiKeyAuth("ignored-options-key")),
+                CallOptions(api_key="ignored-options-key"),
                 request,
             )
         )
@@ -1149,9 +1161,8 @@ def test_anthropic_provider_uses_typed_protocol_over_stale_false_options(
 ) -> None:
     _fake_anthropic_module(monkeypatch, [SimpleNamespace(type="message_stop")])
     provider = AnthropicProvider()
-    request = ProviderRequest(
-        provider="anthropic",
-        endpoint="anthropic-messages",
+    request = make_provider_request(
+        _Model(),
         api="anthropic-messages",
         base_url=None,
         headers={"x-api-key": "test-key"},
@@ -1178,9 +1189,9 @@ def test_anthropic_provider_uses_typed_protocol_over_stale_false_options(
                     ]
                 },
                 CallOptions(
-                    auth=ApiKeyAuth("ignored-options-key"),
+                    api_key="ignored-options-key",
                     cache_retention="long",
-                    session_id="sess_typed",
+                    cache_key="sess_typed",
                     reasoning=ReasoningOptions(enabled=True),
                 ),
                 request,
@@ -1206,9 +1217,8 @@ def test_anthropic_provider_uses_typed_protocol_over_stale_true_options(
 ) -> None:
     _fake_anthropic_module(monkeypatch, [SimpleNamespace(type="message_stop")])
     provider = AnthropicProvider()
-    request = ProviderRequest(
-        provider="anthropic",
-        endpoint="anthropic-messages",
+    request = make_provider_request(
+        _Model(),
         api="anthropic-messages",
         base_url=None,
         headers={"x-api-key": "test-key", "anthropic-version": "2023-06-01"},
@@ -1235,9 +1245,9 @@ def test_anthropic_provider_uses_typed_protocol_over_stale_true_options(
                     ]
                 },
                 CallOptions(
-                    auth=ApiKeyAuth("ignored-options-key"),
+                    api_key="ignored-options-key",
                     cache_retention="long",
-                    session_id="sess_stale",
+                    cache_key="sess_stale",
                     reasoning=ReasoningOptions(enabled=True),
                 ),
                 request,
@@ -1255,6 +1265,49 @@ def test_anthropic_provider_uses_typed_protocol_over_stale_true_options(
     assert payload["messages"][0]["content"][0]["cache_control"] == {
         "type": "ephemeral"
     }
+
+
+def test_anthropic_cache_retention_none_suppresses_cache_key_fields(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _fake_anthropic_module(monkeypatch, [SimpleNamespace(type="message_stop")])
+    provider = AnthropicProvider()
+    request = make_provider_request(
+        _Model(),
+        api="anthropic-messages",
+        headers={"x-api-key": "test-key"},
+        adapter_config=AnthropicMessagesConfig(
+            session_affinity_headers=True,
+            long_cache_retention=True,
+        ),
+    )
+
+    asyncio.run(
+        _collect_parts(
+            _invoke_raw_parts(
+                provider,
+                _Model(),
+                {
+                    "messages": [
+                        UserMessage(
+                            role="user",
+                            content=[TextPart(type="text", text="hello")],
+                            timestamp=0.0,
+                        )
+                    ]
+                },
+                CallOptions(cache_retention="none", cache_key="opaque-cache-key"),
+                request=request,
+            )
+        )
+    )
+
+    headers = _FakeAsyncAnthropic.last_init_kwargs.get("default_headers") or {}
+    assert "session_id" not in headers
+    assert "x-client-request-id" not in headers
+    assert "x-session-affinity" not in headers
+    payload = _FakeAsyncAnthropic.last_stream_kwargs
+    assert "cache_control" not in payload["messages"][0]["content"][0]
 
 
 def test_anthropic_provider_clamps_explicit_max_tokens(
@@ -1279,7 +1332,7 @@ def test_anthropic_provider_clamps_explicit_max_tokens(
                 id="claude-test", provider="anthropic", endpoint="anthropic-messages"
             ),
             {"messages": [UserMessage(role="user", content="hello", timestamp=0.0)]},
-            CallOptions(auth=ApiKeyAuth("test-key"), max_output_tokens=0),
+            CallOptions(api_key="test-key", max_output_tokens=0),
         )
     )
     asyncio.run(stream.result())
@@ -1291,8 +1344,7 @@ def test_anthropic_compat_fireworks_uses_session_headers_without_long_cache_ttl(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     _fake_anthropic_module(monkeypatch, [SimpleNamespace(type="message_stop")])
-    registry = get_default_model_registry()
-    registry.register_endpoint(
+    registry = _registry_with_endpoint(
         "fireworks",
         Endpoint(
             id="anthropic-messages",
@@ -1312,16 +1364,14 @@ def test_anthropic_compat_fireworks_uses_session_headers_without_long_cache_ttl(
             },
         ),
     )
+    model = registry.get_model("fireworks", "anthropic-messages", "claude-sonnet-4-5")
     provider = AnthropicProvider()
 
     asyncio.run(
         _collect_parts(
             _invoke_raw_parts(
                 provider,
-                _Model(
-                    provider_id="fireworks",
-                    base_url="https://api.fireworks.ai/inference/v1",
-                ),
+                model,
                 {
                     "messages": [
                         UserMessage(
@@ -1332,9 +1382,9 @@ def test_anthropic_compat_fireworks_uses_session_headers_without_long_cache_ttl(
                     ]
                 },
                 CallOptions(
-                    auth=ApiKeyAuth("test-key"),
+                    api_key="test-key",
                     cache_retention="long",
-                    session_id="sess_fireworks",
+                    cache_key="sess_fireworks",
                 ),
             )
         )
@@ -1366,7 +1416,7 @@ def test_anthropic_provider_uses_model_max_tokens_without_scaling(
                         UserMessage(role="user", content="hello", timestamp=0.0)
                     ]
                 },
-                CallOptions(auth=ApiKeyAuth("test-key")),
+                CallOptions(api_key="test-key"),
             )
         )
     )
@@ -1390,7 +1440,7 @@ def test_anthropic_provider_caps_model_max_tokens_default(
                         UserMessage(role="user", content="hello", timestamp=0.0)
                     ]
                 },
-                CallOptions(auth=ApiKeyAuth("test-key")),
+                CallOptions(api_key="test-key"),
             )
         )
     )
@@ -1585,26 +1635,3 @@ class _Model:
     defaults: dict[str, object] = field(default_factory=dict)
     provider_id: str = "anthropic"
     endpoint_id: str = "anthropic-messages"
-
-
-@pytest.fixture(autouse=True)
-def _default_registry() -> Iterator[None]:
-    clear_default_model_registry()
-    registry = get_default_model_registry()
-    registry.register_endpoint(
-        "anthropic",
-        Endpoint(
-            id="anthropic-messages",
-            provider="anthropic",
-            api="anthropic-messages",
-            models={
-                "claude-sonnet-4-5": Model(
-                    id="claude-sonnet-4-5",
-                    provider="anthropic",
-                    endpoint="anthropic-messages",
-                )
-            },
-        ),
-    )
-    yield
-    clear_default_model_registry()

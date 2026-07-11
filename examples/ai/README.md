@@ -30,6 +30,12 @@
 - [custom_model_file.py](custom_model_file.py)
   写入当前 `models.json` 形状的自定义模型文件，加载独立 registry，并查询自定义模型
 
+需要真实凭据的调用单独放在未编号示例中，不进入离线 smoke：
+
+- [chatgpt_coding_plan.py](chatgpt_coding_plan.py)
+  只读取调用方已有的 `~/.codex/auth.json`，通过 `loushang.auth.OAuthCredentials`
+  和 `CallOptions.headers` 显式传入调用认证材料。它不执行登录、refresh 或凭据存储。
+
 `examples/ai/advanced/` 放协议观察、faux provider、本地 registry 注入这类高级样例，不作为第一次接入的推荐入口。
 
 - [advanced/inspect_endpoint_contract.py](advanced/inspect_endpoint_contract.py)
@@ -45,14 +51,10 @@
   离线演示 `asyncio.Event` 取消流式调用，并关闭上游 provider source
 - [advanced/trace_events.py](advanced/trace_events.py)
   离线查看版本化 trace event、runtime retry 事件和敏感字段脱敏
-- [advanced/oauth_credential_store.py](advanced/oauth_credential_store.py)
-  离线查看 OAuth scoped credential store 写入、选择和本地文件权限
 - [advanced/platform_quota.py](advanced/platform_quota.py)
-  离线查看 Moonshot/Kimi 平台额度查询与 `PlatformQuota` 输出
+  离线查看现有 Moonshot/Kimi legacy contrib 的平台额度查询与输出
 - [advanced/usage_online.py](advanced/usage_online.py)
   在线检查 usage；当 catalog 缺少价格事实时，cost 输出为 `{"known": false}`
-- [advanced/openai_codex_contrib.py](advanced/openai_codex_contrib.py)
-  显式注册非稳定 Codex contrib adapter 和私有 catalog 后再查找模型
 
 ## Provider 配置速查
 
@@ -77,7 +79,13 @@ model = get_model("moonshot", "openai-completions", "kimi-k2.6")
 - `tencent-hunyuan`: `HUNYUAN_API_KEY`
 - `volcano-ark`: `ARK_API_KEY`
 - `zai`: `ZAI_API_KEY`
-补充：
 
-- [advanced/openai_codex_login.py](advanced/openai_codex_login.py)
-  用于手工登录 `openai-codex` 并保存本地 credentials
+已有 ChatGPT Coding Plan 登录的真实调用：
+
+```bash
+uv run python examples/ai/chatgpt_coding_plan.py
+```
+
+该示例使用 `openai:openai-responses-chatgpt:gpt-5.5-chatgpt`，其上游模型 ID 是
+`gpt-5.5`。ChatGPT 是凭据来源和
+产品场景；请求仍由通用 `openai-responses` 协议 adapter 发送。

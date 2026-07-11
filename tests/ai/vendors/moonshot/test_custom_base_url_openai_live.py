@@ -1,4 +1,4 @@
-"""高级示例：全局覆盖 OpenAI-compatible provider 的 base URL。
+"""高级示例：调用前选择自定义 OpenAI-compatible base URL。
 
 适用场景：
 - 代理网关
@@ -16,14 +16,14 @@ import asyncio
 import os
 import sys
 from collections.abc import Iterable
+from dataclasses import replace
 
 import pytest
 
-from loushang.ai import ApiKeyAuth, CallOptions, complete, get_model
-from loushang.ai.advanced.registry import reset_api_providers
+from loushang.ai import CallOptions, complete, get_model
 
 # 用户可直接修改的配置。
-# 这是高级示例；默认正式示例不需要覆盖 `BASE_URL`。
+# 这是高级示例；默认正式示例直接使用 catalog 中的 base URL。
 API_KEY = ""
 BASE_URL = "https://api.moonshot.cn/v1"
 MODEL_ID = "kimi-k2.6"
@@ -45,7 +45,7 @@ pytestmark = [
 
 
 def _resolve_api_key() -> str:
-    # 即使覆盖了 base URL，认证入口仍然保持与主示例一致。
+    # 即使选择了自定义 base URL，认证入口仍然保持与主示例一致。
     value = API_KEY or os.getenv("MOONSHOT_API_KEY")
     if value:
         return value
@@ -55,7 +55,7 @@ def _resolve_api_key() -> str:
 
 
 def _build_context() -> dict:
-    # 这里故意保持普通 context 结构，用来突出“变化的只有 provider base URL”。
+    # 这里故意保持普通 context 结构，用来突出“变化的只有 model base URL”。
     return {
         "system_prompt": SYSTEM_PROMPT,
         "messages": [{"role": "user", "content": USER_PROMPT}],
@@ -63,8 +63,8 @@ def _build_context() -> dict:
 
 
 def _build_options(api_key: str) -> CallOptions:
-    # 仍然使用显式 api_key，避免把 base URL 覆盖与认证来源混在一起。
-    return CallOptions(auth=ApiKeyAuth(api_key), max_output_tokens=MAX_TOKENS)
+    # 仍然使用显式 api_key，避免把 base URL 选择与认证来源混在一起。
+    return CallOptions(api_key=api_key, max_output_tokens=MAX_TOKENS)
 
 
 def _iter_text(parts: Iterable[object]) -> str:
@@ -79,19 +79,15 @@ def _iter_text(parts: Iterable[object]) -> str:
 async def _main() -> None:
     api_key = _resolve_api_key()
 
-    # 这里使用根包暴露的高级入口，而不是手动构造 registry。
-    # 原因是这个场景本质上是“全局 provider 配置覆盖”，不是普通业务调用路径。
-    reset_api_providers(openai_base_url=BASE_URL)
-    try:
-        model = get_model(PROVIDER_ID, ENDPOINT_ID, MODEL_ID)
-        message = await complete(
-            model,
-            _build_context(),
-            _build_options(api_key),
-        )
-    finally:
-        # 还原默认 provider registry，避免污染同进程内其他验证。
-        reset_api_providers()
+    model = replace(
+        get_model(PROVIDER_ID, ENDPOINT_ID, MODEL_ID),
+        base_url=BASE_URL,
+    )
+    message = await complete(
+        model,
+        _build_context(),
+        _build_options(api_key),
+    )
 
     # 运行后同时确认模型句柄与最终生效的 BASE_URL。
     print(f"MODEL {model.provider_id}:{model.endpoint_id}:{model.id}")

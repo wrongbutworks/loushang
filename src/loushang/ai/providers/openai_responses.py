@@ -23,7 +23,7 @@ from loushang.ai.providers.openai_responses_shared import (
     process_responses_stream,
 )
 from loushang.ai.providers.provider_helpers import (
-    apply_session_headers,
+    apply_cache_key_headers,
     close_provider_stream,
     extract_sdk_api_key,
     sdk_default_headers,
@@ -48,23 +48,22 @@ def _apply_prompt_cache_params(
     *,
     adapter_config: OpenAIResponsesConfig,
     cache_retention: str | None,
-    session_id: str | None,
+    cache_key: str | None,
 ) -> None:
     if (cache_retention or "short") == "none":
         return
-    if adapter_config.prompt_cache_key and isinstance(session_id, str) and session_id:
-        params["prompt_cache_key"] = session_id
+    if adapter_config.prompt_cache_key and isinstance(cache_key, str) and cache_key:
+        params["prompt_cache_key"] = cache_key
     if cache_retention == "long" and adapter_config.long_cache_retention:
         params["prompt_cache_retention"] = "24h"
 
 
-def _validate_cache_session_options(
+def _validate_cache_options(
     model: object,
     resolved: object,
     *,
     adapter_config: OpenAIResponsesConfig,
     cache_retention: str | None,
-    session_id: str | None,
 ) -> None:
     if cache_retention == "long" and not adapter_config.long_cache_retention:
         raise UnsupportedCapabilityError(
@@ -77,15 +76,33 @@ def _validate_cache_session_options(
         )
 
 
+def _validate_max_output_tokens_option(
+    model: object,
+    resolved: object,
+    *,
+    adapter_config: OpenAIResponsesConfig,
+    options: object | None,
+) -> None:
+    if adapter_config.max_output_tokens:
+        return
+    if getattr(options, "max_output_tokens", None) is None:
+        return
+    raise UnsupportedCapabilityError(
+        f"Model {getattr(model, 'id', '<unknown>')!r} does not support max_output_tokens",
+        source=getattr(resolved, "api", None),
+        provider=getattr(resolved, "provider", None),
+        endpoint=getattr(resolved, "endpoint", None),
+        model=getattr(model, "id", None),
+        details={"capability": "max_output_tokens"},
+    )
+
+
 class OpenAIResponsesProvider:
     api = "openai-responses"
     supports_structured_output = True
 
-    def __init__(
-        self, *, client: Any | None = None, base_url: str | None = None
-    ) -> None:
+    def __init__(self, *, client: Any | None = None) -> None:
         self._client = client
-        self._base_url = base_url
 
     async def invoke_raw(self, request: ProviderRequest) -> AsyncIterator[RawPart]:
         model = request.model
@@ -105,6 +122,12 @@ class OpenAIResponsesProvider:
 
         normalized = request.context
         adapter_config = _request_adapter_config(resolved)
+        _validate_max_output_tokens_option(
+            model,
+            resolved,
+            adapter_config=adapter_config,
+            options=options,
+        )
 
         # 延迟导入 OpenAI SDK
         try:
@@ -129,11 +152,6 @@ class OpenAIResponsesProvider:
                 build_copilot_dynamic_headers(list(normalized.messages))
             )
 
-        # 优先使用 provider 的 base_url（如果提供），否则使用 resolved 的 base_url
-        effective_base_url = (
-            self._base_url if self._base_url is not None else resolved.base_url
-        )
-
         # 构造 Responses API 输入。下一步会继续向 pi-ai 的 shared conversion 收敛。
         capabilities = getattr(resolved, "capabilities", None)
         input_items = convert_responses_messages(
@@ -144,29 +162,28 @@ class OpenAIResponsesProvider:
         )
 
         cache_retention = _resolve_cache_retention(options)
-        session_id = (
-            getattr(options, "session_id", None) if options is not None else None
+        cache_key = (
+            getattr(options, "cache_key", None) if options is not None else None
         )
-        _validate_cache_session_options(
+        _validate_cache_options(
             model,
             resolved,
             adapter_config=adapter_config,
             cache_retention=cache_retention,
-            session_id=session_id,
         )
-        should_apply_session_headers = (
+        should_apply_cache_headers = (
             (cache_retention or "short") != "none"
-            and isinstance(session_id, str)
-            and session_id
+            and isinstance(cache_key, str)
+            and cache_key
             and (
                 adapter_config.session_id_header
                 or adapter_config.session_affinity_headers
             )
         )
-        if should_apply_session_headers:
-            apply_session_headers(
+        if should_apply_cache_headers:
+            apply_cache_key_headers(
                 default_headers,
-                session_id,
+                cache_key,
                 include_session_id=adapter_config.session_id_header,
                 include_client_request_id=(
                     adapter_config.session_id_header
@@ -177,10 +194,10 @@ class OpenAIResponsesProvider:
 
         client = self._client or AsyncOpenAI(  # type: ignore[call-arg]
             api_key=api_key,
-            base_url=effective_base_url,
+            base_url=resolved.base_url,
             default_headers=default_headers or None,
         )
-        _debug("client", {"base_url": effective_base_url, "headers": default_headers})
+        _debug("client", {"base_url": resolved.base_url, "headers": default_headers})
 
         upstream_model_id = getattr(resolved, "upstream_model_id", None) or model.id
         is_stream_request = getattr(resolved, "mode", "stream") == "stream"
@@ -207,12 +224,13 @@ class OpenAIResponsesProvider:
             params,
             adapter_config=adapter_config,
             cache_retention=cache_retention,
-            session_id=session_id,
+            cache_key=cache_key,
         )
-        params["max_output_tokens"] = resolve_output_token_budget(
-            model,
-            resolved,
-        ).value
+        if adapter_config.max_output_tokens:
+            params["max_output_tokens"] = resolve_output_token_budget(
+                model,
+                resolved,
+            ).value
         # 温度
         if getattr(options, "temperature", None) is not None:
             params["temperature"] = getattr(options, "temperature")

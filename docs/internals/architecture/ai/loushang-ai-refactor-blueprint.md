@@ -20,10 +20,6 @@
    - 调用凭证解析与 provider auth header 生成
    - OAuth 登录、refresh、credential store、账号选择、quota、billing 和产品级认证策略不属于 core auth 解析职责
 
-认证边界以
-[`loushang-ai-auth-boundary-design.md`](./loushang-ai-auth-boundary-design.md)
-为当前重构输入。
-
 ## 当前原则
 
 - 参考 `reference repository`
@@ -61,6 +57,5 @@
 
 - [`src/loushang/ai/README.md`](../../../src/loushang/ai/README.md)
 - [`docs/internals/architecture/ai/README.md`](./README.md)
-- [`loushang-ai-auth-boundary-design.md`](./loushang-ai-auth-boundary-design.md)
 
 本文件不再作为旧方案细节的保留地。

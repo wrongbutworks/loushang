@@ -32,16 +32,19 @@ from loushang.ai import (
 Use subpackages only when you need an advanced boundary:
 
 - `loushang.ai.model` for custom model catalogs and registry inspection.
-- `loushang.ai.auth` for OAuth credential storage and provider login helpers.
 - `loushang.ai.advanced.registry` for provider registry wiring.
-- `loushang.ai.contrib.openai_codex` for the optional OpenAI Codex integration.
 
-### Session Hints And Prompt Caching
+### Cache Keys And Prompt Caching
 
-`CallOptions.session_id` is a best-effort session hint. Adapters that support
-prompt cache keys or session/affinity headers may map it to provider-specific
-request fields. Adapters that do not support those mechanisms ignore it instead
-of failing the request.
+`CallOptions.cache_key` is an opaque, caller-provided key that remains stable
+across related requests. It may be mapped by an adapter to an upstream
+`prompt_cache_key`, `session_id`, client-request, or affinity header. Those are
+wire-level mappings; `loushang.ai` does not interpret the key as a Loushang
+session, restore messages from it, or manage conversation state.
+
+`cache_retention="none"` suppresses request fields and headers derived from the
+cache key. Adapters that do not support a cache-key mapping ignore it instead of
+failing the request.
 
 Use `cache_retention="long"` only with endpoints that advertise long cache
 retention support. Long retention remains a hard capability request and may fail
@@ -63,6 +66,11 @@ for model in list_models(provider="moonshot", endpoint="openai-completions"):
 model = get_model("moonshot", "openai-completions", "kimi-k2.6")
 ```
 
+This call selects one concrete endpoint before invocation. Endpoint `region` is
+catalog metadata: choose the endpoint for the required region in
+`get_model(provider, endpoint, model_id)`. `complete()` and `stream()` do not
+change the endpoint, inspect `LOUSHANG_REGION`, or perform fallback.
+
 Run [examples/ai/11_provider_matrix.py](../../../examples/ai/11_provider_matrix.py)
 or [examples/ai/12_provider_smoke.py](../../../examples/ai/12_provider_smoke.py)
 to inspect the current built-in provider set offline.
@@ -74,6 +82,12 @@ the common path and
 [examples/ai/advanced/custom_catalog.py](../../../examples/ai/advanced/custom_catalog.py)
 for request-binding inspection. Custom model files can set `upstreamId` when the
 provider-facing model name differs from the local model id.
+
+Advanced callers can load an explicit catalog with
+`load_model_registry_from_file(path)` or
+`load_model_registry_from_directory(path)` from `loushang.ai.model`. A loaded
+`ModelRegistry` is a read-only query/index object; default layered catalog
+assembly is internal and is not a public loader policy.
 
 ### Model File Format
 
@@ -144,9 +158,29 @@ and environment. Curated provider examples:
 | `volcano-ark` | `ARK_API_KEY` |
 | `zai` | `ZAI_API_KEY` |
 
-OAuth support is available through `loushang.ai.auth` and explicit contrib
-integrations such as `openai-codex`. It is not required for the curated
-API-key provider path.
+For OAuth calls, the caller obtains the token and passes one explicit credential
+for that request:
+
+```python
+from loushang.ai import CallOptions
+from loushang.auth import OAuthCredentials
+
+credentials = OAuthCredentials(
+    provider="openai",
+    access_token=access_token,
+)
+options = CallOptions(
+    oauth_credentials=credentials,
+    headers={"chatgpt-account-id": account_id},
+)
+```
+
+`loushang.ai` resolves these values into request headers. It does not log in,
+refresh tokens, read a credential store, or select an account. The runnable
+[ChatGPT Coding Plan example](../../../examples/ai/chatgpt_coding_plan.py) reads
+an existing `~/.codex/auth.json` at the application edge and calls
+`openai:openai-responses-chatgpt:gpt-5.5-chatgpt` through the normal OpenAI Responses
+adapter.
 
 ## Complete Calls
 
@@ -336,11 +370,10 @@ usage = message.usage
 print(usage.input, usage.output, usage.total_tokens, usage.cost)
 ```
 
-Account or platform quota is separate from response usage. Moonshot/Kimi quota
-helpers live in `loushang.ai.contrib.moonshot`. Runnable references:
+Account or platform quota is separate from response usage and is outside
+`loushang.ai`. Runnable response-usage references:
 [examples/ai/10_usage.py](../../../examples/ai/10_usage.py),
-[examples/ai/advanced/usage_online.py](../../../examples/ai/advanced/usage_online.py), and
-[examples/ai/advanced/platform_quota.py](../../../examples/ai/advanced/platform_quota.py).
+[examples/ai/advanced/usage_online.py](../../../examples/ai/advanced/usage_online.py).
 
 ## Example Index
 

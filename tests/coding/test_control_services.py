@@ -10,7 +10,13 @@ def _runtime_footer(cwd: str) -> str:
     return f"Current date: {date.today().isoformat()}\nCurrent working directory: {cwd}"
 
 
-def _model(model_id: str, *, provider: str = "faux", endpoint: str = "anthropic-messages", name: str | None = None) -> Model:
+def _model(
+    model_id: str,
+    *,
+    provider: str = "faux",
+    endpoint: str = "anthropic-messages",
+    name: str | None = None,
+) -> Model:
     return Model(
         id=model_id,
         name=name,
@@ -23,6 +29,98 @@ def _model(model_id: str, *, provider: str = "faux", endpoint: str = "anthropic-
             max_tokens=4096,
         ),
     )
+
+
+def test_model_registry_rebuild_preserves_layering_and_concrete_api(tmp_path) -> None:
+    import json
+
+    from loushang.ai.model import (
+        Auth,
+        Defaults,
+        EndpointRouting,
+        EndpointTransport,
+        OpenAIResponsesConfig,
+    )
+    from loushang.ai.model.registry import ModelRegistry as AiModelRegistry
+    from loushang.coding.control import ModelRegistry
+
+    user_dir = tmp_path / "user"
+    project_dir = tmp_path / "project"
+    for directory, model_id, explicit_auth in (
+        (user_dir, "user-model", True),
+        (project_dir, "project-model", False),
+    ):
+        directory.mkdir()
+        model: dict[str, object] = {
+            "capabilities": {"input": ["text"], "output": ["text"]}
+        }
+        if explicit_auth:
+            model["authOverride"] = {"apiKeyEnv": "MODEL_API_KEY"}
+        (directory / "models.json").write_text(
+            json.dumps(
+                {
+                    "providers": {
+                        "custom": {
+                            "endpoints": {
+                                "responses": {
+                                    "api": "openai-responses",
+                                    "models": {model_id: model},
+                                }
+                            }
+                        }
+                    }
+                }
+            ),
+            encoding="utf-8",
+        )
+
+    registry = ModelRegistry(ai_registry=AiModelRegistry())
+    registry.reload(user_dir=user_dir, project_dir=project_dir)
+
+    assert {
+        model.id for model in registry.ai_registry.list_models(provider="custom")
+    } == {
+        "project-model",
+        "user-model",
+    }
+    assert registry.ai_registry.has_explicit_model_auth(
+        "custom", "responses", "user-model"
+    )
+
+    dynamic = Model(
+        id="dynamic",
+        provider="custom",
+        endpoint="custom-endpoint",
+        api="openai-responses",
+        base_url="https://eu.example/v1",
+        base_url_env="CUSTOM_BASE_URL",
+        region="eu",
+        lane="coding",
+        preferred_endpoint=True,
+        auth=Auth(kind="none"),
+        adapter=OpenAIResponsesConfig(developer_role=False),
+        defaults=Defaults.from_raw({"temperature": 0.2}),
+        transport=EndpointTransport(kind="httpx", timeout=30),
+        routing=EndpointRouting.from_raw(
+            {"requestOverrides": {"custom": {"order": ["eu"]}}}
+        ),
+        upstream_id="upstream-dynamic",
+    )
+    registry.register_model(dynamic)
+    dynamic_endpoint = registry.ai_registry.get_endpoint("custom", "custom-endpoint")
+    assert dynamic_endpoint is not None
+    assert dynamic_endpoint.api == dynamic.api
+    rebuilt = registry.ai_registry.get_model("custom", "custom-endpoint", "dynamic")
+    assert rebuilt.base_url == dynamic.base_url
+    assert rebuilt.base_url_env == dynamic.base_url_env
+    assert rebuilt.region == dynamic.region
+    assert rebuilt.lane == dynamic.lane
+    assert rebuilt.preferred_endpoint is True
+    assert rebuilt.adapter == dynamic.adapter
+    assert rebuilt.defaults == dynamic.defaults
+    assert rebuilt.transport == dynamic.transport
+    assert rebuilt.routing == dynamic.routing
+    assert rebuilt.upstream_id == dynamic.upstream_id
 
 
 def test_control_config_exposes_stable_slice_objects() -> None:
@@ -56,21 +154,31 @@ def test_settings_manager_updates_slice_objects_and_notifies_subscribers() -> No
     manager.subscribe(seen.append)
 
     manager.update_settings(
-        compaction=CompactionSettings(enabled=False, reserve_tokens=2048, keep_recent_tokens=8192),
+        compaction=CompactionSettings(
+            enabled=False, reserve_tokens=2048, keep_recent_tokens=8192
+        ),
         branch_summary=BranchSummarySettings(enabled=False, reserve_tokens=1024),
         retry=RetrySettings(enabled=False, max_retries=1, base_delay_ms=50),
         images=ImageSettings(auto_resize=False, block_images=True),
     )
 
     settings = manager.get_settings()
-    assert settings.compaction == CompactionSettings(enabled=False, reserve_tokens=2048, keep_recent_tokens=8192)
-    assert settings.branch_summary == BranchSummarySettings(enabled=False, reserve_tokens=1024)
-    assert settings.retry == RetrySettings(enabled=False, max_retries=1, base_delay_ms=50)
+    assert settings.compaction == CompactionSettings(
+        enabled=False, reserve_tokens=2048, keep_recent_tokens=8192
+    )
+    assert settings.branch_summary == BranchSummarySettings(
+        enabled=False, reserve_tokens=1024
+    )
+    assert settings.retry == RetrySettings(
+        enabled=False, max_retries=1, base_delay_ms=50
+    )
     assert settings.images == ImageSettings(auto_resize=False, block_images=True)
     assert seen[-1] == settings
 
 
-def test_settings_manager_apply_overrides_is_session_only_and_flush_is_awaitable(tmp_path) -> None:
+def test_settings_manager_apply_overrides_is_session_only_and_flush_is_awaitable(
+    tmp_path,
+) -> None:
     import asyncio
     import json
 
@@ -108,7 +216,9 @@ def test_settings_manager_apply_overrides_is_session_only_and_flush_is_awaitable
     assert seen[-1] == manager.get_settings()
 
 
-def test_create_services_provides_settings_and_model_resolution_for_sessions(tmp_path) -> None:
+def test_create_services_provides_settings_and_model_resolution_for_sessions(
+    tmp_path,
+) -> None:
     from loushang.ai.model.registry import ModelRegistry as AiModelRegistry
     from loushang.coding.bootstrap import create_agent_session, create_services
     from loushang.coding.session import ModelSelection
@@ -116,14 +226,25 @@ def test_create_services_provides_settings_and_model_resolution_for_sessions(tmp
 
     services = create_services(ai_model_registry=AiModelRegistry())
     services.model_registry.register_model(_model("alpha", name="Alpha"))
-    services.settings_manager.set_default_model(ModelSelection(provider="faux", model_id="alpha"))
-    services.settings_manager.update_settings(system_prompt="Be precise.", thinking_level="high")
+    services.settings_manager.set_default_model(
+        ModelSelection(provider="faux", model_id="alpha")
+    )
+    services.settings_manager.update_settings(
+        system_prompt="Be precise.", thinking_level="high"
+    )
 
-    manager = SessionManager.new(session_dir=tmp_path, cwd="/tmp/project", persist=False)
+    manager = SessionManager.new(
+        session_dir=tmp_path, cwd="/tmp/project", persist=False
+    )
     session = create_agent_session(session_manager=manager, services=services)
 
-    assert session.get_model_selection() == ModelSelection(provider="faux", model_id="alpha")
-    assert session.agent.system_prompt == f"Be precise.\n\n{_runtime_footer('/tmp/project')}"
+    assert session.get_model_selection() == ModelSelection(
+        provider="faux", model_id="alpha"
+    )
+    assert (
+        session.agent.system_prompt
+        == f"Be precise.\n\n{_runtime_footer('/tmp/project')}"
+    )
     assert session.agent.thinking_level == "high"
 
 
@@ -140,8 +261,12 @@ def test_model_registry_records_problem_for_ambiguous_model_selection() -> None:
     )
 
     registry = ModelRegistry(ai_registry=AiModelRegistry())
-    registry.register_model(_model("alpha", provider="faux", endpoint="anthropic-messages"))
-    registry.register_model(_model("alpha", provider="faux", endpoint="openai-responses"))
+    registry.register_model(
+        _model("alpha", provider="faux", endpoint="anthropic-messages")
+    )
+    registry.register_model(
+        _model("alpha", provider="faux", endpoint="openai-responses")
+    )
 
     reset_observability()
     try:
@@ -207,22 +332,36 @@ def test_runtime_uses_latest_settings_for_new_sessions(tmp_path) -> None:
 
     services = create_services(ai_model_registry=AiModelRegistry())
     services.model_registry.register_model(_model("alpha", name="Alpha"))
-    services.model_registry.register_model(_model("beta", endpoint="responses", name="Beta"))
-    services.settings_manager.set_default_model(ModelSelection(provider="faux", model_id="alpha"))
+    services.model_registry.register_model(
+        _model("beta", endpoint="responses", name="Beta")
+    )
+    services.settings_manager.set_default_model(
+        ModelSelection(provider="faux", model_id="alpha")
+    )
 
-    runtime = create_agent_session_runtime(session_dir=tmp_path, services=services, persist=False)
+    runtime = create_agent_session_runtime(
+        session_dir=tmp_path, services=services, persist=False
+    )
     first = asyncio.run(runtime.create_session(cwd=str(project_a)))
 
-    services.settings_manager.set_default_model(ModelSelection(provider="faux", model_id="beta"))
+    services.settings_manager.set_default_model(
+        ModelSelection(provider="faux", model_id="beta")
+    )
     services.settings_manager.update_settings(thinking_level="minimal")
     second = asyncio.run(runtime.create_session(cwd=str(project_b)))
 
-    assert first.get_model_selection() == ModelSelection(provider="faux", model_id="alpha")
-    assert second.get_model_selection() == ModelSelection(provider="faux", model_id="beta")
+    assert first.get_model_selection() == ModelSelection(
+        provider="faux", model_id="alpha"
+    )
+    assert second.get_model_selection() == ModelSelection(
+        provider="faux", model_id="beta"
+    )
     assert second.agent.thinking_level == "minimal"
 
 
-def test_create_services_can_use_preloaded_persistent_settings_manager(tmp_path) -> None:
+def test_create_services_can_use_preloaded_persistent_settings_manager(
+    tmp_path,
+) -> None:
     import json
 
     from loushang.ai.model.registry import ModelRegistry as AiModelRegistry
@@ -264,15 +403,24 @@ def test_create_services_can_use_preloaded_persistent_settings_manager(tmp_path)
     )
     services.model_registry.register_model(_model("alpha", name="Alpha"))
 
-    manager = SessionManager.new(session_dir=tmp_path / "sessions", cwd=str(project_root), persist=False)
+    manager = SessionManager.new(
+        session_dir=tmp_path / "sessions", cwd=str(project_root), persist=False
+    )
     session = create_agent_session(session_manager=manager, services=services)
 
-    assert session.get_model_selection() == ModelSelection(provider="faux", model_id="alpha")
+    assert session.get_model_selection() == ModelSelection(
+        provider="faux", model_id="alpha"
+    )
     assert session.agent.thinking_level == "minimal"
-    assert session.agent.system_prompt == f"Use project policy.\n\n{_runtime_footer(str(project_root))}"
+    assert (
+        session.agent.system_prompt
+        == f"Use project policy.\n\n{_runtime_footer(str(project_root))}"
+    )
 
 
-def test_session_restores_persisted_model_and_accepts_model_selection_updates(tmp_path) -> None:
+def test_session_restores_persisted_model_and_accepts_model_selection_updates(
+    tmp_path,
+) -> None:
     from loushang.ai.model.registry import ModelRegistry as AiModelRegistry
     from loushang.coding.bootstrap import create_agent_session, create_services
     from loushang.coding.session import ModelSelection
@@ -280,23 +428,37 @@ def test_session_restores_persisted_model_and_accepts_model_selection_updates(tm
 
     services = create_services(ai_model_registry=AiModelRegistry())
     services.model_registry.register_model(_model("alpha", name="Alpha"))
-    services.model_registry.register_model(_model("beta", endpoint="responses", name="Beta"))
-    services.settings_manager.set_default_model(ModelSelection(provider="faux", model_id="alpha"))
+    services.model_registry.register_model(
+        _model("beta", endpoint="responses", name="Beta")
+    )
+    services.settings_manager.set_default_model(
+        ModelSelection(provider="faux", model_id="alpha")
+    )
 
-    manager = SessionManager.new(session_dir=tmp_path, cwd="/tmp/project", persist=False)
+    manager = SessionManager.new(
+        session_dir=tmp_path, cwd="/tmp/project", persist=False
+    )
     manager.append_model_change("faux", "beta")
 
     session = create_agent_session(session_manager=manager, services=services)
 
-    assert session.get_model_selection() == ModelSelection(provider="faux", model_id="beta")
+    assert session.get_model_selection() == ModelSelection(
+        provider="faux", model_id="beta"
+    )
 
     asyncio.run(session.set_model(ModelSelection(provider="faux", model_id="alpha")))
 
-    assert session.get_model_selection() == ModelSelection(provider="faux", model_id="alpha")
-    assert [entry.type for entry in manager.get_entries()] == ["model_change", "model_change"]
+    assert session.get_model_selection() == ModelSelection(
+        provider="faux", model_id="alpha"
+    )
+    assert [entry.type for entry in manager.get_entries()] == [
+        "model_change",
+        "model_change",
+    ]
 
 
 def test_create_services_exposes_ai_backed_auth_manager(monkeypatch) -> None:
+    from loushang.ai.model import Auth, Endpoint, Provider
     from loushang.ai.model.registry import ModelRegistry as AiModelRegistry
     from loushang.auth.types import OAuthCredentials
     from loushang.coding.bootstrap import create_services
@@ -317,3 +479,40 @@ def test_create_services_exposes_ai_backed_auth_manager(monkeypatch) -> None:
     assert isinstance(services.auth_manager, AuthManager)
     assert services.auth_manager.ai_registry is services.model_registry.ai_registry
     assert services.auth_manager.load_stored_oauth_credentials() == stored
+
+    model = Model(
+        id="secured",
+        provider="demo",
+        endpoint="responses",
+        api="demo-api",
+    )
+    services.model_registry.register_provider(
+        Provider(
+            id="demo",
+            auth=Auth(kind="oauth"),
+            endpoints={
+                "responses": Endpoint(
+                    id="responses",
+                    provider="demo",
+                    api="demo-api",
+                    models={model.id: model},
+                )
+            },
+        )
+    )
+    assert services.auth_manager.ai_registry is services.model_registry.ai_registry
+    assert services.auth_manager.resolve_for_model(model).auth_required is True
+
+    services.model_registry.unregister_provider("demo")
+    assert services.auth_manager.ai_registry is services.model_registry.ai_registry
+    assert services.auth_manager.resolve_for_model(model).auth_required is False
+
+    services.model_registry.register_model(model)
+    assert services.auth_manager.ai_registry is services.model_registry.ai_registry
+    services.model_registry.reload()
+    assert services.auth_manager.ai_registry is services.model_registry.ai_registry
+
+    detached_registry = AiModelRegistry()
+    services.auth_manager.ai_registry = detached_registry
+    services.model_registry.register_model(model)
+    assert services.auth_manager.ai_registry is detached_registry

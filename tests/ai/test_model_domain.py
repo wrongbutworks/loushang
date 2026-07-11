@@ -98,6 +98,7 @@ def test_openai_responses_adapter_round_trip() -> None:
         {
             "developerRole": False,
             "assistantAfterToolResult": True,
+            "maxOutputTokens": False,
             "promptCacheKey": False,
             "longCacheRetention": False,
             "sessionIdHeader": False,
@@ -116,6 +117,7 @@ def test_openai_responses_adapter_round_trip() -> None:
     assert raw == {
         "developerRole": False,
         "assistantAfterToolResult": True,
+        "maxOutputTokens": False,
         "promptCacheKey": False,
         "longCacheRetention": False,
         "sessionIdHeader": False,

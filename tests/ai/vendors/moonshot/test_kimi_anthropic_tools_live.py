@@ -13,7 +13,6 @@ import sys
 import pytest
 
 from loushang.ai import (
-    ApiKeyAuth,
     CallOptions,
     TextPart,
     ToolResultMessage,
@@ -75,7 +74,7 @@ def _build_tools() -> list[dict]:
 
 def _build_options(api_key: str) -> CallOptions:
     # 把调用参数集中到 options，便于聚焦 tool 协议本身。
-    return CallOptions(auth=ApiKeyAuth(api_key), max_output_tokens=MAX_TOKENS)
+    return CallOptions(api_key=api_key, max_output_tokens=MAX_TOKENS)
 
 
 async def _main() -> None:

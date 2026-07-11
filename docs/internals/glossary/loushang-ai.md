@@ -145,11 +145,14 @@
 - `cancellation`
 - `api_key`
 - `headers`
-- `session_id`
+- `cache_key`
 - `reasoning`
 - `retry`
 - `timeout`
 - `trace`
+
+`cache_key` 是调用方提供的不透明缓存/亲和键；协议 adapter 可以把它映射为
+上游字段或 header，但 AI 包不据此维护 session 或恢复历史消息。
 
 ### ReasoningOptions
 
@@ -205,7 +208,9 @@
 
 ### Provider-Specific Options
 
-provider / contrib 专用选项不进入 `loushang.ai` 根 public surface。例如 Codex 的 `transport` 只属于 `loushang.ai.contrib.openai_codex.OpenAICodexResponsesOptions`。
+产品场景不通过专用 provider、contrib 或 options 类型进入 `loushang.ai` 根 public surface。调用方只传 `CallOptions`；endpoint 在 catalog 中选择已有协议适配器。
+
+例如 ChatGPT Coding Plan 只提供 OAuth 凭证和 endpoint 路由，调用仍由通用 `openai-responses` adapter 执行。
 
 ---
 

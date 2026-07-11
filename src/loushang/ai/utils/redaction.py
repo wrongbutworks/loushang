@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 _SENSITIVE_KEYS = {
+    "accountid",
     "accesstoken",
     "apikey",
     "apitoken",
@@ -27,6 +28,7 @@ _SENSITIVE_KEYS = {
     "xgoogapikey",
 }
 _SENSITIVE_KEY_MARKERS = (
+    "accountid",
     "accesstoken",
     "apikey",
     "apitoken",

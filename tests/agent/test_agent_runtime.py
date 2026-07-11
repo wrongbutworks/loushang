@@ -8,11 +8,6 @@ from loushang.agent.types import AgentToolResult
 from loushang.ai.auth import ApiKeyAuth
 from loushang.ai.event_stream.stream import AssistantMessageEventStream
 from loushang.ai.model import Capabilities, Model
-from loushang.ai.model.domain import Endpoint
-from loushang.ai.model.registry import (
-    clear_default_model_registry,
-    get_default_model_registry,
-)
 from loushang.ai.options import CallOptions, ReasoningOptions, RetryOptions
 from loushang.ai.types import (
     AssistantMessage,
@@ -30,6 +25,7 @@ def _model() -> Model:
         name="Faux",
         provider="faux",
         endpoint="anthropic-messages",
+        api="anthropic-messages",
         capabilities=Capabilities(
             reasoning=False,
             input=("text",),
@@ -47,21 +43,6 @@ def _usage() -> Usage:
         cache_write=0,
         total_tokens=0,
         cost={},
-    )
-
-
-@pytest.fixture(autouse=True)
-def _default_registry() -> None:
-    clear_default_model_registry()
-    registry = get_default_model_registry()
-    registry.register_endpoint(
-        "faux",
-        Endpoint(
-            id="anthropic-messages",
-            provider="faux",
-            api="anthropic-messages",
-            models={"faux-model": _model()},
-        ),
     )
 
 
@@ -501,7 +482,7 @@ def test_default_agent_stream_preserves_canonical_options(
     assert len(captured_options) == 1
     options = captured_options[0]
     assert isinstance(options, CallOptions)
-    assert options.session_id == "session-1"
+    assert options.cache_key == "session-1"
     assert options.reasoning == ReasoningOptions(
         enabled=True,
         effort="high",

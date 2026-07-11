@@ -56,6 +56,7 @@
 
 - 对外暴露 `stream`
 - 对外暴露 `complete`
+- 对外暴露 `complete_structured`
 
 **不负责：**
 
@@ -173,7 +174,7 @@
 
 ---
 
-## Supporting And Functional Domain Components（同步补充 CLI / Utils / Record&Replay）
+## Supporting And Functional Domain Components（同步补充 Utils / Record&Replay）
 
 除了核心结构中心，还保留一个 supporting component 和一个功能域组件。
 
@@ -204,19 +205,7 @@
 
 - 独立 utilities 组件域
 
-### 11. CLI (`loushang.ai.cli`)
-
-**负责：**
-
-- 列举 apis/models/endpoints
-- chat/complete 调用（支持 env 与参数消歧、provider:endpoint:modelId）
-- 配置与调试（trace/json 输出）
-
-**主归属：**
-
-- 独立入口域，消费 `api` 与 `model`、`provider` 等
-
-### 12. Record & Replay（设计已落地为文档）
+### 11. Record & Replay（设计已落地为文档）
 
 **负责：**
 
@@ -399,7 +388,7 @@
 
 ---
 
-## Dependency Direction（更新 Bootstrap/Compat 与 CLI/Record&Replay）
+## Dependency Direction（更新 Bootstrap/Compat 与 Record&Replay）
 
 第一版结构建议维持以下主依赖方向：
 
@@ -415,7 +404,6 @@ flowchart LR
     ADAPTER[Provider Adapter (providers/*)]
     EVENT[Event Stream]
     TOOL[Tool Semantic]
-    CLI[CLI]
     RNR[Record & Replay]
 
     API --> MODEL
@@ -435,7 +423,6 @@ flowchart LR
     TOOL -.semantic.-> ADAPTER
     TOOL -.semantic.-> EVENT
 
-    CLI --> API
     RNR -.tap.-> ADAPTER
     RNR -.tap.-> EVENT
 ```
@@ -453,7 +440,7 @@ flowchart LR
 - 工具语义：主归属 `Tool Semantic Component`
 - Public 入口：主归属 `loushang.ai.api`
 - Bootstrap/Compat 开关：主归属 `Bootstrap`（影响 Registry 与 Adapter 选择）
-- CLI 与 Record&Replay：独立入口/观测域，消费 `api`/`event_stream` 等
+- Record&Replay：独立观测域，挂载 `provider adapter` / `event_stream` 等
 
 这些主归属如果后面继续漂移，说明边界还没稳住。
 

@@ -31,9 +31,17 @@ from loushang.ai import (
 只有进入高级边界时再使用子包：
 
 - `loushang.ai.model`：自定义模型 catalog、registry 检查。
-- `loushang.ai.auth`：OAuth credential 存储和 provider 登录辅助。
 - `loushang.ai.advanced.registry`：provider registry 接线。
-- `loushang.ai.contrib.openai_codex`：可选 OpenAI Codex 集成。
+
+### Cache key 与 prompt cache
+
+`CallOptions.cache_key` 是调用方提供的、不透明且在相关请求之间保持稳定的缓存/
+亲和键。adapter 可以把它映射为上游的 `prompt_cache_key`、`session_id`、
+client-request 或 affinity header；这些只是 wire-level 映射。`loushang.ai`
+不会把它解释成娄商 session，不会据此恢复历史消息或管理会话状态。
+
+`cache_retention="none"` 会抑制由 cache key 派生的请求字段和 header。不支持
+cache-key 映射的 adapter 会忽略该值，而不是让调用失败。
 
 ## 模型与 Catalog
 
@@ -51,6 +59,11 @@ for model in list_models(provider="moonshot", endpoint="openai-completions"):
 model = get_model("moonshot", "openai-completions", "kimi-k2.6")
 ```
 
+这里在调用前已经精确选定一个 endpoint。`region` 是 catalog 中的 endpoint
+metadata；需要特定 region 时，应在 `get_model(provider, endpoint, model_id)` 中
+选择对应 endpoint。`complete()` 和 `stream()` 不会切换 endpoint、读取
+`LOUSHANG_REGION` 或执行 fallback。
+
 运行 [examples/ai/11_provider_matrix.py](../../../examples/ai/11_provider_matrix.py)
 或 [examples/ai/12_provider_smoke.py](../../../examples/ai/12_provider_smoke.py)
 可以离线查看当前内置 provider 集合。
@@ -62,6 +75,12 @@ model = get_model("moonshot", "openai-completions", "kimi-k2.6")
 [examples/ai/advanced/custom_catalog.py](../../../examples/ai/advanced/custom_catalog.py)。
 当 provider 侧真实模型名不同于本地模型 ID 时，自定义模型文件可以写
 `upstreamId`。
+
+高级调用方可以从 `loushang.ai.model` 使用
+`load_model_registry_from_file(path)` 或
+`load_model_registry_from_directory(path)` 显式装载 catalog。装载后的
+`ModelRegistry` 是只读查询/索引对象；默认 layered catalog 装配是 internal
+policy，不是公共 loader。
 
 ### 模型文件格式
 
@@ -132,8 +151,26 @@ curated provider 常用环境变量如下：
 | `volcano-ark` | `ARK_API_KEY` |
 | `zai` | `ZAI_API_KEY` |
 
-OAuth 能力位于 `loushang.ai.auth`，并由 `openai-codex` 这类显式 contrib 集成使用。
-内置 curated API-key provider 路径不要求 OAuth。
+OAuth 调用由上层取得 token，并为本次 request 传入一个明确的 credential：
+
+```python
+from loushang.ai import CallOptions
+from loushang.auth import OAuthCredentials
+
+credentials = OAuthCredentials(
+    provider="openai",
+    access_token=access_token,
+)
+options = CallOptions(
+    oauth_credentials=credentials,
+    headers={"chatgpt-account-id": account_id},
+)
+```
+
+`loushang.ai` 只把这些值解析成请求头，不负责登录、refresh、credential store 或账号选择。
+[ChatGPT Coding Plan 示例](../../../examples/ai/chatgpt_coding_plan.py)只在应用边缘读取已有的
+`~/.codex/auth.json`，并通过通用 OpenAI Responses adapter 调用
+`openai:openai-responses-chatgpt:gpt-5.5-chatgpt`。
 
 ## 完整返回调用
 
@@ -317,11 +354,10 @@ usage = message.usage
 print(usage.input, usage.output, usage.total_tokens, usage.cost)
 ```
 
-账号或平台额度与单次 response usage 是不同概念；Moonshot/Kimi 额度查询在
-`loushang.ai.contrib.moonshot`。可运行示例：
+账号或平台额度与单次 response usage 是不同概念，不属于 `loushang.ai`。response usage
+可运行示例：
 [examples/ai/10_usage.py](../../../examples/ai/10_usage.py)、
-[examples/ai/advanced/usage_online.py](../../../examples/ai/advanced/usage_online.py) 和
-[examples/ai/advanced/platform_quota.py](../../../examples/ai/advanced/platform_quota.py)。
+[examples/ai/advanced/usage_online.py](../../../examples/ai/advanced/usage_online.py)。
 
 ## 示例索引
 

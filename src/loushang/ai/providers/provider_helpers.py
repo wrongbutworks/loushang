@@ -29,22 +29,22 @@ def sdk_default_headers(headers: Mapping[str, str]) -> dict[str, str]:
     }
 
 
-def apply_session_headers(
+def apply_cache_key_headers(
     headers: MutableMapping[str, str],
-    session_id: str | None,
+    cache_key: str | None,
     *,
     include_session_id: bool = True,
     include_client_request_id: bool = True,
     include_affinity: bool = False,
 ) -> bool:
-    if not isinstance(session_id, str) or not session_id:
+    if not isinstance(cache_key, str) or not cache_key:
         return False
     if include_session_id:
-        headers["session_id"] = session_id
+        headers["session_id"] = cache_key
     if include_client_request_id:
-        headers["x-client-request-id"] = session_id
+        headers["x-client-request-id"] = cache_key
     if include_affinity:
-        headers["x-session-affinity"] = session_id
+        headers["x-session-affinity"] = cache_key
     return True
 
 

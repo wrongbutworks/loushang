@@ -5,7 +5,7 @@
 - `reference-repository/packages/ai`
 - `loushang/src/loushang/ai`
 
-结论先说：`loushang.ai` 已经具备了 `reference AI SDK` 的基础语义骨架，但距离“功能面对齐”仍有明显差距。当前最大的 gap 集中在 provider 覆盖、OAuth/login 体系、图像 tool result 闭环、复杂 reasoning continuity、模型目录规模，以及 `reference AI SDK` 的懒加载与浏览器兼容相关能力。
+结论先说：`loushang.ai` 已经具备了 `reference AI SDK` 的基础语义骨架，但距离“功能面对齐”仍有明显差距。当前最大的 gap 集中在 provider 覆盖、图像 tool result 闭环、复杂 reasoning continuity、模型目录规模，以及 `reference AI SDK` 的懒加载与浏览器兼容相关能力。OAuth login 属于调用方或产品层，不计入 `loushang.ai` gap。
 
 ## 总体判断
 
@@ -25,7 +25,7 @@
 | streaming event 语义：`text_* thinking_* toolcall_* done/error` | 完整 | 完整 | 已基本对齐 | [reference implementation README events](/home/dev/workspace/reference-repository/packages/ai/README.md#L374) [loushang assembler](../../../src/loushang/ai/event_stream/assembler.py) |
 | abort 语义 | 完整 | 完整 | 已基本对齐 | [reference implementation abort tests](/home/dev/workspace/reference-repository/packages/ai/test/abort.test.ts#L30) [loushang aborted handling](../../../src/loushang/ai/event_stream/assembler.py) |
 | overflow 检测 | 完整 | 完整 | 已基本对齐 | [reference implementation overflow](/home/dev/workspace/reference-repository/packages/ai/src/utils/overflow.ts#L12) [loushang overflow](/home/dev/workspace/loushang/src/loushang/ai/utils/overflow.py#L14) |
-| `ThinkingLevel/CacheRetention/xhigh` 等核心 options | 完整，含 root transport preference | 核心 options 已收敛到 `CallOptions`；transport 仅保留在 provider/contrib 专用面 | 部分对齐；root API 有意不暴露 `Transport` | [reference implementation options](/home/dev/workspace/reference-repository/packages/ai/src/types.ts#L45) [loushang options](/home/dev/workspace/loushang/src/loushang/ai/options.py#L52) |
+| `ThinkingLevel/CacheRetention/xhigh` 等核心 options | 完整，含 root transport preference | 核心 options 已收敛到 `CallOptions` | 部分对齐；root API 有意不暴露 `Transport` | [reference implementation options](/home/dev/workspace/reference-repository/packages/ai/src/types.ts#L45) [loushang options](/home/dev/workspace/loushang/src/loushang/ai/options.py#L52) |
 | `supportsXhigh` 模型级能力 | 有显式 helper | 缺少统一 helper/策略 | 部分缺失 | [reference implementation helper](/home/dev/workspace/reference-repository/packages/ai/src/models.ts#L55) |
 | Tool schema 校验 | 完整 | 完整但实现较简 | 基本对齐 | [reference implementation validation](/home/dev/workspace/reference-repository/packages/ai/src/utils/validation.ts#L49) [loushang validation](/home/dev/workspace/loushang/src/loushang/ai/tool/validation.py#L25) |
 | Tool call replay / cross-provider transform | 完整 | 完整 | 已基本对齐 | [reference implementation transform](/home/dev/workspace/reference-repository/packages/ai/src/providers/transform-messages.ts#L13) [loushang tool transform](../../../src/loushang/ai/tool/transform.py) |
@@ -48,7 +48,7 @@
 | Anthropic provider | 有 | 有 | 对齐 | [reference implementation builtins](/home/dev/workspace/reference-repository/packages/ai/src/providers/register-builtins.ts#L367) [loushang bootstrap](/home/dev/workspace/loushang/src/loushang/ai/bootstrap.py#L56) |
 | OpenAI Completions provider | 有 | 有 | 对齐 | [reference implementation builtins](/home/dev/workspace/reference-repository/packages/ai/src/providers/register-builtins.ts#L373) [loushang bootstrap](/home/dev/workspace/loushang/src/loushang/ai/bootstrap.py#L63) |
 | OpenAI Responses provider | 有 | 有 | 对齐 | [reference implementation builtins](/home/dev/workspace/reference-repository/packages/ai/src/providers/register-builtins.ts#L385) [loushang bootstrap](/home/dev/workspace/loushang/src/loushang/ai/bootstrap.py#L69) |
-| OpenAI Codex Responses provider | 有 | 有实现，但当前不在 built-in models 中默认注册 | 部分对齐 | [reference implementation builtins](/home/dev/workspace/reference-repository/packages/ai/src/providers/register-builtins.ts#L397) [loushang codex provider](../../../src/loushang/ai/providers/openai_codex_responses.py) |
+| ChatGPT Coding Plan route | 独立 Codex adapter | catalog route 复用 `openai-responses` | 有意采用更窄协议边界 | [loushang models](../../../src/loushang/ai/model/models.json) |
 | Azure OpenAI Responses provider | 有 | 无 | 缺失 | [reference implementation builtins](/home/dev/workspace/reference-repository/packages/ai/src/providers/register-builtins.ts#L391) |
 | Google Generative AI provider | 有 | 无 | 缺失 | [reference implementation builtins](/home/dev/workspace/reference-repository/packages/ai/src/providers/register-builtins.ts#L403) |
 | Google Gemini CLI provider | 有 | 无 | 缺失 | [reference implementation builtins](/home/dev/workspace/reference-repository/packages/ai/src/providers/register-builtins.ts#L409) |
@@ -56,10 +56,7 @@
 | Mistral provider | 有 | 无 | 缺失 | [reference implementation builtins](/home/dev/workspace/reference-repository/packages/ai/src/providers/register-builtins.ts#L379) |
 | Bedrock provider | 有 | 无 | 缺失 | [reference implementation builtins](/home/dev/workspace/reference-repository/packages/ai/src/providers/register-builtins.ts#L421) |
 | Faux provider | 有 | 有 | 对齐 | [reference implementation faux](/home/dev/workspace/reference-repository/packages/ai/src/providers/faux.ts) [loushang faux](/home/dev/workspace/loushang/src/loushang/ai/providers/faux.py#L8) |
-| OAuth provider registry | 完整 | 在顶层 `loushang.auth`，不属于 `loushang.ai.auth` core | 分层不同 | [reference implementation oauth index](/home/dev/workspace/reference-repository/packages/ai/src/utils/oauth/index.ts#L50) [loushang oauth registry](/home/dev/workspace/loushang/src/loushang/auth/registry.py#L8) |
-| OAuth providers 默认内建 | 5 个 | `loushang.auth` 内建 Anthropic；Codex OAuth provider 通过顶层 auth provider 显式注册 | 分层不同 | [reference implementation oauth index](/home/dev/workspace/reference-repository/packages/ai/src/utils/oauth/index.ts#L13) [loushang anthropic oauth](/home/dev/workspace/loushang/src/loushang/auth/providers/anthropic.py#L64) |
-| CLI OAuth login | 有 | 无 | 缺失 | [reference implementation cli](/home/dev/workspace/reference-repository/packages/ai/src/cli.ts#L70) |
-| CLI 模型/endpoint/binding 管理 | 简单 | 更强 | `loushang` 反而更强 | [loushang cli](/home/dev/workspace/loushang/src/loushang/ai/cli/__main__.py#L338) |
+| 调用期 OAuth credential | provider registry 驱动 | 单个 `CallOptions.oauth_credentials` | Python core 保持更窄边界 | [loushang options](../../../src/loushang/ai/options.py) |
 | 懒加载 provider module | 有 | 无 | 缺失 | [reference implementation lazy](/home/dev/workspace/reference-repository/packages/ai/src/providers/register-builtins.ts#L168) |
 | 浏览器兼容/Node-safe import | 有 | 无对应目标 | 若追平 SDK 体验则缺失 | [reference implementation browser-safe](/home/dev/workspace/reference-repository/packages/ai/src/env-api-keys.ts#L1) |
 | TypeBox 顶层导出 | 有 | 无 Python 对应物 | 非必要差异 | [reference implementation index](/home/dev/workspace/reference-repository/packages/ai/src/index.ts#L1) |
@@ -71,7 +68,6 @@
 ### P0
 
 - 补 provider/API：
-  - 将 `openai-codex-responses` 纳入 built-in models/bootstrap coverage
   - `azure-openai-responses`
   - `google-generative-ai`
   - `google-gemini-cli`
@@ -82,12 +78,7 @@
 
 ### P1
 
-- 补完整 OAuth/login 体系：
-  - `github-copilot`
-  - `openai-codex`
-  - `google-gemini-cli`
-  - `google-antigravity`
-  - Anthropic 从最小实现升级到可用闭环
+- OAuth 登录与账号产品能力不属于 `loushang.ai` gap
 - 补 compat 层剩余能力：
   - `supportsStrictMode`
   - `requiresThinkingAsText`
@@ -108,10 +99,10 @@
 - 如果目标是库分发体验接近 `reference AI SDK`，再补：
   - provider 懒加载
   - browser-safe runtime import
-  - 文档与 CLI login 体验
+  - 文档与发布体验
 
 ## 实际判断
 
 - 如果目标是 Python server-side runtime 能力，`loushang.ai` 不必完全照搬 `reference AI SDK` 的浏览器兼容与 TypeBox 导出层。
-- 但如果目标是“功能面对齐 `reference AI SDK`”，当前最先需要补的仍然是 provider 覆盖、OAuth/login 与 image tool result。
+- 但如果目标是“功能面对齐 `reference AI SDK`”，当前最先需要补的仍然是 provider 覆盖与 image tool result；OAuth login 仍由调用方或产品层负责。
 - 在当前阶段，`loushang.ai` 的基础框架已经够用，瓶颈主要在“能力面不够宽”和“复杂语义未闭环”。

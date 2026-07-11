@@ -10,7 +10,6 @@ import pytest
 
 import loushang.ai as ai
 from loushang.ai.api_registry import ApiProviderRegistry
-from loushang.ai.auth import ApiKeyAuth
 from loushang.ai.model import (
     clear_default_model_registry,
     get_default_model_registry,
@@ -200,6 +199,15 @@ def test_ai_auth_package_contains_only_request_level_core() -> None:
             importlib.import_module(f"loushang.ai.auth.{module_name}")
 
 
+@pytest.mark.parametrize(
+    "module_name",
+    ("loushang.ai.cli", "loushang.ai.contrib.openai_codex"),
+)
+def test_removed_ai_package_surfaces_are_not_importable(module_name: str) -> None:
+    with pytest.raises(ModuleNotFoundError):
+        importlib.import_module(module_name)
+
+
 def test_default_registry_loads_builtin_and_user_model_directory(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
@@ -296,7 +304,7 @@ def test_complete_dispatches_to_invoke_raw_provider(tmp_path: Path) -> None:
         message = await ai.complete(
             model,
             {"messages": [{"role": "user", "content": "hello"}]},
-            CallOptions(auth=ApiKeyAuth("test-key")),
+            CallOptions(api_key="test-key"),
             provider_registry=provider_registry,
         )
 
@@ -322,7 +330,7 @@ def test_stream_dispatches_to_invoke_raw_provider(tmp_path: Path) -> None:
         event_stream = await ai.stream(
             model,
             {"messages": [{"role": "user", "content": "hello"}]},
-            CallOptions(auth=ApiKeyAuth("test-key")),
+            CallOptions(api_key="test-key"),
             provider_registry=provider_registry,
         )
         async for _event in event_stream:
@@ -350,13 +358,13 @@ def test_complete_and_stream_pass_distinct_provider_modes(tmp_path: Path) -> Non
         await ai.complete(
             model,
             context,
-            CallOptions(auth=ApiKeyAuth("test-key")),
+            CallOptions(api_key="test-key"),
             provider_registry=provider_registry,
         )
         event_stream = await ai.stream(
             model,
             context,
-            CallOptions(auth=ApiKeyAuth("test-key")),
+            CallOptions(api_key="test-key"),
             provider_registry=provider_registry,
         )
         async for _event in event_stream:
@@ -412,13 +420,13 @@ def test_bound_model_resolves_without_default_registry_lookup(
         raise AssertionError("default registry lookup should not be needed")
 
     monkeypatch.setattr(
-        "loushang.ai.provider.resolution.get_default_model_registry",
+        "loushang.ai.model.registry.get_default_model_registry",
         fail_default_registry_lookup,
     )
 
     request = resolve_request_for_model(
         model,
-        options=CallOptions(auth=ApiKeyAuth("test-key")),
+        options=CallOptions(api_key="test-key"),
         env={},
     )
 

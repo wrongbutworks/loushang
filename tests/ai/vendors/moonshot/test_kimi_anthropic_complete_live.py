@@ -15,7 +15,6 @@ from collections.abc import Iterable
 import pytest
 
 from loushang.ai import (
-    ApiKeyAuth,
     CallOptions,
     complete,
     get_model,
@@ -65,7 +64,7 @@ def _build_context() -> dict:
 
 def _build_options(api_key: str) -> CallOptions:
     # 把 Anthropic 特有参数收束到 options 中，保持调用点干净。
-    return CallOptions(auth=ApiKeyAuth(api_key), max_output_tokens=MAX_TOKENS)
+    return CallOptions(api_key=api_key, max_output_tokens=MAX_TOKENS)
 
 
 def _iter_text(parts: Iterable[object]) -> str:

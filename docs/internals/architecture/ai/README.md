@@ -10,12 +10,6 @@ This directory keeps the current architecture notes for the frozen
 - [AI Refactor Blueprint](./loushang-ai-refactor-blueprint.md)
   is the short entrypoint for the current AI package rebuild structure and
   document reading order.
-- [Auth Boundary and Call Credential Design](./loushang-ai-auth-boundary-design.md)
-  defines the target boundary for rebuilding auth: `models.json.auth` is the
-  default declaration, `CallOptions.auth` is the explicit request-level
-  override, and `loushang.ai` resolves the final input into provider request
-  auth headers. Upper layers own login, refresh, credential storage, account
-  selection, quota, billing, and product-level auth policy.
 
 ## Current References
 
@@ -37,7 +31,6 @@ This directory keeps the current architecture notes for the frozen
 - `src/loushang/ai/event_stream/`
 - `src/loushang/ai/tool/`
 - `src/loushang/ai/providers/`
-- `src/loushang/ai/contrib/`
 - `src/loushang/ai/messages.py`
 - `src/loushang/ai/context.py`
 - `src/loushang/ai/pricing.py`
@@ -51,10 +44,12 @@ This directory keeps the current architecture notes for the frozen
   retry, cancellation, and provider request validation.
 - `providers/` owns the three core protocol adapters:
   `openai-completions`, `openai-responses`, and `anthropic-messages`.
-- `contrib/` is limited to explicitly registered, non-default
-  provider-specific adapter/catalog integrations such as OpenAI Codex. It must
-  not carry OAuth lifecycle, quota, billing, account control-plane, or product
-  auth policy back into `loushang.ai` core.
+- `auth/` resolves catalog API-key defaults or one explicit
+  `CallOptions.oauth_credentials` object into request headers. Login, refresh,
+  persistence, account selection, and product auth policy remain outside the
+  package.
+- Product-backed routes reuse the three protocol adapters through catalog data;
+  they do not introduce product-specific provider modules.
 - `usage.py` owns response usage payload helpers only; account or platform quota
   is outside core usage.
 

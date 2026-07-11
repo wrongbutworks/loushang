@@ -46,6 +46,9 @@ def test_builtin_catalog_includes_verified_curated_routes() -> None:
 
     moonshot = registry.get_model("moonshot", "openai-completions", "kimi-k2.6")
     openai = registry.get_model("openai", "openai-responses", "gpt-5.5")
+    chatgpt = registry.get_model(
+        "openai", "openai-responses-chatgpt", "gpt-5.5-chatgpt"
+    )
     anthropic = registry.get_model(
         "anthropic", "anthropic-messages", "claude-sonnet-4-6"
     )
@@ -56,6 +59,10 @@ def test_builtin_catalog_includes_verified_curated_routes() -> None:
     assert moonshot.supports_stream is True
     assert moonshot.supports_tool_use is True
     assert openai.api == "openai-responses"
+    assert chatgpt.api == "openai-responses"
+    assert chatgpt.provider_id == "openai"
+    assert chatgpt.endpoint_id == "openai-responses-chatgpt"
+    assert chatgpt.upstream_id == "gpt-5.5"
     assert anthropic.api == "anthropic-messages"
     assert qianfan.auth is not None
     assert "QIANFAN_API_KEY" in qianfan.auth.api_key_envs
@@ -71,9 +78,7 @@ def test_builtin_catalog_marks_single_preferred_endpoint_per_provider() -> None:
         preferred = [
             endpoint for endpoint in provider.list_endpoints() if endpoint.preferred
         ]
-        assert [endpoint.id for endpoint in preferred] == [
-            endpoint.id for endpoint in provider.list_endpoints()
-        ]
+        assert len(preferred) == 1, provider.id
 
 
 def test_builtin_catalog_models_expose_endpoint_context() -> None:

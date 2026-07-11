@@ -405,26 +405,6 @@ def test_anthropic_provider_sanitizes_unpaired_surrogates_in_payload_text() -> N
             "is_error": False,
         }
     ]
-
-
-def test_openai_codex_responses_provider_sanitizes_instruction_text() -> None:
-    from loushang.ai.contrib.openai_codex.provider import _build_request_body
-
-    body = _build_request_body(
-        SimpleNamespace(id="gpt-5.2-codex", input=("text",)),
-        normalize_context(
-            {
-                "system_prompt": f"system {_UNPAIRED_HIGH_SURROGATE} prompt 🙈",
-                "messages": [],
-                "tools": None,
-            }
-        ),
-        SimpleNamespace(),
-    )
-
-    assert body["instructions"] == "system  prompt 🙈"
-
-
 def test_openai_responses_tool_result_helper_preserves_images_in_function_output() -> (
     None
 ):

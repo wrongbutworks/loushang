@@ -244,7 +244,7 @@ assistant message 停止原因。
 说明：
 
 - `Context` 只表达输入上下文
-- `api_key`、`session_id`、`metadata` 等运行选项不进入 `Context`
+- `api_key`、`cache_key`、`metadata` 等运行选项不进入 `Context`
 
 ---
 
@@ -432,7 +432,7 @@ assistant message 用量统计。
 - `cancellation: object | None = None`
 - `api_key: str | None = None`
 - `cache_retention: CacheRetention | None = None`
-- `session_id: str | None = None`
+- `cache_key: str | None = None`
 - `headers: dict[str, str] | None = None`
 - `reasoning: ReasoningOptions | None = None`
 - `retry: RetryOptions | None = None`
@@ -445,6 +445,7 @@ assistant message 用量统计。
 - v0.1 不要求与 JavaScript `AbortSignal` 结构逐字段兼容
 - provider 与 streaming 层应在调用前、流式迭代中与收敛结果前检查该信号
 - 检测到取消后，应映射为 `aborted` 协议语义
+- `cache_key` 是调用方提供的不透明缓存/亲和键，不是 AI 包管理的 session
 
 ### ReasoningOptions
 
@@ -478,9 +479,10 @@ assistant message 用量统计。
 
 ### Provider-Specific Options
 
-provider / contrib 专用选项不进入 `loushang.ai` 根 public surface。
+产品场景不通过专用 provider、contrib 或 options 类型进入 `loushang.ai` 根 public surface。
 
-- Codex contrib 可通过 `loushang.ai.contrib.openai_codex.OpenAICodexResponsesOptions` 暴露 Codex 专有 `transport` 等字段
+- 调用方通过 `CallOptions.oauth_credentials` 显式传入已有 OAuth 凭证
+- endpoint 在 catalog 中选择已有协议适配器
 - 核心调用路径只消费 `CallOptions`
 
 ---

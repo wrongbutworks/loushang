@@ -75,4 +75,3 @@ def test_contract_matrix_document_matches_core_adapters() -> None:
         assert f"`{case.module}`" in docs
         assert f"`{case.class_name}`" in docs
     assert "`loushang.ai.providers.faux`" in docs
-    assert "`loushang.ai.contrib.openai_codex`" in docs

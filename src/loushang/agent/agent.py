@@ -520,7 +520,7 @@ class Agent:
         return AgentLoopConfig(
             model=self._state.model,
             call_options=CallOptions(
-                session_id=self.session_id,
+                cache_key=self.session_id,
                 reasoning=_reasoning_options(
                     self._state.thinking_level, self.thinking_budgets
                 ),

@@ -1,31 +1,31 @@
 from __future__ import annotations
 
 import asyncio
+import json
 import sys
-from collections.abc import Iterator
 from dataclasses import dataclass, field, replace
 from types import ModuleType, SimpleNamespace
 
 import pytest
 
 from loushang.ai import (
-    ApiKeyAuth,
     CallOptions,
-    HeadersAuth,
     ReasoningOptions,
     get_model,
 )
 from loushang.ai.context import normalize_context
 from loushang.ai.errors import UnsupportedCapabilityError
-from loushang.ai.model import Capabilities, Model, OpenAICompletionsConfig
+from loushang.ai.model import (
+    Capabilities,
+    Model,
+    ModelRegistry,
+    OpenAICompletionsConfig,
+    Provider,
+)
 from loushang.ai.model.domain import (
     Endpoint,
     EndpointRouting,
     EndpointTransport,
-)
-from loushang.ai.model.registry import (
-    clear_default_model_registry,
-    get_default_model_registry,
 )
 from loushang.ai.provider import ProviderRequest
 from loushang.ai.providers.openai_completions import OpenAICompletionsProvider
@@ -42,6 +42,8 @@ from loushang.ai.types import (
     UserMessage,
 )
 from tests.providers._runtime import (
+    bound_test_model,
+    make_provider_request,
     provider_request_for_test,
     start_test_provider_stream,
 )
@@ -59,7 +61,24 @@ SUPPORTS_STRICT_MODE = "supportsStrictMode"
 THINKING_FORMAT = "thinkingFormat"
 
 
+def _registry_with_endpoint(provider_id: str, endpoint: Endpoint) -> ModelRegistry:
+    return ModelRegistry.from_providers(
+        {
+            provider_id: Provider(
+                id=provider_id,
+                endpoints={endpoint.id: endpoint},
+            )
+        }
+    )
+
+
 def _normalized_context(model, context, options=None):
+    if not isinstance(model, Model) or not model.api:
+        model = bound_test_model(
+            model,
+            api="openai-completions",
+            options=options,
+        )
     pairing_mode = (
         "strict" if getattr(options, "pairing_mode", "strict") == "strict" else "repair"
     )
@@ -75,7 +94,11 @@ def _invoke_raw_parts(
     *,
     mode: str = "stream",
 ):
-    normalized_context = _normalized_context(model, context, options)
+    normalized_context = _normalized_context(
+        request.model if request is not None else model,
+        context,
+        options,
+    )
     provider_request = provider_request_for_test(
         provider,
         model,
@@ -92,7 +115,11 @@ async def _stream(provider, model, context, options=None, request=None):
     return start_test_provider_stream(
         provider,
         model,
-        _normalized_context(model, context, options),
+        _normalized_context(
+            request.model if request is not None else model,
+            context,
+            options,
+        ),
         options,
         request=request,
     )
@@ -203,7 +230,7 @@ def test_openai_completions_payload_maps_user_image_assistant_toolcall_and_tool_
                         ),
                     ],
                 },
-                CallOptions(auth=ApiKeyAuth("test-key"), tool_choice="required"),
+                CallOptions(api_key="test-key", tool_choice="required"),
             )
         )
     )
@@ -308,9 +335,8 @@ def test_openai_completions_complete_mode_maps_non_stream_response(
         reasoning_effort=None,
     )
     provider = OpenAICompletionsProvider()
-    request = ProviderRequest(
-        provider="openai",
-        endpoint="openai-completions",
+    request = make_provider_request(
+        _Model(),
         api="openai-completions",
         base_url="https://api.openai.test/v1",
         headers={"Authorization": "Bearer test-key"},
@@ -335,7 +361,7 @@ def test_openai_completions_complete_mode_maps_non_stream_response(
                         ),
                     ],
                 },
-                CallOptions(auth=ApiKeyAuth("test-key")),
+                CallOptions(api_key="test-key"),
                 request=request,
                 mode="complete",
             )
@@ -410,7 +436,7 @@ def test_openai_completions_payload_uses_resolved_capabilities_for_images(
                         tool_result,
                     ],
                 },
-                CallOptions(auth=ApiKeyAuth("test-key"), pairing_mode="repair"),
+                CallOptions(api_key="test-key", pairing_mode="repair"),
             )
         )
     )
@@ -474,7 +500,7 @@ def test_openai_completions_payload_maps_structured_output_response_format(
                     ]
                 },
                 CallOptions(
-                    auth=ApiKeyAuth("test-key"),
+                    api_key="test-key",
                     output=StructuredOutputOptions(
                         mode="json_schema",
                         schema=schema,
@@ -517,7 +543,7 @@ def test_openai_completions_uses_upstream_model_id(
                         UserMessage(role="user", content="hello", timestamp=0.0)
                     ]
                 },
-                CallOptions(auth=ApiKeyAuth("test-key")),
+                CallOptions(api_key="test-key"),
             )
         )
     )
@@ -547,7 +573,7 @@ def test_openai_completions_caps_model_max_tokens_default(
                         UserMessage(role="user", content="hello", timestamp=0.0)
                     ]
                 },
-                CallOptions(auth=ApiKeyAuth("test-key")),
+                CallOptions(api_key="test-key"),
             )
         )
     )
@@ -578,7 +604,7 @@ def test_openai_completions_uses_resolved_capability_max_tokens(
                         UserMessage(role="user", content="hello", timestamp=0.0)
                     ]
                 },
-                CallOptions(auth=ApiKeyAuth("test-key")),
+                CallOptions(api_key="test-key"),
             )
         )
     )
@@ -641,7 +667,7 @@ def test_openai_completions_payload_respects_bridge_tool_name_developer_role_and
                         UserMessage(role="user", content="next", timestamp=0.0),
                     ],
                 },
-                CallOptions(auth=ApiKeyAuth("test-key"), max_output_tokens=128),
+                CallOptions(api_key="test-key", max_output_tokens=128),
             )
         )
     )
@@ -700,7 +726,7 @@ def test_openai_completions_payload_uses_resolved_capabilities_for_reasoning(
                         UserMessage(role="user", content="hello", timestamp=0.0)
                     ],
                 },
-                CallOptions(auth=ApiKeyAuth("test-key")),
+                CallOptions(api_key="test-key"),
             )
         )
     )
@@ -716,8 +742,7 @@ def test_openai_completions_payload_uses_typed_endpoint_dialect(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     _fake_openai_module(monkeypatch)
-    registry = get_default_model_registry()
-    registry.register_endpoint(
+    registry = _registry_with_endpoint(
         "typed",
         Endpoint(
             id="openai-completions",
@@ -798,11 +823,11 @@ def test_openai_completions_payload_uses_typed_endpoint_dialect(
                     ],
                 },
                 CallOptions(
-                    auth=ApiKeyAuth("test-key"),
+                    api_key="test-key",
                     max_output_tokens=128,
                     reasoning=ReasoningOptions(effort="high"),
                     cache_retention="long",
-                    session_id="session-1",
+                    cache_key="session-1",
                 ),
             )
         )
@@ -849,10 +874,10 @@ def test_openai_completions_supplied_request_adapter_config_projects_to_payload(
 ) -> None:
     _fake_openai_module(monkeypatch)
     provider = OpenAICompletionsProvider()
-    request = ProviderRequest(
-        provider="custom",
-        endpoint="openai-completions",
+    request = make_provider_request(
+        _Model(),
         api="openai-completions",
+        provider_id="custom",
         base_url="https://api.openai.test/v1",
         headers={"Authorization": "Bearer test-key"},
         adapter_config=OpenAICompletionsConfig(
@@ -875,7 +900,7 @@ def test_openai_completions_supplied_request_adapter_config_projects_to_payload(
                 },
                 CallOptions(
                     cache_retention="long",
-                    session_id="session-supplied",
+                    cache_key="session-supplied",
                 ),
                 request=request,
             )
@@ -893,10 +918,10 @@ def test_openai_completions_supplied_empty_request_uses_adapter_defaults(
 ) -> None:
     _fake_openai_module(monkeypatch)
     provider = OpenAICompletionsProvider()
-    request = ProviderRequest(
-        provider="custom",
-        endpoint="openai-completions",
+    request = make_provider_request(
+        _Model(),
         api="openai-completions",
+        provider_id="custom",
         base_url="https://api.openai.test/v1",
         headers={"Authorization": "Bearer test-key"},
         max_tokens=128,
@@ -931,10 +956,10 @@ def test_openai_completions_supplied_request_preserves_explicit_unknown_protocol
 ) -> None:
     _fake_openai_module(monkeypatch)
     provider = OpenAICompletionsProvider()
-    request = ProviderRequest(
-        provider="custom",
-        endpoint="openai-completions",
+    request = make_provider_request(
+        _Model(reasoning=True),
         api="openai-completions",
+        provider_id="custom",
         base_url="https://api.openai.test/v1",
         headers={"Authorization": "Bearer test-key"},
         adapter_config=OpenAICompletionsConfig(developer_role=False),
@@ -969,10 +994,10 @@ def test_openai_completions_supplied_request_protocol_and_dialect_project_to_pay
 ) -> None:
     _fake_openai_module(monkeypatch)
     provider = OpenAICompletionsProvider()
-    request = ProviderRequest(
-        provider="custom",
-        endpoint="openai-completions",
+    request = make_provider_request(
+        _Model(),
         api="openai-completions",
+        provider_id="custom",
         base_url="https://api.openai.test/v1",
         headers={"Authorization": "Bearer test-key"},
         adapter_config=OpenAICompletionsConfig(
@@ -995,7 +1020,7 @@ def test_openai_completions_supplied_request_protocol_and_dialect_project_to_pay
                 },
                 CallOptions(
                     cache_retention="long",
-                    session_id="session-typed",
+                    cache_key="session-typed",
                 ),
                 request=request,
             )
@@ -1016,10 +1041,10 @@ def test_openai_completions_public_stream_uses_supplied_typed_request(
 ) -> None:
     _fake_openai_module(monkeypatch)
     provider = OpenAICompletionsProvider()
-    request = ProviderRequest(
-        provider="custom",
-        endpoint="openai-completions",
+    request = make_provider_request(
+        _Model(),
         api="openai-completions",
+        provider_id="custom",
         base_url="https://api.openai.test/v1",
         headers={"Authorization": "Bearer test-key"},
         adapter_config=OpenAICompletionsConfig(
@@ -1037,7 +1062,7 @@ def test_openai_completions_public_stream_uses_supplied_typed_request(
             {"messages": [UserMessage(role="user", content="hello", timestamp=0.0)]},
             CallOptions(
                 cache_retention="short",
-                session_id="session-public",
+                cache_key="session-public",
             ),
             request=request,
         )
@@ -1055,10 +1080,10 @@ def test_openai_completions_supplied_request_typed_adapter_overrides_stale_optio
 ) -> None:
     _fake_openai_module(monkeypatch)
     provider = OpenAICompletionsProvider()
-    request = ProviderRequest(
-        provider="custom",
-        endpoint="openai-completions",
+    request = make_provider_request(
+        _Model(),
         api="openai-completions",
+        provider_id="custom",
         base_url="https://api.openai.test/v1",
         headers={"Authorization": "Bearer test-key"},
         adapter_config=OpenAICompletionsConfig(prompt_cache_key=False),
@@ -1077,8 +1102,43 @@ def test_openai_completions_supplied_request_typed_adapter_overrides_stale_optio
                 },
                 CallOptions(
                     cache_retention="short",
-                    session_id="session-stale",
+                    cache_key="session-stale",
                 ),
+                request=request,
+            )
+        )
+    )
+
+    _assert_no_session_hint_fields()
+
+
+def test_openai_completions_cache_retention_none_suppresses_cache_key_fields(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _fake_openai_module(monkeypatch)
+    provider = OpenAICompletionsProvider()
+    request = make_provider_request(
+        _Model(),
+        api="openai-completions",
+        base_url="https://api.openai.test/v1",
+        headers={"Authorization": "Bearer test-key"},
+        adapter_config=OpenAICompletionsConfig(
+            prompt_cache_key=True,
+            session_affinity_headers=True,
+        ),
+    )
+
+    asyncio.run(
+        _collect_parts(
+            _invoke_raw_parts(
+                provider,
+                _Model(),
+                {
+                    "messages": [
+                        UserMessage(role="user", content="hello", timestamp=0.0)
+                    ]
+                },
+                CallOptions(cache_retention="none", cache_key="opaque-cache-key"),
                 request=request,
             )
         )
@@ -1092,10 +1152,10 @@ def test_openai_completions_supplied_request_typed_dialect_overrides_stale_optio
 ) -> None:
     _fake_openai_module(monkeypatch)
     provider = OpenAICompletionsProvider()
-    request = ProviderRequest(
-        provider="custom",
-        endpoint="openai-completions",
+    request = make_provider_request(
+        _Model(),
         api="openai-completions",
+        provider_id="custom",
         base_url="https://api.openai.test/v1",
         headers={"Authorization": "Bearer test-key"},
         adapter_config=OpenAICompletionsConfig(
@@ -1147,9 +1207,9 @@ def test_openai_completions_prompt_cache_key_uses_explicit_support_flag(
                     ]
                 },
                 CallOptions(
-                    auth=ApiKeyAuth("test-key"),
+                    api_key="test-key",
                     cache_retention="short",
-                    session_id="session-short",
+                    cache_key="session-short",
                 ),
             )
         )
@@ -1163,8 +1223,7 @@ def test_openai_completions_explicit_prompt_cache_key_reaches_sdk_payload(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     _fake_openai_module(monkeypatch)
-    registry = get_default_model_registry()
-    registry.register_endpoint(
+    registry = _registry_with_endpoint(
         "custom-openai",
         Endpoint(
             id="openai-completions",
@@ -1196,9 +1255,9 @@ def test_openai_completions_explicit_prompt_cache_key_reaches_sdk_payload(
                     ]
                 },
                 CallOptions(
-                    auth=ApiKeyAuth("test-key"),
+                    api_key="test-key",
                     cache_retention="long",
-                    session_id="session-official",
+                    cache_key="session-official",
                 ),
             )
         )
@@ -1235,9 +1294,9 @@ def test_openai_completions_rejects_unsupported_long_cache_retention(
                         ]
                     },
                     CallOptions(
-                        auth=ApiKeyAuth("test-key"),
+                        api_key="test-key",
                         cache_retention="long",
-                        session_id="session-long",
+                        cache_key="session-long",
                     ),
                 )
             )
@@ -1250,8 +1309,7 @@ def test_openai_completions_official_url_ignores_unsupported_session_hint(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     _fake_openai_module(monkeypatch)
-    registry = get_default_model_registry()
-    registry.register_endpoint(
+    registry = _registry_with_endpoint(
         "custom-openai",
         Endpoint(
             id="openai-completions",
@@ -1282,9 +1340,9 @@ def test_openai_completions_official_url_ignores_unsupported_session_hint(
                     ]
                 },
                 CallOptions(
-                    auth=ApiKeyAuth("test-key"),
+                    api_key="test-key",
                     cache_retention="long",
-                    session_id="session-official",
+                    cache_key="session-official",
                 ),
             )
         )
@@ -1298,8 +1356,7 @@ def test_openai_completions_typed_prompt_cache_key_unsupported_disables_payload(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     _fake_openai_module(monkeypatch)
-    registry = get_default_model_registry()
-    registry.register_endpoint(
+    registry = _registry_with_endpoint(
         "custom-openai",
         Endpoint(
             id="openai-completions",
@@ -1331,9 +1388,9 @@ def test_openai_completions_typed_prompt_cache_key_unsupported_disables_payload(
                     ]
                 },
                 CallOptions(
-                    auth=ApiKeyAuth("test-key"),
+                    api_key="test-key",
                     cache_retention="long",
-                    session_id="session-official",
+                    cache_key="session-official",
                 ),
             )
         )
@@ -1361,9 +1418,9 @@ def test_openai_completions_prompt_cache_key_defaults_off_for_short_sessions(
                     ]
                 },
                 CallOptions(
-                    auth=ApiKeyAuth("test-key"),
+                    api_key="test-key",
                     cache_retention="short",
-                    session_id="session-short",
+                    cache_key="session-short",
                 ),
             )
         )
@@ -1394,9 +1451,9 @@ def test_openai_completions_prompt_cache_key_can_be_disabled(
                     ]
                 },
                 CallOptions(
-                    auth=ApiKeyAuth("test-key"),
+                    api_key="test-key",
                     cache_retention="short",
-                    session_id="session-short",
+                    cache_key="session-short",
                 ),
             )
         )
@@ -1430,9 +1487,9 @@ def test_openai_completions_prompt_cache_key_disables_long_retention_params(
                     ]
                 },
                 CallOptions(
-                    auth=ApiKeyAuth("test-key"),
+                    api_key="test-key",
                     cache_retention="long",
-                    session_id="session-long",
+                    cache_key="session-long",
                 ),
             )
         )
@@ -1468,7 +1525,7 @@ def test_openai_completions_explicit_zai_thinking_format(
                         UserMessage(role="user", content="hello", timestamp=0.0)
                     ]
                 },
-                CallOptions(auth=ApiKeyAuth("test-key")),
+                CallOptions(api_key="test-key"),
             )
         )
     )
@@ -1505,7 +1562,7 @@ def test_openai_completions_explicit_zai_thinking_object_format(
                         UserMessage(role="user", content="hello", timestamp=0.0)
                     ]
                 },
-                CallOptions(auth=ApiKeyAuth("test-key")),
+                CallOptions(api_key="test-key"),
             )
         )
     )
@@ -1544,7 +1601,7 @@ def test_openai_completions_deepseek_thinking_uses_extra_body(
                         UserMessage(role="user", content="hello", timestamp=0.0)
                     ]
                 },
-                CallOptions(auth=ApiKeyAuth("test-key")),
+                CallOptions(api_key="test-key"),
             )
         )
     )
@@ -1582,7 +1639,7 @@ def test_openai_completions_explicit_qwen_thinking_format(
                         UserMessage(role="user", content="hello", timestamp=0.0)
                     ]
                 },
-                CallOptions(auth=ApiKeyAuth("test-key")),
+                CallOptions(api_key="test-key"),
             )
         )
     )
@@ -1614,7 +1671,7 @@ def test_openai_completions_compat_maps_qwen_chat_template_thinking(
                         UserMessage(role="user", content="hello", timestamp=0.0)
                     ]
                 },
-                CallOptions(auth=ApiKeyAuth("test-key")),
+                CallOptions(api_key="test-key"),
             )
         )
     )
@@ -1637,7 +1694,12 @@ def test_openai_completions_typed_routing_maps_openrouter_provider_payload(
             SUPPORTS_REASONING_EFFORT: False,
         },
         routing=EndpointRouting(
-            request_overrides={"openrouter": {"only": ["anthropic"]}}
+            request_overrides={
+                "openrouter": {
+                    "only": ["anthropic"],
+                    "metadata": {"deny": ["example"]},
+                }
+            }
         ),
         reasoning_effort="high",
         base_url="https://openrouter.ai/api/v1",
@@ -1654,13 +1716,17 @@ def test_openai_completions_typed_routing_maps_openrouter_provider_payload(
                         UserMessage(role="user", content="hello", timestamp=0.0)
                     ]
                 },
-                CallOptions(auth=ApiKeyAuth("test-key")),
+                CallOptions(api_key="test-key"),
             )
         )
     )
 
     assert _FakeAsyncOpenAI.last_create_kwargs["reasoning"] == {"effort": "high"}
-    assert _FakeAsyncOpenAI.last_create_kwargs["provider"] == {"only": ["anthropic"]}
+    assert _FakeAsyncOpenAI.last_create_kwargs["provider"] == {
+        "only": ["anthropic"],
+        "metadata": {"deny": ["example"]},
+    }
+    json.dumps(_FakeAsyncOpenAI.last_create_kwargs["provider"])
     assert "reasoning_effort" not in _FakeAsyncOpenAI.last_create_kwargs
     assert _FakeAsyncOpenAI.last_create_kwargs["store"] is False
 
@@ -1693,7 +1759,7 @@ def test_openai_completions_mixed_routing_without_single_namespace_errors(
                             UserMessage(role="user", content="hello", timestamp=0.0)
                         ]
                     },
-                    CallOptions(auth=ApiKeyAuth("test-key")),
+                    CallOptions(api_key="test-key"),
                 )
             )
         )
@@ -1728,7 +1794,7 @@ def test_openai_completions_mixed_routing_errors_independent_of_provider_identit
                             UserMessage(role="user", content="hello", timestamp=0.0)
                         ]
                     },
-                    CallOptions(auth=ApiKeyAuth("test-key")),
+                    CallOptions(api_key="test-key"),
                 )
             )
         )
@@ -1764,7 +1830,7 @@ def test_openai_completions_mixed_routing_errors_independent_of_base_url_identit
                             UserMessage(role="user", content="hello", timestamp=0.0)
                         ]
                     },
-                    CallOptions(auth=ApiKeyAuth("test-key")),
+                    CallOptions(api_key="test-key"),
                 )
             )
         )
@@ -1795,7 +1861,7 @@ def test_openai_completions_vercel_routing_is_explicit_not_provider_inferred(
                         UserMessage(role="user", content="hello", timestamp=0.0)
                     ]
                 },
-                CallOptions(auth=ApiKeyAuth("test-key")),
+                CallOptions(api_key="test-key"),
             )
         )
     )
@@ -1830,7 +1896,7 @@ def test_openai_completions_openrouter_routing_is_explicit_not_provider_inferred
                         UserMessage(role="user", content="hello", timestamp=0.0)
                     ]
                 },
-                CallOptions(auth=ApiKeyAuth("test-key")),
+                CallOptions(api_key="test-key"),
             )
         )
     )
@@ -1868,7 +1934,7 @@ def test_openai_completions_explicit_moonshot_thinking_toggle(
                         UserMessage(role="user", content="hello", timestamp=0.0)
                     ]
                 },
-                CallOptions(auth=ApiKeyAuth("test-key")),
+                CallOptions(api_key="test-key"),
             )
         )
     )
@@ -1913,7 +1979,7 @@ def test_openai_completions_explicit_moonshot_thinking_for_model_definition(
                         UserMessage(role="user", content="hello", timestamp=0.0)
                     ]
                 },
-                CallOptions(auth=ApiKeyAuth("test-key")),
+                CallOptions(api_key="test-key"),
             )
         )
     )
@@ -1978,7 +2044,7 @@ def test_openai_completions_typed_routing_maps_vercel_gateway_payload(
                         UserMessage(role="user", content="hello", timestamp=0.0)
                     ]
                 },
-                CallOptions(auth=ApiKeyAuth("test-key")),
+                CallOptions(api_key="test-key"),
             )
         )
     )
@@ -2013,7 +2079,7 @@ def test_openai_completions_typed_routing_uses_explicit_single_namespace(
                         UserMessage(role="user", content="hello", timestamp=0.0)
                     ]
                 },
-                CallOptions(auth=ApiKeyAuth("test-key")),
+                CallOptions(api_key="test-key"),
             )
         )
     )
@@ -2095,7 +2161,7 @@ def test_openai_completions_provider_adds_github_copilot_dynamic_headers(
                         ),
                     ],
                 },
-                CallOptions(auth=ApiKeyAuth("test-key")),
+                CallOptions(api_key="test-key"),
             )
         )
     )
@@ -2137,7 +2203,7 @@ def test_openai_completions_payload_synthesizes_missing_tool_result_for_assistan
                 provider,
                 _Model(),
                 {"messages": [assistant]},
-                CallOptions(auth=ApiKeyAuth("test-key"), pairing_mode="repair"),
+                CallOptions(api_key="test-key", pairing_mode="repair"),
             )
         )
     )
@@ -2180,7 +2246,7 @@ def test_openai_completions_uses_transport_timeout_when_options_omits_timeout(
                 provider,
                 _Model(),
                 {"messages": [{"role": "user", "content": "hello"}]},
-                CallOptions(auth=ApiKeyAuth("test-key")),
+                CallOptions(api_key="test-key"),
             )
         )
     )
@@ -2248,7 +2314,7 @@ def test_openai_completions_stream_maps_thinking_tool_calls_and_reasoning_detail
             provider,
             _Model(),
             {"messages": [UserMessage(role="user", content="hello", timestamp=0.0)]},
-            CallOptions(auth=ApiKeyAuth("test-key")),
+            CallOptions(api_key="test-key"),
         )
         return await _collect_stream_events(stream)
 
@@ -2340,7 +2406,7 @@ def test_openai_completions_stream_groups_interleaved_parallel_tool_calls(
             provider,
             _Model(),
             {"messages": [UserMessage(role="user", content="hello", timestamp=0.0)]},
-            CallOptions(auth=ApiKeyAuth("test-key")),
+            CallOptions(api_key="test-key"),
         )
         return await _collect_stream_events(stream)
 
@@ -2395,7 +2461,7 @@ def test_openai_completions_omits_response_start_when_chunk_id_missing(
                         UserMessage(role="user", content="hello", timestamp=0.0)
                     ]
                 },
-                CallOptions(auth=ApiKeyAuth("test-key")),
+                CallOptions(api_key="test-key"),
             )
         )
     )
@@ -2444,13 +2510,14 @@ def _patch_resolved_request(
     def _resolve(_model, *, context=None, options=None, request=None):
         del context, request
         headers = {}
-        auth = getattr(options, "auth", None) if options is not None else None
-        if isinstance(auth, ApiKeyAuth):
-            headers[auth.header or "Authorization"] = (
-                f"{auth.prefix if auth.prefix is not None else 'Bearer '}{auth.value}"
-            )
-        elif isinstance(auth, HeadersAuth):
-            headers.update(dict(auth.headers))
+        api_key = getattr(options, "api_key", None) if options is not None else None
+        if isinstance(api_key, str):
+            headers["Authorization"] = f"Bearer {api_key}"
+        option_headers = (
+            getattr(options, "headers", None) if options is not None else None
+        )
+        if option_headers:
+            headers.update(dict(option_headers))
         if extra_headers:
             headers.update(extra_headers)
         option_max_tokens = (
@@ -2462,23 +2529,37 @@ def _patch_resolved_request(
             else max_tokens
         )
         adapter_config = _adapter_config_from_compat(compat)
+        resolved_capabilities = capabilities or Capabilities(
+            input=tuple(getattr(_model, "input", ("text",))),
+            reasoning=bool(getattr(_model, "reasoning", False)),
+            max_tokens=getattr(_model, "max_tokens", None),
+        )
+        request_model = bound_test_model(
+            _model,
+            api="openai-completions",
+            options=options,
+            base_url=base_url,
+            adapter_config=adapter_config,
+            capabilities=resolved_capabilities,
+            routing=routing,
+            transport=transport,
+            upstream_model_id=upstream_model_id,
+        )
         return ProviderRequest(
-            provider=getattr(_model, "provider_id", ""),
-            endpoint=getattr(_model, "endpoint_id", ""),
+            model=request_model,
+            provider=request_model.provider_id,
+            endpoint=request_model.endpoint_id,
             api="openai-completions",
             base_url=base_url,
             headers=headers,
-            adapter_config=adapter_config,
+            adapter_config=request_model.adapter,
+            defaults=dict(request_model.defaults),
             max_tokens=resolved_max_tokens,
-            capabilities=capabilities
-            or Capabilities(
-                input=tuple(getattr(_model, "input", ("text",))),
-                reasoning=bool(getattr(_model, "reasoning", False)),
-            ),
+            capabilities=request_model.capabilities,
             reasoning_effort=reasoning_effort,
-            routing=routing or EndpointRouting(),
-            transport=transport or EndpointTransport(),
-            upstream_model_id=upstream_model_id,
+            routing=request_model.routing,
+            transport=request_model.transport,
+            upstream_model_id=request_model.upstream_id or request_model.id,
         )
 
     monkeypatch.setattr(
@@ -2535,35 +2616,3 @@ class _Model:
     defaults: dict[str, object] = field(default_factory=dict)
     provider_id: str = "openai"
     endpoint_id: str = "openai-completions"
-
-
-@pytest.fixture(autouse=True)
-def _default_registry() -> Iterator[None]:
-    def _endpoint(provider_id: str) -> Endpoint:
-        return Endpoint(
-            id="openai-completions",
-            provider=provider_id,
-            api="openai-completions",
-            models={
-                "gpt-test": Model(
-                    id="gpt-test",
-                    provider=provider_id,
-                    endpoint="openai-completions",
-                )
-            },
-        )
-
-    clear_default_model_registry()
-    registry = get_default_model_registry()
-    for provider_id in [
-        "openai",
-        "zai",
-        "dashscope",
-        "openrouter",
-        "vercel-ai-gateway",
-        "custom",
-        "github-copilot",
-    ]:
-        registry.register_endpoint(provider_id, _endpoint(provider_id))
-    yield
-    clear_default_model_registry()

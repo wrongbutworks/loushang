@@ -166,6 +166,12 @@ class AgentSession:
         self.api_provider_registry = api_provider_registry or get_default_api_provider_registry()
         self.oauth_provider_registry = oauth_provider_registry or get_default_oauth_registry()
         self._auth_manager = auth_manager
+        if (
+            self.model_registry is not None
+            and self._auth_manager is not None
+            and self._auth_manager.ai_registry is self.model_registry.ai_registry
+        ):
+            self.model_registry._bind_ai_registry_consumer(self._auth_manager)
         self._resource_loader = resource_loader
         self.resource_bundle = resource_bundle
         self._extension_runner = extension_runner

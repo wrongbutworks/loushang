@@ -3,10 +3,23 @@ from __future__ import annotations
 from collections.abc import Iterator, Mapping
 from dataclasses import InitVar, dataclass, field
 from math import isfinite
+from types import MappingProxyType
 from typing import Literal, TypeAlias, cast
 
 Modality = Literal["text", "image"]
 ALLOWED_MODALITIES: tuple[Modality, ...] = ("text", "image")
+
+
+class _FrozenSequence(tuple[object, ...]):
+    def __eq__(self, other: object) -> bool:
+        if isinstance(other, (list, tuple)):
+            return tuple(self) == tuple(other)
+        return False
+
+    def __ne__(self, other: object) -> bool:
+        return not self == other
+
+    __hash__ = tuple.__hash__
 
 
 def _normalize_optional_bool_attrs(instance: object, *attrs: str) -> None:
@@ -116,13 +129,29 @@ def _optional_transport_number_from_raw(
 def _copy_raw_value(value: object) -> object:
     if isinstance(value, Mapping):
         return {key: _copy_raw_value(entry) for key, entry in value.items()}
-    if isinstance(value, list):
+    if isinstance(value, (list, tuple)):
         return [_copy_raw_value(entry) for entry in value]
     return value
 
 
 def _copy_raw_mapping(value: Mapping[str, object]) -> dict[str, object]:
     return {key: _copy_raw_value(entry) for key, entry in value.items()}
+
+
+def _freeze_raw_value(value: object) -> object:
+    if isinstance(value, Mapping):
+        return MappingProxyType(
+            {key: _freeze_raw_value(entry) for key, entry in value.items()}
+        )
+    if isinstance(value, (list, tuple)):
+        return _FrozenSequence(_freeze_raw_value(entry) for entry in value)
+    return value
+
+
+def _freeze_raw_mapping(value: Mapping[str, object]) -> Mapping[str, object]:
+    return MappingProxyType(
+        {key: _freeze_raw_value(entry) for key, entry in value.items()}
+    )
 
 
 def _deep_merge_raw_mapping(
@@ -208,6 +237,7 @@ OPENAI_RESPONSES_ADAPTER_KEYS = frozenset(
     {
         "developerRole",
         "assistantAfterToolResult",
+        "maxOutputTokens",
         "promptCacheKey",
         "longCacheRetention",
         "sessionIdHeader",
@@ -229,7 +259,7 @@ def _json_safe_copy(value: object, path: str) -> object:
         if isinstance(value, float) and not isfinite(value):
             raise ValueError(f"adapter extraBody value must be JSON-safe: {path}")
         return value
-    if isinstance(value, list):
+    if isinstance(value, (list, tuple)):
         return [_json_safe_copy(entry, f"{path}[]") for entry in value]
     if isinstance(value, Mapping):
         result: dict[str, object] = {}
@@ -372,6 +402,7 @@ _OPENAI_COMPLETIONS_DEFAULTS = {
 _OPENAI_RESPONSES_ATTR_TO_KEY = {
     "developer_role": "developerRole",
     "assistant_after_tool_result": "assistantAfterToolResult",
+    "max_output_tokens": "maxOutputTokens",
     "prompt_cache_key": "promptCacheKey",
     "long_cache_retention": "longCacheRetention",
     "session_id_header": "sessionIdHeader",
@@ -380,6 +411,7 @@ _OPENAI_RESPONSES_ATTR_TO_KEY = {
 _OPENAI_RESPONSES_DEFAULTS = {
     "developerRole": True,
     "assistantAfterToolResult": False,
+    "maxOutputTokens": True,
     "promptCacheKey": True,
     "longCacheRetention": True,
     "sessionIdHeader": True,
@@ -408,7 +440,7 @@ class OpenAICompletionsConfig:
     streaming_usage: bool = True
     max_output_tokens_field: str = "max_completion_tokens"
     reasoning_effort: bool = True
-    reasoning_effort_map: dict[str, str | None] = field(default_factory=dict)
+    reasoning_effort_map: Mapping[str, str | None] = field(default_factory=dict)
     strict_schema: bool = True
     prompt_cache_key: bool = False
     long_cache_retention: bool = True
@@ -420,7 +452,7 @@ class OpenAICompletionsConfig:
     tool_stream: bool = False
     reasoning_format: str | None = "openai"
     cache_control_format: str | None = None
-    extra_body: dict[str, object] = field(default_factory=dict)
+    extra_body: Mapping[str, object] = field(default_factory=dict)
     _explicit_keys: frozenset[str] | None = field(
         default=None,
         compare=False,
@@ -452,12 +484,18 @@ class OpenAICompletionsConfig:
             "cache_control_format",
         )
         object.__setattr__(
-            self, "reasoning_effort_map", dict(self.reasoning_effort_map)
+            self,
+            "reasoning_effort_map",
+            MappingProxyType(dict(self.reasoning_effort_map)),
+        )
+        extra_body = _extra_body_from_raw(
+            {"extraBody": self.extra_body},
+            "extraBody",
         )
         object.__setattr__(
             self,
             "extra_body",
-            _extra_body_from_raw({"extraBody": self.extra_body}, "extraBody"),
+            _freeze_raw_mapping(extra_body),
         )
         _set_explicit_adapter_keys(
             self,
@@ -566,6 +604,7 @@ class OpenAICompletionsConfig:
 class OpenAIResponsesConfig:
     developer_role: bool = True
     assistant_after_tool_result: bool = False
+    max_output_tokens: bool = True
     prompt_cache_key: bool = True
     long_cache_retention: bool = True
     session_id_header: bool = True
@@ -582,6 +621,7 @@ class OpenAIResponsesConfig:
             self,
             "developer_role",
             "assistant_after_tool_result",
+            "max_output_tokens",
             "prompt_cache_key",
             "long_cache_retention",
             "session_id_header",
@@ -604,6 +644,11 @@ class OpenAIResponsesConfig:
                 raw,
                 "assistantAfterToolResult",
                 cls.assistant_after_tool_result,
+            ),
+            max_output_tokens=_bool_from_raw(
+                raw,
+                "maxOutputTokens",
+                cls.max_output_tokens,
             ),
             prompt_cache_key=_bool_from_raw(
                 raw,
@@ -632,6 +677,7 @@ class OpenAIResponsesConfig:
         return {
             "developerRole": self.developer_role,
             "assistantAfterToolResult": self.assistant_after_tool_result,
+            "maxOutputTokens": self.max_output_tokens,
             "promptCacheKey": self.prompt_cache_key,
             "longCacheRetention": self.long_cache_retention,
             "sessionIdHeader": self.session_id_header,
@@ -792,7 +838,7 @@ class EndpointTransport:
 
 @dataclass(frozen=True)
 class EndpointRouting:
-    request_overrides: dict[str, dict[str, object]] = field(default_factory=dict)
+    request_overrides: Mapping[str, Mapping[str, object]] = field(default_factory=dict)
 
     def __post_init__(self) -> None:
         for key, value in self.request_overrides.items():
@@ -808,10 +854,12 @@ class EndpointRouting:
         object.__setattr__(
             self,
             "request_overrides",
-            {
-                key: _copy_raw_mapping(value)
-                for key, value in self.request_overrides.items()
-            },
+            MappingProxyType(
+                {
+                    key: _freeze_raw_mapping(value)
+                    for key, value in self.request_overrides.items()
+                }
+            ),
         )
 
     @classmethod
@@ -837,7 +885,7 @@ class Auth:
     api_key_envs: tuple[str, ...] = ()
     header: str = "Authorization"
     prefix: str = "Bearer "
-    extra_headers: dict[str, str] = field(default_factory=dict)
+    extra_headers: Mapping[str, str] = field(default_factory=dict)
     _explicit_keys: frozenset[str] | None = field(
         default=None,
         compare=False,
@@ -845,6 +893,11 @@ class Auth:
     )
 
     def __post_init__(self) -> None:
+        object.__setattr__(
+            self,
+            "extra_headers",
+            MappingProxyType(dict(self.extra_headers)),
+        )
         if self._explicit_keys is not None:
             object.__setattr__(self, "_explicit_keys", frozenset(self._explicit_keys))
             return
@@ -1000,7 +1053,14 @@ class Capabilities:
 
 @dataclass(frozen=True)
 class Defaults(Mapping[str, object]):
-    items_by_key: dict[str, object] = field(default_factory=dict)
+    items_by_key: Mapping[str, object] = field(default_factory=dict)
+
+    def __post_init__(self) -> None:
+        object.__setattr__(
+            self,
+            "items_by_key",
+            _freeze_raw_mapping(self.items_by_key),
+        )
 
     def __getitem__(self, key: str) -> object:
         return self.items_by_key[key]
@@ -1025,7 +1085,7 @@ class Defaults(Mapping[str, object]):
         return cls(items_by_key=dict(raw or {}))
 
     def to_raw(self) -> dict[str, object]:
-        return dict(self.items_by_key)
+        return _copy_raw_mapping(self.items_by_key)
 
 
 @dataclass(frozen=True)
@@ -1170,12 +1230,13 @@ class Endpoint:
     docs: str | None = None
     auth: Auth | None = None
     defaults: Defaults = field(default_factory=Defaults)
-    models: dict[str, Model] = field(default_factory=dict)
+    models: Mapping[str, Model] = field(default_factory=dict)
     adapter: AdapterConfig | None = None
     transport: EndpointTransport = field(default_factory=EndpointTransport)
     routing: EndpointRouting = field(default_factory=EndpointRouting)
 
     def __post_init__(self, provider: str | None) -> None:
+        object.__setattr__(self, "models", MappingProxyType(dict(self.models)))
         if self._provider_key:
             return
         if provider is None:
@@ -1206,7 +1267,7 @@ class Provider:
     name: str | None = None
     website: str | None = None
     auth: Auth | None = None
-    endpoints: dict[str, Endpoint] = field(default_factory=dict)
+    endpoints: Mapping[str, Endpoint] = field(default_factory=dict)
     _auth_scope_known: bool = field(default=False, compare=False, repr=False)
     _explicit_endpoint_auth: frozenset[str] = field(
         default_factory=frozenset,
@@ -1218,6 +1279,9 @@ class Provider:
         compare=False,
         repr=False,
     )
+
+    def __post_init__(self) -> None:
+        object.__setattr__(self, "endpoints", MappingProxyType(dict(self.endpoints)))
 
     def get_endpoint(self, endpoint_id: str) -> Endpoint | None:
         return self.endpoints.get(endpoint_id)

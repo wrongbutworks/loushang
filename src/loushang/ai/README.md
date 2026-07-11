@@ -29,10 +29,10 @@
   - 领域对象：`Provider`、`Endpoint`、`Model`
   - 配套对象：`Auth`、`Capabilities`、`Defaults`、`Pricing`、三类 `AdapterConfig`
 - `registry.py`
-  - 运行时查询容器：`ModelRegistry`
+  - 装载后只读的运行时查询容器：`ModelRegistry`
   - 默认入口：`get_default_model_registry()`
 - `loader.py`
-  - 从内置 `models.json` 或显式文件/目录路径装载 registry
+  - 从内置 `models.json` 或显式文件/目录路径一次性构造 registry
 - `models.json`
   - 内置模型事实源；完整 legacy catalog 已备份到 `backup/ai/models-legacy-full.json.gz`
 
@@ -44,7 +44,7 @@
 
 模型 ID 规则：
 
-- catalog 中的 `provider`、`endpoint`、`model` 三段用于本地查询和 CLI 展示
+- catalog 中的 `provider`、`endpoint`、`model` 三段用于本地查询和诊断展示
 - 自定义 catalog 可以用 `upstreamId` 记录与本地 model ID 不同的真实上游模型 ID
 - 真实上游 ID 存在 `model.upstream_id`
 - provider 解析层输出 `ProviderRequest.upstream_model_id`
@@ -87,13 +87,10 @@
 内置 curated model catalog 只发布当前维护的小型 provider 集。Mistral、Google Gemini API、Google Vertex OpenAI-compatible、Cloudflare AI Gateway / Workers AI 等长尾接入不在默认 catalog 中；需要时应通过自定义模型文件或外部包复用现有 OpenAI-compatible / Anthropic Messages adapter 边界。外部 catalog 的 `baseUrl` 可以包含 `{ENV_NAME}` 模板，运行时由 `provider.resolution` 从环境变量展开；缺少变量时直接报错。
 
 核心 adapter 集合由 `docs/internals/architecture/ai/core-provider-adapter-contract-matrix.md`
-锁定；新增厂商专用 adapter 必须进入 `contrib` 或外部包，不能默认进入 core。
-
-OpenAI Codex Responses 不在默认 model catalog 和 builtin adapter 注册中；它位于
-`loushang.ai.contrib.openai_codex`，需要调用方显式注册 contrib 后使用。该 contrib
-只代表非默认 provider-specific adapter/catalog integration；OAuth lifecycle、
-quota、account control-plane 和 billing 不属于 `loushang.ai.contrib` 或 core auth
-边界。
+锁定。产品或账号场景必须优先通过 catalog 数据复用这些协议 adapter，不能增加产品专用
+provider。ChatGPT Coding Plan 路径使用
+`openai:openai-responses-chatgpt:gpt-5.5-chatgpt`，其上游模型 ID 是 `gpt-5.5`，
+`api` 仍是 `openai-responses`。
 
 Azure OpenAI Responses 不再作为 core adapter 发布；需要 Azure 私有部署时，
 请使用自定义 catalog 和通用 OpenAI-compatible 协议边界，或在外部包中注册专用 adapter。
@@ -140,23 +137,20 @@ Amazon Bedrock Converse 不再作为 core adapter 发布；本包不再声明 Be
 
 request-level 认证解析。
 
-认证重构的目标边界见
-[`loushang-ai-auth-boundary-design.md`](../../../docs/internals/architecture/ai/loushang-ai-auth-boundary-design.md)：
-core auth 只负责把本次调用凭证解析为 provider request headers。
-`models.json.auth` 是缺省认证声明；`CallOptions.auth` 是本次 request 的显式认证输入。
-OAuth 登录、refresh、credential store、账号选择、quota、billing 和产品级认证策略属于上层或
-非 core 边界。
+core auth 只负责把本次调用的认证材料解析为 provider request headers。
+`models.json.auth` 声明缺省 API-key 行为；`CallOptions.oauth_credentials` 接收调用方
+已经通过 `loushang.auth` 取得的单个 `OAuthCredentials`，本次请求需要的附加认证头通过
+`CallOptions.headers` 传入。OAuth 登录、refresh、credential store、账号选择、quota、
+billing 和产品级认证策略不属于 `loushang.ai`。
 
 - `support.py`
   - auth merge
   - request auth resolve
   - `models.json.auth` default resolve
 - `credentials.py`
-  - `ApiKeyAuth` / `OAuthBearerAuth` / `NoAuth` / `HeadersAuth`
-
-OAuth login、refresh、credential store、provider registry、env-oauth 和
-Codex/Anthropic OAuth provider 支撑在顶层 `loushang.auth` 包中，不属于
-`loushang.ai.auth`。
+  - 保留现有调用方使用的 request-level `CallOptions.auth` 输入类型
+  - 不包含 login、refresh 或 credential store 行为；新调用应使用明确的
+    `api_key` / `oauth_credentials` / `headers` 字段
 
 ### 其它
 
@@ -177,7 +171,7 @@ Codex/Anthropic OAuth provider 支撑在顶层 `loushang.auth` 包中，不属�
 
 根包 `loushang.ai` 是稳定 SDK 门面，只导出最常用的模型调用、模型访问、消息/事件类型和通用 options。
 Provider 管理、归一化诊断、pricing、tool transform 和 JSON repair 等能力必须从
-对应子模块进入；可选 provider 集成使用自己的 `loushang.ai.contrib.*` 边界。
+对应子模块进入。
 
 主要导出分为：
 
@@ -185,6 +179,7 @@ Provider 管理、归一化诊断、pricing、tool transform 和 JSON repair 等
 
 - `stream(...)`
 - `complete(...)`
+- `complete_structured(...)`
 
 调用入口会在 Provider handoff 前校验已解析模型能力。`stream` 路径要求
 `stream` capability；`tools`、reasoning、structured output、temperature、image
@@ -192,8 +187,15 @@ input 和 attachment 请求也会在模型未声明支持时直接失败。
 
 通用调用参数使用 `CallOptions`。核心 provider 不再有 provider-specific option
 class；普通调用只通过 `CallOptions`、`ReasoningOptions`、`RetryOptions` 和
-`TimeoutOptions` 这组根包契约表达。可选 contrib 集成可以在自己的 contrib 包中保留
-专有 option class。
+`TimeoutOptions` 这组根包契约表达。
+
+`CallOptions.cache_key` 是调用方提供的、不透明且在相关请求之间稳定的缓存/亲和键。
+协议 adapter 可以把它映射为上游 `prompt_cache_key`、真实 `session_id` header、
+client-request 或 affinity header，但 AI 包不把它解释成 session，也不据此恢复
+历史消息。`cache_retention="none"` 时不发送由该键派生的字段。
+
+`CallOptions` 不承载 provider、endpoint、model、region、fallback 或 routing 选择。
+这些事实必须在调用 `complete()` / `stream()` 前由具体 `Model` 确定。
 
 ### 模型访问
 
@@ -246,8 +248,8 @@ class；普通调用只通过 `CallOptions`、`ReasoningOptions`、`RetryOptions
 本轮契约收敛把根包 `__all__` 视为稳定 API 快照。此前从根包导出的高级能力不再继续占用稳定门面：
 
 - Provider registry 管理入口移到 `loushang.ai.advanced.registry`。
-- Core provider-specific options 已删除；OpenAI Codex 等可选集成从自己的
-  `loushang.ai.contrib.*` 包进入。
+- AI CLI 和产品专用的 OpenAI Codex contrib 已删除；产品场景通过 catalog 复用协议
+  adapter。现有调用方依赖的 Moonshot quota helper 暂保留在 legacy contrib 路径。
 - Context normalization helper 从 `loushang.ai.context` 进入。
 - Tool transform / validation 从 `loushang.ai.tool` 进入。
 - Cost helper 从 `loushang.ai.pricing` 进入。
@@ -317,6 +319,8 @@ auth or usage responsibilities.
 
 - `ModelRegistry`
 - `get_default_model_registry()`
+- `load_model_registry_from_file(...)`
+- `load_model_registry_from_directory(...)`
 - `Provider`
 - `Endpoint`
 - `Auth`
@@ -326,6 +330,10 @@ auth or usage responsibilities.
 - `AnthropicMessagesConfig`
 - `Defaults`
 - `Pricing`
+
+`ModelRegistry` 在 loader 构造完成后只提供查询，不提供运行期 catalog mutation。
+默认 builtin + user directory 的 layered 装配是内部策略；高级调用方只使用明确的
+file/directory loader。
 
 ### `loushang.ai.advanced.registry`
 
@@ -353,24 +361,22 @@ after core request normalization and before `invoke_raw(request)`.
 - `resolve_endpoint_for_model(...)`
 - `resolve_request_for_model(...)`
 
-### `loushang.ai.auth`
+### OAuth 调用输入
 
-- `ApiKeyAuth`
-- `OAuthBearerAuth`
-- `NoAuth`
-- `HeadersAuth`
-- `resolve_auth_for_model(...)`
-- `resolve_auth_for_request(...)`
-- `MissingAuthError`
-- `MissingAuthConfigError`
-- `InvalidAuthConfigError`
-- `AuthResolutionError`
+- `loushang.auth.OAuthCredentials`
+- `CallOptions.oauth_credentials`
+- `CallOptions.headers`
+
+`OAuthCredentials` 表示调用方已经取得的 credential；request-specific headers 不扩展
+credential DTO，而是通过 `CallOptions.headers` 传入。AI 包不读取 credential store，
+也不登录或刷新 token。完整真实调用见
+[`examples/ai/chatgpt_coding_plan.py`](../../../examples/ai/chatgpt_coding_plan.py)。
 
 ## 当前边界约定
 
 ### `Model`
 
-`Model` 是上层持有的模型句柄。
+`Model` 是上层持有的 concrete/effective 模型句柄。
 
 它当前承载：
 
@@ -404,7 +410,9 @@ Registry 返回的 `Model` 会带上继承后的 endpoint 调用事实。
 - 同一个模型名可以在多个 endpoint 下分别出现
 - 每个 `Model` 只通过自己的 `endpoint` 被调用
 
-运行时 provider 路由由模型继承后的 `api` 决定。
+运行时 provider dispatch 由模型继承后的 `api` 决定。`complete()` 和 `stream()`
+不会查询 registry、切换 preferred endpoint、读取 `LOUSHANG_REGION`、根据 region
+改选 endpoint 或执行 fallback。
 
 例如 `moonshot:openai-completions:kimi-k2.6` 是一个可调用 `Model` 句柄。
 如果同一个上游模型通过多个 endpoint 暴露，catalog 仍会把它们表达为不同的
@@ -423,6 +431,11 @@ Registry 返回的 `Model` 会带上继承后的 endpoint 调用事实。
 
 收敛为 provider 侧可直接消费的单一请求对象。
 
+`model: Model` 是必填字段，并且保持为本次实际调用的同一个 effective model 对象。
+request 的 `provider`、`endpoint`、`api`、`region`、`capabilities`、`defaults`、
+`adapter_config`、`transport`、`routing`、`upstream_model_id` 和 `base_url` 都从这一个
+model 派生，不允许拼接 caller model 与另一个 endpoint model 的事实。
+
 它当前主要承载：
 
 - `provider`
@@ -437,7 +450,11 @@ Registry 返回的 `Model` 会带上继承后的 endpoint 调用事实。
 - `routing`
 - `max_tokens`
 - `reasoning_effort`
-- `temperature`
+  - `temperature`
+
+`resolve_request_for_model()` 只解析已选模型的 base URL 环境变量、auth 和单次调用
+参数，不承担 catalog/model selection。缺少 provider、endpoint 或 `api` 的 unbound
+model 会在 provider 调用前失败。
 
 冻结后的 request resolution 只携带一份 `adapter_config`。核心 provider 使用
 `OpenAICompletionsConfig`、`OpenAIResponsesConfig`、`AnthropicMessagesConfig`
@@ -463,6 +480,9 @@ message = await complete(
     }
 )
 ```
+
+这里的 `get_model(provider, endpoint, model_id)` 已经在 invocation 前精确确定调用
+路径。endpoint 的 `region` 只作为 catalog/model metadata 保留。
 
 流式调用同样使用根包函数：
 

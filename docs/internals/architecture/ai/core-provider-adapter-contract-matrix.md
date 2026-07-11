@@ -1,7 +1,8 @@
 # Core Provider Adapter Contract Matrix
 
-`loushang.ai` core ships only protocol-level production adapters. Provider-specific
-or account-specific integrations must live in `contrib` or an external package.
+`loushang.ai` ships only protocol-level production adapters. Product and account
+scenarios reuse them through model catalog routes; product-specific adapters do
+not belong in the package.
 
 ## Production Adapters
 
@@ -26,11 +27,10 @@ registration and runs before `invoke_raw(request)`.
 | `loushang.ai.providers.openai_responses_shared` | Shared OpenAI Responses conversion and stream parsing |
 | `loushang.ai.providers.provider_helpers` | Shared provider runtime helpers |
 
-## Test-Only And Contrib
+## Test-Only
 
 | Module | Boundary |
 |---|---|
 | `loushang.ai.providers.faux` | Test/example-only adapter; not builtin |
-| `loushang.ai.contrib.openai_codex` | Explicit contrib registration; not builtin |
 
 Core does not ship Azure OpenAI or Amazon Bedrock adapters in this version.

@@ -558,12 +558,6 @@
     "openai": {
       "displayName": "OpenAI",
       "website": "https://platform.openai.com",
-      "auth": {
-        "kind": "apiKey",
-        "apiKeyEnv": "OPENAI_API_KEY",
-        "header": "Authorization",
-        "prefix": "Bearer "
-      },
       "endpoints": {
         "openai-responses": {
           "displayName": "OpenAI Responses API",
@@ -574,6 +568,12 @@
           "transport": {
             "kind": "http",
             "stream": "sse"
+          },
+          "auth": {
+            "kind": "apiKey",
+            "apiKeyEnv": "OPENAI_API_KEY",
+            "header": "Authorization",
+            "prefix": "Bearer "
           },
           "models": {
             "gpt-5.5": {
@@ -644,6 +644,58 @@
           "adapter": {
             "developerRole": true,
             "assistantAfterToolResult": false
+          }
+        },
+        "openai-responses-chatgpt": {
+          "displayName": "OpenAI Responses via ChatGPT",
+          "api": "openai-responses",
+          "baseUrl": "https://chatgpt.com/backend-api/codex",
+          "region": "global",
+          "auth": {
+            "kind": "oauth",
+            "header": "Authorization",
+            "prefix": "Bearer ",
+            "extraHeaders": {
+              "originator": "loushang",
+              "OpenAI-Beta": "responses=experimental"
+            }
+          },
+          "models": {
+            "gpt-5.5-chatgpt": {
+              "displayName": "GPT-5.5 via ChatGPT",
+              "upstreamId": "gpt-5.5",
+              "family": "gpt-5",
+              "defaults": {
+                "maxOutputTokens": 32000,
+                "reasoningEffort": "medium"
+              },
+              "capabilities": {
+                "contextWindow": 272000,
+                "maxTokens": 128000,
+                "input": [
+                  "text",
+                  "image"
+                ],
+                "output": [
+                  "text"
+                ],
+                "reasoning": true,
+                "stream": true,
+                "toolUse": true,
+                "structuredOutput": true,
+                "attachment": true,
+                "temperature": true
+              }
+            }
+          },
+          "adapter": {
+            "developerRole": true,
+            "assistantAfterToolResult": false,
+            "maxOutputTokens": false,
+            "promptCacheKey": false,
+            "longCacheRetention": false,
+            "sessionIdHeader": false,
+            "sessionAffinityHeaders": false
           }
         }
       }

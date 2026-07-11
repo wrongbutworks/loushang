@@ -131,6 +131,11 @@ def create_services(
     system_prompt: str = "",
 ) -> BootstrapServices:
     model_registry = ModelRegistry(ai_registry=ai_model_registry)
+    resolved_auth_manager = auth_manager or AuthManager(
+        ai_registry=model_registry.ai_registry
+    )
+    if resolved_auth_manager.ai_registry is model_registry.ai_registry:
+        model_registry._bind_ai_registry_consumer(resolved_auth_manager)
     resolved_settings_manager = settings_manager or SettingsManager(
         ControlConfig(
             default_model=default_model,
@@ -141,7 +146,7 @@ def create_services(
     return BootstrapServices(
         settings_manager=resolved_settings_manager,
         model_registry=model_registry,
-        auth_manager=auth_manager or AuthManager(ai_registry=model_registry.ai_registry),
+        auth_manager=resolved_auth_manager,
         resource_loader=resource_loader or DefaultResourceLoader(),
         diagnostics_service=DiagnosticsService(),
         exec_service=exec_service or ExecService(),

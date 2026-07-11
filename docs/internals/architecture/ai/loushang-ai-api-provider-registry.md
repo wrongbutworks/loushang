@@ -434,7 +434,7 @@ v0.1 建议优先采用：
 2. `complete` / `stream` 两种 mode 的 adapter 测试矩阵是否完整
 3. registry-level error 的正式类型族如何命名
 4. `api registry` 是否需要暴露 `has_api_provider(api)` 这类辅助查询
-5. provider/contrib-specific option 扩展如何避免进入根 public surface
+5. provider-specific option 扩展如何避免进入根 public surface
 
 ---
 

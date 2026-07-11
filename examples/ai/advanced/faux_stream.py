@@ -15,8 +15,7 @@ from collections.abc import Iterable
 
 from loushang.ai import CallOptions, Model, ReasoningOptions, stream
 from loushang.ai.advanced.registry import ApiProviderRegistry
-from loushang.ai.model import Capabilities, Endpoint
-from loushang.ai.model.registry import get_default_model_registry
+from loushang.ai.model import Auth, Capabilities
 from loushang.ai.providers.faux import FauxProvider
 
 
@@ -26,20 +25,9 @@ def _build_model() -> Model:
         id="faux-model",
         provider="faux",
         endpoint="anthropic-messages",
+        api="anthropic-messages",
+        auth=Auth(kind="none"),
         capabilities=Capabilities(stream=True, reasoning=True),
-    )
-
-
-def _register_model() -> None:
-    # 这个示例依赖本地 faux 模型，因此需要先注册模型定义。
-    get_default_model_registry().register_endpoint(
-        "faux",
-        Endpoint(
-            id="anthropic-messages",
-            provider="faux",
-            api="anthropic-messages",
-            models={"faux-model": _build_model()},
-        ),
     )
 
 
@@ -63,7 +51,6 @@ def _iter_text(parts: Iterable[object]) -> str:
 
 async def _main() -> None:
     # 高级路径：手动注入 faux provider，而不是走 builtin provider。
-    _register_model()
     registry = ApiProviderRegistry()
     registry.register_api_provider(FauxProvider())
 

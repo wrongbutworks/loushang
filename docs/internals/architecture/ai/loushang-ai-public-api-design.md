@@ -63,7 +63,7 @@
 
 ### 5. 兼容 `reference repository` 风格，吸收 `kilocode` 的实用门面
 
-建议整体对齐 `reference repository` 的 SDK 化导出方式，同时补上少量 `kilocode` 风格的 provider discovery / auth facade。
+建议整体对齐 `reference repository` 的 SDK 化导出方式，同时保留必要的 provider discovery 与请求级 auth resolution。
 
 
 ## 职责边界
@@ -75,7 +75,7 @@
 - 模型 registry 装载与查询
 - API Provider 注册与路由
 - 工具调用协议转换与校验
-- 认证材料解析与 OAuth 基础设施
+- 请求级认证材料解析与请求头绑定
 - Provider 请求解析、endpoint 解析、运行时兼容性处理
 - 上下文规范化与跨 Provider 消息兼容
 
@@ -227,7 +227,6 @@
 适用场景：
 
 - 调试
-- CLI
 - 可观测性
 - provider route 解释
 
@@ -499,7 +498,7 @@ Stable 最小字段集合确认为：
 
 - 这些类型用于统一表达核心调用参数
 - 应稳定暴露给上层，避免上层直接组装任意 dict
-- provider / contrib 专用选项不进入 core public surface；例如 Codex transport 只属于 `loushang.ai.contrib.openai_codex`
+- provider 或产品专用选项不进入 core public surface；产品场景通过 catalog 复用协议 adapter
 
 
 ## Advanced API
@@ -523,7 +522,7 @@ Stable 最小字段集合确认为：
 
 - 直接访问模型 registry
 - 自定义 registry 装载
-- CLI/调试场景读取模型域对象
+- 调试场景读取模型域对象
 
 说明：
 
@@ -550,29 +549,25 @@ Stable 最小字段集合确认为：
 
 ### C. 请求级认证
 
-- `resolve_auth_for_model(...)`
-- `resolve_auth_for_request(...)`
-- `ApiKeyAuth`
-- `OAuthBearerAuth`
-- `NoAuth`
-- `HeadersAuth`
-- `AuthView`
-- `MissingAuthError`
-- `MissingAuthConfigError`
-- `InvalidAuthConfigError`
-- `AuthResolutionError`
+- `loushang.auth.OAuthCredentials`
+- `CallOptions.auth`（仅保留现有调用方兼容）
+- `CallOptions.oauth_credentials`
+- `CallOptions.headers`
 
 适用场景：
 
-- 将 `CallOptions.auth` 中的显式 request credential 解析成 provider request headers
-- 在未显式传入 auth 时，根据 `models.json.auth` 做 API key env fallback 或 OAuth missing-auth 诊断
+- 将 `CallOptions.oauth_credentials` 中的显式 OAuth access token 与
+  `CallOptions.headers` 中的请求级附加认证头解析成 provider request headers
+- 未显式传入 OAuth credential 时，根据 `models.json.auth` 做 API key env fallback 或 OAuth missing-auth 诊断
 - 对 provider request auth header 做统一构造与脱敏配合
 
 说明：
 
-- `loushang.ai.auth` 不拥有 OAuth login、refresh、credential store、provider registry 或 env-oauth
-- OAuth lifecycle 支撑迁移到顶层 `loushang.auth`
-- `loushang.ai` 只接收 `OAuthBearerAuth(access_token)` 这类 request-level 输入
+- 新调用使用明确的 `api_key`、`oauth_credentials` 或 `headers` 字段；兼容入口不扩展为
+  OAuth lifecycle 能力
+- `loushang.ai` 不拥有 OAuth login、refresh、credential store、provider registry 或 env-oauth
+- `loushang.ai` 只接收调用方通过 `loushang.auth` 取得的单个 `OAuthCredentials`；
+  request-specific headers 不扩展 credential DTO
 
 ### D. 事件流组装基础设施
 
@@ -612,7 +607,6 @@ Stable 最小字段集合确认为：
 - `AnthropicProvider`
 - `OpenAICompletionsProvider`
 - `OpenAIResponsesProvider`
-- `OpenAICodexResponsesProvider`
 - `FauxProvider`
 
 说明：
@@ -633,15 +627,6 @@ Stable 最小字段集合确认为：
 
 - 这些模块更适合作为内部实现复用件
 - 不宜承诺公共稳定性
-
-### C. CLI
-
-- `loushang.ai.cli`
-
-说明：
-
-- 它是调试工具，不是 SDK 公共 API
-
 
 ## 建议的根包导出面
 
@@ -716,7 +701,7 @@ Stable 最小字段集合确认为：
 应吸收其对工程化有价值的能力：
 
 - provider/model discovery
-- auth facade
+- request-level auth resolution
 - transform 层与 compatibility 层分离
 - model metadata 比运行时调用更早成为一等对象
 
@@ -769,6 +754,6 @@ request-level credential 与 auth resolution。
 - 统一调用模型
 - 统一表达消息和事件
 - 统一管理模型目录与 Provider 路由
-- 统一处理工具调用、认证和兼容性差异
+- 统一处理工具调用、请求级认证和兼容性差异
 
 这也是后续整理根包导出面、写稳定性文档和约束上层依赖边界的基础。

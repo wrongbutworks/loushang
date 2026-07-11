@@ -17,9 +17,12 @@ from loushang.ai.api_registry import ApiProviderRegistry
 from loushang.ai.context import NormalizedContext, normalize_context
 from loushang.ai.errors import AIRateLimitError, UnsupportedCapabilityError
 from loushang.ai.model import (
+    Auth,
     Capabilities,
+    Model,
     OpenAICompletionsConfig,
     OpenAIResponsesConfig,
+    default_adapter_config,
 )
 from loushang.ai.provider import ProviderRequest
 from loushang.ai.provider.invocation import call_api_provider_stream
@@ -166,6 +169,71 @@ class _StreamOnlyProvider:
 
     async def stream(self, model, context, options, request):
         return None
+
+
+@pytest.mark.parametrize("entrypoint", ["complete", "stream"])
+def test_public_invocation_preserves_effective_model_identity(entrypoint: str) -> None:
+    provider = _Provider()
+    registry = ApiProviderRegistry()
+    registry.register_api_provider(provider)
+    model = Model(
+        id="effective-model",
+        provider="selected-provider",
+        endpoint="selected-endpoint",
+        api="faux",
+        base_url="https://selected.example/v1",
+        region="us",
+        auth=Auth(kind="none"),
+        capabilities=Capabilities(input=("text",), output=("text",), stream=True),
+    )
+
+    async def _run() -> None:
+        context = {
+            "messages": [UserMessage(role="user", content="hello", timestamp=0.0)]
+        }
+        if entrypoint == "complete":
+            await complete(model, context, provider_registry=registry)
+            return
+        event_stream = await stream(model, context, provider_registry=registry)
+        await event_stream.result()
+
+    asyncio.run(_run())
+
+    assert provider.request is not None
+    assert provider.request.model is model
+    assert provider.request.provider == model.provider_id
+    assert provider.request.endpoint == model.endpoint_id
+    assert provider.request.region == model.region
+
+
+def test_public_stream_suppresses_cache_key_when_retention_is_none() -> None:
+    provider = _Provider()
+    registry = ApiProviderRegistry()
+    registry.register_api_provider(provider)
+    model = Model(
+        id="cache-model",
+        provider="custom",
+        endpoint="faux",
+        api="faux",
+        auth=Auth(kind="none"),
+        capabilities=Capabilities(input=("text",), stream=True),
+        adapter=OpenAIResponsesConfig(prompt_cache_key=True),
+    )
+
+    async def _run() -> None:
+        event_stream = await stream(
+            model,
+            {"messages": [UserMessage(role="user", content="hello", timestamp=0.0)]},
+            CallOptions(cache_key="opaque-key", cache_retention="none"),
+            provider_registry=registry,
+        )
+        await event_stream.result()
+
+    asyncio.run(_run())
+
+    assert provider.request is not None
+    assert isinstance(provider.request.options, CallOptions)
+    assert provider.request.options.cache_key is None
 
 
 def test_stream_defaults_to_strict_pairing_and_exposes_repair_option(
@@ -801,7 +869,6 @@ def test_register_api_provider_rejects_optional_legacy_argument_signature() -> N
         "openai-completions",
         "openai-responses",
         "anthropic-messages",
-        "openai-codex-responses",
     ),
 )
 def test_stream_maps_reasoning_options_before_provider_call(
@@ -878,12 +945,12 @@ def test_call_api_provider_stream_supports_registered_provider(
     asyncio.run(
         call_api_provider_stream(
             registry.get_api_provider("faux"),
-            ProviderRequest(
+            _provider_request(
                 provider="faux",
                 endpoint="faux",
                 api="faux",
                 base_url=None,
-                model=_Model(),
+                model_id="test-model",
                 context=normalize_context(
                     {
                         "messages": [
@@ -910,12 +977,12 @@ def test_call_api_provider_stream_requires_normalized_context() -> None:
         asyncio.run(
             call_api_provider_stream(
                 registry.get_api_provider("faux"),
-                ProviderRequest(
+                _provider_request(
                     provider="faux",
                     endpoint="faux",
                     api="faux",
                     base_url=None,
-                    model=_Model(),
+                    model_id="test-model",
                     context={
                         "messages": [
                             UserMessage(role="user", content="hello", timestamp=0.0)
@@ -948,7 +1015,7 @@ def test_call_api_provider_stream_rejects_mismatched_resolved_request() -> None:
     provider = _Provider()
     registry = ApiProviderRegistry()
     registry.register_api_provider(provider)
-    request = ProviderRequest(
+    request = _provider_request(
         provider="faux",
         endpoint="other",
         api="other",
@@ -962,7 +1029,6 @@ def test_call_api_provider_stream_rejects_mismatched_resolved_request() -> None:
                 registry.get_api_provider("faux"),
                 replace(
                     request,
-                    model=_Model(),
                     context=normalize_context(
                         {
                             "messages": [
@@ -986,7 +1052,7 @@ def test_call_api_provider_stream_passes_normalized_context_without_renormalizin
     provider = _Provider(api="anthropic-messages")
     registry = ApiProviderRegistry()
     registry.register_api_provider(provider)
-    request = ProviderRequest(
+    request = _provider_request(
         api="anthropic-messages",
         provider="anthropic",
         endpoint="anthropic-messages",
@@ -1037,7 +1103,6 @@ def test_call_api_provider_stream_passes_normalized_context_without_renormalizin
             registry.get_api_provider("anthropic-messages"),
             replace(
                 request,
-                model=_Model(api="openai-responses"),
                 context=normalized,
                 options=CallOptions(),
             ),
@@ -1051,15 +1116,14 @@ def test_call_api_provider_stream_passes_normalized_context_without_renormalizin
     assert normalized_tool_result.tool_call_id == "call_1"
 
 
-def test_stream_validates_resolved_request_capabilities(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    _patch_resolved_request(
-        monkeypatch, capabilities=Capabilities(input=("text",), stream=True)
-    )
-    monkeypatch.setattr("loushang.ai.messages.resolve_model_api", lambda _model: "faux")
-    monkeypatch.setattr(
-        "loushang.ai.tool.transform.resolve_model_api", lambda _model: "faux"
+def test_stream_validates_effective_model_capabilities() -> None:
+    model = Model(
+        id="text-only",
+        provider="custom",
+        endpoint="faux",
+        api="faux",
+        auth=Auth(kind="none"),
+        capabilities=Capabilities(input=("text",), stream=True),
     )
     provider = _Provider()
     registry = _Registry(provider)
@@ -1069,7 +1133,7 @@ def test_stream_validates_resolved_request_capabilities(
     ):
         asyncio.run(
             stream(
-                _Model(capabilities=_Capabilities(supports_image_input=True)),
+                model,
                 {
                     "messages": [
                         UserMessage(
@@ -1091,23 +1155,21 @@ def test_stream_validates_resolved_request_capabilities(
         )
 
 
-def test_stream_allows_capabilities_after_request_resolution_switches_endpoint(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    _patch_resolved_request(
-        monkeypatch,
+def test_stream_uses_effective_model_capabilities() -> None:
+    model = Model(
+        id="image-model",
+        provider="custom",
+        endpoint="faux",
+        api="faux",
+        auth=Auth(kind="none"),
         capabilities=Capabilities(input=("text", "image"), stream=True),
-    )
-    monkeypatch.setattr("loushang.ai.messages.resolve_model_api", lambda _model: "faux")
-    monkeypatch.setattr(
-        "loushang.ai.tool.transform.resolve_model_api", lambda _model: "faux"
     )
     provider = _Provider()
     registry = _Registry(provider)
 
-    asyncio.run(
-        stream(
-            _Model(capabilities=_Capabilities(supports_image_input=False)),
+    async def _run() -> None:
+        event_stream = await stream(
+            model,
             {
                 "messages": [
                     UserMessage(
@@ -1126,18 +1188,21 @@ def test_stream_allows_capabilities_after_request_resolution_switches_endpoint(
             CallOptions(),
             provider_registry=registry,
         )
-    )
+        await event_stream.result()
+
+    asyncio.run(_run())
 
     _assert_normalized_provider_context(provider.context)
 
 
-def test_stream_normalizes_context_against_resolved_request_api(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    _patch_resolved_request(
-        monkeypatch,
-        api="anthropic-messages",
+def test_stream_normalizes_context_against_effective_model_api() -> None:
+    model = Model(
+        id="anthropic-model",
         provider="anthropic",
+        endpoint="anthropic-messages",
+        api="anthropic-messages",
+        auth=Auth(kind="none"),
+        capabilities=Capabilities(input=("text",), stream=True),
     )
     provider = _Provider(api="anthropic-messages")
     registry = _Registry(provider)
@@ -1165,7 +1230,7 @@ def test_stream_normalizes_context_against_resolved_request_api(
 
     asyncio.run(
         stream(
-            _Model(api="openai-responses"),
+            model,
             {
                 "messages": [
                     assistant,
@@ -1203,7 +1268,7 @@ def test_stream_public_path_uses_openai_completions_typed_request(
         input=("text",),
         pricing=None,
     )
-    request = ProviderRequest(
+    request = _provider_request(
         provider="custom",
         endpoint="openai-completions",
         api="openai-completions",
@@ -1243,7 +1308,7 @@ def test_stream_public_path_uses_openai_completions_typed_request(
             },
             CallOptions(
                 cache_retention="short",
-                session_id="session-public",
+                cache_key="session-public",
             ),
             provider_registry=registry,
         )
@@ -1282,7 +1347,7 @@ def test_stream_public_path_uses_openai_responses_typed_request(
         input=("text",),
         pricing=None,
     )
-    request = ProviderRequest(
+    request = _provider_request(
         provider="custom",
         endpoint="openai-responses",
         api="openai-responses",
@@ -1358,7 +1423,7 @@ def test_stream_public_path_uses_openai_responses_typed_request(
             },
             CallOptions(
                 cache_retention="short",
-                session_id="session-responses",
+                cache_key="session-responses",
             ),
             provider_registry=registry,
         )
@@ -1409,7 +1474,7 @@ def test_stream_public_path_rejects_unsupported_long_cache_retention(
         input=("text",),
         pricing=None,
     )
-    request = ProviderRequest(
+    request = _provider_request(
         provider="custom",
         endpoint="openai-responses",
         api="openai-responses",
@@ -1442,7 +1507,7 @@ def test_stream_public_path_rejects_unsupported_long_cache_retention(
         asyncio.run(_run())
 
 
-def test_stream_public_path_ignores_unsupported_session_id_hint(
+def test_stream_public_path_ignores_unsupported_cache_key(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     registry = ApiProviderRegistry()
@@ -1455,7 +1520,7 @@ def test_stream_public_path_ignores_unsupported_session_id_hint(
         input=("text",),
         pricing=None,
     )
-    request = ProviderRequest(
+    request = _provider_request(
         provider="custom",
         endpoint="openai-completions",
         api="openai-completions",
@@ -1480,7 +1545,7 @@ def test_stream_public_path_ignores_unsupported_session_id_hint(
         event_stream = await stream(
             model,
             {"messages": [UserMessage(role="user", content="hello", timestamp=0.0)]},
-            CallOptions(session_id="session-public"),
+            CallOptions(cache_key="session-public"),
             provider_registry=registry,
         )
         await event_stream.result()
@@ -1488,7 +1553,7 @@ def test_stream_public_path_ignores_unsupported_session_id_hint(
     asyncio.run(_run())
 
     assert isinstance(provider.options, CallOptions)
-    assert provider.options.session_id is None
+    assert provider.options.cache_key is None
 
 
 def test_stream_public_path_uses_adapter_protocol_override_for_cache_validation(
@@ -1504,7 +1569,7 @@ def test_stream_public_path_uses_adapter_protocol_override_for_cache_validation(
         input=("text",),
         pricing=None,
     )
-    request = ProviderRequest(
+    request = _provider_request(
         provider="custom",
         endpoint="openai-responses",
         api="openai-responses",
@@ -1531,7 +1596,7 @@ def test_stream_public_path_uses_adapter_protocol_override_for_cache_validation(
             {"messages": [UserMessage(role="user", content="hello", timestamp=0.0)]},
             CallOptions(
                 cache_retention="long",
-                session_id="session-override",
+                cache_key="session-override",
             ),
             provider_registry=registry,
         )
@@ -1551,12 +1616,12 @@ def _patch_resolved_request(
     provider: str = "faux",
 ) -> None:
     def _resolve_request(_model, options=None):
-        return ProviderRequest(
+        return _provider_request(
             api=api,
             provider=provider,
             endpoint=api,
             base_url=None,
-            model=_model,
+            model_id=getattr(_model, "id", "test-model"),
             options=options,
             capabilities=capabilities or Capabilities(input=("text",), stream=True),
         )
@@ -1564,6 +1629,44 @@ def _patch_resolved_request(
     monkeypatch.setattr(
         "loushang.ai.api.streaming.resolve_request_for_model",
         _resolve_request,
+    )
+
+
+def _provider_request(
+    *,
+    provider: str,
+    endpoint: str,
+    api: str,
+    base_url: str | None,
+    model_id: str = "gpt-test",
+    capabilities: Capabilities | None = None,
+    adapter_config: object | None = None,
+    **kwargs: object,
+) -> ProviderRequest:
+    resolved_capabilities = capabilities or Capabilities(input=("text",), stream=True)
+    model = Model(
+        id=model_id,
+        provider=provider,
+        endpoint=endpoint,
+        api=api,
+        base_url=base_url,
+        auth=Auth(kind="none"),
+        capabilities=resolved_capabilities,
+        adapter=adapter_config,  # type: ignore[arg-type]
+    )
+    return ProviderRequest(
+        model=model,
+        provider=provider,
+        endpoint=endpoint,
+        api=api,
+        base_url=base_url,
+        capabilities=model.capabilities,
+        adapter_config=model.adapter or default_adapter_config(api),
+        defaults=dict(model.defaults),
+        transport=model.transport,
+        routing=model.routing,
+        upstream_model_id=model.id,
+        **kwargs,  # type: ignore[arg-type]
     )
 
 

@@ -51,6 +51,7 @@ def test_emit_trace_redacts_sensitive_options_callback_fields() -> None:
                 "X-Auth-Token": "auth-secret",
                 "X-Amz-Security-Token": "aws-secret",
                 "x-api-key": "secret-key",
+                "chatgpt-account-id": "account-secret",
                 "anthropic-version": "2023-06-01",
             },
             "apiKey": "secret-key",
@@ -62,6 +63,7 @@ def test_emit_trace_redacts_sensitive_options_callback_fields() -> None:
             "token": "secret-token",
             "oauth": {"accessToken": "secret-token"},
             "credentials": {"apiKey": "secret-key", "cookie_header": "cookie-secret"},
+            "account_id": "account-secret",
             "nested": {"cookies": "cookie-secret", "total_tokens": 3},
             "total_tokens": 42,
             "output_tokens": 7,
@@ -77,6 +79,7 @@ def test_emit_trace_redacts_sensitive_options_callback_fields() -> None:
         "X-Auth-Token": "<redacted>",
         "X-Amz-Security-Token": "<redacted>",
         "x-api-key": "<redacted>",
+        "chatgpt-account-id": "<redacted>",
         "anthropic-version": "2023-06-01",
     }
     assert data["apiKey"] == "<redacted>"
@@ -88,6 +91,7 @@ def test_emit_trace_redacts_sensitive_options_callback_fields() -> None:
     assert data["token"] == "<redacted>"
     assert data["oauth"] == "<redacted>"
     assert data["credentials"] == "<redacted>"
+    assert data["account_id"] == "<redacted>"
     assert data["nested"] == {"cookies": "<redacted>", "total_tokens": 3}
     assert data["total_tokens"] == 42
     assert data["output_tokens"] == 7

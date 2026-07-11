@@ -4,7 +4,7 @@
 
 Current AIF-009 contract.
 
-This document supersedes the earlier four-entrypoint design that mirrored the reference AI SDK `streamSimple` / `completeSimple` APIs. The current Python root API intentionally keeps only the two invocation entrypoints and one canonical options object.
+This document supersedes the earlier four-entrypoint design that mirrored the reference AI SDK `streamSimple` / `completeSimple` APIs. The current Python root API intentionally keeps three invocation entrypoints and one canonical options object.
 
 ## Scope
 
@@ -12,9 +12,10 @@ This document records the current public signature boundary for:
 
 - `stream()`
 - `complete()`
+- `complete_structured()`
 - cancellation
 - provider registry handoff
-- provider/contrib-specific options boundaries
+- provider-specific options boundaries
 
 It does not define provider payload mapping, raw parts, tool orchestration, or provider-specific option types.
 
@@ -37,6 +38,16 @@ async def complete(
     *,
     provider_registry: ApiProviderRegistry | None = None,
 ) -> AssistantMessage: ...
+
+
+async def complete_structured(
+    model: Model,
+    context: Context | Mapping[str, object],
+    output: StructuredOutputOptions | None = None,
+    *,
+    options: CallOptions | None = None,
+    provider_registry: ApiProviderRegistry | None = None,
+) -> StructuredOutputResult: ...
 ```
 
 The stable public facts are:
@@ -46,6 +57,7 @@ The stable public facts are:
 3. `provider_registry` names the provider adapter registry explicitly and avoids confusion with `ModelRegistry`.
 4. `stream()` returns `AssistantMessageEventStream`.
 5. `complete()` returns `AssistantMessage`.
+6. `complete_structured()` returns `StructuredOutputResult` after parsing the `complete()` result against explicit structured-output options.
 
 ## Removed Simple Entrypoints
 
@@ -67,14 +79,16 @@ The root API consumes a single core options type:
 CallOptions(
     cancellation=None,
     auth=None,
+    api_key=None,
+    oauth_credentials=None,
+    headers={},
     cache_retention=None,
-    session_id=None,
+    cache_key=None,
     max_output_tokens=None,
     temperature=None,
     timeout=None,
     retry=None,
     trace=None,
-    region=None,
     pairing_mode="strict",
     reasoning=None,
     tool_choice=None,
@@ -82,12 +96,20 @@ CallOptions(
 )
 ```
 
-`auth` is the only request-level credential input. It accepts
-`ApiKeyAuth`, `OAuthBearerAuth`, `NoAuth`, or `HeadersAuth`. OAuth login,
-refresh, credential storage, provider registries, and env-oauth helpers live
-outside `loushang.ai` in the top-level `loushang.auth` package.
+`auth` 仅为现有调用方保留 request-level 兼容；新的调用不再构造通用 auth
+union，而是使用明确的 `api_key`、`oauth_credentials` 或 `headers` 字段。
 
-Provider/contrib-specific options do not enter the root `loushang.ai` public surface. For example, Codex transport options belong to `loushang.ai.contrib.openai_codex.OpenAICodexResponsesOptions` and are consumed only by that contrib provider.
+`oauth_credentials` is a single explicit `loushang.auth.OAuthCredentials` value
+for this request. Request-specific supplemental headers use `CallOptions.headers`
+instead of expanding the credential DTO. API-key defaults still come from
+`models.json.auth`. OAuth login, refresh, credential storage, and account selection
+are outside `loushang.ai`.
+Provider-specific option classes do not enter the root public surface.
+
+`cache_key` is an opaque caller-provided cache/affinity key. Protocol adapters
+may map it to provider-specific request fields or headers, but it is not a
+Loushang session identifier. `CallOptions` contains no endpoint-selection or
+region-routing input.
 
 ## Cancellation
 
@@ -99,19 +121,25 @@ Detected cancellation should converge to the protocol-level `aborted` stop reaso
 
 ## Provider Handoff
 
-The top-level API resolves the provider once from the model API and invokes the selected adapter through the provider boundary:
+The top-level API accepts one already selected concrete model and invokes the
+adapter named by that model's API:
 
 ```text
 complete() / stream()
-    -> normalize_context_result()
-    -> validate model capabilities
-    -> resolve auth
-    -> build ProviderRequest
-    -> provider_registry.get(model.api)
+    -> resolve auth and per-call defaults from the selected model
+    -> build ProviderRequest(model=the selected model)
+    -> normalize_context_result(request.model)
+    -> validate request.model capabilities
+    -> provider_registry.get(request.model.api)
     -> provider.invoke_raw(request)
 ```
 
+Invocation does not consult a model registry, select a preferred endpoint,
+switch regions, or replace `ProviderRequest.model`.
+
 `complete()` and `stream()` share this path. The difference is the `ProviderRequest.mode` value and the model capability gate: `stream()` requires stream capability, while `complete()` does not.
+
+`complete_structured()` reuses `complete()` with `StructuredOutputOptions`, then parses the returned message into `StructuredOutputResult`; it does not add another provider invocation path.
 
 ## Design Consequences
 
@@ -119,4 +147,4 @@ complete() / stream()
 - There is no root simple-options family.
 - There is no model instance invocation facade.
 - Unsupported explicit parameters fail before provider invocation instead of being silently ignored.
-- Contrib providers may define their own option types, but core adapters should consume only `CallOptions` and `ProviderRequest`.
+- Custom providers may define their own option types, but core adapters should consume only `CallOptions` and `ProviderRequest`.

@@ -7,19 +7,16 @@ from types import ModuleType, SimpleNamespace
 
 import pytest
 
-from loushang.ai import ApiKeyAuth, CallOptions, HeadersAuth, ReasoningOptions
+from loushang.ai import CallOptions, ReasoningOptions
 from loushang.ai.context import normalize_context
 from loushang.ai.errors import UnsupportedCapabilityError
 from loushang.ai.model import (
     Capabilities,
-    Endpoint,
     EndpointTransport,
     Model,
     OpenAIResponsesConfig,
     Pricing,
-    get_default_model_registry,
 )
-from loushang.ai.model.registry import clear_default_model_registry
 from loushang.ai.provider import ProviderRequest
 from loushang.ai.providers.openai_responses import OpenAIResponsesProvider
 from loushang.ai.providers.openai_responses_shared import process_responses_stream
@@ -37,12 +34,20 @@ from loushang.ai.types import (
     UserMessage,
 )
 from tests.providers._runtime import (
+    bound_test_model,
+    make_provider_request,
     provider_request_for_test,
     start_test_provider_stream,
 )
 
 
 def _normalized_context(model, context, options=None):
+    if not isinstance(model, Model) or not model.api:
+        model = bound_test_model(
+            model,
+            api="openai-responses",
+            options=options,
+        )
     pairing_mode = (
         "strict" if getattr(options, "pairing_mode", "strict") == "strict" else "repair"
     )
@@ -74,7 +79,11 @@ def _invoke_raw_parts(
     *,
     mode: str = "stream",
 ):
-    normalized_context = _normalized_context(model, context, options)
+    normalized_context = _normalized_context(
+        request.model if request is not None else model,
+        context,
+        options,
+    )
     provider_request = provider_request_for_test(
         provider,
         model,
@@ -91,7 +100,11 @@ async def _stream(provider, model, context, options=None, request=None):
     return start_test_provider_stream(
         provider,
         model,
-        _normalized_context(model, context, options),
+        _normalized_context(
+            request.model if request is not None else model,
+            context,
+            options,
+        ),
         options,
         request=request,
     )
@@ -129,7 +142,7 @@ def test_openai_responses_payload_maps_formal_context_and_tools(
                         )
                     ],
                 ),
-                CallOptions(auth=ApiKeyAuth("test-key")),
+                CallOptions(api_key="test-key"),
             )
         )
     )
@@ -199,7 +212,7 @@ def test_openai_responses_complete_mode_maps_non_stream_response(
                     ]
                 },
                 CallOptions(
-                    auth=ApiKeyAuth("test-key"),
+                    api_key="test-key",
                     reasoning=ReasoningOptions(effort="high"),
                 ),
                 mode="complete",
@@ -278,7 +291,7 @@ def test_openai_responses_payload_uses_resolved_capabilities_for_images(
                         ),
                     ],
                 ),
-                CallOptions(auth=ApiKeyAuth("test-key"), pairing_mode="repair"),
+                CallOptions(api_key="test-key", pairing_mode="repair"),
             )
         )
     )
@@ -329,7 +342,7 @@ def test_openai_responses_payload_maps_structured_output_text_format(
                     messages=[UserMessage(role="user", content="hello", timestamp=0.0)]
                 ),
                 CallOptions(
-                    auth=ApiKeyAuth("test-key"),
+                    api_key="test-key",
                     output=StructuredOutputOptions(mode="json_object"),
                 ),
             )
@@ -343,10 +356,11 @@ def test_openai_responses_payload_maps_structured_output_text_format(
 
 def test_openai_responses_direct_stream_rejects_mismatched_request_api() -> None:
     provider = OpenAIResponsesProvider()
-    request = ProviderRequest(
-        provider="openai",
-        endpoint="openai-responses",
+    request = make_provider_request(
+        _Model(),
         api="openai-completions",
+        provider_id="openai",
+        endpoint_id="openai-responses",
         base_url=None,
         capabilities=Capabilities(input=("text",)),
     )
@@ -368,9 +382,8 @@ def test_openai_responses_supplied_empty_request_uses_typed_defaults(
 ) -> None:
     _fake_openai_module(monkeypatch)
     provider = OpenAIResponsesProvider()
-    request = ProviderRequest(
-        provider="openai",
-        endpoint="openai-responses",
+    request = make_provider_request(
+        _Model(reasoning=True),
         api="openai-responses",
         base_url="https://api.openai.test/v1",
         headers={"Authorization": "Bearer test-key"},
@@ -389,7 +402,7 @@ def test_openai_responses_supplied_empty_request_uses_typed_defaults(
                 ),
                 CallOptions(
                     cache_retention="long",
-                    session_id="session-default",
+                    cache_key="session-default",
                 ),
                 request,
             )
@@ -412,9 +425,8 @@ def test_openai_responses_supplied_request_adapter_config_projects_to_payload(
 ) -> None:
     _fake_openai_module(monkeypatch)
     provider = OpenAIResponsesProvider()
-    request = ProviderRequest(
-        provider="openai",
-        endpoint="openai-responses",
+    request = make_provider_request(
+        _Model(reasoning=True),
         api="openai-responses",
         base_url="https://api.openai.test/v1",
         headers={"Authorization": "Bearer test-key"},
@@ -436,7 +448,7 @@ def test_openai_responses_supplied_request_adapter_config_projects_to_payload(
                 _tool_result_followed_by_user_context(system_prompt="Use system."),
                 CallOptions(
                     cache_retention="short",
-                    session_id="session-options",
+                    cache_key="session-options",
                 ),
                 request,
             )
@@ -466,14 +478,13 @@ def test_openai_responses_supplied_request_adapter_config_projects_to_payload(
     assert "x-client-request-id" not in headers
 
 
-def test_openai_responses_ignores_unsupported_session_id_hint_without_headers(
+def test_openai_responses_ignores_unsupported_cache_key_without_headers(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     _fake_openai_module(monkeypatch)
     provider = OpenAIResponsesProvider()
-    request = ProviderRequest(
-        provider="openai",
-        endpoint="openai-responses",
+    request = make_provider_request(
+        _Model(reasoning=True),
         api="openai-responses",
         base_url="https://api.openai.test/v1",
         headers={"Authorization": "Bearer test-key"},
@@ -497,7 +508,7 @@ def test_openai_responses_ignores_unsupported_session_id_hint_without_headers(
                 ),
                 CallOptions(
                     cache_retention="short",
-                    session_id="session-direct",
+                    cache_key="session-direct",
                 ),
                 request,
             )
@@ -512,9 +523,8 @@ def test_openai_responses_rejects_unsupported_long_cache_retention(
 ) -> None:
     _fake_openai_module(monkeypatch)
     provider = OpenAIResponsesProvider()
-    request = ProviderRequest(
-        provider="openai",
-        endpoint="openai-responses",
+    request = make_provider_request(
+        _Model(reasoning=True),
         api="openai-responses",
         base_url="https://api.openai.test/v1",
         headers={"Authorization": "Bearer test-key"},
@@ -549,9 +559,8 @@ def test_openai_responses_supplied_request_typed_adapter_overrides_stale_options
 ) -> None:
     _fake_openai_module(monkeypatch)
     provider = OpenAIResponsesProvider()
-    request = ProviderRequest(
-        provider="openai",
-        endpoint="openai-responses",
+    request = make_provider_request(
+        _Model(reasoning=True),
         api="openai-responses",
         base_url="https://api.openai.test/v1",
         headers={"Authorization": "Bearer test-key"},
@@ -573,7 +582,7 @@ def test_openai_responses_supplied_request_typed_adapter_overrides_stale_options
                 _tool_result_followed_by_user_context(system_prompt="Use system."),
                 CallOptions(
                     cache_retention="short",
-                    session_id="session-typed",
+                    cache_key="session-typed",
                 ),
                 request,
             )
@@ -602,6 +611,42 @@ def test_openai_responses_supplied_request_typed_adapter_overrides_stale_options
     assert "x-client-request-id" not in headers
 
 
+def test_openai_responses_cache_retention_none_suppresses_cache_key_fields(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _fake_openai_module(monkeypatch)
+    provider = OpenAIResponsesProvider()
+    request = make_provider_request(
+        _Model(),
+        api="openai-responses",
+        base_url="https://api.openai.test/v1",
+        headers={"Authorization": "Bearer test-key"},
+        adapter_config=OpenAIResponsesConfig(
+            prompt_cache_key=True,
+            session_id_header=True,
+            session_affinity_headers=True,
+        ),
+    )
+
+    asyncio.run(
+        _collect_parts(
+            _invoke_raw_parts(
+                provider,
+                _Model(),
+                Context(
+                    messages=[
+                        UserMessage(role="user", content="hello", timestamp=0.0)
+                    ]
+                ),
+                CallOptions(cache_retention="none", cache_key="opaque-cache-key"),
+                request=request,
+            )
+        )
+    )
+
+    _assert_no_session_hint_fields()
+
+
 def test_openai_responses_uses_upstream_model_id(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -622,7 +667,7 @@ def test_openai_responses_uses_upstream_model_id(
                     system_prompt=None,
                     messages=[UserMessage(role="user", content="hello", timestamp=0.0)],
                 ),
-                CallOptions(auth=ApiKeyAuth("test-key")),
+                CallOptions(api_key="test-key"),
             )
         )
     )
@@ -651,7 +696,7 @@ def test_openai_responses_caps_model_max_tokens_default(
                     messages=[UserMessage(role="user", content="hello", timestamp=0.0)],
                     tools=[],
                 ),
-                CallOptions(auth=ApiKeyAuth("test-key")),
+                CallOptions(api_key="test-key"),
             )
         )
     )
@@ -681,12 +726,71 @@ def test_openai_responses_uses_resolved_capability_max_tokens(
                     messages=[UserMessage(role="user", content="hello", timestamp=0.0)],
                     tools=[],
                 ),
-                CallOptions(auth=ApiKeyAuth("test-key")),
+                CallOptions(api_key="test-key"),
             )
         )
     )
 
     assert _FakeAsyncOpenAI.last_create_kwargs["max_output_tokens"] == 2048
+
+
+def test_openai_responses_can_omit_model_default_max_output_tokens(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _fake_openai_module(monkeypatch)
+    _patch_resolved_request(
+        monkeypatch,
+        base_url="https://api.openai.test/v1",
+        adapter_config=OpenAIResponsesConfig(max_output_tokens=False),
+    )
+    provider = OpenAIResponsesProvider()
+
+    asyncio.run(
+        _collect_parts(
+            _invoke_raw_parts(
+                provider,
+                _Model(),
+                Context(
+                    system_prompt=None,
+                    messages=[UserMessage(role="user", content="hello", timestamp=0.0)],
+                ),
+                CallOptions(api_key="test-key"),
+            )
+        )
+    )
+
+    assert "max_output_tokens" not in _FakeAsyncOpenAI.last_create_kwargs
+
+
+def test_openai_responses_rejects_explicit_unsupported_max_output_tokens(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _fake_openai_module(monkeypatch)
+    _patch_resolved_request(
+        monkeypatch,
+        base_url="https://api.openai.test/v1",
+        adapter_config=OpenAIResponsesConfig(max_output_tokens=False),
+    )
+    provider = OpenAIResponsesProvider()
+
+    with pytest.raises(UnsupportedCapabilityError, match="max_output_tokens"):
+        asyncio.run(
+            _collect_parts(
+                _invoke_raw_parts(
+                    provider,
+                    _Model(),
+                    Context(
+                        system_prompt=None,
+                        messages=[
+                            UserMessage(role="user", content="hello", timestamp=0.0)
+                        ],
+                    ),
+                    CallOptions(api_key="test-key", max_output_tokens=16),
+                )
+            )
+        )
+
+    assert _FakeAsyncOpenAI.last_create_kwargs == {}
 
 
 def test_openai_responses_payload_maps_assistant_tool_call_and_synthesizes_missing_result(
@@ -718,7 +822,7 @@ def test_openai_responses_payload_maps_assistant_tool_call_and_synthesizes_missi
                 provider,
                 _Model(),
                 {"messages": [assistant]},
-                CallOptions(auth=ApiKeyAuth("test-key"), pairing_mode="repair"),
+                CallOptions(api_key="test-key", pairing_mode="repair"),
             )
         )
     )
@@ -777,7 +881,7 @@ def test_openai_responses_payload_normalizes_cross_provider_tool_call_ids(
                 provider,
                 _Model(),
                 {"messages": [assistant, tool_result]},
-                CallOptions(auth=ApiKeyAuth("test-key")),
+                CallOptions(api_key="test-key"),
             )
         )
     )
@@ -828,7 +932,7 @@ def test_openai_responses_payload_replays_assistant_thinking_signature(
                 provider,
                 _Model(),
                 {"messages": [assistant]},
-                CallOptions(auth=ApiKeyAuth("test-key")),
+                CallOptions(api_key="test-key"),
             )
         )
     )
@@ -876,7 +980,7 @@ def test_openai_responses_payload_replays_assistant_text_signature_and_phase(
                 provider,
                 _Model(),
                 {"messages": [assistant]},
-                CallOptions(auth=ApiKeyAuth("test-key")),
+                CallOptions(api_key="test-key"),
             )
         )
     )
@@ -904,7 +1008,7 @@ def test_openai_responses_payload_maps_reasoning_option(
                     ]
                 },
                 CallOptions(
-                    auth=ApiKeyAuth("test-key"),
+                    api_key="test-key",
                     reasoning=ReasoningOptions(effort="high", expose_summary=True),
                 ),
             )
@@ -942,7 +1046,7 @@ def test_openai_responses_payload_uses_resolved_capabilities_for_reasoning(
                     ]
                 },
                 CallOptions(
-                    auth=ApiKeyAuth("test-key"),
+                    api_key="test-key",
                     reasoning=ReasoningOptions(effort="high", expose_summary=True),
                 ),
             )
@@ -1008,7 +1112,7 @@ def test_openai_responses_payload_maps_tool_result_images_and_bridge(
                         UserMessage(role="user", content="next", timestamp=0.0),
                     ]
                 },
-                CallOptions(auth=ApiKeyAuth("test-key")),
+                CallOptions(api_key="test-key"),
             )
         )
     )
@@ -1106,7 +1210,7 @@ def test_openai_responses_provider_adds_github_copilot_dynamic_headers(
                         ),
                     ]
                 },
-                CallOptions(auth=ApiKeyAuth("test-key")),
+                CallOptions(api_key="test-key"),
             )
         )
     )
@@ -1122,24 +1226,6 @@ def test_openai_responses_provider_adds_github_copilot_dynamic_headers(
 def test_openai_responses_stream_applies_priority_service_tier_cost_multiplier(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    registry = get_default_model_registry()
-    registry.register_endpoint(
-        "openai",
-        Endpoint(
-            id="responses",
-            provider="openai",
-            api="openai-responses",
-        ),
-    )
-    registry.register_model(
-        Model(
-            id="gpt-test",
-            provider="openai",
-            endpoint="responses",
-            pricing=Pricing(input=1.5, output=6.0, cache_read=0.3, cache_write=3.0),
-        )
-    )
-
     _fake_openai_module(
         monkeypatch,
         events=[
@@ -1174,7 +1260,7 @@ def test_openai_responses_stream_applies_priority_service_tier_cost_multiplier(
                 pricing=Pricing(input=1.5, output=6.0, cache_read=0.3, cache_write=3.0),
             ),
             {"messages": [UserMessage(role="user", content="hello", timestamp=0.0)]},
-            CallOptions(auth=ApiKeyAuth("test-key")),
+            CallOptions(api_key="test-key"),
         )
     )
     events = asyncio.run(_collect_stream_events(stream))
@@ -1239,7 +1325,7 @@ def test_openai_responses_stream_retains_thinking_signature_on_final_message(
             _Model(),
             {"messages": [UserMessage(role="user", content="hello", timestamp=0.0)]},
             CallOptions(
-                auth=ApiKeyAuth("test-key"),
+                api_key="test-key",
                 reasoning=ReasoningOptions(effort="high"),
             ),
         )
@@ -1315,6 +1401,40 @@ def test_openai_responses_function_call_delta_uses_composite_call_id() -> None:
     ]
 
 
+def test_openai_responses_accepts_response_done_completion_alias() -> None:
+    parts = asyncio.run(
+        _collect_raw_parts(
+            [
+                SimpleNamespace(
+                    type="response.done",
+                    response=SimpleNamespace(
+                        status="completed",
+                        usage=SimpleNamespace(
+                            input_tokens=3,
+                            output_tokens=2,
+                            total_tokens=5,
+                            input_tokens_details=SimpleNamespace(cached_tokens=1),
+                        ),
+                    ),
+                )
+            ]
+        )
+    )
+
+    assert parts == [
+        {
+            "type": "usage_delta",
+            "input": 2,
+            "output": 2,
+            "cache_read": 1,
+            "cache_write": 0,
+            "total_tokens": 5,
+        },
+        {"type": "stop_reason", "stop_reason": "stop"},
+        {"type": "response_done"},
+    ]
+
+
 def test_openai_responses_stream_joins_multiple_reasoning_summary_parts(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -1377,7 +1497,7 @@ def test_openai_responses_stream_joins_multiple_reasoning_summary_parts(
             _Model(),
             {"messages": [UserMessage(role="user", content="hello", timestamp=0.0)]},
             CallOptions(
-                auth=ApiKeyAuth("test-key"),
+                api_key="test-key",
                 reasoning=ReasoningOptions(effort="high"),
             ),
         )
@@ -1443,7 +1563,7 @@ def test_openai_responses_stream_retains_text_signature_on_final_message(
             provider,
             _Model(),
             {"messages": [UserMessage(role="user", content="hello", timestamp=0.0)]},
-            CallOptions(auth=ApiKeyAuth("test-key")),
+            CallOptions(api_key="test-key"),
         )
     )
     events = asyncio.run(_collect_stream_events(stream))
@@ -1549,13 +1669,14 @@ def _patch_resolved_request(
     def _resolve(_model, *, context=None, options=None, request=None):
         del context, request
         headers = {}
-        auth = getattr(options, "auth", None) if options is not None else None
-        if isinstance(auth, ApiKeyAuth):
-            headers[auth.header or "Authorization"] = (
-                f"{auth.prefix if auth.prefix is not None else 'Bearer '}{auth.value}"
-            )
-        elif isinstance(auth, HeadersAuth):
-            headers.update(dict(auth.headers))
+        api_key = getattr(options, "api_key", None) if options is not None else None
+        if isinstance(api_key, str):
+            headers["Authorization"] = f"Bearer {api_key}"
+        option_headers = (
+            getattr(options, "headers", None) if options is not None else None
+        )
+        if option_headers:
+            headers.update(dict(option_headers))
         if extra_headers:
             headers.update(extra_headers)
         option_max_tokens = (
@@ -1566,22 +1687,38 @@ def _patch_resolved_request(
             if isinstance(option_max_tokens, int)
             else max_tokens
         )
+        resolved_adapter = adapter_config or _responses_adapter_config_from_compat(
+            compat or {}
+        )
+        resolved_capabilities = capabilities or Capabilities(
+            input=tuple(getattr(_model, "input", ("text",))),
+            reasoning=bool(getattr(_model, "reasoning", False)),
+            max_tokens=getattr(_model, "max_tokens", None),
+        )
+        request_model = bound_test_model(
+            _model,
+            api="openai-responses",
+            options=options,
+            base_url=base_url,
+            adapter_config=resolved_adapter,
+            capabilities=resolved_capabilities,
+            transport=transport,
+            upstream_model_id=upstream_model_id,
+        )
         return ProviderRequest(
-            provider=getattr(_model, "provider_id", ""),
-            endpoint=getattr(_model, "endpoint_id", ""),
+            model=request_model,
+            provider=request_model.provider_id,
+            endpoint=request_model.endpoint_id,
             api="openai-responses",
             base_url=base_url,
             headers=headers,
-            adapter_config=adapter_config
-            or _responses_adapter_config_from_compat(compat or {}),
-            transport=transport or EndpointTransport(),
+            adapter_config=request_model.adapter,
+            defaults=dict(request_model.defaults),
+            transport=request_model.transport,
+            routing=request_model.routing,
             max_tokens=resolved_max_tokens,
-            capabilities=capabilities
-            or Capabilities(
-                input=tuple(getattr(_model, "input", ("text",))),
-                reasoning=bool(getattr(_model, "reasoning", False)),
-            ),
-            upstream_model_id=upstream_model_id,
+            capabilities=request_model.capabilities,
+            upstream_model_id=request_model.upstream_id or request_model.id,
         )
 
     monkeypatch.setattr(
@@ -1651,25 +1788,3 @@ class _Model:
     defaults: dict[str, object] = field(default_factory=dict)
     provider_id: str = "openai"
     endpoint_id: str = "openai-responses"
-
-
-@pytest.fixture(autouse=True)
-def _default_registry() -> None:
-    def _endpoint(provider_id: str) -> Endpoint:
-        return Endpoint(
-            id="openai-responses",
-            provider=provider_id,
-            api="openai-responses",
-            models={
-                "gpt-test": Model(
-                    id="gpt-test",
-                    provider=provider_id,
-                    endpoint="openai-responses",
-                )
-            },
-        )
-
-    clear_default_model_registry()
-    registry = get_default_model_registry()
-    for provider_id in ["openai", "github-copilot"]:
-        registry.register_endpoint(provider_id, _endpoint(provider_id))

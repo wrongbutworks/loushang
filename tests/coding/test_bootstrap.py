@@ -4,11 +4,34 @@ import asyncio
 import inspect
 import json
 import subprocess
+from dataclasses import replace
 from datetime import date
 
 from loushang.ai.event_stream.stream import AssistantMessageEventStream
-from loushang.ai.model import Capabilities, Model
+from loushang.ai.model import Auth, Capabilities, Endpoint, Model, Provider
+from loushang.ai.model.registry import ModelRegistry as AiModelRegistry
 from loushang.ai.types import AssistantMessage, TextPart, ToolCall, Usage, UserMessage
+
+
+def _ai_registry_with_models(
+    *models: Model,
+    endpoint_auth: Auth | None = None,
+) -> AiModelRegistry:
+    providers: dict[str, Provider] = {}
+    for model in models:
+        provider = providers.get(model.provider_id) or Provider(id=model.provider_id)
+        endpoint = provider.endpoints.get(model.endpoint_id) or Endpoint(
+            id=model.endpoint_id,
+            provider=model.provider_id,
+            api=model.api or model.endpoint_id,
+            auth=endpoint_auth,
+        )
+        endpoint_models = dict(endpoint.models)
+        endpoint_models[model.id] = model
+        endpoints = dict(provider.endpoints)
+        endpoints[endpoint.id] = replace(endpoint, models=endpoint_models)
+        providers[provider.id] = replace(provider, endpoints=endpoints)
+    return AiModelRegistry.from_providers(providers)
 
 
 def _model() -> Model:
@@ -1134,31 +1157,26 @@ def test_create_agent_session_marks_failing_builtin_tool_result_as_error(tmp_pat
 
 
 def test_create_agent_session_records_auth_resolution_failure_for_default_model(tmp_path) -> None:
-    from loushang.ai.model.domain import Auth, Endpoint
-    from loushang.ai.model.registry import ModelRegistry as AiModelRegistry
     from loushang.coding.bootstrap import create_agent_session, create_services
     from loushang.coding.control import AuthManager
     from loushang.coding.session import ModelSelection
     from loushang.coding.store import SessionManager
 
-    ai_registry = AiModelRegistry()
-    ai_registry.register_endpoint(
-        "demo",
-        Endpoint(
-            id="responses",
-            api="responses",
-            provider="demo",
-            auth=Auth(api_key_env="LOUSHANG_TEST_DEMO_KEY"),
+    secured = Model(
+        id="secured",
+        name="Secured",
+        provider="demo",
+        endpoint="responses",
+        capabilities=Capabilities(
+            reasoning=True,
+            input=("text",),
+            context_window=128000,
+            max_tokens=4096,
         ),
     )
-    ai_registry.register_model(
-        Model(
-            id="secured",
-            name="Secured",
-            provider="demo",
-            endpoint="responses",
-            capabilities=Capabilities(reasoning=True, input=("text",), context_window=128000, max_tokens=4096),
-        )
+    ai_registry = _ai_registry_with_models(
+        secured,
+        endpoint_auth=Auth(api_key_env="LOUSHANG_TEST_DEMO_KEY"),
     )
     services = create_services(
         ai_model_registry=ai_registry,
@@ -1181,32 +1199,27 @@ def test_create_agent_session_records_auth_resolution_failure_for_default_model(
 def test_create_agent_session_uses_stored_oauth_credentials_for_auth_bridge(tmp_path, monkeypatch) -> None:
     import asyncio
 
-    from loushang.ai.model.domain import Auth, Endpoint
-    from loushang.ai.model.registry import ModelRegistry as AiModelRegistry
     from loushang.auth.types import OAuthCredentials
     from loushang.coding.bootstrap import create_agent_session, create_services
     from loushang.coding.control import AuthManager
     from loushang.coding.session import ModelSelection
     from loushang.coding.store import SessionManager
 
-    ai_registry = AiModelRegistry()
-    ai_registry.register_endpoint(
-        "demo",
-        Endpoint(
-            id="responses",
-            api="responses",
-            provider="demo",
-            auth=Auth(kind="oauth"),
+    secured = Model(
+        id="secured",
+        name="Secured",
+        provider="demo",
+        endpoint="responses",
+        capabilities=Capabilities(
+            reasoning=True,
+            input=("text",),
+            context_window=128000,
+            max_tokens=4096,
         ),
     )
-    ai_registry.register_model(
-        Model(
-            id="secured",
-            name="Secured",
-            provider="demo",
-            endpoint="responses",
-            capabilities=Capabilities(reasoning=True, input=("text",), context_window=128000, max_tokens=4096),
-        )
+    ai_registry = _ai_registry_with_models(
+        secured,
+        endpoint_auth=Auth(kind="oauth"),
     )
 
     credential_store = {
@@ -1824,7 +1837,6 @@ def test_create_agent_session_passes_control_thinking_settings(tmp_path) -> None
 
 
 def test_create_agent_session_applies_enabled_models_as_scoped_models(tmp_path) -> None:
-    from loushang.ai.model.registry import ModelRegistry as AiModelRegistry
     from loushang.coding.bootstrap import create_agent_session, create_services
     from loushang.coding.control import ControlConfig, SettingsManager
     from loushang.coding.store import SessionManager
@@ -1842,9 +1854,7 @@ def test_create_agent_session_applies_enabled_models_as_scoped_models(tmp_path) 
             max_tokens=2048,
         ),
     )
-    ai_registry = AiModelRegistry()
-    ai_registry.register_model(first)
-    ai_registry.register_model(second)
+    ai_registry = _ai_registry_with_models(first, second)
     services = create_services(
         ai_model_registry=ai_registry,
         settings_manager=SettingsManager(ControlConfig(enabled_models=("faux-model:low", "alt-model:high", "missing"))),

@@ -9,6 +9,8 @@ import subprocess
 import sys
 from pathlib import Path
 
+import pytest
+
 from loushang.ai.model import load_model_registry_from_file
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
@@ -318,69 +320,131 @@ def test_image_input_example_reports_image_counts(capsys) -> None:
     assert payload == summary
 
 
-def test_oauth_credential_store_example_reports_scopes(capsys) -> None:
-    module = _load_module(
-        Path("examples/ai/advanced/oauth_credential_store.py"),
-        "examples_ai_advanced_oauth_credential_store",
-    )
-
-    summary = module.inspect_oauth_credential_store()
-
-    assert summary["credentialScopes"] == {
-        "providers": 0,
-        "endpoints": 1,
-        "models": 0,
-    }
-    assert summary["selectedCredential"] == "endpoint"
-
-    module.main()
-    assert json.loads(capsys.readouterr().out) == summary
-
-
-def test_platform_quota_example_reports_endpoint_quota(capsys) -> None:
-    module = _load_module(
-        Path("examples/ai/advanced/platform_quota.py"),
-        "examples_ai_advanced_platform_quota",
-    )
-
-    summary = asyncio.run(module.inspect_platform_quota())
-
-    assert summary == {
-        "present": True,
-        "limit": 1000,
-        "used": 320,
-        "remaining": 680,
-        "resetTime": "2026-06-29T00:00:00Z",
-        "source": "moonshot:coding",
-    }
-
-    module.main()
-    assert json.loads(capsys.readouterr().out) == summary
-
-
-def test_openai_codex_contrib_example_registers_codex_model(
-    monkeypatch,
+def test_chatgpt_coding_plan_example_loads_explicit_call_auth(
     tmp_path: Path,
 ) -> None:
-    from loushang.ai.advanced.registry import clear_api_providers
-    from loushang.ai.model import clear_default_model_registry
-
-    monkeypatch.setattr(Path, "home", lambda: tmp_path)
-    clear_default_model_registry()
     module = _load_module(
-        Path("examples/ai/advanced/openai_codex_contrib.py"),
-        "examples_ai_advanced_openai_codex_contrib",
+        Path("examples/ai/chatgpt_coding_plan.py"),
+        "examples_ai_chatgpt_coding_plan_credentials",
+    )
+    auth_path = tmp_path / "auth.json"
+    auth_path.write_text(
+        json.dumps(
+            {
+                "auth_mode": "chatgpt",
+                "tokens": {
+                    "access_token": " access-token ",
+                    "account_id": " account-id ",
+                    "refresh_token": "ignored-refresh-token",
+                    "id_token": "ignored-id-token",
+                },
+            }
+        ),
+        encoding="utf-8",
     )
 
-    try:
-        model = module.load_codex_model()
-    finally:
-        clear_api_providers()
-        clear_default_model_registry()
+    credentials, headers = module.load_call_auth(auth_path)
 
-    assert model.provider_id == "openai-codex"
-    assert model.endpoint_id == "openai-codex-responses"
-    assert model.id == "gpt-5.3-codex"
+    assert credentials.provider == "openai"
+    assert credentials.access_token == "access-token"
+    assert headers == {"chatgpt-account-id": "account-id"}
+
+
+@pytest.mark.parametrize(
+    ("payload", "message"),
+    [
+        ([], "JSON object"),
+        ({"auth_mode": "apikey"}, "auth_mode='chatgpt'"),
+        ({"auth_mode": "chatgpt"}, "tokens object"),
+        (
+            {"auth_mode": "chatgpt", "tokens": {"account_id": "account-id"}},
+            "tokens.access_token",
+        ),
+        (
+            {"auth_mode": "chatgpt", "tokens": {"access_token": "token"}},
+            "tokens.account_id",
+        ),
+    ],
+)
+def test_chatgpt_coding_plan_example_rejects_invalid_auth_file(
+    tmp_path: Path,
+    payload: object,
+    message: str,
+) -> None:
+    module = _load_module(
+        Path("examples/ai/chatgpt_coding_plan.py"),
+        f"examples_ai_chatgpt_coding_plan_invalid_{message}",
+    )
+    auth_path = tmp_path / "auth.json"
+    auth_path.write_text(json.dumps(payload), encoding="utf-8")
+
+    with pytest.raises(RuntimeError, match=message):
+        module.load_call_auth(auth_path)
+
+
+def test_chatgpt_coding_plan_example_calls_public_responses_path(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    from loushang.ai import AssistantMessage, TextPart
+
+    module = _load_module(
+        Path("examples/ai/chatgpt_coding_plan.py"),
+        "examples_ai_chatgpt_coding_plan_call",
+    )
+    auth_path = tmp_path / "auth.json"
+    auth_path.write_text(
+        json.dumps(
+            {
+                "auth_mode": "chatgpt",
+                "tokens": {"access_token": "token", "account_id": "account-id"},
+            }
+        ),
+        encoding="utf-8",
+    )
+    captured: dict[str, object] = {}
+    model = object()
+
+    def fake_get_model(provider_id: str, endpoint_id: str, model_id: str):
+        captured["model_id"] = (provider_id, endpoint_id, model_id)
+        return model
+
+    class FakeEventStream:
+        async def result(self):
+            return AssistantMessage(
+                role="assistant",
+                content=[TextPart(type="text", text="ok")],
+                api="openai-responses",
+                provider="openai",
+                model="gpt-5.5",
+                response_id="resp_1",
+                usage=None,
+                stop_reason="stop",
+                error_message=None,
+                timestamp=0.0,
+            )
+
+    async def fake_stream(selected_model, context, options):
+        captured["model"] = selected_model
+        captured["context"] = context
+        captured["options"] = options
+        return FakeEventStream()
+
+    monkeypatch.setattr(module, "get_model", fake_get_model)
+    monkeypatch.setattr(module, "stream", fake_stream)
+
+    assert asyncio.run(module.run(auth_path)) == "ok"
+    assert captured["model_id"] == (
+        "openai",
+        "openai-responses-chatgpt",
+        "gpt-5.5-chatgpt",
+    )
+    assert captured["model"] is model
+    options = captured["options"]
+    assert options.oauth_credentials.access_token == "token"
+    assert options.headers == {"chatgpt-account-id": "account-id"}
+    assert options.max_output_tokens is None
+    assert options.reasoning.effort == "low"
 
 
 def test_errors_retry_example_reports_redacted_error_payload(capsys) -> None:
@@ -869,9 +933,7 @@ def test_stream_example_reports_text_delta() -> None:
     assert summary["responseId"] == "offline-stream-demo"
     assert summary["stopReason"] == "stop"
     assert summary["text"] == "mock hello from offline fixture"
-    assert {"type": "text_delta", "delta": "mock hello "} in summary[
-        "events"
-    ]
+    assert {"type": "text_delta", "delta": "mock hello "} in summary["events"]
 
 
 def test_tools_example_declares_add_tool() -> None:

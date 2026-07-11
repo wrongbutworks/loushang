@@ -13,7 +13,7 @@ from loushang.ai import (
 )
 from loushang.ai.api_registry import ApiProviderRegistry
 from loushang.ai.errors import UnsupportedCapabilityError
-from loushang.ai.model import Capabilities
+from loushang.ai.model import Capabilities, Endpoint, Model, ModelRegistry, Provider
 from loushang.ai.provider import ProviderRequest
 from loushang.ai.structured import (
     openai_chat_response_format,
@@ -218,17 +218,38 @@ class _StructuredProvider:
 def _patch_resolved_request(monkeypatch: pytest.MonkeyPatch, *, api: str) -> None:
     def _resolve_request(_model, options=None):
         del options
+        endpoint = Endpoint(
+            id=api,
+            provider="test-provider",
+            api=api,
+            models={
+                _model.id: Model(
+                    id=_model.id,
+                    provider="test-provider",
+                    endpoint=api,
+                    capabilities=Capabilities(
+                        input=("text",),
+                        stream=True,
+                        structured_output=True,
+                    ),
+                )
+            },
+        )
+        request_model = ModelRegistry.from_providers(
+            {
+                "test-provider": Provider(
+                    id="test-provider",
+                    endpoints={api: endpoint},
+                )
+            }
+        ).get_model("test-provider", api, _model.id)
         return ProviderRequest(
             api=api,
             provider="test-provider",
             endpoint=api,
             base_url=None,
-            model=_model,
-            capabilities=Capabilities(
-                input=("text",),
-                stream=True,
-                structured_output=True,
-            ),
+            model=request_model,
+            capabilities=request_model.capabilities,
         )
 
     monkeypatch.setattr(

@@ -17,7 +17,11 @@ if str(SRC_ROOT) not in sys.path:
     sys.path.insert(0, str(SRC_ROOT))
 
 from loushang.ai import Context, UserMessage, complete, get_model
-from loushang.ai.model import Model, load_model_registry
+from loushang.ai.model import (
+    Model,
+    load_model_registry_from_directory,
+    load_model_registry_from_file,
+)
 from loushang.ai.model.registry import ModelRegistry
 
 try:
@@ -211,7 +215,13 @@ def _resolve_model(profile_name: str | None, profiles: dict[str, Profile]) -> Mo
         global _MODEL_REGISTRY_OVERRIDE
         if _MODEL_REGISTRY_OVERRIDE is None:
             try:
-                _MODEL_REGISTRY_OVERRIDE = load_model_registry(catalog_path)
+                path = Path(catalog_path)
+                loader = (
+                    load_model_registry_from_directory
+                    if path.is_dir()
+                    else load_model_registry_from_file
+                )
+                _MODEL_REGISTRY_OVERRIDE = loader(path)
             except FileNotFoundError as exc:
                 raise RuntimeError(f"model catalog not found: {catalog_path}") from exc
             except Exception as exc:

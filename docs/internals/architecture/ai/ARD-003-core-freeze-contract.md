@@ -95,4 +95,3 @@ Negative:
 - `src/loushang/ai/context.py`
 - `src/loushang/ai/event_stream/`
 - `src/loushang/ai/auth/`
-- `src/loushang/ai/contrib/`

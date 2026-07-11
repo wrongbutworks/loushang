@@ -53,7 +53,7 @@ def inspect_custom_catalog() -> dict[str, object]:
             "openai-completions",
             "public-model",
         )
-        resolved = resolve_request_for_model(model, registry=registry, env={})
+        resolved = resolve_request_for_model(model, env={})
 
     return {
         "model": f"{model.provider_id}:{model.endpoint_id}:{model.id}",

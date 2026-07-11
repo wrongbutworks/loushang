@@ -91,10 +91,10 @@
 
 它影响：
 
-- env credential resolution
-- explicit api key
-- oauth refresh
-- subscription/token binding
+- endpoint auth declaration
+- API key env fallback
+- explicit API key / OAuth credential resolution
+- request header binding
 
 因此它应保持为独立组件：
 
@@ -196,23 +196,17 @@
 
 `Auth Support` 是独立组件，不收进 `Provider Boundary Support`。
 
-第一阶段职责：
+职责：
 
-- 接收调用方显式 auth material
-- 解析 env-based auth material
-- 归一为统一 auth view
+- 接收 `CallOptions` 中调用方显式提供的 API key 或 OAuth credential
+- 在没有显式 credential 时，按 endpoint 声明解析 API key env fallback
+- 将调用期 credential 归一为只包含最终 headers 的 auth view
 
-统一 auth view 第一阶段只需要覆盖：
+不负责：
 
-- api key
-- auth source metadata
-
-第二阶段再扩：
-
-- oauth credential
-- refresh result
-- provider account binding
-- diagnostics
+- OAuth provider 注册
+- login、browser、callback 或 logout
+- token refresh、credential store 或账号切换
 
 关键原则：
 
@@ -228,46 +222,37 @@ provider adapter 只消费：
 
 ### 账号态 Code Plan 接入约束
 
-像 `openai-codex-responses`、future `kimi-code` 这类 `code plan` / `codex-like` 路径，不应再被建模为“显式 API key 调用”。
+ChatGPT Coding Plan 是凭据来源和产品场景，不是 provider、protocol 或 API
+family。只要请求仍遵循 OpenAI Responses，就必须复用 `openai-responses` adapter。
 
-它们的共同特征是：
+这类场景的共同特征是：
 
-- 用户先通过网页登录或账号登录拿到凭证
+- 调用方在进入 `loushang.ai` 之前已经取得凭证
 - provider 服务端根据账号身份与订阅套餐决定 entitlement
 - 请求时往往需要 provider account binding，而不只是 `Authorization: Bearer <key>`
 
 因此，对 `loushang-ai` 来说，这类接入必须遵守以下约束：
 
-1. 它首先是独立 API family，而不是 `openai-responses` 的普通参数变体
-- 例如：
-  - `openai-completions`
-  - `openai-responses`
-  - `openai-codex-responses`
-- 不应把 `codex` / `code plan` 重新压扁成一个统一 `openai`
-
-2. 它的认证语义首先是账号态认证，不是 key 语义
+1. provider 仍是 `openai`，endpoint 只标识具体 route，`api` 仍是
+   `openai-responses`
+2. 它的认证语义是调用期 OAuth credential，不是 API key
 - 不应继续用 `OPENAI_API_KEY` 这类命名暗示平台 API key
 - 更不应让 example 或 live test 把账号态 token 伪装成普通 API key
 
 3. `Model/Auth` 只表达认证需求，不表达运行时 credential 细节
 - 模型目录应只声明：
   - 需要哪种 auth kind
-  - 依赖哪个 oauth provider
+  - credential 必须匹配哪个 provider
 - 不应在 model metadata 中塞入：
   - account id
   - plan
   - subscription entitlement
   - workspace binding
 
-4. 账号态 credential 应进入顶层 `loushang.auth.OAuthCredentials`
-- `access_token`
-- `refresh_token`
-- `expires_at`
-- `extra`
-- 其中 `extra` 可承接：
-  - provider account id
-  - subscription / entitlement metadata
-  - workspace metadata
+4. 账号态 credential 与请求级 header 分别进入调用
+- `access_token` 通过 `CallOptions.oauth_credentials` 传入
+- provider 要求的 account binding header 通过 `CallOptions.headers` 传入
+- AI 请求链只消费这两类调用材料，不读取 refresh/store/account state
 
 5. provider 不应自己成为登录产品层
 - provider adapter 不负责：
@@ -284,26 +269,18 @@ provider adapter 只消费：
 
 该 view 的目标不是成为一个超大抽象对象，而是成为 provider 可直接绑定的最小运行时材料。
 
-建议至少覆盖：
+当前 view 只覆盖：
 
-- `kind`
-- `provider`
-- `access_token`
 - `headers`
-- `account_id`
-- `metadata`
-- `source`
 
-其中：
+输入来源只允许：
 
-- `metadata`
-  - 可承接 plan / subscription / workspace 等账号态附加信息
-- `source`
-  - 表示 auth material 来自：
-    - explicit input
-    - env
-    - stored oauth credentials
-    - refreshed oauth credentials
+- `CallOptions.api_key`
+- `CallOptions.oauth_credentials`
+- `CallOptions.headers`
+- endpoint auth 声明允许的 API key env fallback
+
+OAuth credential 必须由调用方显式传入；AI 包不读取 store，也不刷新 token。
 
 关键约束：
 
@@ -325,14 +302,14 @@ provider adapter 只消费：
 
 它拥有的职责包括：
 
-- 声明某个 endpoint 需要哪种 auth
-- 提供 oauth provider 注册、登录、刷新、存储能力
-- 将 stored / explicit credential 解析为 resolved auth view
+- 解释某个 endpoint 声明的 auth 要求
+- 将显式 credential 或 API key env fallback 解析为 resolved auth view
 - 将 resolved auth view 绑定到 provider request
 
 它不拥有的职责包括：
 
-- 登录页面本身的产品交互
+- OAuth provider 注册
+- login、browser、callback、refresh、credential store、账号切换或 logout
 - 用户订阅系统主数据
 - 套餐售卖与购买逻辑
 - 用户中心或工作区产品逻辑
@@ -340,27 +317,18 @@ provider adapter 只消费：
 
 一句话：
 
-- `loushang-ai` 处理认证能力
-- 不处理认证产品
+- `loushang-ai` 只处理调用期 credential 到请求 headers 的解析与绑定
+- 它不处理 OAuth lifecycle 或认证产品能力
 
 ---
 
-### 对 `openai-codex-responses` 的直接约束
+### 对 ChatGPT route 的直接约束
 
-在当前与 future 设计中，`openai-codex-responses` 应遵守：
-
-1. 继续作为独立 API family 存在
-2. 认证主路径应迁移到 oauth/account-based auth
-3. provider 主路径不再把账号态 token 当普通 `api_key`
-4. provider 主路径不再通过“从 token 里猜 account id”承担主要 account binding 责任
-5. token 内部解析若保留，也只允许作为 fallback / compatibility path
-
-因此，后续实现顺序应是：
-
-1. 定义 resolved auth view
-2. 让 `Auth Support` 产出它
-3. 让 `openai-codex-responses` 消费它
-4. 再补正式 oauth provider 与 model catalog wiring
+1. catalog route 使用 `api: openai-responses`
+2. access token 由 `loushang.auth.OAuthCredentials` 传入，account header 由
+   `CallOptions.headers` 显式传入
+3. AI 包不解析 `~/.codex/auth.json`，不登录、不 refresh、不持久化
+4. `~/.codex/auth.json` 只由应用边缘 example 读取
 
 ---
 
@@ -539,9 +507,8 @@ provider adapter 只消费：
 
 这版设计不包含：
 
-- 完整 OAuth 设计
+- OAuth lifecycle 或认证产品设计
 - websocket transport 正式实现
-- `openai-codex-responses` 正式实现
 - `Tool Semantic Component` 的完整代码化
 
 这些都依赖前述骨架先稳定。
@@ -553,7 +520,7 @@ provider adapter 只消费：
 这版适应性设计的核心判断是：
 
 - `Model Component` 负责解释服务端已存在的模型约束
-- `Auth Support` 负责集中收敛认证差异
+- `Auth Support` 负责集中收敛调用期 credential 到请求 headers 的差异
 - `Provider Boundary Support` 负责稳定边界骨架
 - `Provider Adapter` 保持独立、承接变化实例
 

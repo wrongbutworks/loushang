@@ -88,7 +88,6 @@ async def call_api_provider_stream(
             provider,
             request,
         ),
-        model=request.model,
         options=request.options,
         request=request,
     )
