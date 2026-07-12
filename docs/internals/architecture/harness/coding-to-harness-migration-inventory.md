@@ -42,7 +42,9 @@ from `loushang.coding` into `loushang.harness`.
 | `coding.compaction.policy`, `coding.compaction.types.ContextUsageEstimate` | Compatibility shim | `CompactionBudget`, deterministic threshold accounting, and `ContextUsageEstimate` live in `loushang.harness.context`. Coding compatibility paths re-export the same Harness-owned objects. |
 | Remaining `coding.compaction.types`, `coding.session.context_usage` | Split candidate | Keep message estimation, model adaptation, context usage snapshots, decisions, branch state, summarization, transcript rebuild, and Coding compaction policy in Coding. Context item refs and packing contracts require a later accepted boundary. |
 | `coding.domain.types` | Split candidate | Use as input for future `loushang.harness.adapter` shapes. Generic request/result types must not contain first-class method fields; carry method/work refs as opaque metadata. |
-| `coding.session` | Split candidate | Move only generic host lifecycle records such as idle/abort/dispose/queue snapshot if needed. Keep `AgentSession`, controllers, product event bus, resource watchers, command execution, and transcript behavior in coding. |
+| `coding.session.types.RunState` | Compatibility shim | `RunState` lives in `loushang.harness.host.types`; Coding preserves the accepted session import with the same class identity. |
+| `coding.session.queue_controller`, `coding.session.session_event_bus` | Split candidate | Queue snapshots, `HostInputQueue`, and `OrderedEventBus` live in `loushang.harness.host`. Coding keeps queue input/Agent delivery, logs, product queue events, and its specialized session event bus. |
+| `coding.session.AgentSession`, controllers, `coding.runtime.AgentSessionRuntime` | Split candidate | `AgentSession` delegates prompt/continue/abort/idle/dispose coordination to `HostRuntime`. Keep product controllers, event schema, resource watchers, commands, transcript behavior, session replacement, tree/fork/import, and store policy in Coding. |
 | `coding.event` | Keep product | Coding session event protocol and product projection stay coding. Harness may define separate neutral events later. |
 | `coding.extensions.contributions` | Compatibility shim | Descriptor, registry, indexing, and duplicate-key contracts live in `loushang.harness.contributions`. Coding keeps `LoadedExtension` projection and re-exports the same harness-owned classes. |
 | Remaining `coding.extensions` | Split candidate | Keep extension runtime, manifests, loaders, permissions, activation, command handlers, runtime bindings, and hooks in coding/OEM. Extract middleware or observer contracts only after a product-neutral invocation shape is proven. |
@@ -209,10 +211,20 @@ and transcript rebuild semantics remain Coding-owned.
 
 ### Slice 5: Host And Lifecycle
 
+Status: host runtime core implementation complete for integration into
+`lane/harness`; see [Host Runtime Boundary](host-runtime-boundary.md).
+
 Purpose: let future products share idle/abort/dispose/queue contracts.
 
-Move minimal lifecycle protocols only after the first product-facing host shape
-is clear. Do not move `AgentSession` wholesale.
+Harness now owns host status/snapshots, driver-delegating lifecycle
+coordination, generic steering/follow-up queue ledger mechanics, and ordered
+event dispatch. Coding uses those mechanisms while retaining `AgentSession`,
+its product controllers and event schema, session persistence/replacement, and
+all prompt/resource/extension/UI semantics.
+
+The independent reference driver and neutral queue/event fixtures satisfy the
+neutrality evidence gate without moving `AgentSession` wholesale or creating a
+second agent loop.
 
 ### Slice 6: Contribution Model
 

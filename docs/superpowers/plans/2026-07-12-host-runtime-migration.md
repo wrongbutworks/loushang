@@ -8,20 +8,30 @@ inner run loop and Coding ownership of product behavior.
 
 ## Tasks
 
-- [ ] Define Host Runtime and Product adapter ownership boundaries.
-- [ ] Implement neutral host records and compatibility run state.
-- [ ] Implement the generic Host input queue ledger.
-- [ ] Implement the generic ordered event bus.
-- [ ] Implement driver-delegating Host Runtime lifecycle coordination.
-- [ ] Add product-neutral contract probes for lifecycle, queue, and events.
-- [ ] Adapt Coding queue snapshots and ledger mechanics to Harness.
-- [ ] Adapt Coding session event dispatch to Harness.
-- [ ] Adapt AgentSession prompt/continue/abort/idle/dispose lifecycle to Harness.
-- [ ] Preserve Coding input, event, session, retry, compaction, and UI policy.
-- [ ] Add compatibility and architecture ownership tests.
-- [ ] Update Harness README, migration inventory, and capability boundaries.
-- [ ] Run focused Harness and Coding lifecycle tests.
-- [ ] Run changed-file Ruff, diff checks, and the full non-live suite.
+- [x] Define Host Runtime and Product adapter ownership boundaries.
+- [x] Implement neutral host records and compatibility run state.
+- [x] Implement the generic Host input queue ledger.
+- [x] Implement the generic ordered event bus.
+- [x] Implement driver-delegating Host Runtime lifecycle coordination.
+- [x] Add product-neutral contract probes for lifecycle, queue, and events.
+- [x] Adapt Coding queue snapshots and ledger mechanics to Harness.
+- [x] Adapt Coding session event dispatch to Harness.
+- [x] Adapt AgentSession prompt/continue/abort/idle/dispose lifecycle to Harness.
+- [x] Preserve Coding input, event, session, retry, compaction, and UI policy.
+- [x] Add compatibility and architecture ownership tests.
+- [x] Update Harness README, migration inventory, and capability boundaries.
+- [x] Run focused Harness and Coding lifecycle tests.
+- [x] Run changed-file Ruff, diff checks, and the full non-live suite.
+
+## Validation Record
+
+- Cross-layer Harness host, Coding session/runtime, extension, bootstrap, SDK,
+  mode, workflow, compaction, and architecture suite: 564 passed.
+- Full non-live suite: 4373 passed, 9 deselected.
+- New Harness host and touched Coding/test default Ruff checks: passed.
+- `git diff --check`: passed.
+- A live Moonshot verification was excluded from the final suite after the
+  configured credential returned HTTP 401; no live-provider result is claimed.
 
 ## Non-Goals
 

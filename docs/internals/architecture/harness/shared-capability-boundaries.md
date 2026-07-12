@@ -261,6 +261,14 @@ Product adapters own:
 Do not move `AgentSession`, product controllers, or store code wholesale into
 harness.
 
+`loushang.harness.host.types` now owns neutral host status, lifecycle events,
+run state, and queue snapshots. `loushang.harness.host.queue` owns the generic
+input-queue ledger, `loushang.harness.host.events` owns ordered event dispatch,
+and `loushang.harness.host.runtime` owns driver-delegating run/abort/idle/dispose
+coordination. Coding retains message construction and delivery, its event
+schema and projection, session controllers, replacement, transcript storage,
+and UI state.
+
 ## Work, Method, And Channel References
 
 Harness may carry opaque ids or metadata for:

@@ -2,7 +2,7 @@
 
 ## Status
 
-Status: accepted for implementation on `harness/host-runtime`.
+Status: implementation complete for integration into `lane/harness`.
 
 This document defines the product-neutral host lifecycle, input-queue ledger,
 and ordered event-dispatch mechanisms owned by `loushang.harness.host`.
