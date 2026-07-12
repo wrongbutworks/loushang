@@ -44,6 +44,9 @@ planning, work event persistence, or AI provider behavior.
 - [Diagnostics Core Boundary](diagnostics-core-boundary.md) defines shared
   diagnostic records, queries, summaries, startup checks, and in-memory engine
   ownership while keeping checks and presentation in product adapters.
+- [Host Runtime Boundary](host-runtime-boundary.md) defines product-neutral host
+  lifecycle, input-queue ledger, and ordered event ownership while preserving
+  Agent loop and product session responsibilities.
 - [Workspace Execution Boundary](workspace-execution-boundary.md) defines
   harness-owned truncation, exec records, backend protocols, process execution,
   and coding compatibility ownership.
