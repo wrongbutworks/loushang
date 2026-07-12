@@ -166,6 +166,74 @@ def test_harness_context_symbols_are_not_top_level_exports() -> None:
     assert context_symbols.isdisjoint(set(harness.__all__))
 
 
+def test_harness_diagnostics_symbols_are_not_package_exports() -> None:
+    import loushang.harness as harness
+    import loushang.harness.diagnostics as diagnostics
+
+    diagnostic_symbols = {
+        "DiagnosticLevel",
+        "DiagnosticPhase",
+        "DiagnosticRecord",
+        "DiagnosticSource",
+        "DiagnosticSummary",
+        "DiagnosticsQuery",
+        "DiagnosticsService",
+        "ErrorReport",
+        "StartupCheck",
+        "StartupCheckResult",
+    }
+
+    assert diagnostic_symbols.isdisjoint(set(harness.__all__))
+    assert diagnostics.__all__ == []
+
+
+def test_coding_internal_diagnostics_imports_use_harness_owners() -> None:
+    compatibility_paths = {
+        "src/loushang/coding/__init__.py",
+        "src/loushang/coding/diagnostics/__init__.py",
+        "src/loushang/coding/diagnostics/service.py",
+        "src/loushang/coding/diagnostics/types.py",
+    }
+    legacy_symbols = (
+        "loushang.coding.DiagnosticRecord",
+        "loushang.coding.DiagnosticSummary",
+        "loushang.coding.DiagnosticsQuery",
+        "loushang.coding.DiagnosticsService",
+        "loushang.coding.ErrorReport",
+        "loushang.coding.StartupCheck",
+        "loushang.coding.StartupCheckResult",
+        "loushang.coding.diagnostics.DiagnosticLevel",
+        "loushang.coding.diagnostics.DiagnosticPhase",
+        "loushang.coding.diagnostics.DiagnosticRecord",
+        "loushang.coding.diagnostics.DiagnosticSource",
+        "loushang.coding.diagnostics.DiagnosticSummary",
+        "loushang.coding.diagnostics.DiagnosticsQuery",
+        "loushang.coding.diagnostics.DiagnosticsService",
+        "loushang.coding.diagnostics.ErrorReport",
+        "loushang.coding.diagnostics.StartupCheck",
+        "loushang.coding.diagnostics.StartupCheckResult",
+        "loushang.coding.diagnostics.service.DiagnosticsService",
+        "loushang.coding.diagnostics.types.DiagnosticLevel",
+        "loushang.coding.diagnostics.types.DiagnosticPhase",
+        "loushang.coding.diagnostics.types.DiagnosticRecord",
+        "loushang.coding.diagnostics.types.DiagnosticSource",
+        "loushang.coding.diagnostics.types.DiagnosticSummary",
+        "loushang.coding.diagnostics.types.DiagnosticsQuery",
+        "loushang.coding.diagnostics.types.ErrorReport",
+        "loushang.coding.diagnostics.types.StartupCheck",
+        "loushang.coding.diagnostics.types.StartupCheckResult",
+    )
+    offenders: list[str] = []
+    for path in sorted(Path("src/loushang/coding").rglob("*.py")):
+        if path.as_posix() in compatibility_paths:
+            continue
+        for imported in _absolute_imports(path):
+            if _matches_any(imported, legacy_symbols):
+                offenders.append(f"{path.as_posix()} imports {imported}")
+
+    assert offenders == []
+
+
 def test_coding_internal_context_budget_imports_use_harness_owners() -> None:
     compatibility_paths = {
         "src/loushang/coding/__init__.py",
