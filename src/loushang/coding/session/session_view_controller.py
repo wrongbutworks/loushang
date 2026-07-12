@@ -32,13 +32,19 @@ class SessionViewController:
     is_compacting: Callable[[], bool]
     get_last_diagnostics: Callable[[int], list[object]]
     get_model_selection: Callable[[], ModelSelection | None]
+    is_host_running: Callable[[], bool] | None = None
     get_compaction_reserve_tokens: Callable[[], int] = lambda: 0
     get_compaction_compact_percent: Callable[[], float] = lambda: 100.0
     get_compaction_keep_recent_tokens: Callable[[], int | None] = lambda: None
 
     def get_state(self, *, steering: list[str], follow_up: list[str]) -> AgentSessionState:
+        is_running = (
+            self.is_host_running()
+            if self.is_host_running is not None
+            else self.agent.state.is_streaming
+        )
         return AgentSessionState(
-            run=RunState(status="running" if self.agent.state.is_streaming else "idle"),
+            run=RunState(status="running" if is_running else "idle"),
             steering=steering,
             follow_up=follow_up,
             active_tool_names=self.get_active_tool_names(),

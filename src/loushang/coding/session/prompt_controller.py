@@ -16,6 +16,7 @@ Preflight = Callable[..., Awaitable[object]]
 BeforeAgentStartOptions = Callable[[], dict[str, object]]
 ExtensionDiagnosticsSync = Callable[..., None]
 PrePromptCompaction = Callable[[], Awaitable[object | None]]
+RunPrompt = Callable[[list[object]], Awaitable[None]]
 
 
 class AgentPort(Protocol):
@@ -48,6 +49,7 @@ class PromptController:
     before_agent_start_system_prompt_options: BeforeAgentStartOptions
     sync_extension_diagnostics: ExtensionDiagnosticsSync
     compact_before_prompt_async: PrePromptCompaction | None = None
+    run_prompt: RunPrompt | None = None
 
     async def prompt(
         self,
@@ -128,7 +130,10 @@ class PromptController:
             raise
         if preflight_result is not None:
             preflight_result(True)
-        await self.agent.prompt(queued_messages)
+        if self.run_prompt is not None:
+            await self.run_prompt(queued_messages)
+        else:
+            await self.agent.prompt(queued_messages)
 
 
 def _user_message(text: str, images: list[ImagePart] | None = None) -> UserMessage:

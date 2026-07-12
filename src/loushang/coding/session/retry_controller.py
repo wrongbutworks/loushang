@@ -67,6 +67,7 @@ EventDispatcher = Callable[[AgentSessionEvent], Awaitable[None]]
 ContinueRun = Callable[[], Awaitable[None]]
 RuntimeExceptionRecorder = Callable[..., None]
 RetrySleeper = Callable[[int, AbortSignal], Awaitable[None]]
+WaitForIdle = Callable[[], Awaitable[None]]
 
 
 @dataclass
@@ -77,6 +78,7 @@ class RetryController:
     continue_run: ContinueRun
     record_runtime_exception: RuntimeExceptionRecorder
     sleep_for_retry: RetrySleeper
+    wait_for_idle: WaitForIdle | None = None
     _retry_attempt: int = 0
     _retry_future: asyncio.Future[None] | object | None = None
     _retry_abort_controller: AbortController | None = None
@@ -107,7 +109,10 @@ class RetryController:
             return
         if isinstance(retry_future, asyncio.Future):
             await retry_future
-        await self.agent.wait_for_idle()
+        if self.wait_for_idle is not None:
+            await self.wait_for_idle()
+        else:
+            await self.agent.wait_for_idle()
 
     def ensure_future(self) -> asyncio.Future[None]:
         if not isinstance(self._retry_future, asyncio.Future):

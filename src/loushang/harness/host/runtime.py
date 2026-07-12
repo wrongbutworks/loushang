@@ -138,6 +138,9 @@ class HostRuntime(Generic[T]):
             await active_task
         if self._wait_for_idle_driver is not None:
             await self._await_driver(self._wait_for_idle_driver)
+        if self._active_task is None and self._status in {"running", "aborting"}:
+            self._status = "idle"
+            self._active_run_id = None
         await self._events.drain()
 
     async def dispose(self) -> None:

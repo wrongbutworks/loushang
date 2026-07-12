@@ -4,12 +4,14 @@ import asyncio
 from collections.abc import Awaitable, Callable, Mapping, Sequence
 from contextlib import suppress
 from pathlib import Path
+from typing import cast
 
 from loushang.agent import (
     AbortController,
     AbortSignal,
     Agent,
     AgentEvent,
+    AgentMessage,
     ThinkingLevel,
 )
 from loushang.ai.api_registry import (
@@ -120,6 +122,7 @@ from loushang.harness.diagnostics.types import (
     DiagnosticSummary,
     ErrorReport,
 )
+from loushang.harness.host.runtime import HostRuntime
 from loushang.harness.resources.diagnostics import ResourceDiagnostic
 from loushang.harness.workspace.exec import (
     ExecOutputChunk,
@@ -176,6 +179,11 @@ class AgentSession:
         self.footer_data_provider = footer_data_provider or FooterDataProvider(self.session_manager.get_cwd())
         self._base_prompt = base_prompt if base_prompt is not None else self.agent.system_prompt
         self._event_bus = SessionEventBus()
+        self._host_runtime: HostRuntime[None] = HostRuntime(
+            abort_driver=self.agent.abort,
+            wait_for_idle_driver=self.agent.wait_for_idle,
+            is_running_driver=lambda: self.agent.is_streaming,
+        )
         self._bind_package_progress_events()
         self._extension_ui_context: object | None = None
         self._extension_runtime_host: object | None = None
@@ -300,12 +308,14 @@ class AgentSession:
             continue_run=lambda: self.continue_run(),
             record_runtime_exception=self._record_runtime_exception,
             sleep_for_retry=lambda delay_ms, signal: _sleep_for_retry(delay_ms, signal),
+            wait_for_idle=self.wait_for_idle,
         )
         self._extension_message_controller = ExtensionMessageController(
             agent=self.agent,
             session_manager=self.session_manager,
             queue_controller=self._queue_controller,
             dispatch_event=self._dispatch_event,
+            run_prompt=self._run_agent_prompt,
         )
         self._extension_provider_controller = ExtensionProviderController(
             model_registry=self.model_registry,
@@ -388,6 +398,7 @@ class AgentSession:
             is_compacting=lambda: self.is_compacting,
             get_last_diagnostics=lambda limit=50: self.get_last_diagnostics(limit),
             get_model_selection=self.get_model_selection,
+            is_host_running=lambda: self._host_runtime.is_active,
             get_compaction_reserve_tokens=lambda: self._get_compaction_settings().reserve_tokens,
             get_compaction_compact_percent=lambda: self._get_compaction_settings().compact_percent,
             get_compaction_keep_recent_tokens=lambda: self._get_compaction_settings().keep_recent_tokens,
@@ -403,6 +414,7 @@ class AgentSession:
             before_agent_start_system_prompt_options=self._before_agent_start_system_prompt_options,
             sync_extension_diagnostics=self._sync_extension_diagnostics,
             compact_before_prompt_async=self._compact_before_prompt,
+            run_prompt=lambda messages: self._run_agent_prompt(messages),
         )
         self._agent_event_router = AgentEventRouter(
             append_message=self.session_manager.append_message,
@@ -1064,16 +1076,16 @@ class AgentSession:
     # Public facade: run controls, retry, compaction, and tree navigation.
 
     async def continue_run(self) -> None:
-        await self.agent.continue_run()
+        await self._host_runtime.run(self.agent.continue_run)
 
     def abort(self) -> None:
-        self.agent.abort()
+        self._host_runtime.abort()
 
     def abort_bash(self) -> None:
         self._bash_controller.abort()
 
     async def wait_for_idle(self) -> None:
-        await self.agent.wait_for_idle()
+        await self._host_runtime.wait_for_idle()
 
     def abort_retry(self) -> None:
         self._retry_controller.abort()
@@ -1176,9 +1188,11 @@ class AgentSession:
                     session_shutdown_event or SessionShutdownEvent(reason="quit")
                 )
         finally:
+            await self._host_runtime.dispose()
             self._finalize_after_session_shutdown()
 
     async def _dispose_after_session_shutdown(self) -> None:
+        await self._host_runtime.dispose()
         await self.stop_resource_watcher()
         self._finalize_after_session_shutdown()
 
@@ -1481,6 +1495,18 @@ class AgentSession:
 
     async def _handle_agent_event(self, event: AgentEvent, signal: AbortSignal) -> None:
         await self._agent_event_router.handle(event, signal)
+
+    async def _run_agent_prompt(
+        self,
+        prompt: object,
+        images: list[ImagePart] | None = None,
+    ) -> None:
+        normalized_prompt = cast(str | AgentMessage | list[AgentMessage], prompt)
+
+        async def operation() -> None:
+            await self.agent.prompt(normalized_prompt, images=images)
+
+        await self._host_runtime.run(operation)
 
     async def _emit_extension_agent_event(self, event: AgentEvent) -> None:
         await self._extension_event_sink.emit_agent_event(event)

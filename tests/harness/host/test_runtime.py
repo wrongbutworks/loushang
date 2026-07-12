@@ -150,6 +150,24 @@ def test_host_runtime_rejects_concurrent_and_external_driver_runs() -> None:
     asyncio.run(scenario())
 
 
+def test_host_runtime_abort_and_wait_recovers_an_external_driver_run() -> None:
+    async def scenario() -> None:
+        driver = ReferenceDriver()
+        driver.running = True
+        runtime = _runtime(driver)
+
+        assert runtime.status == "running"
+        assert runtime.abort() is True
+        assert runtime.status == "aborting"
+        driver.running = False
+        await runtime.wait_for_idle()
+
+        assert runtime.status == "idle"
+        assert driver.abort_calls == 1
+
+    asyncio.run(scenario())
+
+
 def test_host_runtime_disposes_idempotently_and_rejects_new_runs() -> None:
     async def scenario() -> None:
         driver = ReferenceDriver()
