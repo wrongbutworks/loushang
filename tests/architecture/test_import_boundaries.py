@@ -234,6 +234,33 @@ def test_coding_internal_diagnostics_imports_use_harness_owners() -> None:
     assert offenders == []
 
 
+def test_harness_diagnostics_core_boundary_is_documented() -> None:
+    design_path = Path("docs/internals/architecture/harness/diagnostics-core-boundary.md")
+    assert design_path.exists()
+    design_text = " ".join(design_path.read_text(encoding="utf-8").split())
+    required_phrases = {
+        "Harness Diagnostics Core Boundary",
+        "`loushang.harness.diagnostics.types`",
+        "`loushang.harness.diagnostics.service`",
+        "same Harness-owned objects",
+        "`coding.diagnostics.serialization`",
+        "`coding.diagnostics.problem_bridge`",
+        "must not import coding, method, work, TUI, AI, agent runtime, provider, observability, or product packages",
+    }
+    assert sorted(phrase for phrase in required_phrases if phrase not in design_text) == []
+
+    readme_text = Path("docs/internals/architecture/harness/README.md").read_text(
+        encoding="utf-8"
+    )
+    assert "Diagnostics Core Boundary" in readme_text
+
+    inventory_text = Path(
+        "docs/internals/architecture/harness/coding-to-harness-migration-inventory.md"
+    ).read_text(encoding="utf-8")
+    assert "`loushang.harness.diagnostics`" in inventory_text
+    assert "diagnostics core implementation complete" in inventory_text
+
+
 def test_coding_internal_context_budget_imports_use_harness_owners() -> None:
     compatibility_paths = {
         "src/loushang/coding/__init__.py",

@@ -25,8 +25,8 @@ filesystem or serialization representation. Coding command surfaces may use
 
 `ResourceDiagnostic` carries a code, message, optional source path and resource
 identity, an opaque source-kind string, and neutral metadata. Harness does not
-define coding resource kinds, diagnostic phases, remediation text, or display
-policy.
+define coding resource kinds, resource-check phase/source assignment,
+remediation text, or display policy.
 
 ## Compatibility
 
@@ -55,8 +55,12 @@ This migration does not move or redesign:
 - search roots, source precedence, merge decisions, or conflict policy;
 - executable entrypoint, package installation, virtual environment, or Git
   identity discovery;
-- diagnostic phases, source vocabulary, aggregation, fingerprints, or queries;
+- resource check selection, phase/source assignment, or emission timing;
 - product remediation messages, UI projection, or session recording policy.
+
+General diagnostic vocabulary, records, queries, aggregation, and fingerprints
+are owned by `loushang.harness.diagnostics`. Resource-specific check selection
+and emission policy remain in Coding.
 
 ## Dependency Direction
 
@@ -65,6 +69,9 @@ The target direction is:
 ```text
 coding loaders / extensions / commands / sessions
   -> loushang.harness.resources.source
+coding loaders / extensions / commands / sessions
+  -> loushang.harness.resources.diagnostics
+loushang.harness.diagnostics.service
   -> loushang.harness.resources.diagnostics
 ```
 
