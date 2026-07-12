@@ -17,7 +17,8 @@ planning, work event persistence, or AI provider behavior.
   into harness and how migration slices should be shaped.
 - [Shared Capability Boundaries](shared-capability-boundaries.md) maps tools,
   approval, renderers, workspace, resources, context, memory, session, and
-  diagnostics across harness and product adapters.
+  diagnostics across harness and product adapters, and records the product
+  kernel that must remain product-owned.
 - [Coding To Harness Migration Inventory](coding-to-harness-migration-inventory.md)
   records how the current `loushang.coding` modules should be classified before
   implementation moves code.

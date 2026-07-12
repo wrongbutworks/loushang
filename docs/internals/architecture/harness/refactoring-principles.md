@@ -70,7 +70,9 @@ Use this split when judging a candidate:
 | Diagnostics | diagnostic records, severity/source vocabulary, query interface | product health checks, user-facing grouping, remediation text |
 
 The product adapter can call harness engines. The product adapter chooses how
-those engines are configured and exposed.
+those engines are configured and exposed. The irreducible policy and semantic
+surface that remains in each product is recorded under
+[Product Kernel Ownership](shared-capability-boundaries.md#product-kernel-ownership).
 
 ## Top-Level Package Discipline
 

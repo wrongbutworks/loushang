@@ -34,6 +34,35 @@ rule is that harness stays below product adapters and above agent primitives.
 It must not reach upward into product, work, method, channel, TUI, or AI
 provider details.
 
+## Product Kernel Ownership
+
+Prompts, skills, and tools are central product assets, but they are not the
+complete product boundary. Every product adapter retains an irreducible kernel
+of domain semantics and policy:
+
+- product goals, domain language, and completion criteria;
+- system prompt and prompt-section content;
+- skill content and default activation policy;
+- domain-specific concrete tools;
+- selection and activation policy for shared tool packs;
+- context salience, compaction, and summarization policy;
+- risk classification, approval defaults, and permission policy;
+- artifact semantics, such as code changes, research reports, slide decks,
+  design assets, or collaborative documents;
+- product commands, configuration defaults, and presentation projections;
+- resource search roots, file conventions, and compatibility formats.
+
+Harness may own the value types, registries, assembly engines, schedulers, and
+other mechanisms used to apply these decisions. It must not choose the values
+or defaults on a product's behalf. A reusable concrete capability that is not
+domain-specific may live in a shared tool or capability package; each product
+still decides whether and how that capability is enabled.
+
+This product kernel is what differentiates `coding`, `design`, `research`,
+`ppt`, `cowork`, and OEM products. Product bootstrap and wiring should become
+small as Harness grows, but these semantics must not migrate merely to reduce
+the number of lines in a product package.
+
 ## Tools
 
 Harness may own:

@@ -637,6 +637,33 @@ def test_harness_neutrality_evidence_gate_is_documented() -> None:
     assert sorted(phrase for phrase in required_phrases if phrase not in text) == []
 
 
+def test_harness_product_kernel_ownership_is_documented() -> None:
+    path = Path("docs/internals/architecture/harness/shared-capability-boundaries.md")
+    text = " ".join(path.read_text(encoding="utf-8").split())
+    required_phrases = {
+        "Product Kernel Ownership",
+        "product goals, domain language, and completion criteria",
+        "system prompt and prompt-section content",
+        "skill content and default activation policy",
+        "domain-specific concrete tools",
+        "selection and activation policy for shared tool packs",
+        "context salience, compaction, and summarization policy",
+        "risk classification, approval defaults, and permission policy",
+        "artifact semantics",
+        "product commands, configuration defaults, and presentation projections",
+        "resource search roots, file conventions, and compatibility formats",
+        "these semantics must not migrate merely to reduce the number of lines",
+    }
+    assert sorted(phrase for phrase in required_phrases if phrase not in text) == []
+
+    readme_text = " ".join(
+        Path("docs/internals/architecture/harness/README.md")
+        .read_text(encoding="utf-8")
+        .split()
+    )
+    assert "product kernel that must remain product-owned" in readme_text
+
+
 def test_frontmatter_consumers_use_harness_owner() -> None:
     compatibility_paths = {
         "src/loushang/coding/frontmatter.py",
