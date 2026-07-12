@@ -73,13 +73,17 @@ Harness may own:
 - contribution records from packages or extensions;
 - availability metadata and diagnostics;
 - wrapper engines that adapt neutral tool call inputs to `loushang.agent`
-  tool primitives.
+  tool primitives;
+- reusable concrete tool packs, including workspace read, list, search, write,
+  edit, and process execution implementations;
+- generic process helpers, output limits, ignore matching, and optional
+  external binary resolution used by those packs.
 
 Product adapters own:
 
 - default tool packs;
 - product-specific tool names and descriptions;
-- concrete coding/design/research/ppt behavior;
+- domain-specific coding/design/research/ppt tools;
 - prompt wording around tool use;
 - destructive-operation policy;
 - product-specific tool discovery.
@@ -138,7 +142,8 @@ Harness may own neutral workspace mechanics:
 - file operation request/result shapes;
 - process execution request/result shapes;
 - stream event records;
-- workspace tool protocols.
+- workspace tool protocols;
+- reusable concrete workspace tool definitions and their neutral renderers.
 
 Product adapters own:
 
@@ -150,6 +155,11 @@ Product adapters own:
 
 Use `loushang.harness.workspace` or `loushang.harness.tools.workspace`; do not
 create a top-level `loushang.workspace` package.
+
+Reusable concrete behavior is mechanism, even when Coding was its first owner.
+Products inject policy evaluators, approval resolvers, workspace roots,
+product-tuned descriptions, activation, and presentation overrides. Harness
+must not silently select those values.
 
 ## Resources
 

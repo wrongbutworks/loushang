@@ -2,7 +2,8 @@
 
 ## Status
 
-This is an ownership inventory, not an implementation plan.
+This is an ownership inventory and the execution order for the accelerated
+runtime consolidation.
 
 It records current ownership and the remaining action for modules migrating
 from `loushang.coding` into `loushang.harness`.
@@ -17,19 +18,24 @@ from `loushang.coding` into `loushang.harness`.
 | Keep product | Coding-specific assembly, policy, storage, UI, or workflow. |
 | Never harness | Explicitly outside harness by subsystem boundary. |
 
+Classification defaults to Harness. `Keep product` entries require a named
+product-kernel reason; historical location or lack of a second consumer is not
+sufficient.
+
 ## Current Package Inventory
 
 | Current module | Classification | Target / action |
 | --- | --- | --- |
 | `coding.commands` | Split candidate | `CommandDef` / `CommandEffect` value types already moved to `loushang.harness.commands`. Catalog, slash parsing, handlers, and session command execution stay in coding. |
-| `coding.tools.types`, `schema`, `wrapper`, `factory`, `registry`, `authoring`, `normalize`, `protocol` | Split candidate | Move product-neutral tool definition, schema, wrapper, and registry mechanics to `loushang.harness.tools.core`. Keep coding defaults and product descriptions in coding. |
-| `coding.tools.presentation`, `rendering`, `builtin_renderers`, `output_preview` | Split candidate | Move neutral presentation records and renderer registry mechanics to `loushang.harness.presentation`. Keep terminal/product rendering and coding-specific preview choices in coding. |
+| `coding.tools.types`, `schema`, `wrapper`, `registry`, `authoring`, `normalize` | Compatibility shim | Reusable tool definition, schema, normalization, wrapping, and registry mechanics live under `loushang.harness.tools`; Coding preserves accepted imports. |
+| `coding.tools.factory`, `coding.tools.builtins` | Split candidate | Harness owns reusable workspace-tool construction. Coding keeps default pack membership, activation, policy injection, and product-tuned metadata. |
+| `coding.tools.presentation`, `rendering`, `builtin_renderers`, `output_preview` | Split candidate | Harness owns neutral presentation records and reusable workspace renderers/previews. Keep terminal/product projections and Coding protocol details in Coding. |
 | `coding.tools.truncate` | Compatibility shim | Neutral line/byte truncation and shared limits live in `loushang.harness.workspace.truncation`. Coding keeps grep line limits, product wording, detail projection, and camelCase compatibility aliases. |
 | `coding.tools.operations` | Compatibility shim | Operation protocols, sync-or-async result resolution, `LocalToolOperations`, and the default singleton live in `loushang.harness.workspace.operations`. Coding keeps normalization, Pi adapters, payload projection, and abort behavior. |
 | `coding.tools.path_utils` | Split candidate | Configurable resolution, current-user expansion, canonical identity, Unicode normalization, and optional platform/user-input variants live in `loushang.harness.workspace.paths`. Coding keeps `@` syntax, default correction policy, public wrappers, and camelCase aliases. |
 | `coding.tools.file_mutation_queue` | Compatibility shim | Canonical per-path mutation coordination lives in `loushang.harness.workspace.mutation_queue`. Coding paths re-export the harness functions and registry; the Pi-style camelCase alias stays coding-owned. |
-| `coding.tools.read`, `ls`, `find`, `grep` | Split candidate | May become optional `loushang.harness.tools.workspace` read-only tools after policy boundaries are clear. Coding decides default activation. |
-| `coding.tools.write`, `edit`, `edit_diff`, `bash`, `process`, `policy` | Split candidate | Operation, path, mutation, and exec substrate ownership is established. Destructive-operation policy, approval, result projection, tool cancellation, and default activation stay product-owned. |
+| `coding.tools.read`, `ls`, `find`, `grep`, `write`, `edit`, `edit_diff`, `bash`, `process`, `ignore`, `external_tools` | Compatibility shim | Reusable implementations live in `loushang.harness.tools.workspace`. Coding injects product metadata, policy/approval, activation, and compatibility projections. |
+| `coding.tools.policy` | Compatibility shim | Neutral policy-enforcement plumbing accepts an injected evaluator and Harness approval resolver. Coding retains risk classification and concrete `PolicyEngine` defaults. |
 | `coding.policy` | Split candidate | Move approval request/decision/resolver contracts and headless defaults to `loushang.harness.approval` or `loushang.harness.policy`. Keep coding risk rules and interactive UI integration in coding. |
 | `coding.exec` | Compatibility shim | `ExecRequest`, `ExecResult`, output records, backend/update protocols, and `ExecService` live in `loushang.harness.workspace.exec`. Coding keeps the public compatibility path; policy, session cwd resolution, tool projection, and extension behavior remain product-owned. |
 | `coding.diagnostics.types`, `coding.diagnostics.service` | Compatibility shim | Diagnostic vocabulary, records, queries, summaries, startup-check contracts, and the bounded in-memory engine live in `loushang.harness.diagnostics`. Coding paths re-export the same Harness-owned objects. |
@@ -54,7 +60,7 @@ from `loushang.coding` into `loushang.harness`.
 | `coding.mode` | Keep product | Transitional print/RPC mode adapters stay coding until channel is implemented. |
 | `coding.cli` | Keep product | Product CLI. It may expose harness-backed behavior but remains coding-owned. |
 | `coding.message`, `coding.store` | Keep product | Coding transcript entries, JSONL transforms, session persistence, and file locking stay coding-owned. |
-| `coding.control` | Keep product | Auth, model registry, settings, and persistence stay outside harness. |
+| `coding.control` | Keep product | Frozen during runtime consolidation: auth resolution, model registry, settings, provider registration, credential handling, and selection persistence stay outside Harness. Harness receives already-resolved runtime dependencies and never stores credentials. Revisit ownership separately after consolidation. |
 | `coding.package`, `coding.plugin`, `coding.resources`, `coding.skill` | Keep product | Coding package/plugin/resource semantics and materialization stay product-owned. |
 | `coding.workflow` | Keep product | Coding workflows and workflow testing harnesses stay coding-owned. |
 | `coding.platform` | Keep product | Clipboard, git, version, terminal/platform helpers stay product-owned unless a tiny neutral helper is separately justified. |
@@ -70,16 +76,23 @@ Status: closed on `lane/harness`; see
 Purpose: validate the OEM/extension contribution model without touching agent
 loop, TUI render loop, or AI provider behavior.
 
-Move only:
+The original contract-only move is complete. Runtime consolidation now extends
+this ownership to reusable concrete tools while preserving the same product
+policy boundary.
+
+Harness owns:
 
 - neutral tool definition/schema/registry contracts;
 - neutral presentation records and renderer registry contracts;
 - approval request/decision/resolver protocols and headless defaults.
+- reusable workspace tool definitions, execution helpers, and neutral
+  renderers.
 
-Keep in coding:
+Keep in Coding:
 
-- concrete tools;
 - default tool packs;
+- product-tuned tool metadata;
+- risk classification and approval defaults;
 - interactive approval UI;
 - command handlers;
 - session controllers.
@@ -248,7 +261,11 @@ an independent contract probe prove a neutral invocation shape.
 
 - Do not add `loushang.harness` imports from `loushang.agent`.
 - Do not add product imports from `loushang.harness`.
-- Do not move concrete coding tools as part of a tool-core slice.
+- Default reusable concrete implementations to Harness; keep only
+  domain-specific tool semantics in products.
+- Keep `coding.control` frozen during runtime consolidation. Do not route auth,
+  credentials, model registries, provider registration, or persisted model
+  selection through Harness.
 - Do not move prompt templates, AGENTS.md policy, slash semantics, or command
   handlers.
 - Do not add broad top-level packages for workspace, context, memory, or
