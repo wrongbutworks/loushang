@@ -16,11 +16,11 @@ from loushang.coding.session.types import (
     AgentSessionState,
     ContextUsage,
     ModelSelection,
-    RunState,
     SessionStats,
 )
 from loushang.coding.session.usage_payload import serialize_context_usage_payload
 from loushang.coding.store import SessionManager
+from loushang.harness.host.types import RunState
 
 
 @dataclass

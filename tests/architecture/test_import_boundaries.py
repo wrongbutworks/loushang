@@ -187,6 +187,26 @@ def test_harness_diagnostics_symbols_are_not_package_exports() -> None:
     assert diagnostics.__all__ == []
 
 
+def test_harness_host_symbols_are_not_package_exports() -> None:
+    import loushang.harness as harness
+    import loushang.harness.host as host
+
+    host_symbols = {
+        "HostInputQueue",
+        "HostLifecycleEvent",
+        "HostRuntime",
+        "HostSnapshot",
+        "HostStateError",
+        "OrderedEventBus",
+        "QueueSnapshot",
+        "QueuedMessageSnapshot",
+        "RunState",
+    }
+
+    assert host_symbols.isdisjoint(set(harness.__all__))
+    assert host.__all__ == []
+
+
 def test_coding_internal_diagnostics_imports_use_harness_owners() -> None:
     compatibility_paths = {
         "src/loushang/coding/__init__.py",
@@ -635,6 +655,50 @@ def test_harness_neutrality_evidence_gate_is_documented() -> None:
         "its absence is not a migration blocker",
     }
     assert sorted(phrase for phrase in required_phrases if phrase not in text) == []
+
+
+def test_harness_host_runtime_boundary_is_documented() -> None:
+    design_path = Path("docs/internals/architecture/harness/host-runtime-boundary.md")
+    assert design_path.exists()
+    design_text = " ".join(design_path.read_text(encoding="utf-8").split())
+    required_phrases = {
+        "Harness Host Runtime Boundary",
+        "implementation complete for integration into `lane/harness`",
+        "`loushang.harness.host.runtime.HostRuntime`",
+        "`loushang.harness.host.queue.HostInputQueue`",
+        "`loushang.harness.host.events.OrderedEventBus`",
+        "must not implement a second agent loop",
+        "Coding maps running, aborting, and disposing",
+        "product-neutral reference driver",
+        "no host symbols are added to top-level `loushang.harness.__all__`",
+    }
+    assert sorted(phrase for phrase in required_phrases if phrase not in design_text) == []
+
+    readme_text = Path("docs/internals/architecture/harness/README.md").read_text(
+        encoding="utf-8"
+    )
+    assert "Host Runtime Boundary" in readme_text
+
+    inventory_text = Path(
+        "docs/internals/architecture/harness/coding-to-harness-migration-inventory.md"
+    ).read_text(encoding="utf-8")
+    assert "host runtime core implementation complete" in inventory_text
+
+
+def test_coding_internal_run_state_imports_use_harness_owner() -> None:
+    compatibility_paths = {
+        "src/loushang/coding/session/__init__.py",
+        "src/loushang/coding/session/types.py",
+    }
+    offenders: list[str] = []
+    for path in sorted(Path("src/loushang/coding").rglob("*.py")):
+        if path.as_posix() in compatibility_paths:
+            continue
+        for imported in _absolute_imports(path):
+            if imported == "loushang.coding.session.types.RunState":
+                offenders.append(f"{path.as_posix()} imports {imported}")
+
+    assert offenders == []
 
 
 def test_harness_product_kernel_ownership_is_documented() -> None:
