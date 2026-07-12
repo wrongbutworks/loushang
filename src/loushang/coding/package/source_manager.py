@@ -5,7 +5,6 @@ from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import Literal
 
-from loushang.coding.diagnostics import DiagnosticsService
 from loushang.coding.package.materializer import (
     PackageMaterializationRecord,
     PackageMaterializer,
@@ -17,6 +16,7 @@ from loushang.coding.package.source import (
     is_remote_package_source,
     package_source_match_key,
 )
+from loushang.harness.diagnostics.service import DiagnosticsService
 
 MissingSourceAction = Literal["install", "skip", "error"]
 MissingSourceResolver = Callable[[str], MissingSourceAction]

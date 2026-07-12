@@ -1,7 +1,7 @@
 from __future__ import annotations
 
-from loushang.coding.diagnostics import DiagnosticsService
 from loushang.coding.policy import ApprovalResolver, PolicyEngine
+from loushang.harness.diagnostics.service import DiagnosticsService
 from loushang.harness.tools.contribution import (
     ToolContribution,
     ToolPackDefinition,

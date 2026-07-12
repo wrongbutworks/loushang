@@ -3,8 +3,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from loushang.ai.model import Model
-from loushang.coding.diagnostics import DiagnosticsService
 from loushang.coding.store import SessionManager
+from loushang.harness.diagnostics.service import DiagnosticsService
 
 
 @dataclass

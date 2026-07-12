@@ -13,13 +13,6 @@ from types import SimpleNamespace
 from typing import Literal
 
 from loushang.ai.types import TextPart, UserMessage
-from loushang.coding.diagnostics import (
-    DiagnosticRecord,
-    DiagnosticsQuery,
-    DiagnosticsService,
-    DiagnosticSummary,
-    ErrorReport,
-)
 from loushang.coding.extensions import (
     SessionBeforeForkEvent,
     SessionBeforeSwitchEvent,
@@ -33,6 +26,13 @@ from loushang.coding.store import (
     SessionQuery,
     SessionRecord,
     SessionSummary,
+)
+from loushang.harness.diagnostics.service import DiagnosticsService
+from loushang.harness.diagnostics.types import (
+    DiagnosticRecord,
+    DiagnosticsQuery,
+    DiagnosticSummary,
+    ErrorReport,
 )
 
 SessionFactory = Callable[..., AgentSession]

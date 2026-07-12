@@ -29,7 +29,7 @@ from loushang.coding.control.settings_store import (
     default_project_settings_path,
 )
 from loushang.coding.diag_export import export_diagnostics_bundle
-from loushang.coding.diagnostics import serialize_diagnostic
+from loushang.coding.diagnostics.serialization import serialize_diagnostic
 from loushang.coding.domain import CodingDomainApp, CodingDomainRequest, MethodPolicy
 from loushang.coding.extensions.types import ResolvedFlag
 from loushang.coding.mode import ModeConfig, run_mode, run_print_mode, run_rpc_mode

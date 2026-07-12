@@ -19,11 +19,6 @@ from loushang.coding.control.settings_store import (
     default_global_settings_path,
     default_project_settings_path,
 )
-from loushang.coding.diagnostics import (
-    DiagnosticRecord,
-    DiagnosticsService,
-    StartupCheckResult,
-)
 from loushang.coding.extensions import ExtensionRunner
 from loushang.coding.extensions.types import SessionStartEvent
 from loushang.coding.loader import DefaultResourceLoader
@@ -42,6 +37,8 @@ from loushang.coding.source_info import executable_source_identity
 from loushang.coding.store import SessionManager
 from loushang.coding.tools import ToolRegistry
 from loushang.coding.types import ModelSelection
+from loushang.harness.diagnostics.service import DiagnosticsService
+from loushang.harness.diagnostics.types import DiagnosticRecord, StartupCheckResult
 from loushang.harness.resources.diagnostics import ResourceDiagnostic
 from loushang.harness.tools.contribution import (
     ToolContribution,

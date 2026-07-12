@@ -6,8 +6,8 @@ from typing import Any, NotRequired, Protocol, TypedDict
 
 from loushang.agent.types import AgentToolResult
 from loushang.ai.types import TextPart
-from loushang.coding.diagnostics import DiagnosticsService
 from loushang.coding.policy import ApprovalResolver, PolicyEngine
+from loushang.harness.diagnostics.service import DiagnosticsService
 from loushang.harness.workspace.exec import (
     ExecOutputChunk,
     ExecRequest,

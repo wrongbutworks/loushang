@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from loushang.coding.diagnostics.types import (
+from loushang.harness.diagnostics.types import (
     DiagnosticPhase,
     DiagnosticRecord,
     DiagnosticSource,

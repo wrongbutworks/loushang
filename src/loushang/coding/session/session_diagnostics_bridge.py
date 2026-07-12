@@ -4,16 +4,16 @@ from collections.abc import Callable, Mapping
 from dataclasses import dataclass, replace
 
 from loushang.ai.types import AssistantMessage
-from loushang.coding.diagnostics import (
+from loushang.coding.store import SessionManager
+from loushang.harness.diagnostics.service import DiagnosticsService
+from loushang.harness.diagnostics.types import (
     DiagnosticLevel,
     DiagnosticPhase,
     DiagnosticRecord,
     DiagnosticsQuery,
-    DiagnosticsService,
     DiagnosticSummary,
     ErrorReport,
 )
-from loushang.coding.store import SessionManager
 from loushang.harness.resources.diagnostics import ResourceDiagnostic
 
 _EXTENSION_ERROR_DIAGNOSTIC_CODES: frozenset[str] = frozenset(
