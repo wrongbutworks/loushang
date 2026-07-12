@@ -33,13 +33,6 @@ from loushang.coding.control import (
     RetrySettings,
     SettingsManager,
 )
-from loushang.coding.diagnostics import (
-    DiagnosticRecord,
-    DiagnosticsQuery,
-    DiagnosticsService,
-    DiagnosticSummary,
-    ErrorReport,
-)
 from loushang.coding.event import AgentSessionEvent
 from loushang.coding.extensions import (
     ExtensionRunner,
@@ -120,6 +113,13 @@ from loushang.coding.session.types import (
 from loushang.coding.session.usage_payload import serialize_context_usage_payload
 from loushang.coding.store import SessionManager, SessionRecord
 from loushang.coding.tools import ToolDefinition, ToolRegistry
+from loushang.harness.diagnostics.service import DiagnosticsService
+from loushang.harness.diagnostics.types import (
+    DiagnosticRecord,
+    DiagnosticsQuery,
+    DiagnosticSummary,
+    ErrorReport,
+)
 from loushang.harness.resources.diagnostics import ResourceDiagnostic
 from loushang.harness.workspace.exec import (
     ExecOutputChunk,

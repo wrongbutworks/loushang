@@ -3,11 +3,11 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from loushang.coding.diagnostics import DiagnosticsService
 from loushang.coding.package.manifest import resolve_package_manifest
 from loushang.coding.package.materializer import PackageMaterializer
 from loushang.coding.package.source import PackageSourceConfig, is_remote_package_source
 from loushang.coding.plugin import PluginManager
+from loushang.harness.diagnostics.service import DiagnosticsService
 
 
 @dataclass(frozen=True)

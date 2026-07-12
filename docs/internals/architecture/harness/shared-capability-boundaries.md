@@ -262,6 +262,13 @@ Product adapters own:
 - product-specific grouping;
 - CLI/TUI formatting.
 
+`loushang.harness.diagnostics.types` now owns the shared vocabulary, records,
+queries, summaries, and startup-check contracts.
+`loushang.harness.diagnostics.service` owns bounded retention, fingerprinting,
+deduplication, filtering, aggregation, normalization, and caller-supplied check
+execution. Coding retains actual checks, observability mapping, serialization,
+remediation, session projection, and UI behavior.
+
 ## OEM And Extension Contribution Model
 
 The shared contribution flow should be:

@@ -6,19 +6,28 @@
 
 ## Owns
 
-- `DiagnosticsService`
-- `DiagnosticsQuery`
 - 启动前环境检查
 - provider / model / extension 等非工具执行类运行期错误归一化
 - package/plugin source policy rejection normalization
-- 最近一次诊断结果快照
-- 诊断聚合摘要与 source/phase/code 计数
+- observability problem 到 diagnostics 的 Coding source/phase 映射
+- CLI/RPC/export camelCase 序列化与展示投影
+
+## Uses Harness Core
+
+- `loushang.harness.diagnostics.types` owns `DiagnosticRecord`,
+  `DiagnosticsQuery`, `DiagnosticSummary`, `ErrorReport`, and startup-check
+  contracts.
+- `loushang.harness.diagnostics.service` owns `DiagnosticsService`, bounded
+  retention, fingerprinting, deduplication, query, summary, normalization, and
+  caller-supplied startup-check execution.
+- `loushang.coding.diagnostics` preserves the accepted compatibility imports.
 
 ## Depends On
 
 - `session`
 - `store`
 - `control`
+- `loushang.harness.diagnostics`
 
 ## Commands
 
@@ -56,11 +65,11 @@
 
 ## Key Data
 
-- `DiagnosticRecord`
-- `DiagnosticsQuery`
-- `DiagnosticSummary`
-- `ErrorReport`
-- `StartupCheckResult`
+- `DiagnosticRecord` (Harness-owned)
+- `DiagnosticsQuery` (Harness-owned)
+- `DiagnosticSummary` (Harness-owned)
+- `ErrorReport` (Harness-owned)
+- `StartupCheckResult` (Harness-owned)
 
 ## Out Of Scope
 
@@ -75,3 +84,4 @@
 - 语义上对齐 `reference CLI` 的 diagnostics / startup checks / error normalization 需求
 - 保持诊断能力独立于 `session` 与 `mode`
 - `bootstrap` / `cli` / `mode` 可以调用 diagnostics，但不应让 diagnostics 反向依赖这些入口表面
+- Coding checks call the Harness core; Harness does not import Coding entrypoints or presentation.

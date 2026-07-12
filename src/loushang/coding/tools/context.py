@@ -3,7 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Awaitable, Callable, Mapping, Protocol
 
-from loushang.coding.diagnostics import DiagnosticsService
+from loushang.harness.diagnostics.service import DiagnosticsService
 
 ToolEventSink = Callable[[Mapping[str, object]], Awaitable[None] | None]
 

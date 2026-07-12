@@ -32,10 +32,11 @@ from `loushang.coding` into `loushang.harness`.
 | `coding.tools.write`, `edit`, `edit_diff`, `bash`, `process`, `policy` | Split candidate | Operation, path, mutation, and exec substrate ownership is established. Destructive-operation policy, approval, result projection, tool cancellation, and default activation stay product-owned. |
 | `coding.policy` | Split candidate | Move approval request/decision/resolver contracts and headless defaults to `loushang.harness.approval` or `loushang.harness.policy`. Keep coding risk rules and interactive UI integration in coding. |
 | `coding.exec` | Compatibility shim | `ExecRequest`, `ExecResult`, output records, backend/update protocols, and `ExecService` live in `loushang.harness.workspace.exec`. Coding keeps the public compatibility path; policy, session cwd resolution, tool projection, and extension behavior remain product-owned. |
-| `coding.diagnostics` | Split candidate | Move neutral diagnostic record/status/query types to `loushang.harness.diagnostics`. Keep coding health checks and remediation text in coding. |
+| `coding.diagnostics.types`, `coding.diagnostics.service` | Compatibility shim | Diagnostic vocabulary, records, queries, summaries, startup-check contracts, and the bounded in-memory engine live in `loushang.harness.diagnostics`. Coding paths re-export the same Harness-owned objects. |
+| `coding.diagnostics.serialization`, `coding.diagnostics.problem_bridge`, concrete checks | Keep product | Keep camelCase payload projection, observability mapping, check selection, emission timing, remediation, session bridges, and CLI/TUI behavior in Coding. |
 | `loushang.resource.frontmatter`, `coding.frontmatter` | Compatibility shim | Parser records, errors, and behavior live in `loushang.harness.resources.frontmatter`. Legacy paths preserve object identity; coding and method internal consumers use the harness owner. |
 | `coding.source_info.SourceInfo`, `coding.extensions.types.SourceInfo` | Compatibility shim | `SourceInfo`, `SourceScope`, and `SourceOrigin` live in `loushang.harness.resources.source`. Coding command and extension paths preserve string and `Path` representations through the same harness class. Descriptor projection and executable identity remain in coding. |
-| `coding.loader.ResourceDiagnostic`, `coding.loader.types.ResourceDiagnostic` | Compatibility shim | The neutral record lives in `loushang.harness.resources.diagnostics`. Coding compatibility paths preserve object identity; diagnostic services, messages, phases, and recording policy remain product-owned. |
+| `coding.loader.ResourceDiagnostic`, `coding.loader.types.ResourceDiagnostic` | Compatibility shim | The focused resource record lives in `loushang.harness.resources.diagnostics`. Coding compatibility paths preserve object identity; resource checks, message selection, emission timing, and remediation remain product-owned. |
 | Remaining `coding.loader.types` | Keep product | Prompt, skill, theme, and extension descriptors, source kinds, snapshots, roots, precedence, and merge decisions remain coding-owned. Generic merge primitives require a separate accepted boundary. |
 | `coding.prompt.types` | Split candidate | Move only neutral prepared-prompt/trace contracts if a second product needs them. Keep templates, preflight, and assembler policy in coding. |
 | `coding.compaction.policy`, `coding.compaction.types.ContextUsageEstimate` | Compatibility shim | `CompactionBudget`, deterministic threshold accounting, and `ContextUsageEstimate` live in `loushang.harness.context`. Coding compatibility paths re-export the same Harness-owned objects. |
@@ -148,6 +149,21 @@ Coding keeps `@` input syntax, the default path-correction configuration,
 public path wrappers, camelCase aliases, workspace root and sandbox policy,
 approval, and concrete tool behavior.
 
+### Diagnostics Core
+
+Status: diagnostics core implementation complete for integration into
+`lane/harness`; see
+[Diagnostics Core Boundary](diagnostics-core-boundary.md).
+
+Harness now owns diagnostic vocabulary, records, queries, summaries,
+startup-check contracts, bounded retention, fingerprinting, duplicate
+aggregation, filtering, error reports, resource/exception normalization, and
+caller-supplied startup-check execution.
+
+Coding compatibility paths re-export the Harness objects. Coding keeps
+serialization, observability problem mapping, concrete checks, emission policy,
+remediation, session projection, exports, and CLI/RPC/TUI presentation.
+
 ### Slice 3: Resources And Source Metadata
 
 Status: frontmatter parsing implementation complete; resource provenance implementation complete
@@ -167,7 +183,8 @@ adapter-selected string or `Path` representations. The neutral resource
 diagnostic record lives in `loushang.harness.resources.diagnostics`.
 Accepted coding paths re-export the harness classes, while coding executable
 identity, product resource descriptors, search roots, precedence, merge policy,
-diagnostic services, and remediation text remain product-owned.
+resource checks, diagnostic emission policy, and remediation text remain
+product-owned.
 
 ### Slice 4: Context
 

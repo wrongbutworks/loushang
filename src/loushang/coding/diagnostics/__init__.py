@@ -3,8 +3,8 @@ from loushang.coding.diagnostics.serialization import (
     serialize_diagnostic_summary,
     serialize_error_report,
 )
-from loushang.coding.diagnostics.service import DiagnosticsService
-from loushang.coding.diagnostics.types import (
+from loushang.harness.diagnostics.service import DiagnosticsService
+from loushang.harness.diagnostics.types import (
     DiagnosticLevel,
     DiagnosticPhase,
     DiagnosticRecord,

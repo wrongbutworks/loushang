@@ -39,6 +39,9 @@ planning, work event persistence, or AI provider behavior.
 - [Context Budget And Accounting Boundary](context-budget-accounting-boundary.md)
   defines deterministic compaction-budget and usage-estimate record ownership
   while keeping message estimation and compaction policy in product adapters.
+- [Diagnostics Core Boundary](diagnostics-core-boundary.md) defines shared
+  diagnostic records, queries, summaries, startup checks, and in-memory engine
+  ownership while keeping checks and presentation in product adapters.
 - [Workspace Execution Boundary](workspace-execution-boundary.md) defines
   harness-owned truncation, exec records, backend protocols, process execution,
   and coding compatibility ownership.

@@ -13,8 +13,7 @@ from pathlib import Path
 from typing import Any, NotRequired, Required, TextIO, TypedDict, cast
 
 from loushang.coding.commands import complete_slash_commands
-from loushang.coding.diagnostics import (
-    DiagnosticsQuery,
+from loushang.coding.diagnostics.serialization import (
     serialize_diagnostic,
     serialize_diagnostic_summary,
     serialize_error_report,
@@ -32,6 +31,7 @@ from loushang.coding.mode.base import ModeAdapter, ModeState
 from loushang.coding.store import SessionQuery
 from loushang.coding.tools import ToolDefinitionResolver, ToolRenderRuntime
 from loushang.coding.types import ModelSelection
+from loushang.harness.diagnostics.types import DiagnosticsQuery
 
 _THINKING_LEVEL_ORDER: tuple[str, ...] = ("off", "minimal", "low", "medium", "high", "xhigh")
 _MISSING = object()
