@@ -10,6 +10,7 @@ import pytest
 
 import loushang.ai as ai
 from loushang.ai.api_registry import ApiProviderRegistry
+from loushang.ai.auth import ApiKeyAuth
 from loushang.ai.model import (
     clear_default_model_registry,
     get_default_model_registry,
@@ -156,27 +157,33 @@ def test_model_instances_do_not_expose_call_facades() -> None:
         assert not hasattr(model, name)
 
 
-def test_ai_auth_package_contains_only_request_level_core() -> None:
+def test_auth_is_owned_by_ai_package_without_top_level_auth_package() -> None:
     auth_files = {
         path.name
         for path in (AI_SRC / "auth").glob("*.py")
         if path.name != "__pycache__"
     }
 
-    assert auth_files == {"__init__.py", "credentials.py", "support.py"}
+    assert auth_files == {
+        "__init__.py",
+        "browser.py",
+        "credentials.py",
+        "env.py",
+        "facade.py",
+        "oauth.py",
+        "registry.py",
+        "storage.py",
+        "support.py",
+        "types.py",
+    }
 
     import loushang.ai.auth as auth_module
-    import loushang.auth as lifecycle_auth
-
-    assert hasattr(lifecycle_auth, "oauth_login")
-    assert hasattr(lifecycle_auth, "OAuthProviderRegistry")
+    assert not (REPO_ROOT / "src/loushang/auth").exists()
 
     for name in (
         "CredentialStore",
         "OAuthCredentials",
         "OAuthProviderRegistry",
-        "get_default_oauth_registry",
-        "get_env_oauth_credentials",
         "get_oauth_api_key",
         "load_credentials",
         "oauth_login",
@@ -184,19 +191,10 @@ def test_ai_auth_package_contains_only_request_level_core() -> None:
         "register_builtin_oauth_providers",
         "resolve_oauth_api_key",
     ):
-        assert not hasattr(auth_module, name)
+        assert hasattr(auth_module, name)
 
-    for module_name in (
-        "browser",
-        "env",
-        "facade",
-        "oauth",
-        "registry",
-        "storage",
-        "types",
-    ):
-        with pytest.raises(ModuleNotFoundError):
-            importlib.import_module(f"loushang.ai.auth.{module_name}")
+    with pytest.raises(ModuleNotFoundError):
+        importlib.import_module("loushang.auth")
 
 
 @pytest.mark.parametrize(
@@ -304,7 +302,7 @@ def test_complete_dispatches_to_invoke_raw_provider(tmp_path: Path) -> None:
         message = await ai.complete(
             model,
             {"messages": [{"role": "user", "content": "hello"}]},
-            CallOptions(api_key="test-key"),
+            CallOptions(auth=ApiKeyAuth("test-key")),
             provider_registry=provider_registry,
         )
 
@@ -330,7 +328,7 @@ def test_stream_dispatches_to_invoke_raw_provider(tmp_path: Path) -> None:
         event_stream = await ai.stream(
             model,
             {"messages": [{"role": "user", "content": "hello"}]},
-            CallOptions(api_key="test-key"),
+            CallOptions(auth=ApiKeyAuth("test-key")),
             provider_registry=provider_registry,
         )
         async for _event in event_stream:
@@ -358,13 +356,13 @@ def test_complete_and_stream_pass_distinct_provider_modes(tmp_path: Path) -> Non
         await ai.complete(
             model,
             context,
-            CallOptions(api_key="test-key"),
+            CallOptions(auth=ApiKeyAuth("test-key")),
             provider_registry=provider_registry,
         )
         event_stream = await ai.stream(
             model,
             context,
-            CallOptions(api_key="test-key"),
+            CallOptions(auth=ApiKeyAuth("test-key")),
             provider_registry=provider_registry,
         )
         async for _event in event_stream:
@@ -426,7 +424,7 @@ def test_bound_model_resolves_without_default_registry_lookup(
 
     request = resolve_request_for_model(
         model,
-        options=CallOptions(api_key="test-key"),
+        options=CallOptions(auth=ApiKeyAuth("test-key")),
         env={},
     )
 

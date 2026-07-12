@@ -128,13 +128,13 @@ policy，不是公共 loader。
 声明的 provider 环境变量。
 
 ```python
-from loushang.ai import CallOptions, get_model
+from loushang.ai import ApiKeyAuth, CallOptions, get_model
 
 model = get_model("moonshot", "openai-completions", "kimi-k2.6")
-options = CallOptions(api_key="...", max_output_tokens=512)
+options = CallOptions(auth=ApiKeyAuth("..."), max_output_tokens=512)
 ```
 
-如果没有传 `api_key`，`loushang.ai` 会根据 catalog 和环境变量解析认证材料。
+如果没有传 `CallOptions.auth`，`loushang.ai` 会根据 catalog 和环境变量解析认证材料。
 curated provider 常用环境变量如下：
 
 | Provider | 主要环境变量 |
@@ -151,24 +151,25 @@ curated provider 常用环境变量如下：
 | `volcano-ark` | `ARK_API_KEY` |
 | `zai` | `ZAI_API_KEY` |
 
-OAuth 调用由 `loushang.auth` 持有完整凭据并管理 refresh 生命周期；AI 调用只接收当前
-有效的 bearer token 和认证层派生的附加 headers：
+OAuth lifecycle 统一归属 `loushang.ai.auth`；模型调用只通过 `CallOptions.auth` 接收
+当前有效凭证。只有 bearer token 时使用 `OAuthBearerAuth`；需要账号等附加 header 时，
+认证层必须构造完整的 `HeadersAuth`：
 
 ```python
-from loushang.ai import CallOptions, OAuthBearerAuth
+from loushang.ai import CallOptions, HeadersAuth
 
 options = CallOptions(
-    auth=OAuthBearerAuth(access_token),
-    headers=provider_headers,
+    auth=HeadersAuth(provider_auth_headers),
 )
 ```
 
-这里的 `access_token` 和 `provider_headers` 都由认证 provider 产出；调用方不在 AI
-层手工拼接 provider-specific account header。
+这里的 `provider_auth_headers` 由认证 provider 完整产出；调用方不在模型调用层
+手工拼接 provider-specific account header。
 
 `refresh_token`、expiry、credential store 和账号选择不会进入 `CallOptions` 或
 `ProviderRequest`。[ChatGPT Coding Plan 示例](../../../examples/ai/chatgpt_coding_plan.py)
-通过 `loushang.auth` 读取已有的 `~/.codex/auth.json`。该外部 store 仍由 Codex CLI
+通过 `loushang.ai.auth` 读取已有的 `~/.codex/auth.json`。`loushang` 内不存在独立的
+`loushang.auth` 包；该外部 store 仍由 Codex CLI
 拥有；登录过期时先执行 `codex login`。请求继续通过通用 OpenAI Responses adapter 调用
 `openai:openai-responses-chatgpt:gpt-5.5-chatgpt`。
 
@@ -177,13 +178,13 @@ options = CallOptions(
 最短路径是先 `get_model(...)`，再调用根包 `complete(...)`。
 
 ```python
-from loushang.ai import CallOptions, complete, get_model
+from loushang.ai import ApiKeyAuth, CallOptions, complete, get_model
 
 model = get_model("moonshot", "openai-completions", "kimi-k2.6")
 message = await complete(
     model,
     {"messages": [{"role": "user", "content": "用一句话打个招呼。"}]},
-    CallOptions(api_key="...", max_output_tokens=128),
+    CallOptions(auth=ApiKeyAuth("..."), max_output_tokens=128),
 )
 
 print(message.stop_reason)
@@ -198,13 +199,13 @@ print("".join(part.text for part in message.content if part.type == "text"))
 `result()` 取得最终 `AssistantMessage`。
 
 ```python
-from loushang.ai import CallOptions, get_model, stream
+from loushang.ai import ApiKeyAuth, CallOptions, get_model, stream
 
 model = get_model("moonshot", "openai-completions", "kimi-k2.6")
 events = await stream(
     model,
     {"messages": [{"role": "user", "content": "数到三。"}]},
-    CallOptions(api_key="..."),
+    CallOptions(auth=ApiKeyAuth("...")),
 )
 
 async for event in events:
@@ -250,7 +251,7 @@ coerce 校验辅助。可运行示例：
 resolver 会在 provider 调用前检查模型能力。
 
 ```python
-from loushang.ai import CallOptions, ReasoningOptions
+from loushang.ai import ApiKeyAuth, CallOptions, ReasoningOptions
 
 options = CallOptions(
     api_key="...",
@@ -290,7 +291,7 @@ result = await complete_structured(
             "additionalProperties": False,
         },
     ),
-    options=CallOptions(api_key="..."),
+    options=CallOptions(auth=ApiKeyAuth("...")),
 )
 
 print(result.parsed)
@@ -335,7 +336,7 @@ try:
     message = await complete(
         model,
         {"messages": [{"role": "user", "content": "hello"}]},
-        CallOptions(api_key="...", retry=RetryOptions(max_attempts=2)),
+        CallOptions(auth=ApiKeyAuth("..."), retry=RetryOptions(max_attempts=2)),
     )
 except AIError as error:
     print(error.to_dict())

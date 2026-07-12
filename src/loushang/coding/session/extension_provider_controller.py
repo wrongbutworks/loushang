@@ -4,6 +4,7 @@ from collections.abc import Mapping
 from dataclasses import dataclass, replace
 
 from loushang.ai.api_registry import ApiProviderRegistry
+from loushang.ai.auth.registry import OAuthProviderRegistry
 from loushang.ai.model import (
     Auth,
     Capabilities,
@@ -16,7 +17,6 @@ from loushang.ai.model import (
     adapter_config_from_raw,
     merge_adapter_config,
 )
-from loushang.auth.registry import OAuthProviderRegistry
 
 
 @dataclass

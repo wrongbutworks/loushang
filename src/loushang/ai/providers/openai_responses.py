@@ -24,9 +24,9 @@ from loushang.ai.providers.openai_responses_shared import (
 )
 from loushang.ai.providers.provider_helpers import (
     apply_cache_key_headers,
+    canonicalize_sdk_headers,
     close_provider_stream,
-    extract_sdk_api_key,
-    sdk_default_headers,
+    merge_headers_case_insensitive,
 )
 from loushang.ai.structured import openai_responses_text_format
 from loushang.ai.trace import emit_trace as _emit_trace
@@ -131,25 +131,18 @@ class OpenAIResponsesProvider:
 
         # 延迟导入 OpenAI SDK
         try:
-            from openai import AsyncOpenAI  # type: ignore
+            from openai import AsyncOpenAI, Omit  # type: ignore
         except Exception as e:  # pragma: no cover
             raise RuntimeError(
                 "openai SDK is not installed. Install via `pip install openai`"
             ) from e
 
         headers = resolved.headers or {}
-        api_key = extract_sdk_api_key(
-            headers,
-            error_message=(
-                "OpenAI SDK provider requires an API key "
-                "(Authorization: Bearer or x-api-key)"
-            ),
-        )
-
-        default_headers = sdk_default_headers(headers)
+        default_headers = canonicalize_sdk_headers(headers)
         if _uses_copilot_dynamic_headers(resolved):
-            default_headers.update(
-                build_copilot_dynamic_headers(list(normalized.messages))
+            default_headers = merge_headers_case_insensitive(
+                default_headers,
+                build_copilot_dynamic_headers(list(normalized.messages)),
             )
 
         # 构造 Responses API 输入。下一步会继续向 pi-ai 的 shared conversion 收敛。
@@ -162,9 +155,7 @@ class OpenAIResponsesProvider:
         )
 
         cache_retention = _resolve_cache_retention(options)
-        cache_key = (
-            getattr(options, "cache_key", None) if options is not None else None
-        )
+        cache_key = getattr(options, "cache_key", None) if options is not None else None
         _validate_cache_options(
             model,
             resolved,
@@ -193,9 +184,8 @@ class OpenAIResponsesProvider:
             )
 
         client = self._client or AsyncOpenAI(  # type: ignore[call-arg]
-            api_key=api_key,
+            api_key="",
             base_url=resolved.base_url,
-            default_headers=default_headers or None,
         )
         _debug("client", {"base_url": resolved.base_url, "headers": default_headers})
 
@@ -253,12 +243,17 @@ class OpenAIResponsesProvider:
             params["text"] = text_format
 
         _debug("payload", {"params": {k: v for k, v in params.items() if k != "input"}})
+        params["extra_headers"] = {
+            "Authorization": Omit(),
+            "X-Api-Key": Omit(),
+            **default_headers,
+        }
 
         # 发送请求
         try:
             response = await client.responses.create(**params)
         except Exception as e:
-            _debug("stream_error", {"message": str(e)})
+            _debug("stream_error", {"exceptionType": type(e).__name__})
             yield provider_error_part(e, source=self.api)
             return
         if not is_stream_request:
@@ -278,7 +273,7 @@ class OpenAIResponsesProvider:
             ):
                 yield part
         except Exception as e:
-            _debug("stream_iter_error", {"message": str(e)})
+            _debug("stream_iter_error", {"exceptionType": type(e).__name__})
             yield provider_error_part(e, source=self.api)
         finally:
             await close_provider_stream(response)

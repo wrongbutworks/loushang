@@ -1,8 +1,9 @@
 from __future__ import annotations
 
 import re
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Mapping
 from dataclasses import dataclass, field
+from types import MappingProxyType
 from typing import Literal, Protocol, runtime_checkable
 
 from loushang.ai.context import NormalizedContext
@@ -33,7 +34,7 @@ class ProviderRequest:
     )
     options: ProviderOptions = None
     region: str | None = None
-    headers: dict[str, str] = field(default_factory=dict, repr=False)
+    headers: Mapping[str, str] = field(default_factory=dict, repr=False)
     defaults: dict[str, object] = field(default_factory=dict)
     transport: EndpointTransport = field(default_factory=EndpointTransport)
     routing: EndpointRouting = field(default_factory=EndpointRouting)
@@ -46,6 +47,7 @@ class ProviderRequest:
     mode: ProviderInvocationMode = "stream"
 
     def __post_init__(self) -> None:
+        object.__setattr__(self, "headers", MappingProxyType(dict(self.headers)))
         if not isinstance(self.model, Model):
             raise TypeError("ProviderRequest.model must be Model")
         model = self.model

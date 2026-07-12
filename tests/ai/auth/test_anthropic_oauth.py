@@ -6,7 +6,7 @@ from pathlib import Path
 
 import pytest
 
-from loushang.auth.providers.anthropic import (
+from loushang.ai.auth.providers.anthropic import (
 	AUTHORIZE_URL,
 	CLIENT_ID,
 	REDIRECT_URI,
@@ -14,7 +14,7 @@ from loushang.auth.providers.anthropic import (
 	AnthropicOAuthProvider,
 	generate_pkce_pair,
 )
-from loushang.auth.types import OAuthCredentials
+from loushang.ai.auth.types import OAuthCredentials
 
 
 def test_generate_pkce_pair_returns_urlsafe_verifier_and_challenge() -> None:
@@ -27,7 +27,7 @@ def test_generate_pkce_pair_returns_urlsafe_verifier_and_challenge() -> None:
 
 
 def test_anthropic_oauth_provider_source_stays_python_311_compatible() -> None:
-	source = Path("src/loushang/auth/providers/anthropic.py").read_text()
+	source = Path("src/loushang/ai/auth/providers/anthropic.py").read_text()
 
 	assert '?{\n' not in source
 

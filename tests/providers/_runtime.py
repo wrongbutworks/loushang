@@ -165,6 +165,7 @@ def make_provider_request(
     )
     return ProviderRequest(
         model=request_model,
+        options=options,
         provider=request_model.provider_id,
         endpoint=request_model.endpoint_id,
         api=request_model.api,
@@ -184,10 +185,10 @@ def make_provider_request(
 
 
 def _test_auth(options: object | None) -> Auth:
-    from loushang.ai.auth import OAuthBearerAuth
+    from loushang.ai.auth import ApiKeyAuth, OAuthBearerAuth
 
     if isinstance(getattr(options, "auth", None), OAuthBearerAuth):
         return Auth(kind="oauth")
-    if getattr(options, "api_key", None) is not None:
+    if isinstance(getattr(options, "auth", None), ApiKeyAuth):
         return Auth(kind="apiKey")
     return Auth(kind="none")

@@ -55,6 +55,6 @@ def test_headers_auth_values_are_redacted_by_error_details() -> None:
         "headers": {
             "Authorization": "[redacted]",
             "X-Provider-Token": "[redacted]",
-            "x-request-id": "req_123",
+            "x-request-id": "[redacted]",
         }
     }

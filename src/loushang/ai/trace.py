@@ -6,7 +6,7 @@ from contextlib import suppress
 from pathlib import Path
 from typing import Any
 
-from loushang.ai.utils.redaction import is_sensitive_key
+from loushang.ai.utils.redaction import is_header_container_key, is_sensitive_key
 from loushang.observability import get_log
 from loushang.observability.problem import JSONValue
 
@@ -81,8 +81,12 @@ def _trace_source_name(event_type: str) -> tuple[str, str]:
 
 
 def _json_safe(value: object, *, key: str | None = None) -> JSONValue:
+    if key is not None and is_header_container_key(key) and isinstance(value, Mapping):
+        return {str(item_key): _REDACTED for item_key in value}
     if key is not None and is_sensitive_key(key):
         return _REDACTED
+    if isinstance(value, BaseException):
+        return {"exceptionType": type(value).__name__}
     if value is None or isinstance(value, str | bool | int):
         return value
     if isinstance(value, float):

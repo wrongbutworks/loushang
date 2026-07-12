@@ -7,7 +7,7 @@ import time
 from collections.abc import Awaitable
 from typing import TypedDict, cast
 
-from loushang.auth.types import OAuthCredentials
+from loushang.ai.auth.types import OAuthCredentials
 
 
 class GetOAuthApiKeyResult(TypedDict):
@@ -38,7 +38,7 @@ def get_oauth_api_key(
 
 
 def refresh_oauth_token(provider: str, creds: OAuthCredentials) -> OAuthCredentials:
-    from loushang.auth.registry import get_default_oauth_registry
+    from loushang.ai.auth.registry import get_default_oauth_registry
 
     reg = get_default_oauth_registry()
     prov = reg.get(provider)

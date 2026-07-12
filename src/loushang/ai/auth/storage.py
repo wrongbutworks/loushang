@@ -21,7 +21,7 @@ try:  # pragma: no cover - exercised through monkeypatched backend tests.
 except ImportError:  # pragma: no cover - POSIX fallback.
     msvcrt = None  # type: ignore[assignment]
 
-from loushang.auth.types import OAuthCredentials
+from loushang.ai.auth.types import OAuthCredentials
 
 CredentialScope = Literal["provider", "endpoint", "model"]
 T = TypeVar("T")

@@ -45,9 +45,9 @@ This directory keeps the current architecture notes for the frozen
 - `providers/` owns the three core protocol adapters:
   `openai-completions`, `openai-responses`, and `anthropic-messages`.
 - `auth/` resolves catalog API-key defaults or typed request auth such as
-  `OAuthBearerAuth` into request headers. Full OAuth credentials, refresh,
-  persistence, account selection, and product auth policy remain in
-  `loushang.auth`, outside the AI package.
+  `OAuthBearerAuth` into request headers. The same AI-owned package contains
+  explicit OAuth lifecycle and credential-storage support, but model invocation
+  never performs login, refresh, persistence, or account selection implicitly.
 - Product-backed routes reuse the three protocol adapters through catalog data;
   they do not introduce product-specific provider modules.
 - `usage.py` owns response usage payload helpers only; account or platform quota

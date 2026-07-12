@@ -395,7 +395,7 @@ def test_chatgpt_coding_plan_example_calls_public_responses_path(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
-    from loushang.ai import AssistantMessage, OAuthBearerAuth, TextPart
+    from loushang.ai import AssistantMessage, TextPart
 
     module = _load_module(
         Path("examples/ai/chatgpt_coding_plan.py"),
@@ -454,9 +454,13 @@ def test_chatgpt_coding_plan_example_calls_public_responses_path(
     )
     assert captured["model"] is model
     options = captured["options"]
-    assert options.auth == OAuthBearerAuth(access_token)
+    assert options.auth.headers == {
+        "Authorization": f"Bearer {access_token}",
+        "originator": "loushang",
+        "OpenAI-Beta": "responses=experimental",
+        "chatgpt-account-id": "account-id",
+    }
     assert not hasattr(options, "oauth_credentials")
-    assert options.headers == {"chatgpt-account-id": "account-id"}
     assert options.max_output_tokens is None
     assert options.reasoning.effort == "low"
 
@@ -465,7 +469,7 @@ def test_chatgpt_coding_plan_example_rejects_expired_external_credentials(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
-    from loushang.auth import OAuthCredentials
+    from loushang.ai.auth import OAuthCredentials
 
     module = _load_module(
         Path("examples/ai/chatgpt_coding_plan.py"),
@@ -494,7 +498,7 @@ def test_chatgpt_coding_plan_example_rejects_unknown_token_expiry(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
-    from loushang.auth import OAuthCredentials
+    from loushang.ai.auth import OAuthCredentials
 
     module = _load_module(
         Path("examples/ai/chatgpt_coding_plan.py"),

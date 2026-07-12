@@ -140,6 +140,40 @@ def test_control_config_exposes_stable_slice_objects() -> None:
     assert config.images == ImageSettings()
 
 
+def test_auth_manager_uses_its_injected_environment_for_extra_headers(
+    monkeypatch,
+) -> None:
+    from loushang.ai.model import Auth
+    from loushang.ai.model.registry import ModelRegistry as AiModelRegistry
+    from loushang.coding.control import AuthManager
+
+    monkeypatch.setenv("DEMO_EXTRA", "from-process")
+    model = Model(
+        id="demo",
+        provider="custom",
+        endpoint="responses",
+        api="openai-responses",
+        auth=Auth(
+            api_key_env="DEMO_API_KEY",
+            extra_headers={"X-Extra": "${DEMO_EXTRA}"},
+        ),
+    )
+    manager = AuthManager(
+        ai_registry=AiModelRegistry(),
+        env={
+            "DEMO_API_KEY": "secret",
+            "DEMO_EXTRA": "from-injected",
+        },
+    )
+
+    resolution = manager.resolve_for_model(model)
+
+    assert resolution.headers == {
+        "Authorization": "Bearer secret",
+        "X-Extra": "from-injected",
+    }
+
+
 def test_settings_manager_updates_slice_objects_and_notifies_subscribers() -> None:
     from loushang.coding.control import (
         BranchSummarySettings,
@@ -458,9 +492,9 @@ def test_session_restores_persisted_model_and_accepts_model_selection_updates(
 
 
 def test_create_services_exposes_ai_backed_auth_manager(monkeypatch) -> None:
+    from loushang.ai.auth.types import OAuthCredentials
     from loushang.ai.model import Auth, Endpoint, Provider
     from loushang.ai.model.registry import ModelRegistry as AiModelRegistry
-    from loushang.auth.types import OAuthCredentials
     from loushang.coding.bootstrap import create_services
     from loushang.coding.control import AuthManager
 
@@ -472,7 +506,7 @@ def test_create_services_exposes_ai_backed_auth_manager(monkeypatch) -> None:
         )
     }
 
-    monkeypatch.setattr("loushang.auth.storage.load_credentials", lambda: stored)
+    monkeypatch.setattr("loushang.ai.auth.storage.load_credentials", lambda: stored)
 
     services = create_services(ai_model_registry=AiModelRegistry())
 

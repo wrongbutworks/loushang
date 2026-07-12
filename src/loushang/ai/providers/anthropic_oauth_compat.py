@@ -1,5 +1,10 @@
 from __future__ import annotations
 
+from loushang.ai.providers.provider_helpers import (
+    get_header_case_insensitive,
+    set_header_case_insensitive,
+)
+
 
 class AnthropicOAuthBridge:
     SDK_USER_AGENT = "loushang-ai"
@@ -35,17 +40,18 @@ class AnthropicOAuthBridge:
         cls, existing_headers: dict[str, str] | None
     ) -> dict[str, str]:
         out = dict(existing_headers or {})
-        current = out.get("anthropic-beta") or out.get("Anthropic-Beta")
+        current = get_header_case_insensitive(out, "anthropic-beta")
         features = list(cls._BETA_FEATURES)
         if current:
             for item in current.split(","):
                 feature = item.strip()
                 if feature and feature not in features:
                     features.append(feature)
-        out["anthropic-beta"] = ",".join(features)
-        out.pop("Anthropic-Beta", None)
-        out.setdefault("user-agent", cls.SDK_USER_AGENT)
-        out.setdefault("x-app", cls.SDK_APP_ID)
+        set_header_case_insensitive(out, "anthropic-beta", ",".join(features))
+        if get_header_case_insensitive(out, "user-agent") is None:
+            set_header_case_insensitive(out, "user-agent", cls.SDK_USER_AGENT)
+        if get_header_case_insensitive(out, "x-app") is None:
+            set_header_case_insensitive(out, "x-app", cls.SDK_APP_ID)
         return out
 
     @classmethod

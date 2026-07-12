@@ -244,7 +244,7 @@ family。只要请求仍遵循 OpenAI Responses，就必须复用 `openai-respon
   - 需要哪种 auth kind
 - credential source/provider 与 model provider 是独立身份轴；例如
   `openai-codex` credential 可以服务 `openai` model route
-- 具体 credential source 由应用和 `loushang.auth` 选择，不由 AI invocation 猜测
+- 具体 credential source 由应用和 `loushang.ai.auth` 选择，不由 AI invocation 猜测
 - 不应在 model metadata 中塞入：
   - account id
   - plan
@@ -252,10 +252,10 @@ family。只要请求仍遵循 OpenAI Responses，就必须复用 `openai-respon
   - workspace binding
 
 4. 完整 credential 与请求级认证材料分层
-- `OAuthCredentials` 的 refresh token、expiry 和 account state 留在 `loushang.auth`
+- `OAuthCredentials` 的 refresh token、expiry 和 account state 留在 `loushang.ai.auth`
 - 有效 `access_token` 转换为 `CallOptions.auth=OAuthBearerAuth(...)`
-- provider 派生的 account binding header 通过 `CallOptions.headers` 传入
-- AI 请求链只消费 bearer credential 与 supplemental headers
+- 多 header 认证由认证层完整构造为 `CallOptions.auth=HeadersAuth(...)`
+- AI 请求链只消费一个 typed `CallOptions.auth`
 
 5. provider 不应自己成为登录产品层
 - provider adapter 不负责：
@@ -278,9 +278,7 @@ family。只要请求仍遵循 OpenAI Responses，就必须复用 `openai-respon
 
 输入来源只允许：
 
-- `CallOptions.api_key`
 - `CallOptions.auth`
-- `CallOptions.headers`
 - endpoint auth 声明允许的 API key env fallback
 
 OAuth bearer credential 必须由调用方显式传入；AI 包不读取完整 credential、store，
@@ -310,10 +308,11 @@ OAuth bearer credential 必须由调用方显式传入；AI 包不读取完整 c
 - 将显式 credential 或 API key env fallback 解析为 resolved auth view
 - 将 resolved auth view 绑定到 provider request
 
-它不拥有的职责包括：
+模型调用路径不拥有的职责包括：
 
 - OAuth provider 注册
-- login、browser、callback、refresh、credential store、账号切换或 logout
+- login、browser、callback、refresh、credential store、账号切换或 logout；这些能力由
+  同属 AI 包的 `loushang.ai.auth` 显式 API 承担，不得在模型调用期间隐式触发
 - 用户订阅系统主数据
 - 套餐售卖与购买逻辑
 - 用户中心或工作区产品逻辑
@@ -329,9 +328,9 @@ OAuth bearer credential 必须由调用方显式传入；AI 包不读取完整 c
 ### 对 ChatGPT route 的直接约束
 
 1. catalog route 使用 `api: openai-responses`
-2. `loushang.auth` 读取完整 credentials 并派生可用 expiry；调用边界检查有效期后将
-   access token 转换为 `OAuthBearerAuth`，account header 由 `CallOptions.headers` 显式传入
-3. AI 包不解析 `~/.codex/auth.json`，不登录、不 refresh、不持久化
+2. `loushang.ai.auth` 读取完整 credentials 并派生完整认证 headers；调用边界通过
+   `HeadersAuth` 一次性接收
+3. 模型调用路径不解析 `~/.codex/auth.json`，不登录、不 refresh、不持久化
 4. `~/.codex/auth.json` 只由应用边缘 example 读取
 
 ---

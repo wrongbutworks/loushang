@@ -5,6 +5,10 @@ from typing import Any, Literal
 from loushang.ai.model.domain import AnthropicMessagesConfig
 from loushang.ai.options import CacheRetention, is_reasoning_requested
 from loushang.ai.providers.anthropic_oauth_compat import AnthropicOAuthBridge
+from loushang.ai.providers.provider_helpers import (
+    get_header_case_insensitive,
+    set_header_case_insensitive,
+)
 from loushang.ai.utils import sanitize_surrogates
 
 
@@ -48,11 +52,6 @@ class AnthropicProviderBase:
                 return "max"
             return "high"
         return None
-
-    @staticmethod
-    def is_oauth_token(api_key: str) -> bool:
-        # Anthropic OAuth tokens include this marker
-        return "sk-ant-oat" in (api_key or "")
 
     @staticmethod
     def resolve_cache_retention(
@@ -102,15 +101,18 @@ class AnthropicProviderBase:
         if not features:
             return dict(existing_headers or {})
         out = dict(existing_headers or {})
-        current = out.get("anthropic-beta") or out.get("Anthropic-Beta")
+        current = get_header_case_insensitive(out, "anthropic-beta")
         if current:
             cur = {p.strip() for p in current.split(",") if p.strip()}
             for f in features:
                 cur.add(f)
-            out["anthropic-beta"] = ",".join(sorted(cur))
-            out.pop("Anthropic-Beta", None)
+            set_header_case_insensitive(
+                out,
+                "anthropic-beta",
+                ",".join(sorted(cur)),
+            )
         else:
-            out["anthropic-beta"] = ",".join(features)
+            set_header_case_insensitive(out, "anthropic-beta", ",".join(features))
         return out
 
     @classmethod

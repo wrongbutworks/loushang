@@ -9,12 +9,12 @@ from pathlib import Path
 
 from loushang.ai import (
     CallOptions,
-    OAuthBearerAuth,
+    HeadersAuth,
     ReasoningOptions,
     get_model,
     stream,
 )
-from loushang.auth import (
+from loushang.ai.auth import (
     OAuthCredentials,
     OpenAICodexOAuthProvider,
     get_codex_cli_oauth_credentials,
@@ -44,7 +44,7 @@ def load_credentials(path: Path | None = None) -> OAuthCredentials:
 
 async def resolve_call_auth(
     path: Path | None = None,
-) -> tuple[OAuthBearerAuth, dict[str, str]]:
+) -> HeadersAuth:
     credentials = load_credentials(path)
     provider = OpenAICodexOAuthProvider()
     expires_at = credentials.expires_at
@@ -62,21 +62,25 @@ async def resolve_call_auth(
     access_token = provider.get_api_key(credentials).strip()
     if not access_token:
         raise RuntimeError("Codex OAuth provider returned an empty access token")
-    headers = provider.get_auth_headers(credentials)
+    headers = {
+        "Authorization": f"Bearer {access_token}",
+        "originator": "loushang",
+        "OpenAI-Beta": "responses=experimental",
+        **provider.get_auth_headers(credentials),
+    }
     if "chatgpt-account-id" not in headers:
         raise RuntimeError("Codex OAuth credentials are missing the ChatGPT account ID")
-    return OAuthBearerAuth(access_token=access_token), headers
+    return HeadersAuth(headers)
 
 
 async def run(path: Path | None = None) -> str:
     model = get_model(PROVIDER_ID, ENDPOINT_ID, MODEL_ID)
-    auth, headers = await resolve_call_auth(path)
+    auth = await resolve_call_auth(path)
     events = await stream(
         model,
         {"messages": [{"role": "user", "content": USER_PROMPT}]},
         CallOptions(
             auth=auth,
-            headers=headers,
             reasoning=ReasoningOptions(effort="low"),
         ),
     )

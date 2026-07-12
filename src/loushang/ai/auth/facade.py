@@ -2,17 +2,17 @@ from __future__ import annotations
 
 from collections.abc import Mapping
 
-from loushang.auth.oauth import GetOAuthApiKeyResult
-from loushang.auth.providers.anthropic import AnthropicOAuthProvider
-from loushang.auth.registry import OAuthProviderRegistry, get_default_oauth_registry
-from loushang.auth.storage import (
+from loushang.ai.auth.oauth import GetOAuthApiKeyResult
+from loushang.ai.auth.providers.anthropic import AnthropicOAuthProvider
+from loushang.ai.auth.registry import OAuthProviderRegistry, get_default_oauth_registry
+from loushang.ai.auth.storage import (
     find_scoped_credential,
     load_credential_store,
     save_credentials,
     set_scoped_credential,
     update_credential_store,
 )
-from loushang.auth.types import (
+from loushang.ai.auth.types import (
     OAuthCredentials,
     OAuthLoginCallbacks,
     OAuthProviderInterface,
@@ -117,7 +117,7 @@ def resolve_oauth_api_key(
     model_id: str | None = None,
     persist_refresh: bool | None = None,
 ) -> GetOAuthApiKeyResult | None:
-    from loushang.auth.oauth import get_oauth_api_key
+    from loushang.ai.auth.oauth import get_oauth_api_key
 
     if credentials is not None:
         stored = dict(credentials)

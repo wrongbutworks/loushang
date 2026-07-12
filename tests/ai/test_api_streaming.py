@@ -547,7 +547,9 @@ def test_stream_allows_complete_capability_matrix(
 
     normalized = _assert_normalized_provider_context(provider.context)
     assert normalized.tools == (
-        Tool(name="calc", description="Calculate values", parameters={"type": "object"}),
+        Tool(
+            name="calc", description="Calculate values", parameters={"type": "object"}
+        ),
     )
     assert provider.options.reasoning == ReasoningOptions(effort="high")
 
@@ -730,7 +732,11 @@ def test_stream_rejects_non_call_options_before_provider(
         asyncio.run(
             stream(
                 _Model(),
-                {"messages": [UserMessage(role="user", content="hello", timestamp=0.0)]},
+                {
+                    "messages": [
+                        UserMessage(role="user", content="hello", timestamp=0.0)
+                    ]
+                },
                 legacy_options,  # type: ignore[arg-type]
                 provider_registry=registry,
             )
@@ -750,7 +756,11 @@ def test_complete_rejects_non_call_options_before_provider(
         asyncio.run(
             complete(
                 _Model(),
-                {"messages": [UserMessage(role="user", content="hello", timestamp=0.0)]},
+                {
+                    "messages": [
+                        UserMessage(role="user", content="hello", timestamp=0.0)
+                    ]
+                },
                 SimpleNamespace(max_tokens=64),  # type: ignore[arg-type]
                 provider_registry=registry,
             )
@@ -973,7 +983,9 @@ def test_call_api_provider_stream_requires_normalized_context() -> None:
     registry = ApiProviderRegistry()
     registry.register_api_provider(provider)
 
-    with pytest.raises(TypeError, match="ProviderRequest.context must be NormalizedContext"):
+    with pytest.raises(
+        TypeError, match="ProviderRequest.context must be NormalizedContext"
+    ):
         asyncio.run(
             call_api_provider_stream(
                 registry.get_api_provider("faux"),
@@ -1456,7 +1468,7 @@ def test_stream_public_path_uses_openai_responses_typed_request(
         "session-responses"
     )
     assert "prompt_cache_retention" not in _FakeAsyncOpenAI.last_create_kwargs
-    headers = _FakeAsyncOpenAI.last_init_kwargs.get("default_headers") or {}
+    headers = _FakeAsyncOpenAI.last_create_kwargs.get("extra_headers") or {}
     assert "session_id" not in headers
     assert "x-client-request-id" not in headers
 
@@ -1690,7 +1702,12 @@ def _fake_openai_module(monkeypatch: pytest.MonkeyPatch) -> None:
     ]
     module = ModuleType("openai")
     module.AsyncOpenAI = _FakeAsyncOpenAI
+    module.Omit = _FakeOmit
     monkeypatch.setitem(sys.modules, "openai", module)
+
+
+class _FakeOmit:
+    pass
 
 
 class _FakeAsyncOpenAI:

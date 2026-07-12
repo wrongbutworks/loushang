@@ -20,9 +20,9 @@ from loushang.ai.provider.errors import (
 from loushang.ai.providers.openai_responses_shared import build_copilot_dynamic_headers
 from loushang.ai.providers.provider_helpers import (
     apply_cache_key_headers,
+    canonicalize_sdk_headers,
     close_provider_stream,
-    extract_sdk_api_key,
-    sdk_default_headers,
+    merge_headers_case_insensitive,
 )
 from loushang.ai.structured import openai_chat_response_format
 from loushang.ai.tool.providers import sanitize_tool_parameters
@@ -61,25 +61,20 @@ class OpenAICompletionsProvider:
 
         # OpenAI Python SDK
         try:
-            from openai import AsyncOpenAI  # type: ignore
+            from openai import AsyncOpenAI, Omit  # type: ignore
         except Exception as e:  # pragma: no cover
             raise RuntimeError(
                 "openai SDK is not installed. Install via `pip install openai`"
             ) from e
 
         headers = resolved.headers or {}
-        api_key = extract_sdk_api_key(
-            headers,
-            error_message=(
-                "OpenAI SDK provider requires an API key "
-                "(Authorization: Bearer or x-api-key)"
-            ),
-        )
-
-        default_headers = sdk_default_headers(headers)
+        default_headers = canonicalize_sdk_headers(headers)
         if _uses_copilot_dynamic_headers(resolved):
             copilot_headers = build_copilot_dynamic_headers(list(normalized.messages))
-            default_headers.update(copilot_headers)
+            default_headers = merge_headers_case_insensitive(
+                default_headers,
+                copilot_headers,
+            )
         cache_retention = (
             getattr(options, "cache_retention", None) if options is not None else None
         ) or "short"
@@ -104,9 +99,8 @@ class OpenAICompletionsProvider:
 
         timeout_s = _resolve_timeout_seconds(options, resolved)
         client_kwargs: dict[str, Any] = {
-            "api_key": api_key,
+            "api_key": "",
             "base_url": resolved.base_url,
-            "default_headers": default_headers or None,
         }
         if isinstance(timeout_s, int | float):
             client_kwargs["timeout"] = timeout_s
@@ -187,11 +181,16 @@ class OpenAICompletionsProvider:
         _debug(
             "payload", {"params": {k: v for k, v in params.items() if k != "messages"}}
         )
+        params["extra_headers"] = {
+            "Authorization": Omit(),
+            "X-Api-Key": Omit(),
+            **default_headers,
+        }
 
         try:
             response = await client.chat.completions.create(**params)
         except Exception as e:
-            _debug("stream_error", {"message": str(e)})
+            _debug("stream_error", {"exceptionType": type(e).__name__})
             yield provider_error_part(e, source=self.api)
             return
         if not is_stream_request:
@@ -229,7 +228,7 @@ class OpenAICompletionsProvider:
                     yield {"type": "response_done"}
                     break
                 except Exception as e:
-                    _debug("stream_iter_error", {"message": str(e)})
+                    _debug("stream_iter_error", {"exceptionType": type(e).__name__})
                     yield provider_error_part(e, source=self.api)
                     yield {"type": "response_done"}
                     break
@@ -488,7 +487,7 @@ class OpenAICompletionsProvider:
             _debug("stream_done", {})
             yield {"type": "response_done"}
         except Exception as e:
-            _debug("stream_iter_error_outer", {"message": str(e)})
+            _debug("stream_iter_error_outer", {"exceptionType": type(e).__name__})
             yield provider_error_part(e, source=self.api)
             yield {"type": "response_done"}
         finally:

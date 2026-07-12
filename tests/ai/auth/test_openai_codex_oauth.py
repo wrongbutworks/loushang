@@ -8,16 +8,16 @@ from urllib.parse import parse_qs, urlparse
 
 import pytest
 
-from loushang.auth.facade import register_builtin_oauth_providers
-from loushang.auth.providers.openai_codex import (
+from loushang.ai.auth.facade import register_builtin_oauth_providers
+from loushang.ai.auth.providers.openai_codex import (
     AUTHORIZE_URL,
     CLIENT_ID,
     REDIRECT_URI,
     OpenAICodexOAuthProvider,
     register_openai_codex_oauth_provider,
 )
-from loushang.auth.registry import get_default_oauth_registry
-from loushang.auth.types import OAuthCredentials
+from loushang.ai.auth.registry import get_default_oauth_registry
+from loushang.ai.auth.types import OAuthCredentials
 
 
 def _build_fake_jwt(account_id: str, *, expires_at: float | None = None) -> str:

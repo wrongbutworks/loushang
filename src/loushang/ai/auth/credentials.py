@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from collections.abc import Mapping
 from dataclasses import dataclass, field
+from types import MappingProxyType
 from typing import TypeAlias
 
 
@@ -27,6 +28,9 @@ class NoAuth:
 @dataclass(frozen=True, slots=True)
 class HeadersAuth:
     headers: Mapping[str, str] = field(default_factory=dict, repr=False)
+
+    def __post_init__(self) -> None:
+        object.__setattr__(self, "headers", MappingProxyType(dict(self.headers)))
 
 
 AuthCredential: TypeAlias = ApiKeyAuth | OAuthBearerAuth | NoAuth | HeadersAuth

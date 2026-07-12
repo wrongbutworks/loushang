@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import os
 
-from loushang.auth.types import OAuthCredentials
+from loushang.ai.auth.types import OAuthCredentials
 
 
 def _provider_env_prefix(provider: str) -> str:

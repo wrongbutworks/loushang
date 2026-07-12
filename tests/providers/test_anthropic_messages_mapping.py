@@ -9,6 +9,12 @@ from types import ModuleType, SimpleNamespace
 import pytest
 
 from loushang.ai import CallOptions, ReasoningOptions
+from loushang.ai.auth import (
+    ApiKeyAuth,
+    HeadersAuth,
+    NoAuth,
+    OAuthBearerAuth,
+)
 from loushang.ai.context import normalize_context
 from loushang.ai.model import ModelRegistry, Provider
 from loushang.ai.model.domain import (
@@ -150,7 +156,7 @@ def test_anthropic_provider_sends_opus_48_xhigh_adaptive_thinking(
                     ]
                 },
                 CallOptions(
-                    api_key="test-key",
+                    auth=ApiKeyAuth("test-key"),
                     reasoning=ReasoningOptions(effort="xhigh"),
                 ),
             )
@@ -201,7 +207,7 @@ def test_anthropic_provider_complete_mode_maps_non_stream_response(
                         UserMessage(role="user", content="hello", timestamp=0.0)
                     ]
                 },
-                CallOptions(api_key="test-key"),
+                CallOptions(auth=ApiKeyAuth("test-key")),
                 mode="complete",
             )
         )
@@ -304,14 +310,14 @@ def test_anthropic_provider_uses_typed_transport_for_fine_grained_beta(
                         UserMessage(role="user", content="hello", timestamp=0.0)
                     ]
                 },
-                CallOptions(api_key="test-key"),
+                CallOptions(auth=ApiKeyAuth("test-key")),
             )
         )
     )
 
     assert (
         "fine-grained-tool-streaming-2025-05-14"
-        in _FakeAsyncAnthropic.last_init_kwargs["default_headers"]["anthropic-beta"]
+        in _last_anthropic_request_headers()["anthropic-beta"]
     )
 
 
@@ -350,7 +356,7 @@ def test_anthropic_provider_uses_upstream_model_id(
                         UserMessage(role="user", content="hello", timestamp=0.0)
                     ]
                 },
-                CallOptions(api_key="test-key"),
+                CallOptions(auth=ApiKeyAuth("test-key")),
             )
         )
     )
@@ -544,7 +550,7 @@ def test_anthropic_payload_maps_images_oauth_tools_and_groups_tool_results() -> 
                 ],
             }
         ),
-        is_oauth_token=True,
+        uses_oauth_protocol=True,
     )
 
     assert system == [{"type": "text", "text": "system"}]
@@ -663,14 +669,35 @@ def test_apply_oauth_identity_headers_merges_required_betas() -> None:
     from loushang.ai.providers.anthropic_oauth_compat import AnthropicOAuthBridge
 
     headers = AnthropicProviderBase.apply_oauth_identity_headers(
-        {"anthropic-beta": "fine-grained-tool-streaming-2025-05-14"}
+        {
+            "ANTHROPIC-BETA": "fine-grained-tool-streaming-2025-05-14",
+            "USER-AGENT": "custom-agent",
+        }
     )
 
     assert headers["anthropic-beta"] == (
         "claude-code-20250219,oauth-2025-04-20,fine-grained-tool-streaming-2025-05-14"
     )
-    assert headers["user-agent"] == AnthropicOAuthBridge.SDK_USER_AGENT
+    assert headers["USER-AGENT"] == "custom-agent"
     assert headers["x-app"] == AnthropicOAuthBridge.SDK_APP_ID
+    assert len([key for key in headers if key.casefold() == "anthropic-beta"]) == 1
+    assert len([key for key in headers if key.casefold() == "user-agent"]) == 1
+
+
+def test_apply_beta_headers_merges_case_insensitively() -> None:
+    from loushang.ai.providers.anthropic_base import AnthropicProviderBase
+
+    headers = AnthropicProviderBase.apply_beta_headers(
+        existing_headers={"ANTHROPIC-BETA": "custom-beta"},
+        need_interleaved_beta=True,
+        force_fine_grained_tools=False,
+    )
+
+    assert set(headers["anthropic-beta"].split(",")) == {
+        "custom-beta",
+        "interleaved-thinking-2025-05-14",
+    }
+    assert len([key for key in headers if key.casefold() == "anthropic-beta"]) == 1
 
 
 def test_oauth_tool_name_roundtrip_prefers_registered_tool_name() -> None:
@@ -727,12 +754,15 @@ def test_anthropic_provider_oauth_request_uses_sdk_headers_and_tool_names(
                         ),
                     ],
                 },
-                CallOptions(api_key="sk-ant-oat-test", pairing_mode="repair"),
+                CallOptions(
+                    auth=OAuthBearerAuth("opaque-oauth-token"),
+                    pairing_mode="repair",
+                ),
             )
         )
     )
 
-    headers = _FakeAsyncAnthropic.last_init_kwargs["default_headers"]
+    headers = _FakeAsyncAnthropic.last_stream_kwargs["extra_headers"]
     assert headers["anthropic-beta"] == (
         "claude-code-20250219,oauth-2025-04-20,fine-grained-tool-streaming-2025-05-14"
     )
@@ -789,7 +819,7 @@ def test_anthropic_provider_oauth_stream_maps_claude_code_tool_name_back_to_regi
                         ),
                     ],
                 },
-                CallOptions(api_key="sk-ant-oat-test"),
+                CallOptions(auth=OAuthBearerAuth("opaque-oauth-token")),
             )
         )
     )
@@ -854,7 +884,7 @@ def test_anthropic_provider_stream_uses_tool_input_from_content_block_start(
                         ),
                     ],
                 },
-                CallOptions(api_key="test-key", trace=trace_events.append),
+                CallOptions(auth=ApiKeyAuth("test-key"), trace=trace_events.append),
             )
         )
     )
@@ -942,7 +972,7 @@ def test_anthropic_provider_stream_keeps_interleaved_tool_blocks_by_index(
                         ),
                     ],
                 },
-                CallOptions(api_key="test-key"),
+                CallOptions(auth=ApiKeyAuth("test-key")),
             )
         )
     )
@@ -1024,7 +1054,7 @@ def test_anthropic_provider_payload_snapshot_for_mixed_assistant_and_tool_result
                         ),
                     ],
                 },
-                CallOptions(api_key="test-key"),
+                CallOptions(auth=ApiKeyAuth("test-key")),
             )
         )
     )
@@ -1115,7 +1145,7 @@ def test_anthropic_provider_respects_explicit_max_tokens(
                 id="claude-test", provider="anthropic", endpoint="anthropic-messages"
             ),
             {"messages": [UserMessage(role="user", content="hello", timestamp=0.0)]},
-            CallOptions(api_key="test-key", max_output_tokens=1234),
+            CallOptions(auth=ApiKeyAuth("test-key"), max_output_tokens=1234),
         )
     )
     asyncio.run(stream.result())
@@ -1147,7 +1177,7 @@ def test_anthropic_provider_uses_resolved_capability_max_tokens(
                         UserMessage(role="user", content="hello", timestamp=0.0)
                     ]
                 },
-                CallOptions(api_key="ignored-options-key"),
+                CallOptions(auth=ApiKeyAuth("ignored-options-key")),
                 request,
             )
         )
@@ -1189,7 +1219,7 @@ def test_anthropic_provider_uses_typed_protocol_over_stale_false_options(
                     ]
                 },
                 CallOptions(
-                    api_key="ignored-options-key",
+                    auth=ApiKeyAuth("ignored-options-key"),
                     cache_retention="long",
                     cache_key="sess_typed",
                     reasoning=ReasoningOptions(enabled=True),
@@ -1199,7 +1229,7 @@ def test_anthropic_provider_uses_typed_protocol_over_stale_false_options(
         )
     )
 
-    headers = _FakeAsyncAnthropic.last_init_kwargs["default_headers"]
+    headers = _last_anthropic_request_headers()
     assert headers["session_id"] == "sess_typed"
     assert headers["x-client-request-id"] == "sess_typed"
     assert headers["x-session-affinity"] == "sess_typed"
@@ -1245,7 +1275,7 @@ def test_anthropic_provider_uses_typed_protocol_over_stale_true_options(
                     ]
                 },
                 CallOptions(
-                    api_key="ignored-options-key",
+                    auth=ApiKeyAuth("ignored-options-key"),
                     cache_retention="long",
                     cache_key="sess_stale",
                     reasoning=ReasoningOptions(enabled=True),
@@ -1255,8 +1285,13 @@ def test_anthropic_provider_uses_typed_protocol_over_stale_true_options(
         )
     )
 
-    headers = _FakeAsyncAnthropic.last_init_kwargs["default_headers"]
-    assert headers == {"anthropic-version": "2023-06-01"}
+    headers = _last_anthropic_request_headers()
+    assert headers["X-Api-Key"] == "test-key"
+    assert headers["anthropic-version"] == "2023-06-01"
+    assert "anthropic-beta" not in headers
+    assert "session_id" not in headers
+    assert "x-client-request-id" not in headers
+    assert "x-session-affinity" not in headers
     assert "anthropic-beta" not in headers
     assert "session_id" not in headers
     assert "x-client-request-id" not in headers
@@ -1302,7 +1337,7 @@ def test_anthropic_cache_retention_none_suppresses_cache_key_fields(
         )
     )
 
-    headers = _FakeAsyncAnthropic.last_init_kwargs.get("default_headers") or {}
+    headers = _last_anthropic_request_headers()
     assert "session_id" not in headers
     assert "x-client-request-id" not in headers
     assert "x-session-affinity" not in headers
@@ -1332,7 +1367,7 @@ def test_anthropic_provider_clamps_explicit_max_tokens(
                 id="claude-test", provider="anthropic", endpoint="anthropic-messages"
             ),
             {"messages": [UserMessage(role="user", content="hello", timestamp=0.0)]},
-            CallOptions(api_key="test-key", max_output_tokens=0),
+            CallOptions(auth=ApiKeyAuth("test-key"), max_output_tokens=0),
         )
     )
     asyncio.run(stream.result())
@@ -1382,7 +1417,7 @@ def test_anthropic_compat_fireworks_uses_session_headers_without_long_cache_ttl(
                     ]
                 },
                 CallOptions(
-                    api_key="test-key",
+                    auth=ApiKeyAuth("test-key"),
                     cache_retention="long",
                     cache_key="sess_fireworks",
                 ),
@@ -1390,7 +1425,7 @@ def test_anthropic_compat_fireworks_uses_session_headers_without_long_cache_ttl(
         )
     )
 
-    headers = _FakeAsyncAnthropic.last_init_kwargs["default_headers"]
+    headers = _last_anthropic_request_headers()
     assert headers["session_id"] == "sess_fireworks"
     assert headers["x-client-request-id"] == "sess_fireworks"
     assert headers["x-session-affinity"] == "sess_fireworks"
@@ -1416,7 +1451,7 @@ def test_anthropic_provider_uses_model_max_tokens_without_scaling(
                         UserMessage(role="user", content="hello", timestamp=0.0)
                     ]
                 },
-                CallOptions(api_key="test-key"),
+                CallOptions(auth=ApiKeyAuth("test-key")),
             )
         )
     )
@@ -1440,7 +1475,7 @@ def test_anthropic_provider_caps_model_max_tokens_default(
                         UserMessage(role="user", content="hello", timestamp=0.0)
                     ]
                 },
-                CallOptions(api_key="test-key"),
+                CallOptions(auth=ApiKeyAuth("test-key")),
             )
         )
     )
@@ -1514,7 +1549,7 @@ def test_anthropic_payload_groups_consecutive_tool_results_from_same_turn() -> N
                 ],
             }
         ),
-        is_oauth_token=False,
+        uses_oauth_protocol=False,
     )
 
     assert messages == [
@@ -1554,6 +1589,96 @@ async def _collect_parts(source) -> list[dict]:
     return [part async for part in source]
 
 
+@pytest.mark.parametrize(
+    ("auth", "expected_header", "expected_value"),
+    [
+        (HeadersAuth({"X-API-KEY": "opaque"}), "X-Api-Key", "opaque"),
+        (
+            ApiKeyAuth("opaque", header="X-Custom-Auth", prefix="Token "),
+            "X-Custom-Auth",
+            "Token opaque",
+        ),
+        (NoAuth(), None, None),
+    ],
+)
+def test_anthropic_forwards_authoritative_auth_headers(
+    monkeypatch: pytest.MonkeyPatch,
+    auth,
+    expected_header: str | None,
+    expected_value: str | None,
+) -> None:
+    _fake_anthropic_module(monkeypatch, [SimpleNamespace(type="message_stop")])
+
+    asyncio.run(
+        _collect_parts(
+            _invoke_raw_parts(
+                AnthropicProvider(),
+                _Model(),
+                {
+                    "messages": [
+                        UserMessage(role="user", content="hello", timestamp=0.0)
+                    ]
+                },
+                CallOptions(auth=auth),
+            )
+        )
+    )
+
+    headers = _last_anthropic_request_headers()
+    assert _FakeAsyncAnthropic.last_init_kwargs["api_key"] == ""
+    assert _FakeAsyncAnthropic.last_init_kwargs["auth_token"] == ""
+    if expected_header is None:
+        assert isinstance(headers["Authorization"], _FakeOmit)
+        assert isinstance(headers["X-Api-Key"], _FakeOmit)
+    else:
+        assert headers[expected_header] == expected_value
+
+
+@pytest.mark.parametrize(
+    ("auth", "uses_oauth_protocol"),
+    [
+        (OAuthBearerAuth("opaque-token"), True),
+        (ApiKeyAuth("sk-ant-oat-looking"), False),
+        (
+            HeadersAuth({"Authorization": "Bearer sk-ant-oat-looking"}),
+            False,
+        ),
+    ],
+)
+def test_anthropic_oauth_protocol_is_selected_by_credential_type(
+    monkeypatch: pytest.MonkeyPatch,
+    auth,
+    uses_oauth_protocol: bool,
+) -> None:
+    _fake_anthropic_module(monkeypatch, [SimpleNamespace(type="message_stop")])
+
+    asyncio.run(
+        _collect_parts(
+            _invoke_raw_parts(
+                AnthropicProvider(),
+                _Model(),
+                {
+                    "messages": [
+                        UserMessage(role="user", content="hello", timestamp=0.0)
+                    ]
+                },
+                CallOptions(auth=auth),
+            )
+        )
+    )
+
+    headers = _last_anthropic_request_headers()
+    assert (headers.get("x-app") == "sdk") is uses_oauth_protocol
+
+
+def _last_anthropic_request_headers() -> dict[str, object]:
+    request_kwargs = (
+        _FakeAsyncAnthropic.last_stream_kwargs or _FakeAsyncAnthropic.last_create_kwargs
+    )
+    headers = request_kwargs.get("extra_headers")
+    return headers if isinstance(headers, dict) else {}
+
+
 def _fake_anthropic_module(
     monkeypatch: pytest.MonkeyPatch,
     events: list[object],
@@ -1567,7 +1692,12 @@ def _fake_anthropic_module(
     _FakeAsyncAnthropic.last_create_kwargs = {}
     module = ModuleType("anthropic")
     module.AsyncAnthropic = _FakeAsyncAnthropic
+    module.Omit = _FakeOmit
     monkeypatch.setitem(sys.modules, "anthropic", module)
+
+
+class _FakeOmit:
+    pass
 
 
 class _FakeAsyncAnthropic:

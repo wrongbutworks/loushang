@@ -8,6 +8,7 @@ import pytest
 
 from loushang.ai import CallOptions, complete
 from loushang.ai.advanced.registry import ApiProviderRegistry
+from loushang.ai.auth import ApiKeyAuth
 from loushang.ai.model import (
     load_builtin_model_registry,
     load_model_registry_from_file,
@@ -108,7 +109,7 @@ def test_json_only_custom_model_loads_merges_queries_and_completes(
         return await complete(
             model,
             {"messages": [{"role": "user", "content": "hello"}]},
-            CallOptions(api_key="test-key"),
+            CallOptions(auth=ApiKeyAuth("test-key")),
             provider_registry=provider_registry,
         )
 

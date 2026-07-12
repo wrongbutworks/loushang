@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from loushang.auth.env import get_env_oauth_credentials
+from loushang.ai.auth.env import get_env_oauth_credentials
 
 
 def test_get_env_oauth_credentials_reads_provider_prefix_env_names() -> None:

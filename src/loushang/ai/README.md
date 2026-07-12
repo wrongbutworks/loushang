@@ -135,13 +135,10 @@ Amazon Bedrock Converse 不再作为 core adapter 发布；本包不再声明 Be
 
 ### `auth/`
 
-request-level 认证解析。
-
-core auth 只负责把本次调用的认证材料解析为 provider request headers。
-`models.json.auth` 声明缺省 API-key 行为；OAuth 的登录、refresh、expiry、credential
-store 和 provider-specific header 派生属于 `loushang.auth`。调用方只把有效 access token
-转换为 `CallOptions.auth=OAuthBearerAuth(...)`，并通过 `CallOptions.headers` 传入认证层
-派生的附加请求头。账号选择、quota、billing 和产品级认证策略不属于 `loushang.ai`。
+`loushang` 的认证能力统一归属 `loushang.ai.auth`，不存在独立的顶层
+`loushang.auth` 包。模型调用路径只负责把 `CallOptions.auth` 解析为
+provider request headers；OAuth 登录、refresh、credential store 和 provider-specific
+header 派生虽然也位于 `loushang.ai.auth`，但不会被模型调用隐式触发。
 
 - `support.py`
   - auth merge
@@ -149,8 +146,10 @@ store 和 provider-specific header 派生属于 `loushang.auth`。调用方只�
   - `models.json.auth` default resolve
 - `credentials.py`
   - 定义 request-level `CallOptions.auth` 输入类型
-  - 不包含 login、refresh 或 credential store 行为；新调用使用明确的
-    `api_key`，或 typed `auth` 配合 supplemental `headers`
+  - `ApiKeyAuth`、`OAuthBearerAuth`、`HeadersAuth`、`NoAuth`
+- `facade.py` / `oauth.py` / `storage.py` / `providers/`
+  - 显式 OAuth lifecycle 与 credential storage API
+  - 不进入 `complete()` / `stream()` 的隐式调用链
 
 ### 其它
 
@@ -363,13 +362,13 @@ after core request normalization and before `invoke_raw(request)`.
 
 ### OAuth 调用输入
 
-- `loushang.auth.OAuthCredentials`：认证层完整生命周期对象
+- `loushang.ai.auth.OAuthCredentials`：认证层完整生命周期对象
 - `CallOptions.auth=OAuthBearerAuth(valid_access_token)`
-- `CallOptions.headers`
+- `CallOptions.auth=HeadersAuth(complete_auth_headers)`
 
 `OAuthCredentials` 中的 refresh token、expiry 和 provider metadata 不进入 AI invocation。
-认证层先取得有效 access token，并派生 request-specific headers；AI 包只消费 typed bearer
-auth 与这些附加头。复用 `.codex/auth.json` 时，该外部 store 仍由 Codex CLI 拥有，示例
+认证层先取得有效 access token，并派生 request-specific headers；模型调用只消费
+`CallOptions.auth`。复用 `.codex/auth.json` 时，该外部 store 仍由 Codex CLI 拥有，示例
 不会擅自刷新或写回。完整真实调用见
 [`examples/ai/chatgpt_coding_plan.py`](../../../examples/ai/chatgpt_coding_plan.py)。
 

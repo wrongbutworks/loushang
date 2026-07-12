@@ -33,9 +33,9 @@
 需要真实凭据的调用单独放在未编号示例中，不进入离线 smoke：
 
 - [chatgpt_coding_plan.py](chatgpt_coding_plan.py)
-  通过 `loushang.auth` 读取调用方已有的完整 `~/.codex/auth.json` 凭据，检查 access-token
-  expiry，并将有效 token 转换为 `OAuthBearerAuth`；account header 由 Codex auth provider
-  派生。该文件归 Codex CLI 所有，示例不会刷新或写回；过期时先运行 `codex login`。
+  通过 `loushang.ai.auth` 读取调用方已有的完整 `~/.codex/auth.json` 凭据，检查 access-token
+  expiry，并将 bearer、account 和协议认证 header 完整转换为 `HeadersAuth`。该文件归
+  Codex CLI 所有，示例不会刷新或写回；过期时先运行 `codex login`。
 
 `examples/ai/advanced/` 放协议观察、faux provider、本地 registry 注入这类高级样例，不作为第一次接入的推荐入口。
 

@@ -5,6 +5,35 @@ from loushang.ai.auth.credentials import (
     NoAuth,
     OAuthBearerAuth,
 )
+from loushang.ai.auth.facade import (
+    oauth_login,
+    oauth_refresh,
+    register_builtin_oauth_providers,
+    resolve_oauth_api_key,
+)
+from loushang.ai.auth.oauth import GetOAuthApiKeyResult, get_oauth_api_key
+from loushang.ai.auth.providers import (
+    OpenAICodexOAuthProvider,
+    get_codex_cli_oauth_credentials,
+)
+from loushang.ai.auth.registry import (
+    OAuthProviderRegistry,
+    get_default_oauth_registry,
+)
+from loushang.ai.auth.storage import (
+    CredentialStore,
+    CredentialStoreCorruptError,
+    CredentialStoreError,
+    CredentialStorePermissionError,
+    OAuthCredentialStore,
+    find_scoped_credential,
+    load_credential_store,
+    load_credentials,
+    save_credential_store,
+    save_credentials,
+    set_scoped_credential,
+    update_credential_store,
+)
 from loushang.ai.auth.support import (
     AuthConfig,
     AuthResolutionError,
@@ -16,6 +45,13 @@ from loushang.ai.auth.support import (
     resolve_auth_for_model,
     resolve_auth_for_request,
 )
+from loushang.ai.auth.types import (
+    OAuthAuthInfo,
+    OAuthCredentials,
+    OAuthLoginCallbacks,
+    OAuthPrompt,
+    OAuthProviderInterface,
+)
 
 __all__ = [
     "ApiKeyAuth",
@@ -23,13 +59,40 @@ __all__ = [
     "AuthCredential",
     "AuthResolutionError",
     "AuthView",
+    "CredentialStore",
+    "CredentialStoreCorruptError",
+    "CredentialStoreError",
+    "CredentialStorePermissionError",
+    "GetOAuthApiKeyResult",
     "HeadersAuth",
     "InvalidAuthConfigError",
     "MissingAuthConfigError",
     "MissingAuthError",
     "NoAuth",
+    "OAuthAuthInfo",
     "OAuthBearerAuth",
+    "OAuthCredentialStore",
+    "OAuthCredentials",
+    "OAuthLoginCallbacks",
+    "OpenAICodexOAuthProvider",
+    "OAuthPrompt",
+    "OAuthProviderInterface",
+    "OAuthProviderRegistry",
+    "find_scoped_credential",
+    "get_codex_cli_oauth_credentials",
+    "get_default_oauth_registry",
+    "get_oauth_api_key",
+    "load_credential_store",
+    "load_credentials",
     "normalize_auth_kind",
+    "oauth_login",
+    "oauth_refresh",
+    "register_builtin_oauth_providers",
     "resolve_auth_for_model",
     "resolve_auth_for_request",
+    "resolve_oauth_api_key",
+    "save_credential_store",
+    "save_credentials",
+    "set_scoped_credential",
+    "update_credential_store",
 ]

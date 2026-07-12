@@ -135,13 +135,13 @@ The common path is API-key auth. Pass an explicit key through `CallOptions` or
 set the provider environment variable declared by the catalog.
 
 ```python
-from loushang.ai import CallOptions, get_model
+from loushang.ai import ApiKeyAuth, CallOptions, get_model
 
 model = get_model("moonshot", "openai-completions", "kimi-k2.6")
-options = CallOptions(api_key="...", max_output_tokens=512)
+options = CallOptions(auth=ApiKeyAuth("..."), max_output_tokens=512)
 ```
 
-If `api_key` is omitted, `loushang.ai` resolves provider auth from the catalog
+If `CallOptions.auth` is omitted, `loushang.ai` resolves provider auth from the catalog
 and environment. Curated provider examples:
 
 | Provider | Main env vars |
@@ -158,26 +158,27 @@ and environment. Curated provider examples:
 | `volcano-ark` | `ARK_API_KEY` |
 | `zai` | `ZAI_API_KEY` |
 
-For OAuth calls, `loushang.auth` owns the complete credentials and refresh
-lifecycle. The AI call receives only a currently valid bearer token and any
-provider-derived supplemental headers:
+OAuth lifecycle is owned by `loushang.ai.auth`. Model calls receive current
+credentials only through `CallOptions.auth`. Use `OAuthBearerAuth` for a bearer
+token alone; when provider-specific account headers are required, the auth layer
+must produce a complete `HeadersAuth`:
 
 ```python
-from loushang.ai import CallOptions, OAuthBearerAuth
+from loushang.ai import CallOptions, HeadersAuth
 
 options = CallOptions(
-    auth=OAuthBearerAuth(access_token),
-    headers=provider_headers,
+    auth=HeadersAuth(provider_auth_headers),
 )
 ```
 
-Here `access_token` and `provider_headers` are outputs of the authentication
-provider; callers do not construct provider-specific account headers in the AI layer.
+Here `provider_auth_headers` is the complete output of the authentication provider;
+callers do not construct provider-specific account headers in the invocation layer.
 
 `refresh_token`, expiry, storage, and account selection never enter
 `CallOptions` or `ProviderRequest`. The runnable [ChatGPT Coding Plan
 example](../../../examples/ai/chatgpt_coding_plan.py) reads an existing
-`~/.codex/auth.json` through `loushang.auth`. That external store remains owned
+`~/.codex/auth.json` through `loushang.ai.auth`. There is no separate
+`loushang.auth` package. That external store remains owned
 by Codex CLI, so an expired login must be updated with `codex login`. The example calls
 `openai:openai-responses-chatgpt:gpt-5.5-chatgpt` through the normal OpenAI Responses
 adapter.
@@ -188,13 +189,13 @@ The shortest path is `get_model(...)` followed by the root `complete(...)`
 helper.
 
 ```python
-from loushang.ai import CallOptions, complete, get_model
+from loushang.ai import ApiKeyAuth, CallOptions, complete, get_model
 
 model = get_model("moonshot", "openai-completions", "kimi-k2.6")
 message = await complete(
     model,
     {"messages": [{"role": "user", "content": "Say hello in one sentence."}]},
-    CallOptions(api_key="...", max_output_tokens=128),
+    CallOptions(auth=ApiKeyAuth("..."), max_output_tokens=128),
 )
 
 print(message.stop_reason)
@@ -209,13 +210,13 @@ Runnable reference: [examples/ai/01_complete.py](../../../examples/ai/01_complet
 then call `result()` for the final `AssistantMessage`.
 
 ```python
-from loushang.ai import CallOptions, get_model, stream
+from loushang.ai import ApiKeyAuth, CallOptions, get_model, stream
 
 model = get_model("moonshot", "openai-completions", "kimi-k2.6")
 events = await stream(
     model,
     {"messages": [{"role": "user", "content": "Count to three."}]},
-    CallOptions(api_key="..."),
+    CallOptions(auth=ApiKeyAuth("...")),
 )
 
 async for event in events:
@@ -262,7 +263,7 @@ Use `ReasoningOptions` on `CallOptions` when the selected model supports
 reasoning. The resolver checks model capabilities before the provider call.
 
 ```python
-from loushang.ai import CallOptions, ReasoningOptions
+from loushang.ai import ApiKeyAuth, CallOptions, ReasoningOptions
 
 options = CallOptions(
     api_key="...",
@@ -303,7 +304,7 @@ result = await complete_structured(
             "additionalProperties": False,
         },
     ),
-    options=CallOptions(api_key="..."),
+    options=CallOptions(auth=ApiKeyAuth("...")),
 )
 
 print(result.parsed)
@@ -351,7 +352,7 @@ try:
     message = await complete(
         model,
         {"messages": [{"role": "user", "content": "hello"}]},
-        CallOptions(api_key="...", retry=RetryOptions(max_attempts=2)),
+        CallOptions(auth=ApiKeyAuth("..."), retry=RetryOptions(max_attempts=2)),
     )
 except AIError as error:
     print(error.to_dict())

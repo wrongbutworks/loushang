@@ -1,7 +1,6 @@
 from __future__ import annotations
 
-from collections.abc import Mapping
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import Any, Literal
 
 from loushang.ai.auth.credentials import AuthCredential
@@ -43,8 +42,6 @@ class TimeoutOptions:
 class CallOptions:
     cancellation: object | None = None
     auth: AuthCredential | None = None
-    api_key: str | None = field(default=None, repr=False)
-    headers: Mapping[str, str] = field(default_factory=dict, repr=False)
     cache_retention: CacheRetention | None = None
     cache_key: str | None = None
     max_output_tokens: int | None = None
@@ -58,16 +55,6 @@ class CallOptions:
     output: StructuredOutputOptions | None = None
 
     def __post_init__(self) -> None:
-        if self.auth is not None and self.api_key is not None:
-            raise ValueError("auth cannot be combined with api_key")
-        if self.api_key is not None:
-            if not isinstance(self.api_key, str):
-                raise TypeError("api_key must be a string or None")
-            if not self.api_key.strip():
-                raise ValueError("api_key must be non-empty")
-            object.__setattr__(self, "api_key", self.api_key.strip())
-        normalized_headers = _validate_headers(self.headers, field_name="headers")
-        object.__setattr__(self, "headers", normalized_headers)
         if self.cache_key is not None:
             if not isinstance(self.cache_key, str):
                 raise TypeError("cache_key must be a string or None")
@@ -77,20 +64,6 @@ class CallOptions:
             self.reasoning, ReasoningOptions
         ):
             raise TypeError("reasoning must be ReasoningOptions")
-
-
-def _validate_headers(value: object, *, field_name: str) -> dict[str, str]:
-    if not isinstance(value, Mapping):
-        raise TypeError(f"{field_name} must be a mapping of strings")
-    headers: dict[str, str] = {}
-    for key, entry in value.items():
-        if not isinstance(key, str) or not key:
-            raise TypeError(f"{field_name} keys must be non-empty strings")
-        if not isinstance(entry, str) or not entry:
-            raise TypeError(f"{field_name} values must be non-empty strings")
-        headers[key] = entry
-    return headers
-
 
 def get_max_output_tokens(options: object | None) -> int | None:
     if options is None:

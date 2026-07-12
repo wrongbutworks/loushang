@@ -6,6 +6,7 @@ from contextlib import suppress
 from dataclasses import dataclass, field
 from typing import Any, cast
 
+from loushang.ai.auth.credentials import OAuthBearerAuth
 from loushang.ai.context import NormalizedContext
 from loushang.ai.event_stream.raw_parts import RawPart
 from loushang.ai.model.domain import AnthropicMessagesConfig
@@ -23,8 +24,7 @@ from loushang.ai.provider.errors import (
 from loushang.ai.providers.anthropic_base import AnthropicProviderBase
 from loushang.ai.providers.provider_helpers import (
     apply_cache_key_headers,
-    extract_sdk_api_key,
-    sdk_default_headers,
+    canonicalize_sdk_headers,
 )
 from loushang.ai.tool import to_anthropic_tools
 from loushang.ai.tool.helpers import (
@@ -38,7 +38,7 @@ from loushang.ai.utils import parse_streaming_json, sanitize_surrogates
 def _build_anthropic_message_payloads(
     normalized: NormalizedContext,
     *,
-    is_oauth_token: bool,
+    uses_oauth_protocol: bool,
 ) -> tuple[list[dict[str, Any]], list[dict[str, str]] | None]:
     messages_param: list[dict[str, Any]] = []
     system_param = None
@@ -110,7 +110,7 @@ def _build_anthropic_message_payloads(
                         AnthropicProviderBase.assistant_block_to_anthropic_payload(p)
                     )
                     if payload is not None:
-                        if is_oauth_token and payload.get("type") == "tool_use":
+                        if uses_oauth_protocol and payload.get("type") == "tool_use":
                             payload = {
                                 **payload,
                                 "name": AnthropicProviderBase.to_oauth_tool_name(
@@ -368,25 +368,16 @@ class AnthropicProvider(AnthropicProviderBase):
         adapter_config = _request_adapter_config(resolved)
 
         headers = resolved.headers or {}
-        api_key = extract_sdk_api_key(
-            headers,
-            prefer_x_api_key=True,
-            error_message=(
-                "Anthropic SDK provider requires an API key "
-                "(x-api-key or Authorization: Bearer)"
-            ),
-        )
 
         # 延迟导入官方 SDK，避免未安装时报错影响其它路径
         try:
-            from anthropic import AsyncAnthropic  # type: ignore
+            from anthropic import AsyncAnthropic, Omit  # type: ignore
         except Exception as e:  # pragma: no cover
             raise RuntimeError(
                 "anthropic SDK is not installed. Install via `pip install anthropic`"
             ) from e
 
-        # 仅透传非鉴权头作为默认头（如 anthropic-version），鉴权用 api_key 参数避免重复
-        default_headers = sdk_default_headers(headers)
+        default_headers = canonicalize_sdk_headers(headers)
         # 门闸：按 typed protocol/headers 决定是否注入 beta（与 httpx 对齐）
         need_ilt = self.should_inject_interleaved_thinking(
             model_id=model.id,
@@ -405,17 +396,16 @@ class AnthropicProvider(AnthropicProviderBase):
                 force_fine_grained_tools=need_fg,
             )
 
-        is_oauth_token = False
-        # OAuth/Copilot 身份头（对齐 pi-ai OAuth 路径）
-        is_oauth_token = self.is_oauth_token(api_key)
-        if is_oauth_token:
+        uses_oauth_protocol = isinstance(
+            getattr(options, "auth", None),
+            OAuthBearerAuth,
+        )
+        if uses_oauth_protocol:
             default_headers = self.apply_oauth_identity_headers(default_headers)
         cache_retention = (
             getattr(options, "cache_retention", None) if options is not None else None
         )
-        cache_key = (
-            getattr(options, "cache_key", None) if options is not None else None
-        )
+        cache_key = getattr(options, "cache_key", None) if options is not None else None
         if (
             cache_retention != "none"
             and isinstance(cache_key, str)
@@ -429,15 +419,15 @@ class AnthropicProvider(AnthropicProviderBase):
             )
 
         client = self._client or AsyncAnthropic(  # type: ignore[call-arg]
-            api_key=api_key,
+            api_key="",
+            auth_token="",
             base_url=resolved.base_url,
-            default_headers=default_headers or None,
         )
         _debug("client", {"base_url": resolved.base_url, "headers": default_headers})
 
         messages_param, system_param = _build_anthropic_message_payloads(
             normalized,
-            is_oauth_token=is_oauth_token,
+            uses_oauth_protocol=uses_oauth_protocol,
         )
         upstream_model_id = getattr(resolved, "upstream_model_id", None) or model.id
 
@@ -448,7 +438,7 @@ class AnthropicProvider(AnthropicProviderBase):
                 tools_param.append(
                     {
                         "name": self.to_oauth_tool_name(str(t.get("name", "")))
-                        if is_oauth_token
+                        if uses_oauth_protocol
                         else t.get("name"),
                         "description": t.get("description"),
                         "input_schema": t.get("input_schema"),
@@ -556,6 +546,11 @@ class AnthropicProvider(AnthropicProviderBase):
         _debug(
             "payload", {"params": {k: v for k, v in params.items() if k != "messages"}}
         )
+        params["extra_headers"] = {
+            "X-Api-Key": Omit(),
+            "Authorization": Omit(),
+            **default_headers,
+        }
 
         try:
             if getattr(resolved, "mode", "stream") == "complete":
@@ -563,14 +558,14 @@ class AnthropicProvider(AnthropicProviderBase):
             else:
                 response = client.messages.stream(**params)
         except Exception as e:
-            _debug("stream_error", {"message": str(e)})
+            _debug("stream_error", {"exceptionType": type(e).__name__})
             yield provider_error_part(e, source=self.api)
             return
         if getattr(resolved, "mode", "stream") == "complete":
             for part in _iter_complete_response_parts(
                 response,
                 source=self.api,
-                is_oauth_token=is_oauth_token,
+                uses_oauth_protocol=uses_oauth_protocol,
                 registered_tools=cast(list[object] | None, list(normalized.tools)),
             ):
                 yield part
@@ -626,7 +621,7 @@ class AnthropicProvider(AnthropicProviderBase):
                                         self.from_oauth_tool_name(
                                             tname, list(normalized.tools)
                                         )
-                                        if is_oauth_token
+                                        if uses_oauth_protocol
                                         else tname
                                     ),
                                 )
@@ -815,7 +810,7 @@ class AnthropicProvider(AnthropicProviderBase):
                             source=self.api,
                         )
         except Exception as e:
-            _debug("stream_iter_error", {"message": str(e)})
+            _debug("stream_iter_error", {"exceptionType": type(e).__name__})
             yield provider_error_part(e, source=self.api)
 
 
@@ -835,7 +830,7 @@ def _iter_complete_response_parts(
     response: object,
     *,
     source: str,
-    is_oauth_token: bool,
+    uses_oauth_protocol: bool,
     registered_tools: list[object] | None,
 ) -> Iterator[RawPart]:
     response_id = getattr(response, "id", None)
@@ -872,7 +867,7 @@ def _iter_complete_response_parts(
                 yield from _iter_complete_tool_call_parts(
                     block,
                     index=index,
-                    is_oauth_token=is_oauth_token,
+                    uses_oauth_protocol=uses_oauth_protocol,
                     registered_tools=registered_tools,
                 )
 
@@ -893,14 +888,14 @@ def _iter_complete_tool_call_parts(
     block: object,
     *,
     index: int,
-    is_oauth_token: bool,
+    uses_oauth_protocol: bool,
     registered_tools: list[object] | None,
 ) -> Iterator[RawPart]:
     tool_call_id = getattr(block, "id", None)
     if not isinstance(tool_call_id, str) or not tool_call_id:
         tool_call_id = f"tool_call_{index}"
     raw_name = getattr(block, "name", "")
-    if is_oauth_token and isinstance(raw_name, str):
+    if uses_oauth_protocol and isinstance(raw_name, str):
         name = AnthropicProviderBase.from_oauth_tool_name(raw_name, registered_tools)
     else:
         name = raw_name if isinstance(raw_name, str) else ""

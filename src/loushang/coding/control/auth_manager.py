@@ -6,10 +6,10 @@ from dataclasses import dataclass, field
 
 from loushang.ai.auth import ApiKeyAuth, OAuthBearerAuth
 from loushang.ai.auth.support import resolve_explicit_auth
+from loushang.ai.auth.types import OAuthCredentials
 from loushang.ai.model import Model
 from loushang.ai.model.registry import ModelRegistry as AiModelRegistry
 from loushang.ai.model.registry import get_default_model_registry
-from loushang.auth.types import OAuthCredentials
 
 
 @dataclass(frozen=True)
@@ -33,7 +33,9 @@ class AuthManager:
         ai_registry: AiModelRegistry | None = None,
         env: Mapping[str, str] | None = None,
     ) -> None:
-        self._ai_registry = ai_registry if ai_registry is not None else get_default_model_registry()
+        self._ai_registry = (
+            ai_registry if ai_registry is not None else get_default_model_registry()
+        )
         self._env = dict(env) if env is not None else None
 
     @property
@@ -45,7 +47,7 @@ class AuthManager:
         self._ai_registry = value
 
     def load_stored_oauth_credentials(self) -> dict[str, OAuthCredentials]:
-        from loushang.auth.storage import load_credentials
+        from loushang.ai.auth.storage import load_credentials
 
         return load_credentials()
 
@@ -91,6 +93,7 @@ class AuthManager:
                         headers=resolve_explicit_auth(
                             OAuthBearerAuth(oauth_api_key),
                             declaration_hint=auth_config,
+                            env=env,
                         ).headers,
                     )
 
@@ -109,6 +112,7 @@ class AuthManager:
                 headers=resolve_explicit_auth(
                     ApiKeyAuth(api_key),
                     declaration_hint=auth_config,
+                    env=env,
                 ).headers,
             )
 
@@ -147,7 +151,7 @@ class AuthManager:
         model_id: str | None,
     ) -> str | None:
         try:
-            from loushang.auth.facade import resolve_oauth_api_key
+            from loushang.ai.auth.facade import resolve_oauth_api_key
 
             result = resolve_oauth_api_key(
                 provider,
@@ -169,7 +173,7 @@ class AuthManager:
         model_id: str | None,
     ) -> OAuthCredentials | None:
         try:
-            from loushang.auth.storage import (
+            from loushang.ai.auth.storage import (
                 find_scoped_credential,
                 load_credential_store,
             )
@@ -206,12 +210,12 @@ def _api_key_env_names(auth_config) -> tuple[str, ...]:
     if auth_config is None:
         return ()
     names: list[str] = []
-    for name in tuple(getattr(auth_config, "api_key_envs", ()) or ()):
-        if isinstance(name, str) and name:
-            names.append(name)
     api_key_env = getattr(auth_config, "api_key_env", None)
     if isinstance(api_key_env, str) and api_key_env:
         names.append(api_key_env)
+    for name in tuple(getattr(auth_config, "api_key_envs", ()) or ()):
+        if isinstance(name, str) and name:
+            names.append(name)
     return tuple(dict.fromkeys(names))
 
 

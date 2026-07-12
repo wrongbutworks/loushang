@@ -10,8 +10,8 @@ from concurrent.futures import ThreadPoolExecutor
 
 import pytest
 
-from loushang.auth import storage
-from loushang.auth.storage import (
+from loushang.ai.auth import storage
+from loushang.ai.auth.storage import (
     CredentialStore,
     CredentialStoreCorruptError,
     CredentialStoreError,
@@ -19,7 +19,7 @@ from loushang.auth.storage import (
     find_scoped_credential,
     set_scoped_credential,
 )
-from loushang.auth.types import OAuthCredentials
+from loushang.ai.auth.types import OAuthCredentials
 
 
 def _credential(provider: str = "demo") -> OAuthCredentials:

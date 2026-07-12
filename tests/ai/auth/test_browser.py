@@ -4,7 +4,7 @@ import webbrowser
 
 import pytest
 
-from loushang.auth.browser import open_browser
+from loushang.ai.auth.browser import open_browser
 
 
 def test_open_browser_returns_boolean_without_launching_browser(

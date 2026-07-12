@@ -111,7 +111,7 @@ def test_provider_runtime_emits_done_when_source_omits_terminal_part() -> None:
 
 def test_provider_runtime_converts_adapter_exceptions_to_error_events() -> None:
     async def _parts():
-        raise RuntimeError("adapter failed")
+        raise RuntimeError("Authorization: Bearer secret-token")
         yield {"type": "response_done"}
 
     async def _run():
@@ -125,11 +125,12 @@ def test_provider_runtime_converts_adapter_exceptions_to_error_events() -> None:
     events = asyncio.run(_run())
 
     assert [event["type"] for event in events] == ["error"]
-    assert events[0]["error"].error_message == "adapter failed"
-    assert events[0]["error_info"]["message"] == "adapter failed"
+    assert events[0]["error"].error_message == "Provider request failed."
+    assert events[0]["error_info"]["message"] == "Provider request failed."
     assert events[0]["error_info"]["provider"] == "provider-a"
     assert events[0]["error_info"]["endpoint"] == "openai-responses"
     assert events[0]["error_info"]["model"] == "model-a"
+    assert "secret-token" not in repr(events)
 
 
 def test_provider_runtime_retries_retryable_exception_before_visible_output() -> None:
@@ -270,6 +271,44 @@ def test_provider_runtime_retries_response_error_before_visible_output() -> None
         "statusCode": 429,
         "requestId": "req_raw_429",
     }
+
+
+def test_provider_runtime_never_retries_raw_authentication_errors() -> None:
+    attempts = 0
+
+    async def _parts():
+        nonlocal attempts
+        attempts += 1
+        yield {
+            "type": "response_error",
+            "code": 401,
+            "message": "Authorization: Bearer secret-token",
+            "error_info": {
+                "code": "service_unavailable",
+                "message": "Authorization: Bearer secret-token",
+                "source": "custom-provider",
+                "retryable": True,
+                "statusCode": 401,
+            },
+        }
+
+    async def _run():
+        stream = start_provider_runtime(
+            _parts,
+            options=CallOptions(
+                retry=RetryOptions(max_attempts=2, max_delay_seconds=0),
+            ),
+            request=_request(),
+        )
+        return [event async for event in stream]
+
+    events = asyncio.run(_run())
+
+    assert attempts == 1
+    assert events[0]["error_info"]["code"] == "authentication"
+    assert events[0]["error_info"]["retryable"] is False
+    assert events[0]["error_info"]["message"] == "Provider authentication failed."
+    assert "secret-token" not in repr(events)
 
 
 def test_provider_runtime_emits_error_trace_for_terminal_error() -> None:

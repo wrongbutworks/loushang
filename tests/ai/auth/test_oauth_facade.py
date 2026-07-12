@@ -6,15 +6,15 @@ from dataclasses import asdict
 import pytest
 
 import loushang.ai.auth as auth_module
-import loushang.auth.facade as facade
-from loushang.auth.facade import (
+import loushang.ai.auth.facade as facade
+from loushang.ai.auth.facade import (
     oauth_login,
     oauth_refresh,
     register_builtin_oauth_providers,
     resolve_oauth_api_key,
 )
-from loushang.auth.registry import OAuthProviderRegistry
-from loushang.auth.types import OAuthCredentials
+from loushang.ai.auth.registry import OAuthProviderRegistry
+from loushang.ai.auth.types import OAuthCredentials
 
 
 class _Callbacks:
@@ -88,17 +88,15 @@ def _capture_store_updates(store, save_calls):
     return _update
 
 
-def test_oauth_registry_method_wrappers_are_not_public_api() -> None:
-    removed_core_exports = (
+def test_ai_auth_exports_lifecycle_api_without_registry_method_wrappers() -> None:
+    lifecycle_exports = (
         "CredentialStore",
         "OAuthProviderRegistry",
         "get_default_oauth_registry",
-        "get_env_oauth_credentials",
         "get_oauth_api_key",
         "load_credentials",
         "oauth_login",
         "oauth_refresh",
-        "refresh_oauth_token",
         "register_builtin_oauth_providers",
     )
     removed_facade_wrappers = (
@@ -110,8 +108,8 @@ def test_oauth_registry_method_wrappers_are_not_public_api() -> None:
         "ensure_builtin_oauth_providers",
     )
 
-    for name in removed_core_exports:
-        assert not hasattr(auth_module, name)
+    for name in lifecycle_exports:
+        assert hasattr(auth_module, name)
 
     for name in removed_facade_wrappers:
         assert not hasattr(auth_module, name)

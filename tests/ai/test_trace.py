@@ -52,6 +52,7 @@ def test_emit_trace_redacts_sensitive_options_callback_fields() -> None:
                 "X-Amz-Security-Token": "aws-secret",
                 "x-api-key": "secret-key",
                 "chatgpt-account-id": "account-secret",
+                "X-Custom-Signature": "custom-secret",
                 "anthropic-version": "2023-06-01",
             },
             "apiKey": "secret-key",
@@ -80,7 +81,8 @@ def test_emit_trace_redacts_sensitive_options_callback_fields() -> None:
         "X-Amz-Security-Token": "<redacted>",
         "x-api-key": "<redacted>",
         "chatgpt-account-id": "<redacted>",
-        "anthropic-version": "2023-06-01",
+        "X-Custom-Signature": "<redacted>",
+        "anthropic-version": "<redacted>",
     }
     assert data["apiKey"] == "<redacted>"
     assert data["openai_api_key"] == "<redacted>"
@@ -186,6 +188,7 @@ def test_emit_trace_redacts_sensitive_observability_fields(tmp_path: Path) -> No
                 "Proxy-Authorization": "Bearer proxy-secret",
                 "X-Auth-Token": "auth-secret",
                 "x-api-key": "secret-key",
+                "X-Custom-Signature": "custom-secret",
                 "anthropic-version": "2023-06-01",
             },
             "apiKey": "secret-key",
@@ -200,7 +203,8 @@ def test_emit_trace_redacts_sensitive_observability_fields(tmp_path: Path) -> No
         "Proxy-Authorization": "<redacted>",
         "X-Auth-Token": "<redacted>",
         "x-api-key": "<redacted>",
-        "anthropic-version": "2023-06-01",
+        "X-Custom-Signature": "<redacted>",
+        "anthropic-version": "<redacted>",
     }
     assert event["apiKey"] == "<redacted>"
     assert event["total_tokens"] == 42
@@ -217,6 +221,21 @@ def test_emit_trace_stringifies_non_json_safe_event_values(tmp_path: Path) -> No
 
     record = json.loads(trace_path.read_text(encoding="utf-8").splitlines()[0])
     assert record["data"]["event"]["data"]["path"] == "tmp/bmi.html"
+
+
+def test_emit_trace_never_stringifies_exception_messages() -> None:
+    events: list[dict[str, object]] = []
+
+    emit_trace(
+        SimpleNamespace(trace=events.append),
+        {
+            "type": "sdk:error",
+            "error": RuntimeError("Authorization: Bearer secret-token"),
+        },
+    )
+
+    assert events[0]["data"]["error"] == {"exceptionType": "RuntimeError"}
+    assert "secret-token" not in repr(events)
 
 
 def test_emit_trace_stringifies_non_finite_floats(tmp_path: Path) -> None:

@@ -8,6 +8,7 @@ from types import ModuleType, SimpleNamespace
 import pytest
 
 from loushang.ai import CallOptions, ReasoningOptions
+from loushang.ai.auth import ApiKeyAuth, HeadersAuth, NoAuth
 from loushang.ai.context import normalize_context
 from loushang.ai.errors import UnsupportedCapabilityError
 from loushang.ai.model import (
@@ -113,7 +114,7 @@ async def _stream(provider, model, context, options=None, request=None):
 def _assert_no_session_hint_fields() -> None:
     assert "prompt_cache_key" not in _FakeAsyncOpenAI.last_create_kwargs
     assert "prompt_cache_retention" not in _FakeAsyncOpenAI.last_create_kwargs
-    headers = _FakeAsyncOpenAI.last_init_kwargs.get("default_headers") or {}
+    headers = _FakeAsyncOpenAI.last_create_kwargs.get("extra_headers") or {}
     assert "session_id" not in headers
     assert "x-client-request-id" not in headers
     assert "x-session-affinity" not in headers
@@ -142,7 +143,7 @@ def test_openai_responses_payload_maps_formal_context_and_tools(
                         )
                     ],
                 ),
-                CallOptions(api_key="test-key"),
+                CallOptions(auth=ApiKeyAuth("test-key")),
             )
         )
     )
@@ -212,7 +213,7 @@ def test_openai_responses_complete_mode_maps_non_stream_response(
                     ]
                 },
                 CallOptions(
-                    api_key="test-key",
+                    auth=ApiKeyAuth("test-key"),
                     reasoning=ReasoningOptions(effort="high"),
                 ),
                 mode="complete",
@@ -291,7 +292,7 @@ def test_openai_responses_payload_uses_resolved_capabilities_for_images(
                         ),
                     ],
                 ),
-                CallOptions(api_key="test-key", pairing_mode="repair"),
+                CallOptions(auth=ApiKeyAuth("test-key"), pairing_mode="repair"),
             )
         )
     )
@@ -342,7 +343,7 @@ def test_openai_responses_payload_maps_structured_output_text_format(
                     messages=[UserMessage(role="user", content="hello", timestamp=0.0)]
                 ),
                 CallOptions(
-                    api_key="test-key",
+                    auth=ApiKeyAuth("test-key"),
                     output=StructuredOutputOptions(mode="json_object"),
                 ),
             )
@@ -415,7 +416,7 @@ def test_openai_responses_supplied_empty_request_uses_typed_defaults(
     }
     assert _FakeAsyncOpenAI.last_create_kwargs["prompt_cache_key"] == "session-default"
     assert _FakeAsyncOpenAI.last_create_kwargs["prompt_cache_retention"] == "24h"
-    assert _FakeAsyncOpenAI.last_init_kwargs["default_headers"]["session_id"] == (
+    assert _FakeAsyncOpenAI.last_create_kwargs["extra_headers"]["session_id"] == (
         "session-default"
     )
 
@@ -473,7 +474,7 @@ def test_openai_responses_supplied_request_adapter_config_projects_to_payload(
     ]
     assert _FakeAsyncOpenAI.last_create_kwargs["prompt_cache_key"] == "session-options"
     assert "prompt_cache_retention" not in _FakeAsyncOpenAI.last_create_kwargs
-    headers = _FakeAsyncOpenAI.last_init_kwargs.get("default_headers") or {}
+    headers = _FakeAsyncOpenAI.last_create_kwargs.get("extra_headers") or {}
     assert "session_id" not in headers
     assert "x-client-request-id" not in headers
 
@@ -606,7 +607,7 @@ def test_openai_responses_supplied_request_typed_adapter_overrides_stale_options
     ]
     assert _FakeAsyncOpenAI.last_create_kwargs["prompt_cache_key"] == "session-typed"
     assert "prompt_cache_retention" not in _FakeAsyncOpenAI.last_create_kwargs
-    headers = _FakeAsyncOpenAI.last_init_kwargs.get("default_headers") or {}
+    headers = _FakeAsyncOpenAI.last_create_kwargs.get("extra_headers") or {}
     assert "session_id" not in headers
     assert "x-client-request-id" not in headers
 
@@ -634,9 +635,7 @@ def test_openai_responses_cache_retention_none_suppresses_cache_key_fields(
                 provider,
                 _Model(),
                 Context(
-                    messages=[
-                        UserMessage(role="user", content="hello", timestamp=0.0)
-                    ]
+                    messages=[UserMessage(role="user", content="hello", timestamp=0.0)]
                 ),
                 CallOptions(cache_retention="none", cache_key="opaque-cache-key"),
                 request=request,
@@ -667,7 +666,7 @@ def test_openai_responses_uses_upstream_model_id(
                     system_prompt=None,
                     messages=[UserMessage(role="user", content="hello", timestamp=0.0)],
                 ),
-                CallOptions(api_key="test-key"),
+                CallOptions(auth=ApiKeyAuth("test-key")),
             )
         )
     )
@@ -696,7 +695,7 @@ def test_openai_responses_caps_model_max_tokens_default(
                     messages=[UserMessage(role="user", content="hello", timestamp=0.0)],
                     tools=[],
                 ),
-                CallOptions(api_key="test-key"),
+                CallOptions(auth=ApiKeyAuth("test-key")),
             )
         )
     )
@@ -726,7 +725,7 @@ def test_openai_responses_uses_resolved_capability_max_tokens(
                     messages=[UserMessage(role="user", content="hello", timestamp=0.0)],
                     tools=[],
                 ),
-                CallOptions(api_key="test-key"),
+                CallOptions(auth=ApiKeyAuth("test-key")),
             )
         )
     )
@@ -754,7 +753,7 @@ def test_openai_responses_can_omit_model_default_max_output_tokens(
                     system_prompt=None,
                     messages=[UserMessage(role="user", content="hello", timestamp=0.0)],
                 ),
-                CallOptions(api_key="test-key"),
+                CallOptions(auth=ApiKeyAuth("test-key")),
             )
         )
     )
@@ -785,7 +784,7 @@ def test_openai_responses_rejects_explicit_unsupported_max_output_tokens(
                             UserMessage(role="user", content="hello", timestamp=0.0)
                         ],
                     ),
-                    CallOptions(api_key="test-key", max_output_tokens=16),
+                    CallOptions(auth=ApiKeyAuth("test-key"), max_output_tokens=16),
                 )
             )
         )
@@ -822,7 +821,7 @@ def test_openai_responses_payload_maps_assistant_tool_call_and_synthesizes_missi
                 provider,
                 _Model(),
                 {"messages": [assistant]},
-                CallOptions(api_key="test-key", pairing_mode="repair"),
+                CallOptions(auth=ApiKeyAuth("test-key"), pairing_mode="repair"),
             )
         )
     )
@@ -881,7 +880,7 @@ def test_openai_responses_payload_normalizes_cross_provider_tool_call_ids(
                 provider,
                 _Model(),
                 {"messages": [assistant, tool_result]},
-                CallOptions(api_key="test-key"),
+                CallOptions(auth=ApiKeyAuth("test-key")),
             )
         )
     )
@@ -932,7 +931,7 @@ def test_openai_responses_payload_replays_assistant_thinking_signature(
                 provider,
                 _Model(),
                 {"messages": [assistant]},
-                CallOptions(api_key="test-key"),
+                CallOptions(auth=ApiKeyAuth("test-key")),
             )
         )
     )
@@ -980,7 +979,7 @@ def test_openai_responses_payload_replays_assistant_text_signature_and_phase(
                 provider,
                 _Model(),
                 {"messages": [assistant]},
-                CallOptions(api_key="test-key"),
+                CallOptions(auth=ApiKeyAuth("test-key")),
             )
         )
     )
@@ -1008,7 +1007,7 @@ def test_openai_responses_payload_maps_reasoning_option(
                     ]
                 },
                 CallOptions(
-                    api_key="test-key",
+                    auth=ApiKeyAuth("test-key"),
                     reasoning=ReasoningOptions(effort="high", expose_summary=True),
                 ),
             )
@@ -1046,7 +1045,7 @@ def test_openai_responses_payload_uses_resolved_capabilities_for_reasoning(
                     ]
                 },
                 CallOptions(
-                    api_key="test-key",
+                    auth=ApiKeyAuth("test-key"),
                     reasoning=ReasoningOptions(effort="high", expose_summary=True),
                 ),
             )
@@ -1112,7 +1111,7 @@ def test_openai_responses_payload_maps_tool_result_images_and_bridge(
                         UserMessage(role="user", content="next", timestamp=0.0),
                     ]
                 },
-                CallOptions(api_key="test-key"),
+                CallOptions(auth=ApiKeyAuth("test-key")),
             )
         )
     )
@@ -1148,7 +1147,10 @@ def test_openai_responses_provider_adds_github_copilot_dynamic_headers(
     _patch_resolved_request(
         monkeypatch,
         base_url="https://api.githubcopilot.test/v1",
-        extra_headers={"Editor-Version": "vscode/1.100.0"},
+        extra_headers={
+            "Editor-Version": "vscode/1.100.0",
+            "x-initiator": "caller",
+        },
         transport=EndpointTransport(kind="github-copilot"),
     )
     provider = OpenAIResponsesProvider()
@@ -1210,17 +1212,17 @@ def test_openai_responses_provider_adds_github_copilot_dynamic_headers(
                         ),
                     ]
                 },
-                CallOptions(api_key="test-key"),
+                CallOptions(auth=ApiKeyAuth("test-key")),
             )
         )
     )
 
-    assert _FakeAsyncOpenAI.last_init_kwargs["default_headers"] == {
-        "Editor-Version": "vscode/1.100.0",
-        "X-Initiator": "agent",
-        "Openai-Intent": "conversation-edits",
-        "Copilot-Vision-Request": "true",
-    }
+    headers = _FakeAsyncOpenAI.last_create_kwargs["extra_headers"]
+    assert headers["Editor-Version"] == "vscode/1.100.0"
+    assert headers["X-Initiator"] == "agent"
+    assert "x-initiator" not in headers
+    assert headers["Openai-Intent"] == "conversation-edits"
+    assert headers["Copilot-Vision-Request"] == "true"
 
 
 def test_openai_responses_stream_applies_priority_service_tier_cost_multiplier(
@@ -1260,7 +1262,7 @@ def test_openai_responses_stream_applies_priority_service_tier_cost_multiplier(
                 pricing=Pricing(input=1.5, output=6.0, cache_read=0.3, cache_write=3.0),
             ),
             {"messages": [UserMessage(role="user", content="hello", timestamp=0.0)]},
-            CallOptions(api_key="test-key"),
+            CallOptions(auth=ApiKeyAuth("test-key")),
         )
     )
     events = asyncio.run(_collect_stream_events(stream))
@@ -1325,7 +1327,7 @@ def test_openai_responses_stream_retains_thinking_signature_on_final_message(
             _Model(),
             {"messages": [UserMessage(role="user", content="hello", timestamp=0.0)]},
             CallOptions(
-                api_key="test-key",
+                auth=ApiKeyAuth("test-key"),
                 reasoning=ReasoningOptions(effort="high"),
             ),
         )
@@ -1497,7 +1499,7 @@ def test_openai_responses_stream_joins_multiple_reasoning_summary_parts(
             _Model(),
             {"messages": [UserMessage(role="user", content="hello", timestamp=0.0)]},
             CallOptions(
-                api_key="test-key",
+                auth=ApiKeyAuth("test-key"),
                 reasoning=ReasoningOptions(effort="high"),
             ),
         )
@@ -1563,7 +1565,7 @@ def test_openai_responses_stream_retains_text_signature_on_final_message(
             provider,
             _Model(),
             {"messages": [UserMessage(role="user", content="hello", timestamp=0.0)]},
-            CallOptions(api_key="test-key"),
+            CallOptions(auth=ApiKeyAuth("test-key")),
         )
     )
     events = asyncio.run(_collect_stream_events(stream))
@@ -1651,7 +1653,60 @@ def _fake_openai_module(
     ]
     module = ModuleType("openai")
     module.AsyncOpenAI = _FakeAsyncOpenAI
+    module.Omit = _FakeOmit
     monkeypatch.setitem(sys.modules, "openai", module)
+
+
+@pytest.mark.parametrize(
+    ("auth", "expected_header", "expected_value"),
+    [
+        (
+            HeadersAuth({"AUTHORIZATION": "Token opaque"}),
+            "Authorization",
+            "Token opaque",
+        ),
+        (
+            ApiKeyAuth("opaque", header="X-Custom-Auth", prefix="Token "),
+            "X-Custom-Auth",
+            "Token opaque",
+        ),
+        (NoAuth(), None, None),
+    ],
+)
+def test_openai_responses_forwards_authoritative_auth_headers(
+    monkeypatch: pytest.MonkeyPatch,
+    auth,
+    expected_header: str | None,
+    expected_value: str | None,
+) -> None:
+    _fake_openai_module(monkeypatch)
+
+    asyncio.run(
+        _collect_parts(
+            _invoke_raw_parts(
+                OpenAIResponsesProvider(),
+                _Model(),
+                {
+                    "messages": [
+                        UserMessage(role="user", content="hello", timestamp=0.0)
+                    ]
+                },
+                CallOptions(auth=auth),
+            )
+        )
+    )
+
+    headers = _FakeAsyncOpenAI.last_create_kwargs["extra_headers"]
+    assert _FakeAsyncOpenAI.last_init_kwargs["api_key"] == ""
+    if expected_header is None:
+        assert isinstance(headers["Authorization"], _FakeOmit)
+        assert isinstance(headers["X-Api-Key"], _FakeOmit)
+    else:
+        assert headers[expected_header] == expected_value
+
+
+class _FakeOmit:
+    pass
 
 
 def _patch_resolved_request(
@@ -1669,14 +1724,11 @@ def _patch_resolved_request(
     def _resolve(_model, *, context=None, options=None, request=None):
         del context, request
         headers = {}
-        api_key = getattr(options, "api_key", None) if options is not None else None
-        if isinstance(api_key, str):
-            headers["Authorization"] = f"Bearer {api_key}"
-        option_headers = (
-            getattr(options, "headers", None) if options is not None else None
-        )
-        if option_headers:
-            headers.update(dict(option_headers))
+        option_auth = getattr(options, "auth", None) if options is not None else None
+        if isinstance(option_auth, ApiKeyAuth):
+            headers["Authorization"] = f"Bearer {option_auth.value}"
+        elif isinstance(option_auth, HeadersAuth):
+            headers.update(dict(option_auth.headers))
         if extra_headers:
             headers.update(extra_headers)
         option_max_tokens = (

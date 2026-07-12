@@ -56,7 +56,7 @@ def test_error_info_serializes_stable_shape_and_redacts_secrets() -> None:
             "hint": "Set MOONSHOT_API_KEY.",
             "Authorization": "[redacted]",
             "headers": {
-                "x-request-id": "req_123",
+                "x-request-id": "[redacted]",
                 "api_key": "[redacted]",
                 "chatgpt-account-id": "[redacted]",
             },

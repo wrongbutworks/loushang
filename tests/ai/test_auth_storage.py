@@ -4,7 +4,7 @@ import json
 import os
 import stat
 
-from loushang.auth.storage import CredentialStore
+from loushang.ai.auth.storage import CredentialStore
 
 
 def test_credential_store_hardens_existing_file_on_read(tmp_path) -> None:

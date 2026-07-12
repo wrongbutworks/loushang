@@ -79,8 +79,6 @@ The root API consumes a single core options type:
 CallOptions(
     cancellation=None,
     auth=None,
-    api_key=None,
-    headers={},
     cache_retention=None,
     cache_key=None,
     max_output_tokens=None,
@@ -95,12 +93,10 @@ CallOptions(
 )
 ```
 
-`auth` 是 request-level typed credential；API key 也可使用明确的 `api_key` convenience
-字段。OAuth 调用使用 `OAuthBearerAuth(valid_access_token)`，provider-derived supplemental
-headers 使用 `CallOptions.headers`。完整 `loushang.auth.OAuthCredentials`、refresh、expiry、
-credential storage 和 account selection 不进入 `loushang.ai`。
-`HeadersAuth` 只用于调用方已经持有完整最终 header 集的显式 override；它不与
-`CallOptions.headers` 叠加，也不继承 catalog auth headers。
+`auth` 是唯一的 request-level 认证入口。API key 使用 `ApiKeyAuth`，OAuth access token
+使用 `OAuthBearerAuth`；需要多个 provider-specific headers 时使用 `HeadersAuth` 提供完整
+最终 header 集。完整 `OAuthCredentials`、refresh、expiry 和 credential storage 不进入
+`ProviderRequest`，也不会由模型调用隐式执行。
 Provider-specific option classes do not enter the root public surface.
 
 `cache_key` is an opaque caller-provided cache/affinity key. Protocol adapters

@@ -75,6 +75,20 @@ def test_default_api_key_auth_reads_first_configured_env() -> None:
     assert view.headers == {"Authorization": "Bearer env-secret"}
 
 
+def test_default_api_key_auth_prefers_primary_env_before_fallbacks() -> None:
+    view = resolve_auth_for_model(
+        _model(
+            Auth(
+                api_key_env="PRIMARY_KEY",
+                api_key_envs=("FALLBACK_KEY",),
+            )
+        ),
+        env={"PRIMARY_KEY": "primary", "FALLBACK_KEY": "fallback"},
+    )
+
+    assert view.headers == {"Authorization": "Bearer primary"}
+
+
 def test_default_api_key_auth_uses_header_prefix_and_extra_headers() -> None:
     view = resolve_auth_for_model(
         _model(
@@ -114,6 +128,29 @@ def test_default_api_key_auth_rejects_catalog_primary_header_override() -> None:
     assert "override-secret" not in str(exc_info.value.to_dict())
 
 
+@pytest.mark.parametrize(
+    "extra_headers",
+    [
+        {"Bad Header": "value"},
+        {"X-Extra": "value\r\nX-Evil: yes"},
+        {"X-Extra": "one", "x-extra": "two"},
+    ],
+)
+def test_catalog_extra_header_validation_uses_configuration_errors(
+    extra_headers: dict[str, str],
+) -> None:
+    with pytest.raises(InvalidAuthConfigError):
+        resolve_auth_for_model(
+            _model(
+                Auth(
+                    api_key_env="DEMO_API_KEY",
+                    extra_headers=extra_headers,
+                )
+            ),
+            env={"DEMO_API_KEY": "secret"},
+        )
+
+
 def test_default_api_key_auth_missing_env_raises_missing_auth() -> None:
     with pytest.raises(MissingAuthError) as exc_info:
         resolve_auth_for_model(
@@ -124,18 +161,31 @@ def test_default_api_key_auth_missing_env_raises_missing_auth() -> None:
     assert exc_info.value.to_dict()["details"] == {"expected_env": ["DEMO_API_KEY"]}
 
 
+def test_default_api_key_auth_rejects_injected_environment_secret() -> None:
+    with pytest.raises(AuthResolutionError, match="CR or LF"):
+        resolve_auth_for_model(
+            _model(Auth(api_key_env="DEMO_API_KEY")),
+            env={"DEMO_API_KEY": "secret\r\nX-Evil: yes"},
+        )
+
+
+def test_explicit_empty_header_name_does_not_fall_back() -> None:
+    with pytest.raises(AuthResolutionError, match="invalid HTTP header name"):
+        resolve_auth_for_model(
+            _model(Auth()),
+            options=CallOptions(auth=ApiKeyAuth("secret", header="")),
+        )
+
+
 def test_default_oauth_auth_requires_explicit_credentials() -> None:
     with pytest.raises(MissingAuthError, match="OAuthBearerAuth"):
         resolve_auth_for_model(_model(Auth(kind="oauth")))
 
 
-def test_default_none_auth_merges_only_non_auth_headers() -> None:
-    view = resolve_auth_for_model(
-        _model(Auth(kind="none")),
-        options=CallOptions(headers={"X-Trace": "trace"}),
-    )
+def test_default_none_auth_returns_no_headers() -> None:
+    view = resolve_auth_for_model(_model(Auth(kind="none")))
 
-    assert view.headers == {"X-Trace": "trace"}
+    assert view.headers == {}
 
 
 def test_missing_auth_config_raises_when_no_explicit_auth() -> None:
@@ -143,7 +193,7 @@ def test_missing_auth_config_raises_when_no_explicit_auth() -> None:
         resolve_auth_for_model(_model(None))
 
 
-def test_explicit_api_key_uses_catalog_header_and_merges_extra_headers() -> None:
+def test_explicit_api_key_uses_catalog_header_and_extra_headers() -> None:
     view = resolve_auth_for_model(
         _model(
             Auth(
@@ -152,31 +202,53 @@ def test_explicit_api_key_uses_catalog_header_and_merges_extra_headers() -> None
                 extra_headers={"X-Catalog": "catalog"},
             )
         ),
-        options=CallOptions(
-            api_key="explicit-secret",
-            headers={"X-Trace": "trace"},
-        ),
+        options=CallOptions(auth=ApiKeyAuth("explicit-secret")),
     )
 
     assert view.headers == {
         "X-API-Key": "Token explicit-secret",
         "X-Catalog": "catalog",
-        "X-Trace": "trace",
     }
 
 
-def test_typed_api_key_uses_catalog_header_and_caller_headers() -> None:
+def test_explicit_auth_extra_headers_use_the_injected_environment(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("DEMO_EXTRA", "from-process")
+
+    view = resolve_auth_for_model(
+        _model(Auth(extra_headers={"X-Extra": "${DEMO_EXTRA}"})),
+        options=CallOptions(auth=ApiKeyAuth("explicit-secret")),
+        env={"DEMO_EXTRA": "from-injected"},
+    )
+
+    assert view.headers == {
+        "Authorization": "Bearer explicit-secret",
+        "X-Extra": "from-injected",
+    }
+
+
+def test_explicit_auth_does_not_fall_back_to_process_environment(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("DEMO_EXTRA", "from-process")
+
+    with pytest.raises(InvalidAuthConfigError, match="missing environment"):
+        resolve_auth_for_model(
+            _model(Auth(extra_headers={"X-Extra": "${DEMO_EXTRA}"})),
+            options=CallOptions(auth=ApiKeyAuth("explicit-secret")),
+            env={},
+        )
+
+
+def test_typed_api_key_uses_catalog_header() -> None:
     view = resolve_auth_for_model(
         _model(Auth(header="X-API-Key", prefix="Token ")),
-        options=CallOptions(
-            auth=ApiKeyAuth("typed-secret"),
-            headers={"X-Trace": "trace"},
-        ),
+        options=CallOptions(auth=ApiKeyAuth("typed-secret")),
     )
 
     assert view.headers == {
         "X-API-Key": "Token typed-secret",
-        "X-Trace": "trace",
     }
 
 
@@ -184,23 +256,20 @@ def test_typed_api_key_uses_catalog_header_and_caller_headers() -> None:
     ("kind", "normalized_kind"),
     [("oauth", "oauth"), ("none", "none"), ("custom", "custom")],
 )
-def test_explicit_api_key_requires_api_key_declaration(
+def test_explicit_api_key_overrides_catalog_kind(
     kind: str,
     normalized_kind: str,
 ) -> None:
-    with pytest.raises(AuthResolutionError, match="cannot satisfy") as exc_info:
-        resolve_auth_for_model(
-            _model(Auth(kind=kind)),
-            options=CallOptions(api_key="explicit-secret"),
-        )
+    view = resolve_auth_for_model(
+        _model(Auth(kind=kind)),
+        options=CallOptions(auth=ApiKeyAuth("explicit-secret")),
+    )
 
-    assert exc_info.value.to_dict()["details"] == {
-        "auth_kind": normalized_kind,
-        "provided_kind": "api_key",
-    }
+    assert normalized_kind
+    assert view.headers == {"Authorization": "Bearer explicit-secret"}
 
 
-def test_explicit_oauth_uses_catalog_header_and_merges_caller_headers() -> None:
+def test_explicit_oauth_uses_catalog_header_and_extra_headers() -> None:
     view = resolve_auth_for_model(
         _model(
             Auth(
@@ -210,20 +279,12 @@ def test_explicit_oauth_uses_catalog_header_and_merges_caller_headers() -> None:
                 extra_headers={"originator": "loushang"},
             )
         ),
-        options=CallOptions(
-            auth=OAuthBearerAuth("oauth-token"),
-            headers={
-                "chatgpt-account-id": "account-1",
-                "X-Trace": "trace",
-            },
-        ),
+        options=CallOptions(auth=OAuthBearerAuth("oauth-token")),
     )
 
     assert view.headers == {
         "X-OAuth": "Bearer oauth-token",
         "originator": "loushang",
-        "chatgpt-account-id": "account-1",
-        "X-Trace": "trace",
     }
 
 
@@ -247,8 +308,14 @@ def test_chatgpt_route_combines_bearer_catalog_and_account_headers() -> None:
     view = resolve_auth_for_model(
         model,
         options=CallOptions(
-            auth=OAuthBearerAuth("chatgpt-token"),
-            headers={"chatgpt-account-id": "account-1"},
+            auth=HeadersAuth(
+                {
+                    "Authorization": "Bearer chatgpt-token",
+                    "originator": "loushang",
+                    "OpenAI-Beta": "responses=experimental",
+                    "chatgpt-account-id": "account-1",
+                }
+            )
         ),
     )
 
@@ -258,17 +325,6 @@ def test_chatgpt_route_combines_bearer_catalog_and_account_headers() -> None:
         "OpenAI-Beta": "responses=experimental",
         "chatgpt-account-id": "account-1",
     }
-
-
-def test_headers_auth_is_authoritative_and_cannot_add_supplemental_headers() -> None:
-    with pytest.raises(AuthResolutionError, match="cannot be combined"):
-        resolve_auth_for_model(
-            _model(Auth(kind="oauth")),
-            options=CallOptions(
-                auth=HeadersAuth({"Authorization": "Bearer token"}),
-                headers={"X-Trace": "trace"},
-            ),
-        )
 
 
 def test_headers_auth_is_an_authoritative_override() -> None:
@@ -295,6 +351,85 @@ def test_headers_auth_rejects_case_insensitive_duplicates() -> None:
         )
 
 
+def test_headers_auth_rejects_empty_headers() -> None:
+    with pytest.raises(AuthResolutionError, match="use NoAuth"):
+        resolve_auth_for_model(
+            _model(Auth(kind="oauth")),
+            options=CallOptions(auth=HeadersAuth({})),
+        )
+
+
+@pytest.mark.parametrize(
+    "auth",
+    [ApiKeyAuth("secret\r\ninjected"), OAuthBearerAuth("secret\nvalue")],
+)
+def test_explicit_secret_rejects_header_injection(auth) -> None:
+    with pytest.raises(AuthResolutionError, match="CR or LF"):
+        resolve_auth_for_model(_model(Auth()), options=CallOptions(auth=auth))
+
+
+@pytest.mark.parametrize(
+    "auth",
+    [
+        ApiKeyAuth("secret", header=123),  # type: ignore[arg-type]
+        ApiKeyAuth("secret", prefix=123),  # type: ignore[arg-type]
+        OAuthBearerAuth("secret", header=123),  # type: ignore[arg-type]
+        OAuthBearerAuth("secret", prefix=123),  # type: ignore[arg-type]
+    ],
+)
+def test_explicit_auth_rejects_non_string_header_and_prefix(auth) -> None:
+    with pytest.raises(AuthResolutionError):
+        resolve_auth_for_model(_model(Auth()), options=CallOptions(auth=auth))
+
+
+@pytest.mark.parametrize(
+    "headers",
+    [
+        {"Bad Header": "value"},
+        {"Authorization:": "value"},
+        {"Authorization": "Bearer secret\r\nX-Evil: yes"},
+    ],
+)
+def test_headers_auth_rejects_invalid_http_headers(headers) -> None:
+    with pytest.raises(AuthResolutionError):
+        resolve_auth_for_model(
+            _model(Auth(kind="oauth")),
+            options=CallOptions(auth=HeadersAuth(headers)),
+        )
+
+
+def test_missing_extra_header_environment_reference_fails_fast() -> None:
+    with pytest.raises(InvalidAuthConfigError) as exc_info:
+        resolve_auth_for_model(
+            _model(
+                Auth(
+                    api_key_env="DEMO_API_KEY",
+                    extra_headers={"X-Required": "${MISSING_HEADER}"},
+                )
+            ),
+            env={"DEMO_API_KEY": "secret"},
+        )
+
+    assert exc_info.value.to_dict()["details"] == {
+        "expected_env": "MISSING_HEADER",
+        "header": "X-Required",
+    }
+
+
+def test_headers_auth_and_auth_view_defensively_copy_input() -> None:
+    source = {"Authorization": "Bearer original"}
+    auth = HeadersAuth(source)
+    source["Authorization"] = "Bearer mutated"
+
+    view = resolve_auth_for_model(
+        _model(Auth(kind="oauth")), options=CallOptions(auth=auth)
+    )
+
+    assert view.headers == {"Authorization": "Bearer original"}
+    assert "original" not in repr(auth)
+    assert "original" not in repr(view)
+
+
 def test_no_auth_explicitly_overrides_catalog_auth() -> None:
     from loushang.ai import NoAuth
 
@@ -310,20 +445,17 @@ def test_no_auth_explicitly_overrides_catalog_auth() -> None:
     ("kind", "normalized_kind"),
     [("apiKey", "api_key"), ("none", "none"), ("custom", "custom")],
 )
-def test_explicit_oauth_requires_oauth_declaration(
+def test_explicit_oauth_overrides_catalog_kind(
     kind: str,
     normalized_kind: str,
 ) -> None:
-    with pytest.raises(AuthResolutionError, match="cannot satisfy") as exc_info:
-        resolve_auth_for_model(
-            _model(Auth(kind=kind)),
-            options=CallOptions(auth=OAuthBearerAuth("oauth-token")),
-        )
+    view = resolve_auth_for_model(
+        _model(Auth(kind=kind)),
+        options=CallOptions(auth=OAuthBearerAuth("oauth-token")),
+    )
 
-    assert exc_info.value.to_dict()["details"] == {
-        "auth_kind": normalized_kind,
-        "provided_kind": "oauth",
-    }
+    assert normalized_kind
+    assert view.headers == {"Authorization": "Bearer oauth-token"}
 
 
 def test_explicit_oauth_is_allowed_without_declaration_for_direct_model() -> None:
@@ -338,57 +470,21 @@ def test_explicit_oauth_is_allowed_without_declaration_for_direct_model() -> Non
 def test_explicit_api_key_is_allowed_without_declaration_for_direct_model() -> None:
     view = resolve_auth_for_model(
         _model(None),
-        options=CallOptions(api_key="explicit-secret"),
+        options=CallOptions(auth=ApiKeyAuth("explicit-secret")),
     )
 
     assert view.headers == {"Authorization": "Bearer explicit-secret"}
-
-
-@pytest.mark.parametrize(
-    ("options", "auth", "conflicting_header", "source"),
-    [
-        (
-            CallOptions(api_key="secret", headers={"authorization": "override"}),
-            Auth(),
-            "authorization",
-            "CallOptions.headers",
-        ),
-        (
-            CallOptions(
-                auth=OAuthBearerAuth("oauth-token"),
-                headers={"AUTHORIZATION": "override"},
-            ),
-            Auth(kind="oauth"),
-            "AUTHORIZATION",
-            "CallOptions.headers",
-        ),
-    ],
-)
-def test_caller_headers_cannot_override_primary_auth_header(
-    options: CallOptions,
-    auth: Auth,
-    conflicting_header: str,
-    source: str,
-) -> None:
-    with pytest.raises(InvalidAuthConfigError) as exc_info:
-        resolve_auth_for_model(_model(auth), options=options)
-
-    assert exc_info.value.to_dict()["details"] == {
-        "conflicting_header": conflicting_header,
-        "primary_header": "Authorization",
-        "source": source,
-    }
 
 
 def test_resolver_does_not_use_env_or_stored_oauth_lookup(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     monkeypatch.setattr(
-        "loushang.auth.env.get_env_oauth_credentials",
+        "loushang.ai.auth.env.get_env_oauth_credentials",
         lambda *args, **kwargs: pytest.fail("env oauth lookup must not run"),
     )
     monkeypatch.setattr(
-        "loushang.auth.storage.load_credential_store",
+        "loushang.ai.auth.storage.load_credential_store",
         lambda *args, **kwargs: pytest.fail("stored oauth lookup must not run"),
     )
 
@@ -404,7 +500,7 @@ def test_auth_resolution_uses_model_effective_auth_without_registry_lookup() -> 
         auth=Auth(header="X-API-Key", prefix="", api_key_env="DEMO_API_KEY"),
     )
 
-    view = resolve_auth_for_model(model, options=CallOptions(api_key="secret"))
+    view = resolve_auth_for_model(model, options=CallOptions(auth=ApiKeyAuth("secret")))
 
     assert view.headers == {"X-API-Key": "secret"}
 
@@ -428,7 +524,7 @@ def test_loaded_model_holds_effective_provider_endpoint_auth() -> None:
     )
     model = registry.get_model("demo", "responses", "ad-hoc")
 
-    view = resolve_auth_for_model(model, options=CallOptions(api_key="secret"))
+    view = resolve_auth_for_model(model, options=CallOptions(auth=ApiKeyAuth("secret")))
 
     assert view.headers == {
         "X-Provider": "Token secret",

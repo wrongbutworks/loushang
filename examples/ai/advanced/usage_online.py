@@ -33,6 +33,7 @@ from loushang.ai import (
     get_model,
     stream,
 )
+from loushang.ai.auth import ApiKeyAuth
 from loushang.ai.pricing import calculate_cost
 from loushang.ai.types import AssistantMessage, Usage
 
@@ -136,8 +137,7 @@ def _build_options(
     route: Route, *, api_key: str, max_tokens: int, timeout: float
 ) -> CallOptions:
     del route
-    return CallOptions(
-        api_key=api_key,
+    return CallOptions(auth=ApiKeyAuth(api_key),
         max_output_tokens=max_tokens,
         timeout=TimeoutOptions(total_seconds=timeout),
     )

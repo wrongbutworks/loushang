@@ -8,7 +8,7 @@ import pytest
 
 import loushang.ai as ai
 import loushang.ai.options as options_module
-from loushang.ai import ApiKeyAuth, OAuthBearerAuth
+from loushang.ai import ApiKeyAuth, HeadersAuth, OAuthBearerAuth
 from loushang.ai import CallOptions as PublicCallOptions
 from loushang.ai.advanced.registry import ApiProviderRegistry
 from loushang.ai.options import (
@@ -54,10 +54,10 @@ def test_call_options_is_the_single_public_call_contract() -> None:
         assert name not in options_module.__all__
         assert not hasattr(options_module, name)
 
-    options = CallOptions(api_key="key")
+    options = CallOptions(auth=ApiKeyAuth("key"))
 
     assert isinstance(options, CallOptions)
-    assert options.api_key == "key"
+    assert options.auth == ApiKeyAuth("key")
 
 
 def test_call_options_fields_are_canonical_and_consumed() -> None:
@@ -66,8 +66,6 @@ def test_call_options_fields_are_canonical_and_consumed() -> None:
     assert field_names == {
         "cancellation",
         "auth",
-        "api_key",
-        "headers",
         "cache_retention",
         "cache_key",
         "max_output_tokens",
@@ -94,31 +92,19 @@ def test_call_options_fields_are_canonical_and_consumed() -> None:
         "text_verbosity",
     }.isdisjoint(field_names)
 
-    options = CallOptions(
-        auth=OAuthBearerAuth("oauth-token"),
-        headers={"x-trace": "1"},
-    )
+    options = CallOptions(auth=OAuthBearerAuth("oauth-token"))
 
     assert options.auth == OAuthBearerAuth("oauth-token")
-    assert options.headers == {"x-trace": "1"}
+    assert "api_key" not in field_names
+    assert "headers" not in field_names
     assert "oauth_credentials" not in field_names
 
 
-def test_call_options_rejects_ambiguous_or_invalid_credentials() -> None:
-    with pytest.raises(ValueError, match="cannot be combined"):
-        CallOptions(api_key="api-key", auth=OAuthBearerAuth("oauth-token"))
-    with pytest.raises(TypeError, match="api_key"):
-        CallOptions(api_key=123)  # type: ignore[arg-type]
-    with pytest.raises(ValueError, match="api_key"):
-        CallOptions(api_key="  ")
-    with pytest.raises(TypeError, match="headers"):
-        CallOptions(headers={"x-trace": 1})  # type: ignore[dict-item]
+def test_call_options_rejects_invalid_non_auth_fields() -> None:
     with pytest.raises(TypeError, match="cache_key"):
         CallOptions(cache_key=123)  # type: ignore[arg-type]
     with pytest.raises(ValueError, match="cache_key"):
         CallOptions(cache_key="   ")
-    with pytest.raises(ValueError, match="cannot be combined"):
-        CallOptions(auth=ApiKeyAuth("typed"), api_key="direct")
 
 
 def test_call_options_retains_typed_auth() -> None:
@@ -131,8 +117,9 @@ def test_call_options_retains_typed_auth() -> None:
 
 def test_call_options_repr_does_not_expose_secrets_or_headers() -> None:
     options = CallOptions(
-        api_key="api-secret",
-        headers={"x-provider-token": "header-secret"},
+        auth=HeadersAuth(
+            {"Authorization": "Bearer api-secret", "x-provider-token": "header-secret"}
+        )
     )
 
     rendered = repr(options)

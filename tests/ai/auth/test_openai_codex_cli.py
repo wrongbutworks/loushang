@@ -5,8 +5,8 @@ import json
 
 import pytest
 
-import loushang.auth as auth
-from loushang.auth.providers.openai_codex import (
+import loushang.ai.auth as auth
+from loushang.ai.auth.providers.openai_codex import (
     get_codex_cli_oauth_credentials,
     load_codex_cli_auth,
 )
@@ -26,7 +26,7 @@ def test_get_codex_cli_oauth_credentials_reads_chatgpt_auth_payload(
 ) -> None:
     access_token = _build_fake_jwt(expires_at=2_000_000_000.0)
     monkeypatch.setattr(
-        "loushang.auth.providers.openai_codex.load_codex_cli_auth",
+        "loushang.ai.auth.providers.openai_codex.load_codex_cli_auth",
         lambda: {
             "auth_mode": "chatgpt",
             "tokens": {
@@ -58,7 +58,7 @@ def test_get_codex_cli_oauth_credentials_ignores_non_chatgpt_auth_mode(
     monkeypatch,
 ) -> None:
     monkeypatch.setattr(
-        "loushang.auth.providers.openai_codex.load_codex_cli_auth",
+        "loushang.ai.auth.providers.openai_codex.load_codex_cli_auth",
         lambda: {
             "auth_mode": "apiKey",
             "OPENAI_API_KEY": "sk-test",
@@ -75,7 +75,7 @@ def test_get_codex_cli_oauth_credentials_preserves_unknown_expiry(
     expires_at: object,
 ) -> None:
     monkeypatch.setattr(
-        "loushang.auth.providers.openai_codex.load_codex_cli_auth",
+        "loushang.ai.auth.providers.openai_codex.load_codex_cli_auth",
         lambda: {
             "auth_mode": "chatgpt",
             "tokens": {
@@ -98,7 +98,7 @@ def test_load_codex_cli_auth_preserves_default_discovery_error_contract(
     auth_path = tmp_path / "auth.json"
     auth_path.write_text("{", encoding="utf-8")
     monkeypatch.setattr(
-        "loushang.auth.providers.openai_codex._codex_cli_auth_path",
+        "loushang.ai.auth.providers.openai_codex._codex_cli_auth_path",
         lambda: str(auth_path),
     )
 

@@ -6,7 +6,7 @@ import asyncio
 import os
 import sys
 
-from loushang.ai import CallOptions, Model
+from loushang.ai import ApiKeyAuth, CallOptions, Model
 from loushang.ai.context import normalize_context
 from loushang.ai.provider import ProviderRequest
 from loushang.ai.providers.openai_completions import OpenAICompletionsProvider
@@ -41,7 +41,7 @@ async def _main() -> None:
             {"role": "user", "content": "你好，我叫李雷，1+1等于多少？"},
         ]
     }
-    options = CallOptions(api_key=api_key, max_tokens=128)
+    options = CallOptions(auth=ApiKeyAuth(api_key), max_output_tokens=128)
     request = ProviderRequest(
         provider="moonshot",
         endpoint="openai-completions",

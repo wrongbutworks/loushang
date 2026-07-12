@@ -5,7 +5,7 @@ from dataclasses import dataclass, field
 from enum import Enum
 from typing import Self
 
-from loushang.ai.utils.redaction import is_sensitive_key
+from loushang.ai.utils.redaction import is_header_container_key, is_sensitive_key
 from loushang.observability.problem import (
     JSONValue,
     ensure_json_safe_mapping,
@@ -234,6 +234,8 @@ def ai_error_info_from_mapping(raw: Mapping[str, object]) -> AIErrorInfo:
 
 
 def _redact_json_value(value: JSONValue, *, key: str | None = None) -> JSONValue:
+    if key is not None and is_header_container_key(key) and isinstance(value, dict):
+        return {item_key: _REDACTED for item_key in value}
     if key is not None and is_sensitive_key(key):
         return _REDACTED
     if isinstance(value, dict):

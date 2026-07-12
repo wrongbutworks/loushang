@@ -549,24 +549,22 @@ Stable 最小字段集合确认为：
 
 ### C. 请求级认证
 
-- `loushang.auth.OAuthCredentials`（认证生命周期层，不进入 AI request）
+- `loushang.ai.auth.OAuthCredentials`（认证生命周期层，不进入 AI request）
 - `CallOptions.auth`
-- `CallOptions.headers`
 
 适用场景：
 
-- 将 `CallOptions.auth=OAuthBearerAuth(valid_access_token)` 与认证层派生、通过
-  `CallOptions.headers` 传入的附加认证头解析成 provider request headers
+- 将 `CallOptions.auth` 中的 credential 解析成 provider request headers
 - 未显式传入 OAuth credential 时，根据 `models.json.auth` 做 API key env fallback 或 OAuth missing-auth 诊断
 - 对 provider request auth header 做统一构造与脱敏配合
 
 说明：
 
-- 新调用使用明确的 `api_key`，或 typed `auth` 配合 supplemental `headers`
-- `HeadersAuth` 是完整、显式的 header override，不再叠加 `CallOptions.headers`，也不继承
-  catalog auth headers；普通 OAuth 路径应使用 `OAuthBearerAuth + headers`
-- `loushang.ai` 不拥有 OAuth login、refresh、credential store、provider registry 或 env-oauth
-- `OAuthCredentials.refresh_token`、expiry 和 provider metadata 只由 `loushang.auth`
+- `CallOptions.auth` 是唯一 request-level 认证入口
+- `HeadersAuth` 是完整、显式的 header override，不继承 catalog auth headers
+- OAuth login、refresh、credential store 和 provider registry 统一归属
+  `loushang.ai.auth`，但不进入模型调用的隐式执行路径
+- `OAuthCredentials.refresh_token`、expiry 和 provider metadata 只由 `loushang.ai.auth`
   消费；AI request 不持有完整 credential DTO
 
 ### D. 事件流组装基础设施
@@ -658,7 +656,7 @@ Stable 最小字段集合确认为：
 - 如 `loushang.ai.auth.*`
 - 如 `loushang.ai.provider.*`
 - 如 `loushang.ai.event_stream.*`
-- OAuth lifecycle 使用顶层 `loushang.auth.*`，不从 `loushang.ai.auth` 导入
+- OAuth lifecycle 使用 `loushang.ai.auth.*`
 
 
 ## 建议的命名空间组织
@@ -674,7 +672,7 @@ Stable 最小字段集合确认为：
 - 请求级认证：
   - `from loushang.ai.auth import ...`
 - OAuth lifecycle：
-  - `from loushang.auth import ...`
+  - `from loushang.ai.auth import ...`
 - 工具协议转换：
   - `from loushang.ai.tool import ...`
 
@@ -726,7 +724,7 @@ Stable 最小字段集合确认为：
 ### 2. 认证 Registry 边界
 
 OAuth provider 增删查列、内置 provider 注册、登录、刷新和 credential store
-属于顶层 `loushang.auth`。`loushang.ai.auth` 不导出这些 lifecycle API，只保留
+属于顶层 `loushang.ai.auth`。`loushang.ai.auth` 不导出这些 lifecycle API，只保留
 request-level credential 与 auth resolution。
 
 ### 3. 明确 `provider` 与 `providers` 的边界说明

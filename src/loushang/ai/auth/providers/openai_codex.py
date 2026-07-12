@@ -12,9 +12,9 @@ from contextlib import suppress
 from typing import Any
 from urllib.parse import parse_qs, urlencode, urlparse
 
-from loushang.auth.browser import CallbackWaiter, open_browser, wait_for_callback_url
-from loushang.auth.registry import OAuthProviderRegistry, get_default_oauth_registry
-from loushang.auth.types import (
+from loushang.ai.auth.browser import CallbackWaiter, open_browser, wait_for_callback_url
+from loushang.ai.auth.registry import OAuthProviderRegistry, get_default_oauth_registry
+from loushang.ai.auth.types import (
     OAuthCredentials,
     OAuthLoginCallbacks,
     OAuthProviderInterface,

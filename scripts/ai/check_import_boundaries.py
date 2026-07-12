@@ -6,12 +6,13 @@ from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 AI_SRC = REPO_ROOT / "src/loushang/ai"
+TOP_LEVEL_AUTH_SRC = REPO_ROOT / "src/loushang/auth"
 TOP_LEVEL_EXAMPLES = REPO_ROOT / "examples/ai"
 DISALLOWED_AI_RUNTIME_IMPORTS = ("loushang.agent", "loushang.coding")
 ALLOWED_TOP_LEVEL_EXAMPLE_IMPORTS = {
     "loushang.ai",
     "loushang.ai.tool",
-    "loushang.auth",
+    "loushang.ai.auth",
 }
 DISALLOWED_CORE_PROVIDER_MODULES = {
     "azure_openai_responses.py",
@@ -35,6 +36,10 @@ def main() -> int:
 
 def check_import_boundaries() -> list[str]:
     offenders: list[str] = []
+    if TOP_LEVEL_AUTH_SRC.exists():
+        offenders.append(
+            "src/loushang/auth must not exist; authentication is owned by loushang.ai.auth"
+        )
     for path in sorted(AI_SRC.rglob("*.py")):
         relative_path = path.relative_to(REPO_ROOT).as_posix()
         tree = ast.parse(path.read_text(encoding="utf-8"), filename=relative_path)

@@ -4,6 +4,7 @@ from dataclasses import dataclass
 
 import pytest
 
+from loushang.ai.auth import ApiKeyAuth, AuthCredential
 from loushang.ai.model import (
     AnthropicMessagesConfig,
     Auth,
@@ -31,7 +32,7 @@ from loushang.ai.provider import (
 
 @dataclass
 class _Options:
-    api_key: str | None = "secret"
+    auth: AuthCredential | None = ApiKeyAuth("secret")
     max_output_tokens: int | None = None
     reasoning_effort: str | None = None
     temperature: float | None = None
@@ -87,6 +88,17 @@ def _request(model: Model, **overrides: object) -> ProviderRequest:
     return ProviderRequest(**values)  # type: ignore[arg-type]
 
 
+def test_provider_request_defensively_copies_and_hides_headers() -> None:
+    model = _model(auth=Auth(kind="none"))
+    headers = {"Authorization": "Bearer original"}
+
+    request = _request(model, headers=headers)
+    headers["Authorization"] = "Bearer mutated"
+
+    assert request.headers == {"Authorization": "Bearer original"}
+    assert "original" not in repr(request)
+
+
 def test_builtin_openai_style_model_resolves_its_bound_facts() -> None:
     model = load_builtin_model_registry().get_model(
         "moonshot", "openai-completions", "kimi-k2.7-code"
@@ -94,7 +106,7 @@ def test_builtin_openai_style_model_resolves_its_bound_facts() -> None:
 
     resolved = resolve_request_for_model(
         model,
-        options=_Options(api_key="moonshot-key"),
+        options=_Options(auth=ApiKeyAuth("moonshot-key")),
     )
 
     assert resolved.model is model
@@ -116,7 +128,7 @@ def test_resolver_accepts_concrete_model_without_incidental_endpoint_metadata() 
 
     resolved = resolve_request_for_model(
         model,
-        options=_Options(api_key="token"),
+        options=_Options(auth=ApiKeyAuth("token")),
         env={"LOUSHANG_REGION": "ignored"},
     )
 
@@ -137,7 +149,7 @@ def test_resolver_accepts_concrete_model_without_incidental_endpoint_metadata() 
 )
 def test_resolver_rejects_unbound_model(model: Model) -> None:
     with pytest.raises(ValueError, match="not bound to a concrete provider endpoint"):
-        resolve_request_for_model(model, options=_Options(api_key="token"))
+        resolve_request_for_model(model, options=_Options(auth=ApiKeyAuth("token")))
 
 
 def test_resolver_rejects_non_model_input() -> None:
@@ -210,7 +222,7 @@ def test_resolver_uses_bound_model_without_registry_reselection() -> None:
 
     resolved_us = resolve_request_for_model(
         selected_us,
-        options=_Options(api_key="token"),
+        options=_Options(auth=ApiKeyAuth("token")),
         env={"LOUSHANG_REGION": "eu"},
     )
 
@@ -232,7 +244,7 @@ def test_resolver_uses_bound_model_without_registry_reselection() -> None:
     selected_eu = registry.get_model("custom", "regional-eu", "m")
     resolved_eu = resolve_request_for_model(
         selected_eu,
-        options=_Options(api_key="token"),
+        options=_Options(auth=ApiKeyAuth("token")),
         env={"LOUSHANG_REGION": "us"},
     )
 
@@ -275,7 +287,7 @@ def test_base_url_env_template_is_expanded_from_bound_model() -> None:
 
     resolved = resolve_request_for_model(
         model,
-        options=_Options(api_key="token"),
+        options=_Options(auth=ApiKeyAuth("token")),
         env={"HOST": "example.test"},
     )
 
@@ -286,7 +298,9 @@ def test_missing_base_url_env_template_fails() -> None:
     model = _model(base_url="https://{HOST}/v1")
 
     with pytest.raises(ValueError, match="Environment variable HOST"):
-        resolve_request_for_model(model, options=_Options(api_key="token"), env={})
+        resolve_request_for_model(
+            model, options=_Options(auth=ApiKeyAuth("token")), env={}
+        )
 
 
 def test_provider_request_rejects_unrelated_base_url() -> None:

@@ -382,7 +382,7 @@ def test_anthropic_provider_sanitizes_unpaired_surrogates_in_payload_text() -> N
                 ],
             }
         ),
-        is_oauth_token=False,
+        uses_oauth_protocol=False,
     )
 
     assert system == [{"type": "text", "text": "system  prompt"}]
@@ -405,6 +405,8 @@ def test_anthropic_provider_sanitizes_unpaired_surrogates_in_payload_text() -> N
             "is_error": False,
         }
     ]
+
+
 def test_openai_responses_tool_result_helper_preserves_images_in_function_output() -> (
     None
 ):

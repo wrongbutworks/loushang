@@ -4,10 +4,10 @@ import asyncio
 
 import pytest
 
-from loushang.auth.facade import register_builtin_oauth_providers
-from loushang.auth.oauth import get_oauth_api_key
-from loushang.auth.registry import get_default_oauth_registry
-from loushang.auth.types import OAuthCredentials
+from loushang.ai.auth.facade import register_builtin_oauth_providers
+from loushang.ai.auth.oauth import get_oauth_api_key
+from loushang.ai.auth.registry import get_default_oauth_registry
+from loushang.ai.auth.types import OAuthCredentials
 
 
 def test_oauth_credentials_repr_redacts_tokens() -> None:
