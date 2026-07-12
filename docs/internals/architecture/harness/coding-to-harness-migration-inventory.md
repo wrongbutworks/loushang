@@ -38,7 +38,8 @@ from `loushang.coding` into `loushang.harness`.
 | `coding.loader.ResourceDiagnostic`, `coding.loader.types.ResourceDiagnostic` | Compatibility shim | The neutral record lives in `loushang.harness.resources.diagnostics`. Coding compatibility paths preserve object identity; diagnostic services, messages, phases, and recording policy remain product-owned. |
 | Remaining `coding.loader.types` | Keep product | Prompt, skill, theme, and extension descriptors, source kinds, snapshots, roots, precedence, and merge decisions remain coding-owned. Generic merge primitives require a separate accepted boundary. |
 | `coding.prompt.types` | Split candidate | Move only neutral prepared-prompt/trace contracts if a second product needs them. Keep templates, preflight, and assembler policy in coding. |
-| `coding.compaction.types`, `coding.session.context_usage` | Split candidate | Move context budget/usage/accounting contracts to `loushang.harness.context`. Keep summarization services, transcript rebuild, and coding compaction policy in coding. |
+| `coding.compaction.policy`, `coding.compaction.types.ContextUsageEstimate` | Compatibility shim | `CompactionBudget`, deterministic threshold accounting, and `ContextUsageEstimate` live in `loushang.harness.context`. Coding compatibility paths re-export the same Harness-owned objects. |
+| Remaining `coding.compaction.types`, `coding.session.context_usage` | Split candidate | Keep message estimation, model adaptation, context usage snapshots, decisions, branch state, summarization, transcript rebuild, and Coding compaction policy in Coding. Context item refs and packing contracts require a later accepted boundary. |
 | `coding.domain.types` | Split candidate | Use as input for future `loushang.harness.adapter` shapes. Generic request/result types must not contain first-class method fields; carry method/work refs as opaque metadata. |
 | `coding.session` | Split candidate | Move only generic host lifecycle records such as idle/abort/dispose/queue snapshot if needed. Keep `AgentSession`, controllers, product event bus, resource watchers, command execution, and transcript behavior in coding. |
 | `coding.event` | Keep product | Coding session event protocol and product projection stay coding. Harness may define separate neutral events later. |
@@ -170,11 +171,23 @@ diagnostic services, and remediation text remain product-owned.
 
 ### Slice 4: Context
 
+Status: context budget and accounting implementation complete for integration
+into `lane/harness`; item refs, bundles, diagnostics, and packing contracts
+remain deferred; see
+[Context Budget And Accounting Boundary](context-budget-accounting-boundary.md).
+
 Purpose: define shared context budget and packing contracts without moving
 coding compaction policy.
 
-Move usage/budget/ref contracts. Keep transcript summarization, branch summaries,
-and product salience rules in coding.
+`CompactionBudget`, deterministic percentage/reserve threshold accounting, and
+the `ContextUsageEstimate` result record now live under
+`loushang.harness.context`. Coding compatibility paths re-export the Harness
+owners, while Coding continues to estimate message tokens, adapt model context
+windows, build usage snapshots, and decide whether to compact.
+
+Context item refs, bundles, diagnostics, and general packing contracts remain
+deferred. Transcript summarization, branch summaries, product salience rules,
+and transcript rebuild semantics remain Coding-owned.
 
 ### Slice 5: Host And Lifecycle
 

@@ -6,12 +6,10 @@ from dataclasses import dataclass, is_dataclass
 from loushang.agent import AgentMessage
 from loushang.ai import CallOptions, Context, complete
 from loushang.ai.types import AssistantMessage, TextPart, ToolResultMessage, UserMessage
-from loushang.coding.compaction.policy import calculate_compaction_budget
 from loushang.coding.compaction.types import (
     CompactionPlan,
     CompactionPreparation,
     CompactionResult,
-    ContextUsageEstimate,
 )
 from loushang.coding.message import (
     BranchSummaryEntry,
@@ -29,6 +27,8 @@ from loushang.coding.message.custom_messages import (
     CustomMessage,
 )
 from loushang.coding.message.transformers import convert_to_llm
+from loushang.harness.context.budget import calculate_compaction_budget
+from loushang.harness.context.usage import ContextUsageEstimate
 
 COMPACTION_SYSTEM_PROMPT = """Summarize the older conversation context for later continuation.
 

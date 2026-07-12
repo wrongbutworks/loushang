@@ -187,6 +187,13 @@ Product adapters own:
 Do not create `loushang.context` now. Use `loushang.harness.context` for shared
 mechanics and keep product memory/context policy inside product packages.
 
+`loushang.harness.context.budget` now owns deterministic percentage/reserve
+threshold accounting and `loushang.harness.context.usage` owns the neutral
+usage-estimate result record. Coding still owns message token estimation,
+model adaptation, usage snapshots, compaction decisions, and all transcript
+policy. Context item refs, bundles, diagnostics, and general packing contracts
+remain deferred.
+
 ## Memory
 
 Harness may later own a narrow memory provider protocol:

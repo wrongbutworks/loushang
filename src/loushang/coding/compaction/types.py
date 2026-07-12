@@ -3,6 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from loushang.agent import AgentMessage
+from loushang.harness.context.usage import ContextUsageEstimate as ContextUsageEstimate
 
 
 @dataclass(frozen=True)
@@ -21,14 +22,6 @@ class CompactionStatus:
     last_result: CompactionResult | None = None
     last_error: str | None = None
     aborted: bool = False
-
-
-@dataclass(frozen=True)
-class ContextUsageEstimate:
-    tokens: int
-    usage_tokens: int
-    trailing_tokens: int
-    last_usage_index: int | None
 
 
 @dataclass(frozen=True)

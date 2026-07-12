@@ -154,6 +154,73 @@ def test_harness_contribution_symbols_are_not_top_level_exports() -> None:
     assert contribution_symbols.isdisjoint(set(harness.__all__))
 
 
+def test_harness_context_symbols_are_not_top_level_exports() -> None:
+    import loushang.harness as harness
+
+    context_symbols = {
+        "CompactionBudget",
+        "ContextUsageEstimate",
+        "calculate_compaction_budget",
+    }
+
+    assert context_symbols.isdisjoint(set(harness.__all__))
+
+
+def test_coding_internal_context_budget_imports_use_harness_owners() -> None:
+    compatibility_paths = {
+        "src/loushang/coding/__init__.py",
+        "src/loushang/coding/compaction/__init__.py",
+        "src/loushang/coding/compaction/policy.py",
+        "src/loushang/coding/compaction/types.py",
+    }
+    legacy_symbols = (
+        "loushang.coding.ContextUsageEstimate",
+        "loushang.coding.compaction.CompactionBudget",
+        "loushang.coding.compaction.ContextUsageEstimate",
+        "loushang.coding.compaction.calculate_compaction_budget",
+        "loushang.coding.compaction.policy.CompactionBudget",
+        "loushang.coding.compaction.policy.calculate_compaction_budget",
+        "loushang.coding.compaction.types.ContextUsageEstimate",
+    )
+    offenders: list[str] = []
+    for path in sorted(Path("src/loushang/coding").rglob("*.py")):
+        if path.as_posix() in compatibility_paths:
+            continue
+        for imported in _absolute_imports(path):
+            if _matches_any(imported, legacy_symbols):
+                offenders.append(f"{path.as_posix()} imports {imported}")
+
+    assert offenders == []
+
+
+def test_harness_context_budget_and_accounting_boundary_is_documented() -> None:
+    design_path = Path(
+        "docs/internals/architecture/harness/context-budget-accounting-boundary.md"
+    )
+    assert design_path.exists()
+    design_text = " ".join(design_path.read_text(encoding="utf-8").split())
+    required_phrases = {
+        "Harness Context Budget And Accounting Boundary",
+        "`loushang.harness.context.budget`",
+        "`loushang.harness.context.usage`",
+        "same Harness-owned objects",
+        "This migration establishes budget and accounting ownership only",
+        "must not import coding, method, work, TUI, AI, agent runtime, provider, or product packages",
+    }
+    assert sorted(phrase for phrase in required_phrases if phrase not in design_text) == []
+
+    readme_text = Path("docs/internals/architecture/harness/README.md").read_text(
+        encoding="utf-8"
+    )
+    assert "Context Budget And Accounting Boundary" in readme_text
+
+    inventory_text = Path(
+        "docs/internals/architecture/harness/coding-to-harness-migration-inventory.md"
+    ).read_text(encoding="utf-8")
+    assert "`loushang.harness.context`" in inventory_text
+    assert "context budget and accounting implementation complete" in inventory_text
+
+
 def test_coding_internal_contribution_imports_use_harness_owner() -> None:
     compatibility_paths = {
         "src/loushang/coding/extensions/__init__.py",
