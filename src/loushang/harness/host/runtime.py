@@ -194,6 +194,8 @@ class HostRuntime(Generic[T]):
         run_id: str | None = None,
         error: str | None = None,
     ) -> None:
+        if not self._events.has_listeners:
+            return
         await self._events.dispatch(
             HostLifecycleEvent(
                 kind=kind,
@@ -209,6 +211,8 @@ class HostRuntime(Generic[T]):
         *,
         run_id: str | None = None,
     ) -> None:
+        if not self._events.has_listeners:
+            return
         event = HostLifecycleEvent(
             kind=kind,
             status=self._status,

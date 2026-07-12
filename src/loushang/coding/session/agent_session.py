@@ -1504,7 +1504,10 @@ class AgentSession:
         normalized_prompt = cast(str | AgentMessage | list[AgentMessage], prompt)
 
         async def operation() -> None:
-            await self.agent.prompt(normalized_prompt, images=images)
+            if images is None:
+                await self.agent.prompt(normalized_prompt)
+            else:
+                await self.agent.prompt(normalized_prompt, images=images)
 
         await self._host_runtime.run(operation)
 

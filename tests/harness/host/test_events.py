@@ -10,10 +10,13 @@ from loushang.harness.host.events import OrderedEventBus
 def test_ordered_event_bus_subscribes_and_unsubscribes() -> None:
     bus: OrderedEventBus[str] = OrderedEventBus()
     seen: list[str] = []
+    assert bus.has_listeners is False
     unsubscribe = bus.subscribe(seen.append)
+    assert bus.has_listeners is True
 
     asyncio.run(bus.dispatch("first"))
     unsubscribe()
+    assert bus.has_listeners is False
     asyncio.run(bus.dispatch("ignored"))
 
     assert seen == ["first"]

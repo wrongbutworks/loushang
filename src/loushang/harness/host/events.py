@@ -20,6 +20,10 @@ class OrderedEventBus(Generic[T]):
         self._event_queue: asyncio.Task[None] | None = None
         self._async_listener_error = async_listener_error
 
+    @property
+    def has_listeners(self) -> bool:
+        return bool(self._listeners)
+
     def subscribe(self, listener: EventListener[T]) -> Callable[[], None]:
         self._listeners.append(listener)
 
