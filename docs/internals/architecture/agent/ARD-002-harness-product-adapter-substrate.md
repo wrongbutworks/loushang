@@ -238,11 +238,17 @@ prove harness remains product-free.
 The current migration inventory is
 [Coding To Harness Migration Inventory](../harness/coding-to-harness-migration-inventory.md).
 
-### Phase 4: Second product validation
+### Phase 4: Independent neutrality validation
 
-When `design`, `research`, `ppt`, or `cowork` begins implementation, validate
-the harness contracts against that second product. If a contract only serves
-coding, move it back or keep it coding-local.
+Do not block product-neutral extraction on a second production consumer.
+Validate each proposed Harness contract through the current Coding adapter and
+an independent contract probe that does not use Coding runtime objects or
+vocabulary. The probe may be a minimal `design`, `research`, `ppt`, or `cowork`
+reference adapter, a product spike, or a product-neutral test fixture.
+
+When a real additional product begins implementation, validate and refine the
+contract again. If the contract requires Coding policy or only serves Coding,
+split it or keep it Coding-local.
 
 ## Consequences
 
@@ -259,8 +265,8 @@ coding, move it back or keep it coding-local.
 - `harness` is no longer only a thin run facade, so documentation and module
   names must make the internal split clear.
 - Removing `loushang.runtime` is a breaking cleanup for any stale importers.
-- Some duplication may remain in coding until a second product validates the
-  shared contract.
+- Independent contract probes add work before a real additional product exists,
+  and some contracts may still need refinement when one arrives.
 
 ## Relationship To ARD-001
 

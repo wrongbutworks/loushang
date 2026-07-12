@@ -91,7 +91,8 @@ Run:
 Replace the transient design-draft assertion with durable Slice 2A status and
 boundary phrases: runtime contribution adapter verification is complete on the
 task branch, resolver diagnostics remain advisory to coding policy, and neutral
-execution context remains gated on a second consumer.
+execution context remains deferred. The later neutrality evidence policy
+replaces the original production-consumer prerequisite.
 
 - [x] **Step 2: Run the architecture test to verify it fails**
 

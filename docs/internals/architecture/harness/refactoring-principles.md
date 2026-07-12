@@ -15,8 +15,8 @@ Harness owns product-neutral mechanisms. Products own policy and semantics.
 
 Put code in harness only when all of these are true:
 
-- it is useful to more than one product line, or is clearly preparing for a
-  second product line already being designed;
+- it is demonstrably product-neutral and useful to planned product lines; a
+  second production consumer is evidence, not a prerequisite;
 - it does not depend on coding, design, research, ppt, cowork, TUI, method,
   work, or AI provider semantics;
 - it describes a contract, helper engine, registry, resolver, lifecycle shape,
@@ -27,6 +27,32 @@ Put code in harness only when all of these are true:
 Keep code out of harness when it decides what a specific product should do,
 which tools should be enabled by default, how a product prompt is assembled,
 how product artifacts are materialized, or how a product UI should behave.
+
+## Neutrality Evidence Gate
+
+A Harness extraction does not require a second production consumer. It may
+proceed before another product ships only when all of the following evidence
+is present:
+
+- a boundary decision names the product-neutral mechanism, the product policy
+  left behind, and explicit non-goals;
+- the Harness API uses product-neutral vocabulary and carries no product
+  imports, product defaults, or product-specific storage and UI semantics;
+- the existing product adapter proves compatibility with current behavior;
+- an independent contract probe exercises the proposed API without Coding
+  runtime objects or Coding vocabulary;
+- focused tests enforce behavioral invariants, dependency direction, and any
+  accepted compatibility identities;
+- the API stays in a focused module and avoids premature top-level exports.
+
+The independent contract probe may be a minimal reference adapter, a planned
+product spike, or a product-neutral test fixture. A renamed Coding fixture is
+not sufficient: the probe must construct and exercise the contract from the
+neutral boundary. When that probe exposes a required product-shaped field or
+policy decision, split the contract again or keep it product-owned.
+
+A later production consumer should validate and refine the contract, but its
+absence is not a migration blocker when this evidence gate is satisfied.
 
 ## Mechanism Versus Policy
 

@@ -589,7 +589,8 @@ def test_harness_slice2_execution_context_design_is_documented() -> None:
     required_phrases = {
         "Slice 2 Execution Context Design",
         "Slice 2A status: implementation complete for `lane/harness`",
-        "Slice 2B status: gated pending a second product consumer",
+        "Slice 2B status: eligible under the neutrality evidence gate; not yet "
+        "implemented",
         "neutral execution context",
         "product execution adapter",
         "runtime dynamic extension registration",
@@ -616,7 +617,24 @@ def test_harness_slice2_execution_context_design_is_documented() -> None:
         assert "Slice 2A" in status_text, status_path
         assert "implementation complete" in status_text, status_path
         assert "Slice 2B" in status_text, status_path
-        assert "gated pending a second product consumer" in status_text, status_path
+        assert "eligible under the neutrality evidence gate" in status_text, status_path
+
+
+def test_harness_neutrality_evidence_gate_is_documented() -> None:
+    path = Path("docs/internals/architecture/harness/refactoring-principles.md")
+    text = " ".join(path.read_text(encoding="utf-8").split())
+    required_phrases = {
+        "Neutrality Evidence Gate",
+        "does not require a second production consumer",
+        "the existing product adapter proves compatibility",
+        "an independent contract probe",
+        "a minimal reference adapter",
+        "a product-neutral test fixture",
+        "A renamed Coding fixture is not sufficient",
+        "product imports, product defaults, or product-specific storage and UI semantics",
+        "its absence is not a migration blocker",
+    }
+    assert sorted(phrase for phrase in required_phrases if phrase not in text) == []
 
 
 def test_frontmatter_consumers_use_harness_owner() -> None:

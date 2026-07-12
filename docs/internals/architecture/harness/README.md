@@ -26,7 +26,8 @@ planning, work event persistence, or AI provider behavior.
   plus deferred runtime and product-adapter work.
 - [Slice 2 Execution Context Design](slice-2-execution-context-design.md)
   records Slice 2A implementation complete for runtime tool contribution
-  adapter verification and Slice 2B gated pending a second product consumer.
+  adapter verification and Slice 2B eligible under the neutrality evidence
+  gate but not yet implemented.
 - [Resource Frontmatter Boundary](resource-frontmatter-boundary.md) defines the
   shared parser owner, legacy compatibility paths, and product-owned resource
   semantics that remain outside harness.

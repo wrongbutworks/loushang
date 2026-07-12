@@ -99,8 +99,8 @@ coding tools / sessions / extensions / policy
 ```
 
 Harness workspace modules must not import coding, TUI, work, method, or AI.
-This move does not introduce a neutral execution context and does not satisfy
-the separate second-product gate for that contract.
+This move does not introduce a neutral execution context and does not by itself
+satisfy the neutrality evidence gate for that contract.
 
 ## Validation
 
