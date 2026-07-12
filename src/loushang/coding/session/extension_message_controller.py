@@ -12,6 +12,7 @@ from loushang.coding.session.queue_controller import QueueController
 from loushang.coding.store import SessionManager
 
 EventDispatcher = Callable[[AgentSessionEvent], Awaitable[None]]
+RunPrompt = Callable[[object, list[ImagePart] | None], Awaitable[None]]
 
 
 @dataclass
@@ -20,6 +21,7 @@ class ExtensionMessageController:
     session_manager: SessionManager
     queue_controller: QueueController
     dispatch_event: EventDispatcher
+    run_prompt: RunPrompt | None = None
 
     async def send_message(self, message: object, options: object | None = None) -> None:
         if not isinstance(message, dict):
@@ -78,13 +80,23 @@ class ExtensionMessageController:
             raise RuntimeError(
                 "Agent is already processing. Specify deliverAs ('steer' or 'followUp') to queue the message."
             )
-        await self.agent.prompt(text, images=images)
+        await self._run_prompt(text, images=images)
 
     def has_pending_messages(self) -> bool:
         return self.queue_controller.has_pending_messages()
 
     async def _send_message_async(self, app_message) -> None:
-        await self.agent.prompt(app_message)
+        await self._run_prompt(app_message)
+
+    async def _run_prompt(
+        self,
+        prompt: object,
+        images: list[ImagePart] | None = None,
+    ) -> None:
+        if self.run_prompt is not None:
+            await self.run_prompt(prompt, images)
+            return
+        await self.agent.prompt(prompt, images=images)  # type: ignore[arg-type]
 
 
 def _normalize_extension_user_message_content(content: object) -> tuple[str, list[ImagePart] | None]:

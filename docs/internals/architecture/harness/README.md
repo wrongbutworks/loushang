@@ -17,7 +17,8 @@ planning, work event persistence, or AI provider behavior.
   into harness and how migration slices should be shaped.
 - [Shared Capability Boundaries](shared-capability-boundaries.md) maps tools,
   approval, renderers, workspace, resources, context, memory, session, and
-  diagnostics across harness and product adapters.
+  diagnostics across harness and product adapters, and records the product
+  kernel that must remain product-owned.
 - [Coding To Harness Migration Inventory](coding-to-harness-migration-inventory.md)
   records how the current `loushang.coding` modules should be classified before
   implementation moves code.
@@ -26,7 +27,8 @@ planning, work event persistence, or AI provider behavior.
   plus deferred runtime and product-adapter work.
 - [Slice 2 Execution Context Design](slice-2-execution-context-design.md)
   records Slice 2A implementation complete for runtime tool contribution
-  adapter verification and Slice 2B gated pending a second product consumer.
+  adapter verification and Slice 2B eligible under the neutrality evidence
+  gate but not yet implemented.
 - [Resource Frontmatter Boundary](resource-frontmatter-boundary.md) defines the
   shared parser owner, legacy compatibility paths, and product-owned resource
   semantics that remain outside harness.
@@ -42,6 +44,9 @@ planning, work event persistence, or AI provider behavior.
 - [Diagnostics Core Boundary](diagnostics-core-boundary.md) defines shared
   diagnostic records, queries, summaries, startup checks, and in-memory engine
   ownership while keeping checks and presentation in product adapters.
+- [Host Runtime Boundary](host-runtime-boundary.md) defines product-neutral host
+  lifecycle, input-queue ledger, and ordered event ownership while preserving
+  Agent loop and product session responsibilities.
 - [Workspace Execution Boundary](workspace-execution-boundary.md) defines
   harness-owned truncation, exec records, backend protocols, process execution,
   and coding compatibility ownership.

@@ -127,10 +127,12 @@ to expose product host contracts. If a harness protocol needs to carry a work
 run id, method id, or artifact id, it should use opaque identifiers or
 protocol-shaped metadata instead of depending on those packages.
 
-### 6. Define migration pressure by second use, not by extraction alone
+### 6. Define migration pressure by neutrality evidence, not consumer count
 
-Code should move from `loushang.coding` into `loushang.harness` only when it is
-product-neutral and likely to be used by at least one non-coding product line.
+Code may move from `loushang.coding` into `loushang.harness` before another
+production product exists when it is product-neutral and satisfies the
+[Neutrality Evidence Gate](../harness/refactoring-principles.md#neutrality-evidence-gate).
+A second production consumer is strong validation, not a prerequisite.
 
 Good candidates:
 
@@ -148,6 +150,11 @@ Poor candidates:
 - coding settings and model persistence behavior
 - coding transcript and session persistence
 - coding TUI controller state
+
+The product goals, prompt and skill content, domain tools, context and risk
+policy, artifact semantics, commands, defaults, presentation projections, and
+resource conventions that remain product-owned are defined under
+[Product Kernel Ownership](../harness/shared-capability-boundaries.md#product-kernel-ownership).
 
 ## Dependency Rules
 
@@ -238,11 +245,17 @@ prove harness remains product-free.
 The current migration inventory is
 [Coding To Harness Migration Inventory](../harness/coding-to-harness-migration-inventory.md).
 
-### Phase 4: Second product validation
+### Phase 4: Independent neutrality validation
 
-When `design`, `research`, `ppt`, or `cowork` begins implementation, validate
-the harness contracts against that second product. If a contract only serves
-coding, move it back or keep it coding-local.
+Do not block product-neutral extraction on a second production consumer.
+Validate each proposed Harness contract through the current Coding adapter and
+an independent contract probe that does not use Coding runtime objects or
+vocabulary. The probe may be a minimal `design`, `research`, `ppt`, or `cowork`
+reference adapter, a product spike, or a product-neutral test fixture.
+
+When a real additional product begins implementation, validate and refine the
+contract again. If the contract requires Coding policy or only serves Coding,
+split it or keep it Coding-local.
 
 ## Consequences
 
@@ -259,8 +272,8 @@ coding, move it back or keep it coding-local.
 - `harness` is no longer only a thin run facade, so documentation and module
   names must make the internal split clear.
 - Removing `loushang.runtime` is a breaking cleanup for any stale importers.
-- Some duplication may remain in coding until a second product validates the
-  shared contract.
+- Independent contract probes add work before a real additional product exists,
+  and some contracts may still need refinement when one arrives.
 
 ## Relationship To ARD-001
 

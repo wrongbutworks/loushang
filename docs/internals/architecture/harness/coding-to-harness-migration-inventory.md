@@ -38,11 +38,13 @@ from `loushang.coding` into `loushang.harness`.
 | `coding.source_info.SourceInfo`, `coding.extensions.types.SourceInfo` | Compatibility shim | `SourceInfo`, `SourceScope`, and `SourceOrigin` live in `loushang.harness.resources.source`. Coding command and extension paths preserve string and `Path` representations through the same harness class. Descriptor projection and executable identity remain in coding. |
 | `coding.loader.ResourceDiagnostic`, `coding.loader.types.ResourceDiagnostic` | Compatibility shim | The focused resource record lives in `loushang.harness.resources.diagnostics`. Coding compatibility paths preserve object identity; resource checks, message selection, emission timing, and remediation remain product-owned. |
 | Remaining `coding.loader.types` | Keep product | Prompt, skill, theme, and extension descriptors, source kinds, snapshots, roots, precedence, and merge decisions remain coding-owned. Generic merge primitives require a separate accepted boundary. |
-| `coding.prompt.types` | Split candidate | Move only neutral prepared-prompt/trace contracts if a second product needs them. Keep templates, preflight, and assembler policy in coding. |
+| `coding.prompt.types` | Split candidate | Move only neutral prepared-prompt/trace contracts after they satisfy the neutrality evidence gate. Keep templates, preflight, and assembler policy in coding. |
 | `coding.compaction.policy`, `coding.compaction.types.ContextUsageEstimate` | Compatibility shim | `CompactionBudget`, deterministic threshold accounting, and `ContextUsageEstimate` live in `loushang.harness.context`. Coding compatibility paths re-export the same Harness-owned objects. |
 | Remaining `coding.compaction.types`, `coding.session.context_usage` | Split candidate | Keep message estimation, model adaptation, context usage snapshots, decisions, branch state, summarization, transcript rebuild, and Coding compaction policy in Coding. Context item refs and packing contracts require a later accepted boundary. |
 | `coding.domain.types` | Split candidate | Use as input for future `loushang.harness.adapter` shapes. Generic request/result types must not contain first-class method fields; carry method/work refs as opaque metadata. |
-| `coding.session` | Split candidate | Move only generic host lifecycle records such as idle/abort/dispose/queue snapshot if needed. Keep `AgentSession`, controllers, product event bus, resource watchers, command execution, and transcript behavior in coding. |
+| `coding.session.types.RunState` | Compatibility shim | `RunState` lives in `loushang.harness.host.types`; Coding preserves the accepted session import with the same class identity. |
+| `coding.session.queue_controller`, `coding.session.session_event_bus` | Split candidate | Queue snapshots, `HostInputQueue`, and `OrderedEventBus` live in `loushang.harness.host`. Coding keeps queue input/Agent delivery, logs, product queue events, and its specialized session event bus. |
+| `coding.session.AgentSession`, controllers, `coding.runtime.AgentSessionRuntime` | Split candidate | `AgentSession` delegates prompt/continue/abort/idle/dispose coordination to `HostRuntime`. Keep product controllers, event schema, resource watchers, commands, transcript behavior, session replacement, tree/fork/import, and store policy in Coding. |
 | `coding.event` | Keep product | Coding session event protocol and product projection stay coding. Harness may define separate neutral events later. |
 | `coding.extensions.contributions` | Compatibility shim | Descriptor, registry, indexing, and duplicate-key contracts live in `loushang.harness.contributions`. Coding keeps `LoadedExtension` projection and re-exports the same harness-owned classes. |
 | Remaining `coding.extensions` | Split candidate | Keep extension runtime, manifests, loaders, permissions, activation, command handlers, runtime bindings, and hooks in coding/OEM. Extract middleware or observer contracts only after a product-neutral invocation shape is proven. |
@@ -85,7 +87,8 @@ Keep in coding:
 ### Slice 2: Execution Context And Runtime Contributions
 
 Status: Slice 2A implementation complete for runtime tool contribution adapter
-verification. Slice 2B is gated pending a second product consumer; see
+verification. Slice 2B is eligible under the neutrality evidence gate but is
+not yet implemented; see
 [Slice 2 Execution Context Design](slice-2-execution-context-design.md).
 
 Purpose: define the neutral live execution/context and runtime contribution
@@ -97,11 +100,11 @@ Slice 2A routes coding runtime extension tool registration through neutral
 active-tool policy, prompt rebuilds, diagnostics mapping, session mutation, and
 concrete execution remain coding-owned.
 
-Slice 2B may move only neutral execution context descriptors after a second
-product consumer validates the shared shape. Keep `ToolContext`,
-`ExtensionRuntimeBindings`, `ToolController`, model and diagnostics fields,
-active-tool policy, prompt rebuilds, session mutation, and concrete execution
-in coding.
+Slice 2B may move only neutral execution context descriptors after a Coding
+adapter and an independent contract probe validate the shared shape. Keep
+`ToolContext`, `ExtensionRuntimeBindings`, `ToolController`, model and
+diagnostics fields, active-tool policy, prompt rebuilds, session mutation, and
+concrete execution in coding.
 
 ### Workspace Execution
 
@@ -118,7 +121,7 @@ paths re-export those harness objects.
 Command allow/deny policy, workspace root and relative cwd selection, extension
 runtime behavior, bash result projection, and product explanation text remain
 in coding. This migration does not introduce a neutral execution context or
-satisfy the separate second-product gate for Slice 2B.
+by itself satisfy the neutrality evidence gate for Slice 2B.
 
 ### Workspace Operations
 
@@ -208,10 +211,20 @@ and transcript rebuild semantics remain Coding-owned.
 
 ### Slice 5: Host And Lifecycle
 
+Status: host runtime core implementation complete for integration into
+`lane/harness`; see [Host Runtime Boundary](host-runtime-boundary.md).
+
 Purpose: let future products share idle/abort/dispose/queue contracts.
 
-Move minimal lifecycle protocols only after the first product-facing host shape
-is clear. Do not move `AgentSession` wholesale.
+Harness now owns host status/snapshots, driver-delegating lifecycle
+coordination, generic steering/follow-up queue ledger mechanics, and ordered
+event dispatch. Coding uses those mechanisms while retaining `AgentSession`,
+its product controllers and event schema, session persistence/replacement, and
+all prompt/resource/extension/UI semantics.
+
+The independent reference driver and neutral queue/event fixtures satisfy the
+neutrality evidence gate without moving `AgentSession` wholesale or creating a
+second agent loop.
 
 ### Slice 6: Contribution Model
 
@@ -228,8 +241,8 @@ the product projection adapter.
 
 Extension manifests, loaders, activation and permission policy, concrete
 handlers, runtime bindings, hooks, and session events remain coding-owned.
-Middleware and observer contracts should move only after a second product
-proves a neutral invocation shape.
+Middleware and observer contracts should move only after a Coding adapter and
+an independent contract probe prove a neutral invocation shape.
 
 ## Guardrails
 

@@ -187,6 +187,26 @@ def test_harness_diagnostics_symbols_are_not_package_exports() -> None:
     assert diagnostics.__all__ == []
 
 
+def test_harness_host_symbols_are_not_package_exports() -> None:
+    import loushang.harness as harness
+    import loushang.harness.host as host
+
+    host_symbols = {
+        "HostInputQueue",
+        "HostLifecycleEvent",
+        "HostRuntime",
+        "HostSnapshot",
+        "HostStateError",
+        "OrderedEventBus",
+        "QueueSnapshot",
+        "QueuedMessageSnapshot",
+        "RunState",
+    }
+
+    assert host_symbols.isdisjoint(set(harness.__all__))
+    assert host.__all__ == []
+
+
 def test_coding_internal_diagnostics_imports_use_harness_owners() -> None:
     compatibility_paths = {
         "src/loushang/coding/__init__.py",
@@ -589,7 +609,8 @@ def test_harness_slice2_execution_context_design_is_documented() -> None:
     required_phrases = {
         "Slice 2 Execution Context Design",
         "Slice 2A status: implementation complete for `lane/harness`",
-        "Slice 2B status: gated pending a second product consumer",
+        "Slice 2B status: eligible under the neutrality evidence gate; not yet "
+        "implemented",
         "neutral execution context",
         "product execution adapter",
         "runtime dynamic extension registration",
@@ -616,7 +637,95 @@ def test_harness_slice2_execution_context_design_is_documented() -> None:
         assert "Slice 2A" in status_text, status_path
         assert "implementation complete" in status_text, status_path
         assert "Slice 2B" in status_text, status_path
-        assert "gated pending a second product consumer" in status_text, status_path
+        assert "eligible under the neutrality evidence gate" in status_text, status_path
+
+
+def test_harness_neutrality_evidence_gate_is_documented() -> None:
+    path = Path("docs/internals/architecture/harness/refactoring-principles.md")
+    text = " ".join(path.read_text(encoding="utf-8").split())
+    required_phrases = {
+        "Neutrality Evidence Gate",
+        "does not require a second production consumer",
+        "the existing product adapter proves compatibility",
+        "an independent contract probe",
+        "a minimal reference adapter",
+        "a product-neutral test fixture",
+        "A renamed Coding fixture is not sufficient",
+        "product imports, product defaults, or product-specific storage and UI semantics",
+        "its absence is not a migration blocker",
+    }
+    assert sorted(phrase for phrase in required_phrases if phrase not in text) == []
+
+
+def test_harness_host_runtime_boundary_is_documented() -> None:
+    design_path = Path("docs/internals/architecture/harness/host-runtime-boundary.md")
+    assert design_path.exists()
+    design_text = " ".join(design_path.read_text(encoding="utf-8").split())
+    required_phrases = {
+        "Harness Host Runtime Boundary",
+        "implementation complete for integration into `lane/harness`",
+        "`loushang.harness.host.runtime.HostRuntime`",
+        "`loushang.harness.host.queue.HostInputQueue`",
+        "`loushang.harness.host.events.OrderedEventBus`",
+        "must not implement a second agent loop",
+        "Coding maps running, aborting, and disposing",
+        "product-neutral reference driver",
+        "no host symbols are added to top-level `loushang.harness.__all__`",
+    }
+    assert sorted(phrase for phrase in required_phrases if phrase not in design_text) == []
+
+    readme_text = Path("docs/internals/architecture/harness/README.md").read_text(
+        encoding="utf-8"
+    )
+    assert "Host Runtime Boundary" in readme_text
+
+    inventory_text = Path(
+        "docs/internals/architecture/harness/coding-to-harness-migration-inventory.md"
+    ).read_text(encoding="utf-8")
+    assert "host runtime core implementation complete" in inventory_text
+
+
+def test_coding_internal_run_state_imports_use_harness_owner() -> None:
+    compatibility_paths = {
+        "src/loushang/coding/session/__init__.py",
+        "src/loushang/coding/session/types.py",
+    }
+    offenders: list[str] = []
+    for path in sorted(Path("src/loushang/coding").rglob("*.py")):
+        if path.as_posix() in compatibility_paths:
+            continue
+        for imported in _absolute_imports(path):
+            if imported == "loushang.coding.session.types.RunState":
+                offenders.append(f"{path.as_posix()} imports {imported}")
+
+    assert offenders == []
+
+
+def test_harness_product_kernel_ownership_is_documented() -> None:
+    path = Path("docs/internals/architecture/harness/shared-capability-boundaries.md")
+    text = " ".join(path.read_text(encoding="utf-8").split())
+    required_phrases = {
+        "Product Kernel Ownership",
+        "product goals, domain language, and completion criteria",
+        "system prompt and prompt-section content",
+        "skill content and default activation policy",
+        "domain-specific concrete tools",
+        "selection and activation policy for shared tool packs",
+        "context salience, compaction, and summarization policy",
+        "risk classification, approval defaults, and permission policy",
+        "artifact semantics",
+        "product commands, configuration defaults, and presentation projections",
+        "resource search roots, file conventions, and compatibility formats",
+        "these semantics must not migrate merely to reduce the number of lines",
+    }
+    assert sorted(phrase for phrase in required_phrases if phrase not in text) == []
+
+    readme_text = " ".join(
+        Path("docs/internals/architecture/harness/README.md")
+        .read_text(encoding="utf-8")
+        .split()
+    )
+    assert "product kernel that must remain product-owned" in readme_text
 
 
 def test_frontmatter_consumers_use_harness_owner() -> None:

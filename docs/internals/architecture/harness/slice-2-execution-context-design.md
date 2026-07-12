@@ -3,13 +3,15 @@
 ## Status
 
 Slice 2A status: implementation complete for `lane/harness`.
-Slice 2B status: gated pending a second product consumer.
+Slice 2B status: eligible under the neutrality evidence gate; not yet
+implemented.
 
 This document defines the Slice 2 boundary for neutral execution context and
 runtime contribution registration. Slice 2A implements runtime tool
 contribution adapter verification without changing product behavior. No
 neutral execution context API is introduced by Slice 2A; that contract remains
-gated on evidence from a second product consumer.
+subject to the neutrality evidence gate defined in
+[Refactoring Principles](refactoring-principles.md).
 
 ## Goal
 
@@ -159,8 +161,8 @@ execution context is accepted.
 
 ## Proposed Slice 2B Modules
 
-If Slice 2B proceeds after the second-consumer gate, use focused modules under
-existing harness package boundaries:
+If Slice 2B proceeds after satisfying the neutrality evidence gate, use focused
+modules under existing harness package boundaries:
 
 - `loushang.harness.execution.context`
 - `loushang.harness.execution.contribution`
@@ -218,8 +220,8 @@ not import `loushang.coding`, `loushang.tui`, `loushang.work`,
 Deferred implementation items include:
 
 - defining final names and exact dataclass/protocol shapes
-- identifying a second product consumer that validates a neutral execution
-  context independently of coding
+- defining an independent contract probe that validates a neutral execution
+  context without Coding runtime objects or vocabulary
 - deciding whether runtime registration supports only tools first or a generic
   contribution-kind envelope
 - deciding compatibility shim lifetime for any execution context aliases
@@ -235,7 +237,8 @@ The code slice does not introduce broad context APIs. It extracts the common
 contribution projection/resolution path for runtime extension tools, proves
 behavior is unchanged, and documents what remains product-owned.
 
-Slice 2B must not begin by defining context types from coding alone. It should
-first identify a second product consumer and confirm the shared fields and
-lifecycle. That keeps Slice 2 incremental and avoids prematurely designing a
-generic runtime substrate before a second product adapter needs it.
+Slice 2B must not begin by copying context types from Coding. It must first
+define the mechanism/policy boundary, preserve a Coding adapter, and exercise
+the proposed shape through an independent contract probe such as a minimal
+reference adapter or product-neutral fixture. This permits anticipatory
+extraction without turning current Coding fields into a generic runtime API.
