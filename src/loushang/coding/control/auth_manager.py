@@ -4,7 +4,11 @@ import os
 from collections.abc import Mapping
 from dataclasses import dataclass, field
 
-from loushang.ai.auth import ApiKeyAuth, OAuthBearerAuth
+from loushang.ai.auth import (
+    ApiKeyAuth,
+    OAuthBearerAuth,
+    OAuthReauthenticationRequiredError,
+)
 from loushang.ai.auth.support import resolve_explicit_auth
 from loushang.ai.auth.types import OAuthCredentials
 from loushang.ai.model import Model
@@ -160,6 +164,8 @@ class AuthManager:
                 model_id=model_id,
                 persist_refresh=False,
             )
+        except OAuthReauthenticationRequiredError:
+            raise
         except Exception:
             return None
         api_key = result.get("apiKey") if isinstance(result, Mapping) else None

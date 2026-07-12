@@ -3,6 +3,8 @@ from __future__ import annotations
 import asyncio
 from datetime import date
 
+import pytest
+
 from loushang.ai.model import Capabilities, Model
 
 
@@ -172,6 +174,41 @@ def test_auth_manager_uses_its_injected_environment_for_extra_headers(
         "Authorization": "Bearer secret",
         "X-Extra": "from-injected",
     }
+
+
+def test_auth_manager_propagates_oauth_reauthentication_required(monkeypatch) -> None:
+    from loushang.ai.auth import OAuthReauthenticationRequiredError
+    from loushang.ai.auth.types import OAuthCredentials
+    from loushang.ai.model import Auth
+    from loushang.ai.model.registry import ModelRegistry as AiModelRegistry
+    from loushang.coding.control import AuthManager
+
+    model = Model(
+        id="secured",
+        provider="demo",
+        endpoint="responses",
+        api="demo-api",
+        auth=Auth(kind="oauth"),
+    )
+    credentials = OAuthCredentials(
+        provider="demo",
+        access_token="expired-secret",
+        refresh_token=None,
+        expires_at=0.0,
+    )
+    store = {
+        "providers": {"demo": credentials},
+        "endpoints": {},
+        "models": {},
+    }
+    monkeypatch.setattr(
+        "loushang.ai.auth.storage.load_credential_store",
+        lambda: store,
+    )
+    manager = AuthManager(ai_registry=AiModelRegistry(), env={})
+
+    with pytest.raises(OAuthReauthenticationRequiredError, match="log in again"):
+        manager.resolve_for_model(model)
 
 
 def test_settings_manager_updates_slice_objects_and_notifies_subscribers() -> None:

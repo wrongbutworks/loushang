@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from collections.abc import Mapping
 
-from loushang.ai.auth.oauth import GetOAuthApiKeyResult
+from loushang.ai.auth.oauth import GetOAuthApiKeyResult, require_refresh_token
 from loushang.ai.auth.providers.anthropic import AnthropicOAuthProvider
 from loushang.ai.auth.registry import OAuthProviderRegistry, get_default_oauth_registry
 from loushang.ai.auth.storage import (
@@ -95,6 +95,7 @@ async def oauth_refresh(
         )
     if current is None:
         raise ValueError(f"OAuth credentials not found for provider: {provider_id}")
+    require_refresh_token(current, provider=provider_id)
     refreshed = await provider.refresh_token(current)
     should_persist = credentials is None if persist is None else persist
     if should_persist:

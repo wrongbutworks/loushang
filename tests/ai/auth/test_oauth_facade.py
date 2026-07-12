@@ -7,6 +7,7 @@ import pytest
 
 import loushang.ai.auth as auth_module
 import loushang.ai.auth.facade as facade
+from loushang.ai.auth import OAuthReauthenticationRequiredError
 from loushang.ai.auth.facade import (
     oauth_login,
     oauth_refresh,
@@ -67,6 +68,15 @@ class _FakeProvider:
         return models
 
 
+class _RefreshSpyProvider(_FakeProvider):
+    def __init__(self) -> None:
+        self.refresh_calls = 0
+
+    async def refresh_token(self, credentials: OAuthCredentials) -> OAuthCredentials:
+        self.refresh_calls += 1
+        return await super().refresh_token(credentials)
+
+
 def _registry() -> OAuthProviderRegistry:
     registry = OAuthProviderRegistry()
     registry.register(_FakeProvider(), source_id="test")
@@ -92,6 +102,8 @@ def test_ai_auth_exports_lifecycle_api_without_registry_method_wrappers() -> Non
     lifecycle_exports = (
         "CredentialStore",
         "OAuthProviderRegistry",
+        "OAuthError",
+        "OAuthReauthenticationRequiredError",
         "get_default_oauth_registry",
         "get_oauth_api_key",
         "load_credentials",
@@ -306,6 +318,67 @@ def test_oauth_refresh_explicit_credentials_default_does_not_touch_storage(
     assert result.access_token == "refreshed-token"
 
 
+def test_oauth_refresh_rejects_explicit_credentials_without_refresh_before_provider(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    provider = _RefreshSpyProvider()
+    registry = OAuthProviderRegistry()
+    registry.register(provider, source_id="test")
+    monkeypatch.setattr(
+        facade,
+        "update_credential_store",
+        lambda _mutator: pytest.fail("failed refresh must not update storage"),
+    )
+
+    with pytest.raises(OAuthReauthenticationRequiredError, match="log in again"):
+        asyncio.run(
+            oauth_refresh(
+                "demo",
+                OAuthCredentials(
+                    provider="demo",
+                    access_token="expired-secret",
+                    refresh_token=None,
+                    expires_at=0.0,
+                ),
+                registry=registry,
+                persist=True,
+            )
+        )
+
+    assert provider.refresh_calls == 0
+
+
+def test_oauth_refresh_rejects_stored_credentials_without_persisting(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    provider = _RefreshSpyProvider()
+    registry = OAuthProviderRegistry()
+    registry.register(provider, source_id="test")
+    store = {
+        "providers": {
+            "demo": OAuthCredentials(
+                provider="demo",
+                access_token="expired-secret",
+                refresh_token="  ",
+                expires_at=0.0,
+            )
+        },
+        "endpoints": {},
+        "models": {},
+    }
+    monkeypatch.setattr(facade, "load_credential_store", lambda: store)
+    monkeypatch.setattr(
+        facade,
+        "update_credential_store",
+        lambda _mutator: pytest.fail("failed refresh must not update storage"),
+    )
+
+    with pytest.raises(OAuthReauthenticationRequiredError, match="log in again"):
+        asyncio.run(oauth_refresh("demo", registry=registry))
+
+    assert provider.refresh_calls == 0
+
+
 def test_resolve_oauth_api_key_uses_explicit_empty_credentials_map(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -329,7 +402,9 @@ def test_resolve_oauth_api_key_explicit_credentials_default_does_not_persist(
     monkeypatch.setattr(
         facade,
         "save_credentials",
-        lambda _stored: pytest.fail("explicit credentials should not persist by default"),
+        lambda _stored: pytest.fail(
+            "explicit credentials should not persist by default"
+        ),
     )
 
     result = resolve_oauth_api_key(
@@ -347,7 +422,9 @@ def test_resolve_oauth_api_key_explicit_credentials_can_persist_when_requested(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     save_calls: list[dict[str, OAuthCredentials]] = []
-    monkeypatch.setattr(facade, "save_credentials", lambda stored: save_calls.append(stored))
+    monkeypatch.setattr(
+        facade, "save_credentials", lambda stored: save_calls.append(stored)
+    )
 
     result = resolve_oauth_api_key(
         "demo",

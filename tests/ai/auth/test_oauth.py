@@ -4,6 +4,7 @@ import asyncio
 
 import pytest
 
+from loushang.ai.auth import OAuthReauthenticationRequiredError
 from loushang.ai.auth.facade import register_builtin_oauth_providers
 from loushang.ai.auth.oauth import get_oauth_api_key
 from loushang.ai.auth.registry import get_default_oauth_registry
@@ -97,17 +98,23 @@ def test_get_oauth_api_key_ignores_empty_access_token() -> None:
     assert result is None
 
 
-def test_get_oauth_api_key_rejects_expired_token_without_refresh() -> None:
-    result = get_oauth_api_key(
-        "demo",
-        {
-            "demo": OAuthCredentials(
-                provider="demo",
-                access_token="old-token",
-                refresh_token=None,
-                expires_at=0.0,
-            )
-        },
+@pytest.mark.parametrize("refresh_token", [None, "", "   "])
+@pytest.mark.parametrize("access_token", ["old-secret-token", "", "   "])
+def test_get_oauth_api_key_requires_login_for_expired_token_without_refresh(
+    access_token: str,
+    refresh_token: str | None,
+) -> None:
+    credentials = OAuthCredentials(
+        provider="demo",
+        access_token=access_token,
+        refresh_token=refresh_token,
+        expires_at=0.0,
     )
 
-    assert result is None
+    with pytest.raises(OAuthReauthenticationRequiredError) as captured:
+        get_oauth_api_key("demo", {"demo": credentials})
+
+    rendered = f"{captured.value!r} {captured.value}"
+    assert "log in again" in rendered
+    assert "old-secret-token" not in rendered
+    assert credentials.expires_at == 0.0

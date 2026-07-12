@@ -8,16 +8,34 @@ from urllib.parse import parse_qs, urlparse
 
 import pytest
 
+from loushang.ai.auth import OAuthError, OAuthReauthenticationRequiredError
 from loushang.ai.auth.facade import register_builtin_oauth_providers
 from loushang.ai.auth.providers.openai_codex import (
     AUTHORIZE_URL,
     CLIENT_ID,
     REDIRECT_URI,
     OpenAICodexOAuthProvider,
+    generate_pkce_pair,
     register_openai_codex_oauth_provider,
 )
 from loushang.ai.auth.registry import get_default_oauth_registry
 from loushang.ai.auth.types import OAuthCredentials
+
+
+def _s256(verifier: str) -> str:
+    import hashlib
+
+    return (
+        base64.urlsafe_b64encode(hashlib.sha256(verifier.encode()).digest())
+        .decode("ascii")
+        .rstrip("=")
+    )
+
+
+def test_generate_pkce_pair_returns_s256_challenge() -> None:
+    verifier, challenge = generate_pkce_pair()
+
+    assert challenge == _s256(verifier)
 
 
 def _build_fake_jwt(account_id: str, *, expires_at: float | None = None) -> str:
@@ -45,12 +63,15 @@ def test_openai_codex_login_uses_callback_result() -> None:
     callbacks = _Callbacks()
     auth_calls: list[tuple[str, dict[str, str]]] = []
     token = _build_fake_jwt("acc_1")
+    verifier = "verifier-1"
+    challenge = _s256(verifier)
+    state = "state-1"
     provider = OpenAICodexOAuthProvider(
-        pkce_generator=lambda: ("verifier-1", "challenge-1"),
-        state_generator=lambda: "state-1",
+        pkce_generator=lambda: (verifier, challenge),
+        state_generator=lambda: state,
         browser_opener=lambda _url: True,
         callback_waiter=lambda *_args, **_kwargs: asyncio.sleep(
-            0, result=f"{REDIRECT_URI}?code=code-1&state=state-1"
+            0, result=f"{REDIRECT_URI}?code=code-1&state={state}"
         ),
         http_post_form=lambda url, body: _fake_post_form(
             auth_calls,
@@ -77,8 +98,14 @@ def test_openai_codex_login_uses_callback_result() -> None:
     assert parsed.path == "/oauth/authorize"
     assert params["client_id"] == [CLIENT_ID]
     assert params["redirect_uri"] == [REDIRECT_URI]
-    assert params["state"] == ["state-1"]
-    assert params["code_challenge"] == ["challenge-1"]
+    assert params["state"] == [state]
+    assert params["state"] != [verifier]
+    assert params["code_challenge"] == [challenge]
+    assert params["code_challenge_method"] == ["S256"]
+    assert "code_verifier" not in params
+    assert verifier not in callbacks.auth_info["url"]
+    assert verifier not in repr(callbacks.auth_info)
+    assert verifier not in repr(callbacks.progress_messages)
     assert callbacks.progress_messages == [
         "Opened browser for OpenAI Codex login",
         "Waiting for OpenAI Codex authorization callback",
@@ -90,7 +117,7 @@ def test_openai_codex_login_uses_callback_result() -> None:
                 "grant_type": "authorization_code",
                 "client_id": CLIENT_ID,
                 "code": "code-1",
-                "code_verifier": "verifier-1",
+                "code_verifier": verifier,
                 "redirect_uri": REDIRECT_URI,
             },
         )
@@ -111,9 +138,10 @@ def test_openai_codex_login_uses_callback_result() -> None:
 
 
 def test_openai_codex_login_falls_back_to_manual_input() -> None:
-    callbacks = _Callbacks(manual_code_input="code-2#state-2")
+    callbacks = _Callbacks(manual_code_input="code-2")
+    verifier = "verifier-2"
     provider = OpenAICodexOAuthProvider(
-        pkce_generator=lambda: ("verifier-2", "challenge-2"),
+        pkce_generator=lambda: (verifier, _s256(verifier)),
         state_generator=lambda: "state-2",
         browser_opener=lambda _url: False,
         callback_waiter=lambda *_args, **_kwargs: asyncio.sleep(0, result=None),
@@ -134,21 +162,95 @@ def test_openai_codex_login_falls_back_to_manual_input() -> None:
     assert callbacks.progress_messages == [
         "Waiting for OpenAI Codex authorization callback",
         "Callback not received; waiting for manual code input",
+        "Using manually entered authorization code without OAuth state validation",
     ]
 
 
 def test_openai_codex_login_rejects_state_mismatch() -> None:
     callbacks = _Callbacks(manual_code_input=f"{REDIRECT_URI}?code=code-3&state=wrong")
+    calls: list[tuple[str, dict[str, str]]] = []
+    verifier = "verifier-3"
     provider = OpenAICodexOAuthProvider(
-        pkce_generator=lambda: ("verifier-3", "challenge-3"),
+        pkce_generator=lambda: (verifier, _s256(verifier)),
         state_generator=lambda: "state-3",
         browser_opener=lambda _url: False,
         callback_waiter=lambda *_args, **_kwargs: asyncio.sleep(0, result=None),
-        http_post_form=lambda _url, _body: asyncio.sleep(0, result={}),
+        http_post_form=lambda url, body: _fake_post_form(calls, url, body, {}),
     )
 
-    with pytest.raises(ValueError, match="state mismatch"):
+    with pytest.raises(OAuthError, match="state mismatch"):
         asyncio.run(provider.login(callbacks))
+
+    assert calls == []
+
+
+@pytest.mark.parametrize(
+    "callback_url",
+    [
+        f"{REDIRECT_URI}?code=code-4",
+        f"{REDIRECT_URI}?code=code-4&state=",
+        f"{REDIRECT_URI}?code=code-4&state=%C3%A9",
+        f"{REDIRECT_URI}?code=code-4&state=state-4&state=wrong",
+    ],
+)
+def test_openai_codex_login_rejects_redirect_without_matching_state(
+    callback_url: str,
+) -> None:
+    calls: list[tuple[str, dict[str, str]]] = []
+    verifier = "verifier-4"
+    provider = OpenAICodexOAuthProvider(
+        pkce_generator=lambda: (verifier, _s256(verifier)),
+        state_generator=lambda: "state-4",
+        browser_opener=lambda _url: False,
+        callback_waiter=lambda *_args, **_kwargs: asyncio.sleep(0, result=callback_url),
+        http_post_form=lambda url, body: _fake_post_form(calls, url, body, {}),
+    )
+
+    with pytest.raises(OAuthError, match="state mismatch"):
+        asyncio.run(provider.login(_Callbacks()))
+
+    assert calls == []
+
+
+def test_openai_codex_login_rejects_plain_code_from_callback() -> None:
+    calls: list[tuple[str, dict[str, str]]] = []
+    verifier = "verifier-5"
+    provider = OpenAICodexOAuthProvider(
+        pkce_generator=lambda: (verifier, _s256(verifier)),
+        state_generator=lambda: "state-5",
+        browser_opener=lambda _url: False,
+        callback_waiter=lambda *_args, **_kwargs: asyncio.sleep(0, result="code-5"),
+        http_post_form=lambda url, body: _fake_post_form(calls, url, body, {}),
+    )
+
+    with pytest.raises(OAuthError, match="state-bound redirect"):
+        asyncio.run(provider.login(_Callbacks()))
+
+    assert calls == []
+
+
+def test_openai_codex_login_redacts_verifier_from_token_exchange_error() -> None:
+    verifier = "verifier-secret"
+
+    async def leaking_post(_url: str, body: dict[str, str]) -> dict[str, object]:
+        raise RuntimeError(f"failed request: {body}")
+
+    provider = OpenAICodexOAuthProvider(
+        pkce_generator=lambda: (verifier, _s256(verifier)),
+        state_generator=lambda: "state-safe",
+        browser_opener=lambda _url: False,
+        callback_waiter=lambda *_args, **_kwargs: asyncio.sleep(
+            0,
+            result=f"{REDIRECT_URI}?code=code-safe&state=state-safe",
+        ),
+        http_post_form=leaking_post,
+    )
+
+    with pytest.raises(OAuthError, match="token exchange failed") as captured:
+        asyncio.run(provider.login(_Callbacks()))
+
+    assert verifier not in str(captured.value)
+    assert captured.value.__context__ is None
 
 
 def test_openai_codex_refresh_exchanges_refresh_token() -> None:
@@ -195,7 +297,7 @@ def test_openai_codex_refresh_exchanges_refresh_token() -> None:
 
 def test_openai_codex_refresh_requires_refresh_token() -> None:
     provider = OpenAICodexOAuthProvider()
-    with pytest.raises(ValueError, match="missing refresh_token"):
+    with pytest.raises(OAuthReauthenticationRequiredError, match="log in again"):
         asyncio.run(
             provider.refresh_token(
                 OAuthCredentials(
