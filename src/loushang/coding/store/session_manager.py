@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import re
+from contextlib import suppress
 from dataclasses import dataclass, field, replace
 from datetime import UTC, datetime
 from pathlib import Path
@@ -42,6 +43,7 @@ from loushang.coding.store.types import (
     SessionRecord,
     SessionSummary,
 )
+from loushang.harness.journal import BranchGraph
 from loushang.observability import get_log
 
 CURRENT_SESSION_VERSION = 3
@@ -327,29 +329,35 @@ def _summary_from_index_item(item: object) -> SessionSummary | None:
     )
 
 
+def _session_graph(entries: list[SessionEntry]) -> BranchGraph[SessionEntry]:
+    return BranchGraph(
+        entries,
+        record_id=lambda entry: entry.id,
+        parent_id=lambda entry: entry.parent_id,
+        mode="compatible",
+    )
+
+
 def build_session_context(
     entries: list[SessionEntry],
     leaf_id: str | None | object = _LEAF_UNSET,
     by_id: dict[str, SessionEntry] | None = None,
 ) -> SessionContext:
-    if by_id is None:
-        by_id = {entry.id: entry for entry in entries}
+    del by_id
+    graph = _session_graph(entries)
+    resolved_leaf_id: str | None
 
     if leaf_id is _LEAF_UNSET:
-        leaf = entries[-1] if entries else None
+        resolved_leaf_id = entries[-1].id if entries else None
     elif leaf_id is None:
         return SessionContext()
     else:
-        leaf = by_id.get(leaf_id)
+        resolved_leaf_id = leaf_id if isinstance(leaf_id, str) else None
 
-    if leaf is None:
+    if resolved_leaf_id is None or graph.get(resolved_leaf_id) is None:
         return SessionContext()
 
-    path: list[SessionEntry] = []
-    current: SessionEntry | None = leaf
-    while current is not None:
-        path.insert(0, current)
-        current = by_id.get(current.parent_id) if current.parent_id is not None else None
+    path = list(graph.path(resolved_leaf_id))
 
     thinking_level = "off"
     model: dict[str, str] | None = None
@@ -588,7 +596,10 @@ class SessionManager:
         return list(self.entries)
 
     def get_children(self, parent_id: str) -> list[SessionEntry]:
-        return [entry for entry in self.entries if entry.parent_id == parent_id]
+        graph = _session_graph(self.entries)
+        if graph.get(parent_id) is None:
+            return []
+        return list(graph.children(parent_id))
 
     def get_label(self, entry_id: str) -> str | None:
         return self.labels_by_target_id.get(entry_id)
@@ -661,24 +672,19 @@ class SessionManager:
         )
 
     def get_branch(self, leaf_id: str | None | object = _LEAF_UNSET) -> list[SessionEntry]:
+        current_id: str | None
         if leaf_id is _LEAF_UNSET:
             current_id = self.leaf_id
         else:
-            current_id = leaf_id
+            current_id = leaf_id if isinstance(leaf_id, str) else None
 
         if current_id is None:
             return []
 
-        leaf = self.by_id.get(current_id)
-        if leaf is None:
+        graph = _session_graph(self.entries)
+        if graph.get(current_id) is None:
             raise ValueError(f"Entry {current_id} not found")
-
-        branch: list[SessionEntry] = []
-        current: SessionEntry | None = leaf
-        while current is not None:
-            branch.insert(0, current)
-            current = self.by_id.get(current.parent_id) if current.parent_id is not None else None
-        return branch
+        return list(graph.path(current_id))
 
     def branch(self, branch_from_id: str) -> None:
         if branch_from_id not in self.by_id:
@@ -712,29 +718,19 @@ class SessionManager:
         )
 
     def get_tree(self) -> list[SessionTreeNode]:
-        node_by_id = {
-            entry.id: SessionTreeNode(
+        graph = _session_graph(self.entries)
+
+        def build_node(entry: SessionEntry) -> SessionTreeNode:
+            node = SessionTreeNode(
                 entry=entry,
                 children=[],
                 label=self.labels_by_target_id.get(entry.id),
                 label_timestamp=self.label_timestamps_by_target_id.get(entry.id),
             )
-            for entry in self.entries
-        }
-        roots: list[SessionTreeNode] = []
+            node.children.extend(build_node(child) for child in graph.children(entry.id))
+            return node
 
-        for entry in self.entries:
-            node = node_by_id[entry.id]
-            if entry.parent_id is None or entry.parent_id == entry.id:
-                roots.append(node)
-                continue
-            parent = node_by_id.get(entry.parent_id)
-            if parent is None:
-                roots.append(node)
-                continue
-            parent.children.append(node)
-
-        return roots
+        return [build_node(entry) for entry in graph.roots()]
 
     def _record_label_entry(self, entry: LabelEntry) -> None:
         if entry.label:
@@ -954,10 +950,8 @@ class SessionManager:
             return False
         target.unlink()
         lock_file = target.with_name(f"{target.name}.lock")
-        try:
+        with suppress(FileNotFoundError):
             lock_file.unlink()
-        except FileNotFoundError:
-            pass
         cls._refresh_index_if_present(target.parent)
         return True
 

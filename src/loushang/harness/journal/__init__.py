@@ -7,6 +7,8 @@ from loushang.harness.journal.branch import (
     ForkPlan,
 )
 from loushang.harness.journal.codec import (
+    FunctionalJournalHeaderCodec,
+    FunctionalJournalRecordCodec,
     JournalCodecError,
     JournalHeaderCodec,
     JournalRecordCodec,
@@ -42,6 +44,8 @@ __all__ = [
     "BranchGraphError",
     "BranchMode",
     "ForkPlan",
+    "FunctionalJournalHeaderCodec",
+    "FunctionalJournalRecordCodec",
     "JournalCodecError",
     "JournalDiagnostic",
     "JournalDurabilityProfile",

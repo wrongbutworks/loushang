@@ -69,6 +69,41 @@ def test_write_then_load_jsonl_session_file(tmp_path: Path) -> None:
     assert loaded_entries[0].type == "message"
 
 
+def test_session_jsonl_bytes_preserve_default_json_format_and_unicode_escaping(
+    tmp_path: Path,
+) -> None:
+    from loushang.coding.message import SessionInfoEntry
+    from loushang.coding.store.file_codec import write_session_file
+
+    header = SessionHeader(
+        type="session",
+        version=3,
+        id="s1",
+        timestamp="2026-05-20T09:00:00.000Z",
+        cwd="/tmp/工程",
+        parent_session=None,
+    )
+    entry = SessionInfoEntry(
+        type="session_info",
+        id="e1",
+        parent_id=None,
+        timestamp="2026-05-20T09:00:01.000Z",
+        name="计划",
+    )
+    path = tmp_path / "session.jsonl"
+
+    write_session_file(path, header, [entry])
+
+    assert path.read_bytes() == (
+        b'{"type": "session", "version": 3, "id": "s1", '
+        b'"timestamp": "2026-05-20T09:00:00.000Z", '
+        b'"cwd": "/tmp/\\u5de5\\u7a0b", "parentSession": null}\n'
+        b'{"type": "session_info", "id": "e1", "parentId": null, '
+        b'"timestamp": "2026-05-20T09:00:01.000Z", '
+        b'"name": "\\u8ba1\\u5212"}\n'
+    )
+
+
 def test_session_file_codec_locks_reads_and_writes(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     import fcntl
 

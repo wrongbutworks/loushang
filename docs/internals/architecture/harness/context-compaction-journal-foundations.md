@@ -2,7 +2,7 @@
 
 ## Status
 
-Status: reviewed proposal for implementation on `lane/harness`.
+Status: implementation complete for integration into `lane/harness`.
 
 This document defines the next capability-sized ownership transfer from
 `loushang.coding` and `loushang.work` into Harness. It covers neutral context
@@ -43,6 +43,29 @@ minimality and delivery risk. Their blocking findings are incorporated here:
 No blocking review finding remains unresolved in this design. Implementation
 may still refine symbol names without changing these ownership decisions.
 
+## Implementation Outcome
+
+The implementation on `harness/context-compaction-journal` now provides:
+
+- `loushang.harness.context` records, group-aware insertion/recent/priority
+  packing, RecentWindow and single-batch RollingSummary strategies, reducer
+  contracts, cancellation, explicit overflow, and single-flight coordination;
+- `loushang.harness.journal` functional codecs, independent format/durability/
+  load profiles, shared/exclusive sidecar locking, append/atomic rewrite/load,
+  typed recovery diagnostics, and strict/compatible BranchGraph behavior;
+- a Coding compaction-service adapter over the Harness coordinator while the
+  existing split-turn planner, reducer, prompts, and transcript projection stay
+  Product-owned;
+- Coding session persistence over `JsonlJournal`, locking over
+  `journal_file_lock`, and tree/path/fork selection over `BranchGraph`;
+- Work JSONL persistence over `JsonlJournal` while Work retains and internally
+  shares its in-memory/query/subscription state semantics;
+- byte-level Coding and Work format characterization plus product-neutral
+  Context and Journal contract tests.
+
+The implementation does not add a generic index/checkpoint layer, migrate
+Coding message codecs, or replace Coding's specialized compaction planner.
+
 ## Motivation And Existing Evidence
 
 The repository already contains the same lower-level mechanisms behind
@@ -56,8 +79,8 @@ different product semantics:
   and a session index;
 - `work.event_log` owns another in-memory and JSONL append/query/subscribe
   implementation;
-- `loushang.harness.context` currently owns only budget accounting and the
-  neutral usage-estimate record;
+- before this wave, `loushang.harness.context` owned only budget accounting and
+  the neutral usage-estimate record;
 - planned Research, PPT, Design, and Cowork products all require bounded model
   context, revision history, and branchable work without adopting
   Coding transcript semantics.
@@ -679,7 +702,7 @@ final wave merge, but it does not block progress on the other adapters.
 | `work.event_log` | matching JSONL I/O only | Work normalization, in-memory backend, positions, filters, query, replay, subscriptions, records, and public adapters |
 | `coding.message.json_codec` | no direct Harness migration | AI owns base codecs, Agent owns extension codec composition, and Coding owns custom transcript codecs |
 
-## Size And Outcome Estimate
+## Planned Size And Measured Outcome
 
 Expected production-code ownership change:
 
@@ -693,6 +716,27 @@ Repository line count may increase because the wave adds reusable strategies,
 structural diagnostics, and independent product-neutral tests. Success is
 measured by one owned implementation and smaller product adapters, not by a
 mechanical net deletion target.
+
+Measured Python source lines on this branch, using the same raw `*.py` line
+count as the migration inventory:
+
+- Harness: 18,503 to 20,065, an increase of 1,562 lines;
+- Coding: 49,537 to 49,514, a reduction of 23 lines;
+- Work: 903 to 874, a reduction of 29 lines;
+- focused new Harness and compatibility tests: 658 lines.
+
+The Product reduction is below the initial estimate because review deliberately
+kept Coding's split-turn planner and session index, plus Work query/subscription
+semantics, outside Harness. The ownership result is still substantive: the
+cross-platform lock algorithm, JSONL framing/durability/recovery, compaction
+lifecycle, packing/standard strategies, and parent graph algorithms now each
+have one Harness implementation. Product adapters retain schema and policy,
+not duplicate substrate algorithms.
+
+Final validation completed with 4,425 non-live tests passing and 9 live tests
+deselected. The focused cross-subsystem run passed 279 tests; Ruff passed for
+all changed Python files, Harness Context/Journal passed mypy, and
+`git diff --check` reported no whitespace errors.
 
 ## Validation Matrix
 

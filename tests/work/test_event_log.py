@@ -109,6 +109,24 @@ def test_jsonl_event_log_appends_queries_and_reopens(tmp_path) -> None:
     assert [entry.entry_id for entry in reopened.query(run_id="run-1", after=first_position)] == ["entry-3"]
 
 
+def test_jsonl_event_log_preserves_sorted_unicode_wire_format(tmp_path) -> None:
+    from loushang.work import JsonlEventLogBackend
+
+    log_path = tmp_path / "events.jsonl"
+    JsonlEventLogBackend(log_path).append(
+        _entry(
+            "entry-unicode",
+            payload={"z": "你好", "a": 1},
+        )
+    )
+
+    line = log_path.read_text(encoding="utf-8")
+    assert "你好" in line
+    assert "\\u4f60" not in line
+    assert line.index('"created_at"') < line.index('"entry_id"')
+    assert line.index('"a"') < line.index('"z"')
+
+
 def test_jsonl_event_log_subscribe_replays_existing_then_streams_later_entries(tmp_path) -> None:
     from loushang.work import JsonlEventLogBackend
 

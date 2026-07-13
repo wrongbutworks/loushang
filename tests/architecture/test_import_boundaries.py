@@ -154,12 +154,18 @@ def test_harness_contribution_symbols_are_not_top_level_exports() -> None:
     assert contribution_symbols.isdisjoint(set(harness.__all__))
 
 
-def test_harness_context_symbols_are_not_top_level_exports() -> None:
+def test_harness_context_and_journal_symbols_are_not_top_level_exports() -> None:
     import loushang.harness as harness
 
     context_symbols = {
         "CompactionBudget",
+        "CompactionCoordinator",
+        "ContextCompactionCoordinator",
+        "ContextItem",
+        "ContextPacker",
         "ContextUsageEstimate",
+        "BranchGraph",
+        "JsonlJournal",
         "calculate_compaction_budget",
     }
 
@@ -350,7 +356,7 @@ def test_harness_context_compaction_and_journal_design_is_documented() -> None:
     design_text = " ".join(design_path.read_text(encoding="utf-8").split())
     required_phrases = {
         "Harness Context, Compaction, And Journal Foundations",
-        "Status: reviewed proposal for implementation on `lane/harness`",
+        "Status: implementation complete for integration into `lane/harness`",
         "`RecentWindowStrategy`",
         "`RollingSummaryStrategy`",
         "`CodingCompactionStrategy`",
@@ -383,9 +389,51 @@ def test_harness_context_compaction_and_journal_design_is_documented() -> None:
         .read_text(encoding="utf-8")
         .split()
     )
-    assert "context, compaction, journal, and branch design reviewed" in inventory_text
+    assert (
+        "context, compaction, journal, and branch implementation complete"
+        in inventory_text
+    )
     assert "Generic journal indexes and projection checkpoints are deferred" in (
         inventory_text
+    )
+
+
+def test_context_compaction_and_journal_mechanics_use_harness_owners() -> None:
+    expected_imports = {
+        Path("src/loushang/coding/compaction/service.py"): {
+            "loushang.harness.context.compaction.CompactionCoordinator",
+        },
+        Path("src/loushang/coding/store/file_codec.py"): {
+            "loushang.harness.journal.FunctionalJournalHeaderCodec",
+            "loushang.harness.journal.FunctionalJournalRecordCodec",
+            "loushang.harness.journal.JsonlJournal",
+        },
+        Path("src/loushang/coding/store/file_lock.py"): {
+            "loushang.harness.journal.jsonl.journal_file_lock",
+        },
+        Path("src/loushang/coding/store/session_manager.py"): {
+            "loushang.harness.journal.BranchGraph",
+        },
+        Path("src/loushang/work/event_log.py"): {
+            "loushang.harness.journal.FunctionalJournalRecordCodec",
+            "loushang.harness.journal.JsonlJournal",
+        },
+    }
+
+    missing: list[str] = []
+    for path, required in expected_imports.items():
+        imports = set(_absolute_imports(path))
+        missing.extend(
+            f"{path.as_posix()} missing {name}"
+            for name in sorted(required - imports)
+        )
+    assert missing == []
+
+    assert "import json" not in Path(
+        "src/loushang/coding/store/file_codec.py"
+    ).read_text(encoding="utf-8")
+    assert "import json" not in Path("src/loushang/work/event_log.py").read_text(
+        encoding="utf-8"
     )
 
 

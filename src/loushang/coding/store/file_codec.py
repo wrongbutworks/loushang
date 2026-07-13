@@ -1,7 +1,6 @@
 from __future__ import annotations
 
-import json
-import os
+from collections.abc import Mapping
 from pathlib import Path
 from typing import Any
 
@@ -27,6 +26,17 @@ from loushang.coding.message.json_codec import (
     serialize_session_header,
 )
 from loushang.coding.store.file_lock import session_file_lock
+from loushang.harness.journal import (
+    DEFAULT_JSONL_FORMAT,
+    DURABLE_LOCKED_JOURNAL,
+    FunctionalJournalHeaderCodec,
+    FunctionalJournalRecordCodec,
+    JournalCodecError,
+    JournalFileError,
+    JournalLoadPolicy,
+    JsonlJournal,
+    JsonlSnapshot,
+)
 
 
 class SessionFileError(ValueError):
@@ -40,8 +50,27 @@ def _serialize_header(header: SessionHeader) -> dict[str, Any]:
     return serialize_session_header(header)
 
 
-def _deserialize_header(payload: dict[str, Any]) -> SessionHeader:
-    return deserialize_session_header(payload)
+def _deserialize_header(payload: Mapping[str, object]) -> SessionHeader:
+    if payload.get("type") != "session":
+        raise JournalCodecError(
+            "Session file must start with a session header",
+            code="missing_session_header",
+        )
+    try:
+        return deserialize_session_header(dict(payload))
+    except Exception as exc:
+        raise JournalCodecError(
+            "Session file header is invalid",
+            code="invalid_session_header",
+        ) from exc
+
+
+_HEADER_CODEC = FunctionalJournalHeaderCodec(_serialize_header, _deserialize_header)
+_LOAD_POLICY = JournalLoadPolicy(
+    header="required",
+    invalid_record="skip",
+    partial_tail="skip",
+)
 
 
 def _base_entry_fields(entry: SessionEntry) -> dict[str, Any]:
@@ -101,7 +130,7 @@ def _serialize_entry(entry: SessionEntry) -> dict[str, Any]:
     raise ValueError(f"Unsupported session entry type: {type(entry)!r}")
 
 
-def _deserialize_entry(payload: dict[str, Any]) -> SessionEntry:
+def _deserialize_entry(payload: Mapping[str, object]) -> SessionEntry:
     common = {
         "type": payload["type"],
         "id": payload["id"],
@@ -155,63 +184,51 @@ def _deserialize_entry(payload: dict[str, Any]) -> SessionEntry:
     raise ValueError(f"Unsupported session entry type: {entry_type}")
 
 
+_ENTRY_CODEC = FunctionalJournalRecordCodec(_serialize_entry, _deserialize_entry)
+
+
+def _session_journal(path: Path) -> JsonlJournal[SessionHeader, SessionEntry]:
+    return JsonlJournal(
+        path,
+        record_codec=_ENTRY_CODEC,
+        header_codec=_HEADER_CODEC,
+        format_profile=DEFAULT_JSONL_FORMAT,
+        durability=DURABLE_LOCKED_JOURNAL,
+        load_policy=_LOAD_POLICY,
+        lock_factory=session_file_lock,
+    )
+
+
 def write_session_file(path: Path, header: SessionHeader, entries: list[SessionEntry]) -> None:
-    lines = [json.dumps(_serialize_header(header))]
-    lines.extend(json.dumps(_serialize_entry(entry)) for entry in entries)
-    data = "\n".join(lines) + "\n"
-    with session_file_lock(path, "exclusive"):
-        path.parent.mkdir(parents=True, exist_ok=True)
-        temp_path = path.with_name(f".{path.name}.{os.getpid()}.tmp")
-        with temp_path.open("w", encoding="utf-8") as handle:
-            handle.write(data)
-            handle.flush()
-            os.fsync(handle.fileno())
-        temp_path.replace(path)
+    _session_journal(path).rewrite(entries, header=header)
 
 
 def append_session_entry(path: Path, entry: SessionEntry) -> None:
-    line = json.dumps(_serialize_entry(entry)) + "\n"
-    with session_file_lock(path, "exclusive"):
-        path.parent.mkdir(parents=True, exist_ok=True)
-        with path.open("a", encoding="utf-8") as handle:
-            handle.write(line)
-            handle.flush()
-            os.fsync(handle.fileno())
+    _session_journal(path).append(entry)
 
 
 def load_session_file(path: Path) -> tuple[SessionHeader, list[SessionEntry]]:
-    with session_file_lock(path, "shared"):
-        lines = [line for line in path.read_text(encoding="utf-8").splitlines() if line.strip()]
-    if not lines:
-        raise SessionFileError("Session file is empty", path=path, code="empty_session_file")
-
     try:
-        first = json.loads(lines[0])
-    except json.JSONDecodeError as exc:
-        raise SessionFileError(
-            "Session file header is not valid JSON",
-            path=path,
-            code="invalid_session_header_json",
-        ) from exc
-    if first.get("type") != "session":
+        snapshot: JsonlSnapshot[SessionHeader, SessionEntry] = _session_journal(
+            path
+        ).load()
+    except JournalFileError as exc:
+        code = {
+            "empty_journal": "empty_session_file",
+            "invalid_header_json": "invalid_session_header_json",
+            "invalid_header_shape": "invalid_session_header",
+        }.get(exc.code, exc.code)
+        message = {
+            "empty_session_file": "Session file is empty",
+            "invalid_session_header_json": "Session file header is not valid JSON",
+            "missing_session_header": "Session file must start with a session header",
+            "invalid_session_header": "Session file header is invalid",
+        }.get(code, "Session file is invalid")
+        raise SessionFileError(message, path=path, code=code) from exc
+    if snapshot.header is None:
         raise SessionFileError(
             "Session file must start with a session header",
             path=path,
             code="missing_session_header",
         )
-
-    try:
-        header = _deserialize_header(first)
-    except Exception as exc:
-        raise SessionFileError(
-            "Session file header is invalid",
-            path=path,
-            code="invalid_session_header",
-        ) from exc
-    entries: list[SessionEntry] = []
-    for line in lines[1:]:
-        try:
-            entries.append(_deserialize_entry(json.loads(line)))
-        except Exception:
-            continue
-    return header, entries
+    return snapshot.header, list(snapshot.records)
