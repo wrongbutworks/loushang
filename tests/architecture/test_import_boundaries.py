@@ -342,6 +342,50 @@ def test_harness_context_budget_and_accounting_boundary_is_documented() -> None:
     assert "context budget and accounting implementation complete" in inventory_text
 
 
+def test_harness_context_compaction_and_journal_design_is_documented() -> None:
+    design_path = Path(
+        "docs/internals/architecture/harness/context-compaction-journal-foundations.md"
+    )
+    assert design_path.exists()
+    design_text = " ".join(design_path.read_text(encoding="utf-8").split())
+    required_phrases = {
+        "Harness Context, Compaction, And Journal Foundations",
+        "Status: reviewed proposal for implementation on `lane/harness`",
+        "`RecentWindowStrategy`",
+        "`RollingSummaryStrategy`",
+        "`CodingCompactionStrategy`",
+        "`JournalFormatProfile`",
+        "`JournalDurabilityProfile`",
+        "`JournalLoadPolicy`",
+        "context compaction changes the bounded projection sent to a model and never deletes source journal records",
+        "generic projection checkpoints, indexes, destructive journal vacuum, and retention are deferred",
+        "AI owns the stable base-message and message-part codec",
+        "Agent owns the extension-message codec protocol and registry",
+        "Work adopts only common JSONL I/O in the first wave",
+        "must not depend on context",
+    }
+    assert (
+        sorted(phrase for phrase in required_phrases if phrase not in design_text) == []
+    )
+
+    readme_text = Path("docs/internals/architecture/harness/README.md").read_text(
+        encoding="utf-8"
+    )
+    assert "Context, Compaction, And Journal Foundations" in readme_text
+
+    inventory_text = " ".join(
+        Path(
+            "docs/internals/architecture/harness/coding-to-harness-migration-inventory.md"
+        )
+        .read_text(encoding="utf-8")
+        .split()
+    )
+    assert "context, compaction, journal, and branch design reviewed" in inventory_text
+    assert "Generic journal indexes and projection checkpoints are deferred" in (
+        inventory_text
+    )
+
+
 def test_coding_internal_contribution_imports_use_harness_owner() -> None:
     compatibility_paths = {
         "src/loushang/coding/extensions/__init__.py",

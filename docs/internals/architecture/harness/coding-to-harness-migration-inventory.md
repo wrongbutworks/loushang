@@ -46,7 +46,7 @@ sufficient.
 | Remaining `coding.loader.types` | Compatibility shim | Product-neutral prompt, skill, theme, and extension descriptors, source kinds, snapshots, bundles, and merge decisions live in `loushang.harness.resources.types`. Coding keeps compatibility aliases. |
 | `coding.prompt.types` | Split candidate | Move only neutral prepared-prompt/trace contracts after they satisfy the neutrality evidence gate. Keep templates, preflight, and assembler policy in coding. |
 | `coding.compaction.policy`, `coding.compaction.types.ContextUsageEstimate` | Compatibility shim | `CompactionBudget`, deterministic threshold accounting, and `ContextUsageEstimate` live in `loushang.harness.context`. Coding compatibility paths re-export the same Harness-owned objects. |
-| Remaining `coding.compaction.types`, `coding.session.context_usage` | Split candidate | Keep message estimation, model adaptation, context usage snapshots, decisions, branch state, summarization, transcript rebuild, and Coding compaction policy in Coding. Context item refs and packing contracts require a later accepted boundary. |
+| Remaining `coding.compaction.types`, `coding.session.context_usage` | Split candidate | Follow the reviewed Context, Compaction, and Journal design: move neutral context items, packing, coordinator lifecycle, and reducer contracts. Keep Coding's compatibility planner, message estimation, model adaptation, trigger decisions, split-turn/tool-result rules, prompts, transcript rebuild, and artifact projection. |
 | `coding.domain.types` | Split candidate | Use as input for future `loushang.harness.adapter` shapes. Generic request/result types must not contain first-class method fields; carry method/work refs as opaque metadata. |
 | `coding.session.types.RunState` | Compatibility shim | `RunState` lives in `loushang.harness.host.types`; Coding preserves the accepted session import with the same class identity. |
 | `coding.session.queue_controller`, `coding.session.session_event_bus` | Split candidate | Queue snapshots, `HostInputQueue`, and `OrderedEventBus` live in `loushang.harness.host`. Coding keeps queue input/Agent delivery, logs, product queue events, and its specialized session event bus. |
@@ -60,7 +60,7 @@ sufficient.
 | `coding.mode` | Keep product | Transitional print/RPC mode adapters stay coding until channel is implemented. |
 | `coding.cli` | Keep product | Product CLI. It may expose harness-backed behavior but remains coding-owned. |
 | `coding.message` | Keep product | Coding transcript entries, message transforms, model-change/compaction records, and JSON codecs remain Coding semantics. High fan-in alone is not a Harness ownership reason. |
-| `coding.store` | Split candidate | Move file locking, atomic file/index mechanics, neutral query records, and reusable journal/checkpoint engines behind an opaque entry-codec contract. Keep Coding transcript codecs, session tree semantics, labels, and product retention/storage policy. |
+| `coding.store` | Split candidate | Move file locking, profiled JSONL mechanics, and parent-linked branch/fork engines behind opaque header/record codecs. Keep Coding transcript codecs, session index and query projection, labels, lifecycle, and product retention/storage policy. Generic indexes and projection checkpoints require separate evidence. |
 | `coding.control` | Keep product | Frozen during runtime consolidation: auth resolution, model registry, settings, provider registration, credential handling, and selection persistence stay outside Harness. Harness receives already-resolved runtime dependencies and never stores credentials. Revisit ownership separately after consolidation. |
 | `coding.package`, `coding.plugin`, `coding.resources`, `coding.skill` | Split candidate | Package source/manifest/materialization, standard roots/layout, registry/resolver, discovery, and skill-loading mechanisms now live under `loushang.harness.resources`. Coding keeps built-in content registration, compatibility convention activation, additional roots, trust/approval policy, settings/CLI projection, and compatibility facades. |
 | `coding.workflow` | Split candidate | Move a neutral workflow runner, step/result records, cancellation, and observer mechanics after resource and extension contracts stabilize. Keep Coding workflow definitions, prompts, artifact semantics, completion policy, and product test fixtures. |
@@ -136,11 +136,27 @@ result reducers, and UI commands.
 
 ### Wave 3: Persistence, Context, And Workflow Mechanics
 
-Extract neutral file locking, atomic index/journal/checkpoint mechanics, opaque
-entry codecs, context item/bundle/packing contracts, and workflow execution
-mechanics. Coding keeps its transcript schema, message JSON codec, salience and
-summarization prompts, workflow definitions, artifact semantics, and storage
-policy. Moving `coding.message` wholesale is explicitly not part of this wave.
+Status: context, compaction, journal, and branch design reviewed for
+implementation; see
+[Context, Compaction, And Journal Foundations](context-compaction-journal-foundations.md).
+
+Extract neutral context items and group-aware packing, selectable compaction
+strategies and coordination, file locking, profiled atomic JSONL mechanics,
+opaque header/record codecs, and parent-linked branch/fork engines. Coding
+keeps its compatibility compaction planner for split-turn and tool-result
+semantics, transcript payload schema, custom message codecs, prompts, model
+calls, artifact semantics, session index/projection, and storage policy. Work
+keeps normalization, its in-memory/query/subscription behavior, and
+WorkOperation/WorkEvent schemas while adopting only matching JSONL I/O. AI owns
+base-message codecs, Agent owns extension-message codec protocols and registry,
+and each Product owns its custom transcript codecs. Generic journal indexes and
+projection checkpoints are deferred until their contracts have stronger
+evidence.
+
+Workflow execution mechanics remain a separate ownership decision within this
+wave. Do not move `coding.workflow` wholesale before reconciling its test-scenario
+semantics with the separate `loushang.method` and `loushang.work` layers. Moving
+`coding.message` wholesale is explicitly not part of this wave.
 
 ### Wave 4: Session And Runtime Consolidation
 
