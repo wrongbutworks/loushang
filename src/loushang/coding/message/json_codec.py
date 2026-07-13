@@ -2,7 +2,12 @@ from __future__ import annotations
 
 from typing import Any
 
-from loushang.agent import AgentMessage, AgentToolResult
+from loushang.agent import AgentMessage
+from loushang.agent.json_codec import (
+    AgentMessageJsonCodec,
+    CustomMessageJsonCodec,
+    serialize_tool_result,
+)
 from loushang.ai.json_codec import (
     deserialize_content_part,
     deserialize_usage,
@@ -16,11 +21,6 @@ from loushang.ai.json_codec import (
 )
 from loushang.ai.json_codec import (
     serialize_message as serialize_ai_message,
-)
-from loushang.ai.types import (
-    AssistantMessage,
-    ToolResultMessage,
-    UserMessage,
 )
 from loushang.coding.message.custom_messages import (
     BashExecutionMessage,
@@ -51,14 +51,6 @@ def deserialize_session_header(payload: dict[str, Any]) -> SessionHeader:
         cwd=payload["cwd"],
         parent_session=payload.get("parentSession"),
     )
-
-
-def serialize_tool_result(result: AgentToolResult[Any]) -> dict[str, Any]:
-    return {
-        "content": [serialize_content_part(part) for part in result.content],
-        "details": serialize_json_value(result.details),
-        "terminate": result.terminate,
-    }
 
 
 def serialize_custom_message(message: AgentMessage) -> dict[str, Any]:
@@ -142,17 +134,28 @@ def deserialize_custom_message(payload: dict[str, Any]) -> AgentMessage:
     raise ValueError(f"Unsupported custom message role: {role}")
 
 
+_CODING_MESSAGE_CODEC = AgentMessageJsonCodec(
+    CustomMessageJsonCodec(
+        role=role,
+        message_type=message_type,
+        serialize=serialize_custom_message,
+        deserialize=deserialize_custom_message,
+    )
+    for role, message_type in (
+        ("bashExecution", BashExecutionMessage),
+        ("custom", CustomMessage),
+        ("branchSummary", BranchSummaryMessage),
+        ("compactionSummary", CompactionSummaryMessage),
+    )
+)
+
+
 def serialize_agent_message(message: AgentMessage) -> dict[str, Any]:
-    if isinstance(message, UserMessage | AssistantMessage | ToolResultMessage):
-        return serialize_ai_message(message)
-    return serialize_custom_message(message)
+    return _CODING_MESSAGE_CODEC.serialize(message)
 
 
 def deserialize_agent_message(payload: dict[str, Any]) -> AgentMessage:
-    role = payload["role"]
-    if role in {"user", "assistant", "toolResult"}:
-        return deserialize_ai_message(payload)
-    return deserialize_custom_message(payload)
+    return _CODING_MESSAGE_CODEC.deserialize(payload)
 
 
 __all__ = [
