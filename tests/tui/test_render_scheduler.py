@@ -7,26 +7,72 @@ def test_scheduler_records_pi_style_tuning_parameters() -> None:
     config = RenderSchedulerConfig()
 
     assert config.min_render_interval_ms == 16
+    assert config.stream_min_render_interval_ms == 50
     assert config.max_coalescing_delay_ms == 50
     assert config.input_echo_deadline_ms == 16
 
 
+def test_scheduler_config_preserves_existing_positional_argument_order() -> None:
+    config = RenderSchedulerConfig(10, 20, 30)
+
+    assert config.min_render_interval_ms == 10
+    assert config.max_coalescing_delay_ms == 20
+    assert config.input_echo_deadline_ms == 30
+    assert config.stream_min_render_interval_ms == 50
+
+
 def test_scheduler_coalesces_stream_ticks_but_keeps_input_immediate() -> None:
-    scheduler = RenderScheduler(RenderSchedulerConfig(min_render_interval_ms=16, max_coalescing_delay_ms=50))
+    scheduler = RenderScheduler(
+        RenderSchedulerConfig(
+            min_render_interval_ms=16,
+            stream_min_render_interval_ms=50,
+            max_coalescing_delay_ms=50,
+        )
+    )
     scheduler.mark_rendered(now_ms=100)
 
     stream_decision = scheduler.request_render("stream", now_ms=105)
     input_decision = scheduler.request_render("input", now_ms=106)
 
     assert stream_decision.render_now is False
-    assert stream_decision.delay_ms == 11
+    assert stream_decision.delay_ms == 45
     assert stream_decision.coalesced is True
     assert input_decision.render_now is True
     assert input_decision.delay_ms == 0
     assert input_decision.coalesced is False
 
 
-def test_scheduler_caps_stream_delay_at_max_coalescing_delay() -> None:
+def test_scheduler_stream_deadline_is_not_cut_short_by_general_coalescing_cap() -> None:
+    scheduler = RenderScheduler(
+        RenderSchedulerConfig(
+            min_render_interval_ms=16,
+            stream_min_render_interval_ms=80,
+            max_coalescing_delay_ms=50,
+        )
+    )
+    scheduler.mark_rendered(now_ms=100)
+
+    stream_decision = scheduler.request_render("stream", now_ms=105)
+    product_decision = scheduler.request_render("product", now_ms=105)
+
+    assert stream_decision.delay_ms == 75
+    assert product_decision.delay_ms == 11
+
+
+def test_scheduler_can_disable_stream_coalescing_explicitly() -> None:
+    scheduler = RenderScheduler(
+        RenderSchedulerConfig(stream_min_render_interval_ms=0)
+    )
+    scheduler.mark_rendered(now_ms=100)
+
+    decision = scheduler.request_render("stream", now_ms=100)
+
+    assert decision.render_now is True
+    assert decision.delay_ms == 0
+    assert decision.coalesced is False
+
+
+def test_scheduler_caps_non_stream_delay_at_max_coalescing_delay() -> None:
     scheduler = RenderScheduler(RenderSchedulerConfig(min_render_interval_ms=100, max_coalescing_delay_ms=40))
     scheduler.mark_rendered(now_ms=10)
 
