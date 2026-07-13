@@ -112,6 +112,7 @@ Use this split when judging a candidate:
 | --- | --- | --- |
 | Tools | registry/schema/contribution mechanics, execution wrappers, and reusable concrete tool packs such as workspace read/search/edit/exec | default tool-pack activation, domain-specific tools, destructive-tool policy, and product-tuned names/descriptions |
 | Approval | approval request/decision value types, resolver protocol, headless deny/allow defaults | interactive approval UI, product-specific rules, persisted allowlists |
+| Policy | neutral allow/deny/ask decision records and evaluator protocols | risk classification, trust rules, allowlists, and product defaults |
 | Presentation | neutral content blocks, renderer protocol, renderer registry | terminal/web widgets, product-specific transcript layout |
 | Resources | platform roots/layout, standard conventions, descriptors, discovery/package engines, precedence presets, merge/diagnostic mechanisms | domain content, convention activation, additional/override roots, trust and runtime projection |
 | Workspace | file/process protocols and backends, neutral exec shapes, path/mutation mechanics, reusable workspace tools | allowed roots, activation, risk/approval classification, user explanations, workspace defaults |
@@ -134,6 +135,7 @@ Preferred destinations for shared substrate:
 - `loushang.harness.resources`
 - `loushang.harness.context`
 - `loushang.harness.approval`
+- `loushang.harness.policy`
 - `loushang.harness.presentation`
 - `loushang.harness.tools`
 - `loushang.harness.diagnostics`

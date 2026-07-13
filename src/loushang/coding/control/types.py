@@ -4,8 +4,8 @@ from dataclasses import dataclass, field
 from typing import Literal, TypedDict
 
 from loushang.agent import ThinkingLevel
-from loushang.coding.package import PackageSourceConfig
 from loushang.coding.types import ModelSelection
+from loushang.harness.resources.packages.source import PackageSourceConfig
 
 QueueMode = Literal["all", "one-at-a-time"]
 DoubleEscapeAction = Literal["fork", "tree", "none"]

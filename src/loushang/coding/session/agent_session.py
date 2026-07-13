@@ -42,11 +42,7 @@ from loushang.coding.extensions import (
     SessionShutdownEvent,
     SessionStartEvent,
 )
-from loushang.coding.loader import (
-    DefaultResourceLoader,
-    PromptFragmentDescriptor,
-    ResourceBundle,
-)
+from loushang.coding.loader import DefaultResourceLoader
 from loushang.coding.message import SessionContext
 from loushang.coding.package.materializer import (
     PackageMaterializer,
@@ -124,6 +120,10 @@ from loushang.harness.diagnostics.types import (
 )
 from loushang.harness.host.runtime import HostRuntime
 from loushang.harness.resources.diagnostics import ResourceDiagnostic
+from loushang.harness.resources.types import (
+    PromptFragmentDescriptor,
+    ResourceBundle,
+)
 from loushang.harness.tools.core import ToolDefinition
 from loushang.harness.workspace.exec import (
     ExecOutputChunk,

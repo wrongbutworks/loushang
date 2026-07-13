@@ -12,17 +12,18 @@ from loushang.coding.compaction import BranchSummaryResult, CompactionResult
 from loushang.coding.extensions.events import VALID_EXTENSION_EVENTS
 from loushang.coding.extensions.manifest import ExtensionManifest
 from loushang.coding.extensions.policy import ExtensionPolicyDecision
-from loushang.coding.loader import (
-    ExtensionDescriptor,
-    PromptFragmentDescriptor,
-    SkillDescriptor,
-    ThemeDescriptor,
-)
-from loushang.coding.loader.types import ResourceSourceKind, ResourceSourceScope
 from loushang.coding.types import ModelSelection
 from loushang.harness.contributions import ExtensionSurfaceDescriptor
 from loushang.harness.resources.diagnostics import ResourceDiagnostic
 from loushang.harness.resources.source import SourceInfo
+from loushang.harness.resources.types import (
+    ExtensionDescriptor,
+    PromptFragmentDescriptor,
+    ResourceSourceKind,
+    ResourceSourceScope,
+    SkillDescriptor,
+    ThemeDescriptor,
+)
 from loushang.harness.tools.core import ToolDefinition
 from loushang.harness.workspace.exec import ExecResult, ExecUpdateCallback
 

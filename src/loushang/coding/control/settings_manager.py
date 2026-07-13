@@ -34,9 +34,11 @@ from loushang.coding.control.types import (
     TreeFilterMode,
     WarningSettings,
 )
-from loushang.coding.package import PackageSourceConfig
-from loushang.coding.package.source import package_source_match_key
 from loushang.coding.types import ModelSelection
+from loushang.harness.resources.packages.source import (
+    PackageSourceConfig,
+    package_source_match_key,
+)
 
 SettingsListener = Callable[[ControlConfig], None]
 SettingsScope = Literal["session", "global", "project"]

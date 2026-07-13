@@ -7,7 +7,7 @@ from os.path import basename
 from pathlib import Path
 from typing import Any
 
-from loushang.coding.policy.types import PolicyDecision
+from loushang.harness.policy import PolicyDecision
 from loushang.harness.workspace.exec import ExecRequest
 
 _DEFAULT_BLOCKED_SUBSTRINGS: tuple[str, ...] = (
