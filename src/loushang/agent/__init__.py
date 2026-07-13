@@ -6,6 +6,13 @@ from loushang.agent.agent_loop import (
     run_agent_loop_continue,
 )
 from loushang.agent.proxy import stream_proxy
+from loushang.agent.tool_output import (
+    FunctionalToolOutputProjector,
+    StrictJsonToolOutputProjector,
+    ToolOutputPreviewPolicy,
+    ToolOutputProjectionError,
+    ToolOutputProjector,
+)
 from loushang.agent.types import (
     AfterToolCallContext,
     AfterToolCallResult,
@@ -62,6 +69,11 @@ __all__ = [
     "AgentToolCall",
     "AgentToolResult",
     "AgentToolUpdateCallback",
+    "FunctionalToolOutputProjector",
+    "StrictJsonToolOutputProjector",
+    "ToolOutputPreviewPolicy",
+    "ToolOutputProjectionError",
+    "ToolOutputProjector",
     # Function types
     "ConvertToLlmFn",
     "GetApiKeyFn",
