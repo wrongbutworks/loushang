@@ -114,7 +114,7 @@ from loushang.coding.session.types import (
 )
 from loushang.coding.session.usage_payload import serialize_context_usage_payload
 from loushang.coding.store import SessionManager, SessionRecord
-from loushang.coding.tools import ToolDefinition, ToolRegistry
+from loushang.coding.tools import ToolRegistry
 from loushang.harness.diagnostics.service import DiagnosticsService
 from loushang.harness.diagnostics.types import (
     DiagnosticRecord,
@@ -124,6 +124,7 @@ from loushang.harness.diagnostics.types import (
 )
 from loushang.harness.host.runtime import HostRuntime
 from loushang.harness.resources.diagnostics import ResourceDiagnostic
+from loushang.harness.tools.core import ToolDefinition
 from loushang.harness.workspace.exec import (
     ExecOutputChunk,
     ExecRequest,

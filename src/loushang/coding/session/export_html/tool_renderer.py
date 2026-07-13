@@ -19,8 +19,8 @@ from loushang.coding.message.custom_messages import (
     CompactionSummaryMessage,
     CustomMessage,
 )
-from loushang.coding.tools.presentation import render_tool_result_text
-from loushang.coding.tools.rendering import ToolDefinitionResolver, ToolRenderRuntime
+from loushang.harness.presentation import ToolDefinitionResolver, ToolRenderRuntime
+from loushang.harness.tools.workspace.presentation import render_tool_result_text
 
 from .ansi import render_ansi_pre
 from .markdown import render_markdown

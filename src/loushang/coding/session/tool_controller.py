@@ -8,19 +8,17 @@ from loushang.agent.types import AgentTool, ensure_agent_tool, is_agent_tool_lik
 from loushang.coding.loader import ResourceBundle
 from loushang.coding.prompt import assemble_prompt
 from loushang.coding.store import SessionManager
-from loushang.coding.tools import (
-    ToolContext,
-    ToolDefinition,
-    ToolRegistry,
-    create_tool_definition_from_tool,
-    tool_to_definition,
-)
+from loushang.coding.tools import ToolRegistry
 from loushang.harness.diagnostics.service import DiagnosticsService
 from loushang.harness.tools.contribution import (
     ToolContribution,
     ToolResolutionResult,
     resolve_tool_contributions,
 )
+from loushang.harness.tools.core import ToolDefinition
+from loushang.harness.tools.workspace.context import ToolContext
+from loushang.harness.tools.workspace.normalize import tool_to_definition
+from loushang.harness.tools.workspace.wrapper import create_tool_definition_from_tool
 
 _DEFAULT_ACTIVE_TOOL_NAMES: tuple[str, ...] = ("read", "ls", "find", "grep", "bash", "edit", "write")
 _BUILTIN_TOOL_NAMES: frozenset[str] = frozenset(("bash", "read", "ls", "find", "grep", "write", "edit"))

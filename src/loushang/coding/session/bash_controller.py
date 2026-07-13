@@ -10,7 +10,7 @@ from loushang.coding.extensions import ExtensionRunner
 from loushang.coding.message import BashExecutionMessage
 from loushang.coding.store import SessionManager
 from loushang.coding.tools import ToolRegistry
-from loushang.coding.tools.protocol import (
+from loushang.harness.tools.workspace.protocol import (
     normalize_bash_result_from_protocol,
     project_bash_result_for_protocol,
 )

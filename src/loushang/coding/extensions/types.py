@@ -19,11 +19,11 @@ from loushang.coding.loader import (
     ThemeDescriptor,
 )
 from loushang.coding.loader.types import ResourceSourceKind, ResourceSourceScope
-from loushang.coding.tools import ToolDefinition
 from loushang.coding.types import ModelSelection
 from loushang.harness.contributions import ExtensionSurfaceDescriptor
 from loushang.harness.resources.diagnostics import ResourceDiagnostic
 from loushang.harness.resources.source import SourceInfo
+from loushang.harness.tools.core import ToolDefinition
 from loushang.harness.workspace.exec import ExecResult, ExecUpdateCallback
 
 

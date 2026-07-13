@@ -60,19 +60,19 @@ from loushang.coding.source_info import (
 )
 from loushang.coding.store import SessionQuery
 from loushang.coding.tools import ToolRegistry, register_builtin_tools
-from loushang.coding.tools.path_utils import resolve_tool_path
-from loushang.coding.tools.read import (
-    PillowReadImageResizer,
-    detect_image_dimensions,
-    format_image_dimension_note,
-    image_exceeds_inline_limits,
-)
 from loushang.coding.types import ModelSelection
 from loushang.coding.ui.mode import run_coding_tui
 from loushang.coding.workflow import (
     load_workflow,
     resolve_workflow_files,
     run_prompt_steps_workflow,
+)
+from loushang.harness.tools.workspace.path_utils import resolve_tool_path
+from loushang.harness.tools.workspace.read import (
+    PillowReadImageResizer,
+    detect_image_dimensions,
+    format_image_dimension_note,
+    image_exceeds_inline_limits,
 )
 from loushang.method import MethodCompiler, MethodContext, MethodLoader
 from loushang.work import JsonlEventLogBackend, project_work_plan_runs

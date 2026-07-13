@@ -3,7 +3,8 @@ from __future__ import annotations
 import inspect
 import json
 import sys
-from typing import Any, Literal, Mapping, Sequence, TextIO
+from collections.abc import Mapping, Sequence
+from typing import Any, Literal, TextIO
 
 from loushang.coding.event import (
     SUPPORTED_JSON_EVENT_VIEWS,
@@ -14,8 +15,8 @@ from loushang.coding.event import (
 )
 from loushang.coding.message.json_codec import serialize_session_header
 from loushang.coding.mode.base import ModeAdapter, ModeState
-from loushang.coding.tools import ToolDefinitionResolver, ToolRenderRuntime
 from loushang.coding.work_shell import CodingWorkShell
+from loushang.harness.presentation import ToolDefinitionResolver, ToolRenderRuntime
 from loushang.work import EventLogBackend
 
 

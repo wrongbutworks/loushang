@@ -5,26 +5,39 @@
 This document defines the rules for moving shared behavior into
 `loushang.harness`.
 
-The goal is to make future products easier to build without making harness a
-new product framework, a second agent runtime, or a dumping ground for code that
-happens to be reused once.
+The goal is to make future products small by providing a batteries-included,
+cross-product runtime kernel without making harness a second agent loop or a
+home for product semantics.
 
 ## Core Rule
 
-Harness owns product-neutral mechanisms. Products own policy and semantics.
+Harness owns reusable mechanisms and reusable concrete implementations.
+Products own their irreducible policy and domain semantics.
 
-Put code in harness only when all of these are true:
+The default destination is Harness. Code remains in a product only when the
+product boundary is explicit and testable. A Product exception must show at
+least one of these properties:
+
+- it defines product goals, domain language, completion criteria, prompts,
+  skills, or artifact semantics;
+- it chooses product defaults, tool-pack activation, context salience,
+  risk/approval behavior, permissions, storage, commands, or presentation;
+- it integrates product UI, compatibility formats, resource conventions, or a
+  domain-specific external system;
+- moving it would require Harness to import or understand product state.
+
+Put code in Harness when all of these are true:
 
 - it is demonstrably product-neutral and useful to planned product lines; a
   second production consumer is evidence, not a prerequisite;
 - it does not depend on coding, design, research, ppt, cowork, TUI, method,
   work, or AI provider semantics;
 - it describes a contract, helper engine, registry, resolver, lifecycle shape,
-  or neutral event/presentation record;
+  neutral record, or reusable concrete capability;
 - product adapters can choose defaults, policy, activation, storage, and UI
   behavior outside harness.
 
-Keep code out of harness when it decides what a specific product should do,
+Keep code out of Harness when it decides what a specific product should do,
 which tools should be enabled by default, how a product prompt is assembled,
 how product artifacts are materialized, or how a product UI should behave.
 
@@ -60,11 +73,11 @@ Use this split when judging a candidate:
 
 | Concern | Harness may own | Product adapter owns |
 | --- | --- | --- |
-| Tools | registry interfaces, schema inference, contribution resolution, neutral tool metadata | default tool set, product tool names, destructive-tool policy, tool descriptions tuned for a product |
+| Tools | registry/schema/contribution mechanics, execution wrappers, and reusable concrete tool packs such as workspace read/search/edit/exec | default tool-pack activation, domain-specific tools, destructive-tool policy, and product-tuned names/descriptions |
 | Approval | approval request/decision value types, resolver protocol, headless deny/allow defaults | interactive approval UI, product-specific rules, persisted allowlists |
 | Presentation | neutral content blocks, renderer protocol, renderer registry | terminal/web widgets, product-specific transcript layout |
 | Resources | source descriptors, frontmatter parsing, merge/diagnostic primitives | prompt/theme/skill loading policy, search roots, product resource semantics |
-| Workspace | file/process operation protocols, neutral exec request/result shapes | when an operation is allowed, how it is explained to users, workspace defaults |
+| Workspace | file/process protocols and backends, neutral exec shapes, path/mutation mechanics, reusable workspace tools | allowed roots, activation, risk/approval classification, user explanations, workspace defaults |
 | Context | context item refs, budget accounting, packing contracts | what content is important, summarization prompts, product-specific memory policy |
 | Session | host lifecycle protocols, idle/abort/dispose/queue snapshots | transcript schema, controllers, product session store, command execution |
 | Diagnostics | diagnostic records, severity/source vocabulary, query interface | product health checks, user-facing grouping, remediation text |
@@ -139,8 +152,9 @@ prevents early internal contracts from becoming public API accidentally.
 
 ## Migration Slice Checklist
 
-Each code migration slice should be small enough to review as one boundary
-change.
+Each migration batch should be reviewable as one capability cluster. During
+runtime consolidation, prefer an ownership lift-and-shift with compatibility
+shims over a simultaneous API redesign.
 
 Before moving code:
 
@@ -152,8 +166,10 @@ Before moving code:
 
 During the move:
 
-- move types before engines;
-- move engines before product defaults;
+- move a coherent reusable implementation, not only its protocols and types;
+- preserve accepted product import paths with thin compatibility adapters;
+- defer renaming, public API cleanup, and shim removal until ownership has
+  moved and behavior is green;
 - keep command handlers, prompt policy, UI controllers, and session stores in
   product packages;
 - update internal imports to the new harness path;

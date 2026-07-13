@@ -5,15 +5,17 @@ from dataclasses import dataclass
 from typing import Any, Literal
 
 from loushang.agent.types import AgentToolResult
-from loushang.coding.tools import (
+from loushang.harness.presentation import (
     ToolDefinitionResolver,
     ToolRenderRuntime,
-    render_tool_result_presentation,
 )
-from loushang.coding.tools.output_preview import (
+from loushang.harness.tools.workspace.output_preview import (
     collapse_tool_output_preview,
     drop_tool_timing_tail_line,
     prefers_tail_tool_output,
+)
+from loushang.harness.tools.workspace.presentation import (
+    render_tool_result_presentation,
 )
 from loushang.tui.render import diff_stat
 

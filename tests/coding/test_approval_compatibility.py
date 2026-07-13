@@ -35,10 +35,13 @@ def test_coding_interactive_approval_resolver_remains_product_owned() -> None:
         InteractiveApprovalResolver,
         PolicyEnforcementError,
     )
+    from loushang.harness.tools.workspace.policy import (
+        PolicyEnforcementError as HarnessPolicyEnforcementError,
+    )
 
     assert not hasattr(harness_approval, "InteractiveApprovalResolver")
     assert InteractiveApprovalResolver.__module__ == "loushang.coding.policy.approval"
-    assert PolicyEnforcementError.__module__ == "loushang.coding.policy.approval"
+    assert PolicyEnforcementError is HarnessPolicyEnforcementError
 
 
 def test_coding_interactive_approval_fallback_accepts_harness_resolver() -> None:
@@ -49,7 +52,9 @@ def test_coding_interactive_approval_fallback_accepts_harness_resolver() -> None
         HeadlessApprovalResolver,
     )
 
-    resolver = InteractiveApprovalResolver(fallback=HeadlessApprovalResolver(mode="allow"))
+    resolver = InteractiveApprovalResolver(
+        fallback=HeadlessApprovalResolver(mode="allow")
+    )
 
     decision = asyncio.run(
         resolver.resolve(
@@ -75,4 +80,8 @@ def test_coding_resolve_approval_uses_harness_result_validation() -> None:
             return "allow"
 
     with pytest.raises(TypeError, match="ApprovalResolver returned str"):
-        asyncio.run(resolve_approval(InvalidResolver(), ApprovalRequest(tool_name="write", arguments={})))
+        asyncio.run(
+            resolve_approval(
+                InvalidResolver(), ApprovalRequest(tool_name="write", arguments={})
+            )
+        )

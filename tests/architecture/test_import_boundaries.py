@@ -255,7 +255,9 @@ def test_coding_internal_diagnostics_imports_use_harness_owners() -> None:
 
 
 def test_harness_diagnostics_core_boundary_is_documented() -> None:
-    design_path = Path("docs/internals/architecture/harness/diagnostics-core-boundary.md")
+    design_path = Path(
+        "docs/internals/architecture/harness/diagnostics-core-boundary.md"
+    )
     assert design_path.exists()
     design_text = " ".join(design_path.read_text(encoding="utf-8").split())
     required_phrases = {
@@ -267,7 +269,9 @@ def test_harness_diagnostics_core_boundary_is_documented() -> None:
         "`coding.diagnostics.problem_bridge`",
         "must not import coding, method, work, TUI, AI, agent runtime, provider, observability, or product packages",
     }
-    assert sorted(phrase for phrase in required_phrases if phrase not in design_text) == []
+    assert (
+        sorted(phrase for phrase in required_phrases if phrase not in design_text) == []
+    )
 
     readme_text = Path("docs/internals/architecture/harness/README.md").read_text(
         encoding="utf-8"
@@ -322,7 +326,9 @@ def test_harness_context_budget_and_accounting_boundary_is_documented() -> None:
         "This migration establishes budget and accounting ownership only",
         "must not import coding, method, work, TUI, AI, agent runtime, provider, or product packages",
     }
-    assert sorted(phrase for phrase in required_phrases if phrase not in design_text) == []
+    assert (
+        sorted(phrase for phrase in required_phrases if phrase not in design_text) == []
+    )
 
     readme_text = Path("docs/internals/architecture/harness/README.md").read_text(
         encoding="utf-8"
@@ -371,7 +377,9 @@ def test_coding_internal_contribution_imports_use_harness_owner() -> None:
 
 
 def test_harness_contribution_inventory_boundary_is_documented() -> None:
-    design_path = Path("docs/internals/architecture/harness/contribution-inventory-boundary.md")
+    design_path = Path(
+        "docs/internals/architecture/harness/contribution-inventory-boundary.md"
+    )
     assert design_path.exists()
     design_text = " ".join(design_path.read_text(encoding="utf-8").split())
     required_phrases = {
@@ -382,7 +390,9 @@ def test_harness_contribution_inventory_boundary_is_documented() -> None:
         "This inventory migration moves records and indexing only",
         "must not import coding, method, work, TUI, AI, agent runtime, provider, or product packages",
     }
-    assert sorted(phrase for phrase in required_phrases if phrase not in design_text) == []
+    assert (
+        sorted(phrase for phrase in required_phrases if phrase not in design_text) == []
+    )
 
     readme_text = Path("docs/internals/architecture/harness/README.md").read_text(
         encoding="utf-8"
@@ -461,7 +471,9 @@ def test_harness_workspace_operation_boundary_is_documented() -> None:
     }
     assert operation_symbols.isdisjoint(set(harness.__all__))
 
-    design_path = Path("docs/internals/architecture/harness/workspace-operation-boundary.md")
+    design_path = Path(
+        "docs/internals/architecture/harness/workspace-operation-boundary.md"
+    )
     assert design_path.exists()
     design_text = " ".join(design_path.read_text(encoding="utf-8").split())
     required_phrases = {
@@ -472,9 +484,13 @@ def test_harness_workspace_operation_boundary_is_documented() -> None:
         "does not select an allowed root",
         "must not import coding, method, work, TUI, AI, provider, or product packages",
     }
-    assert sorted(phrase for phrase in required_phrases if phrase not in design_text) == []
+    assert (
+        sorted(phrase for phrase in required_phrases if phrase not in design_text) == []
+    )
 
-    readme_text = Path("docs/internals/architecture/harness/README.md").read_text(encoding="utf-8")
+    readme_text = Path("docs/internals/architecture/harness/README.md").read_text(
+        encoding="utf-8"
+    )
     assert "Workspace Operation Boundary" in readme_text
 
     inventory_text = Path(
@@ -522,7 +538,9 @@ def test_harness_workspace_path_and_mutation_boundary_is_documented() -> None:
     }
     assert path_mutation_symbols.isdisjoint(set(harness.__all__))
 
-    design_path = Path("docs/internals/architecture/harness/workspace-path-mutation-boundary.md")
+    design_path = Path(
+        "docs/internals/architecture/harness/workspace-path-mutation-boundary.md"
+    )
     assert design_path.exists()
     design_text = " ".join(design_path.read_text(encoding="utf-8").split())
     required_phrases = {
@@ -533,9 +551,13 @@ def test_harness_workspace_path_and_mutation_boundary_is_documented() -> None:
         "the Pi/coding `@` reference prefix",
         "must not import coding, method, work, TUI, AI, provider, or product packages",
     }
-    assert sorted(phrase for phrase in required_phrases if phrase not in design_text) == []
+    assert (
+        sorted(phrase for phrase in required_phrases if phrase not in design_text) == []
+    )
 
-    readme_text = Path("docs/internals/architecture/harness/README.md").read_text(encoding="utf-8")
+    readme_text = Path("docs/internals/architecture/harness/README.md").read_text(
+        encoding="utf-8"
+    )
     assert "Workspace Path And Mutation Boundary" in readme_text
 
     inventory_text = Path(
@@ -557,9 +579,100 @@ def test_harness_tools_core_does_not_expose_pi_style_module_aliases() -> None:
     assert [name for name in sorted(pi_style_aliases) if hasattr(module, name)] == []
 
 
+def test_harness_workspace_tool_pack_boundary_is_documented() -> None:
+    import loushang.harness as harness
+
+    workspace_tool_symbols = {
+        "BashToolOptions",
+        "ReadToolOptions",
+        "ToolContext",
+        "ToolsOptions",
+        "create_all_tool_definitions",
+        "create_read_tool_definition",
+    }
+    assert workspace_tool_symbols.isdisjoint(set(harness.__all__))
+
+    design_path = Path(
+        "docs/internals/architecture/harness/workspace-tool-pack-boundary.md"
+    )
+    assert design_path.exists()
+    design_text = " ".join(design_path.read_text(encoding="utf-8").split())
+    required_phrases = {
+        "Harness Workspace Tool Pack Boundary",
+        "`loushang.harness.tools.workspace`",
+        "reusable concrete workspace tool pack",
+        "builtin pack membership, default activation, and activation order",
+        "`coding.control` is frozen",
+        "does not import Coding or AI packages",
+    }
+    assert (
+        sorted(phrase for phrase in required_phrases if phrase not in design_text) == []
+    )
+
+    readme_text = Path("docs/internals/architecture/harness/README.md").read_text(
+        encoding="utf-8"
+    )
+    assert "Workspace Tool Pack Boundary" in readme_text
+
+    inventory_text = Path(
+        "docs/internals/architecture/harness/coding-to-harness-migration-inventory.md"
+    ).read_text(encoding="utf-8")
+    assert "Workspace Tool Pack" in inventory_text
+    assert "reusable concrete workspace tools implemented" in inventory_text
+
+
+def test_coding_internal_workspace_tool_imports_use_harness_owners() -> None:
+    compatibility_paths = {
+        "src/loushang/coding/__init__.py",
+        "src/loushang/coding/tools/__init__.py",
+        "src/loushang/coding/tools/builtins.py",
+        "src/loushang/coding/tools/factory.py",
+        "src/loushang/coding/tools/registry.py",
+    }
+    legacy_prefixes = tuple(
+        f"loushang.coding.tools.{module_name}"
+        for module_name in (
+            "bash",
+            "builtin_renderers",
+            "context",
+            "edit",
+            "edit_diff",
+            "external_tools",
+            "find",
+            "grep",
+            "ignore",
+            "ls",
+            "normalize",
+            "operations",
+            "output_preview",
+            "path_utils",
+            "policy",
+            "presentation",
+            "process",
+            "protocol",
+            "read",
+            "runtime",
+            "truncate",
+            "wrapper",
+            "write",
+        )
+    )
+    offenders: list[str] = []
+    for path in sorted(Path("src/loushang/coding").rglob("*.py")):
+        if path.as_posix() in compatibility_paths:
+            continue
+        for imported in _absolute_imports(path):
+            if _matches_any(imported, legacy_prefixes):
+                offenders.append(f"{path.as_posix()} imports {imported}")
+
+    assert offenders == []
+
+
 def test_harness_slice1_compatibility_lifecycle_is_documented() -> None:
     text = " ".join(
-        Path("docs/internals/architecture/harness/slice-1-approval-tools-presentation-design.md")
+        Path(
+            "docs/internals/architecture/harness/slice-1-approval-tools-presentation-design.md"
+        )
         .read_text(encoding="utf-8")
         .split()
     )
@@ -602,7 +715,9 @@ def test_harness_slice1_closure_status_is_documented() -> None:
 
 
 def test_harness_slice2_execution_context_design_is_documented() -> None:
-    path = Path("docs/internals/architecture/harness/slice-2-execution-context-design.md")
+    path = Path(
+        "docs/internals/architecture/harness/slice-2-execution-context-design.md"
+    )
     assert path.exists()
 
     text = " ".join(path.read_text(encoding="utf-8").split())
@@ -630,7 +745,9 @@ def test_harness_slice2_execution_context_design_is_documented() -> None:
 
     status_paths = (
         Path("docs/internals/architecture/harness/README.md"),
-        Path("docs/internals/architecture/harness/coding-to-harness-migration-inventory.md"),
+        Path(
+            "docs/internals/architecture/harness/coding-to-harness-migration-inventory.md"
+        ),
     )
     for status_path in status_paths:
         status_text = " ".join(status_path.read_text(encoding="utf-8").split())
@@ -672,7 +789,9 @@ def test_harness_host_runtime_boundary_is_documented() -> None:
         "product-neutral reference driver",
         "no host symbols are added to top-level `loushang.harness.__all__`",
     }
-    assert sorted(phrase for phrase in required_phrases if phrase not in design_text) == []
+    assert (
+        sorted(phrase for phrase in required_phrases if phrase not in design_text) == []
+    )
 
     readme_text = Path("docs/internals/architecture/harness/README.md").read_text(
         encoding="utf-8"
@@ -761,7 +880,9 @@ def test_harness_resource_frontmatter_boundary_is_documented() -> None:
     }
     assert resource_symbols.isdisjoint(set(harness.__all__))
 
-    design_path = Path("docs/internals/architecture/harness/resource-frontmatter-boundary.md")
+    design_path = Path(
+        "docs/internals/architecture/harness/resource-frontmatter-boundary.md"
+    )
     assert design_path.exists()
     design_text = " ".join(design_path.read_text(encoding="utf-8").split())
     required_phrases = {
@@ -771,9 +892,13 @@ def test_harness_resource_frontmatter_boundary_is_documented() -> None:
         "does not move or redesign",
         "must not import coding, method, work, TUI, AI, or provider packages",
     }
-    assert sorted(phrase for phrase in required_phrases if phrase not in design_text) == []
+    assert (
+        sorted(phrase for phrase in required_phrases if phrase not in design_text) == []
+    )
 
-    readme_text = Path("docs/internals/architecture/harness/README.md").read_text(encoding="utf-8")
+    readme_text = Path("docs/internals/architecture/harness/README.md").read_text(
+        encoding="utf-8"
+    )
     assert "Resource Frontmatter Boundary" in readme_text
 
     inventory_text = Path(
@@ -821,7 +946,9 @@ def test_harness_resource_provenance_boundary_is_documented() -> None:
     }
     assert provenance_symbols.isdisjoint(set(harness.__all__))
 
-    design_path = Path("docs/internals/architecture/harness/resource-provenance-boundary.md")
+    design_path = Path(
+        "docs/internals/architecture/harness/resource-provenance-boundary.md"
+    )
     assert design_path.exists()
     design_text = " ".join(design_path.read_text(encoding="utf-8").split())
     required_phrases = {
@@ -832,9 +959,13 @@ def test_harness_resource_provenance_boundary_is_documented() -> None:
         "does not move or redesign",
         "must not import coding, method, work, TUI, AI, provider, or product packages",
     }
-    assert sorted(phrase for phrase in required_phrases if phrase not in design_text) == []
+    assert (
+        sorted(phrase for phrase in required_phrases if phrase not in design_text) == []
+    )
 
-    readme_text = Path("docs/internals/architecture/harness/README.md").read_text(encoding="utf-8")
+    readme_text = Path("docs/internals/architecture/harness/README.md").read_text(
+        encoding="utf-8"
+    )
     assert "Resource Provenance Boundary" in readme_text
 
     inventory_text = Path(
@@ -845,7 +976,9 @@ def test_harness_resource_provenance_boundary_is_documented() -> None:
 
 
 def test_harness_workspace_execution_boundary_is_documented() -> None:
-    design_path = Path("docs/internals/architecture/harness/workspace-execution-boundary.md")
+    design_path = Path(
+        "docs/internals/architecture/harness/workspace-execution-boundary.md"
+    )
     assert design_path.exists()
 
     design_text = " ".join(design_path.read_text(encoding="utf-8").split())
@@ -857,9 +990,16 @@ def test_harness_workspace_execution_boundary_is_documented() -> None:
         "Harness-owned classes keep their harness `__module__`",
         "does not introduce a neutral execution context",
     }
-    assert sorted(phrase for phrase in required_design_phrases if phrase not in design_text) == []
+    assert (
+        sorted(
+            phrase for phrase in required_design_phrases if phrase not in design_text
+        )
+        == []
+    )
 
-    readme_text = Path("docs/internals/architecture/harness/README.md").read_text(encoding="utf-8")
+    readme_text = Path("docs/internals/architecture/harness/README.md").read_text(
+        encoding="utf-8"
+    )
     assert "Workspace Execution Boundary" in readme_text
 
     inventory_text = Path(
@@ -868,9 +1008,9 @@ def test_harness_workspace_execution_boundary_is_documented() -> None:
     assert "`loushang.harness.workspace.truncation`" in inventory_text
     assert "workspace execution implementation complete" in inventory_text
 
-    coding_exec_text = Path("docs/internals/architecture/coding/component-interfaces/exec.md").read_text(
-        encoding="utf-8"
-    )
+    coding_exec_text = Path(
+        "docs/internals/architecture/coding/component-interfaces/exec.md"
+    ).read_text(encoding="utf-8")
     assert "`loushang.harness.workspace.exec`" in coding_exec_text
     assert "compatibility" in coding_exec_text
 
@@ -999,4 +1139,6 @@ def _format_import_from(node: ast.ImportFrom) -> str:
 
 
 def _matches_any(imported: str, prefixes: tuple[str, ...]) -> bool:
-    return any(imported == prefix or imported.startswith(f"{prefix}.") for prefix in prefixes)
+    return any(
+        imported == prefix or imported.startswith(f"{prefix}.") for prefix in prefixes
+    )
