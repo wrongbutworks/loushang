@@ -1,9 +1,9 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
 from typing import Literal
 
-from loushang.coding.extensions.manifest import ExtensionManifest, PermissionLevel
+from loushang.harness.extensions.manifest import ExtensionManifest, PermissionLevel
+from loushang.harness.extensions.types import ExtensionPolicyDecision
 
 ExtensionCapability = Literal[
     "exec",
@@ -28,18 +28,6 @@ _DEFAULT_CAPABILITIES: dict[PermissionLevel, tuple[str, ...]] = {
         "tool_mutation",
     ),
 }
-
-
-@dataclass(frozen=True)
-class ExtensionPolicyDecision:
-    enabled: bool = True
-    permission_level: PermissionLevel = "safe"
-    capabilities: tuple[str, ...] = ()
-    allow_managed_hooks_only: bool = False
-
-    @property
-    def active(self) -> bool:
-        return self.enabled
 
 
 def policy_from_manifest(
