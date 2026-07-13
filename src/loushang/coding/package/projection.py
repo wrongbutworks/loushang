@@ -5,15 +5,15 @@ from pathlib import Path
 from typing import Any
 
 from loushang.coding.loader import DefaultResourceLoader
-from loushang.coding.package.manifest import resolve_package_manifest
-from loushang.coding.package.materializer import PackageMaterializer
-from loushang.coding.package.source import (
+from loushang.harness.resources.packages.manifest import resolve_package_manifest
+from loushang.harness.resources.packages.materializer import PackageMaterializer
+from loushang.harness.resources.packages.source import (
     PackageSourceConfig,
     is_remote_package_source,
     package_source_match_key,
     remote_package_name,
 )
-from loushang.coding.plugin.manager import PluginManager
+from loushang.harness.resources.plugins.manager import PluginManager
 
 
 def collect_package_entries(
@@ -207,7 +207,7 @@ def _load_catalog_entries(catalog_path: Path | None) -> list[dict[str, object]]:
                 message=f"Invalid package catalog JSON: {exc.msg}",
             )
         ]
-    except Exception as exc:  # noqa: BLE001
+    except Exception as exc:
         return [
             _catalog_diagnostic_entry(
                 catalog_path,

@@ -44,8 +44,6 @@ from loushang.coding.observability import (
 )
 from loushang.coding.package.projection import collect_package_entries
 from loushang.coding.platform.output_guard import stdout_guard
-from loushang.coding.plugin import PluginManager
-from loushang.coding.plugin.lifecycle import is_remote_plugin_source
 from loushang.coding.policy import (
     ApprovalResolver,
     HeadlessApprovalResolver,
@@ -66,6 +64,10 @@ from loushang.coding.workflow import (
     load_workflow,
     resolve_workflow_files,
     run_prompt_steps_workflow,
+)
+from loushang.harness.resources.plugins import (
+    PluginManager,
+    is_remote_plugin_source,
 )
 from loushang.harness.tools.workspace.path_utils import resolve_tool_path
 from loushang.harness.tools.workspace.read import (
@@ -2629,9 +2631,8 @@ async def _run_package_lifecycle(args: CliArgs, session: Any, services: Any, std
         bulk_operations.append(("check_package_updates", "check_package_updates"))
     if args.update_all_packages:
         bulk_operations.append(("update_packages", "update_packages"))
-    if not operations and not install_operations:
-        if not bulk_operations:
-            return None
+    if not operations and not install_operations and not bulk_operations:
+        return None
     for command, method_name, source in install_operations:
         decision = PackageSecurityPolicy().evaluate_package_source(source)
         if decision.disposition == "deny":

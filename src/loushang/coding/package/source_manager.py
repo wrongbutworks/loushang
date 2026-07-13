@@ -5,18 +5,19 @@ from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import Literal
 
-from loushang.coding.package.materializer import (
+from loushang.harness.diagnostics.service import DiagnosticsService
+from loushang.harness.resources.packages.materializer import (
     PackageMaterializationRecord,
     PackageMaterializer,
     _package_offline_enabled,
 )
-from loushang.coding.package.source import (
+from loushang.harness.resources.packages.source import (
     PackageSourceConfig,
     PackageSourceIdentity,
     is_remote_package_source,
+    package_source_from_raw,
     package_source_match_key,
 )
-from loushang.harness.diagnostics.service import DiagnosticsService
 
 MissingSourceAction = Literal["install", "skip", "error"]
 MissingSourceResolver = Callable[[str], MissingSourceAction]
@@ -192,33 +193,6 @@ def package_source_scopes(settings_manager: object) -> dict[str, str]:
                 package_source = _normalize_package_source_for_scope(package_source, scope, settings_manager)
                 scopes.setdefault(package_source.source, scope)
     return scopes
-
-
-def package_source_from_raw(raw_source: object) -> PackageSourceConfig | None:
-    if isinstance(raw_source, PackageSourceConfig):
-        return raw_source
-    if isinstance(raw_source, str):
-        return PackageSourceConfig(source=raw_source)
-    if not isinstance(raw_source, Mapping):
-        return None
-    source = raw_source.get("source")
-    if not isinstance(source, str) or not source:
-        return None
-    return PackageSourceConfig(
-        source=source,
-        extensions=_string_tuple_or_none(raw_source.get("extensions")),
-        skills=_string_tuple_or_none(raw_source.get("skills")),
-        prompts=_string_tuple_or_none(raw_source.get("prompts")),
-        themes=_string_tuple_or_none(raw_source.get("themes")),
-    )
-
-
-def _string_tuple_or_none(value: object) -> tuple[str, ...] | None:
-    if value is None:
-        return None
-    if not isinstance(value, list | tuple):
-        return None
-    return tuple(item for item in value if isinstance(item, str))
 
 
 def _normalize_package_source_for_scope(

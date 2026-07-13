@@ -22,10 +22,8 @@ from loushang.coding.control.settings_store import (
 from loushang.coding.extensions import ExtensionRunner
 from loushang.coding.extensions.types import SessionStartEvent
 from loushang.coding.loader import DefaultResourceLoader
-from loushang.coding.loader.types import ResourceBundle
 from loushang.coding.message import convert_to_llm
 from loushang.coding.package import GitPackageMaterializerBackend, PackageMaterializer
-from loushang.coding.package.resource_roots import resolve_package_resource_roots
 from loushang.coding.package.source_manager import (
     PackageSourceResolver,
     package_source_scopes,
@@ -40,6 +38,9 @@ from loushang.coding.types import ModelSelection
 from loushang.harness.diagnostics.service import DiagnosticsService
 from loushang.harness.diagnostics.types import DiagnosticRecord, StartupCheckResult
 from loushang.harness.resources.diagnostics import ResourceDiagnostic
+from loushang.harness.resources.layout import resolve_user_resource_roots
+from loushang.harness.resources.packages.roots import resolve_package_resource_roots
+from loushang.harness.resources.types import ResourceBundle
 from loushang.harness.tools.contribution import (
     ToolContribution,
     ToolResolutionResult,
@@ -800,20 +801,11 @@ def _resolve_user_resource_roots(
     *,
     global_base_dir: Path | None,
 ) -> tuple[list[str], set[str]]:
-    roots: list[str] = []
-    default_root = Path.home() / ".loushang"
-    if default_root.exists() and default_root.is_dir():
-        roots.append(str(default_root))
-    explicit: set[str] = set()
-    for root in resource_roots:
-        expanded = Path(root).expanduser()
-        if not expanded.is_absolute() and global_base_dir is not None:
-            expanded = Path(global_base_dir) / expanded
-        resolved = str(expanded.resolve())
-        explicit.add(resolved)
-        if resolved not in roots:
-            roots.append(resolved)
-    return roots, explicit
+    roots, explicit = resolve_user_resource_roots(
+        resource_roots,
+        global_base_dir=global_base_dir,
+    )
+    return [str(root) for root in roots], {str(root) for root in explicit}
 
 
 def _resolve_for_audit(path: str | Path) -> Path:
