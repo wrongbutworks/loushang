@@ -485,6 +485,7 @@ class _ScreenTranscriptRegion:
         rendered = self._render_record_uncached(
             AssistantMessageRecord(_streaming_buffer_render_text(buffer), stable=False),
             width=width,
+            markdown_streaming_key=buffer,
         )
         self._remember_streaming_buffer_cache(
             buffer,
@@ -515,7 +516,13 @@ class _ScreenTranscriptRegion:
         self._transient_source_buffer_version = -1
         return rendered
 
-    def _render_record_uncached(self, record: DisplayRecord, *, width: int) -> tuple[str, ...]:
+    def _render_record_uncached(
+        self,
+        record: DisplayRecord,
+        *,
+        width: int,
+        markdown_streaming_key: object | None = None,
+    ) -> tuple[str, ...]:
         display_record = _screen_coding_display_record(record, cwd=self.cwd)
         render_width = _screen_transcript_record_render_width(display_record, width=width)
         view = TranscriptView(
@@ -523,6 +530,7 @@ class _ScreenTranscriptRegion:
             theme=self.theme,
             capabilities=self.capabilities,
             markdown_cache=self._markdown_render_cache,
+            markdown_streaming_key=markdown_streaming_key,
         )
         rendered = view.render(RenderConstraints(width=render_width, max_height=1_000_000))
         return _coding_lines(
@@ -605,6 +613,7 @@ class _ScreenTranscriptRegion:
         self._transient_source_style_signature = None
         self._transient_source_buffer_id = None
         self._transient_source_buffer_version = -1
+        self._markdown_render_cache.clear_streaming()
 
     def promote_transient_cache(
         self,
@@ -622,9 +631,10 @@ class _ScreenTranscriptRegion:
             return
         if self._transient_source_width <= 0 or self._transient_source_style_signature is None:
             return
+        canonical_lines = self._render_record_uncached(record, width=self._transient_source_width)
         self._stable_line_cache[
             (record, self._transient_source_width, self._transient_source_style_signature)
-        ] = self._transient_line_cache_lines
+        ] = canonical_lines
         self._enforce_stable_cache_entry_limit()
 
     def _enforce_stable_cache_entry_limit(self) -> None:

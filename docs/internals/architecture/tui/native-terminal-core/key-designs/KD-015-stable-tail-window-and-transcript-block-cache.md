@@ -1,5 +1,11 @@
 # KD-015: Stable Tail Window And Transcript Block Cache
 
+Status: Deferred. This is not the next streaming-performance change.
+
+Streaming Markdown parse reuse is a separate renderer optimization defined by
+KD-019. It does not require an active transcript window or any change to
+terminal-history projection.
+
 ## Purpose
 
 Keep input echo and timer-driven updates responsive when transcript history is

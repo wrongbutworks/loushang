@@ -705,6 +705,28 @@ def test_screen_coding_tui_promotes_streaming_draft_cache_after_assistant_commit
     assert app._transcript_region._transient_line_cache_lines is None
 
 
+def test_screen_coding_tui_uses_canonical_markdown_when_final_text_replaces_draft() -> None:
+    from loushang.coding.ui.screen_app import ScreenCodingTuiApp
+
+    app = ScreenCodingTuiApp(
+        model_label="kimi",
+        cwd="/repo",
+        branch="main",
+        session_label="abcd1234",
+        now=lambda: 10.0,
+    )
+    app.start_prompt("stream", started_at=9.0)
+    app.begin_assistant()
+    app.append_assistant_chunk("Old\n\nTail")
+    _lines(app, width=100, height=1_000)
+
+    app.end_assistant("New **canonical**")
+    rendered = "\n".join(_lines(app, width=100, height=1_000))
+
+    assert "New canonical" in rendered
+    assert "Old" not in rendered
+
+
 def test_screen_coding_tui_complete_run_does_not_trim_active_transcript_line_window() -> None:
     from loushang.coding.ui.screen_app import ScreenCodingTuiApp
 

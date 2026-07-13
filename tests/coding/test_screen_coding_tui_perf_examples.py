@@ -38,6 +38,8 @@ def test_markdown_perf_example_runs_against_screen_tui() -> None:
             "0",
             "--script-render-interval-ms",
             "0",
+            "--script-render-every-n-chunks",
+            "2",
         ],
         check=False,
         capture_output=True,
@@ -48,3 +50,4 @@ def test_markdown_perf_example_runs_against_screen_tui() -> None:
     assert completed.returncode == 0, completed.stderr
     assert "requested_lines=4" in completed.stdout
     assert "markdown_lines_per_block=20" in completed.stdout
+    assert "render_every_n_chunks=2" in completed.stdout
