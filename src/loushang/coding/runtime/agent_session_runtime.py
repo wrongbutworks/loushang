@@ -1,10 +1,9 @@
 from __future__ import annotations
 
-import asyncio
 import errno
 import inspect
 from collections.abc import AsyncIterator, Awaitable, Callable
-from contextlib import asynccontextmanager, suppress
+from contextlib import asynccontextmanager
 from dataclasses import dataclass, replace
 from pathlib import Path
 from shutil import copyfileobj
@@ -34,7 +33,7 @@ from loushang.harness.diagnostics.types import (
     DiagnosticSummary,
     ErrorReport,
 )
-from loushang.harness.runtime import SessionTransitionHost
+from loushang.harness.runtime import CoalescingScheduler, SessionTransitionHost
 
 SessionFactory = Callable[..., AgentSession]
 SessionRebindCallback = Callable[[AgentSession], Awaitable[None]]
@@ -100,8 +99,11 @@ class AgentSessionRuntime:
         self.session_index_refresh_interval = session_index_refresh_interval
         self.session_index_flush_delay = session_index_flush_delay
         self._last_session_index_refresh = 0.0
-        self._session_index_flush_task: asyncio.Task[None] | None = None
-        self._session_index_flush_all_sessions = False
+        self._session_index_flush = CoalescingScheduler[bool](
+            self._flush_scheduled_session_index,
+            merge=lambda left, right: left or right,
+            delay_seconds=session_index_flush_delay,
+        )
         if current_session is not None:
             self._bind_runtime_host(current_session)
 
@@ -671,19 +673,7 @@ class AgentSessionRuntime:
             )
 
     async def drain_session_index_flush(self) -> None:
-        task = self._session_index_flush_task
-        if task is None:
-            return
-        all_sessions = self._session_index_flush_all_sessions
-        if not task.done():
-            task.cancel()
-            with suppress(asyncio.CancelledError):
-                await task
-        try:
-            self._flush_session_index_now(all_sessions=all_sessions, raise_on_error=False)
-        finally:
-            self._session_index_flush_task = None
-            self._session_index_flush_all_sessions = False
+        await self._session_index_flush.drain()
 
     async def _replace_with_manager(
         self,
@@ -747,31 +737,14 @@ class AgentSessionRuntime:
             self._schedule_session_index_flush(all_sessions=all_sessions)
 
     def _schedule_session_index_flush(self, *, all_sessions: bool = False) -> None:
-        self._session_index_flush_all_sessions = self._session_index_flush_all_sessions or all_sessions
-        task = self._session_index_flush_task
-        if task is not None and not task.done():
-            return
-        try:
-            loop = asyncio.get_running_loop()
-        except RuntimeError:
-            self._flush_session_index_now(
-                all_sessions=self._session_index_flush_all_sessions,
-                raise_on_error=False,
-            )
-            self._session_index_flush_all_sessions = False
-            return
-        self._session_index_flush_task = loop.create_task(self._delayed_session_index_flush())
+        self._session_index_flush.delay_seconds = self.session_index_flush_delay
+        self._session_index_flush.schedule(all_sessions)
 
-    async def _delayed_session_index_flush(self) -> None:
-        try:
-            await asyncio.sleep(max(0.0, self.session_index_flush_delay))
-            self._flush_session_index_now(
-                all_sessions=self._session_index_flush_all_sessions,
-                raise_on_error=False,
-            )
-        finally:
-            self._session_index_flush_task = None
-            self._session_index_flush_all_sessions = False
+    def _flush_scheduled_session_index(self, all_sessions: bool) -> None:
+        self._flush_session_index_now(
+            all_sessions=all_sessions,
+            raise_on_error=False,
+        )
 
     def _session_index_refresh_due(self) -> bool:
         return monotonic() - self._last_session_index_refresh >= self.session_index_refresh_interval
