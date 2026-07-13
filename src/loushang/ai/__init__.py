@@ -5,7 +5,7 @@ from loushang.ai.api import (
 )
 from loushang.ai.errors import AIError, AIErrorCode, AIErrorInfo
 from loushang.ai.event_stream import AssistantMessageEventStream
-from loushang.ai.model import Model
+from loushang.ai.model import Model, ModelSelection
 from loushang.ai.model.registry import (
     ModelRegistry,
 )
@@ -74,6 +74,7 @@ __all__ = [
     "Context",
     "Message",
     "Model",
+    "ModelSelection",
     "StopReason",
     "AIError",
     "AIErrorCode",
