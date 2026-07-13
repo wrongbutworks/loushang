@@ -4,7 +4,7 @@ import asyncio
 import errno
 import inspect
 from collections.abc import AsyncIterator, Awaitable, Callable
-from contextlib import asynccontextmanager
+from contextlib import asynccontextmanager, suppress
 from dataclasses import dataclass, replace
 from pathlib import Path
 from shutil import copyfileobj
@@ -34,6 +34,7 @@ from loushang.harness.diagnostics.types import (
     DiagnosticSummary,
     ErrorReport,
 )
+from loushang.harness.runtime import SessionTransitionHost
 
 SessionFactory = Callable[..., AgentSession]
 SessionRebindCallback = Callable[[AgentSession], Awaitable[None]]
@@ -90,7 +91,10 @@ class AgentSessionRuntime:
         self.session_factory = session_factory
         self._session_factory_accepts_start_event = _accepts_session_start_event(session_factory)
         self.persist = persist
-        self._current_session = current_session
+        self._session_host = SessionTransitionHost[AgentSession](
+            current_session,
+            dispose=_dispose_session_only,
+        )
         self._diagnostics_service = diagnostics_service
         self.auto_refresh_session_index = auto_refresh_session_index
         self.session_index_refresh_interval = session_index_refresh_interval
@@ -98,13 +102,12 @@ class AgentSessionRuntime:
         self._last_session_index_refresh = 0.0
         self._session_index_flush_task: asyncio.Task[None] | None = None
         self._session_index_flush_all_sessions = False
-        self._replacement_lock = asyncio.Lock()
-        self._replacement_lock_owner: asyncio.Task[object] | None = None
-        self._replacement_lock_depth = 0
-        self._rebind_session: SessionRebindCallback | None = None
-        self._before_session_invalidate: BeforeSessionInvalidateCallback | None = None
         if current_session is not None:
             self._bind_runtime_host(current_session)
+
+    @property
+    def _current_session(self) -> AgentSession | None:
+        return self._session_host.current
 
     @property
     def session(self) -> AgentSession:
@@ -119,10 +122,10 @@ class AgentSessionRuntime:
         return self._require_current_session().session_manager.get_cwd()
 
     def set_rebind_session(self, callback: SessionRebindCallback | None) -> None:
-        self._rebind_session = callback
+        self._session_host.set_rebind(callback)
 
     def set_before_session_invalidate(self, callback: BeforeSessionInvalidateCallback | None) -> None:
-        self._before_session_invalidate = callback
+        self._session_host.set_before_invalidate(callback)
 
     async def create_session(self, *, cwd: str, parent_session: str | None = None) -> AgentSession:
         return await self.new_session(cwd=cwd, parent_session=parent_session)
@@ -431,16 +434,17 @@ class AgentSessionRuntime:
             await self._replace_current_session_unlocked(session)
 
     async def _replace_current_session_unlocked(self, session: AgentSession) -> None:
-        previous = self._current_session
-        if previous is not None and previous is not session:
-            await self._dispose_current_session(
-                previous,
-                SessionShutdownEvent(reason="resume", target_session_file=_session_file_from_session(session)),
-            )
-            self._current_session = None
-        self._bind_runtime_host(session)
-        self._current_session = session
-        await self._run_rebind_session(session)
+        shutdown_event = SessionShutdownEvent(
+            reason="resume",
+            target_session_file=_session_file_from_session(session),
+        )
+        await self._session_host.replace(
+            session,
+            prepare=self._bind_runtime_host,
+            before_release=lambda previous: self._prepare_session_shutdown(
+                previous, shutdown_event
+            ),
+        )
 
     def get_current_session(self) -> AgentSession | None:
         return self._current_session
@@ -659,9 +663,12 @@ class AgentSessionRuntime:
     async def dispose(self) -> None:
         async with self._replacement_guard():
             await self.drain_session_index_flush()
-            if self._current_session is not None:
-                await self._dispose_current_session(self._current_session, SessionShutdownEvent(reason="quit"))
-                self._current_session = None
+            shutdown_event = SessionShutdownEvent(reason="quit")
+            await self._session_host.dispose_current(
+                before_release=lambda session: self._prepare_session_shutdown(
+                    session, shutdown_event
+                )
+            )
 
     async def drain_session_index_flush(self) -> None:
         task = self._session_index_flush_task
@@ -670,10 +677,8 @@ class AgentSessionRuntime:
         all_sessions = self._session_index_flush_all_sessions
         if not task.done():
             task.cancel()
-            try:
+            with suppress(asyncio.CancelledError):
                 await task
-            except asyncio.CancelledError:
-                pass
         try:
             self._flush_session_index_now(all_sessions=all_sessions, raise_on_error=False)
         finally:
@@ -687,35 +692,34 @@ class AgentSessionRuntime:
         start_event: SessionStartEvent,
         shutdown_event: SessionShutdownEvent,
     ) -> AgentSession:
-        previous = self._current_session
         next_session = self._create_session(manager, start_event)
-        self._bind_runtime_host(next_session)
-        if previous is not None:
-            await self._dispose_current_session(previous, shutdown_event)
-            self._current_session = None
-        self._current_session = next_session
-        starter = getattr(next_session, "start_extension_runtime", None)
-        if callable(starter):
-            await starter(reason=start_event.reason)
-        await self._run_rebind_session(next_session)
+
+        async def _activate(session: AgentSession) -> None:
+            starter = getattr(session, "start_extension_runtime", None)
+            if callable(starter):
+                await starter(reason=start_event.reason)
+
+        await self._session_host.replace(
+            next_session,
+            prepare=self._bind_runtime_host,
+            before_release=lambda previous: self._prepare_session_shutdown(
+                previous, shutdown_event
+            ),
+            activate=_activate,
+        )
         if self.auto_refresh_session_index:
             self._schedule_session_index_flush()
         return next_session
 
-    async def _dispose_current_session(self, session: AgentSession, event: SessionShutdownEvent) -> None:
+    async def _prepare_session_shutdown(
+        self, session: AgentSession, event: SessionShutdownEvent
+    ) -> None:
         try:
             await _emit_session_shutdown(session, event)
         except Exception as exc:
             self._record_session_shutdown_failure(session=session, event=event, exc=exc)
         finally:
             self._sync_session_extension_diagnostics(session)
-        if self._before_session_invalidate is not None:
-            self._before_session_invalidate()
-        await _dispose_session_only(session)
-
-    async def _run_rebind_session(self, session: AgentSession) -> None:
-        if self._rebind_session is not None:
-            await self._rebind_session(session)
 
     def _refresh_session_index_now(self) -> list[SessionSummary]:
         summaries = SessionManager.refresh_index(self.session_dir)
@@ -784,25 +788,8 @@ class AgentSessionRuntime:
 
     @asynccontextmanager
     async def _replacement_guard(self) -> AsyncIterator[None]:
-        task = asyncio.current_task()
-        if task is not None and self._replacement_lock_owner is task:
-            self._replacement_lock_depth += 1
-            try:
-                yield
-            finally:
-                self._replacement_lock_depth -= 1
-            return
-
-        await self._replacement_lock.acquire()
-        self._replacement_lock_owner = task
-        self._replacement_lock_depth = 1
-        try:
+        async with self._session_host.transition():
             yield
-        finally:
-            self._replacement_lock_depth -= 1
-            if self._replacement_lock_depth == 0:
-                self._replacement_lock_owner = None
-                self._replacement_lock.release()
 
     def _record_session_index_flush_failure(self, exc: Exception, *, all_sessions: bool) -> None:
         diagnostics_service = self._diagnostics_service
