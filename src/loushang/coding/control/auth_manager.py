@@ -2,27 +2,12 @@ from __future__ import annotations
 
 import os
 from collections.abc import Mapping
-from dataclasses import dataclass, field
 
 from loushang.ai.auth.support import resolve_auth_material
-from loushang.ai.auth.types import OAuthCredentials
+from loushang.ai.auth.types import AuthResolution, OAuthCredentials
 from loushang.ai.model import Model
 from loushang.ai.model.registry import ModelRegistry as AiModelRegistry
 from loushang.ai.model.registry import get_default_model_registry
-
-
-@dataclass(frozen=True)
-class AuthResolution:
-    provider: str
-    model_id: str
-    endpoint_id: str
-    auth_required: bool
-    satisfied: bool
-    api_key: str | None = None
-    api_key_env: str | None = None
-    source: str | None = None
-    message: str | None = None
-    headers: dict[str, str] = field(default_factory=dict)
 
 
 class AuthManager:

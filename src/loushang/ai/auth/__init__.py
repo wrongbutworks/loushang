@@ -26,6 +26,7 @@ from loushang.ai.auth.support import (
     resolve_auth_material,
 )
 from loushang.ai.auth.types import (
+    AuthResolution,
     OAuthAuthInfo,
     OAuthCredentials,
     OAuthLoginCallbacks,
@@ -35,6 +36,7 @@ from loushang.ai.auth.types import (
 
 __all__ = [
     "AuthConfig",
+    "AuthResolution",
     "AuthView",
     "CredentialStore",
     "CredentialStoreCorruptError",
