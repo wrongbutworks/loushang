@@ -1,0 +1,143 @@
+# Harness Platform Resource Layout Boundary
+
+## Decision
+
+Harness owns the standard cross-product resource layout and its concrete
+discovery mechanisms. Products own domain content, product-only additions,
+activation policy, trust policy, and runtime projection.
+
+This decision distinguishes two kinds of defaults:
+
+- a **platform default** is useful to every Loushang product and may be supplied
+  by Harness with an explicit override;
+- a **product default** selects domain behavior or content and remains in the
+  product adapter.
+
+Providing a platform default does not violate Product Kernel Ownership. It
+prevents every product from rebuilding the same filesystem and package runtime.
+
+## Standard Roots And Layout
+
+Harness owns resolution of these standard shared roots:
+
+```text
+$LOUSHANG_HOME, otherwise ~/.loushang/   # user-global shared resources
+<workspace>/.loushang/                   # workspace/project shared resources
+```
+
+The workspace root is supplied by the host or product. Harness does not choose
+which filesystem tree a product is allowed to access.
+
+The standard resource layout may contain:
+
+```text
+prompts/
+skills/
+extensions/
+themes/
+packages/
+```
+
+Harness may also expose an optional product namespace such as
+`~/.loushang/products/<product>/`. A product registers that additional root; it
+does not reimplement standard root resolution.
+
+The platform supplies the standard scope vocabulary and an overridable
+precedence preset:
+
+```text
+temporary > project > user > package > built_in
+```
+
+Candidate indexing, deterministic tiebreaking, collision diagnostics, disabled
+records, and merge decisions are Harness mechanisms. A product may explicitly
+override the preset when its domain semantics require a different order.
+
+## Agent Instruction Conventions
+
+`AGENTS.md` is a cross-product agent-instruction convention, not a Coding file
+format. Harness owns its reusable convention implementation:
+
+- accepted standard filenames and case variants;
+- discovery bounded by the caller-supplied workspace root;
+- ancestor/path scope evaluation;
+- text loading, provenance, diagnostics, ordering, and merge records.
+
+Compatibility formats such as `CLAUDE.md` may be implemented as optional
+Harness presets. Products and OEMs decide which presets are enabled by default
+and may register product-only conventions.
+
+Harness returns instruction resources. It does not decide where they appear in
+a product system prompt, how salient they are, or how they are summarized or
+truncated.
+
+## Built-In Packages
+
+Harness owns the built-in resource package mechanism:
+
+- package descriptors and registration;
+- traversable/resource-root resolution;
+- standard resource directory enumeration;
+- provenance, diagnostics, and merge participation.
+
+Products own their built-in resource content and register it with Harness. For
+example, Coding may register `loushang.coding.resources`; Design may register
+`loushang.design.resources`. The package slot and loading machinery are shared,
+while the prompt, skill, theme, and extension content remains product-owned.
+
+## Responsibility Split
+
+Harness owns:
+
+- platform home and standard workspace resource-root resolution;
+- the standard directory layout, scope vocabulary, and precedence preset;
+- reusable `AGENTS.md` and optional compatibility convention implementations;
+- resource descriptors, candidates, snapshots, bundles, merge decisions, and
+  diagnostics when expressed without product state;
+- filesystem/package discovery, filtering, deterministic merging, reload, and
+  package materialization mechanisms;
+- built-in package registration and enumeration.
+
+Product adapters own:
+
+- product prompt, skill, theme, and extension content;
+- selection and default activation of standard/compatibility conventions;
+- additional and overridden roots, including product namespaces;
+- product-specific validation, disabled-resource policy, and package filters;
+- trust, permissions, approval defaults, and remote-source policy;
+- prompt/tool/runtime projection, salience, ordering, and user presentation.
+
+OEM/deployment layers may override Harness platform roots and Product policy
+without changing the discovery engine.
+
+## Coding Migration Target
+
+Most of `coding.loader`, `coding.package`, `coding.plugin`, and `coding.skill`
+is reusable mechanism and should move under focused `loushang.harness.resources`
+modules. The existing Coding paths may remain compatibility adapters.
+
+`DefaultResourceLoader` should become a small Coding facade that:
+
+- registers `loushang.coding.resources`;
+- selects standard and compatibility convention presets;
+- adds Coding-specific roots and settings-derived filters;
+- projects the Harness resource snapshot into Coding prompt/session behavior.
+
+It must not retain a second implementation of scanning, provenance, merging,
+package materialization, or `AGENTS.md` discovery.
+
+## Security Boundary
+
+Resource discovery is not resource authorization. Harness may enumerate and
+describe a candidate without activating or executing it. Product/deployment
+policy decides whether remote packages, extensions, executable resources, or
+untrusted workspace content may be activated.
+
+Harness must not import Coding, Design, Research, PPT, Cowork, TUI, Method,
+Work, or AI provider packages to implement the standard layout.
+
+## Non-Goals
+
+This design does not move product prompt text, skill content, extension
+permissions, package approval policy, settings persistence, UI presentation, or
+model/auth resolution into Harness.

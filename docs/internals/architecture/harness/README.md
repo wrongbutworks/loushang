@@ -8,7 +8,8 @@ initial prepared-run facade. Harness owns product-neutral contracts, helper
 engines, registries, and lifecycle shapes that `coding`, `design`, `research`,
 `ppt`, `cowork`, and OEM products can share.
 
-Harness does not own product defaults, product stores, product UI state, method
+Harness may provide explicitly overridable cross-product platform defaults. It
+does not own domain content/defaults, product stores, product UI state, method
 planning, work event persistence, or AI provider behavior.
 
 ## Documents
@@ -35,6 +36,10 @@ planning, work event persistence, or AI provider behavior.
 - [Resource Provenance Boundary](resource-provenance-boundary.md) defines
   shared source metadata and resource diagnostic ownership while preserving
   coding path representations and public compatibility imports.
+- [Platform Resource Layout Boundary](platform-resource-layout-boundary.md)
+  defines Harness-owned platform roots, standard resource scopes,
+  `AGENTS.md` conventions, and built-in package mechanisms while preserving
+  product content, activation, trust, and runtime projection.
 - [Contribution Inventory Boundary](contribution-inventory-boundary.md) defines
   shared descriptor and registry ownership while keeping extension projection,
   activation policy, runtime bindings, and hooks in product adapters.

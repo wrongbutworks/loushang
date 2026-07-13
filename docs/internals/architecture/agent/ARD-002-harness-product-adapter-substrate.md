@@ -88,7 +88,8 @@ It must not own concrete product behavior:
 - coding tools
 - coding command catalog, registry, parser, or execution policy
 - slash commands and command handlers
-- AGENTS.md or prompt assembly
+- product prompt assembly or product-specific instruction projection; Harness
+  may own reusable `AGENTS.md` discovery and standard resource conventions
 - coding session JSONL schema
 - extension, package, or plugin policy
 - product UI adapters

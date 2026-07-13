@@ -43,7 +43,7 @@ sufficient.
 | `loushang.resource.frontmatter`, `coding.frontmatter` | Compatibility shim | Parser records, errors, and behavior live in `loushang.harness.resources.frontmatter`. Legacy paths preserve object identity; coding and method internal consumers use the harness owner. |
 | `coding.source_info.SourceInfo`, `coding.extensions.types.SourceInfo` | Compatibility shim | `SourceInfo`, `SourceScope`, and `SourceOrigin` live in `loushang.harness.resources.source`. Coding command and extension paths preserve string and `Path` representations through the same harness class. Descriptor projection and executable identity remain in coding. |
 | `coding.loader.ResourceDiagnostic`, `coding.loader.types.ResourceDiagnostic` | Compatibility shim | The focused resource record lives in `loushang.harness.resources.diagnostics`. Coding compatibility paths preserve object identity; resource checks, message selection, emission timing, and remediation remain product-owned. |
-| Remaining `coding.loader.types` | Keep product | Prompt, skill, theme, and extension descriptors, source kinds, snapshots, roots, precedence, and merge decisions remain coding-owned. Generic merge primitives require a separate accepted boundary. |
+| Remaining `coding.loader.types` | Move candidate | Product-neutral prompt, skill, theme, and extension descriptors, source kinds, snapshots, bundles, and merge decisions should move under `loushang.harness.resources`. Coding keeps only product projection and compatibility aliases. |
 | `coding.prompt.types` | Split candidate | Move only neutral prepared-prompt/trace contracts after they satisfy the neutrality evidence gate. Keep templates, preflight, and assembler policy in coding. |
 | `coding.compaction.policy`, `coding.compaction.types.ContextUsageEstimate` | Compatibility shim | `CompactionBudget`, deterministic threshold accounting, and `ContextUsageEstimate` live in `loushang.harness.context`. Coding compatibility paths re-export the same Harness-owned objects. |
 | Remaining `coding.compaction.types`, `coding.session.context_usage` | Split candidate | Keep message estimation, model adaptation, context usage snapshots, decisions, branch state, summarization, transcript rebuild, and Coding compaction policy in Coding. Context item refs and packing contracts require a later accepted boundary. |
@@ -61,7 +61,7 @@ sufficient.
 | `coding.cli` | Keep product | Product CLI. It may expose harness-backed behavior but remains coding-owned. |
 | `coding.message`, `coding.store` | Keep product | Coding transcript entries, JSONL transforms, session persistence, and file locking stay coding-owned. |
 | `coding.control` | Keep product | Frozen during runtime consolidation: auth resolution, model registry, settings, provider registration, credential handling, and selection persistence stay outside Harness. Harness receives already-resolved runtime dependencies and never stores credentials. Revisit ownership separately after consolidation. |
-| `coding.package`, `coding.plugin`, `coding.resources`, `coding.skill` | Keep product | Coding package/plugin/resource semantics and materialization stay product-owned. |
+| `coding.package`, `coding.plugin`, `coding.resources`, `coding.skill` | Split candidate | Move package source/manifest/materialization, standard roots/layout, registry/resolver, discovery, and skill-loading mechanisms under `loushang.harness.resources`. Coding keeps built-in content, convention activation, additional roots, trust/approval policy, settings, CLI projection, and compatibility paths. |
 | `coding.workflow` | Keep product | Coding workflows and workflow testing harnesses stay coding-owned. |
 | `coding.platform` | Keep product | Clipboard, git, version, terminal/platform helpers stay product-owned unless a tiny neutral helper is separately justified. |
 | `coding.work_shell` | Keep product | Coding adapter to `loushang.work`; do not move into harness or work. |
@@ -213,9 +213,26 @@ Source metadata now lives in `loushang.harness.resources.source`, preserving
 adapter-selected string or `Path` representations. The neutral resource
 diagnostic record lives in `loushang.harness.resources.diagnostics`.
 Accepted coding paths re-export the harness classes, while coding executable
-identity, product resource descriptors, search roots, precedence, merge policy,
-resource checks, diagnostic emission policy, and remediation text remain
-product-owned.
+identity, product content, convention activation, additional/override roots,
+trust policy, resource checks, diagnostic emission policy, and remediation text
+remain product-owned. Platform roots, standard conventions, scope/precedence
+presets, descriptors, discovery, merging, and package mechanisms are assigned
+to Harness by the later
+[Platform Resource Layout Boundary](platform-resource-layout-boundary.md).
+
+### Resource And Package Runtime
+
+Status: platform resource layout ownership accepted; implementation pending.
+See [Platform Resource Layout Boundary](platform-resource-layout-boundary.md).
+
+Harness will own `LOUSHANG_HOME`/`~/.loushang`, the standard
+`<workspace>/.loushang` layout, shared resource directories, scope vocabulary,
+the overridable precedence preset, reusable `AGENTS.md` discovery, optional
+compatibility conventions, and built-in/package loading mechanisms.
+
+Coding will register `loushang.coding.resources`, select enabled conventions,
+add product roots and filters, apply trust/approval policy, and project the
+Harness resource snapshot into Coding prompts, sessions, commands, and UI.
 
 ### Slice 4: Context
 
@@ -248,7 +265,8 @@ Harness now owns host status/snapshots, driver-delegating lifecycle
 coordination, generic steering/follow-up queue ledger mechanics, and ordered
 event dispatch. Coding uses those mechanisms while retaining `AgentSession`,
 its product controllers and event schema, session persistence/replacement, and
-all prompt/resource/extension/UI semantics.
+product prompt text, resource activation/projection, extension policy, and UI
+semantics.
 
 The independent reference driver and neutral queue/event fixtures satisfy the
 neutrality evidence gate without moving `AgentSession` wholesale or creating a
@@ -281,8 +299,9 @@ an independent contract probe prove a neutral invocation shape.
 - Keep `coding.control` frozen during runtime consolidation. Do not route auth,
   credentials, model registries, provider registration, or persisted model
   selection through Harness.
-- Do not move prompt templates, AGENTS.md policy, slash semantics, or command
-  handlers.
+- Do not move product prompt templates/assembly, slash semantics, or command
+  handlers. Reusable `AGENTS.md` discovery belongs to Harness; Product owns
+  convention activation and prompt projection.
 - Do not add broad top-level packages for workspace, context, memory, or
   session.
 - Do not add new top-level harness exports unless they are intentionally public.

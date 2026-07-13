@@ -50,16 +50,19 @@ shared resource behavior must not be added there.
 
 ## Non-Goals
 
-This migration does not move or redesign:
+This focused parser migration does not move or redesign:
 
 - coding `SourceInfo` or extension source records
 - resource diagnostics or diagnostics services
 - prompt, skill, extension, or theme descriptors
-- resource search roots, precedence, merge policy, or enablement
+- resource search roots, precedence, merge policy, or enablement in this change
 - method resource semantics
-- AGENTS.md or prompt assembly behavior
+- `AGENTS.md` discovery or prompt assembly behavior in this change
 
-Those concerns require separate ownership decisions.
+The later
+[Platform Resource Layout Boundary](platform-resource-layout-boundary.md)
+assigns platform roots, standard conventions, discovery, and precedence/merge
+mechanisms to Harness while keeping activation and prompt projection in Product.
 
 ## Dependency Rules
 

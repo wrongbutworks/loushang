@@ -22,8 +22,8 @@ least one of these properties:
   skills, or artifact semantics;
 - it chooses product defaults, tool-pack activation, context salience,
   risk/approval behavior, permissions, storage, commands, or presentation;
-- it integrates product UI, compatibility formats, resource conventions, or a
-  domain-specific external system;
+- it integrates product UI, product-exclusive compatibility/resource formats,
+  or a domain-specific external system;
 - moving it would require Harness to import or understand product state.
 
 Put code in Harness when all of these are true:
@@ -76,7 +76,7 @@ Use this split when judging a candidate:
 | Tools | registry/schema/contribution mechanics, execution wrappers, and reusable concrete tool packs such as workspace read/search/edit/exec | default tool-pack activation, domain-specific tools, destructive-tool policy, and product-tuned names/descriptions |
 | Approval | approval request/decision value types, resolver protocol, headless deny/allow defaults | interactive approval UI, product-specific rules, persisted allowlists |
 | Presentation | neutral content blocks, renderer protocol, renderer registry | terminal/web widgets, product-specific transcript layout |
-| Resources | source descriptors, frontmatter parsing, merge/diagnostic primitives | prompt/theme/skill loading policy, search roots, product resource semantics |
+| Resources | platform roots/layout, standard conventions, descriptors, discovery/package engines, precedence presets, merge/diagnostic mechanisms | domain content, convention activation, additional/override roots, trust and runtime projection |
 | Workspace | file/process protocols and backends, neutral exec shapes, path/mutation mechanics, reusable workspace tools | allowed roots, activation, risk/approval classification, user explanations, workspace defaults |
 | Context | context item refs, budget accounting, packing contracts | what content is important, summarization prompts, product-specific memory policy |
 | Session | host lifecycle protocols, idle/abort/dispose/queue snapshots | transcript schema, controllers, product session store, command execution |

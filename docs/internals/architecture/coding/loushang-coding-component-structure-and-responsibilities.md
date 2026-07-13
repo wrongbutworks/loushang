@@ -407,32 +407,35 @@ flowchart TD
 
 职责：
 
-- skill 发现
-- skill 解析
-- skill 注入
+- Coding skill 内容与默认激活策略
+- Harness skill descriptor 到产品运行时的投影
+- skill prompt/tool 注入
+
+标准目录发现、解析和 provenance 由 `loushang.harness.resources` 负责。
 
 ### `loader`
 
 角色：
 
-- 统一资源加载中心
+- Harness 平台资源运行时的 Coding facade
 
 职责：
 
-- 加载 `AGENTS.md`
-- 加载 prompt/skill/extension 资源
-- 聚合 coding 侧运行资源
+- 注册 Coding 内置资源 package
+- 选择 `AGENTS.md`/兼容 conventions 与附加 roots
+- 注入 Coding settings、filters、trust 和激活策略
+- 将 Harness resource snapshot 投影为 Coding 运行资源
 
 ### `resources`
 
 角色：
 
-- coding resource descriptors 与加载结果边界
+- Coding 资源内容、策略与兼容投影边界
 
 职责：
 
-- 定义 prompt/skill/theme/extension 等 coding resource descriptor
-- 承载 loader/package/plugin 展开后的资源结果
+- 注册 Coding prompt/skill/theme/extension 内容
+- 兼容导出 Harness-owned descriptors 与加载结果
 - 为 prompt/session 提供稳定资源投影
 
 ### `extensions`

@@ -207,8 +207,9 @@ vertical，不是 `work` 的协作语义层名称。
   session command execution 和 UI command handlers 仍归 `loushang.coding`
 - `coding` 可以直接写入或投影到 `loushang.work`
 - `method` 是结构化 / guided work 的可选组织层，不是所有 coding turn 的必经层
-- `coding` 不应把自己的 tools、slash commands、AGENTS.md prompt assembly、TUI
-  adapter、package/plugin/extension policy 上提到 `agent`
+- `coding` 不应把自己的 tools、slash commands、`AGENTS.md` prompt
+  projection、TUI adapter、package/plugin/extension policy 上提到 `agent`；
+  标准 `AGENTS.md` discovery 与资源机制属于 `harness.resources`
 
 详见
 [Agent Harness and Product Adapter Boundaries](../agent/ARD-001-agent-harness-and-product-adapters.md)。
