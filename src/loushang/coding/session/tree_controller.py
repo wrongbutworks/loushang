@@ -7,6 +7,7 @@ from typing import Any
 from loushang.agent import AbortController, Agent
 from loushang.ai.types import UserMessage
 from loushang.coding.compaction import (
+    BranchSummaryDetails,
     collect_entries_for_branch_summary,
     generate_branch_summary,
 )
@@ -15,6 +16,7 @@ from loushang.coding.extensions import ExtensionRunner, SessionBeforeTreeEvent
 from loushang.coding.message import CustomMessageEntry, SessionMessageEntry
 from loushang.coding.session.types import TreeNavigationResult
 from loushang.coding.store import SessionManager
+from loushang.protocol import JSONValue, require_json_value
 
 EventDispatcher = Callable[[AgentSessionEvent], Awaitable[None]]
 RuntimeExceptionRecorder = Callable[..., None]
@@ -136,7 +138,7 @@ class TreeController:
             summary_entry_id = self.session_manager.branch_with_summary(
                 new_leaf_id,
                 summary_result.summary,
-                details=summary_result.details,
+                details=_project_branch_summary_details(summary_result.details),
                 from_hook=True,
             )
             summary_from_hook = True
@@ -191,7 +193,7 @@ class TreeController:
                     summary_entry_id = self.session_manager.branch_with_summary(
                         new_leaf_id,
                         summary_result.summary,
-                        details=summary_result.details,
+                        details=_project_branch_summary_details(summary_result.details),
                         from_hook=summary_from_hook,
                     )
                     if label:
@@ -262,3 +264,12 @@ def _extract_custom_message_text(entry: CustomMessageEntry) -> str:
     if isinstance(entry.content, str):
         return entry.content
     return "".join(block.text for block in entry.content if getattr(block, "type", None) == "text")
+
+
+def _project_branch_summary_details(details: object | None) -> JSONValue:
+    if isinstance(details, BranchSummaryDetails):
+        return {
+            "readFiles": list(details.read_files),
+            "modifiedFiles": list(details.modified_files),
+        }
+    return require_json_value(details, name="branch_summary.details")

@@ -1,6 +1,9 @@
 from __future__ import annotations
 
+import math
+import tempfile
 from collections.abc import Mapping
+from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import Any
 
@@ -29,15 +32,20 @@ from loushang.coding.store.file_lock import session_file_lock
 from loushang.harness.journal import (
     DEFAULT_JSONL_FORMAT,
     DURABLE_LOCKED_JOURNAL,
+    PROCESS_LOCAL_JOURNAL,
     FunctionalJournalHeaderCodec,
     FunctionalJournalRecordCodec,
     JournalCodecError,
+    JournalDiagnostic,
     JournalFileError,
     JournalLoadPolicy,
     JsonlJournal,
     JsonlSnapshot,
+    LegacyJsonConstant,
     TranscriptRepository,
+    parse_legacy_jsonl_line,
 )
+from loushang.protocol import dump_json_value, require_json_value
 
 
 class SessionFileError(ValueError):
@@ -101,18 +109,27 @@ def _serialize_entry(entry: SessionEntry) -> dict[str, Any]:
         data["summary"] = entry.summary
         data["firstKeptEntryId"] = entry.first_kept_entry_id
         data["tokensBefore"] = entry.tokens_before
-        data["details"] = entry.details
+        data["details"] = require_json_value(
+            entry.details,
+            name="compaction_entry.details",
+        )
         data["fromHook"] = entry.from_hook
         return data
     if isinstance(entry, BranchSummaryEntry):
         data["fromId"] = entry.from_id
         data["summary"] = entry.summary
-        data["details"] = entry.details
+        data["details"] = require_json_value(
+            entry.details,
+            name="branch_summary_entry.details",
+        )
         data["fromHook"] = entry.from_hook
         return data
     if isinstance(entry, CustomEntry):
         data["customType"] = entry.custom_type
-        data["data"] = entry.data
+        data["data"] = require_json_value(
+            entry.data,
+            name="custom_entry.data",
+        )
         return data
     if isinstance(entry, CustomMessageEntry):
         data["customType"] = entry.custom_type
@@ -122,7 +139,10 @@ def _serialize_entry(entry: SessionEntry) -> dict[str, Any]:
             if isinstance(content, list)
             else content
         )
-        data["details"] = entry.details
+        data["details"] = require_json_value(
+            entry.details,
+            name="custom_message_entry.details",
+        )
         data["display"] = entry.display
         return data
     if isinstance(entry, LabelEntry):
@@ -202,8 +222,29 @@ def _deserialize_entry(payload: Mapping[str, object]) -> SessionEntry:
 _ENTRY_CODEC = FunctionalJournalRecordCodec(_serialize_entry, _deserialize_entry)
 
 
+@dataclass
+class _LegacyJsonMigrationCounts:
+    non_finite_values: int = 0
+    unicode_surrogates: int = 0
+
+
+class _CodingSessionJournal(JsonlJournal[SessionHeader, SessionEntry]):
+    def load(self) -> JsonlSnapshot[SessionHeader, SessionEntry]:
+        try:
+            strict_snapshot = super().load()
+        except JournalFileError:
+            migrated = _load_legacy_session_snapshot(self)
+            if migrated is None:
+                raise
+            return migrated
+        if not strict_snapshot.diagnostics:
+            return strict_snapshot
+        migrated = _load_legacy_session_snapshot(self)
+        return strict_snapshot if migrated is None else migrated
+
+
 def session_journal(path: Path) -> JsonlJournal[SessionHeader, SessionEntry]:
-    return JsonlJournal(
+    return _CodingSessionJournal(
         path,
         record_codec=_ENTRY_CODEC,
         header_codec=_HEADER_CODEC,
@@ -212,6 +253,168 @@ def session_journal(path: Path) -> JsonlJournal[SessionHeader, SessionEntry]:
         load_policy=_LOAD_POLICY,
         lock_factory=session_file_lock,
     )
+
+
+def _load_legacy_session_snapshot(
+    journal: JsonlJournal[SessionHeader, SessionEntry],
+) -> JsonlSnapshot[SessionHeader, SessionEntry] | None:
+    with session_file_lock(journal.path, "shared"):
+        raw = journal.path.read_text(encoding=journal.format_profile.encoding)
+    migrated_raw, migration_diagnostics = _migrate_legacy_session_json(
+        raw,
+        source_path=journal.path,
+        ensure_ascii=journal.format_profile.ensure_ascii,
+    )
+    if not migration_diagnostics:
+        return None
+
+    temp_path: Path | None = None
+    try:
+        with tempfile.NamedTemporaryFile(
+            mode="w",
+            encoding=journal.format_profile.encoding,
+            newline="",
+            delete=False,
+        ) as handle:
+            temp_path = Path(handle.name)
+            handle.write(migrated_raw)
+        snapshot = JsonlJournal(
+            temp_path,
+            record_codec=journal.record_codec,
+            header_codec=journal.header_codec,
+            format_profile=journal.format_profile,
+            durability=PROCESS_LOCAL_JOURNAL,
+            load_policy=journal.load_policy,
+        ).load()
+    except JournalFileError as exc:
+        raise JournalFileError(
+            str(exc),
+            path=journal.path,
+            code=exc.code,
+            line_number=exc.line_number,
+        ) from exc
+    finally:
+        if temp_path is not None:
+            temp_path.unlink(missing_ok=True)
+
+    diagnostics = tuple(
+        replace(diagnostic, source_path=journal.path)
+        for diagnostic in snapshot.diagnostics
+    )
+    return JsonlSnapshot(
+        header=snapshot.header,
+        records=snapshot.records,
+        diagnostics=(*diagnostics, *migration_diagnostics),
+    )
+
+
+def _migrate_legacy_session_json(
+    raw: str,
+    *,
+    source_path: Path,
+    ensure_ascii: bool,
+) -> tuple[str, tuple[JournalDiagnostic, ...]]:
+    migrated_lines: list[str] = []
+    diagnostics: list[JournalDiagnostic] = []
+    for line_number, line in enumerate(raw.splitlines(keepends=True), start=1):
+        parsed = parse_legacy_jsonl_line(line)
+        if parsed is None:
+            migrated_lines.append(line)
+            continue
+        try:
+            counts = _LegacyJsonMigrationCounts()
+            migrated_value = _migrate_legacy_json_value(parsed.value, counts=counts)
+        except RecursionError:
+            migrated_lines.append(line)
+            continue
+
+        if counts.non_finite_values == 0 and counts.unicode_surrogates == 0:
+            migrated_lines.append(line)
+            continue
+
+        migrated_lines.append(
+            dump_json_value(
+                migrated_value,
+                name="legacy_session_json",
+                ensure_ascii=ensure_ascii,
+                separators=None,
+            )
+            + parsed.ending
+        )
+        diagnostics.append(
+            JournalDiagnostic(
+                code="legacy_session_json_migrated",
+                message=(
+                    "Legacy session JSON values were normalized in memory; "
+                    "new writes remain strict JSON."
+                ),
+                source_path=source_path,
+                line_number=line_number,
+                details={
+                    "non_finite_values": counts.non_finite_values,
+                    "unicode_surrogates": counts.unicode_surrogates,
+                    "non_finite_strategy": "preserve_token_as_string",
+                    "surrogate_strategy": "preserve_code_unit_as_escape_text",
+                },
+            )
+        )
+    return "".join(migrated_lines), tuple(diagnostics)
+
+
+def _migrate_legacy_json_value(
+    value: object,
+    *,
+    counts: _LegacyJsonMigrationCounts,
+) -> object:
+    if isinstance(value, LegacyJsonConstant):
+        counts.non_finite_values += 1
+        return value.token
+    if type(value) is float and not math.isfinite(value):
+        counts.non_finite_values += 1
+        if math.isnan(value):
+            return "NaN"
+        return "Infinity" if value > 0 else "-Infinity"
+    if type(value) is str:
+        migrated, surrogate_count = _escape_legacy_surrogates(value)
+        counts.unicode_surrogates += surrogate_count
+        return migrated
+    if type(value) is list:
+        return [_migrate_legacy_json_value(item, counts=counts) for item in value]
+    if type(value) is dict:
+        return {
+            _migrate_legacy_json_key(key, counts=counts): _migrate_legacy_json_value(
+                item,
+                counts=counts,
+            )
+            for key, item in value.items()
+        }
+    return value
+
+
+def _migrate_legacy_json_key(
+    key: object,
+    *,
+    counts: _LegacyJsonMigrationCounts,
+) -> str:
+    if type(key) is not str:
+        raise TypeError("decoded JSON object keys must be strings")
+    migrated = _migrate_legacy_json_value(key, counts=counts)
+    if type(migrated) is not str:
+        raise TypeError("migrated JSON object keys must be strings")
+    return migrated
+
+
+def _escape_legacy_surrogates(value: str) -> tuple[str, int]:
+    count = 0
+    parts: list[str] = []
+    for character in value:
+        codepoint = ord(character)
+        if 0xD800 <= codepoint <= 0xDFFF:
+            parts.append(f"\\u{codepoint:04x}")
+            count += 1
+        else:
+            parts.append(character)
+    return "".join(parts), count
 
 
 def write_session_file(

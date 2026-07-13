@@ -49,6 +49,7 @@ from loushang.harness.journal import (
     TranscriptRepository,
 )
 from loushang.observability import get_log
+from loushang.protocol import require_json_value
 
 CURRENT_SESSION_VERSION = 3
 _LEAF_UNSET = object()
@@ -803,6 +804,7 @@ class SessionManager:
     ) -> str:
         if branch_from_id is not None and self._repository.get(branch_from_id) is None:
             raise ValueError(f"Entry {branch_from_id} not found")
+        details = require_json_value(details, name="branch_summary.details")
         self.leaf_id = branch_from_id
         return self.append_entry(
             BranchSummaryEntry(
@@ -899,6 +901,7 @@ class SessionManager:
         details: object | None = None,
         from_hook: bool | None = None,
     ) -> str:
+        details = require_json_value(details, name="compaction.details")
         return self.append_entry(
             CompactionEntry(
                 type="compaction",
@@ -914,6 +917,7 @@ class SessionManager:
         )
 
     def append_custom_entry(self, custom_type: str, data: object | None = None) -> str:
+        data = require_json_value(data, name="custom_entry.data")
         return self.append_entry(
             CustomEntry(
                 type="custom",
@@ -947,6 +951,10 @@ class SessionManager:
         display: bool,
         details: object | None = None,
     ) -> str:
+        details = require_json_value(
+            details,
+            name="custom_message.details",
+        )
         return self.append_entry(
             CustomMessageEntry(
                 type="custom_message",

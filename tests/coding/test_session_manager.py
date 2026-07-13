@@ -183,6 +183,26 @@ def test_append_message_rejects_projected_summary_messages(tmp_path) -> None:
         )
 
 
+def test_session_manager_rejects_non_json_custom_metadata(tmp_path) -> None:
+    from pathlib import Path
+
+    import pytest
+
+    from loushang.coding.store import SessionManager
+    from loushang.protocol import JsonValueError
+
+    manager = SessionManager.new(
+        session_dir=tmp_path,
+        cwd="/tmp/project",
+        persist=False,
+    )
+
+    with pytest.raises(JsonValueError) as exc_info:
+        manager.append_custom_entry("demo", {"path": Path("notes.txt")})
+
+    assert exc_info.value.path == "custom_entry.data.path"
+
+
 def test_branch_with_summary_creates_projected_branch_entry(tmp_path) -> None:
     from loushang.ai.types import TextPart, UserMessage
     from loushang.coding.message import BranchSummaryEntry
