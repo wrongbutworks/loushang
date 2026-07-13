@@ -813,6 +813,81 @@ def test_harness_dependency_first_migration_rule_is_documented() -> None:
     ) == []
 
 
+def test_resource_package_runtime_has_harness_owners() -> None:
+    from loushang.coding.loader import (
+        DefaultResourceLoader,
+    )
+    from loushang.coding.loader import (
+        ResourceBundle as CodingResourceBundle,
+    )
+    from loushang.coding.package import (
+        PackageMaterializer as CodingPackageMaterializer,
+    )
+    from loushang.coding.package import (
+        PackageSourceConfig as CodingPackageSourceConfig,
+    )
+    from loushang.coding.plugin import PluginManager as CodingPluginManager
+    from loushang.coding.policy import PolicyDecision as CodingPolicyDecision
+    from loushang.harness.policy import PolicyDecision
+    from loushang.harness.resources.loader import ResourceLoader
+    from loushang.harness.resources.packages import (
+        PackageMaterializer,
+        PackageSourceConfig,
+    )
+    from loushang.harness.resources.plugins import PluginManager
+    from loushang.harness.resources.types import ResourceBundle
+
+    assert CodingResourceBundle is ResourceBundle
+    assert CodingPackageSourceConfig is PackageSourceConfig
+    assert CodingPluginManager is PluginManager
+    assert CodingPolicyDecision is PolicyDecision
+    assert issubclass(DefaultResourceLoader, ResourceLoader)
+    assert issubclass(CodingPackageMaterializer, PackageMaterializer)
+
+
+def test_coding_internal_resource_consumers_use_harness_owners() -> None:
+    compatibility_paths = {
+        "src/loushang/coding/loader/__init__.py",
+        "src/loushang/coding/loader/types.py",
+        "src/loushang/coding/package/__init__.py",
+        "src/loushang/coding/package/manifest.py",
+        "src/loushang/coding/package/resource_roots.py",
+        "src/loushang/coding/package/source.py",
+        "src/loushang/coding/plugin/__init__.py",
+        "src/loushang/coding/plugin/lifecycle.py",
+        "src/loushang/coding/plugin/manager.py",
+        "src/loushang/coding/plugin/registry.py",
+        "src/loushang/coding/plugin/resolver.py",
+        "src/loushang/coding/plugin/types.py",
+        "src/loushang/coding/policy/__init__.py",
+        "src/loushang/coding/policy/types.py",
+    }
+    legacy_prefixes = (
+        "loushang.coding.loader.types",
+        "loushang.coding.package.manifest",
+        "loushang.coding.package.resource_roots",
+        "loushang.coding.package.source",
+        "loushang.coding.plugin.lifecycle",
+        "loushang.coding.plugin.manager",
+        "loushang.coding.plugin.registry",
+        "loushang.coding.plugin.resolver",
+        "loushang.coding.plugin.types",
+        "loushang.coding.policy.types",
+    )
+    offenders: list[str] = []
+    for path in sorted(Path("src/loushang/coding").rglob("*.py")):
+        if path.as_posix() in compatibility_paths:
+            continue
+        for imported in _absolute_imports(path):
+            if any(
+                imported == prefix or imported.startswith(f"{prefix}.")
+                for prefix in legacy_prefixes
+            ):
+                offenders.append(f"{path.as_posix()} imports {imported}")
+
+    assert offenders == []
+
+
 def test_harness_host_runtime_boundary_is_documented() -> None:
     design_path = Path("docs/internals/architecture/harness/host-runtime-boundary.md")
     assert design_path.exists()
@@ -895,6 +970,7 @@ def test_harness_platform_resource_layout_boundary_is_documented() -> None:
     design_text = " ".join(design_path.read_text(encoding="utf-8").split())
     required_phrases = {
         "Harness Platform Resource Layout Boundary",
+        "resource and package runtime implementation complete for integration into `lane/harness`",
         "a **platform default** is useful to every Loushang product",
         "$LOUSHANG_HOME, otherwise ~/.loushang/",
         "<workspace>/.loushang/",
@@ -902,7 +978,7 @@ def test_harness_platform_resource_layout_boundary_is_documented() -> None:
         "`AGENTS.md` is a cross-product agent-instruction convention",
         "Products own their built-in resource content and register it with Harness",
         "Resource discovery is not resource authorization",
-        "`DefaultResourceLoader` should become a small Coding facade",
+        "`DefaultResourceLoader` is now a small Coding facade",
         "must not import Coding, Design, Research, PPT, Cowork, TUI, Method, Work, or AI provider packages",
     }
     assert (
@@ -918,7 +994,7 @@ def test_harness_platform_resource_layout_boundary_is_documented() -> None:
         "docs/internals/architecture/harness/coding-to-harness-migration-inventory.md"
     ).read_text(encoding="utf-8")
     assert "Resource And Package Runtime" in inventory_text
-    assert "platform resource layout ownership accepted" in inventory_text
+    assert "resource and package runtime implementation complete" in inventory_text
 
     authoritative_text = "\n".join(
         Path(path).read_text(encoding="utf-8")
