@@ -42,8 +42,11 @@ planning, work event persistence, or AI provider behavior.
   package mechanisms while preserving product content, activation, trust, and
   runtime projection.
 - [Contribution Inventory Boundary](contribution-inventory-boundary.md) defines
-  shared descriptor and registry ownership while keeping extension projection,
-  activation policy, runtime bindings, and hooks in product adapters.
+  shared descriptor and registry ownership.
+- [Extension Runtime Core Boundary](extension-runtime-core-boundary.md) defines
+  shared manifest, loading, registration, conflict resolution, observer/input
+  dispatch, resource contribution, and tool-wrapper ownership while preserving
+  product policy, session/model behavior, and UI integration.
 - [Context Budget And Accounting Boundary](context-budget-accounting-boundary.md)
   defines deterministic compaction-budget and usage-estimate record ownership
   while keeping message estimation and compaction policy in product adapters.

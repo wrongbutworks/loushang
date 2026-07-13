@@ -387,7 +387,7 @@ def test_harness_contribution_inventory_boundary_is_documented() -> None:
         "`loushang.harness.contributions`",
         "same harness-owned classes",
         "`surfaces_from_loaded_extension`",
-        "This inventory migration moves records and indexing only",
+        "`loushang.harness.extensions.contributions`",
         "must not import coding, method, work, TUI, AI, agent runtime, provider, or product packages",
     }
     assert (
@@ -404,6 +404,66 @@ def test_harness_contribution_inventory_boundary_is_documented() -> None:
     ).read_text(encoding="utf-8")
     assert "`loushang.harness.contributions`" in inventory_text
     assert "contribution inventory implementation complete" in inventory_text
+
+
+def test_harness_extension_runtime_core_boundary_is_documented() -> None:
+    import loushang.harness as harness
+    import loushang.harness.extensions as extensions
+
+    design_path = Path(
+        "docs/internals/architecture/harness/extension-runtime-core-boundary.md"
+    )
+    assert design_path.exists()
+    design_text = " ".join(design_path.read_text(encoding="utf-8").split())
+    required_phrases = {
+        "Harness Extension Runtime Core Boundary",
+        "`loushang.harness.extensions`",
+        "`ExtensionContributionAPI`",
+        "same Harness-owned objects",
+        "Coding keeps",
+        "must not import coding, method, work, TUI, AI",
+    }
+    assert (
+        sorted(phrase for phrase in required_phrases if phrase not in design_text) == []
+    )
+
+    assert extensions.__all__ == []
+    assert "ExtensionContributionAPI" not in harness.__all__
+
+    readme_text = Path("docs/internals/architecture/harness/README.md").read_text(
+        encoding="utf-8"
+    )
+    assert "Extension Runtime Core Boundary" in readme_text
+
+    inventory_text = Path(
+        "docs/internals/architecture/harness/coding-to-harness-migration-inventory.md"
+    ).read_text(encoding="utf-8")
+    assert "extension runtime core implementation" in inventory_text
+    assert "Wave 2: Extension Runtime Core" in inventory_text
+
+
+def test_coding_extension_compatibility_paths_share_harness_owners() -> None:
+    from loushang.coding.extensions.loader import ExtensionLoader as CodingLoader
+    from loushang.coding.extensions.manifest import (
+        ExtensionManifest as CodingManifest,
+    )
+    from loushang.coding.extensions.policy import (
+        ExtensionPolicyDecision as CodingPolicyDecision,
+    )
+    from loushang.coding.extensions.types import LoadedExtension as CodingLoaded
+    from loushang.harness.extensions.loader import ExtensionLoader as HarnessLoader
+    from loushang.harness.extensions.manifest import (
+        ExtensionManifest as HarnessManifest,
+    )
+    from loushang.harness.extensions.types import (
+        ExtensionPolicyDecision as HarnessPolicyDecision,
+    )
+    from loushang.harness.extensions.types import LoadedExtension as HarnessLoaded
+
+    assert issubclass(CodingLoader, HarnessLoader)
+    assert CodingManifest is HarnessManifest
+    assert CodingPolicyDecision is HarnessPolicyDecision
+    assert CodingLoaded is HarnessLoaded
 
 
 def test_coding_internal_exec_imports_use_harness_owner() -> None:
@@ -907,9 +967,9 @@ def test_harness_host_runtime_boundary_is_documented() -> None:
         sorted(phrase for phrase in required_phrases if phrase not in design_text) == []
     )
 
-    readme_text = Path("docs/internals/architecture/harness/README.md").read_text(
-        encoding="utf-8"
-    )
+    readme_text = Path(
+        "docs/internals/architecture/harness/README.md"
+    ).read_text(encoding="utf-8")
     assert "Host Runtime Boundary" in readme_text
 
     inventory_text = Path(
@@ -985,9 +1045,9 @@ def test_harness_platform_resource_layout_boundary_is_documented() -> None:
         sorted(phrase for phrase in required_phrases if phrase not in design_text) == []
     )
 
-    readme_text = Path(
-        "docs/internals/architecture/harness/README.md"
-    ).read_text(encoding="utf-8")
+    readme_text = Path("docs/internals/architecture/harness/README.md").read_text(
+        encoding="utf-8"
+    )
     assert "Platform Resource Layout Boundary" in readme_text
 
     inventory_text = Path(

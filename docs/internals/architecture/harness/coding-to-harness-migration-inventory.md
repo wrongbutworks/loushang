@@ -52,8 +52,8 @@ sufficient.
 | `coding.session.queue_controller`, `coding.session.session_event_bus` | Split candidate | Queue snapshots, `HostInputQueue`, and `OrderedEventBus` live in `loushang.harness.host`. Coding keeps queue input/Agent delivery, logs, product queue events, and its specialized session event bus. |
 | `coding.session.AgentSession`, controllers, `coding.runtime.AgentSessionRuntime` | Split candidate | `AgentSession` delegates prompt/continue/abort/idle/dispose coordination to `HostRuntime`. Keep product controllers, event schema, resource watchers, commands, transcript behavior, session replacement, tree/fork/import, and store policy in Coding. |
 | `coding.event` | Keep product | Coding session event protocol and product projection stay coding. Harness may define separate neutral events later. |
-| `coding.extensions.contributions` | Compatibility shim | Descriptor, registry, indexing, and duplicate-key contracts live in `loushang.harness.contributions`. Coding keeps `LoadedExtension` projection and re-exports the same harness-owned classes. |
-| Remaining `coding.extensions` | Split candidate | Move generic manifest parsing, discovery/loading, contribution normalization, middleware/observer dispatch, isolation, and lifecycle mechanics after resource/package foundations stabilize. Keep permissions, activation defaults, product handlers, provider/model bindings, session projection, and UI commands in Coding/OEM. |
+| `coding.extensions.events`, `manifest`, `loader`, `contributions`, `wrapper` | Compatibility shim | Event declarations, manifest parsing, descriptor-driven loading, contribution projection, and tool wrapping live in `loushang.harness.extensions`. Coding paths preserve imports and inject Coding API/policy/legacy-event adapters. |
+| `coding.extensions.api`, `runner`, `types`, `policy`, `hooks` | Product adapter | Neutral records, registration, conflict resolution, observer/input dispatch, and resource contribution execution live in Harness. Coding keeps session/model/provider/UI API additions, runtime bindings and contexts, concrete permission defaults, session decisions, system-prompt/context reducers, and Agent tool-call adaptation. |
 | `coding.bootstrap` | Keep product | Product assembly. It may call harness engines but should not move. |
 | `coding.runtime` | Split candidate | Move reusable host/session coordination after its resource, extension, context, and persistence dependencies have Harness owners. Keep Coding composition, transcript semantics, product controllers, and UI projection in Coding. |
 | `coding.ui` | Never harness | Product-owned TUI adapter and screen/controller state. Shared terminal primitives belong in `loushang.tui`, not harness. |
@@ -124,11 +124,15 @@ green.
 
 ### Wave 2: Extension Runtime Core
 
-After Wave 1 supplies stable resource and package owners, move generic extension
-manifest parsing, discovery/loading, contribution normalization, middleware and
-observer dispatch, isolation, and lifecycle mechanics. Coding keeps permission
-defaults, activation choices, product handlers, model/provider bindings,
-session projection, and UI commands.
+Status: implementation complete for integration into `lane/harness`; see
+[Extension Runtime Core Boundary](extension-runtime-core-boundary.md).
+
+Harness now owns generic extension manifest parsing, descriptor-driven loading,
+contribution registration and projection, deterministic conflict resolution,
+failure-contained observer and input dispatch, resource contribution execution,
+and tool wrapping. Coding keeps permission defaults, activation choices,
+product handlers, model/provider bindings, session projection, specialized
+result reducers, and UI commands.
 
 ### Wave 3: Persistence, Context, And Workflow Mechanics
 
@@ -358,21 +362,24 @@ second agent loop.
 
 ### Slice 6: Contribution Model
 
-Status: contribution inventory implementation complete for integration into
-`lane/harness`; middleware and observer contracts remain deferred; see
-[Contribution Inventory Boundary](contribution-inventory-boundary.md).
+Status: contribution inventory implementation complete; extension runtime core implementation
+complete for integration into `lane/harness`; see
+[Contribution Inventory Boundary](contribution-inventory-boundary.md) and
+[Extension Runtime Core Boundary](extension-runtime-core-boundary.md).
 
 Purpose: support OEM and extension contributions across products.
 
-Contribution descriptors, registry indexing, and duplicate-key reporting now
-live in `loushang.harness.contributions`. Coding compatibility paths re-export
-the same harness-owned classes, while `surfaces_from_loaded_extension` remains
-the product projection adapter.
+Contribution descriptors and generic inventory indexing live in
+`loushang.harness.contributions`. Extension manifests, runtime contribution
+projection, loading, registration, conflict resolution, observer/input
+dispatch, resource contributions, and tool wrapping live in
+`loushang.harness.extensions`. Coding compatibility paths re-export the same
+Harness-owned records and provide thin product adapters.
 
-Extension manifests, loaders, activation and permission policy, concrete
-handlers, runtime bindings, hooks, and session events remain coding-owned.
-Middleware and observer contracts should move only after a Coding adapter and
-an independent contract probe prove a neutral invocation shape.
+Activation and permission defaults, concrete product handlers, rich runtime
+bindings, specialized session/model/tool reducers, and UI projection remain
+Coding-owned. Product-neutral Harness tests provide the independent contract
+probe for the moved invocation shape.
 
 ## Guardrails
 

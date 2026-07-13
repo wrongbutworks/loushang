@@ -6,8 +6,10 @@ Status: accepted for `lane/harness`.
 
 This document defines product-neutral contribution descriptors, inventory
 indexing, and duplicate-key reporting as `loushang.harness.contributions`
-responsibilities. Coding keeps extension discovery, manifest projection,
-activation policy, permissions, runtime bindings, hooks, and command behavior.
+responsibilities. The later
+[Extension Runtime Core Boundary](extension-runtime-core-boundary.md) expands
+Harness ownership to extension manifest projection, loading, registration,
+conflict resolution, and generic dispatch while preserving product policy.
 
 ## Decision
 
@@ -36,19 +38,12 @@ remediation.
 
 ## Coding Adapter
 
-`loushang.coding.extensions.contributions` remains the Coding projection and
-compatibility module. It owns:
-
-- `surfaces_from_loaded_extension`;
-- `contributions_from_loaded_extension`;
-- manifest-to-contribution projection;
-- runtime command, tool, and hook projection;
-- Coding's choice of source metadata vocabulary.
-
-The adapter imports the descriptor and registry classes from Harness. It may
-read `LoadedExtension`-shaped objects, but Harness must not import
-`LoadedExtension`, extension manifests, concrete tools, or Coding runtime
-bindings.
+`loushang.coding.extensions.contributions` remains a compatibility module.
+`surfaces_from_loaded_extension`, `contributions_from_loaded_extension`, and
+manifest/runtime projection now live in
+`loushang.harness.extensions.contributions`. Coding re-exports those functions
+and the Harness descriptor/registry classes without maintaining another
+implementation.
 
 ## Compatibility
 
@@ -70,33 +65,35 @@ contribution symbols are added to top-level `loushang.harness.__all__`.
 
 ## Coding-Owned Behavior
 
-This migration does not move or redesign:
+The combined contribution and extension-runtime migrations do not move or
+redesign:
 
-- `LoadedExtension`, `ExtensionManifest`, or manifest parsing;
-- extension search roots, loading, dependency validation, or policy decisions;
+- extension search-root selection, trust, approval, or product activation;
 - permission enforcement, enablement defaults, or OEM override policy;
 - concrete command, tool, prompt, skill, UI, or provider handlers;
-- runtime bindings, extension contexts, hooks, middleware, or observers;
+- product runtime bindings and rich extension contexts;
 - session events, controller behavior, resource refresh, or diagnostics display;
 - tool contribution resolution already owned by
   `loushang.harness.tools.contribution`.
 
-Hook and observer contracts remain deferred until a product-neutral invocation
-shape is proven. This inventory migration moves records and indexing only.
+Specialized session, system-prompt, model/provider, Agent tool-call, compaction,
+and UI result reducers remain product-owned.
 
 ## Dependency Direction
 
 The target direction is:
 
 ```text
-coding extension loader / manifest and runtime projection
+coding extension/session adapter
+  -> loushang.harness.extensions
   -> loushang.harness.contributions
   -> loushang.harness.resources.diagnostics
 ```
 
 `loushang.harness.contributions` must not import coding, method, work, TUI, AI,
-agent runtime, provider, or product packages. It may depend on neutral Harness
-resource diagnostics and Python standard-library value types.
+agent runtime, provider, or product packages. The extension runtime also must
+not import product packages, but may depend on stable agent tool value
+primitives and neutral Harness resource, tool, and contribution contracts.
 
 ## Validation
 
