@@ -67,6 +67,43 @@ policy decision, split the contract again or keep it product-owned.
 A later production consumer should validate and refine the contract, but its
 absence is not a migration blocker when this evidence gate is satisfied.
 
+## Dependency-First Migration Order
+
+Migration order follows reusable dependency direction across the whole product,
+not the historical order of feature slices. If `A` imports `B`, `A` is the
+dependent consumer and `B` is the depended-on foundation. Move `B` before `A`
+when `B` belongs in Harness.
+
+Apply that rule with these constraints:
+
+- decide ownership before considering topology; a highly referenced
+  product-specific module does not move merely because it has high fan-in;
+- start with the lowest product-neutral dependency closure that unlocks one or
+  more upper layers;
+- when modules form a strongly connected component, first extract the neutral
+  records, protocols, and pure mechanisms that break the cycle;
+- move the resulting contracts and concrete engines together as one capability
+  batch, then redirect product consumers through compatibility adapters;
+- migrate upper orchestration only after its reusable dependencies have stable
+  Harness owners.
+
+Dependency count is evidence about leverage, not evidence about ownership. For
+example, a product transcript schema can remain product-owned even when many
+modules import it. Conversely, a small package-source identity module should
+move early when it is a neutral foundation for discovery, materialization, and
+extension loading.
+
+The preferred dependency flow is:
+
+```text
+neutral records and policy protocols
+  -> reusable leaf utilities and persistence primitives
+  -> registries, resolvers, materializers, and catalogs
+  -> resource, extension, context, and workflow engines
+  -> host/session orchestration
+  -> product bootstrap, commands, channels, and UI
+```
+
 ## Mechanism Versus Policy
 
 Use this split when judging a candidate:
@@ -150,7 +187,33 @@ from loushang.harness.commands import CommandDef
 Top-level exports are reserved for stable, intentional entry points. This
 prevents early internal contracts from becoming public API accidentally.
 
-## Migration Slice Checklist
+## Migration Batch Size
+
+Use capability-sized migration batches rather than file-sized or temporary
+feature slices. A batch should normally include the complete reusable dependency
+closure for one capability:
+
+- neutral records and protocols;
+- reusable concrete implementations;
+- product policy injection points;
+- compatibility adapters for accepted imports;
+- internal consumer rewrites;
+- focused behavior and import-boundary tests;
+- ownership and migration-inventory updates.
+
+Large ownership moves are expected during consolidation. Split a batch only at
+a real ownership boundary, a forbidden subsystem dependency, an independently
+reversible capability boundary, or a change that cannot be validated with the
+same test matrix. Do not create a separate branch or named slice for every leaf
+type, helper, or compatibility shim. Within one semantic task branch, use
+ordered commits for foundations, engines, adapters, and closure so review and
+rollback remain practical.
+
+Batch size never relaxes neutrality, dependency direction, compatibility, or
+test requirements. It reduces coordination overhead by completing a coherent
+ownership transfer in one pass.
+
+## Migration Batch Checklist
 
 Each migration batch should be reviewable as one capability cluster. During
 runtime consolidation, prefer an ownership lift-and-shift with compatibility
@@ -159,6 +222,10 @@ shims over a simultaneous API redesign.
 Before moving code:
 
 - identify the harness mechanism and the product policy being left behind;
+- inspect the product-wide dependency graph and any strongly connected
+  component containing the candidate;
+- identify the lowest reusable dependency closure and the consumers it
+  unlocks;
 - choose the target harness module;
 - check that no forbidden imports are introduced;
 - decide whether old imports are removed or temporarily shimmed;
@@ -167,6 +234,8 @@ Before moving code:
 During the move:
 
 - move a coherent reusable implementation, not only its protocols and types;
+- keep a capability's foundations, engines, adapters, consumer rewrites, and
+  tests in the same migration batch;
 - preserve accepted product import paths with thin compatibility adapters;
 - defer renaming, public API cleanup, and shim removal until ownership has
   moved and behavior is green;
