@@ -5,8 +5,8 @@ from html import escape
 from typing import Any
 
 from loushang.agent.types import AgentTool
-from loushang.coding.loader import ResourceBundle
 from loushang.coding.prompt.types import PromptAssembly
+from loushang.harness.resources.types import ResourceBundle
 from loushang.harness.tools.core import ToolDefinition
 
 _CONTEXT_PROMPT_KINDS = {"agents_md", "claude_md"}

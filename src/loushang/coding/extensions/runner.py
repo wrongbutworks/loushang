@@ -34,15 +34,15 @@ from loushang.coding.extensions.types import (
     SessionRefreshEvent,
 )
 from loushang.coding.extensions.wrapper import wrap_registered_tool_definition
-from loushang.coding.loader import (
+from loushang.harness.resources.diagnostics import ResourceDiagnostic
+from loushang.harness.resources.source import SourceInfo
+from loushang.harness.resources.types import (
     ExtensionDescriptor,
     PromptFragmentDescriptor,
     ResourceBundle,
     SkillDescriptor,
     ThemeDescriptor,
 )
-from loushang.harness.resources.diagnostics import ResourceDiagnostic
-from loushang.harness.resources.source import SourceInfo
 from loushang.harness.tools.core import ToolDefinition
 from loushang.harness.workspace.exec import ExecResult, ExecUpdateCallback
 

@@ -36,14 +36,14 @@ sufficient.
 | `coding.tools.file_mutation_queue` | Compatibility shim | Canonical per-path mutation coordination lives in `loushang.harness.workspace.mutation_queue`. Coding paths re-export the harness functions and registry; the Pi-style camelCase alias stays coding-owned. |
 | `coding.tools.read`, `ls`, `find`, `grep`, `write`, `edit`, `edit_diff`, `bash`, `process`, `ignore`, `external_tools` | Compatibility shim | Reusable implementations live in `loushang.harness.tools.workspace`. Coding injects product metadata, policy/approval, activation, and compatibility projections. |
 | `coding.tools.policy` | Compatibility shim | Neutral policy-enforcement plumbing accepts an injected evaluator and Harness approval resolver. Coding retains risk classification and concrete `PolicyEngine` defaults. |
-| `coding.policy` | Split candidate | Approval contracts and headless resolvers already live in `loushang.harness.approval`. Move the neutral allow/deny/ask policy-decision record and evaluator protocols to a focused Harness policy module when required by the resource/package batch. Keep Coding risk rules, package trust defaults, allowlists, and interactive UI integration in Coding. |
+| `coding.policy` | Split candidate | Approval contracts and headless resolvers live in `loushang.harness.approval`; the neutral allow/deny/ask decision record and evaluator protocol live in `loushang.harness.policy`. Keep Coding risk rules, package trust defaults, allowlists, and interactive UI integration in Coding. |
 | `coding.exec` | Compatibility shim | `ExecRequest`, `ExecResult`, output records, backend/update protocols, and `ExecService` live in `loushang.harness.workspace.exec`. Coding keeps the public compatibility path; policy, session cwd resolution, tool projection, and extension behavior remain product-owned. |
 | `coding.diagnostics.types`, `coding.diagnostics.service` | Compatibility shim | Diagnostic vocabulary, records, queries, summaries, startup-check contracts, and the bounded in-memory engine live in `loushang.harness.diagnostics`. Coding paths re-export the same Harness-owned objects. |
 | `coding.diagnostics.serialization`, `coding.diagnostics.problem_bridge`, concrete checks | Keep product | Keep camelCase payload projection, observability mapping, check selection, emission timing, remediation, session bridges, and CLI/TUI behavior in Coding. |
 | `loushang.resource.frontmatter`, `coding.frontmatter` | Compatibility shim | Parser records, errors, and behavior live in `loushang.harness.resources.frontmatter`. Legacy paths preserve object identity; coding and method internal consumers use the harness owner. |
 | `coding.source_info.SourceInfo`, `coding.extensions.types.SourceInfo` | Compatibility shim | `SourceInfo`, `SourceScope`, and `SourceOrigin` live in `loushang.harness.resources.source`. Coding command and extension paths preserve string and `Path` representations through the same harness class. Descriptor projection and executable identity remain in coding. |
 | `coding.loader.ResourceDiagnostic`, `coding.loader.types.ResourceDiagnostic` | Compatibility shim | The focused resource record lives in `loushang.harness.resources.diagnostics`. Coding compatibility paths preserve object identity; resource checks, message selection, emission timing, and remediation remain product-owned. |
-| Remaining `coding.loader.types` | Move candidate | Product-neutral prompt, skill, theme, and extension descriptors, source kinds, snapshots, bundles, and merge decisions should move under `loushang.harness.resources`. Coding keeps only product projection and compatibility aliases. |
+| Remaining `coding.loader.types` | Compatibility shim | Product-neutral prompt, skill, theme, and extension descriptors, source kinds, snapshots, bundles, and merge decisions live in `loushang.harness.resources.types`. Coding keeps compatibility aliases. |
 | `coding.prompt.types` | Split candidate | Move only neutral prepared-prompt/trace contracts after they satisfy the neutrality evidence gate. Keep templates, preflight, and assembler policy in coding. |
 | `coding.compaction.policy`, `coding.compaction.types.ContextUsageEstimate` | Compatibility shim | `CompactionBudget`, deterministic threshold accounting, and `ContextUsageEstimate` live in `loushang.harness.context`. Coding compatibility paths re-export the same Harness-owned objects. |
 | Remaining `coding.compaction.types`, `coding.session.context_usage` | Split candidate | Keep message estimation, model adaptation, context usage snapshots, decisions, branch state, summarization, transcript rebuild, and Coding compaction policy in Coding. Context item refs and packing contracts require a later accepted boundary. |
@@ -62,7 +62,7 @@ sufficient.
 | `coding.message` | Keep product | Coding transcript entries, message transforms, model-change/compaction records, and JSON codecs remain Coding semantics. High fan-in alone is not a Harness ownership reason. |
 | `coding.store` | Split candidate | Move file locking, atomic file/index mechanics, neutral query records, and reusable journal/checkpoint engines behind an opaque entry-codec contract. Keep Coding transcript codecs, session tree semantics, labels, and product retention/storage policy. |
 | `coding.control` | Keep product | Frozen during runtime consolidation: auth resolution, model registry, settings, provider registration, credential handling, and selection persistence stay outside Harness. Harness receives already-resolved runtime dependencies and never stores credentials. Revisit ownership separately after consolidation. |
-| `coding.package`, `coding.plugin`, `coding.resources`, `coding.skill` | Split candidate | Move package source/manifest/materialization, standard roots/layout, registry/resolver, discovery, and skill-loading mechanisms under `loushang.harness.resources`. Coding keeps built-in content, convention activation, additional roots, trust/approval policy, settings, CLI projection, and compatibility paths. |
+| `coding.package`, `coding.plugin`, `coding.resources`, `coding.skill` | Split candidate | Package source/manifest/materialization, standard roots/layout, registry/resolver, discovery, and skill-loading mechanisms now live under `loushang.harness.resources`. Coding keeps built-in content registration, compatibility convention activation, additional roots, trust/approval policy, settings/CLI projection, and compatibility facades. |
 | `coding.workflow` | Split candidate | Move a neutral workflow runner, step/result records, cancellation, and observer mechanics after resource and extension contracts stabilize. Keep Coding workflow definitions, prompts, artifact semantics, completion policy, and product test fixtures. |
 | `coding.platform` | Split candidate | Route neutral workspace/git and operating-system mechanisms to focused Harness modules when reusable. Keep product update/version policy and output guards in Coding; clipboard and terminal integration belong to Product/TUI rather than Harness. |
 | `coding.work_shell` | Keep product | Coding adapter to `loushang.work`; do not move into harness or work. |
@@ -83,6 +83,8 @@ Break these knots from their reusable foundations upward. The next execution
 order is:
 
 ### Wave 1: Resource And Package Runtime
+
+Status: implementation complete for integration into `lane/harness`.
 
 Move the entire product-neutral resource/package dependency closure in one
 semantic branch. Ordered commits inside the branch should cover:
@@ -303,15 +305,16 @@ to Harness by the later
 
 ### Resource And Package Runtime
 
-Status: platform resource layout ownership accepted; implementation pending.
+Status: resource and package runtime implementation complete for integration
+into `lane/harness`.
 See [Platform Resource Layout Boundary](platform-resource-layout-boundary.md).
 
-Harness will own `LOUSHANG_HOME`/`~/.loushang`, the standard
+Harness owns `LOUSHANG_HOME`/`~/.loushang`, the standard
 `<workspace>/.loushang` layout, shared resource directories, scope vocabulary,
 the overridable precedence preset, reusable `AGENTS.md` discovery, optional
 compatibility conventions, and built-in/package loading mechanisms.
 
-Coding will register `loushang.coding.resources`, select enabled conventions,
+Coding registers `loushang.coding.resources`, selects enabled conventions,
 add product roots and filters, apply trust/approval policy, and project the
 Harness resource snapshot into Coding prompts, sessions, commands, and UI.
 

@@ -4,11 +4,11 @@ from dataclasses import dataclass
 from pathlib import Path
 from urllib.parse import urlparse
 
-from loushang.coding.package.source import (
+from loushang.harness.policy import PolicyDecision
+from loushang.harness.resources.packages.source import (
     PackageSourceIdentity,
     is_remote_package_source,
 )
-from loushang.coding.policy.types import PolicyDecision
 
 
 @dataclass(frozen=True)

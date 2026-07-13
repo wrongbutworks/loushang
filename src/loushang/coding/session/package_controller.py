@@ -11,8 +11,6 @@ from loushang.coding.package.materializer import (
     PackageMaterializer,
 )
 from loushang.coding.package.projection import collect_package_entries
-from loushang.coding.package.resource_roots import resolve_package_resource_roots
-from loushang.coding.package.source import is_remote_package_source
 from loushang.coding.package.source_manager import (
     PackageSourceResolver,
     configured_package_sources,
@@ -21,6 +19,8 @@ from loushang.coding.package.source_manager import (
 from loushang.coding.store import SessionManager
 from loushang.harness.diagnostics.service import DiagnosticsService
 from loushang.harness.resources.diagnostics import ResourceDiagnostic
+from loushang.harness.resources.packages.roots import resolve_package_resource_roots
+from loushang.harness.resources.packages.source import is_remote_package_source
 
 SettingsManagerProvider = Callable[[], SettingsManager | None]
 PackageMaterializerProvider = Callable[[], PackageMaterializer | None]

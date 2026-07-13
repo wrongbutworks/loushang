@@ -1,5 +1,8 @@
 # Harness Platform Resource Layout Boundary
 
+Status: resource and package runtime implementation complete for integration
+into `lane/harness`.
+
 ## Decision
 
 Harness owns the standard cross-product resource layout and its concrete
@@ -110,21 +113,51 @@ Product adapters own:
 OEM/deployment layers may override Harness platform roots and Product policy
 without changing the discovery engine.
 
-## Coding Migration Target
+## Implemented Runtime
 
-Most of `coding.loader`, `coding.package`, `coding.plugin`, and `coding.skill`
-is reusable mechanism and should move under focused `loushang.harness.resources`
-modules. The existing Coding paths may remain compatibility adapters.
+The product-neutral runtime now lives under `loushang.harness.resources`:
 
-`DefaultResourceLoader` should become a small Coding facade that:
+- `layout` owns `LOUSHANG_HOME`/`~/.loushang`, workspace `.loushang`, product
+  namespace, standard resource directories, and scope precedence;
+- `builtin` owns built-in package registration and enumeration;
+- `types` owns descriptors, bundles, snapshots, merge decisions, and package
+  summaries;
+- `loader` owns filesystem/package discovery, standard `AGENTS.md` convention,
+  filtering, deterministic precedence, merge diagnostics, reload, and the
+  standard workspace resource-root mode;
+- `packages` owns source identity/config parsing, manifests, materialization,
+  resource-root resolution, and injected source-policy contracts;
+- `plugins` owns neutral plugin source, manifest, registry, resolver, and
+  manager mechanics;
+- `skills` owns the reusable skill loader facade and its settings protocol.
+
+`ResourceLoader` defaults to the standard `<workspace>/.loushang` resource
+root and standard `AGENTS.md` filenames. Products may explicitly select a
+legacy project-root mode or optional compatibility filenames. A built-in
+resource package must be registered by the product; Harness contains no Coding
+package name or content default.
+
+Harness package materialization requires an injected source-policy evaluator
+and safely rejects materialization when none is supplied. Coding injects its
+existing `PackageSecurityPolicy`, preserving HTTPS/trust behavior without
+moving product risk defaults into Harness.
+
+## Coding Migration Result
+
+Reusable behavior from `coding.loader`, `coding.package`, `coding.plugin`, and
+`coding.skill` has moved under focused `loushang.harness.resources` modules.
+Accepted Coding paths remain compatibility adapters.
+
+`DefaultResourceLoader` is now a small Coding facade that:
 
 - registers `loushang.coding.resources`;
 - selects standard and compatibility convention presets;
 - adds Coding-specific roots and settings-derived filters;
 - projects the Harness resource snapshot into Coding prompt/session behavior.
 
-It must not retain a second implementation of scanning, provenance, merging,
-package materialization, or `AGENTS.md` discovery.
+It does not retain a second implementation of scanning, provenance, merging,
+package materialization, or `AGENTS.md` discovery. Coding package projection
+and settings-backed source resolution remain product adapters.
 
 ## Security Boundary
 

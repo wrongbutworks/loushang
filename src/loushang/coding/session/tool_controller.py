@@ -5,11 +5,11 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 from loushang.agent.types import AgentTool, ensure_agent_tool, is_agent_tool_like
-from loushang.coding.loader import ResourceBundle
 from loushang.coding.prompt import assemble_prompt
 from loushang.coding.store import SessionManager
 from loushang.coding.tools import ToolRegistry
 from loushang.harness.diagnostics.service import DiagnosticsService
+from loushang.harness.resources.types import ResourceBundle
 from loushang.harness.tools.contribution import (
     ToolContribution,
     ToolResolutionResult,

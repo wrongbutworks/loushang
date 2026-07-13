@@ -13,8 +13,8 @@ from loushang.coding.extensions.contributions import surfaces_from_loaded_extens
 from loushang.coding.extensions.manifest import parse_extension_manifest
 from loushang.coding.extensions.policy import policy_from_manifest
 from loushang.coding.extensions.types import LoadedExtension
-from loushang.coding.loader import ExtensionDescriptor
 from loushang.harness.resources.diagnostics import ResourceDiagnostic
+from loushang.harness.resources.types import ExtensionDescriptor
 from loushang.harness.tools.core import ToolDefinition
 
 

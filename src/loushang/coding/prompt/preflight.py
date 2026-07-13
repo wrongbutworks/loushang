@@ -4,11 +4,6 @@ from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
 
 from loushang.coding.commands.slash import split_slash_command
-from loushang.coding.loader import (
-    PromptFragmentDescriptor,
-    ResourceBundle,
-    SkillDescriptor,
-)
 from loushang.coding.prompt.templates import (
     parse_prompt_template_args,
     prompt_template_has_args,
@@ -16,6 +11,11 @@ from loushang.coding.prompt.templates import (
 )
 from loushang.harness.resources.diagnostics import ResourceDiagnostic
 from loushang.harness.resources.frontmatter import strip_frontmatter
+from loushang.harness.resources.types import (
+    PromptFragmentDescriptor,
+    ResourceBundle,
+    SkillDescriptor,
+)
 
 
 @dataclass(frozen=True)
