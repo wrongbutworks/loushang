@@ -4,13 +4,9 @@ from collections.abc import Callable, Iterable, Mapping, Sequence
 from copy import deepcopy
 from dataclasses import asdict, dataclass, replace
 from pathlib import Path
-from typing import Any, Literal
+from typing import Any, Literal, cast
 
 from loushang.agent import ThinkingLevel
-from loushang.coding.control.settings_store import (
-    load_settings_patch,
-    save_settings_patch,
-)
 from loushang.coding.control.types import (
     BranchSummarySettings,
     CompactionSettings,
@@ -35,6 +31,12 @@ from loushang.coding.control.types import (
     WarningSettings,
 )
 from loushang.coding.types import ModelSelection
+from loushang.harness.config import (
+    ConfigApplyResult,
+    ConfigIssue,
+    ConfigLayer,
+    LayeredConfig,
+)
 from loushang.harness.resources.packages.source import (
     PackageSourceConfig,
     package_source_match_key,
@@ -487,17 +489,6 @@ def _control_config_to_patch(config: ControlConfig) -> dict[str, Any]:
     return patch
 
 
-def _merge_patch(base: dict[str, Any], updates: dict[str, Any]) -> dict[str, Any]:
-    merged = dict(base)
-    for key, value in updates.items():
-        existing = merged.get(key)
-        if isinstance(existing, dict) and isinstance(value, dict):
-            merged[key] = {**existing, **value}
-            continue
-        merged[key] = value
-    return merged
-
-
 def _apply_dataclass_patch(current: object, patch_value: object, field_name: str):
     if not isinstance(patch_value, Mapping):
         raise TypeError(f"{field_name} must be a JSON object")
@@ -827,6 +818,41 @@ def _apply_patch(
     return next_config
 
 
+class _ControlConfigCodec:
+    def default(self) -> ControlConfig:
+        return ControlConfig()
+
+    def encode(self, value: ControlConfig) -> Mapping[str, object]:
+        return _control_config_to_patch(value)
+
+    def apply(
+        self,
+        value: ControlConfig,
+        patch: Mapping[str, object],
+        *,
+        layer: str,
+    ) -> ConfigApplyResult[ControlConfig]:
+        scope = cast(SettingsScope, layer)
+        errors: list[SettingsError] = []
+        next_value = _apply_patch(
+            value,
+            dict(patch),
+            scope=scope,
+            errors=errors,
+        )
+        return ConfigApplyResult(
+            value=next_value,
+            issues=tuple(
+                ConfigIssue(
+                    layer=error.scope,
+                    message=error.message,
+                    error=error.error,
+                )
+                for error in errors
+            ),
+        )
+
+
 class SettingsManager:
     def __init__(
         self,
@@ -835,34 +861,29 @@ class SettingsManager:
         global_settings_path: str | Path | None = None,
         project_settings_path: str | Path | None = None,
     ) -> None:
-        self._global_settings_path = (
+        global_path = (
             Path(global_settings_path) if global_settings_path is not None else None
         )
-        self._project_settings_path = (
+        project_path = (
             Path(project_settings_path) if project_settings_path is not None else None
         )
-        self._errors: list[SettingsError] = []
-        self._global_patch = self._load_patch(
-            "global", self._global_settings_path, previous={}
+        self._adapter_errors: list[SettingsError] = []
+        self._config = LayeredConfig(
+            codec=_ControlConfigCodec(),
+            layers=(
+                ConfigLayer("global", global_path, persistent=True),
+                ConfigLayer("project", project_path, persistent=True),
+                ConfigLayer("session"),
+            ),
+            initial={"session": initial} if initial is not None else None,
         )
-        self._project_patch = self._load_patch(
-            "project", self._project_settings_path, previous={}
-        )
-        self._session_patch = (
-            _control_config_to_patch(initial) if initial is not None else {}
-        )
-        self._listeners: list[SettingsListener] = []
-        self._settings = self._compose_settings()
+
+    @property
+    def _settings(self) -> ControlConfig:
+        return self._config.value
 
     def reload(self) -> None:
-        self._global_patch = self._load_patch(
-            "global", self._global_settings_path, previous=self._global_patch
-        )
-        self._project_patch = self._load_patch(
-            "project", self._project_settings_path, previous=self._project_patch
-        )
-        self._settings = self._compose_settings()
-        self._notify()
+        self._config.reload()
 
     async def flush(self) -> None:
         return None
@@ -873,31 +894,35 @@ class SettingsManager:
             if isinstance(overrides, ControlConfig)
             else dict(overrides)
         )
-        patch = _drop_removed_settings(patch, scope="session", errors=self._errors)
-        self._session_patch = _merge_patch(self._session_patch, patch)
-        self._settings = self._compose_settings()
-        self._notify()
+        patch = _drop_removed_settings(
+            patch,
+            scope="session",
+            errors=self._adapter_errors,
+        )
+        self._config.update("session", patch)
 
     def drain_errors(self) -> list[SettingsError]:
-        errors = list(self._errors)
-        self._errors.clear()
+        errors = list(self._adapter_errors)
+        self._adapter_errors.clear()
+        errors.extend(
+            SettingsError(
+                scope=cast(SettingsScope, issue.layer),
+                message=issue.message,
+                error=issue.error,
+            )
+            for issue in self._config.drain_issues()
+        )
         return errors
 
     @property
     def global_base_dir(self) -> Path | None:
-        return (
-            self._global_settings_path.parent
-            if self._global_settings_path is not None
-            else None
-        )
+        path = self._config.layer_path("global")
+        return path.parent if isinstance(path, Path) else None
 
     @property
     def project_base_dir(self) -> Path | None:
-        return (
-            self._project_settings_path.parent
-            if self._project_settings_path is not None
-            else None
-        )
+        path = self._config.layer_path("project")
+        return path.parent if isinstance(path, Path) else None
 
     def update_settings(
         self,
@@ -1078,17 +1103,8 @@ class SettingsManager:
                 _normalize_string_sequence(disabled_plugins, "disabled_plugins")
             )
 
-        if scope == "global":
-            self._global_patch = _merge_patch(self._global_patch, patch)
-            save_settings_patch(self._global_settings_path, self._global_patch)
-        elif scope == "project":
-            self._project_patch = _merge_patch(self._project_patch, patch)
-            save_settings_patch(self._project_settings_path, self._project_patch)
-        else:
-            self._session_patch = _merge_patch(self._session_patch, patch)
-
-        self._settings = self._compose_settings()
-        self._notify()
+        layer = scope if scope in {"global", "project"} else "session"
+        self._config.update(layer, patch)
 
     def set_default_model(
         self, selection: ModelSelection | None, *, scope: SettingsScope = "session"
@@ -1510,54 +1526,16 @@ class SettingsManager:
         return getattr(self._settings, key, None)
 
     def get_global_settings(self) -> dict[str, Any]:
-        return deepcopy(self._global_patch)
+        return self._config.patch("global")
 
     def get_project_settings(self) -> dict[str, Any]:
-        return deepcopy(self._project_patch)
+        return self._config.patch("project")
 
     def get_session_settings(self) -> dict[str, Any]:
-        return deepcopy(self._session_patch)
+        return self._config.patch("session")
 
     def subscribe(self, listener: SettingsListener) -> Callable[[], None]:
-        self._listeners.append(listener)
-
-        def _unsubscribe() -> None:
-            try:
-                self._listeners.remove(listener)
-            except ValueError:
-                return
-
-        return _unsubscribe
-
-    def _compose_settings(self) -> ControlConfig:
-        config = ControlConfig()
-        config = _apply_patch(
-            config, self._global_patch, scope="global", errors=self._errors
-        )
-        config = _apply_patch(
-            config, self._project_patch, scope="project", errors=self._errors
-        )
-        config = _apply_patch(
-            config, self._session_patch, scope="session", errors=self._errors
-        )
-        return config
-
-    def _load_patch(
-        self,
-        scope: SettingsScope,
-        path: Path | None,
-        *,
-        previous: dict[str, Any],
-    ) -> dict[str, Any]:
-        try:
-            return load_settings_patch(path)
-        except Exception as exc:
-            self._errors.append(SettingsError(scope=scope, message=str(exc), error=exc))
-            return dict(previous)
-
-    def _notify(self) -> None:
-        for listener in list(self._listeners):
-            listener(self._settings)
+        return self._config.subscribe(listener)
 
 
 def _with_name(values: tuple[str, ...], name: str) -> tuple[str, ...]:

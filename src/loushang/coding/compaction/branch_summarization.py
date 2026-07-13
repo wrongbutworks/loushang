@@ -6,13 +6,15 @@ from loushang.agent import AgentMessage
 from loushang.ai import CallOptions, Context
 from loushang.ai.types import TextPart, UserMessage
 from loushang.coding.compaction.compaction import (
-    SUMMARIZATION_SYSTEM_PROMPT,
-    _build_summarization_prompt,
     _collect_file_operation_details,
     _complete_text,
     _entry_to_agent_message,
     _estimate_message_tokens,
     _format_file_operations,
+    _serialize_conversation,
+)
+from loushang.coding.compaction.profiles import (
+    CODING_BRANCH_SUMMARY_PROFILE,
 )
 from loushang.coding.compaction.types import (
     BranchPreparation,
@@ -20,41 +22,14 @@ from loushang.coding.compaction.types import (
     BranchSummaryResult,
     CollectEntriesResult,
 )
+from loushang.coding.message.transformers import convert_to_llm
 from loushang.coding.store import SessionManager
+from loushang.harness.context import build_summary_prompt
 
 BRANCH_SUMMARY_PREAMBLE = """The user explored a different conversation branch before returning here.
 Summary of that exploration:
 
 """
-
-BRANCH_SUMMARY_PROMPT = """Create a structured summary of this conversation branch for context when returning later.
-
-Use this EXACT format:
-
-## Goal
-[What was the user trying to accomplish in this branch?]
-
-## Constraints & Preferences
-- [Any constraints, preferences, or requirements mentioned]
-- [Or "(none)" if none were mentioned]
-
-## Progress
-### Done
-- [x] [Completed tasks/changes]
-
-### In Progress
-- [ ] [Work that was started but not finished]
-
-### Blocked
-- [Issues preventing progress, if any]
-
-## Key Decisions
-- **[Decision]**: [Brief rationale]
-
-## Next Steps
-1. [What should happen next to continue this work]
-
-Keep each section concise. Preserve exact file paths, function names, and error messages."""
 
 
 def collect_entries_for_branch_summary(
@@ -86,7 +61,9 @@ def collect_entries_for_branch_summary(
     return CollectEntriesResult(entries=entries, common_ancestor_id=common_ancestor_id)
 
 
-def prepare_branch_entries(entries: list[object], token_budget: int = 0) -> BranchPreparation:
+def prepare_branch_entries(
+    entries: list[object], token_budget: int = 0
+) -> BranchPreparation:
     prepared_messages = []
     prepared_entry_ids = []
     total_tokens = 0
@@ -96,7 +73,11 @@ def prepare_branch_entries(entries: list[object], token_budget: int = 0) -> Bran
         if message is None:
             continue
         tokens = _estimate_message_tokens(message)
-        if token_budget > 0 and prepared_messages and total_tokens + tokens > token_budget:
+        if (
+            token_budget > 0
+            and prepared_messages
+            and total_tokens + tokens > token_budget
+        ):
             break
         prepared_messages.insert(0, message)
         prepared_entry_ids.insert(0, entry.id)
@@ -132,7 +113,9 @@ async def generate_branch_summary(
         return BranchSummaryResult(aborted=True)
 
     try:
-        messages = _normalize_branch_summary_messages(entries_or_messages, reserve_tokens)
+        messages = _normalize_branch_summary_messages(
+            entries_or_messages, reserve_tokens
+        )
         if not messages:
             return BranchSummaryResult(summary="No content to summarize")
         prompt = _branch_summary_prompt(
@@ -143,7 +126,7 @@ async def generate_branch_summary(
         summary = await _complete_text(
             model,
             Context(
-                system_prompt=SUMMARIZATION_SYSTEM_PROMPT,
+                system_prompt=CODING_BRANCH_SUMMARY_PROFILE.system_prompt,
                 messages=[
                     UserMessage(
                         role="user",
@@ -182,7 +165,9 @@ def _normalize_branch_summary_messages(
     if all(hasattr(item, "role") for item in entries_or_messages):
         return list(entries_or_messages)  # type: ignore[return-value]
     token_budget = max(reserve_tokens, 0)
-    return prepare_branch_entries(list(entries_or_messages), token_budget=token_budget).messages
+    return prepare_branch_entries(
+        list(entries_or_messages), token_budget=token_budget
+    ).messages
 
 
 def _branch_summary_prompt(
@@ -191,18 +176,19 @@ def _branch_summary_prompt(
     custom_instructions: str | None,
     replace_instructions: bool,
 ) -> str:
-    if custom_instructions and replace_instructions:
-        base_prompt = custom_instructions
-    elif custom_instructions:
-        base_prompt = f"{BRANCH_SUMMARY_PROMPT}\n\nAdditional focus: {custom_instructions}"
-    else:
-        base_prompt = BRANCH_SUMMARY_PROMPT
-    return _build_summarization_prompt(
-        messages=messages,
-        base_prompt=base_prompt,
-        previous_summary=None,
-        custom_instructions=None,
+    replace_prompt = (
+        custom_instructions
+        if custom_instructions and replace_instructions
+        else None
     )
+    appended_instructions = None if replace_instructions else custom_instructions
+    return build_summary_prompt(
+        CODING_BRANCH_SUMMARY_PROFILE,
+        _serialize_conversation(convert_to_llm(messages)),
+        mode="branch",
+        custom_instructions=appended_instructions,
+        prompt_override=replace_prompt,
+    ).user_prompt
 
 
 def _is_aborted(signal: object | None) -> bool:

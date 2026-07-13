@@ -6,6 +6,10 @@ from dataclasses import dataclass, is_dataclass
 from loushang.agent import AgentMessage
 from loushang.ai import CallOptions, Context, complete
 from loushang.ai.types import AssistantMessage, TextPart, ToolResultMessage, UserMessage
+from loushang.coding.compaction.profiles import (
+    CODING_COMPACTION_SUMMARY_PROFILE,
+    CODING_TURN_PREFIX_SUMMARY_PROFILE,
+)
 from loushang.coding.compaction.types import (
     CompactionPlan,
     CompactionPreparation,
@@ -28,107 +32,11 @@ from loushang.coding.message.custom_messages import (
 )
 from loushang.coding.message.transformers import convert_to_llm
 from loushang.harness.context.budget import calculate_compaction_budget
+from loushang.harness.context.summary import (
+    build_summary_prompt,
+    compose_summary_prompt,
+)
 from loushang.harness.context.usage import ContextUsageEstimate
-
-COMPACTION_SYSTEM_PROMPT = """Summarize the older conversation context for later continuation.
-
-Preserve:
-- the user's goal
-- important constraints and decisions
-- meaningful work already completed
-- open questions and unresolved risks
-"""
-
-SUMMARIZATION_SYSTEM_PROMPT = """You are a context summarization assistant. Your task is to read a conversation between a user and an AI coding assistant, then produce a structured summary following the exact format specified.
-
-Do NOT continue the conversation. Do NOT respond to any questions in the conversation. ONLY output the structured summary."""
-
-SUMMARIZATION_PROMPT = """The messages above are a conversation to summarize. Create a structured context checkpoint summary that another LLM will use to continue the work.
-
-Use this EXACT format:
-
-## Goal
-[What is the user trying to accomplish? Can be multiple items if the session covers different tasks.]
-
-## Constraints & Preferences
-- [Any constraints, preferences, or requirements mentioned by user]
-- [Or "(none)" if none were mentioned]
-
-## Progress
-### Done
-- [x] [Completed tasks/changes]
-
-### In Progress
-- [ ] [Current work]
-
-### Blocked
-- [Issues preventing progress, if any]
-
-## Key Decisions
-- **[Decision]**: [Brief rationale]
-
-## Next Steps
-1. [Ordered list of what should happen next]
-
-## Critical Context
-- [Any data, examples, or references needed to continue]
-- [Or "(none)" if not applicable]
-
-Keep each section concise. Preserve exact file paths, function names, and error messages."""
-
-UPDATE_SUMMARIZATION_PROMPT = """The messages above are NEW conversation messages to incorporate into the existing summary provided in <previous-summary> tags.
-
-Update the existing structured summary with new information. RULES:
-- PRESERVE all existing information from the previous summary
-- ADD new progress, decisions, and context from the new messages
-- UPDATE the Progress section: move items from "In Progress" to "Done" when completed
-- UPDATE "Next Steps" based on what was accomplished
-- PRESERVE exact file paths, function names, and error messages
-- If something is no longer relevant, you may remove it
-
-Use this EXACT format:
-
-## Goal
-[Preserve existing goals, add new ones if the task expanded]
-
-## Constraints & Preferences
-- [Preserve existing, add new ones discovered]
-
-## Progress
-### Done
-- [x] [Include previously done items AND newly completed items]
-
-### In Progress
-- [ ] [Current work - update based on progress]
-
-### Blocked
-- [Current blockers - remove if resolved]
-
-## Key Decisions
-- **[Decision]**: [Brief rationale] (preserve all previous, add new)
-
-## Next Steps
-1. [Update based on current state]
-
-## Critical Context
-- [Preserve important context, add new if needed]
-
-Keep each section concise. Preserve exact file paths, function names, and error messages."""
-
-TURN_PREFIX_SUMMARIZATION_PROMPT = """This is the PREFIX of a turn that was too large to keep. The SUFFIX (recent work) is retained.
-
-Summarize the prefix to provide context for the retained suffix:
-
-## Original Request
-[What did the user ask for in this turn?]
-
-## Early Progress
-- [Key decisions and work done in the prefix]
-
-## Context for Suffix
-- [Information needed to understand the retained recent work]
-
-Be concise. Focus on what's needed to understand the kept suffix."""
 
 TOOL_RESULT_MAX_CHARS = 2_000
 
@@ -188,7 +96,10 @@ def estimate_context_tokens(messages: list[AgentMessage]) -> ContextUsageEstimat
         )
 
     usage_tokens = calculate_context_tokens(usage_info["usage"])
-    trailing_tokens = sum(_estimate_message_tokens(message) for message in messages[usage_info["index"] + 1 :])
+    trailing_tokens = sum(
+        _estimate_message_tokens(message)
+        for message in messages[usage_info["index"] + 1 :]
+    )
     return ContextUsageEstimate(
         tokens=usage_tokens + trailing_tokens,
         usage_tokens=usage_tokens,
@@ -215,7 +126,9 @@ def should_compact(
     return context_tokens > budget.threshold_tokens
 
 
-def prepare_compaction(entries: list[SessionEntry], keep_recent_tokens: int) -> CompactionPreparation:
+def prepare_compaction(
+    entries: list[SessionEntry], keep_recent_tokens: int
+) -> CompactionPreparation:
     prepared = _prepare_compaction(entries, keep_recent_tokens)
     return CompactionPreparation(
         first_kept_entry_id=prepared.plan.first_kept_entry_id,
@@ -229,7 +142,9 @@ def prepare_compaction(entries: list[SessionEntry], keep_recent_tokens: int) -> 
     )
 
 
-def plan_compaction(entries: list[SessionEntry], keep_recent_tokens: int) -> CompactionPlan:
+def plan_compaction(
+    entries: list[SessionEntry], keep_recent_tokens: int
+) -> CompactionPlan:
     return _prepare_compaction(entries, keep_recent_tokens).plan
 
 
@@ -247,7 +162,9 @@ def compaction_plan_to_payload(plan: CompactionPlan) -> dict[str, object]:
     }
 
 
-def _prepare_compaction(entries: list[SessionEntry], keep_recent_tokens: int) -> _PreparedCompaction:
+def _prepare_compaction(
+    entries: list[SessionEntry], keep_recent_tokens: int
+) -> _PreparedCompaction:
     previous_summary: str | None = None
     previous_compaction_id: str | None = None
     previous_first_kept_entry_id: str | None = None
@@ -259,8 +176,14 @@ def _prepare_compaction(entries: list[SessionEntry], keep_recent_tokens: int) ->
             previous_summary = previous_compaction.summary
             previous_compaction_id = previous_compaction.id
             previous_first_kept_entry_id = previous_compaction.first_kept_entry_id
-            first_kept_index = _find_entry_index(entries, previous_compaction.first_kept_entry_id)
-            boundary_start = first_kept_index if first_kept_index is not None else previous_compaction_index + 1
+            first_kept_index = _find_entry_index(
+                entries, previous_compaction.first_kept_entry_id
+            )
+            boundary_start = (
+                first_kept_index
+                if first_kept_index is not None
+                else previous_compaction_index + 1
+            )
 
     boundary_end = len(entries)
     context_messages = _visible_agent_messages(entries[boundary_start:boundary_end])
@@ -268,20 +191,30 @@ def _prepare_compaction(entries: list[SessionEntry], keep_recent_tokens: int) ->
         raise ValueError("Compaction requires at least one visible message entry.")
 
     tokens_before = estimate_context_tokens(context_messages).tokens
-    cut_point = _find_cut_point(entries, boundary_start, boundary_end, keep_recent_tokens)
+    cut_point = _find_cut_point(
+        entries, boundary_start, boundary_end, keep_recent_tokens
+    )
     first_kept_entry = entries[cut_point.first_kept_entry_index]
     first_kept_entry_id = first_kept_entry.id
 
-    history_end = cut_point.turn_start_index if cut_point.is_split_turn else cut_point.first_kept_entry_index
+    history_end = (
+        cut_point.turn_start_index
+        if cut_point.is_split_turn
+        else cut_point.first_kept_entry_index
+    )
     messages_to_summarize = _visible_agent_messages(entries[boundary_start:history_end])
     turn_prefix_messages = (
-        _visible_agent_messages(entries[cut_point.turn_start_index : cut_point.first_kept_entry_index])
+        _visible_agent_messages(
+            entries[cut_point.turn_start_index : cut_point.first_kept_entry_index]
+        )
         if cut_point.is_split_turn
         else []
     )
     summarized_entry_ids = _visible_entry_ids(entries[boundary_start:history_end])
     turn_prefix_entry_ids = (
-        _visible_entry_ids(entries[cut_point.turn_start_index : cut_point.first_kept_entry_index])
+        _visible_entry_ids(
+            entries[cut_point.turn_start_index : cut_point.first_kept_entry_index]
+        )
         if cut_point.is_split_turn
         else []
     )
@@ -289,13 +222,17 @@ def _prepare_compaction(entries: list[SessionEntry], keep_recent_tokens: int) ->
     if not messages_to_summarize and not turn_prefix_messages:
         fallback_entries = [
             entry
-            for index, entry in enumerate(entries[boundary_start:boundary_end], start=boundary_start)
+            for index, entry in enumerate(
+                entries[boundary_start:boundary_end], start=boundary_start
+            )
             if index != cut_point.first_kept_entry_index
         ]
         messages_to_summarize = _visible_agent_messages(fallback_entries)
         summarized_entry_ids = _visible_entry_ids(fallback_entries)
 
-    kept_entry_ids = _visible_entry_ids(entries[cut_point.first_kept_entry_index:boundary_end])
+    kept_entry_ids = _visible_entry_ids(
+        entries[cut_point.first_kept_entry_index : boundary_end]
+    )
     plan = CompactionPlan(
         previous_compaction_id=previous_compaction_id,
         previous_first_kept_entry_id=previous_first_kept_entry_id,
@@ -350,7 +287,9 @@ def _find_cut_point(
 ) -> _CutPointResult:
     cut_points = _find_valid_cut_points(entries, start_index, end_index)
     if not cut_points:
-        return _CutPointResult(first_kept_entry_index=start_index, turn_start_index=-1, is_split_turn=False)
+        return _CutPointResult(
+            first_kept_entry_index=start_index, turn_start_index=-1, is_split_turn=False
+        )
 
     accumulated_tokens = 0
     cut_index = cut_points[0]
@@ -376,15 +315,22 @@ def _find_cut_point(
             break
         cut_index -= 1
 
-    turn_start_index = -1 if _is_user_like_cut_entry(entries[cut_index]) else _find_turn_start_index(entries, cut_index, start_index)
+    turn_start_index = (
+        -1
+        if _is_user_like_cut_entry(entries[cut_index])
+        else _find_turn_start_index(entries, cut_index, start_index)
+    )
     return _CutPointResult(
         first_kept_entry_index=cut_index,
         turn_start_index=turn_start_index,
-        is_split_turn=turn_start_index != -1 and not _is_user_like_cut_entry(entries[cut_index]),
+        is_split_turn=turn_start_index != -1
+        and not _is_user_like_cut_entry(entries[cut_index]),
     )
 
 
-def _find_valid_cut_points(entries: list[SessionEntry], start_index: int, end_index: int) -> list[int]:
+def _find_valid_cut_points(
+    entries: list[SessionEntry], start_index: int, end_index: int
+) -> list[int]:
     cut_points: list[int] = []
     for index in range(start_index, end_index):
         if _is_valid_cut_point(entries[index]):
@@ -404,7 +350,9 @@ def _is_user_like_cut_entry(entry: SessionEntry) -> bool:
     return getattr(message, "role", None) in {"user", "bashExecution"}
 
 
-def _find_turn_start_index(entries: list[SessionEntry], entry_index: int, start_index: int) -> int:
+def _find_turn_start_index(
+    entries: list[SessionEntry], entry_index: int, start_index: int
+) -> int:
     for index in range(entry_index, start_index - 1, -1):
         if _is_user_like_cut_entry(entries[index]):
             return index
@@ -481,10 +429,15 @@ def _usage_value(usage: object, *keys: str) -> object | None:
     return None
 
 
-def _last_assistant_usage_info(messages: list[AgentMessage]) -> dict[str, object] | None:
+def _last_assistant_usage_info(
+    messages: list[AgentMessage],
+) -> dict[str, object] | None:
     for index in range(len(messages) - 1, -1, -1):
         message = messages[index]
-        if isinstance(message, AssistantMessage) and message.stop_reason not in ("aborted", "error"):
+        if isinstance(message, AssistantMessage) and message.stop_reason not in (
+            "aborted",
+            "error",
+        ):
             return {"usage": message.usage, "index": index}
     return None
 
@@ -574,18 +527,20 @@ async def _summarize_messages(
     signal: object | None = None,
     custom_instructions: str | None = None,
 ) -> str:
-    prompt = _build_summarization_prompt(
-        messages=preparation.messages_to_summarize,
-        base_prompt=UPDATE_SUMMARIZATION_PROMPT if preparation.previous_summary else SUMMARIZATION_PROMPT,
+    mode = "update" if preparation.previous_summary else "initial"
+    prompt = build_summary_prompt(
+        CODING_COMPACTION_SUMMARY_PROFILE,
+        _serialize_conversation(convert_to_llm(preparation.messages_to_summarize)),
+        mode=mode,
         previous_summary=preparation.previous_summary,
         custom_instructions=custom_instructions,
     )
     context = Context(
-        system_prompt=SUMMARIZATION_SYSTEM_PROMPT,
+        system_prompt=prompt.system_prompt,
         messages=[
             UserMessage(
                 role="user",
-                content=[TextPart(type="text", text=prompt)],
+                content=[TextPart(type="text", text=prompt.user_prompt)],
                 timestamp=0.0,
             )
         ],
@@ -609,20 +564,21 @@ async def _summarize_turn_prefix(
     headers: Mapping[str, str] | None = None,
     signal: object | None = None,
 ) -> str:
-    prompt = _build_summarization_prompt(
-        messages=messages,
-        base_prompt=TURN_PREFIX_SUMMARIZATION_PROMPT,
+    prompt = build_summary_prompt(
+        CODING_TURN_PREFIX_SUMMARY_PROFILE,
+        _serialize_conversation(convert_to_llm(messages)),
+        mode="turn-prefix",
         previous_summary=None,
         custom_instructions=None,
     )
     return await _complete_text(
         model,
         Context(
-            system_prompt=SUMMARIZATION_SYSTEM_PROMPT,
+            system_prompt=prompt.system_prompt,
             messages=[
                 UserMessage(
                     role="user",
-                    content=[TextPart(type="text", text=prompt)],
+                    content=[TextPart(type="text", text=prompt.user_prompt)],
                     timestamp=0.0,
                 )
             ],
@@ -642,15 +598,13 @@ def _build_summarization_prompt(
     previous_summary: str | None,
     custom_instructions: str | None,
 ) -> str:
-    prompt = base_prompt
-    if custom_instructions:
-        prompt = f"{prompt}\n\nAdditional focus: {custom_instructions}"
-
     conversation = _serialize_conversation(convert_to_llm(messages))
-    prompt_text = f"<conversation>\n{conversation}\n</conversation>\n\n"
-    if previous_summary:
-        prompt_text += f"<previous-summary>\n{previous_summary}\n</previous-summary>\n\n"
-    return f"{prompt_text}{prompt}"
+    return compose_summary_prompt(
+        content=conversation,
+        instructions=base_prompt,
+        previous_summary=previous_summary,
+        custom_instructions=custom_instructions,
+    )
 
 
 def _serialize_conversation(messages: Sequence[object]) -> str:
@@ -691,7 +645,11 @@ def _content_text(content: object) -> str:
     if isinstance(content, str):
         return content
     if isinstance(content, list):
-        return "".join(str(block.text) for block in content if getattr(block, "type", None) == "text")
+        return "".join(
+            str(block.text)
+            for block in content
+            if getattr(block, "type", None) == "text"
+        )
     return ""
 
 
@@ -711,7 +669,9 @@ def _truncate_for_summary(text: str) -> str:
     return f"{text[:TOOL_RESULT_MAX_CHARS]}\n\n[... {truncated_chars} more characters truncated]"
 
 
-def _collect_file_operation_details(messages: list[AgentMessage]) -> dict[str, list[str]]:
+def _collect_file_operation_details(
+    messages: list[AgentMessage],
+) -> dict[str, list[str]]:
     read: set[str] = set()
     written: set[str] = set()
     edited: set[str] = set()
@@ -747,13 +707,17 @@ def _format_file_operations(details: dict[str, list[str]]) -> str:
     if read_files:
         sections.append("<read-files>\n" + "\n".join(read_files) + "\n</read-files>")
     if modified_files:
-        sections.append("<modified-files>\n" + "\n".join(modified_files) + "\n</modified-files>")
+        sections.append(
+            "<modified-files>\n" + "\n".join(modified_files) + "\n</modified-files>"
+        )
     if not sections:
         return ""
     return "\n\n" + "\n\n".join(sections)
 
 
-def _merge_compaction_details(existing: object | None, file_details: dict[str, list[str]]) -> object | None:
+def _merge_compaction_details(
+    existing: object | None, file_details: dict[str, list[str]]
+) -> object | None:
     if not file_details["readFiles"] and not file_details["modifiedFiles"]:
         return existing
     if isinstance(existing, Mapping):

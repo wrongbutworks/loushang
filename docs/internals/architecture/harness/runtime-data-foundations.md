@@ -1,0 +1,174 @@
+# Harness Runtime Data Foundations
+
+## Status
+
+Status: implementation complete for integration into `lane/harness` on the
+semantic branch `harness/runtime-data-foundations`.
+
+This capability wave moves reusable runtime-data mechanics out of Coding in
+three substantial batches: transcript repositories and projection indexes,
+layered configuration, and context salience/summary profiles. It follows the
+dependency-first migration rule and replaces duplicate Product mechanics in
+the same branch as each adapter.
+
+The wave does not define a universal Product transcript, configuration schema,
+or summarization policy. Harness owns the engines; Products own the payloads,
+defaults, policy, and presentation passed into those engines.
+
+## Ownership Decision
+
+| Concern | Harness ownership | Product or subsystem ownership |
+| --- | --- | --- |
+| Transcript state | Parent-linked repository, active leaf, append, path, tree, fork, optional journal persistence | Header and record schemas, codec, lifecycle, naming, location, retention, query, rebuild, and UI |
+| Projection index | Versioned atomic JSON index, typed projection codec, validation, stale detection, corrupt-file preservation, rebuild callback, sorting | Projection schema, source scan, freshness predicate, query semantics, index path, and refresh policy |
+| Configuration | Ordered layers, patch merge, persistence adapter, composition codec, reload preservation, issues, snapshots, and subscriptions | Fields, validation, defaults, layer names/paths, credentials, auth/model semantics, CLI, and UI |
+| Salience | Explainable signals, structural weighted scorer, stable ranking, and a custom scorer protocol | Content interpretation, weights, pinning, grouping, selection threshold, and compaction policy |
+| Summary profile | Profile and section records, tagged prompt composition, mode selection, prompt override, and structural validation | System/user prompt text, serialized content, required sections, placeholder rules, model call, and artifact projection |
+
+Harness implementations in this wave must not import Coding, Work, Method,
+TUI, AI, Agent runtime, providers, or any Product package. Payloads remain
+generic or opaque. In particular, Harness never serializes `AgentMessage`,
+resolves a model or API key, or writes a Product summary record.
+
+## Transcript Repository
+
+`loushang.harness.journal.TranscriptRepository[H, R]` composes the existing
+profiled `JsonlJournal` and `BranchGraph`. A Product supplies only two
+structural accessors: record id and parent id. The repository provides:
+
+- create and load over an optional Product-configured journal;
+- validate-before-persist append so failed records do not mutate memory;
+- active-leaf selection and reset;
+- record lookup, roots, children, and root-to-leaf paths;
+- fork into another Product header and journal;
+- header replacement and explicit rewrite;
+- accumulated journal-load and compatible-graph diagnostics;
+- detached read-only loading when a Product must not mutate the source file.
+
+Coding's `SessionManager` is still the Product facade. It keeps
+`SessionHeader`, `SessionEntry`, labels, summary/query relevance, context
+rebuild, recovery wording, file naming, deletion, retention, and public APIs.
+It delegates transcript state, graph traversal, append persistence, and fork
+materialization to `TranscriptRepository`.
+
+No universal transcript envelope or message schema is introduced. Stable base
+AI message codecs belong to `loushang.ai`; extension-message codec composition
+belongs to `loushang.agent`; each Product owns codecs for its custom transcript
+records.
+
+## Projection Index
+
+`JsonProjectionIndex[P]` owns the mechanics proven by Coding's session index:
+
+- a caller-selected positive version and item key;
+- a typed functional or object codec;
+- atomic JSON replacement and deterministic ordering;
+- optional per-projection freshness checks;
+- stale detection for version, shape, decoding, and source-freshness failures;
+- corrupt JSON preservation with a unique suffix;
+- load-or-refresh using a Product-owned rebuild callback.
+
+Coding retains `SessionSummary`, its JSON field names, session-file freshness
+check, directory scan, filtering, relevance ranking, and `.session-index.json`
+placement. Generic projection checkpoints at journal offsets are not part of
+this wave; an index is independently rebuildable metadata, not source history.
+
+## Layered Configuration
+
+`loushang.harness.config.LayeredConfig[T]` composes a Product `ConfigCodec[T]`,
+ordered `ConfigLayer` values, and a `ConfigStore`. It owns:
+
+- deterministic low-to-high layer precedence;
+- recursive mapping patch merge with defensive copies;
+- update and replace operations;
+- optional per-layer persistence;
+- reload that preserves the last valid layer when storage fails;
+- codec and storage issues with layer provenance;
+- immutable-value snapshots, patch snapshots, and subscriptions.
+
+`JsonConfigStore` provides object-only JSON loading and atomic replacement.
+It does not know standard Product paths.
+
+Coding keeps `ControlConfig`, all nested setting records, field normalization,
+removed-setting compatibility, defaults, global/project/session path choices,
+provider/model/auth interpretation, and command/UI projection. Its
+`SettingsManager` now adapts those rules through a Coding-owned codec over the
+Harness engine.
+
+Harness configuration must not become a credential store or a service locator.
+Harness never stores credentials.
+Model registry and auth resolution remain outside this wave and should move
+only to their correct AI owner or remain Product composition policy.
+
+## Context Salience And Summary Profiles
+
+`ContextSalienceRanker` evaluates Product-supplied `SalienceSignal` values and
+returns a stable ranked view. `WeightedSalienceScorer` is a usable structural
+default over item recency, priority, kind, and numeric metadata, but all weights
+are supplied by the Product. Pinned items sort first. Ranking does not mutate,
+drop, pack, or persist context and therefore cannot violate group atomicity by
+itself.
+
+Products may supply a scorer that reads domain content. For example, Research
+may score verified citations, PPT may score slide dependencies, and Cowork may
+score unresolved decisions. Those meanings do not enter Harness.
+
+`SummaryProfile` and `build_summary_prompt` provide reusable summary mechanics:
+
+- Product-defined modes and exact prompt text;
+- tagged serialized-content and previous-summary blocks;
+- append or replace custom instructions;
+- Product-defined required sections and placeholder markers;
+- optional Product block tags ignored during structural validation.
+
+Coding keeps its existing compaction, update, turn-prefix, and branch prompt
+text in `coding.compaction.profiles`. Coding also keeps message-to-text
+serialization, file-operation blocks, model completion, retry, split-turn,
+tool-result, and summary artifact semantics. Its public `SummaryQualityReport`
+is preserved while delegating generic section validation to Harness.
+
+## Compatibility And Failure Semantics
+
+- A transcript append validates the candidate graph and writes the journal
+  before publishing new in-memory state.
+- A detached transcript load never appends to its source journal.
+- Invalid configuration reloads preserve the previous layer and report an
+  issue rather than silently resetting Product state.
+- Persistence failure leaves the in-memory configuration patch unchanged.
+- Invalid or stale indexes rebuild from Product source data; malformed JSON is
+  preserved for diagnosis.
+- Summary prompt composition preserves Coding's existing tag and whitespace
+  layout.
+- Summary validation preserves Coding's missing, empty, and placeholder section
+  results and ignores Product-declared metadata blocks.
+
+## Validation
+
+The wave is complete only when all of the following pass:
+
+- product-neutral Harness transcript, index, config, salience, and summary
+  tests, including non-Coding Research-shaped fixtures;
+- Coding session-file, session-manager, settings, compaction, and summary
+  compatibility tests;
+- architecture import and ownership assertions;
+- Ruff and Harness-package mypy checks;
+- the repository's full non-live test suite.
+
+No type-only, protocol-only, or duplicate parallel implementation counts as a
+completed batch. Lack of a second production consumer is not a blocking gate:
+clear product neutrality, a usable engine, an independent fixture, a real
+Coding cutover, and duplicate removal are sufficient evidence.
+
+## Explicit Non-Goals
+
+This wave does not:
+
+- move Coding transcript records or custom message codecs into Harness;
+- move AI base-message codecs, model registry, or auth resolution into Harness;
+- move Product setting fields, defaults, credential policy, or presentation;
+- move Product system prompts, compaction prompt text, model calls, or content
+  salience weights into Harness;
+- define artifact lifecycle or Product artifact meaning;
+- add journal vacuum, retention, encryption, replication, remote storage,
+  vector memory, or database behavior;
+- move Product query, export, naming, command, controller, or UI behavior.

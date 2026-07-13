@@ -164,8 +164,13 @@ def test_harness_context_and_journal_symbols_are_not_top_level_exports() -> None
         "ContextItem",
         "ContextPacker",
         "ContextUsageEstimate",
+        "ContextSalienceRanker",
         "BranchGraph",
+        "JsonProjectionIndex",
         "JsonlJournal",
+        "LayeredConfig",
+        "SummaryProfile",
+        "TranscriptRepository",
         "calculate_compaction_budget",
     }
 
@@ -364,7 +369,7 @@ def test_harness_context_compaction_and_journal_design_is_documented() -> None:
         "`JournalDurabilityProfile`",
         "`JournalLoadPolicy`",
         "context compaction changes the bounded projection sent to a model and never deletes source journal records",
-        "generic projection checkpoints, indexes, destructive journal vacuum, and retention are deferred",
+        "journal-offset checkpoints, destructive journal vacuum, and retention remain deferred",
         "AI owns the stable base-message and message-part codec",
         "Agent owns the extension-message codec protocol and registry",
         "Work adopts only common JSONL I/O in the first wave",
@@ -393,9 +398,7 @@ def test_harness_context_compaction_and_journal_design_is_documented() -> None:
         "context, compaction, journal, and branch implementation complete"
         in inventory_text
     )
-    assert "Generic journal indexes and projection checkpoints are deferred" in (
-        inventory_text
-    )
+    assert "rebuildable generic JSON projection indexes" in inventory_text
 
 
 def test_context_compaction_and_journal_mechanics_use_harness_owners() -> None:
@@ -420,6 +423,67 @@ def test_context_compaction_and_journal_mechanics_use_harness_owners() -> None:
         },
     }
 
+    missing: list[str] = []
+    for path, required in expected_imports.items():
+        imports = set(_absolute_imports(path))
+        missing.extend(
+            f"{path.as_posix()} missing {name}"
+            for name in sorted(required - imports)
+        )
+    assert missing == []
+
+
+def test_harness_runtime_data_foundations_are_documented_and_adopted() -> None:
+    design_path = Path(
+        "docs/internals/architecture/harness/runtime-data-foundations.md"
+    )
+    assert design_path.exists()
+    design_text = " ".join(design_path.read_text(encoding="utf-8").split())
+    required_phrases = {
+        "Harness Runtime Data Foundations",
+        "`harness/runtime-data-foundations`",
+        "`loushang.harness.journal.TranscriptRepository[H, R]`",
+        "`JsonProjectionIndex[P]`",
+        "`loushang.harness.config.LayeredConfig[T]`",
+        "`ContextSalienceRanker`",
+        "`SummaryProfile`",
+        "Harness never serializes `AgentMessage`",
+        "Harness never stores credentials",
+        "No type-only, protocol-only, or duplicate parallel implementation counts as a completed batch",
+        "Lack of a second production consumer is not a blocking gate",
+    }
+    assert (
+        sorted(phrase for phrase in required_phrases if phrase not in design_text)
+        == []
+    )
+
+    readme_text = Path("docs/internals/architecture/harness/README.md").read_text(
+        encoding="utf-8"
+    )
+    assert "Runtime Data Foundations" in readme_text
+
+    inventory_text = Path(
+        "docs/internals/architecture/harness/coding-to-harness-migration-inventory.md"
+    ).read_text(encoding="utf-8")
+    assert "parent-linked transcript repositories" in inventory_text
+    assert "`loushang.harness.config`" in inventory_text
+    assert "summary-profile mechanics" in inventory_text
+
+    expected_imports = {
+        Path("src/loushang/coding/store/session_manager.py"): {
+            "loushang.harness.journal.JsonProjectionIndex",
+            "loushang.harness.journal.TranscriptRepository",
+        },
+        Path("src/loushang/coding/control/settings_manager.py"): {
+            "loushang.harness.config.LayeredConfig",
+        },
+        Path("src/loushang/coding/compaction/compaction.py"): {
+            "loushang.harness.context.summary.build_summary_prompt",
+        },
+        Path("src/loushang/coding/compaction/summary_quality.py"): {
+            "loushang.harness.context.validate_summary",
+        },
+    }
     missing: list[str] = []
     for path, required in expected_imports.items():
         imports = set(_absolute_imports(path))
