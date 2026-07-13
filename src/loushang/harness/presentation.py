@@ -247,6 +247,10 @@ class ToolRenderRuntime:
     ) -> object | None:
         if definition.render_result is None:
             return None
+        try:
+            presentation_result = result.for_presentation()
+        except Exception:
+            return None
         context = self._context(
             tool_call_id,
             last_rendered=self._last_result_rendered_by_call_id.get(tool_call_id),
@@ -258,7 +262,12 @@ class ToolRenderRuntime:
         )
         options = ToolRenderResultOptions(expanded=expanded, is_partial=is_partial)
         try:
-            rendered = definition.render_result(result, options, self._theme, context)
+            rendered = definition.render_result(
+                presentation_result,
+                options,
+                self._theme,
+                context,
+            )
         except Exception:
             return None
         self._last_result_rendered_by_call_id[tool_call_id] = rendered

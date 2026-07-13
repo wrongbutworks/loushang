@@ -22,11 +22,14 @@ from loushang.harness.journal.index import (
 from loushang.harness.journal.jsonl import (
     JournalFileError,
     JsonlJournal,
+    LegacyJsonConstant,
+    LegacyJsonlParsedLine,
     LockFactory,
     LockMode,
     append_jsonl_record,
     journal_file_lock,
     load_jsonl,
+    parse_legacy_jsonl_line,
     write_jsonl,
 )
 from loushang.harness.journal.transcript import TranscriptRepository
@@ -65,6 +68,8 @@ __all__ = [
     "JsonlJournal",
     "JsonlSnapshot",
     "JsonProjectionIndex",
+    "LegacyJsonConstant",
+    "LegacyJsonlParsedLine",
     "LockFactory",
     "LockMode",
     "ProjectionCodec",
@@ -73,5 +78,6 @@ __all__ = [
     "append_jsonl_record",
     "journal_file_lock",
     "load_jsonl",
+    "parse_legacy_jsonl_line",
     "write_jsonl",
 ]
