@@ -12,9 +12,15 @@ schemas, summarization prompts, AI calls, artifact semantics, or product
 storage policy into Harness.
 
 The implementation should use one semantic task branch,
-`harness/context-compaction-journal`, with ordered commits for foundations,
-engines, product adapters, Work adoption, and closure. It should not be split
-into file-sized branches.
+`harness/context-compaction-journal`, with three delivery batches for
+foundation, engines, and product cutover. It should not be split into
+file-sized branches, protocol-only branches, or one branch per consumer.
+
+This wave is intentionally sized for one to two focused working days when the
+context and journal tracks can proceed concurrently. If implementation runs
+longer, reduce deferred or speculative scope first; do not fragment the core
+ownership transfer into smaller merge units that leave duplicate production
+implementations behind.
 
 ## Review Record
 
@@ -571,11 +577,19 @@ are Product-owned values so the two mechanisms remain independently reusable.
 
 ## Migration Execution Plan
 
-Implement the wave on one semantic branch with this ordered commit series.
-Compatibility characterization precedes new contracts so the migration is
-measured against accepted behavior rather than reconstructed assumptions.
+Implement the wave on one semantic branch in three delivery batches. The
+batches are integration checkpoints, not hard serialization barriers: context
+and journal work may proceed concurrently inside a batch. Internal commits may
+remain reviewable, but the branch is merged only after the complete wave passes
+its exit criteria.
 
-### Commit 1: Compatibility Characterization
+No type-only, protocol-only, codec-only, or single-adapter change counts as a
+finished delivery batch. Each batch must leave a usable vertical capability
+with focused tests. Compatibility characterization is written just before the
+corresponding contract or adapter and lands in the same batch, avoiding a
+separate waiting phase.
+
+### Batch 1: Compatibility Baseline And Complete Contracts
 
 - capture byte-level Coding JSONL fixtures for headers, field order, Unicode,
   invalid records, invalid headers, and partial trailing lines;
@@ -585,15 +599,16 @@ measured against accepted behavior rather than reconstructed assumptions.
   previous summaries, cancellation, and retained-entry selection;
 - capture branch fixtures for duplicates, dangling/self parents, cycles,
   insertion order, path selection, and fork ancestry.
-
-### Commit 2: Neutral Records And Protocols
-
 - add context item/bundle/packing/compaction records;
 - add journal format/load/durability profiles and codec/branch records;
 - establish no-product import guards and top-level export discipline;
-- add construction and invariant tests.
+- add construction, invariant, and compatibility-baseline tests in the same
+  change set.
 
-### Commit 3: Concrete Harness Engines
+Batch 1 is complete only when both context and journal contracts are usable by
+a fixture adapter. Do not merge a records-only shell.
+
+### Batch 2: Complete Harness Engines
 
 - implement group-aware packing;
 - implement RecentWindow, single-batch RollingSummary, and recent/priority
@@ -604,7 +619,12 @@ measured against accepted behavior rather than reconstructed assumptions.
 - add independent Research/PPT-shaped contract fixtures without product
   imports.
 
-### Commit 4: Coding Context And Compaction Adapter
+The context engine and journal/branch engine are parallel work tracks. They
+share diagnostics and architecture checks but do not wait on each other's
+internal implementation. Batch 2 lands only when all advertised Harness APIs
+have production implementations and focused tests.
+
+### Batch 3: Product Cutover, Duplicate Removal, And Closure
 
 - map SessionEntry/AgentMessage values to opaque context items;
 - retain a Coding compatibility planner/reducer for token estimation, split
@@ -612,23 +632,38 @@ measured against accepted behavior rather than reconstructed assumptions.
 - preserve Coding cut points, previous-summary behavior, retries, and status;
 - reduce `coding.compaction` to product policy and compatibility adapters where
   possible.
-
-### Commit 5: Coding Store And Work Journal Adapters
-
 - route Coding file locks, JSONL, graph, branch, and fork mechanics through
   Harness while leaving the current session index in Coding;
 - retain the Coding session codec and SessionManager product facade;
 - route only matching Work JSONL I/O through Harness while preserving Work
   types, in-memory/query/subscription behavior, and public behavior;
-- remove duplicate implementations after compatibility tests pass.
-
-### Commit 6: Closure
-
+- remove the replaced Coding and Work implementations in the same batch as
+  their adapters; do not retain a second implementation for a later cleanup;
 - run focused Harness, Coding compaction/store/session, Work event-log, startup,
   and full non-live tests;
 - add architecture tests and identity tests only for true aliases;
 - update migration inventory and ownership documents;
 - record measured source-line ownership changes.
+
+Coding compaction adoption, Coding store adoption, and Work JSONL adoption may
+proceed concurrently after Batch 2 APIs stabilize. A failing adapter blocks the
+final wave merge, but it does not block progress on the other adapters.
+
+### Delivery Guardrails
+
+- prefer three substantial, durable commits matching the batches; use extra
+  commits only when they isolate an independently reviewable risk, not a file;
+- run focused tests continuously within each track and avoid repeatedly running
+  the entire suite after every small edit;
+- run the full non-live suite once after all product cutovers and duplicate
+  removals are assembled, then rerun only affected failures;
+- do not add deferred index, checkpoint, hierarchical-memory, or generic query
+  work merely to make a batch appear larger;
+- if a compatibility mismatch appears, keep the Product adapter specialized
+  and continue the rest of the wave instead of redesigning Harness around one
+  product exception;
+- report progress by capability closed and duplicate implementation removed,
+  not by files moved or protocol count.
 
 ## Source Migration Map
 

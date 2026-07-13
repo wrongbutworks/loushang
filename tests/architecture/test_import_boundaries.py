@@ -362,6 +362,9 @@ def test_harness_context_compaction_and_journal_design_is_documented() -> None:
         "AI owns the stable base-message and message-part codec",
         "Agent owns the extension-message codec protocol and registry",
         "Work adopts only common JSONL I/O in the first wave",
+        "three delivery batches for foundation, engines, and product cutover",
+        "No type-only, protocol-only, codec-only, or single-adapter change counts as a finished delivery batch",
+        "remove the replaced Coding and Work implementations in the same batch as their adapters",
         "must not depend on context",
     }
     assert (

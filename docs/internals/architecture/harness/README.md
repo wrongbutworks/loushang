@@ -54,7 +54,8 @@ planning, work event persistence, or AI provider behavior.
   defines the reviewed next ownership wave for context items and packing,
   selectable compaction strategies, profiled append-only JSONL mechanics,
   branch graphs, and focused Coding/Work compatibility adapters while
-  deferring generic indexes and projection checkpoints.
+  deferring generic indexes and projection checkpoints. Delivery uses three
+  substantial batches rather than type-, file-, or adapter-sized slices.
 - [Diagnostics Core Boundary](diagnostics-core-boundary.md) defines shared
   diagnostic records, queries, summaries, startup checks, and in-memory engine
   ownership while keeping checks and presentation in product adapters.

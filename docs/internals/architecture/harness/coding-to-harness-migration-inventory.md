@@ -153,6 +153,13 @@ and each Product owns its custom transcript codecs. Generic journal indexes and
 projection checkpoints are deferred until their contracts have stronger
 evidence.
 
+Deliver this as one semantic wave with three substantial batches: compatibility
+baseline plus complete contracts, complete Harness engines, then concurrent
+Coding/Work cutover plus duplicate removal and closure. Characterization tests
+land with the contract or adapter they protect; they are not a separate waiting
+phase. Do not split records, protocols, codecs, or individual adapters into
+small merge units.
+
 Workflow execution mechanics remain a separate ownership decision within this
 wave. Do not move `coding.workflow` wholesale before reconciling its test-scenario
 semantics with the separate `loushang.method` and `loushang.work` layers. Moving
