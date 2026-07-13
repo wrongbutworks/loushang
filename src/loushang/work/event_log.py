@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import asyncio
 from collections.abc import AsyncIterator, Mapping
-from dataclasses import asdict, dataclass, field, is_dataclass
+from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
 from typing import Literal, Protocol, cast
@@ -14,6 +14,21 @@ from loushang.harness.journal import (
     JournalLoadPolicy,
     JsonlJournal,
     JsonlSnapshot,
+)
+from loushang.protocol import require_json_mapping
+
+_EVENT_LOG_ENTRY_FIELDS = frozenset(
+    {
+        "entry_id",
+        "entry_type",
+        "operation_id",
+        "event_id",
+        "run_id",
+        "session_id",
+        "sequence",
+        "payload",
+        "created_at",
+    }
 )
 
 
@@ -72,7 +87,9 @@ class _EventLogState:
         position = EventPosition(offset=len(self._entries) + 1)
         self._entries.append((position, entry))
         for subscriber in list(self._subscribers):
-            if _matches(entry, run_id=subscriber.run_id, session_id=subscriber.session_id):
+            if _matches(
+                entry, run_id=subscriber.run_id, session_id=subscriber.session_id
+            ):
                 subscriber.queue.put_nowait(entry)
         return position
 
@@ -90,7 +107,7 @@ class _EventLogState:
                 continue
             if not _matches(entry, run_id=run_id, session_id=session_id):
                 continue
-            selected.append(entry)
+            selected.append(_snapshot_entry(entry))
             if limit is not None and len(selected) >= limit:
                 break
         return selected
@@ -106,10 +123,12 @@ class _EventLogState:
             subscriber = _Subscriber(run_id=run_id, session_id=session_id)
             self._subscribers.append(subscriber)
             try:
-                for entry in self.query(run_id=run_id, session_id=session_id, after=after):
+                for entry in self.query(
+                    run_id=run_id, session_id=session_id, after=after
+                ):
                     yield entry
                 while True:
-                    yield await subscriber.queue.get()
+                    yield _snapshot_entry(await subscriber.queue.get())
             finally:
                 if subscriber in self._subscribers:
                     self._subscribers.remove(subscriber)
@@ -119,7 +138,7 @@ class _EventLogState:
 
 class InMemoryEventLogBackend(_EventLogState):
     def append(self, entry: EventLogEntry) -> EventPosition:
-        return self._append_stored(entry)
+        return self._append_stored(_normalize_entry(entry))
 
 
 class JsonlEventLogBackend(_EventLogState):
@@ -149,7 +168,9 @@ class JsonlEventLogBackend(_EventLogState):
             self._entries.append((position, entry))
 
 
-def _matches(entry: EventLogEntry, *, run_id: str | None, session_id: str | None) -> bool:
+def _matches(
+    entry: EventLogEntry, *, run_id: str | None, session_id: str | None
+) -> bool:
     if run_id is not None and entry.run_id != run_id:
         return False
     if session_id is not None and entry.session_id != session_id:
@@ -159,19 +180,24 @@ def _matches(entry: EventLogEntry, *, run_id: str | None, session_id: str | None
 
 def _normalize_entry(entry: EventLogEntry) -> EventLogEntry:
     return EventLogEntry(
-        entry_id=entry.entry_id,
-        entry_type=entry.entry_type,
-        operation_id=entry.operation_id,
-        event_id=entry.event_id,
-        run_id=entry.run_id,
-        session_id=entry.session_id,
-        sequence=entry.sequence,
-        payload=cast(Mapping[str, object], _to_json_value(entry.payload)),
-        created_at=entry.created_at,
+        entry_id=_require_string(entry.entry_id, "entry_id"),
+        entry_type=_require_entry_type(entry.entry_type),
+        operation_id=_require_string(entry.operation_id, "operation_id"),
+        event_id=_require_optional_string(entry.event_id, "event_id"),
+        run_id=_require_string(entry.run_id, "run_id"),
+        session_id=_require_string(entry.session_id, "session_id"),
+        sequence=_require_integer(entry.sequence, "sequence"),
+        payload=_normalize_payload(entry.payload),
+        created_at=_require_datetime(entry.created_at, "created_at"),
     )
 
 
+def _snapshot_entry(entry: EventLogEntry) -> EventLogEntry:
+    return _normalize_entry(entry)
+
+
 def _entry_to_json(entry: EventLogEntry) -> dict[str, object]:
+    entry = _normalize_entry(entry)
     return {
         "entry_id": entry.entry_id,
         "entry_type": entry.entry_type,
@@ -180,40 +206,98 @@ def _entry_to_json(entry: EventLogEntry) -> dict[str, object]:
         "run_id": entry.run_id,
         "session_id": entry.session_id,
         "sequence": entry.sequence,
-        "payload": _to_json_value(entry.payload),
+        "payload": require_json_mapping(
+            dict(entry.payload),
+            name="event_log_entry.payload",
+        ),
         "created_at": entry.created_at.isoformat(),
     }
 
 
 def _entry_from_json(data: Mapping[str, object]) -> EventLogEntry:
+    _require_exact_fields(data)
     return EventLogEntry(
-        entry_id=str(data["entry_id"]),
-        entry_type=cast(Literal["operation", "event"], data["entry_type"]),
-        operation_id=str(data["operation_id"]),
-        event_id=cast(str | None, data["event_id"]),
-        run_id=str(data["run_id"]),
-        session_id=str(data["session_id"]),
-        sequence=int(cast(int, data["sequence"])),
-        payload=cast(Mapping[str, object], data["payload"]),
-        created_at=datetime.fromisoformat(str(data["created_at"])),
+        entry_id=_require_string(data["entry_id"], "entry_id"),
+        entry_type=_require_entry_type(data["entry_type"]),
+        operation_id=_require_string(data["operation_id"], "operation_id"),
+        event_id=_require_optional_string(data["event_id"], "event_id"),
+        run_id=_require_string(data["run_id"], "run_id"),
+        session_id=_require_string(data["session_id"], "session_id"),
+        sequence=_require_integer(data["sequence"], "sequence"),
+        payload=cast(
+            Mapping[str, object],
+            require_json_mapping(
+                data["payload"],
+                name="event_log_entry.payload",
+            ),
+        ),
+        created_at=_datetime_from_json(data["created_at"]),
     )
 
 
+def _require_exact_fields(data: Mapping[str, object]) -> None:
+    fields = frozenset(data)
+    missing = sorted(_EVENT_LOG_ENTRY_FIELDS - fields)
+    unexpected = sorted(fields - _EVENT_LOG_ENTRY_FIELDS)
+    if missing:
+        raise ValueError(f"event log entry is missing fields: {', '.join(missing)}")
+    if unexpected:
+        raise ValueError(
+            f"event log entry has unexpected fields: {', '.join(unexpected)}"
+        )
+
+
+def _normalize_payload(value: object) -> Mapping[str, object]:
+    if not isinstance(value, Mapping):
+        raise TypeError("payload must be a mapping")
+    return cast(
+        Mapping[str, object],
+        require_json_mapping(dict(value), name="event_log_entry.payload"),
+    )
+
+
+def _require_string(value: object, field_name: str) -> str:
+    if type(value) is not str:
+        raise TypeError(f"{field_name} must be a string")
+    return cast(str, value)
+
+
+def _require_optional_string(value: object, field_name: str) -> str | None:
+    if value is None:
+        return None
+    return _require_string(value, field_name)
+
+
+def _require_integer(value: object, field_name: str) -> int:
+    if type(value) is not int:
+        raise TypeError(f"{field_name} must be an integer")
+    return cast(int, value)
+
+
+def _require_entry_type(value: object) -> Literal["operation", "event"]:
+    value = _require_string(value, "entry_type")
+    if value not in ("operation", "event"):
+        raise ValueError("entry_type must be 'operation' or 'event'")
+    return cast(Literal["operation", "event"], value)
+
+
+def _require_datetime(value: object, field_name: str) -> datetime:
+    if type(value) is not datetime:
+        raise TypeError(f"{field_name} must be a datetime")
+    return cast(datetime, value)
+
+
+def _datetime_from_json(value: object) -> datetime:
+    text = _require_string(value, "created_at")
+    if len(text) <= 10 or text[10] not in ("T", " "):
+        raise ValueError("created_at must be an ISO 8601 datetime")
+    try:
+        return datetime.fromisoformat(text)
+    except ValueError as exc:
+        raise ValueError("created_at must be an ISO 8601 datetime") from exc
+
+
 _EVENT_LOG_CODEC = FunctionalJournalRecordCodec(_entry_to_json, _entry_from_json)
-
-
-def _to_json_value(value: object) -> object:
-    if value is None or isinstance(value, str | int | float | bool):
-        return value
-    if isinstance(value, datetime):
-        return value.isoformat()
-    if isinstance(value, Mapping):
-        return {str(key): _to_json_value(item) for key, item in value.items()}
-    if isinstance(value, list | tuple):
-        return [_to_json_value(item) for item in value]
-    if is_dataclass(value) and not isinstance(value, type):
-        return _to_json_value(asdict(value))
-    return repr(value)
 
 
 __all__ = [
