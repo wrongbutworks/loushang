@@ -46,17 +46,24 @@ duplicate implementations or coding-owned class identity.
 projection for command/RPC surfaces, descriptor-to-source mapping, executable
 installation identity, Git discovery, and user-facing formatting.
 
-## Coding-Owned Behavior
+## Outside This Focused Migration
 
-This migration does not move or redesign:
+This provenance migration does not move or redesign:
 
 - `ResourceSourceKind` or `ResourceSourceScope`;
 - prompt, skill, theme, or extension descriptors;
-- search roots, source precedence, merge decisions, or conflict policy;
+- search roots, source precedence, merge decisions, or conflict policy in this
+  change;
 - executable entrypoint, package installation, virtual environment, or Git
   identity discovery;
 - resource check selection, phase/source assignment, or emission timing;
 - product remediation messages, UI projection, or session recording policy.
+
+The later
+[Platform Resource Layout Boundary](platform-resource-layout-boundary.md)
+assigns platform roots, standard scopes/precedence, descriptors, discovery,
+merging, and package mechanisms to Harness. Product-specific content,
+activation, trust, projection, and remediation remain outside Harness.
 
 General diagnostic vocabulary, records, queries, aggregation, and fingerprints
 are owned by `loushang.harness.diagnostics`. Resource-specific check selection

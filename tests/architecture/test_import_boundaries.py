@@ -834,7 +834,8 @@ def test_harness_product_kernel_ownership_is_documented() -> None:
         "risk classification, approval defaults, and permission policy",
         "artifact semantics",
         "product commands, configuration defaults, and presentation projections",
-        "resource search roots, file conventions, and compatibility formats",
+        "product resource content, convention activation, additional/override roots",
+        "cross-product platform defaults such as standard resource roots",
         "these semantics must not migrate merely to reduce the number of lines",
     }
     assert sorted(phrase for phrase in required_phrases if phrase not in text) == []
@@ -845,6 +846,51 @@ def test_harness_product_kernel_ownership_is_documented() -> None:
         .split()
     )
     assert "product kernel that must remain product-owned" in readme_text
+
+
+def test_harness_platform_resource_layout_boundary_is_documented() -> None:
+    design_path = Path(
+        "docs/internals/architecture/harness/platform-resource-layout-boundary.md"
+    )
+    assert design_path.exists()
+    design_text = " ".join(design_path.read_text(encoding="utf-8").split())
+    required_phrases = {
+        "Harness Platform Resource Layout Boundary",
+        "a **platform default** is useful to every Loushang product",
+        "$LOUSHANG_HOME, otherwise ~/.loushang/",
+        "<workspace>/.loushang/",
+        "temporary > project > user > package > built_in",
+        "`AGENTS.md` is a cross-product agent-instruction convention",
+        "Products own their built-in resource content and register it with Harness",
+        "Resource discovery is not resource authorization",
+        "`DefaultResourceLoader` should become a small Coding facade",
+        "must not import Coding, Design, Research, PPT, Cowork, TUI, Method, Work, or AI provider packages",
+    }
+    assert (
+        sorted(phrase for phrase in required_phrases if phrase not in design_text) == []
+    )
+
+    readme_text = Path(
+        "docs/internals/architecture/harness/README.md"
+    ).read_text(encoding="utf-8")
+    assert "Platform Resource Layout Boundary" in readme_text
+
+    inventory_text = Path(
+        "docs/internals/architecture/harness/coding-to-harness-migration-inventory.md"
+    ).read_text(encoding="utf-8")
+    assert "Resource And Package Runtime" in inventory_text
+    assert "platform resource layout ownership accepted" in inventory_text
+
+    authoritative_text = "\n".join(
+        Path(path).read_text(encoding="utf-8")
+        for path in (
+            "docs/internals/architecture/harness/refactoring-principles.md",
+            "docs/internals/architecture/harness/shared-capability-boundaries.md",
+            "docs/internals/architecture/harness/coding-to-harness-migration-inventory.md",
+        )
+    )
+    assert "resource search roots, file conventions, and compatibility formats" not in authoritative_text
+    assert "AGENTS.md or equivalent loading policy" not in authoritative_text
 
 
 def test_frontmatter_consumers_use_harness_owner() -> None:

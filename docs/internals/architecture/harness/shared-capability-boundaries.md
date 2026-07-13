@@ -50,13 +50,14 @@ of domain semantics and policy:
 - artifact semantics, such as code changes, research reports, slide decks,
   design assets, or collaborative documents;
 - product commands, configuration defaults, and presentation projections;
-- resource search roots, file conventions, and compatibility formats.
+- product resource content, convention activation, additional/override roots,
+  product-only formats, trust policy, and runtime projection.
 
-Harness may own the value types, registries, assembly engines, schedulers, and
-other mechanisms used to apply these decisions. It must not choose the values
-or defaults on a product's behalf. A reusable concrete capability that is not
-domain-specific may live in a shared tool or capability package; each product
-still decides whether and how that capability is enabled.
+Harness may own value types, registries, assembly engines, schedulers, and
+reusable concrete capabilities. Harness may also provide cross-product platform
+defaults such as standard resource roots, layouts, and conventions when they
+are explicitly overridable. It must not choose domain content, activation,
+trust, or projection policy on a product's behalf.
 
 This product kernel is what differentiates `coding`, `design`, `research`,
 `ppt`, `cowork`, and OEM products. Product bootstrap and wiring should become
@@ -169,13 +170,20 @@ Harness may own:
 - source metadata;
 - frontmatter parsing;
 - resource diagnostics;
-- merge and precedence primitives when expressed generically.
+- platform home resolution through `LOUSHANG_HOME` or `~/.loushang`;
+- the standard `<workspace>/.loushang` root and resource directory layout;
+- standard scope vocabulary and an overridable precedence preset;
+- reusable `AGENTS.md` discovery and optional compatibility conventions;
+- filesystem/package discovery, merge, reload, and materialization engines;
+- built-in package registration and enumeration.
 
 Product adapters own:
 
-- prompt/theme/skill/extension semantics;
-- search roots;
-- default bundled resources;
+- prompt/theme/skill/extension content and domain semantics;
+- convention selection and default activation;
+- additional or overridden roots and product-only compatibility formats;
+- product built-in package content and registration;
+- trust, permissions, package filters, and remote-source policy;
 - product-specific resource validation;
 - resource injection into prompts or tools.
 
@@ -196,7 +204,8 @@ Product adapters own:
 
 - system prompt text;
 - product instructions;
-- AGENTS.md or equivalent loading policy;
+- selection of standard/compatibility instruction conventions;
+- projection, salience, and ordering of loaded instruction resources;
 - template selection;
 - prompt ordering;
 - domain-specific preflight.
