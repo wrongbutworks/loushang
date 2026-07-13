@@ -8,10 +8,10 @@ from loushang.agent.types import AgentMessage, AgentToolResult, CustomAgentMessa
 from loushang.ai.json_codec import (
     deserialize_message,
     serialize_content_part,
-    serialize_json_value,
     serialize_message,
 )
 from loushang.ai.types import AssistantMessage, ToolResultMessage, UserMessage
+from loushang.protocol import require_json_value
 
 CustomMessageSerializer = Callable[[CustomAgentMessage], dict[str, Any]]
 CustomMessageDeserializer = Callable[[dict[str, Any]], CustomAgentMessage]
@@ -28,9 +28,7 @@ class CustomMessageJsonCodec:
 class AgentMessageJsonCodec:
     """Compose the AI message codec with product-provided message codecs."""
 
-    def __init__(
-        self, registrations: Iterable[CustomMessageJsonCodec] = ()
-    ) -> None:
+    def __init__(self, registrations: Iterable[CustomMessageJsonCodec] = ()) -> None:
         self._by_role: dict[str, CustomMessageJsonCodec] = {}
         self._registrations: list[CustomMessageJsonCodec] = []
         for registration in registrations:
@@ -70,9 +68,7 @@ class AgentMessageJsonCodec:
                         f"expected {registration.role!r}, got {encoded_role!r}"
                     )
                 return payload
-        raise ValueError(
-            f"Unsupported custom agent message type: {type(message)!r}"
-        )
+        raise ValueError(f"Unsupported custom agent message type: {type(message)!r}")
 
     def deserialize(self, payload: dict[str, Any]) -> AgentMessage:
         role = payload["role"]
@@ -91,12 +87,33 @@ class AgentMessageJsonCodec:
         return message
 
 
-def serialize_tool_result(result: AgentToolResult[Any]) -> dict[str, Any]:
-    return {
-        "content": [serialize_content_part(part) for part in result.content],
-        "details": serialize_json_value(result.details),
-        "terminate": result.terminate,
-    }
+def serialize_tool_result(
+    result: AgentToolResult[Any],
+    *,
+    target: str = "event",
+) -> dict[str, Any]:
+    if target == "event":
+        snapshot = result.for_event()
+        details = snapshot.event_details()
+    elif target == "transcript":
+        snapshot = result.for_presentation()
+        details = snapshot.transcript_details()
+    elif target == "hook":
+        snapshot = result.for_hook()
+        details = snapshot.hook_details()
+    else:
+        raise ValueError(f"Unsupported tool result projection target: {target}")
+    payload = require_json_value(
+        {
+            "content": [serialize_content_part(part) for part in snapshot.content],
+            "details": details,
+            "terminate": snapshot.terminate,
+        },
+        name="tool_result",
+    )
+    if not isinstance(payload, dict):
+        raise TypeError("Serialized tool results must be JSON objects")
+    return payload
 
 
 __all__ = [

@@ -29,6 +29,7 @@ from loushang.coding.message.custom_messages import (
     CustomMessage,
 )
 from loushang.coding.message.entries import SessionHeader
+from loushang.protocol import require_json_value
 
 
 def serialize_session_header(header: SessionHeader) -> dict[str, Any]:
@@ -73,7 +74,10 @@ def serialize_custom_message(message: AgentMessage) -> dict[str, Any]:
             "customType": message.custom_type,
             "content": [serialize_content_part(part) for part in content] if isinstance(content, list) else content,
             "display": message.display,
-            "details": serialize_json_value(message.details),
+            "details": require_json_value(
+                message.details,
+                name="custom_message.details",
+            ),
             "timestamp": message.timestamp,
         }
     if isinstance(message, BranchSummaryMessage):

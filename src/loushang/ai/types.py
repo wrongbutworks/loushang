@@ -3,7 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Any, Literal, NotRequired, TypedDict
 
-from loushang.observability.problem import JSONValue
+from loushang.protocol import JSONValue
 
 
 class UsageCost(TypedDict):
@@ -92,7 +92,8 @@ class ToolResultMessage:
     content: list[TextPart | ImagePart]
     is_error: bool
     timestamp: float
-    details: object | None = None
+    details: JSONValue = None
+    terminate: bool = False
 
 
 Message = UserMessage | AssistantMessage | ToolResultMessage

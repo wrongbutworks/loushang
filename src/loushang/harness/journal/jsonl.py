@@ -5,6 +5,7 @@ import json
 import os
 from collections.abc import Callable, Iterator, Mapping, Sequence
 from contextlib import AbstractContextManager, contextmanager, nullcontext, suppress
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Generic, Literal, TypeVar, cast
 
@@ -22,11 +23,27 @@ from loushang.harness.journal.types import (
     JournalLoadPolicy,
     JsonlSnapshot,
 )
+from loushang.protocol import JsonValueError, require_json_mapping
 
 H = TypeVar("H")
 R = TypeVar("R")
 LockMode = Literal["exclusive", "shared"]
 LockFactory = Callable[[Path, LockMode], AbstractContextManager[None]]
+
+
+@dataclass(frozen=True)
+class LegacyJsonConstant:
+    """A non-standard number token found by the opt-in legacy line parser."""
+
+    token: str
+
+
+@dataclass(frozen=True)
+class LegacyJsonlParsedLine:
+    """Syntax-only result for a permissively parsed legacy JSONL line."""
+
+    value: object
+    ending: str
 
 
 class JournalFileError(ValueError):
@@ -118,7 +135,9 @@ def write_jsonl(
     if header is not None:
         if header_codec is None:
             raise ValueError("header_codec is required when writing a header")
-        encoded.append(_dump_mapping(header_codec.encode_header(header), format_profile))
+        encoded.append(
+            _dump_mapping(header_codec.encode_header(header), format_profile)
+        )
     encoded.extend(
         _dump_mapping(record_codec.encode_record(record), format_profile)
         for record in records
@@ -185,7 +204,9 @@ def load_jsonl(
     if load_policy.header == "required":
         line_number, line = numbered_lines[0]
         try:
-            value = _load_mapping(line, path=target, line_number=line_number, kind="header")
+            value = _load_mapping(
+                line, path=target, line_number=line_number, kind="header"
+            )
             header = cast(JournalHeaderCodec[H], header_codec).decode_header(value)
         except JournalFileError:
             if load_policy.invalid_header == "raise":
@@ -221,7 +242,9 @@ def load_jsonl(
     last_nonblank_line = numbered_lines[-1][0] if numbered_lines else None
     for line_number, line in record_lines:
         try:
-            value = _load_mapping(line, path=target, line_number=line_number, kind="record")
+            value = _load_mapping(
+                line, path=target, line_number=line_number, kind="record"
+            )
             records.append(record_codec.decode_record(value))
         except Exception as exc:
             is_partial_tail = (
@@ -235,7 +258,9 @@ def load_jsonl(
             if behavior == "raise":
                 if isinstance(exc, JournalFileError):
                     raise
-                code = exc.code if isinstance(exc, JournalCodecError) else "invalid_record"
+                code = (
+                    exc.code if isinstance(exc, JournalCodecError) else "invalid_record"
+                )
                 raise JournalFileError(
                     "Journal record is invalid",
                     path=target,
@@ -244,7 +269,9 @@ def load_jsonl(
                 ) from exc
             diagnostics.append(
                 _diagnostic(
-                    "partial_journal_tail" if is_partial_tail else "invalid_journal_record",
+                    "partial_journal_tail"
+                    if is_partial_tail
+                    else "invalid_journal_record",
                     "Journal record was skipped because it is incomplete or invalid.",
                     target,
                     line_number,
@@ -256,6 +283,23 @@ def load_jsonl(
         records=tuple(records),
         diagnostics=tuple(diagnostics),
     )
+
+
+def parse_legacy_jsonl_line(line: str) -> LegacyJsonlParsedLine | None:
+    """Parse one legacy line without weakening the strict journal reader.
+
+    Product compatibility readers may opt into this syntax-only helper, migrate
+    the returned value to their own strict schema, and then use a strict dumper.
+    Malformed JSON returns ``None`` and non-standard numeric constants remain
+    explicit ``LegacyJsonConstant`` values.
+    """
+
+    body, ending = _split_line_ending(line)
+    try:
+        value = json.loads(body, parse_constant=LegacyJsonConstant)
+    except (ValueError, RecursionError):
+        return None
+    return LegacyJsonlParsedLine(value=value, ending=ending)
 
 
 class JsonlJournal(Generic[H, R]):
@@ -332,11 +376,13 @@ def _dump_mapping(
 ) -> str:
     if not isinstance(value, Mapping):
         raise TypeError("journal codecs must encode mappings")
+    payload = require_json_mapping(dict(value), name="journal_record")
     return json.dumps(
-        dict(value),
+        payload,
         ensure_ascii=profile.ensure_ascii,
         sort_keys=profile.sort_keys,
         separators=profile.separators,
+        allow_nan=False,
     )
 
 
@@ -348,8 +394,8 @@ def _load_mapping(
     kind: Literal["header", "record"],
 ) -> Mapping[str, object]:
     try:
-        value = json.loads(line)
-    except json.JSONDecodeError as exc:
+        value = json.loads(line, parse_constant=_reject_json_constant)
+    except ValueError as exc:
         raise JournalFileError(
             f"Journal {kind} is not valid JSON",
             path=path,
@@ -363,7 +409,30 @@ def _load_mapping(
             code=f"invalid_{kind}_shape",
             line_number=line_number,
         )
-    return cast(Mapping[str, object], value)
+    try:
+        return cast(
+            Mapping[str, object],
+            require_json_mapping(dict(value), name=f"journal_{kind}"),
+        )
+    except JsonValueError as exc:
+        raise JournalFileError(
+            f"Journal {kind} contains a value outside strict JSON",
+            path=path,
+            code=f"invalid_{kind}_value",
+            line_number=line_number,
+        ) from exc
+
+
+def _reject_json_constant(value: str) -> object:
+    raise ValueError(f"non-standard JSON constant: {value}")
+
+
+def _split_line_ending(line: str) -> tuple[str, str]:
+    if line.endswith("\r\n"):
+        return line[:-2], "\r\n"
+    if line.endswith(("\n", "\r")):
+        return line[:-1], line[-1]
+    return line, ""
 
 
 def _sync_handle(handle: Any, durability: JournalDurabilityProfile) -> None:
@@ -415,10 +484,13 @@ def _load_msvcrt() -> Any:
 __all__ = [
     "JournalFileError",
     "JsonlJournal",
+    "LegacyJsonConstant",
+    "LegacyJsonlParsedLine",
     "LockFactory",
     "LockMode",
     "append_jsonl_record",
     "journal_file_lock",
     "load_jsonl",
+    "parse_legacy_jsonl_line",
     "write_jsonl",
 ]

@@ -110,7 +110,9 @@ def test_serialize_session_event_uses_pi_json_keys_for_coding_events() -> None:
         "followUp": ["b"],
     }
 
-    assert serialize_session_event({"type": "session_info_changed", "name": "Demo"}) == {
+    assert serialize_session_event(
+        {"type": "session_info_changed", "name": "Demo"}
+    ) == {
         "type": "session_info_changed",
         "name": "Demo",
     }
@@ -195,7 +197,12 @@ def test_serialize_session_event_uses_pi_json_keys_for_compaction_usage() -> Non
             "aborted": False,
             "will_retry": False,
             "usage_before": usage,
-            "usage_after": {**usage.__dict__, "tokens": None, "percent": None, "stale_after_compaction": True},
+            "usage_after": {
+                **usage.__dict__,
+                "tokens": None,
+                "percent": None,
+                "stale_after_compaction": True,
+            },
         }
     )
 
@@ -248,7 +255,9 @@ def test_serialize_session_event_uses_pi_json_keys_for_auto_retry_events() -> No
     }
 
 
-def test_serialize_session_event_uses_pi_json_keys_for_package_progress_events() -> None:
+def test_serialize_session_event_uses_pi_json_keys_for_package_progress_events() -> (
+    None
+):
     from loushang.coding.event import serialize_session_event
 
     payload = serialize_session_event(
@@ -292,7 +301,13 @@ def test_serialize_session_event_uses_pi_json_keys_for_base_agent_events() -> No
                     cache_read=3,
                     cache_write=4,
                     total_tokens=5,
-                    cost={"input": 0.0, "output": 0.0, "cacheRead": 0.0, "cacheWrite": 0.0, "total": 0.0},
+                    cost={
+                        "input": 0.0,
+                        "output": 0.0,
+                        "cacheRead": 0.0,
+                        "cacheWrite": 0.0,
+                        "total": 0.0,
+                    },
                 ),
                 stop_reason="stop",
                 error_message=None,
@@ -315,7 +330,13 @@ def test_serialize_session_event_uses_pi_json_keys_for_base_agent_events() -> No
                         cache_read=3,
                         cache_write=4,
                         total_tokens=5,
-                        cost={"input": 0.0, "output": 0.0, "cacheRead": 0.0, "cacheWrite": 0.0, "total": 0.0},
+                        cost={
+                            "input": 0.0,
+                            "output": 0.0,
+                            "cacheRead": 0.0,
+                            "cacheWrite": 0.0,
+                            "total": 0.0,
+                        },
                     ),
                     stop_reason="stop",
                     error_message=None,
@@ -378,7 +399,9 @@ def test_project_session_event_can_attach_rendered_tool_payloads() -> None:
         "tool_call_id": "tc1",
         "tool_name": "read",
         "args": {"path": "README.md"},
-        "partial_result": AgentToolResult(content=[TextPart(type="text", text="partial")], details={}),
+        "partial_result": AgentToolResult(
+            content=[TextPart(type="text", text="partial")], details={}
+        ),
     }
     end_event = {
         "type": "tool_execution_end",
@@ -443,7 +466,9 @@ def test_project_session_event_can_attach_rendered_tool_payloads() -> None:
         "status": "ok",
         "collapsedText": "README.md final partial=False expanded=False",
         "expandedText": "README.md final partial=False expanded=True",
-        "artifacts": [{"type": "file", "path": "/tmp/read-full.txt", "name": "read-full.txt"}],
+        "artifacts": [
+            {"type": "file", "path": "/tmp/read-full.txt", "name": "read-full.txt"}
+        ],
     }
 
 
@@ -475,7 +500,9 @@ def test_project_session_event_marks_rendered_tool_error_status() -> None:
             "type": "tool_execution_end",
             "tool_call_id": "tc1",
             "tool_name": "bash",
-            "result": AgentToolResult(content=[TextPart(type="text", text="boom")], details={}),
+            "result": AgentToolResult(
+                content=[TextPart(type="text", text="boom")], details={}
+            ),
             "is_error": True,
         },
         event_view="tools",
@@ -515,13 +542,17 @@ def test_project_session_event_structures_tool_ui_state_and_bash_artifacts() -> 
                 "type": "tool_execution_end",
                 "tool_call_id": "tc1",
                 "tool_name": "bash",
-                "result": AgentToolResult(content=[TextPart(type="text", text="out")], details=details),
+                "result": AgentToolResult(
+                    content=[TextPart(type="text", text="out")], details=details
+                ),
                 "is_error": False,
                 "duration_ms": 123,
             },
             event_view="tools",
             tool_render_runtime=ToolRenderRuntime(),
-            tool_definition_resolver=lambda name: definition if name == "bash" else None,
+            tool_definition_resolver=lambda name: (
+                definition if name == "bash" else None
+            ),
         )[0]["renderedToolResult"]
 
     timed_out = project(
@@ -536,14 +567,99 @@ def test_project_session_event_structures_tool_ui_state_and_bash_artifacts() -> 
     assert timed_out["status"] == "timed_out"
     assert timed_out["durationMs"] == 123
     assert timed_out["artifacts"] == [
-        {"type": "file", "path": "/tmp/stdout.log", "name": "stdout.log", "stream": "stdout"},
-        {"type": "file", "path": "/tmp/stderr.log", "name": "stderr.log", "stream": "stderr"},
+        {
+            "type": "file",
+            "path": "/tmp/stdout.log",
+            "name": "stdout.log",
+            "stream": "stdout",
+        },
+        {
+            "type": "file",
+            "path": "/tmp/stderr.log",
+            "name": "stderr.log",
+            "stream": "stderr",
+        },
     ]
     assert cancelled["status"] == "cancelled"
     assert cancelled["durationMs"] == 456
 
 
-def test_project_session_event_omits_rendered_tool_payload_when_renderer_fails() -> None:
+def test_project_session_event_uses_distinct_event_and_presentation_views() -> None:
+    from loushang.agent import FunctionalToolOutputProjector
+    from loushang.agent.types import AgentToolResult
+    from loushang.ai.types import TextPart
+    from loushang.coding.event import project_session_event
+    from loushang.coding.tools import ToolDefinition, ToolRenderRuntime
+
+    async def execute(tool_call_id, params, signal=None, on_update=None):
+        del tool_call_id, params, signal, on_update
+        raise AssertionError("not executed")
+
+    def render_result(result, options, theme, context):
+        del options, theme, context
+        return {"text": f"surface={result.details['surface']}"}
+
+    definition = ToolDefinition(
+        name="bash",
+        label="Bash",
+        description="Run commands",
+        parameters={"type": "object", "properties": {}, "additionalProperties": False},
+        execute=execute,
+        render_result=render_result,
+    )
+    result = AgentToolResult(
+        content=[TextPart(type="text", text="out")],
+        details=object(),
+        projector=FunctionalToolOutputProjector(
+            transcript=lambda details: {"surface": "transcript"},
+            event=lambda details: {
+                "surface": "event",
+                "timed_out": True,
+                "durationMs": 456,
+                "stdout_artifact_path": "/tmp/stdout.log",
+            },
+        ),
+    )
+    event_result = result.for_event()
+    assert event_result.details == {
+        "surface": "event",
+        "timed_out": True,
+        "durationMs": 456,
+        "stdout_artifact_path": "/tmp/stdout.log",
+    }
+    assert event_result.details is not result.details
+
+    payload = project_session_event(
+        {
+            "type": "tool_execution_end",
+            "tool_call_id": "tc1",
+            "tool_name": "bash",
+            "result": event_result,
+            "is_error": False,
+            "duration_ms": 123,
+        },
+        event_view="tools",
+        tool_render_runtime=ToolRenderRuntime(),
+        tool_definition_resolver=lambda name: definition if name == "bash" else None,
+    )[0]
+
+    assert payload["result"]["details"]["surface"] == "event"
+    assert payload["renderedToolResult"]["text"] == "surface=transcript"
+    assert payload["renderedToolResult"]["status"] == "timed_out"
+    assert payload["renderedToolResult"]["durationMs"] == 456
+    assert payload["renderedToolResult"]["artifacts"] == [
+        {
+            "type": "file",
+            "path": "/tmp/stdout.log",
+            "name": "stdout.log",
+            "stream": "stdout",
+        }
+    ]
+
+
+def test_project_session_event_omits_rendered_tool_payload_when_renderer_fails() -> (
+    None
+):
     from loushang.agent.types import AgentToolResult
     from loushang.ai.types import TextPart
     from loushang.coding.event import project_session_event

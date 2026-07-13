@@ -91,6 +91,48 @@ def test_coding_work_shell_wraps_prompt_and_logs_operation_run_and_projected_eve
     asyncio.run(scenario())
 
 
+def test_coding_work_shell_projects_custom_messages_with_product_codec() -> None:
+    from loushang.coding.message import create_custom_message
+    from loushang.coding.work_shell import CodingWorkShell
+    from loushang.work import InMemoryEventLogBackend
+
+    async def scenario() -> None:
+        message = create_custom_message(
+            custom_type="review-note",
+            content="check this",
+            display=True,
+            details={"severity": "warning"},
+            timestamp="2026-06-01T10:30:00+00:00",
+        )
+        event_log = InMemoryEventLogBackend()
+        shell = CodingWorkShell(
+            session=FakePromptSession(
+                events=[{"type": "message_end", "message": message}]
+            ),
+            event_log=event_log,
+            clock=lambda: datetime(2026, 6, 1, 10, 30, tzinfo=UTC),
+        )
+
+        await shell.submit_coding_turn(
+            "review",
+            session_id="session-1",
+            operation_id="op-1",
+            run_id="run-1",
+        )
+
+        projected = event_log.query(run_id="run-1")[2]
+        assert projected.payload["payload"]["message"] == {
+            "role": "custom",
+            "customType": "review-note",
+                "content": "check this",
+                "display": True,
+                "details": {"severity": "warning"},
+                "timestamp": message.timestamp,
+            }
+
+    asyncio.run(scenario())
+
+
 def test_coding_work_shell_logs_tool_policy_and_approval_audit_events() -> None:
     from loushang.coding.work_shell import CodingWorkShell
     from loushang.work import InMemoryEventLogBackend

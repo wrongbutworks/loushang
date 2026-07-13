@@ -6,6 +6,7 @@ from datetime import UTC, datetime
 from typing import Protocol
 from uuid import uuid4
 
+from loushang.coding.message.json_codec import serialize_agent_message
 from loushang.work.event_log import EventLogBackend, EventLogEntry
 from loushang.work.projection import (
     WorkEventProjectionContext,
@@ -143,6 +144,7 @@ class CodingWorkShell:
                 sequence=sequence,
                 created_at=self.clock(),
                 event_id_prefix=f"{run_id}-event",
+                message_serializer=serialize_agent_message,
             )
             for work_event in project_agent_event_to_work_events(event, context=context):
                 self._append_event(work_event)

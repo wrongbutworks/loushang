@@ -1,23 +1,25 @@
 from __future__ import annotations
 
+from dataclasses import asdict
 from typing import Any
 
-from loushang.coding.message.json_codec import serialize_json_value
+from loushang.coding.session.types import ContextUsage, ContextUsageSnapshot
+from loushang.protocol import JSONValue, require_json_mapping
 
 
 def serialize_context_usage_payload(value: object | None) -> dict[str, Any] | None:
     if value is None:
         return None
 
-    raw = serialize_json_value(value)
-    if not isinstance(raw, dict):
-        return {"value": raw}
+    if isinstance(value, ContextUsage | ContextUsageSnapshot):
+        value = asdict(value)
+    raw = require_json_mapping(value, name="context_usage")
     return _camelize(raw)
 
 
-def _camelize(value: object) -> object:
+def _camelize(value: JSONValue) -> JSONValue:
     if isinstance(value, dict):
-        return {_snake_to_camel(str(key)): _camelize(item) for key, item in value.items()}
+        return {_snake_to_camel(key): _camelize(item) for key, item in value.items()}
     if isinstance(value, list):
         return [_camelize(item) for item in value]
     return value

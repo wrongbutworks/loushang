@@ -368,3 +368,116 @@ def test_load_session_file_skips_invalid_lines(tmp_path: Path) -> None:
     assert len(entries) == 2
     assert entries[0].id == "e1"
     assert entries[1].id == "e2"
+
+
+def test_load_session_repository_migrates_legacy_non_strict_json_with_diagnostics(
+    tmp_path: Path,
+) -> None:
+    import json
+
+    from loushang.coding.message import SessionInfoEntry
+    from loushang.coding.store.file_codec import load_session_repository
+    from loushang.protocol import require_json_value
+
+    path = tmp_path / "session.jsonl"
+    legacy_record = (
+        '{"type":"message","id":"e1","parentId":null,'
+        '"timestamp":"2026-05-20T09:00:01.000Z","message":{'
+        '"role":"toolResult","toolCallId":"call-1","toolName":"probe",'
+        '"content":[],"isError":false,"timestamp":1.0,"details":{'
+        '"nan":NaN,"positive":Infinity,"negative":-Infinity,'
+        '"text":"before\\ud800after"}}}'
+    )
+    path.write_text(
+        (
+            '{"type":"session","version":3,"id":"s1",'
+            '"timestamp":"2026-05-20T09:00:00.000Z","cwd":"/tmp/project"}\n'
+            f"{legacy_record}\n"
+        ),
+        encoding="utf-8",
+    )
+
+    repository = load_session_repository(path)
+
+    assert len(repository.records) == 1
+    message = repository.records[0].message  # type: ignore[attr-defined]
+    assert isinstance(message, ToolResultMessage)
+    assert message.details == {
+        "nan": "NaN",
+        "positive": "Infinity",
+        "negative": "-Infinity",
+        "text": "before\\ud800after",
+    }
+    migration = next(
+        diagnostic
+        for diagnostic in repository.diagnostics
+        if diagnostic.code == "legacy_session_json_migrated"
+    )
+    assert migration.source_path == path
+    assert migration.line_number == 2
+    assert migration.details == {
+        "non_finite_values": 3,
+        "unicode_surrogates": 1,
+        "non_finite_strategy": "preserve_token_as_string",
+        "surrogate_strategy": "preserve_code_unit_as_escape_text",
+    }
+
+    repository.append(
+        SessionInfoEntry(
+            type="session_info",
+            id="e2",
+            parent_id="e1",
+            timestamp="2026-05-20T09:00:02.000Z",
+            name="strict append",
+        )
+    )
+    appended = json.loads(
+        path.read_text(encoding="utf-8").splitlines()[-1],
+        parse_constant=lambda value: pytest.fail(f"unexpected constant: {value}"),
+    )
+    assert require_json_value(appended) == appended
+    assert "NaN" in path.read_text(encoding="utf-8").splitlines()[1]
+
+
+def test_legacy_session_temp_file_is_removed_when_compat_write_fails(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import loushang.coding.store.file_codec as codec
+
+    path = tmp_path / "session.jsonl"
+    path.write_text(
+        (
+            '{"type":"session","version":3,"id":"s1",'
+            '"timestamp":"2026-05-20T09:00:00.000Z","cwd":"/tmp/project"}\n'
+            '{"type":"custom","id":"e1","parentId":null,'
+            '"timestamp":"2026-05-20T09:00:01.000Z",'
+            '"customType":"legacy","data":{"value":NaN}}\n'
+        ),
+        encoding="utf-8",
+    )
+    temp_path = tmp_path / "legacy-migration.tmp"
+
+    class FailingTempFile:
+        name = str(temp_path)
+
+        def __enter__(self):
+            temp_path.touch()
+            return self
+
+        def __exit__(self, *_args: object) -> None:
+            return None
+
+        def write(self, _value: str) -> None:
+            raise OSError("compat temp write failed")
+
+    monkeypatch.setattr(
+        codec.tempfile,
+        "NamedTemporaryFile",
+        lambda **_kwargs: FailingTempFile(),
+    )
+
+    with pytest.raises(OSError, match="compat temp write failed"):
+        codec.load_session_repository(path)
+
+    assert not temp_path.exists()

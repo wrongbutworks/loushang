@@ -31,3 +31,17 @@ def test_work_public_api_exposes_current_work_surface_without_multi_agent_types(
     assert not hasattr(work, "CollaborationBus")
     assert not hasattr(work, "CodingWorkShell")
     assert not hasattr(work, "PromptSession")
+
+
+def test_work_projection_exports_remain_available_from_the_root_package() -> None:
+    import loushang.work as work
+    from loushang.work.projection import (
+        WorkEventProjectionContext,
+        project_agent_event_to_work_events,
+    )
+
+    assert work.WorkEventProjectionContext is WorkEventProjectionContext
+    assert (
+        work.project_agent_event_to_work_events
+        is project_agent_event_to_work_events
+    )

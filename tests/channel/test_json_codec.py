@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 from datetime import UTC, datetime
+from typing import cast
 
 import pytest
 
@@ -24,11 +25,15 @@ def test_channel_envelope_json_round_trips_work_operation() -> None:
             kind="SubmitCodingTurn",
             session_id="session-1",
             domain="coding",
-            payload={"text": "inspect", "paths": ("src", "tests")},
+            payload={"text": "inspect", "paths": ["src", "tests"]},
             source={"client": "tui"},
         ),
-        source=ChannelEndpoint(endpoint_id="client:tui", kind="tui", session_id="session-1"),
-        target=ChannelEndpoint(endpoint_id="host:local", kind="host", metadata={"pid": 123}),
+        source=ChannelEndpoint(
+            endpoint_id="client:tui", kind="tui", session_id="session-1"
+        ),
+        target=ChannelEndpoint(
+            endpoint_id="host:local", kind="host", metadata={"pid": 123}
+        ),
         created_at=created_at,
         metadata={"trace_id": "trace-1"},
     )
@@ -76,8 +81,12 @@ def test_channel_envelope_json_round_trips_work_operation() -> None:
             payload={"text": "inspect", "paths": ["src", "tests"]},
             source={"client": "tui"},
         ),
-        source=ChannelEndpoint(endpoint_id="client:tui", kind="tui", session_id="session-1"),
-        target=ChannelEndpoint(endpoint_id="host:local", kind="host", metadata={"pid": 123}),
+        source=ChannelEndpoint(
+            endpoint_id="client:tui", kind="tui", session_id="session-1"
+        ),
+        target=ChannelEndpoint(
+            endpoint_id="host:local", kind="host", metadata={"pid": 123}
+        ),
         created_at=created_at,
         metadata={"trace_id": "trace-1"},
     )
@@ -145,3 +154,207 @@ def test_channel_envelope_json_decode_rejects_unknown_kind() -> None:
                 "metadata": {},
             }
         )
+
+
+def test_channel_envelope_json_rejects_implicit_payload_projection() -> None:
+    from pathlib import Path
+
+    from loushang.channel import ChannelEnvelope, channel_envelope_to_json
+    from loushang.protocol import JsonValueError
+    from loushang.work import WorkOperation
+
+    envelope = ChannelEnvelope(
+        envelope_id="env-unsafe",
+        kind="operation",
+        payload=WorkOperation(
+            operation_id="op-unsafe",
+            kind="SubmitCodingTurn",
+            session_id=None,
+            domain="coding",
+            payload={"path": Path("notes.txt")},
+        ),
+    )
+
+    with pytest.raises(JsonValueError) as exc_info:
+        channel_envelope_to_json(envelope)
+
+    assert exc_info.value.path == "channel_mapping.path"
+
+
+def test_channel_envelope_json_encode_rejects_non_string_top_level_id() -> None:
+    from pathlib import Path
+
+    from loushang.channel import ChannelEnvelope, channel_envelope_to_json
+    from loushang.work import WorkOperation
+
+    envelope = ChannelEnvelope(
+        envelope_id=cast(str, Path("env-unsafe")),
+        kind="operation",
+        payload=WorkOperation(
+            operation_id="op-1",
+            kind="SubmitCodingTurn",
+            session_id=None,
+            domain="coding",
+            payload={},
+        ),
+    )
+
+    with pytest.raises(TypeError, match="envelope_id must be a string"):
+        channel_envelope_to_json(envelope)
+
+
+@pytest.mark.parametrize("field_name", ["endpoint_id", "kind", "session_id"])
+def test_channel_envelope_json_encode_rejects_non_string_endpoint_fields(
+    field_name: str,
+) -> None:
+    from pathlib import Path
+
+    from loushang.channel import (
+        ChannelEndpoint,
+        ChannelEnvelope,
+        channel_envelope_to_json,
+    )
+    from loushang.work import WorkOperation
+
+    endpoint_fields = {
+        "endpoint_id": "client:tui",
+        "kind": "tui",
+        "session_id": "session-1",
+    }
+    endpoint_fields[field_name] = cast(str, Path("implicit-value"))
+    envelope = ChannelEnvelope(
+        envelope_id="env-1",
+        kind="operation",
+        payload=WorkOperation(
+            operation_id="op-1",
+            kind="SubmitCodingTurn",
+            session_id=None,
+            domain="coding",
+            payload={},
+        ),
+        source=ChannelEndpoint(**endpoint_fields),
+    )
+
+    with pytest.raises(TypeError, match="must be a string"):
+        channel_envelope_to_json(envelope)
+
+
+def test_channel_envelope_json_decode_rejects_bool_event_sequence() -> None:
+    from loushang.channel import channel_envelope_from_json
+
+    data = _work_event_envelope_data()
+    payload = cast(dict[str, object], data["payload"])
+    payload["sequence"] = True
+
+    with pytest.raises(TypeError, match="sequence must be an integer"):
+        channel_envelope_from_json(data)
+
+
+def test_channel_envelope_json_decode_rejects_invalid_delivery_hint() -> None:
+    from loushang.channel import channel_envelope_from_json
+
+    data = _work_event_envelope_data()
+    payload = cast(dict[str, object], data["payload"])
+    payload["delivery_hint"] = "eventually"
+
+    with pytest.raises(ValueError, match="delivery_hint"):
+        channel_envelope_from_json(data)
+
+
+@pytest.mark.parametrize(
+    ("created_at", "exception_type"),
+    [
+        (datetime(2026, 6, 10, tzinfo=UTC), TypeError),
+        ("not-a-datetime", ValueError),
+    ],
+)
+def test_channel_envelope_json_decode_rejects_invalid_datetime(
+    created_at: object,
+    exception_type: type[Exception],
+) -> None:
+    from loushang.channel import channel_envelope_from_json
+
+    data = _work_event_envelope_data()
+    payload = cast(dict[str, object], data["payload"])
+    payload["created_at"] = created_at
+
+    with pytest.raises(exception_type, match="created_at|JSON-safe"):
+        channel_envelope_from_json(data)
+
+
+def test_channel_envelope_json_decode_does_not_coerce_custom_string_values() -> None:
+    from loushang.channel import channel_envelope_from_json
+    from loushang.protocol import JsonValueError
+
+    class StringLike:
+        called = False
+
+        def __str__(self) -> str:
+            self.called = True
+            return "env-1"
+
+    string_like = StringLike()
+    data = _work_event_envelope_data()
+    data["envelope_id"] = string_like
+
+    with pytest.raises(JsonValueError) as exc_info:
+        channel_envelope_from_json(data)
+
+    assert exc_info.value.path == "channel_envelope.envelope_id"
+    assert string_like.called is False
+
+
+def test_channel_envelope_json_decode_snapshots_source_payload() -> None:
+    from loushang.channel import channel_envelope_from_json
+    from loushang.work import WorkOperation
+
+    operation_payload: dict[str, object] = {"paths": ["src"]}
+    operation_source: dict[str, object] = {"client": {"name": "tui"}}
+    data: dict[str, object] = {
+        "envelope_id": "env-1",
+        "kind": "operation",
+        "payload": {
+            "operation_id": "op-1",
+            "kind": "SubmitCodingTurn",
+            "session_id": "session-1",
+            "domain": "coding",
+            "payload": operation_payload,
+            "source": operation_source,
+        },
+        "source": None,
+        "target": None,
+        "created_at": None,
+        "metadata": {},
+    }
+
+    decoded = channel_envelope_from_json(data)
+    cast(list[object], operation_payload["paths"]).append("tests")
+    cast(dict[str, object], operation_source["client"])["name"] = "rpc"
+
+    assert isinstance(decoded.payload, WorkOperation)
+    assert decoded.payload.payload == {"paths": ["src"]}
+    assert decoded.payload.source == {"client": {"name": "tui"}}
+
+
+def _work_event_envelope_data() -> dict[str, object]:
+    return {
+        "envelope_id": "env-2",
+        "kind": "event",
+        "payload": {
+            "event_id": "event-1",
+            "kind": "ContentDelta",
+            "run_id": "run-1",
+            "session_id": "session-1",
+            "domain": "coding",
+            "operation_id": "op-1",
+            "sequence": 7,
+            "created_at": "2026-06-10T13:01:00+00:00",
+            "delivery_hint": "coalesce",
+            "payload": {"text": "hello"},
+            "source_event_ref": "agent:event:1",
+        },
+        "source": None,
+        "target": None,
+        "created_at": "2026-06-10T13:02:00+00:00",
+        "metadata": {},
+    }

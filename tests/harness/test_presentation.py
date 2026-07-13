@@ -170,3 +170,31 @@ def test_render_runtime_fails_soft_when_render_result_raises() -> None:
 
     assert runtime.render_result(Definition(), "call-1", result) == "rendered-result"
     assert seen == [None, "rendered-result", "rendered-result"]
+
+
+def test_render_runtime_uses_transcript_projection_for_live_results() -> None:
+    from loushang.agent import AgentToolResult, FunctionalToolOutputProjector
+    from loushang.harness.presentation import ToolRenderRuntime
+
+    observed: list[object] = []
+
+    class Definition:
+        render_call = None
+
+        @staticmethod
+        def render_result(result, options, theme, context):
+            del options, theme, context
+            observed.append(result.details)
+            return "rendered"
+
+    result = AgentToolResult(
+        content=[],
+        details={"raw": True},
+        projector=FunctionalToolOutputProjector(
+            transcript=lambda details: {"view": "transcript"},
+            event=lambda details: {"view": "event"},
+        ),
+    )
+
+    assert ToolRenderRuntime().render_result(Definition(), "call-1", result) == "rendered"
+    assert observed == [{"view": "transcript"}]

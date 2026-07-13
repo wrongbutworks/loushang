@@ -45,7 +45,9 @@ class HookDispatcher:
         self._diagnostics = diagnostics
         self._runtime_error_handler = runtime_error_handler
 
-    async def before_tool_call(self, event, signal: object | None = None) -> BeforeToolCallResult | None:
+    async def before_tool_call(
+        self, event, signal: object | None = None
+    ) -> BeforeToolCallResult | None:
         del signal
         current_event = event
         changed = False
@@ -82,8 +84,15 @@ class HookDispatcher:
                 if decision.diagnostics:
                     self._diagnostics.extend(decision.diagnostics)
                 rewritten_tool_name = decision.tool_name or current_event.tool_call.name
-                rewritten_arguments = decision.arguments if decision.arguments is not None else current_event.args
-                if rewritten_tool_name != current_event.tool_call.name or rewritten_arguments != current_event.args:
+                rewritten_arguments = (
+                    decision.arguments
+                    if decision.arguments is not None
+                    else current_event.args
+                )
+                if (
+                    rewritten_tool_name != current_event.tool_call.name
+                    or rewritten_arguments != current_event.args
+                ):
                     changed = True
                     current_event = replace(
                         current_event,
@@ -110,7 +119,9 @@ class HookDispatcher:
             arguments=current_event.args,
         )
 
-    async def after_tool_call(self, event, signal: object | None = None) -> AfterToolCallResult | None:
+    async def after_tool_call(
+        self, event, signal: object | None = None
+    ) -> AfterToolCallResult | None:
         del signal
         current_event = event
         changed = False
@@ -160,13 +171,18 @@ class HookDispatcher:
                     )
                     continue
                 changed = True
-                current_event = replace(current_event, result=decision.result)
+                current_event = replace(
+                    current_event,
+                    result=decision.result,
+                    hook_details=decision.result.hook_details(),
+                )
         if not changed:
             return None
         return AfterToolCallResult(
             content=current_event.result.content,
             details=current_event.result.details,
             terminate=current_event.result.terminate,
+            projector=current_event.result.projector,
         )
 
     def _record_hook_error(

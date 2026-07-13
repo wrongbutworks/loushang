@@ -181,7 +181,7 @@ def test_navigate_tree_respects_extension_before_tree_cancellation(tmp_path) -> 
 
 def test_navigate_tree_with_summary_appends_branch_summary_and_emits_events(tmp_path, monkeypatch) -> None:
     from loushang.agent import Agent
-    from loushang.coding.compaction import BranchSummaryResult
+    from loushang.coding.compaction import BranchSummaryDetails, BranchSummaryResult
     from loushang.coding.session import AgentSession
     from loushang.coding.store import SessionManager
 
@@ -199,7 +199,13 @@ def test_navigate_tree_with_summary_appends_branch_summary_and_emits_events(tmp_
 
     async def _fake_generate(entries_or_messages, **kwargs):
         assert len(entries_or_messages) == 2
-        return BranchSummaryResult(summary="branch return summary")
+        return BranchSummaryResult(
+            summary="branch return summary",
+            details=BranchSummaryDetails(
+                read_files=["README.md"],
+                modified_files=["src/app.py"],
+            ),
+        )
 
     monkeypatch.setattr(
         "loushang.coding.session.agent_session.generate_branch_summary",
@@ -217,6 +223,10 @@ def test_navigate_tree_with_summary_appends_branch_summary_and_emits_events(tmp_
     assert summary_entry.type == "branch_summary"
     assert summary_entry.parent_id == assistant1_id
     assert summary_entry.summary == "branch return summary"
+    assert summary_entry.details == {
+        "readFiles": ["README.md"],
+        "modifiedFiles": ["src/app.py"],
+    }
     assert [getattr(message, "role", None) for message in session.agent.state.messages] == [
         "user",
         "assistant",

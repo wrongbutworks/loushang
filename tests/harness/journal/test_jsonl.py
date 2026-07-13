@@ -81,13 +81,39 @@ def test_format_profile_preserves_unicode_and_key_order(tmp_path: Path) -> None:
         durability=PROCESS_LOCAL_JOURNAL,
     )
 
-    assert path.read_bytes() == (
-        '{"recordId": "记录", "text": "你好"}\n'.encode()
-    )
+    assert path.read_bytes() == ('{"recordId": "记录", "text": "你好"}\n'.encode())
     assert not path.with_name("events.jsonl.lock").exists()
 
 
-def test_skip_invalid_records_and_partial_tail_reports_provenance(tmp_path: Path) -> None:
+def test_journal_rejects_values_outside_strict_json_algebra(tmp_path: Path) -> None:
+    import pytest
+
+    from loushang.harness.journal import append_jsonl_record
+    from loushang.protocol import JsonValueError
+
+    class UnsafeRecordCodec:
+        def encode_record(self, record: _Record):
+            return {"recordId": record.record_id, "path": Path(record.text)}
+
+        def decode_record(self, value):
+            return _Record(record_id=str(value["recordId"]), text=str(value["path"]))
+
+    path = tmp_path / "records.jsonl"
+
+    with pytest.raises(JsonValueError) as exc_info:
+        append_jsonl_record(
+            path,
+            _Record("one", "notes.txt"),
+            record_codec=UnsafeRecordCodec(),
+        )
+
+    assert exc_info.value.path == "journal_record.path"
+    assert not path.exists()
+
+
+def test_skip_invalid_records_and_partial_tail_reports_provenance(
+    tmp_path: Path,
+) -> None:
     from loushang.harness.journal import (
         PROCESS_LOCAL_JOURNAL,
         JournalLoadPolicy,
@@ -141,6 +167,64 @@ def test_strict_load_raises_typed_file_error(tmp_path: Path) -> None:
     assert exc_info.value.code == "invalid_record_json"
     assert exc_info.value.line_number == 1
     assert exc_info.value.path == path
+
+
+def test_strict_load_rejects_non_standard_numbers_and_invalid_unicode(
+    tmp_path: Path,
+) -> None:
+    import pytest
+
+    from loushang.harness.journal import (
+        PROCESS_LOCAL_JOURNAL,
+        JournalFileError,
+        load_jsonl,
+    )
+
+    constants_path = tmp_path / "constants.jsonl"
+    constants_path.write_text(
+        '{"recordId":"one","text":NaN}\n',
+        encoding="utf-8",
+    )
+    surrogate_path = tmp_path / "surrogate.jsonl"
+    surrogate_path.write_bytes(b'{"recordId":"one","text":"\\ud800"}\n')
+
+    with pytest.raises(JournalFileError) as constant_error:
+        load_jsonl(
+            constants_path,
+            record_codec=_RecordCodec(),
+            durability=PROCESS_LOCAL_JOURNAL,
+        )
+    with pytest.raises(JournalFileError) as surrogate_error:
+        load_jsonl(
+            surrogate_path,
+            record_codec=_RecordCodec(),
+            durability=PROCESS_LOCAL_JOURNAL,
+        )
+
+    assert constant_error.value.code == "invalid_record_json"
+    assert surrogate_error.value.code == "invalid_record_value"
+
+
+def test_legacy_jsonl_line_parser_is_explicit_and_syntax_only() -> None:
+    from loushang.harness.journal import (
+        LegacyJsonConstant,
+        parse_legacy_jsonl_line,
+    )
+
+    parsed = parse_legacy_jsonl_line(
+        '{"nan":NaN,"positive":Infinity,"negative":-Infinity,'
+        '"text":"\\ud800"}\r\n'
+    )
+
+    assert parsed is not None
+    assert parsed.ending == "\r\n"
+    assert parsed.value == {
+        "nan": LegacyJsonConstant("NaN"),
+        "positive": LegacyJsonConstant("Infinity"),
+        "negative": LegacyJsonConstant("-Infinity"),
+        "text": "\ud800",
+    }
+    assert parse_legacy_jsonl_line("{not-json}\n") is None
 
 
 def test_header_errors_remain_distinguishable(tmp_path: Path) -> None:

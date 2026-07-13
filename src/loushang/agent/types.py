@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
+from functools import cached_property
 from typing import (
     Any,
     Generic,
@@ -15,7 +16,16 @@ from typing import (
     runtime_checkable,
 )
 
+from loushang.agent.tool_output import (
+    STRICT_JSON_TOOL_OUTPUT_PROJECTOR,
+    FunctionalToolOutputProjector,
+    ToolOutputPreviewPolicy,
+    ToolOutputProjectionError,
+    ToolOutputProjector,
+    bound_tool_output_preview,
+)
 from loushang.ai.event_stream.stream import AssistantMessageEventStream
+from loushang.ai.json_codec import deserialize_content_part, serialize_content_part
 from loushang.ai.model import Model
 from loushang.ai.options import (
     CallOptions,
@@ -32,8 +42,16 @@ from loushang.ai.types import (
     ToolResultMessage,
     Usage,
 )
+from loushang.protocol import JSONValue, require_json_value
 
 TDetails = TypeVar("TDetails")
+
+
+class _AfterToolCallDetailsUnset:
+    __slots__ = ()
+
+
+_AFTER_TOOL_CALL_DETAILS_UNSET = _AfterToolCallDetailsUnset()
 
 ToolExecutionMode: TypeAlias = Literal["sequential", "parallel"]
 ThinkingLevel: TypeAlias = Literal["off", "minimal", "low", "medium", "high", "xhigh"]
@@ -55,12 +73,55 @@ class BeforeToolCallResult:
     arguments: dict[str, Any] | None = None
 
 
-@dataclass(frozen=True)
+@dataclass(frozen=True, init=False)
 class AfterToolCallResult:
     content: list[TextPart | ImagePart] | None = None
     details: object | None = None
     is_error: bool | None = None
     terminate: bool | None = None
+    projector: ToolOutputProjector[Any] | None = None
+    _details_provided_state: bool = field(
+        default=False,
+        repr=False,
+        compare=False,
+    )
+
+    def __init__(
+        self,
+        content: list[TextPart | ImagePart] | None = None,
+        details: object | None = _AFTER_TOOL_CALL_DETAILS_UNSET,
+        is_error: bool | None = None,
+        terminate: bool | None = None,
+        projector: ToolOutputProjector[Any] | None = None,
+        _details_provided_state: bool | None = None,
+    ) -> None:
+        _require_optional_exact_bool(is_error, name="is_error")
+        _require_optional_exact_bool(terminate, name="terminate")
+        _require_optional_exact_bool(
+            _details_provided_state,
+            name="_details_provided_state",
+        )
+        if details is _AFTER_TOOL_CALL_DETAILS_UNSET:
+            details_provided = False
+        elif details is None and _details_provided_state is not None:
+            details_provided = _details_provided_state
+        else:
+            details_provided = True
+        object.__setattr__(self, "content", content)
+        object.__setattr__(self, "details", details if details_provided else None)
+        object.__setattr__(self, "is_error", is_error)
+        object.__setattr__(self, "terminate", terminate)
+        object.__setattr__(self, "projector", projector)
+        object.__setattr__(self, "_details_provided_state", details_provided)
+
+    @property
+    def details_provided(self) -> bool:
+        return self._details_provided_state
+
+
+def _require_optional_exact_bool(value: object, *, name: str) -> None:
+    if value is not None and type(value) is not bool:
+        raise TypeError(f"AfterToolCallResult.{name} must be bool or None")
 
 
 class CustomAgentMessage:
@@ -79,6 +140,257 @@ class AgentToolResult(Generic[TDetails]):
     content: list[TextPart | ImagePart]
     details: TDetails
     terminate: bool = False
+    projector: ToolOutputProjector[TDetails] = field(
+        default=cast(
+            ToolOutputProjector[TDetails],
+            STRICT_JSON_TOOL_OUTPUT_PROJECTOR,
+        ),
+        compare=False,
+        repr=False,
+    )
+
+    def transcript_details(self) -> JSONValue:
+        return require_json_value(
+            self._transcript_projection,
+            name="tool_output.details",
+        )
+
+    def event_details(self) -> JSONValue:
+        return require_json_value(
+            self._event_projection,
+            name="tool_output.details",
+        )
+
+    def hook_details(self) -> JSONValue:
+        return require_json_value(
+            self._hook_projection,
+            name="tool_output.details",
+        )
+
+    @cached_property
+    def _transcript_projection(self) -> JSONValue:
+        return _snapshot_tool_output_projection(
+            lambda: self.projector.to_transcript_details(self.details),
+            target="transcript",
+        )
+
+    @cached_property
+    def _event_projection(self) -> JSONValue:
+        return _snapshot_tool_output_projection(
+            lambda: self.projector.to_event_details(self.details),
+            target="event",
+        )
+
+    @cached_property
+    def _hook_projection(self) -> JSONValue:
+        return _snapshot_tool_output_projection(
+            lambda: self.projector.to_hook_details(self.details),
+            target="hook",
+        )
+
+    def log_preview(
+        self,
+        policy: ToolOutputPreviewPolicy = ToolOutputPreviewPolicy(),
+    ) -> str:
+        return bound_tool_output_preview(
+            self.projector.log_preview(self.details, policy),
+            policy,
+        )
+
+    def for_presentation(self) -> AgentToolResult[JSONValue]:
+        terminate = _require_tool_output_terminate(
+            self.terminate,
+            target="transcript",
+        )
+        return AgentToolResult(
+            content=_snapshot_tool_output_content(self.content, target="transcript"),
+            details=self.transcript_details(),
+            terminate=terminate,
+        )
+
+    def for_event(self) -> AgentToolResult[JSONValue]:
+        terminate = _require_tool_output_terminate(
+            self.terminate,
+            target="event",
+        )
+        event_projection = self.event_details()
+        return AgentToolResult(
+            content=_snapshot_tool_output_content(self.content, target="event"),
+            details=require_json_value(event_projection),
+            terminate=terminate,
+            projector=FunctionalToolOutputProjector(
+                transcript=lambda details: self.transcript_details(),
+                event=lambda details: event_projection,
+                hook=lambda details: event_projection,
+            ),
+        )
+
+    def for_hook(self) -> AgentToolResult[JSONValue]:
+        terminate = _require_tool_output_terminate(
+            self.terminate,
+            target="hook",
+        )
+        return AgentToolResult(
+            content=_snapshot_tool_output_content(self.content, target="hook"),
+            details=self.hook_details(),
+            terminate=terminate,
+        )
+
+
+def _require_tool_output_terminate(value: object, *, target: str) -> bool:
+    if type(value) is not bool:
+        raise ToolOutputProjectionError(
+            target,
+            "Tool output terminate must be a boolean",
+            path="tool_output.terminate",
+            value_type=type(value).__name__,
+        )
+    return cast(bool, value)
+
+
+def _snapshot_tool_output_content(
+    content: list[TextPart | ImagePart],
+    *,
+    target: str,
+) -> list[TextPart | ImagePart]:
+    if type(content) is not list:
+        raise ToolOutputProjectionError(
+            target,
+            "Tool output content must be a list",
+            path="tool_output.content",
+            value_type=type(content).__name__,
+        )
+    snapshot: list[TextPart | ImagePart] = []
+    for index, part in enumerate(content):
+        path = f"tool_output.content[{index}]"
+        try:
+            _validate_tool_output_content_part(part, target=target, path=path)
+            payload = require_json_value(serialize_content_part(part), name=path)
+            if not isinstance(payload, dict):
+                raise TypeError("Serialized content parts must be JSON objects")
+            restored = deserialize_content_part(payload)
+            if type(restored) not in (TextPart, ImagePart):
+                raise TypeError("Tool result content must contain text or image parts")
+        except ToolOutputProjectionError:
+            raise
+        except Exception as exc:
+            error_path = getattr(exc, "path", path)
+            value_type = getattr(exc, "value_type", type(part).__name__)
+            raise ToolOutputProjectionError(
+                target,
+                f"Tool output {target} projection failed at {error_path}: {value_type}",
+                path=error_path,
+                value_type=value_type,
+            ) from exc
+        snapshot.append(restored)
+    return snapshot
+
+
+def _validate_tool_output_content_part(
+    part: object,
+    *,
+    target: str,
+    path: str,
+) -> None:
+    if type(part) is TextPart:
+        text_part = cast(TextPart, part)
+        _require_content_literal(
+            text_part.type,
+            "text",
+            target=target,
+            path=f"{path}.type",
+        )
+        _require_content_string(text_part.text, target=target, path=f"{path}.text")
+        signature = text_part.text_signature
+        if (
+            signature is not None
+            and type(signature) is not str
+            and type(signature) is not dict
+        ):
+            raise ToolOutputProjectionError(
+                target,
+                "Tool output textSignature must be a string, object, or null",
+                path=f"{path}.textSignature",
+                value_type=type(signature).__name__,
+            )
+        return
+    if type(part) is ImagePart:
+        image_part = cast(ImagePart, part)
+        _require_content_literal(
+            image_part.type,
+            "image",
+            target=target,
+            path=f"{path}.type",
+        )
+        _require_content_string(
+            image_part.data,
+            target=target,
+            path=f"{path}.data",
+        )
+        _require_content_string(
+            image_part.mime_type,
+            target=target,
+            path=f"{path}.mimeType",
+        )
+        return
+    raise ToolOutputProjectionError(
+        target,
+        "Tool result content must contain exact TextPart or ImagePart values",
+        path=path,
+        value_type=type(part).__name__,
+    )
+
+
+def _require_content_literal(
+    value: object,
+    expected: str,
+    *,
+    target: str,
+    path: str,
+) -> None:
+    if type(value) is not str or value != expected:
+        raise ToolOutputProjectionError(
+            target,
+            f"Tool output content type must be {expected!r}",
+            path=path,
+            value_type=type(value).__name__,
+        )
+
+
+def _require_content_string(value: object, *, target: str, path: str) -> None:
+    if type(value) is not str:
+        raise ToolOutputProjectionError(
+            target,
+            "Tool output content field must be a string",
+            path=path,
+            value_type=type(value).__name__,
+        )
+
+
+def _snapshot_tool_output_projection(
+    project: Callable[[], object],
+    *,
+    target: str,
+) -> JSONValue:
+    try:
+        return require_json_value(project(), name="tool_output.details")
+    except ToolOutputProjectionError as exc:
+        error_target = exc.target if exc.target == target else target
+        raise ToolOutputProjectionError(
+            error_target,
+            str(exc),
+            path=exc.path,
+            value_type=exc.value_type,
+        ) from exc
+    except Exception as exc:
+        path = getattr(exc, "path", "tool_output.details")
+        value_type = getattr(exc, "value_type", type(exc).__name__)
+        raise ToolOutputProjectionError(
+            target,
+            f"Tool output {target} projection failed at {path}: {value_type}",
+            path=path,
+            value_type=value_type,
+        ) from exc
 
 
 class AgentToolUpdateCallback(Protocol[TDetails]):
@@ -227,6 +539,7 @@ class AfterToolCallContext:
     result: AgentToolResult[Any]
     is_error: bool
     context: AgentContext
+    hook_details: JSONValue = None
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -380,14 +693,14 @@ class ToolExecutionUpdateEvent(TypedDict):
     tool_call_id: str
     tool_name: str
     args: object
-    partial_result: object
+    partial_result: AgentToolResult[Any]
 
 
 class ToolExecutionEndEvent(TypedDict):
     type: Literal["tool_execution_end"]
     tool_call_id: str
     tool_name: str
-    result: object
+    result: AgentToolResult[Any]
     is_error: bool
     duration_ms: NotRequired[int]
 
@@ -526,5 +839,7 @@ __all__ = [
     "StreamFn",
     "ThinkingLevel",
     "ToolExecutionMode",
+    "ToolOutputPreviewPolicy",
+    "ToolOutputProjector",
     "TransformContextFn",
 ]
