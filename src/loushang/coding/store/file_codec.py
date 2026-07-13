@@ -36,6 +36,7 @@ from loushang.harness.journal import (
     JournalLoadPolicy,
     JsonlJournal,
     JsonlSnapshot,
+    TranscriptRepository,
 )
 
 
@@ -116,7 +117,11 @@ def _serialize_entry(entry: SessionEntry) -> dict[str, Any]:
     if isinstance(entry, CustomMessageEntry):
         data["customType"] = entry.custom_type
         content = entry.content
-        data["content"] = [serialize_content_part(part) for part in content] if isinstance(content, list) else content
+        data["content"] = (
+            [serialize_content_part(part) for part in content]
+            if isinstance(content, list)
+            else content
+        )
         data["details"] = entry.details
         data["display"] = entry.display
         return data
@@ -139,9 +144,13 @@ def _deserialize_entry(payload: Mapping[str, object]) -> SessionEntry:
     }
     entry_type = payload["type"]
     if entry_type == "message":
-        return SessionMessageEntry(message=deserialize_agent_message(payload["message"]), **common)
+        return SessionMessageEntry(
+            message=deserialize_agent_message(payload["message"]), **common
+        )
     if entry_type == "thinking_level_change":
-        return ThinkingLevelChangeEntry(thinking_level=payload["thinkingLevel"], **common)
+        return ThinkingLevelChangeEntry(
+            thinking_level=payload["thinkingLevel"], **common
+        )
     if entry_type == "model_change":
         return ModelChangeEntry(
             provider=payload["provider"],
@@ -167,18 +176,24 @@ def _deserialize_entry(payload: Mapping[str, object]) -> SessionEntry:
             **common,
         )
     if entry_type == "custom":
-        return CustomEntry(custom_type=payload["customType"], data=payload.get("data"), **common)
+        return CustomEntry(
+            custom_type=payload["customType"], data=payload.get("data"), **common
+        )
     if entry_type == "custom_message":
         content = payload["content"]
         return CustomMessageEntry(
             custom_type=payload["customType"],
-            content=[deserialize_content_part(part) for part in content] if isinstance(content, list) else content,
+            content=[deserialize_content_part(part) for part in content]
+            if isinstance(content, list)
+            else content,
             details=payload.get("details"),
             display=payload["display"],
             **common,
         )
     if entry_type == "label":
-        return LabelEntry(target_id=payload["targetId"], label=payload.get("label"), **common)
+        return LabelEntry(
+            target_id=payload["targetId"], label=payload.get("label"), **common
+        )
     if entry_type == "session_info":
         return SessionInfoEntry(name=payload.get("name"), **common)
     raise ValueError(f"Unsupported session entry type: {entry_type}")
@@ -187,7 +202,7 @@ def _deserialize_entry(payload: Mapping[str, object]) -> SessionEntry:
 _ENTRY_CODEC = FunctionalJournalRecordCodec(_serialize_entry, _deserialize_entry)
 
 
-def _session_journal(path: Path) -> JsonlJournal[SessionHeader, SessionEntry]:
+def session_journal(path: Path) -> JsonlJournal[SessionHeader, SessionEntry]:
     return JsonlJournal(
         path,
         record_codec=_ENTRY_CODEC,
@@ -199,32 +214,56 @@ def _session_journal(path: Path) -> JsonlJournal[SessionHeader, SessionEntry]:
     )
 
 
-def write_session_file(path: Path, header: SessionHeader, entries: list[SessionEntry]) -> None:
-    _session_journal(path).rewrite(entries, header=header)
+def write_session_file(
+    path: Path, header: SessionHeader, entries: list[SessionEntry]
+) -> None:
+    session_journal(path).rewrite(entries, header=header)
 
 
 def append_session_entry(path: Path, entry: SessionEntry) -> None:
-    _session_journal(path).append(entry)
+    session_journal(path).append(entry)
+
+
+def create_session_repository(
+    *,
+    header: SessionHeader,
+    entries: list[SessionEntry],
+    path: Path | None = None,
+) -> TranscriptRepository[SessionHeader, SessionEntry]:
+    return TranscriptRepository.create(
+        header=header,
+        records=entries,
+        record_id=lambda entry: entry.id,
+        parent_id=lambda entry: entry.parent_id,
+        journal=session_journal(path) if path is not None else None,
+        mode="compatible",
+    )
+
+
+def load_session_repository(
+    path: Path,
+    *,
+    writable: bool = True,
+) -> TranscriptRepository[SessionHeader, SessionEntry]:
+    try:
+        return TranscriptRepository.load(
+            session_journal(path),
+            record_id=lambda entry: entry.id,
+            parent_id=lambda entry: entry.parent_id,
+            mode="compatible",
+            writable=writable,
+        )
+    except JournalFileError as exc:
+        raise _session_file_error(exc) from exc
 
 
 def load_session_file(path: Path) -> tuple[SessionHeader, list[SessionEntry]]:
     try:
-        snapshot: JsonlSnapshot[SessionHeader, SessionEntry] = _session_journal(
+        snapshot: JsonlSnapshot[SessionHeader, SessionEntry] = session_journal(
             path
         ).load()
     except JournalFileError as exc:
-        code = {
-            "empty_journal": "empty_session_file",
-            "invalid_header_json": "invalid_session_header_json",
-            "invalid_header_shape": "invalid_session_header",
-        }.get(exc.code, exc.code)
-        message = {
-            "empty_session_file": "Session file is empty",
-            "invalid_session_header_json": "Session file header is not valid JSON",
-            "missing_session_header": "Session file must start with a session header",
-            "invalid_session_header": "Session file header is invalid",
-        }.get(code, "Session file is invalid")
-        raise SessionFileError(message, path=path, code=code) from exc
+        raise _session_file_error(exc) from exc
     if snapshot.header is None:
         raise SessionFileError(
             "Session file must start with a session header",
@@ -232,3 +271,18 @@ def load_session_file(path: Path) -> tuple[SessionHeader, list[SessionEntry]]:
             code="missing_session_header",
         )
     return snapshot.header, list(snapshot.records)
+
+
+def _session_file_error(error: JournalFileError) -> SessionFileError:
+    code = {
+        "empty_journal": "empty_session_file",
+        "invalid_header_json": "invalid_session_header_json",
+        "invalid_header_shape": "invalid_session_header",
+    }.get(error.code, error.code)
+    message = {
+        "empty_session_file": "Session file is empty",
+        "invalid_session_header_json": "Session file header is not valid JSON",
+        "missing_session_header": "Session file must start with a session header",
+        "invalid_session_header": "Session file header is invalid",
+    }.get(code, "Session file is invalid")
+    return SessionFileError(message, path=error.path, code=code)

@@ -13,6 +13,12 @@ from loushang.harness.journal.codec import (
     JournalHeaderCodec,
     JournalRecordCodec,
 )
+from loushang.harness.journal.index import (
+    FunctionalProjectionCodec,
+    JsonProjectionIndex,
+    ProjectionCodec,
+    ProjectionIndexSnapshot,
+)
 from loushang.harness.journal.jsonl import (
     JournalFileError,
     JsonlJournal,
@@ -23,6 +29,7 @@ from loushang.harness.journal.jsonl import (
     load_jsonl,
     write_jsonl,
 )
+from loushang.harness.journal.transcript import TranscriptRepository
 from loushang.harness.journal.types import (
     DEFAULT_JSONL_FORMAT,
     DURABLE_LOCKED_JOURNAL,
@@ -46,6 +53,7 @@ __all__ = [
     "ForkPlan",
     "FunctionalJournalHeaderCodec",
     "FunctionalJournalRecordCodec",
+    "FunctionalProjectionCodec",
     "JournalCodecError",
     "JournalDiagnostic",
     "JournalDurabilityProfile",
@@ -56,8 +64,12 @@ __all__ = [
     "JournalRecordCodec",
     "JsonlJournal",
     "JsonlSnapshot",
+    "JsonProjectionIndex",
     "LockFactory",
     "LockMode",
+    "ProjectionCodec",
+    "ProjectionIndexSnapshot",
+    "TranscriptRepository",
     "append_jsonl_record",
     "journal_file_lock",
     "load_jsonl",
