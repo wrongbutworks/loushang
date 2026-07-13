@@ -266,6 +266,10 @@ Harness may own:
 - queue snapshot records;
 - steering/follow-up request shapes;
 - run status and generic session status records.
+- opaque product runtime binding records and bound/unbound context delegation;
+- a serialized current-session slot with injected prepare, shutdown,
+  invalidate, dispose, activate, and rebind callbacks;
+- generic delayed/coalesced scheduling and deterministic drain mechanics.
 
 Product adapters own:
 
@@ -276,6 +280,8 @@ Product adapters own:
 - product event buses;
 - product resource watchers;
 - UI-facing session models.
+- session replacement decisions and events, concrete persistence/index
+  contents, cwd recovery, tree/fork/import/clone semantics, and diagnostics.
 
 Do not move `AgentSession`, product controllers, or store code wholesale into
 harness.
@@ -284,9 +290,10 @@ harness.
 run state, and queue snapshots. `loushang.harness.host.queue` owns the generic
 input-queue ledger, `loushang.harness.host.events` owns ordered event dispatch,
 and `loushang.harness.host.runtime` owns driver-delegating run/abort/idle/dispose
-coordination. Coding retains message construction and delivery, its event
-schema and projection, session controllers, replacement, transcript storage,
-and UI state.
+coordination. `loushang.harness.runtime` owns generic bindings/contexts,
+session-transition mechanics, and coalesced scheduling. Coding retains message
+construction and delivery, its event schema and projection, replacement
+decisions and callbacks, session controllers, transcript storage, and UI state.
 
 ## Work, Method, And Channel References
 

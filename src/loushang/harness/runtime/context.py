@@ -765,4 +765,3 @@ class BoundProductRuntimeContext:
             method(*args)
 
 __all__ = ["BoundProductRuntimeContext", "UnboundProductRuntimeContext"]
-
