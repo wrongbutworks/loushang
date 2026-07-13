@@ -12,8 +12,8 @@ from io import StringIO
 from time import perf_counter
 from typing import Any, TextIO
 
-from loushang.coding.ui.native_app import NativeCodingTuiApp
-from loushang.coding.ui.native_loop import run_native_coding_tui
+from loushang.coding.ui.screen_app import ScreenCodingTuiApp
+from loushang.coding.ui.screen_loop import run_screen_coding_tui
 from loushang.tui import (
     PlaybackStep,
     ProcessTerminalPort,
@@ -27,6 +27,7 @@ from loushang.tui import (
 )
 
 DEFAULT_STREAM_SECONDS = 1.2
+MARKDOWN_LINES_PER_BLOCK = 20
 
 
 @dataclass(slots=True)
@@ -122,7 +123,7 @@ class PerfReport:
     gc_count_2: int
 
 
-class PerfNativeCodingTuiApp(NativeCodingTuiApp):
+class PerfNativeCodingTuiApp(ScreenCodingTuiApp):
     __slots__ = ("_last_render_line_chars", "_last_render_line_count", "perf_reports", "render_stats")
 
     def __init__(self, **kwargs: Any) -> None:
@@ -181,7 +182,14 @@ def _parse_count(text: str) -> int | None:
 
 
 def _markdown_line(index: int) -> str:
-    return f"- **Line {index}**: markdown `code-{index}` with 中文宽字符 and [link {index}](https://example.com/{index}).\n"
+    block_prefix = ""
+    if (index - 1) % MARKDOWN_LINES_PER_BLOCK == 0:
+        block_number = (index - 1) // MARKDOWN_LINES_PER_BLOCK + 1
+        block_prefix = ("" if index == 1 else "\n") + f"### Markdown block {block_number}\n\n"
+    return (
+        block_prefix + f"- **Line {index}**: markdown `code-{index}` with 中文宽字符 "
+        f"and [link {index}](https://example.com/{index}).\n"
+    )
 
 
 def _append_perf_stats(app: PerfNativeCodingTuiApp, *, requested_lines: int, stream_elapsed_seconds: float) -> None:
@@ -280,7 +288,7 @@ async def run_interactive(*, stdin: TextIO, stdout: TextIO, stream_seconds: floa
         session_label="manual",
     )
     app.set_status("type 1, 10, 100... /quit exits")
-    return await run_native_coding_tui(
+    return await run_screen_coding_tui(
         app=app,
         stdin=stdin,
         stdout=stdout,
@@ -321,7 +329,8 @@ async def run_script(
     stdout.write("Native coding markdown perf script\n")
     stdout.write(f"requested_markdown_lines={count}\n")
     stdout.write(f"rounds={rounds}\n")
-    stdout.write(f"stream_seconds={stream_seconds:.3f}\n\n")
+    stdout.write(f"stream_seconds={stream_seconds:.3f}\n")
+    stdout.write(f"markdown_lines_per_block={MARKDOWN_LINES_PER_BLOCK}\n\n")
 
     for round_index in range(1, rounds + 1):
         steps = await _drive_script_round(
