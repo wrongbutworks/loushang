@@ -774,6 +774,45 @@ def test_harness_neutrality_evidence_gate_is_documented() -> None:
     assert sorted(phrase for phrase in required_phrases if phrase not in text) == []
 
 
+def test_harness_dependency_first_migration_rule_is_documented() -> None:
+    principles_path = Path(
+        "docs/internals/architecture/harness/refactoring-principles.md"
+    )
+    principles_text = " ".join(
+        principles_path.read_text(encoding="utf-8").split()
+    )
+    required_principles = {
+        "Dependency-First Migration Order",
+        "Move `B` before `A` when `B` belongs in Harness",
+        "decide ownership before considering topology",
+        "strongly connected component",
+        "Dependency count is evidence about leverage, not evidence about ownership",
+        "Use capability-sized migration batches",
+        "Do not create a separate branch or named slice for every leaf type",
+        "Batch size never relaxes neutrality, dependency direction, compatibility, or test requirements",
+    }
+    assert sorted(
+        phrase for phrase in required_principles if phrase not in principles_text
+    ) == []
+
+    inventory_path = Path(
+        "docs/internals/architecture/harness/coding-to-harness-migration-inventory.md"
+    )
+    inventory_text = " ".join(inventory_path.read_text(encoding="utf-8").split())
+    required_inventory = {
+        "Accelerated Dependency-First Execution",
+        "Wave 1: Resource And Package Runtime",
+        "Wave 2: Extension Runtime Core",
+        "Wave 3: Persistence, Context, And Workflow Mechanics",
+        "Wave 4: Session And Runtime Consolidation",
+        "This is one capability batch",
+        "Moving `coding.message` wholesale is explicitly not part of this wave",
+    }
+    assert sorted(
+        phrase for phrase in required_inventory if phrase not in inventory_text
+    ) == []
+
+
 def test_harness_host_runtime_boundary_is_documented() -> None:
     design_path = Path("docs/internals/architecture/harness/host-runtime-boundary.md")
     assert design_path.exists()

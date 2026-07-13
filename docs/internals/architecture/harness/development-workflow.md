@@ -34,9 +34,11 @@ into `main` does.
 ## Daily Rules
 
 - Keep `lane/harness` as the shared integration branch for harness refactoring.
-- Create focused task branches from `lane/harness`, such as
-  `harness/tools-core`, `harness/approval-boundary`, or
-  `harness/resources-frontmatter`.
+- Create semantic capability branches from `lane/harness`, such as
+  `harness/resource-package-runtime` or `harness/extension-runtime-core`.
+  Keep dependency-ordered foundation, engine, adapter, and closure commits on
+  that branch instead of creating one branch per leaf type or compatibility
+  shim.
 - Open PRs for those task branches against `lane/harness`, not `main`.
 - Do not merge `lane/harness` into `code`, `tui`, `agent`, `ai`, or `method`
   lanes.

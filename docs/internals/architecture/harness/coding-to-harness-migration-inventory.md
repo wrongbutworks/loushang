@@ -36,7 +36,7 @@ sufficient.
 | `coding.tools.file_mutation_queue` | Compatibility shim | Canonical per-path mutation coordination lives in `loushang.harness.workspace.mutation_queue`. Coding paths re-export the harness functions and registry; the Pi-style camelCase alias stays coding-owned. |
 | `coding.tools.read`, `ls`, `find`, `grep`, `write`, `edit`, `edit_diff`, `bash`, `process`, `ignore`, `external_tools` | Compatibility shim | Reusable implementations live in `loushang.harness.tools.workspace`. Coding injects product metadata, policy/approval, activation, and compatibility projections. |
 | `coding.tools.policy` | Compatibility shim | Neutral policy-enforcement plumbing accepts an injected evaluator and Harness approval resolver. Coding retains risk classification and concrete `PolicyEngine` defaults. |
-| `coding.policy` | Split candidate | Move approval request/decision/resolver contracts and headless defaults to `loushang.harness.approval` or `loushang.harness.policy`. Keep coding risk rules and interactive UI integration in coding. |
+| `coding.policy` | Split candidate | Approval contracts and headless resolvers already live in `loushang.harness.approval`. Move the neutral allow/deny/ask policy-decision record and evaluator protocols to a focused Harness policy module when required by the resource/package batch. Keep Coding risk rules, package trust defaults, allowlists, and interactive UI integration in Coding. |
 | `coding.exec` | Compatibility shim | `ExecRequest`, `ExecResult`, output records, backend/update protocols, and `ExecService` live in `loushang.harness.workspace.exec`. Coding keeps the public compatibility path; policy, session cwd resolution, tool projection, and extension behavior remain product-owned. |
 | `coding.diagnostics.types`, `coding.diagnostics.service` | Compatibility shim | Diagnostic vocabulary, records, queries, summaries, startup-check contracts, and the bounded in-memory engine live in `loushang.harness.diagnostics`. Coding paths re-export the same Harness-owned objects. |
 | `coding.diagnostics.serialization`, `coding.diagnostics.problem_bridge`, concrete checks | Keep product | Keep camelCase payload projection, observability mapping, check selection, emission timing, remediation, session bridges, and CLI/TUI behavior in Coding. |
@@ -53,20 +53,101 @@ sufficient.
 | `coding.session.AgentSession`, controllers, `coding.runtime.AgentSessionRuntime` | Split candidate | `AgentSession` delegates prompt/continue/abort/idle/dispose coordination to `HostRuntime`. Keep product controllers, event schema, resource watchers, commands, transcript behavior, session replacement, tree/fork/import, and store policy in Coding. |
 | `coding.event` | Keep product | Coding session event protocol and product projection stay coding. Harness may define separate neutral events later. |
 | `coding.extensions.contributions` | Compatibility shim | Descriptor, registry, indexing, and duplicate-key contracts live in `loushang.harness.contributions`. Coding keeps `LoadedExtension` projection and re-exports the same harness-owned classes. |
-| Remaining `coding.extensions` | Split candidate | Keep extension runtime, manifests, loaders, permissions, activation, command handlers, runtime bindings, and hooks in coding/OEM. Extract middleware or observer contracts only after a product-neutral invocation shape is proven. |
+| Remaining `coding.extensions` | Split candidate | Move generic manifest parsing, discovery/loading, contribution normalization, middleware/observer dispatch, isolation, and lifecycle mechanics after resource/package foundations stabilize. Keep permissions, activation defaults, product handlers, provider/model bindings, session projection, and UI commands in Coding/OEM. |
 | `coding.bootstrap` | Keep product | Product assembly. It may call harness engines but should not move. |
-| `coding.runtime` | Keep product | Coding session runtime host. It may adopt harness lifecycle protocols later. |
+| `coding.runtime` | Split candidate | Move reusable host/session coordination after its resource, extension, context, and persistence dependencies have Harness owners. Keep Coding composition, transcript semantics, product controllers, and UI projection in Coding. |
 | `coding.ui` | Never harness | Product-owned TUI adapter and screen/controller state. Shared terminal primitives belong in `loushang.tui`, not harness. |
 | `coding.mode` | Keep product | Transitional print/RPC mode adapters stay coding until channel is implemented. |
 | `coding.cli` | Keep product | Product CLI. It may expose harness-backed behavior but remains coding-owned. |
-| `coding.message`, `coding.store` | Keep product | Coding transcript entries, JSONL transforms, session persistence, and file locking stay coding-owned. |
+| `coding.message` | Keep product | Coding transcript entries, message transforms, model-change/compaction records, and JSON codecs remain Coding semantics. High fan-in alone is not a Harness ownership reason. |
+| `coding.store` | Split candidate | Move file locking, atomic file/index mechanics, neutral query records, and reusable journal/checkpoint engines behind an opaque entry-codec contract. Keep Coding transcript codecs, session tree semantics, labels, and product retention/storage policy. |
 | `coding.control` | Keep product | Frozen during runtime consolidation: auth resolution, model registry, settings, provider registration, credential handling, and selection persistence stay outside Harness. Harness receives already-resolved runtime dependencies and never stores credentials. Revisit ownership separately after consolidation. |
 | `coding.package`, `coding.plugin`, `coding.resources`, `coding.skill` | Split candidate | Move package source/manifest/materialization, standard roots/layout, registry/resolver, discovery, and skill-loading mechanisms under `loushang.harness.resources`. Coding keeps built-in content, convention activation, additional roots, trust/approval policy, settings, CLI projection, and compatibility paths. |
-| `coding.workflow` | Keep product | Coding workflows and workflow testing harnesses stay coding-owned. |
-| `coding.platform` | Keep product | Clipboard, git, version, terminal/platform helpers stay product-owned unless a tiny neutral helper is separately justified. |
+| `coding.workflow` | Split candidate | Move a neutral workflow runner, step/result records, cancellation, and observer mechanics after resource and extension contracts stabilize. Keep Coding workflow definitions, prompts, artifact semantics, completion policy, and product test fixtures. |
+| `coding.platform` | Split candidate | Route neutral workspace/git and operating-system mechanisms to focused Harness modules when reusable. Keep product update/version policy and output guards in Coding; clipboard and terminal integration belong to Product/TUI rather than Harness. |
 | `coding.work_shell` | Keep product | Coding adapter to `loushang.work`; do not move into harness or work. |
 
-## Recommended Migration Order
+## Accelerated Dependency-First Execution
+
+The remaining migration proceeds as capability waves across all of Coding. It
+does not select the next module only from the Resource area, and it does not
+move the module with the highest fan-in without first checking ownership.
+
+The global dependency knots are:
+
+- `loader` / `package` / `plugin` / `policy` / `prompt`;
+- `bootstrap` / `runtime` / `session` / public re-export paths;
+- `cli` / `ui` / `workflow` / command adapters.
+
+Break these knots from their reusable foundations upward. The next execution
+order is:
+
+### Wave 1: Resource And Package Runtime
+
+Move the entire product-neutral resource/package dependency closure in one
+semantic branch. Ordered commits inside the branch should cover:
+
+- neutral policy-decision records and evaluator protocols needed by package
+  materialization, while Coding keeps concrete risk and trust rules;
+- remaining resource descriptors, package source identities, package manifests,
+  scope/layout/precedence records, and built-in package descriptors;
+- filesystem and package discovery, deterministic catalog/merge/reload,
+  materialization, registry/resolver, and `AGENTS.md` convention engines;
+- Coding compatibility imports and a reduced `DefaultResourceLoader` facade
+  that injects product roots, activation, trust, prompt projection, and UI
+  behavior.
+
+This is one capability batch, not separate slices for types, roots, manifests,
+materialization, loader, and shims. The batch is complete only when Coding no
+longer contains a second implementation of shared discovery, merge, or package
+runtime behavior.
+
+Deliver Wave 1 on one `harness/resource-package-runtime` branch with an ordered
+commit series rather than nested task branches:
+
+1. establish neutral policy, resource, source, manifest, layout, and catalog
+   foundations plus import guards;
+2. move materialization, discovery, merge/reload, built-in registration, and
+   convention engines with focused Harness tests;
+3. cut Coding consumers over to Harness and reduce legacy modules to product
+   adapters or compatibility re-exports;
+4. close behavior-parity, startup-smoke, architecture-boundary, and non-live
+   regression tests, then update ownership documentation.
+
+The wave must preserve current resource precedence, diagnostics, package-source
+handling, local and remote materialization contracts, instruction discovery,
+and Coding startup behavior. API cleanup and compatibility-shim removal are not
+allowed to obscure the ownership transfer; schedule them after the wave is
+green.
+
+### Wave 2: Extension Runtime Core
+
+After Wave 1 supplies stable resource and package owners, move generic extension
+manifest parsing, discovery/loading, contribution normalization, middleware and
+observer dispatch, isolation, and lifecycle mechanics. Coding keeps permission
+defaults, activation choices, product handlers, model/provider bindings,
+session projection, and UI commands.
+
+### Wave 3: Persistence, Context, And Workflow Mechanics
+
+Extract neutral file locking, atomic index/journal/checkpoint mechanics, opaque
+entry codecs, context item/bundle/packing contracts, and workflow execution
+mechanics. Coding keeps its transcript schema, message JSON codec, salience and
+summarization prompts, workflow definitions, artifact semantics, and storage
+policy. Moving `coding.message` wholesale is explicitly not part of this wave.
+
+### Wave 4: Session And Runtime Consolidation
+
+With lower dependencies owned by Harness, lift reusable session coordination,
+resource/extension lifecycle wiring, cancellation, and event orchestration into
+the Harness host. Coding retains a thin product session adapter, composition
+root, commands, control/model/auth, transcript semantics, channels, and UI.
+
+Each wave may span several reviewable commits, but it should merge as one
+coherent ownership transfer. A wave is split only when a product boundary or
+independent validation boundary requires it.
+
+## Completed And Accepted Capability History
 
 ### Slice 1: Approval, Tools Core, Presentation
 
