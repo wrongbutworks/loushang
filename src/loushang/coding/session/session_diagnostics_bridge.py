@@ -3,6 +3,7 @@ from __future__ import annotations
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass, replace
 
+from loushang.agent.types import AgentToolResult
 from loushang.ai.types import AssistantMessage
 from loushang.coding.store import SessionManager
 from loushang.harness.diagnostics.service import DiagnosticsService
@@ -15,6 +16,7 @@ from loushang.harness.diagnostics.types import (
     ErrorReport,
 )
 from loushang.harness.resources.diagnostics import ResourceDiagnostic
+from loushang.protocol import require_json_value
 
 _EXTENSION_ERROR_DIAGNOSTIC_CODES: frozenset[str] = frozenset(
     {
@@ -39,26 +41,38 @@ class SessionDiagnosticsBridge:
             return []
         return self.diagnostics_service.get_last_diagnostics(limit=limit)
 
-    def get_diagnostics(self, query: DiagnosticsQuery | None = None) -> list[DiagnosticRecord]:
+    def get_diagnostics(
+        self, query: DiagnosticsQuery | None = None
+    ) -> list[DiagnosticRecord]:
         if self.diagnostics_service is None:
             return []
         return self.diagnostics_service.get_diagnostics(query=query)
 
-    def get_session_diagnostics(self, query: DiagnosticsQuery | None = None) -> list[DiagnosticRecord]:
+    def get_session_diagnostics(
+        self, query: DiagnosticsQuery | None = None
+    ) -> list[DiagnosticRecord]:
         if self.diagnostics_service is None:
             return []
         return self.diagnostics_service.get_diagnostics(
-            query=_diagnostics_query_for_session(query, self.session_manager.get_header().id)
+            query=_diagnostics_query_for_session(
+                query, self.session_manager.get_header().id
+            )
         )
 
-    def get_diagnostics_summary(self, query: DiagnosticsQuery | None = None) -> DiagnosticSummary:
+    def get_diagnostics_summary(
+        self, query: DiagnosticsQuery | None = None
+    ) -> DiagnosticSummary:
         service = self.diagnostics_service or DiagnosticsService()
         return service.get_diagnostics_summary(query=query)
 
-    def get_session_diagnostics_summary(self, query: DiagnosticsQuery | None = None) -> DiagnosticSummary:
+    def get_session_diagnostics_summary(
+        self, query: DiagnosticsQuery | None = None
+    ) -> DiagnosticSummary:
         service = self.diagnostics_service or DiagnosticsService()
         return service.get_diagnostics_summary(
-            query=_diagnostics_query_for_session(query, self.session_manager.get_header().id)
+            query=_diagnostics_query_for_session(
+                query, self.session_manager.get_header().id
+            )
         )
 
     def get_last_error_report(self) -> ErrorReport | None:
@@ -78,7 +92,9 @@ class SessionDiagnosticsBridge:
             entry_id=self.session_manager.get_leaf_id(),
         )
 
-    def record_extension_runtime_diagnostic(self, diagnostic: ResourceDiagnostic) -> None:
+    def record_extension_runtime_diagnostic(
+        self, diagnostic: ResourceDiagnostic
+    ) -> None:
         if self.diagnostics_service is None:
             return
         self.diagnostics_service.record(
@@ -118,10 +134,15 @@ class SessionDiagnosticsBridge:
         )
         self.recorded_extension_diagnostics = len(diagnostics)
 
-    def record_assistant_response_error(self, assistant_message: AssistantMessage) -> None:
+    def record_assistant_response_error(
+        self, assistant_message: AssistantMessage
+    ) -> None:
         if self.diagnostics_service is None:
             return
-        if assistant_message.stop_reason != "error" or not assistant_message.error_message:
+        if (
+            assistant_message.stop_reason != "error"
+            or not assistant_message.error_message
+        ):
             return
         self.diagnostics_service.capture_failure(
             code="assistant_response_error",
@@ -186,7 +207,9 @@ def _extension_diagnostic_level(code: str) -> DiagnosticLevel:
     return "warning"
 
 
-def _diagnostics_query_for_session(query: DiagnosticsQuery | None, session_id: str) -> DiagnosticsQuery:
+def _diagnostics_query_for_session(
+    query: DiagnosticsQuery | None, session_id: str
+) -> DiagnosticsQuery:
     if query is None:
         return DiagnosticsQuery(session_id=session_id)
     return replace(query, session_id=session_id)
@@ -198,19 +221,35 @@ def _tool_result_error_message(result: object) -> str:
         texts = [
             part.text
             for part in content
-            if getattr(part, "type", None) == "text" and isinstance(getattr(part, "text", None), str)
+            if getattr(part, "type", None) == "text"
+            and isinstance(getattr(part, "text", None), str)
         ]
         if texts:
             return "\n".join(texts)
     return "Tool execution failed."
 
 
-def _tool_result_details(result: object) -> object:
-    return getattr(result, "details", None)
+def _tool_result_details(result: object) -> Mapping[str, object]:
+    if isinstance(result, AgentToolResult):
+        try:
+            details = result.event_details()
+        except Exception:
+            return {}
+    else:
+        try:
+            details = require_json_value(
+                getattr(result, "details", None),
+                name="tool_diagnostic.details",
+            )
+        except TypeError:
+            return {}
+    return details if isinstance(details, Mapping) else {}
 
 
 def _is_policy_result_details(details: object) -> bool:
-    return isinstance(details, Mapping) and isinstance(details.get("policy_disposition"), str)
+    return isinstance(details, Mapping) and isinstance(
+        details.get("policy_disposition"), str
+    )
 
 
 def _policy_result_code(details: Mapping[str, object]) -> str:
@@ -227,7 +266,8 @@ def _policy_diagnostic_details(
     details = {
         key: value
         for key, value in result_details.items()
-        if isinstance(value, str | bool | int | float | list | tuple | dict) or value is None
+        if isinstance(value, str | bool | int | float | list | tuple | dict)
+        or value is None
     }
     details["tool_call_id"] = tool_call_id
     details["tool_name"] = tool_name

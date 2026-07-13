@@ -2130,7 +2130,7 @@ def test_print_mode_json_serializes_tool_results_and_preserves_utf8() -> None:
     from io import StringIO
     from pathlib import Path
 
-    from loushang.agent import AgentToolResult
+    from loushang.agent import AgentToolResult, FunctionalToolOutputProjector
     from loushang.ai.types import TextPart
     from loushang.coding.message import SessionHeader
     from loushang.coding.mode import PrintMode
@@ -2172,6 +2172,9 @@ def test_print_mode_json_serializes_tool_results_and_preserves_utf8() -> None:
                         "result": AgentToolResult(
                             content=[TextPart(type="text", text="你好")],
                             details={"cwd": Path("/tmp/project")},
+                            projector=FunctionalToolOutputProjector(
+                                transcript=lambda details: {"cwd": str(details["cwd"])},
+                            ),
                         ),
                         "is_error": False,
                     }
@@ -2201,3 +2204,28 @@ def test_print_mode_json_serializes_tool_results_and_preserves_utf8() -> None:
         assert "Error:" not in stderr.getvalue()
 
     asyncio.run(scenario())
+
+
+def test_print_mode_json_event_sink_rejects_non_finite_values_without_output() -> None:
+    from io import StringIO
+
+    from loushang.coding.mode import PrintMode
+    from loushang.protocol import JsonValueError
+
+    stdout = StringIO()
+    mode = PrintMode(runtime=object(), session=object(), stdout=stdout, output_mode="json")
+
+    with pytest.raises(JsonValueError) as exc_info:
+        mode.render_event(
+            {
+                "type": "auto_retry_start",
+                "attempt": 1,
+                "max_attempts": 3,
+                "delay_ms": float("nan"),
+                "error_message": "retry",
+            }
+        )
+
+    assert exc_info.value.path == "print_json_event.delayMs"
+    assert "non-finite float" in str(exc_info.value)
+    assert stdout.getvalue() == ""
