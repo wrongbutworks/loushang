@@ -58,6 +58,10 @@ planning, work event persistence, or AI provider behavior.
   ownership of transcript repositories, rebuildable projection indexes,
   layered configuration, explainable salience, and summary-profile mechanics
   while preserving Product schemas, prompts, defaults, and artifact semantics.
+- [Product Runtime Core Boundary](product-runtime-core-boundary.md) defines
+  shared runtime bindings and contexts, session-transition ownership,
+  coalesced scheduling, AI/Agent data-contract placement, and the irreducible
+  Product kernel that remains outside Harness.
 - [Diagnostics Core Boundary](diagnostics-core-boundary.md) defines shared
   diagnostic records, queries, summaries, startup checks, and in-memory engine
   ownership while keeping checks and presentation in product adapters.

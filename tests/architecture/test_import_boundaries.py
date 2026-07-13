@@ -218,6 +218,22 @@ def test_harness_host_symbols_are_not_package_exports() -> None:
     assert host.__all__ == []
 
 
+def test_product_runtime_core_symbols_are_not_top_level_exports() -> None:
+    import loushang.harness as harness
+
+    runtime_symbols = {
+        "BoundProductRuntimeContext",
+        "CoalescingScheduler",
+        "ProductRuntimeBindings",
+        "RuntimeBindingLease",
+        "RuntimeBindingState",
+        "SessionTransitionHost",
+        "UnboundProductRuntimeContext",
+    }
+
+    assert runtime_symbols.isdisjoint(set(harness.__all__))
+
+
 def test_coding_internal_diagnostics_imports_use_harness_owners() -> None:
     compatibility_paths = {
         "src/loushang/coding/__init__.py",
@@ -1135,6 +1151,87 @@ def test_harness_host_runtime_boundary_is_documented() -> None:
         "docs/internals/architecture/harness/coding-to-harness-migration-inventory.md"
     ).read_text(encoding="utf-8")
     assert "host runtime core implementation complete" in inventory_text
+
+
+def test_harness_product_runtime_core_is_documented_and_adopted() -> None:
+    design_path = Path(
+        "docs/internals/architecture/harness/product-runtime-core-boundary.md"
+    )
+    assert design_path.exists()
+    design_text = " ".join(design_path.read_text(encoding="utf-8").split())
+    required_phrases = {
+        "Harness Product Runtime Core Boundary",
+        "implementation complete for integration into `lane/harness`",
+        "`ProductRuntimeBindings`",
+        "`RuntimeBindingState`",
+        "`BoundProductRuntimeContext`",
+        "`SessionTransitionHost`",
+        "`CoalescingScheduler`",
+        "Candidate preparation failure leaves the previous session current",
+        "Research-shaped fixture",
+        "does not import AI or Product",
+        "full non-live repository test suite passes",
+    }
+    assert (
+        sorted(phrase for phrase in required_phrases if phrase not in design_text)
+        == []
+    )
+
+    readme_text = Path(
+        "docs/internals/architecture/harness/README.md"
+    ).read_text(encoding="utf-8")
+    assert "Product Runtime Core Boundary" in readme_text
+
+    inventory_text = Path(
+        "docs/internals/architecture/harness/coding-to-harness-migration-inventory.md"
+    ).read_text(encoding="utf-8")
+    assert "product runtime core implementation complete" in inventory_text
+    assert "coalesced index scheduling" in inventory_text
+
+    from loushang.ai.auth import AuthResolution
+    from loushang.ai.json_codec import deserialize_message, serialize_message
+    from loushang.ai.model import ModelSelection
+    from loushang.coding.control import AuthResolution as CodingAuthResolution
+    from loushang.coding.extensions.runner import (
+        _BoundExtensionContext,
+        _RunnerContext,
+    )
+    from loushang.coding.extensions.types import ExtensionRuntimeBindings
+    from loushang.coding.message import json_codec as coding_json_codec
+    from loushang.coding.types import ModelSelection as CodingModelSelection
+    from loushang.harness.runtime import (
+        BoundProductRuntimeContext,
+        ProductRuntimeBindings,
+        UnboundProductRuntimeContext,
+    )
+
+    assert CodingModelSelection is ModelSelection
+    assert CodingAuthResolution is AuthResolution
+    assert coding_json_codec.serialize_ai_message is serialize_message
+    assert coding_json_codec.deserialize_ai_message is deserialize_message
+    assert issubclass(ExtensionRuntimeBindings, ProductRuntimeBindings)
+    assert issubclass(_BoundExtensionContext, BoundProductRuntimeContext)
+    assert issubclass(_RunnerContext, UnboundProductRuntimeContext)
+
+    expected_imports = {
+        Path("src/loushang/coding/extensions/runner.py"): {
+            "loushang.harness.runtime.BoundProductRuntimeContext",
+            "loushang.harness.runtime.RuntimeBindingState",
+            "loushang.harness.runtime.UnboundProductRuntimeContext",
+        },
+        Path("src/loushang/coding/runtime/agent_session_runtime.py"): {
+            "loushang.harness.runtime.CoalescingScheduler",
+            "loushang.harness.runtime.SessionTransitionHost",
+        },
+    }
+    missing: list[str] = []
+    for path, required in expected_imports.items():
+        imports = set(_absolute_imports(path))
+        missing.extend(
+            f"{path.as_posix()} missing {name}"
+            for name in sorted(required - imports)
+        )
+    assert missing == []
 
 
 def test_coding_internal_run_state_imports_use_harness_owner() -> None:

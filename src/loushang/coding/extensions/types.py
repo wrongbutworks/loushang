@@ -30,6 +30,7 @@ from loushang.harness.extensions.types import (
 )
 from loushang.harness.resources.diagnostics import ResourceDiagnostic
 from loushang.harness.resources.source import SourceInfo
+from loushang.harness.runtime import ProductRuntimeBindings
 from loushang.harness.tools.core import ToolDefinition
 from loushang.harness.workspace.exec import ExecResult, ExecUpdateCallback
 
@@ -574,48 +575,12 @@ class SessionBeforeTreeResult(SessionActionDecision):
 
 
 @dataclass
-class ExtensionRuntimeBindings:
-    cwd: str
-    get_active_tool_names: Callable[[], list[str]]
+class ExtensionRuntimeBindings(ProductRuntimeBindings):
     get_model_selection: Callable[[], ModelSelection | None]
-    set_active_tools: Callable[[list[str]], Awaitable[None]]
     set_model: Callable[[ModelSelection], Awaitable[None]]
-    request_resource_refresh: Callable[[], None]
-    shutdown: Callable[[], None]
-    record_diagnostic: Callable[[ResourceDiagnostic], None]
-    register_tool: Callable[[object, object | None], None] = lambda tool, source_info=None: None
-    get_all_tools: Callable[[], list[object]] = lambda: []
-    session_manager: object | None = None
-    model_registry: object | None = None
-    get_signal: Callable[[], object | None] = lambda: None
-    append_entry: Callable[[str, object | None], None] = lambda custom_type, data=None: None
-    send_message: Callable[[object, object | None], Awaitable[None]] | None = None
-    send_user_message: Callable[[object, object | None], Awaitable[None]] | None = None
-    set_session_name: Callable[[str | None], None] = lambda name: None
-    get_session_name: Callable[[], str | None] = lambda: None
-    set_label: Callable[[str, str | None], None] = lambda entry_id, label: None
     list_commands: Callable[[], list[SessionCommandDescriptor]] = lambda: []
-    abort: Callable[[], None] = lambda: None
-    is_idle: Callable[[], bool] = lambda: True
-    has_pending_messages: Callable[[], bool] = lambda: False
-    get_context_usage: Callable[[], object | None] = lambda: None
     get_thinking_level: Callable[[], ThinkingLevel] = lambda: "off"
     set_thinking_level: Callable[[ThinkingLevel], None] = lambda level: None
-    register_provider: Callable[[str, object], None] | None = None
-    unregister_provider: Callable[[str], None] | None = None
-    set_extension_status: Callable[[str, str | None], None] = lambda key, text: None
-    footer_data_provider: object | None = None
-    compact: Callable[[str | None], Awaitable[object | None]] | None = None
-    get_system_prompt: Callable[[], str] = lambda: ""
-    wait_for_idle: Callable[[], Awaitable[None]] | None = None
-    reload: Callable[[], Awaitable[None]] | None = None
-    navigate_tree: Callable[[str, object | None], Awaitable[dict[str, object]]] | None = None
-    fork: Callable[[str, object | None], Awaitable[dict[str, object]]] | None = None
-    new_session: Callable[[object | None], Awaitable[dict[str, object]]] | None = None
-    switch_session: Callable[[str, object | None], Awaitable[dict[str, object]]] | None = None
-    exec_command: Callable[..., Awaitable[ExecResult]] | None = None
-    ui_context: object | None = None
-    on_error: Callable[[dict[str, object]], None] | None = None
 
 
 __all__ = [

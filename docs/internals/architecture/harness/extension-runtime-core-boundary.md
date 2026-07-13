@@ -46,7 +46,9 @@ Coding keeps:
   thinking level, labels, and provider registration;
 - concrete permission-level defaults and capability mapping in
   `policy_from_manifest`;
-- rich Coding extension contexts and runtime bindings;
+- typed Coding specialization and product callback injection for the
+  Harness-owned runtime binding/context mechanisms defined by the
+  [Product Runtime Core Boundary](product-runtime-core-boundary.md);
 - session switch/fork/compact/tree decisions and Coding event projection;
 - system-prompt augmentation, model/provider behavior, Agent tool-call result
   adaptation, compaction behavior, and UI integration;

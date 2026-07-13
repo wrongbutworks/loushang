@@ -124,7 +124,9 @@ This migration does not move or redesign:
 - `AgentSessionEvent` or product event projection;
 - prompts, skills, tools, active-tool policy, or product defaults;
 - retry classification, compaction, summarization, or context salience;
-- session JSONL, message entries, tree/fork/clone/resume/import/export;
+- session JSONL, message entries, and concrete tree/fork/clone/resume/import/export
+  decisions; generic current-session transition mechanics are defined by the
+  [Product Runtime Core Boundary](product-runtime-core-boundary.md);
 - resource and extension discovery, activation, runtime hooks, or permissions;
 - UI state, status text, diagnostics presentation, or artifact semantics;
 - work, method, channel, model, provider, or auth behavior.

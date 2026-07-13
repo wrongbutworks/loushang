@@ -50,16 +50,16 @@ sufficient.
 | `coding.domain.types` | Split candidate | Use as input for future `loushang.harness.adapter` shapes. Generic request/result types must not contain first-class method fields; carry method/work refs as opaque metadata. |
 | `coding.session.types.RunState` | Compatibility shim | `RunState` lives in `loushang.harness.host.types`; Coding preserves the accepted session import with the same class identity. |
 | `coding.session.queue_controller`, `coding.session.session_event_bus` | Split candidate | Queue snapshots, `HostInputQueue`, and `OrderedEventBus` live in `loushang.harness.host`. Coding keeps queue input/Agent delivery, logs, product queue events, and its specialized session event bus. |
-| `coding.session.AgentSession`, controllers, `coding.runtime.AgentSessionRuntime` | Split candidate | `AgentSession` delegates prompt/continue/abort/idle/dispose coordination to `HostRuntime`. Keep product controllers, event schema, resource watchers, commands, transcript behavior, session replacement, tree/fork/import, and store policy in Coding. |
+| `coding.session.AgentSession`, controllers, `coding.runtime.AgentSessionRuntime` | Product adapter | `AgentSession` delegates prompt/continue/abort/idle/dispose coordination to `HostRuntime`; `AgentSessionRuntime` delegates its opaque current slot, reentrant replacement serialization, invalidate/dispose/activate/rebind order, and coalesced index scheduling to `loushang.harness.runtime`. Coding keeps product controllers, event schema, resource watchers, commands, transcript behavior, replacement decisions/events, tree/fork/import, index contents, and store policy. |
 | `coding.event` | Keep product | Coding session event protocol and product projection stay coding. Harness may define separate neutral events later. |
 | `coding.extensions.events`, `manifest`, `loader`, `contributions`, `wrapper` | Compatibility shim | Event declarations, manifest parsing, descriptor-driven loading, contribution projection, and tool wrapping live in `loushang.harness.extensions`. Coding paths preserve imports and inject Coding API/policy/legacy-event adapters. |
-| `coding.extensions.api`, `runner`, `types`, `policy`, `hooks` | Product adapter | Neutral records, registration, conflict resolution, observer/input dispatch, and resource contribution execution live in Harness. Coding keeps session/model/provider/UI API additions, runtime bindings and contexts, concrete permission defaults, session decisions, system-prompt/context reducers, and Agent tool-call adaptation. |
+| `coding.extensions.api`, `runner`, `types`, `policy`, `hooks` | Product adapter | Neutral records, registration, conflict resolution, observer/input dispatch, resource contribution execution, binding storage/lifetimes, and generic bound/unbound runtime contexts live in Harness. Coding keeps typed model/thinking/command specialization, provider/UI callback injection, concrete permission defaults, session decisions, system-prompt/context reducers, and Agent tool-call adaptation. |
 | `coding.bootstrap` | Keep product | Product assembly. It may call harness engines but should not move. |
-| `coding.runtime` | Split candidate | Move reusable host/session coordination after its resource, extension, context, and persistence dependencies have Harness owners. Keep Coding composition, transcript semantics, product controllers, and UI projection in Coding. |
+| `coding.runtime` | Product adapter | Generic binding leases, runtime contexts, current-session transition lifecycle, reentrant serialization, callback ordering, and coalesced scheduling live in `loushang.harness.runtime`. Coding keeps composition, cwd/session-file resolution, concrete create/restore/fork/import/clone decisions, extension event projection, diagnostics codes, transcript semantics, package operations, and index content. |
 | `coding.ui` | Never harness | Product-owned TUI adapter and screen/controller state. Shared terminal primitives belong in `loushang.tui`, not harness. |
 | `coding.mode` | Keep product | Transitional print/RPC mode adapters stay coding until channel is implemented. |
 | `coding.cli` | Keep product | Product CLI. It may expose harness-backed behavior but remains coding-owned. |
-| `coding.message` | Keep product | Coding transcript entries, message transforms, model-change/compaction records, and JSON codecs remain Coding semantics. High fan-in alone is not a Harness ownership reason. |
+| `coding.message` | Product adapter | AI message/content/usage/event JSON codecs live in `loushang.ai.json_codec`; extensible custom-message dispatch and Agent tool-result projection live in `loushang.agent.json_codec`. Coding keeps its session header, custom bash/branch/compaction/message records and codecs, transcript entries, message transforms, and compatibility imports. |
 | `coding.store` | Product adapter | File locking, profiled JSONL mechanics, functional codecs, parent-linked transcript repositories, branch/fork engines, and rebuildable JSON projection indexes now live in Harness. Coding keeps transcript schemas/codecs, `SessionSummary` projection and query semantics, labels, lifecycle, paths, naming, retention, and storage policy. Journal-offset projection checkpoints remain deferred. |
 | `coding.control` | Product adapter | Ordered layers, JSON patch persistence, merge/reload, issue collection, snapshots, and subscriptions live in `loushang.harness.config`. Coding keeps `ControlConfig`, fields, defaults, validation, paths, removed-setting compatibility, provider registration, credential handling, model/auth interpretation, selection policy, commands, and UI. Harness never stores credentials. |
 | `coding.package`, `coding.plugin`, `coding.resources`, `coding.skill` | Split candidate | Package source/manifest/materialization, standard roots/layout, registry/resolver, discovery, and skill-loading mechanisms now live under `loushang.harness.resources`. Coding keeps built-in content registration, compatibility convention activation, additional roots, trust/approval policy, settings/CLI projection, and compatibility facades. |
@@ -167,6 +167,17 @@ semantics with the separate `loushang.method` and `loushang.work` layers. Moving
 `coding.message` wholesale is explicitly not part of this wave.
 
 ### Wave 4: Session And Runtime Consolidation
+
+Status: product runtime core implementation complete for integration into
+`lane/harness`; see
+[Product Runtime Core Boundary](product-runtime-core-boundary.md).
+
+Harness owns product runtime binding storage and generation leases, generic
+bound/unbound extension contexts, the opaque current-session transition host,
+reentrant replacement serialization, callback ordering, and coalesced runtime
+scheduling. Coding keeps concrete create/restore/fork/import/clone behavior,
+session files and projections, extension event/decision semantics, diagnostics,
+commands, controllers, and UI.
 
 With lower dependencies owned by Harness, lift reusable session coordination,
 resource/extension lifecycle wiring, cancellation, and event orchestration into
@@ -370,7 +381,7 @@ windows, build usage snapshots, and decide whether to compact.
 Context item refs, bundles, diagnostics, packing, standard compaction
 strategies, explainable salience signals, and summary-profile mechanics now
 live in Harness. Coding retains exact transcript summarization and branch
-prompt text, message serialization, content-specific salience weights,
+prompt text, custom transcript serialization, content-specific salience weights,
 split-turn/tool-result policy, model calls, artifacts, and transcript rebuild
 semantics.
 
@@ -384,9 +395,10 @@ Purpose: let future products share idle/abort/dispose/queue contracts.
 Harness now owns host status/snapshots, driver-delegating lifecycle
 coordination, generic steering/follow-up queue ledger mechanics, and ordered
 event dispatch. Coding uses those mechanisms while retaining `AgentSession`,
-its product controllers and event schema, session persistence/replacement, and
-product prompt text, resource activation/projection, extension policy, and UI
-semantics.
+its product controllers and event schema, session persistence and replacement
+decisions, product prompt text, resource activation/projection, extension
+policy, and UI semantics. Generic replacement mechanics now live under the
+Product Runtime Core boundary.
 
 The independent reference driver and neutral queue/event fixtures satisfy the
 neutrality evidence gate without moving `AgentSession` wholesale or creating a

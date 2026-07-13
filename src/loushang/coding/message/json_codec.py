@@ -1,24 +1,26 @@
 from __future__ import annotations
 
-from collections.abc import Mapping
-from dataclasses import asdict, is_dataclass
-from math import isfinite
-from pathlib import Path
 from typing import Any
 
-from loushang.agent import AgentMessage, AgentToolResult
-from loushang.ai.types import (
-    AssistantMessage,
-    AssistantMessageEvent,
-    ImagePart,
-    Message,
-    TextPart,
-    ThinkingPart,
-    ToolCall,
-    ToolResultMessage,
-    Usage,
-    UsageCost,
-    UserMessage,
+from loushang.agent import AgentMessage
+from loushang.agent.json_codec import (
+    AgentMessageJsonCodec,
+    CustomMessageJsonCodec,
+    serialize_tool_result,
+)
+from loushang.ai.json_codec import (
+    deserialize_content_part,
+    deserialize_usage,
+    serialize_assistant_message_event,
+    serialize_content_part,
+    serialize_json_value,
+    serialize_usage,
+)
+from loushang.ai.json_codec import (
+    deserialize_message as deserialize_ai_message,
+)
+from loushang.ai.json_codec import (
+    serialize_message as serialize_ai_message,
 )
 from loushang.coding.message.custom_messages import (
     BashExecutionMessage,
@@ -27,12 +29,6 @@ from loushang.coding.message.custom_messages import (
     CustomMessage,
 )
 from loushang.coding.message.entries import SessionHeader
-
-
-def _get_key(payload: dict[str, Any], camel_key: str, snake_key: str) -> Any:
-    if camel_key in payload:
-        return payload[camel_key]
-    return payload[snake_key]
 
 
 def serialize_session_header(header: SessionHeader) -> dict[str, Any]:
@@ -55,225 +51,6 @@ def deserialize_session_header(payload: dict[str, Any]) -> SessionHeader:
         cwd=payload["cwd"],
         parent_session=payload.get("parentSession"),
     )
-
-
-def serialize_json_value(value: Any) -> Any:
-    if value is None or isinstance(value, str | int | float | bool):
-        return value
-    if isinstance(value, dict):
-        return {str(key): serialize_json_value(item) for key, item in value.items()}
-    if isinstance(value, list | tuple | set | frozenset):
-        return [serialize_json_value(item) for item in value]
-    if isinstance(value, Path):
-        return str(value)
-    if is_dataclass(value):
-        return serialize_json_value(asdict(value))
-    return repr(value)
-
-
-def serialize_content_part(part: TextPart | ImagePart | ThinkingPart | ToolCall) -> dict[str, Any]:
-    if isinstance(part, TextPart):
-        return {
-            "type": "text",
-            "text": part.text,
-            "textSignature": part.text_signature,
-        }
-    if isinstance(part, ImagePart):
-        return {
-            "type": "image",
-            "data": part.data,
-            "mimeType": part.mime_type,
-        }
-    if isinstance(part, ThinkingPart):
-        return {
-            "type": "thinking",
-            "thinking": part.thinking,
-            "thinkingSignature": part.thinking_signature,
-            "redacted": part.redacted,
-        }
-    if isinstance(part, ToolCall):
-        return {
-            "type": "toolCall",
-            "id": part.id,
-            "name": part.name,
-            "arguments": part.arguments,
-            "thoughtSignature": part.thought_signature,
-        }
-    raise ValueError(f"Unsupported content part type: {type(part)!r}")
-
-
-def deserialize_content_part(payload: dict[str, Any]) -> TextPart | ImagePart | ThinkingPart | ToolCall:
-    part_type = payload["type"]
-    if part_type == "text":
-        return TextPart(type="text", text=payload["text"], text_signature=payload.get("textSignature", payload.get("text_signature")))
-    if part_type == "image":
-        return ImagePart(type="image", data=payload["data"], mime_type=payload.get("mimeType", payload.get("mime_type")))
-    if part_type == "thinking":
-        return ThinkingPart(
-            type="thinking",
-            thinking=payload["thinking"],
-            thinking_signature=payload.get("thinkingSignature", payload.get("thinking_signature")),
-            redacted=payload.get("redacted", False),
-        )
-    if part_type == "toolCall":
-        return ToolCall(
-            type="toolCall",
-            id=payload["id"],
-            name=payload["name"],
-            arguments=payload["arguments"],
-            thought_signature=payload.get("thoughtSignature", payload.get("thought_signature")),
-        )
-    raise ValueError(f"Unsupported content part type: {part_type}")
-
-
-def _canonical_cost(cost: Mapping[str, object] | None) -> UsageCost | None:
-    if cost is None:
-        return None
-    input_cost = _cost_number(cost, "input")
-    output_cost = _cost_number(cost, "output")
-    cache_read = _cost_number(cost, "cacheRead", "cache_read")
-    cache_write = _cost_number(cost, "cacheWrite", "cache_write")
-    total = _cost_number(cost, "total")
-    if (
-        input_cost is None
-        or output_cost is None
-        or cache_read is None
-        or cache_write is None
-        or total is None
-    ):
-        return None
-    return {
-        "input": input_cost,
-        "output": output_cost,
-        "cacheRead": cache_read,
-        "cacheWrite": cache_write,
-        "total": total,
-    }
-
-
-def _cost_number(
-    cost: Mapping[str, object], key: str, alias: str | None = None
-) -> float | None:
-    if key in cost:
-        value = cost[key]
-    elif alias is not None and alias in cost:
-        value = cost[alias]
-    else:
-        return None
-    if (
-        isinstance(value, bool)
-        or not isinstance(value, int | float)
-        or not isfinite(value)
-        or value < 0
-    ):
-        return None
-    return float(value)
-
-
-def serialize_usage(usage: Usage) -> dict[str, Any]:
-    serialized_cost = _canonical_cost(usage.cost)
-    return {
-        "input": usage.input,
-        "output": usage.output,
-        "cacheRead": usage.cache_read,
-        "cacheWrite": usage.cache_write,
-        "totalTokens": usage.total_tokens,
-        "cost": serialized_cost,
-    }
-
-
-def deserialize_usage(payload: dict[str, Any]) -> Usage:
-    cost = payload.get("cost")
-    restored_cost = _canonical_cost(cost if isinstance(cost, dict) else None)
-    return Usage(
-        input=payload["input"],
-        output=payload["output"],
-        cache_read=_get_key(payload, "cacheRead", "cache_read"),
-        cache_write=_get_key(payload, "cacheWrite", "cache_write"),
-        total_tokens=_get_key(payload, "totalTokens", "total_tokens"),
-        cost=restored_cost,
-    )
-
-
-def serialize_tool_result(result: AgentToolResult[Any]) -> dict[str, Any]:
-    return {
-        "content": [serialize_content_part(part) for part in result.content],
-        "details": serialize_json_value(result.details),
-        "terminate": result.terminate,
-    }
-
-
-def serialize_ai_message(message: Message) -> dict[str, Any]:
-    if isinstance(message, UserMessage):
-        content = message.content
-        return {
-            "role": "user",
-            "content": [serialize_content_part(part) for part in content] if isinstance(content, list) else content,
-            "timestamp": message.timestamp,
-        }
-    if isinstance(message, AssistantMessage):
-        payload = {
-            "role": "assistant",
-            "content": [serialize_content_part(part) for part in message.content],
-            "api": message.api,
-            "provider": message.provider,
-            "model": message.model,
-            "responseId": message.response_id,
-            "usage": serialize_usage(message.usage),
-            "stopReason": message.stop_reason,
-            "errorMessage": message.error_message,
-            "timestamp": message.timestamp,
-        }
-        if message.response_model is not None:
-            payload["responseModel"] = message.response_model
-        return payload
-    if isinstance(message, ToolResultMessage):
-        return {
-            "role": "toolResult",
-            "toolCallId": message.tool_call_id,
-            "toolName": message.tool_name,
-            "content": [serialize_content_part(part) for part in message.content],
-            "isError": message.is_error,
-            "timestamp": message.timestamp,
-            "details": serialize_json_value(message.details),
-        }
-    raise ValueError(f"Unsupported AI message type: {type(message)!r}")
-
-
-def deserialize_ai_message(payload: dict[str, Any]) -> Message:
-    role = payload["role"]
-    if role == "user":
-        content = payload["content"]
-        return UserMessage(
-            role="user",
-            content=[deserialize_content_part(part) for part in content] if isinstance(content, list) else content,
-            timestamp=payload["timestamp"],
-        )
-    if role == "assistant":
-        return AssistantMessage(
-            role="assistant",
-            content=[deserialize_content_part(part) for part in payload["content"]],
-            api=payload["api"],
-            provider=payload["provider"],
-            model=payload["model"],
-            response_id=payload.get("responseId", payload.get("response_id")),
-            usage=deserialize_usage(payload["usage"]),
-            stop_reason=payload.get("stopReason", payload.get("stop_reason")),
-            error_message=payload.get("errorMessage", payload.get("error_message")),
-            timestamp=payload["timestamp"],
-            response_model=payload.get("responseModel", payload.get("response_model")),
-        )
-    if role == "toolResult":
-        return ToolResultMessage(
-            role="toolResult",
-            tool_call_id=payload.get("toolCallId", payload.get("tool_call_id")),
-            tool_name=payload.get("toolName", payload.get("tool_name")),
-            content=[deserialize_content_part(part) for part in payload["content"]],
-            is_error=payload.get("isError", payload.get("is_error")),
-            timestamp=payload["timestamp"],
-            details=payload.get("details"),
-        )
-    raise ValueError(f"Unsupported AI message role: {role}")
 
 
 def serialize_custom_message(message: AgentMessage) -> dict[str, Any]:
@@ -357,52 +134,44 @@ def deserialize_custom_message(payload: dict[str, Any]) -> AgentMessage:
     raise ValueError(f"Unsupported custom message role: {role}")
 
 
+_CODING_MESSAGE_CODEC = AgentMessageJsonCodec(
+    CustomMessageJsonCodec(
+        role=role,
+        message_type=message_type,
+        serialize=serialize_custom_message,
+        deserialize=deserialize_custom_message,
+    )
+    for role, message_type in (
+        ("bashExecution", BashExecutionMessage),
+        ("custom", CustomMessage),
+        ("branchSummary", BranchSummaryMessage),
+        ("compactionSummary", CompactionSummaryMessage),
+    )
+)
+
+
 def serialize_agent_message(message: AgentMessage) -> dict[str, Any]:
-    if isinstance(message, UserMessage | AssistantMessage | ToolResultMessage):
-        return serialize_ai_message(message)
-    return serialize_custom_message(message)
+    return _CODING_MESSAGE_CODEC.serialize(message)
 
 
 def deserialize_agent_message(payload: dict[str, Any]) -> AgentMessage:
-    role = payload["role"]
-    if role in {"user", "assistant", "toolResult"}:
-        return deserialize_ai_message(payload)
-    return deserialize_custom_message(payload)
+    return _CODING_MESSAGE_CODEC.deserialize(payload)
 
 
-def serialize_assistant_message_event(event: AssistantMessageEvent) -> dict[str, Any]:
-    payload: dict[str, Any] = {"type": event["type"]}
-    event_type = event["type"]
-
-    if "partial" in event:
-        payload["partial"] = serialize_ai_message(event["partial"])
-    if event_type == "start":
-        return payload
-    if event_type in {"text_start", "thinking_start", "toolcall_start", "image_start"}:
-        payload["contentIndex"] = event["content_index"]
-        return payload
-    if event_type in {"text_delta", "thinking_delta", "toolcall_delta"}:
-        payload["contentIndex"] = event["content_index"]
-        payload["delta"] = event["delta"]
-        return payload
-    if event_type in {"text_end", "thinking_end"}:
-        payload["contentIndex"] = event["content_index"]
-        payload["content"] = event["content"]
-        return payload
-    if event_type == "toolcall_end":
-        payload["contentIndex"] = event["content_index"]
-        payload["toolCall"] = serialize_content_part(event["tool_call"])
-        return payload
-    if event_type == "image_end":
-        payload["contentIndex"] = event["content_index"]
-        payload["image"] = serialize_content_part(event["image"])
-        return payload
-    if event_type == "done":
-        payload["reason"] = event["reason"]
-        payload["message"] = serialize_ai_message(event["message"])
-        return payload
-    if event_type == "error":
-        payload["reason"] = event["reason"]
-        payload["error"] = serialize_ai_message(event["error"])
-        return payload
-    raise ValueError(f"Unsupported assistant message event type: {event_type}")
+__all__ = [
+    "deserialize_agent_message",
+    "deserialize_ai_message",
+    "deserialize_content_part",
+    "deserialize_custom_message",
+    "deserialize_session_header",
+    "deserialize_usage",
+    "serialize_agent_message",
+    "serialize_ai_message",
+    "serialize_assistant_message_event",
+    "serialize_content_part",
+    "serialize_custom_message",
+    "serialize_json_value",
+    "serialize_session_header",
+    "serialize_tool_result",
+    "serialize_usage",
+]
