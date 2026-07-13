@@ -62,6 +62,9 @@ planning, work event persistence, or AI provider behavior.
   shared runtime bindings and contexts, session-transition ownership,
   coalesced scheduling, AI/Agent data-contract placement, and the irreducible
   Product kernel that remains outside Harness.
+- [Tool Output Projection Core Boundary](tool-output-projection-core.md) defines
+  strict JSON ownership, Agent raw-result projection targets, failure timing,
+  Harness journal/presentation adoption, and Product wire-schema ownership.
 - [Diagnostics Core Boundary](diagnostics-core-boundary.md) defines shared
   diagnostic records, queries, summaries, startup checks, and in-memory engine
   ownership while keeping checks and presentation in product adapters.

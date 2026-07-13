@@ -23,13 +23,15 @@ Product adapter
 Related data contracts live with their actual lower-layer owner rather than in
 Harness:
 
+- `loushang.protocol` owns the strict cross-layer JSON value algebra;
 - `loushang.ai.json_codec` owns AI message, content-part, usage, and assistant
   event JSON codecs;
 - `loushang.ai.model.ModelSelection` owns stable model references;
 - `loushang.ai.auth.AuthResolution` owns the neutral auth-resolution result;
 - `loushang.agent.json_codec.AgentMessageJsonCodec` composes AI messages with
-  product-registered custom message codecs and owns Agent tool-result JSON
-  projection.
+  product-registered custom message codecs;
+- `loushang.agent.tool_output.ToolOutputProjector` owns raw tool-result
+  projection into transcript, event, hook, and diagnostic-preview views.
 
 AI does not import Agent, Harness, or Product. Agent does not import Harness or
 Product. Harness does not import AI or Product.

@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import ast
 import importlib
+import subprocess
+import sys
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -18,6 +20,36 @@ class ImportBoundary:
 
 def test_core_runtime_packages_do_not_import_product_layers() -> None:
     boundaries = (
+        ImportBoundary(
+            name="protocol",
+            root=Path("src/loushang/protocol"),
+            forbidden_prefixes=(
+                "loushang.agent",
+                "loushang.ai",
+                "loushang.channel",
+                "loushang.coding",
+                "loushang.harness",
+                "loushang.method",
+                "loushang.observability",
+                "loushang.ontology",
+                "loushang.resource",
+                "loushang.tui",
+                "loushang.work",
+            ),
+        ),
+        ImportBoundary(
+            name="ai",
+            root=Path("src/loushang/ai"),
+            forbidden_prefixes=(
+                "loushang.agent",
+                "loushang.channel",
+                "loushang.coding",
+                "loushang.harness",
+                "loushang.method",
+                "loushang.tui",
+                "loushang.work",
+            ),
+        ),
         ImportBoundary(
             name="agent",
             root=Path("src/loushang/agent"),
@@ -52,7 +84,12 @@ def test_core_runtime_packages_do_not_import_product_layers() -> None:
                 "loushang.method",
                 "loushang.tui",
             ),
-            allowed_paths=frozenset({"src/loushang/work/coding.py"}),
+            allowed_paths=frozenset(
+                {
+                    "src/loushang/work/coding.py",
+                    "src/loushang/work/projection.py",
+                }
+            ),
         ),
         ImportBoundary(
             name="method",
@@ -79,6 +116,33 @@ def test_core_runtime_packages_do_not_import_product_layers() -> None:
         offenders.extend(_find_forbidden_imports(boundary))
 
     assert offenders == []
+
+
+def test_importing_channel_types_does_not_eagerly_load_agent_or_ai() -> None:
+    script = """
+import importlib
+import sys
+
+importlib.import_module("loushang.channel.types")
+forbidden = sorted(
+    name
+    for name in sys.modules
+    if name == "loushang.agent"
+    or name.startswith("loushang.agent.")
+    or name == "loushang.ai"
+    or name.startswith("loushang.ai.")
+    or name == "loushang.work.projection"
+)
+assert forbidden == [], forbidden
+"""
+    completed = subprocess.run(
+        [sys.executable, "-c", script],
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+
+    assert completed.returncode == 0, completed.stderr
 
 
 def test_legacy_agent_harness_package_has_been_removed() -> None:
@@ -1232,6 +1296,73 @@ def test_harness_product_runtime_core_is_documented_and_adopted() -> None:
             for name in sorted(required - imports)
         )
     assert missing == []
+
+
+def test_tool_output_projection_core_is_documented_and_adopted() -> None:
+    design_path = Path(
+        "docs/internals/architecture/harness/tool-output-projection-core.md"
+    )
+    assert design_path.exists()
+    design_text = " ".join(design_path.read_text(encoding="utf-8").split())
+    required_phrases = {
+        "Tool Output Projection Core Boundary",
+        "implementation complete for integration into `lane/harness`",
+        "`loushang.protocol` owns `JSONValue`",
+        "`ToolOutputProjector[TDetails]`",
+        "Transcript, event, and hook projections are snapshotted independently",
+        "`tool_output_projection_failed`",
+        "The raw unprojectable value is not copied into a journal",
+        "live rendering and replay rendering consume the same result semantics",
+        "In-memory and JSONL event logs enforce the same strict snapshot contract",
+        "Channel envelope encoding validates the complete wire object",
+        "`loushang.observability` remains a documented compatibility exception",
+        "Product adapters still own tool-specific detail vocabulary",
+        "Protocol -> AI -> Agent -> Harness -> Product dependency direction",
+    }
+    assert (
+        sorted(phrase for phrase in required_phrases if phrase not in design_text) == []
+    )
+
+    readme_text = Path("docs/internals/architecture/harness/README.md").read_text(
+        encoding="utf-8"
+    )
+    assert "Tool Output Projection Core Boundary" in readme_text
+
+    inventory_text = Path(
+        "docs/internals/architecture/harness/coding-to-harness-migration-inventory.md"
+    ).read_text(encoding="utf-8")
+    assert "multi-view tool-output projection core live in Agent" in inventory_text
+
+    from loushang.agent import AgentToolResult, ToolOutputProjector
+    from loushang.protocol import JSONValue, require_json_value
+
+    assert (
+        AgentToolResult.__annotations__["projector"] == "ToolOutputProjector[TDetails]"
+    )
+    assert ToolOutputProjector is not None
+    assert require_json_value({"ok": True}) == {"ok": True}
+    assert JSONValue is not None
+
+
+def test_observability_json_compatibility_exception_does_not_expand() -> None:
+    allowed_consumers = {
+        "src/loushang/ai/errors.py",
+        "src/loushang/ai/event_stream/raw_parts.py",
+        "src/loushang/ai/provider/errors.py",
+        "src/loushang/ai/structured.py",
+        "src/loushang/ai/trace.py",
+    }
+    actual_consumers: set[str] = set()
+    for path in Path("src/loushang").rglob("*.py"):
+        if path.is_relative_to("src/loushang/observability"):
+            continue
+        if any(
+            imported.startswith("loushang.observability.problem.")
+            for imported in _absolute_imports(path)
+        ):
+            actual_consumers.add(path.as_posix())
+
+    assert actual_consumers == allowed_consumers
 
 
 def test_coding_internal_run_state_imports_use_harness_owner() -> None:
