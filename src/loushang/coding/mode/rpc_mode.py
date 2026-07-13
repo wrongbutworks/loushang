@@ -29,9 +29,9 @@ from loushang.coding.event import (
 from loushang.coding.message.json_codec import serialize_agent_message
 from loushang.coding.mode.base import ModeAdapter, ModeState
 from loushang.coding.store import SessionQuery
-from loushang.coding.tools import ToolDefinitionResolver, ToolRenderRuntime
 from loushang.coding.types import ModelSelection
 from loushang.harness.diagnostics.types import DiagnosticsQuery
+from loushang.harness.presentation import ToolDefinitionResolver, ToolRenderRuntime
 
 _THINKING_LEVEL_ORDER: tuple[str, ...] = ("off", "minimal", "low", "medium", "high", "xhigh")
 _MISSING = object()

@@ -56,6 +56,9 @@ planning, work event persistence, or AI provider behavior.
 - [Workspace Path And Mutation Boundary](workspace-path-mutation-boundary.md)
   defines configurable path resolution, canonical identity, optional input
   variants, mutation coordination, and coding path policy ownership.
+- [Workspace Tool Pack Boundary](workspace-tool-pack-boundary.md) defines
+  reusable concrete read/search/edit/exec ownership, Coding compatibility
+  adapters, and the product-owned activation and policy boundary.
 - [Harness Lane Development Workflow](development-workflow.md) defines how the
   long-lived `lane/harness` branch stays isolated from `main` until the
   migration is bootable and validated.

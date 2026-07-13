@@ -7,7 +7,7 @@ from typing import Any
 
 from loushang.agent.types import AgentToolResult
 from loushang.coding.extensions.types import ExtensionContext
-from loushang.coding.tools import ToolDefinition
+from loushang.harness.tools.core import ToolDefinition
 
 
 def wrap_registered_tool_definition(

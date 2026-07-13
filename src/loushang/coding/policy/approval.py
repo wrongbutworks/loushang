@@ -2,9 +2,8 @@ from __future__ import annotations
 
 import asyncio
 import inspect
-from collections.abc import Awaitable, Callable, Mapping
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field, replace
-from typing import Any
 from uuid import uuid4
 
 from loushang.harness.approval import (
@@ -16,6 +15,7 @@ from loushang.harness.approval import (
     MaybeAwaitable,
     resolve_approval,
 )
+from loushang.harness.tools.workspace.policy import PolicyEnforcementError
 
 __all__ = [
     "ApprovalDecision",
@@ -30,20 +30,20 @@ __all__ = [
 ]
 
 
-class PolicyEnforcementError(PermissionError):
-    def __init__(self, message: str, *, tool_result_details: Mapping[str, Any]) -> None:
-        super().__init__(message)
-        self.tool_result_details = dict(tool_result_details)
-
-
 @dataclass
 class InteractiveApprovalResolver:
     fallback: ApprovalResolver
-    _pending_approvals: dict[str, asyncio.Future[ApprovalDecision]] = field(default_factory=dict, init=False, repr=False)
-    _request_presenter: Callable[[dict[str, object]], Awaitable[None] | None] | None = field(default=None, init=False, repr=False)
+    _pending_approvals: dict[str, asyncio.Future[ApprovalDecision]] = field(
+        default_factory=dict, init=False, repr=False
+    )
+    _request_presenter: Callable[[dict[str, object]], Awaitable[None] | None] | None = (
+        field(default=None, init=False, repr=False)
+    )
     _request_counter: int = field(default=0, init=False, repr=False)
 
-    def set_request_presenter(self, presenter: Callable[[dict[str, object]], Awaitable[None] | None] | None) -> None:
+    def set_request_presenter(
+        self, presenter: Callable[[dict[str, object]], Awaitable[None] | None] | None
+    ) -> None:
         self._request_presenter = presenter
 
     async def resolve(self, request: ApprovalRequest) -> ApprovalDecision:
@@ -63,13 +63,17 @@ class InteractiveApprovalResolver:
         finally:
             self._pending_approvals.pop(request_with_id.action_id, None)
 
-    async def handle_result(self, action_id: str, *, approved: bool, reason: str | None = None) -> bool:
+    async def handle_result(
+        self, action_id: str, *, approved: bool, reason: str | None = None
+    ) -> bool:
         future = self._pending_approvals.get(action_id)
         if future is None:
             return False
         if future.done():
             return False
-        future.set_result(ApprovalDecision.allow() if approved else ApprovalDecision.deny(reason))
+        future.set_result(
+            ApprovalDecision.allow() if approved else ApprovalDecision.deny(reason)
+        )
         return True
 
     async def _present_request(self, request: ApprovalRequest) -> bool:
@@ -95,7 +99,9 @@ class InteractiveApprovalResolver:
         return f"approval-{self._request_counter:04d}-{uuid4().hex}"
 
 
-async def _resolve(resolver: ApprovalResolver, request: ApprovalRequest) -> ApprovalDecision:
+async def _resolve(
+    resolver: ApprovalResolver, request: ApprovalRequest
+) -> ApprovalDecision:
     result = resolver.resolve(request)
     if inspect.isawaitable(result):
         return await result

@@ -3,9 +3,9 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Any
 
-from loushang.coding.tools import ToolDefinitionResolver
 from loushang.coding.ui.plain_renderer import PlainCodingUiRenderer, extract_text
 from loushang.coding.ui.tool_blocks import ToolCallSnapshot, ToolTranscriptProjector
+from loushang.harness.presentation import ToolDefinitionResolver
 
 
 @dataclass

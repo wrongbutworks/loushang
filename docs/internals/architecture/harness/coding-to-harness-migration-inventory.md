@@ -113,11 +113,11 @@ Slice 2A routes coding runtime extension tool registration through neutral
 active-tool policy, prompt rebuilds, diagnostics mapping, session mutation, and
 concrete execution remain coding-owned.
 
-Slice 2B may move only neutral execution context descriptors after a Coding
-adapter and an independent contract probe validate the shared shape. Keep
-`ToolContext`, `ExtensionRuntimeBindings`, `ToolController`, model and
-diagnostics fields, active-tool policy, prompt rebuilds, session mutation, and
-concrete execution in coding.
+The reusable `ToolContext` now lives with the workspace tool pack after a
+Coding adapter and independent contract probe validated its shape. Keep
+`ExtensionRuntimeBindings`, `ToolController`, active-tool policy, prompt
+rebuilds, session mutation, and product model/diagnostic interpretation in
+Coding.
 
 ### Workspace Execution
 
@@ -146,9 +146,9 @@ Harness now owns the neutral operation protocols, sync-or-async result
 resolution, local filesystem backend, and default singleton. Coding public
 paths re-export those same objects.
 
-Normalization, Pi compatibility adapters, tool cancellation, path resolution,
-mutation queueing, policy, AI content projection, renderers, and concrete tools
-remain in coding.
+The later workspace tool-pack migration now owns normalization, compatibility
+operation adapters, cancellation, reusable result projection, renderers, and
+concrete tools. Product policy and activation remain in Coding.
 
 ### Workspace Paths And Mutation
 
@@ -161,9 +161,24 @@ canonical absolute identity, opt-in Unicode/platform input helpers, and
 canonical per-path mutation coordination. Coding compatibility paths re-export
 the harness queue functions and registry.
 
-Coding keeps `@` input syntax, the default path-correction configuration,
-public path wrappers, camelCase aliases, workspace root and sandbox policy,
-approval, and concrete tool behavior.
+The workspace tool pack now carries the accepted `@`, `~`, Unicode-space,
+macOS screenshot, normalization, and user-input path compatibility wrappers so
+all products can opt into the same input behavior. Allowed roots, sandbox
+policy, approval defaults, and activation remain product-owned.
+
+### Workspace Tool Pack
+
+Status: reusable concrete workspace tools implemented for integration into
+`lane/harness`; see [Workspace Tool Pack Boundary](workspace-tool-pack-boundary.md).
+
+Harness owns the reusable read, list, find, grep, write, edit, and bash tool
+definitions plus their context, normalization, operation adapters, process,
+external-tool, ignore, diff, preview, truncation-projection, and renderer
+support. Coding implementation modules preserve accepted imports as aliases.
+
+Coding retains builtin pack membership and activation, product descriptions,
+`PolicyEngine` risk rules, approval defaults and UI, workspace root policy,
+commands, session projection, and presentation surfaces.
 
 ### Diagnostics Core
 

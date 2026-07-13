@@ -1,7 +1,7 @@
 from __future__ import annotations
 
-from collections.abc import Mapping
-from typing import Any, Literal, Sequence
+from collections.abc import Mapping, Sequence
+from typing import Any, Literal
 
 from loushang.agent.types import AgentToolResult
 from loushang.coding.event.serialization import serialize_session_event
@@ -11,12 +11,9 @@ from loushang.coding.message.json_codec import (
     serialize_assistant_message_event,
     serialize_json_value,
 )
-from loushang.coding.tools import (
-    ToolDefinitionResolver,
-    ToolRenderOutput,
-    ToolRenderRuntime,
-)
-from loushang.coding.tools.protocol import project_tool_details_for_protocol
+from loushang.harness.presentation import ToolDefinitionResolver, ToolRenderRuntime
+from loushang.harness.tools.core import ToolRenderOutput
+from loushang.harness.tools.workspace.protocol import project_tool_details_for_protocol
 
 JsonEventView = Literal["full", "compact", "assistant_stream", "tools", "final"]
 
