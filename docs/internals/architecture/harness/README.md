@@ -56,6 +56,10 @@ planning, work event persistence, or AI provider behavior.
 - [Host Runtime Boundary](host-runtime-boundary.md) defines product-neutral host
   lifecycle, input-queue ledger, and ordered event ownership while preserving
   Agent loop and product session responsibilities.
+- [OEM And Extension Architecture](oem-extension-architecture.md) describes how
+  OEM customisation, extension contributions, and harness upgrades interact,
+  including override mechanisms, extension categories, surface-type gaps, and
+  upgrade-compatibility guarantees.
 - [Workspace Execution Boundary](workspace-execution-boundary.md) defines
   harness-owned truncation, exec records, backend protocols, process execution,
   and coding compatibility ownership.

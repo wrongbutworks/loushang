@@ -325,6 +325,61 @@ deduplication, filtering, aggregation, normalization, and caller-supplied check
 execution. Coding retains actual checks, observability mapping, serialization,
 remediation, session projection, and UI behavior.
 
+## OEM Override Model
+
+OEMs override product behaviour through three mechanisms, plus the packaging
+boundary that makes them distributable as a single unit:
+
+| Mechanism | How it works | Examples |
+| --- | --- | --- |
+| Protocol injection | OEM supplies an implementation of a Harness-defined protocol; Harness calls it without knowing the product or OEM identity | `PolicyEvaluator`, `ApprovalResolver`, `ExtensionPolicyResolver` |
+| Resource overlay | OEM directories are discovered alongside built-in and product directories; same-key files shadow lower-precedence layers | `skills/*/SKILL.md`, `methods/*/METHOD.md`, `prompts/*.md`, `themes/*.json` |
+| Extension registration | OEM ships extensions that declare `ExtensionSurfaceDescriptor` records; product/OEM policy gates activation | tools, commands, model providers, channel adapters, hooks |
+| Plugin packaging | An OEM plugin manifest (`loushang-plugin.json`) bundles resource roots, extensions, and configuration overrides into one distributable unit | `PluginManager → PluginResolver → ResourceDescriptors` |
+
+### Override Layer Order
+
+```text
+harness provides mechanism
+  -> product adapter provides defaults and domain semantics
+     -> OEM layer overrides product policy and product resources
+        -> project/user-local configuration can further override
+           -> extensions contribute optional capabilities
+```
+
+A mechanism belongs to Harness and cannot be overridden by OEM (e.g. the
+agent loop, the channel envelope protocol, the contribution inventory index).
+An OEM may override product defaults, product resource content, and product
+activation policy. An OEM may add new capabilities through extensions. An OEM
+must not replace Harness mechanisms.
+
+### Dimensions OEMs Can Override
+
+OEMs can independently override each of these dimensions without affecting
+others — they are orthogonal replaceability points:
+
+| Dimension | Override method | Harness stability contract |
+| --- | --- | --- |
+| Product (coding / ppt / research / …) | Ship an OEM product adapter that reuses the shared harness | Product adapters depend on Harness protocols, not internals |
+| Channel (TUI / WebUI / SDK / bot / …) | Register an OEM channel adapter | `ChannelEnvelope(WorkOperation/WorkEvent)` schema, additive evolution |
+| Method (bugfix / tdd / review / …) | Override method resources in OEM directories | `methods/*/METHOD.md` format and loader mechanics |
+| Skill (debugging / refactoring / …) | Override skill resources | `skills/*/SKILL.md` format and activation settings |
+| Model (opus / sonnet / gpt / custom / …) | Register OEM providers/endpoints/models via `models.json` overlay or runtime registration | Model registry cascade merge, additive model-descriptor fields |
+| Agent topology (single / workflow / subagent / team) | Inject OEM execution strategy that selects `AgentLane` layout per method | `WorkRun` status machine; topology selection is product/OEM policy |
+| Tool pack activation | Override activation lists and tool descriptions | Tool definition and contribution record shapes |
+| Policy (permissions / risk / approval / …) | Inject OEM `PolicyEvaluator` and `ApprovalResolver` implementations | Protocol signatures, additive evolution |
+| Storage backend | Supply OEM `EventLogBackend` implementation | Backend interface (append / query / subscribe) |
+| Deployment (desktop / daemon / managed / …) | Implement OEM Host with custom lifecycle policies | Host abstraction that accepts `WorkOperation` and emits `WorkEvent` |
+| Theme / branding | Override theme resources and TUI rendering configuration | Theme resource format and TUI `ExtensionHost` API |
+
+### What OEMs Cannot Override
+
+- The agent loop inside `loushang.agent`
+- `loushang.work` state machines (`WorkRun` / `WorkPlanRun` / `WorkStepRun` transitions)
+- `ChannelEnvelope` protocol shape
+- `ExtensionInventory` indexing and duplicate-key contracts
+- Harness import-discipline rules
+
 ## OEM And Extension Contribution Model
 
 The shared contribution flow should be:

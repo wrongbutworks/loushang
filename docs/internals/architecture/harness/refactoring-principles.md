@@ -254,6 +254,35 @@ After the move:
 - do not expand harness top-level exports unless the contract is intentionally
   public.
 
+## Upgrade Compatibility Contracts
+
+Harness upgrades must remain compatible with existing OEM overrides and
+product adapters. Four contracts define this boundary:
+
+| Contract | Harness guarantees | Consumer guarantees |
+| --- | --- | --- |
+| **Protocol contract** | Public protocols (`PolicyEvaluator`, `ApprovalResolver`, `ExtensionPolicyResolver`, tool-definition protocols, etc.) follow additive evolution: new methods receive default implementations; existing signatures are preserved; deprecation uses warnings, not removal | Implement protocols with explicit parameter names; avoid `*args` / `**kwargs` that silently absorb new required parameters |
+| **Data contract** | Frozen dataclasses gain new fields only with default values; existing field semantics, order, and identity remain stable | Do not depend on field ordering, `__repr__` output, or pickled representation; read fields by name only |
+| **Resource contract** | Resource layout conventions (`skills/*/SKILL.md`, `methods/*/METHOD.md`, `themes/*.json`, `prompts/*.md`) and the loader merge algorithm are stable; discovery mechanics may improve (faster scan, richer diagnostics) but do not change precedence or key identity | Place OEM resources in dedicated directories; do not modify built-in or product-shipped resource files; use the loader API rather than filesystem hacks |
+| **Channel contract** | `WorkOperation` and `WorkEvent` schemas follow additive evolution; unknown `kind` values or new payload fields must not break existing consumers; `delivery_hint` semantics are preserved | Ignore unknown fields rather than rejecting them; treat unknown `kind` values as opaque pass-through |
+
+### OEM Contract Tests
+
+Harness CI should include a focused OEM contract-test suite that runs against
+main-harness changes. Each test validates one compatibility guarantee:
+
+- An OEM `PolicyEvaluator` implementation still satisfies the protocol and
+  returns valid `PolicyDecision` values.
+- An OEM model registered via `models.json` overlay is still resolvable
+  through `ModelRegistry` after the overlay is merged.
+- An OEM resource root placed under `oem/` still contributes skills, methods,
+  and prompts after a loader engine upgrade.
+- An OEM extension declaring `tool` and `hook` surfaces still loads, registers,
+  and dispatches without importing product packages.
+
+These tests are not a replacement for product-specific integration tests.
+They assert the Harness-compatibility boundary, not product correctness.
+
 ## Parallel Lane Safety
 
 Harness refactoring is safe to run in parallel with `tui`, `agent`, and `ai`

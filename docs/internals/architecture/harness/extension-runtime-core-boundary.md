@@ -70,6 +70,77 @@ capability-shaped callbacks when a product binds them. Coding's binding record
 may contain additional session/model/UI callbacks without pulling those fields
 into the shared contract.
 
+## Extension Injection Categories
+
+Extensions fall into three categories with different execution semantics:
+
+| Category | Behaviour | Failure strategy | Examples |
+| --- | --- | --- | --- |
+| **Contribution** | All declarations are aggregated; each runs independently | One failure produces a diagnostic; others continue | tool, command, skill, method, prompt, resource_root |
+| **Interceptor** | Handlers form a pipeline; each sees the output of the previous | Step failure is governed by `on_error` (skip / fail_chain) | hook, policy, approval |
+| **Replacement** | Only one active provider per slot; later registrations replace earlier ones | Not applicable — only one runs | model_provider, channel adapter, storage backend |
+
+Harness owns the scheduling categories. Product adapters and OEMs decide
+which extensions are active in each category and inject policy for each slot.
+
+## Extension Routing And Ordering
+
+Current extension execution uses insertion order. The descriptor already
+carries `priority` and should grow explicit ordering and error-policy fields:
+
+```python
+@dataclass(frozen=True)
+class ExtensionSurfaceDescriptor:
+    type: ExtensionSurfaceType
+    name: str
+    extension_id: str
+    source_path: Path
+    active: bool = True
+    priority: int = 0
+    after: tuple[str, ...] = ()       # run after these surfaces (by name or extension_id)
+    before: tuple[str, ...] = ()      # run before these surfaces
+    on_error: Literal["skip", "fail_chain"] = "skip"
+    permission_requirements: tuple[str, ...] = ()
+    diagnostics: tuple[ResourceDiagnostic, ...] = ()
+    metadata: dict[str, object] = field(default_factory=dict)
+```
+
+When `after` or `before` constraints create a cycle, harness emits a diagnostic
+and falls back to insertion order for the conflicting set.
+
+## ExtensionSurfaceType Gaps
+
+The current `ExtensionSurfaceType` literal covers nine surfaces. Several
+surface types that OEM products need are not yet defined:
+
+```python
+ExtensionSurfaceType = Literal[
+    # existing
+    "command",
+    "tool",
+    "prompt",
+    "skill",
+    "hook",
+    "model_provider",
+    "ui",
+    "autocomplete",
+    "resource_root",
+    # proposed — each requires a harness processing path
+    "policy",          # inject a PolicyEvaluator
+    "approval",        # inject an ApprovalResolver
+    "method",          # register a method resource
+    "channel",         # register a channel adapter
+]
+```
+
+Each new surface type requires:
+1. a `from_surface()` factory in the corresponding Harness module that loads
+   and validates the extension's source;
+2. an injection path from `ExtensionInventory` to the Harness engine that
+   consumes it (e.g. host runtime, policy broker, channel registry);
+3. contract tests proving an OEM can ship the surface in a plugin without
+   importing product packages.
+
 ## Failure And Ordering Contract
 
 Extension order and handler registration order are stable. One failing handler
