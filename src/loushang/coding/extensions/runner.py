@@ -3,7 +3,7 @@ from __future__ import annotations
 import inspect
 from collections.abc import Callable, Mapping, Sequence
 from copy import deepcopy
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from pathlib import Path
 
 from loushang.agent.types import (
@@ -45,6 +45,7 @@ from loushang.harness.resources.types import (
     ExtensionDescriptor,
     ResourceBundle,
 )
+from loushang.harness.runtime import RuntimeBindingLease, RuntimeBindingState
 from loushang.harness.tools.core import ToolDefinition
 from loushang.harness.workspace.exec import ExecResult, ExecUpdateCallback
 
@@ -376,328 +377,24 @@ class _RunnerContext:
         return None
 
 
-@dataclass
-class _RunnerRuntimeState:
-    bindings: object | None = None
-    flag_values: dict[str, bool | str] = field(default_factory=dict)
-    generation: int = 0
-    stale_message: str = "Extension context is stale after session replacement or reload."
-
-
-@dataclass(frozen=True)
-class _StaticExtensionContext:
-    cwd: str
-
-    @property
-    def ui(self) -> "_StaticExtensionContext":
-        return self
-
-    @property
-    def hasUI(self) -> bool:
-        return False
-
-    @property
-    def has_ui(self) -> bool:
-        return self.hasUI
-
-    @property
-    def sessionManager(self) -> object | None:
-        return None
-
-    @property
-    def session_manager(self) -> object | None:
-        return self.sessionManager
-
-    @property
-    def modelRegistry(self) -> object | None:
-        return None
-
-    @property
-    def model_registry(self) -> object | None:
-        return self.modelRegistry
-
-    @property
-    def model(self) -> object | None:
-        return None
-
-    @property
-    def signal(self) -> object | None:
-        return None
-
-    async def exec_command(
-        self,
-        command: str,
-        args: Sequence[str] = (),
-        *,
-        cwd: str | Path | None = None,
-        env: Mapping[str, str] | Sequence[tuple[str, str]] | None = None,
-        timeout_seconds: float | None = None,
-        stdin: str | None = None,
-        signal: object | None = None,
-        on_update: ExecUpdateCallback | None = None,
-        preview_max_lines: int = 2000,
-        preview_max_bytes: int = 50 * 1024,
-        artifact_dir: str | None = None,
-        capture_full_output: bool = True,
-        rolling_max_bytes: int = 100 * 1024,
-    ) -> ExecResult:
-        del command, args, cwd, env, timeout_seconds, stdin, signal, on_update
-        del preview_max_lines, preview_max_bytes, artifact_dir, capture_full_output, rolling_max_bytes
-        raise RuntimeError("Extension runtime is not bound.")
-
-    def get_active_tool_names(self) -> list[str]:
-        return []
-
-    def getActiveTools(self) -> list[str]:
-        return self.get_active_tool_names()
-
-    def getAllTools(self) -> list[object]:
-        return []
-
-    def get_all_tools(self) -> list[object]:
-        return self.getAllTools()
-
-    def register_tool(self, tool: object) -> None:
-        del tool
-
-    def registerTool(self, tool: object) -> None:
-        self.register_tool(tool)
-
-    def getFlag(self, name: str) -> bool | str | None:
-        return self._runtime_state.flag_values.get(name)
-
-    def get_flag(self, name: str) -> bool | str | None:
-        return self.getFlag(name)
-
-    def get_model_selection(self):
-        return None
-
-    async def set_active_tools(self, tool_names: list[str]) -> None:
-        del tool_names
-
-    async def setActiveTools(self, tool_names: list[str]) -> None:
-        await self.set_active_tools(tool_names)
-
-    async def set_model(self, selection) -> None:
-        del selection
-
-    def appendEntry(self, custom_type: str, data: object | None = None) -> None:
-        del custom_type, data
-
-    def append_entry(self, custom_type: str, data: object | None = None) -> None:
-        self.appendEntry(custom_type, data)
-
-    async def sendMessage(self, message: object, options: object | None = None) -> None:
-        del message, options
-
-    async def send_message(self, message: object, options: object | None = None) -> None:
-        await self.sendMessage(message, options)
-
-    async def sendUserMessage(self, content: object, options: object | None = None) -> None:
-        del content, options
-
-    async def send_user_message(self, content: object, options: object | None = None) -> None:
-        await self.sendUserMessage(content, options)
-
-    def setSessionName(self, name: str | None) -> None:
-        del name
-
-    def set_session_name(self, name: str | None) -> None:
-        self.setSessionName(name)
-
-    def getSessionName(self) -> str | None:
-        return None
-
-    def get_session_name(self) -> str | None:
-        return self.getSessionName()
-
-    def setLabel(self, entry_id: str, label: str | None) -> None:
-        del entry_id, label
-
-    def set_label(self, entry_id: str, label: str | None) -> None:
-        self.setLabel(entry_id, label)
-
-    def listCommands(self):
-        return []
-
-    def list_commands(self):
-        return self.listCommands()
-
-    def request_resource_refresh(self) -> None:
-        return None
-
-    def abort(self) -> None:
-        return None
-
-    def isIdle(self) -> bool:
-        return True
-
-    def is_idle(self) -> bool:
-        return self.isIdle()
-
-    def hasPendingMessages(self) -> bool:
-        return False
-
-    def has_pending_messages(self) -> bool:
-        return self.hasPendingMessages()
-
-    def get_context_usage(self) -> object | None:
-        return None
-
-    async def compact(self, options: object | None = None) -> object | None:
-        del options
-        return None
-
-    def getSystemPrompt(self) -> str:
-        return ""
-
-    def get_system_prompt(self) -> str:
-        return self.getSystemPrompt()
-
-    async def waitForIdle(self) -> None:
-        return None
-
-    async def wait_for_idle(self) -> None:
-        await self.waitForIdle()
-
-    async def reload(self) -> None:
-        return None
-
-    async def navigateTree(self, target_id: str, options: object | None = None) -> dict[str, object]:
-        del target_id, options
-        return {"cancelled": False}
-
-    async def navigate_tree(self, target_id: str, options: object | None = None) -> dict[str, object]:
-        return await self.navigateTree(target_id, options)
-
-    async def fork(self, entry_id: str, options: object | None = None) -> dict[str, object]:
-        del entry_id, options
-        return {"cancelled": True}
-
-    async def newSession(self, options: object | None = None) -> dict[str, object]:
-        del options
-        return {"cancelled": True}
-
-    async def new_session(self, options: object | None = None) -> dict[str, object]:
-        return await self.newSession(options)
-
-    async def switchSession(self, session_path: str, options: object | None = None) -> dict[str, object]:
-        del session_path, options
-        return {"cancelled": True}
-
-    async def switch_session(self, session_path: str, options: object | None = None) -> dict[str, object]:
-        return await self.switchSession(session_path, options)
-
-    def shutdown(self) -> None:
-        return None
-
-    def record_diagnostic(self, diagnostic: ResourceDiagnostic) -> None:
-        del diagnostic
-
-    def notify(self, message: str, notify_type: str | None = None) -> None:
-        del message, notify_type
-
-    def set_status(self, key: str, text: str | None) -> None:
-        del key, text
-
-    def setStatus(self, key: str, text: str | None) -> None:
-        self.set_status(key, text)
-
-    def set_widget(self, key: str, lines: list[str] | None, *, placement: str | None = None) -> None:
-        del key, lines, placement
-
-    def setWidget(self, key: str, lines: list[str] | None, *, placement: str | None = None) -> None:
-        self.set_widget(key, lines, placement=placement)
-
-    def set_title(self, title: str) -> None:
-        del title
-
-    def setTitle(self, title: str) -> None:
-        self.set_title(title)
-
-    def set_editor_text(self, text: str) -> None:
-        del text
-
-    def setEditorText(self, text: str) -> None:
-        self.set_editor_text(text)
-
-    def pasteToEditor(self, text: str) -> None:
-        self.set_editor_text(text)
-
-    def getEditorText(self) -> str:
-        return ""
-
-    def onTerminalInput(self, handler: Callable[[str], None]) -> Callable[[], None]:
-        del handler
-        return lambda: None
-
-    def setWorkingMessage(self, message: str | None = None) -> None:
-        del message
-
-    def setWorkingVisible(self, visible: bool) -> None:
-        del visible
-
-    def setWorkingIndicator(self, options: object | None = None) -> None:
-        del options
-
-    def setHiddenThinkingLabel(self, label: str | None = None) -> None:
-        del label
-
-    def setFooter(self, factory: object | None) -> None:
-        del factory
-
-    def setHeader(self, factory: object | None) -> None:
-        del factory
-
-    def addAutocompleteProvider(self, factory: object) -> None:
-        del factory
-
-    def setEditorComponent(self, factory: object | None) -> None:
-        del factory
-
-    def getAllThemes(self) -> list[object]:
-        return []
-
-    def getTheme(self, name: str) -> object | None:
-        del name
-        return None
-
-    def setTheme(self, theme: object) -> dict[str, object]:
-        del theme
-        return {"success": False, "error": "Theme switching not supported in RPC mode"}
-
-    def getToolsExpanded(self) -> bool:
-        return False
-
-    def setToolsExpanded(self, expanded: bool) -> None:
-        del expanded
-
-    async def select(self, title: str, options: list[str], *, timeout: float | None = None) -> str | None:
-        del title, options, timeout
-        return None
-
-    async def confirm(self, title: str, message: str, *, timeout: float | None = None) -> bool:
-        del title, message, timeout
-        return False
-
-    async def input(self, title: str, placeholder: str | None = None, *, timeout: float | None = None) -> str | None:
-        del title, placeholder, timeout
-        return None
-
-    async def editor(self, title: str, prefill: str | None = None) -> str | None:
-        del title, prefill
-        return None
+class _RunnerRuntimeState(RuntimeBindingState[ExtensionRuntimeBindings]):
+    def __init__(self) -> None:
+        super().__init__(
+            unbound_message="Extension runner runtime bindings have not been set.",
+            stale_message=(
+                "Extension context is stale after session replacement or reload."
+            ),
+        )
+        self.flag_values: dict[str, bool | str] = {}
 
 
 class _BoundExtensionContext:
     def __init__(
         self,
-        runtime_state: _RunnerRuntimeState,
-        generation: int,
+        runtime_bindings: RuntimeBindingLease[ExtensionRuntimeBindings],
         tool_source_info: SourceInfo[Path] | None = None,
     ) -> None:
-        self._runtime_state = runtime_state
-        self._generation = generation
+        self._runtime_bindings = runtime_bindings
         self._tool_source_info = tool_source_info
 
     @property
@@ -1085,12 +782,7 @@ class _BoundExtensionContext:
         return await ui.editor(title, prefill) if ui is not None else None
 
     def _require_bindings(self):
-        if self._generation != self._runtime_state.generation:
-            raise RuntimeError(self._runtime_state.stale_message)
-        bindings = self._runtime_state.bindings
-        if bindings is None:
-            raise RuntimeError("Extension runner runtime bindings have not been set.")
-        return bindings
+        return self._runtime_bindings.require()
 
     def _ui_context(self):
         return getattr(self._require_bindings(), "ui_context", None)
@@ -1352,11 +1044,11 @@ class ExtensionRunner:
         )
 
     def bind_runtime(self, bindings: ExtensionRuntimeBindings) -> None:
-        self._runtime_state.bindings = bindings
+        self._runtime_state.bind(bindings)
         self._bind_extension_apis()
 
     def refresh_runtime(self, bindings: ExtensionRuntimeBindings) -> None:
-        self._runtime_state.bindings = bindings
+        self._runtime_state.refresh(bindings)
         self._bind_extension_apis()
 
     def _bind_extension_apis(self) -> None:
@@ -1372,8 +1064,7 @@ class ExtensionRunner:
         self,
         message: str = "Extension context is stale after session replacement or reload.",
     ) -> None:
-        self._runtime_state.generation += 1
-        self._runtime_state.stale_message = message
+        self._runtime_state.invalidate(message)
 
     async def emit_session_start(self, session: object) -> None:
         await self._emit_session_hook("session_start", session)
@@ -1679,11 +1370,10 @@ class ExtensionRunner:
         fallback_cwd: str = "",
         extension: LoadedExtension | None = None,
     ) -> ExtensionContext:
-        if self._runtime_state.bindings is None:
-            return _StaticExtensionContext(cwd=fallback_cwd)
+        if not self._runtime_state.is_bound:
+            return _RunnerContext(cwd=fallback_cwd)
         return _BoundExtensionContext(
-            self._runtime_state,
-            self._runtime_state.generation,
+            self._runtime_state.capture(),
             _source_info_from_extension(extension) if extension is not None else None,
         )
 
