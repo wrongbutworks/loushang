@@ -246,6 +246,7 @@ def transform_messages_result(
                     is_error=message.is_error,
                     timestamp=message.timestamp,
                     details=message.details,
+                    terminate=message.terminate,
                 )
             if message.tool_call_id in closed_tool_call_ids:
                 _raise_pairing_error(

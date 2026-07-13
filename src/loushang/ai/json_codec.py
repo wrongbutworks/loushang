@@ -1,9 +1,7 @@
 from __future__ import annotations
 
 from collections.abc import Mapping
-from dataclasses import asdict, is_dataclass
 from math import isfinite
-from pathlib import Path
 from typing import Any, cast
 
 from loushang.ai.types import (
@@ -20,6 +18,7 @@ from loushang.ai.types import (
     UsageCost,
     UserMessage,
 )
+from loushang.protocol import JSONValue, require_json_value
 
 
 def _get_key(payload: dict[str, Any], camel_key: str, snake_key: str) -> Any:
@@ -28,18 +27,10 @@ def _get_key(payload: dict[str, Any], camel_key: str, snake_key: str) -> Any:
     return payload[snake_key]
 
 
-def serialize_json_value(value: Any) -> Any:
-    if value is None or isinstance(value, str | int | float | bool):
-        return value
-    if isinstance(value, dict):
-        return {str(key): serialize_json_value(item) for key, item in value.items()}
-    if isinstance(value, list | tuple | set | frozenset):
-        return [serialize_json_value(item) for item in value]
-    if isinstance(value, Path):
-        return str(value)
-    if is_dataclass(value):
-        return serialize_json_value(asdict(cast(Any, value)))
-    return repr(value)
+def serialize_json_value(value: object) -> JSONValue:
+    """Compatibility name for strict JSON validation at wire boundaries."""
+
+    return require_json_value(value)
 
 
 def serialize_content_part(
@@ -83,17 +74,13 @@ def deserialize_content_part(
         return TextPart(
             type="text",
             text=payload["text"],
-            text_signature=payload.get(
-                "textSignature", payload.get("text_signature")
-            ),
+            text_signature=payload.get("textSignature", payload.get("text_signature")),
         )
     if part_type == "image":
         return ImagePart(
             type="image",
             data=payload["data"],
-            mime_type=cast(
-                str, payload.get("mimeType", payload.get("mime_type"))
-            ),
+            mime_type=cast(str, payload.get("mimeType", payload.get("mime_type"))),
         )
     if part_type == "thinking":
         return ThinkingPart(
@@ -220,15 +207,25 @@ def serialize_message(message: Message) -> dict[str, Any]:
             payload["responseModel"] = message.response_model
         return payload
     if isinstance(message, ToolResultMessage):
-        return {
+        if type(message.terminate) is not bool:
+            raise TypeError("toolResult.terminate must be a boolean")
+        if type(message.is_error) is not bool:
+            raise TypeError("toolResult.isError must be a boolean")
+        tool_payload: dict[str, Any] = {
             "role": "toolResult",
             "toolCallId": message.tool_call_id,
             "toolName": message.tool_name,
             "content": [serialize_content_part(part) for part in message.content],
             "isError": message.is_error,
             "timestamp": message.timestamp,
-            "details": serialize_json_value(message.details),
+            "details": require_json_value(
+                message.details,
+                name="message.details",
+            ),
         }
+        if message.terminate:
+            tool_payload["terminate"] = True
+        return tool_payload
     raise ValueError(f"Unsupported AI message type: {type(message)!r}")
 
 
@@ -260,27 +257,31 @@ def deserialize_message(payload: dict[str, Any]) -> Message:
             ),
             error_message=payload.get("errorMessage", payload.get("error_message")),
             timestamp=payload["timestamp"],
-            response_model=payload.get(
-                "responseModel", payload.get("response_model")
-            ),
+            response_model=payload.get("responseModel", payload.get("response_model")),
         )
     if role == "toolResult":
+        terminate = payload.get("terminate", False)
+        if type(terminate) is not bool:
+            raise ValueError("toolResult.terminate must be a boolean")
+        is_error = payload.get("isError", payload.get("is_error"))
+        if type(is_error) is not bool:
+            raise ValueError("toolResult.isError must be a boolean")
         return ToolResultMessage(
             role="toolResult",
             tool_call_id=cast(
                 str, payload.get("toolCallId", payload.get("tool_call_id"))
             ),
-            tool_name=cast(
-                str, payload.get("toolName", payload.get("tool_name"))
-            ),
+            tool_name=cast(str, payload.get("toolName", payload.get("tool_name"))),
             content=[
                 _deserialize_user_content_part(part) for part in payload["content"]
             ],
-            is_error=cast(
-                bool, payload.get("isError", payload.get("is_error"))
-            ),
+            is_error=is_error,
             timestamp=payload["timestamp"],
-            details=payload.get("details"),
+            details=require_json_value(
+                payload.get("details"),
+                name="message.details",
+            ),
+            terminate=terminate,
         )
     raise ValueError(f"Unsupported AI message role: {role}")
 

@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import Any, cast
 
@@ -27,6 +27,11 @@ from loushang.ai.types import (
     Usage,
     UserMessage,
 )
+
+
+class _HostileTruthValue:
+    def __bool__(self) -> bool:
+        raise AssertionError("boolean truthiness must not be evaluated")
 
 
 def _assistant_message() -> AssistantMessage:
@@ -57,7 +62,7 @@ def test_message_codec_round_trips_ai_messages() -> None:
     assert deserialize_message(serialize_message(message)) == message
 
 
-def test_message_codec_normalizes_json_details() -> None:
+def test_message_codec_requires_json_details() -> None:
     message = ToolResultMessage(
         role="toolResult",
         tool_call_id="call-1",
@@ -65,11 +70,78 @@ def test_message_codec_normalizes_json_details() -> None:
         content=[TextPart(type="text", text="ok")],
         is_error=False,
         timestamp=11.0,
-        details={"path": Path("notes.txt")},
+        details={"path": "notes.txt"},
     )
 
     assert serialize_message(message)["details"] == {"path": "notes.txt"}
-    assert serialize_json_value({"items": (1, 2)}) == {"items": [1, 2]}
+
+    message = replace(message, details=cast(Any, {"path": Path("notes.txt")}))
+    with pytest.raises(TypeError, match="message.details.path"):
+        serialize_message(message)
+
+
+def test_tool_result_message_codec_persists_terminate_for_replay() -> None:
+    message = ToolResultMessage(
+        role="toolResult",
+        tool_call_id="call-1",
+        tool_name="finish",
+        content=[TextPart(type="text", text="done")],
+        is_error=False,
+        timestamp=11.0,
+        details={"ok": True},
+        terminate=True,
+    )
+
+    encoded = serialize_message(message)
+
+    assert encoded["terminate"] is True
+    assert deserialize_message(encoded) == message
+
+    encoded["terminate"] = "true"
+    with pytest.raises(ValueError, match="terminate must be a boolean"):
+        deserialize_message(encoded)
+
+
+@pytest.mark.parametrize("field_name", ["is_error", "terminate"])
+@pytest.mark.parametrize("value", [1, object(), _HostileTruthValue()])
+def test_tool_result_message_codec_requires_exact_boolean_fields(
+    field_name: str,
+    value: object,
+) -> None:
+    message = ToolResultMessage(
+        role="toolResult",
+        tool_call_id="call-1",
+        tool_name="finish",
+        content=[TextPart(type="text", text="done")],
+        is_error=False,
+        timestamp=11.0,
+        details={"ok": True},
+    )
+
+    with pytest.raises(TypeError, match="must be a boolean"):
+        serialize_message(replace(message, **{field_name: cast(Any, value)}))
+
+    encoded = serialize_message(message)
+    wire_name = "isError" if field_name == "is_error" else "terminate"
+    encoded[wire_name] = value
+    with pytest.raises(ValueError, match="must be a boolean"):
+        deserialize_message(encoded)
+
+
+def test_tool_result_message_codec_requires_is_error_on_decode() -> None:
+    message = ToolResultMessage(
+        role="toolResult",
+        tool_call_id="call-1",
+        tool_name="finish",
+        content=[TextPart(type="text", text="done")],
+        is_error=False,
+        timestamp=11.0,
+    )
+    encoded = serialize_message(message)
+    del encoded["isError"]
+
+    with pytest.raises(ValueError, match="isError must be a boolean"):
+        deserialize_message(encoded)
 
 
 def test_assistant_event_codec_uses_the_message_codec() -> None:
@@ -91,17 +163,17 @@ def test_coding_codec_path_reexports_ai_implementation() -> None:
     assert coding_codec.deserialize_ai_message is deserialize_message
 
 
-def test_json_value_codec_handles_dataclasses_and_unknown_objects() -> None:
+def test_json_value_codec_rejects_implicit_object_projection() -> None:
     @dataclass
     class Detail:
         path: Path
 
-    value = object()
-
-    assert serialize_json_value(Detail(path=Path("notes.txt"))) == {
-        "path": "notes.txt"
-    }
-    assert serialize_json_value(value) == repr(value)
+    with pytest.raises(TypeError, match="got Detail"):
+        serialize_json_value(Detail(path=Path("notes.txt")))
+    with pytest.raises(TypeError, match="got tuple"):
+        serialize_json_value({"items": (1, 2)})
+    with pytest.raises(TypeError, match="got object"):
+        serialize_json_value(object())
 
 
 @pytest.mark.parametrize(
