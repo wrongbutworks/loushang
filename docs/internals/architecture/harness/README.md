@@ -53,8 +53,11 @@ planning, work event persistence, or AI provider behavior.
 - [Context, Compaction, And Journal Foundations](context-compaction-journal-foundations.md)
   records the implemented ownership of context items and packing, selectable
   compaction strategies, profiled append-only JSONL mechanics, branch graphs,
-  and focused Coding/Work compatibility adapters while deferring generic
-  indexes and projection checkpoints.
+  and focused Coding/Work compatibility adapters.
+- [Runtime Data Foundations](runtime-data-foundations.md) records the follow-on
+  ownership of transcript repositories, rebuildable projection indexes,
+  layered configuration, explainable salience, and summary-profile mechanics
+  while preserving Product schemas, prompts, defaults, and artifact semantics.
 - [Diagnostics Core Boundary](diagnostics-core-boundary.md) defines shared
   diagnostic records, queries, summaries, startup checks, and in-memory engine
   ownership while keeping checks and presentation in product adapters.

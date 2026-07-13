@@ -46,7 +46,7 @@ sufficient.
 | Remaining `coding.loader.types` | Compatibility shim | Product-neutral prompt, skill, theme, and extension descriptors, source kinds, snapshots, bundles, and merge decisions live in `loushang.harness.resources.types`. Coding keeps compatibility aliases. |
 | `coding.prompt.types` | Split candidate | Move only neutral prepared-prompt/trace contracts after they satisfy the neutrality evidence gate. Keep templates, preflight, and assembler policy in coding. |
 | `coding.compaction.policy`, `coding.compaction.types.ContextUsageEstimate` | Compatibility shim | `CompactionBudget`, deterministic threshold accounting, and `ContextUsageEstimate` live in `loushang.harness.context`. Coding compatibility paths re-export the same Harness-owned objects. |
-| Remaining `coding.compaction.types`, `coding.session.context_usage` | Product adapter | Neutral context items, packing, standard strategies, coordinator lifecycle, and reducer contracts now live in Harness. Coding keeps its compatibility records/planner, message estimation, model adaptation, trigger decisions, split-turn/tool-result rules, prompts, transcript rebuild, and artifact projection. |
+| Remaining `coding.compaction.types`, `coding.session.context_usage` | Product adapter | Neutral context items, packing, standard strategies, coordinator lifecycle, reducer contracts, explainable salience, and summary-profile mechanics now live in Harness. Coding keeps its compatibility records/planner, message estimation, model adaptation, trigger decisions, split-turn/tool-result rules, exact prompts, content weights, transcript rebuild, and artifact projection. |
 | `coding.domain.types` | Split candidate | Use as input for future `loushang.harness.adapter` shapes. Generic request/result types must not contain first-class method fields; carry method/work refs as opaque metadata. |
 | `coding.session.types.RunState` | Compatibility shim | `RunState` lives in `loushang.harness.host.types`; Coding preserves the accepted session import with the same class identity. |
 | `coding.session.queue_controller`, `coding.session.session_event_bus` | Split candidate | Queue snapshots, `HostInputQueue`, and `OrderedEventBus` live in `loushang.harness.host`. Coding keeps queue input/Agent delivery, logs, product queue events, and its specialized session event bus. |
@@ -60,8 +60,8 @@ sufficient.
 | `coding.mode` | Keep product | Transitional print/RPC mode adapters stay coding until channel is implemented. |
 | `coding.cli` | Keep product | Product CLI. It may expose harness-backed behavior but remains coding-owned. |
 | `coding.message` | Keep product | Coding transcript entries, message transforms, model-change/compaction records, and JSON codecs remain Coding semantics. High fan-in alone is not a Harness ownership reason. |
-| `coding.store` | Product adapter | File locking, profiled JSONL mechanics, functional codec adapters, and parent-linked branch/fork engines now live in Harness. Coding keeps transcript codecs, session index/query projection, labels, lifecycle, and product retention/storage policy. Generic indexes and projection checkpoints remain deferred. |
-| `coding.control` | Keep product | Frozen during runtime consolidation: auth resolution, model registry, settings, provider registration, credential handling, and selection persistence stay outside Harness. Harness receives already-resolved runtime dependencies and never stores credentials. Revisit ownership separately after consolidation. |
+| `coding.store` | Product adapter | File locking, profiled JSONL mechanics, functional codecs, parent-linked transcript repositories, branch/fork engines, and rebuildable JSON projection indexes now live in Harness. Coding keeps transcript schemas/codecs, `SessionSummary` projection and query semantics, labels, lifecycle, paths, naming, retention, and storage policy. Journal-offset projection checkpoints remain deferred. |
+| `coding.control` | Product adapter | Ordered layers, JSON patch persistence, merge/reload, issue collection, snapshots, and subscriptions live in `loushang.harness.config`. Coding keeps `ControlConfig`, fields, defaults, validation, paths, removed-setting compatibility, provider registration, credential handling, model/auth interpretation, selection policy, commands, and UI. Harness never stores credentials. |
 | `coding.package`, `coding.plugin`, `coding.resources`, `coding.skill` | Split candidate | Package source/manifest/materialization, standard roots/layout, registry/resolver, discovery, and skill-loading mechanisms now live under `loushang.harness.resources`. Coding keeps built-in content registration, compatibility convention activation, additional roots, trust/approval policy, settings/CLI projection, and compatibility facades. |
 | `coding.workflow` | Split candidate | Move a neutral workflow runner, step/result records, cancellation, and observer mechanics after resource and extension contracts stabilize. Keep Coding workflow definitions, prompts, artifact semantics, completion policy, and product test fixtures. |
 | `coding.platform` | Split candidate | Route neutral workspace/git and operating-system mechanisms to focused Harness modules when reusable. Keep product update/version policy and output guards in Coding; clipboard and terminal integration belong to Product/TUI rather than Harness. |
@@ -145,13 +145,14 @@ strategies and coordination, file locking, profiled atomic JSONL mechanics,
 opaque header/record codecs, and parent-linked branch/fork engines. Coding
 keeps its compatibility compaction planner for split-turn and tool-result
 semantics, transcript payload schema, custom message codecs, prompts, model
-calls, artifact semantics, session index/projection, and storage policy. Work
+calls, artifact semantics, session projection, and storage policy. Work
 keeps normalization, its in-memory/query/subscription behavior, and
 WorkOperation/WorkEvent schemas while adopting only matching JSONL I/O. AI owns
 base-message codecs, Agent owns extension-message codec protocols and registry,
-and each Product owns its custom transcript codecs. Generic journal indexes and
-projection checkpoints are deferred until their contracts have stronger
-evidence.
+and each Product owns its custom transcript codecs. The follow-on Runtime Data
+Foundations wave now owns rebuildable generic JSON projection indexes while
+Product projection schemas and journal-offset checkpoints remain Product-owned
+or deferred.
 
 Deliver this as one semantic wave with three substantial batches: compatibility
 baseline plus complete contracts, complete Harness engines, then concurrent
@@ -347,10 +348,15 @@ Harness resource snapshot into Coding prompts, sessions, commands, and UI.
 
 ### Slice 4: Context
 
-Status: context budget and accounting implementation complete for integration
-into `lane/harness`; item refs, bundles, diagnostics, and packing contracts
-remain deferred; see
-[Context Budget And Accounting Boundary](context-budget-accounting-boundary.md).
+Status note: context budget and accounting implementation complete; later
+waves extend the same owner with packing, compaction, salience, and summary
+profiles.
+
+Status: context budget, accounting, item, packing, compaction, salience, and
+summary-profile implementation complete for integration into `lane/harness`;
+see [Context Budget And Accounting Boundary](context-budget-accounting-boundary.md),
+[Context, Compaction, And Journal Foundations](context-compaction-journal-foundations.md),
+and [Runtime Data Foundations](runtime-data-foundations.md).
 
 Purpose: define shared context budget and packing contracts without moving
 coding compaction policy.
@@ -361,9 +367,12 @@ the `ContextUsageEstimate` result record now live under
 owners, while Coding continues to estimate message tokens, adapt model context
 windows, build usage snapshots, and decide whether to compact.
 
-Context item refs, bundles, diagnostics, and general packing contracts remain
-deferred. Transcript summarization, branch summaries, product salience rules,
-and transcript rebuild semantics remain Coding-owned.
+Context item refs, bundles, diagnostics, packing, standard compaction
+strategies, explainable salience signals, and summary-profile mechanics now
+live in Harness. Coding retains exact transcript summarization and branch
+prompt text, message serialization, content-specific salience weights,
+split-turn/tool-result policy, model calls, artifacts, and transcript rebuild
+semantics.
 
 ### Slice 5: Host And Lifecycle
 

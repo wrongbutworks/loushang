@@ -11,6 +11,12 @@ mechanics, and branch graphs. It does not move product transcript
 schemas, summarization prompts, AI calls, artifact semantics, or product
 storage policy into Harness.
 
+The follow-on
+[Runtime Data Foundations](runtime-data-foundations.md) now adds a generic
+transcript repository, rebuildable projection index, structural salience, and
+summary-profile mechanics. Product transcript schemas, exact prompt text, AI
+calls, artifact semantics, and storage policy remain outside Harness.
+
 The implementation should use one semantic task branch,
 `harness/context-compaction-journal`, with three delivery batches for
 foundation, engines, and product cutover. It should not be split into
@@ -36,7 +42,8 @@ minimality and delivery risk. Their blocking findings are incorporated here:
 - JSONL format, durability, and load behavior are independent profiles;
 - BranchGraph provides strict and compatibility corruption modes;
 - Work adopts only common JSONL I/O in the first wave;
-- generic indexes and projection checkpoints are deferred;
+- generic indexes and projection checkpoints were deferred from this first
+  wave and are governed by the follow-on Runtime Data Foundations decision;
 - the delivery estimate reflects replacement scope rather than candidate
   package size.
 
@@ -63,8 +70,10 @@ The implementation on `harness/context-compaction-journal` now provides:
 - byte-level Coding and Work format characterization plus product-neutral
   Context and Journal contract tests.
 
-The implementation does not add a generic index/checkpoint layer, migrate
-Coding message codecs, or replace Coding's specialized compaction planner.
+This first implementation did not add a generic index/checkpoint layer,
+migrate Coding message codecs, or replace Coding's specialized compaction
+planner. The follow-on wave adds rebuildable JSON indexes but not
+journal-offset checkpoints.
 
 ## Motivation And Existing Evidence
 
@@ -106,8 +115,9 @@ Context compaction and journal maintenance must remain different operations:
 - a successful context compaction returns an artifact to the Product, which
   decides whether and how to append a domain record such as Coding's
   `CompactionEntry`;
-- generic projection checkpoints, indexes, destructive journal vacuum, and
-  retention are deferred from this first implementation wave.
+- rebuildable projection indexes are supplied by the follow-on Runtime Data
+  Foundations wave; journal-offset checkpoints, destructive journal vacuum,
+  and retention remain deferred.
 
 Products choose the compaction trigger, strategy, reducer, persistence
 policy, and domain projection. Harness provides usable default mechanisms and
@@ -194,8 +204,10 @@ strategies do not split a group. Products that require split groups implement a
 custom planner over the same compaction contracts; Harness should not introduce
 a speculative generic split-policy language in this wave.
 
-Harness does not infer salience, invent priorities, inspect content, or decide
-which product facts deserve pinning.
+Harness does not inspect content or decide which product facts deserve
+pinning. The follow-on structural salience scorer applies only
+Product-supplied weights to neutral item fields and metadata; Products still
+own content signals and selection policy.
 
 ### Packing
 
@@ -423,12 +435,14 @@ fallback.
 The engine must not implement product retention, file naming, session
 directories, user-visible recovery messages, or encryption policy.
 
-### Deferred Index And Projection Checkpoints
+### Follow-On Index And Deferred Projection Checkpoints
 
-Coding's current session index is mostly a Coding summary/query projection, and
-Work has no corresponding index. The common evidence in this wave supports
-atomic JSONL mechanics, not a general index framework. Generic index rebuild,
-incremental refresh, and a `CheckpointStore` are therefore deferred.
+Coding's session index remains a Coding summary/query projection, but the
+follow-on Runtime Data Foundations wave moves its versioned JSON persistence,
+stale detection, corrupt preservation, and rebuild callback into
+`JsonProjectionIndex`. Coding still owns the projection schema, directory
+scan, freshness predicate, query, ranking, and index location. Incremental
+journal-offset checkpoints and a `CheckpointStore` remain deferred.
 
 A Product may append a domain compaction artifact to its source journal, as
 Coding does with `CompactionEntry`. That record remains source history, not a
@@ -498,14 +512,14 @@ is expected to become a Harness identity alias.
 | --- | --- | --- |
 | Context item identity and grouping | records and invariants | mapping domain facts/messages to items |
 | Token budget | normalization and accounting | model capability lookup and defaults |
-| Packing | group-aware deterministic engines | salience, priority, pinned decisions |
+| Packing | group-aware deterministic engines and explainable structural salience | content weights, selection, priority, and pinned decisions |
 | Compaction trigger | existing budget/usage input records | enablement, trigger and retry policy |
 | Compaction planning | standard recent/single-batch rolling strategies | strategy selection and compatibility/custom planner |
-| Summary reduction | async reducer protocol and coordination | prompt, model, temperature, content rules |
+| Summary reduction | async reducer protocol, coordination, profile composition, and structural validation | exact prompt text, model, temperature, content rules |
 | Compaction persistence | no implicit write | domain artifact projection and journal append |
 | JSONL | locking, framing, append/load/recovery | schema, naming, location, retention |
 | Branch graph | topology, ancestry, fork selection | state rebuild and product-visible semantics |
-| Index/checkpoint | deferred | current product index and projection cache |
+| Index/checkpoint | rebuildable JSON projection-index mechanics | projection schema/query/cache policy; journal-offset checkpoints deferred |
 | Diagnostics | structural codes and provenance | remediation and user-facing grouping |
 
 Examples of product-specific policy that remains outside Harness:
@@ -656,7 +670,9 @@ have production implementations and focused tests.
 - reduce `coding.compaction` to product policy and compatibility adapters where
   possible.
 - route Coding file locks, JSONL, graph, branch, and fork mechanics through
-  Harness while leaving the current session index in Coding;
+  Harness; the follow-on Runtime Data Foundations wave also routes the generic
+  session-index mechanics through Harness while leaving its projection in
+  Coding;
 - retain the Coding session codec and SessionManager product facade;
 - route only matching Work JSONL I/O through Harness while preserving Work
   types, in-memory/query/subscription behavior, and public behavior;
@@ -680,8 +696,8 @@ final wave merge, but it does not block progress on the other adapters.
   the entire suite after every small edit;
 - run the full non-live suite once after all product cutovers and duplicate
   removals are assembled, then rerun only affected failures;
-- do not add deferred index, checkpoint, hierarchical-memory, or generic query
-  work merely to make a batch appear larger;
+- do not add deferred checkpoint, hierarchical-memory, or generic query work
+  merely to make a batch appear larger;
 - if a compatibility mismatch appears, keep the Product adapter specialized
   and continue the rest of the wave instead of redesigning Harness around one
   product exception;
@@ -698,7 +714,7 @@ final wave merge, but it does not block progress on the other adapters.
 | `coding.session.context_usage` | existing Harness budget and usage inputs only | trigger policy, model lookup, and Coding stale-entry interpretation |
 | `coding.store.file_lock` | Harness journal locking | compatibility alias |
 | `coding.store.file_codec` | JSONL framing and atomic IO | SessionHeader/SessionEntry codec |
-| `coding.store.session_manager` | branch graph and fork selection | session index, lifecycle, cwd, summaries, context rebuild, and naming |
+| `coding.store.session_manager` | branch graph, transcript repository, fork selection, and projection-index mechanics | projection schema/query, lifecycle, cwd, summaries, context rebuild, and naming |
 | `work.event_log` | matching JSONL I/O only | Work normalization, in-memory backend, positions, filters, query, replay, subscriptions, records, and public adapters |
 | `coding.message.json_codec` | no direct Harness migration | AI owns base codecs, Agent owns extension codec composition, and Coding owns custom transcript codecs |
 
@@ -777,8 +793,8 @@ all changed Python files, Harness Context/Journal passed mypy, and
 
 - Coding compaction plan/result parity for accepted fixtures;
 - Coding session JSONL golden files read and write identically;
-- Coding branch/tree/fork behavior remains unchanged and its Product-owned
-  session index remains unchanged;
+- Coding branch/tree/fork behavior and session-index bytes/query behavior
+  remain unchanged while their generic mechanics use Harness owners;
 - Work EventLog round-trip, query, positions, and subscription behavior remains
   unchanged;
 - startup and session replacement smoke tests pass;
@@ -793,7 +809,7 @@ This wave does not:
 - define one universal transcript payload schema;
 - move WorkEvent, MethodPlan, ArtifactRef, or product domain records;
 - persist or delete model context implicitly;
-- introduce a generic journal index or projection checkpoint store;
+- introduce a journal-offset projection checkpoint store;
 - define a generic compaction-trigger protocol before another trigger shape is
   understood;
 - implement destructive journal vacuum, retention, encryption, remote storage,
