@@ -1,0 +1,162 @@
+from __future__ import annotations
+
+from dataclasses import dataclass
+from pathlib import Path
+
+
+@dataclass(frozen=True)
+class _Header:
+    journal_id: str
+
+
+@dataclass(frozen=True)
+class _Record:
+    record_id: str
+    text: str
+
+
+class _HeaderCodec:
+    def encode_header(self, header: _Header):
+        return {"type": "fixture", "journalId": header.journal_id}
+
+    def decode_header(self, value):
+        from loushang.harness.journal import JournalCodecError
+
+        if value.get("type") != "fixture":
+            raise JournalCodecError("missing fixture header", code="missing_header")
+        return _Header(journal_id=str(value["journalId"]))
+
+
+class _RecordCodec:
+    def encode_record(self, record: _Record):
+        return {"recordId": record.record_id, "text": record.text}
+
+    def decode_record(self, value):
+        return _Record(record_id=str(value["recordId"]), text=str(value["text"]))
+
+
+def test_header_journal_rewrite_append_and_load_round_trip(tmp_path: Path) -> None:
+    from loushang.harness.journal import (
+        JournalLoadPolicy,
+        append_jsonl_record,
+        load_jsonl,
+        write_jsonl,
+    )
+
+    path = tmp_path / "nested" / "records.jsonl"
+    write_jsonl(
+        path,
+        [_Record("one", "alpha")],
+        record_codec=_RecordCodec(),
+        header=_Header("journal-1"),
+        header_codec=_HeaderCodec(),
+    )
+    append_jsonl_record(path, _Record("two", "beta"), record_codec=_RecordCodec())
+
+    snapshot = load_jsonl(
+        path,
+        record_codec=_RecordCodec(),
+        header_codec=_HeaderCodec(),
+        load_policy=JournalLoadPolicy(header="required"),
+    )
+
+    assert snapshot.header == _Header("journal-1")
+    assert snapshot.records == (_Record("one", "alpha"), _Record("two", "beta"))
+    assert not list(path.parent.glob("*.tmp"))
+
+
+def test_format_profile_preserves_unicode_and_key_order(tmp_path: Path) -> None:
+    from loushang.harness.journal import (
+        PROCESS_LOCAL_JOURNAL,
+        SORTED_UNICODE_JSONL_FORMAT,
+        append_jsonl_record,
+    )
+
+    path = tmp_path / "events.jsonl"
+    append_jsonl_record(
+        path,
+        _Record("记录", "你好"),
+        record_codec=_RecordCodec(),
+        format_profile=SORTED_UNICODE_JSONL_FORMAT,
+        durability=PROCESS_LOCAL_JOURNAL,
+    )
+
+    assert path.read_bytes() == (
+        '{"recordId": "记录", "text": "你好"}\n'.encode()
+    )
+    assert not path.with_name("events.jsonl.lock").exists()
+
+
+def test_skip_invalid_records_and_partial_tail_reports_provenance(tmp_path: Path) -> None:
+    from loushang.harness.journal import (
+        PROCESS_LOCAL_JOURNAL,
+        JournalLoadPolicy,
+        load_jsonl,
+    )
+
+    path = tmp_path / "records.jsonl"
+    path.write_text(
+        '{"recordId":"one","text":"ok"}\nnot-json\n{"recordId":',
+        encoding="utf-8",
+    )
+
+    snapshot = load_jsonl(
+        path,
+        record_codec=_RecordCodec(),
+        durability=PROCESS_LOCAL_JOURNAL,
+        load_policy=JournalLoadPolicy(
+            invalid_record="skip",
+            partial_tail="skip",
+        ),
+    )
+
+    assert snapshot.records == (_Record("one", "ok"),)
+    assert [diagnostic.code for diagnostic in snapshot.diagnostics] == [
+        "invalid_journal_record",
+        "partial_journal_tail",
+    ]
+    assert [diagnostic.line_number for diagnostic in snapshot.diagnostics] == [2, 3]
+    assert all(diagnostic.source_path == path for diagnostic in snapshot.diagnostics)
+
+
+def test_strict_load_raises_typed_file_error(tmp_path: Path) -> None:
+    import pytest
+
+    from loushang.harness.journal import (
+        PROCESS_LOCAL_JOURNAL,
+        JournalFileError,
+        load_jsonl,
+    )
+
+    path = tmp_path / "records.jsonl"
+    path.write_text("not-json\n", encoding="utf-8")
+
+    with pytest.raises(JournalFileError) as exc_info:
+        load_jsonl(
+            path,
+            record_codec=_RecordCodec(),
+            durability=PROCESS_LOCAL_JOURNAL,
+        )
+
+    assert exc_info.value.code == "invalid_record_json"
+    assert exc_info.value.line_number == 1
+    assert exc_info.value.path == path
+
+
+def test_header_errors_remain_distinguishable(tmp_path: Path) -> None:
+    import pytest
+
+    from loushang.harness.journal import JournalFileError, JournalLoadPolicy, load_jsonl
+
+    path = tmp_path / "records.jsonl"
+    path.write_text('{"type":"record"}\n', encoding="utf-8")
+
+    with pytest.raises(JournalFileError) as exc_info:
+        load_jsonl(
+            path,
+            record_codec=_RecordCodec(),
+            header_codec=_HeaderCodec(),
+            load_policy=JournalLoadPolicy(header="required"),
+        )
+
+    assert exc_info.value.code == "missing_header"
