@@ -5,7 +5,6 @@ from collections.abc import Callable, Mapping, Sequence
 from copy import deepcopy
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import cast
 
 from loushang.agent.types import (
     AfterToolCallResult,
@@ -19,9 +18,7 @@ from loushang.coding.extensions.types import (
     ContextResult,
     ExtensionCommandContext,
     ExtensionContext,
-    ExtensionResourceContribution,
     ExtensionRuntimeBindings,
-    InputEvent,
     InputEventResult,
     LoadedExtension,
     ResolvedCommand,
@@ -33,15 +30,20 @@ from loushang.coding.extensions.types import (
     SessionBeforeTreeResult,
     SessionRefreshEvent,
 )
-from loushang.coding.extensions.wrapper import wrap_registered_tool_definition
+from loushang.harness.extensions.dispatch import ExtensionDispatcher
+from loushang.harness.extensions.registry import (
+    resolve_extension_registry,
+)
+from loushang.harness.extensions.registry import (
+    source_info_from_extension as _source_info_from_extension,
+)
+from loushang.harness.extensions.resources import ExtensionResourceRuntime
+from loushang.harness.extensions.wrapper import wrap_registered_tool_definition
 from loushang.harness.resources.diagnostics import ResourceDiagnostic
 from loushang.harness.resources.source import SourceInfo
 from loushang.harness.resources.types import (
     ExtensionDescriptor,
-    PromptFragmentDescriptor,
     ResourceBundle,
-    SkillDescriptor,
-    ThemeDescriptor,
 )
 from loushang.harness.tools.core import ToolDefinition
 from loushang.harness.workspace.exec import ExecResult, ExecUpdateCallback
@@ -1139,7 +1141,6 @@ class ExtensionRunner:
         self._extensions: list[LoadedExtension] = []
         self._tool_definitions: list[ToolDefinition] = []
         self._tool_source_info_by_name: dict[str, SourceInfo[Path]] = {}
-        self._tool_names: set[str] = set()
         self._command_diagnostics: list[ResourceDiagnostic] = []
         self._flag_diagnostics: list[ResourceDiagnostic] = []
         self._shortcut_diagnostics: list[ResourceDiagnostic] = []
@@ -1162,9 +1163,8 @@ class ExtensionRunner:
             self._extensions.append(loaded_extension)
             self._bind_extension_api(loaded_extension)
             self._diagnostics.extend(loaded_extension.diagnostics)
-            self._collect_tools(loaded_extension)
 
-        self._build_registry_views()
+        self._apply_registry_snapshot()
 
     def get_diagnostics(self) -> list[ResourceDiagnostic]:
         return list(self._diagnostics)
@@ -1241,51 +1241,22 @@ class ExtensionRunner:
         return self._context_from_runtime(fallback_cwd=fallback_cwd)
 
     def has_handlers(self, hook_name: str) -> bool:
-        return any(extension.hooks.get(hook_name) for extension in self._extensions)
+        return self._dispatcher(fallback_cwd="").has_handlers(hook_name)
 
     async def emit_user_bash(self, event: object, *, cwd: str = "") -> object | None:
-        context = self._context_from_runtime(fallback_cwd=cwd)
-        event_object = _event_object(event)
-        for extension in self._extensions:
-            for handler in extension.hooks.get("user_bash", []):
-                try:
-                    result = handler(event_object, context)
-                    if inspect.isawaitable(result):
-                        result = await result
-                    if result:
-                        return result
-                except Exception as exc:
-                    self._diagnostics.append(
-                        ResourceDiagnostic(
-                            code="extension_user_bash_failed",
-                            message=f"Extension hook 'user_bash' failed: {exc}",
-                            source_path=extension.source_path,
-                        )
-                    )
-                    self._emit_runtime_error(extension=extension, event="user_bash", error=exc)
-        return None
+        return await self._dispatcher(fallback_cwd=cwd).dispatch_first_truthy(
+            "user_bash",
+            _event_object(event),
+        )
 
     async def emit_event(self, event: object, *, cwd: str = "") -> None:
         event_type = _event_type(event)
         if event_type is None:
             return
-        context = self._context_from_runtime(fallback_cwd=cwd)
-        event_object = _event_object(event)
-        for extension in self._extensions:
-            for handler in extension.hooks.get(event_type, []):
-                try:
-                    result = handler(event_object, context)
-                    if inspect.isawaitable(result):
-                        await result
-                except Exception as exc:
-                    self._diagnostics.append(
-                        ResourceDiagnostic(
-                            code=f"extension_{event_type}_failed",
-                            message=f"Extension hook '{event_type}' failed: {exc}",
-                            source_path=extension.source_path,
-                        )
-                    )
-                    self._emit_runtime_error(extension=extension, event=event_type, error=exc)
+        await self._dispatcher(fallback_cwd=cwd).dispatch(
+            event_type,
+            _event_object(event),
+        )
 
     async def emit_input(
         self,
@@ -1295,58 +1266,11 @@ class ExtensionRunner:
         source: str = "interactive",
         cwd: str = "",
     ) -> InputEventResult:
-        context = self._context_from_runtime(fallback_cwd=cwd)
-        current_text = text
-        current_images = images
-        transformed = False
-        for extension in self._extensions:
-            for handler in extension.hooks.get("input", []):
-                event = InputEvent(text=current_text, images=current_images, source=_normalize_input_source(source))
-                try:
-                    result = handler(event, context)
-                    if inspect.isawaitable(result):
-                        result = await result
-                except Exception as exc:
-                    self._diagnostics.append(
-                        _extension_hook_failure_diagnostic(
-                            extension=extension,
-                            hook_name="input",
-                            exc=exc,
-                            code="extension_input_failed",
-                        )
-                    )
-                    self._emit_runtime_error(extension=extension, event="input", error=exc)
-                    continue
-                action, result_text, result_images = _coerce_input_result(result)
-                if action in {None, "continue"}:
-                    continue
-                if action == "handled":
-                    return InputEventResult(action="handled", text=current_text, images=current_images)
-                if action == "transform":
-                    if result_text is None:
-                        self._diagnostics.append(
-                            ResourceDiagnostic(
-                                code="invalid_extension_input_result",
-                                message="input transform results must include string text.",
-                                source_path=extension.source_path,
-                            )
-                        )
-                        continue
-                    current_text = result_text
-                    if result_images is not None:
-                        current_images = result_images
-                    transformed = True
-                    continue
-                self._diagnostics.append(
-                    ResourceDiagnostic(
-                        code="invalid_extension_input_result",
-                        message="input hooks must return action 'continue', 'transform', 'handled', or None.",
-                        source_path=extension.source_path,
-                    )
-                )
-        if transformed or current_text != text or current_images is not images:
-            return InputEventResult(action="transform", text=current_text, images=current_images)
-        return InputEventResult(action="continue", text=current_text, images=current_images)
+        return await self._dispatcher(fallback_cwd=cwd).dispatch_input(
+            text,
+            images,
+            source=source,
+        )
 
     def list_tool_definitions(self) -> list[ToolDefinition]:
         return list(self._tool_definitions)
@@ -1415,61 +1339,17 @@ class ExtensionRunner:
 
     def discover_resources(self, bundle: ResourceBundle, *, reason: str = "refresh") -> ResourceBundle:
         del reason
-        merged = bundle
-        diagnostics: list[ResourceDiagnostic] = []
-        context = _RunnerContext(cwd=str(bundle.cwd))
-        for extension in self._extensions:
-            handlers = extension.hooks.get("resources_discover", [])
-            try:
-                merged = self._apply_resource_handlers(
-                    extension=extension,
-                    handlers=handlers,
-                    bundle=merged,
-                    context=context,
-                    diagnostics=diagnostics,
-                )
-            except Exception as exc:  # defensive fallback
-                diagnostics.append(
-                    ResourceDiagnostic(
-                        code="extension_resources_discover_failed",
-                        message=f"Extension resource discovery failed: {exc}",
-                        source_path=extension.source_path,
-                    )
-                )
-
-        if diagnostics:
-            self._diagnostics.extend(diagnostics)
-            merged = merged.merge(diagnostics=diagnostics)
-        return merged
+        return self._resource_runtime().discover(
+            bundle,
+            context=_RunnerContext(cwd=str(bundle.cwd)),
+        )
 
     async def discover_resources_async(self, bundle: ResourceBundle, *, reason: str = "refresh") -> ResourceBundle:
         del reason
-        merged = bundle
-        diagnostics: list[ResourceDiagnostic] = []
-        context = _RunnerContext(cwd=str(bundle.cwd))
-        for extension in self._extensions:
-            handlers = extension.hooks.get("resources_discover", [])
-            try:
-                merged = await self._apply_resource_handlers_async(
-                    extension=extension,
-                    handlers=handlers,
-                    bundle=merged,
-                    context=context,
-                    diagnostics=diagnostics,
-                )
-            except Exception as exc:  # defensive fallback
-                diagnostics.append(
-                    ResourceDiagnostic(
-                        code="extension_resources_discover_failed",
-                        message=f"Extension resource discovery failed: {exc}",
-                        source_path=extension.source_path,
-                    )
-                )
-
-        if diagnostics:
-            self._diagnostics.extend(diagnostics)
-            merged = merged.merge(diagnostics=diagnostics)
-        return merged
+        return await self._resource_runtime().discover_async(
+            bundle,
+            context=_RunnerContext(cwd=str(bundle.cwd)),
+        )
 
     def bind_runtime(self, bindings: ExtensionRuntimeBindings) -> None:
         self._runtime_state.bindings = bindings
@@ -1684,211 +1564,49 @@ class ExtensionRunner:
             ),
         )
 
-    def _apply_resource_handlers(
-        self,
-        *,
-        extension: LoadedExtension,
-        handlers: Sequence[object],
-        bundle: ResourceBundle,
-        context: _RunnerContext,
-        diagnostics: list[ResourceDiagnostic],
-    ) -> ResourceBundle:
-        merged = bundle
-        for handler in handlers:
-            try:
-                callback = cast(Callable[[ResourceBundle, _RunnerContext], object | None], handler)
-                contribution = callback(merged, context)
-            except Exception as exc:
-                diagnostics.append(
-                    ResourceDiagnostic(
-                        code="extension_resources_discover_failed",
-                        message=f"Extension resource discovery failed: {exc}",
-                        source_path=extension.source_path,
-                    )
-                )
-                continue
-            if inspect.isawaitable(contribution):
-                self._record_unsupported_async_hook(
-                    awaitable=contribution,
-                    source_path=extension.source_path,
-                    message="Async extension hooks are not supported in P0/v1.",
-                    diagnostics=diagnostics,
-                )
-                continue
-            if contribution is None:
-                continue
-            contribution = _coerce_resource_contribution(contribution, extension=extension)
-            if not isinstance(contribution, ExtensionResourceContribution):
-                diagnostics.append(
-                    ResourceDiagnostic(
-                        code="invalid_extension_resource_contribution",
-                        message="resources_discover hooks must return ExtensionResourceContribution or None.",
-                        source_path=extension.source_path,
-                    )
-                )
-                continue
-            diagnostics.extend(contribution.diagnostics)
-            merged = merged.merge(
-                prompt_descriptors=list(contribution.prompt_descriptors),
-                skills=list(contribution.skills),
-                extensions=list(contribution.extensions),
-                prompts=list(contribution.prompts),
-                themes=list(contribution.themes),
-            )
-        return merged
-
-    async def _apply_resource_handlers_async(
-        self,
-        *,
-        extension: LoadedExtension,
-        handlers: Sequence[object],
-        bundle: ResourceBundle,
-        context: _RunnerContext,
-        diagnostics: list[ResourceDiagnostic],
-    ) -> ResourceBundle:
-        merged = bundle
-        for handler in handlers:
-            try:
-                callback = cast(Callable[[ResourceBundle, _RunnerContext], object | None], handler)
-                contribution = callback(merged, context)
-                if inspect.isawaitable(contribution):
-                    contribution = await contribution
-            except Exception as exc:
-                diagnostics.append(
-                    ResourceDiagnostic(
-                        code="extension_resources_discover_failed",
-                        message=f"Extension resource discovery failed: {exc}",
-                        source_path=extension.source_path,
-                    )
-                )
-                continue
-            if contribution is None:
-                continue
-            contribution = _coerce_resource_contribution(contribution, extension=extension)
-            if not isinstance(contribution, ExtensionResourceContribution):
-                diagnostics.append(
-                    ResourceDiagnostic(
-                        code="invalid_extension_resource_contribution",
-                        message="resources_discover hooks must return ExtensionResourceContribution or None.",
-                        source_path=extension.source_path,
-                    )
-                )
-                continue
-            diagnostics.extend(contribution.diagnostics)
-            merged = merged.merge(
-                prompt_descriptors=list(contribution.prompt_descriptors),
-                skills=list(contribution.skills),
-                extensions=list(contribution.extensions),
-                prompts=list(contribution.prompts),
-                themes=list(contribution.themes),
-            )
-        return merged
-
-    def _collect_tools(self, extension: LoadedExtension) -> None:
-        for tool in extension.tool_definitions:
-            if tool.name in self._tool_names:
-                self._diagnostics.append(
-                    ResourceDiagnostic(
-                        code="duplicate_extension_tool",
-                        message=f"Duplicate extension tool '{tool.name}' was rejected.",
-                        source_path=extension.source_path,
-                    )
-            )
-                continue
-            self._tool_names.add(tool.name)
-            self._tool_source_info_by_name[tool.name] = _source_info_from_extension(extension)
+    def _apply_registry_snapshot(self) -> None:
+        registry = resolve_extension_registry(self._extensions)
+        self._diagnostics.extend(registry.diagnostics)
+        self._flag_diagnostics.extend(registry.flag_diagnostics)
+        self._shortcut_diagnostics.extend(registry.shortcut_diagnostics)
+        self._registered_commands.extend(registry.commands)
+        self._registered_commands_by_invocation_name.update(registry.command_index())
+        self._resolved_flags.extend(registry.flags)
+        self._resolved_shortcuts.extend(registry.shortcuts)
+        for name, value in registry.flag_defaults.items():
+            self._runtime_state.flag_values.setdefault(name, value)
+        for registration in registry.tools:
+            source_info = registration.source_info
+            self._tool_source_info_by_name[registration.definition.name] = source_info
             self._tool_definitions.append(
                 wrap_registered_tool_definition(
-                    tool,
-                    lambda: self._context_from_runtime(fallback_cwd=str(extension.source_path.parent)),
+                    registration.definition,
+                    lambda source_info=source_info: self._context_from_runtime(
+                        fallback_cwd=str(source_info.path.parent)
+                    ),
                 )
             )
 
-    def _build_registry_views(self) -> None:
-        literal_command_names: set[str] = set()
-        command_counts: dict[str, int] = {}
-        for extension in self._extensions:
-            for name in extension.commands:
-                literal_command_names.add(name)
-                command_counts[name] = command_counts.get(name, 0) + 1
+    def _dispatcher(self, *, fallback_cwd: str) -> ExtensionDispatcher:
+        return ExtensionDispatcher(
+            self._extensions,
+            context_factory=lambda extension: self._context_from_runtime(
+                fallback_cwd=fallback_cwd,
+                extension=extension,
+            ),
+            diagnostics=self._diagnostics,
+            runtime_error_handler=lambda extension, event, error: self._emit_runtime_error(
+                extension=extension,
+                event=event,
+                error=error,
+            ),
+        )
 
-        command_occurrences: dict[str, int] = {}
-        next_command_suffixes: dict[str, int] = {}
-        taken_command_names: set[str] = set()
-
-        for extension in self._extensions:
-            for name, command in extension.commands.items():
-                command_occurrences[name] = command_occurrences.get(name, 0) + 1
-                invocation_name = name
-                if command_counts.get(name, 0) > 1:
-                    suffix = next_command_suffixes.get(name, 1)
-                    invocation_name = f"{name}:{suffix}"
-                    while invocation_name in taken_command_names or invocation_name in literal_command_names:
-                        suffix += 1
-                        invocation_name = f"{name}:{suffix}"
-                    next_command_suffixes[name] = suffix + 1
-                source_info = _source_info_from_extension(extension)
-                resolved_command = ResolvedCommand(
-                    name=command.name,
-                    handler=command.handler,
-                    description=command.description,
-                    get_argument_completions=command.get_argument_completions,
-                    invocation_name=invocation_name,
-                    source_info=source_info,
-                    extension_name=extension.name,
-                )
-                self._registered_commands.append(resolved_command)
-                self._registered_commands_by_invocation_name[invocation_name] = resolved_command
-                taken_command_names.add(invocation_name)
-
-        seen_flags: set[str] = set()
-        seen_shortcuts: set[str] = set()
-        for extension in self._extensions:
-            for name, flag in extension.flags.items():
-                if name in seen_flags:
-                    diagnostic = ResourceDiagnostic(
-                        code="duplicate_extension_flag",
-                        message=f"Duplicate extension flag '{name}' was rejected.",
-                        source_path=extension.source_path,
-                    )
-                    self._flag_diagnostics.append(diagnostic)
-                    self._diagnostics.append(diagnostic)
-                    continue
-                seen_flags.add(name)
-                source_info = _source_info_from_extension(extension)
-                self._resolved_flags.append(
-                    ResolvedFlag(
-                        name=flag.name,
-                        type=flag.type,
-                        description=flag.description,
-                        default=flag.default,
-                        source_info=source_info,
-                        extension_name=extension.name,
-                    )
-                )
-                if flag.default is not None and name not in self._runtime_state.flag_values:
-                    self._runtime_state.flag_values[name] = flag.default
-            for shortcut, shortcut_definition in extension.shortcuts.items():
-                if shortcut in seen_shortcuts:
-                    diagnostic = ResourceDiagnostic(
-                        code="duplicate_extension_shortcut",
-                        message=f"Duplicate extension shortcut '{shortcut}' was rejected.",
-                        source_path=extension.source_path,
-                    )
-                    self._shortcut_diagnostics.append(diagnostic)
-                    self._diagnostics.append(diagnostic)
-                    continue
-                seen_shortcuts.add(shortcut)
-                source_info = _source_info_from_extension(extension)
-                self._resolved_shortcuts.append(
-                    ResolvedShortcut(
-                        shortcut=shortcut_definition.shortcut,
-                        handler=shortcut_definition.handler,
-                        description=shortcut_definition.description,
-                        source_info=source_info,
-                        extension_name=extension.name,
-                    )
-                )
+    def _resource_runtime(self) -> ExtensionResourceRuntime:
+        return ExtensionResourceRuntime(
+            self._extensions,
+            diagnostics=self._diagnostics,
+        )
 
     async def _emit_session_hook(self, hook_name: str, session: object) -> None:
         for extension in self._extensions:
@@ -1982,26 +1700,6 @@ class ExtensionRunner:
             }
         )
 
-    def _record_unsupported_async_hook(
-        self,
-        *,
-        awaitable: object,
-        source_path: Path,
-        message: str,
-        diagnostics: list[ResourceDiagnostic] | None = None,
-    ) -> None:
-        if inspect.iscoroutine(awaitable):
-            awaitable.close()
-        target = self._diagnostics if diagnostics is None else diagnostics
-        target.append(
-            ResourceDiagnostic(
-                code="unsupported_async_extension_hook",
-                message=message,
-                source_path=source_path,
-            )
-        )
-
-
 def _context_from_session(session: object) -> _RunnerContext:
     session_manager = getattr(session, "session_manager", None)
     get_cwd = getattr(session_manager, "get_cwd", None)
@@ -2063,27 +1761,6 @@ class _ExtensionEvent:
     def __init__(self, **values: object) -> None:
         for key, value in values.items():
             setattr(self, key, value)
-
-
-def _normalize_input_source(source: str) -> str:
-    return source if source in {"interactive", "rpc", "extension"} else "interactive"
-
-
-def _coerce_input_result(result: object) -> tuple[str | None, str | None, list[object] | None]:
-    if result is None:
-        return None, None, None
-    if isinstance(result, InputEventResult):
-        return result.action, result.text, result.images
-    if isinstance(result, dict):
-        action = result.get("action")
-        text = result.get("text")
-        images = result.get("images")
-        return (
-            action if isinstance(action, str) else None,
-            text if isinstance(text, str) else None,
-            images if isinstance(images, list) else None,
-        )
-    return None, None, None
 
 
 def _coerce_before_agent_start_result(result: object) -> BeforeAgentStartResult | None:
@@ -2248,16 +1925,6 @@ def _path_text(value: object) -> str:
     return value.as_posix() if isinstance(value, Path) else str(value or "")
 
 
-def _source_info_from_extension(extension: LoadedExtension) -> SourceInfo[Path]:
-    return SourceInfo(
-        path=extension.entry_path or extension.source_path,
-        source=extension.source,
-        scope=_scope_from_extension(extension),
-        origin=_origin_from_extension(extension),
-        base_dir=extension.source_root,
-    )
-
-
 def _extension_hook_failure_diagnostic(
     *,
     extension: LoadedExtension,
@@ -2294,196 +1961,6 @@ def _serialize_source_info(source_info: SourceInfo[Path]) -> dict[str, object]:
         "baseDir": source_info.base_dir.as_posix() if source_info.base_dir is not None else None,
         "base_dir": source_info.base_dir.as_posix() if source_info.base_dir is not None else None,
     }
-
-
-def _origin_from_extension(extension: LoadedExtension):
-    if extension.source_scope in {"package", "builtin"} or extension.source_kind in {"external_package", "built_in"}:
-        return "package"
-    return "top-level"
-
-
-def _scope_from_extension(extension: LoadedExtension):
-    if extension.source in {"inline", "sdk"}:
-        return "temporary"
-    if extension.source_scope == "user":
-        return "user"
-    return "project"
-
-
-def _coerce_resource_contribution(
-    contribution: object,
-    *,
-    extension: LoadedExtension,
-) -> object:
-    if not isinstance(contribution, dict):
-        return contribution
-    diagnostics: list[ResourceDiagnostic] = []
-    return ExtensionResourceContribution(
-        prompts=_prompt_descriptors_from_paths(
-            _as_path_list(contribution.get("promptPaths")),
-            extension=extension,
-            diagnostics=diagnostics,
-        ),
-        skills=_skill_descriptors_from_paths(
-            _as_path_list(contribution.get("skillPaths")),
-            extension=extension,
-            diagnostics=diagnostics,
-        ),
-        themes=_theme_descriptors_from_paths(
-            _as_path_list(contribution.get("themePaths")),
-            extension=extension,
-            diagnostics=diagnostics,
-        ),
-        diagnostics=diagnostics,
-    )
-
-
-def _as_path_list(value: object) -> list[Path]:
-    if not isinstance(value, list):
-        return []
-    return [Path(item) for item in value if isinstance(item, str | Path)]
-
-
-def _prompt_descriptors_from_paths(
-    paths: Sequence[Path],
-    *,
-    extension: LoadedExtension,
-    diagnostics: list[ResourceDiagnostic],
-) -> list[PromptFragmentDescriptor]:
-    descriptors: list[PromptFragmentDescriptor] = []
-    for path in paths:
-        descriptor, diagnostic = _prompt_descriptor_from_path(path, extension=extension)
-        if diagnostic is not None:
-            diagnostics.append(diagnostic)
-        if descriptor is not None:
-            descriptors.append(descriptor)
-    return descriptors
-
-
-def _prompt_descriptor_from_path(
-    path: Path,
-    *,
-    extension: LoadedExtension,
-) -> tuple[PromptFragmentDescriptor | None, ResourceDiagnostic | None]:
-    if not path.is_file():
-        return None, ResourceDiagnostic(
-            code="extension_prompt_path_not_found",
-            message=f"Extension prompt path does not exist or is not a file: {path}",
-            source_path=path,
-        )
-    try:
-        text = path.read_text(encoding="utf-8")
-    except OSError as exc:
-        return None, ResourceDiagnostic(
-            code="extension_prompt_path_read_failed",
-            message=f"Failed to read extension prompt path {path}: {exc}",
-            source_path=path,
-        )
-    return (
-        PromptFragmentDescriptor(
-            name=path.stem,
-            source_path=path,
-            text=text,
-            canonical_name=path.name,
-            source=extension.source,
-            source_kind=extension.source_kind,
-            source_scope=extension.source_scope,
-            source_root=path.parent,
-        ),
-        None,
-    )
-
-
-def _skill_descriptors_from_paths(
-    paths: Sequence[Path],
-    *,
-    extension: LoadedExtension,
-    diagnostics: list[ResourceDiagnostic],
-) -> list[SkillDescriptor]:
-    descriptors: list[SkillDescriptor] = []
-    for path in paths:
-        descriptor, diagnostic = _skill_descriptor_from_path(path, extension=extension)
-        if diagnostic is not None:
-            diagnostics.append(diagnostic)
-        if descriptor is not None:
-            descriptors.append(descriptor)
-    return descriptors
-
-
-def _skill_descriptor_from_path(
-    path: Path,
-    *,
-    extension: LoadedExtension,
-) -> tuple[SkillDescriptor | None, ResourceDiagnostic | None]:
-    skill_file = path / "SKILL.md" if path.is_dir() else path
-    if not skill_file.is_file():
-        return None, ResourceDiagnostic(
-            code="extension_skill_path_not_found",
-            message=f"Extension skill path does not exist or is not a skill file: {path}",
-            source_path=path,
-        )
-    try:
-        content = skill_file.read_text(encoding="utf-8")
-    except OSError as exc:
-        return None, ResourceDiagnostic(
-            code="extension_skill_path_read_failed",
-            message=f"Failed to read extension skill path {skill_file}: {exc}",
-            source_path=skill_file,
-        )
-    return (
-        SkillDescriptor(
-            name=skill_file.parent.name if skill_file.name == "SKILL.md" else skill_file.stem,
-            source_path=skill_file,
-            content=content,
-            canonical_name=f"{skill_file.parent.name}/SKILL.md" if skill_file.name == "SKILL.md" else skill_file.name,
-            source=extension.source,
-            source_kind=extension.source_kind,
-            source_scope=extension.source_scope,
-            source_root=skill_file.parent.parent if skill_file.name == "SKILL.md" else skill_file.parent,
-        ),
-        None,
-    )
-
-
-def _theme_descriptors_from_paths(
-    paths: Sequence[Path],
-    *,
-    extension: LoadedExtension,
-    diagnostics: list[ResourceDiagnostic],
-) -> list[ThemeDescriptor]:
-    descriptors: list[ThemeDescriptor] = []
-    for path in paths:
-        descriptor, diagnostic = _theme_descriptor_from_path(path, extension=extension)
-        if diagnostic is not None:
-            diagnostics.append(diagnostic)
-        if descriptor is not None:
-            descriptors.append(descriptor)
-    return descriptors
-
-
-def _theme_descriptor_from_path(
-    path: Path,
-    *,
-    extension: LoadedExtension,
-) -> tuple[ThemeDescriptor | None, ResourceDiagnostic | None]:
-    if not path.exists():
-        return None, ResourceDiagnostic(
-            code="extension_theme_path_not_found",
-            message=f"Extension theme path does not exist: {path}",
-            source_path=path,
-        )
-    return (
-        ThemeDescriptor(
-            name=path.stem if path.is_file() else path.name,
-            source_path=path,
-            canonical_name=path.name,
-            source=extension.source,
-            source_kind=extension.source_kind,
-            source_scope=extension.source_scope,
-            source_root=path.parent,
-        ),
-        None,
-    )
 
 
 def _compact_custom_instructions(options: object | None) -> str | None:
