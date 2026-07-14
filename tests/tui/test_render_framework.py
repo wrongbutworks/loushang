@@ -135,6 +135,36 @@ def test_screen_root_preserves_base_cursor_when_no_surface_is_visible() -> None:
     assert result.cursor == CursorDeclaration(row=0, column=2)
 
 
+def test_surface_host_preserves_base_result_identity_without_visible_surfaces() -> None:
+    composer = FocusTarget("composer")
+    hidden_focus = FocusTarget("hidden")
+    composer.focus()
+    host = SurfaceHost(base_focus=composer)
+    handle = host.open_surface(
+        Surface(
+            renderable=TextRenderable(("hidden",), []),
+            focus_target=hidden_focus,
+            visible=lambda size: size.columns > 20,
+        )
+    )
+    handle.focus()
+    handle.entry.last_row = 3
+    handle.entry.last_column = 4
+    base = RenderResult(
+        lines=(RenderLine("base"),),
+        cursor=CursorDeclaration(row=0, column=4),
+    )
+
+    result = host.compose(base, RenderConstraints(width=20, max_height=5))
+
+    assert result is base
+    assert host._last_size == TerminalSize(columns=20, rows=5)
+    assert composer.focused is True
+    assert hidden_focus.focused is False
+    assert handle.entry.last_row is None
+    assert handle.entry.last_column is None
+
+
 def test_surface_host_captures_and_restores_focus() -> None:
     composer = FocusTarget("composer")
     dialog_focus = FocusTarget("dialog")

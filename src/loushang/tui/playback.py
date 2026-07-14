@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import json
 import os
-from collections.abc import Callable, Iterable, Iterator, Mapping
+from collections.abc import Callable, Iterable, Iterator, Mapping, Sequence
 from contextlib import contextmanager
 from dataclasses import dataclass, field, replace
 from itertools import zip_longest
@@ -22,8 +22,9 @@ PLAYBACK_ARTIFACTS_ENV = "LOUSHANG_TUI_PLAYBACK_ARTIFACTS"
 
 @dataclass(frozen=True, slots=True)
 class RenderDiagnostics:
-    current_logical_lines: tuple[str, ...]
-    previous_rendered_lines: tuple[str, ...] = ()
+    current_logical_lines: Sequence[str]
+    raw_logical_lines: Sequence[str] = ()
+    previous_rendered_lines: Sequence[str] = ()
     changed_line_range: tuple[int, int] | None = None
     operation_class: str | None = None
     append_start: int | None = None
@@ -43,6 +44,11 @@ class RenderDiagnostics:
     repaint_reason: str | None = None
     clear_scrollback_policy: str = "disabled"
     clear_scrollback_emitted: bool = False
+    reused_render_segment_count: int = 0
+    materialized_logical_line_count: int = 0
+    flattened_logical_line_count: int = 0
+    base_frame_revision: int = 0
+    frame_revision: int = 0
 
 
 @dataclass(frozen=True, slots=True)
@@ -125,7 +131,7 @@ class PlaybackHarness:
             frame: TerminalFrame | None = None
             try:
                 frame = self.port.flush(diagnostics.operations)
-            except Exception as exc:  # noqa: BLE001 - playback harness records terminal failures.
+            except Exception as exc:
                 flush_error = str(exc)
             else:
                 self.previous_successful_diagnostics = diagnostics
