@@ -800,17 +800,19 @@ def _render_markdown_blocks(
 ) -> tuple[str, ...]:
     rendered: list[str] = []
     stable_block_count = max(0, len(blocks) - 1) if render_cache is not None else 0
+    block_cache_context: tuple[object, ...] = ()
+    if stable_block_count:
+        block_cache_context = (
+            width,
+            _theme_cache_signature(theme),
+            _capabilities_cache_signature(capabilities),
+            id(code_highlighter) if code_highlighter is not None else None,
+            _style_cache_signature(default_style),
+        )
     for index, block in enumerate(blocks):
         if render_cache is not None and index < stable_block_count:
             block_lines = render_cache.get_or_render(
-                _markdown_block_cache_key(
-                    block,
-                    width=width,
-                    theme=theme,
-                    capabilities=capabilities,
-                    code_highlighter=code_highlighter,
-                    default_style=default_style,
-                ),
+                (block, *block_cache_context),
                 lambda block=block: _render_markdown_block(
                     block,
                     width=width,
@@ -834,25 +836,6 @@ def _render_markdown_blocks(
         if _needs_pi_style_blank_after(block.kind, next_kind):
             rendered.append("")
     return tuple(rendered)
-
-
-def _markdown_block_cache_key(
-    block: _MarkdownBlock,
-    *,
-    width: int,
-    theme: ThemeResolver | None,
-    capabilities: TerminalCapabilities | None,
-    code_highlighter: CodeHighlighterLike | None,
-    default_style: ThemeStyle | None,
-) -> tuple[object, ...]:
-    return (
-        block,
-        width,
-        _theme_cache_signature(theme),
-        _capabilities_cache_signature(capabilities),
-        id(code_highlighter) if code_highlighter is not None else None,
-        _style_cache_signature(default_style),
-    )
 
 
 def _render_markdown_block(
