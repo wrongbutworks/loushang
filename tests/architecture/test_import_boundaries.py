@@ -614,6 +614,91 @@ def test_harness_runtime_data_foundations_are_documented_and_adopted() -> None:
     )
 
 
+def test_product_configuration_runtime_boundary_is_documented_and_adopted() -> None:
+    import loushang.harness as harness
+
+    design_path = Path(
+        "docs/internals/architecture/harness/"
+        "product-configuration-runtime-boundary.md"
+    )
+    assert design_path.exists()
+    design_text = " ".join(design_path.read_text(encoding="utf-8").split())
+    required_phrases = {
+        "Harness Product Configuration Runtime Boundary",
+        "`loushang.harness.config`",
+        "`ConfigFieldSpec[T]`",
+        "`SchemaConfigCodec`",
+        "`ScopedConfigRuntime`",
+        "`ConfigActivationRuntime`",
+        "`ConfigValueResolver`",
+        "Harness configuration never stores credentials",
+    }
+    assert (
+        sorted(phrase for phrase in required_phrases if phrase not in design_text) == []
+    )
+
+    readme_text = Path("docs/internals/architecture/harness/README.md").read_text(
+        encoding="utf-8"
+    )
+    assert "Product Configuration Runtime Boundary" in readme_text
+
+    inventory_text = Path(
+        "docs/internals/architecture/harness/coding-to-harness-migration-inventory.md"
+    ).read_text(encoding="utf-8")
+    assert "`loushang.harness.config`" in inventory_text
+    assert "### Product Configuration Runtime" in inventory_text
+    assert "`harness/product-configuration-runtime`" in inventory_text
+    assert (
+        "Keep `coding.control` frozen during runtime consolidation."
+        not in inventory_text
+    )
+
+    expected_imports = {
+        Path("src/loushang/coding/control/settings_manager.py"): {
+            "loushang.harness.config.ConfigFieldSpec",
+            "loushang.harness.config.LayeredConfig",
+            "loushang.harness.config.SchemaConfigCodec",
+            "loushang.harness.config.ScopedConfigRuntime",
+        },
+        Path("src/loushang/coding/control/config_value.py"): {
+            "loushang.harness.config.values.ConfigValueResolver",
+        },
+        Path("src/loushang/coding/bootstrap.py"): {
+            "loushang.harness.config.ConfigActivationRuntime",
+        },
+    }
+    missing: list[str] = []
+    for path, required in expected_imports.items():
+        imports = set(_absolute_imports(path))
+        missing.extend(
+            f"{path.as_posix()} missing {name}" for name in sorted(required - imports)
+        )
+    assert missing == []
+
+    assert _find_forbidden_imports(
+        ImportBoundary(
+            name="harness config",
+            root=Path("src/loushang/harness/config"),
+            forbidden_prefixes=("loushang.ai", "loushang.coding"),
+        )
+    ) == []
+
+    value_imports = _absolute_imports(Path("src/loushang/harness/config/values.py"))
+    assert not any(
+        _matches_any(imported, ("subprocess",)) for imported in value_imports
+    )
+
+    config_symbols = {
+        "ConfigActivationRuntime",
+        "ConfigFieldSpec",
+        "ConfigValueResolver",
+        "LayeredConfig",
+        "SchemaConfigCodec",
+        "ScopedConfigRuntime",
+    }
+    assert config_symbols.isdisjoint(set(harness.__all__))
+
+
 def test_harness_conversation_runtime_core_is_documented_and_adopted() -> None:
     design_path = Path(
         "docs/internals/architecture/harness/conversation-runtime-core-boundary.md"

@@ -58,6 +58,11 @@ planning, work event persistence, or AI provider behavior.
   ownership of transcript repositories, rebuildable projection indexes,
   layered configuration, explainable salience, and summary-profile mechanics
   while preserving Product schemas, prompts, defaults, and artifact semantics.
+- [Product Configuration Runtime Boundary](product-configuration-runtime-boundary.md)
+  defines transactional layered configuration, declarative Product schema
+  adapters, scoped change records, injected value resolution, and activation
+  DAG ownership while preserving Product fields, defaults, paths, effects,
+  diagnostics, model/auth behavior, and credentials.
 - [Conversation Runtime Core Boundary](conversation-runtime-core-boundary.md)
   defines shared conversation records and ports, repository/catalog/replay,
   branch delta, command execution records, and turn-aware compaction planning
