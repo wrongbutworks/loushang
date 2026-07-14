@@ -237,6 +237,33 @@ def test_markdown_renderer_reuses_shared_cache_for_stable_streaming_blocks() -> 
     assert highlighter.calls == [("print('stable')", "python")]
 
 
+def test_markdown_renderer_computes_shared_cache_context_once_per_render(monkeypatch) -> None:
+    calls = 0
+    original = markdown_renderer_module._theme_cache_signature
+
+    def theme_cache_signature(theme: ThemeResolver | None) -> tuple[object, ...] | None:
+        nonlocal calls
+        calls += 1
+        return original(theme)
+
+    monkeypatch.setattr(markdown_renderer_module, "_theme_cache_signature", theme_cache_signature)
+    cache = markdown_renderer_module.MarkdownRenderCache()
+    theme = ThemeResolver(defaults={"markdown.strong": {"bold": True}})
+
+    rendered_text(
+        MarkdownRenderer("Intro\n\nSecond\n\nTail", theme=theme, render_cache=cache),
+        width=40,
+    )
+    rendered_text(
+        MarkdownRenderer("Intro\n\nSecond\n\nTail grows", theme=theme, render_cache=cache),
+        width=40,
+    )
+    assert calls == 2
+
+    rendered_text(MarkdownRenderer("Tail", theme=theme, render_cache=cache), width=40)
+    assert calls == 2
+
+
 def test_markdown_renderer_does_not_reuse_shared_cache_for_unstable_tail_block() -> None:
     cache = markdown_renderer_module.MarkdownRenderCache()
     highlighter = FakeCodeHighlighter()

@@ -108,6 +108,7 @@ class ScreenCodingEventProjector:
             text = _extract_text(message).strip()
             if text and not self.app.state.consume_pending_user_echo(text):
                 self.app.state.records.append(_user_record(text))
+                self.app.state.mark_records_changed()
             return
         if role == "assistant":
             self.app.begin_assistant()

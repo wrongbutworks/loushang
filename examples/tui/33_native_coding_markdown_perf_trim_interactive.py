@@ -7,11 +7,11 @@ import sys
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, TextIO, cast
 
-from loushang.coding.ui.native_loop import run_native_coding_tui
+from loushang.coding.ui.screen_loop import run_screen_coding_tui
 
 if TYPE_CHECKING:
-    from loushang.coding.ui.native_app import (
-        NativeCodingTuiApp as _PerfNativeCodingTuiAppBase,
+    from loushang.coding.ui.screen_app import (
+        ScreenCodingTuiApp as _PerfNativeCodingTuiAppBase,
     )
 
 
@@ -81,7 +81,7 @@ async def run_interactive(
     app.set_status(
         f"type 1, 10, 100... /quit exits | trim budget={active_line_budget} lines | per-turn auto trim"
     )
-    return await run_native_coding_tui(
+    return await run_screen_coding_tui(
         app=app,
         stdin=stdin,
         stdout=stdout,
