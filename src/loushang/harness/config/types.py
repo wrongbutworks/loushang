@@ -13,6 +13,8 @@ class ConfigIssue:
     layer: str
     message: str
     error: Exception
+    code: str = "config_issue"
+    key: str | None = None
 
 
 @dataclass(frozen=True)
