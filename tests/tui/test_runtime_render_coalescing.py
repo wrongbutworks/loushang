@@ -35,12 +35,21 @@ def test_runtime_coalesces_pending_stream_render_until_frame_deadline() -> None:
     pending = runtime.request_next_animation_frame()
 
     assert decision.render_now is False
-    assert decision.delay_ms == 11
+    assert decision.delay_ms == 45
     assert pending.render_now is False
-    assert pending.delay_ms == 11
+    assert pending.delay_ms == 45
     assert pending.coalesced is True
 
-    now[0] = 116
+    now[0] = 130
+    repeated = runtime.request_render("stream")
+    still_pending = runtime.request_next_animation_frame()
+
+    assert repeated.render_now is False
+    assert repeated.delay_ms == 20
+    assert still_pending.render_now is False
+    assert still_pending.delay_ms == 20
+
+    now[0] = 150
     due = runtime.request_next_animation_frame()
 
     assert due.render_now is True
@@ -59,6 +68,8 @@ def test_runtime_keeps_input_render_requests_immediate() -> None:
     runtime.render_now()
 
     now[0] = 105
+    runtime.request_render("stream")
+    now[0] = 106
     decision = runtime.request_render("input")
     pending = runtime.request_next_animation_frame()
 
@@ -66,6 +77,53 @@ def test_runtime_keeps_input_render_requests_immediate() -> None:
     assert decision.delay_ms == 0
     assert pending.render_now is True
     assert pending.delay_ms == 0
+
+
+def test_runtime_product_request_preempts_pending_stream_deadline() -> None:
+    now = [100]
+    root = StaticRoot(("one",))
+    runtime = TuiRuntime(
+        render_loop=RenderLoop(root),
+        terminal=FakeTerminalPort(size=TerminalSize(columns=20, rows=5)),
+        now_ms=lambda: now[0],
+    )
+    runtime.render_now()
+
+    now[0] = 105
+    runtime.request_render("stream")
+    product = runtime.request_render("product")
+    pending = runtime.request_next_animation_frame()
+
+    assert product.render_now is False
+    assert product.delay_ms == 11
+    assert pending.render_now is False
+    assert pending.delay_ms == 11
+
+
+def test_runtime_coalesced_stream_renders_latest_root_at_deadline() -> None:
+    now = [100]
+    root = StaticRoot(("initial",))
+    runtime = TuiRuntime(
+        render_loop=RenderLoop(root),
+        terminal=FakeTerminalPort(size=TerminalSize(columns=20, rows=5)),
+        now_ms=lambda: now[0],
+    )
+    runtime.render_now()
+
+    now[0] = 105
+    root.lines = ("intermediate",)
+    runtime.request_render("stream")
+    now[0] = 130
+    root.lines = ("latest",)
+    runtime.request_render("stream")
+
+    assert runtime.request_next_animation_frame().render_now is False
+
+    now[0] = 150
+    assert runtime.request_next_animation_frame().render_now is True
+    step = runtime.render_now()
+
+    assert step.diagnostics.current_logical_lines == ("latest",)
 
 
 def test_runtime_deletes_replaced_kitty_image_once() -> None:

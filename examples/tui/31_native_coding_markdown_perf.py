@@ -12,8 +12,8 @@ from io import StringIO
 from time import perf_counter
 from typing import Any, TextIO
 
-from loushang.coding.ui.native_app import NativeCodingTuiApp
-from loushang.coding.ui.native_loop import run_native_coding_tui
+from loushang.coding.ui.screen_app import ScreenCodingTuiApp
+from loushang.coding.ui.screen_loop import run_screen_coding_tui
 from loushang.tui import (
     PlaybackStep,
     ProcessTerminalPort,
@@ -27,6 +27,7 @@ from loushang.tui import (
 )
 
 DEFAULT_STREAM_SECONDS = 1.2
+MARKDOWN_LINES_PER_BLOCK = 20
 
 
 @dataclass(slots=True)
@@ -122,7 +123,7 @@ class PerfReport:
     gc_count_2: int
 
 
-class PerfNativeCodingTuiApp(NativeCodingTuiApp):
+class PerfNativeCodingTuiApp(ScreenCodingTuiApp):
     __slots__ = ("_last_render_line_chars", "_last_render_line_count", "perf_reports", "render_stats")
 
     def __init__(self, **kwargs: Any) -> None:
@@ -181,7 +182,14 @@ def _parse_count(text: str) -> int | None:
 
 
 def _markdown_line(index: int) -> str:
-    return f"- **Line {index}**: markdown `code-{index}` with 中文宽字符 and [link {index}](https://example.com/{index}).\n"
+    block_prefix = ""
+    if (index - 1) % MARKDOWN_LINES_PER_BLOCK == 0:
+        block_number = (index - 1) // MARKDOWN_LINES_PER_BLOCK + 1
+        block_prefix = ("" if index == 1 else "\n") + f"### Markdown block {block_number}\n\n"
+    return (
+        block_prefix + f"- **Line {index}**: markdown `code-{index}` with 中文宽字符 "
+        f"and [link {index}](https://example.com/{index}).\n"
+    )
 
 
 def _append_perf_stats(app: PerfNativeCodingTuiApp, *, requested_lines: int, stream_elapsed_seconds: float) -> None:
@@ -280,7 +288,7 @@ async def run_interactive(*, stdin: TextIO, stdout: TextIO, stream_seconds: floa
         session_label="manual",
     )
     app.set_status("type 1, 10, 100... /quit exits")
-    return await run_native_coding_tui(
+    return await run_screen_coding_tui(
         app=app,
         stdin=stdin,
         stdout=stdout,
@@ -301,6 +309,7 @@ async def run_script(
     render_interval_ms: int,
     trace_memory: bool,
     show_final: bool,
+    render_every_n_chunks: int = 0,
 ) -> int:
     if trace_memory and not tracemalloc.is_tracing():
         tracemalloc.start()
@@ -321,7 +330,9 @@ async def run_script(
     stdout.write("Native coding markdown perf script\n")
     stdout.write(f"requested_markdown_lines={count}\n")
     stdout.write(f"rounds={rounds}\n")
-    stdout.write(f"stream_seconds={stream_seconds:.3f}\n\n")
+    stdout.write(f"stream_seconds={stream_seconds:.3f}\n")
+    stdout.write(f"markdown_lines_per_block={MARKDOWN_LINES_PER_BLOCK}\n")
+    stdout.write(f"render_every_n_chunks={max(0, render_every_n_chunks)}\n\n")
 
     for round_index in range(1, rounds + 1):
         steps = await _drive_script_round(
@@ -330,6 +341,7 @@ async def run_script(
             count=count,
             stream_seconds=stream_seconds,
             render_interval_ms=render_interval_ms,
+            render_every_n_chunks=render_every_n_chunks,
         )
         stdout.write(_script_round_line(round_index, app=app, steps=steps))
 
@@ -352,6 +364,7 @@ async def _drive_script_round(
     count: int,
     stream_seconds: float,
     render_interval_ms: int,
+    render_every_n_chunks: int = 0,
 ) -> tuple[PlaybackStep, ...]:
     steps: list[PlaybackStep] = []
     app.render_stats.reset()
@@ -362,11 +375,16 @@ async def _drive_script_round(
     app.begin_assistant()
     delay = stream_seconds / max(1, count)
     render_interval = max(0, render_interval_ms) / 1000
+    render_every_n_chunks = max(0, render_every_n_chunks)
     next_render_at = perf_counter()
     for index in range(1, count + 1):
         app.append_assistant_chunk(_markdown_line(index))
         now = perf_counter()
-        if render_interval <= 0 or now >= next_render_at or index == count:
+        if render_every_n_chunks:
+            should_render = index % render_every_n_chunks == 0 or index == count
+        else:
+            should_render = render_interval <= 0 or now >= next_render_at or index == count
+        if should_render:
             steps.append(runtime.render_now())
             next_render_at = perf_counter() + render_interval
         if delay > 0:
@@ -543,6 +561,12 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
         default=80,
         help="script render coalescing interval; use 0 to render every chunk",
     )
+    parser.add_argument(
+        "--script-render-every-n-chunks",
+        type=int,
+        default=0,
+        help="use a fixed chunk cadence instead of wall-clock render coalescing",
+    )
     parser.add_argument("--trace-memory", action="store_true", help="enable tracemalloc current/peak memory stats")
     parser.add_argument("--width", type=int, default=100, help="script snapshot width")
     parser.add_argument("--height", type=int, default=32, help="script snapshot height")
@@ -564,6 +588,7 @@ def main(argv: list[str] | None = None) -> int:
                 render_interval_ms=args.script_render_interval_ms,
                 trace_memory=args.trace_memory,
                 show_final=args.show_final,
+                render_every_n_chunks=args.script_render_every_n_chunks,
             )
         )
     return asyncio.run(run_interactive(stdin=sys.stdin, stdout=sys.stdout, stream_seconds=stream_seconds))

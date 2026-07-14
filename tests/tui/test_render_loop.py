@@ -5,6 +5,7 @@ from pathlib import Path
 
 import pytest
 
+import loushang.tui.render_loop as render_loop_module
 from loushang.observability import configure_debug_logging, reset_observability
 from loushang.tui import (
     CURSOR_MARKER,
@@ -23,6 +24,7 @@ from loushang.tui import (
     delete_kitty_image,
     wrap_tmux_passthrough,
 )
+from loushang.tui.core import RenderLineSegment, SegmentedRenderLines
 from loushang.tui.render_loop import DEFAULT_STRATEGY_ORDER, RenderPlanStrategyKind
 
 
@@ -32,6 +34,42 @@ class StaticRoot:
 
     def render(self, constraints: RenderConstraints) -> RenderResult:
         return RenderResult.from_lines([RenderLine(line) for line in self.lines], constraints=constraints)
+
+
+class SegmentedRoot:
+    def __init__(
+        self,
+        segments: tuple[RenderLineSegment, ...],
+        *,
+        cursor: CursorDeclaration | None = None,
+    ) -> None:
+        self.segments = segments
+        self.cursor = cursor
+
+    def render(self, constraints: RenderConstraints) -> RenderResult:
+        del constraints
+        return RenderResult(
+            lines=SegmentedRenderLines.from_segments(self.segments),
+            cursor=self.cursor,
+        )
+
+
+class FlatFrameRoot:
+    def __init__(
+        self,
+        lines: tuple[str, ...],
+        *,
+        cursor: CursorDeclaration | None = None,
+    ) -> None:
+        self.lines = lines
+        self.cursor = cursor
+
+    def render(self, constraints: RenderConstraints) -> RenderResult:
+        return RenderResult.from_lines(
+            tuple(RenderLine(line) for line in self.lines),
+            constraints=constraints,
+            cursor=self.cursor,
+        )
 
 
 class TextRoot:
@@ -54,6 +92,121 @@ class RecordingDebugSink:
 
     def write_debug_event(self, record) -> None:
         self.events.append(record)
+
+
+def _render_segment(
+    *lines: str,
+    identity: object | None = None,
+    revision: object = 0,
+) -> RenderLineSegment:
+    return RenderLineSegment(
+        tuple(RenderLine(line) for line in lines),
+        identity=identity if identity is not None else object(),
+        revision=revision,
+    )
+
+
+def test_segmented_render_skips_11748_committed_rows_on_bottom_frame_update(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    committed = _render_segment(
+        *(f"history {index}" for index in range(11_748)),
+        identity="committed",
+        revision=1,
+    )
+    bottom_identity = object()
+    root = SegmentedRoot(
+        (committed, _render_segment("Working (1s)", identity=bottom_identity, revision=1))
+    )
+    loop = RenderLoop(root)
+    size = TerminalSize(columns=80, rows=24)
+    first = loop.plan(size)
+    loop.commit(first, size=size)
+
+    compared_tail_sizes: list[tuple[int, int]] = []
+    original_changed_range = render_loop_module._changed_line_range_flat
+
+    def record_changed_range_sizes(
+        previous_lines: tuple[str, ...],
+        current_lines: tuple[str, ...],
+    ) -> tuple[int, int] | None:
+        compared_tail_sizes.append((len(previous_lines), len(current_lines)))
+        return original_changed_range(previous_lines, current_lines)
+
+    monkeypatch.setattr(
+        render_loop_module,
+        "_changed_line_range_flat",
+        record_changed_range_sizes,
+    )
+    root.segments = (
+        committed,
+        _render_segment("Working (2s)", identity=bottom_identity, revision=2),
+    )
+
+    tick = loop.plan(size)
+
+    assert tick.changed_line_range == (11_748, 11_748)
+    assert compared_tail_sizes == [(1, 1)]
+    assert tick.reused_render_segment_count == 1
+    assert tick.materialized_logical_line_count == 1
+    assert tick.flattened_logical_line_count == 0
+
+    loop.commit(tick, size=size)
+    compared_tail_sizes.clear()
+
+    no_op = loop.plan(size)
+
+    assert no_op.operation_class == "noop"
+    assert no_op.operations == ()
+    assert compared_tail_sizes == []
+    assert no_op.reused_render_segment_count == 2
+    assert no_op.materialized_logical_line_count == 0
+    assert no_op.flattened_logical_line_count == 0
+
+
+def test_segmented_row_shift_matches_flat_planner_and_repaints_shifted_image() -> None:
+    image_line = "\x1b_Gi=123;AAAA\x1b\\"
+    committed = _render_segment("history one", "history two", identity="history")
+    bottom = _render_segment(image_line, identity="bottom-image")
+    segmented_root = SegmentedRoot(
+        (committed, _render_segment("draft", identity="draft", revision=1), bottom),
+        cursor=CursorDeclaration(row=3, column=0),
+    )
+    flat_root = FlatFrameRoot(
+        ("history one", "history two", "draft", image_line),
+        cursor=CursorDeclaration(row=3, column=0),
+    )
+    segmented_loop = RenderLoop(segmented_root)
+    flat_loop = RenderLoop(flat_root)
+    size = TerminalSize(columns=80, rows=8)
+    segmented_first = segmented_loop.plan(size)
+    flat_first = flat_loop.plan(size)
+    segmented_loop.commit(segmented_first, size=size)
+    flat_loop.commit(flat_first, size=size)
+
+    segmented_root.segments = (
+        committed,
+        _render_segment("draft", "extra", identity="draft", revision=2),
+        bottom,
+    )
+    segmented_root.cursor = CursorDeclaration(row=4, column=0)
+    flat_root.lines = ("history one", "history two", "draft", "extra", image_line)
+    flat_root.cursor = CursorDeclaration(row=4, column=0)
+
+    segmented = segmented_loop.plan(size)
+    flat = flat_loop.plan(size)
+
+    assert tuple(segmented.current_logical_lines) == tuple(flat.current_logical_lines)
+    assert segmented.changed_line_range == flat.changed_line_range == (3, 4)
+    assert segmented.operation_class == flat.operation_class
+    assert segmented.operations == flat.operations
+    assert segmented.viewport_top == flat.viewport_top
+    assert segmented.logical_cursor_row == flat.logical_cursor_row
+    assert delete_kitty_image(123) in tuple(
+        operation.text
+        for operation in segmented.operations
+        if operation.kind == "write"
+    )
 
 
 def test_first_render_flushes_full_logical_lines_without_clearing_scrollback() -> None:
@@ -828,17 +981,32 @@ def test_failed_runtime_flush_does_not_advance_render_loop_snapshot() -> None:
     render_loop = RenderLoop(root)
     runtime = TuiRuntime(render_loop=render_loop, terminal=port)
     runtime.render_now()
+    committed_revision = render_loop.committed_frame_revision
     root.lines = ("second",)
     port.fail_next_flush(RuntimeError("write failed"))
 
     with pytest.raises(RuntimeError, match="write failed"):
         runtime.render_now()
 
+    assert render_loop.committed_frame_revision == committed_revision
     root.lines = ("third",)
     step = runtime.render_now()
 
     assert step.diagnostics.previous_rendered_lines == ("first",)
     assert step.diagnostics.changed_line_range == (0, 0)
+    assert step.diagnostics.base_frame_revision == committed_revision
+
+
+def test_render_loop_rejects_plan_from_a_stale_committed_frame() -> None:
+    loop = RenderLoop(StaticRoot(("line",)))
+    size = TerminalSize(columns=20, rows=5)
+    first = loop.plan(size)
+    stale = loop.plan(size)
+
+    loop.commit(first, size=size)
+
+    with pytest.raises(RuntimeError, match="base revision"):
+        loop.commit(stale, size=size)
 
 
 def test_process_terminal_port_writes_serialized_frame_to_output() -> None:

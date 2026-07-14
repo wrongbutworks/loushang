@@ -3,9 +3,10 @@ from __future__ import annotations
 import importlib
 import inspect
 import re
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field
 from functools import lru_cache
-from typing import Callable, Protocol, Sequence, TypeAlias, cast
+from typing import Protocol, TypeAlias, cast
 
 from markdown_it import MarkdownIt
 from markdown_it.token import Token
@@ -57,6 +58,8 @@ from loushang.tui.theme import (
 _TABLE_SEPARATOR_RE = re.compile(r"^\s*\|?\s*:?-{3,}:?\s*(?:\|\s*:?-{3,}:?\s*)+\|?\s*$")
 _MARKDOWN_LINE_CACHE_SIZE = 2_048
 _MARKDOWN_STABLE_BLOCK_CACHE_SIZE = 4_096
+# A partial list marker can merge backward into the preceding top-level list.
+_STREAMING_MARKDOWN_FRONTIER_GROUPS = 2
 _MARKDOWN_PARSER = MarkdownIt("commonmark").enable("table").enable("strikethrough")
 _QUOTE_MARKER = "│ "
 
@@ -72,10 +75,72 @@ class CapabilityAwareCodeHighlighter(Protocol):
 CodeHighlighterLike: TypeAlias = CodeHighlighter | CapabilityAwareCodeHighlighter
 
 
+@dataclass(frozen=True, slots=True)
+class _ParsedMarkdownGroup:
+    start_line: int
+    end_line: int
+    blocks: tuple[_MarkdownBlock, ...]
+
+
+@dataclass(slots=True)
+class _StreamingMarkdownParseState:
+    _source: str = ""
+    _stable_end_line: int = 0
+    _stable_groups: list[_ParsedMarkdownGroup] = field(default_factory=list)
+    _last_blocks: tuple[_MarkdownBlock, ...] = ()
+    _initialized: bool = False
+    _full_parse_only: bool = False
+
+    def parse(self, markdown: str) -> tuple[_MarkdownBlock, ...]:
+        normalized = markdown.expandtabs(3)
+        if self._initialized and normalized == self._source:
+            return self._last_blocks
+        if self._initialized and not normalized.startswith(self._source):
+            self.reset()
+
+        self._source = normalized
+        self._initialized = True
+        if self._full_parse_only:
+            self._last_blocks = _parse_normalized_markdown_blocks(normalized)
+            return self._last_blocks
+
+        source_lines = normalized.split("\n")
+        tail_source = "\n".join(source_lines[self._stable_end_line :])
+        tail_groups, has_references = _parse_markdown_groups(
+            tail_source,
+            line_offset=self._stable_end_line,
+        )
+        if has_references:
+            self._stable_end_line = 0
+            self._stable_groups.clear()
+            self._full_parse_only = True
+            self._last_blocks = _parse_normalized_markdown_blocks(normalized)
+            return self._last_blocks
+
+        groups = (*self._stable_groups, *tail_groups)
+        promote_count = max(0, len(tail_groups) - _STREAMING_MARKDOWN_FRONTIER_GROUPS)
+        if promote_count:
+            promoted = tail_groups[:promote_count]
+            self._stable_groups.extend(promoted)
+            self._stable_end_line = promoted[-1].end_line
+        self._last_blocks = _markdown_blocks_from_groups(groups)
+        return self._last_blocks
+
+    def reset(self) -> None:
+        self._source = ""
+        self._stable_end_line = 0
+        self._stable_groups.clear()
+        self._last_blocks = ()
+        self._initialized = False
+        self._full_parse_only = False
+
+
 @dataclass(slots=True)
 class MarkdownRenderCache:
     stable_entry_limit: int = _MARKDOWN_STABLE_BLOCK_CACHE_SIZE
     _stable_blocks: dict[tuple[object, ...], tuple[str, ...]] = field(default_factory=dict, init=False, repr=False)
+    _streaming_key: object | None = field(default=None, init=False, repr=False)
+    _streaming_parse_state: _StreamingMarkdownParseState | None = field(default=None, init=False, repr=False)
 
     @property
     def stable_entry_count(self) -> int:
@@ -91,6 +156,17 @@ class MarkdownRenderCache:
 
     def clear(self) -> None:
         self._stable_blocks.clear()
+        self.clear_streaming()
+
+    def clear_streaming(self) -> None:
+        self._streaming_key = None
+        self._streaming_parse_state = None
+
+    def parse_streaming(self, markdown: str, *, key: object) -> tuple[_MarkdownBlock, ...]:
+        if self._streaming_key is not key or self._streaming_parse_state is None:
+            self._streaming_key = key
+            self._streaming_parse_state = _StreamingMarkdownParseState()
+        return self._streaming_parse_state.parse(markdown)
 
     def get_or_render(self, key: tuple[object, ...], render: Callable[[], tuple[str, ...]]) -> tuple[str, ...]:
         cached = self._stable_blocks.get(key)
@@ -141,6 +217,7 @@ class MarkdownRenderer:
     padding_y: int = 0
     default_style: ThemeStyle | None = None
     render_cache: MarkdownRenderCache | None = None
+    streaming_key: object | None = None
     _render_cache: dict[tuple[object, ...], tuple[str, ...]] = field(default_factory=dict, init=False, repr=False)
 
     def __post_init__(self) -> None:
@@ -155,9 +232,14 @@ class MarkdownRenderer:
         framed = self.padding_x > 0 or self.padding_y > 0 or _has_background_style(frame_style)
         width = _markdown_frame_content_width(target_width, self.padding_x) if framed else target_width
         if self.render_cache is not None:
+            blocks = (
+                self.render_cache.parse_streaming(self.markdown, key=self.streaming_key)
+                if self.streaming_key is not None
+                else _parse_markdown_blocks(self.markdown)
+            )
             raw_lines = list(
                 _render_markdown_blocks(
-                    _parse_markdown_blocks(self.markdown),
+                    blocks,
                     width=width,
                     theme=self.theme,
                     capabilities=self.capabilities,
@@ -343,12 +425,74 @@ def _render_markdown_lines(markdown: str, width: int) -> tuple[str, ...]:
 
 def _parse_markdown_blocks(markdown: str) -> tuple[_MarkdownBlock, ...]:
     normalized = markdown.expandtabs(3)
+    return _parse_normalized_markdown_blocks(normalized)
+
+
+def _parse_normalized_markdown_blocks(normalized: str) -> tuple[_MarkdownBlock, ...]:
     blocks, _index = _parse_markdown_it_blocks(
         _MARKDOWN_PARSER.parse(normalized),
         0,
         stop_type=None,
         source_lines=normalized.split("\n"),
     )
+    return tuple(blocks)
+
+
+def _parse_markdown_groups(
+    markdown: str,
+    *,
+    line_offset: int,
+) -> tuple[tuple[_ParsedMarkdownGroup, ...], bool]:
+    environment: dict[str, object] = {}
+    tokens = _MARKDOWN_PARSER.parse(markdown, environment)
+    if environment.get("references"):
+        return (), True
+
+    source_lines = markdown.split("\n")
+    group_starts = [
+        index
+        for index, token in enumerate(tokens)
+        if token.level == 0 and token.map is not None and token.nesting >= 0
+    ]
+    groups: list[_ParsedMarkdownGroup] = []
+    for group_index, token_index in enumerate(group_starts):
+        token = tokens[token_index]
+        token_map = token.map
+        if token_map is None:
+            continue
+        next_token_index = group_starts[group_index + 1] if group_index + 1 < len(group_starts) else len(tokens)
+        group_blocks, _index = _parse_markdown_it_blocks(
+            tokens[token_index:next_token_index],
+            0,
+            stop_type=None,
+            source_lines=source_lines,
+        )
+        local_end_line = _token_end_line(token, token_map[1], source_lines)
+        groups.append(
+            _ParsedMarkdownGroup(
+                start_line=line_offset + token_map[0],
+                end_line=line_offset + (local_end_line if local_end_line is not None else token_map[1]),
+                blocks=tuple(group_blocks),
+            )
+        )
+    return tuple(groups), False
+
+
+def _markdown_blocks_from_groups(groups: Sequence[_ParsedMarkdownGroup]) -> tuple[_MarkdownBlock, ...]:
+    blocks: list[_MarkdownBlock] = []
+    previous_end_line: int | None = None
+    for group in groups:
+        if (
+            group.blocks
+            and previous_end_line is not None
+            and group.start_line > previous_end_line
+            and blocks
+            and blocks[-1].kind != "blank"
+        ):
+            blocks.append(_MarkdownBlock("blank"))
+        blocks.extend(group.blocks)
+        if group.blocks:
+            previous_end_line = group.end_line
     return tuple(blocks)
 
 
@@ -656,17 +800,19 @@ def _render_markdown_blocks(
 ) -> tuple[str, ...]:
     rendered: list[str] = []
     stable_block_count = max(0, len(blocks) - 1) if render_cache is not None else 0
+    block_cache_context: tuple[object, ...] = ()
+    if stable_block_count:
+        block_cache_context = (
+            width,
+            _theme_cache_signature(theme),
+            _capabilities_cache_signature(capabilities),
+            id(code_highlighter) if code_highlighter is not None else None,
+            _style_cache_signature(default_style),
+        )
     for index, block in enumerate(blocks):
         if render_cache is not None and index < stable_block_count:
             block_lines = render_cache.get_or_render(
-                _markdown_block_cache_key(
-                    block,
-                    width=width,
-                    theme=theme,
-                    capabilities=capabilities,
-                    code_highlighter=code_highlighter,
-                    default_style=default_style,
-                ),
+                (block, *block_cache_context),
                 lambda block=block: _render_markdown_block(
                     block,
                     width=width,
@@ -690,25 +836,6 @@ def _render_markdown_blocks(
         if _needs_pi_style_blank_after(block.kind, next_kind):
             rendered.append("")
     return tuple(rendered)
-
-
-def _markdown_block_cache_key(
-    block: _MarkdownBlock,
-    *,
-    width: int,
-    theme: ThemeResolver | None,
-    capabilities: TerminalCapabilities | None,
-    code_highlighter: CodeHighlighterLike | None,
-    default_style: ThemeStyle | None,
-) -> tuple[object, ...]:
-    return (
-        block,
-        width,
-        _theme_cache_signature(theme),
-        _capabilities_cache_signature(capabilities),
-        id(code_highlighter) if code_highlighter is not None else None,
-        _style_cache_signature(default_style),
-    )
 
 
 def _render_markdown_block(

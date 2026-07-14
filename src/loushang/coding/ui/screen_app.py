@@ -46,6 +46,7 @@ from loushang.tui import (
     loushang_welcome_theme,
     theme_capabilities_from_runtime,
 )
+from loushang.tui.core import RenderLineSegment, SegmentedRenderLines
 from loushang.tui.markdown.renderer import MarkdownRenderCache
 from loushang.tui.theme import ThemeResolver
 from loushang.tui.transcript import (
@@ -261,6 +262,7 @@ class ScreenCodingTuiApp:
         max_records: int = 80,
     ) -> None:
         self.state.records.append(ContextCompactionRecord(summary=summary, tokens_before=tokens_before))
+        self.state.mark_records_changed()
         evicted = self.state.trim_transcript_prefix(max_records=max_records)
         if evicted:
             self._render_baseline_reset_reason = "transcript_window_trimmed:context_compaction"
@@ -288,6 +290,7 @@ class ScreenCodingTuiApp:
         visible_height = constraints.visible_height or constraints.max_height
         editor_height = self._bottom_frame_height(visible_height)
         self._transcript_region.records = self.state.records
+        self._transcript_region.records_revision = self.state.records_revision
         self._transcript_region.draft = None
         self._transcript_region.draft_buffer = self.state.assistant_draft_buffer
         self._transcript_region.cwd = self.state.cwd
@@ -405,6 +408,7 @@ class ScreenCodingTuiApp:
 @dataclass(slots=True)
 class _ScreenTranscriptRegion:
     records: list[DisplayRecord] = field(default_factory=list)
+    records_revision: int = 0
     draft: AssistantMessageRecord | None = None
     draft_buffer: StreamingTextBuffer | None = None
     cwd: str = ""
@@ -430,6 +434,15 @@ class _ScreenTranscriptRegion:
     _transient_source_buffer_version: int = field(default=-1, init=False, repr=False)
     _markdown_render_cache: MarkdownRenderCache = field(default_factory=MarkdownRenderCache, init=False, repr=False)
     _cache_generation: int = field(default=-1, init=False, repr=False)
+    _committed_segment_key: tuple[object, ...] | None = field(default=None, init=False, repr=False)
+    _committed_segment: RenderLineSegment | None = field(default=None, init=False, repr=False)
+    _committed_separator_rows: frozenset[int] = field(
+        default_factory=frozenset,
+        init=False,
+        repr=False,
+    )
+    _draft_segment_key: tuple[object, ...] | None = field(default=None, init=False, repr=False)
+    _draft_segment: RenderLineSegment | None = field(default=None, init=False, repr=False)
 
     @property
     def has_content(self) -> bool:
@@ -438,12 +451,12 @@ class _ScreenTranscriptRegion:
     def render(self, constraints: RenderConstraints) -> RenderResult:
         self._reset_cache_if_window_changed()
         style_signature = (*_screen_transcript_style_signature(self.theme, self.capabilities), self.cwd)
-        rows = self._render_tail_rows(
+        lines = self._render_tail_segments(
             max_height=constraints.max_height,
             width=constraints.width,
             style_signature=style_signature,
         )
-        return RenderResult(lines=tuple(RenderLine(line) for line in rows))
+        return RenderResult(lines=lines)
 
     def _render_record_lines(
         self,
@@ -485,6 +498,7 @@ class _ScreenTranscriptRegion:
         rendered = self._render_record_uncached(
             AssistantMessageRecord(_streaming_buffer_render_text(buffer), stable=False),
             width=width,
+            markdown_streaming_key=buffer,
         )
         self._remember_streaming_buffer_cache(
             buffer,
@@ -515,7 +529,13 @@ class _ScreenTranscriptRegion:
         self._transient_source_buffer_version = -1
         return rendered
 
-    def _render_record_uncached(self, record: DisplayRecord, *, width: int) -> tuple[str, ...]:
+    def _render_record_uncached(
+        self,
+        record: DisplayRecord,
+        *,
+        width: int,
+        markdown_streaming_key: object | None = None,
+    ) -> tuple[str, ...]:
         display_record = _screen_coding_display_record(record, cwd=self.cwd)
         render_width = _screen_transcript_record_render_width(display_record, width=width)
         view = TranscriptView(
@@ -523,6 +543,7 @@ class _ScreenTranscriptRegion:
             theme=self.theme,
             capabilities=self.capabilities,
             markdown_cache=self._markdown_render_cache,
+            markdown_streaming_key=markdown_streaming_key,
         )
         rendered = view.render(RenderConstraints(width=render_width, max_height=1_000_000))
         return _coding_lines(
@@ -555,31 +576,131 @@ class _ScreenTranscriptRegion:
         width: int,
         style_signature: tuple[object, ...],
     ) -> list[str]:
+        return [
+            line.text
+            for line in self._render_tail_segments(
+                max_height=max_height,
+                width=width,
+                style_signature=style_signature,
+            )
+        ]
+
+    def _render_tail_segments(
+        self,
+        *,
+        max_height: int,
+        width: int,
+        style_signature: tuple[object, ...],
+    ) -> SegmentedRenderLines:
         if max_height <= 0:
-            return []
-        newest_first_blocks: list[tuple[str, ...]] = []
-        used_rows = 0
-        for record in reversed(tuple(self._iter_records())):
+            return SegmentedRenderLines()
+
+        committed = self._render_committed_segment(width=width, style_signature=style_signature)
+        draft = self._render_draft_segment(
+            width=width,
+            style_signature=style_signature,
+            has_committed=committed is not None,
+        )
+        segments = tuple(segment for segment in (committed, draft) if segment is not None)
+        lines = SegmentedRenderLines.from_segments(segments)
+        if len(lines) <= max_height:
+            return lines
+
+        start = len(lines) - max_height
+        committed_rows = committed.line_count if committed is not None else 0
+        starts_at_draft_separator = (
+            draft is not None
+            and committed is not None
+            and start == committed_rows
+        )
+        if start in self._committed_separator_rows or starts_at_draft_separator:
+            start += 1
+        return lines[start:]
+
+    def _render_committed_segment(
+        self,
+        *,
+        width: int,
+        style_signature: tuple[object, ...],
+    ) -> RenderLineSegment | None:
+        first_record_id = id(self.records[0]) if self.records else 0
+        last_record_id = id(self.records[-1]) if self.records else 0
+        key = (
+            id(self.records),
+            self.records_revision,
+            len(self.records),
+            first_record_id,
+            last_record_id,
+            self.window_generation,
+            width,
+            style_signature,
+        )
+        if key == self._committed_segment_key:
+            return self._committed_segment
+
+        rows: list[str] = []
+        separator_rows: set[int] = set()
+        for record in self.records:
             block = self._render_record_lines(record, width=width, style_signature=style_signature)
             if not block:
                 continue
-            separator_rows = 1 if newest_first_blocks else 0
-            available = max_height - used_rows - separator_rows
-            if available <= 0:
-                break
-            if len(block) > available:
-                block = block[-available:]
-            newest_first_blocks.append(block)
-            used_rows += separator_rows + len(block)
-            if used_rows >= max_height:
-                break
-
-        rows: list[str] = []
-        for block in reversed(newest_first_blocks):
             if rows:
+                separator_rows.add(len(rows))
                 rows.append("")
             rows.extend(block)
-        return rows[-max_height:]
+        segment = (
+            RenderLineSegment(
+                lines=tuple(RenderLine(row) for row in rows),
+                revision=key,
+            )
+            if rows
+            else None
+        )
+        self._committed_segment_key = key
+        self._committed_segment = segment
+        self._committed_separator_rows = frozenset(separator_rows)
+        return segment
+
+    def _render_draft_segment(
+        self,
+        *,
+        width: int,
+        style_signature: tuple[object, ...],
+        has_committed: bool,
+    ) -> RenderLineSegment | None:
+        draft: DisplayRecord | StreamingTextBuffer | None = self.draft_buffer or self.draft
+        if draft is None:
+            self._draft_segment_key = None
+            self._draft_segment = None
+            return None
+        source_revision: object
+        if isinstance(draft, StreamingTextBuffer):
+            source_revision = (id(draft), draft.version)
+        else:
+            source_revision = draft
+        key = (
+            source_revision,
+            has_committed,
+            self.window_generation,
+            width,
+            style_signature,
+        )
+        if key == self._draft_segment_key:
+            return self._draft_segment
+
+        block = self._render_record_lines(draft, width=width, style_signature=style_signature)
+        rows = (("", *block) if has_committed and block else block)
+        segment = (
+            RenderLineSegment(
+                lines=tuple(RenderLine(row) for row in rows),
+                revision=key,
+            )
+            if rows
+            else None
+        )
+        self._draft_segment_key = key
+        self._draft_segment = segment
+        return segment
 
     def _iter_records(self) -> Iterable[DisplayRecord | StreamingTextBuffer]:
         yield from self.records
@@ -595,6 +716,11 @@ class _ScreenTranscriptRegion:
         self._transient_line_cache_key = None
         self._transient_line_cache_lines = None
         self._markdown_render_cache.clear()
+        self._committed_segment_key = None
+        self._committed_segment = None
+        self._committed_separator_rows = frozenset()
+        self._draft_segment_key = None
+        self._draft_segment = None
         self._cache_generation = self.window_generation
 
     def clear_transient_cache(self) -> None:
@@ -605,6 +731,9 @@ class _ScreenTranscriptRegion:
         self._transient_source_style_signature = None
         self._transient_source_buffer_id = None
         self._transient_source_buffer_version = -1
+        self._draft_segment_key = None
+        self._draft_segment = None
+        self._markdown_render_cache.clear_streaming()
 
     def promote_transient_cache(
         self,
@@ -622,9 +751,10 @@ class _ScreenTranscriptRegion:
             return
         if self._transient_source_width <= 0 or self._transient_source_style_signature is None:
             return
+        canonical_lines = self._render_record_uncached(record, width=self._transient_source_width)
         self._stable_line_cache[
             (record, self._transient_source_width, self._transient_source_style_signature)
-        ] = self._transient_line_cache_lines
+        ] = canonical_lines
         self._enforce_stable_cache_entry_limit()
 
     def _enforce_stable_cache_entry_limit(self) -> None:

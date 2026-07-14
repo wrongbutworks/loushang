@@ -15,6 +15,7 @@ class RenderSchedulerConfig:
     min_render_interval_ms: int = 16
     max_coalescing_delay_ms: int = 50
     input_echo_deadline_ms: int = 16
+    stream_min_render_interval_ms: int = 50
 
     def __post_init__(self) -> None:
         if self.min_render_interval_ms < 0:
@@ -23,6 +24,8 @@ class RenderSchedulerConfig:
             raise ValueError("max_coalescing_delay_ms must be non-negative")
         if self.input_echo_deadline_ms < 0:
             raise ValueError("input_echo_deadline_ms must be non-negative")
+        if self.stream_min_render_interval_ms < 0:
+            raise ValueError("stream_min_render_interval_ms must be non-negative")
 
 
 @dataclass(frozen=True, slots=True)
@@ -45,10 +48,20 @@ class RenderScheduler:
             return RenderScheduleDecision(render_now=True, delay_ms=0, coalesced=False)
 
         elapsed_ms = max(0, now_ms - self.last_rendered_at_ms)
-        if elapsed_ms >= self.config.min_render_interval_ms:
+        min_interval_ms = (
+            self.config.stream_min_render_interval_ms
+            if kind == "stream"
+            else self.config.min_render_interval_ms
+        )
+        if elapsed_ms >= min_interval_ms:
             return RenderScheduleDecision(render_now=True, delay_ms=0, coalesced=False)
 
-        delay_ms = min(self.config.min_render_interval_ms - elapsed_ms, self.config.max_coalescing_delay_ms)
+        remaining_ms = min_interval_ms - elapsed_ms
+        delay_ms = (
+            remaining_ms
+            if kind == "stream"
+            else min(remaining_ms, self.config.max_coalescing_delay_ms)
+        )
         return RenderScheduleDecision(render_now=False, delay_ms=delay_ms, coalesced=True)
 
     def request_animation_frame(self, source: AnimationFrameSource, *, now_ms: int) -> RenderScheduleDecision:
