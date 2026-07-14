@@ -58,6 +58,10 @@ planning, work event persistence, or AI provider behavior.
   ownership of transcript repositories, rebuildable projection indexes,
   layered configuration, explainable salience, and summary-profile mechanics
   while preserving Product schemas, prompts, defaults, and artifact semantics.
+- [Conversation Runtime Core Boundary](conversation-runtime-core-boundary.md)
+  defines shared conversation records and ports, repository/catalog/replay,
+  branch delta, command execution records, and turn-aware compaction planning
+  while preserving Product schemas, codecs, prompts, and storage policy.
 - [Product Runtime Core Boundary](product-runtime-core-boundary.md) defines
   shared runtime bindings and contexts, session-transition ownership,
   coalesced scheduling, AI/Agent data-contract placement, and the irreducible

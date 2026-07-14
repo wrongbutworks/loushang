@@ -48,8 +48,16 @@ structural accessors: record id and parent id. The repository provides:
 Coding's `SessionManager` is still the Product facade. It keeps
 `SessionHeader`, `SessionEntry`, labels, summary/query relevance, context
 rebuild, recovery wording, file naming, deletion, retention, and public APIs.
-It delegates transcript state, graph traversal, append persistence, and fork
-materialization to `TranscriptRepository`.
+It delegates conversation state, graph traversal, append persistence, replay,
+catalog/query mechanics, and fork materialization through
+`ConversationRepository`, which composes `TranscriptRepository` internally.
+
+The follow-on Conversation Runtime Core now wraps this lower-level repository
+with `loushang.harness.conversation.ConversationRepository`, catalog/query,
+checkpoint replay, LCA/branch delta, and opaque-record compaction planning. New
+Product adapters should depend on the conversation owner rather than importing
+`TranscriptRepository` or `BranchGraph` directly; see
+[Conversation Runtime Core Boundary](conversation-runtime-core-boundary.md).
 
 No universal transcript envelope or message schema is introduced. Stable base
 AI message codecs belong to `loushang.ai`; extension-message codec composition
@@ -123,9 +131,11 @@ score unresolved decisions. Those meanings do not enter Harness.
 
 Coding keeps its existing compaction, update, turn-prefix, and branch prompt
 text in `coding.compaction.profiles`. Coding also keeps message-to-text
-serialization, file-operation blocks, model completion, retry, split-turn,
-tool-result, and summary artifact semantics. Its public `SummaryQualityReport`
-is preserved while delegating generic section validation to Harness.
+serialization, file-operation blocks, model completion, retry, Product role
+mappings, tool-result interpretation, and summary artifact semantics. Harness
+owns the generic split-turn and non-cut-role planning mechanism. Coding's public
+`SummaryQualityReport` is preserved while delegating generic section validation
+to Harness.
 
 ## Compatibility And Failure Semantics
 

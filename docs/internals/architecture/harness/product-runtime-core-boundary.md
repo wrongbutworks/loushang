@@ -84,7 +84,8 @@ Coding and future Product adapters retain:
   risk/approval defaults, and configuration fields/defaults;
 - context salience, exact compaction/summary prompts, and artifact semantics;
 - transcript header/custom record schemas and codecs, session paths, naming,
-  retention, tree/fork/import/clone behavior, and query projection;
+  retention, import/clone decisions, and Product query/summary fields; generic
+  repository, tree/fork, replay, catalog, and query mechanics live in Harness;
 - concrete extension events/decisions, diagnostics classification/remediation,
   commands, controllers, UI contexts, and presentation.
 
@@ -100,7 +101,8 @@ Harness runtime does not:
 
 - implement a second Agent loop or model/provider registry;
 - read credentials, choose a model, or produce missing-auth guidance;
-- serialize Product transcript records or select a storage backend;
+- serialize Product transcript records, choose Product storage roots, or select
+  a storage backend;
 - define product prompts, skills, tool defaults, artifacts, commands, or UI;
 - interpret Coding session shutdown/start events, cwd recovery, fork/import
   options, diagnostics codes, or index contents.

@@ -116,8 +116,8 @@ Use this split when judging a candidate:
 | Presentation | neutral content blocks, renderer protocol, renderer registry | terminal/web widgets, product-specific transcript layout |
 | Resources | platform roots/layout, standard conventions, descriptors, discovery/package engines, precedence presets, merge/diagnostic mechanisms | domain content, convention activation, additional/override roots, trust and runtime projection |
 | Workspace | file/process protocols and backends, neutral exec shapes, path/mutation mechanics, reusable workspace tools | allowed roots, activation, risk/approval classification, user explanations, workspace defaults |
-| Context | context item refs, budget accounting, packing contracts | what content is important, summarization prompts, product-specific memory policy |
-| Session | host lifecycle protocols, idle/abort/dispose/queue snapshots | transcript schema, controllers, product session store, command execution |
+| Context | context item refs, budget accounting, packing contracts, turn-aware cut planning, and checkpoint replay mechanics | what content is important, token/message projection, summarization prompts, and product-specific memory policy |
+| Session | conversation repository/catalog/branch/fork/replay mechanics, host lifecycle protocols, idle/abort/dispose/queue snapshots | transcript schema/codecs, storage roots and retention, controllers, commands, and Product execution policy |
 | Diagnostics | diagnostic records, severity/source vocabulary, query interface | product health checks, user-facing grouping, remediation text |
 
 The product adapter can call harness engines. The product adapter chooses how
