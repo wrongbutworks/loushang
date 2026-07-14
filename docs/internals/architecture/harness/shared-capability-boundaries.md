@@ -79,6 +79,8 @@ Harness may own:
   edit, and process execution implementations;
 - generic process helpers, output limits, ignore matching, and optional
   external binary resolution used by those packs.
+- allowed/requested/active tool accounting, ordered resolution, activation
+  snapshots and diffs, and refresh/rebind coordination with injected policy.
 
 Product adapters own:
 
@@ -91,6 +93,11 @@ Product adapters own:
 
 Extensions may contribute tools through harness-shaped records, but product or
 OEM policy decides whether those tools are active.
+
+`loushang.harness.capabilities.tools` owns this neutral activation coordinator.
+Products retain default pack membership, allowlists, new-tool activation
+policy, Agent materialization, execution context, prompt rebuilding, audit
+events, and presentation.
 
 ## Approval
 
@@ -193,12 +200,13 @@ expanding `loushang.resource` into a broad top-level subsystem.
 
 ## Prompt
 
-Harness may own prompt assembly contracts:
+Harness may own prompt assembly contracts and deterministic mechanisms:
 
 - prepared prompt value types;
 - prompt section records;
 - trace/diagnostic records;
-- assembler protocol.
+- ordered composition;
+- injectable template argument parsing and placeholder expansion.
 
 Product adapters own:
 
@@ -206,12 +214,31 @@ Product adapters own:
 - product instructions;
 - selection of standard/compatibility instruction conventions;
 - projection, salience, and ordering of loaded instruction resources;
-- template selection;
-- prompt ordering;
+- template content and selection;
+- section ordering;
 - domain-specific preflight.
 
-Prompt defaults are product behavior. Only the neutral assembly contract belongs
-in harness.
+Prompt defaults are product behavior. Neutral section composition and template
+expansion live in `loushang.harness.capabilities.prompt`; Product adapters still
+choose every section, its content, and its order.
+
+## Commands
+
+Harness may own:
+
+- generic command descriptors with opaque source metadata;
+- name normalization and slash-command parsing;
+- aliases, precedence, conflict reporting, catalog lookup, and completion;
+- ordered sync/async dispatch whose results remain opaque to Harness.
+
+Product adapters own:
+
+- builtin and domain command definitions;
+- source precedence values and activation choices;
+- concrete handlers, resource projection, diagnostics, routing, and UI.
+
+`loushang.harness.capabilities.commands` provides the neutral mechanism.
+Products decide what a command means and what effects its handler may perform.
 
 ## Context
 
