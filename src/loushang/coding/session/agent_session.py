@@ -684,7 +684,7 @@ class AgentSession:
 
     @_retry_attempt.setter
     def _retry_attempt(self, value: int) -> None:
-        self._retry_controller._retry_attempt = value
+        self._retry_controller.attempt = value
 
     @property
     def _retry_future(self) -> asyncio.Future[None] | object | None:
@@ -696,11 +696,11 @@ class AgentSession:
 
     @property
     def _retry_abort_controller(self) -> AbortController | None:
-        return self._retry_controller._retry_abort_controller
+        return self._retry_controller.cancel_handle
 
     @_retry_abort_controller.setter
     def _retry_abort_controller(self, value: AbortController | None) -> None:
-        self._retry_controller._retry_abort_controller = value
+        self._retry_controller.cancel_handle = value
 
     @property
     def isCompacting(self) -> bool:

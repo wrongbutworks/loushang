@@ -122,7 +122,7 @@ def test_retry_controller_finishes_success_and_resolves_waiter() -> None:
 
     async def scenario() -> None:
         controller.ensure_future()
-        controller._retry_attempt = 1
+        controller.attempt = 1
         await controller.finish(success=True, attempt=1)
         await controller.wait()
 

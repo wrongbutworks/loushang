@@ -1,10 +1,13 @@
 from __future__ import annotations
 
-import inspect
 from collections.abc import Callable
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 from loushang.coding.extensions import SessionRefreshEvent, SessionStartEvent
+from loushang.harness.extensions.lifecycle import (
+    ExtensionRuntimeCoordinator,
+    ExtensionRuntimeOperation,
+)
 from loushang.harness.resources.diagnostics import ResourceDiagnostic
 
 BuildBindings = Callable[[], object]
@@ -21,111 +24,109 @@ class ExtensionRuntimeController:
     refresh_resources: RefreshResources
     record_runtime_diagnostic: RecordRuntimeDiagnostic
     sync_extension_diagnostics: SyncExtensionDiagnostics
-    _refreshing: bool = False
+    _coordinator: (
+        ExtensionRuntimeCoordinator[object, SessionStartEvent, SessionRefreshEvent]
+        | None
+    ) = field(init=False, default=None)
+
+    def __post_init__(self) -> None:
+        runner = self.extension_runner
+        if runner is None:
+            return
+        self._coordinator = ExtensionRuntimeCoordinator(
+            build_bindings=self.build_bindings,
+            bind_runtime=lambda bindings: getattr(runner, "bind_runtime")(bindings),
+            refresh_runtime=lambda bindings: getattr(runner, "refresh_runtime")(
+                bindings
+            ),
+            emit_session_start=lambda event: getattr(runner, "emit_session_start")(
+                event
+            ),
+            emit_session_refresh=lambda event: getattr(runner, "emit_session_refresh")(
+                event
+            ),
+            refresh_resources=self.refresh_resources,
+            record_failure=self._record_failure,
+            sync_diagnostics=lambda: self.sync_extension_diagnostics(phase="runtime"),
+            invalidate_contexts_driver=lambda message: _invalidate_contexts(
+                runner, message
+            ),
+        )
 
     @property
     def is_refreshing(self) -> bool:
-        return self._refreshing
+        coordinator = self._coordinator
+        return coordinator is not None and coordinator.is_refreshing
 
     async def bind(self, *, reason: str) -> None:
-        if self.extension_runner is None:
+        coordinator = self._coordinator
+        if coordinator is None:
             return
-        if reason == "reload":
-            self.invalidate_contexts("Extension context is stale after extension reload.")
-            try:
-                refreshed = self.refresh_resources()
-                if inspect.isawaitable(refreshed):
-                    await refreshed
-            except Exception as exc:
-                self.record_runtime_diagnostic(
-                    ResourceDiagnostic(
-                        code="extension_resource_refresh_failed",
-                        message=f"Extension resource refresh failed: {exc}",
-                    )
-                )
-                return
-        try:
-            self.extension_runner.bind_runtime(self.build_bindings())
-        except Exception as exc:
-            self.record_runtime_diagnostic(
-                ResourceDiagnostic(
-                    code="extension_runtime_bind_failed",
-                    message=f"Extension runtime bind failed: {exc}",
-                )
-            )
-            return
-        try:
-            await self.extension_runner.emit_session_start(self._start_event_for_reason(reason))
-        except Exception as exc:
-            self.record_runtime_diagnostic(
-                ResourceDiagnostic(
-                    code="extension_session_start_failed",
-                    message=f"Extension hook 'session_start' failed: {exc}",
-                )
-            )
-        self.sync_extension_diagnostics(phase="runtime")
+        await coordinator.bind(
+            self._start_event_for_reason(reason),
+            reload=reason == "reload",
+            stale_context_message=(
+                "Extension context is stale after extension reload."
+            ),
+        )
 
     def bind_bindings(self) -> None:
-        if self.extension_runner is None:
-            return
-        try:
-            self.extension_runner.bind_runtime(self.build_bindings())
-        except Exception as exc:
-            self.record_runtime_diagnostic(
-                ResourceDiagnostic(
-                    code="extension_runtime_bind_failed",
-                    message=f"Extension runtime bind failed: {exc}",
-                )
-            )
+        if self._coordinator is not None:
+            self._coordinator.bind_bindings()
 
     async def refresh(self, *, reason: str) -> None:
-        if self.extension_runner is None:
-            return
-        try:
-            self.extension_runner.refresh_runtime(self.build_bindings())
-        except Exception as exc:
-            self.record_runtime_diagnostic(
-                ResourceDiagnostic(
-                    code="extension_runtime_refresh_failed",
-                    message=f"Extension runtime refresh failed: {exc}",
-                )
-            )
-            return
-        self._refreshing = True
-        try:
-            await self.extension_runner.emit_session_refresh(SessionRefreshEvent(reason=reason))
-        except Exception as exc:
-            self.record_runtime_diagnostic(
-                ResourceDiagnostic(
-                    code="extension_session_refresh_failed",
-                    message=f"Extension hook 'session_refresh' failed: {exc}",
-                )
-            )
-        finally:
-            self._refreshing = False
-        self.sync_extension_diagnostics(phase="runtime")
+        if self._coordinator is not None:
+            await self._coordinator.refresh(SessionRefreshEvent(reason=reason))
 
     def refresh_bindings(self) -> None:
-        if self.extension_runner is None:
-            return
-        try:
-            self.extension_runner.refresh_runtime(self.build_bindings())
-        except Exception as exc:
-            self.record_runtime_diagnostic(
-                ResourceDiagnostic(
-                    code="extension_runtime_refresh_failed",
-                    message=f"Extension runtime refresh failed: {exc}",
-                )
-            )
+        if self._coordinator is not None:
+            self._coordinator.refresh_bindings()
 
     def invalidate_contexts(self, message: str) -> None:
-        if self.extension_runner is None:
-            return
-        invalidator = getattr(self.extension_runner, "invalidate_contexts", None)
-        if callable(invalidator):
-            invalidator(message)
+        if self._coordinator is not None:
+            self._coordinator.invalidate_contexts(message)
+
+    def _record_failure(
+        self,
+        operation: ExtensionRuntimeOperation,
+        error: Exception,
+    ) -> None:
+        code, prefix = _FAILURE_DIAGNOSTICS[operation]
+        self.record_runtime_diagnostic(
+            ResourceDiagnostic(code=code, message=f"{prefix}: {error}")
+        )
 
     def _start_event_for_reason(self, reason: str) -> SessionStartEvent:
         if self.session_start_event.reason == reason:
             return self.session_start_event
         return SessionStartEvent(reason=reason)
+
+
+_FAILURE_DIAGNOSTICS: dict[ExtensionRuntimeOperation, tuple[str, str]] = {
+    "resource_refresh": (
+        "extension_resource_refresh_failed",
+        "Extension resource refresh failed",
+    ),
+    "runtime_bind": (
+        "extension_runtime_bind_failed",
+        "Extension runtime bind failed",
+    ),
+    "runtime_refresh": (
+        "extension_runtime_refresh_failed",
+        "Extension runtime refresh failed",
+    ),
+    "session_start": (
+        "extension_session_start_failed",
+        "Extension hook 'session_start' failed",
+    ),
+    "session_refresh": (
+        "extension_session_refresh_failed",
+        "Extension hook 'session_refresh' failed",
+    ),
+}
+
+
+def _invalidate_contexts(runner: object, message: str) -> None:
+    invalidator = getattr(runner, "invalidate_contexts", None)
+    if callable(invalidator):
+        invalidator(message)
