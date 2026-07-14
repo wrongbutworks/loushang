@@ -3,7 +3,11 @@ from __future__ import annotations
 from collections.abc import Callable, Iterable
 from typing import Any
 
-from loushang.coding.commands.slash import split_slash_command
+from loushang.harness.capabilities.commands import (
+    CommandCatalog,
+    CommandDescriptor,
+    split_slash_command,
+)
 from loushang.harness.commands import (
     CommandDef,
     CommandEffect,
@@ -19,17 +23,13 @@ class CodingCommandCatalog:
         self._session_commands = session_commands
 
     def commands(self) -> tuple[CommandDef, ...]:
-        session_commands: list[CommandDef] = []
-        session_names: set[str] = set()
         if self._session_commands is None:
             return tuple(_LOCAL_COMMANDS_BY_NAME.values())
-        raw_commands = self._session_commands()
-        if isinstance(raw_commands, Iterable):
-            for raw_command in raw_commands:
-                command = _session_command_def(raw_command)
-                if command is not None and command.name not in session_names:
-                    session_commands.append(command)
-                    session_names.add(command.name)
+        session_commands = tuple(
+            _session_command_def(descriptor)
+            for descriptor in self._session_catalog().commands()
+        )
+        session_names = {command.name for command in session_commands}
         local_commands = tuple(
             command for name, command in _LOCAL_COMMANDS_BY_NAME.items() if name not in session_names
         )
@@ -70,16 +70,22 @@ class CodingCommandCatalog:
         )
 
     def _session_command(self, invocation_name: str) -> CommandDef | None:
-        normalized = invocation_name.removeprefix("/")
+        descriptor = self._session_catalog().lookup(invocation_name)
+        if descriptor is None:
+            return None
+        return _session_command_def(descriptor)
+
+    def _session_catalog(self) -> CommandCatalog[object]:
+        if self._session_commands is None:
+            return CommandCatalog()
         raw_commands = self._session_commands()
         if not isinstance(raw_commands, Iterable):
-            return None
-        for raw_command in raw_commands:
-            command = _session_command_def(raw_command)
-            if command is None or command.name.removeprefix("/") != normalized:
-                continue
-            return command
-        return None
+            return CommandCatalog()
+        return CommandCatalog(
+            descriptor
+            for raw_command in raw_commands
+            if (descriptor := _session_command_descriptor(raw_command)) is not None
+        )
 
 
 def _local_command_for_text(text: str) -> CommandDef | None:
@@ -106,18 +112,40 @@ def _string_attr(value: Any, name: str) -> str | None:
     return raw if isinstance(raw, str) and raw else None
 
 
-def _session_command_def(raw_command: object) -> CommandDef | None:
-    name = _string_attr(raw_command, "invocation_name") or _string_attr(raw_command, "name")
-    if name is None:
+def _session_command_descriptor(raw_command: object) -> CommandDescriptor[object] | None:
+    name = _string_attr(raw_command, "name")
+    invocation_name = _string_attr(raw_command, "invocation_name") or name
+    if invocation_name is None:
         return None
-    normalized = name.removeprefix("/")
+    precedence = getattr(raw_command, "precedence", 0)
+    if not isinstance(precedence, int) or isinstance(precedence, bool):
+        precedence = 0
+    aliases = getattr(raw_command, "aliases", ())
+    if not isinstance(aliases, (tuple, list)):
+        aliases = ()
+    return CommandDescriptor(
+        name=name or invocation_name,
+        description=_string_attr(raw_command, "description"),
+        source=_string_attr(raw_command, "source") or "session",
+        source_info=getattr(raw_command, "source_info", None),
+        invocation_name=invocation_name,
+        aliases=tuple(alias for alias in aliases if isinstance(alias, str) and alias),
+        conflict_group=_string_attr(raw_command, "conflict_group"),
+        argument_hint=_string_attr(raw_command, "argument_hint"),
+        precedence=precedence,
+    )
+
+
+def _session_command_def(descriptor: CommandDescriptor[object]) -> CommandDef:
+    normalized = descriptor.effective_invocation_name
     return CommandDef(
         id=f"coding.session.{normalized}",
         name=normalized,
         kind=CommandKind.SESSION,
-        description=_string_attr(raw_command, "description"),
-        source=_string_attr(raw_command, "source"),
-        argument_hint=_string_attr(raw_command, "argument_hint"),
+        description=descriptor.description,
+        source=descriptor.source,
+        aliases=descriptor.aliases,
+        argument_hint=descriptor.argument_hint,
     )
 
 

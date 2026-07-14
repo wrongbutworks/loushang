@@ -6,6 +6,10 @@ from typing import Any
 
 from loushang.agent.types import AgentTool
 from loushang.coding.prompt.types import PromptAssembly
+from loushang.harness.capabilities.prompt import (
+    PromptSection,
+    compose_prompt_sections,
+)
 from loushang.harness.resources.types import ResourceBundle
 from loushang.harness.tools.core import ToolDefinition
 
@@ -42,7 +46,9 @@ def _build_tool_prompt_from_tools(tools: list[AgentTool[Any]] | None) -> str:
     return "Available tools:\n" + "\n".join(tool_lines)
 
 
-def _build_tool_prompt_from_definitions(tool_definitions: list[ToolDefinition] | None) -> str:
+def _build_tool_prompt_from_definitions(
+    tool_definitions: list[ToolDefinition] | None,
+) -> str:
     if not tool_definitions:
         return ""
 
@@ -59,7 +65,11 @@ def _build_tool_prompt_from_definitions(tool_definitions: list[ToolDefinition] |
 
 
 def _format_tool_prompt_snippet(definition: ToolDefinition) -> str:
-    snippet = definition.prompt_snippet.strip() if isinstance(definition.prompt_snippet, str) else ""
+    snippet = (
+        definition.prompt_snippet.strip()
+        if isinstance(definition.prompt_snippet, str)
+        else ""
+    )
     if not snippet:
         return ""
     if snippet.startswith("-"):
@@ -98,11 +108,14 @@ def _build_skill_prompt(resource_bundle: ResourceBundle | None) -> str:
         "<available_skills>",
     ]
     for skill in visible_skills:
+        description = skill.description
+        if not isinstance(description, str):
+            continue
         lines.extend(
             [
                 "  <skill>",
                 f"    <name>{escape(skill.name)}</name>",
-                f"    <description>{escape(skill.description.strip())}</description>",
+                f"    <description>{escape(description.strip())}</description>",
                 f"    <location>{escape(skill.source_path.as_posix())}</location>",
                 "  </skill>",
             ]
@@ -143,7 +156,9 @@ def _build_project_context_prompt(resource_bundle: ResourceBundle | None) -> str
     return "\n".join(lines)
 
 
-def _iter_non_context_prompt_fragments(resource_bundle: ResourceBundle | None) -> list[str]:
+def _iter_non_context_prompt_fragments(
+    resource_bundle: ResourceBundle | None,
+) -> list[str]:
     if resource_bundle is None:
         return []
     if resource_bundle.prompt_descriptors:
@@ -154,7 +169,11 @@ def _iter_non_context_prompt_fragments(resource_bundle: ResourceBundle | None) -
                 continue
             if not getattr(descriptor, "enabled", True):
                 continue
-            text = descriptor.text.strip() if isinstance(getattr(descriptor, "text", None), str) else ""
+            text = (
+                descriptor.text.strip()
+                if isinstance(getattr(descriptor, "text", None), str)
+                else ""
+            )
             if not text:
                 continue
             key = (descriptor.source_path.as_posix(), text)
@@ -185,38 +204,67 @@ def assemble_prompt(
     tools: list[AgentTool[Any]] | None = None,
     tool_prompt: str | None = None,
 ) -> PromptAssembly:
-    parts: list[str] = []
+    sections: list[PromptSection] = []
     resource_fragments: list[str] = []
-    effective_base = base_prompt if isinstance(base_prompt, str) and base_prompt.strip() else DEFAULT_SYSTEM_PROMPT
-    parts.append(effective_base.strip())
+    effective_base = (
+        base_prompt
+        if isinstance(base_prompt, str) and base_prompt.strip()
+        else DEFAULT_SYSTEM_PROMPT
+    )
+    sections.append(PromptSection("base", effective_base, kind="base"))
     if resource_bundle is not None:
         project_context_prompt = _build_project_context_prompt(resource_bundle)
         if project_context_prompt:
-            parts.append(project_context_prompt)
+            sections.append(
+                PromptSection(
+                    "project-context",
+                    project_context_prompt,
+                    kind="resource",
+                )
+            )
             resource_fragments.append(project_context_prompt)
-        for cleaned_fragment in _iter_non_context_prompt_fragments(resource_bundle):
-            parts.append(cleaned_fragment)
+        for index, cleaned_fragment in enumerate(
+            _iter_non_context_prompt_fragments(resource_bundle)
+        ):
+            sections.append(
+                PromptSection(
+                    f"resource-{index}",
+                    cleaned_fragment,
+                    kind="resource",
+                )
+            )
             resource_fragments.append(cleaned_fragment)
     skill_prompt = _build_skill_prompt(resource_bundle)
     if skill_prompt:
-        parts.append(skill_prompt)
+        sections.append(PromptSection("available-skills", skill_prompt, kind="skill"))
         resource_fragments.append(skill_prompt)
-    cleaned_tool_prompt = tool_prompt.strip() if isinstance(tool_prompt, str) and tool_prompt.strip() else ""
+    cleaned_tool_prompt = (
+        tool_prompt.strip()
+        if isinstance(tool_prompt, str) and tool_prompt.strip()
+        else ""
+    )
     if not cleaned_tool_prompt:
         cleaned_tool_prompt = _build_tool_prompt_from_definitions(tool_definitions)
     if not cleaned_tool_prompt:
         cleaned_tool_prompt = _build_tool_prompt_from_tools(tools)
     if cleaned_tool_prompt:
-        parts.append(cleaned_tool_prompt)
+        sections.append(
+            PromptSection("available-tools", cleaned_tool_prompt, kind="tool")
+        )
     runtime_footer = _build_runtime_footer(resource_bundle)
     if runtime_footer:
-        parts.append(runtime_footer)
+        sections.append(PromptSection("runtime-footer", runtime_footer, kind="runtime"))
+    prepared = compose_prompt_sections(sections)
     return PromptAssembly(
-        system_prompt="\n\n".join(parts),
+        system_prompt=prepared.text,
         tool_prompt=cleaned_tool_prompt,
         resource_fragments=tuple(resource_fragments),
     )
 
 
-def assemble_system_prompt(*, base_prompt: str | None = None, resource_bundle: ResourceBundle | None = None) -> str:
-    return assemble_prompt(base_prompt=base_prompt, resource_bundle=resource_bundle).system_prompt
+def assemble_system_prompt(
+    *, base_prompt: str | None = None, resource_bundle: ResourceBundle | None = None
+) -> str:
+    return assemble_prompt(
+        base_prompt=base_prompt, resource_bundle=resource_bundle
+    ).system_prompt

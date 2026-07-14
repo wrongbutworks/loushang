@@ -9,13 +9,17 @@ from loushang.harness.tools.contribution import (
     ToolResolutionResult,
     resolve_tool_contributions,
 )
-from loushang.harness.tools.core import ToolRegistry as HarnessToolRegistry
+from loushang.harness.tools.core import (
+    ToolDefinition,
+)
+from loushang.harness.tools.core import (
+    ToolRegistry as HarnessToolRegistry,
+)
+from loushang.harness.tools.workspace.context import ToolContextProvider
+from loushang.harness.tools.workspace.normalize import tool_to_definition
+from loushang.harness.tools.workspace.wrapper import wrap_tool_definition
 
 from .authoring import DecoratedTool
-from .context import ToolContextProvider
-from .normalize import tool_to_definition
-from .types import ToolDefinition
-from .wrapper import wrap_tool_definition
 
 
 class ToolRegistry(HarnessToolRegistry):
@@ -40,7 +44,9 @@ class ToolRegistry(HarnessToolRegistry):
         *,
         context_provider: ToolContextProvider | None = None,
     ) -> AgentTool[Any]:
-        return wrap_tool_definition(self.get_definition(name), context_provider=context_provider)
+        return wrap_tool_definition(
+            self.get_definition(name), context_provider=context_provider
+        )
 
     def materialize_definitions(
         self,
@@ -54,7 +60,9 @@ class ToolRegistry(HarnessToolRegistry):
         ]
 
     def list_contributions(self) -> tuple[ToolContribution, ...]:
-        enabled_names = {definition.name for definition in self.list_enabled_definitions()}
+        enabled_names = {
+            definition.name for definition in self.list_enabled_definitions()
+        }
         return tuple(
             ToolContribution(
                 definition,
