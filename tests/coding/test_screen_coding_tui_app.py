@@ -26,6 +26,41 @@ def _raw_lines(value: Any, *, width: int = 80, height: int = 24) -> list[str]:
     return [line.text for line in result.lines]
 
 
+def _legacy_transcript_tail_rows(
+    region: Any,
+    *,
+    max_height: int,
+    width: int,
+) -> list[str]:
+    newest_first_blocks: list[tuple[str, ...]] = []
+    used_rows = 0
+    for record in reversed(tuple(region._iter_records())):
+        block = region._render_record_lines(
+            record,
+            width=width,
+            style_signature=("legacy-oracle",),
+        )
+        if not block:
+            continue
+        separator_rows = 1 if newest_first_blocks else 0
+        available = max_height - used_rows - separator_rows
+        if available <= 0:
+            break
+        if len(block) > available:
+            block = block[-available:]
+        newest_first_blocks.append(block)
+        used_rows += separator_rows + len(block)
+        if used_rows >= max_height:
+            break
+
+    rows: list[str] = []
+    for block in reversed(newest_first_blocks):
+        if rows:
+            rows.append("")
+        rows.extend(block)
+    return rows[-max_height:]
+
+
 def test_screen_coding_tui_state_commits_turn_without_stale_working() -> None:
     from loushang.coding.ui.screen_app import ScreenCodingTuiApp
 
@@ -802,6 +837,110 @@ def test_screen_coding_tui_streaming_draft_render_keeps_full_append_stable_lines
     assert len(app._transcript_region._transient_line_cache_lines or ()) >= 200
     assert "draft line 199" in rendered
     assert "draft line 0" in rendered
+
+
+def test_screen_transcript_segment_tail_matches_legacy_record_boundaries() -> None:
+    from loushang.coding.ui.screen_app import ScreenCodingTuiApp
+
+    app = ScreenCodingTuiApp(
+        model_label="kimi",
+        cwd="/repo",
+        branch="main",
+        session_label="abcd1234",
+        now=lambda: 10.0,
+    )
+    duplicate = AssistantMessageRecord("same record")
+    app.state.records.extend(
+        (
+            duplicate,
+            AssistantMessageRecord(""),
+            duplicate,
+            UserPromptRecord("newest prompt"),
+        )
+    )
+    app.state.mark_records_changed()
+    app.render(RenderConstraints(width=80, max_height=100, visible_height=24))
+    region = app._transcript_region
+
+    full_height = len(
+        region.render(
+            RenderConstraints(width=80, max_height=100, visible_height=24)
+        ).lines
+    )
+    for max_height in range(1, full_height + 2):
+        expected = _legacy_transcript_tail_rows(
+            region,
+            max_height=max_height,
+            width=80,
+        )
+        actual = [
+            line.text
+            for line in region.render(
+                RenderConstraints(
+                    width=80,
+                    max_height=max_height,
+                    visible_height=24,
+                )
+            ).lines
+        ]
+
+        assert actual == expected
+
+
+def test_screen_app_reuses_committed_segment_for_tick_input_and_chunk() -> None:
+    from loushang.coding.ui.screen_app import ScreenCodingTuiApp
+    from loushang.tui import RenderLoop, TerminalSize
+
+    now = [1.0]
+    app = ScreenCodingTuiApp(
+        model_label="kimi",
+        cwd="/repo",
+        branch="main",
+        session_label="abcd1234",
+        now=lambda: now[0],
+    )
+    blocks = []
+    for block in range(50):
+        first_line = block * 20
+        lines = "\n".join(
+            f"- history line {index}" for index in range(first_line, first_line + 20)
+        )
+        blocks.append(f"### Block {block + 1}\n\n{lines}")
+    app.state.records.append(AssistantMessageRecord("\n\n".join(blocks)))
+    app.state.mark_records_changed()
+    app.begin_run(started_at=0.0)
+    loop = RenderLoop(app)
+    size = TerminalSize(columns=100, rows=30)
+
+    initial = loop.plan(size)
+    loop.commit(initial, size=size)
+    assert len(initial.current_logical_lines) >= 1_000
+
+    now[0] = 2.0
+    tick = loop.plan(size)
+
+    assert tick.reused_render_segment_count >= 1
+    assert tick.materialized_logical_line_count <= 20
+    assert tick.flattened_logical_line_count == 0
+    loop.commit(tick, size=size)
+
+    app.composer.set_text("x")
+    composer_input = loop.plan(size)
+
+    assert composer_input.reused_render_segment_count >= 1
+    assert composer_input.materialized_logical_line_count <= 20
+    assert composer_input.flattened_logical_line_count == 0
+    loop.commit(composer_input, size=size)
+
+    app.begin_assistant()
+    app.append_assistant_chunk("streaming tail")
+    chunk = loop.plan(size)
+
+    assert chunk.reused_render_segment_count >= 1
+    assert chunk.materialized_logical_line_count <= 30
+    assert chunk.flattened_logical_line_count == 0
+    assert "history line 999" in "\n".join(chunk.current_logical_lines)
+    assert "streaming tail" in "\n".join(chunk.current_logical_lines)
 
 
 def test_screen_coding_tui_streaming_draft_uses_markdown_visuals_for_append_chunks() -> None:
