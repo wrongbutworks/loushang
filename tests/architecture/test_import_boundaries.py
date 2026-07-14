@@ -1462,6 +1462,81 @@ def test_host_turn_session_orchestration_core_is_documented_and_adopted() -> Non
     assert "TurnOrchestrator" not in harness_exports
 
 
+def test_product_capability_composition_core_is_documented_and_adopted() -> None:
+    import loushang.harness as harness
+    import loushang.harness.capabilities as capabilities
+
+    capability_symbols = {
+        "CommandCatalog",
+        "CommandDescriptor",
+        "CommandDispatchOutcome",
+        "PreparedPrompt",
+        "PromptSection",
+        "PromptTemplateExpander",
+        "ToolActivationCoordinator",
+        "ToolActivationDiff",
+        "ToolActivationSnapshot",
+    }
+    assert capability_symbols.isdisjoint(set(harness.__all__))
+    assert capabilities.__all__ == []
+
+    design_path = Path(
+        "docs/internals/architecture/harness/product-capability-composition-core.md"
+    )
+    assert design_path.exists()
+    design_text = " ".join(design_path.read_text(encoding="utf-8").split())
+    required_phrases = {
+        "Harness Product Capability Composition Core Boundary",
+        "Implementation complete for integration into `lane/harness`",
+        "`loushang.harness.capabilities.commands`",
+        "`loushang.harness.capabilities.prompt`",
+        "`loushang.harness.capabilities.tools`",
+        "Product supplies every section",
+        "Coding and future Product adapters retain",
+        "full non-live repository suite remain merge gates",
+    }
+    assert (
+        sorted(phrase for phrase in required_phrases if phrase not in design_text) == []
+    )
+
+    readme_text = Path("docs/internals/architecture/harness/README.md").read_text(
+        encoding="utf-8"
+    )
+    assert "Product Capability Composition Core Boundary" in readme_text
+
+    inventory_text = Path(
+        "docs/internals/architecture/harness/coding-to-harness-migration-inventory.md"
+    ).read_text(encoding="utf-8")
+    assert "Wave 5: Product Capability Composition" in inventory_text
+    assert (
+        "product capability composition core implementation complete"
+        in inventory_text
+    )
+
+    expected_imports = {
+        Path("src/loushang/coding/commands/catalog.py"): {
+            "loushang.harness.capabilities.commands.CommandCatalog",
+        },
+        Path("src/loushang/coding/prompt/assembler.py"): {
+            "loushang.harness.capabilities.prompt.PromptSection",
+            "loushang.harness.capabilities.prompt.compose_prompt_sections",
+        },
+        Path("src/loushang/coding/session/command_controller.py"): {
+            "loushang.harness.capabilities.commands.dispatch_command_async",
+        },
+        Path("src/loushang/coding/session/tool_controller.py"): {
+            "loushang.harness.capabilities.tools.ToolActivationCoordinator",
+        },
+    }
+    missing: list[str] = []
+    for path, required in expected_imports.items():
+        imports = set(_absolute_imports(path))
+        missing.extend(
+            f"{path.as_posix()} missing {name}" for name in sorted(required - imports)
+        )
+    assert missing == []
+
+
 def test_tool_output_projection_core_is_documented_and_adopted() -> None:
     design_path = Path(
         "docs/internals/architecture/harness/tool-output-projection-core.md"

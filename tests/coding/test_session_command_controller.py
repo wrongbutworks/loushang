@@ -187,6 +187,50 @@ def test_command_controller_executes_extension_command_before_resource_command(t
     assert calls == [("now", "/tmp/project")]
 
 
+def test_command_controller_dispatches_extension_before_builtin_and_resource(tmp_path) -> None:
+    calls: list[tuple[str, str]] = []
+    builtin_names: list[str | None] = []
+
+    async def _handler(args: str, ctx) -> None:
+        calls.append((args, ctx.cwd))
+
+    manager = SessionManager.new(session_dir=tmp_path, cwd="/tmp/project", persist=False)
+    runner = ExtensionRunner(
+        [
+            LoadedExtension(
+                name="name-ext",
+                source_path=Path("/tmp/project/extensions/name.py"),
+                commands={"name": RegisteredCommand(name="name", handler=_handler)},
+            )
+        ]
+    )
+    bundle = ResourceBundle(
+        cwd=Path("/tmp/project"),
+        prompts=[
+            PromptFragmentDescriptor(
+                name="name",
+                source_path=Path("/tmp/project/prompts/name.md"),
+                text="Resource name $ARGUMENTS",
+            )
+        ],
+    )
+    controller = CommandController(
+        session_manager=manager,
+        get_extension_runner=lambda: runner,
+        get_resource_bundle=lambda: bundle,
+        get_diagnostics_service=lambda: None,
+        builtin_backend=BuiltinCommandBackend(set_session_name=builtin_names.append),
+    )
+
+    result = asyncio.run(controller.execute_command_async("/name", "Project Alpha"))
+
+    assert result is not None
+    assert result.invocation_name == "name"
+    assert result.result is None
+    assert calls == [("Project Alpha", "/tmp/project")]
+    assert builtin_names == []
+
+
 def test_command_controller_executes_builtin_login(tmp_path) -> None:
     calls: list[str | None] = []
     manager = SessionManager.new(session_dir=tmp_path, cwd="/tmp/project", persist=False)

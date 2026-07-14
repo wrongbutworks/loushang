@@ -76,8 +76,9 @@ transition contract.
 
 Coding and future Product adapters retain:
 
-- concrete message construction, input transformation, slash parsing,
-  preflight decisions, prompts, skills, and before-start hook payloads;
+- concrete message construction, input transformation, Product preflight
+  decisions, prompts, skills, and before-start hook payloads; neutral slash
+  parsing now lives in `loushang.harness.capabilities.commands`;
 - retry error classification, retry defaults, Product events, and user-facing
   failure wording;
 - compaction thresholds, exact summary prompts, model calls, transcript

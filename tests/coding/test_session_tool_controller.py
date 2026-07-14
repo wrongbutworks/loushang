@@ -281,6 +281,43 @@ def test_tool_controller_runtime_registration_preserves_duplicate_overwrite_beha
     assert registry.get_source_info("runtime_tool") == {"source": "runtime"}
 
 
+def test_tool_controller_rebinds_active_same_name_runtime_replacement(tmp_path) -> None:
+    registry = ToolRegistry()
+    registry.register_tool(
+        _tool_definition(
+            "runtime_tool",
+            description="Original runtime tool",
+            prompt_snippet="- runtime_tool: original behavior",
+        )
+    )
+    agent = Agent(initial_state={"system_prompt": "stale", "tools": []})
+    controller = ToolController(
+        agent=agent,
+        session_manager=SessionManager.new(session_dir=tmp_path, cwd="/tmp/project", persist=False),
+        tool_registry=registry,
+        allowed_tool_names=None,
+        initial_active_tool_names=["runtime_tool"],
+        base_prompt="Base prompt.",
+        get_resource_bundle=lambda: None,
+        get_diagnostics_service=lambda: None,
+    )
+    controller.apply_active_tools(["runtime_tool"])
+
+    controller.register_runtime_tool(
+        _tool_definition(
+            "runtime_tool",
+            description="Replacement runtime tool",
+            prompt_snippet="- runtime_tool: replacement behavior",
+        ),
+        source_info={"source": "runtime"},
+    )
+
+    assert controller.get_active_tool_names() == ["runtime_tool"]
+    assert [tool.description for tool in agent.tools] == ["Replacement runtime tool"]
+    assert "- runtime_tool: replacement behavior" in agent.system_prompt
+    assert "- runtime_tool: original behavior" not in agent.system_prompt
+
+
 def test_tool_controller_runtime_registration_preserves_default_activation(tmp_path) -> None:
     registry = ToolRegistry()
     agent = Agent(initial_state={"system_prompt": "stale", "tools": []})
