@@ -25,7 +25,6 @@ from loushang.tui.terminal_image import (
 
 ClearScrollbackPolicy = Literal["disabled", "resize", "explicit"]
 SEGMENT_RESET = "\x1b[0m\x1b]8;;\x07"
-_FINALIZED_SEGMENT_CACHE_LIMIT = 512
 
 
 @dataclass(frozen=True, slots=True, eq=False)
@@ -722,8 +721,6 @@ class RenderLoop:
             segments.append(logical_segment)
             if cache_key is not None:
                 current_segment_cache[cache_key] = logical_segment
-                while len(current_segment_cache) > _FINALIZED_SEGMENT_CACHE_LIMIT:
-                    current_segment_cache.pop(next(iter(current_segment_cache)))
         logical_segments = tuple(segments)
         raw_lines = _SegmentedTextLines(logical_segments, finalized=False)
         finalized_lines = _SegmentedTextLines(logical_segments, finalized=True)

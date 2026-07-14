@@ -211,6 +211,42 @@ def test_segment_cache_retains_only_the_latest_segmented_frame() -> None:
     }
 
 
+def test_segment_cache_retains_every_segment_in_the_latest_frame() -> None:
+    stable = tuple(
+        _render_segment(
+            f"stable group {index}",
+            identity=("stable-group", index),
+            revision=1,
+        )
+        for index in range(600)
+    )
+    frontier_identity = object()
+    root = SegmentedRoot(
+        (*stable, _render_segment("frontier one", identity=frontier_identity, revision=1))
+    )
+    loop = RenderLoop(root)
+    size = TerminalSize(columns=80, rows=24)
+    first = loop.plan(size)
+    loop.commit(first, size=size)
+
+    assert len(loop._finalized_segment_cache) == 601
+
+    root.segments = (
+        *stable,
+        _render_segment("frontier two", identity=frontier_identity, revision=2),
+    )
+    changed = loop.plan(size)
+
+    assert changed.reused_render_segment_count == 600
+    assert changed.materialized_logical_line_count == 1
+    loop.commit(changed, size=size)
+
+    no_op = loop.plan(size)
+
+    assert no_op.reused_render_segment_count == 601
+    assert no_op.materialized_logical_line_count == 0
+
+
 def test_segment_cache_replacement_is_atomic_when_finalization_fails(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
