@@ -1,260 +1,178 @@
-# KD-015: Stable Tail Window And Transcript Block Cache
+# KD-015: Versioned Rendered Segments
 
-Status: Deferred. This is not the next streaming-performance change.
-
-Streaming Markdown parse reuse is a separate renderer optimization defined by
-KD-019. It does not require an active transcript window or any change to
-terminal-history projection.
+Status: Accepted for phased implementation.
 
 ## Purpose
 
-Keep input echo and timer-driven updates responsive when transcript history is
-long, without making the managed viewport jump or flash.
+Keep Working ticks, composer input, and streaming updates responsive after a
+long live session without dropping, trimming, or rewriting transcript history.
+
+This design changes only the internal representation of a rendered frame. It
+does not add a transcript window, change Markdown boundaries, or change terminal
+scrollback behavior.
 
 ## Problem
 
-The native coding TUI already renders transcript content from the tail, but the
-render loop still plans against an effectively unbounded `max_height`. In a long
-session, that makes each input edit or working-timer tick materialize thousands
-of logical transcript lines before diffing. The result is that transient updates
-scale with historical transcript size instead of visible viewport size.
+Committed transcript records already cache their rendered lines. The hot path
+still performs linear work over every cached line on each frame:
 
-The issue is not that committed transcript records are still changing. For a
-stable record, rendered lines are functionally stable as long as these inputs do
-not change:
+```text
+transcript blocks
+-> one flat list
+-> one flat RenderResult
+-> finalize every logical line
+-> compare every logical line
+-> emit a small terminal update
+```
 
-- transcript record data
-- render width
-- theme and terminal capabilities
-- transcript presentation policy such as thinking visibility
-- cwd-dependent display normalization
-- transcript window generation
+After a session has accumulated thousands of logical rows, a Working tick or a
+single input character therefore scales with historical transcript length even
+though only the bottom frame changed.
 
-That stability allows the runtime to cache historical transcript blocks and plan
-only against an active tail window.
+## Decision
 
-## Design
+The renderer represents a frame as immutable, versioned segments. The coding TUI
+uses three stable slots:
 
-The transcript source of truth remains the full display-record sequence. The
-runtime must add a second layer between transcript records and render planning:
+```text
+committed transcript | active draft | bottom frame
+```
 
-- stable transcript block cache: cached rendered lines for committed blocks
-- transcript block index: block boundaries plus cumulative logical line counts
-- active tail window: the only transcript logical lines exposed to the render
-  loop during steady-state planning
+An unchanged slot reuses the exact segment object from the last successfully
+committed frame. Layout and render planning use segment row counts without
+flattening segment contents. Only changed segments are finalized and compared
+line by line.
 
-The render loop must no longer require the screen root to materialize the full
-logical transcript on every tick. Instead, the transcript region provides a
-stable tail window composed from cached historical blocks plus transient tail
-content.
+The canonical record sequence and canonical rendered lines remain unchanged.
+Concatenating all segments must produce the exact output of the existing flat
+renderer.
 
-Transcript window generation is a monotonic invalidation token owned by the
-product-facing transcript window. It changes whenever transcript window
-membership or transcript presentation state is replaced in a way that makes
-previous stable-block cache entries unsafe to reuse as-is. Typical generation
-changes include transcript window replacement, transcript compaction replacement,
-resume-time transcript projection rebuild, or explicit transcript presentation
-policy replacement.
+## Segment Contract
 
-## Stable And Transient Content
+Each rendered segment is an immutable snapshot containing:
 
-Stable content includes:
+- occurrence identity;
+- render revision;
+- immutable rendered rows;
+- row count;
+- terminal-image metadata required by the existing planner.
 
-- user prompt records
-- committed assistant message records
-- committed tool execution records
-- committed thinking records
-- worked divider and compaction records
+A reused segment revision is valid only when all inputs affecting its rendered
+bytes remain unchanged, including source revision, width, theme, terminal
+capabilities, cwd, and transcript projection generation.
 
-Transient content includes:
+Two equal-valued record occurrences remain two occurrences in canonical output.
+Record separators are part of canonical segment composition and are emitted in
+exactly one place. Empty records do not create phantom separators.
 
-- streaming assistant draft buffers
-- active tool-progress rows if they are still mutating
-- bottom-frame content such as working line, composer, pending queue, and
-  statusline
+## Frame Contract
 
-Only transient content may re-render on every frame by default. Stable content
-must be reused from cache whenever its render key remains unchanged.
+A planned logical frame contains:
 
-## Block Boundaries
+- the ordered segment references;
+- aggregate logical row count;
+- declared cursor;
+- the revision of the committed frame on which the plan is based.
 
-The runtime must cache transcript content by stable block, not by the final
-flattened logical line array.
+The render loop may take the segment fast path only when the base revision is the
+last successfully committed revision. Terminal flush success is followed by one
+atomic render-loop commit of the frame, viewport, logical and hardware cursor,
+high-water mark, and terminal-image metadata. A failed flush leaves that state
+unchanged.
 
-A block is the smallest committed transcript unit whose rendered lines are
-expected to remain internally consistent across steady-state frames. In the
-native coding TUI, the default block boundary is one committed display record.
-If future product rendering composes multiple records into one semantic unit,
-that unit must still render and invalidate as one block.
+## Dirty Range
 
-The product adapter or transcript projection layer owns block-boundary
-definition. The runtime consumes committed blocks and must not invent new
-multi-record semantic blocks by inspecting rendered lines. The runtime may index
-and cache blocks, but block identity and grouping come from transcript
-projection, not from render-time heuristics.
+Segment identity proves only content reuse. Absolute position still matters.
 
-The active tail window must be selected in block units. It must never slice into
-the middle of a block only because a raw line budget was hit. If the window
-budget boundary falls inside a block, the runtime must include the entire block
-or exclude it entirely according to bottom-anchored window selection policy.
+- A Working tick or composer edit changes the bottom segment.
+- A streaming chunk changes the draft segment.
+- If a changed segment gains or loses rows, all later segments whose absolute
+  positions move are part of the affected suffix even when their content is
+  unchanged.
+- A clean prefix may be skipped only when its segment revisions, order, and
+  absolute starting rows are unchanged.
 
-## Tail Window Policy
+The existing append, protected-append, shrink, viewport, cursor, and terminal
+operation semantics remain authoritative. The segment path computes equivalent
+line facts without reading the stable prefix.
 
-The transcript region must expose an active tail window with these properties:
+## Terminal Images
 
-- bottom anchored: the newest committed or transient transcript content stays at
-  the bottom edge of the transcript window
-- visible-height preserving: the visible transcript rows always come from the
-  active tail window
-- guard-banded: the runtime keeps additional historical rows above the visible
-  viewport so small tail changes do not force immediate window replacement
-- block-stable: window membership changes only on block boundaries
+Terminal-image IDs and their row offsets are cached with the immutable segment.
+Image deletion and changed-range expansion preserve the existing behavior.
 
-For coding mode, the initial sizing target is:
+If a row shift can move an image and the segment path cannot prove equivalent
+delete and repaint operations, planning uses the existing full fallback.
 
-- visible transcript height driven by layout and commonly reaching about 80
-  rows, as a tunable default rather than a hard-coded invariant
-- guard band of roughly one additional visible-height above the viewport
-- active tail window of about two visible-heights, subject to tuning
+## Fallback
 
-Exact line counts are policy, not API, but the guard band must be large enough
-that ordinary input edits, streaming chunk completion, and working-line timer
-updates do not churn window membership.
+The existing complete render, finalize, diff, and terminal-plan path remains the
+correctness fallback. It is used for the first frame and whenever reuse cannot be
+proven, including relevant resize, render-context invalidation, transcript
+replacement, or visible surface composition.
 
-On extremely short terminals, the active tail window may collapse to only a few
-rows because it remains derived from current visible layout height. This is
-acceptable as long as the same bottom-anchored and block-stable rules still
-apply.
+Fallback is allowed to be linear in full history. The following steady-state
+frames are not:
 
-## Render Planning Contract
+| Frame | Allowed row work |
+| --- | --- |
+| Working tick | bottom frame |
+| Composer input | bottom frame |
+| New chunk | active draft plus shifted bottom frame |
+| No-op | none |
 
-During steady-state diff planning, the render loop must only see:
+A pathological unfinished Markdown construct may keep the active draft large.
+This phase does not invent a new Markdown boundary to split it.
 
-- active transcript tail window logical lines
-- current bottom-frame logical lines
-- active overlays
+## Implementation Boundary
 
-Historical transcript content outside the active tail window remains part of the
-product state, but not part of the render loop's steady-state logical line
-buffer.
+This phase changes only:
 
-The runtime must still retain enough metadata to:
+- immutable rendered-line segment and segmented-line containers;
+- transcript, layout, and no-surface composition preservation of segments;
+- segment-aware finalize, diff, terminal-image lookup, diagnostics, and committed
+  render-loop baseline;
+- focused equivalence and performance tests.
 
-- rebuild a larger or different tail window after resize or policy changes
-- rebuild the active window after theme or capability invalidation
-- export or inspect the full transcript outside the live render path
+It does not introduce:
 
-Window selection must avoid per-frame linear rescans over the entire transcript.
-The expected mechanism is a block index with cumulative logical line counts so
-tail-window selection is driven by indexed lookup plus a bounded walk over the
-blocks that actually enter the active window. The exact data structure is an
-implementation choice, but steady-state selection must scale with active-window
-size rather than total transcript history length.
+- active-window eviction;
+- Markdown semantic-group changes;
+- scheduler interval changes;
+- new terminal operations or product behavior.
 
-## Invalidation Rules
+## Correctness Oracle
 
-Stable block cache entries must be invalidated when any render key input changes:
+For every optimized test frame:
 
-- width change
-- theme change
-- terminal capability change
-- transcript presentation policy change such as thinking visibility
-- cwd-dependent display normalization change
-- transcript window generation reset or replacement
-- block data replacement by transcript reprojection
+```text
+flatten(segmented raw frame) == legacy raw frame
+flatten(segmented finalized frame) == legacy finalized frame
+```
 
-Steady-state transient updates such as:
+The optimized and legacy planners must also agree on changed range, viewport,
+logical and hardware cursor, terminal operations, and terminal-image deletes.
 
-- composer edits
-- working timer ticks
-- pending-queue changes
-- streaming draft chunk appends
+The focused fixtures cover duplicate equal records, empty records and
+separators, draft growth, bottom-frame cursor movement, row-count shifts, flush
+failure, and an affected suffix containing a terminal image.
 
-must not invalidate unrelated historical stable blocks.
+## Performance Acceptance
 
-Committed blocks remain immutable in place. Block data replacement means that a
-new transcript projection replaces a previously committed block at the transcript
-state level; it does not authorize mutating a committed block instance after
-commit.
+After an initial `4000 -> 1000 -> 1000 -> 10` render has successfully committed,
+reset the counters and render a Working tick, one input character, one new chunk,
+and a no-op frame.
 
-Height-only resize does not invalidate stable block cache entries by itself. It
-may change visible transcript height, guard-band sizing, and active tail window
-membership, but cached block renderings remain reusable when width and other
-render-key inputs are unchanged. Width resize invalidates stable block cache
-entries and follows the KD-007 reflow path.
+The hard requirements are:
 
-The block index must cover the full committed transcript. The stable block cache
-does not need to hold rendered lines for the full transcript indefinitely.
-Implementations may evict cached renderings outside the active window, guard
-band, or recent reuse set, as long as the index remains sufficient to rebuild
-them deterministically on demand.
+```text
+stable committed rows read           = 0
+stable committed rows materialized   = 0
+full frame flatten calls              = 0
+Working/input dirty rows              = O(bottom frame)
+chunk committed render misses         = 0
+no-op terminal operations             = 0
+```
 
-## Window Replacement And Repaint Policy
-
-When the active tail window membership stays within the current guard band, the
-runtime should continue using line-diff updates normally.
-
-When membership must change because the tail moved beyond the guard band, the
-runtime must treat that as a managed tail-window replacement, not as an ordinary
-small changed-range update. In that case:
-
-- the new active window is selected on block boundaries
-- the viewport remains bottom anchored
-- the runtime may use a managed baseline repaint of runtime-owned visible rows
-  instead of a fine-grained diff against the previous window contents
-
-This repaint is a controlled runtime repaint, not a resize clear-scrollback
-operation. It must preserve the no-flash and no-history-duplication guarantees
-already defined by the managed viewport design.
-
-The runtime must use a deterministic, testable policy for deciding between
-tail-window replacement repaint and ordinary diff. The design does not require a
-single global threshold constant, but the default policy must be anchored in
-window-membership change and guard-band exhaustion rather than ad hoc judgment.
-
-## Non-Goals
-
-This design does not require:
-
-- replaying terminal scrollback as runtime state
-- character-level incremental transcript diff
-- preserving full historical logical lines inside the steady-state render loop
-- solving width-reflow by partial reuse across resize
-
-Resize remains a separately defined repaint path.
-
-## Relationship To Existing Designs
-
-- KD-001 remains responsible for scheduling, line diffing, and terminal writes.
-  KD-015 narrows what logical lines are presented to that render loop during
-  steady state.
-- KD-004 remains responsible for managed viewport ownership, recovery repaint,
-  and scrollback policy. KD-015 adds a tail-window replacement path that uses
-  those repaint rules.
-- KD-006 remains responsible for stable versus transient transcript lifecycle.
-  KD-015 builds on that distinction to define what may be cached and what must
-  stay live.
-- KD-007 remains responsible for resize-stable reflow. KD-015 relies on KD-007
-  for width-driven cache invalidation and repaint, while allowing height-only
-  resize to resize the active tail window without invalidating stable block
-  renderings.
-- KD-008 remains responsible for visible transcript height after bottom-frame
-  layout. KD-015 uses that visible height to size the tail window and guard
-  band.
-
-## Test Obligations
-
-- steady-state composer edits do not scale render planning with total transcript
-  history size
-- working-timer ticks do not invalidate historical stable transcript blocks
-- render diagnostics or perf probes can prove that steady-state planning touches
-  only the active tail window plus bounded block-index lookup work
-- active tail window membership changes only on block boundaries
-- tail-window replacement preserves bottom anchoring and does not duplicate
-  transcript content
-- guard band prevents immediate window replacement on small transient tail
-  changes
-- width/theme/capability/cwd invalidation rebuilds cached stable blocks
-  deterministically
-- resize still uses the existing repaint path rather than stale stable-block
-  reuse
+Wall-clock time is supporting evidence. Steady-state Working and input cost must
+remain approximately constant as committed history grows.

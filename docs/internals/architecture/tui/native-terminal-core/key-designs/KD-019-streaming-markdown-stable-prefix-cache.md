@@ -92,7 +92,7 @@ introduce:
 - terminal diff, viewport, scrollback, or terminal-protocol changes
 - fixed-size Markdown fragments
 
-KD-015 remains a separate, deferred option for bounding full transcript
+KD-015 remains a separate renderer optimization for reusing full transcript
 planning if that cost is still material after this optimization.
 
 ## Implementation Shape
