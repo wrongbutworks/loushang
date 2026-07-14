@@ -56,13 +56,13 @@ sufficient.
 | Remaining `coding.compaction.types`, `coding.session.context_usage` | Product adapter | Neutral context items, packing, strategies, coordinator lifecycle, salience, summary profiles, opaque-record turn/cut planning, split-turn/tool-result mechanics, previous-summary accounting, and checkpoint replay now live in Harness. Coding keeps compatibility records, message/aggregate token adapters, trigger decisions, exact prompts, model calls, content weights, and artifact projection. |
 | `coding.domain.types` | Split candidate | Use as input for future `loushang.harness.adapter` shapes. Generic request/result types must not contain first-class method fields; carry method/work refs as opaque metadata. |
 | `coding.session.types.RunState` | Compatibility shim | `RunState` lives in `loushang.harness.host.types`; Coding preserves the accepted session import with the same class identity. |
-| `coding.session.queue_controller`, `coding.session.session_event_bus` | Split candidate | Queue snapshots, `HostInputQueue`, and `OrderedEventBus` live in `loushang.harness.host`. Coding keeps queue input/Agent delivery, logs, product queue events, and its specialized session event bus. |
-| `coding.session.AgentSession`, controllers, `coding.runtime.AgentSessionRuntime` | Product adapter | `AgentSession` delegates prompt/continue/abort/idle/dispose coordination to `HostRuntime`; `AgentSessionRuntime` delegates its opaque current slot, replacement lifecycle, and scheduling to `loushang.harness.runtime`; conversation tree/fork/replay/catalog mechanics live in `loushang.harness.conversation`. Coding keeps product controllers, event schema, resource watchers, commands, transcript schema/codec, replacement decisions/events, import policy, index fields, and storage policy. |
+| `coding.session.queue_controller`, `coding.session.session_event_bus` | Product adapter | Queue snapshots, `HostInputQueue`, `TurnInputQueue`, turn orchestration, and `OrderedEventBus` live in `loushang.harness.host`. Coding keeps AI message construction, preflight and delivery policy, logs, Product queue events, and its specialized session event bus. |
+| `coding.session.AgentSession`, controllers, `coding.runtime.AgentSessionRuntime` | Product adapter | `AgentSession` delegates run, turn, queue, retry, compaction single-flight, resource/extension lifecycle, and abort/idle/dispose coordination to Harness. `AgentSessionRuntime` delegates its opaque current slot, operation transaction, replacement callback order, import staging, navigation abort scope, and scheduling to `loushang.harness.runtime`; conversation tree/fork/replay/catalog mechanics live in `loushang.harness.conversation`. Coding keeps controller policy/adapters, event schema, concrete messages, commands, transcript schema/codec, replacement decisions/events, path/import policy, index fields, and storage policy. |
 | `coding.event` | Keep product | Coding session event protocol and product projection stay coding. Agent owns tool-output event projection and strict failure semantics; Coding consumes that view and retains its field names, filtering, render enrichment, and RPC/print behavior. |
 | `coding.extensions.events`, `manifest`, `loader`, `contributions`, `wrapper` | Compatibility shim | Event declarations, manifest parsing, descriptor-driven loading, contribution projection, and tool wrapping live in `loushang.harness.extensions`. Coding paths preserve imports and inject Coding API/policy/legacy-event adapters. |
 | `coding.extensions.api`, `runner`, `types`, `policy`, `hooks` | Product adapter | Neutral records, registration, conflict resolution, observer/input dispatch, resource contribution execution, binding storage/lifetimes, and generic bound/unbound runtime contexts live in Harness. Coding keeps typed model/thinking/command specialization, provider/UI callback injection, concrete permission defaults, session decisions, system-prompt/context reducers, and Agent tool-call adaptation. |
 | `coding.bootstrap` | Keep product | Product assembly. It may call harness engines but should not move. |
-| `coding.runtime` | Product adapter | Generic binding leases, runtime contexts, current-session transition lifecycle, reentrant serialization, callback ordering, and coalesced scheduling live in `loushang.harness.runtime`. Coding keeps composition, cwd/session-file resolution, concrete create/restore/fork/import/clone decisions, extension event projection, diagnostics codes, transcript semantics, package operations, and index content. |
+| `coding.runtime` | Product adapter | Generic binding leases, runtime contexts, current-session transitions, serialized operation phases, uncommitted-candidate rollback, replacement callback ordering, exclusive import staging, navigation abort scopes, and coalesced scheduling live in `loushang.harness.runtime`. Coding keeps composition, cwd/session-file resolution and acceptance policy, concrete create/restore/fork/import/clone decisions, extension event projection, diagnostics codes, transcript semantics, package operations, and index content. |
 | `coding.ui` | Never harness | Product-owned TUI adapter and screen/controller state. Shared terminal primitives belong in `loushang.tui`, not harness. |
 | `coding.mode` | Keep product | Transitional print/RPC mode adapters stay coding until channel is implemented. RPC now uses an explicit transport projection for known dataclasses, paths, mappings, lists, and tuples while rejecting cycles, sets, arbitrary objects, `__dict__` discovery, non-finite floats, and `repr()` fallback. |
 | `coding.cli` | Keep product | Product CLI. It may expose harness-backed behavior but remains coding-owned. |
@@ -179,20 +179,21 @@ semantics with the separate `loushang.method` and `loushang.work` layers. Moving
 ### Wave 4: Session And Runtime Consolidation
 
 Status: product runtime core implementation complete for integration into
-`lane/harness`; see
-[Product Runtime Core Boundary](product-runtime-core-boundary.md).
+`lane/harness`.
 
-Harness owns product runtime binding storage and generation leases, generic
-bound/unbound extension contexts, the opaque current-session transition host,
-reentrant replacement serialization, callback ordering, and coalesced runtime
-scheduling. Coding keeps concrete create/restore/fork/import/clone behavior,
-session files and projections, extension event/decision semantics, diagnostics,
-commands, controllers, and UI.
+Status: host turn and session orchestration core implementation complete for
+integration into `lane/harness`; see
+[Host Turn And Session Orchestration Core Boundary](host-turn-session-orchestration-core.md)
+and [Product Runtime Core Boundary](product-runtime-core-boundary.md).
 
-With lower dependencies owned by Harness, lift reusable session coordination,
-resource/extension lifecycle wiring, cancellation, and event orchestration into
-the Harness host. Coding retains a thin product session adapter, composition
-root, commands, control/model/auth, transcript semantics, channels, and UI.
+Harness now owns product runtime binding storage and generation leases, generic
+bound/unbound extension contexts, turn and retry state machines, resource
+watch/refresh ordering, extension bind/refresh/invalidate lifecycle, opaque
+session operation transactions, callback ordering, import staging, navigation
+abort scopes, and coalesced runtime scheduling. Coding keeps concrete messages,
+create/restore/fork/import/clone decisions, session files and projections,
+extension event/decision semantics, diagnostics wording, commands, Product
+controller adapters, control/model/auth, transcript semantics, channels, and UI.
 
 Each wave may span several reviewable commits, but it should merge as one
 coherent ownership transfer. A wave is split only when a product boundary or
@@ -398,17 +399,19 @@ configuration, model calls, artifacts, and transcript rebuild semantics.
 ### Slice 5: Host And Lifecycle
 
 Status: host runtime core implementation complete for integration into
-`lane/harness`; see [Host Runtime Boundary](host-runtime-boundary.md).
+`lane/harness`; the host turn/session orchestration core is also complete. See
+[Host Runtime Boundary](host-runtime-boundary.md) and
+[Host Turn And Session Orchestration Core Boundary](host-turn-session-orchestration-core.md).
 
 Purpose: let future products share idle/abort/dispose/queue contracts.
 
 Harness now owns host status/snapshots, driver-delegating lifecycle
-coordination, generic steering/follow-up queue ledger mechanics, and ordered
-event dispatch. Coding uses those mechanisms while retaining `AgentSession`,
-its product controllers and event schema, session persistence and replacement
-decisions, product prompt text, resource activation/projection, extension
-policy, and UI semantics. Generic replacement mechanics now live under the
-Product Runtime Core boundary.
+coordination, generic steering/follow-up queue and turn mechanics, retry and
+compaction single-flight state, ordered event mirroring, resource watch/refresh,
+extension lifecycle coordination, and session/navigation transactions. Coding
+uses those mechanisms while retaining `AgentSession`, Product controller policy
+and adapters, event schemas, persistence and replacement decisions, prompt
+text, resource activation/projection, extension policy, and UI semantics.
 
 The independent reference driver and neutral queue/event fixtures satisfy the
 neutrality evidence gate without moving `AgentSession` wholesale or creating a

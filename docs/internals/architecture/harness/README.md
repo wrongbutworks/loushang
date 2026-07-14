@@ -75,6 +75,10 @@ planning, work event persistence, or AI provider behavior.
 - [Host Runtime Boundary](host-runtime-boundary.md) defines product-neutral host
   lifecycle, input-queue ledger, and ordered event ownership while preserving
   Agent loop and product session responsibilities.
+- [Host Turn And Session Orchestration Core Boundary](host-turn-session-orchestration-core.md)
+  defines shared turn, retry, resource/extension lifecycle, session operation,
+  import staging, and navigation transaction ownership while preserving Product
+  messages, policy, persistence, events, and UI.
 - [OEM And Extension Architecture](oem-extension-architecture.md) describes how
   OEM customisation, extension contributions, and harness upgrades interact,
   including override mechanisms, extension categories, surface-type gaps, and

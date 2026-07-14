@@ -117,7 +117,7 @@ Use this split when judging a candidate:
 | Resources | platform roots/layout, standard conventions, descriptors, discovery/package engines, precedence presets, merge/diagnostic mechanisms | domain content, convention activation, additional/override roots, trust and runtime projection |
 | Workspace | file/process protocols and backends, neutral exec shapes, path/mutation mechanics, reusable workspace tools | allowed roots, activation, risk/approval classification, user explanations, workspace defaults |
 | Context | context item refs, budget accounting, packing contracts, turn-aware cut planning, and checkpoint replay mechanics | what content is important, token/message projection, summarization prompts, and product-specific memory policy |
-| Session | conversation repository/catalog/branch/fork/replay mechanics, host lifecycle protocols, idle/abort/dispose/queue snapshots | transcript schema/codecs, storage roots and retention, controllers, commands, and Product execution policy |
+| Session | conversation repository/catalog/branch/fork/replay mechanics, host/turn/retry lifecycle, resource and extension refresh coordination, session operation/navigation transactions, idle/abort/dispose/queue snapshots | transcript schema/codecs, storage roots and retention, controller policy/adapters, commands, Product messages, and Product execution policy |
 | Diagnostics | diagnostic records, severity/source vocabulary, query interface | product health checks, user-facing grouping, remediation text |
 
 The product adapter can call harness engines. The product adapter chooses how
@@ -241,8 +241,8 @@ During the move:
 - preserve accepted product import paths with thin compatibility adapters;
 - defer renaming, public API cleanup, and shim removal until ownership has
   moved and behavior is green;
-- keep command handlers, prompt policy, UI controllers, and session stores in
-  product packages;
+- keep command handlers, prompt policy, UI controllers, Product controller
+  policy/adapters, and Product transcript stores in product packages;
 - update internal imports to the new harness path;
 - run architecture import-boundary tests.
 

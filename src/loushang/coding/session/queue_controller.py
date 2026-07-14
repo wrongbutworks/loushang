@@ -4,11 +4,12 @@ from collections.abc import Callable
 from dataclasses import dataclass, field
 from typing import cast
 
-from loushang.agent import Agent
+from loushang.agent import Agent, AgentMessage
 from loushang.ai.types import ImagePart, TextPart, UserMessage
-from loushang.harness.host.queue import HostInputQueue
+from loushang.harness.host.turn import TurnInputQueue
 from loushang.harness.host.types import (
     QueuedMessageSnapshot,
+    QueueKind,
     QueueMode,
     QueueSnapshot,
 )
@@ -27,11 +28,16 @@ class QueueController:
     preflight_user_input: PreflightUserInput
     reject_extension_command: RejectExtensionCommand
     emit_queue_update: QueueUpdateEmitter
-    _queue: HostInputQueue[object] = field(
-        default_factory=HostInputQueue,
-        init=False,
-        repr=False,
-    )
+    _queue: TurnInputQueue[object] = field(init=False, repr=False)
+
+    def __post_init__(self) -> None:
+        self._queue = TurnInputQueue(
+            submit=self._submit,
+            clear_delivery_queue=self.agent.clear_all_queues,
+            has_delivery_messages=self.agent.has_queued_messages,
+            notify=self.emit_queue_update,
+            observe=self._observe_queue_event,
+        )
 
     @property
     def pending_message_count(self) -> int:
@@ -53,7 +59,7 @@ class QueueController:
         return self._queue.drain_next_turn()
 
     def has_pending_messages(self) -> bool:
-        return self._queue.has_pending() or self.agent.has_queued_messages()
+        return self._queue.has_pending()
 
     def steer(self, user_input: str, images: list[ImagePart] | None = None) -> None:
         self.reject_extension_command(user_input)
@@ -69,69 +75,64 @@ class QueueController:
             return
         self.queue_prepared_follow_up(str(getattr(preflight, "text")), images=images)
 
-    def queue_prepared_steering(self, text: str, images: list[ImagePart] | None = None) -> None:
+    def queue_prepared_steering(
+        self, text: str, images: list[ImagePart] | None = None
+    ) -> None:
         self.queue_steering_message(text, _user_message(text, images=images))
 
-    def queue_prepared_follow_up(self, text: str, images: list[ImagePart] | None = None) -> None:
+    def queue_prepared_follow_up(
+        self, text: str, images: list[ImagePart] | None = None
+    ) -> None:
         self.queue_follow_up_message(text, _user_message(text, images=images))
 
     def queue_steering_message(self, visible_text: str, message: object) -> None:
-        queued_message = self.agent.steer(message)
-        item = self._queue.enqueue(
+        self._queue.enqueue(
             "steering",
             text=visible_text,
-            payload=queued_message,
+            payload=message,
         )
-        _debug_queue_event("queue.message_queued", item)
-        self.emit_queue_update()
 
     def queue_follow_up_message(self, visible_text: str, message: object) -> None:
-        queued_message = self.agent.follow_up(message)
-        item = self._queue.enqueue(
+        self._queue.enqueue(
             "follow_up",
             text=visible_text,
-            payload=queued_message,
+            payload=message,
         )
-        _debug_queue_event("queue.message_queued", item)
-        self.emit_queue_update()
 
     def clear_queue(self) -> dict[str, list[str]]:
         steering = self.get_steering_messages()
         follow_up = self.get_follow_up_messages()
         self._queue.clear()
-        self.agent.clear_all_queues()
-        log.debug_event("agent", "queue.cleared", steering=len(steering), follow_up=len(follow_up))
-        self.emit_queue_update()
+        log.debug_event(
+            "agent", "queue.cleared", steering=len(steering), follow_up=len(follow_up)
+        )
         return {"steering": steering, "followUp": follow_up, "follow_up": follow_up}
 
     def mark_message_consumed(self, message: object) -> bool:
-        consumed = self._queue.consume(
+        return self._queue.consume_visible(
             message,
             fallback_text=_visible_message_text(message),
         )
-        if consumed is None:
-            return False
-        _debug_queue_event("queue.message_consumed", consumed)
-        self.emit_queue_update()
-        return True
 
     def prepare_continue_run(self) -> bool:
-        last_message = self.agent.state.messages[-1] if self.agent.state.messages else None
-        if getattr(last_message, "role", None) != "assistant":
-            return False
-        if self._queue.texts("steering"):
-            self._queue.drain(
-                "steering",
-                cast(QueueMode, self.agent.steering_mode),
-            )
-            return True
-        if self._queue.texts("follow_up"):
-            self._queue.drain(
-                "follow_up",
-                cast(QueueMode, self.agent.follow_up_mode),
-            )
-            return True
-        return False
+        last_message = (
+            self.agent.state.messages[-1] if self.agent.state.messages else None
+        )
+        return self._queue.prepare_continue(
+            previous_turn_completed=getattr(last_message, "role", None) == "assistant",
+            steering_mode=cast(QueueMode, self.agent.steering_mode),
+            follow_up_mode=cast(QueueMode, self.agent.follow_up_mode),
+        )
+
+    def _submit(self, kind: QueueKind, message: object) -> object:
+        agent_message = cast(AgentMessage, message)
+        if kind == "steering":
+            return self.agent.steer(agent_message)
+        return self.agent.follow_up(agent_message)
+
+    @staticmethod
+    def _observe_queue_event(event: str, item: QueuedMessageSnapshot) -> None:
+        _debug_queue_event(f"queue.message_{event}", item)
 
 
 def _user_message(text: str, images: list[ImagePart] | None = None) -> UserMessage:
@@ -146,7 +147,11 @@ def _visible_message_text(message: object) -> str:
     if isinstance(content, str):
         return content
     if isinstance(content, list):
-        return "".join(_content_part_text(part) or "" for part in content if _content_part_type(part) == "text")
+        return "".join(
+            _content_part_text(part) or ""
+            for part in content
+            if _content_part_type(part) == "text"
+        )
     return ""
 
 
