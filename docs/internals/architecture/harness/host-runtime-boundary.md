@@ -6,8 +6,10 @@ Status: implementation complete for integration into `lane/harness`.
 
 This document defines the product-neutral host lifecycle, input-queue ledger,
 and ordered event-dispatch mechanisms owned by `loushang.harness.host`.
-Coding remains responsible for product input semantics, session persistence,
-controllers, commands, resources, extensions, and presentation.
+Coding remains responsible for Product input semantics, session persistence,
+controller policy and adapters, commands, resource activation, extension
+policy, and presentation. Reusable controller state machines are defined by
+the Host Turn And Session Orchestration Core boundary.
 
 ## Control Boundary
 
@@ -83,6 +85,12 @@ parse commands, run preflight policy, select visible text, or deliver messages
 to Agent. Coding's queue controller remains the adapter that performs those
 actions and mirrors Agent delivery in the Harness ledger.
 
+`loushang.harness.host.turn.TurnInputQueue` composes that ledger with injected
+delivery, notification, and continue-turn callbacks. `TurnOrchestrator` owns
+the neutral interception, preflight, active-run queue, before-run, start-hook,
+and delegated execution order. Coding still supplies every message and policy
+callback.
+
 ## Ordered Events
 
 `loushang.harness.host.events.OrderedEventBus` owns:
@@ -109,8 +117,10 @@ Coding adopts the Host Runtime core as follows:
   `OrderedEventBus` while preserving its accepted no-loop error text;
 - `AgentSession` delegates prompt/continue lifecycle, abort, idle waiting, and
   disposal state to `HostRuntime`;
-- Coding controllers receive product callbacks rather than importing Host
-  policy into their input handling.
+- Coding prompt, queue, retry, and compaction controllers supply Product
+  callbacks to Harness turn and lifecycle coordinators;
+- resource and extension controllers supply Product discovery, event,
+  diagnostic, and binding callbacks to Harness lifecycle coordinators.
 
 Accepted Coding imports and public behavior remain available. Harness-owned
 records keep their Harness `__module__`; compatibility paths preserve the
@@ -123,11 +133,14 @@ This migration does not move or redesign:
 - input text/image conversion, preflight, slash parsing, or command handlers;
 - `AgentSessionEvent` or product event projection;
 - prompts, skills, tools, active-tool policy, or product defaults;
-- retry classification, compaction, summarization, or context salience;
+- retry classification/defaults, compaction trigger policy, summarization
+  prompts/model calls, or context salience; Harness owns only the injected
+  retry and compaction lifecycle state machines;
 - session JSONL, message entries, and concrete tree/fork/clone/resume/import/export
   decisions; generic current-session transition mechanics are defined by the
   [Product Runtime Core Boundary](product-runtime-core-boundary.md);
-- resource and extension discovery, activation, runtime hooks, or permissions;
+- resource content/activation and extension decisions, events, bindings, or
+  permissions; Harness owns watch/refresh and bind/refresh/invalidate ordering;
 - UI state, status text, diagnostics presentation, or artifact semantics;
 - work, method, channel, model, provider, or auth behavior.
 

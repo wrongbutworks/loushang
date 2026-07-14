@@ -541,8 +541,7 @@ def test_context_compaction_and_journal_mechanics_use_harness_owners() -> None:
     for path, required in expected_imports.items():
         imports = set(_absolute_imports(path))
         missing.extend(
-            f"{path.as_posix()} missing {name}"
-            for name in sorted(required - imports)
+            f"{path.as_posix()} missing {name}" for name in sorted(required - imports)
         )
     assert missing == []
 
@@ -567,8 +566,7 @@ def test_harness_runtime_data_foundations_are_documented_and_adopted() -> None:
         "Lack of a second production consumer is not a blocking gate",
     }
     assert (
-        sorted(phrase for phrase in required_phrases if phrase not in design_text)
-        == []
+        sorted(phrase for phrase in required_phrases if phrase not in design_text) == []
     )
 
     readme_text = Path("docs/internals/architecture/harness/README.md").read_text(
@@ -604,8 +602,7 @@ def test_harness_runtime_data_foundations_are_documented_and_adopted() -> None:
     for path, required in expected_imports.items():
         imports = set(_absolute_imports(path))
         missing.extend(
-            f"{path.as_posix()} missing {name}"
-            for name in sorted(required - imports)
+            f"{path.as_posix()} missing {name}" for name in sorted(required - imports)
         )
     assert missing == []
 
@@ -635,8 +632,7 @@ def test_harness_conversation_runtime_core_is_documented_and_adopted() -> None:
         "The split is deliberately asymmetric: Harness owns the control mechanics; Products name and interpret the data",
     }
     assert (
-        sorted(phrase for phrase in required_phrases if phrase not in design_text)
-        == []
+        sorted(phrase for phrase in required_phrases if phrase not in design_text) == []
     )
 
     readme_text = Path("docs/internals/architecture/harness/README.md").read_text(
@@ -655,9 +651,7 @@ def test_harness_conversation_runtime_core_is_documented_and_adopted() -> None:
     assert "loushang.harness.conversation.ConversationRepository" in (
         coding_store_imports
     )
-    assert "loushang.harness.journal.TranscriptRepository" not in (
-        coding_store_imports
-    )
+    assert "loushang.harness.journal.TranscriptRepository" not in (coding_store_imports)
     assert "loushang.harness.journal.BranchGraph" not in coding_store_imports
 
     compaction_imports = set(
@@ -1164,9 +1158,7 @@ def test_harness_dependency_first_migration_rule_is_documented() -> None:
     principles_path = Path(
         "docs/internals/architecture/harness/refactoring-principles.md"
     )
-    principles_text = " ".join(
-        principles_path.read_text(encoding="utf-8").split()
-    )
+    principles_text = " ".join(principles_path.read_text(encoding="utf-8").split())
     required_principles = {
         "Dependency-First Migration Order",
         "Move `B` before `A` when `B` belongs in Harness",
@@ -1177,9 +1169,12 @@ def test_harness_dependency_first_migration_rule_is_documented() -> None:
         "Do not create a separate branch or named slice for every leaf type",
         "Batch size never relaxes neutrality, dependency direction, compatibility, or test requirements",
     }
-    assert sorted(
-        phrase for phrase in required_principles if phrase not in principles_text
-    ) == []
+    assert (
+        sorted(
+            phrase for phrase in required_principles if phrase not in principles_text
+        )
+        == []
+    )
 
     inventory_path = Path(
         "docs/internals/architecture/harness/coding-to-harness-migration-inventory.md"
@@ -1194,9 +1189,10 @@ def test_harness_dependency_first_migration_rule_is_documented() -> None:
         "This is one capability batch",
         "Moving `coding.message` wholesale is explicitly not part of this wave",
     }
-    assert sorted(
-        phrase for phrase in required_inventory if phrase not in inventory_text
-    ) == []
+    assert (
+        sorted(phrase for phrase in required_inventory if phrase not in inventory_text)
+        == []
+    )
 
 
 def test_resource_package_runtime_has_harness_owners() -> None:
@@ -1293,9 +1289,9 @@ def test_harness_host_runtime_boundary_is_documented() -> None:
         sorted(phrase for phrase in required_phrases if phrase not in design_text) == []
     )
 
-    readme_text = Path(
-        "docs/internals/architecture/harness/README.md"
-    ).read_text(encoding="utf-8")
+    readme_text = Path("docs/internals/architecture/harness/README.md").read_text(
+        encoding="utf-8"
+    )
     assert "Host Runtime Boundary" in readme_text
 
     inventory_text = Path(
@@ -1324,13 +1320,12 @@ def test_harness_product_runtime_core_is_documented_and_adopted() -> None:
         "full non-live repository test suite passes",
     }
     assert (
-        sorted(phrase for phrase in required_phrases if phrase not in design_text)
-        == []
+        sorted(phrase for phrase in required_phrases if phrase not in design_text) == []
     )
 
-    readme_text = Path(
-        "docs/internals/architecture/harness/README.md"
-    ).read_text(encoding="utf-8")
+    readme_text = Path("docs/internals/architecture/harness/README.md").read_text(
+        encoding="utf-8"
+    )
     assert "Product Runtime Core Boundary" in readme_text
 
     inventory_text = Path(
@@ -1379,10 +1374,92 @@ def test_harness_product_runtime_core_is_documented_and_adopted() -> None:
     for path, required in expected_imports.items():
         imports = set(_absolute_imports(path))
         missing.extend(
-            f"{path.as_posix()} missing {name}"
-            for name in sorted(required - imports)
+            f"{path.as_posix()} missing {name}" for name in sorted(required - imports)
         )
     assert missing == []
+
+
+def test_host_turn_session_orchestration_core_is_documented_and_adopted() -> None:
+    design_path = Path(
+        "docs/internals/architecture/harness/host-turn-session-orchestration-core.md"
+    )
+    assert design_path.exists()
+    design_text = " ".join(design_path.read_text(encoding="utf-8").split())
+    required_phrases = {
+        "Host Turn And Session Orchestration Core Boundary",
+        "implementation complete for integration into `lane/harness`",
+        "`TurnOrchestrator`",
+        "`TurnInputQueue`",
+        "`RetryCoordinator`",
+        "`SessionOperationCoordinator`",
+        "`NavigationTransactionCoordinator`",
+        "prepare -> load -> discover -> commit",
+        "Cancellation during candidate preparation or replacement cleans up",
+        "Product retains controller policy, Product semantics, and adapters",
+        "full non-live repository suite pass",
+    }
+    assert (
+        sorted(phrase for phrase in required_phrases if phrase not in design_text) == []
+    )
+
+    readme_text = Path("docs/internals/architecture/harness/README.md").read_text(
+        encoding="utf-8"
+    )
+    assert "Host Turn And Session Orchestration Core Boundary" in readme_text
+
+    inventory_text = Path(
+        "docs/internals/architecture/harness/coding-to-harness-migration-inventory.md"
+    ).read_text(encoding="utf-8")
+    assert (
+        "host turn and session orchestration core implementation complete"
+        in inventory_text
+    )
+
+    expected_imports = {
+        Path("src/loushang/coding/runtime/agent_session_runtime.py"): {
+            "loushang.harness.runtime.SessionOperationCoordinator",
+            "loushang.harness.runtime.stage_file_import",
+        },
+        Path("src/loushang/coding/session/compaction_controller.py"): {
+            "loushang.harness.context.compaction.CompactionCoordinator",
+        },
+        Path("src/loushang/coding/session/extension_runtime_controller.py"): {
+            "loushang.harness.extensions.lifecycle.ExtensionRuntimeCoordinator",
+        },
+        Path("src/loushang/coding/session/prompt_controller.py"): {
+            "loushang.harness.host.turn.TurnOrchestrator",
+        },
+        Path("src/loushang/coding/session/queue_controller.py"): {
+            "loushang.harness.host.turn.TurnInputQueue",
+        },
+        Path("src/loushang/coding/session/resource_refresh_controller.py"): {
+            "loushang.harness.resources.refresh.ResourceRefreshCoordinator",
+        },
+        Path("src/loushang/coding/session/retry_controller.py"): {
+            "loushang.harness.host.retry.RetryCoordinator",
+        },
+        Path("src/loushang/coding/session/tree_controller.py"): {
+            "loushang.harness.runtime.NavigationTransactionCoordinator",
+        },
+    }
+    missing: list[str] = []
+    for path, required in expected_imports.items():
+        imports = set(_absolute_imports(path))
+        missing.extend(
+            f"{path.as_posix()} missing {name}" for name in sorted(required - imports)
+        )
+    assert missing == []
+
+    from loushang.coding.session.resource_watcher import (
+        ResourceChangeWatcher as CodingResourceChangeWatcher,
+    )
+    from loushang.harness import __all__ as harness_exports
+    from loushang.harness.resources.watcher import ResourceChangeWatcher
+
+    assert CodingResourceChangeWatcher is ResourceChangeWatcher
+    assert "RetryCoordinator" not in harness_exports
+    assert "SessionOperationCoordinator" not in harness_exports
+    assert "TurnOrchestrator" not in harness_exports
 
 
 def test_tool_output_projection_core_is_documented_and_adopted() -> None:
@@ -1538,7 +1615,10 @@ def test_harness_platform_resource_layout_boundary_is_documented() -> None:
             "docs/internals/architecture/harness/coding-to-harness-migration-inventory.md",
         )
     )
-    assert "resource search roots, file conventions, and compatibility formats" not in authoritative_text
+    assert (
+        "resource search roots, file conventions, and compatibility formats"
+        not in authoritative_text
+    )
     assert "AGENTS.md or equivalent loading policy" not in authoritative_text
 
 

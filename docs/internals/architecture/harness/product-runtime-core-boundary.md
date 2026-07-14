@@ -87,13 +87,15 @@ Coding and future Product adapters retain:
   retention, import/clone decisions, and Product query/summary fields; generic
   repository, tree/fork, replay, catalog, and query mechanics live in Harness;
 - concrete extension events/decisions, diagnostics classification/remediation,
-  commands, controllers, UI contexts, and presentation.
+  commands, controller policy/adapters, UI contexts, and presentation. Shared
+  controller state machines and lifecycle order live in Harness.
 
 Coding's `ExtensionRuntimeBindings` is now only a typed specialization of
 `ProductRuntimeBindings`. Its extension context classes are zero-logic naming
 adapters over Harness contexts. `AgentSessionRuntime` supplies product callbacks
-to `SessionTransitionHost` and `CoalescingScheduler` while keeping every
-Coding-specific session operation.
+to `SessionTransitionHost`, `SessionOperationCoordinator`, navigation
+transactions, and `CoalescingScheduler` while keeping every Coding-specific
+session decision and projection.
 
 ## Explicit Non-Goals
 
@@ -105,7 +107,8 @@ Harness runtime does not:
   a storage backend;
 - define product prompts, skills, tool defaults, artifacts, commands, or UI;
 - interpret Coding session shutdown/start events, cwd recovery, fork/import
-  options, diagnostics codes, or index contents.
+  options, diagnostics codes, or index contents. Harness may stage an opaque
+  import file, but Product chooses whether and how it becomes a session.
 
 Artifact lifecycle remains a Work concern when generalized. Product artifact
 semantics remain in each Product.
