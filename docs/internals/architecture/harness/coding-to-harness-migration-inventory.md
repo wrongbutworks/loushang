@@ -68,7 +68,7 @@ sufficient.
 | `coding.cli` | Keep product | Product CLI. It may expose harness-backed behavior but remains coding-owned. |
 | `coding.message` | Product adapter | Strict JSON lives in Protocol; AI codecs live in AI; custom-message dispatch/tool-output projection live in Agent; neutral conversation envelopes and `CommandExecutionRecord` live in Harness. Coding keeps its session header/entry variants, historical custom-message codecs and roles, message transforms, and compatibility imports. |
 | `coding.store` | Product adapter | File locking, strict JSONL, parent-linked repositories, branch/tree/fork/LCA/delta, checkpoint replay, catalog/query, and rebuildable indexes now live in Harness. Coding directly uses `ConversationRepository` and `ConversationCatalog`; it keeps transcript schemas/codecs, Product summary/search fields, labels, paths, naming, retention, recovery, and storage policy. Journal-offset projection checkpoints remain deferred. |
-| `coding.control` | Product adapter | Ordered layers, JSON patch persistence, merge/reload, issue collection, snapshots, and subscriptions live in `loushang.harness.config`. Coding keeps `ControlConfig`, fields, defaults, validation, paths, removed-setting compatibility, provider registration, credential handling, model/auth interpretation, selection policy, commands, and UI. Harness never stores credentials. |
+| `coding.control` | Product adapter | Transactional ordered layers and persistence, `ConfigFieldSpec` / `SchemaConfigCodec`, scoped revisions and `ConfigChange` records, subscriptions, issue collection, injected-runner value resolution, and the explicit activation DAG live in `loushang.harness.config`. Coding keeps `ControlConfig`, fields, defaults, validation, paths, removed-setting compatibility, convenience APIs, diagnostic wording, effect selection/order/callbacks, provider registration, credential handling, model/auth interpretation, persisted selection policy, commands, and UI. Harness neither executes shell commands nor stores credentials; `ModelRegistry` and `AuthManager` do not move. |
 | `coding.package`, `coding.plugin`, `coding.resources`, `coding.skill` | Split candidate | Package source/manifest/materialization, standard roots/layout, registry/resolver, discovery, and skill-loading mechanisms now live under `loushang.harness.resources`. Coding keeps built-in content registration, compatibility convention activation, additional roots, trust/approval policy, settings/CLI projection, and compatibility facades. |
 | `coding.workflow` | Split candidate | Move a neutral workflow runner, step/result records, cancellation, and observer mechanics after resource and extension contracts stabilize. Keep Coding workflow definitions, prompts, artifact semantics, completion policy, and product test fixtures. |
 | `coding.platform` | Split candidate | Route neutral workspace/git and operating-system mechanisms to focused Harness modules when reusable. Keep product update/version policy and output guards in Coding; clipboard and terminal integration belong to Product/TUI rather than Harness. |
@@ -216,6 +216,25 @@ projection, default tool packs and activation policy, Agent materialization,
 execution context, diagnostics, audit events, approval/risk policy, and UI.
 This wave composes capability mechanisms without introducing a universal
 Product manifest or moving model/auth/settings into Harness.
+
+### Product Configuration Runtime
+
+Status: implementation complete for integration into `lane/harness` on the
+semantic branch `harness/product-configuration-runtime`; see
+[Product Configuration Runtime Boundary](product-configuration-runtime-boundary.md).
+
+Harness now owns transactional layered configuration, Product-injected schema
+mechanics, typed scopes and revisioned change records, value resolution with an
+injected runner, and explicit activation DAG ordering and reporting. Coding
+adopts those mechanisms while retaining `ControlConfig`, all field semantics,
+defaults, validation, paths, removed-setting compatibility, convenience APIs,
+diagnostic wording, and configuration effect order and callbacks.
+
+The activation runtime is neither a service locator nor a Product or extension
+manifest. Harness does not execute a shell or store credentials. `ModelRegistry`,
+`AuthManager`, provider registration, auth resolution, credential handling, and
+persisted model-selection behavior remain with their existing AI or Product
+owners.
 
 ## Completed And Accepted Capability History
 
@@ -462,9 +481,14 @@ probe for the moved invocation shape.
 - Do not add product imports from `loushang.harness`.
 - Default reusable concrete implementations to Harness; keep only
   domain-specific tool semantics in products.
-- Keep `coding.control` frozen during runtime consolidation. Do not route auth,
-  credentials, model registries, provider registration, or persisted model
-  selection through Harness.
+- Freeze Product configuration semantics and credential ownership, not neutral
+  configuration mechanisms. `ControlConfig` fields, defaults, validation,
+  paths, removed-setting compatibility, convenience APIs, diagnostic wording,
+  and effect selection/order/callbacks remain Product-owned.
+- Do not route credentials, `ModelRegistry`, `AuthManager`, provider
+  registration, auth resolution, or persisted model selection through Harness.
+  Harness neither executes shell commands nor stores credentials; command-backed
+  values require an injected Product runner.
 - Do not move product prompt content, section selection/order, command
   definitions/handlers, or source precedence policy. Neutral template
   expansion, prompt composition, slash parsing, catalog, and dispatch mechanics
@@ -474,5 +498,5 @@ probe for the moved invocation shape.
   session.
 - Do not add new top-level harness exports unless they are intentionally public.
 
-Each implementation slice should update this inventory if the final ownership
-differs from the current classification.
+Each semantic migration branch should update this inventory if the final
+ownership differs from the current classification.

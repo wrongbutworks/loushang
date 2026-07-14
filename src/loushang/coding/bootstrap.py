@@ -35,6 +35,10 @@ from loushang.coding.source_info import executable_source_identity
 from loushang.coding.store import SessionManager
 from loushang.coding.tools import ToolRegistry
 from loushang.coding.types import ModelSelection
+from loushang.harness.config import (
+    ConfigActivationRuntime,
+    ConfigActivationStep,
+)
 from loushang.harness.diagnostics.service import DiagnosticsService
 from loushang.harness.diagnostics.types import DiagnosticRecord, StartupCheckResult
 from loushang.harness.resources.diagnostics import ResourceDiagnostic
@@ -80,6 +84,22 @@ class CwdBoundServicesAudit:
     @property
     def ok(self) -> bool:
         return not self.issues
+
+
+@dataclass
+class _SessionConfigurationState:
+    services: BootstrapServices
+    settings: ControlConfig
+    session_manager: SessionManager
+    package_materializer: PackageMaterializer
+    extension_flag_values: ExtensionFlagValues | None
+    resource_bundle: ResourceBundle | None = None
+    extension_runner: ExtensionRunner | None = None
+    cwd_bound_services_audit: CwdBoundServicesAudit | None = None
+
+    @property
+    def session_id(self) -> str:
+        return self.session_manager.get_header().id
 
 
 @dataclass(frozen=True)
@@ -294,89 +314,16 @@ def create_agent_session(
     resolved_package_materializer = package_materializer or _default_package_materializer(session_manager)
     resolved_thinking = settings.thinking_level if thinking_level is None else thinking_level
     session_id = session_manager.get_header().id
-    _record_package_lockfile_diagnostics(
-        diagnostics_service=services.diagnostics_service,
-        materializer=resolved_package_materializer,
-        session_id=session_id,
-    )
-    _run_bootstrap_startup_checks(
-        diagnostics_service=services.diagnostics_service,
-        session_manager=session_manager,
-        package_roots=settings.package_roots,
-    )
-    _resolve_configured_remote_packages(
-        materializer=resolved_package_materializer,
-        settings_manager=services.settings_manager,
-        diagnostics_service=services.diagnostics_service,
-        session_id=session_id,
-    )
-    set_package_roots = getattr(services.resource_loader, "set_package_roots", None)
-    if callable(set_package_roots):
-        resolved_package_source_scopes = package_source_scopes(services.settings_manager)
-        package_resource_roots = resolve_package_resource_roots(
-            package_roots=settings.package_roots,
-            plugin_sources=settings.plugin_sources,
-            package_sources=settings.package_sources,
-            materializer=resolved_package_materializer,
-            package_source_scopes=resolved_package_source_scopes,
-            global_base_dir=services.settings_manager.global_base_dir,
-            project_base_dir=services.settings_manager.project_base_dir,
-            disabled_plugins=settings.disabled_plugins,
-            diagnostics_service=services.diagnostics_service,
-            session_id=session_id,
-        )
-        set_package_roots(package_resource_roots.roots, package_resource_roots.filters)
-    set_user_resource_roots = getattr(services.resource_loader, "set_user_resource_roots", None)
-    if callable(set_user_resource_roots):
-        global_resource_roots = tuple(services.settings_manager.get_global_settings().get("resource_roots", ()))
-        user_roots, explicit_roots = _resolve_user_resource_roots(
-            global_resource_roots,
-            global_base_dir=services.settings_manager.global_base_dir,
-        )
-        set_user_resource_roots(user_roots, explicit_roots=explicit_roots)
-    resource_bundle = services.resource_loader.discover_resources(session_manager.get_cwd())
-    resource_bundle = _apply_disabled_skills(resource_bundle, settings.disabled_skills)
-    _record_resource_diagnostics(
-        diagnostics_service=services.diagnostics_service,
-        diagnostics=resource_bundle.diagnostics,
-        phase="resource_loading",
-        source="loader",
-        session_id=session_id,
-    )
-    extension_runner = ExtensionRunner(resource_bundle.extensions)
-    extension_flag_diagnostics = _apply_extension_flag_values(extension_runner, extension_flag_values)
-    _record_resource_diagnostics(
-        diagnostics_service=services.diagnostics_service,
-        diagnostics=extension_flag_diagnostics,
-        phase="resource_loading",
-        source="bootstrap",
-        session_id=session_id,
-    )
-    resource_bundle = extension_runner.discover_resources(resource_bundle)
-    resource_bundle = _apply_disabled_skills(resource_bundle, settings.disabled_skills)
-    _record_resource_diagnostics(
-        diagnostics_service=services.diagnostics_service,
-        diagnostics=extension_runner.get_diagnostics(),
-        phase="resource_loading",
-        source="extensions",
-        session_id=session_id,
-    )
-    cwd_bound_services_audit = audit_cwd_bound_services(
-        session_manager=session_manager,
+    configuration = _activate_session_configuration(
+        settings=settings,
         services=services,
-        resource_bundle=resource_bundle,
+        session_manager=session_manager,
+        package_materializer=resolved_package_materializer,
+        extension_flag_values=extension_flag_values,
     )
-    _record_cwd_bound_services_audit(
-        diagnostics_service=services.diagnostics_service,
-        audit=cwd_bound_services_audit,
-        session_id=session_id,
-    )
-    _reload_model_registry_with_project_layer(
-        services.model_registry,
-        resource_bundle=resource_bundle,
-        session_cwd=session_manager.get_cwd(),
-        auth_manager=services.auth_manager,
-    )
+    resource_bundle = _require_configured_resource_bundle(configuration)
+    extension_runner = _require_configured_extension_runner(configuration)
+    cwd_bound_services_audit = configuration.cwd_bound_services_audit
     loader_system_prompt = _loader_system_prompt_override(services.resource_loader)
     base_prompt = system_prompt if system_prompt is not None else loader_system_prompt if loader_system_prompt is not None else settings.system_prompt
     append_fragments = [*_loader_append_system_prompt(services.resource_loader), *(append_system_prompt or ())]
@@ -474,6 +421,249 @@ def create_agent_session(
     if scoped_models:
         session.setScopedModels(scoped_models)
     return session
+
+
+def _activate_session_configuration(
+    *,
+    settings: ControlConfig,
+    services: BootstrapServices,
+    session_manager: SessionManager,
+    package_materializer: PackageMaterializer,
+    extension_flag_values: ExtensionFlagValues | None,
+) -> _SessionConfigurationState:
+    state = _SessionConfigurationState(
+        services=services,
+        settings=settings,
+        session_manager=session_manager,
+        package_materializer=package_materializer,
+        extension_flag_values=extension_flag_values,
+    )
+    runtime = ConfigActivationRuntime(
+        (
+            ConfigActivationStep(
+                "startup_checks",
+                select=lambda config: config.package_roots,
+                apply=_activate_startup_checks,
+            ),
+            ConfigActivationStep(
+                "package_sources",
+                select=lambda config: config.package_sources,
+                apply=_activate_package_sources,
+                depends_on=("startup_checks",),
+            ),
+            ConfigActivationStep(
+                "resource_roots",
+                select=lambda config: (
+                    config.package_roots,
+                    config.package_sources,
+                    config.plugin_sources,
+                    config.disabled_plugins,
+                    config.resource_roots,
+                ),
+                apply=_activate_resource_roots,
+                depends_on=("package_sources",),
+            ),
+            ConfigActivationStep(
+                "resources",
+                select=lambda config: config.disabled_skills,
+                apply=_activate_resources,
+                depends_on=("resource_roots",),
+            ),
+            ConfigActivationStep(
+                "extensions",
+                select=lambda config: (
+                    config.disabled_skills,
+                    config.disabled_plugins,
+                ),
+                apply=_activate_extensions,
+                depends_on=("resources",),
+            ),
+            ConfigActivationStep(
+                "cwd_audit",
+                select=lambda config: config.resource_roots,
+                apply=_activate_cwd_audit,
+                depends_on=("extensions",),
+            ),
+            ConfigActivationStep(
+                "model_registry",
+                select=lambda config: config.enabled_models,
+                apply=_activate_model_registry,
+                depends_on=("cwd_audit",),
+            ),
+        )
+    )
+    report = runtime.start(settings, state)
+    if report.failures:
+        raise report.failures[0].error
+    return state
+
+
+def _activate_startup_checks(
+    selection: object,
+    state: _SessionConfigurationState,
+) -> None:
+    del selection
+    _record_package_lockfile_diagnostics(
+        diagnostics_service=state.services.diagnostics_service,
+        materializer=state.package_materializer,
+        session_id=state.session_id,
+    )
+    _run_bootstrap_startup_checks(
+        diagnostics_service=state.services.diagnostics_service,
+        session_manager=state.session_manager,
+        package_roots=state.settings.package_roots,
+    )
+
+
+def _activate_package_sources(
+    selection: object,
+    state: _SessionConfigurationState,
+) -> None:
+    del selection
+    _resolve_configured_remote_packages(
+        materializer=state.package_materializer,
+        settings_manager=state.services.settings_manager,
+        diagnostics_service=state.services.diagnostics_service,
+        session_id=state.session_id,
+    )
+
+
+def _activate_resource_roots(
+    selection: object,
+    state: _SessionConfigurationState,
+) -> None:
+    del selection
+    services = state.services
+    settings = state.settings
+    set_package_roots = getattr(services.resource_loader, "set_package_roots", None)
+    if callable(set_package_roots):
+        package_resource_roots = resolve_package_resource_roots(
+            package_roots=settings.package_roots,
+            plugin_sources=settings.plugin_sources,
+            package_sources=settings.package_sources,
+            materializer=state.package_materializer,
+            package_source_scopes=package_source_scopes(services.settings_manager),
+            global_base_dir=services.settings_manager.global_base_dir,
+            project_base_dir=services.settings_manager.project_base_dir,
+            disabled_plugins=settings.disabled_plugins,
+            diagnostics_service=services.diagnostics_service,
+            session_id=state.session_id,
+        )
+        set_package_roots(package_resource_roots.roots, package_resource_roots.filters)
+    set_user_resource_roots = getattr(
+        services.resource_loader,
+        "set_user_resource_roots",
+        None,
+    )
+    if callable(set_user_resource_roots):
+        global_resource_roots = tuple(
+            services.settings_manager.get_global_settings().get(
+                "resource_roots",
+                (),
+            )
+        )
+        user_roots, explicit_roots = _resolve_user_resource_roots(
+            global_resource_roots,
+            global_base_dir=services.settings_manager.global_base_dir,
+        )
+        set_user_resource_roots(user_roots, explicit_roots=explicit_roots)
+
+
+def _activate_resources(
+    selection: object,
+    state: _SessionConfigurationState,
+) -> None:
+    del selection
+    bundle = state.services.resource_loader.discover_resources(
+        state.session_manager.get_cwd()
+    )
+    bundle = _apply_disabled_skills(bundle, state.settings.disabled_skills)
+    _record_resource_diagnostics(
+        diagnostics_service=state.services.diagnostics_service,
+        diagnostics=bundle.diagnostics,
+        phase="resource_loading",
+        source="loader",
+        session_id=state.session_id,
+    )
+    state.resource_bundle = bundle
+
+
+def _activate_extensions(
+    selection: object,
+    state: _SessionConfigurationState,
+) -> None:
+    del selection
+    bundle = _require_configured_resource_bundle(state)
+    runner = ExtensionRunner(bundle.extensions)
+    flag_diagnostics = _apply_extension_flag_values(
+        runner,
+        state.extension_flag_values,
+    )
+    _record_resource_diagnostics(
+        diagnostics_service=state.services.diagnostics_service,
+        diagnostics=flag_diagnostics,
+        phase="resource_loading",
+        source="bootstrap",
+        session_id=state.session_id,
+    )
+    bundle = runner.discover_resources(bundle)
+    bundle = _apply_disabled_skills(bundle, state.settings.disabled_skills)
+    _record_resource_diagnostics(
+        diagnostics_service=state.services.diagnostics_service,
+        diagnostics=runner.get_diagnostics(),
+        phase="resource_loading",
+        source="extensions",
+        session_id=state.session_id,
+    )
+    state.resource_bundle = bundle
+    state.extension_runner = runner
+
+
+def _activate_cwd_audit(
+    selection: object,
+    state: _SessionConfigurationState,
+) -> None:
+    del selection
+    audit = audit_cwd_bound_services(
+        session_manager=state.session_manager,
+        services=state.services,
+        resource_bundle=_require_configured_resource_bundle(state),
+    )
+    _record_cwd_bound_services_audit(
+        diagnostics_service=state.services.diagnostics_service,
+        audit=audit,
+        session_id=state.session_id,
+    )
+    state.cwd_bound_services_audit = audit
+
+
+def _activate_model_registry(
+    selection: object,
+    state: _SessionConfigurationState,
+) -> None:
+    del selection
+    _reload_model_registry_with_project_layer(
+        state.services.model_registry,
+        resource_bundle=_require_configured_resource_bundle(state),
+        session_cwd=state.session_manager.get_cwd(),
+        auth_manager=state.services.auth_manager,
+    )
+
+
+def _require_configured_resource_bundle(
+    state: _SessionConfigurationState,
+) -> ResourceBundle:
+    if state.resource_bundle is None:
+        raise RuntimeError("Session resources have not been configured.")
+    return state.resource_bundle
+
+
+def _require_configured_extension_runner(
+    state: _SessionConfigurationState,
+) -> ExtensionRunner:
+    if state.extension_runner is None:
+        raise RuntimeError("Session extensions have not been configured.")
+    return state.extension_runner
 
 
 def _resolve_default_model_candidate(

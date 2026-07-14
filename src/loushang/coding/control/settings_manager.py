@@ -32,10 +32,13 @@ from loushang.coding.control.types import (
 )
 from loushang.coding.types import ModelSelection
 from loushang.harness.config import (
-    ConfigApplyResult,
-    ConfigIssue,
+    ConfigFieldSpec,
     ConfigLayer,
     LayeredConfig,
+    SchemaConfigCodec,
+    ScopedConfigRuntime,
+    decode_dataclass_patch,
+    encode_dataclass_diff,
 )
 from loushang.harness.resources.packages.source import (
     PackageSourceConfig,
@@ -362,14 +365,6 @@ def _serialize_dataclass_slice(value: object) -> dict[str, Any]:
     return dict(asdict(value))
 
 
-def _diff_dataclass_slice(value: object, default_value: object) -> dict[str, Any]:
-    diff: dict[str, Any] = {}
-    for key, current_value in asdict(value).items():
-        if current_value != getattr(default_value, key):
-            diff[key] = current_value
-    return diff
-
-
 def _drop_removed_settings(
     patch: Mapping[str, Any],
     *,
@@ -388,111 +383,15 @@ def _drop_removed_settings(
 
 
 def _control_config_to_patch(config: ControlConfig) -> dict[str, Any]:
-    defaults = ControlConfig()
-    patch: dict[str, Any] = {}
-    if config.default_model != defaults.default_model:
-        patch["default_model"] = _serialize_model_selection(config.default_model)
-    if config.thinking_level != defaults.thinking_level:
-        patch["thinking_level"] = config.thinking_level
-    if config.steering_mode != defaults.steering_mode:
-        patch["steering_mode"] = config.steering_mode
-    if config.follow_up_mode != defaults.follow_up_mode:
-        patch["follow_up_mode"] = config.follow_up_mode
-    if config.theme != defaults.theme:
-        patch["theme"] = config.theme
-    if config.system_prompt != defaults.system_prompt:
-        patch["system_prompt"] = config.system_prompt
-    if config.hide_thinking_block != defaults.hide_thinking_block:
-        patch["hide_thinking_block"] = config.hide_thinking_block
-    if config.shell_path != defaults.shell_path:
-        patch["shell_path"] = config.shell_path
-    if config.quiet_startup != defaults.quiet_startup:
-        patch["quiet_startup"] = config.quiet_startup
-    if config.shell_command_prefix != defaults.shell_command_prefix:
-        patch["shell_command_prefix"] = config.shell_command_prefix
-    if config.npm_command != defaults.npm_command:
-        patch["npm_command"] = (
-            list(config.npm_command) if config.npm_command is not None else None
-        )
-    if config.collapse_changelog != defaults.collapse_changelog:
-        patch["collapse_changelog"] = config.collapse_changelog
-    if config.enable_install_telemetry != defaults.enable_install_telemetry:
-        patch["enable_install_telemetry"] = config.enable_install_telemetry
-    if config.enable_skill_commands != defaults.enable_skill_commands:
-        patch["enable_skill_commands"] = config.enable_skill_commands
-    if config.enabled_models != defaults.enabled_models:
-        patch["enabled_models"] = (
-            list(config.enabled_models) if config.enabled_models is not None else None
-        )
-    if config.double_escape_action != defaults.double_escape_action:
-        patch["double_escape_action"] = config.double_escape_action
-    if config.tree_filter_mode != defaults.tree_filter_mode:
-        patch["tree_filter_mode"] = config.tree_filter_mode
-    if config.show_hardware_cursor != defaults.show_hardware_cursor:
-        patch["show_hardware_cursor"] = config.show_hardware_cursor
-    if config.editor_padding_x != defaults.editor_padding_x:
-        patch["editor_padding_x"] = config.editor_padding_x
-    if config.autocomplete_max_visible != defaults.autocomplete_max_visible:
-        patch["autocomplete_max_visible"] = config.autocomplete_max_visible
-    if config.keybindings != defaults.keybindings:
-        patch["keybindings"] = _serialize_keybindings(config.keybindings)
-    if config.thinking_budgets != defaults.thinking_budgets:
-        patch["thinking_budgets"] = config.thinking_budgets
-    compaction_patch = _diff_dataclass_slice(config.compaction, defaults.compaction)
-    if compaction_patch:
-        patch["compaction"] = compaction_patch
-    branch_summary_patch = _diff_dataclass_slice(
-        config.branch_summary, defaults.branch_summary
-    )
-    if branch_summary_patch:
-        patch["branch_summary"] = branch_summary_patch
-    retry_patch = _diff_dataclass_slice(config.retry, defaults.retry)
-    if retry_patch:
-        patch["retry"] = retry_patch
-    images_patch = _diff_dataclass_slice(config.images, defaults.images)
-    if images_patch:
-        patch["images"] = images_patch
-    terminal_patch = _diff_dataclass_slice(config.terminal, defaults.terminal)
-    if terminal_patch:
-        patch["terminal"] = terminal_patch
-    markdown_patch = _diff_dataclass_slice(config.markdown, defaults.markdown)
-    if markdown_patch:
-        patch["markdown"] = markdown_patch
-    warnings_patch = _diff_dataclass_slice(config.warnings, defaults.warnings)
-    if warnings_patch:
-        patch["warnings"] = warnings_patch
-    method_patch = _diff_dataclass_slice(config.method, defaults.method)
-    if method_patch:
-        patch["method"] = method_patch
-    tools_patch = _diff_dataclass_slice(config.tools, defaults.tools)
-    if tools_patch:
-        patch["tools"] = tools_patch
-    statusline_patch = _diff_dataclass_slice(config.statusline, defaults.statusline)
-    if statusline_patch:
-        patch["statusline"] = statusline_patch
-    if config.session_dir != defaults.session_dir:
-        patch["session_dir"] = config.session_dir
-    if config.resource_roots != defaults.resource_roots:
-        patch["resource_roots"] = list(config.resource_roots)
-    if config.package_roots != defaults.package_roots:
-        patch["package_roots"] = list(config.package_roots)
-    if config.package_sources != defaults.package_sources:
-        patch["package_sources"] = [
-            _serialize_package_source(source) for source in config.package_sources
-        ]
-    if config.plugin_sources != defaults.plugin_sources:
-        patch["plugin_sources"] = list(config.plugin_sources)
-    if config.disabled_skills != defaults.disabled_skills:
-        patch["disabled_skills"] = list(config.disabled_skills)
-    if config.disabled_plugins != defaults.disabled_plugins:
-        patch["disabled_plugins"] = list(config.disabled_plugins)
-    return patch
+    return dict(_CONTROL_CONFIG_CODEC.encode(config))
 
 
 def _apply_dataclass_patch(current: object, patch_value: object, field_name: str):
-    if not isinstance(patch_value, Mapping):
-        raise TypeError(f"{field_name} must be a JSON object")
-    return replace(current, **dict(patch_value))
+    return decode_dataclass_patch(
+        patch_value,
+        current,
+        field_name=field_name,
+    )
 
 
 def _apply_tool_settings_patch(
@@ -546,311 +445,231 @@ def _apply_statusline_settings_patch(
     return replace(current, **patch)
 
 
-def _apply_patch(
-    config: ControlConfig,
-    patch: Mapping[str, Any],
-    *,
-    scope: SettingsScope | None = None,
-    errors: list[SettingsError] | None = None,
-) -> ControlConfig:
-    if scope is not None:
-        patch = _drop_removed_settings(patch, scope=scope, errors=errors)
-    next_config = config
-    if "default_model" in patch:
-        next_config = replace(
-            next_config,
-            default_model=_deserialize_model_selection(patch["default_model"]),
-        )
-    if "thinking_level" in patch:
-        next_config = replace(next_config, thinking_level=patch["thinking_level"])
-    if "steering_mode" in patch:
-        next_config = replace(
-            next_config,
-            steering_mode=_deserialize_queue_mode(
-                patch["steering_mode"], "steering_mode"
+def _decode_bool(field_name: str):
+    return lambda raw, current: _bool_value(raw, field_name)
+
+
+def _decode_optional_string(field_name: str):
+    return lambda raw, current: _optional_string(raw, field_name)
+
+
+def _decode_optional_string_tuple(field_name: str):
+    return lambda raw, current: _string_tuple_or_none(raw, field_name)
+
+
+def _decode_string_tuple(field_name: str):
+    def decode(raw: object, current: object) -> tuple[str, ...]:
+        del current
+        if not isinstance(raw, Sequence):
+            raise TypeError(f"{field_name} must be a sequence of strings")
+        return _normalize_string_sequence(raw, field_name)
+
+    return decode
+
+
+def _decode_dataclass(field_name: str):
+    return lambda raw, current: _apply_dataclass_patch(current, raw, field_name)
+
+
+def _encode_optional_tuple(current: object, default: object) -> object:
+    del default
+    return list(current) if current is not None else None
+
+
+def _encode_tuple(current: object, default: object) -> object:
+    del default
+    return list(cast(tuple[object, ...], current))
+
+
+def _decode_keybinding_overlay(raw: object, current: object) -> object:
+    return {
+        **cast(Mapping[str, KeybindingValue], current),
+        **_deserialize_keybindings(raw),
+    }
+
+
+def _decode_session_dir(raw: object, current: object) -> object:
+    del current
+    if raw is not None and not isinstance(raw, str):
+        raise TypeError("session_dir must be a string or null")
+    return raw
+
+
+def _decode_package_sources(raw: object, current: object) -> object:
+    del current
+    return _normalize_package_source_sequence(raw)
+
+
+def _encode_package_sources(current: object, default: object) -> object:
+    del default
+    return [
+        _serialize_package_source(source)
+        for source in cast(tuple[PackageSourceConfig, ...], current)
+    ]
+
+
+_CONTROL_CONFIG_CODEC = SchemaConfigCodec(
+    default_factory=ControlConfig,
+    fields=(
+        ConfigFieldSpec(
+            "default_model",
+            decode=lambda raw, current: _deserialize_model_selection(raw),
+            encode=lambda current, default: _serialize_model_selection(
+                cast(ModelSelection | None, current)
             ),
-        )
-    if "follow_up_mode" in patch:
-        next_config = replace(
-            next_config,
-            follow_up_mode=_deserialize_queue_mode(
-                patch["follow_up_mode"], "follow_up_mode"
+        ),
+        ConfigFieldSpec("thinking_level"),
+        ConfigFieldSpec(
+            "steering_mode",
+            decode=lambda raw, current: _deserialize_queue_mode(raw, "steering_mode"),
+        ),
+        ConfigFieldSpec(
+            "follow_up_mode",
+            decode=lambda raw, current: _deserialize_queue_mode(raw, "follow_up_mode"),
+        ),
+        ConfigFieldSpec("theme", decode=_decode_optional_string("theme")),
+        ConfigFieldSpec("system_prompt"),
+        ConfigFieldSpec(
+            "hide_thinking_block",
+            decode=_decode_bool("hide_thinking_block"),
+        ),
+        ConfigFieldSpec("shell_path", decode=_decode_optional_string("shell_path")),
+        ConfigFieldSpec("quiet_startup", decode=_decode_bool("quiet_startup")),
+        ConfigFieldSpec(
+            "shell_command_prefix",
+            decode=_decode_optional_string("shell_command_prefix"),
+        ),
+        ConfigFieldSpec(
+            "npm_command",
+            decode=_decode_optional_string_tuple("npm_command"),
+            encode=_encode_optional_tuple,
+        ),
+        ConfigFieldSpec(
+            "collapse_changelog",
+            decode=_decode_bool("collapse_changelog"),
+        ),
+        ConfigFieldSpec(
+            "enable_install_telemetry",
+            decode=_decode_bool("enable_install_telemetry"),
+        ),
+        ConfigFieldSpec(
+            "enable_skill_commands",
+            decode=_decode_bool("enable_skill_commands"),
+        ),
+        ConfigFieldSpec(
+            "enabled_models",
+            decode=_decode_optional_string_tuple("enabled_models"),
+            encode=_encode_optional_tuple,
+        ),
+        ConfigFieldSpec(
+            "double_escape_action",
+            decode=lambda raw, current: _deserialize_double_escape_action(raw),
+        ),
+        ConfigFieldSpec(
+            "tree_filter_mode",
+            decode=lambda raw, current: _deserialize_tree_filter_mode(raw),
+        ),
+        ConfigFieldSpec(
+            "show_hardware_cursor",
+            decode=_decode_bool("show_hardware_cursor"),
+        ),
+        ConfigFieldSpec(
+            "editor_padding_x",
+            decode=lambda raw, current: _non_negative_small_int(
+                raw,
+                "editor_padding_x",
+                upper_bound=3,
             ),
-        )
-    if "theme" in patch:
-        next_config = replace(
-            next_config, theme=_optional_string(patch["theme"], "theme")
-        )
-    if "system_prompt" in patch:
-        next_config = replace(next_config, system_prompt=patch["system_prompt"])
-    if "hide_thinking_block" in patch:
-        next_config = replace(
-            next_config,
-            hide_thinking_block=_bool_value(
-                patch["hide_thinking_block"], "hide_thinking_block"
-            ),
-        )
-    if "shell_path" in patch:
-        next_config = replace(
-            next_config, shell_path=_optional_string(patch["shell_path"], "shell_path")
-        )
-    if "quiet_startup" in patch:
-        next_config = replace(
-            next_config,
-            quiet_startup=_bool_value(patch["quiet_startup"], "quiet_startup"),
-        )
-    if "shell_command_prefix" in patch:
-        next_config = replace(
-            next_config,
-            shell_command_prefix=_optional_string(
-                patch["shell_command_prefix"], "shell_command_prefix"
-            ),
-        )
-    if "npm_command" in patch:
-        next_config = replace(
-            next_config,
-            npm_command=_string_tuple_or_none(patch["npm_command"], "npm_command"),
-        )
-    if "collapse_changelog" in patch:
-        next_config = replace(
-            next_config,
-            collapse_changelog=_bool_value(
-                patch["collapse_changelog"], "collapse_changelog"
-            ),
-        )
-    if "enable_install_telemetry" in patch:
-        next_config = replace(
-            next_config,
-            enable_install_telemetry=_bool_value(
-                patch["enable_install_telemetry"], "enable_install_telemetry"
-            ),
-        )
-    if "enable_skill_commands" in patch:
-        next_config = replace(
-            next_config,
-            enable_skill_commands=_bool_value(
-                patch["enable_skill_commands"], "enable_skill_commands"
-            ),
-        )
-    if "enabled_models" in patch:
-        next_config = replace(
-            next_config,
-            enabled_models=_string_tuple_or_none(
-                patch["enabled_models"], "enabled_models"
-            ),
-        )
-    if "double_escape_action" in patch:
-        next_config = replace(
-            next_config,
-            double_escape_action=_deserialize_double_escape_action(
-                patch["double_escape_action"]
-            ),
-        )
-    if "tree_filter_mode" in patch:
-        next_config = replace(
-            next_config,
-            tree_filter_mode=_deserialize_tree_filter_mode(patch["tree_filter_mode"]),
-        )
-    if "show_hardware_cursor" in patch:
-        next_config = replace(
-            next_config,
-            show_hardware_cursor=_bool_value(
-                patch["show_hardware_cursor"], "show_hardware_cursor"
-            ),
-        )
-    if "editor_padding_x" in patch:
-        next_config = replace(
-            next_config,
-            editor_padding_x=_non_negative_small_int(
-                patch["editor_padding_x"], "editor_padding_x", upper_bound=3
-            ),
-        )
-    if "autocomplete_max_visible" in patch:
-        next_config = replace(
-            next_config,
-            autocomplete_max_visible=_bounded_int(
-                patch["autocomplete_max_visible"],
+        ),
+        ConfigFieldSpec(
+            "autocomplete_max_visible",
+            decode=lambda raw, current: _bounded_int(
+                raw,
                 "autocomplete_max_visible",
                 lower_bound=3,
                 upper_bound=20,
             ),
-        )
-    if "keybindings" in patch:
-        next_config = replace(
-            next_config,
-            keybindings={
-                **next_config.keybindings,
-                **_deserialize_keybindings(patch["keybindings"]),
-            },
-        )
-    if "thinking_budgets" in patch:
-        next_config = replace(
-            next_config, thinking_budgets=_thinking_budgets(patch["thinking_budgets"])
-        )
-    if "compaction" in patch:
-        next_config = replace(
-            next_config,
-            compaction=_apply_dataclass_patch(
-                next_config.compaction, patch["compaction"], "compaction"
+        ),
+        ConfigFieldSpec(
+            "keybindings",
+            decode=_decode_keybinding_overlay,
+            encode=lambda current, default: _serialize_keybindings(
+                cast(Mapping[str, KeybindingValue], current)
             ),
-        )
-    if "branch_summary" in patch:
-        next_config = replace(
-            next_config,
-            branch_summary=_apply_dataclass_patch(
-                next_config.branch_summary,
-                patch["branch_summary"],
-                "branch_summary",
-            ),
-        )
-    if "retry" in patch:
-        next_config = replace(
-            next_config,
-            retry=_apply_dataclass_patch(next_config.retry, patch["retry"], "retry"),
-        )
-    if "images" in patch:
-        next_config = replace(
-            next_config,
-            images=_apply_dataclass_patch(
-                next_config.images, patch["images"], "images"
-            ),
-        )
-    if "terminal" in patch:
-        next_config = replace(
-            next_config,
-            terminal=_apply_dataclass_patch(
-                next_config.terminal, patch["terminal"], "terminal"
-            ),
-        )
-    if "markdown" in patch:
-        next_config = replace(
-            next_config,
-            markdown=_apply_dataclass_patch(
-                next_config.markdown, patch["markdown"], "markdown"
-            ),
-        )
-    if "warnings" in patch:
-        next_config = replace(
-            next_config,
-            warnings=_apply_dataclass_patch(
-                next_config.warnings, patch["warnings"], "warnings"
-            ),
-        )
-    if "method" in patch:
-        next_config = replace(
-            next_config,
-            method=_apply_dataclass_patch(
-                next_config.method, patch["method"], "method"
-            ),
-        )
-    if "tools" in patch:
-        next_config = replace(
-            next_config,
-            tools=_apply_tool_settings_patch(next_config.tools, patch["tools"]),
-        )
-    if "statusline" in patch:
-        try:
-            next_config = replace(
-                next_config,
-                statusline=_apply_statusline_settings_patch(
-                    next_config.statusline, patch["statusline"]
-                ),
+        ),
+        ConfigFieldSpec(
+            "thinking_budgets",
+            decode=lambda raw, current: _thinking_budgets(raw),
+        ),
+        *(
+            ConfigFieldSpec(
+                field_name,
+                decode=_decode_dataclass(field_name),
+                encode=encode_dataclass_diff,
             )
-        except Exception as exc:
-            if errors is None or scope is None:
-                raise
-            errors.append(SettingsError(scope=scope, message=str(exc), error=exc))
-    if "session_dir" in patch:
-        session_dir = patch["session_dir"]
-        if session_dir is not None and not isinstance(session_dir, str):
-            raise TypeError("session_dir must be a string or null")
-        next_config = replace(next_config, session_dir=session_dir)
-    if "resource_roots" in patch:
-        resource_roots = patch["resource_roots"]
-        if not isinstance(resource_roots, Sequence):
-            raise TypeError("resource_roots must be a sequence of strings")
-        next_config = replace(
-            next_config,
-            resource_roots=_normalize_string_sequence(resource_roots, "resource_roots"),
-        )
-    if "package_roots" in patch:
-        package_roots = patch["package_roots"]
-        if not isinstance(package_roots, Sequence):
-            raise TypeError("package_roots must be a sequence of strings")
-        next_config = replace(
-            next_config,
-            package_roots=_normalize_string_sequence(package_roots, "package_roots"),
-        )
-    packages_patch = patch.get("packages", patch.get("package_sources", _UNSET))
-    if packages_patch is not _UNSET:
-        next_config = replace(
-            next_config,
-            package_sources=_normalize_package_source_sequence(packages_patch),
-        )
-    if "plugin_sources" in patch:
-        plugin_sources = patch["plugin_sources"]
-        if not isinstance(plugin_sources, Sequence):
-            raise TypeError("plugin_sources must be a sequence of strings")
-        next_config = replace(
-            next_config,
-            plugin_sources=_normalize_string_sequence(plugin_sources, "plugin_sources"),
-        )
-    if "disabled_skills" in patch:
-        disabled_skills = patch["disabled_skills"]
-        if not isinstance(disabled_skills, Sequence):
-            raise TypeError("disabled_skills must be a sequence of strings")
-        next_config = replace(
-            next_config,
-            disabled_skills=_normalize_string_sequence(
-                disabled_skills, "disabled_skills"
+            for field_name in (
+                "compaction",
+                "branch_summary",
+                "retry",
+                "images",
+                "terminal",
+                "markdown",
+                "warnings",
+                "method",
+            )
+        ),
+        ConfigFieldSpec(
+            "tools",
+            decode=lambda raw, current: _apply_tool_settings_patch(
+                cast(ToolSettings, current), raw
             ),
-        )
-    if "disabled_plugins" in patch:
-        disabled_plugins = patch["disabled_plugins"]
-        if not isinstance(disabled_plugins, Sequence):
-            raise TypeError("disabled_plugins must be a sequence of strings")
-        next_config = replace(
-            next_config,
-            disabled_plugins=_normalize_string_sequence(
-                disabled_plugins, "disabled_plugins"
+            encode=encode_dataclass_diff,
+        ),
+        ConfigFieldSpec(
+            "statusline",
+            decode=lambda raw, current: _apply_statusline_settings_patch(
+                cast(StatusLineControlSettings, current), raw
             ),
-        )
-    return next_config
-
-
-class _ControlConfigCodec:
-    def default(self) -> ControlConfig:
-        return ControlConfig()
-
-    def encode(self, value: ControlConfig) -> Mapping[str, object]:
-        return _control_config_to_patch(value)
-
-    def apply(
-        self,
-        value: ControlConfig,
-        patch: Mapping[str, object],
-        *,
-        layer: str,
-    ) -> ConfigApplyResult[ControlConfig]:
-        scope = cast(SettingsScope, layer)
-        errors: list[SettingsError] = []
-        next_value = _apply_patch(
-            value,
-            dict(patch),
-            scope=scope,
-            errors=errors,
-        )
-        return ConfigApplyResult(
-            value=next_value,
-            issues=tuple(
-                ConfigIssue(
-                    layer=error.scope,
-                    message=error.message,
-                    error=error.error,
-                )
-                for error in errors
-            ),
-        )
+            encode=encode_dataclass_diff,
+            recover_errors=(TypeError, ValueError),
+        ),
+        ConfigFieldSpec("session_dir", decode=_decode_session_dir),
+        ConfigFieldSpec(
+            "resource_roots",
+            decode=_decode_string_tuple("resource_roots"),
+            encode=_encode_tuple,
+        ),
+        ConfigFieldSpec(
+            "package_roots",
+            decode=_decode_string_tuple("package_roots"),
+            encode=_encode_tuple,
+        ),
+        ConfigFieldSpec(
+            "package_sources",
+            input_keys=("packages", "package_sources"),
+            output_key="package_sources",
+            decode=_decode_package_sources,
+            encode=_encode_package_sources,
+        ),
+        ConfigFieldSpec(
+            "plugin_sources",
+            decode=_decode_string_tuple("plugin_sources"),
+            encode=_encode_tuple,
+        ),
+        ConfigFieldSpec(
+            "disabled_skills",
+            decode=_decode_string_tuple("disabled_skills"),
+            encode=_encode_tuple,
+        ),
+        ConfigFieldSpec(
+            "disabled_plugins",
+            decode=_decode_string_tuple("disabled_plugins"),
+            encode=_encode_tuple,
+        ),
+    ),
+    removed_fields=_REMOVED_SETTING_MESSAGES,
+    unknown_fields="ignore",
+)
 
 
 class SettingsManager:
@@ -868,14 +687,16 @@ class SettingsManager:
             Path(project_settings_path) if project_settings_path is not None else None
         )
         self._adapter_errors: list[SettingsError] = []
-        self._config = LayeredConfig(
-            codec=_ControlConfigCodec(),
-            layers=(
-                ConfigLayer("global", global_path, persistent=True),
-                ConfigLayer("project", project_path, persistent=True),
-                ConfigLayer("session"),
-            ),
-            initial={"session": initial} if initial is not None else None,
+        self._config = ScopedConfigRuntime(
+            LayeredConfig(
+                codec=_CONTROL_CONFIG_CODEC,
+                layers=(
+                    ConfigLayer("global", global_path, persistent=True),
+                    ConfigLayer("project", project_path, persistent=True),
+                    ConfigLayer("session"),
+                ),
+                initial={"session": initial} if initial is not None else None,
+            )
         )
 
     @property
@@ -916,13 +737,11 @@ class SettingsManager:
 
     @property
     def global_base_dir(self) -> Path | None:
-        path = self._config.layer_path("global")
-        return path.parent if isinstance(path, Path) else None
+        return self._config.scope("global").base_dir
 
     @property
     def project_base_dir(self) -> Path | None:
-        path = self._config.layer_path("project")
-        return path.parent if isinstance(path, Path) else None
+        return self._config.scope("project").base_dir
 
     def update_settings(
         self,
@@ -1526,13 +1345,13 @@ class SettingsManager:
         return getattr(self._settings, key, None)
 
     def get_global_settings(self) -> dict[str, Any]:
-        return self._config.patch("global")
+        return self._config.scope("global").patch
 
     def get_project_settings(self) -> dict[str, Any]:
-        return self._config.patch("project")
+        return self._config.scope("project").patch
 
     def get_session_settings(self) -> dict[str, Any]:
-        return self._config.patch("session")
+        return self._config.scope("session").patch
 
     def subscribe(self, listener: SettingsListener) -> Callable[[], None]:
         return self._config.subscribe(listener)

@@ -38,18 +38,27 @@ class LayeredConfig(Generic[T]):
         }
         self._issues: list[ConfigIssue] = []
         self._listeners: list[ConfigListener[T]] = []
-        self._load_persistent_layers()
+        self._patches, load_issues = self._load_persistent_layers(self._patches)
+        self._issues.extend(load_issues)
         for layer_name, value in (initial or {}).items():
             self._require_layer(layer_name)
             patch = value if isinstance(value, Mapping) else self._codec.encode(value)
             self._patches[layer_name] = merge_config_patch(
                 self._patches[layer_name], patch
             )
-        self._value = self._compose()
+        self._value, compose_issues = self._compose(self._patches)
+        self._issues.extend(compose_issues)
 
     @property
     def value(self) -> T:
         return self._value
+
+    @property
+    def layers(self) -> tuple[ConfigLayer, ...]:
+        return self._layers
+
+    def encode(self, value: T) -> dict[str, object]:
+        return deepcopy(dict(self._codec.encode(value)))
 
     def snapshot(self) -> ConfigSnapshot[T]:
         return ConfigSnapshot(
@@ -65,8 +74,12 @@ class LayeredConfig(Generic[T]):
         return deepcopy(self._patches[layer_name])
 
     def reload(self) -> None:
-        self._load_persistent_layers()
-        self._value = self._compose()
+        patches, load_issues = self._load_persistent_layers(self._patches)
+        value, compose_issues = self._compose(patches)
+        self._patches = patches
+        self._value = value
+        self._issues.extend(load_issues)
+        self._issues.extend(compose_issues)
         self._notify()
 
     def update(
@@ -78,6 +91,8 @@ class LayeredConfig(Generic[T]):
     ) -> None:
         layer = self._require_layer(layer_name)
         merged = merge_config_patch(self._patches[layer_name], patch)
+        patches = self._candidate_patches(layer_name, merged)
+        value, issues = self._compose(patches)
         should_persist = layer.persistent if persist is None else persist
         if should_persist:
             if layer.path is None:
@@ -85,8 +100,9 @@ class LayeredConfig(Generic[T]):
                     f"Config layer {layer_name!r} requires a path for persistence"
                 )
             self._store.save(layer.path, merged)
-        self._patches[layer_name] = merged
-        self._value = self._compose()
+        self._patches = patches
+        self._value = value
+        self._issues.extend(issues)
         self._notify()
 
     def replace(
@@ -96,9 +112,10 @@ class LayeredConfig(Generic[T]):
         *,
         persist: bool | None = None,
     ) -> None:
-        self._require_layer(layer_name)
+        layer = self._require_layer(layer_name)
         replacement = deepcopy(dict(patch))
-        layer = self._layers_by_name[layer_name]
+        patches = self._candidate_patches(layer_name, replacement)
+        value, issues = self._compose(patches)
         should_persist = layer.persistent if persist is None else persist
         if should_persist:
             if layer.path is None:
@@ -106,8 +123,9 @@ class LayeredConfig(Generic[T]):
                     f"Config layer {layer_name!r} requires a path for persistence"
                 )
             self._store.save(layer.path, replacement)
-        self._patches[layer_name] = replacement
-        self._value = self._compose()
+        self._patches = patches
+        self._value = value
+        self._issues.extend(issues)
         self._notify()
 
     def subscribe(self, listener: ConfigListener[T]) -> Callable[[], None]:
@@ -126,34 +144,59 @@ class LayeredConfig(Generic[T]):
         self._issues.clear()
         return issues
 
-    def _load_persistent_layers(self) -> None:
+    def _load_persistent_layers(
+        self,
+        current: Mapping[str, Mapping[str, object]],
+    ) -> tuple[dict[str, dict[str, object]], list[ConfigIssue]]:
+        patches = {name: deepcopy(dict(patch)) for name, patch in current.items()}
+        issues: list[ConfigIssue] = []
         for layer in self._layers:
             if layer.path is None:
                 continue
-            previous = self._patches[layer.name]
             try:
-                self._patches[layer.name] = deepcopy(dict(self._store.load(layer.path)))
+                loaded = deepcopy(dict(self._store.load(layer.path)))
+                candidate = {
+                    name: deepcopy(dict(patch)) for name, patch in patches.items()
+                }
+                candidate[layer.name] = loaded
+                self._compose(candidate)
             except Exception as exc:
-                self._issues.append(
+                issues.append(
                     ConfigIssue(
                         layer=layer.name,
                         message=str(exc),
                         error=exc,
+                        code="config_layer_load_failed",
                     )
                 )
-                self._patches[layer.name] = previous
+                continue
+            patches = candidate
+        return patches, issues
 
-    def _compose(self) -> T:
+    def _compose(
+        self,
+        patches: Mapping[str, Mapping[str, object]],
+    ) -> tuple[T, tuple[ConfigIssue, ...]]:
         value = self._codec.default()
+        issues: list[ConfigIssue] = []
         for layer in self._layers:
             result = self._codec.apply(
                 value,
-                self._patches[layer.name],
+                patches[layer.name],
                 layer=layer.name,
             )
             value = result.value
-            self._issues.extend(result.issues)
-        return value
+            issues.extend(result.issues)
+        return value, tuple(issues)
+
+    def _candidate_patches(
+        self,
+        layer_name: str,
+        patch: Mapping[str, object],
+    ) -> dict[str, dict[str, object]]:
+        patches = {name: deepcopy(value) for name, value in self._patches.items()}
+        patches[layer_name] = deepcopy(dict(patch))
+        return patches
 
     def _notify(self) -> None:
         for listener in tuple(self._listeners):

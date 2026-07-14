@@ -179,3 +179,95 @@ def test_layered_config_persistence_failure_does_not_publish_patch(
 
     assert engine.value == _Config()
     assert engine.patch("global") == {}
+
+
+def test_layered_config_update_codec_failure_is_transactional(tmp_path: Path) -> None:
+    from loushang.harness.config import ConfigLayer, LayeredConfig
+
+    class _ExplodingCodec(_Codec):
+        def apply(self, value, patch, *, layer):
+            if patch.get("name") == "explode":
+                raise RuntimeError("invalid update")
+            return super().apply(value, patch, layer=layer)
+
+    path = tmp_path / "global.json"
+    path.write_text(json.dumps({"name": "before"}), encoding="utf-8")
+    engine = LayeredConfig(
+        codec=_ExplodingCodec(),
+        layers=(ConfigLayer("global", path, persistent=True),),
+    )
+    seen: list[_Config] = []
+    engine.subscribe(seen.append)
+
+    import pytest
+
+    with pytest.raises(RuntimeError):
+        engine.update("global", {"name": "explode"})
+
+    assert engine.value == _Config(name="before")
+    assert engine.patch("global") == {"name": "before"}
+    assert json.loads(path.read_text(encoding="utf-8")) == {"name": "before"}
+    assert seen == []
+
+
+def test_layered_config_replace_codec_failure_is_transactional(tmp_path: Path) -> None:
+    from loushang.harness.config import ConfigLayer, LayeredConfig
+
+    class _ExplodingCodec(_Codec):
+        def apply(self, value, patch, *, layer):
+            if patch.get("name") == "explode":
+                raise RuntimeError("invalid replacement")
+            return super().apply(value, patch, layer=layer)
+
+    path = tmp_path / "global.json"
+    path.write_text(
+        json.dumps({"name": "before", "limit": 20}),
+        encoding="utf-8",
+    )
+    engine = LayeredConfig(
+        codec=_ExplodingCodec(),
+        layers=(ConfigLayer("global", path, persistent=True),),
+    )
+    seen: list[_Config] = []
+    engine.subscribe(seen.append)
+
+    import pytest
+
+    with pytest.raises(RuntimeError):
+        engine.replace("global", {"name": "explode"})
+
+    assert engine.value == _Config(name="before", limit=20)
+    assert engine.patch("global") == {"name": "before", "limit": 20}
+    assert json.loads(path.read_text(encoding="utf-8")) == {
+        "name": "before",
+        "limit": 20,
+    }
+    assert seen == []
+
+
+def test_layered_config_reload_codec_failure_preserves_previous_layer(
+    tmp_path: Path,
+) -> None:
+    from loushang.harness.config import ConfigLayer, LayeredConfig
+
+    class _ExplodingCodec(_Codec):
+        def apply(self, value, patch, *, layer):
+            if patch.get("name") == "explode":
+                raise RuntimeError("invalid reload")
+            return super().apply(value, patch, layer=layer)
+
+    path = tmp_path / "global.json"
+    path.write_text(json.dumps({"name": "before"}), encoding="utf-8")
+    engine = LayeredConfig(
+        codec=_ExplodingCodec(),
+        layers=(ConfigLayer("global", path, persistent=True),),
+    )
+    path.write_text(json.dumps({"name": "explode"}), encoding="utf-8")
+    engine.reload()
+
+    assert engine.value == _Config(name="before")
+    assert engine.patch("global") == {"name": "before"}
+    issues = engine.drain_issues()
+    assert len(issues) == 1
+    assert issues[0].layer == "global"
+    assert isinstance(issues[0].error, RuntimeError)
