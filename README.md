@@ -12,6 +12,8 @@ Modern AI agents can plan and act, but complex work still breaks down when conte
 
 Loushang treats methods, stages, roles, tools, sessions, and work products as runtime objects. The goal is not just to make agents smarter, but to make complex work more reliable, recoverable, auditable, and deliverable.
 
+Method is the work contract, work is the runtime fact, agent is the execution kernel, ai is the model access layer, harness is the cross-product substrate, coding is the V1 product surface, tui is the terminal presentation, and channel is the boundary protocol—together organizing complex knowledge work into a runnable, recoverable, verifiable, and evolvable system.
+
 ## What You Can Use Today
 
 - `loushang code`: a coding-focused CLI and terminal workbench.
