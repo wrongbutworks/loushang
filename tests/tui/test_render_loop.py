@@ -24,7 +24,11 @@ from loushang.tui import (
     delete_kitty_image,
     wrap_tmux_passthrough,
 )
-from loushang.tui.core import RenderLineSegment, SegmentedRenderLines
+from loushang.tui.core import (
+    RenderLineSegment,
+    RenderLineSegmentLike,
+    SegmentedRenderLines,
+)
 from loushang.tui.render_loop import DEFAULT_STRATEGY_ORDER, RenderPlanStrategyKind
 
 
@@ -39,7 +43,7 @@ class StaticRoot:
 class SegmentedRoot:
     def __init__(
         self,
-        segments: tuple[RenderLineSegment, ...],
+        segments: tuple[RenderLineSegmentLike, ...],
         *,
         cursor: CursorDeclaration | None = None,
     ) -> None:
@@ -162,6 +166,198 @@ def test_segmented_render_skips_11748_committed_rows_on_bottom_frame_update(
     assert no_op.reused_render_segment_count == 2
     assert no_op.materialized_logical_line_count == 0
     assert no_op.flattened_logical_line_count == 0
+
+
+def test_segment_cache_retains_only_the_latest_segmented_frame() -> None:
+    committed = _render_segment("history", identity="committed", revision=1)
+    root = SegmentedRoot((committed,))
+    loop = RenderLoop(root)
+    size = TerminalSize(columns=80, rows=24)
+    latest_draft: RenderLineSegment | None = None
+
+    for revision in range(600):
+        draft_line_count = revision // 100 + 1
+        latest_draft = _render_segment(
+            *(f"draft revision {revision} line {line}" for line in range(draft_line_count)),
+            revision=revision,
+        )
+        root.segments = (committed, latest_draft)
+        frame = loop.plan(size)
+        loop.commit(frame, size=size)
+
+        assert len(loop._finalized_segment_cache) == 2
+        assert sum(
+            len(segment.raw_lines)
+            for segment in loop._finalized_segment_cache.values()
+        ) == draft_line_count + 1
+
+    assert latest_draft is not None
+    assert set(loop._finalized_segment_cache) == {
+        (committed.identity_key, committed.revision),
+        (latest_draft.identity_key, latest_draft.revision),
+    }
+
+    no_op = loop.plan(size)
+
+    assert no_op.reused_render_segment_count == 2
+    assert no_op.materialized_logical_line_count == 0
+
+    root.segments = (committed,)
+    completed = loop.plan(size)
+
+    assert tuple(completed.current_logical_lines) == ("history",)
+    assert set(loop._finalized_segment_cache) == {
+        (committed.identity_key, committed.revision)
+    }
+
+
+def test_segment_cache_retains_every_segment_in_the_latest_frame() -> None:
+    stable = tuple(
+        _render_segment(
+            f"stable group {index}",
+            identity=("stable-group", index),
+            revision=1,
+        )
+        for index in range(600)
+    )
+    frontier_identity = object()
+    root = SegmentedRoot(
+        (*stable, _render_segment("frontier one", identity=frontier_identity, revision=1))
+    )
+    loop = RenderLoop(root)
+    size = TerminalSize(columns=80, rows=24)
+    first = loop.plan(size)
+    loop.commit(first, size=size)
+
+    assert len(loop._finalized_segment_cache) == 601
+
+    root.segments = (
+        *stable,
+        _render_segment("frontier two", identity=frontier_identity, revision=2),
+    )
+    changed = loop.plan(size)
+
+    assert changed.reused_render_segment_count == 600
+    assert changed.materialized_logical_line_count == 1
+    loop.commit(changed, size=size)
+
+    no_op = loop.plan(size)
+
+    assert no_op.reused_render_segment_count == 601
+    assert no_op.materialized_logical_line_count == 0
+
+
+def test_segment_cache_replacement_is_atomic_when_finalization_fails(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    root = SegmentedRoot((_render_segment("old", revision=1),))
+    loop = RenderLoop(root)
+    size = TerminalSize(columns=80, rows=24)
+    loop.plan(size)
+    previous_cache = loop._finalized_segment_cache
+    previous_cache_items = tuple(previous_cache.items())
+    root.segments = (
+        _render_segment("new one", revision=2),
+        _render_segment("new two", revision=2),
+    )
+    original_finalize = render_loop_module._finalize_render_segment
+    finalize_calls = 0
+
+    def fail_second_segment(segment: RenderLineSegmentLike):
+        nonlocal finalize_calls
+        finalize_calls += 1
+        if finalize_calls == 2:
+            raise RuntimeError("finalization failed")
+        return original_finalize(segment)
+
+    monkeypatch.setattr(
+        render_loop_module,
+        "_finalize_render_segment",
+        fail_second_segment,
+    )
+
+    with pytest.raises(RuntimeError, match="finalization failed"):
+        loop.plan(size)
+
+    assert loop._finalized_segment_cache is previous_cache
+    assert tuple(loop._finalized_segment_cache.items()) == previous_cache_items
+
+
+def test_segment_cache_sweeps_changed_views_without_changing_flat_output() -> None:
+    base = _render_segment(
+        "zero",
+        "one",
+        "two",
+        "three",
+        identity="shared",
+        revision=1,
+    )
+    first_view = SegmentedRenderLines.from_segments((base,))[0:2]
+    second_view = SegmentedRenderLines.from_segments((base,))[1:3]
+    root = SegmentedRoot(first_view.segments)
+    flat_root = FlatFrameRoot(("zero", "one"))
+    loop = RenderLoop(root)
+    flat_loop = RenderLoop(flat_root)
+    size = TerminalSize(columns=80, rows=24)
+    first = loop.plan(size)
+    flat_first = flat_loop.plan(size)
+    loop.commit(first, size=size)
+    flat_loop.commit(flat_first, size=size)
+    first_key = (
+        first_view.segments[0].identity_key,
+        first_view.segments[0].revision,
+    )
+
+    root.segments = second_view.segments
+    flat_root.lines = ("one", "two")
+    changed = loop.plan(size)
+    flat_changed = flat_loop.plan(size)
+    second_key = (
+        second_view.segments[0].identity_key,
+        second_view.segments[0].revision,
+    )
+
+    assert tuple(changed.current_logical_lines) == tuple(flat_changed.current_logical_lines)
+    assert changed.changed_line_range == flat_changed.changed_line_range
+    assert changed.operation_class == flat_changed.operation_class
+    assert changed.operations == flat_changed.operations
+    assert first_key not in loop._finalized_segment_cache
+    assert set(loop._finalized_segment_cache) == {second_key}
+    loop.commit(changed, size=size)
+
+    no_op = loop.plan(size)
+
+    assert no_op.reused_render_segment_count == 1
+    assert no_op.materialized_logical_line_count == 0
+
+
+def test_failed_segmented_flush_reuses_cache_without_advancing_baseline() -> None:
+    identity = object()
+    root = SegmentedRoot(
+        (_render_segment("first", identity=identity, revision=1),)
+    )
+    port = FakeTerminalPort(size=TerminalSize(columns=20, rows=5))
+    loop = RenderLoop(root)
+    runtime = TuiRuntime(render_loop=loop, terminal=port)
+    runtime.render_now()
+    committed_revision = loop.committed_frame_revision
+    root.segments = (
+        _render_segment("second", identity=identity, revision=2),
+    )
+    port.fail_next_flush(RuntimeError("write failed"))
+
+    with pytest.raises(RuntimeError, match="write failed"):
+        runtime.render_now()
+
+    assert loop.committed_frame_revision == committed_revision
+
+    retried = runtime.render_now()
+
+    assert retried.diagnostics.reused_render_segment_count == 1
+    assert retried.diagnostics.materialized_logical_line_count == 0
+    assert tuple(retried.diagnostics.previous_rendered_lines) == ("first",)
+    assert tuple(retried.diagnostics.current_logical_lines) == ("second",)
+    assert retried.diagnostics.base_frame_revision == committed_revision
 
 
 def test_segmented_row_shift_matches_flat_planner_and_repaints_shifted_image() -> None:

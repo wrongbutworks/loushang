@@ -25,7 +25,6 @@ from loushang.tui.terminal_image import (
 
 ClearScrollbackPolicy = Literal["disabled", "resize", "explicit"]
 SEGMENT_RESET = "\x1b[0m\x1b]8;;\x07"
-_FINALIZED_SEGMENT_CACHE_LIMIT = 512
 
 
 @dataclass(frozen=True, slots=True, eq=False)
@@ -702,26 +701,31 @@ class RenderLoop:
                 previous_finalized_lines=self.previous_rendered_lines,
             )
 
+        # Retain only segments from the latest complete segmented materialization.
+        # Building off to the side keeps the previous cache intact if finalization fails.
+        previous_segment_cache = self._finalized_segment_cache
+        current_segment_cache: dict[tuple[object, object], _LogicalLineSegment] = {}
         segments: list[_LogicalLineSegment] = []
         for rendered_segment in result.lines.segments:
             cache_key = _render_segment_cache_key(rendered_segment)
-            cached = self._finalized_segment_cache.get(cache_key) if cache_key is not None else None
-            if cached is not None:
+            logical_segment = (
+                current_segment_cache.get(cache_key) if cache_key is not None else None
+            )
+            if logical_segment is None and cache_key is not None:
+                logical_segment = previous_segment_cache.get(cache_key)
+            if logical_segment is not None:
                 self._planned_reused_segment_count += 1
-                segments.append(cached)
-                continue
-            logical_segment = _finalize_render_segment(rendered_segment)
-            self._planned_materialized_line_count += len(logical_segment.raw_lines)
+            else:
+                logical_segment = _finalize_render_segment(rendered_segment)
+                self._planned_materialized_line_count += len(logical_segment.raw_lines)
             segments.append(logical_segment)
             if cache_key is not None:
-                self._finalized_segment_cache[cache_key] = logical_segment
-                while len(self._finalized_segment_cache) > _FINALIZED_SEGMENT_CACHE_LIMIT:
-                    self._finalized_segment_cache.pop(next(iter(self._finalized_segment_cache)))
+                current_segment_cache[cache_key] = logical_segment
         logical_segments = tuple(segments)
-        return (
-            _SegmentedTextLines(logical_segments, finalized=False),
-            _SegmentedTextLines(logical_segments, finalized=True),
-        )
+        raw_lines = _SegmentedTextLines(logical_segments, finalized=False)
+        finalized_lines = _SegmentedTextLines(logical_segments, finalized=True)
+        self._finalized_segment_cache = current_segment_cache
+        return raw_lines, finalized_lines
 
     def _plan_runtime(self) -> RenderPlanRuntime:
         return RenderPlanRuntime(

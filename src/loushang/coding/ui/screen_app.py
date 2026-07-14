@@ -61,6 +61,8 @@ from loushang.tui.transcript import (
     TranscriptView,
     UserPromptRecord,
     WorkedDividerRecord,
+    _prefix_streaming_assistant_segment,
+    _render_streaming_assistant_markdown_segments,
 )
 
 ACTIVE_RENDER_INTERVAL_MS = 80
@@ -441,8 +443,30 @@ class _ScreenTranscriptRegion:
         init=False,
         repr=False,
     )
-    _draft_segment_key: tuple[object, ...] | None = field(default=None, init=False, repr=False)
-    _draft_segment: RenderLineSegment | None = field(default=None, init=False, repr=False)
+    _draft_segments_key: tuple[object, ...] | None = field(default=None, init=False, repr=False)
+    _draft_segments: tuple[RenderLineSegment, ...] = field(default=(), init=False, repr=False)
+    _draft_stream_context: tuple[object, ...] | None = field(default=None, init=False, repr=False)
+    _draft_stable_segment_cache: dict[tuple[object, ...], RenderLineSegment] = field(
+        default_factory=dict,
+        init=False,
+        repr=False,
+    )
+    _draft_separator_identity: object = field(default_factory=object, init=False, repr=False)
+    _draft_separator_segment: RenderLineSegment | None = field(default=None, init=False, repr=False)
+    _draft_has_leading_separator: bool = field(default=False, init=False, repr=False)
+    _segmented_transient_content_segments: tuple[RenderLineSegment, ...] = field(
+        default=(),
+        init=False,
+        repr=False,
+    )
+    _segmented_transient_buffer_id: int | None = field(default=None, init=False, repr=False)
+    _segmented_transient_buffer_version: int = field(default=-1, init=False, repr=False)
+    _segmented_transient_width: int = field(default=0, init=False, repr=False)
+    _segmented_transient_style_signature: tuple[object, ...] | None = field(
+        default=None,
+        init=False,
+        repr=False,
+    )
 
     @property
     def has_content(self) -> bool:
@@ -596,12 +620,15 @@ class _ScreenTranscriptRegion:
             return SegmentedRenderLines()
 
         committed = self._render_committed_segment(width=width, style_signature=style_signature)
-        draft = self._render_draft_segment(
+        draft_segments = self._render_draft_segments(
             width=width,
             style_signature=style_signature,
             has_committed=committed is not None,
         )
-        segments = tuple(segment for segment in (committed, draft) if segment is not None)
+        segments = (
+            *((committed,) if committed is not None else ()),
+            *draft_segments,
+        )
         lines = SegmentedRenderLines.from_segments(segments)
         if len(lines) <= max_height:
             return lines
@@ -609,8 +636,9 @@ class _ScreenTranscriptRegion:
         start = len(lines) - max_height
         committed_rows = committed.line_count if committed is not None else 0
         starts_at_draft_separator = (
-            draft is not None
-            and committed is not None
+            committed is not None
+            and bool(draft_segments)
+            and self._draft_has_leading_separator
             and start == committed_rows
         )
         if start in self._committed_separator_rows or starts_at_draft_separator:
@@ -661,18 +689,17 @@ class _ScreenTranscriptRegion:
         self._committed_separator_rows = frozenset(separator_rows)
         return segment
 
-    def _render_draft_segment(
+    def _render_draft_segments(
         self,
         *,
         width: int,
         style_signature: tuple[object, ...],
         has_committed: bool,
-    ) -> RenderLineSegment | None:
+    ) -> tuple[RenderLineSegment, ...]:
         draft: DisplayRecord | StreamingTextBuffer | None = self.draft_buffer or self.draft
         if draft is None:
-            self._draft_segment_key = None
-            self._draft_segment = None
-            return None
+            self._clear_draft_segment_cache()
+            return ()
         source_revision: object
         if isinstance(draft, StreamingTextBuffer):
             source_revision = (id(draft), draft.version)
@@ -685,8 +712,20 @@ class _ScreenTranscriptRegion:
             width,
             style_signature,
         )
-        if key == self._draft_segment_key:
-            return self._draft_segment
+        if key == self._draft_segments_key:
+            return self._draft_segments
+
+        if isinstance(draft, StreamingTextBuffer):
+            segmented = self._render_streaming_draft_segments(
+                draft,
+                width=width,
+                style_signature=style_signature,
+                has_committed=has_committed,
+            )
+            if segmented is not None:
+                self._draft_segments_key = key
+                self._draft_segments = segmented
+                return segmented
 
         block = self._render_record_lines(draft, width=width, style_signature=style_signature)
         rows = (("", *block) if has_committed and block else block)
@@ -698,9 +737,122 @@ class _ScreenTranscriptRegion:
             if rows
             else None
         )
-        self._draft_segment_key = key
-        self._draft_segment = segment
-        return segment
+        segments = (segment,) if segment is not None else ()
+        self._draft_segments_key = key
+        self._draft_segments = segments
+        self._draft_has_leading_separator = bool(has_committed and block)
+        self._segmented_transient_content_segments = ()
+        self._segmented_transient_buffer_id = None
+        self._segmented_transient_buffer_version = -1
+        return segments
+
+    def _render_streaming_draft_segments(
+        self,
+        buffer: StreamingTextBuffer,
+        *,
+        width: int,
+        style_signature: tuple[object, ...],
+        has_committed: bool,
+    ) -> tuple[RenderLineSegment, ...] | None:
+        stream_context = (
+            id(buffer),
+            self.window_generation,
+            width,
+            style_signature,
+        )
+        if stream_context != self._draft_stream_context:
+            self._draft_stream_context = stream_context
+            self._draft_stable_segment_cache.clear()
+            self._draft_separator_segment = None
+
+        source = _streaming_buffer_render_text(buffer)
+        rendered = _render_streaming_assistant_markdown_segments(
+            source,
+            width=width,
+            theme=self.theme,
+            capabilities=self.capabilities,
+            code_highlighter=None,
+            markdown_cache=self._markdown_render_cache,
+            markdown_streaming_key=buffer,
+        )
+        if rendered is None:
+            self._draft_stable_segment_cache.clear()
+            self._draft_separator_segment = None
+            self._segmented_transient_content_segments = ()
+            self._segmented_transient_buffer_id = None
+            self._segmented_transient_buffer_version = -1
+            return None
+
+        content_segments: list[RenderLineSegment] = []
+        first_prefix_available = True
+        display_record = AssistantMessageRecord(source, stable=False)
+        for markdown_segment in rendered.segments:
+            has_nonblank = markdown_segment.has_nonblank
+            use_first_prefix = first_prefix_available and has_nonblank
+            if has_nonblank:
+                first_prefix_available = False
+            cache_key = (
+                markdown_segment.identity,
+                markdown_segment.revision,
+                use_first_prefix,
+            )
+            segment = (
+                self._draft_stable_segment_cache.get(cache_key)
+                if markdown_segment.stable
+                else None
+            )
+            if segment is None:
+                prefixed = _prefix_streaming_assistant_segment(
+                    markdown_segment.lines,
+                    width=width,
+                    use_first_prefix=use_first_prefix,
+                )
+                coding_lines = _coding_lines(
+                    prefixed,
+                    display_record,
+                    theme=self.theme,
+                    capabilities=self.capabilities,
+                )
+                segment = RenderLineSegment(
+                    lines=tuple(RenderLine(line) for line in coding_lines),
+                    identity=("streaming-markdown", markdown_segment.identity),
+                    revision=(markdown_segment.revision, use_first_prefix),
+                )
+                if markdown_segment.stable:
+                    self._draft_stable_segment_cache[cache_key] = segment
+            content_segments.append(segment)
+
+        content = tuple(content_segments)
+        segments: tuple[RenderLineSegment, ...] = content
+        if has_committed and content:
+            if self._draft_separator_segment is None:
+                self._draft_separator_segment = RenderLineSegment(
+                    lines=(RenderLine(""),),
+                    identity=self._draft_separator_identity,
+                    revision=stream_context,
+                )
+            segments = (self._draft_separator_segment, *content)
+        self._draft_has_leading_separator = bool(has_committed and content)
+
+        self._segmented_transient_content_segments = content
+        self._segmented_transient_buffer_id = id(buffer)
+        self._segmented_transient_buffer_version = buffer.version
+        self._segmented_transient_width = width
+        self._segmented_transient_style_signature = style_signature
+        return segments
+
+    def _clear_draft_segment_cache(self) -> None:
+        self._draft_segments_key = None
+        self._draft_segments = ()
+        self._draft_stream_context = None
+        self._draft_stable_segment_cache.clear()
+        self._draft_separator_segment = None
+        self._draft_has_leading_separator = False
+        self._segmented_transient_content_segments = ()
+        self._segmented_transient_buffer_id = None
+        self._segmented_transient_buffer_version = -1
+        self._segmented_transient_width = 0
+        self._segmented_transient_style_signature = None
 
     def _iter_records(self) -> Iterable[DisplayRecord | StreamingTextBuffer]:
         yield from self.records
@@ -719,8 +871,7 @@ class _ScreenTranscriptRegion:
         self._committed_segment_key = None
         self._committed_segment = None
         self._committed_separator_rows = frozenset()
-        self._draft_segment_key = None
-        self._draft_segment = None
+        self._clear_draft_segment_cache()
         self._cache_generation = self.window_generation
 
     def clear_transient_cache(self) -> None:
@@ -731,8 +882,7 @@ class _ScreenTranscriptRegion:
         self._transient_source_style_signature = None
         self._transient_source_buffer_id = None
         self._transient_source_buffer_version = -1
-        self._draft_segment_key = None
-        self._draft_segment = None
+        self._clear_draft_segment_cache()
         self._markdown_render_cache.clear_streaming()
 
     def promote_transient_cache(
@@ -741,6 +891,32 @@ class _ScreenTranscriptRegion:
         *,
         source_buffer: StreamingTextBuffer | None = None,
     ) -> None:
+        if source_buffer is not None and self._segmented_transient_content_segments:
+            if self._segmented_transient_buffer_id != id(source_buffer):
+                return
+            if self._segmented_transient_buffer_version != source_buffer.version:
+                return
+            if record.text != source_buffer.text:
+                return
+            if (
+                self._segmented_transient_width <= 0
+                or self._segmented_transient_style_signature is None
+            ):
+                return
+            canonical_lines = tuple(
+                line.text
+                for segment in self._segmented_transient_content_segments
+                for line in segment.lines
+            )
+            self._stable_line_cache[
+                (
+                    record,
+                    self._segmented_transient_width,
+                    self._segmented_transient_style_signature,
+                )
+            ] = canonical_lines
+            self._enforce_stable_cache_entry_limit()
+            return
         if self._transient_line_cache_lines is None:
             return
         if source_buffer is None and record.text != self._transient_source_text:

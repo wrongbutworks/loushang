@@ -17,6 +17,7 @@ from loushang.tui.markdown.renderer import (
     DiffBlock,
     MarkdownRenderCache,
     MarkdownRenderer,
+    MarkdownSegmentedRenderResult,
 )
 from loushang.tui.theme import TerminalCapabilities, ThemeResolver
 
@@ -482,6 +483,48 @@ def _render_markdown_content(
         streaming_key=markdown_streaming_key,
     ).render(_inner_constraints(width))
     return tuple(line.text for line in rendered.lines)
+
+
+def _render_streaming_assistant_markdown_segments(
+    text: str,
+    *,
+    width: int,
+    theme: ThemeResolver | None,
+    capabilities: TerminalCapabilities | None,
+    code_highlighter: CodeHighlighterLike | None,
+    markdown_cache: MarkdownRenderCache,
+    markdown_streaming_key: object,
+) -> MarkdownSegmentedRenderResult | None:
+    if theme is None:
+        return None
+    target_width = autowrap_safe_width(width)
+    return MarkdownRenderer(
+        text,
+        theme=theme,
+        capabilities=capabilities,
+        code_highlighter=code_highlighter,
+        render_cache=markdown_cache,
+        streaming_key=markdown_streaming_key,
+    ).render_streaming_segments(
+        _inner_constraints(target_width - visible_width("* "))
+    )
+
+
+def _prefix_streaming_assistant_segment(
+    lines: tuple[str, ...],
+    *,
+    width: int,
+    use_first_prefix: bool,
+) -> tuple[str, ...]:
+    target_width = autowrap_safe_width(width)
+    return tuple(
+        _prefixed_rendered_lines(
+            "* " if use_first_prefix else "  ",
+            "  ",
+            lines,
+            width=target_width,
+        )
+    )
 
 
 def _inner_constraints(width: int) -> RenderConstraints:

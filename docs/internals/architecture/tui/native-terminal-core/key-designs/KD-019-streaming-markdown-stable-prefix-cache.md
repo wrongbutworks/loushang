@@ -5,9 +5,9 @@ Status: Accepted. Implemented.
 ## Purpose
 
 Keep Markdown streaming responsive as an assistant draft grows by parsing and
-formatting only its mutable semantic tail. Do this entirely inside the Markdown
-rendering path so terminal diff, viewport, and scrollback behavior do not
-change.
+formatting only its mutable semantic tail, while reusing already rendered
+semantic groups as immutable line segments. Terminal output, viewport, and
+scrollback behavior do not change.
 
 ## Problem
 
@@ -37,16 +37,17 @@ For an append-only update:
    growing tail plus one group of lookbehind.
 4. Promote all earlier complete groups into the stable prefix and advance the
    source-line offset.
-5. Combine the cached stable blocks with the newly parsed tail blocks and pass
-   one complete block sequence to the existing renderer.
+5. Render each promoted group once as an immutable line segment, and render the
+   remaining groups as one versioned mutable frontier segment.
 
-The renderer continues to return the same complete logical-line result it
-returns today. Stable prefix and mutable tail are internal parse concepts; they
-must not become separate transcript records or terminal regions.
+Stable groups and the frontier are internal render segments, not separate
+transcript records or terminal regions. Concatenating their rows must equal the
+ordinary complete Markdown render exactly.
 
-The boundary source gap must be preserved when the two parsed parts are
-combined. Otherwise parsing the tail independently would lose the blank block
-that the current full parser derives from the gap between adjacent token maps.
+Each group owns its left boundary: either the source-gap blank before it or the
+Pi-style blank implied by the previous and current block kinds. It never owns a
+trailing blank that depends on future input. This makes a promoted group safe
+to freeze without duplicating or dropping boundary rows.
 
 ## Semantic Boundary
 
@@ -75,9 +76,10 @@ Discard the incremental state when:
 - the source is no longer an append of the previous source
 - the parser cannot provide a safe top-level source boundary
 
-When streaming completes, use the ordinary full Markdown parse as the
-canonical result and discard the streaming parse state. Supported incremental
-cases must render identically to that canonical result.
+When streaming completes with the same buffer identity, version, and text as
+the last rendered frame, flatten the proven-equivalent rendered segments once
+into the stable record cache. Replaced or not-yet-rendered final text uses the
+ordinary full Markdown path. Then discard the streaming state.
 
 Width, theme, and terminal-capability changes continue to invalidate rendered
 line caches through their existing keys. They do not change Markdown source
@@ -85,15 +87,16 @@ boundaries and do not require a new terminal protocol.
 
 ## Scope
 
-This design changes only Markdown parse reuse for an active draft. It does not
-introduce:
+This design changes Markdown parse and rendered-line reuse for an active draft.
+It does not introduce:
 
 - an active transcript window or logical-row eviction
 - terminal diff, viewport, scrollback, or terminal-protocol changes
-- fixed-size Markdown fragments
+- fixed-size Markdown fragments or artificial line boundaries
 
-KD-015 remains a separate renderer optimization for reusing full transcript
-planning if that cost is still material after this optimization.
+The resulting group segments use KD-015's existing finalize and diff reuse.
+That cache retains every cacheable segment in the latest frame and no segments
+from older frames, so its memory remains bounded by the current rendered frame.
 
 ## Implementation Shape
 
@@ -101,13 +104,14 @@ The implementation stays narrow:
 
 - add a per-draft streaming parse state beside the Markdown renderer
 - use top-level token source maps to advance the stable offset
-- reuse the existing `_MarkdownBlock` rendering and `MarkdownRenderCache`
+- reuse the existing `_MarkdownBlock` rendering and semantic group boundaries
+- expose immutable stable rendered segments plus one mutable frontier segment
 - connect the state only to `StreamingTextBuffer` rendering
 - fall back to the current full parse whenever safety is uncertain
 
-Claude Code's React component split is not copied. Loushang merges parsed
-blocks before rendering so existing blank-line, assistant-chrome, and terminal
-diff behavior stay unchanged.
+Claude Code's React component split is not copied. Loushang keeps its existing
+assistant chrome and terminal planner, with exact flat rendering as the
+correctness oracle.
 
 ## Acceptance
 
@@ -121,3 +125,9 @@ diff behavior stay unchanged.
   30 percent. This is benchmark evidence, not a cross-machine CI timing gate.
 - Continuous single-block input remains correct even when it cannot be made
   faster by this strategy.
+- Working ticks and composer input do not read or materialize stable draft
+  rows. A new chunk materializes the mutable frontier and newly promoted
+  groups, not the complete draft.
+- The 10,000-line, 20-lines-per-block fixture remains exact after the number of
+  semantic groups exceeds both the Markdown block-cache capacity and 512
+  rendered segments.
