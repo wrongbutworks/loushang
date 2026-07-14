@@ -1,8 +1,9 @@
 from __future__ import annotations
 
 import re
+from collections.abc import Iterable, Sequence
 from contextlib import suppress
-from dataclasses import replace
+from dataclasses import dataclass, replace
 from datetime import UTC, datetime
 from pathlib import Path
 from uuid import uuid4
@@ -41,12 +42,21 @@ from loushang.coding.store.types import (
     SessionRecord,
     SessionSummary,
 )
+from loushang.harness.conversation import (
+    BranchDelta,
+    ConversationCatalog,
+    ConversationCheckpoint,
+    ConversationReplayFolder,
+    ConversationReplayPorts,
+    ConversationRepository,
+    ConversationTreeNode,
+    FunctionalConversationProjector,
+    ProjectionQuery,
+)
 from loushang.harness.journal import (
-    BranchGraph,
     FunctionalProjectionCodec,
     JsonProjectionIndex,
     ProjectionIndexSnapshot,
-    TranscriptRepository,
 )
 from loushang.observability import get_log
 from loushang.protocol import require_json_value
@@ -107,27 +117,93 @@ def _build_label_indexes(
     return labels_by_target_id, label_timestamps_by_target_id
 
 
-def _append_visible_message(messages: list[AgentMessage], entry: SessionEntry) -> None:
+def _visible_message(entry: SessionEntry) -> AgentMessage | None:
     if isinstance(entry, SessionMessageEntry):
-        messages.append(entry.message)
-    elif isinstance(entry, CustomMessageEntry):
-        messages.append(
-            create_custom_message(
-                custom_type=entry.custom_type,
-                content=entry.content,
-                display=entry.display,
-                details=entry.details,
-                timestamp=entry.timestamp,
-            )
+        return entry.message
+    if isinstance(entry, CustomMessageEntry):
+        return create_custom_message(
+            custom_type=entry.custom_type,
+            content=entry.content,
+            display=entry.display,
+            details=entry.details,
+            timestamp=entry.timestamp,
         )
-    elif isinstance(entry, BranchSummaryEntry):
-        messages.append(
-            create_branch_summary_message(
-                summary=entry.summary,
-                from_id=entry.from_id,
-                timestamp=entry.timestamp,
-            )
+    if isinstance(entry, BranchSummaryEntry):
+        return create_branch_summary_message(
+            summary=entry.summary,
+            from_id=entry.from_id,
+            timestamp=entry.timestamp,
         )
+    return None
+
+
+@dataclass
+class _SessionRuntimeState:
+    thinking_level: str = "off"
+    model: dict[str, str] | None = None
+
+
+def _apply_session_entry(
+    state: _SessionRuntimeState,
+    entry: SessionEntry,
+) -> _SessionRuntimeState:
+    if isinstance(entry, ThinkingLevelChangeEntry):
+        state.thinking_level = entry.thinking_level
+    elif isinstance(entry, ModelChangeEntry):
+        state.model = {"provider": entry.provider, "model_id": entry.model_id}
+        if entry.endpoint_id:
+            state.model["endpoint_id"] = entry.endpoint_id
+    elif isinstance(entry, SessionMessageEntry) and isinstance(
+        entry.message, AssistantMessage
+    ):
+        state.model = {
+            "provider": entry.message.provider,
+            "model_id": entry.message.model,
+        }
+    return state
+
+
+def _compaction_checkpoint(
+    entry: SessionEntry,
+) -> ConversationCheckpoint[AgentMessage] | None:
+    if not isinstance(entry, CompactionEntry):
+        return None
+    first_kept_entry_id = entry.first_kept_entry_id
+    if not isinstance(first_kept_entry_id, str) or not first_kept_entry_id.strip():
+        first_kept_entry_id = f"__missing_first_kept__:{entry.id}"
+    return ConversationCheckpoint(
+        first_kept_record_id=first_kept_entry_id,
+        summary_item=create_compaction_summary_message(
+            summary=entry.summary,
+            tokens_before=entry.tokens_before,
+            timestamp=entry.timestamp,
+        ),
+    )
+
+
+_SESSION_REPLAY = ConversationReplayFolder(
+    ConversationReplayPorts(
+        record_id=lambda entry: entry.id,
+        project_visible_item=_visible_message,
+        initialize_state=_SessionRuntimeState,
+        reduce_state=_apply_session_entry,
+        resolve_checkpoint=_compaction_checkpoint,
+    ),
+    missing_checkpoint="summary_only",
+)
+
+
+def _replay_session(entries: Sequence[SessionEntry]) -> SessionContext:
+    projection = _SESSION_REPLAY.replay(entries)
+    return SessionContext(
+        messages=list(projection.items),
+        thinking_level=projection.state.thinking_level,
+        model=(
+            dict(projection.state.model)
+            if projection.state.model is not None
+            else None
+        ),
+    )
 
 
 def _message_preview(message: AgentMessage) -> str | None:
@@ -361,22 +437,12 @@ def _session_projection_index(
     )
 
 
-def _session_graph(entries: list[SessionEntry]) -> BranchGraph[SessionEntry]:
-    return BranchGraph(
-        entries,
-        record_id=lambda entry: entry.id,
-        parent_id=lambda entry: entry.parent_id,
-        mode="compatible",
-    )
-
-
 def build_session_context(
     entries: list[SessionEntry],
     leaf_id: str | None | object = _LEAF_UNSET,
     by_id: dict[str, SessionEntry] | None = None,
 ) -> SessionContext:
     del by_id
-    graph = _session_graph(entries)
     resolved_leaf_id: str | None
 
     if leaf_id is _LEAF_UNSET:
@@ -386,64 +452,120 @@ def build_session_context(
     else:
         resolved_leaf_id = leaf_id if isinstance(leaf_id, str) else None
 
-    if resolved_leaf_id is None or graph.get(resolved_leaf_id) is None:
+    if resolved_leaf_id is None:
         return SessionContext()
+    conversation = ConversationRepository.create(
+        header=None,
+        records=entries,
+        record_id=lambda entry: entry.id,
+        parent_id=lambda entry: entry.parent_id,
+        mode="compatible",
+    )
+    if conversation.get(resolved_leaf_id) is None:
+        return SessionContext()
+    conversation.branch(resolved_leaf_id)
+    return _replay_session(conversation.active_records())
 
-    path = list(graph.path(resolved_leaf_id))
 
-    thinking_level = "off"
-    model: dict[str, str] | None = None
-    compaction: CompactionEntry | None = None
-
-    for entry in path:
-        if isinstance(entry, ThinkingLevelChangeEntry):
-            thinking_level = entry.thinking_level
-        elif isinstance(entry, ModelChangeEntry):
-            model = {"provider": entry.provider, "model_id": entry.model_id}
-            if entry.endpoint_id:
-                model["endpoint_id"] = entry.endpoint_id
-        elif isinstance(entry, SessionMessageEntry) and isinstance(
-            entry.message, AssistantMessage
-        ):
-            model = {
-                "provider": entry.message.provider,
-                "model_id": entry.message.model,
-            }
-        elif isinstance(entry, CompactionEntry):
-            compaction = entry
-
-    messages: list[AgentMessage] = []
-
-    if compaction is None:
-        for entry in path:
-            _append_visible_message(messages, entry)
-        return SessionContext(
-            messages=messages, thinking_level=thinking_level, model=model
-        )
-
-    messages.append(
-        create_compaction_summary_message(
-            summary=compaction.summary,
-            tokens_before=compaction.tokens_before,
-            timestamp=compaction.timestamp,
-        )
+def _load_session_metadata(
+    header: SessionHeader,
+    entries: Sequence[SessionEntry],
+) -> SessionMetadata:
+    name: str | None = None
+    for entry in entries:
+        if isinstance(entry, SessionInfoEntry):
+            name = _normalize_session_name(entry.name)
+    entry_list = list(entries)
+    return SessionMetadata(
+        created_at=header.timestamp,
+        updated_at=_last_activity_timestamp(entry_list, header),
+        name=name,
     )
 
-    compaction_index = next(
-        i for i, entry in enumerate(path) if entry.id == compaction.id
+
+def _project_session_summary(
+    header: SessionHeader,
+    records: Sequence[SessionEntry],
+    leaf_id: str | None,
+    source_path: Path | None,
+) -> SessionSummary:
+    entries = list(records)
+    metadata = _load_session_metadata(header, entries)
+    context = build_session_context(entries, leaf_id)
+    last_message_preview = next(
+        (
+            preview
+            for message in reversed(context.messages)
+            if (preview := _message_preview(message))
+        ),
+        None,
+    )
+    message_texts = [
+        text for message in context.messages if (text := _message_text(message))
+    ]
+    first_message = next(
+        (
+            text
+            for message in context.messages
+            if isinstance(message, UserMessage) and (text := _message_text(message))
+        ),
+        "(no messages)",
+    )
+    diagnostic_count, last_diagnostic_code, last_diagnostic_level = (
+        _diagnostic_index(entries)
+    )
+    return SessionSummary(
+        session_id=header.id,
+        cwd=header.cwd,
+        session_file=source_path,
+        parent_session=header.parent_session,
+        leaf_id=leaf_id,
+        created_at=metadata.created_at,
+        updated_at=metadata.updated_at,
+        name=metadata.name,
+        message_count=len(context.messages),
+        entry_count=len(entries),
+        first_message=first_message,
+        all_messages_text=" ".join(message_texts),
+        last_message_preview=last_message_preview,
+        model=context.model,
+        has_diagnostics=diagnostic_count > 0,
+        diagnostic_count=diagnostic_count,
+        last_diagnostic_code=last_diagnostic_code,
+        last_diagnostic_level=last_diagnostic_level,
     )
 
-    found_first_kept = False
-    for entry in path[:compaction_index]:
-        if entry.id == compaction.first_kept_entry_id:
-            found_first_kept = True
-        if found_first_kept:
-            _append_visible_message(messages, entry)
 
-    for entry in path[compaction_index + 1 :]:
-        _append_visible_message(messages, entry)
+_SESSION_SUMMARY_PROJECTOR = FunctionalConversationProjector(
+    _project_session_summary
+)
 
-    return SessionContext(messages=messages, thinking_level=thinking_level, model=model)
+
+def _discover_session_repositories(
+    session_dir: Path,
+) -> Iterable[ConversationRepository[SessionHeader, SessionEntry]]:
+    if not session_dir.exists():
+        return
+    for session_file in session_dir.glob("*.jsonl"):
+        if session_file.name.endswith("-export.jsonl"):
+            continue
+        try:
+            yield load_session_repository(session_file)
+        except Exception:
+            continue
+
+
+def _session_catalog(
+    session_dir: Path,
+    *,
+    indexed: bool,
+) -> ConversationCatalog[SessionHeader, SessionEntry, SessionSummary]:
+    return ConversationCatalog(
+        discover=lambda: _discover_session_repositories(session_dir),
+        projector=_SESSION_SUMMARY_PROJECTOR,
+        index=_session_projection_index(session_dir) if indexed else None,
+        skip_projection_errors=True,
+    )
 
 
 class SessionManager:
@@ -453,7 +575,7 @@ class SessionManager:
         session_dir: Path,
         cwd: str,
         persist: bool,
-        repository: TranscriptRepository[SessionHeader, SessionEntry],
+        repository: ConversationRepository[SessionHeader, SessionEntry],
         session_file: Path | None = None,
         labels_by_target_id: dict[str, str] | None = None,
         label_timestamps_by_target_id: dict[str, str] | None = None,
@@ -461,37 +583,37 @@ class SessionManager:
         self.session_dir = session_dir
         self.cwd = cwd
         self.persist = persist
-        self._repository = repository
+        self._conversation = repository
         self.session_file = session_file
         self.labels_by_target_id = dict(labels_by_target_id or {})
         self.label_timestamps_by_target_id = dict(label_timestamps_by_target_id or {})
 
     @property
     def header(self) -> SessionHeader:
-        return self._repository.header
+        return self._conversation.header
 
     @header.setter
     def header(self, value: SessionHeader) -> None:
-        self._repository.set_header(value)
+        self._conversation.set_header(value)
 
     @property
     def entries(self) -> list[SessionEntry]:
-        return list(self._repository.records)
+        return list(self._conversation.records)
 
     @property
     def by_id(self) -> dict[str, SessionEntry]:
-        return {entry.id: entry for entry in self._repository.records}
+        return {entry.id: entry for entry in self._conversation.records}
 
     @property
     def leaf_id(self) -> str | None:
-        return self._repository.leaf_id
+        return self._conversation.leaf_id
 
     @leaf_id.setter
     def leaf_id(self, value: str | None) -> None:
         if value is None:
-            self._repository.reset_leaf()
+            self._conversation.reset_branch()
         else:
-            self._repository.select_leaf(value)
+            self._conversation.branch(value)
 
     @classmethod
     def new(
@@ -679,16 +801,16 @@ class SessionManager:
         return self.leaf_id
 
     def get_entry(self, entry_id: str) -> SessionEntry | None:
-        return self._repository.get(entry_id)
+        return self._conversation.get(entry_id)
 
     def get_leaf_entry(self) -> SessionEntry | None:
-        return self._repository.leaf()
+        return self._conversation.leaf()
 
     def get_entries(self) -> list[SessionEntry]:
         return list(self.entries)
 
     def get_children(self, parent_id: str) -> list[SessionEntry]:
-        return list(self._repository.children(parent_id))
+        return list(self._conversation.children(parent_id))
 
     def get_label(self, entry_id: str) -> str | None:
         return self.labels_by_target_id.get(entry_id)
@@ -706,15 +828,7 @@ class SessionManager:
         return self.persist and self.session_file is not None
 
     def load_metadata(self) -> SessionMetadata:
-        name: str | None = None
-        for entry in self.entries:
-            if isinstance(entry, SessionInfoEntry):
-                name = _normalize_session_name(entry.name)
-        return SessionMetadata(
-            created_at=self.header.timestamp,
-            updated_at=_last_activity_timestamp(self.entries, self.header),
-            name=name,
-        )
+        return _load_session_metadata(self.header, self.entries)
 
     def get_session_record(self) -> SessionRecord:
         return SessionRecord(
@@ -727,73 +841,38 @@ class SessionManager:
         )
 
     def get_session_summary(self) -> SessionSummary:
-        metadata = self.load_metadata()
-        context = self.build_session_context()
-        last_message_preview = next(
-            (
-                preview
-                for message in reversed(context.messages)
-                if (preview := _message_preview(message))
-            ),
-            None,
-        )
-        message_texts = [
-            text for message in context.messages if (text := _message_text(message))
-        ]
-        first_message = next(
-            (
-                text
-                for message in context.messages
-                if isinstance(message, UserMessage) and (text := _message_text(message))
-            ),
-            "(no messages)",
-        )
-        diagnostic_count, last_diagnostic_code, last_diagnostic_level = (
-            _diagnostic_index(self.entries)
-        )
-        return SessionSummary(
-            session_id=self.header.id,
-            cwd=self.cwd,
-            session_file=self.session_file,
-            parent_session=self.header.parent_session,
-            leaf_id=self.leaf_id,
-            created_at=metadata.created_at,
-            updated_at=metadata.updated_at,
-            name=metadata.name,
-            message_count=len(context.messages),
-            entry_count=len(self.entries),
-            first_message=first_message,
-            all_messages_text=" ".join(message_texts),
-            last_message_preview=last_message_preview,
-            model=context.model,
-            has_diagnostics=diagnostic_count > 0,
-            diagnostic_count=diagnostic_count,
-            last_diagnostic_code=last_diagnostic_code,
-            last_diagnostic_level=last_diagnostic_level,
+        return _project_session_summary(
+            self.header,
+            self.entries,
+            self.leaf_id,
+            self.session_file,
         )
 
     def get_branch(
         self, leaf_id: str | None | object = _LEAF_UNSET
     ) -> list[SessionEntry]:
-        current_id: str | None
         if leaf_id is _LEAF_UNSET:
-            current_id = self.leaf_id
-        else:
-            current_id = leaf_id if isinstance(leaf_id, str) else None
-
-        if current_id is None:
+            return list(self._conversation.active_records())
+        if not isinstance(leaf_id, str):
             return []
-        if self._repository.get(current_id) is None:
-            raise ValueError(f"Entry {current_id} not found")
-        return list(self._repository.path_to(current_id))
+        if self._conversation.get(leaf_id) is None:
+            raise ValueError(f"Entry {leaf_id} not found")
+        return list(self._conversation.records_to(leaf_id))
+
+    def get_branch_delta(
+        self,
+        from_id: str,
+        target_id: str,
+    ) -> BranchDelta[SessionEntry]:
+        return self._conversation.branch_delta(from_id, target_id)
 
     def branch(self, branch_from_id: str) -> None:
-        if self._repository.get(branch_from_id) is None:
+        if self._conversation.get(branch_from_id) is None:
             raise ValueError(f"Entry {branch_from_id} not found")
-        self._repository.select_leaf(branch_from_id)
+        self._conversation.branch(branch_from_id)
 
     def reset_leaf(self) -> None:
-        self._repository.reset_leaf()
+        self._conversation.reset_branch()
 
     def branch_with_summary(
         self,
@@ -802,7 +881,7 @@ class SessionManager:
         details: object | None = None,
         from_hook: bool | None = None,
     ) -> str:
-        if branch_from_id is not None and self._repository.get(branch_from_id) is None:
+        if branch_from_id is not None and self._conversation.get(branch_from_id) is None:
             raise ValueError(f"Entry {branch_from_id} not found")
         details = require_json_value(details, name="branch_summary.details")
         self.leaf_id = branch_from_id
@@ -820,19 +899,18 @@ class SessionManager:
         )
 
     def get_tree(self) -> list[SessionTreeNode]:
-        def build_node(entry: SessionEntry) -> SessionTreeNode:
-            node = SessionTreeNode(
+        def build_node(
+            node: ConversationTreeNode[SessionEntry],
+        ) -> SessionTreeNode:
+            entry = node.record
+            return SessionTreeNode(
                 entry=entry,
-                children=[],
+                children=[build_node(child) for child in node.children],
                 label=self.labels_by_target_id.get(entry.id),
                 label_timestamp=self.label_timestamps_by_target_id.get(entry.id),
             )
-            node.children.extend(
-                build_node(child) for child in self._repository.children(entry.id)
-            )
-            return node
 
-        return [build_node(entry) for entry in self._repository.roots()]
+        return [build_node(node) for node in self._conversation.tree()]
 
     def _record_label_entry(self, entry: LabelEntry) -> None:
         if entry.label:
@@ -843,7 +921,7 @@ class SessionManager:
         self.label_timestamps_by_target_id.pop(entry.target_id, None)
 
     def append_entry(self, entry: SessionEntry) -> str:
-        entry_id = self._repository.append(entry)
+        entry_id = self._conversation.append(entry)
         if isinstance(entry, LabelEntry):
             self._record_label_entry(entry)
         return entry_id
@@ -969,7 +1047,7 @@ class SessionManager:
         )
 
     def append_label(self, target_id: str, label: str | None) -> str:
-        if self._repository.get(target_id) is None:
+        if self._conversation.get(target_id) is None:
             raise ValueError(f"Entry {target_id} not found")
         return self.append_entry(
             LabelEntry(
@@ -1015,7 +1093,7 @@ class SessionManager:
             self.session_dir.mkdir(parents=True, exist_ok=True)
             file_timestamp = header.timestamp.replace(":", "-").replace(".", "-")
             session_file = self.session_dir / f"{file_timestamp}_{header.id}.jsonl"
-        repository = self._repository.fork(
+        repository = self._conversation.fork(
             header=header,
             journal=session_journal(session_file) if session_file is not None else None,
             leaf_id=leaf_id,
@@ -1035,7 +1113,7 @@ class SessionManager:
         return self.fork(leaf_id).session_file
 
     def build_session_context(self) -> SessionContext:
-        return build_session_context(self.entries, self.leaf_id, self.by_id)
+        return _replay_session(self._conversation.active_records())
 
     @classmethod
     def rename_session(
@@ -1099,19 +1177,12 @@ class SessionManager:
     def list_summaries(cls, session_dir: Path) -> list[SessionSummary]:
         if not session_dir.exists():
             return []
-
-        summaries: list[SessionSummary] = []
-        for session_file in session_dir.glob("*.jsonl"):
-            if session_file.name.endswith("-export.jsonl"):
-                continue
-            try:
-                summary = cls.load(session_file).get_session_summary()
-            except Exception:
-                continue
-            summaries.append(summary)
-
-        summaries.sort(key=lambda summary: summary.updated_at, reverse=True)
-        return summaries
+        return list(
+            ProjectionQuery[SessionSummary](
+                sort_key=lambda summary: summary.updated_at,
+                reverse=True,
+            ).apply(_session_catalog(session_dir, indexed=False).scan())
+        )
 
     @classmethod
     def list_all_summaries(cls, sessions_root: Path) -> list[SessionSummary]:
@@ -1153,11 +1224,7 @@ class SessionManager:
     @classmethod
     def refresh_index(cls, session_dir: Path) -> list[SessionSummary]:
         session_dir.mkdir(parents=True, exist_ok=True)
-        return list(
-            _session_projection_index(session_dir).write(
-                cls.list_summaries(session_dir)
-            )
-        )
+        return list(_session_catalog(session_dir, indexed=True).refresh())
 
     @classmethod
     def load_index(cls, session_dir: Path) -> list[SessionSummary]:
@@ -1172,10 +1239,7 @@ class SessionManager:
         cls, session_dir: Path, *, refresh: bool = False
     ) -> list[SessionSummary]:
         return list(
-            _session_projection_index(session_dir).load_or_refresh(
-                lambda: cls.list_summaries(session_dir),
-                refresh=refresh,
-            )
+            _session_catalog(session_dir, indexed=True).list(refresh=refresh)
         )
 
     @classmethod
@@ -1252,20 +1316,25 @@ def _filter_session_summaries(
             return False
         return True
 
-    filtered = [summary for summary in summaries if matches(summary)]
+    sort_key = None
+    reverse = False
     if query.sort_by == "relevance" and query.text is not None:
-        filtered.sort(
-            key=lambda summary: (
+        def relevance_sort_key(summary: SessionSummary) -> tuple[int, str]:
+            return (
                 _session_query_score(summary, query.text) or 0,
                 summary.updated_at,
-            ),
-            reverse=True,
-        )
-    if query.limit is not None:
-        if query.limit < 0:
-            raise ValueError("Session query limit must be non-negative")
-        return filtered[: query.limit]
-    return filtered
+            )
+
+        sort_key = relevance_sort_key
+        reverse = True
+    return list(
+        ProjectionQuery(
+            predicate=matches,
+            sort_key=sort_key,
+            reverse=reverse,
+            limit=query.limit,
+        ).apply(summaries)
+    )
 
 
 def _session_haystack(summary: SessionSummary) -> str:

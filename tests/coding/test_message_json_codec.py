@@ -286,6 +286,7 @@ def test_tool_result_and_custom_messages_roundtrip_with_images_and_details() -> 
             full_output_path=None,
             timestamp=2.0,
             exclude_from_context=True,
+            metadata={"cwd": "/workspace"},
         ),
         CustomMessage(
             role="custom",
@@ -301,3 +302,25 @@ def test_tool_result_and_custom_messages_roundtrip_with_images_and_details() -> 
 
     for message in messages:
         assert deserialize_agent_message(serialize_agent_message(message)) == message
+
+
+def test_deserialize_bash_message_accepts_historical_empty_command() -> None:
+    from loushang.coding.message import BashExecutionMessage
+    from loushang.coding.message.json_codec import deserialize_agent_message
+
+    message = deserialize_agent_message(
+        {
+            "role": "bashExecution",
+            "command": "",
+            "output": "",
+            "exitCode": 0,
+            "cancelled": False,
+            "truncated": False,
+            "fullOutputPath": "",
+            "timestamp": 1.0,
+        }
+    )
+
+    assert isinstance(message, BashExecutionMessage)
+    assert message.command == ""
+    assert message.full_output_path == ""

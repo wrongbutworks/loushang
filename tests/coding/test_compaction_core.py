@@ -425,6 +425,121 @@ def test_prepare_compaction_detects_split_turn_cut_point(tmp_path) -> None:
     assert current_request_id != preparation.first_kept_entry_id
 
 
+def test_plan_compaction_keeps_metadata_attached_to_cut_group(tmp_path) -> None:
+    session = SessionManager.new(tmp_path, cwd=str(tmp_path), persist=False)
+    old_user_id = session.append_message(
+        UserMessage(role="user", content="old request", timestamp=1.0)
+    )
+    old_assistant_id = session.append_message(
+        AssistantMessage(
+            role="assistant",
+            content=[TextPart(type="text", text="old reply")],
+            api="responses",
+            provider="faux",
+            model="alpha",
+            response_id="r1",
+            usage=Usage(
+                input=20,
+                output=10,
+                cache_read=0,
+                cache_write=0,
+                total_tokens=30,
+                cost={},
+            ),
+            stop_reason="stop",
+            error_message=None,
+            timestamp=2.0,
+        )
+    )
+    model_change_id = session.append_model_change("faux", "beta")
+    recent_user_id = session.append_message(
+        UserMessage(role="user", content="new request", timestamp=3.0)
+    )
+    recent_assistant_id = session.append_message(
+        AssistantMessage(
+            role="assistant",
+            content=[TextPart(type="text", text="new reply")],
+            api="responses",
+            provider="faux",
+            model="beta",
+            response_id="r2",
+            usage=Usage(
+                input=20,
+                output=10,
+                cache_read=0,
+                cache_write=0,
+                total_tokens=30,
+                cost={},
+            ),
+            stop_reason="stop",
+            error_message=None,
+            timestamp=4.0,
+        )
+    )
+
+    plan = plan_compaction(session.get_branch(), keep_recent_tokens=5)
+
+    assert plan.first_kept_entry_id == model_change_id
+    assert plan.summarized_entry_ids == (old_user_id, old_assistant_id)
+    assert plan.kept_entry_ids == (recent_user_id, recent_assistant_id)
+
+
+def test_plan_compaction_partitions_do_not_overlap_when_all_context_is_kept(
+    tmp_path,
+) -> None:
+    session = SessionManager.new(tmp_path, cwd=str(tmp_path), persist=False)
+    user_id = session.append_message(
+        UserMessage(role="user", content="short request", timestamp=1.0)
+    )
+    assistant_id = session.append_message(
+        AssistantMessage(
+            role="assistant",
+            content=[TextPart(type="text", text="short answer")],
+            api="responses",
+            provider="faux",
+            model="alpha",
+            response_id="r1",
+            usage=Usage(
+                input=2,
+                output=1,
+                cache_read=0,
+                cache_write=0,
+                total_tokens=3,
+                cost={},
+            ),
+            stop_reason="stop",
+            error_message=None,
+            timestamp=2.0,
+        )
+    )
+
+    preparation = prepare_compaction(
+        session.get_branch(),
+        keep_recent_tokens=10_000,
+    )
+
+    assert preparation.messages_to_summarize == []
+    assert preparation.turn_prefix_messages == []
+    assert preparation.plan is not None
+    assert preparation.plan.summarized_entry_ids == ()
+    assert preparation.plan.kept_entry_ids == (user_id, assistant_id)
+
+
+def test_plan_compaction_recovers_blank_previous_boundary(tmp_path) -> None:
+    session = SessionManager.new(tmp_path, cwd=str(tmp_path), persist=False)
+    session.append_message(UserMessage(role="user", content="old", timestamp=1.0))
+    previous_id = session.append_compaction("legacy summary", "", 10)
+    recent_id = session.append_message(
+        UserMessage(role="user", content="recent", timestamp=2.0)
+    )
+
+    plan = plan_compaction(session.get_branch(), keep_recent_tokens=1)
+
+    assert plan.previous_compaction_id == previous_id
+    assert plan.previous_first_kept_entry_id == ""
+    assert plan.first_kept_entry_id == recent_id
+
+
 def test_top_level_package_exports_compaction_surface() -> None:
     from loushang.coding import CompactionResult as TopLevelCompactionResult
     from loushang.coding import prepare_compaction as top_level_prepare_compaction

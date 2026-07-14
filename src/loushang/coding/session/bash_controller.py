@@ -199,17 +199,19 @@ class BashController:
         result: dict[str, object],
         exclude_from_context: bool,
     ) -> None:
+        exit_code = result.get("exit_code")
         self.session_manager.append_message(
             BashExecutionMessage(
                 role="bashExecution",
                 command=command,
                 output=str(result.get("output") or ""),
-                exit_code=result.get("exit_code") if isinstance(result.get("exit_code"), int) else None,
+                exit_code=exit_code if type(exit_code) is int else None,
                 cancelled=bool(result.get("cancelled", False)),
                 truncated=bool(result.get("truncated", False)),
                 full_output_path=(
                     str(result["full_output_path"])
-                    if isinstance(result.get("full_output_path"), str) and result.get("full_output_path")
+                    if isinstance(result.get("full_output_path"), str)
+                    and result.get("full_output_path")
                     else None
                 ),
                 timestamp=time(),

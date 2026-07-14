@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+import json
+from dataclasses import asdict
+
 from loushang.coding.message import CompactionEntry, CustomMessageEntry
 
 
@@ -79,3 +82,61 @@ def test_convert_to_llm_skips_bash_execution_marked_excluded() -> None:
     )
 
     assert result == []
+
+
+def test_bash_execution_message_specializes_command_execution_record() -> None:
+    from loushang.coding.message import BashExecutionMessage
+    from loushang.harness.conversation import CommandExecutionRecord
+
+    message = BashExecutionMessage(
+        role="bashExecution",
+        command="make test",
+        output="passed",
+        exit_code=0,
+        cancelled=False,
+        truncated=True,
+        full_output_path="/tmp/test.log",
+        exclude_from_context=True,
+        timestamp=42.0,
+    )
+
+    assert isinstance(message, CommandExecutionRecord)
+    assert message.role == "bashExecution"
+    assert message.timestamp == 42.0
+    assert message.output_path == "/tmp/test.log"
+
+
+def test_bash_execution_message_preserves_legacy_positional_construction() -> None:
+    from loushang.coding.message import BashExecutionMessage
+
+    message = BashExecutionMessage(
+        "bashExecution",
+        "",
+        "",
+        None,
+        False,
+        False,
+        "",
+        42.0,
+        True,
+        metadata={"cwd": "/workspace"},
+    )
+
+    assert message.command == ""
+    assert message.full_output_path == ""
+    assert message.exclude_from_context is True
+    payload = asdict(message)
+    assert type(payload["metadata"]) is dict
+    assert json.loads(json.dumps(payload))["metadata"] == {"cwd": "/workspace"}
+    assert isinstance(hash(message), int)
+    assert BashExecutionMessage.__match_args__ == (
+        "role",
+        "command",
+        "output",
+        "exit_code",
+        "cancelled",
+        "truncated",
+        "full_output_path",
+        "timestamp",
+        "exclude_from_context",
+    )

@@ -69,6 +69,24 @@ def test_write_then_load_jsonl_session_file(tmp_path: Path) -> None:
     assert loaded_entries[0].type == "message"
 
 
+def test_coding_session_repository_uses_harness_conversation_runtime() -> None:
+    from loushang.coding.store.file_codec import create_session_repository
+    from loushang.harness.conversation import ConversationRepository
+
+    repository = create_session_repository(
+        header=SessionHeader(
+            type="session",
+            version=3,
+            id="s1",
+            timestamp="2026-05-20T09:00:00.000Z",
+            cwd="/tmp/project",
+        ),
+        entries=[],
+    )
+
+    assert isinstance(repository, ConversationRepository)
+
+
 def test_session_jsonl_bytes_preserve_default_json_format_and_unicode_escaping(
     tmp_path: Path,
 ) -> None:

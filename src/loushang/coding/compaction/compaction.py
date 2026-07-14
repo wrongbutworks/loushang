@@ -31,6 +31,11 @@ from loushang.coding.message.custom_messages import (
     CustomMessage,
 )
 from loushang.coding.message.transformers import convert_to_llm
+from loushang.harness.context import (
+    ConversationCompactionPlanner,
+    ConversationPreviousSummary,
+    ConversationRecordPorts,
+)
 from loushang.harness.context.budget import calculate_compaction_budget
 from loushang.harness.context.summary import (
     build_summary_prompt,
@@ -39,13 +44,6 @@ from loushang.harness.context.summary import (
 from loushang.harness.context.usage import ContextUsageEstimate
 
 TOOL_RESULT_MAX_CHARS = 2_000
-
-
-@dataclass(frozen=True)
-class _CutPointResult:
-    first_kept_entry_index: int
-    turn_start_index: int
-    is_split_turn: bool
 
 
 @dataclass(frozen=True)
@@ -165,198 +163,120 @@ def compaction_plan_to_payload(plan: CompactionPlan) -> dict[str, object]:
 def _prepare_compaction(
     entries: list[SessionEntry], keep_recent_tokens: int
 ) -> _PreparedCompaction:
-    previous_summary: str | None = None
-    previous_compaction_id: str | None = None
-    previous_first_kept_entry_id: str | None = None
-    boundary_start = 0
-    previous_compaction_index = _latest_compaction_index(entries)
-    if previous_compaction_index is not None:
-        previous_compaction = entries[previous_compaction_index]
-        if isinstance(previous_compaction, CompactionEntry):
-            previous_summary = previous_compaction.summary
-            previous_compaction_id = previous_compaction.id
-            previous_first_kept_entry_id = previous_compaction.first_kept_entry_id
-            first_kept_index = _find_entry_index(
-                entries, previous_compaction.first_kept_entry_id
-            )
-            boundary_start = (
-                first_kept_index
-                if first_kept_index is not None
-                else previous_compaction_index + 1
-            )
-
-    boundary_end = len(entries)
-    context_messages = _visible_agent_messages(entries[boundary_start:boundary_end])
-    if not context_messages:
+    if not any(_entry_to_agent_message(entry) is not None for entry in entries):
         raise ValueError("Compaction requires at least one visible message entry.")
-
-    tokens_before = estimate_context_tokens(context_messages).tokens
-    cut_point = _find_cut_point(
-        entries, boundary_start, boundary_end, keep_recent_tokens
-    )
-    first_kept_entry = entries[cut_point.first_kept_entry_index]
-    first_kept_entry_id = first_kept_entry.id
-
-    history_end = (
-        cut_point.turn_start_index
-        if cut_point.is_split_turn
-        else cut_point.first_kept_entry_index
-    )
-    messages_to_summarize = _visible_agent_messages(entries[boundary_start:history_end])
-    turn_prefix_messages = (
-        _visible_agent_messages(
-            entries[cut_point.turn_start_index : cut_point.first_kept_entry_index]
-        )
-        if cut_point.is_split_turn
-        else []
-    )
-    summarized_entry_ids = _visible_entry_ids(entries[boundary_start:history_end])
-    turn_prefix_entry_ids = (
-        _visible_entry_ids(
-            entries[cut_point.turn_start_index : cut_point.first_kept_entry_index]
-        )
-        if cut_point.is_split_turn
-        else []
-    )
-
-    if not messages_to_summarize and not turn_prefix_messages:
-        fallback_entries = [
-            entry
-            for index, entry in enumerate(
-                entries[boundary_start:boundary_end], start=boundary_start
-            )
-            if index != cut_point.first_kept_entry_index
-        ]
-        messages_to_summarize = _visible_agent_messages(fallback_entries)
-        summarized_entry_ids = _visible_entry_ids(fallback_entries)
-
-    kept_entry_ids = _visible_entry_ids(
-        entries[cut_point.first_kept_entry_index : boundary_end]
-    )
-    plan = CompactionPlan(
-        previous_compaction_id=previous_compaction_id,
-        previous_first_kept_entry_id=previous_first_kept_entry_id,
-        first_kept_entry_id=first_kept_entry_id,
-        summarized_entry_ids=tuple(summarized_entry_ids),
-        turn_prefix_entry_ids=tuple(turn_prefix_entry_ids),
-        kept_entry_ids=tuple(kept_entry_ids),
-        is_split_turn=cut_point.is_split_turn,
-        tokens_before=tokens_before,
+    shared_plan = _coding_compaction_planner().plan(
+        entries,
         keep_recent_tokens=keep_recent_tokens,
+    )
+    messages_to_summarize = [
+        message
+        for entry in shared_plan.summarized_records
+        if (message := _entry_to_agent_message(entry)) is not None
+    ]
+    turn_prefix_messages = [
+        message
+        for entry in shared_plan.turn_prefix_records
+        if (message := _entry_to_agent_message(entry)) is not None
+    ]
+    summarized_entry_ids = list(shared_plan.summarized_record_ids)
+
+    previous_boundary = shared_plan.previous_summary
+    previous_first_kept_entry_id: str | None = None
+    if previous_boundary is not None:
+        previous_entry = next(
+            (
+                entry
+                for entry in entries
+                if entry.id == previous_boundary.record_id
+                and isinstance(entry, CompactionEntry)
+            ),
+            None,
+        )
+        if previous_entry is not None and isinstance(
+            previous_entry.first_kept_entry_id, str
+        ):
+            previous_first_kept_entry_id = previous_entry.first_kept_entry_id
+    plan = CompactionPlan(
+        previous_compaction_id=(
+            previous_boundary.record_id if previous_boundary is not None else None
+        ),
+        previous_first_kept_entry_id=previous_first_kept_entry_id,
+        first_kept_entry_id=shared_plan.first_kept_record_id,
+        summarized_entry_ids=tuple(summarized_entry_ids),
+        turn_prefix_entry_ids=shared_plan.turn_prefix_record_ids,
+        kept_entry_ids=shared_plan.kept_record_ids,
+        is_split_turn=shared_plan.is_split_turn,
+        tokens_before=shared_plan.tokens_before,
+        keep_recent_tokens=shared_plan.keep_recent_tokens,
     )
     return _PreparedCompaction(
         plan=plan,
         messages_to_summarize=messages_to_summarize,
         turn_prefix_messages=turn_prefix_messages,
-        previous_summary=previous_summary,
+        previous_summary=(
+            previous_boundary.content if previous_boundary is not None else None
+        ),
     )
 
 
-def _latest_compaction_index(entries: list[SessionEntry]) -> int | None:
-    for index in range(len(entries) - 1, -1, -1):
-        if isinstance(entries[index], CompactionEntry):
-            return index
-    return None
-
-
-def _find_entry_index(entries: list[SessionEntry], entry_id: str) -> int | None:
-    for index, entry in enumerate(entries):
-        if entry.id == entry_id:
-            return index
-    return None
-
-
-def _visible_agent_messages(entries: Sequence[SessionEntry]) -> list[AgentMessage]:
-    messages: list[AgentMessage] = []
-    for entry in entries:
-        message = _entry_to_agent_message(entry)
-        if message is not None:
-            messages.append(message)
-    return messages
-
-
-def _visible_entry_ids(entries: Sequence[SessionEntry]) -> list[str]:
-    return [entry.id for entry in entries if _entry_to_agent_message(entry) is not None]
-
-
-def _find_cut_point(
-    entries: list[SessionEntry],
-    start_index: int,
-    end_index: int,
-    keep_recent_tokens: int,
-) -> _CutPointResult:
-    cut_points = _find_valid_cut_points(entries, start_index, end_index)
-    if not cut_points:
-        return _CutPointResult(
-            first_kept_entry_index=start_index, turn_start_index=-1, is_split_turn=False
-        )
-
-    accumulated_tokens = 0
-    cut_index = cut_points[0]
-
-    for index in range(end_index - 1, start_index - 1, -1):
-        message = _entry_to_agent_message(entries[index])
-        if message is None:
-            continue
-        accumulated_tokens += _estimate_message_tokens(message)
-        if accumulated_tokens >= keep_recent_tokens:
-            cut_index = cut_points[-1]
-            for candidate in cut_points:
-                if candidate >= index:
-                    cut_index = candidate
-                    break
-            break
-
-    while cut_index > start_index:
-        previous_entry = entries[cut_index - 1]
-        if isinstance(previous_entry, CompactionEntry):
-            break
-        if isinstance(previous_entry, SessionMessageEntry):
-            break
-        cut_index -= 1
-
-    turn_start_index = (
-        -1
-        if _is_user_like_cut_entry(entries[cut_index])
-        else _find_turn_start_index(entries, cut_index, start_index)
-    )
-    return _CutPointResult(
-        first_kept_entry_index=cut_index,
-        turn_start_index=turn_start_index,
-        is_split_turn=turn_start_index != -1
-        and not _is_user_like_cut_entry(entries[cut_index]),
-    )
-
-
-def _find_valid_cut_points(
-    entries: list[SessionEntry], start_index: int, end_index: int
-) -> list[int]:
-    cut_points: list[int] = []
-    for index in range(start_index, end_index):
-        if _is_valid_cut_point(entries[index]):
-            cut_points.append(index)
-    return cut_points
-
-
-def _is_valid_cut_point(entry: SessionEntry) -> bool:
-    message = _entry_to_agent_message(entry)
-    return message is not None and getattr(message, "role", None) != "toolResult"
-
-
-def _is_user_like_cut_entry(entry: SessionEntry) -> bool:
+def _compaction_record_role(entry: SessionEntry) -> str | None:
     if isinstance(entry, BranchSummaryEntry | CustomMessageEntry):
-        return True
+        return "user"
     message = _entry_to_agent_message(entry)
-    return getattr(message, "role", None) in {"user", "bashExecution"}
+    role = getattr(message, "role", None)
+    return role if isinstance(role, str) else None
 
 
-def _find_turn_start_index(
-    entries: list[SessionEntry], entry_index: int, start_index: int
-) -> int:
-    for index in range(entry_index, start_index - 1, -1):
-        if _is_user_like_cut_entry(entries[index]):
-            return index
-    return -1
+def _compaction_record_tokens(entry: SessionEntry) -> int:
+    message = _entry_to_agent_message(entry)
+    return _estimate_message_tokens(message) if message is not None else 0
+
+
+def _compaction_context_tokens(entries: tuple[SessionEntry, ...]) -> int:
+    messages = [
+        message
+        for entry in entries
+        if (message := _entry_to_agent_message(entry)) is not None
+    ]
+    return estimate_context_tokens(messages).tokens
+
+
+def _previous_compaction(
+    entry: SessionEntry,
+) -> ConversationPreviousSummary[str] | None:
+    if not isinstance(entry, CompactionEntry):
+        return None
+    return ConversationPreviousSummary(
+        first_kept_record_id=_compatible_first_kept_entry_id(entry),
+        content=entry.summary,
+    )
+
+
+def _compatible_first_kept_entry_id(entry: CompactionEntry) -> str:
+    value = entry.first_kept_entry_id
+    if isinstance(value, str) and value.strip():
+        return value
+    return f"__missing_first_kept__:{entry.id}"
+
+
+def _coding_compaction_planner() -> ConversationCompactionPlanner[SessionEntry, str]:
+    return ConversationCompactionPlanner(
+        ConversationRecordPorts(
+            record_id=lambda entry: entry.id,
+            is_visible=lambda entry: _entry_to_agent_message(entry) is not None,
+            role=_compaction_record_role,
+            estimate_tokens=_compaction_record_tokens,
+            estimate_context_tokens=_compaction_context_tokens,
+            separates_cut_group=lambda entry: isinstance(
+                entry, CompactionEntry | SessionMessageEntry
+            ),
+            previous_summary=_previous_compaction,
+        ),
+        turn_start_roles=frozenset({"user", "bashExecution"}),
+        non_cut_roles=frozenset({"toolResult"}),
+        missing_previous_summary="summary_only",
+    )
 
 
 async def compact(

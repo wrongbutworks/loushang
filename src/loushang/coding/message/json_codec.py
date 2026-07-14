@@ -56,7 +56,7 @@ def deserialize_session_header(payload: dict[str, Any]) -> SessionHeader:
 
 def serialize_custom_message(message: AgentMessage) -> dict[str, Any]:
     if isinstance(message, BashExecutionMessage):
-        return {
+        payload = {
             "role": "bashExecution",
             "command": message.command,
             "output": message.output,
@@ -67,6 +67,12 @@ def serialize_custom_message(message: AgentMessage) -> dict[str, Any]:
             "timestamp": message.timestamp,
             "excludeFromContext": message.exclude_from_context,
         }
+        if message.metadata:
+            payload["metadata"] = require_json_value(
+                dict(message.metadata),
+                name="bash_execution.metadata",
+            )
+        return payload
     if isinstance(message, CustomMessage):
         content = message.content
         return {
@@ -110,6 +116,7 @@ def deserialize_custom_message(payload: dict[str, Any]) -> AgentMessage:
             full_output_path=payload.get("fullOutputPath", payload.get("full_output_path")),
             timestamp=payload["timestamp"],
             exclude_from_context=payload.get("excludeFromContext", payload.get("exclude_from_context", False)),
+            metadata=payload.get("metadata", {}),
         )
     if role == "custom":
         content = payload["content"]
