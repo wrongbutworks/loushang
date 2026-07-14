@@ -75,6 +75,13 @@ migrate Coding message codecs, or replace Coding's specialized compaction
 planner. The follow-on wave adds rebuildable JSON indexes but not
 journal-offset checkpoints.
 
+The later [Conversation Runtime Core](conversation-runtime-core-boundary.md)
+closes the in-memory checkpoint/replay and specialized cut-planner gaps:
+opaque-record turn grouping, split-turn/non-cut planning, previous-summary
+accounting, metadata cut groups, repository/catalog/query, and replay now live
+in Harness. Journal-offset checkpoints remain deferred, and Product codecs,
+prompts, model calls, and artifact semantics remain Product-owned.
+
 ## Motivation And Existing Evidence
 
 The repository already contains the same lower-level mechanisms behind
@@ -709,12 +716,12 @@ final wave merge, but it does not block progress on the other adapters.
 | Current source | Target ownership | Product remainder |
 | --- | --- | --- |
 | `coding.compaction.types` | neutral request/status/result shapes where behavior matches | transcript-specific plans, results, and branch-summary projections use adapters rather than false aliases |
-| `coding.compaction.compaction` | common packing contracts and reducer boundary | Coding compatibility planner, split-turn rules, prompts, AI completion, transcript mapping, and file details |
+| `coding.compaction.compaction` | common packing/reducer boundary plus opaque-record turn/cut planning | Coding compatibility records, message/token adapters, prompts, AI completion, transcript mapping, and file details |
 | `coding.compaction.service` | single-flight coordinator state, cancellation, and failure lifecycle | Coding invocation and artifact projection adapter |
 | `coding.session.context_usage` | existing Harness budget and usage inputs only | trigger policy, model lookup, and Coding stale-entry interpretation |
 | `coding.store.file_lock` | Harness journal locking | compatibility alias |
 | `coding.store.file_codec` | JSONL framing and atomic IO | SessionHeader/SessionEntry codec |
-| `coding.store.session_manager` | branch graph, transcript repository, fork selection, and projection-index mechanics | projection schema/query, lifecycle, cwd, summaries, context rebuild, and naming |
+| `coding.store.session_manager` | conversation repository/catalog/query, branch/tree/fork/LCA/delta, checkpoint replay, and projection-index mechanics | projection schema/fields, lifecycle, cwd, labels, naming, recovery, and retention |
 | `work.event_log` | matching JSONL I/O only | Work normalization, in-memory backend, positions, filters, query, replay, subscriptions, records, and public adapters |
 | `coding.message.json_codec` | no direct Harness migration | AI owns base codecs, Agent owns extension codec composition, and Coding owns custom transcript codecs |
 

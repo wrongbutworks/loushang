@@ -298,6 +298,40 @@ def test_product_runtime_core_symbols_are_not_top_level_exports() -> None:
     assert runtime_symbols.isdisjoint(set(harness.__all__))
 
 
+def test_conversation_runtime_core_symbols_are_not_top_level_exports() -> None:
+    import loushang.harness as harness
+    import loushang.harness.context.conversation as conversation_context
+    import loushang.harness.conversation as conversation
+
+    conversation_symbols = set(conversation.__all__)
+    context_conversation_symbols = set(conversation_context.__all__)
+
+    assert conversation_symbols.isdisjoint(set(harness.__all__))
+    assert context_conversation_symbols.isdisjoint(set(harness.__all__))
+
+
+def test_conversation_runtime_core_does_not_import_channel_implementations() -> None:
+    boundaries = (
+        ImportBoundary(
+            name="conversation",
+            root=Path("src/loushang/harness/conversation"),
+            forbidden_prefixes=("loushang.channel",),
+        ),
+        ImportBoundary(
+            name="conversation context",
+            root=Path("src/loushang/harness/context"),
+            forbidden_prefixes=("loushang.channel",),
+        ),
+    )
+
+    offenders = [
+        offender
+        for boundary in boundaries
+        for offender in _find_forbidden_imports(boundary)
+    ]
+    assert offenders == []
+
+
 def test_coding_internal_diagnostics_imports_use_harness_owners() -> None:
     compatibility_paths = {
         "src/loushang/coding/__init__.py",
@@ -495,7 +529,7 @@ def test_context_compaction_and_journal_mechanics_use_harness_owners() -> None:
             "loushang.harness.journal.jsonl.journal_file_lock",
         },
         Path("src/loushang/coding/store/session_manager.py"): {
-            "loushang.harness.journal.BranchGraph",
+            "loushang.harness.conversation.ConversationRepository",
         },
         Path("src/loushang/work/event_log.py"): {
             "loushang.harness.journal.FunctionalJournalRecordCodec",
@@ -551,13 +585,15 @@ def test_harness_runtime_data_foundations_are_documented_and_adopted() -> None:
 
     expected_imports = {
         Path("src/loushang/coding/store/session_manager.py"): {
+            "loushang.harness.conversation.ConversationCatalog",
+            "loushang.harness.conversation.ConversationRepository",
             "loushang.harness.journal.JsonProjectionIndex",
-            "loushang.harness.journal.TranscriptRepository",
         },
         Path("src/loushang/coding/control/settings_manager.py"): {
             "loushang.harness.config.LayeredConfig",
         },
         Path("src/loushang/coding/compaction/compaction.py"): {
+            "loushang.harness.context.ConversationCompactionPlanner",
             "loushang.harness.context.summary.build_summary_prompt",
         },
         Path("src/loushang/coding/compaction/summary_quality.py"): {
@@ -578,6 +614,57 @@ def test_harness_runtime_data_foundations_are_documented_and_adopted() -> None:
     ).read_text(encoding="utf-8")
     assert "import json" not in Path("src/loushang/work/event_log.py").read_text(
         encoding="utf-8"
+    )
+
+
+def test_harness_conversation_runtime_core_is_documented_and_adopted() -> None:
+    design_path = Path(
+        "docs/internals/architecture/harness/conversation-runtime-core-boundary.md"
+    )
+    assert design_path.exists()
+    design_text = " ".join(design_path.read_text(encoding="utf-8").split())
+    required_phrases = {
+        "Harness Conversation Runtime Core Boundary",
+        "Status: implementation complete for integration into `lane/harness`",
+        "`ConversationRepository`",
+        "`ConversationReplayFolder`",
+        "`ConversationCatalog`",
+        "`ConversationCompactionPlanner`",
+        "`CommandExecutionRecord`",
+        "must not import Coding, AI messages, model/provider code, Product stores, Method, Work, TUI, or channel implementations",
+        "The split is deliberately asymmetric: Harness owns the control mechanics; Products name and interpret the data",
+    }
+    assert (
+        sorted(phrase for phrase in required_phrases if phrase not in design_text)
+        == []
+    )
+
+    readme_text = Path("docs/internals/architecture/harness/README.md").read_text(
+        encoding="utf-8"
+    )
+    assert "Conversation Runtime Core Boundary" in readme_text
+
+    coding_store_imports = {
+        imported
+        for path in (
+            Path("src/loushang/coding/store/file_codec.py"),
+            Path("src/loushang/coding/store/session_manager.py"),
+        )
+        for imported in _absolute_imports(path)
+    }
+    assert "loushang.harness.conversation.ConversationRepository" in (
+        coding_store_imports
+    )
+    assert "loushang.harness.journal.TranscriptRepository" not in (
+        coding_store_imports
+    )
+    assert "loushang.harness.journal.BranchGraph" not in coding_store_imports
+
+    compaction_imports = set(
+        _absolute_imports(Path("src/loushang/coding/compaction/compaction.py"))
+    )
+    assert "loushang.harness.context.ConversationCompactionPlanner" in (
+        compaction_imports
     )
 
 

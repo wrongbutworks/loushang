@@ -402,6 +402,46 @@ def test_list_summaries_and_find_sessions_query_across_session_files(tmp_path) -
     assert len(SessionManager.find_sessions(tmp_path, SessionQuery(limit=1))) == 1
 
 
+def test_list_summaries_skips_one_projection_failure(tmp_path, monkeypatch) -> None:
+    from loushang.coding.store import SessionManager
+    from loushang.coding.store import session_manager as session_manager_module
+    from loushang.harness.conversation import FunctionalConversationProjector
+
+    SessionManager.new(
+        session_dir=tmp_path,
+        cwd="/tmp/good",
+        persist=True,
+        session_id="good",
+    )
+    SessionManager.new(
+        session_dir=tmp_path,
+        cwd="/tmp/bad",
+        persist=True,
+        session_id="bad",
+    )
+    original = session_manager_module._SESSION_SUMMARY_PROJECTOR
+
+    def project(header, records, leaf_id, source_path):
+        if header.id == "bad":
+            raise ValueError("bad product projection")
+        return original.project(
+            header=header,
+            records=records,
+            leaf_id=leaf_id,
+            source_path=source_path,
+        )
+
+    monkeypatch.setattr(
+        session_manager_module,
+        "_SESSION_SUMMARY_PROJECTOR",
+        FunctionalConversationProjector(project),
+    )
+
+    assert [summary.session_id for summary in SessionManager.list_summaries(tmp_path)] == [
+        "good"
+    ]
+
+
 def test_session_manager_rename_session_file_appends_session_info(tmp_path) -> None:
     from loushang.ai.types import TextPart, UserMessage
     from loushang.coding.store import SessionManager

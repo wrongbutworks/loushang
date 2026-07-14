@@ -39,26 +39,11 @@ def collect_entries_for_branch_summary(
 ) -> CollectEntriesResult:
     if old_leaf_id is None:
         return CollectEntriesResult(entries=[], common_ancestor_id=None)
-
-    old_path_ids = {entry.id for entry in session.get_branch(old_leaf_id)}
-    target_path = session.get_branch(target_id)
-
-    common_ancestor_id: str | None = None
-    for entry in reversed(target_path):
-        if entry.id in old_path_ids:
-            common_ancestor_id = entry.id
-            break
-
-    entries = []
-    current_id = old_leaf_id
-    while current_id is not None and current_id != common_ancestor_id:
-        entry = session.get_entry(current_id)
-        if entry is None:
-            break
-        entries.append(entry)
-        current_id = entry.parent_id
-    entries.reverse()
-    return CollectEntriesResult(entries=entries, common_ancestor_id=common_ancestor_id)
+    delta = session.get_branch_delta(old_leaf_id, target_id)
+    return CollectEntriesResult(
+        entries=list(delta.divergent_records),
+        common_ancestor_id=delta.common_ancestor_id,
+    )
 
 
 def prepare_branch_entries(

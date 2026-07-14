@@ -26,12 +26,16 @@ class TranscriptRepository(Generic[H, R]):
         mode: BranchMode = "strict",
         diagnostics: Sequence[JournalDiagnostic] = (),
         leaf_id: str | None = None,
+        source_path: Path | None = None,
     ) -> None:
         self._header = header
         self._records = list(records)
         self._record_id = record_id
         self._parent_id = parent_id
         self._journal = journal
+        self._source_path = source_path or (
+            journal.path if journal is not None else None
+        )
         self._mode = mode
         self._load_diagnostics = tuple(diagnostics)
         self._graph = self._build_graph(self._records)
@@ -57,6 +61,7 @@ class TranscriptRepository(Generic[H, R]):
             journal=journal,
             mode=mode,
             leaf_id=leaf_id,
+            source_path=journal.path if journal is not None else None,
         )
         if journal is not None:
             journal.rewrite(repository.records, header=header)
@@ -83,6 +88,7 @@ class TranscriptRepository(Generic[H, R]):
             journal=journal if writable else None,
             mode=mode,
             diagnostics=snapshot.diagnostics,
+            source_path=journal.path,
         )
 
     @property
@@ -91,7 +97,7 @@ class TranscriptRepository(Generic[H, R]):
 
     @property
     def path(self) -> Path | None:
-        return self._journal.path if self._journal is not None else None
+        return self._source_path
 
     @property
     def records(self) -> tuple[R, ...]:
@@ -129,6 +135,9 @@ class TranscriptRepository(Generic[H, R]):
 
     def roots(self) -> tuple[R, ...]:
         return self._graph.roots()
+
+    def lowest_common_ancestor(self, left_id: str, right_id: str) -> R | None:
+        return self._graph.lowest_common_ancestor(left_id, right_id)
 
     def select_leaf(self, record_id: str) -> None:
         if self._graph.get(record_id) is None:

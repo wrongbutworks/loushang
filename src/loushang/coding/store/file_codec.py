@@ -29,6 +29,7 @@ from loushang.coding.message.json_codec import (
     serialize_session_header,
 )
 from loushang.coding.store.file_lock import session_file_lock
+from loushang.harness.conversation import ConversationRepository
 from loushang.harness.journal import (
     DEFAULT_JSONL_FORMAT,
     DURABLE_LOCKED_JOURNAL,
@@ -42,7 +43,6 @@ from loushang.harness.journal import (
     JsonlJournal,
     JsonlSnapshot,
     LegacyJsonConstant,
-    TranscriptRepository,
     parse_legacy_jsonl_line,
 )
 from loushang.protocol import dump_json_value, require_json_value
@@ -432,8 +432,8 @@ def create_session_repository(
     header: SessionHeader,
     entries: list[SessionEntry],
     path: Path | None = None,
-) -> TranscriptRepository[SessionHeader, SessionEntry]:
-    return TranscriptRepository.create(
+) -> ConversationRepository[SessionHeader, SessionEntry]:
+    return ConversationRepository.create(
         header=header,
         records=entries,
         record_id=lambda entry: entry.id,
@@ -447,9 +447,9 @@ def load_session_repository(
     path: Path,
     *,
     writable: bool = True,
-) -> TranscriptRepository[SessionHeader, SessionEntry]:
+) -> ConversationRepository[SessionHeader, SessionEntry]:
     try:
-        return TranscriptRepository.load(
+        return ConversationRepository.load(
             session_journal(path),
             record_id=lambda entry: entry.id,
             parent_id=lambda entry: entry.parent_id,
