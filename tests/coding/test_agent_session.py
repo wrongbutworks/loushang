@@ -4577,7 +4577,10 @@ def test_agent_session_exposes_jsonl_and_html_export_methods(tmp_path) -> None:
     from loushang.coding.session import AgentSession
     from loushang.coding.store import SessionManager
 
-    manager = SessionManager.new(session_dir=tmp_path, cwd="/tmp/project", persist=False)
+    project_dir = tmp_path / "project"
+    project_dir.mkdir()
+
+    manager = SessionManager.new(session_dir=tmp_path, cwd=str(project_dir), persist=False)
     manager.append_message(
         UserMessage(
             role="user",
