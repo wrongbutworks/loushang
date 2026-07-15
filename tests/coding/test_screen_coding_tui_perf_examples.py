@@ -18,6 +18,12 @@ from loushang.tui import (
 _EXAMPLE = (
     Path(__file__).parents[2] / "examples" / "tui" / "31_native_coding_markdown_perf.py"
 )
+_TRIM_INTERACTIVE_EXAMPLE = (
+    Path(__file__).parents[2]
+    / "examples"
+    / "tui"
+    / "33_native_coding_markdown_perf_trim_interactive.py"
+)
 
 
 def test_markdown_perf_fixture_starts_a_new_block_every_twenty_lines() -> None:
@@ -100,6 +106,19 @@ def test_markdown_perf_example_runs_against_screen_tui() -> None:
     assert "contains_last_line=True" in completed.stdout
     positions = [completed.stdout.index(f"Line {index}:") for index in range(1, 5)]
     assert positions == sorted(positions)
+
+
+def test_markdown_perf_trim_interactive_example_loads_screen_app() -> None:
+    completed = subprocess.run(
+        [sys.executable, str(_TRIM_INTERACTIVE_EXAMPLE), "--help"],
+        check=False,
+        capture_output=True,
+        text=True,
+        timeout=30,
+    )
+
+    assert completed.returncode == 0, completed.stderr
+    assert "--active-line-budget" in completed.stdout
 
 
 class _LengthOnlyLines:
