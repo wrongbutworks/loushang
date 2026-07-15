@@ -67,14 +67,16 @@ async def run_script(
     stdout.write(f"active_line_budget={active_line_budget}\n\n")
 
     for round_index in range(1, rounds + 1):
-        steps = await _perf31._drive_script_round(
+        summary = await _perf31._drive_script_round(
             app=app,
             runtime=runtime,
             count=count,
             stream_seconds=stream_seconds,
             render_interval_ms=render_interval_ms,
         )
-        stdout.write(_perf31._script_round_line(round_index, app=app, steps=steps))
+        stdout.write(
+            _perf31._script_round_line(round_index, app=app, summary=summary)
+        )
         trim_step, trim_changed = _trim_and_render(app=app, runtime=runtime)
         stdout.write(_trim_round_line(round_index, app=app, trim_step=trim_step, trim_changed=trim_changed))
 
