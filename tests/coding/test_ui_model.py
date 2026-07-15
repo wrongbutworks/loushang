@@ -39,13 +39,13 @@ def test_model_label_from_selection_hides_unknown_model() -> None:
 def test_model_label_from_selection_formats_provider_and_model() -> None:
     from loushang.coding.ui.model import model_label_from_selection
 
-    assert model_label_from_selection(ModelSelection(provider="moonshot", model_id="kimi-for-coding")) == "moonshot/kimi-for-coding"
+    assert model_label_from_selection(ModelSelection(provider="kimi-code", model_id="kimi-for-coding")) == "kimi-code/kimi-for-coding"
 
 
 def test_ensure_usable_session_model_keeps_existing_usable_model() -> None:
     from loushang.coding.ui.model import ensure_usable_session_model
 
-    current = ModelSelection(provider="moonshot", model_id="kimi-for-coding")
+    current = ModelSelection(provider="kimi-code", model_id="kimi-for-coding")
     session = _Session(current=current)
 
     result = asyncio.run(ensure_usable_session_model(session))
@@ -57,8 +57,8 @@ def test_ensure_usable_session_model_keeps_existing_usable_model() -> None:
 def test_ensure_usable_session_model_prefers_kimi_coding_anthropic_detail() -> None:
     from loushang.coding.ui.model import ensure_usable_session_model
 
-    preferred = Model(id="kimi-for-coding", provider="moonshot", endpoint="kimi-code-anthropic")
-    fallback = Model(id="kimi-for-coding", provider="moonshot", endpoint="openai-completions:cn:coding")
+    preferred = Model(id="kimi-for-coding", provider="kimi-code", endpoint="kimi-code-anthropic")
+    fallback = Model(id="kimi-for-coding", provider="kimi-code", endpoint="openai-completions:cn:coding")
     session = _Session(
         current=ModelSelection(provider="unknown", model_id="unknown"),
         details=[fallback, preferred],
@@ -66,14 +66,14 @@ def test_ensure_usable_session_model_prefers_kimi_coding_anthropic_detail() -> N
 
     result = asyncio.run(ensure_usable_session_model(session))
 
-    assert result == ModelSelection(provider="moonshot", model_id="kimi-for-coding")
+    assert result == ModelSelection(provider="kimi-code", model_id="kimi-for-coding")
     assert session.set_model_calls == [preferred]
 
 
 def test_ensure_usable_session_model_falls_back_to_available_selection() -> None:
     from loushang.coding.ui.model import ensure_usable_session_model
 
-    fallback = ModelSelection(provider="moonshot", model_id="kimi-for-coding")
+    fallback = ModelSelection(provider="kimi-code", model_id="kimi-for-coding")
     session = _Session(
         current=ModelSelection(provider="unknown", model_id="unknown"),
         selections=[fallback],
